@@ -71,7 +71,7 @@ markers = [
     "integration: runs a real SUMO simulation (slower; needs eclipse-sumo)",
     "slow: long-running physics or sweep test",
 ]
-addopts = "-ra"
+addopts = "-ra --import-mode=importlib"
 
 [tool.coverage.run]
 source = [
