@@ -28,8 +28,8 @@ FlowState v2 is a two-tier traffic simulation and analysis platform:
 
 Under active construction. Milestone tracker:
 
-- [ ] **M0** — monorepo + macro tier ported with test battery, CI green
-- [ ] **M1** — ring-road emergence + single-AV dampening reproduced in CI
+- [x] **M0** — monorepo + macro tier ported with test battery, CI green
+- [x] **M1** — ring-road emergence + single-AV dampening reproduced in CI
 - [ ] **M2** — FD + IDM population calibration from public data
 - [ ] **M3** — corridor validation vs FHWA-style criteria, full sweep with CIs
 - [ ] **M4** — FastAPI service + dashboard + Docker

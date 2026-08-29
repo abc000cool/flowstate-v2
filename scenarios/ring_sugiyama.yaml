@@ -1,0 +1,43 @@
+# ring_sugiyama — canonical emergence benchmark (CLAUDE.md §3.2.1).
+# 230 m single-lane ring, 22 vehicles, uniform spacing + tiny seeded jitter,
+# no on/off ramps, NO seeded perturbation: stop-and-go waves must EMERGE
+# (Sugiyama et al. 2008, New J. Phys. 10:033001). Permanent CI integration
+# test: emergence + single-AV FollowerStopper dampening (Stern et al. 2018).
+#
+# Tuning note (Phase-1, within the CLAUDE.md §3.1 calibration ranges):
+# T = 1.2 s instead of the 1.4 s literature default. With 22 five-meter
+# vehicles on 230 m the equilibrium gap is 5.45 m; T = 1.2 raises the
+# equilibrium speed (~2.9 m/s vs ~2.5), giving the string instability more
+# amplitude room. Measured on SUMO 1.27.1 IDM across seeds {42, 7, 123}:
+# sigma_v(last 300 s) = 2.4/2.5/1.9 m/s at T=1.2 versus 2.0/1.3/1.0 at the
+# T=1.4 default — T=1.2 makes emergence robust rather than seed-lucky.
+# All other IDM params are the Treiber et al. (2000) defaults.
+name: ring_sugiyama
+tier: micro
+network:
+  kind: ring
+  circumference_m: 230.0
+  n_vehicles: 22
+fleet:
+  model: IDM
+  v0: 33.3
+  T: 1.2
+  a_max: 0.73
+  b: 1.67
+  s0: 2.0
+  delta: 4.0
+  heterogeneity_frac: 0.12
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+sim:
+  duration_s: 600.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 180.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 20

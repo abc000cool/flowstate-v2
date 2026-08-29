@@ -1,0 +1,59 @@
+# corridor_10km — v1-equivalent straight corridor (CLAUDE.md §3.2.2).
+# Single-lane 10 km corridor with an upstream insertion-buffer entry edge
+# (2 km, departPos="free" — see microsim.vehicles). The inflow ramps to
+# 1800 veh/h, the lower edge of the unstable band (§7.1 targets 1800–2100
+# veh/h), and waves emerge from seeded insertion jitter alone —
+# seeded=False, no perturbation block (CLAUDE.md §0.2 emergent-not-seeded).
+#
+# Tuning record (Phase-1, measured on SUMO 1.27.1, seed 42):
+# * model: EIDM, not IDM. SUMO's plain IDM at the CLAUDE.md §3.1 defaults is
+#   string-STABLE at every density an open single-lane corridor can sustain
+#   below capacity: insertion-jitter perturbations visibly DECAY downstream
+#   (per-km speed std 3.1 -> 1.1 over 10 km), and pushing demand past
+#   ~1900 veh/h only jams the insertion zone (realized inflow collapses to
+#   ~1000 veh/h). Swept v0 in {28, 30, 33.3}, heterogeneity in {0.12, 0.15},
+#   demand 1600-2240 veh/h: zero main-corridor jam bins in every IDM run.
+#   EIDM (extended IDM with estimation errors and action points, the
+#   CLAUDE.md §3.1 sanctioned alternative) at the same demand keeps insertion
+#   fluid (582/582 vehicles, 1792 veh/h realized) and grows genuine
+#   stop-and-go: 119 space-time bins under 40 km/h spanning x = 4.3-9.6 km,
+#   min speed 0.4 m/s, fronts drifting backward at ~8 km/h.
+# * heterogeneity_frac 0.15 (upper end of the §3.1 10-15% guidance) —
+#   slow/fast driver contrast feeds the wave growth.
+# * Demand holds at 0.50 veh/s (1800 veh/h): the highest rate the single
+#   lane accepts without insertion-zone breakdown (~0.53+ collapses), i.e.
+#   the corridor operates just inside the unstable band at its realizable
+#   capacity.
+name: corridor_10km
+tier: micro
+network:
+  kind: corridor
+  length_m: 10000.0
+  lanes: 1
+  inflow:
+    - [0.0, 0.45]
+    - [120.0, 0.50]
+    - [1080.0, 0.40]
+fleet:
+  model: EIDM
+  v0: 33.3
+  T: 1.4
+  a_max: 0.73
+  b: 1.67
+  s0: 2.0
+  delta: 4.0
+  heterogeneity_frac: 0.15
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+sim:
+  duration_s: 1200.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 120.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 20

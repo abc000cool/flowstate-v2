@@ -1,0 +1,87 @@
+# {{ title }}
+
+{% if seeded_any %}
+> **{{ seeded_banner }}**
+{% endif %}
+{% if created_at %}
+Generated: {{ created_at }}
+{% endif %}
+
+## Provenance
+
+Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
+
+| Run | Config hash | Seed | Tier | seeded | Wall time [s] |
+|---|---|---|---|---|---|
+{% for r in runs %}
+| {{ r.name }} | `{{ r.config_hash }}` | {{ r.seed }} | {{ r.tier }} | {{ r.seeded }} | {{ r.wall_time_s }} |
+{% endfor %}
+
+### Package versions (from run metadata)
+
+{% if versions %}
+{% for k, v in versions %}
+- {{ k }}: `{{ v }}`
+{% endfor %}
+{% else %}
+- No version metadata recorded.
+{% endif %}
+
+### Calibration artifacts used
+
+{% if calibrations %}
+| Artifact | data_hash |
+|---|---|
+{% for c in calibrations %}
+| `{{ c.path }}` | `{{ c.data_hash }}` |
+{% endfor %}
+{% else %}
+No calibration artifacts recorded — defaults in use are literature values,
+not calibrated claims.
+{% endif %}
+
+## Acceptance criteria
+
+| Criterion | Value | Threshold | Evaluated | Result |
+|---|---|---|---|---|
+{% for c in criteria %}
+| {{ c.name }} | {{ c.value }} | {{ c.threshold }} | {{ c.evaluated }} | {{ c.result }} |
+{% endfor %}
+
+Rows marked not evaluated had no input supplied and count as failing; an
+unevaluated criterion is never a pass.
+
+## Metrics
+
+Mean with two-sided t-distribution confidence bounds at the
+{{ ci_level_pct }} percent level over n replicates. Rows flagged
+underpowered have fewer than {{ min_replicates }} replicates and must not be
+quoted as headline results.
+
+| Metric | Mean | Lower | Upper | n | Underpowered |
+|---|---|---|---|---|---|
+{% for m in metric_rows %}
+| {{ m.name }} | {{ m.mean }} | {{ m.lo }} | {{ m.hi }} | {{ m.n }} | {{ m.underpowered }} |
+{% endfor %}
+
+## Speed contours
+
+{% for f in figures %}
+![{{ f.caption }}]({{ f.path }})
+{% endfor %}
+
+## Limitations
+
+- Results cover a single corridor/scenario family; transfer to other
+  corridors is not established.
+- Model-form uncertainty (IDM/SUMO car-following assumptions, effective
+  single-pipe demand representation) is not captured by seed-to-seed
+  confidence intervals.
+- AV penetration and compliance are swept assumptions, not measured
+  behavior; conclusions hold only within the swept grid.
+- Metrics from fewer than {{ min_replicates }} replicates are flagged
+  underpowered and are diagnostics, not claims.
+{% if seeded_any %}
+- Some runs used a seeded perturbation ({{ seeded_flag_text }}); those
+  results demonstrate controlled response, not emergent wave formation.
+{% endif %}
