@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+htmlcov/
+.coverage
+dist/
+build/
+
+# Data & results (fetch scripts are versioned; payloads are not)
+data/*
+!data/fetch/
+runs/
+results/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Environment / OS
+.env
+.DS_Store
+
+# SUMO scratch
+*.sumocfg.tmp
