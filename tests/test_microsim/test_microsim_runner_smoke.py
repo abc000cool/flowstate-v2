@@ -165,6 +165,35 @@ class TestCorridorSmoke:
         # with v0 = 15 m/s no free-flowing vehicle can exceed it.
         assert df.v.max() <= 15.0 + 1e-6
 
+    def test_us101_demand_realization_90pct(self, tmp_path):
+        """M3 fix: the 5-lane US-101 demand level inserts >= 90% of planned.
+
+        M2 documented a ~73% insertion ceiling under departLane="free" +
+        departPos="free" + departSpeed="max" (docs/M2_RESULTS.md §6/§7.7);
+        the per-lane round-robin / base / avg scheme must clear 90%. Uses the
+        us101_replica geometry and its peak 5-min inflow rate over a 600 s
+        window (the hardest sustained load) with the default fleet so the
+        test needs no calibration artifact.
+        """
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "us101_demand_smoke",
+                "network": {
+                    "kind": "corridor",
+                    "length_m": 640.0,
+                    "lanes": 5,
+                    "inflow": [[0.0, 2.437]],
+                },
+                "sim": {"duration_s": 600.0},
+            }
+        )
+        paths = run_micro(cfg, 42, tmp_path)
+        meta = json.loads(paths.meta.read_text())
+        planned = meta["n_vehicles_planned"]
+        departed = meta["n_vehicles_departed"]
+        assert planned >= 1400  # 2.437 veh/s x 600 s
+        assert departed / planned >= 0.90
+
     def test_vsl_scenario_runs(self, tmp_path):
         cfg = ScenarioConfig.model_validate(
             {

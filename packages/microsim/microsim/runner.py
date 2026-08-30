@@ -172,6 +172,7 @@ def _build_plan_and_routes(
         if not inflow:
             raise ValueError("OSM scenario needs a non-empty network.inflow for demand")
     plan = build_corridor_plan(inflow, cfg.sim.duration_s, cfg.fleet, cfg.av, rng)
+    lanes = net.lanes if isinstance(net, CorridorNetwork) else 1
     write_corridor_routes(
         bundle.edge_ids,
         plan,
@@ -179,6 +180,7 @@ def _build_plan_and_routes(
         cfg.sim.action_step_s,
         routes_path,
         depart_edge_spread=depart_edge_spread,
+        lanes=lanes,
     )
     return plan
 

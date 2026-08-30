@@ -233,3 +233,29 @@ class TestCorridorRoutes:
         path = write_corridor_routes(("entry", "ce0"), plan, "IDM", 0.5, tmp_path / "c2.rou.xml")
         root = ET.parse(path).getroot()
         assert all(v.get("departEdge") is None for v in root.findall("vehicle"))
+
+    def test_single_lane_keeps_free_insertion(self, tmp_path):
+        """lanes=1 (default) keeps the Phase-1 free/max scheme byte-for-byte."""
+        plan = build_corridor_plan([(0.0, 0.5)], 60.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        path = write_corridor_routes(("entry", "ce0"), plan, "IDM", 0.5, tmp_path / "c3.rou.xml")
+        for v in ET.parse(path).getroot().findall("vehicle"):
+            assert v.get("departLane") == "free"
+            assert v.get("departPos") == "free"
+            assert v.get("departSpeed") == "max"
+
+    def test_multi_lane_round_robin_base_avg(self, tmp_path):
+        """M3 demand-realization fix: lanes>1 pins departLane round-robin in
+        departure order with edge-start insertion at the prevailing speed
+        (see write_corridor_routes docstring / docs/M2_RESULTS.md §7.7)."""
+        plan = build_corridor_plan([(0.0, 2.4)], 60.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        path = write_corridor_routes(
+            ("entry", "ce0"), plan, "IDM", 0.5, tmp_path / "c5.rou.xml", lanes=5
+        )
+        vehicles = ET.parse(path).getroot().findall("vehicle")
+        assert len(vehicles) == plan.n
+        for rank, v in enumerate(vehicles):
+            assert v.get("departLane") == str(rank % 5)
+            assert v.get("departPos") == "base"
+            assert v.get("departSpeed") == "avg"
+        # Departure order is time-sorted, so the round-robin covers all lanes.
+        assert {v.get("departLane") for v in vehicles} == {"0", "1", "2", "3", "4"}

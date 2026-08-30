@@ -17,6 +17,22 @@
 # congestion partly originated downstream of the study section — expect the
 # replica to run less congested than the recording until M3 adds a
 # downstream boundary condition.
+#
+# M3 demand-realization fix (measured on SUMO 1.27.1, seed 42, full 1133 s):
+# M2's ~73% insertion ceiling (docs/M2_RESULTS.md §6/§7.7) is closed by the
+# multi-lane insertion scheme in microsim.vehicles.write_corridor_routes —
+# per-vehicle departLane round-robin across the 5 lanes in departure order,
+# departPos="base" (entry-edge start), departSpeed="avg" (prevailing lane
+# speed). No SUMO safety check is bypassed and no SUMO option changed; all
+# insertion stays on the 640 m entry-buffer edge upstream of the measured
+# span (x in [640, 1280] m in run coordinates), so measured-span physics is
+# untouched. Realized with the calibrated fleet: 2,591/2,592 planned
+# insertions (99.96%); realized inflow over the measurement span during the
+# post-warmup window = 2.278 veh/s vs 2.287 veh/s planned average (99.6%),
+# with per-5-min span-entry counts tracking the planned steps (traversal lag
+# ~20-30 s). Root cause of the old ceiling: full-speed free-position
+# insertion needs a leader+follower secure-gap slot of ~2*(s0 + v*T) ~ 85 m
+# per vehicle, which the entry edge cannot supply at 2.29 veh/s.
 name: us101_replica
 tier: micro
 network:

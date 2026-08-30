@@ -401,17 +401,38 @@ def write_corridor_routes(
     action_step_s: float,
     path: Path,
     depart_edge_spread: int = 1,
+    lanes: int = 1,
 ) -> Path:
-    """Write corridor demand: explicit jittered departures, ``departSpeed max``.
+    """Write corridor demand: explicit jittered departures.
 
     Vehicles are sorted by departure time (SUMO requirement) and enter on the
-    first route edge with ``departLane="free"`` (multi-lane corridors fill all
-    lanes) and ``departPos="free"`` (SUMO may insert anywhere on the entry
-    edge with room). Free positioning on a long entry edge is what lets a
-    single lane sustain near-capacity demand: with a fixed insertion point the
-    realized inflow collapses to ~1200 veh/h under oversaturated demand, while
-    free insertion on a 2 km entry reaches ~1960 veh/h (measured, SUMO
-    1.27.1) — the runner sizes the entry edge accordingly.
+    first route edge. The insertion attributes depend on the lane count:
+
+    * ``lanes == 1`` — ``departLane="free" departPos="free"
+      departSpeed="max"``. Free positioning on a long entry edge is what lets
+      a single lane sustain near-capacity demand: with a fixed insertion
+      point the realized inflow collapses to ~1200 veh/h under oversaturated
+      demand, while free insertion on a 2 km entry reaches ~1960 veh/h
+      (measured, SUMO 1.27.1) — the runner sizes the entry edge accordingly.
+    * ``lanes > 1`` (and ``depart_edge_spread == 1``, the physical
+      boundary-inflow path) — per-vehicle ``departLane`` assigned round-robin
+      across lanes in departure order, ``departPos="base"`` (edge start, so
+      every vehicle traverses the full insertion buffer and the demand timing
+      profile is preserved up to a near-constant lag) and
+      ``departSpeed="avg"`` (prevailing lane speed). This is the M3 fix for
+      the multi-lane insertion-throughput ceiling documented in
+      docs/M2_RESULTS.md §6/§7.7: full-speed free-position insertion needs a
+      leader+follower secure-gap slot of ~2·(s0 + v·T) ≈ 85 m per vehicle,
+      which caps realized inflow at ~73–86% of the planned 2.29 veh/s on the
+      5-lane US-101 replica, while lane-pinned edge-start insertion at the
+      prevailing speed realizes 100.0% of planned insertions (2591–2592 of
+      2592, seed 42, SUMO 1.27.1, all insertion safety checks ON, zero
+      collisions) with per-5-min span-entry counts tracking the planned
+      profile. All insertion happens on the entry buffer edge, outside the
+      measurement span, so measured-span physics is unchanged. When
+      ``depart_edge_spread != 1`` (the smoke/initial-condition fill path,
+      not a physical boundary inflow) free positioning fills the corridor
+      better and the single-lane scheme is kept.
 
     Args:
         route_edge_ids: Full route, entry edge first, upstream → downstream.
@@ -426,6 +447,8 @@ def write_corridor_routes(
             larger values fill the corridor from many points at once, which
             is how a smoke/initial-condition run gets past SUMO's per-edge
             insertion throughput (~1.2–2.4 veh/s under backlog, measured).
+        lanes: Lane count of the corridor (selects the insertion attribute
+            scheme above; the caller passes ``CorridorNetwork.lanes``).
 
     Returns:
         ``path``.
@@ -440,10 +463,13 @@ def write_corridor_routes(
     lines.append(f'  <route id="main" edges="{route}"/>')
     for rank, i in enumerate(order):
         depart_edge = "" if spread == 1 else f'departEdge="{rank % spread}" '
+        if lanes > 1 and spread == 1:
+            depart_attrs = f'departPos="base" departSpeed="avg" departLane="{rank % lanes}"'
+        else:
+            depart_attrs = 'departPos="free" departSpeed="max" departLane="free"'
         lines.append(
             f'  <vehicle id="{plan.vehicle_id(i)}" type="t{i:05d}" '
-            f'depart="{plan.depart_s[i]:.3f}" {depart_edge}departPos="free" '
-            f'departSpeed="max" departLane="free" route="main"/>'
+            f'depart="{plan.depart_s[i]:.3f}" {depart_edge}{depart_attrs} route="main"/>'
         )
     lines.append("</routes>")
     path.write_text("\n".join(lines))
