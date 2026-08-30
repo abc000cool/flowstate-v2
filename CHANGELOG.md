@@ -19,6 +19,16 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### Changed
 
+- **Config hashes changed for every scenario** when `OracleSpec` was added to
+  `AVSpec`: `config_hash` covers the whole serialized config (CLAUDE.md §0.5),
+  so a new field with a default still changes the digest. Hashes recorded in
+  artifacts produced before this change (M2, M3, the US-101 validation) refer to
+  the pre-Phase-5 schema and will not reproduce against current code, though the
+  *physics* is unchanged: the `corridor_10km` baseline gives bit-identical
+  metrics before and after (temporal σ_v 3.3851, CI lower bound 2.8283 in both
+  the pre-change `pi_retune` run and the post-change `jad_oracle` run), which is
+  the intended evidence that a default `oracle` is inert.
+
 - **JAD's M3 bimodality is explained and resolved.** The perfect oracle was the
   cause: it fires the instant any bin in the 2 km lookahead qualifies, so the AV
   completes slow-in/hold/fast-out before the front arrives and re-triggers —

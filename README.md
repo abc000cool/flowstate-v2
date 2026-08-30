@@ -117,7 +117,8 @@ synthetic 10 km corridor, 27 cells × 20 common-random-number seeds:
 | Throughput cost | none resolved (+11.6 veh/h [−1.3, +24.4] at 5% / 100%) |
 | Fuel | −2.8% [−3.8, −1.7] at 1% / 100% → −5.7% [−7.2, −4.2] at 20% / 100% |
 | Compliance × penetration | effects collapse onto the complied share of the fleet — half the compliance ≈ double the penetration needed |
-| PI-saturation at 5% / 100% | σ_v −29.7%, waves −41.6%, fuel −2.9%, no resolved throughput cost — after correcting the controller against Stern et al. (2018) Eqs. (3)–(5). The spec's `0.75 × platoon mean` simplification (now `pi_meanfrac`) gridlocks open corridors: 94% throughput collapse, reported as-is ([PI_CONTROLLER_FIX.md](docs/PI_CONTROLLER_FIX.md)) |
+| Controller comparison at 5% / 100% | FollowerStopper (σ_v −61.2%, waves −96.1%) and JAD under a realistic 30 s/±20% detection oracle (−60.6%, −90.9%) are statistically tied; faithful PI-saturation trails at −29.7%. All resolved, no throughput cost ([CONTROLLER_COMPARISON.md](docs/CONTROLLER_COMPARISON.md)) |
+| Detection realism | JAD is *unreliable with a perfect oracle* — it chatters and worsens 5/20 seeds; 30–60 s latency with ±20% noise removes the failure entirely ([JAD_ORACLE_RESULTS.md](docs/JAD_ORACLE_RESULTS.md)) |
 | US-101 replica validation | **1 PASS / 5 FAIL** on the FHWA-style criteria table |
 | Flux-cap comparison | the v1 ρ·v* cap (discrete Delle Monache–Goatin) beats the reduced-capacity variant against micro ground truth: paired speed-RMSE difference 0.84 m/s [0.36, 1.33] |
 
