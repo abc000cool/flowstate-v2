@@ -1,0 +1,57 @@
+# gallery_us75_dallas — US-75 (Central Expressway) northbound, Dallas, TX
+# (M5 demo gallery).
+#
+# WHAT THIS IS: a demonstration of the `osm_generic` "any city" onboarding
+# pipeline (CLAUDE.md §3.2.4) on a real corridor: an OSM bbox over Central
+# Expressway north of downtown Dallas → motorway-only Overpass extract
+# (scripts/fetch_gallery_osm.py; data/osm/us75_dallas.osm, gitignored) →
+# netconvert import → northbound mainline chain (12 edges, ~7.0 km, 4-5
+# lanes) → runnable SUMO scenario. Corridor edge ids below are raw OSM way
+# ids from the extract, pruned/pinned by microsim.networks.osm_import.
+#
+# WHAT THIS IS NOT: a validated or calibrated corridor. The demand below is
+# UNCALIBRATED — a flat, plausible-order-of-magnitude load chosen for the
+# demo, not fitted to any observed counts. The fleet draws from the M2
+# US-101 IDM population calibration (artifacts/idm_us101.json — a different
+# site: congested Los Angeles freeway, raw-NGSIM caveats in
+# docs/M2_RESULTS.md §7). Ramps/frontage roads are pruned away, so the real
+# corridor's merge bottlenecks are absent. One replicate, no CIs: nothing
+# here supports a quantitative claim — it shows OSM bbox -> runnable
+# corridor, not corridor validity.
+name: gallery_us75_dallas
+tier: micro
+network:
+  kind: osm
+  osm_file: data/osm/us75_dallas.osm
+  corridor_edges:  # northbound mainline, upstream (S) -> downstream (N)
+    - "552699476"
+    - "1343350963"
+    - "552699474"
+    - "552699465"
+    - "1504680589"
+    - "552699463"
+    - "552699435"
+    - "552699422"
+    - "847521088"
+    - "28672120"
+    - "846429766"
+    - "556550421"
+  inflow:
+    - [0.0, 1.11]  # ~4000 veh/h total over 4-5 lanes — uncalibrated demo demand
+fleet:
+  model: IDM
+  idm_calibration: artifacts/idm_us101.json
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+sim:
+  duration_s: 600.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 60.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 1

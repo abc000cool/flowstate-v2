@@ -37,4 +37,4 @@ __all__ = [
     "v1_legacy_fd",
 ]
 
-__version__ = "2.0.0-dev"
+__version__ = "2.0.0"

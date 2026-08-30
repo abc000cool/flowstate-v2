@@ -7,4 +7,4 @@ payloads live on disk as Parquet/JSON per docs/CONTRACTS.md §3 — SQLite holds
 metadata only.
 """
 
-__version__ = "2.0.0-dev"
+__version__ = "2.0.0"

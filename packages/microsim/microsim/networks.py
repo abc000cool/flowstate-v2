@@ -391,7 +391,22 @@ def osm_import(
     if typemap is not None:
         args += ["--type-files", str(typemap)]
     if corridor_edges:
-        args += ["--keep-edges.explicit", ",".join(corridor_edges)]
+        # Pruning happens at load time, i.e. at raw-OSM-way granularity and
+        # BEFORE --geometry.remove joins edges; the named corridor edges must
+        # therefore be load-time ids (way ids, possibly ``#``-split). Without
+        # the second flag the join stage can then merge a kept corridor edge
+        # into its neighbor and rename it, so the requested ids no longer
+        # exist in the compiled net (observed on real motorway extracts);
+        # ``--geometry.remove.keep-edges.explicit`` pins the named edges
+        # through the join so the pruned net contains exactly the requested
+        # chain with stable ids and offsets.
+        joined = ",".join(corridor_edges)
+        args += [
+            "--keep-edges.explicit",
+            joined,
+            "--geometry.remove.keep-edges.explicit",
+            joined,
+        ]
     _netconvert(args)
 
     parsed = sumolib.net.readNet(str(net))

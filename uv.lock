@@ -52,7 +52,7 @@ wheels = [
 
 [[package]]
 name = "api"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/api" }
 dependencies = [
     { name = "calibration" },
@@ -85,7 +85,7 @@ requires-dist = [
     { name = "microsim", editable = "packages/microsim" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2" },
-    { name = "pyarrow", specifier = ">=18.0" },
+    { name = "pyarrow", specifier = ">=18.0,!=24.0.0" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -141,7 +141,7 @@ wheels = [
 
 [[package]]
 name = "calibration"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/calibration" }
 dependencies = [
     { name = "flowstate-core" },
@@ -156,7 +156,7 @@ requires-dist = [
     { name = "flowstate-core", editable = "packages/flowstate_core" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2" },
-    { name = "pyarrow", specifier = ">=18.0" },
+    { name = "pyarrow", specifier = ">=18.0,!=24.0.0" },
     { name = "scipy", specifier = ">=1.14" },
 ]
 
@@ -220,7 +220,7 @@ wheels = [
 
 [[package]]
 name = "controllers"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/controllers" }
 dependencies = [
     { name = "flowstate-core" },
@@ -323,7 +323,7 @@ wheels = [
 
 [[package]]
 name = "flowstate"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "api" },
@@ -370,7 +370,7 @@ dev = [
 
 [[package]]
 name = "flowstate-core"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/flowstate_core" }
 dependencies = [
     { name = "numpy" },
@@ -614,7 +614,7 @@ wheels = [
 
 [[package]]
 name = "macrosim"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/macrosim" }
 dependencies = [
     { name = "flowstate-core" },
@@ -676,7 +676,7 @@ wheels = [
 
 [[package]]
 name = "microsim"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/microsim" }
 dependencies = [
     { name = "controllers" },
@@ -698,7 +698,7 @@ requires-dist = [
     { name = "libsumo", specifier = "==1.27.1" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2" },
-    { name = "pyarrow", specifier = ">=18.0" },
+    { name = "pyarrow", specifier = ">=18.0,!=24.0.0" },
     { name = "sumolib", specifier = "==1.27.1" },
     { name = "traci", specifier = "==1.27.1" },
 ]
@@ -1179,7 +1179,7 @@ wheels = [
 
 [[package]]
 name = "validation"
-version = "2.0.0.dev0"
+version = "2.0.0"
 source = { editable = "packages/validation" }
 dependencies = [
     { name = "flowstate-core" },

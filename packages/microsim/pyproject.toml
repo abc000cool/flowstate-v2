@@ -1,9 +1,9 @@
 [project]
 name = "microsim"
-version = "2.0.0-dev"
+version = "2.0.0"
 description = "FlowState v2 — SUMO+IDM microscopic tier (scenario builder, runner, outputs)"
 requires-python = ">=3.12,<3.13"
-dependencies = ["flowstate-core", "controllers", "eclipse-sumo==1.27.1", "libsumo==1.27.1", "traci==1.27.1", "sumolib==1.27.1", "numpy>=2.0", "pandas>=2.2", "pyarrow>=18.0"]
+dependencies = ["flowstate-core", "controllers", "eclipse-sumo==1.27.1", "libsumo==1.27.1", "traci==1.27.1", "sumolib==1.27.1", "numpy>=2.0", "pandas>=2.2", "pyarrow>=18.0,!=24.0.0"]
 
 [build-system]
 requires = ["hatchling"]
