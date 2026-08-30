@@ -27,7 +27,7 @@ grow from insertion jitter alone, no perturbation block; CLAUDE.md §0.2):
 |---|---|
 | baseline | penetration 0%, no controller (1 cell) |
 | FollowerStopper grid | penetration {1, 2, 5, 10, 15, 20}% × compliance {25, 50, 80, 100}% (24 cells) |
-| controller comparison | `pi_saturation` and `jad` at 5% / 100% (2 cells) |
+| controller comparison | `pi_saturation` (the §4.2 simplification, since renamed `pi_meanfrac` — see §4.5) and `jad` at 5% / 100% (2 cells) |
 
 **Replication.** Master seed 42 → 20 replicate seeds via
 `flowstate_core.rng.spawn_seeds`; the **same seed list is reused in every
@@ -239,9 +239,18 @@ elimination.
   5% penetration the fleet spirals to standstill. The M1 gains were tuned
   on the ring scenario, where a fixed equilibrium exists. Its apparent σ_v
   "improvement" (+27.8% paired) is an artifact of everyone standing still
-  and must not be read as calming. **Do not deploy `pi_saturation` on open
-  corridors with default parameters**; it needs an absolute reference-speed
-  floor or corridor-specific retuning before it can be compared fairly.
+  and must not be read as calming.
+
+  **Resolved after M3 — the controller under test was not the literature
+  controller.** The cell labeled `pi_saturation` here ran the CLAUDE.md §4.2
+  *simplification*, since renamed `pi_meanfrac`. Stern et al. (2018) §3.2 has
+  no `0.75 · v̄_platoon` factor: its target is the AV's own ~38 s mean speed
+  plus a non-negative gap-scheduled catch-up term (Eq. 3), which cannot ratchet.
+  The faithful implementation, now registered as `pi_saturation`, dampens this
+  same corridor without collapse — σ_v −29.7%, waves −41.6%, fuel −2.9%, and
+  no resolved throughput cost. See [PI_CONTROLLER_FIX.md](PI_CONTROLLER_FIX.md)
+  and `artifacts/pi_retune_summary.json`. The numbers in this section remain as
+  measured for `pi_meanfrac`; read them as a result about that simplification.
 
 ### 4.6 Non-monotonicity and surprises, as observed
 

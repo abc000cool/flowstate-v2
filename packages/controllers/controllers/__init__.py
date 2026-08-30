@@ -11,6 +11,7 @@ from controllers.follower_stopper import FOLLOWER_STOPPER_DEFAULTS, follower_sto
 from controllers.gym_env import EnvBackend, FlowStateEnv, SyntheticBackend
 from controllers.idm import IDM_PARAM_DEFAULTS, desired_gap, equilibrium_gap, idm_accel
 from controllers.jad import JAD_DEFAULTS, JAD_PHASES, jad
+from controllers.pi_meanfrac import PI_MEANFRAC_DEFAULTS, pi_meanfrac
 from controllers.pi_saturation import PI_SATURATION_DEFAULTS, pi_saturation
 from controllers.registry import (
     ALL_SEGMENT_CONTROLLERS,
@@ -29,6 +30,7 @@ __all__ = [
     "IDM_PARAM_DEFAULTS",
     "JAD_DEFAULTS",
     "JAD_PHASES",
+    "PI_MEANFRAC_DEFAULTS",
     "PI_SATURATION_DEFAULTS",
     "VSL_THRESHOLD_DEFAULTS",
     "EnvBackend",
@@ -43,6 +45,7 @@ __all__ = [
     "idm_accel",
     "jad",
     "list_controllers",
+    "pi_meanfrac",
     "pi_saturation",
     "vsl_threshold",
 ]

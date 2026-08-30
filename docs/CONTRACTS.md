@@ -50,7 +50,10 @@ SegmentControllerFn = Callable[
 
 Registry: `controllers.registry.get_vehicle_controller(name)` /
 `get_segment_controller(name)`. Names: `"follower_stopper"`, `"pi_saturation"`,
-`"jad"` (vehicle); `"vsl_threshold"` (segment). Unknown name → `KeyError` with
+`"jad"`, `"pi_meanfrac"` (vehicle); `"vsl_threshold"` (segment).
+`"pi_meanfrac"` is the superseded CLAUDE.md §4.2 simplification, retained only
+to reproduce the M3 result (docs/PI_CONTROLLER_FIX.md); `"pi_saturation"` is
+the faithful Stern et al. (2018) Eqs. (3)–(5) implementation. Unknown name → `KeyError` with
 available names in the message. Default params per controller exposed as
 `controllers.registry.default_params(name) -> dict[str, float]`.
 
@@ -187,5 +190,7 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
 - Markers: `integration` (real SUMO), `slow` (sweeps, >5 min). CI runs
   `-m "not slow"`.
 - Property tests via hypothesis for: densities ∈ [0, ρ_jam], speeds ≥ 0,
-  controller outputs ∈ [0, U], config round-trip.
+  controller outputs ∈ [0, U], config round-trip. Exception: `pi_saturation`
+  ranges over `[0, U + v_catch]` — Stern et al. (2018) Eq. (3) allows a bounded
+  catch-up above the desired speed so the AV can close a gap.
 - Every stochastic test passes an explicit seed.

@@ -13,6 +13,7 @@ from typing import Final
 
 from controllers.follower_stopper import FOLLOWER_STOPPER_DEFAULTS, follower_stopper
 from controllers.jad import JAD_DEFAULTS, jad
+from controllers.pi_meanfrac import PI_MEANFRAC_DEFAULTS, pi_meanfrac
 from controllers.pi_saturation import PI_SATURATION_DEFAULTS, pi_saturation
 from controllers.vsl import VSL_THRESHOLD_DEFAULTS, vsl_threshold
 from flowstate_core.controller_types import SegmentControllerFn, VehicleControllerFn
@@ -20,6 +21,7 @@ from flowstate_core.controller_types import SegmentControllerFn, VehicleControll
 ALL_VEHICLE_CONTROLLERS: Final[dict[str, VehicleControllerFn]] = {
     "follower_stopper": follower_stopper,
     "pi_saturation": pi_saturation,
+    "pi_meanfrac": pi_meanfrac,
     "jad": jad,
 }
 """Vehicle (Lagrangian) controllers, keyed by registry name."""
@@ -32,6 +34,7 @@ ALL_SEGMENT_CONTROLLERS: Final[dict[str, SegmentControllerFn]] = {
 _DEFAULT_PARAMS: Final[dict[str, dict[str, float]]] = {
     "follower_stopper": FOLLOWER_STOPPER_DEFAULTS,
     "pi_saturation": PI_SATURATION_DEFAULTS,
+    "pi_meanfrac": PI_MEANFRAC_DEFAULTS,
     "jad": JAD_DEFAULTS,
     "vsl_threshold": VSL_THRESHOLD_DEFAULTS,
 }

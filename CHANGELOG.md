@@ -4,6 +4,26 @@ All notable changes to FlowState are documented here. Every headline number
 below traces to a committed, seeded artifact (CLAUDE.md §0.1/§0.5); nothing
 is quoted that cannot be reproduced from the referenced runs.
 
+## [Unreleased]
+
+### Fixed
+
+- **PI-with-saturation now implements Stern et al. (2018) Eqs. (3)–(5).** The
+  M3 sweep's headline failure — `pi_saturation` gridlocking the open corridor,
+  94% throughput collapse — was caused by the CLAUDE.md §4.2 *simplification*
+  (`v_target = 0.75 · platoon mean`), not by the literature controller. That
+  factor does not appear in the paper: its target is the AV's own ≈38 s mean
+  speed plus a bounded, non-negative gap-scheduled catch-up term, which cannot
+  ratchet downward. Re-run on the same scenario and seeds, the faithful
+  controller calms the corridor — σ_v −29.7% [−1.35, −0.66], waves −41.6%,
+  fuel −2.9%, no resolved throughput cost (n = 20, paired) — and still dampens
+  the ring (σ_v 2.07 → 0.46 m/s). The simplification is retained as
+  `controllers.pi_meanfrac`, clearly labeled, so the M3 result stays
+  reproducible. CLAUDE.md §4.2 corrected against the source per its own §13.
+  See `docs/PI_CONTROLLER_FIX.md` and `artifacts/pi_retune_summary.json`.
+- `pi_saturation`'s output range is `[0, U + v_catch]`, not `[0, U]`; the
+  property test and docs/CONTRACTS.md §8 record the exception with its citation.
+
 ## [2.0.0] — 2026-08-29
 
 Complete rewrite of FlowState (M0–M5, developed and hardened 2026-08-29).

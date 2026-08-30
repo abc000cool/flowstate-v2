@@ -13,7 +13,9 @@ from controllers import (
 )
 from flowstate_core.controller_types import ControllerObs, SegmentObs
 
-CONTRACT_VEHICLE_NAMES = {"follower_stopper", "pi_saturation", "jad"}
+# docs/CONTRACTS.md §1 names; "pi_meanfrac" is the superseded §4.2 simplification
+# retained beside the faithful Stern et al. (2018) "pi_saturation".
+CONTRACT_VEHICLE_NAMES = {"follower_stopper", "pi_saturation", "jad", "pi_meanfrac"}
 CONTRACT_SEGMENT_NAMES = {"vsl_threshold"}
 
 

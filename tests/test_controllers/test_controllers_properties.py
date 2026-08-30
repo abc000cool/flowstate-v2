@@ -12,7 +12,7 @@ import math
 from hypothesis import given, seed, settings
 from hypothesis import strategies as st
 
-from controllers import ALL_VEHICLE_CONTROLLERS, vsl_threshold
+from controllers import ALL_VEHICLE_CONTROLLERS, default_params, vsl_threshold
 from flowstate_core.controller_types import ControllerObs, SegmentObs
 
 SPEED = st.floats(0.0, 50.0, allow_nan=False, allow_infinity=False)
@@ -57,7 +57,11 @@ class TestVehicleControllerProperties:
         fn = ALL_VEHICLE_CONTROLLERS[name]
         v_cmd, mem = fn(obs, {}, {})
         assert math.isfinite(v_cmd)
-        assert 0.0 <= v_cmd <= max(obs.v_ref, obs.v) + 1e-9
+        # Stern et al. (2018) Eq. (3) allows the command to sit up to v_catch
+        # above the desired velocity U so the AV can close a gap, so the
+        # faithful pi_saturation has a correspondingly raised ceiling.
+        headroom = default_params(name).get("v_catch", 0.0) if name == "pi_saturation" else 0.0
+        assert 0.0 <= v_cmd <= max(obs.v_ref, obs.v) + headroom + 1e-9
         # memory is a JSON-serializable dict[str, float]
         assert all(isinstance(k, str) for k in mem)
         assert all(isinstance(v, float) and math.isfinite(v) for v in mem.values())

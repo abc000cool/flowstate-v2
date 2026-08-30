@@ -296,11 +296,31 @@ Unit tests must verify `v_cmd` continuity at every region boundary.
 
 ### 4.2 PI with saturation (Stern et al. 2018)
 
-Target speed `v_target = 0.75 · v̄_platoon` (rolling window; the 0.75 factor
-is a tunable param), PI law on the error with output saturation
-`v_cmd ∈ [0, U]` and **anti-windup** (clamp integrator when saturated —
-v1 lacked this; required). Gains `(k_p, k_i)` calibrated in Phase 1 on the
-ring scenario; verify structure against the same paper.
+**Corrected 2026-08-30 against the source, per §13.** This section previously
+specified `v_target = 0.75 · v̄_platoon`. That factor does not appear in
+Stern et al. (2018); it was a simplification, and on an open corridor it is a
+geometric ratchet — the AV depresses the platoon mean that sets its own target,
+compounding to gridlock (M3 measured a 94% throughput collapse; see
+`docs/PI_CONTROLLER_FIX.md`). The paper's controller (§3.2, Eqs. 3–5) is:
+
+```
+U          = temporal mean of the AV's OWN speed over ≈ 38 s
+v_target   = U + v_catch · min(max((Δx − g_l)/(g_u − g_l), 0), 1)          (3)
+v_cmd_{j+1} = β_j (α_j v_target_j + (1 − α_j) v_lead_j) + (1 − β_j) v_cmd_j (4)
+α          = min(max((Δx − Δx_s)/γ, 0), 1),   β = 1 − α/2                  (5)
+```
+
+with `g_l = 7 m`, `g_u = 30 m`, `v_catch = 1 m/s`, `γ = 2 m`, and safety
+distance `Δx_s = max(2 s · Δv, 4 m)`. The gap correction is **additive and
+non-negative**, so the target never falls below `U`; at short gaps `α → 0` and
+the command follows the leader. Output range is therefore `[0, U + v_catch]`,
+not `[0, U]`.
+
+`controllers.pi_saturation` implements the above. The superseded simplification
+is retained as `controllers.pi_meanfrac` — clearly labeled, used only to
+reproduce the M3 failure result — and must never be presented as the
+literature controller. Anti-windup remains required for any PI form that
+carries an explicit integrator (v1 lacked it).
 
 ### 4.3 Jam-Absorption Driving (JAD, slow-in / fast-out)
 
