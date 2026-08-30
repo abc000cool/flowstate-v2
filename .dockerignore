@@ -1,0 +1,20 @@
+# Never ship local state, caches, or dependency trees into the build context.
+.git
+.venv
+data/
+runs/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.mypy_cache/
+.npm-cache/
+*.db
+tests/
+.github/
+Dockerfile
+docker-compose.yml

@@ -1,0 +1,57 @@
+# FlowState v2 — API + RQ worker + Redis (CLAUDE.md §8, ADR-3).
+# Same image for api and worker; long work always runs on the worker because
+# FLOWSTATE_QUEUE=redis (no endpoint executes a simulation synchronously).
+# Results (Parquet/JSON payloads + SQLite metadata) persist in the shared
+# flowstate-runs volume, which both services mount at /data/runs.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      FLOWSTATE_QUEUE: redis
+      FLOWSTATE_REDIS_URL: redis://redis:6379/0
+      FLOWSTATE_RESULTS_DIR: /data/runs
+      FLOWSTATE_API_KEY: ${FLOWSTATE_API_KEY:-dev-key-change-me}
+    volumes:
+      - flowstate-runs:/data/runs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    command: python -m api.worker
+    environment:
+      FLOWSTATE_QUEUE: redis
+      FLOWSTATE_REDIS_URL: redis://redis:6379/0
+      FLOWSTATE_RESULTS_DIR: /data/runs
+    volumes:
+      - flowstate-runs:/data/runs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  flowstate-runs:

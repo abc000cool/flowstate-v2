@@ -24,6 +24,50 @@ FlowState v2 is a two-tier traffic simulation and analysis platform:
 > [abc000cool/FlowState](https://github.com/abc000cool/FlowState) as motivated
 > preliminary work.
 
+## Quickstart
+
+One command (Docker + Compose):
+
+```sh
+docker compose up -d --build
+```
+
+Then open <http://localhost:8000> — the dashboard is served at `/`, the API
+under `/api/v1/...`, OpenAPI docs at `/docs`, health at `/healthz`. The stack
+is API + RQ worker + Redis; all simulations run on the worker, never in a
+request handler.
+
+**API key:** every `/api/...` route requires an `X-API-Key` header. The
+default is `dev-key-change-me` — fine locally, and exactly as unsafe as it
+sounds anywhere else. Set your own before exposing the port:
+
+```sh
+FLOWSTATE_API_KEY=your-secret docker compose up -d
+```
+
+Smoke test:
+
+```sh
+curl -s http://localhost:8000/healthz
+curl -s -H "X-API-Key: dev-key-change-me" http://localhost:8000/api/v1/scenarios/preset
+```
+
+### Dev path (no Docker)
+
+Needs [uv](https://docs.astral.sh/uv/) and Python 3.12; SUMO 1.27.1 installs
+from PyPI wheels as part of the sync.
+
+```sh
+uv sync                                  # workspace + dev tools
+uv run pytest tests -q -m "not slow"     # fast test battery
+uv run uvicorn api.main:app --reload     # API on :8000, inline job queue
+```
+
+The inline queue (`FLOWSTATE_QUEUE=inline`, the default outside Docker) runs
+jobs synchronously in-process — good for small local runs, not for real
+sweeps. For the frontend against a local API: `cd frontend && npm install &&
+npm run dev` (Vite on :5173, CORS pre-configured).
+
 ## Status
 
 Under active construction. Milestone tracker:
@@ -32,7 +76,7 @@ Under active construction. Milestone tracker:
 - [x] **M1** — ring-road emergence + single-AV dampening reproduced in CI
 - [x] **M2** — FD + IDM population calibration from public data
 - [ ] **M3** — corridor validation vs FHWA-style criteria, full sweep with CIs
-- [ ] **M4** — FastAPI service + dashboard + Docker
+- [x] **M4** — FastAPI service + dashboard + Docker
 - [ ] **M5** — hardening, docs, versioned release
 
 ## Non-negotiables
