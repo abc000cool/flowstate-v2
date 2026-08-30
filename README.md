@@ -114,8 +114,9 @@ synthetic 10 km corridor, 27 cells × 20 common-random-number seeds:
 | FollowerStopper 5% / 100% | σ_v 1.31 [1.24, 1.38] m/s; 0.15 [−0.02, 0.32] waves/run |
 | FollowerStopper 10–20% / 100% | zero detected waves in all 20 replicates |
 | Already resolvable at 1% / 100% | paired σ_v reduction +24.5% [+17.7, +31.4] |
-| Throughput cost | none resolved (+11.6 veh/h [−1.3, +24.4] at 5% / 100%) |
-| Fuel | −2.8% [−3.8, −1.7] at 1% / 100% → −5.7% [−7.2, −4.2] at 20% / 100% |
+| Throughput cost (synthetic corridor) | none resolved (+11.6 veh/h [−1.3, +24.4] at 5% / 100%) |
+| Fuel (synthetic corridor) | −2.8% [−3.8, −1.7] at 1% / 100% → −5.7% [−7.2, −4.2] at 20% / 100% |
+| **Robustness on real geometry** | The σ_v dose-response replicates on the 5-lane US-101 replica (−8.2% at 1% → −53.2% at 20%, all resolved). The *no-cost* result does **not**: that saturated site shows a resolved −0.3…−1.6% throughput cost and +1.4…+2.7% fuel at 1–10% penetration ([US101_PENETRATION.md](docs/US101_PENETRATION.md)) |
 | Compliance × penetration | effects collapse onto the complied share of the fleet — half the compliance ≈ double the penetration needed |
 | Controller comparison at 5% / 100% | FollowerStopper (σ_v −61.2%, waves −96.1%) and JAD under a realistic 30 s/±20% detection oracle (−60.6%, −90.9%) are statistically tied; faithful PI-saturation trails at −29.7%. All resolved, no throughput cost ([CONTROLLER_COMPARISON.md](docs/CONTROLLER_COMPARISON.md)) |
 | Detection realism | JAD is *unreliable with a perfect oracle* — it chatters and worsens 5/20 seeds; 30–60 s latency with ±20% noise removes the failure entirely ([JAD_ORACLE_RESULTS.md](docs/JAD_ORACLE_RESULTS.md)) |

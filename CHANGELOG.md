@@ -19,6 +19,16 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### Changed
 
+- **The "free lunch" framing is now qualified by a real-geometry check.** The
+  penetration ladder was rerun on the `us101_replica` (640 m of real 5-lane
+  US-101, calibrated fleet, real demand, measured downstream boundary), 6 cells
+  x 20 CRN seeds. The σ_v dose-response replicates cleanly (-8.2% at 1% to
+  -53.2% at 20%, every step resolved). The no-cost result does not: that
+  saturated site shows a resolved throughput cost of 0.3-1.6% and a resolved
+  fuel *increase* of 1.4-2.7% at 1-10% penetration, against a 2.8-5.7% saving on
+  the synthetic corridor. Smoothing holds; "for free" is corridor-dependent.
+  See `docs/US101_PENETRATION.md`.
+
 - **Config hashes changed for every scenario** when `OracleSpec` was added to
   `AVSpec`: `config_hash` covers the whole serialized config (CLAUDE.md §0.5),
   so a new field with a default still changes the digest. Hashes recorded in
