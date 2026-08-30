@@ -9,9 +9,28 @@ the run's hash is the hash of the *effective* config.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+# ---------------------------------------------------------------------------
+# Request size caps
+# ---------------------------------------------------------------------------
+# A sweep grid is a cartesian product and a run is a replicate loop, so both
+# are cheap to *ask* for and expensive to execute: without ceilings a single
+# accepted request materializes an unbounded number of validated cells and
+# enqueues an unbounded number of simulations. These caps are the service's
+# hard limits, quoted in the endpoint docstrings so they show up in /docs.
+
+#: Maximum values per sweep axis (penetrations, compliances, controllers).
+MAX_SWEEP_AXIS_VALUES = 50
+
+#: Maximum total cells in one sweep grid (penetrations × compliances ×
+#: controllers), checked from the list lengths before any cell is built.
+MAX_SWEEP_CELLS = 200
+
+#: Maximum replicates a single request may ask for, per run and per sweep cell.
+MAX_REPLICATES = 200
 
 
 def deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -61,7 +80,8 @@ class RunCreateRequest(BaseModel):
     scenario_id: str
     overrides: dict[str, Any] = Field(default_factory=dict)
     """Deep-merge patch onto the stored ScenarioConfig (re-validated)."""
-    replicates: int | None = Field(default=None, ge=1)
+    replicates: int | None = Field(default=None, ge=1, le=MAX_REPLICATES)
+    """Replicates for this run; capped at ``MAX_REPLICATES`` (200)."""
     tier: Literal["micro", "macro"] | None = None
 
 
@@ -133,16 +153,38 @@ class HeatmapOut(BaseModel):
 
 
 class SweepCreateRequest(BaseModel):
-    """Penetration × compliance × controller grid over one scenario."""
+    """Penetration × compliance × controller grid over one scenario.
+
+    Bounded on both axes and in total: each list holds at most
+    ``MAX_SWEEP_AXIS_VALUES`` (50) values and their product may not exceed
+    ``MAX_SWEEP_CELLS`` (200) cells. The product is checked here, from the
+    list lengths alone, so an oversized grid is rejected before a single cell
+    config is built or validated.
+    """
 
     scenario_id: str
-    penetrations: list[float] = Field(min_length=1)
-    compliances: list[float] = Field(min_length=1)
-    controllers: list[str | None] = Field(default_factory=lambda: [None], min_length=1)
+    penetrations: list[float] = Field(min_length=1, max_length=MAX_SWEEP_AXIS_VALUES)
+    compliances: list[float] = Field(min_length=1, max_length=MAX_SWEEP_AXIS_VALUES)
+    controllers: list[str | None] = Field(
+        default_factory=lambda: [None], min_length=1, max_length=MAX_SWEEP_AXIS_VALUES
+    )
     overrides: dict[str, Any] = Field(default_factory=dict)
     """Applied to every cell before the grid values (deep merge)."""
-    replicates: int | None = Field(default=None, ge=1)
+    replicates: int | None = Field(default=None, ge=1, le=MAX_REPLICATES)
+    """Replicates per cell; capped at ``MAX_REPLICATES`` (200)."""
     tier: Literal["micro", "macro"] | None = None
+
+    @model_validator(mode="after")
+    def _check_grid_size(self) -> Self:
+        cells = len(self.penetrations) * len(self.compliances) * len(self.controllers)
+        if cells > MAX_SWEEP_CELLS:
+            raise ValueError(
+                f"sweep grid is {len(self.penetrations)} penetrations × "
+                f"{len(self.compliances)} compliances × {len(self.controllers)} controllers "
+                f"= {cells} cells, over the limit of {MAX_SWEEP_CELLS}; "
+                f"split the grid across several sweeps"
+            )
+        return self
 
 
 class SweepCellOut(BaseModel):

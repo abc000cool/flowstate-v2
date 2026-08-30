@@ -7,13 +7,18 @@ worker, and the tests (ADR-3: thin service layer, Docker deploy):
   artifacts, uploads, calibration artifacts and reports live under it; the
   SQLite metadata database is ``<results>/metadata.db``.
 - ``FLOWSTATE_API_KEY`` — the single API key (default ``dev-key-change-me``;
-  real auth is a Phase 4 concern, CLAUDE.md §8).
+  real auth is a Phase 4 concern, CLAUDE.md §8). The default is published in
+  this repository, so :func:`check_api_key_not_default` refuses to build the
+  app with it under the Redis (deployed) queue.
 - ``FLOWSTATE_QUEUE`` — ``inline`` (synchronous, tests and small local runs)
   or ``redis`` (RQ; the production mode). Default ``inline``.
 - ``FLOWSTATE_REDIS_URL`` — Redis URL for the RQ backend
   (default ``redis://localhost:6379/0``).
 - ``FLOWSTATE_SCENARIOS_DIR`` — preset scenario YAML directory (default: the
   repo's ``scenarios/``).
+- ``FLOWSTATE_DATA_DIR`` — optional extra root of server-side data files that
+  ``POST /api/v1/calibrations/{kind}`` may read via ``data_path`` (unset ⇒ only
+  the results root, which contains uploads, is readable).
 - ``FLOWSTATE_FRONTEND_DIST`` — built frontend directory served at ``/`` when
   it exists (default: the repo's ``frontend/dist``).
 
@@ -35,6 +40,10 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 QUEUE_KINDS = ("inline", "redis")
 
 
+class InsecureDefaultKeyError(RuntimeError):
+    """Raised when a deployed service would boot on the published dev key."""
+
+
 @dataclass(frozen=True)
 class Settings:
     """Resolved service configuration."""
@@ -45,6 +54,8 @@ class Settings:
     redis_url: str
     scenarios_dir: Path
     frontend_dist: Path
+    data_dir: Path | None = None
+    """Optional extra allow-listed root for calibration ``data_path`` reads."""
 
     @property
     def db_path(self) -> Path:
@@ -71,12 +82,49 @@ class Settings:
         """Generated report bundles (markdown + figures)."""
         return self.results_dir / "reports"
 
+    @property
+    def data_roots(self) -> tuple[Path, ...]:
+        """Roots a calibration ``data_path`` may point inside (resolved).
+
+        Uploads land under the results root, so both are listed explicitly
+        even though the first contains the second; ``FLOWSTATE_DATA_DIR``
+        adds the operator's own mounted dataset directory when set. Anything
+        outside these roots is refused with HTTP 422 — a ``data_path`` is a
+        server-side path, and without an allow-list it reads any file the
+        worker can see.
+        """
+        roots = [self.uploads_dir.resolve(), self.results_dir.resolve()]
+        if self.data_dir is not None:
+            roots.append(self.data_dir.resolve())
+        return tuple(roots)
+
+
+def check_api_key_not_default(settings: Settings) -> None:
+    """Refuse the published default key on a deployed (Redis-queue) service.
+
+    ``FLOWSTATE_QUEUE=redis`` means API and workers are separate processes —
+    i.e. a real deployment, not a one-off local run — and
+    :data:`DEFAULT_API_KEY` is printed in this repository's README, so leaving
+    it in place is equivalent to no auth at all.
+
+    Raises:
+        InsecureDefaultKeyError: When the deployed service still holds the
+            default key.
+    """
+    if settings.queue_kind == "redis" and settings.api_key == DEFAULT_API_KEY:
+        raise InsecureDefaultKeyError(
+            f"refusing to start: FLOWSTATE_API_KEY is still the published default "
+            f"{DEFAULT_API_KEY!r} while FLOWSTATE_QUEUE=redis (a deployed service). "
+            f"Set FLOWSTATE_API_KEY to a secret of your own before starting the API."
+        )
+
 
 def load_settings() -> Settings:
     """Read settings from the environment (call-time, not import-time)."""
     queue_kind = os.environ.get("FLOWSTATE_QUEUE", "inline").strip().lower()
     if queue_kind not in QUEUE_KINDS:
         raise ValueError(f"FLOWSTATE_QUEUE must be one of {QUEUE_KINDS}, got {queue_kind!r}")
+    raw_data_dir = os.environ.get("FLOWSTATE_DATA_DIR", "").strip()
     return Settings(
         results_dir=Path(os.environ.get("FLOWSTATE_RESULTS_DIR", "./runs")).resolve(),
         api_key=os.environ.get("FLOWSTATE_API_KEY", DEFAULT_API_KEY),
@@ -88,4 +136,5 @@ def load_settings() -> Settings:
         frontend_dist=Path(
             os.environ.get("FLOWSTATE_FRONTEND_DIST", str(_REPO_ROOT / "frontend" / "dist"))
         ).resolve(),
+        data_dir=Path(raw_data_dir).resolve() if raw_data_dir else None,
     )

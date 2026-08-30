@@ -2,10 +2,19 @@
 
 M5 hardening gate (CLAUDE.md §11): the full compose stack (API + Redis + RQ
 workers) under 10 concurrent sweep jobs, plus one micro-tier (SUMO) sweep
-through the same queue. Executed 2026-08-29 with `scripts/m5_load_test.py`
-against the release-state 2.0.0 image; every number below is copied from
-that run's JSON output (no free-text numbers). Result: **PASS — 42/42 runs
-done, 0 failed, healthz p95 13.3 ms (limit 500 ms).**
+through the same queue. Re-executed 2026-08-29 with `scripts/m5_load_test.py`
+against the release-state 2.0.0 image. Result: **PASS — 42/42 runs done,
+0 failed, healthz p95 ≤ 11.9 ms (limit 500 ms).**
+
+**Committed artifact: [`artifacts/m5_load_test.json`](../artifacts/m5_load_test.json)**
+— the script's own `--json-out` dump of this run. Every measured number in
+§2 and §3 below is copied from it verbatim (CLAUDE.md §0.1). Numbers that
+the JSON does not carry are labelled with their source where they appear:
+the host/VM rows in §1 come from the `sysctl`/`colima`/`docker` commands
+named beside them, the stack versions and per-replicate SUMO timings from
+the run artifacts' `meta.json`, and the job/restart counts in §4 from
+`docker logs` / `docker inspect`. The pyarrow bullet in §4 records an
+earlier bisect, not this run, and is cross-referenced to CHANGELOG.md.
 
 ## 1. Setup
 
@@ -16,22 +25,31 @@ Machine (host):
 | CPU (`sysctl -n machdep.cpu.brand_string`) | Apple M4 |
 | Cores (`sysctl -n hw.ncpu`) | 10 |
 | RAM (`sysctl -n hw.memsize`) | 17 179 869 184 B (16 GiB) |
-| Docker runtime | colima 0.10.3 (macOS Virtualization.Framework, aarch64 VM: **4 vCPU, 5.77 GiB** — the stack ran inside this VM) |
+| Docker runtime | colima 0.10.3 (macOS Virtualization.Framework, aarch64 VM: **4 vCPU, 5.77 GiB** — `MemTotal` 6 052 128 kB; the stack ran inside this VM) |
 | Docker / Compose | 29.7.2 / 5.5.0 (server 29.5.2, Ubuntu 24.04.4 VM) |
 
 Stack (versions from the run artifacts' `meta.json`): Python 3.12.14,
 eclipse-sumo/libsumo 1.27.1, numpy 2.5.2, pandas 3.0.5, pyarrow 25.0.1,
-flowstate packages 2.0.0. One image for API and workers; SQLite metadata
-(WAL, 30 s busy timeout) + Parquet payloads on the shared `flowstate-runs`
-volume.
+numba 0.67.0 (macro tier), flowstate packages 2.0.0. One image for API and
+workers, both running as the image's non-root `flowstate` user; SQLite
+metadata (WAL, 30 s busy timeout) + Parquet payloads on the shared
+`flowstate-runs` volume.
 
 Commands:
 
 ```sh
 docker compose up -d --build --scale worker=2      # api + redis + 2 workers
-uv run --no-sync python scripts/m5_load_test.py    # brings nothing up itself
+uv run --no-sync python scripts/m5_load_test.py \
+  --base-url http://127.0.0.1:8000 --api-key flowstate-local-dev \
+  --json-out artifacts/m5_load_test.json           # brings nothing up itself
 docker compose down                                 # afterwards
 ```
+
+Two flags are not optional against the shipped compose file: the API port
+is published on **loopback only** (`127.0.0.1:8000:8000`, so `localhost`
+may resolve to IPv6 `::1` and fail to connect), and the API refuses to
+start on the `dev-key-change-me` default under the Redis queue, so compose
+supplies `flowstate-local-dev` and the client must send it.
 
 The script asserts, and this run satisfied: every sweep `done` with zero
 failed runs; every child run `done` with the full replicate count; every
@@ -49,16 +67,18 @@ jobs drained by 2 workers.
 
 | Measurement | Value |
 |---|---|
-| POST all 10 sweeps | 0.06 s |
-| Wall time, first POST → all 40 runs settled | **12.27 s** |
-| Per-sweep (POST → all its runs done), sorted | 3.29, 4.39, 6.58, 6.67, 7.77, 8.82, 8.89, 9.98, 11.09, 12.21 s |
+| POST all 10 sweeps | 0.086 s |
+| Wall time, first POST → all 40 runs settled | **13.29 s** |
+| Per-sweep (POST → all its runs done), sorted | 3.30, 4.40, 6.56, 6.65, 8.80, 8.81, 11.00, 11.01, 12.12, 13.22 s |
 | Runs done / failed | **40 / 0** |
 | `/runs/{id}/metrics` responses | 40/40 HTTP 200, each with n = 3 replicates |
-| `/healthz` during load (n = 47 samples) | p50 4.9 ms, **p95 13.3 ms**, max 14.3 ms, 0 non-200 |
+| `/healthz` during load (n = 51 samples) | p50 4.0 ms, **p95 11.6 ms**, max 12.0 ms, 0 non-200 |
 
-The per-sweep spread (3.3 → 12.2 s) is the two workers draining the shared
-queue — sweeps settle in near-FIFO order, none starve, and the API stays
-flat-latency throughout.
+The per-sweep spread (3.3 → 13.2 s) is the two workers draining the shared
+queue — the sorted timings fall into near-identical pairs (6.56/6.65,
+8.80/8.81, 11.00/11.01), consistent with two workers pulling off one FIFO
+queue in step. Sweeps settle in near-FIFO order, none starve, and the API
+stays flat-latency throughout.
 
 ## 3. Phase 2 — micro-tier (SUMO) sweep under queue concurrency
 
@@ -69,13 +89,13 @@ containers, both runs executing concurrently on the two workers.
 
 | Measurement | Value |
 |---|---|
-| Wall time, POST → both runs settled | **2.11 s** |
+| Wall time, POST → both runs settled | **2.10 s** |
 | Runs done / failed | **2 / 0** |
 | `/runs/{id}/metrics` responses | 2/2 HTTP 200, each with n = 2 replicates |
-| `/healthz` during load (n = 9 samples) | p50 4.7 ms, p95 11.9 ms, max 11.9 ms, 0 non-200 |
-| Per-replicate SUMO wall time (from `meta.json`) | 0.32–0.38 s (realtime factor 797–953×) |
+| `/healthz` during load (n = 8 samples) | p50 6.8 ms, p95 11.9 ms, max 11.9 ms, 0 non-200 |
+| Per-replicate SUMO wall time (from `meta.json`) | 0.29–0.32 s (realtime factor 938–1031×) |
 
-2.11 s is honest, not suspicious: a 22-vehicle 600-step ring is ~13 200
+2.10 s is honest, not suspicious: a 22-vehicle 600-step ring is ~13 200
 vehicle-updates, which libsumo executes in ~0.3 s per replicate; artifact
 inspection confirmed full trajectories (13 200 rows/replicate, 22 vehicles,
 60 edge bins) with `eclipse-sumo 1.27.1` recorded in every `meta.json`.
@@ -83,16 +103,18 @@ inspection confirmed full trajectories (13 200 rows/replicate, 22 vehicles,
 ## 4. Stability findings
 
 - **Zero failures under load, zero API/store fixes needed.** All 53 RQ jobs
-  (10 + 1 sweep fan-outs, 42 runs) logged `Job OK`; worker logs contain no
-  errors, tracebacks, or RQ timeouts; container restart counts stayed 0 for
-  both workers and the API.
+  (10 + 1 sweep fan-outs, 42 runs) logged `Job OK` — 26 on one worker, 27 on
+  the other, confirming both actually drained the queue; worker logs contain
+  no errors, tracebacks, or RQ timeouts; container restart counts stayed 0
+  for both workers, the API, and Redis.
 - **SQLite under concurrency held.** Two worker processes plus the API
   (polling every 1 s, healthz every 250 ms) shared the WAL-mode metadata
   store through the load with no `database is locked` errors — the fresh
   connection-per-operation + WAL + 30 s busy-timeout design in `api.store`
   needed no hardening changes.
-- **API responsiveness under load**: healthz p95 13.3 ms against the 500 ms
-  budget (37× headroom), no non-200 responses at any point.
+- **API responsiveness under load**: healthz p95 11.6 ms (phase 1) and
+  11.9 ms (phase 2) against the 500 ms budget — 42× headroom at the worse
+  of the two — with no non-200 responses at any point.
 - **pyarrow 24.0.0 rejected during this hardening pass.** An earlier run of
   this same test also passed on a pyarrow 24.0.0 image (Linux containers
   are unaffected), but pinning the workspace to 24.0.0 — the only version
@@ -107,9 +129,15 @@ inspection confirmed full trajectories (13 200 rows/replicate, 22 vehicles,
 
 ```sh
 docker compose up -d --build --scale worker=2
-uv run --no-sync python scripts/m5_load_test.py --json-out /tmp/m5.json
+uv run --no-sync python scripts/m5_load_test.py \
+  --base-url http://127.0.0.1:8000 --api-key flowstate-local-dev \
+  --json-out artifacts/m5_load_test.json
 docker compose down
 ```
 
-Numbers will vary with hardware; the assertions (zero failed runs, all
-metrics endpoints 200, healthz p95 < 500 ms) are what must hold.
+Numbers will vary with hardware and with how much else the machine is
+doing; the assertions (zero failed runs, all metrics endpoints 200, healthz
+p95 < 500 ms) are what must hold. Wall times are sensitive to worker count,
+so `--scale worker=2` is part of the configuration under test rather than a
+convenience — check the per-worker `Job OK` split (§4) to confirm both
+workers really took part before quoting a wall time.

@@ -79,10 +79,12 @@ honestly-validated corridor platform.
 ### Hardening and release (M5, this release)
 
 - Load test: 10 concurrent macro sweep jobs plus a micro (SUMO) sweep
-  through the full Docker stack with 2 workers — zero failed runs, all
-  metrics endpoints responsive, `/healthz` p95 under load < 500 ms; exact
-  numbers and machine spec in docs/M5_LOAD_TEST.md
-  (`scripts/m5_load_test.py`).
+  through the full Docker stack with 2 workers — 42/42 runs done, zero
+  failed, all 42 metrics endpoints HTTP 200, `/healthz` p95 under load
+  ≤ 11.9 ms against a 500 ms budget. The run's own JSON output is committed
+  as `artifacts/m5_load_test.json`; machine spec, per-phase tables and
+  provenance for the numbers the JSON does not carry are in
+  docs/M5_LOAD_TEST.md (`scripts/m5_load_test.py`).
 - `pyarrow` constrained to `>=18,!=24.0.0` across the workspace. Pinning to
   24.0.0 (the version matching libsumo 1.27.1's bundled libarrow, which
   silences libsumo's import-time mismatch warning) was tried and **rejected

@@ -22,6 +22,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+# Non-root runtime user. Nothing here needs uid 0: the API serves HTTP and the
+# worker writes only under the results volume, both of which are chowned below.
+RUN useradd --create-home --uid 10001 flowstate
+
 WORKDIR /app
 
 # Workspace manifests + lock first (layer caching), then the package sources
@@ -46,7 +51,15 @@ COPY --from=frontend /build/frontend/dist frontend/dist
 ENV PATH="/app/.venv/bin:$PATH" \
     FLOWSTATE_RESULTS_DIR=/data/runs \
     NUMBA_CACHE_DIR=/tmp/numba
+
+# Ownership must be set BEFORE the VOLUME instruction: Docker seeds a fresh
+# named volume from the image's directory, permissions included, so /data/runs
+# has to be flowstate-owned in the image for the non-root worker to write
+# results into it. (A volume created by an older root-running image keeps its
+# root ownership — recreate it with `docker compose down -v`.)
+RUN mkdir -p /data/runs && chown -R flowstate:flowstate /app /data/runs
 VOLUME /data/runs
 
+USER flowstate
 EXPOSE 8000
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

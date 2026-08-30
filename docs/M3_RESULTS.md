@@ -179,11 +179,36 @@ Practically: half the compliance ≈ needing double the penetration.
 
 ### 4.4 Throughput is not paid for it; fuel improves
 
-Throughput never significantly changes in the FollowerStopper grid: paired
-deltas are small and positive at low-mid penetration (+11.6 veh/h
-[−1.3, +24.4] at 5% / 100%) and shrink toward zero at 20% (+3.0
-[−8.2, +14.2]) — the corridor is inflow-limited, and calming does not choke
-it. Fuel per vehicle-km falls monotonically with dose: −2.8% [−3.8, −1.7]
+**No throughput cost is resolved anywhere in the FollowerStopper grid**,
+and the direction of the effect is consistently the other way: the paired
+mean delta vs baseline is positive in **all 24** cells, ranging +3.0 to
++15.2 veh/h. In **6 of the 24** cells the paired 95% CI excludes zero, all
+of them positive — small *gains*, not costs:
+
+| Cell | Paired throughput delta [veh/h] |
+|---|---|
+| 1% / 50% | +9.3 [+1.3, +17.4] |
+| 2% / 50% | +14.9 [+3.2, +26.5] |
+| 2% / 80% | +13.1 [+2.6, +23.5] |
+| 5% / 50% | +14.3 [+1.2, +27.3] |
+| 10% / 25% | +12.9 [+0.3, +25.6] |
+| 15% / 25% | +15.2 [+2.2, +28.1] |
+
+Read these as consistent with an **inflow-limited corridor** — demand, not
+capacity, sets throughput, and removing waves recovers a little of the
+capacity that stop-and-go was wasting — not as a claim that FollowerStopper
+adds ~1% throughput. Two reasons for the hedge. First, the effect is
+~0.7–1.2% of the 1,247 veh/h baseline, comparable to the CI half-widths.
+Second, **24 cells were tested at the 95% level**, so ~1.2 cells would be
+expected to resolve by chance alone; 6 is more than that, and the uniformly
+positive means across all 24 cells argue the sign is real, but no individual
+cell survives a multiple-comparisons correction (Bonferroni puts the
+per-cell threshold at α/24 ≈ 0.002). The honest summary: no resolved cost,
+a probable small gain, no single cell worth quoting on its own. The
+unresolved cells behave as expected — +11.6 veh/h [−1.3, +24.4] at
+5% / 100%, shrinking to +3.0 [−8.2, +14.2] at 20% / 100%.
+
+Fuel per vehicle-km falls monotonically with dose: −2.8% [−3.8, −1.7]
 paired at 1% / 100% up to −5.7% [−7.2, −4.2] at 20% / 100%, tracking wave
 elimination.
 
@@ -239,8 +264,13 @@ elimination.
   20% / 100%). These are reported with their n and underpowered flags in
   the JSON artifacts, never as headline values.
 * 25%-compliance throughput shows a stray bump at 15% penetration
-  (1262 veh/h, figure b); its CI overlaps every neighbor — noise until
-  shown otherwise.
+  (1262 veh/h, figure b). Its *aggregate* CI [1251, 1273] overlaps every
+  neighbor, so the unpaired series says nothing; the *paired* delta vs
+  baseline at that cell is nevertheless resolved (+15.2 veh/h
+  [+2.2, +28.1] — it is one of the six cells in §4.4, and common random
+  numbers are what sharpen it). Treat it as part of the corridor-wide small
+  positive throughput shift discussed there, with the same
+  multiple-comparisons caveat, not as a real feature of the 15% cell.
 
 ## 5. Limitations
 

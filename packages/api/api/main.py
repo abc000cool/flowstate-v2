@@ -62,7 +62,7 @@ from api.schemas import (
     SweepOut,
     deep_merge,
 )
-from api.settings import Settings, load_settings
+from api.settings import Settings, check_api_key_not_default, load_settings
 from api.store import Store, new_id
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
@@ -219,7 +219,13 @@ def _require_done(row: dict[str, Any]) -> None:
 
 @router.post("/runs", status_code=202, response_model=RunOut)
 def create_run(request: Request, body: RunCreateRequest) -> RunOut:
-    """Enqueue a run: stored config + deep-merged overrides, re-validated."""
+    """Enqueue a run: stored config + deep-merged overrides, re-validated.
+
+    Caps: ``replicates`` is limited to 200 per request
+    (``api.schemas.MAX_REPLICATES``), and the effective config's own
+    ``replicates`` to 500 (``flowstate_core.config.MAX_REPLICATES``) — a run
+    request is a request to execute that many simulations.
+    """
     store = _store(request)
     settings = _settings(request)
     scenario = store.get_scenario(body.scenario_id)
@@ -400,6 +406,12 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
 
     Every cell's effective config is validated and hashed here (422 on any
     invalid cell); the fan-out itself runs as a job.
+
+    Caps (HTTP 422 when exceeded, all checked before any cell is built):
+    at most 50 values per axis (``api.schemas.MAX_SWEEP_AXIS_VALUES``), 200
+    total grid cells (``MAX_SWEEP_CELLS``), and 200 replicates per cell
+    (``MAX_REPLICATES``). The grid is a cartesian product, so the cell ceiling
+    is checked from the three list lengths rather than by materializing them.
     """
     store = _store(request)
     settings = _settings(request)
@@ -461,6 +473,35 @@ def get_sweep(request: Request, sweep_id: str) -> SweepOut:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_data_path(data_path: str, settings: Settings) -> Path:
+    """Resolve a server-side ``data_path`` inside the allow-listed roots.
+
+    ``data_path`` names a file on the *worker's* filesystem, so an unchecked
+    value is an arbitrary-file-read primitive for anyone holding the API key.
+    The path is resolved first (symlinks and ``..`` collapsed) and then
+    required to sit under one of :attr:`Settings.data_roots`.
+
+    Raises:
+        HTTPException: 422 when the path escapes every allowed root or names
+            no file. The detail repeats the requested path and the allowed
+            roots only — never anything read from the file.
+    """
+    resolved = Path(data_path).resolve()
+    roots = settings.data_roots
+    if not any(resolved.is_relative_to(root) for root in roots):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"data_path {data_path!r} is outside the allowed data roots "
+                f"{[str(r) for r in roots]}; upload the file instead, or mount it under "
+                f"FLOWSTATE_DATA_DIR"
+            ),
+        )
+    if not resolved.is_file():
+        raise HTTPException(status_code=422, detail=f"data_path {data_path!r} not found")
+    return resolved
+
+
 def _calibration_out(row: dict[str, Any]) -> CalibrationOut:
     artifact = None
     if row["status"] == "done" and row["artifact_path"]:
@@ -494,6 +535,10 @@ async def create_calibration(
     Multipart/form fields: exactly one of ``file`` (upload) or ``data_path``
     (path visible to the workers); optional ``params`` (JSON object of fit
     options) and ``source`` (provenance string stored on the artifact).
+
+    ``data_path`` is confined to the results root (which holds uploads) and
+    the optional ``FLOWSTATE_DATA_DIR``; anything resolving outside those
+    roots is refused with HTTP 422.
     """
     store = _store(request)
     settings = _settings(request)
@@ -514,9 +559,7 @@ async def create_calibration(
         resolved = dest
     else:
         assert data_path is not None
-        resolved = Path(data_path)
-        if not resolved.is_file():
-            raise HTTPException(status_code=422, detail=f"data_path {data_path!r} not found")
+        resolved = _resolve_data_path(data_path, settings)
 
     cal_id = store.create_calibration(
         kind, resolved, params_dict, source or f"{kind} upload {resolved.name}"
@@ -635,8 +678,17 @@ def get_report_archive(request: Request, report_id: str) -> Response:
 
 
 def create_app() -> FastAPI:
-    """Build the app from the current environment (see api.settings)."""
+    """Build the app from the current environment (see api.settings).
+
+    Raises:
+        InsecureDefaultKeyError: When a deployed service (``FLOWSTATE_QUEUE=
+            redis``) still holds the published default API key. Failing at
+            startup is deliberate: the alternative is a service that looks
+            healthy while accepting the key printed in this repository's
+            README.
+    """
     settings = load_settings()
+    check_api_key_not_default(settings)
     settings.results_dir.mkdir(parents=True, exist_ok=True)
     store = Store(settings.db_path)
 

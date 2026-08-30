@@ -25,7 +25,7 @@ npm test          # vitest (colormap anchors, axis formatters, client auth, run-
 
 ## API settings
 
-Base URL (default `/api/v1`) and `X-API-Key` (default `dev-key-change-me`)
+Base URL (default `/api/v1`) and `X-API-Key` (default `flowstate-local-dev`, matching docker-compose.yml)
 live in localStorage; change them from the Settings drawer in the left rail.
 
 ## Map of the code

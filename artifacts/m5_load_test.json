@@ -1,0 +1,58 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "phases": [
+    {
+      "label": "phase1_macro_load",
+      "tier": "macro",
+      "n_sweeps": 10,
+      "cells_per_sweep": 4,
+      "replicates_per_run": 3,
+      "total_runs": 40,
+      "post_all_s": 0.086,
+      "wall_s": 13.29,
+      "per_sweep_s": [
+        3.3,
+        4.4,
+        6.56,
+        6.65,
+        8.8,
+        8.81,
+        11.0,
+        11.01,
+        12.12,
+        13.22
+      ],
+      "healthz": {
+        "n": 51,
+        "non_200": 0,
+        "p50_ms": 4.0,
+        "p95_ms": 11.6,
+        "max_ms": 12.0
+      },
+      "metrics_endpoints_checked": 40,
+      "failures": []
+    },
+    {
+      "label": "phase2_micro_sumo",
+      "tier": "micro",
+      "n_sweeps": 1,
+      "cells_per_sweep": 2,
+      "replicates_per_run": 2,
+      "total_runs": 2,
+      "post_all_s": 0.006,
+      "wall_s": 2.1,
+      "per_sweep_s": [
+        2.1
+      ],
+      "healthz": {
+        "n": 8,
+        "non_200": 0,
+        "p50_ms": 6.8,
+        "p95_ms": 11.9,
+        "max_ms": 11.9
+      },
+      "metrics_endpoints_checked": 2,
+      "failures": []
+    }
+  ]
+}

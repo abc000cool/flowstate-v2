@@ -18,6 +18,12 @@ from pydantic import BaseModel, Field, model_validator
 
 from flowstate_core.constants import HETEROGENEITY_FRAC_DEFAULT, IDM_DEFAULTS
 
+#: Ceiling on ``ScenarioConfig.replicates``. Generous next to the ≥ 20 seeds a
+#: headline claim needs (CLAUDE.md §0.6) and next to every scenario shipped
+#: here (1–20), while keeping one config from queueing unbounded simulation
+#: work. The API caps a *request* lower still (``api.schemas.MAX_REPLICATES``).
+MAX_REPLICATES = 500
+
 
 class RingNetwork(BaseModel):
     """Single-lane closed ring (Sugiyama benchmark geometry)."""
@@ -169,7 +175,11 @@ class ScenarioConfig(BaseModel):
     sim: SimSpec
     perturbation: PerturbationSpec | None = None
     seed: int = 42
-    replicates: int = Field(default=20, ge=1)
+    replicates: int = Field(default=20, ge=1, le=MAX_REPLICATES)
+    """Seeded replicates per run. The ≥ 20 floor for headline claims is
+    CLAUDE.md §0.6; the ``MAX_REPLICATES`` ceiling is a resource guard — a
+    config is a request to execute this many simulations, and the largest
+    study in this repository (the 540-run M3 sweep) uses 20 per cell."""
 
     @property
     def seeded(self) -> bool:

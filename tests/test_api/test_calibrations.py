@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from fastapi.testclient import TestClient
 
-from tests.test_api.conftest import HEADERS
+from tests.test_api.conftest import HEADERS, data_dir
 
 _V_F = 30.0
 _W = -6.0
@@ -70,7 +70,7 @@ def test_fd_calibration_multipart_upload_round_trip(client: TestClient) -> None:
 
 
 def test_fd_calibration_server_data_path(client: TestClient, tmp_path: Path) -> None:
-    csv_path = tmp_path / "loops.csv"
+    csv_path = data_dir(tmp_path) / "loops.csv"  # inside the allow-listed data root
     csv_path.write_bytes(_fd_csv_bytes(seed=1))
     r = client.post(
         "/api/v1/calibrations/fd",

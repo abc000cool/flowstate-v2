@@ -2,7 +2,10 @@
 # Same image for api and worker; long work always runs on the worker because
 # FLOWSTATE_QUEUE=redis (no endpoint executes a simulation synchronously).
 # Results (Parquet/JSON payloads + SQLite metadata) persist in the shared
-# flowstate-runs volume, which both services mount at /data/runs.
+# flowstate-runs volume, which both services mount at /data/runs. Both
+# containers run as the image's non-root `flowstate` user (uid 10001); a
+# flowstate-runs volume left over from an older root-running image is still
+# root-owned and must be recreated (`docker compose down -v`).
 
 services:
   redis:
@@ -17,12 +20,20 @@ services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      # Loopback only: the stack ships with a known key, so the port stays on
+      # the host. To expose it, set FLOWSTATE_API_KEY to a secret of your own
+      # and swap in the line below.
+      - "127.0.0.1:8000:8000"
+      # - "8000:8000"
     environment:
       FLOWSTATE_QUEUE: redis
       FLOWSTATE_REDIS_URL: redis://redis:6379/0
       FLOWSTATE_RESULTS_DIR: /data/runs
-      FLOWSTATE_API_KEY: ${FLOWSTATE_API_KEY:-dev-key-change-me}
+      # The API refuses to start on api.settings.DEFAULT_API_KEY
+      # ('dev-key-change-me') under the redis queue, so compose supplies an
+      # explicit local-only key. It is not a secret — override it via the
+      # environment (or a .env file) for anything past a loopback dev stack.
+      FLOWSTATE_API_KEY: ${FLOWSTATE_API_KEY:-flowstate-local-dev}
     volumes:
       - flowstate-runs:/data/runs
     depends_on:

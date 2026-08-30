@@ -12,7 +12,10 @@ Every job takes ids plus explicit ``db_path``/``results_root`` (both default
 from the environment for plain RQ workers) so that API, worker, and tests all
 address the same store without hidden global state. Jobs update store
 status/progress as they go and record failures honestly — the error column
-carries the exception, never a silent success (CLAUDE.md §0.1).
+carries the exception, never a silent success (CLAUDE.md §0.1). Calibration
+failures go through :func:`_calibration_error_text` first, which keeps our own
+diagnostics but withholds third-party messages that can quote the parsed
+file's contents back to the caller.
 
 Simulation dispatch: micro-tier runs go through
 :func:`microsim.runner.run_replicates`, which parallelizes across *spawned*
@@ -45,6 +48,21 @@ JOB_TIMEOUT = "6h"
 REPORT_REFUSED_KIND = "report_refused"
 
 _ERROR_MAX_CHARS = 4000
+
+#: FlowState's own packages. Exception messages raised inside them are strings
+#: we wrote ("missing column 'density_veh_m'"); messages from anywhere else can
+#: quote a *value* out of the file being parsed (pandas, for instance, raises
+#: "could not convert string to float: '<cell contents>'"), so those are
+#: reported by type and raising module only. See :func:`_calibration_error_text`.
+_OWN_PACKAGES = (
+    "api",
+    "calibration",
+    "controllers",
+    "flowstate_core",
+    "macrosim",
+    "microsim",
+    "validation",
+)
 
 #: Artifact files staged per replicate for report generation.
 _REPLICATE_FILES = ("meta.json", "edges.parquet", "trajectories.parquet")
@@ -116,6 +134,50 @@ def _error_text(exc: BaseException) -> str:
     """Compact, honest failure record: exception plus traceback tail."""
     tb = "".join(traceback.format_exception(exc))
     return tb[-_ERROR_MAX_CHARS:]
+
+
+def _raising_module(exc: BaseException) -> str:
+    """Module name of the innermost frame in ``exc``'s traceback."""
+    tb = exc.__traceback__
+    module = ""
+    while tb is not None:
+        module = str(tb.tb_frame.f_globals.get("__name__", ""))
+        tb = tb.tb_next
+    return module
+
+
+def _calibration_error_text(exc: BaseException) -> str:
+    """Failure record for calibration jobs, with input data withheld.
+
+    ``GET /api/v1/calibrations/{id}`` hands this string to any API-key holder,
+    and the job's whole purpose is parsing a data file — so an unfiltered
+    exception message is a read channel into that file's contents. Messages
+    raised inside FlowState's own packages (:data:`_OWN_PACKAGES`) are
+    diagnostics we authored and are kept verbatim; every other message is
+    replaced by its exception type and raising module. Tracebacks are dropped
+    entirely: their frames add only source lines, which the operator can read
+    in the repository anyway.
+
+    Returns:
+        The ``cause``-ordered exception chain, one line each, truncated to
+        :data:`_ERROR_MAX_CHARS`.
+    """
+    lines: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        module = _raising_module(current)
+        name = type(current).__name__
+        if module.split(".")[0] in _OWN_PACKAGES:
+            lines.append(f"{name}: {current}")
+        else:
+            lines.append(
+                f"{name} raised in {module or '<unknown>'} "
+                f"(message withheld: it may quote the input file's contents)"
+            )
+        current = current.__cause__ or current.__context__
+    return "\n  caused by: ".join(lines)[:_ERROR_MAX_CHARS]
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +340,7 @@ def fd_calibration_job(
         artifact.save(out)
         store.set_calibration_status(calibration_id, "done", artifact_path=str(out))
     except Exception as exc:
-        store.set_calibration_status(calibration_id, "failed", error=_error_text(exc))
+        store.set_calibration_status(calibration_id, "failed", error=_calibration_error_text(exc))
 
 
 def idm_calibration_job(
@@ -318,7 +380,7 @@ def idm_calibration_job(
         artifact.save(out)
         store.set_calibration_status(calibration_id, "done", artifact_path=str(out))
     except Exception as exc:
-        store.set_calibration_status(calibration_id, "failed", error=_error_text(exc))
+        store.set_calibration_status(calibration_id, "failed", error=_calibration_error_text(exc))
 
 
 # ---------------------------------------------------------------------------

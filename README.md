@@ -144,21 +144,40 @@ docker compose up -d --build
 Then open <http://localhost:8000> — the dashboard is served at `/`, the API
 under `/api/v1/...`, OpenAPI docs at `/docs`, health at `/healthz`. The stack
 is API + RQ worker + Redis; all simulations run on the worker, never in a
-request handler.
+request handler. Both containers run as a non-root user (uid 10001), and the
+published port is bound to `127.0.0.1` — reachable from your machine, not from
+the network. Compose expects to own its results volume, so a `flowstate-runs`
+volume left over from a pre-2.0.0 image needs `docker compose down -v` once.
 
-**API key:** every `/api/...` route requires an `X-API-Key` header. The
-default is `dev-key-change-me` — fine locally, and exactly as unsafe as it
-sounds anywhere else. Set your own before exposing the port:
+**API key:** every `/api/...` route requires an `X-API-Key` header. Compose
+starts with `flowstate-local-dev`, which is in this file and therefore not a
+secret — it is safe only because the port is on loopback. Before you publish
+the port (uncomment the plain `8000:8000` mapping in `docker-compose.yml`),
+set your own:
 
 ```sh
 FLOWSTATE_API_KEY=your-secret docker compose up -d
 ```
 
+The API's own built-in default, `dev-key-change-me`, is accepted only under
+the inline queue (the no-Docker dev path below). A deployed service —
+`FLOWSTATE_QUEUE=redis`, which is what Compose runs — refuses to start on it
+and tells you to set `FLOWSTATE_API_KEY`.
+
+The dashboard ships pre-filled with `dev-key-change-me`, so on the Compose
+stack open its **Settings** drawer once and paste in the key the API is
+actually running (`flowstate-local-dev`, or your own); calls 401 until you do.
+Whatever you enter is kept in the browser's `localStorage` under
+`flowstate.apiKey` — it is one shared key per deployment, not a per-user
+login, and any script that achieves XSS on the page can read it straight back
+out, so treat it as a deployment credential and rotate it like one. Real auth
+is a Phase 4 concern.
+
 Smoke test:
 
 ```sh
 curl -s http://localhost:8000/healthz
-curl -s -H "X-API-Key: dev-key-change-me" http://localhost:8000/api/v1/scenarios/preset
+curl -s -H "X-API-Key: flowstate-local-dev" http://localhost:8000/api/v1/scenarios/preset
 ```
 
 ### Dev path (no Docker)
@@ -186,7 +205,7 @@ Under active construction. Milestone tracker:
 - [x] **M2** — FD + IDM population calibration from public data
 - [x] **M3** — full 540-run sweep with CIs; US-101 validation executed end-to-end (criteria honestly mixed: see docs/M3_US101_VALIDATION.md)
 - [x] **M4** — FastAPI service + dashboard + Docker
-- [ ] **M5** — hardening, docs, versioned release
+- [x] **M5** — hardening (load test: [docs/M5_LOAD_TEST.md](docs/M5_LOAD_TEST.md)), docs, versioned release
 
 ## Documentation
 

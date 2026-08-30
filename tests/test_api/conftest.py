@@ -19,11 +19,25 @@ API_KEY = "test-key-42"
 HEADERS = {"X-API-Key": API_KEY}
 
 
+def data_dir(tmp_path: Path) -> Path:
+    """The allow-listed ``FLOWSTATE_DATA_DIR`` the ``client`` fixture sets.
+
+    Server-side ``data_path`` reads are confined to the results root and this
+    directory, so a test staging an input file for ``POST /calibrations``
+    must put it here (anywhere else is refused with 422 — see
+    ``test_calibration_data_path_traversal``).
+    """
+    path = tmp_path / "data"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """TestClient over a fresh app: inline queue + tmp results dir."""
+    """TestClient over a fresh app: inline queue + tmp results/data dirs."""
     monkeypatch.setenv("FLOWSTATE_QUEUE", "inline")
     monkeypatch.setenv("FLOWSTATE_RESULTS_DIR", str(tmp_path / "results"))
+    monkeypatch.setenv("FLOWSTATE_DATA_DIR", str(data_dir(tmp_path)))
     monkeypatch.setenv("FLOWSTATE_API_KEY", API_KEY)
     from api.main import create_app
 

@@ -141,12 +141,22 @@ reported as **not evaluated and therefore failing** (CLAUDE.md §0.1).
   value is not enough history); (ii) with the boundary binding, the
   simulated queue discharges at IDM-calibrated headways
   (~0.37 veh/s/lane at 5 m/s), below the observed discharge — window-3
-  flows at 320/550 m drop to ~6,900–7,100 veh/h vs ~7,700–8,500 observed.
+  flows at 320/550 m fall to 7,087 and 6,880 veh/h against 7,608 and
+  7,752 observed, deficits of 521 and 872 veh/h (so the largest window-3
+  discharge deficit is 872 veh/h, not the ~1,600 a reader would get by
+  pairing these sim values against the 8,520 veh/h
+  peak, which is window **2** at 550 m — see the flow matrix in
+  `observed.hourly_flows_veh_h`, rows = sections, columns = windows).
   Imposing the observed *speed* at the boundary does not impose the
   observed *flow*; the IDM population's congested branch discharges less.
-* **Waves:** none at all without the boundary; with it, waves in 20/20
-  replicates (mean count 1.65, 95% CI [1.27, 2.03]; amplitude 10.7 m/s
-  [9.7, 11.8]) — but propagating too slowly (§4).
+* **Waves:** none at all without the boundary; with it, backward waves in
+  **20/20** replicates. Two pipelines report the count and they do not
+  agree, so both are named here (the same dual-pipeline gap §7 records for
+  wave *speed*): the site-clipped field that matches the observed side —
+  the one the 20/20 is counted on — gives a mean count of **1.45**, while
+  `compute_metrics` over each run's full network extent gives 1.65, 95% CI
+  [1.27, 2.03] (its amplitude 10.7 m/s [9.7, 11.8] is on the same
+  full-extent basis). Either way the waves propagate too slowly (§4).
 
 ## 4. Wave comparison — observed vs simulated backward speeds
 
@@ -213,11 +223,23 @@ constraint bind:
 The constraint binds (fields differ between variants in **20/20**
 replicates), and the paired per-replicate difference is statistically
 resolved: capacity − flux_cap speed RMSE = **+0.84 m/s, 95% CI
-[0.36, 1.33]** — the ρ·v* flux cap (the v1 rule, i.e. the discrete
-Delle Monache–Goatin constraint) tracks micro ground truth better than
-the reduced-capacity variant on every metric, in every replicate where
-they differ. Figure: `docs/figures/fluxcap_comparison.png` (waviest
-replicate; the capacity variant visibly under-propagates the breakdown).
+[0.36, 1.33]**. Stated precisely, the ρ·v* flux cap (the v1 rule, i.e. the
+discrete Delle Monache–Goatin constraint) tracks micro ground truth better
+than the reduced-capacity variant
+
+* on **all three** RMSE metrics in the 20-replicate mean (table above);
+* in **every one of the 20 replicates** on speed RMSE and on
+  upstream-shadow RMSE;
+* but **not** uniformly on density RMSE, where the capacity variant is the
+  closer of the two in **4 of 20** replicates (flux_cap vs capacity, in
+  veh/km — seed 3011106312394044631: 14.602 vs 13.344; 165503670820534583:
+  14.635 vs 14.131; 6904272788004776631: 6.677 vs 6.654;
+  6143473282319009404: 5.720 vs 5.717, the last two near-ties).
+
+The headline ranking therefore rests on the speed and shadow metrics,
+which are unanimous, not on density, which is not. Figure:
+`docs/figures/fluxcap_comparison.png` (waviest replicate; the capacity
+variant visibly under-propagates the breakdown).
 
 Caveats, plainly: the binding fraction is ~0.99 partly because the fitted
 free branch (v_f 87 km/h) over-predicts micro speeds at ambient density,
@@ -293,10 +315,27 @@ out of the real invocation: micro runs record their fleet calibration
 under the `fleet_calibration` meta key, which the report's calibration
 table now picks up (`validation/report.py`; validation tests stay green).
 
-One deliberate difference between the two artifacts: the report's
-wave-speed row (7.4 km/h) comes from `compute_metrics` over each run's
-full network extent (entry buffer + span + exit buffer), while the
-results JSON's criteria row (5.8 km/h) uses the site-clipped field that
-matches the observed side. Both fail the 14–22 km/h band; each value is
-internally consistent with its own pipeline and both pipelines are
-recorded.
+One deliberate difference between the two artifacts: `compute_metrics`
+runs over each run's **full network extent** (entry buffer + span + exit
+buffer), while the results JSON's criteria rows use the **site-clipped**
+field (x < 640 m) that matches the observed side. The gap shows up in
+every wave quantity, not just wave speed, so all three are tabulated:
+
+| Wave quantity | `compute_metrics`, full extent | Site-clipped (x < 640 m) |
+|---|---|---|
+| Backward front speed [km/h] | 7.4 [6.8, 8.0] | 5.8 |
+| Wave count [per run] | 1.65 [1.27, 2.03] | 1.45 |
+| Amplitude [m/s] | 10.75 [9.73, 11.76] | 9.66 |
+
+Full-extent values are `simulated.metrics_ci` (mean, 95% CI over 20
+replicates). Site-clipped speed and count are stored directly as
+`simulated.mean_backward_speed_kmh` and `simulated.wave_count_mean`; the
+site-clipped amplitude is the mean over the 20 `simulated.
+waves_per_replicate` entries of each replicate's mean detected amplitude.
+
+Both wave-speed values fail the 14–22 km/h band, and both pipelines detect
+backward waves in 20/20 replicates, so no pass/fail verdict turns on the
+choice. Each value is internally consistent with its own pipeline, both
+pipelines are recorded in the artifacts, and any sentence quoting one of
+these numbers alongside a site-clipped count must say which pipeline it
+came from (§3 does).
