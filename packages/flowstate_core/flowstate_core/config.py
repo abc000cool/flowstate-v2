@@ -130,6 +130,37 @@ class FleetSpec(BaseModel):
     the scalar fields above and outputs record the artifact's data_hash."""
 
 
+class OracleSpec(BaseModel):
+    """Downstream wave-detection oracle realism (CLAUDE.md §4.3).
+
+    JAD's detection stage reads the downstream speed field. A *perfect* oracle
+    sees the field instantaneously and exactly; real detection is late and
+    noisy. This block makes the oracle swappable so that, as §4.3 requires,
+    every headline JAD result is also reported under a degraded oracle.
+
+    ``delay_s`` makes the controller observe the field as it was ``delay_s``
+    ago (its own position stays current — it is the *traffic state* that is
+    stale, as with loop-detector or probe latency). ``amplitude_noise_frac``
+    multiplies each observed bin speed by ``1 + U(-f, +f)`` drawn per bin per
+    control step from the run's seeded RNG. Defaults are a perfect oracle, so
+    existing configs are unaffected.
+    """
+
+    kind: Literal["perfect", "noisy"] = "perfect"
+    delay_s: float = Field(default=0.0, ge=0.0, le=120.0)
+    """Detection latency [s]; §4.3 names 10–60 s as the realistic range."""
+    amplitude_noise_frac: float = Field(default=0.0, ge=0.0, le=1.0)
+    """Multiplicative speed error per bin; §4.3 names ±20% (0.2)."""
+
+    @model_validator(mode="after")
+    def _check_kind(self) -> Self:
+        if self.kind == "perfect" and (self.delay_s > 0.0 or self.amplitude_noise_frac > 0.0):
+            raise ValueError("kind='perfect' cannot carry delay_s or amplitude_noise_frac")
+        if self.kind == "noisy" and self.delay_s == 0.0 and self.amplitude_noise_frac == 0.0:
+            raise ValueError("kind='noisy' needs a nonzero delay_s or amplitude_noise_frac")
+        return self
+
+
 class AVSpec(BaseModel):
     """Controlled-vehicle deployment."""
 
@@ -141,6 +172,8 @@ class AVSpec(BaseModel):
     vsl: str | None = None
     """Segment controller registry name (VSL); None ⇒ no VSL."""
     vsl_params: dict[str, float] = Field(default_factory=dict)
+    oracle: OracleSpec = Field(default_factory=OracleSpec)
+    """Wave-detection oracle realism for downstream-reading controllers (JAD)."""
 
 
 class SimSpec(BaseModel):

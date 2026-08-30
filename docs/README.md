@@ -16,6 +16,8 @@ Index of everything in `docs/`. Start with the repo-root
 |---|---|
 | [M2_RESULTS.md](M2_RESULTS.md) | Calibration from real NGSIM US-101 data: IDM population fit (2,452 episodes, holdout RMSE), fundamental diagram with bootstrap CIs, observed demand extraction — with the raw-NGSIM and congested-site caveats stated |
 | [M3_RESULTS.md](M3_RESULTS.md) | The 540-run penetration × compliance sweep on the synthetic `corridor_10km` (27 cells × 20 seeds, paired CIs): dose-response, controller ranking including the honest PI-saturation failure |
+- [JAD_ORACLE_RESULTS.md](JAD_ORACLE_RESULTS.md) — JAD under a delayed/noisy detection oracle (CLAUDE.md §4.3); realistic sensing removes the bimodality
+- [jad_derivation.md](jad_derivation.md) — JAD intercept-timing geometry and its approximations
 - [PI_CONTROLLER_FIX.md](PI_CONTROLLER_FIX.md) — correcting PI-with-saturation against Stern et al. (2018); the M3 gridlock was a spec simplification, not the literature controller
 | [M3_US101_VALIDATION.md](M3_US101_VALIDATION.md) | Observed-vs-simulated validation of the US-101 replica against FHWA-style criteria — honestly mixed (1 PASS / 5 FAIL), boundary-condition analysis, wave-speed comparison, flux-cap variant study |
 | [M5_LOAD_TEST.md](M5_LOAD_TEST.md) | API/worker load test: 10 concurrent sweep jobs through the queue |

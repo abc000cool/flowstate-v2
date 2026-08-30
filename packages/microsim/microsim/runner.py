@@ -250,6 +250,47 @@ def _downstream_bins(
     return tuple(float(m) for m in means)
 
 
+def _stale_snapshot(
+    history: deque[tuple[float, np.ndarray, np.ndarray]],
+    t: float,
+    delay_s: float,
+    current: tuple[np.ndarray, np.ndarray],
+) -> tuple[np.ndarray, np.ndarray]:
+    """The traffic-state snapshot a delayed oracle should see (CLAUDE.md §4.3).
+
+    Returns the most recent snapshot at or before ``t - delay_s``. Falls back to
+    the oldest snapshot held while the buffer is still shorter than the delay
+    (start of run), and to ``current`` when there is no delay or no history —
+    so a perfect oracle costs nothing.
+    """
+    if delay_s <= 0.0 or not history:
+        return current
+    t_target = t - delay_s
+    chosen = (history[0][1], history[0][2])
+    for snap_t, snap_xs, snap_v in history:
+        if snap_t <= t_target:
+            chosen = (snap_xs, snap_v)
+        else:
+            break
+    return chosen
+
+
+def _apply_oracle_noise(
+    bins: tuple[float, ...], noise_frac: float, rng: np.random.Generator
+) -> tuple[float, ...]:
+    """Multiply each observed bin speed by ``1 + U(-f, +f)`` (CLAUDE.md §4.3).
+
+    NaN bins (no vehicles) stay NaN: a noisy sensor still reports nothing where
+    there is nothing. Speeds are floored at 0 so noise cannot invent reverse
+    travel.
+    """
+    if noise_frac <= 0.0 or not bins:
+        return bins
+    arr = np.asarray(bins, dtype=float)
+    factors = 1.0 + rng.uniform(-noise_frac, noise_frac, size=arr.shape)
+    return tuple(float(v) for v in np.maximum(arr * factors, 0.0))
+
+
 def _edie_edges_frame(
     traj: pd.DataFrame, sample_dt_s: float, duration_s: float, total_length_m: float
 ) -> pd.DataFrame:
@@ -444,6 +485,18 @@ def run_micro(
 
     compliant_avs = set(plan.complied_ids)
     memories: dict[str, Memory] = {vid: {} for vid in compliant_avs}
+
+    # Wave-detection oracle realism (CLAUDE.md §4.3). A perfect oracle keeps an
+    # empty history and zero noise, so this costs nothing when unused.
+    oracle = cfg.av.oracle
+    oracle_delay_s = float(oracle.delay_s)
+    oracle_noise_frac = float(oracle.amplitude_noise_frac)
+    # Offset keeps the oracle stream independent of the fleet-generation stream.
+    oracle_rng = make_rng(seed + 7919)
+    _oracle_maxlen = math.ceil(oracle_delay_s / cfg.sim.step_length_s) + 2
+    oracle_history: deque[tuple[float, np.ndarray, np.ndarray]] = deque(
+        maxlen=_oracle_maxlen if oracle_delay_s > 0.0 else 1
+    )
     vsl_memory: Memory = {}
     min_gap_by_id = {plan.vehicle_id(i): plan.params[i]["s0"] for i in range(plan.n)}
     is_av_by_id = {plan.vehicle_id(i): plan.is_av[i] for i in range(plan.n)}
@@ -559,6 +612,11 @@ def run_micro(
                     d = (xs[i] - last + circumference / 2.0) % circumference - circumference / 2.0
                     unwrap_x[vid] = (float(xs[i]), unw + d)
 
+            # Oracle snapshot buffer: the delayed oracle reads the traffic
+            # state as it was `delay_s` ago (positions stay current).
+            if oracle_delay_s > 0.0:
+                oracle_history.append((t, xs.copy(), speeds.copy()))
+
             # Rolling platoon-mean reference speed (45 s window).
             v_ref_hist.append((t, float(speeds.mean())))
             while v_ref_hist and v_ref_hist[0][0] < t - V_REF_WINDOW_S:
@@ -595,11 +653,18 @@ def run_micro(
                 and (k + 1) % act_every == 0
             ):
                 x_by_id = dict(zip(ids, xs, strict=True))
+                # Oracle realism (§4.3): the controller may read a STALE traffic
+                # state (its own position stays current), and each observed bin
+                # speed may carry multiplicative error.
+                o_xs, o_speeds = _stale_snapshot(oracle_history, t, oracle_delay_s, (xs, speeds))
                 for vid in sorted(compliant_avs):
                     if vid not in results:
                         continue
                     gap, v_leader = _leader_obs(mod, vid, min_gap_by_id[vid])
-                    downstream = _downstream_bins(x_by_id[vid], xs, speeds, circumference, is_ring)
+                    downstream = _downstream_bins(
+                        x_by_id[vid], o_xs, o_speeds, circumference, is_ring
+                    )
+                    downstream = _apply_oracle_noise(downstream, oracle_noise_frac, oracle_rng)
                     obs = ControllerObs(
                         t=t,
                         dt=cfg.sim.action_step_s,

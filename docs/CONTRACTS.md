@@ -96,7 +96,17 @@ Other blocks:
   kept) with the run's RNG, and run outputs record the artifact's
   `data_hash` (`meta.json` key `fleet_calibration`).
 - `AVSpec`: `penetration: float ∈ [0, 0.3]`, `compliance: float ∈ [0.1, 1.0]`,
-  `controller: str | None`, `controller_params: dict[str, float]`.
+  `controller: str | None`, `controller_params: dict[str, float]`,
+  `oracle: OracleSpec`.
+- `OracleSpec(kind="perfect"|"noisy", delay_s: float = 0.0,
+  amplitude_noise_frac: float = 0.0)` — wave-detection realism for
+  downstream-reading controllers (JAD), added in Phase 5 for CLAUDE.md §4.3.
+  `delay_s` makes the controller observe the traffic state as it was `delay_s`
+  ago (its own position stays current); `amplitude_noise_frac` multiplies each
+  observed bin speed by `1 + U(-f, +f)` from the run's seeded RNG, leaving
+  empty bins empty and flooring speeds at 0. Default is a perfect oracle, so
+  existing configs are unchanged; a degraded oracle does NOT set `seeded=True`
+  (it perturbs perception, not the physics). See docs/JAD_ORACLE_RESULTS.md.
 - `SimSpec`: `duration_s`, `step_length_s = 0.5`, `action_step_s = 0.5`,
   `warmup_s = 0.0`, `output_hz = 2.0`.
 - `PerturbationSpec | None`: seeded shock (`t_s, position_m, duration_s,

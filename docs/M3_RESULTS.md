@@ -218,6 +218,14 @@ elimination.
   throughput preserved, fuel best-in-battery, waves 0.15/run.
 * **JAD** is second on the means (σ_v 1.78 [1.30, 2.26], +42.7%
   [+24.5, +60.9] paired reduction) but **bimodal**: 15/20 replicates end
+
+  **Explained after M3.** The bimodality is caused by the *perfect* wave
+  oracle: it fires as soon as any bin in the 2 km lookahead qualifies, so the
+  AV completes its absorption cycle before the front arrives and re-triggers,
+  chattering (30.7 acceleration reversals per run vs 16.6 under a 30 s delay).
+  With the realistic delayed/noisy oracle CLAUDE.md §4.3 requires, no seed is
+  worse than baseline and the wave-count benefit becomes resolved. See
+  [JAD_ORACLE_RESULTS.md](JAD_ORACLE_RESULTS.md).
   fully calmed (0 waves, σ_v ≈ 1.0–1.5 m/s), one lands in between (1 wave),
   and 4/20 end with **9–12 waves and σ_v 3.4–4.1 m/s** — as bad as or worse
   than baseline. Its

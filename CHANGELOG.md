@@ -6,6 +6,30 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
+### Added
+
+- **Delayed / noisy wave-detection oracle** (`OracleSpec` on `AVSpec`),
+  completing CLAUDE.md §4.3's requirement that the oracle be swappable and that
+  every headline JAD result also be reported under a degraded oracle. `delay_s`
+  makes the controller read the traffic state as it was `delay_s` ago;
+  `amplitude_noise_frac` applies seeded multiplicative error per bin. Default is
+  a perfect oracle, so existing configs are unchanged.
+- `docs/jad_derivation.md` — the JAD intercept-timing derivation with geometry
+  that CLAUDE.md §4.3 required and that was never written.
+
+### Changed
+
+- **JAD's M3 bimodality is explained and resolved.** The perfect oracle was the
+  cause: it fires the instant any bin in the 2 km lookahead qualifies, so the AV
+  completes slow-in/hold/fast-out before the front arrives and re-triggers —
+  30.7 acceleration sign-reversals per run against 16.6 under a 30 s delay —
+  and each abrupt fast-out can seed a secondary wave. Under a perfect oracle
+  5/20 seeds end worse than the uncontrolled baseline (one goes 1 -> 11 waves)
+  and the wave-count benefit is not resolved. With 30-60 s latency and +/-20%
+  noise, **no seed is worse than baseline** and wave count (-3.50 [-4.71,
+  -2.29]), sigma_v and fuel all improve with resolved CIs. Realistic detection
+  is what makes JAD reliable here. See `docs/JAD_ORACLE_RESULTS.md`.
+
 ### Fixed
 
 - **PI-with-saturation now implements Stern et al. (2018) Eqs. (3)–(5).** The
