@@ -60,8 +60,10 @@ Pydantic v2 models, YAML round-trip via `ScenarioConfig.from_yaml(path)` /
 `.to_yaml(path)`. Discriminated union on `network.kind`:
 
 - `RingNetwork(kind="ring", circumference_m: float, n_vehicles: int)`
-- `CorridorNetwork(kind="corridor", length_m: float, lanes: int,
+- `CorridorNetwork(kind="corridor", length_m: float, lanes: int ∈ [1, 8],
   inflow: list[tuple[float, float]])`  # (t_start_s, inflow veh/s) steps
+  # inflow is the TOTAL across all lanes; lanes raised from ≤4 to ≤8 in
+  # Phase 2 for the 5-lane US-101 replica (M2)
 - `OSMNetwork(kind="osm", bbox: (S, W, N, E) | osm_file: str, corridor_edges: list[str])`
 
 Other blocks:
@@ -69,7 +71,13 @@ Other blocks:
 - `FleetSpec`: `model: Literal["IDM","EIDM"]`, base params
   (`v0, T, a_max, b, s0, delta` — SI), `heterogeneity_frac: float = 0.12`
   (σ as fraction of mean, truncated normal at ±3σ, params drawn per vehicle
-  with the run's RNG).
+  with the run's RNG), `idm_calibration: str | None` — path to an
+  `IDMCalibration` artifact (as given, else resolved against the repo root).
+  When set, the artifact's population `mean`/`cov` OVERRIDE the scalar
+  fields and `heterogeneity_frac`: per-vehicle params are drawn from the
+  truncated multivariate normal (±3σ per marginal, hard physical floors
+  kept) with the run's RNG, and run outputs record the artifact's
+  `data_hash` (`meta.json` key `fleet_calibration`).
 - `AVSpec`: `penetration: float ∈ [0, 0.3]`, `compliance: float ∈ [0.1, 1.0]`,
   `controller: str | None`, `controller_params: dict[str, float]`.
 - `SimSpec`: `duration_s`, `step_length_s = 0.5`, `action_step_s = 0.5`,

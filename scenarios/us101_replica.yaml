@@ -1,0 +1,47 @@
+# us101_replica — NGSIM US-101 southbound study section (M2, CLAUDE.md §6).
+#
+# Corridor replica of the ~640 m, 5-mainline-lane US-101 site in Los Angeles
+# (NGSIM, 2005-06-15 AM peak). Fleet parameters draw from the Phase-2 IDM
+# population calibration artifact (artifacts/idm_us101.json — fitted on 2,452
+# leader-follower episodes from the same site; the artifact's mean/cov
+# override the scalar fleet fields, docs/CONTRACTS.md §2). Inflow steps are
+# the deduplicated upstream mainline boundary counts from
+# artifacts/demand_us101.json (5-min windows, total across 5 lanes), shifted
+# by the 180 s warmup: sim t = 180 s corresponds to the period-1 recording
+# start (07:49:39.7 PDT); duration 1133 s = 180 s warmup + the 952.8 s
+# period-1 recording span.
+#
+# Known limitations (documented in docs/M2_RESULTS.md): the replica has no
+# auxiliary lane and no on/off ramps, so the ~6% of real vehicles that
+# entered via the on-ramp (lane 7, ~150-165 m) are not injected, and the site's heavy
+# congestion partly originated downstream of the study section — expect the
+# replica to run less congested than the recording until M3 adds a
+# downstream boundary condition.
+name: us101_replica
+tier: micro
+network:
+  kind: corridor
+  length_m: 640.0
+  lanes: 5
+  inflow:
+    - [0.0, 2.437]     # warmup + wall 0-300 s window (8772 veh/h over 5 lanes)
+    - [480.0, 2.357]   # wall 300-600 s
+    - [780.0, 2.013]   # wall 600-900 s
+    - [1080.0, 2.150]  # wall 900 s -> period-1 end (952.8 s)
+fleet:
+  model: IDM
+  idm_calibration: artifacts/idm_us101.json
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+sim:
+  duration_s: 1133.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 180.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 20

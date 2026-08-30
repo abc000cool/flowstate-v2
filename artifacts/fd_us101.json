@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-30T00:02:19Z",
+  "source": "NGSIM US-101 raw trajectories (data.transportation.gov 8ect-6jqj), Edie 30 s x 50 m bins per lane, mainline lanes 1-5, periods 1 + partial 2 (2005-06-15 07:50-08:12 PDT); per-lane quantities",
+  "data_hash": "8578f4754b267ad09eed5b0b8b3e18c83b7d9036b7afdcec295d5d3f19195e22",
+  "kind": "fd",
+  "fd": {
+    "v_f": 15.949386478778385,
+    "w": -4.055011654596175,
+    "rho_jam": 0.18016067416514253,
+    "ci95": {
+      "v_f": [
+        15.283579372890554,
+        16.650830185894318
+      ],
+      "w": [
+        -5.269826192220427,
+        -2.9409493099933255
+      ],
+      "rho_jam": [
+        0.15142729606860972,
+        0.2313218472843753
+      ],
+      "rho_c": [
+        0.03492470688553563,
+        0.03849613403429054
+      ],
+      "q_max": [
+        0.5745679684177465,
+        0.5916403791746835
+      ]
+    }
+  },
+  "n_observations": 3001,
+  "r2_freeflow": 0.8369873880904324,
+  "congested_quantile": 0.9,
+  "notes": "Edie generalized flow/density from raw NGSIM US-101 trajectories, 30 s x 50 m bins per (recording period, mainline lane 1-5); per-lane quantities. The site is heavily congested for the entire recording (07:50-08:12 PDT): only ~4% of bins fall below the 20 veh/km free-branch cut and the fastest observed bin speeds are ~65-70 km/h, so the free-flow branch is data-poor and v_f reflects the fastest OBSERVED operation, not the facility's true free-flow speed — expect v_f to be biased low with wide CIs. The congested branch (w, rho_jam) is well populated. Trailing partial bins dropped; empty bins excluded. bootstrap: 200/200 resamples usable (seed 42)."
+}

@@ -1,6 +1,7 @@
 """Fleet generation tests: heterogeneity, AV tagging, demand XML (no SUMO)."""
 
 import math
+import typing
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -51,6 +52,84 @@ class TestDrawVehicleParams:
                 assert p[key] >= IDM_HARD_LOWER[key]
                 assert p[key] <= means[key] + 3.0 * sigma + 1e-12
                 assert p[key] >= means[key] - 3.0 * sigma - 1e-12 or p[key] >= IDM_HARD_LOWER[key]
+
+
+def _write_calibration(path, mean, cov):
+    """Write a minimal IDMCalibration artifact for fleet-draw tests."""
+    from flowstate_core.artifacts import IDMCalibration
+
+    IDMCalibration(
+        created_at="2026-08-29T00:00:00Z",
+        source="unit-test synthetic population",
+        data_hash="test-hash-123",
+        mean=mean,
+        cov=cov,
+        n_episodes_fit=10,
+        n_episodes_holdout=4,
+        holdout_gap_rmse_m=1.0,
+    ).save(path)
+    return path
+
+
+class TestDrawFromCalibration:
+    """fleet.idm_calibration consumption (docs/CONTRACTS.md §2)."""
+
+    MEAN: typing.ClassVar[dict[str, float]] = {
+        "v0": 30.0,
+        "T": 1.2,
+        "a_max": 0.8,
+        "b": 1.5,
+        "s0": 2.2,
+    }
+    # Correlated, comfortably away from the hard floors.
+    COV: typing.ClassVar[list[list[float]]] = [
+        [4.0, 0.1, 0.0, 0.0, 0.0],
+        [0.1, 0.04, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.01, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.04, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.04],
+    ]
+
+    def _fleet(self, tmp_path):
+        art = _write_calibration(tmp_path / "idm_cal.json", self.MEAN, self.COV)
+        return FleetSpec(idm_calibration=str(art))
+
+    def test_population_stats_override_scalar_fields(self, tmp_path):
+        """The artifact's mean, not FleetSpec.v0 etc., governs the draws."""
+        art = _write_calibration(tmp_path / "idm_cal.json", self.MEAN, self.COV)
+        fleet = FleetSpec(v0=10.0, T=0.5, idm_calibration=str(art))
+        draws = draw_vehicle_params(fleet, 400, make_rng(SEED))
+        for key in IDM_PARAM_ORDER:
+            sigma = math.sqrt(self.COV[IDM_PARAM_ORDER.index(key)][IDM_PARAM_ORDER.index(key)])
+            sample_mean = sum(p[key] for p in draws) / len(draws)
+            # sample mean of 400 truncated-normal draws: ±5·σ/√400 band
+            assert abs(sample_mean - self.MEAN[key]) <= 5.0 * sigma / 20.0
+
+    def test_reproducible_and_seed_sensitive(self, tmp_path):
+        fleet = self._fleet(tmp_path)
+        a = draw_vehicle_params(fleet, 30, make_rng(SEED))
+        b = draw_vehicle_params(fleet, 30, make_rng(SEED))
+        c = draw_vehicle_params(fleet, 30, make_rng(SEED + 1))
+        assert a == b
+        assert a != c
+
+    @pytest.mark.parametrize("seed", [7, 42, 4242])
+    def test_truncation_and_hard_floors(self, seed, tmp_path):
+        """±3σ per marginal AND the physical floors hold for every draw."""
+        mean = dict(self.MEAN, a_max=0.25)  # 3σ below floor 0.2 → floor binds
+        art = _write_calibration(tmp_path / "cal.json", mean, self.COV)
+        draws = draw_vehicle_params(FleetSpec(idm_calibration=str(art)), 300, make_rng(seed))
+        for p in draws:
+            for i, key in enumerate(IDM_PARAM_ORDER):
+                sigma = math.sqrt(self.COV[i][i])
+                assert p[key] >= IDM_HARD_LOWER[key]
+                assert p[key] <= mean[key] + 3.0 * sigma + 1e-12
+                assert p[key] >= mean[key] - 3.0 * sigma - 1e-12 or p[key] >= IDM_HARD_LOWER[key]
+
+    def test_missing_artifact_raises(self):
+        fleet = FleetSpec(idm_calibration="does/not/exist.json")
+        with pytest.raises(FileNotFoundError, match="IDMCalibration"):
+            draw_vehicle_params(fleet, 1, make_rng(SEED))
 
 
 class TestTagAvs:

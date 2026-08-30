@@ -69,6 +69,7 @@ from microsim.vehicles import (
     FleetPlan,
     build_corridor_plan,
     build_ring_plan,
+    load_idm_calibration,
     write_corridor_routes,
     write_ring_routes,
 )
@@ -410,6 +411,17 @@ def run_micro(
             "acceleration exponent at 4 (not a vType attribute); ran with delta=4"
         )
 
+    # Calibrated-fleet provenance (docs/CONTRACTS.md §2): when the fleet draws
+    # from an IDMCalibration artifact, meta.json records its data_hash.
+    fleet_calibration: dict[str, str] | None = None
+    if cfg.fleet.idm_calibration is not None:
+        cal = load_idm_calibration(cfg.fleet.idm_calibration)
+        fleet_calibration = {
+            "path": cfg.fleet.idm_calibration,
+            "data_hash": cal.data_hash,
+            "created_at": cal.created_at,
+        }
+
     # --- Controller setup -------------------------------------------------
     controller_fn: VehicleControllerFn | None = None
     controller_params: dict[str, float] = {}
@@ -639,6 +651,7 @@ def run_micro(
         "n_vehicles_arrived": max(n_arrived, 0),
         "av_ids": list(plan.av_ids),
         "complied_ids": list(plan.complied_ids),
+        "fleet_calibration": fleet_calibration,
         "controller": cfg.av.controller,
         "controller_start_s": controller_start_s,
         "vsl": cfg.av.vsl,

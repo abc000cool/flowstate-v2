@@ -183,6 +183,22 @@ class TestPopulationRecoveryFast:
         assert a.mean == b.mean
         assert a.per_episode_rmse_m == b.per_episode_rmse_m
 
+    def test_parallel_matches_serial(self) -> None:
+        """n_procs > 1 must reproduce the serial result exactly (same seeds)."""
+        episodes, _ = _make_episodes(n=3, seed=888)
+        kwargs = dict(
+            created_at="2026-08-29T00:00:00+00:00",
+            source="parallel parity",
+            holdout_frac=0.0,
+            de_maxiter=8,
+            de_popsize=8,
+            de_tol=0.05,
+        )
+        serial = fit_population(episodes, seed=11, **kwargs)
+        parallel = fit_population(episodes, seed=11, n_procs=2, **kwargs)
+        assert serial.mean == parallel.mean
+        assert serial.per_episode_rmse_m == parallel.per_episode_rmse_m
+
     def test_too_few_episodes_raise(self) -> None:
         episodes, _ = _make_episodes(n=1, seed=3)
         with pytest.raises(ValueError, match="episodes"):

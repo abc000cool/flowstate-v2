@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-30T00:13:09Z",
+  "source": "NGSIM US-101 upstream mainline boundary inflow (first appearance at local_y <= 30 m on lanes 1-5), 5-min windows on the continuous wall clock from the period-1 recording start (2005-06-15 07:49:39.7 PDT). Periods overlap and censor entries near their ends: entries come from period 1 through its last recorded entry (~wall 894 s) and from period 2 strictly after (sharp switch; the ~2-5 s cross-period tracking offset can mis-assign order-10 vehicles, <0.5%). Last window partial (dump truncates at 08:12:50). Total across 5 lanes; on-ramp inflow (entries at ~150-165 m) deliberately excluded.",
+  "data_hash": "8578f4754b267ad09eed5b0b8b3e18c83b7d9036b7afdcec295d5d3f19195e22",
+  "kind": "demand",
+  "steps": [
+    [
+      0.0,
+      2.4366666666666665
+    ],
+    [
+      300.0,
+      2.3566666666666665
+    ],
+    [
+      600.0,
+      2.013333333333333
+    ],
+    [
+      900.0,
+      2.15
+    ],
+    [
+      1200.0,
+      1.9884575026232958
+    ]
+  ],
+  "geh_vs_counts": null
+}

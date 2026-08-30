@@ -27,9 +27,11 @@ held-out 30%.
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import sqrt
+from typing import Any
 
 import numpy as np
 from scipy.optimize import differential_evolution
@@ -227,6 +229,12 @@ def fit_episode(
     )
 
 
+def _fit_episode_worker(payload: tuple[LeaderFollowerEpisode, int, dict[str, Any]]) -> EpisodeFit:
+    """Process-pool worker: unpack ``(episode, seed, kwargs)`` → :func:`fit_episode`."""
+    episode, ep_seed, kwargs = payload
+    return fit_episode(episode, seed=ep_seed, **kwargs)
+
+
 def fit_population(
     episodes: Sequence[LeaderFollowerEpisode],
     *,
@@ -240,6 +248,7 @@ def fit_population(
     de_maxiter: int = 60,
     de_popsize: int = 15,
     de_tol: float = 0.005,
+    n_procs: int | None = None,
     notes: str = "",
 ) -> IDMCalibration:
     """Fit the population distribution of IDM parameters (CLAUDE.md §6.2).
@@ -270,6 +279,10 @@ def fit_population(
         de_maxiter: DE generation cap per episode.
         de_popsize: DE population multiplier.
         de_tol: DE convergence tolerance.
+        n_procs: Per-episode fits run in a process pool of this size when
+            > 1 (episodes are independent; each carries its own spawned
+            seed, so results are identical to the serial path). ``None``
+            or 1 keeps the serial path.
         notes: Free-text note prepended to the artifact notes.
 
     Returns:
@@ -296,17 +309,21 @@ def fit_population(
     train = [episodes[i] for i in perm[n_hold:]]
 
     fit_seeds = spawn_seeds(seed, len(train))
-    fits = [
-        fit_episode(
-            ep,
-            seed=s,
-            bounds=bounds,
-            de_maxiter=de_maxiter,
-            de_popsize=de_popsize,
-            de_tol=de_tol,
-        )
-        for ep, s in zip(train, fit_seeds, strict=True)
-    ]
+    fit_kwargs: dict[str, Any] = {
+        "bounds": dict(bounds),
+        "de_maxiter": de_maxiter,
+        "de_popsize": de_popsize,
+        "de_tol": de_tol,
+    }
+    if n_procs is not None and n_procs > 1:
+        payloads = [(ep, s, fit_kwargs) for ep, s in zip(train, fit_seeds, strict=True)]
+        ctx = multiprocessing.get_context("spawn")
+        with ctx.Pool(processes=min(n_procs, len(train))) as pool:
+            fits = pool.map(_fit_episode_worker, payloads)
+    else:
+        fits = [
+            fit_episode(ep, seed=s, **fit_kwargs) for ep, s in zip(train, fit_seeds, strict=True)
+        ]
 
     rmses = np.array([f.gap_rmse_m for f in fits])
     if trim_quantile < 1.0:

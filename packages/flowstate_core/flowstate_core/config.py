@@ -32,7 +32,7 @@ class CorridorNetwork(BaseModel):
 
     kind: Literal["corridor"] = "corridor"
     length_m: float = Field(gt=0)
-    lanes: int = Field(ge=1, le=4, default=1)
+    lanes: int = Field(ge=1, le=8, default=1)
     inflow: list[tuple[float, float]] = Field(min_length=1)
     """Piecewise-constant (t_start [s], inflow [veh/s]) steps, time-ordered."""
 

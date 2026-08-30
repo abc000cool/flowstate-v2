@@ -44,6 +44,7 @@ _COLUMN_MAP: Final[dict[str, str]] = {
     "global_time": "global_time_ms",
     "local_y": "y_ft",
     "v_vel": "v_ftps",
+    "v_class": "v_class",
     "v_length": "length_ft",
     "lane_id": "lane",
     "preceding": "leader_id",
@@ -90,6 +91,10 @@ def load_ngsim_trajectories(
         section in the direction of travel), ``lane`` (int), ``v`` [m/s],
         ``leader_id`` (str, ``"0"`` = none), ``spacing_m`` [m]
         (Space_Headway, front-to-front) and ``length_m`` [m] (vehicle length).
+        When the source carries them, ``global_time_ms`` (int, Unix epoch ms —
+        NGSIM sites recorded several 15-minute periods whose vehicle/frame ids
+        restart per period, so callers split periods on it) and ``v_class``
+        (int, 1=motorcycle 2=auto 3=truck) pass through as extra columns.
 
     Raises:
         ValueError: If required NGSIM columns are missing or downsample < 1.
@@ -124,6 +129,10 @@ def load_ngsim_trajectories(
     )
     if "y_ft" in raw.columns:
         out["x"] = raw["y_ft"].astype(float) * FEET_TO_M
+    if "global_time_ms" in raw.columns:
+        out["global_time_ms"] = raw["global_time_ms"].astype("int64")
+    if "v_class" in raw.columns:
+        out["v_class"] = raw["v_class"].astype(int)
     return out
 
 

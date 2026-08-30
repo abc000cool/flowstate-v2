@@ -116,6 +116,55 @@ class TestCorridorSmoke:
         # No x_unwrapped column off-ring (contract columns only).
         assert "x_unwrapped" not in df.columns
 
+    def test_five_lane_calibrated_fleet_smoke(self, tmp_path):
+        """us101_replica shape: 5 lanes + IDMCalibration-driven fleet (M2).
+
+        Verifies the lanes<=8 config bound, multi-lane vtype/route generation,
+        that ``fleet.idm_calibration`` is actually consumed (drawn params come
+        from the artifact population, not the scalar fields), and that
+        meta.json records the artifact provenance (docs/CONTRACTS.md §2).
+        """
+        from flowstate_core.artifacts import IDMCalibration
+
+        art = tmp_path / "idm_cal.json"
+        IDMCalibration(
+            created_at="2026-08-29T00:00:00Z",
+            source="smoke synthetic population",
+            data_hash="smoke-hash",
+            mean={"v0": 15.0, "T": 1.3, "a_max": 0.9, "b": 1.6, "s0": 2.1},
+            cov=[[0.0] * 5 for _ in range(5)],  # deterministic draws = the mean
+            n_episodes_fit=10,
+            n_episodes_holdout=4,
+            holdout_gap_rmse_m=1.0,
+        ).save(art)
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "us101_shape_smoke",
+                "network": {
+                    "kind": "corridor",
+                    "length_m": 640.0,
+                    "lanes": 5,
+                    "inflow": [[0.0, 2.4]],
+                },
+                "fleet": {"model": "IDM", "idm_calibration": str(art)},
+                "sim": {"duration_s": 60.0},
+            }
+        )
+        paths = run_micro(cfg, 42, tmp_path)
+        meta = json.loads(paths.meta.read_text())
+        df = pd.read_parquet(paths.trajectories)
+        assert meta["fleet_calibration"] == {
+            "path": str(art),
+            "data_hash": "smoke-hash",
+            "created_at": "2026-08-29T00:00:00Z",
+        }
+        assert df.veh_id.nunique() >= 100
+        # All 5 lanes carry traffic; no lane index beyond the requested count.
+        assert set(df.lane.unique()) == {0, 1, 2, 3, 4}
+        # Zero-covariance artifact ⇒ every vehicle drives the artifact mean:
+        # with v0 = 15 m/s no free-flowing vehicle can exceed it.
+        assert df.v.max() <= 15.0 + 1e-6
+
     def test_vsl_scenario_runs(self, tmp_path):
         cfg = ScenarioConfig.model_validate(
             {

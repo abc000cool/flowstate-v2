@@ -35,6 +35,7 @@ from typing import Final
 
 import numpy as np
 
+from flowstate_core.artifacts import IDMCalibration
 from flowstate_core.config import AVSpec, FleetSpec, RingNetwork
 from flowstate_core.rng import truncated_normal
 
@@ -108,16 +109,83 @@ class FleetPlan:
         return tuple(self.vehicle_id(i) for i, c in enumerate(self.complied) if c)
 
 
+def resolve_calibration_path(path: str) -> Path:
+    """Resolve an ``IDMCalibration`` artifact path (as given, else repo-root).
+
+    Scenario YAMLs reference artifacts with repo-relative paths like
+    ``artifacts/idm_us101.json``; runs launched from elsewhere still find
+    them via the repository root (this file sits at
+    ``packages/microsim/microsim/vehicles.py``).
+
+    Raises:
+        FileNotFoundError: Neither candidate exists.
+    """
+    p = Path(path)
+    if p.is_file():
+        return p
+    candidate = Path(__file__).resolve().parents[3] / path
+    if candidate.is_file():
+        return candidate
+    raise FileNotFoundError(f"IDMCalibration artifact not found: {path!r} (also tried {candidate})")
+
+
+def load_idm_calibration(path: str) -> IDMCalibration:
+    """Load the ``IDMCalibration`` artifact referenced by a fleet spec."""
+    return IDMCalibration.load(resolve_calibration_path(path))
+
+
+def _draw_from_calibration(
+    cal: IDMCalibration, n: int, rng: np.random.Generator
+) -> list[dict[str, float]]:
+    """Per-vehicle draws from a calibrated population (docs/CONTRACTS.md §2).
+
+    Truncated multivariate normal: candidate vectors come from
+    ``rng.multivariate_normal(mean, cov)`` and are accepted when every
+    marginal lies within ±3σ of its mean (σ from the covariance diagonal)
+    AND at or above the hard physical floors ``IDM_HARD_LOWER``. Vehicles are
+    filled in index order; after 1000 batch attempts remaining draws fall
+    back to the clipped mean (practically unreachable for a sane artifact).
+
+    Args:
+        cal: Loaded calibration artifact (order v0, T, a_max, b, s0).
+        n: Number of vehicles.
+        rng: Seeded generator (``flowstate_core.rng.make_rng``).
+    """
+    names = list(cal.param_names)
+    mean = np.array([cal.mean[name] for name in names])
+    cov = np.array(cal.cov, dtype=float)
+    sigma = np.sqrt(np.clip(np.diag(cov), 0.0, None))
+    lo = np.maximum(mean - 3.0 * sigma, np.array([IDM_HARD_LOWER[k] for k in names]))
+    hi = mean + 3.0 * sigma
+    out: list[dict[str, float]] = []
+    for _ in range(1000):
+        if len(out) >= n:
+            break
+        batch = rng.multivariate_normal(mean, cov, size=n - len(out))
+        ok = np.all((batch >= lo) & (batch <= hi), axis=1)
+        out.extend(dict(zip(names, map(float, row), strict=True)) for row in batch[ok])
+    fallback = np.clip(mean, lo, hi)
+    while len(out) < n:  # pragma: no cover - degenerate artifact only
+        out.append(dict(zip(names, map(float, fallback), strict=True)))
+    return out[:n]
+
+
 def draw_vehicle_params(
     fleet: FleetSpec, n: int, rng: np.random.Generator
 ) -> list[dict[str, float]]:
     """Draw heterogeneous per-vehicle IDM parameters (CLAUDE.md §3.1).
 
-    Each parameter is drawn from a truncated normal with
+    Default path: each parameter is drawn from a truncated normal with
     ``σ = heterogeneity_frac · mean`` (±3σ truncation via
     :func:`flowstate_core.rng.truncated_normal`) and clipped at the hard
     physical lower bounds ``IDM_HARD_LOWER``. Draw order: vehicles outermost,
     ``IDM_PARAM_ORDER`` innermost — fixed for reproducibility.
+
+    Calibrated path (docs/CONTRACTS.md §2): when ``fleet.idm_calibration``
+    is set, the referenced ``IDMCalibration`` artifact's population
+    mean/covariance OVERRIDE the scalar fields and ``heterogeneity_frac``,
+    and vehicles draw from the truncated multivariate normal
+    (:func:`_draw_from_calibration`) with the same run RNG.
 
     Args:
         fleet: Fleet spec carrying the population means and heterogeneity.
@@ -127,6 +195,8 @@ def draw_vehicle_params(
     Returns:
         ``n`` parameter dicts with keys ``v0, T, a_max, b, s0`` (SI).
     """
+    if fleet.idm_calibration is not None:
+        return _draw_from_calibration(load_idm_calibration(fleet.idm_calibration), n, rng)
     means = {"v0": fleet.v0, "T": fleet.T, "a_max": fleet.a_max, "b": fleet.b, "s0": fleet.s0}
     out: list[dict[str, float]] = []
     for _ in range(n):
