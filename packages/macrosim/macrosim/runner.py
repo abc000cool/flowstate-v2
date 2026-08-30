@@ -35,6 +35,7 @@ import json
 import math
 import platform
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,7 @@ from flowstate_core.artifacts import TriangularFD
 from flowstate_core.config import CorridorNetwork, RingNetwork, ScenarioConfig, config_hash
 from flowstate_core.controller_types import ControllerObs, Memory, VehicleControllerFn
 from flowstate_core.rng import make_rng
-from macrosim.bottleneck import BottleneckVariant, MovingBottleneck
+from macrosim.bottleneck import BottleneckVariant, MovingBottleneck, VStarTrajectory
 from macrosim.ctm import CTMSolver, cfl_max_dt
 from macrosim.fundamental import (
     capacity_at_speed,
@@ -168,6 +169,7 @@ def run_macro(
     v_star_ms: float | None = None,
     bottleneck_variant: BottleneckVariant = "flux_cap",
     use_numba: bool | None = None,
+    prescribed_avs: Sequence[VStarTrajectory] | None = None,
 ) -> Path:
     """Run one macro-tier (screening) replicate and write its artifacts.
 
@@ -191,6 +193,14 @@ def run_macro(
         bottleneck_variant: ``"flux_cap"`` (primary) or ``"capacity"``
             (:mod:`macrosim.bottleneck`).
         use_numba: Kernel selection forwarded to :class:`CTMSolver`.
+        prescribed_avs: Optional prescribed moving-bottleneck trajectories
+            (:class:`macrosim.bottleneck.VStarTrajectory` — the
+            v*-trajectory entry point, CLAUDE.md §5.5): each is played back
+            as a moving flux constraint at its recorded ``x(t)`` with its
+            recorded ``v*(t)`` and the selected ``bottleneck_variant``.
+            When given, the config's own ``av`` block is NOT actuated (a
+            note is recorded); ``meta.json`` gains binding diagnostics
+            (fraction of active AV-steps with ``v* < V_e(ρ_cell)``).
 
     Returns:
         Path of the run directory containing ``edges.parquet`` and
@@ -255,7 +265,13 @@ def run_macro(
     avs: list[MovingBottleneck] = []
     memories: list[Memory] = []
     complied: list[bool] = []
-    if cfg.av.penetration > 0.0 and (cfg.av.controller is not None or v_star_ms is not None):
+    if prescribed_avs is not None:
+        if cfg.av.penetration > 0.0:
+            notes.append(
+                "av block not actuated: prescribed v*-trajectories supplied "
+                f"({len(prescribed_avs)} AVs played back from micro-tier data)"
+            )
+    elif cfg.av.penetration > 0.0 and (cfg.av.controller is not None or v_star_ms is not None):
         if cfg.av.controller is not None:
             controller_fn, controller_params, note = _load_controller(
                 cfg.av.controller, cfg.av.controller_params
@@ -296,10 +312,32 @@ def run_macro(
         t_rows.append(np.full(n_cells, solver.t_s))
         rho_rows.append(np.asarray(solver.density, dtype=np.float64).copy())
 
+    prescribed_active_steps = 0
+    prescribed_binding_steps = 0
+
     _record()
     for k in range(n_steps):
         caps: dict[int, float] = {}
         speeds = equilibrium_speed(fd, np.asarray(solver.density))
+
+        # Prescribed v*-trajectory moving bottlenecks (played back verbatim).
+        if prescribed_avs is not None:
+            for traj in prescribed_avs:
+                state = traj.state_at(solver.t_s)
+                if state is None:
+                    continue
+                x_av, v_star = state
+                if not 0.0 <= x_av < solver.length_m:
+                    continue
+                mb = MovingBottleneck(x_m=x_av, v_star_ms=v_star, variant=bottleneck_variant)
+                cell = mb.cell_index(solver)
+                prescribed_active_steps += 1
+                if v_star < equilibrium_speed_scalar(fd, float(solver.density[cell])):
+                    prescribed_binding_steps += 1
+                cap_entry = mb.iface_cap(solver)
+                if cap_entry is not None:
+                    iface, cap = cap_entry
+                    caps[iface] = min(caps.get(iface, math.inf), cap)
 
         if pert is not None and pert.t_s <= solver.t_s < pert.t_s + pert.duration_s:
             iface = min(max(round(pert.position_m / dx), 0), n_cells)
@@ -375,6 +413,20 @@ def run_macro(
             "controller_applied": controller_fn is not None,
             "v_star_fallback_ms": v_star_ms,
             "variant": bottleneck_variant,
+            "prescribed": (
+                {
+                    "n_trajectories": len(prescribed_avs),
+                    "active_av_steps": prescribed_active_steps,
+                    "binding_av_steps": prescribed_binding_steps,
+                    "binding_fraction": (
+                        prescribed_binding_steps / prescribed_active_steps
+                        if prescribed_active_steps
+                        else 0.0
+                    ),
+                }
+                if prescribed_avs is not None
+                else None
+            ),
         },
         "notes": notes,
     }

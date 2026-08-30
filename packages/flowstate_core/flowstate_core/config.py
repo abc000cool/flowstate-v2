@@ -27,6 +27,43 @@ class RingNetwork(BaseModel):
     n_vehicles: int = Field(gt=0)
 
 
+class BoundarySpec(BaseModel):
+    """Measured downstream boundary condition (docs/CONTRACTS.md §2).
+
+    A time-varying speed schedule imposed at the corridor's downstream
+    boundary, OUTSIDE the measured span: the micro runner appends an
+    exit-buffer edge after the corridor proper and applies each step via
+    ``edge.setMaxSpeed``, so congestion that originates downstream of the
+    modeled section spills back into it exactly as a measured boundary
+    would force. Imposing measured boundary conditions (demands, speeds,
+    or bottleneck states taken from field data at the model limits) is
+    standard microsimulation calibration practice — FHWA Traffic Analysis
+    Toolbox Vol. III (FHWA-HOP-18-036, 2019) — and is required whenever the
+    observed congestion enters the modeled section from outside it (e.g.
+    the NGSIM US-101 site, docs/M2_RESULTS.md §7.3). A schedule derived
+    from observations is a calibration input, not a seeded perturbation:
+    it does NOT set ``seeded=True`` (the waves inside the span remain
+    emergent), but its provenance must be recorded wherever it is used.
+    """
+
+    kind: Literal["speed_schedule"] = "speed_schedule"
+    steps: list[tuple[float, float]] = Field(min_length=1)
+    """Piecewise-constant (t_s [s, sim time], v_limit [m/s]) steps,
+    time-ordered; each limit holds until the next step (the last holds to
+    the end of the run)."""
+    exit_buffer_m: float = Field(default=200.0, gt=0)
+    """Length of the appended exit-buffer edge the limit applies to [m]."""
+
+    @model_validator(mode="after")
+    def _check_steps(self) -> Self:
+        times = [t for t, _ in self.steps]
+        if times != sorted(times):
+            raise ValueError("boundary steps must be ordered by t_s")
+        if any(v <= 0 for _, v in self.steps):
+            raise ValueError("boundary speed limits must be > 0")
+        return self
+
+
 class CorridorNetwork(BaseModel):
     """Straight corridor with an upstream inflow boundary."""
 
@@ -35,6 +72,9 @@ class CorridorNetwork(BaseModel):
     lanes: int = Field(ge=1, le=8, default=1)
     inflow: list[tuple[float, float]] = Field(min_length=1)
     """Piecewise-constant (t_start [s], inflow [veh/s]) steps, time-ordered."""
+    boundary: BoundarySpec | None = None
+    """Optional measured downstream boundary condition (speed schedule on an
+    exit-buffer edge outside the measured span); None ⇒ free outflow."""
 
     @model_validator(mode="after")
     def _check_inflow(self) -> Self:

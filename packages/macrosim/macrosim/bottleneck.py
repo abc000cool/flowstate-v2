@@ -36,12 +36,62 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+import numpy as np
+from numpy.typing import NDArray
+
 from macrosim.ctm import CTMSolver
 from macrosim.fundamental import capacity_at_speed, equilibrium_speed_scalar
 
-__all__ = ["BottleneckVariant", "MovingBottleneck"]
+__all__ = ["BottleneckVariant", "MovingBottleneck", "VStarTrajectory"]
 
 BottleneckVariant = Literal["flux_cap", "capacity"]
+
+
+@dataclass(frozen=True)
+class VStarTrajectory:
+    """A prescribed moving-bottleneck trajectory (v*-trajectory entry point).
+
+    Plays back a controlled vehicle's recorded trajectory — typically an AV
+    extracted from a micro-tier run — as the moving constraint's position
+    ``x(t)`` and commanded speed ``v*(t)``. This drives the Delle
+    Monache–Goatin moving flux constraint with the SAME ``v*`` signal in
+    both tiers, which is what the CLAUDE.md §5.5 flux-cap-variant comparison
+    against micro ground truth requires: the constraint's ``v*`` is no
+    longer produced by re-running the controller on the macro state (where
+    equilibrium observations can keep it from ever binding) but taken
+    verbatim from the micro realization.
+
+    Attributes:
+        t_s: Sample times [s], strictly increasing, shape ``[n]``.
+        x_m: Positions along the macro domain [m], shape ``[n]``.
+        v_ms: Speeds v* [m/s] at each sample, shape ``[n]``.
+    """
+
+    t_s: NDArray[np.float64]
+    x_m: NDArray[np.float64]
+    v_ms: NDArray[np.float64]
+
+    def __post_init__(self) -> None:
+        if not (len(self.t_s) == len(self.x_m) == len(self.v_ms)):
+            raise ValueError("t_s, x_m, v_ms must have equal length")
+        if len(self.t_s) < 2:
+            raise ValueError("a trajectory needs at least 2 samples")
+        if np.any(np.diff(self.t_s) <= 0):
+            raise ValueError("t_s must be strictly increasing")
+
+    def state_at(self, t: float) -> tuple[float, float] | None:
+        """Interpolated ``(x [m], v* [m/s])`` at time ``t``.
+
+        Returns ``None`` outside the trajectory's time support — the
+        vehicle has not yet entered, or has already left, the domain (the
+        caller additionally deactivates the constraint once ``x`` exceeds
+        the solver domain).
+        """
+        if t < float(self.t_s[0]) or t > float(self.t_s[-1]):
+            return None
+        x = float(np.interp(t, self.t_s, self.x_m))
+        v = float(np.interp(t, self.t_s, self.v_ms))
+        return x, max(v, 0.0)
 
 
 @dataclass

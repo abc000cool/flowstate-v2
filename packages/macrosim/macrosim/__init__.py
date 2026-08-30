@@ -6,7 +6,7 @@ this tier makes no claims about phantom-jam formation or dissipation
 (CLAUDE.md ADR-1, §5).
 """
 
-from macrosim.bottleneck import BottleneckVariant, MovingBottleneck
+from macrosim.bottleneck import BottleneckVariant, MovingBottleneck, VStarTrajectory
 from macrosim.ctm import BOUND_TOL, Boundary, CTMSolver, cfl_max_dt
 from macrosim.estimator import CTMKalmanEstimator
 from macrosim.fundamental import (
@@ -27,6 +27,7 @@ __all__ = [
     "CTMSolver",
     "MovingBottleneck",
     "TriangularFD",
+    "VStarTrajectory",
     "capacity_at_speed",
     "cfl_max_dt",
     "equilibrium_speed",

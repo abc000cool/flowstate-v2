@@ -196,6 +196,87 @@ def test_osm_network_not_supported(tmp_path: Path) -> None:
         run_macro(cfg, seed=1, out_dir=tmp_path)
 
 
+def test_prescribed_v_star_trajectories_bind_and_differ_by_variant(tmp_path: Path) -> None:
+    """Prescribed playback congests upstream and discriminates the variants.
+
+    A slow prescribed trajectory (v* far below V_e at the ambient density)
+    must (a) bind — recorded in the meta diagnostics, (b) raise upstream
+    density relative to the free baseline, and (c) produce different fields
+    under ``flux_cap`` vs ``capacity`` (the CLAUDE.md §5.5 comparison is only
+    meaningful when the constraint distinguishes the variants).
+    """
+    import numpy as np
+
+    from macrosim.bottleneck import VStarTrajectory
+
+    cfg = _corridor_cfg(
+        network=CorridorNetwork(length_m=5000.0, lanes=1, inflow=[(0.0, 0.45)]),
+        sim=SimSpec(duration_s=400.0, step_length_s=0.5, output_hz=0.2),
+    )
+    traj = VStarTrajectory(
+        t_s=np.array([150.0, 350.0]),
+        x_m=np.array([2000.0, 2000.0 + 4.0 * 200.0]),
+        v_ms=np.array([4.0, 4.0]),
+    )
+    base_dir = run_macro(cfg, seed=7, out_dir=tmp_path / "base")
+    flux_dir = run_macro(
+        cfg, seed=7, out_dir=tmp_path / "flux", prescribed_avs=[traj], bottleneck_variant="flux_cap"
+    )
+    cap_dir = run_macro(
+        cfg,
+        seed=7,
+        out_dir=tmp_path / "cap",
+        prescribed_avs=[traj],
+        bottleneck_variant="capacity",
+    )
+    e_base, _ = _read(base_dir)
+    e_flux, m_flux = _read(flux_dir)
+    e_cap, m_cap = _read(cap_dir)
+
+    pres = m_flux["av"]["prescribed"]
+    assert pres["n_trajectories"] == 1
+    assert pres["active_av_steps"] > 0
+    assert pres["binding_fraction"] > 0.9  # v*=4 m/s << free-flow V_e
+    assert m_flux["tier"] == "screening"
+    assert m_cap["av"]["prescribed"]["n_trajectories"] == 1
+
+    def shadow_density(e: pd.DataFrame) -> float:
+        # The queue trails the moving AV inside its swept band (2000-2800 m).
+        sel = e[(e.t_bin > 200.0) & (e.t_bin <= 350.0) & (e.x_bin > 2000.0) & (e.x_bin < 2800.0)]
+        return float(sel.density.mean())
+
+    def downstream_density(e: pd.DataFrame) -> float:
+        sel = e[(e.t_bin > 200.0) & (e.t_bin <= 350.0) & (e.x_bin > 3000.0) & (e.x_bin < 4500.0)]
+        return float(sel.density.mean())
+
+    assert shadow_density(e_flux) > 1.5 * shadow_density(e_base)
+    assert downstream_density(e_flux) < 0.9 * downstream_density(e_base)
+    # The two variants must NOT be identical when the constraint binds.
+    assert not np.allclose(e_flux.density.to_numpy(), e_cap.density.to_numpy())
+
+
+def test_prescribed_avs_suppress_config_av_block(tmp_path: Path) -> None:
+    """With prescribed trajectories the config's own AVs are not actuated."""
+    import numpy as np
+
+    from macrosim.bottleneck import VStarTrajectory
+
+    cfg = _corridor_cfg(
+        network=CorridorNetwork(length_m=2000.0, lanes=1, inflow=[(0.0, 0.3)]),
+        sim=SimSpec(duration_s=60.0, step_length_s=0.5, output_hz=0.5),
+        av=AVSpec(penetration=0.05, compliance=1.0, controller=None),
+    )
+    traj = VStarTrajectory(
+        t_s=np.array([0.0, 60.0]),
+        x_m=np.array([500.0, 800.0]),
+        v_ms=np.array([5.0, 5.0]),
+    )
+    _, meta = _read(run_macro(cfg, seed=3, out_dir=tmp_path, v_star_ms=8.0, prescribed_avs=[traj]))
+    assert meta["av"]["n_avs"] == 0
+    assert meta["av"]["prescribed"]["n_trajectories"] == 1
+    assert any("prescribed" in n for n in meta["notes"])
+
+
 def test_runner_respects_cfl_for_small_cells(tmp_path: Path) -> None:
     """The runner shrinks dt below the config step when CFL requires it."""
     cfg = _corridor_cfg(

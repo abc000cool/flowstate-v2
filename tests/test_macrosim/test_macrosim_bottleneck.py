@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from macrosim.bottleneck import MovingBottleneck
+from macrosim.bottleneck import MovingBottleneck, VStarTrajectory
 from macrosim.ctm import CTMSolver, cfl_max_dt
 from macrosim.fundamental import capacity_at_speed, v1_legacy_fd
 
@@ -150,3 +150,54 @@ def test_av_exits_open_corridor_and_deactivates() -> None:
         av.advance(solver)
     assert not av.active
     assert av.iface_cap(solver) is None
+
+
+class TestVStarTrajectory:
+    """Prescribed v*-trajectory playback (the CLAUDE.md §5.5 entry point)."""
+
+    def _traj(self) -> VStarTrajectory:
+        return VStarTrajectory(
+            t_s=np.array([10.0, 20.0, 30.0]),
+            x_m=np.array([0.0, 100.0, 150.0]),
+            v_ms=np.array([10.0, 10.0, 5.0]),
+        )
+
+    def test_state_interpolates_linearly(self) -> None:
+        x, v = self._traj().state_at(15.0)
+        assert x == pytest.approx(50.0)
+        assert v == pytest.approx(10.0)
+        x2, v2 = self._traj().state_at(25.0)
+        assert x2 == pytest.approx(125.0)
+        assert v2 == pytest.approx(7.5)
+
+    def test_none_outside_time_support(self) -> None:
+        traj = self._traj()
+        assert traj.state_at(9.999) is None
+        assert traj.state_at(30.001) is None
+        # Endpoints are inside the support.
+        assert traj.state_at(10.0) == (0.0, 10.0)
+        assert traj.state_at(30.0) == (150.0, 5.0)
+
+    def test_negative_recorded_speed_clamped_to_zero(self) -> None:
+        traj = VStarTrajectory(
+            t_s=np.array([0.0, 10.0]),
+            x_m=np.array([0.0, 1.0]),
+            v_ms=np.array([-0.5, -0.5]),
+        )
+        assert traj.state_at(5.0) == (0.5, 0.0)
+
+    def test_rejects_bad_shapes_and_ordering(self) -> None:
+        with pytest.raises(ValueError, match="equal length"):
+            VStarTrajectory(
+                t_s=np.array([0.0, 1.0]),
+                x_m=np.array([0.0]),
+                v_ms=np.array([1.0, 1.0]),
+            )
+        with pytest.raises(ValueError, match="at least 2"):
+            VStarTrajectory(t_s=np.array([0.0]), x_m=np.array([0.0]), v_ms=np.array([1.0]))
+        with pytest.raises(ValueError, match="strictly increasing"):
+            VStarTrajectory(
+                t_s=np.array([1.0, 1.0]),
+                x_m=np.array([0.0, 1.0]),
+                v_ms=np.array([1.0, 1.0]),
+            )

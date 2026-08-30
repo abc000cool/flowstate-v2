@@ -75,7 +75,7 @@ Under active construction. Milestone tracker:
 - [x] **M0** — monorepo + macro tier ported with test battery, CI green
 - [x] **M1** — ring-road emergence + single-AV dampening reproduced in CI
 - [x] **M2** — FD + IDM population calibration from public data
-- [ ] **M3** — corridor validation vs FHWA-style criteria, full sweep with CIs
+- [x] **M3** — full 540-run sweep with CIs; US-101 validation executed end-to-end (criteria honestly mixed: see docs/M3_US101_VALIDATION.md)
 - [x] **M4** — FastAPI service + dashboard + Docker
 - [ ] **M5** — hardening, docs, versioned release
 

@@ -73,6 +73,31 @@ class TestCorridor:
         assert "entry" not in bundle.main_edges
         assert len(bundle.main_edges) == len(bundle.edge_ids) - 1
 
+    def test_no_exit_edge_by_default(self, tmp_path):
+        bundle = corridor(2000.0, workdir=tmp_path)
+        assert bundle.exit_edge is None
+        assert "exit" not in bundle.edge_ids
+
+    def test_exit_buffer_edge(self, tmp_path):
+        bundle = corridor(2000.0, workdir=tmp_path, entry_m=100.0, exit_m=200.0)
+        assert bundle.exit_edge == "exit"
+        assert bundle.edge_ids[-1] == "exit"
+        assert bundle.edge_lengths[-1] == pytest.approx(200.0)
+        assert bundle.total_length_m == pytest.approx(100.0 + 2000.0 + 200.0)
+        # The exit edge exists in the compiled network with the right length.
+        net = sumolib.net.readNet(str(bundle.net_path))
+        assert net.getEdge("exit").getLength() == pytest.approx(200.0, abs=0.5)
+        # linear_x maps into the exit buffer beyond the corridor proper.
+        assert bundle.linear_x("exit", 50.0) == pytest.approx(2150.0)
+        # Entry AND exit are excluded from the analysis corridor.
+        assert "exit" not in bundle.main_edges
+        assert "entry" not in bundle.main_edges
+        assert len(bundle.main_edges) == len(bundle.edge_ids) - 2
+
+    def test_negative_exit_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="exit_m"):
+            corridor(2000.0, workdir=tmp_path, exit_m=-1.0)
+
 
 TINY_OSM = """<?xml version="1.0" encoding="UTF-8"?>
 <osm version="0.6" generator="hand-written-test-fixture">

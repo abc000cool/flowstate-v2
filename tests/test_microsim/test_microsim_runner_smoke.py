@@ -116,6 +116,59 @@ class TestCorridorSmoke:
         # No x_unwrapped column off-ring (contract columns only).
         assert "x_unwrapped" not in df.columns
 
+    def test_downstream_boundary_congests_measured_span(self, tmp_path):
+        """Measured-boundary support (docs/CONTRACTS.md §2 BoundarySpec, M3).
+
+        A slow speed schedule on the exit-buffer edge — outside the corridor
+        proper — must spill congestion back into the downstream end of the
+        corridor, and the run must record the boundary in meta.json. The
+        boundary is a calibration input, not a perturbation: seeded stays
+        False.
+        """
+        base = {
+            "name": "corridor_boundary_smoke",
+            "network": {
+                "kind": "corridor",
+                "length_m": 1000.0,
+                "lanes": 1,
+                "inflow": [[0.0, 0.35]],
+            },
+            "sim": {"duration_s": 150.0},
+        }
+        cfg_free = ScenarioConfig.model_validate(base)
+        with_boundary = json.loads(json.dumps(base))
+        with_boundary["network"]["boundary"] = {
+            "steps": [[0.0, 2.0]],
+            "exit_buffer_m": 150.0,
+        }
+        cfg_bound = ScenarioConfig.model_validate(with_boundary)
+
+        p_free = run_micro(cfg_free, 42, tmp_path / "free")
+        p_bound = run_micro(cfg_bound, 42, tmp_path / "bound")
+
+        meta = json.loads(p_bound.meta.read_text())
+        assert meta["seeded"] is False
+        assert meta["boundary"]["kind"] == "speed_schedule"
+        assert meta["boundary"]["exit_edge"] == "exit"
+        assert meta["boundary"]["n_steps_applied"] == 1
+        assert json.loads(p_free.meta.read_text())["boundary"] is None
+
+        df_free = pd.read_parquet(p_free.trajectories)
+        df_bound = pd.read_parquet(p_bound.trajectories)
+
+        # Entry buffer = min(2000, length) = 1000 m ⇒ corridor proper is
+        # x ∈ [1000, 2000); compare the last 300 m of it, post-ramp-up.
+        def tail_speed(df):
+            sel = df[(df.x >= 1700.0) & (df.x < 2000.0) & (df.t >= 60.0)]
+            return sel.v.mean()
+
+        v_free, v_bound = tail_speed(df_free), tail_speed(df_bound)
+        assert v_bound < v_free - 2.0, (v_free, v_bound)
+        # And vehicles do exist on the exit edge, at/below its limit + noise.
+        on_exit = df_bound[df_bound.x >= 2000.0]
+        assert len(on_exit) > 0
+        assert on_exit.v.quantile(0.9) <= 2.5
+
     def test_five_lane_calibrated_fleet_smoke(self, tmp_path):
         """us101_replica shape: 5 lanes + IDMCalibration-driven fleet (M2).
 

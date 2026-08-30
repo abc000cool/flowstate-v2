@@ -131,7 +131,10 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
         return ring(net.circumference_m, workdir=workdir)
     if isinstance(net, CorridorNetwork):
         entry_m = min(CORRIDOR_INSERTION_BUFFER_M, net.length_m)
-        return corridor(net.length_m, lanes=net.lanes, workdir=workdir, entry_m=entry_m)
+        exit_m = net.boundary.exit_buffer_m if net.boundary is not None else 0.0
+        return corridor(
+            net.length_m, lanes=net.lanes, workdir=workdir, entry_m=entry_m, exit_m=exit_m
+        )
     if isinstance(net, OSMNetwork):
         return osm_import(
             osm_file=net.osm_file,
@@ -487,6 +490,24 @@ def run_micro(
 
     offsets_by_edge = dict(zip(bundle.edge_ids, bundle.offsets, strict=True))
     circumference = bundle.total_length_m
+
+    # Measured downstream boundary condition (docs/CONTRACTS.md §2): a speed
+    # schedule on the exit-buffer edge OUTSIDE the corridor proper, standard
+    # FHWA microsim calibration practice for congestion entering the modeled
+    # section from downstream (FHWA-HOP-18-036; see BoundarySpec docstring).
+    boundary_steps: list[tuple[float, float]] = []
+    if (
+        isinstance(cfg.network, CorridorNetwork)
+        and cfg.network.boundary is not None
+        and bundle.exit_edge is not None
+    ):
+        boundary_steps = [(float(ts), float(vs)) for ts, vs in cfg.network.boundary.steps]
+    boundary_idx = 0
+    # Apply every step scheduled at or before t = 0 up front.
+    while boundary_idx < len(boundary_steps) and boundary_steps[boundary_idx][0] <= 0.0:
+        mod.edge.setMaxSpeed(bundle.exit_edge, boundary_steps[boundary_idx][1])
+        boundary_idx += 1
+
     fuel_mg: dict[str, float] = {}
     unwrap_x: dict[str, tuple[float, float]] = {}  # veh_id -> (last wrapped x, unwrapped x)
     v_ref_hist: deque[tuple[float, float]] = deque()
@@ -503,6 +524,11 @@ def run_micro(
         for k in range(n_steps):
             mod.simulationStep()
             t = float(mod.simulation.getTime())
+
+            # Downstream boundary schedule (piecewise-constant, exit edge).
+            while boundary_idx < len(boundary_steps) and t >= boundary_steps[boundary_idx][0]:
+                mod.edge.setMaxSpeed(bundle.exit_edge, boundary_steps[boundary_idx][1])
+                boundary_idx += 1
 
             for vid in mod.simulation.getDepartedIDList():
                 mod.vehicle.subscribe(vid, sub_vars)
@@ -657,6 +683,21 @@ def run_micro(
         "controller": cfg.av.controller,
         "controller_start_s": controller_start_s,
         "vsl": cfg.av.vsl,
+        "boundary": (
+            {
+                "kind": cfg.network.boundary.kind,
+                "exit_edge": bundle.exit_edge,
+                "exit_buffer_m": cfg.network.boundary.exit_buffer_m,
+                "n_steps": len(boundary_steps),
+                "n_steps_applied": boundary_idx,
+                "v_limit_min_ms": min(v for _, v in boundary_steps),
+                "v_limit_max_ms": max(v for _, v in boundary_steps),
+            }
+            if boundary_steps
+            and isinstance(cfg.network, CorridorNetwork)
+            and cfg.network.boundary is not None
+            else None
+        ),
         "fuel_unit": "ml (HBEFA4 mg/s x step, / 0.74 kg/l gasoline density)",
         "fuel_total_ml": float(sum(fuel_ml.values())),
         "fuel_ml_per_vehicle": fuel_ml,

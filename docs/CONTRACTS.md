@@ -61,9 +61,23 @@ Pydantic v2 models, YAML round-trip via `ScenarioConfig.from_yaml(path)` /
 
 - `RingNetwork(kind="ring", circumference_m: float, n_vehicles: int)`
 - `CorridorNetwork(kind="corridor", length_m: float, lanes: int ∈ [1, 8],
-  inflow: list[tuple[float, float]])`  # (t_start_s, inflow veh/s) steps
-  # inflow is the TOTAL across all lanes; lanes raised from ≤4 to ≤8 in
-  # Phase 2 for the 5-lane US-101 replica (M2)
+  inflow: list[tuple[float, float]], boundary: BoundarySpec | None = None)`
+  # inflow: (t_start_s, inflow veh/s) steps, TOTAL across all lanes; lanes
+  # raised from ≤4 to ≤8 in Phase 2 for the 5-lane US-101 replica (M2)
+- `BoundarySpec(kind="speed_schedule", steps: list[tuple[float, float]],
+  exit_buffer_m: float = 200.0)` — measured downstream boundary condition
+  (added in Phase 3 for the US-101 replica). `steps` are time-ordered
+  `(t_s [s, sim time], v_limit [m/s])` with `v_limit > 0`; each limit holds
+  until the next step. The micro runner appends an `exit_buffer_m`-long
+  exit edge AFTER the corridor proper and applies the schedule there via
+  `edge.setMaxSpeed`, so the boundary acts outside the measured span and
+  congestion spills back into it. Imposing measured boundary conditions is
+  standard FHWA microsim calibration practice (Traffic Analysis Toolbox
+  Vol. III, FHWA-HOP-18-036, 2019). A data-derived schedule does NOT set
+  `seeded=True` (in-span waves stay emergent) but its provenance must be
+  recorded wherever results are reported. Macro tier: not implemented
+  (screening runs stay free-outflow; a run needing the boundary is a
+  micro-tier run).
 - `OSMNetwork(kind="osm", bbox: (S, W, N, E) | osm_file: str, corridor_edges: list[str])`
 
 Other blocks:
@@ -104,7 +118,10 @@ runs/<config_hash>/<seed>/
 `trajectories.parquet` columns (micro): `t: f64 [s]`, `veh_id: str`,
 `x: f64 [m]` (linear position along route; ring = arc length),
 `lane: i32`, `v: f64 [m/s]`, `a: f64 [m/s²]`, `is_av: bool`, `complied: bool`.
-Sampled at `sim.output_hz`.
+Sampled at `sim.output_hz`. On corridors, `x` spans entry buffer + corridor
+proper (+ exit buffer when a `BoundarySpec` is configured); micro `meta.json`
+then carries a `boundary` object (`kind`, `exit_edge`, `exit_buffer_m`,
+`n_steps`, `n_steps_applied`, `v_limit_min_ms`, `v_limit_max_ms`).
 
 `edges.parquet` (both tiers): `t_bin: f64 [s]`, `x_bin: f64 [m]`,
 `mean_speed: f64 [m/s]`, `density: f64 [veh/m]`, `flow: f64 [veh/s]`.

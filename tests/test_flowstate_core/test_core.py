@@ -7,6 +7,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from flowstate_core import (
+    BoundarySpec,
+    CorridorNetwork,
     DemandProfile,
     RingNetwork,
     ScenarioConfig,
@@ -112,6 +114,54 @@ class TestConfig:
                 },
                 sim=SimSpec(duration_s=60),
             )
+
+
+def _corridor_config(**net_overrides) -> ScenarioConfig:
+    net = dict(kind="corridor", length_m=1000.0, lanes=2, inflow=[(0.0, 0.5)])
+    net.update(net_overrides)
+    return ScenarioConfig(name="corr_test", network=net, sim=SimSpec(duration_s=120.0))
+
+
+class TestBoundarySpec:
+    """Measured downstream boundary condition (docs/CONTRACTS.md §2, M3)."""
+
+    def test_defaults_and_yaml_round_trip(self, tmp_path):
+        cfg = _corridor_config(boundary={"steps": [(0.0, 12.0), (30.0, 8.5), (60.0, 10.0)]})
+        net = cfg.network
+        assert isinstance(net, CorridorNetwork)
+        assert net.boundary is not None
+        assert net.boundary.kind == "speed_schedule"
+        assert net.boundary.exit_buffer_m == 200.0
+        p = tmp_path / "corr.yaml"
+        cfg.to_yaml(p)
+        assert ScenarioConfig.from_yaml(p) == cfg
+
+    def test_none_by_default_and_hash_sensitive(self):
+        plain = _corridor_config()
+        assert isinstance(plain.network, CorridorNetwork)
+        assert plain.network.boundary is None
+        with_b = _corridor_config(boundary={"steps": [(0.0, 12.0)]})
+        assert config_hash(plain) != config_hash(with_b)
+
+    def test_steps_must_be_time_ordered(self):
+        with pytest.raises(ValueError, match="ordered"):
+            BoundarySpec(steps=[(30.0, 8.0), (0.0, 12.0)])
+
+    def test_speed_limits_must_be_positive(self):
+        with pytest.raises(ValueError, match="> 0"):
+            BoundarySpec(steps=[(0.0, 0.0)])
+        with pytest.raises(ValueError, match="> 0"):
+            BoundarySpec(steps=[(0.0, -3.0)])
+
+    def test_needs_at_least_one_step_and_positive_buffer(self):
+        with pytest.raises(ValueError):
+            BoundarySpec(steps=[])
+        with pytest.raises(ValueError):
+            BoundarySpec(steps=[(0.0, 10.0)], exit_buffer_m=0.0)
+
+    def test_boundary_does_not_set_seeded(self):
+        cfg = _corridor_config(boundary={"steps": [(0.0, 9.0)]})
+        assert cfg.seeded is False
 
 
 class TestArtifacts:

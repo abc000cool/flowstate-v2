@@ -8,6 +8,7 @@ from flowstate_core.artifacts import (
 )
 from flowstate_core.config import (
     AVSpec,
+    BoundarySpec,
     CorridorNetwork,
     FleetSpec,
     OSMNetwork,
@@ -27,6 +28,7 @@ from flowstate_core.controller_types import (
 
 __all__ = [
     "AVSpec",
+    "BoundarySpec",
     "ControllerObs",
     "CorridorNetwork",
     "DemandProfile",

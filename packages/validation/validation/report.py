@@ -222,7 +222,13 @@ def generate_report(
     calibrations: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for r in runs:
-        for entry in r.meta.get("calibration_artifacts", []) or []:
+        entries = list(r.meta.get("calibration_artifacts", []) or [])
+        # Micro runs record a single fleet IDMCalibration under
+        # `fleet_calibration` (docs/CONTRACTS.md §2) — same provenance shape.
+        fleet_cal = r.meta.get("fleet_calibration")
+        if isinstance(fleet_cal, dict):
+            entries.append(fleet_cal)
+        for entry in entries:
             if isinstance(entry, dict):
                 key = (str(entry.get("path", "unknown")), str(entry.get("data_hash", "unknown")))
                 if key not in seen:

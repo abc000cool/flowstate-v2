@@ -64,6 +64,10 @@ class NetBundle:
         workdir: Directory holding the netconvert inputs and output.
         kind: Which builder produced the bundle.
         entry_edge: Id of the upstream insertion edge (corridor only).
+        exit_edge: Id of the downstream exit-buffer edge (corridor only;
+            present when the corridor was built with ``exit_m > 0`` to host
+            a measured downstream boundary condition outside the corridor
+            proper — see :class:`flowstate_core.config.BoundarySpec`).
     """
 
     net_path: Path
@@ -74,6 +78,7 @@ class NetBundle:
     workdir: Path
     kind: Literal["ring", "corridor", "osm"]
     entry_edge: str | None = None
+    exit_edge: str | None = None
 
     def linear_x(self, edge_id: str, lane_pos: float) -> float:
         """Map (edge id, position-on-edge [m]) → linear x [m].
@@ -110,10 +115,11 @@ class NetBundle:
 
     @property
     def main_edges(self) -> tuple[str, ...]:
-        """Edge ids excluding the entry edge (the analysis corridor proper)."""
-        if self.entry_edge is None:
+        """Edge ids excluding entry/exit buffers (the analysis corridor proper)."""
+        buffers = {self.entry_edge, self.exit_edge} - {None}
+        if not buffers:
             return self.edge_ids
-        return tuple(e for e in self.edge_ids if e != self.entry_edge)
+        return tuple(e for e in self.edge_ids if e not in buffers)
 
 
 def _netconvert(args: list[str]) -> None:
@@ -216,23 +222,31 @@ def corridor(
     workdir: Path | None = None,
     segment_m: float = CORRIDOR_SEGMENT_M,
     entry_m: float = ENTRY_EDGE_LENGTH_M,
+    exit_m: float = 0.0,
 ) -> NetBundle:
     """Build a straight corridor: entry edge + chain of main segments.
 
     The linear-x origin is the start of the **entry** edge; the corridor
     proper begins at ``x = entry_m``. Main segments are ``segment_m`` long
-    (default 1 km) with a shorter final remainder segment when needed.
+    (default 1 km) with a shorter final remainder segment when needed. With
+    ``exit_m > 0`` an exit-buffer edge is appended after the last main
+    segment: it hosts a measured downstream boundary condition (a speed
+    schedule applied via ``edge.setMaxSpeed``) OUTSIDE the corridor proper,
+    per standard FHWA microsimulation calibration practice of imposing
+    field-measured conditions at the model boundaries (FHWA Traffic
+    Analysis Toolbox Vol. III, FHWA-HOP-18-036, 2019).
 
     Args:
-        length_m: Main corridor length [m] (excluding the entry edge).
-        lanes: Lane count (1–4 per the config schema).
+        length_m: Main corridor length [m] (excluding entry/exit buffers).
+        lanes: Lane count (1–8 per the config schema).
         workdir: Directory for netconvert inputs/output. Required.
         segment_m: Main segment length [m].
         entry_m: Upstream insertion-edge length [m].
+        exit_m: Downstream exit-buffer edge length [m]; 0 disables it.
 
     Returns:
         The compiled :class:`NetBundle` (``kind="corridor"``,
-        ``entry_edge="entry"``).
+        ``entry_edge="entry"``, ``exit_edge="exit"`` when ``exit_m > 0``).
 
     Raises:
         ValueError: Bad dimensions or missing workdir.
@@ -242,6 +256,8 @@ def corridor(
         raise ValueError(f"length_m must be > 0, got {length_m}")
     if lanes < 1:
         raise ValueError(f"lanes must be >= 1, got {lanes}")
+    if exit_m < 0:
+        raise ValueError(f"exit_m must be >= 0, got {exit_m}")
     if workdir is None:
         raise ValueError("corridor() requires an explicit workdir")
 
@@ -254,6 +270,8 @@ def corridor(
     xs = [-entry_m, 0.0]
     for sl in seg_lengths:
         xs.append(xs[-1] + sl)
+    if exit_m > 0:
+        xs.append(xs[-1] + exit_m)
     nodes = ["<nodes>"]
     for i, x in enumerate(xs):
         nodes.append(f'  <node id="cn{i}" x="{x:.4f}" y="0.0"/>')
@@ -261,6 +279,9 @@ def corridor(
 
     edge_ids = ["entry"] + [f"ce{i}" for i in range(len(seg_lengths))]
     lengths = [entry_m, *seg_lengths]
+    if exit_m > 0:
+        edge_ids.append("exit")
+        lengths.append(exit_m)
     edges = ["<edges>"]
     for i, (eid, elen) in enumerate(zip(edge_ids, lengths, strict=True)):
         edges.append(
@@ -282,6 +303,7 @@ def corridor(
         workdir=workdir,
         kind="corridor",
         entry_edge="entry",
+        exit_edge="exit" if exit_m > 0 else None,
     )
 
 
