@@ -19,6 +19,19 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### Changed
 
+- **Diagnosed the US-101 wave-speed criterion failure** as a site/operating-density
+  artifact rather than a calibration defect. The calibrated fleet produces a mean
+  emergent backward wave speed of 14.6 km/h on a ring at 60 veh/km (71% of fronts
+  inside the 14-22 km/h band) - matching the independently fitted macroscopic FD's
+  w = -14.6 km/h from a completely separate estimation path. Near critical density
+  fronts are slower (11.4 km/h at 40 veh/km), close to the replica's measured
+  10.7 km/h. The criterion still FAILS as measured on the 640 m replica and that
+  stands in the validation table; what a passing test needs is now identified.
+  Also recorded: an open 10 km corridor cannot reach the instability band with
+  these parameters (insertion caps density near 25 veh/km vs a 31.8 veh/km
+  threshold), and threshold-based wave detection breaks down above ~80 veh/km
+  where the whole field reads as jammed. See `docs/WAVE_SPEED_DIAGNOSIS.md`.
+
 - **The "free lunch" framing is now qualified by a real-geometry check.** The
   penetration ladder was rerun on the `us101_replica` (640 m of real 5-lane
   US-101, calibrated fleet, real demand, measured downstream boundary), 6 cells

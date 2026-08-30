@@ -16,6 +16,7 @@ Index of everything in `docs/`. Start with the repo-root
 |---|---|
 | [M2_RESULTS.md](M2_RESULTS.md) | Calibration from real NGSIM US-101 data: IDM population fit (2,452 episodes, holdout RMSE), fundamental diagram with bootstrap CIs, observed demand extraction — with the raw-NGSIM and congested-site caveats stated |
 | [M3_RESULTS.md](M3_RESULTS.md) | The 540-run penetration × compliance sweep on the synthetic `corridor_10km` (27 cells × 20 seeds, paired CIs): dose-response, controller ranking including the honest PI-saturation failure |
+- [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) — why the US-101 wave-speed criterion fails: site and density, not calibration
 - [US101_PENETRATION.md](US101_PENETRATION.md) — does the dose-response survive real geometry? (σ_v yes; the no-cost claim no)
 - [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md) — all four controllers head-to-head at 5% / 100%, same seeds
 - [JAD_ORACLE_RESULTS.md](JAD_ORACLE_RESULTS.md) — JAD under a delayed/noisy detection oracle (CLAUDE.md §4.3); realistic sensing removes the bimodality

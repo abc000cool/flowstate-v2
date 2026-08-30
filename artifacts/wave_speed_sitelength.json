@@ -1,0 +1,60 @@
+{
+  "experiment": "wave_speed_sitelength",
+  "question": "does the calibrated US-101 fleet produce 14-22 km/h waves on a 10 km corridor?",
+  "scenario": "1500 m ring at prescribed densities + artifacts/idm_us101.json fleet, IDM, no AVs",
+  "per_density": {
+    "ring_us101fleet_40": {
+      "density_veh_km": 40.0,
+      "n_vehicles": 60,
+      "config_hash": "d9693c853ca8",
+      "n_backward_fronts": 13,
+      "mean_kmh": 11.442857142857143,
+      "median_kmh": 12.0,
+      "fraction_in_band": 0.23076923076923078
+    },
+    "ring_us101fleet_60": {
+      "density_veh_km": 60.0,
+      "n_vehicles": 90,
+      "config_hash": "102e06c5dfd5",
+      "n_backward_fronts": 7,
+      "mean_kmh": 14.583812615955475,
+      "median_kmh": 15.428571428571429,
+      "fraction_in_band": 0.7142857142857143
+    },
+    "ring_us101fleet_80": {
+      "density_veh_km": 80.0,
+      "n_vehicles": 120,
+      "config_hash": "7a4430e1fda0",
+      "n_backward_fronts": 0,
+      "mean_kmh": null,
+      "median_kmh": null,
+      "fraction_in_band": null
+    },
+    "ring_us101fleet_100": {
+      "density_veh_km": 100.0,
+      "n_vehicles": 150,
+      "config_hash": "fce617f996bd",
+      "n_backward_fronts": 0,
+      "mean_kmh": null,
+      "median_kmh": null,
+      "fraction_in_band": null
+    }
+  },
+  "n_backward_fronts": 20,
+  "wave_speed_kmh": {
+    "mean": 12.542191558441559,
+    "median": 13.178571428571429,
+    "p10": 8.775,
+    "p90": 16.087500000000002
+  },
+  "empirical_band_kmh": [
+    14.0,
+    22.0
+  ],
+  "fraction_in_band": 0.4,
+  "newell_prediction_kmh": [
+    18.3,
+    19.7
+  ],
+  "us101_replica_measured_kmh": 10.7
+}

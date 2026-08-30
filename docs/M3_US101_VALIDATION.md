@@ -28,6 +28,13 @@ still **fails** the FHWA-style GEH, RMSPE, and wave-speed acceptance
 criteria. The reasons are structural (640 m site, missing on-ramp merge,
 IDM congested-discharge behavior) and are documented in §6, not hidden.
 
+> **Follow-up (2026-08-30):** the wave-speed criterion failure was investigated
+> separately and is best explained by site length and operating density rather
+> than by the calibration: the same fitted fleet produces 14.6 km/h waves on a
+> ring at 60 veh/km, matching the independently fitted FD's w = -14.6 km/h. The
+> criterion still FAILS as measured here. See
+> [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md).
+
 ## 1. Methodology: observed vs simulated
 
 **Observed side.** Raw NGSIM US-101 (data.transportation.gov Socrata
