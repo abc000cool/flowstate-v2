@@ -4,7 +4,7 @@ All notable changes to FlowState are documented here. Every headline number
 below traces to a committed, seeded artifact (CLAUDE.md §0.1/§0.5); nothing
 is quoted that cannot be reproduced from the referenced runs.
 
-## [Unreleased]
+## [2.1.0] — 2026-09-02
 
 ### Added
 
