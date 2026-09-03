@@ -14,6 +14,7 @@ import type {
   RunMetrics,
   RunSummary,
   ScenarioConfig,
+  PresetSummary,
   ScenarioSummary,
   SweepCell,
   SweepDetail,
@@ -446,9 +447,18 @@ export async function mockListScenarios(): Promise<ScenarioSummary[]> {
   return scenarios.map((s) => ({ ...s }));
 }
 
-export async function mockListPresets(): Promise<ScenarioSummary[]> {
+/** Presets have the API's `PresetOut` shape: no `scenario_id` until stored. */
+export async function mockListPresets(): Promise<PresetSummary[]> {
   await latency();
-  return scenarios.filter((s) => s.preset).map((s) => ({ ...s }));
+  return scenarios
+    .filter((s) => s.preset)
+    .map((s) => ({
+      name: s.name,
+      filename: `${s.name}.yaml`,
+      config_hash: s.config_hash,
+      config: s.config,
+      preset: true as const,
+    }));
 }
 
 export async function mockCreateScenario(cfg: ScenarioConfig): Promise<CreateScenarioResponse> {

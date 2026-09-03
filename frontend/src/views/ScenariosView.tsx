@@ -5,7 +5,12 @@ import yaml from 'js-yaml';
 import { useCallback, useRef, useState, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createRun, createScenario, listPresetScenarios, listScenarios } from '../api/client';
-import type { Network, ScenarioConfig, ScenarioSummary } from '../api/types';
+
+/** A library card: a stored scenario, or a repo preset that has no id yet. */
+type LibraryItem = ScenarioSummary | PresetSummary;
+const isPreset = (s: LibraryItem): s is PresetSummary => !('scenario_id' in s);
+const itemKey = (s: LibraryItem): string => (isPreset(s) ? `preset:${s.filename}` : s.scenario_id);
+import type { Network, ScenarioConfig, ScenarioSummary, PresetSummary } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { SchematicThumb } from '../components/bits';
 import { toast, toastError } from '../components/toast';
@@ -68,7 +73,7 @@ function composeToConfig(c: ComposeState): ScenarioConfig {
   };
 }
 
-function scenarioMeta(s: ScenarioSummary): JSX.Element {
+function scenarioMeta(s: LibraryItem): JSX.Element {
   const net = s.config?.network;
   return (
     <div className="scen-meta">
@@ -110,7 +115,7 @@ function scenarioMeta(s: ScenarioSummary): JSX.Element {
 }
 
 export function ScenariosView(): JSX.Element {
-  const [items, setItems] = useState<ScenarioSummary[]>([]);
+  const [items, setItems] = useState<LibraryItem[]>([]);
   const [compose, setCompose] = useState<ComposeState>(DEFAULT_COMPOSE);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -121,13 +126,9 @@ export function ScenariosView(): JSX.Element {
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
     const [presets, all] = await Promise.all([listPresetScenarios(), listScenarios()]);
-    const seen = new Set<string>();
-    const merged: ScenarioSummary[] = [];
-    for (const s of [...presets.map((p) => ({ ...p, preset: true })), ...all]) {
-      if (seen.has(s.scenario_id)) continue;
-      seen.add(s.scenario_id);
-      merged.push(s);
-    }
+    // A preset whose config is already stored shows as the stored scenario.
+    const storedHashes = new Set(all.map((s) => s.config_hash));
+    const merged: LibraryItem[] = [...presets.filter((p) => !storedHashes.has(p.config_hash)), ...all];
     setItems(merged);
     setLoaded(true);
   }, []);
@@ -158,10 +159,22 @@ export function ScenariosView(): JSX.Element {
     }
   };
 
-  const launchRun = async (s: ScenarioSummary): Promise<void> => {
+  /** Presets are repo YAMLs, not stored scenarios: store one (or reuse the
+   * stored copy with the same config hash) before it can be run. */
+  const ensureStored = async (s: LibraryItem): Promise<string> => {
+    if (!isPreset(s)) return s.scenario_id;
+    const existing = (await listScenarios()).find((x) => x.config_hash === s.config_hash);
+    if (existing) return existing.scenario_id;
+    const res = await createScenario(s.config);
+    toast('ok', `preset ${s.filename} stored as ${res.scenario_id}`);
+    return res.scenario_id;
+  };
+
+  const launchRun = async (s: LibraryItem): Promise<void> => {
     try {
+      const scenarioId = await ensureStored(s);
       const res = await createRun({
-        scenario_id: s.scenario_id,
+        scenario_id: scenarioId,
         replicates: s.config?.replicates ?? 20,
       });
       setCorridor(s.name);
@@ -172,7 +185,7 @@ export function ScenariosView(): JSX.Element {
     }
   };
 
-  const loadIntoComposer = (s: ScenarioSummary): void => {
+  const loadIntoComposer = (s: LibraryItem): void => {
     const cfg = s.config;
     if (!cfg) {
       toast('info', 'preset has no embedded config to load');
@@ -228,7 +241,7 @@ export function ScenariosView(): JSX.Element {
 
       <div className="card-grid">
         {items.map((s) => (
-          <div key={s.scenario_id} className="panel scen-card">
+          <div key={itemKey(s)} className="panel scen-card">
             <div className="thumb">
               <SchematicThumb network={s.config?.network} name={s.name} />
             </div>

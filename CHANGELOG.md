@@ -13,6 +13,7 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### Fixed
 
+- Dashboard scenario library: pressing Run on a repo preset sent a run request without a `scenario_id` (presets from `GET /scenarios/preset` are not stored scenarios and carry none), and the merge keyed on that missing id collapsed every preset into one card. Run on a preset now stores it first (reusing a stored scenario with the same config hash), and presets already in the library show as their stored copy. The mock backend now returns the API's `PresetOut` shape, and a test drives the flow against real API shapes.
 - Frontend default API key is now the API's own inline-queue default (`dev-key-change-me`), as the README already documented; it had drifted to the Compose fallback, so the no-Docker dev path (`uvicorn` + `npm run dev`) answered 401 out of the box. Compose users paste their key in Settings as before.
 - Frontend `RunMetrics`/`Heatmap` types now mirror the API's `MetricsOut`/`HeatmapOut` (replicates with per-seed metrics; bin centers, not edges); CI fields are nullable as in `CIOut`; the run-detail page no longer throws on a real finished run. Mock backend updated to the same shapes.
 

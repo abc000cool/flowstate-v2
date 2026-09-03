@@ -16,6 +16,7 @@ import type {
   RunMetrics,
   RunSummary,
   ScenarioConfig,
+  PresetSummary,
   ScenarioSummary,
   SweepDetail,
 } from './types';
@@ -168,9 +169,9 @@ export function listScenarios(): Promise<ScenarioSummary[]> {
   return request<ScenarioSummary[]>('/scenarios');
 }
 
-export function listPresetScenarios(): Promise<ScenarioSummary[]> {
+export function listPresetScenarios(): Promise<PresetSummary[]> {
   if (isMockActive()) return mock.mockListPresets();
-  return request<ScenarioSummary[]>('/scenarios/preset');
+  return request<PresetSummary[]>('/scenarios/preset');
 }
 
 export function createScenario(cfg: ScenarioConfig): Promise<CreateScenarioResponse> {

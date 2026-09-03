@@ -90,6 +90,17 @@ export interface ScenarioSummary {
   preset?: boolean;
 }
 
+/** A repo `scenarios/*.yaml` offered by `GET /scenarios/preset` (API `PresetOut`).
+ * Presets are not stored scenarios: they have no `scenario_id` until one is
+ * created from their config. */
+export interface PresetSummary {
+  name: string;
+  filename: string;
+  config_hash: string;
+  config: ScenarioConfig;
+  preset: true;
+}
+
 export interface CreateScenarioResponse {
   scenario_id: string;
   config_hash: string;
