@@ -106,9 +106,10 @@ export interface CreateScenarioResponse {
   config_hash: string;
 }
 
+/** Mirrors the API's `ProgressOut`. */
 export interface RunProgress {
-  done: number;
-  total: number;
+  completed_replicates: number;
+  total_replicates: number;
 }
 
 export interface RunSummary {

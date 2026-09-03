@@ -149,7 +149,7 @@ export function RunsView(): JSX.Element {
                     <StatusChip status={r.status} />
                   </td>
                   <td>
-                    <ProgressBar done={r.progress.done} total={r.progress.total} status={r.status} />
+                    <ProgressBar done={r.progress.completed_replicates} total={r.progress.total_replicates} status={r.status} />
                   </td>
                   <td className="hash">{r.config_hash}</td>
                   <td>

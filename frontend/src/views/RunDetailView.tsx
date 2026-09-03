@@ -122,7 +122,7 @@ export function RunDetailView(): JSX.Element {
             </span>
           </div>
           <div className="panel-body">
-            <ProgressBar done={run.progress.done} total={run.progress.total} status={run.status} />
+            <ProgressBar done={run.progress.completed_replicates} total={run.progress.total_replicates} status={run.status} />
             {run.status !== 'failed' && (
               <p className="small muted" style={{ marginTop: 12 }}>
                 Heatmap and metrics appear when all replicates finish.

@@ -267,7 +267,7 @@ function toSummary(r: RunRecord): RunSummary {
     scenario_id: r.scenario_id,
     scenario_name: r.scenario_name,
     status,
-    progress: { done, total: r.n },
+    progress: { completed_replicates: done, total_replicates: r.n },
     config_hash: r.config_hash,
     seeded: r.seeded,
     tier: r.tier,
