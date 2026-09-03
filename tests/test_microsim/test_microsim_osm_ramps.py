@@ -180,3 +180,22 @@ class TestRampRun:
         # Congestion spills back into the measured span (end of edge 101).
         tail = lambda d: d[(d["x"] >= 800.0) & (d["x"] < 1000.0) & (d["t"] >= 90.0)]["v"].mean()  # noqa: E731
         assert tail(df_bound) < tail(df_free) - 2.0
+
+
+class TestControllerWithRamps:
+    def test_avs_entering_from_a_ramp_do_not_crash_dispatch(self, osm_path, tmp_path):
+        """A compliant AV on a ramp edge has no corridor position; the
+        controller loop must skip it until it reaches the corridor (the
+        I-24 sweep failed on exactly this before the fix)."""
+        cfg = _scenario(osm_path, duration_s=150.0)
+        d = cfg.model_dump(mode="json")
+        d["av"] = {"penetration": 0.3, "compliance": 1.0, "controller": "follower_stopper"}
+        cfg = ScenarioConfig.model_validate(d)
+        paths = run_micro(cfg, 7, tmp_path / "ctrl")
+        meta = json.loads(paths.meta.read_text())
+        assert meta["controller"] == "follower_stopper"
+        assert meta["ramps"][0]["n_departed"] > 20
+        # Some AVs are ramp-origin vehicles (ids >= 75) and appear on the corridor.
+        df = pd.read_parquet(paths.trajectories)
+        av_ramp = df[df["is_av"] & (df["veh_id"].str[1:].astype(int) >= 75)]
+        assert len(av_ramp) > 0

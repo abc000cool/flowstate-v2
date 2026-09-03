@@ -783,7 +783,10 @@ def run_micro(
                 # speed may carry multiplicative error.
                 o_xs, o_speeds = _stale_snapshot(oracle_history, t, oracle_delay_s, (xs, speeds))
                 for vid in sorted(compliant_avs):
-                    if vid not in results:
+                    # Not in the network yet, already arrived, or still on a
+                    # ramp edge (no corridor position, no downstream field):
+                    # controllers act on corridor edges only.
+                    if vid not in x_by_id:
                         continue
                     gap, v_leader = _leader_obs(mod, vid, min_gap_by_id[vid])
                     downstream = _downstream_bins(
