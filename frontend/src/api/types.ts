@@ -124,24 +124,38 @@ export interface CreateRunRequest {
 }
 
 export interface AggregateStat {
-  mean: number;
-  lo95: number;
-  hi95: number;
+  /** null when the metric is undefined for every replicate (API `CIOut`). */
+  mean: number | null;
+  lo95: number | null;
+  hi95: number | null;
   n: number;
   underpowered: boolean;
 }
 
+export interface ReplicateMetrics {
+  seed: number;
+  /** Metric name → value; null when undefined for this replicate. */
+  metrics: Record<string, number | null>;
+}
+
+/** Mirrors the API's `MetricsOut` (packages/api/api/schemas.py). */
 export interface RunMetrics {
-  /** One record per replicate; keys are metric names plus `seed`. */
-  per_replicate: Record<string, number>[];
+  run_id?: string;
+  config_hash?: string;
+  tier?: Tier;
+  seeded?: boolean;
+  n_replicates?: number;
+  underpowered?: boolean;
+  replicates: ReplicateMetrics[];
   aggregate: Record<string, AggregateStat>;
 }
 
+/** Mirrors the API's `HeatmapOut`: bin CENTERS, not edges. */
 export interface Heatmap {
-  /** Time bin edges [s], length nt+1. */
-  t_edges: number[];
-  /** Position bin edges [m], length nx+1. */
-  x_edges: number[];
+  /** Time bin centers [s], length nt. */
+  t_bins: number[];
+  /** Position bin centers [m], length nx. */
+  x_bins: number[];
   /** Row-major [nt][nx]; m/s (speed) or veh/m (density); null = empty bin. */
   values: (number | null)[][];
 }

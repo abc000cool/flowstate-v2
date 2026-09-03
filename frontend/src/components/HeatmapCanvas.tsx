@@ -73,10 +73,13 @@ export function HeatmapCanvas({
 
   const nt = heatmap.values.length;
   const nx = nt > 0 ? heatmap.values[0].length : 0;
-  const t0 = heatmap.t_edges[0] ?? 0;
-  const t1 = heatmap.t_edges[heatmap.t_edges.length - 1] ?? 1;
-  const x0 = heatmap.x_edges[0] ?? 0;
-  const x1 = heatmap.x_edges[heatmap.x_edges.length - 1] ?? 1;
+  // The API sends bin centers; extend by half a bin on each side so the
+  // outer bins are drawn at full width.
+  const halfBin = (c: number[]): number => (c.length > 1 ? (c[1] - c[0]) / 2 : 0.5);
+  const t0 = (heatmap.t_bins[0] ?? 0) - halfBin(heatmap.t_bins);
+  const t1 = (heatmap.t_bins[heatmap.t_bins.length - 1] ?? 1) + halfBin(heatmap.t_bins);
+  const x0 = (heatmap.x_bins[0] ?? 0) - halfBin(heatmap.x_bins);
+  const x1 = (heatmap.x_bins[heatmap.x_bins.length - 1] ?? 1) + halfBin(heatmap.x_bins);
 
   /* track container width */
   useEffect(() => {

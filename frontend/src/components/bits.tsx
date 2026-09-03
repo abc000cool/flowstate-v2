@@ -62,17 +62,22 @@ export function ProgressBar({
 /** Confidence-interval range bar: track spans a padded [lo, hi] domain with
  * the CI filled and a tick at the mean. */
 export function CIBar({ stat }: { stat: AggregateStat }): JSX.Element {
-  const span = Math.max(stat.hi95 - stat.lo95, Math.abs(stat.mean) * 0.02, 1e-9);
-  const d0 = stat.lo95 - span * 0.6;
-  const d1 = stat.hi95 + span * 0.6;
+  if (stat.mean === null || stat.lo95 === null || stat.hi95 === null) {
+    // The API reports null when the metric is undefined for every replicate.
+    return <div className="ci-track" aria-label="no value" />;
+  }
+  const { mean, lo95, hi95 } = stat;
+  const span = Math.max(hi95 - lo95, Math.abs(mean) * 0.02, 1e-9);
+  const d0 = lo95 - span * 0.6;
+  const d1 = hi95 + span * 0.6;
   const pos = (v: number): number => (100 * (v - d0)) / (d1 - d0);
   return (
     <div className="ci-track">
       <div
         className="ci-fill"
-        style={{ left: `${pos(stat.lo95)}%`, width: `${pos(stat.hi95) - pos(stat.lo95)}%` }}
+        style={{ left: `${pos(lo95)}%`, width: `${pos(hi95) - pos(lo95)}%` }}
       />
-      <div className="ci-mean" style={{ left: `calc(${pos(stat.mean)}% - 1px)` }} />
+      <div className="ci-mean" style={{ left: `calc(${pos(mean)}% - 1px)` }} />
     </div>
   );
 }
@@ -153,12 +158,13 @@ export function MetricCard({
         )}
       </div>
       <div className="m-value mono">
-        {formatNumber(stat.mean, def.digits)}
+        {stat.mean === null ? '—' : formatNumber(stat.mean, def.digits)}
         <span className="m-unit">{def.unit}</span>
       </div>
       <CIBar stat={stat} />
       <div className="ci-text">
-        95% CI {formatNumber(stat.lo95, def.digits)} – {formatNumber(stat.hi95, def.digits)} · n=
+        95% CI {stat.lo95 === null ? '—' : formatNumber(stat.lo95, def.digits)} –{' '}
+        {stat.hi95 === null ? '—' : formatNumber(stat.hi95, def.digits)} · n=
         {stat.n}
       </div>
     </div>

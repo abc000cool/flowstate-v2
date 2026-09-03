@@ -112,7 +112,8 @@ export function SweepsView(): JSX.Element {
 
   const cellDelta = (cell: SweepCell): number | null => {
     const stat = cell.aggregate?.[metricKey];
-    if (!stat || !baseStat || baseStat.mean === 0) return null;
+    if (!stat || !baseStat || stat.mean === null || baseStat.mean === null) return null;
+    if (baseStat.mean === 0) return null;
     return (stat.mean - baseStat.mean) / Math.abs(baseStat.mean);
   };
 

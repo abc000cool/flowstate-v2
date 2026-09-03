@@ -182,10 +182,10 @@ export function RunDetailView(): JSX.Element {
                   <StripChart
                     key={k}
                     metricKey={k}
-                    values={metrics.per_replicate
-                      .map((r) => r[k])
+                    values={metrics.replicates
+                      .map((r) => r.metrics[k])
                       .filter((v): v is number => typeof v === 'number')}
-                    mean={metrics.aggregate[k].mean}
+                    mean={metrics.aggregate[k].mean ?? 0}
                   />
                 ))}
               </div>

@@ -314,7 +314,10 @@ function buildMetrics(r: RunRecord): RunMetrics {
       underpowered: r.n < 20,
     };
   });
-  return { per_replicate: per, aggregate };
+  return {
+    replicates: per.map((p) => ({ seed: p.seed, metrics: p })),
+    aggregate,
+  };
 }
 
 function buildHeatmap(r: RunRecord, field: HeatField): Heatmap {

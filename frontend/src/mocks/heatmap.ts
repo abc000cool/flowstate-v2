@@ -48,6 +48,11 @@ const DEFAULT_BANDS: WaveBand[] = [
   { t0: 540, x0: 9300, depth: 0.9 },
 ];
 
+/** Bin centers from edges, the shape the API's HeatmapOut sends. */
+function centers(e: number[]): number[] {
+  return e.slice(0, -1).map((v, i) => (v + e[i + 1]) / 2);
+}
+
 function edges(n: number, step: number): number[] {
   return Array.from({ length: n + 1 }, (_, i) => i * step);
 }
@@ -90,7 +95,7 @@ export function corridorSpeedField(opts: CorridorFieldOpts = {}): Heatmap {
     values.push(row);
   }
 
-  return { t_edges: edges(nt, dt), x_edges: edges(nx, dx), values };
+  return { t_bins: centers(edges(nt, dt)), x_bins: centers(edges(nx, dx)), values };
 }
 
 /** Ring field: one slow-moving backward wave circulating the 230 m loop. */
@@ -127,7 +132,7 @@ export function ringSpeedField(seed = 7): Heatmap {
     values.push(row);
   }
 
-  return { t_edges: edges(nt, dt), x_edges: edges(nx, dx), values };
+  return { t_bins: centers(edges(nt, dt)), x_bins: centers(edges(nx, dx)), values };
 }
 
 /** Density derived from the speed field via a monotone speed–density map
@@ -142,5 +147,5 @@ export function toDensityField(speed: Heatmap, vRef = 30): Heatmap {
       return rhoFree + f * (rhoJam - rhoFree);
     }),
   );
-  return { t_edges: speed.t_edges, x_edges: speed.x_edges, values };
+  return { t_bins: speed.t_bins, x_bins: speed.x_bins, values };
 }

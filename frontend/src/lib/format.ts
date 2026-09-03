@@ -34,8 +34,9 @@ export function formatDensityVehKm(vehPerM: number): string {
 }
 
 /** Fixed-digit numeric formatting with thousands grouping for big values. */
-export function formatNumber(v: number, digits = 1): string {
-  if (!Number.isFinite(v)) return '—';
+export function formatNumber(v: number | null, digits = 1): string {
+  // null: the API's CIOut reports null when a metric is undefined for every replicate.
+  if (v === null || !Number.isFinite(v)) return '—';
   const abs = Math.abs(v);
   if (abs >= 10000 && digits === 0) {
     return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
