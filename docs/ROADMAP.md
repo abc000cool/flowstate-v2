@@ -117,6 +117,9 @@ result you can defend under questioning.
 - **B1.** Write the paper. The spine already exists across `docs/`: method,
   calibration, validation, sweep, controller comparison, plus two genuinely
   novel bits — the detection-latency result and the flux-cap comparison.
+  *Outline drafted 2026-09-03:* [PAPER_OUTLINE.md](PAPER_OUTLINE.md) — the
+  coverage finding (I24_DATA.md §4) is the paper's central methodological
+  point; the I-24 sweep enters as a result on an unvalidated replica.
 - **B2.** arXiv preprint (cs.MA or eess.SY), citing I-24 MOTION and Stern et al.
   as their licences require.
 - **B3.** Cold emails, *after* the flagship validates: the I-24 MOTION team at
@@ -179,6 +182,7 @@ blocked.
 | 4 | **Naming decision** | See §7 — cheap now, expensive after a preprint and outreach carry the name. | a decision |
 | 5 | **Which competition, and its deadline** | Track A's entire shape depends on the venue and date. | a decision |
 | 6 | **Interview introductions** | C1 needs actual traffic engineers to talk to. Cold outreach works, warm is faster. | ongoing |
+| 8 | **Push credentials** | The 2026-09-03 milestone commit (`34d215b`, ROADMAP §1.1–1.4) is local only: `git push` is authenticated as `loopugc1` (the active `gh` account on this machine; `loopmarketplaceugc` is the other), which has no write access to `abc000cool/flowstate-v2`. Log in as the owner account (`gh auth login` / `gh auth switch`) or push from a machine with the owner's credentials. | 2 min |
 | 7 | **I-24 radar detector (RDS) counts for 30 Nov 2022** | The trajectory export tracks only ≈ 0.5–0.65 of vehicle-time in the peak (docs/I24_DATA.md §4), so every count-based input and criterion (demand, GEH) is a lower bound. The testbed's TDOT Wavetronix RDS gives 30-s volumes; if the i24motion.org data listing offers them for this day, they replace both the tracked demand and the observed side of GEH. Check the account's data listing; if absent, ask the I-24 MOTION team when writing to them (B3). | 10 min to check |
 
 **Not needed:** the reconstructed NGSIM dataset. Its host (`its-rde.net`) is a

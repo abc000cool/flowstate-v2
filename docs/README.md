@@ -22,6 +22,7 @@ Index of everything in `docs/`. Start with the repo-root
 - [INTERVIEWS.md](INTERVIEWS.md) — discovery-interview kit: target roles, the ten-question script, outreach template, what to record (Track C1)
 - [LESSONS.md](LESSONS.md) — what we got wrong and fixed, with the evidence for each correction (Track A2)
 - [QA.md](QA.md) — anticipated questions with pointers to the evidence (Track A5)
+- [PAPER_OUTLINE.md](PAPER_OUTLINE.md) — the preprint spine: sections, results and figures mapped to the documents that carry them (Track B1)
 - [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) — why the US-101 wave-speed criterion fails: site and density, not calibration
 - [US101_PENETRATION.md](US101_PENETRATION.md) — does the dose-response survive real geometry? (σ_v yes; the no-cost claim no)
 - [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md) — all four controllers head-to-head at 5% / 100%, same seeds
