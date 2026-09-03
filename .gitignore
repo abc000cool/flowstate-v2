@@ -29,3 +29,6 @@ embed/dist/
 
 # SUMO scratch
 *.sumocfg.tmp
+
+# The embed data pack is versioned (the data/* rule above is for fetched payloads).
+!embed/public/data/*
