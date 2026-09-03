@@ -122,3 +122,56 @@ because the target is a lower bound. The three replica arms are rebuilt on
 this population; the validation battery is rerun on all of them, and the
 results, whatever they are, replace the table in
 [I24_VALIDATION.md](I24_VALIDATION.md).
+
+## 5. Demand calibration result (FHWA step 2) and what is left
+
+With the calibrated population, `scripts/i24_fit_demand_scale.py --base
+corrected` scales the coverage-corrected profile (the per-window shape from
+the instrument's tracking coverage) by one level `s` and scores segment
+speeds against the recording, first hour fitted, second hour held out
+(`artifacts/demand_scale_i24_corrected.json`, one seed per point):
+
+| Level s | Inserted | RMSPE 06:30–07:30 (fit) | RMSPE 07:30–08:30 (held out) |
+|---|---|---|---|
+| 0.60 | 1.000 | 1.156 | 2.193 |
+| 0.70 | 1.000 | 0.742 | 1.718 |
+| 0.80 | 0.994 | 0.401 | 0.460 |
+| 0.85 | 0.945 | **0.320** | **0.396** |
+| 0.90 | 0.895 | 0.337 | 0.382 |
+| 1.00 | 0.807 | 0.361 | 0.378 |
+| 1.10 | 0.734 | 0.373 | 0.389 |
+
+The level is well determined at the low end (below 0.8 the corridor is too
+empty and the error explodes) and flat above it. **s = 0.85** is the fit and
+`scenarios/i24_replica_speedcal.yaml` is the third arm: 94.5% of its demand
+enters (82–84% for the uncorrected level), and the held-out hour scores
+39.6%, comparable to the fitted hour. That the coverage correction
+overshoots by about 15% at the peak is consistent with §1: a correction
+factor estimated from a car-following equilibrium overstates the missing
+vehicles where the flow is near capacity.
+
+**The residual is spatial, not temporal.** At s = 0.85 the window means
+track the recording within a few km/h through the peak; the error sits in
+where the queue is:
+
+| Segment start [km] | 0.0 | 0.5 | 1.1 | 1.6 | 2.2 | 2.7 | 3.3 | 3.8 | 4.4 | 4.9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Observed mean [km/h] | 36.3 | 32.5 | 29.8 | 31.3 | 37.6 | 36.9 | 37.7 | 29.0 | 30.4 | 33.7 |
+| Simulated mean [km/h] | 20.9 | 21.2 | 29.7 | 36.8 | 35.4 | 35.0 | 35.0 | 30.6 | 28.0 | 31.9 |
+| Mean relative error | −0.34 | −0.26 | +0.09 | +0.31 | +0.03 | +0.01 | +0.03 | +0.13 | −0.04 | −0.04 |
+
+From 2.2 km on the replica is within 4% of the recording. The first
+kilometre — the Old Hickory Boulevard merge — runs a third too slow, and
+the kilometre after it a third too fast: the replica holds a standing queue
+at the merge where the real road's slowest zones are at 1.1–1.6 km and
+3.8–4.4 km. That is a merge-behaviour defect (auxiliary-lane use, the ramp's
+own coverage-corrected inflow, lane-change cooperation), not a demand or
+capacity defect, and it caps the speed RMSPE near 35% whatever the level.
+The next diagnostic is the merge itself: the same arm with the Old Hickory
+inflow at its tracked level, with the ramp closed, and with the strategic
+lane-change weight at SUMO's default.
+
+The single-level variant on the tracked profile (`--base tracked`) was also
+fitted; it is inferior on both hours and is recorded in
+`artifacts/demand_scale_i24.json` once its rerun completes (the first run's
+table was lost to a serialization bug in the script, fixed since).

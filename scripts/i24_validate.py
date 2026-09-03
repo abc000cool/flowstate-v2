@@ -23,8 +23,16 @@ MM 62.7 → Bell Road). Same structure as ``scripts/m3_us101_validate.py``:
   that a long, congested corridor lets the calibrated fleet reach the
   14–22 km/h band.
 * **Criteria** — ``validation.criteria.evaluate`` (GEH / RMSPE / wave speed /
-  n_seeds; ring rows not evaluated here, reported as failing per CLAUDE.md
-  §0.1) and replicate metrics with 95% t CIs.
+  ring emergence / ring dampening / n_seeds) and replicate metrics with 95% t
+  CIs. The ring rows are evaluated for real: ``--ring-seeds N`` (default 20)
+  runs ``ring_sugiyama`` as shipped and with one FollowerStopper vehicle for
+  ``spawn_seeds(<ring scenario seed>, N)`` through
+  ``validation.ring_benchmark.evaluate_ring_benchmark`` — the CI gate's
+  checks (tests/test_microsim/test_microsim_ring_gate.py) applied to every
+  seed — and both arms' JSON carry the ``ring`` block. ``--ring-seeds 0``
+  skips it (the rows then report not evaluated, failing, per CLAUDE.md §0.1);
+  ``--ring-only`` evaluates the ring, writes
+  ``runs/i24_validation/ring/ring_benchmark.json`` and exits.
 
 Coordinates: sim x = a + b · data x (``artifacts/i24_replica_inputs.json``
 ``geometry.sim_x_of_data_x``), sim t = data t − 1800 + 600.
@@ -37,6 +45,7 @@ Usage (repo root)::
 
     uv run --no-sync python scripts/i24_validate.py --replicates 2 --arms tracked   # smoke
     uv run --no-sync python scripts/i24_validate.py --procs 8                        # full
+    uv run --no-sync python scripts/i24_validate.py --ring-only --ring-seeds 3       # ring rows
 """
 
 from __future__ import annotations
@@ -81,7 +90,11 @@ STRIPE_DT_BIN_S = 10.0
 STRIPE_DX_BIN_M = 50.0
 OBSERVED_CACHE_VERSION = 1
 
-ARMS = {"tracked": "i24_replica", "corrected": "i24_replica_corrected"}
+ARMS = {
+    "tracked": "i24_replica",
+    "corrected": "i24_replica_corrected",
+    "speedcal": "i24_replica_speedcal",  # FHWA step-2 demand scale (docs/I24_CAPACITY.md)
+}
 
 
 def _inputs() -> dict:
@@ -338,11 +351,53 @@ def _geh_table(sim_hourly: np.ndarray, obs_hourly: np.ndarray) -> dict:
     }
 
 
-def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicates: int) -> dict:
+def _ring_worker(payload: tuple[list[int], str]) -> dict:
+    """Ring benchmark in a child process (keeps libsumo out of the parent)."""
+    from validation.ring_benchmark import evaluate_ring_benchmark
+
+    seeds, out = payload
+    return evaluate_ring_benchmark(seeds, Path(out)).to_dict()
+
+
+def ring_benchmark_block(n_seeds: int, out_dir: Path) -> dict:
+    """Evaluate the §7.1 ring rows on ``n_seeds`` seeds of ``ring_sugiyama``.
+
+    Seeds are ``spawn_seeds(<ring scenario seed>, n_seeds)`` (docs/CONTRACTS.md
+    §6). Runs in a spawned process so the parent never loads libsumo (the
+    parquet-path clash documented on ``microsim.runner._write_parquet``).
+    Writes ``out_dir/ring_benchmark.json`` and returns the same dict.
+    """
+    import multiprocessing as mp
+
+    from validation.ring_benchmark import RING_SCENARIO
+
+    ring_cfg = load_scenario(RING_SCENARIO)
+    seeds = spawn_seeds(ring_cfg.seed, n_seeds)
+    t0 = time.perf_counter()
+    with mp.get_context("spawn").Pool(1) as pool:
+        ring = pool.apply(_ring_worker, ((seeds, str(out_dir)),))
+    ring["wall_s"] = round(time.perf_counter() - t0, 1)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "ring_benchmark.json").write_text(
+        json.dumps(_json_safe(ring), indent=2, allow_nan=False)
+    )
+    return ring
+
+
+def build_results(
+    arm: str,
+    cfg: ScenarioConfig,
+    sim: dict,
+    obs: dict,
+    replicates: int,
+    ring: dict | None = None,
+) -> dict:
     sim_hourly = np.asarray(sim["hourly_flows_veh_h_mean"], dtype=np.float64)
     geh_tracked = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_tracked"]))
     geh_corrected = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_corrected"]))
-    geh_primary = geh_corrected if arm == "corrected" else geh_tracked
+    # speedcal derives from the coverage-corrected profile, so its flow criterion
+    # is scored against the corrected counts too; both tables are reported.
+    geh_primary = geh_corrected if arm in ("corrected", "speedcal") else geh_tracked
 
     obs_seg = np.asarray(obs["segment_speeds_ms"], dtype=np.float64)
     sim_seg = np.asarray(sim["segment_speeds_ms_mean"], dtype=np.float64)
@@ -357,13 +412,20 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
             if sim["mean_backward_speed_kmh"] is not None
             else math.nan
         ),
-        ring_emergence=None,
-        ring_dampening=None,
+        ring_emergence=None if ring is None else bool(ring["emergence"]["passed"]),
+        ring_dampening=None if ring is None else bool(ring["dampening"]["passed"]),
         n_seeds=replicates,
     )
     inputs = _inputs()
+    ring_note = (
+        "Ring benchmark rows evaluated by validation.ring_benchmark (the CI gate's checks on "
+        f"{ring['emergence']['n_seeds']} seeded replicates; pass = every replicate passes); "
+        "see the 'ring' block."
+        if ring is not None
+        else "Ring benchmark rows not evaluated in this run (--ring-seeds 0); reported as failing per CLAUDE.md §0.1."
+    )
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "scenario": ARMS[arm],
         "arm": arm,
@@ -387,7 +449,7 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
         "observed": obs,
         "simulated": sim,
         "geh": {
-            "primary": "corrected" if arm == "corrected" else "tracked",
+            "primary": "corrected" if arm in ("corrected", "speedcal") else "tracked",
             "vs_tracked_counts": geh_tracked,
             "vs_coverage_corrected_counts": geh_corrected,
             "bins": "6 sections x 24 five-min windows, hourly-equivalent volumes (x12)",
@@ -408,12 +470,14 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
             "prediction_under_test": "docs/WAVE_SPEED_DIAGNOSIS.md: on a long, congested corridor the calibrated fleet's emergent backward waves fall in the 14-22 km/h band",
         },
         "criteria": [asdict(r) for r in criteria_rows],
+        "ring": ring,
         "metrics_ci": sim["metrics_ci"],
         "notes": [
             "Observed side: I-24 MOTION westbound fragments, mainline lanes 1-4, 06:30-08:30 CST, data x in [0, 5492) m; counts are fragment crossings (lower bounds at tracking coverage), speeds are coverage-robust.",
             "Six GEH sections chosen for coverage (holes at 400 m and 2400 m avoided); the observed count at every section is still biased low by 35-50% in the peak.",
             "Both GEH tables are reported for both arms; the criteria row uses the tracked counts for the tracked arm and the coverage-corrected counts for the corrected arm.",
-            "Ring benchmark rows are CI-gated integration tests and are reported here as not evaluated (failing) per CLAUDE.md §0.1.",
+            ring_note,
+            "The sensitivity_grid criterion row is not evaluated by this script (the penetration x compliance sweep is a separate artifact, scripts/i24_penetration_sweep.py).",
             "compute_metrics runs on the measured span only (travel time over the span, throughput at data x = 2200 m); wave metrics inside it use the same site-clipped field as the criteria row.",
         ],
     }
@@ -423,16 +487,50 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--replicates", type=int, default=20)
     ap.add_argument("--procs", type=int, default=int(os.environ.get("I24_PROCS", "8")))
-    ap.add_argument("--arms", choices=("both", "tracked", "corrected"), default="both")
+    ap.add_argument(
+        "--arms",
+        choices=("all", "both", "tracked", "corrected", "speedcal"),
+        default="all",
+        help="'both' = tracked + corrected (the pre-2026-09-03 pair); 'all' adds speedcal",
+    )
     ap.add_argument("--analysis-procs", type=int, default=6)
+    ap.add_argument(
+        "--ring-seeds",
+        type=int,
+        default=20,
+        help="seeds for the ring emergence/dampening rows (0 = not evaluated)",
+    )
+    ap.add_argument(
+        "--ring-only",
+        action="store_true",
+        help="evaluate the ring benchmark, write runs/i24_validation/ring/ring_benchmark.json, exit",
+    )
     args = ap.parse_args()
     t0 = time.perf_counter()
     OUT_ROOT.mkdir(parents=True, exist_ok=True)
+    ring: dict | None = None
+    if args.ring_seeds > 0:
+        print(f"ring benchmark: {args.ring_seeds} seeds ...", flush=True)
+        ring = ring_benchmark_block(args.ring_seeds, OUT_ROOT / "ring")
+        for arm_name in ("emergence", "dampening"):
+            blk = ring[arm_name]
+            print(
+                f"  ring {arm_name:10s} {'PASS' if blk['passed'] else 'FAIL'}  "
+                f"{blk['n_pass']}/{blk['n_seeds']} seeds  (wall {ring['wall_s']} s)",
+                flush=True,
+            )
+    if args.ring_only:
+        print(f"done in {time.perf_counter() - t0:.0f} s -> {OUT_ROOT / 'ring'}")
+        return
     obs = observed_side(OUT_ROOT / "observed_i24.json")
     shutil.copy(
         OUT_ROOT / "observed_i24.json", REPO_ROOT / "artifacts" / "i24_validation_observed.json"
     )
-    arms = [a for a in ARMS if args.arms in ("both", a)]
+    arms = [
+        a
+        for a in ARMS
+        if args.arms == a or args.arms == "all" or (args.arms == "both" and a != "speedcal")
+    ]
     for arm in arms:
         cfg = load_scenario(ARMS[arm])
         print(
@@ -447,7 +545,7 @@ def main() -> None:
             obs,
             analysis_procs=args.analysis_procs,
         )
-        results = build_results(arm, cfg, sim, obs, args.replicates)
+        results = build_results(arm, cfg, sim, obs, args.replicates, ring)
         out_path = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
         out_path.write_text(json.dumps(_json_safe(results), indent=2, allow_nan=False))
         shutil.copy(REPO_ROOT / "scenarios" / f"{ARMS[arm]}.yaml", OUT_ROOT / f"{ARMS[arm]}.yaml")

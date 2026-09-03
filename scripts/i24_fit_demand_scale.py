@@ -57,21 +57,29 @@ from validation.metrics import rmspe
 
 REPO = Path(__file__).resolve().parents[1]
 TRACKED_YAML = REPO / "scenarios" / "i24_replica.yaml"
+CORRECTED_YAML = REPO / "scenarios" / "i24_replica_corrected.yaml"
+BASES = {"tracked": TRACKED_YAML, "corrected": CORRECTED_YAML}
 OBSERVED = REPO / "artifacts" / "i24_validation_observed.json"
 OUT = REPO / "artifacts" / "demand_scale_i24.json"
 SCENARIO_OUT = REPO / "scenarios" / "i24_replica_speedcal.yaml"
 FLEET_ARTIFACT = "artifacts/idm_i24_capacity.json"  # FHWA step 1 output (docs/I24_CAPACITY.md)
 
-COARSE = (1.0, 1.15, 1.3, 1.45, 1.6, 1.75, 1.9)
+COARSE = {
+    "tracked": (1.0, 1.15, 1.3, 1.45, 1.6, 1.75, 1.9),
+    # coverage-shaped profile (per-window 1/coverage) with a fitted level
+    "corrected": (0.6, 0.7, 0.8, 0.9, 1.0, 1.1),
+}
 REFINE_STEP = 0.025
 REFINE_HALF_WIDTH = 3  # ± 3 steps around the coarse optimum
 TRAIN_WINDOWS = range(0, 12)
 TEST_WINDOWS = range(12, 24)
 
 
-def scaled_config(scale: float, fleet_artifact: str = FLEET_ARTIFACT) -> dict[str, Any]:
-    """The tracked-demand scenario dict with inflows × scale and the step-1 fleet."""
-    raw = yaml.safe_load(TRACKED_YAML.read_text())
+def scaled_config(
+    scale: float, fleet_artifact: str = FLEET_ARTIFACT, base: str = "tracked"
+) -> dict[str, Any]:
+    """The base scenario dict with mainline and on-ramp inflows × scale and the step-1 fleet."""
+    raw = yaml.safe_load(BASES[base].read_text())
     raw["fleet"]["idm_calibration"] = fleet_artifact
     net = raw["network"]
     net["inflow"] = [[t, round(q * scale, 6)] for t, q in net["inflow"]]
@@ -89,21 +97,23 @@ def _rmspe_windows(sim: np.ndarray, obs: np.ndarray, windows: range) -> float:
     return float(rmspe(s[ok], o[ok]))
 
 
-def _job(args: tuple[float, int, str]) -> dict[str, Any]:
-    scale, seed, fleet_artifact = args
+def _job(args: tuple[float, int, str, str]) -> dict[str, Any]:
+    scale, seed, fleet_artifact, base = args
     geo = _inputs()["geometry"]
     a, b = geo["sim_x_of_data_x"]["a"], geo["sim_x_of_data_x"]["b"]
     _span_lo, span_hi = _span()
     obs = np.array(json.loads(OBSERVED.read_text())["segment_speeds_ms"], dtype=float)
     n_win = obs.shape[0]
-    cfg = ScenarioConfig.model_validate(scaled_config(scale, fleet_artifact))
+    cfg = ScenarioConfig.model_validate(scaled_config(scale, fleet_artifact, base))
     with tempfile.TemporaryDirectory() as td:
         t0 = time.perf_counter()
         paths = run_micro(cfg, seed, Path(td))
         meta = json.loads(paths.meta.read_text())
         df = _sim_frame(paths.run_dir, a, b)
         seg = _segment_speeds(df, span_hi, n_win)
-        counts = [crossings_per_window(df, s, 0.0, n_win * WINDOW_S) for s in SECTIONS_M]
+        counts = [
+            [int(c) for c in crossings_per_window(df, s, 0.0, n_win * WINDOW_S)] for s in SECTIONS_M
+        ]
         wall = time.perf_counter() - t0
     return {
         "scale": scale,
@@ -119,6 +129,13 @@ def _job(args: tuple[float, int, str]) -> dict[str, Any]:
     }
 
 
+def _json_default(o: Any) -> Any:
+    """numpy scalars/arrays → plain Python for json.dumps."""
+    if hasattr(o, "tolist"):
+        return o.tolist()
+    raise TypeError(f"not JSON serializable: {type(o).__name__}")
+
+
 def _best(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return min(rows, key=lambda r: (r["rmspe_train"], r["scale"]))
 
@@ -130,14 +147,18 @@ def main() -> None:
     ap.add_argument("--coarse-only", action="store_true")
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--fleet-artifact", default=FLEET_ARTIFACT)
+    ap.add_argument("--base", choices=tuple(BASES), default="tracked")
     args = ap.parse_args()
     fleet = args.fleet_artifact
-    base = ScenarioConfig.model_validate(scaled_config(1.0, fleet))
+    base_name = args.base
+    if args.out == OUT and base_name != "tracked":
+        args.out = OUT.with_name(f"demand_scale_i24_{base_name}.json")
+    base = ScenarioConfig.model_validate(scaled_config(1.0, fleet, base_name))
     seed = spawn_seeds(base.seed, base.replicates)[0]
     ctx = mp.get_context("spawn")
     rows: list[dict[str, Any]] = []
-    with ctx.Pool(min(args.procs, len(COARSE))) as pool:
-        rows += pool.map(_job, [(s, seed, fleet) for s in COARSE])
+    with ctx.Pool(min(args.procs, len(COARSE[base_name]))) as pool:
+        rows += pool.map(_job, [(s, seed, fleet, base_name) for s in COARSE[base_name]])
     for r in sorted(rows, key=lambda r: r["scale"]):
         print(
             f"  s={r['scale']:.3f} inserted={r['inserted_fraction']:.3f} rmspe train={r['rmspe_train']:.3f} test={r['rmspe_test']:.3f}"
@@ -147,10 +168,10 @@ def main() -> None:
         fine = [
             round(best["scale"] + k * REFINE_STEP, 3)
             for k in range(-REFINE_HALF_WIDTH, REFINE_HALF_WIDTH + 1)
-            if k != 0 and best["scale"] + k * REFINE_STEP >= 1.0
+            if k != 0 and best["scale"] + k * REFINE_STEP > 0.0
         ]
         with ctx.Pool(min(args.procs, len(fine))) as pool:
-            rows += pool.map(_job, [(s, seed, fleet) for s in fine])
+            rows += pool.map(_job, [(s, seed, fleet, base_name) for s in fine])
         best = _best(rows)
         for r in sorted(rows, key=lambda r: r["scale"]):
             print(
@@ -162,7 +183,8 @@ def main() -> None:
     result = {
         "schema_version": 1,
         "versions": _versions(),
-        "base_scenario": str(TRACKED_YAML.relative_to(REPO)),
+        "base": base_name,
+        "base_scenario": str(BASES[base_name].relative_to(REPO)),
         "fleet_artifact": fleet,
         "objective": "segment-speed RMSPE, windows 0-11 (06:30-07:30 CST); windows 12-23 held out",
         "seed": seed,
@@ -180,13 +202,13 @@ def main() -> None:
         },
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(result, indent=1))
+    args.out.write_text(json.dumps(result, indent=1, default=_json_default))
     print(f"-> {args.out}")
     if args.write_scenario:
-        raw = scaled_config(best["scale"], fleet)
+        raw = scaled_config(best["scale"], fleet, base_name)
         cfg = ScenarioConfig.model_validate(raw)
         header = (
-            "# i24_replica_speedcal — the tracked-demand replica with mainline and on-ramp\n"
+            f"# i24_replica_speedcal — the {base_name}-demand replica with mainline and on-ramp\n"
             f"# inflows multiplied by s = {best['scale']:.3f}, fitted by scripts/i24_fit_demand_scale.py\n"
             "# on observed segment speeds over 06:30-07:30 CST only (windows 0-11); 07:30-08:30\n"
             f"# is held out. Fleet: {fleet} (capacity-calibrated, docs/I24_CAPACITY.md).\n"

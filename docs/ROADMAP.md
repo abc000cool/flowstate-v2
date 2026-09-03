@@ -77,6 +77,15 @@ detector) / 12.4 (relative) against 14.2 / 16.4 observed. **The wave-speed
 prediction is not confirmed on the corridor**; the fleet reaches the band on a
 ring only above ~80 veh/km, a density this replica does not reach. What a pass
 needs is now specific (full corrected demand through the entry; radar counts).
+*Follow-up 2026-09-03 ([I24_CAPACITY.md](I24_CAPACITY.md)):* the insertion cap
+is a **capacity** limit, not an insertion artifact — the population fitted on
+congested episodes saturates at ≈ 1,650 veh/h per lane on a straight road,
+below the 1,775 the instrument *tracked*. FHWA Vol. III step 1 applied: mean T
+scaled 1.511 → 1.322 s to meet the tracked capacity (gap RMSE unchanged,
+5.31 → 5.29 m); both arms rebuilt on that population (new config hashes);
+step 2 fits one demand scale on the first hour's speeds with the second hour
+held out. The battery is being rerun on all arms with the ring rows
+evaluated; results replace the table in I24_VALIDATION.md when they land.
 
 **1.5 Rerun the sweep on the flagship.** The penetration × compliance battery on
 a validated corridor is the result the whole project has been building toward.
