@@ -1,0 +1,20 @@
+{
+  "name": "flowstate-embed",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Embeddable replay of real SUMO+IDM ring simulations and the observed I-24 day (static, no backend)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "~5.6.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

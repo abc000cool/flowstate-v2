@@ -205,6 +205,12 @@ keyboard and touch. Defer their WebGL contexts until scrolled into view;
 never run more than two WebGL contexts at once.
 
 ### 6.1 Ring sandbox (Home and Science)
+**Already built as a deployable embed** (`embed/`, see `embed/README.md`):
+45 real runs across vehicles × controlled vehicles × switch-on × seed, with
+ring view, time-space diagram, readouts and baseline comparison. The site
+can iframe it (`?embed=1`) rather than rebuild it; restyle only if the host
+page's look demands it, and keep its provenance line visible.
+
 The three runs from `hero_data.json` side by side or toggled: baseline,
 controlled from the start, controlled at 300 s. Scrubber over time, play at
 1×–60×, the per-minute σ_v strip chart below, and a "follow the wave" camera

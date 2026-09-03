@@ -24,6 +24,10 @@ failed.
 > [abc000cool/FlowState](https://github.com/abc000cool/FlowState) as motivated
 > preliminary work.
 
+**Embeddable simulation:** `embed/` is a static page that replays 45 real
+SUMO + IDM ring runs and the observed I-24 day, ready to deploy on Render or
+Fly and iframe into a website ([embed/README.md](embed/README.md)).
+
 ## Architecture
 
 Two simulation tiers with strictly separated jobs, one shared controller
