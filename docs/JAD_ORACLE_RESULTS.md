@@ -87,6 +87,13 @@ acceleration sign-reversals and speed variability per run:
 
 Latency roughly halves the oscillation, and the wave outcomes follow.
 
+> **Built (2026-09-03):** the deferral rule proposed below now exists as
+> `controllers.jad`'s `commit_delay_s` and reproduces this result with a
+> *perfect* sensor — σ_v 1.331 [1.228, 1.435] m/s at 30 s deferral against
+> 1.333 [1.244, 1.422] for the 30 s noisy oracle, 0/20 seeds worse than
+> baseline, a resolved 25% σ_v improvement over the undeferred controller.
+> See [JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md).
+
 ## 5. What this suggests next (not built)
 
 If the benefit comes from *deferring commitment*, then a controller that uses

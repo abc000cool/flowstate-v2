@@ -42,6 +42,14 @@ top, and either is a defensible choice.** FollowerStopper reaches σ_v 1.31
 including fuel (62.19 vs 62.17 ml/veh-km) and throughput. Nothing in this
 experiment separates them.
 
+> **Update (2026-09-03):** JAD's perfect-oracle chatter is fixed by an explicit
+> deferral rule (`commit_delay_s`): with a perfect sensor and a 30 s deferral
+> it matches the noisy-oracle cell (σ_v 1.331 [1.228, 1.435] vs 1.333) and at
+> 60 s reaches 1.294 [1.234, 1.354] m/s with 0.05 waves per run, no seed worse
+> than baseline ([JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md)). The
+> ranking below is unchanged: deferred JAD and FollowerStopper remain
+> statistically tied.
+
 **FollowerStopper is nonetheless the safer default.** It needs no downstream
 detection infrastructure at all — only the gap and speed of the vehicle directly
 ahead — whereas JAD needs a 2 km downstream speed field and, as measured, is

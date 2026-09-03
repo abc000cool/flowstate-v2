@@ -130,6 +130,10 @@ result you can defend under questioning.
   defers commitment, an explicit deferral rule should capture the benefit with a
   perfect sensor — turning an accidental finding into a designed one. This is a
   publishable result on its own and needs no new data.
+  *Built 2026-09-03:* `controllers.jad` parameter `commit_delay_s` (unit-tested);
+  experiment `scripts/jad_deferral_experiment.py` (baseline, perfect, perfect +
+  30 s / 60 s deferral, noisy 30 s; 20 CRN seeds) → `artifacts/jad_deferral_summary.json`,
+  written up in [JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md).
 
 ## 4. Track C — Product and business validation
 
@@ -144,7 +148,10 @@ result you can defend under questioning.
   feature a consultant would pay for.
 - **C4.** Corridor onboarding time-to-value: measure how long a new corridor
   actually takes end to end, and shrink it. The claim "any corridor in under a
-  day" needs a number behind it.
+  day" needs a number behind it. *Measured 2026-09-03:*
+  [ONBOARDING_TIME.md](ONBOARDING_TIME.md) — ~1.5 h of machine time to a
+  criteria table; one session of engineering for a corridor with a new data
+  product, most of it reusable; the bottleneck is understanding the data.
 
 ## 5. Track D — Engineering depth (no venue required)
 

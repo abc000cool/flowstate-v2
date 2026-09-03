@@ -83,8 +83,19 @@ JAD_DEFAULTS: Final[dict[str, float]] = {
     "v_wave_thresh": kmh_to_ms(40.0),  # wave detection speed threshold [m/s] (§4.3)
     "lookahead_m": 2000.0,  # detection lookahead L [m] (§4.3 default 2 km)
     "recover_bins": 3.0,  # nearest bins that must clear for fast-out [-]
+    "commit_delay_s": 0.0,  # deferred commitment: detection must persist this long [s]
 }
-"""Literature/spec defaults (CLAUDE.md §4.3); calibrated in Phase 1."""
+"""Literature/spec defaults (CLAUDE.md §4.3); calibrated in Phase 1.
+
+``commit_delay_s`` (ROADMAP B4, default 0 = the original controller) is the
+*deferred-commitment* rule: from CRUISE, a wave must be detected continuously
+for at least this long before slow-in starts. docs/JAD_ORACLE_RESULTS.md found
+that a 30–60 s *detection latency* made JAD reliable where a perfect oracle
+made it chatter (it committed to every transient bin, finished the cycle
+before the front arrived and re-triggered); this rule reproduces that deferral
+deliberately, with a perfect sensor, so the benefit is a design choice rather
+than an accident of sensing.
+"""
 
 _MEM_PHASE: Final[str] = "phase"
 _MEM_PHASE_T: Final[str] = "phase_entry_t"
@@ -92,6 +103,7 @@ _MEM_V_SLOW: Final[str] = "v_slow"
 _MEM_T_INT_END: Final[str] = "t_int_end"
 _MEM_PREV: Final[str] = "v_cmd_prev"
 _MEM_WAVE_NEAR: Final[str] = "wave_near"
+_MEM_DETECT_T: Final[str] = "detect_t"
 
 
 def _nearest_wave_bin(obs: ControllerObs, p: Mapping[str, float]) -> int | None:
@@ -129,7 +141,9 @@ def jad(obs: ControllerObs, params: Mapping[str, float], memory: Memory) -> tupl
         memory: Phase state: ``"phase"`` (float code in ``JAD_PHASES``),
             ``"phase_entry_t"`` [s], ``"v_slow"`` [m/s], ``"t_int_end"`` [s],
             ``"v_cmd_prev"`` [m/s], ``"wave_near"`` (0.0/1.0 — the wave has
-            reached the nearest bins). Empty dict ⇒ fresh CRUISE state with
+            reached the nearest bins), ``"detect_t"`` [s] (first time of the
+            current continuous detection while cruising; deferred
+            commitment). Empty dict ⇒ fresh CRUISE state with
             ``v_cmd_prev`` initialized to the current ego speed.
 
     Returns:
@@ -153,8 +167,23 @@ def jad(obs: ControllerObs, params: Mapping[str, float], memory: Memory) -> tupl
     # had reached the nearest bins and those have since cleared.
     recovered = wave_bin is None or (mem.get(_MEM_WAVE_NEAR, 0.0) >= 1.0 and near_clear)
 
-    if phase == PHASE_CRUISE and wave_bin is not None:
+    # Deferred commitment (B4): track how long a wave has been continuously
+    # visible from CRUISE; commit only once it has persisted commit_delay_s.
+    if phase == PHASE_CRUISE:
+        if wave_bin is None:
+            mem.pop(_MEM_DETECT_T, None)
+        else:
+            mem.setdefault(_MEM_DETECT_T, obs.t)
+    committed = (
+        phase == PHASE_CRUISE
+        and wave_bin is not None
+        and obs.t - mem.get(_MEM_DETECT_T, obs.t) >= p["commit_delay_s"] - 1e-9
+    )
+
+    if committed:
+        assert wave_bin is not None  # narrowed by `committed`
         phase = PHASE_SLOW_IN
+        mem.pop(_MEM_DETECT_T, None)
         v_slow = p["beta"] * max(obs.v, 0.0)
         x_w = wave_bin * obs.downstream_dx
         t_int = x_w / max(v_slow - p["w_wave"], 1e-9)

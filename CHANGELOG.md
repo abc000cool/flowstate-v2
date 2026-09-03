@@ -77,6 +77,14 @@ is quoted that cannot be reproduced from the referenced runs.
   tracking coverage. `artifacts/i24_replica_inputs.json`: every derived input
   of the replica (geometry mapping, ramp flows, exit fractions, boundary
   schedule, coverage factors). See docs/I24_DATA.md.
+- **Deferred-commitment JAD** (`controllers.jad`, parameter `commit_delay_s`,
+  default 0 = the original controller; ROADMAP B4). From CRUISE, slow-in now
+  starts only once a wave has been detected continuously for
+  `commit_delay_s`; the deferral that a 30–60 s detection latency supplied by
+  accident in 2.1.0 (docs/JAD_ORACLE_RESULTS.md) becomes an explicit design
+  rule usable with a perfect sensor. Unit-tested (persistence, transient
+  detections reset the clock, the full cycle still runs); the experiment is
+  `scripts/jad_deferral_experiment.py` → `artifacts/jad_deferral_summary.json`.
 - **Relative-threshold wave detection** (`validation.waves.detect_waves(...,
   relative_frac=f)`, ROADMAP D1): thresholds at `f × p90` of the field's
   non-empty bin speeds, so stripes inside a field that is congested

@@ -23,6 +23,8 @@ Index of everything in `docs/`. Start with the repo-root
 - [LESSONS.md](LESSONS.md) — what we got wrong and fixed, with the evidence for each correction (Track A2)
 - [QA.md](QA.md) — anticipated questions with pointers to the evidence (Track A5)
 - [PAPER_OUTLINE.md](PAPER_OUTLINE.md) — the preprint spine: sections, results and figures mapped to the documents that carry them (Track B1)
+- [ONBOARDING_TIME.md](ONBOARDING_TIME.md) — measured machine and engineering time to onboard the I-24 corridor (Track C4)
+- [JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md) — deferred-commitment JAD with a perfect sensor vs the latency finding (Track B4)
 - [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) — why the US-101 wave-speed criterion fails: site and density, not calibration
 - [US101_PENETRATION.md](US101_PENETRATION.md) — does the dose-response survive real geometry? (σ_v yes; the no-cost claim no)
 - [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md) — all four controllers head-to-head at 5% / 100%, same seeds

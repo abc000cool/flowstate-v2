@@ -53,9 +53,9 @@ DX_BIN_M = 50.0
 UNCONGESTED_MAX_DENSITY_VEH_M = 0.020  # 20 veh/km/lane, explicit free-branch cut
 N_BOOTSTRAP = 200
 SEED = 42
-N_PROCS = (
-    2  # each exact-LP refit costs ~2 min and ~3 GB on 237k bins; two keep a 16 GB machine safe
-)
+#: Bootstrap refits in parallel. Each exact-LP refit costs ~2 min and ~3 GB on
+#: 237k bins; one worker is what fits beside a running sweep on a 16 GB machine.
+N_PROCS = 1
 
 NOTES = (
     "Edie generalized flow/density from I-24 MOTION INCEPTION v1.x westbound fragments "

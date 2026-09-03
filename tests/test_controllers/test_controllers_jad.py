@@ -189,3 +189,61 @@ class TestMemoryContract:
         mem_in: Memory = {"phase": PHASE_CRUISE, "v_cmd_prev": 25.0}
         jad(_obs(25.0, _wave_bins(), t=0.0), {}, mem_in)
         assert mem_in == {"phase": PHASE_CRUISE, "v_cmd_prev": 25.0}
+
+
+class TestDeferredCommitment:
+    """ROADMAP B4: ``commit_delay_s`` defers slow-in until a detection persists."""
+
+    def test_default_zero_delay_is_unchanged(self):
+        p = default_params("jad")
+        assert p["commit_delay_s"] == 0.0
+        _, mem = jad(_obs(25.0, _wave_bins(), t=0.0), p, {})
+        assert mem["phase"] == PHASE_SLOW_IN
+
+    def test_commit_waits_for_persistent_detection(self):
+        p = {**default_params("jad"), "commit_delay_s": 30.0}
+        mem: Memory = {}
+        v_cmd = None
+        # A wave visible continuously from t = 0: no slow-in before 30 s.
+        for k in range(60):  # 0 .. 29.5 s
+            t = k * DT
+            v_cmd, mem = jad(_obs(25.0, _wave_bins(), t=t), p, mem)
+            assert mem["phase"] == PHASE_CRUISE, t
+            assert v_cmd == pytest.approx(25.0)
+        assert mem["detect_t"] == 0.0
+        v_cmd, mem = jad(_obs(25.0, _wave_bins(), t=30.0), p, mem)
+        assert mem["phase"] == PHASE_SLOW_IN
+        assert "detect_t" not in mem
+        assert v_cmd == pytest.approx(25.0 - p["a_slow"] * DT)
+
+    def test_transient_detection_does_not_commit(self):
+        p = {**default_params("jad"), "commit_delay_s": 30.0}
+        mem: Memory = {}
+        for k in range(40):  # wave for 20 s ...
+            _, mem = jad(_obs(25.0, _wave_bins(), t=k * DT), p, mem)
+        assert mem["phase"] == PHASE_CRUISE and mem["detect_t"] == 0.0
+        _, mem = jad(_obs(25.0, _free_bins(), t=20.0), p, mem)  # ... then gone
+        assert "detect_t" not in mem
+        # It reappears: the clock restarts from the new first detection.
+        _, mem = jad(_obs(25.0, _wave_bins(), t=25.0), p, mem)
+        assert mem["detect_t"] == 25.0 and mem["phase"] == PHASE_CRUISE
+        for k in range(1, 60):
+            _, mem = jad(_obs(25.0, _wave_bins(), t=25.0 + k * DT), p, mem)
+        assert mem["phase"] == PHASE_CRUISE  # 29.5 s of persistence
+        _, mem = jad(_obs(25.0, _wave_bins(), t=55.0), p, mem)
+        assert mem["phase"] == PHASE_SLOW_IN
+
+    def test_delay_only_gates_cruise(self):
+        # Once committed, the cycle runs as before regardless of the delay.
+        p = {**default_params("jad"), "commit_delay_s": 10.0}
+        mem: Memory = {}
+        v = 25.0
+        for k in range(21):
+            v, mem = jad(_obs(v, _wave_bins(), t=k * DT), p, mem)
+        assert mem["phase"] == PHASE_SLOW_IN
+        seen = {mem["phase"]}
+        for k in range(21, 200):
+            v, mem = jad(_obs(v, _wave_bins(), t=k * DT), p, mem)
+            seen.add(mem["phase"])
+        # The full cycle ran (and re-armed, since the wave never clears).
+        assert seen == set(JAD_PHASES)
