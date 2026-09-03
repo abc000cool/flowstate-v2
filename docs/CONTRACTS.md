@@ -180,6 +180,13 @@ then carries a `boundary` object (`kind`, `exit_edge`, `exit_buffer_m`,
 
 `edges.parquet` (both tiers): `t_bin: f64 [s]`, `x_bin: f64 [m]`,
 `mean_speed: f64 [m/s]`, `density: f64 [veh/m]`, `flow: f64 [veh/s]`.
+When a scenario sets `av.vsl`, both tiers add a `vsl_dispatch` block to
+`meta.json`: the gantry segments (edge ids for micro, cell ranges for macro),
+their lengths, the base speed limits, and the per-dispatch posted and applied
+limits (posted = controller output scaled by compliance through
+`controllers.vsl.effective_limit`, never above the base limit). The macro
+tier also records `vsl` (controller name and parameters).
+
 Macro-tier rows carry `tier="screening"` in meta.json — the report generator
 MUST refuse macro-only validation reports (CLAUDE.md §5.6).
 

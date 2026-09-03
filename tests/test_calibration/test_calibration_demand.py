@@ -7,14 +7,16 @@ convergence of the iterative proportional scaling to the GEH criterion.
 
 from __future__ import annotations
 
+import sys
 from math import sqrt
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from calibration.demand import fit_inflow, geh
+from calibration.demand import fit_inflow, fit_inflow_profile, geh
 from flowstate_core.artifacts import DemandProfile
+from flowstate_core.config import ScenarioConfig
 from flowstate_core.units import veh_s_to_veh_h
 
 CREATED = "2026-08-29T00:00:00+00:00"
@@ -145,3 +147,81 @@ class TestFitInflow:
                 created_at=CREATED,
                 source="toy",
             )
+
+
+def _corridor_cfg(steps: list[tuple[float, float]]) -> ScenarioConfig:
+    return ScenarioConfig.model_validate(
+        {
+            "name": "demand_fit_scenario",
+            "network": {"kind": "corridor", "length_m": 3000.0, "lanes": 1, "inflow": steps},
+            "sim": {"duration_s": HORIZON_S},
+            "seed": 7,
+        }
+    )
+
+
+class TestScenarioForm:
+    """``fit_inflow(scenario, counts, ...)`` — the CLAUDE.md §6.3 entry point."""
+
+    def test_scenario_inflow_is_the_starting_profile(self) -> None:
+        calls: list[list[tuple[float, float]]] = []
+
+        def spy(profile: DemandProfile) -> pd.DataFrame:
+            calls.append(list(profile.steps))
+            return _surrogate(profile)
+
+        cfg = _corridor_cfg([(0.0, 0.6), (900.0, 0.6), (1800.0, 0.6)])
+        fitted = fit_inflow(
+            cfg,
+            _observed(),
+            spy,
+            created_at=CREATED,
+            source="toy surrogate via scenario form",
+            geh_threshold=1.0,
+            geh_pass_frac=1.0,
+            max_iters=30,
+        )
+        assert calls[0] == [(0.0, 0.6), (900.0, 0.6), (1800.0, 0.6)]
+        for (t_fit, q_fit), (t_true, q_true) in zip(fitted.steps, TRUTH_STEPS, strict=True):
+            assert t_fit == t_true
+            assert q_fit == pytest.approx(q_true, rel=0.02)
+        assert fitted.source == "toy surrogate via scenario form"
+
+    def test_ring_scenario_has_no_inflow(self) -> None:
+        ring = ScenarioConfig.model_validate(
+            {
+                "name": "ring",
+                "network": {"kind": "ring", "circumference_m": 230.0, "n_vehicles": 22},
+                "sim": {"duration_s": 60.0},
+            }
+        )
+        with pytest.raises(ValueError, match="no inflow"):
+            fit_inflow(ring, _observed(), _surrogate, created_at=CREATED, source="toy")
+
+    def test_missing_microsim_is_a_clear_import_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A None entry in sys.modules makes the import raise ImportError.
+        monkeypatch.setitem(sys.modules, "microsim.demand_adapter", None)
+        with pytest.raises(ImportError, match="microsim"):
+            fit_inflow(_corridor_cfg([(0.0, 0.5)]), _observed(), created_at=CREATED, source="toy")
+
+    def test_legacy_form_requires_simulate_fn(self) -> None:
+        with pytest.raises(TypeError, match="simulate_fn"):
+            fit_inflow(_observed(), _profile(list(TRUTH_STEPS)), created_at=CREATED, source="t")
+
+    def test_mixed_forms_rejected(self) -> None:
+        with pytest.raises(TypeError):
+            fit_inflow(_observed(), _observed(), _surrogate, created_at=CREATED, source="t")
+
+    def test_fit_inflow_profile_is_the_shared_core(self) -> None:
+        initial = _profile([(0.0, 0.6), (900.0, 0.6), (1800.0, 0.6)])
+        kwargs = dict(created_at=CREATED, source="toy", geh_threshold=1.0, geh_pass_frac=1.0)
+        a = fit_inflow_profile(_observed(), initial, _surrogate, **kwargs)
+        b = fit_inflow(_observed(), initial, _surrogate, **kwargs)
+        assert a.steps == b.steps and a.geh_vs_counts == b.geh_vs_counts
+
+    def test_malformed_bins_rejected(self) -> None:
+        bad = pd.DataFrame({"t_start_s": [0.0], "t_end_s": [0.0], "flow_veh_s": [0.1]})
+        with pytest.raises(ValueError, match="t_end_s > t_start_s"):
+            fit_inflow(_corridor_cfg([(0.0, 0.5)]), bad, _surrogate, created_at=CREATED, source="t")

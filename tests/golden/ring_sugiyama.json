@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "case": "ring_sugiyama",
+  "scenario": "ring_sugiyama",
+  "overrides": {},
+  "producer": "microsim.run_micro + validation.metrics.compute_metrics",
+  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate ring_sugiyama",
+  "generated_at": "2026-09-03T19:53:57+00:00",
+  "tolerance": {
+    "relative": 1e-06,
+    "exact": [
+      "n_vehicles_departed",
+      "n_vehicles_planned",
+      "wave_count"
+    ]
+  },
+  "config_hash": "718325bad723",
+  "seed": 42,
+  "sumo_seed": 42,
+  "tier": "micro",
+  "seeded": false,
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "config": {
+    "name": "ring_sugiyama",
+    "tier": "micro",
+    "network": {
+      "kind": "ring",
+      "circumference_m": 230.0,
+      "n_vehicles": 22
+    },
+    "fleet": {
+      "model": "IDM",
+      "v0": 33.3,
+      "T": 1.2,
+      "a_max": 0.73,
+      "b": 1.67,
+      "s0": 2.0,
+      "delta": 4.0,
+      "heterogeneity_frac": 0.12,
+      "idm_calibration": null,
+      "lc_strategic": 1.0,
+      "lc_keep_right": 1.0
+    },
+    "av": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "controller_params": {},
+      "vsl": null,
+      "vsl_params": {},
+      "oracle": {
+        "kind": "perfect",
+        "delay_s": 0.0,
+        "amplitude_noise_frac": 0.0
+      }
+    },
+    "sim": {
+      "duration_s": 600.0,
+      "step_length_s": 0.5,
+      "action_step_s": 0.5,
+      "warmup_s": 180.0,
+      "output_hz": 2.0
+    },
+    "perturbation": null,
+    "seed": 42,
+    "replicates": 20
+  },
+  "run": {
+    "n_vehicles_planned": 22,
+    "n_vehicles_departed": 22,
+    "fuel_total_ml": 8799.826541042012
+  },
+  "metrics": {
+    "throughput_veh_h": 792.6605504587156,
+    "mean_tt_s": 56.0,
+    "p90_tt_s": 56.0,
+    "sigma_v_spatial_ms": 2.1765639276129742,
+    "sigma_v_temporal_ms": 2.2404966438180685,
+    "vmt_veh_km": 29.81413370103168,
+    "vht_veh_h": 3.66361111111111,
+    "fuel_ml_per_veh_km": 295.1562044124564,
+    "wave_count": 1,
+    "wave_speed_kmh": null,
+    "wave_amplitude_ms": 6.410564861001498
+  }
+}

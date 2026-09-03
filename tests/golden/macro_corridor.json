@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "case": "macro_corridor",
+  "scenario": "golden_config() in tests/test_macrosim/test_macrosim_golden.py",
+  "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
+  "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate",
+  "generated_at": "2026-09-03T19:54:49+00:00",
+  "tolerance": {
+    "relative": 1e-09,
+    "exact": [
+      "n_cells",
+      "wave_count"
+    ]
+  },
+  "config_hash": "608d1fc4f1dc",
+  "seed": 42,
+  "tier": "screening",
+  "seeded": true,
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "numba": "0.67.0",
+    "flowstate_core": "2.0.0",
+    "macrosim": "2.0.0"
+  },
+  "config": {
+    "name": "macro_corridor_golden",
+    "tier": "macro",
+    "network": {
+      "kind": "corridor",
+      "length_m": 10000.0,
+      "lanes": 1,
+      "inflow": [
+        [
+          0.0,
+          0.45
+        ],
+        [
+          120.0,
+          0.5
+        ],
+        [
+          1080.0,
+          0.4
+        ]
+      ],
+      "boundary": null
+    },
+    "fleet": {
+      "model": "IDM",
+      "v0": 33.3,
+      "T": 1.4,
+      "a_max": 0.73,
+      "b": 1.67,
+      "s0": 2.0,
+      "delta": 4.0,
+      "heterogeneity_frac": 0.12,
+      "idm_calibration": null,
+      "lc_strategic": 1.0,
+      "lc_keep_right": 1.0
+    },
+    "av": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "controller_params": {},
+      "vsl": null,
+      "vsl_params": {},
+      "oracle": {
+        "kind": "perfect",
+        "delay_s": 0.0,
+        "amplitude_noise_frac": 0.0
+      }
+    },
+    "sim": {
+      "duration_s": 1200.0,
+      "step_length_s": 0.5,
+      "action_step_s": 0.5,
+      "warmup_s": 0.0,
+      "output_hz": 0.2
+    },
+    "perturbation": {
+      "t_s": 600.0,
+      "position_m": 7000.0,
+      "duration_s": 120.0,
+      "v_drop_ms": 25.0
+    },
+    "seed": 42,
+    "replicates": 1
+  },
+  "run": {
+    "n_cells": 100,
+    "dx_m": 100.0,
+    "dt_s": 0.5,
+    "fd_preset": "v1_legacy",
+    "fd_v_f": 27.77777777777778,
+    "fd_w": -5.555555555555555,
+    "fd_rho_jam": 0.16,
+    "clamped": false,
+    "vehicles_in": 582.0000000000111,
+    "vehicles_out": 413.99999956113385,
+    "stored_veh": 168.00000043885376
+  },
+  "metrics": {
+    "throughput_veh_h": 1509.8292004412558,
+    "mean_tt_s": null,
+    "p90_tt_s": null,
+    "sigma_v_spatial_ms": 1.1344647528242577,
+    "sigma_v_temporal_ms": 0.6376584292228419,
+    "vmt_veh_km": 5028.627316043475,
+    "vht_veh_h": 53.165854524795144,
+    "fuel_ml_per_veh_km": null,
+    "wave_count": 1,
+    "wave_speed_kmh": 10.867924528301888,
+    "wave_amplitude_ms": 27.718419989943357
+  }
+}

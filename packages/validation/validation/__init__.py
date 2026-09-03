@@ -2,7 +2,13 @@
 FHWA-style acceptance criteria, and the auto-generated validation report
 (CLAUDE.md §7; docs/CONTRACTS.md §§3, 4, 7)."""
 
-from validation.criteria import CriteriaProfile, CriteriaResult, evaluate
+from validation.criteria import (
+    CRITERIA_PROFILES,
+    CriteriaProfile,
+    CriteriaResult,
+    evaluate,
+    get_profile,
+)
 from validation.fields import (
     DensityField,
     FlowField,
@@ -13,14 +19,20 @@ from validation.fields import (
 )
 from validation.metrics import (
     CI,
+    LinkHourGEH,
     Metrics,
     aggregate,
     compute_metrics,
+    count_crossings,
+    crossings_per_window,
     geh,
+    geh_pass_fraction,
+    link_hour_geh,
     rmspe,
     travel_times,
 )
 from validation.report import ReportRefusedError, generate_report
+from validation.ring_benchmark import evaluate_ring_benchmark
 from validation.string_stability import (
     IDMPartials,
     equilibrium_gap,
@@ -34,11 +46,13 @@ from validation.waves import Wave, WaveSet, detect_waves
 
 __all__ = [
     "CI",
+    "CRITERIA_PROFILES",
     "CriteriaProfile",
     "CriteriaResult",
     "DensityField",
     "FlowField",
     "IDMPartials",
+    "LinkHourGEH",
     "Metrics",
     "ReportRefusedError",
     "SpeedField",
@@ -46,16 +60,22 @@ __all__ = [
     "WaveSet",
     "aggregate",
     "compute_metrics",
+    "count_crossings",
+    "crossings_per_window",
     "density_field",
     "detect_waves",
     "equilibrium_gap",
     "equilibrium_speed",
     "evaluate",
+    "evaluate_ring_benchmark",
     "flow_field",
     "geh",
+    "geh_pass_fraction",
     "generate_report",
+    "get_profile",
     "idm_partials",
     "is_string_stable",
+    "link_hour_geh",
     "rmspe",
     "speed_field",
     "stability_criterion",

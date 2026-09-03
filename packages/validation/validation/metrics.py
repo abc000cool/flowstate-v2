@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -214,20 +215,107 @@ def _first_crossing(t: FloatArray, x: FloatArray, x_target: float) -> float | No
     return float(t[i - 1] + frac * (t[i] - t[i - 1]))
 
 
-def _count_crossings(trajectories: pd.DataFrame, x_ref: float) -> int:
+def _crossing_times(trajectories: pd.DataFrame, x_ref: float) -> FloatArray:
+    """Times of every upward crossing of ``x_ref`` (see :func:`count_crossings`).
+
+    Each crossing is stamped with the time of the later sample of the pair
+    that brackets ``x_ref``. Vectorised over the whole frame: rows are sorted
+    by ``(veh_id, t)`` and consecutive same-vehicle pairs are tested.
+    """
+    for col in ("t", "veh_id", "x"):
+        if col not in trajectories.columns:
+            raise ValueError(f"trajectories missing column {col!r}")
+    if len(trajectories) < 2:
+        return np.empty(0, dtype=np.float64)
+    ordered = trajectories.sort_values(["veh_id", "t"], kind="stable")
+    vid = ordered["veh_id"].to_numpy()
+    x = ordered["x"].to_numpy(dtype=np.float64)
+    t = ordered["t"].to_numpy(dtype=np.float64)
+    hit = (vid[1:] == vid[:-1]) & (x[:-1] < x_ref) & (x[1:] >= x_ref)
+    return np.asarray(t[1:][hit], dtype=np.float64)
+
+
+def count_crossings(
+    trajectories: pd.DataFrame,
+    x_ref: float,
+    *,
+    t_lo: float | None = None,
+    t_hi: float | None = None,
+) -> int:
     """Number of upward crossings of ``x_ref`` over all vehicles.
 
-    A crossing is a consecutive sample pair with ``x_prev < x_ref <= x_cur``
-    (time-ordered per vehicle); on a ring the wrap jump is downward and is
-    therefore not counted, so each lap contributes exactly one crossing.
+    A crossing is a consecutive, time-ordered sample pair of one vehicle
+    with ``x_prev < x_ref <= x_cur``. It is stamped with the time of the
+    later sample and counted when ``t_lo <= t < t_hi`` (either bound may be
+    omitted). On a ring the wrap jump is downward and is therefore not
+    counted, so each lap contributes exactly one crossing. This is the
+    crossing definition behind :func:`compute_metrics` throughput,
+    :func:`crossings_per_window` and :func:`link_hour_geh`, and the one the
+    demand adapter (``microsim.demand_adapter``) uses for boundary counts.
+
+    Args:
+        trajectories: Rows with ``t`` [s], ``veh_id`` and ``x`` [m] columns
+            (docs/CONTRACTS.md §3).
+        x_ref: Cross-section position [m] in trajectory coordinates.
+        t_lo: Inclusive lower time bound [s]; ``None`` for no bound.
+        t_hi: Exclusive upper time bound [s]; ``None`` for no bound.
+
+    Returns:
+        Crossing count.
+
+    Raises:
+        ValueError: On missing columns or ``t_hi <= t_lo``.
     """
-    n = 0
-    for _, group in trajectories.groupby("veh_id", sort=False):
-        x = group.sort_values("t")["x"].to_numpy(dtype=np.float64)
-        if len(x) < 2:
-            continue
-        n += int(np.sum((x[:-1] < x_ref) & (x[1:] >= x_ref)))
-    return n
+    if t_lo is not None and t_hi is not None and t_hi <= t_lo:
+        raise ValueError(f"need t_hi > t_lo, got [{t_lo}, {t_hi})")
+    times = _crossing_times(trajectories, x_ref)
+    if t_lo is not None:
+        times = times[times >= t_lo]
+    if t_hi is not None:
+        times = times[times < t_hi]
+    return int(times.size)
+
+
+def crossings_per_window(
+    trajectories: pd.DataFrame,
+    x_ref: float,
+    *,
+    t_lo: float,
+    t_hi: float,
+    window_s: float,
+) -> NDArray[np.int64]:
+    """Crossings of ``x_ref`` binned into consecutive windows of ``window_s``.
+
+    Windows are ``[t_lo + k·window_s, t_lo + (k+1)·window_s)`` for
+    ``k = 0 … n−1`` with ``n = (t_hi − t_lo) / window_s``, which must be an
+    integer. Crossing semantics are those of :func:`count_crossings`.
+
+    Args:
+        trajectories: Rows with ``t``, ``veh_id`` and ``x`` columns.
+        x_ref: Cross-section position [m] in trajectory coordinates.
+        t_lo: Start of the first window [s] (inclusive).
+        t_hi: End of the last window [s] (exclusive).
+        window_s: Window length [s], > 0.
+
+    Returns:
+        Integer counts, one per window, in time order.
+
+    Raises:
+        ValueError: If ``window_s <= 0``, ``t_hi <= t_lo``, or the span is
+            not a whole number of windows.
+    """
+    if window_s <= 0:
+        raise ValueError(f"window_s must be > 0, got {window_s}")
+    if t_hi <= t_lo:
+        raise ValueError(f"need t_hi > t_lo, got [{t_lo}, {t_hi})")
+    n_win = round((t_hi - t_lo) / window_s)
+    if n_win < 1 or abs(n_win * window_s - (t_hi - t_lo)) > 1e-6:
+        raise ValueError(f"[{t_lo}, {t_hi}) s is not a whole number of {window_s} s windows")
+    times = _crossing_times(trajectories, x_ref)
+    times = times[(times >= t_lo) & (times < t_hi)]
+    idx = np.minimum(((times - t_lo) // window_s).astype(np.int64), n_win - 1)
+    counts = np.bincount(idx, minlength=n_win)[:n_win]
+    return np.asarray(counts, dtype=np.int64)
 
 
 def compute_metrics(
@@ -291,7 +379,7 @@ def compute_metrics(
 
     # Throughput at the reference cross-section.
     t_span_s = float(t_all.max() - t_all.min())
-    crossings = _count_crossings(traj, x_ref)
+    crossings = count_crossings(traj, x_ref)
     throughput = veh_s_to_veh_h(crossings / t_span_s) if t_span_s > 0 else math.nan
 
     # Travel times over the measurement span.
@@ -395,3 +483,155 @@ def aggregate(metrics_list: list[Metrics]) -> dict[str, CI]:
         half = float(student_t.ppf(0.5 + CI_LEVEL / 2.0, n - 1) * finite.std(ddof=1) / math.sqrt(n))
         out[f.name] = CI(mean, mean - half, mean + half, n)
     return out
+
+
+def geh_pass_fraction(geh_values: Sequence[float], threshold: float = 5.0) -> float:
+    """Fraction of comparisons with ``GEH < threshold`` (strict).
+
+    NaN entries never satisfy the bound and therefore count as failing —
+    the honest reading of a comparison that could not be formed.
+
+    Args:
+        geh_values: Per-comparison GEH statistics.
+        threshold: Strict upper bound; 5 is the FHWA/DOT convention
+            (``validation.criteria`` carries the sourced profiles).
+
+    Returns:
+        Fraction in ``[0, 1]``.
+
+    Raises:
+        ValueError: If no comparisons are supplied.
+    """
+    if len(geh_values) == 0:
+        raise ValueError("geh_pass_fraction of no comparisons is undefined")
+    return sum(1 for g in geh_values if g < threshold) / len(geh_values)
+
+
+@dataclass(frozen=True)
+class LinkHourGEH:
+    """Per-link-window GEH comparison (CLAUDE.md §7.1 link-flow criterion).
+
+    One entry per matched ``(x_ref_m, window_start_s)`` bin, in the order of
+    the observed rows (rows whose observed flow was NaN are dropped and
+    counted in ``n_dropped_nan``).
+
+    Attributes:
+        geh: GEH statistic per bin, on hourly-equivalent volumes.
+        x_ref_m: Cross-section of each bin [m].
+        window_start_s: Window start of each bin [s].
+        sim_veh_h: Simulated hourly-equivalent flow per bin [veh/h].
+        obs_veh_h: Observed hourly-equivalent flow per bin [veh/h].
+        window_s: Window length used for every bin [s].
+        n_dropped_nan: Observed rows dropped because their flow was NaN.
+    """
+
+    geh: tuple[float, ...]
+    x_ref_m: tuple[float, ...]
+    window_start_s: tuple[float, ...]
+    sim_veh_h: tuple[float, ...]
+    obs_veh_h: tuple[float, ...]
+    window_s: float
+    n_dropped_nan: int
+
+    def pass_fraction(self, threshold: float = 5.0) -> float:
+        """Fraction of bins with ``GEH < threshold`` (:func:`geh_pass_fraction`)."""
+        return geh_pass_fraction(self.geh, threshold)
+
+
+def link_hour_geh(
+    sim: pd.DataFrame,
+    observed: pd.DataFrame,
+    *,
+    x_refs_m: Sequence[float],
+    window_s: float = 3600.0,
+) -> LinkHourGEH:
+    """GEH per link-window between simulated crossings and observed counts.
+
+    For every observed row, the simulated crossings of its cross-section
+    inside ``[window_start_s, window_start_s + window_s)`` are counted with
+    :func:`count_crossings`, scaled to an hourly-equivalent flow through
+    ``flowstate_core.units`` (``veh_s_to_veh_h(n / window_s)``), and compared
+    with the observed hourly-equivalent flow by :func:`geh`. GEH is only
+    meaningful on hourly volumes; a shorter ``window_s`` (e.g. the 300 s
+    windows of the I-24 comparison) scales both sides identically, which is
+    the usual practice, but the resulting values are hourly-*equivalent* and
+    the report must say so.
+
+    Args:
+        sim: Trajectory rows with ``t`` [s], ``veh_id`` and ``x`` [m]
+            columns, in the same coordinates as ``observed``.
+        observed: Rows with ``x_ref_m`` [m], ``window_start_s`` [s] and
+            ``flow_veh_h`` [veh/h] columns; every ``x_ref_m`` must be one of
+            ``x_refs_m`` (a guard against coordinate mix-ups).
+        x_refs_m: Cross-sections the comparison may use [m].
+        window_s: Window length [s] shared by every observed row.
+
+    Returns:
+        A :class:`LinkHourGEH` with one GEH per matched bin.
+
+    Raises:
+        ValueError: On missing columns, an empty simulation, a negative
+            observed flow, an observed cross-section absent from
+            ``x_refs_m``, or an observed window not fully covered by the
+            simulated time span (an unmatched bin is an error, never a
+            silent skip).
+    """
+    if window_s <= 0:
+        raise ValueError(f"window_s must be > 0, got {window_s}")
+    x_refs = [float(x) for x in x_refs_m]
+    if not x_refs:
+        raise ValueError("x_refs_m is empty")
+    for col in ("x_ref_m", "window_start_s", "flow_veh_h"):
+        if col not in observed.columns:
+            raise ValueError(f"observed missing column {col!r}")
+    for col in ("t", "veh_id", "x"):
+        if col not in sim.columns:
+            raise ValueError(f"sim missing column {col!r}")
+    if sim.empty:
+        raise ValueError("sim holds no trajectory rows")
+    tol = 1e-6
+    t_min = float(sim["t"].min())
+    t_max = float(sim["t"].max())
+    obs_x = observed["x_ref_m"].to_numpy(dtype=np.float64)
+    obs_w = observed["window_start_s"].to_numpy(dtype=np.float64)
+    obs_q = observed["flow_veh_h"].to_numpy(dtype=np.float64)
+    keep = np.isfinite(obs_q)
+    n_dropped = int(np.count_nonzero(~keep))
+
+    crossing_times: dict[int, FloatArray] = {}
+    gehs: list[float] = []
+    xs: list[float] = []
+    ws: list[float] = []
+    sims: list[float] = []
+    obss: list[float] = []
+    for x_o, w_o, q_o in zip(obs_x[keep], obs_w[keep], obs_q[keep], strict=True):
+        matches = [i for i, x in enumerate(x_refs) if math.isclose(x, x_o, abs_tol=tol)]
+        if not matches:
+            raise ValueError(f"observed cross-section x = {x_o} m is not in x_refs_m")
+        if q_o < 0:
+            raise ValueError(f"observed flow must be >= 0, got {q_o} veh/h at x = {x_o} m")
+        if w_o < t_min - tol or w_o + window_s > t_max + tol:
+            raise ValueError(
+                f"observed window [{w_o}, {w_o + window_s}) s at x = {x_o} m is not "
+                f"covered by the simulated span [{t_min}, {t_max}] s"
+            )
+        i = matches[0]
+        if i not in crossing_times:
+            crossing_times[i] = _crossing_times(sim, x_refs[i])
+        times = crossing_times[i]
+        n = int(np.count_nonzero((times >= w_o) & (times < w_o + window_s)))
+        q_sim = veh_s_to_veh_h(n / window_s)
+        gehs.append(geh(q_sim, float(q_o)))
+        xs.append(x_refs[i])
+        ws.append(float(w_o))
+        sims.append(q_sim)
+        obss.append(float(q_o))
+    return LinkHourGEH(
+        geh=tuple(gehs),
+        x_ref_m=tuple(xs),
+        window_start_s=tuple(ws),
+        sim_veh_h=tuple(sims),
+        obs_veh_h=tuple(obss),
+        window_s=float(window_s),
+        n_dropped_nan=n_dropped,
+    )

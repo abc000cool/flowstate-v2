@@ -5,10 +5,11 @@ heterogeneous IDM/EIDM fleets, libsumo stepping with pure-function controller
 dispatch, and contract-compliant Parquet/JSON run artifacts.
 """
 
+from microsim.demand_adapter import make_simulate_fn
 from microsim.gym_backend import MicrosimBackend
 from microsim.networks import NetBundle, corridor, osm_import, ring
 from microsim.runner import RunPaths, fuel_mg_to_ml, run_micro, run_replicates
-from microsim.scenarios import load_scenario, resolve_scenario, run_scenario
+from microsim.scenarios import load_scenario, resolve_scenario, run_scenario, scenario_from_osm
 from microsim.vehicles import (
     FleetPlan,
     build_corridor_plan,
@@ -35,6 +36,7 @@ __all__ = [
     "fuel_mg_to_ml",
     "load_idm_calibration",
     "load_scenario",
+    "make_simulate_fn",
     "osm_import",
     "resolve_calibration_path",
     "resolve_scenario",
@@ -42,6 +44,7 @@ __all__ = [
     "run_micro",
     "run_replicates",
     "run_scenario",
+    "scenario_from_osm",
     "tag_avs",
     "write_corridor_routes",
     "write_ring_routes",

@@ -50,6 +50,10 @@ not calibrated claims.
 
 Rows marked not evaluated had no input supplied and count as failing; an
 unevaluated criterion is never a pass.
+{% if criteria_note %}
+
+{{ criteria_note }}
+{% endif %}
 
 ## Metrics
 
@@ -58,11 +62,53 @@ Mean with two-sided t-distribution confidence bounds at the
 underpowered have fewer than {{ min_replicates }} replicates and must not be
 quoted as headline results.
 
+{% for g in groups %}
+### {{ g.label }} (`{{ g.config_hash }}`)
+
+Replicates: n = {{ g.n_seeds }} distinct seeds ({{ g.seeds_joined }}); replicate
+criterion ({{ g.replicate_threshold }}): {{ g.replicate_result }}.
+{% if g.seeded %}
+This configuration carries a seeded perturbation ({{ seeded_flag_text }}).
+{% endif %}
+
 | Metric | Mean | Lower | Upper | n | Underpowered |
 |---|---|---|---|---|---|
-{% for m in metric_rows %}
+{% for m in g.metric_rows %}
 | {{ m.name }} | {{ m.mean }} | {{ m.lo }} | {{ m.hi }} | {{ m.n }} | {{ m.underpowered }} |
 {% endfor %}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% if deltas %}
+
+### Controller minus baseline
+
+Each row is the difference of the group's metric from the baseline's
+(group minus baseline; negative means lower than baseline), with a
+two-sided t-distribution interval at the {{ ci_level_pct }} percent level.
+Seed-paired contrasts use the per-seed differences of common-random-number
+replicates (docs/CONTROLLER_COMPARISON.md); when the seed sets differ the
+interval is Welch's unequal-variance interval on the difference of means.
+A contrast is resolved when its interval excludes zero; an unresolved
+contrast is not evidence of an effect in either direction.
+
+{% for d in deltas %}
+#### {{ d.label }} vs baseline — {{ d.method_text }}
+
+| Metric | Δ mean | Lower | Upper | Δ [% of baseline] | n | Resolved |
+|---|---|---|---|---|---|---|
+{% for m in d.rows %}
+| {{ m.name }} | {{ m.mean }} | {{ m.lo }} | {{ m.hi }} | {{ m.pct }} | {{ m.n }} | {{ m.resolved }} |
+{% endfor %}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% elif delta_note %}
+
+{{ delta_note }}
+{% endif %}
 
 ## Speed contours
 
@@ -81,6 +127,11 @@ quoted as headline results.
   behavior; conclusions hold only within the swept grid.
 - Metrics from fewer than {{ min_replicates }} replicates are flagged
   underpowered and are diagnostics, not claims.
+{% if deltas %}
+- Controller-minus-baseline contrasts compare configurations that differ
+  only by their controlled-vehicle settings under the same scenario; an
+  unresolved contrast is inconclusive, not a null result.
+{% endif %}
 {% if seeded_any %}
 - Some runs used a seeded perturbation ({{ seeded_flag_text }}); those
   results demonstrate controlled response, not emergent wave formation.

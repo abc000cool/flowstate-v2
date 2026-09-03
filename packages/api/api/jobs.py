@@ -27,6 +27,7 @@ path derives, recorded on the run row at creation time.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import traceback
@@ -451,7 +452,16 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
         _stage_runs(runs, stage_dir)
         out_path = report_dir / "report.md"
         try:
-            generate_report(stage_dir, out_path, title=report["title"], created_at=now_iso())
+            try:
+                generate_report(
+                    stage_dir, out_path, title=report["title"], created_at=now_iso(), pdf=True
+                )
+            except RuntimeError as exc:
+                # The PDF renderer is the optional ``validation[pdf]`` extra; a
+                # deployment without it still gets the Markdown report, and
+                # GET /reports/{id}/pdf answers 404 (api.main).
+                logging.getLogger(__name__).warning("report %s: no PDF (%s)", report_id, exc)
+                generate_report(stage_dir, out_path, title=report["title"], created_at=now_iso())
         except ReportRefusedError as exc:
             store.set_report_status(
                 report_id,

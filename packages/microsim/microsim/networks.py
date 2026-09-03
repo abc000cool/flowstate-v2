@@ -36,6 +36,8 @@ from typing import Literal
 
 import sumolib
 
+from controllers.vsl import VSL_SEGMENT_TARGET_M, gantry_segments
+
 #: Free-flow speed limit written on generated edges [m/s]. Deliberately above
 #: any plausible per-vehicle desired-speed draw (v0 ≤ 38 + 3σ, CLAUDE.md §3.1)
 #: so the vType ``maxSpeed`` — not the road — governs desired speed.
@@ -120,6 +122,28 @@ class NetBundle:
         if not buffers:
             return self.edge_ids
         return tuple(e for e in self.edge_ids if e not in buffers)
+
+    def segments(self, target_m: float = VSL_SEGMENT_TARGET_M) -> list[tuple[str, ...]]:
+        """Group the main edges into VSL gantry segments (CLAUDE.md §4.4).
+
+        Consecutive main edges are grouped greedily by cumulative length via
+        :func:`controllers.vsl.gantry_segments`: segments aim at ``target_m``,
+        are at least half of it long (500 m at the default), never split an
+        edge, and a trailing short remainder joins the previous segment. A
+        generated corridor of 1 km edges therefore yields one segment per
+        edge, a corridor consisting of a single long edge stays one segment,
+        and an OSM chain of short ways is merged into gantry-sized groups.
+
+        Args:
+            target_m: Target segment length [m].
+
+        Returns:
+            Edge-id groups in route order, covering every main edge once.
+        """
+        edges = self.main_edges
+        length_by_id = dict(zip(self.edge_ids, self.edge_lengths, strict=True))
+        bounds = gantry_segments([length_by_id[e] for e in edges], target_m)
+        return [tuple(edges[a:b]) for a, b in bounds]
 
 
 def _netconvert(args: list[str]) -> None:

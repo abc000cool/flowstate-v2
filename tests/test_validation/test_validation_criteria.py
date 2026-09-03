@@ -6,7 +6,14 @@ import math
 import pytest
 
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
-from validation.criteria import CriteriaProfile, evaluate
+from validation.criteria import (
+    CRITERIA_PROFILES,
+    REQUIRED_COMPLIANCES,
+    REQUIRED_PENETRATIONS,
+    CriteriaProfile,
+    evaluate,
+    get_profile,
+)
 
 
 def _row(rows, name):
@@ -34,6 +41,7 @@ class TestDefaults:
             "ring_emergence",
             "ring_dampening",
             "n_seeds",
+            "sensitivity_grid",
         }
         for r in rows:
             assert not r.evaluated
@@ -102,3 +110,107 @@ class TestScalarChecks:
         p = CriteriaProfile(name="txdot_variant", rmspe_max=0.10, min_seeds=30)
         assert not _row(evaluate(p, rmspe_value=0.12), "speeds_rmspe").passed
         assert not _row(evaluate(p, n_seeds=20), "n_seeds").passed
+
+
+class TestProfiles:
+    """The registry (CLAUDE.md §7.1 selectable state-DOT profiles)."""
+
+    def test_registry_has_default_and_a_state_profile(self):
+        assert "fhwa_default" in CRITERIA_PROFILES
+        assert get_profile("fhwa_default") == CriteriaProfile()
+        assert {"odot_vissim_2011", "txdot_tsap_ch13", "fhwa_tat3_2004"} <= set(CRITERIA_PROFILES)
+        for name, p in CRITERIA_PROFILES.items():
+            assert p.name == name
+
+    def test_every_profile_records_its_source(self):
+        for p in CRITERIA_PROFILES.values():
+            assert p.source.strip()
+            # Each source names the document/section it was verified against
+            # and flags the FlowState-only rows.
+            assert "verified" in p.source or "read 2026" in p.source
+            assert "FlowState" in p.source
+
+    def test_unknown_profile_lists_available(self):
+        with pytest.raises(KeyError, match="fhwa_default"):
+            get_profile("no_such_profile")
+
+    def test_empty_source_rejected(self):
+        with pytest.raises(ValueError, match="source"):
+            CriteriaProfile(name="x", source="   ")
+
+    def test_fhwa_2004_fraction_is_strict(self):
+        # The 2004 table says "> 85% of cases": exactly 85% fails there but
+        # passes the inclusive default.
+        values = [1.0] * 17 + [9.0] * 3
+        assert _row(evaluate(geh_values=values), "link_flows_geh").passed
+        row = _row(evaluate(get_profile("fhwa_tat3_2004"), geh_values=values), "link_flows_geh")
+        assert not row.passed
+        assert "> 85%" in row.threshold
+        assert _row(
+            evaluate(get_profile("fhwa_tat3_2004"), geh_values=[1.0] * 18 + [9.0] * 2),
+            "link_flows_geh",
+        ).passed
+
+    def test_txdot_state_facility_row(self):
+        p = get_profile("txdot_tsap_ch13")
+        assert p.geh_threshold == 3.0 and p.geh_pass_fraction == 1.0
+        assert _row(evaluate(p, geh_values=[2.9, 1.0]), "link_flows_geh").passed
+        assert not _row(evaluate(p, geh_values=[3.0, 1.0]), "link_flows_geh").passed
+        assert not _row(evaluate(p, geh_values=[4.0] + [1.0] * 99), "link_flows_geh").passed
+
+    def test_odot_min_runs(self):
+        p = get_profile("odot_vissim_2011")
+        assert p.min_seeds == 10
+        assert p.geh_threshold == 5.0 and p.geh_pass_fraction == 0.85
+        assert _row(evaluate(p, n_seeds=10), "n_seeds").passed
+        assert not _row(evaluate(p, n_seeds=9), "n_seeds").passed
+
+    def test_profiles_without_rmspe_bound_emit_no_speed_row(self):
+        for name in ("odot_vissim_2011", "txdot_tsap_ch13", "fhwa_tat3_2004"):
+            p = get_profile(name)
+            assert p.rmspe_max is None
+            names = {r.name for r in evaluate(p, rmspe_value=0.1)}
+            assert "speeds_rmspe" not in names
+            assert "link_flows_geh" in names and "n_seeds" in names
+
+
+class TestSensitivityGrid:
+    """CLAUDE.md §7.1 'Sensitivity' row: every required cell must be present."""
+
+    @staticmethod
+    def _full_grid():
+        return [(pen, comp) for pen in REQUIRED_PENETRATIONS for comp in REQUIRED_COMPLIANCES]
+
+    def test_required_cells_match_spec(self):
+        p = CriteriaProfile()
+        assert p.required_penetrations == (0.01, 0.02, 0.05, 0.10, 0.15, 0.20)
+        assert p.required_compliances == (0.25, 0.5, 0.8, 1.0)
+
+    def test_absent_grid_is_not_evaluated(self):
+        row = _row(evaluate(), "sensitivity_grid")
+        assert not row.evaluated and not row.passed and row.value is None
+
+    def test_full_grid_passes(self):
+        row = _row(evaluate(sweep_grid=self._full_grid()), "sensitivity_grid")
+        assert row.evaluated and row.passed
+        assert row.value == pytest.approx(1.0)
+        assert "24/24" in row.detail
+
+    def test_missing_cell_fails_and_is_named(self):
+        grid = [c for c in self._full_grid() if c != (0.15, 0.8)]
+        row = _row(evaluate(sweep_grid=grid), "sensitivity_grid")
+        assert row.evaluated and not row.passed
+        assert row.value == pytest.approx(23.0 / 24.0)
+        assert "(15%, 80%)" in row.detail
+
+    def test_float_tolerance_and_extra_cells(self):
+        grid = [(pen + 1e-9, comp - 1e-9) for pen, comp in self._full_grid()] + [(0.3, 1.0)]
+        assert _row(evaluate(sweep_grid=grid), "sensitivity_grid").passed
+
+    def test_profile_can_drop_the_row(self):
+        p = CriteriaProfile(require_sensitivity_grid=False)
+        assert "sensitivity_grid" not in {r.name for r in evaluate(p, sweep_grid=[])}
+
+    def test_empty_grid_fails_honestly(self):
+        row = _row(evaluate(sweep_grid=[]), "sensitivity_grid")
+        assert row.evaluated and not row.passed and row.value == 0.0

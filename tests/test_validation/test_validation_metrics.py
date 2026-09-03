@@ -14,10 +14,15 @@ from scipy import stats
 from validation.metrics import (
     CI,
     MIN_REPLICATES,
+    LinkHourGEH,
     Metrics,
     aggregate,
     compute_metrics,
+    count_crossings,
+    crossings_per_window,
     geh,
+    geh_pass_fraction,
+    link_hour_geh,
     rmspe,
     travel_times,
 )
@@ -210,3 +215,121 @@ class TestAggregate:
     def test_empty_list_rejected(self):
         with pytest.raises(ValueError, match="empty"):
             aggregate([])
+
+
+class TestCountCrossings:
+    """Crossing = same-vehicle sample pair with x_prev < x_ref <= x_cur, stamped
+    at the later sample. On the 20/25/30 m/s fixture the crossings of
+    x = 1000 m are stamped at t = 50.0, 40.0 and 33.5 s (the 30 m/s vehicle
+    reaches 1000 m between the 33.0 s and 33.5 s samples)."""
+
+    def test_unbounded_count(self):
+        assert count_crossings(_three_vehicle_traj(), 1000.0) == 3
+
+    def test_time_bounds_inclusive_lower_exclusive_upper(self):
+        traj = _three_vehicle_traj()
+        assert count_crossings(traj, 1000.0, t_lo=33.5, t_hi=50.0) == 2
+        assert count_crossings(traj, 1000.0, t_lo=33.6, t_hi=50.0) == 1
+        assert count_crossings(traj, 1000.0, t_lo=33.5, t_hi=50.5) == 3
+        assert count_crossings(traj, 1000.0, t_hi=33.5) == 0
+        assert count_crossings(traj, 1000.0, t_lo=50.0) == 1
+
+    def test_ring_wrap_is_not_a_crossing(self):
+        # One vehicle at 5 m/s on a 100 m ring, sampled at 2 Hz for 60 s:
+        # x = 50 m is reached at t = 10, 30, 50 s; the wrap jump 97.5 -> 2.5
+        # is downward and must not count.
+        t = np.arange(0.0, 60.0 + 0.25, 0.5)
+        traj = pd.DataFrame({"t": t, "veh_id": "v0", "x": (5.0 * t) % 100.0, "v": 5.0})
+        assert count_crossings(traj, 50.0) == 3
+        assert count_crossings(traj, 50.0, t_lo=10.0, t_hi=30.0) == 1
+
+    def test_validates_inputs(self):
+        traj = _three_vehicle_traj()
+        with pytest.raises(ValueError, match="t_hi > t_lo"):
+            count_crossings(traj, 1000.0, t_lo=10.0, t_hi=10.0)
+        with pytest.raises(ValueError, match="missing column"):
+            count_crossings(traj.drop(columns=["x"]), 1000.0)
+
+    def test_per_window_hand_computed(self):
+        traj = _three_vehicle_traj()
+        counts = crossings_per_window(traj, 1000.0, t_lo=0.0, t_hi=100.0, window_s=25.0)
+        # Stamps 33.5 and 40.0 fall in [25, 50); 50.0 falls in [50, 75).
+        assert counts.tolist() == [0, 2, 1, 0]
+        assert counts.dtype == np.int64
+
+    def test_per_window_rejects_partial_windows(self):
+        traj = _three_vehicle_traj()
+        with pytest.raises(ValueError, match="whole number"):
+            crossings_per_window(traj, 1000.0, t_lo=0.0, t_hi=90.0, window_s=25.0)
+        with pytest.raises(ValueError, match="window_s"):
+            crossings_per_window(traj, 1000.0, t_lo=0.0, t_hi=100.0, window_s=0.0)
+
+
+class TestGehPassFraction:
+    def test_strict_bound_and_nan_fail(self):
+        assert geh_pass_fraction([1.0, 4.9, 5.0, 9.0]) == pytest.approx(0.5)
+        assert geh_pass_fraction([1.0, math.nan]) == pytest.approx(0.5)
+        assert geh_pass_fraction([1.0, 2.0], threshold=3.0) == 1.0
+
+    def test_empty_rejected(self):
+        with pytest.raises(ValueError, match="undefined"):
+            geh_pass_fraction([])
+
+
+class TestLinkHourGEH:
+    """Two 50 s windows on the 20/25/30 m/s fixture, hourly-equivalent flows.
+
+    x = 1000 m: crossings at 33.5 and 40.0 s -> 2 in [0, 50) -> 144 veh/h;
+    50.0 s -> 1 in [50, 100) -> 72 veh/h.
+    x = 2000 m: crossings stamped at 67.0 and 80.0 s (the 20 m/s vehicle's
+    crossing at exactly 100.0 s is outside [50, 100)) -> 144 veh/h.
+    """
+
+    def _observed(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "x_ref_m": [1000.0, 1000.0, 2000.0, 2000.0],
+                "window_start_s": [0.0, 50.0, 50.0, 0.0],
+                "flow_veh_h": [144.0, 100.0, 144.0, math.nan],
+            }
+        )
+
+    def test_hand_computed_values(self):
+        res = link_hour_geh(
+            _three_vehicle_traj(), self._observed(), x_refs_m=[1000.0, 2000.0], window_s=50.0
+        )
+        assert isinstance(res, LinkHourGEH)
+        assert res.n_dropped_nan == 1
+        assert res.sim_veh_h == pytest.approx((144.0, 72.0, 144.0))
+        assert res.obs_veh_h == pytest.approx((144.0, 100.0, 144.0))
+        assert res.x_ref_m == (1000.0, 1000.0, 2000.0)
+        assert res.window_start_s == (0.0, 50.0, 50.0)
+        expected = (0.0, math.sqrt(2.0 * (72.0 - 100.0) ** 2 / 172.0), 0.0)
+        assert res.geh == pytest.approx(expected)
+        assert res.pass_fraction() == pytest.approx(1.0)
+        assert res.pass_fraction(threshold=3.0) == pytest.approx(2.0 / 3.0)
+        assert res.window_s == 50.0
+
+    def test_unmatched_cross_section_raises(self):
+        with pytest.raises(ValueError, match="not in x_refs_m"):
+            link_hour_geh(_three_vehicle_traj(), self._observed(), x_refs_m=[1000.0], window_s=50.0)
+
+    def test_window_outside_simulated_span_raises(self):
+        obs = pd.DataFrame({"x_ref_m": [1000.0], "window_start_s": [75.0], "flow_veh_h": [10.0]})
+        with pytest.raises(ValueError, match="not covered"):
+            link_hour_geh(_three_vehicle_traj(), obs, x_refs_m=[1000.0], window_s=50.0)
+
+    def test_window_ending_exactly_at_last_sample_is_covered(self):
+        obs = pd.DataFrame({"x_ref_m": [1000.0], "window_start_s": [50.0], "flow_veh_h": [72.0]})
+        res = link_hour_geh(_three_vehicle_traj(), obs, x_refs_m=[1000.0], window_s=50.0)
+        assert res.geh == pytest.approx((0.0,))
+
+    def test_validates_columns_and_flows(self):
+        traj = _three_vehicle_traj()
+        with pytest.raises(ValueError, match="observed missing column"):
+            link_hour_geh(traj, pd.DataFrame({"x_ref_m": [1.0]}), x_refs_m=[1.0])
+        bad = pd.DataFrame({"x_ref_m": [1000.0], "window_start_s": [0.0], "flow_veh_h": [-1.0]})
+        with pytest.raises(ValueError, match=">= 0"):
+            link_hour_geh(traj, bad, x_refs_m=[1000.0], window_s=50.0)
+        with pytest.raises(ValueError, match="x_refs_m is empty"):
+            link_hour_geh(traj, self._observed(), x_refs_m=[], window_s=50.0)

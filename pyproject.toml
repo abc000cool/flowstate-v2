@@ -36,6 +36,7 @@ dev = [
     "mypy>=1.14",
     "pandas-stubs",
     "types-pyyaml",
+    "fpdf2>=2.8",
 ]
 
 [tool.ruff]

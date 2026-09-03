@@ -8,6 +8,8 @@ integration round trip in ``test_micro_integration.py``.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from tests.test_api.conftest import HEADERS, macro_corridor_config, post_run, post_scenario
@@ -36,3 +38,25 @@ def test_report_empty_run_ids_422(client: TestClient) -> None:
 def test_missing_report_404(client: TestClient) -> None:
     assert client.get("/api/v1/reports/rpt_missing", headers=HEADERS).status_code == 404
     assert client.get("/api/v1/reports/rpt_missing/markdown", headers=HEADERS).status_code == 404
+    assert client.get("/api/v1/reports/rpt_missing/pdf", headers=HEADERS).status_code == 404
+
+
+def test_report_pdf_404_until_rendered(client: TestClient, tmp_path: Path) -> None:
+    """A finished report answers 404 on /pdf until a report.pdf sits beside it."""
+    store = client.app.state.store
+    report_dir = tmp_path / "results" / "reports" / "rpt_pdf"
+    report_dir.mkdir(parents=True)
+    md_path = report_dir / "report.md"
+    md_path.write_text("# report\n")
+    report_id = store.create_report(["run_x"], "pdf route test")
+    store.set_report_status(report_id, "done", report_dir=str(report_dir), report_path=str(md_path))
+
+    r = client.get(f"/api/v1/reports/{report_id}/pdf", headers=HEADERS)
+    assert r.status_code == 404
+    assert "PDF" in r.json()["detail"]
+
+    (report_dir / "report.pdf").write_bytes(b"%PDF-1.4\n%stub\n")
+    r = client.get(f"/api/v1/reports/{report_id}/pdf", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF")

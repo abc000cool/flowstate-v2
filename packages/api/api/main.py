@@ -655,6 +655,24 @@ def get_report_markdown(request: Request, report_id: str) -> PlainTextResponse:
     return PlainTextResponse(Path(row["report_path"]).read_text(), media_type="text/markdown")
 
 
+@router.get("/reports/{report_id}/pdf")
+def get_report_pdf(request: Request, report_id: str) -> Response:
+    """The PDF rendering of the report, when one was generated beside it.
+
+    The PDF is optional (``generate_report(..., pdf=True)``, the
+    ``validation[pdf]`` extra); a finished report without one answers 404.
+    """
+    row = _get_report_done(request, report_id)
+    pdf_path = Path(row["report_path"]).with_name("report.pdf")
+    if not pdf_path.is_file():
+        raise HTTPException(status_code=404, detail=f"report {report_id!r} has no PDF rendering")
+    return Response(
+        content=pdf_path.read_bytes(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{report_id}.pdf"'},
+    )
+
+
 @router.get("/reports/{report_id}/archive")
 def get_report_archive(request: Request, report_id: str) -> Response:
     """The report bundle — markdown plus figure files — as a zip download."""

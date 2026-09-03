@@ -446,17 +446,20 @@ scaling until simulated link flows meet the GEH criterion (§7.1). Automate as
 
 | Check | Criterion | Source of standard |
 |---|---|---|
-| Link flows | GEH < 5 for ≥ 85% of link-hour comparisons; GEH = √(2(m−c)²/(m+c)), hourly veh flows | FHWA Traffic Analysis Toolbox Vol. III (2019) usage / DMRB |
+| Link flows | GEH < 5 for ≥ 85% of link-hour comparisons; GEH = √(2(m−c)²/(m+c)), hourly veh flows | FHWA Traffic Analysis Toolbox Vol. III (2004, FHWA-HRT-04-040) §5.6 calibration targets / DMRB; the 2019 update (FHWA-HOP-18-036) prescribes no GEH target — see `validation.criteria` profile sources |
 | Speeds | RMSPE ≤ 15% on segment mean speeds; visual speed-contour comparison archived | common microsim practice; cite in report |
 | Emergent wave speed | Backward wave-front speed in calibrated `i24_replica` / `corridor_10km` within 14–22 km/h **without seeding** | empirical stop-and-go literature (≈ 20 km/h) |
 | Ring benchmark | Emergence + single-AV dampening reproduced (§3.2.1) | Sugiyama 2008; Stern 2018 |
 | Stochastic reporting | Every headline metric: mean ± 95% CI over ≥ 20 seeds | internal standard |
 | Sensitivity | Penetration {1,2,5,10,15,20}% × compliance {25,50,80,100}% grid published with CIs | internal standard |
 
-**Verify the exact FHWA Vol. III (FHWA-HOP-18-036) threshold wording when
-implementing `criteria.py` and cite it in the generated report; state DOT
-variants (e.g., TxDOT microsimulation acceptability criteria) may be offered
-as selectable profiles.**
+**Verified 2026-09-03 (`validation.criteria`): the GEH-based targets come from
+the 2004 Vol. III (FHWA-HRT-04-040, §5.6, Table 4: GEH < 5 on > 85% of link
+flows, sums within 5%, travel times within 15% on > 85%); the 2019 update
+(FHWA-HOP-18-036, ch. 5) replaces them with data-driven acceptability
+envelopes and states no GEH target. Every `CriteriaProfile` carries its
+`source`; state DOT variants (ODOT VISSIM protocol 2011, TxDOT TSAP ch. 13)
+are selectable profiles, and unverified wording is labelled as such.**
 
 ### 7.2 Wave detection (`waves.py`)
 
@@ -605,7 +608,9 @@ frontend is temporarily reused.
 - CIRCLES MegaVanderTest (I-24, Nov 2022; BAIR blog 2025-03-25) — 100-AV
   field test, ~15–20% energy-savings trend near AVs.
 - Kesting & Treiber (2008) — car-following calibration methodology.
-- FHWA Traffic Analysis Toolbox Vol. III (FHWA-HOP-18-036, 2019) — GEH /
+- FHWA Traffic Analysis Toolbox Vol. III: 2004 (FHWA-HRT-04-040, GEH /
+  calibration targets) and the 2019 update (FHWA-HOP-18-036, data-driven
+  acceptability envelopes, no GEH target) —
   calibration acceptance.
 - Montanino & Punzo — reconstructed NGSIM.
 - I-24 MOTION: arXiv:2302.12308 (testbed), arXiv:2311.10888 (VT tools),

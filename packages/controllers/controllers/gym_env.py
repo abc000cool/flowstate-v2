@@ -2,10 +2,19 @@
 
 ``FlowStateEnv`` wraps a simulation backend behind the small ``EnvBackend``
 protocol so that RL (e.g. PPO via Ray RLlib or CleanRL) can be added later
-without refactoring — and without this package importing ``microsim`` (which
-would create a circular dependency; ``microsim`` will provide the real backend
-and depend on ``controllers``, not vice versa). v2.0 ships the interface and a
-random-policy smoke test only; no training code (ADR-2).
+without refactoring. v2.0 ships the interface and a random-policy smoke test
+only; no training code (ADR-2).
+
+Two ways to build an env:
+
+* an explicit ``backend`` — ``SyntheticBackend`` for SUMO-free smoke tests,
+  or a hand-configured ``microsim.gym_backend.MicrosimBackend``;
+* a ``scenario`` (default: the versioned ``scenarios/corridor_10km.yaml``,
+  the corridor §4.5 names) — the real ``microsim`` backend is built from the
+  scenario config with a short episode, so the RL environment is tied to a
+  hashed scenario rather than to ad-hoc constants. ``microsim`` depends on
+  this package (it dispatches the controller library), so it is imported
+  lazily inside that constructor path only, never at module level.
 
 Observation (Box, SI): ``(ego speed, gap, leader speed, k downstream mean
 speeds)`` [m/s, m, m/s, m/s×k]. Action (Box): target speed command [m/s].
@@ -20,16 +29,29 @@ fuel/σ_v proxies. Never use it for results.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any, Final, Protocol
 
 import gymnasium as gym
 import numpy as np
 from numpy.typing import NDArray
 
+from flowstate_core.config import ScenarioConfig
 from flowstate_core.rng import make_rng
 
 ObsArray = NDArray[np.float64]
 ActArray = NDArray[np.float64]
+
+#: Scenario loaded when neither ``backend`` nor ``scenario`` is given
+#: (CLAUDE.md §4.5 wraps ``corridor_10km``).
+DEFAULT_SCENARIO: Final[str] = "corridor_10km"
+
+#: Episode horizon of a scenario-backed env [s]. Deliberately short — the
+#: hook exists for smoke tests and interface stability, not training.
+DEFAULT_EPISODE_S: Final[float] = 60.0
+
+#: Ego insertion time of a scenario-backed env [s].
+DEFAULT_EGO_DEPART_S: Final[float] = 20.0
 
 
 class EnvBackend(Protocol):
@@ -50,6 +72,10 @@ class EnvBackend(Protocol):
             ``(obs tuple, fuel, sigma_v, done)`` — per-step fuel cost,
             per-step speed-dispersion cost σ_v [m/s], episode-end flag.
         """
+        ...
+
+    def close(self) -> None:
+        """Release simulator resources (idempotent; a no-op if there are none)."""
         ...
 
 
@@ -117,32 +143,125 @@ class SyntheticBackend:
         done = self._k >= self.episode_steps
         return self._obs(), fuel, sigma_v, done
 
+    def close(self) -> None:
+        """Nothing to release."""
+
+
+def _scenario_backend(
+    scenario: ScenarioConfig | str | Path | None,
+    *,
+    n_downstream: int,
+    episode_s: float,
+    ego_depart_s: float,
+    workdir: Path | None,
+) -> tuple[EnvBackend, ScenarioConfig]:
+    """Build the real ``microsim`` backend for a scenario.
+
+    ``microsim`` depends on ``controllers``, so the import is function-local:
+    the package graph stays acyclic at import time and this path only runs
+    when a scenario-backed env is requested.
+
+    Args:
+        scenario: A loaded config, a scenario name or YAML path resolved by
+            ``microsim.scenarios.load_scenario``, or ``None`` for
+            ``DEFAULT_SCENARIO``.
+        n_downstream: Downstream bins in the observation.
+        episode_s: Episode horizon [s].
+        ego_depart_s: Ego insertion time [s].
+        workdir: Directory for the backend's network/route files.
+
+    Returns:
+        ``(backend, cfg)`` — the backend and the config it was built from.
+
+    Raises:
+        ImportError: ``microsim`` (and with it SUMO) is not installed.
+        ValueError: The scenario is not a plain corridor scenario (see
+            ``MicrosimBackend.from_scenario``).
+    """
+    try:
+        from microsim.gym_backend import MicrosimBackend
+        from microsim.scenarios import load_scenario
+    except ImportError as exc:  # pragma: no cover - depends on the install
+        raise ImportError(
+            "a scenario-backed FlowStateEnv needs the microsim package (SUMO); "
+            "pass an explicit backend instead"
+        ) from exc
+    cfg = (
+        scenario
+        if isinstance(scenario, ScenarioConfig)
+        else load_scenario(DEFAULT_SCENARIO if scenario is None else scenario)
+    )
+    backend = MicrosimBackend.from_scenario(
+        cfg,
+        episode_s=episode_s,
+        ego_depart_s=ego_depart_s,
+        workdir=workdir,
+        n_downstream=n_downstream,
+    )
+    return backend, cfg
+
 
 class FlowStateEnv(gym.Env[ObsArray, ActArray]):
     """Gymnasium wrapper over an ``EnvBackend`` (CLAUDE.md §4.5).
 
     Args:
-        backend: Simulation backend (real ``microsim`` adapter later; use
-            ``SyntheticBackend`` for smoke tests only).
+        backend: Simulation backend (``SyntheticBackend`` for SUMO-free smoke
+            tests; ``microsim.gym_backend.MicrosimBackend`` for real physics).
+            ``None`` builds the real backend from ``scenario``.
         n_downstream: Number of downstream speed bins ``k`` in the
             observation; the backend must return ``3 + k`` values.
         lambda_sigma: Reward weight λ on σ_v [dimensionless]:
             ``reward = −(fuel + λ·σ_v)``.
         v_max: Action-space ceiling for the target-speed command [m/s].
+        scenario: Only with ``backend=None``: a ``ScenarioConfig``, a scenario
+            name or YAML path, or ``None`` for ``DEFAULT_SCENARIO``
+            (``corridor_10km``). Must be a corridor scenario without AV/VSL
+            deployment, perturbation or boundary blocks.
+        episode_s: Scenario-backed episode horizon [s]
+            (``DEFAULT_EPISODE_S``; ``<= sim.duration_s``).
+        ego_depart_s: Scenario-backed ego insertion time [s].
+        workdir: Scenario-backed network/route directory (default: temp).
+
+    Attributes:
+        scenario: The config a scenario-backed env was built from (its
+            ``config_hash`` is the provenance of every episode); ``None``
+            for an explicit backend.
+
+    Raises:
+        ValueError: ``v_max``/``n_downstream`` out of range, or both a
+            ``backend`` and a ``scenario`` given.
     """
 
     # metadata: inherited from gym.Env ({"render_modes": []} — no rendering).
 
     def __init__(
         self,
-        backend: EnvBackend,
+        backend: EnvBackend | None = None,
         n_downstream: int = 10,
         lambda_sigma: float = 1.0,
         v_max: float = 40.0,
+        *,
+        scenario: ScenarioConfig | str | Path | None = None,
+        episode_s: float = DEFAULT_EPISODE_S,
+        ego_depart_s: float = DEFAULT_EGO_DEPART_S,
+        workdir: Path | None = None,
     ) -> None:
         super().__init__()
         if v_max <= 0.0:
             raise ValueError(f"v_max must be > 0, got {v_max}")
+        if n_downstream < 0:
+            raise ValueError(f"n_downstream must be >= 0, got {n_downstream}")
+        self.scenario: ScenarioConfig | None = None
+        if backend is None:
+            backend, self.scenario = _scenario_backend(
+                scenario,
+                n_downstream=n_downstream,
+                episode_s=episode_s,
+                ego_depart_s=ego_depart_s,
+                workdir=workdir,
+            )
+        elif scenario is not None:
+            raise ValueError("pass either an explicit backend or a scenario, not both")
         self._backend = backend
         self._n_downstream = n_downstream
         self._lambda = lambda_sigma
@@ -176,3 +295,7 @@ class FlowStateEnv(gym.Env[ObsArray, ActArray]):
         reward = -(fuel + self._lambda * sigma_v)
         info: dict[str, Any] = {"fuel": fuel, "sigma_v": sigma_v}
         return self._to_array(obs), float(reward), bool(done), False, info
+
+    def close(self) -> None:
+        """Release the backend (the libsumo singleton for the real backend)."""
+        self._backend.close()

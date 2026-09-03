@@ -1,9 +1,19 @@
-"""VSL threshold controller tests: ladder, hysteresis (no chattering), memory."""
+"""VSL threshold controller tests: ladder, hysteresis (no chattering), memory.
+
+Also covers the two pure application helpers of CLAUDE.md §4.4 that the
+runners share: ``effective_limit`` (compliance scaling) and
+``gantry_segments`` (0.5–1.0 km segmentation).
+"""
 
 import math
 from itertools import pairwise
 
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
 from controllers import default_params, vsl_threshold
+from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit, gantry_segments
 from flowstate_core.controller_types import Memory, SegmentObs
 from flowstate_core.units import kmh_to_ms, veh_km_to_veh_m
 
@@ -143,3 +153,117 @@ class TestContract:
             speeds = (FREE_V, kmh_to_ms(20.0) if k < 6 else FREE_V)
             limits, mem = vsl_threshold(_obs(speeds, (FREE_RHO, FREE_RHO)), {}, mem)
             assert set(limits) <= valid
+
+
+class TestEffectiveLimit:
+    """Fleet-average compliance scaling of a posted limit (CLAUDE.md §4.4)."""
+
+    def test_full_compliance_returns_posted_exactly(self):
+        posted, base = kmh_to_ms(50.0), 50.0
+        assert effective_limit(posted, base, 1.0) == posted
+
+    def test_zero_compliance_returns_base_exactly(self):
+        assert effective_limit(kmh_to_ms(50.0), 50.0, 0.0) == 50.0
+
+    def test_hand_computed_interpolation(self):
+        # 0.5·20 + 0.5·40 = 30; 0.25·20 + 0.75·40 = 35
+        assert effective_limit(20.0, 40.0, 0.5) == pytest.approx(30.0)
+        assert effective_limit(20.0, 40.0, 0.25) == pytest.approx(35.0)
+
+    def test_monotone_decreasing_in_compliance(self):
+        grid = [k / 10.0 for k in range(11)]
+        vals = [effective_limit(15.0, 45.0, c) for c in grid]
+        assert all(b < a for a, b in pairwise(vals))
+
+    def test_monotone_increasing_in_posted_limit(self):
+        vals = [effective_limit(p, 40.0, 0.6) for p in (5.0, 10.0, 20.0, 30.0)]
+        assert all(b > a for a, b in pairwise(vals))
+
+    def test_never_above_base_limit(self):
+        # A "free-flow cap" above the road's statutory limit is a no-op.
+        assert effective_limit(kmh_to_ms(120.0), kmh_to_ms(112.0), 1.0) == kmh_to_ms(112.0)
+        assert effective_limit(kmh_to_ms(120.0), kmh_to_ms(112.0), 0.3) == kmh_to_ms(112.0)
+        assert effective_limit(30.0, 30.0, 0.5) == 30.0
+
+    @given(
+        posted=st.floats(0.0, 60.0),
+        base=st.floats(0.0, 60.0),
+        compliance=st.floats(0.0, 1.0),
+    )
+    def test_property_within_bounds(self, posted, base, compliance):
+        v = effective_limit(posted, base, compliance)
+        assert min(posted, base) <= v <= max(posted, base)
+        assert v <= base
+
+    def test_rejects_bad_inputs(self):
+        with pytest.raises(ValueError, match="compliance"):
+            effective_limit(10.0, 20.0, 1.5)
+        with pytest.raises(ValueError, match="compliance"):
+            effective_limit(10.0, 20.0, -0.1)
+        with pytest.raises(ValueError, match=">= 0"):
+            effective_limit(-1.0, 20.0, 0.5)
+
+
+class TestGantrySegments:
+    """Greedy 0.5–1.0 km grouping of consecutive edges/cells (CLAUDE.md §4.4)."""
+
+    def test_default_target_is_1km(self):
+        assert VSL_SEGMENT_TARGET_M == 1000.0
+
+    def test_one_km_edges_stay_one_segment_each(self):
+        assert gantry_segments([1000.0] * 10) == [(k, k + 1) for k in range(10)]
+
+    def test_trailing_500m_edge_is_its_own_segment(self):
+        assert gantry_segments([1000.0, 1000.0, 1000.0, 500.0]) == [(0, 1), (1, 2), (2, 3), (3, 4)]
+
+    def test_short_remainder_joins_previous_segment(self):
+        assert gantry_segments([1000.0, 1000.0, 300.0]) == [(0, 1), (1, 3)]
+
+    def test_osm_like_short_ways_merge_without_splitting(self):
+        lengths = [1500.0, 200.0, 300.0, 900.0, 100.0]
+        bounds = gantry_segments(lengths)
+        assert bounds == [(0, 1), (1, 5)]
+        seg_len = [sum(lengths[a:b]) for a, b in bounds]
+        assert seg_len == [1500.0, 1500.0]
+        assert sum(seg_len) == sum(lengths)
+
+    def test_600m_edges_pair_up(self):
+        # 600 → closer to add (1200) than to close (600); 1200 → close.
+        assert gantry_segments([600.0] * 4) == [(0, 2), (2, 4)]
+
+    def test_three_400m_edges_form_one_segment(self):
+        # (0,2) closes at 800 m; the trailing 400 m is below 500 m → merged.
+        assert gantry_segments([400.0] * 3) == [(0, 3)]
+
+    def test_ring_of_tiny_edges_is_one_segment(self):
+        assert gantry_segments([230.0 / 8.0] * 8) == [(0, 8)]
+
+    def test_long_edges_are_never_split(self):
+        assert gantry_segments([2000.0]) == [(0, 1)]
+        assert gantry_segments([3000.0, 3000.0]) == [(0, 1), (1, 2)]
+
+    def test_empty_input(self):
+        assert gantry_segments([]) == []
+
+    @given(
+        lengths=st.lists(st.floats(10.0, 3000.0), min_size=1, max_size=40),
+        target=st.floats(200.0, 2000.0),
+    )
+    def test_property_partition_and_minimum_length(self, lengths, target):
+        bounds = gantry_segments(lengths, target)
+        # Contiguous half-open ranges covering every element once, in order.
+        assert bounds[0][0] == 0 and bounds[-1][1] == len(lengths)
+        assert all(a < b for a, b in bounds)
+        assert all(b1 == a2 for (_, b1), (a2, _) in pairwise(bounds))
+        assert sum(sum(lengths[a:b]) for a, b in bounds) == pytest.approx(sum(lengths))
+        # Every segment is at least target/2 long unless the corridor is one segment.
+        if len(bounds) > 1:
+            assert all(sum(lengths[a:b]) >= target / 2.0 for a, b in bounds)
+
+    def test_rejects_bad_inputs(self):
+        with pytest.raises(ValueError, match="target_m"):
+            gantry_segments([100.0], target_m=0.0)
+        with pytest.raises(ValueError, match="min_m"):
+            gantry_segments([100.0], target_m=1000.0, min_m=1500.0)
+        with pytest.raises(ValueError, match="element length"):
+            gantry_segments([100.0, 0.0])

@@ -27,17 +27,25 @@ rung moves per call.
 
 Application: micro tier via per-edge ``edge.setMaxSpeed`` scaled by
 compliance; macro tier by capping ``V_f`` per cell (CLAUDE.md §4.4) — both
-outside this pure function.
+outside this pure function. The two pure pieces the runners share for that
+application live here as well: :func:`effective_limit` (the compliance
+scaling rule) and :func:`gantry_segments` (the 0.5–1.0 km gantry
+segmentation of edges or cells).
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Final
 
 from flowstate_core.controller_types import Memory, SegmentObs
 from flowstate_core.units import kmh_to_ms, veh_km_to_veh_m
+
+#: Target gantry segment length [m] (CLAUDE.md §4.4: "0.5–1.0 km segments").
+#: :func:`gantry_segments` aims at this length and never goes below half of
+#: it (500 m at the default) except for a corridor shorter than that.
+VSL_SEGMENT_TARGET_M: Final[float] = 1000.0
 
 VSL_THRESHOLD_DEFAULTS: Final[dict[str, float]] = {
     "ladder_0": kmh_to_ms(90.0),  # restriction ladder [m/s], rung 1
@@ -115,3 +123,113 @@ def vsl_threshold(
         new_memory[f"seg_{i}"] = float(idx)
 
     return tuple(limits), new_memory
+
+
+def effective_limit(posted_ms: float, base_ms: float, compliance: float) -> float:
+    """Speed limit a segment presents once fleet compliance is accounted for.
+
+    This is the CLAUDE.md §4.4 rule "per-edge limit *scaled by compliance*",
+    made explicit as a **fleet-average speed-limit response assumption**: a
+    fraction ``compliance`` of drivers obey the posted VSL ``posted_ms`` and
+    the remainder keep driving to the road's base limit ``base_ms``, so the
+    one aggregate limit the segment can carry is the compliance-weighted
+    mean::
+
+        v_eff = compliance · posted + (1 − compliance) · base
+
+    Properties (unit-tested):
+
+    * ``compliance = 1`` returns exactly ``posted`` (when it restricts) and
+      ``compliance = 0`` returns exactly ``base``; the response is linear and
+      monotone in between.
+    * The result is clamped to ``[min(posted, base), max(posted, base)]``
+      and **never exceeds the base limit** — a VSL can only restrict, so a
+      posted limit at or above the base limit is a no-op (the base stands).
+
+    Modelling caveat: this is an aggregate stand-in for the per-driver
+    response (a compliant subset obeying the gantry while the rest do not);
+    on the programmatically generated networks the base limit is
+    ``microsim.networks.EDGE_SPEED_LIMIT_MS`` (50 m/s, deliberately above
+    every desired-speed draw), so there the non-compliant fraction is treated
+    as unconstrained by the road and the scaled limit is a conservative
+    (weak) VSL. A per-vehicle compliance model is the stricter follow-up.
+
+    Args:
+        posted_ms: Limit posted by the segment controller [m/s].
+        base_ms: Base (statutory / network) limit of the segment [m/s]; in
+            the macro tier this is the fundamental diagram's ``v_f``.
+        compliance: Fraction of drivers obeying the posted limit, in
+            ``[0, 1]``.
+
+    Returns:
+        Effective limit [m/s].
+
+    Raises:
+        ValueError: ``compliance`` outside ``[0, 1]`` or a negative speed.
+    """
+    if not 0.0 <= compliance <= 1.0:
+        raise ValueError(f"compliance must lie in [0, 1], got {compliance}")
+    if posted_ms < 0.0 or base_ms < 0.0:
+        raise ValueError(f"speed limits must be >= 0, got posted={posted_ms}, base={base_ms}")
+    if posted_ms >= base_ms:
+        return float(base_ms)
+    v_eff = compliance * posted_ms + (1.0 - compliance) * base_ms
+    return float(min(max(v_eff, posted_ms), base_ms))
+
+
+def gantry_segments(
+    lengths: Sequence[float],
+    target_m: float = VSL_SEGMENT_TARGET_M,
+    min_m: float | None = None,
+) -> list[tuple[int, int]]:
+    """Group consecutive elements (edges or cells) into gantry segments.
+
+    Greedy in route order (CLAUDE.md §4.4, "corridor divided into 0.5–1.0 km
+    segments"): elements are appended to the open segment; the segment is
+    closed before an element when it is already at least ``min_m`` long and
+    closing it now leaves its length closer to ``target_m`` than appending
+    that element would. Elements are never split, so an element longer than
+    ``target_m`` forms its own segment. A trailing segment shorter than
+    ``min_m`` joins the previous one (a corridor shorter than ``min_m``
+    overall is a single segment). Total length is preserved.
+
+    Args:
+        lengths: Element lengths [m] in route order, all ``> 0``.
+        target_m: Target segment length [m].
+        min_m: Shortest admissible segment [m]; ``None`` ⇒ ``target_m / 2``
+            (500 m at the default target).
+
+    Returns:
+        Half-open index ranges ``(start, stop)`` covering ``lengths`` in
+        order; empty for an empty input.
+
+    Raises:
+        ValueError: Non-positive ``target_m``/``min_m``, ``min_m`` above
+            ``target_m``, or a non-positive element length.
+    """
+    if target_m <= 0.0:
+        raise ValueError(f"target_m must be > 0, got {target_m}")
+    if min_m is None:
+        min_m = target_m / 2.0
+    if min_m <= 0.0 or min_m > target_m:
+        raise ValueError(f"min_m must lie in (0, target_m], got {min_m}")
+    if any(elem <= 0.0 for elem in lengths):
+        raise ValueError("every element length must be > 0")
+
+    n = len(lengths)
+    if n == 0:
+        return []
+    bounds: list[tuple[int, int]] = []
+    start = 0
+    acc = 0.0
+    for i, elem in enumerate(lengths):
+        if i > start and acc >= min_m and abs(acc - target_m) <= abs(acc + elem - target_m):
+            bounds.append((start, i))
+            start = i
+            acc = 0.0
+        acc += elem
+    bounds.append((start, n))
+    if len(bounds) > 1 and acc < min_m:
+        prev_start, _ = bounds[-2]
+        bounds[-2:] = [(prev_start, n)]
+    return bounds

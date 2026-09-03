@@ -41,11 +41,11 @@ from microsim import load_scenario, run_micro
 pytestmark = pytest.mark.integration
 
 RING_C = 230.0
-WARMUP_S = 180.0
-TAIL_S = 300.0
 
-#: Documented jam-drift acceptance band [km/h] (see module docstring).
-DRIFT_BAND_KMH = (-25.0, -5.0)
+# The thresholds are owned by validation.ring_benchmark (the same checks the
+# corridor battery evaluates over seeds), so the gate and the battery cannot
+# drift apart.
+from validation.ring_benchmark import DRIFT_BAND_KMH, TAIL_S, WARMUP_S  # noqa: E402
 
 
 def _slice_arrays(paths):

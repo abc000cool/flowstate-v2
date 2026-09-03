@@ -27,6 +27,26 @@ importable (it may be built concurrently — the import happens lazily inside
 the degradation is noted in meta.json. Per-AV compliance is drawn once per run
 (Bernoulli, seeded) — v1's per-step unseeded compliance coin-flip is retired
 (CLAUDE.md §12.6).
+
+Variable speed limits (``cfg.av.vsl``, CLAUDE.md §4.4 "macro tier via capping
+``V_f`` per cell"): the corridor is cut into ~1 km gantry segments of cells
+(:func:`controllers.vsl.gantry_segments`, the same rule the micro runner
+applies to edges) and every :data:`VSL_INTERVAL_S` the segment controller is
+called with the mean cell speed/density per segment. Each posted limit is
+scaled by fleet compliance against the diagram's ``v_f``
+(:func:`controllers.vsl.effective_limit`) and applied by replacing the
+free-flow branch of the capped cells' fundamental diagram with the effective
+limit ``v_lim``: the sending (demand) function of a capped cell becomes
+``min(v_lim·ρ, q_cap)`` and its receiving (supply) function is bounded by
+``q_cap = capacity_at_speed(fd, v_lim)`` — the reduced triangular diagram
+with unchanged ``w`` and ``ρ_jam`` — realized through the solver's
+per-interface flux caps, so the CTM kernel itself is untouched. This is the
+standard CTM-based VSL representation (Hadiuzzaman & Qiu 2013, Can. J. Civ.
+Eng. 40(1):46–56: VSL as a modified fundamental diagram in the CTM). The
+equilibrium speed reported for a capped cell is ``min(v_lim, V_e(ρ))``, the
+reduced diagram's ``V_e``. The CFL step is fixed from the *uncapped* ``v_f``
+(the largest characteristic speed any cell can have), so stability is
+unaffected; conservation is untouched because caps only lower fluxes.
 """
 
 from __future__ import annotations
@@ -35,7 +55,8 @@ import json
 import math
 import platform
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +65,13 @@ import pandas as pd
 
 from flowstate_core.artifacts import TriangularFD
 from flowstate_core.config import CorridorNetwork, RingNetwork, ScenarioConfig, config_hash
-from flowstate_core.controller_types import ControllerObs, Memory, VehicleControllerFn
+from flowstate_core.controller_types import (
+    ControllerObs,
+    Memory,
+    SegmentControllerFn,
+    SegmentObs,
+    VehicleControllerFn,
+)
 from flowstate_core.rng import make_rng
 from macrosim.bottleneck import BottleneckVariant, MovingBottleneck, VStarTrajectory
 from macrosim.ctm import CTMSolver, cfl_max_dt
@@ -55,7 +82,10 @@ from macrosim.fundamental import (
     v1_legacy_fd,
 )
 
-__all__ = ["run_macro"]
+__all__ = ["VSL_INTERVAL_S", "run_macro"]
+
+VSL_INTERVAL_S: float = 30.0
+"""VSL dispatch cadence [s]; mirrors ``microsim.runner.VSL_INTERVAL_S`` (CLAUDE.md §4.4)."""
 
 _CFL_SAFETY = 0.9
 """Fraction of the CFL-limit time step the runner targets (v1 used 0.9 too)."""
@@ -108,6 +138,175 @@ def _load_controller(
         return None, {}, "controllers.registry incomplete; fixed v_star fallback used"
     params.update(overrides)
     return fn, params, ""
+
+
+@dataclass
+class _VSLState:
+    """Macro-tier VSL actuation state (module docstring, "Variable speed limits").
+
+    Attributes:
+        fn: The segment controller (docs/CONTRACTS.md §1).
+        params: Merged controller parameters.
+        bounds: Half-open cell ranges of the gantry segments.
+        every: Dispatch cadence in solver steps.
+        target_m: Gantry segment target length used for ``bounds`` [m].
+        effective_limit: :func:`controllers.vsl.effective_limit` (lazily
+            imported alongside the registry).
+        lim_cell: Effective limit per cell [m/s]; ``v_f`` when uncapped.
+        qcap_cell: Capacity [veh/s] of the reduced diagram per cell.
+        capped: Mask of cells whose limit is below ``v_f``.
+        memory: Controller memory threaded between dispatches.
+        history: One record per dispatch (posted and effective limits).
+    """
+
+    fn: SegmentControllerFn
+    params: dict[str, float]
+    bounds: list[tuple[int, int]]
+    every: int
+    target_m: float
+    effective_limit: Callable[[float, float, float], float]
+    lim_cell: np.ndarray
+    qcap_cell: np.ndarray
+    capped: np.ndarray
+    memory: Memory = field(default_factory=dict)
+    history: list[dict[str, Any]] = field(default_factory=list)
+
+    @classmethod
+    def load(
+        cls,
+        name: str,
+        overrides: dict[str, float],
+        *,
+        fd: TriangularFD,
+        n_cells: int,
+        dx: float,
+        dt: float,
+    ) -> _VSLState:
+        """Resolve the segment controller and lay out the gantry segments.
+
+        Unlike :func:`_load_controller` there is no fixed-speed fallback: a
+        run configured with a VSL that is not applied would be mislabeled,
+        so an unavailable ``controllers`` package is an error, not a note
+        (CLAUDE.md §0.1).
+
+        Args:
+            name: Registry name of the segment controller.
+            overrides: Scenario-supplied parameter overrides.
+            fd: The (uncapped) fundamental diagram.
+            n_cells: Number of cells.
+            dx: Cell length [m].
+            dt: Solver time step [s].
+
+        Returns:
+            A fresh, uncapped state.
+
+        Raises:
+            ValueError: The ``controllers`` package is not importable.
+            KeyError: Unknown controller name (docs/CONTRACTS.md §1).
+        """
+        try:
+            from controllers import registry  # lazy: package may be built concurrently
+            from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit, gantry_segments
+        except ImportError as exc:
+            raise ValueError(
+                f"VSL {name!r} configured but the controllers package is not importable"
+            ) from exc
+        fn = registry.get_segment_controller(name)
+        params = dict(registry.default_params(name))
+        params.update(overrides)
+        return cls(
+            fn=fn,
+            params=params,
+            bounds=gantry_segments([dx] * n_cells, VSL_SEGMENT_TARGET_M),
+            every=max(1, round(VSL_INTERVAL_S / dt)),
+            target_m=VSL_SEGMENT_TARGET_M,
+            effective_limit=effective_limit,
+            lim_cell=np.full(n_cells, fd.v_f, dtype=np.float64),
+            qcap_cell=np.full(n_cells, fd.q_max, dtype=np.float64),
+            capped=np.zeros(n_cells, dtype=bool),
+        )
+
+    def cap_speeds(self, speeds: np.ndarray) -> np.ndarray:
+        """Equilibrium speeds under the reduced diagrams: ``min(v_lim, V_e)``."""
+        capped: np.ndarray = np.minimum(speeds, self.lim_cell)
+        return capped
+
+    def merge_caps(self, rho: np.ndarray, caps: dict[int, float]) -> None:
+        """Add the capped cells' reduced sending/receiving bounds to ``caps``.
+
+        Capped cell ``i``: its outflow interface ``i+1`` carries the reduced
+        sending function ``min(v_lim·ρ_i, q_cap_i)`` and its inflow interface
+        ``i`` the reduced receiving bound ``q_cap_i``. With the kernel's
+        ``min(demand, supply)`` this is exactly the CTM with the reduced
+        triangular diagram in cell ``i`` (module docstring); on a ring the
+        kernel merges the caps of the wrap-around interfaces 0 and n itself.
+
+        Args:
+            rho: Current cell densities [veh/m].
+            caps: Interface-cap dict for this step, updated in place.
+        """
+        if not self.capped.any():
+            return
+        n = self.lim_cell.shape[0]
+        demand_red = np.minimum(self.lim_cell * rho, self.qcap_cell)
+        cap_arr = np.full(n + 1, np.inf, dtype=np.float64)
+        out_view = cap_arr[1:]
+        out_view[self.capped] = demand_red[self.capped]
+        in_view = cap_arr[:-1]
+        in_view[self.capped] = np.minimum(in_view[self.capped], self.qcap_cell[self.capped])
+        finite = np.flatnonzero(np.isfinite(cap_arr))
+        for iface_idx, cap_val in zip(finite.tolist(), cap_arr[finite].tolist(), strict=True):
+            caps[iface_idx] = min(caps.get(iface_idx, math.inf), cap_val)
+
+    def dispatch(self, t: float, rho: np.ndarray, fd: TriangularFD, compliance: float) -> None:
+        """Call the controller on the current state and update the cell caps.
+
+        Args:
+            t: Simulation time [s].
+            rho: Current cell densities [veh/m].
+            fd: The (uncapped) fundamental diagram; its ``v_f`` is the base
+                limit the posted limits are scaled against.
+            compliance: Fleet compliance ``cfg.av.compliance``.
+
+        Raises:
+            ValueError: An effective limit above ``v_f`` (cannot happen with
+                :func:`controllers.vsl.effective_limit`; the CFL step relies
+                on it).
+        """
+        v_now = self.cap_speeds(equilibrium_speed(fd, rho))
+        obs = SegmentObs(
+            t=t,
+            dt=VSL_INTERVAL_S,
+            seg_speed=tuple(float(v_now[a:b].mean()) for a, b in self.bounds),
+            seg_density=tuple(float(rho[a:b].mean()) for a, b in self.bounds),
+        )
+        limits, self.memory = self.fn(obs, self.params, self.memory)
+        effective = [self.effective_limit(float(lim), fd.v_f, compliance) for lim in limits]
+        for (a, b), v_lim in zip(self.bounds, effective, strict=True):
+            if v_lim > fd.v_f:
+                raise ValueError(f"effective VSL limit {v_lim} exceeds v_f={fd.v_f}")
+            self.lim_cell[a:b] = v_lim
+            self.qcap_cell[a:b] = capacity_at_speed(fd, v_lim)
+        self.capped = self.lim_cell < fd.v_f
+        self.history.append(
+            {"t": t, "posted_ms": [float(lim) for lim in limits], "effective_ms": effective}
+        )
+
+    def meta(self, name: str, compliance: float, dx: float, fd: TriangularFD) -> dict[str, Any]:
+        """The ``vsl_dispatch`` block of meta.json."""
+        return {
+            "controller": name,
+            "compliance": compliance,
+            "interval_s": VSL_INTERVAL_S,
+            "segment_target_m": self.target_m,
+            "segments": [[a, b] for a, b in self.bounds],  # half-open cell ranges
+            "segment_lengths_m": [(b - a) * dx for a, b in self.bounds],
+            "base_limit_ms": fd.v_f,
+            "n_dispatches": len(self.history),
+            # One entry per dispatch: ``posted_ms`` (raw controller output)
+            # and ``effective_ms`` (after compliance scaling) per segment.
+            "history": self.history,
+        }
 
 
 def _controller_obs(
@@ -209,8 +408,9 @@ def run_macro(
     Raises:
         NotImplementedError: For OSM networks.
         ValueError: If AV actuation is requested but neither a resolvable
-            controller nor ``v_star_ms`` is available, or if the ring's
-            vehicle count exceeds jam storage.
+            controller nor ``v_star_ms`` is available, if a VSL is configured
+            but the ``controllers`` package is not importable, or if the
+            ring's vehicle count exceeds jam storage.
     """
     t_wall0 = time.perf_counter()
     notes: list[str] = []
@@ -299,6 +499,13 @@ def run_macro(
             )
             memories.append({})
 
+    # --- Variable speed limits (CLAUDE.md §4.4: cap V_f per cell) ---------
+    # The CFL step above was fixed from the UNCAPPED v_f, the largest
+    # characteristic speed any cell can have; VSL only lowers it per cell.
+    vsl: _VSLState | None = None
+    if cfg.av.vsl is not None:
+        vsl = _VSLState.load(cfg.av.vsl, cfg.av.vsl_params, fd=fd, n_cells=n_cells, dx=dx, dt=dt)
+
     # --- Time loop --------------------------------------------------------
     n_steps = math.ceil(cfg.sim.duration_s / dt)
     out_every = max(1, round(1.0 / (cfg.sim.output_hz * dt)))
@@ -307,10 +514,13 @@ def run_macro(
 
     t_rows: list[np.ndarray] = []
     rho_rows: list[np.ndarray] = []
+    lim_rows: list[np.ndarray] = []
 
     def _record() -> None:
         t_rows.append(np.full(n_cells, solver.t_s))
         rho_rows.append(np.asarray(solver.density, dtype=np.float64).copy())
+        if vsl is not None:
+            lim_rows.append(vsl.lim_cell.copy())
 
     prescribed_active_steps = 0
     prescribed_binding_steps = 0
@@ -319,6 +529,8 @@ def run_macro(
     for k in range(n_steps):
         caps: dict[int, float] = {}
         speeds = equilibrium_speed(fd, np.asarray(solver.density))
+        if vsl is not None:
+            speeds = vsl.cap_speeds(speeds)
 
         # Prescribed v*-trajectory moving bottlenecks (played back verbatim).
         if prescribed_avs is not None:
@@ -343,6 +555,8 @@ def run_macro(
             iface = min(max(round(pert.position_m / dx), 0), n_cells)
             cell = (iface - 1) % n_cells if boundary == "ring" else max(iface - 1, 0)
             v_prevail = equilibrium_speed_scalar(fd, float(solver.density[cell]))
+            if vsl is not None:
+                v_prevail = min(v_prevail, float(vsl.lim_cell[cell]))
             v_red = max(v_prevail - pert.v_drop_ms, 0.0)
             cap = capacity_at_speed(fd, v_red)
             caps[iface] = min(caps.get(iface, math.inf), cap)
@@ -361,6 +575,9 @@ def run_macro(
                     iface, cap = cap_entry
                     caps[iface] = min(caps.get(iface, math.inf), cap)
 
+        if vsl is not None:
+            vsl.merge_caps(np.asarray(solver.density), caps)
+
         q_in = _inflow_at(inflow_steps, solver.t_s) if boundary == "open" else 0.0
         solver.step(q_in_veh_s=q_in, iface_caps=caps or None)
         for av in avs:
@@ -368,9 +585,18 @@ def run_macro(
         if (k + 1) % out_every == 0:
             _record()
 
+        # VSL dispatch (mirrors the micro runner: after the step, every
+        # VSL_INTERVAL_S, on the state just reached; limits apply from the
+        # next step on).
+        if vsl is not None and (k + 1) % vsl.every == 0:
+            vsl.dispatch(solver.t_s, np.asarray(solver.density), fd, cfg.av.compliance)
+
     # --- Artifacts --------------------------------------------------------
     rho_mat = np.vstack(rho_rows)
     speed_mat = equilibrium_speed(fd, rho_mat)
+    if vsl is not None:
+        # Reported speed of a capped cell is the reduced diagram's V_e.
+        speed_mat = np.minimum(speed_mat, np.vstack(lim_rows))
     flow_mat = rho_mat * speed_mat
     n_samples = rho_mat.shape[0]
     edges = pd.DataFrame(
@@ -428,6 +654,12 @@ def run_macro(
                 else None
             ),
         },
+        "vsl": cfg.av.vsl,
+        "vsl_dispatch": (
+            vsl.meta(cfg.av.vsl, cfg.av.compliance, dx, fd)
+            if vsl is not None and cfg.av.vsl is not None
+            else None
+        ),
         "notes": notes,
     }
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))

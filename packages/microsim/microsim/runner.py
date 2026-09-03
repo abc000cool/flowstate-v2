@@ -53,6 +53,7 @@ import pyarrow.parquet as pq
 import sumolib
 
 from controllers.registry import default_params, get_segment_controller, get_vehicle_controller
+from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit
 from flowstate_core.config import (
     CorridorNetwork,
     OSMNetwork,
@@ -97,7 +98,8 @@ DOWNSTREAM_BIN_M: Final[float] = 100.0
 #: Downstream observation horizon [m] (JAD lookahead default, CLAUDE.md §4.3).
 DOWNSTREAM_HORIZON_M: Final[float] = 2000.0
 
-#: VSL dispatch cadence [s] (CLAUDE.md §4.4 gantry update interval).
+#: VSL dispatch cadence [s] (CLAUDE.md §4.4 gantry update interval). The
+#: macro tier mirrors this value (``macrosim.runner.VSL_INTERVAL_S``).
 VSL_INTERVAL_S: Final[float] = 30.0
 
 #: Edie aggregation bins for edges.parquet (task spec: 15 s × 100 m).
@@ -220,6 +222,29 @@ def _build_plan_and_routes(
         lc_keep_right=cfg.fleet.lc_keep_right,
     )
     return plan
+
+
+def _edge_speed_limits(bundle: NetBundle, edge_ids: Sequence[str]) -> dict[str, float]:
+    """Base speed limit [m/s] of each edge, read from the compiled net.
+
+    The limit is the fastest lane's ``speed`` attribute in the ``.net.xml``
+    (generated networks: :data:`microsim.networks.EDGE_SPEED_LIMIT_MS` on
+    every lane; OSM imports: the statutory limit netconvert derived from the
+    ``maxspeed`` tags / highway type). It is the ``base_ms`` argument of
+    :func:`controllers.vsl.effective_limit`.
+
+    Args:
+        bundle: The compiled network.
+        edge_ids: Edges to look up.
+
+    Returns:
+        ``{edge_id: limit_ms}``.
+    """
+    compiled = sumolib.net.readNet(str(bundle.net_path))
+    return {
+        eid: float(max(lane.getSpeed() for lane in compiled.getEdge(eid).getLanes()))
+        for eid in edge_ids
+    }
 
 
 def _check_ramp_connectivity(net: Any, ramps: Sequence[RampSpec]) -> None:
@@ -595,6 +620,18 @@ def run_micro(
     if cfg.av.vsl is not None:
         vsl_fn = get_segment_controller(cfg.av.vsl)
         vsl_params = {**default_params(cfg.av.vsl), **cfg.av.vsl_params}
+    # Gantry segments (CLAUDE.md §4.4: 0.5–1.0 km groups of main edges) and
+    # each edge's base limit from the compiled net, so the posted limit can be
+    # scaled by compliance against the road's own limit (never above it).
+    vsl_segments: list[tuple[str, ...]] = []
+    vsl_seg_lengths: list[float] = []
+    vsl_base_by_edge: dict[str, float] = {}
+    vsl_history: list[dict[str, Any]] = []
+    if vsl_fn is not None:
+        vsl_segments = bundle.segments(VSL_SEGMENT_TARGET_M)
+        length_by_edge = dict(zip(bundle.edge_ids, bundle.edge_lengths, strict=True))
+        vsl_seg_lengths = [sum(length_by_edge[e] for e in seg) for seg in vsl_segments]
+        vsl_base_by_edge = _edge_speed_limits(bundle, [e for seg in vsl_segments for e in seg])
 
     compliant_avs = set(plan.complied_ids)
     memories: dict[str, Memory] = {vid: {} for vid in compliant_avs}
@@ -807,17 +844,20 @@ def run_micro(
                     # Default speedMode: SUMO safety checks stay ON (§3.3).
                     mod.vehicle.setSpeed(vid, max(v_cmd, 0.0))
 
-            # VSL dispatch (per main edge, every 30 s).
+            # VSL dispatch (per gantry segment, every VSL_INTERVAL_S): segment
+            # state is the vehicle count over the segment's summed length and
+            # the mean speed of those vehicles; the segment's limit is posted
+            # to every edge in it, scaled by compliance (CLAUDE.md §4.4).
             if vsl_fn is not None and (k + 1) % vsl_every == 0:
-                seg_edges = bundle.main_edges
+                road_ids = [results[v][tc.VAR_ROAD_ID] for v in ids]
                 seg_speed: list[float] = []
                 seg_density: list[float] = []
-                for eid in seg_edges:
-                    sel = np.array([results[v][tc.VAR_ROAD_ID] == eid for v in ids])
+                for seg, seg_len in zip(vsl_segments, vsl_seg_lengths, strict=True):
+                    members = set(seg)
+                    sel = np.fromiter((rid in members for rid in road_ids), bool, len(road_ids))
                     n_on = int(sel.sum())
-                    elen = bundle.edge_lengths[bundle.edge_ids.index(eid)]
                     seg_speed.append(float(speeds[sel].mean()) if n_on else math.nan)
-                    seg_density.append(n_on / elen)
+                    seg_density.append(n_on / seg_len)
                 seg_obs = SegmentObs(
                     t=t,
                     dt=VSL_INTERVAL_S,
@@ -825,8 +865,23 @@ def run_micro(
                     seg_density=tuple(seg_density),
                 )
                 limits, vsl_memory = vsl_fn(seg_obs, vsl_params, vsl_memory)
-                for eid, lim in zip(seg_edges, limits, strict=True):
-                    mod.edge.setMaxSpeed(eid, float(lim))
+                applied: list[float] = []
+                for seg, lim in zip(vsl_segments, limits, strict=True):
+                    for eid in seg:
+                        v_eff = effective_limit(
+                            float(lim), vsl_base_by_edge[eid], cfg.av.compliance
+                        )
+                        mod.edge.setMaxSpeed(eid, v_eff)
+                        # Read back what SUMO actually holds (lane 0; setMaxSpeed
+                        # sets every lane of the edge) — provenance for reports.
+                        applied.append(float(mod.lane.getMaxSpeed(f"{eid}_0")))
+                vsl_history.append(
+                    {
+                        "t": t,
+                        "posted_ms": [float(lim) for lim in limits],
+                        "applied_ms": applied,
+                    }
+                )
 
             # Trajectory capture at the output cadence.
             if (k + 1) % out_every == 0:
@@ -875,6 +930,25 @@ def run_micro(
         "controller": cfg.av.controller,
         "controller_start_s": controller_start_s,
         "vsl": cfg.av.vsl,
+        "vsl_dispatch": (
+            {
+                "controller": cfg.av.vsl,
+                "compliance": cfg.av.compliance,
+                "interval_s": VSL_INTERVAL_S,
+                "segment_target_m": VSL_SEGMENT_TARGET_M,
+                "segments": [list(seg) for seg in vsl_segments],
+                "segment_lengths_m": vsl_seg_lengths,
+                "edges": [e for seg in vsl_segments for e in seg],
+                "base_limit_ms_by_edge": vsl_base_by_edge,
+                "n_dispatches": len(vsl_history),
+                # One entry per dispatch: ``posted_ms`` per segment (raw
+                # controller output), ``applied_ms`` per edge in ``edges``
+                # order as read back from SUMO after compliance scaling.
+                "history": vsl_history,
+            }
+            if vsl_fn is not None
+            else None
+        ),
         "boundary": (
             {
                 "kind": boundary_spec.kind,

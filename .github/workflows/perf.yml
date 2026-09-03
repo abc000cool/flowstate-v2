@@ -1,0 +1,43 @@
+name: perf
+
+# Weekly run of the slow-marked tests: the CLAUDE.md §3.4 performance
+# targets (ring/corridor real-time factors, the 20-replicate sweep wall-clock
+# budget, the 1000-cell CTM kernel) plus the other long physics tests. ci.yml
+# excludes them with -m "not slow"; this job is the scheduled home for them.
+# Timings on shared runners are indicative, not a benchmark — the durations
+# table and the JUnit report are uploaded as an artifact for trend reading.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+jobs:
+  slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Sync workspace
+        run: uv sync --all-packages --dev
+
+      - name: Slow-marked tests (performance targets)
+        run: |
+          set -o pipefail
+          mkdir -p perf-results
+          uv run pytest -m slow --durations=0 --junitxml=perf-results/junit.xml \
+            | tee perf-results/pytest.log
+
+      - name: Upload timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results-${{ github.run_id }}
+          path: perf-results/
+          retention-days: 90

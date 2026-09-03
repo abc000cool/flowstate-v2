@@ -1,12 +1,15 @@
 """FlowStateEnv smoke tests with the (non-physical) SyntheticBackend.
 
 Random-policy smoke test only per CLAUDE.md §4.5 / ADR-2 — no training code.
+The scenario-backed constructor (real ``microsim`` backend, SUMO) is
+exercised in ``tests/test_microsim/test_microsim_gym_backend.py``.
 """
 
 import numpy as np
 import pytest
 
 from controllers import FlowStateEnv, SyntheticBackend
+from controllers.gym_env import DEFAULT_EPISODE_S, DEFAULT_SCENARIO
 from flowstate_core.rng import make_rng
 
 SEED = 20260829
@@ -99,3 +102,29 @@ class TestBackendValidation:
             SyntheticBackend(episode_steps=0)
         with pytest.raises(ValueError):
             FlowStateEnv(SyntheticBackend(), v_max=0.0)
+        with pytest.raises(ValueError):
+            FlowStateEnv(SyntheticBackend(n_downstream=0), n_downstream=-1)
+
+
+class TestScenarioConstruction:
+    """The scenario path without SUMO: argument rules and the defaults it names."""
+
+    def test_backend_and_scenario_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="either"):
+            FlowStateEnv(SyntheticBackend(n_downstream=K), n_downstream=K, scenario="corridor_10km")
+
+    def test_explicit_backend_has_no_scenario(self):
+        env = _env()
+        assert env.scenario is None
+
+    def test_defaults_name_the_spec_scenario(self):
+        # CLAUDE.md §4.5: the hook wraps corridor_10km; the episode is short.
+        assert DEFAULT_SCENARIO == "corridor_10km"
+        assert 0.0 < DEFAULT_EPISODE_S <= 60.0
+
+    def test_close_is_a_no_op_on_the_synthetic_backend(self):
+        env = _env()
+        env.reset(seed=SEED)
+        env.close()
+        obs, _ = env.reset(seed=SEED)  # still usable afterwards
+        assert env.observation_space.contains(obs)
