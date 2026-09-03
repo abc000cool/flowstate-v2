@@ -9,7 +9,11 @@ is quoted that cannot be reproduced from the referenced runs.
 ### I-24 fundamental diagram and audit list
 
 - `artifacts/fd_i24.json` (`scripts/fit_fd_i24.py`, 200-resample bootstrap, seed 42): per-lane triangular FD from Edie bins; congested wave speed 16.1 km/h [15.7, 16.5]; capacity and jam density recorded as coverage lower bounds. Section added to `docs/I24_DATA.md`.
-- `docs/AUDIT_2026-09-03.md`: findings of a ten-lens code audit; two frontend schema-drift bugs verified (run-detail metrics and heatmap types do not match the API), the rest recorded as unverified follow-ups.
+- `docs/AUDIT_2026-09-03.md`: findings of a ten-lens code audit; two frontend schema-drift bugs verified (run-detail metrics and heatmap types did not match the API), the rest recorded as unverified follow-ups.
+
+### Fixed
+
+- Frontend `RunMetrics`/`Heatmap` types now mirror the API's `MetricsOut`/`HeatmapOut` (replicates with per-seed metrics; bin centers, not edges); CI fields are nullable as in `CIOut`; the run-detail page no longer throws on a real finished run. Mock backend updated to the same shapes.
 
 ### Website brief
 
