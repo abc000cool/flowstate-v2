@@ -29,7 +29,9 @@ gcloud compute ssh flowstate-sweep --zone us-central1-a --command \
   'curl -fsSL https://raw.githubusercontent.com/abc000cool/flowstate-v2/main/scripts/gcp/bootstrap.sh | bash -s -- --scenario i24_replica_corrected'
 ```
 
-The script installs `libgl1` (libsumo links against it even headless), uv,
+The script waits for the image's first-boot apt lock, installs the X11,
+fontconfig and libatomic runtime libraries the libsumo wheel links against
+(a minimal cloud image has none of them), then uv,
 Python 3.12, the workspace, then starts
 `scripts/i24_penetration_sweep.py` with `nproc - 2` workers under `nohup`.
 Follow progress with:

@@ -28,8 +28,15 @@ if [ "$PROCS" -lt 1 ]; then PROCS=1; fi
 
 echo "== system packages"
 sudo apt-get update -qq
+# libsumo's wheel links against X11/fontconfig/libatomic even when headless;
+# a minimal cloud image ships none of them (verified with ldd on Debian 12).
+for i in $(seq 1 30); do
+  if sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then sleep 5; else break; fi
+done
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-  git curl ca-certificates libgl1 libxml2 >/dev/null
+  git curl ca-certificates libgl1 libxml2 libatomic1 \
+  libx11-6 libxext6 libxrender1 libxi6 libxtst6 libxfixes3 libxrandr2 \
+  libxinerama1 libxcursor1 libfontconfig1 libfreetype6 libglib2.0-0 >/dev/null
 
 echo "== uv"
 if ! command -v uv >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/uv" ]; then
