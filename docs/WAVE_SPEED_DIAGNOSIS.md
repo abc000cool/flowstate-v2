@@ -87,6 +87,8 @@ reproduce the table above exactly.
 | 80 | 0 / — / — | **62 / 17.1 / 18.0 / 98%** |
 | 100 | 0 / — / — | **46 / 17.0 / 18.0 / 85%** |
 
+![wave speed vs density](figures/wave_speed_vs_density.png)
+
 Deeper into congestion the emergent wave speed rises from ≈ 12 km/h near
 critical density to ≈ 17 km/h at 80–100 veh/km — between the FD's fitted
 `w = 14.6 km/h` and Newell's `(s0 + L)/T = 18.3–19.7 km/h` — and the in-band
