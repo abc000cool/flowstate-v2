@@ -24,7 +24,7 @@ export const DEFAULT_BASE_URL = '/api/v1';
 // Matches the key docker-compose.yml sets for a local stack, so the bundled
 // dashboard talks to the bundled API out of the box. Any other deployment sets
 // FLOWSTATE_API_KEY server-side and pastes the same value into Settings.
-export const DEFAULT_API_KEY = 'flowstate-local-dev';
+export const DEFAULT_API_KEY = 'dev-key-change-me'; // the API's inline-queue default (api.settings.DEFAULT_API_KEY)
 
 const LS_BASE = 'flowstate.apiBase';
 const LS_KEY = 'flowstate.apiKey';
