@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-03T02:23:04Z",
+  "source": "I-24 MOTION INCEPTION v1.x, 30 Nov 2022 westbound (6386d89efb3ff533c12df167__post10), Edie 30 s x 50 m bins per mainline lane 1-4, MM 62.7-58.7, 06:00-10:00 CST; per-lane quantities",
+  "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
+  "kind": "fd",
+  "fd": {
+    "v_f": 18.66484100349359,
+    "w": -4.46709656155156,
+    "rho_jam": 0.137221125962174,
+    "ci95": {
+      "v_f": [
+        18.614441389839524,
+        18.723705215415073
+      ],
+      "w": [
+        -4.580057938272307,
+        -4.348605914422045
+      ],
+      "rho_jam": [
+        0.1346186266189704,
+        0.1399851608293339
+      ],
+      "rho_c": [
+        0.026402064796617854,
+        0.026605843136492516
+      ],
+      "q_max": [
+        0.49293694614011246,
+        0.4962769336250649
+      ]
+    }
+  },
+  "n_observations": 236717,
+  "r2_freeflow": 0.333437097646641,
+  "congested_quantile": 0.9,
+  "notes": "Edie generalized flow/density from I-24 MOTION INCEPTION v1.x westbound fragments (30 Nov 2022 06:00-10:00 CST), 30 s x 50 m bins per mainline lane 1-4 over MM 62.7 -> 58.7; per-lane quantities; 5 Hz samples weighted 0.2 s; trailing partial bins dropped, empty bins excluded, all vehicle classes kept. COVERAGE: trajectories are unstitched fragments with incomplete tracking, so vehicle-time and vehicle-distance are both undercounted by the local coverage fraction (duplicate fragments overcount). The branch slopes v_f and w are invariant to a uniform coverage factor; q_max and rho_jam are lower bounds at the instrument's coverage and must not be quoted as facility capacity or jam density. The day spans genuine free flow (06:00-06:45) and heavy congestion, so unlike the US-101 fit the free branch is populated. Cite Gloudemans, D., Wang, Y., Ji, J., Zachar, G., Barbour, W., Hall, E., Cebelak, M., Smith, L. and Work, D.B. (2023). I-24 MOTION: An instrument for freeway traffic science. Transportation Research Part C 155:104311. bootstrap: 200/200 resamples usable (seed 42)."
+}

@@ -5,7 +5,7 @@
 near Nashville, TN) · **Artifacts:** `artifacts/i24_wb_overview.json`,
 `artifacts/idm_i24.json`, `artifacts/demand_i24.json`,
 `artifacts/i24_replica_inputs.json` (`artifacts/fd_i24.json` is produced by
-`scripts/fit_fd_i24.py`; its 200-resample exact-LP bootstrap costs ~3 h with
+`scripts/fit_fd_i24.py`, see the fundamental-diagram section at the end; its 200-resample exact-LP bootstrap costs ~3 h with
 two workers and is committed separately when it finishes — no FD number from
 I-24 is quoted anywhere until then) · **Scripts (run order):**
 `scripts/i24_extract.py` → `scripts/i24_overview.py` →
@@ -218,3 +218,38 @@ now exposes the raw-way granularity the scenario must be written in.
 5. **Vehicle classes.** 10% of westbound fragments are semis/trucks; the
    simulated fleet is passenger cars (5 m vType) drawn from a passenger-only
    population fit.
+
+## Fundamental diagram (`artifacts/fd_i24.json`)
+
+Fitted 2026-09-03 by `scripts/fit_fd_i24.py` from Edie generalized flow and
+density in 30 s × 50 m bins per mainline lane (lanes 1–4, MM 62.7 → 58.7,
+06:00–10:00 CST; 236,717 bins), triangular FD by constrained least squares
+with the congested branch by exact-LP quantile regression (τ = 0.9) and a
+200-resample bootstrap (seed 42, all 200 usable). Per-lane quantities.
+
+| Quantity | Value | 95% CI | Status |
+|---|---|---|---|
+| Free-flow branch slope v_f | 67.2 km/h (18.66 m/s) | 67.0–67.4 | slope, coverage-invariant; R² 0.33 on uncongested bins |
+| Congested wave speed w | 16.1 km/h (−4.47 m/s) | 15.7–16.5 | slope, coverage-invariant |
+| Critical density ρ_c | 26.5 veh/km/lane | 26.4–26.6 | lower bound |
+| Capacity q_max | 1,780 veh/h/lane | 1,775–1,787 | **lower bound** (tracking coverage) |
+| Jam density ρ_jam | 137 veh/km/lane | 135–140 | **lower bound** (tracking coverage) |
+
+Reading it. The congested-branch wave speed **w = 16.1 km/h** is the one
+number here that is robust to the instrument's tracking coverage (a uniform
+coverage factor scales flow and density together and leaves the branch
+slopes unchanged). It sits inside the empirical 14–22 km/h band, between the
+observed front speeds of the same day (14.2 km/h standard detector, 16.4
+relative; [I24_VALIDATION.md](I24_VALIDATION.md)) and Newell's `(s0 + L)/T`
+for the fitted IDM population (16.8–17.9 km/h), and matches the ring
+diagnostic for this fleet at 80 veh/km (16.4 km/h;
+[WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md)). Three independent
+estimates of the congested wave speed from this corridor now agree.
+
+Limitations. Capacity and jam density are lower bounds at the instrument's
+≈0.5–0.65 vehicle-time coverage and must not be quoted as facility values.
+The free-flow slope of 67 km/h is well below the posted limit because the
+"uncongested" bin regression is dominated by near-critical bins on a heavily
+congested morning (R² 0.33); it is a fit of the data the instrument tracked,
+not a free-speed estimate, and the corridor scenarios take their speed limit
+from the geometry, not from this value.

@@ -24,6 +24,7 @@ Index of everything in `docs/`. Start with the repo-root
 - [QA.md](QA.md) — anticipated questions with pointers to the evidence (Track A5)
 - [PAPER_OUTLINE.md](PAPER_OUTLINE.md) — the preprint spine: sections, results and figures mapped to the documents that carry them (Track B1)
 - [ONBOARDING_TIME.md](ONBOARDING_TIME.md) — measured machine and engineering time to onboard the I-24 corridor (Track C4)
+- [AUDIT_2026-09-03.md](AUDIT_2026-09-03.md) — ten-lens code audit: two verified frontend schema-drift bugs and the unverified follow-up list
 - [WEBSITE_BRIEF.md](WEBSITE_BRIEF.md) — the prompt for building the public site: audiences, tabs, the real-data intro animation, the numbers the site may use with their sources; data pack in `website/hero_data.json`
 - [JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md) — deferred-commitment JAD with a perfect sensor vs the latency finding (Track B4)
 - [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) — why the US-101 wave-speed criterion fails: site and density, not calibration

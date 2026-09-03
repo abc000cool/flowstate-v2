@@ -6,6 +6,11 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### I-24 fundamental diagram and audit list
+
+- `artifacts/fd_i24.json` (`scripts/fit_fd_i24.py`, 200-resample bootstrap, seed 42): per-lane triangular FD from Edie bins; congested wave speed 16.1 km/h [15.7, 16.5]; capacity and jam density recorded as coverage lower bounds. Section added to `docs/I24_DATA.md`.
+- `docs/AUDIT_2026-09-03.md`: findings of a ten-lens code audit; two frontend schema-drift bugs verified (run-detail metrics and heatmap types do not match the API), the rest recorded as unverified follow-ups.
+
 ### Website brief
 
 - `docs/WEBSITE_BRIEF.md`: the design prompt for the public site, and `scripts/website_hero_data.py` → `docs/website/hero_data.json` (the observed I-24 westbound speed field copied from `artifacts/i24_wb_overview.json` plus three seeded `ring_sugiyama` runs, one with the single FollowerStopper vehicle switched on at 300 s). No scenario changes; the ring config hashes are the CI-gated ones.

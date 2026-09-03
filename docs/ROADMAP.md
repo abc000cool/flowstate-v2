@@ -47,6 +47,7 @@ episodes. Expect far more than NGSIM's 2,452, from a modern instrument rather
 than 2005 camera footage. This is where the "raw NGSIM noise" limitation that
 our own artifact flags finally goes away. *Output:* `artifacts/idm_i24.json`,
 `artifacts/fd_i24.json`.
+  **Done 2026-09-03:** fitted, 236,717 bins, w = 16.1 km/h [15.7, 16.5] inside the band and consistent with the observed fronts and Newell; q_max and ρ_jam are coverage lower bounds (docs/I24_DATA.md, fundamental-diagram section).
 *Finding:* 17,652 episodes (7× NGSIM), holdout gap RMSE 5.29 m (NGSIM 6.44 m);
 T = 1.51 s, s0 = 2.53 m, a_max = 1.06 m/s² — `a_max` stays high on smoothed data,
 so the noise explanation was not the whole story.
