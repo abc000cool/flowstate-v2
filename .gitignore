@@ -32,3 +32,6 @@ embed/dist/
 
 # The embed data pack is versioned (the data/* rule above is for fetched payloads).
 !embed/public/data/*
+
+# Small OSM extracts the versioned scenarios depend on (ODbL attribution in data/osm/README.md).
+!data/osm/

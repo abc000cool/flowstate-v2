@@ -18,6 +18,10 @@ is quoted that cannot be reproduced from the referenced runs.
 - Frontend default API key is now the API's own inline-queue default (`dev-key-change-me`), as the README already documented; it had drifted to the Compose fallback, so the no-Docker dev path (`uvicorn` + `npm run dev`) answered 401 out of the box. Compose users paste their key in Settings as before.
 - Frontend `RunMetrics`/`Heatmap` types now mirror the API's `MetricsOut`/`HeatmapOut` (replicates with per-seed metrics; bin centers, not edges); CI fields are nullable as in `CIOut`; the run-detail page no longer throws on a real finished run. Mock backend updated to the same shapes.
 
+### Cloud compute
+
+- `scripts/gcp/`: bootstrap for a fresh Debian VM (system deps, uv, workspace, resumable sweep under nohup), a results fetcher, and a README with the exact `gcloud` commands and costs. `data/osm/i24_motion.osm` (89 KB, ODbL) is now versioned so the I-24 replica runs from a plain clone.
+
 ### Embeddable simulation
 
 - `embed/`: a static Vite + TypeScript page (no backend, ~21 kB of script)
