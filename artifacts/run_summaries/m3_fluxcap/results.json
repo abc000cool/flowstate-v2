@@ -1,0 +1,620 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-30T01:18:43Z",
+  "scenario": "corridor_10km",
+  "arm": "jad_prescribed_vstar",
+  "tier_note": "macro rows are tier='screening'; this comparison can never back a validation report (CLAUDE.md \u00a75.6)",
+  "replicates": 20,
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "config_hash_micro": "cb66a541ce98",
+  "config_hash_macro": "1ee1a5d8ba4d",
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0-dev",
+    "microsim": "2.0.0.dev0"
+  },
+  "penetration": 0.05,
+  "compliance": 1.0,
+  "controller": "jad",
+  "fd_artifact": "runs/m3_fluxcap/fd_corridor10k_micro.json",
+  "fd": {
+    "v_f_ms": 24.212185923729795,
+    "w_ms": -3.474993992589088,
+    "rho_jam_veh_m": 0.19486619852821568,
+    "source": "fitted from micro baseline (no-AV) Edie bins, 3 replicates"
+  },
+  "comparison_grid": {
+    "dt_s": 30.0,
+    "dx_m": 500.0,
+    "t_range_s": [
+      120.0,
+      1200.0
+    ],
+    "x_range_m": [
+      0.0,
+      10000.0
+    ]
+  },
+  "shadow_offsets_m": [
+    -2000.0,
+    -1750.0,
+    -1500.0,
+    -1250.0,
+    -1000.0,
+    -750.0,
+    -500.0,
+    -250.0,
+    0.0,
+    250.0,
+    500.0,
+    750.0,
+    1000.0
+  ],
+  "per_replicate": [
+    {
+      "seed": 6914975401685141156,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/6914975401685141156",
+          "tier": "screening",
+          "binding_fraction": 0.9682592903045544,
+          "speed_rmse_ms": 2.3810143916875255,
+          "density_rmse_veh_km": 5.195864674805026,
+          "shadow_rmse_ms": 1.7587135526920437
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/6914975401685141156",
+          "tier": "screening",
+          "binding_fraction": 0.9682592903045544,
+          "speed_rmse_ms": 2.4040389504116875,
+          "density_rmse_veh_km": 5.386380839355916,
+          "shadow_rmse_ms": 1.78494347330966
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 134183728835869882,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/134183728835869882",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.211601666117819,
+          "density_rmse_veh_km": 7.809157937615161,
+          "shadow_rmse_ms": 4.062273769299531
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/134183728835869882",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 5.0095986991664585,
+          "density_rmse_veh_km": 8.56024833816664,
+          "shadow_rmse_ms": 5.063690991832609
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 2378473973028931053,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/2378473973028931053",
+          "tier": "screening",
+          "binding_fraction": 0.9995221940847627,
+          "speed_rmse_ms": 5.668256524656182,
+          "density_rmse_veh_km": 8.726671249171511,
+          "shadow_rmse_ms": 4.916143882161774
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/2378473973028931053",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 7.454455370151213,
+          "density_rmse_veh_km": 10.445406665909147,
+          "shadow_rmse_ms": 6.729675144885852
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 3747978530954135749,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/3747978530954135749",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.117477091506634,
+          "density_rmse_veh_km": 7.041057621881152,
+          "shadow_rmse_ms": 3.4113133331865075
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/3747978530954135749",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.557288192173047,
+          "density_rmse_veh_km": 7.204465511939147,
+          "shadow_rmse_ms": 3.8613145015689336
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 677105600768189526,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/677105600768189526",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 3.936064305420902,
+          "density_rmse_veh_km": 7.04517994213491,
+          "shadow_rmse_ms": 3.420731056798347
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/677105600768189526",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.225690971687616,
+          "density_rmse_veh_km": 7.3699428284472575,
+          "shadow_rmse_ms": 3.7506244156819366
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 661281422688282993,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/661281422688282993",
+          "tier": "screening",
+          "binding_fraction": 0.9873746023978468,
+          "speed_rmse_ms": 3.397606209879877,
+          "density_rmse_veh_km": 6.233863578292851,
+          "shadow_rmse_ms": 2.803827041972146
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/661281422688282993",
+          "tier": "screening",
+          "binding_fraction": 0.9873746023978468,
+          "speed_rmse_ms": 3.653198075493941,
+          "density_rmse_veh_km": 6.592235389164918,
+          "shadow_rmse_ms": 3.068449156492495
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 3011106312394044631,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/3011106312394044631",
+          "tier": "screening",
+          "binding_fraction": 0.98965698355622,
+          "speed_rmse_ms": 7.5923864837240975,
+          "density_rmse_veh_km": 14.602312375627635,
+          "shadow_rmse_ms": 6.736944621227975
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/3011106312394044631",
+          "tier": "screening",
+          "binding_fraction": 0.9992727566562967,
+          "speed_rmse_ms": 10.231716872094935,
+          "density_rmse_veh_km": 13.344499842639268,
+          "shadow_rmse_ms": 9.623166037801749
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 6953598295321596746,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/6953598295321596746",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.133510170464334,
+          "density_rmse_veh_km": 7.402689752221523,
+          "shadow_rmse_ms": 3.7615487670119534
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/6953598295321596746",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.946488840205335,
+          "density_rmse_veh_km": 8.008911085211011,
+          "shadow_rmse_ms": 4.982694601966425
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 165503670820534583,
+      "n_av_trajectories": 25,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/165503670820534583",
+          "tier": "screening",
+          "binding_fraction": 0.9902370990237099,
+          "speed_rmse_ms": 7.756996151765739,
+          "density_rmse_veh_km": 14.635370850241312,
+          "shadow_rmse_ms": 7.993587810143052
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/165503670820534583",
+          "tier": "screening",
+          "binding_fraction": 0.9936463660313033,
+          "speed_rmse_ms": 11.218275670352257,
+          "density_rmse_veh_km": 14.131397623835628,
+          "shadow_rmse_ms": 10.867636700625042
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 6134032994440706937,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/6134032994440706937",
+          "tier": "screening",
+          "binding_fraction": 0.9787873582961182,
+          "speed_rmse_ms": 3.444689866099829,
+          "density_rmse_veh_km": 6.24953904400807,
+          "shadow_rmse_ms": 3.2543138404874155
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/6134032994440706937",
+          "tier": "screening",
+          "binding_fraction": 0.9787873582961182,
+          "speed_rmse_ms": 3.838304338217876,
+          "density_rmse_veh_km": 6.7979909254728135,
+          "shadow_rmse_ms": 3.7205209756047037
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 8557154790156791364,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/8557154790156791364",
+          "tier": "screening",
+          "binding_fraction": 0.995050081528069,
+          "speed_rmse_ms": 3.028144839227354,
+          "density_rmse_veh_km": 5.845676048686462,
+          "shadow_rmse_ms": 3.025341577684156
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/8557154790156791364",
+          "tier": "screening",
+          "binding_fraction": 0.995050081528069,
+          "speed_rmse_ms": 3.1440846810059235,
+          "density_rmse_veh_km": 6.042404071527995,
+          "shadow_rmse_ms": 3.1641047880947166
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 6538422657834023852,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/6538422657834023852",
+          "tier": "screening",
+          "binding_fraction": 0.9875266623388668,
+          "speed_rmse_ms": 4.078382791325353,
+          "density_rmse_veh_km": 7.021207925209907,
+          "shadow_rmse_ms": 3.822775389210575
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/6538422657834023852",
+          "tier": "screening",
+          "binding_fraction": 0.9875266623388668,
+          "speed_rmse_ms": 4.578982982357861,
+          "density_rmse_veh_km": 7.814217490439503,
+          "shadow_rmse_ms": 4.450803003858514
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 6904272788004776631,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/6904272788004776631",
+          "tier": "screening",
+          "binding_fraction": 0.9648812095032397,
+          "speed_rmse_ms": 3.3196514396044883,
+          "density_rmse_veh_km": 6.676915551297542,
+          "shadow_rmse_ms": 2.5125553107174334
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/6904272788004776631",
+          "tier": "screening",
+          "binding_fraction": 0.9648812095032397,
+          "speed_rmse_ms": 3.516905179406848,
+          "density_rmse_veh_km": 6.654352917417848,
+          "shadow_rmse_ms": 2.723607828291558
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 6143473282319009404,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/6143473282319009404",
+          "tier": "screening",
+          "binding_fraction": 0.9760933546754789,
+          "speed_rmse_ms": 3.471840659062591,
+          "density_rmse_veh_km": 5.720167242993299,
+          "shadow_rmse_ms": 2.080005044545645
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/6143473282319009404",
+          "tier": "screening",
+          "binding_fraction": 0.9760933546754789,
+          "speed_rmse_ms": 3.506792592680071,
+          "density_rmse_veh_km": 5.716784802056674,
+          "shadow_rmse_ms": 2.1473980416804754
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 3944094060050347669,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/3944094060050347669",
+          "tier": "screening",
+          "binding_fraction": 0.9910797431750232,
+          "speed_rmse_ms": 4.594928401242263,
+          "density_rmse_veh_km": 6.284262918108669,
+          "shadow_rmse_ms": 3.3591582964089737
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/3944094060050347669",
+          "tier": "screening",
+          "binding_fraction": 0.9910797431750232,
+          "speed_rmse_ms": 4.920690732899465,
+          "density_rmse_veh_km": 7.2348628664256465,
+          "shadow_rmse_ms": 3.8750796116980117
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 4910985839736976611,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/4910985839736976611",
+          "tier": "screening",
+          "binding_fraction": 0.9979901558654635,
+          "speed_rmse_ms": 4.447865745353902,
+          "density_rmse_veh_km": 8.010972381839114,
+          "shadow_rmse_ms": 3.868139868728333
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/4910985839736976611",
+          "tier": "screening",
+          "binding_fraction": 0.9979901558654635,
+          "speed_rmse_ms": 5.1592162138694455,
+          "density_rmse_veh_km": 8.477926646052275,
+          "shadow_rmse_ms": 4.975085436119678
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 7382187975121682178,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/7382187975121682178",
+          "tier": "screening",
+          "binding_fraction": 0.9924455295038924,
+          "speed_rmse_ms": 3.4736295494491296,
+          "density_rmse_veh_km": 7.073033944771544,
+          "shadow_rmse_ms": 2.89857571457963
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/7382187975121682178",
+          "tier": "screening",
+          "binding_fraction": 0.9934589340826385,
+          "speed_rmse_ms": 3.6541722580901737,
+          "density_rmse_veh_km": 7.202669887948442,
+          "shadow_rmse_ms": 3.216775531095936
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 5690692725577505498,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/5690692725577505498",
+          "tier": "screening",
+          "binding_fraction": 0.9847494553376906,
+          "speed_rmse_ms": 7.0718876973341915,
+          "density_rmse_veh_km": 11.575561731298794,
+          "shadow_rmse_ms": 6.651587796712227
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/5690692725577505498",
+          "tier": "screening",
+          "binding_fraction": 0.9888888888888889,
+          "speed_rmse_ms": 10.11033356522943,
+          "density_rmse_veh_km": 12.64198933689739,
+          "shadow_rmse_ms": 9.66760386626475
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 887972120279483394,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/887972120279483394",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 3.300337277235975,
+          "density_rmse_veh_km": 6.615361452357964,
+          "shadow_rmse_ms": 3.3185838179073257
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/887972120279483394",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 3.5167378231230604,
+          "density_rmse_veh_km": 6.90810113041536,
+          "shadow_rmse_ms": 3.618716346610564
+        }
+      },
+      "variants_identical": false
+    },
+    {
+      "seed": 8026499204807041784,
+      "n_av_trajectories": 29,
+      "variants": {
+        "flux_cap": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_flux_cap/1ee1a5d8ba4d/8026499204807041784",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 3.9169888161238298,
+          "density_rmse_veh_km": 7.024597968628328,
+          "shadow_rmse_ms": 3.8596205433361144
+        },
+        "capacity": {
+          "run_dir": "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_fluxcap/macro_capacity/1ee1a5d8ba4d/8026499204807041784",
+          "tier": "screening",
+          "binding_fraction": 1.0,
+          "speed_rmse_ms": 4.534640035815647,
+          "density_rmse_veh_km": 8.089727454531525,
+          "shadow_rmse_ms": 4.604130924524344
+        }
+      },
+      "variants_identical": false
+    }
+  ],
+  "rmse_ci": {
+    "flux_cap": {
+      "speed_rmse_ms": {
+        "mean": 4.367163003864101,
+        "lo95": 3.663607711431248,
+        "hi95": 5.0707182962969535,
+        "n": 20,
+        "underpowered": false
+      },
+      "density_rmse_veh_km": {
+        "mean": 7.83947320955954,
+        "lo95": 6.587768572961308,
+        "hi95": 9.091177846157773,
+        "n": 20,
+        "underpowered": false
+      },
+      "shadow_rmse_ms": {
+        "mean": 3.875787051740558,
+        "lo95": 3.133770142862388,
+        "hi95": 4.617803960618728,
+        "n": 20,
+        "underpowered": false
+      },
+      "binding_fraction": {
+        "mean": 0.9901826859795468,
+        "lo95": 0.9850897091434093,
+        "hi95": 0.9952756628156844,
+        "n": 20,
+        "underpowered": false
+      }
+    },
+    "capacity": {
+      "speed_rmse_ms": {
+        "mean": 5.209080602221614,
+        "lo95": 4.03136115296861,
+        "hi95": 6.386800051474618,
+        "n": 20,
+        "underpowered": false
+      },
+      "density_rmse_veh_km": {
+        "mean": 8.231225782692722,
+        "lo95": 7.066085405946433,
+        "hi95": 9.39636615943901,
+        "n": 20,
+        "underpowered": false
+      },
+      "shadow_rmse_ms": {
+        "mean": 4.794801068900398,
+        "lo95": 3.6097982077616613,
+        "hi95": 5.979803930039134,
+        "n": 20,
+        "underpowered": false
+      },
+      "binding_fraction": {
+        "mean": 0.9911154701871894,
+        "lo95": 0.9859507167827842,
+        "hi95": 0.9962802235915945,
+        "n": 20,
+        "underpowered": false
+      }
+    }
+  },
+  "speed_rmse_delta_capacity_minus_flux_cap_ms": {
+    "mean": 0.8419175983575137,
+    "lo95": 0.35737428579103636,
+    "hi95": 1.3264609109239909,
+    "n": 20,
+    "underpowered": false
+  },
+  "n_replicates_variants_identical": 0,
+  "verdict": "constraint binds (variants differ in 20/20 replicates); flux_cap tracks micro better on speed RMSE (capacity \u2212 flux_cap = 0.842 m/s, 95% CI [0.357, 1.326]); difference is statistically resolved",
+  "micro_wall_s": 14.2,
+  "figure": "docs/figures/fluxcap_comparison.png",
+  "notes": [
+    "Both variants are driven by the SAME per-replicate complied-AV (t, x, v) trajectories extracted from the micro run (VStarTrajectory playback), so the only difference is the constraint form.",
+    "binding_fraction = fraction of active AV-steps with v* < V_e(rho) at the AV's macro cell \u2014 the precondition for the flux_cap form to bind.",
+    "The FD is fitted from no-AV baseline micro runs of the same corridor (the JAD arm is too dampened to populate the congested branch); absolute macro-vs-micro RMSE therefore mostly reflects LWR model form (no emergent waves), not FD mis-calibration.",
+    "The earlier follower_stopper arm (runs/m3_us101 history) was an identical-variants null: that controller never commands below local equilibrium speed."
+  ]
+}

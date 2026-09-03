@@ -333,6 +333,8 @@ def osm_import(
     bbox: tuple[float, float, float, float] | None = None,
     corridor_edges: tuple[str, ...] | list[str] = (),
     workdir: Path | None = None,
+    keep_edges: tuple[str, ...] | list[str] = (),
+    geometry_remove: bool = True,
 ) -> NetBundle:
     """Import an OSM extract into a SUMO network (the ``osm_generic`` pipeline).
 
@@ -351,13 +353,22 @@ def osm_import(
         corridor_edges: SUMO edge ids forming the corridor after import, in
             driving order. Empty ⇒ keep the whole network.
         workdir: Directory for inputs/outputs. Required.
+        keep_edges: Additional edge ids (e.g. interchange ramps,
+            ``OSMNetwork.ramps``) kept and pinned through pruning alongside
+            ``corridor_edges`` without joining the corridor chain.
+        geometry_remove: Pass ``--geometry.remove`` (default) so runs of
+            raw OSM ways are joined into single edges. ``False`` keeps every
+            raw way as its own edge (ids are the way ids, ``#``-split at
+            junctions), which is how the ids a scenario names must be
+            discovered: a joined edge's id is one of its member ways and a
+            corridor pruned by that id alone silently loses the rest.
 
     Returns:
         The compiled :class:`NetBundle` (``kind="osm"``).
 
     Raises:
         ValueError: Neither source given, missing workdir, or a named
-            corridor edge absent from the imported network.
+            corridor or kept edge absent from the imported network.
         RuntimeError: netconvert failure.
     """
     if workdir is None:
@@ -382,11 +393,12 @@ def osm_import(
         str(net),
         "--no-internal-links",
         "--no-turnarounds",
-        "--geometry.remove",
         # NOTE: --remove-edges.isolated is deliberately NOT passed — it strips
         # a standalone corridor ("road without junctions"), which is exactly
         # what a pruned analysis corridor often is.
     ]
+    if geometry_remove:
+        args.append("--geometry.remove")
     typemap = _osm_typemap()
     if typemap is not None:
         args += ["--type-files", str(typemap)]
@@ -400,22 +412,20 @@ def osm_import(
         # ``--geometry.remove.keep-edges.explicit`` pins the named edges
         # through the join so the pruned net contains exactly the requested
         # chain with stable ids and offsets.
-        joined = ",".join(corridor_edges)
-        args += [
-            "--keep-edges.explicit",
-            joined,
-            "--geometry.remove.keep-edges.explicit",
-            joined,
-        ]
+        joined = ",".join([*corridor_edges, *[e for e in keep_edges if e not in corridor_edges]])
+        args += ["--keep-edges.explicit", joined]
+        if geometry_remove:
+            args += ["--geometry.remove.keep-edges.explicit", joined]
     _netconvert(args)
 
     parsed = sumolib.net.readNet(str(net))
     by_id = {e.getID(): e for e in parsed.getEdges(withInternal=False)}
     if corridor_edges:
-        missing = [e for e in corridor_edges if e not in by_id]
+        missing = [e for e in [*corridor_edges, *keep_edges] if e not in by_id]
         if missing:
             raise ValueError(
-                f"corridor edges not present after import: {missing}; available: {sorted(by_id)}"
+                f"corridor/kept edges not present after import: {missing}; "
+                f"available: {sorted(by_id)}"
             )
         ordered = list(corridor_edges)
     else:

@@ -8,13 +8,24 @@ invariants. No network, no registered-access data.
 
 from __future__ import annotations
 
+import json
+import zipfile
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from calibration.loaders.highd import frame_rate_of, load_highd_episodes
-from calibration.loaders.i24motion import load_i24_episodes, load_i24_trajectories
+from calibration.loaders.i24motion import (
+    convert_i24_to_parquet,
+    i24_document_id,
+    iter_i24_documents,
+    load_i24_episodes,
+    load_i24_parquet,
+    load_i24_trajectories,
+    load_i24_vehicles,
+    sha256_file,
+)
 from calibration.loaders.ngsim import (
     FEET_TO_M,
     build_ngsim_episodes,
@@ -173,14 +184,21 @@ class TestI24MotionLoader:
         df = load_i24_trajectories(FIXTURES / "i24_tiny.json", direction=-1)
         assert set(df["veh_id"]) == {"L1", "F2"}
         lead = df[df["veh_id"] == "L1"]
-        # Westbound: x = -x_position * FEET_TO_M so x increases with travel.
-        assert lead["x"].iloc[0] == pytest.approx(-4800.0 * FEET_TO_M, rel=1e-12)
+        # Westbound: x_position is the BACK-center roadway coordinate (data
+        # documentation v1.x), travel is toward decreasing x_position, so
+        # x = -(x_position - x_ref) * FEET_TO_M + length puts the FRONT bumper
+        # on a travel-oriented axis.
+        assert lead["x"].iloc[0] == pytest.approx((-4800.0 + 15.0) * FEET_TO_M, rel=1e-12)
         assert lead["length"].iloc[0] == pytest.approx(15.0 * FEET_TO_M, rel=1e-12)
         # Constant 88 ft/s -> finite-difference speed (up to float grid jitter
         # from snapping the 25 Hz timestamps, ~1e-6 relative).
         np.testing.assert_allclose(lead["v"].to_numpy(), 88.0 * FEET_TO_M, rtol=1e-5)
-        # y = 30 ft in 12 ft lanes -> lane index 2.
+        # y = 30 ft in the documented 12 ft westbound bands -> lane 2.
         assert set(lead["lane"]) == {2}
+        assert lead["y"].iloc[0] == pytest.approx(30.0 * FEET_TO_M, rel=1e-12)
+        # Grid-snapped time starts at 0 and steps by 0.04 s.
+        np.testing.assert_allclose(np.diff(lead["t"].to_numpy()), 0.04, atol=1e-9)
+        assert lead["t"].iloc[0] == 0.0
 
     def test_position_ordered_episode(self) -> None:
         eps = load_i24_episodes(FIXTURES / "i24_tiny.json", min_duration_s=4.0)
@@ -191,9 +209,148 @@ class TestI24MotionLoader:
         assert ep.metadata["dataset"] == "i24motion"
         assert ep.n == 151
         assert ep.dt == pytest.approx(1.0 / 25.0, rel=1e-6)
-        # gap = (120 ft spacing - 15 ft leader length) in meters.
-        np.testing.assert_allclose(ep.gap_m, (120.0 - 15.0) * FEET_TO_M, atol=1e-6)
+        # Back-center spacing 120 ft; the bumper-to-bumper gap is the leader's
+        # back minus the follower's FRONT, i.e. spacing - follower length
+        # (16 ft) — not spacing - leader length as a front-position schema
+        # would give.
+        np.testing.assert_allclose(ep.gap_m, (120.0 - 16.0) * FEET_TO_M, atol=1e-6)
         np.testing.assert_allclose(ep.v_follower, 88.0 * FEET_TO_M, rtol=1e-5)
+
+    def test_downsample_keeps_shared_grid(self) -> None:
+        df = load_i24_trajectories(FIXTURES / "i24_tiny.json", direction=-1, downsample=5)
+        # Every kept slot is a multiple of 0.2 s, identical for both vehicles.
+        for _, g in df.groupby("veh_id"):
+            np.testing.assert_allclose(np.diff(g["t"].to_numpy()), 0.2, atol=1e-9)
+        assert set(df[df["veh_id"] == "L1"]["t"]) == set(df[df["veh_id"] == "F2"]["t"])
+        # Speed was computed at 25 Hz before decimation.
+        np.testing.assert_allclose(df["v"].to_numpy(), 88.0 * FEET_TO_M, rtol=1e-5)
+        eps = load_i24_episodes(FIXTURES / "i24_tiny.json", min_duration_s=4.0, downsample=5)
+        assert len(eps) == 1 and eps[0].dt == pytest.approx(0.2)
+
+    def test_direction_filter(self) -> None:
+        df = load_i24_trajectories(FIXTURES / "i24_tiny.json", direction=1)
+        assert set(df["veh_id"]) == {"E9"}  # eastbound-only doc
+        # Eastbound: x increases with x_position; y = -20 ft mirrors to lane 1.
+        assert df["x"].iloc[0] == pytest.approx((1000.0 + 14.0) * FEET_TO_M, rel=1e-12)
+        assert set(df["lane"]) == {1}
+        assert load_i24_episodes(FIXTURES / "i24_tiny.json", direction=1, min_duration_s=1.0) == []
+
+    def test_missing_direction_raises(self) -> None:
+        with pytest.raises(ValueError, match="direction"):
+            load_i24_trajectories(FIXTURES / "i24_tiny.json", direction=7)
+
+
+def _mongo_export(tmp_path: Path, *, indent: int | None = 1, as_zip: bool = True) -> Path:
+    """The tiny fixture re-shaped like the INCEPTION export (``$oid`` ids)."""
+    docs = json.loads((FIXTURES / "i24_tiny.json").read_text())
+    for d in docs:
+        d["_id"] = {"$oid": d["_id"]}
+        d["first_timestamp"] = d["timestamp"][0]
+        d["last_timestamp"] = d["timestamp"][-1]
+        d["coarse_vehicle_class"] = 0
+        d["flags"] = ["Lost"]
+    text = json.dumps(docs, indent=indent)
+    if not as_zip:
+        p = tmp_path / "export.json"
+        p.write_text(text)
+        return p
+    p = tmp_path / "export.zip"
+    with zipfile.ZipFile(p, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("export.json", text)
+    return p
+
+
+class TestI24Streaming:
+    def test_iter_documents_from_zip_with_tiny_chunks(self, tmp_path: Path) -> None:
+        # A 97-char buffer forces many refills and objects straddling chunk
+        # boundaries — the streaming decoder must still yield every document.
+        path = _mongo_export(tmp_path)
+        docs = list(iter_i24_documents(path, chunk_chars=97))
+        assert [i24_document_id(d) for d in docs] == ["L1", "F2", "E9"]
+        assert docs == list(iter_i24_documents(path))  # chunking is invisible
+
+    def test_iter_documents_compact_and_ndjson(self, tmp_path: Path) -> None:
+        compact = _mongo_export(tmp_path, indent=None, as_zip=False)
+        assert len(list(iter_i24_documents(compact, chunk_chars=50))) == 3
+        docs = json.loads(compact.read_text())
+        nd = tmp_path / "export.ndjson.json"
+        nd.write_text("\n".join(json.dumps(d) for d in docs) + "\n")
+        assert [i24_document_id(d) for d in iter_i24_documents(nd)] == ["L1", "F2", "E9"]
+
+    def test_iter_documents_rejects_truncated(self, tmp_path: Path) -> None:
+        p = tmp_path / "bad.json"
+        p.write_text('[{"_id": "a", "timestamp": [1.0, 1.04')
+        with pytest.raises(ValueError, match="truncated"):
+            list(iter_i24_documents(p, chunk_chars=8))
+
+    def test_convert_to_parquet_round_trip(self, tmp_path: Path) -> None:
+        path = _mongo_export(tmp_path)
+        out = tmp_path / "wb"
+        summary = convert_i24_to_parquet(
+            path, out, direction=-1, downsample=5, mm_range=(0.0, 1.0), row_group_rows=10
+        )
+        assert summary.n_docs_read == 3
+        assert summary.n_docs_direction == 2 == summary.n_docs_kept
+        assert summary.n_samples_native == 302
+        assert summary.t_origin_unix == 1668600000.0  # floored to the hour
+        assert summary.x_ref_ft == 5280.0  # westbound: x = 0 at the max mile marker
+        assert summary.class_counts == {"sedan": 2}
+        assert summary.duration_hist[1] == 2 and summary.n_docs_ge_30s == 0
+        assert summary.data_hash == sha256_file(path)
+
+        df = load_i24_parquet(out)
+        assert list(df.columns) == ["t", "veh_id", "x", "y", "lane", "v", "length", "cls"]
+        assert summary.n_rows == len(df) == 62
+        lead = df[df["veh_id"] == "L1"]
+        # x = (5280 - 4800) ft + 15 ft length, travel oriented, front bumper.
+        assert lead["x"].iloc[0] == pytest.approx((5280.0 - 4800.0 + 15.0) * FEET_TO_M)
+        np.testing.assert_allclose(np.diff(lead["t"].to_numpy()), 0.2, atol=1e-9)
+        assert str(df["lane"].dtype) == "int8" and set(lead["lane"]) == {2}
+
+        # Pushed-down slices.
+        sl = load_i24_parquet(out, t_range_s=(1.0, 2.0), lanes=(2, 2), columns=["t", "veh_id"])
+        assert list(sl.columns) == ["t", "veh_id"]
+        assert sl["t"].between(1.0, 2.0 - 1e-9).all() and len(sl) == 10
+        assert load_i24_parquet(out, x_range_m=(0.0, 1.0)).empty
+
+        veh = load_i24_vehicles(out)
+        assert set(veh["veh_id"]) == {"L1", "F2"}
+        assert veh["n_samples"].tolist() == [151, 151]
+        assert veh["flags"].tolist() == ["Lost", "Lost"]
+        meta = json.loads((out / "meta.json").read_text())
+        assert meta["n_docs_kept"] == 2 and meta["data_hash"] == summary.data_hash
+        assert "FRAGMENTS" in meta["notes"][0]
+
+    def test_convert_time_window_and_eastbound(self, tmp_path: Path) -> None:
+        path = _mongo_export(tmp_path)
+        s = convert_i24_to_parquet(
+            path, tmp_path / "eb", direction=1, mm_range=(0.0, 1.0), t_range_s=(0.0, 1.0)
+        )
+        assert s.n_docs_kept == 1 and s.x_ref_ft == 0.0
+        assert s.t_origin_unix == 1668600000.0  # detected origin recorded
+        s_explicit = convert_i24_to_parquet(
+            path, tmp_path / "eb2", direction=1, mm_range=(0.0, 1.0), t_origin_unix=1668599990.0
+        )
+        assert s_explicit.t_origin_unix == 1668599990.0  # explicit origin recorded
+        assert load_i24_parquet(tmp_path / "eb2")["t"].iloc[0] == pytest.approx(10.0)
+        assert load_i24_parquet(tmp_path / "eb", t_range_s=(0.0, 2.0))[
+            "veh_id"
+        ].unique().tolist() == ["E9"]
+        # A window overlapping nothing keeps nothing (but still writes files).
+        s2 = convert_i24_to_parquet(
+            path, tmp_path / "none", direction=1, mm_range=(0.0, 1.0), t_range_s=(5000.0, 6000.0)
+        )
+        assert s2.n_docs_kept == 0 and s2.n_rows == 0
+        assert load_i24_parquet(tmp_path / "none").empty
+
+    def test_convert_rejects_bad_args(self, tmp_path: Path) -> None:
+        path = _mongo_export(tmp_path)
+        with pytest.raises(ValueError, match="direction"):
+            convert_i24_to_parquet(path, tmp_path / "x", direction=0)
+        with pytest.raises(ValueError, match="mm_range"):
+            convert_i24_to_parquet(path, tmp_path / "x", mm_range=(2.0, 1.0))
+        with pytest.raises(ValueError, match="t_range_s"):
+            convert_i24_to_parquet(path, tmp_path / "x", t_range_s=(1.0, 1.0))
 
     def test_direction_filter(self) -> None:
         df = load_i24_trajectories(FIXTURES / "i24_tiny.json", direction=1)

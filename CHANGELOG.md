@@ -4,6 +4,120 @@ All notable changes to FlowState are documented here. Every headline number
 below traces to a committed, seeded artifact (CLAUDE.md §0.1/§0.5); nothing
 is quoted that cannot be reproduced from the referenced runs.
 
+## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
+
+### Added
+
+- **Streaming I-24 MOTION loader** (`calibration.loaders.i24motion`):
+  `iter_i24_documents` decodes the INCEPTION MongoDB export one document at a
+  time straight out of the zip (the 30 Nov 2022 run is a 19.5 GB JSON array of
+  816,694 documents in a 5.8 GB zip; it is never extracted), and
+  `convert_i24_to_parquet` writes filtered, decimated Parquet with a
+  per-fragment table and provenance `meta.json`. The schema was reconciled
+  against the real file and the official v1.x data documentation:
+  `_id` is `{"$oid": ...}`, `x_position` is the *back*-center roadway
+  coordinate in feet (MM 60 ≡ 316,800 ft), `y_position` is positive westbound
+  with lane 1 (HOV) at 12–24 ft, and every document is a trajectory
+  **fragment**. The loader's `x` is the front bumper on a travel-oriented axis
+  so the existing bumper-to-bumper gap logic applies unchanged; the loader
+  tests' expected gap changed accordingly (spacing minus *follower* length,
+  not minus leader length). `scripts/i24_extract.py` runs the conversion
+  (westbound: 576,511 fragments → 42.8 M rows at 5 Hz, 993 MB, 309 s).
+- **Ramps and boundaries on OSM corridors** (`flowstate_core.config.RampSpec`,
+  `OSMNetwork.ramps`, `OSMNetwork.boundary`; docs/CONTRACTS.md §2). A real
+  corridor exchanges traffic at interchanges; the I-24 westbound testbed has
+  two on-ramps and two off-ramps inside the span whose flows are a sizable
+  share of the mainline, and the US-101 replica's missing merge was a
+  documented structural failure. On-ramps insert their own seeded demand on
+  the ramp's first edge; off-ramps divert a per-vehicle seeded fraction; ramp
+  edges are kept through OSM pruning and their connectivity is checked before
+  SUMO starts; `meta.json` records per-ramp planned/departed/exiting counts.
+  The measured-boundary schedule now also applies to the last corridor edge
+  of an OSM network, and OSM insertion uses the entry edge's real lane count.
+  Integration-tested on a hand-built interchange fixture
+  (`tests/test_microsim/test_microsim_osm_ramps.py`). Two SUMO facts learned
+  and encoded in that fixture: a ramp must feed an auxiliary lane (a ramp
+  squeezed into a same-width edge faces priority-junction gap acceptance and
+  never merges against a steady stream), and hand-drawn ramps must leave at
+  gore-like shallow angles (SUMO caps turning speed by curvature, so a steep
+  link is an artificial 5 m/s bottleneck).
+- `FleetSpec.lc_strategic` (SUMO `lcStrategic`, default 1.0 = SUMO's own
+  default, written on vTypes only when changed). On the I-24 replica the
+  default leaves 894 stalled 10-s samples in two hours at the Hickory Hollow
+  diverge and a 29.8 km/h mean speed over the kilometre upstream of it — a
+  fixed bottleneck the data does not have — against 44 samples / 84.7 km/h at
+  5.0 and 3 / 86.8 at 20.0 (same seed, same demand). The replica uses 5.0.
+- `FleetSpec.lc_keep_right` (SUMO `lcKeepRight`, default 1.0). The default
+  encodes a keep-right obligation US freeways do not have: on the I-24
+  replica it spreads vehicle-time 24/25/25/27% across the four lanes (left
+  to right) but crawls at 23–27 km/h in the two right lanes through the Old
+  Hickory merge while the left lanes run at 65–97 km/h — 11,535 stalled
+  10-s samples in two hours. At 0 the lane shares become 32/26/22/20%
+  against the observed 30/24/20/26% (all observed lanes at 30–33 km/h) and
+  the stalls fall to 200 (same seed, same demand). The replica uses 0.
+- **I-24 replica validation (ROADMAP §1.4)** — `scripts/i24_validate.py`,
+  `artifacts/i24_validation_{tracked,corrected,observed}.json`,
+  `artifacts/i24_validation_waves_relative.json`, docs/I24_VALIDATION.md,
+  auto-reports under `docs/reports/i24_replica/`. Honest outcome: **1 PASS /
+  5 FAIL in both demand arms**, 20 seeds each. With demand as tracked (a lower
+  bound) the span free-flows (RMSPE 183%); dividing demand by the
+  instrument's apparent coverage produces a stop-and-go field that looks like
+  the recording (RMSPE 36.8%, mean speed 28.0 vs 33.5 km/h observed), but the
+  replica inserts only 82–84% of that demand, its jams are shallower than the
+  real ones, and its backward fronts run at 8.7 km/h with the standard
+  detector (12.4 with the relative one) against 14.2 (16.4) observed. The
+  wave-speed prediction of docs/WAVE_SPEED_DIAGNOSIS.md is therefore **not
+  confirmed on the corridor**; the same fleet reaches the 14–22 km/h band on a
+  ring only above ~80 veh/km per lane, a density the replica does not reach.
+- **I-24 calibration artifacts.** `artifacts/idm_i24.json`: IDM population
+  fitted on all 17,652 ≥ 30 s leader-follower episodes of the westbound day
+  (7× NGSIM's count; holdout gap RMSE 5.29 m vs 6.44 m for NGSIM; T = 1.51 s,
+  a_max = 1.06 m/s², s0 = 2.53 m). `artifacts/demand_i24.json`: mainline
+  inflow per 5 min for 06:30–08:30 CST, a lower bound at the instrument's
+  tracking coverage. `artifacts/i24_replica_inputs.json`: every derived input
+  of the replica (geometry mapping, ramp flows, exit fractions, boundary
+  schedule, coverage factors). See docs/I24_DATA.md.
+- **Relative-threshold wave detection** (`validation.waves.detect_waves(...,
+  relative_frac=f)`, ROADMAP D1): thresholds at `f × p90` of the field's
+  non-empty bin speeds, so stripes inside a field that is congested
+  everywhere are segmented instead of being merged into one pinned blob (the
+  documented failure above ~80 veh/km, docs/WAVE_SPEED_DIAGNOSIS.md). Unit
+  tests plant a −16 km/h stripe in a 22 km/h field: the absolute detector
+  returns one 0 km/h blob, relative mode recovers −16 km/h. A labeled variant;
+  the §7.1 criterion stays on the absolute threshold.
+- **Bounded-memory trajectory capture.** `microsim.runner` now streams the
+  trajectory table to Parquet in 500k-row groups during the run instead of
+  holding every sampled row as Python lists until the end. A 7,800 s
+  four-lane I-24 run captures ~10 M rows; the old buffer cost several GB per
+  process and eight concurrent workers took a 16 GB machine down twice
+  during the I-24 validation. File content is unchanged (the byte-exact
+  determinism test still passes); peak memory per worker drops to well under
+  1 GB. `validation.metrics.compute_metrics` and the report generator's
+  contour renderer now read only the trajectory columns they use, which cuts
+  their peak from ~7 GB to a few GB on the same runs.
+- `calibration.fd_fit.fit_triangular_fd(n_procs=...)` refits bootstrap
+  resamples in a process pool; the resample draws are made up front from the
+  seeded generator in serial order and each refit is deterministic, so the
+  artifact is identical to the serial path (each exact-LP quantile refit costs
+  ~2 min on the 237k-bin I-24 data set).
+
+### Changed
+
+- **Config hashes change for every scenario**: `OSMNetwork` gained
+  `boundary` and `ramps` (defaults `None` / `[]`) and `FleetSpec` gained
+  `lc_strategic` (default 1.0), and `config_hash` covers the whole serialized
+  config (CLAUDE.md §0.5) — the same situation as the `OracleSpec` addition
+  in 2.1.0. Physics is unchanged for every existing scenario: the defaults
+  reproduce SUMO's own behaviour and the route files they generate are
+  byte-identical (`tests/test_microsim/test_microsim_vehicles.py::
+  TestLcStrategic`). Hashes quoted in earlier documents (the gallery's
+  `7529e2b0dd63` / `f8c6011feb3e`, the M3 and 2.1.0 experiments) refer to the
+  pre-Phase-6 schema.
+- `runs/` (12 GB of regenerable per-replicate trajectories) was deleted to
+  make room for the I-24 processing; the small machine-readable result files
+  the results documents cite were preserved verbatim under
+  `artifacts/run_summaries/<experiment>/` (see its README).
+
 ## [2.1.0] — 2026-09-02
 
 ### Added

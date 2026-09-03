@@ -10,6 +10,8 @@ from flowstate_core import (
     BoundarySpec,
     CorridorNetwork,
     DemandProfile,
+    OSMNetwork,
+    RampSpec,
     RingNetwork,
     ScenarioConfig,
     SimSpec,
@@ -161,6 +163,96 @@ class TestBoundarySpec:
 
     def test_boundary_does_not_set_seeded(self):
         cfg = _corridor_config(boundary={"steps": [(0.0, 9.0)]})
+        assert cfg.seeded is False
+
+
+def _osm_network(**overrides):
+    base = {
+        "kind": "osm",
+        "osm_file": "x.osm",
+        "corridor_edges": ["a", "b", "c"],
+        "inflow": [(0.0, 0.5)],
+    }
+    base.update(overrides)
+    return OSMNetwork.model_validate(base)
+
+
+class TestOSMRampsAndBoundary:
+    """docs/CONTRACTS.md §2: OSM corridors carry a boundary and ramps."""
+
+    def test_boundary_needs_two_corridor_edges(self):
+        net = _osm_network(boundary={"steps": [(0.0, 5.0)]})
+        assert net.boundary is not None and net.boundary.kind == "speed_schedule"
+        with pytest.raises(ValueError, match="at least two edges"):
+            _osm_network(corridor_edges=["a"], boundary={"steps": [(0.0, 5.0)]})
+
+    def test_on_ramp_rules(self):
+        on = RampSpec(kind="on", edges=["r1"], attach_edge="b", inflow=[(0.0, 0.1)])
+        assert on.exit_fraction == []
+        with pytest.raises(ValueError, match="non-empty inflow"):
+            RampSpec(kind="on", edges=["r1"], attach_edge="b")
+        with pytest.raises(ValueError, match="cannot carry exit_fraction"):
+            RampSpec(
+                kind="on",
+                edges=["r1"],
+                attach_edge="b",
+                inflow=[(0.0, 0.1)],
+                exit_fraction=[(0, 0.1)],
+            )
+        with pytest.raises(ValueError, match="time-ordered"):
+            RampSpec(kind="on", edges=["r1"], attach_edge="b", inflow=[(10.0, 0.1), (0.0, 0.2)])
+
+    def test_off_ramp_rules(self):
+        off = RampSpec(kind="off", edges=["r2"], attach_edge="b", exit_fraction=[(0.0, 0.2)])
+        assert off.inflow == []
+        with pytest.raises(ValueError, match="non-empty exit_fraction"):
+            RampSpec(kind="off", edges=["r2"], attach_edge="b")
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            RampSpec(kind="off", edges=["r2"], attach_edge="b", exit_fraction=[(0.0, 1.5)])
+        with pytest.raises(ValueError, match="cannot carry inflow"):
+            RampSpec(
+                kind="off",
+                edges=["r2"],
+                attach_edge="b",
+                exit_fraction=[(0.0, 0.2)],
+                inflow=[(0, 1)],
+            )
+
+    def test_ramp_must_attach_to_corridor_and_not_overlap(self):
+        ramp = {"kind": "on", "edges": ["r1"], "attach_edge": "zz", "inflow": [(0.0, 0.1)]}
+        with pytest.raises(ValueError, match="not in corridor_edges"):
+            _osm_network(ramps=[ramp])
+        overlap = {"kind": "off", "edges": ["b"], "attach_edge": "a", "exit_fraction": [(0, 0.1)]}
+        with pytest.raises(ValueError, match="overlap"):
+            _osm_network(ramps=[overlap])
+
+    def test_ramps_round_trip_and_hash(self, tmp_path):
+        ramp = {
+            "kind": "on",
+            "edges": ["r1", "r2"],
+            "attach_edge": "b",
+            "inflow": [(0.0, 0.1), (60.0, 0.2)],
+            "name": "OH on",
+        }
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "osm_ramps",
+                "network": _osm_network(ramps=[ramp]).model_dump(),
+                "sim": {"duration_s": 10.0},
+            }
+        )
+        path = tmp_path / "s.yaml"
+        cfg.to_yaml(path)
+        again = ScenarioConfig.from_yaml(path)
+        assert again == cfg and again.network.ramps[0].name == "OH on"
+        plain = ScenarioConfig.model_validate(
+            {
+                "name": "osm_ramps",
+                "network": _osm_network().model_dump(),
+                "sim": {"duration_s": 10.0},
+            }
+        )
+        assert config_hash(plain) != config_hash(cfg)
         assert cfg.seeded is False
 
 

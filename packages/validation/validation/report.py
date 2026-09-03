@@ -86,7 +86,7 @@ def _render_contour(run: _RunInfo, out_dir: Path, index: int) -> tuple[str, str]
     import matplotlib.pyplot as plt
     import pandas as pd
 
-    traj = pd.read_parquet(run.path / "trajectories.parquet")
+    traj = pd.read_parquet(run.path / "trajectories.parquet", columns=["t", "x", "v"])
     field = speed_field(traj)
     seed = run.meta.get("seed", "unknown")
     seeded = bool(run.meta.get("seeded", False))

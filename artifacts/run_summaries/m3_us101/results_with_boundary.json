@@ -1,0 +1,1791 @@
+{
+  "schema_version": 2,
+  "created_at": "2026-08-30T01:10:41Z",
+  "scenario": "us101_replica",
+  "arm": "with_boundary",
+  "replicates": 20,
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "config_hash": "e897b6479ed4",
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0-dev",
+    "microsim": "2.0.0.dev0"
+  },
+  "boundary": {
+    "kind": "speed_schedule",
+    "exit_buffer_m": 200.0,
+    "n_steps": 32,
+    "steps_sim_time": [
+      [
+        0.0,
+        18.4063
+      ],
+      [
+        210.0,
+        18.4063
+      ],
+      [
+        240.0,
+        17.582
+      ],
+      [
+        270.0,
+        18.2823
+      ],
+      [
+        300.0,
+        18.2529
+      ],
+      [
+        330.0,
+        19.2362
+      ],
+      [
+        360.0,
+        18.5915
+      ],
+      [
+        390.0,
+        19.0058
+      ],
+      [
+        420.0,
+        18.4123
+      ],
+      [
+        450.0,
+        18.8992
+      ],
+      [
+        480.0,
+        18.5246
+      ],
+      [
+        510.0,
+        18.3987
+      ],
+      [
+        540.0,
+        18.129
+      ],
+      [
+        570.0,
+        17.6864
+      ],
+      [
+        600.0,
+        18.9499
+      ],
+      [
+        630.0,
+        18.5993
+      ],
+      [
+        660.0,
+        19.629
+      ],
+      [
+        690.0,
+        18.7685
+      ],
+      [
+        720.0,
+        16.7472
+      ],
+      [
+        750.0,
+        12.7107
+      ],
+      [
+        780.0,
+        11.8665
+      ],
+      [
+        810.0,
+        11.8946
+      ],
+      [
+        840.0,
+        12.7401
+      ],
+      [
+        870.0,
+        14.8044
+      ],
+      [
+        900.0,
+        13.9787
+      ],
+      [
+        930.0,
+        4.8295
+      ],
+      [
+        960.0,
+        5.2249
+      ],
+      [
+        990.0,
+        8.7437
+      ],
+      [
+        1020.0,
+        11.5433
+      ],
+      [
+        1050.0,
+        14.8553
+      ],
+      [
+        1080.0,
+        16.7519
+      ],
+      [
+        1110.0,
+        16.7085
+      ]
+    ],
+    "source": "mean mainline speed, local_y in [540, 640) m, 30 s windows, NGSIM US-101 p1",
+    "framing": "measured downstream boundary condition per FHWA Traffic Analysis Toolbox Vol. III (FHWA-HOP-18-036, 2019) calibration practice; data-derived (seeded=False)"
+  },
+  "observed": {
+    "cache_version": 2,
+    "data_hash": "8578f4754b267ad09eed5b0b8b3e18c83b7d9036b7afdcec295d5d3f19195e22",
+    "period": "p1",
+    "lanes": [
+      1,
+      5
+    ],
+    "n_vehicles": 2169,
+    "sections_m": [
+      100.0,
+      320.0,
+      550.0
+    ],
+    "window_s": 300.0,
+    "n_windows": 3,
+    "segment_m": 160.0,
+    "counts": [
+      [
+        705,
+        712,
+        606
+      ],
+      [
+        667,
+        703,
+        634
+      ],
+      [
+        636,
+        710,
+        646
+      ]
+    ],
+    "hourly_flows_veh_h": [
+      [
+        8460.0,
+        8544.0,
+        7272.0
+      ],
+      [
+        8004.0,
+        8436.0,
+        7608.0
+      ],
+      [
+        7632.0,
+        8520.0,
+        7752.0
+      ]
+    ],
+    "segment_speeds_ms": [
+      [
+        10.341823660880518,
+        11.877031900657721,
+        14.549868878462611,
+        17.937664281638696
+      ],
+      [
+        9.815198630445794,
+        10.745145741978094,
+        13.149249153905789,
+        17.271021855397635
+      ],
+      [
+        7.6732228250967545,
+        8.54974731376744,
+        10.337444580888281,
+        10.2845466724813
+      ]
+    ],
+    "waves": {
+      "count": 4,
+      "n_backward": 0,
+      "speeds_kmh": [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "backward_speeds_kmh": [],
+      "amplitudes_ms": [
+        7.43,
+        8.5,
+        9.28,
+        13.2
+      ],
+      "mean_backward_speed_kmh": null
+    },
+    "waves_stripe": {
+      "count": 6,
+      "n_backward": 6,
+      "speeds_kmh": [
+        -18.0,
+        -15.75,
+        -6.0,
+        -18.0,
+        -18.0,
+        -18.0
+      ],
+      "backward_speeds_kmh": [
+        18.0,
+        15.75,
+        6.0,
+        18.0,
+        18.0,
+        18.0
+      ],
+      "amplitudes_ms": [
+        6.38,
+        7.16,
+        7.72,
+        6.47,
+        8.09,
+        11.92
+      ],
+      "mean_backward_speed_kmh": 15.625
+    },
+    "waves_stripe_params": {
+      "v_jam_thresh_kmh": 25.0,
+      "dt_bin_s": 10.0,
+      "dx_bin_m": 50.0
+    },
+    "boundary_schedule_wall": [
+      [
+        0.0,
+        18.4063
+      ],
+      [
+        30.0,
+        18.4063
+      ],
+      [
+        60.0,
+        17.582
+      ],
+      [
+        90.0,
+        18.2823
+      ],
+      [
+        120.0,
+        18.2529
+      ],
+      [
+        150.0,
+        19.2362
+      ],
+      [
+        180.0,
+        18.5915
+      ],
+      [
+        210.0,
+        19.0058
+      ],
+      [
+        240.0,
+        18.4123
+      ],
+      [
+        270.0,
+        18.8992
+      ],
+      [
+        300.0,
+        18.5246
+      ],
+      [
+        330.0,
+        18.3987
+      ],
+      [
+        360.0,
+        18.129
+      ],
+      [
+        390.0,
+        17.6864
+      ],
+      [
+        420.0,
+        18.9499
+      ],
+      [
+        450.0,
+        18.5993
+      ],
+      [
+        480.0,
+        19.629
+      ],
+      [
+        510.0,
+        18.7685
+      ],
+      [
+        540.0,
+        16.7472
+      ],
+      [
+        570.0,
+        12.7107
+      ],
+      [
+        600.0,
+        11.8665
+      ],
+      [
+        630.0,
+        11.8946
+      ],
+      [
+        660.0,
+        12.7401
+      ],
+      [
+        690.0,
+        14.8044
+      ],
+      [
+        720.0,
+        13.9787
+      ],
+      [
+        750.0,
+        4.8295
+      ],
+      [
+        780.0,
+        5.2249
+      ],
+      [
+        810.0,
+        8.7437
+      ],
+      [
+        840.0,
+        11.5433
+      ],
+      [
+        870.0,
+        14.8553
+      ],
+      [
+        900.0,
+        16.7519
+      ],
+      [
+        930.0,
+        16.7085
+      ]
+    ],
+    "boundary_source": "mean mainline speed, local_y in [540, 640) m, 30 s windows, NGSIM US-101 p1",
+    "wall_s": 1.8
+  },
+  "simulated": {
+    "config_hash": "e897b6479ed4",
+    "seeds": [
+      6914975401685141156,
+      134183728835869882,
+      2378473973028931053,
+      3747978530954135749,
+      677105600768189526,
+      661281422688282993,
+      3011106312394044631,
+      6953598295321596746,
+      165503670820534583,
+      6134032994440706937,
+      8557154790156791364,
+      6538422657834023852,
+      6904272788004776631,
+      6143473282319009404,
+      3944094060050347669,
+      4910985839736976611,
+      7382187975121682178,
+      5690692725577505498,
+      887972120279483394,
+      8026499204807041784
+    ],
+    "run_dirs": [
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/6914975401685141156",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/134183728835869882",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/2378473973028931053",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/3747978530954135749",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/677105600768189526",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/661281422688282993",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/3011106312394044631",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/6953598295321596746",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/165503670820534583",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/6134032994440706937",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/8557154790156791364",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/6538422657834023852",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/6904272788004776631",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/6143473282319009404",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/3944094060050347669",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/4910985839736976611",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/7382187975121682178",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/5690692725577505498",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/887972120279483394",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_with_boundary/e897b6479ed4/8026499204807041784"
+    ],
+    "wall_s": 11.6,
+    "demand_realized_fraction": [
+      1.0,
+      1.0,
+      1.0,
+      0.9996,
+      0.9996,
+      1.0,
+      0.9996,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "counts_mean": [
+      [
+        727.65,
+        705.65,
+        610.2
+      ],
+      [
+        720.9,
+        708.5,
+        590.6
+      ],
+      [
+        715.2,
+        707.4,
+        573.35
+      ]
+    ],
+    "hourly_flows_veh_h_mean": [
+      [
+        8731.8,
+        8467.8,
+        7322.4
+      ],
+      [
+        8650.8,
+        8502.0,
+        7087.2
+      ],
+      [
+        8582.4,
+        8488.8,
+        6880.2
+      ]
+    ],
+    "counts_per_replicate": [
+      [
+        [
+          730,
+          701,
+          608
+        ],
+        [
+          730,
+          704,
+          587
+        ],
+        [
+          728,
+          701,
+          575
+        ]
+      ],
+      [
+        [
+          725,
+          706,
+          612
+        ],
+        [
+          721,
+          708,
+          596
+        ],
+        [
+          717,
+          714,
+          572
+        ]
+      ],
+      [
+        [
+          730,
+          713,
+          606
+        ],
+        [
+          727,
+          708,
+          597
+        ],
+        [
+          703,
+          708,
+          580
+        ]
+      ],
+      [
+        [
+          728,
+          712,
+          617
+        ],
+        [
+          723,
+          718,
+          590
+        ],
+        [
+          712,
+          717,
+          581
+        ]
+      ],
+      [
+        [
+          744,
+          705,
+          608
+        ],
+        [
+          720,
+          712,
+          588
+        ],
+        [
+          714,
+          709,
+          575
+        ]
+      ],
+      [
+        [
+          716,
+          703,
+          608
+        ],
+        [
+          707,
+          707,
+          584
+        ],
+        [
+          705,
+          701,
+          568
+        ]
+      ],
+      [
+        [
+          731,
+          700,
+          610
+        ],
+        [
+          721,
+          709,
+          591
+        ],
+        [
+          719,
+          704,
+          576
+        ]
+      ],
+      [
+        [
+          726,
+          705,
+          612
+        ],
+        [
+          720,
+          710,
+          590
+        ],
+        [
+          713,
+          716,
+          575
+        ]
+      ],
+      [
+        [
+          734,
+          704,
+          602
+        ],
+        [
+          729,
+          702,
+          591
+        ],
+        [
+          723,
+          703,
+          571
+        ]
+      ],
+      [
+        [
+          727,
+          709,
+          617
+        ],
+        [
+          719,
+          709,
+          589
+        ],
+        [
+          711,
+          709,
+          569
+        ]
+      ],
+      [
+        [
+          718,
+          707,
+          613
+        ],
+        [
+          722,
+          710,
+          586
+        ],
+        [
+          712,
+          713,
+          570
+        ]
+      ],
+      [
+        [
+          716,
+          710,
+          614
+        ],
+        [
+          713,
+          705,
+          603
+        ],
+        [
+          712,
+          702,
+          582
+        ]
+      ],
+      [
+        [
+          727,
+          714,
+          609
+        ],
+        [
+          725,
+          712,
+          585
+        ],
+        [
+          720,
+          707,
+          571
+        ]
+      ],
+      [
+        [
+          723,
+          701,
+          614
+        ],
+        [
+          709,
+          706,
+          588
+        ],
+        [
+          706,
+          705,
+          568
+        ]
+      ],
+      [
+        [
+          736,
+          707,
+          613
+        ],
+        [
+          731,
+          709,
+          596
+        ],
+        [
+          728,
+          709,
+          575
+        ]
+      ],
+      [
+        [
+          726,
+          705,
+          611
+        ],
+        [
+          721,
+          717,
+          583
+        ],
+        [
+          721,
+          715,
+          565
+        ]
+      ],
+      [
+        [
+          732,
+          702,
+          607
+        ],
+        [
+          729,
+          710,
+          585
+        ],
+        [
+          723,
+          705,
+          575
+        ]
+      ],
+      [
+        [
+          724,
+          713,
+          610
+        ],
+        [
+          713,
+          712,
+          594
+        ],
+        [
+          707,
+          711,
+          574
+        ]
+      ],
+      [
+        [
+          732,
+          696,
+          613
+        ],
+        [
+          722,
+          696,
+          603
+        ],
+        [
+          722,
+          698,
+          573
+        ]
+      ],
+      [
+        [
+          728,
+          700,
+          600
+        ],
+        [
+          716,
+          706,
+          586
+        ],
+        [
+          708,
+          701,
+          572
+        ]
+      ]
+    ],
+    "segment_speeds_ms_mean": [
+      [
+        16.262443503926114,
+        15.46443390520335,
+        14.789885921734234,
+        13.427817384783532
+      ],
+      [
+        14.685100041398083,
+        14.558920645925928,
+        13.99919847159794,
+        12.672226611084906
+      ],
+      [
+        12.916545546743532,
+        11.165472328589246,
+        9.075899620318475,
+        6.985644148387891
+      ]
+    ],
+    "waves_per_replicate": [
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.75
+        ],
+        "backward_speeds_kmh": [
+          6.75
+        ],
+        "amplitudes_ms": [
+          11.03
+        ],
+        "mean_backward_speed_kmh": 6.75
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.54
+        ],
+        "backward_speeds_kmh": [
+          5.54
+        ],
+        "amplitudes_ms": [
+          10.99
+        ],
+        "mean_backward_speed_kmh": 5.538461538461539
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.62
+        ],
+        "backward_speeds_kmh": [
+          5.62
+        ],
+        "amplitudes_ms": [
+          10.34
+        ],
+        "mean_backward_speed_kmh": 5.625
+      },
+      {
+        "count": 3,
+        "n_backward": 3,
+        "speeds_kmh": [
+          -4.5,
+          -7.5,
+          -4.91
+        ],
+        "backward_speeds_kmh": [
+          4.5,
+          7.5,
+          4.91
+        ],
+        "amplitudes_ms": [
+          3.99,
+          3.25,
+          10.35
+        ],
+        "mean_backward_speed_kmh": 5.636363636363637
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.65
+        ],
+        "backward_speeds_kmh": [
+          5.65
+        ],
+        "amplitudes_ms": [
+          10.94
+        ],
+        "mean_backward_speed_kmh": 5.654605263157895
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.0
+        ],
+        "backward_speeds_kmh": [
+          6.0
+        ],
+        "amplitudes_ms": [
+          10.97
+        ],
+        "mean_backward_speed_kmh": 6.0
+      },
+      {
+        "count": 3,
+        "n_backward": 2,
+        "speeds_kmh": [
+          -4.5,
+          -0.0,
+          -5.14
+        ],
+        "backward_speeds_kmh": [
+          4.5,
+          5.14
+        ],
+        "amplitudes_ms": [
+          3.55,
+          3.93,
+          10.23
+        ],
+        "mean_backward_speed_kmh": 4.821428571428571
+      },
+      {
+        "count": 3,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -0.0,
+          -0.0,
+          -6.0
+        ],
+        "backward_speeds_kmh": [
+          6.0
+        ],
+        "amplitudes_ms": [
+          3.65,
+          4.54,
+          10.61
+        ],
+        "mean_backward_speed_kmh": 6.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.29
+        ],
+        "backward_speeds_kmh": [
+          5.29
+        ],
+        "amplitudes_ms": [
+          11.32
+        ],
+        "mean_backward_speed_kmh": 5.294117647058824
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.0
+        ],
+        "backward_speeds_kmh": [
+          6.0
+        ],
+        "amplitudes_ms": [
+          11.28
+        ],
+        "mean_backward_speed_kmh": 6.0
+      },
+      {
+        "count": 2,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -0.0,
+          -5.54
+        ],
+        "backward_speeds_kmh": [
+          5.54
+        ],
+        "amplitudes_ms": [
+          3.49,
+          10.61
+        ],
+        "mean_backward_speed_kmh": 5.538461538461539
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.3
+        ],
+        "backward_speeds_kmh": [
+          6.3
+        ],
+        "amplitudes_ms": [
+          11.19
+        ],
+        "mean_backward_speed_kmh": 6.3
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.73
+        ],
+        "backward_speeds_kmh": [
+          5.73
+        ],
+        "amplitudes_ms": [
+          11.44
+        ],
+        "mean_backward_speed_kmh": 5.7272727272727275
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.62
+        ],
+        "backward_speeds_kmh": [
+          5.62
+        ],
+        "amplitudes_ms": [
+          10.36
+        ],
+        "mean_backward_speed_kmh": 5.625
+      },
+      {
+        "count": 2,
+        "n_backward": 2,
+        "speeds_kmh": [
+          -7.5,
+          -6.0
+        ],
+        "backward_speeds_kmh": [
+          7.5,
+          6.0
+        ],
+        "amplitudes_ms": [
+          3.26,
+          10.25
+        ],
+        "mean_backward_speed_kmh": 6.75
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -5.62
+        ],
+        "backward_speeds_kmh": [
+          5.62
+        ],
+        "amplitudes_ms": [
+          10.44
+        ],
+        "mean_backward_speed_kmh": 5.625
+      },
+      {
+        "count": 2,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -0.0,
+          -5.4
+        ],
+        "backward_speeds_kmh": [
+          5.4
+        ],
+        "amplitudes_ms": [
+          3.71,
+          10.73
+        ],
+        "mean_backward_speed_kmh": 5.4
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.0
+        ],
+        "backward_speeds_kmh": [
+          6.0
+        ],
+        "amplitudes_ms": [
+          11.21
+        ],
+        "mean_backward_speed_kmh": 6.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.63
+        ],
+        "backward_speeds_kmh": [
+          6.63
+        ],
+        "amplitudes_ms": [
+          11.46
+        ],
+        "mean_backward_speed_kmh": 6.631578947368421
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -6.0
+        ],
+        "backward_speeds_kmh": [
+          6.0
+        ],
+        "amplitudes_ms": [
+          11.09
+        ],
+        "mean_backward_speed_kmh": 6.0
+      }
+    ],
+    "wave_count_mean": 1.45,
+    "mean_backward_speed_kmh": 5.8458644934786586,
+    "n_replicates_with_backward_waves": 20,
+    "waves_stripe_per_replicate": [
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.0
+        ],
+        "backward_speeds_kmh": [
+          9.0
+        ],
+        "amplitudes_ms": [
+          10.36
+        ],
+        "mean_backward_speed_kmh": 9.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.82
+        ],
+        "backward_speeds_kmh": [
+          9.82
+        ],
+        "amplitudes_ms": [
+          10.14
+        ],
+        "mean_backward_speed_kmh": 9.818181818181818
+      },
+      {
+        "count": 2,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -13.5,
+          -0.0
+        ],
+        "backward_speeds_kmh": [
+          13.5
+        ],
+        "amplitudes_ms": [
+          9.37,
+          6.46
+        ],
+        "mean_backward_speed_kmh": 13.5
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -10.5
+        ],
+        "backward_speeds_kmh": [
+          10.5
+        ],
+        "amplitudes_ms": [
+          9.28
+        ],
+        "mean_backward_speed_kmh": 10.5
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -12.0
+        ],
+        "backward_speeds_kmh": [
+          12.0
+        ],
+        "amplitudes_ms": [
+          9.98
+        ],
+        "mean_backward_speed_kmh": 12.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.56
+        ],
+        "backward_speeds_kmh": [
+          9.56
+        ],
+        "amplitudes_ms": [
+          9.9
+        ],
+        "mean_backward_speed_kmh": 9.564705882352941
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -14.56
+        ],
+        "backward_speeds_kmh": [
+          14.56
+        ],
+        "amplitudes_ms": [
+          9.18
+        ],
+        "mean_backward_speed_kmh": 14.563636363636363
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.0
+        ],
+        "backward_speeds_kmh": [
+          9.0
+        ],
+        "amplitudes_ms": [
+          9.63
+        ],
+        "mean_backward_speed_kmh": 9.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -7.79
+        ],
+        "backward_speeds_kmh": [
+          7.79
+        ],
+        "amplitudes_ms": [
+          10.6
+        ],
+        "mean_backward_speed_kmh": 7.794642857142857
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -10.46
+        ],
+        "backward_speeds_kmh": [
+          10.46
+        ],
+        "amplitudes_ms": [
+          10.44
+        ],
+        "mean_backward_speed_kmh": 10.460526315789474
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -10.46
+        ],
+        "backward_speeds_kmh": [
+          10.46
+        ],
+        "amplitudes_ms": [
+          9.5
+        ],
+        "mean_backward_speed_kmh": 10.460526315789474
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -7.71
+        ],
+        "backward_speeds_kmh": [
+          7.71
+        ],
+        "amplitudes_ms": [
+          10.46
+        ],
+        "mean_backward_speed_kmh": 7.714285714285714
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -12.23
+        ],
+        "backward_speeds_kmh": [
+          12.23
+        ],
+        "amplitudes_ms": [
+          10.44
+        ],
+        "mean_backward_speed_kmh": 12.230769230769232
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -12.0
+        ],
+        "backward_speeds_kmh": [
+          12.0
+        ],
+        "amplitudes_ms": [
+          9.46
+        ],
+        "mean_backward_speed_kmh": 12.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.69
+        ],
+        "backward_speeds_kmh": [
+          9.69
+        ],
+        "amplitudes_ms": [
+          9.55
+        ],
+        "mean_backward_speed_kmh": 9.692307692307693
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -12.0
+        ],
+        "backward_speeds_kmh": [
+          12.0
+        ],
+        "amplitudes_ms": [
+          9.65
+        ],
+        "mean_backward_speed_kmh": 12.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.0
+        ],
+        "backward_speeds_kmh": [
+          9.0
+        ],
+        "amplitudes_ms": [
+          9.8
+        ],
+        "mean_backward_speed_kmh": 9.0
+      },
+      {
+        "count": 2,
+        "n_backward": 2,
+        "speeds_kmh": [
+          -9.0,
+          -12.0
+        ],
+        "backward_speeds_kmh": [
+          9.0,
+          12.0
+        ],
+        "amplitudes_ms": [
+          6.97,
+          10.29
+        ],
+        "mean_backward_speed_kmh": 10.5
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -9.0
+        ],
+        "backward_speeds_kmh": [
+          9.0
+        ],
+        "amplitudes_ms": [
+          10.67
+        ],
+        "mean_backward_speed_kmh": 9.0
+      },
+      {
+        "count": 1,
+        "n_backward": 1,
+        "speeds_kmh": [
+          -14.73
+        ],
+        "backward_speeds_kmh": [
+          14.73
+        ],
+        "amplitudes_ms": [
+          10.16
+        ],
+        "mean_backward_speed_kmh": 14.727272727272727
+      }
+    ],
+    "stripe_mean_backward_speed_kmh": 10.676342745876415,
+    "n_replicates_with_stripe_backward_waves": 20,
+    "metrics_ci": {
+      "throughput_veh_h": {
+        "mean": 7692.932862190812,
+        "lo95": 7685.7540989578465,
+        "hi95": 7700.111625423777,
+        "n": 20,
+        "underpowered": false
+      },
+      "mean_tt_s": {
+        "mean": 49.25619566170742,
+        "lo95": 48.50856584469838,
+        "hi95": 50.003825478716465,
+        "n": 20,
+        "underpowered": false
+      },
+      "p90_tt_s": {
+        "mean": 71.27081830383618,
+        "lo95": 69.9398928443305,
+        "hi95": 72.60174376334186,
+        "n": 20,
+        "underpowered": false
+      },
+      "sigma_v_spatial_ms": {
+        "mean": 3.55403656808398,
+        "lo95": 3.494968041676234,
+        "hi95": 3.6131050944917256,
+        "n": 20,
+        "underpowered": false
+      },
+      "sigma_v_temporal_ms": {
+        "mean": 2.9254555881133686,
+        "lo95": 2.8439710949360064,
+        "hi95": 3.0069400812907308,
+        "n": 20,
+        "underpowered": false
+      },
+      "vmt_veh_km": {
+        "mean": 3622.580346795955,
+        "lo95": 3620.5483380905594,
+        "hi95": 3624.6123555013505,
+        "n": 20,
+        "underpowered": false
+      },
+      "vht_veh_h": {
+        "mean": 72.54910416666687,
+        "lo95": 71.8413042872939,
+        "hi95": 73.25690404603984,
+        "n": 20,
+        "underpowered": false
+      },
+      "fuel_ml_per_veh_km": {
+        "mean": 66.42209977288874,
+        "lo95": 65.97544202944655,
+        "hi95": 66.86875751633093,
+        "n": 20,
+        "underpowered": false
+      },
+      "wave_count": {
+        "mean": 1.65,
+        "lo95": 1.269631727488228,
+        "hi95": 2.0303682725117715,
+        "n": 20,
+        "underpowered": false
+      },
+      "wave_speed_kmh": {
+        "mean": 7.387542530998414,
+        "lo95": 6.793759303784154,
+        "hi95": 7.981325758212674,
+        "n": 20,
+        "underpowered": false
+      },
+      "wave_amplitude_ms": {
+        "mean": 10.7469585808498,
+        "lo95": 9.72896846445823,
+        "hi95": 11.764948697241369,
+        "n": 20,
+        "underpowered": false
+      }
+    }
+  },
+  "geh": {
+    "values": [
+      2.932,
+      0.826,
+      0.59,
+      7.088,
+      0.717,
+      6.076,
+      10.555,
+      0.338,
+      10.192
+    ],
+    "fraction_under_5": 0.5556,
+    "bins": "sections x 5-min windows, hourly-equivalent volumes (x12)"
+  },
+  "rmspe": {
+    "value": 0.36606115724153354,
+    "n_bins": 12
+  },
+  "waves": {
+    "observed": {
+      "count": 4,
+      "n_backward": 0,
+      "speeds_kmh": [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "backward_speeds_kmh": [],
+      "amplitudes_ms": [
+        7.43,
+        8.5,
+        9.28,
+        13.2
+      ],
+      "mean_backward_speed_kmh": null
+    },
+    "simulated_mean_backward_speed_kmh": 5.8458644934786586,
+    "simulated_wave_count_mean": 1.45,
+    "n_replicates_with_backward_waves": 20,
+    "field_bins": "15 s x 75 m, x < 640 m both sides",
+    "observed_stripe": {
+      "count": 6,
+      "n_backward": 6,
+      "speeds_kmh": [
+        -18.0,
+        -15.75,
+        -6.0,
+        -18.0,
+        -18.0,
+        -18.0
+      ],
+      "backward_speeds_kmh": [
+        18.0,
+        15.75,
+        6.0,
+        18.0,
+        18.0,
+        18.0
+      ],
+      "amplitudes_ms": [
+        6.38,
+        7.16,
+        7.72,
+        6.47,
+        8.09,
+        11.92
+      ],
+      "mean_backward_speed_kmh": 15.625
+    },
+    "stripe_params": {
+      "v_jam_thresh_kmh": 25.0,
+      "dt_bin_s": 10.0,
+      "dx_bin_m": 50.0
+    },
+    "simulated_stripe_mean_backward_speed_kmh": 10.676342745876415,
+    "n_replicates_with_stripe_backward_waves": 20,
+    "stripe_note": "the 40 km/h default threshold merges this fully congested 640 m site into components whose upstream front pins at the site boundary (slope 0); the stripe analysis lowers the threshold to isolate the deep stop-and-go stripes inside the congestion, identically on both sides"
+  },
+  "criteria": [
+    {
+      "name": "link_flows_geh",
+      "value": 0.5555555555555556,
+      "threshold": "GEH < 5 for >= 85% of link-hour comparisons",
+      "passed": false,
+      "evaluated": true,
+      "detail": "fraction of comparisons with GEH < 5"
+    },
+    {
+      "name": "speeds_rmspe",
+      "value": 0.36606115724153354,
+      "threshold": "segment-speed RMSPE <= 15%",
+      "passed": false,
+      "evaluated": true,
+      "detail": ""
+    },
+    {
+      "name": "wave_speed",
+      "value": 5.8458644934786586,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+      "passed": false,
+      "evaluated": true,
+      "detail": ""
+    },
+    {
+      "name": "ring_emergence",
+      "value": null,
+      "threshold": "Sugiyama ring emergence benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "ring_dampening",
+      "value": null,
+      "threshold": "Stern single-AV dampening benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "n_seeds",
+      "value": 20.0,
+      "threshold": "n_seeds >= 20",
+      "passed": true,
+      "evaluated": true,
+      "detail": ""
+    }
+  ],
+  "metrics_ci": {
+    "throughput_veh_h": {
+      "mean": 7692.932862190812,
+      "lo95": 7685.7540989578465,
+      "hi95": 7700.111625423777,
+      "n": 20,
+      "underpowered": false
+    },
+    "mean_tt_s": {
+      "mean": 49.25619566170742,
+      "lo95": 48.50856584469838,
+      "hi95": 50.003825478716465,
+      "n": 20,
+      "underpowered": false
+    },
+    "p90_tt_s": {
+      "mean": 71.27081830383618,
+      "lo95": 69.9398928443305,
+      "hi95": 72.60174376334186,
+      "n": 20,
+      "underpowered": false
+    },
+    "sigma_v_spatial_ms": {
+      "mean": 3.55403656808398,
+      "lo95": 3.494968041676234,
+      "hi95": 3.6131050944917256,
+      "n": 20,
+      "underpowered": false
+    },
+    "sigma_v_temporal_ms": {
+      "mean": 2.9254555881133686,
+      "lo95": 2.8439710949360064,
+      "hi95": 3.0069400812907308,
+      "n": 20,
+      "underpowered": false
+    },
+    "vmt_veh_km": {
+      "mean": 3622.580346795955,
+      "lo95": 3620.5483380905594,
+      "hi95": 3624.6123555013505,
+      "n": 20,
+      "underpowered": false
+    },
+    "vht_veh_h": {
+      "mean": 72.54910416666687,
+      "lo95": 71.8413042872939,
+      "hi95": 73.25690404603984,
+      "n": 20,
+      "underpowered": false
+    },
+    "fuel_ml_per_veh_km": {
+      "mean": 66.42209977288874,
+      "lo95": 65.97544202944655,
+      "hi95": 66.86875751633093,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_count": {
+      "mean": 1.65,
+      "lo95": 1.269631727488228,
+      "hi95": 2.0303682725117715,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_speed_kmh": {
+      "mean": 7.387542530998414,
+      "lo95": 6.793759303784154,
+      "hi95": 7.981325758212674,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_amplitude_ms": {
+      "mean": 10.7469585808498,
+      "lo95": 9.72896846445823,
+      "hi95": 11.764948697241369,
+      "n": 20,
+      "underpowered": false
+    }
+  },
+  "notes": [
+    "Observed side: NGSIM US-101 period 1, mainline lanes 1-5, duplicate rows dropped (scripts/us101_data.py logic); ~6% of real vehicles entered via the on-ramp and are counted at downstream sections but never injected by the replica (docs/M2_RESULTS.md \u00a77.6).",
+    "no_boundary arm: the replica has no downstream boundary congestion; M2 predicts it runs faster than observed (docs/M2_RESULTS.md \u00a76) \u2014 RMSPE reflects that gap honestly.",
+    "with_boundary arm: measured downstream speed schedule (last 100 m, 30 s windows) applied on a 200 m exit-buffer edge OUTSIDE the measured span (FHWA measured-boundary calibration practice). The replica still lacks the auxiliary lane and on/off ramps (internal merge bottleneck at ~150-165 m), so remaining in-span disagreement is expected and reported.",
+    "Comparisons use the 3 full 5-min windows (0-900 s) inside the 952.8 s period-1 span; the trailing partial window is excluded.",
+    "Crossing counts censor vehicles first observed at/past a section on both sides (recording start vs warmup end).",
+    "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py -> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an identical-variants null)."
+  ]
+}

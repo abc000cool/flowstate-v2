@@ -81,7 +81,39 @@ Pydantic v2 models, YAML round-trip via `ScenarioConfig.from_yaml(path)` /
   recorded wherever results are reported. Macro tier: not implemented
   (screening runs stay free-outflow; a run needing the boundary is a
   micro-tier run).
-- `OSMNetwork(kind="osm", bbox: (S, W, N, E) | osm_file: str, corridor_edges: list[str])`
+- `OSMNetwork(kind="osm", bbox: (S, W, N, E) | osm_file: str, corridor_edges: list[str],
+  inflow, boundary: BoundarySpec | None = None, ramps: list[RampSpec] = [])`
+  # Phase 6 (I-24 flagship) additions:
+  # * `boundary` — the schedule is applied to the LAST edge of
+  #   `corridor_edges`, which plays the exit-buffer role (its real length is
+  #   recorded as `exit_buffer_m` in meta.json; `BoundarySpec.exit_buffer_m`
+  #   is ignored) and lies outside the measured span. Needs ≥ 2 corridor
+  #   edges.
+  # * `ramps` — interchange ramps (`RampSpec` below); ramp edges are kept and
+  #   pinned through OSM pruning alongside the corridor (`osm_import(...,
+  #   keep_edges=...)`) and their connectivity to `attach_edge` is checked in
+  #   the compiled net before SUMO starts.
+  # * insertion on an OSM corridor uses the entry edge's real lane count
+  #   (round-robin `departLane`, the M3 multi-lane scheme) instead of the
+  #   single-lane scheme it used before Phase 6.
+- `RampSpec(kind: "on" | "off", edges: list[str], attach_edge: str,
+  inflow: list[tuple[float, float]] = [], exit_fraction: list[tuple[float, float]] = [],
+  name: str = "")` — `kind="on"`: `edges` end at the junction where the ramp
+  joins `attach_edge`; vehicles are inserted at the start of `edges[0]` per
+  `inflow` (same `(t_start_s, veh/s)` convention as the corridor inflow).
+  `kind="off"`: `edges` start where the ramp leaves `attach_edge`; every
+  vehicle passing that point exits with probability `exit_fraction` at its
+  departure time (one seeded Bernoulli draw per vehicle per reachable
+  off-ramp, corridor order, first success wins) and leaves the network at the
+  end of `edges[-1]`. Ramp vehicles draw fleet parameters, AV tags and
+  compliance exactly like mainline vehicles (RNG order documented on
+  `microsim.vehicles.build_corridor_plan`); positions on ramp edges have no
+  linear `x` and are not written to `trajectories.parquet` — a ramp vehicle
+  appears once it is on a corridor edge — while its fuel is accounted
+  throughout. `meta.json` gains a `ramps` list (`index, name, kind,
+  attach_edge, edges, n_planned, n_departed, n_planned_exiting`). Ramp demand
+  derived from observations is a calibration input: it does NOT set
+  `seeded=True`.
 
 Other blocks:
 
@@ -94,7 +126,17 @@ Other blocks:
   fields and `heterogeneity_frac`: per-vehicle params are drawn from the
   truncated multivariate normal (±3σ per marginal, hard physical floors
   kept) with the run's RNG, and run outputs record the artifact's
-  `data_hash` (`meta.json` key `fleet_calibration`).
+  `data_hash` (`meta.json` key `fleet_calibration`). `lc_strategic: float =
+  1.0` (Phase 6) is SUMO's `lcStrategic` — eagerness for route-required
+  lane changes — written on every vType only when it differs from 1.0, so
+  route files of existing scenarios are byte-identical. It exists because
+  with the default, vehicles bound for an off-ramp that are still in an
+  inner lane at the diverge stop at the edge end and wait for a gap, which
+  is a spurious fixed bottleneck (measured, docs/I24_VALIDATION.md); it does
+  not touch car-following. `lc_keep_right: float = 1.0` (Phase 6) is SUMO's
+  `lcKeepRight`, written the same way; US freeways carry no keep-right
+  obligation and the I-24 lane-use data (vehicle-time 30/24/20/26% left to
+  right, all lanes at similar speed) is the calibration target for it.
 - `AVSpec`: `penetration: float ∈ [0, 0.3]`, `compliance: float ∈ [0.1, 1.0]`,
   `controller: str | None`, `controller_params: dict[str, float]`,
   `oracle: OracleSpec`.
@@ -156,7 +198,13 @@ speed_field(trajectories: pd.DataFrame, dt_bin=15.0, dx_bin=75.0) -> SpeedField
 Wave detection returns `WaveSet`: per-wave `speed_ms` (negative = backward),
 `amplitude_ms`, `duration_s`, `extent_m`; plus `count`. Detection: threshold
 `v < v_jam_thresh` (default 40 km/h → 11.11 m/s), connected components,
-front extraction, robust line fit (Theil–Sen).
+front extraction, robust line fit (Theil–Sen). **Relative mode** (Phase 6,
+ROADMAP D1): `detect_waves(field, relative_frac=f)` thresholds at
+`f × p90` of the field's non-empty bin speeds instead, which resolves the
+stripes inside a field that is congested everywhere (the absolute threshold
+labels it as one jam with a pinned front). It is a labeled variant: results
+must state the fraction, and the §7.1 wave-speed criterion stays defined on
+the absolute threshold.
 
 ## 5. Calibration artifacts (`flowstate_core.artifacts`)
 

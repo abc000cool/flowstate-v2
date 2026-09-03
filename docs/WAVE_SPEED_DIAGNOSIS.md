@@ -71,6 +71,37 @@ it as measured, and that stands in the validation table — but it identifies wh
 a passing test would require: a longer, more congested corridor, which is
 precisely what an I-24 MOTION or highD flagship would supply.
 
+## Follow-up (2026-09-02): the 80–100 veh/km rows, and the I-24 fleet
+
+The zero-front rows above were a detector limitation, not physics. With the
+relative-threshold detector (ROADMAP D1; `detect_waves(..., relative_frac=0.5)`
+— jam = speed below 0.5 × the field's p90; docs/CONTRACTS.md §4), the same runs
+(same seeds, `scripts/wave_speed_sitelength.py`, 5 seeds per density) resolve
+the stripes inside the fully congested fields. The absolute-threshold columns
+reproduce the table above exactly.
+
+| Density [veh/km] | Absolute detector: fronts / mean [km/h] / in band | Relative detector: fronts / mean / median [km/h] / in band |
+|---|---|---|
+| 40 | 13 / 11.4 / 23% | 14 / 12.0 / 12.5 / 29% |
+| 60 | 7 / 14.6 / 71% | 30 / 14.0 / 15.1 / 70% |
+| 80 | 0 / — / — | **62 / 17.1 / 18.0 / 98%** |
+| 100 | 0 / — / — | **46 / 17.0 / 18.0 / 85%** |
+
+Deeper into congestion the emergent wave speed rises from ≈ 12 km/h near
+critical density to ≈ 17 km/h at 80–100 veh/km — between the FD's fitted
+`w = 14.6 km/h` and Newell's `(s0 + L)/T = 18.3–19.7 km/h` — and the in-band
+fraction reaches 85–98%. That is the density dependence the conclusion above
+inferred from two points, now measured over four.
+
+The I-24-calibrated fleet (`artifacts/idm_i24.json`, T = 1.51 s, s0 = 2.53 m;
+Newell estimate 16.8–17.9 km/h) behaves the same way on the same ring
+(`artifacts/wave_speed_sitelength_i24.json`, relative detector): 40 veh/km
+12.1 km/h (31% in band), 60 veh/km 14.2 (69%), 80 veh/km 16.4 (95%),
+100 veh/km 16.9 (88%). Two independently calibrated populations, from two
+instruments a generation apart, put emergent congested waves in the empirical
+band once the density is there. Whether the I-24 *corridor* reaches that
+regime is the test in [I24_VALIDATION.md](I24_VALIDATION.md).
+
 ## Limitations
 
 * Small counts: 13 and 7 detected fronts at 40 and 60 veh/km across 5 seeds. This

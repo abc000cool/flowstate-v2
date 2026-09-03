@@ -1,0 +1,234 @@
+{
+  "scenario": "corridor_10km",
+  "master_seed": 42,
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "replicates": 20,
+  "cells": [
+    {
+      "name": "baseline",
+      "controller": null,
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "config_hash": "15b25e59e60e"
+    },
+    {
+      "name": "follower_stopper_p0.01_c0.25",
+      "controller": "follower_stopper",
+      "penetration": 0.01,
+      "compliance": 0.25,
+      "config_hash": "83916d4b72d6"
+    },
+    {
+      "name": "follower_stopper_p0.01_c0.50",
+      "controller": "follower_stopper",
+      "penetration": 0.01,
+      "compliance": 0.5,
+      "config_hash": "18f895082db0"
+    },
+    {
+      "name": "follower_stopper_p0.01_c0.80",
+      "controller": "follower_stopper",
+      "penetration": 0.01,
+      "compliance": 0.8,
+      "config_hash": "e7ca46a04a93"
+    },
+    {
+      "name": "follower_stopper_p0.01_c1.00",
+      "controller": "follower_stopper",
+      "penetration": 0.01,
+      "compliance": 1.0,
+      "config_hash": "dad0746f00e8"
+    },
+    {
+      "name": "follower_stopper_p0.02_c0.25",
+      "controller": "follower_stopper",
+      "penetration": 0.02,
+      "compliance": 0.25,
+      "config_hash": "70db38eda399"
+    },
+    {
+      "name": "follower_stopper_p0.02_c0.50",
+      "controller": "follower_stopper",
+      "penetration": 0.02,
+      "compliance": 0.5,
+      "config_hash": "d84e4aae71d0"
+    },
+    {
+      "name": "follower_stopper_p0.02_c0.80",
+      "controller": "follower_stopper",
+      "penetration": 0.02,
+      "compliance": 0.8,
+      "config_hash": "afa337723644"
+    },
+    {
+      "name": "follower_stopper_p0.02_c1.00",
+      "controller": "follower_stopper",
+      "penetration": 0.02,
+      "compliance": 1.0,
+      "config_hash": "4c5b2d92b9ce"
+    },
+    {
+      "name": "follower_stopper_p0.05_c0.25",
+      "controller": "follower_stopper",
+      "penetration": 0.05,
+      "compliance": 0.25,
+      "config_hash": "a06b70fabc72"
+    },
+    {
+      "name": "follower_stopper_p0.05_c0.50",
+      "controller": "follower_stopper",
+      "penetration": 0.05,
+      "compliance": 0.5,
+      "config_hash": "57acc9e526f0"
+    },
+    {
+      "name": "follower_stopper_p0.05_c0.80",
+      "controller": "follower_stopper",
+      "penetration": 0.05,
+      "compliance": 0.8,
+      "config_hash": "2597286a8b69"
+    },
+    {
+      "name": "follower_stopper_p0.05_c1.00",
+      "controller": "follower_stopper",
+      "penetration": 0.05,
+      "compliance": 1.0,
+      "config_hash": "0edfc7b4a4fa"
+    },
+    {
+      "name": "follower_stopper_p0.10_c0.25",
+      "controller": "follower_stopper",
+      "penetration": 0.1,
+      "compliance": 0.25,
+      "config_hash": "961e3d177c38"
+    },
+    {
+      "name": "follower_stopper_p0.10_c0.50",
+      "controller": "follower_stopper",
+      "penetration": 0.1,
+      "compliance": 0.5,
+      "config_hash": "338bcc5933bd"
+    },
+    {
+      "name": "follower_stopper_p0.10_c0.80",
+      "controller": "follower_stopper",
+      "penetration": 0.1,
+      "compliance": 0.8,
+      "config_hash": "5f4e428cae74"
+    },
+    {
+      "name": "follower_stopper_p0.10_c1.00",
+      "controller": "follower_stopper",
+      "penetration": 0.1,
+      "compliance": 1.0,
+      "config_hash": "7d068593cfc7"
+    },
+    {
+      "name": "follower_stopper_p0.15_c0.25",
+      "controller": "follower_stopper",
+      "penetration": 0.15,
+      "compliance": 0.25,
+      "config_hash": "a8cc55f8e0d7"
+    },
+    {
+      "name": "follower_stopper_p0.15_c0.50",
+      "controller": "follower_stopper",
+      "penetration": 0.15,
+      "compliance": 0.5,
+      "config_hash": "447b3ddde0e9"
+    },
+    {
+      "name": "follower_stopper_p0.15_c0.80",
+      "controller": "follower_stopper",
+      "penetration": 0.15,
+      "compliance": 0.8,
+      "config_hash": "4c89477d5380"
+    },
+    {
+      "name": "follower_stopper_p0.15_c1.00",
+      "controller": "follower_stopper",
+      "penetration": 0.15,
+      "compliance": 1.0,
+      "config_hash": "3d84c2a37ff0"
+    },
+    {
+      "name": "follower_stopper_p0.20_c0.25",
+      "controller": "follower_stopper",
+      "penetration": 0.2,
+      "compliance": 0.25,
+      "config_hash": "878f3cca79bb"
+    },
+    {
+      "name": "follower_stopper_p0.20_c0.50",
+      "controller": "follower_stopper",
+      "penetration": 0.2,
+      "compliance": 0.5,
+      "config_hash": "2bf98cee05c9"
+    },
+    {
+      "name": "follower_stopper_p0.20_c0.80",
+      "controller": "follower_stopper",
+      "penetration": 0.2,
+      "compliance": 0.8,
+      "config_hash": "c3d676f2d984"
+    },
+    {
+      "name": "follower_stopper_p0.20_c1.00",
+      "controller": "follower_stopper",
+      "penetration": 0.2,
+      "compliance": 1.0,
+      "config_hash": "623b0fcd1a62"
+    },
+    {
+      "name": "pi_saturation_p0.05_c1.00",
+      "controller": "pi_saturation",
+      "penetration": 0.05,
+      "compliance": 1.0,
+      "config_hash": "0bf4573cec33"
+    },
+    {
+      "name": "jad_p0.05_c1.00",
+      "controller": "jad",
+      "penetration": 0.05,
+      "compliance": 1.0,
+      "config_hash": "7211f10e65e2"
+    }
+  ],
+  "n_runs_total": 540,
+  "n_runs_this_session": 534,
+  "n_failed_this_session": 0,
+  "incomplete": [],
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0-dev",
+    "microsim": "2.0.0.dev0"
+  },
+  "wall_time_s_this_session": 495.9294009169098,
+  "procs": 6
+}

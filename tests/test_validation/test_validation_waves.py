@@ -88,3 +88,68 @@ class TestFilters:
     def test_explicit_v_free_overrides_estimate(self):
         ws = detect_waves(_planted_field(), v_free=40.0)
         assert ws.waves[0].amplitude_ms == pytest.approx(40.0 - V_JAMMED, abs=1e-9)
+
+
+def _slow_striped_field(
+    seed: int = 5, v_recovery: float = 6.0, v_stripe: float = 1.0
+) -> SpeedField:
+    """A field that is congested EVERYWHERE (recovery 6 m/s ≈ 22 km/h, well
+    below the 40 km/h absolute threshold) with a rigid stripe at 1 m/s moving
+    backward at exactly -16 km/h — the high-density regime where the absolute
+    detector labels the whole field as one jam."""
+    t_edges, x_edges = _grid()
+    t_c = 0.5 * (t_edges[:-1] + t_edges[1:])
+    x_c = 0.5 * (x_edges[:-1] + x_edges[1:])
+    rng = make_rng(seed)
+    speed = v_recovery + 0.2 * rng.standard_normal((len(t_c), len(x_c)))
+    for i, t in enumerate(t_c):
+        center = 2600.0 + PLANT_SPEED_MS * t
+        speed[i, np.abs(x_c - center) <= 150.0] = v_stripe
+    return SpeedField(t_edges=t_edges, x_edges=x_edges, mean_speed=speed)
+
+
+class TestRelativeMode:
+    """Track D1: stripes inside a fully congested field (docs/WAVE_SPEED_DIAGNOSIS.md)."""
+
+    def test_absolute_threshold_degenerates_on_fully_congested_field(self):
+        ws = detect_waves(_slow_striped_field())
+        # Every bin is below 40 km/h: one blob whose upstream front pins at x = 0.
+        assert ws.count == 1
+        assert ws.waves[0].speed_ms == pytest.approx(0.0, abs=0.05)
+        assert ws.backward() == ()
+
+    def test_relative_threshold_recovers_the_stripe(self):
+        ws = detect_waves(_slow_striped_field(), relative_frac=0.5)
+        assert ws.count == 1
+        wave = ws.waves[0]
+        assert wave.speed_ms == pytest.approx(PLANT_SPEED_MS, abs=0.7)
+        assert len(ws.backward()) == 1
+        assert wave.duration_s == pytest.approx(480.0)
+
+    def test_relative_threshold_value(self):
+        from validation.waves import relative_jam_threshold
+
+        field = _slow_striped_field()
+        thr = relative_jam_threshold(field, 0.5)
+        finite = field.mean_speed[~np.isnan(field.mean_speed)]
+        assert thr == pytest.approx(0.5 * np.percentile(finite, 90.0))
+        # Same result as the absolute detector when handed that threshold.
+        assert detect_waves(field, relative_frac=0.5) == detect_waves(field, v_jam_thresh=thr)
+
+    def test_relative_mode_matches_absolute_on_planted_free_flow_field(self):
+        # 0.5 × p90 of a 30 m/s field is 15 m/s: the planted 5 m/s band is
+        # found either way, at the same speed.
+        assert detect_waves(_planted_field(), relative_frac=0.5).waves[0].speed_ms == pytest.approx(
+            detect_waves(_planted_field()).waves[0].speed_ms, abs=1e-9
+        )
+
+    def test_rejects_bad_fraction_and_empty_field(self):
+        with pytest.raises(ValueError, match="relative_frac"):
+            detect_waves(_planted_field(), relative_frac=1.0)
+        t_edges, x_edges = _grid()
+        empty = SpeedField(
+            t_edges=t_edges,
+            x_edges=x_edges,
+            mean_speed=np.full((len(t_edges) - 1, len(x_edges) - 1), np.nan),
+        )
+        assert detect_waves(empty, relative_frac=0.5).count == 0

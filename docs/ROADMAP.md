@@ -29,7 +29,7 @@ plus corridor auxiliary information.
 
 Everything in Tracks A–C depends on this. Do it first, in order.
 
-**1.1 Stream-process the INCEPTION day.** The archive holds one 19.5 GB JSON
+**1.1 Stream-process the INCEPTION day.** ✅ *Done 2026-09-02.* The archive holds one 19.5 GB JSON
 array of per-vehicle records (MongoDB export shape: `_id`, `timestamp[]`, and
 position arrays). It must never be extracted to disk. Write a streaming reader
 that decompresses from the zip, parses object by object, filters to the study
@@ -37,29 +37,57 @@ segment and period, and writes compact Parquet. Extend
 `calibration/loaders/i24motion.py` — the loader exists but was written against
 the documented schema, not this file, so expect schema reconciliation.
 *Output:* trajectories in the contract's Parquet shape, a few GB at most.
+*Finding:* westbound 576,511 documents → 42.8 M rows at 5 Hz (993 MB) in 309 s;
+every document is a **fragment** (median 117 m / 9.9 s) and tracking coverage in
+the peak is ≈ 0.5–0.65 of vehicle-time, so counts and densities are lower bounds
+while speeds are sound (docs/I24_DATA.md).
 
-**1.2 Recalibrate on I-24.** Rerun the IDM population fit against the new
+**1.2 Recalibrate on I-24.** ✅ *IDM done 2026-09-02; FD fit running.* Rerun the IDM population fit against the new
 episodes. Expect far more than NGSIM's 2,452, from a modern instrument rather
 than 2005 camera footage. This is where the "raw NGSIM noise" limitation that
 our own artifact flags finally goes away. *Output:* `artifacts/idm_i24.json`,
 `artifacts/fd_i24.json`.
+*Finding:* 17,652 episodes (7× NGSIM), holdout gap RMSE 5.29 m (NGSIM 6.44 m);
+T = 1.51 s, s0 = 2.53 m, a_max = 1.06 m/s² — `a_max` stays high on smoothed data,
+so the noise explanation was not the whole story.
 
-**1.3 Build `i24_replica`.** Four miles of real geometry from the auxiliary
+**1.3 Build `i24_replica`.** ✅ *Built 2026-09-02 (`scenarios/i24_replica.yaml`,
+`scripts/i24_build_replica.py`).* Four miles of real geometry from the auxiliary
 corridor data plus OSM, with measured boundary conditions at both ends. This is
 what the 640 m US-101 site could never be: long enough for waves to form,
 propagate and be measured properly.
+*Finding:* 3.4 of the 4 miles (MM 62.7 → Bell Road) with two on-ramps and two
+off-ramps modeled (`RampSpec`), measured downstream boundary on the exit edge,
+demand from fragment crossings in two labeled arms (as tracked / divided by the
+apparent coverage); SUMO's default lane-change eagerness created a spurious
+diverge bottleneck, fixed by `FleetSpec.lc_strategic`.
 
-**1.4 Validate.** Run the full criteria battery, 20+ seeds. **The honest
+**1.4 Validate.** ✅ *Done 2026-09-03 ([I24_VALIDATION.md](I24_VALIDATION.md)).* Run the full criteria battery, 20+ seeds. **The honest
 expectation is that some criteria still fail** — and per CLAUDE.md §0.1 that
 gets published as-is. But the wave-speed diagnosis
 (`docs/WAVE_SPEED_DIAGNOSIS.md`) predicts this corridor should pass the
 wave-speed criterion where US-101 could not, and that prediction is now a
 falsifiable test of our own understanding.
+*Finding:* 1 PASS / 5 FAIL in both demand arms. Coverage-corrected demand
+takes RMSPE from 183% to 36.8% and produces a stop-and-go field that looks like
+the recording, but insertion caps the demand at 82–84%, the jams stay
+shallower than the real ones, and the fronts run at 8.7 km/h (standard
+detector) / 12.4 (relative) against 14.2 / 16.4 observed. **The wave-speed
+prediction is not confirmed on the corridor**; the fleet reaches the band on a
+ring only above ~80 veh/km, a density this replica does not reach. What a pass
+needs is now specific (full corrected demand through the entry; radar counts).
 
 **1.5 Rerun the sweep on the flagship.** The penetration × compliance battery on
 a validated corridor is the result the whole project has been building toward.
 `docs/US101_PENETRATION.md` showed the no-cost claim is corridor-dependent; this
 settles what it actually is on a real, long, multi-lane freeway.
+*Status 2026-09-03:* **the corridor is not validated** (§1.4: 1 PASS / 5 FAIL in
+both arms), so this is being run and will be reported as what it is — the
+battery on a replica that reproduces the recording's stop-and-go pattern but
+not its criteria — never as a validated-corridor result.
+`scripts/i24_penetration_sweep.py --scenario i24_replica_corrected` (500 runs,
+cells ordered so the baseline and the 100%-compliance ladder land first;
+metrics kept, trajectories discarded) → `scripts/i24_penetration_analyze.py`.
 
 ---
 
@@ -74,11 +102,15 @@ result you can defend under questioning.
   spec error, JAD's oracle bimodality and the wave-speed diagnosis are *assets*
   here — self-correction is exactly what distinguishes real research from a
   polished demo, and it inoculates against the hardest judging question.
+  *Drafted 2026-09-02:* [LESSONS.md](LESSONS.md), twelve corrections with
+  evidence, including the I-24 fragment/coverage findings.
 - **A3.** A live demo: `docker compose up`, pick a corridor, run a sweep, watch
   the heatmap. Already works; needs rehearsal and a fallback if wifi fails.
 - **A4.** Poster/board assets from `docs/figures/` — print-styled already.
 - **A5.** Anticipated-questions doc: why not LWR; why SUMO; what a GEH of 5
   means; why some criteria fail; what a 1% penetration result means practically.
+  *Drafted 2026-09-02:* [QA.md](QA.md); the I-24 answers point at
+  I24_VALIDATION.md and will be sharpened once the flagship sweep lands.
 
 ## 3. Track B — Preprint and academic outreach
 
@@ -100,7 +132,9 @@ result you can defend under questioning.
 
 - **C1.** The 10 discovery interviews (`NEXT_STEPS.md` §3.4). These need no code
   and can run in parallel with everything else. The last question — "what's
-  missing?" — is the real product spec.
+  missing?" — is the real product spec. *Kit ready 2026-09-02:*
+  [INTERVIEWS.md](INTERVIEWS.md) (target roles, script, outreach template,
+  record sheet); the conversations themselves need introductions (§6 item 6).
 - **C2.** A hosted demo so a link can be sent to someone. Currently local-only
   by design; a small cloud VM would change what outreach can accomplish.
 - **C3.** Harden the auto-report as the sellable artifact — it is the one
@@ -114,9 +148,15 @@ result you can defend under questioning.
 Work that improves the artifact regardless of audience. Good filler when
 blocked.
 
-- **D1.** Fix the wave detector above ~80 veh/km. Threshold segmentation labels
+- **D1.** ✅ *Done 2026-09-02.* Fix the wave detector above ~80 veh/km. Threshold segmentation labels
   the whole field as jammed in heavy congestion, so it finds nothing — exactly
   where a DOT cares most. Needs a gradient or relative-speed method.
+  *Finding:* relative mode (`detect_waves(relative_frac=0.5)`, jam = below
+  0.5 × p90 of the field) resolves the stripes: the 80 and 100 veh/km ring rows
+  go from zero fronts to 62 and 46 fronts at 17.1 and 17.0 km/h (98% / 85% in
+  band); the I-24 fleet gives 16.4 / 16.9 km/h there (WAVE_SPEED_DIAGNOSIS.md
+  follow-up). A labeled variant; the §7.1 criterion stays on the absolute
+  threshold.
 - **D2.** Test the multi-lane hypothesis behind the US-101 fuel result by
   counting lane-change events against penetration. Cheap; either confirms or
   kills a stated hypothesis.
@@ -139,6 +179,7 @@ blocked.
 | 4 | **Naming decision** | See §7 — cheap now, expensive after a preprint and outreach carry the name. | a decision |
 | 5 | **Which competition, and its deadline** | Track A's entire shape depends on the venue and date. | a decision |
 | 6 | **Interview introductions** | C1 needs actual traffic engineers to talk to. Cold outreach works, warm is faster. | ongoing |
+| 7 | **I-24 radar detector (RDS) counts for 30 Nov 2022** | The trajectory export tracks only ≈ 0.5–0.65 of vehicle-time in the peak (docs/I24_DATA.md §4), so every count-based input and criterion (demand, GEH) is a lower bound. The testbed's TDOT Wavetronix RDS gives 30-s volumes; if the i24motion.org data listing offers them for this day, they replace both the tracked demand and the observed side of GEH. Check the account's data listing; if absent, ask the I-24 MOTION team when writing to them (B3). | 10 min to check |
 
 **Not needed:** the reconstructed NGSIM dataset. Its host (`its-rde.net`) is a
 lapsed domain now serving unrelated content, and I-24 MOTION supersedes it. If
@@ -168,7 +209,7 @@ decision is cheap now and expensive after a preprint.
 
 | Weeks | Focus |
 |---|---|
-| 1 | Disk cleanup, §1.1 streaming loader, §1.2 recalibration. Submit highD request. Start C1 interviews. |
+| 1 | Disk cleanup, §1.1 streaming loader, §1.2 recalibration. Submit highD request. Start C1 interviews. *(Done 2026-09-02, first day: §1.1–1.3, D1, the C1 kit, A2/A5 drafts; highD request and interviews remain owner-blocked.)* |
 | 2–3 | §1.3 replica, §1.4 validation. D1/D2 while runs execute. |
 | 4 | §1.5 flagship sweep. Track A materials begin. |
 | 5–6 | B1 paper draft; A1–A5 competition assets. |

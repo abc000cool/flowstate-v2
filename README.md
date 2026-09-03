@@ -121,6 +121,7 @@ synthetic 10 km corridor, 27 cells × 20 common-random-number seeds:
 | Controller comparison at 5% / 100% | FollowerStopper (σ_v −61.2%, waves −96.1%) and JAD under a realistic 30 s/±20% detection oracle (−60.6%, −90.9%) are statistically tied; faithful PI-saturation trails at −29.7%. All resolved, no throughput cost ([CONTROLLER_COMPARISON.md](docs/CONTROLLER_COMPARISON.md)) |
 | Detection realism | JAD is *unreliable with a perfect oracle* — it chatters and worsens 5/20 seeds; 30–60 s latency with ±20% noise removes the failure entirely ([JAD_ORACLE_RESULTS.md](docs/JAD_ORACLE_RESULTS.md)) |
 | US-101 replica validation | **1 PASS / 5 FAIL** on the FHWA-style criteria table |
+| **I-24 MOTION flagship** (3.4 miles, ramps, 17,652-episode calibration on the same day) | **1 PASS / 5 FAIL in both demand arms.** Coverage-corrected demand takes segment-speed RMSPE from 183% to 36.8% and reproduces the recording's stop-and-go pattern, but the replica inserts only 82–84% of that demand and its backward fronts run at 8.7 km/h (12.4 with the relative detector) against 14.2 (16.4) observed — the wave-speed prediction is **not confirmed** on the corridor ([I24_VALIDATION.md](docs/I24_VALIDATION.md), [I24_DATA.md](docs/I24_DATA.md)) |
 | Flux-cap comparison | the v1 ρ·v* cap (discrete Delle Monache–Goatin) beats the reduced-capacity variant against micro ground truth: paired speed-RMSE difference 0.84 m/s [0.36, 1.33] |
 
 **Why the US-101 validation fails, in one line each:** the site is a 640 m
@@ -233,22 +234,34 @@ documents (each has the full version):
    a wall-to-wall congested site. The with-boundary arm shows the model
    propagates an imposed congestion state consistently — not that it predicts
    onset.
-3. **Raw NGSIM is noisy.** The IDM population was fitted on the raw Socrata
-   export (differentiated-position speed noise; a_max biased high), the
-   plausible cause of too-slow simulated waves and queue under-discharge.
-   Re-fitting on the Montanino–Punzo reconstruction is the upgrade path.
+3. **Raw NGSIM is noisy — and that was not the whole story.** The US-101 IDM
+   population was fitted on the raw Socrata export (differentiated-position
+   speed noise). The I-24 MOTION refit on pipeline-smoothed positions and
+   17,652 episodes gives the same high `a_max` (1.06 vs 1.11 m/s²) with a
+   better holdout RMSE (5.29 vs 6.44 m), so the value is what gap-based
+   calibration finds on two datasets ([docs/I24_DATA.md](docs/I24_DATA.md)
+   §5). The too-slow US-101 waves were a site-length/density artifact
+   ([docs/WAVE_SPEED_DIAGNOSIS.md](docs/WAVE_SPEED_DIAGNOSIS.md)).
+6. **I-24 MOTION tracks about half of vehicle-time in the peak.** Every
+   document in the export is a fragment (median 117 m); counts, flows and
+   densities derived from it are lower bounds, speeds and wave speeds are
+   sound. Demand for the flagship replica is therefore ambiguous and is run
+   in two labeled arms ([docs/I24_DATA.md](docs/I24_DATA.md) §4).
 4. **The macro tier screens; it never validates.** CTM outputs are labeled
    `tier="screening"` and are refused by the report generator by design.
 5. **Controller caveats.** JAD has run only with its perfect wave oracle
    (best case); PI-saturation's ring-tuned defaults gridlock an open corridor
    and need retuning before any fair comparison.
 
-Roadmap after the v2.0 release: the `i24_replica` flagship validation on
-I-24 MOTION data (the gallery already onboards the corridor geometry),
-reconstructed-NGSIM recalibration, ramp/auxiliary-lane modeling for the
-US-101 replica, a flow-based downstream boundary variant, the CTM/Kalman
-state-estimation tier, and RL controllers through the existing Gymnasium
-hook.
+Roadmap ([docs/ROADMAP.md](docs/ROADMAP.md)): the `i24_replica` flagship is
+built (3.4 miles of real geometry with interchange ramps, calibrated on the
+same day's 17,652 episodes; [docs/I24_DATA.md](docs/I24_DATA.md)) and its
+criteria battery is in [docs/I24_VALIDATION.md](docs/I24_VALIDATION.md);
+next are the flagship penetration × compliance sweep, the radar-detector
+counts that would replace fragment counts, a flow-based downstream boundary
+variant, the CTM/Kalman state-estimation tier, and RL controllers through the
+existing Gymnasium hook. The reconstructed-NGSIM refit is dropped from scope:
+its host domain has lapsed and I-24 MOTION supersedes it.
 
 ## Non-negotiables
 

@@ -1,0 +1,1488 @@
+{
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "cells": {
+    "baseline": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 8055.318021201414,
+          "lo95": 8051.593926482251,
+          "hi95": 8059.042115920577,
+          "n": 20
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.9254555881133686,
+          "lo95": 2.8439710949360064,
+          "hi95": 3.0069400812907308,
+          "n": 20
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 3.55403656808398,
+          "lo95": 3.494968041676234,
+          "hi95": 3.6131050944917256,
+          "n": 20
+        },
+        "mean_tt_s": {
+          "mean": 29.53509438025204,
+          "lo95": 29.10168235162726,
+          "hi95": 29.96850640887682,
+          "n": 20
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 66.42209977288874,
+          "lo95": 65.97544202944655,
+          "hi95": 66.86875751633093,
+          "n": 20
+        },
+        "wave_count": {
+          "mean": 1.65,
+          "lo95": 1.269631727488228,
+          "hi95": 2.0303682725117715,
+          "n": 20
+        }
+      },
+      "per_seed": {
+        "6914975401685141156": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.8679095205281113,
+          "sigma_v_spatial_ms": 3.4857923597739617,
+          "mean_tt_s": 29.56052395224617,
+          "fuel_ml_per_veh_km": 66.61349570809864,
+          "wave_count": 2
+        },
+        "134183728835869882": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.8740984910624316,
+          "sigma_v_spatial_ms": 3.532137794608657,
+          "mean_tt_s": 29.330756743763313,
+          "fuel_ml_per_veh_km": 66.21985912772601,
+          "wave_count": 1
+        },
+        "2378473973028931053": {
+          "throughput_veh_h": 8061.8374558303885,
+          "sigma_v_temporal_ms": 3.0112103819030964,
+          "sigma_v_spatial_ms": 3.5740201387692974,
+          "mean_tt_s": 28.58567610396865,
+          "fuel_ml_per_veh_km": 65.89648330355223,
+          "wave_count": 1
+        },
+        "3747978530954135749": {
+          "throughput_veh_h": 8077.73851590106,
+          "sigma_v_temporal_ms": 3.466171322738229,
+          "sigma_v_spatial_ms": 3.9458533752355542,
+          "mean_tt_s": 27.720330839116826,
+          "fuel_ml_per_veh_km": 65.62661806834917,
+          "wave_count": 2
+        },
+        "677105600768189526": {
+          "throughput_veh_h": 8058.657243816254,
+          "sigma_v_temporal_ms": 2.681516065157235,
+          "sigma_v_spatial_ms": 3.3206313379576065,
+          "mean_tt_s": 30.482808118320243,
+          "fuel_ml_per_veh_km": 67.23003771361341,
+          "wave_count": 2
+        },
+        "661281422688282993": {
+          "throughput_veh_h": 8065.017667844522,
+          "sigma_v_temporal_ms": 2.9620474637312606,
+          "sigma_v_spatial_ms": 3.569183558298921,
+          "mean_tt_s": 28.94297491625365,
+          "fuel_ml_per_veh_km": 65.79477000942808,
+          "wave_count": 1
+        },
+        "3011106312394044631": {
+          "throughput_veh_h": 8045.936395759717,
+          "sigma_v_temporal_ms": 2.906955231478278,
+          "sigma_v_spatial_ms": 3.577491264290286,
+          "mean_tt_s": 31.373891286416868,
+          "fuel_ml_per_veh_km": 68.4272076870646,
+          "wave_count": 3
+        },
+        "6953598295321596746": {
+          "throughput_veh_h": 8065.017667844522,
+          "sigma_v_temporal_ms": 2.9926669226409186,
+          "sigma_v_spatial_ms": 3.5619520957911357,
+          "mean_tt_s": 29.53257375902333,
+          "fuel_ml_per_veh_km": 66.2840071844918,
+          "wave_count": 3
+        },
+        "165503670820534583": {
+          "throughput_veh_h": 8049.116607773851,
+          "sigma_v_temporal_ms": 2.9412115143577964,
+          "sigma_v_spatial_ms": 3.598366271280955,
+          "mean_tt_s": 29.660798263847756,
+          "fuel_ml_per_veh_km": 66.69698916088092,
+          "wave_count": 2
+        },
+        "6134032994440706937": {
+          "throughput_veh_h": 8055.47703180212,
+          "sigma_v_temporal_ms": 2.9072123632604323,
+          "sigma_v_spatial_ms": 3.5107972146534077,
+          "mean_tt_s": 29.459649989814228,
+          "fuel_ml_per_veh_km": 66.21630914220611,
+          "wave_count": 1
+        },
+        "8557154790156791364": {
+          "throughput_veh_h": 8049.116607773851,
+          "sigma_v_temporal_ms": 2.9739055374706376,
+          "sigma_v_spatial_ms": 3.5381691028654476,
+          "mean_tt_s": 30.62000519111055,
+          "fuel_ml_per_veh_km": 67.81421979743406,
+          "wave_count": 3
+        },
+        "6538422657834023852": {
+          "throughput_veh_h": 8061.8374558303885,
+          "sigma_v_temporal_ms": 2.7704095863732734,
+          "sigma_v_spatial_ms": 3.427127694657266,
+          "mean_tt_s": 29.737236039093457,
+          "fuel_ml_per_veh_km": 66.13344188987725,
+          "wave_count": 1
+        },
+        "6904272788004776631": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 3.1603947998650344,
+          "sigma_v_spatial_ms": 3.68431544905036,
+          "mean_tt_s": 27.751320899162554,
+          "fuel_ml_per_veh_km": 64.22105001836246,
+          "wave_count": 1
+        },
+        "6143473282319009404": {
+          "throughput_veh_h": 8055.47703180212,
+          "sigma_v_temporal_ms": 2.9079487951331986,
+          "sigma_v_spatial_ms": 3.6549826983296105,
+          "mean_tt_s": 29.204889546334584,
+          "fuel_ml_per_veh_km": 66.19469218427015,
+          "wave_count": 1
+        },
+        "3944094060050347669": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.815091570126849,
+          "sigma_v_spatial_ms": 3.5071888498614134,
+          "mean_tt_s": 30.286465309889124,
+          "fuel_ml_per_veh_km": 67.36078111465532,
+          "wave_count": 3
+        },
+        "4910985839736976611": {
+          "throughput_veh_h": 8049.116607773851,
+          "sigma_v_temporal_ms": 2.67051579137854,
+          "sigma_v_spatial_ms": 3.4271398086549305,
+          "mean_tt_s": 30.93055252380088,
+          "fuel_ml_per_veh_km": 67.90128447657621,
+          "wave_count": 1
+        },
+        "7382187975121682178": {
+          "throughput_veh_h": 8055.47703180212,
+          "sigma_v_temporal_ms": 3.062012759055361,
+          "sigma_v_spatial_ms": 3.5722321871747584,
+          "mean_tt_s": 28.98909292325992,
+          "fuel_ml_per_veh_km": 65.53912361563413,
+          "wave_count": 2
+        },
+        "5690692725577505498": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.906870963470781,
+          "sigma_v_spatial_ms": 3.6484879398993058,
+          "mean_tt_s": 29.312739013404414,
+          "fuel_ml_per_veh_km": 66.18762344520361,
+          "wave_count": 1
+        },
+        "887972120279483394": {
+          "throughput_veh_h": 8042.756183745582,
+          "sigma_v_temporal_ms": 2.8449920013324608,
+          "sigma_v_spatial_ms": 3.4776398501908243,
+          "mean_tt_s": 29.724669270512923,
+          "fuel_ml_per_veh_km": 66.0912058021427,
+          "wave_count": 1
+        },
+        "8026499204807041784": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.7859706812034455,
+          "sigma_v_spatial_ms": 3.4672223703359037,
+          "mean_tt_s": 29.494932915701344,
+          "fuel_ml_per_veh_km": 65.99279600820807,
+          "wave_count": 1
+        }
+      }
+    },
+    "fs_p0.01": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 8033.692579505301,
+          "lo95": 8026.525601066094,
+          "hi95": 8040.859557944508,
+          "n": 20
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.6850513323179133,
+          "lo95": 2.630991289616306,
+          "hi95": 2.7391113750195206,
+          "n": 20
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 3.2882586301197962,
+          "lo95": 3.2529524261164235,
+          "hi95": 3.323564834123169,
+          "n": 20
+        },
+        "mean_tt_s": {
+          "mean": 30.941422888951017,
+          "lo95": 30.529698011435574,
+          "hi95": 31.35314776646646,
+          "n": 20
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 67.5274834460157,
+          "lo95": 67.0212962552778,
+          "hi95": 68.03367063675358,
+          "n": 20
+        },
+        "wave_count": {
+          "mean": 1.6,
+          "lo95": 1.134455343835005,
+          "hi95": 2.0655446561649953,
+          "n": 20
+        }
+      },
+      "per_seed": {
+        "6914975401685141156": {
+          "throughput_veh_h": 8030.0353356890455,
+          "sigma_v_temporal_ms": 2.74359932277688,
+          "sigma_v_spatial_ms": 3.294380285862488,
+          "mean_tt_s": 31.989966141840494,
+          "fuel_ml_per_veh_km": 69.17870961385835,
+          "wave_count": 4
+        },
+        "134183728835869882": {
+          "throughput_veh_h": 8007.773851590106,
+          "sigma_v_temporal_ms": 2.7060120638010607,
+          "sigma_v_spatial_ms": 3.275705669146992,
+          "mean_tt_s": 30.632426326006726,
+          "fuel_ml_per_veh_km": 66.9844273525384,
+          "wave_count": 2
+        },
+        "2378473973028931053": {
+          "throughput_veh_h": 8023.674911660777,
+          "sigma_v_temporal_ms": 2.6399930742831392,
+          "sigma_v_spatial_ms": 3.2080806777094915,
+          "mean_tt_s": 31.120520895378995,
+          "fuel_ml_per_veh_km": 67.39248837832673,
+          "wave_count": 1
+        },
+        "3747978530954135749": {
+          "throughput_veh_h": 8042.756183745582,
+          "sigma_v_temporal_ms": 2.7526976744254057,
+          "sigma_v_spatial_ms": 3.3002003718796185,
+          "mean_tt_s": 31.14543254757702,
+          "fuel_ml_per_veh_km": 68.02945615933183,
+          "wave_count": 1
+        },
+        "677105600768189526": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.6291943361203103,
+          "sigma_v_spatial_ms": 3.192015037994241,
+          "mean_tt_s": 30.835217256952372,
+          "fuel_ml_per_veh_km": 67.10464419496283,
+          "wave_count": 2
+        },
+        "661281422688282993": {
+          "throughput_veh_h": 8026.855123674911,
+          "sigma_v_temporal_ms": 2.925811926555548,
+          "sigma_v_spatial_ms": 3.425864446432496,
+          "mean_tt_s": 29.46329327288333,
+          "fuel_ml_per_veh_km": 66.52578769127685,
+          "wave_count": 1
+        },
+        "3011106312394044631": {
+          "throughput_veh_h": 8039.575971731449,
+          "sigma_v_temporal_ms": 2.791793194513306,
+          "sigma_v_spatial_ms": 3.360031350386338,
+          "mean_tt_s": 32.08657524429985,
+          "fuel_ml_per_veh_km": 68.8789368681455,
+          "wave_count": 3
+        },
+        "6953598295321596746": {
+          "throughput_veh_h": 8061.8374558303885,
+          "sigma_v_temporal_ms": 2.660675221452979,
+          "sigma_v_spatial_ms": 3.282426203199465,
+          "mean_tt_s": 30.365571450602946,
+          "fuel_ml_per_veh_km": 66.80782868156234,
+          "wave_count": 1
+        },
+        "165503670820534583": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.6482183362327034,
+          "sigma_v_spatial_ms": 3.3094026393360525,
+          "mean_tt_s": 31.228882718282197,
+          "fuel_ml_per_veh_km": 68.28909747018403,
+          "wave_count": 1
+        },
+        "6134032994440706937": {
+          "throughput_veh_h": 8026.855123674911,
+          "sigma_v_temporal_ms": 2.6716299556378056,
+          "sigma_v_spatial_ms": 3.191349926110742,
+          "mean_tt_s": 30.948380281405903,
+          "fuel_ml_per_veh_km": 67.05839172806866,
+          "wave_count": 1
+        },
+        "8557154790156791364": {
+          "throughput_veh_h": 8036.395759717314,
+          "sigma_v_temporal_ms": 2.56508232323605,
+          "sigma_v_spatial_ms": 3.2256961269595266,
+          "mean_tt_s": 32.36816537471698,
+          "fuel_ml_per_veh_km": 68.83097095830344,
+          "wave_count": 1
+        },
+        "6538422657834023852": {
+          "throughput_veh_h": 8036.395759717314,
+          "sigma_v_temporal_ms": 2.7238674238699363,
+          "sigma_v_spatial_ms": 3.273113094116905,
+          "mean_tt_s": 30.129036451437365,
+          "fuel_ml_per_veh_km": 66.58407960402342,
+          "wave_count": 1
+        },
+        "6904272788004776631": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.6289202365691704,
+          "sigma_v_spatial_ms": 3.192277385666388,
+          "mean_tt_s": 29.617117581321025,
+          "fuel_ml_per_veh_km": 65.3294312431929,
+          "wave_count": 2
+        },
+        "6143473282319009404": {
+          "throughput_veh_h": 8052.296819787985,
+          "sigma_v_temporal_ms": 2.4791063086688774,
+          "sigma_v_spatial_ms": 3.261852513159739,
+          "mean_tt_s": 31.665434046461346,
+          "fuel_ml_per_veh_km": 67.90411262534172,
+          "wave_count": 1
+        },
+        "3944094060050347669": {
+          "throughput_veh_h": 8014.134275618374,
+          "sigma_v_temporal_ms": 2.713893750590031,
+          "sigma_v_spatial_ms": 3.3295449034399547,
+          "mean_tt_s": 31.2998801283078,
+          "fuel_ml_per_veh_km": 68.0180040399283,
+          "wave_count": 4
+        },
+        "4910985839736976611": {
+          "throughput_veh_h": 8007.773851590106,
+          "sigma_v_temporal_ms": 2.5016906436307442,
+          "sigma_v_spatial_ms": 3.230478853889677,
+          "mean_tt_s": 32.621851165041434,
+          "fuel_ml_per_veh_km": 69.76937357070749,
+          "wave_count": 2
+        },
+        "7382187975121682178": {
+          "throughput_veh_h": 8023.674911660777,
+          "sigma_v_temporal_ms": 2.8708360134913025,
+          "sigma_v_spatial_ms": 3.4087528823264117,
+          "mean_tt_s": 30.56134741258237,
+          "fuel_ml_per_veh_km": 67.25396820284826,
+          "wave_count": 1
+        },
+        "5690692725577505498": {
+          "throughput_veh_h": 8030.0353356890455,
+          "sigma_v_temporal_ms": 2.7670564225413155,
+          "sigma_v_spatial_ms": 3.440450672459704,
+          "mean_tt_s": 30.267240197952603,
+          "fuel_ml_per_veh_km": 67.39072166690694,
+          "wave_count": 1
+        },
+        "887972120279483394": {
+          "throughput_veh_h": 8023.674911660777,
+          "sigma_v_temporal_ms": 2.7572870433408743,
+          "sigma_v_spatial_ms": 3.3070546691611016,
+          "mean_tt_s": 30.177127554317796,
+          "fuel_ml_per_veh_km": 66.60777460315869,
+          "wave_count": 1
+        },
+        "8026499204807041784": {
+          "throughput_veh_h": 8033.21554770318,
+          "sigma_v_temporal_ms": 2.523661374620831,
+          "sigma_v_spatial_ms": 3.2564948931585898,
+          "mean_tt_s": 30.304991731651715,
+          "fuel_ml_per_veh_km": 66.61146426764714,
+          "wave_count": 1
+        }
+      },
+      "paired_delta_vs_baseline": {
+        "throughput_veh_h": {
+          "mean": -21.625441696113104,
+          "lo95": -28.74876963435016,
+          "hi95": -14.502113757876046,
+          "n": 20,
+          "pct_of_baseline": -0.2684616751218938,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -0.2404042557954551,
+          "lo95": -0.32430100701300624,
+          "hi95": -0.15650750457790397,
+          "n": 20,
+          "pct_of_baseline": -8.217668959742856,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -0.26577793796418403,
+          "lo95": -0.32653693200863093,
+          "hi95": -0.20501894391973713,
+          "n": 20,
+          "pct_of_baseline": -7.478199305852046,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 1.4063285086989743,
+          "lo95": 1.0140749400798024,
+          "hi95": 1.7985820773181462,
+          "n": 20,
+          "pct_of_baseline": 4.761550752447513,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 1.1053836731269435,
+          "lo95": 0.7769218433047903,
+          "hi95": 1.4338455029490969,
+          "n": 20,
+          "pct_of_baseline": 1.664180561750509,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -0.05,
+          "lo95": -0.5173981923193416,
+          "hi95": 0.41739819231934155,
+          "n": 20,
+          "pct_of_baseline": -3.0303030303030303,
+          "resolved": false
+        }
+      }
+    },
+    "fs_p0.02": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 8024.946996466431,
+          "lo95": 8016.6333300866845,
+          "hi95": 8033.260662846178,
+          "n": 20
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.5642857210326104,
+          "lo95": 2.512964516583313,
+          "hi95": 2.6156069254819077,
+          "n": 20
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 3.1159064186714494,
+          "lo95": 3.0801239708712203,
+          "hi95": 3.1516888664716785,
+          "n": 20
+        },
+        "mean_tt_s": {
+          "mean": 31.816957888498024,
+          "lo95": 31.41954844511572,
+          "hi95": 32.21436733188033,
+          "n": 20
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 67.88629119719468,
+          "lo95": 67.46983552527762,
+          "hi95": 68.30274686911174,
+          "n": 20
+        },
+        "wave_count": {
+          "mean": 1.95,
+          "lo95": 1.4826018076806584,
+          "hi95": 2.4173981923193413,
+          "n": 20
+        }
+      },
+      "per_seed": {
+        "6914975401685141156": {
+          "throughput_veh_h": 8036.395759717314,
+          "sigma_v_temporal_ms": 2.553145245015717,
+          "sigma_v_spatial_ms": 3.035397918173597,
+          "mean_tt_s": 32.08833672275104,
+          "fuel_ml_per_veh_km": 68.26670882555511,
+          "wave_count": 2
+        },
+        "134183728835869882": {
+          "throughput_veh_h": 8014.134275618374,
+          "sigma_v_temporal_ms": 2.556640814113581,
+          "sigma_v_spatial_ms": 3.1567109475829382,
+          "mean_tt_s": 31.430907220085896,
+          "fuel_ml_per_veh_km": 67.7462082265233,
+          "wave_count": 1
+        },
+        "2378473973028931053": {
+          "throughput_veh_h": 8020.494699646642,
+          "sigma_v_temporal_ms": 2.435567523695147,
+          "sigma_v_spatial_ms": 3.0080862340528656,
+          "mean_tt_s": 32.11711904117199,
+          "fuel_ml_per_veh_km": 68.23944082484921,
+          "wave_count": 2
+        },
+        "3747978530954135749": {
+          "throughput_veh_h": 8061.8374558303885,
+          "sigma_v_temporal_ms": 2.446755095365456,
+          "sigma_v_spatial_ms": 3.130496299572641,
+          "mean_tt_s": 32.55754866652708,
+          "fuel_ml_per_veh_km": 68.29239980684419,
+          "wave_count": 2
+        },
+        "677105600768189526": {
+          "throughput_veh_h": 8020.494699646642,
+          "sigma_v_temporal_ms": 2.319595570387217,
+          "sigma_v_spatial_ms": 2.9251492519889575,
+          "mean_tt_s": 33.08859180132705,
+          "fuel_ml_per_veh_km": 68.54250919662887,
+          "wave_count": 2
+        },
+        "661281422688282993": {
+          "throughput_veh_h": 7991.872791519434,
+          "sigma_v_temporal_ms": 2.736639458289293,
+          "sigma_v_spatial_ms": 3.2118674365253,
+          "mean_tt_s": 30.414553533117868,
+          "fuel_ml_per_veh_km": 66.64942592656686,
+          "wave_count": 1
+        },
+        "3011106312394044631": {
+          "throughput_veh_h": 8020.494699646642,
+          "sigma_v_temporal_ms": 2.545519258080416,
+          "sigma_v_spatial_ms": 3.1514503758399064,
+          "mean_tt_s": 33.101699248593235,
+          "fuel_ml_per_veh_km": 69.2880771317291,
+          "wave_count": 4
+        },
+        "6953598295321596746": {
+          "throughput_veh_h": 8061.8374558303885,
+          "sigma_v_temporal_ms": 2.4546469226309626,
+          "sigma_v_spatial_ms": 3.025394893794526,
+          "mean_tt_s": 31.445640892654026,
+          "fuel_ml_per_veh_km": 67.57306426965744,
+          "wave_count": 1
+        },
+        "165503670820534583": {
+          "throughput_veh_h": 8036.395759717314,
+          "sigma_v_temporal_ms": 2.5744039788631654,
+          "sigma_v_spatial_ms": 3.112964807129605,
+          "mean_tt_s": 32.27461991479605,
+          "fuel_ml_per_veh_km": 68.90196400698584,
+          "wave_count": 1
+        },
+        "6134032994440706937": {
+          "throughput_veh_h": 8017.314487632509,
+          "sigma_v_temporal_ms": 2.6984915697454097,
+          "sigma_v_spatial_ms": 3.148592188031574,
+          "mean_tt_s": 31.1641951082707,
+          "fuel_ml_per_veh_km": 67.05694421342686,
+          "wave_count": 2
+        },
+        "8557154790156791364": {
+          "throughput_veh_h": 8030.0353356890455,
+          "sigma_v_temporal_ms": 2.774853469996483,
+          "sigma_v_spatial_ms": 3.2204377086260223,
+          "mean_tt_s": 32.440238186993206,
+          "fuel_ml_per_veh_km": 68.86829444744032,
+          "wave_count": 3
+        },
+        "6538422657834023852": {
+          "throughput_veh_h": 8042.756183745582,
+          "sigma_v_temporal_ms": 2.689664940054403,
+          "sigma_v_spatial_ms": 3.178356277556309,
+          "mean_tt_s": 31.046784025590597,
+          "fuel_ml_per_veh_km": 67.70716342125966,
+          "wave_count": 2
+        },
+        "6904272788004776631": {
+          "throughput_veh_h": 8030.0353356890455,
+          "sigma_v_temporal_ms": 2.5839350867429403,
+          "sigma_v_spatial_ms": 3.0545514787497363,
+          "mean_tt_s": 30.766348205060446,
+          "fuel_ml_per_veh_km": 66.53365409127127,
+          "wave_count": 1
+        },
+        "6143473282319009404": {
+          "throughput_veh_h": 8030.0353356890455,
+          "sigma_v_temporal_ms": 2.5640332093298577,
+          "sigma_v_spatial_ms": 3.1927560220037727,
+          "mean_tt_s": 31.87829474104889,
+          "fuel_ml_per_veh_km": 68.0417364465156,
+          "wave_count": 3
+        },
+        "3944094060050347669": {
+          "throughput_veh_h": 8010.954063604239,
+          "sigma_v_temporal_ms": 2.5342597375495357,
+          "sigma_v_spatial_ms": 3.090335867383943,
+          "mean_tt_s": 33.307727903661345,
+          "fuel_ml_per_veh_km": 69.24465024266168,
+          "wave_count": 3
+        },
+        "4910985839736976611": {
+          "throughput_veh_h": 8001.413427561837,
+          "sigma_v_temporal_ms": 2.650241411390547,
+          "sigma_v_spatial_ms": 3.1356885001426793,
+          "mean_tt_s": 32.09081805466114,
+          "fuel_ml_per_veh_km": 68.35820105239979,
+          "wave_count": 4
+        },
+        "7382187975121682178": {
+          "throughput_veh_h": 8007.773851590106,
+          "sigma_v_temporal_ms": 2.56708668426961,
+          "sigma_v_spatial_ms": 3.1784656248945238,
+          "mean_tt_s": 31.67927489254941,
+          "fuel_ml_per_veh_km": 67.62599461153914,
+          "wave_count": 1
+        },
+        "5690692725577505498": {
+          "throughput_veh_h": 8017.314487632509,
+          "sigma_v_temporal_ms": 2.546124786521449,
+          "sigma_v_spatial_ms": 3.1730425581793305,
+          "mean_tt_s": 31.987009199047787,
+          "fuel_ml_per_veh_km": 67.78255894195496,
+          "wave_count": 2
+        },
+        "887972120279483394": {
+          "throughput_veh_h": 8014.134275618374,
+          "sigma_v_temporal_ms": 2.58180496871535,
+          "sigma_v_spatial_ms": 3.1195573307884565,
+          "mean_tt_s": 30.603090030742557,
+          "fuel_ml_per_veh_km": 66.61766617813525,
+          "wave_count": 1
+        },
+        "8026499204807041784": {
+          "throughput_veh_h": 8033.21554770318,
+          "sigma_v_temporal_ms": 2.472304689895675,
+          "sigma_v_spatial_ms": 3.0688266524123065,
+          "mean_tt_s": 30.856360381310164,
+          "fuel_ml_per_veh_km": 66.3891620819491,
+          "wave_count": 1
+        }
+      },
+      "paired_delta_vs_baseline": {
+        "throughput_veh_h": {
+          "mean": -30.37102473498239,
+          "lo95": -37.84382860474356,
+          "hi95": -22.898220865221226,
+          "n": 20,
+          "pct_of_baseline": -0.3770307349138364,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -0.3611698670807578,
+          "lo95": -0.4607586216308689,
+          "hi95": -0.26158111253064675,
+          "n": 20,
+          "pct_of_baseline": -12.345764828844212,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -0.4381301494125306,
+          "lo95": -0.4978986481039814,
+          "hi95": -0.3783616507210798,
+          "n": 20,
+          "pct_of_baseline": -12.32767702355779,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 2.2818635082459844,
+          "lo95": 1.8440846718216575,
+          "hi95": 2.7196423446703113,
+          "n": 20,
+          "pct_of_baseline": 7.725939449754052,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 1.4641914243059304,
+          "lo95": 1.1485136808018557,
+          "hi95": 1.7798691678100051,
+          "n": 20,
+          "pct_of_baseline": 2.2043738895824005,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": 0.3,
+          "lo95": -0.20589327762037818,
+          "hi95": 0.8058932776203782,
+          "n": 20,
+          "pct_of_baseline": 18.181818181818183,
+          "resolved": false
+        }
+      }
+    },
+    "fs_p0.05": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7978.833922261486,
+          "lo95": 7968.421943678906,
+          "hi95": 7989.2459008440655,
+          "n": 20
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.2166940762712146,
+          "lo95": 2.1778835670043177,
+          "hi95": 2.2555045855381115,
+          "n": 20
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 2.6810672121281733,
+          "lo95": 2.642518013325047,
+          "hi95": 2.7196164109312995,
+          "n": 20
+        },
+        "mean_tt_s": {
+          "mean": 33.44454281123193,
+          "lo95": 32.952064939622154,
+          "hi95": 33.93702068284171,
+          "n": 20
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 68.22995238416851,
+          "lo95": 67.74154102673468,
+          "hi95": 68.71836374160235,
+          "n": 20
+        },
+        "wave_count": {
+          "mean": 2.05,
+          "lo95": 1.3973360235649994,
+          "hi95": 2.7026639764350002,
+          "n": 20
+        }
+      },
+      "per_seed": {
+        "6914975401685141156": {
+          "throughput_veh_h": 7982.332155477033,
+          "sigma_v_temporal_ms": 2.227702538029516,
+          "sigma_v_spatial_ms": 2.6788050466638103,
+          "mean_tt_s": 33.685813965796314,
+          "fuel_ml_per_veh_km": 68.8008683832122,
+          "wave_count": 2
+        },
+        "134183728835869882": {
+          "throughput_veh_h": 7963.250883392227,
+          "sigma_v_temporal_ms": 2.3201151706464125,
+          "sigma_v_spatial_ms": 2.755410646209704,
+          "mean_tt_s": 31.954224829663286,
+          "fuel_ml_per_veh_km": 66.6063715311248,
+          "wave_count": 2
+        },
+        "2378473973028931053": {
+          "throughput_veh_h": 7988.692579505299,
+          "sigma_v_temporal_ms": 2.21305504419784,
+          "sigma_v_spatial_ms": 2.63004344245144,
+          "mean_tt_s": 32.97178820975482,
+          "fuel_ml_per_veh_km": 67.49740187455934,
+          "wave_count": 1
+        },
+        "3747978530954135749": {
+          "throughput_veh_h": 7975.971731448764,
+          "sigma_v_temporal_ms": 2.287742852162612,
+          "sigma_v_spatial_ms": 2.6392000723231903,
+          "mean_tt_s": 32.71735752060744,
+          "fuel_ml_per_veh_km": 67.2076997451016,
+          "wave_count": 2
+        },
+        "677105600768189526": {
+          "throughput_veh_h": 8014.134275618374,
+          "sigma_v_temporal_ms": 2.1838120640286354,
+          "sigma_v_spatial_ms": 2.672640657621105,
+          "mean_tt_s": 34.040126999710075,
+          "fuel_ml_per_veh_km": 68.88736433251681,
+          "wave_count": 2
+        },
+        "661281422688282993": {
+          "throughput_veh_h": 7982.332155477033,
+          "sigma_v_temporal_ms": 2.170785851939591,
+          "sigma_v_spatial_ms": 2.626549885973874,
+          "mean_tt_s": 31.99918368337735,
+          "fuel_ml_per_veh_km": 66.52395659895392,
+          "wave_count": 1
+        },
+        "3011106312394044631": {
+          "throughput_veh_h": 7934.628975265018,
+          "sigma_v_temporal_ms": 2.1660684479637693,
+          "sigma_v_spatial_ms": 2.6475580129063525,
+          "mean_tt_s": 36.02314380710928,
+          "fuel_ml_per_veh_km": 70.34129437407468,
+          "wave_count": 3
+        },
+        "6953598295321596746": {
+          "throughput_veh_h": 7982.332155477033,
+          "sigma_v_temporal_ms": 2.2931875422951595,
+          "sigma_v_spatial_ms": 2.710448402649272,
+          "mean_tt_s": 32.9970256502505,
+          "fuel_ml_per_veh_km": 68.1078213587958,
+          "wave_count": 2
+        },
+        "165503670820534583": {
+          "throughput_veh_h": 7975.971731448764,
+          "sigma_v_temporal_ms": 2.336811228376882,
+          "sigma_v_spatial_ms": 2.8108811109443192,
+          "mean_tt_s": 33.72690249734625,
+          "fuel_ml_per_veh_km": 69.68947006665763,
+          "wave_count": 7
+        },
+        "6134032994440706937": {
+          "throughput_veh_h": 8001.413427561837,
+          "sigma_v_temporal_ms": 2.1291525286684845,
+          "sigma_v_spatial_ms": 2.57521936593353,
+          "mean_tt_s": 34.32114282197237,
+          "fuel_ml_per_veh_km": 68.75616201676873,
+          "wave_count": 2
+        },
+        "8557154790156791364": {
+          "throughput_veh_h": 7982.332155477033,
+          "sigma_v_temporal_ms": 2.350909128918589,
+          "sigma_v_spatial_ms": 2.711341683350404,
+          "mean_tt_s": 33.57128133645402,
+          "fuel_ml_per_veh_km": 68.5470342593146,
+          "wave_count": 3
+        },
+        "6538422657834023852": {
+          "throughput_veh_h": 7995.053003533568,
+          "sigma_v_temporal_ms": 2.24266136630246,
+          "sigma_v_spatial_ms": 2.8008310158725878,
+          "mean_tt_s": 33.544303924672256,
+          "fuel_ml_per_veh_km": 68.43710312041381,
+          "wave_count": 2
+        },
+        "6904272788004776631": {
+          "throughput_veh_h": 7985.5123674911665,
+          "sigma_v_temporal_ms": 2.274389083081219,
+          "sigma_v_spatial_ms": 2.7465551167209763,
+          "mean_tt_s": 32.67785857263134,
+          "fuel_ml_per_veh_km": 67.69002363770392,
+          "wave_count": 1
+        },
+        "6143473282319009404": {
+          "throughput_veh_h": 8017.314487632509,
+          "sigma_v_temporal_ms": 2.066521323249774,
+          "sigma_v_spatial_ms": 2.5576147419639548,
+          "mean_tt_s": 32.84166833437205,
+          "fuel_ml_per_veh_km": 67.17868342327847,
+          "wave_count": 1
+        },
+        "3944094060050347669": {
+          "throughput_veh_h": 7979.151943462898,
+          "sigma_v_temporal_ms": 2.0944966533737244,
+          "sigma_v_spatial_ms": 2.6048852611237114,
+          "mean_tt_s": 35.23462634967375,
+          "fuel_ml_per_veh_km": 69.5040860572174,
+          "wave_count": 3
+        },
+        "4910985839736976611": {
+          "throughput_veh_h": 7975.971731448764,
+          "sigma_v_temporal_ms": 2.126914865015861,
+          "sigma_v_spatial_ms": 2.589374273484263,
+          "mean_tt_s": 34.98287716971627,
+          "fuel_ml_per_veh_km": 69.62272825488992,
+          "wave_count": 3
+        },
+        "7382187975121682178": {
+          "throughput_veh_h": 7963.250883392227,
+          "sigma_v_temporal_ms": 2.152678250728997,
+          "sigma_v_spatial_ms": 2.611694373374893,
+          "mean_tt_s": 33.16145750944484,
+          "fuel_ml_per_veh_km": 67.77513830244045,
+          "wave_count": 1
+        },
+        "5690692725577505498": {
+          "throughput_veh_h": 7979.151943462898,
+          "sigma_v_temporal_ms": 2.305836451587885,
+          "sigma_v_spatial_ms": 2.830798313680972,
+          "mean_tt_s": 32.64683851173281,
+          "fuel_ml_per_veh_km": 67.81461447151294,
+          "wave_count": 1
+        },
+        "887972120279483394": {
+          "throughput_veh_h": 7921.908127208481,
+          "sigma_v_temporal_ms": 2.2125840998301287,
+          "sigma_v_spatial_ms": 2.773741405440465,
+          "mean_tt_s": 32.906368109149234,
+          "fuel_ml_per_veh_km": 68.00976414197186,
+          "wave_count": 1
+        },
+        "8026499204807041784": {
+          "throughput_veh_h": 7975.971731448764,
+          "sigma_v_temporal_ms": 2.178457035026752,
+          "sigma_v_spatial_ms": 2.647751413874628,
+          "mean_tt_s": 32.886866421204466,
+          "fuel_ml_per_veh_km": 67.60146173286147,
+          "wave_count": 1
+        }
+      },
+      "paired_delta_vs_baseline": {
+        "throughput_veh_h": {
+          "mean": -76.48409893992849,
+          "lo95": -85.89096754438496,
+          "hi95": -67.07723033547201,
+          "n": 20,
+          "pct_of_baseline": -0.9494857774531568,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -0.7087615118421537,
+          "lo95": -0.785429048179018,
+          "hi95": -0.6320939755052895,
+          "n": 20,
+          "pct_of_baseline": -24.22738922176683,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -0.8729693559558076,
+          "lo95": -0.9441047571234326,
+          "hi95": -0.8018339547881826,
+          "n": 20,
+          "pct_of_baseline": -24.562756719929727,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 3.9094484309798965,
+          "lo95": 3.5703743248000763,
+          "hi95": 4.248522537159717,
+          "n": 20,
+          "pct_of_baseline": 13.236620749022759,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 1.807852611279771,
+          "lo95": 1.4579035702313599,
+          "hi95": 2.157801652328182,
+          "n": 20,
+          "pct_of_baseline": 2.7217637163853636,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": 0.4,
+          "lo95": -0.19587858734154562,
+          "hi95": 0.9958785873415457,
+          "n": 20,
+          "pct_of_baseline": 24.242424242424242,
+          "resolved": false
+        }
+      }
+    },
+    "fs_p0.10": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7948.462897526505,
+          "lo95": 7937.469457205154,
+          "hi95": 7959.456337847856,
+          "n": 20
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 1.8355781766786579,
+          "lo95": 1.806967902566941,
+          "hi95": 1.8641884507903748,
+          "n": 20
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 2.1499193466413704,
+          "lo95": 2.1161085149591097,
+          "hi95": 2.183730178323631,
+          "n": 20
+        },
+        "mean_tt_s": {
+          "mean": 34.49056694466562,
+          "lo95": 34.120410725205964,
+          "hi95": 34.86072316412528,
+          "n": 20
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 67.37843873403799,
+          "lo95": 67.05561390626185,
+          "hi95": 67.70126356181412,
+          "n": 20
+        },
+        "wave_count": {
+          "mean": 1.3,
+          "lo95": 1.079957248724412,
+          "hi95": 1.520042751275588,
+          "n": 20
+        }
+      },
+      "per_seed": {
+        "6914975401685141156": {
+          "throughput_veh_h": 7975.971731448764,
+          "sigma_v_temporal_ms": 1.8295437723961037,
+          "sigma_v_spatial_ms": 2.079574108782884,
+          "mean_tt_s": 33.50927305322143,
+          "fuel_ml_per_veh_km": 66.44252334946896,
+          "wave_count": 1
+        },
+        "134183728835869882": {
+          "throughput_veh_h": 7928.26855123675,
+          "sigma_v_temporal_ms": 1.882535390857905,
+          "sigma_v_spatial_ms": 2.1400601850062078,
+          "mean_tt_s": 34.49285354554743,
+          "fuel_ml_per_veh_km": 67.5810508954279,
+          "wave_count": 2
+        },
+        "2378473973028931053": {
+          "throughput_veh_h": 7934.628975265018,
+          "sigma_v_temporal_ms": 1.8748556831452288,
+          "sigma_v_spatial_ms": 2.167649407649332,
+          "mean_tt_s": 34.96060239877164,
+          "fuel_ml_per_veh_km": 67.9808357318535,
+          "wave_count": 1
+        },
+        "3747978530954135749": {
+          "throughput_veh_h": 7937.809187279152,
+          "sigma_v_temporal_ms": 1.7981940469319435,
+          "sigma_v_spatial_ms": 2.0774474528286406,
+          "mean_tt_s": 34.44768171731641,
+          "fuel_ml_per_veh_km": 67.1127141137653,
+          "wave_count": 1
+        },
+        "677105600768189526": {
+          "throughput_veh_h": 8001.413427561837,
+          "sigma_v_temporal_ms": 1.822457888798279,
+          "sigma_v_spatial_ms": 2.2060865239599465,
+          "mean_tt_s": 34.53756802871232,
+          "fuel_ml_per_veh_km": 67.43641459493298,
+          "wave_count": 2
+        },
+        "661281422688282993": {
+          "throughput_veh_h": 7963.250883392227,
+          "sigma_v_temporal_ms": 1.9111287616383028,
+          "sigma_v_spatial_ms": 2.2156960898300966,
+          "mean_tt_s": 34.19063444428433,
+          "fuel_ml_per_veh_km": 66.32512463421382,
+          "wave_count": 1
+        },
+        "3011106312394044631": {
+          "throughput_veh_h": 7956.890459363958,
+          "sigma_v_temporal_ms": 1.8128001519751935,
+          "sigma_v_spatial_ms": 2.097722198196151,
+          "mean_tt_s": 34.690723118704646,
+          "fuel_ml_per_veh_km": 67.26702744604813,
+          "wave_count": 2
+        },
+        "6953598295321596746": {
+          "throughput_veh_h": 7956.890459363958,
+          "sigma_v_temporal_ms": 1.779140609165156,
+          "sigma_v_spatial_ms": 2.089590840966121,
+          "mean_tt_s": 34.88301662377218,
+          "fuel_ml_per_veh_km": 67.34685130858452,
+          "wave_count": 1
+        },
+        "165503670820534583": {
+          "throughput_veh_h": 7944.169611307421,
+          "sigma_v_temporal_ms": 1.8701450910340076,
+          "sigma_v_spatial_ms": 2.1628777768739114,
+          "mean_tt_s": 34.38898743964362,
+          "fuel_ml_per_veh_km": 67.3775665717042,
+          "wave_count": 1
+        },
+        "6134032994440706937": {
+          "throughput_veh_h": 7995.053003533568,
+          "sigma_v_temporal_ms": 1.7594339529266474,
+          "sigma_v_spatial_ms": 1.997448806584903,
+          "mean_tt_s": 35.3568788705605,
+          "fuel_ml_per_veh_km": 67.44134230383196,
+          "wave_count": 2
+        },
+        "8557154790156791364": {
+          "throughput_veh_h": 7915.547703180212,
+          "sigma_v_temporal_ms": 1.8677217290968255,
+          "sigma_v_spatial_ms": 2.171839067126558,
+          "mean_tt_s": 34.08877930296962,
+          "fuel_ml_per_veh_km": 67.67262651513411,
+          "wave_count": 2
+        },
+        "6538422657834023852": {
+          "throughput_veh_h": 7966.431095406361,
+          "sigma_v_temporal_ms": 1.8096750651031628,
+          "sigma_v_spatial_ms": 2.1833156408619714,
+          "mean_tt_s": 32.786729765104106,
+          "fuel_ml_per_veh_km": 66.37390322771262,
+          "wave_count": 1
+        },
+        "6904272788004776631": {
+          "throughput_veh_h": 7931.4487632508835,
+          "sigma_v_temporal_ms": 1.8582188796169192,
+          "sigma_v_spatial_ms": 2.1474133649571066,
+          "mean_tt_s": 33.83488373250821,
+          "fuel_ml_per_veh_km": 66.95230640825572,
+          "wave_count": 1
+        },
+        "6143473282319009404": {
+          "throughput_veh_h": 7963.250883392227,
+          "sigma_v_temporal_ms": 1.6931585041392225,
+          "sigma_v_spatial_ms": 2.052126072589048,
+          "mean_tt_s": 34.15012693233048,
+          "fuel_ml_per_veh_km": 67.06648775019899,
+          "wave_count": 1
+        },
+        "3944094060050347669": {
+          "throughput_veh_h": 7944.169611307421,
+          "sigma_v_temporal_ms": 1.7921926682795286,
+          "sigma_v_spatial_ms": 2.2039411857048083,
+          "mean_tt_s": 36.45296423915212,
+          "fuel_ml_per_veh_km": 69.3268358176024,
+          "wave_count": 1
+        },
+        "4910985839736976611": {
+          "throughput_veh_h": 7940.989399293287,
+          "sigma_v_temporal_ms": 1.7542250344454784,
+          "sigma_v_spatial_ms": 2.0675054840901748,
+          "mean_tt_s": 35.59968737620638,
+          "fuel_ml_per_veh_km": 68.23272758734048,
+          "wave_count": 1
+        },
+        "7382187975121682178": {
+          "throughput_veh_h": 7925.088339222615,
+          "sigma_v_temporal_ms": 1.90218689300376,
+          "sigma_v_spatial_ms": 2.200088531730598,
+          "mean_tt_s": 34.05010626803734,
+          "fuel_ml_per_veh_km": 67.17481358398334,
+          "wave_count": 1
+        },
+        "5690692725577505498": {
+          "throughput_veh_h": 7931.4487632508835,
+          "sigma_v_temporal_ms": 1.8709583899943547,
+          "sigma_v_spatial_ms": 2.245491447213512,
+          "mean_tt_s": 34.280193175377676,
+          "fuel_ml_per_veh_km": 67.16869623357172,
+          "wave_count": 1
+        },
+        "887972120279483394": {
+          "throughput_veh_h": 7925.088339222615,
+          "sigma_v_temporal_ms": 1.9341746886496043,
+          "sigma_v_spatial_ms": 2.256280675676033,
+          "mean_tt_s": 35.15248730756027,
+          "fuel_ml_per_veh_km": 68.10908000552392,
+          "wave_count": 2
+        },
+        "8026499204807041784": {
+          "throughput_veh_h": 7931.4487632508835,
+          "sigma_v_temporal_ms": 1.888816332375537,
+          "sigma_v_spatial_ms": 2.2362320721994093,
+          "mean_tt_s": 33.957161553531854,
+          "fuel_ml_per_veh_km": 67.17984660160523,
+          "wave_count": 1
+        }
+      },
+      "paired_delta_vs_baseline": {
+        "throughput_veh_h": {
+          "mean": -106.85512367491091,
+          "lo95": -117.60321861845975,
+          "hi95": -96.10702873136208,
+          "n": 20,
+          "pct_of_baseline": -1.3265165123669935,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -1.0898774114347103,
+          "lo95": -1.1738550351852333,
+          "hi95": -1.0058997876841873,
+          "n": 20,
+          "pct_of_baseline": -37.25496349570544,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -1.4041172214426094,
+          "lo95": -1.4789868425941175,
+          "hi95": -1.3292476002911013,
+          "n": 20,
+          "pct_of_baseline": -39.507675133449304,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 4.955472564413588,
+          "lo95": 4.474952780070376,
+          "hi95": 5.4359923487568,
+          "n": 20,
+          "pct_of_baseline": 16.778252002901844,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 0.9563389611492432,
+          "lo95": 0.5228705936889408,
+          "hi95": 1.3898073286095456,
+          "n": 20,
+          "pct_of_baseline": 1.4397903174081657,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -0.35,
+          "lo95": -0.7595565895717606,
+          "hi95": 0.05955658957176063,
+          "n": 20,
+          "pct_of_baseline": -21.212121212121215,
+          "resolved": false
+        }
+      }
+    },
+    "fs_p0.20": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7923.1802120141365,
+          "lo95": 7914.672469270007,
+          "hi95": 7931.687954758266,
+          "n": 20
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 1.3690004819463653,
+          "lo95": 1.338071154736786,
+          "hi95": 1.3999298091559444,
+          "n": 20
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 1.5024180883470177,
+          "lo95": 1.4691095186131249,
+          "hi95": 1.5357266580809106,
+          "n": 20
+        },
+        "mean_tt_s": {
+          "mean": 35.53927567128695,
+          "lo95": 35.12236961725865,
+          "hi95": 35.956181725315254,
+          "n": 20
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 66.72792118017153,
+          "lo95": 66.39958505456038,
+          "hi95": 67.0562573057827,
+          "n": 20
+        },
+        "wave_count": {
+          "mean": 1.05,
+          "lo95": 0.9453487972795847,
+          "hi95": 1.1546512027204154,
+          "n": 20
+        }
+      },
+      "per_seed": {
+        "6914975401685141156": {
+          "throughput_veh_h": 7928.26855123675,
+          "sigma_v_temporal_ms": 1.4103702142529757,
+          "sigma_v_spatial_ms": 1.58139713850248,
+          "mean_tt_s": 35.366617045026885,
+          "fuel_ml_per_veh_km": 66.66147461445675,
+          "wave_count": 1
+        },
+        "134183728835869882": {
+          "throughput_veh_h": 7902.826855123675,
+          "sigma_v_temporal_ms": 1.4055386676548722,
+          "sigma_v_spatial_ms": 1.6167630529753718,
+          "mean_tt_s": 35.51007315742803,
+          "fuel_ml_per_veh_km": 66.95563387114403,
+          "wave_count": 1
+        },
+        "2378473973028931053": {
+          "throughput_veh_h": 7915.547703180212,
+          "sigma_v_temporal_ms": 1.3095450753097653,
+          "sigma_v_spatial_ms": 1.4091389561638732,
+          "mean_tt_s": 36.56032733724421,
+          "fuel_ml_per_veh_km": 67.45550048274787,
+          "wave_count": 1
+        },
+        "3747978530954135749": {
+          "throughput_veh_h": 7925.088339222615,
+          "sigma_v_temporal_ms": 1.3442455514815226,
+          "sigma_v_spatial_ms": 1.4286579935622181,
+          "mean_tt_s": 35.135474994020186,
+          "fuel_ml_per_veh_km": 66.05187352575511,
+          "wave_count": 1
+        },
+        "677105600768189526": {
+          "throughput_veh_h": 7925.088339222615,
+          "sigma_v_temporal_ms": 1.2997397262567545,
+          "sigma_v_spatial_ms": 1.4927371753858625,
+          "mean_tt_s": 36.93073971211394,
+          "fuel_ml_per_veh_km": 68.17739299774539,
+          "wave_count": 2
+        },
+        "661281422688282993": {
+          "throughput_veh_h": 7909.187279151944,
+          "sigma_v_temporal_ms": 1.4854729627901402,
+          "sigma_v_spatial_ms": 1.5949809277292861,
+          "mean_tt_s": 34.84167942438876,
+          "fuel_ml_per_veh_km": 66.22382809957257,
+          "wave_count": 1
+        },
+        "3011106312394044631": {
+          "throughput_veh_h": 7925.088339222615,
+          "sigma_v_temporal_ms": 1.279889405071452,
+          "sigma_v_spatial_ms": 1.4424320567405438,
+          "mean_tt_s": 36.30561402164421,
+          "fuel_ml_per_veh_km": 67.09035784925761,
+          "wave_count": 1
+        },
+        "6953598295321596746": {
+          "throughput_veh_h": 7915.547703180212,
+          "sigma_v_temporal_ms": 1.371208857207638,
+          "sigma_v_spatial_ms": 1.5071159421038154,
+          "mean_tt_s": 34.97528650244517,
+          "fuel_ml_per_veh_km": 66.34250957150581,
+          "wave_count": 1
+        },
+        "165503670820534583": {
+          "throughput_veh_h": 7902.826855123675,
+          "sigma_v_temporal_ms": 1.4611400351110697,
+          "sigma_v_spatial_ms": 1.5951161932948945,
+          "mean_tt_s": 34.901657865149836,
+          "fuel_ml_per_veh_km": 66.52497337075374,
+          "wave_count": 1
+        },
+        "6134032994440706937": {
+          "throughput_veh_h": 7928.26855123675,
+          "sigma_v_temporal_ms": 1.3902969001299417,
+          "sigma_v_spatial_ms": 1.444818444238185,
+          "mean_tt_s": 35.60274779143999,
+          "fuel_ml_per_veh_km": 66.70096867990743,
+          "wave_count": 1
+        },
+        "8557154790156791364": {
+          "throughput_veh_h": 7963.250883392227,
+          "sigma_v_temporal_ms": 1.3018120641884918,
+          "sigma_v_spatial_ms": 1.4238751279181856,
+          "mean_tt_s": 36.4458429176923,
+          "fuel_ml_per_veh_km": 67.03075486317306,
+          "wave_count": 1
+        },
+        "6538422657834023852": {
+          "throughput_veh_h": 7928.26855123675,
+          "sigma_v_temporal_ms": 1.3720655386761587,
+          "sigma_v_spatial_ms": 1.4943782627150664,
+          "mean_tt_s": 34.604317160652904,
+          "fuel_ml_per_veh_km": 66.29888981920973,
+          "wave_count": 1
+        },
+        "6904272788004776631": {
+          "throughput_veh_h": 7950.53003533569,
+          "sigma_v_temporal_ms": 1.418908044554453,
+          "sigma_v_spatial_ms": 1.4907210181719939,
+          "mean_tt_s": 34.45633984779149,
+          "fuel_ml_per_veh_km": 65.61681832620911,
+          "wave_count": 1
+        },
+        "6143473282319009404": {
+          "throughput_veh_h": 7912.367491166078,
+          "sigma_v_temporal_ms": 1.3876309319848834,
+          "sigma_v_spatial_ms": 1.5837286431792892,
+          "mean_tt_s": 35.025125878193734,
+          "fuel_ml_per_veh_km": 66.52300860400143,
+          "wave_count": 1
+        },
+        "3944094060050347669": {
+          "throughput_veh_h": 7944.169611307421,
+          "sigma_v_temporal_ms": 1.244953984068161,
+          "sigma_v_spatial_ms": 1.4118914177114277,
+          "mean_tt_s": 37.6365489417818,
+          "fuel_ml_per_veh_km": 68.21110009192137,
+          "wave_count": 1
+        },
+        "4910985839736976611": {
+          "throughput_veh_h": 7921.908127208481,
+          "sigma_v_temporal_ms": 1.2708462200779251,
+          "sigma_v_spatial_ms": 1.416771663992539,
+          "mean_tt_s": 36.548465232286716,
+          "fuel_ml_per_veh_km": 67.57721496620896,
+          "wave_count": 1
+        },
+        "7382187975121682178": {
+          "throughput_veh_h": 7906.00706713781,
+          "sigma_v_temporal_ms": 1.4075038752126603,
+          "sigma_v_spatial_ms": 1.5070712179038919,
+          "mean_tt_s": 35.28300220083025,
+          "fuel_ml_per_veh_km": 66.55922080314872,
+          "wave_count": 1
+        },
+        "5690692725577505498": {
+          "throughput_veh_h": 7953.7102473498235,
+          "sigma_v_temporal_ms": 1.423573640929461,
+          "sigma_v_spatial_ms": 1.592234748226881,
+          "mean_tt_s": 34.5231573144385,
+          "fuel_ml_per_veh_km": 65.79849595277432,
+          "wave_count": 1
+        },
+        "887972120279483394": {
+          "throughput_veh_h": 7896.466431095407,
+          "sigma_v_temporal_ms": 1.3656132398120533,
+          "sigma_v_spatial_ms": 1.4760928182142403,
+          "mean_tt_s": 35.121240043105324,
+          "fuel_ml_per_veh_km": 66.48597904406402,
+          "wave_count": 1
+        },
+        "8026499204807041784": {
+          "throughput_veh_h": 7909.187279151944,
+          "sigma_v_temporal_ms": 1.429654704156923,
+          "sigma_v_spatial_ms": 1.5384389682103037,
+          "mean_tt_s": 35.01125603806476,
+          "fuel_ml_per_veh_km": 66.2724280698737,
+          "wave_count": 1
+        }
+      },
+      "paired_delta_vs_baseline": {
+        "throughput_veh_h": {
+          "mean": -132.13780918727835,
+          "lo95": -141.58178833864724,
+          "hi95": -122.69383003590946,
+          "n": 20,
+          "pct_of_baseline": -1.640379794310971,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -1.5564551061670036,
+          "lo95": -1.6376242823396716,
+          "hi95": -1.4752859299943355,
+          "n": 20,
+          "pct_of_baseline": -53.20385352938358,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -2.0516184797369634,
+          "lo95": -2.119133748391283,
+          "hi95": -1.984103211082644,
+          "n": 20,
+          "pct_of_baseline": -57.72643135304074,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 6.004181291034911,
+          "lo95": 5.611868804513065,
+          "hi95": 6.396493777556756,
+          "n": 20,
+          "pct_of_baseline": 20.32897275943519,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 0.30582140728279017,
+          "lo95": -0.022885247233392636,
+          "hi95": 0.634528061798973,
+          "n": 20,
+          "pct_of_baseline": 0.4604211675458296,
+          "resolved": false
+        },
+        "wave_count": {
+          "mean": -0.6,
+          "lo95": -0.9841381195606564,
+          "hi95": -0.21586188043934346,
+          "n": 20,
+          "pct_of_baseline": -36.36363636363637,
+          "resolved": true
+        }
+      }
+    }
+  }
+}

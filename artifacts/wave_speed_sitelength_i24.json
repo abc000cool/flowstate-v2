@@ -1,0 +1,90 @@
+{
+  "experiment": "wave_speed_sitelength",
+  "fleet": "artifacts/idm_i24.json",
+  "question": "does the calibrated i24 fleet produce 14-22 km/h waves at prescribed densities?",
+  "scenario": "1500 m ring at prescribed densities + artifacts/idm_i24.json fleet, IDM, no AVs",
+  "detectors": "absolute 40 km/h threshold (standard) and relative 0.5 x p90 (ROADMAP D1)",
+  "per_density": {
+    "ring_i24fleet_40": {
+      "density_veh_km": 40.0,
+      "n_vehicles": 60,
+      "config_hash": "a9c25d451f15",
+      "n_backward_fronts": 12,
+      "mean_kmh": 12.747970614911404,
+      "median_kmh": 12.974025974025974,
+      "fraction_in_band": 0.3333333333333333,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 16,
+        "mean_kmh": 12.140230082417583,
+        "median_kmh": 13.178571428571429,
+        "fraction_in_band": 0.3125
+      }
+    },
+    "ring_i24fleet_60": {
+      "density_veh_km": 60.0,
+      "n_vehicles": 90,
+      "config_hash": "eb66ba193fa8",
+      "n_backward_fronts": 2,
+      "mean_kmh": 16.25,
+      "median_kmh": 16.25,
+      "fraction_in_band": 1.0,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 29,
+        "mean_kmh": 14.246172520764173,
+        "median_kmh": 15.000000000000002,
+        "fraction_in_band": 0.6896551724137931
+      }
+    },
+    "ring_i24fleet_80": {
+      "density_veh_km": 80.0,
+      "n_vehicles": 120,
+      "config_hash": "63fd87d47ec8",
+      "n_backward_fronts": 0,
+      "mean_kmh": null,
+      "median_kmh": null,
+      "fraction_in_band": null,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 57,
+        "mean_kmh": 16.392493092291446,
+        "median_kmh": 16.2,
+        "fraction_in_band": 0.9473684210526315
+      }
+    },
+    "ring_i24fleet_100": {
+      "density_veh_km": 100.0,
+      "n_vehicles": 150,
+      "config_hash": "8589884a1637",
+      "n_backward_fronts": 0,
+      "mean_kmh": null,
+      "median_kmh": null,
+      "fraction_in_band": null,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 40,
+        "mean_kmh": 16.879198498162843,
+        "median_kmh": 18.0,
+        "fraction_in_band": 0.875
+      }
+    }
+  },
+  "n_backward_fronts": 14,
+  "wave_speed_kmh": {
+    "mean": 13.248260527066918,
+    "median": 13.161244019138756,
+    "p10": 10.384285714285713,
+    "p90": 16.35
+  },
+  "empirical_band_kmh": [
+    14.0,
+    22.0
+  ],
+  "fraction_in_band": 0.42857142857142855,
+  "newell_prediction_kmh": [
+    18.3,
+    19.7
+  ],
+  "us101_replica_measured_kmh": 10.7
+}

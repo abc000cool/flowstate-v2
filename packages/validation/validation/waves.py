@@ -65,11 +65,28 @@ class WaveSet:
         return tuple(w for w in self.waves if w.speed_ms < 0)
 
 
+RELATIVE_REFERENCE_PERCENTILE: float = 90.0
+"""Percentile of the non-empty bin speeds used as the reference speed in
+relative-threshold mode (the field's recovery speed between stripes)."""
+
+
+def relative_jam_threshold(field: SpeedField, relative_frac: float) -> float:
+    """Jam threshold [m/s] for relative mode: ``relative_frac`` × the field's
+    :data:`RELATIVE_REFERENCE_PERCENTILE` speed over non-empty bins."""
+    if not 0.0 < relative_frac < 1.0:
+        raise ValueError(f"relative_frac must be in (0, 1), got {relative_frac}")
+    finite = field.mean_speed[~np.isnan(field.mean_speed)]
+    if finite.size == 0:
+        return float("nan")
+    return float(relative_frac * np.percentile(finite, RELATIVE_REFERENCE_PERCENTILE))
+
+
 def detect_waves(
     field: SpeedField,
     v_jam_thresh: float = V_JAM_THRESH,
     min_area_bins: int = 4,
     v_free: float | None = None,
+    relative_frac: float | None = None,
 ) -> WaveSet:
     """Detect stop-and-go waves in a binned speed field.
 
@@ -82,27 +99,47 @@ def detect_waves(
     smaller than ``min_area_bins`` bins, or spanning fewer than two time
     rows (no propagation to measure), are ignored.
 
+    **Relative mode** (``relative_frac`` given) replaces the absolute
+    threshold by ``relative_frac × p90`` of the field's non-empty bin speeds
+    (:func:`relative_jam_threshold`). The absolute 40 km/h threshold labels
+    an entire heavily congested field as one jam and finds no fronts
+    (docs/WAVE_SPEED_DIAGNOSIS.md: zero fronts on a ring at 80–100 veh/km,
+    the US-101 site's pinned blob) — the stripes inside such a field are
+    only visible against the local recovery speed. Relative mode is a
+    detection *variant*: results obtained with it must say so and quote the
+    fraction, and the CLAUDE.md §7.1 wave-speed criterion remains defined on
+    the standard threshold.
+
     Args:
         field: Binned mean-speed field from :func:`validation.fields.speed_field`.
         v_jam_thresh: Jam speed threshold [m/s]; defaults to
             ``flowstate_core.constants.V_JAM_THRESH`` (40 km/h in SI).
+            Ignored when ``relative_frac`` is given.
         min_area_bins: Minimum component size in bins; smaller blobs are
             treated as noise and skipped.
         v_free: Free speed used for the amplitude ``v_free − min(v_in_jam)``
             [m/s]. ``None`` (default) estimates it as the mean of all
             non-jammed, non-empty bins; if every bin is jammed, the field
             maximum is used.
+        relative_frac: Fraction in (0, 1) of the field's p90 speed to use as
+            the jam threshold (relative mode); ``None`` keeps the absolute
+            threshold.
 
     Returns:
         A :class:`WaveSet`; ``count == 0`` when no component qualifies.
 
     Raises:
-        ValueError: If ``min_area_bins < 1`` or ``v_jam_thresh <= 0``.
+        ValueError: If ``min_area_bins < 1``, ``v_jam_thresh <= 0`` or
+            ``relative_frac`` is outside (0, 1).
     """
     if min_area_bins < 1:
         raise ValueError(f"min_area_bins must be >= 1, got {min_area_bins}")
     if v_jam_thresh <= 0:
         raise ValueError(f"v_jam_thresh must be > 0, got {v_jam_thresh}")
+    if relative_frac is not None:
+        v_jam_thresh = relative_jam_threshold(field, relative_frac)
+        if not np.isfinite(v_jam_thresh):
+            return WaveSet(waves=())
 
     speed = field.mean_speed
     finite = ~np.isnan(speed)

@@ -92,6 +92,68 @@ class CorridorNetwork(BaseModel):
         return self
 
 
+class RampSpec(BaseModel):
+    """One on- or off-ramp attached to an OSM corridor (docs/CONTRACTS.md §2).
+
+    Real corridors exchange traffic with interchanges; a mainline-only
+    replica cannot conserve flow along the corridor (the US-101 replica's
+    missing merge was a documented structural failure,
+    docs/M3_US101_VALIDATION.md §6). A ramp is a chain of network edges
+    (OSM ``motorway_link`` ways) joined to one corridor edge:
+
+    * ``kind="on"`` — ``edges`` end at the junction where the ramp joins
+      ``attach_edge``; vehicles are inserted at the start of ``edges[0]``
+      following ``inflow`` (time-ordered ``(t_start [s], veh/s)`` steps,
+      same convention as the corridor inflow) and then drive the corridor.
+    * ``kind="off"`` — ``edges`` start at the junction where the ramp leaves
+      ``attach_edge`` (the last corridor edge a diverging vehicle drives);
+      every vehicle passing that point exits with probability
+      ``exit_fraction`` (time-ordered ``(t_start [s], fraction)`` steps,
+      looked up at the vehicle's departure time), drawn once per vehicle
+      from the run's RNG, and leaves the network at the end of ``edges[-1]``.
+
+    Ramp vehicles draw fleet parameters, AV tags and compliance exactly like
+    mainline vehicles. Positions on ramp edges are not part of the corridor's
+    linear ``x`` and are not recorded in ``trajectories.parquet``; a ramp
+    vehicle appears in the outputs from the moment it is on a corridor edge.
+    """
+
+    kind: Literal["on", "off"]
+    edges: list[str] = Field(min_length=1)
+    """Ramp edge ids in driving order."""
+    attach_edge: str = Field(min_length=1)
+    """Corridor edge the ramp joins (on) or leaves from (off)."""
+    inflow: list[tuple[float, float]] = Field(default_factory=list)
+    """On-ramp demand steps ``(t_start [s], veh/s)``; empty for off-ramps."""
+    exit_fraction: list[tuple[float, float]] = Field(default_factory=list)
+    """Off-ramp diverge steps ``(t_start [s], fraction in [0, 1])``; empty
+    for on-ramps."""
+    name: str = ""
+    """Optional label (e.g. the interchange) recorded in run metadata."""
+
+    @model_validator(mode="after")
+    def _check_kind(self) -> Self:
+        if self.kind == "on":
+            if not self.inflow:
+                raise ValueError("an on-ramp needs a non-empty inflow")
+            if self.exit_fraction:
+                raise ValueError("an on-ramp cannot carry exit_fraction")
+            times = [t for t, _ in self.inflow]
+            if times != sorted(times) or any(q < 0 for _, q in self.inflow):
+                raise ValueError("on-ramp inflow must be time-ordered and >= 0")
+        else:
+            if not self.exit_fraction:
+                raise ValueError("an off-ramp needs a non-empty exit_fraction")
+            if self.inflow:
+                raise ValueError("an off-ramp cannot carry inflow")
+            times = [t for t, _ in self.exit_fraction]
+            if times != sorted(times):
+                raise ValueError("exit_fraction steps must be time-ordered")
+            if any(not 0.0 <= f <= 1.0 for _, f in self.exit_fraction):
+                raise ValueError("exit_fraction values must lie in [0, 1]")
+        return self
+
+
 class OSMNetwork(BaseModel):
     """Corridor imported from OpenStreetMap (the 'any city' path, §3.2.4)."""
 
@@ -102,11 +164,30 @@ class OSMNetwork(BaseModel):
     corridor_edges: list[str] = Field(default_factory=list)
     """SUMO edge ids forming the analysis corridor after import/pruning."""
     inflow: list[tuple[float, float]] = Field(default_factory=list)
+    boundary: BoundarySpec | None = None
+    """Optional measured downstream boundary condition. On an OSM corridor
+    the schedule is applied to the LAST edge of ``corridor_edges``, which
+    therefore plays the exit-buffer role (its ``exit_buffer_m`` is ignored;
+    the edge has its real length) and lies outside the measured span."""
+    ramps: list[RampSpec] = Field(default_factory=list)
+    """Interchange ramps exchanging traffic with the corridor (see
+    :class:`RampSpec`); each ``attach_edge`` must be in ``corridor_edges``."""
 
     @model_validator(mode="after")
     def _check_source(self) -> Self:
         if self.osm_file is None and self.bbox is None:
             raise ValueError("OSMNetwork needs osm_file or bbox")
+        if self.boundary is not None and len(self.corridor_edges) < 2:
+            raise ValueError(
+                "an OSM boundary needs corridor_edges with at least two edges "
+                "(the last one hosts the boundary, outside the measured span)"
+            )
+        corridor = set(self.corridor_edges)
+        for ramp in self.ramps:
+            if ramp.attach_edge not in corridor:
+                raise ValueError(f"ramp attach_edge {ramp.attach_edge!r} is not in corridor_edges")
+            if corridor & set(ramp.edges):
+                raise ValueError(f"ramp edges {ramp.edges} overlap corridor_edges")
         return self
 
 
@@ -128,6 +209,22 @@ class FleetSpec(BaseModel):
     idm_calibration: str | None = None
     """Path to an IDMCalibration artifact; when set, population stats override
     the scalar fields above and outputs record the artifact's data_hash."""
+    lc_strategic: float = Field(default=1.0, ge=0.0)
+    """SUMO ``lcStrategic``: eagerness for route-required (strategic) lane
+    changes, written on every vType when it differs from SUMO's default 1.0.
+    Needed on corridors with off-ramps: with the default, exiting vehicles
+    that are still in an inner lane at the diverge stop at the edge end and
+    wait for a gap, which creates a spurious fixed bottleneck (measured on the
+    I-24 replica and on the ramp fixture, docs/I24_VALIDATION.md); larger
+    values make them move over earlier. It does not touch car-following."""
+    lc_keep_right: float = Field(default=1.0, ge=0.0)
+    """SUMO ``lcKeepRight``: eagerness to obey a keep-right rule, written on
+    every vType when it differs from SUMO's default 1.0. US freeways have no
+    keep-right obligation and the I-24 data shows all four lanes carrying
+    similar vehicle-time (30/24/20/26%, left to right) at similar speeds;
+    with the default, SUMO piles the replica's traffic into the two right
+    lanes (merge-zone crawl at 23-27 km/h while the left lanes run free —
+    docs/I24_VALIDATION.md). 0 disables the rule. Car-following untouched."""
 
 
 class OracleSpec(BaseModel):

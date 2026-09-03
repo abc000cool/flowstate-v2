@@ -17,6 +17,11 @@ Index of everything in `docs/`. Start with the repo-root
 | [M2_RESULTS.md](M2_RESULTS.md) | Calibration from real NGSIM US-101 data: IDM population fit (2,452 episodes, holdout RMSE), fundamental diagram with bootstrap CIs, observed demand extraction — with the raw-NGSIM and congested-site caveats stated |
 | [M3_RESULTS.md](M3_RESULTS.md) | The 540-run penetration × compliance sweep on the synthetic `corridor_10km` (27 cells × 20 seeds, paired CIs): dose-response, controller ranking including the honest PI-saturation failure |
 - [ROADMAP.md](ROADMAP.md) — the working plan for the next phase: critical path, four tracks, and what is blocked on whom
+- [I24_DATA.md](I24_DATA.md) — the I-24 MOTION day: streaming ingestion, fragmentation, the tracking-coverage limitation, 17,652-episode IDM fit, corridor geometry (ROADMAP §1.1–1.3)
+- [I24_VALIDATION.md](I24_VALIDATION.md) — the `i24_replica` criteria battery, two demand arms, the wave-speed prediction test (ROADMAP §1.4)
+- [INTERVIEWS.md](INTERVIEWS.md) — discovery-interview kit: target roles, the ten-question script, outreach template, what to record (Track C1)
+- [LESSONS.md](LESSONS.md) — what we got wrong and fixed, with the evidence for each correction (Track A2)
+- [QA.md](QA.md) — anticipated questions with pointers to the evidence (Track A5)
 - [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) — why the US-101 wave-speed criterion fails: site and density, not calibration
 - [US101_PENETRATION.md](US101_PENETRATION.md) — does the dose-response survive real geometry? (σ_v yes; the no-cost claim no)
 - [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md) — all four controllers head-to-head at 5% / 100%, same seeds

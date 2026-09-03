@@ -1,0 +1,1388 @@
+{
+  "schema_version": 2,
+  "created_at": "2026-08-30T01:10:17Z",
+  "scenario": "us101_replica",
+  "arm": "no_boundary",
+  "replicates": 20,
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "config_hash": "bb843086f6b0",
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0-dev",
+    "microsim": "2.0.0.dev0"
+  },
+  "boundary": null,
+  "observed": {
+    "cache_version": 2,
+    "data_hash": "8578f4754b267ad09eed5b0b8b3e18c83b7d9036b7afdcec295d5d3f19195e22",
+    "period": "p1",
+    "lanes": [
+      1,
+      5
+    ],
+    "n_vehicles": 2169,
+    "sections_m": [
+      100.0,
+      320.0,
+      550.0
+    ],
+    "window_s": 300.0,
+    "n_windows": 3,
+    "segment_m": 160.0,
+    "counts": [
+      [
+        705,
+        712,
+        606
+      ],
+      [
+        667,
+        703,
+        634
+      ],
+      [
+        636,
+        710,
+        646
+      ]
+    ],
+    "hourly_flows_veh_h": [
+      [
+        8460.0,
+        8544.0,
+        7272.0
+      ],
+      [
+        8004.0,
+        8436.0,
+        7608.0
+      ],
+      [
+        7632.0,
+        8520.0,
+        7752.0
+      ]
+    ],
+    "segment_speeds_ms": [
+      [
+        10.341823660880518,
+        11.877031900657721,
+        14.549868878462611,
+        17.937664281638696
+      ],
+      [
+        9.815198630445794,
+        10.745145741978094,
+        13.149249153905789,
+        17.271021855397635
+      ],
+      [
+        7.6732228250967545,
+        8.54974731376744,
+        10.337444580888281,
+        10.2845466724813
+      ]
+    ],
+    "waves": {
+      "count": 4,
+      "n_backward": 0,
+      "speeds_kmh": [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "backward_speeds_kmh": [],
+      "amplitudes_ms": [
+        7.43,
+        8.5,
+        9.28,
+        13.2
+      ],
+      "mean_backward_speed_kmh": null
+    },
+    "waves_stripe": {
+      "count": 6,
+      "n_backward": 6,
+      "speeds_kmh": [
+        -18.0,
+        -15.75,
+        -6.0,
+        -18.0,
+        -18.0,
+        -18.0
+      ],
+      "backward_speeds_kmh": [
+        18.0,
+        15.75,
+        6.0,
+        18.0,
+        18.0,
+        18.0
+      ],
+      "amplitudes_ms": [
+        6.38,
+        7.16,
+        7.72,
+        6.47,
+        8.09,
+        11.92
+      ],
+      "mean_backward_speed_kmh": 15.625
+    },
+    "waves_stripe_params": {
+      "v_jam_thresh_kmh": 25.0,
+      "dt_bin_s": 10.0,
+      "dx_bin_m": 50.0
+    },
+    "boundary_schedule_wall": [
+      [
+        0.0,
+        18.4063
+      ],
+      [
+        30.0,
+        18.4063
+      ],
+      [
+        60.0,
+        17.582
+      ],
+      [
+        90.0,
+        18.2823
+      ],
+      [
+        120.0,
+        18.2529
+      ],
+      [
+        150.0,
+        19.2362
+      ],
+      [
+        180.0,
+        18.5915
+      ],
+      [
+        210.0,
+        19.0058
+      ],
+      [
+        240.0,
+        18.4123
+      ],
+      [
+        270.0,
+        18.8992
+      ],
+      [
+        300.0,
+        18.5246
+      ],
+      [
+        330.0,
+        18.3987
+      ],
+      [
+        360.0,
+        18.129
+      ],
+      [
+        390.0,
+        17.6864
+      ],
+      [
+        420.0,
+        18.9499
+      ],
+      [
+        450.0,
+        18.5993
+      ],
+      [
+        480.0,
+        19.629
+      ],
+      [
+        510.0,
+        18.7685
+      ],
+      [
+        540.0,
+        16.7472
+      ],
+      [
+        570.0,
+        12.7107
+      ],
+      [
+        600.0,
+        11.8665
+      ],
+      [
+        630.0,
+        11.8946
+      ],
+      [
+        660.0,
+        12.7401
+      ],
+      [
+        690.0,
+        14.8044
+      ],
+      [
+        720.0,
+        13.9787
+      ],
+      [
+        750.0,
+        4.8295
+      ],
+      [
+        780.0,
+        5.2249
+      ],
+      [
+        810.0,
+        8.7437
+      ],
+      [
+        840.0,
+        11.5433
+      ],
+      [
+        870.0,
+        14.8553
+      ],
+      [
+        900.0,
+        16.7519
+      ],
+      [
+        930.0,
+        16.7085
+      ]
+    ],
+    "boundary_source": "mean mainline speed, local_y in [540, 640) m, 30 s windows, NGSIM US-101 p1",
+    "wall_s": 1.8
+  },
+  "simulated": {
+    "config_hash": "bb843086f6b0",
+    "seeds": [
+      6914975401685141156,
+      134183728835869882,
+      2378473973028931053,
+      3747978530954135749,
+      677105600768189526,
+      661281422688282993,
+      3011106312394044631,
+      6953598295321596746,
+      165503670820534583,
+      6134032994440706937,
+      8557154790156791364,
+      6538422657834023852,
+      6904272788004776631,
+      6143473282319009404,
+      3944094060050347669,
+      4910985839736976611,
+      7382187975121682178,
+      5690692725577505498,
+      887972120279483394,
+      8026499204807041784
+    ],
+    "run_dirs": [
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/6914975401685141156",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/134183728835869882",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/2378473973028931053",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/3747978530954135749",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/677105600768189526",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/661281422688282993",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/3011106312394044631",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/6953598295321596746",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/165503670820534583",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/6134032994440706937",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/8557154790156791364",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/6538422657834023852",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/6904272788004776631",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/6143473282319009404",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/3944094060050347669",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/4910985839736976611",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/7382187975121682178",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/5690692725577505498",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/887972120279483394",
+      "/Users/anshpathak/Desktop/apps/flowstate/runs/m3_us101/micro_no_boundary/bb843086f6b0/8026499204807041784"
+    ],
+    "wall_s": 8.3,
+    "demand_realized_fraction": [
+      0.9988,
+      1.0,
+      0.9988,
+      0.9985,
+      1.0,
+      0.9992,
+      0.9992,
+      1.0,
+      0.9988,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.9996,
+      0.9996,
+      1.0,
+      0.9996
+    ],
+    "counts_mean": [
+      [
+        732.05,
+        714.0,
+        630.95
+      ],
+      [
+        731.35,
+        716.45,
+        638.3
+      ],
+      [
+        730.0,
+        719.5,
+        645.7
+      ]
+    ],
+    "hourly_flows_veh_h_mean": [
+      [
+        8784.6,
+        8568.0,
+        7571.4
+      ],
+      [
+        8776.2,
+        8597.4,
+        7659.6
+      ],
+      [
+        8760.0,
+        8634.0,
+        7748.4
+      ]
+    ],
+    "counts_per_replicate": [
+      [
+        [
+          740,
+          709,
+          630
+        ],
+        [
+          744,
+          707,
+          638
+        ],
+        [
+          748,
+          704,
+          642
+        ]
+      ],
+      [
+        [
+          729,
+          714,
+          634
+        ],
+        [
+          737,
+          716,
+          638
+        ],
+        [
+          736,
+          735,
+          632
+        ]
+      ],
+      [
+        [
+          731,
+          717,
+          629
+        ],
+        [
+          733,
+          720,
+          630
+        ],
+        [
+          720,
+          725,
+          638
+        ]
+      ],
+      [
+        [
+          742,
+          704,
+          638
+        ],
+        [
+          739,
+          715,
+          636
+        ],
+        [
+          735,
+          736,
+          633
+        ]
+      ],
+      [
+        [
+          737,
+          722,
+          635
+        ],
+        [
+          732,
+          720,
+          640
+        ],
+        [
+          733,
+          715,
+          656
+        ]
+      ],
+      [
+        [
+          732,
+          698,
+          637
+        ],
+        [
+          729,
+          694,
+          657
+        ],
+        [
+          718,
+          693,
+          670
+        ]
+      ],
+      [
+        [
+          738,
+          708,
+          636
+        ],
+        [
+          741,
+          707,
+          648
+        ],
+        [
+          744,
+          715,
+          657
+        ]
+      ],
+      [
+        [
+          731,
+          712,
+          628
+        ],
+        [
+          726,
+          722,
+          624
+        ],
+        [
+          722,
+          730,
+          646
+        ]
+      ],
+      [
+        [
+          742,
+          712,
+          631
+        ],
+        [
+          742,
+          709,
+          645
+        ],
+        [
+          744,
+          708,
+          651
+        ]
+      ],
+      [
+        [
+          725,
+          714,
+          629
+        ],
+        [
+          725,
+          721,
+          632
+        ],
+        [
+          713,
+          729,
+          631
+        ]
+      ],
+      [
+        [
+          721,
+          716,
+          635
+        ],
+        [
+          725,
+          715,
+          651
+        ],
+        [
+          725,
+          715,
+          664
+        ]
+      ],
+      [
+        [
+          725,
+          720,
+          622
+        ],
+        [
+          723,
+          720,
+          634
+        ],
+        [
+          718,
+          721,
+          636
+        ]
+      ],
+      [
+        [
+          722,
+          731,
+          621
+        ],
+        [
+          721,
+          735,
+          624
+        ],
+        [
+          730,
+          724,
+          635
+        ]
+      ],
+      [
+        [
+          728,
+          705,
+          641
+        ],
+        [
+          722,
+          705,
+          649
+        ],
+        [
+          725,
+          713,
+          646
+        ]
+      ],
+      [
+        [
+          740,
+          727,
+          623
+        ],
+        [
+          739,
+          730,
+          633
+        ],
+        [
+          739,
+          733,
+          644
+        ]
+      ],
+      [
+        [
+          744,
+          707,
+          629
+        ],
+        [
+          742,
+          714,
+          632
+        ],
+        [
+          744,
+          716,
+          640
+        ]
+      ],
+      [
+        [
+          730,
+          710,
+          637
+        ],
+        [
+          737,
+          712,
+          641
+        ],
+        [
+          740,
+          716,
+          645
+        ]
+      ],
+      [
+        [
+          728,
+          721,
+          627
+        ],
+        [
+          725,
+          725,
+          639
+        ],
+        [
+          721,
+          727,
+          645
+        ]
+      ],
+      [
+        [
+          735,
+          719,
+          620
+        ],
+        [
+          731,
+          724,
+          627
+        ],
+        [
+          735,
+          721,
+          636
+        ]
+      ],
+      [
+        [
+          721,
+          714,
+          637
+        ],
+        [
+          714,
+          718,
+          648
+        ],
+        [
+          710,
+          714,
+          667
+        ]
+      ]
+    ],
+    "segment_speeds_ms_mean": [
+      [
+        17.066570738677036,
+        16.966716342378213,
+        16.94716790208077,
+        17.503317807978583
+      ],
+      [
+        17.05201443281898,
+        16.871381355979395,
+        16.813902684755153,
+        17.368624713380147
+      ],
+      [
+        18.900098963927682,
+        18.54174945020389,
+        18.28707683819778,
+        18.7380433076895
+      ]
+    ],
+    "waves_per_replicate": [
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      }
+    ],
+    "wave_count_mean": 0.0,
+    "mean_backward_speed_kmh": null,
+    "n_replicates_with_backward_waves": 0,
+    "waves_stripe_per_replicate": [
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      },
+      {
+        "count": 0,
+        "n_backward": 0,
+        "speeds_kmh": [],
+        "backward_speeds_kmh": [],
+        "amplitudes_ms": [],
+        "mean_backward_speed_kmh": null
+      }
+    ],
+    "stripe_mean_backward_speed_kmh": null,
+    "n_replicates_with_stripe_backward_waves": 0,
+    "metrics_ci": {
+      "throughput_veh_h": {
+        "mean": 7919.522968197879,
+        "lo95": 7907.735213884644,
+        "hi95": 7931.310722511114,
+        "n": 20,
+        "underpowered": false
+      },
+      "mean_tt_s": {
+        "mean": null,
+        "lo95": null,
+        "hi95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "p90_tt_s": {
+        "mean": null,
+        "lo95": null,
+        "hi95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "sigma_v_spatial_ms": {
+        "mean": 2.012753893684409,
+        "lo95": 1.957853777700316,
+        "hi95": 2.067654009668502,
+        "n": 20,
+        "underpowered": false
+      },
+      "sigma_v_temporal_ms": {
+        "mean": 0.893284604767245,
+        "lo95": 0.8624993000568972,
+        "hi95": 0.9240699094775928,
+        "n": 20,
+        "underpowered": false
+      },
+      "vmt_veh_km": {
+        "mean": 3203.2032995247428,
+        "lo95": 3200.396278792472,
+        "hi95": 3206.0103202570135,
+        "n": 20,
+        "underpowered": false
+      },
+      "vht_veh_h": {
+        "mean": 49.23413194444443,
+        "lo95": 48.796086789020656,
+        "hi95": 49.6721770998682,
+        "n": 20,
+        "underpowered": false
+      },
+      "fuel_ml_per_veh_km": {
+        "mean": 66.31387684446182,
+        "lo95": 66.12445043552742,
+        "hi95": 66.50330325339621,
+        "n": 20,
+        "underpowered": false
+      },
+      "wave_count": {
+        "mean": 0.0,
+        "lo95": 0.0,
+        "hi95": 0.0,
+        "n": 20,
+        "underpowered": false
+      },
+      "wave_speed_kmh": {
+        "mean": null,
+        "lo95": null,
+        "hi95": null,
+        "n": 0,
+        "underpowered": true
+      },
+      "wave_amplitude_ms": {
+        "mean": null,
+        "lo95": null,
+        "hi95": null,
+        "n": 0,
+        "underpowered": true
+      }
+    }
+  },
+  "geh": {
+    "values": [
+      3.496,
+      0.259,
+      3.475,
+      8.43,
+      1.749,
+      0.591,
+      12.46,
+      1.231,
+      0.041
+    ],
+    "fraction_under_5": 0.7778,
+    "bins": "sections x 5-min windows, hourly-equivalent volumes (x12)"
+  },
+  "rmspe": {
+    "value": 0.7276760373103723,
+    "n_bins": 12
+  },
+  "waves": {
+    "observed": {
+      "count": 4,
+      "n_backward": 0,
+      "speeds_kmh": [
+        -0.0,
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "backward_speeds_kmh": [],
+      "amplitudes_ms": [
+        7.43,
+        8.5,
+        9.28,
+        13.2
+      ],
+      "mean_backward_speed_kmh": null
+    },
+    "simulated_mean_backward_speed_kmh": null,
+    "simulated_wave_count_mean": 0.0,
+    "n_replicates_with_backward_waves": 0,
+    "field_bins": "15 s x 75 m, x < 640 m both sides",
+    "observed_stripe": {
+      "count": 6,
+      "n_backward": 6,
+      "speeds_kmh": [
+        -18.0,
+        -15.75,
+        -6.0,
+        -18.0,
+        -18.0,
+        -18.0
+      ],
+      "backward_speeds_kmh": [
+        18.0,
+        15.75,
+        6.0,
+        18.0,
+        18.0,
+        18.0
+      ],
+      "amplitudes_ms": [
+        6.38,
+        7.16,
+        7.72,
+        6.47,
+        8.09,
+        11.92
+      ],
+      "mean_backward_speed_kmh": 15.625
+    },
+    "stripe_params": {
+      "v_jam_thresh_kmh": 25.0,
+      "dt_bin_s": 10.0,
+      "dx_bin_m": 50.0
+    },
+    "simulated_stripe_mean_backward_speed_kmh": null,
+    "n_replicates_with_stripe_backward_waves": 0,
+    "stripe_note": "the 40 km/h default threshold merges this fully congested 640 m site into components whose upstream front pins at the site boundary (slope 0); the stripe analysis lowers the threshold to isolate the deep stop-and-go stripes inside the congestion, identically on both sides"
+  },
+  "criteria": [
+    {
+      "name": "link_flows_geh",
+      "value": 0.7777777777777778,
+      "threshold": "GEH < 5 for >= 85% of link-hour comparisons",
+      "passed": false,
+      "evaluated": true,
+      "detail": "fraction of comparisons with GEH < 5"
+    },
+    {
+      "name": "speeds_rmspe",
+      "value": 0.7276760373103723,
+      "threshold": "segment-speed RMSPE <= 15%",
+      "passed": false,
+      "evaluated": true,
+      "detail": ""
+    },
+    {
+      "name": "wave_speed",
+      "value": null,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+      "passed": false,
+      "evaluated": true,
+      "detail": "no backward wave detected"
+    },
+    {
+      "name": "ring_emergence",
+      "value": null,
+      "threshold": "Sugiyama ring emergence benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "ring_dampening",
+      "value": null,
+      "threshold": "Stern single-AV dampening benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "n_seeds",
+      "value": 20.0,
+      "threshold": "n_seeds >= 20",
+      "passed": true,
+      "evaluated": true,
+      "detail": ""
+    }
+  ],
+  "metrics_ci": {
+    "throughput_veh_h": {
+      "mean": 7919.522968197879,
+      "lo95": 7907.735213884644,
+      "hi95": 7931.310722511114,
+      "n": 20,
+      "underpowered": false
+    },
+    "mean_tt_s": {
+      "mean": null,
+      "lo95": null,
+      "hi95": null,
+      "n": 0,
+      "underpowered": true
+    },
+    "p90_tt_s": {
+      "mean": null,
+      "lo95": null,
+      "hi95": null,
+      "n": 0,
+      "underpowered": true
+    },
+    "sigma_v_spatial_ms": {
+      "mean": 2.012753893684409,
+      "lo95": 1.957853777700316,
+      "hi95": 2.067654009668502,
+      "n": 20,
+      "underpowered": false
+    },
+    "sigma_v_temporal_ms": {
+      "mean": 0.893284604767245,
+      "lo95": 0.8624993000568972,
+      "hi95": 0.9240699094775928,
+      "n": 20,
+      "underpowered": false
+    },
+    "vmt_veh_km": {
+      "mean": 3203.2032995247428,
+      "lo95": 3200.396278792472,
+      "hi95": 3206.0103202570135,
+      "n": 20,
+      "underpowered": false
+    },
+    "vht_veh_h": {
+      "mean": 49.23413194444443,
+      "lo95": 48.796086789020656,
+      "hi95": 49.6721770998682,
+      "n": 20,
+      "underpowered": false
+    },
+    "fuel_ml_per_veh_km": {
+      "mean": 66.31387684446182,
+      "lo95": 66.12445043552742,
+      "hi95": 66.50330325339621,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_count": {
+      "mean": 0.0,
+      "lo95": 0.0,
+      "hi95": 0.0,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_speed_kmh": {
+      "mean": null,
+      "lo95": null,
+      "hi95": null,
+      "n": 0,
+      "underpowered": true
+    },
+    "wave_amplitude_ms": {
+      "mean": null,
+      "lo95": null,
+      "hi95": null,
+      "n": 0,
+      "underpowered": true
+    }
+  },
+  "notes": [
+    "Observed side: NGSIM US-101 period 1, mainline lanes 1-5, duplicate rows dropped (scripts/us101_data.py logic); ~6% of real vehicles entered via the on-ramp and are counted at downstream sections but never injected by the replica (docs/M2_RESULTS.md \u00a77.6).",
+    "no_boundary arm: the replica has no downstream boundary congestion; M2 predicts it runs faster than observed (docs/M2_RESULTS.md \u00a76) \u2014 RMSPE reflects that gap honestly.",
+    "with_boundary arm: measured downstream speed schedule (last 100 m, 30 s windows) applied on a 200 m exit-buffer edge OUTSIDE the measured span (FHWA measured-boundary calibration practice). The replica still lacks the auxiliary lane and on/off ramps (internal merge bottleneck at ~150-165 m), so remaining in-span disagreement is expected and reported.",
+    "Comparisons use the 3 full 5-min windows (0-900 s) inside the 952.8 s period-1 span; the trailing partial window is excluded.",
+    "Crossing counts censor vehicles first observed at/past a section on both sides (recording start vs warmup end).",
+    "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py -> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an identical-variants null)."
+  ]
+}

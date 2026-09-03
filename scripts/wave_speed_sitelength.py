@@ -36,18 +36,25 @@ DENSITIES_VEH_KM = (40.0, 60.0, 80.0, 100.0)
 """Inside the analytic instability band for the fitted params (31.8-141.5 veh/km)."""
 
 
-def build_config(density_veh_km: float) -> dict:
-    """Ring at a prescribed density, driven by the calibrated US-101 population."""
+FLEETS = {"us101": "artifacts/idm_us101.json", "i24": "artifacts/idm_i24.json"}
+RELATIVE_FRAC = 0.5
+"""Relative-threshold detector fraction (ROADMAP D1): jam = v < 0.5 × p90 of
+the field, which resolves stripes where the absolute 40 km/h threshold labels
+the whole ring as one jam (80-100 veh/km)."""
+
+
+def build_config(density_veh_km: float, fleet: str = "us101") -> dict:
+    """Ring at a prescribed density, driven by a calibrated IDM population."""
     n = round(density_veh_km * RING_CIRCUMFERENCE_M / 1000.0)
     return {
-        "name": f"ring_us101fleet_{density_veh_km:.0f}",
+        "name": f"ring_{fleet}fleet_{density_veh_km:.0f}",
         "tier": "micro",
         "network": {
             "kind": "ring",
             "circumference_m": RING_CIRCUMFERENCE_M,
             "n_vehicles": n,
         },
-        "fleet": {"model": "IDM", "idm_calibration": "artifacts/idm_us101.json"},
+        "fleet": {"model": "IDM", "idm_calibration": FLEETS[fleet]},
         "av": {"penetration": 0.0, "compliance": 1.0, "controller": None},
         "sim": {"duration_s": 900.0, "warmup_s": 180.0},
         "seed": 42,
@@ -71,6 +78,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--procs", type=int, default=6)
     ap.add_argument("--replicates", type=int, default=10)
+    ap.add_argument("--fleet", choices=sorted(FLEETS), default="us101")
     args = ap.parse_args()
 
     import numpy as np
@@ -82,7 +90,7 @@ def main() -> None:
     pending: list[tuple[str, dict, int]] = []
     meta: dict[str, tuple[dict, str, list[int]]] = {}
     for dens in DENSITIES_VEH_KM:
-        cfg_json = build_config(dens)
+        cfg_json = build_config(dens, args.fleet)
         cfg = ScenarioConfig.model_validate(cfg_json)
         chash = config_hash(cfg)
         seeds = spawn_seeds(cfg.seed, args.replicates)
@@ -109,32 +117,48 @@ def main() -> None:
     from validation.waves import detect_waves
 
     all_speeds: list[float] = []
-    for cell, (cfg_json, chash, seeds) in meta.items():
-        got_cell: list[float] = []
-        for s in seeds:
-            with open(RUNS_ROOT / cell / chash / str(s) / "trajectories.parquet", "rb") as fh:
-                traj = pd.read_parquet(fh)
-            waves = detect_waves(speed_field(traj))
-            got_cell += [-w.speed_ms * 3.6 for w in waves.waves if w.speed_ms < 0.0]
-        a = np.asarray(got_cell, dtype=float)
-        results[cell] = {
-            "density_veh_km": cfg_json["network"]["n_vehicles"] / (RING_CIRCUMFERENCE_M / 1000.0),
-            "n_vehicles": cfg_json["network"]["n_vehicles"],
-            "config_hash": chash,
+
+    def _stats(vals: list[float]) -> dict:
+        a = np.asarray(vals, dtype=float)
+        return {
             "n_backward_fronts": int(a.size),
             "mean_kmh": float(a.mean()) if a.size else None,
             "median_kmh": float(np.median(a)) if a.size else None,
             "fraction_in_band": float(np.mean((a >= 14.0) & (a <= 22.0))) if a.size else None,
         }
+
+    for cell, (cfg_json, chash, seeds) in meta.items():
+        got_cell: list[float] = []
+        got_rel: list[float] = []
+        for s in seeds:
+            with open(RUNS_ROOT / cell / chash / str(s) / "trajectories.parquet", "rb") as fh:
+                traj = pd.read_parquet(fh)
+            field = speed_field(traj)
+            waves = detect_waves(field)
+            got_cell += [-w.speed_ms * 3.6 for w in waves.waves if w.speed_ms < 0.0]
+            waves_rel = detect_waves(field, relative_frac=RELATIVE_FRAC)
+            got_rel += [-w.speed_ms * 3.6 for w in waves_rel.waves if w.speed_ms < 0.0]
+        results[cell] = {
+            "density_veh_km": cfg_json["network"]["n_vehicles"] / (RING_CIRCUMFERENCE_M / 1000.0),
+            "n_vehicles": cfg_json["network"]["n_vehicles"],
+            "config_hash": chash,
+            **_stats(got_cell),
+            "relative_detector": {"relative_frac": RELATIVE_FRAC, **_stats(got_rel)},
+        }
         all_speeds += got_cell
-        print(f"  {cell}: n={a.size} mean={results[cell]['mean_kmh']}")
+        print(
+            f"  {cell}: absolute n={len(got_cell)} mean={results[cell]['mean_kmh']} | "
+            f"relative n={len(got_rel)} mean={results[cell]['relative_detector']['mean_kmh']}"
+        )
 
     speeds_kmh = all_speeds
     arr = np.asarray(speeds_kmh, dtype=float)
     summary = {
         "experiment": "wave_speed_sitelength",
-        "question": "does the calibrated US-101 fleet produce 14-22 km/h waves on a 10 km corridor?",
-        "scenario": "1500 m ring at prescribed densities + artifacts/idm_us101.json fleet, IDM, no AVs",
+        "fleet": FLEETS[args.fleet],
+        "question": f"does the calibrated {args.fleet} fleet produce 14-22 km/h waves at prescribed densities?",
+        "scenario": f"1500 m ring at prescribed densities + {FLEETS[args.fleet]} fleet, IDM, no AVs",
+        "detectors": "absolute 40 km/h threshold (standard) and relative 0.5 x p90 (ROADMAP D1)",
         "per_density": results,
         "n_backward_fronts": int(arr.size),
         "wave_speed_kmh": {
@@ -148,7 +172,12 @@ def main() -> None:
         "newell_prediction_kmh": [18.3, 19.7],
         "us101_replica_measured_kmh": 10.7,
     }
-    (REPO / "artifacts" / "wave_speed_sitelength.json").write_text(json.dumps(summary, indent=2))
+    out_name = (
+        "wave_speed_sitelength.json"
+        if args.fleet == "us101"
+        else f"wave_speed_sitelength_{args.fleet}.json"
+    )
+    (REPO / "artifacts" / out_name).write_text(json.dumps(summary, indent=2))
     print(json.dumps({k: v for k, v in summary.items() if k != "per_density"}, indent=2))
 
 

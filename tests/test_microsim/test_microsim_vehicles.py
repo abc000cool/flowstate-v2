@@ -259,3 +259,182 @@ class TestCorridorRoutes:
             assert v.get("departSpeed") == "avg"
         # Departure order is time-sorted, so the round-robin covers all lanes.
         assert {v.get("departLane") for v in vehicles} == {"0", "1", "2", "3", "4"}
+
+
+class TestRampPlans:
+    """Ramp demand and routing (docs/CONTRACTS.md §2 RampSpec)."""
+
+    CORRIDOR = ("e0", "e1", "e2", "e3")
+
+    def _ramps(self):
+        from flowstate_core.config import RampSpec
+
+        return [
+            RampSpec(kind="on", edges=["on_a"], attach_edge="e1", inflow=[(0.0, 0.25)], name="A"),
+            RampSpec(kind="off", edges=["off_b"], attach_edge="e2", exit_fraction=[(0.0, 0.5)]),
+            RampSpec(kind="off", edges=["off_c"], attach_edge="e0", exit_fraction=[(0.0, 0.2)]),
+        ]
+
+    def test_plan_without_ramps_is_unchanged(self):
+        base = build_corridor_plan([(0.0, 0.5)], 120.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        again = build_corridor_plan(
+            [(0.0, 0.5)],
+            120.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=(),
+            corridor_edges=self.CORRIDOR,
+        )
+        assert base == again and base.route == () and base.route_of(0) == "main"
+
+    def test_on_ramp_adds_departures_and_routes(self):
+        plan = build_corridor_plan(
+            [(0.0, 0.5)],
+            120.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=self._ramps(),
+            corridor_edges=self.CORRIDOR,
+        )
+        n_main, n_on = 60, 30  # 120 s at 0.5 and 0.25 veh/s
+        assert plan.n == n_main + n_on
+        assert len(plan.route) == plan.n
+        origins = [r.split("_")[0] for r in plan.route]
+        assert origins[:n_main] == ["main"] * n_main and origins[n_main:] == ["on0"] * n_on
+        # Off-ramp draws: mainline vehicles may leave at off2 (e0, 20%) or off1
+        # (e2, 50%); on-ramp vehicles enter at e1 so they can only take off1.
+        main_routes = plan.route[:n_main]
+        on_routes = plan.route[n_main:]
+        assert set(main_routes) <= {"main", "main_off2", "main_off1"}
+        assert set(on_routes) <= {"on0", "on0_off1"}
+        assert "main_off2" in main_routes and "main_off1" in main_routes
+        frac_off2 = sum(r == "main_off2" for r in main_routes) / n_main
+        assert 0.05 < frac_off2 < 0.45
+        # Every vehicle still has params, tags and a departure time.
+        assert len(plan.params) == len(plan.is_av) == len(plan.depart_s) == plan.n
+
+    def test_ramp_plan_is_deterministic(self):
+        a = build_corridor_plan(
+            [(0.0, 0.5)],
+            60.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=self._ramps(),
+            corridor_edges=self.CORRIDOR,
+        )
+        b = build_corridor_plan(
+            [(0.0, 0.5)],
+            60.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=self._ramps(),
+            corridor_edges=self.CORRIDOR,
+        )
+        assert a == b
+
+    def test_unknown_attach_edge_raises(self):
+        with pytest.raises(ValueError, match="not in corridor_edges"):
+            build_corridor_plan(
+                [(0.0, 0.5)],
+                60.0,
+                FleetSpec(),
+                AVSpec(),
+                make_rng(SEED),
+                ramps=self._ramps(),
+                corridor_edges=("x",),
+            )
+
+    def test_ramp_routes_edge_lists(self):
+        from microsim.vehicles import ramp_routes
+
+        routes = ramp_routes(self.CORRIDOR, self._ramps())
+        assert routes["main"] == self.CORRIDOR
+        assert routes["on0"] == ("on_a", "e1", "e2", "e3")
+        assert routes["main_off1"] == ("e0", "e1", "e2", "off_b")
+        assert routes["main_off2"] == ("e0", "off_c")
+        assert routes["on0_off1"] == ("on_a", "e1", "e2", "off_b")
+        assert "on0_off2" not in routes  # off-ramp upstream of the on-ramp
+
+    def test_route_file_names_routes_and_ramp_insertion(self, tmp_path):
+        from microsim.vehicles import ramp_routes
+
+        ramps = self._ramps()
+        plan = build_corridor_plan(
+            [(0.0, 0.5)],
+            40.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=ramps,
+            corridor_edges=self.CORRIDOR,
+        )
+        path = write_corridor_routes(
+            self.CORRIDOR,
+            plan,
+            "IDM",
+            0.5,
+            tmp_path / "r.rou.xml",
+            lanes=3,
+            routes=ramp_routes(self.CORRIDOR, ramps),
+        )
+        root = ET.parse(path).getroot()
+        route_ids = {r.get("id") for r in root.findall("route")}
+        assert {"main", "on0", "main_off1", "main_off2", "on0_off1"} <= route_ids
+        vehicles = root.findall("vehicle")
+        assert len(vehicles) == plan.n
+        for v in vehicles:
+            assert v.get("route") in route_ids
+            if v.get("route").startswith("on"):
+                assert v.get("departLane") == "free" and v.get("departPos") == "base"
+            else:
+                assert v.get("departLane") in {"0", "1", "2"}
+        # Unknown route id in the plan is a hard error.
+        bad = plan.__class__(**{**plan.__dict__, "route": ("nope",) * plan.n})
+        with pytest.raises(ValueError, match="unknown route"):
+            write_corridor_routes(self.CORRIDOR, bad, "IDM", 0.5, tmp_path / "bad.rou.xml")
+
+
+class TestLcStrategic:
+    """FleetSpec.lc_strategic → vType lcStrategic (docs/CONTRACTS.md §2)."""
+
+    def test_default_keeps_route_file_unchanged(self, tmp_path):
+        plan = build_corridor_plan([(0.0, 0.5)], 20.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        default = write_corridor_routes(("e0",), plan, "IDM", 0.5, tmp_path / "a.rou.xml")
+        explicit = write_corridor_routes(
+            ("e0",), plan, "IDM", 0.5, tmp_path / "b.rou.xml", lc_strategic=1.0
+        )
+        assert default.read_text() == explicit.read_text()
+        assert "lcStrategic" not in default.read_text()
+
+    def test_nondefault_written_on_every_vtype(self, tmp_path):
+        plan = build_corridor_plan([(0.0, 0.5)], 20.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        path = write_corridor_routes(
+            ("e0",), plan, "IDM", 0.5, tmp_path / "c.rou.xml", lc_strategic=5.0
+        )
+        root = ET.parse(path).getroot()
+        vtypes = root.findall("vType")
+        assert len(vtypes) == plan.n
+        assert all(v.get("lcStrategic") == "5" for v in vtypes)
+
+    def test_fleet_spec_field(self):
+        assert FleetSpec().lc_strategic == 1.0
+        assert FleetSpec(lc_strategic=5.0).lc_strategic == 5.0
+        with pytest.raises(ValueError):
+            FleetSpec(lc_strategic=-1.0)
+        assert FleetSpec().lc_keep_right == 1.0
+        with pytest.raises(ValueError):
+            FleetSpec(lc_keep_right=-0.5)
+
+    def test_keep_right_written_only_when_changed(self, tmp_path):
+        plan = build_corridor_plan([(0.0, 0.5)], 20.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        default = write_corridor_routes(("e0",), plan, "IDM", 0.5, tmp_path / "d.rou.xml")
+        assert "lcKeepRight" not in default.read_text()
+        path = write_corridor_routes(
+            ("e0",), plan, "IDM", 0.5, tmp_path / "k.rou.xml", lc_strategic=5.0, lc_keep_right=0.0
+        )
+        vtypes = ET.parse(path).getroot().findall("vType")
+        assert all(v.get("lcKeepRight") == "0" and v.get("lcStrategic") == "5" for v in vtypes)

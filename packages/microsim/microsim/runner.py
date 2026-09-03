@@ -33,13 +33,16 @@ child), which is also the CLAUDE.md §3.4 performance path.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import multiprocessing
 import platform
 import time
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
@@ -47,11 +50,13 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import sumolib
 
 from controllers.registry import default_params, get_segment_controller, get_vehicle_controller
 from flowstate_core.config import (
     CorridorNetwork,
     OSMNetwork,
+    RampSpec,
     RingNetwork,
     ScenarioConfig,
     config_hash,
@@ -70,6 +75,7 @@ from microsim.vehicles import (
     build_corridor_plan,
     build_ring_plan,
     load_idm_calibration,
+    ramp_routes,
     write_corridor_routes,
     write_ring_routes,
 )
@@ -136,12 +142,18 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             net.length_m, lanes=net.lanes, workdir=workdir, entry_m=entry_m, exit_m=exit_m
         )
     if isinstance(net, OSMNetwork):
-        return osm_import(
+        bundle = osm_import(
             osm_file=net.osm_file,
             bbox=net.bbox,
             corridor_edges=tuple(net.corridor_edges),
             workdir=workdir,
+            keep_edges=tuple(e for r in net.ramps for e in r.edges),
         )
+        if net.boundary is not None:
+            # docs/CONTRACTS.md §2: on an OSM corridor the LAST corridor edge
+            # plays the exit-buffer role and hosts the boundary schedule.
+            bundle = dataclasses.replace(bundle, exit_edge=bundle.edge_ids[-1])
+        return bundle
     raise TypeError(f"unsupported network type: {type(net).__name__}")
 
 
@@ -174,8 +186,27 @@ def _build_plan_and_routes(
         inflow = list(net.inflow)
         if not inflow:
             raise ValueError("OSM scenario needs a non-empty network.inflow for demand")
-    plan = build_corridor_plan(inflow, cfg.sim.duration_s, cfg.fleet, cfg.av, rng)
-    lanes = net.lanes if isinstance(net, CorridorNetwork) else 1
+    routes: dict[str, tuple[str, ...]] | None = None
+    if isinstance(net, CorridorNetwork):
+        lanes = net.lanes
+        plan = build_corridor_plan(inflow, cfg.sim.duration_s, cfg.fleet, cfg.av, rng)
+    else:
+        # OSM: insert round-robin over the entry edge's real lane count (the
+        # M3 multi-lane scheme), read from the compiled net.
+        compiled = sumolib.net.readNet(str(bundle.net_path))
+        lanes = int(compiled.getEdge(bundle.edge_ids[0]).getLaneNumber())
+        if net.ramps:
+            _check_ramp_connectivity(compiled, net.ramps)
+            routes = ramp_routes(bundle.edge_ids, net.ramps)
+        plan = build_corridor_plan(
+            inflow,
+            cfg.sim.duration_s,
+            cfg.fleet,
+            cfg.av,
+            rng,
+            ramps=net.ramps,
+            corridor_edges=bundle.edge_ids,
+        )
     write_corridor_routes(
         bundle.edge_ids,
         plan,
@@ -184,8 +215,39 @@ def _build_plan_and_routes(
         routes_path,
         depart_edge_spread=depart_edge_spread,
         lanes=lanes,
+        routes=routes,
+        lc_strategic=cfg.fleet.lc_strategic,
+        lc_keep_right=cfg.fleet.lc_keep_right,
     )
     return plan
+
+
+def _check_ramp_connectivity(net: Any, ramps: Sequence[RampSpec]) -> None:
+    """Verify every ramp's edges chain and join its ``attach_edge`` in the net.
+
+    Raises:
+        ValueError: A ramp edge is missing or two consecutive edges (or the
+            ramp and its corridor edge) are not connected, which SUMO would
+            otherwise only report as a silent route failure.
+    """
+    for ramp in ramps:
+        seq = (
+            [*ramp.edges, ramp.attach_edge]
+            if ramp.kind == "on"
+            else [ramp.attach_edge, *ramp.edges]
+        )
+        for a, b in pairwise(seq):
+            try:
+                ea = net.getEdge(a)
+                net.getEdge(b)
+            except KeyError as exc:
+                raise ValueError(
+                    f"ramp {ramp.name or ramp.kind}: edge {exc} not in network"
+                ) from exc
+            if b not in {e.getID() for e in ea.getOutgoing()}:
+                raise ValueError(
+                    f"ramp {ramp.name or ramp.kind}: edge {a!r} does not connect to {b!r}"
+                )
 
 
 class _TrafficLib:
@@ -388,15 +450,66 @@ def _write_parquet(table: pa.Table, path: Path) -> None:
         pq.write_table(table, f)
 
 
-def _write_trajectories(rows: dict[str, list[Any]], is_ring: bool, path: Path) -> None:
-    """Write the contract-typed trajectories table (plus ring x_unwrapped)."""
-    fields = list(_TRAJ_SCHEMA_BASE)
-    if is_ring:
-        fields.append(("x_unwrapped", pa.float64()))
-    schema = pa.schema(fields)
-    arrays = [pa.array(rows[name], type=dtype) for name, dtype in fields]
-    table = pa.Table.from_arrays(arrays, schema=schema)
-    _write_parquet(table, path)
+TRAJ_FLUSH_ROWS: Final[int] = 500_000
+"""Rows buffered before a trajectory row group is flushed to disk. A 7,800 s
+four-lane corridor run captures ~10 M rows; holding them as Python lists
+until the end costs several GB per process, which is what took a 16 GB
+machine down with eight workers. Flushing in 500k-row groups bounds the
+buffer at ~100 MB while the file content is unchanged."""
+
+
+class _TrajectoryWriter:
+    """Row-group streaming writer for the contract-typed trajectories table.
+
+    Rows are appended column-wise into ``cols``; :meth:`maybe_flush` writes a
+    Parquet row group (through an open file object, see :func:`_write_parquet`)
+    once :data:`TRAJ_FLUSH_ROWS` are buffered, keeping only a compact numpy
+    copy of ``(t, x, v)`` for the post-run Edie edges frame.
+    """
+
+    def __init__(self, path: Path, is_ring: bool) -> None:
+        fields = list(_TRAJ_SCHEMA_BASE)
+        if is_ring:
+            fields.append(("x_unwrapped", pa.float64()))
+        self._fields = fields
+        self.schema = pa.schema(fields)
+        self.cols: dict[str, list[Any]] = {name: [] for name, _ in fields}
+        self._sink = open(path, "wb")
+        self._writer = pq.ParquetWriter(self._sink, self.schema)
+        self._txv: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+        self.n_rows = 0
+
+    def maybe_flush(self, force: bool = False) -> None:
+        n = len(self.cols["t"])
+        if n == 0 or (n < TRAJ_FLUSH_ROWS and not force):
+            return
+        arrays = [pa.array(self.cols[name], type=dtype) for name, dtype in self._fields]
+        self._writer.write_table(pa.Table.from_arrays(arrays, schema=self.schema))
+        self._txv.append(
+            (
+                np.asarray(self.cols["t"], dtype=np.float64),
+                np.asarray(self.cols["x"], dtype=np.float64),
+                np.asarray(self.cols["v"], dtype=np.float64),
+            )
+        )
+        self.n_rows += n
+        for name in self.cols:
+            self.cols[name] = []
+
+    def close(self) -> pd.DataFrame:
+        """Flush, close the file, and return the ``(t, x, v)`` frame of all rows."""
+        self.maybe_flush(force=True)
+        self._writer.close()
+        self._sink.close()
+        if not self._txv:
+            return pd.DataFrame({"t": [], "x": [], "v": []}, dtype=np.float64)
+        return pd.DataFrame(
+            {
+                "t": np.concatenate([c[0] for c in self._txv]),
+                "x": np.concatenate([c[1] for c in self._txv]),
+                "v": np.concatenate([c[2] for c in self._txv]),
+            }
+        )
 
 
 def run_micro(
@@ -543,18 +656,18 @@ def run_micro(
 
     offsets_by_edge = dict(zip(bundle.edge_ids, bundle.offsets, strict=True))
     circumference = bundle.total_length_m
+    has_ramps = isinstance(cfg.network, OSMNetwork) and bool(cfg.network.ramps)
+    n_departed_by_route: dict[str, int] = {}
+    route_by_id = {plan.vehicle_id(i): plan.route_of(i) for i in range(plan.n)}
 
     # Measured downstream boundary condition (docs/CONTRACTS.md §2): a speed
     # schedule on the exit-buffer edge OUTSIDE the corridor proper, standard
     # FHWA microsim calibration practice for congestion entering the modeled
     # section from downstream (FHWA-HOP-18-036; see BoundarySpec docstring).
     boundary_steps: list[tuple[float, float]] = []
-    if (
-        isinstance(cfg.network, CorridorNetwork)
-        and cfg.network.boundary is not None
-        and bundle.exit_edge is not None
-    ):
-        boundary_steps = [(float(ts), float(vs)) for ts, vs in cfg.network.boundary.steps]
+    boundary_spec = getattr(cfg.network, "boundary", None)
+    if boundary_spec is not None and bundle.exit_edge is not None:
+        boundary_steps = [(float(ts), float(vs)) for ts, vs in boundary_spec.steps]
     boundary_idx = 0
     # Apply every step scheduled at or before t = 0 up front.
     while boundary_idx < len(boundary_steps) and boundary_steps[boundary_idx][0] <= 0.0:
@@ -569,9 +682,9 @@ def run_micro(
     pert_vehicle: str | None = None
     n_departed = 0
 
-    cols: dict[str, list[Any]] = {name: [] for name, _ in _TRAJ_SCHEMA_BASE}
-    if is_ring:
-        cols["x_unwrapped"] = []
+    traj_path = run_dir / "trajectories.parquet"
+    traj_writer = _TrajectoryWriter(traj_path, is_ring)
+    cols = traj_writer.cols
 
     try:
         for k in range(n_steps):
@@ -586,8 +699,20 @@ def run_micro(
             for vid in mod.simulation.getDepartedIDList():
                 mod.vehicle.subscribe(vid, sub_vars)
                 n_departed += 1
+                if has_ramps:
+                    rid = route_by_id.get(vid, "main")
+                    n_departed_by_route[rid] = n_departed_by_route.get(rid, 0) + 1
             results = mod.vehicle.getAllSubscriptionResults()
-            ids = sorted(results)
+            # Fuel is accounted for every vehicle; the linear-x state (and
+            # therefore controllers, VSL, trajectories) covers vehicles on
+            # corridor edges only — ramp edges have no linear x.
+            if has_ramps:
+                for vid, res in results.items():
+                    if res[tc.VAR_ROAD_ID] not in offsets_by_edge:
+                        fuel_mg[vid] = fuel_mg.get(vid, 0.0) + res[tc.VAR_FUELCONSUMPTION] * step
+                ids = sorted(v for v in results if results[v][tc.VAR_ROAD_ID] in offsets_by_edge)
+            else:
+                ids = sorted(results)
             if not ids:
                 v_ref_hist.append((t, 0.0))
                 while v_ref_hist and v_ref_hist[0][0] < t - V_REF_WINDOW_S:
@@ -713,14 +838,13 @@ def run_micro(
                     cols["complied"].append(complied_by_id.get(vid, False))
                     if is_ring:
                         cols["x_unwrapped"].append(unwrap_x[vid][1])
+                traj_writer.maybe_flush()
         n_arrived = n_departed - len(mod.vehicle.getIDList())
     finally:
         mod.close()
 
     # --- Artifacts --------------------------------------------------------
-    traj_path = run_dir / "trajectories.parquet"
-    _write_trajectories(cols, is_ring, traj_path)
-    traj_df = pd.DataFrame({"t": cols["t"], "x": cols["x"], "v": cols["v"]})
+    traj_df = traj_writer.close()
     edges_df = _edie_edges_frame(
         traj_df, 1.0 / cfg.sim.output_hz, cfg.sim.duration_s, bundle.total_length_m
     )
@@ -750,29 +874,66 @@ def run_micro(
         "vsl": cfg.av.vsl,
         "boundary": (
             {
-                "kind": cfg.network.boundary.kind,
+                "kind": boundary_spec.kind,
                 "exit_edge": bundle.exit_edge,
-                "exit_buffer_m": cfg.network.boundary.exit_buffer_m,
+                "exit_buffer_m": (
+                    boundary_spec.exit_buffer_m
+                    if isinstance(cfg.network, CorridorNetwork)
+                    else bundle.edge_lengths[-1]
+                ),
                 "n_steps": len(boundary_steps),
                 "n_steps_applied": boundary_idx,
                 "v_limit_min_ms": min(v for _, v in boundary_steps),
                 "v_limit_max_ms": max(v for _, v in boundary_steps),
             }
-            if boundary_steps
-            and isinstance(cfg.network, CorridorNetwork)
-            and cfg.network.boundary is not None
+            if boundary_steps and boundary_spec is not None
             else None
         ),
         "fuel_unit": "ml (HBEFA4 mg/s x step, / 0.74 kg/l gasoline density)",
         "fuel_total_ml": float(sum(fuel_ml.values())),
         "fuel_ml_per_vehicle": fuel_ml,
         "perturbed_vehicle": pert_vehicle,
+        "ramps": (
+            [
+                {
+                    "index": k,
+                    "name": r.name,
+                    "kind": r.kind,
+                    "attach_edge": r.attach_edge,
+                    "edges": list(r.edges),
+                    "n_planned": sum(
+                        1 for i in range(plan.n) if _route_origin(plan.route_of(i)) == k
+                    ),
+                    "n_departed": sum(
+                        n for rid, n in n_departed_by_route.items() if _route_origin(rid) == k
+                    ),
+                    "n_planned_exiting": sum(
+                        1 for i in range(plan.n) if _route_exit(plan.route_of(i)) == k
+                    ),
+                }
+                for k, r in enumerate(cfg.network.ramps)
+            ]
+            if has_ramps and isinstance(cfg.network, OSMNetwork)
+            else None
+        ),
         "backend": "traci" if lib.use_traci else "libsumo",
         "notes": notes,
     }
     meta_path = run_dir / "meta.json"
     meta_path.write_text(json.dumps(meta, indent=2))
     return RunPaths(run_dir=run_dir, trajectories=traj_path, edges=edges_path, meta=meta_path)
+
+
+def _route_origin(route_id: str) -> int:
+    """On-ramp index a route starts from (``-1`` for mainline)."""
+    head = route_id.split("_")[0]
+    return int(head[2:]) if head.startswith("on") else -1
+
+
+def _route_exit(route_id: str) -> int:
+    """Off-ramp index a route exits by (``-1`` when it drives to the end)."""
+    tail = route_id.split("_")[-1]
+    return int(tail[3:]) if tail.startswith("off") else -1
 
 
 def _replicate_worker(payload: tuple[dict[str, Any], int, str]) -> tuple[str, str, str, str]:

@@ -1,43 +1,73 @@
 {
   "experiment": "wave_speed_sitelength",
-  "question": "does the calibrated US-101 fleet produce 14-22 km/h waves on a 10 km corridor?",
+  "fleet": "artifacts/idm_us101.json",
+  "question": "does the calibrated us101 fleet produce 14-22 km/h waves at prescribed densities?",
   "scenario": "1500 m ring at prescribed densities + artifacts/idm_us101.json fleet, IDM, no AVs",
+  "detectors": "absolute 40 km/h threshold (standard) and relative 0.5 x p90 (ROADMAP D1)",
   "per_density": {
     "ring_us101fleet_40": {
       "density_veh_km": 40.0,
       "n_vehicles": 60,
-      "config_hash": "d9693c853ca8",
+      "config_hash": "b08c0e198628",
       "n_backward_fronts": 13,
       "mean_kmh": 11.442857142857143,
       "median_kmh": 12.0,
-      "fraction_in_band": 0.23076923076923078
+      "fraction_in_band": 0.23076923076923078,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 14,
+        "mean_kmh": 11.99800544283303,
+        "median_kmh": 12.545454545454545,
+        "fraction_in_band": 0.2857142857142857
+      }
     },
     "ring_us101fleet_60": {
       "density_veh_km": 60.0,
       "n_vehicles": 90,
-      "config_hash": "102e06c5dfd5",
+      "config_hash": "e8a75d72d2c4",
       "n_backward_fronts": 7,
       "mean_kmh": 14.583812615955475,
       "median_kmh": 15.428571428571429,
-      "fraction_in_band": 0.7142857142857143
+      "fraction_in_band": 0.7142857142857143,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 30,
+        "mean_kmh": 14.002668507962623,
+        "median_kmh": 15.115384615384617,
+        "fraction_in_band": 0.7
+      }
     },
     "ring_us101fleet_80": {
       "density_veh_km": 80.0,
       "n_vehicles": 120,
-      "config_hash": "7a4430e1fda0",
+      "config_hash": "a2f9e6be692e",
       "n_backward_fronts": 0,
       "mean_kmh": null,
       "median_kmh": null,
-      "fraction_in_band": null
+      "fraction_in_band": null,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 62,
+        "mean_kmh": 17.13937784227158,
+        "median_kmh": 18.0,
+        "fraction_in_band": 0.9838709677419355
+      }
     },
     "ring_us101fleet_100": {
       "density_veh_km": 100.0,
       "n_vehicles": 150,
-      "config_hash": "fce617f996bd",
+      "config_hash": "3b78eeca1a68",
       "n_backward_fronts": 0,
       "mean_kmh": null,
       "median_kmh": null,
-      "fraction_in_band": null
+      "fraction_in_band": null,
+      "relative_detector": {
+        "relative_frac": 0.5,
+        "n_backward_fronts": 46,
+        "mean_kmh": 16.991844942913158,
+        "median_kmh": 18.0,
+        "fraction_in_band": 0.8478260869565217
+      }
     }
   },
   "n_backward_fronts": 20,

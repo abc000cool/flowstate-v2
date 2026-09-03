@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-08-30T01:17:58Z",
+  "source": "micro corridor_10km baseline (no AVs) 15af228307f8 seeds [6914975401685141156, 134183728835869882, 2378473973028931053]",
+  "data_hash": "micro corridor_10km baseline (no AVs) 15af228307f8 seeds [6914975401685141156, 134183728835869882, 2378473973028931053]",
+  "kind": "fd",
+  "fd": {
+    "v_f": 24.212185923729795,
+    "w": -3.474993992589088,
+    "rho_jam": 0.19486619852821568,
+    "ci95": {
+      "v_f": [
+        24.115928739899992,
+        24.322821729028426
+      ],
+      "w": [
+        -3.753550114241964,
+        -3.199171413692212
+      ],
+      "rho_jam": [
+        0.18269447409526182,
+        0.20869123317661586
+      ],
+      "rho_c": [
+        0.0242789034307133,
+        0.024594741096312104
+      ],
+      "q_max": [
+        0.5897906922493593,
+        0.5940280605308124
+      ]
+    }
+  },
+  "n_observations": 9201,
+  "r2_freeflow": 0.9362286240236013,
+  "congested_quantile": 0.9,
+  "notes": "FD fitted from the micro ground-truth runs themselves so the macro-vs-micro comparison isolates the bottleneck-variant question; screening use only, not a field calibration. bootstrap: 200/200 resamples usable (seed 42)."
+}

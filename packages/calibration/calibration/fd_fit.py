@@ -29,6 +29,8 @@ Uncertainty: seeded nonparametric bootstrap (default n = 200) over data rows;
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -155,6 +157,18 @@ def _fit_once(
     return v_f, w, rho_jam, r2
 
 
+def _bootstrap_worker(
+    payload: tuple[np.ndarray, np.ndarray, np.ndarray | None, dict[str, Any]],
+) -> tuple[float, float, float] | None:
+    """One bootstrap refit; ``None`` marks a degenerate resample."""
+    density, flow, occupancy, fit_kwargs = payload
+    try:
+        v_f, w, rho_jam, _ = _fit_once(density, flow, occupancy, **fit_kwargs)
+    except (ValueError, RuntimeError):
+        return None
+    return v_f, w, rho_jam
+
+
 def fit_triangular_fd(
     df: pd.DataFrame,
     *,
@@ -169,6 +183,7 @@ def fit_triangular_fd(
     seed: int = 0,
     min_points: int = 10,
     notes: str = "",
+    n_procs: int | None = None,
 ) -> FDCalibration:
     """Fit a triangular fundamental diagram with bootstrap CIs (§6.1).
 
@@ -197,6 +212,12 @@ def fit_triangular_fd(
         seed: RNG seed for the bootstrap (``flowstate_core.rng``).
         min_points: Minimum points required on each branch.
         notes: Free-text note stored on the artifact.
+        n_procs: Bootstrap resamples are refitted in a process pool of this
+            size when > 1. The resample index draws are made up front from
+            the seeded generator in the same order as the serial path, and
+            each refit is deterministic, so the result is identical to
+            ``n_procs=None``; only wall-clock changes (each exact-LP refit
+            costs minutes on 10^5-bin data sets).
 
     Returns:
         ``FDCalibration`` artifact with the fitted ``TriangularFD`` (CIs for
@@ -231,17 +252,26 @@ def fit_triangular_fd(
         rng = make_rng(seed)
         n = density.shape[0]
         samples: dict[str, list[float]] = {k: [] for k in ("v_f", "w", "rho_jam", "rho_c", "q_max")}
-        for _ in range(n_bootstrap):
-            idx = rng.integers(0, n, size=n)
-            try:
-                bv, bw, brho, _ = _fit_once(
-                    density[idx],
-                    flow[idx],
-                    occupancy[idx] if occupancy is not None else None,
-                    **fit_kwargs,
-                )
-            except (ValueError, RuntimeError):
+        draws = [rng.integers(0, n, size=n) for _ in range(n_bootstrap)]
+        payloads = [
+            (
+                density[idx],
+                flow[idx],
+                occupancy[idx] if occupancy is not None else None,
+                fit_kwargs,
+            )
+            for idx in draws
+        ]
+        if n_procs is not None and n_procs > 1:
+            ctx = multiprocessing.get_context("spawn")
+            with ctx.Pool(processes=min(n_procs, n_bootstrap)) as pool:
+                results = pool.map(_bootstrap_worker, payloads)
+        else:
+            results = [_bootstrap_worker(pl) for pl in payloads]
+        for res in results:
+            if res is None:
                 continue  # degenerate resample (e.g. congested branch too thin)
+            bv, bw, brho = res
             bfd = TriangularFD(v_f=bv, w=bw, rho_jam=brho)
             samples["v_f"].append(bv)
             samples["w"].append(bw)

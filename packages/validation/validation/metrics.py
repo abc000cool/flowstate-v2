@@ -272,7 +272,11 @@ def compute_metrics(
         raise FileNotFoundError(f"missing {traj_path}")
     if not meta_path.is_file():
         raise FileNotFoundError(f"missing {meta_path}")
-    traj = pd.read_parquet(traj_path)
+    # Only the columns the metrics use: a 7,800 s corridor run holds ~10 M
+    # rows, and the full eight-column frame plus groupby copies peaked at
+    # ~7 GB of RSS in the report generator (part of what crashed a 16 GB
+    # machine during the I-24 validation).
+    traj = pd.read_parquet(traj_path, columns=["t", "veh_id", "x", "v"])
     if traj.empty:
         raise ValueError(f"{traj_path} holds no trajectory rows")
     meta = json.loads(meta_path.read_text())

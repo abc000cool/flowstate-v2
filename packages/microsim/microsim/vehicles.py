@@ -29,6 +29,7 @@ RNG consumption order is fixed and documented per builder so that a given
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -36,7 +37,7 @@ from typing import Final
 import numpy as np
 
 from flowstate_core.artifacts import IDMCalibration
-from flowstate_core.config import AVSpec, FleetSpec, RingNetwork
+from flowstate_core.config import AVSpec, FleetSpec, RampSpec, RingNetwork
 from flowstate_core.rng import truncated_normal
 
 #: Hard physical lower bounds for per-vehicle IDM draws (task spec §3.1):
@@ -81,6 +82,10 @@ class FleetPlan:
         depart_s: Departure time per vehicle [s].
         depart_pos_m: Linear-x departure position [m] (ring: initial arc
             position; corridor: entry-edge insertion at 0).
+        route: Route id per vehicle (``"main"``, ``"on<k>"``,
+            ``"main_off<j>"``, ``"on<k>_off<j>"``; see
+            :func:`build_corridor_plan`). Empty ⇒ every vehicle drives
+            ``"main"``.
     """
 
     params: tuple[dict[str, float], ...]
@@ -88,11 +93,16 @@ class FleetPlan:
     complied: tuple[bool, ...]
     depart_s: tuple[float, ...]
     depart_pos_m: tuple[float, ...]
+    route: tuple[str, ...] = ()
 
     @property
     def n(self) -> int:
         """Number of vehicles in the plan."""
         return len(self.params)
+
+    def route_of(self, i: int) -> str:
+        """Route id of vehicle ``i`` (``"main"`` when no routes were assigned)."""
+        return self.route[i] if self.route else "main"
 
     def vehicle_id(self, i: int) -> str:
         """Zero-padded vehicle id (lexicographic == numeric ordering)."""
@@ -303,39 +313,158 @@ def corridor_departures(
     return sorted(times)
 
 
+def _step_value(steps: Sequence[tuple[float, float]], t: float) -> float:
+    """Value of a time-ordered piecewise-constant step profile at ``t``."""
+    value = 0.0
+    for t_start, v in steps:
+        if t >= t_start:
+            value = v
+        else:
+            break
+    return value
+
+
 def build_corridor_plan(
     inflow: list[tuple[float, float]],
     duration_s: float,
     fleet: FleetSpec,
     av: AVSpec,
     rng: np.random.Generator,
+    *,
+    ramps: Sequence[RampSpec] = (),
+    corridor_edges: Sequence[str] = (),
 ) -> FleetPlan:
-    """Fleet plan for a corridor/OSM demand profile.
+    """Fleet plan for a corridor/OSM demand profile, optionally with ramps.
 
-    RNG order: (1) departure times with jitter, (2) per-vehicle params,
-    (3) AV tags + compliance.
+    Mainline vehicles depart on the corridor entry edge per ``inflow``;
+    every on-ramp in ``ramps`` adds its own jittered departures
+    (:func:`corridor_departures` on the ramp's ``inflow``); every vehicle
+    that passes an off-ramp's ``attach_edge`` exits there with the ramp's
+    ``exit_fraction`` at its departure time (one Bernoulli draw per
+    off-ramp, in corridor order; the first success wins). Route ids:
+    ``"main"``, ``"on<k>"`` (k-th ramp in config order), ``"main_off<j>"``,
+    ``"on<k>_off<j>"``. Vehicle ids follow the concatenation order
+    (mainline departures sorted, then each on-ramp's sorted departures).
+
+    RNG order: (1) mainline departure times with jitter, (2) each on-ramp's
+    departure times in config order, (3) per-vehicle params, (4) AV tags +
+    compliance, (5) off-ramp exit draws per vehicle in id order, per
+    reachable off-ramp in corridor order (skipped entirely when there are no
+    ramps, so plans without ramps consume the RNG exactly as before).
+
+    Args:
+        inflow: Mainline ``(t_start [s], veh/s)`` steps.
+        duration_s: Demand horizon [s].
+        fleet: Human-fleet spec.
+        av: AV deployment spec.
+        rng: Seeded generator.
+        ramps: ``RampSpec`` list (``OSMNetwork.ramps``).
+        corridor_edges: Corridor edge ids in driving order (needed to order
+            ramps along the corridor; required when ``ramps`` is non-empty).
+
+    Returns:
+        The :class:`FleetPlan` (``route`` populated iff ``ramps`` is given).
+
+    Raises:
+        ValueError: A ramp's ``attach_edge`` is not a corridor edge.
     """
     departs = corridor_departures(inflow, duration_s, rng)
+    origin_idx = [-1] * len(departs)  # -1 = mainline, k = on-ramp k
+    for k, ramp in enumerate(ramps):
+        if ramp.kind != "on":
+            continue
+        d = corridor_departures(list(ramp.inflow), duration_s, rng)
+        departs += d
+        origin_idx += [k] * len(d)
     n = len(departs)
     params = draw_vehicle_params(fleet, n, rng)
     is_av, complied = tag_avs(n, av, rng)
+
+    routes: tuple[str, ...] = ()
+    if ramps:
+        pos = {e: i for i, e in enumerate(corridor_edges)}
+        for ramp in ramps:
+            if ramp.attach_edge not in pos:
+                raise ValueError(f"ramp attach_edge {ramp.attach_edge!r} not in corridor_edges")
+        entry_idx = {k: pos[r.attach_edge] for k, r in enumerate(ramps) if r.kind == "on"}
+        offs = sorted((pos[r.attach_edge], j) for j, r in enumerate(ramps) if r.kind == "off")
+        route_list: list[str] = []
+        for i in range(n):
+            k = origin_idx[i]
+            base = "main" if k < 0 else f"on{k}"
+            entry = -1 if k < 0 else entry_idx[k]
+            chosen = ""
+            for attach_pos, j in offs:
+                if attach_pos < entry:
+                    continue  # off-ramp upstream of this vehicle's entry point
+                frac = _step_value(ramps[j].exit_fraction, departs[i])
+                if float(rng.uniform()) < frac:
+                    chosen = f"_off{j}"
+                    break
+            route_list.append(base + chosen)
+        routes = tuple(route_list)
     return FleetPlan(
         params=tuple(params),
         is_av=tuple(is_av),
         complied=tuple(complied),
         depart_s=tuple(departs),
         depart_pos_m=tuple(0.0 for _ in range(n)),
+        route=routes,
     )
 
 
-def _vtype_xml(type_id: str, p: dict[str, float], model: str, action_step_s: float) -> str:
-    """One ``<vType>`` element (see module docstring for attribute notes)."""
+def ramp_routes(
+    corridor_edges: Sequence[str], ramps: Sequence[RampSpec]
+) -> dict[str, tuple[str, ...]]:
+    """Edge lists for every route id :func:`build_corridor_plan` can assign.
+
+    ``"main"`` is the corridor; ``"on<k>"`` is the on-ramp's edges followed
+    by the corridor from its ``attach_edge``; ``"main_off<j>"`` is the
+    corridor up to and including the off-ramp's ``attach_edge`` followed by
+    the off-ramp's edges; ``"on<k>_off<j>"`` combines both (only when the
+    off-ramp is at or downstream of the on-ramp's attach edge).
+    """
+    corridor = list(corridor_edges)
+    pos = {e: i for i, e in enumerate(corridor)}
+    routes: dict[str, tuple[str, ...]] = {"main": tuple(corridor)}
+    ons = [(k, r) for k, r in enumerate(ramps) if r.kind == "on"]
+    offs = [(j, r) for j, r in enumerate(ramps) if r.kind == "off"]
+    for j, off in offs:
+        routes[f"main_off{j}"] = tuple(corridor[: pos[off.attach_edge] + 1] + list(off.edges))
+    for k, on in ons:
+        start = pos[on.attach_edge]
+        routes[f"on{k}"] = tuple(list(on.edges) + corridor[start:])
+        for j, off in offs:
+            end = pos[off.attach_edge]
+            if end >= start:
+                routes[f"on{k}_off{j}"] = tuple(
+                    list(on.edges) + corridor[start : end + 1] + list(off.edges)
+                )
+    return routes
+
+
+def _vtype_xml(
+    type_id: str,
+    p: dict[str, float],
+    model: str,
+    action_step_s: float,
+    lc_strategic: float = 1.0,
+    lc_keep_right: float = 1.0,
+) -> str:
+    """One ``<vType>`` element (see module docstring for attribute notes).
+
+    ``lcStrategic`` / ``lcKeepRight`` (``FleetSpec.lc_strategic`` /
+    ``lc_keep_right``) are written only when they differ from SUMO's default
+    1.0, so route files of existing scenarios stay byte-identical.
+    """
+    lc = "" if lc_strategic == 1.0 else f' lcStrategic="{lc_strategic:g}"'
+    lc += "" if lc_keep_right == 1.0 else f' lcKeepRight="{lc_keep_right:g}"'
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
         f'decel="{p["b"]:.6f}" tau="{p["T"]:.6f}" minGap="{p["s0"]:.6f}" '
         f'maxSpeed="{p["v0"]:.6f}" length="{VEHICLE_LENGTH_M}" speedFactor="1.0" '
         f'speedDev="0" emissionClass="{EMISSION_CLASS}" '
-        f'actionStepLength="{action_step_s}"/>'
+        f'actionStepLength="{action_step_s}"{lc}/>'
     )
 
 
@@ -402,6 +531,9 @@ def write_corridor_routes(
     path: Path,
     depart_edge_spread: int = 1,
     lanes: int = 1,
+    routes: Mapping[str, Sequence[str]] | None = None,
+    lc_strategic: float = 1.0,
+    lc_keep_right: float = 1.0,
 ) -> Path:
     """Write corridor demand: explicit jittered departures.
 
@@ -449,27 +581,53 @@ def write_corridor_routes(
             insertion throughput (~1.2–2.4 veh/s under backlog, measured).
         lanes: Lane count of the corridor (selects the insertion attribute
             scheme above; the caller passes ``CorridorNetwork.lanes``).
+        routes: Named routes (id → edge ids) when the plan carries ramp
+            routes (:func:`ramp_routes`); ``None`` ⇒ only ``"main"`` =
+            ``route_edge_ids``. Vehicles on an on-ramp route (``"on…"``)
+            are inserted on the ramp's first edge with ``departPos="base"
+            departSpeed="avg" departLane="free"``; mainline insertion
+            ranks (lane round-robin) count mainline vehicles only.
+        lc_strategic: ``FleetSpec.lc_strategic`` (SUMO ``lcStrategic``),
+            written on every vType when it differs from 1.0.
+        lc_keep_right: ``FleetSpec.lc_keep_right`` (SUMO ``lcKeepRight``),
+            likewise.
 
     Returns:
         ``path``.
+
+    Raises:
+        ValueError: A plan route id has no entry in ``routes``.
     """
-    route = " ".join(route_edge_ids)
     n_route = len(route_edge_ids)
     spread = n_route if depart_edge_spread == 0 else min(max(depart_edge_spread, 1), n_route)
     order = sorted(range(plan.n), key=lambda i: plan.depart_s[i])
+    named: dict[str, tuple[str, ...]] = {"main": tuple(route_edge_ids)}
+    if routes is not None:
+        named.update({rid: tuple(edges) for rid, edges in routes.items()})
     lines = ["<routes>"]
     for i, p in enumerate(plan.params):
-        lines.append(_vtype_xml(f"t{i:05d}", p, model, action_step_s))
-    lines.append(f'  <route id="main" edges="{route}"/>')
-    for rank, i in enumerate(order):
-        depart_edge = "" if spread == 1 else f'departEdge="{rank % spread}" '
-        if lanes > 1 and spread == 1:
-            depart_attrs = f'departPos="base" departSpeed="avg" departLane="{rank % lanes}"'
+        lines.append(_vtype_xml(f"t{i:05d}", p, model, action_step_s, lc_strategic, lc_keep_right))
+    for rid, edges in named.items():
+        lines.append(f'  <route id="{rid}" edges="{" ".join(edges)}"/>')
+    rank_main = 0
+    for i in order:
+        rid = plan.route_of(i)
+        if rid not in named:
+            raise ValueError(f"vehicle {plan.vehicle_id(i)} has unknown route {rid!r}")
+        if rid.startswith("on"):
+            depart_edge = ""
+            depart_attrs = 'departPos="base" departSpeed="avg" departLane="free"'
         else:
-            depart_attrs = 'departPos="free" departSpeed="max" departLane="free"'
+            rank = rank_main
+            rank_main += 1
+            depart_edge = "" if spread == 1 else f'departEdge="{rank % spread}" '
+            if lanes > 1 and spread == 1:
+                depart_attrs = f'departPos="base" departSpeed="avg" departLane="{rank % lanes}"'
+            else:
+                depart_attrs = 'departPos="free" departSpeed="max" departLane="free"'
         lines.append(
             f'  <vehicle id="{plan.vehicle_id(i)}" type="t{i:05d}" '
-            f'depart="{plan.depart_s[i]:.3f}" {depart_edge}{depart_attrs} route="main"/>'
+            f'depart="{plan.depart_s[i]:.3f}" {depart_edge}{depart_attrs} route="{rid}"/>'
         )
     lines.append("</routes>")
     path.write_text("\n".join(lines))
