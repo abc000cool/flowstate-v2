@@ -16,7 +16,8 @@
 # data x = 200 m, ramp lanes at each gore; LOWER BOUNDS at tracking coverage.
 # Boundary: observed mean speed in data x [5492, 6437) m per 30 s.
 # Sim t = data t - 1800 + 600 (warmup at the first window's demand).
-# Fleet: artifacts/idm_i24.json (IDM population fitted on the same day's episodes);
+# Fleet: artifacts/idm_i24_capacity.json (IDM population fitted on the same day's episodes, mean T
+# scaled to the tracked capacity per FHWA Vol. III step 1, docs/I24_CAPACITY.md);
 # lc_strategic 5 removes SUMO's diverge lane-change stall and lc_keep_right
 # 0 matches the observed lane use (both measured; see builder constants).
 # seeded=False: the boundary and ramp inputs are calibration inputs, not shocks.
@@ -804,7 +805,7 @@ fleet:
   s0: 2.0
   delta: 4.0
   heterogeneity_frac: 0.12
-  idm_calibration: artifacts/idm_i24.json
+  idm_calibration: artifacts/idm_i24_capacity.json
   lc_strategic: 5.0
   lc_keep_right: 0.0
 av:

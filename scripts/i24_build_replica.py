@@ -139,7 +139,7 @@ RAMPS = (
 MAINLINE_COUNT_X_M = 200.0
 BOUNDARY_X_RANGE_M = (5492.0, TESTBED_LENGTH_M)
 
-FLEET_ARTIFACT = "artifacts/idm_i24.json"
+FLEET_ARTIFACT = "artifacts/idm_i24_capacity.json"  # step-1 capacity-calibrated population (docs/I24_CAPACITY.md)
 
 #: SUMO ``lcStrategic`` for the replica fleet. With SUMO's default 1.0,
 #: exiting vehicles still in an inner lane at the Hickory Hollow diverge stop
@@ -428,7 +428,8 @@ def main() -> None:
 # data x = {MAINLINE_COUNT_X_M:g} m, ramp lanes at each gore; LOWER BOUNDS at tracking coverage.
 # Boundary: observed mean speed in data x [{BOUNDARY_X_RANGE_M[0]:.0f}, {BOUNDARY_X_RANGE_M[1]:.0f}) m per 30 s.
 # Sim t = data t - {T_STUDY_LO_S:g} + {WARMUP_S:g} (warmup at the first window's demand).
-# Fleet: {FLEET_ARTIFACT} (IDM population fitted on the same day's episodes);
+# Fleet: {FLEET_ARTIFACT} (IDM population fitted on the same day's episodes, mean T
+# scaled to the tracked capacity per FHWA Vol. III step 1, docs/I24_CAPACITY.md);
 # lc_strategic {LC_STRATEGIC:g} removes SUMO's diverge lane-change stall and lc_keep_right
 # {LC_KEEP_RIGHT:g} matches the observed lane use (both measured; see builder constants).
 # seeded=False: the boundary and ramp inputs are calibration inputs, not shocks.

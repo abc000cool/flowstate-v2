@@ -1,0 +1,184 @@
+{
+ "schema_version": 1,
+ "versions": {
+  "python": "3.12.13",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "source": "artifacts/idm_i24.json",
+ "target_veh_h_lane": 1774.6,
+ "target_source": "artifacts/fd_i24.json fd.ci95.q_max[0] (tracked lower bound)",
+ "corridor": {
+  "length_m": 4000.0,
+  "lanes": 4,
+  "x_ref_m": 3000.0,
+  "demand_veh_h_lane": 2400.0,
+  "duration_s": 1800.0,
+  "warmup_s": 300.0
+ },
+ "table": [
+  {
+   "T_scale": 1.0,
+   "T_mean_s": 1.5112,
+   "capacity_veh_h_lane": 1631.4,
+   "n": 2
+  },
+  {
+   "T_scale": 0.95,
+   "T_mean_s": 1.4356,
+   "capacity_veh_h_lane": 1690.5,
+   "n": 2
+  },
+  {
+   "T_scale": 0.9,
+   "T_mean_s": 1.3601,
+   "capacity_veh_h_lane": 1753.5,
+   "n": 2
+  },
+  {
+   "T_scale": 0.85,
+   "T_mean_s": 1.2845,
+   "capacity_veh_h_lane": 1795.5,
+   "n": 2
+  },
+  {
+   "T_scale": 0.8,
+   "T_mean_s": 1.209,
+   "capacity_veh_h_lane": 1833.0,
+   "n": 2
+  },
+  {
+   "T_scale": 0.75,
+   "T_mean_s": 1.1334,
+   "capacity_veh_h_lane": 1947.6,
+   "n": 2
+  }
+ ],
+ "runs": [
+  {
+   "T_scale": 1.0,
+   "seed": 1,
+   "config_hash": "36a0c7fcd81d",
+   "throughput_veh_h_lane": 1641.0,
+   "inserted_fraction": 0.6883,
+   "mean_speed_ms_at_ref": 17.016,
+   "wall_s": 20.2
+  },
+  {
+   "T_scale": 1.0,
+   "seed": 2,
+   "config_hash": "5113cc93bd3e",
+   "throughput_veh_h_lane": 1621.8,
+   "inserted_fraction": 0.6842,
+   "mean_speed_ms_at_ref": 16.397,
+   "wall_s": 17.6
+  },
+  {
+   "T_scale": 0.95,
+   "seed": 1,
+   "config_hash": "3eb750a307f6",
+   "throughput_veh_h_lane": 1672.8,
+   "inserted_fraction": 0.6935,
+   "mean_speed_ms_at_ref": 16.927,
+   "wall_s": 20.8
+  },
+  {
+   "T_scale": 0.95,
+   "seed": 2,
+   "config_hash": "48e4dcbb3fd6",
+   "throughput_veh_h_lane": 1708.2,
+   "inserted_fraction": 0.7177,
+   "mean_speed_ms_at_ref": 16.755,
+   "wall_s": 18.2
+  },
+  {
+   "T_scale": 0.9,
+   "seed": 1,
+   "config_hash": "00f24896b3d3",
+   "throughput_veh_h_lane": 1767.6,
+   "inserted_fraction": 0.7419,
+   "mean_speed_ms_at_ref": 16.437,
+   "wall_s": 19.2
+  },
+  {
+   "T_scale": 0.9,
+   "seed": 2,
+   "config_hash": "b32f7b4f1640",
+   "throughput_veh_h_lane": 1739.4,
+   "inserted_fraction": 0.7275,
+   "mean_speed_ms_at_ref": 16.358,
+   "wall_s": 20.6
+  },
+  {
+   "T_scale": 0.85,
+   "seed": 1,
+   "config_hash": "51b855fb4091",
+   "throughput_veh_h_lane": 1756.2,
+   "inserted_fraction": 0.741,
+   "mean_speed_ms_at_ref": 17.041,
+   "wall_s": 18.9
+  },
+  {
+   "T_scale": 0.85,
+   "seed": 2,
+   "config_hash": "41be9ecabd5a",
+   "throughput_veh_h_lane": 1834.8,
+   "inserted_fraction": 0.7694,
+   "mean_speed_ms_at_ref": 16.357,
+   "wall_s": 21.7
+  },
+  {
+   "T_scale": 0.8,
+   "seed": 1,
+   "config_hash": "cfed59dee053",
+   "throughput_veh_h_lane": 1797.6,
+   "inserted_fraction": 0.7571,
+   "mean_speed_ms_at_ref": 16.955,
+   "wall_s": 21.0
+  },
+  {
+   "T_scale": 0.8,
+   "seed": 2,
+   "config_hash": "23bf78c4040c",
+   "throughput_veh_h_lane": 1868.4,
+   "inserted_fraction": 0.7781,
+   "mean_speed_ms_at_ref": 16.32,
+   "wall_s": 24.7
+  },
+  {
+   "T_scale": 0.75,
+   "seed": 1,
+   "config_hash": "d9aca718840e",
+   "throughput_veh_h_lane": 1950.6,
+   "inserted_fraction": 0.8185,
+   "mean_speed_ms_at_ref": 17.22,
+   "wall_s": 22.8
+  },
+  {
+   "T_scale": 0.75,
+   "seed": 2,
+   "config_hash": "45e528cadda8",
+   "throughput_veh_h_lane": 1944.6,
+   "inserted_fraction": 0.8137,
+   "mean_speed_ms_at_ref": 16.371,
+   "wall_s": 24.0
+  }
+ ],
+ "T_scale": 0.8749,
+ "T_mean_s": {
+  "before": 1.5112009904800698,
+  "after": 1.3221695251256709
+ },
+ "interpolation": "linear interpolation between T x 0.9 (1754) and T x 0.85 (1796)",
+ "episode_gap_rmse_m": {
+  "n_episodes": 1500,
+  "seed": 7,
+  "before": 5.3134,
+  "after": 5.2939
+ }
+}

@@ -1,0 +1,740 @@
+{
+ "schema_version": 1,
+ "versions": {
+  "python": "3.12.13",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "replica": "scenarios/i24_replica_corrected.yaml",
+ "quick": false,
+ "capacity": {
+  "corridor": {
+   "length_m": 4000.0,
+   "lanes": 4,
+   "x_ref_m": 3000.0
+  },
+  "levels": [
+   {
+    "q_lane_veh_h": 1400.0,
+    "throughput_veh_h_lane_mean": 1396.8,
+    "throughput_veh_h_lane_min": 1384.8,
+    "inserted_fraction_mean": 0.9995,
+    "mean_speed_ms_at_ref": 17.625,
+    "n": 3
+   },
+   {
+    "q_lane_veh_h": 1600.0,
+    "throughput_veh_h_lane_mean": 1588.0,
+    "throughput_veh_h_lane_min": 1581.0,
+    "inserted_fraction_mean": 0.999,
+    "mean_speed_ms_at_ref": 16.811,
+    "n": 3
+   },
+   {
+    "q_lane_veh_h": 1800.0,
+    "throughput_veh_h_lane_mean": 1647.2,
+    "throughput_veh_h_lane_min": 1602.6,
+    "inserted_fraction_mean": 0.9219,
+    "mean_speed_ms_at_ref": 16.847,
+    "n": 3
+   },
+   {
+    "q_lane_veh_h": 2000.0,
+    "throughput_veh_h_lane_mean": 1643.4,
+    "throughput_veh_h_lane_min": 1635.0,
+    "inserted_fraction_mean": 0.8305,
+    "mean_speed_ms_at_ref": 16.717,
+    "n": 3
+   },
+   {
+    "q_lane_veh_h": 2200.0,
+    "throughput_veh_h_lane_mean": 1655.8,
+    "throughput_veh_h_lane_min": 1647.0,
+    "inserted_fraction_mean": 0.7589,
+    "mean_speed_ms_at_ref": 16.923,
+    "n": 3
+   },
+   {
+    "q_lane_veh_h": 2400.0,
+    "throughput_veh_h_lane_mean": 1646.0,
+    "throughput_veh_h_lane_min": 1621.8,
+    "inserted_fraction_mean": 0.6905,
+    "mean_speed_ms_at_ref": 16.78,
+    "n": 3
+   }
+  ],
+  "runs": [
+   {
+    "q_lane_veh_h": 1400.0,
+    "seed": 1,
+    "config_hash": "30831d3c21f7",
+    "planned": 2800,
+    "departed": 2799,
+    "inserted_fraction": 0.9996,
+    "throughput_veh_h_lane": 1384.8,
+    "mean_speed_ms_at_ref": 17.728,
+    "wall_s": 7.7
+   },
+   {
+    "q_lane_veh_h": 1400.0,
+    "seed": 2,
+    "config_hash": "d065adb63b49",
+    "planned": 2800,
+    "departed": 2799,
+    "inserted_fraction": 0.9996,
+    "throughput_veh_h_lane": 1405.2,
+    "mean_speed_ms_at_ref": 17.736,
+    "wall_s": 7.6
+   },
+   {
+    "q_lane_veh_h": 1400.0,
+    "seed": 3,
+    "config_hash": "63bf6d021af0",
+    "planned": 2800,
+    "departed": 2798,
+    "inserted_fraction": 0.9993,
+    "throughput_veh_h_lane": 1400.4,
+    "mean_speed_ms_at_ref": 17.41,
+    "wall_s": 7.9
+   },
+   {
+    "q_lane_veh_h": 1600.0,
+    "seed": 1,
+    "config_hash": "a738c79bf842",
+    "planned": 3200,
+    "departed": 3198,
+    "inserted_fraction": 0.9994,
+    "throughput_veh_h_lane": 1600.2,
+    "mean_speed_ms_at_ref": 16.771,
+    "wall_s": 9.6
+   },
+   {
+    "q_lane_veh_h": 1600.0,
+    "seed": 2,
+    "config_hash": "6506f9922844",
+    "planned": 3200,
+    "departed": 3195,
+    "inserted_fraction": 0.9984,
+    "throughput_veh_h_lane": 1581.0,
+    "mean_speed_ms_at_ref": 16.627,
+    "wall_s": 9.6
+   },
+   {
+    "q_lane_veh_h": 1600.0,
+    "seed": 3,
+    "config_hash": "5f5404a8b395",
+    "planned": 3200,
+    "departed": 3197,
+    "inserted_fraction": 0.9991,
+    "throughput_veh_h_lane": 1582.8,
+    "mean_speed_ms_at_ref": 17.036,
+    "wall_s": 9.4
+   },
+   {
+    "q_lane_veh_h": 1800.0,
+    "seed": 1,
+    "config_hash": "a07d47538a23",
+    "planned": 3600,
+    "departed": 3352,
+    "inserted_fraction": 0.9311,
+    "throughput_veh_h_lane": 1668.0,
+    "mean_speed_ms_at_ref": 17.277,
+    "wall_s": 10.2
+   },
+   {
+    "q_lane_veh_h": 1800.0,
+    "seed": 2,
+    "config_hash": "14417b86fdd4",
+    "planned": 3600,
+    "departed": 3248,
+    "inserted_fraction": 0.9022,
+    "throughput_veh_h_lane": 1602.6,
+    "mean_speed_ms_at_ref": 16.47,
+    "wall_s": 10.6
+   },
+   {
+    "q_lane_veh_h": 1800.0,
+    "seed": 3,
+    "config_hash": "2ef781ff44c2",
+    "planned": 3600,
+    "departed": 3357,
+    "inserted_fraction": 0.9325,
+    "throughput_veh_h_lane": 1671.0,
+    "mean_speed_ms_at_ref": 16.794,
+    "wall_s": 10.7
+   },
+   {
+    "q_lane_veh_h": 2000.0,
+    "seed": 1,
+    "config_hash": "16071a0de822",
+    "planned": 4000,
+    "departed": 3289,
+    "inserted_fraction": 0.8223,
+    "throughput_veh_h_lane": 1635.0,
+    "mean_speed_ms_at_ref": 16.805,
+    "wall_s": 10.8
+   },
+   {
+    "q_lane_veh_h": 2000.0,
+    "seed": 2,
+    "config_hash": "081c662edad3",
+    "planned": 4000,
+    "departed": 3354,
+    "inserted_fraction": 0.8385,
+    "throughput_veh_h_lane": 1656.0,
+    "mean_speed_ms_at_ref": 16.696,
+    "wall_s": 11.0
+   },
+   {
+    "q_lane_veh_h": 2000.0,
+    "seed": 3,
+    "config_hash": "909521fc226e",
+    "planned": 4000,
+    "departed": 3323,
+    "inserted_fraction": 0.8307,
+    "throughput_veh_h_lane": 1639.2,
+    "mean_speed_ms_at_ref": 16.65,
+    "wall_s": 10.9
+   },
+   {
+    "q_lane_veh_h": 2200.0,
+    "seed": 1,
+    "config_hash": "6870fac19a13",
+    "planned": 4400,
+    "departed": 3347,
+    "inserted_fraction": 0.7607,
+    "throughput_veh_h_lane": 1669.2,
+    "mean_speed_ms_at_ref": 17.098,
+    "wall_s": 11.0
+   },
+   {
+    "q_lane_veh_h": 2200.0,
+    "seed": 2,
+    "config_hash": "82de416b2920",
+    "planned": 4400,
+    "departed": 3342,
+    "inserted_fraction": 0.7595,
+    "throughput_veh_h_lane": 1647.0,
+    "mean_speed_ms_at_ref": 16.719,
+    "wall_s": 11.4
+   },
+   {
+    "q_lane_veh_h": 2200.0,
+    "seed": 3,
+    "config_hash": "29fc58e6a6ac",
+    "planned": 4400,
+    "departed": 3328,
+    "inserted_fraction": 0.7564,
+    "throughput_veh_h_lane": 1651.2,
+    "mean_speed_ms_at_ref": 16.951,
+    "wall_s": 11.3
+   },
+   {
+    "q_lane_veh_h": 2400.0,
+    "seed": 1,
+    "config_hash": "f9e2c5b10eb5",
+    "planned": 4800,
+    "departed": 3304,
+    "inserted_fraction": 0.6883,
+    "throughput_veh_h_lane": 1641.0,
+    "mean_speed_ms_at_ref": 17.016,
+    "wall_s": 10.9
+   },
+   {
+    "q_lane_veh_h": 2400.0,
+    "seed": 2,
+    "config_hash": "6d8165c910e3",
+    "planned": 4800,
+    "departed": 3284,
+    "inserted_fraction": 0.6842,
+    "throughput_veh_h_lane": 1621.8,
+    "mean_speed_ms_at_ref": 16.397,
+    "wall_s": 11.6
+   },
+   {
+    "q_lane_veh_h": 2400.0,
+    "seed": 3,
+    "config_hash": "53d1a0aa9b1e",
+    "planned": 4800,
+    "departed": 3355,
+    "inserted_fraction": 0.699,
+    "throughput_veh_h_lane": 1675.2,
+    "mean_speed_ms_at_ref": 16.927,
+    "wall_s": 10.8
+   }
+  ],
+  "max_level_fully_inserted_veh_h_lane": 1600.0,
+  "max_throughput_veh_h_lane": 1655.8
+ },
+ "insertion": {
+  "runs": [
+   {
+    "depart_edge_spread": 1,
+    "seed": 1,
+    "config_hash": "a3efae6955bd",
+    "planned": 16885,
+    "departed": 14012,
+    "inserted_fraction": 0.8298,
+    "ramps": [
+     {
+      "index": 0,
+      "name": "Old Hickory Blvd on-ramp",
+      "kind": "on",
+      "attach_edge": "977008894",
+      "edges": [
+       "1070403831#1"
+      ],
+      "n_planned": 2427,
+      "n_departed": 1873,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 1,
+      "name": "Hickory Hollow Pkwy off-ramp",
+      "kind": "off",
+      "attach_edge": "977008892",
+      "edges": [
+       "1138588478"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 1337
+     },
+     {
+      "index": 2,
+      "name": "Hickory Hollow Pkwy on-ramp",
+      "kind": "on",
+      "attach_edge": "992666043",
+      "edges": [
+       "19441652#0",
+       "19441652#1"
+      ],
+      "n_planned": 1603,
+      "n_departed": 1603,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 3,
+      "name": "Bell Road off-ramp (collector road)",
+      "kind": "off",
+      "attach_edge": "992666043",
+      "edges": [
+       "19442635"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 784
+     }
+    ],
+    "throughput_veh_h": {
+     "2567": 6082.5,
+     "4278": 6045.5,
+     "5989": 5954.5,
+     "7700": 5147.5
+    },
+    "segment_mean_speed_ms": {
+     "0": 5.457,
+     "1000": 5.181,
+     "2000": 4.984,
+     "3000": 6.612,
+     "4000": 7.906,
+     "5000": 8.037,
+     "6000": 6.462,
+     "7000": 8.085,
+     "8000": 9.431
+    },
+    "wall_s": 260.0
+   },
+   {
+    "depart_edge_spread": 1,
+    "seed": 2,
+    "config_hash": "a3efae6955bd",
+    "planned": 16885,
+    "departed": 14222,
+    "inserted_fraction": 0.8423,
+    "ramps": [
+     {
+      "index": 0,
+      "name": "Old Hickory Blvd on-ramp",
+      "kind": "on",
+      "attach_edge": "977008894",
+      "edges": [
+       "1070403831#1"
+      ],
+      "n_planned": 2427,
+      "n_departed": 1883,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 1,
+      "name": "Hickory Hollow Pkwy off-ramp",
+      "kind": "off",
+      "attach_edge": "977008892",
+      "edges": [
+       "1138588478"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 1348
+     },
+     {
+      "index": 2,
+      "name": "Hickory Hollow Pkwy on-ramp",
+      "kind": "on",
+      "attach_edge": "992666043",
+      "edges": [
+       "19441652#0",
+       "19441652#1"
+      ],
+      "n_planned": 1603,
+      "n_departed": 1603,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 3,
+      "name": "Bell Road off-ramp (collector road)",
+      "kind": "off",
+      "attach_edge": "992666043",
+      "edges": [
+       "19442635"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 748
+     }
+    ],
+    "throughput_veh_h": {
+     "2567": 6215.5,
+     "4278": 6158.0,
+     "5989": 6071.5,
+     "7700": 5245.0
+    },
+    "segment_mean_speed_ms": {
+     "0": 5.787,
+     "1000": 5.403,
+     "2000": 5.274,
+     "3000": 6.966,
+     "4000": 8.586,
+     "5000": 8.462,
+     "6000": 8.596,
+     "7000": 8.137,
+     "8000": 9.325
+    },
+    "wall_s": 243.5
+   },
+   {
+    "depart_edge_spread": 1,
+    "seed": 3,
+    "config_hash": "a3efae6955bd",
+    "planned": 16885,
+    "departed": 14034,
+    "inserted_fraction": 0.8312,
+    "ramps": [
+     {
+      "index": 0,
+      "name": "Old Hickory Blvd on-ramp",
+      "kind": "on",
+      "attach_edge": "977008894",
+      "edges": [
+       "1070403831#1"
+      ],
+      "n_planned": 2427,
+      "n_departed": 1828,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 1,
+      "name": "Hickory Hollow Pkwy off-ramp",
+      "kind": "off",
+      "attach_edge": "977008892",
+      "edges": [
+       "1138588478"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 1301
+     },
+     {
+      "index": 2,
+      "name": "Hickory Hollow Pkwy on-ramp",
+      "kind": "on",
+      "attach_edge": "992666043",
+      "edges": [
+       "19441652#0",
+       "19441652#1"
+      ],
+      "n_planned": 1603,
+      "n_departed": 1603,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 3,
+      "name": "Bell Road off-ramp (collector road)",
+      "kind": "off",
+      "attach_edge": "992666043",
+      "edges": [
+       "19442635"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 810
+     }
+    ],
+    "throughput_veh_h": {
+     "2567": 6145.5,
+     "4278": 6097.5,
+     "5989": 6004.0,
+     "7700": 5182.5
+    },
+    "segment_mean_speed_ms": {
+     "0": 5.546,
+     "1000": 5.312,
+     "2000": 5.12,
+     "3000": 6.661,
+     "4000": 8.369,
+     "5000": 8.268,
+     "6000": 6.819,
+     "7000": 8.063,
+     "8000": 9.371
+    },
+    "wall_s": 242.5
+   },
+   {
+    "depart_edge_spread": 3,
+    "seed": 1,
+    "config_hash": "a3efae6955bd",
+    "planned": 16885,
+    "departed": 13749,
+    "inserted_fraction": 0.8143,
+    "ramps": [
+     {
+      "index": 0,
+      "name": "Old Hickory Blvd on-ramp",
+      "kind": "on",
+      "attach_edge": "977008894",
+      "edges": [
+       "1070403831#1"
+      ],
+      "n_planned": 2427,
+      "n_departed": 1887,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 1,
+      "name": "Hickory Hollow Pkwy off-ramp",
+      "kind": "off",
+      "attach_edge": "977008892",
+      "edges": [
+       "1138588478"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 1337
+     },
+     {
+      "index": 2,
+      "name": "Hickory Hollow Pkwy on-ramp",
+      "kind": "on",
+      "attach_edge": "992666043",
+      "edges": [
+       "19441652#0",
+       "19441652#1"
+      ],
+      "n_planned": 1603,
+      "n_departed": 1603,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 3,
+      "name": "Bell Road off-ramp (collector road)",
+      "kind": "off",
+      "attach_edge": "992666043",
+      "edges": [
+       "19442635"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 784
+     }
+    ],
+    "throughput_veh_h": {
+     "2567": 6213.5,
+     "4278": 6120.5,
+     "5989": 6006.5,
+     "7700": 5182.0
+    },
+    "segment_mean_speed_ms": {
+     "0": 23.607,
+     "1000": 20.843,
+     "2000": 7.557,
+     "3000": 7.443,
+     "4000": 9.111,
+     "5000": 8.524,
+     "6000": 6.777,
+     "7000": 8.171,
+     "8000": 9.421
+    },
+    "wall_s": 202.4
+   },
+   {
+    "depart_edge_spread": 3,
+    "seed": 2,
+    "config_hash": "a3efae6955bd",
+    "planned": 16885,
+    "departed": 13775,
+    "inserted_fraction": 0.8158,
+    "ramps": [
+     {
+      "index": 0,
+      "name": "Old Hickory Blvd on-ramp",
+      "kind": "on",
+      "attach_edge": "977008894",
+      "edges": [
+       "1070403831#1"
+      ],
+      "n_planned": 2427,
+      "n_departed": 1859,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 1,
+      "name": "Hickory Hollow Pkwy off-ramp",
+      "kind": "off",
+      "attach_edge": "977008892",
+      "edges": [
+       "1138588478"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 1348
+     },
+     {
+      "index": 2,
+      "name": "Hickory Hollow Pkwy on-ramp",
+      "kind": "on",
+      "attach_edge": "992666043",
+      "edges": [
+       "19441652#0",
+       "19441652#1"
+      ],
+      "n_planned": 1603,
+      "n_departed": 1603,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 3,
+      "name": "Bell Road off-ramp (collector road)",
+      "kind": "off",
+      "attach_edge": "992666043",
+      "edges": [
+       "19442635"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 748
+     }
+    ],
+    "throughput_veh_h": {
+     "2567": 6236.0,
+     "4278": 6119.5,
+     "5989": 6024.0,
+     "7700": 5210.5
+    },
+    "segment_mean_speed_ms": {
+     "0": 23.613,
+     "1000": 21.24,
+     "2000": 7.549,
+     "3000": 7.673,
+     "4000": 8.964,
+     "5000": 8.774,
+     "6000": 7.383,
+     "7000": 8.153,
+     "8000": 9.385
+    },
+    "wall_s": 206.4
+   },
+   {
+    "depart_edge_spread": 3,
+    "seed": 3,
+    "config_hash": "a3efae6955bd",
+    "planned": 16885,
+    "departed": 13651,
+    "inserted_fraction": 0.8085,
+    "ramps": [
+     {
+      "index": 0,
+      "name": "Old Hickory Blvd on-ramp",
+      "kind": "on",
+      "attach_edge": "977008894",
+      "edges": [
+       "1070403831#1"
+      ],
+      "n_planned": 2427,
+      "n_departed": 1881,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 1,
+      "name": "Hickory Hollow Pkwy off-ramp",
+      "kind": "off",
+      "attach_edge": "977008892",
+      "edges": [
+       "1138588478"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 1301
+     },
+     {
+      "index": 2,
+      "name": "Hickory Hollow Pkwy on-ramp",
+      "kind": "on",
+      "attach_edge": "992666043",
+      "edges": [
+       "19441652#0",
+       "19441652#1"
+      ],
+      "n_planned": 1603,
+      "n_departed": 1603,
+      "n_planned_exiting": 0
+     },
+     {
+      "index": 3,
+      "name": "Bell Road off-ramp (collector road)",
+      "kind": "off",
+      "attach_edge": "992666043",
+      "edges": [
+       "19442635"
+      ],
+      "n_planned": 0,
+      "n_departed": 0,
+      "n_planned_exiting": 810
+     }
+    ],
+    "throughput_veh_h": {
+     "2567": 6163.0,
+     "4278": 6056.0,
+     "5989": 5949.5,
+     "7700": 5148.0
+    },
+    "segment_mean_speed_ms": {
+     "0": 23.564,
+     "1000": 20.995,
+     "2000": 7.105,
+     "3000": 7.072,
+     "4000": 8.406,
+     "5000": 8.138,
+     "6000": 6.576,
+     "7000": 8.063,
+     "8000": 9.376
+    },
+    "wall_s": 211.6
+   }
+  ]
+ }
+}

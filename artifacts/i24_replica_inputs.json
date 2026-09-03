@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-09-03T00:15:05Z",
+  "created_at": "2026-09-03T20:04:37Z",
   "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
   "osm_file": "data/osm/i24_motion.osm",
-  "config_hash": "5e15ca999c19",
+  "config_hash": "17e9e80ffd83",
   "study_period": {
     "t_lo_s": 1800.0,
     "t_hi_s": 9000.0,
@@ -1596,7 +1596,7 @@
     "v_min_ms": 3.958559455430977,
     "v_max_ms": 20.686918860289303
   },
-  "fleet_artifact": "artifacts/idm_i24.json",
+  "fleet_artifact": "artifacts/idm_i24_capacity.json",
   "fleet_artifact_present": true,
   "coverage": {
     "window_s": 900.0,
@@ -1607,76 +1607,76 @@
         "window": "06:30",
         "rho_tracked_veh_km_lane": 26.690401321163016,
         "v_edie_kmh": 40.87155375851034,
-        "rho_eq_veh_km_lane": 40.257944482476276,
-        "coverage": 0.6629847018836487,
-        "coverage_used": 0.6629847018836487
+        "rho_eq_veh_km_lane": 44.096882493772796,
+        "coverage": 0.6052673071601408,
+        "coverage_used": 0.6052673071601408
       },
       {
         "t_lo_s": 2700.0,
         "window": "06:45",
         "rho_tracked_veh_km_lane": 28.113190255914002,
         "v_edie_kmh": 33.50236947945653,
-        "rho_eq_veh_km_lane": 46.18289702038441,
-        "coverage": 0.608735962222233,
-        "coverage_used": 0.608735962222233
+        "rho_eq_veh_km_lane": 50.28194974367234,
+        "coverage": 0.5591109811618207,
+        "coverage_used": 0.5591109811618207
       },
       {
         "t_lo_s": 3600.0,
         "window": "07:00",
         "rho_tracked_veh_km_lane": 26.70620064662,
         "v_edie_kmh": 36.82961513829327,
-        "rho_eq_veh_km_lane": 43.32178627942607,
-        "coverage": 0.6164612067093602,
-        "coverage_used": 0.6164612067093602
+        "rho_eq_veh_km_lane": 47.304779528246904,
+        "coverage": 0.564556074733908,
+        "coverage_used": 0.564556074733908
       },
       {
         "t_lo_s": 4500.0,
         "window": "07:15",
         "rho_tracked_veh_km_lane": 28.269413419603566,
         "v_edie_kmh": 33.52161369414419,
-        "rho_eq_veh_km_lane": 46.165334853385275,
-        "coverage": 0.6123515297654251,
-        "coverage_used": 0.6123515297654251
+        "rho_eq_veh_km_lane": 50.26372910485358,
+        "coverage": 0.5624217288102845,
+        "coverage_used": 0.5624217288102845
       },
       {
         "t_lo_s": 5400.0,
         "window": "07:30",
         "rho_tracked_veh_km_lane": 29.56966149141515,
         "v_edie_kmh": 25.824452614662224,
-        "rho_eq_veh_km_lane": 54.37932747912529,
-        "coverage": 0.5437665903971711,
-        "coverage_used": 0.5437665903971711
+        "rho_eq_veh_km_lane": 58.71404707534479,
+        "coverage": 0.5036215857079293,
+        "coverage_used": 0.5036215857079293
       },
       {
         "t_lo_s": 6300.0,
         "window": "07:45",
         "rho_tracked_veh_km_lane": 29.92575320249907,
         "v_edie_kmh": 24.123326763012503,
-        "rho_eq_veh_km_lane": 56.590706887500154,
-        "coverage": 0.5288103798029976,
-        "coverage_used": 0.5288103798029976
+        "rho_eq_veh_km_lane": 60.964829585225985,
+        "coverage": 0.49086913563277107,
+        "coverage_used": 0.49086913563277107
       },
       {
         "t_lo_s": 7200.0,
         "window": "08:00",
         "rho_tracked_veh_km_lane": 28.173980234144775,
         "v_edie_kmh": 25.889277479696478,
-        "rho_eq_veh_km_lane": 54.298400550942745,
-        "coverage": 0.5188731150139856,
-        "coverage_used": 0.5188731150139856
+        "rho_eq_veh_km_lane": 58.631485163510426,
+        "coverage": 0.4805264638201418,
+        "coverage_used": 0.4805264638201418
       },
       {
         "t_lo_s": 8100.0,
         "window": "08:15",
         "rho_tracked_veh_km_lane": 23.771015718557855,
         "v_edie_kmh": 34.75079551581058,
-        "rho_eq_veh_km_lane": 45.069048187247276,
-        "coverage": 0.5274354945282402,
-        "coverage_used": 0.5274354945282402
+        "rho_eq_veh_km_lane": 49.12502309776231,
+        "coverage": 0.4838881331669165,
+        "coverage_used": 0.4838881331669165
       }
     ]
   },
-  "corrected_config_hash": "a3efae6955bd",
+  "corrected_config_hash": "de82b62e4ef6",
   "notes": [
     "all crossing counts are fragment crossings: lower bounds at the local tracking coverage (docs/I24_DATA.md); never inflated",
     "off-ramp exit fractions = ramp-lane crossings in the diverge zone / mainline crossings just upstream; the Bell Road value is taken inside the Hickory Hollow-Bell Road weaving section and mixes merging and diverging vehicles",

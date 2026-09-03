@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "created_at": "2026-09-03T00:15:05Z",
+  "created_at": "2026-09-03T20:04:37Z",
   "source": "I-24 MOTION INCEPTION v1.x westbound, 30 Nov 2022: mainline (lanes 1-4) fragment crossings at data x = 200 m (MM 62.7 - 0.124 mi) per 5-min window, 06:30-08:30 CST, shifted by the 600 s warmup (sim t = data t - 1800 + 600). LOWER BOUND at the instrument's tracking coverage; not inflated.",
   "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
   "kind": "demand",
