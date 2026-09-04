@@ -256,6 +256,14 @@ def to_sim_time(t_data: float) -> float:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--allow-missing-fleet", action="store_true")
+    ap.add_argument(
+        "--coverage-estimator",
+        choices=("equilibrium", "gap_mixture", "section_gap_mixture", "recommended"),
+        default="equilibrium",
+        help="coverage factor for the corrected arm: the IDM-equilibrium ratio computed here "
+        "(default, keeps config hashes) or a gap-based estimator read from "
+        "artifacts/i24_coverage.json (scripts/i24_coverage.py, docs/I24_DATA.md)",
+    )
     args = ap.parse_args()
     fleet_path = REPO_ROOT / FLEET_ARTIFACT
     if not fleet_path.is_file() and not args.allow_missing_fleet:
@@ -344,6 +352,29 @@ def main() -> None:
     if fleet_path.is_file():
         idm_mean = json.loads(fleet_path.read_text())["mean"]
         cov_rows = coverage_factors(t_lo, t_hi, span_hi_data, idm_mean)
+        coverage_source: dict = {"estimator": "equilibrium", "artifact": None}
+        if args.coverage_estimator != "equilibrium":
+            cov_art = json.loads((REPO_ROOT / "artifacts" / "i24_coverage.json").read_text())
+            key = (
+                "recommended_filled"
+                if args.coverage_estimator == "recommended"
+                else args.coverage_estimator
+            )
+            by_t = {float(w["t_lo_s"]): w["pooled"].get(key) for w in cov_art["windows"]}
+            for r in cov_rows:
+                v = by_t.get(float(r["t_lo_s"]))
+                if v is None or not (0.0 < float(v) <= 1.0):
+                    raise SystemExit(
+                        f"coverage estimator {key!r} has no usable value for window t_lo={r['t_lo_s']}"
+                    )
+                r["coverage_equilibrium"] = r["coverage_used"]
+                r["coverage_used"] = float(v)
+            coverage_source = {
+                "estimator": key,
+                "artifact": "artifacts/i24_coverage.json",
+                "artifact_created_at": cov_art.get("created_at"),
+                "artifact_data_hash": cov_art.get("data_hash"),
+            }
 
     def corrected(steps: list[tuple[float, float]]) -> list[tuple[float, float]]:
         assert cov_rows is not None
@@ -521,6 +552,7 @@ def main() -> None:
                 "equilibrium density at the Edie speed; clipped to (0, 1]; free-flow "
                 "windows inherit the nearest congested value",
                 "rows": cov_rows,
+                "source": coverage_source,
             }
             if cov_rows is not None
             else None

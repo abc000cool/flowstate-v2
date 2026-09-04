@@ -42,15 +42,28 @@ The macro-vs-micro flux-cap-variant arm moved to
 variant comparison here was an identical-variants null because that
 controller never commands below the local equilibrium speed.
 
+A third arm, **calibrated**, runs a self-contained scenario YAML as is
+(default ``scenarios/us101_replica_calibrated.yaml``: the with-boundary
+replica on the FHWA step-1 capacity-calibrated population at the step-2
+fitted demand level, docs/US101_CALIBRATED.md) against the same observed
+side; it must embed its own ``network.boundary``.
+
 Everything lands under ``runs/m3_us101/``: run trees per arm, an observed-
-side cache (``observed_us101.json``, keyed by the data hash), and the
-machine-readable ``results_no_boundary.json`` / ``results_with_boundary.json``
-consumed by the report phase (scripts/m3_us101_report.py).
+side cache (``observed_us101.json``, keyed by the data hash), the compact
+with-boundary scenario snapshot (``us101_replica_with_boundary.yaml``,
+written before any arm runs so the demand fit can scale it), and the
+machine-readable ``results_<arm>.json`` consumed by the report phase
+(scripts/m3_us101_report.py). ``--artifact-out`` additionally writes every
+arm run in the invocation into one durable JSON (``runs/`` is regenerable
+and pruned freely).
 
 Usage (repo root)::
 
     uv run --no-sync python scripts/m3_us101_validate.py --replicates 2   # smoke
     M3_PROCS=6 uv run --no-sync python scripts/m3_us101_validate.py       # full 20
+    uv run --no-sync python scripts/m3_us101_validate.py --arms none      # observed side only
+    uv run --no-sync python scripts/m3_us101_validate.py --arms with_boundary calibrated \
+        --artifact-out artifacts/us101_validation_calibrated.json
 """
 
 from __future__ import annotations
@@ -67,6 +80,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -77,7 +91,7 @@ from flowstate_core.config import BoundarySpec, ScenarioConfig, config_hash  # n
 from flowstate_core.rng import spawn_seeds  # noqa: E402
 from flowstate_core.units import kmh_to_ms, ms_to_kmh  # noqa: E402
 from microsim.runner import _versions, run_replicates  # noqa: E402
-from microsim.scenarios import load_scenario  # noqa: E402
+from microsim.scenarios import load_scenario, resolve_scenario  # noqa: E402
 from validation.criteria import evaluate  # noqa: E402
 from validation.fields import speed_field  # noqa: E402
 from validation.metrics import aggregate, compute_metrics, geh, rmspe  # noqa: E402
@@ -92,6 +106,13 @@ on-ramp merge zone start, upstream of the section end."""
 
 WINDOW_S = 300.0
 N_WINDOWS = 3  # full 5-min windows inside the 952.8 s period-1 span
+FINE_WINDOW_S = 150.0
+"""Window length [s] of the secondary observed segment-speed table
+(``segment_speeds_fine_ms``) that the FHWA step-2 demand fit scores against
+(scripts/fit_demand_scale.py): six 150 s windows tile the same 0-900 s
+comparison span, so the study period splits exactly in half (windows 0-2
+fitted, 3-5 held out). The acceptance criteria keep the 300 s windows."""
+N_FINE_WINDOWS = 6
 SEGMENT_M = 160.0
 N_SEGMENTS = 4  # 4 x 160 m = 640 m
 SITE_LENGTH_M = 640.0
@@ -107,7 +128,14 @@ BOUNDARY_TAIL_M = 100.0
 BOUNDARY_EXIT_BUFFER_M = 200.0
 """Exit-buffer edge length hosting the boundary speed limit [m]."""
 
-OBSERVED_CACHE_VERSION = 2
+OBSERVED_CACHE_VERSION = 3
+
+ARMS = ("no_boundary", "with_boundary", "calibrated")
+"""Validation arms. ``calibrated`` runs a self-contained scenario YAML."""
+BOUNDARY_ARMS = ("with_boundary", "calibrated")
+"""Arms whose config carries a measured downstream boundary."""
+BOUNDARY_SNAPSHOT = OUT_ROOT / "us101_replica_with_boundary.yaml"
+"""Compact YAML snapshot of the with-boundary config (base YAML + boundary)."""
 
 RESULTS_SCHEMA_KEYS = frozenset(
     {
@@ -170,28 +198,32 @@ def _crossing_counts(traj: pd.DataFrame, sections: tuple[float, ...]) -> np.ndar
     return counts
 
 
-def _segment_speeds(traj: pd.DataFrame) -> np.ndarray:
+def _segment_speeds(
+    traj: pd.DataFrame, window_s: float = WINDOW_S, n_windows: int = N_WINDOWS
+) -> np.ndarray:
     """Mean sampled speed per (window, segment); NaN where empty.
 
     Arithmetic mean of the uniformly sampled speeds inside each
-    ``WINDOW_S × SEGMENT_M`` bin — the same operation on the observed (10 Hz)
+    ``window_s × SEGMENT_M`` bin — the same operation on the observed (10 Hz)
     and simulated (2 Hz) sides, so the comparison is like-for-like.
 
     Args:
         traj: Rows with ``t`` [s, wall], ``x`` [m, local_y], ``v`` [m/s].
+        window_s: Window length [s] (default: the criteria's 300 s).
+        n_windows: Number of windows from ``t = 0``.
 
     Returns:
-        Array of shape ``[N_WINDOWS, N_SEGMENTS]``.
+        Array of shape ``[n_windows, N_SEGMENTS]``.
     """
-    out = np.full((N_WINDOWS, N_SEGMENTS), np.nan)
+    out = np.full((n_windows, N_SEGMENTS), np.nan)
     t = traj["t"].to_numpy(dtype=np.float64)
     x = traj["x"].to_numpy(dtype=np.float64)
     v = traj["v"].to_numpy(dtype=np.float64)
-    ok = (t >= 0.0) & (t < N_WINDOWS * WINDOW_S) & (x >= 0.0) & (x < SITE_LENGTH_M)
-    wi = (t[ok] // WINDOW_S).astype(np.int64)
+    ok = (t >= 0.0) & (t < n_windows * window_s) & (x >= 0.0) & (x < SITE_LENGTH_M)
+    wi = (t[ok] // window_s).astype(np.int64)
     si = np.minimum((x[ok] // SEGMENT_M).astype(np.int64), N_SEGMENTS - 1)
-    sums = np.zeros((N_WINDOWS, N_SEGMENTS))
-    cnts = np.zeros((N_WINDOWS, N_SEGMENTS))
+    sums = np.zeros((n_windows, N_SEGMENTS))
+    cnts = np.zeros((n_windows, N_SEGMENTS))
     np.add.at(sums, (wi, si), v[ok])
     np.add.at(cnts, (wi, si), 1.0)
     np.divide(sums, cnts, out=out, where=cnts > 0)
@@ -313,6 +345,7 @@ def observed_side(cache_path: Path) -> dict:
     p1["t"] = p1["t"] - p1["t"].min()  # wall time from the period-1 recording start
     counts = _crossing_counts(p1, SECTIONS_M)
     seg_speeds = _segment_speeds(p1)
+    seg_fine = _segment_speeds(p1, window_s=FINE_WINDOW_S, n_windows=N_FINE_WINDOWS)
     waves = _wave_summary(p1[["t", "x", "v"]])
     waves_stripe = _stripe_wave_summary(p1[["t", "x", "v"]])
     schedule = _boundary_schedule_wall(p1)
@@ -329,6 +362,9 @@ def observed_side(cache_path: Path) -> dict:
         "counts": counts.tolist(),
         "hourly_flows_veh_h": (counts * 3600.0 / WINDOW_S).tolist(),
         "segment_speeds_ms": seg_speeds.tolist(),
+        "segment_speeds_fine_ms": seg_fine.tolist(),
+        "fine_window_s": FINE_WINDOW_S,
+        "n_fine_windows": N_FINE_WINDOWS,
         "waves": waves,
         "waves_stripe": waves_stripe,
         "waves_stripe_params": {
@@ -346,6 +382,37 @@ def observed_side(cache_path: Path) -> dict:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(_json_safe(obs), indent=2, allow_nan=False))
     return obs
+
+
+def write_boundary_snapshot(
+    bspec: BoundarySpec, out_path: Path = BOUNDARY_SNAPSHOT
+) -> ScenarioConfig:
+    """Write the compact with-boundary scenario YAML and return its config.
+
+    The snapshot is the hand-written ``us101_replica`` YAML with the measured
+    ``network.boundary`` block added — the same config the ``with_boundary``
+    arm runs (asserted by hash) in a form ``scripts/fit_demand_scale.py`` can
+    scale and re-emit legibly.
+    """
+    base_path = resolve_scenario("us101_replica")
+    raw = yaml.safe_load(base_path.read_text())
+    raw["network"]["boundary"] = bspec.model_dump(mode="json")
+    cfg = ScenarioConfig.model_validate(raw)
+    base_cfg = load_scenario("us101_replica")
+    expected = base_cfg.model_copy(
+        update={"network": base_cfg.network.model_copy(update={"boundary": bspec})}
+    )
+    if config_hash(cfg) != config_hash(expected):
+        raise RuntimeError("boundary snapshot does not reproduce the with_boundary config")
+    header = (
+        "# us101_replica with the measured downstream boundary (scripts/m3_us101_validate.py):\n"
+        f"# {len(bspec.steps)} speed steps on a {bspec.exit_buffer_m:g} m exit buffer, sim time\n"
+        "# (wall + 180 s warmup). Regenerated from the observed side; do not edit.\n"
+        f"# config hash {config_hash(cfg)}; seeded=False.\n"
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(header + yaml.safe_dump(raw, sort_keys=False))
+    return cfg
 
 
 def _sim_frame(run_dir: Path) -> pd.DataFrame:
@@ -482,7 +549,7 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
     return {
         "schema_version": 2,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "scenario": "us101_replica",
+        "scenario": cfg.name,
         "arm": arm,
         "replicates": replicates,
         "seeds": sim["seeds"],
@@ -556,8 +623,8 @@ def verify_schema(path: Path) -> None:
     assert len(data["geh"]["values"]) == n_sec * n_win
     assert np.asarray(obs["segment_speeds_ms"]).shape == (n_win, N_SEGMENTS)
     assert isinstance(data["rmspe"]["value"], float)
-    assert data["arm"] in ("no_boundary", "with_boundary")
-    assert (data["boundary"] is not None) == (data["arm"] == "with_boundary")
+    assert data["arm"] in ARMS
+    assert (data["boundary"] is not None) == (data["arm"] in BOUNDARY_ARMS)
     for row in data["criteria"]:
         assert {"name", "value", "threshold", "passed", "evaluated"} <= set(row)
     for ci in data["metrics_ci"].values():
@@ -576,9 +643,23 @@ def main() -> None:
     )
     ap.add_argument(
         "--arms",
-        choices=("both", "no_boundary", "with_boundary"),
-        default="both",
-        help="which validation arms to run",
+        nargs="+",
+        choices=("both", "all", "none", *ARMS),
+        default=["both"],
+        help="validation arms to run ('both' = no_boundary + with_boundary, "
+        "'none' = observed side and boundary snapshot only)",
+    )
+    ap.add_argument(
+        "--calibrated-scenario",
+        type=Path,
+        default=REPO_ROOT / "scenarios" / "us101_replica_calibrated.yaml",
+        help="self-contained scenario YAML (with boundary) for the 'calibrated' arm",
+    )
+    ap.add_argument(
+        "--artifact-out",
+        type=Path,
+        default=None,
+        help="also write every arm's results into this one JSON (durable, under artifacts/)",
     )
     args = ap.parse_args()
     t0 = time.perf_counter()
@@ -590,21 +671,39 @@ def main() -> None:
     schedule_wall = [(float(t), float(v)) for t, v in obs["boundary_schedule_wall"]]
     bspec = build_boundary_spec(schedule_wall)
 
-    arms: dict[str, ScenarioConfig] = {}
-    if args.arms in ("both", "no_boundary"):
-        arms["no_boundary"] = base_cfg
-    if args.arms in ("both", "with_boundary"):
-        net_b = base_cfg.network.model_copy(update={"boundary": bspec})
-        arms["with_boundary"] = base_cfg.model_copy(update={"network": net_b})
+    with_boundary_cfg = write_boundary_snapshot(bspec)
+    print(f"with-boundary snapshot -> {BOUNDARY_SNAPSHOT} ({config_hash(with_boundary_cfg)})")
 
+    wanted: set[str] = set()
+    for a in args.arms:
+        if a == "both":
+            wanted |= {"no_boundary", "with_boundary"}
+        elif a == "all":
+            wanted |= set(ARMS)
+        elif a != "none":
+            wanted.add(a)
+    arms: dict[str, ScenarioConfig] = {}
+    if "no_boundary" in wanted:
+        arms["no_boundary"] = base_cfg
+    if "with_boundary" in wanted:
+        arms["with_boundary"] = with_boundary_cfg
+    if "calibrated" in wanted:
+        cal_cfg = load_scenario(args.calibrated_scenario)
+        if getattr(cal_cfg.network, "boundary", None) is None:
+            raise SystemExit(
+                f"{args.calibrated_scenario}: the calibrated arm must embed a boundary"
+            )
+        arms["calibrated"] = cal_cfg
+        print(f"calibrated arm: {args.calibrated_scenario} ({config_hash(cal_cfg)})")
+
+    all_results: dict[str, dict] = {}
     for arm, cfg in arms.items():
         print(f"micro arm {arm!r}: {args.replicates} replicates ...", flush=True)
         sim = micro_arm(cfg, args.replicates, OUT_ROOT / f"micro_{arm}", args.procs)
         results = build_results(arm, cfg, sim, obs, args.replicates)
+        all_results[arm] = results
         out_path = OUT_ROOT / f"results_{arm}.json"
         out_path.write_text(json.dumps(_json_safe(results), indent=2, allow_nan=False))
-        if arm == "with_boundary":
-            cfg.to_yaml(OUT_ROOT / "us101_replica_with_boundary.yaml")
         print(
             f"[{arm}] GEH<5 fraction {results['geh']['fraction_under_5']:.0%} | "
             f"RMSPE {results['rmspe']['value']:.1%} | "
@@ -613,6 +712,18 @@ def main() -> None:
             f"obs backward wave {obs['waves']['mean_backward_speed_kmh']} km/h"
         )
         verify_schema(out_path)
+
+    if args.artifact_out is not None and all_results:
+        bundle = {
+            "schema_version": 1,
+            "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "versions": _versions(),
+            "observed_cache": str(OUT_ROOT / "observed_us101.json"),
+            "arms": all_results,
+        }
+        args.artifact_out.parent.mkdir(parents=True, exist_ok=True)
+        args.artifact_out.write_text(json.dumps(_json_safe(bundle), indent=1, allow_nan=False))
+        print(f"-> {args.artifact_out} ({', '.join(all_results)})")
 
     print(f"done in {time.perf_counter() - t0:.1f} s -> {OUT_ROOT}")
 

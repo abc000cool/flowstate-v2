@@ -1,0 +1,107 @@
+# us101_replica_calibrated — runs/m3_us101/us101_replica_with_boundary.yaml with mainline and on-ramp inflows
+# multiplied by s = 1.250, fitted by scripts/fit_demand_scale.py on the
+# observed segment speeds of runs/m3_us101/observed_us101.json [segment_speeds_fine_ms] over windows
+# [0, 1, 2] (150 s each) only; windows [3, 4, 5] are held out.
+# Fleet: artifacts/idm_us101_capacity.json. Exit fractions and any boundary unchanged.
+# See artifacts/demand_scale_us101.json (rmspe fit 0.291, holdout 0.315, inserted 0.959).
+# config hash 2c07a60447ca; seeded=False.
+name: us101_replica_calibrated
+tier: micro
+network:
+  kind: corridor
+  length_m: 640.0
+  lanes: 5
+  inflow:
+  - - 0.0
+    - 3.04625
+  - - 480.0
+    - 2.94625
+  - - 780.0
+    - 2.51625
+  - - 1080.0
+    - 2.6875
+  boundary:
+    kind: speed_schedule
+    steps:
+    - - 0.0
+      - 18.4063
+    - - 210.0
+      - 18.4063
+    - - 240.0
+      - 17.582
+    - - 270.0
+      - 18.2823
+    - - 300.0
+      - 18.2529
+    - - 330.0
+      - 19.2362
+    - - 360.0
+      - 18.5915
+    - - 390.0
+      - 19.0058
+    - - 420.0
+      - 18.4123
+    - - 450.0
+      - 18.8992
+    - - 480.0
+      - 18.5246
+    - - 510.0
+      - 18.3987
+    - - 540.0
+      - 18.129
+    - - 570.0
+      - 17.6864
+    - - 600.0
+      - 18.9499
+    - - 630.0
+      - 18.5993
+    - - 660.0
+      - 19.629
+    - - 690.0
+      - 18.7685
+    - - 720.0
+      - 16.7472
+    - - 750.0
+      - 12.7107
+    - - 780.0
+      - 11.8665
+    - - 810.0
+      - 11.8946
+    - - 840.0
+      - 12.7401
+    - - 870.0
+      - 14.8044
+    - - 900.0
+      - 13.9787
+    - - 930.0
+      - 4.8295
+    - - 960.0
+      - 5.2249
+    - - 990.0
+      - 8.7437
+    - - 1020.0
+      - 11.5433
+    - - 1050.0
+      - 14.8553
+    - - 1080.0
+      - 16.7519
+    - - 1110.0
+      - 16.7085
+    exit_buffer_m: 200.0
+fleet:
+  model: IDM
+  idm_calibration: artifacts/idm_us101_capacity.json
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+sim:
+  duration_s: 1133.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 180.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 20

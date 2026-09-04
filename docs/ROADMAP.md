@@ -90,6 +90,16 @@ passing; GEH, RMSPE and wave speed still fail). The corrected arm's fronts
 moved to 10.4 km/h standard / 14.2 km/h stripe (in band with the stripe
 detector) and RMSPE to 33.7%; the fitted arm inserts 95.5% of its demand. The
 residual is the Old Hickory merge queue (I24_VALIDATION.md §0, I24_CAPACITY.md §5).
+*Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
+benchmarked on synthetic congested fields and the criterion names its detector
+(default: the slant-stack estimator; the standard detector finds nothing on
+congested backgrounds); a gap-based coverage estimator agrees with the fitted
+demand level (I24_DATA.md, last section); the lane-change model is a
+calibration target with its own artifact; an out-of-sample fitter for ramp
+levels, boundary discharge and gap acceptance runs on the VM; the same two
+calibration steps applied to US-101 with no retuning improve speeds and
+overshoot flows (US101_CALIBRATED.md). The merge parameters alone do not fix
+the merge (I24_CAPACITY.md §6.1).
 
 **1.5 Rerun the sweep on the flagship.** The penetration × compliance battery on
 a validated corridor is the result the whole project has been building toward.
