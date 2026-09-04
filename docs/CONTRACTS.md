@@ -199,6 +199,15 @@ tier also records `vsl` (controller name and parameters).
 Macro-tier rows carry `tier="screening"` in meta.json — the report generator
 MUST refuse macro-only validation reports (CLAUDE.md §5.6).
 
+`LaneChangeCalibration` (`kind="lanechange"`, `flowstate_core.artifacts`): fitted
+`params` over `(lc_cooperative, lc_assertive, lc_speed_gain, lc_keep_right)`,
+scenario and config hashes, seed, fitted and held-out windows (study-relative,
+half-open), objective values, and observed/simulated `LaneObservablesRecord`s
+(sections, band-convention lanes, additive vehicle-time, vehicle-km, change
+counts and histogram; derived shares and rates validated against the counts),
+the evaluated grid, provenance, and a `smoke` flag that marks a run that is
+never a calibration. Definitions live in `calibration.lanechange`.
+
 ## 4. Space-time field (`validation.waves` + heatmaps)
 
 ```python
@@ -218,9 +227,40 @@ front extraction, robust line fit (Theil–Sen). **Relative mode** (Phase 6,
 ROADMAP D1): `detect_waves(field, relative_frac=f)` thresholds at
 `f × p90` of the field's non-empty bin speeds instead, which resolves the
 stripes inside a field that is congested everywhere (the absolute threshold
-labels it as one jam with a pinned front). It is a labeled variant: results
-must state the fraction, and the §7.1 wave-speed criterion stays defined on
-the absolute threshold.
+labels it as one jam with a pinned front).
+
+**Detector recipes.** Which detector produced a wave-speed number is part
+of the number, so every recipe is a frozen `WaveDetector` in
+`validation.waves.WAVE_DETECTORS`, keyed by name, carrying its bins and
+parameters, with `measure(field) -> WaveMeasurement` (the criterion
+statistic `speed_kmh`, the per-front speeds, the threshold applied) and
+`describe()` (one line with every parameter, written into criteria rows).
+`measure` refuses a field whose bins differ from the recipe's.
+
+| name | bins | rule | statistic |
+|---|---|---|---|
+| `standard` | 15 s × 75 m | jam = v < 40 km/h, 8-connected components ≥ 4 bins | mean magnitude of backward Theil–Sen front speeds |
+| `stripe` | 10 s × 50 m | jam = v < 25 km/h, same segmentation | same |
+| `relative` | 15 s × 75 m | jam = v < 0.5 × p90 of non-empty bins | same |
+| `stack` | 15 s × 75 m | no threshold: `stack_wave_speed` slant-stacks the two-way demeaned field over front speeds −40…−2 km/h (0.25 km/h steps) and takes the peak; rejected below peak/median contrast 3 or at a range edge | peak speed |
+
+`planted_stripe_field(...)` builds the synthetic benchmark (a periodic train
+of backward stripes of known speed inside a standing queue occupying the
+downstream `congested_fraction` of the corridor, free flow upstream) on
+which every recipe is measured; the table of recovered speeds lives in the
+`validation.waves` module docstring and is pinned by
+`tests/test_validation/test_validation_waves.py::TestDetectorBenchmark`.
+
+**Criterion.** The CLAUDE.md §7.1 wave-speed criterion is defined on the
+detector named by the criteria profile (`CriteriaProfile.wave_detector`,
+default `stack` — the only registered recipe that recovers the planted speed
+at every congested fraction 0.3–0.95; `standard` finds no backward front on
+a congested background at any of them). `evaluate(..., wave_speed_kmh=v,
+wave_detector=d)` records `d.describe()` in the row's `detail`; a value
+measured with a recipe other than the profile's is reported as not
+evaluated, and a caller that states no detector gets a "not stated" note.
+Artifacts written before this registry (`artifacts/i24_validation_*.json`
+schema ≤ 4, the M3 US-101 files) carry `standard`-detector criterion rows.
 
 ## 5. Calibration artifacts (`flowstate_core.artifacts`)
 

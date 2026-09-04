@@ -138,3 +138,181 @@ class DemandProfile(_Artifact):
             else:
                 break
         return q
+
+
+class LaneObservablesRecord(BaseModel):
+    """Lane-use and lane-change observables of one trajectory set on one window.
+
+    The JSON form of ``calibration.lanechange.LaneObservables`` — the same
+    definitions apply to observed fragments and to simulated trajectories
+    (docs/CONTRACTS.md §5). Sections are the half-open bins
+    ``[x_edges_m[k], x_edges_m[k+1])`` along the corridor; ``lanes`` are lane
+    ids in the data's band convention (1 = leftmost mainline lane).
+
+    Stored quantities are additive counts; ``lane_share`` and
+    ``changes_per_veh_km`` are the derived tables and are checked against the
+    counts on validation so a record can never disagree with itself.
+    """
+
+    window_s: tuple[float, float] | None = None
+    """Half-open time window [s] the counts were taken on (``None`` = all)."""
+    x_edges_m: list[float]
+    lanes: list[int]
+    dt_s: float = Field(gt=0)
+    """Sampling interval [s] used to turn sample counts into vehicle-time."""
+    veh_time_s: list[list[float]]
+    """Vehicle-time [s] per section (rows) and lane (columns)."""
+    veh_km: list[float]
+    """Vehicle-kilometres travelled in mainline lanes per section."""
+    n_changes: list[int]
+    """Held mainline-to-mainline lane changes located in each section."""
+    n_changes_left: list[int]
+    n_changes_right: list[int]
+    change_hist_edges_m: list[float]
+    """Edges of the fine lane-change location histogram."""
+    change_hist: list[int]
+    n_samples: int = Field(ge=0)
+    lane_share: list[list[float | None]]
+    """``veh_time_s`` row-normalized; ``None`` where a section has no time."""
+    changes_per_veh_km: list[float | None]
+    """``n_changes / veh_km``; ``None`` where a section has no travel."""
+
+    @model_validator(mode="after")
+    def _check_consistency(self) -> Self:
+        n_sec = len(self.x_edges_m) - 1
+        n_lanes = len(self.lanes)
+        if n_sec < 1 or n_lanes < 1:
+            raise ValueError("need >= 2 section edges and >= 1 lane")
+        if any(b <= a for a, b in zip(self.x_edges_m[:-1], self.x_edges_m[1:], strict=True)):
+            raise ValueError("x_edges_m must be strictly increasing")
+        for name, rows in (("veh_time_s", self.veh_time_s), ("lane_share", self.lane_share)):
+            if len(rows) != n_sec or any(len(r) != n_lanes for r in rows):
+                raise ValueError(f"{name} must be {n_sec}x{n_lanes}")
+        for name, col in (
+            ("veh_km", self.veh_km),
+            ("n_changes", self.n_changes),
+            ("n_changes_left", self.n_changes_left),
+            ("n_changes_right", self.n_changes_right),
+            ("changes_per_veh_km", self.changes_per_veh_km),
+        ):
+            if len(col) != n_sec:
+                raise ValueError(f"{name} must have {n_sec} entries")
+        if len(self.change_hist) != len(self.change_hist_edges_m) - 1:
+            raise ValueError("change_hist must have one entry per histogram bin")
+        for k in range(n_sec):
+            if self.n_changes_left[k] + self.n_changes_right[k] != self.n_changes[k]:
+                raise ValueError(f"section {k}: left + right changes != n_changes")
+            total = sum(self.veh_time_s[k])
+            for j in range(n_lanes):
+                expected = self.veh_time_s[k][j] / total if total > 0.0 else None
+                got = self.lane_share[k][j]
+                if (expected is None) != (got is None) or (
+                    expected is not None and got is not None and abs(expected - got) > 1e-9
+                ):
+                    raise ValueError(f"lane_share[{k}][{j}] disagrees with veh_time_s")
+            rate = self.n_changes[k] / self.veh_km[k] if self.veh_km[k] > 0.0 else None
+            got_rate = self.changes_per_veh_km[k]
+            if (rate is None) != (got_rate is None) or (
+                rate is not None and got_rate is not None and abs(rate - got_rate) > 1e-9
+            ):
+                raise ValueError(f"changes_per_veh_km[{k}] disagrees with the counts")
+        return self
+
+
+class LaneChangeGridPoint(BaseModel):
+    """One evaluated point of a lane-change parameter grid."""
+
+    params: dict[str, float]
+    config_hash: str
+    seed: int
+    objective_fit: float | None
+    """Objective on the fitted window (``None`` when it could not be scored)."""
+    objective_holdout: float | None
+    share_rms_fit: float | None = None
+    rate_rmspe_fit: float | None = None
+    share_rms_holdout: float | None = None
+    rate_rmspe_holdout: float | None = None
+    inserted_fraction: float | None = None
+    """Departed / planned vehicles of the run (a merge that jams shows here)."""
+    wall_s: float = 0.0
+
+
+LANE_CHANGE_PARAMS: tuple[str, ...] = (
+    "lc_cooperative",
+    "lc_assertive",
+    "lc_speed_gain",
+    "lc_keep_right",
+)
+"""``FleetSpec`` lane-change fields a ``LaneChangeCalibration`` fits, in order."""
+
+
+class LaneChangeCalibration(_Artifact):
+    """Calibrated SUMO lane-change parameters for a corridor scenario.
+
+    Records the grid that was evaluated, the best point by the fit-window
+    objective, and the observed and simulated observables on both the fitted
+    window and the held-out window, so the holdout number is the honest
+    generalization check (as ``IDMCalibration.holdout_gap_rmse_m`` is for
+    car-following). ``objective_spec`` carries the objective's weights;
+    its definition lives in ``calibration.lanechange.lane_change_objective``.
+    """
+
+    kind: Literal["lanechange"] = "lanechange"
+    param_names: tuple[str, ...] = LANE_CHANGE_PARAMS
+    params: dict[str, float]
+    """Fitted values of ``param_names`` (the best grid point)."""
+    scenario: str
+    scenario_config_hash: str
+    """Config hash of the base scenario the grid was applied to."""
+    fit_config_hash: str
+    """Config hash of the best point's run (base + fitted params)."""
+    seed: int
+    """Replicate seed every grid point was run with."""
+    fit_window_s: tuple[float, float]
+    """Data-relative time window [s] the objective was minimized on."""
+    holdout_window_s: tuple[float, float] | None
+    """Window [s] scored but never fitted (``None`` if not evaluated)."""
+    objective: float
+    objective_holdout: float | None
+    objective_spec: dict[str, float]
+    observed_fit: LaneObservablesRecord
+    observed_holdout: LaneObservablesRecord | None = None
+    simulated_fit: LaneObservablesRecord
+    simulated_holdout: LaneObservablesRecord | None = None
+    grid: list[LaneChangeGridPoint]
+    extra_observables: dict[str, LaneObservablesRecord] = Field(default_factory=dict)
+    """Further observable tables on other partitions (e.g. ramp-relative
+    zones), keyed by name; not used by the objective."""
+    zone_names: list[str] = Field(default_factory=list)
+    """Names of the sections of the ramp-relative partition, when recorded."""
+    observed_source: str = ""
+    """Path of the observed-observables file the objective was scored against."""
+    versions: dict[str, str] = Field(default_factory=dict)
+    """Package versions of the runs (CLAUDE.md §0.5)."""
+    smoke: bool = False
+    """True when produced by a shortened mechanics check — never a calibration."""
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if set(self.params) != set(self.param_names):
+            raise ValueError(f"params keys {set(self.params)} != {set(self.param_names)}")
+        if not self.grid:
+            raise ValueError("grid must hold at least one evaluated point")
+        if self.fit_window_s[1] <= self.fit_window_s[0]:
+            raise ValueError("fit_window_s must be a non-empty [lo, hi) window")
+        if self.holdout_window_s is not None and (
+            self.holdout_window_s[1] <= self.holdout_window_s[0]
+        ):
+            raise ValueError("holdout_window_s must be a non-empty [lo, hi) window")
+        for name, rec in (
+            ("observed_fit", self.observed_fit),
+            ("simulated_fit", self.simulated_fit),
+            ("observed_holdout", self.observed_holdout),
+            ("simulated_holdout", self.simulated_holdout),
+        ):
+            if rec is None:
+                continue
+            if rec.x_edges_m != self.observed_fit.x_edges_m or rec.lanes != self.observed_fit.lanes:
+                raise ValueError(f"{name}: sections/lanes differ from observed_fit")
+        return self

@@ -310,3 +310,96 @@ class TestArtifacts:
         obs = ControllerObs(t=0, dt=0.5, v=30.0, gap=math.inf, v_leader=math.nan, v_ref=30.0)
         assert math.isinf(obs.gap)
         assert math.isnan(obs.v_leader)
+
+
+class TestLaneChangeArtifact:
+    """LaneChangeCalibration / LaneObservablesRecord (docs/CONTRACTS.md §5)."""
+
+    @staticmethod
+    def _record(**overrides):
+        from flowstate_core.artifacts import LaneObservablesRecord
+
+        base = dict(
+            window_s=(0.0, 3600.0),
+            x_edges_m=[0.0, 1000.0, 2000.0],
+            lanes=[1, 2, 3, 4],
+            dt_s=0.2,
+            veh_time_s=[[30.0, 24.0, 20.0, 26.0], [0.0, 0.0, 0.0, 0.0]],
+            veh_km=[4.0, 0.0],
+            n_changes=[2, 0],
+            n_changes_left=[1, 0],
+            n_changes_right=[1, 0],
+            change_hist_edges_m=[0.0, 1000.0, 2000.0],
+            change_hist=[2, 0],
+            n_samples=500,
+            lane_share=[[0.3, 0.24, 0.2, 0.26], [None, None, None, None]],
+            changes_per_veh_km=[0.5, None],
+        )
+        base.update(overrides)
+        return LaneObservablesRecord.model_validate(base)
+
+    def test_record_consistency_checks(self):
+        rec = self._record()
+        assert rec.lane_share[1] == [None] * 4 and rec.changes_per_veh_km[1] is None
+        with pytest.raises(ValueError, match="disagrees"):
+            self._record(lane_share=[[0.3, 0.24, 0.2, 0.26], [0.25, 0.25, 0.25, 0.25]])
+        with pytest.raises(ValueError, match="disagrees"):
+            self._record(changes_per_veh_km=[1.0, None])
+        with pytest.raises(ValueError, match="left \\+ right"):
+            self._record(n_changes_left=[2, 0])
+        with pytest.raises(ValueError, match="increasing"):
+            self._record(x_edges_m=[0.0, 2000.0, 1000.0])
+        with pytest.raises(ValueError, match="2x4"):
+            self._record(veh_time_s=[[1.0, 2.0, 3.0, 4.0]])
+        with pytest.raises(ValueError, match="histogram"):
+            self._record(change_hist=[2])
+
+    def test_calibration_round_trip_and_validators(self, tmp_path):
+        from flowstate_core.artifacts import (
+            LANE_CHANGE_PARAMS,
+            LaneChangeCalibration,
+            LaneChangeGridPoint,
+        )
+
+        params = {
+            "lc_cooperative": 0.5,
+            "lc_assertive": 2.0,
+            "lc_speed_gain": 1.0,
+            "lc_keep_right": 0.0,
+        }
+        point = LaneChangeGridPoint(
+            params=params, config_hash="h2", seed=7, objective_fit=0.05, objective_holdout=0.07
+        )
+        base = dict(
+            created_at="2026-09-03T00:00:00Z",
+            source="I-24 MOTION westbound 2022-11-30",
+            data_hash="aa97",
+            scenario="i24_replica_speedcal",
+            scenario_config_hash="h1",
+            fit_config_hash="h2",
+            seed=7,
+            fit_window_s=(0.0, 3600.0),
+            holdout_window_s=(3600.0, 7200.0),
+            objective=0.05,
+            objective_holdout=0.07,
+            objective_spec={"rate_weight": 0.1},
+            observed_fit=self._record(),
+            observed_holdout=self._record(window_s=(3600.0, 7200.0)),
+            simulated_fit=self._record(),
+            simulated_holdout=self._record(window_s=(3600.0, 7200.0)),
+            grid=[point],
+        )
+        art = LaneChangeCalibration(params=params, **base)
+        assert art.kind == "lanechange" and art.param_names == LANE_CHANGE_PARAMS
+        p = tmp_path / "lc.json"
+        art.save(p)
+        assert LaneChangeCalibration.load(p) == art
+        with pytest.raises(ValueError, match="params keys"):
+            LaneChangeCalibration(params={"lc_cooperative": 1.0}, **base)
+        with pytest.raises(ValueError, match="at least one"):
+            LaneChangeCalibration(params=params, **{**base, "grid": []})
+        with pytest.raises(ValueError, match="holdout_window_s"):
+            LaneChangeCalibration(params=params, **{**base, "holdout_window_s": (5.0, 5.0)})
+        other = self._record(x_edges_m=[0.0, 500.0, 2000.0])
+        with pytest.raises(ValueError, match="differ from observed_fit"):
+            LaneChangeCalibration(params=params, **{**base, "observed_holdout": other})
