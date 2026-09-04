@@ -147,6 +147,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--procs", type=int, default=2)
     ap.add_argument("--variants", nargs="*", default=list(VARIANTS))
+    ap.add_argument("--out", type=Path, default=OUT)
     a = ap.parse_args()
     base = ScenarioConfig.model_validate(variant_config("as_is"))
     seed = spawn_seeds(base.seed, base.replicates)[0]
@@ -162,7 +163,7 @@ def main() -> None:
         "observed_segment_mean_kmh": [round(float(v) * 3.6, 2) for v in np.nanmean(obs, axis=0)],
         "variants": rows,
     }
-    OUT.write_text(json.dumps(result, indent=1))
+    a.out.write_text(json.dumps(result, indent=1))
     for r in rows:
         oh = next((x for x in (r["ramps"] or []) if x["name"] == OH), None)
         print(
@@ -171,7 +172,7 @@ def main() -> None:
             f"OH {oh['n_departed'] if oh else '-'}/{oh['n_planned'] if oh else '-'} "
             f"seg km/h: {' '.join(f'{v:.0f}' for v in r['segment_mean_kmh'])}"
         )
-    print(f"-> {OUT}")
+    print(f"-> {a.out}")
 
 
 if __name__ == "__main__":

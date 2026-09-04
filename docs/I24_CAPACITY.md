@@ -220,3 +220,33 @@ diagnostic isolates is governed by `lcCooperative`, `lcAssertive` and
 documented in CHANGELOG) and the next calibration step: fit them on the
 first hour's speeds with the second hour held out, exactly as the demand
 level was, and rerun the battery.
+
+### 6.1 The merge parameters (`artifacts/i24_merge_experiment_params.json`)
+
+Same arm, same seed, the lane-change parameters exposed on 2026-09-03
+(`scripts/i24_merge_experiment.py --variants ... --out
+artifacts/i24_merge_experiment_params.json`), with the segment-speed RMSPE
+over the first hour (the hour any adoption would be fitted on) and the
+second hour (held out):
+
+| Variant | Inserted | Old Hickory merged | RMSPE 06:30–07:30 | RMSPE 07:30–08:30 | 0.0 km | 1.6 | 2.7 | 3.8 | 4.9 |
+|---|---|---|---|---|---|---|---|---|---|
+| Observed | | | | | 36.3 | 31.3 | 36.9 | 29.0 | 33.7 |
+| As is | 0.942 | 1,833 / 2,241 | 0.356 | 0.426 | 20.9 | 35.8 | 34.0 | 31.8 | 33.3 |
+| `lc_cooperative` 0.5 | 0.564 | 772 / 2,241 | 0.635 | 0.806 | 9.3 | 13.8 | 9.4 | 10.8 | 24.1 |
+| `lc_cooperative` 0 | 0.623 | 595 / 2,241 | 0.906 | 1.030 | 10.1 | 8.8 | 8.1 | 63.9 | 53.2 |
+| `lc_assertive` 2 | 0.991 | 2,215 / 2,241 | 0.443 | 0.535 | 22.5 | 45.8 | 40.7 | 35.0 | 29.4 |
+| `lc_assertive` 4 | 0.985 | 2,241 / 2,241 | 0.494 | 0.728 | 22.4 | 47.9 | 36.9 | 27.6 | 28.6 |
+| `lc_speed_gain` 0 | 0.834 | 1,728 / 2,241 | 0.486 | 0.745 | 20.0 | 35.4 | 32.9 | 46.6 | 41.1 |
+| cooperative 0.5 + assertive 2 | 0.965 | 1,733 / 2,241 | 0.404 | 0.425 | 25.6 | 43.7 | 36.8 | 31.0 | 30.4 |
+
+None of them improves both hours, and the one that clears the merge
+(`lc_assertive` 2: 99% of the ramp merges, 99% of demand enters) makes the
+corridor *too fast* from 1.6 to 3.3 km. Read together with §6: the merge is
+where the replica's congestion is generated, but the recording's congestion
+also has sources downstream — the Hickory Hollow on-ramp and the Bell Road
+diverge at 3.8–4.4 km — that the replica under-represents once the merge
+stops metering the flow. Cooperation must stay at SUMO's default; gap
+acceptance is a candidate only jointly with the downstream ramp levels and
+the boundary discharge, which is the joint out-of-sample fit that follows
+(`scripts/i24_fit_boundary_ramps.py`).
