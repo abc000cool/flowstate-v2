@@ -253,3 +253,40 @@ The free-flow slope of 67 km/h is well below the posted limit because the
 congested morning (R² 0.33); it is a fit of the data the instrument tracked,
 not a free-speed estimate, and the corridor scenarios take their speed limit
 from the geometry, not from this value.
+
+## Tracking coverage revisited: gap-based estimators (`artifacts/i24_coverage.json`)
+
+`scripts/i24_coverage.py` re-estimates the per-15-min coverage of §4 without
+a car-following model. Under random thinning (each vehicle tracked with
+probability c) a spacing between consecutive tracked vehicles in a lane is a
+geometric sum of true spacings; `calibration.coverage` fits the
+geometric-gamma mixture per speed class (pairs < 60 km/h) by maximum
+likelihood, and `section_gap_mixture` scales it to the crossing count at
+x = 200 m via the ratio of crossings to local Edie flow on the ramp-free
+stretch 0–900 m. On synthetic lanes with a known c the mixture recovers c
+within 0.01 (moments within 0.03) for a homogeneous spacing scale, is biased
+low by ≤ 0.05 under correlated losses and by 0.2–0.4 in free flow or bimodal
+spacing mixes (the failure modes are asserted in the tests).
+
+| CST | Equilibrium (§4 method) | Gap mixture | Section gap mixture (recommended) |
+|---|---|---|---|
+| 06:30 | 0.605 | 0.638 | 0.656 |
+| 07:00 | 0.565 | 0.615 | 0.648 |
+| 07:30 | 0.504 | 0.578 | 0.627 |
+| 08:00 | 0.481 | 0.548 | 0.559 |
+| 08:15 | 0.484 | 0.552 | 0.584 |
+
+Lane 1 tracks at 0.70–0.76, interior lane 3 at 0.40–0.54; duplicate
+fragments are 1.4–1.9% of spacings. The recommended coverage is 8–25% above
+the equilibrium value, so the corrected mainline inflow falls from a 1,935
+to a 1,786 veh/h/lane peak (06:30, 15-min) and from 1,656 to 1,418 on the
+study-period mean — the size of the overshoot that
+[I24_CAPACITY.md](I24_CAPACITY.md) §5 found by fitting the demand level on
+speeds (0.85 ≈ 1/1.17): a data-only estimator and the simulation fit agree.
+The peak still sits at the tracked FD's q_max upper CI (1,787), and both
+gap estimators are biased low under the correlated losses the real data
+shows, so the true coverage may be higher still; the radar counts remain the
+decisive fix. The moment estimator (0.30–0.47) is dominated by tracking
+holes and is reported only as a diagnostic. `scripts/i24_build_replica.py`
+still uses the equilibrium factor (its `--coverage-estimator` option selects
+the recommended one from the artifact).

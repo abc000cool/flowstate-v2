@@ -48,6 +48,20 @@ The segment-speed RMSPE bound, the emergent backward wave-speed band, the
 ring benchmarks, the ≥ 20-seed rule and the penetration × compliance grid are
 FlowState requirements from CLAUDE.md §7.1/§0.6, present in every profile and
 labeled as such in ``source``; no DOT document above prescribes them.
+
+The wave-speed row's number depends on the detector that produced it, so
+every profile names its detector (``wave_detector``, a
+:class:`validation.waves.WaveDetector`) and the evaluated row records that
+recipe in its ``detail``. The default is ``stack``: on the planted-stripe
+benchmark of ``validation.waves`` it is the only registered detector that
+recovers the planted speed at every congested fraction from 0.3 to 0.95
+(16.0–16.1 km/h for 16 planted) — the ``standard`` 40 km/h detector finds no
+backward front at any of them because a congested background is one
+component whose front is the standing queue tail, ``relative`` finds none
+below 90% congestion, and ``stripe`` is biased by up to 4.4 km/h when the
+background sits near its own 25 km/h threshold. Callers state the detector
+they used via ``evaluate(..., wave_detector=...)``; a value measured with a
+different recipe is reported as not evaluated rather than scored.
 """
 
 from __future__ import annotations
@@ -57,6 +71,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
+from validation.waves import STACK_DETECTOR, WaveDetector
 
 #: Penetrations of the CLAUDE.md §7.1 sensitivity grid (fractions).
 REQUIRED_PENETRATIONS: tuple[float, ...] = (0.01, 0.02, 0.05, 0.10, 0.15, 0.20)
@@ -71,7 +86,10 @@ _FLOWSTATE_ROWS = (
     "rows reproduce Sugiyama et al. (2008) and Stern et al. (2018) per CLAUDE.md "
     "§3.2.1; min_seeds = 20 and the penetration {1,2,5,10,15,20}% x compliance "
     "{25,50,80,100}% grid are CLAUDE.md §0.6/§7.1 internal standards. None of "
-    "these is prescribed by the cited DOT/FHWA documents."
+    "these is prescribed by the cited DOT/FHWA documents. The wave-speed row is "
+    "measured with the profile's wave_detector (validation.waves.WAVE_DETECTORS; "
+    "default 'stack', chosen on the planted-stripe benchmark in validation.waves), "
+    "and the evaluated row names that detector and its parameters."
 )
 
 FHWA_DEFAULT_SOURCE = (
@@ -181,6 +199,15 @@ class CriteriaProfile:
             ``speeds_rmspe`` row is then not produced.
         wave_speed_band_kmh: Acceptance band for the emergent backward
             wave-front speed magnitude [km/h], inclusive on both ends.
+        wave_detector: The :class:`validation.waves.WaveDetector` recipe
+            that must produce ``wave_speed_kmh`` for this profile; its
+            description is written into the evaluated row. Default
+            ``validation.waves.STACK_DETECTOR`` — see the module docstring
+            for the benchmark evidence. ``validation.metrics.compute_metrics``
+            and ``validation.report.generate_report`` still measure with the
+            ``standard`` detector and do not state it to :func:`evaluate`, so
+            their rows carry the "detector not stated" note until they are
+            wired to the profile.
         min_seeds: Minimum replicate count for headline reporting.
         require_ring_emergence: Include the Sugiyama ring emergence check.
         require_ring_dampening: Include the Stern single-AV dampening check.
@@ -197,6 +224,7 @@ class CriteriaProfile:
     geh_pass_inclusive: bool = True
     rmspe_max: float | None = 0.15
     wave_speed_band_kmh: tuple[float, float] = field(default=WAVE_SPEED_BAND_KMH)
+    wave_detector: WaveDetector = STACK_DETECTOR
     min_seeds: int = 20
     require_ring_emergence: bool = True
     require_ring_dampening: bool = True
@@ -276,8 +304,11 @@ class CriteriaResult:
         value: Measured value, or ``None`` when the input was not supplied.
         threshold: Human-readable threshold description.
         passed: Honest pass/fail; always ``False`` when not evaluated.
-        evaluated: Whether an input was available to evaluate.
-        detail: Optional explanatory note.
+        evaluated: Whether a usable input was available to evaluate (a
+            wave speed measured with a detector other than the profile's
+            is present but not usable).
+        detail: Optional explanatory note; for ``wave_speed`` it names the
+            detector recipe behind the value.
     """
 
     name: str
@@ -314,6 +345,7 @@ def evaluate(
     geh_values: Sequence[float] | None = None,
     rmspe_value: float | None = None,
     wave_speed_kmh: float | None = None,
+    wave_detector: WaveDetector | None = None,
     ring_emergence: bool | None = None,
     ring_dampening: bool | None = None,
     n_seeds: int | None = None,
@@ -333,7 +365,12 @@ def evaluate(
             :func:`validation.metrics.link_hour_geh` ``.geh``).
         rmspe_value: Segment-speed RMSPE as a fraction.
         wave_speed_kmh: Emergent backward wave-front speed magnitude [km/h]
-            (positive; e.g. ``Metrics.wave_speed_kmh``).
+            (positive), measured with the profile's ``wave_detector`` —
+            ``profile.wave_detector.measure(field).speed_kmh``.
+        wave_detector: The detector that produced ``wave_speed_kmh``. When it
+            is not the profile's, the row is reported as not evaluated (the
+            value is kept, with both recipes named); when omitted the row
+            notes that the caller did not state its detector.
         ring_emergence: Whether the Sugiyama ring emergence benchmark passed
             (``validation.ring_benchmark``).
         ring_dampening: Whether the single-AV dampening benchmark passed.
@@ -397,11 +434,30 @@ def evaluate(
 
     lo, hi = p.wave_speed_band_kmh
     wave_text = f"backward wave speed in [{lo:g}, {hi:g}] km/h (emergent, unseeded)"
+    detector_text = f"detector: {p.wave_detector.describe()}"
     if wave_speed_kmh is None:
         rows.append(_not_evaluated("wave_speed", wave_text))
+    elif wave_detector is not None and wave_detector != p.wave_detector:
+        rows.append(
+            CriteriaResult(
+                name="wave_speed",
+                value=wave_speed_kmh,
+                threshold=wave_text,
+                passed=False,
+                evaluated=False,
+                detail=(
+                    f"not evaluated: value measured with {wave_detector.describe()}; "
+                    f"profile requires {p.wave_detector.describe()}"
+                ),
+            )
+        )
     else:
         in_band = bool(lo <= wave_speed_kmh <= hi)  # NaN compares False
-        detail = "" if math.isfinite(wave_speed_kmh) else "no backward wave detected"
+        notes = [detector_text]
+        if wave_detector is None:
+            notes.append("caller did not state which detector produced the value")
+        if not math.isfinite(wave_speed_kmh):
+            notes.append("no backward wave detected")
         rows.append(
             CriteriaResult(
                 name="wave_speed",
@@ -409,7 +465,7 @@ def evaluate(
                 threshold=wave_text,
                 passed=in_band,
                 evaluated=True,
-                detail=detail,
+                detail="; ".join(notes),
             )
         )
 

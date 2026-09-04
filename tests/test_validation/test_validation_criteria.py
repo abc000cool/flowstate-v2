@@ -214,3 +214,55 @@ class TestSensitivityGrid:
     def test_empty_grid_fails_honestly(self):
         row = _row(evaluate(sweep_grid=[]), "sensitivity_grid")
         assert row.evaluated and not row.passed and row.value == 0.0
+
+
+class TestWaveDetectorSetting:
+    """The wave-speed row names the detector that must produce its value."""
+
+    def test_default_detector_is_stack_in_every_profile(self):
+        from validation.waves import STACK_DETECTOR
+
+        assert CriteriaProfile().wave_detector is STACK_DETECTOR
+        for p in CRITERIA_PROFILES.values():
+            assert p.wave_detector is STACK_DETECTOR
+            assert "wave_detector" in p.source and "'stack'" in p.source
+
+    def test_row_detail_carries_detector_name_and_parameters(self):
+        from validation.waves import STACK_DETECTOR
+
+        row = _row(evaluate(wave_speed_kmh=18.0, wave_detector=STACK_DETECTOR), "wave_speed")
+        assert row.evaluated and row.passed
+        assert row.detail.startswith("detector: " + STACK_DETECTOR.describe())
+        assert "[-40, -2] km/h" in row.detail and "contrast >= 3" in row.detail
+        assert "did not state" not in row.detail
+
+    def test_unstated_detector_is_noted_but_still_scored(self):
+        row = _row(evaluate(wave_speed_kmh=18.0), "wave_speed")
+        assert row.evaluated and row.passed
+        assert "detector: stack:" in row.detail
+        assert "caller did not state which detector produced the value" in row.detail
+        nan_row = _row(evaluate(wave_speed_kmh=math.nan), "wave_speed")
+        assert "no backward wave detected" in nan_row.detail and not nan_row.passed
+
+    def test_mismatched_detector_is_not_evaluated(self):
+        from validation.waves import STANDARD_DETECTOR
+
+        row = _row(evaluate(wave_speed_kmh=18.0, wave_detector=STANDARD_DETECTOR), "wave_speed")
+        assert not row.evaluated and not row.passed
+        assert row.value == 18.0
+        assert "measured with standard: jam = v < 40 km/h" in row.detail
+        assert "profile requires stack:" in row.detail
+
+    def test_profile_can_select_another_registered_detector(self):
+        from validation.waves import get_detector
+
+        p = CriteriaProfile(name="standard_variant", wave_detector=get_detector("standard"))
+        row = _row(
+            evaluate(p, wave_speed_kmh=18.0, wave_detector=get_detector("standard")), "wave_speed"
+        )
+        assert row.evaluated and row.passed
+        assert row.detail.startswith("detector: standard: jam = v < 40 km/h on 15 s x 75 m bins")
+        stripe = _row(
+            evaluate(p, wave_speed_kmh=18.0, wave_detector=get_detector("stripe")), "wave_speed"
+        )
+        assert not stripe.evaluated

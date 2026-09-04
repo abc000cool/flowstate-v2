@@ -44,6 +44,7 @@ from scipy.stats import t as student_t
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate
 from validation.fields import SpeedField, speed_field
 from validation.metrics import CI, CI_LEVEL, MIN_REPLICATES, Metrics, aggregate, compute_metrics
+from validation.waves import get_detector
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_NAME = "report.md.j2"
@@ -670,6 +671,9 @@ def generate_report(
         ring_emergence=ring_emergence,
         ring_dampening=ring_dampening,
         n_seeds=len(set(smallest.seeds)),
+        # compute_metrics measures wave speed with the standard threshold
+        # detector; say so on the row rather than let it read as the profile's.
+        wave_detector=get_detector("standard"),
     )
     criteria_note: str | None = None
     if len(groups) > 1 or n_seeded_excluded:

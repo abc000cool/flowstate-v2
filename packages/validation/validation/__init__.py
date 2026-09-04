@@ -42,11 +42,22 @@ from validation.string_stability import (
     stability_criterion,
     unstable_band,
 )
-from validation.waves import Wave, WaveSet, detect_waves
+from validation.waves import (
+    WAVE_DETECTORS,
+    Wave,
+    WaveDetector,
+    WaveMeasurement,
+    WaveSet,
+    detect_waves,
+    get_detector,
+    planted_stripe_field,
+    stack_wave_speed,
+)
 
 __all__ = [
     "CI",
     "CRITERIA_PROFILES",
+    "WAVE_DETECTORS",
     "CriteriaProfile",
     "CriteriaResult",
     "DensityField",
@@ -57,6 +68,8 @@ __all__ = [
     "ReportRefusedError",
     "SpeedField",
     "Wave",
+    "WaveDetector",
+    "WaveMeasurement",
     "WaveSet",
     "aggregate",
     "compute_metrics",
@@ -72,13 +85,16 @@ __all__ = [
     "geh",
     "geh_pass_fraction",
     "generate_report",
+    "get_detector",
     "get_profile",
     "idm_partials",
     "is_string_stable",
     "link_hour_geh",
+    "planted_stripe_field",
     "rmspe",
     "speed_field",
     "stability_criterion",
+    "stack_wave_speed",
     "travel_times",
     "unstable_band",
 ]
