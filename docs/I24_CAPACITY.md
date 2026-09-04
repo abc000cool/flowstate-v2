@@ -171,10 +171,13 @@ The next diagnostic is the merge itself: the same arm with the Old Hickory
 inflow at its tracked level, with the ramp closed, and with the strategic
 lane-change weight at SUMO's default.
 
-The single-level variant on the tracked profile (`--base tracked`) was also
-fitted; it is inferior on both hours and is recorded in
-`artifacts/demand_scale_i24.json` once its rerun completes (the first run's
-table was lost to a serialization bug in the script, fixed since).
+The single-level variant on the tracked profile (`--base tracked`,
+`artifacts/demand_scale_i24.json`, coarse grid, same seed) is inferior on
+both hours: its best level 1.60 scores 34.3% on the fitted hour and 44.1%
+held out with 93.7% inserted, and the fitted hour is flat (34–38%) from
+1.30 to 1.90 while the held-out hour keeps improving with demand — the
+signature of a time-varying coverage that one level cannot carry, which is
+why the coverage-shaped profile is the arm that goes forward.
 
 ## 6. The merge diagnostic
 
