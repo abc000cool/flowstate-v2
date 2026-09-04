@@ -59,7 +59,8 @@ here is a new claim.
    (docs/WAVE_SPEED_DIAGNOSIS.md and its follow-up).
 2. **US-101 replica:** 1 PASS / 5 FAIL with causes; the boundary-condition
    result (docs/M3_US101_VALIDATION.md).
-3. **I-24 replica:** two demand arms, 1 PASS / 5 FAIL each; coverage-corrected
+3. **I-24 replica:** three demand arms, 3 PASS / 3 FAIL each after FHWA-style
+   capacity and demand calibration (1 PASS / 5 FAIL before; docs/I24_CAPACITY.md); coverage-corrected
    demand reproduces the stop-and-go pattern (RMSPE 36.8%) but inserts 82–84%
    of demand and its fronts run at 8.7 / 12.4 km/h against 14.2 / 16.4; the
    wave-speed prediction not confirmed on the corridor and the specific reason

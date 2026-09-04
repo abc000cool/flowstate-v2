@@ -1,13 +1,16 @@
 # I-24 replica validation — observed vs simulated
 
-**Date:** 2026-09-03 · **Scenario:** `scenarios/i24_replica.yaml` (demand as
-tracked, config `5e15ca999c19`) and `scenarios/i24_replica_corrected.yaml`
-(demand ÷ apparent coverage, config `a3efae6955bd`) · **20 seeded replicates per
-arm** (`spawn_seeds(42, 20)`) · **Artifacts:** `artifacts/i24_validation_tracked.json`,
-`artifacts/i24_validation_corrected.json`, `artifacts/i24_validation_observed.json`,
-`artifacts/i24_validation_waves_relative.json`, `artifacts/i24_replica_inputs.json` · **Scripts:** `scripts/i24_build_replica.py`
-→ `scripts/i24_validate.py` → `scripts/i24_validation_figures.py`,
-`scripts/i24_report.py`.
+**Date:** 2026-09-03 (rerun the same day on the capacity-calibrated population, §0) ·
+**Scenarios:** `scenarios/i24_replica.yaml` (demand as tracked, config `17e9e80ffd83`),
+`scenarios/i24_replica_corrected.yaml` (demand ÷ apparent coverage, config `de82b62e4ef6`),
+`scenarios/i24_replica_speedcal.yaml` (coverage-shaped demand at the fitted level 0.85, config `b072d754492d`) ·
+**20 seeded replicates per arm** (`spawn_seeds(42, 20)`) · **Artifacts:** `artifacts/i24_validation_tracked.json`,
+`artifacts/i24_validation_corrected.json`, `artifacts/i24_validation_speedcal.json`,
+`artifacts/i24_validation_observed.json`, `artifacts/i24_validation_waves_relative.json`,
+`artifacts/i24_replica_inputs.json` · **Scripts:** `scripts/i24_build_replica.py`
+→ `scripts/i24_validate.py` → `scripts/i24_validation_figures.py`, `scripts/i24_report.py`.
+The original battery on the uncalibrated population (configs `5e15ca999c19` / `a3efae6955bd`,
+artifacts at commit `34d215b`) is kept below from §1 on as the record of what changed.
 
 This is the ROADMAP §1.4 result: the criteria battery of CLAUDE.md §7.1 on the
 flagship corridor, with every failure and its cause, and the explicit test of
@@ -17,17 +20,93 @@ calibration are data-derived inputs, not shocks. Read
 [I24_DATA.md](I24_DATA.md) first — its §4 (the instrument tracks roughly half
 of vehicle-time in the peak) is the reason there are two arms.
 
-**Headline, stated up front.** The replica **fails** the FHWA-style GEH,
-RMSPE and wave-speed criteria in both arms; 1 PASS / 5 FAIL per arm, as on
-US-101. Correcting demand for the instrument's coverage moves it a long way —
-segment-speed RMSPE from 183% to 36.8%, the space-time field from free flow to
-a stop-and-go pattern that looks like the recording — but the replica can only
-insert 82–84% of the corrected demand, its jams stay shallower than the real
-ones, and its backward fronts run at 8.7 km/h with the standard detector
-(12.4 km/h with the relative-threshold detector) against 14.2 (16.4) km/h
-observed. The wave-speed prediction of the diagnosis is therefore **not
-confirmed on the corridor**: the calibrated fleet reaches the 14–22 km/h band
-on a ring at ≥ 80 veh/km, and this replica does not reach that density.
+**Headline, stated up front.** After the FHWA Vol. III calibration steps
+([I24_CAPACITY.md](I24_CAPACITY.md): capacity first, then demand), the replica
+still **fails** the GEH, RMSPE and wave-speed criteria in all three demand
+arms — **3 PASS / 3 FAIL** per arm on the six criteria that are evaluated,
+plus a seventh row (the sensitivity grid) that waits for the flagship sweep.
+The two ring rows now pass inside the battery (20/20 seeds each) instead of
+being marked FAIL for want of evaluation. On the physical rows the
+calibration moved every number toward the recording without reaching it:
+speed RMSPE 36.8% → 33.7% (corrected arm), backward fronts 8.7 → 10.4 km/h
+with the standard detector and 12.3 → 14.2 km/h with the stripe detector —
+the latter now inside the 14–22 km/h band against 16.0 observed — and the
+fitted arm inserts 95.5% of its demand where the corrected arm inserts 81%.
+The wave-speed prediction is therefore **still not confirmed on the
+corridor** by the criterion's detector, and what blocks it is now specific
+and local: the Old Hickory merge holds a standing queue at the entry
+(§0.3), which caps the speed criterion near 35% however demand is set.
+
+## 0. Rerun on the capacity-calibrated population (three arms)
+
+All three arms use `artifacts/idm_i24_capacity.json` (mean T 1.322 s,
+[I24_CAPACITY.md](I24_CAPACITY.md) §4) and the same observed side as §1.
+Rows as evaluated by `validation.criteria` (`fhwa_default` profile; the
+GEH row of each arm is scored against the count table matching its own
+demand assumption, both tables are in the artifacts).
+
+### 0.1 Criteria
+
+| Criterion | Tracked demand | Coverage-corrected demand | Fitted level (speedcal) | Threshold |
+|---|---|---|---|---|
+| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% **FAIL** | 11.8% **FAIL** | 15.3% **FAIL** | ≥ 85% |
+| Segment-speed RMSPE ≤ 15% | 187.8% **FAIL** | 33.7% **FAIL** | 36.0% **FAIL** | ≤ 15% |
+| Backward wave speed 14–22 km/h (standard detector) | 7.9 km/h **FAIL** | 10.4 km/h **FAIL** | 9.9 km/h **FAIL** | 14–22 |
+| Ring emergence (20 seeds, ring-gate checks) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
+| Ring dampening (20 seeds) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
+| Replicates ≥ 20 | **PASS** | **PASS** | **PASS** | ≥ 20 |
+| Sensitivity grid published with CIs | not evaluated (sweep in progress) | | | 24 cells |
+
+Demand realised: tracked 100%, corrected 81.3%, speedcal 95.5%.
+
+### 0.2 Waves, metrics and speeds
+
+| | Tracked | Corrected | Speedcal | Observed |
+|---|---|---|---|---|
+| Backward fronts, standard detector [km/h] | 7.9 | 10.4 | 9.9 | 14.2 (median 17.5) |
+| Backward fronts, 25 km/h stripe detector [km/h] | 7.4 | 14.2 | 14.4 | 16.0 |
+| Wave components per replicate (standard) | 21.6 | 8.1 | 14.2 | 21 |
+| Throughput at data x = 2,200 m [veh/h] | 4,024 [4,020, 4,029] | 5,576 [5,552, 5,600] | 5,710 [5,679, 5,741] | 5,820–7,138 (corrected counts) |
+| Mean travel time over the span [s] | 248 | 601 | 564 | ≈ 220 free-flow |
+| σ_v temporal [m/s] | 4.53 | 4.80 | 4.98 | |
+| Fuel [ml/veh-km] | 65.6 | 108.2 | 100.7 | |
+
+Mean segment speed over the study period [km/h], upstream to downstream
+(549 m segments):
+
+| Segment start [km] | 0.0 | 0.5 | 1.1 | 1.6 | 2.2 | 2.7 | 3.3 | 3.8 | 4.4 | 4.9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Observed | 36.3 | 32.5 | 29.8 | 31.3 | 37.6 | 36.9 | 37.7 | 29.0 | 30.4 | 33.7 |
+| Tracked | 79.3 | 78.0 | 76.2 | 76.8 | 77.2 | 76.0 | 76.0 | 75.3 | 70.5 | 50.9 |
+| Corrected | 19.8 | 20.2 | 28.8 | 34.4 | 33.0 | 31.8 | 32.3 | 26.9 | 25.0 | 32.3 |
+| Speedcal | 21.4 | 21.5 | 30.7 | 38.4 | 36.7 | 34.9 | 35.5 | 32.2 | 29.0 | 32.1 |
+
+### 0.3 Reading it
+
+* **The tracked arm is still a half-empty road** (76–79 km/h everywhere
+  against 30–38 observed): the instrument's counts are a lower bound and
+  cannot be used as demand. Its 21 "waves" per replicate are the
+  boundary-queue oscillations of §3, not corridor waves.
+* **The corrected and fitted arms reproduce the corridor from 2.2 km on**
+  within a few km/h and reproduce its stop-and-go pattern; the stripe
+  detector puts their fronts at 14.2–14.4 km/h, inside the empirical band,
+  against 16.0 observed with the same detector. The criterion uses the
+  standard 40 km/h detector, which merges wall-to-wall congestion into few
+  components and reads 10 km/h; that reading fails, and stands.
+* **The residual is the Old Hickory merge.** Both congested arms run the
+  first kilometre at 20–21 km/h against 32–36 observed and the kilometre
+  after it faster than observed: a standing queue at the merge where the
+  real road's slowest zones are at 1.1–1.6 km and 3.8–4.4 km. The merge
+  and diverge edges carry auxiliary lanes in the map, so this is
+  merge behaviour (cooperation, the ramp's own corrected inflow), and it
+  is the subject of `scripts/i24_merge_experiment.py`
+  (`artifacts/i24_merge_experiment.json`, results in
+  [I24_CAPACITY.md](I24_CAPACITY.md) §6 when complete).
+* **What the calibration bought and did not buy.** Capacity calibration
+  raised throughput from 5,266 to 5,576–5,710 veh/h, lifted insertion to
+  95% in the fitted arm, and moved the fronts by 2–3 km/h; it did not move
+  the speed criterion below 33%, because the remaining error is where the
+  queue sits, not how much traffic there is.
 
 ## 1. What is compared
 
@@ -80,7 +159,7 @@ have, spread vehicle-time 24/25/25/27% across the lanes but crawled at
 stalled samples; at 0 the shares are 32/26/22/20% against the observed
 30/24/20/26%, with 200 stalled samples).
 
-## 2. Criteria tables — both arms
+## 2. Criteria tables — both arms (original population, for the record)
 
 FHWA-style profile (`validation.criteria`, 20 seeds each). Ring-benchmark rows
 are CI-gated integration tests, not re-run here; they are reported as **not

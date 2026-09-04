@@ -3,7 +3,8 @@
 * ``docs/figures/i24_validation_fields.png`` — observed vs simulated
   space-time speed fields (60 s × 100 m) over the study period on the
   measured span: the tracked fragments, one replicate of the tracked-demand
-  arm, one replicate of the coverage-corrected arm (first seed of each).
+  arm, one replicate of the coverage-corrected arm, one of the fitted arm
+  (first seed of each).
 * ``docs/figures/i24_validation_waves.png`` — backward wave-front speeds:
   observed fronts vs every simulated front of each arm (20 replicates), with
   the 14–22 km/h band.
@@ -38,7 +39,12 @@ SEQ_BLUES = [
     "#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
     "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b",
 ]  # fmt: skip
-ARM_COLORS = {"tracked": "#eb6834", "corrected": "#2a78d6"}
+ARM_COLORS = {"tracked": "#eb6834", "corrected": "#2a78d6", "speedcal": "#1baf7a"}
+ARM_LABELS = {
+    "tracked": "demand as tracked",
+    "corrected": "demand ÷ coverage",
+    "speedcal": "coverage-shaped demand × 0.85 (fitted)",
+}
 
 
 def _style() -> None:
@@ -78,7 +84,15 @@ def _results(arm: str) -> dict:
 def _sim_frame(arm: str, res: dict) -> pd.DataFrame:
     inputs = json.loads((REPO_ROOT / "artifacts" / "i24_replica_inputs.json").read_text())
     a, b = inputs["geometry"]["sim_x_of_data_x"]["a"], inputs["geometry"]["sim_x_of_data_x"]["b"]
-    run_dir = Path(res["simulated"]["run_dirs"][0])
+    # The artifact's run_dirs may point at the machine that ran the battery;
+    # use the first replicate whose trajectories exist under this checkout.
+    root = REPO_ROOT / "runs" / "i24_validation" / arm / res["config_hash"]
+    candidates = [root / str(seed) for seed in res["seeds"]]
+    candidates += [Path(d) for d in res["simulated"]["run_dirs"]]
+    run_dir = next((d for d in candidates if (d / "trajectories.parquet").is_file()), None)
+    if run_dir is None:
+        raise FileNotFoundError(f"no replicate with trajectories for arm {arm!r} under {root}")
+    res["_figure_seed"] = int(run_dir.name)
     df = pd.read_parquet(run_dir / "trajectories.parquet", columns=["t", "x", "v"])
     df["x"] = (df["x"] - a) / b
     df["t"] = df["t"] - WARMUP_S
@@ -91,13 +105,13 @@ def fields_figure(arms: list[str]) -> None:
         t_range_s=(T_STUDY_LO_S, T_STUDY_HI_S), x_range_m=(0.0, span_hi), columns=["t", "x", "v"]
     )
     obs["t"] = obs["t"] - T_STUDY_LO_S
-    panels = [("observed: tracked fragments (I-24 MOTION)", obs)]
+    panels = [("observed\ntracked fragments (I-24 MOTION)", obs)]
     for arm in arms:
         res = _results(arm)
         df = _sim_frame(arm, res)
         df = df[(df["x"] >= 0.0) & (df["x"] < span_hi)]
-        label = "demand as tracked" if arm == "tracked" else "demand ÷ coverage"
-        panels.append((f"i24_replica, {label} (seed {res['seeds'][0]})", df))
+        label = ARM_LABELS[arm]
+        panels.append((f"i24_replica, seed {res['_figure_seed']}\n{label}", df))
     cmap = LinearSegmentedColormap.from_list("blues", SEQ_BLUES)
     cmap.set_bad(SURFACE)
     norm = PowerNorm(gamma=0.6, vmin=0.0, vmax=120.0)
@@ -120,7 +134,7 @@ def fields_figure(arms: list[str]) -> None:
             ),
         )
         ax.grid(False)
-        ax.set_title(title, fontsize=9.5)
+        ax.set_title(title, fontsize=8.5)
         ax.set_xlabel("minutes after 06:30 CST")
     axes[0].set_ylabel("distance along westbound travel from MM 62.7 [km]")
     cb = fig.colorbar(im, ax=axes, pad=0.01, fraction=0.02)
@@ -141,7 +155,7 @@ def waves_figure(arms: list[str]) -> None:
         res = _results(arm)
         sp = res["simulated"]["all_backward_speeds_kmh"]
         weights = np.full(len(sp), 1.0 / res["replicates"])
-        label = "demand as tracked" if arm == "tracked" else "demand ÷ coverage"
+        label = ARM_LABELS[arm]
         ax.hist(
             sp,
             bins=bins,
@@ -172,7 +186,7 @@ def waves_figure(arms: list[str]) -> None:
 def main() -> None:
     arms = [
         a
-        for a in ("tracked", "corrected")
+        for a in ("tracked", "corrected", "speedcal")
         if (REPO_ROOT / "artifacts" / f"i24_validation_{a}.json").is_file()
     ]
     fields_figure(arms)
