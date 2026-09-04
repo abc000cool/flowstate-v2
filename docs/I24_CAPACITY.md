@@ -175,3 +175,45 @@ The single-level variant on the tracked profile (`--base tracked`) was also
 fitted; it is inferior on both hours and is recorded in
 `artifacts/demand_scale_i24.json` once its rerun completes (the first run's
 table was lost to a serialization bug in the script, fixed since).
+
+## 6. The merge diagnostic
+
+`scripts/i24_merge_experiment.py` → `artifacts/i24_merge_experiment.json`:
+the fitted arm, one seed, four variants, mean segment speed over the study
+period [km/h] and the relative error against the recording.
+
+| Variant | Inserted | Old Hickory merged | RMSPE | 0.0 km | 0.5 | 1.1 | 1.6 | 2.2 | 2.7 | 3.3 | 3.8 | 4.4 | 4.9 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Observed | | | | 36.3 | 32.5 | 29.8 | 31.3 | 37.6 | 36.9 | 37.7 | 29.0 | 30.4 | 33.7 |
+| As is | 0.942 | 1,833 / 2,241 | 0.393 | 20.9 | 21.1 | 29.4 | 35.8 | 34.6 | 34.0 | 34.1 | 31.8 | 29.9 | 33.3 |
+| Old Hickory inflow at its tracked level | 0.993 | 1,414 / 1,414 | 0.405 | 24.6 | 24.6 | 30.8 | 39.9 | 37.9 | 36.6 | 35.6 | 30.4 | 27.5 | 32.1 |
+| Old Hickory on-ramp closed | 0.996 | 0 / 0 | 1.232 | 65.1 | 62.5 | 56.1 | 50.9 | 48.2 | 45.6 | 44.4 | 42.9 | 37.8 | 35.6 |
+| `lc_strategic` at SUMO's default 1.0 | 0.875 | 1,870 / 2,241 | 0.466 | 16.6 | 16.9 | 22.4 | 24.5 | 23.3 | 21.8 | 23.8 | 41.9 | 32.6 | 36.5 |
+
+Three things follow.
+
+1. **The Old Hickory merge is the replica's only bottleneck.** With the
+   ramp closed the corridor free-flows at 45–65 km/h over its first four
+   kilometres, while the recording holds 30–38 km/h everywhere with the
+   ramp open. Everything the replica gets right downstream of 2.2 km is
+   congestion that spills from this one merge.
+2. **The ramp's inflow is not the overshoot.** At the tracked (uncorrected)
+   ramp level the upstream error shrinks from −34% to −22%, but every
+   segment from 1.6 to 3.3 km turns 7–43% too fast and the RMSPE does not
+   improve: the real road carries roughly the corrected ramp flow and still
+   runs the merge zone at 32–36 km/h. The replica's merge zone at 21 km/h
+   with a fifth of the ramp vehicles unable to enter is a merge-behaviour
+   defect — how readily mainline drivers open gaps and ramp drivers accept
+   them — not a demand defect.
+3. **The strategic lane-change weight is not the lever.** Lowering it to
+   SUMO's default brings back the diverge stall documented in
+   [I24_DATA.md](I24_DATA.md) and makes the whole corridor 30–48% too slow
+   upstream of the Bell Road diverge.
+
+The fleet specification exposes `lc_strategic` and `lc_keep_right` and
+nothing else of SUMO's lane-change model; the merge behaviour that this
+diagnostic isolates is governed by `lcCooperative`, `lcAssertive` and
+`lcSpeedGain`. Exposing them is a schema change (config hashes move,
+documented in CHANGELOG) and the next calibration step: fit them on the
+first hour's speeds with the second hour held out, exactly as the demand
+level was, and rerun the battery.

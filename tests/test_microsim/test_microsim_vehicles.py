@@ -420,8 +420,38 @@ class TestLcStrategic:
         assert len(vtypes) == plan.n
         assert all(v.get("lcStrategic") == "5" for v in vtypes)
 
+    def test_merge_parameters_written_only_when_nondefault(self, tmp_path):
+        plan = build_corridor_plan([(0.0, 0.5)], 20.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        default = write_corridor_routes(("e0",), plan, "IDM", 0.5, tmp_path / "d.rou.xml")
+        text = default.read_text()
+        assert "lcCooperative" not in text and "lcAssertive" not in text
+        assert "lcSpeedGain" not in text
+        tuned = write_corridor_routes(
+            ("e0",),
+            plan,
+            "IDM",
+            0.5,
+            tmp_path / "e.rou.xml",
+            lc_cooperative=0.5,
+            lc_assertive=2.0,
+            lc_speed_gain=1.5,
+        )
+        vtypes = ET.parse(tuned).getroot().findall("vType")
+        assert len(vtypes) == plan.n
+        assert all(v.get("lcCooperative") == "0.5" for v in vtypes)
+        assert all(v.get("lcAssertive") == "2" for v in vtypes)
+        assert all(v.get("lcSpeedGain") == "1.5" for v in vtypes)
+
     def test_fleet_spec_field(self):
         assert FleetSpec().lc_strategic == 1.0
+        assert FleetSpec().lc_cooperative == 1.0
+        assert (
+            FleetSpec(lc_cooperative=0.5, lc_assertive=2.0, lc_speed_gain=0.0).lc_assertive == 2.0
+        )
+        with pytest.raises(ValueError):
+            FleetSpec(lc_cooperative=1.5)
+        with pytest.raises(ValueError):
+            FleetSpec(lc_assertive=0.0)
         assert FleetSpec(lc_strategic=5.0).lc_strategic == 5.0
         with pytest.raises(ValueError):
             FleetSpec(lc_strategic=-1.0)

@@ -4,7 +4,7 @@
   "scenario": "golden_config() in tests/test_macrosim/test_macrosim_golden.py",
   "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
   "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate",
-  "generated_at": "2026-09-03T19:54:49+00:00",
+  "generated_at": "2026-09-04T01:00:27+00:00",
   "tolerance": {
     "relative": 1e-09,
     "exact": [
@@ -12,7 +12,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "608d1fc4f1dc",
+  "config_hash": "7bae64993163",
   "seed": 42,
   "tier": "screening",
   "seeded": true,
@@ -57,7 +57,10 @@
       "heterogeneity_frac": 0.12,
       "idm_calibration": null,
       "lc_strategic": 1.0,
-      "lc_keep_right": 1.0
+      "lc_keep_right": 1.0,
+      "lc_cooperative": 1.0,
+      "lc_assertive": 1.0,
+      "lc_speed_gain": 1.0
     },
     "av": {
       "penetration": 0.0,

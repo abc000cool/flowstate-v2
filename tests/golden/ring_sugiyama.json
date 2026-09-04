@@ -5,7 +5,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate ring_sugiyama",
-  "generated_at": "2026-09-03T19:53:57+00:00",
+  "generated_at": "2026-09-04T01:00:26+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -14,7 +14,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "718325bad723",
+  "config_hash": "eb920ac8aa15",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",
@@ -48,7 +48,10 @@
       "heterogeneity_frac": 0.12,
       "idm_calibration": null,
       "lc_strategic": 1.0,
-      "lc_keep_right": 1.0
+      "lc_keep_right": 1.0,
+      "lc_cooperative": 1.0,
+      "lc_assertive": 1.0,
+      "lc_speed_gain": 1.0
     },
     "av": {
       "penetration": 0.0,

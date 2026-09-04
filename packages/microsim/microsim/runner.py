@@ -220,6 +220,9 @@ def _build_plan_and_routes(
         routes=routes,
         lc_strategic=cfg.fleet.lc_strategic,
         lc_keep_right=cfg.fleet.lc_keep_right,
+        lc_cooperative=cfg.fleet.lc_cooperative,
+        lc_assertive=cfg.fleet.lc_assertive,
+        lc_speed_gain=cfg.fleet.lc_speed_gain,
     )
     return plan
 

@@ -225,6 +225,18 @@ class FleetSpec(BaseModel):
     with the default, SUMO piles the replica's traffic into the two right
     lanes (merge-zone crawl at 23-27 km/h while the left lanes run free —
     docs/I24_VALIDATION.md). 0 disables the rule. Car-following untouched."""
+    lc_cooperative: float = Field(default=1.0, ge=0.0, le=1.0)
+    """SUMO ``lcCooperative``: willingness of mainline drivers to slow for a
+    neighbour's lane change (0 = never, 1 = SUMO default). Written on every
+    vType when it differs from 1.0. Governs how readily gaps open at merges;
+    exposed for the Old Hickory merge calibration (docs/I24_CAPACITY.md §6)."""
+    lc_assertive: float = Field(default=1.0, gt=0.0)
+    """SUMO ``lcAssertive``: the minimum gap a lane-changing vehicle accepts is
+    divided by this factor (>1 = accepts smaller gaps). Written on every vType
+    when it differs from SUMO's default 1.0."""
+    lc_speed_gain: float = Field(default=1.0, ge=0.0)
+    """SUMO ``lcSpeedGain``: eagerness for speed-gain (tactical) lane changes.
+    Written on every vType when it differs from SUMO's default 1.0."""
 
 
 class OracleSpec(BaseModel):

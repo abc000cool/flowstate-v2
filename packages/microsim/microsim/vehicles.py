@@ -450,15 +450,22 @@ def _vtype_xml(
     action_step_s: float,
     lc_strategic: float = 1.0,
     lc_keep_right: float = 1.0,
+    lc_cooperative: float = 1.0,
+    lc_assertive: float = 1.0,
+    lc_speed_gain: float = 1.0,
 ) -> str:
     """One ``<vType>`` element (see module docstring for attribute notes).
 
-    ``lcStrategic`` / ``lcKeepRight`` (``FleetSpec.lc_strategic`` /
-    ``lc_keep_right``) are written only when they differ from SUMO's default
-    1.0, so route files of existing scenarios stay byte-identical.
+    The lane-change attributes (``lcStrategic``, ``lcKeepRight``,
+    ``lcCooperative``, ``lcAssertive``, ``lcSpeedGain`` from the matching
+    ``FleetSpec.lc_*`` fields) are written only when they differ from SUMO's
+    default 1.0, so route files of existing scenarios stay byte-identical.
     """
     lc = "" if lc_strategic == 1.0 else f' lcStrategic="{lc_strategic:g}"'
     lc += "" if lc_keep_right == 1.0 else f' lcKeepRight="{lc_keep_right:g}"'
+    lc += "" if lc_cooperative == 1.0 else f' lcCooperative="{lc_cooperative:g}"'
+    lc += "" if lc_assertive == 1.0 else f' lcAssertive="{lc_assertive:g}"'
+    lc += "" if lc_speed_gain == 1.0 else f' lcSpeedGain="{lc_speed_gain:g}"'
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
         f'decel="{p["b"]:.6f}" tau="{p["T"]:.6f}" minGap="{p["s0"]:.6f}" '
@@ -534,6 +541,9 @@ def write_corridor_routes(
     routes: Mapping[str, Sequence[str]] | None = None,
     lc_strategic: float = 1.0,
     lc_keep_right: float = 1.0,
+    lc_cooperative: float = 1.0,
+    lc_assertive: float = 1.0,
+    lc_speed_gain: float = 1.0,
 ) -> Path:
     """Write corridor demand: explicit jittered departures.
 
@@ -590,6 +600,9 @@ def write_corridor_routes(
         lc_strategic: ``FleetSpec.lc_strategic`` (SUMO ``lcStrategic``),
             written on every vType when it differs from 1.0.
         lc_keep_right: ``FleetSpec.lc_keep_right`` (SUMO ``lcKeepRight``),
+        lc_cooperative: ``FleetSpec.lc_cooperative`` (SUMO ``lcCooperative``).
+        lc_assertive: ``FleetSpec.lc_assertive`` (SUMO ``lcAssertive``).
+        lc_speed_gain: ``FleetSpec.lc_speed_gain`` (SUMO ``lcSpeedGain``).
             likewise.
 
     Returns:
@@ -606,7 +619,19 @@ def write_corridor_routes(
         named.update({rid: tuple(edges) for rid, edges in routes.items()})
     lines = ["<routes>"]
     for i, p in enumerate(plan.params):
-        lines.append(_vtype_xml(f"t{i:05d}", p, model, action_step_s, lc_strategic, lc_keep_right))
+        lines.append(
+            _vtype_xml(
+                f"t{i:05d}",
+                p,
+                model,
+                action_step_s,
+                lc_strategic,
+                lc_keep_right,
+                lc_cooperative,
+                lc_assertive,
+                lc_speed_gain,
+            )
+        )
     for rid, edges in named.items():
         lines.append(f'  <route id="{rid}" edges="{" ".join(edges)}"/>')
     rank_main = 0

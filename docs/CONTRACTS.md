@@ -155,6 +155,15 @@ Other blocks:
   v_drop_ms`). Non-None ⇒ every output row/report labels `seeded=True`.
 - `seed: int`, `replicates: int = 20`, `tier: Literal["micro","macro"]`.
 
+  `lc_cooperative: float = 1.0` (SUMO `lcCooperative`, mainline willingness
+  to open gaps, in [0, 1]), `lc_assertive: float = 1.0` (`lcAssertive`, gap
+  acceptance divisor, > 0) and `lc_speed_gain: float = 1.0` (`lcSpeedGain`)
+  complete the lane-change block (2026-09-03, for the Old Hickory merge
+  calibration, docs/I24_CAPACITY.md §6); like the two above they are written
+  on the vType only when they differ from 1.0, so route files of existing
+  scenarios are byte-identical, but their presence in the config snapshot
+  moves every config hash.
+
 `flowstate_core.config.config_hash(cfg) -> str`: sha256 over canonical JSON
 (sorted keys), first 12 hex chars. Recorded in every output artifact.
 
