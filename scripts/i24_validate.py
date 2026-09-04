@@ -247,6 +247,27 @@ def _analyze_replicate(payload: tuple[str, float, float, float, float, int]) -> 
     }
 
 
+def _existing_replicates(cfg: ScenarioConfig, out_root: Path, seeds: list[int]) -> list | None:
+    """RunPaths for replicates already on disk (all seeds complete), else None."""
+    from microsim.runner import RunPaths
+
+    root = out_root / config_hash(cfg)
+    paths = []
+    for seed in seeds:
+        d = root / str(seed)
+        if not (d / "meta.json").is_file() or not (d / "trajectories.parquet").is_file():
+            return None
+        paths.append(
+            RunPaths(
+                run_dir=d,
+                trajectories=d / "trajectories.parquet",
+                edges=d / "edges.parquet",
+                meta=d / "meta.json",
+            )
+        )
+    return paths
+
+
 def micro_arm(
     cfg: ScenarioConfig,
     n_replicates: int,
@@ -254,8 +275,9 @@ def micro_arm(
     procs: int,
     obs: dict,
     analysis_procs: int = 6,
+    reuse_runs: bool = False,
 ) -> dict:
-    """Run one arm's replicates, then analyse them in a process pool."""
+    """Run one arm's replicates (or reuse complete ones on disk), then analyse them."""
     from validation.metrics import Metrics
 
     inputs = _inputs()
@@ -265,7 +287,11 @@ def micro_arm(
     cfg = cfg.model_copy(update={"replicates": n_replicates})
     seeds = spawn_seeds(cfg.seed, n_replicates)
     t0 = time.perf_counter()
-    paths = run_replicates(cfg, out_root, n_procs=min(procs, n_replicates))
+    paths = _existing_replicates(cfg, out_root, seeds) if reuse_runs else None
+    if paths is None:
+        paths = run_replicates(cfg, out_root, n_procs=min(procs, n_replicates))
+    else:
+        print(f"  reusing {len(paths)} complete replicates under {out_root}", flush=True)
     wall = time.perf_counter() - t0
     payloads = [(str(p.run_dir), a, b, span_lo, span_hi, n_win) for p in paths]
     if analysis_procs > 1:
@@ -495,6 +521,11 @@ def main() -> None:
     )
     ap.add_argument("--analysis-procs", type=int, default=6)
     ap.add_argument(
+        "--reuse-runs",
+        action="store_true",
+        help="analyse complete replicates already under runs/i24_validation instead of re-simulating",
+    )
+    ap.add_argument(
         "--ring-seeds",
         type=int,
         default=20,
@@ -544,6 +575,7 @@ def main() -> None:
             args.procs,
             obs,
             analysis_procs=args.analysis_procs,
+            reuse_runs=args.reuse_runs,
         )
         results = build_results(arm, cfg, sim, obs, args.replicates, ring)
         out_path = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
