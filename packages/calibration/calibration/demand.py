@@ -24,15 +24,24 @@ Two call forms share the fitter core (:func:`fit_inflow_profile`):
 
 All interfaces are SI (veh/s); GEH is computed on veh/h via
 ``flowstate_core.units`` at the comparison boundary only.
+
+A second, engine-agnostic fitter lives here too: :func:`fit_multipliers`
+searches a handful of named scalar multipliers (ramp inflow levels, exit
+fractions, a boundary speed schedule, ...) against an injected objective —
+deterministic compass search on a shrinking grid, memoized and resumable,
+with the round's candidates evaluated through an injected ``map_fn`` so a
+driver script can spread them over a process pool.
 """
 
 from __future__ import annotations
 
+import math
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from math import sqrt
 from pathlib import Path
-from typing import overload
+from typing import Any, overload
 
 import numpy as np
 import pandas as pd
@@ -394,3 +403,350 @@ def _fit_inflow_scenario(
     finally:
         if tmp is not None:
             tmp.cleanup()
+
+
+# --- named scalar multipliers: compass search on a shrinking grid ---------------
+
+
+@dataclass(frozen=True)
+class MultiplierSpec:
+    """One named scalar multiplier with bounds and a starting value.
+
+    Attributes:
+        name: Unique label (the key of the ``values`` dict handed to the
+            objective).
+        initial: Starting value; ties in the objective are broken toward it.
+        lower: Inclusive lower bound.
+        upper: Inclusive upper bound.
+    """
+
+    name: str
+    initial: float = 1.0
+    lower: float = 0.5
+    upper: float = 1.5
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("MultiplierSpec needs a non-empty name")
+        if not self.lower < self.upper:
+            raise ValueError(
+                f"{self.name}: lower must be < upper, got [{self.lower}, {self.upper}]"
+            )
+        if not self.lower <= self.initial <= self.upper:
+            raise ValueError(
+                f"{self.name}: initial {self.initial} outside [{self.lower}, {self.upper}]"
+            )
+
+
+@dataclass(frozen=True)
+class EvalResult:
+    """What an objective returns for one point.
+
+    Attributes:
+        objective: The fitted-window objective to minimise (a non-finite
+            value is kept in the log but never selected).
+        diagnostics: Anything else worth recording — held-out scores,
+            insertion fractions, config hashes. Must be picklable when the
+            evaluation runs in a process pool.
+    """
+
+    objective: float
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EvalRecord:
+    """One entry of the evaluation log (a point and what it scored).
+
+    Attributes:
+        values: Multiplier values of the point.
+        objective: Fitted-window objective.
+        diagnostics: Held-out diagnostics returned with it.
+        round: Round that requested the evaluation (0 = the initial point;
+            prior records keep the round they were made in).
+    """
+
+    values: dict[str, float]
+    objective: float
+    diagnostics: dict[str, Any]
+    round: int
+
+
+@dataclass(frozen=True)
+class RoundSummary:
+    """What one round of :func:`fit_multipliers` did.
+
+    Attributes:
+        index: Round number (1-based).
+        step: Grid half-width per multiplier during the round.
+        n_fresh: Evaluations performed (cache misses).
+        n_cached: Candidate points answered from the cache.
+        moved: Whether the incumbent changed.
+        best: Incumbent after the round.
+        objective: Its objective.
+    """
+
+    index: int
+    step: dict[str, float]
+    n_fresh: int
+    n_cached: int
+    moved: bool
+    best: dict[str, float]
+    objective: float
+
+
+@dataclass
+class MultiplierFit:
+    """Result of :func:`fit_multipliers`.
+
+    Attributes:
+        best: Best point found (the incumbent at the end).
+        objective: Its fitted-window objective.
+        diagnostics: The held-out diagnostics recorded at the best point.
+        log: Every evaluation known — prior records first, then this call's
+            in evaluation order.
+        rounds: Per-round summaries.
+        n_evaluations: Fresh evaluations performed by this call.
+        n_cached: Candidate points answered from the cache by this call.
+        converged: Whether the step fell below ``tol`` before the round cap.
+        step: Final grid half-width per multiplier.
+    """
+
+    best: dict[str, float]
+    objective: float
+    diagnostics: dict[str, Any]
+    log: list[EvalRecord]
+    rounds: list[RoundSummary]
+    n_evaluations: int
+    n_cached: int
+    converged: bool
+    step: dict[str, float]
+
+
+EvaluateFn = Callable[[dict[str, float]], EvalResult]
+"""Objective: multiplier values → :class:`EvalResult`. Pure and picklable
+when used with a process-pool ``map_fn``."""
+
+MapFn = Callable[[EvaluateFn, list[dict[str, float]]], Iterable[EvalResult]]
+"""``map``-shaped evaluator of a batch of candidate points (order-preserving);
+the default is the builtin ``map``, a driver passes ``Pool.map``."""
+
+_KEY_DECIMALS = 9
+
+
+def _point_key(values: Mapping[str, float], names: Sequence[str]) -> tuple[float, ...]:
+    return tuple(round(float(values[n]), _KEY_DECIMALS) for n in names)
+
+
+def _objective_key(objective: float) -> float:
+    return float(objective) if math.isfinite(objective) else math.inf
+
+
+def fit_multipliers(
+    params: Sequence[MultiplierSpec],
+    evaluate: EvaluateFn,
+    *,
+    grid: int = 3,
+    rounds: int = 3,
+    step: float | Mapping[str, float] | None = None,
+    shrink: float = 0.5,
+    tol: float = 1e-3,
+    combine: bool = True,
+    map_fn: MapFn = map,
+    prior: Iterable[EvalRecord] | None = None,
+    on_round: Callable[[MultiplierFit], None] | None = None,
+) -> MultiplierFit:
+    """Minimise an objective over a few named scalar multipliers.
+
+    Deterministic compass (pattern) search on a shrinking coordinate grid.
+    Round 0 evaluates the initial point. Each later round places, for every
+    multiplier, ``grid`` points centred on the incumbent and spanning
+    ``±step`` along that coordinate alone (``grid=3`` is ``{x−h, x, x+h}``),
+    clipped to the bounds; every point not already in the cache is evaluated
+    in ONE ``map_fn`` batch, so a process pool runs a round's candidates in
+    parallel. With ``combine`` the per-coordinate winners are then joined
+    into one extra point (evaluated when at least two coordinates moved),
+    which lets a separable objective converge in a round instead of one
+    coordinate per round. The incumbent moves to the best point seen; when
+    nothing beats it the step is multiplied by ``shrink``, and the search
+    stops once every step is below ``tol`` or ``rounds`` is exhausted.
+
+    Ties are broken toward the initial values (smallest maximum distance
+    from ``initial``), then by the values themselves, so the result never
+    depends on evaluation order. Every evaluated point is memoized by its
+    rounded values; ``prior`` records (e.g. the log of an interrupted run)
+    seed the cache, which makes the fit resumable, and ``on_round`` receives
+    the partial result after every round for checkpointing.
+
+    Args:
+        params: The multipliers (unique names, bounds, initial values).
+        evaluate: Objective, ``values → EvalResult``. A non-finite objective
+            is logged and treated as worst.
+        grid: Odd number of points per coordinate per round (≥ 3).
+        rounds: Maximum number of rounds after the initial point (≥ 0).
+        step: Initial grid half-width — one value for all, a per-name
+            mapping, or ``None`` for a quarter of each range.
+        shrink: Step multiplier applied after a round without improvement
+            (in ``(0, 1)``).
+        tol: Stop when every step is below this.
+        combine: Also try the point joining the per-coordinate winners.
+        map_fn: Batch evaluator (see :data:`MapFn`).
+        prior: Previously evaluated points to seed the cache and log.
+        on_round: Callback with the partial result after each round.
+
+    Returns:
+        :class:`MultiplierFit` with the best point, its diagnostics, the
+        full log and the per-round summaries.
+
+    Raises:
+        ValueError: On duplicate names, an even or too-small grid, a
+            non-positive step, a shrink outside (0, 1) or negative rounds.
+    """
+    names = [p.name for p in params]
+    if not names:
+        raise ValueError("fit_multipliers needs at least one MultiplierSpec")
+    if len(set(names)) != len(names):
+        raise ValueError(f"multiplier names must be unique, got {names}")
+    if grid < 3 or grid % 2 == 0:
+        raise ValueError(f"grid must be an odd integer >= 3, got {grid}")
+    if rounds < 0:
+        raise ValueError(f"rounds must be >= 0, got {rounds}")
+    if not 0.0 < shrink < 1.0:
+        raise ValueError(f"shrink must be in (0, 1), got {shrink}")
+    spec = {p.name: p for p in params}
+    if step is None:
+        steps = {n: (spec[n].upper - spec[n].lower) / 4.0 for n in names}
+    elif isinstance(step, Mapping):
+        missing = [n for n in names if n not in step]
+        if missing:
+            raise ValueError(f"step mapping lacks {missing}")
+        steps = {n: float(step[n]) for n in names}
+    else:
+        steps = {n: float(step) for n in names}
+    if any(h <= 0.0 for h in steps.values()):
+        raise ValueError(f"steps must be > 0, got {steps}")
+    initial = {n: float(spec[n].initial) for n in names}
+
+    cache: dict[tuple[float, ...], EvalRecord] = {}
+    log: list[EvalRecord] = []
+    for rec in prior or ():
+        if set(rec.values) != set(names):
+            raise ValueError(f"prior record names {sorted(rec.values)} != {sorted(names)}")
+        clean = EvalRecord(
+            values={n: float(rec.values[n]) for n in names},
+            objective=float(rec.objective),
+            diagnostics=dict(rec.diagnostics),
+            round=int(rec.round),
+        )
+        cache[_point_key(clean.values, names)] = clean
+        log.append(clean)
+
+    n_fresh_total = 0
+    n_cached_total = 0
+
+    def evaluate_batch(points: list[dict[str, float]], round_index: int) -> list[EvalRecord]:
+        """Answer ``points`` from the cache, evaluating the misses in one batch."""
+        nonlocal n_fresh_total, n_cached_total
+        fresh: list[dict[str, float]] = []
+        seen: set[tuple[float, ...]] = set()
+        for pt in points:
+            key = _point_key(pt, names)
+            if key in cache:
+                n_cached_total += 1
+            elif key not in seen:
+                seen.add(key)
+                fresh.append({n: float(pt[n]) for n in names})
+        if fresh:
+            results = list(map_fn(evaluate, fresh))
+            if len(results) != len(fresh):
+                raise ValueError(
+                    f"map_fn returned {len(results)} results for {len(fresh)} candidates"
+                )
+            for pt, res in zip(fresh, results, strict=True):
+                rec = EvalRecord(
+                    values=dict(pt),
+                    objective=float(res.objective),
+                    diagnostics=dict(res.diagnostics),
+                    round=round_index,
+                )
+                cache[_point_key(pt, names)] = rec
+                log.append(rec)
+                n_fresh_total += 1
+        return [cache[_point_key(pt, names)] for pt in points]
+
+    def rank_key(rec: EvalRecord) -> tuple[float, float, tuple[float, ...]]:
+        dist = max(abs(rec.values[n] - initial[n]) for n in names)
+        return (_objective_key(rec.objective), dist, _point_key(rec.values, names))
+
+    def clip(name: str, value: float) -> float:
+        return min(max(value, spec[name].lower), spec[name].upper)
+
+    incumbent = evaluate_batch([dict(initial)], 0)[0]
+    summaries: list[RoundSummary] = []
+    converged = all(h < tol for h in steps.values())
+
+    def snapshot() -> MultiplierFit:
+        return MultiplierFit(
+            best=dict(incumbent.values),
+            objective=incumbent.objective,
+            diagnostics=dict(incumbent.diagnostics),
+            log=list(log),
+            rounds=list(summaries),
+            n_evaluations=n_fresh_total,
+            n_cached=n_cached_total,
+            converged=converged,
+            step=dict(steps),
+        )
+
+    half = (grid - 1) // 2
+    for r in range(1, rounds + 1):
+        if converged:
+            break
+        fresh_before, cached_before = n_fresh_total, n_cached_total
+        candidates: list[dict[str, float]] = []
+        along: dict[str, list[dict[str, float]]] = {n: [] for n in names}
+        for n in names:
+            seen_vals = {round(incumbent.values[n], _KEY_DECIMALS)}
+            for k in range(-half, half + 1):
+                if k == 0:
+                    continue
+                v = clip(n, incumbent.values[n] + steps[n] * k / half)
+                if round(v, _KEY_DECIMALS) in seen_vals:
+                    continue
+                seen_vals.add(round(v, _KEY_DECIMALS))
+                pt = dict(incumbent.values)
+                pt[n] = v
+                candidates.append(pt)
+                along[n].append(pt)
+        records = evaluate_batch(candidates, r)
+        by_key = {_point_key(rec.values, names): rec for rec in records}
+        pool = [incumbent, *records]
+        if combine:
+            winners: dict[str, float] = {}
+            for n in names:
+                axis = [incumbent, *(by_key[_point_key(pt, names)] for pt in along[n])]
+                winners[n] = min(axis, key=rank_key).values[n]
+            moved = [n for n in names if winners[n] != incumbent.values[n]]
+            if len(moved) >= 2:
+                pool.extend(evaluate_batch([winners], r))
+        best = min(pool, key=rank_key)
+        improved = rank_key(best) < rank_key(incumbent)
+        if improved:
+            incumbent = best
+        else:
+            steps = {n: h * shrink for n, h in steps.items()}
+            converged = all(h < tol for h in steps.values())
+        summaries.append(
+            RoundSummary(
+                index=r,
+                step=dict(steps),
+                n_fresh=n_fresh_total - fresh_before,
+                n_cached=n_cached_total - cached_before,
+                moved=improved,
+                best=dict(incumbent.values),
+                objective=incumbent.objective,
+            )
+        )
+        if on_round is not None:
+            on_round(snapshot())
+    return snapshot()

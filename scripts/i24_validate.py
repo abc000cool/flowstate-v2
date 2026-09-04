@@ -94,6 +94,7 @@ ARMS = {
     "tracked": "i24_replica",
     "corrected": "i24_replica_corrected",
     "speedcal": "i24_replica_speedcal",  # FHWA step-2 demand scale (docs/I24_CAPACITY.md)
+    "ramps": "i24_replica_speedcal_ramps",  # step 3: ramps, boundary, gap acceptance (§6.1)
 }
 
 
@@ -423,7 +424,7 @@ def build_results(
     geh_corrected = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_corrected"]))
     # speedcal derives from the coverage-corrected profile, so its flow criterion
     # is scored against the corrected counts too; both tables are reported.
-    geh_primary = geh_corrected if arm in ("corrected", "speedcal") else geh_tracked
+    geh_primary = geh_corrected if arm in ("corrected", "speedcal", "ramps") else geh_tracked
 
     obs_seg = np.asarray(obs["segment_speeds_ms"], dtype=np.float64)
     sim_seg = np.asarray(sim["segment_speeds_ms_mean"], dtype=np.float64)
@@ -475,7 +476,7 @@ def build_results(
         "observed": obs,
         "simulated": sim,
         "geh": {
-            "primary": "corrected" if arm in ("corrected", "speedcal") else "tracked",
+            "primary": "corrected" if arm in ("corrected", "speedcal", "ramps") else "tracked",
             "vs_tracked_counts": geh_tracked,
             "vs_coverage_corrected_counts": geh_corrected,
             "bins": "6 sections x 24 five-min windows, hourly-equivalent volumes (x12)",
@@ -515,7 +516,7 @@ def main() -> None:
     ap.add_argument("--procs", type=int, default=int(os.environ.get("I24_PROCS", "8")))
     ap.add_argument(
         "--arms",
-        choices=("all", "both", "tracked", "corrected", "speedcal"),
+        choices=("all", "both", "tracked", "corrected", "speedcal", "ramps"),
         default="all",
         help="'both' = tracked + corrected (the pre-2026-09-03 pair); 'all' adds speedcal",
     )
@@ -560,7 +561,12 @@ def main() -> None:
     arms = [
         a
         for a in ARMS
-        if args.arms == a or args.arms == "all" or (args.arms == "both" and a != "speedcal")
+        if args.arms == a
+        or (
+            args.arms == "all"
+            and (a != "ramps" or (REPO_ROOT / "scenarios" / f"{ARMS[a]}.yaml").is_file())
+        )
+        or (args.arms == "both" and a in ("tracked", "corrected"))
     ]
     for arm in arms:
         cfg = load_scenario(ARMS[arm])

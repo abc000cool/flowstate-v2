@@ -1,7 +1,7 @@
 """FlowState v2 calibration: FD fitting, IDM population calibration, demand
 fitting and public-dataset loaders (CLAUDE.md §6, docs/CONTRACTS.md §5)."""
 
-from calibration.demand import fit_inflow, geh
+from calibration.demand import fit_inflow, fit_multipliers, geh
 from calibration.episodes import (
     LeaderFollowerEpisode,
     episodes_from_pairs,
@@ -28,6 +28,7 @@ __all__ = [
     "extract_episodes",
     "fit_episode",
     "fit_inflow",
+    "fit_multipliers",
     "fit_population",
     "fit_triangular_fd",
     "gap_rmse",
