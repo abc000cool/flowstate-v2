@@ -7,19 +7,26 @@
 # resumable, so rerunning after a Spot preemption continues where it stopped.
 #
 #   curl -fsSL https://raw.githubusercontent.com/abc000cool/flowstate-v2/main/scripts/gcp/bootstrap.sh \
-#     | bash -s -- [--procs N] [--scenario i24_replica_corrected] [--ref main] [--no-run]
+#     | bash -s -- [--procs N] [--scenario i24_replica_corrected] [--ref main] [--no-run] [--no-auto-stop]
+#
+# By default the VM POWERS ITSELF OFF five minutes after the sweep finishes
+# (or fails five times), so an unattended machine never bills idle; fetch
+# results with scripts/gcp/fetch_results.sh after `gcloud compute instances
+# start`, or pass --no-auto-stop to keep it up.
 set -euo pipefail
 
 PROCS=""
 SCENARIO="i24_replica_corrected"
 REF="main"
 RUN=1
+AUTO_STOP=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --procs) PROCS="$2"; shift 2 ;;
     --scenario) SCENARIO="$2"; shift 2 ;;
     --ref) REF="$2"; shift 2 ;;
     --no-run) RUN=0; shift ;;
+    --no-auto-stop) AUTO_STOP=0; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -72,5 +79,6 @@ nohup bash -c "
     echo \"sweep exited non-zero; retrying in 30 s (attempt \$n)\"; sleep 30
   done
   echo SWEEP_DONE
+  if [ \"$AUTO_STOP\" = \"1\" ]; then sudo shutdown -h +5 \"sweep finished; auto-stop\"; fi
 " > logs/sweep.log 2>&1 &
 echo "sweep running; follow with: tail -f ~/flowstate/logs/sweep.log"

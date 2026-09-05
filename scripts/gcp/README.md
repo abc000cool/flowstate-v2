@@ -43,6 +43,17 @@ gcloud compute ssh flowstate-sweep --zone us-central1-a --command \
 
 500 runs at ~8 min each on 30 workers is about 1.5 hours.
 
+## Auto-stop
+
+The bootstrap arms an automatic `shutdown -h +5` when the sweep finishes, so
+an unattended VM stops billing compute on its own (the disk still bills a few
+cents a day until the instance is deleted). Fetch results after
+`gcloud compute instances start flowstate-sweep --zone us-west1-b`, or pass
+`--no-auto-stop` to keep the VM up. For ad-hoc jobs launched by hand, arm the
+same guard with `systemd-run --user --unit=autostop bash -c 'until [ -f
+<done-marker> ]; do sleep 60; done; sudo shutdown -h +5'` (enable
+`loginctl enable-linger $USER` first so user units survive logout).
+
 ## Fetch results and shut down
 
 ```sh

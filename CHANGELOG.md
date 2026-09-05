@@ -58,6 +58,8 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### Cloud compute
 
+- The bootstrap now arms an automatic shutdown five minutes after the sweep finishes (`--no-auto-stop` to keep the VM up), after a VM idled about 40 hours on 2026-09-04/05 because the session that launched it lost connectivity.
+
 - `scripts/gcp/`: bootstrap for a fresh Debian VM (system deps, uv, workspace, resumable sweep under nohup), a results fetcher, and a README with the exact `gcloud` commands and costs. `data/osm/i24_motion.osm` (89 KB, ODbL) is now versioned so the I-24 replica runs from a plain clone.
 
 ### Embeddable simulation
