@@ -18,6 +18,7 @@ Index of everything in `docs/`. Start with the repo-root
 | [M3_RESULTS.md](M3_RESULTS.md) | The 540-run penetration × compliance sweep on the synthetic `corridor_10km` (27 cells × 20 seeds, paired CIs): dose-response, controller ranking including the honest PI-saturation failure |
 - [ROADMAP.md](ROADMAP.md) — the working plan for the next phase: critical path, four tracks, and what is blocked on whom
 - [I24_DATA.md](I24_DATA.md) — the I-24 MOTION day: streaming ingestion, fragmentation, the tracking-coverage limitation, 17,652-episode IDM fit, corridor geometry (ROADMAP §1.1–1.3)
+- [FLOWSTATE_DOSSIER.md](FLOWSTATE_DOSSIER.md) — the single long-form dossier: how it works, why, evidence and validation record, market, revenue, channels, implementation options; renders to PDF with `validation.report_pdf.render_pdf`
 - [I24_SWEEP.md](I24_SWEEP.md) — the 500-run penetration × compliance battery on the fitted I-24 arm: FollowerStopper's smoothing is paid for in throughput on a corridor near capacity
 - [US101_CALIBRATED.md](US101_CALIBRATED.md) — the same two calibration steps applied to US-101 with no retuning: speeds improve, flows overshoot, waves unchanged; what that says about the method
 - [I24_CAPACITY.md](I24_CAPACITY.md) — why the replica cannot carry its demand: the fleet's capacity, not insertion; FHWA step-1 capacity calibration of the population and step-2 demand scale
