@@ -76,7 +76,7 @@ from microsim.scenarios import load_scenario
 from validation.criteria import evaluate, get_profile
 from validation.fields import speed_field
 from validation.metrics import aggregate, compute_metrics, geh, rmspe
-from validation.waves import WAVE_DETECTORS, WaveDetector
+from validation.waves import WAVE_DETECTORS, WaveDetector, get_detector
 
 OUT_ROOT = REPO_ROOT / "runs" / "i24_validation"
 INPUTS = REPO_ROOT / "artifacts" / "i24_replica_inputs.json"
@@ -440,6 +440,32 @@ def ring_benchmark_block(n_seeds: int, out_dir: Path) -> dict:
     return ring
 
 
+SWEEP_SUMMARY = REPO_ROOT / "artifacts" / "i24_sweep_summary.json"
+
+
+def _sweep_grid() -> list[tuple[float, float]] | None:
+    """(penetration, compliance) cells published with >= 20 seeds, else None.
+
+    Feeds the CLAUDE.md §7.1 sensitivity row from
+    ``artifacts/i24_sweep_summary.json`` (``scripts/i24_penetration_analyze.py``)
+    when the flagship sweep has been analysed; the row stays "not evaluated"
+    otherwise.
+    """
+    if not SWEEP_SUMMARY.is_file():
+        return None
+    d = json.loads(SWEEP_SUMMARY.read_text())
+    if int(d.get("n_seeds", 0)) < 20:
+        return None
+    incomplete = set(d.get("incomplete_cells") or [])
+    cells = []
+    for pen in d.get("penetrations", []):
+        for comp in d.get("compliances", []):
+            name = f"fs_p{float(pen):.2f}_c{float(comp):.2f}"
+            if name in d.get("cells", {}) and name not in incomplete:
+                cells.append((float(pen), float(comp)))
+    return cells or None
+
+
 def build_results(
     arm: str,
     cfg: ScenarioConfig,
@@ -473,6 +499,7 @@ def build_results(
         ring_emergence=None if ring is None else bool(ring["emergence"]["passed"]),
         ring_dampening=None if ring is None else bool(ring["dampening"]["passed"]),
         n_seeds=replicates,
+        sweep_grid=_sweep_grid(),
     )
     inputs = _inputs()
     ring_note = (
@@ -547,11 +574,61 @@ def build_results(
             "Six GEH sections chosen for coverage (holes at 400 m and 2400 m avoided); the observed count at every section is still biased low by 35-50% in the peak.",
             "Both GEH tables are reported for both arms; the criteria row uses the tracked counts for the tracked arm and the coverage-corrected counts for the corrected arm.",
             ring_note,
-            "The sensitivity_grid criterion row is not evaluated by this script (the penetration x compliance sweep is a separate artifact, scripts/i24_penetration_sweep.py).",
+            (
+                "The sensitivity_grid criterion row is fed from artifacts/i24_sweep_summary.json "
+                "(scripts/i24_penetration_sweep.py -> i24_penetration_analyze.py)."
+                if _sweep_grid()
+                else "The sensitivity_grid criterion row is not evaluated: no analysed penetration x "
+                "compliance sweep artifact (artifacts/i24_sweep_summary.json) is present."
+            ),
             "compute_metrics runs on the measured span only (travel time over the span, throughput at data x = 2200 m); its wave metrics use the standard 40 km/h detector on the same site-clipped field, not the criteria row's detector.",
             f"The wave_speed criteria row is measured with the {PROFILE.name!r} profile's wave_detector ({CRITERION_DETECTOR.name}); the 'waves' block keeps the standard-detector keys of schema 4 and adds every registered detector under 'by_detector'.",
         ],
     }
+
+
+def refresh_criteria(arm: str) -> Path:
+    """Re-evaluate the criteria rows of an existing arm artifact (no simulation).
+
+    Uses the values the artifact already carries (primary GEH bins, RMSPE, the
+    criterion wave speed, ring rows, replicate count) with the current profile
+    and the published sweep grid, rewrites ``criteria`` and the note, and
+    returns the path. Rows whose inputs are absent stay not evaluated.
+    """
+    path = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+    d = json.loads(path.read_text())
+    geh = d["geh"]
+    primary = (
+        geh["vs_coverage_corrected_counts"]
+        if geh["primary"] == "corrected"
+        else geh["vs_tracked_counts"]
+    )
+    waves = d["waves"]
+    wave_speed = waves.get("criterion_wave_speed_kmh")
+    detector = CRITERION_DETECTOR
+    if wave_speed is None:
+        wave_speed = waves.get("simulated_mean_backward_speed_kmh")
+        detector = get_detector("standard")
+    ring = d.get("ring")
+    rows = evaluate(
+        PROFILE,
+        geh_values=primary["values"],
+        rmspe_value=d["rmspe"]["value"],
+        wave_speed_kmh=wave_speed if wave_speed is not None else math.nan,
+        wave_detector=detector,
+        ring_emergence=None if not ring else bool(ring["emergence"]["passed"]),
+        ring_dampening=None if not ring else bool(ring["dampening"]["passed"]),
+        n_seeds=int(d["replicates"]),
+        sweep_grid=_sweep_grid(),
+    )
+    d["criteria"] = [_json_safe(asdict(r)) for r in rows]
+    d.setdefault("notes", []).append(
+        f"criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on "
+        f"{datetime.now(UTC).isoformat(timespec='seconds')} with the current profile"
+        f" ({'sweep grid present' if _sweep_grid() else 'no sweep grid'})"
+    )
+    path.write_text(json.dumps(_json_safe(d), indent=2, allow_nan=False))
+    return path
 
 
 def main() -> None:
@@ -565,6 +642,11 @@ def main() -> None:
         help="'both' = tracked + corrected (the pre-2026-09-03 pair); 'all' adds speedcal",
     )
     ap.add_argument("--analysis-procs", type=int, default=6)
+    ap.add_argument(
+        "--criteria-only",
+        action="store_true",
+        help="re-evaluate the criteria rows of the existing arm artifacts (no simulation) and exit",
+    )
     ap.add_argument(
         "--reuse-runs",
         action="store_true",
@@ -612,6 +694,21 @@ def main() -> None:
         )
         or (args.arms == "both" and a in ("tracked", "corrected"))
     ]
+    if args.criteria_only:
+        for arm in arms:
+            art = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+            if not art.is_file():
+                print(f"[{arm}] no artifact at {art}; skipped", flush=True)
+                continue
+            refresh_criteria(arm)
+            rows = json.loads(art.read_text())["criteria"]
+            print(f"[{arm}] criteria re-evaluated:", flush=True)
+            for r in rows:
+                print(
+                    f"    {r['name']:<18} {'PASS' if r['passed'] else 'FAIL':<5} {r.get('value')}",
+                    flush=True,
+                )
+        return
     for arm in arms:
         cfg = load_scenario(ARMS[arm])
         print(

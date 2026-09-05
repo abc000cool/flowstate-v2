@@ -8377,8 +8377,8 @@
       "value": 7.936736757658561,
       "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
       "passed": false,
-      "evaluated": true,
-      "detail": ""
+      "evaluated": false,
+      "detail": "not evaluated: value measured with standard: jam = v < 40 km/h on 15 s x 75 m bins, 8-connected components >= 4 bins, mean magnitude of backward Theil-Sen front speeds; profile requires stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected"
     },
     {
       "name": "ring_emergence",
@@ -8406,11 +8406,11 @@
     },
     {
       "name": "sensitivity_grid",
-      "value": null,
+      "value": 1.0,
       "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs",
-      "passed": false,
-      "evaluated": false,
-      "detail": "not evaluated: input not supplied"
+      "passed": true,
+      "evaluated": true,
+      "detail": "24/24 required cells present"
     }
   ],
   "ring": {
@@ -9190,6 +9190,7 @@
     "Both GEH tables are reported for both arms; the criteria row uses the tracked counts for the tracked arm and the coverage-corrected counts for the corrected arm.",
     "Ring benchmark rows evaluated by validation.ring_benchmark (the CI gate's checks on 20 seeded replicates; pass = every replicate passes); see the 'ring' block.",
     "The sensitivity_grid criterion row is not evaluated by this script (the penetration x compliance sweep is a separate artifact, scripts/i24_penetration_sweep.py).",
-    "compute_metrics runs on the measured span only (travel time over the span, throughput at data x = 2200 m); wave metrics inside it use the same site-clipped field as the criteria row."
+    "compute_metrics runs on the measured span only (travel time over the span, throughput at data x = 2200 m); wave metrics inside it use the same site-clipped field as the criteria row.",
+    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-05T22:02:17+00:00 with the current profile (sweep grid present)"
   ]
 }

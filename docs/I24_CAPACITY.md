@@ -250,3 +250,54 @@ stops metering the flow. Cooperation must stay at SUMO's default; gap
 acceptance is a candidate only jointly with the downstream ramp levels and
 the boundary discharge, which is the joint out-of-sample fit that follows
 (`scripts/i24_fit_boundary_ramps.py`).
+
+## 7. Joint out-of-sample fit of ramp levels, boundary discharge and gap acceptance (FHWA step 3)
+
+`scripts/i24_fit_boundary_ramps.py` → `artifacts/i24_boundary_ramps_fit.json`,
+`scenarios/i24_replica_speedcal_ramps.yaml`: a compass search over six
+multipliers on the fitted arm (Old Hickory and Hickory Hollow on-ramp
+inflows, Hickory Hollow and Bell Road exit fractions, the measured boundary
+speed schedule, and SUMO's gap acceptance), objective = segment-speed RMSPE
+over 06:30–07:30 only, 07:30–08:30 scored at every point and never fitted,
+one seeded replicate per point, 43 evaluations over 4 rounds
+(round cap reached; step {'oh_ramp': 0.0625, 'hh_ramp': 0.0625, 'hh_exit': 0.0625, 'bell_exit': 0.0625, 'boundary_speed': 0.0625, 'lc_assertive': 0.0625}).
+
+| Point | Old Hickory | Hickory Hollow | HH exit | Bell exit | Boundary | Gap accept. | RMSPE fitted hour | RMSPE held-out hour | Inserted |
+|---|---|---|---|---|---|---|---|---|---|
+| As is | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.356 | 0.426 | 0.942 |
+| Best | 0.750 | 1.250 | 1.125 | 1.000 | 1.000 | 1.000 | **0.332** | **0.356** | 0.960 |
+
+The fit moves demand *between* the two on-ramps rather than adding it: a
+quarter less at Old Hickory (whose merge held the standing queue, §6) and a
+quarter more at Hickory Hollow, with a slightly larger Hickory Hollow exit
+share; the boundary discharge and gap acceptance stay at their measured and
+default values. The held-out hour improves by 7 points, more than the fitted
+hour, which is what a real structural correction looks like rather than an
+in-sample fit. Both hours remain far above the 15% criterion; the arm is
+scored in the battery as `ramps` ([I24_VALIDATION.md](I24_VALIDATION.md) §0).
+
+## 8. The lane-change grid as a calibration target (`artifacts/i24_lanechange_fit.json`)
+
+`scripts/i24_fit_lanechange.py`, 18 grid points on the fitted arm, one seeded
+replicate each, objective J = RMS lane-share error + 0.1 × lane-change-rate
+RMSPE against the observed day (`artifacts/i24_lanechange_observed.json`),
+fitted hour and held-out hour scored separately (`lc_keep_right` fixed at 0):
+
+| Cooperative | Assertive | Speed gain | J fitted hour | J held-out hour | Inserted |
+|---|---|---|---|---|---|
+| 0.0 | 4.0 | 1.0 | – | 0.106 | 0.958 |
+| 0.0 | 4.0 | 0.5 | – | 0.112 | 0.9591 |
+| 1.0 | 4.0 | 1.0 | – | 0.114 | 0.9847 |
+| 0.5 | 4.0 | 1.0 | – | 0.115 | 0.9896 |
+| 0.5 | 2.0 | 1.0 | – | 0.117 | 0.9646 |
+| 0.5 | 4.0 | 0.5 | – | 0.121 | 0.9896 |
+| 1.0 | 4.0 | 0.5 | – | 0.121 | 0.985 |
+| 1.0 | 2.0 | 1.0 | – | 0.121 | 0.9908 |
+
+Best on the held-out hour: cooperation 0.5, gap acceptance 4.0
+(J 0.115 against 0.134 at the defaults). The lane-share objective prefers high gap
+acceptance, which §6.1 showed clears the merge and under-congests the middle
+of the corridor, and the speed-based joint fit (§7) kept gap acceptance at its
+default. The two objectives disagree, so nothing from this grid is adopted;
+reconciling them needs a joint objective (speeds and lane shares together),
+which is the next calibration step, not a parameter choice.

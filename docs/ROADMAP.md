@@ -109,6 +109,13 @@ settles what it actually is on a real, long, multi-lane freeway.
 arm after calibration; 1 PASS / 5 FAIL before), so this is being run and will be reported as what it is — the
 battery on a replica that reproduces the recording's stop-and-go pattern but
 not its criteria — never as a validated-corridor result.
+*Result 2026-09-04 ([I24_SWEEP.md](I24_SWEEP.md)):* 500 runs on the fitted arm
+(`i24_replica_speedcal`, cloud VM). **FollowerStopper at its literature defaults
+costs throughput at every cell and the cost grows with penetration** — at 5% /
+100%: throughput −36%, travel time +82%, fuel +111%, σ_v −56%, waves halved;
+lane changes rise from 1.25 to 2.32 per vehicle-km at 20% (the D2 statistic).
+The synthetic no-cost result does not survive a real corridor near capacity;
+the next controller must be capacity-aware.
 `scripts/i24_penetration_sweep.py --scenario i24_replica_corrected` (500 runs,
 cells ordered so the baseline and the 100%-compliance ladder land first;
 metrics kept, trajectories discarded) → `scripts/i24_penetration_analyze.py`.
