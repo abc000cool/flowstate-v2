@@ -3,11 +3,13 @@
 * ``docs/figures/i24_validation_fields.png`` — observed vs simulated
   space-time speed fields (60 s × 100 m) over the study period on the
   measured span: the tracked fragments, one replicate of the tracked-demand
-  arm, one replicate of the coverage-corrected arm, one of the fitted arm
-  (first seed of each).
+  arm, one replicate of the coverage-corrected arm, one of the fitted arm,
+  one of the fitted-ramps arm (first seed of each).
 * ``docs/figures/i24_validation_waves.png`` — backward wave-front speeds:
-  observed fronts vs every simulated front of each arm (20 replicates), with
-  the 14–22 km/h band.
+  observed fronts vs every simulated front of each arm (20 replicates) with
+  the standard 40 km/h detector, the 14–22 km/h band, and the criterion
+  detector's estimate (the slant-stack peak) for the observed field and
+  each arm as vertical markers.
 
 Every value comes from ``artifacts/i24_validation_<arm>.json`` and the run
 trees they name. Run: ``uv run --no-sync python scripts/i24_validation_figures.py``
@@ -39,11 +41,17 @@ SEQ_BLUES = [
     "#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
     "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#104281", "#0d366b",
 ]  # fmt: skip
-ARM_COLORS = {"tracked": "#eb6834", "corrected": "#2a78d6", "speedcal": "#1baf7a"}
+ARM_COLORS = {
+    "tracked": "#eb6834",
+    "corrected": "#2a78d6",
+    "speedcal": "#1baf7a",
+    "ramps": "#8e44ad",
+}
 ARM_LABELS = {
     "tracked": "demand as tracked",
     "corrected": "demand ÷ coverage",
     "speedcal": "coverage-shaped demand × 0.85 (fitted)",
+    "ramps": "fitted level + fitted ramps (step 3)",
 }
 
 
@@ -165,19 +173,37 @@ def waves_figure(arms: list[str]) -> None:
             color=ARM_COLORS[arm],
             label=f"simulated, {label} (fronts per replicate, n={len(sp)}/{res['replicates']})",
         )
+    # the criterion row is measured with the profile's detector (the slant
+    # stack); mark its estimate for the observed field and each arm
+    crit = _results(arms[0])["waves"]["criterion_detector"]
+    obs_crit = _results(arms[0])["observed"]["waves_by_detector"][crit]["mean_backward_speed_kmh"]
+    ax.axvline(obs_crit, color="#8b8a85", ls="--", lw=1.4)
+    for arm in arms:
+        res = _results(arm)
+        v = res["waves"].get("criterion_wave_speed_kmh")
+        if v is not None:
+            ax.axvline(v, color=ARM_COLORS[arm], ls="--", lw=1.2, alpha=0.9)
+    ax.plot(
+        [],
+        [],
+        color=INK2,
+        ls="--",
+        lw=1.2,
+        label=f"dashed: {crit}-detector estimate (criterion row)",
+    )
     ax.axvspan(14.0, 22.0, color="#1baf7a", alpha=0.12, lw=0)
     ax.text(
         18.0,
-        ax.get_ylim()[1] * 0.95,
+        ax.get_ylim()[1] * 0.02,
         "empirical band 14–22 km/h",
         ha="center",
-        va="top",
+        va="bottom",
         fontsize=8.5,
         color="#1baf7a",
     )
     ax.set_xlabel("backward wave-front speed [km/h] (15 s × 75 m field, 40 km/h threshold)")
     ax.set_ylabel("fronts")
-    ax.legend(loc="upper right")
+    ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
     fig.savefig(FIG_DIR / "i24_validation_waves.png", dpi=150)
     print(f"-> {FIG_DIR / 'i24_validation_waves.png'}")
@@ -186,7 +212,7 @@ def waves_figure(arms: list[str]) -> None:
 def main() -> None:
     arms = [
         a
-        for a in ("tracked", "corrected", "speedcal")
+        for a in ("tracked", "corrected", "speedcal", "ramps")
         if (REPO_ROOT / "artifacts" / f"i24_validation_{a}.json").is_file()
     ]
     fields_figure(arms)

@@ -85,11 +85,19 @@ scaled 1.511 → 1.322 s to meet the tracked capacity (gap RMSE unchanged,
 5.31 → 5.29 m); both arms rebuilt on that population (new config hashes);
 step 2 fits one demand scale on the first hour's speeds with the second hour
 held out. The battery is being rerun on all arms with the ring rows
-evaluated. *Result:* **3 PASS / 3 FAIL per arm** (ring rows now evaluated and
+evaluated. *Result (3 Sep):* **3 PASS / 3 FAIL per arm** (ring rows now evaluated and
 passing; GEH, RMSPE and wave speed still fail). The corrected arm's fronts
 moved to 10.4 km/h standard / 14.2 km/h stripe (in band with the stripe
 detector) and RMSPE to 33.7%; the fitted arm inserts 95.5% of its demand. The
 residual is the Old Hickory merge queue (I24_VALIDATION.md §0, I24_CAPACITY.md §5).
+*Four-arm rerun (2026-09-05, cloud VM, criterion scored with the slant-stack
+detector):* **5 PASS / 2 FAIL on each congested arm** (tracked 4 / 3). Link-flow
+GEH (10.4–15.3% of link-hours under 5) and speed RMSPE (33.7–35.9%) still fail;
+the wave row passes at 15.7–15.9 km/h against 19.9 observed with the same
+estimator and would fail with the standard detector (8–10 km/h) — the
+prediction confirmed as specified, detector-dependent, caveats in
+I24_VALIDATION.md §0.4. The fitted-ramps arm trades one RMSPE point for five
+GEH points; the merge is still the residual.
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on
@@ -106,7 +114,8 @@ a validated corridor is the result the whole project has been building toward.
 `docs/US101_PENETRATION.md` showed the no-cost claim is corridor-dependent; this
 settles what it actually is on a real, long, multi-lane freeway.
 *Status 2026-09-03:* **the corridor is not validated** (§1.4: 3 PASS / 3 FAIL per
-arm after calibration; 1 PASS / 5 FAIL before), so this is being run and will be reported as what it is — the
+arm after calibration; 1 PASS / 5 FAIL before; 5 / 2 in the 5 Sep rerun, with GEH
+and RMSPE still failing), so this is being run and will be reported as what it is — the
 battery on a replica that reproduces the recording's stop-and-go pattern but
 not its criteria — never as a validated-corridor result.
 *Result 2026-09-04 ([I24_SWEEP.md](I24_SWEEP.md)):* 500 runs on the fitted arm

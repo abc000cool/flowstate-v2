@@ -1,16 +1,29 @@
 # I-24 replica validation — observed vs simulated
 
-**Date:** 2026-09-03 (rerun the same day on the capacity-calibrated population, §0) ·
-**Scenarios:** `scenarios/i24_replica.yaml` (demand as tracked, config `17e9e80ffd83`),
-`scenarios/i24_replica_corrected.yaml` (demand ÷ apparent coverage, config `de82b62e4ef6`),
-`scenarios/i24_replica_speedcal.yaml` (coverage-shaped demand at the fitted level 0.85, config `b072d754492d`) ·
+**Date:** 2026-09-03; rerun 2026-09-05 on the capacity-calibrated population across
+four demand arms, with the criterion's slant-stack wave detector (§0) ·
+**Scenarios:** `scenarios/i24_replica.yaml` (demand as tracked, config `4cd18bf46147`),
+`scenarios/i24_replica_corrected.yaml` (demand ÷ apparent coverage, `d8c6924188eb`),
+`scenarios/i24_replica_speedcal.yaml` (coverage-shaped demand at the fitted level 0.85, `009ed0e2a7c0`),
+`scenarios/i24_replica_speedcal_ramps.yaml` (the fitted level with the jointly fitted ramp
+levels and exit share, `d06808e7b8e1`) ·
 **20 seeded replicates per arm** (`spawn_seeds(42, 20)`) · **Artifacts:** `artifacts/i24_validation_tracked.json`,
 `artifacts/i24_validation_corrected.json`, `artifacts/i24_validation_speedcal.json`,
-`artifacts/i24_validation_observed.json`, `artifacts/i24_validation_waves_relative.json`,
-`artifacts/i24_replica_inputs.json` · **Scripts:** `scripts/i24_build_replica.py`
-→ `scripts/i24_validate.py` → `scripts/i24_validation_figures.py`, `scripts/i24_report.py`.
-The original battery on the uncalibrated population (configs `5e15ca999c19` / `a3efae6955bd`,
-artifacts at commit `34d215b`) is kept below from §1 on as the record of what changed.
+`artifacts/i24_validation_ramps.json` (results schema 5: every registered wave detector under
+`waves.by_detector`), `artifacts/i24_validation_observed.json`,
+`artifacts/i24_validation_waves_relative.json`, `artifacts/i24_replica_inputs.json` ·
+**Scripts:** `scripts/i24_build_replica.py` → `scripts/i24_validate.py`
+(then `--criteria-only`, which re-scores the rows with the published sweep grid) →
+`scripts/i24_validation_figures.py`, `scripts/i24_report.py`.
+The config hashes moved on 2026-09-04 when `FleetSpec` gained its lane-change
+fields (CHANGELOG); the three arms already run on 2026-09-03 reproduce that
+run's numbers to every digit reported here. The auto-reports under
+`docs/reports/i24_replica/` are from the first battery (3 Sep); the rerun's
+replicate trees were pruned on the cloud VM after analysis (the first seed of
+each arm is kept under `runs/i24_validation/` for the figures), so they were
+not regenerated. The original battery on the uncalibrated population (configs
+`5e15ca999c19` / `a3efae6955bd`, artifacts at commit `34d215b`) is kept below
+from §1 on as the record of what changed.
 
 This is the ROADMAP §1.4 result: the criteria battery of CLAUDE.md §7.1 on the
 flagship corridor, with every failure and its cause, and the explicit test of
@@ -18,58 +31,86 @@ the prediction made in [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md). All
 runs are `seeded=False`: the measured boundary, the ramp demand and the fleet
 calibration are data-derived inputs, not shocks. Read
 [I24_DATA.md](I24_DATA.md) first — its §4 (the instrument tracks roughly half
-of vehicle-time in the peak) is the reason there are two arms.
+of vehicle-time in the peak) is the reason there are several demand arms.
 
 **Headline, stated up front.** After the FHWA Vol. III calibration steps
-([I24_CAPACITY.md](I24_CAPACITY.md): capacity first, then demand), the replica
-still **fails** the GEH, RMSPE and wave-speed criteria in all three demand
-arms — **3 PASS / 3 FAIL** per arm on the six criteria that are evaluated,
-plus a seventh row (the sensitivity grid) that waits for the flagship sweep.
-The two ring rows now pass inside the battery (20/20 seeds each) instead of
-being marked FAIL for want of evaluation. On the physical rows the
-calibration moved every number toward the recording without reaching it:
-speed RMSPE 36.8% → 33.7% (corrected arm), backward fronts 8.7 → 10.4 km/h
-with the standard detector and 12.3 → 14.2 km/h with the stripe detector —
-the latter now inside the 14–22 km/h band against 16.0 observed — and the
-fitted arm inserts 95.5% of its demand where the corrected arm inserts 81%.
-The wave-speed prediction is therefore **still not confirmed on the
-corridor** by the criterion's detector, and what blocks it is now specific
-and local: the Old Hickory merge holds a standing queue at the entry
-(§0.3), which caps the speed criterion near 35% however demand is set.
+([I24_CAPACITY.md](I24_CAPACITY.md): capacity, then the demand level, then the
+ramp levels out of sample), the replica **fails** the link-flow GEH and
+segment-speed RMSPE criteria in every arm and **passes** the other five rows
+in the three congested arms — **5 PASS / 2 FAIL** for the corrected, fitted
+and fitted-ramps arms, 4 / 3 for the tracked arm, whose wave row has no stack
+peak and falls back to the standard detector. The wave-speed row is the one
+that moved since 3 Sep, and it moved for one reason: the criterion now names
+the slant-stack estimator as its detector (CONTRACTS.md §4, chosen on a
+synthetic benchmark in which the standard 40 km/h threshold detector recovers
+nothing on a congested background). With that estimator the congested arms'
+backward fronts read 15.7–15.9 km/h and the observed field reads 19.9 km/h,
+both inside the 14–22 km/h band, while the standard detector still reads
+8–10 km/h on the same simulated fields, outside it. The simulations
+themselves did not change. So the prediction of
+[WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) is **confirmed as the
+criterion is specified, and detector-dependent**; §0.4 carries the caveats
+that go with it (the stack finds a peak in 7–12 of 20 replicates per arm, the
+observed field's own peak clears the acceptance contrast narrowly, and the
+two estimates differ by 4 km/h, which a band test does not score). The
+corridor is **not validated**: the speed criterion sits at 34–36% however
+demand is set, and the fitted ramps, which improved the held-out hour in the
+joint fit, buy one point of RMSPE and cost five points of GEH. The residual is
+still the Old Hickory merge queue (§0.3).
 
-## 0. Rerun on the capacity-calibrated population (three arms)
+## 0. Rerun on the capacity-calibrated population (four arms)
 
-All three arms use `artifacts/idm_i24_capacity.json` (mean T 1.322 s,
-[I24_CAPACITY.md](I24_CAPACITY.md) §4) and the same observed side as §1.
-Rows as evaluated by `validation.criteria` (`fhwa_default` profile; the
-GEH row of each arm is scored against the count table matching its own
-demand assumption, both tables are in the artifacts).
+All arms use `artifacts/idm_i24_capacity.json` (mean T 1.322 s,
+[I24_CAPACITY.md](I24_CAPACITY.md) §4) and the same observed side as §1; the
+`ramps` arm adds the joint out-of-sample fit of §7 there (Old Hickory on-ramp
+× 0.75, Hickory Hollow on-ramp × 1.25, Hickory Hollow exit share × 1.125;
+boundary discharge and gap acceptance unchanged). Rows as evaluated by
+`validation.criteria` (`fhwa_default` profile, wave detector `stack`; the GEH
+row of each arm is scored against the count table matching its own demand
+assumption, both tables are in the artifacts; the sensitivity row is fed from
+`artifacts/i24_sweep_summary.json`, 24 cells × 20 seeds,
+[I24_SWEEP.md](I24_SWEEP.md)). Battery run 2026-09-05 on a 32-vCPU cloud VM,
+170–800 s of wall time per arm.
 
 ### 0.1 Criteria
 
-| Criterion | Tracked demand | Coverage-corrected demand | Fitted level (speedcal) | Threshold |
-|---|---|---|---|---|
-| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% **FAIL** | 11.8% **FAIL** | 15.3% **FAIL** | ≥ 85% |
-| Segment-speed RMSPE ≤ 15% | 187.8% **FAIL** | 33.7% **FAIL** | 36.0% **FAIL** | ≤ 15% |
-| Backward wave speed 14–22 km/h (standard detector) | 7.9 km/h **FAIL** | 10.4 km/h **FAIL** | 9.9 km/h **FAIL** | 14–22 |
-| Ring emergence (20 seeds, ring-gate checks) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
-| Ring dampening (20 seeds) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
-| Replicates ≥ 20 | **PASS** | **PASS** | **PASS** | ≥ 20 |
-| Sensitivity grid published with CIs | not evaluated (sweep in progress) | | | 24 cells |
+| Criterion | Tracked demand | Coverage-corrected | Fitted level (speedcal) | Fitted level + fitted ramps | Threshold |
+|---|---|---|---|---|---|
+| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% **FAIL** | 11.8% **FAIL** | 15.3% **FAIL** | 10.4% **FAIL** | ≥ 85% |
+| Segment-speed RMSPE ≤ 15% | 187.8% **FAIL** | 33.7% **FAIL** | 35.9% **FAIL** | 34.8% **FAIL** | ≤ 15% |
+| Backward wave speed 14–22 km/h (stack estimator, the criterion's detector) | no stack peak; standard detector 7.9 km/h **FAIL** | 15.9 km/h **PASS** | 15.8 km/h **PASS** | 15.7 km/h **PASS** | 14–22 |
+| Ring emergence (20 seeds, ring-gate checks) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
+| Ring dampening (20 seeds) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
+| Replicates ≥ 20 | **PASS** | **PASS** | **PASS** | **PASS** | ≥ 20 |
+| Sensitivity grid published with CIs | **PASS** 24 cells | **PASS** | **PASS** | **PASS** | 24 cells |
+| **Count, PASS / FAIL** | 4 / 3 | 5 / 2 | 5 / 2 | 5 / 2 | |
 
-Demand realised: tracked 100%, corrected 81.3%, speedcal 95.5%.
+Demand realised: tracked 100%, corrected 81.3%, speedcal 95.5%, ramps 96.5%.
 
 ### 0.2 Waves, metrics and speeds
 
-| | Tracked | Corrected | Speedcal | Observed |
-|---|---|---|---|---|
-| Backward fronts, standard detector [km/h] | 7.9 | 10.4 | 9.9 | 14.2 (median 17.5) |
-| Backward fronts, 25 km/h stripe detector [km/h] | 7.4 | 14.2 | 14.4 | 16.0 |
-| Wave components per replicate (standard) | 21.6 | 8.1 | 14.2 | 21 |
-| Throughput at data x = 2,200 m [veh/h] | 4,024 [4,020, 4,029] | 5,576 [5,552, 5,600] | 5,710 [5,679, 5,741] | 5,820–7,138 (corrected counts) |
-| Mean travel time over the span [s] | 248 | 601 | 564 | ≈ 220 free-flow |
-| σ_v temporal [m/s] | 4.53 | 4.80 | 4.98 | |
-| Fuel [ml/veh-km] | 65.6 | 108.2 | 100.7 | |
+Backward wave-front speed by detector [km/h]. Every registered recipe is in
+each artifact under `waves.by_detector`; "N/20" is the number of replicates
+in which the stack found a peak at contrast ≥ 3, and the arm value is the
+mean over those replicates.
+
+| Detector | Tracked | Corrected | Speedcal | Ramps | Observed |
+|---|---|---|---|---|---|
+| Stack, slant-stack peak (the criterion) | — (0/20) | 15.9 (9/20; median 15.9) | 15.8 (12/20; median 15.7) | 15.7 (7/20; median 15.9) | 19.9 (contrast 3.44) |
+| Standard, 40 km/h threshold | 7.9 | 10.4 | 9.9 | 8.4 | 14.2 (median 17.5) |
+| Stripe, 25 km/h on 10 s × 50 m | 7.4 | 14.2 | 14.4 | 14.0 | 16.0 |
+| Relative, 0.5 × p90 | 5.5 | 13.8 | 13.8 | 13.6 | 16.4 |
+| Wave components per replicate (standard) | 21.6 | 8.1 | 14.2 | 10.0 | 21 |
+
+Metrics on the measured span, mean [95% CI] over 20 replicates:
+
+| | Tracked | Corrected | Speedcal | Ramps | Observed |
+|---|---|---|---|---|---|
+| Throughput at data x = 2,200 m [veh/h] | 4,024 [4,020, 4,029] | 5,576 [5,552, 5,600] | 5,710 [5,679, 5,741] | 5,574 [5,559, 5,588] | 5,820–7,138 (corrected counts) |
+| Mean travel time over the span [s] | 248 [246, 250] | 601 [595, 607] | 564 [557, 572] | 579 [574, 584] | ≈ 220 free-flow |
+| p90 travel time [s] | 318 | 967 | 880 | 928 | |
+| σ_v temporal [m/s] | 4.53 | 4.80 | 4.98 | 4.90 | |
+| Fuel [ml/veh-km] | 65.6 | 108.2 | 100.7 | 103.1 | |
 
 Mean segment speed over the study period [km/h], upstream to downstream
 (549 m segments):
@@ -80,33 +121,86 @@ Mean segment speed over the study period [km/h], upstream to downstream
 | Tracked | 79.3 | 78.0 | 76.2 | 76.8 | 77.2 | 76.0 | 76.0 | 75.3 | 70.5 | 50.9 |
 | Corrected | 19.8 | 20.2 | 28.8 | 34.4 | 33.0 | 31.8 | 32.3 | 26.9 | 25.0 | 32.3 |
 | Speedcal | 21.4 | 21.5 | 30.7 | 38.4 | 36.7 | 34.9 | 35.5 | 32.2 | 29.0 | 32.1 |
+| Ramps | 21.4 | 21.8 | 29.8 | 35.4 | 34.0 | 32.5 | 32.9 | 27.9 | 25.9 | 32.6 |
+
+![Observed and simulated speed fields, first seed of each arm](figures/i24_validation_fields.png)
+
+![Backward front speeds by arm, with the criterion detector's estimates](figures/i24_validation_waves.png)
 
 ### 0.3 Reading it
 
 * **The tracked arm is still a half-empty road** (76–79 km/h everywhere
   against 30–38 observed): the instrument's counts are a lower bound and
   cannot be used as demand. Its 21 "waves" per replicate are the
-  boundary-queue oscillations of §3, not corridor waves.
-* **The corrected and fitted arms reproduce the corridor from 2.2 km on**
-  within a few km/h and reproduce its stop-and-go pattern; the stripe
-  detector puts their fronts at 14.2–14.4 km/h, inside the empirical band,
-  against 16.0 observed with the same detector. The criterion uses the
-  standard 40 km/h detector, which merges wall-to-wall congestion into few
-  components and reads 10 km/h; that reading fails, and stands.
-* **The residual is the Old Hickory merge.** Both congested arms run the
-  first kilometre at 20–21 km/h against 32–36 observed and the kilometre
+  boundary-queue oscillations of §3, not corridor waves, and the stack
+  estimator finds no dominant backward stripe in any of its replicates.
+* **The three congested arms reproduce the corridor from 2.2 km on** within
+  a few km/h and reproduce its stop-and-go pattern. The stripe detector puts
+  their fronts at 14.0–14.4 km/h and the stack estimator at 15.7–15.9, both
+  inside the empirical band, against 16.0 and 19.9 observed with the same
+  recipes; the standard 40 km/h detector merges wall-to-wall congestion into
+  few components and reads 8–10 km/h on the simulated fields against 14.2 on
+  the recording. The criterion scores the stack estimate (§0.4).
+* **The fitted ramps move error, they do not remove it.** Moving a quarter
+  of the ramp demand from Old Hickory to Hickory Hollow, the joint fit's
+  out-of-sample best, takes the two-hour RMSPE from 35.9% to 34.8% (the fit's
+  own held-out hour went 42.6 → 35.6%), but lowers throughput by 136 veh/h and
+  the GEH pass fraction from 15.3% to 10.4%: the flows it moves are counted at
+  the sections the criterion scores, and the fit was not asked to match those
+  counts. The first kilometre still runs at 21–22 km/h against 32–36 observed.
+* **The residual is the Old Hickory merge.** Every congested arm runs the
+  first kilometre at 20–22 km/h against 32–36 observed and the kilometre
   after it faster than observed: a standing queue at the merge where the
-  real road's slowest zones are at 1.1–1.6 km and 3.8–4.4 km. The merge
-  and diverge edges carry auxiliary lanes in the map, so this is
-  merge behaviour (cooperation, the ramp's own corrected inflow), and it
-  is the subject of `scripts/i24_merge_experiment.py`
-  (`artifacts/i24_merge_experiment.json`, results in
-  [I24_CAPACITY.md](I24_CAPACITY.md) §6 when complete).
+  real road's slowest zones are at 1.1–1.6 km and 3.8–4.4 km. The merge and
+  diverge edges carry auxiliary lanes in the map, so this is merge behaviour;
+  `scripts/i24_merge_experiment.py` shows the on-ramp is the replica's only
+  bottleneck and that its lane-change parameters alone do not fix it
+  ([I24_CAPACITY.md](I24_CAPACITY.md) §6).
 * **What the calibration bought and did not buy.** Capacity calibration
   raised throughput from 5,266 to 5,576–5,710 veh/h, lifted insertion to
-  95% in the fitted arm, and moved the fronts by 2–3 km/h; it did not move
-  the speed criterion below 33%, because the remaining error is where the
-  queue sits, not how much traffic there is.
+  95–97% in the fitted arms, and moved the fronts by 2–3 km/h under every
+  detector; it did not move the speed criterion below 33%, because the
+  remaining error is where the queue sits, not how much traffic there is.
+
+### 0.4 What moved the wave-speed row, and what it does not show
+
+The order of events matters and is stated here. The 3 Sep battery scored the
+wave row with the standard detector and failed it (7.9 / 10.4 / 9.9 km/h).
+The second round of engine refinements (2026-09-03/04, CHANGELOG) then
+benchmarked every detector recipe on synthetic fields with planted stripes
+(`validation.waves.planted_stripe_field`, CONTRACTS.md §4): the standard
+threshold detector recovers nothing on a congested background, and the
+slant-stack estimator recovers a planted 16 km/h within 0.1 km/h, so the
+`fhwa_default` profile now names `stack` as the criterion's detector. This
+battery is the first scored under that profile, and the same three
+configurations reproduce their 3 Sep fields to every reported digit, so the
+change in the row is a change in the instrument, not in the physics.
+
+What the stack reading rests on:
+
+* It is the mean over the replicates in which the stack found a peak with
+  peak/median contrast ≥ 3 — 9, 12 and 7 of 20 for the corrected, fitted and
+  fitted-ramps arms. In the remaining replicates no single backward front
+  speed dominates at that contrast; the simulated stripes are less regular
+  than the recording's, which is consistent with the shallower jams the
+  standard detector reports (amplitude 7.5–8.1 m/s against 14.7 in the
+  boundary-queue arm).
+* The observed field's own peak clears the acceptance contrast narrowly
+  (3.44 against 3), and reads 19.9 km/h — the top of the band, where the
+  standard detector's median of 17.5 and the stripe detector's 16.0 also sit.
+* The simulated (15.7–15.9) and observed (19.9) estimates differ by 4 km/h.
+  CLAUDE.md §7.1 scores the band, not the agreement; an agreement test at
+  ± 2 km/h would fail, one at ± 5 km/h would pass. The stripe and relative
+  detectors, which do not depend on a contrast threshold, give 14.0–14.4 and
+  13.6–13.8 simulated against 16.0 and 16.4 observed — the same 2–3 km/h
+  shortfall from a lower base.
+
+So the reading is: the calibrated fleet's emergent backward waves on this
+corridor are inside the empirical band under the criterion's estimator and
+under the stripe detector, outside it under the standard threshold detector,
+and 2–4 km/h slower than the recording under every recipe that resolves them.
+The prediction is confirmed as specified, the detector dependence is part of
+the result, and the standard-detector reading stays in the table.
 
 ## 1. What is compared
 
@@ -298,9 +392,7 @@ Observed for scale: mean segment speed 33.5 km/h; tracked hourly counts
 3,386–4,130 veh/h across the six sections (5,820–7,138 after the coverage
 division).
 
-![observed vs simulated speed fields](figures/i24_validation_fields.png)
-
-![backward wave-front speeds](figures/i24_validation_waves.png)
+*(The figures `i24_validation_fields.png` and `i24_validation_waves.png`, embedded in §0.2, now show the 5 Sep four-arm rerun; the 3 Sep versions of this battery's figures are in the repository history at commit `34d215b`.)*
 
 ## 6. Limitations — read before citing any number above
 

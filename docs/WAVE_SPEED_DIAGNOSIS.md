@@ -104,6 +104,15 @@ instruments a generation apart, put emergent congested waves in the empirical
 band once the density is there. Whether the I-24 *corridor* reaches that
 regime is the test in [I24_VALIDATION.md](I24_VALIDATION.md).
 
+*Result (2026-09-05, [I24_VALIDATION.md](I24_VALIDATION.md) §0.4):* on the
+I-24 replica's three congested demand arms the criterion's slant-stack
+estimator puts the emergent backward fronts at 15.7–15.9 km/h (the observed
+field reads 19.9 with the same estimator), inside the band; the stripe
+detector gives 14.0–14.4 against 16.0; the standard 40 km/h detector reads
+8–10 km/h on the same simulated fields. Confirmed as the criterion is
+specified, detector-dependent, and 2–4 km/h slower than the recording under
+every recipe that resolves the fronts.
+
 ## Limitations
 
 * Small counts: 13 and 7 detected fronts at 40 and 60 veh/km across 5 seeds. This

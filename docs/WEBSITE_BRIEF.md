@@ -171,13 +171,17 @@ Two fleets calibrated from two instruments a generation apart agree.
   a_max = 1.06 m/s².
 * Replica: 3.4 of the 4 instrumented miles from real OpenStreetMap geometry,
   two on-ramps, two off-ramps, measured downstream boundary.
-* **Validation, 20 seeds per arm: 3 PASS / 3 FAIL per arm** after FHWA-style
-  capacity and demand calibration (`docs/I24_CAPACITY.md`), 1 PASS / 5 FAIL
-  before. Ring emergence, dampening and replicate rows pass; link-flow GEH,
-  speed RMSPE (33.7% best arm) and wave speed (10.4 km/h standard detector,
-  14.2 km/h stripe detector against 14.2 / 16.0 observed) fail.
-  **The wave-speed prediction is not confirmed on the corridor.** Cause, now
-  local: a standing queue at the Old Hickory merge; from 2.2 km downstream the
+* **Validation, 20 seeds per arm: 5 PASS / 2 FAIL on each congested arm**
+  after FHWA-style capacity, demand and ramp calibration
+  (`docs/I24_CAPACITY.md`), 1 PASS / 5 FAIL before. Ring emergence,
+  dampening, replicate count, the sensitivity grid and the wave-speed row
+  pass; link-flow GEH (10–15% of link-hours under 5) and speed RMSPE (33.7%
+  best arm) fail. **The wave-speed prediction is confirmed as the criterion
+  is specified and is detector-dependent:** the criterion's slant-stack
+  estimator reads 15.7–15.9 km/h simulated against 19.9 observed, both in the
+  14–22 band; the standard 40 km/h detector reads 8–10 km/h on the same
+  fields. Say both on the site. Cause of the failing rows, now local: a
+  standing queue at the Old Hickory merge; from 2.2 km downstream the
   replica is within a few km/h of the recording. Figures `i24_wb_overview.png`, `i24_validation_fields.png`,
   `i24_validation_waves.png`.
 
@@ -277,8 +281,8 @@ buyers will ask for.
    remove it. We measure that, with confidence intervals."
 3. **Four proof points**, each a tile with a live micro-visual and a number
    from §5: −61% speed variance at 5% penetration; 540-run sweep with paired
-   CIs; 42.8 million I-24 rows ingested in 309 s; 3 PASS / 3 FAIL on the
-   flagship after calibration, shown, with the cause.
+   CIs; 42.8 million I-24 rows ingested in 309 s; 5 PASS / 2 FAIL on the
+   flagship after calibration, shown, with the cause of each failing row.
 4. Ring sandbox (§6.1) in compact form.
 5. **What FlowState is not**: a short, calm section stating scope (simulation
    and decision support; no advisory delivery) and the honesty policy.
@@ -305,8 +309,8 @@ macro screening only) → controller explainer (§6.6) → wave detector (§6.5)
 Controller comparison table with CIs (§5) → dose-response figures and the
 sweep explorer (§6.3) → I-24 flagship: the day (`i24_wb_overview.png`), the
 coverage limitation, the two arms, the comparator (§6.4), the criteria table
-with **3 PASS / 3 FAIL** (1 / 5 before calibration) and the cause per row, and the wave-speed prediction
-test result stated as not confirmed → US-101 summary → "What would change
+with **5 PASS / 2 FAIL** (1 / 5 before calibration) and the cause per row, and the wave-speed prediction
+test result stated as confirmed-as-specified and detector-dependent → US-101 summary → "What would change
 these results" (radar-detector counts, longer and denser corridor, highD).
 
 ### Specs

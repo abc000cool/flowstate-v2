@@ -59,11 +59,14 @@ here is a new claim.
    (docs/WAVE_SPEED_DIAGNOSIS.md and its follow-up).
 2. **US-101 replica:** 1 PASS / 5 FAIL with causes; the boundary-condition
    result (docs/M3_US101_VALIDATION.md).
-3. **I-24 replica:** three demand arms, 3 PASS / 3 FAIL each after FHWA-style
-   capacity and demand calibration (1 PASS / 5 FAIL before; docs/I24_CAPACITY.md); coverage-corrected
-   demand reproduces the stop-and-go pattern (RMSPE 36.8%) but inserts 82–84%
-   of demand and its fronts run at 8.7 / 12.4 km/h against 14.2 / 16.4; the
-   wave-speed prediction not confirmed on the corridor and the specific reason
+3. **I-24 replica:** four demand arms, 5 PASS / 2 FAIL on each congested arm
+   after FHWA-style capacity, demand and ramp calibration (1 PASS / 5 FAIL
+   before; docs/I24_CAPACITY.md); coverage-corrected demand reproduces the
+   stop-and-go pattern (RMSPE 33.7%); the wave-speed row passes with the
+   criterion's slant-stack estimator (15.7–15.9 km/h simulated, 19.9 observed)
+   and would fail with the standard detector (8–10 km/h) — the prediction
+   confirmed as specified and detector-dependent; link flows and segment
+   speeds fail, with the Old Hickory merge queue as the specific reason
    (docs/I24_VALIDATION.md).
 4. **Controller results on the synthetic corridor:** dose-response at 1%
    penetration, FollowerStopper ≈ JAD-with-realistic-oracle, faithful PI trails

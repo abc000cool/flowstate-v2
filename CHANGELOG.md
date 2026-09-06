@@ -6,6 +6,11 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### I-24 four-arm battery under the criterion's stack detector (2026-09-05)
+
+- `scripts/i24_validate.py` rerun on the cloud VM for all four demand arms (tracked `4cd18bf46147`, corrected `d8c6924188eb`, speedcal `009ed0e2a7c0`, ramps `d06808e7b8e1`; 20 seeds each; results schema 5 carries every registered wave detector under `waves.by_detector`), then `--criteria-only` locally with the published sweep grid: **5 PASS / 2 FAIL on each congested arm, 4 / 3 on the tracked arm.** Link-flow GEH (10.4–24.3% of link-hours under 5) and segment-speed RMSPE (33.7–35.9%; 187.8% tracked) fail everywhere. The wave-speed row passes with the profile's `stack` detector (15.7–15.9 km/h simulated, 19.9 observed; the stack finds a peak in 7–12 of 20 replicates per arm) and would fail with the standard detector (7.9–10.4 km/h), which is reported beside it in `docs/I24_VALIDATION.md` §0.4; the three arms already run on 3 Sep reproduce that run's numbers to every digit after the `FleetSpec` schema change. Fitted-ramps arm: RMSPE 34.8%, GEH 10.4%, throughput 5,574 veh/h, 96.5% inserted — one RMSPE point gained, five GEH points lost. Figures regenerated with four arms and the criterion-detector markers (`scripts/i24_validation_figures.py`, `docs/figures/i24_validation_*.png`); README, ROADMAP, dossier, paper outline, website brief and lessons updated to the four-arm count. The auto-reports under `docs/reports/i24_replica/` remain those of the 3 Sep battery (replicate trees pruned on the VM).
+- Cloud: the `flowstate-sweep` VM was deleted after the results were fetched; no compute resources remain in the project.
+
 ### I-24 fundamental diagram and audit list
 
 - `artifacts/fd_i24.json` (`scripts/fit_fd_i24.py`, 200-resample bootstrap, seed 42): per-lane triangular FD from Edie bins; congested wave speed 16.1 km/h [15.7, 16.5]; capacity and jam density recorded as coverage lower bounds. Section added to `docs/I24_DATA.md`.

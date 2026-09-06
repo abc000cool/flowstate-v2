@@ -8,8 +8,9 @@ uncontrolled baseline, **20 common-random-number seeds per cell, 500 runs** on a
 cloud VM · **Artifact:** `artifacts/i24_sweep_summary.json`
 (`scripts/i24_penetration_sweep.py` → `scripts/i24_penetration_analyze.py`).
 
-**This corridor is not validated** ([I24_VALIDATION.md](I24_VALIDATION.md): 3 PASS /
-3 FAIL per arm), so every number here describes the replica, not Nashville.
+**This corridor is not validated** ([I24_VALIDATION.md](I24_VALIDATION.md): 5 PASS /
+2 FAIL on the fitted arm; link-flow GEH and segment-speed RMSPE fail), so every
+number here describes the replica, not Nashville.
 Read it as a sensitivity battery on the best available replica. It is
 reported as required by CLAUDE.md §7.1, with 95% CIs from 20 seeds and paired
 deltas against the same-seed baseline (`resolved` = the paired CI excludes

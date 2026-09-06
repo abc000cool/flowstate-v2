@@ -274,7 +274,10 @@ share; the boundary discharge and gap acceptance stay at their measured and
 default values. The held-out hour improves by 7 points, more than the fitted
 hour, which is what a real structural correction looks like rather than an
 in-sample fit. Both hours remain far above the 15% criterion; the arm is
-scored in the battery as `ramps` ([I24_VALIDATION.md](I24_VALIDATION.md) §0).
+scored in the battery as `ramps` ([I24_VALIDATION.md](I24_VALIDATION.md) §0):
+over the two hours and 20 seeds it takes RMSPE from 35.9% to 34.8%, the GEH
+pass fraction from 15.3% to 10.4%, and throughput from 5,710 to 5,574 veh/h,
+with 96.5% of demand inserted — the error moves, it does not shrink.
 
 ## 8. The lane-change grid as a calibration target (`artifacts/i24_lanechange_fit.json`)
 

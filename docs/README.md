@@ -22,7 +22,7 @@ Index of everything in `docs/`. Start with the repo-root
 - [I24_SWEEP.md](I24_SWEEP.md) — the 500-run penetration × compliance battery on the fitted I-24 arm: FollowerStopper's smoothing is paid for in throughput on a corridor near capacity
 - [US101_CALIBRATED.md](US101_CALIBRATED.md) — the same two calibration steps applied to US-101 with no retuning: speeds improve, flows overshoot, waves unchanged; what that says about the method
 - [I24_CAPACITY.md](I24_CAPACITY.md) — why the replica cannot carry its demand: the fleet's capacity, not insertion; FHWA step-1 capacity calibration of the population and step-2 demand scale
-- [I24_VALIDATION.md](I24_VALIDATION.md) — the `i24_replica` criteria battery, two demand arms, the wave-speed prediction test (ROADMAP §1.4)
+- [I24_VALIDATION.md](I24_VALIDATION.md) — the `i24_replica` criteria battery, four demand arms, the wave-speed prediction test and its detector dependence (ROADMAP §1.4)
 - [INTERVIEWS.md](INTERVIEWS.md) — discovery-interview kit: target roles, the ten-question script, outreach template, what to record (Track C1)
 - [LESSONS.md](LESSONS.md) — what we got wrong and fixed, with the evidence for each correction (Track A2)
 - [QA.md](QA.md) — anticipated questions with pointers to the evidence (Track A5)

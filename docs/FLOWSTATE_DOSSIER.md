@@ -45,11 +45,12 @@ What has been shown, with confidence intervals from 20 seeds per cell:
   runs. The smoothing benefit is real; on a corridor near capacity it is
   paid for in capacity. This is the most important result of the project.
 - The I-24 replica does not yet pass the FHWA-style criteria: after
-  capacity and demand calibration it scores 4 PASS / 3 FAIL per demand arm
-  (ring emergence, ring dampening, replicate count and the sensitivity grid
-  pass; link flows, segment speeds and wave speed fail). The causes are
-  identified and specific, and the document that records them is
-  `docs/I24_VALIDATION.md`.
+  capacity, demand and ramp calibration it scores 5 PASS / 2 FAIL on each
+  congested demand arm (ring emergence, ring dampening, replicate count, the
+  sensitivity grid and, with the criterion's slant-stack detector, the wave
+  speed pass; link flows and segment speeds fail, at 10–15% of link-hours
+  under GEH 5 and 34–36% speed error). The causes are identified and
+  specific, and the document that records them is `docs/I24_VALIDATION.md`.
 
 Where the business is: the calibration and reporting work that state
 departments of transportation (DOTs), metropolitan planning organizations
@@ -73,7 +74,8 @@ stop-and-go wave: vehicles come to a halt, then accelerate, then halt again,
 with no obstruction anywhere. The wave travels backwards against traffic at a
 characteristic 14–22 km/h, a figure measured on freeways worldwide and
 reproduced on the I-24 data used here (14.2 km/h with the standard detector,
-16.0 with the stripe detector, on 30 November 2022).
+16.0 with the stripe detector, 19.9 with the slant-stack estimator, on 30
+November 2022).
 
 The mechanism is string instability: for a car-following law a = f(gap,
 speed, approach rate), a platoon is string-stable only if the partial
@@ -388,22 +390,37 @@ mean headway from 1.51 to 1.32 s at zero cost in gap error (5.31 → 5.29 m on
 second hour held out gave 0.85 of the coverage-corrected profile; a
 data-only coverage estimator later agreed with that factor independently.
 
-The rerun (September 4–5, twenty seeds per arm, ring rows evaluated inside
-the battery, sensitivity row fed from the flagship sweep):
+The rerun (September 5, four demand arms, twenty seeds per arm, ring rows
+evaluated inside the battery, sensitivity row fed from the flagship sweep,
+the wave row scored with the criterion's slant-stack estimator):
 
-| Criterion | Tracked demand | Coverage-corrected | Fitted level | Threshold |
-|---|---|---|---|---|
-| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% FAIL | 11.8% FAIL | 15.3% FAIL | ≥ 85% |
-| Segment-speed RMSPE ≤ 15% | 187.8% FAIL | 33.7% FAIL | 36.0% FAIL | ≤ 15% |
-| Backward wave speed, standard detector | 7.9 km/h FAIL | 10.4 km/h FAIL | 9.9 km/h FAIL | 14–22 |
-| Backward wave speed, stripe detector (not the criterion) | 7.4 | 14.2 | 14.4 | observed 16.0 |
-| Ring emergence, 20 seeds | PASS | PASS | PASS | every seed |
-| Ring dampening, 20 seeds | PASS | PASS | PASS | every seed |
-| Replicates ≥ 20 | PASS | PASS | PASS | ≥ 20 |
-| Sensitivity grid with CIs | PASS | PASS | PASS | 24 cells |
+| Criterion | Tracked demand | Coverage-corrected | Fitted level | Fitted level + ramps | Threshold |
+|---|---|---|---|---|---|
+| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% FAIL | 11.8% FAIL | 15.3% FAIL | 10.4% FAIL | ≥ 85% |
+| Segment-speed RMSPE ≤ 15% | 187.8% FAIL | 33.7% FAIL | 35.9% FAIL | 34.8% FAIL | ≤ 15% |
+| Backward wave speed, stack estimator (the criterion) | no peak; standard 7.9 km/h FAIL | 15.9 km/h PASS | 15.8 km/h PASS | 15.7 km/h PASS | 14–22 (observed 19.9) |
+| Backward wave speed, standard detector (not the criterion) | 7.9 | 10.4 | 9.9 | 8.4 | observed 14.2 |
+| Backward wave speed, stripe detector (not the criterion) | 7.4 | 14.2 | 14.4 | 14.0 | observed 16.0 |
+| Ring emergence, 20 seeds | PASS | PASS | PASS | PASS | every seed |
+| Ring dampening, 20 seeds | PASS | PASS | PASS | PASS | every seed |
+| Replicates ≥ 20 | PASS | PASS | PASS | PASS | ≥ 20 |
+| Sensitivity grid with CIs | PASS | PASS | PASS | PASS | 24 cells |
 
-Demand realised: 100%, 81%, 95.5%. Throughput 4,024, 5,576, 5,710 veh/h.
-Mean travel time 248, 601, 564 s.
+Demand realised: 100%, 81%, 95.5%, 96.5%. Throughput 4,024, 5,576, 5,710,
+5,574 veh/h. Mean travel time 248, 601, 564, 579 s.
+
+The wave row is the one that changed between the two batteries, and it
+changed because the criterion's detector did, not the simulation: the
+slant-stack estimator, adopted after the synthetic benchmark of §4.6, reads
+15.7–15.9 km/h on the congested arms and 19.9 on the recording, both inside
+the band, where the standard threshold detector reads 8–10 km/h on the same
+simulated fields. The estimate rests on the 7–12 replicates per arm in which
+the stack finds a peak at the acceptance contrast, the recording's own peak
+clears that contrast narrowly, and the two estimates differ by 4 km/h, which
+a band test does not score. The prediction that the calibrated fleet's
+emergent waves fall in the empirical band on a long congested corridor is
+therefore confirmed as the criterion is specified, and stated as
+detector-dependent.
 
 ![Observed and simulated fields](figures/i24_validation_fields.png)
 
@@ -415,8 +432,9 @@ the ramp's level is not the overshoot; cutting mainline cooperation
 gridlocks the merge; doubling gap acceptance clears it and under-congests
 the middle. The joint fit moved a quarter of the ramp demand from Old
 Hickory to Hickory Hollow and improved the held-out hour from 42.6% to
-35.6%; the four-arm battery scoring that arm is the last computation in
-flight at the time of writing.
+35.6%; scored in the battery, that arm gains one point of two-hour RMSPE
+(35.9 → 34.8%) and loses five points of GEH (15.3 → 10.4%) and 136 veh/h
+of throughput, so the merge is still where the error lives.
 
 ![Front-speed distributions](figures/i24_validation_waves.png)
 
