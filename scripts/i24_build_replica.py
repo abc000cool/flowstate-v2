@@ -149,6 +149,11 @@ FLEET_ARTIFACT = "artifacts/idm_i24_capacity.json"  # step-1 capacity-calibrated
 #: 86.8 km/h at 20.0 — same seed, same demand; docs/I24_VALIDATION.md). 5.0
 #: is the smallest tested value that removes the artifact.
 LC_STRATEGIC = 5.0
+CORRECTED_OSM_FILE = REPO_ROOT / "data" / "osm" / "i24_motion_corrected.osm"
+ENTRY_LANE_X_M = (0.0, 250.0)
+"""Data-x window where the recording's lane shares are measured for
+``--entry-lanes observed`` (just inside the span, after the Old Hickory
+off-ramp gore at data x ≈ 34 m and before the on-ramp gore at ≈ 900 m)."""
 
 #: SUMO ``lcKeepRight`` for the replica fleet. US freeways carry no keep-right
 #: obligation; the observed vehicle-time by lane on the span (06:30-08:30) is
@@ -264,17 +269,49 @@ def main() -> None:
         "(default, keeps config hashes) or a gap-based estimator read from "
         "artifacts/i24_coverage.json (scripts/i24_coverage.py, docs/I24_DATA.md)",
     )
+    ap.add_argument(
+        "--osm",
+        choices=("original", "corrected"),
+        default="original",
+        help="map: the OSM extract as downloaded (default, keeps config hashes) or "
+        "data/osm/i24_motion_corrected.osm (scripts/i24_correct_osm.py: auxiliary lanes at the "
+        "provider's landmark positions, docs/I24_VALIDATION.md §0.5)",
+    )
+    ap.add_argument(
+        "--lc-strategic",
+        type=float,
+        default=LC_STRATEGIC,
+        help="FleetSpec.lc_strategic (SUMO lcStrategic); the builder constant is the value the "
+        "short diverge pocket of the original map required",
+    )
+    ap.add_argument(
+        "--entry-lanes",
+        choices=("roundrobin", "observed"),
+        default="roundrobin",
+        help="mainline insertion across the entry edge's lanes: SUMO round-robin (default, keeps "
+        "config hashes) or the recording's lane shares of vehicle-time at data x in "
+        f"[0, {ENTRY_LANE_X_M[1]:g}) m over the study period (OSMNetwork.entry_lane_shares, "
+        "docs/I24_VALIDATION.md §0.5)",
+    )
     args = ap.parse_args()
+    osm_file = OSM_FILE if args.osm == "original" else CORRECTED_OSM_FILE
+    lc_strategic = float(args.lc_strategic)
     fleet_path = REPO_ROOT / FLEET_ARTIFACT
     if not fleet_path.is_file() and not args.allow_missing_fleet:
         raise SystemExit(f"{fleet_path} missing — run scripts/fit_idm_i24.py first")
 
     # --- geometry ---------------------------------------------------------
-    workdir = REPO_ROOT / "data" / "i24motion" / "processed" / "net_raw"
-    bundle = osm_import(osm_file=OSM_FILE, workdir=workdir, geometry_remove=False)
+    workdir = (
+        REPO_ROOT
+        / "data"
+        / "i24motion"
+        / "processed"
+        / ("net_raw" if args.osm == "original" else "net_raw_corrected")
+    )
+    bundle = osm_import(osm_file=osm_file, workdir=workdir, geometry_remove=False)
     net = sumolib.net.readNet(str(bundle.net_path))
     proj = read_projection(bundle.net_path)
-    proj_err = check_projection(net, proj, OSM_FILE)
+    proj_err = check_projection(net, proj, osm_file)
     geo = chain_geometry(net, proj)
     chain_off = dict(zip(geo.edge_ids, geo.offsets, strict=True))
     chain_len = dict(zip(geo.edge_ids, geo.edge_lengths, strict=True))
@@ -409,6 +446,15 @@ def main() -> None:
     demand_path = REPO_ROOT / "artifacts" / "demand_i24.json"
     demand.save(demand_path)
 
+    # --- entry lane distribution ------------------------------------------
+    entry_lane_shares: list[float] | None = None
+    if args.entry_lanes == "observed":
+        lane_df = load_mainline(t_range_s=(t_lo, t_hi), x_range_m=ENTRY_LANE_X_M, columns=["lane"])
+        counts_by_lane = lane_df["lane"].value_counts()
+        raw_shares = [float(counts_by_lane.get(lane, 0)) for lane in range(1, 5)]  # left → right
+        entry_lane_shares = [round(v / sum(raw_shares), 4) for v in raw_shares]
+        print(f"entry lane shares (lanes 1-4, left to right): {entry_lane_shares}", flush=True)
+
     # --- scenario ---------------------------------------------------------
     duration_s = WARMUP_S + (t_hi - t_lo)
     scenario = {
@@ -416,16 +462,17 @@ def main() -> None:
         "tier": "micro",
         "network": {
             "kind": "osm",
-            "osm_file": str(OSM_FILE.relative_to(REPO_ROOT)),
+            "osm_file": str(osm_file.relative_to(REPO_ROOT)),
             "corridor_edges": list(CORRIDOR_EDGES),
             "inflow": [[t, round(q, 6)] for t, q in inflow_steps],
             "boundary": {"kind": "speed_schedule", "steps": [[t, round(v, 4)] for t, v in bsteps]},
             "ramps": ramp_specs,
+            "entry_lane_shares": entry_lane_shares,
         },
         "fleet": {
             "model": "IDM",
             "idm_calibration": FLEET_ARTIFACT,
-            "lc_strategic": LC_STRATEGIC,
+            "lc_strategic": lc_strategic,
             "lc_keep_right": LC_KEEP_RIGHT,
         },
         "av": {"penetration": 0.0, "compliance": 1.0, "controller": None, "controller_params": {}},
@@ -461,7 +508,7 @@ def main() -> None:
 # Sim t = data t - {T_STUDY_LO_S:g} + {WARMUP_S:g} (warmup at the first window's demand).
 # Fleet: {FLEET_ARTIFACT} (IDM population fitted on the same day's episodes, mean T
 # scaled to the tracked capacity per FHWA Vol. III step 1, docs/I24_CAPACITY.md);
-# lc_strategic {LC_STRATEGIC:g} removes SUMO's diverge lane-change stall and lc_keep_right
+# lc_strategic {lc_strategic:g} removes SUMO's diverge lane-change stall and lc_keep_right
 # {LC_KEEP_RIGHT:g} matches the observed lane use (both measured; see builder constants).
 # seeded=False: the boundary and ramp inputs are calibration inputs, not shocks.
 """
@@ -504,7 +551,12 @@ def main() -> None:
     inputs = {
         "created_at": created_at,
         "data_hash": dh,
-        "osm_file": str(OSM_FILE.relative_to(REPO_ROOT)),
+        "osm_file": str(osm_file.relative_to(REPO_ROOT)),
+        "map": args.osm,
+        "lc_strategic": lc_strategic,
+        "entry_lanes": args.entry_lanes,
+        "entry_lane_shares": entry_lane_shares,
+        "entry_lane_x_m": list(ENTRY_LANE_X_M),
         "config_hash": config_hash(cfg),
         "study_period": {
             "t_lo_s": t_lo,

@@ -87,7 +87,8 @@ PROFILE = get_profile("fhwa_default")
 CRITERION_DETECTOR = PROFILE.wave_detector
 STANDARD = WAVE_DETECTORS["standard"]
 STRIPE = WAVE_DETECTORS["stripe"]
-OBSERVED_CACHE_VERSION = 2  # v2: waves_by_detector (all WAVE_DETECTORS recipes)
+OBSERVED_CACHE_VERSION = 3  # v3: + hourly flows at the recommended coverage
+COVERAGE_ARTIFACT = REPO_ROOT / "artifacts" / "i24_coverage.json"
 
 ARMS = {
     "tracked": "i24_replica",
@@ -156,6 +157,31 @@ def _wave_summaries(traj: pd.DataFrame, span_hi: float) -> dict[str, dict]:
     return {name: _wave_summary(traj, span_hi, d) for name, d in WAVE_DETECTORS.items()}
 
 
+def _recommended_coverage(n_win: int, t_lo: float) -> tuple[np.ndarray, str]:
+    """Per-5-min-window tracking coverage from ``artifacts/i24_coverage.json``.
+
+    The artifact's recommended estimator (``section_gap_mixture`` floored by
+    the FD capacity bound; chosen on its synthetic validation, needs no
+    car-following model) gives one value per 15-min window; each 5-min
+    window inherits the 15-min window containing its start.
+    """
+    cov = json.loads(COVERAGE_ARTIFACT.read_text())
+    win_s = float(cov["parameters"]["window_s"])
+    rows = sorted(cov["windows"], key=lambda w: float(w["t_lo_s"]))
+    out = np.empty(n_win)
+    for i in range(n_win):
+        t = t_lo + i * WINDOW_S
+        row = next((w for w in rows if float(w["t_lo_s"]) <= t < float(w["t_lo_s"]) + win_s), None)
+        if row is None:
+            raise ValueError(f"no coverage window contains t={t}")
+        out[i] = float(row["pooled"]["recommended_filled"])
+    src = (
+        f"{COVERAGE_ARTIFACT.relative_to(REPO_ROOT)}: {cov['recommendation']['rule']} "
+        f"(pooled.recommended_filled per {win_s:g} s window)"
+    )
+    return out, src
+
+
 def observed_side(cache_path: Path) -> dict:
     """Observed comparison tables on the study period / measured span (cached)."""
     dh = data_hash()
@@ -181,6 +207,7 @@ def observed_side(cache_path: Path) -> dict:
     factors = np.array(
         [cov_rows[min(i // cov_win, len(cov_rows) - 1)]["coverage_used"] for i in range(n_win)]
     )
+    rec, rec_src = _recommended_coverage(n_win, t_lo)
     study = df[(df["t"] >= t_lo) & (df["t"] < t_hi)].copy()
     study["t"] = study["t"] - t_lo
     seg = _segment_speeds(study, span_hi, n_win)
@@ -200,6 +227,11 @@ def observed_side(cache_path: Path) -> dict:
         "hourly_flows_veh_h_tracked": (counts * 3600.0 / WINDOW_S).tolist(),
         "coverage_factor_per_window": factors.round(4).tolist(),
         "hourly_flows_veh_h_corrected": (counts * 3600.0 / WINDOW_S / factors[None, :])
+        .round(1)
+        .tolist(),
+        "coverage_recommended_per_window": rec.round(4).tolist(),
+        "coverage_recommended_source": rec_src,
+        "hourly_flows_veh_h_recommended": (counts * 3600.0 / WINDOW_S / rec[None, :])
         .round(1)
         .tolist(),
         "segment_speeds_ms": seg.tolist(),
@@ -351,6 +383,7 @@ def micro_arm(
         "hourly_flows_veh_h_mean": (counts_arr.mean(axis=0) * 3600.0 / WINDOW_S).tolist(),
         "counts_per_replicate": [c.tolist() for c in counts],
         "segment_speeds_ms_mean": np.nanmean(seg_arr, axis=0).tolist(),
+        "segment_speeds_ms_per_replicate": [s.tolist() for s in seg_speeds],
         "waves_per_replicate": waves,
         "wave_count_mean": float(np.mean([w["count"] for w in waves])),
         "mean_backward_speed_kmh": float(np.mean(bw)) if bw else None,
@@ -393,6 +426,46 @@ def _json_safe(obj: object) -> object:
     if isinstance(obj, np.floating | np.integer):
         return _json_safe(obj.item())
     return obj
+
+
+GEH_PRIMARY_RULE = (
+    "every arm's link-flow row is scored against the tracked crossings divided by the "
+    "coverage artifact's recommended estimator (artifacts/i24_coverage.json, "
+    "section_gap_mixture floored by the FD capacity bound, chosen on synthetic validation "
+    "and independent of the car-following model); the tracked and apparent-coverage tables "
+    "are reported as the lower and upper bounds"
+)
+
+
+def _rmspe_block(value: float, n_bins: int, sim: dict, obs_seg: np.ndarray) -> dict:
+    """RMSPE of the replicate mean plus, when per-replicate fields exist, the
+    single-realisation numbers: each replicate against the observed day and
+    each replicate against the mean of the other replicates (the model's own
+    realisation-to-ensemble distance, a floor for a 5-min-bin comparison of
+    one recorded day with an ensemble mean)."""
+    block: dict = {"value": float(value), "n_bins": int(n_bins)}
+    per = sim.get("segment_speeds_ms_per_replicate")
+    if not per:
+        return block
+    arr = np.asarray(per, dtype=np.float64)
+    vs_obs, loo = [], []
+    for i in range(arr.shape[0]):
+        si = arr[i]
+        ok = np.isfinite(si) & np.isfinite(obs_seg) & (obs_seg != 0.0)
+        vs_obs.append(float(rmspe(si[ok], obs_seg[ok])))
+        others = np.nanmean(np.delete(arr, i, axis=0), axis=0)
+        ok2 = np.isfinite(si) & np.isfinite(others) & (others != 0.0)
+        loo.append(float(rmspe(si[ok2], others[ok2])))
+    block.update(
+        {
+            "per_replicate_vs_observed": [round(v, 4) for v in vs_obs],
+            "per_replicate_vs_observed_mean": round(float(np.mean(vs_obs)), 4),
+            "leave_one_out_floor": [round(v, 4) for v in loo],
+            "leave_one_out_floor_mean": round(float(np.mean(loo)), 4),
+            "definition": "value: replicate-mean field vs observed; per_replicate_vs_observed: one seed vs observed; leave_one_out_floor: one seed vs the mean of the other seeds",
+        }
+    )
+    return block
 
 
 def _geh_table(sim_hourly: np.ndarray, obs_hourly: np.ndarray) -> dict:
@@ -477,14 +550,19 @@ def build_results(
     sim_hourly = np.asarray(sim["hourly_flows_veh_h_mean"], dtype=np.float64)
     geh_tracked = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_tracked"]))
     geh_corrected = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_corrected"]))
-    # speedcal derives from the coverage-corrected profile, so its flow criterion
-    # is scored against the corrected counts too; both tables are reported.
-    geh_primary = geh_corrected if arm in ("corrected", "speedcal", "ramps") else geh_tracked
+    geh_recommended = _geh_table(sim_hourly, np.asarray(obs["hourly_flows_veh_h_recommended"]))
+    # The criterion row scores every arm against the best available estimate
+    # of the observed flow — the tracked crossings divided by the coverage
+    # artifact's recommended estimator (needs no car-following model, unlike
+    # the apparent coverage that shapes the corrected arm's demand). The
+    # tracked (lower-bound) and apparent-coverage tables are kept as bounds.
+    geh_primary = geh_recommended
 
     obs_seg = np.asarray(obs["segment_speeds_ms"], dtype=np.float64)
     sim_seg = np.asarray(sim["segment_speeds_ms_mean"], dtype=np.float64)
     both = np.isfinite(obs_seg) & np.isfinite(sim_seg) & (obs_seg != 0.0)
     rmspe_value = rmspe(sim_seg[both], obs_seg[both])
+    rmspe_block = _rmspe_block(rmspe_value, int(both.sum()), sim, obs_seg)
 
     criteria_rows = evaluate(
         PROFILE,
@@ -510,7 +588,7 @@ def build_results(
         else "Ring benchmark rows not evaluated in this run (--ring-seeds 0); reported as failing per CLAUDE.md §0.1."
     )
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "criteria_profile": PROFILE.name,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "scenario": ARMS[arm],
@@ -535,12 +613,14 @@ def build_results(
         "observed": obs,
         "simulated": sim,
         "geh": {
-            "primary": "corrected" if arm in ("corrected", "speedcal", "ramps") else "tracked",
+            "primary": "recommended",
+            "primary_rule": GEH_PRIMARY_RULE,
             "vs_tracked_counts": geh_tracked,
             "vs_coverage_corrected_counts": geh_corrected,
+            "vs_recommended_coverage_counts": geh_recommended,
             "bins": "6 sections x 24 five-min windows, hourly-equivalent volumes (x12)",
         },
-        "rmspe": {"value": float(rmspe_value), "n_bins": int(both.sum())},
+        "rmspe": rmspe_block,
         "waves": {
             "observed": obs["waves"],
             "observed_stripe": obs["waves_stripe"],
@@ -572,7 +652,8 @@ def build_results(
         "notes": [
             "Observed side: I-24 MOTION westbound fragments, mainline lanes 1-4, 06:30-08:30 CST, data x in [0, 5492) m; counts are fragment crossings (lower bounds at tracking coverage), speeds are coverage-robust.",
             "Six GEH sections chosen for coverage (holes at 400 m and 2400 m avoided); the observed count at every section is still biased low by 35-50% in the peak.",
-            "Both GEH tables are reported for both arms; the criteria row uses the tracked counts for the tracked arm and the coverage-corrected counts for the corrected arm.",
+            "Three GEH tables are reported for every arm (tracked counts = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: "
+            + GEH_PRIMARY_RULE,
             ring_note,
             (
                 "The sensitivity_grid criterion row is fed from artifacts/i24_sweep_summary.json "
@@ -598,11 +679,34 @@ def refresh_criteria(arm: str) -> Path:
     path = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
     d = json.loads(path.read_text())
     geh = d["geh"]
-    primary = (
-        geh["vs_coverage_corrected_counts"]
-        if geh["primary"] == "corrected"
-        else geh["vs_tracked_counts"]
-    )
+    obs_d = d["observed"]
+    if "hourly_flows_veh_h_recommended" not in obs_d:
+        rec, rec_src = _recommended_coverage(int(obs_d["n_windows"]), float(obs_d["t_range_s"][0]))
+        counts = np.asarray(obs_d["counts_tracked"], dtype=np.float64)
+        obs_d["coverage_recommended_per_window"] = rec.round(4).tolist()
+        obs_d["coverage_recommended_source"] = rec_src
+        obs_d["hourly_flows_veh_h_recommended"] = (
+            (counts * 3600.0 / WINDOW_S / rec[None, :]).round(1).tolist()
+        )
+    if "vs_recommended_coverage_counts" not in geh:
+        sim_hourly = np.asarray(d["simulated"]["hourly_flows_veh_h_mean"], dtype=np.float64)
+        geh["vs_recommended_coverage_counts"] = _geh_table(
+            sim_hourly, np.asarray(obs_d["hourly_flows_veh_h_recommended"])
+        )
+    geh["primary"] = "recommended"
+    geh["primary_rule"] = GEH_PRIMARY_RULE
+    d["notes"] = [
+        n for n in d.get("notes", []) if not n.startswith("Both GEH tables are reported")
+    ] + [
+        "Three GEH tables are reported (tracked = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: "
+        + GEH_PRIMARY_RULE
+    ]
+    primary = geh["vs_recommended_coverage_counts"]
+    if "leave_one_out_floor" not in d["rmspe"]:
+        obs_seg = np.asarray(obs_d["segment_speeds_ms"], dtype=np.float64)
+        d["rmspe"] = _rmspe_block(
+            d["rmspe"]["value"], d["rmspe"]["n_bins"], d["simulated"], obs_seg
+        )
     waves = d["waves"]
     wave_speed = waves.get("criterion_wave_speed_kmh")
     detector = CRITERION_DETECTOR
@@ -731,7 +835,8 @@ def main() -> None:
         g = results["geh"]
         print(
             f"[{arm}] GEH<5 vs tracked {g['vs_tracked_counts']['fraction_under_5']:.0%}, vs corrected "
-            f"{g['vs_coverage_corrected_counts']['fraction_under_5']:.0%} | RMSPE {results['rmspe']['value']:.1%} | "
+            f"{g['vs_coverage_corrected_counts']['fraction_under_5']:.0%}, vs recommended "
+            f"{g['vs_recommended_coverage_counts']['fraction_under_5']:.0%} | RMSPE {results['rmspe']['value']:.1%} | "
             f"sim backward wave [{CRITERION_DETECTOR.name}] {sim['criterion_wave_speed_kmh']} km/h "
             f"(standard {sim['mean_backward_speed_kmh']}, {sim['n_replicates_with_backward_waves']}/{args.replicates} reps) | "
             f"obs [{CRITERION_DETECTOR.name}] {obs['waves_by_detector'][CRITERION_DETECTOR.name]['mean_backward_speed_kmh']} km/h "

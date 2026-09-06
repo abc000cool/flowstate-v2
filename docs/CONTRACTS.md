@@ -150,7 +150,13 @@ Other blocks:
   existing configs are unchanged; a degraded oracle does NOT set `seeded=True`
   (it perturbs perception, not the physics). See docs/JAD_ORACLE_RESULTS.md.
 - `SimSpec`: `duration_s`, `step_length_s = 0.5`, `action_step_s = 0.5`,
-  `warmup_s = 0.0`, `output_hz = 2.0`.
+  `warmup_s = 0.0`, `output_hz = 2.0`, `lateral_resolution_m: float | None
+  = None` (2026-09-06: SUMO `--lateral-resolution`; `None` keeps the
+  lane-discrete LC2013 lane-change model, a value in (0, 4] switches to the
+  sublane model LC_SL2015 with continuous lateral positions — exposed for
+  on-ramp merges after the lane-discrete model locked the I-24 replica's
+  merge under every parameter tried, docs/I24_VALIDATION.md §0.5; moves
+  every config hash).
 - `PerturbationSpec | None`: seeded shock (`t_s, position_m, duration_s,
   v_drop_ms`). Non-None ⇒ every output row/report labels `seeded=True`.
 - `seed: int`, `replicates: int = 20`, `tier: Literal["micro","macro"]`.
@@ -162,7 +168,27 @@ Other blocks:
   calibration, docs/I24_CAPACITY.md §6); like the two above they are written
   on the vType only when they differ from 1.0, so route files of existing
   scenarios are byte-identical, but their presence in the config snapshot
-  moves every config hash.
+  moves every config hash. `lc_strategic_ramp: float | None = None`
+  (2026-09-06) is the `lcStrategic` written on the vTypes of vehicles whose
+  route starts on an on-ramp (`None` = same as `lc_strategic`): one
+  eagerness cannot serve exiting vehicles (reach the pocket early) and
+  entering vehicles (use the acceleration lane) at once, and the elevated
+  single value made the I-24 replica's ramp traffic merge at the gore at
+  crawl speed (docs/I24_VALIDATION.md §0.5). Its presence moves every config
+  hash again; goldens regenerated with the PR note.
+- `CorridorNetwork.entry_lane_shares` / `OSMNetwork.entry_lane_shares:
+  list[float] | None = None` (2026-09-06): the measured share of mainline
+  entries per lane, LEFT to RIGHT (normalised at use; the corridor kind
+  checks the length against `lanes`, the OSM kind against the first corridor
+  edge's lane count at run time). `None` keeps the round-robin insertion
+  scheme byte for byte. When set, `build_corridor_plan` draws each mainline
+  vehicle's departure lane from the run's RNG (`FleetPlan.depart_lane`,
+  SUMO index, `-1` for ramp-origin vehicles) and the writer emits it as
+  `departLane`. An upstream boundary carries a lane distribution as much as a
+  flow: on I-24 the right lane holds 17% of vehicle-time at the entry against
+  34% in the left lane, and a replica that feeds a quarter of the flow into
+  the lane the next on-ramp merges into queues that lane 1.5 km upstream of
+  the gore (docs/I24_VALIDATION.md §0.5). Moves every config hash.
 
 `flowstate_core.config.config_hash(cfg) -> str`: sha256 over canonical JSON
 (sorted keys), first 12 hex chars. Recorded in every output artifact.
@@ -261,6 +287,22 @@ measured with a recipe other than the profile's is reported as not
 evaluated, and a caller that states no detector gets a "not stated" note.
 Artifacts written before this registry (`artifacts/i24_validation_*.json`
 schema ≤ 4, the M3 US-101 files) carry `standard`-detector criterion rows.
+
+`artifacts/i24_validation_<arm>.json` schema 6 (2026-09-06,
+`scripts/i24_validate.py`): the `geh` block carries three tables —
+`vs_tracked_counts` (fragment crossings, a lower bound),
+`vs_coverage_corrected_counts` (crossings ÷ the apparent coverage that shapes
+the corrected arm's demand) and `vs_recommended_coverage_counts` (crossings ÷
+the recommended estimator of `artifacts/i24_coverage.json`) — and
+`primary = "recommended"` with the rule spelled out in `primary_rule`; the
+observed cache (`runs/i24_validation/observed_i24.json`, `cache_version` 3)
+adds `hourly_flows_veh_h_recommended` and `coverage_recommended_per_window`.
+The `rmspe` block adds, when the run stored `segment_speeds_ms_per_replicate`,
+`per_replicate_vs_observed` (one seed against the recording) and
+`leave_one_out_floor` (one seed against the mean of the other seeds — the
+model's own realisation-to-ensemble distance at the 5-min × 549 m
+resolution); `--criteria-only` re-scores older artifacts under the schema-6
+rule without simulating.
 
 ## 5. Calibration artifacts (`flowstate_core.artifacts`)
 

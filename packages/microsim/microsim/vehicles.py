@@ -94,6 +94,10 @@ class FleetPlan:
     depart_s: tuple[float, ...]
     depart_pos_m: tuple[float, ...]
     route: tuple[str, ...] = ()
+    depart_lane: tuple[int, ...] = ()
+    """SUMO departure lane index per vehicle (0 = rightmost) drawn from the
+    network's ``entry_lane_shares``; ``-1`` for ramp-origin vehicles. Empty ⇒
+    the writer's round-robin scheme."""
 
     @property
     def n(self) -> int:
@@ -333,6 +337,7 @@ def build_corridor_plan(
     *,
     ramps: Sequence[RampSpec] = (),
     corridor_edges: Sequence[str] = (),
+    entry_lane_shares: Sequence[float] | None = None,
 ) -> FleetPlan:
     """Fleet plan for a corridor/OSM demand profile, optionally with ramps.
 
@@ -379,6 +384,20 @@ def build_corridor_plan(
     n = len(departs)
     params = draw_vehicle_params(fleet, n, rng)
     is_av, complied = tag_avs(n, av, rng)
+    depart_lane: tuple[int, ...] = ()
+    if entry_lane_shares is not None:
+        # shares are given left to right; SUMO lane 0 is the rightmost
+        w = np.asarray(entry_lane_shares, dtype=np.float64)
+        if w.ndim != 1 or len(w) < 2 or (w < 0).any() or w.sum() <= 0:
+            raise ValueError(
+                "entry_lane_shares must be >= 2 non-negative weights with a positive sum"
+            )
+        w = w / w.sum()
+        n_lanes = len(w)
+        picks = rng.choice(n_lanes, size=n, p=w)
+        depart_lane = tuple(
+            -1 if origin_idx[i] >= 0 else int(n_lanes - 1 - picks[i]) for i in range(n)
+        )
 
     routes: tuple[str, ...] = ()
     if ramps:
@@ -410,6 +429,7 @@ def build_corridor_plan(
         depart_s=tuple(departs),
         depart_pos_m=tuple(0.0 for _ in range(n)),
         route=routes,
+        depart_lane=depart_lane,
     )
 
 
@@ -544,6 +564,7 @@ def write_corridor_routes(
     lc_cooperative: float = 1.0,
     lc_assertive: float = 1.0,
     lc_speed_gain: float = 1.0,
+    lc_strategic_ramp: float | None = None,
 ) -> Path:
     """Write corridor demand: explicit jittered departures.
 
@@ -604,6 +625,9 @@ def write_corridor_routes(
         lc_assertive: ``FleetSpec.lc_assertive`` (SUMO ``lcAssertive``).
         lc_speed_gain: ``FleetSpec.lc_speed_gain`` (SUMO ``lcSpeedGain``).
             likewise.
+        lc_strategic_ramp: ``FleetSpec.lc_strategic_ramp``: the ``lcStrategic``
+            written on the vTypes of vehicles whose route starts on an
+            on-ramp (``"on…"``); ``None`` uses ``lc_strategic`` for them too.
 
     Returns:
         ``path``.
@@ -619,13 +643,16 @@ def write_corridor_routes(
         named.update({rid: tuple(edges) for rid, edges in routes.items()})
     lines = ["<routes>"]
     for i, p in enumerate(plan.params):
+        strategic = lc_strategic
+        if lc_strategic_ramp is not None and plan.route_of(i).startswith("on"):
+            strategic = lc_strategic_ramp
         lines.append(
             _vtype_xml(
                 f"t{i:05d}",
                 p,
                 model,
                 action_step_s,
-                lc_strategic,
+                strategic,
                 lc_keep_right,
                 lc_cooperative,
                 lc_assertive,
@@ -646,7 +673,15 @@ def write_corridor_routes(
             rank = rank_main
             rank_main += 1
             depart_edge = "" if spread == 1 else f'departEdge="{rank % spread}" '
-            if lanes > 1 and spread == 1:
+            if plan.depart_lane and spread == 1:
+                lane = plan.depart_lane[i]
+                if lanes < 2 or not 0 <= lane < lanes:
+                    raise ValueError(
+                        f"vehicle {plan.vehicle_id(i)} departure lane {lane} outside the entry "
+                        f"edge's {lanes} lanes (entry_lane_shares length must match)"
+                    )
+                depart_attrs = f'departPos="base" departSpeed="avg" departLane="{lane}"'
+            elif lanes > 1 and spread == 1:
                 depart_attrs = f'departPos="base" departSpeed="avg" departLane="{rank % lanes}"'
             else:
                 depart_attrs = 'departPos="free" departSpeed="max" departLane="free"'

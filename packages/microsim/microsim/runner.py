@@ -191,7 +191,14 @@ def _build_plan_and_routes(
     routes: dict[str, tuple[str, ...]] | None = None
     if isinstance(net, CorridorNetwork):
         lanes = net.lanes
-        plan = build_corridor_plan(inflow, cfg.sim.duration_s, cfg.fleet, cfg.av, rng)
+        plan = build_corridor_plan(
+            inflow,
+            cfg.sim.duration_s,
+            cfg.fleet,
+            cfg.av,
+            rng,
+            entry_lane_shares=net.entry_lane_shares,
+        )
     else:
         # OSM: insert round-robin over the entry edge's real lane count (the
         # M3 multi-lane scheme), read from the compiled net.
@@ -208,6 +215,7 @@ def _build_plan_and_routes(
             rng,
             ramps=net.ramps,
             corridor_edges=bundle.edge_ids,
+            entry_lane_shares=net.entry_lane_shares,
         )
     write_corridor_routes(
         bundle.edge_ids,
@@ -223,6 +231,7 @@ def _build_plan_and_routes(
         lc_cooperative=cfg.fleet.lc_cooperative,
         lc_assertive=cfg.fleet.lc_assertive,
         lc_speed_gain=cfg.fleet.lc_speed_gain,
+        lc_strategic_ramp=cfg.fleet.lc_strategic_ramp,
     )
     return plan
 
@@ -678,6 +687,9 @@ def run_micro(
         "--begin",
         "0",
     ]
+    if cfg.sim.lateral_resolution_m is not None:
+        # sublane model (LC_SL2015): continuous lateral positions, gradual merges
+        sumo_cmd += ["--lateral-resolution", f"{cfg.sim.lateral_resolution_m:g}"]
     mod.start(sumo_cmd)
 
     step = cfg.sim.step_length_s

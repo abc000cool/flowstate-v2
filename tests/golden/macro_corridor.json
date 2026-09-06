@@ -4,7 +4,7 @@
   "scenario": "golden_config() in tests/test_macrosim/test_macrosim_golden.py",
   "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
   "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate",
-  "generated_at": "2026-09-04T01:00:27+00:00",
+  "generated_at": "2026-09-06T06:37:59+00:00",
   "tolerance": {
     "relative": 1e-09,
     "exact": [
@@ -12,7 +12,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "7bae64993163",
+  "config_hash": "5d3972b6a4de",
   "seed": 42,
   "tier": "screening",
   "seeded": true,
@@ -44,7 +44,8 @@
           0.4
         ]
       ],
-      "boundary": null
+      "boundary": null,
+      "entry_lane_shares": null
     },
     "fleet": {
       "model": "IDM",
@@ -57,6 +58,7 @@
       "heterogeneity_frac": 0.12,
       "idm_calibration": null,
       "lc_strategic": 1.0,
+      "lc_strategic_ramp": null,
       "lc_keep_right": 1.0,
       "lc_cooperative": 1.0,
       "lc_assertive": 1.0,
@@ -80,7 +82,8 @@
       "step_length_s": 0.5,
       "action_step_s": 0.5,
       "warmup_s": 0.0,
-      "output_hz": 0.2
+      "output_hz": 0.2,
+      "lateral_resolution_m": null
     },
     "perturbation": {
       "t_s": 600.0,

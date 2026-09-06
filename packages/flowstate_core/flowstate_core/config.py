@@ -70,6 +70,18 @@ class BoundarySpec(BaseModel):
         return self
 
 
+def _check_lane_shares(shares: list[float] | None, lanes: int | None) -> None:
+    """Validate an entry lane-share list (left to right; None = round-robin)."""
+    if shares is None:
+        return
+    if len(shares) < 2:
+        raise ValueError("entry_lane_shares needs at least two lanes")
+    if any(s < 0.0 for s in shares) or sum(shares) <= 0.0:
+        raise ValueError("entry_lane_shares must be non-negative with a positive sum")
+    if lanes is not None and len(shares) != lanes:
+        raise ValueError(f"entry_lane_shares has {len(shares)} entries for {lanes} lanes")
+
+
 class CorridorNetwork(BaseModel):
     """Straight corridor with an upstream inflow boundary."""
 
@@ -81,6 +93,15 @@ class CorridorNetwork(BaseModel):
     boundary: BoundarySpec | None = None
     """Optional measured downstream boundary condition (speed schedule on an
     exit-buffer edge outside the measured span); None ⇒ free outflow."""
+    entry_lane_shares: list[float] | None = None
+    """Measured share of mainline entries per lane, LEFT to RIGHT (normalised
+    at use; length = lane count). ``None`` (default) inserts round-robin
+    across lanes. An upstream boundary carries a lane distribution as much as
+    a flow: on I-24 the right lane holds 17% of vehicle-time at the entry
+    against 34% in the left lane (an off-ramp has just drained it), and a
+    replica that feeds a quarter of the flow into the lane the next on-ramp
+    merges into queues that lane 1.5 km upstream of the gore
+    (docs/I24_VALIDATION.md §0.5). Drawn per vehicle from the run's RNG."""
 
     @model_validator(mode="after")
     def _check_inflow(self) -> Self:
@@ -89,6 +110,7 @@ class CorridorNetwork(BaseModel):
             raise ValueError("inflow steps must be ordered by t_start")
         if any(q < 0 for _, q in self.inflow):
             raise ValueError("inflow must be >= 0")
+        _check_lane_shares(self.entry_lane_shares, self.lanes)
         return self
 
 
@@ -172,11 +194,16 @@ class OSMNetwork(BaseModel):
     ramps: list[RampSpec] = Field(default_factory=list)
     """Interchange ramps exchanging traffic with the corridor (see
     :class:`RampSpec`); each ``attach_edge`` must be in ``corridor_edges``."""
+    entry_lane_shares: list[float] | None = None
+    """Measured share of mainline entries per lane, LEFT to RIGHT, on the
+    first corridor edge (its lane count comes from the map and is checked at
+    run time); ``None`` = round-robin. See :class:`CorridorNetwork`."""
 
     @model_validator(mode="after")
     def _check_source(self) -> Self:
         if self.osm_file is None and self.bbox is None:
             raise ValueError("OSMNetwork needs osm_file or bbox")
+        _check_lane_shares(self.entry_lane_shares, None)
         if self.boundary is not None and len(self.corridor_edges) < 2:
             raise ValueError(
                 "an OSM boundary needs corridor_edges with at least two edges "
@@ -217,6 +244,16 @@ class FleetSpec(BaseModel):
     wait for a gap, which creates a spurious fixed bottleneck (measured on the
     I-24 replica and on the ramp fixture, docs/I24_VALIDATION.md); larger
     values make them move over earlier. It does not touch car-following."""
+    lc_strategic_ramp: float | None = Field(default=None, ge=0.0)
+    """SUMO ``lcStrategic`` for vehicles that enter from an on-ramp; ``None``
+    (default) means the same value as ``lc_strategic``. One eagerness serves
+    two opposite needs on a corridor with both ramp kinds: vehicles bound for
+    an off-ramp must reach the deceleration pocket early (a large value),
+    while vehicles entering from an acceleration lane should use its whole
+    length before merging (SUMO's default 1.0). With a single elevated value
+    the I-24 replica's ramp traffic merged at the gore at 9–13 km/h and the
+    right lane crawled 1.5 km upstream of it (docs/I24_VALIDATION.md §0.5).
+    Written on the ramp-origin vTypes only when it differs from 1.0."""
     lc_keep_right: float = Field(default=1.0, ge=0.0)
     """SUMO ``lcKeepRight``: eagerness to obey a keep-right rule, written on
     every vType when it differs from SUMO's default 1.0. US freeways have no
@@ -294,6 +331,15 @@ class SimSpec(BaseModel):
     warmup_s: float = Field(default=0.0, ge=0)
     """Discarded from metrics; still simulated and recorded."""
     output_hz: float = Field(default=2.0, gt=0, le=10.0)
+    lateral_resolution_m: float | None = Field(default=None, gt=0.0, le=4.0)
+    """SUMO ``--lateral-resolution`` [m]: ``None`` (default) keeps the
+    lane-discrete LC2013 lane-change model; a value switches SUMO to the
+    sublane model (LC_SL2015), in which vehicles occupy continuous lateral
+    positions and merge gradually instead of jumping lanes when a whole-lane
+    gap exists. Exposed for on-ramp merges, where the lane-discrete model
+    produced a self-sustaining crawl on the I-24 replica (right lane at
+    6–9 km/h upstream of the gore under every lane-change parameter tried,
+    docs/I24_VALIDATION.md §0.5). Car-following is untouched; runs are slower."""
 
 
 class PerturbationSpec(BaseModel):

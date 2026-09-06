@@ -468,3 +468,135 @@ class TestLcStrategic:
         )
         vtypes = ET.parse(path).getroot().findall("vType")
         assert all(v.get("lcKeepRight") == "0" and v.get("lcStrategic") == "5" for v in vtypes)
+
+
+class TestLcStrategicRamp:
+    """FleetSpec.lc_strategic_ramp → lcStrategic on ramp-origin vTypes only."""
+
+    @staticmethod
+    def _plan_with_ramp():
+        from flowstate_core.config import RampSpec
+
+        ramp = RampSpec(kind="on", edges=["r0"], attach_edge="e1", inflow=[(0.0, 0.3)])
+        return build_corridor_plan(
+            [(0.0, 0.5)],
+            30.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=[ramp],
+            corridor_edges=("e0", "e1", "e2"),
+        )
+
+    def test_ramp_vehicles_get_their_own_value(self, tmp_path):
+        plan = self._plan_with_ramp()
+        path = write_corridor_routes(
+            ("e0", "e1", "e2"),
+            plan,
+            "IDM",
+            0.5,
+            tmp_path / "ramp.rou.xml",
+            routes={"on0": ("r0", "e1", "e2")},
+            lc_strategic=5.0,
+            lc_strategic_ramp=1.0,
+        )
+        vtypes = {v.get("id"): v for v in ET.parse(path).getroot().findall("vType")}
+        n_ramp = sum(1 for i in range(plan.n) if plan.route_of(i).startswith("on"))
+        assert 0 < n_ramp < plan.n
+        for i in range(plan.n):
+            vt = vtypes[f"t{i:05d}"]
+            if plan.route_of(i).startswith("on"):
+                assert vt.get("lcStrategic") is None  # 1.0 is SUMO's default, not written
+            else:
+                assert vt.get("lcStrategic") == "5"
+
+    def test_none_means_same_as_mainline(self, tmp_path):
+        plan = self._plan_with_ramp()
+        kw = {"routes": {"on0": ("r0", "e1", "e2")}, "lc_strategic": 5.0}
+        a = write_corridor_routes(
+            ("e0", "e1", "e2"), plan, "IDM", 0.5, tmp_path / "a.rou.xml", **kw
+        )
+        b = write_corridor_routes(
+            ("e0", "e1", "e2"),
+            plan,
+            "IDM",
+            0.5,
+            tmp_path / "b.rou.xml",
+            lc_strategic_ramp=None,
+            **kw,
+        )
+        assert a.read_text() == b.read_text()
+        assert all(v.get("lcStrategic") == "5" for v in ET.parse(a).getroot().findall("vType"))
+
+    def test_field_validation(self):
+        assert FleetSpec().lc_strategic_ramp is None
+        assert FleetSpec(lc_strategic_ramp=1.0).lc_strategic_ramp == 1.0
+        with pytest.raises(ValueError):
+            FleetSpec(lc_strategic_ramp=-1.0)
+
+
+class TestEntryLaneShares:
+    """Network.entry_lane_shares → per-vehicle departLane draws (left to right)."""
+
+    def test_draw_matches_shares_and_ramp_vehicles_are_exempt(self):
+        from flowstate_core.config import RampSpec
+
+        ramp = RampSpec(kind="on", edges=["r0"], attach_edge="e1", inflow=[(0.0, 0.2)])
+        plan = build_corridor_plan(
+            [(0.0, 2.0)],
+            600.0,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(SEED),
+            ramps=[ramp],
+            corridor_edges=("e0", "e1", "e2"),
+            entry_lane_shares=[0.5, 0.3, 0.2],  # left, middle, right
+        )
+        assert len(plan.depart_lane) == plan.n
+        main = [plan.depart_lane[i] for i in range(plan.n) if not plan.route_of(i).startswith("on")]
+        ramp_lanes = {
+            plan.depart_lane[i] for i in range(plan.n) if plan.route_of(i).startswith("on")
+        }
+        assert ramp_lanes == {-1}
+        # SUMO lane 0 is the rightmost: the 0.2 share lands on lane 0, 0.5 on lane 2
+        freq = {k: main.count(k) / len(main) for k in (0, 1, 2)}
+        assert abs(freq[2] - 0.5) < 0.05 and abs(freq[1] - 0.3) < 0.05 and abs(freq[0] - 0.2) < 0.05
+
+    def test_writer_uses_the_drawn_lanes(self, tmp_path):
+        plan = build_corridor_plan(
+            [(0.0, 1.0)], 60.0, FleetSpec(), AVSpec(), make_rng(SEED), entry_lane_shares=[0.7, 0.3]
+        )
+        path = write_corridor_routes(("e0",), plan, "IDM", 0.5, tmp_path / "s.rou.xml", lanes=2)
+        root = ET.parse(path).getroot()
+        lanes = {v.get("id"): int(v.get("departLane")) for v in root.findall("vehicle")}
+        for i in range(plan.n):
+            assert lanes[plan.vehicle_id(i)] == plan.depart_lane[i]
+        with pytest.raises(ValueError, match="outside the entry"):
+            write_corridor_routes(("e0",), plan, "IDM", 0.5, tmp_path / "bad.rou.xml", lanes=1)
+
+    def test_none_keeps_round_robin_byte_identical(self, tmp_path):
+        a = build_corridor_plan([(0.0, 1.0)], 60.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        b = build_corridor_plan(
+            [(0.0, 1.0)], 60.0, FleetSpec(), AVSpec(), make_rng(SEED), entry_lane_shares=None
+        )
+        assert a.depart_lane == () and b.depart_lane == ()
+        pa = write_corridor_routes(("e0",), a, "IDM", 0.5, tmp_path / "a.rou.xml", lanes=3)
+        pb = write_corridor_routes(("e0",), b, "IDM", 0.5, tmp_path / "b.rou.xml", lanes=3)
+        assert pa.read_text() == pb.read_text()
+
+    def test_config_validation(self):
+        from flowstate_core.config import CorridorNetwork, OSMNetwork
+
+        CorridorNetwork(length_m=1000.0, lanes=2, inflow=[(0.0, 0.5)], entry_lane_shares=[0.6, 0.4])
+        with pytest.raises(ValueError, match="entries for 2 lanes"):
+            CorridorNetwork(
+                length_m=1000.0, lanes=2, inflow=[(0.0, 0.5)], entry_lane_shares=[0.5, 0.3, 0.2]
+            )
+        with pytest.raises(ValueError, match="at least two"):
+            CorridorNetwork(length_m=1000.0, lanes=1, inflow=[(0.0, 0.5)], entry_lane_shares=[1.0])
+        with pytest.raises(ValueError, match="non-negative"):
+            OSMNetwork(osm_file="x.osm", entry_lane_shares=[-0.1, 1.1])
+        assert OSMNetwork(osm_file="x.osm", entry_lane_shares=[2.0, 1.0]).entry_lane_shares == [
+            2.0,
+            1.0,
+        ]

@@ -1,0 +1,27 @@
+{
+  "created_at": "2026-09-06T03:53:00+00:00",
+  "source": "data/osm/i24_motion.osm",
+  "output": "data/osm/i24_motion_corrected.osm",
+  "inputs_config_hash": "17e9e80ffd83",
+  "landmark_chain_m": {
+    "wb_OH_on_end": 6870.760997040249,
+    "wb_HH_off_start": 8367.86713322898
+  },
+  "cut_offset_on_way_977008893_m": {
+    "wb_OH_on_end": 243.7,
+    "wb_HH_off_start": 1740.8
+  },
+  "new_nodes": {
+    "wb_OH_on_end": "9900000000001",
+    "wb_HH_off_start": "9900000000002"
+  },
+  "way_lengths_before_m": {
+    "977008894": null,
+    "977008893": 2086.3
+  },
+  "moved_m": {
+    "acceleration_lane_extended": 243.7,
+    "deceleration_lane_extended": 345.5
+  },
+  "rule": "way boundaries moved to the provider's landmark positions; nodes, tags and lane counts unchanged"
+}

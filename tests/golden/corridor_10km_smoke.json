@@ -7,7 +7,7 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-04T01:00:26+00:00",
+  "generated_at": "2026-09-06T06:37:57+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -16,7 +16,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "7dd9cca81f0c",
+  "config_hash": "07e450e0632a",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",
@@ -52,7 +52,8 @@
           0.4
         ]
       ],
-      "boundary": null
+      "boundary": null,
+      "entry_lane_shares": null
     },
     "fleet": {
       "model": "EIDM",
@@ -65,6 +66,7 @@
       "heterogeneity_frac": 0.15,
       "idm_calibration": null,
       "lc_strategic": 1.0,
+      "lc_strategic_ramp": null,
       "lc_keep_right": 1.0,
       "lc_cooperative": 1.0,
       "lc_assertive": 1.0,
@@ -88,7 +90,8 @@
       "step_length_s": 0.5,
       "action_step_s": 0.5,
       "warmup_s": 120.0,
-      "output_hz": 2.0
+      "output_hz": 2.0,
+      "lateral_resolution_m": null
     },
     "perturbation": null,
     "seed": 42,

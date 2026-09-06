@@ -98,6 +98,16 @@ estimator and would fail with the standard detector (8–10 km/h) — the
 prediction confirmed as specified, detector-dependent, caveats in
 I24_VALIDATION.md §0.4. The fitted-ramps arm trades one RMSPE point for five
 GEH points; the merge is still the residual.
+*Diagnosis 2026-09-06 (I24_VALIDATION.md §0.5):* the 5-min speed criterion is
+below the recording's own repeatability (its 15-min moving average differs by
+33%; at 15-min the arms are 25–27% against a 15% floor); the flow target is now
+the coverage estimator's recommended counts (schema 6; the shortfall is real
+discharge); two map defects at the auxiliary lanes are corrected from the
+landmark layer (`scripts/i24_correct_osm.py`); the merge crawl survives every
+lane-change parameter, the ramp-origin eagerness field, the measured entry lane
+distribution, and the sublane model gridlocks as configured — a merge lock of
+the lane-discrete model. Next: a non-locking merge model, then the FHWA
+sequence and the battery on the corrected map.
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on

@@ -436,6 +436,21 @@ Hickory to Hickory Hollow and improved the held-out hour from 42.6% to
 (35.9 → 34.8%) and loses five points of GEH (15.3 → 10.4%) and 136 veh/h
 of throughput, so the merge is still where the error lives.
 
+A diagnostic round on 6 September took the two failing rows apart
+(`docs/I24_VALIDATION.md` §0.5). The 5-minute speed criterion sits below
+the recording's own repeatability: the recorded field differs from its own
+15-minute moving average by 33 percent, which is where the arms are; at
+15-minute aggregation the arms score 25 to 27 percent against a 15 percent
+floor, and that gap is the merge. The flow target was moved to the coverage
+estimator's recommended counts, and the shortfall that remains, 12 to 13
+percent at the peak sections, is real discharge. Two map defects at the
+auxiliary lanes were corrected from the provider's landmark layer. The merge
+crawl itself survived every lane-change parameter, a new ramp-origin
+eagerness field, the measured entry lane distribution, and the sublane
+model, which gridlocks as configured: it is a merge lock of SUMO's
+lane-discrete lane-change model on this geometry. The next round is a
+merge model that does not lock, then the calibration sequence again.
+
 ![Front-speed distributions](figures/i24_validation_waves.png)
 
 ### 6.5 The flagship sweep (500 runs)

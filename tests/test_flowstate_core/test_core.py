@@ -403,3 +403,14 @@ class TestLaneChangeArtifact:
         other = self._record(x_edges_m=[0.0, 500.0, 2000.0])
         with pytest.raises(ValueError, match="differ from observed_fit"):
             LaneChangeCalibration(params=params, **{**base, "observed_holdout": other})
+
+
+def test_sim_spec_lateral_resolution_field():
+    from flowstate_core.config import SimSpec
+
+    assert SimSpec(duration_s=10.0).lateral_resolution_m is None
+    assert SimSpec(duration_s=10.0, lateral_resolution_m=0.8).lateral_resolution_m == 0.8
+    import pytest
+
+    with pytest.raises(ValueError):
+        SimSpec(duration_s=10.0, lateral_resolution_m=0.0)
