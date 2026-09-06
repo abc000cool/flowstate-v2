@@ -426,6 +426,32 @@ entry lanes, the best combination of (g)):
   works mechanically on the replica and that the replica responds to it in
   the expected direction.
 
+**(k) The zipper's admittance is not a parameter** (single seeds, corrected
+map, ramp-origin eagerness 1, measured entry lanes;
+`artifacts/i24_merge_experiment_zipper_jm.json` from the cloud pipeline and
+`artifacts/i24_merge_experiment_zipper_levers.json`). Three levers that
+could plausibly set how much the merged lane admits were tried on top of
+the zipper of (j):
+
+| Lever | Values | Old Hickory ramp departed | 15-min RMSPE |
+|---|---|---|---|
+| Junction time gap `jm_timegap_minor_s` (SUMO `jmTimegapMinor`) | 0.5, 0.75, 1.0, 1.5 s | 1,369 / 2,241 in every case, byte-identical runs | 39.2% |
+| Internal junction lanes (`OSMNetwork.internal_links`) | on | 1,412 / 2,241 | 38.8% |
+| Foe-ignoring probability `jm_ignore_foe_prob` (SUMO `jmIgnoreFoeProb`) | 0.5, 1.0 | 1,352 / 1,436 of 2,241 | 39.5 / 37.9% |
+| Zipper as built (j) | — | 1,397 / 2,241 | 40.7% |
+
+Sixty to sixty-four percent of the ramp's demand gets in whatever the
+setting; the profile does not move. SUMO's zipper interleaves the two lanes
+one vehicle at a time at the junction, so the merged lane's throughput is
+the car-following capacity of one lane at the merge speed, and no
+junction-model parameter changes that. Fixing the admittance means
+changing the mechanism — a merge that lets the acceleration lane feed the
+mainline over its length rather than at a point (the sublane model with
+lateral parameters calibrated, or a short dedicated merge edge) — which is
+the next round's problem. The cloud pipeline of 2026-09-06 runs the
+20-seed batteries on the zipper family as built, so its numbers carry this
+admittance.
+
 **(i) What this round leaves.** The two failing rows are explained and their
 irreducible parts are measured:
 

@@ -116,6 +116,11 @@ def variant_config(name: str) -> dict[str, Any]:
     meter_on = False
     jm_gap = None
     ilinks = False
+    foe = None
+    if "_foe" in name:
+        name, foe_text = name.rsplit("_foe", 1)
+        foe = float(foe_text)
+        raw["fleet"]["jm_ignore_foe_prob"] = foe
     if name.endswith("_ilinks"):
         ilinks = True
         raw["network"]["internal_links"] = True
@@ -241,6 +246,8 @@ def variant_config(name: str) -> dict[str, Any]:
         raw["name"] += f"_jm{jm_gap:g}"
     if ilinks:
         raw["name"] += "_ilinks"
+    if foe is not None:
+        raw["name"] += f"_foe{foe:g}"
     return raw
 
 

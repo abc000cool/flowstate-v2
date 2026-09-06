@@ -222,6 +222,11 @@ Other blocks:
   junction gap `jm_timegap_minor_s` turned out to have no effect on a road
   zipper — four values gave byte-identical runs). Vehicles on an internal
   lane are not recorded (a few metres per junction).
+- `FleetSpec.jm_ignore_foe_prob: float | None = None` (2026-09-06): SUMO
+  junction-model `jmIgnoreFoeProb` (with `jmIgnoreFoeSpeed` set high so any
+  foe qualifies) written on every vType when set — the probability that a
+  vehicle entering a junction ignores a foe; the last vehicle-side lever
+  tried for a zipper merge's admittance.
 - `FleetSpec.jm_timegap_minor_s: float | None = None` (2026-09-06): SUMO
   junction-model `jmTimegapMinor` [s] written on every vType when set (SUMO
   default 1.0 s) — the minimum time gap accepted when entering a junction

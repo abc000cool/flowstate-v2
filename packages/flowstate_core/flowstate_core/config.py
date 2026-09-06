@@ -386,6 +386,12 @@ class FleetSpec(BaseModel):
     ahead of a prioritised (or, at a zipper, an interleaving) vehicle; SUMO's
     default is 1.0 s. Exposed for the zipper merge model (``RampSpec.merge``),
     whose merged-lane throughput it sets (docs/I24_VALIDATION.md §0.5 (j))."""
+    jm_ignore_foe_prob: float | None = Field(default=None, ge=0.0, le=1.0)
+    """SUMO junction-model ``jmIgnoreFoeProb`` written on every vType when
+    set: the probability that a vehicle entering a junction ignores a foe
+    slower than ``jmIgnoreFoeSpeed`` (SUMO defaults 0 and 0). Exposed as the
+    last vehicle-side lever for a zipper merge's admittance, after the
+    junction gap and the internal lanes proved inert (docs/I24_VALIDATION.md)."""
     hov_fraction: float = Field(default=0.0, ge=0.0, le=1.0)
     """Share of passenger vehicles eligible for managed (HOV) lanes, drawn
     per vehicle from the run's RNG after every other draw (0 = none, so
