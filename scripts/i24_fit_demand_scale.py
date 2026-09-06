@@ -75,18 +75,25 @@ TRAIN_WINDOWS = range(0, 12)
 TEST_WINDOWS = range(12, 24)
 
 
+SCENARIO_NAME = "i24_replica_speedcal"
+
+
 def scaled_config(
-    scale: float, fleet_artifact: str = FLEET_ARTIFACT, base: str = "tracked"
+    scale: float,
+    fleet_artifact: str = FLEET_ARTIFACT,
+    base: str = "tracked",
+    base_yaml: Path | None = None,
+    name: str = SCENARIO_NAME,
 ) -> dict[str, Any]:
     """The base scenario dict with mainline and on-ramp inflows × scale and the step-1 fleet."""
-    raw = yaml.safe_load(BASES[base].read_text())
+    raw = yaml.safe_load((base_yaml or BASES[base]).read_text())
     raw["fleet"]["idm_calibration"] = fleet_artifact
     net = raw["network"]
     net["inflow"] = [[t, round(q * scale, 6)] for t, q in net["inflow"]]
     for ramp in net.get("ramps", []):
         if ramp.get("kind") == "on" and ramp.get("inflow"):
             ramp["inflow"] = [[t, round(q * scale, 6)] for t, q in ramp["inflow"]]
-    raw["name"] = "i24_replica_speedcal"
+    raw["name"] = name
     return raw
 
 
@@ -97,14 +104,15 @@ def _rmspe_windows(sim: np.ndarray, obs: np.ndarray, windows: range) -> float:
     return float(rmspe(s[ok], o[ok]))
 
 
-def _job(args: tuple[float, int, str, str]) -> dict[str, Any]:
-    scale, seed, fleet_artifact, base = args
+def _job(args: tuple[float, int, str, str, str | None, str]) -> dict[str, Any]:
+    scale, seed, fleet_artifact, base, base_yaml_s, name = args
+    base_yaml = Path(base_yaml_s) if base_yaml_s else None
     geo = _inputs()["geometry"]
     a, b = geo["sim_x_of_data_x"]["a"], geo["sim_x_of_data_x"]["b"]
     _span_lo, span_hi = _span()
     obs = np.array(json.loads(OBSERVED.read_text())["segment_speeds_ms"], dtype=float)
     n_win = obs.shape[0]
-    cfg = ScenarioConfig.model_validate(scaled_config(scale, fleet_artifact, base))
+    cfg = ScenarioConfig.model_validate(scaled_config(scale, fleet_artifact, base, base_yaml, name))
     with tempfile.TemporaryDirectory() as td:
         t0 = time.perf_counter()
         paths = run_micro(cfg, seed, Path(td))
@@ -148,17 +156,29 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--fleet-artifact", default=FLEET_ARTIFACT)
     ap.add_argument("--base", choices=tuple(BASES), default="tracked")
+    ap.add_argument(
+        "--base-yaml", type=Path, default=None, help="scenario file to scale (overrides --base)"
+    )
+    ap.add_argument("--scenario-out", type=Path, default=SCENARIO_OUT)
+    ap.add_argument("--name", default=SCENARIO_NAME, help="name of the written scenario")
     args = ap.parse_args()
     fleet = args.fleet_artifact
     base_name = args.base
+    base_yaml = args.base_yaml.resolve() if args.base_yaml is not None else None
     if args.out == OUT and base_name != "tracked":
         args.out = OUT.with_name(f"demand_scale_i24_{base_name}.json")
-    base = ScenarioConfig.model_validate(scaled_config(1.0, fleet, base_name))
+    base = ScenarioConfig.model_validate(scaled_config(1.0, fleet, base_name, base_yaml, args.name))
     seed = spawn_seeds(base.seed, base.replicates)[0]
     ctx = mp.get_context("spawn")
     rows: list[dict[str, Any]] = []
     with ctx.Pool(min(args.procs, len(COARSE[base_name]))) as pool:
-        rows += pool.map(_job, [(s, seed, fleet, base_name) for s in COARSE[base_name]])
+        rows += pool.map(
+            _job,
+            [
+                (s, seed, fleet, base_name, str(base_yaml) if base_yaml else None, args.name)
+                for s in COARSE[base_name]
+            ],
+        )
     for r in sorted(rows, key=lambda r: r["scale"]):
         print(
             f"  s={r['scale']:.3f} inserted={r['inserted_fraction']:.3f} rmspe train={r['rmspe_train']:.3f} test={r['rmspe_test']:.3f}"
@@ -171,7 +191,13 @@ def main() -> None:
             if k != 0 and best["scale"] + k * REFINE_STEP > 0.0
         ]
         with ctx.Pool(min(args.procs, len(fine))) as pool:
-            rows += pool.map(_job, [(s, seed, fleet, base_name) for s in fine])
+            rows += pool.map(
+                _job,
+                [
+                    (s, seed, fleet, base_name, str(base_yaml) if base_yaml else None, args.name)
+                    for s in fine
+                ],
+            )
         best = _best(rows)
         for r in sorted(rows, key=lambda r: r["scale"]):
             print(
@@ -184,7 +210,9 @@ def main() -> None:
         "schema_version": 1,
         "versions": _versions(),
         "base": base_name,
-        "base_scenario": str(BASES[base_name].relative_to(REPO)),
+        "base_scenario": str((base_yaml or BASES[base_name]).relative_to(REPO))
+        if (base_yaml or BASES[base_name]).is_relative_to(REPO)
+        else str(base_yaml or BASES[base_name]),
         "fleet_artifact": fleet,
         "objective": "segment-speed RMSPE, windows 0-11 (06:30-07:30 CST); windows 12-23 held out",
         "seed": seed,
@@ -205,7 +233,7 @@ def main() -> None:
     args.out.write_text(json.dumps(result, indent=1, default=_json_default))
     print(f"-> {args.out}")
     if args.write_scenario:
-        raw = scaled_config(best["scale"], fleet, base_name)
+        raw = scaled_config(best["scale"], fleet, base_name, base_yaml, args.name)
         cfg = ScenarioConfig.model_validate(raw)
         header = (
             f"# i24_replica_speedcal — the {base_name}-demand replica with mainline and on-ramp\n"
@@ -216,8 +244,8 @@ def main() -> None:
             f"# artifacts/demand_scale_i24.json (rmspe train {best['rmspe_train']:.3f}, test {best['rmspe_test']:.3f}).\n"
             f"# config hash {config_hash(cfg)}; seeded=False.\n"
         )
-        SCENARIO_OUT.write_text(header + yaml.safe_dump(raw, sort_keys=False))
-        print(f"-> {SCENARIO_OUT} ({config_hash(cfg)})")
+        args.scenario_out.write_text(header + yaml.safe_dump(raw, sort_keys=False))
+        print(f"-> {args.scenario_out} ({config_hash(cfg)})")
 
 
 if __name__ == "__main__":

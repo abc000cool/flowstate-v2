@@ -223,6 +223,7 @@ def _build_plan_and_routes(
             cfg.sim.duration_s,
             routes_path,
             heavy=cfg.fleet.heavy,
+            jm_timegap_minor_s=cfg.fleet.jm_timegap_minor_s,
         )
         return plan
     if isinstance(net, CorridorNetwork):
@@ -277,6 +278,7 @@ def _build_plan_and_routes(
         lc_speed_gain=cfg.fleet.lc_speed_gain,
         lc_strategic_ramp=cfg.fleet.lc_strategic_ramp,
         heavy=cfg.fleet.heavy,
+        jm_timegap_minor_s=cfg.fleet.jm_timegap_minor_s,
     )
     return plan
 

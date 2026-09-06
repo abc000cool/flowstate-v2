@@ -306,7 +306,40 @@ def main() -> None:
         f"{HEAVY_FLEET_ARTIFACT} (scripts/fit_idm_i24.py --classes heavy); off by default "
         "(keeps config hashes)",
     )
+    ap.add_argument(
+        "--suffix",
+        default="",
+        help="write a separate scenario family: scenarios/i24_replica_<suffix>[_corrected].yaml, "
+        "artifacts/demand_i24_<suffix>.json, artifacts/i24_replica_inputs_<suffix>.json "
+        "(default: the canonical files)",
+    )
+    ap.add_argument(
+        "--lc-strategic-ramp",
+        type=float,
+        default=None,
+        help="FleetSpec.lc_strategic_ramp for ramp-origin vehicles (None = same as --lc-strategic)",
+    )
+    ap.add_argument(
+        "--merge",
+        choices=("lane_change", "acceleration_lane", "zipper"),
+        default="lane_change",
+        help="RampSpec.merge for the on-ramps named by --merge-ramps",
+    )
+    ap.add_argument(
+        "--merge-ramps",
+        nargs="*",
+        default=["Old Hickory Blvd on-ramp"],
+        help="on-ramp names that get --merge (default: Old Hickory, whose acceleration lane "
+        "dead-ends; the Hickory Hollow lane continues into the Bell Road weave)",
+    )
+    ap.add_argument(
+        "--jm-timegap",
+        type=float,
+        default=None,
+        help="FleetSpec.jm_timegap_minor_s (SUMO jmTimegapMinor, the zipper's merged-lane lever)",
+    )
     args = ap.parse_args()
+    suffix = f"_{args.suffix}" if args.suffix else ""
     osm_file = OSM_FILE if args.osm == "original" else CORRECTED_OSM_FILE
     heavy_block: dict[str, Any] | None = None
     if args.heavy:
@@ -466,7 +499,7 @@ def main() -> None:
         steps=[(t, round(q, 6)) for t, q in inflow_steps],
         geh_vs_counts=None,
     )
-    demand_path = REPO_ROOT / "artifacts" / "demand_i24.json"
+    demand_path = REPO_ROOT / "artifacts" / f"demand_i24{suffix}.json"
     demand.save(demand_path)
 
     # --- entry lane distribution ------------------------------------------
@@ -481,7 +514,7 @@ def main() -> None:
     # --- scenario ---------------------------------------------------------
     duration_s = WARMUP_S + (t_hi - t_lo)
     scenario = {
-        "name": "i24_replica",
+        "name": f"i24_replica{suffix}",
         "tier": "micro",
         "network": {
             "kind": "osm",
@@ -496,8 +529,10 @@ def main() -> None:
             "model": "IDM",
             "idm_calibration": FLEET_ARTIFACT,
             "lc_strategic": lc_strategic,
+            "lc_strategic_ramp": args.lc_strategic_ramp,
             "lc_keep_right": LC_KEEP_RIGHT,
             "heavy": heavy_block,
+            "jm_timegap_minor_s": args.jm_timegap,
         },
         "av": {"penetration": 0.0, "compliance": 1.0, "controller": None, "controller_params": {}},
         "sim": {
@@ -511,6 +546,10 @@ def main() -> None:
         "seed": 42,
         "replicates": 20,
     }
+    if args.merge != "lane_change":
+        for spec in scenario["network"]["ramps"]:
+            if spec.get("kind") == "on" and spec.get("name") in set(args.merge_ramps):
+                spec["merge"] = args.merge
     cfg = ScenarioConfig.model_validate(scenario)
     header = f"""# i24_replica — I-24 westbound, Nashville TN (I-24 MOTION testbed), ROADMAP §1.3.
 #
@@ -536,14 +575,14 @@ def main() -> None:
 # {LC_KEEP_RIGHT:g} matches the observed lane use (both measured; see builder constants).
 # seeded=False: the boundary and ramp inputs are calibration inputs, not shocks.
 """
-    out_yaml = REPO_ROOT / "scenarios" / "i24_replica.yaml"
+    out_yaml = REPO_ROOT / "scenarios" / f"i24_replica{suffix}.yaml"
     cfg.to_yaml(out_yaml)
     out_yaml.write_text(header + out_yaml.read_text())
 
     corrected_hash = None
     if cov_rows is not None:
         sc2 = json.loads(json.dumps(scenario))
-        sc2["name"] = "i24_replica_corrected"
+        sc2["name"] = f"i24_replica{suffix}_corrected"
         sc2["network"]["inflow"] = [[t, round(q, 6)] for t, q in corrected(inflow_steps)]
         for spec in sc2["network"]["ramps"]:
             if spec["kind"] == "on":
@@ -568,7 +607,7 @@ def main() -> None:
 # validation target; both arms are reported side by side.
 """
         )
-        out2 = REPO_ROOT / "scenarios" / "i24_replica_corrected.yaml"
+        out2 = REPO_ROOT / "scenarios" / f"i24_replica{suffix}_corrected.yaml"
         cfg2.to_yaml(out2)
         out2.write_text(header2 + out2.read_text())
 
@@ -580,6 +619,11 @@ def main() -> None:
         "lc_strategic": lc_strategic,
         "entry_lanes": args.entry_lanes,
         "heavy": heavy_block,
+        "suffix": args.suffix,
+        "merge": args.merge,
+        "merge_ramps": list(args.merge_ramps) if args.merge != "lane_change" else [],
+        "lc_strategic_ramp": args.lc_strategic_ramp,
+        "jm_timegap_minor_s": args.jm_timegap,
         "entry_lane_shares": entry_lane_shares,
         "entry_lane_x_m": list(ENTRY_LANE_X_M),
         "config_hash": config_hash(cfg),
@@ -648,7 +692,9 @@ def main() -> None:
             "mile-marker fit; ramp gores from the fit match the ramp-lane data to ~10 m",
         ],
     }
-    (REPO_ROOT / "artifacts" / "i24_replica_inputs.json").write_text(json.dumps(inputs, indent=2))
+    (REPO_ROOT / "artifacts" / f"i24_replica_inputs{suffix}.json").write_text(
+        json.dumps(inputs, indent=2)
+    )
 
     print(
         f"projection check {proj_err:.3f} m; chain scale {scale:.4f}; MM fit RMS {geo.residual_rms_m:.1f} m"

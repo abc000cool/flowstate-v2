@@ -185,9 +185,9 @@ def apply_multipliers(base: Mapping[str, Any], values: Mapping[str, float]) -> d
     return raw
 
 
-def base_scenario(smoke: bool = False, path: Path = BASE_YAML) -> dict[str, Any]:
+def base_scenario(smoke: bool = False, path: Path | None = None) -> dict[str, Any]:
     """The base scenario dict; ``smoke`` shortens it to one 600 s window."""
-    raw = yaml.safe_load(path.read_text())
+    raw = yaml.safe_load((path or BASE_YAML).read_text())
     if smoke:
         raw["sim"]["duration_s"] = SMOKE_DURATION_S
         raw["sim"]["warmup_s"] = SMOKE_WARMUP_S
@@ -476,7 +476,22 @@ def main() -> None:
     ap.add_argument("--resume", action="store_true", help="reuse evaluations from --out")
     ap.add_argument("--write-scenario", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument(
+        "--base-yaml",
+        type=Path,
+        default=None,
+        help="scenario to fit from (default: the fitted arm)",
+    )
+    ap.add_argument("--scenario-out", type=Path, default=None)
+    ap.add_argument("--name", default=None, help="name of the written scenario")
     args = ap.parse_args()
+    global BASE_YAML, SCENARIO_OUT, SCENARIO_NAME
+    if args.base_yaml is not None:
+        BASE_YAML = args.base_yaml.resolve()
+    if args.scenario_out is not None:
+        SCENARIO_OUT = args.scenario_out.resolve()
+    if args.name is not None:
+        SCENARIO_NAME = args.name
     out: Path = args.out if args.out is not None else (SMOKE_OUT if args.smoke else OUT)
     rounds = 0 if args.smoke else args.rounds
 

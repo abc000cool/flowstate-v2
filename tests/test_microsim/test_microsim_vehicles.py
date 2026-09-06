@@ -600,3 +600,18 @@ class TestEntryLaneShares:
             2.0,
             1.0,
         ]
+
+
+class TestJunctionTimegap:
+    def test_written_only_when_set(self, tmp_path):
+        plan = build_corridor_plan([(0.0, 0.5)], 20.0, FleetSpec(), AVSpec(), make_rng(SEED))
+        default = write_corridor_routes(("e0",), plan, "IDM", 0.5, tmp_path / "a.rou.xml")
+        assert "jmTimegapMinor" not in default.read_text()
+        path = write_corridor_routes(
+            ("e0",), plan, "IDM", 0.5, tmp_path / "b.rou.xml", jm_timegap_minor_s=0.5
+        )
+        vtypes = ET.parse(path).getroot().findall("vType")
+        assert vtypes and all(v.get("jmTimegapMinor") == "0.5" for v in vtypes)
+        assert FleetSpec().jm_timegap_minor_s is None
+        with pytest.raises(ValueError):
+            FleetSpec(jm_timegap_minor_s=0.0)

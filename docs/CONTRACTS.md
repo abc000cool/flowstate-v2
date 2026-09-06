@@ -214,6 +214,11 @@ Other blocks:
   other draw and written with `vClass="hov"` (`FleetPlan.is_hov`, the
   trajectory column `is_hov`, `meta.json` `n_hov` / `managed_lanes`). A
   managed lane does not set `seeded=True`. Macro tier: not represented.
+- `FleetSpec.jm_timegap_minor_s: float | None = None` (2026-09-06): SUMO
+  junction-model `jmTimegapMinor` [s] written on every vType when set (SUMO
+  default 1.0 s) — the minimum time gap accepted when entering a junction
+  ahead of another vehicle, which sets the merged-lane throughput of a
+  zipper merge (`RampSpec.merge`).
 - `FleetSpec.heavy: HeavyVehicleSpec | None` (2026-09-06): heavy vehicles
   as a share of the human fleet — `fraction` (Bernoulli per vehicle from the
   run's RNG, drawn after every existing draw so fleets without the block

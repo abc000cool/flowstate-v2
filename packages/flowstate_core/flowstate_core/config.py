@@ -373,6 +373,12 @@ class FleetSpec(BaseModel):
     heavy: HeavyVehicleSpec | None = None
     """Heavy-vehicle share and population (:class:`HeavyVehicleSpec`);
     ``None`` = passenger cars only, as before."""
+    jm_timegap_minor_s: float | None = Field(default=None, gt=0.0)
+    """SUMO junction-model ``jmTimegapMinor`` [s] written on every vType when
+    set: the minimum time gap a vehicle accepts when entering a junction
+    ahead of a prioritised (or, at a zipper, an interleaving) vehicle; SUMO's
+    default is 1.0 s. Exposed for the zipper merge model (``RampSpec.merge``),
+    whose merged-lane throughput it sets (docs/I24_VALIDATION.md §0.5 (j))."""
     hov_fraction: float = Field(default=0.0, ge=0.0, le=1.0)
     """Share of passenger vehicles eligible for managed (HOV) lanes, drawn
     per vehicle from the run's RNG after every other draw (0 = none, so

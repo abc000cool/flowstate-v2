@@ -95,7 +95,23 @@ ARMS = {
     "corrected": "i24_replica_corrected",
     "speedcal": "i24_replica_speedcal",  # FHWA step-2 demand scale (docs/I24_CAPACITY.md)
     "ramps": "i24_replica_speedcal_ramps",  # step 3: ramps, boundary, gap acceptance (§6.1)
+    "speedcal_heavy": "i24_replica_speedcal_heavy",  # the fitted level with the heavy share
 }
+FAMILY = ""
+"""Scenario family suffix (``--family``): scenario ``i24_replica<_family>...``,
+artifacts ``i24_validation<_family>_<arm>.json``, runs under
+``runs/i24_validation<_family>/``. Empty = the canonical family."""
+
+
+def scenario_name(arm: str) -> str:
+    """Scenario name of an arm in the active family."""
+    base = ARMS[arm]
+    return base.replace("i24_replica", f"i24_replica{FAMILY}", 1) if FAMILY else base
+
+
+def artifact_path(arm: str) -> Path:
+    """Validation artifact path of an arm in the active family."""
+    return REPO_ROOT / "artifacts" / f"i24_validation{FAMILY}_{arm}.json"
 
 
 def _inputs() -> dict:
@@ -452,16 +468,18 @@ def _rmspe_block(value: float, n_bins: int, sim: dict, obs_seg: np.ndarray) -> d
     for i in range(arr.shape[0]):
         si = arr[i]
         ok = np.isfinite(si) & np.isfinite(obs_seg) & (obs_seg != 0.0)
-        vs_obs.append(float(rmspe(si[ok], obs_seg[ok])))
+        vs_obs.append(float(rmspe(si[ok], obs_seg[ok])) if ok.any() else float("nan"))
+        if arr.shape[0] < 2:
+            continue  # the leave-one-out floor needs at least two replicates
         others = np.nanmean(np.delete(arr, i, axis=0), axis=0)
         ok2 = np.isfinite(si) & np.isfinite(others) & (others != 0.0)
-        loo.append(float(rmspe(si[ok2], others[ok2])))
+        loo.append(float(rmspe(si[ok2], others[ok2])) if ok2.any() else float("nan"))
     block.update(
         {
             "per_replicate_vs_observed": [round(v, 4) for v in vs_obs],
             "per_replicate_vs_observed_mean": round(float(np.mean(vs_obs)), 4),
             "leave_one_out_floor": [round(v, 4) for v in loo],
-            "leave_one_out_floor_mean": round(float(np.mean(loo)), 4),
+            "leave_one_out_floor_mean": round(float(np.nanmean(loo)), 4) if loo else None,
             "definition": "value: replicate-mean field vs observed; per_replicate_vs_observed: one seed vs observed; leave_one_out_floor: one seed vs the mean of the other seeds",
         }
     )
@@ -591,7 +609,7 @@ def build_results(
         "schema_version": 6,
         "criteria_profile": PROFILE.name,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "scenario": ARMS[arm],
+        "scenario": scenario_name(arm),
         "arm": arm,
         "replicates": replicates,
         "seeds": sim["seeds"],
@@ -676,7 +694,7 @@ def refresh_criteria(arm: str) -> Path:
     and the published sweep grid, rewrites ``criteria`` and the note, and
     returns the path. Rows whose inputs are absent stay not evaluated.
     """
-    path = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+    path = artifact_path(arm)
     d = json.loads(path.read_text())
     geh = d["geh"]
     obs_d = d["observed"]
@@ -741,7 +759,7 @@ def main() -> None:
     ap.add_argument("--procs", type=int, default=int(os.environ.get("I24_PROCS", "8")))
     ap.add_argument(
         "--arms",
-        choices=("all", "both", "tracked", "corrected", "speedcal", "ramps"),
+        choices=("all", "both", "tracked", "corrected", "speedcal", "ramps", "speedcal_heavy"),
         default="all",
         help="'both' = tracked + corrected (the pre-2026-09-03 pair); 'all' adds speedcal",
     )
@@ -767,7 +785,18 @@ def main() -> None:
         action="store_true",
         help="evaluate the ring benchmark, write runs/i24_validation/ring/ring_benchmark.json, exit",
     )
+    ap.add_argument(
+        "--family",
+        default="",
+        help="scenario family suffix written by scripts/i24_build_replica.py --suffix; arms "
+        "then read scenarios/i24_replica_<family>*.yaml and write "
+        "artifacts/i24_validation_<family>_<arm>.json under runs/i24_validation_<family>/",
+    )
     args = ap.parse_args()
+    global FAMILY, OUT_ROOT
+    if args.family:
+        FAMILY = f"_{args.family}"
+        OUT_ROOT = REPO_ROOT / "runs" / f"i24_validation{FAMILY}"
     t0 = time.perf_counter()
     OUT_ROOT.mkdir(parents=True, exist_ok=True)
     ring: dict | None = None
@@ -794,13 +823,16 @@ def main() -> None:
         if args.arms == a
         or (
             args.arms == "all"
-            and (a != "ramps" or (REPO_ROOT / "scenarios" / f"{ARMS[a]}.yaml").is_file())
+            and (
+                a not in ("ramps", "speedcal_heavy")
+                or (REPO_ROOT / "scenarios" / f"{scenario_name(a)}.yaml").is_file()
+            )
         )
         or (args.arms == "both" and a in ("tracked", "corrected"))
     ]
     if args.criteria_only:
         for arm in arms:
-            art = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+            art = artifact_path(arm)
             if not art.is_file():
                 print(f"[{arm}] no artifact at {art}; skipped", flush=True)
                 continue
@@ -814,9 +846,9 @@ def main() -> None:
                 )
         return
     for arm in arms:
-        cfg = load_scenario(ARMS[arm])
+        cfg = load_scenario(scenario_name(arm))
         print(
-            f"arm {arm!r} ({ARMS[arm]}, config {config_hash(cfg)}): {args.replicates} replicates ...",
+            f"arm {arm!r} ({scenario_name(arm)}, config {config_hash(cfg)}): {args.replicates} replicates ...",
             flush=True,
         )
         sim = micro_arm(
@@ -829,9 +861,12 @@ def main() -> None:
             reuse_runs=args.reuse_runs,
         )
         results = build_results(arm, cfg, sim, obs, args.replicates, ring)
-        out_path = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+        out_path = artifact_path(arm)
         out_path.write_text(json.dumps(_json_safe(results), indent=2, allow_nan=False))
-        shutil.copy(REPO_ROOT / "scenarios" / f"{ARMS[arm]}.yaml", OUT_ROOT / f"{ARMS[arm]}.yaml")
+        shutil.copy(
+            REPO_ROOT / "scenarios" / f"{scenario_name(arm)}.yaml",
+            OUT_ROOT / f"{scenario_name(arm)}.yaml",
+        )
         g = results["geh"]
         print(
             f"[{arm}] GEH<5 vs tracked {g['vs_tracked_counts']['fraction_under_5']:.0%}, vs corrected "

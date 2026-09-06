@@ -69,3 +69,18 @@ calibration artifacts, and the OpenStreetMap extract `data/osm/i24_motion.osm`
 (89 KB, © OpenStreetMap contributors, ODbL). The 19.5 GB raw I-24 MOTION
 export is only needed to re-extract trajectories and never leaves the
 owner's machine.
+
+## The calibration-round pipeline (2026-09-06)
+
+`launch_i24_pipeline.sh` creates one on-demand VM (`n2-standard-32`,
+`us-west1-b`, 120 GB) whose startup script arms a boot-time hard cap
+(`shutdown -h +300`), ships the I-24 processed data and the observed-side
+cache, clones the pushed commit and starts `pipeline_i24.sh` under
+`systemd-run --user`. The pipeline is resumable (stage markers in `logs/`) and
+powers the machine off when it exits, success or failure. Run
+`watch_pipeline.sh` locally afterwards: it polls, fetches `/tmp/final.tgz`
+when `logs/PIPELINE_DONE` appears, deletes the instance, never restarts a
+powered-off instance at the working size (it shrinks to two vCPUs with a
+20-minute cap to fetch), and deletes the instance unconditionally at its
+own deadline (default 5.5 h). Expected: about two hours of machine time.
+

@@ -572,6 +572,7 @@ def _vtype_xml(
     length_m: float = VEHICLE_LENGTH_M,
     emission_class: str = EMISSION_CLASS,
     vclass: str | None = None,
+    jm_timegap_minor_s: float | None = None,
 ) -> str:
     """One ``<vType>`` element (see module docstring for attribute notes).
 
@@ -594,6 +595,8 @@ def _vtype_xml(
         vclass or "", vclass or ""
     )
     cls = "" if vclass is None else f' vClass="{vclass}" guiShape="{shape}"'
+    if jm_timegap_minor_s is not None:
+        cls += f' jmTimegapMinor="{jm_timegap_minor_s:g}"'
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
         f'decel="{p["b"]:.6f}" tau="{p["T"]:.6f}" minGap="{p["s0"]:.6f}" '
@@ -627,6 +630,7 @@ def write_ring_routes(
     duration_s: float,
     path: Path,
     heavy: HeavyVehicleSpec | None = None,
+    jm_timegap_minor_s: float | None = None,
 ) -> Path:
     """Write ring routes: explicit depart-at-0 vehicles at planned positions.
 
@@ -656,7 +660,14 @@ def write_ring_routes(
     lines = ["<routes>"]
     for i, p in enumerate(plan.params):
         lines.append(
-            _vtype_xml(f"t{i:05d}", p, model, action_step_s, **_heavy_kwargs(plan, i, heavy))
+            _vtype_xml(
+                f"t{i:05d}",
+                p,
+                model,
+                action_step_s,
+                jm_timegap_minor_s=jm_timegap_minor_s,
+                **_heavy_kwargs(plan, i, heavy),
+            )
         )
     for i in range(plan.n):
         pos = plan.depart_pos_m[i] % circumference_m
@@ -691,6 +702,7 @@ def write_corridor_routes(
     lc_speed_gain: float = 1.0,
     lc_strategic_ramp: float | None = None,
     heavy: HeavyVehicleSpec | None = None,
+    jm_timegap_minor_s: float | None = None,
 ) -> Path:
     """Write corridor demand: explicit jittered departures.
 
@@ -783,6 +795,7 @@ def write_corridor_routes(
                 lc_cooperative,
                 lc_assertive,
                 lc_speed_gain,
+                jm_timegap_minor_s=jm_timegap_minor_s,
                 **_heavy_kwargs(plan, i, heavy),
             )
         )

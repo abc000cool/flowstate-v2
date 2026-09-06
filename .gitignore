@@ -35,3 +35,6 @@ embed/dist/
 
 # Small OSM extracts the versioned scenarios depend on (ODbL attribution in data/osm/README.md).
 !data/osm/
+
+# local pipeline logs (scripts/gcp)
+logs/
