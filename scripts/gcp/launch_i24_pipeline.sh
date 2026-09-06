@@ -36,7 +36,7 @@ gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --mach
   --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
   --metadata-from-file startup-script="$STARTUP" --labels purpose=flowstate-pipeline,autostop=yes >/dev/null
 rm -f "$STARTUP"
-echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt" 2>/dev/null || mkdir -p "$ROOT/logs" && echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
+mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
 ssh_cmd() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1"; }
 echo "== waiting for ssh"
 for i in $(seq 1 30); do if ssh_cmd "true" 2>/dev/null; then break; fi; sleep 10; done
@@ -47,12 +47,14 @@ tar cf "$DATA" data/i24motion/processed/i24_wb_20221130 data/i24motion/processed
   data/i24motion/processed/i24_wb_episode_summary_heavy.json data/i24motion/auxiliary_information \
   runs/i24_validation/observed_i24.json
 ls -la "$DATA" | awk '{print "   ", $5, "bytes"}'
-echo "== bootstrap (clone $REF, uv sync; no run)"
-ssh_cmd "curl -fsSL https://raw.githubusercontent.com/abc000cool/flowstate-v2/$REF/scripts/gcp/bootstrap.sh -o /tmp/bootstrap.sh && bash /tmp/bootstrap.sh --ref $REF --no-run --no-auto-stop" 2>&1 | tail -3
-echo "== shipping data"
-gcloud compute scp "$DATA" "$VM:/tmp/i24_data.tar" --project "$PROJECT" --zone "$ZONE" --quiet
-ssh_cmd "cd ~/flowstate && tar xf /tmp/i24_data.tar && rm /tmp/i24_data.tar && du -sh data/i24motion/processed && mkdir -p logs"
+# The repository is private: the code goes up as a git-archive snapshot of HEAD
+# (no clone, no token on the VM); scripts/gcp/vm_setup.sh installs the system
+# packages and uv, unpacks code and data, syncs the workspace and starts the unit.
+REPO_TAR="$(dirname "$DATA")/repo.tar"
+git archive --format=tar -o "$REPO_TAR" HEAD
+echo "== shipping code snapshot ($(du -h "$REPO_TAR" | cut -f1)) and data ($(du -h "$DATA" | cut -f1))"
+gcloud compute scp "$REPO_TAR" "$ROOT/scripts/gcp/vm_setup.sh" "$DATA" "$VM:/tmp/" --project "$PROJECT" --zone "$ZONE" --quiet
 rm -rf "$(dirname "$DATA")"
-echo "== starting the pipeline under systemd (survives logout)"
-ssh_cmd "loginctl enable-linger \$USER 2>/dev/null || sudo loginctl enable-linger \$USER; cd ~/flowstate && chmod +x scripts/gcp/pipeline_i24.sh && systemd-run --user --unit=pipeline --collect bash -lc 'cd ~/flowstate && scripts/gcp/pipeline_i24.sh $QUICK' && sleep 5 && systemctl --user is-active pipeline && tail -3 logs/pipeline.log"
+echo "== VM setup and pipeline start (systemd unit 'pipeline', survives logout)"
+ssh_cmd "chmod +x /tmp/vm_setup.sh && /tmp/vm_setup.sh $REF $QUICK" 2>&1 | tail -6
 echo "== launched. Now run:  scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE"

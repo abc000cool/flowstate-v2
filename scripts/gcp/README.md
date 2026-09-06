@@ -72,7 +72,7 @@ owner's machine.
 
 ## The calibration-round pipeline (2026-09-06)
 
-`launch_i24_pipeline.sh` creates one on-demand VM (`n2-standard-32`,
+`launch_i24_pipeline.sh` creates one on-demand VM (the code goes up as a `git archive` snapshot of HEAD through `vm_setup.sh`, because the repository is private) (`n2-standard-32`,
 `us-west1-b`, 120 GB) whose startup script arms a boot-time hard cap
 (`shutdown -h +300`), ships the I-24 processed data and the observed-side
 cache, clones the pushed commit and starts `pipeline_i24.sh` under
