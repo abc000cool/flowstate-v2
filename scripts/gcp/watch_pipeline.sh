@@ -22,16 +22,19 @@ done
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 T0=$(date +%s); DEADLINE=$((T0 + DEADLINE_MIN * 60))
 say() { echo "$(date -u +%FT%TZ) $*"; }
-status() { gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null; }
-ssh_cmd() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1" 2>/dev/null; }
+# every remote call is bounded (perl alarm: macOS ships no `timeout`) so a hung
+# connection can never stall the loop past its deadline check
+bounded() { perl -e 'alarm shift; exec @ARGV' "$1" "${@:2}"; }
+status() { bounded 90 gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null; }
+ssh_cmd() { bounded 150 gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1" 2>/dev/null; }
 delete_vm() {
-  gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1 \
+  bounded 300 gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1 \
     && say "VM_DELETED $VM" || say "VM_DELETE_FAILED (retry manually: gcloud compute instances delete $VM --zone $ZONE)"
   say "post-delete instances: $(gcloud compute instances list --project "$PROJECT" --format='value(name,status)' 2>/dev/null | tr '\n' ' ')"
 }
 fetch() {  # -> 0 when $DEST/final.tgz is a readable archive
   ssh_cmd "ls -la /tmp/final.tgz" >/dev/null || return 1
-  gcloud compute scp "$VM:/tmp/final.tgz" "$DEST/final.tgz" --project "$PROJECT" --zone "$ZONE" --quiet 2>/dev/null || return 1
+  bounded 1800 gcloud compute scp "$VM:/tmp/final.tgz" "$DEST/final.tgz" --project "$PROJECT" --zone "$ZONE" --quiet 2>/dev/null || return 1
   tar tzf "$DEST/final.tgz" >/dev/null 2>&1 || return 1
   say "FETCHED $(stat -f %z "$DEST/final.tgz" 2>/dev/null || stat -c %s "$DEST/final.tgz") bytes -> $DEST/final.tgz"
 }

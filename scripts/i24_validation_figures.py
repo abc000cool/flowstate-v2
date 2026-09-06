@@ -46,12 +46,14 @@ ARM_COLORS = {
     "corrected": "#2a78d6",
     "speedcal": "#1baf7a",
     "ramps": "#8e44ad",
+    "speedcal_heavy": "#c0392b",
 }
 ARM_LABELS = {
     "tracked": "demand as tracked",
     "corrected": "demand ÷ coverage",
     "speedcal": "coverage-shaped demand × 0.85 (fitted)",
     "ramps": "fitted level + fitted ramps (step 3)",
+    "speedcal_heavy": "fitted level + heavy vehicles",
 }
 
 
@@ -85,8 +87,11 @@ def _style() -> None:
     )
 
 
+FAMILY = ""  # scenario family suffix ("_zip"); set by --family
+
+
 def _results(arm: str) -> dict:
-    return json.loads((REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json").read_text())
+    return json.loads((REPO_ROOT / "artifacts" / f"i24_validation{FAMILY}_{arm}.json").read_text())
 
 
 def _sim_frame(arm: str, res: dict) -> pd.DataFrame:
@@ -94,7 +99,7 @@ def _sim_frame(arm: str, res: dict) -> pd.DataFrame:
     a, b = inputs["geometry"]["sim_x_of_data_x"]["a"], inputs["geometry"]["sim_x_of_data_x"]["b"]
     # The artifact's run_dirs may point at the machine that ran the battery;
     # use the first replicate whose trajectories exist under this checkout.
-    root = REPO_ROOT / "runs" / "i24_validation" / arm / res["config_hash"]
+    root = REPO_ROOT / "runs" / f"i24_validation{FAMILY}" / arm / res["config_hash"]
     candidates = [root / str(seed) for seed in res["seeds"]]
     candidates += [Path(d) for d in res["simulated"]["run_dirs"]]
     run_dir = next((d for d in candidates if (d / "trajectories.parquet").is_file()), None)
@@ -149,8 +154,9 @@ def fields_figure(arms: list[str]) -> None:
     cb.set_label("speed [km/h]")
     cb.set_ticks([0, 20, 40, 60, 80, 100, 120])
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIG_DIR / "i24_validation_fields.png", dpi=150, bbox_inches="tight")
-    print(f"-> {FIG_DIR / 'i24_validation_fields.png'}")
+    out = FIG_DIR / f"i24_validation{FAMILY}_fields.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    print(f"-> {out}")
 
 
 def waves_figure(arms: list[str]) -> None:
@@ -205,15 +211,23 @@ def waves_figure(arms: list[str]) -> None:
     ax.set_ylabel("fronts")
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "i24_validation_waves.png", dpi=150)
-    print(f"-> {FIG_DIR / 'i24_validation_waves.png'}")
+    out = FIG_DIR / f"i24_validation{FAMILY}_waves.png"
+    fig.savefig(out, dpi=150)
+    print(f"-> {out}")
 
 
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument("--family", default="", help="scenario family suffix (e.g. zip)")
+    args = ap.parse_args()
+    global FAMILY
+    FAMILY = f"_{args.family}" if args.family else ""
     arms = [
         a
-        for a in ("tracked", "corrected", "speedcal", "ramps")
-        if (REPO_ROOT / "artifacts" / f"i24_validation_{a}.json").is_file()
+        for a in ("tracked", "corrected", "speedcal", "ramps", "speedcal_heavy")
+        if (REPO_ROOT / "artifacts" / f"i24_validation{FAMILY}_{a}.json").is_file()
     ]
     fields_figure(arms)
     waves_figure(arms)

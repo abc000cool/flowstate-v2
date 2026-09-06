@@ -122,12 +122,15 @@ def _lanes_of_x(osm_file: str) -> list[tuple[float, float, int]]:
     return out
 
 
+FAMILY = ""  # scenario family suffix ("_zip"); set by --family
+
+
 def replica_profile(arm: str) -> dict | None:
-    art = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+    art = REPO_ROOT / "artifacts" / f"i24_validation{FAMILY}_{arm}.json"
     if not art.is_file():
         return None
     res = json.loads(art.read_text())
-    root = REPO_ROOT / "runs" / "i24_validation" / arm / res["config_hash"]
+    root = REPO_ROOT / "runs" / f"i24_validation{FAMILY}" / arm / res["config_hash"]
     run_dir = next(
         (root / str(s) for s in res["seeds"] if (root / str(s) / "trajectories.parquet").is_file()),
         None,
@@ -225,7 +228,10 @@ def main() -> None:
     )
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--fig", type=Path, default=FIG)
+    ap.add_argument("--family", default="", help="scenario family suffix (e.g. zip)")
     args = ap.parse_args()
+    global FAMILY
+    FAMILY = f"_{args.family}" if args.family else ""
     obs = observed_profile()
     arms = {}
     for arm in args.arms:
