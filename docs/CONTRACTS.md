@@ -159,6 +159,38 @@ Other blocks:
   every config hash).
 - `PerturbationSpec | None`: seeded shock (`t_s, position_m, duration_s,
   v_drop_ms`). Non-None ⇒ every output row/report labels `seeded=True`.
+- `closures: list[LaneClosureSpec]` (2026-09-06): temporary lane closures —
+  `start_m, end_m` (measured from the start of the analysis corridor, i.e.
+  after a generated corridor's insertion buffer; the runner records the
+  span in the trajectories' linear x as `x_lo_m`/`x_hi_m` and never closes
+  the insertion edge), `lanes` (SUMO lane indices,
+  0 = rightmost, distinct), `t_start_s, t_end_s`, `label`. Micro tier: for
+  the window the listed lanes of every corridor edge overlapping the span
+  refuse every vehicle class (`lane.setDisallowed`, the fleet's classes),
+  so traffic changes lanes ahead of the closure through the ordinary
+  strategic logic and vehicles caught on a closed lane leave it; the
+  original permissions are restored at `t_end_s`; an index beyond an edge's
+  lane count is skipped there. `meta.json` records `closures` (lane ids,
+  skipped ids, applied/released times). Macro tier (single pipe): the
+  overlapped cells' interfaces are capped at `q_max × share of lanes open`
+  (`lanes` from the corridor network; a ring counts one lane). Any closure
+  labels the run `seeded=True` — an imposed disturbance is not the emergent
+  phenomenon (CLAUDE.md §0.2).
+- `FleetSpec.heavy: HeavyVehicleSpec | None` (2026-09-06): heavy vehicles
+  as a share of the human fleet — `fraction` (Bernoulli per vehicle from the
+  run's RNG, drawn after every existing draw so fleets without the block
+  reproduce their previous draws exactly), `length_m`, `emission_class`
+  (written on the heavy vTypes; the passenger class stays the fleet
+  default), `vclass` (`truck` | `trailer`, written as `vClass`), and the
+  heavy population as `idm_calibration` or all five explicit means with
+  `heterogeneity_frac` — no built-in truck defaults exist, because none
+  would carry provenance. Heavy vehicles are never tagged as controlled
+  vehicles (effective penetration is `penetration × (1 − fraction)`).
+  `FleetPlan.is_heavy`, the trajectory column `is_heavy` (every run, all
+  false without the block) and `meta.json` `n_heavy` /
+  `heavy_fraction_realized` carry the flags. The macro tier does not
+  represent heavy vehicles (a calibrated fundamental diagram already embeds
+  the observed mix; `meta.json` says so).
 - `seed: int`, `replicates: int = 20`, `tier: Literal["micro","macro"]`.
 
   `lc_cooperative: float = 1.0` (SUMO `lcCooperative`, mainline willingness
@@ -207,7 +239,8 @@ runs/<config_hash>/<seed>/
 
 `trajectories.parquet` columns (micro): `t: f64 [s]`, `veh_id: str`,
 `x: f64 [m]` (linear position along route; ring = arc length),
-`lane: i32`, `v: f64 [m/s]`, `a: f64 [m/s²]`, `is_av: bool`, `complied: bool`.
+`lane: i32`, `v: f64 [m/s]`, `a: f64 [m/s²]`, `is_av: bool`, `complied: bool`,
+`is_heavy: bool` (2026-09-06; false on every vehicle without a `FleetSpec.heavy` block).
 Sampled at `sim.output_hz`. On corridors, `x` spans entry buffer + corridor
 proper (+ exit buffer when a `BoundarySpec` is configured); micro `meta.json`
 then carries a `boundary` object (`kind`, `exit_edge`, `exit_buffer_m`,

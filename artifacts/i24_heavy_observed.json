@@ -1,0 +1,64 @@
+{
+  "created_at": "2026-09-06T07:38:22+00:00",
+  "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
+  "period": "06:30-08:30 CST",
+  "span_data_x_m": [
+    0.0,
+    5492.0
+  ],
+  "lanes": [
+    1,
+    4
+  ],
+  "heavy_classes": [
+    4,
+    5
+  ],
+  "n_fragments": 288827,
+  "fraction_fragments": 0.0917,
+  "fraction_vehicle_time": 0.0554,
+  "length_median_m": 20.27,
+  "length_p10_p90_m": [
+    10.38,
+    23.48
+  ],
+  "by_class": {
+    "sedan": {
+      "fragments": 105614,
+      "share_fragments": 0.3657,
+      "share_vehicle_time": 0.3999,
+      "length_median_m": 4.69
+    },
+    "midsize": {
+      "fragments": 99255,
+      "share_fragments": 0.3436,
+      "share_vehicle_time": 0.3683,
+      "length_median_m": 4.81
+    },
+    "van": {
+      "fragments": 9560,
+      "share_fragments": 0.0331,
+      "share_vehicle_time": 0.0269,
+      "length_median_m": 5.97
+    },
+    "pickup": {
+      "fragments": 47902,
+      "share_fragments": 0.1659,
+      "share_vehicle_time": 0.1495,
+      "length_median_m": 5.92
+    },
+    "semi": {
+      "fragments": 23004,
+      "share_fragments": 0.0796,
+      "share_vehicle_time": 0.0484,
+      "length_median_m": 20.82
+    },
+    "truck": {
+      "fragments": 3492,
+      "share_fragments": 0.0121,
+      "share_vehicle_time": 0.0071,
+      "length_median_m": 10.79
+    }
+  },
+  "note": "fragment shares are ratios of coverage-limited counts (docs/I24_DATA.md \u00a74); heavy vehicles are easier to track than cars, so the share is, if anything, high; the fraction_fragments value is the count-based quantity matching the demand input"
+}

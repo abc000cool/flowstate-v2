@@ -219,6 +219,38 @@ now exposes the raw-way granularity the scenario must be written in.
    simulated fleet is passenger cars (5 m vType) drawn from a passenger-only
    population fit.
 
+## Heavy vehicles: share and population (2026-09-06)
+
+`scripts/i24_heavy_share.py` → `artifacts/i24_heavy_observed.json`: of the
+288,827 mainline fragments in the study period on the span, 9.2% are heavy
+(8.0% semis, 1.2% trucks, coarse classes 4–5) and they hold 5.5% of the
+vehicle-time; the heavy median length is 20.3 m (semis 20.5 m, trucks
+10.8 m). The share is a ratio of coverage-limited counts and heavy vehicles
+are easier to track than cars, so it is, if anything, high.
+
+`scripts/i24_extract_episodes.py --classes heavy` and
+`scripts/fit_idm_i24.py --classes heavy` → `artifacts/idm_i24_heavy.json`:
+197 episodes with a heavy follower (2.2 h), 138 fitted and 59 held out,
+holdout gap RMSE 7.09 m (cars: 5.29 m on 17,652 episodes). Population
+means: v0 30.4 m/s, T 1.96 s, a_max 0.67 m/s², b 1.69 m/s², s0 2.76 m;
+against the capacity-calibrated cars (T 1.32 s, a_max 1.06 m/s²) the trucks
+keep half a second more headway and accelerate at two thirds the rate,
+which is the expected direction. The sample is small (the standard
+deviations in the artifact are wide) and no capacity-calibration step has
+been applied to it. `FleetSpec.heavy` carries these numbers into a scenario
+(`scripts/i24_build_replica.py --heavy`; docs/CONTRACTS.md §2).
+
+One seed of the fitted arm with the heavy share added
+(`artifacts/i24_merge_experiment_heavy.json`, `scripts/i24_merge_experiment.py
+as_is_heavy`): insertion 94.5 → 88.0%, section flows 8% lower
+(4,508–5,376 against 4,952–5,858 veh/h), segment speeds within 1–2 km/h,
+5-min RMSPE 36.0 → 39.3%, GEH share unchanged. Trucks at their own fitted
+headways widen the capacity shortfall of docs/I24_VALIDATION.md §0.5 (b),
+which is expected: the passenger population's capacity calibration
+(docs/I24_CAPACITY.md) was done without them, so an arm that carries the
+heavy share needs that step redone with the mixed fleet. The current
+validation arms run without heavy vehicles.
+
 ## Fundamental diagram (`artifacts/fd_i24.json`)
 
 Fitted 2026-09-03 by `scripts/fit_fd_i24.py` from Edie generalized flow and

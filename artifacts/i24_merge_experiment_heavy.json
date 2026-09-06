@@ -1,0 +1,220 @@
+{
+ "schema_version": 1,
+ "versions": {
+  "python": "3.12.13",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "arm": "scenarios/i24_replica_speedcal.yaml",
+ "arm_config_hash": "c8ad0a2b5064",
+ "seed": 6914975401685141156,
+ "observed_segment_mean_kmh": [
+  36.34,
+  32.5,
+  29.76,
+  31.34,
+  37.61,
+  36.91,
+  37.72,
+  29.03,
+  30.4,
+  33.66
+ ],
+ "variants": [
+  {
+   "variant": "as_is",
+   "seed": 6914975401685141156,
+   "config_hash": "c8ad0a2b5064",
+   "inserted_fraction": 0.945,
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2241,
+     "n_departed": 1895,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1205
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1482,
+     "n_departed": 1482,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 731
+    }
+   ],
+   "rmspe_all": 0.3596,
+   "rmspe_15min": 0.2588,
+   "geh_under_5_vs_recommended": 0.2222,
+   "rmspe_train": 0.3197,
+   "rmspe_test": 0.3955,
+   "segment_mean_kmh": [
+    20.93,
+    21.16,
+    29.74,
+    36.79,
+    35.43,
+    35.05,
+    34.95,
+    30.55,
+    28.02,
+    31.89
+   ],
+   "segment_rel_error": [
+    -0.3439,
+    -0.2619,
+    0.0901,
+    0.3103,
+    0.0281,
+    0.0099,
+    0.0317,
+    0.1292,
+    -0.039,
+    -0.0367
+   ],
+   "hourly_flow_mean_by_section": [
+    4952,
+    5792,
+    5782,
+    5768,
+    5858,
+    5546
+   ],
+   "wall_s": 178.8
+  },
+  {
+   "variant": "as_is_heavy",
+   "seed": 6914975401685141156,
+   "config_hash": "19e19366634a",
+   "inserted_fraction": 0.8804,
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2241,
+     "n_departed": 1874,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1225
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1482,
+     "n_departed": 1482,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 766
+    }
+   ],
+   "rmspe_all": 0.3934,
+   "rmspe_15min": 0.3082,
+   "geh_under_5_vs_recommended": 0.2083,
+   "rmspe_train": 0.3557,
+   "rmspe_test": 0.4279,
+   "segment_mean_kmh": [
+    21.26,
+    22.19,
+    30.46,
+    36.08,
+    34.76,
+    33.33,
+    34.76,
+    31.19,
+    28.26,
+    31.86
+   ],
+   "segment_rel_error": [
+    -0.3086,
+    -0.2331,
+    0.1506,
+    0.3066,
+    0.0153,
+    -0.0074,
+    0.0455,
+    0.1461,
+    -0.0405,
+    -0.0452
+   ],
+   "hourly_flow_mean_by_section": [
+    4508,
+    5348,
+    5312,
+    5238,
+    5376,
+    5112
+   ],
+   "wall_s": 164.2
+  }
+ ]
+}

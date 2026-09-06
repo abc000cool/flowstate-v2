@@ -512,6 +512,17 @@ def run_macro(
     pert = cfg.perturbation
     x_centers = (np.arange(n_cells) + 0.5) * dx
 
+    # --- Temporary lane closures (LaneClosureSpec): single-pipe treatment —
+    # the overlapped cells' interfaces are capped at the diagram's capacity
+    # times the share of lanes left open for the closure window.
+    lanes_total = int(getattr(cfg.network, "lanes", 1) or 1)
+    closure_caps: list[tuple[Any, list[int], float]] = []
+    for spec_c in cfg.closures:
+        n_closed = sum(1 for li in spec_c.lanes if li < lanes_total)
+        frac_open = max(lanes_total - n_closed, 0) / lanes_total
+        cells_c = [i for i in range(n_cells) if spec_c.start_m <= x_centers[i] < spec_c.end_m]
+        closure_caps.append((spec_c, cells_c, frac_open))
+
     t_rows: list[np.ndarray] = []
     rho_rows: list[np.ndarray] = []
     lim_rows: list[np.ndarray] = []
@@ -560,6 +571,13 @@ def run_macro(
             v_red = max(v_prevail - pert.v_drop_ms, 0.0)
             cap = capacity_at_speed(fd, v_red)
             caps[iface] = min(caps.get(iface, math.inf), cap)
+
+        for spec_c, cells_c, frac_open in closure_caps:
+            if spec_c.t_start_s <= solver.t_s < spec_c.t_end_s:
+                cap_c = fd.q_max * frac_open
+                for i in cells_c:
+                    for iface in (i, i + 1):
+                        caps[iface] = min(caps.get(iface, math.inf), cap_c)
 
         if avs:
             v_ref = float(np.mean(speeds))
@@ -621,6 +639,25 @@ def run_macro(
         "versions": _versions(),
         "tier": "screening",
         "seeded": cfg.seeded,
+        "closures": [
+            {
+                "label": spec_c.label,
+                "start_m": spec_c.start_m,
+                "end_m": spec_c.end_m,
+                "lanes": list(spec_c.lanes),
+                "t_start_s": spec_c.t_start_s,
+                "t_end_s": spec_c.t_end_s,
+                "cells": cells_c,
+                "capacity_share_open": frac_open,
+                "treatment": "single-pipe: interface flux of the overlapped cells capped at q_max x share of lanes open",
+            }
+            for spec_c, cells_c, frac_open in closure_caps
+        ],
+        "heavy_vehicles": (
+            None
+            if cfg.fleet.heavy is None
+            else "not represented in the macro tier (a calibrated fundamental diagram already embeds the observed vehicle mix); micro-tier feature"
+        ),
         "wall_time_s": time.perf_counter() - t_wall0,
         "fuel_total_ml": None,  # no emission model in the macro tier (micro-tier output)
         "clamped": solver.clamped,

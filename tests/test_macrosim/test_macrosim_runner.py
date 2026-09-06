@@ -287,3 +287,44 @@ def test_runner_respects_cfl_for_small_cells(tmp_path: Path) -> None:
     dt = meta["grid"]["dt_s"]
     dx = meta["grid"]["dx_m"]
     assert dt <= dx / meta["fd"]["v_f"] + 1e-12
+
+
+def test_lane_closure_caps_capacity_and_labels_seeded(tmp_path: Path) -> None:
+    """A LaneClosureSpec run is labeled seeded=True, records the closure with
+    the share of lanes left open, and queues traffic upstream of it.
+
+    Single-pipe treatment (macrosim.runner docstring): the overlapped cells'
+    interfaces are capped at q_max × share open (one of two lanes ⇒ 0.5).
+    """
+    from flowstate_core.config import LaneClosureSpec
+
+    cfg = _corridor_cfg(
+        # two lanes double the diagram (q_max ≈ 1.48 veh/s); 1.0 veh/s flows freely
+        # until one lane closes (cap 0.74 veh/s) and queues behind it
+        network=CorridorNetwork(length_m=10_000.0, lanes=2, inflow=[(0.0, 1.0)]),
+        sim=SimSpec(duration_s=900.0, step_length_s=0.5, output_hz=0.2),
+        closures=[
+            LaneClosureSpec(start_m=7000.0, end_m=7500.0, lanes=[0], t_start_s=400.0, t_end_s=700.0)
+        ],
+    )
+    assert cfg.seeded is True
+    edges, meta = _read(run_macro(cfg, seed=5, out_dir=tmp_path))
+    assert meta["seeded"] is True
+    (c,) = meta["closures"]
+    assert c["capacity_share_open"] == pytest.approx(0.5)
+    assert c["cells"] and all(7000.0 <= (i + 0.5) * 100.0 < 7500.0 for i in c["cells"])
+    near = (edges["x_bin"] > 6400.0) & (edges["x_bin"] < 7000.0)
+    during = edges[near & (edges["t_bin"] > 440.0) & (edges["t_bin"] < 650.0)]
+    before = edges[near & (edges["t_bin"] > 300.0) & (edges["t_bin"] < 390.0)]
+    assert during["density"].mean() > 1.5 * before["density"].mean()
+    # the closed span itself carries no more than the capped flux
+    fd = meta["fd"]
+    rho_c = fd["rho_jam"] * abs(fd["w"]) / (fd["v_f"] + abs(fd["w"]))
+    q_max = fd["v_f"] * rho_c
+    # (edges.flow is the equilibrium flow rho·V(rho) of each cell, so the cap
+    # shows downstream of the closure as the discharge the span lets through)
+    downstream = edges[(edges["x_bin"] >= 7600.0) & (edges["x_bin"] < 8600.0)]
+    down_during = downstream[(downstream["t_bin"] > 480.0) & (downstream["t_bin"] < 650.0)]
+    down_before = downstream[(downstream["t_bin"] > 300.0) & (downstream["t_bin"] < 390.0)]
+    assert down_during["flow"].max() <= 0.5 * q_max * 1.05 + 1e-9
+    assert down_during["flow"].mean() < 0.85 * down_before["flow"].mean()

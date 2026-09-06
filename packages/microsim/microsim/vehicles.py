@@ -32,12 +32,12 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 
 from flowstate_core.artifacts import IDMCalibration
-from flowstate_core.config import AVSpec, FleetSpec, RampSpec, RingNetwork
+from flowstate_core.config import AVSpec, FleetSpec, HeavyVehicleSpec, RampSpec, RingNetwork
 from flowstate_core.rng import truncated_normal
 
 #: Hard physical lower bounds for per-vehicle IDM draws (task spec §3.1):
@@ -98,6 +98,12 @@ class FleetPlan:
     """SUMO departure lane index per vehicle (0 = rightmost) drawn from the
     network's ``entry_lane_shares``; ``-1`` for ramp-origin vehicles. Empty ⇒
     the writer's round-robin scheme."""
+    is_heavy: tuple[bool, ...] = ()
+    """Heavy-vehicle flag per vehicle (``FleetSpec.heavy``); empty ⇒ none."""
+
+    def heavy(self, i: int) -> bool:
+        """Whether vehicle ``i`` is a heavy vehicle."""
+        return bool(self.is_heavy[i]) if self.is_heavy else False
 
     @property
     def n(self) -> int:
@@ -227,6 +233,61 @@ def draw_vehicle_params(
     return out
 
 
+def draw_heavy(
+    fleet: FleetSpec, n: int, rng: np.random.Generator
+) -> tuple[list[bool], list[dict[str, float]]]:
+    """Heavy-vehicle flags and their IDM parameters (``FleetSpec.heavy``).
+
+    Consumes the RNG only when a heavy block is present, after every draw of
+    the passenger fleet, so fleets without one reproduce their previous draws
+    exactly. RNG order: one uniform per vehicle (Bernoulli ``fraction``), then
+    the heavy population draw for the flagged vehicles — from the block's
+    ``idm_calibration`` artifact or from its scalar means with its
+    ``heterogeneity_frac`` (same rules as :func:`draw_vehicle_params`).
+
+    Returns:
+        ``(is_heavy, heavy_params)`` — flags of length ``n`` and one parameter
+        dict per flagged vehicle in index order (empty when no heavy block).
+    """
+    spec = fleet.heavy
+    if spec is None or spec.fraction <= 0.0 or n == 0:
+        return [], []
+    flags = [bool(u < spec.fraction) for u in rng.uniform(size=n)]
+    k = sum(flags)
+    if k == 0:
+        return flags, []
+    heavy_fleet = FleetSpec(
+        model=fleet.model,
+        v0=spec.v0 if spec.v0 is not None else fleet.v0,
+        T=spec.T if spec.T is not None else fleet.T,
+        a_max=spec.a_max if spec.a_max is not None else fleet.a_max,
+        b=spec.b if spec.b is not None else fleet.b,
+        s0=spec.s0 if spec.s0 is not None else fleet.s0,
+        heterogeneity_frac=spec.heterogeneity_frac,
+        idm_calibration=spec.idm_calibration,
+    )
+    return flags, draw_vehicle_params(heavy_fleet, k, rng)
+
+
+def _apply_heavy(
+    params: list[dict[str, float]],
+    is_av: list[bool],
+    complied: list[bool],
+    flags: list[bool],
+    heavy_params: list[dict[str, float]],
+) -> None:
+    """Overwrite the flagged vehicles' parameters in place and untag them as AVs
+    (heavy vehicles are never controlled vehicles; the AV draw itself is
+    unchanged, so the effective penetration is ``penetration × (1 − heavy)``)."""
+    j = 0
+    for i, flag in enumerate(flags):
+        if flag:
+            params[i] = heavy_params[j]
+            j += 1
+            is_av[i] = False
+            complied[i] = False
+
+
 def tag_avs(n: int, av: AVSpec, rng: np.random.Generator) -> tuple[list[bool], list[bool]]:
     """Seeded AV tagging + once-per-run compliance draws (CLAUDE.md §3.3).
 
@@ -272,12 +333,15 @@ def build_ring_plan(
         (i * spacing + float(rng.uniform(-RING_JITTER_M, RING_JITTER_M))) % network.circumference_m
         for i in range(n)
     ]
+    heavy_flags, heavy_params = draw_heavy(fleet, n, rng)
+    _apply_heavy(params, is_av, complied, heavy_flags, heavy_params)
     return FleetPlan(
         params=tuple(params),
         is_av=tuple(is_av),
         complied=tuple(complied),
         depart_s=tuple(0.0 for _ in range(n)),
         depart_pos_m=tuple(positions),
+        is_heavy=tuple(heavy_flags),
     )
 
 
@@ -398,6 +462,8 @@ def build_corridor_plan(
         depart_lane = tuple(
             -1 if origin_idx[i] >= 0 else int(n_lanes - 1 - picks[i]) for i in range(n)
         )
+    heavy_flags, heavy_params = draw_heavy(fleet, n, rng)
+    _apply_heavy(params, is_av, complied, heavy_flags, heavy_params)
 
     routes: tuple[str, ...] = ()
     if ramps:
@@ -430,6 +496,7 @@ def build_corridor_plan(
         depart_pos_m=tuple(0.0 for _ in range(n)),
         route=routes,
         depart_lane=depart_lane,
+        is_heavy=tuple(heavy_flags),
     )
 
 
@@ -473,8 +540,17 @@ def _vtype_xml(
     lc_cooperative: float = 1.0,
     lc_assertive: float = 1.0,
     lc_speed_gain: float = 1.0,
+    *,
+    length_m: float = VEHICLE_LENGTH_M,
+    emission_class: str = EMISSION_CLASS,
+    vclass: str | None = None,
 ) -> str:
     """One ``<vType>`` element (see module docstring for attribute notes).
+
+    ``length_m``, ``emission_class`` and ``vclass`` carry a heavy vehicle's
+    attributes (``FleetSpec.heavy``); passenger vTypes keep the module
+    defaults and no ``vClass`` attribute, so existing route files are
+    byte-identical.
 
     The lane-change attributes (``lcStrategic``, ``lcKeepRight``,
     ``lcCooperative``, ``lcAssertive``, ``lcSpeedGain`` from the matching
@@ -486,13 +562,26 @@ def _vtype_xml(
     lc += "" if lc_cooperative == 1.0 else f' lcCooperative="{lc_cooperative:g}"'
     lc += "" if lc_assertive == 1.0 else f' lcAssertive="{lc_assertive:g}"'
     lc += "" if lc_speed_gain == 1.0 else f' lcSpeedGain="{lc_speed_gain:g}"'
+    shape = {"truck": "truck", "trailer": "truck/trailer"}.get(vclass or "", vclass or "")
+    cls = "" if vclass is None else f' vClass="{vclass}" guiShape="{shape}"'
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
         f'decel="{p["b"]:.6f}" tau="{p["T"]:.6f}" minGap="{p["s0"]:.6f}" '
-        f'maxSpeed="{p["v0"]:.6f}" length="{VEHICLE_LENGTH_M}" speedFactor="1.0" '
-        f'speedDev="0" emissionClass="{EMISSION_CLASS}" '
-        f'actionStepLength="{action_step_s}"{lc}/>'
+        f'maxSpeed="{p["v0"]:.6f}" length="{length_m}" speedFactor="1.0" '
+        f'speedDev="0" emissionClass="{emission_class}" '
+        f'actionStepLength="{action_step_s}"{lc}{cls}/>'
     )
+
+
+def _heavy_kwargs(plan: FleetPlan, i: int, heavy: HeavyVehicleSpec | None) -> dict[str, Any]:
+    """vType keyword overrides for vehicle ``i`` when it is heavy."""
+    if heavy is None or not plan.heavy(i):
+        return {}
+    return {
+        "length_m": heavy.length_m,
+        "emission_class": heavy.emission_class,
+        "vclass": heavy.vclass,
+    }
 
 
 def write_ring_routes(
@@ -504,6 +593,7 @@ def write_ring_routes(
     action_step_s: float,
     duration_s: float,
     path: Path,
+    heavy: HeavyVehicleSpec | None = None,
 ) -> Path:
     """Write ring routes: explicit depart-at-0 vehicles at planned positions.
 
@@ -532,7 +622,9 @@ def write_ring_routes(
 
     lines = ["<routes>"]
     for i, p in enumerate(plan.params):
-        lines.append(_vtype_xml(f"t{i:05d}", p, model, action_step_s))
+        lines.append(
+            _vtype_xml(f"t{i:05d}", p, model, action_step_s, **_heavy_kwargs(plan, i, heavy))
+        )
     for i in range(plan.n):
         pos = plan.depart_pos_m[i] % circumference_m
         e_idx = min(int(pos // seg_len), n_seg - 1)
@@ -565,6 +657,7 @@ def write_corridor_routes(
     lc_assertive: float = 1.0,
     lc_speed_gain: float = 1.0,
     lc_strategic_ramp: float | None = None,
+    heavy: HeavyVehicleSpec | None = None,
 ) -> Path:
     """Write corridor demand: explicit jittered departures.
 
@@ -657,6 +750,7 @@ def write_corridor_routes(
                 lc_cooperative,
                 lc_assertive,
                 lc_speed_gain,
+                **_heavy_kwargs(plan, i, heavy),
             )
         )
     for rid, edges in named.items():

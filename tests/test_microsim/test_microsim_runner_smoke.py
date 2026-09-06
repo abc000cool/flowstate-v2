@@ -26,6 +26,7 @@ TRAJ_SCHEMA_RING = [
     ("a", "double"),
     ("is_av", "bool"),
     ("complied", "bool"),
+    ("is_heavy", "bool"),
     ("x_unwrapped", "double"),
 ]
 

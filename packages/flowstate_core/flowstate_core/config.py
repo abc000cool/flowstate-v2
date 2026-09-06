@@ -221,6 +221,49 @@ class OSMNetwork(BaseModel):
 Network = Annotated[RingNetwork | CorridorNetwork | OSMNetwork, Field(discriminator="kind")]
 
 
+class HeavyVehicleSpec(BaseModel):
+    """Heavy vehicles (trucks) as a share of the human fleet.
+
+    A heavy vehicle is a second IDM population with its own length, SUMO
+    vehicle class and emission class. Its parameters must come from a
+    calibration artifact or be given explicitly — there are no built-in
+    truck defaults, because none would carry provenance (CLAUDE.md §0.1,
+    §12.6). On I-24 the recording's semi and truck classes are fitted from
+    the same day (``artifacts/idm_i24_heavy.json``, docs/I24_DATA.md).
+    Heavy vehicles are never tagged as controlled vehicles.
+    """
+
+    fraction: float = Field(ge=0.0, le=0.5)
+    """Share of departures (ring: of vehicles) drawn as heavy, Bernoulli per
+    vehicle from the run's RNG after every existing draw, so a fleet without
+    this block reproduces its previous draws exactly."""
+    length_m: float = Field(gt=5.0, le=30.0)
+    emission_class: str = Field(min_length=1)
+    """SUMO emission class written on the heavy vTypes (e.g. an HBEFA4 heavy
+    duty class); the passenger class stays the fleet default."""
+    vclass: Literal["truck", "trailer"] = "truck"
+    """SUMO ``vClass`` of the heavy vTypes (lane permissions, closures)."""
+    idm_calibration: str | None = None
+    """IDMCalibration artifact for the heavy population (overrides the scalar
+    means below, as for the passenger fleet)."""
+    v0: float | None = Field(default=None, gt=0)
+    T: float | None = Field(default=None, gt=0)
+    a_max: float | None = Field(default=None, gt=0)
+    b: float | None = Field(default=None, gt=0)
+    s0: float | None = Field(default=None, gt=0)
+    heterogeneity_frac: float = Field(default=HETEROGENEITY_FRAC_DEFAULT, ge=0, le=0.3)
+
+    @model_validator(mode="after")
+    def _check_population(self) -> Self:
+        scalars = (self.v0, self.T, self.a_max, self.b, self.s0)
+        if self.idm_calibration is None and any(v is None for v in scalars):
+            raise ValueError(
+                "HeavyVehicleSpec needs idm_calibration or all five IDM means "
+                "(v0, T, a_max, b, s0): heavy vehicles carry no built-in defaults"
+            )
+        return self
+
+
 class FleetSpec(BaseModel):
     """Human-driver fleet: car-following model + population parameters."""
 
@@ -274,6 +317,9 @@ class FleetSpec(BaseModel):
     lc_speed_gain: float = Field(default=1.0, ge=0.0)
     """SUMO ``lcSpeedGain``: eagerness for speed-gain (tactical) lane changes.
     Written on every vType when it differs from SUMO's default 1.0."""
+    heavy: HeavyVehicleSpec | None = None
+    """Heavy-vehicle share and population (:class:`HeavyVehicleSpec`);
+    ``None`` = passenger cars only, as before."""
 
 
 class OracleSpec(BaseModel):
@@ -352,6 +398,42 @@ class PerturbationSpec(BaseModel):
     """Commanded slowdown magnitude below prevailing speed [m/s]."""
 
 
+class LaneClosureSpec(BaseModel):
+    """A temporary lane closure (work zone, incident) on the corridor.
+
+    Micro tier: for ``t ∈ [t_start_s, t_end_s)`` the listed lanes of every
+    corridor edge overlapping ``[start_m, end_m)`` (linear x along the
+    corridor) refuse all vehicle classes, so traffic changes lanes ahead of
+    the closure through the ordinary strategic lane-change logic and any
+    vehicle caught on a closed lane leaves it; the original permissions are
+    restored at ``t_end_s``. Macro tier (single pipe): the flux through the
+    interfaces of the overlapped cells is capped at the fundamental
+    diagram's capacity times the share of lanes left open. A closure is an
+    imposed disturbance, so the run is labelled ``seeded=True`` like a
+    seeded perturbation (CLAUDE.md §0.2): waves at a closure are not the
+    emergent phenomenon.
+    """
+
+    start_m: float = Field(ge=0.0)
+    end_m: float = Field(gt=0.0)
+    lanes: list[int] = Field(min_length=1)
+    """SUMO lane indices closed (0 = rightmost) on each overlapped edge; an
+    index beyond an edge's lane count is skipped there and recorded."""
+    t_start_s: float = Field(ge=0.0)
+    t_end_s: float = Field(gt=0.0)
+    label: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.end_m <= self.start_m:
+            raise ValueError("closure end_m must exceed start_m")
+        if self.t_end_s <= self.t_start_s:
+            raise ValueError("closure t_end_s must exceed t_start_s")
+        if any(i < 0 for i in self.lanes) or len(set(self.lanes)) != len(self.lanes):
+            raise ValueError("closure lanes must be distinct non-negative lane indices")
+        return self
+
+
 class ScenarioConfig(BaseModel):
     """A complete, hashable scenario description."""
 
@@ -362,6 +444,9 @@ class ScenarioConfig(BaseModel):
     av: AVSpec = Field(default_factory=AVSpec)
     sim: SimSpec
     perturbation: PerturbationSpec | None = None
+    closures: list[LaneClosureSpec] = Field(default_factory=list)
+    """Temporary lane closures (:class:`LaneClosureSpec`); any entry labels
+    the run ``seeded=True``."""
     seed: int = 42
     replicates: int = Field(default=20, ge=1, le=MAX_REPLICATES)
     """Seeded replicates per run. The ≥ 20 floor for headline claims is
@@ -371,8 +456,9 @@ class ScenarioConfig(BaseModel):
 
     @property
     def seeded(self) -> bool:
-        """True when results come from a seeded shock (must be labeled, §0.2)."""
-        return self.perturbation is not None
+        """True when results come from an imposed disturbance — a seeded shock
+        or a lane closure — and must be labeled as such (CLAUDE.md §0.2)."""
+        return self.perturbation is not None or bool(self.closures)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> ScenarioConfig:

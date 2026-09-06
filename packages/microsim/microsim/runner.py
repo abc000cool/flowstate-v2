@@ -179,6 +179,7 @@ def _build_plan_and_routes(
             cfg.sim.action_step_s,
             cfg.sim.duration_s,
             routes_path,
+            heavy=cfg.fleet.heavy,
         )
         return plan
     if isinstance(net, CorridorNetwork):
@@ -232,6 +233,7 @@ def _build_plan_and_routes(
         lc_assertive=cfg.fleet.lc_assertive,
         lc_speed_gain=cfg.fleet.lc_speed_gain,
         lc_strategic_ramp=cfg.fleet.lc_strategic_ramp,
+        heavy=cfg.fleet.heavy,
     )
     return plan
 
@@ -472,7 +474,22 @@ _TRAJ_SCHEMA_BASE: Final[list[tuple[str, pa.DataType]]] = [
     ("a", pa.float64()),
     ("is_av", pa.bool_()),
     ("complied", pa.bool_()),
+    ("is_heavy", pa.bool_()),
 ]
+
+#: Vehicle classes refused by a closed lane (every class this fleet can
+#: carry; SUMO names that exist in every supported version).
+CLOSURE_VCLASSES: Final[tuple[str, ...]] = (
+    "passenger",
+    "truck",
+    "trailer",
+    "bus",
+    "delivery",
+    "emergency",
+    "motorcycle",
+    "hov",
+    "taxi",
+)
 
 
 def _write_parquet(table: pa.Table, path: Path) -> None:
@@ -662,6 +679,7 @@ def run_micro(
     vsl_memory: Memory = {}
     min_gap_by_id = {plan.vehicle_id(i): plan.params[i]["s0"] for i in range(plan.n)}
     is_av_by_id = {plan.vehicle_id(i): plan.is_av[i] for i in range(plan.n)}
+    is_heavy_by_id = {plan.vehicle_id(i): plan.heavy(i) for i in range(plan.n)}
     complied_by_id = {plan.vehicle_id(i): plan.complied[i] for i in range(plan.n)}
 
     # --- SUMO startup -----------------------------------------------------
@@ -733,6 +751,43 @@ def run_micro(
     pert_release_t = math.inf
     pert_vehicle: str | None = None
     n_departed = 0
+
+    # --- Temporary lane closures (LaneClosureSpec; labelled seeded=True) --
+    closure_states: list[dict[str, Any]] = []
+    if cfg.closures:
+        net_for_lanes = sumolib.net.readNet(str(bundle.net_path))
+        lengths_by_edge = dict(zip(bundle.edge_ids, bundle.edge_lengths, strict=True))
+        # Closure positions are measured from the start of the analysis
+        # corridor (the first edge after the insertion buffer); the insertion
+        # edge itself is never closed (a closed departure lane is invalid).
+        corridor_ids = bundle.main_edges
+        x_ref = offsets_by_edge[corridor_ids[0]] if corridor_ids else 0.0
+        for spec_c in cfg.closures:
+            lane_ids: list[str] = []
+            skipped: list[str] = []
+            x_lo, x_hi = x_ref + spec_c.start_m, x_ref + spec_c.end_m
+            for eid in bundle.edge_ids:
+                if eid == bundle.entry_edge:
+                    continue
+                e_lo = offsets_by_edge[eid]
+                e_hi = e_lo + lengths_by_edge[eid]
+                if e_hi <= x_lo or e_lo >= x_hi:
+                    continue
+                n_lanes_e = int(net_for_lanes.getEdge(eid).getLaneNumber())
+                for li in spec_c.lanes:
+                    (lane_ids if li < n_lanes_e else skipped).append(f"{eid}_{li}")
+            closure_states.append(
+                {
+                    "spec": spec_c,
+                    "x_lo_m": x_lo,
+                    "x_hi_m": x_hi,
+                    "lane_ids": lane_ids,
+                    "skipped": skipped,
+                    "applied_at_s": None,
+                    "released_at_s": None,
+                    "orig": {},
+                }
+            )
 
     traj_path = run_dir / "trajectories.parquet"
     traj_writer = _TrajectoryWriter(traj_path, is_ring)
@@ -822,6 +877,24 @@ def run_micro(
                     mod.vehicle.setSpeed(pert_vehicle, -1.0)
                 pert_release_t = math.inf
 
+            # Temporary lane closures: refuse every class on the closed lanes
+            # for the window, then restore the lanes' original permissions.
+            for cs in closure_states:
+                spec_c = cs["spec"]
+                if cs["applied_at_s"] is None and t >= spec_c.t_start_s:
+                    for lid in cs["lane_ids"]:
+                        cs["orig"][lid] = list(mod.lane.getDisallowed(lid))
+                        mod.lane.setDisallowed(lid, list(CLOSURE_VCLASSES))
+                    cs["applied_at_s"] = t
+                elif (
+                    cs["applied_at_s"] is not None
+                    and cs["released_at_s"] is None
+                    and t >= spec_c.t_end_s
+                ):
+                    for lid in cs["lane_ids"]:
+                        mod.lane.setDisallowed(lid, cs["orig"].get(lid, []))
+                    cs["released_at_s"] = t
+
             # Controller dispatch for compliant AVs (every action step).
             if (
                 controller_fn is not None
@@ -909,6 +982,7 @@ def run_micro(
                     cols["a"].append(float(results[vid][tc.VAR_ACCELERATION]))
                     cols["is_av"].append(is_av_by_id.get(vid, False))
                     cols["complied"].append(complied_by_id.get(vid, False))
+                    cols["is_heavy"].append(is_heavy_by_id.get(vid, False))
                     if is_ring:
                         cols["x_unwrapped"].append(unwrap_x[vid][1])
                 traj_writer.maybe_flush()
@@ -941,6 +1015,27 @@ def run_micro(
         "n_vehicles_arrived": max(n_arrived, 0),
         "av_ids": list(plan.av_ids),
         "complied_ids": list(plan.complied_ids),
+        "n_heavy": int(sum(plan.is_heavy)) if plan.is_heavy else 0,
+        "heavy_fraction_realized": (
+            float(sum(plan.is_heavy)) / plan.n if plan.is_heavy and plan.n else 0.0
+        ),
+        "closures": [
+            {
+                "label": cs["spec"].label,
+                "start_m": cs["spec"].start_m,
+                "end_m": cs["spec"].end_m,
+                "lanes": list(cs["spec"].lanes),
+                "t_start_s": cs["spec"].t_start_s,
+                "t_end_s": cs["spec"].t_end_s,
+                "x_lo_m": cs["x_lo_m"],
+                "x_hi_m": cs["x_hi_m"],
+                "lane_ids": cs["lane_ids"],
+                "skipped_lane_ids": cs["skipped"],
+                "applied_at_s": cs["applied_at_s"],
+                "released_at_s": cs["released_at_s"],
+            }
+            for cs in closure_states
+        ],
         "fleet_calibration": fleet_calibration,
         "controller": cfg.av.controller,
         "controller_start_s": controller_start_s,

@@ -47,6 +47,7 @@ import math
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -150,6 +151,10 @@ FLEET_ARTIFACT = "artifacts/idm_i24_capacity.json"  # step-1 capacity-calibrated
 #: is the smallest tested value that removes the artifact.
 LC_STRATEGIC = 5.0
 CORRECTED_OSM_FILE = REPO_ROOT / "data" / "osm" / "i24_motion_corrected.osm"
+HEAVY_FLEET_ARTIFACT = "artifacts/idm_i24_heavy.json"
+HEAVY_EMISSION_CLASS = "HBEFA4/TT_AT_gt34-40t_Euro-VI_A-C"
+"""HBEFA4 tractor-trailer class (34-40 t, Euro VI) for the heavy vTypes; the
+recording's heavy fragments are 87% semis by count (artifacts/i24_heavy_observed.json)."""
 ENTRY_LANE_X_M = (0.0, 250.0)
 """Data-x window where the recording's lane shares are measured for
 ``--entry-lanes observed`` (just inside the span, after the Old Hickory
@@ -293,8 +298,26 @@ def main() -> None:
         f"[0, {ENTRY_LANE_X_M[1]:g}) m over the study period (OSMNetwork.entry_lane_shares, "
         "docs/I24_VALIDATION.md §0.5)",
     )
+    ap.add_argument(
+        "--heavy",
+        action="store_true",
+        help="add the recording's heavy vehicles to the fleet: share and median length from "
+        "artifacts/i24_heavy_observed.json (scripts/i24_heavy_share.py), population from "
+        f"{HEAVY_FLEET_ARTIFACT} (scripts/fit_idm_i24.py --classes heavy); off by default "
+        "(keeps config hashes)",
+    )
     args = ap.parse_args()
     osm_file = OSM_FILE if args.osm == "original" else CORRECTED_OSM_FILE
+    heavy_block: dict[str, Any] | None = None
+    if args.heavy:
+        obs_heavy = json.loads((REPO_ROOT / "artifacts" / "i24_heavy_observed.json").read_text())
+        heavy_block = {
+            "fraction": float(obs_heavy["fraction_fragments"]),
+            "length_m": float(obs_heavy["length_median_m"]),
+            "emission_class": HEAVY_EMISSION_CLASS,
+            "vclass": "truck",
+            "idm_calibration": HEAVY_FLEET_ARTIFACT,
+        }
     lc_strategic = float(args.lc_strategic)
     fleet_path = REPO_ROOT / FLEET_ARTIFACT
     if not fleet_path.is_file() and not args.allow_missing_fleet:
@@ -474,6 +497,7 @@ def main() -> None:
             "idm_calibration": FLEET_ARTIFACT,
             "lc_strategic": lc_strategic,
             "lc_keep_right": LC_KEEP_RIGHT,
+            "heavy": heavy_block,
         },
         "av": {"penetration": 0.0, "compliance": 1.0, "controller": None, "controller_params": {}},
         "sim": {
@@ -555,6 +579,7 @@ def main() -> None:
         "map": args.osm,
         "lc_strategic": lc_strategic,
         "entry_lanes": args.entry_lanes,
+        "heavy": heavy_block,
         "entry_lane_shares": entry_lane_shares,
         "entry_lane_x_m": list(ENTRY_LANE_X_M),
         "config_hash": config_hash(cfg),

@@ -45,7 +45,26 @@ MIN_DURATION_S = 30.0
 V_CONGESTED_MS = 40.0 / 3.6
 
 
+CLASS_SETS = {
+    "passenger": tuple(sorted(I24_PASSENGER_CLASSES)),
+    "heavy": (4, 5),  # coarse classes semi, truck (data documentation v1.x)
+}
+
+
 def main() -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--classes",
+        choices=tuple(CLASS_SETS),
+        default="passenger",
+        help="follower vehicle classes: passenger (0-3, the default artifact) or heavy (4-5, "
+        "semis and trucks; output files carry the _heavy suffix)",
+    )
+    args = ap.parse_args()
+    classes = CLASS_SETS[args.classes]
+    suffix = "" if args.classes == "passenger" else f"_{args.classes}"
     t0 = time.perf_counter()
     veh = load_vehicles()
     all_eps = []
@@ -54,11 +73,9 @@ def main() -> None:
         df = load_i24_parquet(
             WB_DIR, lanes=(lane, lane), columns=["t", "veh_id", "x", "v", "length", "cls"]
         )
-        eps = build_lane_episodes(df, lane, min_duration_s=MIN_DURATION_S)
+        eps = build_lane_episodes(df, lane, min_duration_s=MIN_DURATION_S, follower_classes=classes)
         n_frag_ge30 = int(
-            (
-                (veh["duration_s"] >= MIN_DURATION_S) & veh["cls"].isin(list(I24_PASSENGER_CLASSES))
-            ).sum()
+            ((veh["duration_s"] >= MIN_DURATION_S) & veh["cls"].isin(list(classes))).sum()
         )
         durs = np.array([ep.duration_s for ep in eps])
         per_lane[str(lane)] = {
@@ -90,7 +107,7 @@ def main() -> None:
         "data_hash": data_hash(),
         "min_duration_s": MIN_DURATION_S,
         "gap_bounds_m": [MIN_GAP_M, MAX_GAP_M],
-        "follower_classes": sorted(I24_PASSENGER_CLASSES),
+        "follower_classes": sorted(classes),
         "lanes": per_lane,
         "n_episodes_total": len(all_eps),
         "n_distinct_followers": len({ep.veh_id for ep in all_eps}),
@@ -112,7 +129,9 @@ def main() -> None:
             "frac_samples_below_40kmh": float((vf < V_CONGESTED_MS).mean()) if vf.size else None,
         },
         "filters": (
-            "followers of coarse class 0-3 (sedan/midsize/van/pickup), mainline lanes 1-4, "
+            f"followers of coarse class {sorted(classes)} "
+            f"({'sedan/midsize/van/pickup' if args.classes == 'passenger' else 'semi/truck'}), "
+            "mainline lanes 1-4, "
             f">= {MIN_DURATION_S:g} s continuous, uniform 0.2 s dt (5 Hz), single lane, "
             "single position-ordered leader; gap outside "
             f"[{MIN_GAP_M:g}, {MAX_GAP_M:g}] m masked (untracked true leader / duplicate "
@@ -121,12 +140,14 @@ def main() -> None:
         "wall_s": round(time.perf_counter() - t0, 1),
     }
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    with open(PROCESSED_DIR / "i24_wb_episodes.pkl", "wb") as f:
+    with open(PROCESSED_DIR / f"i24_wb_episodes{suffix}.pkl", "wb") as f:
         pickle.dump(all_eps, f)
-    (PROCESSED_DIR / "i24_wb_episode_summary.json").write_text(json.dumps(summary, indent=2))
+    (PROCESSED_DIR / f"i24_wb_episode_summary{suffix}.json").write_text(
+        json.dumps(summary, indent=2)
+    )
     print(
         f"total: {len(all_eps)} episodes, {summary['episode_duration_s']['total_h']:.1f} h "
-        f"-> {PROCESSED_DIR / 'i24_wb_episodes.pkl'} ({summary['wall_s']} s)"
+        f"-> {PROCESSED_DIR / f'i24_wb_episodes{suffix}.pkl'} ({summary['wall_s']} s)"
     )
 
 

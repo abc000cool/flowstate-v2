@@ -7,7 +7,8 @@ limits.**
 FlowState v2 turns a freeway corridor into a reproducible simulation study:
 onboard the corridor (from OpenStreetMap or a built-in scenario), calibrate
 car-following and demand against public trajectory/detector data, run seeded
-multi-replicate experiments with smoothing controllers or VSL, and generate a
+multi-replicate experiments with smoothing controllers, VSL, temporary lane
+closures and a calibrated heavy-vehicle share, and generate a
 FHWA-style calibration/validation report a reviewer can rerun. The phenomenon
 at the core — string instability growing into stop-and-go waves — is
 *emergent* in the microscopic tier, not hand-seeded, which is what makes

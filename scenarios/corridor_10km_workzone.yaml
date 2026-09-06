@@ -1,0 +1,52 @@
+# corridor_10km_workzone — the corridor_10km fleet on a two-lane version of the
+# corridor with a temporary right-lane closure (LaneClosureSpec, docs/CONTRACTS.md
+# §2): 6.0-6.5 km, t = 300-900 s, i.e. ten minutes of one open lane under a
+# demand that fills both. Demand is the single-lane profile doubled.
+# A closure is an imposed disturbance: every output of this scenario is labelled
+# seeded=True (CLAUDE.md §0.2); the waves upstream of the work zone are the
+# closure's, not emergent string instability. Macro tier: the same closure caps
+# the overlapped cells at half the diagram's capacity (one of two lanes open).
+name: corridor_10km_workzone
+tier: micro
+network:
+  kind: corridor
+  length_m: 10000.0
+  lanes: 2
+  inflow:
+  - - 0.0
+    - 0.9
+  - - 120.0
+    - 1.0
+  - - 1080.0
+    - 0.8
+fleet:
+  model: EIDM
+  v0: 33.3
+  T: 1.4
+  a_max: 0.73
+  b: 1.67
+  s0: 2.0
+  delta: 4.0
+  heterogeneity_frac: 0.15
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+sim:
+  duration_s: 1200.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 120.0
+  output_hz: 2.0
+perturbation: null
+seed: 42
+replicates: 20
+closures:
+- label: work zone, right lane closed 6.0-6.5 km for 10 min
+  start_m: 6000.0
+  end_m: 6500.0
+  lanes:
+  - 0
+  t_start_s: 300.0
+  t_end_s: 900.0

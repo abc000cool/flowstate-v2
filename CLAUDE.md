@@ -232,10 +232,12 @@ and (b) verify that chosen defaults are unstable near capacity — that is a
    script.
 
 Scenario YAML schema (Pydantic-validated): network source, lanes, length,
-demand profile (veh/h vs time), fleet spec (vtype distributions), AV
+demand profile (veh/h vs time), fleet spec (vtype distributions, optional
+heavy-vehicle share with its own calibrated population), AV
 penetration ∈ [0, 0.3], compliance ∈ [0.1, 1.0], controller + params, sim
 duration, step length (default 0.5 s; sub-step actions via SUMO
-`actionStepLength`), seed, replicates.
+`actionStepLength`), optional temporary lane closures (labelled
+`seeded=True`), seed, replicates.
 
 ### 3.3 Runner and controller dispatch
 

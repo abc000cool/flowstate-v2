@@ -55,9 +55,21 @@ def main() -> None:
     ap.add_argument("--max-episodes", type=int, default=12000)
     ap.add_argument("--procs", type=int, default=8)
     ap.add_argument("--de-maxiter", type=int, default=60)
+    ap.add_argument(
+        "--classes",
+        choices=("passenger", "heavy"),
+        default="passenger",
+        help="which extracted episode set to fit: passenger followers (default, "
+        "artifacts/idm_i24.json) or heavy followers (semis and trucks, "
+        "scripts/i24_extract_episodes.py --classes heavy -> artifacts/idm_i24_heavy.json)",
+    )
     args = ap.parse_args()
+    suffix = "" if args.classes == "passenger" else "_heavy"
+    follower_label = (
+        "passenger followers" if args.classes == "passenger" else "heavy followers (semi/truck)"
+    )
 
-    with open(PROCESSED_DIR / "i24_wb_episodes.pkl", "rb") as f:
+    with open(PROCESSED_DIR / f"i24_wb_episodes{suffix}.pkl", "rb") as f:
         episodes = pickle.load(f)
     n_all = len(episodes)
     subsample_note = ""
@@ -83,18 +95,19 @@ def main() -> None:
         created_at=created_at,
         source=(
             "I-24 MOTION INCEPTION v1.x, 30 Nov 2022 westbound (6386d89efb3ff533c12df167__post10), "
-            f"{len(episodes)} of {n_all} leader-follower episodes (>= 30 s, 5 Hz, passenger "
-            "followers, mainline lanes 1-4); cite " + I24_CITATION
+            f"{len(episodes)} of {n_all} leader-follower episodes (>= 30 s, 5 Hz, "
+            f"{follower_label}, mainline lanes 1-4); cite " + I24_CITATION
         ),
         data_hash=data_hash(),
         holdout_frac=0.3,
         trim_quantile=0.9,
         de_maxiter=args.de_maxiter,
         n_procs=args.procs,
-        notes=(subsample_note + " " if subsample_note else "") + NOTES,
+        notes=(subsample_note + " " if subsample_note else "")
+        + NOTES.replace("Followers: passenger classes 0-3", f"Followers: {follower_label}"),
     )
     wall = time.perf_counter() - t0
-    out = REPO_ROOT / "artifacts" / "idm_i24.json"
+    out = REPO_ROOT / "artifacts" / f"idm_i24{suffix}.json"
     cal.save(out)
     sd = np.sqrt(np.diag(np.array(cal.cov)))
     print(f"done in {wall:.0f} s -> {out}")
@@ -107,7 +120,7 @@ def main() -> None:
         f"training per-episode gap RMSE: median={np.median(rmses):.2f} m, "
         f"mean={rmses.mean():.2f} m, q90={np.quantile(rmses, 0.9):.2f} m"
     )
-    (PROCESSED_DIR / "i24_idm_fit_run.json").write_text(
+    (PROCESSED_DIR / f"i24_idm_fit_run{suffix}.json").write_text(
         json.dumps(
             {
                 "n_episodes_available": n_all,

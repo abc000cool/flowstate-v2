@@ -88,6 +88,7 @@ VARIANTS = (
     "geometry_corrected_ramplc1_entrylanes_sublane",
     "geometry_corrected_ramplc1_entrylanes_sublane_coop0.5",
     "as_is_sublane",
+    "as_is_heavy",
 )
 TRAIN_WINDOWS = range(0, 12)
 TEST_WINDOWS = range(12, 24)
@@ -108,6 +109,17 @@ def observed_entry_lane_shares() -> list[float]:
 
 def variant_config(name: str) -> dict[str, Any]:
     raw = yaml.safe_load(ARM_YAML.read_text())
+    if name.endswith("_heavy"):
+        # the recording's heavy vehicles (share, length) with their own fitted population
+        obs_heavy = json.loads((REPO / "artifacts" / "i24_heavy_observed.json").read_text())
+        raw["fleet"]["heavy"] = {
+            "fraction": float(obs_heavy["fraction_fragments"]),
+            "length_m": float(obs_heavy["length_median_m"]),
+            "emission_class": "HBEFA4/TT_AT_gt34-40t_Euro-VI_A-C",
+            "vclass": "truck",
+            "idm_calibration": "artifacts/idm_i24_heavy.json",
+        }
+        name = name[: -len("_heavy")]
     if name.endswith("_sublane_coop0.5"):
         raw["fleet"]["lc_cooperative"] = 0.5
         name = name[: -len("_coop0.5")]
@@ -174,6 +186,7 @@ def variant_config(name: str) -> dict[str, Any]:
         f"i24_merge_{name}"
         + ("_entrylanes" if raw["network"].get("entry_lane_shares") else "")
         + ("_sublane" if raw["sim"].get("lateral_resolution_m") else "")
+        + ("_heavy" if raw["fleet"].get("heavy") else "")
         + (
             f"_coop{raw['fleet']['lc_cooperative']:g}"
             if raw["fleet"].get("lc_cooperative", 1.0) != 1.0
