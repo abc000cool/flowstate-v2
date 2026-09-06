@@ -89,6 +89,9 @@ VARIANTS = (
     "geometry_corrected_ramplc1_entrylanes_sublane_coop0.5",
     "as_is_sublane",
     "as_is_heavy",
+    "geometry_corrected_ramplc1_entrylanes_zipper",
+    "geometry_corrected_ramplc1_entrylanes_accel",
+    "geometry_corrected_ramplc1_entrylanes_zipper_meter",
 )
 TRAIN_WINDOWS = range(0, 12)
 TEST_WINDOWS = range(12, 24)
@@ -109,6 +112,15 @@ def observed_entry_lane_shares() -> list[float]:
 
 def variant_config(name: str) -> dict[str, Any]:
     raw = yaml.safe_load(ARM_YAML.read_text())
+    merge_model = None
+    meter_on = False
+    if name.endswith("_meter"):
+        meter_on = True
+        name = name[: -len("_meter")]
+    for suffix, model in (("_zipper", "zipper"), ("_accel", "acceleration_lane")):
+        if name.endswith(suffix):
+            merge_model = model
+            name = name[: -len(suffix)]
     if name.endswith("_heavy"):
         # the recording's heavy vehicles (share, length) with their own fitted population
         obs_heavy = json.loads((REPO / "artifacts" / "i24_heavy_observed.json").read_text())
@@ -193,6 +205,28 @@ def variant_config(name: str) -> dict[str, Any]:
             else ""
         )
     )
+    if merge_model is not None or meter_on:
+        # RampSpec.merge / RampSpec.meter on the Old Hickory on-ramp; the
+        # ALINEA target is the fitted diagram's critical density per lane
+        for ramp in raw["network"]["ramps"]:
+            if ramp["name"] == OH:
+                if merge_model is not None:
+                    ramp["merge"] = merge_model
+                if meter_on:
+                    fd = json.loads((REPO / "artifacts" / "fd_i24.json").read_text())
+                    fd = fd.get("fd", fd)
+                    rho_c = (
+                        float(fd["rho_jam"])
+                        * abs(float(fd["w"]))
+                        / (float(fd["v_f"]) + abs(float(fd["w"])))
+                    )
+                    ramp["meter"] = {
+                        "controller": "alinea",
+                        "params": {"rho_target_veh_km": round(1000.0 * rho_c, 3)},
+                        "interval_s": 30.0,
+                        "stop_line_m": 30.0,
+                    }
+        raw["name"] += (f"_{merge_model}" if merge_model else "") + ("_meter" if meter_on else "")
     return raw
 
 

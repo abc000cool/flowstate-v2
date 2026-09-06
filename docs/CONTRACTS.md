@@ -49,7 +49,14 @@ SegmentControllerFn = Callable[
 ```
 
 Registry: `controllers.registry.get_vehicle_controller(name)` /
-`get_segment_controller(name)`. Names: `"follower_stopper"`, `"pi_saturation"`,
+`get_segment_controller(name)`, `get_ramp_meter(name)`. Names: `"follower_stopper"`,
+`"follower_stopper_capacity"` (2026-09-06: FollowerStopper with a time-headway
+cap — beyond `g0_m + h_max_s · v` the command is released toward
+`min(v_leader, U)` over `blend_m`, so the controlled vehicle smooths without
+holding a hole open, the mechanism behind the I-24 sweep's throughput cost;
+identical to FollowerStopper inside the cap, continuous across it, output in
+`[0, U]`), `"alinea"` (ramp meter, `RampMeterFn`: `(RampMeterObs, params,
+memory) -> (rate_veh_h, memory)`, see `RampMeterSpec`), `"pi_saturation"`,
 `"jad"`, `"pi_meanfrac"` (vehicle); `"vsl_threshold"` (segment).
 `"pi_meanfrac"` is the superseded CLAUDE.md §4.2 simplification, retained only
 to reproduce the M3 result (docs/PI_CONTROLLER_FIX.md); `"pi_saturation"` is
@@ -176,6 +183,37 @@ Other blocks:
   (`lanes` from the corridor network; a ring counts one lane). Any closure
   labels the run `seeded=True` — an imposed disturbance is not the emergent
   phenomenon (CLAUDE.md §0.2).
+- `RampSpec.merge: "lane_change" | "acceleration_lane" | "zipper"` (2026-09-06,
+  on-ramps): how the acceleration lane hands traffic to the mainline.
+  `lane_change` (default) is the dead-ending lane under the lane-change
+  model; `acceleration_lane` marks lane 0 of the attach edge with SUMO's
+  `acceleration="true"` (no braking for the lane end); `zipper` connects
+  lane 0 into the next corridor edge's lane 0 beside the mainline lane 1
+  and makes the end node a zipper junction. Both are netconvert patches
+  (`microsim.networks.merge_patch_files`, `.edg.xml` / `.nod.xml` +
+  `.con.xml`) applied in a second import pass; they need lane 0 to
+  dead-end at the attach edge's end node and exactly one lane to drop into
+  the next edge (checked at run time). `meta.json` lists `merge_models` and
+  `net_patch_files`.
+- `RampSpec.meter: RampMeterSpec | None` (2026-09-06, on-ramps): ramp
+  metering as a virtual signal `stop_line_m` before the end of the ramp's
+  last edge — every ramp vehicle stops there and the first waiting vehicle
+  is released once `3600 / rate` s have elapsed since the last release. The
+  rate comes from the registry (`RampMeterSpec.controller`, `"alinea"`:
+  `controllers.ramp_meter.alinea`, integral feedback on the per-lane density
+  of the corridor edge after the attach edge, `params.rho_target_veh_km`
+  required, gain 50 veh/h per veh/km by default, clipped to
+  `[rate_min_veh_h, rate_max_veh_h]` with anti-windup) every `interval_s`.
+  `meta.json` `ramp_meters` carries the rates, densities and release times.
+  Macro tier: not represented.
+- `managed_lanes: list[ManagedLaneSpec]` and `FleetSpec.hov_fraction`
+  (2026-09-06): managed (HOV) lane rules — like a closure (span from the
+  start of the analysis corridor, SUMO lane indices, window) but the lanes
+  admit only SUMO class `hov` for the window; eligible vehicles are the
+  `hov_fraction` share of passenger vehicles, drawn per vehicle after every
+  other draw and written with `vClass="hov"` (`FleetPlan.is_hov`, the
+  trajectory column `is_hov`, `meta.json` `n_hov` / `managed_lanes`). A
+  managed lane does not set `seeded=True`. Macro tier: not represented.
 - `FleetSpec.heavy: HeavyVehicleSpec | None` (2026-09-06): heavy vehicles
   as a share of the human fleet — `fraction` (Bernoulli per vehicle from the
   run's RNG, drawn after every existing draw so fleets without the block
@@ -222,8 +260,22 @@ Other blocks:
   the lane the next on-ramp merges into queues that lane 1.5 km upstream of
   the gore (docs/I24_VALIDATION.md §0.5). Moves every config hash.
 
-`flowstate_core.config.config_hash(cfg) -> str`: sha256 over canonical JSON
-(sorted keys), first 12 hex chars. Recorded in every output artifact.
+`flowstate_core.config.config_hash(cfg) -> str`: sha256 over the canonical
+JSON (sorted keys, no whitespace) of `config_hash_payload(cfg)`, first 12
+hex chars; recorded in every output artifact with `config_hash_version`.
+**Policy v2 (2026-09-06):** the payload is `{"hash_version":
+CONFIG_HASH_VERSION, "config": model_dump(exclude_defaults=True)}` with the
+network `kind` kept explicitly. A field at its default is omitted, so
+adding an optional field no longer moves the hash of any scenario that
+does not use it (three schema additions on 2026-09-06 had each moved every
+hash and forced a golden regeneration). The price is that a *default*
+change is invisible to the hash, so it must be paid for explicitly: bump
+`CONFIG_HASH_VERSION` (which moves every hash once) and regenerate
+`tests/golden/config_defaults.json`, the pinned full default dump that
+`tests/test_flowstate_core/test_config_hash.py` compares on every run.
+Policy v1 (sha256 of the full dump) produced every hash quoted in documents
+dated before 2026-09-06; those artifacts keep their v1 hashes and their
+config snapshots, which is enough to rerun them.
 
 ## 3. Run outputs
 
@@ -240,7 +292,8 @@ runs/<config_hash>/<seed>/
 `trajectories.parquet` columns (micro): `t: f64 [s]`, `veh_id: str`,
 `x: f64 [m]` (linear position along route; ring = arc length),
 `lane: i32`, `v: f64 [m/s]`, `a: f64 [m/s²]`, `is_av: bool`, `complied: bool`,
-`is_heavy: bool` (2026-09-06; false on every vehicle without a `FleetSpec.heavy` block).
+`is_heavy: bool` (2026-09-06; false on every vehicle without a `FleetSpec.heavy` block),
+`is_hov: bool` (managed-lane eligibility; false without `hov_fraction`).
 Sampled at `sim.output_hz`. On corridors, `x` spans entry buffer + corridor
 proper (+ exit buffer when a `BoundarySpec` is configured); micro `meta.json`
 then carries a `boundary` object (`kind`, `exit_edge`, `exit_buffer_m`,

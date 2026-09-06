@@ -100,10 +100,17 @@ class FleetPlan:
     the writer's round-robin scheme."""
     is_heavy: tuple[bool, ...] = ()
     """Heavy-vehicle flag per vehicle (``FleetSpec.heavy``); empty ⇒ none."""
+    is_hov: tuple[bool, ...] = ()
+    """Managed-lane eligibility per vehicle (``FleetSpec.hov_fraction``,
+    SUMO ``vClass="hov"``); empty ⇒ none."""
 
     def heavy(self, i: int) -> bool:
         """Whether vehicle ``i`` is a heavy vehicle."""
         return bool(self.is_heavy[i]) if self.is_heavy else False
+
+    def hov(self, i: int) -> bool:
+        """Whether vehicle ``i`` is eligible for managed (HOV) lanes."""
+        return bool(self.is_hov[i]) if self.is_hov else False
 
     @property
     def n(self) -> int:
@@ -288,6 +295,23 @@ def _apply_heavy(
             complied[i] = False
 
 
+def draw_hov(
+    fleet: FleetSpec, heavy_flags: list[bool], n: int, rng: np.random.Generator
+) -> list[bool]:
+    """Managed-lane eligibility flags (``FleetSpec.hov_fraction``).
+
+    Consumes the RNG only when the fraction is positive, after every other
+    draw (one uniform per vehicle); heavy vehicles are never eligible.
+    """
+    if fleet.hov_fraction <= 0.0 or n == 0:
+        return []
+    u = rng.uniform(size=n)
+    return [
+        bool(u[i] < fleet.hov_fraction) and not (heavy_flags[i] if heavy_flags else False)
+        for i in range(n)
+    ]
+
+
 def tag_avs(n: int, av: AVSpec, rng: np.random.Generator) -> tuple[list[bool], list[bool]]:
     """Seeded AV tagging + once-per-run compliance draws (CLAUDE.md §3.3).
 
@@ -335,6 +359,7 @@ def build_ring_plan(
     ]
     heavy_flags, heavy_params = draw_heavy(fleet, n, rng)
     _apply_heavy(params, is_av, complied, heavy_flags, heavy_params)
+    hov_flags = draw_hov(fleet, heavy_flags, n, rng)
     return FleetPlan(
         params=tuple(params),
         is_av=tuple(is_av),
@@ -342,6 +367,7 @@ def build_ring_plan(
         depart_s=tuple(0.0 for _ in range(n)),
         depart_pos_m=tuple(positions),
         is_heavy=tuple(heavy_flags),
+        is_hov=tuple(hov_flags),
     )
 
 
@@ -464,6 +490,7 @@ def build_corridor_plan(
         )
     heavy_flags, heavy_params = draw_heavy(fleet, n, rng)
     _apply_heavy(params, is_av, complied, heavy_flags, heavy_params)
+    hov_flags = draw_hov(fleet, heavy_flags, n, rng)
 
     routes: tuple[str, ...] = ()
     if ramps:
@@ -497,6 +524,7 @@ def build_corridor_plan(
         route=routes,
         depart_lane=depart_lane,
         is_heavy=tuple(heavy_flags),
+        is_hov=tuple(hov_flags),
     )
 
 
@@ -562,7 +590,9 @@ def _vtype_xml(
     lc += "" if lc_cooperative == 1.0 else f' lcCooperative="{lc_cooperative:g}"'
     lc += "" if lc_assertive == 1.0 else f' lcAssertive="{lc_assertive:g}"'
     lc += "" if lc_speed_gain == 1.0 else f' lcSpeedGain="{lc_speed_gain:g}"'
-    shape = {"truck": "truck", "trailer": "truck/trailer"}.get(vclass or "", vclass or "")
+    shape = {"truck": "truck", "trailer": "truck/trailer", "hov": "passenger"}.get(
+        vclass or "", vclass or ""
+    )
     cls = "" if vclass is None else f' vClass="{vclass}" guiShape="{shape}"'
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
@@ -574,14 +604,17 @@ def _vtype_xml(
 
 
 def _heavy_kwargs(plan: FleetPlan, i: int, heavy: HeavyVehicleSpec | None) -> dict[str, Any]:
-    """vType keyword overrides for vehicle ``i`` when it is heavy."""
-    if heavy is None or not plan.heavy(i):
-        return {}
-    return {
-        "length_m": heavy.length_m,
-        "emission_class": heavy.emission_class,
-        "vclass": heavy.vclass,
-    }
+    """vType keyword overrides for vehicle ``i``: heavy attributes, or the
+    ``hov`` vehicle class for a managed-lane-eligible passenger vehicle."""
+    if heavy is not None and plan.heavy(i):
+        return {
+            "length_m": heavy.length_m,
+            "emission_class": heavy.emission_class,
+            "vclass": heavy.vclass,
+        }
+    if plan.hov(i):
+        return {"vclass": "hov"}
+    return {}
 
 
 def write_ring_routes(

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -253,6 +253,35 @@ def group_label(meta: Mapping[str, Any]) -> str:
         parts.append(text)
     if vsl is not None:
         parts.append(f"VSL {vsl}")
+    closures = config.get("closures") if isinstance(config, dict) else None
+    if isinstance(closures, list) and closures:
+        for c in closures:
+            if isinstance(c, dict):
+                text = str(c.get("label") or "").strip() or (
+                    f"lanes {c.get('lanes')} at {float(c.get('start_m', 0.0)):g}-"
+                    f"{float(c.get('end_m', 0.0)):g} m"
+                )
+                parts.append(f"closure {text}")
+    managed = config.get("managed_lanes") if isinstance(config, dict) else None
+    if isinstance(managed, list) and managed:
+        for m in managed:
+            if isinstance(m, dict):
+                text = str(m.get("label") or "").strip() or f"lanes {m.get('lanes')}"
+                parts.append(f"managed lane {text}")
+    fleet = config.get("fleet") if isinstance(config, dict) else None
+    heavy = fleet.get("heavy") if isinstance(fleet, dict) else None
+    if isinstance(heavy, dict) and float(heavy.get("fraction", 0.0) or 0.0) > 0.0:
+        parts.append(f"heavy {_PERCENT * float(heavy['fraction']):g}%")
+    network = config.get("network") if isinstance(config, dict) else None
+    ramps = network.get("ramps") if isinstance(network, dict) else None
+    if isinstance(ramps, list):
+        for r in ramps:
+            if isinstance(r, dict) and isinstance(r.get("meter"), dict):
+                parts.append(
+                    f"ramp meter {r['meter'].get('controller', '?')} on {r.get('name') or r.get('attach_edge')}"
+                )
+            if isinstance(r, dict) and str(r.get("merge", "lane_change")) != "lane_change":
+                parts.append(f"merge {r.get('merge')} on {r.get('name') or r.get('attach_edge')}")
     return " + ".join(parts) if parts else BASELINE_LABEL
 
 
@@ -447,6 +476,83 @@ def _render_figures(
     return figures
 
 
+def speed_aggregation_rows(
+    obs: Sequence[Sequence[float]],
+    sim: Sequence[Sequence[float]],
+    window_s: float | None,
+) -> list[dict[str, str]]:
+    """The speed criterion at coarser time aggregation, with the floor.
+
+    Rows: RMSPE of the simulated (replicate-mean) field against the observed
+    field at the native window and at 3, 6 and 12 windows and the whole
+    period (segments kept), plus the observed field against its own
+    3-window moving average at the native window and at 3 windows — the
+    resolution below which one recorded day does not repeat itself, i.e. the
+    floor an ensemble mean can reach (docs/I24_VALIDATION.md §0.5).
+
+    Args:
+        obs: Observed segment speeds ``[window][segment]`` [m/s]; NaN = empty.
+        sim: Simulated matrix on the same bins.
+        window_s: Window length [s] for the row labels (``None`` = "window").
+
+    Returns:
+        Table rows (``aggregation``, ``rmspe``, ``floor``) as strings.
+    """
+    import numpy as np
+
+    from validation.metrics import rmspe
+
+    o = np.asarray(obs, dtype=np.float64)
+    s = np.asarray(sim, dtype=np.float64)
+    if o.shape != s.shape or o.ndim != 2:
+        raise ValueError(
+            f"segment-speed matrices must share a 2-D shape, got {o.shape} vs {s.shape}"
+        )
+
+    def agg(f: np.ndarray, k: int) -> np.ndarray:
+        n = f.shape[0] // k * k
+        if n == 0:
+            return f
+        return np.nanmean(f[:n].reshape(-1, k, f.shape[1]), axis=1)
+
+    def err(a: np.ndarray, b: np.ndarray) -> float:
+        ok = np.isfinite(a) & np.isfinite(b) & (b != 0.0)
+        return float(rmspe(a[ok], b[ok])) if ok.any() else float("nan")
+
+    def floor(k: int) -> float:
+        f = agg(o, k)
+        if f.shape[0] < 3:
+            return float("nan")
+        pad = np.pad(f, ((1, 1), (0, 0)), mode="edge")
+        smooth = (pad[:-2] + pad[1:-1] + pad[2:]) / 3.0
+        return err(smooth, f)
+
+    n_win = o.shape[0]
+
+    def label(k: int) -> str:
+        return f"{k * window_s / 60.0:g} min" if window_s else f"{k} windows"
+
+    rows: list[dict[str, str]] = []
+    for k in (1, 3, 6, 12):
+        if k > n_win:
+            continue
+        rows.append(
+            {
+                "aggregation": label(k) + (" (criterion)" if k == 1 else ""),
+                "rmspe": _fmt(err(agg(s, k), agg(o, k))),
+                "floor": _fmt(floor(k)) if k <= 3 else "",
+            }
+        )
+    rows.append(
+        {
+            "aggregation": "whole period",
+            "rmspe": _fmt(err(np.nanmean(s, axis=0)[None, :], np.nanmean(o, axis=0)[None, :])),
+            "floor": "",
+        }
+    )
+    return rows
+
+
 def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for c in results:
@@ -590,6 +696,9 @@ def generate_report(
     x_ref: float | None = None,
     span: tuple[float, float] | None = None,
     pdf: bool = False,
+    segment_speeds_obs: Sequence[Sequence[float]] | None = None,
+    segment_speeds_sim: Sequence[Sequence[float]] | None = None,
+    segment_window_s: float | None = None,
 ) -> Path | tuple[Path, Path]:
     """Generate a markdown (optionally PDF) validation report for a run set.
 
@@ -627,6 +736,14 @@ def generate_report(
         pdf: Also render the markdown to ``report.pdf`` beside it via
             :mod:`validation.report_pdf` (needs the ``validation[pdf]``
             extra, fpdf2).
+        segment_speeds_obs: Optional observed segment-speed matrix
+            ``[window][segment]`` [m/s] behind ``rmspe_value``; with
+            ``segment_speeds_sim`` it adds the speed criterion by time
+            aggregation and the observed field's own repeatability floor
+            (:func:`speed_aggregation_rows`).
+        segment_speeds_sim: The simulated (replicate-mean) matrix on the same
+            bins.
+        segment_window_s: The matrices' window length [s] (labels the rows).
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -691,6 +808,11 @@ def generate_report(
             "seeds); each group's own replicate check is under Metrics."
         )
 
+    aggregation_rows = (
+        speed_aggregation_rows(segment_speeds_obs, segment_speeds_sim, segment_window_s)
+        if segment_speeds_obs is not None and segment_speeds_sim is not None
+        else None
+    )
     figures = _render_figures(groups, baseline, out.parent)
 
     seeded_any = any(r.seeded for r in runs)
@@ -761,6 +883,7 @@ def generate_report(
         calibrations=calibrations,
         criteria=_criteria_rows(criteria_results),
         criteria_note=criteria_note,
+        aggregation=aggregation_rows,
         ci_level_pct=_fmt(CI_LEVEL * _PERCENT, 3),
         min_replicates=str(MIN_REPLICATES),
         groups=_group_context(groups, p),

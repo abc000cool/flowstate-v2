@@ -64,7 +64,13 @@ import numpy as np
 import pandas as pd
 
 from flowstate_core.artifacts import TriangularFD
-from flowstate_core.config import CorridorNetwork, RingNetwork, ScenarioConfig, config_hash
+from flowstate_core.config import (
+    CONFIG_HASH_VERSION,
+    CorridorNetwork,
+    RingNetwork,
+    ScenarioConfig,
+    config_hash,
+)
 from flowstate_core.controller_types import (
     ControllerObs,
     Memory,
@@ -635,6 +641,7 @@ def run_macro(
     meta: dict[str, Any] = {
         "config": cfg.model_dump(mode="json"),
         "config_hash": chash,
+        "config_hash_version": CONFIG_HASH_VERSION,
         "seed": seed,
         "versions": _versions(),
         "tier": "screening",

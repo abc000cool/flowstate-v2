@@ -30,6 +30,7 @@ import os
 import subprocess
 import urllib.request
 from bisect import bisect_right
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -81,6 +82,8 @@ class NetBundle:
     kind: Literal["ring", "corridor", "osm"]
     entry_edge: str | None = None
     exit_edge: str | None = None
+    patch_files: tuple[str, ...] = ()
+    """netconvert patch files applied on import (on-ramp merge models); empty otherwise."""
 
     def linear_x(self, edge_id: str, lane_pos: float) -> float:
         """Map (edge id, position-on-edge [m]) → linear x [m].
@@ -352,6 +355,84 @@ def _download_bbox(bbox: tuple[float, float, float, float], dest: Path) -> Path:
     return dest
 
 
+def merge_patch_files(
+    workdir: Path,
+    attach_edge: str,
+    next_edge: str,
+    end_node: str,
+    n_attach_lanes: int,
+    n_next_lanes: int,
+    merge: str,
+) -> list[Path]:
+    """netconvert patches for an on-ramp merge model (``RampSpec.merge``).
+
+    The acceleration lane is lane 0 of ``attach_edge`` and dead-ends at
+    ``end_node``; the mainline lanes ``1..n_attach_lanes-1`` continue as
+    lanes ``0..n_next_lanes-1`` of ``next_edge`` (the netconvert default for
+    a right-side lane drop, verified on the I-24 replica).
+
+    * ``acceleration_lane`` — an edge patch marking lane 0 of the attach
+      edge with SUMO's ``acceleration="true"`` (vehicles do not brake for
+      the lane end).
+    * ``zipper`` — a connection patch adding lane 0 → ``next_edge`` lane 0
+      beside the mainline lane 1 → lane 0 (all other connections restated,
+      since explicit connections replace the guessed ones for the edge) and
+      a node patch making ``end_node`` a ``zipper`` junction, so the two
+      incoming lanes interleave.
+
+    Args:
+        workdir: Directory the patch files are written into.
+        attach_edge: On-ramp attach edge id (carries the acceleration lane).
+        next_edge: The corridor edge after it.
+        end_node: Id of the node where ``attach_edge`` ends.
+        n_attach_lanes: Lane count of ``attach_edge``.
+        n_next_lanes: Lane count of ``next_edge``.
+        merge: ``"acceleration_lane"`` or ``"zipper"``.
+
+    Returns:
+        The written patch paths (empty for ``"lane_change"``).
+
+    Raises:
+        ValueError: Unknown merge model, or a lane layout that is not a
+            right-side lane drop of exactly one lane.
+    """
+    if merge == "lane_change":
+        return []
+    if n_next_lanes != n_attach_lanes - 1:
+        raise ValueError(
+            f"merge model {merge!r} needs {attach_edge} ({n_attach_lanes} lanes) to drop exactly "
+            f"one lane into {next_edge} ({n_next_lanes} lanes)"
+        )
+    workdir.mkdir(parents=True, exist_ok=True)
+    tag = f"merge_{attach_edge.replace('#', '_')}"
+    if merge == "acceleration_lane":
+        edg = workdir / f"{tag}.edg.xml"
+        edg.write_text(
+            "<edges>\n"
+            f'  <edge id="{attach_edge}">\n'
+            '    <lane index="0" acceleration="true"/>\n'
+            "  </edge>\n"
+            "</edges>\n"
+        )
+        return [edg]
+    if merge == "zipper":
+        con = workdir / f"{tag}.con.xml"
+        lines = ["<connections>"]
+        lines.append(
+            f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="0" toLane="0"/>'
+        )
+        for i in range(1, n_attach_lanes):
+            lines.append(
+                f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="{i}" toLane="{i - 1}"/>'
+            )
+        lines.append("</connections>")
+        con.write_text("\n".join(lines) + "\n")
+        nod = workdir / f"{tag}.nod.xml"
+        nod.write_text(f'<nodes>\n  <node id="{end_node}" type="zipper"/>\n</nodes>\n')
+        return [nod, con]
+    raise ValueError(f"unknown merge model {merge!r}")
+
+
 def osm_import(
     osm_file: str | Path | None = None,
     bbox: tuple[float, float, float, float] | None = None,
@@ -359,6 +440,7 @@ def osm_import(
     workdir: Path | None = None,
     keep_edges: tuple[str, ...] | list[str] = (),
     geometry_remove: bool = True,
+    patch_files: Sequence[Path] = (),
 ) -> NetBundle:
     """Import an OSM extract into a SUMO network (the ``osm_generic`` pipeline).
 
@@ -380,6 +462,10 @@ def osm_import(
         keep_edges: Additional edge ids (e.g. interchange ramps,
             ``OSMNetwork.ramps``) kept and pinned through pruning alongside
             ``corridor_edges`` without joining the corridor chain.
+        patch_files: netconvert plain-XML patches applied on top of the OSM
+            import, routed by suffix — ``*.nod.xml`` (``--node-files``),
+            ``*.edg.xml`` (``--edge-files``), ``*.con.xml``
+            (``--connection-files``); see :func:`merge_patch_files`.
         geometry_remove: Pass ``--geometry.remove`` (default) so runs of
             raw OSM ways are joined into single edges. ``False`` keeps every
             raw way as its own edge (ids are the way ids, ``#``-split at
@@ -426,6 +512,16 @@ def osm_import(
     typemap = _osm_typemap()
     if typemap is not None:
         args += ["--type-files", str(typemap)]
+    for patch in patch_files:
+        name = Path(patch).name
+        flag = {
+            ".nod.xml": "--node-files",
+            ".edg.xml": "--edge-files",
+            ".con.xml": "--connection-files",
+        }.get(name[name.find(".") :] if name.count(".") >= 2 else "", None)
+        if flag is None:
+            raise ValueError(f"patch file {patch} must end in .nod.xml, .edg.xml or .con.xml")
+        args += [flag, str(patch)]
     if corridor_edges:
         # Pruning happens at load time, i.e. at raw-OSM-way granularity and
         # BEFORE --geometry.remove joins edges; the named corridor edges must

@@ -55,6 +55,7 @@ import sumolib
 from controllers.registry import default_params, get_segment_controller, get_vehicle_controller
 from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit
 from flowstate_core.config import (
+    CONFIG_HASH_VERSION,
     CorridorNetwork,
     OSMNetwork,
     RampSpec,
@@ -65,12 +66,13 @@ from flowstate_core.config import (
 from flowstate_core.controller_types import (
     ControllerObs,
     Memory,
+    RampMeterObs,
     SegmentControllerFn,
     SegmentObs,
     VehicleControllerFn,
 )
 from flowstate_core.rng import make_rng, spawn_seeds, sumo_seed
-from microsim.networks import NetBundle, corridor, osm_import, ring
+from microsim.networks import NetBundle, corridor, merge_patch_files, osm_import, ring
 from microsim.vehicles import (
     FleetPlan,
     build_corridor_plan,
@@ -144,13 +146,54 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             net.length_m, lanes=net.lanes, workdir=workdir, entry_m=entry_m, exit_m=exit_m
         )
     if isinstance(net, OSMNetwork):
+        keep = tuple(e for r in net.ramps for e in r.edges)
         bundle = osm_import(
             osm_file=net.osm_file,
             bbox=net.bbox,
             corridor_edges=tuple(net.corridor_edges),
             workdir=workdir,
-            keep_edges=tuple(e for r in net.ramps for e in r.edges),
+            keep_edges=keep,
         )
+        merge_ramps = [r for r in net.ramps if r.kind == "on" and r.merge != "lane_change"]
+        if merge_ramps:
+            # Second pass: on-ramp merge models are netconvert patches whose
+            # inputs (lane counts, the end node, a dead-ending lane 0) come
+            # from the first import (RampSpec.merge, docs/CONTRACTS.md §2).
+            compiled = sumolib.net.readNet(str(bundle.net_path))
+            chain = list(net.corridor_edges)
+            patches: list[Path] = []
+            for ramp in merge_ramps:
+                i = chain.index(ramp.attach_edge)
+                if i + 1 >= len(chain):
+                    raise ValueError(
+                        f"ramp {ramp.name or ramp.attach_edge}: merge model {ramp.merge!r} needs a "
+                        "corridor edge after the attach edge"
+                    )
+                attach = compiled.getEdge(ramp.attach_edge)
+                if attach.getLanes()[0].getOutgoing():
+                    raise ValueError(
+                        f"ramp {ramp.name or ramp.attach_edge}: merge model {ramp.merge!r} needs the "
+                        "acceleration lane (lane 0 of the attach edge) to dead-end at the edge's end"
+                    )
+                nxt = compiled.getEdge(chain[i + 1])
+                patches += merge_patch_files(
+                    workdir / "patches",
+                    ramp.attach_edge,
+                    chain[i + 1],
+                    attach.getToNode().getID(),
+                    attach.getLaneNumber(),
+                    nxt.getLaneNumber(),
+                    ramp.merge,
+                )
+            bundle = osm_import(
+                osm_file=net.osm_file,
+                bbox=net.bbox,
+                corridor_edges=tuple(net.corridor_edges),
+                workdir=workdir,
+                keep_edges=keep,
+                patch_files=patches,
+            )
+            bundle = dataclasses.replace(bundle, patch_files=tuple(str(p) for p in patches))
         if net.boundary is not None:
             # docs/CONTRACTS.md §2: on an OSM corridor the LAST corridor edge
             # plays the exit-buffer role and hosts the boundary schedule.
@@ -475,6 +518,7 @@ _TRAJ_SCHEMA_BASE: Final[list[tuple[str, pa.DataType]]] = [
     ("is_av", pa.bool_()),
     ("complied", pa.bool_()),
     ("is_heavy", pa.bool_()),
+    ("is_hov", pa.bool_()),
 ]
 
 #: Vehicle classes refused by a closed lane (every class this fleet can
@@ -680,6 +724,7 @@ def run_micro(
     min_gap_by_id = {plan.vehicle_id(i): plan.params[i]["s0"] for i in range(plan.n)}
     is_av_by_id = {plan.vehicle_id(i): plan.is_av[i] for i in range(plan.n)}
     is_heavy_by_id = {plan.vehicle_id(i): plan.heavy(i) for i in range(plan.n)}
+    is_hov_by_id = {plan.vehicle_id(i): plan.hov(i) for i in range(plan.n)}
     complied_by_id = {plan.vehicle_id(i): plan.complied[i] for i in range(plan.n)}
 
     # --- SUMO startup -----------------------------------------------------
@@ -751,6 +796,88 @@ def run_micro(
     pert_release_t = math.inf
     pert_vehicle: str | None = None
     n_departed = 0
+
+    # --- Ramp metering (RampMeterSpec): a virtual signal on each metered
+    # on-ramp's last edge; the rate comes from the registry controller.
+    meter_states: list[dict[str, Any]] = []
+    if isinstance(cfg.network, OSMNetwork) and any(
+        r.kind == "on" and r.meter is not None for r in cfg.network.ramps
+    ):
+        from controllers.registry import get_ramp_meter
+
+        net_for_meters = sumolib.net.readNet(str(bundle.net_path))
+        chain_m = list(cfg.network.corridor_edges)
+        for ramp_m in cfg.network.ramps:
+            if ramp_m.kind != "on" or ramp_m.meter is None:
+                continue
+            spec_r = ramp_m.meter
+            last_edge = ramp_m.edges[-1]
+            e_last = net_for_meters.getEdge(last_edge)
+            if e_last.getLength() < spec_r.stop_line_m + 20.0:
+                raise ValueError(
+                    f"ramp {ramp_m.name or last_edge}: the last ramp edge ({e_last.getLength():.0f} m) "
+                    f"is too short for a stop line {spec_r.stop_line_m:g} m before its end"
+                )
+            i_attach = chain_m.index(ramp_m.attach_edge)
+            down_edge = chain_m[min(i_attach + 1, len(chain_m) - 1)]
+            e_down = net_for_meters.getEdge(down_edge)
+            meter_states.append(
+                {
+                    "ramp": ramp_m.name or last_edge,
+                    "spec": spec_r,
+                    "fn": get_ramp_meter(spec_r.controller),
+                    "params": {
+                        **dict(spec_r.params),
+                        "rate_min_veh_h": spec_r.rate_min_veh_h,
+                        "rate_max_veh_h": spec_r.rate_max_veh_h,
+                    },
+                    "edge": last_edge,
+                    "stop_pos_m": float(e_last.getLength() - spec_r.stop_line_m),
+                    "down_edge": down_edge,
+                    "down_len_lanes_m": float(e_down.getLength() * e_down.getLaneNumber()),
+                    "rate": float(spec_r.rate_init_veh_h or spec_r.rate_max_veh_h),
+                    "memory": {},
+                    "next_update_s": 0.0,
+                    "last_release_s": -math.inf,
+                    "stopped_set": set(),
+                    "released": [],
+                    "rates": [],
+                }
+            )
+
+    # --- Managed (HOV) lanes: lane permission windows like closures ---------
+    managed_states: list[dict[str, Any]] = []
+    if cfg.managed_lanes:
+        net_for_lanes_m = sumolib.net.readNet(str(bundle.net_path))
+        lengths_m = dict(zip(bundle.edge_ids, bundle.edge_lengths, strict=True))
+        corridor_ids_m = bundle.main_edges
+        x_ref_m = offsets_by_edge[corridor_ids_m[0]] if corridor_ids_m else 0.0
+        for spec_m in cfg.managed_lanes:
+            lane_ids_m: list[str] = []
+            skipped_m: list[str] = []
+            x_lo_m, x_hi_m = x_ref_m + spec_m.start_m, x_ref_m + spec_m.end_m
+            for eid in bundle.edge_ids:
+                if eid == bundle.entry_edge:
+                    continue
+                e_lo = offsets_by_edge[eid]
+                e_hi = e_lo + lengths_m[eid]
+                if e_hi <= x_lo_m or e_lo >= x_hi_m:
+                    continue
+                n_lanes_e = int(net_for_lanes_m.getEdge(eid).getLaneNumber())
+                for li in spec_m.lanes:
+                    (lane_ids_m if li < n_lanes_e else skipped_m).append(f"{eid}_{li}")
+            managed_states.append(
+                {
+                    "spec": spec_m,
+                    "x_lo_m": x_lo_m,
+                    "x_hi_m": x_hi_m,
+                    "lane_ids": lane_ids_m,
+                    "skipped": skipped_m,
+                    "applied_at_s": None,
+                    "released_at_s": None,
+                    "orig": {},
+                }
+            )
 
     # --- Temporary lane closures (LaneClosureSpec; labelled seeded=True) --
     closure_states: list[dict[str, Any]] = []
@@ -877,6 +1004,61 @@ def run_micro(
                     mod.vehicle.setSpeed(pert_vehicle, -1.0)
                 pert_release_t = math.inf
 
+            # Ramp meters: update the rate on the controller's interval, hold
+            # every ramp vehicle at the stop line, release one per metered
+            # headway (one vehicle per green).
+            for ms_r in meter_states:
+                spec_r = ms_r["spec"]
+                if t >= ms_r["next_update_s"]:
+                    n_down = float(mod.edge.getLastStepVehicleNumber(ms_r["down_edge"]))
+                    obs_r = RampMeterObs(
+                        t=t,
+                        dt=spec_r.interval_s,
+                        density_downstream=n_down / ms_r["down_len_lanes_m"],
+                        rate_prev=ms_r["rate"],
+                        queue_len=len(ms_r["stopped_set"]),
+                    )
+                    ms_r["rate"], ms_r["memory"] = ms_r["fn"](obs_r, ms_r["params"], ms_r["memory"])
+                    ms_r["rates"].append((t, ms_r["rate"], obs_r.density_downstream))
+                    ms_r["next_update_s"] = t + spec_r.interval_s
+                on_edge = list(mod.edge.getLastStepVehicleIDs(ms_r["edge"]))
+                for vid in on_edge:
+                    if vid not in ms_r["stopped_set"] and (
+                        mod.vehicle.getLanePosition(vid) < ms_r["stop_pos_m"] - 1.0
+                    ):
+                        mod.vehicle.setStop(vid, ms_r["edge"], ms_r["stop_pos_m"], 0, 1.0e9)
+                        ms_r["stopped_set"].add(vid)
+                if t - ms_r["last_release_s"] >= 3600.0 / max(ms_r["rate"], 1.0):
+                    waiting = [
+                        vid
+                        for vid in on_edge
+                        if vid in ms_r["stopped_set"] and mod.vehicle.isStopped(vid)
+                    ]
+                    if waiting:
+                        front = max(waiting, key=lambda v: mod.vehicle.getLanePosition(v))
+                        mod.vehicle.resume(front)
+                        ms_r["stopped_set"].discard(front)
+                        ms_r["released"].append(t)
+                        ms_r["last_release_s"] = t
+
+            # Managed lanes: admit only the hov class for the window, then
+            # restore the lanes' original permissions.
+            for ms in managed_states:
+                spec_m = ms["spec"]
+                if ms["applied_at_s"] is None and t >= spec_m.t_start_s:
+                    for lid in ms["lane_ids"]:
+                        ms["orig"][lid] = list(mod.lane.getDisallowed(lid))
+                        mod.lane.setAllowed(lid, ["hov"])
+                    ms["applied_at_s"] = t
+                elif (
+                    ms["applied_at_s"] is not None
+                    and ms["released_at_s"] is None
+                    and t >= spec_m.t_end_s
+                ):
+                    for lid in ms["lane_ids"]:
+                        mod.lane.setDisallowed(lid, ms["orig"].get(lid, []))
+                    ms["released_at_s"] = t
+
             # Temporary lane closures: refuse every class on the closed lanes
             # for the window, then restore the lanes' original permissions.
             for cs in closure_states:
@@ -983,6 +1165,7 @@ def run_micro(
                     cols["is_av"].append(is_av_by_id.get(vid, False))
                     cols["complied"].append(complied_by_id.get(vid, False))
                     cols["is_heavy"].append(is_heavy_by_id.get(vid, False))
+                    cols["is_hov"].append(is_hov_by_id.get(vid, False))
                     if is_ring:
                         cols["x_unwrapped"].append(unwrap_x[vid][1])
                 traj_writer.maybe_flush()
@@ -1003,6 +1186,7 @@ def run_micro(
     meta: dict[str, Any] = {
         "config": cfg.model_dump(mode="json"),
         "config_hash": chash,
+        "config_hash_version": CONFIG_HASH_VERSION,
         "seed": seed,
         "sumo_seed": sumo_seed(seed),
         "versions": _versions(),
@@ -1019,6 +1203,44 @@ def run_micro(
         "heavy_fraction_realized": (
             float(sum(plan.is_heavy)) / plan.n if plan.is_heavy and plan.n else 0.0
         ),
+        "n_hov": int(sum(plan.is_hov)) if plan.is_hov else 0,
+        "managed_lanes": [
+            {
+                "label": ms["spec"].label,
+                "start_m": ms["spec"].start_m,
+                "end_m": ms["spec"].end_m,
+                "lanes": list(ms["spec"].lanes),
+                "t_start_s": ms["spec"].t_start_s,
+                "t_end_s": ms["spec"].t_end_s,
+                "x_lo_m": ms["x_lo_m"],
+                "x_hi_m": ms["x_hi_m"],
+                "lane_ids": ms["lane_ids"],
+                "skipped_lane_ids": ms["skipped"],
+                "applied_at_s": ms["applied_at_s"],
+                "released_at_s": ms["released_at_s"],
+            }
+            for ms in managed_states
+        ],
+        "ramp_meters": [
+            {
+                "ramp": ms_r["ramp"],
+                "controller": ms_r["spec"].controller,
+                "edge": ms_r["edge"],
+                "stop_pos_m": ms_r["stop_pos_m"],
+                "downstream_edge": ms_r["down_edge"],
+                "interval_s": ms_r["spec"].interval_s,
+                "n_released": len(ms_r["released"]),
+                "releases_s": ms_r["released"],
+                "rates": [[tt, rr, dd] for tt, rr, dd in ms_r["rates"]],
+            }
+            for ms_r in meter_states
+        ],
+        "merge_models": [
+            {"ramp": r.name or r.attach_edge, "attach_edge": r.attach_edge, "merge": r.merge}
+            for r in (cfg.network.ramps if isinstance(cfg.network, OSMNetwork) else [])
+            if r.kind == "on" and r.merge != "lane_change"
+        ],
+        "net_patch_files": list(bundle.patch_files),
         "closures": [
             {
                 "label": cs["spec"].label,

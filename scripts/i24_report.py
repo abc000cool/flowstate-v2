@@ -34,28 +34,53 @@ INPUTS = REPO_ROOT / "artifacts" / "i24_replica_inputs.json"
 TITLES = {
     "tracked": "demand as tracked (lower bound at the instrument's coverage)",
     "corrected": "demand divided by the apparent tracking coverage",
+    "speedcal": "coverage-shaped demand at the fitted level",
+    "ramps": "fitted level with the jointly fitted ramp levels",
 }
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("--arms", choices=("both", "tracked", "corrected"), default="both")
+    ap.add_argument(
+        "--arms",
+        choices=("all", "both", "tracked", "corrected", "speedcal", "ramps"),
+        default="all",
+    )
     args = ap.parse_args()
     inputs = json.loads(INPUTS.read_text())
     a, b = inputs["geometry"]["sim_x_of_data_x"]["a"], inputs["geometry"]["sim_x_of_data_x"]["b"]
     lo, hi = inputs["geometry"]["measured_span_data_x_m"]
-    for arm in ("tracked", "corrected"):
-        if args.arms not in ("both", arm):
+    for arm in TITLES:
+        wanted = (
+            args.arms == "all"
+            or (args.arms == "both" and arm in ("tracked", "corrected"))
+            or args.arms == arm
+        )
+        art = REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json"
+        if not wanted or not art.is_file():
             continue
-        results = json.loads((REPO_ROOT / "artifacts" / f"i24_validation_{arm}.json").read_text())
+        results = json.loads(art.read_text())
         assert results["arm"] == arm
-        geh_key = "vs_coverage_corrected_counts" if arm == "corrected" else "vs_tracked_counts"
+        geh = results["geh"]
+        # the criteria row's table (schema 6: the recommended-coverage counts)
+        geh_key = {
+            "recommended": "vs_recommended_coverage_counts",
+            "corrected": "vs_coverage_corrected_counts",
+        }.get(str(geh.get("primary")), "vs_tracked_counts")
         run_set = RUN_ROOT / arm / results["config_hash"]
+        if not run_set.is_dir():
+            print(f"[{arm}] no run tree under {run_set}; skipped (replicates pruned?)")
+            continue
+        obs_seg = results["observed"].get("segment_speeds_ms")
+        sim_seg = results["simulated"].get("segment_speeds_ms_mean")
         out = generate_report(
             run_set,
             REPO_ROOT / "docs" / "reports" / "i24_replica" / arm / "report.md",
-            geh_values=results["geh"][geh_key]["values"],
+            geh_values=geh[geh_key]["values"],
             rmspe_value=results["rmspe"]["value"],
+            segment_speeds_obs=obs_seg,
+            segment_speeds_sim=sim_seg,
+            segment_window_s=float(results["observed"].get("window_s", 300.0)),
             ring_emergence=None,  # CI-gated; not re-run here (honest not-evaluated)
             ring_dampening=None,
             title=(

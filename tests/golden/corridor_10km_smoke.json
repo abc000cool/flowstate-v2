@@ -7,7 +7,7 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-06T07:39:36+00:00",
+  "generated_at": "2026-09-06T08:13:08+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -16,7 +16,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "6b68fec0a947",
+  "config_hash": "28449f6634f4",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",

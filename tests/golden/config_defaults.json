@@ -1,0 +1,65 @@
+{
+  "full_dump": {
+    "av": {
+      "compliance": 1.0,
+      "controller": null,
+      "controller_params": {},
+      "oracle": {
+        "amplitude_noise_frac": 0.0,
+        "delay_s": 0.0,
+        "kind": "perfect"
+      },
+      "penetration": 0.0,
+      "vsl": null,
+      "vsl_params": {}
+    },
+    "closures": [],
+    "fleet": {
+      "T": 1.4,
+      "a_max": 0.73,
+      "b": 1.67,
+      "delta": 4.0,
+      "heavy": null,
+      "heterogeneity_frac": 0.12,
+      "hov_fraction": 0.0,
+      "idm_calibration": null,
+      "lc_assertive": 1.0,
+      "lc_cooperative": 1.0,
+      "lc_keep_right": 1.0,
+      "lc_speed_gain": 1.0,
+      "lc_strategic": 1.0,
+      "lc_strategic_ramp": null,
+      "model": "IDM",
+      "s0": 2.0,
+      "v0": 33.3
+    },
+    "managed_lanes": [],
+    "name": "canonical_defaults",
+    "network": {
+      "boundary": null,
+      "entry_lane_shares": null,
+      "inflow": [
+        [
+          0.0,
+          0.3
+        ]
+      ],
+      "kind": "corridor",
+      "lanes": 2,
+      "length_m": 1000.0
+    },
+    "perturbation": null,
+    "replicates": 20,
+    "seed": 42,
+    "sim": {
+      "action_step_s": 0.5,
+      "duration_s": 60.0,
+      "lateral_resolution_m": null,
+      "output_hz": 2.0,
+      "step_length_s": 0.5,
+      "warmup_s": 0.0
+    },
+    "tier": "micro"
+  },
+  "hash_version": 2
+}

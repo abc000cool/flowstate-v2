@@ -37,6 +37,22 @@ class ControllerObs:
 
 
 @dataclass(frozen=True)
+class RampMeterObs:
+    """Observation for a ramp-metering controller (docs/CONTRACTS.md §1). SI units."""
+
+    t: float
+    """Simulation time [s]."""
+    dt: float
+    """Control interval [s]."""
+    density_downstream: float
+    """Per-lane density on the corridor edge downstream of the merge [veh/m]."""
+    rate_prev: float
+    """Metering rate applied over the last interval [veh/h]."""
+    queue_len: int = 0
+    """Vehicles waiting on the ramp (informational)."""
+
+
+@dataclass(frozen=True)
 class SegmentObs:
     """Observation for a segment-level (VSL) controller. SI units."""
 
@@ -50,6 +66,9 @@ class SegmentObs:
 
 VehicleControllerFn = Callable[[ControllerObs, Mapping[str, float], Memory], tuple[float, Memory]]
 """Returns (v_cmd [m/s], new_memory)."""
+
+RampMeterFn = Callable[[RampMeterObs, Mapping[str, float], Memory], tuple[float, Memory]]
+"""Ramp-metering controller: ``(obs, params, memory) -> (rate [veh/h], memory)``."""
 
 SegmentControllerFn = Callable[
     [SegmentObs, Mapping[str, float], Memory], tuple[tuple[float, ...], Memory]

@@ -53,7 +53,7 @@ flowchart LR
     MACRO["macrosim — SCREENING ONLY<br/>Numba CTM/LWR + moving flux cap<br/>fast sweeps; no phantom-jam claims"]
   end
 
-  CTRL["controllers (pure functions)<br/>FollowerStopper · PI-sat · JAD · VSL<br/>+ Gymnasium hook"]
+  CTRL["controllers (pure functions)<br/>FollowerStopper · capacity-aware FS · PI-sat · JAD · VSL · ALINEA ramp meter<br/>+ Gymnasium hook"]
 
   subgraph VAL["validation"]
     MET["metrics: σ_v, throughput,<br/>travel time, fuel, waves"]

@@ -54,6 +54,22 @@ unevaluated criterion is never a pass.
 
 {{ criteria_note }}
 {% endif %}
+{% if aggregation %}
+
+### Speed criterion by time aggregation
+
+The segment-speed criterion compares a replicate mean with one recorded
+day. The floor column is the recorded field against its own three-window
+moving average: below that resolution the day does not repeat itself, so
+no ensemble mean can score under the floor. The criterion row keeps its
+native resolution; this table says how much of its value is resolution.
+
+| Aggregation | RMSPE, replicate mean vs observed | Floor: observed vs its own three-window average |
+|---|---|---|
+{% for a in aggregation %}
+| {{ a.aggregation }} | {{ a.rmspe }} | {{ a.floor }} |
+{% endfor %}
+{% endif %}
 
 ## Metrics
 

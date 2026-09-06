@@ -451,3 +451,43 @@ class TestPdf:
         assert blocks[3].rows == [["A", "B"], ["x", "1"]]
         assert blocks[4].items == ["one continued", "two"]
         assert blocks[5].path == "fig.png" and blocks[5].text == "cap"
+
+
+class TestAggregationAndLabels:
+    def test_speed_aggregation_rows_floor_and_shape(self):
+        import numpy as np
+
+        from validation.report import speed_aggregation_rows
+
+        rng = np.random.default_rng(3)
+        obs = 10.0 + rng.normal(0.0, 2.0, size=(24, 10))
+        sim = obs + rng.normal(0.0, 1.0, size=(24, 10))
+        rows = speed_aggregation_rows(obs, sim, 300.0)
+        labels = [r["aggregation"] for r in rows]
+        assert labels == ["5 min (criterion)", "15 min", "30 min", "60 min", "whole period"]
+        native = float(rows[0]["rmspe"])
+        assert float(rows[3]["rmspe"]) < native  # averaging shrinks the error
+        assert rows[0]["floor"] and rows[1]["floor"] and rows[2]["floor"] == ""
+        with pytest.raises(ValueError, match="share a 2-D shape"):
+            speed_aggregation_rows(obs, sim[:, :5], 300.0)
+
+    def test_group_labels_for_closures_heavy_managed_and_meters(self):
+        from validation.report import BASELINE_LABEL, group_label
+
+        base = {"config": {"av": {"penetration": 0.0}}}
+        assert group_label(base) == BASELINE_LABEL
+        closed = {"config": {"av": {}, "closures": [{"label": "work zone", "lanes": [0]}]}}
+        assert group_label(closed) == "closure work zone"
+        heavy = {"config": {"av": {}, "fleet": {"heavy": {"fraction": 0.092}}}}
+        assert group_label(heavy) == "heavy 9.2%"
+        hov = {"config": {"av": {}, "managed_lanes": [{"label": "", "lanes": [3]}]}}
+        assert group_label(hov) == "managed lane lanes [3]"
+        meter = {
+            "config": {
+                "av": {},
+                "network": {
+                    "ramps": [{"name": "OH", "meter": {"controller": "alinea"}, "merge": "zipper"}]
+                },
+            }
+        }
+        assert group_label(meter) == "ramp meter alinea on OH + merge zipper on OH"

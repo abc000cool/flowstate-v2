@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import Annotated, Any, Final, Literal, Self
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -114,6 +114,38 @@ class CorridorNetwork(BaseModel):
         return self
 
 
+class RampMeterSpec(BaseModel):
+    """Ramp metering on an on-ramp (micro tier, 2026-09-06).
+
+    A virtual signal at ``stop_line_m`` before the end of the ramp's last
+    edge: every ramp vehicle stops there and the meter releases the first
+    waiting vehicle whenever the metered headway ``3600 / rate`` has elapsed
+    since the last release (one vehicle per green, the usual US practice).
+    The rate comes from a pure controller in the ``controllers`` registry
+    (``"alinea"``: Papageorgiou et al. 1991, integral feedback on the
+    density measured on the corridor edge downstream of the merge every
+    ``interval_s``), clipped to ``[rate_min_veh_h, rate_max_veh_h]``.
+    ``params`` must carry the controller's target (for ALINEA the critical
+    density ``rho_target_veh_km`` of the calibrated diagram); there is no
+    built-in target. Releases and rates are recorded in ``meta.json``.
+    """
+
+    controller: Literal["alinea"] = "alinea"
+    params: dict[str, float] = Field(default_factory=dict)
+    interval_s: float = Field(default=30.0, gt=0.0)
+    stop_line_m: float = Field(default=30.0, gt=0.0)
+    rate_min_veh_h: float = Field(default=240.0, gt=0.0)
+    rate_max_veh_h: float = Field(default=1800.0, gt=0.0)
+    rate_init_veh_h: float | None = None
+    """Initial rate; ``None`` starts at ``rate_max_veh_h``."""
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.rate_max_veh_h <= self.rate_min_veh_h:
+            raise ValueError("rate_max_veh_h must exceed rate_min_veh_h")
+        return self
+
+
 class RampSpec(BaseModel):
     """One on- or off-ramp attached to an OSM corridor (docs/CONTRACTS.md §2).
 
@@ -152,6 +184,23 @@ class RampSpec(BaseModel):
     for on-ramps."""
     name: str = ""
     """Optional label (e.g. the interchange) recorded in run metadata."""
+    meter: RampMeterSpec | None = None
+    """Ramp metering on this on-ramp (:class:`RampMeterSpec`); ``None`` =
+    unmetered. Off-ramps cannot carry a meter."""
+    merge: Literal["lane_change", "acceleration_lane", "zipper"] = "lane_change"
+    """How an on-ramp's acceleration lane hands its traffic to the mainline
+    (micro tier, 2026-09-06). ``lane_change`` (default): the lane dead-ends
+    and ramp vehicles change lanes under the lane-change model — on the I-24
+    replica this locked the merge into a right-lane crawl under every
+    parameter tried (docs/I24_VALIDATION.md §0.5). ``acceleration_lane``:
+    SUMO's lane attribute of that name on the attach edge's rightmost lane
+    (vehicles do not brake for the lane end). ``zipper``: the attach edge's
+    rightmost lane is connected into the next corridor edge's rightmost lane
+    alongside the mainline lane and the junction becomes a zipper, so ramp
+    and mainline traffic interleave at the lane end instead of negotiating
+    lane changes. Both need the acceleration lane to dead-end at the attach
+    edge's end node (checked at run time) and are applied as netconvert
+    patches recorded in ``meta.json``."""
 
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
@@ -164,6 +213,10 @@ class RampSpec(BaseModel):
             if times != sorted(times) or any(q < 0 for _, q in self.inflow):
                 raise ValueError("on-ramp inflow must be time-ordered and >= 0")
         else:
+            if self.meter is not None:
+                raise ValueError("an off-ramp cannot carry a meter")
+            if self.merge != "lane_change":
+                raise ValueError("merge models apply to on-ramps only")
             if not self.exit_fraction:
                 raise ValueError("an off-ramp needs a non-empty exit_fraction")
             if self.inflow:
@@ -320,6 +373,12 @@ class FleetSpec(BaseModel):
     heavy: HeavyVehicleSpec | None = None
     """Heavy-vehicle share and population (:class:`HeavyVehicleSpec`);
     ``None`` = passenger cars only, as before."""
+    hov_fraction: float = Field(default=0.0, ge=0.0, le=1.0)
+    """Share of passenger vehicles eligible for managed (HOV) lanes, drawn
+    per vehicle from the run's RNG after every other draw (0 = none, so
+    fleets without managed lanes reproduce their draws exactly); eligible
+    vehicles carry SUMO ``vClass="hov"``. A measured or assumed occupancy
+    share — record its source in the scenario header."""
 
 
 class OracleSpec(BaseModel):
@@ -434,6 +493,40 @@ class LaneClosureSpec(BaseModel):
         return self
 
 
+class ManagedLaneSpec(BaseModel):
+    """A managed (HOV) lane: for the window only eligible vehicles may use it.
+
+    Micro tier: the listed lanes of every corridor edge overlapping
+    ``[start_m, end_m)`` (measured like a closure, from the start of the
+    analysis corridor) admit only SUMO class ``hov`` for ``[t_start_s,
+    t_end_s)`` and get their permissions back afterwards; eligible vehicles
+    are the share ``FleetSpec.hov_fraction`` of passenger vehicles, drawn per
+    vehicle and written with ``vClass="hov"`` (heavy vehicles are never
+    eligible). Outside the window every vehicle may use the lane. A managed
+    lane is a standing rule of the road, not a disturbance: it does NOT set
+    ``seeded=True``. The macro tier does not represent it (meta says so).
+    """
+
+    start_m: float = Field(ge=0.0)
+    end_m: float = Field(gt=0.0)
+    lanes: list[int] = Field(min_length=1)
+    """SUMO lane indices (0 = rightmost); on a four-lane freeway the left
+    lane is index 3."""
+    t_start_s: float = Field(ge=0.0)
+    t_end_s: float = Field(gt=0.0)
+    label: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.end_m <= self.start_m:
+            raise ValueError("managed lane end_m must exceed start_m")
+        if self.t_end_s <= self.t_start_s:
+            raise ValueError("managed lane t_end_s must exceed t_start_s")
+        if any(i < 0 for i in self.lanes) or len(set(self.lanes)) != len(self.lanes):
+            raise ValueError("managed lanes must be distinct non-negative lane indices")
+        return self
+
+
 class ScenarioConfig(BaseModel):
     """A complete, hashable scenario description."""
 
@@ -447,6 +540,9 @@ class ScenarioConfig(BaseModel):
     closures: list[LaneClosureSpec] = Field(default_factory=list)
     """Temporary lane closures (:class:`LaneClosureSpec`); any entry labels
     the run ``seeded=True``."""
+    managed_lanes: list[ManagedLaneSpec] = Field(default_factory=list)
+    """Managed (HOV) lane rules (:class:`ManagedLaneSpec`); eligibility comes
+    from ``FleetSpec.hov_fraction``."""
     seed: int = 42
     replicates: int = Field(default=20, ge=1, le=MAX_REPLICATES)
     """Seeded replicates per run. The ≥ 20 floor for headline claims is
@@ -475,7 +571,31 @@ class ScenarioConfig(BaseModel):
         )
 
 
+CONFIG_HASH_VERSION: Final[int] = 2
+"""Version of the hashing policy (docs/CONTRACTS.md §2). Bump it whenever a
+field DEFAULT changes (a default change is a physics change and must move
+every hash) — `tests/test_flowstate_core/test_config_hash.py` pins the
+defaults snapshot and fails when one drifts without a bump."""
+
+
+def config_hash_payload(cfg: ScenarioConfig) -> dict[str, Any]:
+    """The object that is hashed: the policy version plus the config with
+    every field at its default omitted (policy v2, 2026-09-06).
+
+    Omitting defaults means a new optional field leaves the hash of every
+    scenario that does not use it unchanged, so schema growth no longer
+    invalidates goldens, sweeps and run trees; the network's ``kind`` is
+    kept explicitly since it is a default-valued discriminator.
+    """
+    dumped = cfg.model_dump(mode="json", exclude_defaults=True)
+    network = dict(dumped.get("network") or {})
+    network["kind"] = cfg.network.kind
+    dumped["network"] = network
+    return {"hash_version": CONFIG_HASH_VERSION, "config": dumped}
+
+
 def config_hash(cfg: ScenarioConfig) -> str:
-    """12-hex-char sha256 of the canonical JSON form (sorted keys)."""
-    canonical = json.dumps(cfg.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    """12-hex-char sha256 of the canonical JSON form of
+    :func:`config_hash_payload` (sorted keys, no whitespace)."""
+    canonical = json.dumps(config_hash_payload(cfg), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode()).hexdigest()[:12]

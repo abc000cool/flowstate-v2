@@ -12,14 +12,24 @@ from __future__ import annotations
 from typing import Final
 
 from controllers.follower_stopper import FOLLOWER_STOPPER_DEFAULTS, follower_stopper
+from controllers.follower_stopper_capacity import (
+    FOLLOWER_STOPPER_CAPACITY_DEFAULTS,
+    follower_stopper_capacity,
+)
 from controllers.jad import JAD_DEFAULTS, jad
 from controllers.pi_meanfrac import PI_MEANFRAC_DEFAULTS, pi_meanfrac
 from controllers.pi_saturation import PI_SATURATION_DEFAULTS, pi_saturation
+from controllers.ramp_meter import ALINEA_DEFAULTS, alinea
 from controllers.vsl import VSL_THRESHOLD_DEFAULTS, vsl_threshold
-from flowstate_core.controller_types import SegmentControllerFn, VehicleControllerFn
+from flowstate_core.controller_types import (
+    RampMeterFn,
+    SegmentControllerFn,
+    VehicleControllerFn,
+)
 
 ALL_VEHICLE_CONTROLLERS: Final[dict[str, VehicleControllerFn]] = {
     "follower_stopper": follower_stopper,
+    "follower_stopper_capacity": follower_stopper_capacity,
     "pi_saturation": pi_saturation,
     "pi_meanfrac": pi_meanfrac,
     "jad": jad,
@@ -31,8 +41,15 @@ ALL_SEGMENT_CONTROLLERS: Final[dict[str, SegmentControllerFn]] = {
 }
 """Segment (VSL) controllers, keyed by registry name."""
 
+ALL_RAMP_METERS: Final[dict[str, RampMeterFn]] = {
+    "alinea": alinea,
+}
+"""Ramp-metering controllers (``RampMeterSpec.controller``), keyed by registry name."""
+
 _DEFAULT_PARAMS: Final[dict[str, dict[str, float]]] = {
     "follower_stopper": FOLLOWER_STOPPER_DEFAULTS,
+    "follower_stopper_capacity": FOLLOWER_STOPPER_CAPACITY_DEFAULTS,
+    "alinea": ALINEA_DEFAULTS,
     "pi_saturation": PI_SATURATION_DEFAULTS,
     "pi_meanfrac": PI_MEANFRAC_DEFAULTS,
     "jad": JAD_DEFAULTS,
@@ -80,6 +97,20 @@ def get_segment_controller(name: str) -> SegmentControllerFn:
         ) from None
 
 
+def get_ramp_meter(name: str) -> RampMeterFn:
+    """Look up a ramp-metering controller by registry name.
+
+    Raises:
+        KeyError: Unknown name; the message lists the available names.
+    """
+    try:
+        return ALL_RAMP_METERS[name]
+    except KeyError:
+        raise KeyError(
+            f"unknown ramp meter {name!r}; available: {sorted(ALL_RAMP_METERS)}"
+        ) from None
+
+
 def default_params(name: str) -> dict[str, float]:
     """Literature-default parameters for any registered controller.
 
@@ -105,9 +136,10 @@ def list_controllers() -> dict[str, tuple[str, ...]]:
     """All registered controller names, grouped by kind.
 
     Returns:
-        ``{"vehicle": (...), "segment": (...)}`` with names sorted.
+        ``{"vehicle": (...), "segment": (...), "ramp_meter": (...)}`` with names sorted.
     """
     return {
         "vehicle": tuple(sorted(ALL_VEHICLE_CONTROLLERS)),
         "segment": tuple(sorted(ALL_SEGMENT_CONTROLLERS)),
+        "ramp_meter": tuple(sorted(ALL_RAMP_METERS)),
     }
