@@ -4,12 +4,18 @@
 #   1. the pipeline's EXIT trap powers the VM off 3 min after it ends (success or failure);
 #   2. the VM's startup script arms a hard cap (`shutdown -h +$CAP_MIN`) at every boot,
 #      independent of the pipeline;
-#   3. scripts/gcp/watch_pipeline.sh (run locally after this) fetches the results and
-#      DELETES the instance, and deletes it unconditionally at its own deadline.
+#   3. scripts/gcp/watch_pipeline.sh (run locally after this, under caffeinate) fetches
+#      the archive after every stage and DELETES the instance, unconditionally at its deadline;
+#   4. with --bucket, the VM copies the archive to that bucket after every stage and, with
+#      --self-delete, deletes itself at the end — no local machine has to be awake.
+# The hard cap must exceed the expected runtime with margin: the 2026-09-06 run was
+# killed by a 300-min cap during its last stage. Size it at about twice the estimate;
+# the EXIT trap, not the cap, is the normal stop.
 # Usage (repo root, pushed commit):
-#   scripts/gcp/launch_i24_pipeline.sh [--vm NAME] [--zone Z] [--machine TYPE] [--cap-min 300] [--quick]
+#   scripts/gcp/launch_i24_pipeline.sh [--vm NAME] [--zone Z] [--machine TYPE] [--cap-min 480]
+#       [--bucket gs://bucket/prefix] [--self-delete] [--quick] [--pipeline-args '--stages "..."']
 set -euo pipefail
-VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=300; QUICK=""
+VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=480; QUICK=""; BUCKET=""; SELF_DELETE=0; PIPELINE_ARGS=""
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -18,9 +24,15 @@ while [ $# -gt 0 ]; do
     --machine) MACHINE="$2"; shift 2 ;;
     --cap-min) CAP_MIN="$2"; shift 2 ;;
     --quick) QUICK="--quick"; shift ;;
+    --bucket) BUCKET="${2%/}"; shift 2 ;;
+    --self-delete) SELF_DELETE=1; shift ;;
+    --pipeline-args) PIPELINE_ARGS="$2"; shift 2 ;;   # e.g. --pipeline-args '--stages "battery_lost prune_lost cap_sweep rescore"'
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+if [ "$SELF_DELETE" -eq 1 ] && [ -z "$BUCKET" ]; then echo "--self-delete needs --bucket (the archive must leave the machine first)" >&2; exit 2; fi
+if [ -n "$BUCKET" ] && ! gcloud storage ls "$BUCKET" >/dev/null 2>&1; then echo "bucket $BUCKET is not readable with this account (create it first: gcloud storage buckets create gs://NAME --location=us-west1)" >&2; exit 2; fi
+SCOPES=""; [ -n "$BUCKET" ] && SCOPES="--scopes=storage-rw,compute-rw,logging-write,monitoring-write"
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 REF=$(git rev-parse HEAD)
 if [ -n "$(git status --porcelain | grep -v '^??')" ]; then echo "commit and push first (the VM clones $REF)" >&2; exit 2; fi
@@ -32,9 +44,10 @@ cat > "$STARTUP" <<EOF
 shutdown -h +$CAP_MIN "boot-time hard cap (${CAP_MIN} min)"
 EOF
 echo "== creating $VM ($MACHINE, $ZONE, project $PROJECT), hard cap $CAP_MIN min from boot"
+# shellcheck disable=SC2086
 gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --machine-type "$MACHINE" \
   --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
-  --metadata-from-file startup-script="$STARTUP" --labels purpose=flowstate-pipeline,autostop=yes >/dev/null
+  --metadata-from-file startup-script="$STARTUP" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
 rm -f "$STARTUP"
 mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
 ssh_cmd() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1"; }
@@ -56,5 +69,5 @@ echo "== shipping code snapshot ($(du -h "$REPO_TAR" | cut -f1)) and data ($(du 
 gcloud compute scp "$REPO_TAR" "$ROOT/scripts/gcp/vm_setup.sh" "$DATA" "$VM:/tmp/" --project "$PROJECT" --zone "$ZONE" --quiet
 rm -rf "$(dirname "$DATA")"
 echo "== VM setup and pipeline start (systemd unit 'pipeline', survives logout)"
-ssh_cmd "chmod +x /tmp/vm_setup.sh && /tmp/vm_setup.sh $REF $QUICK" 2>&1 | tail -6
-echo "== launched. Now run:  scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE"
+ssh_cmd "chmod +x /tmp/vm_setup.sh && PIPELINE_BUCKET='$BUCKET' PIPELINE_SELF_DELETE=$SELF_DELETE PIPELINE_ARGS='$PIPELINE_ARGS' /tmp/vm_setup.sh $REF $QUICK" 2>&1 | tail -6
+echo "== launched. Now run (under caffeinate):  caffeinate -i scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE${BUCKET:+ --bucket $BUCKET}"

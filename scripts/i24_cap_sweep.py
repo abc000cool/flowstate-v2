@@ -9,7 +9,9 @@ speed spread, fuel, waves) are aggregated with t-distribution 95% intervals
 and contrasted with the baseline seed by seed (paired). Trajectories are
 deleted once the metrics are computed (``--keep-trajectories`` keeps them).
 Resumable: a configuration whose run tree already holds every replicate's
-``metrics.json`` is not rerun.
+``metrics.json`` is not rerun. The summary is rewritten after every
+configuration (``complete: false`` until the last one), so a run cut short
+still leaves the finished cells and their paired contrasts.
 
 Output: ``artifacts/i24_cap_sweep_summary.json``. Run from the repo root::
 
@@ -154,6 +156,39 @@ def main() -> None:
     t0 = time.perf_counter()
     results: dict[str, dict[int, Metrics]] = {}
     cells: list[dict[str, Any]] = []
+
+    def write(complete: bool) -> None:
+        """Write the summary for the cells done so far (partial until ``complete``)."""
+        base = results.get("baseline")
+        for c in cells:
+            if c["label"] != "baseline" and base is not None:
+                c["vs_baseline_paired"] = {
+                    k: _paired(base, results[c["label"]], k) for k in METRIC_KEYS
+                }
+        out = {
+            "schema_version": 1,
+            "versions": _versions(),
+            "arm": str(a.arm_yaml.relative_to(REPO))
+            if a.arm_yaml.is_relative_to(REPO)
+            else str(a.arm_yaml),
+            "penetration": a.penetration,
+            "compliance": a.compliance,
+            "n_seeds": a.replicates,
+            "h_max_values": a.h_max,
+            "cells": cells,
+            "complete": complete,
+            "n_configs_planned": len(configs),
+            "note": "common random numbers across configurations; vs_baseline_paired = per-seed differences with t-distribution 95% intervals"
+            + (
+                ""
+                if complete
+                else "; PARTIAL: written after each configuration, the sweep was still running"
+            ),
+            "wall_s": round(time.perf_counter() - t0, 1),
+        }
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(out, indent=2))
+
     for label, cfg in configs:
         t1 = time.perf_counter()
         results[label] = _metrics_for(cfg, a.run_root, a.procs, a.keep_trajectories)
@@ -178,28 +213,9 @@ def main() -> None:
             f"  {label:<36} n={len(results[label])} throughput {agg['throughput_veh_h'].mean:.0f} sigma_v {agg['sigma_v_temporal_ms'].mean:.2f} ({cells[-1]['wall_s']} s)",
             flush=True,
         )
-    base = results["baseline"]
-    for c in cells:
-        if c["label"] == "baseline":
-            continue
-        c["vs_baseline_paired"] = {k: _paired(base, results[c["label"]], k) for k in METRIC_KEYS}
-    out = {
-        "schema_version": 1,
-        "versions": _versions(),
-        "arm": str(a.arm_yaml.relative_to(REPO))
-        if a.arm_yaml.is_relative_to(REPO)
-        else str(a.arm_yaml),
-        "penetration": a.penetration,
-        "compliance": a.compliance,
-        "n_seeds": a.replicates,
-        "h_max_values": a.h_max,
-        "cells": cells,
-        "note": "common random numbers across configurations; vs_baseline_paired = per-seed differences with t-distribution 95% intervals",
-        "wall_s": round(time.perf_counter() - t0, 1),
-    }
-    a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_text(json.dumps(out, indent=2))
-    print(f"-> {a.out} ({out['wall_s']} s)")
+        write(complete=False)
+    write(complete=True)
+    print(f"-> {a.out} ({round(time.perf_counter() - t0, 1)} s)")
 
 
 if __name__ == "__main__":

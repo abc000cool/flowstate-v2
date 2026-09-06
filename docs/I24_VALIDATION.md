@@ -477,6 +477,72 @@ irreducible parts are measured:
   corrected map (demand level, then ramps) and the 20-seed battery. That is
   the next round, and it is compute and modelling work, not tuning.
 
+### 0.6 The zipper family through the full procedure (cloud round, 2026-09-06)
+
+The `zip` scenario family is the corrected map of (c) with the ramp-origin
+eagerness of (f), the measured entry-lane distribution of (g) and the zipper
+junction of (j) — every input the round found right on its own evidence —
+carried through the FHWA sequence and the 20-seed batteries on a 32-vCPU
+cloud VM (`scripts/gcp/pipeline_i24.sh`; the run's post-mortem is in
+`scripts/gcp/README.md`). Family scenario files are
+`scenarios/i24_replica_zip*.yaml`; artifacts `artifacts/*_zip.json` and
+`artifacts/i24_validation_zip_<arm>.json`.
+
+**Junction gap.** The four `jm_timegap_minor_s` values {0.5, 0.75, 1, 1.5} s
+tie to every digit on the single fit-hour seed (inserted 0.905, RMSPE fitted
+hour 0.390, held-out 0.626; `artifacts/i24_merge_experiment_zipper_jm.json`)
+— the same inertness (k) found — and 0.5 s is the tie-break the pipeline
+records, not a fitted value.
+
+**FHWA steps on the family** (fitted hour 06:30–07:30 CST; 07:30–08:30 held
+out; one seed per point):
+
+| Step | Result | Fitted hour | Held-out | Inserted | Artifact |
+|---|---|---|---|---|---|
+| 2, demand level on the corrected profile | s = 0.925 | 0.331 | 0.441 | 0.845 | `demand_scale_i24_zip.json` |
+| 3, ramps, exit share, boundary, gap acceptance | Old Hickory × 0.75, Hickory Hollow × 1.25, its exit × 1.125, the rest × 1 | 0.332 | 0.356 | 0.960 | `i24_boundary_ramps_fit_zip.json` |
+
+The multipliers are those the canonical family found (§0, §7 of
+I24_CAPACITY.md): the procedure converges to the same place on both maps.
+
+**Batteries** (20 seeds each; criteria rows re-scored with the published
+sweep grid; the wave column is the criterion's `stack` detector, observed
+19.9 km/h; the floor column is each arm's own replicate noise, the RMSPE of
+one replicate against the mean of the other nineteen, which the canonical
+arms' schema did not record):
+
+| Arm | Config | RMSPE 5-min | Floor | GEH < 5, recommended | Wave [km/h] | Throughput [veh/h] | Travel time [s] | σ_v [m/s] | Fuel [ml/veh-km] | Waves | Rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| canonical `corrected` | `d8c6924188eb` | 33.7% | — | 17% | 15.9 | 5,576 [5,552, 5,600] | 601 | 4.80 | 108 | 8.1 | 5 / 2 |
+| canonical `speedcal` | `009ed0e2a7c0` | 35.9% | — | 19% | 15.8 | 5,710 [5,679, 5,741] | | | | | 5 / 2 |
+| canonical `ramps` | `d06808e7b8e1` | 34.8% | — | 20% | 15.7 | 5,574 [5,559, 5,588] | 579 | 4.90 | 103 | 10.0 | 5 / 2 |
+| canonical `speedcal_heavy` | `4167a3c09d2c` | 35.5% | 16.8% | 23% | 17.3 | 5,170 [5,144, 5,196] | 568 | 4.70 | 171 | 14.7 | 5 / 2 |
+| `zip_corrected` | `2cda89cfbaf8` | 37.7% | 11.8% | 22% | 16.1 | 5,536 [5,523, 5,548] | 584 | 4.66 | 100 | 10.1 | 5 / 2 |
+| `zip_ramps` | `b5175be6d854` | 34.2% | 12.8% | 23% | 15.7 | 5,476 [5,461, 5,491] | 593 | 4.69 | 97.7 | 9.4 | 5 / 2 |
+
+The `zip_tracked`, `zip_speedcal` (`f2209020a42a`) and `zip_speedcal_heavy`
+(`4d415d407acc`) batteries ran on the same VM and were lost with it before
+their artifacts came down (README post-mortem); they are rerun on a second
+VM and join this table when their artifacts land. The heavy arm's ring rows
+are scored from a fresh 20-seed ring run stored on its artifact
+(`--criteria-only --ring-seeds 20`); the arm's throughput is lower by the
+share's own capacity, as I24_DATA.md's heavy section anticipated, and its
+fuel column is not comparable (the heavy vehicles carry their own emission
+class).
+
+**Reading it.** The zipper family moves neither failing row. Its fitted-ramps
+arm is six tenths of a point better on the speed row than the canonical one
+and three points better on the flow row, both inside the arms' own replicate
+noise and far from the thresholds; its wave speed is the same. The merged
+lane's admittance of (k) is what the batteries carry: the family is recorded
+as the negative result the single seeds predicted, not as a replacement for
+the canonical family. The next mechanism is still a merge that feeds the
+mainline over the acceleration lane's length — the sublane model with its
+lateral parameters calibrated, or a dedicated merge edge — and it is
+modelling work, not tuning. The headway-cap sweep of the capacity-aware
+controller, the round's last stage, was cut by the machine's hard cap and is
+rerun on the second VM (I24_SWEEP.md, last section).
+
 ## 1. What is compared
 
 **Observed side** (`i24_validation_observed.json`; cached by data hash): the

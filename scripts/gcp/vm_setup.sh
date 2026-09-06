@@ -26,6 +26,9 @@ uv run --no-sync python -c "import libsumo; print('libsumo ok')"
 mkdir -p logs && chmod +x scripts/gcp/pipeline_i24.sh
 echo "== pipeline unit"
 loginctl enable-linger "$USER" 2>/dev/null || sudo loginctl enable-linger "$USER"
-systemd-run --user --unit=pipeline --collect bash -lc "cd ~/flowstate && scripts/gcp/pipeline_i24.sh $QUICK"
+# PIPELINE_BUCKET / PIPELINE_SELF_DELETE (from launch_i24_pipeline.sh --bucket/--self-delete) reach the unit's environment
+systemd-run --user --unit=pipeline --collect \
+  --setenv=PIPELINE_BUCKET="${PIPELINE_BUCKET:-}" --setenv=PIPELINE_SELF_DELETE="${PIPELINE_SELF_DELETE:-0}" \
+  bash -lc "cd ~/flowstate && scripts/gcp/pipeline_i24.sh $QUICK ${PIPELINE_ARGS:-}"
 sleep 8; systemctl --user is-active pipeline; tail -3 logs/pipeline.log
 echo "== hard cap: $(cat /run/systemd/shutdown/scheduled 2>/dev/null | tr '\n' ' ')"

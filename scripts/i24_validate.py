@@ -686,16 +686,21 @@ def build_results(
     }
 
 
-def refresh_criteria(arm: str) -> Path:
+def refresh_criteria(arm: str, ring_block: dict | None = None) -> Path:
     """Re-evaluate the criteria rows of an existing arm artifact (no simulation).
 
     Uses the values the artifact already carries (primary GEH bins, RMSPE, the
     criterion wave speed, ring rows, replicate count) with the current profile
     and the published sweep grid, rewrites ``criteria`` and the note, and
-    returns the path. Rows whose inputs are absent stay not evaluated.
+    returns the path. Rows whose inputs are absent stay not evaluated, except
+    the ring rows when ``ring_block`` (a fresh ``ring_benchmark_block`` run,
+    ``--criteria-only --ring-seeds N``) is given: the ring benchmark does not
+    depend on the arm, so it is stored on the artifact and the rows scored.
     """
     path = artifact_path(arm)
     d = json.loads(path.read_text())
+    if ring_block is not None:
+        d["ring"] = ring_block
     geh = d["geh"]
     obs_d = d["observed"]
     if "hourly_flows_veh_h_recommended" not in obs_d:
@@ -836,7 +841,7 @@ def main() -> None:
             if not art.is_file():
                 print(f"[{arm}] no artifact at {art}; skipped", flush=True)
                 continue
-            refresh_criteria(arm)
+            refresh_criteria(arm, ring)
             rows = json.loads(art.read_text())["criteria"]
             print(f"[{arm}] criteria re-evaluated:", flush=True)
             for r in rows:

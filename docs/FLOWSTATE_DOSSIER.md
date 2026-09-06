@@ -545,6 +545,13 @@ Step 3, the joint fit of ramp levels, boundary discharge and gap acceptance
 | As is | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.356 | 0.426 | 0.942 |
 | Best | 0.75 | 1.25 | 1.125 | 1.00 | 1.00 | 1.00 | 0.332 | 0.356 | 0.960 |
 
+The same two steps on the zipper family (corrected map, ramp-origin
+eagerness one, measured entry lanes, zipper junction with its negotiation
+gap chosen on the fit hour; cloud round of 2026-09-06): demand level 0.925
+(fitted hour 0.331, held-out 0.441, 0.845 inserted), then the same ramp
+multipliers as above (0.75, 1.25, 1.125; fitted hour 0.332, held-out 0.356,
+0.960 inserted). The steps converge to the same place on both maps.
+
 ### 6.8 The merge diagnostics
 
 Segment mean speeds over the study period [km/h], one seed, on the fitted
@@ -558,6 +565,15 @@ arm; the observed row is the recording:
 | Ramp closed | 0.996 | 0 / 0 | 1.232 | 65.1 | 62.5 | 56.1 | 50.9 | 48.2 | 45.6 | 44.4 | 42.9 | 37.8 | 35.6 |
 | Cooperation halved | 0.564 | 772 / 2,241 | 0.726 | 9.3 | 8.5 | 9.5 | 13.8 | 11.3 | 9.4 | 9.0 | 10.8 | 8.6 | 24.1 |
 | Gap acceptance doubled | 0.991 | 2,215 / 2,241 | 0.491 | 22.5 | 22.9 | 33.9 | 45.8 | 43.8 | 40.7 | 39.6 | 35.0 | 31.0 | 29.4 |
+
+The zipper junction, the one merge model that removes the upstream crawl on a
+single seed, was then carried through the full procedure and twenty-seed
+batteries (I24_VALIDATION.md §0.6). Against the canonical family it moves
+neither failing row: the fitted-ramps arm scores RMSPE 34.2% against 34.8%,
+GEH under 5 on 23% of link-hours against 20%, and the same 15.7 km/h wave
+speed. Its merged lane admits too little of the ramp's demand, and no
+junction parameter changes that, so the family is recorded as a negative
+result and the merge admittance stays the open mechanism.
 
 ### 6.9 Tracking coverage, three ways
 
@@ -888,7 +904,12 @@ Next, in order of leverage:
   have been run.
 - Operations: a cloud VM idled for about forty hours during this cycle
   because the launching session lost connectivity; the bootstrap now stops
-  the machine itself when its job ends.
+  the machine itself when its job ends. The next run stopped itself as
+  designed and lost part of its results instead: its hard cap was shorter
+  than the job and its archive lived only on the exit path, in a directory
+  the operating system clears at boot. The pipeline now archives after every
+  stage to persistent storage, and the record of both incidents is in
+  LESSONS.md rows 14–16.
 
 ### 12.1 Questions a reviewer asks, and the answers
 

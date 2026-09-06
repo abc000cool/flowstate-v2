@@ -161,10 +161,23 @@ def main() -> None:
     )
     ap.add_argument("--scenario-out", type=Path, default=SCENARIO_OUT)
     ap.add_argument("--name", default=SCENARIO_NAME, help="name of the written scenario")
+    ap.add_argument(
+        "--from-artifact",
+        type=Path,
+        default=None,
+        help="write --scenario-out from this saved fit artifact (its best scale, fleet and "
+        "base) without simulating; the scenario is a deterministic function of the artifact",
+    )
     args = ap.parse_args()
     fleet = args.fleet_artifact
     base_name = args.base
     base_yaml = args.base_yaml.resolve() if args.base_yaml is not None else None
+    if args.from_artifact is not None:
+        art = json.loads(args.from_artifact.read_text())
+        base_name = art["base"]
+        base_yaml = (REPO / art["base_scenario"]).resolve() if art.get("base_scenario") else None
+        write_scenario(art["best"], art["fleet_artifact"], base_name, base_yaml, args)
+        return
     if args.out == OUT and base_name != "tracked":
         args.out = OUT.with_name(f"demand_scale_i24_{base_name}.json")
     base = ScenarioConfig.model_validate(scaled_config(1.0, fleet, base_name, base_yaml, args.name))
@@ -233,19 +246,36 @@ def main() -> None:
     args.out.write_text(json.dumps(result, indent=1, default=_json_default))
     print(f"-> {args.out}")
     if args.write_scenario:
-        raw = scaled_config(best["scale"], fleet, base_name, base_yaml, args.name)
-        cfg = ScenarioConfig.model_validate(raw)
-        header = (
-            f"# i24_replica_speedcal — the {base_name}-demand replica with mainline and on-ramp\n"
-            f"# inflows multiplied by s = {best['scale']:.3f}, fitted by scripts/i24_fit_demand_scale.py\n"
-            "# on observed segment speeds over 06:30-07:30 CST only (windows 0-11); 07:30-08:30\n"
-            f"# is held out. Fleet: {fleet} (capacity-calibrated, docs/I24_CAPACITY.md).\n"
-            "# Exit fractions and the measured boundary are unchanged. See\n"
-            f"# artifacts/demand_scale_i24.json (rmspe train {best['rmspe_train']:.3f}, test {best['rmspe_test']:.3f}).\n"
-            f"# config hash {config_hash(cfg)}; seeded=False.\n"
-        )
-        args.scenario_out.write_text(header + yaml.safe_dump(raw, sort_keys=False))
-        print(f"-> {args.scenario_out} ({config_hash(cfg)})")
+        write_scenario(best, fleet, base_name, base_yaml, args)
+
+
+def write_scenario(
+    best: dict[str, Any],
+    fleet: str,
+    base_name: str,
+    base_yaml: Path | None,
+    args: argparse.Namespace,
+) -> None:
+    """Write the scaled scenario for ``best`` (``--scenario-out``, ``--name``)."""
+    raw = scaled_config(best["scale"], fleet, base_name, base_yaml, args.name)
+    cfg = ScenarioConfig.model_validate(raw)
+    header = (
+        f"# {args.name} — the {base_name}-demand replica with mainline and on-ramp\n"
+        f"# inflows multiplied by s = {best['scale']:.3f}, fitted by scripts/i24_fit_demand_scale.py\n"
+        "# on observed segment speeds over 06:30-07:30 CST only (windows 0-11); 07:30-08:30\n"
+        f"# is held out. Fleet: {fleet} (capacity-calibrated, docs/I24_CAPACITY.md).\n"
+        "# Exit fractions and the measured boundary are unchanged. See\n"
+        f"# {_rel(args.from_artifact or args.out)} (rmspe train {best['rmspe_train']:.3f}, "
+        f"test {best['rmspe_test']:.3f}).\n"
+        f"# config hash {config_hash(cfg)}; seeded=False.\n"
+    )
+    args.scenario_out.write_text(header + yaml.safe_dump(raw, sort_keys=False))
+    print(f"-> {args.scenario_out} ({config_hash(cfg)})")
+
+
+def _rel(path: Path) -> str:
+    path = Path(path).resolve()
+    return str(path.relative_to(REPO)) if path.is_relative_to(REPO) else str(path)
 
 
 if __name__ == "__main__":

@@ -70,17 +70,44 @@ calibration artifacts, and the OpenStreetMap extract `data/osm/i24_motion.osm`
 export is only needed to re-extract trajectories and never leaves the
 owner's machine.
 
-## The calibration-round pipeline (2026-09-06)
+## The calibration-round pipeline (2026-09-06, revised after the run)
 
-`launch_i24_pipeline.sh` creates one on-demand VM (the code goes up as a `git archive` snapshot of HEAD through `vm_setup.sh`, because the repository is private) (`n2-standard-32`,
-`us-west1-b`, 120 GB) whose startup script arms a boot-time hard cap
-(`shutdown -h +300`), ships the I-24 processed data and the observed-side
-cache, clones the pushed commit and starts `pipeline_i24.sh` under
-`systemd-run --user`. The pipeline is resumable (stage markers in `logs/`) and
-powers the machine off when it exits, success or failure. Run
-`watch_pipeline.sh` locally afterwards: it polls, fetches `/tmp/final.tgz`
-when `logs/PIPELINE_DONE` appears, deletes the instance, never restarts a
-powered-off instance at the working size (it shrinks to two vCPUs with a
-20-minute cap to fetch), and deletes the instance unconditionally at its
-own deadline (default 5.5 h). Expected: about two hours of machine time.
+`launch_i24_pipeline.sh` creates one on-demand VM (`n2-standard-32`,
+`us-west1-b`, 120 GB; the code goes up as a `git archive` snapshot of HEAD
+through `vm_setup.sh`, because the repository is private) whose startup script
+arms a boot-time hard cap (`shutdown -h +$CAP_MIN`, default 480 min), ships
+the I-24 processed data and the observed-side cache and starts
+`pipeline_i24.sh` under `systemd-run --user`. The pipeline is resumable (stage
+markers in `logs/`), rebuilds its results archive `~/final.tgz` atomically
+after **every** stage (artifacts, scenarios, logs; the first-seed replicates
+join at the end), copies it to `--bucket gs://…` when one is given, and powers
+the machine off when it exits — success, failure, or SIGTERM. With `--bucket`
+and `--self-delete` the VM deletes itself once the final archive is in the
+bucket (the instance is created with the `compute-rw` and `storage-rw`
+scopes), so no local machine has to be awake; without a bucket, run
+`caffeinate -i watch_pipeline.sh` locally: it pulls the archive whenever it
+changed, deletes the instance when the pipeline reports done, never restarts a
+powered-off instance at the working size (a 2-vCPU restart with a 30-minute
+cap re-armed before every fetch, only when the local archive is incomplete),
+and deletes the instance unconditionally at its own deadline (default 7.5 h).
+Results are installed with `ingest_pipeline_results.sh final.tgz`.
 
+### What the 2026-09-06 run taught (docs/LESSONS.md rows 14–16)
+
+The first run of this pipeline (commit 3a4b042, VM created 08:55 UTC) finished
+its calibration stages and both batteries by 11:31 UTC and was killed by its
+own 300-minute boot cap at 13:57 UTC, 2.4 h into the headway-cap sweep. The
+archive was written only by the EXIT trap, to `/tmp`; a systemd stop gives
+the unit seconds, and Debian clears `/tmp` at boot, so the 2-vCPU restart found
+nothing and the interim archive it built was cut off by the restart's own
+20-minute cap (the laptop running the watcher slept twice, stretching every
+timer). Recovered: eight intact artifacts (the demand and ramp fits, the jm
+sweep, the `zip_corrected` and `zip_ramps` batteries and the canonical
+`speedcal_heavy` battery); lost: three battery artifacts (rerun on a second VM the same evening,
+`--pipeline-args '--stages "battery_lost prune_lost cap_sweep rescore"'`), every scenario file (rebuilt bit-for-bit
+from the fit artifacts with `--from-artifact`, config hashes checked against
+the batteries that used them), the pipeline logs, and the cap sweep. Machine
+time: 5.0 h at 32 vCPUs plus 0.4 h at 2 vCPUs, about eight dollars. Every
+change above follows from that: archive in `$HOME`, after every stage, atomic;
+bucket copy; SIGTERM trap; cap at twice the estimate; incremental fetch;
+`caffeinate`; a describe timeout is not a deleted instance.

@@ -106,8 +106,9 @@ discharge); two map defects at the auxiliary lanes are corrected from the
 landmark layer (`scripts/i24_correct_osm.py`); the merge crawl survives every
 lane-change parameter, the ramp-origin eagerness field, the measured entry lane
 distribution, and the sublane model gridlocks as configured — a merge lock of
-the lane-discrete model. Next: a non-locking merge model, then the FHWA
-sequence and the battery on the corrected map.
+the lane-discrete model. The non-locking merge model (the zipper junction with
+its negotiation gap fitted) and the FHWA sequence on the corrected map ran as
+the `zip` scenario family on 2026-09-06 (below): a documented negative result.
 *Built 2026-09-06 (owner's list):* temporary lane closures and a heavy-vehicle
 share (fitted from the recording's semis and trucks), on-ramp merge models
 (`RampSpec.merge`: acceleration lane, zipper) as netconvert patches, ALINEA
@@ -119,6 +120,24 @@ hashes). Single-seed probes: the capacity-aware controller halves
 FollowerStopper's throughput cost for the same smoothing
 (docs/I24_SWEEP.md); the merge models on the corrected map are in
 I24_VALIDATION.md §0.5 (j).
+*Cloud calibration round (2026-09-06, I24_VALIDATION.md §0.6):* the zipper
+family — corrected map, ramp-origin eagerness 1, measured entry lanes, zipper
+junction gap 0.5 s chosen on the fit hour — went through the FHWA sequence
+(demand level s = 0.925, then ramp levels and the exit share; held-out hour
+reported) and the 20-seed batteries. Against the canonical family it moves
+neither failing row: `zip_ramps` RMSPE 34.2% (canonical 34.8%), GEH < 5 on
+23% of recommended-coverage link-hours (20%), stack wave speed 15.7 km/h
+(15.7); the family is kept as the documented negative result of §0.5 (k), and
+the merge admittance stays the open mechanism. The canonical heavy arm
+(`speedcal_heavy`, 20 seeds) sits with the others: 35.5% / 23% / 17.3 km/h,
+throughput 5,170 veh/h against 5,710 without the heavy share. The run was cut
+by its own hard cap during the headway-cap sweep; the sweep is the one item
+not done (scripts/gcp/README.md post-mortem, LESSONS.md rows 14–16), and the
+cloud scripts now archive after every stage. Next, in this order: the
+headway-cap sweep of `follower_stopper_capacity` (20 seeds, paired against
+the baseline; needs about four hours at 32 vCPUs and the owner's approval),
+then a merge model that admits the ramp's demand (sublane calibration or a
+dedicated merge edge), then radar counts for the flow target.
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on

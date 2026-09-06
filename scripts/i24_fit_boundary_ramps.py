@@ -64,6 +64,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -433,7 +434,12 @@ def load_prior(path: Path, prov: dict[str, Any]) -> list[EvalRecord]:
     return [_row_record(row) for row in old.get("log", [])]
 
 
-def scenario_header(best: dict[str, float], fit: MultiplierFit, chash: str) -> str:
+def scenario_header(
+    best: dict[str, float],
+    fit: MultiplierFit,
+    chash: str,
+    artifact_ref: str = "artifacts/i24_boundary_ramps_fit.json",
+) -> str:
     """YAML header comment stating what was fitted on which hour and what was held out."""
     parts = ", ".join(f"{n} x {best[n]:.4f}" for n in MULTIPLIER_NAMES)
     test = fit.diagnostics.get("rmspe_test")
@@ -446,11 +452,54 @@ def scenario_header(best: dict[str, float], fit: MultiplierFit, chash: str) -> s
         "# Old Hickory / Hickory Hollow on-ramp inflows, Hickory Hollow / Bell Road exit\n"
         "# fractions (clipped to [0, 1]) and the measured boundary schedule (clipped to its\n"
         "# measured range) are the only changes; mainline demand, fleet and lane-change\n"
-        "# parameters are those of the base. See artifacts/i24_boundary_ramps_fit.json\n"
+        f"# parameters are those of the base. See {artifact_ref}\n"
         f"# (rmspe train {fit.objective:.3f}, held-out test {test_s}, inserted "
         f"{fit.diagnostics.get('inserted_fraction', float('nan')):.3f}).\n"
         f"# config hash {chash}; seeded=False.\n"
     )
+
+
+def write_from_artifact(path: Path) -> None:
+    """Write the fitted scenario recorded in a saved artifact (no simulation).
+
+    The scenario is a deterministic function of the artifact: its best
+    multipliers applied to the base scenario named in its provenance (or
+    ``--base-yaml``), so a lost scenario file is rebuilt bit-for-bit and its
+    config hash can be checked against the validation artifacts that used it.
+    """
+    global BASE_YAML
+    art = json.loads(path.read_text())
+    prov = art["provenance"]
+    if BASE_YAML == REPO / "scenarios" / "i24_replica_speedcal.yaml" and prov.get("base_scenario"):
+        BASE_YAML = (REPO / prov["base_scenario"]).resolve()
+    base_raw = base_scenario()
+    base_hash = config_hash(ScenarioConfig.model_validate(base_raw))
+    if base_hash != prov["base_config_hash"]:
+        raise SystemExit(
+            f"base {BASE_YAML} hashes to {base_hash}, the artifact was fitted on {prov['base_config_hash']}"
+        )
+    best = art["best"]
+    stand_in = SimpleNamespace(
+        objective=float(best["rmspe_train"]),
+        diagnostics={
+            "rmspe_test": best.get("rmspe_test"),
+            "inserted_fraction": best.get("inserted_fraction", float("nan")),
+        },
+        log=art["log"],
+        converged=bool(art["converged"]),
+    )
+    raw = apply_multipliers(base_raw, best["values"])
+    chash = config_hash(ScenarioConfig.model_validate(raw))
+    SCENARIO_OUT.write_text(
+        scenario_header(best["values"], stand_in, chash, _rel(path))
+        + yaml.safe_dump(raw, sort_keys=False)
+    )
+    print(f"-> {SCENARIO_OUT} ({chash}) from {path}")
+
+
+def _rel(path: Path) -> str:
+    path = Path(path).resolve()
+    return str(path.relative_to(REPO)) if path.is_relative_to(REPO) else str(path)
 
 
 def _print_rows(rows: list[EvalRecord]) -> None:
@@ -484,6 +533,13 @@ def main() -> None:
     )
     ap.add_argument("--scenario-out", type=Path, default=None)
     ap.add_argument("--name", default=None, help="name of the written scenario")
+    ap.add_argument(
+        "--from-artifact",
+        type=Path,
+        default=None,
+        help="write --scenario-out from this saved fit artifact (its best multipliers on its "
+        "recorded base scenario) without simulating",
+    )
     args = ap.parse_args()
     global BASE_YAML, SCENARIO_OUT, SCENARIO_NAME
     if args.base_yaml is not None:
@@ -492,6 +548,9 @@ def main() -> None:
         SCENARIO_OUT = args.scenario_out.resolve()
     if args.name is not None:
         SCENARIO_NAME = args.name
+    if args.from_artifact is not None:
+        write_from_artifact(args.from_artifact)
+        return
     out: Path = args.out if args.out is not None else (SMOKE_OUT if args.smoke else OUT)
     rounds = 0 if args.smoke else args.rounds
 
@@ -564,7 +623,7 @@ def main() -> None:
         raw = apply_multipliers(base_scenario(), fit.best)
         chash = config_hash(ScenarioConfig.model_validate(raw))
         SCENARIO_OUT.write_text(
-            scenario_header(fit.best, fit, chash) + yaml.safe_dump(raw, sort_keys=False)
+            scenario_header(fit.best, fit, chash, _rel(out)) + yaml.safe_dump(raw, sort_keys=False)
         )
         print(f"-> {SCENARIO_OUT} ({chash})")
 

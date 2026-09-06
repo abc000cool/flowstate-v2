@@ -136,3 +136,13 @@ throughput in both controlled runs — the queue reaches the insertion
 buffer — so the corridor-level numbers include the buffer's rejections as
 the battery's do.
 
+*Status of that sweep (2026-09-06):* `scripts/i24_cap_sweep.py` (baseline,
+FollowerStopper, and the capacity-aware controller at `h_max_s` ∈ {1.3, 1.5,
+1.7, 2.0}; 20 seeds each, common random numbers, paired 95% intervals) was
+the last stage of the cloud round and was cut by the machine's hard cap 2.4 h
+in; no artifact exists and nothing above it is quoted from it. The controlled
+runs are far slower than the baseline runs (the controller's throughput cost
+keeps vehicles on the network), so the sweep needs about four hours at 32
+vCPUs; it is not run locally. Until it runs, the single-seed probe above is
+the only evidence on the cap.
+

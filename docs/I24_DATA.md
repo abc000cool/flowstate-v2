@@ -248,8 +248,16 @@ as_is_heavy`): insertion 94.5 → 88.0%, section flows 8% lower
 headways widen the capacity shortfall of docs/I24_VALIDATION.md §0.5 (b),
 which is expected: the passenger population's capacity calibration
 (docs/I24_CAPACITY.md) was done without them, so an arm that carries the
-heavy share needs that step redone with the mixed fleet. The current
-validation arms run without heavy vehicles.
+heavy share needs that step redone with the mixed fleet. The heavy arm
+(`scenarios/i24_replica_speedcal_heavy.yaml`, the fitted arm plus this share)
+has since run its 20-seed battery (cloud round of 2026-09-06,
+`artifacts/i24_validation_speedcal_heavy.json`; docs/I24_VALIDATION.md §0.6):
+RMSPE 35.5% (fitted arm without the share 35.9%), GEH < 5 on 23% of
+recommended-coverage link-hours (19%), stack wave speed 17.3 km/h (15.8;
+observed 19.9), throughput at the reference section 5,170 veh/h
+[5,144, 5,196] against 5,710 [5,679, 5,741]. The rows do not move; the
+throughput falls by the share's own capacity, which is the point above. The
+other validation arms still run without heavy vehicles.
 
 ## Fundamental diagram (`artifacts/fd_i24.json`)
 
