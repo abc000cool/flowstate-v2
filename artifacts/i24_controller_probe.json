@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "arm": "scenarios/i24_replica_speedcal.yaml",
+  "note": "single seed per configuration \u2014 a probe, not a result (docs/I24_SWEEP.md carries the 20-seed battery)",
+  "rows": [
+    {
+      "controller": "baseline",
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "seed": 6914975401685141156,
+      "config_hash": "26640341d141",
+      "inserted_fraction": 0.945,
+      "n_avs": 0,
+      "metrics": {
+        "throughput_veh_h": 5650.878317733042,
+        "mean_tt_s": 574.861685984812,
+        "p90_tt_s": 904.1690756291067,
+        "sigma_v_spatial_ms": 5.549283416387078,
+        "sigma_v_temporal_ms": 4.935279118155469,
+        "vmt_veh_km": 98983.08130996129,
+        "vht_veh_h": 3507.5106944444556,
+        "fuel_ml_per_veh_km": 102.47268142315949,
+        "wave_count": 11,
+        "wave_speed_kmh": 9.5509337860781,
+        "wave_amplitude_ms": 7.9009817903718815
+      },
+      "wall_s": 211.5,
+      "vs_baseline": {
+        "throughput_veh_h": 0.0,
+        "mean_tt_s": 0.0,
+        "sigma_v_temporal_ms": 0.0,
+        "fuel_ml_per_veh_km": 0.0
+      }
+    },
+    {
+      "controller": "follower_stopper",
+      "penetration": 0.05,
+      "compliance": 1.0,
+      "seed": 6914975401685141156,
+      "config_hash": "35b3db9d15ae",
+      "inserted_fraction": 0.5855,
+      "n_avs": 781,
+      "metrics": {
+        "throughput_veh_h": 2932.99140915502,
+        "mean_tt_s": 1313.7325845825158,
+        "p90_tt_s": 3121.868468684254,
+        "sigma_v_spatial_ms": 2.111364075393955,
+        "sigma_v_temporal_ms": 2.092294381094614,
+        "vmt_veh_km": 50859.6160078873,
+        "vht_veh_h": 5703.051527777784,
+        "fuel_ml_per_veh_km": 272.259824412454,
+        "wave_count": 5,
+        "wave_speed_kmh": 12.0,
+        "wave_amplitude_ms": 9.071669898603323
+      },
+      "wall_s": 411.3,
+      "vs_baseline": {
+        "throughput_veh_h": -0.481,
+        "mean_tt_s": 1.2853,
+        "sigma_v_temporal_ms": -0.5761,
+        "fuel_ml_per_veh_km": 1.6569
+      }
+    },
+    {
+      "controller": "follower_stopper_capacity",
+      "penetration": 0.05,
+      "compliance": 1.0,
+      "seed": 6914975401685141156,
+      "config_hash": "b31635000d96",
+      "inserted_fraction": 0.7907,
+      "n_avs": 781,
+      "metrics": {
+        "throughput_veh_h": 4200.07693294012,
+        "mean_tt_s": 916.1730260383767,
+        "p90_tt_s": 1709.064902456664,
+        "sigma_v_spatial_ms": 2.4724144585709578,
+        "sigma_v_temporal_ms": 2.2051602314588856,
+        "vmt_veh_km": 73428.7367964347,
+        "vht_veh_h": 4789.158888888859,
+        "fuel_ml_per_veh_km": 162.48534364159724,
+        "wave_count": 14,
+        "wave_speed_kmh": 6.300000000000001,
+        "wave_amplitude_ms": 7.31658764807378
+      },
+      "wall_s": 345.7,
+      "vs_baseline": {
+        "throughput_veh_h": -0.2567,
+        "mean_tt_s": 0.5937,
+        "sigma_v_temporal_ms": -0.5532,
+        "fuel_ml_per_veh_km": 0.5856
+      }
+    }
+  ]
+}

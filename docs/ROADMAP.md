@@ -108,6 +108,17 @@ lane-change parameter, the ramp-origin eagerness field, the measured entry lane
 distribution, and the sublane model gridlocks as configured — a merge lock of
 the lane-discrete model. Next: a non-locking merge model, then the FHWA
 sequence and the battery on the corrected map.
+*Built 2026-09-06 (owner's list):* temporary lane closures and a heavy-vehicle
+share (fitted from the recording's semis and trucks), on-ramp merge models
+(`RampSpec.merge`: acceleration lane, zipper) as netconvert patches, ALINEA
+ramp metering (`RampSpec.meter`), a capacity-aware FollowerStopper
+(`follower_stopper_capacity`, headway cap), managed (HOV) lane rules, the
+speed criterion by aggregation with its floor in the auto-report, and
+config-hash policy v2 (defaults excluded, so schema growth stops moving
+hashes). Single-seed probes: the capacity-aware controller halves
+FollowerStopper's throughput cost for the same smoothing
+(docs/I24_SWEEP.md); the merge models on the corrected map are in
+I24_VALIDATION.md §0.5 (j).
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on

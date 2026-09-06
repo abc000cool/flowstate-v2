@@ -106,3 +106,33 @@ All 24 required cells are present with CIs, so the `sensitivity_grid` row of
 the criteria battery is satisfied by this artifact; the arm artifacts written
 before this sweep completed carry it as not evaluated (see
 [I24_VALIDATION.md](I24_VALIDATION.md) §0).
+
+## Capacity-aware FollowerStopper: a single-seed probe (2026-09-06)
+
+The battery above says FollowerStopper's held gap is a moving capacity
+drop. `controllers.follower_stopper_capacity` keeps the FollowerStopper law
+inside a time-headway cap `g_max = g0 + h_max · v` (4 m + 2.0 s by default)
+and, beyond it, releases the command toward the leader's speed so the
+controlled vehicle stops holding traffic back (docs/CONTRACTS.md §1). One
+seed of the fitted arm at 5% penetration and full compliance
+(`scripts/i24_controller_probe.py`, `artifacts/i24_controller_probe.json`;
+the seed differs from the battery's, so the baseline is not the battery's
+baseline):
+
+| Configuration | Inserted | Throughput [veh/h] | Mean travel time [s] | p90 travel time [s] | σ_v temporal [m/s] | Fuel [ml/veh-km] | Waves |
+|---|---|---|---|---|---|---|---|
+| Baseline | 94.5% | 5,651 | 575 | 904 | 4.94 | 102.5 | 11 |
+| FollowerStopper, 5% / 100% | 58.6% | 2,933 (−48%) | 1,314 (+128%) | 3,122 | 2.09 (−58%) | 272.3 (+166%) | 5 |
+| Capacity-aware FollowerStopper, 5% / 100% | 79.1% | 4,200 (−26%) | 916 (+59%) | 1,709 | 2.21 (−55%) | 162.5 (+59%) | 14 |
+
+The cap halves the throughput and fuel cost for the same reduction in the
+speed spread; it does not remove the cost, because a 2.0 s headway held on
+purpose is still half a second more than the calibrated fleet keeps
+(1.32 s), and at 5% penetration that is a moving capacity drop of its own.
+This is one seed, so it carries no interval and settles nothing; it says
+the cap is the lever and that the next sweep should be over `h_max_s`
+(1.3–2.0 s) rather than over penetration alone. Insertion falls with the
+throughput in both controlled runs — the queue reaches the insertion
+buffer — so the corridor-level numbers include the buffer's rejections as
+the battery's do.
+

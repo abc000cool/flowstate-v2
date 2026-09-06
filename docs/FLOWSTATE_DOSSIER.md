@@ -210,8 +210,21 @@ sweep in well under 15 minutes on four processes.
   OpenStreetMap geometry, two on-ramps, two off-ramps, a measured downstream
   speed schedule, demand from the trajectory instrument's crossings.
 - osm_generic: any bounding box or extract to a runnable scenario, tested.
+- Scenario inputs added on 6 September 2026: temporary lane closures (work
+  zones, incidents; labelled as imposed disturbances), a heavy-vehicle
+  share with its own calibrated population (the recording's semis and
+  trucks), managed (HOV) lane rules, on-ramp merge models (acceleration
+  lane, zipper junction) and ramp metering — each a schema field with
+  tests, each recorded in the run metadata.
 
 ### 4.4 Controllers
+
+Added 6 September 2026: a capacity-aware FollowerStopper that keeps the
+smoothing law inside a time-headway cap and releases toward the leader
+beyond it (one seed on the I-24 fitted arm: half of FollowerStopper's
+throughput cost for the same reduction in speed spread, and still a cost),
+and ALINEA ramp metering as a pure controller driving a virtual signal on
+the on-ramp, the control lever US agencies most often own on a merge.
 
 FollowerStopper (Stern et al. 2018) commands a speed from the gap and the
 negative part of the approach rate across three parabolic region boundaries

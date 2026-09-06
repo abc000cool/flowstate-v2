@@ -387,6 +387,45 @@ lateral speed and gap parameters, internal links) is a separate piece of
 work; it is not attempted in this round, and the option stays in the schema
 for it.
 
+**(j) Merge models and metering, single seed on the corrected map**
+(`RampSpec.merge`, `RampSpec.meter`; `artifacts/i24_merge_experiment_mergemodels.json`;
+all three on the corrected map with ramp-origin eagerness 1 and the measured
+entry lanes, the best combination of (g)):
+
+| Variant | RMSPE 5-min all / fit / held-out | 15-min | GEH < 5 | Inserted | Old Hickory ramp departed | Segments 0–1.1 km | 2.2–4.9 km |
+|---|---|---|---|---|---|---|---|
+| Lane-change merge (from (g)) | 37.4 / 32.7 / 41.5% | 24.8% | 17% | 93.7% | 2,035 / 2,241 | 27 / 23 / 28 | 34 / 33 / 28 / 26 / 32 |
+| Acceleration-lane attribute | 37.4 / 32.7 / 41.5% | 24.8% | 17% | 93.7% | 2,035 / 2,241 | 27 / 23 / 28 | 34 / 33 / 28 / 26 / 32 |
+| Zipper junction | 54.4 / 40.1 / 65.6% | 40.7% | 19% | 90.7% | 1,397 / 2,241 | **40** / 25 / **18** | **48 / 47 / 46 / 43 / 36** |
+| Zipper + ALINEA meter | 74.8 / 52.8 / 91.7% | 50.9% | 24% | 85.6% | 630 / 2,241 | 50 / 50 / 46 | 46 / 43 / 41 / 39 / 37 |
+
+(Observed: 36 / 33 / 30 km/h and 37 / 38 / 29 / 30 / 34.) Three readings:
+
+* **SUMO's acceleration-lane attribute changes nothing here.** The patch
+  reaches the compiled net (`acceleration="1"` on lane 0) and the run is
+  indistinguishable from its twin: the attribute governs how a vehicle
+  treats the lane's end, and the lock is not made at the lane's end.
+* **The zipper junction breaks the lock and overshoots.** With ramp and
+  right-lane traffic interleaving at the lane end instead of negotiating
+  lane changes, the entry runs at 40 km/h against 36 observed — the crawl
+  of (c) is gone, and the right lane upstream of the gore is the fastest
+  lane, as in the recording. But the zipper's merged lane admits too little:
+  lanes 4 and 5 stand at 4–7 km/h inside the merge zone with a third of the
+  vehicle-time each, only 62% of the ramp's demand gets in, and everything
+  downstream runs 10–15 km/h too fast on the flow that is missing. The
+  queue moved from the wrong place (the mainline, upstream) to the right
+  place (the merge zone) and became too deep. What sets its depth is SUMO's
+  junction negotiation at a zipper (the junction-model time gaps), which is
+  a parameter with a physical meaning and a measurable target — the
+  recording's merge-zone speeds — and is the next lever.
+* **The meter does what a meter does.** ALINEA at the fitted diagram's
+  critical density released 577 vehicles at 648 veh/h on average and kept
+  the mainline in free flow at 36–61 km/h; the ramp queue filled the ramp
+  and 85.6% of demand entered. Against a recording of an unmetered day the
+  error is large by construction; the value of the run is that the meter
+  works mechanically on the replica and that the replica responds to it in
+  the expected direction.
+
 **(i) What this round leaves.** The two failing rows are explained and their
 irreducible parts are measured:
 
@@ -404,9 +443,11 @@ irreducible parts are measured:
   right on their own evidence and shorten the queue by half a kilometre;
   together they give the best single-seed 15-min error so far (24.8%
   against 25.9%). They do not clear the gore.
-* What would: a merge model that does not lock — the sublane model with
-  its lateral parameters calibrated, or a zipper-type merge node at the
-  acceleration lane's end — followed by the FHWA sequence rerun on the
+* What would: a merge model that does not lock. The zipper junction of (j)
+  is that model — it removes the upstream crawl on the first try — and it
+  needs its junction negotiation calibrated to the recording's merge-zone
+  speeds (too deep a queue as built), or the sublane model with its
+  lateral parameters calibrated; then the FHWA sequence rerun on the
   corrected map (demand level, then ramps) and the 20-seed battery. That is
   the next round, and it is compute and modelling work, not tuning.
 
