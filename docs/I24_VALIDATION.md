@@ -517,23 +517,38 @@ arms' schema did not record):
 | canonical `speedcal` | `009ed0e2a7c0` | 35.9% | — | 19% | 15.8 | 5,710 [5,679, 5,741] | | | | | 5 / 2 |
 | canonical `ramps` | `d06808e7b8e1` | 34.8% | — | 20% | 15.7 | 5,574 [5,559, 5,588] | 579 | 4.90 | 103 | 10.0 | 5 / 2 |
 | canonical `speedcal_heavy` | `4167a3c09d2c` | 35.5% | 16.8% | 23% | 17.3 | 5,170 [5,144, 5,196] | 568 | 4.70 | 171 | 14.7 | 5 / 2 |
+| `zip_tracked` | `6b7fd04e19b3` | 183.5% | 7.5% | 1% | none found (standard 7.9) | 4,018 [4,013, 4,022] | 252 | 4.15 | 65 | 20.0 | 4 / 3 |
 | `zip_corrected` | `2cda89cfbaf8` | 37.7% | 11.8% | 22% | 16.1 | 5,536 [5,523, 5,548] | 584 | 4.66 | 100 | 10.1 | 5 / 2 |
+| `zip_speedcal` | `f2209020a42a` | 43.0% | 11.4% | 22% | 16.2 | 5,518 [5,507, 5,528] | 553 | 4.59 | 93 | 14.1 | 5 / 2 |
 | `zip_ramps` | `b5175be6d854` | 34.2% | 12.8% | 23% | 15.7 | 5,476 [5,461, 5,491] | 593 | 4.69 | 97.7 | 9.4 | 5 / 2 |
+| `zip_speedcal_heavy` | `4d415d407acc` | 34.1% | 15.6% | 20% | none found (standard 11.4) | 5,009 [4,892, 5,125] | 592 | 4.51 | 171 | 10.2 | 4 / 3 |
 
-The `zip_tracked`, `zip_speedcal` (`f2209020a42a`) and `zip_speedcal_heavy`
-(`4d415d407acc`) batteries ran on the same VM and were lost with it before
-their artifacts came down (README post-mortem); they are rerun on a second
-VM and join this table when their artifacts land. The heavy arm's ring rows
-are scored from a fresh 20-seed ring run stored on its artifact
-(`--criteria-only --ring-seeds 20`); the arm's throughput is lower by the
-share's own capacity, as I24_DATA.md's heavy section anticipated, and its
-fuel column is not comparable (the heavy vehicles carry their own emission
-class).
+The `zip_tracked`, `zip_speedcal` and `zip_speedcal_heavy` batteries ran on
+the first VM and were lost with it before their artifacts came down (README
+post-mortem); the rows above are their reruns on a second VM the same
+evening, which reproduce the first VM's console numbers to every digit
+(the runs are deterministic per seed and SUMO version). The heavy arms' ring
+rows are scored from 20-seed ring runs stored on the artifacts (the
+canonical one through `--criteria-only --ring-seeds 20`); their throughput
+is lower by the share's own capacity, as I24_DATA.md's heavy section
+anticipated, and their fuel column is not comparable (the heavy vehicles
+carry their own emission class). Two arms fail the wave row because the
+`stack` detector finds no backward peak with the required contrast in their
+stacked fields — the raw-demand arm, which is free-flowing, and the zipper
+heavy arm, whose standard-detector speed (11.4 km/h) is the highest of any
+arm's; the canonical heavy arm has a peak at 17.3 km/h. With the stack
+finding peaks in a minority of replicates per arm (§0.4), the row's
+pass/fail on a single arm is not a stable statistic, and it is reported as
+scored.
 
 **Reading it.** The zipper family moves neither failing row. Its fitted-ramps
 arm is six tenths of a point better on the speed row than the canonical one
 and three points better on the flow row, both inside the arms' own replicate
-noise and far from the thresholds; its wave speed is the same. The merged
+noise and far from the thresholds; its wave speed is the same. Its
+demand-level arm is seven points worse than the canonical one (43.0% against
+35.9%) at the same flow score, and the ramp step recovers nine of them: on
+this map the ramp levels matter more, which is the merged lane's admittance
+showing up as a demand-split question. The merged
 lane's admittance of (k) is what the batteries carry: the family is recorded
 as the negative result the single seeds predicted, not as a replacement for
 the canonical family. The next mechanism is still a merge that feeds the

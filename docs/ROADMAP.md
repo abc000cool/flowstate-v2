@@ -130,14 +130,15 @@ neither failing row: `zip_ramps` RMSPE 34.2% (canonical 34.8%), GEH < 5 on
 (15.7); the family is kept as the documented negative result of §0.5 (k), and
 the merge admittance stays the open mechanism. The canonical heavy arm
 (`speedcal_heavy`, 20 seeds) sits with the others: 35.5% / 23% / 17.3 km/h,
-throughput 5,170 veh/h against 5,710 without the heavy share. The run was cut
-by its own hard cap during the headway-cap sweep; the sweep is the one item
-not done (scripts/gcp/README.md post-mortem, LESSONS.md rows 14–16), and the
-cloud scripts now archive after every stage. Next, in this order: the
-headway-cap sweep of `follower_stopper_capacity` (20 seeds, paired against
-the baseline; needs about four hours at 32 vCPUs and the owner's approval),
-then a merge model that admits the ramp's demand (sublane calibration or a
-dedicated merge edge), then radar counts for the flow target.
+throughput 5,170 veh/h against 5,710 without the heavy share; the zipper
+heavy arm 34.1% / 20% / no stack peak. The first VM was cut by its own hard
+cap during the headway-cap sweep and lost three batteries and the sweep
+(scripts/gcp/README.md post-mortem, LESSONS.md rows 14–16); a second VM the
+same evening reran the batteries (identical numbers) and the sweep, with the
+scripts now archiving after every stage. Next, in this order: the
+headway-cap sweep's write-up (I24_SWEEP.md), then a merge model that admits
+the ramp's demand (sublane calibration or a dedicated merge edge), then
+radar counts for the flow target.
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on

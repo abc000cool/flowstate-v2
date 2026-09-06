@@ -8,10 +8,12 @@ metrics on the measured span (throughput at data x = 2,200 m, travel time,
 speed spread, fuel, waves) are aggregated with t-distribution 95% intervals
 and contrasted with the baseline seed by seed (paired). Trajectories are
 deleted once the metrics are computed (``--keep-trajectories`` keeps them).
-Resumable: a configuration whose run tree already holds every replicate's
-``metrics.json`` is not rerun. The summary is rewritten after every
-configuration (``complete: false`` until the last one), so a run cut short
-still leaves the finished cells and their paired contrasts.
+Resumable per seed: replicates with ``metrics.json`` are not rerun, replicates
+with trajectories but no metrics are only analysed. Simulation and analysis
+each run in their own process pool (``--procs``, ``--analysis-procs``). The
+summary is rewritten after every configuration (``complete: false`` until
+the last one), so a run cut short still leaves the finished cells and their
+paired contrasts.
 
 Output: ``artifacts/i24_cap_sweep_summary.json``. Run from the repo root::
 
@@ -23,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import multiprocessing as mp
 import sys
 import time
 from dataclasses import asdict
@@ -37,7 +40,7 @@ from i24_validate import _inputs, _span
 
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
-from microsim.runner import _versions, run_replicates
+from microsim.runner import _versions, run_micro
 from validation.metrics import Metrics, aggregate, compute_metrics
 
 REPO = Path(__file__).resolve().parents[1]
@@ -78,20 +81,49 @@ def _config(
     return ScenarioConfig.model_validate(raw)
 
 
-def _metrics_for(cfg: ScenarioConfig, out_root: Path, procs: int, keep: bool) -> dict[int, Metrics]:
+def _run_one(args: tuple[ScenarioConfig, int, str]) -> str:
+    """Pool worker: one replicate into ``out_root/<hash>/<seed>/``."""
+    cfg, seed, out_root = args
+    return str(run_micro(cfg, seed, out_root).run_dir)
+
+
+def _analyse_one(args: tuple[str, float, float, float, bool]) -> None:
+    """Pool worker: metrics.json for one run directory, trajectories dropped unless kept."""
+    run_dir, x_ref, span_lo, span_hi, keep = args
+    d = Path(run_dir)
+    m = compute_metrics(d, x_ref=x_ref, span=(span_lo, span_hi))
+    (d / "metrics.json").write_text(json.dumps(asdict(m)))
+    if not keep:
+        (d / "trajectories.parquet").unlink(missing_ok=True)
+
+
+def _metrics_for(
+    cfg: ScenarioConfig, out_root: Path, procs: int, analysis_procs: int, keep: bool
+) -> dict[int, Metrics]:
+    """Metrics of every replicate of ``cfg``; simulates and analyses only the missing seeds.
+
+    Resumable per seed: a seed whose ``metrics.json`` exists is not touched, a
+    seed whose run directory holds trajectories but no metrics is analysed
+    only, and the rest are simulated in a spawn pool and then analysed in a
+    second pool (the analysis is the sequential bottleneck otherwise: one
+    replica's metrics take minutes on a single core).
+    """
     geo = _inputs()["geometry"]
     a, b = geo["sim_x_of_data_x"]["a"], geo["sim_x_of_data_x"]["b"]
     lo, hi = _span()
+    x_ref, span_lo, span_hi = a + b * 2200.0, a + b * lo, a + b * hi
     seeds = spawn_seeds(cfg.seed, cfg.replicates)
     tree = out_root / config_hash(cfg)
-    done = all((tree / str(s) / "metrics.json").is_file() for s in seeds)
-    if not done:
-        paths = run_replicates(cfg, out_root, n_procs=min(procs, cfg.replicates))
-        for p in paths:
-            m = compute_metrics(p.run_dir, x_ref=a + b * 2200.0, span=(a + b * lo, a + b * hi))
-            (p.run_dir / "metrics.json").write_text(json.dumps(asdict(m)))
-            if not keep:
-                (p.run_dir / "trajectories.parquet").unlink(missing_ok=True)
+    missing = [s for s in seeds if not (tree / str(s) / "metrics.json").is_file()]
+    to_run = [s for s in missing if not (tree / str(s) / "trajectories.parquet").is_file()]
+    ctx = mp.get_context("spawn")
+    if to_run:
+        with ctx.Pool(max(1, min(procs, len(to_run)))) as pool:
+            pool.map(_run_one, [(cfg, s, str(out_root)) for s in to_run], chunksize=1)
+    if missing:
+        jobs = [(str(tree / str(s)), x_ref, span_lo, span_hi, keep) for s in missing]
+        with ctx.Pool(max(1, min(analysis_procs, len(jobs)))) as pool:
+            pool.map(_analyse_one, jobs, chunksize=1)
     out: dict[int, Metrics] = {}
     for s in seeds:
         out[s] = Metrics(**json.loads((tree / str(s) / "metrics.json").read_text()))
@@ -128,6 +160,12 @@ def main() -> None:
     ap.add_argument("--compliance", type=float, default=1.0)
     ap.add_argument("--replicates", type=int, default=20)
     ap.add_argument("--procs", type=int, default=4)
+    ap.add_argument(
+        "--analysis-procs",
+        type=int,
+        default=None,
+        help="processes for the per-run metrics (default: min(procs, 8))",
+    )
     ap.add_argument("--keep-trajectories", action="store_true")
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument("--run-root", type=Path, default=RUN_ROOT)
@@ -191,7 +229,9 @@ def main() -> None:
 
     for label, cfg in configs:
         t1 = time.perf_counter()
-        results[label] = _metrics_for(cfg, a.run_root, a.procs, a.keep_trajectories)
+        results[label] = _metrics_for(
+            cfg, a.run_root, a.procs, a.analysis_procs or min(a.procs, 8), a.keep_trajectories
+        )
         agg = aggregate(list(results[label].values()))
         cells.append(
             {
