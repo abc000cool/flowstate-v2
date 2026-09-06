@@ -251,6 +251,13 @@ class OSMNetwork(BaseModel):
     """Measured share of mainline entries per lane, LEFT to RIGHT, on the
     first corridor edge (its lane count comes from the map and is checked at
     run time); ``None`` = round-robin. See :class:`CorridorNetwork`."""
+    internal_links: bool = False
+    """Compile the network with SUMO's internal junction lanes (netconvert
+    without ``--no-internal-links``). Off by default (every existing import
+    is lane-to-lane at the node); on, junction movements — including a
+    zipper merge (``RampSpec.merge``) — are resolved along internal lanes,
+    which is where SUMO computes zipper interleaving. Vehicles are not
+    recorded while on an internal lane (a few metres per junction)."""
 
     @model_validator(mode="after")
     def _check_source(self) -> Self:

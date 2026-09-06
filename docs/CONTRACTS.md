@@ -214,6 +214,14 @@ Other blocks:
   other draw and written with `vClass="hov"` (`FleetPlan.is_hov`, the
   trajectory column `is_hov`, `meta.json` `n_hov` / `managed_lanes`). A
   managed lane does not set `seeded=True`. Macro tier: not represented.
+- `OSMNetwork.internal_links: bool = False` (2026-09-06): compile the
+  import with SUMO's internal junction lanes (netconvert without
+  `--no-internal-links`). Off keeps every existing import identical; on,
+  junction movements are resolved along internal lanes, which is where SUMO
+  computes zipper interleaving (`RampSpec.merge = "zipper"`; the vType
+  junction gap `jm_timegap_minor_s` turned out to have no effect on a road
+  zipper — four values gave byte-identical runs). Vehicles on an internal
+  lane are not recorded (a few metres per junction).
 - `FleetSpec.jm_timegap_minor_s: float | None = None` (2026-09-06): SUMO
   junction-model `jmTimegapMinor` [s] written on every vType when set (SUMO
   default 1.0 s) — the minimum time gap accepted when entering a junction

@@ -115,6 +115,11 @@ def variant_config(name: str) -> dict[str, Any]:
     merge_model = None
     meter_on = False
     jm_gap = None
+    ilinks = False
+    if name.endswith("_ilinks"):
+        ilinks = True
+        raw["network"]["internal_links"] = True
+        name = name[: -len("_ilinks")]
     if "_jm" in name:
         name, jm_text = name.rsplit("_jm", 1)
         jm_gap = float(jm_text)
@@ -234,6 +239,8 @@ def variant_config(name: str) -> dict[str, Any]:
         raw["name"] += (f"_{merge_model}" if merge_model else "") + ("_meter" if meter_on else "")
     if jm_gap is not None:
         raw["name"] += f"_jm{jm_gap:g}"
+    if ilinks:
+        raw["name"] += "_ilinks"
     return raw
 
 

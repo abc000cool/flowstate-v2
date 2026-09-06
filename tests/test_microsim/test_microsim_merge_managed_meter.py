@@ -161,3 +161,40 @@ class TestManagedLanes:
         assert len(before) > 0 and not before["is_hov"].all()
         assert len(during) > 0 and during["is_hov"].all(), "non-eligible vehicle in the HOV lane"
         assert len(after) > 0 and not after["is_hov"].all()
+
+
+class TestInternalLinks:
+    def test_option_compiles_internal_lanes(self, merge_osm, tmp_path):
+        import sumolib
+
+        from flowstate_core.config import OSMNetwork
+        from microsim.networks import osm_import
+
+        assert OSMNetwork(osm_file="x.osm").internal_links is False
+        plain = osm_import(
+            osm_file=merge_osm,
+            corridor_edges=("100", "101", "102", "103"),
+            keep_edges=("200", "201"),
+            workdir=tmp_path / "plain",
+            geometry_remove=False,
+        )
+        with_links = osm_import(
+            osm_file=merge_osm,
+            corridor_edges=("100", "101", "102", "103"),
+            keep_edges=("200", "201"),
+            workdir=tmp_path / "links",
+            geometry_remove=False,
+            internal_links=True,
+        )
+        n_plain = len(
+            sumolib.net.readNet(str(plain.net_path), withInternal=True).getEdges(withInternal=True)
+        )
+        n_links = len(
+            sumolib.net.readNet(str(with_links.net_path), withInternal=True).getEdges(
+                withInternal=True
+            )
+        )
+        assert 'function="internal"' not in plain.net_path.read_text()
+        assert 'function="internal"' in with_links.net_path.read_text()
+        assert n_links > n_plain, "internal junction lanes were not compiled"
+        assert with_links.edge_ids == plain.edge_ids

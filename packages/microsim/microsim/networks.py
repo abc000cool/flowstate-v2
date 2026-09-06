@@ -441,6 +441,7 @@ def osm_import(
     keep_edges: tuple[str, ...] | list[str] = (),
     geometry_remove: bool = True,
     patch_files: Sequence[Path] = (),
+    internal_links: bool = False,
 ) -> NetBundle:
     """Import an OSM extract into a SUMO network (the ``osm_generic`` pipeline).
 
@@ -462,6 +463,8 @@ def osm_import(
         keep_edges: Additional edge ids (e.g. interchange ramps,
             ``OSMNetwork.ramps``) kept and pinned through pruning alongside
             ``corridor_edges`` without joining the corridor chain.
+        internal_links: Keep SUMO's internal junction lanes (drop
+            ``--no-internal-links``); default off, see ``OSMNetwork``.
         patch_files: netconvert plain-XML patches applied on top of the OSM
             import, routed by suffix — ``*.nod.xml`` (``--node-files``),
             ``*.edg.xml`` (``--edge-files``), ``*.con.xml``
@@ -501,7 +504,7 @@ def osm_import(
         str(osm_path),
         "-o",
         str(net),
-        "--no-internal-links",
+        *([] if internal_links else ["--no-internal-links"]),
         "--no-turnarounds",
         # NOTE: --remove-edges.isolated is deliberately NOT passed — it strips
         # a standalone corridor ("road without junctions"), which is exactly

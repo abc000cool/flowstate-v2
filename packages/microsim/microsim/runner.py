@@ -153,6 +153,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             corridor_edges=tuple(net.corridor_edges),
             workdir=workdir,
             keep_edges=keep,
+            internal_links=net.internal_links,
         )
         merge_ramps = [r for r in net.ramps if r.kind == "on" and r.merge != "lane_change"]
         if merge_ramps:
@@ -192,6 +193,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
                 workdir=workdir,
                 keep_edges=keep,
                 patch_files=patches,
+                internal_links=net.internal_links,
             )
             bundle = dataclasses.replace(bundle, patch_files=tuple(str(p) for p in patches))
         if net.boundary is not None:
