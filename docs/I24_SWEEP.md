@@ -134,15 +134,47 @@ the cap is the lever and that the next sweep should be over `h_max_s`
 (1.3–2.0 s) rather than over penetration alone. Insertion falls with the
 throughput in both controlled runs — the queue reaches the insertion
 buffer — so the corridor-level numbers include the buffer's rejections as
-the battery's do.
+the battery's do. **This is one seed; the twenty-seed sweep in the next section does not reproduce it.**
 
-*Status of that sweep (2026-09-06):* `scripts/i24_cap_sweep.py` (baseline,
-FollowerStopper, and the capacity-aware controller at `h_max_s` ∈ {1.3, 1.5,
-1.7, 2.0}; 20 seeds each, common random numbers, paired 95% intervals) was
-the last stage of the cloud round and was cut by the machine's hard cap 2.4 h
-in; no artifact exists and nothing above it is quoted from it. The controlled
-runs are far slower than the baseline runs (the controller's throughput cost
-keeps vehicles on the network), so the sweep needs about four hours at 32
-vCPUs; it is not run locally. Until it runs, the single-seed probe above is
-the only evidence on the cap.
+### The headway-cap sweep (2026-09-07, 20 seeds, `artifacts/i24_cap_sweep_summary.json`)
+
+`scripts/i24_cap_sweep.py` on the fitted arm (`i24_replica_speedcal`,
+config `6ab4219ffd92` for the baseline) at 5% penetration and 100%
+compliance: the uncontrolled baseline, FollowerStopper at the literature
+defaults, and the capacity-aware FollowerStopper at `h_max_s` ∈ {1.3, 1.5,
+1.7, 2.0} s, 20 seeds each with common random numbers, metrics on the
+measured span (throughput at data x = 2,200 m). Contrasts are per-seed
+differences against the baseline with t-distribution 95% intervals. Run on
+a 32-vCPU cloud VM, 2.8 h of wall time for the six configurations (the
+per-run metrics ran on one core; the script now pools them).
+
+| Configuration | Throughput [veh/h] | vs baseline | Mean travel time [s] | vs baseline | σ_v [m/s] | vs baseline | Fuel [ml/veh-km] | vs baseline | Waves | vs baseline |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Baseline | 5,710 [5,679, 5,741] | | 564 [557, 572] | | 4.98 [4.95, 5.01] | | 101 [100, 102] | | 14.2 [12.4, 16.0] | |
+| FollowerStopper | 3,652 [3,314, 3,990] | −36.0% [−42, −30] | 1,025 [944, 1,106] | +82% [+68, +96] | 2.18 [2.13, 2.23] | −56.2% | 213 [182, 244] | +111% [+81, +142] | 7.4 [6.3, 8.4] | −48% |
+| Capacity-aware, `h_max_s` 1.3 | 3,561 [3,255, 3,866] | −37.6% [−43, −32] | 992 [922, 1,061] | +76% [+64, +88] | 2.21 [2.16, 2.27] | −55.6% | 214 [188, 240] | +112% [+87, +138] | 7.2 [5.6, 8.8] | −49% |
+| Capacity-aware, 1.5 | 3,551 [3,203, 3,899] | −37.8% [−44, −32] | 1,045 [952, 1,139] | +85% [+68, +102] | 2.19 [2.14, 2.23] | −56.1% | 225 [190, 260] | +123% [+88, +158] | 6.7 [5.5, 7.8] | −53% |
+| Capacity-aware, 1.7 | 3,773 [3,432, 4,115] | −33.9% [−40, −28] | 1,008 [930, 1,086] | +79% [+65, +92] | 2.22 [2.18, 2.26] | −55.5% | 203 [172, 234] | +102% [+71, +132] | 7.2 [5.9, 8.4] | −50% |
+| Capacity-aware, 2.0 | 3,725 [3,409, 4,041] | −34.8% [−40, −29] | 1,062 [938, 1,185] | +88% [+67, +109] | 2.19 [2.14, 2.24] | −56.0% | 207 [177, 237] | +106% [+77, +136] | 6.6 [5.2, 7.9] | −54% |
+
+The baseline and FollowerStopper cells reproduce the 500-run sweep's 5% /
+100% cell above to the digit (same seeds, same SUMO), which is the
+consistency check the common random numbers are for.
+
+**What it shows.** The single-seed probe's halving of the throughput cost
+does not survive twenty seeds. Every cap value costs the same throughput as
+FollowerStopper within the paired intervals — −34% to −38% against −36%,
+each interval about ±6 points wide — and buys the same smoothing (σ_v −55
+to −56%, waves halved) at the same fuel penalty (+100 to +123%). The
+differences between cap values are not ordered with the cap and sit inside
+their own intervals: the cap is not the lever. The cost is not made in the
+large-gap regime the cap releases; it is made inside the cap, where the
+capacity-aware controller is FollowerStopper by construction — a low
+reference speed (the rolling platoon mean) applied at short gaps in flow
+that is already near capacity. A controller that costs less on this
+corridor has to change what it does at short gaps, not how long it holds
+back at long ones. The probe's number stands in
+`artifacts/i24_controller_probe.json` as what one seed showed and is not
+quoted as a result.
+
 

@@ -111,3 +111,13 @@ time: 5.0 h at 32 vCPUs plus 0.4 h at 2 vCPUs, about eight dollars. Every
 change above follows from that: archive in `$HOME`, after every stage, atomic;
 bucket copy; SIGTERM trap; cap at twice the estimate; incremental fetch;
 `caffeinate`; a describe timeout is not a deleted instance.
+
+The second run the same evening (21:33–00:55 UTC, 3.4 h, about five
+dollars) used every one of those changes: the archive reached the bucket
+after each of its four stages, the instance deleted itself ninety seconds
+after its final archive, and the watcher's own delete found nothing left to
+delete. Two IAM grants were needed first — the project gives its default
+compute service account no role, so the bucket write and the self-delete
+both failed on a probe until `roles/storage.objectAdmin` (bucket) and
+`roles/compute.instanceAdmin.v1` (that instance only) were added; the launch
+script grants both now. The bucket is deleted after ingestion.

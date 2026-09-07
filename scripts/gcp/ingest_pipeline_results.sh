@@ -7,7 +7,9 @@ set -euo pipefail
 TGZ="${1:?usage: ingest_pipeline_results.sh <final.tgz>}"
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 TMP="$(mktemp -d)"
-tar xzf "$TGZ" -C "$TMP"
+# GNU tar on the VM stores a path listed twice as a hardlink; bsdtar reports those as
+# "hardlink pointing to itself" and skips them (the first copy is extracted). Not fatal.
+tar xzf "$TGZ" -C "$TMP" 2>"$TMP/tar.err" || echo "tar: $(grep -c . "$TMP/tar.err") warnings (hardlink duplicates are harmless)"
 echo "== archive contents"; find "$TMP" -maxdepth 2 | head -20
 mkdir -p logs/pipeline_vm
 cp -R "$TMP"/logs/. logs/pipeline_vm/ 2>/dev/null || true

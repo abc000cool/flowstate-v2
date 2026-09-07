@@ -50,6 +50,14 @@ gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --mach
   --metadata-from-file startup-script="$STARTUP" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
 rm -f "$STARTUP"
 mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
+if [ -n "$BUCKET" ]; then
+  # the VM's service account must be able to write the bucket and (for --self-delete) delete this
+  # one instance; a project that grants the default account no Editor role has neither by default
+  SA=$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(serviceAccounts[0].email)')
+  echo "== granting $SA: objectAdmin on $BUCKET, instanceAdmin on $VM"
+  gcloud storage buckets add-iam-policy-binding "${BUCKET%%/*}" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
+  [ "$SELF_DELETE" -eq 1 ] && gcloud compute instances add-iam-policy-binding "$VM" --project "$PROJECT" --zone "$ZONE" --member="serviceAccount:$SA" --role=roles/compute.instanceAdmin.v1 >/dev/null
+fi
 ssh_cmd() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1"; }
 echo "== waiting for ssh"
 for i in $(seq 1 30); do if ssh_cmd "true" 2>/dev/null; then break; fi; sleep 10; done

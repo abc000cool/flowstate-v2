@@ -117,9 +117,10 @@ ramp metering (`RampSpec.meter`), a capacity-aware FollowerStopper
 speed criterion by aggregation with its floor in the auto-report, and
 config-hash policy v2 (defaults excluded, so schema growth stops moving
 hashes). Single-seed probes: the capacity-aware controller halves
-FollowerStopper's throughput cost for the same smoothing
-(docs/I24_SWEEP.md); the merge models on the corrected map are in
-I24_VALIDATION.md §0.5 (j).
+FollowerStopper's throughput cost for the same smoothing — a probe result
+the twenty-seed cap sweep of 2026-09-07 does not reproduce (every cap value
+costs what FollowerStopper costs; docs/I24_SWEEP.md, last section); the
+merge models on the corrected map are in I24_VALIDATION.md §0.5 (j).
 *Cloud calibration round (2026-09-06, I24_VALIDATION.md §0.6):* the zipper
 family — corrected map, ramp-origin eagerness 1, measured entry lanes, zipper
 junction gap 0.5 s chosen on the fit hour — went through the FHWA sequence
@@ -135,10 +136,13 @@ heavy arm 34.1% / 20% / no stack peak. The first VM was cut by its own hard
 cap during the headway-cap sweep and lost three batteries and the sweep
 (scripts/gcp/README.md post-mortem, LESSONS.md rows 14–16); a second VM the
 same evening reran the batteries (identical numbers) and the sweep, with the
-scripts now archiving after every stage. Next, in this order: the
-headway-cap sweep's write-up (I24_SWEEP.md), then a merge model that admits
-the ramp's demand (sublane calibration or a dedicated merge edge), then
-radar counts for the flow target.
+scripts now archiving after every stage. The headway-cap sweep (2026-09-07, I24_SWEEP.md last section):
+the cap is not the lever — −34% to −38% throughput at every `h_max_s`
+against FollowerStopper's −36%, same smoothing, same fuel penalty — so the
+next controller has to change what it does at short gaps. Next, in this
+order: a merge model that admits the ramp's demand (sublane calibration or a
+dedicated merge edge), a short-gap controller design, then radar counts for
+the flow target.
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on

@@ -221,9 +221,10 @@ sweep in well under 15 minutes on four processes.
 
 Added 6 September 2026: a capacity-aware FollowerStopper that keeps the
 smoothing law inside a time-headway cap and releases toward the leader
-beyond it (one seed on the I-24 fitted arm: half of FollowerStopper's
-throughput cost for the same reduction in speed spread, and still a cost),
-and ALINEA ramp metering as a pure controller driving a virtual signal on
+beyond it (one seed on the I-24 fitted arm showed half of FollowerStopper's
+throughput cost; the twenty-seed sweep of 7 September showed the same cost
+at every cap value — the cap is not the lever, and the design has to change
+what the controller does at short gaps), and ALINEA ramp metering as a pure controller driving a virtual signal on
 the on-ramp, the control lever US agencies most often own on a merge.
 
 FollowerStopper (Stern et al. 2018) commands a speed from the gap and the
@@ -488,7 +489,10 @@ capacity is a moving capacity drop, and drivers behind it queue and overtake
 (lane changes rise from 1.25 to 2.32 per vehicle-km at 20%). The synthetic
 corridor's no-cost result does not survive a real corridor near capacity.
 The magnitudes will move when the replica passes its criteria; the sign at
-these penetrations will not, and the next controller must be capacity-aware.
+these penetrations will not. A first capacity-aware variant, a headway cap
+on FollowerStopper, was swept at twenty seeds on 7 September and costs the
+same throughput at every cap value (I24_SWEEP.md): the cost is made at
+short gaps, and that is where the next controller has to differ.
 
 ![Dose-response on I-24](figures/i24_sweep_dose_response.png)
 
@@ -875,8 +879,9 @@ Next, in order of leverage:
 
 - Radar detector counts for a day with trajectories (owner action): replaces
   every demand estimate and lets the flow criterion be adjudicated.
-- A capacity-aware smoothing controller: the flagship sweep's baseline is
-  its benchmark.
+- A smoothing controller that costs less at short gaps: the flagship
+  sweep's baseline is its benchmark, and the headway cap is already ruled
+  out at twenty seeds.
 - The Old Hickory merge: a joint objective on speeds and lane shares, since
   the two disagree on gap acceptance.
 - A second corridor with measured counts (PeMS) through the same procedure.

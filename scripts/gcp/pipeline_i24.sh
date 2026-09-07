@@ -44,7 +44,7 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   local mode="${1:-light}" extra=""
   if [ "$mode" = full ]; then
     extra=$(for d in runs/i24_validation_zip/*/*/ runs/i24_validation/speedcal_heavy/*/; do ls -d "$d"*/ 2>/dev/null | sort | head -1; done)
-    [ -d runs/i24_validation_zip/ring ] && extra="runs/i24_validation_zip/ring $extra"
+    [ -f runs/i24_validation_zip/ring/ring_benchmark.json ] && extra="runs/i24_validation_zip/ring/ring_benchmark.json $extra"
   fi
   # per-run metrics of the cap sweep ride along in every archive: the sweep is resumable from them
   extra="$extra $(ls runs/i24_cap_sweep/*/*/metrics.json 2>/dev/null | tr '\n' ' ')"
