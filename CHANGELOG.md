@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Merge levers for the next round (2026-09-07)
+
+- **Schema:** `RampSpec.merge_visibility_m` (zipper connection `visibility`, the interleaving distance; `microsim.networks.merge_patch_files(visibility_m=...)`) and the sublane fields `FleetSpec.lc_sublane`, `lc_pushy`, `lc_impatience`, `lc_accel_lat`, `max_speed_lat`, `min_gap_lat`, `lat_alignment` (SUMO `lcSublane`, `lcPushy`, `lcImpatience`, `lcAccelLat`, `maxSpeedLat`, `minGapLat`, `latAlignment`; `microsim.vehicles.sublane_vtype_attrs`). All `None` by default and hash-neutral when unset; docs/CONTRACTS.md. `scripts/i24_merge_experiment.py` parses `_vis<m>`, `_sublane<res>`, `_pushy<v>`, `_impat<v>`, `_acclat<v>`, `_latspeed<v>`, `_mingaplat<v>`, `_lcsub<v>`, `_latalign<mode>` variant suffixes in any order.
+
 ### Cloud pipeline for the calibration round (2026-09-06)
 
 - `scripts/gcp/pipeline_i24.sh` (VM side, resumable stage markers, EXIT trap powers the machine off on success or failure): zipper junction time-gap sweep (`FleetSpec.jm_timegap_minor_s`, chosen on the fit hour), the `zip` scenario family (`scripts/i24_build_replica.py --suffix zip --osm corrected --lc-strategic-ramp 1 --entry-lanes observed --merge zipper --jm-timegap`), the FHWA sequence on it (`i24_fit_demand_scale.py --base-yaml/--scenario-out/--name`, `i24_fit_boundary_ramps.py --base-yaml/--scenario-out/--name`), the heavy arm (`scripts/i24_add_heavy_arm.py`), the 20-seed batteries (`i24_validate.py --family zip`, plus the canonical `speedcal_heavy` arm), and the headway-cap sweep (`scripts/i24_cap_sweep.py`, paired 95% intervals, trajectories pruned). `scripts/gcp/launch_i24_pipeline.sh` creates the VM with a boot-time hard cap (startup script `shutdown -h +300`), ships the data and starts the pipeline under systemd; `scripts/gcp/watch_pipeline.sh` fetches the archive, deletes the instance, never restarts it at the working size, and deletes it unconditionally at its own deadline.

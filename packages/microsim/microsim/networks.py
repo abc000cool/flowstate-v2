@@ -363,6 +363,7 @@ def merge_patch_files(
     n_attach_lanes: int,
     n_next_lanes: int,
     merge: str,
+    visibility_m: float | None = None,
 ) -> list[Path]:
     """netconvert patches for an on-ramp merge model (``RampSpec.merge``).
 
@@ -388,6 +389,9 @@ def merge_patch_files(
         n_attach_lanes: Lane count of ``attach_edge``.
         n_next_lanes: Lane count of ``next_edge``.
         merge: ``"acceleration_lane"`` or ``"zipper"``.
+        visibility_m: Zipper only: SUMO connection ``visibility`` [m] on the two
+            merging connections (``RampSpec.merge_visibility_m``); ``None``
+            leaves SUMO's default.
 
     Returns:
         The written patch paths (empty for ``"lane_change"``).
@@ -417,13 +421,16 @@ def merge_patch_files(
         return [edg]
     if merge == "zipper":
         con = workdir / f"{tag}.con.xml"
+        # the ramp lane and the mainline lane it merges with interleave from this distance
+        vis = "" if visibility_m is None else f' visibility="{visibility_m:g}"'
         lines = ["<connections>"]
         lines.append(
-            f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="0" toLane="0"/>'
+            f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="0" toLane="0"{vis}/>'
         )
         for i in range(1, n_attach_lanes):
             lines.append(
-                f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="{i}" toLane="{i - 1}"/>'
+                f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="{i}" toLane="{i - 1}"'
+                f"{vis if i == 1 else ''}/>"
             )
         lines.append("</connections>")
         con.write_text("\n".join(lines) + "\n")

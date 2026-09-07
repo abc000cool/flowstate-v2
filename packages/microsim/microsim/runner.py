@@ -79,6 +79,7 @@ from microsim.vehicles import (
     build_ring_plan,
     load_idm_calibration,
     ramp_routes,
+    sublane_vtype_attrs,
     write_corridor_routes,
     write_ring_routes,
 )
@@ -185,6 +186,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
                     attach.getLaneNumber(),
                     nxt.getLaneNumber(),
                     ramp.merge,
+                    visibility_m=ramp.merge_visibility_m,
                 )
             bundle = osm_import(
                 osm_file=net.osm_file,
@@ -227,6 +229,7 @@ def _build_plan_and_routes(
             heavy=cfg.fleet.heavy,
             jm_timegap_minor_s=cfg.fleet.jm_timegap_minor_s,
             jm_ignore_foe_prob=cfg.fleet.jm_ignore_foe_prob,
+            extra_attrs=sublane_vtype_attrs(cfg.fleet),
         )
         return plan
     if isinstance(net, CorridorNetwork):
@@ -283,6 +286,7 @@ def _build_plan_and_routes(
         heavy=cfg.fleet.heavy,
         jm_timegap_minor_s=cfg.fleet.jm_timegap_minor_s,
         jm_ignore_foe_prob=cfg.fleet.jm_ignore_foe_prob,
+        extra_attrs=sublane_vtype_attrs(cfg.fleet),
     )
     return plan
 

@@ -17,7 +17,7 @@ from microsim import (
     write_corridor_routes,
     write_ring_routes,
 )
-from microsim.vehicles import IDM_HARD_LOWER, IDM_PARAM_ORDER
+from microsim.vehicles import IDM_HARD_LOWER, IDM_PARAM_ORDER, _vtype_xml, sublane_vtype_attrs
 
 SEED = 20260829
 
@@ -615,3 +615,51 @@ class TestJunctionTimegap:
         assert FleetSpec().jm_timegap_minor_s is None
         with pytest.raises(ValueError):
             FleetSpec(jm_timegap_minor_s=0.0)
+
+
+class TestSublaneAttrs:
+    """``FleetSpec`` sublane / impatience fields reach the vType only when set."""
+
+    PARAMS: typing.ClassVar[dict[str, float]] = {
+        "a_max": 0.73,
+        "b": 1.67,
+        "T": 1.4,
+        "s0": 2.0,
+        "v0": 33.3,
+    }
+
+    def test_unset_fields_write_nothing(self):
+        assert sublane_vtype_attrs(FleetSpec()) == {}
+        plain = _vtype_xml("t", self.PARAMS, "IDM", 0.5)
+        assert plain == _vtype_xml("t", self.PARAMS, "IDM", 0.5, extra_attrs={})
+
+    def test_set_fields_map_to_sumo_names(self):
+        fleet = FleetSpec(
+            lc_sublane=1.5,
+            lc_pushy=0.5,
+            lc_impatience=0.3,
+            lc_accel_lat=2.0,
+            max_speed_lat=1.5,
+            min_gap_lat=0.4,
+            lat_alignment="right",
+        )
+        attrs = sublane_vtype_attrs(fleet)
+        assert attrs == {
+            "lcSublane": "1.5",
+            "lcPushy": "0.5",
+            "lcImpatience": "0.3",
+            "lcAccelLat": "2",
+            "maxSpeedLat": "1.5",
+            "minGapLat": "0.4",
+            "latAlignment": "right",
+        }
+        xml = _vtype_xml("t", self.PARAMS, "IDM", 0.5, extra_attrs=attrs)
+        el = ET.fromstring(xml)
+        assert el.get("lcPushy") == "0.5" and el.get("latAlignment") == "right"
+        assert el.get("carFollowModel") == "IDM"
+
+    def test_bounds(self):
+        with pytest.raises(ValueError):
+            FleetSpec(lc_pushy=1.5)
+        with pytest.raises(ValueError):
+            FleetSpec(lat_alignment="middle")

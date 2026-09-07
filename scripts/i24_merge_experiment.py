@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing as mp
+import re
 import sys
 import tempfile
 import time
@@ -117,6 +118,35 @@ def variant_config(name: str) -> dict[str, Any]:
     jm_gap = None
     ilinks = False
     foe = None
+    vis = None
+    sub: dict[str, float | str] = {}
+    sub_tags: list[str] = []
+    m_vis = re.search(r"_vis([0-9.]+)", name)  # zipper visibility [m]: interleave from this far
+    if m_vis:
+        vis = float(m_vis.group(1))
+        name = name[: m_vis.start()] + name[m_vis.end() :]
+    # sublane / impatience levers, anywhere in the name, any order
+    fields = {
+        "pushy": "lc_pushy",
+        "impat": "lc_impatience",
+        "acclat": "lc_accel_lat",
+        "latspeed": "max_speed_lat",
+        "mingaplat": "min_gap_lat",
+        "lcsub": "lc_sublane",
+    }
+    while True:
+        m_num = re.search(r"_(pushy|impat|acclat|latspeed|mingaplat|lcsub)([0-9.]+)", name)
+        m_align = re.search(r"_latalign(left|right|center|compact|nice|arbitrary)", name)
+        if m_num:
+            sub[fields[m_num.group(1)]] = float(m_num.group(2))
+            sub_tags.append(m_num.group(0))
+            name = name[: m_num.start()] + name[m_num.end() :]
+        elif m_align:
+            sub["lat_alignment"] = m_align.group(1)
+            sub_tags.append(m_align.group(0))
+            name = name[: m_align.start()] + name[m_align.end() :]
+        else:
+            break
     if "_foe" in name:
         name, foe_text = name.rsplit("_foe", 1)
         foe = float(foe_text)
@@ -150,10 +180,11 @@ def variant_config(name: str) -> dict[str, Any]:
     if name.endswith("_sublane_coop0.5"):
         raw["fleet"]["lc_cooperative"] = 0.5
         name = name[: -len("_coop0.5")]
-    if name.endswith("_sublane"):
-        # SUMO sublane model (LC_SL2015): continuous lateral positions, gradual merges
-        raw["sim"]["lateral_resolution_m"] = 0.8
-        name = name[: -len("_sublane")]
+    if "_sublane" in name:
+        # SUMO sublane model (LC_SL2015): continuous lateral positions, gradual merges;
+        # "_sublane" = 0.8 m resolution (the (h) runs), "_sublane3.2" = one sublane per lane
+        name, res_text = name.rsplit("_sublane", 1)
+        raw["sim"]["lateral_resolution_m"] = float(res_text) if res_text else 0.8
     if name.endswith("_entrylanes"):
         # measured upstream lane distribution as the insertion boundary
         raw["network"]["entry_lane_shares"] = observed_entry_lane_shares()
@@ -212,7 +243,11 @@ def variant_config(name: str) -> dict[str, Any]:
     raw["name"] = (
         f"i24_merge_{name}"
         + ("_entrylanes" if raw["network"].get("entry_lane_shares") else "")
-        + ("_sublane" if raw["sim"].get("lateral_resolution_m") else "")
+        + (
+            f"_sublane{raw['sim']['lateral_resolution_m']:g}"
+            if raw["sim"].get("lateral_resolution_m")
+            else ""
+        )
         + ("_heavy" if raw["fleet"].get("heavy") else "")
         + (
             f"_coop{raw['fleet']['lc_cooperative']:g}"
@@ -227,6 +262,8 @@ def variant_config(name: str) -> dict[str, Any]:
             if ramp["name"] == OH:
                 if merge_model is not None:
                     ramp["merge"] = merge_model
+                    if vis is not None:
+                        ramp["merge_visibility_m"] = vis
                 if meter_on:
                     fd = json.loads((REPO / "artifacts" / "fd_i24.json").read_text())
                     fd = fd.get("fd", fd)
@@ -242,6 +279,11 @@ def variant_config(name: str) -> dict[str, Any]:
                         "stop_line_m": 30.0,
                     }
         raw["name"] += (f"_{merge_model}" if merge_model else "") + ("_meter" if meter_on else "")
+    if vis is not None:
+        raw["name"] += f"_vis{vis:g}"
+    for field, val in sub.items():
+        raw["fleet"][field] = val
+    raw["name"] += "".join(sub_tags)
     if jm_gap is not None:
         raw["name"] += f"_jm{jm_gap:g}"
     if ilinks:

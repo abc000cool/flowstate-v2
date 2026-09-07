@@ -187,6 +187,13 @@ class RampSpec(BaseModel):
     meter: RampMeterSpec | None = None
     """Ramp metering on this on-ramp (:class:`RampMeterSpec`); ``None`` =
     unmetered. Off-ramps cannot carry a meter."""
+    merge_visibility_m: float | None = Field(default=None, gt=0.0)
+    """Zipper merges only: SUMO connection ``visibility`` [m], the distance
+    upstream of the zipper junction from which the ramp lane and the mainline
+    lane it merges with consider each other and interleave (SUMO's default
+    100 m). ``None`` keeps the default. Set to the acceleration lane's length
+    to let the ramp feed the mainline over the lane instead of at its end
+    (docs/I24_VALIDATION.md §0.7)."""
     merge: Literal["lane_change", "acceleration_lane", "zipper"] = "lane_change"
     """How an on-ramp's acceleration lane hands its traffic to the mainline
     (micro tier, 2026-09-06). ``lane_change`` (default): the lane dead-ends
@@ -392,6 +399,29 @@ class FleetSpec(BaseModel):
     slower than ``jmIgnoreFoeSpeed`` (SUMO defaults 0 and 0). Exposed as the
     last vehicle-side lever for a zipper merge's admittance, after the
     junction gap and the internal lanes proved inert (docs/I24_VALIDATION.md)."""
+    lc_sublane: float | None = Field(default=None, ge=0.0)
+    """Sublane model (``SimSpec.lateral_resolution_m``) eagerness for lateral
+    moves within a lane, SUMO ``lcSublane`` (default 1.0); written when set."""
+    lc_pushy: float | None = Field(default=None, ge=0.0, le=1.0)
+    """Sublane model: willingness to encroach laterally on neighbours to
+    open a gap, SUMO ``lcPushy`` (0 = never, SUMO's default; 1 = full);
+    written when set. The lever for merging over a lane's length."""
+    lc_impatience: float | None = Field(default=None, ge=-1.0, le=1.0)
+    """Dynamic impatience that lets a vehicle accept smaller gaps the longer
+    it has wanted to change lanes, SUMO ``lcImpatience`` (default 0.0);
+    written when set."""
+    lc_accel_lat: float | None = Field(default=None, gt=0.0)
+    """Sublane model: maximum lateral acceleration [m/s²], SUMO
+    ``lcAccelLat`` (default 1.0); written when set."""
+    max_speed_lat: float | None = Field(default=None, gt=0.0)
+    """Sublane model: maximum lateral speed [m/s], SUMO ``maxSpeedLat``
+    (default 1.0); written when set."""
+    min_gap_lat: float | None = Field(default=None, ge=0.0)
+    """Sublane model: desired lateral gap to neighbours [m], SUMO
+    ``minGapLat`` (default 0.6); written when set."""
+    lat_alignment: Literal["left", "right", "center", "compact", "nice", "arbitrary"] | None = None
+    """Sublane model: preferred lateral alignment within the lane, SUMO
+    ``latAlignment`` (default ``center``); written when set."""
     hov_fraction: float = Field(default=0.0, ge=0.0, le=1.0)
     """Share of passenger vehicles eligible for managed (HOV) lanes, drawn
     per vehicle from the run's RNG after every other draw (0 = none, so

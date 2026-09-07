@@ -222,6 +222,23 @@ Other blocks:
   junction gap `jm_timegap_minor_s` turned out to have no effect on a road
   zipper — four values gave byte-identical runs). Vehicles on an internal
   lane are not recorded (a few metres per junction).
+- `RampSpec.merge_visibility_m: float | None = None` (2026-09-07, zipper
+  merges): SUMO connection `visibility` [m] on the ramp lane's and the
+  merging mainline lane's connections into the merged lane — how far
+  upstream of the zipper junction the two lanes consider each other and
+  interleave (SUMO default 100 m). `None` keeps the default; a value near
+  the acceleration lane's length makes the ramp feed the mainline over the
+  lane. Hash-neutral when unset.
+- `FleetSpec.lc_sublane`, `lc_pushy` (0–1), `lc_impatience` (−1–1),
+  `lc_accel_lat`, `max_speed_lat`, `min_gap_lat`, `lat_alignment`
+  (`left|right|center|compact|nice|arbitrary`), all `None` by default
+  (2026-09-07): SUMO `lcSublane`, `lcPushy`, `lcImpatience`, `lcAccelLat`,
+  `maxSpeedLat`, `minGapLat`, `latAlignment`, written on every vType only
+  when set (`microsim.vehicles.sublane_vtype_attrs`), so unset fleets keep
+  byte-identical route files. They parametrise the sublane model
+  (`SimSpec.lateral_resolution_m`) that gridlocked at SUMO's defaults
+  (docs/I24_VALIDATION.md §0.5 (h)); `lc_impatience` also acts under the
+  lane-discrete model.
 - `FleetSpec.jm_ignore_foe_prob: float | None = None` (2026-09-06): SUMO
   junction-model `jmIgnoreFoeProb` (with `jmIgnoreFoeSpeed` set high so any
   foe qualifies) written on every vType when set — the probability that a

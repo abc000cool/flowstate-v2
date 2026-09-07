@@ -79,6 +79,16 @@ class TestMergePatches:
         text = con.read_text()
         assert 'fromLane="0" toLane="0"' in text and 'fromLane="1" toLane="0"' in text
         assert 'fromLane="2" toLane="1"' in text
+        assert "visibility" not in text  # SUMO's default distance unless asked for
+        _nod, con_v = merge_patch_files(
+            tmp_path, "a#1", "b", "n", 3, 2, "zipper", visibility_m=250.0
+        )
+        lines = [ln for ln in con_v.read_text().splitlines() if "<connection " in ln]
+        # the ramp lane and the mainline lane it merges with interleave from 250 m; the
+        # untouched lane keeps SUMO's default
+        assert lines[0].endswith('fromLane="0" toLane="0" visibility="250"/>')
+        assert lines[1].endswith('fromLane="1" toLane="0" visibility="250"/>')
+        assert "visibility" not in lines[2]
         with pytest.raises(ValueError, match="drop exactly one lane"):
             merge_patch_files(tmp_path, "a", "b", "n", 3, 3, "zipper")
         with pytest.raises(ValueError, match="unknown merge"):

@@ -558,6 +558,29 @@ def ramp_routes(
     return routes
 
 
+def sublane_vtype_attrs(fleet: FleetSpec) -> dict[str, str]:
+    """SUMO vType attributes of the fleet's sublane / impatience fields, when set.
+
+    ``FleetSpec.lc_sublane`` → ``lcSublane``, ``lc_pushy`` → ``lcPushy``,
+    ``lc_impatience`` → ``lcImpatience``, ``lc_accel_lat`` → ``lcAccelLat``,
+    ``max_speed_lat`` → ``maxSpeedLat``, ``min_gap_lat`` → ``minGapLat``,
+    ``lat_alignment`` → ``latAlignment``. Fleets that set none of them get an
+    empty mapping, so their route files stay byte-identical.
+    """
+    pairs = (
+        ("lcSublane", fleet.lc_sublane),
+        ("lcPushy", fleet.lc_pushy),
+        ("lcImpatience", fleet.lc_impatience),
+        ("lcAccelLat", fleet.lc_accel_lat),
+        ("maxSpeedLat", fleet.max_speed_lat),
+        ("minGapLat", fleet.min_gap_lat),
+    )
+    out = {k: f"{v:g}" for k, v in pairs if v is not None}
+    if fleet.lat_alignment is not None:
+        out["latAlignment"] = fleet.lat_alignment
+    return out
+
+
 def _vtype_xml(
     type_id: str,
     p: dict[str, float],
@@ -574,6 +597,7 @@ def _vtype_xml(
     vclass: str | None = None,
     jm_timegap_minor_s: float | None = None,
     jm_ignore_foe_prob: float | None = None,
+    extra_attrs: dict[str, str] | None = None,
 ) -> str:
     """One ``<vType>`` element (see module docstring for attribute notes).
 
@@ -601,6 +625,8 @@ def _vtype_xml(
     if jm_ignore_foe_prob is not None:
         # a foe is ignored only below jmIgnoreFoeSpeed; make that any speed
         cls += f' jmIgnoreFoeProb="{jm_ignore_foe_prob:g}" jmIgnoreFoeSpeed="100"'
+    for k, v in (extra_attrs or {}).items():
+        cls += f' {k}="{v}"'
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
         f'decel="{p["b"]:.6f}" tau="{p["T"]:.6f}" minGap="{p["s0"]:.6f}" '
@@ -636,6 +662,7 @@ def write_ring_routes(
     heavy: HeavyVehicleSpec | None = None,
     jm_timegap_minor_s: float | None = None,
     jm_ignore_foe_prob: float | None = None,
+    extra_attrs: dict[str, str] | None = None,
 ) -> Path:
     """Write ring routes: explicit depart-at-0 vehicles at planned positions.
 
@@ -672,6 +699,7 @@ def write_ring_routes(
                 action_step_s,
                 jm_timegap_minor_s=jm_timegap_minor_s,
                 jm_ignore_foe_prob=jm_ignore_foe_prob,
+                extra_attrs=extra_attrs,
                 **_heavy_kwargs(plan, i, heavy),
             )
         )
@@ -710,6 +738,7 @@ def write_corridor_routes(
     heavy: HeavyVehicleSpec | None = None,
     jm_timegap_minor_s: float | None = None,
     jm_ignore_foe_prob: float | None = None,
+    extra_attrs: dict[str, str] | None = None,
 ) -> Path:
     """Write corridor demand: explicit jittered departures.
 
@@ -804,6 +833,7 @@ def write_corridor_routes(
                 lc_speed_gain,
                 jm_timegap_minor_s=jm_timegap_minor_s,
                 jm_ignore_foe_prob=jm_ignore_foe_prob,
+                extra_attrs=extra_attrs,
                 **_heavy_kwargs(plan, i, heavy),
             )
         )
