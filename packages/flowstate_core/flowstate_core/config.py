@@ -422,6 +422,10 @@ class FleetSpec(BaseModel):
     lat_alignment: Literal["left", "right", "center", "compact", "nice", "arbitrary"] | None = None
     """Sublane model: preferred lateral alignment within the lane, SUMO
     ``latAlignment`` (default ``center``); written when set."""
+    lc_overtake_right: float | None = Field(default=None, ge=0.0, le=1.0)
+    """Probability of overtaking on the right, SUMO ``lcOvertakeRight``
+    (default 0: never, the European rule). US freeways allow it; written
+    when set."""
     hov_fraction: float = Field(default=0.0, ge=0.0, le=1.0)
     """Share of passenger vehicles eligible for managed (HOV) lanes, drawn
     per vehicle from the run's RNG after every other draw (0 = none, so

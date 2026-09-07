@@ -558,6 +558,49 @@ modelling work, not tuning. The headway-cap sweep of the capacity-aware
 controller, the round's last stage, was cut by the machine's hard cap and is
 rerun on the second VM (I24_SWEEP.md, last section).
 
+### 0.7 The merge, fourth round: the levers that had not been tried (2026-09-07)
+
+Fourteen single-seed runs on the corrected map with the ramp-origin
+eagerness of (f) and the measured entry lanes of (g) — the base of §0.6 —
+each adding one thing SUMO's models offer that no earlier round had
+touched. Reference rows for comparison: the lane-discrete base (inserted
+0.937, Old Hickory admits 2,035 of 2,241 planned ramp vehicles, 5-min RMSPE
+0.374, 15-min 0.248, GEH < 5 on 17% of recommended link-hours, entry
+segment 27 km/h against 36 observed) and the zipper of (j) (0.907, 1,397,
+0.544, 0.407, 19%, merge zone 17–18 km/h, downstream 47–49 against 37–38).
+Artifacts: `i24_merge_experiment_{visibility,sublane2,keepright,overtake}.json`;
+run directories under `runs/i24_merge_probes/` (gitignored).
+
+| Lever (schema field) | Runs | Inserted | Old Hickory admitted | 5-min RMSPE | 15-min | GEH < 5 | What happened |
+|---|---|---|---|---|---|---|---|
+| Zipper interleaving distance (`RampSpec.merge_visibility_m` 200 / 300 / 450 / 600 m) | 4 | 0.899–0.904 | 1,358–1,423 | 0.527–0.542 | 0.388–0.397 | 18–22% | Inert: the same profile as the 100 m default at every distance. |
+| Sublane model with internal links: one sublane per lane (3.2 m); 0.8 m; 0.8 m with `lc_pushy` 0.5 and right alignment | 3 | 0.430–0.441 | 756–853 | 0.885–0.962 | 0.862–0.902 | 1–8% | Locks. Not at the start: 60–79 km/h for ten minutes, then capacity falls everywhere and the jam reaches the insertion point by minute thirty. A capacity loss of the sublane model as configured, not a merge lock. |
+| Keep-right eagerness off (`lc_keep_right` 0), lane-discrete and zipper | 2 | 0.937 / 0.907 | 2,035 / 1,397 | 0.374 / 0.544 | 0.248 / 0.407 | 17 / 19% | Identical to the references to every digit (the attribute is on every vType; SUMO's keep-right incentive never fires in flow this dense). |
+| Keep-right off with speed-gain halved (`lc_speed_gain` 0.5) | 1 | 0.939 | 2,033 | 0.422 | 0.249 | 20% | Downstream 2–4 km/h faster, the merge unchanged. |
+| Zipper with keep-right 0.3 | 1 | 0.907 | 1,350 | 0.543 | 0.409 | 18% | As the zipper. |
+| Overtaking on the right allowed (`lc_overtake_right` 1; SUMO's default forbids it), lane-discrete | 1 | 0.954 | 2,031 | 0.482 | 0.327 | 21% | More flow, worse speeds: the entry segment slows to 24 km/h, the segments past the merge run 2–4 km/h faster. |
+| The same with cooperation halved | 1 | 0.962 | 2,012 | 0.477 | 0.343 | 22% | The same trade, one point further. |
+| The same on the zipper | 1 | 0.920 | 1,173 | 0.586 | 0.408 | 21% | Admittance falls to 52%. |
+
+**Reading it.** With this round the lane-change and junction parameter
+space of SUMO's models is exhausted for this merge: strategic, cooperative,
+assertive and ramp-origin eagerness, gap acceptance, entry lanes (§0.5),
+junction gap, internal lanes, foe probability (k), and now interleaving
+distance, lateral parameters, keep-right, speed-gain and passing on the
+right. Every lever is inert, destructive, or trades flow against speed
+error along the same line. The zipper's admittance is set by arithmetic the
+parameters cannot change — one merged lane has to carry the mainline right
+lane's flow plus the ramp's — and the lane-discrete model's crawl is the
+cooperative lane change itself. What the recording shows (§0.5 (c): ramp
+traffic running the lane at 45–49 km/h and merging in its last 900 m while
+the right lane gives up a third of its speed) is a merge behaviour, not a
+parameter value, and reproducing it means scripting that behaviour for
+ramp vehicles through the runner — a target speed along the lane and a
+gap-seeking merge near its end — which is a new controlled-vehicle class,
+tested like a controller, not a tuning of the human model. That is the
+next round's design, and the residual stays as §0.5 (i) quantified it
+until it runs.
+
 ## 1. What is compared
 
 **Observed side** (`i24_validation_observed.json`; cached by data hash): the

@@ -139,10 +139,16 @@ same evening reran the batteries (identical numbers) and the sweep, with the
 scripts now archiving after every stage. The headway-cap sweep (2026-09-07, I24_SWEEP.md last section):
 the cap is not the lever — −34% to −38% throughput at every `h_max_s`
 against FollowerStopper's −36%, same smoothing, same fuel penalty — so the
-next controller has to change what it does at short gaps. Next, in this
-order: a merge model that admits the ramp's demand (sublane calibration or a
-dedicated merge edge), a short-gap controller design, then radar counts for
-the flow target.
+next controller has to change what it does at short gaps. *Fourth merge round (2026-09-07, I24_VALIDATION.md §0.7):* fourteen
+single-seed probes of the levers no earlier round had touched — the
+zipper's interleaving distance, the sublane model's lateral parameters with
+internal links, keep-right, speed-gain, passing on the right. Inert,
+destructive, or a flow-for-speed trade; SUMO's lane-change and junction
+parameter space is exhausted for this merge. Next, in this order: a
+scripted late-merge behaviour for ramp vehicles (a controlled-vehicle
+class: run the acceleration lane at a target speed, seek a gap in its last
+part; tested like a controller, single seeds first), a short-gap smoothing
+controller, then radar counts for the flow target.
 *Engine refinements, second round (2026-09-03/04):* the wave-speed detector is
 benchmarked on synthetic congested fields and the criterion names its detector
 (default: the slant-stack estimator; the standard detector finds nothing on

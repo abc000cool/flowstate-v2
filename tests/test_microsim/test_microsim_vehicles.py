@@ -642,6 +642,7 @@ class TestSublaneAttrs:
             max_speed_lat=1.5,
             min_gap_lat=0.4,
             lat_alignment="right",
+            lc_overtake_right=1.0,
         )
         attrs = sublane_vtype_attrs(fleet)
         assert attrs == {
@@ -651,6 +652,7 @@ class TestSublaneAttrs:
             "lcAccelLat": "2",
             "maxSpeedLat": "1.5",
             "minGapLat": "0.4",
+            "lcOvertakeRight": "1",
             "latAlignment": "right",
         }
         xml = _vtype_xml("t", self.PARAMS, "IDM", 0.5, extra_attrs=attrs)

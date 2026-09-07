@@ -239,6 +239,9 @@ Other blocks:
   (`SimSpec.lateral_resolution_m`) that gridlocked at SUMO's defaults
   (docs/I24_VALIDATION.md §0.5 (h)); `lc_impatience` also acts under the
   lane-discrete model.
+- `FleetSpec.lc_overtake_right: float | None = None` (2026-09-07): SUMO
+  `lcOvertakeRight`, the probability of passing on the right (SUMO default
+  0, the European rule; US freeways allow it). Written when set.
 - `FleetSpec.jm_ignore_foe_prob: float | None = None` (2026-09-06): SUMO
   junction-model `jmIgnoreFoeProb` (with `jmIgnoreFoeSpeed` set high so any
   foe qualifies) written on every vType when set — the probability that a

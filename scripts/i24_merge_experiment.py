@@ -127,6 +127,9 @@ def variant_config(name: str) -> dict[str, Any]:
         name = name[: m_vis.start()] + name[m_vis.end() :]
     # sublane / impatience levers, anywhere in the name, any order
     fields = {
+        "keepright": "lc_keep_right",
+        "overtake": "lc_overtake_right",
+        "speedgain": "lc_speed_gain",
         "pushy": "lc_pushy",
         "impat": "lc_impatience",
         "acclat": "lc_accel_lat",
@@ -135,7 +138,10 @@ def variant_config(name: str) -> dict[str, Any]:
         "lcsub": "lc_sublane",
     }
     while True:
-        m_num = re.search(r"_(pushy|impat|acclat|latspeed|mingaplat|lcsub)([0-9.]+)", name)
+        m_num = re.search(
+            r"_(keepright|overtake|speedgain|pushy|impat|acclat|latspeed|mingaplat|lcsub)([0-9.]+)",
+            name,
+        )
         m_align = re.search(r"_latalign(left|right|center|compact|nice|arbitrary)", name)
         if m_num:
             sub[fields[m_num.group(1)]] = float(m_num.group(2))

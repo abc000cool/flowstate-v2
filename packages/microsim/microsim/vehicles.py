@@ -564,6 +564,7 @@ def sublane_vtype_attrs(fleet: FleetSpec) -> dict[str, str]:
     ``FleetSpec.lc_sublane`` → ``lcSublane``, ``lc_pushy`` → ``lcPushy``,
     ``lc_impatience`` → ``lcImpatience``, ``lc_accel_lat`` → ``lcAccelLat``,
     ``max_speed_lat`` → ``maxSpeedLat``, ``min_gap_lat`` → ``minGapLat``,
+    ``lc_overtake_right`` → ``lcOvertakeRight``,
     ``lat_alignment`` → ``latAlignment``. Fleets that set none of them get an
     empty mapping, so their route files stay byte-identical.
     """
@@ -574,6 +575,7 @@ def sublane_vtype_attrs(fleet: FleetSpec) -> dict[str, str]:
         ("lcAccelLat", fleet.lc_accel_lat),
         ("maxSpeedLat", fleet.max_speed_lat),
         ("minGapLat", fleet.min_gap_lat),
+        ("lcOvertakeRight", fleet.lc_overtake_right),
     )
     out = {k: f"{v:g}" for k, v in pairs if v is not None}
     if fleet.lat_alignment is not None:

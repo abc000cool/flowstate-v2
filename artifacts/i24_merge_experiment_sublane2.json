@@ -1,0 +1,315 @@
+{
+ "schema_version": 1,
+ "versions": {
+  "python": "3.12.13",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "arm": "scenarios/i24_replica_speedcal.yaml",
+ "arm_config_hash": "8fa63f55e74d",
+ "seed": 6914975401685141156,
+ "observed_segment_mean_kmh": [
+  36.34,
+  32.5,
+  29.76,
+  31.34,
+  37.61,
+  36.91,
+  37.72,
+  29.03,
+  30.4,
+  33.66
+ ],
+ "variants": [
+  {
+   "variant": "geometry_corrected_ramplc1_entrylanes_sublane3.2_ilinks",
+   "seed": 6914975401685141156,
+   "config_hash": "9b0465d5f88e",
+   "inserted_fraction": 0.4299,
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2241,
+     "n_departed": 842,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1205
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1482,
+     "n_departed": 335,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 748
+    }
+   ],
+   "rmspe_all": 0.8846,
+   "rmspe_15min": 0.8641,
+   "geh_under_5_vs_recommended": 0.0139,
+   "rmspe_train": 0.7616,
+   "rmspe_test": 1.0,
+   "segment_mean_kmh": [
+    8.57,
+    7.41,
+    8.99,
+    11.37,
+    10.41,
+    7.84,
+    7.31,
+    6.18,
+    4.62,
+    56.43
+   ],
+   "segment_rel_error": [
+    -0.7929,
+    -0.7946,
+    -0.7161,
+    -0.6484,
+    -0.76,
+    -0.8155,
+    -0.831,
+    -0.8282,
+    -0.8688,
+    0.5702
+   ],
+   "hourly_flow_mean_by_section": [
+    1720,
+    1876,
+    1583,
+    1386,
+    1016,
+    1014
+   ],
+   "wall_s": 1289.9
+  },
+  {
+   "variant": "geometry_corrected_ramplc1_entrylanes_sublane0.8_ilinks",
+   "seed": 6914975401685141156,
+   "config_hash": "d38d9aad1011",
+   "inserted_fraction": 0.4355,
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2241,
+     "n_departed": 853,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1205
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1482,
+     "n_departed": 503,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 748
+    }
+   ],
+   "rmspe_all": 0.8853,
+   "rmspe_15min": 0.8624,
+   "geh_under_5_vs_recommended": 0.0417,
+   "rmspe_train": 0.7631,
+   "rmspe_test": 1.0,
+   "segment_mean_kmh": [
+    9.41,
+    7.86,
+    9.21,
+    12.23,
+    11.51,
+    9.65,
+    8.53,
+    6.8,
+    6.42,
+    52.75
+   ],
+   "segment_rel_error": [
+    -0.7711,
+    -0.7654,
+    -0.6993,
+    -0.6219,
+    -0.7263,
+    -0.7689,
+    -0.804,
+    -0.8078,
+    -0.8147,
+    0.4602
+   ],
+   "hourly_flow_mean_by_section": [
+    1676,
+    1838,
+    1560,
+    1349,
+    1262,
+    1258
+   ],
+   "wall_s": 1482.0
+  },
+  {
+   "variant": "geometry_corrected_ramplc1_entrylanes_sublane0.8_ilinks_pushy0.5_latalignright",
+   "seed": 6914975401685141156,
+   "config_hash": "0834db81b373",
+   "inserted_fraction": 0.4412,
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2241,
+     "n_departed": 756,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1205
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1482,
+     "n_departed": 423,
+     "n_planned_exiting": 0
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 748
+    }
+   ],
+   "rmspe_all": 0.9616,
+   "rmspe_15min": 0.902,
+   "geh_under_5_vs_recommended": 0.0833,
+   "rmspe_train": 0.9237,
+   "rmspe_test": 1.0,
+   "segment_mean_kmh": [
+    19.98,
+    16.51,
+    14.88,
+    13.13,
+    12.9,
+    9.73,
+    7.59,
+    7.82,
+    6.64,
+    50.7
+   ],
+   "segment_rel_error": [
+    -0.4999,
+    -0.5483,
+    -0.5303,
+    -0.5978,
+    -0.672,
+    -0.748,
+    -0.8167,
+    -0.7627,
+    -0.8102,
+    0.5358
+   ],
+   "hourly_flow_mean_by_section": [
+    1764,
+    1839,
+    1569,
+    1312,
+    1030,
+    1016
+   ],
+   "wall_s": 2931.6
+  }
+ ]
+}
