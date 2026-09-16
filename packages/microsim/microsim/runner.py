@@ -56,6 +56,7 @@ from controllers.registry import default_params, get_segment_controller, get_veh
 from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
+    SCRIPTED_MERGE_DEFAULTS,
     CorridorNetwork,
     OSMNetwork,
     RampSpec,
@@ -178,6 +179,8 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
                         "acceleration lane (lane 0 of the attach edge) to dead-end at the edge's end"
                     )
                 nxt = compiled.getEdge(chain[i + 1])
+                if ramp.merge == "scripted":
+                    continue  # no patch: the runner drives the acceleration lane
                 patches += merge_patch_files(
                     workdir / "patches",
                     ramp.attach_edge,
@@ -188,16 +191,17 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
                     ramp.merge,
                     visibility_m=ramp.merge_visibility_m,
                 )
-            bundle = osm_import(
-                osm_file=net.osm_file,
-                bbox=net.bbox,
-                corridor_edges=tuple(net.corridor_edges),
-                workdir=workdir,
-                keep_edges=keep,
-                patch_files=patches,
-                internal_links=net.internal_links,
-            )
-            bundle = dataclasses.replace(bundle, patch_files=tuple(str(p) for p in patches))
+            if patches:
+                bundle = osm_import(
+                    osm_file=net.osm_file,
+                    bbox=net.bbox,
+                    corridor_edges=tuple(net.corridor_edges),
+                    workdir=workdir,
+                    keep_edges=keep,
+                    patch_files=patches,
+                    internal_links=net.internal_links,
+                )
+                bundle = dataclasses.replace(bundle, patch_files=tuple(str(p) for p in patches))
         if net.boundary is not None:
             # docs/CONTRACTS.md §2: on an OSM corridor the LAST corridor edge
             # plays the exit-buffer role and hosts the boundary schedule.
@@ -357,6 +361,113 @@ class _TrafficLib:
         self.use_traci = use_traci
         self.gui = gui
         self.binary = "sumo-gui" if gui else "sumo"
+
+
+# SUMO laneChangeMode bit patterns (TraCI docs, "lane change mode"): every
+# model-driven change off; bits 8-9 decide how a TraCI request treats others.
+COLLISION_LOG_MAX = 50  # collision events kept verbatim in meta.json (the count is exact)
+LC_MODE_SCRIPTED_SAFE = 512  # respect the speed / brake gaps of others, adapt speed
+LC_MODE_SCRIPTED_FORCE = 256  # avoid immediate collisions only (the follower yields)
+SCRIPTED_MERGE_CREEP_MS = 3.0  # desired-speed floor on the acceleration lane [m/s]
+NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
+NEIGHBOR_LEFT_LEADERS = 2
+
+
+def _neighbor_gap(mod: Any, vid: str, mode: int) -> tuple[float, float, str | None]:
+    """Smallest gap [m], that neighbour's speed and id on the adjacent lane.
+
+    ``vehicle.getNeighbors`` returns ``(id, gap)`` pairs (gap negative when the
+    vehicles overlap longitudinally). Returns ``(inf, nan, None)`` with no
+    neighbour.
+    """
+    best_gap, best_v, best_id = math.inf, math.nan, None
+    for nid, gap in mod.vehicle.getNeighbors(vid, mode):
+        if gap < best_gap:
+            best_gap, best_v, best_id = float(gap), float(mod.vehicle.getSpeed(nid)), str(nid)
+    return best_gap, best_v, best_id
+
+
+def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t: float) -> None:
+    """One step of the scripted merge for one ramp (``RampSpec.merge = "scripted"``).
+
+    Drives every vehicle on lane 0 of the attach edge: desired speed matched
+    to the mainline neighbour ahead (or the mainline lane's limit), a lane change
+    requested when the mainline gaps ahead and behind both clear
+    ``accept_gap_s`` × speed + the ramp vehicle's own minimum gap, and a forced
+    change (``LC_MODE_SCRIPTED_FORCE``) after ``force_after_s`` inside the last
+    ``force_within_m`` of the lane. Control is handed back to SUMO as soon as
+    the vehicle leaves the lane. Bookkeeping lands in ``ss`` for ``meta.json``.
+    """
+    prm = ss["params"]
+    edge = ss["edge"]
+    on_lane0 = {
+        vid
+        for vid, res in results.items()
+        if res[tc.VAR_ROAD_ID] == edge and int(res[tc.VAR_LANE_INDEX]) == 0
+    }
+    veh = ss["veh"]
+    # vehicles that left the acceleration lane (merged, or gone): hand back control
+    for vid in [v for v in veh if v not in on_lane0]:
+        st = veh.pop(vid)
+        if vid in results:
+            mod.vehicle.setMaxSpeed(vid, st["v_max_orig"])
+            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            ss["n_changed"] += 1
+            ss["n_forced"] += int(st["forced"])
+            ss["waits_s"].append(t - st["entered_s"])
+    v_limit = float(mod.lane.getMaxSpeed(ss["target_lane"]))
+    # courtesy yielding: restore every follower asked to hold back last step
+    for fid, v_orig in ss["yielding"].items():
+        if fid in results:
+            mod.vehicle.setMaxSpeed(fid, v_orig)
+    ss["yielding"] = {}
+    for vid in sorted(on_lane0):
+        st = veh.get(vid)
+        if st is None:
+            st = veh[vid] = {
+                "entered_s": t,
+                "zone_s": None,
+                "requested_s": -math.inf,
+                "forced": False,
+                "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
+                "v_max_orig": float(mod.vehicle.getMaxSpeed(vid)),
+                "s0": float(mod.vehicle.getMinGap(vid)),
+            }
+            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+            ss["n_entered"] += 1
+        v_ego = float(results[vid][tc.VAR_SPEED])
+        remaining = ss["lane_len_m"] - float(results[vid][tc.VAR_LANEPOSITION])
+        g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, NEIGHBOR_LEFT_LEADERS)
+        g_foll, v_foll, f_id = _neighbor_gap(mod, vid, NEIGHBOR_LEFT_FOLLOWERS)
+        # Speed matching through the vehicle's desired speed (setMaxSpeed), never
+        # setSpeed: the car-following model keeps full authority over gaps and the
+        # lane end, so matching a crawling mainline cannot command a rear-end
+        # collision (setSpeed's max-decel clamp overrides its safe-speed clamp in
+        # SUMO's influencer). Floor at a creep so a stopped mainline never
+        # freezes the acceleration lane.
+        v_match = v_lead if g_lead < prm["lookahead_m"] else v_limit
+        v_des = min(max(v_match, SCRIPTED_MERGE_CREEP_MS), st["v_max_orig"])
+        mod.vehicle.setMaxSpeed(vid, v_des)
+        ok_lead = g_lead >= st["s0"] + prm["accept_gap_s"] * v_ego
+        ok_foll = g_foll >= st["s0"] + prm["accept_gap_s"] * (v_foll if g_foll < math.inf else 0.0)
+        if prm["courtesy"] > 0.0 and ok_lead and not ok_foll and f_id is not None:
+            # the mainline follower blocking an otherwise acceptable gap eases
+            # off (desired speed below the ramp vehicle's) so the gap opens;
+            # its car-following model still decides how, and it is restored
+            # next step unless it is still the blocker
+            if f_id not in ss["yielding"]:
+                ss["yielding"][f_id] = float(mod.vehicle.getMaxSpeed(f_id))
+            mod.vehicle.setMaxSpeed(f_id, max(v_ego - prm["courtesy"], SCRIPTED_MERGE_CREEP_MS))
+        if remaining <= prm["force_within_m"] and st["zone_s"] is None:
+            st["zone_s"] = t
+        force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
+        if force and not st["forced"]:
+            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_FORCE)
+            st["forced"] = True
+        if (ok_lead and ok_foll) or force:
+            if t - st["requested_s"] >= prm["change_duration_s"]:
+                mod.vehicle.changeLane(vid, 1, prm["change_duration_s"])
+                st["requested_s"] = t
 
 
 def _leader_obs(lib_mod: Any, veh_id: str, ego_min_gap: float) -> tuple[float, float]:
@@ -806,6 +917,8 @@ def run_micro(
     pert_release_t = math.inf
     pert_vehicle: str | None = None
     n_departed = 0
+    n_collisions = 0  # SUMO collision events (collision.action warn keeps both vehicles)
+    collision_log: list[dict[str, Any]] = []
 
     # --- Ramp metering (RampMeterSpec): a virtual signal on each metered
     # on-ramp's last edge; the rate comes from the registry controller.
@@ -852,6 +965,44 @@ def run_micro(
                     "stopped_set": set(),
                     "released": [],
                     "rates": [],
+                }
+            )
+
+    # --- Scripted on-ramp merges (RampSpec.merge == "scripted") ------------
+    # Every vehicle on the acceleration lane (lane 0 of the attach edge, which
+    # dead-ends) is driven by a gap-acceptance rule instead of SUMO's
+    # lane-change model: match the speed of the mainline lane it enters, take
+    # the first gap that clears the accepted time gap on both sides, and force
+    # the change (the follower yields; SUMO still refuses collisions) after a
+    # wait inside the last stretch of the lane. Late-merge / forced-merge
+    # behaviour in the Hidas (2005) sense; docs/I24_VALIDATION.md §0.8.
+    scripted_states: list[dict[str, Any]] = []
+    if isinstance(cfg.network, OSMNetwork) and any(
+        r.kind == "on" and r.merge == "scripted" for r in cfg.network.ramps
+    ):
+        net_for_merges = sumolib.net.readNet(str(bundle.net_path))
+        for ramp_s in cfg.network.ramps:
+            if ramp_s.kind != "on" or ramp_s.merge != "scripted":
+                continue
+            e_attach = net_for_merges.getEdge(ramp_s.attach_edge)
+            if e_attach.getLaneNumber() < 2:
+                raise ValueError(
+                    f"ramp {ramp_s.name or ramp_s.attach_edge}: the scripted merge needs a "
+                    "mainline lane beside the acceleration lane"
+                )
+            scripted_states.append(
+                {
+                    "ramp": ramp_s.name or ramp_s.attach_edge,
+                    "edge": ramp_s.attach_edge,
+                    "lane_len_m": float(e_attach.getLength()),
+                    "target_lane": f"{ramp_s.attach_edge}_1",
+                    "params": {**SCRIPTED_MERGE_DEFAULTS, **dict(ramp_s.merge_params)},
+                    "veh": {},
+                    "yielding": {},
+                    "n_entered": 0,
+                    "n_changed": 0,
+                    "n_forced": 0,
+                    "waits_s": [],
                 }
             )
 
@@ -934,6 +1085,20 @@ def run_micro(
         for k in range(n_steps):
             mod.simulationStep()
             t = float(mod.simulation.getTime())
+            if mod.simulation.getCollidingVehiclesNumber():
+                for c in mod.simulation.getCollisions():
+                    n_collisions += 1
+                    if len(collision_log) < COLLISION_LOG_MAX:
+                        collision_log.append(
+                            {
+                                "t": t,
+                                "collider": c.collider,
+                                "victim": c.victim,
+                                "type": c.type,
+                                "lane": c.lane,
+                                "pos_m": float(c.pos),
+                            }
+                        )
 
             # Downstream boundary schedule (piecewise-constant, exit edge).
             while boundary_idx < len(boundary_steps) and t >= boundary_steps[boundary_idx][0]:
@@ -1050,6 +1215,10 @@ def run_micro(
                         ms_r["stopped_set"].discard(front)
                         ms_r["released"].append(t)
                         ms_r["last_release_s"] = t
+
+            # Scripted on-ramp merges (see the setup block above).
+            for ss in scripted_states:
+                _scripted_merge_step(mod, tc, ss, results, t)
 
             # Managed lanes: admit only the hov class for the window, then
             # restore the lanes' original permissions.
@@ -1206,6 +1375,8 @@ def run_micro(
         "realtime_factor": cfg.sim.duration_s / wall if wall > 0 else None,
         "n_vehicles_planned": plan.n,
         "n_vehicles_departed": n_departed,
+        "n_collisions": n_collisions,
+        "collisions": collision_log,
         "n_vehicles_arrived": max(n_arrived, 0),
         "av_ids": list(plan.av_ids),
         "complied_ids": list(plan.complied_ids),
@@ -1251,6 +1422,20 @@ def run_micro(
             if r.kind == "on" and r.merge != "lane_change"
         ],
         "net_patch_files": list(bundle.patch_files),
+        "scripted_merges": [
+            {
+                "ramp": ss["ramp"],
+                "attach_edge": ss["edge"],
+                "params": dict(ss["params"]),
+                "n_entered": ss["n_entered"],
+                "n_changed": ss["n_changed"],
+                "n_forced": ss["n_forced"],
+                "n_unfinished": len(ss["veh"]),
+                "wait_s_mean": float(np.mean(ss["waits_s"])) if ss["waits_s"] else None,
+                "wait_s_p90": float(np.percentile(ss["waits_s"], 90)) if ss["waits_s"] else None,
+            }
+            for ss in scripted_states
+        ],
         "closures": [
             {
                 "label": cs["spec"].label,

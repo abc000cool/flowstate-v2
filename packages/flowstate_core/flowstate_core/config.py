@@ -146,6 +146,18 @@ class RampMeterSpec(BaseModel):
         return self
 
 
+SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
+    "accept_gap_s": 0.6,
+    "force_after_s": 4.0,
+    "force_within_m": 80.0,
+    "change_duration_s": 2.0,
+    "lookahead_m": 120.0,
+    "courtesy": 0.0,
+}
+"""Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
+SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
+
+
 class RampSpec(BaseModel):
     """One on- or off-ramp attached to an OSM corridor (docs/CONTRACTS.md §2).
 
@@ -194,7 +206,7 @@ class RampSpec(BaseModel):
     100 m). ``None`` keeps the default. Set to the acceleration lane's length
     to let the ramp feed the mainline over the lane instead of at its end
     (docs/I24_VALIDATION.md §0.7)."""
-    merge: Literal["lane_change", "acceleration_lane", "zipper"] = "lane_change"
+    merge: Literal["lane_change", "acceleration_lane", "zipper", "scripted"] = "lane_change"
     """How an on-ramp's acceleration lane hands its traffic to the mainline
     (micro tier, 2026-09-06). ``lane_change`` (default): the lane dead-ends
     and ramp vehicles change lanes under the lane-change model — on the I-24
@@ -207,10 +219,32 @@ class RampSpec(BaseModel):
     and mainline traffic interleave at the lane end instead of negotiating
     lane changes. Both need the acceleration lane to dead-end at the attach
     edge's end node (checked at run time) and are applied as netconvert
-    patches recorded in ``meta.json``."""
+    patches recorded in ``meta.json``. ``scripted`` (2026-09-16): the network
+    is the ``lane_change`` one, but every vehicle on the acceleration lane is
+    driven by the runner's gap-acceptance merge instead of SUMO's lane-change
+    model — it matches the speed of the mainline lane it is entering, takes
+    the first gap that clears ``merge_params["accept_gap_s"]`` on both sides,
+    and after ``merge_params["force_after_s"]`` of waiting inside the last
+    ``merge_params["force_within_m"]`` of the lane it forces the change (the
+    mainline follower yields, SUMO still refusing collisions). Recorded per
+    ramp in ``meta.json["scripted_merges"]``."""
+    merge_params: dict[str, float] = Field(default_factory=dict)
+    """Tuning of the ``scripted`` merge (ignored by the other models).
+    Keys and defaults: ``accept_gap_s`` 0.6 (time gap accepted to the mainline
+    leader and follower, on top of the vehicle's ``s0``), ``force_after_s``
+    4.0, ``force_within_m`` 80.0, ``change_duration_s`` 2.0, ``lookahead_m``
+    120.0 (distance over which the mainline lane's speed is matched),
+    ``courtesy`` 0.0 (m/s; when > 0 the mainline follower that blocks an
+    otherwise acceptable gap is asked to hold its desired speed this far below
+    the ramp vehicle's until the gap opens — courtesy yielding)."""
 
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
+        unknown = set(self.merge_params) - SCRIPTED_MERGE_KEYS
+        if unknown:
+            raise ValueError(f"unknown merge_params keys: {sorted(unknown)}")
+        if self.merge_params and self.merge != "scripted":
+            raise ValueError("merge_params apply to merge='scripted' only")
         if self.kind == "on":
             if not self.inflow:
                 raise ValueError("an on-ramp needs a non-empty inflow")
@@ -224,6 +258,8 @@ class RampSpec(BaseModel):
                 raise ValueError("an off-ramp cannot carry a meter")
             if self.merge != "lane_change":
                 raise ValueError("merge models apply to on-ramps only")
+            if self.merge_params:
+                raise ValueError("merge_params apply to on-ramps only")
             if not self.exit_fraction:
                 raise ValueError("an off-ramp needs a non-empty exit_fraction")
             if self.inflow:

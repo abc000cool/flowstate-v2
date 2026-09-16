@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from flowstate_core.config import ScenarioConfig
+from flowstate_core.config import RampSpec, ScenarioConfig, config_hash
 from microsim import run_micro
 from microsim.networks import merge_patch_files
 
@@ -208,3 +208,74 @@ class TestInternalLinks:
         assert 'function="internal"' in with_links.net_path.read_text()
         assert n_links > n_plain, "internal junction lanes were not compiled"
         assert with_links.edge_ids == plain.edge_ids
+
+
+class TestScriptedMerge:
+    """``RampSpec.merge = "scripted"``: the runner drives the acceleration lane."""
+
+    def test_schema(self, merge_osm):
+        cfg = _merge_scenario(merge_osm, "scripted")
+        assert cfg.network.ramps[0].merge_params == {}
+        with pytest.raises(ValueError, match="unknown merge_params"):
+            RampSpec.model_validate(
+                {
+                    "kind": "on",
+                    "edges": ["200"],
+                    "attach_edge": "102",
+                    "inflow": [[0.0, 0.1]],
+                    "merge": "scripted",
+                    "merge_params": {"bogus": 1.0},
+                }
+            )
+        with pytest.raises(ValueError, match="scripted"):
+            RampSpec.model_validate(
+                {
+                    "kind": "on",
+                    "edges": ["200"],
+                    "attach_edge": "102",
+                    "inflow": [[0.0, 0.1]],
+                    "merge": "zipper",
+                    "merge_params": {"accept_gap_s": 1.0},
+                }
+            )
+        # the hash sees the model and its parameters
+        raw = cfg.model_dump()
+        raw["network"]["ramps"][0]["merge_params"] = {"accept_gap_s": 0.3}
+        assert config_hash(ScenarioConfig.model_validate(raw)) != config_hash(cfg)
+
+    def test_runs_and_merges_every_ramp_vehicle(self, merge_osm, tmp_path):
+        cfg = _merge_scenario(merge_osm, "scripted", duration_s=300.0)
+        paths = run_micro(cfg, 3, tmp_path / "scripted")
+        meta = json.loads(paths.meta.read_text())
+        assert meta["merge_models"] == [
+            {"ramp": "test on-ramp", "attach_edge": "102", "merge": "scripted"}
+        ]
+        assert meta["net_patch_files"] == []  # no netconvert patch for this model
+        (sm,) = meta["scripted_merges"]
+        assert sm["ramp"] == "test on-ramp" and sm["attach_edge"] == "102"
+        assert sm["params"]["accept_gap_s"] == 0.6 and sm["params"]["force_after_s"] == 4.0
+        assert sm["n_entered"] > 20, sm
+        # every vehicle is either merged or still on the lane at the end of the
+        # run (the fixture's merge is congested by design: a queue is expected)
+        assert sm["n_changed"] + sm["n_unfinished"] == sm["n_entered"]
+        assert sm["n_changed"] >= 0.6 * sm["n_entered"], sm
+        assert sm["n_forced"] > 0, sm
+        assert sm["wait_s_mean"] is not None and sm["wait_s_mean"] < 90.0
+        assert meta["n_vehicles_departed"] > 0.8 * meta["n_vehicles_planned"]
+        assert meta["n_collisions"] == 0
+        # most ramp vehicles that departed reached the acceleration lane (the
+        # rest queue on the ramp edge behind it at the end of the run)
+        (ramp_meta,) = meta["ramps"]
+        assert ramp_meta["n_departed"] > 0
+        assert sm["n_entered"] >= 0.5 * ramp_meta["n_departed"], (sm, ramp_meta)
+        df = pd.read_parquet(paths.trajectories, columns=["veh_id", "x"])
+        assert df["x"].max() > 1500.0
+
+    def test_params_change_behaviour(self, merge_osm, tmp_path):
+        raw = _merge_scenario(merge_osm, "scripted", duration_s=200.0).model_dump()
+        raw["network"]["ramps"][0]["merge_params"] = {"force_after_s": 0.0, "force_within_m": 1e9}
+        cfg = ScenarioConfig.model_validate(raw)
+        meta = json.loads(run_micro(cfg, 3, tmp_path / "forced").meta.read_text())
+        (sm,) = meta["scripted_merges"]
+        assert sm["params"]["force_after_s"] == 0.0
+        assert sm["n_forced"] == sm["n_changed"] > 0  # every merge was a forced one

@@ -222,6 +222,29 @@ Other blocks:
   junction gap `jm_timegap_minor_s` turned out to have no effect on a road
   zipper — four values gave byte-identical runs). Vehicles on an internal
   lane are not recorded (a few metres per junction).
+- `RampSpec.merge = "scripted"` and `RampSpec.merge_params: dict[str, float]`
+  (2026-09-16): a run-time merge behaviour instead of a netconvert patch.
+  Every vehicle on lane 0 of the attach edge (which must dead-end, checked
+  at run time like the other models) is driven by
+  `microsim.runner._scripted_merge_step`: desired speed matched to the
+  mainline vehicle ahead within `lookahead_m` via `vehicle.setMaxSpeed`
+  (restored on exit; never `setSpeed`), a `changeLane` request under
+  `laneChangeMode` 512 once the mainline gaps ahead and behind both clear
+  `s0 + accept_gap_s × v`, mode 256 (forced; the follower yields, SUMO still
+  refuses collisions) after `force_after_s` inside the last `force_within_m`,
+  and with `courtesy > 0` the blocking mainline follower's desired speed is
+  held `courtesy` m/s below the ramp vehicle's until the gap opens. Keys are
+  validated against `SCRIPTED_MERGE_DEFAULTS` (`accept_gap_s` 0.6,
+  `force_after_s` 4, `force_within_m` 80, `change_duration_s` 2,
+  `lookahead_m` 120, `courtesy` 0); `merge_params` on any other model or on
+  an off-ramp is rejected; both fields enter the config hash. `meta.json`
+  lists `scripted_merges` (`ramp, attach_edge, params, n_entered, n_changed,
+  n_forced, n_unfinished, wait_s_mean, wait_s_p90`).
+- `meta.json.n_collisions` and `meta.json.collisions` (2026-09-16): the exact
+  number of SUMO collision detections over the run (a persisting overlap under
+  `--collision.action warn` counts every step) and the first 50 events
+  (`t, collider, victim, type, lane, pos_m`). Additive; older artifacts lack
+  the keys.
 - `RampSpec.merge_visibility_m: float | None = None` (2026-09-07, zipper
   merges): SUMO connection `visibility` [m] on the ramp lane's and the
   merging mainline lane's connections into the merged lane — how far

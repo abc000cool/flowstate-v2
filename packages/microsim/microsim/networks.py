@@ -394,14 +394,14 @@ def merge_patch_files(
             leaves SUMO's default.
 
     Returns:
-        The written patch paths (empty for ``"lane_change"``).
+        The written patch paths (empty for ``"lane_change"`` and ``"scripted"``).
 
     Raises:
         ValueError: Unknown merge model, or a lane layout that is not a
             right-side lane drop of exactly one lane.
     """
-    if merge == "lane_change":
-        return []
+    if merge in ("lane_change", "scripted"):
+        return []  # the scripted merge drives vehicles at run time on the unpatched net
     if n_next_lanes != n_attach_lanes - 1:
         raise ValueError(
             f"merge model {merge!r} needs {attach_edge} ({n_attach_lanes} lanes) to drop exactly "

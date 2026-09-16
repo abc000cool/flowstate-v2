@@ -102,6 +102,19 @@ REPS=20; RING=20
 if [ "$QUICK" -eq 1 ]; then REPS=1; RING=2; fi
 say "pipeline start: procs=$PROCS quick=$QUICK stages=${STAGES:-all} commit=$(git rev-parse --short HEAD) archive=$ARCHIVE bucket=${BUCKET:-none} self_delete=$SELF_DELETE"
 
+# 0. Scripted late-merge probe (RampSpec.merge = "scripted"; opt-in: --stages "merge_scripted"),
+#    single seed each, against the reference arm's inserted / Old Hickory / 15-min / GEH numbers.
+if echo " $STAGES " | grep -q " merge_scripted "; then
+  stage merge_scripted $RUN scripts/i24_merge_experiment.py \
+    --variants geometry_corrected_ramplc1_entrylanes \
+               geometry_corrected_ramplc1_entrylanes_scripted \
+               geometry_corrected_ramplc1_entrylanes_scripted_court2 \
+               geometry_corrected_ramplc1_entrylanes_scripted_accept0.3_court2 \
+               geometry_corrected_ramplc1_entrylanes_scripted_force1_within150_court2 \
+               geometry_corrected_ramplc1_entrylanes_scripted_force1_within150_accept0.3_court4 \
+    --procs "$PROCS" --out artifacts/i24_merge_experiment_scripted.json || exit 1
+fi
+
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
 stage jm_sweep $RUN scripts/i24_merge_experiment.py \
   --variants geometry_corrected_ramplc1_entrylanes_zipper_jm0.5 \

@@ -168,10 +168,29 @@ def variant_config(name: str) -> dict[str, Any]:
     if name.endswith("_meter"):
         meter_on = True
         name = name[: -len("_meter")]
-    for suffix, model in (("_zipper", "zipper"), ("_accel", "acceleration_lane")):
+    # scripted merge tuning (RampSpec.merge_params), anywhere after "_scripted"
+    merge_params: dict[str, float] = {}
+    for key, field_name in (
+        ("accept", "accept_gap_s"),
+        ("force", "force_after_s"),
+        ("within", "force_within_m"),
+        ("look", "lookahead_m"),
+        ("court", "courtesy"),
+    ):
+        m_p = re.search(rf"_{key}([0-9.]+)", name)
+        if m_p:
+            merge_params[field_name] = float(m_p.group(1))
+            name = name[: m_p.start()] + name[m_p.end() :]
+    for suffix, model in (
+        ("_zipper", "zipper"),
+        ("_accel", "acceleration_lane"),
+        ("_scripted", "scripted"),
+    ):
         if name.endswith(suffix):
             merge_model = model
             name = name[: -len(suffix)]
+    if merge_params and merge_model != "scripted":
+        raise ValueError(f"merge tuning suffixes need _scripted: {name}")
     if name.endswith("_heavy"):
         # the recording's heavy vehicles (share, length) with their own fitted population
         obs_heavy = json.loads((REPO / "artifacts" / "i24_heavy_observed.json").read_text())
@@ -270,6 +289,8 @@ def variant_config(name: str) -> dict[str, Any]:
                     ramp["merge"] = merge_model
                     if vis is not None:
                         ramp["merge_visibility_m"] = vis
+                    if merge_params:
+                        ramp["merge_params"] = merge_params
                 if meter_on:
                     fd = json.loads((REPO / "artifacts" / "fd_i24.json").read_text())
                     fd = fd.get("fd", fd)
@@ -287,6 +308,15 @@ def variant_config(name: str) -> dict[str, Any]:
         raw["name"] += (f"_{merge_model}" if merge_model else "") + ("_meter" if meter_on else "")
     if vis is not None:
         raw["name"] += f"_vis{vis:g}"
+    for field_name, key in (
+        ("accept_gap_s", "accept"),
+        ("force_after_s", "force"),
+        ("force_within_m", "within"),
+        ("lookahead_m", "look"),
+        ("courtesy", "court"),
+    ):
+        if field_name in merge_params:
+            raw["name"] += f"_{key}{merge_params[field_name]:g}"
     for field, val in sub.items():
         raw["fleet"][field] = val
     raw["name"] += "".join(sub_tags)
