@@ -9,6 +9,7 @@ Index of everything in `docs/`. Start with the repo-root
 |---|---|
 | [CLAUDE.md](../CLAUDE.md) (repo root) | The authoritative build specification: mission, non-negotiables, ADRs (two-tier engine, controllers-first, monorepo), per-package specs, milestone definitions |
 | [CONTRACTS.md](CONTRACTS.md) | Cross-package interface contracts: config schema, controller function signatures, run-artifact layout, metric conventions, RNG/seed discipline |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment runbook: the Compose stack, environment variables, sizing from the load test, backups, key rotation, job recovery and reconciliation |
 
 ## Results
 

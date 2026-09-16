@@ -189,6 +189,9 @@ curl -s http://localhost:8000/healthz
 curl -s -H "X-API-Key: flowstate-local-dev" http://localhost:8000/api/v1/scenarios/preset
 ```
 
+Operating it for a pilot (environment, sizing, backups, key rotation, job
+recovery after a crash): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ### Dev path (no Docker)
 
 Needs [uv](https://docs.astral.sh/uv/) and Python 3.12; SUMO 1.27.1 installs
