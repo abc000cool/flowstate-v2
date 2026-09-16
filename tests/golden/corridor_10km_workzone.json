@@ -10,7 +10,7 @@
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_workzone",
   "generated_at": "2026-09-16T18:21:08+00:00",
   "tolerance": {
-    "relative": 1e-06,
+    "relative": 0.0001,
     "exact": [
       "n_collisions",
       "n_heavy",
@@ -21,7 +21,8 @@
       "n_vehicles_departed",
       "n_vehicles_planned",
       "wave_count"
-    ]
+    ],
+    "note": "1e-4, not the default 1e-6: SUMO's Linux (CI) and macOS builds differ at 2e-6 relative in sigma_v_temporal for this closure case (CI run 35137040295, 2026-09-16); the exact-compared counts are unaffected"
   },
   "config_hash": "8986b6480138",
   "seed": 42,
