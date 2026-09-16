@@ -17,7 +17,11 @@ consumes. Cells already complete on disk are skipped, so the battery resumes.
 
 Usage::
 
-    uv run --no-sync python scripts/i24_penetration_sweep.py --scenario i24_replica_corrected [--procs 8]
+    uv run --no-sync python scripts/i24_penetration_sweep.py --scenario i24_replica_speedcal [--procs 8]
+
+``i24_replica_speedcal`` is the arm the shipped battery ran on
+(``artifacts/i24_sweep_summary.json``, docs/I24_SWEEP.md); ``i24_replica`` and
+``i24_replica_corrected`` are the other demand arms of docs/I24_VALIDATION.md.
 """
 
 from __future__ import annotations
@@ -116,7 +120,14 @@ def _done(cell_name: str, chash: str, seed: int) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    ap.add_argument("--scenario", required=True, help="i24_replica or i24_replica_corrected")
+    ap.add_argument(
+        "--scenario",
+        required=True,
+        help=(
+            "scenario name under scenarios/: i24_replica_speedcal (the arm of the shipped "
+            "sweep, artifacts/i24_sweep_summary.json), i24_replica or i24_replica_corrected"
+        ),
+    )
     ap.add_argument("--procs", type=int, default=8)
     ap.add_argument("--replicates", type=int, default=20)
     ap.add_argument("--keep-trajectories", action="store_true")

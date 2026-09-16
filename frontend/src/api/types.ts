@@ -172,35 +172,77 @@ export interface Heatmap {
   values: (number | null)[][];
 }
 
+/** Mirrors the API's `SweepCreateRequest` (packages/api/api/schemas.py): the
+ * grid is penetrations × compliances × controllers. The field is the plural
+ * `controllers` — a singular `controller` is not part of the contract and
+ * would be dropped, leaving every cell without a controller. */
 export interface CreateSweepRequest {
   scenario_id: string;
   penetrations: number[];
   compliances: number[];
-  controller: string;
+  /** Controller names; `null` = AVs drive as humans. */
+  controllers: (string | null)[];
   replicates: number;
+  /** Ask the API to add a p=0 (no controlled vehicles) baseline cell so the
+   * matrix has an uncontrolled reference from the same sweep. */
+  include_baseline: boolean;
+  overrides?: Record<string, unknown>;
+  tier?: Tier;
 }
 
+/** Mirrors the API's `SweepCellOut`. `run_id`/`status` are null until the
+ * fan-out job has created the cell's run. */
 export interface SweepCell {
   penetration: number;
   compliance: number;
-  run_id: string;
-  status: RunStatus;
-  aggregate?: Record<string, AggregateStat>;
+  controller?: string | null;
+  config_hash?: string;
+  run_id: string | null;
+  status: RunStatus | null;
+  progress?: RunProgress | null;
+  aggregate?: Record<string, AggregateStat> | null;
 }
 
+/** Mirrors the API's `SweepOut`. */
 export interface SweepDetail {
   sweep_id: string;
+  scenario_id?: string | null;
+  status?: RunStatus;
+  error?: string | null;
+  created_at?: string;
+  runs_total?: number;
+  runs_done?: number;
+  runs_failed?: number;
   cells: SweepCell[];
 }
 
-export interface CreateReportResponse {
+export type ReportStatus = RunStatus;
+
+/** Mirrors the API's `ReportOut` — returned by `POST /reports` (202; still
+ * `queued` under the Redis queue, terminal under the inline queue) and by
+ * `GET /reports/{id}`. */
+export interface ReportOut {
   report_id: string;
+  status: ReportStatus;
+  run_ids: string[];
+  title: string;
+  report_path?: string | null;
+  error: string | null;
+  /** `report_refused` when the run set cannot support a validation report
+   * (screening-tier only). */
+  error_kind: string | null;
+  created_at: string;
 }
 
-/** Client-side record of a generated report (persisted in localStorage —
- * the contract has no report-list endpoint). */
+/** Client-side record of a requested report (persisted in localStorage —
+ * the contract has no report-list endpoint). `status`/`error` are refreshed
+ * by polling `GET /reports/{id}` while the report is queued or running. */
 export interface ReportRecord {
   report_id: string;
   run_ids: string[];
+  title?: string;
+  status: ReportStatus;
+  error: string | null;
+  error_kind?: string | null;
   created_at: string;
 }

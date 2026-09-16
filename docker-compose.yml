@@ -6,10 +6,26 @@
 # containers run as the image's non-root `flowstate` user (uid 10001); a
 # flowstate-runs volume left over from an older root-running image is still
 # root-owned and must be recreated (`docker compose down -v`).
+#
+# Job durability across restarts: Redis runs append-only on its own volume
+# (redis-data), so queued jobs survive `docker compose down && up` and a
+# Redis crash; the worker gets a stop grace period of the job timeout
+# (api.jobs.JOB_TIMEOUT, 6 h) so a plain `docker compose stop/down` lets a
+# multi-hour run finish instead of SIGKILLing it after Docker's 10 s default.
+# To abandon a run in flight deliberately, `docker compose kill worker`; the
+# worker reconciles the store with the queue when it comes back up
+# (api.worker), failing the rows whose job died and re-enqueueing queued ones.
 
 services:
   redis:
     image: redis:7-alpine
+    # Append-only persistence: the queue is state, not a cache. The image
+    # default (RDB snapshots every 60 s–1 h into an anonymous volume) loses
+    # everything queued since the last snapshot on a crash and everything on
+    # a container recreate.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -53,6 +69,13 @@ services:
   worker:
     build: .
     command: python -m api.worker
+    # init: a real PID 1 reaps the SUMO subprocesses a killed work horse
+    # leaves behind (otherwise they are reparented to rq and never reaped).
+    init: true
+    # Warm shutdown: rq finishes the current job on SIGTERM; give it the job
+    # timeout rather than Docker's 10 s before the SIGKILL that would leave
+    # the run's row at "running" until the next reconciliation.
+    stop_grace_period: 6h
     environment:
       FLOWSTATE_QUEUE: redis
       FLOWSTATE_REDIS_URL: redis://redis:6379/0
@@ -66,3 +89,4 @@ services:
 
 volumes:
   flowstate-runs:
+  redis-data:

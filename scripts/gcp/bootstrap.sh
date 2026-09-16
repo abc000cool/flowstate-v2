@@ -16,7 +16,7 @@
 set -euo pipefail
 
 PROCS=""
-SCENARIO="i24_replica_corrected"
+SCENARIO="i24_replica_speedcal"   # the published sweep arm (artifacts/i24_sweep_summary.json)
 REF="main"
 RUN=1
 AUTO_STOP=1

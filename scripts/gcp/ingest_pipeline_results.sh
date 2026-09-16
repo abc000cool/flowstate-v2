@@ -16,7 +16,7 @@ cp -R "$TMP"/logs/. logs/pipeline_vm/ 2>/dev/null || true
 # artifacts and scenarios written by the VM (new families only; the canonical ones are untouched
 # except the heavy arm's artifact and the cap sweep)
 for f in "$TMP"/artifacts/*.json; do b=$(basename "$f"); case "$b" in
-  i24_validation_zip_*|i24_validation_speedcal_heavy.json|i24_merge_experiment_zipper_jm.json|demand_scale_i24_zip.json|i24_boundary_ramps_fit_zip.json|i24_replica_inputs_zip.json|demand_i24_zip.json|i24_cap_sweep_summary.json)
+  i24_validation_zip_*|i24_validation_speedcal_heavy.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|demand_scale_i24_zip.json|i24_boundary_ramps_fit_zip.json|i24_replica_inputs_zip.json|demand_i24_zip.json|i24_cap_sweep_summary.json)
     cp "$f" artifacts/"$b"; echo "artifact $b" ;;
 esac; done
 for f in "$TMP"/scenarios/i24_replica_zip*.yaml; do [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"; done

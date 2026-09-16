@@ -10,6 +10,13 @@ single-file convenience.
 Concurrency: the API process and RQ worker processes share the database, so
 every operation opens a fresh connection with WAL journaling and a generous
 busy timeout. Rows in/out are plain dicts with JSON columns already decoded.
+
+Lifecycle guards: a job *claims* its row with a compare-and-set
+(:meth:`Store.claim` — ``queued``/``failed`` → ``running``) so a duplicate
+delivery of the same job is a no-op, and abandoned rows are failed with
+:meth:`Store.fail_active`, which never overwrites a finished row. Row ids are
+prefixed per kind (``run_…``, ``swp_…``, ``cal_…``, ``rpt_…``) and double as
+the RQ job ids, so :func:`kind_of_id` maps a queue job back to its row.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +32,33 @@ from typing import Any
 
 #: Job/record lifecycle states.
 STATUSES = ("queued", "running", "done", "failed")
+
+#: Row kinds that go through the job queue, in reconciliation order.
+KINDS = ("sweep", "run", "calibration", "report")
+
+_TABLES = {"run": "runs", "sweep": "sweeps", "calibration": "calibrations", "report": "reports"}
+
+#: Id prefix per kind (``new_id`` argument); the reverse map serves ``kind_of_id``.
+ID_PREFIXES = {"run": "run", "sweep": "swp", "calibration": "cal", "report": "rpt"}
+_KIND_OF_PREFIX = {prefix: kind for kind, prefix in ID_PREFIXES.items()}
+
+#: Columns a claim resets besides ``status``: a re-run starts from a clean row.
+_CLAIM_RESET_COLUMNS = {
+    "run": ("error", "error_kind", "completed_replicates"),
+    "sweep": ("error",),
+    "calibration": ("error", "artifact_path"),
+    "report": ("error", "error_kind", "report_dir", "report_path"),
+}
+_CLAIM_RESET_VALUES: dict[str, Any] = {"completed_replicates": 0}
+
+#: Statuses a claim may take over: fresh rows and failed ones (so an
+#: operator's ``rq requeue`` of a failed job just works). Never ``running``
+#: (a live execution) or ``done``.
+CLAIMABLE = ("queued", "failed")
+
+#: Statuses that still await a job outcome; only these may be failed by
+#: reconciliation or the work-horse death handler.
+ACTIVE = ("queued", "running")
 
 _BUSY_TIMEOUT_MS = 30_000
 
@@ -97,6 +131,24 @@ def new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
+def kind_of_id(row_id: str) -> str | None:
+    """Row kind (``run``/``sweep``/``calibration``/``report``) from an id prefix.
+
+    Queue job ids equal store row ids, so this is how the worker's
+    work-horse-death handler finds the row to fail. ``None`` for ids that are
+    not one of ours (scenarios, uploads, foreign jobs).
+    """
+    prefix, sep, _ = row_id.partition("_")
+    return _KIND_OF_PREFIX.get(prefix) if sep else None
+
+
+def _table(kind: str) -> str:
+    try:
+        return _TABLES[kind]
+    except KeyError:
+        raise ValueError(f"kind must be one of {KINDS}, got {kind!r}") from None
+
+
 class Store:
     """Metadata store bound to one SQLite file (created on first use)."""
 
@@ -164,24 +216,38 @@ class Store:
         caller can embed it in ``run_root`` before the insert."""
         rid = run_id if run_id is not None else new_id("run")
         with self._conn() as con:
-            con.execute(
-                "INSERT INTO runs (id, scenario_id, sweep_id, config_json, config_hash,"
-                " tier, status, completed_replicates, total_replicates, seeds_json,"
-                " run_root, created_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?)",
-                (
-                    rid,
-                    scenario_id,
-                    sweep_id,
-                    json.dumps(config),
-                    config_hash,
-                    tier,
-                    len(seeds),
-                    json.dumps(seeds),
-                    str(run_root),
-                    now_iso(),
-                ),
+            _insert_run(
+                con,
+                run_id=rid,
+                scenario_id=scenario_id,
+                sweep_id=sweep_id,
+                config=config,
+                config_hash=config_hash,
+                tier=tier,
+                seeds=seeds,
+                run_root=run_root,
             )
         return rid
+
+    def create_sweep_runs(
+        self, sweep_id: str, grid: list[dict[str, Any]], new_runs: list[dict[str, Any]]
+    ) -> None:
+        """Insert a sweep's child run rows and its updated grid in ONE transaction.
+
+        ``new_runs`` holds :func:`_insert_run` keyword sets (``run_id``,
+        ``scenario_id``, ``config``, ``config_hash``, ``tier``, ``seeds``,
+        ``run_root``); ``grid`` is the sweep grid with those ``run_id`` values
+        filled in. Either every row lands together with the grid that points
+        at it, or nothing changes — so a fan-out interrupted mid-way can never
+        leave a cell with a row the grid does not know about (or the reverse),
+        and a re-run finds either the complete child set or none of it.
+        """
+        with self._conn() as con:
+            for spec in new_runs:
+                _insert_run(con, sweep_id=sweep_id, **spec)
+            con.execute(
+                "UPDATE sweeps SET grid_json = ? WHERE id = ?", (json.dumps(grid), sweep_id)
+            )
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         with self._conn() as con:
@@ -330,6 +396,126 @@ class Store:
                 (status, report_dir, report_path, error, error_kind, report_id),
             )
 
+    # -- lifecycle guards, all kinds ----------------------------------------
+
+    def get(self, kind: str, row_id: str) -> dict[str, Any] | None:
+        """One row of ``kind`` (see :data:`KINDS`) as its usual dict, or None."""
+        with self._conn() as con:
+            row = con.execute(f"SELECT * FROM {_table(kind)} WHERE id = ?", (row_id,)).fetchone()
+        return _CONVERTERS[kind](row) if row else None
+
+    def list_by_status(self, kind: str, statuses: Iterable[str]) -> list[dict[str, Any]]:
+        """Rows of ``kind`` whose status is in ``statuses`` (insertion order)."""
+        wanted = tuple(statuses)
+        for status in wanted:
+            _check_status(status)
+        if not wanted:
+            return []
+        marks = ", ".join("?" for _ in wanted)
+        with self._conn() as con:
+            rows = con.execute(
+                f"SELECT * FROM {_table(kind)} WHERE status IN ({marks}) ORDER BY rowid", wanted
+            ).fetchall()
+        return [_CONVERTERS[kind](r) for r in rows]
+
+    def claim(self, kind: str, row_id: str) -> bool:
+        """Compare-and-set ``queued``/``failed`` → ``running``; True if it took.
+
+        The job function calls this first and returns without working when
+        it answers False: the row is already ``running`` under another
+        execution (a duplicate delivery of the same job) or ``done``. A
+        claim also clears the previous outcome (error, progress, artifact
+        paths — :data:`_CLAIM_RESET_COLUMNS`), so a requeued failed job
+        starts from a clean row.
+        """
+        sets = ["status = 'running'"]
+        values: list[Any] = []
+        for column in _CLAIM_RESET_COLUMNS[kind]:
+            sets.append(f"{column} = ?")
+            values.append(_CLAIM_RESET_VALUES.get(column))
+        marks = ", ".join("?" for _ in CLAIMABLE)
+        with self._conn() as con:
+            cur = con.execute(
+                f"UPDATE {_table(kind)} SET {', '.join(sets)} WHERE id = ? AND status IN ({marks})",
+                (*values, row_id, *CLAIMABLE),
+            )
+            return cur.rowcount == 1
+
+    def claim_run(self, run_id: str) -> bool:
+        return self.claim("run", run_id)
+
+    def claim_sweep(self, sweep_id: str) -> bool:
+        return self.claim("sweep", sweep_id)
+
+    def claim_calibration(self, calibration_id: str) -> bool:
+        return self.claim("calibration", calibration_id)
+
+    def claim_report(self, report_id: str) -> bool:
+        return self.claim("report", report_id)
+
+    def fail_active(self, kind: str, row_id: str, error: str) -> bool:
+        """Mark a ``queued``/``running`` row ``failed``; True if it was active.
+
+        Used when the *job* can no longer report for itself — its work horse
+        was killed, or its Redis record vanished — so the row is failed from
+        outside. A row that already reached ``done`` or ``failed`` is left
+        exactly as it is: an outcome recorded by the job itself always wins.
+        """
+        marks = ", ".join("?" for _ in ACTIVE)
+        with self._conn() as con:
+            cur = con.execute(
+                f"UPDATE {_table(kind)} SET status = 'failed', error = ?"
+                f" WHERE id = ? AND status IN ({marks})",
+                (error, row_id, *ACTIVE),
+            )
+            return cur.rowcount == 1
+
+    def reset_to_queued(self, kind: str, row_id: str) -> bool:
+        """``running`` → ``queued`` for a row whose job is back in the queue.
+
+        Reconciliation calls this when a row says ``running`` but its RQ job
+        is waiting for a worker (an operator requeued it while the row was
+        stuck): the claim that the next execution makes requires ``queued``.
+        """
+        with self._conn() as con:
+            cur = con.execute(
+                f"UPDATE {_table(kind)} SET status = 'queued' WHERE id = ? AND status = 'running'",
+                (row_id,),
+            )
+            return cur.rowcount == 1
+
+
+def _insert_run(
+    con: sqlite3.Connection,
+    *,
+    run_id: str,
+    scenario_id: str | None,
+    sweep_id: str | None,
+    config: dict[str, Any],
+    config_hash: str,
+    tier: str,
+    seeds: list[int],
+    run_root: str | Path,
+) -> None:
+    """The one ``INSERT INTO runs`` (shared by single runs and sweep fan-out)."""
+    con.execute(
+        "INSERT INTO runs (id, scenario_id, sweep_id, config_json, config_hash,"
+        " tier, status, completed_replicates, total_replicates, seeds_json,"
+        " run_root, created_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?)",
+        (
+            run_id,
+            scenario_id,
+            sweep_id,
+            json.dumps(config),
+            config_hash,
+            tier,
+            len(seeds),
+            json.dumps(seeds),
+            str(run_root),
+            now_iso(),
+        ),
+    )
+
 
 def _check_status(status: str) -> None:
     if status not in STATUSES:
@@ -365,3 +551,11 @@ def _report_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     d["run_ids"] = json.loads(d.pop("run_ids_json"))
     return d
+
+
+_CONVERTERS: dict[str, Callable[[sqlite3.Row], dict[str, Any]]] = {
+    "run": _run_dict,
+    "sweep": _sweep_dict,
+    "calibration": _calibration_dict,
+    "report": _report_dict,
+}

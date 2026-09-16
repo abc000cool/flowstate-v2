@@ -1,18 +1,27 @@
-"""Redis-backed queue: enqueue-only endpoints + an rq SimpleWorker burst.
+"""Redis-backed queue: enqueue-only endpoints, the real worker, horse death.
 
-Spins a throwaway ``redis-server`` on a random port when one is on PATH;
-skipped otherwise. Verifies the CLAUDE.md §8 rule that no endpoint executes a
-simulation synchronously when ``FLOWSTATE_QUEUE=redis``.
+Spins a throwaway ``redis-server`` on a random port when one is on PATH and
+skips otherwise — except in CI, where the deployed path (``FLOWSTATE_QUEUE=
+redis`` + ``python -m api.worker``) must be exercised, so a missing binary
+is an error rather than a skip. Verifies the CLAUDE.md §8 rule that no
+endpoint executes a simulation synchronously under the redis queue, drains
+the queue through the actual worker entrypoint (``api.worker.main``, the
+forking RQ worker with its horse-death handler and reconciliation attached),
+and checks that a killed work horse leaves a ``failed`` row, not a
+``running`` one.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
+import signal
 import socket
 import subprocess
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +29,12 @@ from fastapi.testclient import TestClient
 from tests.test_api.conftest import HEADERS, macro_corridor_config, post_run, post_scenario
 
 _REDIS_SERVER = shutil.which("redis-server")
+
+if _REDIS_SERVER is None and os.environ.get("CI"):
+    raise RuntimeError(
+        "redis-server must be installed in CI (see .github/workflows/ci.yml); "
+        "the redis queue and worker path is otherwise untested"
+    )
 
 pytestmark = pytest.mark.skipif(
     _REDIS_SERVER is None, reason="redis-server not on PATH; skipping redis-backed queue test"
@@ -85,16 +100,20 @@ def redis_client(
         yield c
 
 
-def _work_burst(redis_url: str) -> None:
-    import redis
-    from rq import Queue, SimpleWorker
+def _work_burst() -> None:
+    """Drain the queue through the real entrypoint (env set by ``redis_client``)."""
+    from api.worker import main
 
-    from api.jobs import QUEUE_NAME
+    main(burst=True)
+
+
+def _job(job_id: str, redis_url: str) -> Any:
+    import redis
+    from rq.job import Job
 
     conn = redis.Redis.from_url(redis_url)
     try:
-        worker = SimpleWorker([Queue(QUEUE_NAME, connection=conn)], connection=conn)
-        worker.work(burst=True)
+        return Job.fetch(job_id, connection=conn) if Job.exists(job_id, conn) else None
     finally:
         conn.close()
 
@@ -110,7 +129,7 @@ def test_redis_run_is_asynchronous_then_worked(redis_client: TestClient, redis_u
     r = redis_client.get(f"/api/v1/runs/{run['run_id']}/metrics", headers=HEADERS)
     assert r.status_code == 409  # not done yet
 
-    _work_burst(redis_url)
+    _work_burst()
 
     done = redis_client.get(f"/api/v1/runs/{run['run_id']}", headers=HEADERS).json()
     assert done["status"] == "done", done["error"]
@@ -138,9 +157,91 @@ def test_redis_sweep_children_drain_in_one_burst(redis_client: TestClient, redis
     sweep_id = r.json()["sweep_id"]
     assert r.json()["status"] == "queued"
 
-    _work_burst(redis_url)  # burst drains the sweep job and the child runs it enqueues
+    _work_burst()  # burst drains the sweep job and the child runs it enqueues
 
     body = redis_client.get(f"/api/v1/sweeps/{sweep_id}", headers=HEADERS).json()
     assert body["status"] == "done", body["error"]
     assert body["runs_total"] == 2
     assert body["runs_done"] == 2
+
+    # Child jobs are enqueued under their run ids: the RQ job of a cell is
+    # addressable from the store row and vice versa (reconciliation relies on
+    # it), and a finished job's record is still there under that id.
+    from rq.job import JobStatus
+
+    for cell in body["cells"]:
+        job = _job(cell["run_id"], redis_url)
+        assert job is not None, f"no RQ job under run id {cell['run_id']}"
+        assert job.get_status() == JobStatus.FINISHED
+
+
+def test_killed_work_horse_fails_the_row(
+    redis_client: TestClient, redis_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A run whose horse is SIGKILLed mid-simulation ends ``failed``, not ``running``.
+
+    The horse is a fork of this process, so a monkeypatched ``run_macro``
+    that kills its own process stands in for the kernel's OOM killer. The
+    surviving worker's ``work_horse_killed_handler`` must then fail the row
+    (found through the job id, which equals the run id).
+    """
+    import macrosim.runner
+    from api.jobs import RedisQueue, run_scenario_job
+    from flowstate_core.rng import spawn_seeds
+
+    def die(*_args: Any, **_kwargs: Any) -> None:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+    monkeypatch.setattr(macrosim.runner, "run_macro", die)
+
+    store = redis_client.app.state.store
+    settings = redis_client.app.state.settings
+    cfg = macro_corridor_config()
+    run_id = store.create_run(
+        scenario_id=None,
+        config=cfg,
+        config_hash="deadbeefcafe",
+        tier="macro",
+        seeds=spawn_seeds(cfg["seed"], cfg["replicates"]),
+        run_root=settings.runs_dir / "run_horse",
+        run_id="run_horse",
+    )
+    RedisQueue(redis_url).enqueue(
+        run_scenario_job,
+        run_id,
+        job_id=run_id,
+        db_path=str(settings.db_path),
+        results_root=str(settings.results_dir),
+    )
+
+    _work_burst()
+
+    row = redis_client.get(f"/api/v1/runs/{run_id}", headers=HEADERS).json()
+    assert row["status"] == "failed"
+    assert row["error"] is not None
+    assert "work-horse terminated" in row["error"]
+    assert f"signal {int(signal.SIGKILL)}" in row["error"]
+    assert "Traceback" not in row["error"]
+
+
+def test_killed_work_horse_of_an_api_submitted_run_fails_the_row(
+    redis_client: TestClient, redis_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same as above through ``POST /runs``: the handler finds the row whether
+    the API enqueued the job under the run id or under a random RQ id (then
+    by the job's first argument)."""
+    import macrosim.runner
+
+    def die(*_args: Any, **_kwargs: Any) -> None:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+    monkeypatch.setattr(macrosim.runner, "run_macro", die)
+    scenario = post_scenario(redis_client, macro_corridor_config())
+    run = post_run(redis_client, scenario["scenario_id"])
+    assert run["status"] == "queued"
+
+    _work_burst()
+
+    row = redis_client.get(f"/api/v1/runs/{run['run_id']}", headers=HEADERS).json()
+    assert row["status"] == "failed"
+    assert row["error"] is not None and "work-horse terminated" in row["error"]

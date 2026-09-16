@@ -1,14 +1,21 @@
 {
   "schema_version": 1,
   "case": "ring_sugiyama",
+  "description": "scenarios/ring_sugiyama.yaml as is (600 sim-s, seed 42)",
   "scenario": "ring_sugiyama",
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate ring_sugiyama",
-  "generated_at": "2026-09-06T08:13:07+00:00",
+  "generated_at": "2026-09-16T18:21:10+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
+      "n_collisions",
+      "n_heavy",
+      "n_hov",
+      "n_meter_releases",
+      "n_scripted_forced",
+      "n_scripted_merged",
       "n_vehicles_departed",
       "n_vehicles_planned",
       "wave_count"
@@ -53,7 +60,18 @@
       "lc_cooperative": 1.0,
       "lc_assertive": 1.0,
       "lc_speed_gain": 1.0,
-      "heavy": null
+      "heavy": null,
+      "jm_timegap_minor_s": null,
+      "jm_ignore_foe_prob": null,
+      "lc_sublane": null,
+      "lc_pushy": null,
+      "lc_impatience": null,
+      "lc_accel_lat": null,
+      "max_speed_lat": null,
+      "min_gap_lat": null,
+      "lat_alignment": null,
+      "lc_overtake_right": null,
+      "hov_fraction": 0.0
     },
     "av": {
       "penetration": 0.0,
@@ -78,12 +96,19 @@
     },
     "perturbation": null,
     "closures": [],
+    "managed_lanes": [],
     "seed": 42,
     "replicates": 20
   },
   "run": {
     "n_vehicles_planned": 22,
     "n_vehicles_departed": 22,
+    "n_collisions": 0,
+    "n_heavy": 0,
+    "n_hov": 0,
+    "n_meter_releases": 0,
+    "n_scripted_merged": 0,
+    "n_scripted_forced": 0,
     "fuel_total_ml": 8799.826541042012
   },
   "metrics": {

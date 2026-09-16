@@ -55,7 +55,9 @@ observed field's own peak clears the acceptance contrast narrowly, and the
 two estimates differ by 4 km/h, which a band test does not score). The
 corridor is **not validated**: the speed criterion sits at 34–36% however
 demand is set, and the fitted ramps, which improved the held-out hour in the
-joint fit, buy one point of RMSPE and cost five points of GEH. The residual is
+joint fit, buy one point of RMSPE and 1.4 points of GEH on the criterion's
+count table (§0.5(b); against the apparent-coverage table the arms were
+first scored on they cost five). The residual is
 still the Old Hickory merge queue (§0.3).
 
 ## 0. Rerun on the capacity-calibrated population (four arms)
@@ -66,8 +68,13 @@ All arms use `artifacts/idm_i24_capacity.json` (mean T 1.322 s,
 × 0.75, Hickory Hollow on-ramp × 1.25, Hickory Hollow exit share × 1.125;
 boundary discharge and gap acceptance unchanged). Rows as evaluated by
 `validation.criteria` (`fhwa_default` profile, wave detector `stack`; the GEH
-row of each arm is scored against the count table matching its own demand
-assumption, both tables are in the artifacts; the sensitivity row is fed from
+row of every arm is scored against the tracked crossings divided by the
+coverage artifact's recommended estimator, `artifacts/i24_coverage.json`,
+`max(section_gap_mixture, capacity_bound_fd)`, chosen on synthetic
+validation and independent of the car-following model; each artifact
+records this as `geh.primary = "recommended"` and carries the tracked and
+apparent-coverage tables beside it as lower and upper bounds, §0.5(b); the
+sensitivity row is fed from
 `artifacts/i24_sweep_summary.json`, 24 cells × 20 seeds,
 [I24_SWEEP.md](I24_SWEEP.md)). Battery run 2026-09-05 on a 32-vCPU cloud VM,
 170–800 s of wall time per arm.
@@ -76,7 +83,8 @@ assumption, both tables are in the artifacts; the sensitivity row is fed from
 
 | Criterion | Tracked demand | Coverage-corrected | Fitted level (speedcal) | Fitted level + fitted ramps | Threshold |
 |---|---|---|---|---|---|
-| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% **FAIL** | 11.8% **FAIL** | 15.3% **FAIL** | 10.4% **FAIL** | ≥ 85% |
+| Link flows, GEH < 5 on ≥ 85% of link-hours (the criterion row: scored against tracked crossings ÷ the recommended coverage estimator, `artifacts/i24_coverage.json`) | 0.7% **FAIL** | 16.7% **FAIL** | 18.8% **FAIL** | 20.1% **FAIL** | ≥ 85% |
+| Link flows, GEH < 5, against each arm's own-assumption count table (tracked counts for the tracked arm, apparent-coverage-corrected counts for the three congested arms; the tables the arms were scored on before the §0.5(b) re-score, kept as history, not the criterion row) | 24.3% | 11.8% | 15.3% | 10.4% | (not scored) |
 | Segment-speed RMSPE ≤ 15% | 187.8% **FAIL** | 33.7% **FAIL** | 35.9% **FAIL** | 34.8% **FAIL** | ≤ 15% |
 | Backward wave speed 14–22 km/h (stack estimator, the criterion's detector) | no stack peak; standard detector 7.9 km/h **FAIL** | 15.9 km/h **PASS** | 15.8 km/h **PASS** | 15.7 km/h **PASS** | 14–22 |
 | Ring emergence (20 seeds, ring-gate checks) | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | **PASS** 20/20 | every seed |
@@ -144,10 +152,13 @@ Mean segment speed over the study period [km/h], upstream to downstream
 * **The fitted ramps move error, they do not remove it.** Moving a quarter
   of the ramp demand from Old Hickory to Hickory Hollow, the joint fit's
   out-of-sample best, takes the two-hour RMSPE from 35.9% to 34.8% (the fit's
-  own held-out hour went 42.6 → 35.6%), but lowers throughput by 136 veh/h and
-  the GEH pass fraction from 15.3% to 10.4%: the flows it moves are counted at
-  the sections the criterion scores, and the fit was not asked to match those
-  counts. The first kilometre still runs at 21–22 km/h against 32–36 observed.
+  own held-out hour went 42.6 → 35.6%), but lowers throughput by 136 veh/h
+  and moves the GEH pass fraction only from 18.8% to 20.1% on the criterion's
+  count table (against the apparent-coverage table the arms were first scored
+  on it fell from 15.3% to 10.4%; both tables are in the artifacts): the flows
+  it moves are counted at the sections the criterion scores, and the fit was
+  not asked to match those counts, so the row stays far from 85% either way.
+  The first kilometre still runs at 21–22 km/h against 32–36 observed.
 * **The residual is the Old Hickory merge.** Every congested arm runs the
   first kilometre at 20–22 km/h against 32–36 observed and the kilometre
   after it faster than observed: a standing queue at the merge where the
@@ -600,6 +611,60 @@ gap-seeking merge near its end — which is a new controlled-vehicle class,
 tested like a controller, not a tuning of the human model. That is the
 next round's design, and the residual stays as §0.5 (i) quantified it
 until it runs.
+
+### 0.8 The merge, fifth round: a scripted late merge (cloud probe, 2026-09-16)
+
+§0.7 ended with SUMO's lane-change and junction parameter space exhausted and
+one design left: drive the ramp vehicles ourselves. `RampSpec.merge =
+"scripted"` (docs/CONTRACTS.md) keeps the plain `lane_change` network and has
+the runner control every vehicle on the acceleration lane: desired speed
+matched to the mainline vehicle ahead (through the vehicle's own desired
+speed, never `setSpeed`, whose deceleration clamp overrides its safety clamp
+and produced rear-end collisions in the first draft), a lane change once the
+mainline gaps ahead and behind both clear an accepted time gap, a forced
+change after a wait inside the last stretch of the lane, and optionally
+courtesy yielding by the blocking mainline follower. Six single-seed runs of
+the fitted arm (`scenarios/i24_replica_speedcal.yaml`, config `8fa63f55e74d`,
+seed 6914975401685141156, n2-standard-8 VM, 8 to 12 minutes each;
+`artifacts/i24_merge_experiment_scripted.json`; the VM console log is kept
+outside the repository):
+
+| variant (config hash) | inserted | Old Hickory departed / planned | RMSPE all / fit / held-out | 15-min RMSPE | GEH < 5 | segment speeds, km/h (observed 36 32 30 31 38 37 38 29 30 34) |
+|---|---|---|---|---|---|---|
+| reference, SUMO lane change (`483b8721c9d2`) | 0.935 | 2066 / 2241 | 0.407 / 0.350 / 0.457 | 0.273 | 0.22 | 26 24 29 37 36 34 32 26 25 33 |
+| scripted, defaults (`521bb088cedd`) | 0.914 | 1568 / 2241 | 0.486 / 0.336 / 0.599 | 0.341 | 0.19 | 36 26 20 35 47 47 46 37 33 34 |
+| scripted, courtesy 2 m/s (`f7d1ccf808e2`) | 0.913 | 1581 / 2241 | 0.487 / 0.337 / 0.601 | 0.324 | 0.23 | 41 27 29 37 43 41 37 33 31 33 |
+| scripted, accept 0.3 s, courtesy 2 (`a396a9aad206`) | 0.918 | 1638 / 2241 | 0.539 / 0.392 / 0.654 | 0.365 | 0.22 | 41 31 38 41 40 38 37 32 28 32 |
+| scripted, force after 1 s within 150 m, courtesy 2 (`133c337c1db6`) | 0.911 | 1544 / 2241 | 0.494 / 0.375 / 0.590 | 0.337 | 0.21 | 36 24 27 39 42 40 36 31 29 33 |
+| scripted, force 1 s / 150 m, accept 0.3 s, courtesy 4 (`650ef7692fa8`) | 0.914 | 1572 / 2241 | 0.474 / 0.366 / 0.561 | 0.318 | 0.22 | 38 24 29 40 42 40 37 33 30 33 |
+
+**Reading it.** The scripted merge does what it was built to do at the entry:
+the first segment's mean speed rises from 26 km/h to 36 to 41 km/h, on top of
+the observed 36, and the segments downstream of the merge run 40 to 47 km/h
+instead of the reference's 32 to 37. It pays for that with the ramp: Old
+Hickory admits 1544 to 1638 of its 2241 planned vehicles against the
+reference's 2066, so a fifth to a quarter of the ramp demand never enters the
+corridor within the hour, total insertion drops from 0.935 to 0.91, and the
+held-out-hour RMSPE rises from 0.457 to 0.56 to 0.65 while the fit hour is
+unchanged or slightly better (0.336 to 0.392 against 0.350). The acceptance
+gap, the forced-change timing and courtesy yielding move the admittance by at
+most 94 vehicles and never toward the reference. The error moves from the
+mainline to the ramp; it does not shrink. On the synthetic merge fixture the
+same behaviour was also slower than SUMO's own negotiation
+(CHANGELOG, 2026-09-16), so the mechanism is consistent across both: a ramp
+vehicle that waits for a gap it judges acceptable, with the mainline no longer
+cooperating through SUMO's signalled change, gets fewer gaps in dense traffic
+than the lane-change model's negotiation produces, and forcing the change
+late does not recover them because the vehicles ahead of it in the
+acceleration lane are waiting too.
+
+**Status.** Single seeds, the fitted arm only; not a headline result. The
+model stays in the schema as an option (it is the right tool for a corridor
+whose observed behaviour is a late forced merge) and the fitted arms keep
+SUMO's lane-change model. The merge remains the open defect of §0.5 (k);
+after five rounds the remaining candidates are outside the merge itself: the
+recording's own lane distribution at the entry (§0.5 uses the measured shares
+already), a heavy-vehicle merge population, and the downstream boundary.
 
 ## 1. What is compared
 

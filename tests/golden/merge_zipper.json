@@ -1,14 +1,12 @@
 {
   "schema_version": 1,
-  "case": "corridor_10km_smoke",
-  "description": "scenarios/corridor_10km.yaml with sim.duration_s = 120 (the \u00a79 2-min smoke run), seed 42",
-  "scenario": "corridor_10km",
-  "overrides": {
-    "sim.duration_s": 120.0
-  },
+  "case": "merge_zipper",
+  "description": "tests/fixtures/merge.osm interchange, mainline 0.6 veh/s + on-ramp 0.25 veh/s, zipper merge (netconvert patch), 200 sim-s, seed 3",
+  "scenario": null,
+  "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
-  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-16T18:21:05+00:00",
+  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_zipper",
+  "generated_at": "2026-09-16T18:21:09+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -23,9 +21,9 @@
       "wave_count"
     ]
   },
-  "config_hash": "28449f6634f4",
-  "seed": 42,
-  "sumo_seed": 42,
+  "config_hash": "93c5722707a5",
+  "seed": 3,
+  "sumo_seed": 3,
   "tier": "micro",
   "seeded": false,
   "versions": {
@@ -39,38 +37,58 @@
     "microsim": "2.0.0"
   },
   "config": {
-    "name": "corridor_10km",
+    "name": "merge_zipper",
     "tier": "micro",
     "network": {
-      "kind": "corridor",
-      "length_m": 10000.0,
-      "lanes": 1,
+      "kind": "osm",
+      "osm_file": "tests/fixtures/merge.osm",
+      "bbox": null,
+      "corridor_edges": [
+        "100",
+        "101",
+        "102",
+        "103"
+      ],
       "inflow": [
         [
           0.0,
-          0.45
-        ],
-        [
-          120.0,
-          0.5
-        ],
-        [
-          1080.0,
-          0.4
+          0.6
         ]
       ],
       "boundary": null,
-      "entry_lane_shares": null
+      "ramps": [
+        {
+          "kind": "on",
+          "edges": [
+            "200"
+          ],
+          "attach_edge": "102",
+          "inflow": [
+            [
+              0.0,
+              0.25
+            ]
+          ],
+          "exit_fraction": [],
+          "name": "test on-ramp",
+          "meter": null,
+          "merge_visibility_m": null,
+          "merge": "zipper",
+          "merge_params": {}
+        }
+      ],
+      "entry_lane_shares": null,
+      "internal_links": false
     },
     "fleet": {
-      "model": "EIDM",
+      "model": "IDM",
       "v0": 33.3,
       "T": 1.4,
       "a_max": 0.73,
       "b": 1.67,
       "s0": 2.0,
       "delta": 4.0,
-      "heterogeneity_frac": 0.15,
+      "heterogeneity_frac": 0.12,
       "idm_calibration": null,
       "lc_strategic": 1.0,
       "lc_strategic_ramp": null,
@@ -105,39 +123,39 @@
       }
     },
     "sim": {
-      "duration_s": 120.0,
+      "duration_s": 200.0,
       "step_length_s": 0.5,
       "action_step_s": 0.5,
-      "warmup_s": 120.0,
+      "warmup_s": 0.0,
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
     "perturbation": null,
     "closures": [],
     "managed_lanes": [],
-    "seed": 42,
+    "seed": 3,
     "replicates": 20
   },
   "run": {
-    "n_vehicles_planned": 54,
-    "n_vehicles_departed": 54,
+    "n_vehicles_planned": 170,
+    "n_vehicles_departed": 170,
     "n_collisions": 0,
     "n_heavy": 0,
     "n_hov": 0,
     "n_meter_releases": 0,
     "n_scripted_merged": 0,
     "n_scripted_forced": 0,
-    "fuel_total_ml": 5632.580413093777
+    "fuel_total_ml": 19379.906197745575
   },
   "metrics": {
-    "throughput_veh_h": 732.2033898305085,
-    "mean_tt_s": 118.0,
-    "p90_tt_s": 118.0,
-    "sigma_v_spatial_ms": 1.580788673526414,
-    "sigma_v_temporal_ms": 0.8998753403662753,
-    "vmt_veh_km": 82.84227435223643,
-    "vht_veh_h": 0.8877777777777774,
-    "fuel_ml_per_veh_km": 67.99161970305947,
+    "throughput_veh_h": 2496.4824120603016,
+    "mean_tt_s": 45.5,
+    "p90_tt_s": 45.5,
+    "sigma_v_spatial_ms": 3.355010717890751,
+    "sigma_v_temporal_ms": 1.146625904225829,
+    "vmt_veh_km": 236.45856753641414,
+    "vht_veh_h": 2.413472222222222,
+    "fuel_ml_per_veh_km": 81.95899349158118,
     "wave_count": 0,
     "wave_speed_kmh": null,
     "wave_amplitude_ms": null

@@ -1158,3 +1158,15 @@ table.data tr.disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* sweep baseline (p=0, no controlled vehicles) reference cell */
+.sweep-matrix td.cell.baseline {
+  height: 40px;
+  background: var(--panel-inset);
+  outline: 1px dashed rgba(245, 184, 92, 0.45);
+  color: var(--muted);
+}
+
+.sweep-matrix td.cell.baseline .d {
+  font-weight: 500;
+}

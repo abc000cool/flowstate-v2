@@ -14,7 +14,14 @@ times, fuel) are reported ``NaN`` — honestly absent, never fabricated
 validation claims (CLAUDE.md §5.6).
 
 Per-replicate metrics are cached beside the artifacts as ``metrics.json``
-(the cache file is additive; it does not alter the contract layout).
+(the cache file is additive; it does not alter the contract layout). The
+worker fills the cache once per replicate as the last step of a run
+(:func:`precompute_run_metrics`, called by ``api.jobs.run_scenario_job``), so
+request handlers can serve :func:`cached_run_metrics` without ever reading a
+trajectory file in the request path — a corridor replicate is tens of
+millions of rows and gigabytes of RSS to reduce. The cache is written
+atomically (temp file + ``os.replace``), so concurrent readers never see a
+truncated file.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ import dataclasses
 import io
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -166,38 +174,89 @@ def macro_metrics(replicate_dir: Path) -> Metrics:
     )
 
 
+#: Per-replicate metrics cache file name (beside ``meta.json``).
+METRICS_CACHE_NAME = "metrics.json"
+
+
+def cached_replicate_metrics(replicate_dir: Path) -> Metrics | None:
+    """The replicate's cached metrics, or None when absent/unreadable/stale.
+
+    Read-only: never computes and never writes.
+    """
+    cache_path = replicate_dir / METRICS_CACHE_NAME
+    if not cache_path.is_file():
+        return None
+    try:
+        cached = json.loads(cache_path.read_text())
+        if cached.get("schema") == _METRICS_CACHE_SCHEMA:
+            return Metrics(**cached["metrics"])
+    except (ValueError, TypeError, KeyError):
+        pass  # unreadable or foreign-schema cache: treated as absent
+    return None
+
+
+def _write_metrics_cache(cache_path: Path, metrics: Metrics) -> None:
+    """Atomic cache write: a per-process temp file swapped in by ``os.replace``.
+
+    Two processes computing the same replicate (a worker and a backfill, or
+    two overlapping requests on the on-demand path) each write their own
+    temp file, and a reader only ever sees a complete cache file or none.
+    """
+    payload = json.dumps({"schema": _METRICS_CACHE_SCHEMA, "metrics": dataclasses.asdict(metrics)})
+    tmp = cache_path.with_name(f"{cache_path.name}.tmp-{os.getpid()}")
+    try:
+        tmp.write_text(payload)
+        os.replace(tmp, cache_path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def replicate_metrics(replicate_dir: Path) -> Metrics:
     """Metrics for one replicate, cached as ``metrics.json`` beside it.
 
     Micro replicates use the contract path
     (:func:`validation.metrics.compute_metrics`); macro replicates use
     :func:`macro_metrics`. The cache is keyed by a schema version and safely
-    recomputed when unreadable.
+    recomputed when unreadable; the write is atomic.
     """
-    cache_path = replicate_dir / "metrics.json"
-    if cache_path.is_file():
-        try:
-            cached = json.loads(cache_path.read_text())
-            if cached.get("schema") == _METRICS_CACHE_SCHEMA:
-                return Metrics(**cached["metrics"])
-        except (ValueError, TypeError, KeyError):
-            pass  # unreadable cache: recompute below
+    cached = cached_replicate_metrics(replicate_dir)
+    if cached is not None:
+        return cached
     meta = load_meta(replicate_dir)
     tier = str(meta.get("tier", ""))
     if tier == "micro":
         metrics = compute_metrics(replicate_dir)
     else:
         metrics = macro_metrics(replicate_dir)
-    cache_path.write_text(
-        json.dumps({"schema": _METRICS_CACHE_SCHEMA, "metrics": dataclasses.asdict(metrics)})
-    )
+    _write_metrics_cache(replicate_dir / METRICS_CACHE_NAME, metrics)
     return metrics
+
+
+def precompute_run_metrics(run_root: str | Path) -> int:
+    """Fill every replicate's metrics cache; the number of replicates.
+
+    Called by the worker as the last step of a run so that reads (the sweep
+    poll, ``GET /runs/{id}/metrics``) are cache hits. Replicates already
+    cached are skipped, so a re-run over partial output is cheap.
+
+    Raises:
+        FileNotFoundError: If the run root holds no completed replicates.
+    """
+    dirs = replicate_dirs(run_root)
+    if not dirs:
+        raise FileNotFoundError(f"no completed replicates under {run_root}")
+    for d in dirs:
+        replicate_metrics(d)
+    return len(dirs)
 
 
 def run_metrics(
     run_root: str | Path,
 ) -> tuple[list[tuple[int, Metrics]], dict[str, CI]]:
     """Per-replicate metrics (with seeds) plus the aggregate CIs for a run.
+
+    Computes (and caches) whatever is not cached yet — the on-demand path.
+    Request handlers should prefer :func:`cached_run_metrics`.
 
     Raises:
         FileNotFoundError: If the run root holds no completed replicates.
@@ -211,6 +270,30 @@ def run_metrics(
         per_replicate.append((int(meta.get("seed", -1)), replicate_metrics(d)))
     agg = aggregate([m for _, m in per_replicate])
     return per_replicate, agg
+
+
+def cached_run_metrics(
+    run_root: str | Path,
+) -> tuple[list[tuple[int, Metrics]], dict[str, CI]] | None:
+    """:func:`run_metrics` from the caches only; None if any replicate lacks one.
+
+    Never computes and never writes, so it is safe in a request handler
+    polled every few seconds: until the worker has finished
+    :func:`precompute_run_metrics`, the answer is simply "not yet".
+
+    Raises:
+        FileNotFoundError: If the run root holds no completed replicates.
+    """
+    dirs = replicate_dirs(run_root)
+    if not dirs:
+        raise FileNotFoundError(f"no completed replicates under {run_root}")
+    per_replicate: list[tuple[int, Metrics]] = []
+    for d in dirs:
+        metrics = cached_replicate_metrics(d)
+        if metrics is None:
+            return None
+        per_replicate.append((int(load_meta(d).get("seed", -1)), metrics))
+    return per_replicate, aggregate([m for _, m in per_replicate])
 
 
 def heatmap_arrays(

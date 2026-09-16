@@ -31,10 +31,11 @@ corridor-dependent ([US101_PENETRATION.md](US101_PENETRATION.md)) resolve
 here into a clear statement: **on a real multi-lane corridor near capacity,
 smoothing by gap-keeping is paid for in capacity.**
 
-Baseline (no control): throughput {:.0f} [{:.0f}, {:.0f}] veh/h, mean travel
-time {:.0f} [{:.0f}, {:.0f}] s, σ_v temporal {:.2f} [{:.2f}, {:.2f}] m/s,
-{:.1f} [{:.1f}, {:.1f}] waves per replicate, fuel {:.0f} [{:.0f}, {:.0f}] ml/veh-km,
-1.25 lane changes per vehicle-km.
+Baseline (no control): throughput 5710 [5679, 5741] veh/h, mean travel
+time 564 [557, 572] s, σ_v temporal 4.98 [4.95, 5.01] m/s,
+14.2 [12.4, 16.0] waves per replicate, fuel 101 [100, 102] ml/veh-km,
+1.25 lane changes per vehicle-km (`cells.baseline.aggregate` in the
+artifact, n = 20).
 
 ## The grid
 

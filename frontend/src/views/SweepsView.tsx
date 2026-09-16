@@ -1,6 +1,6 @@
 /** Sweeps: penetration × compliance grid launcher and a result matrix
- * coloured by metric delta vs the baseline cell, CI on hover, click-through
- * to the cell's run detail. */
+ * coloured by metric delta vs the sweep's baseline cell (p=0, no controlled
+ * vehicles), CI on hover, click-through to the cell's run detail. */
 
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -10,17 +10,53 @@ import { toast, toastError } from '../components/toast';
 import { deltaColor } from '../lib/colormap';
 import { formatDeltaPct, formatNumber } from '../lib/format';
 import { usePoll } from '../lib/hooks';
-import { METRIC_DEFS, metricDef, MIN_REPLICATES } from '../lib/metrics';
+import { DEFAULT_SWEEP_METRIC, METRIC_DEFS, metricDef, MIN_REPLICATES } from '../lib/metrics';
 
 const PEN_CHOICES = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3];
 const COM_CHOICES = [0.25, 0.5, 0.8, 1.0];
 const CONTROLLERS = ['follower_stopper', 'pi_saturation', 'jad'];
 const SWEEP_METRICS = METRIC_DEFS.filter((d) => d.good !== 'neutral');
+const SWEEP_POLL_MS = 2500;
 
 interface Tip {
   x: number;
   y: number;
   cell: SweepCell;
+}
+
+/** A p=0 cell is the sweep's baseline: with no controlled vehicles the
+ * controller cannot act, so the cell is the uncontrolled reference. */
+const isBaseline = (c: SweepCell): boolean => c.penetration === 0;
+
+const pct = (v: number): string => `${Math.round(v * 100)}%`;
+
+interface MatrixLayout {
+  rows: number[];
+  cols: number[];
+  /** Every p=0 cell (one per compliance when the request listed p=0). */
+  baselines: SweepCell[];
+  /** The delta reference: the first baseline, or — when the sweep has no
+   * p=0 cell — the lowest p·c grid cell, flagged as such in the header. */
+  reference: SweepCell;
+  hasBaseline: boolean;
+  at: (p: number, c: number) => SweepCell | undefined;
+}
+
+function layoutMatrix(sweep: SweepDetail): MatrixLayout | null {
+  if (sweep.cells.length === 0) return null;
+  const grid = sweep.cells.filter((c) => !isBaseline(c));
+  const rows = [...new Set(grid.map((c) => c.penetration))].sort((a, b) => a - b);
+  const cols = [...new Set(grid.map((c) => c.compliance))].sort((a, b) => a - b);
+  const baselines = sweep.cells
+    .filter(isBaseline)
+    .sort((a, b) => (a.config_hash ?? '').localeCompare(b.config_hash ?? ''));
+  const lowest = [...grid].sort(
+    (a, b) => a.penetration * a.compliance - b.penetration * b.compliance,
+  )[0];
+  const reference = baselines[0] ?? lowest ?? sweep.cells[0];
+  const at = (p: number, c: number): SweepCell | undefined =>
+    grid.find((x) => x.penetration === p && x.compliance === c);
+  return { rows, cols, baselines, reference, hasBaseline: baselines.length > 0, at };
 }
 
 export function SweepsView(): JSX.Element {
@@ -30,10 +66,11 @@ export function SweepsView(): JSX.Element {
   const [coms, setComs] = useState<number[]>([0.25, 0.5, 0.8, 1.0]);
   const [controller, setController] = useState(CONTROLLERS[0]);
   const [replicates, setReplicates] = useState(20);
+  const [includeBaseline, setIncludeBaseline] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
   const [sweepId, setSweepId] = useState<string | null>(searchParams.get('sweep'));
   const [sweep, setSweep] = useState<SweepDetail | null>(null);
-  const [metricKey, setMetricKey] = useState('sigma_v');
+  const [metricKey, setMetricKey] = useState(DEFAULT_SWEEP_METRIC);
   const [tip, setTip] = useState<Tip | null>(null);
   const navigate = useNavigate();
 
@@ -51,7 +88,13 @@ export function SweepsView(): JSX.Element {
   }, []);
   usePoll(loadScenarios, scenariosLoaded ? null : 3000);
 
-  const allDone = sweep !== null && sweep.cells.every((c) => c.status === 'done');
+  // `sweep.status` is the fan-out job's own status (`done` = every child run
+  // exists; cells still finish on their own), so polling stops on the cells —
+  // except when the fan-out `failed`: cells without a run then never get one.
+  const settled =
+    sweep !== null &&
+    (sweep.status === 'failed' ||
+      sweep.cells.every((c) => c.status === 'done' || c.status === 'failed'));
   const pollSweep = useCallback(async () => {
     if (!sweepId) return;
     try {
@@ -60,7 +103,7 @@ export function SweepsView(): JSX.Element {
       toastError(err, 'sweep');
     }
   }, [sweepId]);
-  usePoll(pollSweep, sweepId && !allDone ? 2500 : null);
+  usePoll(pollSweep, sweepId && !settled ? SWEEP_POLL_MS : null);
 
   const launch = async (): Promise<void> => {
     if (!scenarioId || pens.length === 0 || coms.length === 0) {
@@ -68,17 +111,22 @@ export function SweepsView(): JSX.Element {
       return;
     }
     try {
+      // the API contract is the plural `controllers` list (SweepCreateRequest)
       const res = await createSweep({
         scenario_id: scenarioId,
         penetrations: [...pens].sort((a, b) => a - b),
         compliances: [...coms].sort((a, b) => a - b),
-        controller,
+        controllers: [controller],
         replicates,
+        include_baseline: includeBaseline,
       });
       setSweep(null);
       setSweepId(res.sweep_id);
       setSearchParams({ sweep: res.sweep_id }, { replace: true });
-      toast('ok', `sweep ${res.sweep_id} launched · ${pens.length * coms.length} cells`);
+      toast(
+        'ok',
+        `sweep ${res.sweep_id} launched · ${pens.length * coms.length} cells${includeBaseline ? ' + baseline' : ''}`,
+      );
     } catch (err) {
       toastError(err, 'sweep');
     }
@@ -89,26 +137,10 @@ export function SweepsView(): JSX.Element {
   };
 
   /* matrix layout */
-  const matrix = useMemo(() => {
-    if (!sweep) return null;
-    const rows = [...new Set(sweep.cells.filter((c) => c.penetration > 0).map((c) => c.penetration))].sort(
-      (a, b) => a - b,
-    );
-    const cols = [...new Set(sweep.cells.filter((c) => c.penetration > 0).map((c) => c.compliance))].sort(
-      (a, b) => a - b,
-    );
-    const baseline =
-      sweep.cells.find((c) => c.penetration === 0) ??
-      sweep.cells.reduce((min, c) =>
-        c.penetration * c.compliance < min.penetration * min.compliance ? c : min,
-      );
-    const at = (p: number, c: number): SweepCell | undefined =>
-      sweep.cells.find((x) => x.penetration === p && x.compliance === c);
-    return { rows, cols, baseline, at };
-  }, [sweep]);
+  const matrix = useMemo(() => (sweep ? layoutMatrix(sweep) : null), [sweep]);
 
   const def = metricDef(metricKey);
-  const baseStat = matrix?.baseline.aggregate?.[metricKey];
+  const baseStat = matrix?.reference.aggregate?.[metricKey];
 
   const cellDelta = (cell: SweepCell): number | null => {
     const stat = cell.aggregate?.[metricKey];
@@ -120,6 +152,36 @@ export function SweepsView(): JSX.Element {
   const goodness = (delta: number): number => {
     const signed = def.good === 'down' ? -delta : delta;
     return Math.max(-1, Math.min(1, signed / 0.5)); // ±50% saturates
+  };
+
+  const openCell = (cell: SweepCell): void => {
+    if (cell.run_id) navigate(`/runs/${cell.run_id}`);
+  };
+
+  /** Baseline cells show the absolute value (their delta is 0 by definition). */
+  const renderBaseline = (cell: SweepCell, key: string | number, colSpan: number): JSX.Element => {
+    if (cell.status !== 'done' || !cell.aggregate) {
+      return (
+        <td key={key} colSpan={colSpan} className="cell pending">
+          {cell.status ?? 'queued'}
+        </td>
+      );
+    }
+    const stat = cell.aggregate[metricKey];
+    return (
+      <td
+        key={key}
+        colSpan={colSpan}
+        className="cell baseline"
+        title="p=0: no controlled vehicles — the uncontrolled reference every delta is measured against"
+        onClick={() => openCell(cell)}
+        onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, cell })}
+        onMouseLeave={() => setTip(null)}
+      >
+        <div className="d">{stat ? `${formatNumber(stat.mean, def.digits)} ${def.unit}` : '·'}</div>
+        <div className="n">BASELINE · n={stat?.n ?? '—'}</div>
+      </td>
+    );
   };
 
   return (
@@ -192,7 +254,7 @@ export function SweepsView(): JSX.Element {
                       checked={pens.includes(p)}
                       onChange={() => toggle(pens, p, setPens)}
                     />
-                    {Math.round(p * 100)}%
+                    {pct(p)}
                   </label>
                 ))}
               </div>
@@ -209,14 +271,28 @@ export function SweepsView(): JSX.Element {
                       checked={coms.includes(c)}
                       onChange={() => toggle(coms, c, setComs)}
                     />
-                    {Math.round(c * 100)}%
+                    {pct(c)}
                   </label>
                 ))}
               </div>
             </div>
+            <div className="field">
+              <label>Reference</label>
+              <label
+                className="check"
+                title="Adds a p=0 (no controlled vehicles) cell so every delta in the matrix is measured against an uncontrolled run from the same sweep"
+              >
+                <input
+                  type="checkbox"
+                  checked={includeBaseline}
+                  onChange={(e) => setIncludeBaseline(e.target.checked)}
+                />
+                include p=0 baseline cell
+              </label>
+            </div>
             <span className="spacer" />
             <button className="btn primary" onClick={() => void launch()}>
-              Launch {pens.length * coms.length} cells
+              Launch {pens.length * coms.length} cells{includeBaseline ? ' + baseline' : ''}
             </button>
           </div>
         </div>
@@ -226,9 +302,13 @@ export function SweepsView(): JSX.Element {
         <div className="panel">
           <div className="panel-head">
             <span className="panel-title">
-              {sweep.sweep_id} · Δ vs baseline{' '}
+              {sweep.sweep_id} · Δ vs {matrix.hasBaseline ? 'baseline' : 'reference'}{' '}
               <span className="mono" style={{ textTransform: 'none' }}>
-                (p={Math.round(matrix.baseline.penetration * 100)}%
+                (p={pct(matrix.reference.penetration)}
+                {matrix.hasBaseline ? '' : `, c=${pct(matrix.reference.compliance)}`}
+                {matrix.reference.controller !== undefined
+                  ? `, controller ${matrix.reference.controller ?? 'none'}`
+                  : ''}
                 {baseStat ? `, ${def.label} ${formatNumber(baseStat.mean, def.digits)} ${def.unit}` : ''})
               </span>
             </span>
@@ -255,20 +335,39 @@ export function SweepsView(): JSX.Element {
                 <tr>
                   <th className="rowh">pen \ comp</th>
                   {matrix.cols.map((c) => (
-                    <th key={c}>{Math.round(c * 100)}%</th>
+                    <th key={c}>{pct(c)}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
+                {matrix.hasBaseline && (
+                  <tr>
+                    <th
+                      className="rowh"
+                      title="p=0: no controlled vehicles — the uncontrolled reference every delta is measured against"
+                    >
+                      0% · baseline
+                    </th>
+                    {matrix.baselines.length === 1
+                      ? renderBaseline(matrix.baselines[0], 'baseline', Math.max(1, matrix.cols.length))
+                      : matrix.cols.map((c) =>
+                          renderBaseline(
+                            matrix.baselines.find((b) => b.compliance === c) ?? matrix.baselines[0],
+                            c,
+                            1,
+                          ),
+                        )}
+                  </tr>
+                )}
                 {matrix.rows.map((p) => (
                   <tr key={p}>
-                    <th className="rowh">{Math.round(p * 100)}%</th>
+                    <th className="rowh">{pct(p)}</th>
                     {matrix.cols.map((c) => {
                       const cell = matrix.at(p, c);
                       if (!cell || cell.status !== 'done' || !cell.aggregate) {
                         return (
                           <td key={c} className="cell pending">
-                            {cell ? cell.status : '—'}
+                            {cell ? (cell.status ?? 'queued') : '—'}
                           </td>
                         );
                       }
@@ -280,7 +379,7 @@ export function SweepsView(): JSX.Element {
                           style={{
                             background: delta === null ? undefined : deltaColor(goodness(delta)),
                           }}
-                          onClick={() => navigate(`/runs/${cell.run_id}`)}
+                          onClick={() => openCell(cell)}
                           onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, cell })}
                           onMouseLeave={() => setTip(null)}
                         >
@@ -293,6 +392,19 @@ export function SweepsView(): JSX.Element {
                 ))}
               </tbody>
             </table>
+            {sweep.status === 'failed' && (
+              <p className="hint-amber" style={{ marginTop: 12 }}>
+                sweep fan-out failed{sweep.error ? `: ${sweep.error}` : ''} — cells without a run
+                will not start
+              </p>
+            )}
+            {!matrix.hasBaseline && (
+              <p className="hint-amber" style={{ marginTop: 12 }}>
+                no p=0 baseline cell in this sweep — deltas are relative to its lowest p·c cell
+                (p={pct(matrix.reference.penetration)}, c={pct(matrix.reference.compliance)}), not to
+                an uncontrolled run
+              </p>
+            )}
             <p className="small muted" style={{ marginTop: 12 }}>
               {def.good === 'down' ? 'green = reduction (improvement)' : 'green = increase (improvement)'} ·
               click a cell to open its run
@@ -310,8 +422,8 @@ export function SweepsView(): JSX.Element {
               <>
                 <div>
                   <span className="t-muted">
-                    p={Math.round(tip.cell.penetration * 100)}% · c=
-                    {Math.round(tip.cell.compliance * 100)}%
+                    p={pct(tip.cell.penetration)} · c={pct(tip.cell.compliance)}
+                    {isBaseline(tip.cell) ? ' · baseline' : ''}
                   </span>
                 </div>
                 <div>

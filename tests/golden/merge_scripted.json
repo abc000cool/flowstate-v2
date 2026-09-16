@@ -1,14 +1,12 @@
 {
   "schema_version": 1,
-  "case": "corridor_10km_smoke",
-  "description": "scenarios/corridor_10km.yaml with sim.duration_s = 120 (the \u00a79 2-min smoke run), seed 42",
-  "scenario": "corridor_10km",
-  "overrides": {
-    "sim.duration_s": 120.0
-  },
+  "case": "merge_scripted",
+  "description": "tests/fixtures/merge.osm interchange, mainline 0.6 veh/s + on-ramp 0.25 veh/s, scripted merge (runner-driven acceleration lane), 300 sim-s, seed 3",
+  "scenario": null,
+  "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
-  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-16T18:21:05+00:00",
+  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_scripted",
+  "generated_at": "2026-09-16T18:21:09+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -23,9 +21,9 @@
       "wave_count"
     ]
   },
-  "config_hash": "28449f6634f4",
-  "seed": 42,
-  "sumo_seed": 42,
+  "config_hash": "8719db59db20",
+  "seed": 3,
+  "sumo_seed": 3,
   "tier": "micro",
   "seeded": false,
   "versions": {
@@ -39,38 +37,58 @@
     "microsim": "2.0.0"
   },
   "config": {
-    "name": "corridor_10km",
+    "name": "merge_scripted",
     "tier": "micro",
     "network": {
-      "kind": "corridor",
-      "length_m": 10000.0,
-      "lanes": 1,
+      "kind": "osm",
+      "osm_file": "tests/fixtures/merge.osm",
+      "bbox": null,
+      "corridor_edges": [
+        "100",
+        "101",
+        "102",
+        "103"
+      ],
       "inflow": [
         [
           0.0,
-          0.45
-        ],
-        [
-          120.0,
-          0.5
-        ],
-        [
-          1080.0,
-          0.4
+          0.6
         ]
       ],
       "boundary": null,
-      "entry_lane_shares": null
+      "ramps": [
+        {
+          "kind": "on",
+          "edges": [
+            "200"
+          ],
+          "attach_edge": "102",
+          "inflow": [
+            [
+              0.0,
+              0.25
+            ]
+          ],
+          "exit_fraction": [],
+          "name": "test on-ramp",
+          "meter": null,
+          "merge_visibility_m": null,
+          "merge": "scripted",
+          "merge_params": {}
+        }
+      ],
+      "entry_lane_shares": null,
+      "internal_links": false
     },
     "fleet": {
-      "model": "EIDM",
+      "model": "IDM",
       "v0": 33.3,
       "T": 1.4,
       "a_max": 0.73,
       "b": 1.67,
       "s0": 2.0,
       "delta": 4.0,
-      "heterogeneity_frac": 0.15,
+      "heterogeneity_frac": 0.12,
       "idm_calibration": null,
       "lc_strategic": 1.0,
       "lc_strategic_ramp": null,
@@ -105,41 +123,41 @@
       }
     },
     "sim": {
-      "duration_s": 120.0,
+      "duration_s": 300.0,
       "step_length_s": 0.5,
       "action_step_s": 0.5,
-      "warmup_s": 120.0,
+      "warmup_s": 0.0,
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
     "perturbation": null,
     "closures": [],
     "managed_lanes": [],
-    "seed": 42,
+    "seed": 3,
     "replicates": 20
   },
   "run": {
-    "n_vehicles_planned": 54,
-    "n_vehicles_departed": 54,
+    "n_vehicles_planned": 255,
+    "n_vehicles_departed": 255,
     "n_collisions": 0,
     "n_heavy": 0,
     "n_hov": 0,
     "n_meter_releases": 0,
-    "n_scripted_merged": 0,
-    "n_scripted_forced": 0,
-    "fuel_total_ml": 5632.580413093777
+    "n_scripted_merged": 35,
+    "n_scripted_forced": 11,
+    "fuel_total_ml": 31719.5423764132
   },
   "metrics": {
-    "throughput_veh_h": 732.2033898305085,
-    "mean_tt_s": 118.0,
-    "p90_tt_s": 118.0,
-    "sigma_v_spatial_ms": 1.580788673526414,
-    "sigma_v_temporal_ms": 0.8998753403662753,
-    "vmt_veh_km": 82.84227435223643,
-    "vht_veh_h": 0.8877777777777774,
-    "fuel_ml_per_veh_km": 67.99161970305947,
-    "wave_count": 0,
-    "wave_speed_kmh": null,
-    "wave_amplitude_ms": null
+    "throughput_veh_h": 2432.1070234113713,
+    "mean_tt_s": 71.0,
+    "p90_tt_s": 71.0,
+    "sigma_v_spatial_ms": 8.937541196370644,
+    "sigma_v_temporal_ms": 3.716799793522247,
+    "vmt_veh_km": 349.20434227517063,
+    "vht_veh_h": 4.786111111111108,
+    "fuel_ml_per_veh_km": 90.8337570196032,
+    "wave_count": 3,
+    "wave_speed_kmh": 18.0,
+    "wave_amplitude_ms": 21.331346510525915
   }
 }

@@ -1,23 +1,54 @@
-/** Reports: select finished MICRO runs, request an FHWA-style report, list
- * generated reports with markdown downloads. Macro (screening) selection is
+/** Reports: select finished MICRO runs, request an FHWA-style report, then
+ * track it to completion. `POST /reports` is asynchronous (202): under the
+ * Redis queue the report comes back `queued` and only later turns `done` or
+ * `failed` (a screening-only run set is refused as
+ * `error_kind=report_refused`), so the list polls `GET /reports/{id}` while
+ * anything is pending and the markdown download (`GET /reports/{id}/markdown`)
+ * is enabled only once a report is done. Macro (screening) selection is
  * disabled — mirrors the backend rule that screening-tier results cannot
  * support validation claims. */
 
-import { useCallback, useState } from 'react';
-import { createReport, getReportMarkdown, listRuns } from '../api/client';
-import type { ReportRecord, RunSummary } from '../api/types';
+import { useCallback, useRef, useState } from 'react';
+import { ApiError, createReport, getReport, getReportMarkdown, listRuns } from '../api/client';
+import type { ReportOut, ReportRecord, RunSummary } from '../api/types';
 import { SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { toast, toastError } from '../components/toast';
 import { usePoll } from '../lib/hooks';
 
 const LS_REPORTS = 'flowstate.reports';
+const REPORT_POLL_MS = 2000;
+const RUNS_POLL_MS = 5000;
+
+const isPending = (r: ReportRecord): boolean => r.status === 'queued' || r.status === 'running';
+
+/** Records written before reports carried a status have none; they are
+ * treated as pending so the next poll resolves their real state from the API. */
+function normalizeRecord(raw: unknown): ReportRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<ReportRecord>;
+  if (typeof r.report_id !== 'string') return null;
+  const status =
+    r.status === 'queued' || r.status === 'running' || r.status === 'done' || r.status === 'failed'
+      ? r.status
+      : 'queued';
+  return {
+    report_id: r.report_id,
+    run_ids: Array.isArray(r.run_ids) ? r.run_ids.map(String) : [],
+    title: typeof r.title === 'string' ? r.title : undefined,
+    status,
+    error: typeof r.error === 'string' ? r.error : null,
+    error_kind: typeof r.error_kind === 'string' ? r.error_kind : null,
+    created_at: typeof r.created_at === 'string' ? r.created_at : new Date().toISOString(),
+  };
+}
 
 function loadReports(): ReportRecord[] {
   try {
     const raw = window.localStorage.getItem(LS_REPORTS);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ReportRecord[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeRecord).filter((r): r is ReportRecord => r !== null);
   } catch {
     return [];
   }
@@ -31,6 +62,18 @@ function saveReports(list: ReportRecord[]): void {
   }
 }
 
+function recordFromOut(out: ReportOut, requestedRunIds: string[]): ReportRecord {
+  return {
+    report_id: out.report_id,
+    run_ids: out.run_ids.length > 0 ? out.run_ids : requestedRunIds,
+    title: out.title,
+    status: out.status,
+    error: out.error ?? null,
+    error_kind: out.error_kind ?? null,
+    created_at: out.created_at,
+  };
+}
+
 const MACRO_TOOLTIP =
   'Screening tier cannot be validated — macro (CTM) results are labeled tier:"screening" and the API refuses to generate a validation report from them.';
 
@@ -39,6 +82,15 @@ export function ReportsView(): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reports, setReports] = useState<ReportRecord[]>(loadReports);
   const [busy, setBusy] = useState(false);
+  // latest list for the (referentially stable) poll callback
+  const reportsRef = useRef(reports);
+  reportsRef.current = reports;
+
+  const commit = useCallback((next: ReportRecord[]): void => {
+    reportsRef.current = next;
+    setReports(next);
+    saveReports(next);
+  }, []);
 
   // continuous quiet poll — newly finished runs appear without a reload, and
   // the offline-fallback race resolves on the next tick
@@ -50,7 +102,47 @@ export function ReportsView(): JSX.Element {
       /* connectivity surfaced by the status dot / banner */
     }
   }, []);
-  usePoll(refresh, 5000);
+  usePoll(refresh, RUNS_POLL_MS);
+
+  // status poll for queued/running reports; paused when nothing is pending
+  const pollReports = useCallback(async () => {
+    const pending = reportsRef.current.filter(isPending);
+    if (pending.length === 0) return;
+    const updates = new Map<string, Partial<ReportRecord>>();
+    await Promise.all(
+      pending.map(async (rec) => {
+        try {
+          const out = await getReport(rec.report_id);
+          updates.set(rec.report_id, {
+            status: out.status,
+            error: out.error ?? null,
+            error_kind: out.error_kind ?? null,
+            run_ids: out.run_ids.length > 0 ? out.run_ids : rec.run_ids,
+            title: out.title,
+          });
+        } catch (err) {
+          // a vanished report (store reset) is terminal; anything else is
+          // transient and retried on the next tick
+          if (err instanceof ApiError && err.status === 404) {
+            updates.set(rec.report_id, { status: 'failed', error: err.message, error_kind: 'not_found' });
+          }
+        }
+      }),
+    );
+    if (updates.size === 0) return;
+    commit(
+      reportsRef.current.map((r) => {
+        const u = updates.get(r.report_id);
+        return u ? { ...r, ...u } : r;
+      }),
+    );
+    for (const [id, u] of updates) {
+      if (u.status === 'done') toast('ok', `report ${id} ready`);
+      else if (u.status === 'failed') toast('error', `report ${id} failed: ${u.error ?? 'unknown error'}`);
+    }
+  }, [commit]);
+  const anyPending = reports.some(isPending);
+  usePoll(pollReports, anyPending ? REPORT_POLL_MS : null);
 
   const toggleRun = (id: string): void => {
     setSelected((s) => {
@@ -66,17 +158,14 @@ export function ReportsView(): JSX.Element {
     if (ids.length === 0) return;
     setBusy(true);
     try {
-      const res = await createReport(ids);
-      const rec: ReportRecord = {
-        report_id: res.report_id,
-        run_ids: ids,
-        created_at: new Date().toISOString(),
-      };
-      const next = [rec, ...reports];
-      setReports(next);
-      saveReports(next);
+      const out = await createReport(ids);
+      const rec = recordFromOut(out, ids);
+      commit([rec, ...reportsRef.current.filter((r) => r.report_id !== rec.report_id)]);
       setSelected(new Set());
-      toast('ok', `report ${res.report_id} generated`);
+      if (rec.status === 'done') toast('ok', `report ${rec.report_id} generated`);
+      else if (rec.status === 'failed')
+        toast('error', `report ${rec.report_id} failed: ${rec.error ?? 'unknown error'}`);
+      else toast('info', `report ${rec.report_id} queued — download unlocks once it is done`);
     } catch (err) {
       toastError(err, 'report');
     } finally {
@@ -108,7 +197,7 @@ export function ReportsView(): JSX.Element {
   return (
     <div className="view">
       <div className="view-title">
-        Validation Reports <span className="count mono">{reports.length} generated</span>
+        Validation Reports <span className="count mono">{reports.length} requested</span>
       </div>
 
       <div className="panel">
@@ -124,7 +213,7 @@ export function ReportsView(): JSX.Element {
           </button>
         </div>
         <div className="table-wrap">
-          <table className="data">
+          <table className="data" aria-label="finished runs">
             <thead>
               <tr>
                 <th style={{ width: 34 }} />
@@ -183,10 +272,11 @@ export function ReportsView(): JSX.Element {
           <span className="panel-title">Generated reports</span>
         </div>
         <div className="table-wrap">
-          <table className="data">
+          <table className="data" aria-label="generated reports">
             <thead>
               <tr>
                 <th>Report</th>
+                <th>Status</th>
                 <th>Created</th>
                 <th>Runs</th>
                 <th />
@@ -196,10 +286,28 @@ export function ReportsView(): JSX.Element {
               {reports.map((rec) => (
                 <tr key={rec.report_id}>
                   <td style={{ fontWeight: 700 }}>{rec.report_id}</td>
+                  <td>
+                    <StatusChip status={rec.status} />
+                    {rec.error && (
+                      <div className="small" style={{ color: 'var(--danger)', marginTop: 4 }}>
+                        {rec.error_kind ? `${rec.error_kind}: ` : ''}
+                        {rec.error}
+                      </div>
+                    )}
+                  </td>
                   <td className="muted">{rec.created_at.replace('T', ' ').slice(0, 19)} UTC</td>
                   <td className="muted">{rec.run_ids.join(', ')}</td>
                   <td>
-                    <button className="btn sm" onClick={() => void download(rec)}>
+                    <button
+                      className="btn sm"
+                      disabled={rec.status !== 'done'}
+                      title={
+                        rec.status === 'done'
+                          ? undefined
+                          : `report is ${rec.status} — the markdown is served only once it is done`
+                      }
+                      onClick={() => void download(rec)}
+                    >
                       Download .md
                     </button>
                   </td>
@@ -207,8 +315,8 @@ export function ReportsView(): JSX.Element {
               ))}
               {reports.length === 0 && (
                 <tr>
-                  <td colSpan={4}>
-                    <div className="empty">no reports generated in this browser yet</div>
+                  <td colSpan={5}>
+                    <div className="empty">no reports requested in this browser yet</div>
                   </td>
                 </tr>
               )}

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Request size caps
@@ -31,6 +31,14 @@ MAX_SWEEP_CELLS = 200
 
 #: Maximum replicates a single request may ask for, per run and per sweep cell.
 MAX_REPLICATES = 200
+
+#: Ceilings on the calibration fit options a request may set
+#: (:class:`CalibrationParams`): bootstrap resamples of the FD fit, and the
+#: differential-evolution generation cap and population multiplier of the
+#: per-episode IDM fit. The defaults (200, 60, 15) sit well inside them.
+MAX_N_BOOTSTRAP = 5000
+MAX_DE_MAXITER = 500
+MAX_DE_POPSIZE = 100
 
 
 def deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -77,6 +85,10 @@ class PresetOut(BaseModel):
 
 
 class RunCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    """Unknown fields are a client bug (a mis-named key silently dropped once
+    sent every dashboard sweep without its controller); refuse them."""
+
     scenario_id: str
     overrides: dict[str, Any] = Field(default_factory=dict)
     """Deep-merge patch onto the stored ScenarioConfig (re-validated)."""
@@ -152,15 +164,26 @@ class HeatmapOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+#: The no-AV reference cell appended per controller by ``include_baseline``.
+BASELINE_PENETRATION = 0.0
+BASELINE_COMPLIANCE = 1.0
+
+#: One grid cell: (penetration, compliance, controller).
+SweepCellKey = tuple[float, float, str | None]
+
+
 class SweepCreateRequest(BaseModel):
     """Penetration × compliance × controller grid over one scenario.
 
     Bounded on both axes and in total: each list holds at most
-    ``MAX_SWEEP_AXIS_VALUES`` (50) values and their product may not exceed
-    ``MAX_SWEEP_CELLS`` (200) cells. The product is checked here, from the
+    ``MAX_SWEEP_AXIS_VALUES`` (50) values and their product — plus the
+    baseline cells ``include_baseline`` adds — may not exceed
+    ``MAX_SWEEP_CELLS`` (200) cells. The total is checked here, from the
     list lengths alone, so an oversized grid is rejected before a single cell
     config is built or validated.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     scenario_id: str
     penetrations: list[float] = Field(min_length=1, max_length=MAX_SWEEP_AXIS_VALUES)
@@ -173,15 +196,43 @@ class SweepCreateRequest(BaseModel):
     replicates: int | None = Field(default=None, ge=1, le=MAX_REPLICATES)
     """Replicates per cell; capped at ``MAX_REPLICATES`` (200)."""
     tier: Literal["micro", "macro"] | None = None
+    include_baseline: bool = False
+    """Append one no-AV reference cell (penetration 0, compliance 1) per
+    distinct controller, so a "Δ vs baseline" comparison has an uncontrolled
+    run to compare against instead of the smallest controlled cell. Skipped
+    when ``penetrations`` already contains 0 (the grid then holds no-AV cells
+    of its own). Baseline cells count toward ``MAX_SWEEP_CELLS``."""
+
+    def baseline_cells(self) -> list[SweepCellKey]:
+        """The ``include_baseline`` cells to append after the cartesian grid."""
+        if not self.include_baseline or BASELINE_PENETRATION in self.penetrations:
+            return []
+        return [
+            (BASELINE_PENETRATION, BASELINE_COMPLIANCE, ctrl)
+            for ctrl in dict.fromkeys(self.controllers)
+        ]
+
+    def grid_cells(self) -> list[SweepCellKey]:
+        """Every cell of the sweep in fan-out order: the product, then baselines."""
+        product = [
+            (pen, comp, ctrl)
+            for pen in self.penetrations
+            for comp in self.compliances
+            for ctrl in self.controllers
+        ]
+        return product + self.baseline_cells()
 
     @model_validator(mode="after")
     def _check_grid_size(self) -> Self:
-        cells = len(self.penetrations) * len(self.compliances) * len(self.controllers)
+        product = len(self.penetrations) * len(self.compliances) * len(self.controllers)
+        baselines = len(self.baseline_cells())
+        cells = product + baselines
         if cells > MAX_SWEEP_CELLS:
+            extra = f" + {baselines} baseline cells" if baselines else ""
             raise ValueError(
                 f"sweep grid is {len(self.penetrations)} penetrations × "
-                f"{len(self.compliances)} compliances × {len(self.controllers)} controllers "
-                f"= {cells} cells, over the limit of {MAX_SWEEP_CELLS}; "
+                f"{len(self.compliances)} compliances × {len(self.controllers)} controllers"
+                f"{extra} = {cells} cells, over the limit of {MAX_SWEEP_CELLS}; "
                 f"split the grid across several sweeps"
             )
         return self
@@ -216,6 +267,53 @@ class SweepOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CalibrationParams(BaseModel, extra="forbid"):
+    """Fit options accepted in the ``params`` form field of ``POST /calibrations``.
+
+    Every option is bounded because the fit runs on the single worker under
+    a six-hour job timeout: an unbounded ``n_bootstrap`` pre-allocates that
+    many resample index arrays and refits the FD that many times, and an
+    unbounded ``de_maxiter``/``de_popsize`` pins the worker on one episode.
+    Unknown keys are refused (HTTP 422) rather than silently ignored, so a
+    misspelt option never runs a fit with defaults the caller did not want.
+
+    Only the keys the caller sets are forwarded to the fit
+    (:meth:`forwarded`); everything else keeps the fit function's own
+    default, and an explicit ``null`` means "unset". Which keys each kind of
+    fit consumes is listed on ``api.jobs.fd_calibration_job`` and
+    ``api.jobs.idm_calibration_job``.
+    """
+
+    # Shared
+    seed: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=4000)
+    # FD fit (``calibration.fd_fit.fit_triangular_fd``)
+    loader: Literal["tidy", "pems"] | None = None
+    n_bootstrap: int | None = Field(default=None, ge=0, le=MAX_N_BOOTSTRAP)
+    min_points: int | None = Field(default=None, ge=3)
+    congested_quantile: float | None = Field(default=None, gt=0.0, lt=1.0)
+    q_max_percentile: float | None = Field(default=None, gt=0.0, le=100.0)
+    uncongested_max_density: float | None = Field(default=None, gt=0.0)
+    """Free-branch density cut [veh/m]."""
+    uncongested_max_occupancy: float | None = Field(default=None, gt=0.0, le=1.0)
+    # PeMS loader (``loader: "pems"``)
+    g_effective_length_m: float | None = Field(default=None, gt=0.0)
+    interval_s: float | None = Field(default=None, gt=0.0)
+    speed_unit: Literal["mph", "kmh", "ms"] | None = None
+    occupancy_unit: Literal["fraction", "percent"] | None = None
+    # IDM fit (``calibration.idm_fit.fit_population``)
+    min_duration_s: float | None = Field(default=None, gt=0.0, le=3600.0)
+    holdout_frac: float | None = Field(default=None, ge=0.0, lt=1.0)
+    trim_quantile: float | None = Field(default=None, gt=0.0, le=1.0)
+    de_maxiter: int | None = Field(default=None, ge=1, le=MAX_DE_MAXITER)
+    de_popsize: int | None = Field(default=None, ge=1, le=MAX_DE_POPSIZE)
+    de_tol: float | None = Field(default=None, gt=0.0)
+
+    def forwarded(self) -> dict[str, Any]:
+        """The caller-set, non-null options — what the job forwards to the fit."""
+        return self.model_dump(exclude_unset=True, exclude_none=True)
+
+
 class CalibrationOut(BaseModel):
     calibration_id: str
     kind: Literal["fd", "idm"]
@@ -235,6 +333,10 @@ class CalibrationOut(BaseModel):
 
 
 class ReportCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    """Unknown fields are a client bug (a mis-named key silently dropped once
+    sent every dashboard sweep without its controller); refuse them."""
+
     run_ids: list[str] = Field(min_length=1)
     title: str = "FlowState calibration & validation report"
 

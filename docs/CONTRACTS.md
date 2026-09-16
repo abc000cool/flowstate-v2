@@ -497,3 +497,42 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   ranges over `[0, U + v_catch]` — Stern et al. (2018) Eq. (3) allows a bounded
   catch-up above the desired speed so the AV can close a gap.
 - Every stochastic test passes an explicit seed.
+
+
+## API and dashboard contract additions (2026-09-16)
+
+- `POST /api/v1/sweeps`: `include_baseline: bool = false` appends one
+  penetration-0 / compliance-1 cell per distinct controller after the grid
+  (skipped when `penetrations` already contains 0); baseline cells count
+  toward the 200-cell ceiling and appear last in `cells`. Request models
+  (`RunCreateRequest`, `SweepCreateRequest`, `ReportCreateRequest`) forbid
+  unknown fields (422).
+- `POST /api/v1/scenarios`, `/runs` (overrides) and each `/sweeps` cell: 422
+  with `type: "path_outside_roots"` when `network.osm_file`,
+  `fleet.idm_calibration` or `fleet.heavy.idm_calibration` resolves outside
+  the results root, the uploads directory, `FLOWSTATE_DATA_DIR`, or the
+  repository's `artifacts/` and `data/`; relative values resolve against the
+  repository root (`api.settings.REPO_ROOT`), never the process CWD.
+- HTTP 413 on `/api/` bodies above `FLOWSTATE_MAX_BODY_MB` (default 8) and
+  calibration uploads above `FLOWSTATE_MAX_UPLOAD_MB` (default 200); the
+  detail names the limit and the variable. `POST /calibrations/{kind}`
+  `params` are validated by `api.schemas.CalibrationParams` (extra forbidden,
+  bounds in its field definitions); stored `params` hold only caller-set keys.
+- `RunOut.seeded` / `MetricsOut.seeded` equal `ScenarioConfig.seeded`
+  (perturbation or closures). `RunOut.error`, `SweepOut.error`,
+  `ReportOut.error` carry an exception chain (`Type: message`, `caused by:`
+  lines, at most 4000 characters) without frames, paths, or pydantic input
+  values.
+- Job identity: the RQ job id equals the store row id for every job
+  (`api.jobs.JobQueue.enqueue(..., job_id=)`); `api.jobs.reconcile_store`
+  repairs `queued`/`running` rows whose job is gone (worker start, RQ
+  maintenance, API start). Per-replicate `metrics.json` (schema 1) is written
+  by the worker at the end of every run (`api.results.precompute_run_metrics`)
+  and is the only source read by `GET /sweeps/{id}`.
+- Dashboard metric keys (`frontend/src/lib/metrics.ts` `METRIC_DEFS`) must
+  equal the `validation.metrics.Metrics` field names; a vitest contract test
+  parses the dataclass and fails on a rename without a matching entry.
+- Golden files (`tests/golden/*.json`, schema 1): the `run` section gains the
+  exact-compared counters `n_collisions`, `n_heavy`, `n_hov`,
+  `n_meter_releases`, `n_scripted_merged`, `n_scripted_forced`; new cases
+  for closures, heavy vehicles, the merge models, metering and managed lanes.

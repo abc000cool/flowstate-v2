@@ -1,14 +1,12 @@
 {
   "schema_version": 1,
-  "case": "corridor_10km_smoke",
-  "description": "scenarios/corridor_10km.yaml with sim.duration_s = 120 (the \u00a79 2-min smoke run), seed 42",
-  "scenario": "corridor_10km",
-  "overrides": {
-    "sim.duration_s": 120.0
-  },
+  "case": "hov_corridor",
+  "description": "3 km two-lane corridor, 0.5 veh/s, 30 % HOV-eligible, left lane managed 0.2\u20130.9 km for 120\u2013210 s, 300 sim-s, seed 5",
+  "scenario": null,
+  "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
-  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-16T18:21:05+00:00",
+  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate hov_corridor",
+  "generated_at": "2026-09-16T18:21:08+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -23,9 +21,9 @@
       "wave_count"
     ]
   },
-  "config_hash": "28449f6634f4",
-  "seed": 42,
-  "sumo_seed": 42,
+  "config_hash": "ac5f376c68e4",
+  "seed": 5,
+  "sumo_seed": 5,
   "tier": "micro",
   "seeded": false,
   "versions": {
@@ -39,38 +37,30 @@
     "microsim": "2.0.0"
   },
   "config": {
-    "name": "corridor_10km",
+    "name": "hov_corridor",
     "tier": "micro",
     "network": {
       "kind": "corridor",
-      "length_m": 10000.0,
-      "lanes": 1,
+      "length_m": 3000.0,
+      "lanes": 2,
       "inflow": [
         [
           0.0,
-          0.45
-        ],
-        [
-          120.0,
           0.5
-        ],
-        [
-          1080.0,
-          0.4
         ]
       ],
       "boundary": null,
       "entry_lane_shares": null
     },
     "fleet": {
-      "model": "EIDM",
+      "model": "IDM",
       "v0": 33.3,
       "T": 1.4,
       "a_max": 0.73,
       "b": 1.67,
       "s0": 2.0,
       "delta": 4.0,
-      "heterogeneity_frac": 0.15,
+      "heterogeneity_frac": 0.12,
       "idm_calibration": null,
       "lc_strategic": 1.0,
       "lc_strategic_ramp": null,
@@ -89,7 +79,7 @@
       "min_gap_lat": null,
       "lat_alignment": null,
       "lc_overtake_right": null,
-      "hov_fraction": 0.0
+      "hov_fraction": 0.3
     },
     "av": {
       "penetration": 0.0,
@@ -105,41 +95,52 @@
       }
     },
     "sim": {
-      "duration_s": 120.0,
+      "duration_s": 300.0,
       "step_length_s": 0.5,
       "action_step_s": 0.5,
-      "warmup_s": 120.0,
+      "warmup_s": 0.0,
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
     "perturbation": null,
     "closures": [],
-    "managed_lanes": [],
-    "seed": 42,
+    "managed_lanes": [
+      {
+        "start_m": 200.0,
+        "end_m": 900.0,
+        "lanes": [
+          1
+        ],
+        "t_start_s": 120.0,
+        "t_end_s": 210.0,
+        "label": "HOV left lane"
+      }
+    ],
+    "seed": 5,
     "replicates": 20
   },
   "run": {
-    "n_vehicles_planned": 54,
-    "n_vehicles_departed": 54,
+    "n_vehicles_planned": 150,
+    "n_vehicles_departed": 150,
     "n_collisions": 0,
     "n_heavy": 0,
-    "n_hov": 0,
+    "n_hov": 51,
     "n_meter_releases": 0,
     "n_scripted_merged": 0,
     "n_scripted_forced": 0,
-    "fuel_total_ml": 5632.580413093777
+    "fuel_total_ml": 38784.39574237656
   },
   "metrics": {
-    "throughput_veh_h": 732.2033898305085,
-    "mean_tt_s": 118.0,
-    "p90_tt_s": 118.0,
-    "sigma_v_spatial_ms": 1.580788673526414,
-    "sigma_v_temporal_ms": 0.8998753403662753,
-    "vmt_veh_km": 82.84227435223643,
-    "vht_veh_h": 0.8877777777777774,
-    "fuel_ml_per_veh_km": 67.99161970305947,
-    "wave_count": 0,
+    "throughput_veh_h": 1268.456375838926,
+    "mean_tt_s": 179.5,
+    "p90_tt_s": 179.5,
+    "sigma_v_spatial_ms": 4.624085255870915,
+    "sigma_v_temporal_ms": 3.6418553559412543,
+    "vmt_veh_km": 489.81773248007784,
+    "vht_veh_h": 5.158888888888886,
+    "fuel_ml_per_veh_km": 79.18128146566033,
+    "wave_count": 1,
     "wave_speed_kmh": null,
-    "wave_amplitude_ms": null
+    "wave_amplitude_ms": 26.535566861773766
   }
 }

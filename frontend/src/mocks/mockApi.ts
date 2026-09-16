@@ -1,7 +1,13 @@
 /** In-memory mock backend for VITE_MOCK=1 and the API-offline fallback.
  * Serves deterministic, physically plausible demo data so the dashboard is
  * fully demoable standalone. Values follow the honesty rules: seeded runs are
- * labeled, macro runs are tier "screening", n<20 is underpowered. */
+ * labeled, macro runs are tier "screening", n<20 is underpowered.
+ *
+ * Shapes mirror the real API contract (packages/api/api/schemas.py) so the
+ * mock cannot mask a client/contract drift: metric names are the
+ * `validation.metrics.Metrics` field names, sweeps take `controllers` (a
+ * list) and answer with `SweepOut`, and reports are asynchronous
+ * (`queued` → `running` → `done`) with the markdown served only once done. */
 
 import type {
   AggregateStat,
@@ -10,6 +16,7 @@ import type {
   CreateSweepRequest,
   HeatField,
   Heatmap,
+  ReportOut,
   RunDetail,
   RunMetrics,
   RunSummary,
@@ -88,13 +95,21 @@ const scenarios: ScenarioRecord[] = [
 
 /* -------------------------------- runs -------------------------------- */
 
+/** One value per `validation.metrics.Metrics` field — the exact keys the
+ * API's `aggregate` dict carries (see `src/lib/metrics.ts`). */
 interface RunProfile {
-  sigma_v: number;
-  throughput_vph: number;
-  mean_travel_time_s: number;
-  fuel_ml_per_vkm: number;
+  throughput_veh_h: number;
+  mean_tt_s: number;
+  p90_tt_s: number;
+  sigma_v_spatial_ms: number;
+  sigma_v_temporal_ms: number;
+  vmt_veh_km: number;
+  vht_veh_h: number;
+  fuel_ml_per_veh_km: number;
   wave_count: number;
+  /** Backward wave-front speed magnitude, reported positive like the API. */
   wave_speed_kmh: number;
+  wave_amplitude_ms: number;
 }
 
 interface RunRecord {
@@ -118,30 +133,59 @@ interface RunRecord {
 }
 
 const BASELINE: RunProfile = {
-  sigma_v: 5.82,
-  throughput_vph: 1748,
-  mean_travel_time_s: 512.4,
-  fuel_ml_per_vkm: 68.3,
+  throughput_veh_h: 1748,
+  mean_tt_s: 512.4,
+  p90_tt_s: 641.0,
+  sigma_v_spatial_ms: 5.82,
+  sigma_v_temporal_ms: 4.61,
+  vmt_veh_km: 5830,
+  vht_veh_h: 82.9,
+  fuel_ml_per_veh_km: 68.3,
   wave_count: 6,
-  wave_speed_kmh: -17.6,
+  wave_speed_kmh: 17.6,
+  wave_amplitude_ms: 14.2,
 };
 
 const DAMPENED: RunProfile = {
-  sigma_v: 2.11,
-  throughput_vph: 1812,
-  mean_travel_time_s: 441.8,
-  fuel_ml_per_vkm: 55.1,
+  throughput_veh_h: 1812,
+  mean_tt_s: 441.8,
+  p90_tt_s: 512.6,
+  sigma_v_spatial_ms: 2.11,
+  sigma_v_temporal_ms: 1.74,
+  vmt_veh_km: 6040,
+  vht_veh_h: 74.1,
+  fuel_ml_per_veh_km: 55.1,
   wave_count: 1,
-  wave_speed_kmh: -16.2,
+  wave_speed_kmh: 16.2,
+  wave_amplitude_ms: 6.8,
 };
 
 const RING_PROFILE: RunProfile = {
-  sigma_v: 3.4,
-  throughput_vph: 1290,
-  mean_travel_time_s: 96.5,
-  fuel_ml_per_vkm: 84.9,
+  throughput_veh_h: 1290,
+  mean_tt_s: 96.5,
+  p90_tt_s: 118.0,
+  sigma_v_spatial_ms: 3.4,
+  sigma_v_temporal_ms: 2.9,
+  vmt_veh_km: 52.8,
+  vht_veh_h: 1.83,
+  fuel_ml_per_veh_km: 84.9,
   wave_count: 1,
-  wave_speed_kmh: -4.9,
+  wave_speed_kmh: 4.9,
+  wave_amplitude_ms: 7.1,
+};
+
+const MACRO_PROFILE: RunProfile = {
+  throughput_veh_h: 1725,
+  mean_tt_s: 498.0,
+  p90_tt_s: 602.0,
+  sigma_v_spatial_ms: 4.9,
+  sigma_v_temporal_ms: 3.9,
+  vmt_veh_km: 5750,
+  vht_veh_h: 79.8,
+  fuel_ml_per_veh_km: 66.0,
+  wave_count: 4,
+  wave_speed_kmh: 18.4,
+  wave_amplitude_ms: 12.0,
 };
 
 const t0 = Date.parse('2026-08-29T14:02:00Z');
@@ -204,14 +248,7 @@ const runs: RunRecord[] = [
     config_hash: fakeHash('corridor-macro'),
     created_at: iso(21),
     kind: 'corridor',
-    profile: {
-      sigma_v: 4.9,
-      throughput_vph: 1725,
-      mean_travel_time_s: 498.0,
-      fuel_ml_per_vkm: 66.0,
-      wave_count: 4,
-      wave_speed_kmh: -18.4,
-    },
+    profile: MACRO_PROFILE,
     damping: 0.35,
     fixedStatus: 'done',
   },
@@ -277,31 +314,40 @@ function toSummary(r: RunRecord): RunSummary {
 
 /* ------------------------------ metrics ------------------------------- */
 
+/** Per-metric replicate noise scale (≈ one standard deviation). */
+const JITTER: Record<keyof RunProfile, number> = {
+  throughput_veh_h: 38,
+  mean_tt_s: 14,
+  p90_tt_s: 20,
+  sigma_v_spatial_ms: 0.45,
+  sigma_v_temporal_ms: 0.38,
+  vmt_veh_km: 120,
+  vht_veh_h: 2.4,
+  fuel_ml_per_veh_km: 2.6,
+  wave_count: 1.2,
+  wave_speed_kmh: 1.4,
+  wave_amplitude_ms: 1.1,
+};
+
+const METRIC_KEYS = Object.keys(JITTER) as (keyof RunProfile)[];
+
 function buildMetrics(r: RunRecord): RunMetrics {
   const profile = r.profile ?? BASELINE;
   const rng = mulberry32(r.seedBase);
-  const per: Record<string, number>[] = [];
-  const jitter: Record<keyof RunProfile, number> = {
-    sigma_v: 0.45,
-    throughput_vph: 38,
-    mean_travel_time_s: 14,
-    fuel_ml_per_vkm: 2.6,
-    wave_count: 1.2,
-    wave_speed_kmh: 1.4,
-  };
+  const per: { seed: number; metrics: Record<string, number> }[] = [];
   for (let i = 0; i < r.n; i++) {
-    const rep: Record<string, number> = { seed: r.seedBase + i };
-    (Object.keys(jitter) as (keyof RunProfile)[]).forEach((k) => {
-      const noise = (rng() + rng() + rng() - 1.5) * jitter[k]; // ~normal
+    const rep: Record<string, number> = {};
+    for (const k of METRIC_KEYS) {
+      const noise = (rng() + rng() + rng() - 1.5) * JITTER[k]; // ~normal
       let v = profile[k] + noise;
       if (k === 'wave_count') v = Math.max(0, Math.round(v));
       rep[k] = Math.round(v * 1000) / 1000;
-    });
-    per.push(rep);
+    }
+    per.push({ seed: r.seedBase + i, metrics: rep });
   }
   const aggregate: Record<string, AggregateStat> = {};
-  (Object.keys(jitter) as (keyof RunProfile)[]).forEach((k) => {
-    const vals = per.map((p) => p[k]);
+  for (const k of METRIC_KEYS) {
+    const vals = per.map((p) => p.metrics[k]);
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const sd = Math.sqrt(
       vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, vals.length - 1),
@@ -314,9 +360,15 @@ function buildMetrics(r: RunRecord): RunMetrics {
       n: r.n,
       underpowered: r.n < 20,
     };
-  });
+  }
   return {
-    replicates: per.map((p) => ({ seed: p.seed, metrics: p })),
+    run_id: r.run_id,
+    config_hash: r.config_hash,
+    tier: r.tier,
+    seeded: r.seeded,
+    n_replicates: r.n,
+    underpowered: r.n < 20,
+    replicates: per,
     aggregate,
   };
 }
@@ -343,30 +395,41 @@ function buildHeatmap(r: RunRecord, field: HeatField): Heatmap {
 
 /* ------------------------------- sweeps ------------------------------- */
 
-interface SweepRecord extends SweepDetail {
+interface SweepRecord {
+  sweep_id: string;
+  scenario_id: string;
+  created_at: string;
   createdAt: number;
+  cells: SweepCell[];
 }
 
 const sweeps = new Map<string, SweepRecord>();
 
 function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
   const cells: SweepCell[] = [];
-  const mkCell = (p: number, c: number): SweepCell => {
-    const eff = p * c;
-    const runId = `run-sw-${sweepId.slice(-4)}-p${Math.round(p * 100)}-c${Math.round(c * 100)}`;
+  const mkCell = (p: number, c: number, controller: string | null): SweepCell => {
+    // no controller (or no AVs) => nothing to dampen with: baseline physics
+    const eff = controller ? p * c : 0;
+    const tag = controller ?? 'none';
+    const runId = `run-sw-${sweepId.slice(-4)}-${tag.slice(0, 3)}-p${Math.round(p * 100)}-c${Math.round(c * 100)}`;
     const damp = Math.min(0.92, eff * 9);
     const profile: RunProfile = {
-      sigma_v: Math.max(1.4, BASELINE.sigma_v * (1 - damp * 0.68)),
-      throughput_vph: BASELINE.throughput_vph * (1 + damp * 0.045),
-      mean_travel_time_s: BASELINE.mean_travel_time_s * (1 - damp * 0.14),
-      fuel_ml_per_vkm: BASELINE.fuel_ml_per_vkm * (1 - damp * 0.2),
+      throughput_veh_h: BASELINE.throughput_veh_h * (1 + damp * 0.045),
+      mean_tt_s: BASELINE.mean_tt_s * (1 - damp * 0.14),
+      p90_tt_s: BASELINE.p90_tt_s * (1 - damp * 0.2),
+      sigma_v_spatial_ms: Math.max(1.4, BASELINE.sigma_v_spatial_ms * (1 - damp * 0.68)),
+      sigma_v_temporal_ms: Math.max(1.1, BASELINE.sigma_v_temporal_ms * (1 - damp * 0.65)),
+      vmt_veh_km: BASELINE.vmt_veh_km * (1 + damp * 0.04),
+      vht_veh_h: BASELINE.vht_veh_h * (1 - damp * 0.1),
+      fuel_ml_per_veh_km: BASELINE.fuel_ml_per_veh_km * (1 - damp * 0.2),
       wave_count: Math.max(0, Math.round(BASELINE.wave_count * (1 - damp))),
       wave_speed_kmh: BASELINE.wave_speed_kmh,
+      wave_amplitude_ms: BASELINE.wave_amplitude_ms * (1 - damp * 0.55),
     };
     const rec: RunRecord = {
       run_id: runId,
       scenario_id: req.scenario_id,
-      scenario_name: `sweep ${req.controller} p=${Math.round(p * 100)}% c=${Math.round(c * 100)}%`,
+      scenario_name: `sweep ${tag} p=${Math.round(p * 100)}% c=${Math.round(c * 100)}%`,
       tier: 'micro',
       seeded: true,
       n: req.replicates,
@@ -382,24 +445,83 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
     return {
       penetration: p,
       compliance: c,
+      controller,
+      config_hash: rec.config_hash,
       run_id: runId,
       status: 'done',
+      progress: { completed_replicates: req.replicates, total_replicates: req.replicates },
       aggregate: buildMetrics(rec).aggregate,
     };
   };
-  // baseline cell (p=0) for delta reference
-  cells.push(mkCell(0, 1.0));
+  const controllers = req.controllers.length > 0 ? req.controllers : [null];
+  // baseline cells as the delta reference, shaped like the API's
+  // SweepCreateRequest.baseline_cells(): one (p=0, compliance 1) cell per
+  // distinct controller, skipped when the grid already holds p=0. The API
+  // appends them after the product; they lead here only so the progressive
+  // reveal shows the reference first (the matrix does not depend on order).
+  if (req.include_baseline && !req.penetrations.includes(0)) {
+    for (const ctrl of new Set(controllers)) cells.push(mkCell(0, 1.0, ctrl));
+  }
   for (const p of req.penetrations) {
     for (const c of req.compliances) {
-      cells.push(mkCell(p, c));
+      for (const ctrl of controllers) {
+        cells.push(mkCell(p, c, ctrl));
+      }
     }
   }
-  return { sweep_id: sweepId, cells, createdAt: Date.now() };
+  return {
+    sweep_id: sweepId,
+    scenario_id: req.scenario_id,
+    created_at: new Date().toISOString(),
+    createdAt: Date.now(),
+    cells,
+  };
+}
+
+/** `SweepOut` view of a record: cells are revealed progressively so a fresh
+ * sweep reads as computing — not-yet-started cells carry null run/status
+ * exactly like the API before the fan-out job reaches them. */
+function sweepView(s: SweepRecord): SweepDetail {
+  const age = (Date.now() - s.createdAt) / 1000;
+  const revealed = Math.max(1, Math.floor(age / 0.8) + 1);
+  const cells = s.cells.map((c, i) => {
+    if (i < revealed) return c;
+    if (i === revealed) {
+      const total = c.progress?.total_replicates ?? 0;
+      return {
+        ...c,
+        status: 'running' as const,
+        progress: { completed_replicates: Math.floor(total / 2), total_replicates: total },
+        aggregate: null,
+      };
+    }
+    return { ...c, run_id: null, status: null, progress: null, aggregate: null };
+  });
+  const done = Math.min(revealed, s.cells.length);
+  return {
+    sweep_id: s.sweep_id,
+    scenario_id: s.scenario_id,
+    status: done >= s.cells.length ? 'done' : 'running',
+    error: null,
+    created_at: s.created_at,
+    runs_total: s.cells.length,
+    runs_done: done,
+    runs_failed: 0,
+    cells,
+  };
 }
 
 /* ------------------------------- reports ------------------------------ */
 
-const reports = new Map<string, string>();
+const REPORT_TITLE = 'FlowState calibration & validation report';
+
+interface ReportRow {
+  out: ReportOut;
+  markdown: string;
+  createdAt: number;
+}
+
+const reports = new Map<string, ReportRow>();
 
 function reportMarkdown(reportId: string, runIds: string[]): string {
   const lines: string[] = [];
@@ -433,6 +555,41 @@ function reportMarkdown(reportId: string, runIds: string[]): string {
   );
   lines.push('- Every value above traces to a computed artifact of a seeded run.');
   return lines.join('\n');
+}
+
+/** `ReportOut` view of a row: like the Redis-queued API, a report is
+ * `queued`, then `running`, then `done` a few seconds after creation. */
+function reportView(row: ReportRow): ReportOut {
+  const age = (Date.now() - row.createdAt) / 1000;
+  const status: ReportOut['status'] = age < 1.2 ? 'queued' : age < 3 ? 'running' : 'done';
+  return {
+    ...row.out,
+    status,
+    report_path: status === 'done' ? `/data/reports/${row.out.report_id}/report.md` : null,
+  };
+}
+
+function ensureReport(reportId: string): ReportRow {
+  let row = reports.get(reportId);
+  if (!row) {
+    // survive reloads in demo mode: a finished, regenerated demo report
+    row = {
+      out: {
+        report_id: reportId,
+        status: 'done',
+        run_ids: [],
+        title: REPORT_TITLE,
+        report_path: null,
+        error: null,
+        error_kind: null,
+        created_at: new Date(0).toISOString(),
+      },
+      markdown: `# FlowState Validation Report ${reportId}\n\n(Regenerated demo report — original mock session expired.)`,
+      createdAt: 0,
+    };
+    reports.set(reportId, row);
+  }
+  return row;
 }
 
 /* ----------------------------- mock endpoints ------------------------- */
@@ -526,11 +683,12 @@ export async function mockGetRunHeatmap(runId: string, field: HeatField): Promis
   return buildHeatmap(r, field);
 }
 
-export async function mockCreateSweep(req: CreateSweepRequest): Promise<{ sweep_id: string }> {
+export async function mockCreateSweep(req: CreateSweepRequest): Promise<SweepDetail> {
   await latency();
   const id = `swp-${fakeHash(JSON.stringify(req) + Date.now()).slice(0, 6)}`;
-  sweeps.set(id, buildSweep(id, req));
-  return { sweep_id: id };
+  const rec = buildSweep(id, req);
+  sweeps.set(id, rec);
+  return sweepView(rec);
 }
 
 export async function mockGetSweep(sweepId: string): Promise<SweepDetail> {
@@ -542,21 +700,17 @@ export async function mockGetSweep(sweepId: string): Promise<SweepDetail> {
       scenario_id: 'scn-corridor',
       penetrations: [0.01, 0.02, 0.05, 0.1, 0.15, 0.2],
       compliances: [0.25, 0.5, 0.8, 1.0],
-      controller: 'follower_stopper',
+      controllers: ['follower_stopper'],
       replicates: 20,
+      include_baseline: true,
     });
     sweeps.set(sweepId, s);
   }
-  // reveal cells progressively so a fresh sweep reads as computing
-  const age = (Date.now() - s.createdAt) / 1000;
-  const revealed = Math.max(1, Math.floor(age / 0.8) + 1);
-  const cells = s.cells.map((c, i) =>
-    i < revealed ? c : { ...c, status: 'running' as const, aggregate: undefined },
-  );
-  return { sweep_id: s.sweep_id, cells };
+  return sweepView(s);
 }
 
-export async function mockCreateReport(runIds: string[]): Promise<{ report_id: string }> {
+/** Like the API's inline queue, a macro-only run set is refused up front. */
+export async function mockCreateReport(runIds: string[], title = REPORT_TITLE): Promise<ReportOut> {
   await latency();
   const macro = runIds
     .map((id) => runs.find((r) => r.run_id === id))
@@ -565,14 +719,34 @@ export async function mockCreateReport(runIds: string[]): Promise<{ report_id: s
     throw new Error('screening-tier (macro) runs cannot be included in a validation report');
   }
   const id = `rpt-${fakeHash(runIds.join(',') + Date.now()).slice(0, 6)}`;
-  reports.set(id, reportMarkdown(id, runIds));
-  return { report_id: id };
+  const row: ReportRow = {
+    out: {
+      report_id: id,
+      status: 'queued',
+      run_ids: runIds,
+      title,
+      report_path: null,
+      error: null,
+      error_kind: null,
+      created_at: new Date().toISOString(),
+    },
+    markdown: reportMarkdown(id, runIds),
+    createdAt: Date.now(),
+  };
+  reports.set(id, row);
+  return reportView(row);
 }
 
-export async function mockGetReport(reportId: string): Promise<string> {
+export async function mockGetReport(reportId: string): Promise<ReportOut> {
   await latency();
-  return (
-    reports.get(reportId) ??
-    `# FlowState Validation Report ${reportId}\n\n(Regenerated demo report — original mock session expired.)`
-  );
+  return reportView(ensureReport(reportId));
+}
+
+/** The markdown is served only once the report is done (API: 409 before). */
+export async function mockGetReportMarkdown(reportId: string): Promise<string> {
+  await latency();
+  const row = ensureReport(reportId);
+  const view = reportView(row);
+  if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
+  return row.markdown;
 }

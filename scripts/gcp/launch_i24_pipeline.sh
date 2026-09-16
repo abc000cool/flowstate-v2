@@ -13,9 +13,9 @@
 # the EXIT trap, not the cap, is the normal stop.
 # Usage (repo root, pushed commit):
 #   scripts/gcp/launch_i24_pipeline.sh [--vm NAME] [--zone Z] [--machine TYPE] [--cap-min 480]
-#       [--bucket gs://bucket/prefix] [--self-delete] [--quick] [--pipeline-args '--stages "..."']
+#       [--bucket gs://bucket/prefix] [--self-delete] [--quick] [--pipeline-args '--stages "..."'] [--allow-dirty]
 set -euo pipefail
-VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=480; QUICK=""; BUCKET=""; SELF_DELETE=0; PIPELINE_ARGS=""
+VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=480; QUICK=""; BUCKET=""; SELF_DELETE=0; PIPELINE_ARGS=""; ALLOW_DIRTY=0
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -27,6 +27,7 @@ while [ $# -gt 0 ]; do
     --bucket) BUCKET="${2%/}"; shift 2 ;;
     --self-delete) SELF_DELETE=1; shift ;;
     --pipeline-args) PIPELINE_ARGS="$2"; shift 2 ;;   # e.g. --pipeline-args '--stages "battery_lost prune_lost cap_sweep rescore"'
+    --allow-dirty) ALLOW_DIRTY=1; shift ;;   # the VM runs `git archive HEAD` either way; skip the clean-tree check
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -35,7 +36,7 @@ if [ -n "$BUCKET" ] && ! gcloud storage ls "$BUCKET" >/dev/null 2>&1; then echo 
 SCOPES=""; [ -n "$BUCKET" ] && SCOPES="--scopes=storage-rw,compute-rw,logging-write,monitoring-write"
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 REF=$(git rev-parse HEAD)
-if [ -n "$(git status --porcelain | grep -v '^??')" ]; then echo "commit and push first (the VM clones $REF)" >&2; exit 2; fi
+if [ "$ALLOW_DIRTY" -eq 0 ] && [ -n "$(git status --porcelain | grep -v '^??')" ]; then echo "commit and push first (the VM clones $REF); --allow-dirty skips this" >&2; exit 2; fi
 if ! git merge-base --is-ancestor "$REF" origin/main 2>/dev/null; then echo "HEAD is not on origin/main; push first" >&2; exit 2; fi
 STARTUP=$(mktemp)
 cat > "$STARTUP" <<EOF
@@ -55,7 +56,8 @@ if [ -n "$BUCKET" ]; then
   # one instance; a project that grants the default account no Editor role has neither by default
   SA=$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(serviceAccounts[0].email)')
   echo "== granting $SA: objectAdmin on $BUCKET, instanceAdmin on $VM"
-  gcloud storage buckets add-iam-policy-binding "${BUCKET%%/*}" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
+  BUCKET_ROOT="gs://$(printf '%s' "${BUCKET#gs://}" | cut -d/ -f1)"   # gs://bucket[/prefix] -> gs://bucket
+  gcloud storage buckets add-iam-policy-binding "$BUCKET_ROOT" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
   [ "$SELF_DELETE" -eq 1 ] && gcloud compute instances add-iam-policy-binding "$VM" --project "$PROJECT" --zone "$ZONE" --member="serviceAccount:$SA" --role=roles/compute.instanceAdmin.v1 >/dev/null
 fi
 ssh_cmd() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1"; }

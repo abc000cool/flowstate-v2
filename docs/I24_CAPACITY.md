@@ -276,7 +276,9 @@ hour, which is what a real structural correction looks like rather than an
 in-sample fit. Both hours remain far above the 15% criterion; the arm is
 scored in the battery as `ramps` ([I24_VALIDATION.md](I24_VALIDATION.md) §0):
 over the two hours and 20 seeds it takes RMSPE from 35.9% to 34.8%, the GEH
-pass fraction from 15.3% to 10.4%, and throughput from 5,710 to 5,574 veh/h,
+pass fraction from 18.8% to 20.1% on the criterion table (recommended-coverage
+counts, `artifacts/i24_validation_{speedcal,ramps}.json`; 15.3% to 10.4% on
+the apparent-coverage table), and throughput from 5,710 to 5,574 veh/h,
 with 96.5% of demand inserted — the error moves, it does not shrink.
 
 ## 8. The lane-change grid as a calibration target (`artifacts/i24_lanechange_fit.json`)

@@ -12,6 +12,7 @@ import type {
   CreateSweepRequest,
   HeatField,
   Heatmap,
+  ReportOut,
   RunDetail,
   RunMetrics,
   RunSummary,
@@ -204,9 +205,11 @@ export function getRunHeatmap(runId: string, field: HeatField): Promise<Heatmap>
   return request<Heatmap>(`/runs/${encodeURIComponent(runId)}/heatmap?field=${field}`);
 }
 
-export function createSweep(req: CreateSweepRequest): Promise<{ sweep_id: string }> {
+/** `POST /sweeps` answers 202 with the full `SweepOut` (cells still without
+ * runs until the fan-out job has started them). */
+export function createSweep(req: CreateSweepRequest): Promise<SweepDetail> {
   if (isMockActive()) return mock.mockCreateSweep(req);
-  return request<{ sweep_id: string }>('/sweeps', { method: 'POST', body: req });
+  return request<SweepDetail>('/sweeps', { method: 'POST', body: req });
 }
 
 export function getSweep(sweepId: string): Promise<SweepDetail> {
@@ -214,12 +217,26 @@ export function getSweep(sweepId: string): Promise<SweepDetail> {
   return request<SweepDetail>(`/sweeps/${encodeURIComponent(sweepId)}`);
 }
 
-export function createReport(runIds: string[]): Promise<{ report_id: string }> {
-  if (isMockActive()) return mock.mockCreateReport(runIds);
-  return request<{ report_id: string }>('/reports', { method: 'POST', body: { run_ids: runIds } });
+/** `POST /reports` is asynchronous: 202 with a `ReportOut` that is still
+ * `queued` under the Redis queue (terminal only under the inline queue), so
+ * callers must poll `getReport` until `done`/`failed`. A macro-only run set
+ * is refused — 422 inline, or `status: failed` with
+ * `error_kind: report_refused` from the queue. */
+export function createReport(runIds: string[], title?: string): Promise<ReportOut> {
+  if (isMockActive()) return mock.mockCreateReport(runIds, title);
+  const body = title === undefined ? { run_ids: runIds } : { run_ids: runIds, title };
+  return request<ReportOut>('/reports', { method: 'POST', body });
 }
 
-export function getReportMarkdown(reportId: string): Promise<string> {
+/** `GET /reports/{id}` — the report's status row (JSON), never its content. */
+export function getReport(reportId: string): Promise<ReportOut> {
   if (isMockActive()) return mock.mockGetReport(reportId);
-  return requestText(`/reports/${encodeURIComponent(reportId)}`);
+  return request<ReportOut>(`/reports/${encodeURIComponent(reportId)}`);
+}
+
+/** `GET /reports/{id}/markdown` — the rendered report text; the API answers
+ * 409 while the report is queued/running and 422 when it was refused. */
+export function getReportMarkdown(reportId: string): Promise<string> {
+  if (isMockActive()) return mock.mockGetReportMarkdown(reportId);
+  return requestText(`/reports/${encodeURIComponent(reportId)}/markdown`);
 }

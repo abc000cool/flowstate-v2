@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import secrets
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -45,6 +47,7 @@ from api.jobs import (
 )
 from api.schemas import (
     CalibrationOut,
+    CalibrationParams,
     CIOut,
     HealthOut,
     HeatmapOut,
@@ -62,7 +65,7 @@ from api.schemas import (
     SweepOut,
     deep_merge,
 )
-from api.settings import Settings, check_api_key_not_default, load_settings
+from api.settings import REPO_ROOT, Settings, check_api_key_not_default, load_settings
 from api.store import Store, new_id
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
@@ -88,13 +91,118 @@ def _validation_422(exc: ValidationError) -> HTTPException:
     )
 
 
-def _validate_config(raw: dict[str, Any]) -> tuple[dict[str, Any], str, ScenarioConfig]:
-    """Validate a raw config dict → (normalized json, config_hash, model)."""
+def _validate_config(
+    raw: dict[str, Any], settings: Settings
+) -> tuple[dict[str, Any], str, ScenarioConfig]:
+    """Validate a raw config dict → (normalized json, config_hash, model).
+
+    Schema validation first (422 with the pydantic error list), then
+    :func:`_confine_config_paths`, so every stored config — scenario, run
+    override, sweep cell — has passed both.
+    """
     try:
         cfg = ScenarioConfig.model_validate(raw)
     except ValidationError as exc:
         raise _validation_422(exc) from exc
+    _confine_config_paths(cfg, settings)
     return cfg.model_dump(mode="json"), config_hash(cfg), cfg
+
+
+def _config_file_fields(cfg: ScenarioConfig) -> list[tuple[tuple[str, ...], str]]:
+    """The config fields that name files on the worker's filesystem, when set."""
+    fields: list[tuple[tuple[str, ...], str]] = []
+    if cfg.network.kind == "osm" and cfg.network.osm_file is not None:
+        fields.append((("network", "osm_file"), cfg.network.osm_file))
+    if cfg.fleet.idm_calibration is not None:
+        fields.append((("fleet", "idm_calibration"), cfg.fleet.idm_calibration))
+    heavy = cfg.fleet.heavy
+    if heavy is not None and heavy.idm_calibration is not None:
+        fields.append((("fleet", "heavy", "idm_calibration"), heavy.idm_calibration))
+    return fields
+
+
+def _resolve_config_path(value: str) -> Path:
+    """Where the worker will look for a config file field.
+
+    A relative path is taken against the repository root — the fallback
+    ``microsim.vehicles.resolve_calibration_path`` applies to the shipped
+    presets' ``artifacts/...`` references — never against the API process's
+    working directory. Symlinks and ``..`` are then collapsed so containment
+    is checked on the file actually read.
+    """
+    path = Path(value)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path.resolve()
+
+
+def _confine_config_paths(cfg: ScenarioConfig, settings: Settings) -> None:
+    """Refuse config file fields that escape :attr:`Settings.config_path_roots`.
+
+    ``network.osm_file``, ``fleet.idm_calibration`` and
+    ``fleet.heavy.idm_calibration`` are read by the worker (netconvert, the
+    ``IDMCalibration`` loader), and a parse failure there can quote the
+    file's bytes back through the run's error text — so, like a calibration
+    ``data_path``, they may only point inside the allow-listed roots.
+    Existence is not checked here: a missing file is the worker's honest
+    ``FileNotFoundError``, and the API host need not mount every dataset.
+
+    Raises:
+        HTTPException: 422 in the pydantic error-list shape, naming the
+            field, the requested value and the allowed roots — never
+            anything read from the file.
+    """
+    roots = settings.config_path_roots
+    errors: list[dict[str, Any]] = []
+    for loc, value in _config_file_fields(cfg):
+        resolved = _resolve_config_path(value)
+        if not any(resolved.is_relative_to(root) for root in roots):
+            errors.append(
+                {
+                    "type": "path_outside_roots",
+                    "loc": list(loc),
+                    "msg": (
+                        f"{'.'.join(loc)} {value!r} is outside the allowed data roots "
+                        f"{[str(r) for r in roots]}; reference a file under the repo's "
+                        f"artifacts/ or data/ directories, FLOWSTATE_DATA_DIR, or the "
+                        f"results root"
+                    ),
+                    "input": value,
+                }
+            )
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+
+def _seeded(config: dict[str, Any]) -> bool:
+    """``ScenarioConfig.seeded`` of a stored config (perturbation *or* closures).
+
+    Single-sourced from the model so the API never disagrees with the
+    ``seeded`` flag the runners write to ``meta.json`` and the report reads
+    (CLAUDE.md §0.2). Stored configs are full ``model_dump`` output, so
+    re-validation always succeeds.
+    """
+    return ScenarioConfig.model_validate(config).seeded
+
+
+async def _read_body_capped(request: Request, cap: int) -> bytes:
+    """The raw request body, refused with HTTP 413 once it exceeds ``cap`` bytes.
+
+    Streams instead of ``await request.body()`` so a chunked body — which
+    carries no ``Content-Length`` for the middleware to check — is bounded
+    too.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > cap:
+            raise HTTPException(
+                status_code=413,
+                detail=f"request body exceeds the limit of {cap} bytes (FLOWSTATE_MAX_BODY_MB)",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _apply_overrides(
@@ -128,15 +236,23 @@ def _scenario_out(row: dict[str, Any]) -> ScenarioOut:
 
 @router.post("/scenarios", status_code=201, response_model=ScenarioOut)
 async def create_scenario(request: Request) -> ScenarioOut:
-    """Validate + store a scenario config (JSON or YAML request body)."""
-    body = await request.body()
+    """Validate + store a scenario config (JSON or YAML request body).
+
+    File fields (``network.osm_file``, ``fleet.idm_calibration``,
+    ``fleet.heavy.idm_calibration``) must resolve inside the allow-listed
+    roots — the repo's ``artifacts/`` and ``data/``, ``FLOWSTATE_DATA_DIR``
+    and the results root — or the config is refused with HTTP 422. Bodies
+    over ``FLOWSTATE_MAX_BODY_MB`` (default 8 MB) are refused with HTTP 413.
+    """
+    settings = _settings(request)
+    body = await _read_body_capped(request, settings.max_body_bytes)
     try:
         raw = yaml.safe_load(body.decode("utf-8"))
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
         raise HTTPException(status_code=422, detail=f"unparseable config body: {exc}") from exc
     if not isinstance(raw, dict):
         raise HTTPException(status_code=422, detail="config body must be a mapping")
-    config, chash, cfg = _validate_config(raw)
+    config, chash, cfg = _validate_config(raw, settings)
     store = _store(request)
     sid = store.create_scenario(cfg.name, config, chash)
     row = store.get_scenario(sid)
@@ -190,7 +306,7 @@ def _run_out(row: dict[str, Any]) -> RunOut:
         status=row["status"],
         tier=row["tier"],
         config_hash=row["config_hash"],
-        seeded=row["config"].get("perturbation") is not None,
+        seeded=_seeded(row["config"]),
         progress=ProgressOut(
             completed_replicates=row["completed_replicates"],
             total_replicates=row["total_replicates"],
@@ -224,7 +340,9 @@ def create_run(request: Request, body: RunCreateRequest) -> RunOut:
     Caps: ``replicates`` is limited to 200 per request
     (``api.schemas.MAX_REPLICATES``), and the effective config's own
     ``replicates`` to 500 (``flowstate_core.config.MAX_REPLICATES``) — a run
-    request is a request to execute that many simulations.
+    request is a request to execute that many simulations. The merged
+    config's file fields are confined like a posted scenario's (HTTP 422
+    outside the allowed roots), so overrides cannot name arbitrary files.
     """
     store = _store(request)
     settings = _settings(request)
@@ -232,7 +350,7 @@ def create_run(request: Request, body: RunCreateRequest) -> RunOut:
     if scenario is None:
         raise HTTPException(status_code=404, detail=f"scenario {body.scenario_id!r} not found")
     merged = _apply_overrides(scenario["config"], body.overrides, body.replicates, body.tier)
-    config, chash, cfg = _validate_config(merged)
+    config, chash, cfg = _validate_config(merged, settings)
     run_id = new_id("run")
     store.create_run(
         scenario_id=body.scenario_id,
@@ -246,6 +364,7 @@ def create_run(request: Request, body: RunCreateRequest) -> RunOut:
     get_queue(settings).enqueue(
         run_scenario_job,
         run_id,
+        job_id=run_id,
         db_path=str(settings.db_path),
         results_root=str(settings.results_dir),
     )
@@ -277,14 +396,18 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
     row = _get_run_or_404(request, run_id)
     _require_done(row)
     try:
-        per_replicate, agg = res.run_metrics(row["run_root"])
+        # The worker fills the per-replicate cache as the last step of a run
+        # (results.precompute_run_metrics); runs from before that step are
+        # computed once here, which also writes their cache.
+        cached = res.cached_run_metrics(row["run_root"])
+        per_replicate, agg = cached if cached is not None else res.run_metrics(row["run_root"])
     except FileNotFoundError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return MetricsOut(
         run_id=run_id,
         config_hash=row["config_hash"],
         tier=row["tier"],
-        seeded=row["config"].get("perturbation") is not None,
+        seeded=_seeded(row["config"]),
         n_replicates=len(per_replicate),
         underpowered=len(per_replicate) < MIN_REPLICATES,
         replicates=[
@@ -368,11 +491,15 @@ def _sweep_out(request: Request, sweep: dict[str, Any]) -> SweepOut:
             )
             if run["status"] == "done":
                 runs_done += 1
-                try:
-                    _, agg = res.run_metrics(run["run_root"])
-                    aggregate = {name: CIOut(**res.ci_to_json(ci)) for name, ci in agg.items()}
-                except FileNotFoundError:
-                    aggregate = None
+                # Polled endpoint: caches only, never trajectory reads in the
+                # request path; a cell whose cache is not written yet reports
+                # no aggregate until the next poll.
+                cached = res.cached_run_metrics(run["run_root"])
+                aggregate = (
+                    {name: CIOut(**res.ci_to_json(ci)) for name, ci in cached[1].items()}
+                    if cached is not None
+                    else None
+                )
             elif run["status"] == "failed":
                 runs_failed += 1
         cells.append(
@@ -407,11 +534,18 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
     Every cell's effective config is validated and hashed here (422 on any
     invalid cell); the fan-out itself runs as a job.
 
+    ``include_baseline`` appends one no-AV reference cell (penetration 0,
+    compliance 1) per distinct controller after the grid, unless the grid
+    already contains penetration 0; a "Δ vs baseline" comparison then has an
+    uncontrolled run to compare against rather than the smallest controlled
+    cell.
+
     Caps (HTTP 422 when exceeded, all checked before any cell is built):
     at most 50 values per axis (``api.schemas.MAX_SWEEP_AXIS_VALUES``), 200
-    total grid cells (``MAX_SWEEP_CELLS``), and 200 replicates per cell
-    (``MAX_REPLICATES``). The grid is a cartesian product, so the cell ceiling
-    is checked from the three list lengths rather than by materializing them.
+    total cells including baseline cells (``MAX_SWEEP_CELLS``), and 200
+    replicates per cell (``MAX_REPLICATES``). The grid is a cartesian
+    product, so the cell ceiling is checked from the three list lengths
+    rather than by materializing them.
     """
     store = _store(request)
     settings = _settings(request)
@@ -420,38 +554,33 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
         raise HTTPException(status_code=404, detail=f"scenario {body.scenario_id!r} not found")
     base = _apply_overrides(scenario["config"], body.overrides, body.replicates, body.tier)
     grid: list[dict[str, Any]] = []
-    for pen in body.penetrations:
-        for comp in body.compliances:
-            for ctrl in body.controllers:
-                cell_patch = {"av": {"penetration": pen, "compliance": comp, "controller": ctrl}}
-                try:
-                    config, chash, _ = _validate_config(deep_merge(base, cell_patch))
-                except HTTPException as exc:
-                    raise HTTPException(
-                        status_code=422,
-                        detail={
-                            "cell": {
-                                "penetration": pen,
-                                "compliance": comp,
-                                "controller": ctrl,
-                            },
-                            "errors": exc.detail,
-                        },
-                    ) from exc
-                grid.append(
-                    {
-                        "penetration": pen,
-                        "compliance": comp,
-                        "controller": ctrl,
-                        "config": config,
-                        "config_hash": chash,
-                        "run_id": None,
-                    }
-                )
+    for pen, comp, ctrl in body.grid_cells():
+        cell_patch = {"av": {"penetration": pen, "compliance": comp, "controller": ctrl}}
+        try:
+            config, chash, _ = _validate_config(deep_merge(base, cell_patch), settings)
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "cell": {"penetration": pen, "compliance": comp, "controller": ctrl},
+                    "errors": exc.detail,
+                },
+            ) from exc
+        grid.append(
+            {
+                "penetration": pen,
+                "compliance": comp,
+                "controller": ctrl,
+                "config": config,
+                "config_hash": chash,
+                "run_id": None,
+            }
+        )
     sweep_id = store.create_sweep(body.scenario_id, grid)
     get_queue(settings).enqueue(
         sweep_job,
         sweep_id,
+        job_id=sweep_id,
         db_path=str(settings.db_path),
         results_root=str(settings.results_dir),
     )
@@ -502,6 +631,82 @@ def _resolve_data_path(data_path: str, settings: Settings) -> Path:
     return resolved
 
 
+#: Read size for streaming an upload to disk.
+_UPLOAD_CHUNK_BYTES = 1 << 20
+
+#: Name given to an upload whose client filename carries no usable name.
+_DEFAULT_UPLOAD_NAME = "upload.csv"
+
+
+def _upload_name(filename: str | None) -> str:
+    """A plain file name for an upload: the client's basename, or a default.
+
+    ``Path(...).name`` strips any directory part, so ``../../x.csv`` lands
+    as ``x.csv`` inside the upload directory. Names that are empty, ``.``
+    or ``..`` (which would address the directory itself) and names carrying
+    a NUL byte fall back to :data:`_DEFAULT_UPLOAD_NAME`.
+    """
+    name = Path(filename or "").name
+    if name in ("", ".", "..") or "\x00" in name:
+        return _DEFAULT_UPLOAD_NAME
+    return name
+
+
+def _parse_calibration_params(params: str | None) -> dict[str, Any]:
+    """Validate the ``params`` form field → the options to forward to the fit.
+
+    Raises:
+        HTTPException: 422 when the field is not a JSON object or fails
+            :class:`CalibrationParams` (unknown key, out-of-range value).
+    """
+    try:
+        raw = json.loads(params) if params else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"params is not valid JSON: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=422, detail="params must be a JSON object")
+    try:
+        parsed = CalibrationParams.model_validate(raw)
+    except ValidationError as exc:
+        errors = [
+            {**err, "loc": ("params", *err["loc"])}
+            for err in exc.errors(include_url=False, include_context=False)
+        ]
+        raise HTTPException(status_code=422, detail=errors) from exc
+    return parsed.forwarded()
+
+
+async def _save_upload(file: UploadFile, dest: Path, cap: int) -> None:
+    """Stream ``file`` to ``dest`` in chunks, refusing more than ``cap`` bytes.
+
+    The multipart parser reports the part's size once it has spooled it, so
+    an oversized upload is refused before a byte is copied; the running
+    count is the same check for a parser that leaves ``size`` unset. Never
+    reads the whole upload into one ``bytes`` object.
+
+    Raises:
+        HTTPException: 413 above ``cap`` (the partial file is removed).
+    """
+    too_large = HTTPException(
+        status_code=413,
+        detail=f"upload exceeds the limit of {cap} bytes (FLOWSTATE_MAX_UPLOAD_MB)",
+    )
+    if file.size is not None and file.size > cap:
+        raise too_large
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    total = 0
+    try:
+        with dest.open("wb") as fh:
+            while chunk := await file.read(_UPLOAD_CHUNK_BYTES):
+                total += len(chunk)
+                if total > cap:
+                    raise too_large
+                fh.write(chunk)
+    except HTTPException:
+        shutil.rmtree(dest.parent, ignore_errors=True)
+        raise
+
+
 def _calibration_out(row: dict[str, Any]) -> CalibrationOut:
     artifact = None
     if row["status"] == "done" and row["artifact_path"]:
@@ -534,28 +739,24 @@ async def create_calibration(
 
     Multipart/form fields: exactly one of ``file`` (upload) or ``data_path``
     (path visible to the workers); optional ``params`` (JSON object of fit
-    options) and ``source`` (provenance string stored on the artifact).
+    options, validated against ``api.schemas.CalibrationParams`` — bounded
+    values, unknown keys refused with HTTP 422) and ``source`` (provenance
+    string stored on the artifact).
 
     ``data_path`` is confined to the results root (which holds uploads) and
     the optional ``FLOWSTATE_DATA_DIR``; anything resolving outside those
-    roots is refused with HTTP 422.
+    roots is refused with HTTP 422. Uploads larger than
+    ``FLOWSTATE_MAX_UPLOAD_MB`` (default 200 MB) are refused with HTTP 413.
     """
     store = _store(request)
     settings = _settings(request)
     if (file is None) == (data_path is None):
         raise HTTPException(status_code=422, detail="provide exactly one of 'file' or 'data_path'")
-    try:
-        params_dict = json.loads(params) if params else {}
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail=f"params is not valid JSON: {exc}") from exc
-    if not isinstance(params_dict, dict):
-        raise HTTPException(status_code=422, detail="params must be a JSON object")
+    params_dict = _parse_calibration_params(params)
 
     if file is not None:
-        filename = Path(file.filename or "upload.csv").name
-        dest = settings.uploads_dir / new_id("upl") / filename
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(await file.read())
+        dest = settings.uploads_dir / new_id("upl") / _upload_name(file.filename)
+        await _save_upload(file, dest, settings.max_upload_bytes)
         resolved = dest
     else:
         assert data_path is not None
@@ -566,7 +767,11 @@ async def create_calibration(
     )
     job = fd_calibration_job if kind == "fd" else idm_calibration_job
     get_queue(settings).enqueue(
-        job, cal_id, db_path=str(settings.db_path), results_root=str(settings.results_dir)
+        job,
+        cal_id,
+        job_id=cal_id,
+        db_path=str(settings.db_path),
+        results_root=str(settings.results_dir),
     )
     row = store.get_calibration(cal_id)
     assert row is not None
@@ -617,6 +822,7 @@ def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     get_queue(settings).enqueue(
         report_job,
         report_id,
+        job_id=report_id,
         db_path=str(settings.db_path),
         results_root=str(settings.results_dir),
     )
@@ -695,6 +901,28 @@ def get_report_archive(request: Request, report_id: str) -> Response:
 # ---------------------------------------------------------------------------
 
 
+def _declared_body_length(request: Request) -> int | None:
+    """The request's ``Content-Length`` as an int, ``None`` when absent/unparseable."""
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _body_cap(path: str, settings: Settings) -> int:
+    """Byte ceiling for a request body on ``path``.
+
+    Calibration uploads may carry one data file plus the small form fields
+    and multipart framing; everything else is a JSON/YAML document.
+    """
+    if path.startswith(f"{router.prefix}/calibrations/"):
+        return settings.max_upload_bytes + settings.max_body_bytes
+    return settings.max_body_bytes
+
+
 def create_app() -> FastAPI:
     """Build the app from the current environment (see api.settings).
 
@@ -709,6 +937,23 @@ def create_app() -> FastAPI:
     check_api_key_not_default(settings)
     settings.results_dir.mkdir(parents=True, exist_ok=True)
     store = Store(settings.db_path)
+    # Rows left at queued/running by a worker or Redis that died while the API
+    # was down are repaired once at startup (the worker repeats this on its own
+    # start and maintenance passes); the API must come up even if Redis is not
+    # reachable yet, so failures here are logged, not raised.
+    try:
+        from api.jobs import reconcile_store
+
+        report = reconcile_store(store, get_queue(settings), settings.results_dir)
+        if report.changed:
+            logging.getLogger("api").warning(
+                "startup reconciliation: failed=%s requeued=%s reset=%s",
+                report.failed,
+                report.requeued,
+                report.reset,
+            )
+    except Exception as exc:
+        logging.getLogger("api").warning("startup reconciliation skipped: %s", exc)
 
     app = FastAPI(
         title="FlowState API",
@@ -718,14 +963,38 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.store = store
 
+    expected_key = settings.api_key.encode("utf-8")
+
     @app.middleware("http")
     async def api_key_middleware(request: Request, call_next: Any) -> Any:
-        """Single API key on every /api/... route; /healthz and /docs exempt."""
-        if request.url.path.startswith("/api/"):
-            supplied = request.headers.get("X-API-Key", "")
-            if not secrets.compare_digest(supplied, settings.api_key):
+        """Single API key on every /api/... route; /healthz and /docs exempt.
+
+        Also the request-size gate: a declared ``Content-Length`` over the
+        body cap answers 413 before any handler reads the body (chunked
+        bodies, which declare no length, are capped by the handlers that
+        read them).
+        """
+        path = request.url.path
+        if path.startswith("/api/"):
+            # Starlette decodes header bytes as latin-1, so re-encoding the
+            # same way recovers the raw bytes; comparing bytes keeps
+            # compare_digest from raising on a non-ASCII header value.
+            supplied = request.headers.get("X-API-Key", "").encode("latin-1", "replace")
+            if not secrets.compare_digest(supplied, expected_key):
                 return JSONResponse(
                     status_code=401, content={"detail": "invalid or missing X-API-Key"}
+                )
+            declared = _declared_body_length(request)
+            cap = _body_cap(path, settings)
+            if declared is not None and declared > cap:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "detail": (
+                            f"request body of {declared} bytes exceeds the limit of "
+                            f"{cap} bytes for {path}"
+                        )
+                    },
                 )
         return await call_next(request)
 

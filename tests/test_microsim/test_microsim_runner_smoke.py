@@ -171,6 +171,59 @@ class TestCorridorSmoke:
         assert len(on_exit) > 0
         assert on_exit.v.quantile(0.9) <= 2.5
 
+    def test_downstream_boundary_schedule_advances_in_loop(self, tmp_path):
+        """A multi-step BoundarySpec schedule is applied step by step DURING the run.
+
+        The single-step test above only covers the steps consumed before the
+        stepping loop (t <= 0); every I-24 replica scenario posts a
+        multi-step schedule that the runner must advance in the loop. The
+        step times sit after the ~60 s free-flow travel time to the exit
+        edge (1000 m entry buffer + 1000 m corridor at ~33 m/s), so each
+        window has exit-edge samples: 15 m/s until 120 s, 2 m/s until 180 s,
+        12 m/s to the end.
+        """
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "corridor_boundary_schedule_smoke",
+                "network": {
+                    "kind": "corridor",
+                    "length_m": 1000.0,
+                    "lanes": 1,
+                    "inflow": [[0.0, 0.35]],
+                    "boundary": {
+                        "steps": [[0.0, 15.0], [120.0, 2.0], [180.0, 12.0]],
+                        "exit_buffer_m": 150.0,
+                    },
+                },
+                "sim": {"duration_s": 240.0},
+            }
+        )
+        paths = run_micro(cfg, 42, tmp_path)
+        meta = json.loads(paths.meta.read_text())
+        assert meta["seeded"] is False
+        assert meta["n_collisions"] == 0
+        boundary = meta["boundary"]
+        assert boundary["kind"] == "speed_schedule" and boundary["exit_edge"] == "exit"
+        assert boundary["n_steps"] == 3
+        assert boundary["n_steps_applied"] == 3, boundary
+        assert boundary["v_limit_min_ms"] == 2.0 and boundary["v_limit_max_ms"] == 15.0
+
+        df = pd.read_parquet(paths.trajectories)
+        # Exit-buffer edge: past the 1000 m entry buffer and the 1000 m corridor.
+        on_exit = df[df.x >= 2000.0]
+
+        def window_speed(t_lo: float, t_hi: float) -> float:
+            sel = on_exit[(on_exit.t >= t_lo) & (on_exit.t < t_hi)]
+            assert len(sel) > 0, f"no exit-edge samples in [{t_lo}, {t_hi})"
+            return float(sel.v.mean())
+
+        v_step1 = window_speed(70.0, 120.0)  # 15 m/s posted, first arrivals ~60 s
+        v_step2 = window_speed(125.0, 180.0)  # 2 m/s posted at 120 s (5 s to settle)
+        v_step3 = window_speed(195.0, 240.0)  # 12 m/s posted at 180 s (15 s to flush the crawl)
+        assert v_step1 > 10.0, v_step1
+        assert v_step2 < 0.3 * v_step1, (v_step1, v_step2)
+        assert v_step3 > 2.0 * v_step2, (v_step2, v_step3)
+
     def test_five_lane_calibrated_fleet_smoke(self, tmp_path):
         """us101_replica shape: 5 lanes + IDMCalibration-driven fleet (M2).
 

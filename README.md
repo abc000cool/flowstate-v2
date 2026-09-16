@@ -126,7 +126,7 @@ synthetic 10 km corridor, 27 cells × 20 common-random-number seeds:
 | Controller comparison at 5% / 100% | FollowerStopper (σ_v −61.2%, waves −96.1%) and JAD under a realistic 30 s/±20% detection oracle (−60.6%, −90.9%) are statistically tied; faithful PI-saturation trails at −29.7%. All resolved, no throughput cost ([CONTROLLER_COMPARISON.md](docs/CONTROLLER_COMPARISON.md)) |
 | Detection realism | JAD is *unreliable with a perfect oracle* — it chatters and worsens 5/20 seeds; 30–60 s latency with ±20% noise removes the failure entirely ([JAD_ORACLE_RESULTS.md](docs/JAD_ORACLE_RESULTS.md)) |
 | US-101 replica validation | **1 PASS / 5 FAIL** on the FHWA-style criteria table; the same capacity-and-demand calibration as I-24, applied with no retuning, takes speed RMSPE 36.6% → 27.9% but overshoots flows and leaves the wave speed at its site-limited value ([US101_CALIBRATED.md](docs/US101_CALIBRATED.md)) |
-| **I-24 MOTION flagship** (3.4 miles, ramps, 17,652-episode calibration on the same day) | **5 PASS / 2 FAIL on each congested demand arm** (4 / 3 on the tracked arm) after FHWA-style capacity, demand-level and ramp calibration, 20 seeds per arm: ring emergence, dampening, replicate count, the published sensitivity grid and the wave-speed row pass; link-flow GEH (10–15% of link-hours under 5) and segment-speed RMSPE (34–36%) fail. The wave-speed row passes with the criterion's slant-stack estimator (15.7–15.9 km/h simulated, 19.9 observed, both inside 14–22) and would fail with the standard 40 km/h detector (8–10 km/h); the detector dependence is reported with it. Capacity calibration moved RMSPE 36.8% → 33.7% and throughput 5,266 → 5,710 veh/h; the residual is a standing queue at the Old Hickory merge. Before calibration: 1 PASS / 5 FAIL ([I24_VALIDATION.md](docs/I24_VALIDATION.md), [I24_CAPACITY.md](docs/I24_CAPACITY.md)). |
+| **I-24 MOTION flagship** (3.4 miles, ramps, 17,652-episode calibration on the same day) | **5 PASS / 2 FAIL on each congested demand arm** (4 / 3 on the tracked arm) after FHWA-style capacity, demand-level and ramp calibration, 20 seeds per arm: ring emergence, dampening, replicate count, the published sensitivity grid and the wave-speed row pass; link-flow GEH (17–20% of link-hours under 5, scored against the recommended-coverage count table; 0.7% on the tracked arm) and segment-speed RMSPE (34–36%) fail. The wave-speed row passes with the criterion's slant-stack estimator (15.7–15.9 km/h simulated, 19.9 observed, both inside 14–22) and would fail with the standard 40 km/h detector (8–10 km/h); the detector dependence is reported with it. Capacity calibration moved RMSPE 36.8% → 33.7% and throughput 5,266 → 5,710 veh/h; the residual is a standing queue at the Old Hickory merge. Before calibration: 1 PASS / 5 FAIL ([I24_VALIDATION.md](docs/I24_VALIDATION.md), [I24_CAPACITY.md](docs/I24_CAPACITY.md)). |
 | **I-24 flagship sweep** (500 runs, 20 seeds per cell, unvalidated replica) | **FollowerStopper costs throughput at every penetration and compliance level**: at 5% / 100% compliance throughput −36%, travel time +82%, fuel +111% while σ_v −56% and waves halve. The synthetic corridor's no-cost result does not survive a real corridor near capacity ([I24_SWEEP.md](docs/I24_SWEEP.md)). |
 | Flux-cap comparison | the v1 ρ·v* cap (discrete Delle Monache–Goatin) beats the reduced-capacity variant against micro ground truth: paired speed-RMSE difference 0.84 m/s [0.36, 1.33] |
 
@@ -248,16 +248,26 @@ documents (each has the full version):
    calibration finds on two datasets ([docs/I24_DATA.md](docs/I24_DATA.md)
    §5). The too-slow US-101 waves were a site-length/density artifact
    ([docs/WAVE_SPEED_DIAGNOSIS.md](docs/WAVE_SPEED_DIAGNOSIS.md)).
-6. **I-24 MOTION tracks about half of vehicle-time in the peak.** Every
+4. **I-24 MOTION tracks about half of vehicle-time in the peak.** Every
    document in the export is a fragment (median 117 m); counts, flows and
    densities derived from it are lower bounds, speeds and wave speeds are
    sound. Demand for the flagship replica is therefore ambiguous and is run
    in two labeled arms ([docs/I24_DATA.md](docs/I24_DATA.md) §4).
-4. **The macro tier screens; it never validates.** CTM outputs are labeled
+5. **The macro tier screens; it never validates.** CTM outputs are labeled
    `tier="screening"` and are refused by the report generator by design.
-5. **Controller caveats.** JAD has run only with its perfect wave oracle
-   (best case); PI-saturation's ring-tuned defaults gridlock an open corridor
-   and need retuning before any fair comparison.
+6. **Controller caveats.** JAD with a *perfect* oracle is bimodal: it chatters
+   and worsens 5 of 20 seeds, so the headline JAD number is the 30 s / ±20%
+   noisy-oracle cell (σ_v −60.6%, waves −90.9%, no seed worse;
+   [docs/JAD_ORACLE_RESULTS.md](docs/JAD_ORACLE_RESULTS.md)) and the built
+   deferral rule ([docs/JAD_DEFERRAL_RESULTS.md](docs/JAD_DEFERRAL_RESULTS.md));
+   JAD's benefit is contingent on detection latency, not on better sensing.
+   The PI controller that gridlocked the open corridor in M3 (throughput
+   −93.6%) was the mean-fraction simplification of CLAUDE.md §4.2, retained
+   only as `controllers.pi_meanfrac` to reproduce that failure
+   ([docs/PI_CONTROLLER_FIX.md](docs/PI_CONTROLLER_FIX.md)); the faithful
+   Stern Eqs. 3–5 `pi_saturation` runs at no resolved throughput cost (−0.7%,
+   CI spans zero) but trails FollowerStopper and JAD (σ_v −29.7% against
+   about −61% in the comparison table above).
 
 Roadmap ([docs/ROADMAP.md](docs/ROADMAP.md)): the `i24_replica` flagship is
 built (3.4 miles of real geometry with interchange ramps, calibrated on the

@@ -2,15 +2,19 @@
 
 POST scenario → POST run → inline execution → metrics with honest CIs and
 underpowered flags → heatmap JSON + PNG. Also covers overrides deep-merge,
-error honesty for failing runs, and the 409/404 paths.
+error honesty for failing runs, the 409/404 paths, and the ``seeded`` label
+(perturbation *or* lane closure, matching ``meta.json``).
 """
 
 from __future__ import annotations
 
+import json
 import math
 
 from fastapi.testclient import TestClient
 
+from api import results as res
+from flowstate_core.config import ScenarioConfig
 from tests.test_api.conftest import HEADERS, macro_corridor_config, post_run, post_scenario
 
 
@@ -155,3 +159,53 @@ def test_failed_run_records_error_and_blocks_metrics(client: TestClient) -> None
 def test_missing_run_404(client: TestClient) -> None:
     assert client.get("/api/v1/runs/run_missing", headers=HEADERS).status_code == 404
     assert client.get("/api/v1/runs/run_missing/metrics", headers=HEADERS).status_code == 404
+
+
+def _closure_config() -> dict:
+    """Two-lane corridor with one lane closed for a minute; no perturbation."""
+    return macro_corridor_config(
+        name="macro_closure",
+        network={"kind": "corridor", "length_m": 1000.0, "lanes": 2, "inflow": [[0.0, 0.3]]},
+        closures=[
+            {"start_m": 400.0, "end_m": 600.0, "lanes": [0], "t_start_s": 30.0, "t_end_s": 90.0}
+        ],
+    )
+
+
+def test_closure_run_is_reported_seeded_like_meta_json(client: TestClient) -> None:
+    """A lane closure is an imposed disturbance (CLAUDE.md §0.2).
+
+    ``ScenarioConfig.seeded`` is true for closures as well as perturbations,
+    and the runner writes that flag to ``meta.json``; the API's ``seeded`` must
+    say the same, or the dashboard presents closure-induced waves as emergent
+    while the report generated from the same run labels them seeded.
+    """
+    cfg = _closure_config()
+    assert ScenarioConfig.model_validate(cfg).seeded is True
+    scenario = post_scenario(client, cfg)
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+    assert run["seeded"] is True
+
+    listing = client.get("/api/v1/runs", headers=HEADERS).json()
+    assert [r["seeded"] for r in listing] == [True]
+
+    metrics = client.get(f"/api/v1/runs/{run['run_id']}/metrics", headers=HEADERS).json()
+    assert metrics["seeded"] is True
+
+    # The same flag the runner wrote beside each replicate's results.
+    row = client.app.state.store.get_run(run["run_id"])  # type: ignore[attr-defined]
+    metas = [json.loads((d / "meta.json").read_text()) for d in res.replicate_dirs(row["run_root"])]
+    assert len(metas) == 3
+    assert all(m["seeded"] is True for m in metas)
+
+
+def test_perturbation_run_is_reported_seeded(client: TestClient) -> None:
+    cfg = macro_corridor_config(
+        name="macro_perturbed",
+        perturbation={"t_s": 30.0, "position_m": 500.0, "duration_s": 20.0, "v_drop_ms": 10.0},
+    )
+    scenario = post_scenario(client, cfg)
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+    assert run["seeded"] is True

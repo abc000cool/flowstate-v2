@@ -31,9 +31,12 @@ WORKDIR /app
 
 # Workspace manifests + lock first (layer caching), then the package sources
 # (installed editable from /app/packages by uv, so they must be present).
+# --all-extras installs the workspace's optional extras as well — only
+# validation[pdf] (fpdf2, pure Python) exists — so the deployed worker can
+# render report PDFs and GET /reports/{id}/pdf does not answer 404 forever.
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY packages/ packages/
-RUN uv sync --all-packages --no-dev --frozen
+RUN uv sync --all-packages --no-dev --frozen --all-extras
 
 # Repo data the service reads at runtime: preset scenarios (GET
 # /api/v1/scenarios/preset) and the contract docs.

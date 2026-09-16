@@ -32,7 +32,9 @@ describe('RunDetailView (mock data)', () => {
     // aggregate metric cards (mean ± CI) after metrics resolve
     const throughputs = await screen.findAllByText('THROUGHPUT', {}, { timeout: 4000 });
     expect(throughputs.length).toBeGreaterThan(0);
-    expect(screen.getAllByText('σ_v').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('σ_v SPATIAL').length).toBeGreaterThan(0);
+    // every API metric has a display definition — no generic fallback labels
+    expect(screen.queryByText('throughput veh h')).toBeNull();
     expect(screen.getAllByText(/95% CI/).length).toBeGreaterThan(0);
     // heatmap field toggle present
     expect(screen.getByRole('tab', { name: 'SPEED' })).toBeInTheDocument();

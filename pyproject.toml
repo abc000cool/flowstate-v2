@@ -76,6 +76,7 @@ addopts = "-ra --import-mode=importlib"
 
 [tool.coverage.run]
 source = [
+    "packages/api/api",
     "packages/controllers/controllers",
     "packages/macrosim/macrosim",
     "packages/validation/validation",

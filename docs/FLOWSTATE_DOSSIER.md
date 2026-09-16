@@ -48,8 +48,9 @@ What has been shown, with confidence intervals from 20 seeds per cell:
   capacity, demand and ramp calibration it scores 5 PASS / 2 FAIL on each
   congested demand arm (ring emergence, ring dampening, replicate count, the
   sensitivity grid and, with the criterion's slant-stack detector, the wave
-  speed pass; link flows and segment speeds fail, at 10–15% of link-hours
-  under GEH 5 and 34–36% speed error). The causes are identified and
+  speed pass; link flows and segment speeds fail, at 17–20% of link-hours
+  under GEH 5 against the recommended-coverage count table, 0.7% on the
+  tracked arm, and 34–36% speed error). The causes are identified and
   specific, and the document that records them is `docs/I24_VALIDATION.md`.
 
 Where the business is: the calibration and reporting work that state
@@ -410,7 +411,8 @@ the wave row scored with the criterion's slant-stack estimator):
 
 | Criterion | Tracked demand | Coverage-corrected | Fitted level | Fitted level + ramps | Threshold |
 |---|---|---|---|---|---|
-| Link flows, GEH < 5 on ≥ 85% of link-hours | 24.3% FAIL | 11.8% FAIL | 15.3% FAIL | 10.4% FAIL | ≥ 85% |
+| Link flows, GEH < 5 on ≥ 85% of link-hours (the criterion row: scored against tracked crossings ÷ the recommended coverage estimator, `artifacts/i24_coverage.json`) | 0.7% FAIL | 16.7% FAIL | 18.8% FAIL | 20.1% FAIL | ≥ 85% |
+| Link flows, GEH < 5, against each arm's own-assumption count table (tracked counts for the tracked arm, apparent-coverage-corrected counts for the congested arms; the tables scored before the re-score, kept as history, not the criterion row) | 24.3% | 11.8% | 15.3% | 10.4% | (not scored) |
 | Segment-speed RMSPE ≤ 15% | 187.8% FAIL | 33.7% FAIL | 35.9% FAIL | 34.8% FAIL | ≤ 15% |
 | Backward wave speed, stack estimator (the criterion) | no peak; standard 7.9 km/h FAIL | 15.9 km/h PASS | 15.8 km/h PASS | 15.7 km/h PASS | 14–22 (observed 19.9) |
 | Backward wave speed, standard detector (not the criterion) | 7.9 | 10.4 | 9.9 | 8.4 | observed 14.2 |
@@ -447,8 +449,10 @@ gridlocks the merge; doubling gap acceptance clears it and under-congests
 the middle. The joint fit moved a quarter of the ramp demand from Old
 Hickory to Hickory Hollow and improved the held-out hour from 42.6% to
 35.6%; scored in the battery, that arm gains one point of two-hour RMSPE
-(35.9 → 34.8%) and loses five points of GEH (15.3 → 10.4%) and 136 veh/h
-of throughput, so the merge is still where the error lives.
+(35.9 → 34.8%) and 1.4 points of GEH on the criterion's count table
+(18.8 → 20.1%; on the apparent-coverage table it was first scored against
+it lost five, 15.3 → 10.4%), and loses 136 veh/h of throughput, so the
+merge is still where the error lives.
 
 A diagnostic round on 6 September took the two failing rows apart
 (`docs/I24_VALIDATION.md` §0.5). The 5-minute speed criterion sits below
@@ -925,8 +929,9 @@ Next, in order of leverage:
   car-following episodes with a 30% holdout; the fundamental diagram carries
   bootstrap intervals; the capacity and demand steps are fitted out of
   sample with the second hour held out.
-- Does any corridor pass? No. The best arm scores 4 of 7 rows; the physical
-  rows fail with a stated cause each.
+- Does any corridor pass? No. The congested I-24 arms score 5 of 7 rows (the
+  tracked arm 4 of 7); the two physical rows, link-flow GEH and segment-speed
+  RMSPE, fail with a stated cause each.
 - Why not just use the standard detector for wave speed? Because on
   congested backgrounds it finds nothing; the synthetic benchmark in the
   tests shows it, and the criterion now names its detector.

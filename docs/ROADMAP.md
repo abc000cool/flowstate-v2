@@ -92,12 +92,15 @@ detector) and RMSPE to 33.7%; the fitted arm inserts 95.5% of its demand. The
 residual is the Old Hickory merge queue (I24_VALIDATION.md §0, I24_CAPACITY.md §5).
 *Four-arm rerun (2026-09-05, cloud VM, criterion scored with the slant-stack
 detector):* **5 PASS / 2 FAIL on each congested arm** (tracked 4 / 3). Link-flow
-GEH (10.4–15.3% of link-hours under 5) and speed RMSPE (33.7–35.9%) still fail;
+GEH (16.7–20.1% of link-hours under 5 against the recommended-coverage count
+table, the artifacts' criterion row; 10.4–15.3% against the apparent-coverage
+tables the arms were first scored on) and speed RMSPE (33.7–35.9%) still fail;
 the wave row passes at 15.7–15.9 km/h against 19.9 observed with the same
 estimator and would fail with the standard detector (8–10 km/h) — the
 prediction confirmed as specified, detector-dependent, caveats in
-I24_VALIDATION.md §0.4. The fitted-ramps arm trades one RMSPE point for five
-GEH points; the merge is still the residual.
+I24_VALIDATION.md §0.4. The fitted-ramps arm buys one RMSPE point and 1.4 GEH
+points on the criterion's count table (it had cost five on the
+apparent-coverage table); the merge is still the residual.
 *Diagnosis 2026-09-06 (I24_VALIDATION.md §0.5):* the 5-min speed criterion is
 below the recording's own repeatability (its 15-min moving average differs by
 33%; at 15-min the arms are 25–27% against a 15% floor); the flow target is now
@@ -176,7 +179,7 @@ costs throughput at every cell and the cost grows with penetration** — at 5% /
 lane changes rise from 1.25 to 2.32 per vehicle-km at 20% (the D2 statistic).
 The synthetic no-cost result does not survive a real corridor near capacity;
 the next controller must be capacity-aware.
-`scripts/i24_penetration_sweep.py --scenario i24_replica_corrected` (500 runs,
+`scripts/i24_penetration_sweep.py --scenario i24_replica_speedcal` (500 runs,
 cells ordered so the baseline and the 100%-compliance ladder land first;
 metrics kept, trajectories discarded) → `scripts/i24_penetration_analyze.py`.
 
@@ -319,3 +322,20 @@ decision is cheap now and expensive after a preprint.
 
 Nothing here is load-bearing on a single week: Tracks C and D run in parallel
 and survive any slip in the critical path.
+
+
+## Addendum 2026-09-16
+
+- Merge, fifth round (docs/I24_VALIDATION.md §0.8): the scripted late merge
+  is a negative result on I-24 (entry speed matches, ramp admittance falls);
+  the model stays as a schema option. Next candidates for the merge defect
+  are outside the merge itself (entry lane distribution, heavy-vehicle merge
+  population, downstream boundary).
+- Production-readiness round (CHANGELOG, same date): path confinement, body
+  caps, job recovery and reconciliation, dashboard contract, docs
+  consistency. Carried forward: a pure-ASGI body counter for chunked JSON
+  bodies; worker-side root checks in `microsim`; a macro-tier closure golden;
+  `schema_version` 6 for the four canonical validation artifacts.
+- Website: the Results page's updated-record card is on branch
+  `results-note` of the site repository; Vercel's daily build limit blocked
+  its deployment on 2026-09-16 — merge and push once it resets.
