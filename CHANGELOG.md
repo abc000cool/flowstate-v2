@@ -6,6 +6,12 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Business model, outreach list and the website's plain-English mode (2026-09-15)
+
+- `docs/BUSINESS_MODEL.md`: Path A (corridor studies, agency pilots, a yearly workspace) and Path B (a live speed advisory on the agency's own signs or a partner's connected-vehicle channel, never a consumer app), the B2B sales order, unit economics and cost to build, with public anchors (HNTB and Kimley-Horn rate schedules, the USDOT ITS Costs Database, probe-data contracts, the I-24 SMART Corridor gantry cost, AMPO) and this repository's measured compute costs. Prices remain hypotheses and are labelled so.
+- `scripts/business_cost_model.py` → `docs/business/flowstate_cost_model.xlsx` (Assumptions with every input, Cost to build, Unit economics A, Path B live advisory, three-year P&L with live formulas, Sources). `scripts/business_outreach_list.py` → `docs/business/outreach_targets.xlsx` and `.csv`: 200 organisations in seven segments (52 state DOTs, 45 MPOs, 35 consultancies, 28 labs, 12 federal and industry bodies, 12 fleets and OEMs, 16 data and sensor vendors) with the role to reach, the channel and a pitch angle; no personal e-mail addresses are invented.
+- Website (repository `flowstate-site`): a Business page, a Business link in the primary navigation, and on the research pages a large button that switches to a playful plain-English version of the research (an overlay; the technical page stays intact underneath).
+
 ### Merge levers for the next round (2026-09-07)
 
 - **Fourth merge round, fourteen single-seed probes (docs/I24_VALIDATION.md §0.7; `artifacts/i24_merge_experiment_{visibility,sublane2,keepright,overtake}.json`):** the zipper's interleaving distance is inert at 200–600 m (admittance 61–64%); the sublane model locks with internal links at one sublane per lane and at 0.8 m with pushiness and right alignment (runs normally for ten minutes, then loses capacity everywhere); keep-right off reproduces the references to the digit; overtaking on the right raises insertion to 95–96% and GEH to 21–22% while the 15-min speed error rises from 24.8% to 33–34%. SUMO's lane-change and junction parameter space is exhausted for this merge; the next design is a scripted late-merge behaviour for ramp vehicles, tested like a controller.
