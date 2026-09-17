@@ -94,7 +94,8 @@ through a wave decelerates and re-accelerates; fuel consumption in the
 synthetic corridor's baseline is 65 ml per vehicle-kilometre against 62 with
 the wave removed, and on the congested I-24 replica the baseline is 101 ml
 per vehicle-kilometre. Travel time over the 5.5 km I-24 span in the replica's
-baseline is 564 s against a free-flow time of about 220 s. The CIRCLES
+baseline is 590 s against a free-flow time of about 220 s (the 2026-09-17 re-run
+with the warm-up discarded from every metric; 564 s under the earlier definition). The CIRCLES
 program's 100-vehicle field test on I-24 in November 2022 reported energy
 savings of the order of 15–20% near the controlled vehicles.
 
@@ -422,8 +423,9 @@ the wave row scored with the criterion's slant-stack estimator):
 | Replicates ≥ 20 | PASS | PASS | PASS | PASS | ≥ 20 |
 | Sensitivity grid with CIs | PASS | PASS | PASS | PASS | 24 cells |
 
-Demand realised: 100%, 81%, 95.5%, 96.5%. Throughput 4,024, 5,576, 5,710,
-5,574 veh/h. Mean travel time 248, 601, 564, 579 s.
+Demand realised: 100%, 81%, 95.5%, 96.5%. Throughput 4,061, 5,687, 5,839,
+5,699 veh/h. Mean travel time 247, 629, 590, 607 s (re-run of 2026-09-17 under
+the corrected metric definitions; the criteria rows are unchanged to the digit).
 
 The wave row is the one that changed between the two batteries, and it
 changed because the criterion's detector did, not the simulation: the
@@ -474,7 +476,9 @@ merge model that does not lock, then the calibration sequence again.
 ### 6.5 The flagship sweep (500 runs)
 
 On the fitted I-24 arm, FollowerStopper at its literature settings, 20 seeds
-per cell:
+per cell (the sweep's own artifact, computed under the 2026-09-05 metric
+definitions; every cell shares them, so the relative changes stand while the
+baseline's absolute values differ from the re-run validation table above):
 
 | Penetration | Compliance | Throughput | Change | Travel time | Change | σ_v | Change | Fuel change |
 |---|---|---|---|---|---|---|---|---|

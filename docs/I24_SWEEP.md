@@ -31,7 +31,10 @@ corridor-dependent ([US101_PENETRATION.md](US101_PENETRATION.md)) resolve
 here into a clear statement: **on a real multi-lane corridor near capacity,
 smoothing by gap-keeping is paid for in capacity.**
 
-Baseline (no control): throughput 5710 [5679, 5741] veh/h, mean travel
+Baseline (no control; the sweep summary's own values, under the 2026-09-05 metric
+definitions that every cell of the sweep shares, so the relative effects below stand
+while the validation battery's re-run of 2026-09-17 quotes 5,839 veh/h and 590 s for
+the same arm): throughput 5710 [5679, 5741] veh/h, mean travel
 time 564 [557, 572] s, σ_v temporal 4.98 [4.95, 5.01] m/s,
 14.2 [12.4, 16.0] waves per replicate, fuel 101 [100, 102] ml/veh-km,
 1.25 lane changes per vehicle-km (`cells.baseline.aggregate` in the
