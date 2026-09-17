@@ -162,7 +162,14 @@ def _add_missing_columns(con: sqlite3.Connection) -> None:
     for table, column, decl in _ADDED_COLUMNS:
         existing = {str(row["name"]) for row in con.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
-            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            try:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            except sqlite3.OperationalError as exc:
+                # Two processes (the API and a worker) open the same database at
+                # once: the other one added the column between our check and
+                # our ALTER. That is the outcome we wanted.
+                if "duplicate column" not in str(exc).lower():
+                    raise
 
 
 def _table(kind: str) -> str:

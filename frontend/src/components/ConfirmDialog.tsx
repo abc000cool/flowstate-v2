@@ -30,8 +30,15 @@ export function ConfirmDialog({
 }: ConfirmDialogProps): JSX.Element {
   const confirmRef = useRef<HTMLButtonElement>(null);
 
+  // Focus the confirm button once, when the dialog mounts. Re-focusing on every
+  // parent render (the effect used to depend on onCancel, a new closure per
+  // render) stole focus back from the cancel button and let an Enter keypress
+  // confirm a launch the user was about to dismiss.
   useEffect(() => {
     confirmRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onCancel();
     };
