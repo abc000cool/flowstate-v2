@@ -158,8 +158,11 @@ if echo " $STAGES " | grep -q " battery_canonical "; then
   stage battery_canonical bash -c "for arm in tracked corrected speedcal ramps speedcal_heavy; do $RUN scripts/i24_validate.py --arms \$arm --replicates $REPS --procs $PROCS --analysis-procs 8 --ring-seeds $RING || exit 1; done" || exit 1
   stage prune_canonical bash -c 'for a in runs/i24_validation/*/; do for h in "$a"*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; done; du -sh runs/i24_validation' || true
 fi
-if echo " $STAGES " | grep -q " rescore_0917 "; then
-  stage rescore_0917 bash -c "$RUN scripts/i24_validate.py --family flow --criteria-only --arms all --ring-seeds 0; $RUN scripts/i24_validate.py --criteria-only --arms all --ring-seeds 0; $RUN scripts/i24_validate.py --criteria-only --arms speedcal_heavy --ring-seeds 0" || true
+if echo " $STAGES " | grep -q " rescore_flow "; then
+  stage rescore_flow bash -c "$RUN scripts/i24_validate.py --family flow --criteria-only --arms all --ring-seeds 0" || true
+fi
+if echo " $STAGES " | grep -q " rescore_canonical "; then
+  stage rescore_canonical bash -c "$RUN scripts/i24_validate.py --criteria-only --arms all --ring-seeds 0 && $RUN scripts/i24_validate.py --criteria-only --arms speedcal_heavy --ring-seeds 0" || true
 fi
 
 if echo " $STAGES " | grep -q " battery_us101 "; then
