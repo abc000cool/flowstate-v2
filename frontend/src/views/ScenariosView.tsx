@@ -20,6 +20,7 @@ import {
   isOfflineFallback,
   listPresetScenarios,
   listScenarios,
+  OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
 
 /** A library card: a stored scenario, or a repo preset that has no id yet. */
@@ -45,7 +46,7 @@ import { useAppState } from '../components/AppContext';
 import { SchematicThumb } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
-import { useAuthFailed, usePoll } from '../lib/hooks';
+import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import {
   clampField,
   clampInt,
@@ -264,6 +265,10 @@ export function ScenariosView(): JSX.Element {
   const navigate = useNavigate();
   const { setCorridor } = useAppState();
   const authFailed = useAuthFailed();
+  // Writes never fall back to the demo backend (api/client.assertWritable), so
+  // the launcher is closed the moment the API goes away — not one refresh
+  // later, when `demoSource` catches up.
+  const offline = useOfflineFallback();
 
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
@@ -448,11 +453,13 @@ export function ScenariosView(): JSX.Element {
             <div className="scen-actions">
               <button
                 className="btn sm primary"
-                disabled={staleDemo}
+                disabled={isMockEnv() ? false : offline || staleDemo}
                 title={
-                  staleDemo
-                    ? 'demo scenario — connect the API to run it'
-                    : 'set replicates, duration and seed before launching'
+                  offline
+                    ? OFFLINE_WRITE_MESSAGE
+                    : staleDemo
+                      ? 'demo scenario — connect the API to run it'
+                      : 'set replicates, duration and seed before launching'
                 }
                 onClick={() => openLauncher(s)}
               >

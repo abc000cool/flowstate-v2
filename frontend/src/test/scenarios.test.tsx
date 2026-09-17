@@ -3,11 +3,13 @@
  * comes back, the launcher states its cost before enqueueing anything, and the
  * composer carries unmodelled preset fields through unchanged. */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAuthFailure, setOfflineFallback } from '../api/client';
+import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../api/client';
 import { AppStateProvider } from '../components/AppContext';
+import { Toasts } from '../components/toast';
+import { mockListRuns } from '../mocks/mockApi';
 import { ScenariosView } from '../views/ScenariosView';
 
 const preset = {
@@ -41,6 +43,7 @@ interface Call {
 function renderView(): void {
   render(
     <AppStateProvider>
+      <Toasts />
       <MemoryRouter initialEntries={['/scenarios']}>
         <ScenariosView />
       </MemoryRouter>
@@ -169,6 +172,33 @@ describe('ScenariosView (real API shapes)', () => {
       replicates: 20,
       overrides: { sim: { duration_s: 120 }, seed: 7 },
     });
+  });
+
+  it('closes the launcher when the API drops, and refuses one already open', async () => {
+    renderView();
+    expect(await screen.findByText('ring_sugiyama', {}, { timeout: 4000 })).toBeInTheDocument();
+    // live: real cards, and the card's launcher is open for business
+    const runButton = screen.getByRole('button', { name: 'Run\u2026' });
+    expect(runButton).toBeEnabled();
+    fireEvent.click(runButton);
+    const dialog = await screen.findByRole('dialog', { name: 'Launch ring_sugiyama' });
+
+    // the API goes away while the launcher is open. `staleDemo` only learns
+    // that on the next library refresh; the write path knows immediately.
+    const demoRunsBefore = (await mockListRuns()).length;
+    act(() => setOfflineFallback(true));
+    expect(screen.getByRole('button', { name: 'Run\u2026' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Run\u2026' })).toHaveAttribute(
+      'title',
+      OFFLINE_WRITE_MESSAGE,
+    );
+
+    // confirming the already-open launcher must fail loudly, not quietly
+    // enqueue a run in this browser's demo backend
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Launch run' }));
+    expect(await screen.findByText(new RegExp('API offline'), {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    expect((await mockListRuns()).length).toBe(demoRunsBefore);
   });
 
   it('carries fields the composer does not model through unchanged', async () => {

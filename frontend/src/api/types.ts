@@ -273,4 +273,8 @@ export interface ReportRecord {
   error: string | null;
   error_kind?: string | null;
   created_at: string;
+  /** True when this row's status came from the in-browser demo backend (the
+   * API was unreachable), so it is not evidence about any server's report.
+   * Demo rows are badged DEMO and are never persisted to localStorage. */
+  demo?: boolean;
 }

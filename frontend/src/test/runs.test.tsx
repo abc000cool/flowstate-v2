@@ -3,10 +3,17 @@
  * rejected API key (stop polling, say so — `/healthz` is auth-exempt, so a
  * silent retry loop behind a green dot is the failure mode being prevented). */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAuthFailure, isAuthFailed, setOfflineFallback } from '../api/client';
+import {
+  clearAuthFailure,
+  isAuthFailed,
+  OFFLINE_WRITE_MESSAGE,
+  setOfflineFallback,
+} from '../api/client';
+import { Toasts } from '../components/toast';
+import { mockListRuns } from '../mocks/mockApi';
 import { RunsView } from '../views/RunsView';
 
 const scenario = {
@@ -222,5 +229,69 @@ describe('RunsView with a rejected API key', () => {
     // well past the 2 s runs poll and the 3 s scenario retry
     await new Promise((r) => setTimeout(r, 4000));
     expect(calls.length).toBe(after);
+  }, 15000);
+});
+
+/** When `/healthz` stops answering the dashboard serves demo data for reads.
+ * A launch is not a read: `POST /runs` answered by the in-browser backend
+ * would report a run queued that no worker will ever pick up, so the launcher
+ * closes and a confirmation already on screen is refused. */
+describe('RunsView with the API offline', () => {
+  const calls: Call[] = [];
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        calls.push({ url, method });
+        if (url.endsWith('/scenarios')) return json([scenario]);
+        if (url.endsWith('/runs') && method === 'POST') return json({ run_id: 'run-new' }, 202);
+        if (url.endsWith('/runs')) return json([run]);
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    setOfflineFallback(false);
+    vi.unstubAllGlobals();
+    clearAuthFailure();
+  });
+
+  it('refuses a launch confirmed after the API went away, and enqueues nothing', async () => {
+    render(
+      <>
+        <Toasts />
+        <MemoryRouter>
+          <RunsView />
+        </MemoryRouter>
+      </>,
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText('Duration (s)')).toHaveValue(7800);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Launch run' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this run?' });
+
+    // the API drops while the cost gate is on screen
+    const demoRunsBefore = (await mockListRuns()).length;
+    act(() => setOfflineFallback(true));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Launch' }));
+
+    expect(await screen.findByText(/API offline/, {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    // nothing was invented in the demo backend either — no run row that no
+    // server has heard of
+    expect((await mockListRuns()).length).toBe(demoRunsBefore);
+
+    // and the launcher itself says why it is closed
+    const launch = screen.getByRole('button', { name: 'Launch run' });
+    expect(launch).toBeDisabled();
+    expect(launch).toHaveAttribute('title', OFFLINE_WRITE_MESSAGE);
   }, 15000);
 });

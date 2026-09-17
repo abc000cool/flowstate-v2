@@ -11,13 +11,13 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { createSweep, getSweep, listScenarios } from '../api/client';
+import { createSweep, getSweep, listScenarios, OFFLINE_WRITE_MESSAGE } from '../api/client';
 import type { ScenarioSummary, SweepCell, SweepDetail } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
 import { deltaColor } from '../lib/colormap';
 import { formatDeltaPct, formatNumber } from '../lib/format';
-import { useAuthFailed, usePoll } from '../lib/hooks';
+import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import { clampInt, MAX_REPLICATES, MAX_SWEEP_CELLS } from '../lib/limits';
 import {
   DEFAULT_SWEEP_METRIC,
@@ -146,6 +146,9 @@ export function SweepsView(): JSX.Element {
   const [tip, setTip] = useState<Tip | null>(null);
   const navigate = useNavigate();
   const authFailed = useAuthFailed();
+  // POST /sweeps never falls back to the demo backend, so the launcher says so
+  // up front instead of failing on the click (api/client.assertWritable)
+  const offline = useOfflineFallback();
 
   // quiet retry until the scenario list loads (offline-fallback race)
   const scenariosLoaded = scenarios.length > 0;
@@ -410,7 +413,12 @@ export function SweepsView(): JSX.Element {
             <span className="small muted mono">
               {totalCells} cells × {replicates} reps = {totalRuns} runs
             </span>
-            <button className="btn primary" onClick={launch}>
+            <button
+              className="btn primary"
+              onClick={launch}
+              disabled={offline}
+              title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
+            >
               Launch {cellCount} cells{includeBaseline ? ' + baseline' : ''}…
             </button>
           </div>

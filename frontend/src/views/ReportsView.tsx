@@ -19,7 +19,14 @@
  * row is a memory of a request, not evidence the server still holds the
  * bundle. `ReportOut.report_path` is results-root-relative and is never shown:
  * it is an identifier for the bundle, not a path or a link this browser can
- * follow — the downloads go through the three routes. */
+ * follow — the downloads go through the three routes.
+ *
+ * Both polls run through the same client as everything else, so while the API
+ * is unreachable they are answered by the in-browser demo backend. Neither may
+ * launder that into evidence: each captures its source at call time and a
+ * demo-sourced row is badged DEMO, never SERVER, is not written to
+ * localStorage, and never raises the "ready" toast — a real report that was
+ * queued when the API went away must not come back done from demo data. */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -29,15 +36,17 @@ import {
   getReportArchive,
   getReportMarkdown,
   getReportPdf,
+  isMockActive,
   listReports,
   listRuns,
   listScenarios,
+  OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
 import type { ReportOut, ReportRecord, RunSummary } from '../api/types';
 import { SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { toast, toastError } from '../components/toast';
 import { saveBlob, saveText } from '../lib/download';
-import { useAuthFailed, usePoll } from '../lib/hooks';
+import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 
 const LS_REPORTS = 'flowstate.reports';
 const REPORT_POLL_MS = 2000;
@@ -53,8 +62,10 @@ const SCENARIOS_POLL_MS = 3000;
 
 /** Where a table row came from. A `server` row is `GET /reports`; a `local`
  * row is only this browser's memory of a request the server list does not
- * return (another API, or one older than the endpoint). */
-type RowOrigin = 'server' | 'local';
+ * return (another API, or one older than the endpoint); a `demo` row came
+ * from the in-browser backend while the API was unreachable and is evidence
+ * of nothing at all. */
+type RowOrigin = 'server' | 'local' | 'demo';
 
 interface ReportRow {
   rec: ReportRecord;
@@ -104,7 +115,7 @@ function saveReports(list: ReportRecord[]): void {
   }
 }
 
-function recordFromOut(out: ReportOut, requestedRunIds: string[] = []): ReportRecord {
+function recordFromOut(out: ReportOut, requestedRunIds: string[] = [], demo = false): ReportRecord {
   // `out.report_path` is deliberately dropped: it is results-root-relative,
   // meaningless to this browser, and must never be rendered as a path or link.
   return {
@@ -115,23 +126,36 @@ function recordFromOut(out: ReportOut, requestedRunIds: string[] = []): ReportRe
     error: out.error ?? null,
     error_kind: out.error_kind ?? null,
     created_at: out.created_at,
+    demo,
   };
 }
 
 /** The server's list (already newest first) followed by the local records it
  * does not cover, newest first. A report the server knows about is shown from
- * the server's row: its status is authoritative. */
-function mergeRows(server: ReportOut[] | null, local: ReportRecord[]): ReportRow[] {
+ * the server's row: its status is authoritative.
+ *
+ * `serverDemo` says the list came from the in-browser backend, not a server:
+ * those rows are badged DEMO. A local record whose status was resolved from
+ * demo data carries the same flag on itself. */
+function mergeRows(
+  server: ReportOut[] | null,
+  serverDemo: boolean,
+  local: ReportRecord[],
+): ReportRow[] {
+  const serverOrigin: RowOrigin = serverDemo ? 'demo' : 'server';
   const rows: ReportRow[] = (server ?? []).map((out) => ({
-    rec: recordFromOut(out),
-    origin: 'server' as const,
+    rec: recordFromOut(out, [], serverDemo),
+    origin: serverOrigin,
   }));
   const known = new Set(rows.map((r) => r.rec.report_id));
   const extras = local
     .filter((r) => !known.has(r.report_id))
     .slice()
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  return [...rows, ...extras.map((rec) => ({ rec, origin: 'local' as const }))];
+  return [
+    ...rows,
+    ...extras.map((rec) => ({ rec, origin: (rec.demo ? 'demo' : 'local') as RowOrigin })),
+  ];
 }
 
 const MACRO_TOOLTIP =
@@ -143,12 +167,16 @@ export function ReportsView(): JSX.Element {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reports, setReports] = useState<ReportRecord[]>(loadReports);
   const [serverReports, setServerReports] = useState<ReportOut[] | null>(null);
+  /** Whether the list currently held in `serverReports` came from the demo
+   * backend rather than a server. */
+  const [serverDemo, setServerDemo] = useState(false);
   /** False once the service answered 404 to `GET /reports` (an API older than
    * the list endpoint): the table then runs on local records alone and says
    * so, instead of claiming the server has no reports. */
   const [serverListed, setServerListed] = useState(true);
   const [busy, setBusy] = useState(false);
   const authFailed = useAuthFailed();
+  const offline = useOfflineFallback();
   // latest list for the (referentially stable) poll callback
   const reportsRef = useRef(reports);
   reportsRef.current = reports;
@@ -157,6 +185,16 @@ export function ReportsView(): JSX.Element {
     reportsRef.current = next;
     setReports(next);
     saveReports(next);
+  }, []);
+
+  /** Show an update without recording it. Demo answers move the table (a demo
+   * report must not be stranded at `queued`) but are never persisted: a
+   * localStorage record is this browser's memory of a *request to a server*,
+   * and writing in-browser state there would make it indistinguishable from
+   * one on the next load. */
+  const show = useCallback((next: ReportRecord[]): void => {
+    reportsRef.current = next;
+    setReports(next);
   }, []);
 
   // continuous quiet poll — newly finished runs appear without a reload, and
@@ -175,8 +213,14 @@ export function ReportsView(): JSX.Element {
   // requested in another browser (or after this one cleared its site data) is
   // still listed and still downloadable
   const refreshServerReports = useCallback(async () => {
+    // capture the source before the call: the client decides demo vs live at
+    // call time, and a list that came back from the demo backend must not be
+    // rendered as this server's history
+    const demo = isMockActive();
     try {
-      setServerReports(await listReports());
+      const list = await listReports();
+      setServerReports(list);
+      setServerDemo(demo);
       setServerListed(true);
     } catch (err) {
       // 404 = this service predates GET /reports; anything else is transient
@@ -204,6 +248,11 @@ export function ReportsView(): JSX.Element {
 
   // status poll for queued/running reports; paused when nothing is pending
   const pollReports = useCallback(async () => {
+    // capture the source before the calls: the poll is not paused in demo mode
+    // (that would strand a demo report at `queued` forever), but what comes
+    // back is in-browser data and is labelled, not persisted, and not
+    // announced as a finished report
+    const demo = isMockActive();
     const pending = reportsRef.current.filter(isPending);
     if (pending.length === 0) return;
     const updates = new Map<string, Partial<ReportRecord>>();
@@ -217,10 +266,13 @@ export function ReportsView(): JSX.Element {
             error_kind: out.error_kind ?? null,
             run_ids: out.run_ids.length > 0 ? out.run_ids : rec.run_ids,
             title: out.title,
+            demo,
           });
         } catch (err) {
           // a vanished report (store reset) is terminal; anything else is
-          // transient and retried on the next tick
+          // transient and retried on the next tick — including the demo
+          // backend's "not in this session", so a real queued report the
+          // fallback cannot answer for keeps its own status
           if (err instanceof ApiError && err.status === 404) {
             updates.set(rec.report_id, { status: 'failed', error: err.message, error_kind: 'not_found' });
           }
@@ -228,22 +280,27 @@ export function ReportsView(): JSX.Element {
       }),
     );
     if (updates.size === 0) return;
-    commit(
-      reportsRef.current.map((r) => {
-        const u = updates.get(r.report_id);
-        return u ? { ...r, ...u } : r;
-      }),
-    );
+    const next = reportsRef.current.map((r) => {
+      const u = updates.get(r.report_id);
+      return u ? { ...r, ...u } : r;
+    });
+    if (demo) show(next);
+    else commit(next);
     for (const [id, u] of updates) {
-      if (u.status === 'done') toast('ok', `report ${id} ready`);
+      // "ready" is a claim about a generated bundle; demo data cannot make it
+      if (u.status === 'done' && !demo) toast('ok', `report ${id} ready`);
       else if (u.status === 'failed') toast('error', `report ${id} failed: ${u.error ?? 'unknown error'}`);
     }
-  }, [commit]);
+  }, [commit, show]);
   const anyPending = reports.some(isPending);
   usePoll(pollReports, anyPending && !authFailed ? REPORT_POLL_MS : null);
 
-  const rows = useMemo(() => mergeRows(serverReports, reports), [serverReports, reports]);
+  const rows = useMemo(
+    () => mergeRows(serverReports, serverDemo, reports),
+    [serverReports, serverDemo, reports],
+  );
   const localOnly = rows.filter((r) => r.origin === 'local').length;
+  const demoRows = rows.filter((r) => r.origin === 'demo').length;
 
   const toggleRun = (id: string): void => {
     setSelected((s) => {
@@ -264,11 +321,17 @@ export function ReportsView(): JSX.Element {
       toast('error', `macro (screening) runs cannot be reported: ${macro.join(', ')}`);
       return;
     }
+    // POST /reports never falls back to the demo backend (api/client), so this
+    // is only demo data under VITE_MOCK — labelled, and not recorded as a
+    // request some server is holding
+    const demo = isMockActive();
     setBusy(true);
     try {
       const out = await createReport(ids);
-      const rec = recordFromOut(out, ids);
-      commit([rec, ...reportsRef.current.filter((r) => r.report_id !== rec.report_id)]);
+      const rec = recordFromOut(out, ids, demo);
+      const next = [rec, ...reportsRef.current.filter((r) => r.report_id !== rec.report_id)];
+      if (demo) show(next);
+      else commit(next);
       setSelected(new Set());
       if (rec.status === 'done') toast('ok', `report ${rec.report_id} generated`);
       else if (rec.status === 'failed')
@@ -326,7 +389,8 @@ export function ReportsView(): JSX.Element {
           <span className="spacer" />
           <button
             className="btn primary"
-            disabled={busy || microSelected.length === 0}
+            disabled={busy || microSelected.length === 0 || offline}
+            title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
             onClick={() => void generate()}
           >
             Generate report ({microSelected.length})
@@ -396,16 +460,20 @@ export function ReportsView(): JSX.Element {
           <span
             className="small muted"
             title={
-              serverListed
-                ? 'GET /reports, newest first. Rows badged LOCAL exist only in this browser: they were requested against another API, or before the list endpoint existed, so this server may not hold them.'
-                : 'This service answered 404 to GET /reports, so only this browser’s own records can be listed.'
+              demoRows > 0
+                ? 'The API is unreachable, so these rows come from the built-in demo backend. Nothing here was generated by a server, and no status shown for a DEMO row is evidence about a real report.'
+                : serverListed
+                  ? 'GET /reports, newest first. Rows badged LOCAL exist only in this browser: they were requested against another API, or before the list endpoint existed, so this server may not hold them.'
+                  : 'This service answered 404 to GET /reports, so only this browser’s own records can be listed.'
             }
           >
-            {serverListed
-              ? localOnly > 0
-                ? `server history (GET /reports) + ${localOnly} local-only record${localOnly === 1 ? '' : 's'}`
-                : 'server history (GET /reports), newest first'
-              : "this service has no GET /reports — this browser's records only"}
+            {demoRows > 0
+              ? `built-in demo data — ${demoRows} row${demoRows === 1 ? '' : 's'} from no server`
+              : serverListed
+                ? localOnly > 0
+                  ? `server history (GET /reports) + ${localOnly} local-only record${localOnly === 1 ? '' : 's'}`
+                  : 'server history (GET /reports), newest first'
+                : "this service has no GET /reports — this browser's records only"}
           </span>
         </div>
         <div className="table-wrap">
@@ -425,16 +493,25 @@ export function ReportsView(): JSX.Element {
                 <tr key={rec.report_id}>
                   <td style={{ fontWeight: 700 }}>{rec.report_id}</td>
                   <td>
-                    {origin === 'server' ? (
+                    {origin === 'server' && (
                       <span className="tag server" title="Listed by GET /reports — held by this server">
                         SERVER
                       </span>
-                    ) : (
+                    )}
+                    {origin === 'local' && (
                       <span
                         className="tag demo"
                         title="This browser's own record: GET /reports did not return it, so this server may not hold the bundle (requested against another API, or before the list endpoint existed)."
                       >
                         LOCAL
+                      </span>
+                    )}
+                    {origin === 'demo' && (
+                      <span
+                        className="tag demo"
+                        title="Built-in demo data, not a server answer: the API was unreachable when this row was read, so no server has generated or is holding this report."
+                      >
+                        DEMO
                       </span>
                     )}
                   </td>

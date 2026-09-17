@@ -93,7 +93,12 @@ export function subscribeConnection(l: ConnectionListener): () => void {
   };
 }
 
-/** True when serving demo data (env-forced or offline auto-fallback). */
+/** True when serving demo data (env-forced or offline auto-fallback).
+ *
+ * Reads only. A write must never be answered by the in-browser backend while
+ * the auto-fallback is on: the demo store would report a scenario stored, a
+ * run queued or a report generated that no server has heard of. Write
+ * endpoints gate on `isMockEnv()` and then `assertWritable()`. */
 export function isMockActive(): boolean {
   return MOCK_ENV || offlineFallback;
 }
@@ -312,6 +317,25 @@ export async function checkHealth(timeoutMs = 2500): Promise<boolean> {
   }
 }
 
+/* ------------------------- write-path guard --------------------------- */
+
+/** What a write refused by the offline auto-fallback says — and what the
+ * controls that would issue one say while they are disabled. */
+export const OFFLINE_WRITE_MESSAGE =
+  'API offline — reconnect before launching (nothing was sent to the server)';
+
+/** Refuse a write while the demo fallback is serving reads.
+ *
+ * Reads may fall back to the in-memory backend (the dashboard stays
+ * demoable, and every such surface is labelled DEMO). Writes may not: a
+ * scenario, run, sweep or report accepted by the demo store exists in this
+ * browser only, and reporting it as launched is exactly the unvalidated
+ * claim the platform must never make. Status 0 marks an error raised by the
+ * client, before any request left it. */
+function assertWritable(): void {
+  if (offlineFallback) throw new ApiError(0, OFFLINE_WRITE_MESSAGE);
+}
+
 /* ------------------------------ endpoints ----------------------------- */
 
 export function listScenarios(): Promise<ScenarioSummary[]> {
@@ -324,8 +348,11 @@ export function listPresetScenarios(): Promise<PresetSummary[]> {
   return request<PresetSummary[]>('/scenarios/preset');
 }
 
-export function createScenario(cfg: ScenarioConfig): Promise<CreateScenarioResponse> {
-  if (isMockActive()) return mock.mockCreateScenario(cfg);
+/** Write: the demo backend answers only under VITE_MOCK, never under the
+ * offline auto-fallback (see `assertWritable`). */
+export async function createScenario(cfg: ScenarioConfig): Promise<CreateScenarioResponse> {
+  if (isMockEnv()) return mock.mockCreateScenario(cfg);
+  assertWritable();
   return request<CreateScenarioResponse>('/scenarios', { method: 'POST', body: cfg });
 }
 
@@ -339,8 +366,10 @@ export function getRun(runId: string): Promise<RunDetail> {
   return request<RunDetail>(`/runs/${encodeURIComponent(runId)}`);
 }
 
-export function createRun(req: CreateRunRequest): Promise<{ run_id: string }> {
-  if (isMockActive()) return mock.mockCreateRun(req);
+/** Write: demo backend under VITE_MOCK only (see `assertWritable`). */
+export async function createRun(req: CreateRunRequest): Promise<{ run_id: string }> {
+  if (isMockEnv()) return mock.mockCreateRun(req);
+  assertWritable();
   return request<{ run_id: string }>('/runs', { method: 'POST', body: req });
 }
 
@@ -355,9 +384,11 @@ export function getRunHeatmap(runId: string, field: HeatField): Promise<Heatmap>
 }
 
 /** `POST /sweeps` answers 202 with the full `SweepOut` (cells still without
- * runs until the fan-out job has started them). */
-export function createSweep(req: CreateSweepRequest): Promise<SweepDetail> {
-  if (isMockActive()) return mock.mockCreateSweep(req);
+ * runs until the fan-out job has started them). Write: demo backend under
+ * VITE_MOCK only (see `assertWritable`). */
+export async function createSweep(req: CreateSweepRequest): Promise<SweepDetail> {
+  if (isMockEnv()) return mock.mockCreateSweep(req);
+  assertWritable();
   return request<SweepDetail>('/sweeps', { method: 'POST', body: req });
 }
 
@@ -370,9 +401,11 @@ export function getSweep(sweepId: string): Promise<SweepDetail> {
  * `queued` under the Redis queue (terminal only under the inline queue), so
  * callers must poll `getReport` until `done`/`failed`. A macro-only run set
  * is refused — 422 inline, or `status: failed` with
- * `error_kind: report_refused` from the queue. */
-export function createReport(runIds: string[], title?: string): Promise<ReportOut> {
-  if (isMockActive()) return mock.mockCreateReport(runIds, title);
+ * `error_kind: report_refused` from the queue. Write: demo backend under
+ * VITE_MOCK only (see `assertWritable`). */
+export async function createReport(runIds: string[], title?: string): Promise<ReportOut> {
+  if (isMockEnv()) return mock.mockCreateReport(runIds, title);
+  assertWritable();
   const body = title === undefined ? { run_ids: runIds } : { run_ids: runIds, title };
   return request<ReportOut>('/reports', { method: 'POST', body });
 }

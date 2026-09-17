@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Dashboard: the regression review's items closed (2026-09-17, later)
+
+- Write actions never fall back to the in-browser demo backend: during an outage `createScenario`, `createRun`, `createSweep` and `createReport` reject with "API offline, reconnect before launching (nothing was sent to the server)", and the Launch run, Launch sweep, Generate report and Run buttons are disabled with that title (reads still fall back so the demo dashboard renders). A queued real report can no longer be reported done from demo data: the report polls capture their source at call time, never persist or toast a demo-derived status, and demo rows carry a DEMO tag; an unknown report id is a transient error in the mock, never minted as done. The confirm dialog's Escape handler reads the current cancel callback through a ref with both effects mount-only. 83 vitest cases across 12 files, typecheck and build green.
+
 ### Regression review of the day's changes: confirmed and carried (2026-09-17)
 
 A final adversarial review of everything above (four reviewers, every finding attacked by a skeptic: 6 confirmed, 6 refuted) ran out of the block's time budget before fixes could be built and reviewed. The confirmed items are recorded here with the reviewers' evidence kept in the session's scratch and are the first work of the next block; none of them changes a published headline number:

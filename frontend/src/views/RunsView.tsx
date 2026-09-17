@@ -10,12 +10,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createRun, listRuns, listScenarios } from '../api/client';
+import { createRun, listRuns, listScenarios, OFFLINE_WRITE_MESSAGE } from '../api/client';
 import type { CreateRunRequest, RunSummary, ScenarioSummary } from '../api/types';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
-import { useAuthFailed, usePoll } from '../lib/hooks';
+import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import {
   clampInt,
   describeSimMinutes,
@@ -61,6 +61,9 @@ export function RunsView(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const authFailed = useAuthFailed();
+  // POST /runs never falls back to the demo backend, so the launcher says so
+  // up front instead of failing on the click (api/client.assertWritable)
+  const offline = useOfflineFallback();
 
   const poll = useCallback(async () => {
     try {
@@ -261,7 +264,12 @@ export function RunsView(): JSX.Element {
           </div>
           <div className="field">
             <label>&nbsp;</label>
-            <button className="btn primary" onClick={launch} disabled={!launchScenario || busy}>
+            <button
+              className="btn primary"
+              onClick={launch}
+              disabled={!launchScenario || busy || offline}
+              title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
+            >
               Launch run
             </button>
           </div>

@@ -10,7 +10,16 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setOfflineFallback } from '../api/client';
+import { mockCreateReport } from '../mocks/mockApi';
+import { toast } from '../components/toast';
 import { ReportsView } from '../views/ReportsView';
+
+// the view's toasts are claims ("report X ready"), so they are asserted on
+// directly rather than through the renderer's shared, time-dismissed queue
+vi.mock('../components/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../components/toast')>();
+  return { ...actual, toast: vi.fn(), toastError: vi.fn() };
+});
 
 const doneRun = {
   run_id: 'run-a',
@@ -299,6 +308,89 @@ describe('ReportsView (asynchronous report contract)', () => {
       const table = screen.getByRole('table', { name: 'generated reports' });
       expect(await within(table).findByText('done', {}, { timeout: 6000 })).toBeInTheDocument();
       expect(within(table).getByRole('button', { name: 'Download .md' })).toBeEnabled();
+    },
+    15000,
+  );
+});
+
+/** The reports polls run through the same client as everything else, so when
+ * the API goes away they are answered by the in-browser demo backend. Neither
+ * poll may launder that into evidence: a report that was queued on a real
+ * server must not come back "done", and rows read from demo data must not be
+ * badged SERVER or written to this browser's records. Pausing the polls in
+ * demo mode is not the fix — it would strand a demo report at `queued`. */
+describe('ReportsView while the API is unreachable (demo fallback)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.mocked(toast).mockClear();
+    setOfflineFallback(true); // as the Layout health poll would
+    // any call that reached the network would be a bug: the fallback serves
+    // the demo backend, and the API is down anyway
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        throw new TypeError('network down');
+      }),
+    );
+  });
+
+  afterEach(() => {
+    setOfflineFallback(false);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it(
+    'leaves a real queued report queued instead of minting it done from demo data',
+    async () => {
+      // a report this browser requested from a real server, still running when
+      // the API became unreachable
+      window.localStorage.setItem(
+        LS_REPORTS,
+        JSON.stringify([
+          { report_id: 'rpt-real', run_ids: ['run-a'], status: 'queued', created_at: '2026-09-16T00:00:00.000Z' },
+        ]),
+      );
+      render(<ReportsView />);
+      const table = screen.getByRole('table', { name: 'generated reports' });
+      expect(await within(table).findByText('rpt-real', {}, { timeout: 4000 })).toBeInTheDocument();
+
+      // well past two status polls (2 s) — the demo backend knows nothing
+      // about this id and must say so, not invent a finished report
+      await new Promise((r) => setTimeout(r, 2600));
+      const row = within(table).getAllByRole('row')[1];
+      expect(within(row).getByText('queued')).toBeInTheDocument();
+      expect(within(table).queryByText('done')).toBeNull();
+      expect(within(table).getByRole('button', { name: 'Download .md' })).toBeDisabled();
+      // and no "ready" claim was made about it
+      expect(vi.mocked(toast)).not.toHaveBeenCalledWith('ok', expect.stringContaining('ready'));
+      // the persisted record is untouched: still queued, still not demo data
+      const stored = JSON.parse(window.localStorage.getItem(LS_REPORTS) ?? '[]') as {
+        report_id: string;
+        status: string;
+      }[];
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatchObject({ report_id: 'rpt-real', status: 'queued' });
+    },
+    15000,
+  );
+
+  it(
+    'badges rows read from the demo backend DEMO, never SERVER, and records none of them',
+    async () => {
+      const demoReport = await mockCreateReport(['run-8f2c11']);
+      render(<ReportsView />);
+      const table = screen.getByRole('table', { name: 'generated reports' });
+      expect(
+        await within(table).findByText(demoReport.report_id, {}, { timeout: 6000 }),
+      ).toBeInTheDocument();
+      expect(within(table).getByText('DEMO')).toBeInTheDocument();
+      expect(within(table).queryByText('SERVER')).toBeNull();
+      expect(screen.getByText(/built-in demo data/)).toBeInTheDocument();
+
+      // demo rows are not this browser's memory of a request to a server
+      expect(window.localStorage.getItem(LS_REPORTS)).toBeNull();
     },
     15000,
   );

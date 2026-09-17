@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ApiError,
   AUTH_RETRY_DELAY_MS,
   clearAuthFailure,
   createReport,
   createRun,
+  createScenario,
   createSweep,
   DEFAULT_API_KEY,
   DEFAULT_BASE_URL,
@@ -15,7 +17,11 @@ import {
   isAuthRetryScheduled,
   listReports,
   listRuns,
+  listScenarios,
+  OFFLINE_WRITE_MESSAGE,
+  setOfflineFallback,
 } from '../api/client';
+import { mockListReports, mockListRuns, mockListScenarios } from '../mocks/mockApi';
 
 function fakeResponse(body: unknown): Response {
   return {
@@ -335,5 +341,76 @@ describe('api client error rendering', () => {
     expect((fetchMock.mock.calls[0] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports/rpt-1/archive`);
     await getReportPdf('rpt-1');
     expect((fetchMock.mock.calls[1] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports/rpt-1/pdf`);
+  });
+});
+
+/** Reads may be answered by the in-browser demo backend while the API is
+ * unreachable — the dashboard stays demoable and says DEMO everywhere it
+ * does. Writes may not: a run "queued" or a report "generated" by the demo
+ * store exists in this browser only, so the launch has to fail loudly instead
+ * of succeeding against nothing. */
+describe('api client writes during the offline fallback', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(fakeResponse([]));
+    vi.stubGlobal('fetch', fetchMock);
+    window.localStorage.clear();
+    clearAuthFailure();
+    setOfflineFallback(true); // as the Layout health poll would
+  });
+
+  afterEach(() => {
+    setOfflineFallback(false);
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('refuses every write, without touching the network or the demo store', async () => {
+    const runsBefore = (await mockListRuns()).length;
+    const scenariosBefore = (await mockListScenarios()).length;
+    const reportsBefore = (await mockListReports()).length;
+    fetchMock.mockClear();
+
+    const refused = [
+      createScenario({
+        name: 'x',
+        tier: 'micro',
+        network: { kind: 'ring', circumference_m: 230, n_vehicles: 22 },
+        fleet: { model: 'IDM' },
+        av: { penetration: 0, compliance: 1, controller: null },
+        sim: { duration_s: 600 },
+        seed: 42,
+        replicates: 20,
+      }),
+      createRun({ scenario_id: 'scn-ring', replicates: 20 }),
+      createSweep({
+        scenario_id: 'scn-corridor',
+        penetrations: [0.05],
+        compliances: [0.8],
+        controllers: ['follower_stopper'],
+        replicates: 5,
+        include_baseline: true,
+      }),
+      createReport(['run-8f2c11']),
+    ];
+    for (const p of refused) {
+      await expect(p).rejects.toThrow(OFFLINE_WRITE_MESSAGE);
+      await expect(p).rejects.toBeInstanceOf(ApiError);
+    }
+
+    // nothing was sent, and nothing was invented in the demo backend either
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await mockListRuns()).length).toBe(runsBefore);
+    expect((await mockListScenarios()).length).toBe(scenariosBefore);
+    expect((await mockListReports()).length).toBe(reportsBefore);
+  });
+
+  it('still serves reads from the demo backend', async () => {
+    fetchMock.mockClear();
+    expect((await listRuns()).length).toBeGreaterThan(0);
+    expect((await listScenarios()).length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -622,25 +622,24 @@ function reportView(row: ReportRow): ReportOut {
   };
 }
 
-function ensureReport(reportId: string): ReportRow {
-  let row = reports.get(reportId);
+/** The row for a report this demo session actually created.
+ *
+ * An unknown id is *unknown*, never minted as a finished report. The demo
+ * store used to regenerate one as `done`, which meant a report id it had
+ * never seen — a real, queued report whose status poll crossed into the
+ * offline fallback — came back "done" from in-browser data, and the
+ * dashboard badged it as generated.
+ *
+ * A plain `Error` (not an `ApiError` 404) is deliberate: the reports view
+ * treats a 404 as a terminal "report vanished" and anything else as
+ * transient, so the row stays as it is and resolves from the real API once
+ * it answers again. */
+function requireReport(reportId: string): ReportRow {
+  const row = reports.get(reportId);
   if (!row) {
-    // survive reloads in demo mode: a finished, regenerated demo report
-    row = {
-      out: {
-        report_id: reportId,
-        status: 'done',
-        run_ids: [],
-        title: REPORT_TITLE,
-        report_path: null,
-        error: null,
-        error_kind: null,
-        created_at: new Date(0).toISOString(),
-      },
-      markdown: `# FlowState Validation Report ${reportId}\n\n(Regenerated demo report — original mock session expired.)`,
-      createdAt: 0,
-    };
-    reports.set(reportId, row);
+    throw new Error(
+      `report ${reportId} is not in this demo session — demo reports live in memory only`,
+    );
   }
   return row;
 }
@@ -809,13 +808,13 @@ export async function mockListReports(limit = 200): Promise<ReportOut[]> {
 
 export async function mockGetReport(reportId: string): Promise<ReportOut> {
   await latency();
-  return reportView(ensureReport(reportId));
+  return reportView(requireReport(reportId));
 }
 
 /** The markdown is served only once the report is done (API: 409 before). */
 export async function mockGetReportMarkdown(reportId: string): Promise<string> {
   await latency();
-  const row = ensureReport(reportId);
+  const row = requireReport(reportId);
   const view = reportView(row);
   if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
   return row.markdown;
@@ -825,14 +824,14 @@ export async function mockGetReportMarkdown(reportId: string): Promise<string> {
  * downloads say so instead of handing the browser a zip that is not one. */
 export async function mockGetReportArchive(reportId: string): Promise<Blob> {
   await latency();
-  const view = reportView(ensureReport(reportId));
+  const view = reportView(requireReport(reportId));
   if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
   throw new Error('demo data has no report archive — connect the API to download the .zip bundle');
 }
 
 export async function mockGetReportPdf(reportId: string): Promise<Blob> {
   await latency();
-  const view = reportView(ensureReport(reportId));
+  const view = reportView(requireReport(reportId));
   if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
   throw new Error('demo data has no PDF rendering — connect the API to download the PDF');
 }

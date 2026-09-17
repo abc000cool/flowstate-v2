@@ -4,10 +4,11 @@
  * launcher costs real compute, so it must state the arithmetic and take a
  * second click; identical realisations must be flagged, not read as effects. */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAuthFailure, setOfflineFallback } from '../api/client';
+import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../api/client';
+import { Toasts } from '../components/toast';
 import { SweepsView } from '../views/SweepsView';
 
 const scenario = {
@@ -332,4 +333,60 @@ describe('SweepsView (real API shapes)', () => {
     });
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
+});
+
+/** A sweep is the most expensive thing the dashboard can enqueue, and the
+ * demo backend will happily "launch" one: a whole matrix of in-browser cells
+ * that no worker ever ran. `POST /sweeps` therefore never falls back. */
+describe('SweepsView with the API offline', () => {
+  const calls: Call[] = [];
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        calls.push({ url, method });
+        if (url.endsWith('/scenarios') && method === 'GET') return json([scenario]);
+        if (url.endsWith('/sweeps') && method === 'POST') return json(sweepOut, 202);
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    setOfflineFallback(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses a sweep confirmed after the API went away, and shows no demo matrix', async () => {
+    render(
+      <>
+        <Toasts />
+        <MemoryRouter initialEntries={['/sweeps']}>
+          <SweepsView />
+        </MemoryRouter>
+      </>,
+    );
+    await screen.findByRole('option', { name: 'corridor_10km' }, { timeout: 4000 });
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+
+    act(() => setOfflineFallback(true));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Launch \d+ runs$/ }));
+
+    expect(await screen.findByText(/API offline/, {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    // no in-browser sweep took its place: the results matrix (and its metric
+    // picker) never appears
+    expect(screen.queryByLabelText('Metric')).toBeNull();
+
+    const launch = screen.getByRole('button', { name: /^Launch \d+ cells/ });
+    expect(launch).toBeDisabled();
+    expect(launch).toHaveAttribute('title', OFFLINE_WRITE_MESSAGE);
+  }, 15000);
 });
