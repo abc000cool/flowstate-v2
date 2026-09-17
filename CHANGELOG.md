@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Engine: heavy vehicles placed by lane (2026-09-17)
+
+- **Schema:** `HeavyVehicleSpec.lane_shares` (per-lane departure distribution for heavy vehicles, hash-neutral when unset; drawn from an independent seeded stream so light vehicles' draws are unchanged with or without it). `meta.json.heavy_lane_shares` records the effective shares. `microsim.vehicles.heavy_lane_shares_from_artifact` derives the I-24 distribution (0.048 / 0.172 / 0.459 / 0.321 left to right) from the measured per-lane heavy fractions and the entry flow shares. Nine tests including a SUMO run whose written routes and first-seen lanes follow the shares. The candidate-4 probe (three single-seed variants on the fitted arm) follows.
+
 ### Cloud round, part one: the flow-share family through the FHWA sequence (2026-09-17)
 
 - VM `flowstate-flow` (n2-standard-32, 1 h 45 min, about three dollars; archive by bucket, self-deleted): `scenarios/i24_replica_flow{,_corrected,_speedcal,_speedcal_ramps}.yaml`, `artifacts/demand_scale_i24_flow.json` (scale 0.80), `artifacts/i24_boundary_ramps_fit_flow.json` (Old Hickory × 0.75, Hickory Hollow × 1.25, exit × 1.125), and 20-seed batteries `artifacts/i24_validation_flow_{corrected,speedcal,ramps}.json`: GEH 17.4 / 21.5 / 21.5%, RMSPE 33.7 / 37.2 / 41.8%, wave speed 15.4 / 15.9 / 15.8 km/h, 5 of 7 rows each. Against the canonical family: one to three points better on flow, unchanged to seven points worse on speed. Not adopted; the canonical family stays the record (docs/I24_VALIDATION.md §0.10). At thirty processes a 20-seed battery of the replica takes twelve minutes, which resets the cost model of these rounds. The global CPU quota (32) allows one such VM at a time; the canonical re-run launched automatically when this one finished.

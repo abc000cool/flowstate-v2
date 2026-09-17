@@ -21,6 +21,7 @@ from pathlib import Path
 
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
+    HeavyVehicleSpec,
     ScenarioConfig,
     config_hash,
     config_hash_payload,
@@ -68,6 +69,40 @@ def test_non_default_values_change_the_hash():
     base = _canonical()
     assert config_hash(base.model_copy(update={"seed": 43})) != config_hash(base)
     assert config_hash(base.model_copy(update={"tier": "macro"})) != config_hash(base)
+
+
+HEAVY = {
+    "fraction": 0.2,
+    "length_m": 20.5,
+    "emission_class": "HBEFA4/TT_AT_gt34-40t_Euro-VI_A-C",
+    "v0": 28.0,
+    "T": 1.8,
+    "a_max": 0.5,
+    "b": 1.5,
+    "s0": 3.0,
+}
+
+
+def _with_heavy(**over: object) -> ScenarioConfig:
+    """The canonical 2-lane corridor with a heavy population."""
+    base = _canonical()
+    heavy = HeavyVehicleSpec(**HEAVY, **over)  # type: ignore[arg-type]
+    return base.model_copy(update={"fleet": base.fleet.model_copy(update={"heavy": heavy})})
+
+
+def test_heavy_lane_shares_is_hash_neutral_until_it_is_set():
+    """A lane-placed heavy population is a new optional field (policy v2)."""
+    plain = _with_heavy()
+    assert config_hash(_with_heavy(lane_shares=None)) == config_hash(plain)
+    assert "lane_shares" not in config_hash_payload(plain)["config"]["fleet"]["heavy"]
+    # ... and a scenario with no heavy block at all is untouched by the field
+    assert "heavy" not in config_hash_payload(_canonical())["config"].get("fleet", {})
+
+    placed = _with_heavy(lane_shares=[0.3, 0.7])
+    assert config_hash(placed) != config_hash(plain)
+    assert config_hash_payload(placed)["config"]["fleet"]["heavy"]["lane_shares"] == [0.3, 0.7]
+    # ... and a different placement is a different run
+    assert config_hash(_with_heavy(lane_shares=[0.7, 0.3])) != config_hash(placed)
 
 
 def test_pinned_ring_hash():

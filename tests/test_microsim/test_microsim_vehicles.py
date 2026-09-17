@@ -1,5 +1,6 @@
 """Fleet generation tests: heterogeneity, AV tagging, demand XML (no SUMO)."""
 
+import json
 import math
 import typing
 import xml.etree.ElementTree as ET
@@ -609,6 +610,185 @@ class TestEntryLaneShares:
             2.0,
             1.0,
         ]
+
+
+HEAVY_POP = {
+    "fraction": 0.25,
+    "length_m": 20.5,
+    "emission_class": "HBEFA4/TT_AT_gt34-40t_Euro-VI_A-C",
+    "v0": 28.0,
+    "T": 1.8,
+    "a_max": 0.5,
+    "b": 1.5,
+    "s0": 3.0,
+}
+#: Measured I-24 heavy placement, left to right (docs/MERGE_ROUND6_PLAN.md
+#: §2.4 addendum); the value the helper returns from the committed artifacts.
+I24_HEAVY_LANE_SHARES = [0.0482, 0.1717, 0.4588, 0.3213]
+
+
+class TestHeavyLaneShares:
+    """HeavyVehicleSpec.lane_shares → the heavy vehicles' departure lanes only."""
+
+    def _plan(self, *, lane_shares=None, entry=None, seed=SEED, heavy=True):
+        from flowstate_core.config import HeavyVehicleSpec
+
+        spec = HeavyVehicleSpec(**HEAVY_POP, lane_shares=lane_shares) if heavy else None
+        return build_corridor_plan(
+            [(0.0, 2.0)],
+            2000.0,
+            FleetSpec(heavy=spec),
+            AVSpec(penetration=0.1),
+            make_rng(seed),
+            entry_lane_shares=entry,
+        )
+
+    def test_schema_validation(self):
+        from flowstate_core.config import HeavyVehicleSpec, ScenarioConfig
+
+        assert HeavyVehicleSpec(**HEAVY_POP).lane_shares is None
+        assert HeavyVehicleSpec(**HEAVY_POP, lane_shares=[2.0, 1.0]).lane_shares == [2.0, 1.0]
+        with pytest.raises(ValueError, match=r"heavy\.lane_shares needs at least two"):
+            HeavyVehicleSpec(**HEAVY_POP, lane_shares=[1.0])
+        with pytest.raises(ValueError, match=r"heavy\.lane_shares must be non-negative"):
+            HeavyVehicleSpec(**HEAVY_POP, lane_shares=[-0.1, 1.1])
+        with pytest.raises(ValueError, match=r"heavy\.lane_shares must be non-negative"):
+            HeavyVehicleSpec(**HEAVY_POP, lane_shares=[0.0, 0.0])
+
+        def scenario(network: dict, shares: list[float]) -> ScenarioConfig:
+            return ScenarioConfig.model_validate(
+                {
+                    "name": "h",
+                    "network": network,
+                    "fleet": {"heavy": {**HEAVY_POP, "lane_shares": shares}},
+                    "sim": {"duration_s": 60.0},
+                }
+            )
+
+        corridor = {"kind": "corridor", "length_m": 2000.0, "lanes": 3, "inflow": [[0.0, 0.5]]}
+        assert scenario(corridor, [0.1, 0.2, 0.7]).fleet.heavy.lane_shares == [0.1, 0.2, 0.7]
+        with pytest.raises(ValueError, match="2 entries for 3 lanes"):
+            scenario(corridor, [0.3, 0.7])
+        osm = {"kind": "osm", "osm_file": "x.osm", "entry_lane_shares": [0.3, 0.3, 0.2, 0.2]}
+        with pytest.raises(ValueError, match="3 entries against 4 entry_lane_shares"):
+            scenario(osm, [0.1, 0.2, 0.7])
+        with pytest.raises(ValueError, match="corridor or OSM network"):
+            scenario({"kind": "ring", "circumference_m": 230.0, "n_vehicles": 22}, [0.3, 0.7])
+
+    def test_unset_leaves_the_plan_unchanged(self):
+        a = self._plan(entry=[0.4, 0.3, 0.3])
+        b = self._plan(entry=[0.4, 0.3, 0.3], lane_shares=None)
+        assert a == b and a.heavy_lane_shares == ()
+
+    def test_light_vehicles_draw_identically_with_and_without_the_field(self):
+        entry = [0.4, 0.3, 0.3]
+        plain = self._plan(entry=entry)
+        placed = self._plan(entry=entry, lane_shares=[0.1, 0.2, 0.7])
+        assert placed.heavy_lane_shares == (0.1, 0.2, 0.7)
+        # every draw that is not a heavy vehicle's lane is untouched
+        assert placed.params == plain.params
+        assert placed.is_heavy == plain.is_heavy and placed.is_av == plain.is_av
+        assert placed.depart_s == plain.depart_s and placed.is_hov == plain.is_hov
+        light = [i for i in range(plain.n) if not plain.heavy(i)]
+        assert [placed.depart_lane[i] for i in light] == [plain.depart_lane[i] for i in light]
+        heavy = [i for i in range(plain.n) if plain.heavy(i)]
+        assert heavy and [placed.depart_lane[i] for i in heavy] != [
+            plain.depart_lane[i] for i in heavy
+        ]
+
+    def test_heavy_lane_histogram_matches_the_shares(self):
+        from flowstate_core.config import HeavyVehicleSpec
+
+        shares = I24_HEAVY_LANE_SHARES  # left to right
+        plan = build_corridor_plan(
+            [(0.0, 2.0)],
+            4000.0,
+            FleetSpec(heavy=HeavyVehicleSpec(**HEAVY_POP, lane_shares=shares)),
+            AVSpec(),
+            make_rng(SEED),
+            entry_lane_shares=[0.25, 0.25, 0.25, 0.25],
+        )
+        heavy = [plan.depart_lane[i] for i in range(plan.n) if plan.heavy(i)]
+        assert len(heavy) > 1500
+        # SUMO lane 0 is the rightmost: share k (left to right) lands on lane 3-k
+        for k, share in enumerate(shares):
+            freq = heavy.count(3 - k) / len(heavy)
+            assert abs(freq - share) < 0.03, f"lane {k + 1}: {freq} vs {share}"
+        light = [plan.depart_lane[i] for i in range(plan.n) if not plan.heavy(i)]
+        for lane in range(4):
+            assert abs(light.count(lane) / len(light) - 0.25) < 0.03
+
+    def test_without_entry_shares_only_the_heavy_vehicles_are_placed(self, tmp_path):
+        plain = self._plan()
+        placed = self._plan(lane_shares=[0.1, 0.2, 0.7])
+        assert plain.depart_lane == ()
+        light = [i for i in range(plain.n) if not plain.heavy(i)]
+        assert {placed.depart_lane[i] for i in light} == {-1}  # writer's round-robin
+        assert {placed.depart_lane[i] for i in range(plain.n) if plain.heavy(i)} <= {0, 1, 2}
+
+        def written(plan, name):
+            path = write_corridor_routes(
+                ("e0",), plan, "IDM", 0.5, tmp_path / name, lanes=3, heavy=None
+            )
+            root = ET.parse(path).getroot()
+            return {v.get("id"): v.get("departLane") for v in root.findall("vehicle")}
+
+        a, b = written(plain, "a.rou.xml"), written(placed, "b.rou.xml")
+        for i in light:
+            assert a[plain.vehicle_id(i)] == b[plain.vehicle_id(i)]
+        heavy_lanes = [int(b[plain.vehicle_id(i)]) for i in range(plain.n) if plain.heavy(i)]
+        assert heavy_lanes.count(0) > heavy_lanes.count(2)  # 0.7 of the shares is the right lane
+
+    def test_helper_arithmetic_on_synthetic_artifacts(self, tmp_path):
+        from microsim.vehicles import heavy_lane_shares_from_artifact
+
+        heavy = {
+            "by_lane": {
+                "1": {"share_fragments": 0.01, "share_vehicle_time": 0.10},
+                "2": {"share_fragments": 0.02, "share_vehicle_time": 0.10},
+                "3": {"share_fragments": 0.05, "share_vehicle_time": 0.10},
+                "4": {"share_fragments": 0.10, "share_vehicle_time": 0.10},
+                "5": {"share_fragments": 0.90, "share_vehicle_time": 0.90},
+            }
+        }
+        profile = {
+            "observed": {
+                "rows": [
+                    {"x_lo_m": -250, "flow_share": {str(k): 0.2 for k in range(1, 6)}},
+                    {
+                        "x_lo_m": 0,
+                        "flow_share": {"1": 0.4, "2": 0.3, "3": 0.2, "4": 0.1, "5": 0.05},
+                    },
+                ]
+            }
+        }
+        hp = tmp_path / "heavy.json"
+        pp = tmp_path / "profile.json"
+        hp.write_text(json.dumps(heavy))
+        pp.write_text(json.dumps(profile))
+        # p ∝ flow_share × heavy fraction = [.004, .006, .010, .010] / 0.030
+        assert heavy_lane_shares_from_artifact(hp, pp) == [0.1333, 0.2, 0.3333, 0.3333]
+        # the auxiliary lane is excluded by default and the entry row is the one used
+        assert sum(heavy_lane_shares_from_artifact(hp, pp)) == pytest.approx(1.0, abs=2e-4)
+        assert heavy_lane_shares_from_artifact(hp, pp, share_key="share_vehicle_time") == [
+            0.4,
+            0.3,
+            0.2,
+            0.1,
+        ]
+        assert heavy_lane_shares_from_artifact(hp, pp, lanes=(1, 2)) == [0.4, 0.6]
+        with pytest.raises(KeyError, match="no row at x_lo_m"):
+            heavy_lane_shares_from_artifact(hp, pp, x_lo_m=500.0)
+
+    def test_helper_on_the_committed_i24_artifacts(self):
+        from microsim.vehicles import heavy_lane_shares_from_artifact
+
+        root = Path(__file__).resolve().parents[2]
+        hp = root / "artifacts" / "i24_heavy_by_lane.json"
+        pp = root / "artifacts" / "i24_lane_profile.json"
+        if not (hp.exists() and pp.exists()):
+            pytest.skip("I-24 measurement artifacts are not present")
+        assert heavy_lane_shares_from_artifact(hp, pp) == I24_HEAVY_LANE_SHARES
 
 
 class TestJunctionTimegap:

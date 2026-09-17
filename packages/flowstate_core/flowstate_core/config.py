@@ -70,16 +70,25 @@ class BoundarySpec(BaseModel):
         return self
 
 
-def _check_lane_shares(shares: list[float] | None, lanes: int | None) -> None:
-    """Validate an entry lane-share list (left to right; None = round-robin)."""
+def _check_lane_shares(
+    shares: list[float] | None, lanes: int | None, name: str = "entry_lane_shares"
+) -> None:
+    """Validate a per-lane share list (left to right; None = round-robin).
+
+    Args:
+        shares: The list to check, or ``None`` (always valid).
+        lanes: Expected length (the network's lane count), or ``None`` when the
+            lane count is only known at run time (OSM imports).
+        name: Field name used in the error messages.
+    """
     if shares is None:
         return
     if len(shares) < 2:
-        raise ValueError("entry_lane_shares needs at least two lanes")
+        raise ValueError(f"{name} needs at least two lanes")
     if any(s < 0.0 for s in shares) or sum(shares) <= 0.0:
-        raise ValueError("entry_lane_shares must be non-negative with a positive sum")
+        raise ValueError(f"{name} must be non-negative with a positive sum")
     if lanes is not None and len(shares) != lanes:
-        raise ValueError(f"entry_lane_shares has {len(shares)} entries for {lanes} lanes")
+        raise ValueError(f"{name} has {len(shares)} entries for {lanes} lanes")
 
 
 class CorridorNetwork(BaseModel):
@@ -355,9 +364,27 @@ class HeavyVehicleSpec(BaseModel):
     b: float | None = Field(default=None, gt=0)
     s0: float | None = Field(default=None, gt=0)
     heterogeneity_frac: float = Field(default=HETEROGENEITY_FRAC_DEFAULT, ge=0, le=0.3)
+    lane_shares: list[float] | None = None
+    """Departure-lane distribution of the heavy population, LEFT to RIGHT like
+    ``entry_lane_shares`` (normalised at use; length = the entry edge's lane
+    count, checked against the network's lanes here and against the compiled
+    map at run time). ``None`` (default) leaves heavy vehicles wherever the
+    fleet's own lane scheme put them, i.e. spread over lanes like the light
+    fleet — the uniform placement every heavy arm has used so far.
+
+    Heavy traffic is not uniform across lanes: in the I-24 recording heavy
+    fragments are 1.4 / 6.5 / 19.0 / 14.4% of lanes 1–4 against 9.2% corridor
+    wide (``artifacts/i24_heavy_by_lane.json``, docs/MERGE_ROUND6_PLAN.md §2.4
+    addendum), so a uniform share puts trucks in the HOV lane and takes them
+    out of the two right lanes. Convert those per-lane fractions into this
+    distribution with ``microsim.vehicles.heavy_lane_shares_from_artifact``.
+    Drawn per heavy vehicle from a stream of the run's seed that is
+    independent of every other draw, so setting this field moves the heavy
+    vehicles' lanes and nothing else."""
 
     @model_validator(mode="after")
     def _check_population(self) -> Self:
+        _check_lane_shares(self.lane_shares, None, name="heavy.lane_shares")
         scalars = (self.v0, self.T, self.a_max, self.b, self.s0)
         if self.idm_calibration is None and any(v is None for v in scalars):
             raise ValueError(
@@ -638,6 +665,33 @@ class ScenarioConfig(BaseModel):
     CLAUDE.md §0.6; the ``MAX_REPLICATES`` ceiling is a resource guard — a
     config is a request to execute this many simulations, and the largest
     study in this repository (the 540-run M3 sweep) uses 20 per cell."""
+
+    @model_validator(mode="after")
+    def _check_heavy_lane_shares(self) -> Self:
+        """``HeavyVehicleSpec.lane_shares`` must match the entry lane count.
+
+        Checked here and not on the fleet, which cannot see the network: a
+        corridor states its lane count, an OSM import inherits it from the map
+        (checked at run time by the route writer), and a ring has no entry.
+        """
+        heavy = self.fleet.heavy
+        shares = None if heavy is None else heavy.lane_shares
+        if shares is None:
+            return self
+        net = self.network
+        if isinstance(net, RingNetwork):
+            raise ValueError(
+                "heavy.lane_shares needs a corridor or OSM network (a ring has no entry)"
+            )
+        if isinstance(net, CorridorNetwork) and len(shares) != net.lanes:
+            raise ValueError(f"heavy.lane_shares has {len(shares)} entries for {net.lanes} lanes")
+        entry = net.entry_lane_shares
+        if entry is not None and len(shares) != len(entry):
+            raise ValueError(
+                f"heavy.lane_shares has {len(shares)} entries against "
+                f"{len(entry)} entry_lane_shares"
+            )
+        return self
 
     @property
     def seeded(self) -> bool:

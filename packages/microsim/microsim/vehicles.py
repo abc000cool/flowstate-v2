@@ -28,6 +28,7 @@ RNG consumption order is fixed and documented per builder so that a given
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -97,10 +98,19 @@ class FleetPlan:
     route: tuple[str, ...] = ()
     depart_lane: tuple[int, ...] = ()
     """SUMO departure lane index per vehicle (0 = rightmost) drawn from the
-    network's ``entry_lane_shares``; ``-1`` for ramp-origin vehicles. Empty ⇒
-    the writer's round-robin scheme."""
+    network's ``entry_lane_shares``, or from ``HeavyVehicleSpec.lane_shares``
+    for a heavy vehicle; ``-1`` for ramp-origin vehicles and for vehicles left
+    to the writer's round-robin scheme (which is the case for every light
+    vehicle when only ``lane_shares`` is set). Empty ⇒ the writer's scheme for
+    the whole fleet."""
     is_heavy: tuple[bool, ...] = ()
     """Heavy-vehicle flag per vehicle (``FleetSpec.heavy``); empty ⇒ none."""
+    heavy_lane_shares: tuple[float, ...] = ()
+    """Effective (normalised, left to right) departure-lane distribution the
+    heavy vehicles were drawn from — ``HeavyVehicleSpec.lane_shares`` as
+    applied. Empty ⇒ unset, heavy vehicles share the fleet's lane scheme.
+    Recorded beside ``depart_lane`` so a run's heavy placement is readable
+    from the plan without re-deriving it from the config."""
     is_hov: tuple[bool, ...] = ()
     """Managed-lane eligibility per vehicle (``FleetSpec.hov_fraction``,
     SUMO ``vClass="hov"``); empty ⇒ none."""
@@ -330,6 +340,153 @@ def _apply_heavy(
             complied[i] = False
 
 
+#: Spawn key of the heavy departure-lane stream. The heavy lanes are drawn
+#: from a child of the run's seed sequence rather than from the run generator
+#: itself, so that switching ``HeavyVehicleSpec.lane_shares`` on leaves every
+#: other draw — including the light vehicles' lanes — bit-identical. The key is
+#: a fixed constant (not ``SeedSequence.spawn``'s running counter) so the child
+#: does not depend on how often the parent has been spawned from.
+HEAVY_LANE_SPAWN_KEY: Final[int] = 0x48454156  # "HEAV"
+
+
+def heavy_lane_stream(rng: np.random.Generator) -> np.random.Generator:
+    """An independent generator for the heavy departure-lane draw.
+
+    Derived from ``rng``'s seed sequence (:data:`HEAVY_LANE_SPAWN_KEY`) without
+    consuming or advancing ``rng``: the same run seed gives the same heavy
+    lanes, and every other per-vehicle draw is untouched.
+    """
+    seq = getattr(rng.bit_generator, "seed_seq", None)
+    if isinstance(seq, np.random.SeedSequence):
+        child = np.random.SeedSequence(
+            entropy=seq.entropy,
+            spawn_key=(*seq.spawn_key, HEAVY_LANE_SPAWN_KEY),
+            pool_size=seq.pool_size,
+        )
+    else:  # pragma: no cover — generators restored from a raw bit-generator state
+        child = np.random.SeedSequence(HEAVY_LANE_SPAWN_KEY)
+    return np.random.Generator(np.random.PCG64(child))
+
+
+def normalized_lane_shares(shares: Sequence[float], name: str) -> np.ndarray:
+    """Validate a left-to-right lane-share list and normalise it to sum 1."""
+    w = np.asarray(shares, dtype=np.float64)
+    if w.ndim != 1 or len(w) < 2 or (w < 0).any() or w.sum() <= 0:
+        raise ValueError(f"{name} must be >= 2 non-negative weights with a positive sum")
+    return w / w.sum()
+
+
+def draw_heavy_lanes(
+    depart_lane: Sequence[int],
+    heavy_flags: Sequence[bool],
+    origin_idx: Sequence[int],
+    lane_shares: Sequence[float],
+    rng: np.random.Generator,
+    *,
+    entry_lane_shares: Sequence[float] | None = None,
+) -> tuple[tuple[int, ...], tuple[float, ...]]:
+    """Place the heavy vehicles' departure lanes from ``lane_shares``.
+
+    Only mainline heavy vehicles are moved: ramp-origin vehicles enter on the
+    ramp (``-1``) and light vehicles keep the lane the fleet scheme gave them
+    (their draw, or ``-1`` = the writer's round-robin when the network has no
+    ``entry_lane_shares``). The draw comes from :func:`heavy_lane_stream`, so
+    it neither consumes nor reorders the run generator.
+
+    Args:
+        depart_lane: Lanes so far (empty ⇒ no per-vehicle lanes were drawn).
+        heavy_flags: Heavy flag per vehicle (empty ⇒ none).
+        origin_idx: ``-1`` for mainline, ``k`` for on-ramp ``k``.
+        lane_shares: ``HeavyVehicleSpec.lane_shares``, LEFT to right.
+        rng: The run generator (used only to derive the heavy-lane stream).
+        entry_lane_shares: The network's shares, when set — its length must
+            match, since both index the same entry lanes.
+
+    Returns:
+        ``(depart_lane, effective_shares)`` — the updated lanes (SUMO indices,
+        0 = rightmost) and the normalised shares actually used.
+    """
+    w = normalized_lane_shares(lane_shares, "heavy.lane_shares")
+    n_lanes = len(w)
+    if entry_lane_shares is not None and len(entry_lane_shares) != n_lanes:
+        raise ValueError(
+            f"heavy.lane_shares has {n_lanes} entries against "
+            f"{len(entry_lane_shares)} entry_lane_shares"
+        )
+    n = len(origin_idx)
+    lanes = list(depart_lane) if depart_lane else [-1] * n
+    idx = [i for i in range(n) if origin_idx[i] < 0 and (heavy_flags[i] if heavy_flags else False)]
+    if idx:
+        picks = heavy_lane_stream(rng).choice(n_lanes, size=len(idx), p=w)
+        for j, i in enumerate(idx):
+            # shares are left to right; SUMO lane 0 is the rightmost
+            lanes[i] = int(n_lanes - 1 - picks[j])
+    return tuple(lanes), tuple(float(v) for v in w)
+
+
+def heavy_lane_shares_from_artifact(
+    heavy_by_lane_path: str | Path,
+    lane_profile_path: str | Path,
+    *,
+    lanes: Sequence[int] = (1, 2, 3, 4),
+    share_key: str = "share_fragments",
+    x_lo_m: float = 0.0,
+) -> list[float]:
+    """Heavy departure-lane shares from the two I-24 measurement artifacts.
+
+    The recording reports, per lane ``l``, the heavy *fraction* of that lane's
+    traffic ``h_l`` (``artifacts/i24_heavy_by_lane.json``, ``by_lane[l]``) and
+    the lane's share of entering *vehicles* ``f_l``
+    (``artifacts/i24_lane_profile.json``, ``flow_share`` of the row at
+    ``x_lo_m``). ``lane_shares`` needs the converse — where a heavy vehicle
+    enters — which is Bayes' rule on the entry section::
+
+        p_l = f_l · h_l / Σ_k f_k · h_k
+
+    i.e. a lane gets heavy traffic in proportion to how much traffic it takes
+    and how heavy that traffic is. On the committed artifacts with the default
+    arguments this is ``[0.0482, 0.1717, 0.4588, 0.3213]`` (left to right)
+    against the corridor-uniform ``[0.25, 0.25, 0.25, 0.25]``.
+
+    Both inputs are coverage-limited counts and the heavy fractions are upper
+    bounds (heavy vehicles track more easily; ``coverage_note`` in the heavy
+    artifact), so the result is a measured placement, not a corrected one.
+
+    Args:
+        heavy_by_lane_path: ``artifacts/i24_heavy_by_lane.json``.
+        lane_profile_path: ``artifacts/i24_lane_profile.json``.
+        lanes: Data lane numbers to keep, left to right (1 = leftmost). The
+            default drops the auxiliary lane 5, which is not an entry lane.
+        share_key: Heavy-fraction key per lane — ``"share_fragments"``
+            (vehicles, the unit ``HeavyVehicleSpec.fraction`` is drawn in) or
+            ``"share_vehicle_time"``.
+        x_lo_m: ``x_lo_m`` of the lane-profile row to read (the entry bin).
+
+    Returns:
+        Normalised shares, left to right, rounded to 4 decimals.
+
+    Raises:
+        KeyError: A lane or the requested row/key is missing from an artifact.
+        ValueError: Every lane's product is zero (nothing to normalise).
+    """
+    by_lane = json.loads(Path(heavy_by_lane_path).read_text())["by_lane"]
+    rows = json.loads(Path(lane_profile_path).read_text())["observed"]["rows"]
+    row = next((r for r in rows if float(r["x_lo_m"]) == x_lo_m), None)
+    if row is None:
+        raise KeyError(f"{Path(lane_profile_path).name} has no row at x_lo_m == {x_lo_m}")
+    if "flow_share" not in row:
+        raise KeyError(
+            f"{Path(lane_profile_path).name} predates flow shares; re-run scripts/i24_lane_profile.py"
+        )
+    weights = [
+        float(row["flow_share"][str(lane)]) * float(by_lane[str(lane)][share_key]) for lane in lanes
+    ]
+    total = sum(weights)
+    if total <= 0.0:
+        raise ValueError("no heavy traffic in the requested lanes: nothing to normalise")
+    return [round(w / total, 4) for w in weights]
+
+
 def draw_hov(
     fleet: FleetSpec, heavy_flags: list[bool], n: int, rng: np.random.Generator
 ) -> list[bool]:
@@ -481,6 +638,11 @@ def build_corridor_plan(
     compliance, (5) off-ramp exit draws per vehicle in id order, per
     reachable off-ramp in corridor order (skipped entirely when there are no
     ramps, so plans without ramps consume the RNG exactly as before).
+    ``FleetSpec.heavy.lane_shares``, when set, then re-places the mainline
+    heavy vehicles' departure lanes from an independent stream of the same
+    seed (:func:`draw_heavy_lanes`), which consumes nothing from ``rng``: the
+    light vehicles' lanes and every other draw are identical with and without
+    it.
 
     Args:
         inflow: Mainline ``(t_start [s], veh/s)`` steps.
@@ -512,12 +674,7 @@ def build_corridor_plan(
     depart_lane: tuple[int, ...] = ()
     if entry_lane_shares is not None:
         # shares are given left to right; SUMO lane 0 is the rightmost
-        w = np.asarray(entry_lane_shares, dtype=np.float64)
-        if w.ndim != 1 or len(w) < 2 or (w < 0).any() or w.sum() <= 0:
-            raise ValueError(
-                "entry_lane_shares must be >= 2 non-negative weights with a positive sum"
-            )
-        w = w / w.sum()
+        w = normalized_lane_shares(entry_lane_shares, "entry_lane_shares")
         n_lanes = len(w)
         picks = rng.choice(n_lanes, size=n, p=w)
         depart_lane = tuple(
@@ -526,6 +683,16 @@ def build_corridor_plan(
     heavy_flags, heavy_params = draw_heavy(fleet, n, rng)
     _apply_heavy(params, is_av, complied, heavy_flags, heavy_params)
     hov_flags = draw_hov(fleet, heavy_flags, n, rng)
+    heavy_lane_shares: tuple[float, ...] = ()
+    if fleet.heavy is not None and fleet.heavy.lane_shares is not None:
+        depart_lane, heavy_lane_shares = draw_heavy_lanes(
+            depart_lane,
+            heavy_flags,
+            origin_idx,
+            fleet.heavy.lane_shares,
+            rng,
+            entry_lane_shares=entry_lane_shares,
+        )
 
     routes: tuple[str, ...] = ()
     if ramps:
@@ -559,6 +726,7 @@ def build_corridor_plan(
         route=routes,
         depart_lane=depart_lane,
         is_heavy=tuple(heavy_flags),
+        heavy_lane_shares=heavy_lane_shares,
         is_hov=tuple(hov_flags),
     )
 
@@ -822,7 +990,12 @@ def write_corridor_routes(
             is how a smoke/initial-condition run gets past SUMO's per-edge
             insertion throughput (~1.2–2.4 veh/s under backlog, measured).
         lanes: Lane count of the corridor (selects the insertion attribute
-            scheme above; the caller passes ``CorridorNetwork.lanes``).
+            scheme above; the caller passes ``CorridorNetwork.lanes``). A plan
+            carrying ``depart_lane`` overrides the round-robin per vehicle,
+            and a ``-1`` entry (a ramp origin, or a light vehicle in a plan
+            where only ``HeavyVehicleSpec.lane_shares`` placed lanes) keeps
+            its round-robin rank, so light vehicles are unaffected by a heavy
+            lane placement.
         routes: Named routes (id → edge ids) when the plan carries ramp
             routes (:func:`ramp_routes`); ``None`` ⇒ only ``"main"`` =
             ``route_edge_ids``. Vehicles on an on-ramp route (``"on…"``)
@@ -888,9 +1061,9 @@ def write_corridor_routes(
             rank = rank_main
             rank_main += 1
             depart_edge = "" if spread == 1 else f'departEdge="{rank % spread}" '
-            if plan.depart_lane and spread == 1:
-                lane = plan.depart_lane[i]
-                if lanes < 2 or not 0 <= lane < lanes:
+            lane = plan.depart_lane[i] if plan.depart_lane and spread == 1 else -1
+            if lane >= 0:
+                if lanes < 2 or lane >= lanes:
                     raise ValueError(
                         f"vehicle {plan.vehicle_id(i)} departure lane {lane} outside the entry "
                         f"edge's {lanes} lanes (entry_lane_shares length must match)"

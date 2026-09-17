@@ -599,3 +599,17 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   `max_dropped_fraction`, `max_speed_ratio_factor`,
   `max_out_of_range_fraction` (an explicit `max_fit_rows: null` means no
   row cap; every other null means unset).
+- `HeavyVehicleSpec.lane_shares: list[float] | None = None` (2026-09-17,
+  candidate 4 of docs/MERGE_ROUND6_PLAN.md): left-to-right departure-lane
+  distribution of heavy vehicles (normalised at use; length equal to the
+  corridor's lanes or to `entry_lane_shares`; refused on a ring). Drawn from
+  an independent seeded stream (`microsim.vehicles.heavy_lane_stream`,
+  `HEAVY_LANE_SPAWN_KEY`), so with the field unset every plan is byte-identical
+  and with it set only heavy vehicles' lanes change. Hash-neutral when unset.
+  `FleetPlan.heavy_lane_shares` and `meta.json.heavy_lane_shares` record the
+  effective shares; `FleetPlan.depart_lane == -1` now also means "the route
+  writer's round-robin scheme". Helper
+  `microsim.vehicles.heavy_lane_shares_from_artifact` turns
+  `artifacts/i24_heavy_by_lane.json` and the entry flow shares into
+  p_lane ∝ flow_share_lane × heavy_fraction_lane (I-24: 0.048 / 0.172 / 0.459 /
+  0.321).

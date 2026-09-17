@@ -123,6 +123,74 @@ class TestHeavyPlan:
         assert pa_.read_text() == pb.read_text()
 
 
+#: Heavy departure-lane distribution, LEFT to RIGHT (the shape of the measured
+#: I-24 one: little heavy traffic in the HOV lane, most of it on the right).
+HEAVY_LANE_SHARES = [0.05, 0.25, 0.70]
+ENTRY_LANE_SHARES = [0.34, 0.33, 0.33]
+
+
+@pytest.fixture(scope="module")
+def heavy_lane_run(tmp_path_factory):
+    cfg = ScenarioConfig.model_validate(
+        {
+            "name": "corridor_heavy_lanes",
+            "network": {
+                "kind": "corridor",
+                "length_m": 3000.0,
+                "lanes": 3,
+                "inflow": [[0.0, 1.2]],
+                "entry_lane_shares": ENTRY_LANE_SHARES,
+            },
+            "fleet": {"heavy": {**HEAVY, "fraction": 0.3, "lane_shares": HEAVY_LANE_SHARES}},
+            "sim": {"duration_s": 600.0},
+        }
+    )
+    paths = run_micro(cfg, SEED, tmp_path_factory.mktemp("heavy_lanes"))
+    return cfg, paths
+
+
+class TestHeavyLanePlacement:
+    """``HeavyVehicleSpec.lane_shares`` end to end: config → routes → SUMO."""
+
+    @staticmethod
+    def _departures(paths):
+        """(heavy lanes, light lanes) from the run's written demand."""
+        root = ET.parse(paths.run_dir / "net" / "demand.rou.xml").getroot()
+        heavy_types = {
+            v.get("id") for v in root.findall("vType") if v.get("vClass") in ("truck", "trailer")
+        }
+        heavy, light = [], []
+        for veh in root.findall("vehicle"):
+            (heavy if veh.get("type") in heavy_types else light).append(int(veh.get("departLane")))
+        return heavy, light
+
+    def test_heavy_departure_lanes_follow_the_shares(self, heavy_lane_run):
+        _cfg, paths = heavy_lane_run
+        heavy, light = self._departures(paths)
+        assert len(heavy) > 150 and len(light) > 350
+        # SUMO lane 0 is the rightmost: share k (left to right) is lane 2-k
+        for k, share in enumerate(HEAVY_LANE_SHARES):
+            assert abs(heavy.count(2 - k) / len(heavy) - share) < 0.08, (
+                f"lane {k + 1}: {heavy.count(2 - k) / len(heavy)} vs {share}"
+            )
+        # ... while the light fleet keeps the network's near-uniform entry shares
+        for k, share in enumerate(ENTRY_LANE_SHARES):
+            assert abs(light.count(2 - k) / len(light) - share) < 0.08
+
+    def test_sumo_runs_the_placement(self, heavy_lane_run):
+        _cfg, paths = heavy_lane_run
+        meta = json.loads(paths.meta.read_text())
+        assert meta["n_heavy"] > 150 and meta["n_collisions"] == 0
+        df = pd.read_parquet(paths.trajectories)
+        first = df.sort_values("t").groupby("veh_id").first()
+        heavy_lane = first[first.is_heavy]["lane"]
+        light_lane = first[~first.is_heavy]["lane"]
+        assert len(heavy_lane) > 150
+        # the heavy population enters (and stays, over 3 km) right of the light one
+        assert heavy_lane.mean() < light_lane.mean() - 0.3
+        assert (heavy_lane == 0).mean() > 0.45
+
+
 @pytest.fixture(scope="module")
 def closure_run(tmp_path_factory):
     cfg = ScenarioConfig.model_validate(

@@ -1486,6 +1486,8 @@ def run_micro(
         "av_ids": list(plan.av_ids),
         "complied_ids": list(plan.complied_ids),
         "n_heavy": int(sum(plan.is_heavy)) if plan.is_heavy else 0,
+        # effective per-lane departure distribution of heavy vehicles (empty = uniform scheme)
+        "heavy_lane_shares": list(plan.heavy_lane_shares),
         "heavy_fraction_realized": (
             float(sum(plan.is_heavy)) / plan.n if plan.is_heavy and plan.n else 0.0
         ),
