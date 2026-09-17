@@ -66,7 +66,7 @@ An agent drove the dashboard through the pilot flow in Chrome against the inline
 
 ### Performance targets re-verified on CI (2026-09-17)
 
-- The `perf` GitHub Actions workflow (slow-marked tests, ubuntu runner; run 35187702992 on commit 379c3f2, artifact `perf-results-35187702992`) passes every CLAUDE.md §3.4 target: `corridor_10km` 20 sim-min at ≥ 5× real time (4.0 s test wall time), `ring_sugiyama` 600 s at ≥ 50× (0.30 s), the 20-replicate sweep under 15 min (69 s), the Numba CTM kernel 1,000 cells × 10,000 steps under 1 s (0.71 s), plus the delayed-oracle JAD behaviour test and the full IDM population recovery (36 s). The workflow now installs `redis-server` because the API test package refuses to skip its Redis tests under `CI`; its first dispatch of the night failed at collection for that reason.
+- The `perf` GitHub Actions workflow (slow-marked tests, ubuntu runner; run 35187702992 on commit 379c3f2, artifact `perf-results-35187702992`) passes every CLAUDE.md §3.4 target: `corridor_10km` 20 sim-min at ≥ 5× real time (4.0 s test wall time), `ring_sugiyama` 600 s at ≥ 50× (0.30 s), the 20-replicate sweep under 15 min (69 s), the Numba CTM kernel 1,000 cells × 10,000 steps under 1 s (0.71 s), plus the delayed-oracle JAD behaviour test and the full IDM population recovery (36 s). The workflow now installs `redis-server` because the API test package refuses to skip its Redis tests under `CI`; its first dispatch of the night failed at collection for that reason. Re-run on the day's final commit 354ddd5 (run 35193732861), after the runner's bounded pool wait and the metric window changes: all six slow tests still pass.
 
 ### Production-readiness round: API hardening, job recovery, dashboard contract, docs consistency (2026-09-16)
 
