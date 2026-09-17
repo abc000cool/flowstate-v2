@@ -683,6 +683,19 @@ after five rounds the remaining candidates are outside the merge itself: the
 recording's own lane distribution at the entry (§0.5 uses the measured shares
 already), a heavy-vehicle merge population, and the downstream boundary.
 
+### 0.9a Candidate 2 of the sixth round: the scored target re-weighted by lane coverage (2026-09-17)
+
+The observed segment mean is the mean of every tracked sample pooled over lanes, so
+lanes are implicitly weighted by tracked vehicle-time, and tracking is lane-dependent
+(docs/I24_DATA.md §4). Weighting each lane by coverage-corrected vehicle-time instead
+(`scripts/i24_weighted_target.py`, validated on synthetic lanes where it removes a 0.3 to
+1.3 km/h bias) changes the target by 1.52% RMSPE overall and the fitted arm's 5-min row by
++0.54 points (35.95% to
+36.49%); every arm is in
+`artifacts/i24_validation_weighted_target.json`. Against the replicate-noise floor of 11.4
+to 16.8 points this is not material: the criterion keeps the unweighted target and the
+residual is not a lane-coverage artefact (docs/MERGE_ROUND6_PLAN.md, candidate 2, closed).
+
 ### 0.9 The merge, sixth round, candidate 1: entry lane shares as flow shares (cloud probe, 2026-09-17)
 
 docs/MERGE_ROUND6_PLAN.md ranks the replica's entry lane distribution first

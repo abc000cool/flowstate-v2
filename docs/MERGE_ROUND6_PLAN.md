@@ -252,3 +252,27 @@ radar counts of `docs/I24_DATA.md` §4.
 ## Addendum, 2026-09-17: candidate 1 probed
 
 Single seed, `artifacts/i24_merge_experiment_entryflow.json` (docs/I24_VALIDATION.md §0.9): flow shares raise insertion from 0.935 to 0.952 and cut the held-out RMSPE from 0.457 to 0.406; Old Hickory admits 2029 against 2066 of 2,241 (threshold 2,130 not met) and the entry segments stay at 23 to 27 km/h. Candidate 1 is a correct boundary-condition fix to carry into the next full sequence, not the cause of the merge defect. Candidates 2 to 5 stand.
+
+## Addendum, 2026-09-17: candidate 2 closed (data only)
+
+`scripts/i24_weighted_target.py` rebuilds the observed segment-speed field lane by lane
+(reproducing the committed field to 3e-13 m/s) and re-pools it with per-lane
+coverage-corrected vehicle-time weights from `artifacts/i24_coverage.json` (lane 1 0.70 to
+0.76, lane 2 0.50 to 0.58, lane 3 0.40 to 0.54, lane 4 0.49 to 0.63). On synthetic lanes
+with known speeds and lane-dependent tracking the weighted target recovers the true pooled
+Edie speed (error within one standard error of zero over 20 thinnings) while the
+unweighted one is biased high by 0.3 to 1.3 km/h. On the recording the two targets differ
+by 1.52% RMSPE in all, so no arm's row can move by more than that. Re-scoring the four
+committed 20-seed artifacts (`artifacts/i24_validation_weighted_target.json`, committed
+values reproduced to the digit):
+
+| arm (config) | 5-min unweighted | 5-min weighted | Δ points | 15-min unweighted | 15-min weighted | Δ points |
+|---|---|---|---|---|---|---|
+| tracked (`4cd18bf46147`) | 187.75% | 191.03% | +3.27 | 152.76% | 155.32% | +2.56 |
+| corrected (`d8c6924188eb`) | 33.67% | 34.01% | +0.33 | 27.11% | 27.02% | -0.09 |
+| speedcal (`009ed0e2a7c0`) | 35.95% | 36.49% | +0.54 | 26.34% | 26.48% | +0.13 |
+| ramps (`d06808e7b8e1`) | 34.84% | 35.23% | +0.39 | 25.55% | 25.54% | -0.01 |
+
+The fitted arm moves +0.54 points against a replicate-noise floor of
+11.4 to 16.8 points: **not material; the speed row keeps the unweighted target and the
+35.9% residual is not a lane-coverage artefact.** Candidate 2 is closed.

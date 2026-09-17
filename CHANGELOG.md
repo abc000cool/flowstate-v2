@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Merge round six, candidate 2 closed (2026-09-17)
+
+- Data only, no cloud cost: the coverage-weighted scoring target (`scripts/i24_weighted_target.py`, synthetic validation in `tests/test_calibration/test_i24_weighted_target.py`, `artifacts/i24_validation_weighted_target.json`) moves the fitted arm's 5-min RMSPE by +0.54 points (35.95% to 36.49%), an order of magnitude inside the replicate-noise floor; the target itself shifts by 1.52% RMSPE. The criterion keeps the unweighted target; docs/I24_VALIDATION.md §0.9a, docs/MERGE_ROUND6_PLAN.md addendum.
+
 ### API and worker: the regression review's items closed (2026-09-17, later)
 
 - **One travel-time span per run on the API path, for OSM corridors too.** The runner records the corridor geometry as built (`meta.json["corridor"]`: kind, total length, start of the corridor proper) and `api.results.analysis_span` derives the same span for every replicate of an OSM run (up to the exit-buffer edge when a boundary schedule is hosted there); runs written before the block existed keep the observed-extent behaviour. The per-replicate cache schema is 3, so every OSM cache is recomputed. The report job reads the span from a replicate's meta, so an all-OSM run set gets one span there as well.
