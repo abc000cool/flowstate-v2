@@ -186,10 +186,7 @@ def main() -> None:
     select_note = ""
     selection: dict | None = None
     if args.x_range or args.t_range:
-        index_path = (
-            args.episodes_index
-            or PROCESSED_DIR / f"i24_wb_episode_positions{suffix}.json"
-        )
+        index_path = args.episodes_index or PROCESSED_DIR / f"i24_wb_episode_positions{suffix}.json"
         episodes, selection = select_by_position(
             episodes,
             Path(index_path),

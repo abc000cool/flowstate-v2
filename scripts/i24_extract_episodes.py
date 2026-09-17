@@ -122,9 +122,7 @@ def episode_positions(episodes: list[LeaderFollowerEpisode]) -> list[list[Any]]:
         by_lane.setdefault(int(row[2]), []).append(int(row[0]))
     for lane, idx in sorted(by_lane.items()):
         ids = {rows[i][1] for i in idx}
-        df = load_i24_parquet(
-            WB_DIR, lanes=(lane, lane), columns=["t", "veh_id", "x"]
-        )
+        df = load_i24_parquet(WB_DIR, lanes=(lane, lane), columns=["t", "veh_id", "x"])
         df = df.loc[df["veh_id"].isin(ids)].copy()
         df["slot"] = _slot(df["t"].to_numpy())
         df = df[["veh_id", "slot", "x"]].drop_duplicates(subset=["veh_id", "slot"])

@@ -220,10 +220,7 @@ def equilibrium_report(paths: tuple[str, ...] = EQ_POPULATIONS) -> dict[str, Any
             {
                 "artifact": rel,
                 "mean": {k: round(float(x), 4) for k, x in cal.mean.items()},
-                "sd": {
-                    k: round(float(s), 4)
-                    for k, s in zip(cal.param_names, sd, strict=True)
-                },
+                "sd": {k: round(float(s), 4) for k, s in zip(cal.param_names, sd, strict=True)},
                 "n_episodes_fit": cal.n_episodes_fit,
                 "n_episodes_holdout": cal.n_episodes_holdout,
                 "holdout_gap_rmse_m": (
