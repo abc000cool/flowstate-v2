@@ -374,8 +374,15 @@ def summarize(paths: RunPaths) -> dict[str, Any]:
     }
 
 
-def _assert_stats_match(section: str, expected: dict[str, Any], actual: dict[str, Any]) -> None:
-    """Compare one golden section: exact for ints/None, ``REL_TOL`` for floats."""
+def _assert_stats_match(
+    section: str, expected: dict[str, Any], actual: dict[str, Any], rel_tol: float = REL_TOL
+) -> None:
+    """Compare one golden section: exact for ints/None, ``rel_tol`` for floats.
+
+    ``rel_tol`` is the golden file's own ``tolerance.relative`` (written by
+    :func:`summarize`): a case may widen it, with a ``tolerance.note`` saying
+    why, when SUMO's Linux and macOS builds differ at the last digits.
+    """
     assert set(actual) == set(expected), f"{section}: key set changed"
     for key, exp in expected.items():
         act = actual[key]
@@ -385,8 +392,8 @@ def _assert_stats_match(section: str, expected: dict[str, Any], actual: dict[str
         elif key in EXACT_KEYS:
             assert act == exp, f"{label}: golden {exp!r}, got {act!r}"
         else:
-            assert act == pytest.approx(exp, rel=REL_TOL), (
-                f"{label}: golden {exp!r}, got {act!r} (rel tol {REL_TOL:g})"
+            assert act == pytest.approx(exp, rel=rel_tol), (
+                f"{label}: golden {exp!r}, got {act!r} (rel tol {rel_tol:g})"
             )
 
 
@@ -398,6 +405,9 @@ def assert_matches_golden(golden: dict[str, Any], actual: dict[str, Any]) -> Non
         actual: Output of :func:`summarize` for the re-run.
     """
     assert golden["schema_version"] == GOLDEN_SCHEMA_VERSION
+    rel_tol = float(golden.get("tolerance", {}).get("relative", REL_TOL))
+    if rel_tol != REL_TOL:
+        assert golden["tolerance"].get("note"), "a widened tolerance needs a tolerance.note"
     for dist in ("eclipse-sumo", "libsumo"):
         assert actual["versions"][dist] == golden["versions"][dist], (
             f"{dist} {actual['versions'][dist]} differs from the golden's "
@@ -411,8 +421,8 @@ def assert_matches_golden(golden: dict[str, Any], actual: dict[str, Any]) -> Non
     )
     for key in ("seed", "sumo_seed", "tier", "seeded"):
         assert actual[key] == golden[key], key
-    _assert_stats_match("run", golden["run"], actual["run"])
-    _assert_stats_match("metrics", golden["metrics"], actual["metrics"])
+    _assert_stats_match("run", golden["run"], actual["run"], rel_tol)
+    _assert_stats_match("metrics", golden["metrics"], actual["metrics"], rel_tol)
 
 
 def regenerate(case: str, work_root: Path) -> Path:
