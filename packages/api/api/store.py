@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
@@ -153,23 +154,62 @@ def kind_of_id(row_id: str) -> str | None:
     return _KIND_OF_PREFIX.get(prefix) if sep else None
 
 
+#: Cold-start retry of the WAL conversion: attempts × pause (2 s in all).
+_WAL_RETRIES = 40
+_WAL_PAUSE_S = 0.05
+
+
+def _set_wal(con: sqlite3.Connection) -> None:
+    """Switch the connection's database to WAL, waiting out a cold-start race.
+
+    Changing the journal mode needs exclusive access and, unlike ordinary
+    writes, does not wait on the busy timeout: when the API and a worker
+    create the same fresh database at the same instant (``docker compose up``
+    on an empty volume), one of them can fail at once with ``database is
+    locked``. On an already-WAL file the pragma is a no-op, so the retry only
+    ever costs time on that first creation.
+    """
+    for attempt in range(_WAL_RETRIES):
+        try:
+            con.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == _WAL_RETRIES - 1:
+                raise
+            time.sleep(_WAL_PAUSE_S)
+
+
 def _add_missing_columns(con: sqlite3.Connection) -> None:
     """Apply :data:`_ADDED_COLUMNS` to a database written by an older version.
 
     Idempotent: each column is added only when ``PRAGMA table_info`` does not
     already list it, so opening a current database is a read-only check.
+
+    The check is TOCTOU by construction — the API and the worker containers
+    start together against one upgraded database, and SQLite has no
+    ``ADD COLUMN IF NOT EXISTS`` — so a losing racer's ``ALTER`` is
+    tolerated and *verified* rather than matched against the driver's
+    message: on ``OperationalError`` the table is re-read, and the failure is
+    re-raised only when the column is still missing. Matching on
+    ``"duplicate column"`` would have made the guard depend on SQLite's
+    wording (localized/reworded builds included) and would have swallowed a
+    genuinely different ``OperationalError`` that happened to say it.
     """
     for table, column, decl in _ADDED_COLUMNS:
-        existing = {str(row["name"]) for row in con.execute(f"PRAGMA table_info({table})")}
-        if column not in existing:
-            try:
-                con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-            except sqlite3.OperationalError as exc:
-                # Two processes (the API and a worker) open the same database at
-                # once: the other one added the column between our check and
-                # our ALTER. That is the outcome we wanted.
-                if "duplicate column" not in str(exc).lower():
-                    raise
+        if _has_column(con, table, column):
+            continue
+        try:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        except sqlite3.OperationalError:
+            # Another process added it between our check and our ALTER — the
+            # outcome we wanted — or the ALTER genuinely failed.
+            if not _has_column(con, table, column):
+                raise
+
+
+def _has_column(con: sqlite3.Connection, table: str, column: str) -> bool:
+    """Whether ``table`` currently lists ``column`` (fresh ``PRAGMA`` read)."""
+    return any(str(row["name"]) == column for row in con.execute(f"PRAGMA table_info({table})"))
 
 
 def _table(kind: str) -> str:
@@ -194,7 +234,7 @@ class Store:
         con = sqlite3.connect(self.db_path, timeout=_BUSY_TIMEOUT_MS / 1000.0)
         con.row_factory = sqlite3.Row
         try:
-            con.execute("PRAGMA journal_mode=WAL")
+            _set_wal(con)
             con.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
             yield con
             con.commit()

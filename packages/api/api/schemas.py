@@ -46,6 +46,19 @@ MAX_N_BOOTSTRAP = 5000
 MAX_DE_MAXITER = 500
 MAX_DE_POPSIZE = 100
 
+#: Floor on ``CalibrationParams.max_fit_rows``: the FD fit needs a population
+#: of detector intervals, and a cap below this turns a corridor calibration
+#: into a fit of a handful of points without saying so. ``null`` (no cap) is
+#: the documented way to fit every row.
+MIN_MAX_FIT_ROWS = 1000
+
+#: Ceiling on ``CalibrationParams.max_speed_ratio_factor``. The PeMS loader
+#: cross-checks the implied speed ``q/ρ`` against the reported speed within
+#: that factor (the loader's own default is 2.0); a factor this large already
+#: tolerates any unit mistake the guard exists to catch, so nothing above it
+#: is worth accepting.
+SPEED_RATIO_FACTOR_CEILING = 100.0
+
 
 def deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``patch`` onto ``base`` (dicts merge, rest replaces).
@@ -346,6 +359,12 @@ class SweepOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+#: Calibration options whose explicit ``null`` is a *setting*, not "unset":
+#: ``max_fit_rows: null`` fits every usable row (no subsample cap). Every
+#: other null in :class:`CalibrationParams` leaves the fit's own default.
+NULL_IS_A_VALUE: frozenset[str] = frozenset({"max_fit_rows"})
+
+
 class CalibrationParams(BaseModel, extra="forbid"):
     """Fit options accepted in the ``params`` form field of ``POST /calibrations``.
 
@@ -358,9 +377,10 @@ class CalibrationParams(BaseModel, extra="forbid"):
 
     Only the keys the caller sets are forwarded to the fit
     (:meth:`forwarded`); everything else keeps the fit function's own
-    default, and an explicit ``null`` means "unset". Which keys each kind of
-    fit consumes is listed on ``api.jobs.fd_calibration_job`` and
-    ``api.jobs.idm_calibration_job``.
+    default, and an explicit ``null`` means "unset" — except for the keys in
+    :data:`NULL_IS_A_VALUE`, where ``null`` is itself the option the fit
+    takes. Which keys each kind of fit consumes is listed on
+    ``api.jobs.fd_calibration_job`` and ``api.jobs.idm_calibration_job``.
     """
 
     # Shared
@@ -375,11 +395,30 @@ class CalibrationParams(BaseModel, extra="forbid"):
     uncongested_max_density: float | None = Field(default=None, gt=0.0)
     """Free-branch density cut [veh/m]."""
     uncongested_max_occupancy: float | None = Field(default=None, gt=0.0, le=1.0)
+    max_fit_rows: int | None = Field(default=None, ge=MIN_MAX_FIT_ROWS)
+    """Cap on the rows fitted; above it the fit draws a seeded subsample.
+    Explicit ``null`` fits **every** usable row (see :data:`NULL_IS_A_VALUE`),
+    at the cost of a congested-branch LP that is quadratic in rows — the one
+    option here whose unbounded setting is a deliberate, documented choice.
+    The floor keeps a cap from silently shrinking the fit to a handful of
+    points; ``calibration.fd_fit`` additionally requires
+    ``max_fit_rows >= 2 * min_points``."""
+    max_dropped_fraction: float | None = Field(default=None, ge=0.0, le=1.0)
+    """Share of non-physical input rows tolerated before the fit is refused."""
     # PeMS loader (``loader: "pems"``)
     g_effective_length_m: float | None = Field(default=None, gt=0.0)
     interval_s: float | None = Field(default=None, gt=0.0)
     speed_unit: Literal["mph", "kmh", "ms"] | None = None
     occupancy_unit: Literal["fraction", "percent"] | None = None
+    max_speed_ratio_factor: float | None = Field(
+        default=None, gt=1.0, le=SPEED_RATIO_FACTOR_CEILING
+    )
+    """Tolerated factor between the implied speed ``q/ρ`` and the reported
+    speed. ``null`` means "unset" (the loader's own default): the loader can
+    be told ``None`` to switch the cross-check off entirely, but that is a
+    data-hygiene guard and the API does not expose a way to disable it."""
+    max_out_of_range_fraction: float | None = Field(default=None, ge=0.0, le=1.0)
+    """Share of occupancy rows allowed above 100% before the load is refused."""
     # IDM fit (``calibration.idm_fit.fit_population``)
     min_duration_s: float | None = Field(default=None, gt=0.0, le=3600.0)
     holdout_frac: float | None = Field(default=None, ge=0.0, lt=1.0)
@@ -389,8 +428,18 @@ class CalibrationParams(BaseModel, extra="forbid"):
     de_tol: float | None = Field(default=None, gt=0.0)
 
     def forwarded(self) -> dict[str, Any]:
-        """The caller-set, non-null options — what the job forwards to the fit."""
-        return self.model_dump(exclude_unset=True, exclude_none=True)
+        """The caller-set options — what the job forwards to the fit.
+
+        Unset keys and explicit nulls are dropped so the fit keeps its own
+        default, except for :data:`NULL_IS_A_VALUE`, whose explicit null is
+        forwarded as ``None`` because that is a meaningful setting.
+        """
+        set_keys = self.model_dump(exclude_unset=True)
+        forwarded = {k: v for k, v in set_keys.items() if v is not None}
+        forwarded.update(
+            {k: None for k in NULL_IS_A_VALUE if k in set_keys and set_keys[k] is None}
+        )
+        return forwarded
 
 
 class CalibrationOut(BaseModel):

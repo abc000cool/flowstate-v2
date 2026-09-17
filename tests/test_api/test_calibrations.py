@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.test_api.conftest import HEADERS, data_dir
@@ -304,3 +305,133 @@ def test_an_unused_occupancy_column_is_not_type_checked(client: TestClient) -> N
     assert failed["status"] == "failed"
     assert "'occupancy' is not numeric" in failed["error"]
     assert "0,5" not in failed["error"]  # the value itself is never echoed
+
+
+# ---------------------------------------------------------------------------
+# Input-hygiene knobs of the FD fit and the PeMS loader
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("max_fit_rows", 999),  # below the floor: a fit of a handful of points
+        ("max_fit_rows", 0),
+        ("max_fit_rows", 1.5),
+        ("max_dropped_fraction", -0.01),
+        ("max_dropped_fraction", 1.01),
+        ("max_speed_ratio_factor", 1.0),  # must be > 1 to mean anything
+        ("max_speed_ratio_factor", 0.5),
+        ("max_speed_ratio_factor", 1000.0),  # so loose the guard is vacuous
+        ("max_out_of_range_fraction", -0.01),
+        ("max_out_of_range_fraction", 1.5),
+        ("max_fit_rows_typo", 5000),  # extra="forbid" is unchanged
+    ],
+)
+def test_new_fit_options_are_bounded(client: TestClient, option: str, value: object) -> None:
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": ("loops.csv", _fd_csv_bytes(), "text/csv")},
+        data={"params": json.dumps({option: value})},
+        headers=HEADERS,
+    )
+    assert r.status_code == 422, r.text
+    assert any(option in tuple(err["loc"]) for err in r.json()["detail"]), r.text
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("max_fit_rows", 1000),
+        ("max_fit_rows", None),  # explicitly uncapped: fit every usable row
+        ("max_dropped_fraction", 0.0),
+        ("max_dropped_fraction", 1.0),
+        ("max_speed_ratio_factor", 1.01),
+        ("max_out_of_range_fraction", 0.0),
+    ],
+)
+def test_new_fit_options_accept_their_range(client: TestClient, option: str, value: object) -> None:
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": ("loops.csv", _fd_csv_bytes(), "text/csv")},
+        data={"params": json.dumps({**_FD_PARAMS, option: value})},
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    assert r.json()["status"] == "done", r.json()["error"]
+
+
+def test_only_max_fit_rows_treats_an_explicit_null_as_a_setting() -> None:
+    """``null`` is "unset" everywhere else — the fit keeps its own default."""
+    from api.schemas import CalibrationParams
+
+    assert CalibrationParams.model_validate({}).forwarded() == {}
+    assert CalibrationParams.model_validate({"max_fit_rows": None}).forwarded() == {
+        "max_fit_rows": None
+    }
+    assert CalibrationParams.model_validate({"max_fit_rows": 2000}).forwarded() == {
+        "max_fit_rows": 2000
+    }
+    for unset in ("seed", "max_dropped_fraction", "max_speed_ratio_factor", "n_bootstrap"):
+        assert CalibrationParams.model_validate({unset: None}).forwarded() == {}
+
+
+@pytest.mark.parametrize("max_fit_rows", [1000, None])
+def test_the_fd_fit_receives_the_new_knobs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, max_fit_rows: int | None
+) -> None:
+    """Exposing an option is only half of it: the job must forward it."""
+    import calibration.fd_fit as fd_fit
+
+    seen: dict[str, object] = {}
+    real = fd_fit.fit_triangular_fd
+
+    def spy(df, **kwargs):  # type: ignore[no-untyped-def]
+        seen.update(kwargs)
+        return real(df, **kwargs)
+
+    monkeypatch.setattr(fd_fit, "fit_triangular_fd", spy)
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": ("loops.csv", _fd_csv_bytes(), "text/csv")},
+        data={
+            "params": json.dumps(
+                {**_FD_PARAMS, "max_fit_rows": max_fit_rows, "max_dropped_fraction": 0.05}
+            )
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 202 and r.json()["status"] == "done", r.text
+    assert seen["max_fit_rows"] == max_fit_rows
+    assert seen["max_dropped_fraction"] == 0.05
+
+
+def test_the_pems_loader_receives_the_new_knobs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import calibration.loaders.pems as pems
+
+    seen: dict[str, object] = {}
+
+    def spy(path, **kwargs):  # type: ignore[no-untyped-def]
+        seen.update(kwargs)
+        return pd.read_csv(path)  # the tidy upload stands in for a PeMS export
+
+    monkeypatch.setattr(pems, "load_pems_station_csv", spy)
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": ("station.csv", _fd_csv_bytes(), "text/csv")},
+        data={
+            "params": json.dumps(
+                {
+                    **_FD_PARAMS,
+                    "loader": "pems",
+                    "max_speed_ratio_factor": 3.0,
+                    "max_out_of_range_fraction": 0.05,
+                }
+            )
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 202 and r.json()["status"] == "done", r.text
+    assert seen == {"max_speed_ratio_factor": 3.0, "max_out_of_range_fraction": 0.05}

@@ -51,8 +51,9 @@ _FIELD_COLUMNS: dict[str, str] = {"speed": "mean_speed", "density": "density"}
 #: change meaning, so a tree written by an older version is recomputed instead
 #: of served: v2 measures travel times over the scenario's analysis span
 #: (:func:`analysis_span`) rather than over the replicate's raw position
-#: extremes.
-_METRICS_CACHE_SCHEMA = 2
+#: extremes; v3 extends that span to OSM corridors (the I-24 flagship), whose
+#: replicates were each measured over their own observed extent.
+_METRICS_CACHE_SCHEMA = 3
 
 #: Distance kept clear of a corridor's downstream end when the corridor has no
 #: exit buffer [m]. ``validation.metrics.travel_times`` needs an *upward
@@ -218,6 +219,19 @@ def analysis_span(meta: dict[str, Any]) -> tuple[float, float] | None:
       :data:`CORRIDOR_EXIT_MARGIN_M` when no exit buffer carries vehicles
       past that point.
 
+    An **OSM** corridor declares no length in its config — the edge lengths
+    come from the compiled network — so its geometry is read from the
+    ``corridor`` block ``microsim.runner`` records in ``meta.json``
+    (``total_length_m``, ``x_first_edge_m``). Without a shared span every
+    replicate of an OSM run is measured over its own median furthest
+    position, which makes a *congested* replicate report the *lower* travel
+    time (its span shrank) and turns the run's 95% CI into a measurement
+    artifact. The downstream bound is the end of the corridor proper: the
+    last edge when it hosts the boundary schedule (``meta["boundary"]
+    ["exit_buffer_m"]``, the OSM exit-buffer convention of
+    docs/CONTRACTS.md §2), else :data:`CORRIDOR_EXIT_MARGIN_M` short of the
+    network end.
+
     ``None`` means "no geometric span" and leaves the choice to
     :func:`validation.metrics.compute_metrics`, whose own default is the
     smallest observed position to the *median* per-vehicle furthest position:
@@ -226,12 +240,14 @@ def analysis_span(meta: dict[str, Any]) -> tuple[float, float] | None:
       a travel time across a span is not a corridor traversal; the caller
       (:func:`replicate_metrics`) reports the travel-time metrics as absent
       rather than measuring them.
-    - OSM networks — there is no synthetic buffer and no single declared
-      length here; the corridor's own extent is what the trajectories show.
+    - OSM runs written before the ``corridor`` meta block existed — their
+      geometry is unrecoverable from the artifacts, so they keep the
+      observed-extent behaviour rather than being measured over a guess.
 
     Args:
         meta: The replicate's parsed ``meta.json`` (contract §3); its
-            ``config`` block is the effective scenario config.
+            ``config`` block is the effective scenario config, and its
+            ``corridor``/``boundary`` blocks the geometry as built.
 
     Returns:
         ``(x_lo, x_hi)``, or ``None`` when the geometry does not define one.
@@ -240,8 +256,18 @@ def analysis_span(meta: dict[str, Any]) -> tuple[float, float] | None:
     if not isinstance(config, dict):
         return None
     network = config.get("network")
-    if not isinstance(network, dict) or network.get("kind") != "corridor":
+    if not isinstance(network, dict):
         return None
+    kind = network.get("kind")
+    if kind == "corridor":
+        return _corridor_span(network)
+    if kind == "osm":
+        return _osm_span(meta)
+    return None
+
+
+def _corridor_span(network: dict[str, Any]) -> tuple[float, float] | None:
+    """The generated-corridor branch of :func:`analysis_span`, from the config."""
     length = _number(network.get("length_m"))
     if length is None or length <= 0.0:
         return None
@@ -256,6 +282,24 @@ def analysis_span(meta: dict[str, Any]) -> tuple[float, float] | None:
     has_exit_buffer = exit_buffer is not None and exit_buffer > 0.0
     margin = 0.0 if has_exit_buffer else min(CORRIDOR_EXIT_MARGIN_M, 0.5 * length)
     x_hi = x_lo + length - margin
+    return (x_lo, x_hi) if x_hi > x_lo else None
+
+
+def _osm_span(meta: dict[str, Any]) -> tuple[float, float] | None:
+    """The OSM branch of :func:`analysis_span`: the recorded built geometry."""
+    corridor = meta.get("corridor")
+    if not isinstance(corridor, dict):
+        return None  # written before the block existed: observed-extent behaviour
+    total = _number(corridor.get("total_length_m"))
+    x_lo = _number(corridor.get("x_first_edge_m"))
+    if total is None or x_lo is None or total <= 0.0 or x_lo < 0.0:
+        return None
+    boundary = meta.get("boundary")
+    exit_buffer = _number(boundary.get("exit_buffer_m")) if isinstance(boundary, dict) else None
+    margin = (
+        exit_buffer if exit_buffer is not None and exit_buffer > 0.0 else CORRIDOR_EXIT_MARGIN_M
+    )
+    x_hi = total - margin
     return (x_lo, x_hi) if x_hi > x_lo else None
 
 

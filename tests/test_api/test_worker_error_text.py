@@ -10,13 +10,21 @@ run's diagnostic); the calibration record additionally withholds them —
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import api
 from api.jobs import _calibration_error_text, _error_text
-from tests.test_api.conftest import HEADERS, macro_corridor_config, post_run, post_scenario
+from tests.test_api.conftest import (
+    HEADERS,
+    data_dir,
+    macro_corridor_config,
+    post_run,
+    post_scenario,
+)
 
 #: Every traceback frame of a job failure names a file under here.
 _API_SRC = str(Path(api.__file__).resolve().parent)
@@ -144,6 +152,64 @@ def test_spawn_pool_child_traceback_is_withheld() -> None:
     assert "/srv/flowstate" not in text
     # The calibration record withholds it too, whatever the filter setting.
     assert "Traceback (most recent call last)" not in _calibration_error_text(exc)
+
+
+@pytest.mark.integration
+def test_a_failed_replicate_does_not_re_embed_the_childs_message(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """The pool wrapper names the seed and the type — never the child's text.
+
+    ``api.jobs._exception_chain_text`` strips a pydantic ValidationError's
+    quoted input, because when the worker validated a file it read (here an
+    ``IDMCalibration`` artifact the caller pointed the fleet at) the quote is
+    that file's contents. The micro tier's pool wrapper used to interpolate
+    ``{exc}`` — the child's fully rendered message — into its own
+    ``RuntimeError``, which is FlowState-authored and therefore kept
+    verbatim: the scrubbed text was put straight back.
+    """
+    marker = "MARKER-INSIDE-THE-ARTIFACT"
+    artifact = data_dir(tmp_path) / "bad_idm.json"  # parseable JSON, wrong schema
+    artifact.write_text(
+        json.dumps(
+            {
+                "kind": "idm",
+                "created_at": "2026-09-17T00:00:00Z",
+                "source": "schema-invalid fixture",
+                "data_hash": "h",
+                "mean": marker,  # must be an object of the five IDM means
+                "cov": [[0.0] * 5 for _ in range(5)],
+                "n_episodes_fit": 1,
+                "n_episodes_holdout": 1,
+                "holdout_gap_rmse_m": 1.0,
+            }
+        )
+    )
+    scenario = post_scenario(
+        client,
+        {
+            "name": "bad_calibration_artifact",
+            "tier": "micro",
+            "network": {"kind": "ring", "circumference_m": 230.0, "n_vehicles": 5},
+            "fleet": {"model": "IDM", "idm_calibration": str(artifact)},
+            "sim": {"duration_s": 10.0},
+            "seed": 42,
+            "replicates": 1,
+        },
+    )
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "failed"
+    error = run["error"]
+
+    # Honest and actionable: which replicate, which failure, which field.
+    assert "micro replicate seed=" in error
+    assert "ValidationError" in error and "mean" in error
+    # ...without the input the child quoted, or the frames around it.
+    assert "input_value=" not in error
+    assert marker not in error
+    assert "Traceback (most recent call last)" not in error
+    assert 'File "' not in error and _API_SRC not in error
+    assert "_RemoteTraceback: child traceback withheld" in error
 
 
 def test_a_message_that_is_itself_a_traceback_is_withheld() -> None:

@@ -6,16 +6,23 @@ libarrow is loaded in-process (see ``microsim.runner._write_parquet``).
 """
 
 import json
+from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
+import sumolib
 
 from flowstate_core.config import ScenarioConfig, config_hash
 from microsim import load_scenario, run_micro, run_replicates
 from microsim.runner import is_run_complete, require_complete_run
+from tests.test_microsim.test_microsim_merge_managed_meter import _merge_scenario
 
 pytestmark = pytest.mark.integration
+
+#: Checked-in interchange extract (a 4-edge motorway chain with an on-ramp),
+#: read-only here — the same fixture the golden merge cases run on.
+MERGE_OSM = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "merge.osm"
 
 #: Contract dtypes (docs/CONTRACTS.md §3) + the ring-only unwrapped column.
 TRAJ_SCHEMA_RING = [
@@ -362,6 +369,70 @@ class TestCorridorSmoke:
         meta = json.loads(paths.meta.read_text())
         assert meta["vsl"] == "vsl_threshold"
         assert pd.read_parquet(paths.trajectories).veh_id.nunique() > 0
+
+
+class TestCorridorGeometryMeta:
+    """``meta.json["corridor"]``: the linear-x geometry the run was built on.
+
+    ``api.results.analysis_span`` measures travel times over it. An OSM
+    corridor declares no length in its config — the edge lengths come from
+    the compiled network — so without this block every replicate of an OSM
+    run was measured over its own observed extent, which makes a *congested*
+    replicate report a *lower* travel time than a free-flowing sibling
+    (its span shrank) and turns the run's 95% CI into a measurement artifact.
+    """
+
+    def test_generated_corridor_records_the_corridor_proper(self, tmp_path):
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "corridor_geometry_meta",
+                "network": {
+                    "kind": "corridor",
+                    "length_m": 1000.0,
+                    "lanes": 1,
+                    "inflow": [[0.0, 0.3]],
+                    "boundary": {"steps": [[0.0, 15.0]], "exit_buffer_m": 150.0},
+                },
+                "sim": {"duration_s": 60.0},
+            }
+        )
+        paths = run_micro(cfg, 42, tmp_path)
+        meta = json.loads(paths.meta.read_text())
+        corridor = meta["corridor"]
+        assert corridor["kind"] == "corridor"
+        # Insertion buffer min(2000, length) = 1000 m, then the 1 km corridor
+        # proper, then the 150 m exit buffer that hosts the boundary schedule.
+        assert corridor["x_first_edge_m"] == pytest.approx(1000.0)
+        assert corridor["total_length_m"] == pytest.approx(2150.0)
+        assert meta["boundary"]["exit_buffer_m"] == pytest.approx(150.0)
+        # The block bounds the linear x the run actually wrote.
+        df = pd.read_parquet(paths.trajectories)
+        assert 0.0 <= df.x.min() and df.x.max() <= corridor["total_length_m"]
+
+    def test_osm_corridor_records_the_compiled_chain(self, tmp_path):
+        cfg = _merge_scenario(MERGE_OSM, "lane_change", duration_s=60.0)
+        paths = run_micro(cfg, 42, tmp_path)
+        meta = json.loads(paths.meta.read_text())
+        corridor = meta["corridor"]
+        assert corridor["kind"] == "osm"
+        # No synthetic insertion buffer on an import: the corridor proper is
+        # the first named corridor edge, at the linear-x origin.
+        assert corridor["x_first_edge_m"] == pytest.approx(0.0)
+        # The length is the compiled chain's, not anything in the config
+        # (which declares none) — this is why the block has to exist.
+        net = sumolib.net.readNet(str(paths.run_dir / "net" / "osm.net.xml"))
+        expected = sum(net.getEdge(e).getLength() for e in cfg.network.corridor_edges)
+        assert corridor["total_length_m"] == pytest.approx(expected)
+        assert "length_m" not in cfg.network.model_dump()
+        df = pd.read_parquet(paths.trajectories)
+        assert 0.0 <= df.x.min() and df.x.max() <= corridor["total_length_m"]
+
+    def test_ring_block_is_marked_as_a_loop(self, run):
+        """A ring's ``x`` wraps: the block says so instead of implying a span."""
+        _cfg, paths = run
+        corridor = json.loads(paths.meta.read_text())["corridor"]
+        assert corridor["kind"] == "ring"
+        assert corridor["total_length_m"] == pytest.approx(230.0)
 
 
 class TestReplicates:

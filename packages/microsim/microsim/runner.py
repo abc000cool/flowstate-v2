@@ -1581,6 +1581,21 @@ def run_micro(
             if vsl_fn is not None
             else None
         ),
+        # Linear-x geometry of the analysis corridor, as BUILT (the config
+        # alone does not carry it for an OSM import: the edge lengths come
+        # from the compiled network). Read by ``api.results.analysis_span``
+        # so every replicate of an OSM run measures travel times over the
+        # same distance instead of over its own observed extremes.
+        "corridor": {
+            # ring | corridor | osm. A ring's x wraps, so its numbers below
+            # describe the loop and are NOT a travel-time span.
+            "kind": bundle.kind,
+            "total_length_m": bundle.total_length_m,
+            # Where the corridor proper starts: the first edge after the
+            # insertion buffer on a generated corridor, the first corridor
+            # edge on an OSM import (0.0 on a ring).
+            "x_first_edge_m": (offsets_by_edge[bundle.main_edges[0]] if bundle.main_edges else 0.0),
+        },
         "boundary": (
             {
                 "kind": boundary_spec.kind,
@@ -1765,8 +1780,14 @@ def _map_replicates(
                         f"with fewer processes (n_procs) or on a larger machine."
                     ) from exc
                 except Exception as exc:
+                    # The child's message is NOT re-embedded here: it reaches
+                    # the caller as this error's cause, where
+                    # ``api.jobs._exception_chain_text`` can scrub it (a
+                    # pydantic ValidationError quotes the file the child was
+                    # validating). Copying it into this message would put the
+                    # unscrubbed text back into the stored run error.
                     raise RuntimeError(
-                        f"micro replicate seed={seed} failed: {type(exc).__name__}: {exc}"
+                        f"micro replicate seed={seed} failed: {type(exc).__name__}"
                     ) from exc
         except TimeoutError as exc:
             stuck = sorted(s for s in seeds if s not in results)

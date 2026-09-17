@@ -489,10 +489,23 @@ _FD_FIT_KEYS = (
     "min_points",
     "uncongested_max_density",
     "uncongested_max_occupancy",
+    # Input-hygiene / cost knobs of ``calibration.fd_fit.fit_triangular_fd``:
+    # the row cap (``None`` = fit every row) and the share of non-physical
+    # rows tolerated before the fit is refused.
+    "max_fit_rows",
+    "max_dropped_fraction",
     "notes",
 )
 
-_PEMS_LOADER_KEYS = ("g_effective_length_m", "interval_s", "speed_unit", "occupancy_unit")
+_PEMS_LOADER_KEYS = (
+    "g_effective_length_m",
+    "interval_s",
+    "speed_unit",
+    "occupancy_unit",
+    # Unit-mistake guards of ``calibration.loaders.pems.load_pems_station_csv``.
+    "max_speed_ratio_factor",
+    "max_out_of_range_fraction",
+)
 
 _IDM_FIT_KEYS = (
     "seed",
@@ -773,23 +786,51 @@ def _report_span(runs: list[dict[str, Any]]) -> tuple[float, float] | None:
 
     When every run in the set is the same corridor geometry, the geometric
     span (:func:`api.results.analysis_span`) is the honest one and is passed
-    explicitly. A heterogeneous set (mixed geometries, ring or OSM runs)
-    gets ``None`` — the generator's own shared span is then the best
-    available answer, and inventing a common geometry would be worse.
+    explicitly. A heterogeneous set (mixed geometries, or ring runs) gets
+    ``None`` — the generator's own shared span is then the best available
+    answer, and inventing a common geometry would be worse.
+
+    An OSM corridor's geometry is not in the config (the edge lengths come
+    from the compiled network), so the span is taken from a replicate's
+    ``meta.json`` when one is readable; the config alone is the fallback,
+    which keeps runs recorded before that block existed on their previous
+    behaviour.
 
     Args:
         runs: Store rows of the report's runs (each carries the effective
-            ``config`` the run executed).
+            ``config`` the run executed and its ``run_root``).
 
     Returns:
         The shared span, or ``None`` when the set does not define one.
     """
     from api.results import analysis_span
 
-    spans = {analysis_span({"config": run["config"]}) for run in runs}
+    spans = {analysis_span(_span_meta(run)) for run in runs}
     if len(spans) != 1:
         return None
     return spans.pop()
+
+
+def _span_meta(run: dict[str, Any]) -> dict[str, Any]:
+    """What :func:`api.results.analysis_span` reads for one run row.
+
+    A replicate's ``meta.json`` when the run has one (it carries the geometry
+    as built, which an OSM config does not), else the config alone.
+    """
+    from api.results import load_meta, replicate_dirs
+
+    try:
+        rep_dirs = replicate_dirs(Path(run["run_root"]))
+    except (KeyError, TypeError, OSError):
+        rep_dirs = []
+    for rep_dir in rep_dirs:
+        try:
+            meta = load_meta(rep_dir)
+        except (OSError, ValueError):
+            continue
+        if isinstance(meta, dict) and isinstance(meta.get("config"), dict):
+            return meta
+    return {"config": run["config"]}
 
 
 def _pdf_available() -> bool:

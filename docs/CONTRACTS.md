@@ -589,3 +589,13 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   de-duplicated; `api.results._METRICS_CACHE_SCHEMA = 2` (per-replicate
   `metrics.json` written under schema 1 are recomputed); the image copies
   `artifacts/` and `data/osm/`.
+- Closing the regression review (2026-09-17): micro `meta.json.corridor`
+  (`kind: ring | corridor | osm`, `total_length_m`, `x_first_edge_m`, the
+  linear-x geometry as built; a ring's numbers describe the loop, not a
+  span); `api.results._METRICS_CACHE_SCHEMA = 3`; `analysis_span` for
+  `kind == "osm"` is `(x_first_edge_m, total_length_m - exit_buffer_m)` when
+  the boundary schedule is hosted on the last edge, else `total_length_m -
+  CORRIDOR_EXIT_MARGIN_M`; `CalibrationParams` gains `max_fit_rows`,
+  `max_dropped_fraction`, `max_speed_ratio_factor`,
+  `max_out_of_range_fraction` (an explicit `max_fit_rows: null` means no
+  row cap; every other null means unset).
