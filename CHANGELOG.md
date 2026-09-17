@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Dashboard: criteria profile on reports (2026-09-17, evening)
+
+- The reports view has a criteria-profile selector fed by `GET /api/v1/criteria` (the registry's default preselected, each option titled with its source), sends the chosen profile with `POST /reports`, and shows the profile on every report row (server rows carry it; local records store it). Against a service that predates the endpoint (404) the selector degrades to a single `fhwa_default` option and the POST omits the field. The demo mock serves the registry and refuses an unknown profile like the API. 91 vitest cases across 12 files.
+
 ### Merge round six closed: candidates 3 and 4 probed on the cloud (2026-09-17)
 
 - VM `flowstate-probe` (24 minutes, about sixty cents): `artifacts/i24_merge_experiment_ohlevel.json` (Old Hickory × 0.55 / 0.75 / 1 / 1.25 / 1.6 on the flow family's fitted arm) and `artifacts/i24_merge_experiment_heavylanes.json` (no heavy population / uniform / placed by lane on the canonical fitted arm). Below the fitted ramp level the corridor free-flows; above it admittance saturates near 2,240 vehicles and the peak sections stay at 5,860 to 5,890 veh/h against the 6,225 / 6,238 needed for GEH 5. The lane-placed heavy population moves segment speeds by at most 2 km/h and lowers admittance. Both candidates excluded by their pre-registered deciders; all five closed. docs/I24_VALIDATION.md §0.11 records the merge as a model-form limitation with its residual (about 5,880 veh/h discharged where the recording sustains 6,630) and points the next work at the calibrated population's discharge capacity under merging.
