@@ -6,8 +6,12 @@
  * Shapes mirror the real API contract (packages/api/api/schemas.py) so the
  * mock cannot mask a client/contract drift: metric names are the
  * `validation.metrics.Metrics` field names, sweeps take `controllers` (a
- * list) and answer with `SweepOut`, and reports are asynchronous
- * (`queued` → `running` → `done`) with the markdown served only once done. */
+ * list) and answer with `SweepOut`, reports are asynchronous
+ * (`queued` → `running` → `done`) with the markdown served only once done and
+ * a results-root-relative `report_path`, aggregates carry all three
+ * `api.results.ci_to_json` states (n=0 + reason, underpowered, quotable), and
+ * `preset` is the API's own marker (false on stored scenarios, true on
+ * presets). */
 
 import type {
   AggregateStat,
@@ -74,6 +78,11 @@ const corridorConfig: ScenarioConfig = {
 
 interface ScenarioRecord extends ScenarioSummary {
   config: ScenarioConfig;
+  /** Whether this config is also shipped as a repo preset. It is NOT the
+   * `preset` field of the response: `ScenarioOut.preset` is always false —
+   * a stored scenario is a user scenario even when its config came from a
+   * preset — and `mockListPresets` is what serves the preset side. */
+  fromPreset: boolean;
 }
 
 const scenarios: ScenarioRecord[] = [
@@ -82,14 +91,14 @@ const scenarios: ScenarioRecord[] = [
     name: 'ring_sugiyama',
     config_hash: fakeHash(JSON.stringify(ringConfig)),
     config: ringConfig,
-    preset: true,
+    fromPreset: true,
   },
   {
     scenario_id: 'scn-corridor',
     name: 'corridor_10km',
     config_hash: fakeHash(JSON.stringify(corridorConfig)),
     config: corridorConfig,
-    preset: true,
+    fromPreset: true,
   },
 ];
 
@@ -110,6 +119,9 @@ interface RunProfile {
   /** Backward wave-front speed magnitude, reported positive like the API. */
   wave_speed_kmh: number;
   wave_amplitude_ms: number;
+  /** Vehicles behind mean_tt_s / p90_tt_s; 0 where no whole journey was
+   * recorded (the macro tier records none at all). */
+  n_travel_time_veh: number;
 }
 
 interface RunRecord {
@@ -144,6 +156,7 @@ const BASELINE: RunProfile = {
   wave_count: 6,
   wave_speed_kmh: 17.6,
   wave_amplitude_ms: 14.2,
+  n_travel_time_veh: 583,
 };
 
 const DAMPENED: RunProfile = {
@@ -158,6 +171,7 @@ const DAMPENED: RunProfile = {
   wave_count: 1,
   wave_speed_kmh: 16.2,
   wave_amplitude_ms: 6.8,
+  n_travel_time_veh: 604,
 };
 
 const RING_PROFILE: RunProfile = {
@@ -172,6 +186,7 @@ const RING_PROFILE: RunProfile = {
   wave_count: 1,
   wave_speed_kmh: 4.9,
   wave_amplitude_ms: 7.1,
+  n_travel_time_veh: 22,
 };
 
 const MACRO_PROFILE: RunProfile = {
@@ -186,6 +201,8 @@ const MACRO_PROFILE: RunProfile = {
   wave_count: 4,
   wave_speed_kmh: 18.4,
   wave_amplitude_ms: 12.0,
+  // the macro tier has no per-vehicle trajectories, so it reports none
+  n_travel_time_veh: 0,
 };
 
 const t0 = Date.parse('2026-08-29T14:02:00Z');
@@ -327,39 +344,70 @@ const JITTER: Record<keyof RunProfile, number> = {
   wave_count: 1.2,
   wave_speed_kmh: 1.4,
   wave_amplitude_ms: 1.1,
+  n_travel_time_veh: 9,
 };
 
 const METRIC_KEYS = Object.keys(JITTER) as (keyof RunProfile)[];
 
+/** Metrics that are counts of things: integer-valued and never negative. */
+const COUNT_KEYS: (keyof RunProfile)[] = ['wave_count', 'n_travel_time_veh'];
+
+/** Aggregate one metric's replicate values exactly as `api.results.ci_to_json`
+ * does — the three states a client must render differently:
+ *
+ * - no finite value at all → null mean/bounds, `n: 0`, `underpowered: false`
+ *   and `reason: 'no_observations'` (there is no estimate, not a weak one);
+ * - a single value → no dispersion, so the bounds stay null;
+ * - otherwise the t-ish CI, `underpowered` below the 20-replicate standard. */
+function aggregateMetric(values: (number | null)[]): AggregateStat {
+  const vals = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (vals.length === 0) {
+    return { mean: null, lo95: null, hi95: null, n: 0, underpowered: false, reason: 'no_observations' };
+  }
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const underpowered = vals.length < 20;
+  if (vals.length === 1) {
+    return { mean: Math.round(mean * 1000) / 1000, lo95: null, hi95: null, n: 1, underpowered, reason: null };
+  }
+  const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (vals.length - 1));
+  const half = (1.96 * sd) / Math.sqrt(vals.length);
+  return {
+    mean: Math.round(mean * 1000) / 1000,
+    lo95: Math.round((mean - half) * 1000) / 1000,
+    hi95: Math.round((mean + half) * 1000) / 1000,
+    n: vals.length,
+    underpowered,
+    reason: null,
+  };
+}
+
 function buildMetrics(r: RunRecord): RunMetrics {
   const profile = r.profile ?? BASELINE;
   const rng = mulberry32(r.seedBase);
-  const per: { seed: number; metrics: Record<string, number> }[] = [];
+  const per: { seed: number; metrics: Record<string, number | null> }[] = [];
   for (let i = 0; i < r.n; i++) {
-    const rep: Record<string, number> = {};
+    const rep: Record<string, number | null> = {};
     for (const k of METRIC_KEYS) {
       const noise = (rng() + rng() + rng() - 1.5) * JITTER[k]; // ~normal
       let v = profile[k] + noise;
-      if (k === 'wave_count') v = Math.max(0, Math.round(v));
+      // integer counts stay integers, and a profile count of zero stays zero
+      // in every replicate — that is what makes the metrics derived from it
+      // (wave speed, wave amplitude) genuinely unobserved rather than sparse
+      if (COUNT_KEYS.includes(k)) v = profile[k] === 0 ? 0 : Math.max(0, Math.round(v));
       rep[k] = Math.round(v * 1000) / 1000;
+    }
+    // a replicate where no wave was detected has no wave-front observation:
+    // wave speed and amplitude are undefined there, exactly like the API's
+    // per-replicate nulls (a fully dampened cell then aggregates to n=0)
+    if (rep.wave_count === 0) {
+      rep.wave_speed_kmh = null;
+      rep.wave_amplitude_ms = null;
     }
     per.push({ seed: r.seedBase + i, metrics: rep });
   }
   const aggregate: Record<string, AggregateStat> = {};
   for (const k of METRIC_KEYS) {
-    const vals = per.map((p) => p.metrics[k]);
-    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-    const sd = Math.sqrt(
-      vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, vals.length - 1),
-    );
-    const half = (1.96 * sd) / Math.sqrt(vals.length);
-    aggregate[k] = {
-      mean: Math.round(mean * 1000) / 1000,
-      lo95: Math.round((mean - half) * 1000) / 1000,
-      hi95: Math.round((mean + half) * 1000) / 1000,
-      n: r.n,
-      underpowered: r.n < 20,
-    };
+    aggregate[k] = aggregateMetric(per.map((p) => p.metrics[k]));
   }
   return {
     run_id: r.run_id,
@@ -425,6 +473,7 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
       wave_count: Math.max(0, Math.round(BASELINE.wave_count * (1 - damp))),
       wave_speed_kmh: BASELINE.wave_speed_kmh,
       wave_amplitude_ms: BASELINE.wave_amplitude_ms * (1 - damp * 0.55),
+      n_travel_time_veh: Math.round(BASELINE.n_travel_time_veh * (1 + damp * 0.04)),
     };
     const rec: RunRecord = {
       run_id: runId,
@@ -558,14 +607,18 @@ function reportMarkdown(reportId: string, runIds: string[]): string {
 }
 
 /** `ReportOut` view of a row: like the Redis-queued API, a report is
- * `queued`, then `running`, then `done` a few seconds after creation. */
+ * `queued`, then `running`, then `done` a few seconds after creation.
+ *
+ * `report_path` is results-root-relative, exactly as the API serves it
+ * (`api.main._relative_report_path`) — an identifier for the bundle, never a
+ * URL and never the server's directory layout. */
 function reportView(row: ReportRow): ReportOut {
   const age = (Date.now() - row.createdAt) / 1000;
   const status: ReportOut['status'] = age < 1.2 ? 'queued' : age < 3 ? 'running' : 'done';
   return {
     ...row.out,
     status,
-    report_path: status === 'done' ? `/data/reports/${row.out.report_id}/report.md` : null,
+    report_path: status === 'done' ? `reports/${row.out.report_id}/report.md` : null,
   };
 }
 
@@ -599,16 +652,18 @@ export async function mockHealth(): Promise<{ status: string }> {
   return { status: 'ok' };
 }
 
+/** Stored scenarios, with the API's marker: `ScenarioOut.preset` is always
+ * false, whatever the config was created from. */
 export async function mockListScenarios(): Promise<ScenarioSummary[]> {
   await latency();
-  return scenarios.map((s) => ({ ...s }));
+  return scenarios.map(({ fromPreset: _fromPreset, ...s }) => ({ ...s, preset: false }));
 }
 
 /** Presets have the API's `PresetOut` shape: no `scenario_id` until stored. */
 export async function mockListPresets(): Promise<PresetSummary[]> {
   await latency();
   return scenarios
-    .filter((s) => s.preset)
+    .filter((s) => s.fromPreset)
     .map((s) => ({
       name: s.name,
       filename: `${s.name}.yaml`,
@@ -623,7 +678,13 @@ export async function mockCreateScenario(cfg: ScenarioConfig): Promise<CreateSce
   const id = `scn-${fakeHash(JSON.stringify(cfg)).slice(0, 6)}`;
   const hash = fakeHash(JSON.stringify(cfg));
   if (!scenarios.some((s) => s.scenario_id === id)) {
-    scenarios.push({ scenario_id: id, name: cfg.name, config_hash: hash, config: cfg });
+    scenarios.push({
+      scenario_id: id,
+      name: cfg.name,
+      config_hash: hash,
+      config: cfg,
+      fromPreset: false,
+    });
   }
   return { scenario_id: id, config_hash: hash };
 }
@@ -735,6 +796,15 @@ export async function mockCreateReport(runIds: string[], title = REPORT_TITLE): 
   };
   reports.set(id, row);
   return reportView(row);
+}
+
+/** `GET /reports` — every report this session holds, newest first. */
+export async function mockListReports(limit = 200): Promise<ReportOut[]> {
+  await latency();
+  return [...reports.values()]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, Math.max(1, limit))
+    .map(reportView);
 }
 
 export async function mockGetReport(reportId: string): Promise<ReportOut> {

@@ -19,7 +19,11 @@ import { useAuthFailed, usePoll } from '../lib/hooks';
 import {
   clampInt,
   describeSimMinutes,
+  MAX_DURATION_S,
   MAX_REPLICATES,
+  MAX_SEED,
+  MIN_DURATION_S,
+  MIN_SEED,
   needsLaunchConfirm,
   simMinutes,
 } from '../lib/limits';
@@ -35,6 +39,14 @@ function numOr(raw: string, fallback: number | null): number | null {
   if (raw.trim() === '') return fallback;
   const v = Number(raw);
   return Number.isFinite(v) ? v : fallback;
+}
+
+/** Clamp a numeric field's raw value while keeping '' meaningful here: an
+ * empty box is "use the scenario's own value", not zero. Everything else goes
+ * through `clampInt`, so a typo cannot post `duration_s: -5` or a negative
+ * seed the runner would reject. */
+function clampRaw(raw: string, lo: number, hi: number): string {
+  return raw === '' ? '' : String(clampInt(Number(raw), lo, hi, lo));
 }
 
 export function RunsView(): JSX.Element {
@@ -199,12 +211,15 @@ export function RunsView(): JSX.Element {
               id="l-dur"
               className="input"
               type="number"
-              min={1}
+              min={MIN_DURATION_S}
+              max={MAX_DURATION_S}
               step={60}
               style={{ width: 110 }}
               placeholder="scenario"
               value={durationRaw}
-              onChange={(e) => setDurationRaw(e.target.value)}
+              onChange={(e) =>
+                setDurationRaw(clampRaw(e.target.value, MIN_DURATION_S, MAX_DURATION_S))
+              }
             />
           </div>
           <div className="field">
@@ -213,10 +228,12 @@ export function RunsView(): JSX.Element {
               id="l-seed"
               className="input"
               type="number"
+              min={MIN_SEED}
+              max={MAX_SEED}
               style={{ width: 110 }}
               placeholder="scenario"
               value={seedRaw}
-              onChange={(e) => setSeedRaw(e.target.value)}
+              onChange={(e) => setSeedRaw(clampRaw(e.target.value, MIN_SEED, MAX_SEED))}
             />
           </div>
           <div className="field">

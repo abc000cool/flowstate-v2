@@ -87,12 +87,17 @@ export interface ScenarioSummary {
   config_hash: string;
   /** Full config when the API embeds it (the mock always does). */
   config?: ScenarioConfig;
+  /** The API's `ScenarioOut.preset`, always **false**: a stored scenario is a
+   * user scenario even when it was created from a preset's config. Optional
+   * so a pre-marker API response still type-checks; when the field is absent
+   * the client falls back to the endpoint the item came from. */
   preset?: boolean;
 }
 
 /** A repo `scenarios/*.yaml` offered by `GET /scenarios/preset` (API `PresetOut`).
  * Presets are not stored scenarios: they have no `scenario_id` until one is
- * created from their config. */
+ * created from their config. `preset` is the API's own marker (always true
+ * here), so a merged library can tell the two lists apart from the data. */
 export interface PresetSummary {
   name: string;
   filename: string;
@@ -135,6 +140,18 @@ export interface CreateRunRequest {
   tier?: Tier;
 }
 
+/** Mirrors the API's `CIOut` — a t-distribution CI over the replicates that
+ * produced a value for this metric, in exactly three states (see
+ * `api.results.ci_to_json`):
+ *
+ * - `n === 0` — no replicate produced the metric (no wave detected, no
+ *   emission model). `mean`/`lo95`/`hi95` are null, `reason` is
+ *   `'no_observations'` and `underpowered` is **false**: there is no estimate
+ *   to be underpowered about. Render the metric as absent, never as an
+ *   interval and never as a zero.
+ * - `0 < n < 20` — an estimate below the headline minimum: `underpowered` is
+ *   true (`lo95`/`hi95` null at n === 1, no dispersion from one value).
+ * - `n >= 20` — headline-quotable; `underpowered` false, `reason` null. */
 export interface AggregateStat {
   /** null when the metric is undefined for every replicate (API `CIOut`). */
   mean: number | null;
@@ -142,6 +159,10 @@ export interface AggregateStat {
   hi95: number | null;
   n: number;
   underpowered: boolean;
+  /** Why there is no estimate, when there is none (`n === 0`); null/absent
+   * otherwise. Optional so a pre-`reason` API response still type-checks
+   * (`lib/metrics.hasNoObservations` is the predicate to use). */
+  reason?: 'no_observations' | null;
 }
 
 export interface ReplicateMetrics {
@@ -219,13 +240,18 @@ export interface SweepDetail {
 export type ReportStatus = RunStatus;
 
 /** Mirrors the API's `ReportOut` — returned by `POST /reports` (202; still
- * `queued` under the Redis queue, terminal under the inline queue) and by
- * `GET /reports/{id}`. */
+ * `queued` under the Redis queue, terminal under the inline queue), by
+ * `GET /reports/{id}` and, newest first, by `GET /reports`. */
 export interface ReportOut {
   report_id: string;
   status: ReportStatus;
   run_ids: string[];
   title: string;
+  /** The bundle's markdown file *relative to the server's results root*
+   * (`reports/<report_id>/report.md`) — an identifier for the bundle, not a
+   * URL and not a path this browser can open. The UI must never render it as
+   * a link or a path; the content comes from `/reports/{id}/markdown`,
+   * `/pdf` and `/archive`. */
   report_path?: string | null;
   error: string | null;
   /** `report_refused` when the run set cannot support a validation report
@@ -234,9 +260,11 @@ export interface ReportOut {
   created_at: string;
 }
 
-/** Client-side record of a requested report (persisted in localStorage —
- * the contract has no report-list endpoint). `status`/`error` are refreshed
- * by polling `GET /reports/{id}` while the report is queued or running. */
+/** A row of the dashboard's report table. `GET /reports` is the source of
+ * truth; this shape also carries the browser's own localStorage records,
+ * which now only cover reports the server list does not return (requested
+ * against another server, or before the list endpoint existed). Local rows
+ * refresh their `status`/`error` from `GET /reports/{id}`. */
 export interface ReportRecord {
   report_id: string;
   run_ids: string[];

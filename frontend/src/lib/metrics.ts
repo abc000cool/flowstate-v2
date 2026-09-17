@@ -8,6 +8,8 @@
  * `src/test/metrics.test.ts` checks this mirror against the dataclass.
  * Unknown metric keys from the API still render via the generic fallback. */
 
+import type { AggregateStat } from '../api/types';
+
 export interface MetricDef {
   key: string;
   label: string;
@@ -31,6 +33,9 @@ export const METRIC_DEFS: MetricDef[] = [
   { key: 'wave_count', label: 'WAVE COUNT', unit: 'waves', digits: 1, good: 'down' },
   { key: 'wave_speed_kmh', label: 'WAVE SPEED', unit: 'km/h', digits: 1, good: 'neutral' },
   { key: 'wave_amplitude_ms', label: 'WAVE AMPLITUDE', unit: 'm/s', digits: 1, good: 'down' },
+  // sample size behind mean_tt_s / p90_tt_s, not a performance metric: more
+  // vehicles is neither better nor worse, so it never colours a sweep cell
+  { key: 'n_travel_time_veh', label: 'TRAVEL-TIME SAMPLE', unit: 'veh', digits: 0, good: 'neutral' },
 ];
 
 /** Default metric of the sweep matrix: spatial σ_v is the dampening headline. */
@@ -52,3 +57,19 @@ export function orderedMetricKeys(keys: string[]): string[] {
 /** Reporting standard: results below 20 replicates are underpowered
  * (CLAUDE.md §0.6). */
 export const MIN_REPLICATES = 20;
+
+/** How the UI says "the API returned no estimate for this metric". */
+export const NO_OBSERVATIONS_LABEL = 'no observations';
+
+export const NO_OBSERVATIONS_TITLE =
+  'No replicate produced a value for this metric (no wave detected, no emission model, …). ' +
+  'The API reports reason="no_observations": there is no estimate — not a zero, and not an ' +
+  'underpowered one that more seeds would fix.';
+
+/** True when the API reported that no replicate produced this metric
+ * (`CIOut.n === 0` with `reason="no_observations"`). The null-mean fallback
+ * covers an API that predates the `reason` field. */
+export function hasNoObservations(stat: AggregateStat | undefined | null): boolean {
+  if (!stat) return false;
+  return stat.reason === 'no_observations' || (stat.n === 0 && stat.mean === null);
+}

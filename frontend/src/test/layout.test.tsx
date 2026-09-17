@@ -1,8 +1,12 @@
 /** The shell's connection reporting. `/healthz` needs no key, so a rejected
  * key leaves the health probe green while every authenticated call 401s — the
- * rail must not claim a live API link, and the banner must say what to fix. */
+ * rail must not claim a live API link, and the banner must say what to fix.
+ *
+ * The latch also needs a way out: one transient 401 (a restarting API, a key
+ * rotated server-side) must not need a page reload, so the banner offers a
+ * Retry and the client schedules one automatic attempt. */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuthFailure, listRuns, setOfflineFallback } from '../api/client';
@@ -24,9 +28,12 @@ function renderShell(): void {
 }
 
 describe('Layout connection status', () => {
+  let keyRejected = true;
+
   beforeEach(() => {
     setOfflineFallback(false);
     clearAuthFailure();
+    keyRejected = true;
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -37,6 +44,9 @@ describe('Layout connection status', () => {
             status: 200,
             headers: { 'content-type': 'application/json' },
           });
+        }
+        if (!keyRejected) {
+          return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
         }
         return new Response(JSON.stringify({ detail: 'invalid or missing X-API-Key' }), {
           status: 401,
@@ -66,5 +76,30 @@ describe('Layout connection status', () => {
     expect(screen.queryByText('API LINK')).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent('API key rejected');
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
+  }, 10000);
+
+  it('offers a Retry that clears the latch without a reload', async () => {
+    renderShell();
+    await act(async () => {
+      await listRuns().catch(() => undefined);
+    });
+    const banner = await screen.findByRole('alert');
+    // the latch is not a dead end: it says an automatic retry is coming
+    expect(banner).toHaveTextContent(/Retrying once in \d+ s/);
+
+    // the API comes back (or the key is re-issued) before that fires
+    keyRejected = false;
+    fireEvent.click(within(banner).getByRole('button', { name: 'Retry now' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+    expect(screen.queryByText('KEY REJECTED')).toBeNull();
+    // and the resumed call really goes through
+    await act(async () => {
+      await listRuns();
+    });
+    await waitFor(() => {
+      expect(screen.getByText('API LINK')).toBeInTheDocument();
+    });
   }, 10000);
 });

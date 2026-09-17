@@ -4,7 +4,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { checkHealth, isMockEnv, setOfflineFallback } from '../api/client';
+import {
+  AUTH_RETRY_DELAY_MS,
+  checkHealth,
+  clearAuthFailure,
+  isAuthRetryScheduled,
+  isMockEnv,
+  setOfflineFallback,
+} from '../api/client';
 import { useAuthFailed, usePoll } from '../lib/hooks';
 import { useAppState } from './AppContext';
 import { SettingsDrawer } from './SettingsDrawer';
@@ -149,6 +156,18 @@ export function Layout(): JSX.Element {
         {authFailed && (
           <div className="auth-banner" role="alert">
             API key rejected (401) — data is not loading and polling is stopped.{' '}
+            {isAuthRetryScheduled()
+              ? `Retrying once in ${Math.round(AUTH_RETRY_DELAY_MS / 1000)} s.`
+              : 'The automatic retry was already spent.'}{' '}
+            {/* a 401 is not always a wrong key: a restarting API or a rotated
+                key is transient, and the latch must not need a page reload */}
+            <button
+              className="btn sm"
+              onClick={() => clearAuthFailure()}
+              title="Resume polling with the current key"
+            >
+              Retry now
+            </button>
             <button className="btn sm" onClick={() => setSettingsOpen(true)}>
               Open Settings
             </button>

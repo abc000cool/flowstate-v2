@@ -19,7 +19,15 @@ import { deltaColor } from '../lib/colormap';
 import { formatDeltaPct, formatNumber } from '../lib/format';
 import { useAuthFailed, usePoll } from '../lib/hooks';
 import { clampInt, MAX_REPLICATES, MAX_SWEEP_CELLS } from '../lib/limits';
-import { DEFAULT_SWEEP_METRIC, METRIC_DEFS, metricDef, MIN_REPLICATES } from '../lib/metrics';
+import {
+  DEFAULT_SWEEP_METRIC,
+  hasNoObservations,
+  METRIC_DEFS,
+  metricDef,
+  MIN_REPLICATES,
+  NO_OBSERVATIONS_LABEL,
+  NO_OBSERVATIONS_TITLE,
+} from '../lib/metrics';
 
 const PEN_CHOICES = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3];
 const COM_CHOICES = [0.25, 0.5, 0.8, 1.0];
@@ -257,17 +265,30 @@ export function SweepsView(): JSX.Element {
     }
     const stat = cell.aggregate[metricKey];
     const twin = duplicates.has(cellKey(cell));
+    const noObs = hasNoObservations(stat);
     return (
       <td
         key={key}
         colSpan={colSpan}
         className="cell baseline"
-        title="p=0: no controlled vehicles — the uncontrolled reference every delta is measured against"
+        title={
+          noObs
+            ? NO_OBSERVATIONS_TITLE
+            : 'p=0: no controlled vehicles — the uncontrolled reference every delta is measured against'
+        }
         onClick={() => openCell(cell)}
         onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, cell })}
         onMouseLeave={() => setTip(null)}
       >
-        <div className="d">{stat ? `${formatNumber(stat.mean, def.digits)} ${def.unit}` : '·'}</div>
+        {/* n=0 is not a value: naming it keeps the reference from reading as a
+            measured zero that every delta below would be computed against */}
+        <div className={noObs ? 'd noobs' : 'd'}>
+          {noObs
+            ? NO_OBSERVATIONS_LABEL
+            : stat
+              ? `${formatNumber(stat.mean, def.digits)} ${def.unit}`
+              : '·'}
+        </div>
         <div className="n">
           BASELINE · n={stat?.n ?? '—'}
           {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
@@ -411,7 +432,12 @@ export function SweepsView(): JSX.Element {
                   : matrix.reference.controller !== undefined
                     ? `, controller ${matrix.reference.controller ?? 'none'}`
                     : ''}
-                {baseStat ? `, ${def.label} ${formatNumber(baseStat.mean, def.digits)} ${def.unit}` : ''})
+                {baseStat
+                  ? hasNoObservations(baseStat)
+                    ? `, ${def.label} ${NO_OBSERVATIONS_LABEL}`
+                    : `, ${def.label} ${formatNumber(baseStat.mean, def.digits)} ${def.unit}`
+                  : ''}
+                )
               </span>
             </span>
             <span className="spacer" />
@@ -475,18 +501,30 @@ export function SweepsView(): JSX.Element {
                       }
                       const delta = cellDelta(cell);
                       const twin = duplicates.has(cellKey(cell));
+                      // no replicate produced the metric here: there is no
+                      // delta to colour, and a bare '·' would read as "still
+                      // computing" rather than "measured nothing"
+                      const noObs = hasNoObservations(cell.aggregate[metricKey]);
                       return (
                         <td
                           key={c}
                           className="cell"
+                          title={noObs ? NO_OBSERVATIONS_TITLE : undefined}
                           style={{
-                            background: delta === null ? undefined : deltaColor(goodness(delta)),
+                            background:
+                              delta === null || noObs ? undefined : deltaColor(goodness(delta)),
                           }}
                           onClick={() => openCell(cell)}
                           onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, cell })}
                           onMouseLeave={() => setTip(null)}
                         >
-                          <div className="d">{delta === null ? '·' : formatDeltaPct(delta)}</div>
+                          <div className={noObs ? 'd noobs' : 'd'}>
+                            {noObs
+                              ? NO_OBSERVATIONS_LABEL
+                              : delta === null
+                                ? '·'
+                                : formatDeltaPct(delta)}
+                          </div>
                           <div className="n">
                             n={cell.aggregate[metricKey]?.n ?? '—'}
                             {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
@@ -531,14 +569,28 @@ export function SweepsView(): JSX.Element {
           {(() => {
             const s = tip.cell.aggregate[metricKey];
             if (!s) return <span>no {def.label}</span>;
+            const coords = (
+              <div>
+                <span className="t-muted">
+                  p={pct(tip.cell.penetration)} · c={pct(tip.cell.compliance)}
+                  {isBaseline(tip.cell) ? ' · baseline' : ''}
+                </span>
+              </div>
+            );
+            if (hasNoObservations(s)) {
+              return (
+                <>
+                  {coords}
+                  <div>
+                    {def.label} — {NO_OBSERVATIONS_LABEL}
+                  </div>
+                  <div className="t-muted">no replicate produced a value · n=0</div>
+                </>
+              );
+            }
             return (
               <>
-                <div>
-                  <span className="t-muted">
-                    p={pct(tip.cell.penetration)} · c={pct(tip.cell.compliance)}
-                    {isBaseline(tip.cell) ? ' · baseline' : ''}
-                  </span>
-                </div>
+                {coords}
                 <div>
                   {def.label} {formatNumber(s.mean, def.digits)} {def.unit}
                 </div>

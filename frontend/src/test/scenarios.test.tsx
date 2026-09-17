@@ -79,12 +79,51 @@ describe('ScenariosView (real API shapes)', () => {
     setOfflineFallback(false);
   });
 
-  it('badges a preset from the preset endpoint (the API sends no `preset` field)', async () => {
+  it('badges a preset from the preset endpoint when the API sends no marker', async () => {
     renderView();
     expect(await screen.findByText('ring_sugiyama', {}, { timeout: 4000 })).toBeInTheDocument();
-    // PresetOut has no `preset` key — the badge must come from the source list
+    // this fixture carries no `preset` key: the badge falls back to the
+    // endpoint the item was loaded from
     expect(preset).not.toHaveProperty('preset');
     expect(screen.getByText('PRESET')).toBeInTheDocument();
+  });
+
+  it('clamps the launcher Duration and Seed rather than posting 0 or a negative', async () => {
+    renderView();
+    expect(await screen.findByText('ring_sugiyama', {}, { timeout: 4000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch ring_sugiyama' });
+    const duration = within(dialog).getByLabelText('Duration (s)');
+    const seed = within(dialog).getByLabelText('Seed');
+
+    // Number('') is 0, not NaN: an emptied field falls back to the scenario's
+    // own value instead of committing sim.duration_s = 0 (which the API, with
+    // SimSpec.duration_s gt=0, rejects)
+    fireEvent.change(duration, { target: { value: '' } });
+    expect(duration).toHaveValue(600);
+    fireEvent.change(seed, { target: { value: '' } });
+    expect(seed).toHaveValue(42);
+
+    fireEvent.change(duration, { target: { value: '-90' } });
+    expect(duration).toHaveValue(1);
+    fireEvent.change(duration, { target: { value: '99999999' } });
+    expect(duration).toHaveValue(86400);
+    fireEvent.change(seed, { target: { value: '-7' } });
+    expect(seed).toHaveValue(0);
+
+    // back to the preset's own values, then launch: nothing to override
+    fireEvent.change(duration, { target: { value: '' } });
+    fireEvent.change(seed, { target: { value: '' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Launch run' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/runs'))).toBe(true);
+    });
+    const run = calls.find((c) => c.method === 'POST' && c.url.endsWith('/runs'));
+    expect(run?.body).toMatchObject({ scenario_id: 'scn_new', replicates: 3 });
+    expect(run?.body).not.toHaveProperty('overrides');
+    for (const c of calls) {
+      expect(JSON.stringify(c.body ?? {})).not.toContain('"duration_s":0');
+    }
   });
 
   it('asks before launching and then stores the preset before running it', async () => {
@@ -210,4 +249,51 @@ describe('ScenariosView demo fallback', () => {
     expect(screen.getByText('realhash1234')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run…' })).toBeEnabled();
   }, 15000);
+});
+
+describe('ScenariosView preset marker (API ScenarioOut.preset / PresetOut.preset)', () => {
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        // the API now stamps its own marker on both lists
+        if (url.endsWith('/scenarios/preset')) {
+          return json([{ ...preset, config_hash: 'presethash01', preset: true }]);
+        }
+        if (url.endsWith('/scenarios') && method === 'GET') {
+          return json([
+            {
+              scenario_id: 'scn_stored',
+              name: 'ring_stored_from_preset',
+              config_hash: 'storedhash01',
+              created_at: 't',
+              config: preset.config,
+              preset: false,
+            },
+          ]);
+        }
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setOfflineFallback(false);
+  });
+
+  it("follows the server's flag: a stored scenario made from a preset is not a preset", async () => {
+    renderView();
+    expect(await screen.findByText('ring_stored_from_preset', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText('ring_sugiyama')).toBeInTheDocument();
+    // exactly one PRESET badge, and it belongs to the preset-endpoint card
+    const badges = screen.getAllByText('PRESET');
+    expect(badges.length).toBe(1);
+    expect(badges[0].parentElement?.textContent).toContain('ring_sugiyama');
+    expect(badges[0].parentElement?.textContent).not.toContain('ring_stored_from_preset');
+  });
 });

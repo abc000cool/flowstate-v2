@@ -148,6 +148,35 @@ describe('RunsView launcher', () => {
     });
   });
 
+  it('clamps Duration and Seed, keeping an empty box as "scenario default"', async () => {
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const duration = await screen.findByLabelText('Duration (s)', {}, { timeout: 4000 });
+    const seed = screen.getByLabelText('Seed');
+
+    fireEvent.change(duration, { target: { value: '-600' } });
+    expect(duration).toHaveValue(1);
+    fireEvent.change(seed, { target: { value: '-3' } });
+    expect(seed).toHaveValue(0);
+
+    // an emptied field still means "whatever the scenario says", so the launch
+    // carries no overrides at all
+    fireEvent.change(duration, { target: { value: '' } });
+    fireEvent.change(seed, { target: { value: '' } });
+    expect(duration).toHaveValue(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Launch run' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this run?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Launch' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/runs'))).toBe(true);
+    });
+    const posted = calls.find((c) => c.method === 'POST' && c.url.endsWith('/runs'));
+    expect(posted?.body).not.toHaveProperty('overrides');
+  });
+
   it('caps the replicate field at the API maximum', async () => {
     render(
       <MemoryRouter>

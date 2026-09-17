@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Dashboard, second pass (2026-09-17)
+
+- The reports table runs on `GET /api/v1/reports` (server rows newest first, merged with the browser's older local records, each row badged SERVER or LOCAL; an API without the endpoint falls back to local records and says so). Metric cards, the sweep matrix and the run detail render the three CI states from the API: quotable mean with interval, UNDERPOWERED, and "no observations" (no zero, no interval) when `reason = "no_observations"`. The PRESET badge follows the server's marker. `report_path` is never rendered. Duration and seed inputs are clamped (an emptied box means the scenario's own value, never `duration_s: 0`). The 401 latch retries once automatically after 30 s and offers a Retry button. The demo mock emits the same three CI states and results-relative report paths. 72 vitest cases across 11 files, typecheck and build green.
+
 ### Merge round six, candidate 1 probed (2026-09-17)
 
 - Cloud probe of the entry lane **flow** shares (three single-seed runs on an n2-standard-8, 11 minutes, about ten cents; `artifacts/i24_merge_experiment_entryflow.json`, docs/I24_VALIDATION.md §0.9): insertion 0.935 → 0.952, held-out RMSPE 0.457 → 0.406, fit hour 0.350 → 0.369, Old Hickory admittance 2066 → 2029 of 2,241, entry segments unchanged at 23 to 27 km/h. The right observable, a real but small gain, and not the merge defect; the next full FHWA sequence should be built on the flow shares. With the heavy population added every number is worse at this seed. The bucket-copy and self-delete path worked again; bucket deleted after ingest.

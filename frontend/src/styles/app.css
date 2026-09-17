@@ -1276,3 +1276,36 @@ table.data tr.disabled {
   color: var(--text);
   text-align: right;
 }
+
+/* ============ no-observation metrics (CIOut n=0, reason set) ========= */
+/* A metric no replicate produced is said in words, never as a dash or a zero:
+   the API distinguishes "no estimate" from "an underpowered estimate". */
+
+.tag.noobs {
+  color: var(--muted);
+  border-color: var(--panel-edge);
+  background: var(--panel-inset);
+}
+
+.metric-card .m-value.m-noobs {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.sweep-matrix td.cell .d.noobs {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+/* report rows the server list confirms, next to browser-only records */
+.tag.server {
+  color: var(--ok);
+  border-color: var(--panel-edge);
+  background: var(--panel-inset);
+}

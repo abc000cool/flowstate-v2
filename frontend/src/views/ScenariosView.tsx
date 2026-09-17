@@ -26,6 +26,14 @@ import {
 type LibraryItem = ScenarioSummary | PresetSummary;
 const isPreset = (s: LibraryItem): s is PresetSummary => !('scenario_id' in s);
 const itemKey = (s: LibraryItem): string => (isPreset(s) ? `preset:${s.filename}` : s.scenario_id);
+
+/** Whether to badge a card PRESET. The API now stamps its own marker —
+ * `PresetOut.preset` is always true, `ScenarioOut.preset` always false, so a
+ * stored scenario created from a preset is correctly *not* badged — and that
+ * flag wins whenever it is present. Without it (an older service) the badge
+ * falls back to the endpoint the item was loaded from. */
+const showsPresetBadge = (s: LibraryItem): boolean =>
+  typeof s.preset === 'boolean' ? s.preset : isPreset(s);
 import type {
   CreateRunRequest,
   Network,
@@ -38,7 +46,18 @@ import { SchematicThumb } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
 import { useAuthFailed, usePoll } from '../lib/hooks';
-import { clampInt, describeSimMinutes, MAX_LANES, MAX_REPLICATES, simMinutes } from '../lib/limits';
+import {
+  clampField,
+  clampInt,
+  describeSimMinutes,
+  MAX_DURATION_S,
+  MAX_LANES,
+  MAX_REPLICATES,
+  MAX_SEED,
+  MIN_DURATION_S,
+  MIN_SEED,
+  simMinutes,
+} from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
 
 const CONTROLLERS = ['follower_stopper', 'pi_saturation', 'jad', 'none'] as const;
@@ -218,6 +237,19 @@ interface LaunchForm {
   seed: number;
 }
 
+/** What the launcher opens with for a card whose config the API did not
+ * embed — and the fallback an emptied field returns to. */
+const DEFAULT_LAUNCH: LaunchForm = { replicates: 20, duration_s: 1200, seed: 42 };
+
+/** The launch form the card's own config implies. */
+function launchDefaults(s: LibraryItem | null): LaunchForm {
+  return {
+    replicates: s?.config?.replicates ?? DEFAULT_LAUNCH.replicates,
+    duration_s: s?.config?.sim.duration_s ?? DEFAULT_LAUNCH.duration_s,
+    seed: s?.config?.seed ?? DEFAULT_LAUNCH.seed,
+  };
+}
+
 export function ScenariosView(): JSX.Element {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [demoSource, setDemoSource] = useState<DemoSource>('none');
@@ -227,11 +259,7 @@ export function ScenariosView(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [launchTarget, setLaunchTarget] = useState<LibraryItem | null>(null);
-  const [launchForm, setLaunchForm] = useState<LaunchForm>({
-    replicates: 20,
-    duration_s: 1200,
-    seed: 42,
-  });
+  const [launchForm, setLaunchForm] = useState<LaunchForm>(DEFAULT_LAUNCH);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { setCorridor } = useAppState();
@@ -297,11 +325,7 @@ export function ScenariosView(): JSX.Element {
    * `replicates` × `sim.duration_s` can be hours of compute. */
   const openLauncher = (s: LibraryItem): void => {
     setLaunchTarget(s);
-    setLaunchForm({
-      replicates: s.config?.replicates ?? 20,
-      duration_s: s.config?.sim.duration_s ?? 1200,
-      seed: s.config?.seed ?? 42,
-    });
+    setLaunchForm(launchDefaults(s));
   };
 
   const launchRun = async (): Promise<void> => {
@@ -387,6 +411,8 @@ export function ScenariosView(): JSX.Element {
 
   const underpowered = compose.replicates < MIN_REPLICATES;
   const launchTotal = simMinutes(launchForm.replicates, launchForm.duration_s);
+  /** What an emptied launcher field falls back to: the target's own value. */
+  const launchBase = launchDefaults(launchTarget);
 
   return (
     <div className="view">
@@ -415,10 +441,7 @@ export function ScenariosView(): JSX.Element {
             </div>
             <div className="name mono">
               {s.name}
-              {/* the badge follows the endpoint the item came from: the API's
-                  PresetOut carries no `preset` field, so reading one would
-                  never render against a live server */}
-              {(isPreset(s) || s.preset === true) && <span className="tag preset">PRESET</span>}
+              {showsPresetBadge(s) && <span className="tag preset">PRESET</span>}
               {showingDemo && <span className="tag demo">DEMO</span>}
             </div>
             {scenarioMeta(s, showingDemo)}
@@ -718,7 +741,7 @@ export function ScenariosView(): JSX.Element {
               onChange={(e) =>
                 setLaunchForm((f) => ({
                   ...f,
-                  replicates: clampInt(Number(e.target.value), 1, MAX_REPLICATES),
+                  replicates: clampField(e.target.value, 1, MAX_REPLICATES, launchBase.replicates),
                 }))
               }
             />
@@ -728,15 +751,27 @@ export function ScenariosView(): JSX.Element {
           </div>
           <div className="field">
             <label htmlFor="lr-dur">Duration (s)</label>
+            {/* clamped like every other numeric field: an emptied box reads as
+                Number('') === 0, and `sim.duration_s: 0` is both rejected by
+                the API and meaningless as a launch */}
             <input
               id="lr-dur"
               className="input"
               type="number"
-              min={1}
+              min={MIN_DURATION_S}
+              max={MAX_DURATION_S}
               step={60}
               value={launchForm.duration_s}
               onChange={(e) =>
-                setLaunchForm((f) => ({ ...f, duration_s: Number(e.target.value) }))
+                setLaunchForm((f) => ({
+                  ...f,
+                  duration_s: clampField(
+                    e.target.value,
+                    MIN_DURATION_S,
+                    MAX_DURATION_S,
+                    launchBase.duration_s,
+                  ),
+                }))
               }
             />
           </div>
@@ -746,8 +781,15 @@ export function ScenariosView(): JSX.Element {
               id="lr-seed"
               className="input"
               type="number"
+              min={MIN_SEED}
+              max={MAX_SEED}
               value={launchForm.seed}
-              onChange={(e) => setLaunchForm((f) => ({ ...f, seed: Number(e.target.value) }))}
+              onChange={(e) =>
+                setLaunchForm((f) => ({
+                  ...f,
+                  seed: clampField(e.target.value, MIN_SEED, MAX_SEED, launchBase.seed),
+                }))
+              }
             />
           </div>
           <p className="small muted">

@@ -28,7 +28,14 @@ const scenario = {
 };
 
 function ci(mean: number, n = 20) {
-  return { mean, lo95: mean * 0.95, hi95: mean * 1.05, n, underpowered: n < 20 };
+  return { mean, lo95: mean * 0.95, hi95: mean * 1.05, n, underpowered: n < 20, reason: null };
+}
+
+/** The API's third CIOut state: no replicate produced the metric at all —
+ * null mean and bounds, n=0, `underpowered` false (there is no estimate to be
+ * underpowered about) and the reason spelled out. */
+function noObs() {
+  return { mean: null, lo95: null, hi95: null, n: 0, underpowered: false, reason: 'no_observations' };
 }
 
 /** Aggregate keyed exactly as the API keys it: dataclasses.fields(Metrics). */
@@ -95,6 +102,36 @@ const twinSweepOut = {
   ],
 };
 
+/** A sweep in which no wave was detected in any replicate of either cell, so
+ * the wave metrics carry no observation (n=0 + reason) rather than a zero. */
+const noObsSweepOut = {
+  ...sweepOut,
+  sweep_id: 'swp-noobs',
+  status: 'done',
+  cells: [
+    {
+      penetration: 0,
+      compliance: 1.0,
+      controller: 'follower_stopper',
+      config_hash: 'b0',
+      run_id: 'run-base',
+      status: 'done',
+      progress,
+      aggregate: { ...aggregate(5.8, 1700), wave_count: ci(0), wave_amplitude_ms: noObs(), wave_speed_kmh: noObs() },
+    },
+    {
+      penetration: 0.05,
+      compliance: 0.8,
+      controller: 'follower_stopper',
+      config_hash: 'c1',
+      run_id: 'run-p5',
+      status: 'done',
+      progress,
+      aggregate: { ...aggregate(2.9, 1785), wave_count: ci(0), wave_amplitude_ms: noObs(), wave_speed_kmh: noObs() },
+    },
+  ],
+};
+
 /** Two cells the API gave the *same* config hash (a p=0 pair differs in no
  * modelled parameter, so one configuration is run twice): identical numbers
  * there are the expected result and must not be flagged as a finding. */
@@ -140,6 +177,7 @@ describe('SweepsView (real API shapes)', () => {
         if (url.endsWith('/sweeps/swp-failed')) return json(failedSweepOut);
         if (url.endsWith('/sweeps/swp-twins')) return json(twinSweepOut);
         if (url.endsWith('/sweeps/swp-same')) return json(sameConfigSweepOut);
+        if (url.endsWith('/sweeps/swp-noobs')) return json(noObsSweepOut);
         return json({ detail: `unexpected ${method} ${url}` }, 404);
       }),
     );
@@ -218,6 +256,24 @@ describe('SweepsView (real API shapes)', () => {
     // same configuration run twice: identical aggregates are expected there
     expect(screen.queryAllByTitle(/Identical realisation/).length).toBe(0);
     expect(screen.queryByText(/share an identical aggregate vector/)).toBeNull();
+  });
+
+  it('says "no observations" where the API reports none, instead of a delta', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps?sweep=swp-noobs']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    // sigma_v is measured in both cells, so the matrix starts with a delta
+    expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Metric'), { target: { value: 'wave_amplitude_ms' } });
+    // both the baseline reference and the grid cell say it in words: n=0 is
+    // not a measured zero and not an underpowered estimate
+    const labels = await screen.findAllByText('no observations');
+    expect(labels.length).toBe(2);
+    expect(screen.queryByText('-50.0%')).toBeNull();
+    expect(screen.getByText('BASELINE · n=0')).toBeInTheDocument();
   });
 
   it('confirms the run count before launching, with a controllers list and include_baseline', async () => {

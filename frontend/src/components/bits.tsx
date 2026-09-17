@@ -3,7 +3,12 @@
 
 import type { AggregateStat, Network, RunStatus, Tier } from '../api/types';
 import { formatNumber } from '../lib/format';
-import { metricDef } from '../lib/metrics';
+import {
+  hasNoObservations,
+  metricDef,
+  NO_OBSERVATIONS_LABEL,
+  NO_OBSERVATIONS_TITLE,
+} from '../lib/metrics';
 
 export function StatusChip({ status }: { status: RunStatus }): JSX.Element {
   return (
@@ -135,7 +140,12 @@ export function StripChart({
   );
 }
 
-/** Aggregate metric card: mono value, unit, CI range bar, honesty tags. */
+/** Aggregate metric card: mono value, unit, CI range bar, honesty tags.
+ *
+ * `CIOut` has three states and the card renders three (see `AggregateStat`):
+ * no observations at all (n=0) is said in words, because a dash next to a
+ * "95% CI — – —" line reads like a rendering failure rather than the answer
+ * "no replicate produced this metric". */
 export function MetricCard({
   metricKey,
   stat,
@@ -144,29 +154,47 @@ export function MetricCard({
   stat: AggregateStat;
 }): JSX.Element {
   const def = metricDef(metricKey);
+  const noObs = hasNoObservations(stat);
   return (
     <div className="metric-card">
       <div className="m-label">
         <span>{def.label}</span>
-        {stat.underpowered && (
-          <span
-            className="tag underpowered"
-            title={`n=${stat.n} < 20 replicates — below reporting standard`}
-          >
-            UNDERPOWERED
+        {noObs ? (
+          <span className="tag noobs" title={NO_OBSERVATIONS_TITLE}>
+            NO DATA
           </span>
+        ) : (
+          stat.underpowered && (
+            <span
+              className="tag underpowered"
+              title={`n=${stat.n} < 20 replicates — below reporting standard`}
+            >
+              UNDERPOWERED
+            </span>
+          )
         )}
       </div>
-      <div className="m-value mono">
-        {stat.mean === null ? '—' : formatNumber(stat.mean, def.digits)}
-        <span className="m-unit">{def.unit}</span>
-      </div>
-      <CIBar stat={stat} />
-      <div className="ci-text">
-        95% CI {stat.lo95 === null ? '—' : formatNumber(stat.lo95, def.digits)} –{' '}
-        {stat.hi95 === null ? '—' : formatNumber(stat.hi95, def.digits)} · n=
-        {stat.n}
-      </div>
+      {noObs ? (
+        <>
+          <div className="m-value m-noobs" title={NO_OBSERVATIONS_TITLE}>
+            {NO_OBSERVATIONS_LABEL}
+          </div>
+          <div className="ci-text">no replicate produced a value · n=0</div>
+        </>
+      ) : (
+        <>
+          <div className="m-value mono">
+            {stat.mean === null ? '—' : formatNumber(stat.mean, def.digits)}
+            <span className="m-unit">{def.unit}</span>
+          </div>
+          <CIBar stat={stat} />
+          <div className="ci-text">
+            95% CI {stat.lo95 === null ? '—' : formatNumber(stat.lo95, def.digits)} –{' '}
+            {stat.hi95 === null ? '—' : formatNumber(stat.hi95, def.digits)} · n=
+            {stat.n}
+          </div>
+        </>
+      )}
     </div>
   );
 }

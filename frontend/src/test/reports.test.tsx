@@ -1,7 +1,11 @@
 /** ReportsView against the real API's asynchronous report contract:
  * POST /reports answers 202 with a queued ReportOut, GET /reports/{id} is
  * polled until done/failed, and the markdown comes from
- * GET /reports/{id}/markdown only once the report is done. */
+ * GET /reports/{id}/markdown only once the report is done.
+ *
+ * The table itself is GET /reports (the server's history, newest first)
+ * merged with this browser's localStorage records, each row saying which it
+ * is; `report_path` is results-root-relative and is never rendered. */
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,14 +29,16 @@ const doneRun = {
 
 type Status = 'queued' | 'running' | 'done' | 'failed';
 
-function reportOut(status: Status) {
+function reportOut(status: Status, reportId = 'rpt-1') {
   const failed = status === 'failed';
   return {
-    report_id: 'rpt-1',
+    report_id: reportId,
     status,
     run_ids: ['run-a'],
     title: 'FlowState calibration & validation report',
-    report_path: status === 'done' ? '/data/reports/rpt-1/report.md' : null,
+    // results-root-relative, exactly as api.main._relative_report_path serves
+    // it: an identifier for the bundle, not a URL and not a filesystem path
+    report_path: status === 'done' ? `reports/${reportId}/report.md` : null,
     error: failed ? 'no validated micro runs in the set' : null,
     error_kind: failed ? 'report_refused' : null,
     created_at: '2026-09-16T00:00:01',
@@ -54,6 +60,8 @@ describe('ReportsView (asynchronous report contract)', () => {
   const calls: Call[] = [];
   // what GET /reports/rpt-1 currently answers — flipped mid-test like a worker would
   let status: Status = 'queued';
+  /** What GET /reports answers; null = the service has no list endpoint. */
+  let serverList: ReturnType<typeof reportOut>[] | null = [];
   const urlApi = URL as unknown as { createObjectURL?: unknown; revokeObjectURL?: unknown };
 
   beforeEach(() => {
@@ -61,6 +69,7 @@ describe('ReportsView (asynchronous report contract)', () => {
     window.localStorage.clear();
     calls.length = 0;
     status = 'queued';
+    serverList = [];
     // jsdom has neither blob URLs nor navigation
     urlApi.createObjectURL = vi.fn(() => 'blob:report');
     urlApi.revokeObjectURL = vi.fn();
@@ -77,6 +86,10 @@ describe('ReportsView (asynchronous report contract)', () => {
         }
         // the Redis-queue answer: accepted, not yet generated
         if (url.endsWith('/reports') && method === 'POST') return json(reportOut('queued'), 202);
+        if (url.endsWith('/reports') && method === 'GET') {
+          if (serverList === null) return json({ detail: 'Not Found' }, 404);
+          return json(serverList);
+        }
         if (url.endsWith('/reports/rpt-1/markdown')) {
           if (status === 'done') {
             return new Response('# FlowState calibration & validation report', {
@@ -198,6 +211,78 @@ describe('ReportsView (asynchronous report contract)', () => {
       // revoking in the same tick as the click aborts the download the browser
       // has only just started (an unfinished .crdownload) — it must be deferred
       expect(urlApi.revokeObjectURL).not.toHaveBeenCalled();
+    },
+    15000,
+  );
+
+  it(
+    'lists the server history newest first and marks browser-only records',
+    async () => {
+      serverList = [reportOut('done', 'rpt-2'), reportOut('done', 'rpt-1')];
+      window.localStorage.setItem(
+        LS_REPORTS,
+        JSON.stringify([
+          { report_id: 'rpt-old', run_ids: ['run-a'], status: 'done', created_at: '2026-09-01T00:00:00.000Z' },
+        ]),
+      );
+      render(<ReportsView />);
+      const table = screen.getByRole('table', { name: 'generated reports' });
+      expect(await within(table).findByText('rpt-2', {}, { timeout: 6000 })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(within(table).getAllByRole('row').length).toBe(4); // header + 3
+      });
+      const ids = within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getAllByRole('cell')[0].textContent);
+      // the server's own order, then what only this browser remembers
+      expect(ids).toEqual(['rpt-2', 'rpt-1', 'rpt-old']);
+      expect(within(table).getAllByText('SERVER').length).toBe(2);
+      expect(within(table).getByText('LOCAL')).toBeInTheDocument();
+      // report_path is results-root-relative: never a link, never a path
+      expect(within(table).queryByText(/reports\/rpt-1\/report\.md/)).toBeNull();
+      expect(within(table).queryAllByRole('link').length).toBe(0);
+      // a server row is downloadable like any other
+      expect(
+        within(within(table).getAllByRole('row')[1]).getByRole('button', { name: 'Download .md' }),
+      ).toBeEnabled();
+    },
+    15000,
+  );
+
+  it(
+    'falls back to this browser\u2019s records when the service has no GET /reports',
+    async () => {
+      serverList = null; // 404: an API older than the list endpoint
+      // every interval this view schedules, so the 404 route can be shown to
+      // back off instead of being polled at the live-list rate forever
+      const intervals: number[] = [];
+      const realSetInterval = window.setInterval.bind(window);
+      vi.spyOn(window, 'setInterval').mockImplementation(((
+        fn: TimerHandler,
+        ms?: number,
+      ): number => {
+        intervals.push(ms ?? 0);
+        return realSetInterval(fn, ms);
+      }) as typeof window.setInterval);
+      window.localStorage.setItem(
+        LS_REPORTS,
+        JSON.stringify([
+          { report_id: 'rpt-1', run_ids: ['run-a'], status: 'done', created_at: '2026-09-15T00:00:00.000Z' },
+        ]),
+      );
+      render(<ReportsView />);
+      const table = screen.getByRole('table', { name: 'generated reports' });
+      expect(await within(table).findByText('rpt-1', {}, { timeout: 6000 })).toBeInTheDocument();
+      expect(within(table).getByText('LOCAL')).toBeInTheDocument();
+      expect(within(table).queryByText('SERVER')).toBeNull();
+      expect(await screen.findByText(/this service has no GET \/reports/)).toBeInTheDocument();
+      // a route that answers 404 is watched for an upgrade, not hammered: no
+      // other poll in this view runs slower than 5 s, so an interval this long
+      // can only be the list poll's backoff
+      await waitFor(() => {
+        expect(intervals.some((ms) => ms >= 30_000)).toBe(true);
+      });
     },
     15000,
   );

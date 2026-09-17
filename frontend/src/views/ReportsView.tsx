@@ -10,8 +10,16 @@
  *
  * Three downloads are offered: the markdown (which *links* its figures), the
  * zip archive (markdown + figure PNGs — the one that is readable on its own)
- * and the optional PDF. The contract has no report-list endpoint, so the table
- * below is this browser's own record and says so. */
+ * and the optional PDF.
+ *
+ * The table is `GET /reports` (the server's own history, newest first) merged
+ * with this browser's localStorage records, which now cover only what the
+ * server list does not return — a report requested against another API, or
+ * before the list endpoint existed. Each row says which it is, because a local
+ * row is a memory of a request, not evidence the server still holds the
+ * bundle. `ReportOut.report_path` is results-root-relative and is never shown:
+ * it is an identifier for the bundle, not a path or a link this browser can
+ * follow — the downloads go through the three routes. */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
@@ -21,6 +29,7 @@ import {
   getReportArchive,
   getReportMarkdown,
   getReportPdf,
+  listReports,
   listRuns,
   listScenarios,
 } from '../api/client';
@@ -32,8 +41,25 @@ import { useAuthFailed, usePoll } from '../lib/hooks';
 
 const LS_REPORTS = 'flowstate.reports';
 const REPORT_POLL_MS = 2000;
+const REPORT_LIST_POLL_MS = 3000;
+/** Retry interval once `GET /reports` has answered 404 (a service older than
+ * the list endpoint). The table already runs on local records and says so, so
+ * the only thing left to watch for is the service being upgraded — polling a
+ * route that does not exist at 3 s is the same hot 401 loop this view stands
+ * down from elsewhere. */
+const REPORT_LIST_RETRY_MS = 60_000;
 const RUNS_POLL_MS = 5000;
 const SCENARIOS_POLL_MS = 3000;
+
+/** Where a table row came from. A `server` row is `GET /reports`; a `local`
+ * row is only this browser's memory of a request the server list does not
+ * return (another API, or one older than the endpoint). */
+type RowOrigin = 'server' | 'local';
+
+interface ReportRow {
+  rec: ReportRecord;
+  origin: RowOrigin;
+}
 
 const isPending = (r: ReportRecord): boolean => r.status === 'queued' || r.status === 'running';
 
@@ -78,7 +104,9 @@ function saveReports(list: ReportRecord[]): void {
   }
 }
 
-function recordFromOut(out: ReportOut, requestedRunIds: string[]): ReportRecord {
+function recordFromOut(out: ReportOut, requestedRunIds: string[] = []): ReportRecord {
+  // `out.report_path` is deliberately dropped: it is results-root-relative,
+  // meaningless to this browser, and must never be rendered as a path or link.
   return {
     report_id: out.report_id,
     run_ids: out.run_ids.length > 0 ? out.run_ids : requestedRunIds,
@@ -90,6 +118,22 @@ function recordFromOut(out: ReportOut, requestedRunIds: string[]): ReportRecord 
   };
 }
 
+/** The server's list (already newest first) followed by the local records it
+ * does not cover, newest first. A report the server knows about is shown from
+ * the server's row: its status is authoritative. */
+function mergeRows(server: ReportOut[] | null, local: ReportRecord[]): ReportRow[] {
+  const rows: ReportRow[] = (server ?? []).map((out) => ({
+    rec: recordFromOut(out),
+    origin: 'server' as const,
+  }));
+  const known = new Set(rows.map((r) => r.rec.report_id));
+  const extras = local
+    .filter((r) => !known.has(r.report_id))
+    .slice()
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return [...rows, ...extras.map((rec) => ({ rec, origin: 'local' as const }))];
+}
+
 const MACRO_TOOLTIP =
   'Screening tier cannot be validated — macro (CTM) results are labeled tier:"screening" and the API refuses to generate a validation report from them.';
 
@@ -98,6 +142,11 @@ export function ReportsView(): JSX.Element {
   const [scenarios, setScenarios] = useState<{ scenario_id: string; name: string }[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reports, setReports] = useState<ReportRecord[]>(loadReports);
+  const [serverReports, setServerReports] = useState<ReportOut[] | null>(null);
+  /** False once the service answered 404 to `GET /reports` (an API older than
+   * the list endpoint): the table then runs on local records alone and says
+   * so, instead of claiming the server has no reports. */
+  const [serverListed, setServerListed] = useState(true);
   const [busy, setBusy] = useState(false);
   const authFailed = useAuthFailed();
   // latest list for the (referentially stable) poll callback
@@ -121,6 +170,23 @@ export function ReportsView(): JSX.Element {
     }
   }, []);
   usePoll(refresh, authFailed ? null : RUNS_POLL_MS);
+
+  // the server's report history — the table's source of truth, so a report
+  // requested in another browser (or after this one cleared its site data) is
+  // still listed and still downloadable
+  const refreshServerReports = useCallback(async () => {
+    try {
+      setServerReports(await listReports());
+      setServerListed(true);
+    } catch (err) {
+      // 404 = this service predates GET /reports; anything else is transient
+      if (err instanceof ApiError && err.status === 404) setServerListed(false);
+    }
+  }, []);
+  usePoll(
+    refreshServerReports,
+    authFailed ? null : serverListed ? REPORT_LIST_POLL_MS : REPORT_LIST_RETRY_MS,
+  );
 
   // the API's RunOut carries no scenario name, only the id: resolve it once
   const loadScenarios = useCallback(async () => {
@@ -175,6 +241,9 @@ export function ReportsView(): JSX.Element {
   }, [commit]);
   const anyPending = reports.some(isPending);
   usePoll(pollReports, anyPending && !authFailed ? REPORT_POLL_MS : null);
+
+  const rows = useMemo(() => mergeRows(serverReports, reports), [serverReports, reports]);
+  const localOnly = rows.filter((r) => r.origin === 'local').length;
 
   const toggleRun = (id: string): void => {
     setSelected((s) => {
@@ -248,7 +317,7 @@ export function ReportsView(): JSX.Element {
   return (
     <div className="view">
       <div className="view-title">
-        Validation Reports <span className="count mono">{reports.length} requested</span>
+        Validation Reports <span className="count mono">{rows.length} reports</span>
       </div>
 
       <div className="panel">
@@ -326,9 +395,17 @@ export function ReportsView(): JSX.Element {
           <span className="spacer" />
           <span
             className="small muted"
-            title="The API contract has no report-list endpoint; this table is this browser's own record."
+            title={
+              serverListed
+                ? 'GET /reports, newest first. Rows badged LOCAL exist only in this browser: they were requested against another API, or before the list endpoint existed, so this server may not hold them.'
+                : 'This service answered 404 to GET /reports, so only this browser’s own records can be listed.'
+            }
           >
-            this browser's record only — reports requested elsewhere are not listed
+            {serverListed
+              ? localOnly > 0
+                ? `server history (GET /reports) + ${localOnly} local-only record${localOnly === 1 ? '' : 's'}`
+                : 'server history (GET /reports), newest first'
+              : "this service has no GET /reports — this browser's records only"}
           </span>
         </div>
         <div className="table-wrap">
@@ -336,6 +413,7 @@ export function ReportsView(): JSX.Element {
             <thead>
               <tr>
                 <th>Report</th>
+                <th>Source</th>
                 <th>Status</th>
                 <th>Created</th>
                 <th>Runs</th>
@@ -343,9 +421,23 @@ export function ReportsView(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {reports.map((rec) => (
+              {rows.map(({ rec, origin }) => (
                 <tr key={rec.report_id}>
                   <td style={{ fontWeight: 700 }}>{rec.report_id}</td>
+                  <td>
+                    {origin === 'server' ? (
+                      <span className="tag server" title="Listed by GET /reports — held by this server">
+                        SERVER
+                      </span>
+                    ) : (
+                      <span
+                        className="tag demo"
+                        title="This browser's own record: GET /reports did not return it, so this server may not hold the bundle (requested against another API, or before the list endpoint existed)."
+                      >
+                        LOCAL
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <StatusChip status={rec.status} />
                     {rec.error && (
@@ -399,10 +491,14 @@ export function ReportsView(): JSX.Element {
                   </td>
                 </tr>
               ))}
-              {reports.length === 0 && (
+              {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5}>
-                    <div className="empty">no reports requested in this browser yet</div>
+                  <td colSpan={6}>
+                    <div className="empty">
+                      {serverListed
+                        ? 'no reports on this server yet'
+                        : 'no reports requested in this browser yet'}
+                    </div>
                   </td>
                 </tr>
               )}

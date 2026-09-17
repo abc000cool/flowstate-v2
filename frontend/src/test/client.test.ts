@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  AUTH_RETRY_DELAY_MS,
   clearAuthFailure,
   createReport,
   createRun,
@@ -11,6 +12,8 @@ import {
   getReportMarkdown,
   getReportPdf,
   isAuthFailed,
+  isAuthRetryScheduled,
+  listReports,
   listRuns,
 } from '../api/client';
 
@@ -248,6 +251,77 @@ describe('api client error rendering', () => {
     fetchMock.mockResolvedValue(fakeResponse([]));
     await listRuns();
     expect(isAuthFailed()).toBe(false);
+  });
+
+  it('retries the latched key once after the delay, then stops retrying', async () => {
+    const unauthorized = {
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: async () => ({ detail: 'invalid or missing X-API-Key' }),
+    } as unknown as Response;
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValue(unauthorized);
+      await expect(listRuns()).rejects.toThrow();
+      expect(isAuthFailed()).toBe(true);
+      expect(isAuthRetryScheduled()).toBe(true);
+
+      // one transient 401 must not freeze the dashboard until a reload
+      vi.advanceTimersByTime(AUTH_RETRY_DELAY_MS);
+      expect(isAuthFailed()).toBe(false);
+      expect(isAuthRetryScheduled()).toBe(false);
+
+      // the key really is wrong: it re-latches and does NOT arm another
+      // automatic retry, so a rejected key is not polled forever
+      await expect(listRuns()).rejects.toThrow();
+      expect(isAuthFailed()).toBe(true);
+      expect(isAuthRetryScheduled()).toBe(false);
+      vi.advanceTimersByTime(AUTH_RETRY_DELAY_MS * 4);
+      expect(isAuthFailed()).toBe(true);
+
+      // the banner's Retry gives the next latch its automatic attempt back
+      clearAuthFailure();
+      expect(isAuthFailed()).toBe(false);
+      await expect(listRuns()).rejects.toThrow();
+      expect(isAuthRetryScheduled()).toBe(true);
+    } finally {
+      clearAuthFailure();
+      vi.useRealTimers();
+    }
+  });
+
+  it('a successful call restores the automatic retry for a later latch', async () => {
+    const unauthorized = {
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: async () => ({ detail: 'invalid or missing X-API-Key' }),
+    } as unknown as Response;
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValue(unauthorized);
+      await expect(listRuns()).rejects.toThrow();
+      vi.advanceTimersByTime(AUTH_RETRY_DELAY_MS); // spends the one retry
+      fetchMock.mockResolvedValue(fakeResponse([]));
+      await listRuns();
+      expect(isAuthFailed()).toBe(false);
+
+      fetchMock.mockResolvedValue(unauthorized);
+      await expect(listRuns()).rejects.toThrow();
+      expect(isAuthRetryScheduled()).toBe(true);
+    } finally {
+      clearAuthFailure();
+      vi.useRealTimers();
+    }
+  });
+
+  it('lists the server report history from GET /reports', async () => {
+    fetchMock.mockResolvedValue(fakeResponse([]));
+    await listReports();
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports`);
+    await listReports(50);
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports?limit=50`);
   });
 
   it('downloads the archive and the PDF from their own routes', async () => {

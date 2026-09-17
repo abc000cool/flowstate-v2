@@ -23,6 +23,7 @@ const METRICS_DATACLASS_FIELDS = [
   'wave_count',
   'wave_speed_kmh',
   'wave_amplitude_ms',
+  'n_travel_time_veh',
 ];
 
 const METRICS_PY = 'packages/validation/validation/metrics.py';

@@ -17,7 +17,7 @@ import {
 import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
 import { toastError } from '../components/toast';
 import { useAuthFailed, usePoll } from '../lib/hooks';
-import { orderedMetricKeys } from '../lib/metrics';
+import { hasNoObservations, orderedMetricKeys } from '../lib/metrics';
 
 export function RunDetailView(): JSX.Element {
   const { runId = '' } = useParams();
@@ -71,6 +71,13 @@ export function RunDetailView(): JSX.Element {
   const metricKeys = useMemo(
     () => (metrics ? orderedMetricKeys(Object.keys(metrics.aggregate)) : []),
     [metrics],
+  );
+  // a metric no replicate produced has nothing to distribute: the card says
+  // "no observations", and a strip drawn from an empty value set would put a
+  // mean line at 0 that is not a measurement
+  const stripKeys = useMemo(
+    () => (metrics ? metricKeys.filter((k) => !hasNoObservations(metrics.aggregate[k])) : []),
+    [metrics, metricKeys],
   );
 
   const heatmap = heatmaps[field];
@@ -182,7 +189,7 @@ export function RunDetailView(): JSX.Element {
                 Per-replicate distribution
               </div>
               <div className="strip-row">
-                {metricKeys.map((k) => (
+                {stripKeys.map((k) => (
                   <StripChart
                     key={k}
                     metricKey={k}

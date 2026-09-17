@@ -9,7 +9,11 @@
  * store: `/healthz` is auth-exempt, so a wrong key leaves the health probe
  * green while every authenticated call 401s. Views subscribe through
  * `lib/hooks` and pause their polls while `isAuthFailed()`, instead of
- * retrying a rejected key forever behind a green status dot. */
+ * retrying a rejected key forever behind a green status dot. The latch is not
+ * a dead end: it schedules exactly one automatic retry (`AUTH_RETRY_DELAY_MS`)
+ * so a single transient 401 — a restarting API, a key rotated server-side —
+ * cannot freeze the dashboard until someone reloads it, and `clearAuthFailure`
+ * is the shell's manual Retry. */
 
 import * as mock from '../mocks/mockApi';
 import type {
@@ -108,21 +112,60 @@ export function setOfflineFallback(v: boolean): void {
   notifyConnection();
 }
 
+/** How long the rejected-key latch holds before it retries by itself. One
+ * automatic attempt per latch: long enough that a wrong key is not hammered
+ * (the walkthrough saw 95 GETs in 70 s), short enough that a restarting API or
+ * a rotated key recovers without a reload. */
+export const AUTH_RETRY_DELAY_MS = 30_000;
+
+let authRetryTimer: number | null = null;
+/** True once this latch has spent its one automatic retry; reset by a
+ * successful call, by new settings, or by the banner's Retry. */
+let autoRetryUsed = false;
+
 /** True once the API rejected the configured key (401/403). Cleared by a
- * successful authenticated call or by saving new settings. */
+ * successful authenticated call, by saving new settings, by the shell's Retry
+ * action, or by the single automatic retry scheduled when the latch closed. */
 export function isAuthFailed(): boolean {
   return authFailed;
 }
 
-function setAuthFailed(v: boolean): void {
+/** True while an automatic retry is still scheduled for the current latch. */
+export function isAuthRetryScheduled(): boolean {
+  return authRetryTimer !== null;
+}
+
+function cancelAuthRetry(): void {
+  if (authRetryTimer === null) return;
+  window.clearTimeout(authRetryTimer);
+  authRetryTimer = null;
+}
+
+function setAuthFailedFlag(v: boolean): void {
   if (authFailed === v) return;
   authFailed = v;
   notifyConnection();
 }
 
-/** Clear the rejected-key state (a new key deserves a fresh attempt). */
+/** Latch a rejected key and arm the one automatic retry for this latch. */
+function latchAuthFailure(): void {
+  setAuthFailedFlag(true);
+  if (autoRetryUsed || authRetryTimer !== null) return;
+  authRetryTimer = window.setTimeout(() => {
+    authRetryTimer = null;
+    // spend the retry BEFORE unlatching: a still-rejected key re-latches
+    // immediately on the resumed poll and must not re-arm the timer
+    autoRetryUsed = true;
+    setAuthFailedFlag(false);
+  }, AUTH_RETRY_DELAY_MS);
+}
+
+/** Clear the rejected-key state and give the next latch its retry back (a new
+ * key, a working call or an explicit Retry all deserve a fresh attempt). */
 export function clearAuthFailure(): void {
-  setAuthFailed(false);
+  autoRetryUsed = false;
+  cancelAuthRetry();
+  setAuthFailedFlag(false);
 }
 
 /* ------------------------------- fetch -------------------------------- */
@@ -213,7 +256,7 @@ async function rawFetch(path: string, init?: RequestInitLite): Promise<Response>
   if (!res.ok) {
     // /healthz is auth-exempt, so a rejected key shows up only here: latch it
     // so the shell can say so and every poll can stand down.
-    if (res.status === 401 || res.status === 403) setAuthFailed(true);
+    if (res.status === 401 || res.status === 403) latchAuthFailure();
     let detail = '';
     try {
       const j: unknown = await res.json();
@@ -225,7 +268,7 @@ async function rawFetch(path: string, init?: RequestInitLite): Promise<Response>
     }
     throw new ApiError(res.status, detail || `${res.status} ${res.statusText}`);
   }
-  setAuthFailed(false);
+  clearAuthFailure(); // the key works: drop the latch and restore its retry
   return res;
 }
 
@@ -332,6 +375,17 @@ export function createReport(runIds: string[], title?: string): Promise<ReportOu
   if (isMockActive()) return mock.mockCreateReport(runIds, title);
   const body = title === undefined ? { run_ids: runIds } : { run_ids: runIds, title };
   return request<ReportOut>('/reports', { method: 'POST', body });
+}
+
+/** `GET /reports` — every report the server holds, newest first (at most
+ * `limit`, the API's own default and maximum being 200). This is the report
+ * history; the browser's localStorage records are only a fallback for rows
+ * this server does not have (a different server, or a report requested before
+ * the endpoint existed). */
+export function listReports(limit?: number): Promise<ReportOut[]> {
+  if (isMockActive()) return mock.mockListReports(limit);
+  const q = limit === undefined ? '' : `?limit=${encodeURIComponent(limit)}`;
+  return request<ReportOut[]>(`/reports${q}`);
 }
 
 /** `GET /reports/{id}` — the report's status row (JSON), never its content. */
