@@ -159,6 +159,8 @@ fi
 if echo " $STAGES " | grep -q " battery_canonical "; then
   # the five canonical arms, one at a time (the archive grows after each), then pruned
   stage battery_canonical bash -c "for arm in tracked corrected speedcal ramps speedcal_heavy; do $RUN scripts/i24_validate.py --arms \$arm --replicates $REPS --procs $PROCS --analysis-procs 8 --ring-seeds $RING || exit 1; done" || exit 1
+  # reports from the full batteries, BEFORE the prune below removes the replicates' trajectories
+  if echo " $STAGES " | grep -q " reports_0917 "; then stage reports_0917 $RUN scripts/i24_report.py || exit 1; fi
   stage prune_canonical bash -c 'for a in runs/i24_validation/*/; do for h in "$a"*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; done; du -sh runs/i24_validation' || true
 fi
 if echo " $STAGES " | grep -q " rescore_flow "; then
@@ -171,6 +173,7 @@ fi
 if echo " $STAGES " | grep -q " battery_us101 "; then
   # US-101 replica battery under the corrected metric definitions (needs data/ngsim on the VM)
   stage battery_us101 bash -c "M3_PROCS=$PROCS $RUN scripts/m3_us101_validate.py --arms with_boundary calibrated --replicates $REPS --artifact-out artifacts/us101_validation_calibrated.json" || exit 1
+  if echo " $STAGES " | grep -q " reports_us101 "; then stage reports_us101 $RUN scripts/m3_us101_report.py || exit 1; fi
   stage prune_us101 bash -c 'for h in runs/m3_us101/*/*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; du -sh runs/m3_us101' || true
 fi
 
@@ -199,7 +202,7 @@ fi
 # 0c. The discharge-capacity question (docs/I24_VALIDATION.md 0.11; opt-in stages): a
 #     sub-corridor IDM population fitted on the Old Hickory merge zone only, its closed-form
 #     capacity against the corridor-wide populations, and a single-seed probe of the fitted
-#     arm driven by it. Then the report regeneration from full (unpruned) batteries.
+#     arm driven by it. (The report stages live beside their batteries above, before the prune.)
 if echo " $STAGES " | grep -q " merge_positions "; then
   stage merge_positions $RUN scripts/i24_extract_episodes.py --positions || exit 1
 fi
@@ -212,13 +215,6 @@ fi
 if echo " $STAGES " | grep -q " probe_mergefleet "; then
   stage probe_mergefleet $RUN scripts/i24_merge_experiment.py \
     --variants as_is as_is_fleetmerge --procs "$PROCS" --out artifacts/i24_merge_experiment_mergefleet.json || exit 1
-fi
-if echo " $STAGES " | grep -q " reports_0917 "; then
-  # runs after battery_canonical and BEFORE prune_canonical: every replicate still has trajectories
-  stage reports_0917 $RUN scripts/i24_report.py || exit 1
-fi
-if echo " $STAGES " | grep -q " reports_us101 "; then
-  stage reports_us101 $RUN scripts/m3_us101_report.py || exit 1
 fi
 
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
