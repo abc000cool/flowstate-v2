@@ -75,6 +75,13 @@ default key.
 
 ## 4. Sizing
 
+Cloud rounds (`scripts/gcp/`): a fresh Google Cloud project carries a global
+quota of 32 vCPUs (`CPUS_ALL_REGIONS`), so one n2-standard-32 runs at a time and
+a second create fails with a quota error; chain machines sequentially (the launch
+helpers do) or request a quota increase before a parallel round. At 30 processes a
+20-seed battery of the I-24 replica takes about twelve minutes and a full scenario
+family through the FHWA sequence about 1 h 45 min (2026-09-17), about three dollars.
+
 The M5 load test ran 10 concurrent macro sweeps plus a SUMO sweep on one host
 with two workers and kept `/healthz` under 12 ms p95. Per-replicate SUMO wall
 time scales with vehicle count and duration (CLAUDE.md §3.4 targets 5x real

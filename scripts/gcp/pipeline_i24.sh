@@ -186,6 +186,13 @@ if echo " $STAGES " | grep -q " probe_heavylanes "; then
     --variants as_is as_is_heavy as_is_heavylanes --procs "$PROCS" --out artifacts/i24_merge_experiment_heavylanes.json || exit 1
 fi
 
+if echo " $STAGES " | grep -q " sweep_0917 "; then
+  # The 500-run penetration x compliance battery on the fitted arm, re-run so its summary carries
+  # the corrected metric definitions (CHANGELOG 2026-09-17); cells resume on disk, run dirs pruned after.
+  stage sweep_0917 $RUN scripts/i24_penetration_sweep.py --scenario i24_replica_speedcal --procs "$PROCS" --replicates "$REPS" || exit 1
+  stage prune_sweep bash -c 'find runs/i24_sweep -name trajectories.parquet -delete 2>/dev/null; du -sh runs/i24_sweep' || true
+fi
+
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
 stage jm_sweep $RUN scripts/i24_merge_experiment.py \
   --variants geometry_corrected_ramplc1_entrylanes_zipper_jm0.5 \
