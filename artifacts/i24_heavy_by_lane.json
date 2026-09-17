@@ -1,0 +1,747 @@
+{
+  "created_at": "2026-09-17T18:30:29+00:00",
+  "script": "scripts/i24_heavy_share.py --by-lane",
+  "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
+  "source": "data/i24motion/processed/i24_wb_20221130/trajectories.parquet",
+  "period": "06:30-08:30 CST",
+  "span_data_x_m": [
+    0.0,
+    5492.0
+  ],
+  "lanes": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "heavy_classes": [
+    4,
+    5
+  ],
+  "lane_convention": "1 = leftmost (HOV) ... 4 = rightmost mainline, 5 = first outside band, which pools every auxiliary section along the span (the Old Hickory acceleration lane at 0.75-1.95 km, the Hickory Hollow deceleration pocket at 3.45-3.95 km and the Hickory Hollow on-ramp / Bell Road lanes beyond 4.5 km); the ramp block below isolates the Old Hickory one. Bands <= 0 (median shoulder, homography artifact) and 6-7 (outside shoulder, 0.3% of the span's samples) are excluded; samples_by_band records all of them",
+  "share_convention": "share_fragments = distinct heavy veh_id / distinct veh_id in the set (a fragment counts once per lane it has a sample in, so the per-lane fragment counts sum above the corridor total); share_vehicle_time = heavy 5 Hz samples / samples in the set. Both are ratios of coverage-limited counts (docs/I24_DATA.md \u00a74)",
+  "ramp_fragment_rule": {
+    "aux_lane": 5,
+    "aux_x_range_m": [
+      750.0,
+      1950.0
+    ],
+    "applied_over_x_range_m": [
+      0.0,
+      1950.0
+    ],
+    "on_aux": "at least one sample on lane 5 with x in the acceleration lane's span [750, 1950) m, the recording's own lane-5 occupancy there (docs/I24_VALIDATION.md \u00a70.5(d))",
+    "aux_origin": "on_aux and the fragment's first sample anywhere in x in [0, 1950) m is itself on lane 5 inside that span, i.e. the fragment begins in the acceleration lane rather than arriving from a mainline lane",
+    "caveat": "I-24 MOTION documents are fragments, not trips (median 117 m, 6 s; docs/I24_DATA.md \u00a72), so aux_origin is a proxy for ramp origin - a mainline vehicle whose track breaks inside the lane satisfies it too - and on_aux is the wider bound",
+    "n_on_aux": 9799,
+    "n_aux_origin": 8067
+  },
+  "corridor": {
+    "n_samples": 21868740,
+    "n_fragments": 288827,
+    "n_heavy_samples": 1212154,
+    "n_heavy_fragments": 26496,
+    "share_fragments": 0.0917,
+    "share_vehicle_time": 0.0554,
+    "fragments_by_class": {
+      "0": 105614,
+      "1": 99255,
+      "2": 9560,
+      "3": 47902,
+      "4": 23004,
+      "5": 3492
+    },
+    "samples_by_class": {
+      "0": 8745563,
+      "1": 8053763,
+      "2": 588813,
+      "3": 3268447,
+      "4": 1057495,
+      "5": 154659
+    },
+    "n_fragments_mixed_class": 0,
+    "by_class": {
+      "sedan": {
+        "fragments": 105614,
+        "share_fragments": 0.3657,
+        "share_vehicle_time": 0.3999,
+        "mean_tracked_s": 16.56
+      },
+      "midsize": {
+        "fragments": 99255,
+        "share_fragments": 0.3436,
+        "share_vehicle_time": 0.3683,
+        "mean_tracked_s": 16.23
+      },
+      "van": {
+        "fragments": 9560,
+        "share_fragments": 0.0331,
+        "share_vehicle_time": 0.0269,
+        "mean_tracked_s": 12.32
+      },
+      "pickup": {
+        "fragments": 47902,
+        "share_fragments": 0.1659,
+        "share_vehicle_time": 0.1495,
+        "mean_tracked_s": 13.65
+      },
+      "semi": {
+        "fragments": 23004,
+        "share_fragments": 0.0796,
+        "share_vehicle_time": 0.0484,
+        "mean_tracked_s": 9.19
+      },
+      "truck": {
+        "fragments": 3492,
+        "share_fragments": 0.0121,
+        "share_vehicle_time": 0.0071,
+        "mean_tracked_s": 8.86
+      }
+    },
+    "share_fragments_minus_corridor_points": 0.0,
+    "share_vehicle_time_minus_corridor_points": 0.0,
+    "sensitivity_true_share_fragments": {
+      "r=1": 0.0917,
+      "r=1.2": 0.0776,
+      "r=1.5": 0.0631,
+      "r=2": 0.0481
+    },
+    "lanes": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "committed_artifact": "artifacts/i24_heavy_observed.json",
+    "committed_n_fragments": 288827,
+    "committed_share_fragments": 0.0917,
+    "committed_share_vehicle_time": 0.0554,
+    "reproduces_committed": true
+  },
+  "by_lane": {
+    "1": {
+      "n_samples": 6633219,
+      "n_fragments": 96970,
+      "n_heavy_samples": 24826,
+      "n_heavy_fragments": 1348,
+      "share_fragments": 0.0139,
+      "share_vehicle_time": 0.0037,
+      "fragments_by_class": {
+        "0": 40610,
+        "1": 35733,
+        "2": 2521,
+        "3": 16758,
+        "4": 1116,
+        "5": 232
+      },
+      "samples_by_class": {
+        "0": 2894667,
+        "1": 2501324,
+        "2": 150866,
+        "3": 1061536,
+        "4": 19328,
+        "5": 5498
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 40610,
+          "share_fragments": 0.4188,
+          "share_vehicle_time": 0.4364,
+          "mean_tracked_s": 14.26
+        },
+        "midsize": {
+          "fragments": 35733,
+          "share_fragments": 0.3685,
+          "share_vehicle_time": 0.3771,
+          "mean_tracked_s": 14.0
+        },
+        "van": {
+          "fragments": 2521,
+          "share_fragments": 0.026,
+          "share_vehicle_time": 0.0227,
+          "mean_tracked_s": 11.97
+        },
+        "pickup": {
+          "fragments": 16758,
+          "share_fragments": 0.1728,
+          "share_vehicle_time": 0.16,
+          "mean_tracked_s": 12.67
+        },
+        "semi": {
+          "fragments": 1116,
+          "share_fragments": 0.0115,
+          "share_vehicle_time": 0.0029,
+          "mean_tracked_s": 3.46
+        },
+        "truck": {
+          "fragments": 232,
+          "share_fragments": 0.0024,
+          "share_vehicle_time": 0.0008,
+          "mean_tracked_s": 4.74
+        }
+      },
+      "share_fragments_minus_corridor_points": -7.78,
+      "share_vehicle_time_minus_corridor_points": -5.17,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.0139,
+        "r=1.2": 0.0116,
+        "r=1.5": 0.0093,
+        "r=2": 0.007
+      }
+    },
+    "2": {
+      "n_samples": 5283105,
+      "n_fragments": 101993,
+      "n_heavy_samples": 166396,
+      "n_heavy_fragments": 6586,
+      "share_fragments": 0.0646,
+      "share_vehicle_time": 0.0315,
+      "fragments_by_class": {
+        "0": 38376,
+        "1": 35995,
+        "2": 3403,
+        "3": 17633,
+        "4": 6011,
+        "5": 575
+      },
+      "samples_by_class": {
+        "0": 2185620,
+        "1": 1996880,
+        "2": 137262,
+        "3": 796947,
+        "4": 154626,
+        "5": 11770
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 38376,
+          "share_fragments": 0.3763,
+          "share_vehicle_time": 0.4137,
+          "mean_tracked_s": 11.39
+        },
+        "midsize": {
+          "fragments": 35995,
+          "share_fragments": 0.3529,
+          "share_vehicle_time": 0.378,
+          "mean_tracked_s": 11.1
+        },
+        "van": {
+          "fragments": 3403,
+          "share_fragments": 0.0334,
+          "share_vehicle_time": 0.026,
+          "mean_tracked_s": 8.07
+        },
+        "pickup": {
+          "fragments": 17633,
+          "share_fragments": 0.1729,
+          "share_vehicle_time": 0.1508,
+          "mean_tracked_s": 9.04
+        },
+        "semi": {
+          "fragments": 6011,
+          "share_fragments": 0.0589,
+          "share_vehicle_time": 0.0293,
+          "mean_tracked_s": 5.14
+        },
+        "truck": {
+          "fragments": 575,
+          "share_fragments": 0.0056,
+          "share_vehicle_time": 0.0022,
+          "mean_tracked_s": 4.09
+        }
+      },
+      "share_fragments_minus_corridor_points": -2.72,
+      "share_vehicle_time_minus_corridor_points": -2.39,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.0646,
+        "r=1.2": 0.0544,
+        "r=1.5": 0.044,
+        "r=2": 0.0334
+      }
+    },
+    "3": {
+      "n_samples": 4385745,
+      "n_fragments": 87488,
+      "n_heavy_samples": 630037,
+      "n_heavy_fragments": 16588,
+      "share_fragments": 0.1896,
+      "share_vehicle_time": 0.1437,
+      "fragments_by_class": {
+        "0": 28070,
+        "1": 26486,
+        "2": 3294,
+        "3": 13050,
+        "4": 15280,
+        "5": 1308
+      },
+      "samples_by_class": {
+        "0": 1556248,
+        "1": 1471955,
+        "2": 140520,
+        "3": 586985,
+        "4": 590502,
+        "5": 39535
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 28070,
+          "share_fragments": 0.3208,
+          "share_vehicle_time": 0.3548,
+          "mean_tracked_s": 11.09
+        },
+        "midsize": {
+          "fragments": 26486,
+          "share_fragments": 0.3027,
+          "share_vehicle_time": 0.3356,
+          "mean_tracked_s": 11.11
+        },
+        "van": {
+          "fragments": 3294,
+          "share_fragments": 0.0377,
+          "share_vehicle_time": 0.032,
+          "mean_tracked_s": 8.53
+        },
+        "pickup": {
+          "fragments": 13050,
+          "share_fragments": 0.1492,
+          "share_vehicle_time": 0.1338,
+          "mean_tracked_s": 9.0
+        },
+        "semi": {
+          "fragments": 15280,
+          "share_fragments": 0.1747,
+          "share_vehicle_time": 0.1346,
+          "mean_tracked_s": 7.73
+        },
+        "truck": {
+          "fragments": 1308,
+          "share_fragments": 0.015,
+          "share_vehicle_time": 0.009,
+          "mean_tracked_s": 6.05
+        }
+      },
+      "share_fragments_minus_corridor_points": 9.79,
+      "share_vehicle_time_minus_corridor_points": 8.82,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.1896,
+        "r=1.2": 0.1632,
+        "r=1.5": 0.1349,
+        "r=2": 0.1047
+      }
+    },
+    "4": {
+      "n_samples": 5566671,
+      "n_fragments": 79667,
+      "n_heavy_samples": 390895,
+      "n_heavy_fragments": 11483,
+      "share_fragments": 0.1441,
+      "share_vehicle_time": 0.0702,
+      "fragments_by_class": {
+        "0": 26559,
+        "1": 26371,
+        "2": 2639,
+        "3": 12615,
+        "4": 9223,
+        "5": 2260
+      },
+      "samples_by_class": {
+        "0": 2109028,
+        "1": 2083604,
+        "2": 160165,
+        "3": 822979,
+        "4": 293039,
+        "5": 97856
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 26559,
+          "share_fragments": 0.3334,
+          "share_vehicle_time": 0.3789,
+          "mean_tracked_s": 15.88
+        },
+        "midsize": {
+          "fragments": 26371,
+          "share_fragments": 0.331,
+          "share_vehicle_time": 0.3743,
+          "mean_tracked_s": 15.8
+        },
+        "van": {
+          "fragments": 2639,
+          "share_fragments": 0.0331,
+          "share_vehicle_time": 0.0288,
+          "mean_tracked_s": 12.14
+        },
+        "pickup": {
+          "fragments": 12615,
+          "share_fragments": 0.1583,
+          "share_vehicle_time": 0.1478,
+          "mean_tracked_s": 13.05
+        },
+        "semi": {
+          "fragments": 9223,
+          "share_fragments": 0.1158,
+          "share_vehicle_time": 0.0526,
+          "mean_tracked_s": 6.35
+        },
+        "truck": {
+          "fragments": 2260,
+          "share_fragments": 0.0284,
+          "share_vehicle_time": 0.0176,
+          "mean_tracked_s": 8.66
+        }
+      },
+      "share_fragments_minus_corridor_points": 5.24,
+      "share_vehicle_time_minus_corridor_points": 1.48,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.1441,
+        "r=1.2": 0.1231,
+        "r=1.5": 0.1009,
+        "r=2": 0.0777
+      }
+    },
+    "5": {
+      "n_samples": 714333,
+      "n_fragments": 22170,
+      "n_heavy_samples": 54432,
+      "n_heavy_fragments": 2998,
+      "share_fragments": 0.1352,
+      "share_vehicle_time": 0.0762,
+      "fragments_by_class": {
+        "0": 8555,
+        "1": 7416,
+        "2": 504,
+        "3": 2697,
+        "4": 2537,
+        "5": 461
+      },
+      "samples_by_class": {
+        "0": 300896,
+        "1": 257889,
+        "2": 14509,
+        "3": 86607,
+        "4": 42763,
+        "5": 11669
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 8555,
+          "share_fragments": 0.3859,
+          "share_vehicle_time": 0.4212,
+          "mean_tracked_s": 7.03
+        },
+        "midsize": {
+          "fragments": 7416,
+          "share_fragments": 0.3345,
+          "share_vehicle_time": 0.361,
+          "mean_tracked_s": 6.95
+        },
+        "van": {
+          "fragments": 504,
+          "share_fragments": 0.0227,
+          "share_vehicle_time": 0.0203,
+          "mean_tracked_s": 5.76
+        },
+        "pickup": {
+          "fragments": 2697,
+          "share_fragments": 0.1217,
+          "share_vehicle_time": 0.1212,
+          "mean_tracked_s": 6.42
+        },
+        "semi": {
+          "fragments": 2537,
+          "share_fragments": 0.1144,
+          "share_vehicle_time": 0.0599,
+          "mean_tracked_s": 3.37
+        },
+        "truck": {
+          "fragments": 461,
+          "share_fragments": 0.0208,
+          "share_vehicle_time": 0.0163,
+          "mean_tracked_s": 5.06
+        }
+      },
+      "share_fragments_minus_corridor_points": 4.35,
+      "share_vehicle_time_minus_corridor_points": 2.08,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.1352,
+        "r=1.2": 0.1153,
+        "r=1.5": 0.0944,
+        "r=2": 0.0725
+      }
+    }
+  },
+  "ramp": {
+    "on_aux": {
+      "n_samples": 790427,
+      "n_fragments": 9799,
+      "n_heavy_samples": 72706,
+      "n_heavy_fragments": 1289,
+      "share_fragments": 0.1315,
+      "share_vehicle_time": 0.092,
+      "fragments_by_class": {
+        "0": 3624,
+        "1": 3218,
+        "2": 241,
+        "3": 1427,
+        "4": 1027,
+        "5": 262
+      },
+      "samples_by_class": {
+        "0": 315581,
+        "1": 274511,
+        "2": 18293,
+        "3": 109336,
+        "4": 59730,
+        "5": 12976
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 3624,
+          "share_fragments": 0.3698,
+          "share_vehicle_time": 0.3993,
+          "mean_tracked_s": 17.42
+        },
+        "midsize": {
+          "fragments": 3218,
+          "share_fragments": 0.3284,
+          "share_vehicle_time": 0.3473,
+          "mean_tracked_s": 17.06
+        },
+        "van": {
+          "fragments": 241,
+          "share_fragments": 0.0246,
+          "share_vehicle_time": 0.0231,
+          "mean_tracked_s": 15.18
+        },
+        "pickup": {
+          "fragments": 1427,
+          "share_fragments": 0.1456,
+          "share_vehicle_time": 0.1383,
+          "mean_tracked_s": 15.32
+        },
+        "semi": {
+          "fragments": 1027,
+          "share_fragments": 0.1048,
+          "share_vehicle_time": 0.0756,
+          "mean_tracked_s": 11.63
+        },
+        "truck": {
+          "fragments": 262,
+          "share_fragments": 0.0267,
+          "share_vehicle_time": 0.0164,
+          "mean_tracked_s": 9.91
+        }
+      },
+      "share_fragments_minus_corridor_points": 3.98,
+      "share_vehicle_time_minus_corridor_points": 3.66,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.1315,
+        "r=1.2": 0.1121,
+        "r=1.5": 0.0917,
+        "r=2": 0.0704
+      }
+    },
+    "aux_origin": {
+      "n_samples": 528236,
+      "n_fragments": 8067,
+      "n_heavy_samples": 32044,
+      "n_heavy_fragments": 781,
+      "share_fragments": 0.0968,
+      "share_vehicle_time": 0.0607,
+      "fragments_by_class": {
+        "0": 3129,
+        "1": 2765,
+        "2": 189,
+        "3": 1203,
+        "4": 570,
+        "5": 211
+      },
+      "samples_by_class": {
+        "0": 219862,
+        "1": 193316,
+        "2": 10655,
+        "3": 72359,
+        "4": 24290,
+        "5": 7754
+      },
+      "n_fragments_mixed_class": 0,
+      "by_class": {
+        "sedan": {
+          "fragments": 3129,
+          "share_fragments": 0.3879,
+          "share_vehicle_time": 0.4162,
+          "mean_tracked_s": 14.05
+        },
+        "midsize": {
+          "fragments": 2765,
+          "share_fragments": 0.3428,
+          "share_vehicle_time": 0.366,
+          "mean_tracked_s": 13.98
+        },
+        "van": {
+          "fragments": 189,
+          "share_fragments": 0.0234,
+          "share_vehicle_time": 0.0202,
+          "mean_tracked_s": 11.28
+        },
+        "pickup": {
+          "fragments": 1203,
+          "share_fragments": 0.1491,
+          "share_vehicle_time": 0.137,
+          "mean_tracked_s": 12.03
+        },
+        "semi": {
+          "fragments": 570,
+          "share_fragments": 0.0707,
+          "share_vehicle_time": 0.046,
+          "mean_tracked_s": 8.52
+        },
+        "truck": {
+          "fragments": 211,
+          "share_fragments": 0.0262,
+          "share_vehicle_time": 0.0147,
+          "mean_tracked_s": 7.35
+        }
+      },
+      "share_fragments_minus_corridor_points": 0.51,
+      "share_vehicle_time_minus_corridor_points": 0.52,
+      "sensitivity_true_share_fragments": {
+        "r=1": 0.0968,
+        "r=1.2": 0.082,
+        "r=1.5": 0.0667,
+        "r=2": 0.0509
+      }
+    }
+  },
+  "samples_by_band": {
+    "-1": 55576,
+    "0": 134202,
+    "1": 6633219,
+    "2": 5283105,
+    "3": 4385745,
+    "4": 5566671,
+    "5": 714333,
+    "6": 60795,
+    "7": 2079
+  },
+  "lane_tracking_coverage": {
+    "gap_mixture": {
+      "1": [
+        0.699,
+        0.76
+      ],
+      "2": [
+        0.504,
+        0.583
+      ],
+      "3": [
+        0.403,
+        0.54
+      ],
+      "4": [
+        0.491,
+        0.634
+      ],
+      "5": null
+    },
+    "recommended": {
+      "1": [
+        0.716,
+        0.874
+      ],
+      "2": [
+        0.521,
+        0.665
+      ],
+      "3": [
+        0.555,
+        0.648
+      ],
+      "4": [
+        0.345,
+        0.625
+      ],
+      "5": null
+    }
+  },
+  "observed_lane_speed_context": {
+    "source": "artifacts/i24_lane_profile_zip.json (observed rows)",
+    "bins_x_lo_m": [
+      1000.0,
+      1250.0,
+      1500.0
+    ],
+    "speed_kmh": {
+      "1000": {
+        "1": 32.7,
+        "2": 30.36,
+        "3": 27.14,
+        "4": 23.68,
+        "5": 48.97
+      },
+      "1250": {
+        "1": 32.8,
+        "2": 31.12,
+        "3": 27.42,
+        "4": 22.55,
+        "5": 45.45
+      },
+      "1500": {
+        "1": 33.26,
+        "2": 29.77,
+        "3": 29.47,
+        "4": 19.25,
+        "5": 33.28
+      }
+    },
+    "vehicle_time_share": {
+      "1000": {
+        "1": 0.2625,
+        "2": 0.2229,
+        "3": 0.1833,
+        "4": 0.2493,
+        "5": 0.082
+      },
+      "1250": {
+        "1": 0.2535,
+        "2": 0.2136,
+        "3": 0.1859,
+        "4": 0.2702,
+        "5": 0.0768
+      },
+      "1500": {
+        "1": 0.2486,
+        "2": 0.2208,
+        "3": 0.1549,
+        "4": 0.3006,
+        "5": 0.0751
+      }
+    }
+  },
+  "coverage_note": "lane_tracking_coverage gives [min, max] over the eight study-period windows of artifacts/i24_coverage.json's per-lane estimators; lane 5's has never been estimated (docs/MERGE_ROUND6_PLAN.md \u00a72.3). A share INSIDE one lane is invariant to a thinning that is uniform within that lane, so the per-lane rates - which differ by 30 points between lane 1 and lane 3 - do not bias the shares below; what would bias them is a coverage that differs BY CLASS inside a lane, and no coverage-by-class estimate exists for this recording (i24_coverage.json estimates per lane and per SPEED class, never per vehicle class), so it cannot be corrected. The direction is known - heavy vehicles are taller and easier to track, so every share here is if anything high - and sensitivity_true_share_fragments inverts an ASSUMED heavy/car coverage ratio r (s = s_obs / (r - s_obs*(r-1))). That map is monotone and applies to every row alike, so it shrinks the lane-to-corridor gaps without changing their sign or order: it is a sensitivity, not a correction",
+  "fragment_length_note": "the one class-dependent tracking statistic that IS measured here: mean_tracked_s per class. Corridor-wide a semi fragment lasts 9.2 s against a sedan's 16.6 s, which is why share_fragments is ~1.7x share_vehicle_time everywhere. It also means the two shares carry the tracking bias differently: shorter fragments per vehicle inflate a heavy share of FRAGMENTS (more documents per truck) while the share of VEHICLE-TIME is unaffected by where a track breaks. share_vehicle_time is therefore the more robust of the two for reading the lane contrast, and share_fragments the quantity a fleet-composition input takes",
+  "decider": {
+    "source": "docs/MERGE_ROUND6_PLAN.md \u00a72.4",
+    "rule": "excluded if every per-lane and ramp-origin share is within 3 percentage points of the corridor share (on either share); the threshold was fixed before the measurement",
+    "max_gap_points": {
+      "lane_1": 7.78,
+      "lane_2": 2.72,
+      "lane_3": 9.79,
+      "lane_4": 5.24,
+      "lane_5": 4.35,
+      "ramp_aux_origin": 0.52,
+      "ramp_on_aux": 3.98
+    },
+    "largest_gap_row": "lane_3",
+    "largest_gap_points": 9.79,
+    "excluded": false,
+    "verdict": "proceed to a lane-placed heavy population (simulation half of 2.4)"
+  }
+}

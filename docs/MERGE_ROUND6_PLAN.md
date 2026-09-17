@@ -276,3 +276,22 @@ values reproduced to the digit):
 The fitted arm moves +0.54 points against a replicate-noise floor of
 11.4 to 16.8 points: **not material; the speed row keeps the unweighted target and the
 35.9% residual is not a lane-coverage artefact.** Candidate 2 is closed.
+
+## Addendum, 2026-09-17: candidate 4, data half (proceed)
+
+`scripts/i24_heavy_share.py --by-lane` (`artifacts/i24_heavy_by_lane.json`, corridor row
+reproducing `i24_heavy_observed.json` exactly) measures the heavy share by lane and by
+ramp use over the study period. Heavy fragments are 1.4% of lane 1, 6.5% of lane 2,
+19.0% of lane 3, 14.4% of lane 4 and 13.5% of the auxiliary lane against the corridor's
+9.2% (vehicle-time 0.4 / 3.2 / 14.4 / 7.0 / 7.6% against 5.5%); fragments that begin on
+the Old Hickory acceleration lane are at the corridor share (9.7% / 6.1%). The decider's
+3-point band is exceeded in four lanes (lane 3 by 9.8 points), so the candidate proceeds
+to a lane-placed heavy population. Two readings for the simulation half: the placement is
+by lane, not by ramp origin (origin placement buys nothing); and the lane with the
+observed speed collapse at 1.0 to 1.5 km is lane 4, which carries less heavy traffic than
+lane 3, so a lane-placed population is not obviously the mechanism and the probe must show
+it. No coverage-by-class estimate exists, so the shares are bounded (heavy vehicles track
+more easily, so every share is if anything high; the artifact carries a labelled
+sensitivity, not a correction). Simulation half: a per-lane heavy placement in the fleet
+schema, the mixed-fleet capacity calibration, three single-seed probes; after the cloud
+round now running.

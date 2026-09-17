@@ -604,3 +604,218 @@ def lane_change_objective(
         n_share_terms=n_share,
         n_rate_terms=n_rate,
     )
+
+
+DEFAULT_HEAVY_CLASSES: tuple[int, ...] = (4, 5)
+"""I-24 MOTION ``coarse_vehicle_class`` codes treated as heavy (4 = semi,
+5 = truck; :data:`calibration.loaders.i24motion.I24_COARSE_CLASS`)."""
+
+
+@dataclass(frozen=True)
+class ClassShare:
+    """Heavy-vehicle share of one set of trajectory samples.
+
+    Two shares are reported because the two are different quantities and
+    answer different questions: ``share_fragments`` is a share of *vehicles*
+    (the quantity a fleet composition input takes) and
+    ``share_vehicle_time`` a share of *occupancy* (what a lane profile
+    shows). They differ whenever the classes differ in speed or in tracked
+    duration. Both are ratios of tracking-coverage-limited counts
+    (docs/I24_DATA.md §4) and are unbiased only if coverage is the same for
+    every class over the set — see :func:`heavy_share`.
+
+    Attributes:
+        n_samples: Samples in the set.
+        n_fragments: Distinct ``veh_id`` in the set.
+        n_heavy_samples: Samples whose class is heavy.
+        n_heavy_fragments: Distinct ``veh_id`` with a heavy class.
+        share_fragments: ``n_heavy_fragments / n_fragments`` (NaN if empty).
+        share_vehicle_time: ``n_heavy_samples / n_samples`` (NaN if empty).
+        fragments_by_class: Distinct ``veh_id`` per class code.
+        samples_by_class: Samples per class code.
+        n_fragments_mixed_class: Fragments carrying more than one class
+            code (a data defect; 0 on a clean set).
+    """
+
+    n_samples: int
+    n_fragments: int
+    n_heavy_samples: int
+    n_heavy_fragments: int
+    share_fragments: float
+    share_vehicle_time: float
+    fragments_by_class: dict[int, int]
+    samples_by_class: dict[int, int]
+    n_fragments_mixed_class: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Plain-dict form with NaN mapped to None (JSON-safe)."""
+        return {
+            "n_samples": self.n_samples,
+            "n_fragments": self.n_fragments,
+            "n_heavy_samples": self.n_heavy_samples,
+            "n_heavy_fragments": self.n_heavy_fragments,
+            "share_fragments": (None if math.isnan(self.share_fragments) else self.share_fragments),
+            "share_vehicle_time": (
+                None if math.isnan(self.share_vehicle_time) else self.share_vehicle_time
+            ),
+            "fragments_by_class": {str(k): v for k, v in sorted(self.fragments_by_class.items())},
+            "samples_by_class": {str(k): v for k, v in sorted(self.samples_by_class.items())},
+            "n_fragments_mixed_class": self.n_fragments_mixed_class,
+        }
+
+
+def heavy_share(
+    df: pd.DataFrame,
+    *,
+    heavy_classes: Sequence[int] = DEFAULT_HEAVY_CLASSES,
+) -> ClassShare:
+    """Heavy-vehicle share of a set of trajectory samples, two ways.
+
+    A fragment counts once however many samples it has, and counts as heavy
+    if any of its samples carries a heavy class code (the class is constant
+    per fragment in the I-24 product; violations are counted in
+    ``n_fragments_mixed_class`` rather than resolved). Sample counts are
+    vehicle-time up to the fixed sampling interval, which cancels in the
+    share.
+
+    **Coverage.** Both numbers are ratios of counts that the instrument
+    tracks incompletely (docs/I24_DATA.md §4). A thinning that keeps each
+    vehicle with the same probability regardless of class leaves both shares
+    unbiased; a class-dependent one does not, and no coverage-by-class
+    estimate exists for this recording, so the direction (heavy vehicles are
+    taller and easier to track, so the share is if anything high) is
+    reported and no correction is applied.
+
+    Args:
+        df: Frame with columns ``veh_id`` and ``cls`` (one row per sample).
+        heavy_classes: Class codes treated as heavy.
+
+    Returns:
+        :class:`ClassShare` for the whole frame.
+
+    Raises:
+        ValueError: If ``heavy_classes`` is empty or a column is missing.
+    """
+    heavy = tuple(int(c) for c in heavy_classes)
+    if not heavy:
+        raise ValueError("heavy_classes must be non-empty")
+    missing = {"veh_id", "cls"} - set(df.columns)
+    if missing:
+        raise ValueError(f"df is missing columns: {sorted(missing)}")
+    codes, _ = pd.factorize(df["veh_id"], sort=False)
+    codes = np.asarray(codes, dtype=np.int64)
+    cls = df["cls"].to_numpy(dtype=np.int64)
+    n_samples = int(codes.size)
+    if n_samples == 0:
+        return ClassShare(0, 0, 0, 0, math.nan, math.nan, {}, {}, 0)
+    if np.any(cls < 0):
+        raise ValueError("cls must be non-negative class codes")
+    n_cls = int(cls.max()) + 1
+    # One key per (fragment, class) pair; distinct keys give per-class
+    # fragment counts and expose any fragment with more than one class.
+    pair_keys = np.unique(codes * n_cls + cls)
+    n_fragments = int(np.unique(codes).size)
+    frag_by_cls = np.bincount(pair_keys % n_cls, minlength=n_cls)
+    samp_by_cls = np.bincount(cls, minlength=n_cls)
+    heavy_mask = np.isin(cls, heavy)
+    n_heavy_frag = int(np.unique(codes[heavy_mask]).size) if heavy_mask.any() else 0
+    n_heavy_samp = int(heavy_mask.sum())
+    return ClassShare(
+        n_samples=n_samples,
+        n_fragments=n_fragments,
+        n_heavy_samples=n_heavy_samp,
+        n_heavy_fragments=n_heavy_frag,
+        share_fragments=n_heavy_frag / n_fragments,
+        share_vehicle_time=n_heavy_samp / n_samples,
+        fragments_by_class={int(c): int(frag_by_cls[c]) for c in range(n_cls) if frag_by_cls[c]},
+        samples_by_class={int(c): int(samp_by_cls[c]) for c in range(n_cls) if samp_by_cls[c]},
+        n_fragments_mixed_class=int(pair_keys.size - n_fragments),
+    )
+
+
+@dataclass(frozen=True)
+class AuxLaneFragments:
+    """Fragments touching an auxiliary (ramp) lane over one span.
+
+    Attributes:
+        on_aux: ``veh_id`` with at least one sample on the auxiliary lane
+            inside the span.
+        aux_origin: those of ``on_aux`` whose *first* sample in the frame is
+            itself on the auxiliary lane inside the span — the ramp-origin
+            rule of :func:`aux_lane_fragments`.
+        aux_lane: Lane id treated as the auxiliary lane.
+        x_range_m: Half-open span ``[lo, hi)`` the rule was applied on.
+    """
+
+    on_aux: frozenset[str]
+    aux_origin: frozenset[str]
+    aux_lane: int
+    x_range_m: tuple[float, float]
+
+
+def aux_lane_fragments(
+    df: pd.DataFrame,
+    *,
+    aux_lane: int,
+    x_range_m: tuple[float, float],
+) -> AuxLaneFragments:
+    """Split fragments by their relationship to an auxiliary (ramp) lane.
+
+    **The rule.** A fragment is *on the auxiliary lane* if it has at least
+    one sample with ``lane == aux_lane`` and ``x_range_m[0] ≤ x <
+    x_range_m[1]``. It is *auxiliary-origin* (ramp-origin) if, in addition,
+    the earliest sample it has anywhere in ``df`` satisfies the same
+    condition — that is, the fragment begins in the auxiliary lane rather
+    than arriving there from a mainline lane. Ties in ``t`` within one
+    fragment are broken by the smaller ``x`` (``x`` increases along travel).
+
+    The caller fixes what "anywhere" means by what it passes: give the
+    function every sample from the upstream end of the measured span up to
+    the end of the auxiliary lane, so that a mainline fragment that drifts
+    into the lane has its upstream mainline samples present and is excluded.
+
+    **What the rule can and cannot say.** I-24 MOTION documents are
+    *fragments*, not trips (median 117 m and 6 s; docs/I24_DATA.md §2), so
+    "begins in the auxiliary lane" is a property of the fragment, not proof
+    that the vehicle entered from the ramp: a mainline vehicle whose track
+    breaks and restarts while it is in the lane satisfies it too. It is a
+    proxy for ramp origin, and the ``on_aux`` set is the wider bound.
+
+    Args:
+        df: Frame with columns ``t`` [s], ``veh_id``, ``x`` [m], ``lane``.
+        aux_lane: Lane id of the auxiliary lane (band convention, ≥ 5 on
+            I-24 MOTION).
+        x_range_m: Half-open ``[lo, hi)`` span of the auxiliary lane [m].
+
+    Returns:
+        :class:`AuxLaneFragments`.
+
+    Raises:
+        ValueError: On an empty span or a missing column.
+    """
+    lo, hi = float(x_range_m[0]), float(x_range_m[1])
+    if not hi > lo:
+        raise ValueError("x_range_m must be increasing")
+    missing = {"t", "veh_id", "x", "lane"} - set(df.columns)
+    if missing:
+        raise ValueError(f"df is missing columns: {sorted(missing)}")
+    veh = df["veh_id"].to_numpy()
+    if veh.size == 0:
+        return AuxLaneFragments(frozenset(), frozenset(), int(aux_lane), (lo, hi))
+    x = df["x"].to_numpy(dtype=np.float64)
+    t = df["t"].to_numpy(dtype=np.float64)
+    lane = df["lane"].to_numpy(dtype=np.int64)
+    in_aux = (lane == int(aux_lane)) & (x >= lo) & (x < hi)
+    on_aux = frozenset(str(v) for v in pd.unique(veh[in_aux]))
+    codes, labels = pd.factorize(df["veh_id"], sort=False)
+    codes = np.asarray(codes, dtype=np.int64)
+    order = np.lexsort((x, t, codes))
+    first = order[np.flatnonzero(np.r_[True, np.diff(codes[order]) != 0])]
+    origin_codes = codes[first][in_aux[first]]
+    aux_origin = frozenset(str(labels[c]) for c in origin_codes) & on_aux
+    return AuxLaneFragments(
+        on_aux=on_aux,
+        aux_origin=aux_origin,
+        aux_lane=int(aux_lane),
+        x_range_m=(lo, hi),
+    )

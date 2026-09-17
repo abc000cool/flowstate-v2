@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Merge round six, candidate 4 data half: proceed (2026-09-17)
+
+- `scripts/i24_heavy_share.py --by-lane` and `calibration.lanechange.heavy_share` / `aux_lane_fragments` (synthetic tests): heavy share by lane and by acceleration-lane use, `artifacts/i24_heavy_by_lane.json`. Lane 3 carries 19.0% heavy fragments (14.4% of vehicle-time), lane 1 1.4%, against the corridor's 9.2%; ramp-origin traffic is at the corridor share. Exceeds the plan's 3-point band, so the candidate proceeds to a lane-placed heavy population (schema, capacity calibration and probes to follow the cloud round).
+
 ### Merge round six, candidate 2 closed (2026-09-17)
 
 - Data only, no cloud cost: the coverage-weighted scoring target (`scripts/i24_weighted_target.py`, synthetic validation in `tests/test_calibration/test_i24_weighted_target.py`, `artifacts/i24_validation_weighted_target.json`) moves the fitted arm's 5-min RMSPE by +0.54 points (35.95% to 36.49%), an order of magnitude inside the replicate-noise floor; the target itself shifts by 1.52% RMSPE. The criterion keeps the unweighted target; docs/I24_VALIDATION.md §0.9a, docs/MERGE_ROUND6_PLAN.md addendum.
