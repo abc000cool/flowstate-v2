@@ -25,7 +25,15 @@ variants and reports the same segment-speed table:
 Variant names also carry composable suffixes; ``_entrylanes`` and
 ``_entryflow`` set ``network.entry_lane_shares`` from the recording's entry
 bin in vehicle-time and in flow units respectively (mutually exclusive;
-docs/MERGE_ROUND6_PLAN.md §2.1).
+docs/MERGE_ROUND6_PLAN.md §2.1), and ``_oh<mult>`` scales every Old Hickory
+on-ramp inflow row of the base by ``<mult>`` (the ramp-level probe of §2.3).
+
+Every variant is built from ``--base``, the arm yaml it starts from (default
+``scenarios/i24_replica_speedcal.yaml``), so the same grid runs on any fitted
+arm; ``flow_speedcal`` is a second spelling of ``as_is`` — the base yaml
+unchanged — so that a probe on the "flow" family reads its reference row as
+the fitted flow arm itself. The ``geometry_corrected*`` names set the
+corrected map, which is a no-op on a base already built on it.
 
 Each variant reports the segment-speed RMSPE over the fitted first hour and
 the held-out second hour separately, so a merge setting can be adopted the
@@ -68,6 +76,12 @@ TRACKED_YAML = REPO / "scenarios" / "i24_replica.yaml"
 OBSERVED = REPO / "artifacts" / "i24_validation_observed.json"
 OUT = REPO / "artifacts" / "i24_merge_experiment.json"
 OH = "Old Hickory Blvd on-ramp"
+CORRECTED_OSM = "data/osm/i24_motion_corrected.osm"  # scripts/i24_correct_osm.py
+# "the base yaml unchanged". The second spelling names the fitted arm of the
+# "flow" family (scenarios/i24_replica_flow_speedcal.yaml) so a probe on that
+# base has a reference row that reads as itself; both build the identical
+# scenario, hence the identical config hash.
+BASE_AS_IS = ("as_is", "flow_speedcal")
 VARIANTS = (
     "as_is",
     "oh_tracked",
@@ -145,8 +159,15 @@ def observed_entry_lane_flow_shares() -> list[float]:
     return [round(v / tot, 4) for v in raw]
 
 
-def variant_config(name: str) -> dict[str, Any]:
-    raw = yaml.safe_load(ARM_YAML.read_text())
+def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
+    """The scenario dict for variant ``name``, built from the arm yaml ``base``.
+
+    ``base`` is the arm every variant starts from (``--base``); only the levers
+    the name asks for are applied to it, so a variant whose lever the base
+    already carries (the corrected map, the flow entry shares) is a no-op
+    rather than a second application.
+    """
+    raw = yaml.safe_load(Path(base).read_text())
     merge_model = None
     meter_on = False
     jm_gap = None
@@ -159,6 +180,15 @@ def variant_config(name: str) -> dict[str, Any]:
     if m_vis:
         vis = float(m_vis.group(1))
         name = name[: m_vis.start()] + name[m_vis.end() :]
+    # Old Hickory on-ramp demand level: every inflow row of that ramp scaled by
+    # the multiplier, applied after the base name's own ramp edits, so
+    # "_oh<mult>" composes with oh_tracked / oh_closed and with every other
+    # suffix (docs/MERGE_ROUND6_PLAN.md §2.3).
+    oh_mult = None
+    m_oh = re.search(r"_oh([0-9.]+)", name)
+    if m_oh:
+        oh_mult = float(m_oh.group(1))
+        name = name[: m_oh.start()] + name[m_oh.end() :]
     # sublane / impatience levers, anywhere in the name, any order
     fields = {
         "keepright": "lc_keep_right",
@@ -249,8 +279,10 @@ def variant_config(name: str) -> dict[str, Any]:
     if "_entrylanes" in name and "_entryflow" in name:
         raise ValueError(f"_entrylanes and _entryflow are mutually exclusive: {name}")
     entry_flow = False
+    entry_lanes = False
     if name.endswith("_entrylanes"):
         raw["network"]["entry_lane_shares"] = observed_entry_lane_shares()  # vehicle-time
+        entry_lanes = True
         name = name[: -len("_entrylanes")]
     elif name.endswith("_entryflow"):
         raw["network"]["entry_lane_shares"] = observed_entry_lane_flow_shares()  # flow
@@ -281,23 +313,24 @@ def variant_config(name: str) -> dict[str, Any]:
         raw["fleet"]["lc_assertive"] = 2.0
     elif name == "geometry_corrected":
         # scripts/i24_correct_osm.py: auxiliary lanes at the landmark positions
-        raw["network"]["osm_file"] = "data/osm/i24_motion_corrected.osm"
+        # (a no-op on a base already built on the corrected map)
+        raw["network"]["osm_file"] = CORRECTED_OSM
     elif name in ("geometry_corrected_lc1", "geometry_corrected_lc2"):
         # corrected map, and the strategic eagerness that the short diverge
         # pocket had forced to 5 returned toward SUMO's default
-        raw["network"]["osm_file"] = "data/osm/i24_motion_corrected.osm"
+        raw["network"]["osm_file"] = CORRECTED_OSM
         raw["fleet"]["lc_strategic"] = 1.0 if name.endswith("lc1") else 2.0
     elif name.startswith("geometry_corrected_ramplc1"):
         # corrected map; ramp-origin vehicles keep SUMO's default strategic
         # eagerness (use the acceleration lane), mainline keeps the diverge fix
-        raw["network"]["osm_file"] = "data/osm/i24_motion_corrected.osm"
+        raw["network"]["osm_file"] = CORRECTED_OSM
         raw["fleet"]["lc_strategic_ramp"] = 1.0
         if name.endswith("_assertive_1.5"):
             raw["fleet"]["lc_assertive"] = 1.5
     elif name.startswith("geometry_corrected_assertive_"):
         # corrected map + gap acceptance at the merge (SUMO lcAssertive), the
         # lever the original-map experiment found clears the entry queue
-        raw["network"]["osm_file"] = "data/osm/i24_motion_corrected.osm"
+        raw["network"]["osm_file"] = CORRECTED_OSM
         rest = name[len("geometry_corrected_assertive_") :]
         if "_coop_" in rest:
             a_str, c_str = rest.split("_coop_")
@@ -305,15 +338,14 @@ def variant_config(name: str) -> dict[str, Any]:
         else:
             a_str = rest
         raw["fleet"]["lc_assertive"] = float(a_str)
-    elif name != "as_is":
+    elif name not in BASE_AS_IS:
         raise ValueError(name)
+    if oh_mult is not None:
+        ramps[OH]["inflow"] = [[t, float(q) * oh_mult] for t, q in ramps[OH]["inflow"]]
     raw["name"] = (
-        f"i24_merge_{name}"
-        + (
-            "_entryflow"
-            if entry_flow
-            else ("_entrylanes" if raw["network"].get("entry_lane_shares") else "")
-        )
+        f"i24_merge_{'as_is' if name in BASE_AS_IS else name}"
+        + ("_entryflow" if entry_flow else ("_entrylanes" if entry_lanes else ""))
+        + (f"_oh{oh_mult:g}" if oh_mult is not None else "")
         + (
             f"_sublane{raw['sim']['lateral_resolution_m']:g}"
             if raw["sim"].get("lateral_resolution_m")
@@ -375,13 +407,21 @@ def variant_config(name: str) -> dict[str, Any]:
     return raw
 
 
-def _job(args: tuple[str, int, str | None]) -> dict[str, Any]:
-    name, seed, keep_dir = args
+def _rel(path: Path) -> str:
+    """``path`` relative to the repo root when it is inside it, else as given."""
+    try:
+        return str(Path(path).resolve().relative_to(REPO))
+    except ValueError:
+        return str(path)
+
+
+def _job(args: tuple[str, int, str | None, str]) -> dict[str, Any]:
+    name, seed, keep_dir, base = args
     geo = _inputs()["geometry"]
     a, b = geo["sim_x_of_data_x"]["a"], geo["sim_x_of_data_x"]["b"]
     _lo, span_hi = _span()
     obs = np.array(json.loads(OBSERVED.read_text())["segment_speeds_ms"], dtype=float)
-    cfg = ScenarioConfig.model_validate(variant_config(name))
+    cfg = ScenarioConfig.model_validate(variant_config(name, Path(base)))
     with tempfile.TemporaryDirectory() as td:
         t0 = time.perf_counter()
         paths = run_micro(cfg, seed, Path(td))
@@ -439,33 +479,50 @@ def _job(args: tuple[str, int, str | None]) -> dict[str, Any]:
     }
 
 
-def main() -> None:
+def _parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--procs", type=int, default=2)
+    ap.add_argument(
+        "--base",
+        type=Path,
+        default=ARM_YAML,
+        help="arm yaml every variant starts from (default: %(default)s)",
+    )
     ap.add_argument("--variants", nargs="*", default=list(VARIANTS))
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument(
         "--keep-dir", type=Path, default=None, help="copy each variant's run dir here (no net)"
     )
-    a = ap.parse_args()
-    base = ScenarioConfig.model_validate(variant_config("as_is"))
-    seed = spawn_seeds(base.seed, base.replicates)[0]
+    return ap
+
+
+def main() -> None:
+    a = _parser().parse_args()
+    base_cfg = ScenarioConfig.model_validate(yaml.safe_load(a.base.read_text()))
+    arm = ScenarioConfig.model_validate(variant_config("as_is", a.base))
+    seed = spawn_seeds(arm.seed, arm.replicates)[0]
     with mp.get_context("spawn").Pool(min(a.procs, len(a.variants))) as pool:
         keep = None if a.keep_dir is None else str(a.keep_dir)
         if a.keep_dir is not None:
             a.keep_dir.mkdir(parents=True, exist_ok=True)
-        rows = pool.map(_job, [(v, seed, keep) for v in a.variants])
+        rows = pool.map(_job, [(v, seed, keep, str(a.base)) for v in a.variants])
     obs = np.array(json.loads(OBSERVED.read_text())["segment_speeds_ms"], dtype=float)
     result = {
         "schema_version": 1,
         "versions": _versions(),
-        "arm": str(ARM_YAML.relative_to(REPO)),
-        "arm_config_hash": config_hash(base),
+        # "arm"/"arm_config_hash" keep their meaning: the yaml every variant
+        # started from (--base) and the "as_is" variant built from it, which is
+        # the reference row. "base_config_hash" is that file as written, before
+        # any variant edit, so the arm a probe ran on is identifiable on its own.
+        "arm": _rel(a.base),
+        "arm_config_hash": config_hash(arm),
+        "base_config_hash": config_hash(base_cfg),
         "seed": seed,
         "observed_segment_mean_kmh": [round(float(v) * 3.6, 2) for v in np.nanmean(obs, axis=0)],
         "variants": rows,
     }
     a.out.write_text(json.dumps(result, indent=1))
+    print(f"base: {_rel(a.base)} as_is={config_hash(arm)} seed={seed}")
     for r in rows:
         oh = next((x for x in (r["ramps"] or []) if x["name"] == OH), None)
         print(

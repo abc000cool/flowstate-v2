@@ -171,6 +171,14 @@ if echo " $STAGES " | grep -q " battery_us101 "; then
   stage prune_us101 bash -c 'for h in runs/m3_us101/*/*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; du -sh runs/m3_us101' || true
 fi
 
+if echo " $STAGES " | grep -q " probe_ohlevel "; then
+  # Candidate 3 of docs/MERGE_ROUND6_PLAN.md: the Old Hickory demand level on the flow family's
+  # fitted arm, single seed; the 1.0 point is the arm itself (flow_speedcal).
+  stage probe_ohlevel $RUN scripts/i24_merge_experiment.py --base scenarios/i24_replica_flow_speedcal.yaml \
+    --variants flow_speedcal flow_speedcal_oh0.55 flow_speedcal_oh0.75 flow_speedcal_oh1.25 flow_speedcal_oh1.6 \
+    --procs "$PROCS" --out artifacts/i24_merge_experiment_ohlevel.json || exit 1
+fi
+
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
 stage jm_sweep $RUN scripts/i24_merge_experiment.py \
   --variants geometry_corrected_ramplc1_entrylanes_zipper_jm0.5 \
