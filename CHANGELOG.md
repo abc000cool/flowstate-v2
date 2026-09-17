@@ -6,6 +6,19 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Regression review of the day's changes: confirmed and carried (2026-09-17)
+
+A final adversarial review of everything above (four reviewers, every finding attacked by a skeptic: 6 confirmed, 6 refuted) ran out of the block's time budget before fixes could be built and reviewed. The confirmed items are recorded here with the reviewers' evidence kept in the session's scratch and are the first work of the next block; none of them changes a published headline number:
+
+  - (high, `packages/api/api/results.py:243`) OSM corridors (the I-24 flagship) get no geometric span, so every replicate's travel time is measured over a different distance and the CI is a measurement artifact.
+  - (medium, `packages/microsim/microsim/runner.py:1769`) Pool wrapper re-embeds the child exception's message, defeating the ValidationError input scrubbing in stored run errors.
+  - (medium, `packages/api/api/store.py:163`) The new `profile` column migration is TOCTOU — `duplicate column name: profile` crashes Store() when the API and worker containers start together on an upgraded database.
+  - (high, `frontend/src/components/ConfirmDialog.tsx:34`) ConfirmDialog re-focuses its confirm button on every parent render, defeating the new launch gates.
+  - (high, `frontend/src/views/ReportsView.tsx:243`) ReportsView polls reports through the offline demo fallback, so a queued report is reported done and badged SERVER from invented data.
+  - (medium, `frontend/src/api/client.ts:342`) Write actions fall through to the in-memory demo backend during an outage and report success.
+
+The most consequential one: on the API and sweep path, travel times are still measured over a per-replicate span (the median furthest position of that replicate's vehicles), so a heavily congested controlled arm whose non-completion share crosses one half gets a shorter span than its sibling replicate and reports a *lower* travel time (a 10% FollowerStopper cell on the fitted I-24 arm: 1,787 s over a 6.7 km span against 2,633 s over the full 8.6 km; the baseline replicates are unaffected). The report deliverable already derives one span per run set and is not affected. The fix belongs in the worker: one span per run, recorded in the run's meta and reused by every replicate.
+
 ### API and image after the second audit (2026-09-17)
 
 - **Reports carry a criteria profile.** `POST /reports` takes `profile` (default `fhwa_default`, validated against `validation.criteria.CRITERIA_PROFILES`, 422 naming the choices), stores and echoes it, and `GET /api/v1/criteria` lists every profile with its source, thresholds and wave detector. Rows whose inputs the service does not have (observed counts and speeds) are reported as not evaluated, never as FAIL; no measurement is accepted from a request (CLAUDE.md §7.4).

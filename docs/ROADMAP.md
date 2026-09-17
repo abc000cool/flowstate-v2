@@ -343,3 +343,20 @@ and survive any slip in the critical path.
 - Website: the Results page's updated-record card is on branch
   `results-note` of the site repository; Vercel's daily build limit blocked
   its deployment on 2026-09-16 — merge and push once it resets.
+
+## Addendum 2026-09-17, end of the block
+
+- First work of the next block: the regression review's confirmed items
+  (CHANGELOG, "Regression review of the day's changes"), above all one
+  travel-time span per run on the API and sweep path (the report already
+  shares one), the dashboard's confirm-dialog focus and demo-fallback write
+  actions, and the pool wrapper re-embedding a child exception's message.
+- Then: `api.schemas.CalibrationParams` exposing the fitter's new knobs;
+  re-running the published reports and the I-24 and US-101 batteries under
+  the corrected metric definitions (warm-up window, median travel-time
+  span) so the artifacts and `docs/reports/` match the generator; the next
+  full FHWA sequence on the flow-share entry lanes (`--entry-lanes
+  observed_flow`, a cloud round of about five dollars); merge candidates 2
+  to 5 of docs/MERGE_ROUND6_PLAN.md.
+- Website: merge branch `results-note` of the site repository once Vercel's
+  daily build limit has reset.
