@@ -119,6 +119,11 @@ TEST_WINDOWS = range(12, 24)
 
 
 LANE_PROFILE = REPO / "artifacts" / "i24_lane_profile.json"
+#: Population artifacts selectable with the ``_fleet<tag>`` variant suffix.
+FLEET_ARTIFACTS = {
+    "merge": "artifacts/idm_i24_merge.json",
+    "mergecap": "artifacts/idm_i24_merge_capacity.json",
+}
 
 
 def _entry_row() -> dict:
@@ -255,6 +260,14 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
             name = name[: -len(suffix)]
     if merge_params and merge_model != "scripted":
         raise ValueError(f"merge tuning suffixes need _scripted: {name}")
+    # the calibrated population itself: `_fleetmerge` = the merge-zone sub-corridor fit
+    # (artifacts/idm_i24_merge.json), `_fleetmergecap` = that fit with its time headway
+    # scaled to the calibrated straight-road capacity (artifacts/idm_i24_merge_capacity.json)
+    m_fleet = re.search(r"_fleet(mergecap|merge)", name)
+    if m_fleet:
+        raw["fleet"]["idm_calibration"] = FLEET_ARTIFACTS[m_fleet.group(1)]
+        sub_tags.append(m_fleet.group(0))
+        name = name[: m_fleet.start()] + name[m_fleet.end() :]
     heavy_lanes = False
     if name.endswith("_heavylanes"):
         # candidate 4 of docs/MERGE_ROUND6_PLAN.md: the same heavy population placed by

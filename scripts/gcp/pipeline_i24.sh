@@ -48,6 +48,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   fi
   # per-run metrics of the cap sweep ride along in every archive: the sweep is resumable from them
   extra="$extra $(ls runs/i24_cap_sweep/*/*/metrics.json 2>/dev/null | tr '\n' ' ')"
+  # regenerated reports and the episode-position sidecar (data/, gitignored) ride along too
+  [ -d docs/reports ] && extra="$extra docs/reports"
+  [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -191,6 +194,31 @@ if echo " $STAGES " | grep -q " sweep_0917 "; then
   # the corrected metric definitions (CHANGELOG 2026-09-17); cells resume on disk, run dirs pruned after.
   stage sweep_0917 $RUN scripts/i24_penetration_sweep.py --scenario i24_replica_speedcal --procs "$PROCS" --replicates "$REPS" || exit 1
   stage prune_sweep bash -c 'find runs/i24_sweep -name trajectories.parquet -delete 2>/dev/null; du -sh runs/i24_sweep' || true
+fi
+
+# 0c. The discharge-capacity question (docs/I24_VALIDATION.md 0.11; opt-in stages): a
+#     sub-corridor IDM population fitted on the Old Hickory merge zone only, its closed-form
+#     capacity against the corridor-wide populations, and a single-seed probe of the fitted
+#     arm driven by it. Then the report regeneration from full (unpruned) batteries.
+if echo " $STAGES " | grep -q " merge_positions "; then
+  stage merge_positions $RUN scripts/i24_extract_episodes.py --positions || exit 1
+fi
+if echo " $STAGES " | grep -q " merge_fit "; then
+  stage merge_fit $RUN scripts/fit_idm_i24.py --x-range 750 2500 --tag merge --procs "$PROCS" || exit 1
+fi
+if echo " $STAGES " | grep -q " merge_eq "; then
+  stage merge_eq $RUN scripts/i24_calibrate_capacity.py --equilibrium || exit 1
+fi
+if echo " $STAGES " | grep -q " probe_mergefleet "; then
+  stage probe_mergefleet $RUN scripts/i24_merge_experiment.py \
+    --variants as_is as_is_fleetmerge --procs "$PROCS" --out artifacts/i24_merge_experiment_mergefleet.json || exit 1
+fi
+if echo " $STAGES " | grep -q " reports_0917 "; then
+  # runs after battery_canonical and BEFORE prune_canonical: every replicate still has trajectories
+  stage reports_0917 $RUN scripts/i24_report.py || exit 1
+fi
+if echo " $STAGES " | grep -q " reports_us101 "; then
+  stage reports_us101 $RUN scripts/m3_us101_report.py || exit 1
 fi
 
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.

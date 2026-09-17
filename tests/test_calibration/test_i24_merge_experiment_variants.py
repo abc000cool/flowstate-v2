@@ -282,3 +282,19 @@ def test_heavylanes_places_the_same_heavy_population_by_lane(mod: ModuleType) ->
     assert placed["name"].endswith("_heavylanes") and plain["name"].endswith("_heavy")
     placed["name"] = plain["name"]
     assert placed == plain
+
+
+@pytest.mark.parametrize("tag", ["merge", "mergecap"])
+def test_fleet_suffix_selects_the_population_artifact(mod: ModuleType, tag: str) -> None:
+    """``_fleet<tag>`` swaps only ``fleet.idm_calibration`` and tags the name."""
+    plain = mod.variant_config("as_is")
+    fleet = mod.variant_config(f"as_is_fleet{tag}")
+    assert fleet["fleet"]["idm_calibration"] == mod.FLEET_ARTIFACTS[tag]
+    assert fleet["name"].endswith(f"_fleet{tag}")
+    fleet["fleet"]["idm_calibration"] = plain["fleet"]["idm_calibration"]
+    fleet["name"] = plain["name"]
+    assert fleet == plain
+    # composes with the other suffixes and never mistakes one tag for the other
+    both = mod.variant_config(f"as_is_fleet{tag}_oh0.75")
+    assert both["fleet"]["idm_calibration"] == mod.FLEET_ARTIFACTS[tag]
+    assert both["name"].endswith("_oh0.75") or "_oh0.75" in both["name"]

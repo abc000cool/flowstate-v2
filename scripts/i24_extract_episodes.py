@@ -13,7 +13,24 @@ Outputs (``data/i24motion/processed/``, gitignored):
 * ``i24_wb_episode_summary.json`` — per-lane counts, duration/gap/speed
   statistics, pairing yield; every number in docs/I24_DATA.md traces here.
 
+The episode schema (``calibration.episodes.LeaderFollowerEpisode``) carries no
+position: it keeps ``t``, ``gap_m``, the two speeds and a metadata dict with
+``lane``/``leader_id``/``dt_s``/``duration_s``, which is all the gap-RMSE
+objective needs. ``--positions`` therefore adds a **sidecar index**, keyed by
+the episode's ordinal in the pickled list, that recovers where along the
+corridor each episode happened, so an episode set can be selected by position
+(the Old Hickory merge zone, for instance) without refitting anything:
+
+* ``i24_wb_episode_positions.json`` — one row per episode with the follower's
+  ``x`` [m, data frame, 0 = MM 62.7] at its first and last sample, looked up
+  in the same 5 Hz Parquet by (``veh_id``, 0.2 s slot). ``x`` is
+  travel-oriented and a follower never moves backwards, so ``[x_start,
+  x_end]`` is the episode's position span. Additive: the committed
+  ``i24_wb_episodes.pkl`` is read, never rewritten, and the default run is
+  unchanged.
+
 Run: ``uv run --no-sync python scripts/i24_extract_episodes.py``
+     ``uv run --no-sync python scripts/i24_extract_episodes.py --positions``
 """
 
 from __future__ import annotations
@@ -23,8 +40,10 @@ import pickle
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from i24_data import (
@@ -32,6 +51,7 @@ from i24_data import (
     MAX_GAP_M,
     MIN_GAP_M,
     PROCESSED_DIR,
+    SAMPLE_DT_S,
     WB_DIR,
     build_lane_episodes,
     clock,
@@ -39,6 +59,7 @@ from i24_data import (
     load_vehicles,
 )
 
+from calibration.episodes import LeaderFollowerEpisode
 from calibration.loaders.i24motion import I24_PASSENGER_CLASSES, load_i24_parquet
 
 MIN_DURATION_S = 30.0
@@ -49,6 +70,116 @@ CLASS_SETS = {
     "passenger": tuple(sorted(I24_PASSENGER_CLASSES)),
     "heavy": (4, 5),  # coarse classes semi, truck (data documentation v1.x)
 }
+
+#: Columns of the ``--positions`` sidecar, in row order.
+POSITION_COLUMNS = (
+    "index",
+    "veh_id",
+    "lane",
+    "t_start_s",
+    "t_end_s",
+    "x_start_m",
+    "x_end_m",
+)
+
+
+def _slot(t: np.ndarray | float) -> np.ndarray:
+    """0.2 s grid slot index of a time stamp (the Parquet's own sampling grid)."""
+    return np.rint(np.asarray(t, dtype=float) / SAMPLE_DT_S).astype(np.int64)
+
+
+def episode_positions(episodes: list[LeaderFollowerEpisode]) -> list[list[Any]]:
+    """Follower position at each episode's first and last sample.
+
+    The episode schema keeps no position, so the endpoints are looked up in the
+    trajectory Parquet by (``veh_id``, 0.2 s slot) — the same grid the episodes
+    were cut on, so the join is exact rather than interpolated. One lane is read
+    at a time and immediately narrowed to the vehicles that host an episode in
+    it, so the pass stays column-pruned and small.
+
+    Args:
+        episodes: The pickled episode list, in file order.
+
+    Returns:
+        One list per episode in :data:`POSITION_COLUMNS` order; ``x_start_m`` /
+        ``x_end_m`` are ``None`` for an episode whose rows are not found (none
+        are expected: the episodes come from these rows).
+    """
+    rows: list[list[Any]] = [
+        [
+            i,
+            ep.veh_id,
+            int(ep.metadata["lane"]),  # type: ignore[arg-type]
+            float(ep.t[0]),
+            float(ep.t[-1]),
+            None,
+            None,
+        ]
+        for i, ep in enumerate(episodes)
+    ]
+    by_lane: dict[int, list[int]] = {}
+    for row in rows:
+        by_lane.setdefault(int(row[2]), []).append(int(row[0]))
+    for lane, idx in sorted(by_lane.items()):
+        ids = {rows[i][1] for i in idx}
+        df = load_i24_parquet(
+            WB_DIR, lanes=(lane, lane), columns=["t", "veh_id", "x"]
+        )
+        df = df.loc[df["veh_id"].isin(ids)].copy()
+        df["slot"] = _slot(df["t"].to_numpy())
+        df = df[["veh_id", "slot", "x"]].drop_duplicates(subset=["veh_id", "slot"])
+        want = pd.DataFrame(
+            {
+                "index": np.repeat(idx, 2),
+                "veh_id": [rows[i][1] for i in idx for _ in (0, 1)],
+                "slot": _slot([rows[i][3 + k] for i in idx for k in (0, 1)]),
+            }
+        )
+        got = want.merge(df, on=["veh_id", "slot"], how="left")
+        x = got["x"].to_numpy(dtype=float).reshape(-1, 2)
+        for k, i in enumerate(idx):
+            rows[i][5] = None if not np.isfinite(x[k, 0]) else float(x[k, 0])
+            rows[i][6] = None if not np.isfinite(x[k, 1]) else float(x[k, 1])
+        print(f"lane {lane}: positions for {len(idx)} episodes", flush=True)
+        del df, want, got
+    return rows
+
+
+def write_position_index(suffix: str) -> Path:
+    """Build and write the ``--positions`` sidecar for the pickled episode set."""
+    pkl = PROCESSED_DIR / f"i24_wb_episodes{suffix}.pkl"
+    with open(pkl, "rb") as f:
+        episodes = pickle.load(f)
+    rows = episode_positions(episodes)
+    spans = np.array(
+        [[r[5], r[6]] for r in rows if r[5] is not None and r[6] is not None], dtype=float
+    )
+    out = PROCESSED_DIR / f"i24_wb_episode_positions{suffix}.json"
+    out.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "data_hash": data_hash(),
+                "source_pkl": pkl.name,
+                "n_episodes": len(rows),
+                "n_located": int(spans.shape[0]),
+                "key": "index = ordinal of the episode in the pickled list (file order)",
+                "x_frame": "data x [m] along travel, 0 = MM 62.7 (scripts/i24_data.py)",
+                "columns": list(POSITION_COLUMNS),
+                "x_span_m": {
+                    "min": float(spans[:, 0].min()) if spans.size else None,
+                    "max": float(spans[:, 1].max()) if spans.size else None,
+                    "length_median": float(np.median(spans[:, 1] - spans[:, 0]))
+                    if spans.size
+                    else None,
+                    "n_backwards": int((spans[:, 1] < spans[:, 0]).sum()) if spans.size else 0,
+                },
+                "rows": rows,
+            }
+        )
+    )
+    print(f"{spans.shape[0]}/{len(rows)} episodes located -> {out}")
+    return out
 
 
 def main() -> None:
@@ -62,9 +193,19 @@ def main() -> None:
         help="follower vehicle classes: passenger (0-3, the default artifact) or heavy (4-5, "
         "semis and trucks; output files carry the _heavy suffix)",
     )
+    ap.add_argument(
+        "--positions",
+        action="store_true",
+        help="do not extract: read the existing episode pickle and write the position "
+        "sidecar i24_wb_episode_positions[suffix].json (follower x at the first and last "
+        "sample of every episode, keyed by its ordinal in the pickle)",
+    )
     args = ap.parse_args()
     classes = CLASS_SETS[args.classes]
     suffix = "" if args.classes == "passenger" else f"_{args.classes}"
+    if args.positions:
+        write_position_index(suffix)
+        return
     t0 = time.perf_counter()
     veh = load_vehicles()
     all_eps = []
