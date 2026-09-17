@@ -323,3 +323,25 @@ The flow family's 20-seed batteries (docs/I24_VALIDATION.md §0.10) put GEH at 1
 arms against the canonical 16.7 / 18.8 / 20.1% and 33.7 / 35.9 / 34.8%. One to three points
 on the flow row, nothing to seven points worse on the speed row. Candidate 1 is closed: the
 correct boundary definition, carried forward for new families, not the cause of the defect.
+
+## Addendum, 2026-09-17: candidate 5 closed on the data half
+
+`scripts/i24_diverge_lanes.py` (`artifacts/i24_diverge_lanes.json`, gores at data x 3,947 m
+and 5,092 m verified against where the lane count changes) measures the lane split in 250 m
+bins over the kilometre upstream of each off-ramp and classifies the fragments that leave.
+Four findings, each against a candidate that needs a diverge mechanism: the right lane's
+share one kilometre before the Hickory Hollow gore (24.6% of vehicle-time, 26.2% of flow) is
+the same as at 2.0 to 2.5 km, and it gives up five to six points only where the deceleration
+lane opens, so there is no upstream staging to reproduce; every tracked entry into the
+auxiliary lane comes from lane 4, most within 200 m of the taper; the recording's exit
+shares in the builder's own units (8.98% and 5.26%) equal the replica's planned 9.13% and
+5.29%, so the exit level has no headroom (the §0.6 fit's × 1.125 already sits above the
+recording); and the replica's right-lane deficit (+15.6 points at 2.0 km, +10.7 at 2.25,
++9.5 at 2.5, +3.7 at 2.75, +2.2 at 3.0) decays monotonically with distance from the Old
+Hickory merge and turns into a surplus before the diverge, while the starved lane runs at
+50 to 56 km/h against the observed 29 to 35: it is empty because the merge meters what
+reaches it. The plan's own exclusion ("the downstream split does not move with the exit
+assignment, which puts it back inside the merge") is the expected outcome, and the
+simulation half is not run. Candidate 5 is closed. Limits: fragments are unstitched, so
+the exit classification resolves only in the bin adjacent to the gore, and the auxiliary
+lane's tracking rate is not estimated (candidate 3).

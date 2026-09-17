@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Merge round six, candidate 5 closed on the data (2026-09-17)
+
+- `scripts/i24_diverge_lanes.py` (`artifacts/i24_diverge_lanes.json`, 15 synthetic tests): the lane split over the kilometre upstream of both off-ramps, the fragments that exit and the lanes they use. The recording's exit shares equal the replica's planned ones in the builder's units (8.98% against 9.13%, 5.26% against 5.29%), exiting vehicles enter the ramp lane from lane 4 only and only in the last 500 m, and the replica's right-lane deficit decays with distance from the Old Hickory merge and is gone before the diverge. No diverge mechanism to test; the downstream split is the merge queue's downstream face. Candidates now standing: 3 (Old Hickory level, probe grid widened) and 4 (lane-placed heavy population); their probes run on the next VM of the chain.
+
 ### Engine: heavy vehicles placed by lane (2026-09-17)
 
 - **Schema:** `HeavyVehicleSpec.lane_shares` (per-lane departure distribution for heavy vehicles, hash-neutral when unset; drawn from an independent seeded stream so light vehicles' draws are unchanged with or without it). `meta.json.heavy_lane_shares` records the effective shares. `microsim.vehicles.heavy_lane_shares_from_artifact` derives the I-24 distribution (0.048 / 0.172 / 0.459 / 0.321 left to right) from the measured per-lane heavy fractions and the entry flow shares. Nine tests including a SUMO run whose written routes and first-seen lanes follow the shares. The candidate-4 probe (three single-seed variants on the fitted arm) follows.
