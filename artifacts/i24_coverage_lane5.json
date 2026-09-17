@@ -1,0 +1,1551 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-17T18:32:21Z",
+  "script": "scripts/i24_coverage_lane5.py",
+  "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
+  "source": "I-24 MOTION INCEPTION v1.x, 30 Nov 2022 westbound (6386d89efb3ff533c12df167__post10), lane 5 (Old Hickory acceleration lane), data x in [750, 1950) m, 06:30-08:30 CST, 900 s windows",
+  "question": "docs/MERGE_ROUND6_PLAN.md \u00a72.3: the tracking coverage of the auxiliary lane, and the correction it implies for the Old Hickory ramp inflow, which scripts/i24_build_replica.py corrects with the mainline coverage instead",
+  "parameters": {
+    "lane": 5,
+    "span_data_x_m": [
+      750.0,
+      1950.0
+    ],
+    "period_s": [
+      1800.0,
+      9000.0
+    ],
+    "period_cst": [
+      "06:30",
+      "08:30"
+    ],
+    "window_s": 900.0,
+    "sample_dt_s": 0.2,
+    "snapshot_dt_s": 2.0,
+    "speed_edges_kmh": [
+      0.0,
+      5.0,
+      10.0,
+      15.0,
+      20.0,
+      30.0,
+      40.0,
+      50.0
+    ],
+    "v_max_kmh": 60.0,
+    "min_n_per_class": 300,
+    "s_dup_m": 4.0,
+    "s_max_m": 250.0,
+    "ramp_count_section_x_m": 950.0,
+    "ramp_local_x_range_m": [
+      900.0,
+      1000.0
+    ],
+    "q_cap_veh_h_lane": 2400.0,
+    "q_cap_source": "calibration.coverage.HCM_BASIC_FREEWAY_CAPACITY_PC_H_LN \u2014 HCM 6th ed. basic freeway capacity at >= 70 mi/h FFS, the largest tabulated value and hence an upper envelope, so c >= q_tracked / q_cap is a valid but weak bound; a single-lane ramp ceiling would be lower and the bound correspondingly stronger",
+    "synthetic_seed": 20260917,
+    "synthetic_snapshots": 600,
+    "synthetic_speed_ms": 11.1
+  },
+  "method": "the estimator of scripts/i24_coverage.py (calibration.coverage: geometric-gamma mixture on 2 s snapshot spacings per speed class, eq. G; section-crossing coverage eq. S; capacity bound c >= q_tracked/q_cap) applied to lane 5 with identical settings, plus the assumption checks the lane's geometry demands and a synthetic validation in this regime",
+  "n_fragments": 9799,
+  "n_samples": 414946,
+  "windows": [
+    {
+      "t_lo_s": 1800.0,
+      "window": "06:30",
+      "inputs": {
+        "rho_tracked_veh_km": 6.526666666666666,
+        "q_tracked_veh_h": 378.85890451173316,
+        "v_edie_kmh": 58.04784032355463,
+        "rho_local_veh_km": 9.953333333333335,
+        "q_local_veh_h": 599.9174415324769,
+        "crossings_at_ramp_count_section": 152,
+        "q_crossings_veh_h": 608.0,
+        "crossing_to_local_edie_ratio": 1.013472784599955,
+        "n_spacings": 3113,
+        "duplicate_fraction": 0.014134275618374558
+      },
+      "gap_mixture_confounded": {
+        "c": 0.2115728521056361,
+        "c_class_min": 0.2078221888270221,
+        "c_class_max": 0.21793313180627166,
+        "n_used": 957,
+        "n_usable_classes": 2,
+        "classes": [
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 355,
+            "c": 0.21793313180627166,
+            "cv_true": 0.46339394951687635,
+            "cv_obs": 0.8736995300795641,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 602,
+            "c": 0.2078221888270221,
+            "cv_true": 0.4223401733844538,
+            "cv_obs": 0.8638430532242987,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.25333333333333335
+    },
+    {
+      "t_lo_s": 2700.0,
+      "window": "06:45",
+      "inputs": {
+        "rho_tracked_veh_km": 9.840000000000002,
+        "q_tracked_veh_h": 426.41696461952483,
+        "v_edie_kmh": 43.33505738003301,
+        "rho_local_veh_km": 12.584444444444447,
+        "q_local_veh_h": 713.9779973887296,
+        "crossings_at_ramp_count_section": 185,
+        "q_crossings_veh_h": 740.0,
+        "crossing_to_local_edie_ratio": 1.0364465049433484,
+        "n_spacings": 4881,
+        "duplicate_fraction": 0.027043638598647817
+      },
+      "gap_mixture_confounded": {
+        "c": 0.28384177243887565,
+        "c_class_min": 0.23049834055205345,
+        "c_class_max": 0.3138429786424114,
+        "n_used": 2974,
+        "n_usable_classes": 4,
+        "classes": [
+          {
+            "v_lo_kmh": 20.0,
+            "v_hi_kmh": 30.000000000000004,
+            "n": 505,
+            "c": 0.2853771484551937,
+            "cv_true": 0.29678584421291565,
+            "cv_obs": 0.9954518404832295,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 30.000000000000004,
+            "v_hi_kmh": 40.0,
+            "n": 652,
+            "c": 0.23049834055205345,
+            "cv_true": 0.42064285189802264,
+            "cv_obs": 0.9462965250596941,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 940,
+            "c": 0.2920263414404359,
+            "cv_true": 0.3858023005335452,
+            "cv_obs": 0.901819671611675,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 877,
+            "c": 0.3138429786424114,
+            "cv_true": 0.42313413726100385,
+            "cv_obs": 0.8055080626488398,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.30833333333333335
+    },
+    {
+      "t_lo_s": 3600.0,
+      "window": "07:00",
+      "inputs": {
+        "rho_tracked_veh_km": 12.299074074074074,
+        "q_tracked_veh_h": 496.6080806434464,
+        "v_edie_kmh": 40.377680275157886,
+        "rho_local_veh_km": 15.933333333333334,
+        "q_local_veh_h": 738.1728025492121,
+        "crossings_at_ramp_count_section": 195,
+        "q_crossings_veh_h": 780.0,
+        "crossing_to_local_edie_ratio": 1.0566631516446305,
+        "n_spacings": 6224,
+        "duplicate_fraction": 0.019280205655526992
+      },
+      "gap_mixture_confounded": {
+        "c": 0.36517123756201697,
+        "c_class_min": 0.3547372312029585,
+        "c_class_max": 0.39116036212625627,
+        "n_used": 4252,
+        "n_usable_classes": 5,
+        "classes": [
+          {
+            "v_lo_kmh": 15.000000000000002,
+            "v_hi_kmh": 20.0,
+            "n": 320,
+            "c": 0.35796438114862605,
+            "cv_true": 0.2813406472348732,
+            "cv_obs": 0.944950925341436,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 20.0,
+            "v_hi_kmh": 30.000000000000004,
+            "n": 872,
+            "c": 0.39116036212625627,
+            "cv_true": 0.32687927906239217,
+            "cv_obs": 1.0078253635579912,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 30.000000000000004,
+            "v_hi_kmh": 40.0,
+            "n": 1188,
+            "c": 0.3547372312029585,
+            "cv_true": 0.30996738806829627,
+            "cv_obs": 1.0306278154937083,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 1063,
+            "c": 0.3560271314701363,
+            "cv_true": 0.320486860803385,
+            "cv_obs": 0.9075751792979134,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 809,
+            "c": 0.3673460975898278,
+            "cv_true": 0.3654479948381069,
+            "cv_obs": 0.8353182910811187,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.325
+    },
+    {
+      "t_lo_s": 4500.0,
+      "window": "07:15",
+      "inputs": {
+        "rho_tracked_veh_km": 10.443703703703704,
+        "q_tracked_veh_h": 467.9349943580648,
+        "v_edie_kmh": 44.805464386366936,
+        "rho_local_veh_km": 16.81111111111111,
+        "q_local_veh_h": 755.3544577530188,
+        "crossings_at_ramp_count_section": 196,
+        "q_crossings_veh_h": 784.0,
+        "crossing_to_local_edie_ratio": 1.037923311304992,
+        "n_spacings": 5221,
+        "duplicate_fraction": 0.01589733767477495
+      },
+      "gap_mixture_confounded": {
+        "c": 0.32869127407906606,
+        "c_class_min": 0.30916181867519055,
+        "c_class_max": 0.3492834944018553,
+        "n_used": 3501,
+        "n_usable_classes": 4,
+        "classes": [
+          {
+            "v_lo_kmh": 20.0,
+            "v_hi_kmh": 30.000000000000004,
+            "n": 571,
+            "c": 0.34728333444796816,
+            "cv_true": 0.30801765824050253,
+            "cv_obs": 1.1658730851910792,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 30.000000000000004,
+            "v_hi_kmh": 40.0,
+            "n": 1123,
+            "c": 0.3492834944018553,
+            "cv_true": 0.3001512821924197,
+            "cv_obs": 1.082317474451412,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 867,
+            "c": 0.30916181867519055,
+            "cv_true": 0.40721812208186126,
+            "cv_obs": 0.9120066197464981,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 940,
+            "c": 0.31080926125143266,
+            "cv_true": 0.396888966733922,
+            "cv_obs": 0.840966813331574,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.32666666666666666
+    },
+    {
+      "t_lo_s": 5400.0,
+      "window": "07:30",
+      "inputs": {
+        "rho_tracked_veh_km": 10.841666666666667,
+        "q_tracked_veh_h": 379.72521860570293,
+        "v_edie_kmh": 35.02461662773586,
+        "rho_local_veh_km": 16.07777777777778,
+        "q_local_veh_h": 646.002885012707,
+        "crossings_at_ramp_count_section": 163,
+        "q_crossings_veh_h": 652.0,
+        "crossing_to_local_edie_ratio": 1.0092834182732404,
+        "n_spacings": 5421,
+        "duplicate_fraction": 0.012543811104962183
+      },
+      "gap_mixture_confounded": {
+        "c": 0.29783164999370615,
+        "c_class_min": 0.2138022773556551,
+        "c_class_max": 0.4512350296139635,
+        "n_used": 4708,
+        "n_usable_classes": 8,
+        "classes": [
+          {
+            "v_lo_kmh": 0.0,
+            "v_hi_kmh": 5.0,
+            "n": 330,
+            "c": 0.3904328568230202,
+            "cv_true": 0.23111673261788424,
+            "cv_obs": 1.2516703559817846,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 5.0,
+            "v_hi_kmh": 10.0,
+            "n": 308,
+            "c": 0.4512350296139635,
+            "cv_true": 0.31922071650398354,
+            "cv_obs": 1.0633123130281215,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 10.0,
+            "v_hi_kmh": 15.000000000000002,
+            "n": 412,
+            "c": 0.3339665460965044,
+            "cv_true": 0.3058089645290358,
+            "cv_obs": 1.2038572912071284,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 15.000000000000002,
+            "v_hi_kmh": 20.0,
+            "n": 427,
+            "c": 0.33385277108187467,
+            "cv_true": 0.28336429116015244,
+            "cv_obs": 1.1557444019422016,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 20.0,
+            "v_hi_kmh": 30.000000000000004,
+            "n": 779,
+            "c": 0.2956009200849762,
+            "cv_true": 0.3351562105542458,
+            "cv_obs": 1.0132973614752263,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 30.000000000000004,
+            "v_hi_kmh": 40.0,
+            "n": 873,
+            "c": 0.2138022773556551,
+            "cv_true": 0.3359211528620774,
+            "cv_obs": 0.9237623736820492,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 840,
+            "c": 0.2864936804888042,
+            "cv_true": 0.39253403233342743,
+            "cv_obs": 0.8706119806897481,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 739,
+            "c": 0.26609151497384553,
+            "cv_true": 0.3576188309630429,
+            "cv_obs": 0.860491029024741,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.27166666666666667
+    },
+    {
+      "t_lo_s": 6300.0,
+      "window": "07:45",
+      "inputs": {
+        "rho_tracked_veh_km": 11.673333333333334,
+        "q_tracked_veh_h": 368.6223425363872,
+        "v_edie_kmh": 31.57815612818851,
+        "rho_local_veh_km": 17.06888888888889,
+        "q_local_veh_h": 630.7401130623288,
+        "crossings_at_ramp_count_section": 150,
+        "q_crossings_veh_h": 600.0,
+        "crossing_to_local_edie_ratio": 0.9512634246249514,
+        "n_spacings": 5864,
+        "duplicate_fraction": 0.015006821282401092
+      },
+      "gap_mixture_confounded": {
+        "c": 0.3444906055690358,
+        "c_class_min": 0.29218424551506345,
+        "c_class_max": 0.49168383456323256,
+        "n_used": 5431,
+        "n_usable_classes": 8,
+        "classes": [
+          {
+            "v_lo_kmh": 0.0,
+            "v_hi_kmh": 5.0,
+            "n": 528,
+            "c": 0.49168383456323256,
+            "cv_true": 0.2423026429834025,
+            "cv_obs": 1.047829282439539,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 5.0,
+            "v_hi_kmh": 10.0,
+            "n": 391,
+            "c": 0.48386581251114125,
+            "cv_true": 0.24424782883649054,
+            "cv_obs": 1.3561859279753323,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 10.0,
+            "v_hi_kmh": 15.000000000000002,
+            "n": 339,
+            "c": 0.39645018814592253,
+            "cv_true": 0.29431096493689585,
+            "cv_obs": 1.2805867123012165,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 15.000000000000002,
+            "v_hi_kmh": 20.0,
+            "n": 395,
+            "c": 0.386104371031987,
+            "cv_true": 0.34511500969301995,
+            "cv_obs": 1.1619277888162252,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 20.0,
+            "v_hi_kmh": 30.000000000000004,
+            "n": 1053,
+            "c": 0.30399978505241576,
+            "cv_true": 0.3167434867546442,
+            "cv_obs": 1.029263715026501,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 30.000000000000004,
+            "v_hi_kmh": 40.0,
+            "n": 1145,
+            "c": 0.29218424551506345,
+            "cv_true": 0.3080925394529543,
+            "cv_obs": 0.9364597505404186,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 884,
+            "c": 0.2978414711160402,
+            "cv_true": 0.32952412305335116,
+            "cv_obs": 0.897129061260631,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 696,
+            "c": 0.31216299701661915,
+            "cv_true": 0.3442097696156541,
+            "cv_obs": 0.8342815795589532,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.25
+    },
+    {
+      "t_lo_s": 7200.0,
+      "window": "08:00",
+      "inputs": {
+        "rho_tracked_veh_km": 9.72962962962963,
+        "q_tracked_veh_h": 305.99934211915615,
+        "v_edie_kmh": 31.450255946772806,
+        "rho_local_veh_km": 13.011111111111111,
+        "q_local_veh_h": 476.74888916593267,
+        "crossings_at_ramp_count_section": 122,
+        "q_crossings_veh_h": 488.00000000000006,
+        "crossing_to_local_edie_ratio": 1.0235996582052893,
+        "n_spacings": 4830,
+        "duplicate_fraction": 0.01987577639751553
+      },
+      "gap_mixture_confounded": {
+        "c": 0.2993712751039468,
+        "c_class_min": 0.25596644436360344,
+        "c_class_max": 0.38212557561228067,
+        "n_used": 3757,
+        "n_usable_classes": 6,
+        "classes": [
+          {
+            "v_lo_kmh": 0.0,
+            "v_hi_kmh": 5.0,
+            "n": 513,
+            "c": 0.38212557561228067,
+            "cv_true": 0.24046151936955162,
+            "cv_obs": 0.883398776260122,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 15.000000000000002,
+            "v_hi_kmh": 20.0,
+            "n": 332,
+            "c": 0.34266671657933445,
+            "cv_true": 0.31735497036776766,
+            "cv_obs": 0.9885794177470293,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 20.0,
+            "v_hi_kmh": 30.000000000000004,
+            "n": 795,
+            "c": 0.268372955309837,
+            "cv_true": 0.31726788615217383,
+            "cv_obs": 0.9884459305580551,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 30.000000000000004,
+            "v_hi_kmh": 40.0,
+            "n": 946,
+            "c": 0.25596644436360344,
+            "cv_true": 0.30904393566737764,
+            "cv_obs": 0.9218501308424549,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 660,
+            "c": 0.29814903191766445,
+            "cv_true": 0.34311917781733975,
+            "cv_obs": 0.8659467402521123,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 511,
+            "c": 0.3183228834973409,
+            "cv_true": 0.39773322245856635,
+            "cv_obs": 0.7431847079836661,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.20333333333333337
+    },
+    {
+      "t_lo_s": 8100.0,
+      "window": "08:15",
+      "inputs": {
+        "rho_tracked_veh_km": 5.487777777777778,
+        "q_tracked_veh_h": 279.94491385594296,
+        "v_edie_kmh": 51.012436215903755,
+        "rho_local_veh_km": 9.11111111111111,
+        "q_local_veh_h": 550.8144407464843,
+        "crossings_at_ramp_count_section": 130,
+        "q_crossings_veh_h": 520.0,
+        "crossing_to_local_edie_ratio": 0.9440565851818927,
+        "n_spacings": 2526,
+        "duplicate_fraction": 0.019002375296912115
+      },
+      "gap_mixture_confounded": {
+        "c": 0.2793080537900511,
+        "c_class_min": 0.2168723165559985,
+        "c_class_max": 0.3365849059560357,
+        "n_used": 905,
+        "n_usable_classes": 2,
+        "classes": [
+          {
+            "v_lo_kmh": 40.0,
+            "v_hi_kmh": 50.0,
+            "n": 433,
+            "c": 0.2168723165559985,
+            "cv_true": 0.30049737405268057,
+            "cv_obs": 0.859005089629495,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          },
+          {
+            "v_lo_kmh": 50.0,
+            "v_hi_kmh": null,
+            "n": 472,
+            "c": 0.3365849059560357,
+            "cv_true": 0.37167319671759214,
+            "cv_obs": 0.7837892735992087,
+            "converged": true,
+            "at_bound": false,
+            "usable": true
+          }
+        ]
+      },
+      "capacity_bound_hcm": 0.21666666666666665
+    }
+  ],
+  "assumption_checks": {
+    "flow_conservation": {
+      "assumption": "coverage_section_crossings (calibration.coverage eq. S) needs a stretch on which flow is conserved, so that the true flow is q_local_tracked / c_local",
+      "verdict": "violated",
+      "profile_bin_m": 100.0,
+      "profile": [
+        {
+          "x_lo_m": 750.0,
+          "x_hi_m": 850.0,
+          "x_mid_m": 800.0,
+          "rho_tracked_veh_km": 2.048611111111111,
+          "q_tracked_veh_h": 90.85814440777236,
+          "v_kmh": 44.35109421938719
+        },
+        {
+          "x_lo_m": 850.0,
+          "x_hi_m": 950.0,
+          "x_mid_m": 900.0,
+          "rho_tracked_veh_km": 11.836666666666666,
+          "q_tracked_veh_h": 545.8586884165765,
+          "v_kmh": 46.11591284848576
+        },
+        {
+          "x_lo_m": 950.0,
+          "x_hi_m": 1050.0,
+          "x_mid_m": 1000.0,
+          "rho_tracked_veh_km": 13.48111111111111,
+          "q_tracked_veh_h": 650.4651756941147,
+          "v_kmh": 48.250116057422176
+        },
+        {
+          "x_lo_m": 1050.0,
+          "x_hi_m": 1150.0,
+          "x_mid_m": 1100.0,
+          "rho_tracked_veh_km": 11.357500000000002,
+          "q_tracked_veh_h": 540.363354143779,
+          "v_kmh": 47.577667104889194
+        },
+        {
+          "x_lo_m": 1150.0,
+          "x_hi_m": 1250.0,
+          "x_mid_m": 1200.0,
+          "rho_tracked_veh_km": 9.26388888888889,
+          "q_tracked_veh_h": 469.3902866822995,
+          "v_kmh": 50.66881655341164
+        },
+        {
+          "x_lo_m": 1250.0,
+          "x_hi_m": 1350.0,
+          "x_mid_m": 1300.0,
+          "rho_tracked_veh_km": 9.284722222222221,
+          "q_tracked_veh_h": 450.1832567960923,
+          "v_kmh": 48.48645398551779
+        },
+        {
+          "x_lo_m": 1350.0,
+          "x_hi_m": 1450.0,
+          "x_mid_m": 1400.0,
+          "rho_tracked_veh_km": 9.477222222222222,
+          "q_tracked_veh_h": 426.77913233810403,
+          "v_kmh": 45.032090873356424
+        },
+        {
+          "x_lo_m": 1450.0,
+          "x_hi_m": 1550.0,
+          "x_mid_m": 1500.0,
+          "rho_tracked_veh_km": 9.809722222222222,
+          "q_tracked_veh_h": 392.0674320271927,
+          "v_kmh": 39.967230788557096
+        },
+        {
+          "x_lo_m": 1550.0,
+          "x_hi_m": 1650.0,
+          "x_mid_m": 1600.0,
+          "rho_tracked_veh_km": 9.5425,
+          "q_tracked_veh_h": 357.64733925175796,
+          "v_kmh": 37.479417265051914
+        },
+        {
+          "x_lo_m": 1650.0,
+          "x_hi_m": 1750.0,
+          "x_mid_m": 1700.0,
+          "rho_tracked_veh_km": 12.558055555555557,
+          "q_tracked_veh_h": 348.44127789757533,
+          "v_kmh": 27.746435453809443
+        },
+        {
+          "x_lo_m": 1750.0,
+          "x_hi_m": 1850.0,
+          "x_mid_m": 1800.0,
+          "rho_tracked_veh_km": 11.123611111111112,
+          "q_tracked_veh_h": 250.85679727676282,
+          "v_kmh": 22.551741046231644
+        },
+        {
+          "x_lo_m": 1850.0,
+          "x_hi_m": 1950.0,
+          "x_mid_m": 1900.0,
+          "rho_tracked_veh_km": 5.479166666666667,
+          "q_tracked_veh_h": 133.25525694291062,
+          "v_kmh": 24.32035107703312
+        }
+      ],
+      "q_tracked_veh_h_at_gore_bin": 650.4651756941147,
+      "q_tracked_veh_h_at_taper_bin": 133.25525694291062,
+      "shed_fraction_gore_to_taper": 0.7951385225185756,
+      "exponential_decay_fit": {
+        "decay_length_m": 753.2428078062424,
+        "q0_veh_h": 2555.232783325733,
+        "r2": 0.8174723749293523
+      },
+      "decay_length_over_span": 0.7532428078062423,
+      "note": "the auxiliary lane sheds its traffic into lane 4 over its whole length, so no stretch of it is ramp-free in the sense eq. (S) requires; the section estimator is therefore not computed for lane 5"
+    },
+    "spacing_regularity": {
+      "assumption": "the random-thinning model implies cv_obs^2 = 1 - c (1 - cv_true^2) <= 1 for every c in (0, 1] and cv_true < 1, so cv_obs > 1 admits no coverage at all",
+      "verdict": "violated",
+      "n_speed_classes": 39,
+      "n_classes_cv_obs_ge_1": 14,
+      "cv_obs_min": 0.7431847079836661,
+      "cv_obs_max": 1.3561859279753323,
+      "note": "cv_obs is measured on spacings winsorized at s_max, which can only lower it, so a winsorized cv_obs above 1 implies an untruncated one above 1"
+    },
+    "scale_homogeneity": {
+      "assumption": "the mixture conditions on a speed class so the true spacing scale is homogeneous within it; heterogeneity biases it low (its own synthetic validation: 0.2-0.4 on a bimodal within-class scale mix)",
+      "verdict": "violated",
+      "speed_class_kmh": [
+        20.0,
+        30.0
+      ],
+      "sub_bin_m": 200.0,
+      "rows": [
+        {
+          "x_lo_m": 750.0,
+          "x_hi_m": 950.0,
+          "n": 564,
+          "mean_spacing_m": 47.678350237196625,
+          "cv": 0.8848461124751941
+        },
+        {
+          "x_lo_m": 950.0,
+          "x_hi_m": 1150.0,
+          "n": 892,
+          "mean_spacing_m": 52.071507312008244,
+          "cv": 1.1849311353090342
+        },
+        {
+          "x_lo_m": 1150.0,
+          "x_hi_m": 1350.0,
+          "n": 613,
+          "mean_spacing_m": 67.81321945349862,
+          "cv": 1.0716469009681446
+        },
+        {
+          "x_lo_m": 1350.0,
+          "x_hi_m": 1550.0,
+          "n": 873,
+          "mean_spacing_m": 73.77752134698896,
+          "cv": 1.0068821451816283
+        },
+        {
+          "x_lo_m": 1550.0,
+          "x_hi_m": 1750.0,
+          "n": 1094,
+          "mean_spacing_m": 61.024558212896025,
+          "cv": 0.9158453302308398
+        },
+        {
+          "x_lo_m": 1750.0,
+          "x_hi_m": 1950.0,
+          "n": 776,
+          "mean_spacing_m": 44.16743725153939,
+          "cv": 0.8097949948291066
+        }
+      ],
+      "mean_spacing_ratio_max_over_min": 1.6704053016890301,
+      "tracked_density_ratio_max_over_min": 6.580610169491525
+    },
+    "fragment_persistence": {
+      "n_fragments": 9799,
+      "median_duration_s": 6.399999999999636,
+      "median_length_m": 64.20729815050186,
+      "p90_length_m": 213.0344841744213,
+      "span_length_m": 1200.0,
+      "note": "the median fragment covers a small fraction of the acceleration lane, so a crossing count at one section misses vehicles whose vehicle-time is tracked; on the mainline that gap is what section_gap_mixture corrects, and it cannot be formed here (see flow_conservation)"
+    },
+    "free_flow_share": {
+      "assumption": "the mixture is uninformative at free-flow spacings and drops pairs at or above 60 km/h",
+      "verdict": "partial",
+      "pair_share_at_or_above_v_max": 0.19351365546218488
+    }
+  },
+  "synthetic_validation_auxiliary_lane": [
+    {
+      "merge_length_m": null,
+      "merge_out": false,
+      "entry_headway_cv": 0.35,
+      "c_true": 0.5,
+      "n_spacings": 12316,
+      "c_hat": 0.5239389659019126,
+      "err_c": 0.02393896590191258,
+      "cv_true_fitted": 0.35143050629538997,
+      "cv_obs": 0.7236203450460571,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": null,
+      "merge_out": false,
+      "entry_headway_cv": 0.35,
+      "c_true": 0.75,
+      "n_spacings": 12122,
+      "c_hat": 0.7529376600049345,
+      "err_c": 0.0029376600049344503,
+      "cv_true_fitted": 0.3463008927838629,
+      "cv_obs": 0.5758449531159636,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": null,
+      "merge_out": false,
+      "entry_headway_cv": 0.7,
+      "c_true": 0.5,
+      "n_spacings": 12243,
+      "c_hat": 0.3691371372895166,
+      "err_c": -0.13086286271048342,
+      "cv_true_fitted": 0.5352393650075222,
+      "cv_obs": 0.8240134197657439,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": null,
+      "merge_out": false,
+      "entry_headway_cv": 0.7,
+      "c_true": 0.75,
+      "n_spacings": 12232,
+      "c_hat": 0.5888411390989172,
+      "err_c": -0.16115886090108278,
+      "cv_true_fitted": 0.6040361657907649,
+      "cv_obs": 0.761402563987038,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": null,
+      "merge_out": false,
+      "entry_headway_cv": 1.0,
+      "c_true": 0.5,
+      "n_spacings": 12449,
+      "c_hat": 0.13234031689156575,
+      "err_c": -0.3676596831084342,
+      "cv_true_fitted": 0.31042588277294475,
+      "cv_obs": 0.8910324196665286,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": null,
+      "merge_out": false,
+      "entry_headway_cv": 1.0,
+      "c_true": 0.75,
+      "n_spacings": 12395,
+      "c_hat": 0.1485640740174975,
+      "err_c": -0.6014359259825025,
+      "cv_true_fitted": 0.34278094860625397,
+      "cv_obs": 0.8840633671040782,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": 753.0,
+      "merge_out": true,
+      "entry_headway_cv": 0.35,
+      "c_true": 0.5,
+      "n_spacings": 5866,
+      "c_hat": 0.27930037466568386,
+      "err_c": -0.22069962533431614,
+      "cv_true_fitted": 0.33638626336268074,
+      "cv_obs": 0.7800488565962087,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": 753.0,
+      "merge_out": true,
+      "entry_headway_cv": 0.35,
+      "c_true": 0.75,
+      "n_spacings": 5768,
+      "c_hat": 0.4014844956007588,
+      "err_c": -0.3485155043992412,
+      "cv_true_fitted": 0.34097277513754665,
+      "cv_obs": 0.7252151774341703,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": 753.0,
+      "merge_out": true,
+      "entry_headway_cv": 0.7,
+      "c_true": 0.5,
+      "n_spacings": 5660,
+      "c_hat": 0.1765107401252334,
+      "err_c": -0.3234892598747666,
+      "cv_true_fitted": 0.5165654238883092,
+      "cv_obs": 0.8202869549133217,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": 753.0,
+      "merge_out": true,
+      "entry_headway_cv": 0.7,
+      "c_true": 0.75,
+      "n_spacings": 5714,
+      "c_hat": 0.20818458404265758,
+      "err_c": -0.5418154159573424,
+      "cv_true_fitted": 0.5220976115504463,
+      "cv_obs": 0.7940030539280163,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": 753.0,
+      "merge_out": true,
+      "entry_headway_cv": 1.0,
+      "c_true": 0.5,
+      "n_spacings": 5817,
+      "c_hat": 0.10157115924368847,
+      "err_c": -0.3984288407563115,
+      "cv_true_fitted": 0.4250408019377964,
+      "cv_obs": 0.8345964945608642,
+      "converged": true,
+      "at_bound": false
+    },
+    {
+      "merge_length_m": 753.0,
+      "merge_out": true,
+      "entry_headway_cv": 1.0,
+      "c_true": 0.75,
+      "n_spacings": 5835,
+      "c_hat": 0.10095210142364036,
+      "err_c": -0.6490478985763597,
+      "cv_true_fitted": 0.42473984861970454,
+      "cv_obs": 0.8301244128567146,
+      "converged": true,
+      "at_bound": false
+    }
+  ],
+  "synthetic_validation_mainline_cited": {
+    "artifact": "artifacts/i24_coverage.json",
+    "created_at": "2026-09-04T01:52:59Z",
+    "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
+    "function": "calibration.coverage.synthetic_validation",
+    "reading": "with a homogeneous true spacing scale the mixture recovers c within 0.01 (moments within 0.03); it is biased low by <= 0.05 under correlated losses and by 0.2-0.4 in free flow or under a bimodal within-class spacing mix (docs/I24_DATA.md, tests/test_calibration/test_calibration_coverage.py)",
+    "rows": [
+      {
+        "regime": "congested",
+        "c_true": 0.4,
+        "cv_true": 0.35,
+        "n_observed": 7981,
+        "gap_moments": 0.41103533382268725,
+        "gap_mixture": 0.39049605441139157,
+        "gap_mixture_cv_true": 0.3359750667062806,
+        "gap_mixture_mean_true_m": 11.792399129863597,
+        "true_mean_m": 12.030353914682095,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.362800041816091,
+        "err_gap_moments": 0.011035333822687232,
+        "err_gap_mixture": -0.009503945588608453,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.03719995818390903
+      },
+      {
+        "regime": "congested",
+        "c_true": 0.6,
+        "cv_true": 0.35,
+        "n_observed": 12093,
+        "gap_moments": 0.628181955858604,
+        "gap_mixture": 0.6013743618683826,
+        "gap_mixture_cv_true": 0.342644665926426,
+        "gap_mixture_mean_true_m": 11.966918019794743,
+        "true_mean_m": 11.993758350515678,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.5496997877378857,
+        "err_gap_moments": 0.028181955858604057,
+        "err_gap_mixture": 0.0013743618683825787,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.05030021226211423
+      },
+      {
+        "regime": "congested",
+        "c_true": 0.8,
+        "cv_true": 0.35,
+        "n_observed": 15987,
+        "gap_moments": 0.7985934618784363,
+        "gap_mixture": 0.8000471059532328,
+        "gap_mixture_cv_true": 0.34342591011831125,
+        "gap_mixture_mean_true_m": 12.044207382927679,
+        "true_mean_m": 11.986031838966403,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.7266909381803636,
+        "err_gap_moments": -0.0014065381215637718,
+        "err_gap_mixture": 4.710595323276223e-05,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.07330906181963648
+      },
+      {
+        "regime": "congested_classwidth",
+        "c_true": 0.4,
+        "cv_true": 0.3153789261180398,
+        "n_observed": 7955,
+        "gap_moments": 0.374385279752115,
+        "gap_mixture": 0.3917874051391936,
+        "gap_mixture_cv_true": 0.30573494462832257,
+        "gap_mixture_mean_true_m": 11.860442355706063,
+        "true_mean_m": 12.0315879046495,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.36161828272222746,
+        "err_gap_moments": -0.025614720247885026,
+        "err_gap_mixture": -0.008212594860806444,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.038381717277772565
+      },
+      {
+        "regime": "congested_classwidth",
+        "c_true": 0.6,
+        "cv_true": 0.31500630677752905,
+        "n_observed": 12118,
+        "gap_moments": 0.6014030709153029,
+        "gap_mixture": 0.6027540499370825,
+        "gap_mixture_cv_true": 0.307464073219257,
+        "gap_mixture_mean_true_m": 11.91996747141743,
+        "true_mean_m": 11.97089011583445,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.5508360945589084,
+        "err_gap_moments": 0.0014030709153028953,
+        "err_gap_mixture": 0.0027540499370825033,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.049163905441091615
+      },
+      {
+        "regime": "congested_classwidth",
+        "c_true": 0.8,
+        "cv_true": 0.31571568211956436,
+        "n_observed": 16050,
+        "gap_moments": 0.8079484047311752,
+        "gap_mixture": 0.8013041543000793,
+        "gap_mixture_cv_true": 0.3094195867309166,
+        "gap_mixture_mean_true_m": 11.972870467154566,
+        "true_mean_m": 11.979170789098903,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.7295544313693405,
+        "err_gap_moments": 0.007948404731175196,
+        "err_gap_mixture": 0.001304154300079241,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.07044556863065954
+      },
+      {
+        "regime": "congested_heterogeneous",
+        "c_true": 0.4,
+        "cv_true": 0.6425969504891647,
+        "n_observed": 7990,
+        "gap_moments": 0.09197857227023756,
+        "gap_mixture": 0.19681457707041722,
+        "gap_mixture_cv_true": 0.24069437206559657,
+        "gap_mixture_mean_true_m": 8.11093716314772,
+        "true_mean_m": 16.42236358803768,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.36320911227165914,
+        "err_gap_moments": -0.3080214277297625,
+        "err_gap_mixture": -0.2031854229295828,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.03679088772834088
+      },
+      {
+        "regime": "congested_heterogeneous",
+        "c_true": 0.6,
+        "cv_true": 0.6436027074046488,
+        "n_observed": 11965,
+        "gap_moments": 0.3062155478614814,
+        "gap_mixture": 0.2905275196455946,
+        "gap_mixture_cv_true": 0.25139239421976256,
+        "gap_mixture_mean_true_m": 8.081345601526971,
+        "true_mean_m": 16.60548667960728,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.5438818968142503,
+        "err_gap_moments": -0.29378445213851856,
+        "err_gap_mixture": -0.3094724803544054,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.056118103185749724
+      },
+      {
+        "regime": "congested_heterogeneous",
+        "c_true": 0.8,
+        "cv_true": 0.6394171550551904,
+        "n_observed": 16014,
+        "gap_moments": 0.6520442369615869,
+        "gap_mixture": 0.39076576249675093,
+        "gap_mixture_cv_true": 0.2450717005618622,
+        "gap_mixture_mean_true_m": 8.110604638225068,
+        "true_mean_m": 16.57628576271422,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.7279181495470679,
+        "err_gap_moments": -0.14795576303841318,
+        "err_gap_mixture": -0.4092342375032491,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.07208185045293214
+      },
+      {
+        "regime": "uncongested",
+        "c_true": 0.4,
+        "cv_true": 0.8,
+        "n_observed": 7883,
+        "gap_moments": 0.4929688161473577,
+        "gap_mixture": 0.18675818263658478,
+        "gap_mixture_cv_true": 0.5993103922579965,
+        "gap_mixture_mean_true_m": 23.795624197397203,
+        "true_mean_m": 49.12068242918177,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.3583457190776824,
+        "err_gap_moments": 0.09296881614735769,
+        "err_gap_mixture": -0.21324181736341524,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.0416542809223176
+      },
+      {
+        "regime": "uncongested",
+        "c_true": 0.6,
+        "cv_true": 0.8,
+        "n_observed": 12024,
+        "gap_moments": 0.6641100191076489,
+        "gap_mixture": 0.3077593883569611,
+        "gap_mixture_cv_true": 0.5997093717025705,
+        "gap_mixture_mean_true_m": 25.838347162034808,
+        "true_mean_m": 49.63294121661078,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.5465635809118634,
+        "err_gap_moments": 0.06411001910764891,
+        "err_gap_mixture": -0.2922406116430389,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.053436419088136566
+      },
+      {
+        "regime": "uncongested",
+        "c_true": 0.8,
+        "cv_true": 0.8,
+        "n_observed": 15993,
+        "gap_moments": 0.8877965144663651,
+        "gap_mixture": 0.45681891293775984,
+        "gap_mixture_cv_true": 0.6240561631961828,
+        "gap_mixture_mean_true_m": 29.19665458892825,
+        "true_mean_m": 50.04049302726384,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.726963651817409,
+        "err_gap_moments": 0.08779651446636505,
+        "err_gap_mixture": -0.3431810870622402,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.07303634818259108
+      },
+      {
+        "regime": "congested_correlated",
+        "c_true": 0.4,
+        "cv_true": 0.35,
+        "n_observed": 7915,
+        "gap_moments": 0.1329416945207559,
+        "gap_mixture": 0.36238910341487374,
+        "gap_mixture_cv_true": 0.3257070067644403,
+        "gap_mixture_mean_true_m": 11.005524701581917,
+        "true_mean_m": 12.003911506092232,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.3598001918085913,
+        "err_gap_moments": -0.26705830547924414,
+        "err_gap_mixture": -0.037610896585126286,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.040199808191408726
+      },
+      {
+        "regime": "congested_correlated",
+        "c_true": 0.6,
+        "cv_true": 0.35,
+        "n_observed": 12123,
+        "gap_moments": 0.0,
+        "gap_mixture": 0.554338913022921,
+        "gap_mixture_cv_true": 0.3235440972904335,
+        "gap_mixture_mean_true_m": 11.039601250081025,
+        "true_mean_m": 12.031225368157193,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.551063355923113,
+        "err_gap_moments": -0.6,
+        "err_gap_mixture": -0.045661086977078935,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.048936644076887026
+      },
+      {
+        "regime": "congested_correlated",
+        "c_true": 0.8,
+        "cv_true": 0.35,
+        "n_observed": 16048,
+        "gap_moments": 0.1861507305374894,
+        "gap_mixture": 0.7491417940172093,
+        "gap_mixture_cv_true": 0.3197623002401171,
+        "gap_mixture_mean_true_m": 11.258208493451873,
+        "true_mean_m": 12.000679345764485,
+        "equilibrium": null,
+        "capacity_bound_1p1": 0.7294635268236587,
+        "err_gap_moments": -0.6138492694625106,
+        "err_gap_mixture": -0.05085820598279078,
+        "err_equilibrium": null,
+        "err_capacity_bound_1p1": -0.07053647317634137
+      },
+      {
+        "regime": "idm_equilibrium",
+        "c_true": 0.4,
+        "cv_true": 0.09009707557340167,
+        "n_observed": 8088,
+        "gap_moments": 0.40862584706967664,
+        "gap_mixture": 0.4041425564405467,
+        "gap_mixture_cv_true": 0.0899961983672745,
+        "gap_mixture_mean_true_m": 18.144327949711926,
+        "true_mean_m": 18.144128690757135,
+        "equilibrium": 0.4042150553336262,
+        "capacity_bound_1p1": 0.36766343501006765,
+        "err_gap_moments": 0.008625847069676618,
+        "err_gap_mixture": 0.004142556440546674,
+        "err_equilibrium": 0.004215055333626205,
+        "err_capacity_bound_1p1": -0.03233656498993237
+      },
+      {
+        "regime": "idm_equilibrium",
+        "c_true": 0.6,
+        "cv_true": 0.0900876513101956,
+        "n_observed": 12020,
+        "gap_moments": 0.5948988439990518,
+        "gap_mixture": 0.6010339785191332,
+        "gap_mixture_cv_true": 0.0903020845206983,
+        "gap_mixture_mean_true_m": 18.13982526755877,
+        "true_mean_m": 18.13839147450137,
+        "equilibrium": 0.6008908536623926,
+        "capacity_bound_1p1": 0.5463817718204999,
+        "err_gap_moments": -0.0051011560009481816,
+        "err_gap_mixture": 0.0010339785191332274,
+        "err_equilibrium": 0.00089085366239261,
+        "err_capacity_bound_1p1": -0.05361822817950013
+      },
+      {
+        "regime": "idm_equilibrium",
+        "c_true": 0.8,
+        "cv_true": 0.08994203727016542,
+        "n_observed": 15923,
+        "gap_moments": 0.7949085784184586,
+        "gap_mixture": 0.7961202157586321,
+        "gap_mixture_cv_true": 0.0907847575562241,
+        "gap_mixture_mean_true_m": 18.143014250504812,
+        "true_mean_m": 18.143805868926744,
+        "equilibrium": 0.7957516461653747,
+        "capacity_bound_1p1": 0.7237819927185458,
+        "err_gap_moments": -0.005091421581541411,
+        "err_gap_mixture": -0.003879784241367923,
+        "err_equilibrium": -0.004248353834625296,
+        "err_capacity_bound_1p1": -0.07621800728145423
+      }
+    ]
+  },
+  "mainline_per_lane_study_period": {
+    "lane_1": {
+      "gap_mixture": [
+        0.699487825084491,
+        0.7600175388188107
+      ],
+      "section_gap_mixture": [
+        0.7164151799044466,
+        0.8738335563073969
+      ]
+    },
+    "lane_2": {
+      "gap_mixture": [
+        0.5043227949735996,
+        0.5831132914502077
+      ],
+      "section_gap_mixture": [
+        0.5205752701502034,
+        0.665115729333535
+      ]
+    },
+    "lane_3": {
+      "gap_mixture": [
+        0.40284314158186535,
+        0.5395597934445429
+      ],
+      "section_gap_mixture": [
+        0.5547819751281576,
+        0.6483439043049303
+      ]
+    },
+    "lane_4": {
+      "gap_mixture": [
+        0.49071796578669596,
+        0.6344868291515814
+      ],
+      "section_gap_mixture": [
+        0.34259804582660885,
+        0.6248193429045666
+      ]
+    }
+  },
+  "estimate": {
+    "published": false,
+    "value": null,
+    "reason": "the gap-mixture estimator is not identified on an auxiliary lane: merging out of the lane and failing to track are two thinnings of the same point process, and eq. (G) fits their product. The synthetic validation in this artifact measures the resulting bias directly, and two further assumptions fail (see assumption_checks: flow_conservation, spacing_regularity).",
+    "confounded_gap_mixture": {
+      "definition": "what the mixture returns on lane 5: approximately (tracking coverage) x (merge-survival share), hence an upper bound on neither and a lower bound on the tracking coverage only",
+      "per_window_min": 0.2115728521056361,
+      "per_window_max": 0.36517123756201697
+    },
+    "bounds": {
+      "lower": 0.32666666666666666,
+      "lower_basis": "max over windows of the capacity bound c >= q_tracked/q_cap at the ramp count section with the HCM upper-envelope ceiling; taking the max across windows treats c5 as constant over the study period, which is also what expressing the ramp correction as one scalar multiplier assumes. The per-window bounds are in windows[].capacity_bound_hcm",
+      "upper": 1.0,
+      "upper_basis": "a coverage cannot exceed 1"
+    },
+    "why_extrapolation_from_the_mainline_table_is_not_offered": "the mainline per-lane coverage has no monotone lane gradient to extrapolate along: lane 1 is the best tracked and the rightmost mainline lane 4 the worst, so neighbouring lane 4 would put lane 5 below the pooled mainline coverage while an edge-lane argument would put it above (see mainline_per_lane_study_period)"
+  },
+  "old_hickory_correction": {
+    "builder": {
+      "script": "scripts/i24_build_replica.py",
+      "count_section_data_x_m": 950.0,
+      "counted_lanes": "5-9 (ramp lanes)",
+      "divisor": "the mainline (lanes 1-4) coverage of the same 15-min window, artifacts/i24_replica_inputs.json coverage.rows[].coverage_used",
+      "mainline_coverage_used_min": 0.4805264638201418,
+      "mainline_coverage_used_max": 0.6052673071601408,
+      "mainline_coverage_harmonic_mean_weighted_by_ramp_counts": 0.5326326028278848,
+      "tracked_ramp_crossings_study_period": 1329,
+      "coverage_corrected_ramp_total": 2495.15330632033
+    },
+    "mainline_coverage_variants": {
+      "equilibrium_capacity_fleet": {
+        "source": "artifacts/i24_replica_inputs.json coverage.rows[].coverage_used (fleet artifacts/idm_i24_capacity.json); the values the committed scenarios divide by",
+        "per_window": [
+          0.6052673071601408,
+          0.5591109811618207,
+          0.564556074733908,
+          0.5624217288102845,
+          0.5036215857079293,
+          0.49086913563277107,
+          0.4805264638201418,
+          0.4838881331669165
+        ],
+        "min": 0.4805264638201418,
+        "max": 0.6052673071601408,
+        "harmonic_mean_weighted_by_ramp_counts": 0.5326326028278848
+      },
+      "equilibrium_legacy_fleet": {
+        "source": "same method on the pre-capacity fleet artifacts/idm_i24.json; reproduces the coverage column of docs/I24_DATA.md \u00a74, which the capacity calibration superseded",
+        "per_window": [
+          0.6629847018836489,
+          0.608735962222233,
+          0.6164612067093602,
+          0.6123515297654251,
+          0.5437665903971711,
+          0.5288103798029976,
+          0.5188731150139856,
+          0.5274354945282402
+        ],
+        "min": 0.5188731150139856,
+        "max": 0.6629847018836489,
+        "harmonic_mean_weighted_by_ramp_counts": 0.5786632596232613
+      },
+      "recommended": {
+        "source": "artifacts/i24_coverage.json windows[].pooled.recommended_filled (scripts/i24_build_replica.py --coverage-estimator recommended)",
+        "per_window": [
+          0.6558360512938054,
+          0.6325253912098165,
+          0.6480683915833538,
+          0.6736656200027751,
+          0.627411392179275,
+          0.587212379555359,
+          0.5591992177386214,
+          0.5842418421334531
+        ],
+        "min": 0.5591992177386214,
+        "max": 0.6736656200027751,
+        "harmonic_mean_weighted_by_ramp_counts": 0.624094347637853
+      }
+    },
+    "multiplier_floor_by_variant": {
+      "equilibrium_capacity_fleet": 0.5326326028278848,
+      "equilibrium_legacy_fleet": 0.5786632596232613,
+      "recommended": 0.624094347637853
+    },
+    "relation": "multiplier m on the present corrected ramp inflow = c_mainline_bar / c5",
+    "implied_multiplier": {
+      "if_c5_equals_mainline": 1.0,
+      "if_c5_is_one_no_correction_needed": 0.5326326028278848,
+      "at_capacity_lower_bound_on_c5": 1.6305079678404637,
+      "admissible_interval": [
+        0.5326326028278848,
+        1.6305079678404637
+      ],
+      "admissible_interval_basis": "c5 in [capacity lower bound, 1]; the gap-mixture estimator supplies no point value on this lane (see assumption_checks)"
+    },
+    "probe_levels": [
+      {
+        "level": 0.75,
+        "implied_c5": 0.7101768037705131,
+        "implied_c5_admissible": true
+      },
+      {
+        "level": 0.875,
+        "implied_c5": 0.6087229746604398,
+        "implied_c5_admissible": true
+      },
+      {
+        "level": 1.0,
+        "implied_c5": 0.5326326028278848,
+        "implied_c5_admissible": true
+      }
+    ],
+    "bracket_verdict": {
+      "brackets_the_implied_correction": false,
+      "probe_levels": [
+        0.75,
+        0.875,
+        1.0
+      ],
+      "probe_levels_cover_c5_interval": [
+        0.5326326028278848,
+        0.7101768037705131
+      ],
+      "admissible_c5_interval": [
+        0.32666666666666666,
+        1.0
+      ],
+      "admissible_multiplier_interval": [
+        0.5326326028278848,
+        1.6305079678404637
+      ],
+      "reason": "the three levels are equivalent to assuming c5 in [0.533, 0.710], a strict sub-interval of the admissible [0.327, 1.000]: a perfectly tracked auxiliary lane (c5 = 1) needs multiplier 0.533, below the lowest level 0.75, and a lane tracked at the capacity bound needs 1.631, above the highest level 1"
+    }
+  },
+  "provenance": {
+    "inputs": [
+      "artifacts/i24_replica_inputs.json",
+      "artifacts/i24_coverage.json",
+      "data/i24motion/processed/i24_wb_20221130 (trajectories.parquet)"
+    ],
+    "read_only_references": [
+      "scripts/i24_build_replica.py (RAMPS, coverage_factors, corrected())",
+      "scripts/i24_coverage.py (estimator settings)",
+      "docs/I24_VALIDATION.md \u00a70.5(d) (lane-5 occupancy range)",
+      "docs/I24_DATA.md \u00a74 and the gap-estimator section",
+      "docs/MERGE_ROUND6_PLAN.md \u00a72.3"
+    ],
+    "package_versions": {
+      "numpy": "2.5.2",
+      "pandas": "3.0.5"
+    }
+  }
+}

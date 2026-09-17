@@ -295,3 +295,23 @@ more easily, so every share is if anything high; the artifact carries a labelled
 sensitivity, not a correction). Simulation half: a per-lane heavy placement in the fleet
 schema, the mixed-fleet capacity calibration, three single-seed probes; after the cloud
 round now running.
+
+## Addendum, 2026-09-17: candidate 3, data half (no estimate; the probe grid must widen)
+
+`scripts/i24_coverage_lane5.py` (`artifacts/i24_coverage_lane5.json`) fits the gap-mixture
+estimator to the Old Hickory acceleration lane (data x 0.75 to 1.95 km, 9,799 fragments,
+the study period) and does not publish a coverage: the lane sheds 79.5% of its tracked
+flow into lane 4 along its length (decay length 753 m, so no ramp-free stretch exists for
+the section form), 14 of 39 speed classes show a spacing coefficient of variation at or
+above 1, which no coverage can produce, and the within-class spacing scale varies 1.7×
+along the lane. A synthetic auxiliary lane with only the measured merge-out added to the
+certified regime drives the estimate from the true 0.50 / 0.75 to 0.28 / 0.40, exactly
+where lane 5's confounded readings (0.21 to 0.37) sit. What can be stated is a bound:
+c₅ ∈ [0.327, 1.0] (the low end from the tracked ramp count against a capacity ceiling).
+The builder divides the ramp count by the mainline coverage (harmonic mean 0.533 with the
+capacity population), so the Old Hickory multiplier the ramp lane's own coverage would
+imply lies in [0.533, 1.63]; the plan's levels {0.75, 0.875, 1.0} assume c₅ ∈ [0.533,
+0.710] and do not bracket it. The probe grid becomes {0.55, 0.75, 1.0, 1.25, 1.6} on the
+flow family's fitted arm once its battery lands (the decider of §2.3 is unchanged). Side
+finding: docs/I24_DATA.md §4's 0.52 to 0.66 was the legacy population's range; the
+scenarios use 0.481 to 0.605 (corrected in the document).

@@ -126,7 +126,10 @@ explicitly:
   uniform coverage factor; `q_max` and `ρ_jam` are not.
 * **Demand is ambiguous.** The replica is therefore run in two labeled arms:
   demand as tracked, and demand divided by the per-window apparent coverage
-  above (0.52–0.66). The correction is derived from the data and the
+  above (0.52–0.66 with the legacy IDM population; 0.481–0.605 with the
+  capacity-calibrated population every scenario built since 2026-09-05 uses,
+  the two conventions being named in `artifacts/i24_coverage_lane5.json`).
+  The correction is derived from the data and the
   independently calibrated car-following spacing, not from any validation
   target, and both arms are reported side by side
   (`scenarios/i24_replica.yaml`, `scenarios/i24_replica_corrected.yaml`).

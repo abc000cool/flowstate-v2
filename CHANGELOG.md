@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Merge round six, candidate 3 data half: no coverage estimate for the ramp lane (2026-09-17)
+
+- `scripts/i24_coverage_lane5.py` (`artifacts/i24_coverage_lane5.json`, 28 synthetic tests): the gap-mixture estimator is not identified on the Old Hickory acceleration lane (79.5% of its tracked flow merges out along its length, spacing dispersion above the model's ceiling in 14 of 39 speed classes, 1.7× scale drift), and a synthetic lane with only the measured merge-out reproduces the confounded readings; the coverage is bounded to [0.327, 1.0], which puts the implied Old Hickory demand multiplier in [0.533, 1.63]. The plan's probe levels did not bracket it; the grid is widened to {0.55, 0.75, 1.0, 1.25, 1.6}. docs/I24_DATA.md §4's mainline coverage range corrected to the capacity population's 0.481 to 0.605.
+
 ### Merge round six, candidate 4 data half: proceed (2026-09-17)
 
 - `scripts/i24_heavy_share.py --by-lane` and `calibration.lanechange.heavy_share` / `aux_lane_fragments` (synthetic tests): heavy share by lane and by acceleration-lane use, `artifacts/i24_heavy_by_lane.json`. Lane 3 carries 19.0% heavy fragments (14.4% of vehicle-time), lane 1 1.4%, against the corridor's 9.2%; ramp-origin traffic is at the corridor share. Exceeds the plan's 3-point band, so the candidate proceeds to a lane-placed heavy population (schema, capacity calibration and probes to follow the cloud round).
