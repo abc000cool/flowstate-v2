@@ -22,6 +22,11 @@ variants and reports the same segment-speed table:
 * ``speedgain_0`` — tactical lane changes (``lcSpeedGain``) off;
 * ``coop_0.5_assertive_2`` — both merge levers together.
 
+Variant names also carry composable suffixes; ``_entrylanes`` and
+``_entryflow`` set ``network.entry_lane_shares`` from the recording's entry
+bin in vehicle-time and in flow units respectively (mutually exclusive;
+docs/MERGE_ROUND6_PLAN.md §2.1).
+
 Each variant reports the segment-speed RMSPE over the fitted first hour and
 the held-out second hour separately, so a merge setting can be adopted the
 way the demand level was.
@@ -93,6 +98,7 @@ VARIANTS = (
     "geometry_corrected_ramplc1_entrylanes_zipper",
     "geometry_corrected_ramplc1_entrylanes_accel",
     "geometry_corrected_ramplc1_entrylanes_zipper_meter",
+    "geometry_corrected_ramplc1_entryflow",
 )
 TRAIN_WINDOWS = range(0, 12)
 TEST_WINDOWS = range(12, 24)
@@ -101,12 +107,40 @@ TEST_WINDOWS = range(12, 24)
 LANE_PROFILE = REPO / "artifacts" / "i24_lane_profile.json"
 
 
+def _entry_row() -> dict:
+    """The recording's lane-profile row for the entry bin, data x in [0, 250) m."""
+    prof = json.loads(LANE_PROFILE.read_text())["observed"]
+    return next(r for r in prof["rows"] if r["x_lo_m"] == 0)
+
+
 def observed_entry_lane_shares() -> list[float]:
     """Recorded share of mainline vehicle-time per lane (1–4, left to right) at
     data x in [0, 250) m over the study period (``artifacts/i24_lane_profile.json``)."""
-    prof = json.loads(LANE_PROFILE.read_text())["observed"]
-    row = next(r for r in prof["rows"] if r["x_lo_m"] == 0)
-    raw = [float(row["share"][str(lane)]) for lane in (1, 2, 3, 4)]
+    raw = [float(_entry_row()["share"][str(lane)]) for lane in (1, 2, 3, 4)]
+    tot = sum(raw)
+    return [round(v / tot, 4) for v in raw]
+
+
+def observed_entry_lane_flow_shares() -> list[float]:
+    """Recorded share of mainline *vehicles* per lane (1–4, left to right) at the entry.
+
+    The same bin as :func:`observed_entry_lane_shares` in flow units: each
+    vehicle counted once in the lane it holds at its first crossing of data
+    x = 200 m (``n_vehicles`` in ``artifacts/i24_lane_profile.json``, rule in
+    ``i24_build_replica.first_crossing_lane_counts``). ``entry_lane_shares``
+    is drawn per inserted vehicle, so flow is the unit SUMO applies it in;
+    vehicle-time over-represents slow lanes (docs/MERGE_ROUND6_PLAN.md §2.1).
+
+    Normalised from the counts, not from the rounded ``flow_share``, so this
+    returns exactly what ``i24_build_replica.entry_lane_flow_shares`` (hence
+    ``--entry-lanes observed_flow``) computes from the recording.
+    """
+    row = _entry_row()
+    if "n_vehicles" not in row:
+        raise KeyError(
+            f"{LANE_PROFILE.name} predates flow shares; re-run scripts/i24_lane_profile.py"
+        )
+    raw = [float(row["n_vehicles"][str(lane)]) for lane in (1, 2, 3, 4)]
     tot = sum(raw)
     return [round(v / tot, 4) for v in raw]
 
@@ -210,10 +244,18 @@ def variant_config(name: str) -> dict[str, Any]:
         # "_sublane" = 0.8 m resolution (the (h) runs), "_sublane3.2" = one sublane per lane
         name, res_text = name.rsplit("_sublane", 1)
         raw["sim"]["lateral_resolution_m"] = float(res_text) if res_text else 0.8
+    # measured entry lane distribution as the insertion boundary, in either unit;
+    # the two are mutually exclusive (one boundary condition, one estimator)
+    if "_entrylanes" in name and "_entryflow" in name:
+        raise ValueError(f"_entrylanes and _entryflow are mutually exclusive: {name}")
+    entry_flow = False
     if name.endswith("_entrylanes"):
-        # measured upstream lane distribution as the insertion boundary
-        raw["network"]["entry_lane_shares"] = observed_entry_lane_shares()
+        raw["network"]["entry_lane_shares"] = observed_entry_lane_shares()  # vehicle-time
         name = name[: -len("_entrylanes")]
+    elif name.endswith("_entryflow"):
+        raw["network"]["entry_lane_shares"] = observed_entry_lane_flow_shares()  # flow
+        entry_flow = True
+        name = name[: -len("_entryflow")]
     ramps = {r["name"]: r for r in raw["network"]["ramps"]}
     if name == "oh_tracked":
         tracked = {
@@ -267,7 +309,11 @@ def variant_config(name: str) -> dict[str, Any]:
         raise ValueError(name)
     raw["name"] = (
         f"i24_merge_{name}"
-        + ("_entrylanes" if raw["network"].get("entry_lane_shares") else "")
+        + (
+            "_entryflow"
+            if entry_flow
+            else ("_entrylanes" if raw["network"].get("entry_lane_shares") else "")
+        )
         + (
             f"_sublane{raw['sim']['lateral_resolution_m']:g}"
             if raw["sim"].get("lateral_resolution_m")

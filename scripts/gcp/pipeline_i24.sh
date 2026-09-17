@@ -115,6 +115,18 @@ if echo " $STAGES " | grep -q " merge_scripted "; then
     --procs "$PROCS" --out artifacts/i24_merge_experiment_scripted.json || exit 1
 fi
 
+# 0b. Entry lane shares in flow units instead of vehicle-time (docs/MERGE_ROUND6_PLAN.md
+#     §2.1, candidate 1; opt-in: --stages "merge_entryflow"), single seed each, against the
+#     reference arm's entry-lane (vehicle-time) numbers. Needs artifacts/i24_lane_profile.json
+#     with flow_share rows (scripts/i24_lane_profile.py).
+if echo " $STAGES " | grep -q " merge_entryflow "; then
+  stage merge_entryflow $RUN scripts/i24_merge_experiment.py \
+    --variants geometry_corrected_ramplc1_entrylanes \
+               geometry_corrected_ramplc1_entryflow \
+               geometry_corrected_ramplc1_entryflow_heavy \
+    --procs "$PROCS" --out artifacts/i24_merge_experiment_entryflow.json || exit 1
+fi
+
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
 stage jm_sweep $RUN scripts/i24_merge_experiment.py \
   --variants geometry_corrected_ramplc1_entrylanes_zipper_jm0.5 \

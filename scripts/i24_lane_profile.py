@@ -3,9 +3,20 @@
 The segment-speed criterion averages over lanes; this diagnostic keeps the
 lanes apart, which is where the merge behaviour shows (docs/I24_VALIDATION.md
 §0.5). For each 250 m bin of data x it reports, per lane, the share of
-vehicle-time and the mean speed, for the recording (mainline lanes 1–4 plus
-the auxiliary lane 5, lane 1 = leftmost) and for one replicate of each
-validation arm present (its first seed under ``runs/i24_validation``).
+vehicle-time (``share``), the share of vehicles crossing the bin's count
+section (``flow_share``, with the count ``n_vehicles``) and the mean speed,
+for the recording (mainline lanes 1–4 plus the auxiliary lane 5, lane 1 =
+leftmost) and for one replicate of each validation arm present (its first
+seed under ``runs/i24_validation``).
+
+The two shares differ wherever the lanes differ in speed — vehicle-time
+over-represents slow lanes — and ``entry_lane_shares`` is applied by SUMO as
+a share of flow, so ``flow_share`` is the boundary quantity and ``share`` the
+occupancy diagnostic (docs/MERGE_ROUND6_PLAN.md §2.1). The counting rule is
+``i24_build_replica.first_crossing_lane_counts``: each vehicle once per
+section, in the lane it holds at its first crossing; the section is
+``x_lo + FLOW_SECTION_OFFSET_M``, which puts the entry bin's section at the
+corridor's mainline count section (data x = 200 m).
 
 SUMO lane indices count from the right (0 = rightmost) per edge, so the
 replica's lanes are mapped to the recording's numbering through the lane
@@ -32,11 +43,21 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from i24_build_replica import CORRIDOR_EDGES, RAMPS, T_STUDY_HI_S, T_STUDY_LO_S, WARMUP_S
+from i24_build_replica import (
+    CORRIDOR_EDGES,
+    FLOW_COUNT_LANES,
+    FLOW_SECTION_OFFSET_M,
+    RAMPS,
+    T_STUDY_HI_S,
+    T_STUDY_LO_S,
+    WARMUP_S,
+    first_crossing_lane_counts,
+)
 from i24_data import REPO_ROOT
 
 from microsim.networks import osm_import
@@ -46,7 +67,7 @@ FIG = REPO_ROOT / "docs" / "figures" / "i24_lane_profile.png"
 BIN_M = 250.0
 X_LO, X_HI = -500.0, 5500.0
 MIN_SHARE = 0.03
-LANES = (1, 2, 3, 4, 5)
+LANES = FLOW_COUNT_LANES  # 1-4 mainline (1 = leftmost) + 5 = auxiliary/ramp lane
 ARM_ORDER = ("tracked", "corrected", "speedcal", "ramps")
 
 
@@ -55,15 +76,43 @@ def _xy() -> tuple[float, float]:
     return float(g["sim_x_of_data_x"]["a"]), float(g["sim_x_of_data_x"]["b"])
 
 
+def _frame(table: pa.Table) -> pd.DataFrame:
+    """Arrow trajectory table → pandas, with ``veh_id`` as compact integer codes.
+
+    The id is only ever compared for equality here (grouping a fragment's
+    consecutive samples), and the recording's window holds ~2·10⁷ of them; as
+    Python strings that is gigabytes, as dictionary indices it is 4 bytes each.
+    """
+    ids = table.column("veh_id").combine_chunks()
+    codes = ids.dictionary_encode().indices.to_numpy(zero_copy_only=False)
+    df = table.select([c for c in table.column_names if c != "veh_id"]).to_pandas()
+    df["veh_id"] = codes
+    return df
+
+
 def _profile(df: pd.DataFrame) -> dict:
-    """Share and mean speed per (bin, lane); lanes with share < MIN_SHARE are blank."""
+    """Shares, vehicle counts and mean speed per (bin, lane).
+
+    ``share`` is the bin's share of vehicle-time (5 Hz samples, or the run's
+    output samples); ``flow_share`` is its share of the vehicles crossing the
+    bin's count section at ``x_lo + FLOW_SECTION_OFFSET_M``, each counted once
+    (:func:`~i24_build_replica.first_crossing_lane_counts`), of which
+    ``n_vehicles`` holds the per-lane counts themselves — shares recomputed
+    from those counts are exact, the rounded ``flow_share`` is for reading.
+    Lanes with share < MIN_SHARE report a blank speed. ``df`` needs
+    ``t, veh_id, x, lane, v``.
+    """
     df = df[(df["x"] >= X_LO) & (df["x"] < X_HI) & df["lane"].isin(LANES)]
     xb = (np.floor(df["x"] / BIN_M) * BIN_M).astype(int)
     tot = df.groupby(xb).size()
     share = df.groupby([xb, df["lane"]]).size().unstack(fill_value=0).div(tot, axis=0)
     spd = df.groupby([xb, df["lane"]])["v"].mean().unstack() * 3.6
+    bins = sorted(tot.index)
+    flow = first_crossing_lane_counts(df, [x + FLOW_SECTION_OFFSET_M for x in bins], LANES)
     rows = []
-    for x in sorted(tot.index):
+    for x in bins:
+        n_lane = flow[float(x) + FLOW_SECTION_OFFSET_M]
+        n_veh = sum(n_lane.values())
         rows.append(
             {
                 "x_lo_m": int(x),
@@ -79,15 +128,19 @@ def _profile(df: pd.DataFrame) -> dict:
                     )
                     for lane in LANES
                 },
+                "n_vehicles": {str(lane): int(n_lane[lane]) for lane in LANES},
+                "flow_share": {
+                    str(lane): (round(n_lane[lane] / n_veh, 4) if n_veh else 0.0) for lane in LANES
+                },
             }
         )
-    return {"bin_m": BIN_M, "rows": rows}
+    return {"bin_m": BIN_M, "flow_section_offset_m": FLOW_SECTION_OFFSET_M, "rows": rows}
 
 
 def observed_profile() -> dict:
     t = pq.read_table(
         REPO_ROOT / "data" / "i24motion" / "processed" / "i24_wb_20221130" / "trajectories.parquet",
-        columns=["t", "x", "lane", "v"],
+        columns=["t", "veh_id", "x", "lane", "v"],
         filters=[
             ("t", ">=", T_STUDY_LO_S),
             ("t", "<", T_STUDY_HI_S),
@@ -95,7 +148,7 @@ def observed_profile() -> dict:
             ("x", "<", X_HI),
         ],
     )
-    return _profile(t.to_pandas())
+    return _profile(_frame(t))
 
 
 def _lanes_of_x(osm_file: str) -> list[tuple[float, float, int]]:
@@ -148,9 +201,9 @@ def run_profile(run_dir: Path, osm_file: str) -> dict:
     """Lane profile of one run directory (its ``trajectories.parquet``) on ``osm_file``."""
     edges = _lanes_of_x(osm_file)
     a, b = _xy()
-    df = pq.read_table(
-        run_dir / "trajectories.parquet", columns=["t", "x", "lane", "v"]
-    ).to_pandas()
+    df = _frame(
+        pq.read_table(run_dir / "trajectories.parquet", columns=["t", "veh_id", "x", "lane", "v"])
+    )
     df["x"] = (df["x"] - a) / b
     df["t"] = df["t"] - WARMUP_S
     df = df[(df["t"] >= 0.0) & (df["t"] < T_STUDY_HI_S - T_STUDY_LO_S)]
@@ -247,6 +300,16 @@ def main() -> None:
         "bin_m": BIN_M,
         "min_share_for_speed": MIN_SHARE,
         "lane_convention": "1 = leftmost (HOV) ... 4 = rightmost mainline, 5 = auxiliary (ramp) lane; replica lanes mapped through the edge lane count",
+        "flow_section_offset_m": FLOW_SECTION_OFFSET_M,
+        "share_convention": (
+            "'share'/'n' are vehicle-time (5 Hz samples in the bin); 'n_vehicles' (per lane) and "
+            "'flow_share' are vehicles, each counted once in the lane it holds at its first "
+            "crossing of data x = x_lo_m + flow_section_offset_m, on a frame of lanes 1-5. "
+            "entry_lane_shares is applied by SUMO as a share "
+            "of flow, so the flow shares are the boundary quantity (docs/MERGE_ROUND6_PLAN.md "
+            "§2.1); observed counts are lower bounds at the per-lane tracking coverage "
+            "(docs/I24_DATA.md §4) and are not coverage-corrected"
+        ),
         "observed": obs,
         "replica": arms,
     }

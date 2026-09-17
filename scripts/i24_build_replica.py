@@ -46,6 +46,7 @@ import json
 import math
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +161,25 @@ ENTRY_LANE_X_M = (0.0, 250.0)
 ``--entry-lanes observed`` (just inside the span, after the Old Hickory
 off-ramp gore at data x ≈ 34 m and before the on-ramp gore at ≈ 900 m)."""
 
+#: Offset, inside a lane-profile bin, of the section at which ``--entry-lanes
+#: observed_flow`` counts vehicles. It places the entry window's count section
+#: at data x = ``MAINLINE_COUNT_X_M`` (200 m) — the corridor's mainline count
+#: section, the first high-coverage one, and the section whose crossings *are*
+#: the replica's mainline inflow, so the flow shares decompose exactly the
+#: demand the replica inserts. It also sits clear of the (unmodelled) Old
+#: Hickory off-ramp taper, whose drain of the right lane is still visible at
+#: data x ≈ 125 m (right-lane crossing share 0.25 at 125 m against 0.21 at
+#: 200-250 m; docs/MERGE_ROUND6_PLAN.md §2.1).
+FLOW_SECTION_OFFSET_M = MAINLINE_COUNT_X_M
+
+#: Lanes present in the frame the flow counts are taken on (1-4 mainline plus
+#: the auxiliary lane 5). Crossings are counted on the frame as a whole — a
+#: vehicle that changes lane across the section is counted in the lane it
+#: lands in — so the lane set is part of the estimator: it is fixed here and
+#: shared with ``scripts/i24_lane_profile.py`` so the builder and the
+#: lane-profile artifact count the same crossings.
+FLOW_COUNT_LANES = (1, 2, 3, 4, 5)
+
 #: SUMO ``lcKeepRight`` for the replica fleet. US freeways carry no keep-right
 #: obligation; the observed vehicle-time by lane on the span (06:30-08:30) is
 #: 30/24/20/26 % left to right with all lanes at similar speed. With SUMO's
@@ -181,6 +201,90 @@ def crossings_per_window(df: pd.DataFrame, x_s: float, t_lo: float, t_hi: float)
     n_win = round((t_hi - t_lo) / WINDOW_S)
     w = ((t_cur[hit] - t_lo) // WINDOW_S).astype(np.int64)
     return np.bincount(w, minlength=n_win)[:n_win]
+
+
+def first_crossing_lane_counts(
+    df: pd.DataFrame, sections_m: Sequence[float], lanes: Sequence[int]
+) -> dict[float, dict[int, int]]:
+    """Vehicles crossing each section, counted once each, by the lane they are in.
+
+    The **flow** observable behind ``--entry-lanes observed_flow`` and the
+    ``flow_share`` rows of ``artifacts/i24_lane_profile.json``. A share of
+    5 Hz *samples* per lane is a share of vehicle-time, which over-represents
+    slow lanes; SUMO applies ``entry_lane_shares`` as a share of *flow*
+    (docs/MERGE_ROUND6_PLAN.md §2.1). The rule, stated once here:
+
+    * a vehicle (here: a tracked fragment, docs/I24_DATA.md §2) is counted at
+      section ``x_s`` when two consecutive samples of it straddle it
+      (``x_prev < x_s <= x_cur``), in the lane of the *later* sample;
+    * it is counted **once per section**, at its first crossing in time, so a
+      vehicle that oscillates across the section does not count twice;
+    * a sample-to-sample jump over more than one section (a tracker hole) is
+      counted at every section it spans — at 0.2 s sampling this is rare and
+      the sections here are 250 m apart.
+
+    The same rule gives the replica's mainline demand (:func:`crossings_per_window`
+    counts fragment crossings without the per-vehicle deduplication, which at
+    a 0.2 s sample interval differs only for that oscillation case), so the
+    lane shares at ``MAINLINE_COUNT_X_M`` decompose the inflow exactly.
+
+    Args:
+        df: Trajectory rows with ``t, veh_id, x, lane`` (``veh_id`` of any
+            hashable dtype; integer codes are accepted and are cheaper).
+        sections_m: Sections [m] in the frame's ``x`` units.
+        lanes: Lanes to report (missing lanes report 0).
+
+    Returns:
+        ``{section_m: {lane: n_vehicles}}``.
+    """
+    veh = df["veh_id"].to_numpy()
+    if veh.dtype == object or not np.issubdtype(veh.dtype, np.number):
+        veh = pd.factorize(veh, sort=False)[0]
+    order = np.lexsort((df["t"].to_numpy(), veh))
+    veh, x = veh[order], df["x"].to_numpy()[order]
+    lane = df["lane"].to_numpy()[order]
+    same = veh[1:] == veh[:-1]
+    x_prev, x_cur = x[:-1][same], x[1:][same]
+    veh_cur, lane_cur = veh[1:][same], lane[1:][same]
+    out: dict[float, dict[int, int]] = {}
+    for x_s in sections_m:
+        hit = (x_prev < x_s) & (x_cur >= x_s)
+        first = pd.DataFrame({"veh": veh_cur[hit], "lane": lane_cur[hit]}).drop_duplicates(
+            "veh", keep="first"
+        )
+        counts = first["lane"].value_counts()
+        out[float(x_s)] = {int(ln): int(counts.get(ln, 0)) for ln in lanes}
+    return out
+
+
+def entry_lane_flow_shares(t_lo: float, t_hi: float) -> tuple[list[float], list[int]]:
+    """Share of mainline *vehicles* per lane (1-4, left to right) at the entry.
+
+    Counts each vehicle once at its first crossing of data
+    ``x = FLOW_SECTION_OFFSET_M`` within :data:`ENTRY_LANE_X_M`
+    (:func:`first_crossing_lane_counts`) over ``[t_lo, t_hi)``, on a frame of
+    :data:`FLOW_COUNT_LANES`; the shares are over the mainline lanes 1-4, the
+    lanes vehicles are inserted into. Counts are lower bounds at the
+    instrument's per-lane tracking coverage (docs/I24_DATA.md §4); the shares
+    are not coverage-corrected.
+
+    Returns:
+        ``(shares, counts)`` — shares over lanes 1-4, and the vehicle counts.
+    """
+    df = load_i24_parquet(
+        WB_DIR,
+        t_range_s=(t_lo, t_hi),
+        x_range_m=ENTRY_LANE_X_M,
+        lanes=(min(FLOW_COUNT_LANES), max(FLOW_COUNT_LANES)),
+        columns=["t", "veh_id", "x", "lane"],
+    )
+    counts = first_crossing_lane_counts(df, [FLOW_SECTION_OFFSET_M], FLOW_COUNT_LANES)[
+        FLOW_SECTION_OFFSET_M
+    ]
+    n = [int(counts[lane]) for lane in range(1, 5)]
+    if sum(n) == 0:
+        raise ValueError(f"no mainline crossings of data x = {FLOW_SECTION_OFFSET_M:g} m")
+    return [round(v / sum(n), 4) for v in n], n
 
 
 def boundary_schedule(t_lo: float, t_hi: float) -> list[tuple[float, float]]:
@@ -291,12 +395,14 @@ def main() -> None:
     )
     ap.add_argument(
         "--entry-lanes",
-        choices=("roundrobin", "observed"),
+        choices=("roundrobin", "observed", "observed_flow"),
         default="roundrobin",
         help="mainline insertion across the entry edge's lanes: SUMO round-robin (default, keeps "
-        "config hashes) or the recording's lane shares of vehicle-time at data x in "
+        "config hashes); 'observed' = the recording's lane shares of vehicle-time at data x in "
         f"[0, {ENTRY_LANE_X_M[1]:g}) m over the study period (OSMNetwork.entry_lane_shares, "
-        "docs/I24_VALIDATION.md §0.5)",
+        "docs/I24_VALIDATION.md §0.5); 'observed_flow' = the same window in flow units, each "
+        f"vehicle counted once at its first crossing of data x = {FLOW_SECTION_OFFSET_M:g} m, "
+        "which is the unit SUMO applies the shares in (docs/MERGE_ROUND6_PLAN.md §2.1)",
     )
     ap.add_argument(
         "--heavy",
@@ -504,12 +610,20 @@ def main() -> None:
 
     # --- entry lane distribution ------------------------------------------
     entry_lane_shares: list[float] | None = None
+    entry_lane_counts: list[int] | None = None
     if args.entry_lanes == "observed":
         lane_df = load_mainline(t_range_s=(t_lo, t_hi), x_range_m=ENTRY_LANE_X_M, columns=["lane"])
         counts_by_lane = lane_df["lane"].value_counts()
         raw_shares = [float(counts_by_lane.get(lane, 0)) for lane in range(1, 5)]  # left → right
         entry_lane_shares = [round(v / sum(raw_shares), 4) for v in raw_shares]
         print(f"entry lane shares (lanes 1-4, left to right): {entry_lane_shares}", flush=True)
+    elif args.entry_lanes == "observed_flow":
+        entry_lane_shares, entry_lane_counts = entry_lane_flow_shares(t_lo, t_hi)
+        print(
+            f"entry lane FLOW shares (lanes 1-4, left to right): {entry_lane_shares} "
+            f"from {entry_lane_counts} vehicles at data x = {FLOW_SECTION_OFFSET_M:g} m",
+            flush=True,
+        )
 
     # --- scenario ---------------------------------------------------------
     duration_s = WARMUP_S + (t_hi - t_lo)
@@ -692,6 +806,9 @@ def main() -> None:
             "mile-marker fit; ramp gores from the fit match the ramp-lane data to ~10 m",
         ],
     }
+    if entry_lane_counts is not None:  # --entry-lanes observed_flow only
+        inputs["entry_lane_count_x_m"] = FLOW_SECTION_OFFSET_M
+        inputs["entry_lane_vehicles"] = entry_lane_counts
     (REPO_ROOT / "artifacts" / f"i24_replica_inputs{suffix}.json").write_text(
         json.dumps(inputs, indent=2)
     )
