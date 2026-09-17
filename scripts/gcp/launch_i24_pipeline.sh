@@ -32,7 +32,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 if [ "$SELF_DELETE" -eq 1 ] && [ -z "$BUCKET" ]; then echo "--self-delete needs --bucket (the archive must leave the machine first)" >&2; exit 2; fi
-if [ -n "$BUCKET" ] && ! gcloud storage ls "$BUCKET" >/dev/null 2>&1; then echo "bucket $BUCKET is not readable with this account (create it first: gcloud storage buckets create gs://NAME --location=us-west1)" >&2; exit 2; fi
+BUCKET_ROOT=""; [ -n "$BUCKET" ] && BUCKET_ROOT="gs://$(printf '%s' "${BUCKET#gs://}" | cut -d/ -f1)"   # gs://bucket[/prefix] -> gs://bucket
+if [ -n "$BUCKET" ] && ! gcloud storage buckets describe "$BUCKET_ROOT" >/dev/null 2>&1; then echo "bucket $BUCKET_ROOT is not readable with this account (create it first: gcloud storage buckets create gs://NAME --location=us-west1)" >&2; exit 2; fi
 SCOPES=""; [ -n "$BUCKET" ] && SCOPES="--scopes=storage-rw,compute-rw,logging-write,monitoring-write"
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 REF=$(git rev-parse HEAD)
@@ -56,7 +57,6 @@ if [ -n "$BUCKET" ]; then
   # one instance; a project that grants the default account no Editor role has neither by default
   SA=$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(serviceAccounts[0].email)')
   echo "== granting $SA: objectAdmin on $BUCKET, instanceAdmin on $VM"
-  BUCKET_ROOT="gs://$(printf '%s' "${BUCKET#gs://}" | cut -d/ -f1)"   # gs://bucket[/prefix] -> gs://bucket
   gcloud storage buckets add-iam-policy-binding "$BUCKET_ROOT" --member="serviceAccount:$SA" --role=roles/storage.objectAdmin >/dev/null
   [ "$SELF_DELETE" -eq 1 ] && gcloud compute instances add-iam-policy-binding "$VM" --project "$PROJECT" --zone "$ZONE" --member="serviceAccount:$SA" --role=roles/compute.instanceAdmin.v1 >/dev/null
 fi
