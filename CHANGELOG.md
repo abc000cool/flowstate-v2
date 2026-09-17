@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Merge round six, candidate 1 probed (2026-09-17)
+
+- Cloud probe of the entry lane **flow** shares (three single-seed runs on an n2-standard-8, 11 minutes, about ten cents; `artifacts/i24_merge_experiment_entryflow.json`, docs/I24_VALIDATION.md §0.9): insertion 0.935 → 0.952, held-out RMSPE 0.457 → 0.406, fit hour 0.350 → 0.369, Old Hickory admittance 2066 → 2029 of 2,241, entry segments unchanged at 23 to 27 km/h. The right observable, a real but small gain, and not the merge defect; the next full FHWA sequence should be built on the flow shares. With the heavy population added every number is worse at this seed. The bucket-copy and self-delete path worked again; bucket deleted after ingest.
+
 ### API after the walkthrough (2026-09-17)
 
 - `FLOWSTATE_CORS_ORIGINS` (comma-separated; `*` any, `-` none; default the two loopback dev origins) replaces the hard-coded `http://localhost:5173`: a dashboard served from any other origin could not call the API at all, and the only feedback was an "API offline" banner. A disallowed origin gets a response without the allow header, not a 400 that echoes the policy.

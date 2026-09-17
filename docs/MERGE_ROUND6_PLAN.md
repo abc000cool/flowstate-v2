@@ -248,3 +248,7 @@ radar counts of `docs/I24_DATA.md` §4.
 * Re-scoring the speed row at a coarser aggregation after seeing that it helps: §0.5(a)
   reports the aggregation table beside the criterion for exactly this reason, and the
   criterion keeps the resolution it was given on 3 September.
+
+## Addendum, 2026-09-17: candidate 1 probed
+
+Single seed, `artifacts/i24_merge_experiment_entryflow.json` (docs/I24_VALIDATION.md §0.9): flow shares raise insertion from 0.935 to 0.952 and cut the held-out RMSPE from 0.457 to 0.406; Old Hickory admits 2029 against 2066 of 2,241 (threshold 2,130 not met) and the entry segments stay at 23 to 27 km/h. Candidate 1 is a correct boundary-condition fix to carry into the next full sequence, not the cause of the merge defect. Candidates 2 to 5 stand.

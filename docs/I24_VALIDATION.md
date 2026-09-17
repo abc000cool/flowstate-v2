@@ -683,6 +683,44 @@ after five rounds the remaining candidates are outside the merge itself: the
 recording's own lane distribution at the entry (§0.5 uses the measured shares
 already), a heavy-vehicle merge population, and the downstream boundary.
 
+### 0.9 The merge, sixth round, candidate 1: entry lane shares as flow shares (cloud probe, 2026-09-17)
+
+docs/MERGE_ROUND6_PLAN.md ranks the replica's entry lane distribution first
+among the causes left outside the merge: `--entry-lanes observed` counted 5 Hz
+samples, a share of vehicle-time that SUMO applies as a share of flow, so the
+slow lanes were over-fed. §0.5 (g) now carries the flow shares (32.2 / 24.7 /
+22.5 / 20.7% left to right at the mainline count section, from 2,175 / 1,667 /
+1,518 / 1,398 first crossings). Three single-seed runs of the fitted arm
+(config `8fa63f55e74d`, seed 6914975401685141156, n2-standard-8 VM, 11 minutes
+for the stage; `artifacts/i24_merge_experiment_entryflow.json`):
+
+| variant (config hash) | inserted | Old Hickory departed / planned | RMSPE all / fit / held-out | 15-min RMSPE | GEH < 5 | segment speeds, km/h (observed 36 32 30 31 38 37 38 29 30 34) |
+|---|---|---|---|---|---|---|
+| reference, vehicle-time shares (`483b8721c9d2`) | 0.935 | 2066 / 2241 | 0.407 / 0.350 / 0.457 | 0.273 | 0.22 | 26 24 29 37 36 34 32 26 25 33 |
+| flow shares (`4263eed9661d`) | 0.952 | 2029 / 2241 | 0.388 / 0.369 / 0.406 | 0.276 | 0.19 | 23 23 27 38 38 35 35 30 27 32 |
+| flow shares + heavy population (`0c025f1f6266`) | 0.855 | 1865 / 2241 | 0.412 / 0.381 / 0.440 | 0.319 | 0.13 | 21 21 25 32 32 30 32 30 27 33 |
+
+**Reading it.** The flow shares are the right observable and they help where
+a boundary condition should: insertion rises from 0.935 to
+0.952 and the held-out hour improves from 0.457 to
+0.406, with the fit hour slightly worse (0.350 to
+0.369) and the 15-min error unchanged. The merge itself does
+not move: Old Hickory admits 2029 against 2066, the entry segments run
+23 / 23 / 27 km/h against the recording's 36 / 32 / 30, and the gain is
+downstream of the merge (38 / 38 / 35 / 35 against 37 / 36 / 34 / 32). Against
+the plan's pre-registered thresholds (admittance ≥ 2,130; the two peak
+sections at GEH < 5) candidate 1 does not close the defect. Adding the heavy
+population on top makes every number worse at this seed, as §0.6 found for
+the heavy arms.
+
+**Status.** Single seed; not a headline result. Because the flow share is the
+correct definition of the boundary quantity, the next full FHWA sequence
+(demand scale, boundary and ramp fit, 20-seed battery) should be built with
+`--entry-lanes observed_flow`; that is a cloud round of about five dollars,
+not a re-score, so the fitted arms keep the vehicle-time shares until it
+runs. The merge defect of §0.5 (k) stands; the plan's candidates 2 to 5
+remain.
+
 ## 1. What is compared
 
 **Observed side** (`i24_validation_observed.json`; cached by data hash): the
