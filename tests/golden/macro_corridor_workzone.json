@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "case": "macro_corridor_workzone",
+  "description": "3 km two-lane corridor, 1.4 veh/s, 20 % heavy population (not represented on this tier), right lane closed 2.0-2.5 km for 120-210 s (seeded=True), 300 sim-s, seed 11",
+  "scenario": "workzone_config() in tests/test_macrosim/test_macrosim_golden.py",
+  "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
+  "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate macro_corridor_workzone",
+  "generated_at": "2026-09-17T06:01:29+00:00",
+  "tolerance": {
+    "relative": 1e-09,
+    "exact": [
+      "n_cells",
+      "n_closure_cells",
+      "n_closures",
+      "wave_count"
+    ]
+  },
+  "config_hash": "c3f4dacb29ba",
+  "seed": 11,
+  "tier": "screening",
+  "seeded": true,
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "numba": "0.67.0",
+    "flowstate_core": "2.0.0",
+    "macrosim": "2.0.0"
+  },
+  "config": {
+    "name": "macro_corridor_workzone",
+    "tier": "macro",
+    "network": {
+      "kind": "corridor",
+      "length_m": 3000.0,
+      "lanes": 2,
+      "inflow": [
+        [
+          0.0,
+          1.4
+        ]
+      ],
+      "boundary": null,
+      "entry_lane_shares": null
+    },
+    "fleet": {
+      "model": "IDM",
+      "v0": 33.3,
+      "T": 1.4,
+      "a_max": 0.73,
+      "b": 1.67,
+      "s0": 2.0,
+      "delta": 4.0,
+      "heterogeneity_frac": 0.12,
+      "idm_calibration": null,
+      "lc_strategic": 1.0,
+      "lc_strategic_ramp": null,
+      "lc_keep_right": 1.0,
+      "lc_cooperative": 1.0,
+      "lc_assertive": 1.0,
+      "lc_speed_gain": 1.0,
+      "heavy": {
+        "fraction": 0.2,
+        "length_m": 20.5,
+        "emission_class": "HBEFA4/TT_AT_gt34-40t_Euro-VI_A-C",
+        "vclass": "truck",
+        "idm_calibration": null,
+        "v0": 28.0,
+        "T": 1.8,
+        "a_max": 0.5,
+        "b": 1.5,
+        "s0": 3.0,
+        "heterogeneity_frac": 0.12
+      },
+      "jm_timegap_minor_s": null,
+      "jm_ignore_foe_prob": null,
+      "lc_sublane": null,
+      "lc_pushy": null,
+      "lc_impatience": null,
+      "lc_accel_lat": null,
+      "max_speed_lat": null,
+      "min_gap_lat": null,
+      "lat_alignment": null,
+      "lc_overtake_right": null,
+      "hov_fraction": 0.0
+    },
+    "av": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "controller_params": {},
+      "vsl": null,
+      "vsl_params": {},
+      "oracle": {
+        "kind": "perfect",
+        "delay_s": 0.0,
+        "amplitude_noise_frac": 0.0
+      }
+    },
+    "sim": {
+      "duration_s": 300.0,
+      "step_length_s": 0.5,
+      "action_step_s": 0.5,
+      "warmup_s": 0.0,
+      "output_hz": 2.0,
+      "lateral_resolution_m": null
+    },
+    "perturbation": null,
+    "closures": [
+      {
+        "start_m": 2000.0,
+        "end_m": 2500.0,
+        "lanes": [
+          0
+        ],
+        "t_start_s": 120.0,
+        "t_end_s": 210.0,
+        "label": "work zone"
+      }
+    ],
+    "managed_lanes": [],
+    "seed": 11,
+    "replicates": 20
+  },
+  "run": {
+    "n_cells": 30,
+    "dx_m": 100.0,
+    "dt_s": 0.5,
+    "fd_preset": "v1_legacy",
+    "fd_v_f": 27.77777777777778,
+    "fd_w": -5.555555555555555,
+    "fd_rho_jam": 0.32,
+    "clamped": false,
+    "vehicles_in": 419.9999999999956,
+    "vehicles_out": 213.89621371859008,
+    "stored_veh": 206.10378628140887,
+    "n_closures": 1,
+    "n_closure_cells": 5,
+    "closure_capacity_share_open": 0.5,
+    "queue_veh": 0.0
+  },
+  "metrics": {
+    "throughput_veh_h": 3757.391844722191,
+    "mean_tt_s": null,
+    "p90_tt_s": null,
+    "sigma_v_spatial_ms": 4.202106024014121,
+    "sigma_v_temporal_ms": 2.7414484137813426,
+    "vmt_veh_km": 971.4494009032127,
+    "vht_veh_h": 12.160599702263466,
+    "fuel_ml_per_veh_km": null,
+    "wave_count": 1,
+    "wave_speed_kmh": 18.382978723404257,
+    "wave_amplitude_ms": 23.2399452105332
+  }
+}

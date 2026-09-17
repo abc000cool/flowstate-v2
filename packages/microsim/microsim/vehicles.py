@@ -29,7 +29,7 @@ RNG consumption order is fixed and documented per builder so that a given
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -39,6 +39,7 @@ import numpy as np
 from flowstate_core.artifacts import IDMCalibration
 from flowstate_core.config import AVSpec, FleetSpec, HeavyVehicleSpec, RampSpec, RingNetwork
 from flowstate_core.rng import truncated_normal
+from microsim.paths import effective_roots, outside_roots_error, within_roots
 
 #: Hard physical lower bounds for per-vehicle IDM draws (task spec §3.1):
 #: draws are truncated at ±3σ AND clipped to stay physical.
@@ -136,7 +137,9 @@ class FleetPlan:
         return tuple(self.vehicle_id(i) for i, c in enumerate(self.complied) if c)
 
 
-def resolve_calibration_path(path: str) -> Path:
+def resolve_calibration_path(
+    path: str, *, allowed_roots: Iterable[str | Path] | None = None
+) -> Path:
     """Resolve an ``IDMCalibration`` artifact path (as given, else repo-root).
 
     Scenario YAMLs reference artifacts with repo-relative paths like
@@ -144,21 +147,53 @@ def resolve_calibration_path(path: str) -> Path:
     them via the repository root (this file sits at
     ``packages/microsim/microsim/vehicles.py``).
 
+    Args:
+        path: Artifact path as the fleet spec gives it.
+        allowed_roots: Directories the artifact must resolve inside — defence
+            in depth behind the API's HTTP 422 (:mod:`microsim.paths`).
+            ``None`` (the library default, for scripts) falls back to the
+            roots published in ``FLOWSTATE_WORKER_PATH_ROOTS``, and to no
+            confinement when that is unset. Both candidates are tested
+            independently, so a repo-relative preset still resolves through
+            the repository-root fallback whenever the repository's
+            ``artifacts/`` is allow-listed.
+
     Raises:
+        ValueError: Every candidate resolves outside ``allowed_roots``
+            (symlinks and ``..`` resolved first). The message names the
+            offending value and the roots, nothing else.
         FileNotFoundError: Neither candidate exists.
     """
     p = Path(path)
-    if p.is_file():
-        return p
-    candidate = Path(__file__).resolve().parents[3] / path
-    if candidate.is_file():
-        return candidate
-    raise FileNotFoundError(f"IDMCalibration artifact not found: {path!r} (also tried {candidate})")
+    repo_candidate = Path(__file__).resolve().parents[3] / path
+    candidates = [p] if repo_candidate == p else [p, repo_candidate]
+    roots = effective_roots(allowed_roots)
+    if roots is not None:
+        # Containment is decided before existence, so a refusal can never be
+        # read as an existence oracle for a file outside the roots.
+        inside = [c for c in candidates if within_roots(c.resolve(), roots)]
+        if not inside:
+            raise outside_roots_error(path, roots, field="idm_calibration")
+        candidates = inside
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        f"IDMCalibration artifact not found: {path!r} (also tried {repo_candidate})"
+    )
 
 
-def load_idm_calibration(path: str) -> IDMCalibration:
-    """Load the ``IDMCalibration`` artifact referenced by a fleet spec."""
-    return IDMCalibration.load(resolve_calibration_path(path))
+def load_idm_calibration(
+    path: str, *, allowed_roots: Iterable[str | Path] | None = None
+) -> IDMCalibration:
+    """Load the ``IDMCalibration`` artifact referenced by a fleet spec.
+
+    Args:
+        path: Artifact path as the fleet spec gives it.
+        allowed_roots: Confinement for the resolved path; see
+            :func:`resolve_calibration_path`.
+    """
+    return IDMCalibration.load(resolve_calibration_path(path, allowed_roots=allowed_roots))
 
 
 def _draw_from_calibration(

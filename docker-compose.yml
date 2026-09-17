@@ -50,6 +50,8 @@ services:
       # explicit local-only key. It is not a secret — override it via the
       # environment (or a .env file) for anything past a loopback dev stack.
       FLOWSTATE_API_KEY: ${FLOWSTATE_API_KEY:-flowstate-local-dev}
+      # Extra accepted keys for zero-downtime rotation (docs/DEPLOYMENT.md §5).
+      FLOWSTATE_API_KEYS: ${FLOWSTATE_API_KEYS:-}
     volumes:
       - flowstate-runs:/data/runs
     depends_on:

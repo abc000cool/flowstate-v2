@@ -6,10 +6,16 @@ worker, and the tests (ADR-3: thin service layer, Docker deploy):
 - ``FLOWSTATE_RESULTS_DIR`` — results root (default ``./runs``). Run
   artifacts, uploads, calibration artifacts and reports live under it; the
   SQLite metadata database is ``<results>/metadata.db``.
-- ``FLOWSTATE_API_KEY`` — the single API key (default ``dev-key-change-me``;
+- ``FLOWSTATE_API_KEY`` — the primary API key (default ``dev-key-change-me``;
   real auth is a Phase 4 concern, CLAUDE.md §8). The default is published in
   this repository, so :func:`check_api_key_not_default` refuses to build the
   app with it under the Redis (deployed) queue.
+- ``FLOWSTATE_API_KEYS`` — optional comma-separated list of *additional*
+  accepted keys (whitespace trimmed, empty entries dropped), so a key can be
+  rotated without a window in which every client is locked out: add the new
+  key, redeploy, move the clients, drop the old key. Every accepted key is in
+  :attr:`Settings.api_keys`, and the default-key refusal above applies to all
+  of them.
 - ``FLOWSTATE_QUEUE`` — ``inline`` (synchronous, tests and small local runs)
   or ``redis`` (RQ; the production mode). Default ``inline``.
 - ``FLOWSTATE_REDIS_URL`` — Redis URL for the RQ backend
@@ -23,9 +29,12 @@ worker, and the tests (ADR-3: thin service layer, Docker deploy):
   directories for scenario configs — see :attr:`Settings.config_path_roots`).
 - ``FLOWSTATE_MAX_BODY_MB`` — ceiling on a JSON/YAML request body (scenario
   configs, run/sweep/report requests); larger bodies are refused with HTTP
-  413 (default 8 MB).
+  413 (default 8 MB), from the declared ``Content-Length`` where there is one
+  and otherwise from a running byte count as the body streams in
+  (``api.main.BodyCapMiddleware``).
 - ``FLOWSTATE_MAX_UPLOAD_MB`` — ceiling on one uploaded calibration data
-  file (default 200 MB, HTTP 413 above it).
+  file (default 200 MB, HTTP 413 above it); the multipart request as a whole
+  is capped at this plus ``FLOWSTATE_MAX_BODY_MB`` for its framing.
 - ``FLOWSTATE_FRONTEND_DIST`` — built frontend directory served at ``/`` when
   it exists (default: the repo's ``frontend/dist``).
 
@@ -67,6 +76,8 @@ class Settings:
 
     results_dir: Path
     api_key: str
+    """The primary API key — ``FLOWSTATE_API_KEY`` when set, else the first
+    ``FLOWSTATE_API_KEYS`` entry, else :data:`DEFAULT_API_KEY`."""
     queue_kind: str
     redis_url: str
     scenarios_dir: Path
@@ -78,6 +89,17 @@ class Settings:
     """Largest JSON/YAML request body accepted on ``/api/`` (HTTP 413 above)."""
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_MB * _MB
     """Largest calibration data upload accepted (HTTP 413 above)."""
+    api_keys: tuple[str, ...] = ()
+    """Every accepted ``X-API-Key`` value, :attr:`api_key` first.
+
+    Defaults to ``(api_key,)`` so a hand-built :class:`Settings` still
+    authenticates its own key; :func:`load_settings` fills it from
+    ``FLOWSTATE_API_KEY`` plus ``FLOWSTATE_API_KEYS``.
+    """
+
+    def __post_init__(self) -> None:
+        if not self.api_keys:
+            object.__setattr__(self, "api_keys", (self.api_key,))
 
     @property
     def db_path(self) -> Path:
@@ -145,17 +167,20 @@ def check_api_key_not_default(settings: Settings) -> None:
     ``FLOWSTATE_QUEUE=redis`` means API and workers are separate processes —
     i.e. a real deployment, not a one-off local run — and
     :data:`DEFAULT_API_KEY` is printed in this repository's README, so leaving
-    it in place is equivalent to no auth at all.
+    it in place is equivalent to no auth at all. Every key in
+    :attr:`Settings.api_keys` is checked: a rotation list that still carries
+    the default accepts the published key just as surely as a single one.
 
     Raises:
-        InsecureDefaultKeyError: When the deployed service still holds the
+        InsecureDefaultKeyError: When the deployed service still accepts the
             default key.
     """
-    if settings.queue_kind == "redis" and settings.api_key == DEFAULT_API_KEY:
+    if settings.queue_kind == "redis" and DEFAULT_API_KEY in settings.api_keys:
         raise InsecureDefaultKeyError(
-            f"refusing to start: FLOWSTATE_API_KEY is still the published default "
+            f"refusing to start: an accepted API key is still the published default "
             f"{DEFAULT_API_KEY!r} while FLOWSTATE_QUEUE=redis (a deployed service). "
-            f"Set FLOWSTATE_API_KEY to a secret of your own before starting the API."
+            f"Set FLOWSTATE_API_KEY (or FLOWSTATE_API_KEYS) to secrets of your own "
+            f"before starting the API."
         )
 
 
@@ -167,9 +192,11 @@ def load_settings() -> Settings:
     raw_data_dir = os.environ.get("FLOWSTATE_DATA_DIR", "").strip()
     max_body_mb = _positive_int_env("FLOWSTATE_MAX_BODY_MB", DEFAULT_MAX_BODY_MB)
     max_upload_mb = _positive_int_env("FLOWSTATE_MAX_UPLOAD_MB", DEFAULT_MAX_UPLOAD_MB)
+    api_keys = _api_keys_env()
     return Settings(
         results_dir=Path(os.environ.get("FLOWSTATE_RESULTS_DIR", "./runs")).resolve(),
-        api_key=os.environ.get("FLOWSTATE_API_KEY", DEFAULT_API_KEY),
+        api_key=api_keys[0],
+        api_keys=api_keys,
         queue_kind=queue_kind,
         redis_url=os.environ.get("FLOWSTATE_REDIS_URL", DEFAULT_REDIS_URL),
         scenarios_dir=Path(
@@ -182,6 +209,30 @@ def load_settings() -> Settings:
         max_body_bytes=max_body_mb * _MB,
         max_upload_bytes=max_upload_mb * _MB,
     )
+
+
+def _api_keys_env() -> tuple[str, ...]:
+    """Every accepted API key from the environment, the primary one first.
+
+    ``FLOWSTATE_API_KEY`` takes precedence — it stays the key the operator
+    hands out and the one :attr:`Settings.api_key` reports — and
+    ``FLOWSTATE_API_KEYS`` adds the rest of a rotation window
+    (comma-separated, whitespace trimmed, empty entries dropped, duplicates
+    collapsed). A blank or whitespace-only value counts as unset, so neither
+    variable can silently make the empty string a valid key; with both unset
+    the published :data:`DEFAULT_API_KEY` is the only key, which
+    :func:`check_api_key_not_default` refuses on a deployed service.
+    """
+    candidates = [
+        os.environ.get("FLOWSTATE_API_KEY", ""),
+        *os.environ.get("FLOWSTATE_API_KEYS", "").split(","),
+    ]
+    keys: list[str] = []
+    for raw in candidates:
+        key = raw.strip()
+        if key and key not in keys:
+            keys.append(key)
+    return tuple(keys) or (DEFAULT_API_KEY,)
 
 
 def _positive_int_env(name: str, default: int) -> int:

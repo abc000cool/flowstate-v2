@@ -2,9 +2,17 @@
 
 API routes live under ``/api/v1/...`` so the optional single-origin frontend
 mount at ``/`` never collides with them. OpenAPI docs at ``/docs``; health at
-``/healthz``. Auth is a single API key in the ``X-API-Key`` header checked on
-every ``/api/...`` route (``/healthz`` and ``/docs`` are exempt; real auth is
-a Phase 4 concern).
+``/healthz``. Auth is a shared API key in the ``X-API-Key`` header checked on
+every ``/api/...`` route — any key in ``Settings.api_keys``
+(``FLOWSTATE_API_KEY`` plus the ``FLOWSTATE_API_KEYS`` rotation list), so a
+key can be replaced without a lock-out window; ``/healthz`` and ``/docs`` are
+exempt and real auth is a Phase 4 concern.
+
+Every response carries ``X-Request-Id`` and every request logs one line on
+the ``api.access`` logger (method, path, status, duration, id), so a client
+report ties to a server log line; request bodies are counted as they stream
+(:class:`BodyCapMiddleware`) and refused with HTTP 413 above the cap for the
+path, whether or not the client declared a ``Content-Length``.
 
 Job model: no endpoint executes a simulation synchronously when
 ``FLOWSTATE_QUEUE=redis`` — all long work (runs, sweeps, calibrations,
@@ -21,8 +29,11 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import secrets
 import shutil
+import time
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -33,6 +44,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import api as api_pkg
 from api import results as res
@@ -912,15 +925,210 @@ def _declared_body_length(request: Request) -> int | None:
         return None
 
 
+def _is_calibration_path(path: str) -> bool:
+    """Whether ``path`` is the multipart upload route (the larger cap)."""
+    return path.startswith(f"{router.prefix}/calibrations/")
+
+
 def _body_cap(path: str, settings: Settings) -> int:
     """Byte ceiling for a request body on ``path``.
 
     Calibration uploads may carry one data file plus the small form fields
     and multipart framing; everything else is a JSON/YAML document.
     """
-    if path.startswith(f"{router.prefix}/calibrations/"):
+    if _is_calibration_path(path):
         return settings.max_upload_bytes + settings.max_body_bytes
     return settings.max_body_bytes
+
+
+def _cap_env_hint(path: str) -> str:
+    """The environment variable(s) that set the cap for ``path``."""
+    if _is_calibration_path(path):
+        return "FLOWSTATE_MAX_UPLOAD_MB + FLOWSTATE_MAX_BODY_MB"
+    return "FLOWSTATE_MAX_BODY_MB"
+
+
+class BodyCapMiddleware:
+    """Pure-ASGI body counter: HTTP 413 once a streamed body passes its cap.
+
+    The auth middleware refuses a *declared* ``Content-Length`` over the cap
+    before anything is read, but a chunked request declares no length, and
+    every endpoint but ``POST /scenarios`` lets Starlette read the whole body
+    (JSON models, multipart uploads) before a handler can look at it. This
+    middleware sits in the ASGI path instead of the HTTP one, so it sees the
+    body message by message: it adds up ``http.request`` bodies and, the
+    moment the running total passes :func:`_body_cap` for the path, stops
+    forwarding — the downstream app is told the client disconnected, its
+    response (a parse error on a truncated body) is dropped, and the 413 goes
+    out in its place. Nothing is enqueued, and the process never holds more
+    than one chunk past the cap.
+
+    Mounted *outside* the auth middleware so an unauthenticated oversized
+    request is still a plain 401: the counter only ever runs when a handler
+    downstream asks for the body, and the 401 is returned without reading it.
+    """
+
+    def __init__(self, app: ASGIApp, settings: Settings) -> None:
+        self.app = app
+        self.settings = settings
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        path = scope["path"]
+        cap = _body_cap(path, self.settings)
+        total = 0
+        over = False
+        started = False
+
+        async def counted_receive() -> Message:
+            nonlocal total, over
+            if over:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] != "http.request":
+                return message
+            total += len(message.get("body", b""))
+            if total > cap:
+                over = True
+                return {"type": "http.disconnect"}
+            return message
+
+        async def capped_send(message: Message) -> None:
+            nonlocal started
+            if over and not started:
+                return  # the 413 below replaces whatever the app answered
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, counted_receive, capped_send)
+        except Exception:
+            # A downstream read of a cut-off body may raise instead of
+            # answering; the 413 is the answer either way. Anything raised
+            # before the cap was passed is still the server's problem.
+            if not over:
+                raise
+        if over and not started:
+            response = JSONResponse(
+                status_code=413,
+                content={
+                    "detail": (
+                        f"request body exceeds the limit of {cap} bytes for {path} "
+                        f"({_cap_env_hint(path)})"
+                    )
+                },
+            )
+            await response(scope, receive, send)
+
+
+#: Logger for the one access line per request.
+ACCESS_LOGGER = logging.getLogger("api.access")
+
+#: Correlation-id header, read from the client when sane and always echoed.
+REQUEST_ID_HEADER = "X-Request-Id"
+
+#: An inbound id is reused only if it is short and log-safe; anything else
+#: (over-long, control characters, an injected newline) is replaced.
+#: ``\A``/``\Z`` rather than ``^``/``$``: ``$`` also matches before a final
+#: newline, which would let ``"abc\n"`` through as an id.
+_REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,64}\Z")
+
+
+def request_id_of(supplied: str | None) -> str:
+    """The client's ``X-Request-Id`` when it is usable, else a fresh uuid4.
+
+    A client-supplied id is echoed back and written to the log, so it is
+    reused only when it is at most 64 characters of ``[A-Za-z0-9._-]``:
+    that rules out log-line injection, header splitting and unbounded ids
+    while keeping the common uuid/trace-id shapes.
+    """
+    if supplied is not None and _REQUEST_ID_RE.match(supplied):
+        return supplied
+    return str(uuid.uuid4())
+
+
+class RequestContextMiddleware:
+    """Pure-ASGI request id + access log, outermost of the app's middleware.
+
+    Gives every request an id (the client's ``X-Request-Id`` when it matches
+    :data:`_REQUEST_ID_RE`, else uuid4), publishes it on
+    ``request.state.request_id``, echoes it on every response — 401, 413, 422
+    and the 500 handler included — and logs one line per request at INFO on
+    ``api.access``. The id is what a user quotes from a failed call and what
+    the server log is grepped for; the 500 body carries it instead of a
+    traceback.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request_id = request_id_of(Headers(scope=scope).get(REQUEST_ID_HEADER))
+        scope.setdefault("state", {})["request_id"] = request_id
+        # Not answered ⇒ the error handler answers 500; that is what is logged.
+        status = 500
+        start = time.perf_counter()
+
+        async def send_with_id(message: Message) -> None:
+            nonlocal status
+            if message["type"] == "http.response.start":
+                status = int(message["status"])
+                message["headers"] = _with_request_id(message.get("headers", []), request_id)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_id)
+        finally:
+            ACCESS_LOGGER.info(
+                "%s %s %s %.1fms request_id=%s",
+                scope.get("method", "-"),
+                scope["path"],
+                status,
+                (time.perf_counter() - start) * 1000.0,
+                request_id,
+            )
+
+
+def _with_request_id(
+    headers: list[tuple[bytes, bytes]], request_id: str
+) -> list[tuple[bytes, bytes]]:
+    """``headers`` with exactly one ``X-Request-Id`` — this request's."""
+    name = REQUEST_ID_HEADER.lower().encode("latin-1")
+    kept = [(key, value) for key, value in headers if key.lower() != name]
+    kept.append((name, request_id.encode("latin-1")))
+    return kept
+
+
+def configure_service_logging() -> None:
+    """Give the ``api`` logger tree a handler when nothing else has.
+
+    ``uvicorn api.main:app`` (the Dockerfile's command) configures uvicorn's
+    own loggers only: the root logger keeps level WARNING and no handler, so
+    every ``api.access`` INFO line would be dropped before it reached the
+    container log — the access log documented in docs/DEPLOYMENT.md §5 would
+    be silently empty. ``api.worker`` calls :func:`logging.basicConfig` for
+    the same reason; the API cannot, because that would also be wrong for a
+    host process that has configured logging itself.
+
+    One stderr handler is attached to ``api`` (``api.access`` propagates into
+    it) the first time an app is built. A process that already has logging
+    configured — a handler on the root logger, as under pytest or
+    ``basicConfig``, or one on ``api`` from an earlier :func:`create_app` —
+    is left alone, so lines are never duplicated.
+    """
+    logger = logging.getLogger("api")
+    if logger.handlers or logging.getLogger().handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 def create_app() -> FastAPI:
@@ -933,6 +1141,7 @@ def create_app() -> FastAPI:
             healthy while accepting the key printed in this repository's
             README.
     """
+    configure_service_logging()
     settings = load_settings()
     check_api_key_not_default(settings)
     settings.results_dir.mkdir(parents=True, exist_ok=True)
@@ -963,16 +1172,21 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.store = store
 
-    expected_key = settings.api_key.encode("utf-8")
+    expected_keys = tuple(key.encode("utf-8") for key in settings.api_keys)
 
     @app.middleware("http")
     async def api_key_middleware(request: Request, call_next: Any) -> Any:
-        """Single API key on every /api/... route; /healthz and /docs exempt.
+        """Shared API key on every /api/... route; /healthz and /docs exempt.
+
+        Any key in ``Settings.api_keys`` authenticates (``FLOWSTATE_API_KEY``
+        plus the ``FLOWSTATE_API_KEYS`` rotation list), each compared in
+        constant time and without short-circuiting, so the response time does
+        not say which key matched or how far along the list it sits.
 
         Also the request-size gate: a declared ``Content-Length`` over the
-        body cap answers 413 before any handler reads the body (chunked
-        bodies, which declare no length, are capped by the handlers that
-        read them).
+        body cap answers 413 before any handler reads the body (a chunked
+        body declares no length and is counted as it streams, by
+        :class:`BodyCapMiddleware` outside this one).
         """
         path = request.url.path
         if path.startswith("/api/"):
@@ -980,7 +1194,8 @@ def create_app() -> FastAPI:
             # same way recovers the raw bytes; comparing bytes keeps
             # compare_digest from raising on a non-ASCII header value.
             supplied = request.headers.get("X-API-Key", "").encode("latin-1", "replace")
-            if not secrets.compare_digest(supplied, expected_key):
+            matches = [secrets.compare_digest(supplied, key) for key in expected_keys]
+            if not any(matches):
                 return JSONResponse(
                     status_code=401, content={"detail": "invalid or missing X-API-Key"}
                 )
@@ -998,13 +1213,45 @@ def create_app() -> FastAPI:
                 )
         return await call_next(request)
 
-    # Added after the auth middleware so CORS is outermost (preflights never 401).
+    # Outside the auth middleware (an unauthenticated oversized body is a 401,
+    # not a size oracle) and inside CORS.
+    app.add_middleware(BodyCapMiddleware, settings=settings)
+
+    # Added after the auth middleware so CORS wraps it (preflights never 401);
+    # expose_headers lets a browser client read the request id it must quote.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=[REQUEST_ID_HEADER],
     )
+
+    # Last, so it is the outermost: every response — including the ones the
+    # middlewares above write themselves — leaves with an X-Request-Id, and
+    # every request is logged exactly once.
+    app.add_middleware(RequestContextMiddleware)
+
+    @app.exception_handler(Exception)
+    async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+        """500 body: the request id, never a traceback or a server path.
+
+        The traceback goes to the ``api`` logger (and to the ASGI server,
+        which re-raises after this response); the caller gets the id to quote
+        so the two ends can be joined without leaking internals.
+        """
+        request_id = str(request.scope.get("state", {}).get("request_id", "unknown"))
+        logging.getLogger("api").exception(
+            "unhandled error on %s %s (request id %s)",
+            request.method,
+            request.url.path,
+            request_id,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"internal error; request id {request_id}"},
+            headers={REQUEST_ID_HEADER: request_id},
+        )
 
     @app.get("/healthz", response_model=HealthOut)
     def healthz() -> Any:

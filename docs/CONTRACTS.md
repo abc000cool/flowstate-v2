@@ -536,3 +536,19 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   exact-compared counters `n_collisions`, `n_heavy`, `n_hov`,
   `n_meter_releases`, `n_scripted_merged`, `n_scripted_forced`; new cases
   for closures, heavy vehicles, the merge models, metering and managed lanes.
+
+- Hardening round two (2026-09-17): `FLOWSTATE_API_KEYS` (comma-separated
+  extra keys; `Settings.api_keys: tuple[str, ...]`, `Settings.api_key` is the
+  primary/first key); `X-Request-Id` on every response (client ids of at most
+  64 `[A-Za-z0-9._-]` characters reused); 500 bodies are
+  `{"detail": "internal error; request id <id>"}`; over-cap chunked bodies
+  answer 413 `{"detail": "request body exceeds the limit of <cap> bytes for
+  <path> (FLOWSTATE_MAX_BODY_MB)"}`; log streams `api.access` (one INFO line
+  per request) and `api` (tracebacks). `microsim.paths` (`ROOTS_ENV_VAR =
+  "FLOWSTATE_WORKER_PATH_ROOTS"`, `env_path_roots`, `effective_roots`,
+  `within_roots`, `ensure_within_roots`, `outside_roots_error`); keyword-only
+  `allowed_roots` on `microsim.vehicles.resolve_calibration_path`,
+  `load_idm_calibration` and `microsim.networks.osm_import` (None = the
+  process default from the environment; empty tuple = unrestricted).
+  Golden files: `tests/golden/macro_corridor_workzone.json`; the macro golden
+  module's exact keys are `wave_count, n_cells, n_closures, n_closure_cells`.

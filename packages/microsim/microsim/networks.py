@@ -30,7 +30,7 @@ import os
 import subprocess
 import urllib.request
 from bisect import bisect_right
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -38,6 +38,7 @@ from typing import Literal
 import sumolib
 
 from controllers.vsl import VSL_SEGMENT_TARGET_M, gantry_segments
+from microsim.paths import effective_roots, ensure_within_roots
 
 #: Free-flow speed limit written on generated edges [m/s]. Deliberately above
 #: any plausible per-vehicle desired-speed draw (v0 ≤ 38 + 3σ, CLAUDE.md §3.1)
@@ -449,6 +450,8 @@ def osm_import(
     geometry_remove: bool = True,
     patch_files: Sequence[Path] = (),
     internal_links: bool = False,
+    *,
+    allowed_roots: Iterable[str | Path] | None = None,
 ) -> NetBundle:
     """Import an OSM extract into a SUMO network (the ``osm_generic`` pipeline).
 
@@ -482,19 +485,38 @@ def osm_import(
             junctions), which is how the ids a scenario names must be
             discovered: a joined edge's id is one of its member ways and a
             corridor pruned by that id alone silently loses the rest.
+        allowed_roots: Directories ``osm_file`` must resolve inside — defence
+            in depth behind the API's HTTP 422 (:mod:`microsim.paths`), so a
+            config that reaches the worker unvalidated cannot hand netconvert
+            an arbitrary server file. Symlinks and ``..`` are resolved before
+            the comparison, and containment is checked before existence so
+            the refusal is never an existence oracle. ``None`` (the library
+            default, for scripts) falls back to the roots published in
+            ``FLOWSTATE_WORKER_PATH_ROOTS`` and to no confinement when that
+            is unset. ``bbox`` downloads and ``patch_files`` are unaffected:
+            both are written by this function into ``workdir``.
 
     Returns:
         The compiled :class:`NetBundle` (``kind="osm"``).
 
     Raises:
-        ValueError: Neither source given, missing workdir, or a named
-            corridor or kept edge absent from the imported network.
+        ValueError: Neither source given, missing workdir, ``osm_file``
+            outside ``allowed_roots`` (message naming only the value and the
+            roots), or a named corridor or kept edge absent from the imported
+            network.
         RuntimeError: netconvert failure.
     """
     if workdir is None:
         raise ValueError("osm_import() requires an explicit workdir")
     if osm_file is None and bbox is None:
         raise ValueError("osm_import() needs osm_file or bbox")
+    if osm_file is not None:
+        ensure_within_roots(
+            osm_file,
+            Path(osm_file).resolve(),
+            effective_roots(allowed_roots),
+            field="osm_file",
+        )
     workdir.mkdir(parents=True, exist_ok=True)
 
     if osm_file is None:

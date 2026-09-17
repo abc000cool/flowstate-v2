@@ -10,7 +10,11 @@ levels and exit share, `d06808e7b8e1`) ·
 **20 seeded replicates per arm** (`spawn_seeds(42, 20)`) · **Artifacts:** `artifacts/i24_validation_tracked.json`,
 `artifacts/i24_validation_corrected.json`, `artifacts/i24_validation_speedcal.json`,
 `artifacts/i24_validation_ramps.json` (results schema 5: every registered wave detector under
-`waves.by_detector`), `artifacts/i24_validation_observed.json`,
+`waves.by_detector`; these four stay at schema 5 after the in-place GEH re-score because the
+2026-09-05 battery did not store `simulated.segment_speeds_ms_per_replicate`, so schema 6's
+`rmspe.per_replicate_vs_observed*`, `rmspe.leave_one_out_floor*` and `rmspe.definition` cannot
+be filled without re-running the 20 seeds — `speedcal_heavy` and the `zip` family, run later,
+are schema 6), `artifacts/i24_validation_observed.json`,
 `artifacts/i24_validation_waves_relative.json`, `artifacts/i24_replica_inputs.json` ·
 **Scripts:** `scripts/i24_build_replica.py` → `scripts/i24_validate.py`
 (then `--criteria-only`, which re-scores the rows with the published sweep grid) →

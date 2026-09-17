@@ -328,14 +328,18 @@ and survive any slip in the critical path.
 
 - Merge, fifth round (docs/I24_VALIDATION.md §0.8): the scripted late merge
   is a negative result on I-24 (entry speed matches, ramp admittance falls);
-  the model stays as a schema option. Next candidates for the merge defect
-  are outside the merge itself (entry lane distribution, heavy-vehicle merge
-  population, downstream boundary).
+  the model stays as a schema option. The sixth round is planned in
+  docs/MERGE_ROUND6_PLAN.md: ranked candidates outside the merge itself,
+  each with a pre-registered threshold and a cost; the lead candidate is
+  data-only (the entry lane shares are vehicle-time shares from 5 Hz samples,
+  applied by SUMO as flow shares).
 - Production-readiness round (CHANGELOG, same date): path confinement, body
   caps, job recovery and reconciliation, dashboard contract, docs
   consistency. Carried forward: a pure-ASGI body counter for chunked JSON
-  bodies; worker-side root checks in `microsim`; a macro-tier closure golden;
-  `schema_version` 6 for the four canonical validation artifacts.
+  bodies, worker-side root checks in `microsim` and a macro-tier closure
+  golden (all three closed on 2026-09-17); `schema_version` 6 for the four
+  canonical validation artifacts is not reachable by re-scoring (six fields
+  only a re-run battery writes).
 - Website: the Results page's updated-record card is on branch
   `results-note` of the site repository; Vercel's daily build limit blocked
   its deployment on 2026-09-16 — merge and push once it resets.

@@ -9,6 +9,7 @@ changed, whether or not anyone meant it to.
 | `ring_sugiyama.json` | `microsim.run_micro` + `validation.metrics.compute_metrics` | `scenarios/ring_sugiyama.yaml` as is (600 sim-s, seed 42) | `integration` |
 | `corridor_10km_smoke.json` | same | `scenarios/corridor_10km.yaml` with `sim.duration_s = 120` (the §9 2-min smoke run), seed 42 | `integration` |
 | `macro_corridor.json` | `macrosim.run_macro` (`v1_legacy` FD) + `api.results.macro_metrics` | `golden_config()` in `tests/test_macrosim/test_macrosim_golden.py`: 10 km corridor, `corridor_10km` demand steps, seeded 120 s capacity drop at 7 km, seed 42 | none (pure numpy/numba, runs in CI) |
+| `macro_corridor_workzone.json` | same | `workzone_config()` in `tests/test_macrosim/test_macrosim_golden.py`: the micro closure case at `tier: macro` — 3 km two-lane corridor, 1.4 veh/s, 20 % heavy population (not represented on this tier), right lane closed 2.0–2.5 km for 120–210 s (`seeded=True`), 300 sim-s, seed 11 | none (pure numpy/numba, runs in CI) |
 | `corridor_10km_workzone.json` | same | `scenarios/corridor_10km_workzone.yaml` with `sim.duration_s = 600` (right lane closed 6.0–6.5 km from 300 s; `seeded=True`), seed 42 | `integration` |
 | `corridor_boundary_schedule.json` | same | inline `_corridor_boundary_schedule()`: 1 km single-lane corridor, 0.35 veh/s, exit-edge speed schedule 15 → 2 (120 s) → 12 m/s (180 s), 240 sim-s, seed 42 — the in-loop `BoundarySpec` advance every I-24 replica scenario relies on | `integration` |
 | `corridor_workzone_heavy.json` | same | inline `_corridor_workzone_heavy()`: 3 km two-lane corridor, 0.5 veh/s, 20 % heavy population (`HeavyVehicleSpec`), right lane closed 0.2–0.7 km for 120–210 s (`seeded=True`), 300 sim-s, seed 11 | `integration` |
@@ -42,8 +43,9 @@ Summary statistics only — never trajectories or fields:
   amplitude; NaN is stored as `null`);
 - run counts (micro: vehicles planned/departed, SUMO collisions — every
   golden run has zero — heavy and HOV draws, ramp-meter releases, scripted
-  merges completed/forced, and the fuel total; macro: grid, FD, ledger and
-  clamp flag);
+  merges completed/forced, and the fuel total; macro: grid, FD, ledger,
+  clamp flag, and — when the config declares closures — the closure and
+  capped-cell counts, the open-capacity share and the inflow queue);
 - provenance: `config` snapshot, `config_hash`, `seed` (and `sumo_seed`),
   `tier`, `seeded`, the `versions` dict the runner recorded (including
   `eclipse-sumo` / `libsumo` for the micro tier), the regeneration command
@@ -58,7 +60,7 @@ Summary statistics only — never trajectories or fields:
   pinned in `packages/microsim/pyproject.toml`). Both fail the test with a
   message pointing here — they are never skipped.
 - Integer counts (vehicles, collisions, heavy/HOV draws, meter releases,
-  scripted merges, waves, cells): exact.
+  scripted merges, waves, cells, closures and capped cells): exact.
 - Floats, micro tier: relative `1e-6`. SUMO is deterministic per version and
   the artifacts are byte-identical across repeats
   (`test_microsim_determinism.py`); the tolerance only absorbs
@@ -77,6 +79,7 @@ uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate
 uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate ring_sugiyama
 uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_zipper merge_scripted merge_meter_alinea
 uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate
+uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate macro_corridor_workzone
 ```
 
 Each command re-runs the case in a temporary run tree and rewrites the JSON

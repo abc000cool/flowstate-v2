@@ -22,6 +22,7 @@ import sumolib
 
 from flowstate_core.config import ScenarioConfig
 from microsim import osm_import, run_micro
+from microsim.paths import ROOTS_ENV_VAR
 
 pytestmark = pytest.mark.integration
 
@@ -199,3 +200,68 @@ class TestControllerWithRamps:
         df = pd.read_parquet(paths.trajectories)
         av_ramp = df[df["is_av"] & (df["veh_id"].str[1:].astype(int) >= 75)]
         assert len(av_ramp) > 0
+
+
+class TestOSMImportPathRoots:
+    """``network.osm_file`` confinement (:mod:`microsim.paths`).
+
+    Defence in depth behind the API's HTTP 422 (``path_outside_roots``):
+    ``osm_import`` refuses a file resolving outside the allow-listed roots
+    before it creates the workdir or calls netconvert, so a config that
+    reached the worker unvalidated cannot hand an arbitrary server file to
+    the importer. (``bbox`` downloads and ``patch_files`` are written by
+    ``osm_import`` itself into the workdir and are not confined.)
+    """
+
+    def test_file_inside_a_root_imports(self, osm_path, tmp_path):
+        bundle = osm_import(
+            osm_file=osm_path,
+            corridor_edges=("100", "101", "102"),
+            workdir=tmp_path / "w",
+            allowed_roots=(tmp_path,),
+        )
+        assert bundle.edge_ids == ("100", "101", "102")
+
+    def test_file_outside_the_roots_is_refused_before_any_work(self, osm_path, tmp_path):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        workdir = tmp_path / "w"
+        with pytest.raises(ValueError) as exc:
+            osm_import(osm_file=osm_path, workdir=workdir, allowed_roots=(allowed,))
+        msg = str(exc.value)
+        assert str(osm_path) in msg and str(allowed) in msg
+        assert "hand-written-test-fixture" not in msg  # nothing read from the file
+        assert not workdir.exists()  # refused before the workdir is created
+
+    def test_parent_traversal_is_resolved_before_the_check(self, osm_path, tmp_path):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        sneaky = allowed / ".." / osm_path.name
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            osm_import(osm_file=sneaky, workdir=tmp_path / "w", allowed_roots=(allowed,))
+
+    def test_symlink_escape_is_refused(self, osm_path, tmp_path):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        link = allowed / "ramps.osm"
+        link.symlink_to(osm_path)
+        assert link.is_file()  # lexically inside the root, really outside it
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            osm_import(osm_file=link, workdir=tmp_path / "w", allowed_roots=(allowed,))
+
+    def test_environment_confines_when_no_argument_is_given(self, osm_path, tmp_path, monkeypatch):
+        """The worker hook: ``api.jobs`` publishes the roots in the environment."""
+        monkeypatch.setenv(ROOTS_ENV_VAR, str(tmp_path / "allowed"))
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            osm_import(osm_file=osm_path, workdir=tmp_path / "w")
+        # Inside the published root the check passes and the honest
+        # "not found" of a missing extract is what surfaces.
+        monkeypatch.setenv(ROOTS_ENV_VAR, str(tmp_path))
+        with pytest.raises(ValueError, match="osm_file not found"):
+            osm_import(osm_file=tmp_path / "missing.osm", workdir=tmp_path / "w")
+
+    def test_unrestricted_when_neither_argument_nor_environment_is_set(self, tmp_path, monkeypatch):
+        """The library default for scripts: no allow-list, no check."""
+        monkeypatch.delenv(ROOTS_ENV_VAR, raising=False)
+        with pytest.raises(ValueError, match="osm_file not found"):
+            osm_import(osm_file=tmp_path / "missing.osm", workdir=tmp_path / "w")

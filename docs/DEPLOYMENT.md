@@ -24,7 +24,8 @@ change it.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `FLOWSTATE_API_KEY` | `dev-key-change-me` (refused under the Redis queue) | the one shared key; every `/api/...` route needs it in `X-API-Key` |
+| `FLOWSTATE_API_KEY` | `dev-key-change-me` (refused under the Redis queue) | the primary shared key; every `/api/...` route needs it in `X-API-Key` |
+| `FLOWSTATE_API_KEYS` | unset | extra accepted keys, comma-separated (whitespace trimmed, empty entries dropped) — the rotation window below; the default key is refused here too |
 | `FLOWSTATE_QUEUE` | `inline` outside Compose, `redis` inside | `redis` = jobs run on the worker; `inline` = synchronous, for tests and small local runs only |
 | `FLOWSTATE_REDIS_URL` | `redis://redis:6379/0` | queue location |
 | `FLOWSTATE_RESULTS_DIR` | `./runs` (Compose: `/data/runs`) | results root: runs, uploads, calibrations, reports, `metadata.db` |
@@ -33,6 +34,14 @@ change it.
 | `FLOWSTATE_FRONTEND_DIST` | the built dashboard in the image | static files served at `/` |
 | `FLOWSTATE_MAX_BODY_MB` | 8 | request-body cap on `/api/` (HTTP 413) |
 | `FLOWSTATE_MAX_UPLOAD_MB` | 200 | calibration upload cap (HTTP 413) |
+| `FLOWSTATE_WORKER_PATH_ROOTS` | set per job by the worker | worker-side copy of the allowed roots (`os.pathsep`-separated absolute paths) that `microsim` enforces when it reads calibration artifacts and OSM files; the API's 422 is the primary control, this is defence in depth; unset means unrestricted, which is the library default for scripts |
+
+Both caps hold whether or not the client declares a `Content-Length`: a
+declared length over the cap is refused before the body is read, and a chunked
+body is counted as it streams and cut off at the cap (`POST
+/api/v1/calibrations/{kind}` gets the upload cap plus the body cap for its
+multipart framing; everything else gets the body cap). Nothing is enqueued for
+a request that is refused.
 
 Scenario configs may only reference files under the results root, the uploads
 directory, `FLOWSTATE_DATA_DIR`, or the repository's `artifacts/` and `data/`;
@@ -84,8 +93,27 @@ docker run --rm -v flowstate-runs:/data -v "$PWD":/backup alpine tar czf /backup
 docker compose start worker
 ```
 
-**Key rotation.** Change `FLOWSTATE_API_KEY` in `.env`, `docker compose up -d`
-(api restarts), then paste the new key into every dashboard's Settings drawer.
+**Key rotation.** The API accepts every key in `FLOWSTATE_API_KEY` plus the
+comma-separated `FLOWSTATE_API_KEYS`, so a key is replaced without locking
+anyone out:
+
+1. Add the new key beside the old one in `.env`, e.g.
+   `FLOWSTATE_API_KEY=<old>` and `FLOWSTATE_API_KEYS=<new>` (the primary key
+   first, then the list; duplicates collapse). `docker-compose.yml` forwards
+   `FLOWSTATE_API_KEY` only, so add one line to the `api` service's
+   `environment:` block the first time you rotate:
+   `FLOWSTATE_API_KEYS: ${FLOWSTATE_API_KEYS:-}` (an unset or empty value
+   changes nothing).
+2. `docker compose up -d` — the api container restarts and now accepts both.
+3. Move the clients: paste the new key into every dashboard's Settings drawer
+   and update any scripted `X-API-Key` headers.
+4. Remove the old key (`FLOWSTATE_API_KEY=<new>`, drop `FLOWSTATE_API_KEYS`)
+   and `docker compose up -d` again. The old key is refused from that restart.
+
+Rotating in one step — changing `FLOWSTATE_API_KEY` alone — still works and is
+still a lock-out until every client has the new key. The startup refusal of
+the published default key applies to every entry in the list, so the default
+can never be smuggled in as a second accepted key.
 
 **Upgrading.** `git pull && docker compose up -d --build`. A `docker compose
 down` waits up to 6 h for the worker's job in flight; to abandon that job
@@ -109,10 +137,25 @@ child runs.
 `error` as an exception chain (type and message per link, no frames, no
 server paths); the worker log has the traceback.
 
-**Logs.** `docker compose logs -f api worker`. RQ logs each job's start and
-outcome at INFO, and reconciliation logs every row it repaired at WARNING;
-SUMO's own warnings are suppressed, and collisions are counted in every run's
-`meta.json` (`n_collisions`, with the first events under `collisions`).
+**Request ids.** Every response carries `X-Request-Id` — the client's own
+value when it is at most 64 characters of `[A-Za-z0-9._-]`, otherwise a uuid4
+— and an unhandled error answers `{"detail": "internal error; request id
+<id>"}` with no traceback. Grep the api log for that id to find the request:
+each one logs a line on the `api.access` logger at INFO, e.g.
+
+```
+INFO api.access POST /api/v1/runs 202 31.4ms request_id=2f1c…
+```
+
+**Logs.** `docker compose logs -f api worker`. The API logs one `api.access`
+line per request (above) and an `api` traceback for anything that 500s. Those
+go to stderr through a handler the app installs on the `api` logger at
+startup, because `uvicorn` configures only its own loggers and would drop an
+INFO record; a process that has configured logging itself keeps its own
+setup. RQ logs each job's start and outcome at INFO, and reconciliation logs
+every row it repaired at WARNING; SUMO's own warnings are suppressed, and
+collisions are counted in every run's `meta.json` (`n_collisions`, with the
+first events under `collisions`).
 
 ## 6. Without Docker
 

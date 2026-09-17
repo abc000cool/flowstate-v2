@@ -55,6 +55,7 @@ def test_default_key_is_also_the_unset_default(
     """Leaving FLOWSTATE_API_KEY unset is the same insecure case, not an escape."""
     _env(monkeypatch, tmp_path, FLOWSTATE_QUEUE="redis")
     monkeypatch.delenv("FLOWSTATE_API_KEY", raising=False)
+    monkeypatch.delenv("FLOWSTATE_API_KEYS", raising=False)
     assert load_settings().api_key == DEFAULT_API_KEY
     from api.main import create_app
 

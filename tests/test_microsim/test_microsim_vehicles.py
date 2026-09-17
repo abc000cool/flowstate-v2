@@ -3,6 +3,7 @@
 import math
 import typing
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import pytest
 
@@ -17,7 +18,15 @@ from microsim import (
     write_corridor_routes,
     write_ring_routes,
 )
-from microsim.vehicles import IDM_HARD_LOWER, IDM_PARAM_ORDER, _vtype_xml, sublane_vtype_attrs
+from microsim.paths import ROOTS_ENV_VAR
+from microsim.vehicles import (
+    IDM_HARD_LOWER,
+    IDM_PARAM_ORDER,
+    _vtype_xml,
+    load_idm_calibration,
+    resolve_calibration_path,
+    sublane_vtype_attrs,
+)
 
 SEED = 20260829
 
@@ -665,3 +674,100 @@ class TestSublaneAttrs:
             FleetSpec(lc_pushy=1.5)
         with pytest.raises(ValueError):
             FleetSpec(lat_alignment="middle")
+
+
+#: Population for the confinement fixtures below (values irrelevant: these
+#: tests never get far enough to draw from it).
+_ROOTS_MEAN = {"v0": 30.0, "T": 1.2, "a_max": 0.8, "b": 1.5, "s0": 2.2}
+_ROOTS_COV = [[0.25 if i == j else 0.0 for j in range(5)] for i in range(5)]
+
+
+def _artifact_at(path):
+    """A minimal ``IDMCalibration`` artifact written at ``path``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return _write_calibration(path, _ROOTS_MEAN, _ROOTS_COV)
+
+
+class TestCalibrationPathRoots:
+    """``fleet.idm_calibration`` confinement (:mod:`microsim.paths`).
+
+    Defence in depth behind the API's HTTP 422 (``path_outside_roots``): the
+    loader itself refuses a path that *resolves* outside the allow-listed
+    roots, so a config reaching the worker without passing
+    ``api.main._confine_config_paths`` still cannot name an arbitrary server
+    file. ``..`` and symlinks are collapsed before the comparison, and the
+    refusal quotes only the configured value and the roots.
+    """
+
+    def test_path_inside_a_root_resolves_and_loads(self, tmp_path):
+        art = _artifact_at(tmp_path / "data" / "cal.json")
+        roots = (tmp_path / "data",)
+        assert resolve_calibration_path(str(art), allowed_roots=roots) == art
+        assert load_idm_calibration(str(art), allowed_roots=roots).data_hash == "test-hash-123"
+
+    def test_path_outside_the_roots_is_refused_unread(self, tmp_path):
+        art = _artifact_at(tmp_path / "secret" / "cal.json")
+        allowed = tmp_path / "data"
+        allowed.mkdir()
+        with pytest.raises(ValueError) as exc:
+            load_idm_calibration(str(art), allowed_roots=(allowed,))
+        msg = str(exc.value)
+        assert str(art) in msg and str(allowed) in msg
+        # The refusal names the value and the roots and nothing else: the
+        # artifact's own contents never reach the message.
+        assert "test-hash-123" not in msg
+
+    def test_parent_traversal_is_resolved_before_the_check(self, tmp_path):
+        _artifact_at(tmp_path / "secret" / "cal.json")
+        allowed = tmp_path / "data"
+        allowed.mkdir()
+        sneaky = allowed / ".." / "secret" / "cal.json"
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            resolve_calibration_path(str(sneaky), allowed_roots=(allowed,))
+
+    def test_symlink_escape_is_refused(self, tmp_path):
+        art = _artifact_at(tmp_path / "secret" / "cal.json")
+        allowed = tmp_path / "data"
+        allowed.mkdir()
+        link = allowed / "cal.json"
+        link.symlink_to(art)
+        assert link.is_file()  # lexically inside the root, really outside it
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            resolve_calibration_path(str(link), allowed_roots=(allowed,))
+
+    def test_empty_roots_allow_nothing(self, tmp_path):
+        """``()`` is not ``None``: an explicit empty allow-list refuses."""
+        art = _artifact_at(tmp_path / "data" / "cal.json")
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            resolve_calibration_path(str(art), allowed_roots=())
+
+    def test_repo_relative_preset_path_survives_confinement(self, tmp_path, monkeypatch):
+        """The repo-root fallback still finds a preset's ``artifacts/...``.
+
+        The scenario presets reference artifacts by repo-relative path; with
+        the repository's ``artifacts/`` allow-listed (as
+        ``Settings.config_path_roots`` has it) the fallback candidate is
+        eligible even when the working directory's candidate is not.
+        """
+        repo_root = Path(__file__).resolve().parents[2]
+        preset = "artifacts/idm_i24.json"
+        assert (repo_root / preset).is_file()
+        monkeypatch.chdir(tmp_path)
+        got = resolve_calibration_path(preset, allowed_roots=(repo_root / "artifacts",))
+        assert got == repo_root / preset
+
+    def test_environment_confines_when_no_argument_is_given(self, tmp_path, monkeypatch):
+        """The worker hook: ``api.jobs`` publishes the roots in the environment."""
+        inside = _artifact_at(tmp_path / "data" / "cal.json")
+        outside = _artifact_at(tmp_path / "secret" / "cal.json")
+        monkeypatch.setenv(ROOTS_ENV_VAR, str(tmp_path / "data"))
+        assert resolve_calibration_path(str(inside)) == inside
+        with pytest.raises(ValueError, match="outside the allowed data roots"):
+            resolve_calibration_path(str(outside))
+
+    def test_unrestricted_when_neither_argument_nor_environment_is_set(self, tmp_path, monkeypatch):
+        """The library default for scripts: no allow-list, no check."""
+        monkeypatch.delenv(ROOTS_ENV_VAR, raising=False)
+        art = _artifact_at(tmp_path / "anywhere" / "cal.json")
+        assert resolve_calibration_path(str(art)) == art
+        assert load_idm_calibration(str(art)).data_hash == "test-hash-123"

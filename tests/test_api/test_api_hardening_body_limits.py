@@ -8,20 +8,28 @@ job timeout, or 500 the upload handler with a client filename of ``..``.
 
 The caps are ``FLOWSTATE_MAX_BODY_MB`` / ``FLOWSTATE_MAX_UPLOAD_MB``; the
 tests here set them to 1 MB so oversized requests stay small.
+
+A declared ``Content-Length`` is refused by the auth middleware; a body that
+declares no length (chunked) is counted as it streams by
+``api.main.BodyCapMiddleware`` — the last section here covers every route
+that used to let Starlette read such a body whole.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.schemas import MAX_DE_MAXITER, MAX_DE_POPSIZE, MAX_N_BOOTSTRAP
 from api.settings import DEFAULT_MAX_BODY_MB, DEFAULT_MAX_UPLOAD_MB, load_settings
-from tests.test_api.conftest import API_KEY, HEADERS, macro_corridor_config
+from api.store import STATUSES
+from tests.test_api.conftest import API_KEY, HEADERS, macro_corridor_config, post_scenario
 
 _MB = 1024 * 1024
 _CSV = b"density_veh_m,flow_veh_s\n0.01,0.3\n"
@@ -82,7 +90,11 @@ def test_oversized_declared_body_is_413(small_caps_client: TestClient) -> None:
 
 
 def test_oversized_chunked_body_is_413(small_caps_client: TestClient) -> None:
-    """A chunked body declares no length; the handler's streaming cap catches it."""
+    """A chunked body declares no length; the streaming counter catches it.
+
+    (Belt and braces: ``create_scenario`` caps its own stream read too, so
+    this route was bounded even before ``BodyCapMiddleware`` existed.)
+    """
 
     def chunks() -> Iterator[bytes]:
         yield b'{"name": "x"'
@@ -270,3 +282,172 @@ def test_params_is_optional_and_may_be_empty(client: TestClient) -> None:
     for data in ({}, {"params": "{}"}):
         r = _post_fd(client, files={"file": ("loops.csv", _CSV, "text/csv")}, data=data)
         assert r.status_code == 202, r.text  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Chunked bodies (no Content-Length to check up front)
+# ---------------------------------------------------------------------------
+
+#: Bodies are sent as a generator so httpx picks chunked transfer encoding —
+#: no ``Content-Length``, so the declared-length gate in the auth middleware
+#: cannot fire and the streaming counter is what refuses the request.
+_CHUNK = 65536
+
+_JSON_HEADERS = {**HEADERS, "Content-Type": "application/json"}
+
+
+def _padded_json(head: bytes, pad_bytes: int, tail: bytes) -> Iterator[bytes]:
+    """``head`` + ``pad_bytes`` of filler + ``tail``, yielded in chunks."""
+    yield head
+    remaining = pad_bytes
+    while remaining > 0:
+        take = min(remaining, _CHUNK)
+        yield b"x" * take
+        remaining -= take
+    yield tail
+
+
+def _nothing_enqueued(client: TestClient) -> bool:
+    store = client.app.state.store  # type: ignore[attr-defined]
+    return all(store.list_by_status(kind, STATUSES) == [] for kind in ("run", "sweep", "report"))
+
+
+@pytest.mark.parametrize(
+    ("path", "head", "tail"),
+    [
+        ("/api/v1/runs", b'{"scenario_id": "nope", "overrides": {"name": "', b'"}}'),
+        (
+            "/api/v1/sweeps",
+            b'{"scenario_id": "nope", "penetrations": [0.05], "compliances": [1.0],'
+            b' "overrides": {"name": "',
+            b'"}}',
+        ),
+        ("/api/v1/reports", b'{"run_ids": ["nope"], "title": "', b'"}'),
+    ],
+)
+def test_oversized_chunked_json_body_is_413(
+    small_caps_client: TestClient, path: str, head: bytes, tail: bytes
+) -> None:
+    """Every JSON route is capped, not just the one that streams its body.
+
+    These three used to be read whole by Starlette before any handler ran:
+    the declared-length gate is skipped (chunked), so nothing checked them.
+    """
+    r = small_caps_client.post(path, content=_padded_json(head, _MB, tail), headers=_JSON_HEADERS)
+    assert r.status_code == 413, r.text
+    assert "exceeds the limit" in r.text
+    assert "FLOWSTATE_MAX_BODY_MB" in r.text
+    assert _nothing_enqueued(small_caps_client)
+
+
+def test_an_unauthenticated_oversized_body_is_401_not_413(small_caps_client: TestClient) -> None:
+    """The cap is never a size oracle for a caller without a key.
+
+    The counter sits outside the auth middleware and only runs when a handler
+    downstream asks for the body, so an unauthenticated request is refused
+    the same way whatever its size — declared length or chunked.
+    """
+    head = b'{"scenario_id": "nope", "overrides": {"name": "'
+    no_key = {"Content-Type": "application/json"}
+    chunked = small_caps_client.post(
+        "/api/v1/runs", content=_padded_json(head, _MB, b'"}}'), headers=no_key
+    )
+    declared = small_caps_client.post("/api/v1/runs", content=b" " * (_MB + 1), headers=no_key)
+    assert (chunked.status_code, declared.status_code) == (401, 401)
+    assert _nothing_enqueued(small_caps_client)
+
+
+def test_chunked_body_under_the_cap_reaches_the_handler(small_caps_client: TestClient) -> None:
+    """The counter forwards a body it does not refuse: 202 and 404 as usual."""
+    scenario = post_scenario(small_caps_client, macro_corridor_config())
+    body = json.dumps({"scenario_id": scenario["scenario_id"]}).encode()
+    r = small_caps_client.post(
+        "/api/v1/runs", content=_padded_json(body, 0, b""), headers=_JSON_HEADERS
+    )
+    assert r.status_code == 202, r.text
+
+    missing = json.dumps({"scenario_id": "run_does_not_exist"}).encode()
+    r = small_caps_client.post(
+        "/api/v1/runs", content=_padded_json(missing, 0, b""), headers=_JSON_HEADERS
+    )
+    assert r.status_code == 404, r.text
+
+
+def test_oversized_chunked_upload_is_413_and_leaves_no_file(
+    small_caps_client: TestClient,
+) -> None:
+    """A chunked multipart upload is capped at upload + body bytes (2 MB here)."""
+    boundary = "flowstatechunkedboundary"
+
+    def parts() -> Iterator[bytes]:
+        yield (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="big.csv"\r\n'
+            "Content-Type: text/csv\r\n\r\n"
+        ).encode()
+        for _ in range(3 * _MB // _CHUNK):
+            yield b"x" * _CHUNK
+        yield f"\r\n--{boundary}--\r\n".encode()
+
+    r = small_caps_client.post(
+        "/api/v1/calibrations/fd",
+        content=parts(),
+        headers={**HEADERS, "Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    assert r.status_code == 413, r.text
+    assert "FLOWSTATE_MAX_UPLOAD_MB" in r.text
+    uploads = Path(small_caps_client.app.state.settings.uploads_dir)  # type: ignore[attr-defined]
+    assert not uploads.exists() or not any(uploads.iterdir())
+
+
+def test_the_cap_is_a_running_total_not_a_per_chunk_check(
+    small_caps_client: TestClient,
+) -> None:
+    """Five quarter-cap chunks: each is fine, the sum is not.
+
+    Driven as a raw ASGI call because the test client joins a streamed body
+    into one message, which would only prove the per-message check.
+    """
+    quarter = b"x" * (_MB // 4)
+    messages: list[dict[str, Any]] = [
+        {"type": "http.request", "body": quarter, "more_body": True} for _ in range(5)
+    ]
+    messages.append({"type": "http.request", "body": b"", "more_body": False})
+    sent: list[dict[str, Any]] = []
+
+    async def receive() -> dict[str, Any]:
+        return messages.pop(0) if messages else {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/api/v1/runs",
+        "raw_path": b"/api/v1/runs",
+        "root_path": "",
+        "scheme": "http",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"content-type", b"application/json"),
+            (b"transfer-encoding", b"chunked"),
+            (b"x-api-key", API_KEY.encode()),
+        ],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+        "state": {},
+    }
+    asyncio.run(small_caps_client.app(scope, receive, send))  # type: ignore[arg-type,misc]
+
+    starts = [m for m in sent if m["type"] == "http.response.start"]
+    assert [m["status"] for m in starts] == [413]
+    body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
+    assert b"exceeds the limit" in body
+    # Four quarter-cap chunks are exactly the 1 MB cap (inclusive) and the
+    # fifth passes it; the terminating message is never read.
+    assert len(messages) == 1
+    assert _nothing_enqueued(small_caps_client)

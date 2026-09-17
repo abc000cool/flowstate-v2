@@ -47,7 +47,8 @@ import importlib.util
 import logging
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -188,6 +189,63 @@ def _resolve(db_path: str | None, results_root: str | None) -> tuple[Store, Path
 
 
 # ---------------------------------------------------------------------------
+# Worker-side path confinement
+# ---------------------------------------------------------------------------
+
+#: Environment variable through which a job publishes the directories its
+#: simulation may read scenario-config file paths from. It is
+#: ``microsim.paths.ROOTS_ENV_VAR``; the literal is repeated rather than
+#: imported because importing :mod:`microsim.paths` pulls the whole SUMO
+#: micro tier into a macro-tier or calibration worker
+#: (``tests/test_api/test_worker_path_roots.py`` asserts the two agree).
+WORKER_PATH_ROOTS_ENV = "FLOWSTATE_WORKER_PATH_ROOTS"
+
+
+def _worker_path_roots(results_root: Path) -> tuple[Path, ...]:
+    """Roots a run's ``osm_file`` / ``idm_calibration`` may resolve inside.
+
+    :attr:`api.settings.Settings.config_path_roots` — the same allow-list the
+    API enforces with HTTP 422 at ``POST /scenarios``, ``/runs`` and
+    ``/sweeps`` — plus the job's own results root when it was passed
+    explicitly and the environment's settings do not already cover it (tests
+    and one-off workers point at a temporary tree).
+    """
+    roots = list(load_settings().config_path_roots)
+    resolved = results_root.resolve()
+    if not any(resolved.is_relative_to(root) for root in roots):
+        roots.append(resolved)
+    return tuple(roots)
+
+
+@contextmanager
+def _confined_worker_paths(roots: Sequence[Path]) -> Iterator[None]:
+    """Publish ``roots`` to the simulation in :data:`WORKER_PATH_ROOTS_ENV`.
+
+    Defence in depth behind the API's 422 (CHANGELOG 2026-09-16, "Security
+    (API)"): ``microsim.vehicles.resolve_calibration_path`` and
+    ``microsim.networks.osm_import`` refuse a path resolving outside these
+    roots, so a config that reached the store without passing
+    ``api.main._confine_config_paths`` still cannot make the worker read an
+    arbitrary server file.
+
+    The environment is the channel because the micro tier fans replicates out
+    into a *spawn* process pool (``microsim.runner.run_replicates``): children
+    inherit the environment of the process that spawns them, so the roots
+    reach every replicate without a signature change on the runner. Restored
+    on exit, so an inline-queue job leaves the API process as it found it.
+    """
+    previous = os.environ.get(WORKER_PATH_ROOTS_ENV)
+    os.environ[WORKER_PATH_ROOTS_ENV] = os.pathsep.join(str(r) for r in roots)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(WORKER_PATH_ROOTS_ENV, None)
+        else:
+            os.environ[WORKER_PATH_ROOTS_ENV] = previous
+
+
+# ---------------------------------------------------------------------------
 # Failure records
 # ---------------------------------------------------------------------------
 
@@ -207,9 +265,13 @@ def _exception_chain_text(exc: BaseException, *, withhold_third_party: bool) -> 
 
     No traceback frames, ever: they would add the server's absolute source
     paths and code lines to a string the API returns verbatim, and the
-    operator can read the same frames in the worker log. With
-    ``withhold_third_party`` the *message* is also dropped for exceptions
-    raised outside FlowState's own packages (see :data:`_OWN_PACKAGES`).
+    operator can read the same frames in the worker log. That holds for the
+    frames a *child* process sends back too: the ``RemoteTraceback`` the micro
+    tier's spawn pool attaches as a failed replicate's cause is a formatted
+    traceback in message form, so it is replaced by a one-line placeholder
+    regardless of ``withhold_third_party``. With ``withhold_third_party`` the
+    *message* is also dropped for exceptions raised outside FlowState's own
+    packages (see :data:`_OWN_PACKAGES`).
     """
     lines: list[str] = []
     seen: set[int] = set()
@@ -218,7 +280,14 @@ def _exception_chain_text(exc: BaseException, *, withhold_third_party: bool) -> 
         seen.add(id(current))
         module = _raising_module(current)
         name = type(current).__name__
-        if withhold_third_party and module.split(".")[0] not in _OWN_PACKAGES:
+        if type(current).__module__ == "multiprocessing.pool" and name == "RemoteTraceback":
+            # A replicate that fails inside the micro tier's spawn pool is
+            # re-raised in this process with the child's *formatted traceback*
+            # attached as its cause — server paths and source lines, i.e.
+            # exactly what this function exists to keep out. The child's own
+            # exception is the line above it; the frames stay in the log.
+            lines.append("RemoteTraceback: child traceback withheld (see the worker log)")
+        elif withhold_third_party and module.split(".")[0] not in _OWN_PACKAGES:
             lines.append(
                 f"{name} raised in {module or '<unknown>'} "
                 f"(message withheld: it may quote the input file's contents)"
@@ -285,10 +354,15 @@ def run_scenario_job(
     (:func:`api.results.precompute_run_metrics`) so the API never reduces a
     trajectory file inside a request.
 
+    The simulation runs inside :func:`_confined_worker_paths`, so the config's
+    ``osm_file`` / ``idm_calibration`` fields are re-checked against the
+    allow-list by the code that opens them — the API's 422 is the first line
+    of that defence, this is the second.
+
     Returns without working when the row cannot be claimed (already running
     under another execution, or done): a duplicate delivery is a no-op.
     """
-    store, _ = _resolve(db_path, results_root)
+    store, root = _resolve(db_path, results_root)
     run = store.get_run(run_id)
     if run is None:
         raise KeyError(f"run {run_id!r} not found in store {store.db_path}")
@@ -302,17 +376,18 @@ def run_scenario_job(
         cfg = ScenarioConfig.model_validate(run["config"])
         run_root = Path(run["run_root"])
         run_root.mkdir(parents=True, exist_ok=True)
-        if cfg.tier == "macro":
-            from macrosim.runner import run_macro
+        with _confined_worker_paths(_worker_path_roots(root)):
+            if cfg.tier == "macro":
+                from macrosim.runner import run_macro
 
-            for i, seed in enumerate(run["seeds"]):
-                run_macro(cfg, int(seed), run_root)
-                store.set_run_progress(run_id, i + 1)
-        else:
-            from microsim.runner import run_replicates
+                for i, seed in enumerate(run["seeds"]):
+                    run_macro(cfg, int(seed), run_root)
+                    store.set_run_progress(run_id, i + 1)
+            else:
+                from microsim.runner import run_replicates
 
-            run_replicates(cfg, run_root)
-            store.set_run_progress(run_id, len(run["seeds"]))
+                run_replicates(cfg, run_root)
+                store.set_run_progress(run_id, len(run["seeds"]))
         precompute_run_metrics(run_root)
         store.set_run_status(run_id, "done")
     except Exception as exc:
