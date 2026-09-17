@@ -20,6 +20,7 @@ import type {
   CreateRunRequest,
   CreateScenarioResponse,
   CreateSweepRequest,
+  CriteriaProfile,
   HeatField,
   Heatmap,
   ReportOut,
@@ -37,6 +38,12 @@ export const DEFAULT_BASE_URL = '/api/v1';
 // dashboard talks to the bundled API out of the box. Any other deployment sets
 // FLOWSTATE_API_KEY server-side and pastes the same value into Settings.
 export const DEFAULT_API_KEY = 'dev-key-change-me'; // the API's inline-queue default (api.settings.DEFAULT_API_KEY)
+
+/** The acceptance-criteria profile a report is scored against when the
+ * request names none — `api.schemas.DEFAULT_CRITERIA_PROFILE`. The dashboard
+ * needs the name locally so a service too old to serve `GET /criteria` still
+ * offers the profile its `POST /reports` will apply. */
+export const DEFAULT_CRITERIA_PROFILE = 'fhwa_default';
 
 const LS_BASE = 'flowstate.apiBase';
 const LS_KEY = 'flowstate.apiKey';
@@ -397,16 +404,41 @@ export function getSweep(sweepId: string): Promise<SweepDetail> {
   return request<SweepDetail>(`/sweeps/${encodeURIComponent(sweepId)}`);
 }
 
+/** `GET /criteria` — the acceptance-criteria profiles `POST /reports` will
+ * accept (the FlowState default plus the state-DOT protocols), each with the
+ * `source` that states where its numbers come from.
+ *
+ * Thresholds only: this endpoint never carries a measurement, so a profile is
+ * a choice of protocol, never evidence. A service older than the endpoint
+ * answers 404; callers fall back to `DEFAULT_CRITERIA_PROFILE`, the profile
+ * such a service applies anyway. */
+export function listCriteriaProfiles(): Promise<CriteriaProfile[]> {
+  if (isMockActive()) return mock.mockListCriteriaProfiles();
+  return request<CriteriaProfile[]>('/criteria');
+}
+
 /** `POST /reports` is asynchronous: 202 with a `ReportOut` that is still
  * `queued` under the Redis queue (terminal only under the inline queue), so
  * callers must poll `getReport` until `done`/`failed`. A macro-only run set
  * is refused — 422 inline, or `status: failed` with
  * `error_kind: report_refused` from the queue. Write: demo backend under
- * VITE_MOCK only (see `assertWritable`). */
-export async function createReport(runIds: string[], title?: string): Promise<ReportOut> {
-  if (isMockEnv()) return mock.mockCreateReport(runIds, title);
+ * VITE_MOCK only (see `assertWritable`).
+ *
+ * `profile` names the acceptance-criteria thresholds the report is scored
+ * against (`listCriteriaProfiles`); the API refuses an unknown name with 422
+ * and applies `DEFAULT_CRITERIA_PROFILE` when the field is omitted. The
+ * request model forbids extra keys, so each optional field is sent only when
+ * the caller gave one. */
+export async function createReport(
+  runIds: string[],
+  title?: string,
+  profile?: string,
+): Promise<ReportOut> {
+  if (isMockEnv()) return mock.mockCreateReport(runIds, title, profile);
   assertWritable();
-  const body = title === undefined ? { run_ids: runIds } : { run_ids: runIds, title };
+  const body: Record<string, unknown> = { run_ids: runIds };
+  if (title !== undefined) body.title = title;
+  if (profile !== undefined) body.profile = profile;
   return request<ReportOut>('/reports', { method: 'POST', body });
 }
 
