@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  clearAuthFailure,
   createReport,
   createRun,
   createSweep,
   DEFAULT_API_KEY,
   DEFAULT_BASE_URL,
   getReport,
+  getReportArchive,
   getReportMarkdown,
+  getReportPdf,
+  isAuthFailed,
   listRuns,
 } from '../api/client';
 
@@ -166,5 +170,96 @@ describe('api client contract routes', () => {
       json: async () => ({ detail: "report 'rpt-1' is running, not done" }),
     } as unknown as Response);
     await expect(getReportMarkdown('rpt-1')).rejects.toThrow("report 'rpt-1' is running, not done");
+  });
+});
+
+describe('api client error rendering', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    window.localStorage.clear();
+    clearAuthFailure();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+    clearAuthFailure();
+  });
+
+  it('renders a pydantic error list as field: message, not raw JSON', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      json: async () => ({
+        detail: [
+          {
+            type: 'less_than_equal',
+            loc: ['body', 'replicates'],
+            msg: 'Input should be less than or equal to 200',
+            input: 500,
+          },
+          { type: 'greater_than_equal', loc: ['body', 'sim', 'duration_s'], msg: 'Input should be greater than 0' },
+        ],
+      }),
+    } as unknown as Response);
+    await expect(createRun({ scenario_id: 'scn-1', replicates: 500 })).rejects.toThrow(
+      'replicates: Input should be less than or equal to 200; sim.duration_s: Input should be greater than 0',
+    );
+  });
+
+  it("renders the sweep cell wrapper {cell, errors} with the cell it failed on", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      json: async () => ({
+        detail: {
+          cell: { penetration: 0.05, compliance: 0.8, controller: 'jad' },
+          errors: [{ type: 'value_error', loc: ['body', 'av', 'controller'], msg: 'unknown controller' }],
+        },
+      }),
+    } as unknown as Response);
+    await expect(
+      createSweep({
+        scenario_id: 'scn-1',
+        penetrations: [0.05],
+        compliances: [0.8],
+        controllers: ['jad'],
+        replicates: 5,
+        include_baseline: true,
+      }),
+    ).rejects.toThrow('cell (penetration=0.05, compliance=0.8, controller=jad) — av.controller: unknown controller');
+  });
+
+  it('latches the rejected-key state on 401 and clears it on the next success', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: async () => ({ detail: 'invalid or missing X-API-Key' }),
+    } as unknown as Response);
+    await expect(listRuns()).rejects.toThrow('invalid or missing X-API-Key');
+    expect(isAuthFailed()).toBe(true);
+
+    fetchMock.mockResolvedValue(fakeResponse([]));
+    await listRuns();
+    expect(isAuthFailed()).toBe(false);
+  });
+
+  it('downloads the archive and the PDF from their own routes', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      blob: async () => new Blob(['zip']),
+    } as unknown as Response);
+    await getReportArchive('rpt-1');
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports/rpt-1/archive`);
+    await getReportPdf('rpt-1');
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports/rpt-1/pdf`);
   });
 });

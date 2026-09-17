@@ -72,6 +72,9 @@ describe('ReportsView (asynchronous report contract)', () => {
         const method = init?.method ?? 'GET';
         calls.push({ url, method });
         if (url.endsWith('/runs') && method === 'GET') return json([doneRun]);
+        if (url.endsWith('/scenarios') && method === 'GET') {
+          return json([{ scenario_id: 'scn-corridor', name: 'corridor_10km', config_hash: 'c0ffee', created_at: 't' }]);
+        }
         // the Redis-queue answer: accepted, not yet generated
         if (url.endsWith('/reports') && method === 'POST') return json(reportOut('queued'), 202);
         if (url.endsWith('/reports/rpt-1/markdown')) {
@@ -82,6 +85,20 @@ describe('ReportsView (asynchronous report contract)', () => {
             });
           }
           return json({ detail: `report 'rpt-1' is ${status}, not done` }, 409);
+        }
+        if (url.endsWith('/reports/rpt-1/archive')) {
+          if (status !== 'done') return json({ detail: `report 'rpt-1' is ${status}, not done` }, 409);
+          return new Response('PK\u0003\u0004zip', {
+            status: 200,
+            headers: { 'content-type': 'application/zip' },
+          });
+        }
+        if (url.endsWith('/reports/rpt-1/pdf')) {
+          if (status !== 'done') return json({ detail: `report 'rpt-1' is ${status}, not done` }, 409);
+          return new Response('%PDF-1.4', {
+            status: 200,
+            headers: { 'content-type': 'application/pdf' },
+          });
         }
         if (url.endsWith('/reports/rpt-1')) return json(reportOut(status));
         return json({ detail: `unexpected ${method} ${url}` }, 404);
@@ -139,6 +156,48 @@ describe('ReportsView (asynchronous report contract)', () => {
       expect(await within(table).findByText('failed', {}, { timeout: 6000 })).toBeInTheDocument();
       expect(within(table).getByText('report_refused: no validated micro runs in the set')).toBeInTheDocument();
       expect(within(table).getByRole('button', { name: 'Download .md' })).toBeDisabled();
+    },
+    15000,
+  );
+
+  it('names the scenario of a finished run instead of printing its id', async () => {
+    render(<ReportsView />);
+    const table = screen.getByRole('table', { name: 'finished runs' });
+    expect(await within(table).findByText('corridor_10km', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(within(table).queryByText('scn-corridor')).toBeNull();
+  }, 10000);
+
+  it(
+    'offers the markdown, the figure archive and the PDF, and keeps the blob URL alive',
+    async () => {
+      window.localStorage.setItem(
+        LS_REPORTS,
+        JSON.stringify([
+          { report_id: 'rpt-1', run_ids: ['run-a'], status: 'done', created_at: '2026-09-15T00:00:00.000Z' },
+        ]),
+      );
+      status = 'done';
+      render(<ReportsView />);
+      const table = screen.getByRole('table', { name: 'generated reports' });
+
+      fireEvent.click(within(table).getByRole('button', { name: 'Download .md' }));
+      await waitFor(() => {
+        expect(calls.some((c) => c.url.endsWith('/reports/rpt-1/markdown'))).toBe(true);
+      });
+      fireEvent.click(within(table).getByRole('button', { name: 'Download .zip (with figures)' }));
+      await waitFor(() => {
+        expect(calls.some((c) => c.url.endsWith('/reports/rpt-1/archive'))).toBe(true);
+      });
+      fireEvent.click(within(table).getByRole('button', { name: 'Download PDF' }));
+      await waitFor(() => {
+        expect(calls.some((c) => c.url.endsWith('/reports/rpt-1/pdf'))).toBe(true);
+      });
+      await waitFor(() => {
+        expect(urlApi.createObjectURL).toHaveBeenCalledTimes(3);
+      });
+      // revoking in the same tick as the click aborts the download the browser
+      // has only just started (an unfinished .crdownload) — it must be deferred
+      expect(urlApi.revokeObjectURL).not.toHaveBeenCalled();
     },
     15000,
   );

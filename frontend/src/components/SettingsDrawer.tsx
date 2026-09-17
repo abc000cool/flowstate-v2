@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { DEFAULT_API_KEY, DEFAULT_BASE_URL, getSettings, saveSettings } from '../api/client';
+import { useAuthFailed } from '../lib/hooks';
 import { toast } from './toast';
 
 export function SettingsDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   const current = getSettings();
+  const authFailed = useAuthFailed();
   const [baseUrl, setBaseUrl] = useState(current.baseUrl);
   const [apiKey, setApiKey] = useState(current.apiKey);
 
@@ -37,6 +39,11 @@ export function SettingsDrawer({ onClose }: { onClose: () => void }): JSX.Elemen
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={DEFAULT_API_KEY}
           />
+          {authFailed && (
+            <span className="hint-amber">
+              the current key was rejected (401) — saving a new one resumes loading
+            </span>
+          )}
         </div>
         <p className="small muted">
           Stored locally in this browser. The dev proxy forwards <span className="mono">/api</span>{' '}

@@ -18,28 +18,28 @@ Index of everything in `docs/`. Start with the repo-root
 |---|---|
 | [M2_RESULTS.md](M2_RESULTS.md) | Calibration from real NGSIM US-101 data: IDM population fit (2,452 episodes, holdout RMSE), fundamental diagram with bootstrap CIs, observed demand extraction — with the raw-NGSIM and congested-site caveats stated |
 | [M3_RESULTS.md](M3_RESULTS.md) | The 540-run penetration × compliance sweep on the synthetic `corridor_10km` (27 cells × 20 seeds, paired CIs): dose-response, controller ranking including the honest PI-saturation failure |
-- [ROADMAP.md](ROADMAP.md) — the working plan for the next phase: critical path, four tracks, and what is blocked on whom
-- [I24_DATA.md](I24_DATA.md) — the I-24 MOTION day: streaming ingestion, fragmentation, the tracking-coverage limitation, 17,652-episode IDM fit, corridor geometry (ROADMAP §1.1–1.3)
-- [FLOWSTATE_DOSSIER.md](FLOWSTATE_DOSSIER.md) — the single long-form dossier: how it works, why, evidence and validation record, market, revenue, channels, implementation options; renders to PDF with `validation.report_pdf.render_pdf`
-- [I24_SWEEP.md](I24_SWEEP.md) — the 500-run penetration × compliance battery on the fitted I-24 arm: FollowerStopper's smoothing is paid for in throughput on a corridor near capacity
-- [US101_CALIBRATED.md](US101_CALIBRATED.md) — the same two calibration steps applied to US-101 with no retuning: speeds improve, flows overshoot, waves unchanged; what that says about the method
-- [I24_CAPACITY.md](I24_CAPACITY.md) — why the replica cannot carry its demand: the fleet's capacity, not insertion; FHWA step-1 capacity calibration of the population and step-2 demand scale
-- [I24_VALIDATION.md](I24_VALIDATION.md) — the `i24_replica` criteria battery, four demand arms, the wave-speed prediction test and its detector dependence (ROADMAP §1.4); §0.5 takes the two failing rows apart (lane-level diagnosis `scripts/i24_lane_profile.py`, the map correction `scripts/i24_correct_osm.py`, the 5-min RMSPE floor, the coverage-based flow table, single-seed variants, the merge models `RampSpec.merge` and ALINEA metering); `scripts/i24_heavy_share.py` and `scripts/i24_controller_probe.py` feed I24_DATA.md and I24_SWEEP.md; §0.6 the zipper family through the full procedure and its 20-seed batteries (cloud round of 2026-09-06, a documented negative result) and the canonical heavy arm
-- [INTERVIEWS.md](INTERVIEWS.md) — discovery-interview kit: target roles, the ten-question script, outreach template, what to record (Track C1)
-- [BUSINESS_MODEL.md](BUSINESS_MODEL.md) — the two paths (corridor studies and workspace now; live speed advisory later), how it is sold, costs and prices with sources; spreadsheets under `docs/business/` (`scripts/business_cost_model.py`, `scripts/business_outreach_list.py`)
-- [LESSONS.md](LESSONS.md) — what we got wrong and fixed, with the evidence for each correction (Track A2)
-- [QA.md](QA.md) — anticipated questions with pointers to the evidence (Track A5)
-- [PAPER_OUTLINE.md](PAPER_OUTLINE.md) — the preprint spine: sections, results and figures mapped to the documents that carry them (Track B1)
-- [ONBOARDING_TIME.md](ONBOARDING_TIME.md) — measured machine and engineering time to onboard the I-24 corridor (Track C4)
-- [AUDIT_2026-09-03.md](AUDIT_2026-09-03.md) — ten-lens code audit: two verified frontend schema-drift bugs and the unverified follow-up list
-- [WEBSITE_BRIEF.md](WEBSITE_BRIEF.md) — the prompt for building the public site: audiences, tabs, the real-data intro animation, the numbers the site may use with their sources; data pack in `website/hero_data.json`
-- [JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md) — deferred-commitment JAD with a perfect sensor vs the latency finding (Track B4)
-- [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) — why the US-101 wave-speed criterion fails: site and density, not calibration
-- [US101_PENETRATION.md](US101_PENETRATION.md) — does the dose-response survive real geometry? (σ_v yes; the no-cost claim no)
-- [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md) — all four controllers head-to-head at 5% / 100%, same seeds
-- [JAD_ORACLE_RESULTS.md](JAD_ORACLE_RESULTS.md) — JAD under a delayed/noisy detection oracle (CLAUDE.md §4.3); realistic sensing removes the bimodality
-- [jad_derivation.md](jad_derivation.md) — JAD intercept-timing geometry and its approximations
-- [PI_CONTROLLER_FIX.md](PI_CONTROLLER_FIX.md) — correcting PI-with-saturation against Stern et al. (2018); the M3 gridlock was a spec simplification, not the literature controller
+| [ROADMAP.md](ROADMAP.md) | the working plan for the next phase: critical path, four tracks, and what is blocked on whom |
+| [I24_DATA.md](I24_DATA.md) | the I-24 MOTION day: streaming ingestion, fragmentation, the tracking-coverage limitation, 17,652-episode IDM fit, corridor geometry (ROADMAP §1.1–1.3) |
+| [FLOWSTATE_DOSSIER.md](FLOWSTATE_DOSSIER.md) | the single long-form dossier: how it works, why, evidence and validation record, market, revenue, channels, implementation options; renders to PDF with `validation.report_pdf.render_pdf` |
+| [I24_SWEEP.md](I24_SWEEP.md) | the 500-run penetration × compliance battery on the fitted I-24 arm: FollowerStopper's smoothing is paid for in throughput on a corridor near capacity |
+| [US101_CALIBRATED.md](US101_CALIBRATED.md) | the same two calibration steps applied to US-101 with no retuning: speeds improve, flows overshoot, waves unchanged; what that says about the method |
+| [I24_CAPACITY.md](I24_CAPACITY.md) | why the replica cannot carry its demand: the fleet's capacity, not insertion; FHWA step-1 capacity calibration of the population and step-2 demand scale |
+| [I24_VALIDATION.md](I24_VALIDATION.md) | the `i24_replica` criteria battery, four demand arms, the wave-speed prediction test and its detector dependence (ROADMAP §1.4); §0.5 takes the two failing rows apart (lane-level diagnosis `scripts/i24_lane_profile.py`, the map correction `scripts/i24_correct_osm.py`, the 5-min RMSPE floor, the coverage-based flow table, single-seed variants, the merge models `RampSpec.merge` and ALINEA metering); `scripts/i24_heavy_share.py` and `scripts/i24_controller_probe.py` feed I24_DATA.md and I24_SWEEP.md; §0.6 the zipper family through the full procedure and its 20-seed batteries (cloud round of 2026-09-06, a documented negative result) and the canonical heavy arm |
+| [INTERVIEWS.md](INTERVIEWS.md) | discovery-interview kit: target roles, the ten-question script, outreach template, what to record (Track C1) |
+| [BUSINESS_MODEL.md](BUSINESS_MODEL.md) | the two paths (corridor studies and workspace now; live speed advisory later), how it is sold, costs and prices with sources; spreadsheets under `docs/business/` (`scripts/business_cost_model.py`, `scripts/business_outreach_list.py`) |
+| [LESSONS.md](LESSONS.md) | what we got wrong and fixed, with the evidence for each correction (Track A2) |
+| [QA.md](QA.md) | anticipated questions with pointers to the evidence (Track A5) |
+| [PAPER_OUTLINE.md](PAPER_OUTLINE.md) | the preprint spine: sections, results and figures mapped to the documents that carry them (Track B1) |
+| [ONBOARDING_TIME.md](ONBOARDING_TIME.md) | measured machine and engineering time to onboard the I-24 corridor (Track C4) |
+| [AUDIT_2026-09-03.md](AUDIT_2026-09-03.md) | ten-lens code audit: two verified frontend schema-drift bugs and the unverified follow-up list |
+| [WEBSITE_BRIEF.md](WEBSITE_BRIEF.md) | the prompt for building the public site: audiences, tabs, the real-data intro animation, the numbers the site may use with their sources; data pack in `website/hero_data.json` |
+| [JAD_DEFERRAL_RESULTS.md](JAD_DEFERRAL_RESULTS.md) | deferred-commitment JAD with a perfect sensor vs the latency finding (Track B4) |
+| [WAVE_SPEED_DIAGNOSIS.md](WAVE_SPEED_DIAGNOSIS.md) | why the US-101 wave-speed criterion fails: site and density, not calibration |
+| [US101_PENETRATION.md](US101_PENETRATION.md) | does the dose-response survive real geometry? (σ_v yes; the no-cost claim no) |
+| [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md) | all four controllers head-to-head at 5% / 100%, same seeds |
+| [JAD_ORACLE_RESULTS.md](JAD_ORACLE_RESULTS.md) | JAD under a delayed/noisy detection oracle (CLAUDE.md §4.3); realistic sensing removes the bimodality |
+| [jad_derivation.md](jad_derivation.md) | JAD intercept-timing geometry and its approximations |
+| [PI_CONTROLLER_FIX.md](PI_CONTROLLER_FIX.md) | correcting PI-with-saturation against Stern et al. (2018); the M3 gridlock was a spec simplification, not the literature controller |
 | [M3_US101_VALIDATION.md](M3_US101_VALIDATION.md) | Observed-vs-simulated validation of the US-101 replica against FHWA-style criteria — honestly mixed (1 PASS / 5 FAIL), boundary-condition analysis, wave-speed comparison, flux-cap variant study |
 | [M5_LOAD_TEST.md](M5_LOAD_TEST.md) | API/worker load test: 10 concurrent sweep jobs through the queue |
 

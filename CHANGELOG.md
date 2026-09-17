@@ -6,6 +6,16 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Dashboard after a real browser walkthrough (2026-09-17)
+
+An agent drove the dashboard through the pilot flow in Chrome against the inline-queue API (14 steps, screenshots kept locally) and found five pilot-blockers; all fixed in the dashboard, 57 vitest cases across 10 files, typecheck and build green:
+
+- **A rejected API key no longer looks like a healthy link.** 401/403 on any call latches an auth-failed state: a red banner with an Open Settings button, the status rail reads KEY REJECTED instead of a green API LINK (the health route is auth-exempt, which is why the dot was green while every call failed), and every poll pauses until the key changes. Previously: an empty dashboard, "loading" forever, and 95 retries a minute.
+- **Demo data is labelled as demo.** The offline fallback showed fabricated presets with fake config hashes that looked real and never refreshed once the API returned. Now: a DEMO badge, dashed cards, "demo, no server hash" in place of a hash, Run disabled, and the library keeps polling so the real presets replace the demo list in place.
+- **Runs are launched deliberately.** Duration, seed and replicates fields on the launcher (sent as an `overrides` patch), a confirmation naming scenario, tier, replicates and total sim-minutes past 600, and the preset card's one-click Run (which fired 20 full-length replicates) became a launcher. The composer carries every field it does not model through unchanged and says so, instead of silently replacing the demand profile and dropping calibration, boundary and closure fields.
+- **Sweeps default to 5 replicates per cell with the 20-seed standard stated,** a confirmation lists cells and total runs before the POST, the baseline header no longer names a controller for penetration 0, and cells whose whole aggregate vector is identical to another cell's are marked with a note.
+- **The report can be downloaded.** The markdown download revoked its object URL synchronously and left an unfinished `.crdownload`; fixed, and the archive (zip with figures) and PDF routes that the API already served are now offered. Validation errors render as `field: message` lines instead of raw pydantic JSON; replicate and lane limits mirror the API's; run tables show scenario names, and the PRESET badge is derived from the endpoint the item came from.
+
 ### Hardening round two: chunked-body caps, key rotation, request ids, worker-side path roots, macro closure golden (2026-09-17)
 
 - **Chunked bodies capped (API).** A pure-ASGI `BodyCapMiddleware` counts bytes from `receive()` on every `/api/` request and answers 413 the moment the running total passes the cap (upload plus body cap on `/api/v1/calibrations/`, body cap elsewhere), so chunked JSON to `/runs`, `/sweeps`, `/reports` and chunked multipart uploads are bounded before Starlette spools them; nothing is enqueued for a refused request; unauthenticated oversized requests stay a plain 401. Tests drive the cap as a running total across chunks.

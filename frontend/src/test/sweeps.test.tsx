@@ -1,11 +1,13 @@
 /** SweepsView against the real API's shapes: the POST /sweeps body carries
  * `controllers` (a list) plus `include_baseline`, and the matrix reads
- * aggregates keyed by the validation.metrics.Metrics field names. */
+ * aggregates keyed by the validation.metrics.Metrics field names. The
+ * launcher costs real compute, so it must state the arithmetic and take a
+ * second click; identical realisations must be flagged, not read as effects. */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { setOfflineFallback } from '../api/client';
+import { clearAuthFailure, setOfflineFallback } from '../api/client';
 import { SweepsView } from '../views/SweepsView';
 
 const scenario = {
@@ -79,6 +81,35 @@ const failedSweepOut = {
   cells: sweepOut.cells.map((c) => ({ ...c, run_id: null, status: null, progress: null, aggregate: null })),
 };
 
+/** Two grid cells with different config hashes and a bit-identical aggregate
+ * vector — the shape the walkthrough hit, where compliance looked irrelevant
+ * because both cells were the same realisation. */
+const twinSweepOut = {
+  ...sweepOut,
+  sweep_id: 'swp-twins',
+  status: 'done',
+  cells: [
+    { penetration: 0, compliance: 1.0, controller: 'follower_stopper', config_hash: 'b0', run_id: 'run-base', status: 'done', progress, aggregate: aggregate(5.8, 1700) },
+    { penetration: 0.05, compliance: 0.8, controller: 'follower_stopper', config_hash: 'c1', run_id: 'run-a', status: 'done', progress, aggregate: aggregate(2.9, 1785) },
+    { penetration: 0.05, compliance: 1.0, controller: 'follower_stopper', config_hash: 'c2', run_id: 'run-b', status: 'done', progress, aggregate: aggregate(2.9, 1785) },
+  ],
+};
+
+/** Two cells the API gave the *same* config hash (a p=0 pair differs in no
+ * modelled parameter, so one configuration is run twice): identical numbers
+ * there are the expected result and must not be flagged as a finding. */
+const sameConfigSweepOut = {
+  ...sweepOut,
+  sweep_id: 'swp-same',
+  status: 'done',
+  cells: [
+    { penetration: 0, compliance: 0.8, controller: 'follower_stopper', config_hash: 'b0', run_id: 'run-base-a', status: 'done', progress, aggregate: aggregate(5.8, 1700) },
+    { penetration: 0, compliance: 1.0, controller: 'follower_stopper', config_hash: 'b0', run_id: 'run-base-b', status: 'done', progress, aggregate: aggregate(5.8, 1700) },
+    { penetration: 0.05, compliance: 0.8, controller: 'follower_stopper', config_hash: 'g1', run_id: 'run-g1', status: 'done', progress, aggregate: aggregate(2.9, 1785) },
+    { penetration: 0.05, compliance: 1.0, controller: 'follower_stopper', config_hash: 'g2', run_id: 'run-g2', status: 'done', progress, aggregate: aggregate(3.1, 1790) },
+  ],
+};
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
@@ -94,6 +125,7 @@ describe('SweepsView (real API shapes)', () => {
 
   beforeEach(() => {
     setOfflineFallback(false);
+    clearAuthFailure();
     calls.length = 0;
     vi.stubGlobal(
       'fetch',
@@ -106,6 +138,8 @@ describe('SweepsView (real API shapes)', () => {
         if (url.endsWith('/sweeps') && method === 'POST') return json(sweepOut, 202);
         if (url.endsWith('/sweeps/swp-1')) return json(sweepOut);
         if (url.endsWith('/sweeps/swp-failed')) return json(failedSweepOut);
+        if (url.endsWith('/sweeps/swp-twins')) return json(twinSweepOut);
+        if (url.endsWith('/sweeps/swp-same')) return json(sameConfigSweepOut);
         return json({ detail: `unexpected ${method} ${url}` }, 404);
       }),
     );
@@ -125,6 +159,10 @@ describe('SweepsView (real API shapes)', () => {
     expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
     // the done cell reports its replicate count, not the '—' of a missing key
     expect(screen.getByText('n=20')).toBeInTheDocument();
+    // the header must not credit a controller to a cell with no controlled
+    // vehicles, even though the API stamps the sweep's controller on it
+    expect(screen.getByText(/no controlled vehicles/)).toBeInTheDocument();
+    expect(screen.queryByText(/controller follower_stopper/)).toBeNull();
     // the p=0 cell is labelled as the baseline and shows its absolute value
     expect(screen.getByText('0% · baseline')).toBeInTheDocument();
     expect(screen.getByText('BASELINE · n=20')).toBeInTheDocument();
@@ -156,14 +194,50 @@ describe('SweepsView (real API shapes)', () => {
     expect(polls()).toBe(1);
   }, 10000);
 
-  it('launches with a controllers list and include_baseline', async () => {
+  it('flags cells whose aggregates are a bit-identical realisation', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps?sweep=swp-twins']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByText(/cells share an identical aggregate vector/, {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    // both twins carry the marker; the differently-valued baseline does not
+    expect(screen.getAllByTitle(/Identical realisation/).length).toBe(2);
+  });
+
+  it('does not flag two cells that share a config hash as a surprise', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps?sweep=swp-same']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    // the matrix is up (the grid cell's delta against the baseline)
+    expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
+    // same configuration run twice: identical aggregates are expected there
+    expect(screen.queryAllByTitle(/Identical realisation/).length).toBe(0);
+    expect(screen.queryByText(/share an identical aggregate vector/)).toBeNull();
+  });
+
+  it('confirms the run count before launching, with a controllers list and include_baseline', async () => {
     render(
       <MemoryRouter initialEntries={['/sweeps']}>
         <SweepsView />
       </MemoryRouter>,
     );
     await screen.findByRole('option', { name: 'corridor_10km' }, { timeout: 4000 });
+    // the default grid is exploratory, not 24 cells x 20 replicates
+    expect(screen.getByLabelText('Replicates / cell')).toHaveValue(5);
+
     fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    // nothing is enqueued until the size of the request is acknowledged
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    expect(within(dialog).getByText('24 + 1 baseline = 25')).toBeInTheDocument();
+    expect(within(dialog).getByText('125')).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Launch 125 runs' }));
     await waitFor(() => {
       expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))).toBe(true);
     });
@@ -171,17 +245,35 @@ describe('SweepsView (real API shapes)', () => {
     expect(first.controllers).toEqual(['follower_stopper']);
     expect(first).not.toHaveProperty('controller');
     expect(first.include_baseline).toBe(true);
-    expect(first).toMatchObject({ scenario_id: 'scn-corridor', replicates: 20 });
+    expect(first).toMatchObject({ scenario_id: 'scn-corridor', replicates: 5 });
     expect(first.penetrations).toEqual([0.01, 0.02, 0.05, 0.1, 0.15, 0.2]);
     expect(first.compliances).toEqual([0.25, 0.5, 0.8, 1.0]);
 
     // opting out of the baseline cell is sent explicitly, not omitted
     fireEvent.click(screen.getByLabelText('include p=0 baseline cell'));
     fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const secondDialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    fireEvent.click(within(secondDialog).getByRole('button', { name: /^Launch \d+ runs$/ }));
     await waitFor(() => {
       expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/sweeps')).length).toBe(2);
     });
     const second = calls.filter((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))[1].body as Record<string, unknown>;
     expect(second.include_baseline).toBe(false);
+  });
+
+  it('cancelling the confirmation enqueues nothing', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('option', { name: 'corridor_10km' }, { timeout: 4000 });
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 });

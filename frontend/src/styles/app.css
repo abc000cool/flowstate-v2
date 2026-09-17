@@ -1170,3 +1170,109 @@ table.data tr.disabled {
 .sweep-matrix td.cell.baseline .d {
   font-weight: 500;
 }
+
+/* ===================== rejected API key / demo data ================= */
+
+.auth-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 6px var(--s3);
+  background: var(--danger-dim);
+  border-bottom: 1px solid rgba(240, 100, 122, 0.4);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.tag.demo {
+  color: var(--amber);
+  border-color: rgba(245, 184, 92, 0.45);
+  background: var(--amber-dim);
+}
+
+.scen-card.demo {
+  border-style: dashed;
+  border-color: rgba(245, 184, 92, 0.35);
+}
+
+.scen-meta .hash.muted {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+/* ===================== composer passthrough notice ================== */
+
+.passthrough {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--s2);
+  border: 1px dashed var(--panel-edge);
+  border-radius: var(--r2);
+  background: var(--panel-inset);
+}
+
+/* ===================== identical sweep realisations ================= */
+
+.sweep-matrix .identical {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+/* ============================== modal =============================== */
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r2);
+  z-index: 90;
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  box-shadow: 0 24px 64px rgba(4, 6, 10, 0.6);
+}
+
+.modal h2 {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.fact-list .fact {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+  font-size: 12px;
+  border-bottom: 1px dotted var(--panel-edge);
+  padding-bottom: 3px;
+}
+
+.fact-list dt {
+  color: var(--muted);
+}
+
+.fact-list dd {
+  margin: 0;
+  color: var(--text);
+  text-align: right;
+}

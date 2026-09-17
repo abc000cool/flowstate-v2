@@ -16,7 +16,7 @@ import {
 } from '../components/bits';
 import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
 import { toastError } from '../components/toast';
-import { usePoll } from '../lib/hooks';
+import { useAuthFailed, usePoll } from '../lib/hooks';
 import { orderedMetricKeys } from '../lib/metrics';
 
 export function RunDetailView(): JSX.Element {
@@ -34,6 +34,7 @@ export function RunDetailView(): JSX.Element {
   const [heatmaps, setHeatmaps] = useState<Partial<Record<HeatField, Heatmap>>>({});
   const [seedsOpen, setSeedsOpen] = useState(false);
   const { setCorridor } = useAppState();
+  const authFailed = useAuthFailed();
 
   const finished = run?.status === 'done';
 
@@ -47,8 +48,11 @@ export function RunDetailView(): JSX.Element {
     }
   }, [runId, setCorridor]);
 
-  // poll while pending; stop once terminal
-  usePoll(pollRun, run && (run.status === 'done' || run.status === 'failed') ? null : 2000);
+  // poll while pending; stop once terminal — or while the key is rejected
+  usePoll(
+    pollRun,
+    authFailed || (run && (run.status === 'done' || run.status === 'failed')) ? null : 2000,
+  );
 
   useEffect(() => {
     if (!finished || metrics) return;

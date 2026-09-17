@@ -1,23 +1,53 @@
 /** Scenarios: preset cards with schematic thumbnails, YAML upload drop-zone,
- * and a Compose form building a ScenarioConfig for POST /scenarios. */
+ * and a Compose form building a ScenarioConfig for POST /scenarios.
+ *
+ * Two honesty rules live here. (1) Demo data is labelled at the card, not just
+ * in the shell banner: an offline fallback card carries a DEMO badge and no
+ * config hash (its hash exists in no server), and the library keeps polling
+ * until the real API answers so the demo list is replaced in place. (2) The
+ * composer models a subset of ScenarioConfig; every field it does not model is
+ * carried through from the loaded scenario unchanged and listed under the
+ * form, so "load in composer → create" cannot silently run a different
+ * scenario than the one named. */
 
 import yaml from 'js-yaml';
 import { useCallback, useRef, useState, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createRun, createScenario, listPresetScenarios, listScenarios } from '../api/client';
+import {
+  createRun,
+  createScenario,
+  isMockEnv,
+  isOfflineFallback,
+  listPresetScenarios,
+  listScenarios,
+} from '../api/client';
 
 /** A library card: a stored scenario, or a repo preset that has no id yet. */
 type LibraryItem = ScenarioSummary | PresetSummary;
 const isPreset = (s: LibraryItem): s is PresetSummary => !('scenario_id' in s);
 const itemKey = (s: LibraryItem): string => (isPreset(s) ? `preset:${s.filename}` : s.scenario_id);
-import type { Network, ScenarioConfig, ScenarioSummary, PresetSummary } from '../api/types';
+import type {
+  CreateRunRequest,
+  Network,
+  ScenarioConfig,
+  ScenarioSummary,
+  PresetSummary,
+} from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { SchematicThumb } from '../components/bits';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
-import { usePoll } from '../lib/hooks';
+import { useAuthFailed, usePoll } from '../lib/hooks';
+import { clampInt, describeSimMinutes, MAX_LANES, MAX_REPLICATES, simMinutes } from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
 
 const CONTROLLERS = ['follower_stopper', 'pi_saturation', 'jad', 'none'] as const;
+const LIBRARY_POLL_MS = 3000;
+/** Inflow the composer writes for a corridor it builds from scratch [veh/s]. */
+const DEFAULT_INFLOW_VEH_S = 0.55;
+
+/** Where the currently displayed library came from. */
+type DemoSource = 'none' | 'env' | 'offline';
 
 interface ComposeState {
   name: string;
@@ -51,29 +81,91 @@ const DEFAULT_COMPOSE: ComposeState = {
   replicates: 20,
 };
 
-function composeToConfig(c: ComposeState): ScenarioConfig {
+/** Build the POST body, carrying every field the form does not model over
+ * from `base` (the scenario the composer was loaded from) unchanged. */
+function composeToConfig(c: ComposeState, base: ScenarioConfig | null): ScenarioConfig {
+  const baseNet = base?.network;
   const network: Network =
     c.kind === 'ring'
-      ? { kind: 'ring', circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
-      : { kind: 'corridor', length_m: c.length_m, lanes: c.lanes, inflow: [[0, 0.55]] };
+      ? baseNet?.kind === 'ring'
+        ? { ...baseNet, circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
+        : { kind: 'ring', circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
+      : baseNet?.kind === 'corridor'
+        ? { ...baseNet, length_m: c.length_m, lanes: c.lanes }
+        : {
+            kind: 'corridor',
+            length_m: c.length_m,
+            lanes: c.lanes,
+            inflow: [[0, DEFAULT_INFLOW_VEH_S]],
+          };
   return {
+    ...(base ?? {}),
     name: c.name,
-    tier: 'micro',
+    tier: base?.tier ?? 'micro',
     network,
-    fleet: { model: c.model },
+    fleet: { ...(base?.fleet ?? {}), model: c.model },
     av: {
+      ...(base?.av ?? {}),
       penetration: c.penetration / 100,
       compliance: c.compliance / 100,
       controller: c.controller === 'none' ? null : c.controller,
-      vsl: c.vsl ? 'threshold' : null,
+      vsl: c.vsl ? (base?.av.vsl ?? 'threshold') : null,
     },
-    sim: { duration_s: c.duration_s },
-    seed: 42,
+    sim: { ...(base?.sim ?? {}), duration_s: c.duration_s },
+    seed: base?.seed ?? 42,
     replicates: c.replicates,
   };
 }
 
-function scenarioMeta(s: LibraryItem): JSX.Element {
+/** Config paths the form does not model: `carried` ride along unchanged,
+ * `dropped` cannot survive the requested network-kind change. */
+function passthroughFields(
+  base: ScenarioConfig | null,
+  kind: 'ring' | 'corridor',
+): { carried: string[]; dropped: string[] } {
+  if (!base) return { carried: [], dropped: [] };
+  const carried: string[] = [];
+  const dropped: string[] = [];
+  const netModelled =
+    kind === 'ring' ? ['kind', 'circumference_m', 'n_vehicles'] : ['kind', 'length_m', 'lanes'];
+  const net = base.network as unknown as Record<string, unknown>;
+  const netExtras = Object.keys(net).filter(
+    (k) => k !== 'kind' && !netModelled.includes(k) && net[k] != null,
+  );
+  if (base.network.kind === kind) {
+    carried.push(...netExtras.map((k) => `network.${k}`));
+  } else {
+    dropped.push(`network: ${base.network.kind} → ${kind}`);
+    dropped.push(...netExtras.map((k) => `network.${k}`));
+  }
+  const groups: [string, Record<string, unknown>, string[]][] = [
+    ['fleet', base.fleet as unknown as Record<string, unknown>, ['model']],
+    [
+      'av',
+      base.av as unknown as Record<string, unknown>,
+      ['penetration', 'compliance', 'controller', 'vsl'],
+    ],
+    ['sim', base.sim as unknown as Record<string, unknown>, ['duration_s']],
+  ];
+  for (const [group, obj, modelled] of groups) {
+    for (const k of Object.keys(obj ?? {})) {
+      const v = obj[k];
+      if (modelled.includes(k) || v === null || v === undefined) continue;
+      if (typeof v === 'object' && Object.keys(v as object).length === 0) continue;
+      carried.push(`${group}.${k}`);
+    }
+  }
+  // top level: `seed` and `tier` are real config the form cannot edit
+  const modelledTop = new Set(['name', 'network', 'fleet', 'av', 'sim', 'replicates']);
+  for (const k of Object.keys(base as unknown as Record<string, unknown>)) {
+    const v = (base as unknown as Record<string, unknown>)[k];
+    if (modelledTop.has(k) || v === null || v === undefined) continue;
+    carried.push(k);
+  }
+  return { carried: [...new Set(carried)].sort(), dropped };
+}
+
+function scenarioMeta(s: LibraryItem, demo: boolean): JSX.Element {
   const net = s.config?.network;
   return (
     <div className="scen-meta">
@@ -108,32 +200,59 @@ function scenarioMeta(s: LibraryItem): JSX.Element {
         </>
       )}
       <span>
-        hash <b className="hash">{s.config_hash}</b>
+        hash{' '}
+        {demo ? (
+          // a demo hash exists on no server — printing one would fabricate provenance
+          <b className="hash muted">— demo, no server hash —</b>
+        ) : (
+          <b className="hash">{s.config_hash}</b>
+        )}
       </span>
     </div>
   );
 }
 
+interface LaunchForm {
+  replicates: number;
+  duration_s: number;
+  seed: number;
+}
+
 export function ScenariosView(): JSX.Element {
   const [items, setItems] = useState<LibraryItem[]>([]);
+  const [demoSource, setDemoSource] = useState<DemoSource>('none');
   const [compose, setCompose] = useState<ComposeState>(DEFAULT_COMPOSE);
+  const [baseConfig, setBaseConfig] = useState<ScenarioConfig | null>(null);
+  const [baseName, setBaseName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [launchTarget, setLaunchTarget] = useState<LibraryItem | null>(null);
+  const [launchForm, setLaunchForm] = useState<LaunchForm>({
+    replicates: 20,
+    duration_s: 1200,
+    seed: 42,
+  });
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { setCorridor } = useAppState();
+  const authFailed = useAuthFailed();
 
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(async () => {
+    // capture the source before the call: it decides mock vs live at call time
+    const source: DemoSource = isMockEnv() ? 'env' : isOfflineFallback() ? 'offline' : 'none';
     const [presets, all] = await Promise.all([listPresetScenarios(), listScenarios()]);
     // A preset whose config is already stored shows as the stored scenario.
     const storedHashes = new Set(all.map((s) => s.config_hash));
     const merged: LibraryItem[] = [...presets.filter((p) => !storedHashes.has(p.config_hash)), ...all];
     setItems(merged);
+    setDemoSource(source);
     setLoaded(true);
   }, []);
 
-  // quiet retry until the library loads (offline-fallback race)
+  // quiet retry until the library loads — and, while the demo fallback is
+  // serving the cards, forever after: the demo list must be replaced by the
+  // real one the moment the API answers, without a manual reload.
   const tryRefresh = useCallback(async () => {
     try {
       await refresh();
@@ -141,15 +260,19 @@ export function ScenariosView(): JSX.Element {
       /* retried by usePoll; connectivity surfaced by the status dot */
     }
   }, [refresh]);
-  usePoll(tryRefresh, loaded ? null : 3000);
+  const showingDemo = demoSource !== 'none';
+  const staleDemo = demoSource === 'offline';
+  usePoll(tryRefresh, authFailed ? null : !loaded || staleDemo ? LIBRARY_POLL_MS : null);
 
   const set = <K extends keyof ComposeState>(k: K, v: ComposeState[K]): void =>
     setCompose((c) => ({ ...c, [k]: v }));
 
+  const passthrough = passthroughFields(baseConfig, compose.kind);
+
   const submitCompose = async (): Promise<void> => {
     setBusy(true);
     try {
-      const res = await createScenario(composeToConfig(compose));
+      const res = await createScenario(composeToConfig(compose, baseConfig));
       toast('ok', `scenario ${res.scenario_id} created · ${res.config_hash}`);
       await refresh();
     } catch (err) {
@@ -170,18 +293,42 @@ export function ScenariosView(): JSX.Element {
     return res.scenario_id;
   };
 
-  const launchRun = async (s: LibraryItem): Promise<void> => {
+  /** The card's Run opens the launcher instead of firing: a preset's own
+   * `replicates` × `sim.duration_s` can be hours of compute. */
+  const openLauncher = (s: LibraryItem): void => {
+    setLaunchTarget(s);
+    setLaunchForm({
+      replicates: s.config?.replicates ?? 20,
+      duration_s: s.config?.sim.duration_s ?? 1200,
+      seed: s.config?.seed ?? 42,
+    });
+  };
+
+  const launchRun = async (): Promise<void> => {
+    const s = launchTarget;
+    if (!s) return;
+    setBusy(true);
     try {
       const scenarioId = await ensureStored(s);
-      const res = await createRun({
+      const overrides: Record<string, unknown> = {};
+      if (launchForm.duration_s !== s.config?.sim.duration_s) {
+        overrides.sim = { duration_s: launchForm.duration_s };
+      }
+      if (launchForm.seed !== s.config?.seed) overrides.seed = launchForm.seed;
+      const req: CreateRunRequest = {
         scenario_id: scenarioId,
-        replicates: s.config?.replicates ?? 20,
-      });
+        replicates: launchForm.replicates,
+      };
+      if (Object.keys(overrides).length > 0) req.overrides = overrides;
+      const res = await createRun(req);
       setCorridor(s.name);
+      setLaunchTarget(null);
       toast('ok', `run ${res.run_id} queued`);
       navigate('/runs');
     } catch (err) {
       toastError(err, 'run');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -192,6 +339,8 @@ export function ScenariosView(): JSX.Element {
       return;
     }
     setCorridor(s.name);
+    setBaseConfig(cfg);
+    setBaseName(s.name);
     setCompose({
       name: `${cfg.name}_variant`,
       kind: cfg.network.kind === 'ring' ? 'ring' : 'corridor',
@@ -207,6 +356,11 @@ export function ScenariosView(): JSX.Element {
       duration_s: cfg.sim.duration_s,
       replicates: cfg.replicates,
     });
+  };
+
+  const clearBase = (): void => {
+    setBaseConfig(null);
+    setBaseName(null);
   };
 
   const handleYamlText = async (text: string, filename: string): Promise<void> => {
@@ -232,27 +386,54 @@ export function ScenariosView(): JSX.Element {
   };
 
   const underpowered = compose.replicates < MIN_REPLICATES;
+  const launchTotal = simMinutes(launchForm.replicates, launchForm.duration_s);
 
   return (
     <div className="view">
       <div className="view-title">
         Scenario Library <span className="count mono">{items.length} configs</span>
+        {showingDemo && (
+          <span className="tag demo" title="Not from the API — built-in demo data">
+            DEMO DATA
+          </span>
+        )}
       </div>
+
+      {staleDemo && (
+        <p className="hint-amber">
+          The API is unreachable, so these are built-in demo scenarios: their hashes exist on no
+          server and they cannot be run. The library keeps retrying and replaces them as soon as the
+          API answers.
+        </p>
+      )}
 
       <div className="card-grid">
         {items.map((s) => (
-          <div key={itemKey(s)} className="panel scen-card">
+          <div key={itemKey(s)} className={`panel scen-card${showingDemo ? ' demo' : ''}`}>
             <div className="thumb">
               <SchematicThumb network={s.config?.network} name={s.name} />
             </div>
             <div className="name mono">
               {s.name}
-              {s.preset && <span className="tag preset">PRESET</span>}
+              {/* the badge follows the endpoint the item came from: the API's
+                  PresetOut carries no `preset` field, so reading one would
+                  never render against a live server */}
+              {(isPreset(s) || s.preset === true) && <span className="tag preset">PRESET</span>}
+              {showingDemo && <span className="tag demo">DEMO</span>}
             </div>
-            {scenarioMeta(s)}
+            {scenarioMeta(s, showingDemo)}
             <div className="scen-actions">
-              <button className="btn sm primary" onClick={() => void launchRun(s)}>
-                Run
+              <button
+                className="btn sm primary"
+                disabled={staleDemo}
+                title={
+                  staleDemo
+                    ? 'demo scenario — connect the API to run it'
+                    : 'set replicates, duration and seed before launching'
+                }
+                onClick={() => openLauncher(s)}
+              >
+                Run…
               </button>
               <button className="btn sm" onClick={() => loadIntoComposer(s)}>
                 Load in composer
@@ -295,6 +476,15 @@ export function ScenariosView(): JSX.Element {
       <div className="panel">
         <div className="panel-head">
           <span className="panel-title">Compose scenario</span>
+          {baseName && (
+            <>
+              <span className="spacer" />
+              <span className="small muted mono">based on {baseName}</span>
+              <button className="btn sm" onClick={clearBase}>
+                Start blank
+              </button>
+            </>
+          )}
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div className="compose-grid">
@@ -340,9 +530,9 @@ export function ScenariosView(): JSX.Element {
                     className="input"
                     type="number"
                     min={1}
-                    max={4}
+                    max={MAX_LANES}
                     value={compose.lanes}
-                    onChange={(e) => set('lanes', Number(e.target.value))}
+                    onChange={(e) => set('lanes', clampInt(Number(e.target.value), 1, MAX_LANES))}
                   />
                 </div>
               </>
@@ -448,8 +638,11 @@ export function ScenariosView(): JSX.Element {
                 className="input"
                 type="number"
                 min={1}
+                max={MAX_REPLICATES}
                 value={compose.replicates}
-                onChange={(e) => set('replicates', Number(e.target.value))}
+                onChange={(e) =>
+                  set('replicates', clampInt(Number(e.target.value), 1, MAX_REPLICATES))
+                }
               />
               {underpowered && (
                 <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
@@ -468,14 +661,101 @@ export function ScenariosView(): JSX.Element {
               </label>
             </div>
           </div>
+
+          {baseConfig && (
+            <div className="passthrough">
+              <div className="small muted">
+                {passthrough.carried.length > 0 ? (
+                  <>
+                    Not editable here — carried through from <b>{baseName}</b> unchanged:{' '}
+                    <span className="mono">{passthrough.carried.join(', ')}</span>
+                  </>
+                ) : (
+                  <>
+                    This form models every field of <b>{baseName}</b>.
+                  </>
+                )}
+              </div>
+              {passthrough.dropped.length > 0 && (
+                <div className="hint-amber">
+                  Dropped by the network-kind change:{' '}
+                  <span className="mono">{passthrough.dropped.join(', ')}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="row">
             <button className="btn primary" disabled={busy} onClick={() => void submitCompose()}>
               Create scenario
             </button>
-            <span className="small muted mono">POST /scenarios · validated server-side</span>
+            <span className="small muted mono">
+              POST /scenarios · validated server-side ·{' '}
+              {describeSimMinutes(simMinutes(compose.replicates, compose.duration_s))}
+            </span>
           </div>
         </div>
       </div>
+
+      {launchTarget && (
+        <ConfirmDialog
+          title={`Launch ${launchTarget.name}`}
+          busy={busy}
+          confirmLabel="Launch run"
+          onConfirm={() => void launchRun()}
+          onCancel={() => setLaunchTarget(null)}
+          facts={[['Total compute', describeSimMinutes(launchTotal)]]}
+        >
+          <div className="field">
+            <label htmlFor="lr-reps">Replicates</label>
+            <input
+              id="lr-reps"
+              className="input"
+              type="number"
+              min={1}
+              max={MAX_REPLICATES}
+              value={launchForm.replicates}
+              onChange={(e) =>
+                setLaunchForm((f) => ({
+                  ...f,
+                  replicates: clampInt(Number(e.target.value), 1, MAX_REPLICATES),
+                }))
+              }
+            />
+            {launchForm.replicates < MIN_REPLICATES && (
+              <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="lr-dur">Duration (s)</label>
+            <input
+              id="lr-dur"
+              className="input"
+              type="number"
+              min={1}
+              step={60}
+              value={launchForm.duration_s}
+              onChange={(e) =>
+                setLaunchForm((f) => ({ ...f, duration_s: Number(e.target.value) }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="lr-seed">Seed</label>
+            <input
+              id="lr-seed"
+              className="input"
+              type="number"
+              value={launchForm.seed}
+              onChange={(e) => setLaunchForm((f) => ({ ...f, seed: Number(e.target.value) }))}
+            />
+          </div>
+          <p className="small muted">
+            Replicates and duration multiply: every replicate runs the full duration. Changed values
+            are sent as an overrides patch, so the run gets its own config hash.
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

@@ -750,3 +750,19 @@ export async function mockGetReportMarkdown(reportId: string): Promise<string> {
   if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
   return row.markdown;
 }
+
+/** Demo mode has no figure files and no PDF renderer: the archive and PDF
+ * downloads say so instead of handing the browser a zip that is not one. */
+export async function mockGetReportArchive(reportId: string): Promise<Blob> {
+  await latency();
+  const view = reportView(ensureReport(reportId));
+  if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
+  throw new Error('demo data has no report archive — connect the API to download the .zip bundle');
+}
+
+export async function mockGetReportPdf(reportId: string): Promise<Blob> {
+  await latency();
+  const view = reportView(ensureReport(reportId));
+  if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
+  throw new Error('demo data has no PDF rendering — connect the API to download the PDF');
+}

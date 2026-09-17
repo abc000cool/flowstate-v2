@@ -1,68 +1,166 @@
 /** Runs: mono table with status chips, live progress bars (2 s poll),
- * config hashes, SEEDED and tier badges; plus a compact launcher. */
+ * config hashes, SEEDED and tier badges; plus a launcher that states what it
+ * is about to enqueue.
+ *
+ * The launcher sends `replicates` plus an `overrides` patch (`sim.duration_s`,
+ * `seed`) — the API deep-merges it onto the stored config and re-hashes, so a
+ * shortened smoke run is a first-class, hash-distinct run rather than an
+ * unlabelled variant. Large launches (replicates × duration past
+ * `CONFIRM_SIM_MINUTES`) take an explicit second click. */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createRun, listRuns, listScenarios } from '../api/client';
-import type { RunSummary, ScenarioSummary } from '../api/types';
+import type { CreateRunRequest, RunSummary, ScenarioSummary } from '../api/types';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
-import { usePoll } from '../lib/hooks';
+import { useAuthFailed, usePoll } from '../lib/hooks';
+import {
+  clampInt,
+  describeSimMinutes,
+  MAX_REPLICATES,
+  needsLaunchConfirm,
+  simMinutes,
+} from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
+
+const RUNS_POLL_MS = 2000;
+const SCENARIOS_POLL_MS = 3000;
+/** Once the library is loaded, refresh it slowly (new scenarios, names). */
+const SCENARIOS_IDLE_POLL_MS = 30000;
+
+/** Parse an optional numeric field: '' means "use the scenario's own value". */
+function numOr(raw: string, fallback: number | null): number | null {
+  if (raw.trim() === '') return fallback;
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : fallback;
+}
 
 export function RunsView(): JSX.Element {
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
   const [launchScenario, setLaunchScenario] = useState('');
   const [launchTier, setLaunchTier] = useState<'micro' | 'macro'>('micro');
-  const [launchReps, setLaunchReps] = useState(20);
+  const [repsRaw, setRepsRaw] = useState('');
+  const [durationRaw, setDurationRaw] = useState('');
+  const [seedRaw, setSeedRaw] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const authFailed = useAuthFailed();
 
   const poll = useCallback(async () => {
     try {
       setRuns(await listRuns());
     } catch (err) {
       // toast once per failure burst would spam at 2 s cadence; stay quiet,
-      // the rail status dot + banner already surface connectivity.
+      // the rail status dot + banner already surface connectivity (and a
+      // rejected key pauses this poll entirely).
       void err;
     }
   }, []);
-  usePoll(poll, 2000);
+  usePoll(poll, authFailed ? null : RUNS_POLL_MS);
 
   // quiet retry until the scenario list loads (covers the offline-fallback
-  // race where the first fetch fires before the health probe flips to demo)
+  // race where the first fetch fires before the health probe flips to demo),
+  // then a slow refresh so newly created scenarios and their names appear
   const scenariosLoaded = scenarios.length > 0;
   const loadScenarios = useCallback(async () => {
     try {
-      const s = await listScenarios();
-      setScenarios(s);
-      if (s.length > 0) setLaunchScenario((cur) => cur || s[0].scenario_id);
+      setScenarios(await listScenarios());
     } catch {
       /* retried by usePoll; connectivity is surfaced by the status dot */
     }
   }, []);
-  usePoll(loadScenarios, scenariosLoaded ? null : 3000);
+  usePoll(
+    loadScenarios,
+    authFailed ? null : scenariosLoaded ? SCENARIOS_IDLE_POLL_MS : SCENARIOS_POLL_MS,
+  );
 
-  const launch = async (): Promise<void> => {
+  useEffect(() => {
+    if (!launchScenario && scenarios.length > 0) setLaunchScenario(scenarios[0].scenario_id);
+  }, [scenarios, launchScenario]);
+
+  const selected = scenarios.find((s) => s.scenario_id === launchScenario);
+  const base = selected?.config;
+
+  // Show the scenario's own values as the starting point, once per selected
+  // config: the scenario poll hands back fresh objects every tick, so keying
+  // this on the config identity would wipe whatever the user typed.
+  const prefilledFor = useRef<string | null>(null);
+  const selectedKey = selected ? `${selected.scenario_id}:${selected.config_hash}` : '';
+  useEffect(() => {
+    if (prefilledFor.current === selectedKey) return;
+    prefilledFor.current = selectedKey;
+    setRepsRaw(base ? String(base.replicates) : '');
+    setDurationRaw(base ? String(base.sim.duration_s) : '');
+    setSeedRaw(base ? String(base.seed) : '');
+  }, [selectedKey, base]);
+
+  /** Scenario id → name, so the table names the corridor rather than an id
+   * (the API's RunOut carries no scenario name). */
+  const scenarioNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of scenarios) m.set(s.scenario_id, s.name);
+    return m;
+  }, [scenarios]);
+
+  const plannedReps = numOr(repsRaw, base?.replicates ?? null);
+  const plannedDuration = numOr(durationRaw, base?.sim.duration_s ?? null);
+  const plannedSeed = numOr(seedRaw, base?.seed ?? null);
+  const total =
+    plannedReps !== null && plannedDuration !== null
+      ? simMinutes(plannedReps, plannedDuration)
+      : null;
+
+  const buildRequest = (): CreateRunRequest => {
+    const overrides: Record<string, unknown> = {};
+    if (plannedDuration !== null && plannedDuration !== base?.sim.duration_s) {
+      overrides.sim = { duration_s: plannedDuration };
+    }
+    if (plannedSeed !== null && plannedSeed !== base?.seed) overrides.seed = plannedSeed;
+    const req: CreateRunRequest = { scenario_id: launchScenario, tier: launchTier };
+    if (plannedReps !== null) req.replicates = plannedReps;
+    if (Object.keys(overrides).length > 0) req.overrides = overrides;
+    return req;
+  };
+
+  const doLaunch = async (): Promise<void> => {
     if (!launchScenario) return;
+    setBusy(true);
     try {
-      const res = await createRun({
-        scenario_id: launchScenario,
-        replicates: launchReps,
-        tier: launchTier,
-      });
+      const res = await createRun(buildRequest());
       toast('ok', `run ${res.run_id} queued`);
+      setConfirming(false);
       await poll();
     } catch (err) {
       toastError(err, 'launch');
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const launch = (): void => {
+    if (!launchScenario) return;
+    if (plannedReps !== null && plannedDuration !== null && needsLaunchConfirm(plannedReps, plannedDuration)) {
+      setConfirming(true);
+      return;
+    }
+    void doLaunch();
   };
 
   return (
     <div className="view">
       <div className="view-title">
         Run Operations{' '}
-        <span className="count mono">{runs ? `${runs.length} runs · 2 s poll` : 'loading…'}</span>
+        <span className="count mono">
+          {authFailed
+            ? 'paused — API key rejected'
+            : runs
+              ? `${runs.length} runs · 2 s poll`
+              : 'loading…'}
+        </span>
       </div>
 
       <div className="panel">
@@ -96,32 +194,74 @@ export function RunsView(): JSX.Element {
             </select>
           </div>
           <div className="field">
+            <label htmlFor="l-dur">Duration (s)</label>
+            <input
+              id="l-dur"
+              className="input"
+              type="number"
+              min={1}
+              step={60}
+              style={{ width: 110 }}
+              placeholder="scenario"
+              value={durationRaw}
+              onChange={(e) => setDurationRaw(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="l-seed">Seed</label>
+            <input
+              id="l-seed"
+              className="input"
+              type="number"
+              style={{ width: 110 }}
+              placeholder="scenario"
+              value={seedRaw}
+              onChange={(e) => setSeedRaw(e.target.value)}
+            />
+          </div>
+          <div className="field">
             <label htmlFor="l-reps">Replicates</label>
             <input
               id="l-reps"
               className="input"
               type="number"
               min={1}
+              max={MAX_REPLICATES}
               style={{ width: 90 }}
-              value={launchReps}
-              onChange={(e) => setLaunchReps(Number(e.target.value))}
+              placeholder="scenario"
+              value={repsRaw}
+              onChange={(e) =>
+                setRepsRaw(
+                  e.target.value === ''
+                    ? ''
+                    : String(clampInt(Number(e.target.value), 1, MAX_REPLICATES, 1)),
+                )
+              }
             />
-            {launchReps < MIN_REPLICATES && (
+            {plannedReps !== null && plannedReps < MIN_REPLICATES && (
               <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
             )}
           </div>
           <div className="field">
             <label>&nbsp;</label>
-            <button className="btn primary" onClick={() => void launch()} disabled={!launchScenario}>
+            <button className="btn primary" onClick={launch} disabled={!launchScenario || busy}>
               Launch run
             </button>
+          </div>
+          <div className="field">
+            <label>&nbsp;</label>
+            <span className="small muted mono">
+              {total === null
+                ? 'scenario defaults'
+                : `${plannedReps} × ${(plannedDuration ?? 0) / 60} min = ${describeSimMinutes(total)}`}
+            </span>
           </div>
         </div>
       </div>
 
       <div className="panel">
         <div className="table-wrap">
-          <table className="data">
+          <table className="data" aria-label="runs">
             <thead>
               <tr>
                 <th>Run</th>
@@ -141,7 +281,9 @@ export function RunsView(): JSX.Element {
                   onClick={() => navigate(`/runs/${r.run_id}`)}
                 >
                   <td style={{ fontWeight: 700 }}>{r.run_id}</td>
-                  <td className="muted">{r.scenario_name ?? r.scenario_id}</td>
+                  <td className="muted" title={r.scenario_id}>
+                    {r.scenario_name ?? scenarioNames.get(r.scenario_id) ?? r.scenario_id}
+                  </td>
                   <td>
                     <TierBadge tier={r.tier} />
                   </td>
@@ -168,6 +310,28 @@ export function RunsView(): JSX.Element {
           </table>
         </div>
       </div>
+
+      {confirming && (
+        <ConfirmDialog
+          title="Launch this run?"
+          busy={busy}
+          facts={[
+            ['Scenario', selected?.name ?? launchScenario],
+            ['Tier', launchTier],
+            ['Replicates', String(plannedReps)],
+            ['Duration', `${((plannedDuration ?? 0) / 60).toFixed(0)} sim-min each`],
+            ['Total', describeSimMinutes(total ?? 0)],
+          ]}
+          confirmLabel="Launch"
+          onConfirm={() => void doLaunch()}
+          onCancel={() => setConfirming(false)}
+        >
+          <p className="small muted">
+            Every replicate runs the full duration. Lower the replicate count or the duration for a
+            smoke test; n ≥ {MIN_REPLICATES} is the reporting standard for headline numbers.
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { checkHealth, isMockEnv, setOfflineFallback } from '../api/client';
-import { usePoll } from '../lib/hooks';
+import { useAuthFailed, usePoll } from '../lib/hooks';
 import { useAppState } from './AppContext';
 import { SettingsDrawer } from './SettingsDrawer';
 import { Toasts } from './toast';
@@ -72,6 +72,7 @@ export function Layout(): JSX.Element {
   const { corridor } = useAppState();
   const clock = useUtcClock();
   const mockEnv = isMockEnv();
+  const authFailed = useAuthFailed();
 
   const poll = useCallback(async () => {
     const ok = await checkHealth();
@@ -85,7 +86,12 @@ export function Layout(): JSX.Element {
   let dotCls = 'dot demo pulse';
   let statusText = 'DEMO DATA';
   if (!mockEnv) {
-    if (healthy === true) {
+    if (authFailed) {
+      // /healthz needs no key, so it is green while every real call 401s —
+      // the rail must report the connection the app actually has.
+      dotCls = 'dot down pulse';
+      statusText = 'KEY REJECTED';
+    } else if (healthy === true) {
       dotCls = 'dot ok';
       statusText = 'API LINK';
     } else if (healthy === false) {
@@ -140,7 +146,20 @@ export function Layout(): JSX.Element {
           <span className="utc-clock">{clock}</span>
         </header>
 
-        {offline && <div className="offline-banner">API offline — showing demo data</div>}
+        {authFailed && (
+          <div className="auth-banner" role="alert">
+            API key rejected (401) — data is not loading and polling is stopped.{' '}
+            <button className="btn sm" onClick={() => setSettingsOpen(true)}>
+              Open Settings
+            </button>
+          </div>
+        )}
+
+        {offline && !authFailed && (
+          <div className="offline-banner">
+            API offline — showing DEMO DATA, not results from this server
+          </div>
+        )}
 
         <main className="content">
           <Outlet />

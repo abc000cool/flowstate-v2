@@ -829,7 +829,7 @@ def main() -> None:
     print(f"-> {out_yaml} (config {config_hash(cfg)}), {demand_path}")
     if cov_rows is not None:
         print("coverage per 15 min:", [round(r["coverage_used"], 3) for r in cov_rows])
-        print(f"-> scenarios/i24_replica_corrected.yaml (config {corrected_hash})")
+        print(f"-> scenarios/i24_replica{suffix}_corrected.yaml (config {corrected_hash})")
     if math.isnan(scale):
         raise SystemExit("geometry fit failed")
 

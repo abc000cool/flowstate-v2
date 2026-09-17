@@ -1,15 +1,24 @@
 /** Sweeps: penetration × compliance grid launcher and a result matrix
  * coloured by metric delta vs the sweep's baseline cell (p=0, no controlled
- * vehicles), CI on hover, click-through to the cell's run detail. */
+ * vehicles), CI on hover, click-through to the cell's run detail.
+ *
+ * A sweep is a cartesian product times a replicate loop, so the launcher
+ * states the arithmetic (cells × replicates = runs) and takes a second,
+ * explicit click before any of it is enqueued. The matrix also flags cells
+ * whose aggregate vector is bit-identical to another cell's: two different
+ * configurations returning the same realisation is a result about the
+ * pipeline, not about compliance, and must not read as a finding. */
 
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createSweep, getSweep, listScenarios } from '../api/client';
 import type { ScenarioSummary, SweepCell, SweepDetail } from '../api/types';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
 import { deltaColor } from '../lib/colormap';
 import { formatDeltaPct, formatNumber } from '../lib/format';
-import { usePoll } from '../lib/hooks';
+import { useAuthFailed, usePoll } from '../lib/hooks';
+import { clampInt, MAX_REPLICATES, MAX_SWEEP_CELLS } from '../lib/limits';
 import { DEFAULT_SWEEP_METRIC, METRIC_DEFS, metricDef, MIN_REPLICATES } from '../lib/metrics';
 
 const PEN_CHOICES = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3];
@@ -17,6 +26,14 @@ const COM_CHOICES = [0.25, 0.5, 0.8, 1.0];
 const CONTROLLERS = ['follower_stopper', 'pi_saturation', 'jad'];
 const SWEEP_METRICS = METRIC_DEFS.filter((d) => d.good !== 'neutral');
 const SWEEP_POLL_MS = 2500;
+/** Exploratory default. Headline numbers need MIN_REPLICATES (§0.6); a grid
+ * at 20 replicates is hundreds of full-length simulations, so the launcher
+ * starts cheap and says what the reporting standard is. */
+const DEFAULT_SWEEP_REPLICATES = 5;
+
+const IDENTICAL_TITLE =
+  'Identical realisation: this cell\u2019s whole aggregate vector matches another cell\u2019s, ' +
+  'so the two runs produced the same numbers despite different configurations.';
 
 interface Tip {
   x: number;
@@ -29,6 +46,51 @@ interface Tip {
 const isBaseline = (c: SweepCell): boolean => c.penetration === 0;
 
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
+
+const cellKey = (c: SweepCell): string =>
+  c.run_id ?? c.config_hash ?? `${c.penetration}:${c.compliance}:${c.controller ?? 'none'}`;
+
+/** The cell's whole aggregate vector as a string — two cells sharing one are
+ * the same realisation, whatever their config hashes say. */
+function aggregateSignature(cell: SweepCell): string | null {
+  const agg = cell.aggregate;
+  if (!agg) return null;
+  const keys = Object.keys(agg).sort();
+  if (keys.length === 0) return null;
+  return keys
+    .map((k) => {
+      const s = agg[k];
+      return `${k}=${s.mean}/${s.lo95}/${s.hi95}/${s.n}`;
+    })
+    .join('|');
+}
+
+/** A cell's configuration identity: the hash the API stamped on it, falling
+ * back to the grid coordinates for a sweep that carries none. */
+const configKey = (c: SweepCell): string =>
+  c.config_hash ?? `${c.penetration}:${c.compliance}:${c.controller ?? 'none'}`;
+
+/** Keys of cells whose aggregates are bit-identical to those of a cell with a
+ * *different* configuration. Cells sharing a config hash are one configuration
+ * (a p=0 row and the baseline hash alike), so identical numbers there are the
+ * expected result, not the pipeline finding the note warns about. */
+function identicalCells(cells: SweepCell[]): Set<string> {
+  const bySig = new Map<string, SweepCell[]>();
+  for (const c of cells) {
+    const sig = aggregateSignature(c);
+    if (sig === null) continue;
+    const list = bySig.get(sig) ?? [];
+    list.push(c);
+    bySig.set(sig, list);
+  }
+  const dup = new Set<string>();
+  for (const list of bySig.values()) {
+    if (list.length < 2) continue;
+    if (new Set(list.map(configKey)).size < 2) continue;
+    for (const c of list) dup.add(cellKey(c));
+  }
+  return dup;
+}
 
 interface MatrixLayout {
   rows: number[];
@@ -65,14 +127,17 @@ export function SweepsView(): JSX.Element {
   const [pens, setPens] = useState<number[]>([0.01, 0.02, 0.05, 0.1, 0.15, 0.2]);
   const [coms, setComs] = useState<number[]>([0.25, 0.5, 0.8, 1.0]);
   const [controller, setController] = useState(CONTROLLERS[0]);
-  const [replicates, setReplicates] = useState(20);
+  const [replicates, setReplicates] = useState(DEFAULT_SWEEP_REPLICATES);
   const [includeBaseline, setIncludeBaseline] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  const [launching, setLaunching] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [sweepId, setSweepId] = useState<string | null>(searchParams.get('sweep'));
   const [sweep, setSweep] = useState<SweepDetail | null>(null);
   const [metricKey, setMetricKey] = useState(DEFAULT_SWEEP_METRIC);
   const [tip, setTip] = useState<Tip | null>(null);
   const navigate = useNavigate();
+  const authFailed = useAuthFailed();
 
   // quiet retry until the scenario list loads (offline-fallback race)
   const scenariosLoaded = scenarios.length > 0;
@@ -86,7 +151,7 @@ export function SweepsView(): JSX.Element {
       /* retried by usePoll */
     }
   }, []);
-  usePoll(loadScenarios, scenariosLoaded ? null : 3000);
+  usePoll(loadScenarios, authFailed || scenariosLoaded ? null : 3000);
 
   // `sweep.status` is the fan-out job's own status (`done` = every child run
   // exists; cells still finish on their own), so polling stops on the cells —
@@ -103,13 +168,27 @@ export function SweepsView(): JSX.Element {
       toastError(err, 'sweep');
     }
   }, [sweepId]);
-  usePoll(pollSweep, sweepId && !settled ? SWEEP_POLL_MS : null);
+  usePoll(pollSweep, sweepId && !settled && !authFailed ? SWEEP_POLL_MS : null);
 
-  const launch = async (): Promise<void> => {
+  const cellCount = pens.length * coms.length;
+  const totalCells = cellCount + (includeBaseline ? 1 : 0);
+  const totalRuns = totalCells * replicates;
+  const scenarioName = scenarios.find((s) => s.scenario_id === scenarioId)?.name ?? scenarioId;
+
+  const launch = (): void => {
     if (!scenarioId || pens.length === 0 || coms.length === 0) {
       toast('error', 'pick a scenario plus at least one penetration and compliance');
       return;
     }
+    if (totalCells > MAX_SWEEP_CELLS) {
+      toast('error', `${totalCells} cells exceeds the API cap of ${MAX_SWEEP_CELLS} — trim the grid`);
+      return;
+    }
+    setConfirming(true);
+  };
+
+  const doLaunch = async (): Promise<void> => {
+    setLaunching(true);
     try {
       // the API contract is the plural `controllers` list (SweepCreateRequest)
       const res = await createSweep({
@@ -123,12 +202,15 @@ export function SweepsView(): JSX.Element {
       setSweep(null);
       setSweepId(res.sweep_id);
       setSearchParams({ sweep: res.sweep_id }, { replace: true });
+      setConfirming(false);
       toast(
         'ok',
-        `sweep ${res.sweep_id} launched · ${pens.length * coms.length} cells${includeBaseline ? ' + baseline' : ''}`,
+        `sweep ${res.sweep_id} launched · ${cellCount} cells${includeBaseline ? ' + baseline' : ''} × ${replicates} reps = ${totalRuns} runs`,
       );
     } catch (err) {
       toastError(err, 'sweep');
+    } finally {
+      setLaunching(false);
     }
   };
 
@@ -138,6 +220,12 @@ export function SweepsView(): JSX.Element {
 
   /* matrix layout */
   const matrix = useMemo(() => (sweep ? layoutMatrix(sweep) : null), [sweep]);
+  const duplicates = useMemo(() => (sweep ? identicalCells(sweep.cells) : new Set<string>()), [sweep]);
+  // cells, not keys: two cells can share a key when the API reuses one run
+  const twinCount = useMemo(
+    () => (sweep ? sweep.cells.filter((c) => duplicates.has(cellKey(c))).length : 0),
+    [sweep, duplicates],
+  );
 
   const def = metricDef(metricKey);
   const baseStat = matrix?.reference.aggregate?.[metricKey];
@@ -168,6 +256,7 @@ export function SweepsView(): JSX.Element {
       );
     }
     const stat = cell.aggregate[metricKey];
+    const twin = duplicates.has(cellKey(cell));
     return (
       <td
         key={key}
@@ -179,7 +268,10 @@ export function SweepsView(): JSX.Element {
         onMouseLeave={() => setTip(null)}
       >
         <div className="d">{stat ? `${formatNumber(stat.mean, def.digits)} ${def.unit}` : '·'}</div>
-        <div className="n">BASELINE · n={stat?.n ?? '—'}</div>
+        <div className="n">
+          BASELINE · n={stat?.n ?? '—'}
+          {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
+        </div>
       </td>
     );
   };
@@ -234,12 +326,15 @@ export function SweepsView(): JSX.Element {
                 className="input"
                 type="number"
                 min={1}
+                max={MAX_REPLICATES}
                 style={{ width: 90 }}
                 value={replicates}
-                onChange={(e) => setReplicates(Number(e.target.value))}
+                onChange={(e) => setReplicates(clampInt(Number(e.target.value), 1, MAX_REPLICATES))}
               />
               {replicates < MIN_REPLICATES && (
-                <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
+                <span className="hint-amber">
+                  exploratory — headline numbers need n ≥ {MIN_REPLICATES}
+                </span>
               )}
             </div>
           </div>
@@ -291,8 +386,11 @@ export function SweepsView(): JSX.Element {
               </label>
             </div>
             <span className="spacer" />
-            <button className="btn primary" onClick={() => void launch()}>
-              Launch {pens.length * coms.length} cells{includeBaseline ? ' + baseline' : ''}
+            <span className="small muted mono">
+              {totalCells} cells × {replicates} reps = {totalRuns} runs
+            </span>
+            <button className="btn primary" onClick={launch}>
+              Launch {cellCount} cells{includeBaseline ? ' + baseline' : ''}…
             </button>
           </div>
         </div>
@@ -306,9 +404,13 @@ export function SweepsView(): JSX.Element {
               <span className="mono" style={{ textTransform: 'none' }}>
                 (p={pct(matrix.reference.penetration)}
                 {matrix.hasBaseline ? '' : `, c=${pct(matrix.reference.compliance)}`}
-                {matrix.reference.controller !== undefined
-                  ? `, controller ${matrix.reference.controller ?? 'none'}`
-                  : ''}
+                {/* a p=0 cell has no controlled vehicles, so naming the sweep's
+                    controller there would credit a controller that never acted */}
+                {isBaseline(matrix.reference)
+                  ? ', no controlled vehicles'
+                  : matrix.reference.controller !== undefined
+                    ? `, controller ${matrix.reference.controller ?? 'none'}`
+                    : ''}
                 {baseStat ? `, ${def.label} ${formatNumber(baseStat.mean, def.digits)} ${def.unit}` : ''})
               </span>
             </span>
@@ -372,6 +474,7 @@ export function SweepsView(): JSX.Element {
                         );
                       }
                       const delta = cellDelta(cell);
+                      const twin = duplicates.has(cellKey(cell));
                       return (
                         <td
                           key={c}
@@ -384,7 +487,10 @@ export function SweepsView(): JSX.Element {
                           onMouseLeave={() => setTip(null)}
                         >
                           <div className="d">{delta === null ? '·' : formatDeltaPct(delta)}</div>
-                          <div className="n">n={cell.aggregate[metricKey]?.n ?? '—'}</div>
+                          <div className="n">
+                            n={cell.aggregate[metricKey]?.n ?? '—'}
+                            {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
+                          </div>
                         </td>
                       );
                     })}
@@ -403,6 +509,13 @@ export function SweepsView(): JSX.Element {
                 no p=0 baseline cell in this sweep — deltas are relative to its lowest p·c cell
                 (p={pct(matrix.reference.penetration)}, c={pct(matrix.reference.compliance)}), not to
                 an uncontrolled run
+              </p>
+            )}
+            {twinCount > 0 && (
+              <p className="hint-amber" style={{ marginTop: 12 }}>
+                ≡ {twinCount} cells share an identical aggregate vector with another cell:
+                different configurations returned the same realisation. Read those differences as
+                zero, not as a compliance or penetration effect.
               </p>
             )}
             <p className="small muted" style={{ marginTop: 12 }}>
@@ -441,6 +554,30 @@ export function SweepsView(): JSX.Element {
       )}
 
       {!sweep && sweepId && <div className="empty">collecting sweep cells…</div>}
+
+      {confirming && (
+        <ConfirmDialog
+          title="Launch this sweep?"
+          busy={launching}
+          confirmLabel={`Launch ${totalRuns} runs`}
+          onConfirm={() => void doLaunch()}
+          onCancel={() => setConfirming(false)}
+          facts={[
+            ['Scenario', scenarioName],
+            ['Controller', controller],
+            ['Grid', `${pens.length} penetrations × ${coms.length} compliances`],
+            ['Cells', `${cellCount}${includeBaseline ? ' + 1 baseline' : ''} = ${totalCells}`],
+            ['Replicates / cell', String(replicates)],
+            ['Total runs', String(totalRuns)],
+          ]}
+        >
+          <p className="small muted">
+            Every run is a full-length simulation of the scenario. {replicates} replicates per cell
+            is {replicates < MIN_REPLICATES ? 'exploratory' : 'at'} the reporting standard of n ≥{' '}
+            {MIN_REPLICATES}, which headline numbers require.
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

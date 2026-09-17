@@ -3,7 +3,13 @@
  * Base URL and key live in localStorage (Settings drawer) with dev defaults.
  * Mock mode: VITE_MOCK=1 forces the in-memory backend; independently, when
  * /healthz is unreachable the app falls back to demo data and shows a banner
- * (see `setOfflineFallback`, driven by the Layout health poll). */
+ * (see `setOfflineFallback`, driven by the Layout health poll).
+ *
+ * Connection state (offline fallback + rejected API key) is a tiny observable
+ * store: `/healthz` is auth-exempt, so a wrong key leaves the health probe
+ * green while every authenticated call 401s. Views subscribe through
+ * `lib/hooks` and pause their polls while `isAuthFailed()`, instead of
+ * retrying a rejected key forever behind a green status dot. */
 
 import * as mock from '../mocks/mockApi';
 import type {
@@ -58,12 +64,30 @@ export function saveSettings(s: ApiSettings): void {
   } catch {
     /* storage unavailable — session-only settings */
   }
+  // a re-typed key must be retried, not blocked by the previous rejection
+  clearAuthFailure();
 }
 
-/* ------------------------------ mock mode ----------------------------- */
+/* -------------------- mock mode + connection state -------------------- */
 
 const MOCK_ENV: boolean = `${import.meta.env.VITE_MOCK ?? ''}` === '1';
 let offlineFallback = false;
+let authFailed = false;
+
+type ConnectionListener = () => void;
+const connectionListeners = new Set<ConnectionListener>();
+
+function notifyConnection(): void {
+  for (const l of [...connectionListeners]) l();
+}
+
+/** Subscribe to connection-state changes (offline fallback, auth failure). */
+export function subscribeConnection(l: ConnectionListener): () => void {
+  connectionListeners.add(l);
+  return () => {
+    connectionListeners.delete(l);
+  };
+}
 
 /** True when serving demo data (env-forced or offline auto-fallback). */
 export function isMockActive(): boolean {
@@ -79,7 +103,26 @@ export function isOfflineFallback(): boolean {
 }
 
 export function setOfflineFallback(v: boolean): void {
+  if (offlineFallback === v) return;
   offlineFallback = v;
+  notifyConnection();
+}
+
+/** True once the API rejected the configured key (401/403). Cleared by a
+ * successful authenticated call or by saving new settings. */
+export function isAuthFailed(): boolean {
+  return authFailed;
+}
+
+function setAuthFailed(v: boolean): void {
+  if (authFailed === v) return;
+  authFailed = v;
+  notifyConnection();
+}
+
+/** Clear the rejected-key state (a new key deserves a fresh attempt). */
+export function clearAuthFailure(): void {
+  setAuthFailed(false);
 }
 
 /* ------------------------------- fetch -------------------------------- */
@@ -99,6 +142,61 @@ interface RequestInitLite {
   body?: unknown;
 }
 
+/* --------------------- server error-detail rendering ------------------ */
+
+/** `["body", "sim", "duration_s"]` -> `sim.duration_s` (the `body` prefix is
+ * FastAPI plumbing, not something a user can act on). */
+function locLabel(loc: unknown): string {
+  if (!Array.isArray(loc)) return '';
+  return loc
+    .filter((p) => p !== 'body')
+    .map((p) => String(p))
+    .join('.');
+}
+
+/** One pydantic error entry -> `field: message`. */
+function formatErrorEntry(e: unknown): string {
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object') {
+    const o = e as { loc?: unknown; msg?: unknown };
+    const msg = typeof o.msg === 'string' ? o.msg : JSON.stringify(e);
+    const field = locLabel(o.loc);
+    return field ? `${field}: ${msg}` : msg;
+  }
+  return String(e);
+}
+
+/** Render a FastAPI `detail` for humans instead of dumping raw JSON.
+ *
+ * Three shapes reach the dashboard: a plain string, the pydantic error list
+ * (`[{type, loc, msg, input}]` — `POST /runs`, `POST /scenarios`), and the
+ * sweep cell wrapper `{cell: {...}, errors: [...]}` that `POST /sweeps`
+ * raises when one grid cell fails validation (api/main.py). */
+export function formatDetail(d: unknown): string {
+  if (d === null || d === undefined) return '';
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) return d.map(formatErrorEntry).join('; ');
+  if (typeof d === 'object') {
+    const o = d as { cell?: unknown; errors?: unknown; msg?: unknown; detail?: unknown };
+    if (Array.isArray(o.errors) || typeof o.errors === 'string') {
+      const errs = Array.isArray(o.errors)
+        ? o.errors.map(formatErrorEntry).join('; ')
+        : String(o.errors);
+      const cell = o.cell as Record<string, unknown> | undefined;
+      if (cell && typeof cell === 'object') {
+        const where = Object.entries(cell)
+          .map(([k, v]) => `${k}=${v === null ? 'none' : String(v)}`)
+          .join(', ');
+        return `cell (${where}) — ${errs}`;
+      }
+      return errs;
+    }
+    if (typeof o.msg === 'string') return formatErrorEntry(d);
+    return JSON.stringify(d);
+  }
+  return String(d);
+}
+
 async function rawFetch(path: string, init?: RequestInitLite): Promise<Response> {
   const { baseUrl, apiKey } = getSettings();
   const headers: Record<string, string> = { 'X-API-Key': apiKey };
@@ -113,18 +211,21 @@ async function rawFetch(path: string, init?: RequestInitLite): Promise<Response>
     body,
   });
   if (!res.ok) {
+    // /healthz is auth-exempt, so a rejected key shows up only here: latch it
+    // so the shell can say so and every poll can stand down.
+    if (res.status === 401 || res.status === 403) setAuthFailed(true);
     let detail = '';
     try {
       const j: unknown = await res.json();
       if (j && typeof j === 'object' && 'detail' in j) {
-        const d = (j as { detail: unknown }).detail;
-        detail = typeof d === 'string' ? d : JSON.stringify(d);
+        detail = formatDetail((j as { detail: unknown }).detail);
       }
     } catch {
       /* non-JSON error body */
     }
     throw new ApiError(res.status, detail || `${res.status} ${res.statusText}`);
   }
+  setAuthFailed(false);
   return res;
 }
 
@@ -136,6 +237,11 @@ async function request<T>(path: string, init?: RequestInitLite): Promise<T> {
 async function requestText(path: string, init?: RequestInitLite): Promise<string> {
   const res = await rawFetch(path, init);
   return res.text();
+}
+
+async function requestBlob(path: string, init?: RequestInitLite): Promise<Blob> {
+  const res = await rawFetch(path, init);
+  return res.blob();
 }
 
 /** /healthz lives at the server root, not under /api/v1. */
@@ -239,4 +345,19 @@ export function getReport(reportId: string): Promise<ReportOut> {
 export function getReportMarkdown(reportId: string): Promise<string> {
   if (isMockActive()) return mock.mockGetReportMarkdown(reportId);
   return requestText(`/reports/${encodeURIComponent(reportId)}/markdown`);
+}
+
+/** `GET /reports/{id}/archive` — the report bundle (markdown + figure PNGs)
+ * as a zip. The markdown alone links figures it does not carry, so this is
+ * the download that yields a readable report. */
+export function getReportArchive(reportId: string): Promise<Blob> {
+  if (isMockActive()) return mock.mockGetReportArchive(reportId);
+  return requestBlob(`/reports/${encodeURIComponent(reportId)}/archive`);
+}
+
+/** `GET /reports/{id}/pdf` — the optional PDF rendering; the API answers 404
+ * when the report was generated without one (`validation[pdf]` extra). */
+export function getReportPdf(reportId: string): Promise<Blob> {
+  if (isMockActive()) return mock.mockGetReportPdf(reportId);
+  return requestBlob(`/reports/${encodeURIComponent(reportId)}/pdf`);
 }
