@@ -358,5 +358,5 @@ and survive any slip in the critical path.
   full FHWA sequence on the flow-share entry lanes (`--entry-lanes
   observed_flow`, a cloud round of about five dollars); merge candidates 2
   to 5 of docs/MERGE_ROUND6_PLAN.md.
-- Website: merge branch `results-note` of the site repository once Vercel's
-  daily build limit has reset.
+- Website: the Results page's updated-record card is live (site commit
+  82c4aab, deployed 2026-09-17).
