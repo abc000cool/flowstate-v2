@@ -127,6 +127,47 @@ if echo " $STAGES " | grep -q " merge_entryflow "; then
     --procs "$PROCS" --out artifacts/i24_merge_experiment_entryflow.json || exit 1
 fi
 
+# 0b. Round of 2026-09-17 (opt-in stages): the "flow" scenario family (corrected map, ramp-origin
+#     eagerness 1, entry lane FLOW shares, the canonical lane-change merge) through the FHWA
+#     sequence and its 20-seed batteries, and a re-run of the canonical arms so the published
+#     metrics (throughput, travel time, sigma_v, fuel, waves) carry the corrected definitions
+#     (warm-up discarded, median travel-time span; CHANGELOG 2026-09-17). Criteria rows must
+#     reproduce to the digit (same config hashes, same seeds).
+if echo " $STAGES " | grep -q " build_flow "; then
+  stage build_flow $RUN scripts/i24_build_replica.py --suffix flow --osm corrected \
+    --lc-strategic 5 --lc-strategic-ramp 1 --entry-lanes observed_flow || exit 1
+fi
+if echo " $STAGES " | grep -q " demand_flow "; then
+  stage demand_flow $RUN scripts/i24_fit_demand_scale.py --base corrected \
+    --base-yaml scenarios/i24_replica_flow_corrected.yaml --procs "$PROCS" --write-scenario \
+    --out artifacts/demand_scale_i24_flow.json --scenario-out scenarios/i24_replica_flow_speedcal.yaml \
+    --name i24_replica_flow_speedcal || exit 1
+fi
+if echo " $STAGES " | grep -q " ramps_flow "; then
+  stage ramps_flow $RUN scripts/i24_fit_boundary_ramps.py --base-yaml scenarios/i24_replica_flow_speedcal.yaml \
+    --procs "$PROCS" --write-scenario --out artifacts/i24_boundary_ramps_fit_flow.json \
+    --scenario-out scenarios/i24_replica_flow_speedcal_ramps.yaml --name i24_replica_flow_speedcal_ramps || exit 1
+fi
+if echo " $STAGES " | grep -q " battery_flow "; then
+  # the three congested arms of the family (no tracked, no heavy: both were negative in every family)
+  stage battery_flow bash -c "for arm in corrected speedcal ramps; do $RUN scripts/i24_validate.py --family flow --arms \$arm --replicates $REPS --procs $PROCS --analysis-procs 8 --ring-seeds $RING || exit 1; done" || exit 1
+  stage prune_flow bash -c 'for a in runs/i24_validation_flow/*/; do for h in "$a"*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; done; du -sh runs/i24_validation_flow' || true
+fi
+if echo " $STAGES " | grep -q " battery_canonical "; then
+  # the five canonical arms, one at a time (the archive grows after each), then pruned
+  stage battery_canonical bash -c "for arm in tracked corrected speedcal ramps speedcal_heavy; do $RUN scripts/i24_validate.py --arms \$arm --replicates $REPS --procs $PROCS --analysis-procs 8 --ring-seeds $RING || exit 1; done" || exit 1
+  stage prune_canonical bash -c 'for a in runs/i24_validation/*/; do for h in "$a"*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; done; du -sh runs/i24_validation' || true
+fi
+if echo " $STAGES " | grep -q " rescore_0917 "; then
+  stage rescore_0917 bash -c "$RUN scripts/i24_validate.py --family flow --criteria-only --arms all --ring-seeds 0; $RUN scripts/i24_validate.py --criteria-only --arms all --ring-seeds 0; $RUN scripts/i24_validate.py --criteria-only --arms speedcal_heavy --ring-seeds 0" || true
+fi
+
+if echo " $STAGES " | grep -q " battery_us101 "; then
+  # US-101 replica battery under the corrected metric definitions (needs data/ngsim on the VM)
+  stage battery_us101 bash -c "M3_PROCS=$PROCS $RUN scripts/m3_us101_validate.py --arms with_boundary calibrated --replicates $REPS --artifact-out artifacts/us101_validation_calibrated.json" || exit 1
+  stage prune_us101 bash -c 'for h in runs/m3_us101/*/*/; do [ -d "$h" ] || continue; first=$(ls -d "$h"*/ 2>/dev/null | sort | head -1); for r in "$h"*/; do [ "$r" = "$first" ] && continue; rm -f "$r/trajectories.parquet"; done; done; du -sh runs/m3_us101' || true
+fi
+
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
 stage jm_sweep $RUN scripts/i24_merge_experiment.py \
   --variants geometry_corrected_ramplc1_entrylanes_zipper_jm0.5 \

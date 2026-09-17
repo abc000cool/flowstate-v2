@@ -16,14 +16,17 @@ cp -R "$TMP"/logs/. logs/pipeline_vm/ 2>/dev/null || true
 # artifacts and scenarios written by the VM (new families only; the canonical ones are untouched
 # except the heavy arm's artifact and the cap sweep)
 for f in "$TMP"/artifacts/*.json; do b=$(basename "$f"); case "$b" in
-  i24_validation_zip_*|i24_validation_speedcal_heavy.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|demand_scale_i24_zip.json|i24_boundary_ramps_fit_zip.json|i24_replica_inputs_zip.json|demand_i24_zip.json|i24_cap_sweep_summary.json)
+  i24_validation_zip_*|i24_validation_flow_*|i24_validation_tracked.json|i24_validation_corrected.json|i24_validation_speedcal.json|i24_validation_ramps.json|i24_validation_speedcal_heavy.json|us101_validation_calibrated.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|i24_merge_experiment_entryflow.json|demand_scale_i24_zip.json|demand_scale_i24_flow.json|i24_boundary_ramps_fit_zip.json|i24_boundary_ramps_fit_flow.json|i24_replica_inputs_zip.json|i24_replica_inputs_flow.json|demand_i24_zip.json|demand_i24_flow.json|i24_cap_sweep_summary.json)
     cp "$f" artifacts/"$b"; echo "artifact $b" ;;
 esac; done
-for f in "$TMP"/scenarios/i24_replica_zip*.yaml; do [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"; done
+for f in "$TMP"/scenarios/i24_replica_zip*.yaml "$TMP"/scenarios/i24_replica_flow*.yaml; do [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"; done
 # first-seed replicates (figures / lane profiles)
 mkdir -p runs
 [ -d "$TMP/runs/i24_validation_zip" ] && rsync -a "$TMP/runs/i24_validation_zip/" runs/i24_validation_zip/ && echo "runs: i24_validation_zip"
 [ -d "$TMP/runs/i24_validation/speedcal_heavy" ] && rsync -a "$TMP/runs/i24_validation/speedcal_heavy/" runs/i24_validation/speedcal_heavy/ && echo "runs: speedcal_heavy"
+[ -d "$TMP/runs/i24_validation_flow" ] && rsync -a "$TMP/runs/i24_validation_flow/" runs/i24_validation_flow/ && echo "runs: i24_validation_flow"
+for arm in tracked corrected speedcal ramps; do [ -d "$TMP/runs/i24_validation/$arm" ] && rsync -a "$TMP/runs/i24_validation/$arm/" "runs/i24_validation/$arm/" && echo "runs: $arm"; done
+[ -d "$TMP/runs/m3_us101" ] && rsync -a "$TMP/runs/m3_us101/" runs/m3_us101/ && echo "runs: m3_us101"
 rm -rf "$TMP"
 echo "== re-score"
 uv run --no-sync python scripts/i24_validate.py --family zip --criteria-only --arms all --ring-seeds 0 2>&1 | grep -v pyarrow | grep "^\[" -A7 | head -60

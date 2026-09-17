@@ -69,6 +69,8 @@ tar cf "$DATA" data/i24motion/processed/i24_wb_20221130 data/i24motion/processed
   data/i24motion/processed/i24_wb_episodes_heavy.pkl data/i24motion/processed/i24_wb_episode_summary.json \
   data/i24motion/processed/i24_wb_episode_summary_heavy.json data/i24motion/auxiliary_information \
   runs/i24_validation/observed_i24.json
+# the US-101 battery (stage battery_us101) reads data/ngsim (~170 MB); shipped when present
+[ -d data/ngsim ] && tar rf "$DATA" data/ngsim
 ls -la "$DATA" | awk '{print "   ", $5, "bytes"}'
 # The repository is private: the code goes up as a git-archive snapshot of HEAD
 # (no clone, no token on the VM); scripts/gcp/vm_setup.sh installs the system
