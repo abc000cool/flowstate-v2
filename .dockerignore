@@ -1,7 +1,11 @@
 # Never ship local state, caches, or dependency trees into the build context.
 .git
 .venv
-data/
+# Local datasets (PeMS pulls, I-24 MOTION payloads) stay out; the tracked OSM
+# extracts under data/osm/ are inputs the shipped presets reference by path,
+# so they must reach the build context — see the COPY in the Dockerfile.
+data/*
+!data/osm/
 runs/
 node_modules/
 frontend/node_modules/

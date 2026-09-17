@@ -117,7 +117,8 @@ defect of §0.5 (k).
 
 **Is the service safe to put in front of a pilot customer?**
 Safer than it was: scenario file paths are confined to allowed roots, errors
-carry no server paths or file contents, bodies and uploads are capped, request
+carry no traceback frames, server source paths, file contents or pydantic
+input values, bodies and uploads are capped, request
 models refuse unknown fields, jobs survive a dead worker or Redis through
 reconciliation, and the runbook (docs/DEPLOYMENT.md) says how to back up,
 rotate the key and recover a run. Still a single shared API key over plain

@@ -49,6 +49,13 @@ directory, `FLOWSTATE_DATA_DIR`, or the repository's `artifacts/` and `data/`;
 anything else is refused with 422 (`path_outside_roots`). Put customer OSM
 extracts and calibration artifacts under `FLOWSTATE_DATA_DIR`.
 
+The image ships the repository's `artifacts/` and `data/osm/` at `/app`, so
+every preset in the gallery runs out of the box — 14 of the 17 name an
+`artifacts/...` calibration and 12 also name a `data/osm/...` extract, and
+containment is a pure path test, so a missing file is accepted at
+`POST /scenarios` and only fails in the worker. The rest of `data/` (local
+PeMS/I-24 payloads) is excluded from the build context.
+
 ## 3. First start
 
 ```sh
@@ -132,11 +139,46 @@ registry can be re-run with `rq requeue` against the same Redis
 (`docker compose exec worker rq requeue --url redis://redis:6379/0 --queue
 flowstate <row id>`), which starts it from a clean row. A sweep
 re-run dispatches only the cells still `queued`; it never creates duplicate
-child runs.
+child runs. A report re-run clears its staging tree first, so it neither
+trips over the previous attempt's hard links nor folds that attempt's
+leftovers into the new bundle.
+
+Reconciliation confirms liveness with a fresh read of the started-job
+registry before it fails a row, so a cell a worker picks up *while* another
+worker's maintenance pass is running is left alone rather than marked "worker
+died" mid-simulation.
 
 **Reading failures.** `GET /runs/{id}`, `/sweeps/{id}`, `/reports/{id}` carry
-`error` as an exception chain (type and message per link, no frames, no
-server paths); the worker log has the traceback.
+`error` as an exception chain — one `Type: message` line per cause, with no
+traceback frames, no server *source* paths, no file contents and no pydantic
+input values; the worker log has the traceback. A path under the results root
+(or one the caller itself supplied) can appear in a message, exactly as it
+does in `report_path` and `data_path` on the success path: the path-confinement
+diagnostic names the refused path and the roots it was checked against, which
+is the whole value of that message. Calibration failures go further and
+withhold any message raised outside FlowState's own packages, since a parse
+error can quote the uploaded file; the common bad-upload shapes (empty,
+header-only, non-numeric column) are diagnosed by the job itself and name the
+column and file row, never the cell value.
+
+**What an API report is.** `POST /reports` takes a `profile` naming the
+acceptance-criteria thresholds to score against (`GET /api/v1/criteria` lists
+them with their `source`: the FlowState default, the 2004 FHWA toolbox table,
+ODOT's 2011 VISSIM protocol, TxDOT TSAP ch. 13), and the chosen profile is
+recorded on the report row and printed in the bundle. Only the thresholds come
+from the request. The measurements are computed from the staged run artifacts,
+and the criteria whose evidence is observed field data the service does not
+hold — `link_flows_geh` (observed link counts), `speeds_rmspe` (an observed
+segment-speed field), `ring_emergence` / `ring_dampening` (the two benchmark
+runs) and `sensitivity_grid` (the realized penetration × compliance cells) —
+come back **not evaluated**; an unevaluated row counts as failing, by the rule
+in `validation.criteria`. Numbers typed into a request body would be exactly
+the free-text report values CLAUDE.md §7.4 forbids, so the API does not accept
+them. Until those inputs can be supplied from observed data, an API report is
+a run-set metrics bundle with the profile's thresholds stated — not a
+signed-off calibration/validation acceptance deliverable. The flagship
+corridor reports under `docs/reports/` are produced by scripts that compute
+those inputs from observed data.
 
 **Request ids.** Every response carries `X-Request-Id` — the client's own
 value when it is at most 64 characters of `[A-Za-z0-9._-]`, otherwise a uuid4

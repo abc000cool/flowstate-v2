@@ -188,3 +188,119 @@ def test_idm_calibration_bad_columns_fails_honestly(client: TestClient) -> None:
     body = r.json()
     assert body["status"] == "failed"
     assert body["error"] is not None and "missing columns" in body["error"]
+
+
+# ---------------------------------------------------------------------------
+# Bad uploads must say what is wrong with the file
+# ---------------------------------------------------------------------------
+#
+# ``api.jobs._calibration_error_text`` withholds the message of any exception
+# raised outside FlowState's packages, because a pandas/numpy parse message can
+# quote the file's contents. The commonest bad uploads all used to raise out
+# there, so the customer saw "IndexError raised in
+# numpy.lib._function_base_impl" and could not tell an empty file from a
+# mis-delimited or mis-typed one. Each shape is now diagnosed in the job and
+# re-raised as a message this package authored — which therefore survives the
+# filter — naming the column and the file row but never the cell value.
+
+
+def _fd_failure(client: TestClient, payload: bytes, name: str = "loops.csv") -> str:
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": (name, payload, "text/csv")},
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["status"] == "failed"
+    assert body["error"]
+    # The chain may still carry a withheld third-party cause; what matters is
+    # that its *first* line is a diagnosis the customer can act on.
+    first = str(body["error"]).splitlines()[0]
+    assert "message withheld" not in first, body["error"]
+    return first
+
+
+def _idm_failure(client: TestClient, payload: bytes, name: str = "pairs.csv") -> str:
+    r = client.post(
+        "/api/v1/calibrations/idm",
+        files={"file": (name, payload, "text/csv")},
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["status"] == "failed"
+    assert body["error"]
+    # The chain may still carry a withheld third-party cause; what matters is
+    # that its *first* line is a diagnosis the customer can act on.
+    first = str(body["error"]).splitlines()[0]
+    assert "message withheld" not in first, body["error"]
+    return first
+
+
+def test_empty_upload_says_the_file_is_unreadable(client: TestClient) -> None:
+    for error in (_fd_failure(client, b""), _idm_failure(client, b"")):
+        assert "not a readable CSV" in error
+        assert "empty, truncated" in error
+
+
+def test_header_only_upload_says_there_are_no_rows(client: TestClient) -> None:
+    fd = _fd_failure(client, b"density_veh_m,flow_veh_s\n")
+    assert "0 data rows" in fd and "loops.csv" in fd
+    idm = _idm_failure(client, b"t,veh_id,lane,leader_id,gap_m,v,v_leader\n")
+    assert "0 data rows" in idm and "pairs.csv" in idm
+
+
+def test_thousands_separators_name_the_column_and_row_not_the_value(client: TestClient) -> None:
+    """A locale-formatted export is the customer's most likely mistake."""
+    payload = b'density_veh_m,flow_veh_s\n0.01,0.3\n0.02,"1,234"\n'
+    error = _fd_failure(client, payload)
+    assert "'flow_veh_s' is not numeric" in error
+    assert "file row 3" in error  # header + two data rows
+    assert "thousands separators" in error
+    assert "1,234" not in error  # the value itself is never echoed
+
+
+def test_all_blank_numeric_column_is_named(client: TestClient) -> None:
+    """An all-NA column has rows, so a row-count check alone would miss it."""
+    error = _fd_failure(client, b"density_veh_m,flow_veh_s\n,\n,\n,\n")
+    assert "'density_veh_m'" in error
+    assert "no numeric value" in error
+
+
+def test_an_unused_occupancy_column_is_not_type_checked(client: TestClient) -> None:
+    """``occupancy`` reaches the fit only without an explicit density cut.
+
+    Type-checking it regardless would refuse a perfectly fittable file over a
+    column ``calibration.fd_fit`` never reads.
+    """
+    frame = pd.read_csv(io.BytesIO(_fd_csv_bytes()))
+    # A locale decimal comma: a real string, not one of pandas' NA tokens.
+    frame["occupancy"] = "0,5"  # junk, and with _FD_PARAMS the fit ignores it
+    buf = io.BytesIO()
+    frame.to_csv(buf, index=False)
+
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": ("loops.csv", buf.getvalue(), "text/csv")},
+        data={"params": json.dumps(_FD_PARAMS), "source": "junk occupancy column"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["status"] == "done", body["error"]
+
+    # Without the density cut the column does drive the split, so it is checked.
+    buf2 = io.BytesIO()
+    frame.to_csv(buf2, index=False)
+    r = client.post(
+        "/api/v1/calibrations/fd",
+        files={"file": ("loops.csv", buf2.getvalue(), "text/csv")},
+        data={"params": json.dumps({"seed": 0, "n_bootstrap": 0}), "source": "junk occupancy"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 202
+    failed = r.json()
+    assert failed["status"] == "failed"
+    assert "'occupancy' is not numeric" in failed["error"]
+    assert "0,5" not in failed["error"]  # the value itself is never echoed

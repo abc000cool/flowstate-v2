@@ -30,6 +30,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from api.schemas import DEFAULT_CRITERIA_PROFILE
+
 #: Job/record lifecycle states.
 STATUSES = ("queued", "running", "done", "failed")
 
@@ -112,6 +114,7 @@ CREATE TABLE IF NOT EXISTS reports (
     run_ids_json  TEXT NOT NULL,
     title         TEXT NOT NULL,
     status        TEXT NOT NULL,
+    profile       TEXT NOT NULL DEFAULT 'fhwa_default',
     report_dir    TEXT,
     report_path   TEXT,
     error         TEXT,
@@ -119,6 +122,14 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at    TEXT NOT NULL
 );
 """
+
+#: Columns added to an existing table after it first shipped. ``CREATE TABLE
+#: IF NOT EXISTS`` leaves an older database's table untouched, so every added
+#: column needs its own ``ALTER TABLE`` guarded by the current column list —
+#: a store file written by an earlier version must keep opening.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("reports", "profile", "TEXT NOT NULL DEFAULT 'fhwa_default'"),
+)
 
 
 def now_iso() -> str:
@@ -142,6 +153,18 @@ def kind_of_id(row_id: str) -> str | None:
     return _KIND_OF_PREFIX.get(prefix) if sep else None
 
 
+def _add_missing_columns(con: sqlite3.Connection) -> None:
+    """Apply :data:`_ADDED_COLUMNS` to a database written by an older version.
+
+    Idempotent: each column is added only when ``PRAGMA table_info`` does not
+    already list it, so opening a current database is a read-only check.
+    """
+    for table, column, decl in _ADDED_COLUMNS:
+        existing = {str(row["name"]) for row in con.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def _table(kind: str) -> str:
     try:
         return _TABLES[kind]
@@ -157,6 +180,7 @@ class Store:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as con:
             con.executescript(_SCHEMA)
+            _add_missing_columns(con)
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -363,13 +387,24 @@ class Store:
 
     # -- reports -----------------------------------------------------------
 
-    def create_report(self, run_ids: list[str], title: str) -> str:
+    def create_report(
+        self, run_ids: list[str], title: str, profile: str = DEFAULT_CRITERIA_PROFILE
+    ) -> str:
+        """Insert a queued report row.
+
+        Args:
+            run_ids: The run set the report covers.
+            title: Report title.
+            profile: ``validation.criteria`` profile name the report is
+                scored against (validated at the API boundary, recorded here
+                so the report's header and ``ReportOut.profile`` agree).
+        """
         pid = new_id("rpt")
         with self._conn() as con:
             con.execute(
-                "INSERT INTO reports (id, run_ids_json, title, status, created_at)"
-                " VALUES (?, ?, ?, 'queued', ?)",
-                (pid, json.dumps(run_ids), title, now_iso()),
+                "INSERT INTO reports (id, run_ids_json, title, status, profile, created_at)"
+                " VALUES (?, ?, ?, 'queued', ?, ?)",
+                (pid, json.dumps(run_ids), title, profile, now_iso()),
             )
         return pid
 

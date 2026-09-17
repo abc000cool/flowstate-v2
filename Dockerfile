@@ -39,8 +39,20 @@ COPY packages/ packages/
 RUN uv sync --all-packages --no-dev --frozen --all-extras
 
 # Repo data the service reads at runtime: preset scenarios (GET
-# /api/v1/scenarios/preset) and the contract docs.
+# /api/v1/scenarios/preset), the calibration artifacts and OSM extracts those
+# presets reference, and the contract docs.
+#
+# artifacts/ and data/osm/ are not optional extras: 14 of the 17 shipped
+# scenarios name `fleet.idm_calibration: artifacts/...` and 12 of them also
+# name `network.osm_file: data/osm/...`. Both resolve against the repo root,
+# which is /app in this image (uv installs the workspace editable), so a
+# preset posted from the dashboard is accepted (path containment is a pure
+# path test) and then fails in the worker with FileNotFoundError if the files
+# are absent. .dockerignore keeps the rest of data/ (local PeMS / I-24
+# payloads) out of the build context.
 COPY scenarios/ scenarios/
+COPY artifacts/ artifacts/
+COPY data/osm/ data/osm/
 COPY docs/ docs/
 COPY CLAUDE.md ./
 

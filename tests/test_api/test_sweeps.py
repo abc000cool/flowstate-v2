@@ -90,8 +90,12 @@ def test_sweep_unknown_scenario_404(client: TestClient) -> None:
 # The dashboard colours every cell "Δ vs baseline"; without a penetration-0
 # cell in the sweep it used to fall back to the smallest *controlled* cell, so
 # every improvement was a difference between two controlled configurations.
-# ``include_baseline`` appends one no-AV reference cell per distinct
-# controller (after the grid, counted in the cell ceiling).
+# ``include_baseline`` appends exactly one uncontrolled reference cell after
+# the grid (counted in the cell ceiling) — never one per controller: at
+# penetration 0 the controller never acts, so k controllers meant k identical
+# simulations, and ``validation.report`` then saw k groups labelled
+# ``baseline`` and dropped the controller-minus-baseline contrast table and
+# the seed-matched contour pairs for want of a single reference group.
 
 
 def _sweep(client: TestClient, scenario_id: str, **body: object) -> dict:
@@ -130,7 +134,7 @@ def test_include_baseline_appends_a_no_av_cell(client: TestClient) -> None:
         (0.05, 0.5, "follower_stopper"),
         (0.05, 1.0, "follower_stopper"),
     ]
-    assert combos[4] == (0.0, 1.0, "follower_stopper")  # appended after the grid
+    assert combos[4] == (0.0, 1.0, None)  # appended after the grid, uncontrolled
     baseline = body["cells"][4]
     assert baseline["status"] == "done"
     assert baseline["aggregate"]["throughput_veh_h"]["mean"] is not None
@@ -143,25 +147,73 @@ def test_include_baseline_appends_a_no_av_cell(client: TestClient) -> None:
     assert child["seeded"] is False
 
 
-def test_include_baseline_is_one_cell_per_distinct_controller(client: TestClient) -> None:
+def test_include_baseline_is_one_uncontrolled_cell_whatever_the_controllers(
+    client: TestClient,
+) -> None:
+    """Two controllers, one baseline — not one identical baseline each.
+
+    The per-controller variant ran k bit-identical no-AV simulations (the
+    controller is never dispatched at penetration 0) under k different config
+    hashes, and ``validation.report`` needs exactly *one* group labelled
+    ``baseline`` to emit the controller-minus-baseline contrast at all.
+    """
     scenario = post_scenario(client, macro_corridor_config())
     body = _sweep(
         client,
         scenario["scenario_id"],
         penetrations=[0.05],
         compliances=[1.0],
-        controllers=["follower_stopper", None, "follower_stopper"],
+        controllers=["follower_stopper", "pi_saturation"],
         include_baseline=True,
     )
     assert body["status"] == "done", body["error"]
     combos = [(c["penetration"], c["compliance"], c["controller"]) for c in body["cells"]]
     assert combos == [
         (0.05, 1.0, "follower_stopper"),
-        (0.05, 1.0, None),
-        (0.05, 1.0, "follower_stopper"),
-        (0.0, 1.0, "follower_stopper"),
+        (0.05, 1.0, "pi_saturation"),
         (0.0, 1.0, None),
     ]
+    assert body["runs_total"] == 3
+    # One uncontrolled config hash, so the report sees one baseline group.
+    assert len({c["config_hash"] for c in body["cells"]}) == 3
+
+
+def test_include_baseline_is_skipped_when_a_controller_is_null(client: TestClient) -> None:
+    """A ``null`` controller cell is already uncontrolled at any penetration.
+
+    ``validation.report.group_label`` labels *any* cell with no controller
+    ``baseline``, whatever its penetration, so appending another one would
+    re-create the two-baseline tie the single-cell rule exists to avoid.
+    """
+    scenario = post_scenario(client, macro_corridor_config())
+    body = _sweep(
+        client,
+        scenario["scenario_id"],
+        penetrations=[0.05],
+        compliances=[1.0],
+        controllers=["follower_stopper", None],
+        include_baseline=True,
+    )
+    assert body["status"] == "done", body["error"]
+    combos = [(c["penetration"], c["compliance"], c["controller"]) for c in body["cells"]]
+    assert combos == [(0.05, 1.0, "follower_stopper"), (0.05, 1.0, None)]
+
+
+def test_repeated_axis_values_do_not_run_the_same_cell_twice(client: TestClient) -> None:
+    """Identical cells share a config hash and a run tree: run one of them."""
+    scenario = post_scenario(client, macro_corridor_config())
+    body = _sweep(
+        client,
+        scenario["scenario_id"],
+        penetrations=[0.05, 0.05],
+        compliances=[1.0],
+        controllers=["follower_stopper", None, "follower_stopper"],
+    )
+    assert body["status"] == "done", body["error"]
+    combos = [(c["penetration"], c["compliance"], c["controller"]) for c in body["cells"]]
+    assert combos == [(0.05, 1.0, "follower_stopper"), (0.05, 1.0, None)]
+    assert body["runs_total"] == 2
+    assert len({c["run_id"] for c in body["cells"]}) == 2
 
 
 def test_include_baseline_is_skipped_when_the_grid_already_has_penetration_zero(
@@ -192,6 +244,9 @@ def test_include_baseline_defaults_off_and_counts_toward_the_cell_ceiling(
         "scenario_id": "scn_does_not_exist",
         "penetrations": [0.001 * i for i in range(1, 21)],
         "compliances": [0.1 * i for i in range(1, 11)],
+        # An explicit controller: the default ``[None]`` grid is already
+        # uncontrolled, so no baseline cell would be appended to it.
+        "controllers": ["follower_stopper"],
     }
     assert client.post("/api/v1/sweeps", json=grid, headers=HEADERS).status_code == 404
     r = client.post("/api/v1/sweeps", json={**grid, "include_baseline": True}, headers=HEADERS)

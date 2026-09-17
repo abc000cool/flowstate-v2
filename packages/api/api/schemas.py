@@ -208,9 +208,13 @@ class HeatmapOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-#: The no-AV reference cell appended per controller by ``include_baseline``.
+#: The single no-AV reference cell appended by ``include_baseline``.
 BASELINE_PENETRATION = 0.0
 BASELINE_COMPLIANCE = 1.0
+#: Its controller: none. At penetration 0 no vehicle is ever tagged
+#: (``microsim.vehicles``: ``n_avs = round(penetration * n)``), so the
+#: controller name is inert simulation input — see :meth:`baseline_cells`.
+BASELINE_CONTROLLER: str | None = None
 
 #: One grid cell: (penetration, compliance, controller).
 SweepCellKey = tuple[float, float, str | None]
@@ -241,33 +245,64 @@ class SweepCreateRequest(BaseModel):
     """Replicates per cell; capped at ``MAX_REPLICATES`` (200)."""
     tier: Literal["micro", "macro"] | None = None
     include_baseline: bool = False
-    """Append one no-AV reference cell (penetration 0, compliance 1) per
-    distinct controller, so a "Δ vs baseline" comparison has an uncontrolled
-    run to compare against instead of the smallest controlled cell. Skipped
-    when ``penetrations`` already contains 0 (the grid then holds no-AV cells
-    of its own). Baseline cells count toward ``MAX_SWEEP_CELLS``."""
+    """Append *one* uncontrolled reference cell (penetration 0, compliance 1,
+    no controller) after the grid, so a "Δ vs baseline" comparison has an
+    uncontrolled run to compare against instead of the smallest controlled
+    cell. Skipped when the grid already holds an uncontrolled cell — either
+    ``penetrations`` contains 0 or ``controllers`` contains ``null``. The
+    baseline cell counts toward ``MAX_SWEEP_CELLS``."""
 
     def baseline_cells(self) -> list[SweepCellKey]:
-        """The ``include_baseline`` cells to append after the cartesian grid."""
-        if not self.include_baseline or BASELINE_PENETRATION in self.penetrations:
+        """The single uncontrolled reference cell ``include_baseline`` appends.
+
+        One cell, not one per controller. At penetration 0 no vehicle is
+        tagged as an AV (``microsim.vehicles``: ``n_avs = round(penetration *
+        n)``) and the controller function is dispatched per AV only, so a
+        per-controller baseline would run *k* bit-identical simulations —
+        k−1 wasted replicate sets and k−1 cells of the ceiling. Worse, the
+        cells hash differently (``av.controller`` survives the
+        exclude-defaults hash payload), so ``validation.report`` sees k
+        groups labelled ``baseline``, and its
+        ``baselines[0] if len(baselines) == 1 else None`` then drops the
+        controller-minus-baseline contrast table and the seed-matched
+        contour pairs entirely.
+
+        Returns nothing when the grid already contains an uncontrolled cell:
+        penetration 0 in ``penetrations``, or ``None`` in ``controllers``
+        (``validation.report.group_label`` labels *any* cell with no
+        controller ``baseline``, whatever its penetration, so appending a
+        second one would re-create the same two-baseline tie).
+        """
+        if (
+            not self.include_baseline
+            or BASELINE_PENETRATION in self.penetrations
+            or None in self.controllers
+        ):
             return []
-        return [
-            (BASELINE_PENETRATION, BASELINE_COMPLIANCE, ctrl)
-            for ctrl in dict.fromkeys(self.controllers)
-        ]
+        return [(BASELINE_PENETRATION, BASELINE_COMPLIANCE, BASELINE_CONTROLLER)]
 
     def grid_cells(self) -> list[SweepCellKey]:
-        """Every cell of the sweep in fan-out order: the product, then baselines."""
+        """Every cell of the sweep in fan-out order: the product, then baselines.
+
+        Repeated axis values collapse: two identical ``(penetration,
+        compliance, controller)`` triples produce the same effective config
+        and the same ``config_hash``, so they would be two run rows writing
+        the same ``runs/<hash>/<seed>/`` tree — duplicate simulation for one
+        result. First occurrence wins, so fan-out order is unchanged.
+        """
         product = [
             (pen, comp, ctrl)
             for pen in self.penetrations
             for comp in self.compliances
             for ctrl in self.controllers
         ]
-        return product + self.baseline_cells()
+        return list(dict.fromkeys(product + self.baseline_cells()))
 
     @model_validator(mode="after")
     def _check_grid_size(self) -> Self:
+        # The ceiling is checked from the list lengths (before any cell is
+        # built), so it counts the *requested* product — de-duplication in
+        # grid_cells() can only make the realized grid smaller.
         product = len(self.penetrations) * len(self.compliances) * len(self.controllers)
         baselines = len(self.baseline_cells())
         cells = product + baselines
@@ -376,6 +411,17 @@ class CalibrationOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+#: Acceptance-criteria profile used when a report request names none.
+DEFAULT_CRITERIA_PROFILE = "fhwa_default"
+
+
+def criteria_profile_names() -> tuple[str, ...]:
+    """Selectable ``validation.criteria`` profile names (registry order)."""
+    from validation.criteria import CRITERIA_PROFILES
+
+    return tuple(CRITERIA_PROFILES)
+
+
 class ReportCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     """Unknown fields are a client bug (a mis-named key silently dropped once
@@ -383,6 +429,59 @@ class ReportCreateRequest(BaseModel):
 
     run_ids: list[str] = Field(min_length=1)
     title: str = "FlowState calibration & validation report"
+    profile: str = DEFAULT_CRITERIA_PROFILE
+    """Acceptance-criteria profile the report is scored against — a name from
+    ``GET /api/v1/criteria`` (``validation.criteria.CRITERIA_PROFILES``: the
+    FlowState default, the 2004 FHWA toolbox table, and the ODOT VISSIM 2011
+    and TxDOT TSAP ch. 13 state-DOT protocols). Unknown names are refused
+    with HTTP 422; the profile is recorded on the report row and printed in
+    the report header.
+
+    Only the *thresholds* are selectable. The measurements they are scored
+    against are computed from the run artifacts, never accepted from the
+    request: a criterion whose evidence this service cannot compute (GEH
+    against observed link counts, segment-speed RMSPE against an observed
+    field, the ring benchmarks, the sensitivity grid) is reported as **not
+    evaluated**, never as a number the caller typed (CLAUDE.md §7.4)."""
+
+    @model_validator(mode="after")
+    def _check_profile(self) -> Self:
+        names = criteria_profile_names()
+        if self.profile not in names:
+            raise ValueError(
+                f"unknown criteria profile {self.profile!r}; available: {list(names)} "
+                f"(GET /api/v1/criteria)"
+            )
+        return self
+
+
+class CriteriaProfileOut(BaseModel):
+    """One selectable acceptance-criteria profile (``GET /criteria``)."""
+
+    name: str
+    source: str
+    """Which document, section and table the numbers were transcribed from,
+    what was verified and which rows are FlowState's own conventions — read
+    this before quoting the profile (``validation.criteria``)."""
+    geh_threshold: float
+    """Per-comparison GEH bound (strict ``<``)."""
+    geh_pass_fraction: float
+    """Share of link-hour comparisons that must satisfy the bound."""
+    geh_pass_inclusive: bool
+    """``>=`` the share (True) or strictly ``>`` it (the 2004 table's wording)."""
+    rmspe_max: float | None
+    """Segment-speed RMSPE bound as a fraction; null when the profile's
+    source defines none (the row is then not produced at all)."""
+    wave_speed_band_kmh: tuple[float, float]
+    min_seeds: int
+    require_ring_emergence: bool
+    require_ring_dampening: bool
+    require_sensitivity_grid: bool
+    wave_detector: str
+    """Name of the wave detector whose recipe the wave-speed row is scored
+    against; a value measured with another detector is not evaluated."""
+    default: bool
+    """True for the profile used when a report request names none."""
 
 
 class ReportOut(BaseModel):
@@ -390,6 +489,8 @@ class ReportOut(BaseModel):
     status: Literal["queued", "running", "done", "failed"]
     run_ids: list[str]
     title: str
+    profile: str = DEFAULT_CRITERIA_PROFILE
+    """The acceptance-criteria profile the report was scored against."""
     report_path: str | None = None
     """The bundle's markdown file *relative to the server's results root*
     (``reports/<report_id>/report.md``) — an identifier for the bundle, not a

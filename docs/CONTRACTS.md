@@ -501,10 +501,12 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
 
 ## API and dashboard contract additions (2026-09-16)
 
-- `POST /api/v1/sweeps`: `include_baseline: bool = false` appends one
-  penetration-0 / compliance-1 cell per distinct controller after the grid
-  (skipped when `penetrations` already contains 0); baseline cells count
-  toward the 200-cell ceiling and appear last in `cells`. Request models
+- `POST /api/v1/sweeps`: `include_baseline: bool = false` appends exactly one
+  uncontrolled cell (penetration 0, compliance 1.0, controller null) after
+  the grid, none when the grid already holds an uncontrolled cell (penetration
+  0 in `penetrations` or null in `controllers`); it counts toward the 200-cell
+  ceiling and appears last in `cells` (the per-controller form of 2026-09-16
+  ran identical simulations and produced two baseline groups). Request models
   (`RunCreateRequest`, `SweepCreateRequest`, `ReportCreateRequest`) forbid
   unknown fields (422).
 - `POST /api/v1/scenarios`, `/runs` (overrides) and each `/sweeps` cell: 422
@@ -521,8 +523,9 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
 - `RunOut.seeded` / `MetricsOut.seeded` equal `ScenarioConfig.seeded`
   (perturbation or closures). `RunOut.error`, `SweepOut.error`,
   `ReportOut.error` carry an exception chain (`Type: message`, `caused by:`
-  lines, at most 4000 characters) without frames, paths, or pydantic input
-  values.
+  lines, at most 4000 characters) with no traceback frames, no server source
+  paths, no file contents and no pydantic input values; a path under the
+  results root may appear, as it does in `report_path`.
 - Job identity: the RQ job id equals the store row id for every job
   (`api.jobs.JobQueue.enqueue(..., job_id=)`); `api.jobs.reconcile_store`
   repairs `queued`/`running` rows whose job is gone (worker start, RQ
@@ -576,3 +579,13 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   `n_rows_input`, `dropped_rows`, `fit_rows`, `bounds` fields; `fit_triangular_fd`
   gains `max_fit_rows` (50,000, seeded subsample), `bounds` (`FDBounds`,
   per-lane physical ranges) and refuses an implausible diagram.
+- API after the second audit (2026-09-17): `ReportCreateRequest.profile`
+  (default `fhwa_default`, one of `validation.criteria.CRITERIA_PROFILES`),
+  `ReportOut.profile`; `GET /api/v1/criteria` (profiles with source,
+  thresholds, wave detector, `default`); OpenAPI security scheme
+  `ApiKeyAuth` (`X-API-Key`); `include_baseline` appends exactly one
+  `(penetration 0, compliance 1.0, controller null)` cell, none when the grid
+  already holds an uncontrolled cell; identical grid triples are
+  de-duplicated; `api.results._METRICS_CACHE_SCHEMA = 2` (per-replicate
+  `metrics.json` written under schema 1 are recomputed); the image copies
+  `artifacts/` and `data/osm/`.

@@ -44,9 +44,20 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Security,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from starlette.datastructures import Headers
@@ -64,10 +75,12 @@ from api.jobs import (
     sweep_job,
 )
 from api.schemas import (
+    DEFAULT_CRITERIA_PROFILE,
     MAX_REPORT_LIST,
     CalibrationOut,
     CalibrationParams,
     CIOut,
+    CriteriaProfileOut,
     HealthOut,
     HeatmapOut,
     MetricsOut,
@@ -91,6 +104,28 @@ from flowstate_core.rng import spawn_seeds
 from validation.metrics import MIN_REPLICATES
 
 router = APIRouter(prefix="/api/v1")
+
+#: The API key as an OpenAPI security scheme, declared purely so the contract
+#: says so: ``/docs`` renders an **Authorize** button from
+#: ``components.securitySchemes`` and nothing else, and a client generated
+#: from ``/openapi.json`` emits the header only when the spec names it.
+#:
+#: ``auto_error=False`` is load-bearing — with FastAPI's default the
+#: dependency would answer 403 "Not authenticated" *ahead of*
+#: ``api_key_middleware``, replacing the documented 401. Enforcement stays in
+#: the middleware alone (it also covers the routes FastAPI does not own), so
+#: declaring this scheme changes the spec and nothing else.
+API_KEY_SCHEME = APIKeyHeader(name="X-API-Key", auto_error=False, scheme_name="ApiKeyAuth")
+
+#: Responses every ``/api/v1`` route can produce from the middleware layer,
+#: declared once at the include point rather than repeated per route.
+_ROUTER_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"description": "invalid or missing X-API-Key"},
+    413: {"description": "request body exceeds the cap for this path"},
+}
+
+#: Added to routes addressed by an id.
+_NOT_FOUND_RESPONSE: dict[int | str, dict[str, Any]] = {404: {"description": "no such record"}}
 
 
 def _settings(request: Request) -> Settings:
@@ -301,7 +336,7 @@ def list_presets(request: Request) -> list[PresetOut]:
     return presets
 
 
-@router.get("/scenarios/{scenario_id}", response_model=ScenarioOut)
+@router.get("/scenarios/{scenario_id}", response_model=ScenarioOut, responses=_NOT_FOUND_RESPONSE)
 def get_scenario(request: Request, scenario_id: str) -> ScenarioOut:
     row = _store(request).get_scenario(scenario_id)
     if row is None:
@@ -349,7 +384,7 @@ def _require_done(row: dict[str, Any]) -> None:
         raise HTTPException(status_code=409, detail=detail)
 
 
-@router.post("/runs", status_code=202, response_model=RunOut)
+@router.post("/runs", status_code=202, response_model=RunOut, responses=_NOT_FOUND_RESPONSE)
 def create_run(request: Request, body: RunCreateRequest) -> RunOut:
     """Enqueue a run: stored config + deep-merged overrides, re-validated.
 
@@ -396,12 +431,12 @@ def list_runs(
     return [_run_out(r) for r in _store(request).list_runs(scenario_id, sweep_id)]
 
 
-@router.get("/runs/{run_id}", response_model=RunOut)
+@router.get("/runs/{run_id}", response_model=RunOut, responses=_NOT_FOUND_RESPONSE)
 def get_run(request: Request, run_id: str) -> RunOut:
     return _run_out(_get_run_or_404(request, run_id))
 
 
-@router.get("/runs/{run_id}/metrics", response_model=MetricsOut)
+@router.get("/runs/{run_id}/metrics", response_model=MetricsOut, responses=_NOT_FOUND_RESPONSE)
 def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
     """Per-replicate metrics + aggregate t-distribution CIs (contract §7).
 
@@ -434,7 +469,7 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
     )
 
 
-@router.get("/runs/{run_id}/heatmap", response_model=None)
+@router.get("/runs/{run_id}/heatmap", response_model=None, responses=_NOT_FOUND_RESPONSE)
 def get_run_heatmap(
     request: Request,
     run_id: str,
@@ -543,18 +578,24 @@ def _sweep_out(request: Request, sweep: dict[str, Any]) -> SweepOut:
     )
 
 
-@router.post("/sweeps", status_code=202, response_model=SweepOut)
+@router.post("/sweeps", status_code=202, response_model=SweepOut, responses=_NOT_FOUND_RESPONSE)
 def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
     """Fan a penetration × compliance × controller grid into child runs.
 
     Every cell's effective config is validated and hashed here (422 on any
     invalid cell); the fan-out itself runs as a job.
 
-    ``include_baseline`` appends one no-AV reference cell (penetration 0,
-    compliance 1) per distinct controller after the grid, unless the grid
-    already contains penetration 0; a "Δ vs baseline" comparison then has an
-    uncontrolled run to compare against rather than the smallest controlled
-    cell.
+    ``include_baseline`` appends a *single* uncontrolled reference cell
+    (penetration 0, compliance 1, no controller) after the grid, unless the
+    grid already holds an uncontrolled cell (penetration 0 among
+    ``penetrations``, or ``null`` among ``controllers``); a "Δ vs baseline"
+    comparison then has an uncontrolled run to compare against rather than
+    the smallest controlled cell. One cell, not one per controller: at
+    penetration 0 no vehicle is controlled, so per-controller baselines would
+    be identical simulations — and the report's controller-minus-baseline
+    contrast needs exactly one baseline group to exist at all. Repeated axis
+    values collapse for the same reason (identical cells share a
+    ``config_hash`` and a run tree).
 
     Caps (HTTP 422 when exceeded, all checked before any cell is built):
     at most 50 values per axis (``api.schemas.MAX_SWEEP_AXIS_VALUES``), 200
@@ -605,7 +646,7 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
     return _sweep_out(request, sweep)
 
 
-@router.get("/sweeps/{sweep_id}", response_model=SweepOut)
+@router.get("/sweeps/{sweep_id}", response_model=SweepOut, responses=_NOT_FOUND_RESPONSE)
 def get_sweep(request: Request, sweep_id: str) -> SweepOut:
     sweep = _store(request).get_sweep(sweep_id)
     if sweep is None:
@@ -794,7 +835,11 @@ async def create_calibration(
     return _calibration_out(row)
 
 
-@router.get("/calibrations/{calibration_id}", response_model=CalibrationOut)
+@router.get(
+    "/calibrations/{calibration_id}",
+    response_model=CalibrationOut,
+    responses=_NOT_FOUND_RESPONSE,
+)
 def get_calibration(request: Request, calibration_id: str) -> CalibrationOut:
     row = _store(request).get_calibration(calibration_id)
     if row is None:
@@ -832,11 +877,49 @@ def _report_out(row: dict[str, Any], settings: Settings) -> ReportOut:
         status=row["status"],
         run_ids=row["run_ids"],
         title=row["title"],
+        profile=row["profile"],
         report_path=_relative_report_path(row["report_path"], settings),
         error=row["error"],
         error_kind=row["error_kind"],
         created_at=row["created_at"],
     )
+
+
+@router.get("/criteria", response_model=list[CriteriaProfileOut])
+def list_criteria_profiles() -> list[CriteriaProfileOut]:
+    """Selectable acceptance-criteria profiles for ``POST /reports``.
+
+    ``validation.criteria.CRITERIA_PROFILES`` holds the FlowState default
+    plus the state-DOT variants CLAUDE.md §7.1 calls for (the 2004 FHWA
+    toolbox table, ODOT's 2011 VISSIM protocol, TxDOT TSAP ch. 13). Each
+    row's ``source`` states which document, section and table its numbers
+    were transcribed from, what was verified and which rows are FlowState's
+    own conventions rather than the document's — read it before quoting a
+    profile in a deliverable.
+
+    Thresholds only. The measurements scored against them are computed from
+    run artifacts; this endpoint never accepts a value (CLAUDE.md §7.4).
+    """
+    from validation.criteria import CRITERIA_PROFILES
+
+    return [
+        CriteriaProfileOut(
+            name=p.name,
+            source=p.source,
+            geh_threshold=p.geh_threshold,
+            geh_pass_fraction=p.geh_pass_fraction,
+            geh_pass_inclusive=p.geh_pass_inclusive,
+            rmspe_max=p.rmspe_max,
+            wave_speed_band_kmh=p.wave_speed_band_kmh,
+            min_seeds=p.min_seeds,
+            require_ring_emergence=p.require_ring_emergence,
+            require_ring_dampening=p.require_ring_dampening,
+            require_sensitivity_grid=p.require_sensitivity_grid,
+            wave_detector=p.wave_detector.name,
+            default=p.name == DEFAULT_CRITERIA_PROFILE,
+        )
+        for p in CRITERIA_PROFILES.values()
+    ]
 
 
 def _refuse_macro_runs_in_report(rows: list[dict[str, Any]]) -> None:
@@ -872,7 +955,7 @@ def _refuse_macro_runs_in_report(rows: list[dict[str, Any]]) -> None:
     )
 
 
-@router.post("/reports", status_code=202, response_model=ReportOut)
+@router.post("/reports", status_code=202, response_model=ReportOut, responses=_NOT_FOUND_RESPONSE)
 def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     """Generate a validation report for a set of finished runs.
 
@@ -883,6 +966,17 @@ def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     *all-macro* set is refused by ``validation.report.generate_report``
     itself, which under the Redis queue surfaces asynchronously as
     ``status=failed`` with ``error_kind="report_refused"``.
+
+    ``profile`` selects the acceptance-criteria thresholds the report is
+    scored against (``GET /api/v1/criteria``; unknown names are 422), so a
+    DOT pilot can ask for its own protocol instead of the FlowState default.
+    The *measurements* are computed from the run artifacts and are never
+    accepted from the request: criteria whose evidence is observed field data
+    this service does not hold (GEH against observed link counts,
+    segment-speed RMSPE, the two ring benchmarks, the sensitivity grid) come
+    back **not evaluated**. An API report is therefore a run-set metrics
+    bundle with the profile's thresholds stated, not a signed-off calibration
+    acceptance deliverable — see docs/DEPLOYMENT.md.
     """
     store = _store(request)
     settings = _settings(request)
@@ -893,7 +987,7 @@ def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
             raise HTTPException(status_code=404, detail=f"run {rid!r} not found")
         rows.append(run)
     _refuse_macro_runs_in_report(rows)
-    report_id = store.create_report(body.run_ids, body.title)
+    report_id = store.create_report(body.run_ids, body.title, body.profile)
     get_queue(settings).enqueue(
         report_job,
         report_id,
@@ -938,7 +1032,7 @@ def list_reports(
     return [_report_out(row, settings) for row in _store(request).list_reports(limit=limit)]
 
 
-@router.get("/reports/{report_id}", response_model=ReportOut)
+@router.get("/reports/{report_id}", response_model=ReportOut, responses=_NOT_FOUND_RESPONSE)
 def get_report(request: Request, report_id: str) -> ReportOut:
     row = _store(request).get_report(report_id)
     if row is None:
@@ -946,14 +1040,14 @@ def get_report(request: Request, report_id: str) -> ReportOut:
     return _report_out(row, _settings(request))
 
 
-@router.get("/reports/{report_id}/markdown")
+@router.get("/reports/{report_id}/markdown", responses=_NOT_FOUND_RESPONSE)
 def get_report_markdown(request: Request, report_id: str) -> PlainTextResponse:
     """The rendered markdown report."""
     row = _get_report_done(request, report_id)
     return PlainTextResponse(Path(row["report_path"]).read_text(), media_type="text/markdown")
 
 
-@router.get("/reports/{report_id}/pdf")
+@router.get("/reports/{report_id}/pdf", responses=_NOT_FOUND_RESPONSE)
 def get_report_pdf(request: Request, report_id: str) -> Response:
     """The PDF rendering of the report, when one was generated beside it.
 
@@ -971,7 +1065,7 @@ def get_report_pdf(request: Request, report_id: str) -> Response:
     )
 
 
-@router.get("/reports/{report_id}/archive")
+@router.get("/reports/{report_id}/archive", responses=_NOT_FOUND_RESPONSE)
 def get_report_archive(request: Request, report_id: str) -> Response:
     """The report bundle — markdown plus figure files — as a zip download."""
     row = _get_report_done(request, report_id)
@@ -1336,7 +1430,11 @@ def create_app() -> FastAPI:
             headers={REQUEST_ID_HEADER: request_id},
         )
 
-    @app.get("/healthz", response_model=HealthOut)
+    @app.get(
+        "/healthz",
+        response_model=HealthOut,
+        responses={503: {"description": "store or queue unreachable", "model": HealthOut}},
+    )
     def healthz() -> Any:
         """Store + queue health; 503 when either backend is unreachable."""
         store_status = "ok"
@@ -1360,7 +1458,10 @@ def create_app() -> FastAPI:
             return JSONResponse(status_code=503, content=body.model_dump())
         return body
 
-    app.include_router(router)
+    # The security scheme is declared here (not appended to
+    # ``router.dependencies`` after construction, which silently does
+    # nothing). It documents the header the middleware already enforces.
+    app.include_router(router, dependencies=[Security(API_KEY_SCHEME)], responses=_ROUTER_RESPONSES)
 
     # Single-origin deploy: serve the built frontend at / when it exists.
     # API routes live under /api/v1/... so statics and API never collide.

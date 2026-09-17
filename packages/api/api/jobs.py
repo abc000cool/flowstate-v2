@@ -20,7 +20,14 @@ column to any key holder, and traceback frames would carry the server's
 absolute paths and source lines. The full traceback goes to the worker log
 instead (``logging.exception``). Calibration jobs go one step further
 (:func:`_calibration_error_text`) and withhold third-party messages, which
-can quote the parsed file's contents.
+can quote the parsed file's contents — so the common bad-upload shapes are
+diagnosed here (:func:`_read_calibration_csv`) and re-raised as messages this
+package authored, naming the column and row but never the cell value.
+
+Failure records may name paths *under the results root* (a run root, a
+staged bundle): those identify the artifact, the way ``report_path`` and
+``data_path`` do on the success path. What they never carry is a traceback
+frame, a server source path, file contents or a pydantic input value.
 
 Lifecycle guards. RQ job ids equal store row ids (``enqueue(...,
 job_id=row_id)``), so a row can always be looked up from its job and vice
@@ -502,6 +509,92 @@ def _subset(params: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     return {k: params[k] for k in keys if k in params}
 
 
+#: Columns the FD fit always reads as numbers (``calibration.fd_fit``), and
+#: must therefore hold at least one usable value. ``occupancy`` is checked
+#: only when it drives the free/congested split (see
+#: :func:`fd_calibration_job`), since an explicit density cut makes the FD fit
+#: ignore the column entirely.
+_FD_REQUIRED_COLUMNS = ("density_veh_m", "flow_veh_s")
+
+#: Columns the IDM episode cutter reads as numbers
+#: (``calibration.episodes.episodes_from_pairs``). None is "required" here —
+#: the cutter's own FlowState-authored checks cover missing columns and empty
+#: episode sets.
+_IDM_NUMERIC_COLUMNS = ("t", "gap_m", "v", "v_leader")
+
+
+def _read_calibration_csv(
+    path: Path, numeric_columns: Sequence[str], required_columns: Sequence[str] = ()
+) -> Any:
+    """Parse a caller-supplied CSV, raising *actionable* FlowState errors.
+
+    :func:`_calibration_error_text` withholds the message of any exception
+    raised outside FlowState's own packages, because a third-party parse
+    message can quote the file's contents back to the caller (that is the
+    point of the withholding, and ``test_calibration_errors_do_not_echo_the_
+    input_file`` pins it). The three commonest bad uploads all raise outside
+    FlowState — an empty file is ``pandas.errors.EmptyDataError``, a
+    header-only file reaches ``numpy.percentile`` on an empty array, and a
+    locale-formatted ``"1,234"`` cell raises inside pandas' Arrow string
+    array — so the customer used to get ``IndexError raised in
+    numpy.lib._function_base_impl`` and no way to tell an empty file from a
+    mis-delimited or mis-typed one.
+
+    Each of those is detected here and re-raised as a message *this* package
+    authored, which therefore survives the filter. The numeric check names
+    the column and the file's 1-based row number and **never the cell
+    value** — quoting it would be the very leak the filter prevents.
+
+    Args:
+        path: The CSV on the worker's filesystem (already confined to the
+            allowed data roots by the API).
+        numeric_columns: Columns to type-check when present.
+        required_columns: Columns that must additionally hold at least one
+            finite value (an all-blank column has rows, so the row-count
+            check alone would pass it through to the fit).
+
+    Returns:
+        The parsed :class:`pandas.DataFrame`.
+
+    Raises:
+        ValueError: Unreadable file, no data rows, a non-numeric cell in one
+            of ``numeric_columns``, or an all-blank ``required_columns``
+            entry.
+    """
+    import pandas as pd
+
+    try:
+        df = pd.read_csv(path)
+    except (pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
+        raise ValueError(
+            f"{path.name}: not a readable CSV (no header row parsed) — the file is "
+            f"empty, truncated, or not delimited text"
+        ) from exc
+    if df.empty:
+        raise ValueError(
+            f"{path.name}: parsed {len(df.columns)} column(s) but 0 data rows — the "
+            f"upload is header-only or truncated"
+        )
+    for column in numeric_columns:
+        if column not in df.columns:
+            continue
+        coerced = pd.to_numeric(df[column], errors="coerce")
+        bad = df.index[coerced.isna() & df[column].notna()]
+        if len(bad):
+            # +2: one for the header line, one for 1-based file rows.
+            raise ValueError(
+                f"{path.name}: column {column!r} is not numeric in {len(bad)} row(s), "
+                f"first at file row {int(bad[0]) + 2} — check the delimiter, the decimal "
+                f"mark and thousands separators (the offending value is not echoed)"
+            )
+        if column in required_columns and not bool(coerced.notna().any()):
+            raise ValueError(
+                f"{path.name}: column {column!r} holds no numeric value in any of "
+                f"{len(df)} row(s) — the column is empty or entirely non-numeric"
+            )
+    return df
+
+
 def fd_calibration_job(
     calibration_id: str, db_path: str | None = None, results_root: str | None = None
 ) -> None:
@@ -512,6 +605,11 @@ def fd_calibration_job(
     columns; ``"pems"`` runs the PeMS station-CSV loader first. The
     ``FDCalibration`` artifact is saved under the results root and its path
     recorded on the row.
+
+    Bad uploads are diagnosed before the fit (:func:`_read_calibration_csv`):
+    an empty or truncated file, a header-only file, and a non-numeric column
+    each get a named, actionable failure record instead of a withheld
+    third-party exception type.
     """
     store, results = _resolve(db_path, results_root)
     cal = store.get_calibration(calibration_id)
@@ -535,11 +633,28 @@ def fd_calibration_job(
         if loader == "pems":
             from calibration.loaders.pems import load_pems_station_csv
 
-            df = load_pems_station_csv(data_path, **_subset(params, _PEMS_LOADER_KEYS))
+            try:
+                df = load_pems_station_csv(data_path, **_subset(params, _PEMS_LOADER_KEYS))
+            except (pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
+                raise ValueError(
+                    f"{data_path.name}: not a readable CSV (no header row parsed) — the "
+                    f"file is empty, truncated, or not delimited text"
+                ) from exc
         elif loader == "tidy":
-            df = pd.read_csv(data_path)
+            # `occupancy` reaches the fit as numbers only when no explicit
+            # density cut is given; checking it otherwise would fail a file
+            # over a column the fit never reads.
+            numeric = list(_FD_REQUIRED_COLUMNS)
+            if params.get("uncongested_max_density") is None:
+                numeric.append("occupancy")
+            df = _read_calibration_csv(data_path, numeric, _FD_REQUIRED_COLUMNS)
         else:
             raise ValueError(f"unknown fd loader {loader!r} (expected 'tidy' or 'pems')")
+        if df.empty:
+            raise ValueError(
+                f"{data_path.name}: the {loader!r} loader produced 0 usable rows — "
+                f"nothing to fit a fundamental diagram to"
+            )
         artifact = fit_triangular_fd(
             df,
             created_at=now_iso(),
@@ -563,7 +678,8 @@ def idm_calibration_job(
     :func:`calibration.episodes.episodes_from_pairs` (``t``, ``veh_id``,
     ``lane``, ``leader_id``, ``gap_m``, ``v``, ``v_leader``). The
     ``IDMCalibration`` artifact (population stats + holdout gap RMSE) is
-    saved under the results root.
+    saved under the results root. Unreadable, header-only and non-numeric
+    uploads are diagnosed by :func:`_read_calibration_csv` first.
     """
     store, results = _resolve(db_path, results_root)
     cal = store.get_calibration(calibration_id)
@@ -577,13 +693,11 @@ def idm_calibration_job(
         )
         return
     try:
-        import pandas as pd
-
         from calibration.episodes import episodes_from_pairs
         from calibration.idm_fit import fit_population
 
         params = cal["params"]
-        df = pd.read_csv(cal["data_path"])
+        df = _read_calibration_csv(Path(cal["data_path"]), _IDM_NUMERIC_COLUMNS)
         episode_kwargs: dict[str, Any] = {}
         if "min_duration_s" in params:
             episode_kwargs["min_duration_s"] = params["min_duration_s"]
@@ -607,8 +721,16 @@ def idm_calibration_job(
 
 
 def _link_or_copy(src: Path, dst: Path) -> None:
-    """Hard-link an artifact into the staging tree (copy across devices)."""
+    """Hard-link an artifact into the staging tree (copy across devices).
+
+    Idempotent: an existing ``dst`` is removed first. Without that,
+    re-staging over a previous attempt's link makes ``os.link`` raise
+    ``FileExistsError`` and the ``shutil.copy2`` fallback raise
+    ``shutil.SameFileError`` (from inside the handler, so it is not caught by
+    it) — the whole re-run then dies before it reaches the generator.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.unlink(missing_ok=True)
     try:
         os.link(src, dst)
     except OSError:
@@ -639,6 +761,37 @@ def _stage_runs(runs: list[dict[str, Any]], stage_dir: Path) -> None:
                     _link_or_copy(src, dest / name)
 
 
+def _report_span(runs: list[dict[str, Any]]) -> tuple[float, float] | None:
+    """One travel-time span [m] for a report's whole run set, or None.
+
+    ``generate_report`` measures every group over a single span so the
+    controller-minus-baseline travel-time contrast compares the same
+    distance. Left to itself it derives that span from the reference group's
+    trajectories, whose smallest observed ``x`` sits inside a corridor's
+    upstream insertion buffer — an entry time taken there is an insertion
+    time, and the reported travel time is inflated by the buffer crossing.
+
+    When every run in the set is the same corridor geometry, the geometric
+    span (:func:`api.results.analysis_span`) is the honest one and is passed
+    explicitly. A heterogeneous set (mixed geometries, ring or OSM runs)
+    gets ``None`` — the generator's own shared span is then the best
+    available answer, and inventing a common geometry would be worse.
+
+    Args:
+        runs: Store rows of the report's runs (each carries the effective
+            ``config`` the run executed).
+
+    Returns:
+        The shared span, or ``None`` when the set does not define one.
+    """
+    from api.results import analysis_span
+
+    spans = {analysis_span({"config": run["config"]}) for run in runs}
+    if len(spans) != 1:
+        return None
+    return spans.pop()
+
+
 def _pdf_available() -> bool:
     """Whether the ``validation[pdf]`` extra (fpdf2) is importable here."""
     return importlib.util.find_spec("fpdf") is not None
@@ -659,6 +812,26 @@ def _warn_no_pdf_once() -> None:
 
 def report_job(report_id: str, db_path: str | None = None, results_root: str | None = None) -> None:
     """Generate a validation report bundle for a set of finished runs.
+
+    **Acceptance criteria.** The report is scored against the profile named
+    on the report row (``ReportCreateRequest.profile``, a key of
+    ``validation.criteria.CRITERIA_PROFILES``), so a DOT pilot can ask for
+    its own protocol — the profile's ``source`` and thresholds are printed in
+    the report. Only the *thresholds* come from the request. The
+    measurements are computed from the staged run artifacts, and the
+    criteria whose evidence is observed field data this service does not
+    hold — ``link_flows_geh`` (observed link counts), ``speeds_rmspe``
+    (an observed segment-speed field), ``ring_emergence``/``ring_dampening``
+    (the two benchmark runs) and ``sensitivity_grid`` (the realized
+    penetration × compliance cells) — are left *not evaluated*: numbers
+    typed into a request body would be exactly the free-text report values
+    CLAUDE.md §7.4 forbids. Feeding them from observed data is a product
+    gap, tracked in docs/DEPLOYMENT.md rather than papered over here.
+
+    **Travel-time span.** A run set that is one corridor geometry is measured
+    over that corridor (:func:`_report_span`), not over the replicates'
+    observed position extremes — whose lower bound sits inside the upstream
+    insertion buffer and inflates every travel time by the buffer crossing.
 
     Refusal semantics: :func:`validation.report.generate_report` raises
     :class:`validation.report.ReportRefusedError` on macro-only run sets
@@ -685,6 +858,7 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
         return
     report_dir = results / "reports" / report_id
     try:
+        from validation.criteria import get_profile
         from validation.report import ReportRefusedError, generate_report
 
         runs: list[dict[str, Any]] = []
@@ -697,18 +871,44 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
             runs.append(run)
 
         stage_dir = report_dir / "runs"
+        # A re-run (``rq requeue`` of a failed row, per docs/DEPLOYMENT.md §
+        # "Job recovery") starts from a clean tree: the previous attempt's
+        # staged hard links are left behind by every failure path, and
+        # ``generate_report`` discovers runs by *scanning* this tree, so
+        # leftovers from a run set that has since changed would be folded
+        # into the new report. Safe here because the claim above already
+        # succeeded — a duplicate delivery that lost the claim returned long
+        # before this line and can never wipe a live job's tree.
+        shutil.rmtree(stage_dir, ignore_errors=True)
         _stage_runs(runs, stage_dir)
         out_path = report_dir / "report.md"
+        for stale in (out_path, report_dir / "report.pdf"):
+            stale.unlink(missing_ok=True)
         want_pdf = _pdf_available()
         if not want_pdf:
             _warn_no_pdf_once()
+        profile = get_profile(str(report["profile"]))
+        span = _report_span(runs)
         try:
             if want_pdf:
                 generate_report(
-                    stage_dir, out_path, title=report["title"], created_at=now_iso(), pdf=True
+                    stage_dir,
+                    out_path,
+                    title=report["title"],
+                    created_at=now_iso(),
+                    profile=profile,
+                    span=span,
+                    pdf=True,
                 )
             else:
-                generate_report(stage_dir, out_path, title=report["title"], created_at=now_iso())
+                generate_report(
+                    stage_dir,
+                    out_path,
+                    title=report["title"],
+                    created_at=now_iso(),
+                    profile=profile,
+                    span=span,
+                )
         except ReportRefusedError as exc:
             store.set_report_status(
                 report_id,
@@ -861,7 +1061,13 @@ def reconcile_store(
     "Live" is RQ's own notion: the execution's heartbeat entry in the
     ``StartedJobRegistry`` (refreshed every ``job_monitoring_interval`` by
     the forking worker, TTL ≈ interval + 60 s), whose expired entries are
-    cleaned up first. A row's job is looked up under the row id, then — for
+    cleaned up first. Liveness is re-read from Redis before a started job is
+    declared dead, because a worker may dequeue a job *while* this pass runs
+    (the pass takes ~0.1 s over a 200-cell sweep, and the deployment runs
+    several of them — every worker at start and on each maintenance
+    interval, the API at startup): a snapshot taken before the row loop
+    would fail a healthy running cell with "worker died". A row's job is
+    looked up under the row id, then — for
     jobs enqueued under a random RQ id — among the queued and started jobs
     whose first argument is the row id (:func:`row_id_of_job`). Every action
     is a guarded compare-and-set (:meth:`api.store.Store.fail_active`,
@@ -925,7 +1131,18 @@ def reconcile_store(
                     f"marked failed by reconciliation"
                 )
             elif status == JobStatus.STARTED:
-                if job.id not in live:
+                # `live` is a snapshot taken before this loop; a worker that
+                # dequeued this job *during* the pass registers its execution
+                # after the snapshot and would be declared dead while SUMO is
+                # running it. Confirm with a fresh read, and only on the
+                # suspect path (one extra Redis call per suspect row, none in
+                # the common case). Reading the registry *after*
+                # `job.get_status()` is the correct order and cannot invent
+                # the opposite error: RQ adds the execution before it sets
+                # STARTED, and removes it only after the job function has
+                # written its row, so a job that finished in between leaves a
+                # settled row that `fail_active` refuses to touch.
+                if job.id not in live and job.id not in registry.get_job_ids(cleanup=False):
                     error = (
                         "worker died while the job was executing (no live execution in the "
                         "started-job registry); marked failed by reconciliation"

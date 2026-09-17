@@ -47,7 +47,19 @@ HeatmapField = Literal["speed", "density"]
 
 _FIELD_COLUMNS: dict[str, str] = {"speed": "mean_speed", "density": "density"}
 
-_METRICS_CACHE_SCHEMA = 1
+#: Cache-file schema version. Bumped whenever the *values* a cache file holds
+#: change meaning, so a tree written by an older version is recomputed instead
+#: of served: v2 measures travel times over the scenario's analysis span
+#: (:func:`analysis_span`) rather than over the replicate's raw position
+#: extremes.
+_METRICS_CACHE_SCHEMA = 2
+
+#: Distance kept clear of a corridor's downstream end when the corridor has no
+#: exit buffer [m]. ``validation.metrics.travel_times`` needs an *upward
+#: crossing* of ``x_hi``, and the last recorded sample of a vehicle sits one
+#: output period short of the end (≈ 33 m at free flow and 1 Hz), so a span
+#: ending exactly at the corridor end would be crossed by almost nobody.
+CORRIDOR_EXIT_MARGIN_M = 100.0
 
 #: km per m derived from the unit helpers (no inline magic conversions,
 #: CLAUDE.md §2): 1 m = 1 m/s sustained for 1 s = ms_to_kmh(1) km/h · s_to_h(1) h.
@@ -175,6 +187,85 @@ def macro_metrics(replicate_dir: Path) -> Metrics:
     )
 
 
+def _number(value: Any) -> float | None:
+    """``value`` as a finite float, or None when it is not a finite number.
+
+    ``meta.json`` is read off disk, so a field can be missing, null or a
+    string even though the config schema forbids it.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def analysis_span(meta: dict[str, Any]) -> tuple[float, float] | None:
+    """Travel-time measurement span ``(x_lo, x_hi)`` [m] from a replicate's config.
+
+    The span must come from the scenario's *geometry*, not from the observed
+    position extremes, on both ends:
+
+    - ``x_lo`` — a straight corridor is built with an upstream insertion
+      buffer (``microsim.runner.CORRIDOR_INSERTION_BUFFER_M``, 2 km capped at
+      the corridor length) and vehicles enter it at ``departPos="free"``, so
+      the smallest observed ``x`` is a buffer position and the entry time
+      taken there is an insertion time, not a span entry. The corridor proper
+      starts at ``microsim.demand_adapter.corridor_x_offset_m``.
+    - ``x_hi`` — the largest observed ``x`` is reached by the single
+      farthest-travelled vehicle only, so a span ending there yields a
+      one-vehicle "fleet" travel time whose tell is ``mean_tt_s ==
+      p90_tt_s``. The corridor proper ends at ``x_lo + length_m``, less
+      :data:`CORRIDOR_EXIT_MARGIN_M` when no exit buffer carries vehicles
+      past that point.
+
+    ``None`` means "no geometric span" and leaves the choice to
+    :func:`validation.metrics.compute_metrics`, whose own default is the
+    smallest observed position to the *median* per-vehicle furthest position:
+
+    - ring networks — ``x`` is the position around the loop, so it wraps and
+      a travel time across a span is not a corridor traversal; the caller
+      (:func:`replicate_metrics`) reports the travel-time metrics as absent
+      rather than measuring them.
+    - OSM networks — there is no synthetic buffer and no single declared
+      length here; the corridor's own extent is what the trajectories show.
+
+    Args:
+        meta: The replicate's parsed ``meta.json`` (contract §3); its
+            ``config`` block is the effective scenario config.
+
+    Returns:
+        ``(x_lo, x_hi)``, or ``None`` when the geometry does not define one.
+    """
+    config = meta.get("config")
+    if not isinstance(config, dict):
+        return None
+    network = config.get("network")
+    if not isinstance(network, dict) or network.get("kind") != "corridor":
+        return None
+    length = _number(network.get("length_m"))
+    if length is None or length <= 0.0:
+        return None
+    # Imported here, not at module import: microsim pulls in libsumo, and the
+    # API process (and the macro-tier worker) must not load SUMO to read a
+    # metrics file.
+    from microsim.runner import CORRIDOR_INSERTION_BUFFER_M
+
+    x_lo = min(CORRIDOR_INSERTION_BUFFER_M, length)
+    boundary = network.get("boundary")
+    exit_buffer = _number(boundary.get("exit_buffer_m")) if isinstance(boundary, dict) else None
+    has_exit_buffer = exit_buffer is not None and exit_buffer > 0.0
+    margin = 0.0 if has_exit_buffer else min(CORRIDOR_EXIT_MARGIN_M, 0.5 * length)
+    x_hi = x_lo + length - margin
+    return (x_lo, x_hi) if x_hi > x_lo else None
+
+
+def _is_ring(meta: dict[str, Any]) -> bool:
+    """Whether the replicate ran on a ring network (looped, wrapping ``x``)."""
+    config = meta.get("config")
+    network = config.get("network") if isinstance(config, dict) else None
+    return isinstance(network, dict) and network.get("kind") == "ring"
+
+
 #: Per-replicate metrics cache file name (beside ``meta.json``).
 METRICS_CACHE_NAME = "metrics.json"
 
@@ -216,9 +307,14 @@ def replicate_metrics(replicate_dir: Path) -> Metrics:
     """Metrics for one replicate, cached as ``metrics.json`` beside it.
 
     Micro replicates use the contract path
-    (:func:`validation.metrics.compute_metrics`); macro replicates use
-    :func:`macro_metrics`. The cache is keyed by a schema version and safely
-    recomputed when unreadable; the write is atomic.
+    (:func:`validation.metrics.compute_metrics`) over the scenario's
+    :func:`analysis_span`; macro replicates use :func:`macro_metrics`. Ring
+    runs report ``mean_tt_s``/``p90_tt_s`` as NaN with
+    ``n_travel_time_veh = 0``: ``x`` wraps around the loop, so a travel time
+    across a span is not a corridor traversal and the ring's headline metrics
+    are σ_v and the wave set (CLAUDE.md §3.2.1). The cache is keyed by a
+    schema version and safely recomputed when unreadable; the write is
+    atomic.
     """
     cached = cached_replicate_metrics(replicate_dir)
     if cached is not None:
@@ -226,7 +322,11 @@ def replicate_metrics(replicate_dir: Path) -> Metrics:
     meta = load_meta(replicate_dir)
     tier = str(meta.get("tier", ""))
     if tier == "micro":
-        metrics = compute_metrics(replicate_dir)
+        metrics = compute_metrics(replicate_dir, span=analysis_span(meta))
+        if _is_ring(meta):
+            metrics = dataclasses.replace(
+                metrics, mean_tt_s=math.nan, p90_tt_s=math.nan, n_travel_time_veh=0
+            )
     else:
         metrics = macro_metrics(replicate_dir)
     _write_metrics_cache(replicate_dir / METRICS_CACHE_NAME, metrics)

@@ -142,8 +142,11 @@ def test_calibration_errors_do_not_echo_the_input_file(client: TestClient) -> No
     """A parse failure must not stream cell values back to the caller.
 
     pandas reports a bad numeric cell as ``could not convert string to float:
-    '<the cell>'``. That message is third-party, so the job records the
-    exception type and raising module instead of the text.
+    '<the cell>'``. The job never lets that message through: the column is
+    type-checked in ``api.jobs._read_calibration_csv``, which names the
+    column and the file row and refuses to quote the value — and any
+    third-party message that does escape is still replaced by its exception
+    type and raising module (``test_worker_error_text.py``).
     """
     secret = "SUPER-SECRET-abc123"
     csv = f"density_veh_m,flow_veh_s\n{secret},0.5\n".encode()
@@ -158,7 +161,10 @@ def test_calibration_errors_do_not_echo_the_input_file(client: TestClient) -> No
     error = body["error"]
     assert secret not in error  # the leak this test exists for
     assert "ValueError" in error  # still an honest, typed failure record
-    assert "message withheld" in error
+    # ...and actionable: which column, which row, what to check.
+    assert "'density_veh_m' is not numeric" in error
+    assert "file row 2" in error
+    assert "thousands separators" in error
 
     fetched = client.get(f"/api/v1/calibrations/{body['calibration_id']}", headers=HEADERS)
     assert secret not in fetched.text

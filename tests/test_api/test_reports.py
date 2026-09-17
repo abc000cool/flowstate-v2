@@ -263,3 +263,278 @@ def test_reports_listing_is_newest_first_and_bounded(client: TestClient, tmp_pat
 
     assert client.get("/api/v1/reports?limit=0", headers=HEADERS).status_code == 422
     assert client.get("/api/v1/reports?limit=201", headers=HEADERS).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Acceptance-criteria profile
+# ---------------------------------------------------------------------------
+
+
+def test_criteria_profiles_are_listed_with_their_sources(client: TestClient) -> None:
+    """The DOT protocols CLAUDE.md §7.1 names must be reachable from the API."""
+    from validation.criteria import CRITERIA_PROFILES
+
+    r = client.get("/api/v1/criteria", headers=HEADERS)
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert [row["name"] for row in rows] == list(CRITERIA_PROFILES)
+    assert {"fhwa_default", "odot_vissim_2011", "txdot_tsap_ch13"} <= {r_["name"] for r_ in rows}
+    assert [row["name"] for row in rows if row["default"]] == ["fhwa_default"]
+    for row in rows:
+        profile = CRITERIA_PROFILES[row["name"]]
+        assert row["source"] == profile.source and row["source"].strip()
+        assert row["geh_threshold"] == profile.geh_threshold
+        assert row["rmspe_max"] == profile.rmspe_max  # null where the source defines none
+        assert row["wave_detector"] == profile.wave_detector.name
+        assert tuple(row["wave_speed_band_kmh"]) == profile.wave_speed_band_kmh
+
+
+def test_report_records_the_requested_profile_and_passes_it_to_the_generator(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import validation.report
+    from validation.criteria import get_profile
+
+    recorder = _Recorder(raise_refusal=False)
+    monkeypatch.setattr(validation.report, "generate_report", recorder)
+    scenario = post_scenario(client, macro_corridor_config())
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+
+    r = client.post(
+        "/api/v1/reports",
+        json={"run_ids": [run["run_id"]], "profile": "odot_vissim_2011"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    body = r.json()
+    assert body["profile"] == "odot_vissim_2011"
+    assert recorder.calls[0]["profile"] is get_profile("odot_vissim_2011")
+    # ...and it survives the round trip through the store.
+    fetched = client.get(f"/api/v1/reports/{body['report_id']}", headers=HEADERS).json()
+    assert fetched["profile"] == "odot_vissim_2011"
+    assert client.get("/api/v1/reports", headers=HEADERS).json()[0]["profile"] == "odot_vissim_2011"
+
+
+def test_report_profile_defaults_to_fhwa_default(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import validation.report
+    from api.schemas import DEFAULT_CRITERIA_PROFILE
+    from validation.criteria import get_profile
+
+    recorder = _Recorder(raise_refusal=False)
+    monkeypatch.setattr(validation.report, "generate_report", recorder)
+    scenario = post_scenario(client, macro_corridor_config())
+    run = post_run(client, scenario["scenario_id"])
+
+    body = client.post("/api/v1/reports", json={"run_ids": [run["run_id"]]}, headers=HEADERS).json()
+    assert body["profile"] == DEFAULT_CRITERIA_PROFILE
+    assert recorder.calls[0]["profile"] is get_profile(DEFAULT_CRITERIA_PROFILE)
+
+
+def test_unknown_report_profile_is_422_and_names_the_choices(client: TestClient) -> None:
+    micro_id = _store_run(client, "micro")
+    r = client.post(
+        "/api/v1/reports",
+        json={"run_ids": [micro_id], "profile": "dot_of_narnia"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 422, r.text
+    detail = str(r.json()["detail"])
+    assert "dot_of_narnia" in detail and "fhwa_default" in detail
+    assert client.app.state.store.list_reports() == []  # nothing stored or enqueued
+
+
+def test_report_profile_column_survives_an_older_store_file(client: TestClient) -> None:
+    """A store written before the column existed must keep opening.
+
+    ``CREATE TABLE IF NOT EXISTS`` leaves an older table untouched, so the
+    column is added by an explicit migration — without it the API would 500
+    on every report route against an existing deployment's database.
+    """
+    import sqlite3
+
+    from api.store import Store
+
+    store = client.app.state.store
+    with sqlite3.connect(store.db_path) as con:
+        con.execute("ALTER TABLE reports DROP COLUMN profile")
+        con.execute(
+            "INSERT INTO reports (id, run_ids_json, title, status, created_at)"
+            " VALUES ('rpt_legacy', '[\"run_x\"]', 'old', 'done', '2026-01-01T00:00:00+00:00')"
+        )
+
+    reopened = Store(store.db_path)
+    row = reopened.get_report("rpt_legacy")
+    assert row is not None
+    assert row["profile"] == "fhwa_default"  # the SQL default backfills the old row
+
+
+def test_the_sql_default_profile_is_the_schema_default() -> None:
+    """The SQL literal and the Pydantic default cannot drift apart silently."""
+    from api.schemas import DEFAULT_CRITERIA_PROFILE, criteria_profile_names
+    from api.store import _ADDED_COLUMNS, _SCHEMA
+
+    assert DEFAULT_CRITERIA_PROFILE in criteria_profile_names()
+    literal = f"DEFAULT '{DEFAULT_CRITERIA_PROFILE}'"
+    assert literal in _SCHEMA
+    assert [decl for _, column, decl in _ADDED_COLUMNS if column == "profile"] == [
+        f"TEXT NOT NULL {literal}"
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Re-running a report row
+# ---------------------------------------------------------------------------
+
+
+def test_report_rerun_after_a_failure_starts_from_a_clean_staging_tree(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``rq requeue`` of a failed report row must actually regenerate it.
+
+    docs/DEPLOYMENT.md tells the operator to requeue a failed row. The first
+    attempt leaves its staged hard links behind, and re-linking over them
+    used to raise ``shutil.SameFileError`` from inside the ``os.link``
+    handler — so the row could never leave ``failed`` and its 422 refusal
+    detail was overwritten with a 409. The tree is cleared before staging,
+    which also keeps a previous run set's leftovers out of the new report
+    (``generate_report`` discovers runs by scanning that tree).
+    """
+    import api.jobs
+    import validation.report
+
+    settings = client.app.state.settings
+    store = client.app.state.store
+    scenario = post_scenario(client, macro_corridor_config())
+    macro = post_run(client, scenario["scenario_id"])
+    assert macro["status"] == "done", macro["error"]
+
+    calls: list[int] = []
+
+    def flaky(stage_dir: Any, out_path: Any, **kwargs: Any) -> Any:
+        calls.append(1)
+        if len(calls) == 1:
+            raise MemoryError("transient: worker OOM while rendering")
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# regenerated\n")
+        return out
+
+    monkeypatch.setattr(validation.report, "generate_report", flaky)
+    monkeypatch.setattr(api.jobs, "_pdf_available", lambda: False)
+
+    report_id = store.create_report([macro["run_id"]], "rerun me")
+    api.jobs.report_job(
+        report_id, db_path=str(settings.db_path), results_root=str(settings.results_dir)
+    )
+    assert store.get_report(report_id)["status"] == "failed"
+    stage_dir = settings.results_dir / "reports" / report_id / "runs"
+    staged_first = sorted(p.name for p in stage_dir.rglob("*") if p.is_file())
+    assert staged_first, "the first attempt must have staged something to re-link over"
+
+    # The operator requeues the row; the claim resets it and the job re-runs.
+    api.jobs.report_job(
+        report_id, db_path=str(settings.db_path), results_root=str(settings.results_dir)
+    )
+    row = store.get_report(report_id)
+    assert row["status"] == "done", row["error"]
+    assert len(calls) == 2  # the retry reached the generator, not _stage_runs
+    assert sorted(p.name for p in stage_dir.rglob("*") if p.is_file()) == staged_first
+
+    r = client.get(f"/api/v1/reports/{report_id}/markdown", headers=HEADERS)
+    assert r.status_code == 200 and r.text == "# regenerated\n"
+
+
+def test_report_rerun_drops_a_stale_run_from_the_staging_tree(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Leftovers from an earlier attempt are not folded into the new report."""
+    import api.jobs
+    import validation.report
+
+    settings = client.app.state.settings
+    store = client.app.state.store
+    scenario = post_scenario(client, macro_corridor_config())
+    macro = post_run(client, scenario["scenario_id"])
+
+    seen: list[list[str]] = []
+
+    def record_tree(stage_dir: Any, out_path: Any, **kwargs: Any) -> Any:
+        seen.append(sorted(p.name for p in Path(stage_dir).iterdir()))
+        out = Path(out_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("# stub\n")
+        return out
+
+    monkeypatch.setattr(validation.report, "generate_report", record_tree)
+    monkeypatch.setattr(api.jobs, "_pdf_available", lambda: False)
+
+    report_id = store.create_report([macro["run_id"]], "stale tree")
+    stage_dir = settings.results_dir / "reports" / report_id / "runs"
+    (stage_dir / "run_from_a_previous_attempt").mkdir(parents=True)
+    (stage_dir / "run_from_a_previous_attempt" / "meta.json").write_text("{}")
+
+    api.jobs.report_job(
+        report_id, db_path=str(settings.db_path), results_root=str(settings.results_dir)
+    )
+    assert store.get_report(report_id)["status"] == "done"
+    assert seen == [[macro["run_id"]]]
+
+
+def test_report_measures_a_corridor_run_set_over_the_corridor(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The generator's own span starts inside the insertion buffer.
+
+    Left to itself ``generate_report`` derives one span from the reference
+    group's trajectories, whose smallest observed ``x`` is a vehicle's
+    ``departPos="free"`` insertion point inside the upstream buffer — so every
+    travel time in the metric table (and its 95% CI) carries the buffer
+    crossing. A run set that is one corridor geometry is measured over the
+    corridor proper instead.
+    """
+    import api.jobs
+    import validation.report
+    from api.results import analysis_span
+
+    recorder = _Recorder(raise_refusal=False)
+    monkeypatch.setattr(validation.report, "generate_report", recorder)
+    monkeypatch.setattr(api.jobs, "_pdf_available", lambda: False)
+    scenario = post_scenario(client, macro_corridor_config())
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+
+    assert _post_report(client, run["run_id"]).status_code == 202
+    config = client.app.state.store.get_run(run["run_id"])["config"]
+    assert recorder.calls[0]["span"] == analysis_span({"config": config})
+    assert recorder.calls[0]["span"] is not None
+
+
+def test_report_over_mixed_geometries_leaves_the_span_to_the_generator(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No common geometry: the generator's shared span beats an invented one."""
+    import api.jobs
+    import validation.report
+
+    recorder = _Recorder(raise_refusal=False)
+    monkeypatch.setattr(validation.report, "generate_report", recorder)
+    monkeypatch.setattr(api.jobs, "_pdf_available", lambda: False)
+    short = post_scenario(client, macro_corridor_config())
+    long_ = post_scenario(
+        client,
+        macro_corridor_config(
+            name="longer",
+            network={"kind": "corridor", "length_m": 2000.0, "lanes": 1, "inflow": [[0.0, 0.3]]},
+        ),
+    )
+    runs = [
+        post_run(client, short["scenario_id"])["run_id"],
+        post_run(client, long_["scenario_id"])["run_id"],
+    ]
+
+    r = client.post("/api/v1/reports", json={"run_ids": runs}, headers=HEADERS)
+    assert r.status_code == 202, r.text
+    assert recorder.calls[0]["span"] is None

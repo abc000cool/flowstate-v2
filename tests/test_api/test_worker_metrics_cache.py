@@ -34,7 +34,7 @@ def test_worker_precomputes_every_replicate_cache(client: TestClient) -> None:
         cache = d / res.METRICS_CACHE_NAME
         assert cache.is_file(), f"worker left no metrics cache in {d}"
         payload = json.loads(cache.read_text())
-        assert payload["schema"] == 1
+        assert payload["schema"] == res._METRICS_CACHE_SCHEMA
         assert payload["metrics"]["throughput_veh_h"] > 0.0
         assert not list(d.glob(f"{res.METRICS_CACHE_NAME}.tmp-*"))  # atomic write, no leftovers
 
@@ -55,8 +55,10 @@ def test_cached_run_metrics_is_read_only(client: TestClient) -> None:
     assert not victim.exists()  # not recreated by the cached-only read
     assert res.cached_replicate_metrics(victim.parent) is None
 
-    # A stale or unreadable cache counts as absent too.
-    victim.write_text(json.dumps({"schema": 0, "metrics": {}}))
+    # A stale (older-schema) or unreadable cache counts as absent too — the
+    # schema version is what stops a tree written before a change in what the
+    # numbers *mean* from being served for ever.
+    victim.write_text(json.dumps({"schema": res._METRICS_CACHE_SCHEMA - 1, "metrics": {}}))
     assert res.cached_run_metrics(run_root) is None
     victim.write_text("{not json")
     assert res.cached_run_metrics(run_root) is None
@@ -64,7 +66,7 @@ def test_cached_run_metrics_is_read_only(client: TestClient) -> None:
     # The on-demand path recomputes and refills it (atomically).
     per_replicate, _ = res.run_metrics(run_root)
     assert len(per_replicate) == 3
-    assert json.loads(victim.read_text())["schema"] == 1
+    assert json.loads(victim.read_text())["schema"] == res._METRICS_CACHE_SCHEMA
     assert res.cached_run_metrics(run_root) is not None
     assert not list(victim.parent.glob(f"{res.METRICS_CACHE_NAME}.tmp-*"))
 

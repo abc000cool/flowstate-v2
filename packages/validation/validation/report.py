@@ -762,7 +762,10 @@ def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
                 "value": _fmt(c.value),
                 "threshold": c.threshold,
                 "evaluated": "yes" if c.evaluated else "no",
-                "result": ("PASS" if c.passed else "FAIL") + (f" — {c.detail}" if c.detail else ""),
+                # A row the run set could not evaluate is neither a pass nor a
+                # fail; naming it FAIL would let a reader count it as evidence.
+                "result": (("PASS" if c.passed else "FAIL") if c.evaluated else "NOT EVALUATED")
+                + (f" — {c.detail}" if c.detail else ""),
             }
         )
     return rows

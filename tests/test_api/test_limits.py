@@ -191,3 +191,65 @@ def test_run_overrides_cannot_exceed_the_config_ceiling(client: TestClient) -> N
     )
     assert r.status_code == 422
     assert "replicates" in str(r.json()["detail"])
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI contract: auth and the status codes the middlewares produce
+# ---------------------------------------------------------------------------
+
+
+def test_openapi_declares_the_api_key_security_scheme(client: TestClient) -> None:
+    """Without the scheme /docs has no Authorize button and no way to try a route.
+
+    Auth is enforced by an ASGI middleware, which FastAPI cannot see, so the
+    scheme is declared explicitly at the include point. Swagger UI builds its
+    Authorize dialog from ``components.securitySchemes`` alone, and a client
+    generated from the spec emits the header only when the spec names it.
+    """
+    spec = client.get("/openapi.json").json()
+    assert spec["components"]["securitySchemes"]["ApiKeyAuth"] == {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+    }
+    api_ops = [
+        (path, method, op)
+        for path, item in spec["paths"].items()
+        if path.startswith("/api/")
+        for method, op in item.items()
+    ]
+    assert api_ops
+    for path, method, op in api_ops:
+        assert op.get("security") == [{"ApiKeyAuth": []}], f"{method} {path} declares no security"
+    # /healthz is exempt in the middleware, so it must not claim otherwise.
+    assert "security" not in spec["paths"]["/healthz"]["get"]
+
+
+def test_openapi_documents_the_status_codes_the_middlewares_produce(client: TestClient) -> None:
+    """401/413 on every /api route, 404 where an id is addressed, 503 on health."""
+    spec = client.get("/openapi.json").json()
+    for path, item in spec["paths"].items():
+        if not path.startswith("/api/"):
+            continue
+        for method, op in item.items():
+            codes = set(op["responses"])
+            assert {"401", "413"} <= codes, f"{method} {path}: {sorted(codes)}"
+            # POST /calibrations/{kind} is the one templated path whose
+            # parameter is a Literal discriminator, not a record id: an
+            # unknown kind is a 422, never a 404.
+            if "{" in path and path != "/api/v1/calibrations/{kind}":
+                assert "404" in codes, f"{method} {path} addresses an id but documents no 404"
+    assert "503" in spec["paths"]["/healthz"]["get"]["responses"]
+
+
+def test_declaring_the_scheme_did_not_change_the_auth_response(client: TestClient) -> None:
+    """``auto_error=False``: the middleware stays the only enforcement point.
+
+    With FastAPI's default the dependency would answer 403 "Not
+    authenticated" before the middleware ran, replacing the documented 401.
+    """
+    r = client.get("/api/v1/scenarios")
+    assert r.status_code == 401
+    assert r.json()["detail"] == "invalid or missing X-API-Key"
+    assert client.get("/api/v1/scenarios", headers={"X-API-Key": "wrong"}).status_code == 401
+    assert client.get("/api/v1/scenarios", headers=HEADERS).status_code == 200

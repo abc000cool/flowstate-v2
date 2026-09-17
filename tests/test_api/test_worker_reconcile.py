@@ -149,6 +149,59 @@ def test_started_job_with_no_live_execution_is_failed(
     assert error is not None and "worker died" in error
 
 
+def test_job_that_starts_during_the_pass_is_not_declared_dead(
+    redis_client: TestClient, redis_url: str
+) -> None:
+    """A worker that dequeues a job mid-pass must not have its row failed.
+
+    RQ registers the execution before it sets STARTED, so a liveness snapshot
+    taken before the row loop can predate an execution that starts a few
+    milliseconds into the pass (~0.1 s over a 200-cell sweep, and every
+    worker runs a pass at start and on each maintenance interval). The row
+    would be failed with "worker died while the job was executing" while SUMO
+    was running it, the dashboard would show a failed cell, and a sweep
+    re-run would skip it — so liveness is confirmed with a fresh read before
+    anything is failed.
+    """
+    from rq.executions import Execution
+    from rq.job import Job, JobStatus
+    from rq.registry import StartedJobRegistry
+
+    store, settings = redis_client.app.state.store, redis_client.app.state.settings
+    queue = RedisQueue(redis_url)
+    run_id = _row(store, settings, "run_race", status="running")
+    _enqueue(queue, settings, run_id)
+    job = Job.fetch(run_id, connection=queue.connection)
+    job.set_status(JobStatus.STARTED)
+    registry = StartedJobRegistry(queue.queue.name, connection=queue.connection)
+
+    class _StartsAJobMidPass(Store):
+        """Store whose first row listing lets a worker pick the job up."""
+
+        def __init__(self, db_path: Any) -> None:
+            super().__init__(db_path)
+            self.armed = True
+
+        def list_by_status(self, kind: str, statuses: Any) -> Any:
+            rows = super().list_by_status(kind, statuses)
+            if self.armed:
+                self.armed = False
+                # Exactly what a worker's `prepare_execution` does: register
+                # the live execution — mid-pass, i.e. after the snapshot.
+                with queue.connection.pipeline() as pipe:
+                    Execution.create(job, ttl=600, pipeline=pipe, worker_name="racer")
+                    pipe.execute()
+            return rows
+
+    racing_store = _StartsAJobMidPass(store.db_path)
+    report = reconcile_store(racing_store, RedisQueue(redis_url), settings.results_dir)
+
+    assert not racing_store.armed  # the race really was staged
+    assert registry.get_job_ids(cleanup=False) == [run_id]  # and the job is live
+    assert report.failed == [] and report.reset == []
+    assert _status(redis_client, run_id)[0] == "running"
+
+
 def test_running_row_with_a_requeued_job_is_reset_and_then_runs(
     redis_client: TestClient, redis_url: str
 ) -> None:

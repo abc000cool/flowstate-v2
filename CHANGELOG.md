@@ -6,6 +6,16 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### API and image after the second audit (2026-09-17)
+
+- **Reports carry a criteria profile.** `POST /reports` takes `profile` (default `fhwa_default`, validated against `validation.criteria.CRITERIA_PROFILES`, 422 naming the choices), stores and echoes it, and `GET /api/v1/criteria` lists every profile with its source, thresholds and wave detector. Rows whose inputs the service does not have (observed counts and speeds) are reported as not evaluated, never as FAIL; no measurement is accepted from a request (CLAUDE.md §7.4).
+- **Travel times on the product path** use a span derived from the corridor geometry (from the insertion buffer to 100 m before the exit) instead of the degenerate default; the ring reports no travel time (a loop has no traversal); the per-replicate metrics cache schema is 2, so caches written under the old definitions are recomputed.
+- **One baseline cell per sweep.** `include_baseline` appended one uncontrolled cell per controller, which ran identical simulations and, with two "baseline" groups, removed the report's contrast table; now a single `(0, 1.0, none)` cell, skipped when the grid already holds an uncontrolled cell, and identical grid triples are de-duplicated.
+- **The image can run its presets.** The Dockerfile never copied `artifacts/` (13 of 17 shipped presets failed at run time in the container); it copies `artifacts/` and `data/osm/`, with `.dockerignore` keeping the local datasets out.
+- **Operability.** OpenAPI declares the `X-API-Key` scheme (the interactive docs can authenticate) and the 401/404/413/503 responses; `reconcile_store` re-reads the started registry before failing a row so a job that started between the listing and the check is not killed; a re-run report cleans its staged directory (the previous attempt's hard links raised `SameFileError`); empty, header-only or non-numeric calibration CSVs fail with a FlowState-authored message naming the column and row, never the cell value. The runbook states the error-text guarantee exactly: no frames, no server source paths, no file contents, no pydantic input values; a results-root path may appear.
+- The report's criteria table renders a row the run set could not evaluate as NOT EVALUATED (with its reason) instead of FAIL, so an unevaluated row can no longer be counted as evidence either way.
+- Carried: `api.schemas.CalibrationParams` does not yet expose the fitter's new `max_fit_rows`, `bounds` and dropped-fraction knobs (the defaults apply).
+
 ### Metrics, report, runner and calibration after the second audit (2026-09-17)
 
 The second audit (six lenses, 24 confirmed findings after adversarial verification, 5 refuted) reached the numbers themselves. What changed, and what it does to published values:
