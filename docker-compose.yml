@@ -52,6 +52,9 @@ services:
       FLOWSTATE_API_KEY: ${FLOWSTATE_API_KEY:-flowstate-local-dev}
       # Extra accepted keys for zero-downtime rotation (docs/DEPLOYMENT.md §5).
       FLOWSTATE_API_KEYS: ${FLOWSTATE_API_KEYS:-}
+      # Browser origins allowed to call the API (docs/DEPLOYMENT.md §2); same-origin
+      # dashboard use needs none.
+      FLOWSTATE_CORS_ORIGINS: ${FLOWSTATE_CORS_ORIGINS:-}
     volumes:
       - flowstate-runs:/data/runs
     depends_on:

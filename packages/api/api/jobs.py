@@ -280,13 +280,16 @@ def _exception_chain_text(exc: BaseException, *, withhold_third_party: bool) -> 
         seen.add(id(current))
         module = _raising_module(current)
         name = type(current).__name__
-        if type(current).__module__ == "multiprocessing.pool" and name == "RemoteTraceback":
+        if name in (
+            "RemoteTraceback",
+            "_RemoteTraceback",
+        ) or "Traceback (most recent call last)" in str(current):
             # A replicate that fails inside the micro tier's spawn pool is
             # re-raised in this process with the child's *formatted traceback*
             # attached as its cause — server paths and source lines, i.e.
             # exactly what this function exists to keep out. The child's own
             # exception is the line above it; the frames stay in the log.
-            lines.append("RemoteTraceback: child traceback withheld (see the worker log)")
+            lines.append(f"{name}: child traceback withheld (see the worker log)")
         elif withhold_third_party and module.split(".")[0] not in _OWN_PACKAGES:
             lines.append(
                 f"{name} raised in {module or '<unknown>'} "
