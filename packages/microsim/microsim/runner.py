@@ -16,6 +16,13 @@ runs/<config_hash>/<seed>/
                          # seeded flag, wall time, per-vehicle fuel, AV ids
 ```
 
+``meta.json`` is the run's **completion marker**: it is written last (and
+atomically), and :func:`run_micro` deletes any stale copy before it starts, so
+a directory without one holds the debris of an interrupted run — a
+footer-less ``trajectories.parquet``, at worst — and must never be consumed.
+:func:`is_run_complete` / :func:`require_complete_run` are the predicate every
+reader (and :func:`run_replicates`) uses to say so with a clear message.
+
 Fuel unit note (verified against SUMO 1.27): ``vehicle.getFuelConsumption``
 returns **mg/s** under the default HBEFA4 emission model (observed magnitude
 ≈ 500 mg/s for a passenger car crawling at 2.5 m/s, consistent with ~2.5 l/h).
@@ -37,10 +44,13 @@ import dataclasses
 import json
 import math
 import multiprocessing
+import os
 import platform
 import time
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -134,6 +144,61 @@ class RunPaths:
     trajectories: Path
     edges: Path
     meta: Path
+
+
+#: Completion marker of a replicate directory (docs/CONTRACTS.md §3). Written
+#: last and atomically by :func:`run_micro`; its absence means the run was
+#: interrupted and whatever else the directory holds is debris.
+COMPLETION_MARKER: Final[str] = "meta.json"
+
+
+def is_run_complete(run_dir: str | Path) -> bool:
+    """Whether a replicate directory holds a *completed* run.
+
+    ``trajectories.parquet`` is opened at the start of the run and only gains
+    its Parquet footer when the run finishes, so its mere presence proves
+    nothing: an interrupted replicate (SIGINT, OOM kill, a VM shutdown cap)
+    leaves an unreadable file behind. :data:`COMPLETION_MARKER` is written
+    last, so it — and only it — answers this question.
+
+    Args:
+        run_dir: Replicate directory (``runs/<config_hash>/<seed>/``).
+
+    Returns:
+        ``True`` when the run finished and its artifacts are readable.
+    """
+    return (Path(run_dir) / COMPLETION_MARKER).is_file()
+
+
+def require_complete_run(run_dir: str | Path) -> Path:
+    """Return ``run_dir`` if the replicate completed, else raise.
+
+    Use in place of a bare ``trajectories.parquet`` existence check when
+    deciding whether a seed still needs simulating (resumable sweeps) or may
+    be analysed.
+
+    Args:
+        run_dir: Replicate directory (``runs/<config_hash>/<seed>/``).
+
+    Returns:
+        The directory as a :class:`~pathlib.Path`.
+
+    Raises:
+        FileNotFoundError: The directory holds no completion marker — it was
+            never run, or the run was interrupted. The message names the
+            debris to delete.
+    """
+    path = Path(run_dir)
+    if is_run_complete(path):
+        return path
+    leftovers = sorted(p.name for p in path.glob("*.parquet")) if path.is_dir() else []
+    detail = (
+        f" (interrupted run: {', '.join(leftovers)} may be truncated and unreadable; "
+        f"delete {path} and re-run the seed)"
+        if leftovers
+        else " (no artifacts: the seed has not been run)"
+    )
+    raise FileNotFoundError(f"incomplete micro replicate {path}: no {COMPLETION_MARKER}{detail}")
 
 
 def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
@@ -571,6 +636,18 @@ def _edie_edges_frame(
     flow 0, speed NaN). Trailing partial bins (a ring circumference or
     duration that is not a bin multiple) use their *actual* covered area so
     densities are not diluted by phantom road.
+
+    Args:
+        traj: Trajectory samples with columns ``t`` [s], ``x`` [m], ``v`` [m/s].
+        sample_dt_s: The **realized** interval between consecutive samples of
+            one vehicle [s], i.e. ``out_every · step_length_s``, NOT the
+            nominal ``1/sim.output_hz``: the runner samples on whole steps, so
+            a requested rate that does not divide the step length is rounded
+            down and weighting by the nominal interval would scale every
+            density and flow by ``nominal/realized`` (a 4 Hz request at a
+            0.5 s step halved them).
+        duration_s: Simulated duration [s] (grid extent in time).
+        total_length_m: Road length [m] (grid extent in space).
     """
     nt = max(math.ceil(duration_s / EDGES_DT_BIN_S), 1)
     nx = max(math.ceil(total_length_m / EDGES_DX_BIN_M), 1)
@@ -773,6 +850,13 @@ def run_micro(
     chash = config_hash(cfg)
     run_dir = Path(out_dir) / chash / str(seed)
     run_dir.mkdir(parents=True, exist_ok=True)
+    # Drop any completion marker from an earlier run of this (config, seed)
+    # BEFORE touching the artifacts it vouches for: from here until the
+    # marker is rewritten (last, atomically) the directory is a work in
+    # progress, and an interruption must leave it visibly incomplete rather
+    # than pairing a stale meta.json with a truncated trajectories.parquet.
+    meta_path = run_dir / COMPLETION_MARKER
+    meta_path.unlink(missing_ok=True)
     workdir = run_dir / "net"
 
     is_ring = isinstance(cfg.network, RingNetwork)
@@ -879,6 +963,19 @@ def run_micro(
     step = cfg.sim.step_length_s
     n_steps = round(cfg.sim.duration_s / step)
     out_every = max(round(1.0 / (cfg.sim.output_hz * step)), 1)
+    # Samples land on whole simulation steps, so the realized output rate is
+    # 1/(out_every·step) and can differ from the requested sim.output_hz (e.g.
+    # 4 Hz at a 0.5 s step is delivered as 2 Hz). Everything downstream —
+    # Edie weighting below, docs/CONTRACTS.md §3 consumers — must use the
+    # realized cadence, and meta.json records it (output_hz_realized).
+    output_hz_realized = 1.0 / (out_every * step)
+    if abs(output_hz_realized - cfg.sim.output_hz) > 1e-9:
+        notes.append(
+            f"sim.output_hz={cfg.sim.output_hz:g} is not attainable at "
+            f"step_length_s={step:g} (samples land on whole steps); trajectories "
+            f"and edges.parquet were produced at {output_hz_realized:g} Hz "
+            "(meta.json: output_hz_realized)"
+        )
     act_every = max(round(cfg.sim.action_step_s / step), 1)
     vsl_every = max(round(VSL_INTERVAL_S / step), 1)
     sub_vars = [
@@ -1354,8 +1451,12 @@ def run_micro(
 
     # --- Artifacts --------------------------------------------------------
     traj_df = traj_writer.close()
+    # Edie weighting uses the REALIZED sample interval (out_every whole steps),
+    # not the nominal 1/output_hz: sampling happens on whole simulation steps,
+    # so a requested rate that does not divide the step length is rounded down
+    # and the nominal interval would scale density/flow by nominal/realized.
     edges_df = _edie_edges_frame(
-        traj_df, 1.0 / cfg.sim.output_hz, cfg.sim.duration_s, bundle.total_length_m
+        traj_df, out_every * step, cfg.sim.duration_s, bundle.total_length_m
     )
     edges_path = run_dir / "edges.parquet"
     _write_parquet(pa.Table.from_pandas(edges_df, preserve_index=False), edges_path)
@@ -1371,6 +1472,10 @@ def run_micro(
         "versions": _versions(),
         "tier": "micro",
         "seeded": cfg.seeded,
+        # Realized trajectory/edges sampling rate [Hz]: 1/(out_every·step),
+        # which equals sim.output_hz only when the requested rate divides the
+        # step length (a mismatch is also spelled out in ``notes``).
+        "output_hz_realized": output_hz_realized,
         "wall_time_s": wall,
         "realtime_factor": cfg.sim.duration_s / wall if wall > 0 else None,
         "n_vehicles_planned": plan.n,
@@ -1523,8 +1628,12 @@ def run_micro(
         "backend": "traci" if lib.use_traci else "libsumo",
         "notes": notes,
     }
-    meta_path = run_dir / "meta.json"
-    meta_path.write_text(json.dumps(meta, indent=2))
+    # Completion marker, written last and atomically: a reader either sees no
+    # meta.json (run in progress or interrupted) or a complete one — never a
+    # half-written file that would vouch for debris.
+    tmp_meta = meta_path.with_name(meta_path.name + ".tmp")
+    tmp_meta.write_text(json.dumps(meta, indent=2))
+    os.replace(tmp_meta, meta_path)
     return RunPaths(run_dir=run_dir, trajectories=traj_path, edges=edges_path, meta=meta_path)
 
 
@@ -1555,8 +1664,132 @@ def _replicate_worker(payload: tuple[dict[str, Any], int, str]) -> tuple[str, st
     return (str(paths.run_dir), str(paths.trajectories), str(paths.edges), str(paths.meta))
 
 
+#: Floor on the per-replicate wall-clock budget of :func:`run_replicates` [s].
+#: Short replicates (the CI ring runs are seconds) still get a generous grace
+#: period for interpreter spawn, network build and machine contention.
+REPLICATE_TIMEOUT_FLOOR_S: Final[float] = 900.0
+
+#: Slowest realtime factor a replicate may run at before the bounded wait
+#: calls the pool wedged. CLAUDE.md §3.4 targets ≥ 5× real time on a laptop;
+#: 0.05× (20× slower than real time) is a 100× margin on that, so the budget
+#: only ever fires on a hang, never on a legitimately slow I-24 battery.
+REPLICATE_MIN_REALTIME_FACTOR: Final[float] = 0.05
+
+
+def replicate_timeout_s(cfg: ScenarioConfig) -> float:
+    """Default per-replicate wall-clock budget for :func:`run_replicates` [s].
+
+    Args:
+        cfg: Scenario configuration (its ``sim.duration_s`` sets the scale).
+
+    Returns:
+        ``max(REPLICATE_TIMEOUT_FLOOR_S, duration_s / REPLICATE_MIN_REALTIME_FACTOR)``.
+    """
+    return max(REPLICATE_TIMEOUT_FLOOR_S, float(cfg.sim.duration_s) / REPLICATE_MIN_REALTIME_FACTOR)
+
+
+def _kill_pool(ex: ProcessPoolExecutor) -> None:
+    """Kill every worker process, then shut the executor down without waiting.
+
+    ``ProcessPoolExecutor.shutdown(wait=True)`` — what leaving its context
+    manager does — joins the workers, so a wedged worker would re-create the
+    very hang this guard exists to break. libsumo runs SUMO *in-process*, so
+    killing the worker takes its simulation with it and leaves no orphan
+    (a ``use_traci`` worker's ``sumo`` child is reparented and exits when its
+    TraCI socket closes).
+    """
+    for proc in list(getattr(ex, "_processes", {}).values()):
+        try:
+            if proc.is_alive():
+                proc.kill()
+        except (OSError, ValueError, AttributeError):  # pragma: no cover - exit race
+            pass
+    ex.shutdown(wait=False, cancel_futures=True)
+
+
+def _map_replicates(
+    worker: Callable[[Any], Any],
+    payloads: Sequence[Any],
+    seeds: Sequence[int],
+    n_procs: int,
+    timeout_s: float,
+) -> list[Any]:
+    """Run ``worker(payload)`` per seed in a spawn pool, bounded and diagnosable.
+
+    ``multiprocessing.Pool.map`` silently repopulates a worker that dies
+    (OOM kill, container limit, operator ``kill -9``) and never completes or
+    fails the task it was running, so the parent blocks forever — a run that
+    should fail in seconds instead burns a billed VM until someone notices.
+    A :class:`~concurrent.futures.ProcessPoolExecutor` fails the futures
+    instead, and the bounded wait below covers the remaining case of a worker
+    that is alive but stuck.
+
+    Args:
+        worker: Picklable callable applied to one payload per seed.
+        payloads: One payload per seed, in seed order.
+        seeds: Replicate seeds, used to name failures.
+        n_procs: Pool size.
+        timeout_s: Per-replicate wall-clock budget; the wait is that budget
+            times the number of waves (``ceil(len(seeds)/n_procs)``).
+
+    Returns:
+        Worker results in seed order.
+
+    Raises:
+        RuntimeError: A worker process died, or a replicate raised. The
+            message names the seed(s).
+        TimeoutError: The budget elapsed with replicates outstanding; the
+            message names the seed(s) still running. Workers are killed
+            first, so the caller never inherits the hang.
+    """
+    n_waves = math.ceil(len(seeds) / n_procs)
+    budget_s = timeout_s * n_waves
+    ctx = multiprocessing.get_context("spawn")
+    ex = ProcessPoolExecutor(max_workers=n_procs, mp_context=ctx)
+    results: dict[int, Any] = {}
+    try:
+        futures = {
+            ex.submit(worker, payload): seed for payload, seed in zip(payloads, seeds, strict=True)
+        }
+        try:
+            for fut in as_completed(futures, timeout=budget_s):
+                seed = futures[fut]
+                try:
+                    results[seed] = fut.result()
+                except BrokenProcessPool as exc:
+                    lost = sorted(s for s in seeds if s not in results)
+                    raise RuntimeError(
+                        f"micro replicate pool broke: a worker process died (an OOM "
+                        f"kill is the usual cause) with seed(s) {lost} unfinished "
+                        f"({len(results)}/{len(seeds)} replicates completed). Re-run "
+                        f"with fewer processes (n_procs) or on a larger machine."
+                    ) from exc
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"micro replicate seed={seed} failed: {type(exc).__name__}: {exc}"
+                    ) from exc
+        except TimeoutError as exc:
+            stuck = sorted(s for s in seeds if s not in results)
+            raise TimeoutError(
+                f"micro replicate seed(s) {stuck} did not finish within {budget_s:.0f} s "
+                f"({timeout_s:.0f} s per replicate x {n_waves} wave(s) of {n_procs} "
+                f"worker(s)); {len(results)}/{len(seeds)} completed. The pool is wedged "
+                f"or the machine is oversubscribed - its workers have been killed. Pass "
+                f"a larger timeout_s if the replicates are legitimately this slow."
+            ) from exc
+    except BaseException:
+        _kill_pool(ex)
+        raise
+    ex.shutdown(wait=True)
+    return [results[s] for s in seeds]
+
+
 def run_replicates(
-    cfg: ScenarioConfig, out_root: str | Path, n_procs: int | None = None
+    cfg: ScenarioConfig,
+    out_root: str | Path,
+    n_procs: int | None = None,
+    *,
+    timeout_s: float | None = None,
 ) -> list[RunPaths]:
     """Run ``cfg.replicates`` seeded replicates in a spawn process pool.
 
@@ -1566,22 +1799,41 @@ def run_replicates(
     process-level: the pool uses the ``spawn`` start method and each worker
     imports SUMO inside the child (CLAUDE.md §3.4).
 
+    The wait is bounded (:func:`_map_replicates`): a worker that dies or a
+    replicate that wedges fails the run — naming the seed — in place of the
+    indefinite block ``multiprocessing.Pool.map`` produces, and every
+    returned replicate is checked for its completion marker
+    (:func:`require_complete_run`).
+
     Args:
         cfg: Scenario configuration.
         out_root: Run-tree root passed to each :func:`run_micro`.
         n_procs: Pool size (default: ``min(cpu_count, replicates)``).
+        timeout_s: Per-replicate wall-clock budget (default:
+            :func:`replicate_timeout_s`, derived from ``sim.duration_s``).
 
     Returns:
         One :class:`RunPaths` per replicate, in seed order.
+
+    Raises:
+        RuntimeError: A worker died or a replicate raised (seed named).
+        TimeoutError: The budget elapsed with replicates outstanding.
     """
     seeds = spawn_seeds(cfg.seed, cfg.replicates)
     cfg_json = cfg.model_dump(mode="json")
     payloads = [(cfg_json, s, str(out_root)) for s in seeds]
     n_procs = n_procs or min(multiprocessing.cpu_count(), len(seeds))
-    ctx = multiprocessing.get_context("spawn")
-    with ctx.Pool(processes=n_procs) as pool:
-        raw = pool.map(_replicate_worker, payloads)
-    return [
+    raw = _map_replicates(
+        _replicate_worker,
+        payloads,
+        seeds,
+        n_procs,
+        replicate_timeout_s(cfg) if timeout_s is None else timeout_s,
+    )
+    paths = [
         RunPaths(run_dir=Path(a), trajectories=Path(b), edges=Path(c), meta=Path(d))
         for a, b, c, d in raw
     ]
+    for p in paths:
+        require_complete_run(p.run_dir)
+    return paths

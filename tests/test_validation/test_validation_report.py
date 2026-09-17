@@ -20,6 +20,7 @@ from scipy.stats import t as student_t
 
 from validation.criteria import CriteriaProfile
 from validation.report import ReportRefusedError, contrast, generate_report, group_label
+from validation.waves import get_detector
 
 SPEEDS = (20.0, 25.0, 30.0)
 MID_SPEED = 25.0
@@ -120,6 +121,75 @@ def two_group_run_set(tmp_path: Path) -> Path:
     return _two_group_run_set(tmp_path / "runs")
 
 
+#: Planted backward wave speed [km/h]; inside the acceptance band [14, 22].
+PLANTED_WAVE_KMH = 16.0
+_PLANTED_C_MS = PLANTED_WAVE_KMH / 3.6
+
+
+def _wave_traj(
+    t_end: float = 300.0,
+    x_end: float = 1500.0,
+    headway_s: float = 6.0,
+    wavelength_m: float = 450.0,
+    jam_frac: float = 0.3,
+    v_free: float = 30.0,
+    v_jam: float = 4.0,
+) -> pd.DataFrame:
+    """Trajectories whose speed field carries a planted backward wave.
+
+    Vehicles are integrated forward through a speed field that is ``v_jam``
+    inside a stripe of wavelength ``wavelength_m`` travelling upstream at
+    :data:`PLANTED_WAVE_KMH` and ``v_free`` outside it, so the binned field
+    the detectors see has a known front speed.
+    """
+    ts: list[float] = []
+    xs: list[float] = []
+    vs: list[float] = []
+    ids: list[str] = []
+    for k, t0 in enumerate(np.arange(0.0, t_end, headway_s)):
+        t, x = float(t0), 0.0
+        while t <= t_end and x <= x_end:
+            phase = (x + _PLANTED_C_MS * t) % wavelength_m
+            v = v_jam if phase < jam_frac * wavelength_m else v_free
+            ts.append(t)
+            xs.append(x)
+            vs.append(v)
+            ids.append(f"w{k}")
+            x += v * 0.5
+            t += 0.5
+    return pd.DataFrame({"t": ts, "veh_id": ids, "x": xs, "v": vs})
+
+
+def _free_traj(t_end: float = 300.0, x_end: float = 1500.0, headway_s: float = 6.0):
+    """Uniform free flow: no front for any detector to find."""
+    frames = []
+    for k, t0 in enumerate(np.arange(0.0, t_end, headway_s)):
+        t = np.arange(t0, t_end + 0.25, 0.5)
+        x = 30.0 * (t - t0)
+        keep = x <= x_end
+        frames.append(pd.DataFrame({"t": t[keep], "veh_id": f"f{k}", "x": x[keep], "v": 30.0}))
+    return pd.concat(frames, ignore_index=True)
+
+
+def _write_traj_run(run_dir: Path, seed: int, traj: pd.DataFrame, config_hash: str) -> Path:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    traj.to_parquet(run_dir / "trajectories.parquet")
+    (run_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "config_hash": config_hash,
+                "seed": seed,
+                "tier": "micro",
+                "seeded": False,
+                "versions": {"eclipse-sumo": "1.27.1"},
+                "wall_time_s": 1.0,
+                "config": {"av": BASELINE_AV},
+            }
+        )
+    )
+    return run_dir
+
+
 def _table_after(text: str, marker: str) -> dict[str, list[str]]:
     """Rows of the first markdown table following ``marker``, keyed by column 1."""
     start = text.index(marker)
@@ -173,8 +243,16 @@ class TestGenerateReport:
         assert "### baseline (`cafe01234567`)" in text
         assert text.count("| Metric | Mean | Lower | Upper | n | Underpowered |") == 1
         assert "Controller minus baseline" not in text
-        assert "Wave-speed criterion input" not in text  # single group: no extra note
         assert "replicate\ncriterion (n_seeds >= 20): FAIL" in text
+        # A single-group report still states where the wave-speed value came
+        # from: the printed number is never without its basis.
+        assert re.search(
+            r"Wave-speed criterion input: mean over \d+ of 2 unseeded replicate\(s\) "
+            r"of group baseline \(`cafe01234567`\), measured with the stack detector",
+            text,
+        )
+        # The replicate-criterion sentence stays a multi-group extra.
+        assert "Replicate criterion input" not in text
 
     def test_speed_contour_figures_written(self, micro_run_set: Path, tmp_path: Path):
         out = tmp_path / "report" / "report.md"
@@ -241,6 +319,150 @@ class TestGenerateReport:
         out = tmp_path / "report.md"
         generate_report(micro_run_set, out, profile=CriteriaProfile(name="txdot_variant"))
         assert "txdot_variant" in out.read_text()
+
+
+class TestWaveSpeedCriterion:
+    """The criterion must be scoreable: measured with the profile's detector."""
+
+    def test_planted_wave_is_evaluated_and_passes(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            _write_traj_run(root / "wave" / str(seed), seed, _wave_traj(), "wave00000001")
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        row = _table_after(text, "## Acceptance criteria")["wave_speed"]
+        value, _threshold, evaluated, result = row[1:]
+        assert evaluated == "yes", "the profile's own detector must score its own row"
+        assert result.startswith("PASS")
+        assert float(value) == pytest.approx(PLANTED_WAVE_KMH, abs=1.5)
+        assert "detector: stack" in result
+        assert "measured with the stack detector on its own bins" in text
+
+    def test_profile_detector_is_used_not_the_metrics_detector(self, tmp_path: Path):
+        """A profile carrying a differently-binned detector still scores.
+
+        ``WaveDetector.measure`` refuses a field binned by another recipe, so
+        the field has to be rebuilt on the profile detector's own bins.
+        """
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            _write_traj_run(root / "wave" / str(seed), seed, _wave_traj(), "wave00000001")
+        out = tmp_path / "report.md"
+        generate_report(root, out, profile=CriteriaProfile(wave_detector=get_detector("stripe")))
+        text = out.read_text()
+        row = _table_after(text, "## Acceptance criteria")["wave_speed"]
+        assert row[3] == "yes"
+        assert "measured with the stripe detector" in text
+
+    def test_replicates_without_a_front_are_named_not_hidden(self, tmp_path: Path):
+        """The printed mean drops NaN replicates; the note must say so."""
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            _write_traj_run(root / "mixed" / str(seed), seed, _wave_traj(), "mix000000001")
+        for seed in (3, 4):
+            _write_traj_run(root / "mixed" / str(seed), seed, _free_traj(), "mix000000001")
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        assert "mean over 2 of 4 unseeded replicate(s)" in text
+        assert "2 replicate(s) detected no backward front and are excluded from the mean" in text
+        assert "underpowered, not a headline value" in text
+        # The value is still the mean of the two that did resolve a front.
+        row = _table_after(text, "## Acceptance criteria")["wave_speed"]
+        assert float(row[1]) == pytest.approx(PLANTED_WAVE_KMH, abs=1.5)
+
+
+class TestVersionProvenance:
+    def test_every_run_version_listed_with_a_mismatch_warning(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        _write_run(root / BASE_HASH / "1", seed=1, config_hash=BASE_HASH, av=BASELINE_AV)
+        _write_run(root / BASE_HASH / "2", seed=2, config_hash=BASE_HASH, av=BASELINE_AV)
+        ctrl = _write_run(root / CTRL_HASH / "1", seed=1, config_hash=CTRL_HASH, av=FS_AV)
+        meta = json.loads((ctrl / "meta.json").read_text())
+        meta["versions"] = {"eclipse-sumo": "1.19.0", "flowstate": "2.0.0-dev"}
+        (ctrl / "meta.json").write_text(json.dumps(meta))
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        # Both engine versions appear, each attributed to its runs.
+        assert "`1.27.1` (" in text and "`1.19.0` (" in text
+        assert f"{CTRL_HASH}/1" in text.split("### Calibration artifacts")[0]
+        # A package every run agrees on stays a plain single value.
+        assert "- flowstate: `2.0.0-dev`" in text
+        # The warning appears in provenance and again over the contrast table.
+        assert text.count("Version provenance is not uniform") == 2
+        assert "not attributable to their configurations alone" in text
+
+    def test_uniform_versions_carry_no_warning(self, two_group_run_set: Path, tmp_path: Path):
+        out = tmp_path / "report.md"
+        generate_report(two_group_run_set, out)
+        text = out.read_text()
+        assert "- eclipse-sumo: `1.27.1`" in text
+        assert "Version provenance is not uniform" not in text
+
+    def test_missing_version_block_is_reported(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        _write_run(root / "1", seed=1)
+        bare = _write_run(root / "2", seed=2)
+        meta = json.loads((bare / "meta.json").read_text())
+        del meta["versions"]
+        (bare / "meta.json").write_text(json.dumps(meta))
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        assert "no version metadata recorded for 2" in text
+
+
+class TestMeasurementWindow:
+    def test_warmup_is_stated_and_applied(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            run = _write_run(root / "w" / str(seed), seed=seed)
+            meta = json.loads((run / "meta.json").read_text())
+            meta["config"] = {"av": BASELINE_AV, "sim": {"warmup_s": 40.0}}
+            (run / "meta.json").write_text(json.dumps(meta))
+        out = tmp_path / "report.md"
+        generate_report(root, out, x_ref=1000.0)
+        text = out.read_text()
+        assert "warm-up per run, in seconds: 40" in text
+        rows = _table_after(text, "### baseline")
+        # The three constant-speed vehicles cross x = 1000 m at t = 33.3, 40
+        # and 50 s: two of the three crossings fall inside the [40, 100] s
+        # window, over which they are counted — the whole record would report
+        # three crossings over 100 s instead.
+        assert float(rows["throughput_veh_h"][1]) == pytest.approx(2.0 / 60.0 * 3600.0)
+
+    def test_one_span_is_shared_across_groups(self, tmp_path: Path):
+        """Groups that travel different distances share one exit bound."""
+        root = tmp_path / "runs"
+        for seed in (1, 2, 3):
+            _write_run(
+                root / BASE_HASH / str(seed), seed=seed, config_hash=BASE_HASH, av=BASELINE_AV
+            )
+            # The controlled group is slower: its own default span would be
+            # shorter, and its travel times would not be comparable.
+            slow = _write_run(
+                root / CTRL_HASH / str(seed), seed=seed, config_hash=CTRL_HASH, av=FS_AV
+            )
+            traj = pd.read_parquet(slow / "trajectories.parquet")
+            traj["x"] = traj["x"] * 0.5
+            traj["v"] = traj["v"] * 0.5
+            traj.to_parquet(slow / "trajectories.parquet")
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        assert "one span for every group, derived from the reference group" in text
+        # Baseline median furthest position: 2500 m (speeds 20/25/30 m/s).
+        assert "measured over [0, 2500] m" in text
+        base_rows = _table_after(text, f"### baseline (`{BASE_HASH}`)")
+        ctrl_rows = _table_after(text, f"### follower_stopper @ 5% / 100% (`{CTRL_HASH}`)")
+        # Half-speed vehicles reach at most 1500 m, so none completes the
+        # shared span: the censoring is visible as a zero sample size, not
+        # hidden in a travel time measured over a shorter corridor.
+        assert float(base_rows["n_travel_time_veh"][1]) == 2.0
+        assert float(ctrl_rows["n_travel_time_veh"][1]) == 0.0
+        assert ctrl_rows["mean_tt_s"][1] == "NaN"
 
 
 class TestGroupLabel:
@@ -355,9 +577,13 @@ class TestBaselineVersusController:
         # Metrics undefined in both groups stay undefined and unresolved.
         assert delta["fuel_ml_per_veh_km"][1] == "NaN" and delta["fuel_ml_per_veh_km"][6] == "no"
 
-        # The criteria note names the inputs' provenance.
-        assert "Wave-speed criterion input: mean over the 3 unseeded replicate(s)" in text
+        # The criteria note names the inputs' provenance, including how many
+        # of the unseeded replicates actually produced a reading.
+        assert re.search(
+            r"Wave-speed criterion input: mean over \d+ of 3 unseeded replicate\(s\)", text
+        )
         assert f"group baseline (`{BASE_HASH}`)" in text
+        assert "Replicate criterion input" in text
         assert "Contrasts compare" not in text  # limitations bullet wording below
         assert "Controller-minus-baseline contrasts compare configurations" in text
 

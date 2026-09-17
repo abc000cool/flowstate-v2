@@ -149,6 +149,7 @@
     "fuel_ml_per_veh_km": null,
     "wave_count": 1,
     "wave_speed_kmh": 18.382978723404257,
-    "wave_amplitude_ms": 23.2399452105332
+    "wave_amplitude_ms": 23.2399452105332,
+    "n_travel_time_veh": 0
   }
 }

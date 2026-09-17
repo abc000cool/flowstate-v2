@@ -25,11 +25,13 @@ from validation.metrics import (
     compute_metrics,
     count_crossings,
     crossings_per_window,
+    default_travel_span,
     geh,
     geh_pass_fraction,
     link_hour_geh,
     rmspe,
     travel_times,
+    warmup_from_meta,
 )
 from validation.report import ReportRefusedError, generate_report
 from validation.ring_benchmark import evaluate_ring_benchmark
@@ -75,6 +77,7 @@ __all__ = [
     "compute_metrics",
     "count_crossings",
     "crossings_per_window",
+    "default_travel_span",
     "density_field",
     "detect_waves",
     "equilibrium_gap",
@@ -97,4 +100,5 @@ __all__ = [
     "stack_wave_speed",
     "travel_times",
     "unstable_band",
+    "warmup_from_meta",
 ]

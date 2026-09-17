@@ -20,11 +20,13 @@ from validation.metrics import (
     compute_metrics,
     count_crossings,
     crossings_per_window,
+    default_travel_span,
     geh,
     geh_pass_fraction,
     link_hour_geh,
     rmspe,
     travel_times,
+    warmup_from_meta,
 )
 
 SPEEDS = (20.0, 25.0, 30.0)
@@ -53,10 +55,53 @@ def _three_vehicle_traj() -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def _write_run(run_dir: Path, fuel_total_ml: float | None = 750.0) -> Path:
+#: Staggered-entry fixture: entry times [s] and the common speed [m/s].
+ENTRY_TIMES = (0.0, 50.0, 100.0, 150.0)
+ENTRY_SPEED = 25.0
+CORRIDOR_M = 2500.0
+WARMUP_S = 60.0
+
+
+def _staggered_traj(
+    entries: tuple[float, ...] = ENTRY_TIMES, speed: float = ENTRY_SPEED
+) -> pd.DataFrame:
+    """One vehicle per entry time, each crossing ``CORRIDOR_M`` at ``speed``.
+
+    Every vehicle travels the whole corridor in exactly
+    ``CORRIDOR_M / speed`` s, so warm-up windowing is hand-computable.
+    """
+    frames = []
+    for i, t0 in enumerate(entries):
+        t = np.arange(t0, t0 + CORRIDOR_M / speed + 0.25, 0.5)
+        frames.append(
+            pd.DataFrame(
+                {
+                    "t": t,
+                    "veh_id": f"veh{i}",
+                    "x": speed * (t - t0),
+                    "lane": np.zeros(len(t), dtype=np.int32),
+                    "v": np.full(len(t), speed),
+                    "a": np.zeros(len(t)),
+                    "is_av": False,
+                    "complied": True,
+                }
+            )
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def _write_run(
+    run_dir: Path,
+    fuel_total_ml: float | None = 750.0,
+    traj: pd.DataFrame | None = None,
+    warmup_s: float | None = None,
+    extra_meta: dict | None = None,
+) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
-    _three_vehicle_traj().to_parquet(run_dir / "trajectories.parquet")
-    meta = {
+    (traj if traj is not None else _three_vehicle_traj()).to_parquet(
+        run_dir / "trajectories.parquet"
+    )
+    meta: dict = {
         "config_hash": "cafe01234567",
         "seed": 7,
         "tier": "micro",
@@ -66,6 +111,10 @@ def _write_run(run_dir: Path, fuel_total_ml: float | None = 750.0) -> Path:
     }
     if fuel_total_ml is not None:
         meta["fuel_total_ml"] = fuel_total_ml
+    if warmup_s is not None:
+        meta["config"] = {"sim": {"warmup_s": warmup_s}}
+    if extra_meta:
+        meta.update(extra_meta)
     (run_dir / "meta.json").write_text(json.dumps(meta))
     return run_dir
 
@@ -103,12 +152,132 @@ class TestComputeMetrics:
         assert math.isnan(m.fuel_ml_per_veh_km)
 
     def test_default_reference_and_span(self, run_dir: Path):
-        # Defaults: x_ref = mid-range (1500 m), span = full range [0, 3000].
+        # Defaults: x_ref = mid-range (1500 m), span = [0, median furthest x].
         m = compute_metrics(run_dir)
         # All three vehicles pass x=1500 within the 100 s window.
         assert m.throughput_veh_h == pytest.approx(3.0 / 100.0 * 3600.0)
-        # Only the 30 m/s vehicle completes the full [0, 3000] span.
-        assert m.mean_tt_s == pytest.approx(100.0)
+        # Per-vehicle furthest positions are 2000/2500/3000 m: the default
+        # exit bound is the median, 2500 m, which two of the three reach.
+        expected = [2500.0 / v for v in (25.0, 30.0)]
+        assert m.n_travel_time_veh == 2
+        assert m.mean_tt_s == pytest.approx(np.mean(expected))
+        assert m.p90_tt_s == pytest.approx(np.percentile(expected, 90))
+
+    def test_default_span_is_not_the_global_maximum(self, run_dir: Path):
+        """A (x_min, x_max) span is reached by one vehicle only (regression).
+
+        Its tell is ``mean_tt_s == p90_tt_s``: a single-vehicle sample was
+        being published as a fleet mean with replicate CIs.
+        """
+        assert default_travel_span(_three_vehicle_traj()) == (0.0, 2500.0)
+        one = compute_metrics(run_dir, span=(0.0, 3000.0))
+        assert one.n_travel_time_veh == 1
+        assert math.isnan(one.mean_tt_s) and math.isnan(one.p90_tt_s)
+
+    def test_travel_times_undefined_below_two_vehicles(self, tmp_path: Path):
+        run_dir = _write_run(tmp_path / "run", traj=_staggered_traj(entries=(0.0,)))
+        m = compute_metrics(run_dir)
+        assert m.n_travel_time_veh == 1
+        assert math.isnan(m.mean_tt_s) and math.isnan(m.p90_tt_s)
+
+
+class TestWarmup:
+    """``sim.warmup_s`` is discarded from every metric (SimSpec's contract)."""
+
+    @pytest.fixture()
+    def run_dir(self, tmp_path: Path) -> Path:
+        return _write_run(
+            tmp_path / "warm",
+            fuel_total_ml=1000.0,
+            traj=_staggered_traj(),
+            warmup_s=WARMUP_S,
+        )
+
+    def test_warmup_from_meta_reads_the_config_block(self):
+        assert warmup_from_meta({"config": {"sim": {"warmup_s": 600.0}}}) == 600.0
+        assert warmup_from_meta({}) == 0.0
+        assert warmup_from_meta({"config": {"sim": {}}}) == 0.0
+        assert warmup_from_meta({"config": {"sim": {"warmup_s": None}}}) == 0.0
+        assert warmup_from_meta({"config": {"sim": {"warmup_s": True}}}) == 0.0
+        assert warmup_from_meta({"config": {"sim": {"warmup_s": -5.0}}}) == 0.0
+
+    def test_window_applied_to_every_metric(self, run_dir: Path):
+        m = compute_metrics(run_dir)
+        t_end = ENTRY_TIMES[-1] + CORRIDOR_M / ENTRY_SPEED  # 250 s
+        # Throughput: the three crossings of the midpoint at t >= 60 s, over
+        # the window length — not four crossings over the whole record.
+        assert m.throughput_veh_h == pytest.approx(3.0 / (t_end - WARMUP_S) * 3600.0)
+        # Travel times: whole journeys only. The two vehicles entering after
+        # the warm-up; the one already in flight is not clipped to t_lo.
+        assert m.n_travel_time_veh == 2
+        assert m.mean_tt_s == pytest.approx(CORRIDOR_M / ENTRY_SPEED)
+        # VMT: distance covered after the warm-up (1000 + 2250 + 2500 + 2500 m).
+        assert m.vmt_veh_km == pytest.approx(8.25)
+        # VHT: 40 + 90 + 100 + 100 s of observed travel inside the window.
+        assert m.vht_veh_h == pytest.approx(330.0 / 3600.0)
+
+    def test_whole_run_fuel_keeps_a_whole_run_denominator(self, run_dir: Path):
+        """Whole-run fuel over post-warm-up VMT would inflate ml/veh·km."""
+        m = compute_metrics(run_dir)
+        assert m.vmt_veh_km == pytest.approx(8.25)
+        assert m.fuel_ml_per_veh_km == pytest.approx(1000.0 / 10.0)
+
+    def test_windowed_fuel_total_is_preferred(self, tmp_path: Path):
+        run_dir = _write_run(
+            tmp_path / "warm",
+            fuel_total_ml=1000.0,
+            traj=_staggered_traj(),
+            warmup_s=WARMUP_S,
+            extra_meta={"fuel_total_ml_post_warmup": 800.0},
+        )
+        m = compute_metrics(run_dir)
+        assert m.fuel_ml_per_veh_km == pytest.approx(800.0 / 8.25)
+
+    def test_explicit_zero_measures_the_whole_record(self, run_dir: Path):
+        m = compute_metrics(run_dir, warmup_s=0.0)
+        t_end = ENTRY_TIMES[-1] + CORRIDOR_M / ENTRY_SPEED
+        assert m.throughput_veh_h == pytest.approx(len(ENTRY_TIMES) / t_end * 3600.0)
+        assert m.vmt_veh_km == pytest.approx(10.0)
+        assert m.n_travel_time_veh == len(ENTRY_TIMES)
+
+    def test_warmup_only_traffic_excluded_from_speed_statistics(self, tmp_path: Path):
+        """A slow vehicle that leaves before the window must not move σ_v."""
+        transient = pd.DataFrame(
+            {
+                "t": np.arange(0.0, 50.0, 0.5),
+                "veh_id": "slow",
+                "x": 2.0 * np.arange(0.0, 50.0, 0.5),
+                "lane": 0,
+                "v": 2.0,
+                "a": 0.0,
+                "is_av": False,
+                "complied": True,
+            }
+        )
+        traj = pd.concat([_staggered_traj(), transient], ignore_index=True)
+        run_dir = _write_run(tmp_path / "warm", traj=traj, warmup_s=WARMUP_S)
+        assert compute_metrics(run_dir).sigma_v_spatial_ms == pytest.approx(0.0, abs=1e-12)
+        assert compute_metrics(run_dir, warmup_s=0.0).sigma_v_spatial_ms > 1.0
+
+    def test_warmup_covering_the_run_is_an_error(self, tmp_path: Path):
+        run_dir = _write_run(tmp_path / "warm", traj=_staggered_traj(), warmup_s=10_000.0)
+        with pytest.raises(ValueError, match="no measurement window"):
+            compute_metrics(run_dir)
+
+    def test_negative_warmup_rejected(self, run_dir: Path):
+        with pytest.raises(ValueError, match="must be finite and >= 0"):
+            compute_metrics(run_dir, warmup_s=-1.0)
+
+    def test_ring_style_run_has_no_whole_journey(self, tmp_path: Path):
+        """Every vehicle present from t=0 (a ring): travel times undefined."""
+        run_dir = _write_run(
+            tmp_path / "ring",
+            traj=_staggered_traj(entries=(0.0, 0.0 + 1e-9)),
+            warmup_s=WARMUP_S,
+        )
+        m = compute_metrics(run_dir)
+        assert m.n_travel_time_veh == 0
+        assert math.isnan(m.mean_tt_s) and math.isnan(m.p90_tt_s)
 
     def test_missing_files_raise(self, tmp_path: Path):
         with pytest.raises(FileNotFoundError):

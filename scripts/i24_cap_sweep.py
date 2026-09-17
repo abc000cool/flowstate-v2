@@ -40,7 +40,7 @@ from i24_validate import _inputs, _span
 
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
-from microsim.runner import _versions, run_micro
+from microsim.runner import _versions, is_run_complete, run_micro
 from validation.metrics import Metrics, aggregate, compute_metrics
 
 REPO = Path(__file__).resolve().parents[1]
@@ -115,7 +115,8 @@ def _metrics_for(
     seeds = spawn_seeds(cfg.seed, cfg.replicates)
     tree = out_root / config_hash(cfg)
     missing = [s for s in seeds if not (tree / str(s) / "metrics.json").is_file()]
-    to_run = [s for s in missing if not (tree / str(s) / "trajectories.parquet").is_file()]
+    # a replicate counts as run only when it is complete (meta.json written last)
+    to_run = [s for s in missing if not is_run_complete(tree / str(s))]
     ctx = mp.get_context("spawn")
     if to_run:
         with ctx.Pool(max(1, min(procs, len(to_run)))) as pool:

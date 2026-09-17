@@ -72,11 +72,31 @@ class TriangularFD(BaseModel):
 
 
 class FDCalibration(_Artifact):
-    """A fitted fundamental diagram plus fit diagnostics."""
+    """A fitted fundamental diagram plus fit diagnostics.
 
+    ``schema_version`` 2 added the input-provenance fields ``n_rows_input``,
+    ``dropped_rows``, ``input_ranges`` and ``branch_counts``. They all carry
+    defaults, so schema-1 JSON (``artifacts/fd_i24.json``,
+    ``artifacts/fd_us101.json``) still loads; an empty/zero value means "this
+    artifact predates the field", not "nothing was dropped".
+    """
+
+    schema_version: int = 2
     kind: Literal["fd"] = "fd"
     fd: TriangularFD
     n_observations: int
+    """Rows actually fitted: input rows minus non-physical rows, after any
+    row cap (``calibration.fd_fit.fit_triangular_fd(max_fit_rows=...)``)."""
+    n_rows_input: int = 0
+    """Rows in the input table before any filtering (0 on schema-1 artifacts)."""
+    dropped_rows: dict[str, int] = Field(default_factory=dict)
+    """Non-physical rows dropped before fitting, keyed by reason
+    (``calibration.fd_fit.DROP_REASONS``); absent reasons dropped nothing."""
+    input_ranges: dict[str, float] = Field(default_factory=dict)
+    """min/max of the fitted ``density_veh_m`` and ``flow_veh_s`` columns —
+    the scale tripwire that R² and the bootstrap CI width cannot give."""
+    branch_counts: dict[str, int] = Field(default_factory=dict)
+    """Points on the ``free`` and ``congested`` branches of the point fit."""
     r2_freeflow: float
     """R² of the free-flow branch regression."""
     congested_quantile: float

@@ -203,11 +203,12 @@ class CriteriaProfile:
             that must produce ``wave_speed_kmh`` for this profile; its
             description is written into the evaluated row. Default
             ``validation.waves.STACK_DETECTOR`` — see the module docstring
-            for the benchmark evidence. ``validation.metrics.compute_metrics``
-            and ``validation.report.generate_report`` still measure with the
-            ``standard`` detector and do not state it to :func:`evaluate`, so
-            their rows carry the "detector not stated" note until they are
-            wired to the profile.
+            for the benchmark evidence. ``validation.report.generate_report``
+            measures the criterion with this detector, on fields binned at
+            this detector's own bins, and states it to :func:`evaluate`; the
+            ``wave_speed_kmh`` of ``validation.metrics.compute_metrics`` is a
+            separate ``standard``-detector diagnostic that appears in the
+            report's metric tables and is never scored as this row.
         min_seeds: Minimum replicate count for headline reporting.
         require_ring_emergence: Include the Sugiyama ring emergence check.
         require_ring_dampening: Include the Stern single-AV dampening check.

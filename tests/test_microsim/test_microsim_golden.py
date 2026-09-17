@@ -273,7 +273,7 @@ CASES: dict[str, GoldenCase] = {
     # The CLAUDE.md §9 "corridor_10km 2-min smoke run": the versioned scenario
     # with only its duration shortened to two simulated minutes.
     "corridor_10km_smoke": GoldenCase(
-        _versioned("corridor_10km", {"sim.duration_s": 120.0}),
+        _versioned("corridor_10km", {"sim.duration_s": 120.0, "sim.warmup_s": 0.0}),
         "scenarios/corridor_10km.yaml with sim.duration_s = 120 (the §9 2-min smoke run), seed 42",
         scenario="corridor_10km",
         overrides={"sim.duration_s": 120.0},

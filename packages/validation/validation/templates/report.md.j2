@@ -11,6 +11,8 @@ Generated: {{ created_at }}
 
 Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
 
+{{ measurement_note }}
+
 | Run | Config hash | Seed | Tier | seeded | Wall time [s] |
 |---|---|---|---|---|---|
 {% for r in runs %}
@@ -20,11 +22,15 @@ Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
 ### Package versions (from run metadata)
 
 {% if versions %}
-{% for k, v in versions %}
-- {{ k }}: `{{ v }}`
+{% for v in versions %}
+- {{ v.name }}: {{ v.detail }}
 {% endfor %}
 {% else %}
 - No version metadata recorded.
+{% endif %}
+{% if versions_warning %}
+
+> **{{ versions_warning }}**
 {% endif %}
 
 ### Calibration artifacts used
@@ -48,8 +54,9 @@ not calibrated claims.
 | {{ c.name }} | {{ c.value }} | {{ c.threshold }} | {{ c.evaluated }} | {{ c.result }} |
 {% endfor %}
 
-Rows marked not evaluated had no input supplied and count as failing; an
-unevaluated criterion is never a pass.
+A row marked not evaluated is never a pass: either no input was supplied,
+or the value was measured with a recipe this profile does not accept (the
+row's result says which). An unevaluated criterion counts as failing.
 {% if criteria_note %}
 
 {{ criteria_note }}
@@ -76,7 +83,11 @@ native resolution; this table says how much of its value is resolution.
 Mean with two-sided t-distribution confidence bounds at the
 {{ ci_level_pct }} percent level over n replicates. Rows flagged
 underpowered have fewer than {{ min_replicates }} replicates and must not be
-quoted as headline results.
+quoted as headline results. Travel-time rows rest on the vehicles counted by
+the n_travel_time_veh row, which are those that entered within the
+measurement window and completed the span.
+
+{{ wave_row_note }}
 
 {% for g in groups %}
 ### {{ g.label }} (`{{ g.config_hash }}`)
@@ -108,6 +119,10 @@ replicates (docs/CONTROLLER_COMPARISON.md); when the seed sets differ the
 interval is Welch's unequal-variance interval on the difference of means.
 A contrast is resolved when its interval excludes zero; an unresolved
 contrast is not evidence of an effect in either direction.
+{% if versions_warning %}
+
+> **{{ versions_warning }}**
+{% endif %}
 
 {% for d in deltas %}
 #### {{ d.label }} vs baseline — {{ d.method_text }}
@@ -143,6 +158,7 @@ contrast is not evidence of an effect in either direction.
   behavior; conclusions hold only within the swept grid.
 - Metrics from fewer than {{ min_replicates }} replicates are flagged
   underpowered and are diagnostics, not claims.
+- {{ measurement_note }}
 {% if deltas %}
 - Controller-minus-baseline contrasts compare configurations that differ
   only by their controlled-vehicle settings under the same scenario; an

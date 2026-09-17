@@ -111,6 +111,9 @@ def main() -> None:
     cal = fit_triangular_fd(
         obs[["density_veh_m", "flow_veh_s"]],
         created_at=created_at,
+        # every row: artifacts/fd_i24.json was fitted on 236,717 rows before the
+        # 50,000-row default cap existed and must stay reproducible bit for bit
+        max_fit_rows=None,
         source=(
             "I-24 MOTION INCEPTION v1.x, 30 Nov 2022 westbound "
             "(6386d89efb3ff533c12df167__post10), Edie 30 s x 50 m bins per mainline lane "

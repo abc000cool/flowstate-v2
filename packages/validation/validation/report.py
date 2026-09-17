@@ -1,13 +1,23 @@
 """Auto-generated validation report (CLAUDE.md §7.4) — a product feature.
 
 ``generate_report`` renders a markdown calibration/validation report from a
-directory of run results: provenance (config hash, seeds, package and SUMO
-versions from run metadata), calibration artifacts used, the acceptance
-criteria table (:mod:`validation.criteria`), metric tables with replicate
-confidence intervals (:mod:`validation.metrics`), and speed-contour figures
-rendered beside the report. Seeded-perturbation runs are labeled prominently
+directory of run results: provenance (config hash, seeds, and the package
+and SUMO versions of *every* run — a run set mixing engine versions is
+listed value by value and carries a comparability warning, CLAUDE.md §9),
+calibration artifacts used, the acceptance criteria table
+(:mod:`validation.criteria`), metric tables with replicate confidence
+intervals (:mod:`validation.metrics`), and speed-contour figures rendered
+beside the report. Seeded-perturbation runs are labeled prominently
 (CLAUDE.md §0.2). Macro-only run sets are refused (CLAUDE.md §5.6): the
 screening tier cannot support validation claims.
+
+Every metric, figure and criterion describes the same measurement window:
+each run's recorded period minus its configured warm-up
+(:func:`validation.metrics.warmup_from_meta`). The wave-speed criterion is
+measured with the active profile's own detector on fields binned at that
+detector's bins — reusing the metrics module's ``standard``-detector reading
+would make the row unscoreable, since :func:`validation.criteria.evaluate`
+refuses a value produced by another recipe.
 
 Microscopic runs are grouped by ``config_hash`` — one configuration per group,
 labeled from its ``config.av`` block (``baseline`` for uncontrolled fleets,
@@ -43,8 +53,17 @@ from scipy.stats import t as student_t
 
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate
 from validation.fields import SpeedField, speed_field
-from validation.metrics import CI, CI_LEVEL, MIN_REPLICATES, Metrics, aggregate, compute_metrics
-from validation.waves import get_detector
+from validation.metrics import (
+    CI,
+    CI_LEVEL,
+    MIN_REPLICATES,
+    Metrics,
+    aggregate,
+    compute_metrics,
+    default_travel_span,
+    warmup_from_meta,
+)
+from validation.waves import WaveDetector, get_detector
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_NAME = "report.md.j2"
@@ -91,6 +110,11 @@ class _RunInfo:
     @property
     def config_hash(self) -> str:
         return str(self.meta.get("config_hash", "unknown"))
+
+    @property
+    def warmup_s(self) -> float:
+        """The run's configured metrics warm-up [s] (discarded from metrics)."""
+        return warmup_from_meta(self.meta)
 
 
 @dataclass(frozen=True)
@@ -299,12 +323,12 @@ def _discover_runs(run_set_dir: Path) -> list[_RunInfo]:
     return runs
 
 
-def _build_groups(
-    micro_runs: list[_RunInfo],
-    x_ref: float | None,
-    span: tuple[float, float] | None,
-) -> list[_Group]:
-    """Group micro runs by config hash; baseline groups first.
+def _group_runs(micro_runs: list[_RunInfo]) -> list[_Group]:
+    """Group micro runs by config hash; baseline groups first, metrics unfilled.
+
+    Grouping is metadata-only so the run set's shared measurement span can be
+    derived from the reference group before any metric is computed
+    (:func:`_fill_metrics`).
 
     Raises:
         ValueError: If one configuration holds the same seed twice — a
@@ -317,7 +341,6 @@ def _build_groups(
     groups: list[_Group] = []
     for chash, runs in by_hash.items():
         seen: set[str] = set()
-        metrics: dict[str, Metrics] = {}
         for r in runs:
             if r.seed in seen:
                 raise ValueError(
@@ -325,14 +348,13 @@ def _build_groups(
                     f"({r.path}); duplicate replicates would inflate n"
                 )
             seen.add(r.seed)
-            metrics[r.seed] = compute_metrics(r.path, x_ref=x_ref, span=span)
         groups.append(
             _Group(
                 config_hash=chash,
                 label=group_label(runs[0].meta),
                 runs=runs,
-                metrics=metrics,
-                agg=aggregate(list(metrics.values())),
+                metrics={},
+                agg={},
             )
         )
 
@@ -348,6 +370,52 @@ def _build_groups(
     return groups
 
 
+def _shared_span(reference: _Group) -> tuple[float, float] | None:
+    """One travel-time span [m] for the whole run set, from the reference group.
+
+    Each replicate's own default span would be derived from its own
+    trajectory file, so a congested group would be measured over a shorter
+    corridor than the baseline and the controller-minus-baseline travel-time
+    contrast would compare different distances. The reference group fixes one
+    span for every group: the smallest observed entry position and the median
+    of the replicates' own :func:`validation.metrics.default_travel_span`
+    exit bounds. ``None`` when no replicate yields a usable span (each
+    replicate then falls back to its own default).
+    """
+    import pandas as pd
+
+    los: list[float] = []
+    his: list[float] = []
+    for r in reference.runs:
+        path = r.path / "trajectories.parquet"
+        if not path.is_file():
+            continue
+        traj = pd.read_parquet(path, columns=["t", "veh_id", "x"])
+        if traj.empty:
+            continue
+        warm = r.warmup_s
+        if warm > 0.0:
+            windowed = traj.loc[traj["t"] >= warm]
+            if not windowed.empty:
+                traj = windowed
+        lo, hi = default_travel_span(traj)
+        if hi > lo:
+            los.append(lo)
+            his.append(hi)
+    if not los:
+        return None
+    return min(los), float(np.median(np.asarray(his, dtype=np.float64)))
+
+
+def _fill_metrics(
+    groups: list[_Group], x_ref: float | None, span: tuple[float, float] | None
+) -> None:
+    """Compute and aggregate every group's replicate metrics in place."""
+    for g in groups:
+        g.metrics = {r.seed: compute_metrics(r.path, x_ref=x_ref, span=span) for r in g.runs}
+        g.agg = aggregate(list(g.metrics.values()))
+
+
 def _fmt(value: float | None, digits: int = 4) -> str:
     """Format one computed number for the template ('—' for missing)."""
     if value is None:
@@ -357,11 +425,24 @@ def _fmt(value: float | None, digits: int = 4) -> str:
     return f"{value:.{digits}g}"
 
 
-def _load_field(run: _RunInfo) -> SpeedField:
+def _load_field(run: _RunInfo, dt_bin: float = 15.0, dx_bin: float = 75.0) -> SpeedField:
+    """Speed field of one run's measurement window, binned as asked.
+
+    The run's configured warm-up is dropped (the same window
+    :func:`validation.metrics.compute_metrics` measures), so the archived
+    contours and the criterion reading describe the scored period. The bins
+    are explicit because a :class:`validation.waves.WaveDetector` refuses a
+    field binned differently from its own recipe.
+    """
     import pandas as pd
 
     traj = pd.read_parquet(run.path / "trajectories.parquet", columns=["t", "x", "v"])
-    return speed_field(traj)
+    warm = run.warmup_s
+    if warm > 0.0:
+        windowed = traj.loc[traj["t"] >= warm]
+        if not windowed.empty:
+            traj = windowed
+    return speed_field(traj, dt_bin=dt_bin, dx_bin=dx_bin)
 
 
 def _render_contour(
@@ -553,6 +634,125 @@ def speed_aggregation_rows(
     return rows
 
 
+def _wave_criterion_note(
+    *,
+    reference: _Group,
+    detector: WaveDetector,
+    n_readings: int,
+    n_finite: int,
+    n_seeded_excluded: int,
+) -> str:
+    """Provenance sentence for the wave-speed criterion's input value.
+
+    States the detector, the reference group, and — because replicates in
+    which no backward front is found contribute nothing — how many of the
+    unseeded replicates the printed mean actually rests on. A bare
+    "mean over the N unseeded replicates" would overstate the sample
+    whenever any replicate yields no reading (the common case for the
+    ``stack`` detector on a low-contrast field).
+    """
+    if n_readings == 0:
+        text = f"not evaluated — group {reference.label} has no unseeded replicate"
+    else:
+        text = (
+            f"mean over {n_finite} of {n_readings} unseeded replicate(s) of group "
+            f"{reference.label} (`{reference.config_hash}`), measured with the "
+            f"{detector.name} detector on its own bins"
+        )
+        missing = n_readings - n_finite
+        if missing:
+            text += (
+                f"; {missing} replicate(s) detected no backward front and are "
+                "excluded from the mean"
+            )
+        if 0 < n_finite < MIN_REPLICATES:
+            text += (
+                f"; fewer than {MIN_REPLICATES} contributing replicate(s) — "
+                "underpowered, not a headline value"
+            )
+    if n_seeded_excluded:
+        text += f"; {n_seeded_excluded} seeded replicate(s) excluded"
+    return f"Wave-speed criterion input: {text}."
+
+
+def _version_context(
+    micro_runs: list[_RunInfo], run_set: Path
+) -> tuple[list[dict[str, str]], str | None]:
+    """Package-version rows for the whole run set, plus a mismatch warning.
+
+    Every micro run's ``versions`` block is scanned, not just the first: a
+    run set assembled from runs made weeks apart (``POST /reports`` takes an
+    arbitrary run-id list) can mix engine versions, and results are not
+    comparable across SUMO versions (CLAUDE.md §9). Each distinct value is
+    rendered with the runs that carry it.
+
+    Returns:
+        ``(rows, warning)`` — ``rows`` are ``{"name", "detail"}`` per
+        package, ``warning`` is None when every run agrees and records a
+        version block.
+    """
+    per_key: dict[str, dict[str, list[str]]] = {}
+    missing: list[str] = []
+    for r in micro_runs:
+        name = str(r.path.relative_to(run_set))
+        raw = r.meta.get("versions")
+        if not isinstance(raw, dict) or not raw:
+            missing.append(name)
+            continue
+        for package, value in raw.items():
+            per_key.setdefault(str(package), {}).setdefault(str(value), []).append(name)
+
+    rows: list[dict[str, str]] = []
+    for package, values in sorted(per_key.items()):
+        if len(values) == 1:
+            detail = f"`{next(iter(values))}`"
+        else:
+            detail = ", ".join(
+                f"`{value}` ({', '.join(runs)})" for value, runs in sorted(values.items())
+            )
+        rows.append({"name": package, "detail": detail})
+
+    split = [package for package, values in per_key.items() if len(values) > 1]
+    if not split and not missing:
+        return rows, None
+    parts: list[str] = []
+    if split:
+        parts.append(f"runs differ in {', '.join(sorted(split))}")
+    if missing:
+        parts.append(f"no version metadata recorded for {', '.join(missing)}")
+    warning = (
+        "Version provenance is not uniform across this run set ("
+        + "; ".join(parts)
+        + "). Results are pinned per engine version (CLAUDE.md §9), so differences "
+        "between groups are not attributable to their configurations alone."
+    )
+    return rows, warning
+
+
+def _measurement_note(
+    micro_runs: list[_RunInfo], span: tuple[float, float] | None, span_is_shared: bool
+) -> str:
+    """One sentence stating the window and span every metric was measured on."""
+    warmups = sorted({r.warmup_s for r in micro_runs})
+    warm_text = ", ".join(f"{w:g}" for w in warmups)
+    if span is None:
+        span_text = (
+            "each replicate's own default span (smallest observed position to the "
+            "median per-vehicle furthest position)"
+        )
+    else:
+        span_text = f"[{span[0]:g}, {span[1]:g}] m"
+        if span_is_shared:
+            span_text += " — one span for every group, derived from the reference group"
+    return (
+        f"Measurement window: each run's configured warm-up is discarded from every "
+        f"metric (warm-up per run, in seconds: {warm_text}). Travel times keep whole "
+        f"journeys that begin inside the window and are measured over {span_text}. "
+        "Fuel per vehicle-km remains a whole-run ratio unless the run records a "
+        "post-warm-up fuel total."
+    )
+
+
 def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for c in results:
@@ -713,8 +913,12 @@ def generate_report(
 
     The wave-speed criterion is fed by the unseeded replicates of the
     reference group (the baseline when exactly one exists, else the first
-    group); the replicate criterion by the smallest group's distinct seed
-    count, and additionally per group in each metrics section.
+    group), each measured with the profile's own
+    :class:`validation.waves.WaveDetector` on a field binned at that
+    detector's bins; the printed value is the mean of the replicates that
+    yielded a reading, and the note under the table says how many of them
+    there were. The replicate criterion is fed by the smallest group's
+    distinct seed count, and additionally per group in each metrics section.
 
     Args:
         run_set_dir: Root directory holding run directories (contract §3
@@ -733,6 +937,10 @@ def generate_report(
         x_ref: Optional throughput cross-section [m] forwarded to
             :func:`validation.metrics.compute_metrics`.
         span: Optional travel-time measurement span [m], forwarded likewise.
+            ``None`` derives one span for the whole run set from the
+            reference group (:func:`_shared_span`) so that every group's
+            travel time — and the controller-minus-baseline contrast — is
+            measured over the same distance.
         pdf: Also render the markdown to ``report.pdf`` beside it via
             :mod:`validation.report_pdf` (needs the ``validation[pdf]``
             extra, fpdf2).
@@ -770,15 +978,37 @@ def generate_report(
         )
 
     p = profile if profile is not None else CriteriaProfile()
-    groups = _build_groups(micro_runs, x_ref, span)
+    groups = _group_runs(micro_runs)
     baselines = [g for g in groups if g.is_baseline]
     baseline = baselines[0] if len(baselines) == 1 else None
     reference = baseline if baseline is not None else groups[0]
+    # One travel-time span for every group (see _shared_span) unless the
+    # caller fixed one; each replicate's own default would measure the
+    # groups over different distances.
+    measure_span = span if span is not None else _shared_span(reference)
+    _fill_metrics(groups, x_ref, measure_span)
 
-    # Wave-speed criterion: emergent means unseeded (CLAUDE.md §0.2, §7.1).
-    unseeded = [reference.metrics[r.seed] for r in reference.runs if not r.seeded]
-    n_seeded_excluded = len(reference.runs) - len(unseeded)
-    wave_speed: float | None = aggregate(unseeded)["wave_speed_kmh"].mean if unseeded else None
+    # Wave-speed criterion: emergent means unseeded (CLAUDE.md §0.2, §7.1),
+    # measured with the profile's own detector on that detector's own bins.
+    # `evaluate` refuses (does not score) a value from another recipe, so
+    # reusing the metrics reading would leave the row unevaluatable.
+    det = p.wave_detector
+    unseeded_runs = [r for r in reference.runs if not r.seeded]
+    n_seeded_excluded = len(reference.runs) - len(unseeded_runs)
+    readings = [
+        det.measure(_load_field(r, dt_bin=det.dt_bin_s, dx_bin=det.dx_bin_m)).speed_kmh
+        for r in unseeded_runs
+    ]
+    finite = [v for v in readings if math.isfinite(v)]
+    wave_speed: float | None
+    if not readings:
+        wave_speed = None
+    elif finite:
+        # Replicates with no detected front contribute nothing to the mean
+        # (as validation.metrics.aggregate drops them); the note says how many.
+        wave_speed = float(np.mean(finite))
+    else:
+        wave_speed = math.nan
     smallest = min(groups, key=lambda g: len(set(g.seeds)))
     criteria_results = evaluate(
         p,
@@ -788,24 +1018,20 @@ def generate_report(
         ring_emergence=ring_emergence,
         ring_dampening=ring_dampening,
         n_seeds=len(set(smallest.seeds)),
-        # compute_metrics measures wave speed with the standard threshold
-        # detector; say so on the row rather than let it read as the profile's.
-        wave_detector=get_detector("standard"),
+        wave_detector=det,
     )
-    criteria_note: str | None = None
+    criteria_note = _wave_criterion_note(
+        reference=reference,
+        detector=det,
+        n_readings=len(readings),
+        n_finite=len(finite),
+        n_seeded_excluded=n_seeded_excluded,
+    )
     if len(groups) > 1 or n_seeded_excluded:
-        wave_text = (
-            f"mean over the {len(unseeded)} unseeded replicate(s) of group "
-            f"{reference.label} (`{reference.config_hash}`)"
-            if unseeded
-            else f"not evaluated — group {reference.label} has no unseeded replicate"
-        )
-        if n_seeded_excluded:
-            wave_text += f"; {n_seeded_excluded} seeded replicate(s) excluded"
-        criteria_note = (
-            f"Wave-speed criterion input: {wave_text}. Replicate criterion input: the "
-            f"smallest group ({smallest.label}, n = {len(set(smallest.seeds))} distinct "
-            "seeds); each group's own replicate check is under Metrics."
+        criteria_note += (
+            f" Replicate criterion input: the smallest group ({smallest.label}, n = "
+            f"{len(set(smallest.seeds))} distinct seeds); each group's own replicate "
+            "check is under Metrics."
         )
 
     aggregation_rows = (
@@ -827,8 +1053,7 @@ def generate_report(
         }
         for r in runs
     ]
-    versions_raw = micro_runs[0].meta.get("versions", {})
-    versions = sorted(versions_raw.items()) if isinstance(versions_raw, dict) else []
+    versions, versions_warning = _version_context(micro_runs, run_set)
 
     calibrations: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -880,9 +1105,17 @@ def generate_report(
         seeds_joined=", ".join(seeds_seen),
         runs=run_rows,
         versions=versions,
+        versions_warning=versions_warning,
+        measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         calibrations=calibrations,
         criteria=_criteria_rows(criteria_results),
         criteria_note=criteria_note,
+        wave_row_note=(
+            f"The wave_speed_kmh row is the metrics detector's diagnostic reading "
+            f"({get_detector('standard').name}); the acceptance criterion above is "
+            f"measured separately with the profile's {det.name} detector on its own "
+            "bins, so the two values can differ."
+        ),
         aggregation=aggregation_rows,
         ci_level_pct=_fmt(CI_LEVEL * _PERCENT, 3),
         min_replicates=str(MIN_REPLICATES),

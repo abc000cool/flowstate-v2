@@ -61,6 +61,7 @@ from i24_build_replica import (
 from i24_data import REPO_ROOT
 
 from microsim.networks import osm_import
+from microsim.runner import is_run_complete
 
 OUT = REPO_ROOT / "artifacts" / "i24_lane_profile.json"
 FIG = REPO_ROOT / "docs" / "figures" / "i24_lane_profile.png"
@@ -185,7 +186,7 @@ def replica_profile(arm: str) -> dict | None:
     res = json.loads(art.read_text())
     root = REPO_ROOT / "runs" / f"i24_validation{FAMILY}" / arm / res["config_hash"]
     run_dir = next(
-        (root / str(s) for s in res["seeds"] if (root / str(s) / "trajectories.parquet").is_file()),
+        (root / str(s) for s in res["seeds"] if is_run_complete(root / str(s))),
         None,
     )
     if run_dir is None:

@@ -32,9 +32,45 @@ from calibration.loaders.ngsim import (
     load_ngsim_episodes,
     load_ngsim_trajectories,
 )
-from calibration.loaders.pems import MPH_TO_MS, load_pems_station_csv
+from calibration.loaders.pems import (
+    G_EFFECTIVE_LENGTH_DEFAULT_M,
+    MPH_TO_MS,
+    PEMS_INTERVAL_S,
+    load_pems_station_csv,
+)
+from flowstate_core.rng import make_rng
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _write_pems_csv(
+    path: Path,
+    *,
+    n: int = 200,
+    interval_s: float = PEMS_INTERVAL_S,
+    flow_scale: float = 1.0,
+    occupancy_scale: float = 1.0,
+) -> Path:
+    """Write a self-consistent PeMS-shaped export (q = rho*v exactly).
+
+    ``flow_scale``/``occupancy_scale`` inject the two unit mistakes the
+    loader's cross-checks exist for: hourly counts left in a 5-min column
+    (``flow_scale = 3600/interval_s``) and percent occupancy declared as a
+    fraction (``occupancy_scale = 100``).
+    """
+    rng = make_rng(5)
+    occ = rng.uniform(0.02, 0.45, n)
+    speed_ms = 30.0 * (1.0 - occ / 0.6)
+    density = occ / G_EFFECTIVE_LENGTH_DEFAULT_M
+    rows = ["Timestamp,Station,District,Flow,Occupancy,Speed"]
+    for i in range(n):
+        count = density[i] * speed_ms[i] * interval_s * flow_scale
+        rows.append(
+            f"2024-03-01T{i // 60:02d}:{i % 60:02d}:00,717490,7,"
+            f"{count:.4f},{occ[i] * occupancy_scale:.6f},{speed_ms[i] / MPH_TO_MS:.4f}"
+        )
+    path.write_text("\n".join(rows) + "\n")
+    return path
 
 
 class TestNgsimLoader:
@@ -147,6 +183,80 @@ class TestPemsLoader:
     def test_bad_g_raises(self) -> None:
         with pytest.raises(ValueError, match="g_effective_length_m"):
             load_pems_station_csv(FIXTURES / "pems_tiny.csv", g_effective_length_m=0.0)
+
+    def test_self_consistent_export_loads(self, tmp_path: Path) -> None:
+        df = load_pems_station_csv(_write_pems_csv(tmp_path / "ok.csv"))
+        assert len(df) == 200
+        implied = df["flow_veh_s"] / df["density_veh_m"]
+        assert np.allclose(implied, df["speed_ms"], rtol=1e-4)  # CSV rounding only
+
+    def test_hourly_counts_with_the_default_interval_are_refused(self, tmp_path: Path) -> None:
+        # Flow uploaded as veh/h into a 5-min column: implied q/rho is 12x the
+        # reported speed, while the FD fit downstream sees R^2 unchanged.
+        bad = _write_pems_csv(tmp_path / "hourly.csv", flow_scale=3600.0 / PEMS_INTERVAL_S)
+        with pytest.raises(ValueError, match="implied speed") as exc:
+            load_pems_station_csv(bad)
+        msg = str(exc.value)
+        assert "interval_s=300" in msg
+        # Declaring the real interval makes the same file load.
+        assert len(load_pems_station_csv(bad, interval_s=3600.0)) == 200
+
+    def test_percent_occupancy_declared_as_fraction_is_refused(self, tmp_path: Path) -> None:
+        bad = _write_pems_csv(tmp_path / "percent.csv", occupancy_scale=100.0)
+        with pytest.raises(ValueError, match="above 100%") as exc:
+            load_pems_station_csv(bad)
+        assert "occupancy_unit='fraction'" in str(exc.value)
+        assert len(load_pems_station_csv(bad, occupancy_unit="percent")) == 200
+
+    def test_wrong_g_factor_is_named(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match=r"g_effective_length_m=0\.07"):
+            load_pems_station_csv(_write_pems_csv(tmp_path / "g.csv"), g_effective_length_m=0.07)
+
+    def test_consistency_check_can_be_disabled(self, tmp_path: Path) -> None:
+        bad = _write_pems_csv(tmp_path / "hourly2.csv", flow_scale=12.0)
+        assert len(load_pems_station_csv(bad, max_speed_ratio_factor=None)) == 200
+
+    def test_isolated_bad_rows_pass_through_to_the_fitter(self, tmp_path: Path) -> None:
+        # A handful of failed intervals is not a unit mistake: the loader must
+        # not refuse the file. fit_triangular_fd drops and counts those rows.
+        path = _write_pems_csv(tmp_path / "sentinels.csv")
+        lines = path.read_text().splitlines()
+        parts = lines[1].split(",")
+        parts[3], parts[4] = "-1", "-1"
+        lines[1] = ",".join(parts)
+        path.write_text("\n".join(lines) + "\n")
+        df = load_pems_station_csv(path)
+        assert len(df) == 200
+        assert df["flow_veh_s"].iloc[0] < 0.0  # kept, to be dropped and counted later
+
+    def test_sentinel_occupancy_rows_are_not_read_as_a_unit_mistake(self, tmp_path: Path) -> None:
+        # 5% failed intervals (the classic -1 sentinel) is above
+        # MAX_OUT_OF_RANGE_FRACTION but is not a percent/fraction mix-up: the
+        # loader must pass those rows to fit_triangular_fd, which drops and
+        # counts them under "negative", rather than refuse the file with a
+        # message blaming occupancy_unit.
+        path = _write_pems_csv(tmp_path / "many_sentinels.csv")
+        lines = path.read_text().splitlines()
+        for i in range(1, 11):  # 10 of 200 rows
+            parts = lines[i].split(",")
+            parts[3] = parts[4] = parts[5] = "-1"
+            lines[i] = ",".join(parts)
+        path.write_text("\n".join(lines) + "\n")
+        df = load_pems_station_csv(path)
+        assert len(df) == 200
+        assert int((df["occupancy"] < 0.0).sum()) == 10
+
+    def test_short_or_speedless_files_skip_the_cross_check(self, tmp_path: Path) -> None:
+        # The tiny 12-row fixture path stays usable; so does an export whose
+        # speed column is all zeros (no usable rows to judge the ratio on).
+        tiny = _write_pems_csv(tmp_path / "tiny.csv", n=8, flow_scale=12.0)
+        assert len(load_pems_station_csv(tiny)) == 8
+        speedless = _write_pems_csv(tmp_path / "speedless.csv", flow_scale=12.0)
+        head, *body = speedless.read_text().splitlines()
+        speedless.write_text(
+            "\n".join([head, *(",".join([*row.split(",")[:5], "0"]) for row in body)]) + "\n"
+        )
+        assert len(load_pems_station_csv(speedless)) == 200
 
 
 class TestHighdLoader:

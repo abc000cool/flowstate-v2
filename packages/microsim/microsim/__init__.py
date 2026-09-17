@@ -8,7 +8,14 @@ dispatch, and contract-compliant Parquet/JSON run artifacts.
 from microsim.demand_adapter import make_simulate_fn
 from microsim.gym_backend import MicrosimBackend
 from microsim.networks import NetBundle, corridor, osm_import, ring
-from microsim.runner import RunPaths, fuel_mg_to_ml, run_micro, run_replicates
+from microsim.runner import (
+    RunPaths,
+    fuel_mg_to_ml,
+    is_run_complete,
+    require_complete_run,
+    run_micro,
+    run_replicates,
+)
 from microsim.scenarios import load_scenario, resolve_scenario, run_scenario, scenario_from_osm
 from microsim.vehicles import (
     FleetPlan,
@@ -34,10 +41,12 @@ __all__ = [
     "corridor_departures",
     "draw_vehicle_params",
     "fuel_mg_to_ml",
+    "is_run_complete",
     "load_idm_calibration",
     "load_scenario",
     "make_simulate_fn",
     "osm_import",
+    "require_complete_run",
     "resolve_calibration_path",
     "resolve_scenario",
     "ring",

@@ -8,7 +8,7 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-16T18:21:05+00:00",
+  "generated_at": "2026-09-17T07:07:10+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -23,7 +23,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "28449f6634f4",
+  "config_hash": "4a474775ebd3",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",
@@ -108,7 +108,7 @@
       "duration_s": 120.0,
       "step_length_s": 0.5,
       "action_step_s": 0.5,
-      "warmup_s": 120.0,
+      "warmup_s": 0.0,
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
@@ -131,8 +131,8 @@
   },
   "metrics": {
     "throughput_veh_h": 732.2033898305085,
-    "mean_tt_s": 118.0,
-    "p90_tt_s": 118.0,
+    "mean_tt_s": 55.23939145328015,
+    "p90_tt_s": 62.05854166018894,
     "sigma_v_spatial_ms": 1.580788673526414,
     "sigma_v_temporal_ms": 0.8998753403662753,
     "vmt_veh_km": 82.84227435223643,
@@ -140,6 +140,7 @@
     "fuel_ml_per_veh_km": 67.99161970305947,
     "wave_count": 0,
     "wave_speed_kmh": null,
-    "wave_amplitude_ms": null
+    "wave_amplitude_ms": null,
+    "n_travel_time_veh": 27
   }
 }

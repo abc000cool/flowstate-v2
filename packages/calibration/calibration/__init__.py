@@ -9,7 +9,12 @@ from calibration.episodes import (
     is_valid_episode,
     validate_episode,
 )
-from calibration.fd_fit import fit_triangular_fd
+from calibration.fd_fit import (
+    DEFAULT_FD_BOUNDS,
+    FDBounds,
+    check_fd_plausible,
+    fit_triangular_fd,
+)
 from calibration.idm_fit import (
     EpisodeFit,
     equilibrium_gap,
@@ -21,8 +26,11 @@ from calibration.idm_fit import (
 )
 
 __all__ = [
+    "DEFAULT_FD_BOUNDS",
     "EpisodeFit",
+    "FDBounds",
     "LeaderFollowerEpisode",
+    "check_fd_plausible",
     "episodes_from_pairs",
     "equilibrium_gap",
     "extract_episodes",

@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate ring_sugiyama",
-  "generated_at": "2026-09-16T18:21:10+00:00",
+  "generated_at": "2026-09-17T06:51:29+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -112,16 +112,17 @@
     "fuel_total_ml": 8799.826541042012
   },
   "metrics": {
-    "throughput_veh_h": 792.6605504587156,
-    "mean_tt_s": 56.0,
-    "p90_tt_s": 56.0,
-    "sigma_v_spatial_ms": 2.1765639276129742,
-    "sigma_v_temporal_ms": 2.2404966438180685,
-    "vmt_veh_km": 29.81413370103168,
-    "vht_veh_h": 3.66361111111111,
+    "throughput_veh_h": 754.2857142857143,
+    "mean_tt_s": null,
+    "p90_tt_s": null,
+    "sigma_v_spatial_ms": 2.4776678181376104,
+    "sigma_v_temporal_ms": 2.42293912771752,
+    "vmt_veh_km": 19.729195878286358,
+    "vht_veh_h": 2.566666666666667,
     "fuel_ml_per_veh_km": 295.1562044124564,
     "wave_count": 1,
     "wave_speed_kmh": null,
-    "wave_amplitude_ms": 6.410564861001498
+    "wave_amplitude_ms": 6.46608646724767,
+    "n_travel_time_veh": 0
   }
 }

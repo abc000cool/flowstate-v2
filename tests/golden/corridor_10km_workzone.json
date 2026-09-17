@@ -8,7 +8,7 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_workzone",
-  "generated_at": "2026-09-16T18:21:08+00:00",
+  "generated_at": "2026-09-17T06:51:31+00:00",
   "tolerance": {
     "relative": 0.0001,
     "exact": [
@@ -142,16 +142,17 @@
     "fuel_total_ml": 247826.40363498544
   },
   "metrics": {
-    "throughput_veh_h": 1918.796992481203,
-    "mean_tt_s": 546.0,
-    "p90_tt_s": 546.0,
-    "sigma_v_spatial_ms": 5.695684383581947,
-    "sigma_v_temporal_ms": 5.268007382722213,
-    "vmt_veh_km": 3490.538748917295,
-    "vht_veh_h": 46.50652777777775,
+    "throughput_veh_h": 2392.5,
+    "mean_tt_s": 265.7233235139444,
+    "p90_tt_s": 302.14476153988113,
+    "sigma_v_spatial_ms": 6.291486407407599,
+    "sigma_v_temporal_ms": 5.287636355906658,
+    "vmt_veh_km": 3325.3838309802327,
+    "vht_veh_h": 44.73013888888884,
     "fuel_ml_per_veh_km": 70.99947070115091,
     "wave_count": 1,
-    "wave_speed_kmh": 19.384615384615387,
-    "wave_amplitude_ms": 26.403164562180425
+    "wave_speed_kmh": 18.0,
+    "wave_amplitude_ms": 26.260145461368474,
+    "n_travel_time_veh": 187
   }
 }

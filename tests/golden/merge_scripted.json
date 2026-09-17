@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_scripted",
-  "generated_at": "2026-09-16T18:21:09+00:00",
+  "generated_at": "2026-09-17T06:51:32+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -149,8 +149,8 @@
   },
   "metrics": {
     "throughput_veh_h": 2432.1070234113713,
-    "mean_tt_s": 71.0,
-    "p90_tt_s": 71.0,
+    "mean_tt_s": 87.19108020729381,
+    "p90_tt_s": 138.50026437839884,
     "sigma_v_spatial_ms": 8.937541196370644,
     "sigma_v_temporal_ms": 3.716799793522247,
     "vmt_veh_km": 349.20434227517063,
@@ -158,6 +158,7 @@
     "fuel_ml_per_veh_km": 90.8337570196032,
     "wave_count": 3,
     "wave_speed_kmh": 18.0,
-    "wave_amplitude_ms": 21.331346510525915
+    "wave_amplitude_ms": 21.331346510525915,
+    "n_travel_time_veh": 114
   }
 }

@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
@@ -64,12 +64,23 @@ class CI(NamedTuple):
 class Metrics:
     """Standard metrics for one run (docs/CONTRACTS.md §7).
 
+    Every field is measured over the run's *measurement window* — the
+    recorded run minus its configured warm-up (``sim.warmup_s``, "discarded
+    from metrics" per ``flowstate_core.config.SimSpec``); see
+    :func:`compute_metrics` for exactly how each metric is windowed.
+
     Attributes:
         throughput_veh_h: Vehicles crossing the reference cross-section per
-            hour [veh/h].
+            hour [veh/h], over the measurement window.
         mean_tt_s: Mean per-vehicle travel time across the measurement span
-            [s]; NaN if no vehicle traverses the span.
-        p90_tt_s: 90th-percentile travel time [s] (linear interpolation).
+            [s]; NaN when fewer than two vehicles traverse the span (a
+            one-vehicle sample is not a fleet mean — ``n_travel_time_veh``
+            carries the sample size).
+        p90_tt_s: 90th-percentile travel time [s] (linear interpolation);
+            NaN under the same condition as ``mean_tt_s``.
+        n_travel_time_veh: Number of vehicles contributing to ``mean_tt_s``
+            and ``p90_tt_s`` — vehicles that entered the network within the
+            measurement window and completed the span.
         sigma_v_spatial_ms: Spatial speed standard deviation [m/s]: at each
             output timestamp, the sample standard deviation (ddof=1) of
             instantaneous speeds across the vehicles present, averaged over
@@ -84,7 +95,12 @@ class Metrics:
         vht_veh_h: Total time spent travelling by all vehicles [veh·h]
             (observed sample span per vehicle).
         fuel_ml_per_veh_km: Fuel consumption per vehicle-kilometre [ml/veh·km]
-            from the run's meta fuel totals; NaN when not recorded.
+            from the run's meta fuel totals; NaN when not recorded. When the
+            run records only the whole-run total ``fuel_total_ml`` this is a
+            **whole-run** ratio (total fuel over whole-run VMT) even when a
+            warm-up is discarded from the other metrics: dividing whole-run
+            fuel by post-warm-up VMT would inflate it. Runs that also record
+            ``fuel_total_ml_post_warmup`` get the windowed ratio.
         wave_count: Number of detected stop-and-go waves.
         wave_speed_kmh: Mean magnitude of backward (upstream-propagating)
             wave-front speeds [km/h], reported positive; NaN if no backward
@@ -104,6 +120,9 @@ class Metrics:
     wave_count: int
     wave_speed_kmh: float
     wave_amplitude_ms: float
+    #: Travel-time sample size; defaults to 0 so tiers without per-vehicle
+    #: trajectories (``api.results.macro_metrics``) construct unchanged.
+    n_travel_time_veh: int = 0
 
 
 def geh(m: float, c: float) -> float:
@@ -318,6 +337,62 @@ def crossings_per_window(
     return np.asarray(counts, dtype=np.int64)
 
 
+def warmup_from_meta(meta: Mapping[str, object]) -> float:
+    """The run's configured metrics warm-up [s] from its ``meta.json``.
+
+    Reads ``config.sim.warmup_s`` — declared by
+    :class:`flowstate_core.config.SimSpec` as "discarded from metrics; still
+    simulated and recorded" — and returns 0 when the block is absent or not
+    a number. This is the single place the warm-up convention is resolved,
+    so :func:`compute_metrics` and :mod:`validation.report` always window
+    the same run identically.
+
+    Args:
+        meta: Parsed ``meta.json`` of one run (docs/CONTRACTS.md §3).
+
+    Returns:
+        Warm-up length [s], >= 0.
+    """
+    config = meta.get("config")
+    sim = config.get("sim") if isinstance(config, dict) else None
+    value = sim.get("warmup_s") if isinstance(sim, dict) else None
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return 0.0
+    warm = float(value)
+    return warm if math.isfinite(warm) and warm > 0.0 else 0.0
+
+
+def default_travel_span(trajectories: pd.DataFrame) -> tuple[float, float]:
+    """Default travel-time measurement span ``(x_lo, x_hi)`` [m] for a frame.
+
+    ``x_lo`` is the smallest observed position; ``x_hi`` is the **median** of
+    the per-vehicle furthest observed position. The median is a bound at
+    least half the observed vehicles reach by construction, which the global
+    maximum is not: only the single farthest vehicle attains that, so a
+    ``(x_min, x_max)`` span yields a one-vehicle "fleet" travel time (its
+    tell is ``mean_tt_s == p90_tt_s``). A high quantile is required, not a
+    low one — a low quantile silently shortens the measured corridor.
+
+    Args:
+        trajectories: Trajectory rows with ``veh_id`` and ``x`` columns.
+
+    Returns:
+        ``(x_lo, x_hi)``; ``x_hi <= x_lo`` is possible for degenerate frames
+        (e.g. a single sample per vehicle) and means no span is measurable.
+
+    Raises:
+        ValueError: If required columns are missing or the frame is empty.
+    """
+    for col in ("veh_id", "x"):
+        if col not in trajectories.columns:
+            raise ValueError(f"trajectories missing column {col!r}")
+    if trajectories.empty:
+        raise ValueError("cannot derive a travel-time span from an empty frame")
+    x_lo = float(trajectories["x"].min())
+    per_veh_max = trajectories.groupby("veh_id", sort=False)["x"].max().to_numpy(dtype=np.float64)
+    return x_lo, float(np.median(per_veh_max))
+
+
 def compute_metrics(
     run_dir: str | Path,
     x_ref: float | None = None,
@@ -326,6 +401,7 @@ def compute_metrics(
     dx_bin: float = 75.0,
     v_jam_thresh: float = V_JAM_THRESH,
     min_area_bins: int = 4,
+    warmup_s: float | None = None,
 ) -> Metrics:
     """Compute the standard metric set for one run directory.
 
@@ -335,23 +411,44 @@ def compute_metrics(
     field. Fuel is taken from the meta key ``fuel_total_ml`` (total run fuel
     [ml], SUMO HBEFA4 totals) when present, else NaN.
 
+    **Measurement window.** The configured warm-up is discarded, as
+    :class:`flowstate_core.config.SimSpec` documents it to be: with
+    ``t_lo`` the warm-up end, throughput counts only crossings at
+    ``t >= t_lo`` over the window length; σ_v, VMT/VHT and the wave field
+    use only rows at ``t >= t_lo``; travel times keep **whole journeys**
+    (vehicles whose first recorded sample is at ``t >= t_lo``), because a
+    row-level filter would clip the entry time of vehicles already in
+    flight and understate travel time. Fuel per vehicle-km stays a
+    whole-run ratio unless the run records ``fuel_total_ml_post_warmup``
+    (see :class:`Metrics`). On a closed ring every vehicle is present from
+    ``t = 0``, so a nonzero warm-up leaves no whole journey and the travel
+    times are undefined (``n_travel_time_veh == 0``) — the ring's headline
+    metrics are σ_v and the wave set, not travel time.
+
     Args:
         run_dir: Directory holding ``trajectories.parquet`` and ``meta.json``.
         x_ref: Reference cross-section for throughput [m]; ``None`` uses the
-            midpoint of the observed position range.
+            midpoint of the position range observed in the measurement
+            window.
         span: Measurement span ``(x_lo, x_hi)`` [m] for travel times;
-            ``None`` uses the full observed position range.
+            ``None`` uses :func:`default_travel_span` of the measurement
+            window (smallest observed position → median per-vehicle furthest
+            position).
         dt_bin: Speed-field time bin [s] for wave detection.
         dx_bin: Speed-field space bin [m] for wave detection.
         v_jam_thresh: Jam threshold [m/s] for wave detection.
         min_area_bins: Minimum wave component size in bins.
+        warmup_s: Warm-up to discard [s]; ``None`` (the default) takes the
+            run's own ``config.sim.warmup_s`` (:func:`warmup_from_meta`).
+            Pass ``0.0`` to measure over the whole recorded run.
 
     Returns:
         A :class:`Metrics` instance.
 
     Raises:
         FileNotFoundError: If either input file is missing.
-        ValueError: If the trajectory frame is empty.
+        ValueError: If the trajectory frame is empty, ``warmup_s`` is
+            negative, or the warm-up leaves no measurement window.
     """
     run_path = Path(run_dir)
     traj_path = run_path / "trajectories.parquet"
@@ -370,36 +467,70 @@ def compute_metrics(
     meta = json.loads(meta_path.read_text())
 
     t_all = traj["t"].to_numpy(dtype=np.float64)
-    x_all = traj["x"].to_numpy(dtype=np.float64)
-    x_min, x_max = float(x_all.min()), float(x_all.max())
+    t_start, t_end = float(t_all.min()), float(t_all.max())
+
+    # Measurement window: the recorded run minus its configured warm-up.
+    warm = warmup_from_meta(meta) if warmup_s is None else float(warmup_s)
+    if not math.isfinite(warm) or warm < 0.0:
+        raise ValueError(f"warmup_s must be finite and >= 0, got {warmup_s!r}")
+    t_lo = max(warm, t_start)
+    if t_lo >= t_end:
+        raise ValueError(
+            f"warm-up {warm:g} s leaves no measurement window in a run recorded over "
+            f"[{t_start:g}, {t_end:g}] s: every metric would describe the warm-up the "
+            "configuration says to discard. Lengthen the run, lower sim.warmup_s, or "
+            "pass warmup_s=0.0 to measure the whole record deliberately."
+        )
+    windowed = warm > t_start
+    window = traj.loc[traj["t"] >= t_lo] if windowed else traj
+
+    x_win = window["x"].to_numpy(dtype=np.float64)
+    x_min, x_max = float(x_win.min()), float(x_win.max())
     if x_ref is None:
         x_ref = 0.5 * (x_min + x_max)
+    default_span = span is None
     if span is None:
-        span = (x_min, x_max)
+        span = default_travel_span(window)
 
-    # Throughput at the reference cross-section.
-    t_span_s = float(t_all.max() - t_all.min())
-    crossings = count_crossings(traj, x_ref)
+    # Throughput at the reference cross-section, over the measurement window.
+    t_span_s = t_end - t_lo
+    crossings = count_crossings(traj, x_ref, t_lo=t_lo)
     throughput = veh_s_to_veh_h(crossings / t_span_s) if t_span_s > 0 else math.nan
 
-    # Travel times over the measurement span.
-    tts = travel_times(traj, span[0], span[1])
-    mean_tt = float(tts.mean()) if tts.size else math.nan
-    p90_tt = float(np.percentile(tts, 90)) if tts.size else math.nan
+    # Travel times over the measurement span, whole journeys only: a vehicle
+    # already in flight at t_lo would otherwise be credited an entry time of
+    # t_lo and report a truncated travel time.
+    if windowed:
+        first_t = traj.groupby("veh_id", sort=False)["t"].transform("min")
+        tt_frame = traj.loc[first_t >= t_lo]
+    else:
+        tt_frame = traj
+    if tt_frame.empty or (default_span and span[1] <= span[0]):
+        tts = np.empty(0, dtype=np.float64)
+    else:
+        tts = travel_times(tt_frame, span[0], span[1])
+    # One completing vehicle is a sample, not a fleet mean (it also makes
+    # p90 equal the mean); report the sample size and leave both undefined.
+    n_tt = int(tts.size)
+    mean_tt = float(tts.mean()) if n_tt >= 2 else math.nan
+    p90_tt = float(np.percentile(tts, 90)) if n_tt >= 2 else math.nan
 
     # σ_v spatial: std across vehicles at each shared output timestamp.
-    by_t = traj.groupby("t")["v"]
+    by_t = window.groupby("t")["v"]
     spatial_stds = by_t.std(ddof=1)[by_t.count() >= 2]
     sigma_spatial = float(spatial_stds.mean()) if len(spatial_stds) else math.nan
 
     # σ_v temporal: std over time per vehicle.
-    by_veh = traj.groupby("veh_id")["v"]
+    by_veh = window.groupby("veh_id")["v"]
     temporal_stds = by_veh.std(ddof=1)[by_veh.count() >= 2]
     sigma_temporal = float(temporal_stds.mean()) if len(temporal_stds) else math.nan
 
-    # VMT / VHT via trapezoid integration of sampled speeds.
+    # VMT / VHT via trapezoid integration of sampled speeds. The whole-run
+    # VMT is accumulated in the same pass: it is the denominator of a
+    # whole-run fuel total (see Metrics.fuel_ml_per_veh_km).
     vmt_km = 0.0
     vht_h = 0.0
+    vmt_km_whole = 0.0
     for _, group in traj.groupby("veh_id", sort=False):
         g = group.sort_values("t")
         t = g["t"].to_numpy(dtype=np.float64)
@@ -408,18 +539,32 @@ def compute_metrics(
             continue
         mid_v = 0.5 * (v[:-1] + v[1:])
         dt = np.diff(t)
-        vmt_km += _KM_PER_M * float(np.sum(mid_v * dt))
-        vht_h += s_to_h(float(t[-1] - t[0]))
+        segments = mid_v * dt
+        vmt_km_whole += _KM_PER_M * float(np.sum(segments))
+        if not windowed:
+            vmt_km += _KM_PER_M * float(np.sum(segments))
+            vht_h += s_to_h(float(t[-1] - t[0]))
+            continue
+        # Segments of the window are exactly those whose earlier sample is
+        # in it (times increase), i.e. the trapezoid sum over window rows.
+        vmt_km += _KM_PER_M * float(np.sum(segments[t[:-1] >= t_lo]))
+        first = int(np.searchsorted(t, t_lo, side="left"))
+        if len(t) - first >= 2:
+            vht_h += s_to_h(float(t[-1] - t[first]))
 
-    # Fuel per vehicle-km from meta totals, when recorded.
+    # Fuel per vehicle-km from meta totals, when recorded. A whole-run total
+    # keeps a whole-run denominator; a windowed total gets the window's VMT.
+    fuel_windowed = meta.get("fuel_total_ml_post_warmup")
     fuel_total = meta.get("fuel_total_ml")
-    if fuel_total is None or vmt_km <= 0:
-        fuel_per_km = math.nan
+    if fuel_windowed is not None and vmt_km > 0:
+        fuel_per_km = float(fuel_windowed) / vmt_km
+    elif fuel_total is not None and vmt_km_whole > 0:
+        fuel_per_km = float(fuel_total) / vmt_km_whole
     else:
-        fuel_per_km = float(fuel_total) / vmt_km
+        fuel_per_km = math.nan
 
     # Wave metrics from the binned speed field.
-    field = speed_field(traj, dt_bin=dt_bin, dx_bin=dx_bin)
+    field = speed_field(window, dt_bin=dt_bin, dx_bin=dx_bin)
     wave_set = detect_waves(field, v_jam_thresh=v_jam_thresh, min_area_bins=min_area_bins)
     backward = wave_set.backward()
     if backward:
@@ -443,6 +588,7 @@ def compute_metrics(
         wave_count=wave_set.count,
         wave_speed_kmh=wave_speed_kmh,
         wave_amplitude_ms=wave_amp,
+        n_travel_time_veh=n_tt,
     )
 
 

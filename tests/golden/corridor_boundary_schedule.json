@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_boundary_schedule",
-  "generated_at": "2026-09-16T18:21:08+00:00",
+  "generated_at": "2026-09-17T06:51:31+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -138,8 +138,8 @@
   },
   "metrics": {
     "throughput_veh_h": 1076.2105263157894,
-    "mean_tt_s": 145.0,
-    "p90_tt_s": 145.0,
+    "mean_tt_s": 97.47704110424961,
+    "p90_tt_s": 120.16823826896753,
     "sigma_v_spatial_ms": 7.432193641256741,
     "sigma_v_temporal_ms": 7.768869254957828,
     "vmt_veh_km": 144.88047107803257,
@@ -147,6 +147,7 @@
     "fuel_ml_per_veh_km": 68.35812740323678,
     "wave_count": 1,
     "wave_speed_kmh": 9.0,
-    "wave_amplitude_ms": 25.570855685351336
+    "wave_amplitude_ms": 25.570855685351336,
+    "n_travel_time_veh": 42
   }
 }

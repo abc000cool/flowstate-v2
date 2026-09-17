@@ -561,3 +561,18 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   422 for a run set mixing micro and macro tiers (detail names the macro run
   ids); `PresetOut.preset: true`, `ScenarioOut.preset: false`; `CIOut.reason:
   "no_observations" | null` with `underpowered = false` when `n == 0`.
+- Metrics and runner after the second audit (2026-09-17): `validation.metrics.Metrics`
+  gains `n_travel_time_veh: int = 0` (last field); `compute_metrics(...,
+  warmup_s: float | None = None)` (None = the run's `config.sim.warmup_s`
+  via `warmup_from_meta`, 0.0 = whole record); `default_travel_span(traj)`
+  = (min observed x, median per-vehicle furthest x); `mean_tt_s`/`p90_tt_s`
+  are NaN below two completers. `generate_report` measures the wave-speed
+  criterion with the profile's own detector on its bins and derives one
+  travel-time span per run set. Micro `meta.json` gains
+  `output_hz_realized` (Hz; the cadence after step rounding, which is what
+  `edges.parquet` density and flow are scaled by) and is written last: a
+  replicate directory without it is incomplete (`microsim.runner.is_run_complete`,
+  `require_complete_run`). `FDCalibration.schema_version = 2` with defaulted
+  `n_rows_input`, `dropped_rows`, `fit_rows`, `bounds` fields; `fit_triangular_fd`
+  gains `max_fit_rows` (50,000, seeded subsample), `bounds` (`FDBounds`,
+  per-lane physical ranges) and refuses an implausible diagram.

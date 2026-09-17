@@ -13,6 +13,7 @@ import pytest
 
 from flowstate_core.config import ScenarioConfig, config_hash
 from microsim import load_scenario, run_micro, run_replicates
+from microsim.runner import is_run_complete, require_complete_run
 
 pytestmark = pytest.mark.integration
 
@@ -75,6 +76,47 @@ class TestRingSmoke:
         # 22 veh on 230 m ⇒ mean density ≈ 0.0957 veh/m over occupied bins.
         occupied = e[e.mean_speed.notna()]
         assert occupied.density.mean() == pytest.approx(22.0 / 230.0, rel=0.05)
+
+    # (requested output_hz, rate actually deliverable at step_length_s = 0.5)
+    @pytest.mark.parametrize(
+        ("output_hz", "expected_realized_hz"),
+        [(1.0, 1.0), (2.0, 2.0), (3.0, 2.0), (4.0, 2.0)],
+    )
+    def test_edges_density_is_independent_of_output_hz(
+        self, output_hz, expected_realized_hz, tmp_path
+    ):
+        """Requested sampling rate must not scale the density/flow field.
+
+        Samples land on whole simulation steps, so a rate that does not divide
+        ``step_length_s`` (3 Hz or 4 Hz at 0.5 s) is realized coarser than
+        requested. Weighting Edie's sums by the nominal ``1/output_hz`` instead
+        of the realized interval scaled every density and flow in
+        ``edges.parquet`` by ``nominal/realized`` — exactly half at 4 Hz — while
+        the trajectories, the physics and the speeds were unchanged. 22 vehicles
+        on a 230 m ring is ground truth: 0.0957 veh/m, whatever the cadence.
+        """
+        cfg = _short_ring_cfg()
+        cfg.sim.output_hz = output_hz
+        paths = run_micro(cfg, 42, tmp_path)
+        e = pd.read_parquet(paths.edges)
+        occupied = e[e.mean_speed.notna()]
+        assert occupied.density.mean() == pytest.approx(22.0 / 230.0, rel=0.05)
+        meta = json.loads(paths.meta.read_text())
+        realized = meta["output_hz_realized"]
+        assert realized == pytest.approx(expected_realized_hz)
+        # A cadence the step length cannot deliver is recorded, not silent.
+        traj = pd.read_parquet(paths.trajectories)
+        one = traj[traj.veh_id == "v00000"].sort_values("t")
+        assert one.t.diff().dropna().unique() == pytest.approx([1.0 / realized])
+        mismatch_notes = [n for n in meta["notes"] if "output_hz" in n]
+        assert bool(mismatch_notes) == (realized != output_hz)
+
+    def test_completion_marker_written_last(self, run):
+        _cfg, paths = run
+        assert is_run_complete(paths.run_dir)
+        assert require_complete_run(paths.run_dir) == paths.run_dir
+        # The marker is swapped in atomically; no temp file survives.
+        assert not (paths.run_dir / "meta.json.tmp").exists()
 
     def test_meta_contract(self, run):
         cfg, paths = run
@@ -330,5 +372,8 @@ class TestReplicates:
         seeds = [json.loads(p.meta.read_text())["seed"] for p in paths]
         assert len(set(seeds)) == 3
         assert all(p.trajectories.exists() and p.edges.exists() for p in paths)
+        # Every returned replicate carries its completion marker (run_replicates
+        # refuses an interrupted one rather than handing back unreadable files).
+        assert all(is_run_complete(p.run_dir) for p in paths)
         # All replicates share the config hash directory.
         assert len({p.run_dir.parent for p in paths}) == 1
