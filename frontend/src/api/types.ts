@@ -239,6 +239,41 @@ export interface SweepDetail {
 
 export type ReportStatus = RunStatus;
 
+/** Mirrors the API's `CriteriaProfileOut` — one row of `GET /criteria`, the
+ * selectable acceptance-threshold sets for `POST /reports`.
+ *
+ * Thresholds only: the *measurements* scored against them are computed from
+ * run artifacts and are never accepted from a client, so nothing here is a
+ * result — picking a profile chooses which published protocol a report is
+ * scored against, not what it measured. */
+export interface CriteriaProfile {
+  name: string;
+  /** Which document, section and table the numbers were transcribed from,
+   * what was verified and which rows are FlowState's own conventions. Shown
+   * to the user before a profile is quoted in a deliverable, never
+   * summarised by the dashboard. */
+  source: string;
+  /** Per-comparison GEH bound (strict `<`). */
+  geh_threshold: number;
+  /** Share of link-hour comparisons that must satisfy the bound. */
+  geh_pass_fraction: number;
+  /** `>=` the share (true) or strictly `>` it (the 2004 table's wording). */
+  geh_pass_inclusive: boolean;
+  /** Segment-speed RMSPE bound as a fraction; null when the profile's source
+   * defines none (the row is then not produced at all). */
+  rmspe_max: number | null;
+  wave_speed_band_kmh: [number, number];
+  min_seeds: number;
+  require_ring_emergence: boolean;
+  require_ring_dampening: boolean;
+  require_sensitivity_grid: boolean;
+  /** Name of the wave detector whose recipe the wave-speed row is scored
+   * against. */
+  wave_detector: string;
+  /** True for the profile a report request that names none is scored against. */
+  default: boolean;
+}
+
 /** Mirrors the API's `ReportOut` — returned by `POST /reports` (202; still
  * `queued` under the Redis queue, terminal under the inline queue), by
  * `GET /reports/{id}` and, newest first, by `GET /reports`. */
@@ -247,6 +282,12 @@ export interface ReportOut {
   status: ReportStatus;
   run_ids: string[];
   title: string;
+  /** The acceptance-criteria profile the report was scored against (a name
+   * from `GET /criteria`). Optional here because a service older than the
+   * profile parameter answers without it — an unknown profile, not
+   * `fhwa_default`, so the dashboard says "unknown" rather than naming a
+   * profile the server never confirmed. */
+  profile?: string;
   /** The bundle's markdown file *relative to the server's results root*
    * (`reports/<report_id>/report.md`) — an identifier for the bundle, not a
    * URL and not a path this browser can open. The UI must never render it as
@@ -269,6 +310,10 @@ export interface ReportRecord {
   report_id: string;
   run_ids: string[];
   title?: string;
+  /** The criteria profile the report was requested under. Absent on records
+   * written before the dashboard sent one, and on server rows from a service
+   * that does not report it. */
+  profile?: string;
   status: ReportStatus;
   error: string | null;
   error_kind?: string | null;

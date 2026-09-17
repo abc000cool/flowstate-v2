@@ -12,6 +12,14 @@
  * zip archive (markdown + figure PNGs — the one that is readable on its own)
  * and the optional PDF.
  *
+ * The acceptance-criteria profile the report is scored against is chosen next
+ * to the button, from `GET /criteria` (the FlowState default preselected), and
+ * is shown on every row: a pass/fail table is meaningless without the
+ * thresholds it was scored against, and those differ between the FHWA table
+ * and the state-DOT protocols. Only the *name* is sent and shown — the
+ * dashboard never restates a profile's numbers, and a row whose profile the
+ * service did not report says so rather than assuming the default.
+ *
  * The table is `GET /reports` (the server's own history, newest first) merged
  * with this browser's localStorage records, which now cover only what the
  * server list does not return — a report requested against another API, or
@@ -32,11 +40,13 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ApiError,
   createReport,
+  DEFAULT_CRITERIA_PROFILE,
   getReport,
   getReportArchive,
   getReportMarkdown,
   getReportPdf,
   isMockActive,
+  listCriteriaProfiles,
   listReports,
   listRuns,
   listScenarios,
@@ -59,6 +69,56 @@ const REPORT_LIST_POLL_MS = 3000;
 const REPORT_LIST_RETRY_MS = 60_000;
 const RUNS_POLL_MS = 5000;
 const SCENARIOS_POLL_MS = 3000;
+/** Retry interval for `GET /criteria` until it answers. The profile registry
+ * is fixed for a service, so this poll stops on the first answer (including
+ * the 404 of a service that has no such endpoint). */
+const CRITERIA_POLL_MS = 3000;
+
+/** What the selector needs from a `CriteriaProfile`: the name the request
+ * carries, and the provenance text the option shows so a profile is picked
+ * from its source rather than its name. The thresholds are deliberately not
+ * rendered — the report prints them from the server's own registry, and a
+ * dashboard restating them is a second, drifting copy of published numbers. */
+interface ProfileOption {
+  name: string;
+  source: string;
+  default: boolean;
+}
+
+/** Shown while `GET /criteria` has not answered yet. The name is the profile
+ * the API applies to a request that names none, so it is the honest thing to
+ * display before the registry is known; the select stays disabled until the
+ * real list arrives. */
+const LOADING_PROFILE_OPTIONS: ProfileOption[] = [
+  {
+    name: DEFAULT_CRITERIA_PROFILE,
+    source: 'Reading the selectable profiles from GET /criteria…',
+    default: true,
+  },
+];
+
+/** Shown once the service has answered 404 to `GET /criteria` — an API older
+ * than the profile registry. Its thresholds are unknown here, so the option
+ * claims none: it names only the profile such a service applies anyway, and
+ * `generate` then sends no `profile` field at all. */
+const FALLBACK_PROFILE_OPTIONS: ProfileOption[] = [
+  {
+    name: DEFAULT_CRITERIA_PROFILE,
+    source:
+      'This service answered 404 to GET /criteria, so its profile registry is unknown to ' +
+      'this dashboard. Reports are scored against the profile the service applies when a ' +
+      'request names none, and the request names none.',
+    default: true,
+  },
+];
+
+/** Title for a row whose report carries no profile: a service older than the
+ * parameter reports one for no report at all, and naming the default here
+ * would be this dashboard's assumption presented as the server's answer. */
+const UNKNOWN_PROFILE_TITLE =
+  'This service did not report a criteria profile for this report (an API older than the ' +
+  'profile parameter), so the thresholds it was scored against are not known here — read ' +
+  'the report bundle itself.';
 
 /** Where a table row came from. A `server` row is `GET /reports`; a `local`
  * row is only this browser's memory of a request the server list does not
@@ -88,6 +148,10 @@ function normalizeRecord(raw: unknown): ReportRecord | null {
     report_id: r.report_id,
     run_ids: Array.isArray(r.run_ids) ? r.run_ids.map(String) : [],
     title: typeof r.title === 'string' ? r.title : undefined,
+    // absent on records written before the dashboard sent a profile: left
+    // undefined, so the row says "unknown" instead of naming a default the
+    // request never carried
+    profile: typeof r.profile === 'string' ? r.profile : undefined,
     status,
     error: typeof r.error === 'string' ? r.error : null,
     error_kind: typeof r.error_kind === 'string' ? r.error_kind : null,
@@ -115,13 +179,22 @@ function saveReports(list: ReportRecord[]): void {
   }
 }
 
-function recordFromOut(out: ReportOut, requestedRunIds: string[] = [], demo = false): ReportRecord {
+function recordFromOut(
+  out: ReportOut,
+  requestedRunIds: string[] = [],
+  demo = false,
+  requestedProfile?: string,
+): ReportRecord {
   // `out.report_path` is deliberately dropped: it is results-root-relative,
   // meaningless to this browser, and must never be rendered as a path or link.
   return {
     report_id: out.report_id,
     run_ids: out.run_ids.length > 0 ? out.run_ids : requestedRunIds,
     title: out.title,
+    // the server's own answer first; `requestedProfile` is only what this
+    // browser asked for moments ago, and is left undefined when the request
+    // named no profile
+    profile: out.profile ?? requestedProfile,
     status: out.status,
     error: out.error ?? null,
     error_kind: out.error_kind ?? null,
@@ -174,6 +247,14 @@ export function ReportsView(): JSX.Element {
    * the list endpoint): the table then runs on local records alone and says
    * so, instead of claiming the server has no reports. */
   const [serverListed, setServerListed] = useState(true);
+  /** The selectable acceptance-criteria profiles; null until `GET /criteria`
+   * has answered. */
+  const [profileOptions, setProfileOptions] = useState<ProfileOption[] | null>(null);
+  /** False once the service answered 404 to `GET /criteria` (an API older than
+   * the profile registry): the selector then offers only the profile such a
+   * service applies, and the request carries no `profile` field. */
+  const [criteriaListed, setCriteriaListed] = useState(true);
+  const [profile, setProfile] = useState(DEFAULT_CRITERIA_PROFILE);
   const [busy, setBusy] = useState(false);
   const authFailed = useAuthFailed();
   const offline = useOfflineFallback();
@@ -241,6 +322,47 @@ export function ReportsView(): JSX.Element {
     }
   }, []);
   usePoll(loadScenarios, authFailed || scenarios.length > 0 ? null : SCENARIOS_POLL_MS);
+
+  // the selectable acceptance-criteria profiles, read once: the registry is
+  // fixed for a service, and the profile the API applies by default is the one
+  // preselected here, so the button's behaviour is unchanged until the user
+  // picks another protocol
+  const loadCriteria = useCallback(async () => {
+    try {
+      const list = await listCriteriaProfiles();
+      // an empty registry is not an answer to select from: keep polling rather
+      // than render an empty control
+      if (list.length === 0) return;
+      const opts = list.map((p) => ({ name: p.name, source: p.source, default: p.default }));
+      setProfileOptions(opts);
+      setCriteriaListed(true);
+      // the server's own default, not this file's copy of the name; the poll
+      // stops on this answer, so a user's later pick is never overwritten
+      const preferred =
+        opts.find((p) => p.default) ??
+        opts.find((p) => p.name === DEFAULT_CRITERIA_PROFILE) ??
+        opts[0];
+      setProfile(preferred.name);
+    } catch (err) {
+      // 404 = this service predates GET /criteria; anything else is transient
+      if (err instanceof ApiError && err.status === 404) {
+        setProfileOptions(FALLBACK_PROFILE_OPTIONS);
+        setCriteriaListed(false);
+        setProfile(DEFAULT_CRITERIA_PROFILE);
+      }
+    }
+  }, []);
+  usePoll(loadCriteria, authFailed || profileOptions !== null ? null : CRITERIA_POLL_MS);
+  const profileChoices = profileOptions ?? LOADING_PROFILE_OPTIONS;
+  const profileSources = useMemo(
+    () => new Map(profileChoices.map((p) => [p.name, p.source])),
+    [profileChoices],
+  );
+  /** Provenance for a row's profile: the source this service served for that
+   * name (nothing, for a profile it no longer offers — the name is still the
+   * server's answer), or the explanation for a row that carries none. */
+  const profileTitle = (name: string | undefined): string | undefined =>
+    name === undefined ? UNKNOWN_PROFILE_TITLE : profileSources.get(name);
   const scenarioNames = useMemo(
     () => new Map(scenarios.map((s) => [s.scenario_id, s.name])),
     [scenarios],
@@ -266,6 +388,9 @@ export function ReportsView(): JSX.Element {
             error_kind: out.error_kind ?? null,
             run_ids: out.run_ids.length > 0 ? out.run_ids : rec.run_ids,
             title: out.title,
+            // a service that reports no profile leaves the record's own value
+            // alone: it is what this browser requested, not an assumption
+            profile: out.profile ?? rec.profile,
             demo,
           });
         } catch (err) {
@@ -325,10 +450,15 @@ export function ReportsView(): JSX.Element {
     // is only demo data under VITE_MOCK — labelled, and not recorded as a
     // request some server is holding
     const demo = isMockActive();
+    // a service with no GET /criteria predates the `profile` parameter, and
+    // ReportCreateRequest forbids unknown fields — sending the name would have
+    // the whole request refused (422) over a field whose value that service
+    // applies anyway, so it is omitted rather than sent
+    const requested = criteriaListed ? profile : undefined;
     setBusy(true);
     try {
-      const out = await createReport(ids);
-      const rec = recordFromOut(out, ids, demo);
+      const out = await createReport(ids, undefined, requested);
+      const rec = recordFromOut(out, ids, demo, requested);
       const next = [rec, ...reportsRef.current.filter((r) => r.report_id !== rec.report_id)];
       if (demo) show(next);
       else commit(next);
@@ -387,6 +517,31 @@ export function ReportsView(): JSX.Element {
         <div className="panel-head">
           <span className="panel-title">Finished runs — pick micro runs to report</span>
           <span className="spacer" />
+          <div className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <label htmlFor="r-profile">Criteria profile</label>
+            <select
+              id="r-profile"
+              className="input"
+              style={{ minWidth: 170 }}
+              value={profile}
+              disabled={profileOptions === null || !criteriaListed}
+              title={
+                profileOptions === null
+                  ? LOADING_PROFILE_OPTIONS[0].source
+                  : criteriaListed
+                    ? 'Acceptance thresholds the report is scored against (GET /criteria). Thresholds only — the measurements are computed from the run artifacts.'
+                    : FALLBACK_PROFILE_OPTIONS[0].source
+              }
+              onChange={(e) => setProfile(e.target.value)}
+            >
+              {profileChoices.map((p) => (
+                <option key={p.name} value={p.name} title={p.source}>
+                  {p.name}
+                  {p.default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             className="btn primary"
             disabled={busy || microSelected.length === 0 || offline}
@@ -483,6 +638,7 @@ export function ReportsView(): JSX.Element {
                 <th>Report</th>
                 <th>Source</th>
                 <th>Status</th>
+                <th>Criteria</th>
                 <th>Created</th>
                 <th>Runs</th>
                 <th />
@@ -523,6 +679,9 @@ export function ReportsView(): JSX.Element {
                         {rec.error}
                       </div>
                     )}
+                  </td>
+                  <td className="muted" title={profileTitle(rec.profile)}>
+                    {rec.profile ?? 'unknown'}
                   </td>
                   <td className="muted">{rec.created_at.replace('T', ' ').slice(0, 19)} UTC</td>
                   <td className="muted">{rec.run_ids.join(', ')}</td>
@@ -570,7 +729,7 @@ export function ReportsView(): JSX.Element {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <div className="empty">
                       {serverListed
                         ? 'no reports on this server yet'
