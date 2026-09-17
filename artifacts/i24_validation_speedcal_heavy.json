@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
   "criteria_profile": "fhwa_default",
-  "created_at": "2026-09-06T11:31:06Z",
+  "created_at": "2026-09-17T19:58:48Z",
   "scenario": "i24_replica_speedcal_heavy",
   "arm": "speedcal_heavy",
   "replicates": 20,
@@ -1709,7 +1709,7 @@
       "/home/anshpathak/flowstate/runs/i24_validation/speedcal_heavy/4167a3c09d2c/887972120279483394",
       "/home/anshpathak/flowstate/runs/i24_validation/speedcal_heavy/4167a3c09d2c/8026499204807041784"
     ],
-    "wall_s": 616.6,
+    "wall_s": 690.8,
     "demand_realized_fraction": [
       0.861,
       0.888,
@@ -32344,51 +32344,51 @@
     "criterion_wave_speed_kmh": 17.267577431802973,
     "metrics_ci": {
       "throughput_veh_h": {
-        "mean": 5170.008975509681,
-        "lo95": 5143.584291800995,
-        "hi95": 5196.433659218366,
+        "mean": 5275.9,
+        "lo95": 5246.339084262828,
+        "hi95": 5305.4609157371715,
         "n": 20,
         "underpowered": false
       },
       "mean_tt_s": {
-        "mean": 567.6647138455676,
-        "lo95": 561.5336813619864,
-        "hi95": 573.7957463291488,
+        "mean": 590.9765915471799,
+        "lo95": 584.4104851064695,
+        "hi95": 597.5426979878902,
         "n": 20,
         "underpowered": false
       },
       "p90_tt_s": {
-        "mean": 866.7030651624634,
-        "lo95": 855.8555270856394,
-        "hi95": 877.5506032392874,
+        "mean": 875.4704856276809,
+        "lo95": 862.7869804596535,
+        "hi95": 888.1539907957083,
         "n": 20,
         "underpowered": false
       },
       "sigma_v_spatial_ms": {
-        "mean": 5.301604241880314,
-        "lo95": 5.27053473708604,
-        "hi95": 5.332673746674589,
+        "mean": 5.396886172625349,
+        "lo95": 5.368120317560089,
+        "hi95": 5.425652027690609,
         "n": 20,
         "underpowered": false
       },
       "sigma_v_temporal_ms": {
-        "mean": 4.696071981003709,
-        "lo95": 4.670577608383766,
-        "hi95": 4.721566353623652,
+        "mean": 4.646925516632138,
+        "lo95": 4.623147681528366,
+        "hi95": 4.670703351735911,
         "n": 20,
         "underpowered": false
       },
       "vmt_veh_km": {
-        "mean": 90290.09511394918,
-        "lo95": 89897.08235673833,
-        "hi95": 90683.10787116003,
+        "mean": 84434.83178451177,
+        "lo95": 84032.45849786626,
+        "hi95": 84837.20507115728,
         "n": 20,
         "underpowered": false
       },
       "vht_veh_h": {
-        "mean": 3267.7041249999966,
-        "lo95": 3247.8647799775495,
-        "hi95": 3287.5434700224437,
+        "mean": 3169.8683263888875,
+        "lo95": 3150.0826964533667,
+        "hi95": 3189.6539563244082,
         "n": 20,
         "underpowered": false
       },
@@ -32400,23 +32400,30 @@
         "underpowered": false
       },
       "wave_count": {
-        "mean": 14.7,
-        "lo95": 12.662234170277658,
-        "hi95": 16.73776582972234,
+        "mean": 13.75,
+        "lo95": 11.624863043440692,
+        "hi95": 15.875136956559308,
         "n": 20,
         "underpowered": false
       },
       "wave_speed_kmh": {
-        "mean": 12.322102632625684,
-        "lo95": 11.384773198077937,
-        "hi95": 13.259432067173432,
+        "mean": 11.508093029790093,
+        "lo95": 10.645977441653915,
+        "hi95": 12.37020861792627,
         "n": 20,
         "underpowered": false
       },
       "wave_amplitude_ms": {
-        "mean": 6.883203659388298,
-        "lo95": 6.626619185718939,
-        "hi95": 7.139788133057657,
+        "mean": 5.571974601495498,
+        "lo95": 5.271364162508305,
+        "hi95": 5.872585040482691,
+        "n": 20,
+        "underpowered": false
+      },
+      "n_travel_time_veh": {
+        "mean": 9343.3,
+        "lo95": 9298.73307101018,
+        "hi95": 9387.866928989819,
         "n": 20,
         "underpowered": false
       }
@@ -47363,20 +47370,20 @@
       "rule": "every seeded replicate passes the ring-gate emergence checks",
       "sigma_v_ms": {
         "mean": 2.3375389576808,
-        "lo95": 2.2516929157111627,
-        "hi95": 2.423384999650437,
+        "lo95": 2.251692915711163,
+        "hi95": 2.4233849996504366,
         "n": 20,
         "underpowered": false,
-        "min": 1.6267943270714316,
-        "max": 2.473598406527172
+        "min": 1.6267943270714318,
+        "max": 2.4735984065271714
       },
       "drift_kmh": {
-        "mean": -14.453701692434237,
-        "lo95": -14.825539336524605,
-        "hi95": -14.081864048343869,
+        "mean": -14.453701692434233,
+        "lo95": -14.825539336524601,
+        "hi95": -14.081864048343865,
         "n": 20,
         "underpowered": false,
-        "min": -15.624051736896783,
+        "min": -15.62405173689678,
         "max": -11.5814588881487
       },
       "v_min_after_warmup_ms": {
@@ -47395,13 +47402,13 @@
       "n_seeds": 20,
       "rule": "every seeded replicate passes the ring-gate dampening checks",
       "sigma_v_damped_ms": {
-        "mean": 1.8012110574828384e-06,
-        "lo95": 1.070467808593478e-06,
-        "hi95": 2.5319543063721987e-06,
+        "mean": 1.8012110574340315e-06,
+        "lo95": 1.0704678085950439e-06,
+        "hi95": 2.531954306273019e-06,
         "n": 20,
         "underpowered": false,
-        "min": 5.704221609564604e-07,
-        "max": 6.419062529649904e-06
+        "min": 5.704221611279676e-07,
+        "max": 6.419062529303092e-06
       },
       "reduction_frac": {
         "mean": 0.9999991893856672,
@@ -47409,17 +47416,17 @@
         "hi95": 0.9999995736368498,
         "n": 20,
         "underpowered": false,
-        "min": 0.9999965072804314,
-        "max": 0.9999997517735626
+        "min": 0.9999965072804317,
+        "max": 0.9999997517735625
       },
       "v_min_tail_damped_ms": {
         "mean": 2.018024706337971,
-        "lo95": 1.9933133936703724,
-        "hi95": 2.0427360190055692,
+        "lo95": 1.993313393670373,
+        "hi95": 2.0427360190055683,
         "n": 20,
         "underpowered": false,
         "min": 1.9361433531983596,
-        "max": 2.1633678992678367
+        "max": 2.1633678992678296
       }
     },
     "per_seed": [
@@ -47439,18 +47446,18 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.2979911686869143,
-          "sigma_v_damped_ms": 5.704221609564604e-07,
-          "reduction_frac": 0.9999997517735626,
+          "sigma_v_damped_ms": 5.704221611279676e-07,
+          "reduction_frac": 0.9999997517735625,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.9997474156504997,
-          "mean_speed_tail_damped_ms": 1.9997648611409695,
+          "v_min_tail_damped_ms": 1.999747415650493,
+          "mean_speed_tail_damped_ms": 1.9997648611409702,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/6914975401685141156",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/6914975401685141156"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/6914975401685141156",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/6914975401685141156"
       },
       {
         "seed": 134183728835869882,
@@ -47468,18 +47475,18 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.371050047009328,
-          "sigma_v_damped_ms": 9.358304176646928e-07,
-          "reduction_frac": 0.9999996053097154,
+          "sigma_v_damped_ms": 9.358304175878334e-07,
+          "reduction_frac": 0.9999996053097155,
           "v_min_tail_baseline_ms": 0.0,
           "v_min_tail_damped_ms": 2.017179891712741,
-          "mean_speed_tail_damped_ms": 2.017219094115653,
+          "mean_speed_tail_damped_ms": 2.0172190941156543,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/134183728835869882",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/134183728835869882"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/134183728835869882",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/134183728835869882"
       },
       {
         "seed": 2378473973028931053,
@@ -47488,7 +47495,7 @@
           "no_avs": true,
           "sigma_v_ms": 2.397196731905793,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -14.59943049154323,
+          "drift_kmh": -14.599430491543226,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47497,18 +47504,18 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.397196731905793,
-          "sigma_v_damped_ms": 9.68863086979346e-07,
-          "reduction_frac": 0.9999995958349709,
+          "sigma_v_damped_ms": 9.688630866714865e-07,
+          "reduction_frac": 0.999999595834971,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0316573518012073,
-          "mean_speed_tail_damped_ms": 2.0316982878630214,
+          "v_min_tail_damped_ms": 2.0316573518012024,
+          "mean_speed_tail_damped_ms": 2.0316982878630205,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/2378473973028931053",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/2378473973028931053"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/2378473973028931053",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/2378473973028931053"
       },
       {
         "seed": 3747978530954135749,
@@ -47526,25 +47533,25 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.3686193325160856,
-          "sigma_v_damped_ms": 1.0270119710370365e-06,
+          "sigma_v_damped_ms": 1.0270119710780335e-06,
           "reduction_frac": 0.9999995664090228,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.9664300641270038,
-          "mean_speed_tail_damped_ms": 1.966475676395281,
+          "v_min_tail_damped_ms": 1.9664300641270114,
+          "mean_speed_tail_damped_ms": 1.9664756763952806,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/3747978530954135749",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/3747978530954135749"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/3747978530954135749",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/3747978530954135749"
       },
       {
         "seed": 677105600768189526,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.4682366780849505,
+          "sigma_v_ms": 2.4682366780849465,
           "v_min_after_warmup_ms": 0.0,
           "drift_kmh": -14.85084011439917,
           "sigma_v_ok": true,
@@ -47554,19 +47561,19 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.4682366780849505,
-          "sigma_v_damped_ms": 1.1347572429041958e-06,
-          "reduction_frac": 0.999999540255903,
+          "sigma_v_baseline_ms": 2.4682366780849465,
+          "sigma_v_damped_ms": 1.1347572429901555e-06,
+          "reduction_frac": 0.9999995402559029,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.1633678992678367,
-          "mean_speed_tail_damped_ms": 2.163433054384086,
+          "v_min_tail_damped_ms": 2.1633678992678296,
+          "mean_speed_tail_damped_ms": 2.1634330543840856,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/677105600768189526",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/677105600768189526"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/677105600768189526",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/677105600768189526"
       },
       {
         "seed": 661281422688282993,
@@ -47584,25 +47591,25 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.3555189277224122,
-          "sigma_v_damped_ms": 1.5346738545882501e-06,
-          "reduction_frac": 0.9999993484773837,
+          "sigma_v_damped_ms": 1.534673854343445e-06,
+          "reduction_frac": 0.9999993484773838,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.9855731643162529,
+          "v_min_tail_damped_ms": 1.9855731643162533,
           "mean_speed_tail_damped_ms": 1.9856321368949208,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/661281422688282993",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/661281422688282993"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/661281422688282993",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/661281422688282993"
       },
       {
         "seed": 3011106312394044631,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.394977890366016,
+          "sigma_v_ms": 2.3949778903660173,
           "v_min_after_warmup_ms": 0.0,
           "drift_kmh": -14.259545546654637,
           "sigma_v_ok": true,
@@ -47612,19 +47619,19 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.394977890366016,
-          "sigma_v_damped_ms": 2.591005622238531e-06,
+          "sigma_v_baseline_ms": 2.3949778903660173,
+          "sigma_v_damped_ms": 2.591005622317331e-06,
           "reduction_frac": 0.9999989181505046,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0433185850319564,
-          "mean_speed_tail_damped_ms": 2.043433698778783,
+          "v_min_tail_damped_ms": 2.0433185850319546,
+          "mean_speed_tail_damped_ms": 2.0434336987787836,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/3011106312394044631",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/3011106312394044631"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/3011106312394044631",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/3011106312394044631"
       },
       {
         "seed": 6953598295321596746,
@@ -47642,7 +47649,7 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.308122952603336,
-          "sigma_v_damped_ms": 1.0274298986441899e-06,
+          "sigma_v_damped_ms": 1.0274298987700846e-06,
           "reduction_frac": 0.9999995548634454,
           "v_min_tail_baseline_ms": 0.0,
           "v_min_tail_damped_ms": 1.9361433531983596,
@@ -47652,15 +47659,15 @@
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/6953598295321596746",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/6953598295321596746"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/6953598295321596746",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/6953598295321596746"
       },
       {
         "seed": 165503670820534583,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.473598406527172,
+          "sigma_v_ms": 2.4735984065271714,
           "v_min_after_warmup_ms": 0.0,
           "drift_kmh": -14.21067554991912,
           "sigma_v_ok": true,
@@ -47670,28 +47677,28 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.473598406527172,
-          "sigma_v_damped_ms": 2.242211900378494e-06,
-          "reduction_frac": 0.9999990935424705,
+          "sigma_v_baseline_ms": 2.4735984065271714,
+          "sigma_v_damped_ms": 2.242211900269395e-06,
+          "reduction_frac": 0.9999990935424706,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0483445315615993,
-          "mean_speed_tail_damped_ms": 2.0484710620177045,
+          "v_min_tail_damped_ms": 2.0483445315615953,
+          "mean_speed_tail_damped_ms": 2.0484710620177053,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/165503670820534583",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/165503670820534583"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/165503670820534583",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/165503670820534583"
       },
       {
         "seed": 6134032994440706937,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.431213711842332,
+          "sigma_v_ms": 2.431213711842337,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -14.91274952953127,
+          "drift_kmh": -14.912749529531267,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47699,19 +47706,19 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.431213711842332,
-          "sigma_v_damped_ms": 1.441932961466162e-06,
+          "sigma_v_baseline_ms": 2.431213711842337,
+          "sigma_v_damped_ms": 1.4419329614031927e-06,
           "reduction_frac": 0.9999994069081816,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0873400053123996,
+          "v_min_tail_damped_ms": 2.0873400053124027,
           "mean_speed_tail_damped_ms": 2.0874196876858684,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/6134032994440706937",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/6134032994440706937"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/6134032994440706937",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/6134032994440706937"
       },
       {
         "seed": 8557154790156791364,
@@ -47720,7 +47727,7 @@
           "no_avs": true,
           "sigma_v_ms": 2.389141249929686,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -15.128482090831843,
+          "drift_kmh": -15.128482090831836,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47729,27 +47736,27 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.389141249929686,
-          "sigma_v_damped_ms": 7.134340184334359e-07,
-          "reduction_frac": 0.9999997013847471,
+          "sigma_v_damped_ms": 7.134340187883961e-07,
+          "reduction_frac": 0.999999701384747,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0326916010934784,
+          "v_min_tail_damped_ms": 2.0326916010934735,
           "mean_speed_tail_damped_ms": 2.032729946653601,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/8557154790156791364",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/8557154790156791364"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/8557154790156791364",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/8557154790156791364"
       },
       {
         "seed": 6538422657834023852,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.1415760766823353,
+          "sigma_v_ms": 2.141576076682343,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -15.624051736896783,
+          "drift_kmh": -15.62405173689678,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47757,19 +47764,19 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.1415760766823353,
-          "sigma_v_damped_ms": 8.460997052960829e-07,
-          "reduction_frac": 0.9999996049172782,
+          "sigma_v_baseline_ms": 2.141576076682343,
+          "sigma_v_damped_ms": 8.460997053948453e-07,
+          "reduction_frac": 0.9999996049172781,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.9707262156544185,
-          "mean_speed_tail_damped_ms": 1.9707540313634755,
+          "v_min_tail_damped_ms": 1.9707262156544179,
+          "mean_speed_tail_damped_ms": 1.970754031363475,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/6538422657834023852",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/6538422657834023852"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/6538422657834023852",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/6538422657834023852"
       },
       {
         "seed": 6904272788004776631,
@@ -47787,18 +47794,18 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.4410892314821386,
-          "sigma_v_damped_ms": 9.63348478769067e-07,
-          "reduction_frac": 0.9999996053612189,
+          "sigma_v_damped_ms": 9.633484784809094e-07,
+          "reduction_frac": 0.999999605361219,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0725251022498754,
-          "mean_speed_tail_damped_ms": 2.072571620796029,
+          "v_min_tail_damped_ms": 2.0725251022498767,
+          "mean_speed_tail_damped_ms": 2.07257162079603,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/6904272788004776631",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/6904272788004776631"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/6904272788004776631",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/6904272788004776631"
       },
       {
         "seed": 6143473282319009404,
@@ -47807,7 +47814,7 @@
           "no_avs": true,
           "sigma_v_ms": 2.403307142599681,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -14.268735636633425,
+          "drift_kmh": -14.268735636633423,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47816,27 +47823,27 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.403307142599681,
-          "sigma_v_damped_ms": 2.0527285782456908e-06,
+          "sigma_v_damped_ms": 2.0527285783339114e-06,
           "reduction_frac": 0.9999991458733918,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.9579481874032727,
+          "v_min_tail_damped_ms": 1.957948187403274,
           "mean_speed_tail_damped_ms": 1.9580378804411882,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/6143473282319009404",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/6143473282319009404"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/6143473282319009404",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/6143473282319009404"
       },
       {
         "seed": 3944094060050347669,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.32616021011295,
+          "sigma_v_ms": 2.326160210112949,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -14.812268267744084,
+          "drift_kmh": -14.812268267744088,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47844,26 +47851,26 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.32616021011295,
-          "sigma_v_damped_ms": 1.0178205280723342e-06,
-          "reduction_frac": 0.9999995624460759,
+          "sigma_v_baseline_ms": 2.326160210112949,
+          "sigma_v_damped_ms": 1.017820527509093e-06,
+          "reduction_frac": 0.9999995624460761,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.96328604795497,
-          "mean_speed_tail_damped_ms": 1.9633210188436776,
+          "v_min_tail_damped_ms": 1.9632860479549716,
+          "mean_speed_tail_damped_ms": 1.963321018843677,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/3944094060050347669",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/3944094060050347669"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/3944094060050347669",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/3944094060050347669"
       },
       {
         "seed": 4910985839736976611,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.402588117946228,
+          "sigma_v_ms": 2.402588117946225,
           "v_min_after_warmup_ms": 0.0,
           "drift_kmh": -13.72470508041737,
           "sigma_v_ok": true,
@@ -47873,28 +47880,28 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.402588117946228,
-          "sigma_v_damped_ms": 6.419062529649904e-06,
-          "reduction_frac": 0.9999973282717576,
+          "sigma_v_baseline_ms": 2.402588117946225,
+          "sigma_v_damped_ms": 6.419062529303092e-06,
+          "reduction_frac": 0.9999973282717577,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.027331831531963,
+          "v_min_tail_damped_ms": 2.0273318315319613,
           "mean_speed_tail_damped_ms": 2.0275991163841485,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/4910985839736976611",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/4910985839736976611"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/4910985839736976611",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/4910985839736976611"
       },
       {
         "seed": 7382187975121682178,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.3978887997623612,
+          "sigma_v_ms": 2.3978887997623626,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -13.98906891827257,
+          "drift_kmh": -13.989068918272567,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47902,19 +47909,19 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.3978887997623612,
-          "sigma_v_damped_ms": 2.001993947843407e-06,
+          "sigma_v_baseline_ms": 2.3978887997623626,
+          "sigma_v_damped_ms": 2.00199394782397e-06,
           "reduction_frac": 0.9999991651014225,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.9902270234060953,
-          "mean_speed_tail_damped_ms": 1.9903131837286963,
+          "v_min_tail_damped_ms": 1.9902270234060937,
+          "mean_speed_tail_damped_ms": 1.9903131837286954,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/7382187975121682178",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/7382187975121682178"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/7382187975121682178",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/7382187975121682178"
       },
       {
         "seed": 5690692725577505498,
@@ -47932,27 +47939,27 @@
         "dampening": {
           "single_compliant_av": true,
           "sigma_v_baseline_ms": 2.450876470998334,
-          "sigma_v_damped_ms": 9.155968076091118e-07,
+          "sigma_v_damped_ms": 9.155968076416619e-07,
           "reduction_frac": 0.9999996264206628,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.0477463844843222,
-          "mean_speed_tail_damped_ms": 2.047803073720387,
+          "v_min_tail_damped_ms": 2.0477463844843236,
+          "mean_speed_tail_damped_ms": 2.047803073720388,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/5690692725577505498",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/5690692725577505498"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/5690692725577505498",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/5690692725577505498"
       },
       {
         "seed": 887972120279483394,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 2.304831679766515,
+          "sigma_v_ms": 2.3048316797665134,
           "v_min_after_warmup_ms": 0.0,
-          "drift_kmh": -14.449353636255273,
+          "drift_kmh": -14.44935363625527,
           "sigma_v_ok": true,
           "deep_slowdown_ok": true,
           "backward_ok": true,
@@ -47960,26 +47967,26 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 2.304831679766515,
-          "sigma_v_damped_ms": 1.93806105863955e-06,
-          "reduction_frac": 0.9999991591311957,
+          "sigma_v_baseline_ms": 2.3048316797665134,
+          "sigma_v_damped_ms": 1.9380610590872973e-06,
+          "reduction_frac": 0.9999991591311955,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 2.027108767148223,
+          "v_min_tail_damped_ms": 2.027108767148221,
           "mean_speed_tail_damped_ms": 2.0271824635889417,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/887972120279483394",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/887972120279483394"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/887972120279483394",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/887972120279483394"
       },
       {
         "seed": 8026499204807041784,
         "emergence": {
           "unseeded": true,
           "no_avs": true,
-          "sigma_v_ms": 1.6267943270714316,
+          "sigma_v_ms": 1.6267943270714318,
           "v_min_after_warmup_ms": 0.0,
           "drift_kmh": -11.5814588881487,
           "sigma_v_ok": true,
@@ -47989,70 +47996,70 @@
         },
         "dampening": {
           "single_compliant_av": true,
-          "sigma_v_baseline_ms": 1.6267943270714316,
-          "sigma_v_damped_ms": 5.681936380240821e-06,
-          "reduction_frac": 0.9999965072804314,
+          "sigma_v_baseline_ms": 1.6267943270714318,
+          "sigma_v_damped_ms": 5.681936379758532e-06,
+          "reduction_frac": 0.9999965072804317,
           "v_min_tail_baseline_ms": 0.0,
-          "v_min_tail_damped_ms": 1.991800703852948,
+          "v_min_tail_damped_ms": 1.9918007038529508,
           "mean_speed_tail_damped_ms": 1.992029641333112,
           "sigma_v_ok": true,
           "min_speed_ok": true,
           "still_flows_ok": true,
           "passed": true
         },
-        "run_dir_baseline": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a226444c0145/8026499204807041784",
-        "run_dir_damped": "/Users/anshpathak/Desktop/apps/flowstate/runs/i24_validation/ring/a32bb81afbe1/8026499204807041784"
+        "run_dir_baseline": "/home/anshpathak/flowstate/runs/i24_validation/ring/a226444c0145/8026499204807041784",
+        "run_dir_damped": "/home/anshpathak/flowstate/runs/i24_validation/ring/a32bb81afbe1/8026499204807041784"
       }
     ],
-    "wall_s": 19.3
+    "wall_s": 18.4
   },
   "metrics_ci": {
     "throughput_veh_h": {
-      "mean": 5170.008975509681,
-      "lo95": 5143.584291800995,
-      "hi95": 5196.433659218366,
+      "mean": 5275.9,
+      "lo95": 5246.339084262828,
+      "hi95": 5305.4609157371715,
       "n": 20,
       "underpowered": false
     },
     "mean_tt_s": {
-      "mean": 567.6647138455676,
-      "lo95": 561.5336813619864,
-      "hi95": 573.7957463291488,
+      "mean": 590.9765915471799,
+      "lo95": 584.4104851064695,
+      "hi95": 597.5426979878902,
       "n": 20,
       "underpowered": false
     },
     "p90_tt_s": {
-      "mean": 866.7030651624634,
-      "lo95": 855.8555270856394,
-      "hi95": 877.5506032392874,
+      "mean": 875.4704856276809,
+      "lo95": 862.7869804596535,
+      "hi95": 888.1539907957083,
       "n": 20,
       "underpowered": false
     },
     "sigma_v_spatial_ms": {
-      "mean": 5.301604241880314,
-      "lo95": 5.27053473708604,
-      "hi95": 5.332673746674589,
+      "mean": 5.396886172625349,
+      "lo95": 5.368120317560089,
+      "hi95": 5.425652027690609,
       "n": 20,
       "underpowered": false
     },
     "sigma_v_temporal_ms": {
-      "mean": 4.696071981003709,
-      "lo95": 4.670577608383766,
-      "hi95": 4.721566353623652,
+      "mean": 4.646925516632138,
+      "lo95": 4.623147681528366,
+      "hi95": 4.670703351735911,
       "n": 20,
       "underpowered": false
     },
     "vmt_veh_km": {
-      "mean": 90290.09511394918,
-      "lo95": 89897.08235673833,
-      "hi95": 90683.10787116003,
+      "mean": 84434.83178451177,
+      "lo95": 84032.45849786626,
+      "hi95": 84837.20507115728,
       "n": 20,
       "underpowered": false
     },
     "vht_veh_h": {
-      "mean": 3267.7041249999966,
-      "lo95": 3247.8647799775495,
-      "hi95": 3287.5434700224437,
+      "mean": 3169.8683263888875,
+      "lo95": 3150.0826964533667,
+      "hi95": 3189.6539563244082,
       "n": 20,
       "underpowered": false
     },
@@ -48064,23 +48071,30 @@
       "underpowered": false
     },
     "wave_count": {
-      "mean": 14.7,
-      "lo95": 12.662234170277658,
-      "hi95": 16.73776582972234,
+      "mean": 13.75,
+      "lo95": 11.624863043440692,
+      "hi95": 15.875136956559308,
       "n": 20,
       "underpowered": false
     },
     "wave_speed_kmh": {
-      "mean": 12.322102632625684,
-      "lo95": 11.384773198077937,
-      "hi95": 13.259432067173432,
+      "mean": 11.508093029790093,
+      "lo95": 10.645977441653915,
+      "hi95": 12.37020861792627,
       "n": 20,
       "underpowered": false
     },
     "wave_amplitude_ms": {
-      "mean": 6.883203659388298,
-      "lo95": 6.626619185718939,
-      "hi95": 7.139788133057657,
+      "mean": 5.571974601495498,
+      "lo95": 5.271364162508305,
+      "hi95": 5.872585040482691,
+      "n": 20,
+      "underpowered": false
+    },
+    "n_travel_time_veh": {
+      "mean": 9343.3,
+      "lo95": 9298.73307101018,
+      "hi95": 9387.866928989819,
       "n": 20,
       "underpowered": false
     }
@@ -48089,17 +48103,13 @@
     "Observed side: I-24 MOTION westbound fragments, mainline lanes 1-4, 06:30-08:30 CST, data x in [0, 5492) m; counts are fragment crossings (lower bounds at tracking coverage), speeds are coverage-robust.",
     "Six GEH sections chosen for coverage (holes at 400 m and 2400 m avoided); the observed count at every section is still biased low by 35-50% in the peak.",
     "Three GEH tables are reported for every arm (tracked counts = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: every arm's link-flow row is scored against the tracked crossings divided by the coverage artifact's recommended estimator (artifacts/i24_coverage.json, section_gap_mixture floored by the FD capacity bound, chosen on synthetic validation and independent of the car-following model); the tracked and apparent-coverage tables are reported as the lower and upper bounds",
-    "Ring benchmark rows not evaluated in this run (--ring-seeds 0); reported as failing per CLAUDE.md \u00a70.1.",
+    "Ring benchmark rows evaluated by validation.ring_benchmark (the CI gate's checks on 20 seeded replicates; pass = every replicate passes); see the 'ring' block.",
     "The sensitivity_grid criterion row is fed from artifacts/i24_sweep_summary.json (scripts/i24_penetration_sweep.py -> i24_penetration_analyze.py).",
     "compute_metrics runs on the measured span only (travel time over the span, throughput at data x = 2200 m); its wave metrics use the standard 40 km/h detector on the same site-clipped field, not the criteria row's detector.",
     "The wave_speed criteria row is measured with the 'fhwa_default' profile's wave_detector (stack); the 'waves' block keeps the standard-detector keys of schema 4 and adds every registered detector under 'by_detector'.",
     "Three GEH tables are reported (tracked = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: every arm's link-flow row is scored against the tracked crossings divided by the coverage artifact's recommended estimator (artifacts/i24_coverage.json, section_gap_mixture floored by the FD capacity bound, chosen on synthetic validation and independent of the car-following model); the tracked and apparent-coverage tables are reported as the lower and upper bounds",
-    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-06T21:15:06+00:00 with the current profile (sweep grid present)",
+    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-17T19:58:59+00:00 with the current profile (sweep grid present)",
     "Three GEH tables are reported (tracked = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: every arm's link-flow row is scored against the tracked crossings divided by the coverage artifact's recommended estimator (artifacts/i24_coverage.json, section_gap_mixture floored by the FD capacity bound, chosen on synthetic validation and independent of the car-following model); the tracked and apparent-coverage tables are reported as the lower and upper bounds",
-    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-06T21:19:05+00:00 with the current profile (sweep grid present)",
-    "Three GEH tables are reported (tracked = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: every arm's link-flow row is scored against the tracked crossings divided by the coverage artifact's recommended estimator (artifacts/i24_coverage.json, section_gap_mixture floored by the FD capacity bound, chosen on synthetic validation and independent of the car-following model); the tracked and apparent-coverage tables are reported as the lower and upper bounds",
-    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-07T00:53:20+00:00 with the current profile (sweep grid present)",
-    "Three GEH tables are reported (tracked = lower bound; counts / apparent coverage; counts / recommended coverage); the criteria row uses the recommended-coverage table: every arm's link-flow row is scored against the tracked crossings divided by the coverage artifact's recommended estimator (artifacts/i24_coverage.json, section_gap_mixture floored by the FD capacity bound, chosen on synthetic validation and independent of the car-following model); the tracked and apparent-coverage tables are reported as the lower and upper bounds",
-    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-07T00:57:46+00:00 with the current profile (sweep grid present)"
+    "criteria rows re-evaluated by scripts/i24_validate.py --criteria-only on 2026-09-17T19:59:00+00:00 with the current profile (sweep grid present)"
   ]
 }

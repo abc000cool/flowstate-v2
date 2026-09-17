@@ -346,3 +346,12 @@ choice. Each value is internally consistent with its own pipeline, both
 pipelines are recorded in the artifacts, and any sentence quoting one of
 these numbers alongside a site-clipped count must say which pipeline it
 came from (§3 does).
+
+## Re-run 2026-09-17 under the corrected metric definitions
+
+Both micro arms re-simulated with the same seeds (20 each, `artifacts/us101_validation_calibrated.json`, cloud round of 2026-09-17), so the metrics carry the corrected definitions (the 180 s warm-up discarded from every metric, travel times over the measured span). The link-flow row is identical; the speed and wave rows are re-scored on the windowed field and move within a point (RMSPE 36.6% → 35.9% with the boundary, 27.9% → 28.4% calibrated; wave speed 5.8 → 6.1 and 5.8 → 5.9 km/h) and keep their verdicts. Config hashes are under hash policy v2.
+
+| arm (config) | GEH < 5 | 5-min RMSPE | wave, km/h | throughput, veh/h | mean travel time, s | waves per replicate |
+|---|---|---|---|---|---|---|
+| with_boundary (`ab879e240aed`) | 55.6% | 35.9% | 6.1 | 8,027 | 52.3 | 2.15 |
+| calibrated (`032bd2e886fa`) | 22.2% | 28.4% | 5.9 | 9,266 | 64.5 | 3.15 |

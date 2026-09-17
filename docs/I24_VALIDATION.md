@@ -85,6 +85,16 @@ sensitivity row is fed from
 
 ### 0.1 Criteria
 
+*Re-run 2026-09-17 (cloud round, part two).* The five arms were re-simulated with the same
+seeds so that the metric tables of §0.2 carry the corrected definitions (warm-up discarded,
+median travel-time span; CHANGELOG 2026-09-17). Every criteria row below reproduces to the
+digit, as it must for a deterministic simulator. The artifacts now carry the configs' hashes
+under hash policy v2 (2026-09-06): tracked `4cd18bf46147` → `6e09678057bc`, corrected
+`d8c6924188eb` → `e676cdb0453c`, speedcal `009ed0e2a7c0` → `43def6306dd6`, ramps
+`d06808e7b8e1` → `baa746ca199d` (the heavy arm, run under v2 already, keeps `4167a3c09d2c`);
+the older hashes quoted in earlier sections and in other documents name the same configs.
+
+
 | Criterion | Tracked demand | Coverage-corrected | Fitted level (speedcal) | Fitted level + fitted ramps | Threshold |
 |---|---|---|---|---|---|
 | Link flows, GEH < 5 on ≥ 85% of link-hours (the criterion row: scored against tracked crossings ÷ the recommended coverage estimator, `artifacts/i24_coverage.json`) | 0.7% **FAIL** | 16.7% **FAIL** | 18.8% **FAIL** | 20.1% **FAIL** | ≥ 85% |
@@ -112,16 +122,20 @@ mean over those replicates.
 | Standard, 40 km/h threshold | 7.9 | 10.4 | 9.9 | 8.4 | 14.2 (median 17.5) |
 | Stripe, 25 km/h on 10 s × 50 m | 7.4 | 14.2 | 14.4 | 14.0 | 16.0 |
 | Relative, 0.5 × p90 | 5.5 | 13.8 | 13.8 | 13.6 | 16.4 |
-| Wave components per replicate (standard) | 21.6 | 8.1 | 14.2 | 10.0 | 21 |
+| Wave components per replicate (standard) | 21.2 | 7.2 | 12.9 | 9.2 | 21 |
 
-Metrics on the measured span, mean [95% CI] over 20 replicates:
+Metrics on the measured span, mean [95% CI] over 20 replicates (re-run of
+2026-09-17 under the corrected definitions: the run's 600 s warm-up discarded from
+every metric, travel times over the measured span with the sample recorded; the
+2026-09-05 values were 2% lower on throughput, 4 to 5% shorter on travel time and
+6 to 9% higher on wave count):
 
 | | Tracked | Corrected | Speedcal | Ramps | Observed |
 |---|---|---|---|---|---|
-| Throughput at data x = 2,200 m [veh/h] | 4,024 [4,020, 4,029] | 5,576 [5,552, 5,600] | 5,710 [5,679, 5,741] | 5,574 [5,559, 5,588] | 5,820–7,138 (corrected counts) |
-| Mean travel time over the span [s] | 248 [246, 250] | 601 [595, 607] | 564 [557, 572] | 579 [574, 584] | ≈ 220 free-flow |
-| p90 travel time [s] | 318 | 967 | 880 | 928 | |
-| σ_v temporal [m/s] | 4.53 | 4.80 | 4.98 | 4.90 | |
+| Throughput at data x = 2,200 m [veh/h] | 4,061 [4,052, 4,070] | 5,687 [5,660, 5,714] | 5,839 [5,808, 5,870] | 5,699 [5,683, 5,715] | 5,820–7,138 (corrected counts) |
+| Mean travel time over the span [s] | 247 [244, 249] | 629 [623, 636] | 590 [582, 598] | 607 [602, 612] | ≈ 220 free-flow |
+| p90 travel time [s] | 317 | 993 | 896 | 953 |  |
+| σ_v temporal [m/s] | 4.44 | 4.75 | 4.94 | 4.86 |  |
 | Fuel [ml/veh-km] | 65.6 | 108.2 | 100.7 | 103.1 | |
 
 Mean segment speed over the study period [km/h], upstream to downstream
