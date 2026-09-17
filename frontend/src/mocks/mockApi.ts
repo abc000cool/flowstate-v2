@@ -660,6 +660,16 @@ const CRITERIA_PROFILES: CriteriaProfile[] = [
  * copy of `api.schemas.DEFAULT_CRITERIA_PROFILE`. */
 const DEFAULT_PROFILE = 'fhwa_default';
 
+/** `GET /criteria` — the selectable acceptance-criteria profiles, in the
+ * registry order the API serves them.
+ *
+ * Copies are handed out so a caller cannot edit the demo registry in place:
+ * these are published thresholds, not this session's state. */
+export async function mockListCriteriaProfiles(): Promise<CriteriaProfile[]> {
+  await latency();
+  return CRITERIA_PROFILES.map((p) => ({ ...p }));
+}
+
 /* ------------------------------- reports ------------------------------ */
 
 const REPORT_TITLE = 'FlowState calibration & validation report';
@@ -672,12 +682,15 @@ interface ReportRow {
 
 const reports = new Map<string, ReportRow>();
 
-function reportMarkdown(reportId: string, runIds: string[]): string {
+function reportMarkdown(reportId: string, runIds: string[], profile: string): string {
   const lines: string[] = [];
   lines.push(`# FlowState Validation Report ${reportId}`);
   lines.push('');
   lines.push(`Generated: ${new Date().toISOString()}  `);
   lines.push('Tier: microscopic (SUMO/IDM) — screening-tier runs excluded by policy.');
+  // the thresholds the criteria table would be scored against: a report that
+  // does not name its profile cannot be read as a pass or a fail
+  lines.push(`Acceptance-criteria profile: \`${profile}\``);
   lines.push('');
   for (const id of runIds) {
     const r = runs.find((x) => x.run_id === id);
@@ -869,14 +882,30 @@ export async function mockGetSweep(sweepId: string): Promise<SweepDetail> {
   return sweepView(s);
 }
 
-/** Like the API's inline queue, a macro-only run set is refused up front. */
-export async function mockCreateReport(runIds: string[], title = REPORT_TITLE): Promise<ReportOut> {
+/** Like the API's inline queue, a macro-only run set is refused up front.
+ *
+ * `profile` is the acceptance-criteria profile, defaulted and validated
+ * exactly as `api.schemas.ReportCreateRequest` does: a name outside the
+ * registry is refused (HTTP 422 there) rather than quietly scored against the
+ * default, so the demo cannot hide a dashboard that sends a name the real
+ * service would reject. It is echoed on the row, as `ReportOut.profile`. */
+export async function mockCreateReport(
+  runIds: string[],
+  title = REPORT_TITLE,
+  profile = DEFAULT_PROFILE,
+): Promise<ReportOut> {
   await latency();
   const macro = runIds
     .map((id) => runs.find((r) => r.run_id === id))
     .filter((r) => r && r.tier === 'macro');
   if (macro.length > 0) {
     throw new Error('screening-tier (macro) runs cannot be included in a validation report');
+  }
+  if (!CRITERIA_PROFILES.some((p) => p.name === profile)) {
+    throw new Error(
+      `unknown criteria profile '${profile}'; available: ` +
+        `${CRITERIA_PROFILES.map((p) => p.name).join(', ')} (GET /criteria)`,
+    );
   }
   const id = `rpt-${fakeHash(runIds.join(',') + Date.now()).slice(0, 6)}`;
   const row: ReportRow = {
@@ -885,12 +914,13 @@ export async function mockCreateReport(runIds: string[], title = REPORT_TITLE): 
       status: 'queued',
       run_ids: runIds,
       title,
+      profile,
       report_path: null,
       error: null,
       error_kind: null,
       created_at: new Date().toISOString(),
     },
-    markdown: reportMarkdown(id, runIds),
+    markdown: reportMarkdown(id, runIds, profile),
     createdAt: Date.now(),
   };
   reports.set(id, row);

@@ -9,19 +9,27 @@ import {
   createSweep,
   DEFAULT_API_KEY,
   DEFAULT_BASE_URL,
+  DEFAULT_CRITERIA_PROFILE,
   getReport,
   getReportArchive,
   getReportMarkdown,
   getReportPdf,
   isAuthFailed,
   isAuthRetryScheduled,
+  listCriteriaProfiles,
   listReports,
   listRuns,
   listScenarios,
   OFFLINE_WRITE_MESSAGE,
   setOfflineFallback,
 } from '../api/client';
-import { mockListReports, mockListRuns, mockListScenarios } from '../mocks/mockApi';
+import {
+  mockCreateReport,
+  mockListCriteriaProfiles,
+  mockListReports,
+  mockListRuns,
+  mockListScenarios,
+} from '../mocks/mockApi';
 
 function fakeResponse(body: unknown): Response {
   return {
@@ -147,6 +155,52 @@ describe('api client contract routes', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${DEFAULT_BASE_URL}/reports`);
     expect(JSON.parse(init.body as string)).toEqual({ run_ids: ['run-a'] });
+  });
+
+  it('POSTs /reports with the chosen criteria profile, and omits the field when none is given', async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        report_id: 'rpt-1',
+        status: 'queued',
+        run_ids: ['run-a'],
+        title: 't',
+        profile: 'txdot_tsap_ch13',
+        error: null,
+        error_kind: null,
+        created_at: '2026-09-16T00:00:00',
+      }),
+    );
+    const out = await createReport(['run-a'], undefined, 'txdot_tsap_ch13');
+    // the profile the report was scored against comes back on the row
+    expect(out.profile).toBe('txdot_tsap_ch13');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body).toEqual({ run_ids: ['run-a'], profile: 'txdot_tsap_ch13' });
+    // ReportCreateRequest forbids unknown fields, so an omitted title must be
+    // absent rather than sent as undefined/null
+    expect(body).not.toHaveProperty('title');
+
+    // and an unnamed profile sends no field at all: a service older than the
+    // parameter would refuse the whole request over it (422), and it applies
+    // DEFAULT_CRITERIA_PROFILE anyway
+    fetchMock.mockClear();
+    await createReport(['run-a']);
+    const [, plain] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(plain.body as string)).not.toHaveProperty('profile');
+  });
+
+  it('GETs the criteria profiles from /criteria', async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse([
+        { name: 'fhwa_default', source: 'CLAUDE.md §7.1', default: true },
+        { name: 'txdot_tsap_ch13', source: 'TxDOT TSAP ch. 13', default: false },
+      ]),
+    );
+    const profiles = await listCriteriaProfiles();
+    expect(profiles.map((p) => p.name)).toEqual(['fhwa_default', 'txdot_tsap_ch13']);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${DEFAULT_BASE_URL}/criteria`);
+    expect(init.method).toBe('GET');
   });
 
   it('polls report status from /reports/{id}', async () => {
@@ -412,5 +466,41 @@ describe('api client writes during the offline fallback', () => {
     expect((await listRuns()).length).toBeGreaterThan(0);
     expect((await listScenarios()).length).toBeGreaterThan(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+/** The demo backend's criteria profiles are a copy of the real registry
+ * (`validation.criteria.CRITERIA_PROFILES`), not a convenience: a demo that
+ * accepted any name, or defaulted to a different one, would hide a dashboard
+ * sending something the API refuses with 422. */
+describe('demo backend criteria profiles', () => {
+  it('serves the registry with the real default profile marked default', async () => {
+    const profiles = await mockListCriteriaProfiles();
+    expect(profiles.length).toBeGreaterThan(1);
+    // exactly one default, and it is the name the API applies to a request
+    // that carries no profile
+    expect(profiles.filter((p) => p.default).map((p) => p.name)).toEqual([
+      DEFAULT_CRITERIA_PROFILE,
+    ]);
+    // registry order, default first, as GET /criteria serves it
+    expect(profiles[0].name).toBe(DEFAULT_CRITERIA_PROFILE);
+    // and every row states where its numbers come from
+    expect(profiles.every((p) => p.source.length > 0)).toBe(true);
+  });
+
+  it('honours the requested profile and refuses one outside the registry', async () => {
+    const chosen = (await mockListCriteriaProfiles()).find((p) => !p.default);
+    expect(chosen).toBeDefined();
+    const name = chosen?.name ?? '';
+    const out = await mockCreateReport(['run-8f2c11'], undefined, name);
+    expect(out.profile).toBe(name);
+
+    // an unnamed profile is the default, exactly as ReportCreateRequest does
+    expect((await mockCreateReport(['run-8f2c11'])).profile).toBe(DEFAULT_CRITERIA_PROFILE);
+
+    // and an unknown name is refused, not quietly scored against the default
+    await expect(mockCreateReport(['run-8f2c11'], undefined, 'not_a_profile')).rejects.toThrow(
+      /unknown criteria profile/,
+    );
   });
 });
