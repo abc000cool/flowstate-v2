@@ -552,3 +552,12 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   process default from the environment; empty tuple = unrestricted).
   Golden files: `tests/golden/macro_corridor_workzone.json`; the macro golden
   module's exact keys are `wave_count, n_cells, n_closures, n_closure_cells`.
+- API after the walkthrough (2026-09-17): `FLOWSTATE_CORS_ORIGINS`
+  (`Settings.cors_origins`, default `api.settings.DEFAULT_CORS_ORIGINS`);
+  `GET /api/v1/reports?limit=` (1..200, newest first, `list[ReportOut]`;
+  `Store.list_reports`); `ReportOut.report_path` is relative to the results
+  root (`reports/<id>/report.md`), never a filesystem path or URL, content
+  comes from `/reports/{id}/markdown|pdf|archive`; `POST /reports` answers
+  422 for a run set mixing micro and macro tiers (detail names the macro run
+  ids); `PresetOut.preset: true`, `ScenarioOut.preset: false`; `CIOut.reason:
+  "no_observations" | null` with `underpowered = false` when `n == 0`.

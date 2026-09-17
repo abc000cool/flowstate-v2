@@ -37,6 +37,17 @@ worker, and the tests (ADR-3: thin service layer, Docker deploy):
   is capped at this plus ``FLOWSTATE_MAX_BODY_MB`` for its framing.
 - ``FLOWSTATE_FRONTEND_DIST`` — built frontend directory served at ``/`` when
   it exists (default: the repo's ``frontend/dist``).
+- ``FLOWSTATE_CORS_ORIGINS`` — comma-separated browser origins allowed to call
+  ``/api/...`` cross-origin (default: the Vite dev server on loopback,
+  :data:`DEFAULT_CORS_ORIGINS`). A dashboard served from the API itself is
+  same-origin and needs none of this; a dashboard served from another host or
+  port — the documented "point the dashboard at a remote API" path — is a
+  *different origin*, and without its origin listed here every browser call
+  fails preflight no matter what the API key says. Each entry is a scheme +
+  host + optional port with no trailing slash (``https://ops.example.gov``,
+  ``http://192.168.1.178:5173``); ``*`` allows any origin and is meant for
+  throwaway demos only, and a single ``-`` allows none (same-origin serving,
+  which needs no CORS at all).
 
 Settings are read at :func:`load_settings` call time (never at import time)
 so tests can point the service at temporary directories via ``monkeypatch``.
@@ -65,6 +76,12 @@ DEFAULT_API_KEY = "dev-key-change-me"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 QUEUE_KINDS = ("inline", "redis")
 
+#: Browser origins allowed cross-origin by default: the Vite dev server on
+#: both loopback spellings (a browser treats them as distinct origins).
+#: Anything else — a dashboard on a LAN address or a real hostname — is opted
+#: in through ``FLOWSTATE_CORS_ORIGINS``.
+DEFAULT_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 
 class InsecureDefaultKeyError(RuntimeError):
     """Raised when a deployed service would boot on the published dev key."""
@@ -89,6 +106,12 @@ class Settings:
     """Largest JSON/YAML request body accepted on ``/api/`` (HTTP 413 above)."""
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_MB * _MB
     """Largest calibration data upload accepted (HTTP 413 above)."""
+    cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
+    """Browser origins allowed to call ``/api/...`` cross-origin.
+
+    Empty means no cross-origin browser client is allowed (same-origin
+    serving still works); ``("*",)`` allows any origin.
+    """
     api_keys: tuple[str, ...] = ()
     """Every accepted ``X-API-Key`` value, :attr:`api_key` first.
 
@@ -208,7 +231,33 @@ def load_settings() -> Settings:
         data_dir=Path(raw_data_dir).resolve() if raw_data_dir else None,
         max_body_bytes=max_body_mb * _MB,
         max_upload_bytes=max_upload_mb * _MB,
+        cors_origins=_cors_origins_env(),
     )
+
+
+def _cors_origins_env() -> tuple[str, ...]:
+    """Allowed browser origins from ``FLOWSTATE_CORS_ORIGINS``.
+
+    Comma-separated, whitespace trimmed, empty entries dropped, duplicates
+    collapsed, one trailing ``/`` removed per entry (a browser's ``Origin``
+    header never carries one, so ``https://x.example/`` would silently match
+    nothing). Unset or blank keeps :data:`DEFAULT_CORS_ORIGINS`; an explicit
+    single ``-`` means "no cross-origin client", which is right for a
+    same-origin deployment.
+    """
+    raw = os.environ.get("FLOWSTATE_CORS_ORIGINS", "").strip()
+    if not raw:
+        return DEFAULT_CORS_ORIGINS
+    if raw == "-":
+        return ()
+    origins: list[str] = []
+    for entry in raw.split(","):
+        origin = entry.strip()
+        if origin.endswith("/"):
+            origin = origin[:-1]
+        if origin and origin not in origins:
+            origins.append(origin)
+    return tuple(origins) or DEFAULT_CORS_ORIGINS
 
 
 def _api_keys_env() -> tuple[str, ...]:

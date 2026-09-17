@@ -8,6 +8,11 @@ every ``/api/...`` route — any key in ``Settings.api_keys``
 key can be replaced without a lock-out window; ``/healthz`` and ``/docs`` are
 exempt and real auth is a Phase 4 concern.
 
+Browser clients on another origin (a dashboard served from a different host
+or port than the API) are allowed by ``FLOWSTATE_CORS_ORIGINS``; the default
+is the Vite dev server on loopback. Serving the dashboard from the API's own
+``/`` mount is same-origin and needs no entry.
+
 Every response carries ``X-Request-Id`` and every request logs one line on
 the ``api.access`` logger (method, path, status, duration, id), so a client
 report ties to a server log line; request bodies are counted as they stream
@@ -39,7 +44,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -59,6 +64,7 @@ from api.jobs import (
     sweep_job,
 )
 from api.schemas import (
+    MAX_REPORT_LIST,
     CalibrationOut,
     CalibrationParams,
     CIOut,
@@ -83,9 +89,6 @@ from api.store import Store, new_id
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
 from validation.metrics import MIN_REPLICATES
-
-#: Origins allowed by CORS (the Vite dev server).
-CORS_ORIGINS = ["http://localhost:5173"]
 
 router = APIRouter(prefix="/api/v1")
 
@@ -804,16 +807,68 @@ def get_calibration(request: Request, calibration_id: str) -> CalibrationOut:
 # ---------------------------------------------------------------------------
 
 
-def _report_out(row: dict[str, Any]) -> ReportOut:
+def _relative_report_path(raw: str | None, settings: Settings) -> str | None:
+    """A stored report path as a results-root-relative one (``reports/<id>/report.md``).
+
+    The store keeps the absolute path the worker wrote — that is what the
+    download routes read — but publishing it would hand every API-key holder
+    the server's directory layout, which is exactly what the sanitised error
+    text and 500 bodies are careful not to do. A path that does not sit under
+    the results root (a hand-made row, a relocated results directory) falls
+    back to its last two components, so nothing absolute escapes either way.
+    """
+    if not raw:
+        return None
+    path = Path(raw)
+    try:
+        return path.resolve().relative_to(settings.results_dir.resolve()).as_posix()
+    except ValueError:
+        return Path(path.parent.name, path.name).as_posix()
+
+
+def _report_out(row: dict[str, Any], settings: Settings) -> ReportOut:
     return ReportOut(
         report_id=row["id"],
         status=row["status"],
         run_ids=row["run_ids"],
         title=row["title"],
-        report_path=row["report_path"],
+        report_path=_relative_report_path(row["report_path"], settings),
         error=row["error"],
         error_kind=row["error_kind"],
         created_at=row["created_at"],
+    )
+
+
+def _refuse_macro_runs_in_report(rows: list[dict[str, Any]]) -> None:
+    """Refuse a run set that mixes screening (macro) runs with micro runs.
+
+    ``validation.report.generate_report`` refuses an all-macro set outright
+    (CLAUDE.md §5.6) but *silently* drops macro runs from a mixed set while
+    still listing them under Provenance — so a validation report would appear
+    to rest partly on screening-tier evidence that contributed no metric. The
+    report package offers no "excluded because screening tier" annotation, so
+    the honest answer here is to refuse the set and name the macro runs
+    rather than publish a provenance table the reader cannot interpret.
+
+    All-macro sets are left to the generator's own refusal (same 422, via
+    ``error_kind=REPORT_REFUSED_KIND``), so there is exactly one message for
+    that case.
+
+    Raises:
+        HTTPException: 422 naming the macro run ids, when the set holds both
+            tiers.
+    """
+    macro_ids = [r["id"] for r in rows if r["tier"] == "macro"]
+    if not macro_ids or len(macro_ids) == len(rows):
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"run set mixes tiers: {macro_ids} are macroscopic screening runs and would "
+            f"appear in the report's provenance while contributing no metrics; the "
+            f"screening tier cannot support validation claims (CLAUDE.md §5.6). Request "
+            f"the report from the micro-tier runs alone."
+        ),
     )
 
 
@@ -821,16 +876,23 @@ def _report_out(row: dict[str, Any]) -> ReportOut:
 def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     """Generate a validation report for a set of finished runs.
 
-    Macro-only run sets are refused with HTTP 422: the screening tier cannot
-    support validation claims (CLAUDE.md §5.6). Under the Redis queue the
-    refusal surfaces asynchronously as ``status=failed`` with
-    ``error_kind="report_refused"``.
+    Run sets carrying screening (macro) runs are refused with HTTP 422 — the
+    screening tier cannot support validation claims (CLAUDE.md §5.6). A
+    *mixed* micro+macro set is refused here, before the row is created,
+    naming the macro runs (:func:`_refuse_macro_runs_in_report`); an
+    *all-macro* set is refused by ``validation.report.generate_report``
+    itself, which under the Redis queue surfaces asynchronously as
+    ``status=failed`` with ``error_kind="report_refused"``.
     """
     store = _store(request)
     settings = _settings(request)
+    rows: list[dict[str, Any]] = []
     for rid in body.run_ids:
-        if store.get_run(rid) is None:
+        run = store.get_run(rid)
+        if run is None:
             raise HTTPException(status_code=404, detail=f"run {rid!r} not found")
+        rows.append(run)
+    _refuse_macro_runs_in_report(rows)
     report_id = store.create_report(body.run_ids, body.title)
     get_queue(settings).enqueue(
         report_job,
@@ -843,7 +905,7 @@ def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     assert row is not None
     if row["status"] == "failed" and row["error_kind"] == REPORT_REFUSED_KIND:
         raise HTTPException(status_code=422, detail=row["error"])
-    return _report_out(row)
+    return _report_out(row, settings)
 
 
 def _get_report_done(request: Request, report_id: str) -> dict[str, Any]:
@@ -859,12 +921,29 @@ def _get_report_done(request: Request, report_id: str) -> dict[str, Any]:
     return row
 
 
+@router.get("/reports", response_model=list[ReportOut])
+def list_reports(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=MAX_REPORT_LIST)] = MAX_REPORT_LIST,
+) -> list[ReportOut]:
+    """Reports newest first, at most ``limit`` (default and maximum 200).
+
+    The dashboard's report table would otherwise live only in one browser's
+    localStorage: clearing site data, or opening the dashboard as a
+    colleague, loses every report the server still holds. Rows are metadata
+    only — the bundles are fetched through ``/markdown``, ``/pdf`` and
+    ``/archive``.
+    """
+    settings = _settings(request)
+    return [_report_out(row, settings) for row in _store(request).list_reports(limit=limit)]
+
+
 @router.get("/reports/{report_id}", response_model=ReportOut)
 def get_report(request: Request, report_id: str) -> ReportOut:
     row = _store(request).get_report(report_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"report {report_id!r} not found")
-    return _report_out(row)
+    return _report_out(row, _settings(request))
 
 
 @router.get("/reports/{report_id}/markdown")
@@ -1221,7 +1300,11 @@ def create_app() -> FastAPI:
     # expose_headers lets a browser client read the request id it must quote.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=CORS_ORIGINS,
+        # Configured origins only (api.settings.DEFAULT_CORS_ORIGINS is the
+        # loopback dev default): a dashboard on another host or port is a
+        # different origin, and the browser refuses the call before the API
+        # key is ever checked.
+        allow_origins=list(settings.cors_origins),
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=[REQUEST_ID_HEADER],

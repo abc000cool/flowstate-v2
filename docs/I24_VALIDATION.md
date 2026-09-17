@@ -389,6 +389,19 @@ keep braking for merging traffic and merging traffic slows to match the
 lane it merges into. The remaining lever is the lane-change model itself —
 SUMO's sublane model (`SimSpec.lateral_resolution_m`, part (h)).
 
+*Added 2026-09-17.* The 35 / 26 / 22 / 17% above are shares of **vehicle-time**
+(5 Hz samples), and SUMO applies `entry_lane_shares` as shares of **flow**; a
+slow lane is over-represented by vehicle-time. Counting each tracked vehicle
+once at its first crossing of the mainline count section (data x = 200 m,
+lanes 1 to 5; `artifacts/i24_lane_profile.json` rows now carry `n_vehicles`
+and `flow_share` beside `share`) gives 32.2 / 24.7 / 22.5 / 20.7% of the
+flow from 2,175 / 1,667 / 1,518 / 1,398 vehicles, the fast right lane
+carrying a fifth of the flow rather than a sixth. `scripts/i24_build_replica.py
+--entry-lanes observed_flow` and the `_entryflow` variant of the merge
+experiment use the flow shares; the existing `observed` shares and every
+recorded config hash are unchanged. Candidate 1 of
+docs/MERGE_ROUND6_PLAN.md; its probe is reported in §0.9 when it lands.
+
 **(h) The sublane model, as configured, gridlocks.** `SimSpec.lateral_resolution_m`
 (new; `None` keeps every existing run identical) switches SUMO to the
 sublane lane-change model with continuous lateral positions, the model

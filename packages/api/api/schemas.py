@@ -32,6 +32,12 @@ MAX_SWEEP_CELLS = 200
 #: Maximum replicates a single request may ask for, per run and per sweep cell.
 MAX_REPLICATES = 200
 
+#: Maximum (and default) rows returned by ``GET /api/v1/reports``. Report rows
+#: are small metadata records, so the whole recent history fits in one
+#: response; the cap keeps a service with thousands of reports from serializing
+#: all of them into a dashboard poll.
+MAX_REPORT_LIST = 200
+
 #: Ceilings on the calibration fit options a request may set
 #: (:class:`CalibrationParams`): bootstrap resamples of the FD fit, and the
 #: differential-evolution generation cap and population multiplier of the
@@ -68,6 +74,12 @@ class ScenarioOut(BaseModel):
     config_hash: str
     created_at: str
     config: dict[str, Any]
+    preset: Literal[False] = False
+    """Always False — the marker that separates a stored (user-posted)
+    scenario from a shipped :class:`PresetOut`. Both lists carry the field so
+    a client that merges them can tell one from the other; a stored scenario
+    created *from* a preset is still a user scenario (it has an id, a
+    ``created_at`` and may have been edited)."""
 
 
 class PresetOut(BaseModel):
@@ -77,6 +89,9 @@ class PresetOut(BaseModel):
     filename: str
     config_hash: str
     config: dict[str, Any]
+    preset: Literal[True] = True
+    """Always True; see :attr:`ScenarioOut.preset`. A preset has no
+    ``scenario_id`` — ``POST /scenarios`` with its ``config`` creates one."""
 
 
 # ---------------------------------------------------------------------------
@@ -117,14 +132,43 @@ class RunOut(BaseModel):
     created_at: str
 
 
+#: ``CIOut.reason`` when no replicate produced a value for the metric.
+NO_OBSERVATIONS = "no_observations"
+
+
 class CIOut(BaseModel):
-    """t-distribution replicate CI; ``underpowered`` when n < 20 (§0.6)."""
+    """t-distribution replicate CI over the replicates that produced a value.
+
+    ``n`` counts the replicates with a finite value for this metric, which is
+    not always the run's replicate count: ``wave_speed_kmh`` has no value in a
+    replicate where no wave was detected, ``fuel_ml_per_veh_km`` none where no
+    emission model ran.
+
+    Three distinct states, so a client never renders an interval that does not
+    exist:
+
+    - ``n == 0`` — no replicate produced this metric. ``mean``, ``lo95`` and
+      ``hi95`` are null, ``reason`` is :data:`NO_OBSERVATIONS` and
+      ``underpowered`` is **False**: there is no estimate to be underpowered
+      about, and more seeds are not necessarily what is missing (no waves
+      detected is an answer, not a sample-size problem). Render the metric as
+      absent.
+    - ``0 < n < 20`` — an estimate exists but is below the headline minimum
+      (CLAUDE.md §0.6): ``underpowered`` is True and the value must not be
+      quoted as a headline result. ``lo95``/``hi95`` are null at ``n == 1``
+      (no dispersion from a single value).
+    - ``n >= 20`` — a headline-quotable estimate; ``underpowered`` False,
+      ``reason`` null.
+    """
 
     mean: float | None
     lo95: float | None
     hi95: float | None
     n: int
     underpowered: bool
+    reason: Literal["no_observations"] | None = None
+    """Why there is no estimate, when there is none (``n == 0``); null
+    otherwise."""
 
 
 class ReplicateMetricsOut(BaseModel):
@@ -347,6 +391,10 @@ class ReportOut(BaseModel):
     run_ids: list[str]
     title: str
     report_path: str | None = None
+    """The bundle's markdown file *relative to the server's results root*
+    (``reports/<report_id>/report.md``) — an identifier for the bundle, not a
+    URL and not the server's filesystem layout. Fetch the content from
+    ``/reports/{id}/markdown``, ``/pdf`` or ``/archive``."""
     error: str | None = None
     error_kind: str | None = None
     created_at: str

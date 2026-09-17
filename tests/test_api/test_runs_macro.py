@@ -209,3 +209,54 @@ def test_perturbation_run_is_reported_seeded(client: TestClient) -> None:
     run = post_run(client, scenario["scenario_id"])
     assert run["status"] == "done", run["error"]
     assert run["seeded"] is True
+
+
+def test_aggregate_without_observations_is_absent_not_underpowered(client: TestClient) -> None:
+    """``n == 0`` reports *no estimate*, not a wide one.
+
+    A metric no replicate produced — ``mean_tt_s`` and ``fuel_ml_per_veh_km``
+    in the screening tier, ``wave_speed_kmh`` on any run where no wave was
+    detected — used to come back as ``{n: 0, underpowered: true}`` with null
+    bounds, which reads as "a number that needs more seeds". There is no
+    number: the reason field says so and ``underpowered`` is False.
+    """
+    run = _finished_macro_run(client)
+    agg = client.get(f"/api/v1/runs/{run['run_id']}/metrics", headers=HEADERS).json()["aggregate"]
+
+    for name in ("mean_tt_s", "fuel_ml_per_veh_km"):
+        ci = agg[name]
+        assert ci["n"] == 0, name
+        assert ci["mean"] is None and ci["lo95"] is None and ci["hi95"] is None, name
+        assert ci["underpowered"] is False, name
+        assert ci["reason"] == "no_observations", name
+
+    # A metric that *was* measured keeps the honest underpowered flag (3 < 20)
+    # and carries no reason.
+    assert agg["throughput_veh_h"]["underpowered"] is True
+    assert agg["throughput_veh_h"]["reason"] is None
+
+
+def test_ci_to_json_states_are_distinct() -> None:
+    """The three CIOut states: no estimate, single replicate, real interval."""
+    from validation.metrics import CI
+
+    assert res.ci_to_json(CI(math.nan, math.nan, math.nan, 0)) == {
+        "mean": None,
+        "lo95": None,
+        "hi95": None,
+        "n": 0,
+        "underpowered": False,
+        "reason": "no_observations",
+    }
+    single = res.ci_to_json(CI(12.5, math.nan, math.nan, 1))
+    assert single == {
+        "mean": 12.5,
+        "lo95": None,
+        "hi95": None,
+        "n": 1,
+        "underpowered": True,
+        "reason": None,
+    }
+    powered = res.ci_to_json(CI(1.0, 0.5, 1.5, 20))
+    assert powered["underpowered"] is False
+    assert powered["reason"] is None

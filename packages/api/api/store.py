@@ -378,6 +378,27 @@ class Store:
             row = con.execute("SELECT * FROM reports WHERE id = ?", (report_id,)).fetchone()
         return _report_dict(row) if row else None
 
+    def list_reports(self, limit: int = 200) -> list[dict[str, Any]]:
+        """Report rows newest first, at most ``limit``.
+
+        Newest first (descending rowid — ``created_at`` has 1 s resolution, so
+        two reports requested in the same second would tie) because a client
+        listing reports wants the recent ones; the other listings return
+        insertion order because they are keyed lookups. ``GET /api/v1/reports``
+        passes its own ceiling (``api.schemas.MAX_REPORT_LIST``); the default
+        here matches it so a direct caller is bounded too.
+
+        Raises:
+            ValueError: If ``limit`` is not positive.
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        with self._conn() as con:
+            rows = con.execute(
+                "SELECT * FROM reports ORDER BY rowid DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_report_dict(r) for r in rows]
+
     def set_report_status(
         self,
         report_id: str,

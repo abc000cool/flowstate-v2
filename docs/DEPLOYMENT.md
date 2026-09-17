@@ -32,6 +32,7 @@ change it.
 | `FLOWSTATE_SCENARIOS_DIR` | the repository's `scenarios/` | presets served by `GET /scenarios/preset` |
 | `FLOWSTATE_DATA_DIR` | unset | an extra root from which scenario configs may reference OSM files and calibration artifacts |
 | `FLOWSTATE_FRONTEND_DIST` | the built dashboard in the image | static files served at `/` |
+| `FLOWSTATE_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated browser origins allowed to call `/api/...` cross-origin (scheme + host + optional port, no trailing slash). Needed only when the dashboard is served from somewhere other than this API — a dashboard on the API's own `/` is same-origin. `*` allows any origin (demos only); a single `-` allows none |
 | `FLOWSTATE_MAX_BODY_MB` | 8 | request-body cap on `/api/` (HTTP 413) |
 | `FLOWSTATE_MAX_UPLOAD_MB` | 200 | calibration upload cap (HTTP 413) |
 | `FLOWSTATE_WORKER_PATH_ROOTS` | set per job by the worker | worker-side copy of the allowed roots (`os.pathsep`-separated absolute paths) that `microsim` enforces when it reads calibration artifacts and OSM files; the API's 422 is the primary control, this is defence in depth; unset means unrestricted, which is the library default for scripts |

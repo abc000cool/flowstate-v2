@@ -6,6 +6,11 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### API after the walkthrough (2026-09-17)
+
+- `FLOWSTATE_CORS_ORIGINS` (comma-separated; `*` any, `-` none; default the two loopback dev origins) replaces the hard-coded `http://localhost:5173`: a dashboard served from any other origin could not call the API at all, and the only feedback was an "API offline" banner. A disallowed origin gets a response without the allow header, not a 400 that echoes the policy.
+- `GET /api/v1/reports` (newest first, `limit` up to 200; `Store.list_reports`), so the dashboard's report table need not live in the browser; `ReportOut.report_path` is results-root-relative instead of an absolute server path; `POST /reports` refuses a run set that mixes micro and macro tiers with 422 naming the macro runs (the generator listed the screening run in the report's provenance without a word; all-macro was already refused); `PresetOut.preset: true` / `ScenarioOut.preset: false`; a CI with no observations (`n == 0`, for example wave speed with no detected wave) reports `mean/lo95/hi95 = null`, `underpowered = false` and `reason = "no_observations"` instead of an underpowered estimate. 15 new API tests (239 in the package).
+
 ### Dashboard after a real browser walkthrough (2026-09-17)
 
 An agent drove the dashboard through the pilot flow in Chrome against the inline-queue API (14 steps, screenshots kept locally) and found five pilot-blockers; all fixed in the dashboard, 57 vitest cases across 10 files, typecheck and build green:

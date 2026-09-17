@@ -78,3 +78,23 @@ def test_presets_list_repo_scenarios(client: TestClient) -> None:
     assert ring["filename"] == "ring_sugiyama.yaml"
     assert ring["config"]["network"]["kind"] == "ring"
     assert len(ring["config_hash"]) == 12
+
+
+def test_preset_marker_separates_presets_from_user_scenarios(client: TestClient) -> None:
+    """Both listings carry ``preset`` so a merged library can tell them apart.
+
+    Without the marker a shipped preset and a scenario the user posted are
+    indistinguishable in the dashboard's library (the two lists have no other
+    field in common that says which is which).
+    """
+    mine = post_scenario(client, macro_corridor_config(name="mine"))
+    assert mine["preset"] is False
+
+    listing = client.get("/api/v1/scenarios", headers=HEADERS).json()
+    assert [s["preset"] for s in listing] == [False]
+
+    presets = client.get("/api/v1/scenarios/preset", headers=HEADERS).json()
+    assert presets and all(p["preset"] is True for p in presets)
+
+    fetched = client.get(f"/api/v1/scenarios/{mine['scenario_id']}", headers=HEADERS).json()
+    assert fetched["preset"] is False

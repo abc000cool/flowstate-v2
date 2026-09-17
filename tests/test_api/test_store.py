@@ -229,3 +229,23 @@ def test_create_sweep_runs_is_one_transaction(tmp_path: Path) -> None:
     assert [r["id"] for r in rows] == ["run_new1", "run_new2"]
     assert all(r["status"] == "queued" and r["total_replicates"] == 2 for r in rows)
     assert [c["run_id"] for c in store.get_sweep(sweep_id)["grid"]] == ["run_new1", "run_new2"]
+
+
+def test_list_reports_newest_first_and_limited(tmp_path: Path) -> None:
+    """``GET /reports`` is a server-side list, so the rows come back newest first."""
+    store = Store(tmp_path / "meta.db")
+    ids = [store.create_report([f"run_{i}"], f"report {i}") for i in range(3)]
+
+    assert [r["id"] for r in store.list_reports()] == list(reversed(ids))
+    assert [r["id"] for r in store.list_reports(limit=2)] == list(reversed(ids))[:2]
+
+    newest = store.list_reports(limit=1)[0]
+    assert newest["run_ids"] == ["run_2"]  # JSON column decoded like get_report
+    assert newest["status"] == "queued"
+
+    with pytest.raises(ValueError, match="limit"):
+        store.list_reports(limit=0)
+
+
+def test_list_reports_is_empty_on_a_fresh_store(tmp_path: Path) -> None:
+    assert Store(tmp_path / "meta.db").list_reports() == []

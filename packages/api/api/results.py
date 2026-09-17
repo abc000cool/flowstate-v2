@@ -37,6 +37,7 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from api.schemas import NO_OBSERVATIONS
 from flowstate_core.units import ms_to_kmh, s_to_h, veh_s_to_veh_h
 from validation.fields import SpeedField
 from validation.metrics import CI, Metrics, aggregate, compute_metrics
@@ -355,14 +356,33 @@ def metrics_to_json(metrics: Metrics) -> dict[str, float | int | None]:
     return out
 
 
-def ci_to_json(ci: CI) -> dict[str, float | int | bool | None]:
-    """Serialize a CI tuple with NaN mapped to null + the underpowered flag."""
+def ci_to_json(ci: CI) -> dict[str, float | int | bool | str | None]:
+    """Serialize a CI tuple to the :class:`api.schemas.CIOut` shape.
+
+    NaN bounds become null. ``n == 0`` — no replicate produced a finite value
+    for this metric, e.g. ``wave_speed_kmh`` on a run where no wave was
+    detected — is reported as *no estimate*: null mean and bounds,
+    ``underpowered=False`` and ``reason="no_observations"``. Flagging that
+    case underpowered would claim there is a number that merely needs more
+    seeds; there is no number at all, and the client must render the metric
+    as absent rather than as an interval (see :class:`api.schemas.CIOut`).
+    """
+    if ci.n == 0:
+        return {
+            "mean": None,
+            "lo95": None,
+            "hi95": None,
+            "n": 0,
+            "underpowered": False,
+            "reason": NO_OBSERVATIONS,
+        }
     return {
         "mean": finite_or_none(ci.mean),
         "lo95": finite_or_none(ci.lo95),
         "hi95": finite_or_none(ci.hi95),
         "n": ci.n,
         "underpowered": ci.underpowered,
+        "reason": None,
     }
 
 
