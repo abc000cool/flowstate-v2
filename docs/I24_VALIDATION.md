@@ -683,6 +683,43 @@ after five rounds the remaining candidates are outside the merge itself: the
 recording's own lane distribution at the entry (§0.5 uses the measured shares
 already), a heavy-vehicle merge population, and the downstream boundary.
 
+### 0.10 The flow-share family through the full procedure (cloud round, 2026-09-17)
+
+§0.9's single seed asked whether the entry lane **flow** shares (§0.5 (g), 32.2 / 24.7 /
+22.5 / 20.7%) change the record once the FHWA sequence is refitted on them. The `flow`
+family (`scripts/i24_build_replica.py --suffix flow --osm corrected --lc-strategic 5
+--lc-strategic-ramp 1 --entry-lanes observed_flow`, the canonical lane-change merge) went
+through the sequence on an n2-standard-32 VM in 1 h 45 min (about three dollars; the
+20-seed batteries take twelve minutes each at thirty processes): demand scale
+0.80 on the corrected profile (fit hour 32.7%, held-out
+46.0%, 98.4% inserted;
+`artifacts/demand_scale_i24_flow.json`), then the out-of-sample ramp and boundary fit
+(Old Hickory × 0.75, Hickory Hollow × 1.25, its exit ×
+1.125, the same optimum the zip family found; fit 33.2%,
+held-out 35.6% on its single seed;
+`artifacts/i24_boundary_ramps_fit_flow.json`), then 20 seeds per arm
+(`artifacts/i24_validation_flow_{corrected,speedcal,ramps}.json`, criteria re-scored with
+the published sweep grid, ring rows from twenty fresh seeds):
+
+| arm (config) | GEH < 5 | 5-min RMSPE | stack wave, km/h | rows passing |
+|---|---|---|---|---|
+| canonical corrected (`d8c6924188eb`) | 16.7% | 33.7% | 15.9 | 5 of 7 |
+| flow corrected (`085e89521b2b`) | 17.4% | 33.7% | 15.4 | 5 of 7 |
+| canonical fitted (speedcal) (`009ed0e2a7c0`) | 18.8% | 35.9% | 15.8 | 5 of 7 |
+| flow fitted (speedcal) (`8075db417a5a`) | 21.5% | 37.2% | 15.9 | 5 of 7 |
+| canonical fitted + ramps (`d06808e7b8e1`) | 20.1% | 34.8% | 15.7 | 5 of 7 |
+| flow fitted + ramps (`0cddf2002979`) | 21.5% | 41.8% | 15.8 | 5 of 7 |
+
+**Reading it.** The flow shares buy one to three points on the link-flow row and nothing
+on the speed row: the corrected arm is unchanged, the fitted arm is 1.3 points worse, and
+the fitted-plus-ramps arm is seven points worse (its single-seed fit read 34.4% overall;
+the twenty seeds read 41.8%, the seed spread §0.5 (a) measured at work). The wave row
+passes in every arm, as before. The entry lane boundary is now the correct observable
+and stays the builder's recommended option for any new family, but it does not move the
+two failing rows out of failure, so the canonical family remains the published record
+and the merge defect of §0.5 (k) stands. Candidate 1 of docs/MERGE_ROUND6_PLAN.md is
+closed as a boundary-condition correction, not a cause.
+
 ### 0.9a Candidate 2 of the sixth round: the scored target re-weighted by lane coverage (2026-09-17)
 
 The observed segment mean is the mean of every tracked sample pooled over lanes, so

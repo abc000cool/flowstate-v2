@@ -315,3 +315,11 @@ imply lies in [0.533, 1.63]; the plan's levels {0.75, 0.875, 1.0} assume c₅ �
 flow family's fitted arm once its battery lands (the decider of §2.3 is unchanged). Side
 finding: docs/I24_DATA.md §4's 0.52 to 0.66 was the legacy population's range; the
 scenarios use 0.481 to 0.605 (corrected in the document).
+
+## Addendum, 2026-09-17: candidate 1 through the full sequence (closed)
+
+The flow family's 20-seed batteries (docs/I24_VALIDATION.md §0.10) put GEH at 17.4 /
+21.5 / 21.5% and RMSPE at 33.7 / 37.2 / 41.8% for the corrected, fitted and fitted-plus-ramps
+arms against the canonical 16.7 / 18.8 / 20.1% and 33.7 / 35.9 / 34.8%. One to three points
+on the flow row, nothing to seven points worse on the speed row. Candidate 1 is closed: the
+correct boundary definition, carried forward for new families, not the cause of the defect.

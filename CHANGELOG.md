@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Cloud round, part one: the flow-share family through the FHWA sequence (2026-09-17)
+
+- VM `flowstate-flow` (n2-standard-32, 1 h 45 min, about three dollars; archive by bucket, self-deleted): `scenarios/i24_replica_flow{,_corrected,_speedcal,_speedcal_ramps}.yaml`, `artifacts/demand_scale_i24_flow.json` (scale 0.80), `artifacts/i24_boundary_ramps_fit_flow.json` (Old Hickory × 0.75, Hickory Hollow × 1.25, exit × 1.125), and 20-seed batteries `artifacts/i24_validation_flow_{corrected,speedcal,ramps}.json`: GEH 17.4 / 21.5 / 21.5%, RMSPE 33.7 / 37.2 / 41.8%, wave speed 15.4 / 15.9 / 15.8 km/h, 5 of 7 rows each. Against the canonical family: one to three points better on flow, unchanged to seven points worse on speed. Not adopted; the canonical family stays the record (docs/I24_VALIDATION.md §0.10). At thirty processes a 20-seed battery of the replica takes twelve minutes, which resets the cost model of these rounds. The global CPU quota (32) allows one such VM at a time; the canonical re-run launched automatically when this one finished.
+
 ### Merge round six, candidate 3 data half: no coverage estimate for the ramp lane (2026-09-17)
 
 - `scripts/i24_coverage_lane5.py` (`artifacts/i24_coverage_lane5.json`, 28 synthetic tests): the gap-mixture estimator is not identified on the Old Hickory acceleration lane (79.5% of its tracked flow merges out along its length, spacing dispersion above the model's ceiling in 14 of 39 speed classes, 1.7× scale drift), and a synthetic lane with only the measured merge-out reproduces the confounded readings; the coverage is bounded to [0.327, 1.0], which puts the implied Old Hickory demand multiplier in [0.533, 1.63]. The plan's probe levels did not bracket it; the grid is widened to {0.55, 0.75, 1.0, 1.25, 1.6}. docs/I24_DATA.md §4's mainline coverage range corrected to the capacity population's 0.481 to 0.605.

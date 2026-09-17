@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-09-17T16:17:21Z",
+  "created_at": "2026-09-17T16:55:11Z",
   "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
   "osm_file": "data/osm/i24_motion_corrected.osm",
   "map": "corrected",
@@ -77,9 +77,9 @@
       4
     ],
     "sim_origin_chain_m": 2753.91,
-    "chain_m_per_mile_fit": 1576.9211965209051,
-    "chain_m_per_data_m": 0.979853403946518,
-    "mm_fit_residual_rms_m": 58.19450226522942,
+    "chain_m_per_mile_fit": 1576.9211965209058,
+    "chain_m_per_data_m": 0.9798534039465184,
+    "mm_fit_residual_rms_m": 58.19450226523029,
     "data_x0_chain_m": 5010.443707135535,
     "measured_span_sim_x_m": [
       2256.533707135535,
@@ -87,11 +87,11 @@
     ],
     "measured_span_data_x_m": [
       0.0,
-      5491.929987884375
+      5491.929987884372
     ],
     "sim_x_of_data_x": {
       "a": 2256.533707135535,
-      "b": 0.979853403946518
+      "b": 0.9798534039465184
     },
     "mile_markers_chain_m": {
       "58.8": 11277.335715786068,
@@ -135,7 +135,7 @@
       "wb_OH_on_start": 5746.3806083587515,
       "wb_OH_overpass": 5320.657311102844,
       "wb_OH_off_start": 5043.477881730521,
-      "wb_OH_off_end": 4986.010779902689
+      "wb_OH_off_end": 4986.01077990261
     }
   },
   "mainline": {
@@ -1624,74 +1624,74 @@
       {
         "t_lo_s": 1800.0,
         "window": "06:30",
-        "rho_tracked_veh_km_lane": 26.689989836848884,
-        "v_edie_kmh": 40.872064297581474,
+        "rho_tracked_veh_km_lane": 26.689989836848895,
+        "v_edie_kmh": 40.87206429758148,
         "rho_eq_veh_km_lane": 44.0965019601582,
-        "coverage": 0.6052631989032522,
-        "coverage_used": 0.6052631989032522
+        "coverage": 0.6052631989032525,
+        "coverage_used": 0.6052631989032525
       },
       {
         "t_lo_s": 2700.0,
         "window": "06:45",
-        "rho_tracked_veh_km_lane": 28.112905928455223,
+        "rho_tracked_veh_km_lane": 28.112905928455238,
         "v_edie_kmh": 33.502471414615485,
         "rho_eq_veh_km_lane": 50.281853197625885,
-        "coverage": 0.5591064000358406,
-        "coverage_used": 0.5591064000358406
+        "coverage": 0.5591064000358408,
+        "coverage_used": 0.5591064000358408
       },
       {
         "t_lo_s": 3600.0,
         "window": "07:00",
-        "rho_tracked_veh_km_lane": 26.706104390416506,
-        "v_edie_kmh": 36.82894818387386,
-        "rho_eq_veh_km_lane": 47.30534355226204,
-        "coverage": 0.5645473087181391,
-        "coverage_used": 0.5645473087181391
+        "rho_tracked_veh_km_lane": 26.70610439041652,
+        "v_edie_kmh": 36.82894818387387,
+        "rho_eq_veh_km_lane": 47.30534355226203,
+        "coverage": 0.5645473087181395,
+        "coverage_used": 0.5645473087181395
       },
       {
         "t_lo_s": 4500.0,
         "window": "07:15",
-        "rho_tracked_veh_km_lane": 28.269145275506023,
+        "rho_tracked_veh_km_lane": 28.26914527550604,
         "v_edie_kmh": 33.52091382172016,
         "rho_eq_veh_km_lane": 50.26439153456419,
-        "coverage": 0.5624089820338681,
-        "coverage_used": 0.5624089820338681
+        "coverage": 0.5624089820338685,
+        "coverage_used": 0.5624089820338685
       },
       {
         "t_lo_s": 5400.0,
         "window": "07:30",
-        "rho_tracked_veh_km_lane": 29.56964943194488,
-        "v_edie_kmh": 25.823432503283176,
+        "rho_tracked_veh_km_lane": 29.5696494319449,
+        "v_edie_kmh": 25.823432503283172,
         "rho_eq_veh_km_lane": 58.71534811637283,
-        "coverage": 0.5036102208461464,
-        "coverage_used": 0.5036102208461464
+        "coverage": 0.5036102208461466,
+        "coverage_used": 0.5036102208461466
       },
       {
         "t_lo_s": 6300.0,
         "window": "07:45",
-        "rho_tracked_veh_km_lane": 29.925241890833185,
+        "rho_tracked_veh_km_lane": 29.9252418908332,
         "v_edie_kmh": 24.12339902388032,
         "rho_eq_veh_km_lane": 60.964730391081204,
-        "coverage": 0.4908615473055726,
-        "coverage_used": 0.4908615473055726
+        "coverage": 0.49086154730557285,
+        "coverage_used": 0.49086154730557285
       },
       {
         "t_lo_s": 7200.0,
         "window": "08:00",
-        "rho_tracked_veh_km_lane": 28.174288923463592,
+        "rho_tracked_veh_km_lane": 28.174288923463607,
         "v_edie_kmh": 25.887585572691037,
         "rho_eq_veh_km_lane": 58.63363712397994,
-        "coverage": 0.48051409234411785,
-        "coverage_used": 0.48051409234411785
+        "coverage": 0.48051409234411807,
+        "coverage_used": 0.48051409234411807
       },
       {
         "t_lo_s": 8100.0,
         "window": "08:15",
-        "rho_tracked_veh_km_lane": 23.770342274692787,
+        "rho_tracked_veh_km_lane": 23.7703422746928,
         "v_edie_kmh": 34.75138384483074,
         "rho_eq_veh_km_lane": 49.12448962372487,
-        "coverage": 0.48387967909213253,
-        "coverage_used": 0.48387967909213253
+        "coverage": 0.4838796790921328,
+        "coverage_used": 0.4838796790921328
       }
     ],
     "source": {
