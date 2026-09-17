@@ -106,3 +106,20 @@ studies: consultants and agencies who spend weeks calibrating a model to FHWA
 criteria. Advisory delivery through consumer navigation apps is out of scope by
 policy — Waze CIFS cannot carry speed advisories and Google's speed fields are
 read-only (CLAUDE.md §0.4; NEXT_STEPS.md §3).
+
+**Did driving the ramp vehicles yourselves fix the I-24 merge?**
+No. The scripted late merge (`RampSpec.merge = "scripted"`) lifts the entry
+segment to the observed speed but admits a quarter fewer ramp vehicles and
+raises the held-out error; single seeds, documented as a negative result
+(docs/I24_VALIDATION.md §0.8, `artifacts/i24_merge_experiment_scripted.json`).
+The fitted arms keep SUMO's lane-change model; the merge stays the open
+defect of §0.5 (k).
+
+**Is the service safe to put in front of a pilot customer?**
+Safer than it was: scenario file paths are confined to allowed roots, errors
+carry no server paths or file contents, bodies and uploads are capped, request
+models refuse unknown fields, jobs survive a dead worker or Redis through
+reconciliation, and the runbook (docs/DEPLOYMENT.md) says how to back up,
+rotate the key and recover a run. Still a single shared API key over plain
+HTTP behind a proxy of your own; real authentication is a Phase 4 item
+(CLAUDE.md §8). CHANGELOG 2026-09-16 lists what was fixed and what is carried.

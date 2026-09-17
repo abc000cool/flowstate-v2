@@ -27,6 +27,12 @@ jobs:
       - name: Sync workspace
         run: uv sync --all-packages --dev
 
+      # tests/test_api/test_redis_queue.py refuses to skip under CI (see ci.yml);
+      # collection of the whole api test package needs the binary even though
+      # no redis test is slow-marked.
+      - name: Install redis-server (test collection under CI)
+        run: sudo apt-get update && sudo apt-get install -y redis-server
+
       - name: Slow-marked tests (performance targets)
         run: |
           set -o pipefail
