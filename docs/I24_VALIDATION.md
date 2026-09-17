@@ -734,6 +734,58 @@ two failing rows out of failure, so the canonical family remains the published r
 and the merge defect of §0.5 (k) stands. Candidate 1 of docs/MERGE_ROUND6_PLAN.md is
 closed as a boundary-condition correction, not a cause.
 
+### 0.11 The sixth round's last two candidates, probed (cloud, 2026-09-17)
+
+Single seed (6914975401685141156), an n2-standard-32 VM for 24 minutes (about sixty cents;
+`artifacts/i24_merge_experiment_ohlevel.json`, `artifacts/i24_merge_experiment_heavylanes.json`).
+Observed segment speeds 36 32 30 31 38 37 38 29 30 34 km/h; the two peak sections must discharge at least 6,225 and
+6,238 veh/h to reach GEH 5 against the observed 6,626 and 6,639 (docs/MERGE_ROUND6_PLAN.md
+§2.3).
+
+**Candidate 3, the Old Hickory demand level** on the flow family's fitted arm
+(`scenarios/i24_replica_flow_speedcal.yaml`, config `0192ae495d79`):
+
+| variant (config) | Old Hickory departed / planned | peak sections, veh/h | inserted | RMSPE all / fit / held-out | GEH < 5 | segment speeds, km/h |
+|---|---|---|---|---|---|---|
+| fitted flow arm (`0192ae495d79`) | 2109 / 2109 | 5,885 / 5,836 | 0.984 | 0.399 / 0.327 / 0.460 | 0.16 | 32 26 28 37 39 38 36 29 26 32 |
+| fitted flow arm × 0.55 (`bbbc052a18a9`) | 1157 / 1157 | 5,484 / 5,475 | 0.986 | 0.705 / 0.473 / 0.877 | 0.22 | 48 48 47 46 46 44 43 41 37 35 |
+| fitted flow arm × 0.75 (`d1e1f5cde83b`) | 1580 / 1580 | 5,686 / 5,672 | 0.991 | 0.674 / 0.461 / 0.834 | 0.19 | 49 48 45 46 45 41 40 33 31 33 |
+| fitted flow arm × 1.25 (`87eaf8db66cb`) | 2224 / 2637 | 5,892 / 5,877 | 0.963 | 0.454 / 0.413 / 0.491 | 0.20 | 27 24 27 39 41 39 36 30 28 33 |
+| fitted flow arm × 1.6 (`5b5783386bcf`) | 2241 / 3383 | 5,863 / 5,872 | 0.915 | 0.422 / 0.361 / 0.475 | 0.22 | 25 22 29 39 39 38 36 29 27 32 |
+
+Below the fitted level the corridor free-flows (46 to 49 km/h against the observed 30 to
+38, RMSPE 0.67 to 0.71): the merge queue is real demand. Above it, admittance saturates at
+2,224 to 2,241 vehicles whatever is planned (2,637 or 3,383), and the peak sections stay at
+5,860 to 5,890 veh/h, 340 to 380 veh/h short of the threshold, with the entry segments a
+few km/h slower. The ramp level is not the lever: the merge's own discharge, about 5,880
+veh/h against the observed 6,630, is the ceiling. Candidate 3 is excluded by its decider.
+
+**Candidate 4, the heavy population placed by lane** (`HeavyVehicleSpec.lane_shares`
+0.048 / 0.172 / 0.459 / 0.321 from `artifacts/i24_heavy_by_lane.json`) on the canonical
+fitted arm:
+
+| variant (config) | Old Hickory departed / planned | peak sections, veh/h | inserted | RMSPE all / fit / held-out | GEH < 5 | segment speeds, km/h |
+|---|---|---|---|---|---|---|
+| fitted arm, no heavy population (`8fa63f55e74d`) | 1833 / 2241 | 5,748 / 5,754 | 0.942 | 0.393 / 0.356 / 0.426 | 0.21 | 21 21 29 36 35 34 34 32 30 33 |
+| heavy, uniform (`ad5ebb30e22a`) | 1764 / 2241 | 5,201 / 5,136 | 0.861 | 0.379 / 0.357 / 0.401 | 0.16 | 20 21 28 33 32 32 34 31 29 33 |
+| heavy, placed by lane (`8be34d8aed85`) | 1819 / 2241 | 5,262 / 5,241 | 0.870 | 0.397 / 0.334 / 0.451 | 0.19 | 22 22 30 34 33 33 34 30 28 33 |
+
+Placing the heavy vehicles where the recording has them changes the segment speeds by at
+most 2 km/h against the uniform population and lowers admittance below the arm without a
+heavy population (1,819 against 1,833), which the decider requires to hold or rise.
+Candidate 4 is excluded; the mixed-fleet capacity calibration the plan foresaw is not run.
+
+**Where this leaves the merge.** The six rounds have now excluded, with an artifact each,
+the lane-change and junction parameters, the zipper, the sublane model, a scripted late
+merge, the entry lane boundary in both units, the scoring target's lane weighting, the
+ramp demand level, the heavy population's placement and the diverge. What remains is the
+finding every round reproduced: with the calibrated car-following population, the Old
+Hickory merge discharges about 5,880 veh/h where the recording sustains 6,630, and the
+queue that shortfall builds is the whole of the two failing rows. Under the decision rule
+of docs/MERGE_ROUND6_PLAN.md §3 the merge is recorded as a model-form limitation of the
+simulator as configured, with its residual published here, and the flagship's record stays
+at 5 of 7 rows on every congested arm.
+
 ### 0.9a Candidate 2 of the sixth round: the scored target re-weighted by lane coverage (2026-09-17)
 
 The observed segment mean is the mean of every tracked sample pooled over lanes, so

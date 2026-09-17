@@ -345,3 +345,18 @@ assignment, which puts it back inside the merge") is the expected outcome, and t
 simulation half is not run. Candidate 5 is closed. Limits: fragments are unstitched, so
 the exit classification resolves only in the bin adjacent to the gore, and the auxiliary
 lane's tracking rate is not estimated (candidate 3).
+
+## Addendum, 2026-09-17: candidates 3 and 4 probed; the round closes
+
+docs/I24_VALIDATION.md §0.11: the Old Hickory level free-flows the corridor below the
+fitted level and saturates admittance at about 2,240 vehicles above it, the peak sections
+never leaving 5,860 to 5,890 veh/h against the 6,225 / 6,238 threshold (candidate 3
+excluded); the lane-placed heavy population moves segment speeds by at most 2 km/h and
+lowers admittance (candidate 4 excluded). All five candidates are closed. Under §3 the
+merge is recorded as a model-form limitation of the simulator as configured: the
+calibrated population discharges about 5,880 veh/h through the merge where the recording
+sustains 6,630, and that shortfall is the residual behind both failing rows. The next
+question is not another merge lever but the discharge capacity of the car-following
+population at a merge (a fleet whose calibrated spacing gives 5,880 veh/h cannot pass
+6,630), which is a calibration question for the IDM population under merging, not a
+scenario question.

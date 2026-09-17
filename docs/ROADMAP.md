@@ -360,3 +360,14 @@ and survive any slip in the critical path.
   to 5 of docs/MERGE_ROUND6_PLAN.md.
 - Website: the Results page's updated-record card is live (site commit
   82c4aab, deployed 2026-09-17).
+
+## Addendum 2026-09-17, evening
+
+- Merge round six is closed (docs/I24_VALIDATION.md §0.9 to §0.11, docs/MERGE_ROUND6_PLAN.md
+  addenda): candidates 1, 2 and 5 closed on data, 3 and 4 by their probes. The merge is
+  recorded as a model-form limitation; the next research question is the discharge
+  capacity of the calibrated IDM population under merging (about 5,880 against the
+  observed 6,630 veh/h), a calibration question rather than a scenario one.
+- The record's artifacts carry the corrected metric definitions and hash-policy-v2
+  hashes as of the 2026-09-17 re-run; the 500-run sweep and the cap sweep keep the
+  earlier definitions and are labelled so.
