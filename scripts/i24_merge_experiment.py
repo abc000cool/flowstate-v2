@@ -255,6 +255,12 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
             name = name[: -len(suffix)]
     if merge_params and merge_model != "scripted":
         raise ValueError(f"merge tuning suffixes need _scripted: {name}")
+    heavy_lanes = False
+    if name.endswith("_heavylanes"):
+        # candidate 4 of docs/MERGE_ROUND6_PLAN.md: the same heavy population placed by
+        # lane (HeavyVehicleSpec.lane_shares from the measured per-lane heavy fractions)
+        heavy_lanes = True
+        name = name[: -len("_heavylanes")] + "_heavy"
     if name.endswith("_heavy"):
         # the recording's heavy vehicles (share, length) with their own fitted population
         obs_heavy = json.loads((REPO / "artifacts" / "i24_heavy_observed.json").read_text())
@@ -265,6 +271,15 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
             "vclass": "truck",
             "idm_calibration": "artifacts/idm_i24_heavy.json",
         }
+        if heavy_lanes:
+            from microsim.vehicles import heavy_lane_shares_from_artifact
+
+            raw["fleet"]["heavy"]["lane_shares"] = [
+                round(v, 4)
+                for v in heavy_lane_shares_from_artifact(
+                    REPO / "artifacts" / "i24_heavy_by_lane.json", LANE_PROFILE
+                )
+            ]
         name = name[: -len("_heavy")]
     if name.endswith("_sublane_coop0.5"):
         raw["fleet"]["lc_cooperative"] = 0.5
@@ -351,7 +366,11 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
             if raw["sim"].get("lateral_resolution_m")
             else ""
         )
-        + ("_heavy" if raw["fleet"].get("heavy") else "")
+        + (
+            ("_heavylanes" if raw["fleet"]["heavy"].get("lane_shares") else "_heavy")
+            if raw["fleet"].get("heavy")
+            else ""
+        )
         + (
             f"_coop{raw['fleet']['lc_cooperative']:g}"
             if raw["fleet"].get("lc_cooperative", 1.0) != 1.0

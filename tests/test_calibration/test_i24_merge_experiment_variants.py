@@ -262,3 +262,23 @@ def test_entry_lane_tag_reflects_the_variant_not_the_base(mod: ModuleType, flow_
     lanes = mod.variant_config("as_is_entrylanes", flow_yaml)
     assert lanes["name"] == "i24_merge_as_is_entrylanes"
     assert lanes["network"]["entry_lane_shares"] == mod.observed_entry_lane_shares()
+
+
+def test_heavylanes_places_the_same_heavy_population_by_lane(mod: ModuleType) -> None:
+    """``_heavylanes`` = ``_heavy`` plus ``HeavyVehicleSpec.lane_shares`` from the
+    measured per-lane heavy fractions; everything else identical."""
+    from microsim.vehicles import heavy_lane_shares_from_artifact
+
+    if not (REPO / "artifacts" / "i24_heavy_by_lane.json").is_file():
+        pytest.skip("artifact not present")
+    plain = mod.variant_config("as_is_heavy")
+    placed = mod.variant_config("as_is_heavylanes")
+    shares = placed["fleet"]["heavy"].pop("lane_shares")
+    assert len(shares) == 4 and abs(sum(shares) - 1.0) < 1e-3
+    expected = heavy_lane_shares_from_artifact(
+        REPO / "artifacts" / "i24_heavy_by_lane.json", REPO / "artifacts" / "i24_lane_profile.json"
+    )
+    assert shares == [round(v, 4) for v in expected]
+    assert placed["name"].endswith("_heavylanes") and plain["name"].endswith("_heavy")
+    placed["name"] = plain["name"]
+    assert placed == plain

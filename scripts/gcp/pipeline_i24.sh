@@ -179,6 +179,13 @@ if echo " $STAGES " | grep -q " probe_ohlevel "; then
     --procs "$PROCS" --out artifacts/i24_merge_experiment_ohlevel.json || exit 1
 fi
 
+if echo " $STAGES " | grep -q " probe_heavylanes "; then
+  # Candidate 4 of docs/MERGE_ROUND6_PLAN.md: uniform against lane-placed heavy population on the
+  # canonical fitted arm, single seed (the lane profile of the kept run dirs gives the per-lane decider).
+  stage probe_heavylanes $RUN scripts/i24_merge_experiment.py \
+    --variants as_is as_is_heavy as_is_heavylanes --procs "$PROCS" --out artifacts/i24_merge_experiment_heavylanes.json || exit 1
+fi
+
 # 1. Zipper merged-lane negotiation: the junction time gap, single seed each.
 stage jm_sweep $RUN scripts/i24_merge_experiment.py \
   --variants geometry_corrected_ramplc1_entrylanes_zipper_jm0.5 \
