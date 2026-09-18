@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Cloud VMs can no longer sit idle (2026-09-18)
+
+- The relaunched sweep VM's data transfer was cut by a connection reset; the launcher stopped, and the created instance sat idle for 9.5 hours (about fifteen dollars) until the next human turn. Two guarantees now hold, both on the VM side: `scripts/gcp/idle_guard.sh` runs as root from the boot script of every pipeline VM and deletes the instance (power-off as the fallback) whenever no pipeline, setup or SUMO process is running after a 75-minute grace, checked every five minutes with two strikes; and `scripts/gcp/launch_i24_pipeline.sh` deletes the instance itself if any step after creation fails, retrying the transfer three times first. The guard was installed by hand on the running VM. Neither depends on the laptop being awake.
+
 ### Sweep re-run: first attempt lost to an archive omission (2026-09-18)
 
 - VM `flowstate-sweep` (n2-standard-32 in us-west1-c after us-west1-b and -a had no capacity; 7 h 50 min, about twelve dollars) ran the 500-run penetration sweep to completion (6 h 33 min, 0 failed) and 3 of the cap sweep's 6 configurations before its boot cap ended it. The sweep's per-run metrics live under `runs/i24_sweep/`, which the archive rule did not include, and its summary is built by `scripts/i24_penetration_analyze.py`, which was not a stage: nothing of the sweep came back. The cap sweep's 60 per-run metrics did and are installed locally so the next VM resumes from them. Fixed: the archive lists the sweep's metrics and manifest, `analyze_sweep` runs on the VM, the launcher ships any resumable metrics, and the cap is 660 minutes. docs/LESSONS.md row 24. The round is relaunched.

@@ -121,3 +121,15 @@ compute service account no role, so the bucket write and the self-delete
 both failed on a probe until `roles/storage.objectAdmin` (bucket) and
 `roles/compute.instanceAdmin.v1` (that instance only) were added; the launch
 script grants both now. The bucket is deleted after ingestion.
+
+## Stop guarantees (as of 2026-09-18)
+
+Five, layered, none depending on a laptop: the boot-time hard cap (`shutdown -h +CAP_MIN`
+from the startup script); the pipeline's EXIT trap (power-off three minutes after the
+pipeline ends, self-delete after the bucket copy with `--self-delete`); the on-VM idle guard
+(`idle_guard.sh`, started from the boot script as a root unit: two checks five minutes apart
+without a pipeline, setup or SUMO process after a 75-minute grace delete the instance);
+the launch script's own cleanup (a failure after `instances create` deletes the instance;
+the data transfer is retried three times); and, as a convenience only, the local
+`watch_pipeline.sh` with its absolute deadline. Post-mortems: 2026-09-06 (archive lost to
+the cap), 2026-09-18 (a 6.5 h sweep not archived; a VM idle 9.5 h after a cut transfer).
