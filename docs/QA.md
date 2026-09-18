@@ -112,8 +112,13 @@ No. The scripted late merge (`RampSpec.merge = "scripted"`) lifts the entry
 segment to the observed speed but admits a quarter fewer ramp vehicles and
 raises the held-out error; single seeds, documented as a negative result
 (docs/I24_VALIDATION.md §0.8, `artifacts/i24_merge_experiment_scripted.json`).
-The fitted arms keep SUMO's lane-change model; the merge stays the open
-defect of §0.5 (k).
+The fitted arms keep SUMO's lane-change model. A sixth round (docs/MERGE_ROUND6_PLAN.md)
+then excluded every remaining scenario-level cause and a merge-zone recalibration of the
+car-following population (docs/I24_VALIDATION.md §0.9 to §0.12): the recording's drivers
+at the merge keep longer headways than the corridor's, so the missing discharge is in
+the merging process itself, which SUMO's lane-change model does not reproduce. The
+merge is recorded as a model-form limitation with its residual stated (about 5,880
+veh/h discharged where the recording sustains 6,630).
 
 **Is the service safe to put in front of a pilot customer?**
 Safer than it was: scenario file paths are confined to allowed roots, errors
