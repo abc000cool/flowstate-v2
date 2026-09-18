@@ -6,6 +6,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
 
+### Sweep re-run: first attempt lost to an archive omission (2026-09-18)
+
+- VM `flowstate-sweep` (n2-standard-32 in us-west1-c after us-west1-b and -a had no capacity; 7 h 50 min, about twelve dollars) ran the 500-run penetration sweep to completion (6 h 33 min, 0 failed) and 3 of the cap sweep's 6 configurations before its boot cap ended it. The sweep's per-run metrics live under `runs/i24_sweep/`, which the archive rule did not include, and its summary is built by `scripts/i24_penetration_analyze.py`, which was not a stage: nothing of the sweep came back. The cap sweep's 60 per-run metrics did and are installed locally so the next VM resumes from them. Fixed: the archive lists the sweep's metrics and manifest, `analyze_sweep` runs on the VM, the launcher ships any resumable metrics, and the cap is 660 minutes. docs/LESSONS.md row 24. The round is relaunched.
+
 ### Cloud round, part three: the merge-zone population and the regenerated reports (2026-09-17, evening)
 
 - VM `flowstate-r3` (n2-standard-32, 1 h 50 min, about three dollars; self-deleted). **The discharge-capacity question is answered (docs/I24_VALIDATION.md §0.12):** the IDM population refitted on the merge zone alone (`scripts/fit_idm_i24.py --x-range 750 2500 --tag merge`, 4,193 episodes, holdout gap RMSE 4.53 m against 5.29 m corridor-wide; `artifacts/idm_i24_merge.json`) keeps a 4.6% longer time headway, its closed-form capacity is 1,720 veh/h/lane against 1,788 corridor-wide and 1,986 capacity-scaled (`artifacts/idm_i24_capacity_equilibrium.json`, with the grid's simulated-to-closed-form factor of 0.86 to 0.91 recorded), and the fitted arm driven by it discharges 5,246 against 5,748 veh/h at the peak sections (`artifacts/i24_merge_experiment_mergefleet.json`). The missing capacity is in the merging process, not in car-following; the model-form limitation of §0.11 stands at the calibration level.

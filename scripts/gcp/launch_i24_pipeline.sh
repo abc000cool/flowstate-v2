@@ -71,6 +71,11 @@ tar cf "$DATA" data/i24motion/processed/i24_wb_20221130 data/i24motion/processed
   runs/i24_validation/observed_i24.json
 # the US-101 battery (stage battery_us101) reads data/ngsim (~170 MB); shipped when present
 [ -d data/ngsim ] && tar rf "$DATA" data/ngsim
+# per-run metrics of an earlier, interrupted cap sweep or penetration sweep let the VM resume them
+for pat in "runs/i24_cap_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/meta.json" "runs/i24_sweep/MANIFEST.json"; do
+  # shellcheck disable=SC2086
+  ls $pat >/dev/null 2>&1 && tar rf "$DATA" $pat
+done
 ls -la "$DATA" | awk '{print "   ", $5, "bytes"}'
 # The repository is private: the code goes up as a git-archive snapshot of HEAD
 # (no clone, no token on the VM); scripts/gcp/vm_setup.sh installs the system

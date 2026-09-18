@@ -48,6 +48,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   fi
   # per-run metrics of the cap sweep ride along in every archive: the sweep is resumable from them
   extra="$extra $(ls runs/i24_cap_sweep/*/*/metrics.json 2>/dev/null | tr '\n' ' ')"
+  # the penetration sweep's per-run metrics and manifest (the summary is built from them by
+  # scripts/i24_penetration_analyze.py; the 2026-09-18 run lost 6.5 h of them to this omission)
+  extra="$extra $(ls runs/i24_sweep/*/*/*/metrics.json runs/i24_sweep/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # regenerated reports and the episode-position sidecar (data/, gitignored) ride along too
   [ -d docs/reports ] && extra="$extra docs/reports"
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
@@ -196,6 +199,8 @@ if echo " $STAGES " | grep -q " sweep_0917 "; then
   # The 500-run penetration x compliance battery on the fitted arm, re-run so its summary carries
   # the corrected metric definitions (CHANGELOG 2026-09-17); cells resume on disk, run dirs pruned after.
   stage sweep_0917 $RUN scripts/i24_penetration_sweep.py --scenario i24_replica_speedcal --procs "$PROCS" --replicates "$REPS" || exit 1
+  # the summary artifact is built from the per-run metrics by the analysis script, on the VM
+  stage analyze_sweep $RUN scripts/i24_penetration_analyze.py || exit 1
   stage prune_sweep bash -c 'find runs/i24_sweep -name trajectories.parquet -delete 2>/dev/null; du -sh runs/i24_sweep' || true
 fi
 
