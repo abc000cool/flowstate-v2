@@ -786,6 +786,64 @@ of docs/MERGE_ROUND6_PLAN.md §3 the merge is recorded as a model-form limitatio
 simulator as configured, with its residual published here, and the flagship's record stays
 at 5 of 7 rows on every congested arm.
 
+### 0.12 The discharge-capacity question: a merge-zone population (cloud, 2026-09-17, evening)
+
+§0.11 left one question: does the calibrated car-following population fail to discharge
+the merge because drivers at the merge accept shorter headways than the corridor-wide fit
+carries? The test is a sub-corridor calibration. `scripts/i24_extract_episodes.py
+--positions` records where along the corridor every leader-follower episode happened;
+`scripts/fit_idm_i24.py --x-range 750 2500 --tag merge` refits the IDM population on the
+4,193 of 17,652 episodes (3,936 followers) that lie entirely inside data x 750 to 2,500 m,
+the acceleration lane and its recovery, with the corridor-wide protocol (70/30 holdout,
+same seed, differential evolution; `artifacts/idm_i24_merge.json`); and
+`scripts/i24_calibrate_capacity.py --equilibrium` puts the populations' closed-form
+single-lane capacities side by side (`artifacts/idm_i24_capacity_equilibrium.json`;
+the committed T-scaling grid shows SUMO's four-lane capacity at 0.86 to 0.91 of that
+closed form, so the number is an index, not a simulated capacity):
+
+| population (artifact) | episodes fit / holdout | holdout gap RMSE, m | mean T, s | mean s0, m | equilibrium capacity, veh/h/lane (heterogeneous draw) |
+|---|---|---|---|---|---|
+| corridor-wide (`idm_i24.json`) | 12,356 / 5,296 | 5.29 | 1.511 | 2.53 | 1,788 (1,730) |
+| corridor-wide, capacity-scaled (`idm_i24_capacity.json`; the fitted arms' population) | 12,356 / 5,296 | 5.29 | 1.322 | 2.53 | 1,986 (1,886) |
+| merge zone (`idm_i24_merge.json`) | 2,935 / 1,258 | 4.53 | 1.580 | 2.66 | 1,720 (1,681) |
+
+Drivers in the merge zone keep a 4.6% longer time headway and a 5% larger minimum gap
+than the corridor as a whole, with a better holdout fit (the zone is congested, so the
+gap model has more to explain and explains it better). Their population's capacity is 4%
+*below* the corridor-wide one and 13% below the capacity-scaled population the fitted
+arms use. The single-seed probe (`artifacts/i24_merge_experiment_mergefleet.json`, the
+fitted arm `8fa63f55e74d` against the same arm driven by the merge-zone population,
+`1189a475f30c`) does what those numbers predict:
+
+| variant | inserted | Old Hickory departed / planned | peak sections, veh/h | RMSPE all / fit / held-out | entry segments, km/h |
+|---|---|---|---|---|---|
+| fitted arm, capacity-scaled population | 0.942 | 1,833 / 2,241 | 5,748 / 5,754 | 0.393 / 0.356 / 0.426 | 21 / 21 / 29 |
+| fitted arm, merge-zone population | 0.874 | 1,838 / 2,241 | 5,246 / 5,252 | 0.407 / 0.414 / 0.399 | 19 / 20 / 28 |
+
+**Reading it.** The car-following population is not where the missing capacity is. The
+recording's drivers at the merge are, if anything, more conservative than the corridor's,
+and a replica driven by them discharges 9% less through the merge. Put against the
+straight-road capacities: the capacity-scaled population passes 7,100 veh/h on four
+straight lanes (§docs/I24_CAPACITY.md) and 5,880 through the Old Hickory merge, 83%;
+the recording sustains 6,630 at the same sections, 93% of that straight-road figure.
+What the recording does at the merge and the simulator does not is the merging itself:
+gap acceptance and cooperation during the lane change, which single-lane car-following
+episodes cannot carry into a population and which six rounds of SUMO's lane-change
+and junction parameters (§0.5 to §0.11) could not reproduce. The model-form limitation
+of §0.11 therefore stands at the calibration level too, and no further car-following
+calibration will move the two failing rows. The honest next step, if the merge is to be
+reproduced, is a merge model with measured gap acceptance from the recording's
+lane-change events, a research task outside the product's current scope; the product's
+record stays at 5 of 7 rows with the residual stated.
+
+**Reports regenerated.** The same VM re-ran the five canonical batteries and both US-101
+arms (every criteria value and every metric mean reproduced to the digit against the
+2026-09-17 artifacts) and regenerated the published reports from the full 20-replicate
+run sets before pruning: `docs/reports/i24_replica/{tracked,corrected,speedcal,ramps}/`
+and `docs/reports/us101_replica/` now carry the corrected metric definitions, the
+criteria profile, the wave-speed row scored with the profile's detector, every run's
+versions and NOT EVALUATED rows where no input was supplied.
+
 ### 0.9a Candidate 2 of the sixth round: the scored target re-weighted by lane coverage (2026-09-17)
 
 The observed segment mean is the mean of every tracked sample pooled over lanes, so

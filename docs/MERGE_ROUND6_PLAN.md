@@ -360,3 +360,14 @@ question is not another merge lever but the discharge capacity of the car-follow
 population at a merge (a fleet whose calibrated spacing gives 5,880 veh/h cannot pass
 6,630), which is a calibration question for the IDM population under merging, not a
 scenario question.
+
+## Addendum, 2026-09-17, evening: the calibration question, answered
+
+docs/I24_VALIDATION.md §0.12: a population fitted on the merge zone only (4,193 episodes)
+keeps a 4.6% longer time headway than the corridor-wide fit, its capacity is 4% lower,
+and the fitted arm driven by it discharges 9% less through the merge (peak sections
+5,246 against 5,748 veh/h). The missing capacity is not in the car-following population;
+it is in the merging process itself, which the IDM population cannot carry and SUMO's
+lane-change model does not reproduce. This closes the plan: the merge is a model-form
+limitation at both the scenario and the calibration level, and the next step, if wanted,
+is a gap-acceptance merge model measured from the recording's lane-change events.

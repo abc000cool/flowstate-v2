@@ -1,0 +1,142 @@
+{
+ "schema_version": 1,
+ "kind": "idm_equilibrium_capacity",
+ "formula": "s_eq(v) = (s0 + v*T)/sqrt(1 - (v/v0)^4); q(v) = v/(s_eq(v) + L), L = 5 m; capacity = max over v in (0, v0) of q(v). Closed form, straight road, one lane, no lane changes.",
+ "vehicle_length_m": 5.0,
+ "populations": [
+  {
+   "artifact": "artifacts/idm_i24.json",
+   "mean": {
+    "v0": 32.3996,
+    "T": 1.5112,
+    "a_max": 1.0549,
+    "b": 1.7029,
+    "s0": 2.5327
+   },
+   "sd": {
+    "v0": 5.5021,
+    "T": 0.5212,
+    "a_max": 0.4284,
+    "b": 0.8905,
+    "s0": 0.7358
+   },
+   "n_episodes_fit": 12356,
+   "n_episodes_holdout": 5296,
+   "holdout_gap_rmse_m": 5.2915,
+   "equilibrium_capacity_veh_h_lane": 1787.8,
+   "v_at_capacity_ms": 18.503,
+   "heterogeneous": {
+    "capacity_veh_h_lane": 1729.7,
+    "v_at_capacity_ms": 15.729,
+    "min_v0_ms": 15.926,
+    "limited_by_min_v0": false,
+    "n_draws": 20000,
+    "seed": 11
+   }
+  },
+  {
+   "artifact": "artifacts/idm_i24_capacity.json",
+   "mean": {
+    "v0": 32.3996,
+    "T": 1.3222,
+    "a_max": 1.0549,
+    "b": 1.7029,
+    "s0": 2.5327
+   },
+   "sd": {
+    "v0": 5.5021,
+    "T": 0.5212,
+    "a_max": 0.4284,
+    "b": 0.8905,
+    "s0": 0.7358
+   },
+   "n_episodes_fit": 12356,
+   "n_episodes_holdout": 5296,
+   "holdout_gap_rmse_m": 5.2915,
+   "equilibrium_capacity_veh_h_lane": 1985.5,
+   "v_at_capacity_ms": 18.912,
+   "heterogeneous": {
+    "capacity_veh_h_lane": 1886.1,
+    "v_at_capacity_ms": 15.786,
+    "min_v0_ms": 15.926,
+    "limited_by_min_v0": false,
+    "n_draws": 20000,
+    "seed": 11
+   }
+  },
+  {
+   "artifact": "artifacts/idm_i24_merge.json",
+   "mean": {
+    "v0": 32.4439,
+    "T": 1.5802,
+    "a_max": 1.0613,
+    "b": 1.656,
+    "s0": 2.6629
+   },
+   "sd": {
+    "v0": 5.2109,
+    "T": 0.5295,
+    "a_max": 0.4315,
+    "b": 0.8793,
+    "s0": 0.6162
+   },
+   "n_episodes_fit": 2935,
+   "n_episodes_holdout": 1258,
+   "holdout_gap_rmse_m": 4.5299,
+   "equilibrium_capacity_veh_h_lane": 1719.6,
+   "v_at_capacity_ms": 18.433,
+   "heterogeneous": {
+    "capacity_veh_h_lane": 1680.9,
+    "v_at_capacity_ms": 16.331,
+    "min_v0_ms": 16.909,
+    "limited_by_min_v0": false,
+    "n_draws": 20000,
+    "seed": 11
+   }
+  }
+ ],
+ "model_factor": {
+  "source": "artifacts/idm_i24_capacity.calibration.json",
+  "meaning": "simulated four-lane SUMO capacity divided by the closed-form capacity of the same population, over this script's committed T-scaling grid; multiply a closed-form number by this to read it as a simulated capacity",
+  "min": 0.8618,
+  "max": 0.9125,
+  "rows": [
+   {
+    "T_mean_s": 1.5112,
+    "closed_form_veh_h_lane": 1787.8,
+    "simulated_veh_h_lane": 1631.4,
+    "ratio": 0.9125
+   },
+   {
+    "T_mean_s": 1.4356,
+    "closed_form_veh_h_lane": 1861.8,
+    "simulated_veh_h_lane": 1690.5,
+    "ratio": 0.908
+   },
+   {
+    "T_mean_s": 1.3601,
+    "closed_form_veh_h_lane": 1942.3,
+    "simulated_veh_h_lane": 1753.5,
+    "ratio": 0.9028
+   },
+   {
+    "T_mean_s": 1.2845,
+    "closed_form_veh_h_lane": 2030.4,
+    "simulated_veh_h_lane": 1795.5,
+    "ratio": 0.8843
+   },
+   {
+    "T_mean_s": 1.209,
+    "closed_form_veh_h_lane": 2127.0,
+    "simulated_veh_h_lane": 1833.0,
+    "ratio": 0.8618
+   },
+   {
+    "T_mean_s": 1.1334,
+    "closed_form_veh_h_lane": 2233.7,
+    "simulated_veh_h_lane": 1947.6,
+    "ratio": 0.8719
+   }
+  ]
+ }
+}

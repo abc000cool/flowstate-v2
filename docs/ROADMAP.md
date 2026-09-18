@@ -371,3 +371,13 @@ and survive any slip in the critical path.
 - The record's artifacts carry the corrected metric definitions and hash-policy-v2
   hashes as of the 2026-09-17 re-run; the 500-run sweep and the cap sweep keep the
   earlier definitions and are labelled so.
+
+## Addendum 2026-09-17, night
+
+- The calibration question is answered (docs/I24_VALIDATION.md §0.12): the merge
+  shortfall is not in the car-following population. The merge stays a model-form
+  limitation; the only remaining research route is a measured gap-acceptance merge
+  model, outside the product scope for now.
+- Published reports regenerated under the corrected definitions; the sweep and cap
+  sweep re-run is on the cloud chain and lands overnight.
+- Next product step: a pilot-shaped onboarding of a third corridor, end to end.
