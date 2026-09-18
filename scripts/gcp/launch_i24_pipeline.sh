@@ -8,6 +8,10 @@
 #      the archive after every stage and DELETES the instance, unconditionally at its deadline;
 #   4. with --bucket, the VM copies the archive to that bucket after every stage and, with
 #      --self-delete, deletes itself at the end — no local machine has to be awake.
+#   5. an on-VM idle guard (scripts/gcp/idle_guard.sh, started from the boot script) deletes the
+#      instance whenever no pipeline runs after a 75-minute grace: a launch that dies after the
+#      instance exists, a failed self-delete, a laptop asleep or force-shut — none can leave it idle.
+#   6. the launch script itself deletes the instance if any step after creation fails.
 # The hard cap must exceed the expected runtime with margin: the 2026-09-06 run was
 # killed by a 300-min cap during its last stage. Size it at about twice the estimate;
 # the EXIT trap, not the cap, is the normal stop.
@@ -44,12 +48,17 @@ cat > "$STARTUP" <<EOF
 #!/bin/bash
 # boot-time hard cap: the machine powers off $CAP_MIN minutes after every boot, whatever runs on it
 shutdown -h +$CAP_MIN "boot-time hard cap (${CAP_MIN} min)"
+# idle guard (scripts/gcp/idle_guard.sh, shipped as instance metadata): deletes the instance when no
+# pipeline is running after the grace period, independent of any laptop-side watcher
+curl -sf -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/idle-guard > /usr/local/bin/idle-guard.sh \\
+  && chmod +x /usr/local/bin/idle-guard.sh \\
+  && systemd-run --unit=idle-guard --property=Restart=always /usr/local/bin/idle-guard.sh
 EOF
 echo "== creating $VM ($MACHINE, $ZONE, project $PROJECT), hard cap $CAP_MIN min from boot"
 # shellcheck disable=SC2086
 gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --machine-type "$MACHINE" \
   --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
-  --metadata-from-file startup-script="$STARTUP" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
+  --metadata-from-file startup-script="$STARTUP",idle-guard="$ROOT/scripts/gcp/idle_guard.sh" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
 rm -f "$STARTUP"
 mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
 # From here on the instance bills. If anything below fails (an scp cut by the network, a setup
