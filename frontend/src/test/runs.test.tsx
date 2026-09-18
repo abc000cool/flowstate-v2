@@ -191,8 +191,11 @@ describe('RunsView launcher', () => {
       </MemoryRouter>,
     );
     const reps = await screen.findByLabelText('Replicates', {}, { timeout: 4000 });
+    // the launcher prefills this field from the scenario list once that fetch resolves;
+    // typing before then would be overwritten by the prefill (a flaky failure on CI)
+    await waitFor(() => expect(reps).not.toHaveValue(null), { timeout: 4000 });
     fireEvent.change(reps, { target: { value: '500' } });
-    expect(reps).toHaveValue(200);
+    await waitFor(() => expect(reps).toHaveValue(200));
   });
 });
 
