@@ -52,6 +52,17 @@ gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --mach
   --metadata-from-file startup-script="$STARTUP" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
 rm -f "$STARTUP"
 mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
+# From here on the instance bills. If anything below fails (an scp cut by the network, a setup
+# error), delete it: a created-but-idle VM cost about fifteen dollars on 2026-09-18 while it
+# waited for a human. LAUNCHED=1 disarms the trap once the pipeline unit is running.
+LAUNCHED=0
+cleanup_on_failure() {
+  if [ "$LAUNCHED" -ne 1 ]; then
+    echo "== launch failed after the instance was created; deleting $VM" >&2
+    gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1 && echo "== $VM deleted" >&2
+  fi
+}
+trap cleanup_on_failure EXIT
 if [ -n "$BUCKET" ]; then
   # the VM's service account must be able to write the bucket and (for --self-delete) delete this
   # one instance; a project that grants the default account no Editor role has neither by default
@@ -83,8 +94,13 @@ ls -la "$DATA" | awk '{print "   ", $5, "bytes"}'
 REPO_TAR="$(dirname "$DATA")/repo.tar"
 git archive --format=tar -o "$REPO_TAR" HEAD
 echo "== shipping code snapshot ($(du -h "$REPO_TAR" | cut -f1)) and data ($(du -h "$DATA" | cut -f1))"
-gcloud compute scp "$REPO_TAR" "$ROOT/scripts/gcp/vm_setup.sh" "$DATA" "$VM:/tmp/" --project "$PROJECT" --zone "$ZONE" --quiet
+for attempt in 1 2 3; do
+  gcloud compute scp "$REPO_TAR" "$ROOT/scripts/gcp/vm_setup.sh" "$DATA" "$VM:/tmp/" --project "$PROJECT" --zone "$ZONE" --quiet && break
+  [ "$attempt" -eq 3 ] && { echo "scp failed three times" >&2; exit 1; }
+  echo "== scp attempt $attempt failed (network); retrying in 60 s" >&2; sleep 60
+done
 rm -rf "$(dirname "$DATA")"
 echo "== VM setup and pipeline start (systemd unit 'pipeline', survives logout)"
 ssh_cmd "chmod +x /tmp/vm_setup.sh && PIPELINE_BUCKET='$BUCKET' PIPELINE_SELF_DELETE=$SELF_DELETE PIPELINE_ARGS='$PIPELINE_ARGS' /tmp/vm_setup.sh $REF $QUICK" 2>&1 | tail -6
+LAUNCHED=1
 echo "== launched. Now run (under caffeinate):  caffeinate -i scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE${BUCKET:+ --bucket $BUCKET}"
