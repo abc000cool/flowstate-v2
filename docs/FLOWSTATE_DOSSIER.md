@@ -933,9 +933,13 @@ Next, in order of leverage:
   car-following episodes with a 30% holdout; the fundamental diagram carries
   bootstrap intervals; the capacity and demand steps are fitted out of
   sample with the second hour held out.
-- Does any corridor pass? No. The congested I-24 arms score 5 of 7 rows (the
-  tracked arm 4 of 7); the two physical rows, link-flow GEH and segment-speed
-  RMSPE, fail with a stated cause each.
+- Does any corridor pass? No. The congested I-24 arms score 5 of 7 rows (the tracked
+arm 4 of 7); the two physical rows, link-flow GEH and segment-speed RMSPE, fail
+with a stated cause: the Old Hickory merge discharges about 5,880 veh/h in the
+simulator where the recording sustains 6,630, and six rounds of merge levers plus
+a merge-zone recalibration of the driver population (docs/I24_VALIDATION.md §0.5
+to §0.12) locate that shortfall in the merging process the lane-change model does
+not reproduce, a model-form limitation rather than a tuning gap.
 - Why not just use the standard detector for wave speed? Because on
   congested backgrounds it finds nothing; the synthetic benchmark in the
   tests shows it, and the criterion now names its detector.
