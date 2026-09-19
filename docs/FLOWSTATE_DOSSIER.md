@@ -40,9 +40,9 @@ What has been shown, with confidence intervals from 20 seeds per cell:
   540 runs.
 - On a real corridor, the I-24 MOTION testbed in Nashville (30 November
   2022, 576,511 trajectory fragments, 42.8 million rows), the same
-  controller at the same penetration costs 36% of throughput, raises travel
-  time 82% and doubles fuel while cutting the speed spread 56%, over 500
-  runs. The smoothing benefit is real; on a corridor near capacity it is
+  controller at the same penetration costs 38% of throughput, doubles travel
+  time and fuel and cuts the speed spread 59%, over 500 runs (re-run of
+  2026-09-19 under the corrected metric definitions). The smoothing benefit is real; on a corridor near capacity it is
   paid for in capacity. This is the most important result of the project.
 - The I-24 replica does not yet pass the FHWA-style criteria: after
   capacity, demand and ramp calibration it scores 5 PASS / 2 FAIL on each
@@ -482,13 +482,13 @@ baseline's absolute values differ from the re-run validation table above):
 
 | Penetration | Compliance | Throughput | Change | Travel time | Change | σ_v | Change | Fuel change |
 |---|---|---|---|---|---|---|---|---|
-| none | | 5,710 veh/h | | 564 s | | 4.98 m/s | | |
-| 1% | 100% | 5,428 | −5% | 617 s | +9% | 3.82 | −23% | +6% |
-| 5% | 100% | 3,652 | −36% | 1,025 s | +82% | 2.18 | −56% | +111% |
-| 10% | 100% | 2,577 | −55% | 1,243 s | +120% | 1.76 | −65% | +222% |
-| 20% | 100% | 1,544 | −73% | 1,242 s | +120% | 1.66 | −67% | +451% |
-| 5% | 50% | 4,964 | −13% | 725 s | +29% | 3.01 | −40% | +24% |
-| 20% | 25% | 4,006 | −30% | 938 s | +66% | 2.22 | −55% | +78% |
+| none | | 5,839 veh/h | | 590 s | | 4.94 m/s | | |
+| 1% | 100% | 5,541 | −5% | 651 s | +10% | 3.74 | −24% | +6% |
+| 5% | 100% | 3,626 | −38% | 1,191 s | +102% | 2.02 | −59% | +111% |
+| 10% | 100% | 2,475 | −58% | 1,579 s | +168% | 1.53 | −69% | +220% |
+| 20% | 100% | 1,373 | −76% | 2,081 s | +253% | 1.29 | −74% | +448% |
+| 5% | 50% | 5,040 | −14% | 779 s | +32% | 2.91 | −41% | +24% |
+| 20% | 25% | 4,010 | −31% | 1,053 s | +79% | 2.07 | −58% | +77% |
 
 Every change is a paired difference against the same-seed baseline whose
 95% interval excludes zero. The mechanism: a controlled vehicle holding a
