@@ -4,7 +4,29 @@ All notable changes to FlowState are documented here. Every headline number
 below traces to a committed, seeded artifact (CLAUDE.md §0.1/§0.5); nothing
 is quoted that cannot be reproduced from the referenced runs.
 
-## [Unreleased] — I-24 MOTION flagship (docs/ROADMAP.md §1)
+## [Unreleased]
+
+(nothing yet)
+
+## [2.2.0] — 2026-09-20
+
+**Release summary.** The I-24 MOTION flagship's record, its 500-run controller sweep, the headway-cap sweep and the published reports now share one metric definition and one hash policy, and the service has been through two adversarial production-readiness audits. Every number in the documentation traces to a committed artifact regenerated in this release.
+
+Validation and research
+- Warm-up is discarded from every metric (it was documented and never applied; 2 to 13 percent bias on throughput and travel time); travel times come from a median span with the sample size recorded instead of one vehicle; the report scores the wave-speed criterion with the profile's own detector and lists every run's versions. The canonical I-24 arms, US-101, the 500-run sweep and the cap sweep were re-simulated under these definitions on self-deleting cloud VMs: every criteria row reproduced to the digit, and the conclusions stand (5 of 7 rows on each congested arm; smoothing by gap-keeping is paid for in capacity; the headway cap is not the lever).
+- The Old Hickory merge is recorded as a model-form limitation with its residual stated (about 5,880 veh/h discharged where the recording sustains 6,630). Six rounds of merge levers, a coverage-weighted scoring target, the ramp demand level, a lane-placed heavy population, the diverge and a merge-zone recalibration of the driver population each excluded a cause with a committed artifact. New engine options from that work: a scripted late merge, heavy vehicles placed by lane, entry lane shares measured as flow, and sub-corridor IDM fits.
+
+Service and dashboard
+- Scenario file paths confined to allowed roots (API and worker); request bodies and uploads capped, chunked bodies included; errors carry no frames, paths, file contents or input values; request ids and an access log; key rotation without downtime; jobs survive a dead worker or Redis through reconciliation; sweeps resume without duplicate runs; reports carry a criteria profile; the image ships its presets; OpenAPI can authenticate.
+- The dashboard was driven end to end in a browser: a rejected key now surfaces, demo data is labelled and never written to, runs and sweeps launch deliberately with confirmation, reports download with figures and PDF, validation errors are readable, and the criteria profile is selectable.
+
+Operations
+- docs/DEPLOYMENT.md, the pilot runbook. Cloud rounds run on self-deleting VMs with an on-VM idle guard and a launcher that deletes an instance whose launch fails; the CI perf workflow re-verifies the performance targets.
+
+Full detail: CHANGELOG.md, section 2.2.0.
+
+The dated entries below are this release's record, newest first.
+
 
 ### Sweep and cap sweep re-run under the corrected metrics (2026-09-19)
 
