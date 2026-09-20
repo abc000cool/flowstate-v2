@@ -6,7 +6,9 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
-(nothing yet)
+### 2026-09-20 — CI builds the image on release tags
+
+- The workflow's `docker` job was guarded by `refs/tags/` but the push trigger listed only `main`, so no tag ever reached it: v2.1.0 and v2.2.0 shipped without a CI image build (no run exists for either tag). The push trigger now includes `v*` tags and the workflow accepts a manual dispatch, which also builds the image. The v2.2.0 image was built once by a manual dispatch of the fixed workflow on the release commit (see the run linked in the release notes).
 
 ## [2.2.0] — 2026-09-20
 
