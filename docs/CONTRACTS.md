@@ -1103,3 +1103,18 @@ one computed row, "detector-estimated backward wave speed (context, not a
 criterion)" → "median X km/h (IQR a–b) from U of N station pairs; the model's
 band is lo–hi km/h", the band taken from the active `CriteriaProfile`. The
 acceptance-criteria table is untouched.
+
+## Measurement-window refusal: micro only, and once per sweep — 2026-09-23
+
+`api.main._check_measurement_window` refuses a request whose warm-up leaves
+nothing to measure (`sim.duration_s <= sim.warmup_s`, HTTP 422 naming both
+numbers) — but only for `tier: micro`. **The macro tier is exempt**:
+`api.results.macro_metrics` reports over the whole run and never applies
+`sim.warmup_s`, so a macro run with `duration_s <= warmup_s` completes and
+yields metrics; refusing it was a false refusal. The macro tier's reporting
+window is unchanged by this (it remains the whole run).
+
+`POST /sweeps` now makes the same check **once for the grid**, on the first
+cell it builds: no cell patch touches `sim`, so one 422 replaces a fan-out of
+cells that each died on the worker. The refusal precedes the sweep row and
+every child run, so nothing is queued.
