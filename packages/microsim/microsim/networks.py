@@ -360,14 +360,21 @@ def expand_ramp_splits(edge_ids: Sequence[str], present: Iterable[str]) -> list[
     have = set(present)
     out: list[str] = []
     for edge_id in edge_ids:
-        if edge_id + RAMP_SPLIT_ON in have:
-            out.append(edge_id + RAMP_SPLIT_ON)
-        if edge_id in have or not (
-            edge_id + RAMP_SPLIT_ON in have or edge_id + RAMP_SPLIT_OFF in have
-        ):
-            out.append(edge_id)
-        if edge_id + RAMP_SPLIT_OFF in have:
-            out.append(edge_id + RAMP_SPLIT_OFF)
+        if edge_id.endswith((RAMP_SPLIT_ON, RAMP_SPLIT_OFF)):
+            pieces = [edge_id]  # already a piece: never re-expanded
+        else:
+            pieces = []
+            if edge_id + RAMP_SPLIT_ON in have:
+                pieces.append(edge_id + RAMP_SPLIT_ON)
+            if edge_id in have or not (
+                edge_id + RAMP_SPLIT_ON in have or edge_id + RAMP_SPLIT_OFF in have
+            ):
+                pieces.append(edge_id)
+            if edge_id + RAMP_SPLIT_OFF in have:
+                pieces.append(edge_id + RAMP_SPLIT_OFF)
+        for piece in pieces:
+            if piece not in out:
+                out.append(piece)
     return out
 
 

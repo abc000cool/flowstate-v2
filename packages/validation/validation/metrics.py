@@ -688,6 +688,10 @@ class LinkHourGEH:
         obs_veh_h: Observed hourly-equivalent flow per bin [veh/h].
         window_s: Window length used for every bin [s].
         n_dropped_nan: Observed rows dropped because their flow was NaN.
+        n_dropped_outside_span: Observed rows dropped because their
+            cross-section lies outside the simulated position span.
+        x_outside_span_m: The dropped cross-sections [m], each once, in the
+            order they were met.
     """
 
     geh: tuple[float, ...]
@@ -697,6 +701,8 @@ class LinkHourGEH:
     obs_veh_h: tuple[float, ...]
     window_s: float
     n_dropped_nan: int
+    n_dropped_outside_span: int = 0
+    x_outside_span_m: tuple[float, ...] = ()
 
     def pass_fraction(self, threshold: float = 5.0) -> float:
         """Fraction of bins with ``GEH < threshold`` (:func:`geh_pass_fraction`)."""
@@ -741,6 +747,13 @@ def link_hour_geh(
             containment check, and with it the guard against comparing
             windows the run never covered, is unchanged.
 
+    A cross-section outside ``[x.min(), x.max()]`` of ``sim`` can be crossed
+    by no simulated vehicle, so comparing it would report a simulated flow of
+    zero and a GEH of ``√(2·q_obs)`` — an arbitrarily failing link-hour that
+    measures the corridor's extent, not the model. Such rows are dropped and
+    counted in ``n_dropped_outside_span`` / ``x_outside_span_m`` instead; it is
+    the caller's business (and the report's) to say what was excluded.
+
     Returns:
         A :class:`LinkHourGEH` with one GEH per matched bin.
 
@@ -777,6 +790,10 @@ def link_hour_geh(
     obs_q = observed["flow_veh_h"].to_numpy(dtype=np.float64)
     keep = np.isfinite(obs_q)
     n_dropped = int(np.count_nonzero(~keep))
+    sim_x = np.asarray(sim["x"].to_numpy(), dtype=np.float64)
+    x_lo, x_hi = float(np.nanmin(sim_x)), float(np.nanmax(sim_x))
+    outside: list[float] = []
+    n_outside = 0
 
     crossing_times: dict[int, FloatArray] = {}
     gehs: list[float] = []
@@ -790,6 +807,11 @@ def link_hour_geh(
             raise ValueError(f"observed cross-section x = {x_o} m is not in x_refs_m")
         if q_o < 0:
             raise ValueError(f"observed flow must be >= 0, got {q_o} veh/h at x = {x_o} m")
+        if x_o < x_lo - tol or x_o > x_hi + tol:
+            n_outside += 1
+            if not any(math.isclose(x, x_o, abs_tol=tol) for x in outside):
+                outside.append(float(x_o))
+            continue
         if w_o < t_min - tol or w_o + window_s > t_max + tol:
             raise ValueError(
                 f"observed window [{w_o}, {w_o + window_s}) s at x = {x_o} m is not "
@@ -814,4 +836,6 @@ def link_hour_geh(
         obs_veh_h=tuple(obss),
         window_s=float(window_s),
         n_dropped_nan=n_dropped,
+        n_dropped_outside_span=n_outside,
+        x_outside_span_m=tuple(outside),
     )

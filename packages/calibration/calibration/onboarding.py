@@ -272,7 +272,7 @@ def calibrate_scenario(
     #    the inflow step.
     mainline = _observed_span(obs, upstream, downstream)
     inflow_steps = demand_from_observations(obs, upstream, step_s=step_s)
-    n_steps = len(inflow_steps)
+    n_steps = int(obs.n_windows)  # the window grid; steps with no observation are omitted upstream
     first_x = float(mainline[0].x_m or 0.0)
     last_x = float(mainline[-1].x_m or 0.0)
     zeroed, residual_log = _close_balance(
@@ -515,6 +515,8 @@ def _close_balance(
         last_off = [0.0] * len(offs)
         for k in range(n_steps):
             if math.isnan(q_up[k]) or math.isnan(q_down[k]):
+                for d in bracket:
+                    d["n_carried"] = int(d.get("n_carried", 0)) + 1
                 for j, d in enumerate(ons):
                     d["on_veh_h"][k] = last_on[j]
                 for j, d in enumerate(offs):
@@ -556,7 +558,6 @@ def _close_balance(
                     offs[j]["method"] = "detector_scaled"
             else:
                 leftover = r
-            carried[k] = leftover
             # write per-ramp values in x order, exit fractions relative to the
             # arriving flow
             q_cur = q_up[k]
@@ -568,9 +569,15 @@ def _close_balance(
                 else:
                     j = offs.index(d)
                     frac = off_total[j] / q_cur if q_cur > 0 else 0.0
-                    frac = min(max(frac, 0.0), _MAX_EXIT_FRACTION)
+                    clipped = min(max(frac, 0.0), _MAX_EXIT_FRACTION)
+                    if clipped < frac:
+                        # an exit takes at most _MAX_EXIT_FRACTION of what arrives;
+                        # the rest stays unexplained and is carried, never dropped
+                        leftover -= (frac - clipped) * q_cur
+                    frac = clipped
                     d["exit_frac"][k] = frac
                     q_cur -= frac * q_cur
+            carried[k] = leftover
             for j, d in enumerate(ons):
                 last_on[j] = d["on_veh_h"][k]
             for j, d in enumerate(offs):
@@ -601,7 +608,7 @@ def _ramp_records(
             rec["station"] = d["station"]
             rec["match_distance_m"] = d.get("match_distance_m")
         rec["n_steps"] = n_steps
-        rec["n_steps_carried"] = 0
+        rec["n_steps_carried"] = int(d.get("n_carried", 0))
         if d["kind"] == "on":
             rec["inflow_steps"] = [
                 [k * step_s, v / _S_PER_HOUR] for k, v in enumerate(d["on_veh_h"])

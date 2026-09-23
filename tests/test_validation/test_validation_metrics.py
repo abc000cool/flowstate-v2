@@ -479,6 +479,26 @@ class TestLinkHourGEH:
         assert res.pass_fraction(threshold=3.0) == pytest.approx(2.0 / 3.0)
         assert res.window_s == 50.0
 
+    def test_cross_section_outside_the_simulated_span_is_dropped_not_scored(self):
+        """No vehicle can cross x = 5000 m, so it is excluded, not failed.
+
+        Scoring it would report a simulated flow of zero and a GEH of
+        sqrt(2 * q_obs) — a failing link-hour that measures the corridor's
+        extent rather than the model.
+        """
+        obs = pd.DataFrame(
+            {
+                "x_ref_m": [1000.0, 5000.0, 5000.0],
+                "window_start_s": [0.0, 0.0, 50.0],
+                "flow_veh_h": [144.0, 144.0, 144.0],
+            }
+        )
+        res = link_hour_geh(_three_vehicle_traj(), obs, x_refs_m=[1000.0, 5000.0], window_s=50.0)
+        assert res.n_dropped_outside_span == 2
+        assert res.x_outside_span_m == (5000.0,)
+        assert res.x_ref_m == (1000.0,)
+        assert res.geh == pytest.approx((0.0,))
+
     def test_unmatched_cross_section_raises(self):
         with pytest.raises(ValueError, match="not in x_refs_m"):
             link_hour_geh(_three_vehicle_traj(), self._observed(), x_refs_m=[1000.0], window_s=50.0)

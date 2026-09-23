@@ -324,6 +324,42 @@ export interface CriteriaProfile {
   default: boolean;
 }
 
+/** Mirrors the API's `ReportOut.observed` — the provenance block of
+ * `validation.observed.ObservedProvenance.to_dict()`, computed from the
+ * artifact and the scoring, never from the request. Every field is optional
+ * here: a service older than a given field omits it, and the dashboard must
+ * say "not reported" rather than print a zero the server never sent. */
+export interface ObservedProvenanceOut {
+  path?: string;
+  corridor?: string;
+  provider?: string;
+  dates?: string;
+  url?: string;
+  aggregation?: string;
+  t0_local?: string;
+  window_s?: number;
+  /** Mainline stations in the artifact, and windows of its grid. */
+  n_stations?: number;
+  n_windows?: number;
+  /** Windows inside the scored measurement window. */
+  n_windows_compared?: number;
+  /** Share of the station-window grid carrying an observed flow / speed. */
+  flow_fraction?: number;
+  speed_fraction?: number;
+  /** Comparisons actually formed, pooled over replicates. */
+  n_link_hours?: number;
+  n_speed_cells?: number;
+  n_replicates?: number;
+  /** Stations excluded because their cross-section lies outside the
+   * simulated position span — no vehicle can cross them, so they are left
+   * out of both comparisons rather than scored as a zero simulated flow. */
+  n_stations_outside_span?: number;
+  stations_outside_span?: string;
+  /** Why no comparison was formed, when none was (e.g. an artifact with one
+   * positioned mainline station); empty otherwise. */
+  note?: string;
+}
+
 /** Mirrors the API's `ReportOut` — returned by `POST /reports` (202; still
  * `queued` under the Redis queue, terminal under the inline queue), by
  * `GET /reports/{id}` and, newest first, by `GET /reports`. */
@@ -344,6 +380,13 @@ export interface ReportOut {
    * a link or a path; the content comes from `/reports/{id}/markdown`,
    * `/pdf` and `/archive`. */
   report_path?: string | null;
+  /** The observations artifact the run set was scored against, as the server
+   * resolved it; null when the report has no observed side. Like
+   * `report_path` it is a server-side path and is never rendered as one. */
+  observations_path?: string | null;
+  /** What the observed comparison rested on, once the report is done; null
+   * while it runs, on failure, and for a report with no observations. */
+  observed?: ObservedProvenanceOut | null;
   error: string | null;
   /** `report_refused` when the run set cannot support a validation report
    * (screening-tier only). */
@@ -368,6 +411,11 @@ export interface ReportRecord {
   error: string | null;
   error_kind?: string | null;
   created_at: string;
+  /** The server's observed-comparison provenance for this report, when the
+   * server reported one. `normalizeRecord` does not read it back out of
+   * localStorage: it is a server computation, not a browser record, and a
+   * stale copy would be a claim about a comparison this browser never saw. */
+  observed?: ObservedProvenanceOut | null;
   /** True when this row's status came from the in-browser demo backend (the
    * API was unreachable), so it is not evidence about any server's report.
    * Demo rows are badged DEMO and are never persisted to localStorage. */

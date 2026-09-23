@@ -223,6 +223,14 @@ class TestOnboardingHappyPath:
         assert stored["config"]["network"]["kind"] == "osm"
         assert stored["config"]["sim"]["warmup_s"] == 0.0
 
+    def test_the_extract_is_installed_under_the_corridor_name(
+        self, client: TestClient, onboarded: dict[str, Any]
+    ) -> None:
+        settings = client.app.state.settings
+        assert (Path(settings.data_dir) / "osm" / "fixture_corridor_eb.osm").is_file()
+        # nothing half-written is left beside it
+        assert not list((Path(settings.data_dir) / "osm").glob("*.part"))
+
     def test_a_second_corridor_of_the_same_name_is_refused(
         self, client: TestClient, onboarded: dict[str, Any], no_download: list[Any]
     ) -> None:
@@ -379,3 +387,111 @@ class TestRefusals:
 
     def test_an_unknown_corridor_is_404(self, client: TestClient) -> None:
         assert client.get("/api/v1/corridors/cor_nope", headers=HEADERS).status_code == 404
+
+    def test_a_name_with_a_trailing_newline_is_refused(self, client: TestClient) -> None:
+        """`$` matches before a trailing newline; `fullmatch` does not."""
+        response = client.post(
+            "/api/v1/corridors",
+            data={
+                "name": "fixture_newline\n",
+                "bbox": " ".join(f"{v}" for v in BBOX),
+                "bearing_deg": "90",
+                "upstream_station": "SU",
+                "downstream_station": "SD",
+            },
+            files={
+                "detectors": ("d.csv", detectors_csv(), "text/csv"),
+                "stations": ("s.csv", stations_csv(), "text/csv"),
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 422, response.text
+        assert "must match" in json.dumps(response.json()["detail"])
+
+    def test_a_name_whose_extract_already_exists_is_refused(self, client: TestClient) -> None:
+        """A shipped extract is a scenario's map: onboarding never replaces it."""
+        settings = client.app.state.settings
+        shipped = Path(settings.data_dir) / "osm" / "i24_motion.osm"
+        shipped.parent.mkdir(parents=True, exist_ok=True)
+        shipped.write_text("<osm/>")
+        response = client.post(
+            "/api/v1/corridors",
+            data={
+                "name": "i24_motion",
+                "bbox": " ".join(f"{v}" for v in BBOX),
+                "bearing_deg": "90",
+                "upstream_station": "SU",
+                "downstream_station": "SD",
+            },
+            files={
+                "detectors": ("d.csv", detectors_csv(), "text/csv"),
+                "stations": ("s.csv", stations_csv(), "text/csv"),
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 409, response.text
+        assert "OSM extract" in response.json()["detail"]
+        assert shipped.read_text() == "<osm/>"  # untouched
+
+
+class TestUploadsAndRetries:
+    """What the request leaves on disk, and what a failed job takes back."""
+
+    def test_the_two_uploads_never_collide(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Client filenames do not name the stored files; a clash cannot happen.
+
+        The two parts share one upload directory, so a station table the
+        client happens to call ``stations_x.csv`` (the name the server used to
+        derive for it from a detector file called ``x.csv``) must not land on
+        the detector export.
+        """
+        from api import onboarding_jobs
+
+        def refuse(bbox: Any, dest: Path) -> Path:
+            raise RuntimeError("no network in tests")
+
+        monkeypatch.setattr(onboarding_jobs, "fetch_extract", refuse)
+        response = client.post(
+            "/api/v1/corridors",
+            data={
+                "name": "fixture_upload_names",
+                "bbox": " ".join(f"{v}" for v in BBOX),
+                "bearing_deg": "90",
+                "upstream_station": "SU",
+                "downstream_station": "SD",
+            },
+            files={
+                "detectors": ("stations_x.csv", detectors_csv(), "text/csv"),
+                "stations": ("x.csv", stations_csv(), "text/csv"),
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 202, response.text
+        uploads = Path(client.app.state.settings.uploads_dir)
+        stored = sorted(p for p in uploads.rglob("*") if p.is_file())
+        assert [p.name for p in stored] == ["detectors.csv", "stations.csv"]
+        assert stored[0].read_bytes() == detectors_csv()
+        assert stored[1].read_bytes() == stations_csv()
+
+    def test_a_failed_job_frees_its_name(self, client: TestClient, no_download: list[Any]) -> None:
+        """The extract this job installed goes again, so the name is retryable."""
+        settings = client.app.state.settings
+        extract = Path(settings.data_dir) / "osm" / "fixture_retry.osm"
+        preset = Path(settings.scenarios_dir) / "fixture_retry.yaml"
+
+        body = post_corridor(client, name="fixture_retry", bearing_deg="0")
+        payload = client.get(f"/api/v1/corridors/{body['corridor_id']}", headers=HEADERS).json()
+        assert payload["status"] == "failed"
+        assert payload["progress"]["stage"] == "network"  # the extract was installed first
+        assert not extract.exists()
+        assert not preset.exists()
+
+        # the same name is accepted again and reaches the same real stage —
+        # not refused as taken, and not failed on "already exists"
+        again = post_corridor(client, name="fixture_retry", bearing_deg="0")
+        retried = client.get(f"/api/v1/corridors/{again['corridor_id']}", headers=HEADERS).json()
+        assert retried["progress"]["stage"] == "network"
+        assert "already exists" not in retried["error"]
+        assert not extract.exists()

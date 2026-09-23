@@ -1004,6 +1004,13 @@ def _observed_report_inputs(
             confined to the allow-listed roots by the API boundary.
         runs: Store rows of the report's runs.
 
+    An artifact that can form no comparison at all — fewer than two positioned
+    mainline stations, so there is no station spacing and therefore no segment
+    (:func:`validation.observed.no_comparison_provenance`) — is not a report
+    failure: nothing is scored, the two rows stay *not evaluated*, and the
+    observed block the report prints says why. Refusing the whole report would
+    turn a thin detector inventory into a missing report.
+
     Returns:
         ``(kwargs, provenance)`` — keyword arguments for
         :func:`validation.report.generate_report` and the JSON provenance for
@@ -1014,9 +1021,17 @@ def _observed_report_inputs(
 
     from api.results import load_meta, replicate_dirs
     from validation.battery import score_replicate
-    from validation.observed import ObservedCorridor, ObservedScores, pool_scores
+    from validation.observed import (
+        ObservedCorridor,
+        ObservedScores,
+        no_comparison_provenance,
+        pool_scores,
+    )
 
     observed = ObservedCorridor.from_json(observations_path)
+    blocked = no_comparison_provenance(observed, path=observations_path)
+    if blocked is not None:
+        return {"observed": blocked}, blocked.to_dict()
     scores: list[ObservedScores] = []
     for run in runs:
         if run.get("tier") == "macro":

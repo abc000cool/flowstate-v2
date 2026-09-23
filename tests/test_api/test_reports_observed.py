@@ -79,6 +79,18 @@ def _write_observations(path: Path) -> Path:
     return path
 
 
+def _one_station_observations(path: Path) -> Path:
+    """The same artifact with a single mainline station — no spacing, no segment."""
+    payload = json.loads(_write_observations(path).read_text())
+    keep = payload["stations"][0]["id"]
+    payload["stations"] = [payload["stations"][0]]
+    payload["flows_veh_h"] = {keep: payload["flows_veh_h"][keep]}
+    payload["speeds_ms"] = {keep: payload["speeds_ms"][keep]}
+    payload["quality"] = {keep: payload["quality"][keep]}
+    path.write_text(json.dumps(payload))
+    return path
+
+
 def _criterion_row(markdown: str, name: str) -> str:
     return next(line for line in markdown.splitlines() if line.startswith(f"| {name} "))
 
@@ -124,6 +136,48 @@ def test_report_with_observations_evaluates_geh_and_rmspe(
     # comparisons rather than caller-supplied numbers.
     assert "| yes |" in _criterion_row(md.text, "link_flows_geh")
     assert "| yes |" in _criterion_row(md.text, "speeds_rmspe")
+
+
+@pytest.mark.integration
+def test_an_artifact_with_one_station_leaves_the_rows_not_evaluated(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """A thin detector inventory is a missing comparison, not a missing report.
+
+    One positioned mainline station defines no station spacing and therefore
+    no segment, so ``segment_bins()`` cannot be formed. The report is still
+    generated: the two observed rows stay NOT EVALUATED and the observed block
+    says why (CLAUDE.md §0.1).
+    """
+    observations = _one_station_observations(data_dir(tmp_path) / "observations_one.json")
+    scenario = post_scenario(client, _micro_corridor_config())
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+
+    r = client.post(
+        "/api/v1/reports",
+        json={
+            "run_ids": [run["run_id"]],
+            "title": "one-station corridor report",
+            "observations_path": str(observations),
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    report = r.json()
+    assert report["status"] == "done", report["error"]
+
+    fetched = client.get(f"/api/v1/reports/{report['report_id']}", headers=HEADERS).json()
+    observed = fetched["observed"]
+    assert observed["n_stations"] == 1
+    assert observed["n_link_hours"] == 0
+    assert observed["n_speed_cells"] == 0
+    assert "at least two" in observed["note"]
+
+    md = client.get(f"/api/v1/reports/{report['report_id']}/markdown", headers=HEADERS).text
+    assert "NOT EVALUATED" in _criterion_row(md, "link_flows_geh")
+    assert "NOT EVALUATED" in _criterion_row(md, "speeds_rmspe")
+    assert "comparison not formed" in md
 
 
 def test_observations_path_outside_roots_is_422(client: TestClient, tmp_path: Path) -> None:

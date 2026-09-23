@@ -148,6 +148,9 @@ class ObservedScores:
             over the analysed windows, NaN where no vehicle was sampled.
         segment_speeds_obs: The observed matrix on the same bins and windows.
         windows: Indices of the observation windows the matrices cover.
+        n_stations_outside_span: Mainline stations excluded because their
+            cross-section lies outside the replicate's own position span.
+        stations_outside_span: The ids of those stations, in position order.
     """
 
     geh_values: tuple[float, ...]
@@ -157,6 +160,8 @@ class ObservedScores:
     segment_speeds_sim: tuple[tuple[float, ...], ...]
     segment_speeds_obs: tuple[tuple[float, ...], ...]
     windows: tuple[int, ...]
+    n_stations_outside_span: int = 0
+    stations_outside_span: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (NaN written as ``null``) for a per-seed artifact."""
@@ -172,6 +177,8 @@ class ObservedScores:
             "windows": list(self.windows),
             "segment_speeds_sim": [[safe(v) for v in row] for row in self.segment_speeds_sim],
             "segment_speeds_obs": [[safe(v) for v in row] for row in self.segment_speeds_obs],
+            "n_stations_outside_span": self.n_stations_outside_span,
+            "stations_outside_span": list(self.stations_outside_span),
         }
 
     @classmethod
@@ -192,6 +199,8 @@ class ObservedScores:
             segment_speeds_sim=rows("segment_speeds_sim"),
             segment_speeds_obs=rows("segment_speeds_obs"),
             windows=tuple(int(k) for k in raw.get("windows", ())),
+            n_stations_outside_span=int(raw.get("n_stations_outside_span", 0)),
+            stations_outside_span=tuple(str(s) for s in raw.get("stations_outside_span", ())),
         )
 
 
@@ -219,6 +228,11 @@ class ObservedProvenance:
         n_link_hours: Station-hours compared, pooled over replicates.
         n_speed_cells: Speed cells compared, pooled over replicates.
         n_replicates: Replicates scored against the artifact.
+        n_stations_outside_span: Mainline stations excluded from both
+            comparisons because their cross-section lies outside the
+            simulated position span.
+        stations_outside_span: The ids of those stations, comma-joined.
+        note: Why no comparison was formed, when none was; empty otherwise.
     """
 
     path: str
@@ -237,6 +251,9 @@ class ObservedProvenance:
     n_link_hours: int
     n_speed_cells: int
     n_replicates: int
+    n_stations_outside_span: int = 0
+    stations_outside_span: str = ""
+    note: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (the API's report row, the battery artifact)."""
@@ -257,6 +274,9 @@ class ObservedProvenance:
             "n_link_hours": self.n_link_hours,
             "n_speed_cells": self.n_speed_cells,
             "n_replicates": self.n_replicates,
+            "n_stations_outside_span": self.n_stations_outside_span,
+            "stations_outside_span": self.stations_outside_span,
+            "note": self.note,
         }
 
 
@@ -309,7 +329,9 @@ class ObservedCorridor:
         Raises:
             ValueError: Wrong ``schema``, a non-positive ``window_s``, a
                 window count inconsistent with ``duration_s``, a series of the
-                wrong length, or two mainline stations at the same position
+                wrong length, two stations sharing an id (the flow and speed
+                series are keyed by it, so one of them would be read as the
+                other's), or two mainline stations at the same position
                 (which would make a link-flow comparison ambiguous).
         """
         schema = str(raw.get("schema", ""))
@@ -342,6 +364,15 @@ class ObservedCorridor:
                     label=str(entry.get("label") or ""),
                 )
             )
+
+        seen: set[str] = set()
+        for station in stations:
+            if station.id in seen:
+                raise ValueError(
+                    f"station id {station.id!r} appears twice; ids must be unique because "
+                    "the flow and speed series are keyed by them"
+                )
+            seen.add(station.id)
 
         flows = {s.id: _series(raw.get("flows_veh_h"), s.id, n_windows) for s in stations}
         speeds = {s.id: _series(raw.get("speeds_ms"), s.id, n_windows) for s in stations}
@@ -577,6 +608,16 @@ def score_run_against_observed(
       :func:`validation.metrics.rmspe`; cells with no observation, no
       simulated sample, or a zero observed speed are skipped and counted.
 
+    **Stations the run does not reach are excluded, not failed.** A station
+    whose cross-section ``x_m + x_offset_m`` falls outside
+    ``[x.min(), x.max()]`` of ``trajectories`` can be crossed by no simulated
+    vehicle and sits in no simulated speed cell; scoring it would contribute a
+    zero simulated flow (GEH ``√(2·q_obs)``) and nothing else, which measures
+    the run's extent rather than the model. Such stations are dropped from
+    both the link-hours and the speed matrix and reported on
+    ``n_stations_outside_span`` / ``stations_outside_span`` so the report can
+    state what was left out (CLAUDE.md §7.4).
+
     Args:
         trajectories: One replicate's trajectory rows with ``t`` [s],
             ``veh_id``, ``x`` [m] and ``v`` [m/s] columns, whole run (the
@@ -605,12 +646,26 @@ def score_run_against_observed(
         raise ValueError("trajectories holds no rows")
 
     windows = observed.analysis_windows(warmup_s, duration_s)
-    bins = observed.segment_bins()
-    x_refs = [x + x_offset_m for x in observed.mainline_x_refs()]
+    all_bins = observed.segment_bins()
+    stations = observed.mainline_stations()
+
+    sim_x = np.asarray(trajectories["x"].to_numpy(), dtype=np.float64)
+    x_lo, x_hi = float(np.nanmin(sim_x)), float(np.nanmax(sim_x))
+    inside = [
+        i
+        for i, station in enumerate(stations)
+        if x_lo - _TOL <= station.x_m + x_offset_m <= x_hi + _TOL
+    ]
+    kept = {stations[i].id for i in inside}
+    outside_ids = tuple(s.id for s in stations if s.id not in kept)
+    bins = [all_bins[i] for i in inside]
+    x_refs = [stations[i].x_m + x_offset_m for i in inside]
 
     per_hour = round(_S_PER_HOUR / observed.window_s)
     allowed = set(windows)
     hourly = observed.hourly_link_flows()
+    if not hourly.empty:
+        hourly = hourly.loc[hourly["station"].isin(kept)]
     if not hourly.empty:
         first = (hourly["window_start_s"].to_numpy(dtype=np.float64) / observed.window_s).round()
         keep = [
@@ -640,6 +695,7 @@ def score_run_against_observed(
     )
     if windows:
         obs_speeds = obs_speeds[[k - windows[0] for k in windows], :]
+    obs_speeds = obs_speeds[:, inside]
     both = np.isfinite(sim_speeds) & np.isfinite(obs_speeds) & (obs_speeds != 0.0)
     n_cells = int(np.count_nonzero(both))
     value = float(rmspe(sim_speeds[both], obs_speeds[both])) if n_cells else math.nan
@@ -652,6 +708,70 @@ def score_run_against_observed(
         segment_speeds_sim=tuple(tuple(float(v) for v in row) for row in sim_speeds),
         segment_speeds_obs=tuple(tuple(float(v) for v in row) for row in obs_speeds),
         windows=tuple(windows),
+        n_stations_outside_span=len(outside_ids),
+        stations_outside_span=outside_ids,
+    )
+
+
+def _source_fields(observed: ObservedCorridor) -> tuple[str, str, str]:
+    """``(provider, dates, url)`` of an artifact's ``source`` block, as text."""
+    source = observed.source
+    dates = source.get("dates")
+    return (
+        str(source.get("provider", "")),
+        ", ".join(str(d) for d in dates) if isinstance(dates, list) else str(dates or ""),
+        str(source.get("url", "")),
+    )
+
+
+def no_comparison_provenance(
+    observed: ObservedCorridor, *, path: str = ""
+) -> ObservedProvenance | None:
+    """Provenance for an artifact no comparison can be formed from, else None.
+
+    An artifact with fewer than two positioned mainline stations defines no
+    station spacing and therefore no segment
+    (:meth:`ObservedCorridor.segment_bins`). That is a property of the
+    *artifact*, not of any run, and it is not a reason to fail a report: the
+    two observed criteria are simply not evaluated, and the block the report
+    prints says why (CLAUDE.md §0.1 — an unevaluated criterion is stated, never
+    quietly passed or failed).
+
+    Args:
+        observed: The corridor's observations.
+        path: Artifact path recorded in the provenance block.
+
+    Returns:
+        A zero-count :class:`ObservedProvenance` whose ``note`` gives the
+        reason, or ``None`` when the artifact can be scored.
+    """
+    n_stations = len(observed.mainline_stations())
+    if n_stations >= 2:
+        return None
+    coverage = observed.coverage()
+    provider, dates_text, url = _source_fields(observed)
+    return ObservedProvenance(
+        path=path or observed.path,
+        corridor=observed.corridor,
+        provider=provider,
+        dates=dates_text,
+        url=url,
+        aggregation=observed.aggregation,
+        t0_local=observed.t0_local,
+        window_s=observed.window_s,
+        n_stations=coverage.n_stations,
+        n_windows=coverage.n_windows,
+        n_windows_compared=0,
+        flow_fraction=coverage.flow_fraction,
+        speed_fraction=coverage.speed_fraction,
+        n_link_hours=0,
+        n_speed_cells=0,
+        n_replicates=0,
+        note=(
+            f"the artifact holds {n_stations} positioned mainline station(s); a link-flow "
+            "and segment-speed comparison needs at least two, so no run was scored "
+            "against it"
+        ),
     )
 
 
@@ -681,14 +801,26 @@ def pool_scores(
         provenance)``.
 
     Raises:
-        ValueError: No scores, or matrices of differing shape.
+        ValueError: No scores, matrices of differing shape, or replicates
+            scored over different observation windows (the observed matrix is
+            taken from the first replicate, so pooling misaligned windows
+            would compare each replicate against another one's hours).
     """
     if not scores:
         raise ValueError("pool_scores needs at least one replicate's scores")
-    sim = np.asarray([np.asarray(s.segment_speeds_sim, dtype=np.float64) for s in scores])
-    shapes = {np.asarray(s.segment_speeds_obs, dtype=np.float64).shape for s in scores}
+    shapes = {np.asarray(s.segment_speeds_sim, dtype=np.float64).shape for s in scores} | {
+        np.asarray(s.segment_speeds_obs, dtype=np.float64).shape for s in scores
+    }
     if len(shapes) != 1:
         raise ValueError(f"replicates produced differing speed-matrix shapes: {sorted(shapes)}")
+    for i, replicate in enumerate(scores):
+        if replicate.windows != scores[0].windows:
+            raise ValueError(
+                f"replicate {i} was scored over observation windows "
+                f"{list(replicate.windows)}, replicate 0 over {list(scores[0].windows)}; "
+                "replicates scored over different windows cannot be pooled"
+            )
+    sim = np.asarray([np.asarray(s.segment_speeds_sim, dtype=np.float64) for s in scores])
     obs = np.asarray(scores[0].segment_speeds_obs, dtype=np.float64)
     with warnings.catch_warnings():
         # A cell no replicate sampled is an all-NaN slice; NaN is the answer
@@ -699,14 +831,14 @@ def pool_scores(
     finite = [s.rmspe for s in scores if math.isfinite(s.rmspe)]
     value = float(np.mean(finite)) if finite else math.nan
     coverage = observed.coverage()
-    source = observed.source
-    dates = source.get("dates")
+    provider, dates_text, url = _source_fields(observed)
+    excluded = sorted({sid for s in scores for sid in s.stations_outside_span})
     provenance = ObservedProvenance(
         path=path or observed.path,
         corridor=observed.corridor,
-        provider=str(source.get("provider", "")),
-        dates=", ".join(str(d) for d in dates) if isinstance(dates, list) else str(dates or ""),
-        url=str(source.get("url", "")),
+        provider=provider,
+        dates=dates_text,
+        url=url,
         aggregation=observed.aggregation,
         t0_local=observed.t0_local,
         window_s=observed.window_s,
@@ -718,6 +850,8 @@ def pool_scores(
         n_link_hours=sum(s.n_link_hours for s in scores),
         n_speed_cells=sum(s.n_speed_cells for s in scores),
         n_replicates=len(scores),
+        n_stations_outside_span=len(excluded),
+        stations_outside_span=", ".join(excluded),
     )
     return (
         geh,

@@ -76,7 +76,7 @@ from api.jobs import (
     run_scenario_job,
     sweep_job,
 )
-from api.onboarding_jobs import corridor_onboarding_job  # WP-F
+from api.onboarding_jobs import corridor_onboarding_job, extract_path  # WP-F
 from api.schemas import (
     CORRIDOR_NAME_PATTERN,
     CORRIDOR_STAGES,
@@ -1332,6 +1332,13 @@ def get_report_archive(request: Request, report_id: str) -> Response:
 
 _CORRIDOR_NAME_RE = re.compile(CORRIDOR_NAME_PATTERN)
 
+#: Server-side names the two ``POST /corridors`` uploads are stored under.
+#: They are fixed rather than taken from the client's filenames: the two parts
+#: share one upload directory, so two parts named alike would collide and the
+#: second would overwrite the first.
+DETECTORS_UPLOAD_NAME = "detectors.csv"
+STATIONS_UPLOAD_NAME = "stations.csv"
+
 
 def _parse_bbox(raw: str) -> list[float]:
     """``"S W N E"`` (or comma-separated) → the four WGS84 bounds.
@@ -1495,10 +1502,16 @@ async def create_corridor(
 
     Refusals: HTTP 422 for a malformed name, bbox, bearing, window/span or
     ``column_map``, and for an ``idm_calibration`` outside the roots; HTTP
-    409 when a preset of that name already exists (a corridor is never
-    onboarded over an existing preset — that would silently redefine a
-    scenario other runs were launched from). Uploads over
+    409 when a preset **or an OSM extract** of that name already exists (a
+    corridor is never onboarded over either — that would silently redefine a
+    scenario other runs were launched from, or replace the map a shipped
+    scenario re-imports on every replicate). Uploads over
     ``FLOWSTATE_MAX_UPLOAD_MB`` are refused with HTTP 413.
+
+    A name whose onboarding *failed* is free again: the job removes the preset
+    and extract it wrote before failing, so the same name can simply be
+    retried. Two concurrent requests for one name both pass this check; the
+    second job then refuses the name itself and is recorded as failed.
 
     Onboarding is not validation: the job derives numbers and records where
     each came from. Whether the corridor reproduces the observations is what
@@ -1506,7 +1519,9 @@ async def create_corridor(
     """
     settings = _settings(request)
     store = _store(request)
-    if not _CORRIDOR_NAME_RE.match(name):
+    # fullmatch, not match: `$` also matches before a trailing newline, so a
+    # name ending in one would pass and then become a file name carrying it.
+    if not _CORRIDOR_NAME_RE.fullmatch(name):
         raise HTTPException(
             status_code=422,
             detail=(
@@ -1536,20 +1551,31 @@ async def create_corridor(
         if idm_calibration
         else None
     )
-    preset = settings.scenarios_dir / f"{name}.yaml"
-    if preset.exists():
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"a preset named {preset.name!r} already exists; onboard this corridor under "
-                f"another name rather than redefining a scenario runs were launched from"
-            ),
-        )
+    # The two files the job installs outside its own directory. Both are
+    # checked here so a name that would overwrite a shipped extract (the
+    # scenario names it and every replicate re-imports it) is refused before a
+    # job is queued, not after it has already clobbered the map.
+    for target, what in (
+        (settings.scenarios_dir / f"{name}.yaml", "preset"),
+        (extract_path(name, settings), "OSM extract"),
+    ):
+        if target.exists():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"a {what} named {target.name!r} already exists; onboard this corridor "
+                    f"under another name rather than redefining a scenario runs were "
+                    f"launched from"
+                ),
+            )
 
+    # Fixed, server-side names: the two parts share one directory, and a
+    # client that names its station table like its detector export (or both
+    # the same) must not have one upload land on top of the other.
     upload_dir = settings.uploads_dir / new_id("upl")
-    detectors_path = upload_dir / _upload_name(detectors.filename)
+    detectors_path = upload_dir / DETECTORS_UPLOAD_NAME
     await _save_upload(detectors, detectors_path, settings.max_upload_bytes)
-    stations_path = upload_dir / f"stations_{_upload_name(stations.filename)}"
+    stations_path = upload_dir / STATIONS_UPLOAD_NAME
     await _save_upload(stations, stations_path, settings.max_upload_bytes)
 
     corridor_id = store.create_corridor(

@@ -98,6 +98,49 @@ def observations_payload(
     }
 
 
+#: A second, smaller fixture for the "station the run never reaches" case:
+#: three stations, the last of them 9 km along a corridor the run only ever
+#: covers 2 km of.
+SPAN_STATION_X = (200.0, 1500.0, 9000.0)
+SPAN_WINDOW_S = 1800.0
+SPAN_DURATION_S = 3600.0
+SPAN_RUN_M = 2000.0
+
+
+def span_payload() -> dict[str, Any]:
+    """One observed hour at three stations, one of them past the run's end."""
+    ids = ["A", "B", "C"]
+    return {
+        "schema": OBSERVATIONS_SCHEMA,
+        "corridor": "span_corridor",
+        "source": {"provider": "Test DOT archive", "dates": ["20260915"], "url": ""},
+        "window_s": SPAN_WINDOW_S,
+        "t0_local": "06:00",
+        "duration_s": SPAN_DURATION_S,
+        "n_windows": 2,
+        "aggregation": "one date",
+        "stations": [
+            {"id": sid, "x_m": x, "lanes": 1, "kind": "mainline"}
+            for sid, x in zip(ids, SPAN_STATION_X, strict=True)
+        ],
+        "flows_veh_h": {sid: [OBS_VEH_H] * 2 for sid in ids},
+        "speeds_ms": {sid: [OBS_SPEED_MS] * 2 for sid in ids},
+        "quality": {sid: {"fraction_valid": 1.0, "n_dates": 1} for sid in ids},
+    }
+
+
+def span_frame() -> pd.DataFrame:
+    """The same platoon, on a run whose vehicles never pass ``SPAN_RUN_M``."""
+    n_veh = int(SPAN_DURATION_S // HEADWAY_S)
+    offsets = np.arange(0.0, SPAN_RUN_M / SPEED_MS, SAMPLE_DT_S)
+    departs = HEADWAY_S * np.arange(n_veh, dtype=np.float64)
+    t = (departs[:, None] + offsets[None, :]).ravel()
+    x = np.tile(SPEED_MS * offsets, n_veh)
+    veh = np.repeat([f"v{i}" for i in range(n_veh)], offsets.size)
+    frame = pd.DataFrame({"t": t, "veh_id": veh, "x": x, "v": np.full(t.size, SPEED_MS)})
+    return frame.loc[frame["t"] < SPAN_DURATION_S].reset_index(drop=True)
+
+
 def trajectory_frame(x_offset_m: float = 0.0) -> pd.DataFrame:
     """Vehicles on a fixed headway at one constant speed.
 
@@ -164,6 +207,13 @@ class TestObservedCorridor:
     def test_duplicate_station_position_refused(self) -> None:
         payload = observations_payload(x_m=(1000.0, 1000.0, 3000.0))
         with pytest.raises(ValueError, match="share the position"):
+            ObservedCorridor.from_dict(payload)
+
+    def test_duplicate_station_id_refused(self) -> None:
+        """Two stations keyed alike share one series: one would read as the other."""
+        payload = observations_payload()
+        payload["stations"][1]["id"] = payload["stations"][0]["id"]
+        with pytest.raises(ValueError, match="appears twice"):
             ObservedCorridor.from_dict(payload)
 
     def test_window_count_must_match_duration(self) -> None:
@@ -281,6 +331,36 @@ class TestScoreRunAgainstObserved:
         assert scores.n_speed_cells == 0
         assert math.isnan(scores.rmspe)
 
+    def test_a_station_the_run_never_reaches_is_excluded_not_failed(self) -> None:
+        """A cross-section past the run's end is dropped from both comparisons.
+
+        Scored, it would contribute a simulated flow of zero and a GEH of
+        sqrt(2 * q_obs) as an ordinary failing link-hour — a statistic about
+        the corridor's extent, not about the model.
+        """
+        observed = ObservedCorridor.from_dict(span_payload())
+        scores = score_run_against_observed(
+            span_frame(), observed, warmup_s=0.0, duration_s=SPAN_DURATION_S
+        )
+        assert scores.stations_outside_span == ("C",)
+        assert scores.n_stations_outside_span == 1
+        # one observed hour at each of the two reachable stations, and none
+        # of the arbitrarily failing kind from the third
+        assert scores.n_link_hours == 2
+        assert max(scores.geh_values) < math.sqrt(2.0 * OBS_VEH_H)
+        # the third station's column is gone from the speed matrices too:
+        # 2 windows x 2 segments, all four compared
+        assert [len(row) for row in scores.segment_speeds_sim] == [2, 2]
+        assert [len(row) for row in scores.segment_speeds_obs] == [2, 2]
+        assert scores.n_speed_cells == 4
+        assert scores.rmspe == pytest.approx(abs(SPEED_MS - OBS_SPEED_MS) / OBS_SPEED_MS, abs=1e-6)
+
+        # and the provenance the report renders names what was left out
+        *_, provenance = pool_scores(observed, [scores])
+        assert provenance.n_stations_outside_span == 1
+        assert provenance.stations_outside_span == "C"
+        assert provenance.n_stations == len(SPAN_STATION_X)  # the artifact still holds three
+
     def test_missing_columns_refused(self, observed: ObservedCorridor) -> None:
         frame = pd.DataFrame({"t": [0.0], "veh_id": ["a"], "x": [0.0]})
         with pytest.raises(ValueError, match="missing column 'v'"):
@@ -325,3 +405,53 @@ class TestPoolScores:
     def test_no_scores_refused(self, observed: ObservedCorridor) -> None:
         with pytest.raises(ValueError, match="at least one"):
             pool_scores(observed, [])
+
+    def test_differing_matrix_shapes_get_the_documented_message(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        """Not numpy's "inhomogeneous shape": the check comes before the array."""
+        short = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S + WINDOW_S, duration_s=DURATION_S
+        )
+        long = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        with pytest.raises(ValueError, match="differing speed-matrix shapes"):
+            pool_scores(observed, [long, short])
+
+    def test_replicates_scored_over_different_windows_are_refused(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        """Same shape, shifted windows: pooling would misalign the observed side."""
+        early = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S - WINDOW_S, duration_s=DURATION_S - WINDOW_S
+        )
+        late = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        assert len(early.windows) == len(late.windows)
+        assert early.windows != late.windows
+        with pytest.raises(ValueError, match="replicate 1 was scored over observation windows"):
+            pool_scores(observed, [late, early])
+
+
+class TestNoComparisonProvenance:
+    """An artifact too thin to compare is stated, not raised (CLAUDE.md §0.1)."""
+
+    def test_one_station_yields_a_provenance_that_says_why(self) -> None:
+        from validation.observed import no_comparison_provenance
+
+        obs = ObservedCorridor.from_dict(observations_payload(x_m=(1000.0,), with_ramp=False))
+        provenance = no_comparison_provenance(obs, path="artifacts/obs.json")
+        assert provenance is not None
+        assert provenance.n_link_hours == 0
+        assert provenance.n_speed_cells == 0
+        assert provenance.n_replicates == 0
+        assert provenance.n_stations == 1
+        assert "at least two" in provenance.note
+        assert provenance.to_dict()["note"] == provenance.note
+
+    def test_a_comparable_artifact_is_not_blocked(self, observed: ObservedCorridor) -> None:
+        from validation.observed import no_comparison_provenance
+
+        assert no_comparison_provenance(observed) is None

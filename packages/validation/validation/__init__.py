@@ -40,6 +40,7 @@ from validation.observed import (
     ObservedProvenance,
     ObservedScores,
     ObservedStation,
+    no_comparison_provenance,
     pool_scores,
     score_run_against_observed,
 )
@@ -109,6 +110,7 @@ __all__ = [
     "idm_partials",
     "is_string_stable",
     "link_hour_geh",
+    "no_comparison_provenance",
     "planted_stripe_field",
     "pool_scores",
     "rmspe",

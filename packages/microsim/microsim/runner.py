@@ -88,6 +88,7 @@ from microsim.networks import (
     RAMP_SPLIT_ON,
     NetBundle,
     corridor,
+    expand_ramp_splits,
     merge_patch_files,
     osm_import,
     ring,
@@ -252,7 +253,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             # inputs (lane counts, the end node, a dead-ending lane 0) come
             # from the first import (RampSpec.merge, docs/CONTRACTS.md §2).
             compiled = sumolib.net.readNet(str(bundle.net_path))
-            chain = list(net.corridor_edges)
+            chain = expand_ramp_splits(list(net.corridor_edges), bundle.edge_ids)
             patches: list[Path] = []
             for ramp in merge_ramps:
                 i = chain.index(ramp.attach_edge)

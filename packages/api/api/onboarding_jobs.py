@@ -14,9 +14,10 @@ Stages (``api.schemas.CORRIDOR_STAGES``), each recorded on the row so
 
 ``extract``
     The OSM extract for the bbox, filtered to motorway ways
-    (:func:`fetch_extract`, the Overpass API). It is persisted outside the
-    job's own directory — under ``FLOWSTATE_DATA_DIR/osm/`` when one is
-    mounted, else the results root — because the installed scenario names it
+    (:func:`fetch_extract`, the Overpass API). It is downloaded into the job's
+    own directory and then installed, by an atomic rename, outside it
+    (:func:`extract_path`: under ``FLOWSTATE_DATA_DIR/osm/`` when one is
+    mounted, else the results root) because the installed scenario names it
     and the runner re-imports it on every replicate. The map moves; a
     scenario must not.
 ``network``
@@ -35,8 +36,17 @@ Stages (``api.schemas.CORRIDOR_STAGES``), each recorded on the row so
 ``install``
     The bundle is written under ``<results>/corridors/<id>/``, the scenario is
     stored (so ``POST /runs`` takes its ``scenario_id``) and its YAML is
-    written into the presets directory so it is selectable beside the shipped
-    corridors.
+    installed — again by an atomic rename — into the presets directory so it
+    is selectable beside the shipped corridors.
+
+**A name is free again after a failure.** The preset and the extract are the
+two files this job writes outside its own directory, and they are what
+``POST /corridors`` refuses a name over (HTTP 409). A job that fails removes
+the ones *it* installed, never one it found, so a failed onboarding can be
+retried under its own name with no operator cleanup. A crash hard enough to
+skip that cleanup (SIGKILL) leaves them behind: delete
+``scenarios/<name>.yaml`` and the ``osm/<name>.osm`` under the data root, then
+retry.
 
 **What this is not.** Onboarding is not validation. The job writes a corridor
 whose demand is traceable to detectors and states, per ramp, whether the
@@ -53,7 +63,9 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -95,6 +107,56 @@ DEFAULT_REPLICATES = 20
 
 #: Default scenario master seed.
 DEFAULT_SEED = 42
+
+
+def extract_path(name: str, settings: Settings, results: Path | None = None) -> Path:
+    """Where a corridor's OSM extract is installed for the scenario to name.
+
+    The extract is persisted outside the job's own directory — under
+    ``FLOWSTATE_DATA_DIR/osm/`` when one is mounted, else the results root —
+    because the installed scenario names it and the runner re-imports it on
+    every replicate. It is therefore as much a uniqueness lock as the preset
+    file, and ``POST /corridors`` refuses a name whose extract already exists.
+
+    Args:
+        name: Corridor name (also the preset and extract file name).
+        settings: The service settings.
+        results: Results root to fall back on; defaults to
+            ``settings.results_dir``.
+
+    Returns:
+        The absolute path of ``<name>.osm``.
+    """
+    root = settings.data_dir or (results if results is not None else settings.results_dir)
+    return root / "osm" / f"{name}.osm"
+
+
+def _install_atomic(source: Path, dest: Path) -> Path:
+    """Put ``source``'s bytes at ``dest`` by a rename, never a partial write.
+
+    A crash while a shared file is being written must not leave a truncated
+    map or preset at the path a scenario names, so the copy lands on a
+    temporary file beside the destination and is renamed into place —
+    ``os.replace`` is atomic within a filesystem.
+
+    Args:
+        source: The file to install (the job's own copy).
+        dest: Where it is installed (parents created).
+
+    Returns:
+        ``dest``.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    handle, tmp_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.", suffix=".part")
+    os.close(handle)
+    tmp = Path(tmp_name)
+    try:
+        shutil.copyfile(source, tmp)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return dest
 
 
 def fetch_extract(bbox: tuple[float, float, float, float], dest: Path) -> Path:
@@ -148,9 +210,17 @@ def corridor_onboarding_job(
 
     settings = load_settings()
     corridor_dir = results / "corridors" / corridor_id
+    installed: list[Path] = []
     try:
-        _run_onboarding(store, settings, row, corridor_dir, results)
+        _run_onboarding(store, settings, row, corridor_dir, results, installed)
     except Exception as exc:
+        # Everything this job put outside its own directory goes again: a
+        # failed onboarding must not leave the preset or the extract behind,
+        # because both are uniqueness locks and the name would then be
+        # permanently refused (and the leftovers are a half-built corridor).
+        # Only files *this* job installed are removed — never one it found.
+        for path in installed:
+            path.unlink(missing_ok=True)
         # The stage on the row is the one that was running when it failed;
         # a failure before the first stage marker is reported as that stage.
         current = store.get_corridor(corridor_id) or {}
@@ -172,8 +242,14 @@ def _run_onboarding(
     row: dict[str, Any],
     corridor_dir: Path,
     results: Path,
+    installed: list[Path],
 ) -> None:
-    """The five stages; every failure is the caller's ``except`` (see above)."""
+    """The five stages; every failure is the caller's ``except`` (see above).
+
+    ``installed`` collects the paths this job writes *outside* ``corridor_dir``
+    — the OSM extract and the preset — in the order they are written, so the
+    caller can undo exactly those on a failure.
+    """
     from calibration.loaders.detector_csv import load_detector_csv
     from calibration.observations import Observations
     from calibration.onboarding import calibrate_scenario
@@ -190,17 +266,26 @@ def _run_onboarding(
     )
     corridor_dir.mkdir(parents=True, exist_ok=True)
     preset_path = settings.scenarios_dir / f"{name}.yaml"
-    if preset_path.exists():
-        raise ValueError(
-            f"a preset named {preset_path.name!r} already exists in the presets directory; "
-            f"onboard this corridor under another name rather than overwriting it"
-        )
+    osm_path = extract_path(name, settings, results)
+    # ``POST /corridors`` already refused both; re-checked here because the
+    # check there and this job are not one transaction (two concurrent
+    # requests for one name both pass it — the loser fails right here).
+    for target, what in ((preset_path, "preset"), (osm_path, "OSM extract")):
+        if target.exists():
+            raise ValueError(
+                f"a {what} named {target.name!r} already exists; onboard this corridor "
+                f"under another name rather than overwriting it"
+            )
 
     # -- extract ----------------------------------------------------------
     store.set_corridor_stage(corridor_id, "extract")
-    osm_path = (settings.data_dir or results) / "osm" / f"{name}.osm"
-    fetch_extract(bbox, osm_path)
-    shutil.copyfile(osm_path, corridor_dir / EXTRACT_FILENAME)
+    local_extract = corridor_dir / EXTRACT_FILENAME
+    fetch_extract(bbox, local_extract)
+    # The scenario names ``osm_path``, so the extract has to be there before
+    # the network stage runs — but it lands by an atomic rename from the job's
+    # own copy, and the caller removes it again if any later stage fails.
+    _install_atomic(local_extract, osm_path)
+    installed.append(osm_path)
 
     # -- network ----------------------------------------------------------
     store.set_corridor_stage(corridor_id, "network")
@@ -265,8 +350,8 @@ def _run_onboarding(
     summary = _summary(name, build, result)
     (corridor_dir / SUMMARY_FILENAME).write_text("\n".join(summary["lines"]) + "\n")
 
-    preset_path.parent.mkdir(parents=True, exist_ok=True)
-    preset_path.write_text(scenario_path.read_text())
+    _install_atomic(scenario_path, preset_path)
+    installed.append(preset_path)
     scenario_id = store.create_scenario(cfg.name, cfg.model_dump(mode="json"), config_hash(cfg))
 
     store.set_corridor_status(

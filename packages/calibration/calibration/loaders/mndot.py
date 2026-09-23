@@ -57,7 +57,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import BinaryIO, Final, Literal
+from typing import Any, BinaryIO, Final, Literal
 
 import pandas as pd
 
@@ -870,6 +870,8 @@ def station_frame(
                     out[endpoint][name] = got
             return out
 
+        lane_of = {d.name: d.lane for n in corr.nodes for d in n.detectors}
+        scaled_station_days: list[dict[str, Any]] = []
         for date in dates:
             midnight = parse_date(date)
             if zone is not None:
@@ -878,8 +880,13 @@ def station_frame(
                 fetched = series(detectors, date)
                 # A detector that returned nothing for the whole day (HTTP 404: not
                 # installed, not communicating, or an inventory placeholder such as
-                # MnDOT's "T…" temporary loops) is not counted as an expected lane;
-                # one that reported with gaps still counts against the validity rule.
+                # MnDOT's "T…" temporary loops) is not counted as an expected
+                # detector; one that reported with gaps still counts against the
+                # validity rule. The lanes those detectors cover are then compared
+                # with the inventory's lane count: a lane with no reporting detector
+                # at all is a dead lane, and the station total is scaled up by
+                # lanes / lanes_reporting and listed in ``attrs["scaled_station_days"]``
+                # rather than silently under-counted.
                 n_expected = len(fetched["counts"]) or len(detectors)
                 day = aggregate_day(
                     fetched["counts"],
@@ -888,6 +895,20 @@ def station_frame(
                     window_s=window_s,
                     n_detectors=n_expected,
                 )
+                if kind == "mainline" and fetched["counts"]:
+                    reporting = {lane_of.get(name, name) for name in fetched["counts"]}
+                    if 0 < len(reporting) < lanes:
+                        factor = lanes / len(reporting)
+                        day["flow_veh_h"] = day["flow_veh_h"] * factor
+                        scaled_station_days.append(
+                            {
+                                "station": key,
+                                "date": date,
+                                "lanes": lanes,
+                                "lanes_reporting": len(reporting),
+                                "factor": factor,
+                            }
+                        )
                 for record in day.to_dict("records"):
                     index = int(record["window_index"])
                     rows.append(
@@ -908,6 +929,7 @@ def station_frame(
     frame["lanes"] = frame["lanes"].astype(int)
     frame = frame.sort_values(["timestamp", "station"], kind="stable").reset_index(drop=True)
     frame.attrs["interval_s"] = float(window_s)
+    frame.attrs["scaled_station_days"] = scaled_station_days
     frame.attrs["samples_per_window"] = per_window
     return frame
 

@@ -291,6 +291,43 @@ describe('ReportsView (asynchronous report contract)', () => {
   );
 
   it(
+    'shows what an observed comparison rested on, and says nothing without one',
+    async () => {
+      // rpt-2 was scored against an observations artifact, rpt-1 was not
+      serverList = [
+        {
+          ...reportOut('done', 'rpt-2'),
+          observations_path: '/srv/data/i24/observations.json',
+          observed: {
+            corridor: 'i24_wb',
+            n_stations: 4,
+            n_link_hours: 12,
+            n_speed_cells: 264,
+            n_replicates: 3,
+            n_stations_outside_span: 1,
+            stations_outside_span: 'S4',
+          },
+        },
+        reportOut('done', 'rpt-1'),
+      ] as typeof serverList;
+      render(<ReportsView />);
+      const table = screen.getByRole('table', { name: 'generated reports' });
+      expect(await within(table).findByText('rpt-2', {}, { timeout: 6000 })).toBeInTheDocument();
+      const rows = within(table).getAllByRole('row');
+      expect(
+        within(rows[1]).getByText(
+          'observed: 12 link-hours, 264 speed cells compared, 1 station excluded (outside the simulated span)',
+        ),
+      ).toBeInTheDocument();
+      // a report with no observed side claims no comparison at all
+      expect(within(rows[2]).queryByText(/^observed:/)).toBeNull();
+      // the artifact path is server-side, like report_path: never rendered
+      expect(within(table).queryByText(/observations\.json/)).toBeNull();
+    },
+    15000,
+  );
+
+  it(
     'lists the server history newest first and marks browser-only records',
     async () => {
       serverList = [reportOut('done', 'rpt-2'), reportOut('done', 'rpt-1')];

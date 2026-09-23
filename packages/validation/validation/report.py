@@ -655,6 +655,11 @@ def _observed_rows(observed: ObservedProvenance) -> list[dict[str, str]]:
     on both series separately — a corridor whose speeds are dense and whose
     flows are sparse is a different comparison from one that is dense in
     both, and one pooled number would hide that (CLAUDE.md §7.4).
+
+    A station the run does not reach is excluded from both comparisons rather
+    than scored against a simulated flow of zero, so the count of excluded
+    stations is printed too; the ``comparison not formed`` row appears only
+    when the artifact supported no comparison at all.
     """
     rows: list[tuple[str, str]] = [
         ("artifact", observed.path),
@@ -673,6 +678,12 @@ def _observed_rows(observed: ObservedProvenance) -> list[dict[str, str]]:
         ("link-hour comparisons (pooled over replicates)", str(observed.n_link_hours)),
         ("speed cells compared (pooled over replicates)", str(observed.n_speed_cells)),
         ("replicates scored against the observations", str(observed.n_replicates)),
+        (
+            "stations excluded (outside the simulated span)",
+            f"{observed.n_stations_outside_span}"
+            + (f" — {observed.stations_outside_span}" if observed.stations_outside_span else ""),
+        ),
+        ("comparison not formed", observed.note),
     ]
     return [{"name": name, "detail": detail} for name, detail in rows if detail]
 
@@ -686,7 +697,9 @@ OBSERVED_NOTE = (
     "artifact's local start time; the run's warm-up, and any window the run does not "
     "cover to its end, are excluded, and a station-window the detector did not measure "
     "is skipped, never imputed — the coverage rows say how much of the grid was "
-    "compared."
+    "compared. A station whose cross-section lies outside the simulated position span "
+    "is excluded from both comparisons rather than scored against a simulated flow of "
+    "zero; the rows say how many were."
 )
 
 

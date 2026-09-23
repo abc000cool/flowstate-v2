@@ -339,6 +339,15 @@ class OSMNetwork(BaseModel):
                 raise ValueError(f"ramp edges {ramp.edges} overlap corridor_edges")
         return self
 
+    @model_validator(mode="after")
+    def _check_osm_inflow(self) -> Self:
+        times = [t for t, _ in self.inflow]
+        if times != sorted(times):
+            raise ValueError("inflow steps must be ordered by t_start")
+        if any(q < 0 for _, q in self.inflow):
+            raise ValueError("inflow must be >= 0")
+        return self
+
 
 Network = Annotated[RingNetwork | CorridorNetwork | OSMNetwork, Field(discriminator="kind")]
 

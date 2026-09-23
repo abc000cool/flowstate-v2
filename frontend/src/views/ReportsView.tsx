@@ -18,7 +18,12 @@
  * thresholds it was scored against, and those differ between the FHWA table
  * and the state-DOT protocols. Only the *name* is sent and shown — the
  * dashboard never restates a profile's numbers, and a row whose profile the
- * service did not report says so rather than assuming the default.
+ * service did not report says so rather than assuming the default. Beside it,
+ * a report scored against an observations artifact shows what that comparison
+ * actually rested on — link-hours and speed cells compared, and how many
+ * stations were excluded for lying outside the simulated span — because
+ * "GEH passed" over two link-hours is a different claim from the same line
+ * over two hundred.
  *
  * The table is `GET /reports` (the server's own history, newest first) merged
  * with this browser's localStorage records, which now cover only what the
@@ -199,8 +204,30 @@ function recordFromOut(
     error: out.error ?? null,
     error_kind: out.error_kind ?? null,
     created_at: out.created_at,
+    observed: out.observed ?? null,
     demo,
   };
+}
+
+/** The observed comparison this report rests on, in one line, or null when
+ * the server reported none (no observations artifact, or a report that has
+ * not finished). The numbers are the server's own counts — what was actually
+ * compared, and what was left out — never a restatement or a total this
+ * browser computed (CLAUDE.md §7.4). */
+function observedLine(observed: ReportRecord['observed']): string | null {
+  if (!observed) return null;
+  const parts: string[] = [];
+  if (typeof observed.n_link_hours === 'number') parts.push(`${observed.n_link_hours} link-hours`);
+  if (typeof observed.n_speed_cells === 'number') {
+    parts.push(`${observed.n_speed_cells} speed cells`);
+  }
+  if (parts.length === 0) return null;
+  const excluded = observed.n_stations_outside_span ?? 0;
+  const tail =
+    excluded > 0
+      ? `, ${excluded} station${excluded === 1 ? '' : 's'} excluded (outside the simulated span)`
+      : '';
+  return `observed: ${parts.join(', ')} compared${tail}`;
 }
 
 /** The server's list (already newest first) followed by the local records it
@@ -680,8 +707,16 @@ export function ReportsView(): JSX.Element {
                       </div>
                     )}
                   </td>
-                  <td className="muted" title={profileTitle(rec.profile)}>
-                    {rec.profile ?? 'unknown'}
+                  <td className="muted">
+                    <span title={profileTitle(rec.profile)}>{rec.profile ?? 'unknown'}</span>
+                    {observedLine(rec.observed) && (
+                      <div
+                        className="small"
+                        title="Counted by the server from the observations artifact and the run artifacts: what the link-flow and segment-speed criteria were actually scored on."
+                      >
+                        {observedLine(rec.observed)}
+                      </div>
+                    )}
                   </td>
                   <td className="muted">{rec.created_at.replace('T', ' ').slice(0, 19)} UTC</td>
                   <td className="muted">{rec.run_ids.join(', ')}</td>

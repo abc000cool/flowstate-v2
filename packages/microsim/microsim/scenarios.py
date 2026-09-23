@@ -55,7 +55,7 @@ from microsim.geo import (
     ramps_for_chain,
     x_of_lonlat,
 )
-from microsim.networks import expand_ramp_splits, osm_import
+from microsim.networks import RAMP_SPLIT_OFF, RAMP_SPLIT_ON, expand_ramp_splits, osm_import
 from microsim.runner import RunPaths, run_micro
 
 #: Repository ``scenarios/`` directory (this file sits at
@@ -502,6 +502,16 @@ class CorridorBuild:
         return "\n".join(lines)
 
 
+def _ramp_x(net: Any, offsets: Mapping[str, float], attach_edge: str, kind: str) -> float:
+    """Chain x of a ramp: an entrance at the start of its (split) attach piece, an exit at the end."""
+    if kind == "on":
+        piece = attach_edge + RAMP_SPLIT_ON
+        return float(offsets[piece] if piece in offsets else offsets[attach_edge])
+    piece = attach_edge + RAMP_SPLIT_OFF
+    edge_id = piece if piece in offsets else attach_edge
+    return float(offsets[edge_id] + net.getEdge(edge_id).getLength())
+
+
 def corridor_from_bbox(
     name: str,
     bbox: tuple[float, float, float, float],
@@ -676,8 +686,7 @@ def corridor_from_bbox(
     ramps = tuple(
         replace(
             c,
-            x_m=offsets[c.attach_edge]
-            + (float(net.getEdge(c.attach_edge).getLength()) if c.kind == "off" else 0.0),
+            x_m=_ramp_x(net, offsets, c.attach_edge, c.kind),
         )
         for c in candidates
     )

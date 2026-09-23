@@ -753,9 +753,19 @@ simulated mean sampled speed per (window, segment) cell. `x_offset_m` maps the
 observed origin onto simulation `x` (a generated corridor's insertion buffer,
 `microsim.demand_adapter.corridor_x_offset_m`; 0 for ring/OSM). NaN
 observations, unsampled cells and zero observed speeds are skipped and
-counted. `pool_scores(observed, scores, path=...)` pools GEH across
+counted. A mainline station whose cross-section falls outside `[x.min(),
+x.max()]` of the trajectory frame is excluded from **both** comparisons rather
+than scored against a simulated flow of zero, and is reported on
+`ObservedScores.n_stations_outside_span` / `.stations_outside_span`.
+`pool_scores(observed, scores, path=...)` pools GEH across
 replicates, means the RMSPE, means the simulated matrices and builds the
-`ObservedProvenance` the report prints. `metrics.link_hour_geh` gained
+`ObservedProvenance` the report prints (which carries the excluded stations
+and a `note`); it refuses replicates whose speed matrices differ in shape or
+that were scored over different observation windows.
+`no_comparison_provenance(observed, path=...)` returns a zero-count
+provenance whose `note` says why when the artifact has fewer than two
+positioned mainline stations, and `None` otherwise — `report_job` uses it to
+leave the two rows NOT EVALUATED instead of failing the report. `metrics.link_hour_geh` gained
 `sim_span=(t_lo, t_hi)`: the recorded span the observed windows must lie
 inside, so a run whose last output sample falls short of its nominal end does
 not lose its final hour. `metrics.ci(values) -> CI` is `aggregate`'s
@@ -782,7 +792,8 @@ replicate of every run in the set, pools the GEH values, means the RMSPE and
 passes them plus the provenance into `generate_report`. `ReportOut` gains
 `observations_path` and `observed` (the provenance dict, null until the report
 is done); the `reports` table gains `observations_path` and `observed_json`
-(both nulled by a re-claim).
+(only `observed_json` is nulled by a re-claim — a requeued report re-scores the
+same artifact, so its path is part of the request, not of the attempt).
 
 **Corridor battery artifact** (`scripts/corridor_battery.py`, schema
 `flowstate.corridor_validation/1`): `created_at`, `scenario`, `corridor`,
