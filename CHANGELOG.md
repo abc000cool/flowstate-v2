@@ -6,6 +6,14 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [2.3.0] — 2026-09-23
+
+**Release summary.** Onboarding a freeway corridor is now a product path: a bounding box, a bearing and a detector export become a validated SUMO scenario with discovered ramps and station positions, a typical-weekday observations artifact, a demand profile that closes the station balance, and a report that scores GEH and RMSPE against those observations — from the dashboard or the CLI. The third corridor, MnDOT I-94 westbound through east St. Paul, was onboarded this way from the Regional TMC's public 30-second loop data (nine weekdays, 14 stations, 17 ramps). Its first battery exposed a map defect that the path now guards against: OSM carries no acceleration lanes, so the compiled network starved four entrances; ramp guessing with split-piece expansion fixed it, and a lane-profile-versus-inventory check runs before any battery.
+
+Also in this release: the infrastructure axis on sweeps (VSL, ALINEA, both) with a strategy-comparison table in the report and an ALINEA target that traces to the corridor's fitted diagram; the screening tier on a calibrated fundamental diagram with macro options through the API; a `doctor` preflight and a ten-minute quickstart for a first-time tester; two adversarial reviews (23 findings, 20 fixed) and a browser walkthrough (7 dashboard defects fixed). The corridor itself is not reproduced: two 20-seed cloud rounds failed for two documented reasons (missing acceleration lanes, then SUMO's lane-change merge locking at three large entrances near capacity — the I-24 merge limitation, fatal here), both recorded under artifacts/mndot_rounds; no sweep ran on it, and the record says what would be needed next.
+
 ### 2026-09-23 — Any-corridor onboarding from public data; MnDOT I-94 WB St. Paul (third corridor)
 
 Onboarding path (product)
