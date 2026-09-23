@@ -47,7 +47,7 @@ of the baseline mean (`vs_baseline_paired`; "resolved" = the interval excludes z
 | baseline | 20 | 5,671 [5,662, 5,681] | 575.4 [565.5, 585.2] | 4.76 [4.71, 4.80] | 89.6 [88.6, 90.6] | 10.2 [9.0, 11.5] |
 | VSL alone | 20 | 5,252 [5,233, 5,271] | 620.7 [614.0, 627.5] | 3.37 [3.35, 3.39] | 104.2 [103.6, 104.8] | 17.2 [15.8, 18.7] |
 | FollowerStopper 10 % | 20 | 2,859 [2,399, 3,319] | 1,292.7 [1,091.7, 1,493.6] | 1.93 [1.85, 2.00] | 275.9 [229.0, 322.8] | 9.0 [7.0, 11.0] |
-| FollowerStopper 10 % + VSL | 0 | failed (see above) | failed (see above) | failed (see above) | failed (see above) | failed (see above) |
+| FollowerStopper 10 % + VSL | 6 of 20 | cut by the VM deadline — not reported (see above) | — | — | — | — |
 | ALINEA alone | 0 | failed (see above) | failed (see above) | failed (see above) | failed (see above) | failed (see above) |
 | FollowerStopper 10 % + ALINEA | 0 | failed (see above) | failed (see above) | failed (see above) | failed (see above) | failed (see above) |
 
