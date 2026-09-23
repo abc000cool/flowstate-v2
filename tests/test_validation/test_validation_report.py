@@ -330,6 +330,46 @@ class TestGenerateReport:
         assert "txdot_variant" in out.read_text()
 
 
+class TestInsertionLine:
+    """Provenance states how much of the configured demand actually ran."""
+
+    @staticmethod
+    def _add_insertion(run_dir: Path, planned: int, departed: int, arrived: int) -> None:
+        meta = json.loads((run_dir / "meta.json").read_text())
+        meta.update(
+            {
+                "n_vehicles_planned": planned,
+                "n_vehicles_departed": departed,
+                "n_vehicles_arrived": arrived,
+                "ramps": [
+                    {"name": "OH-ON", "kind": "on", "n_planned": 400, "n_departed": 40},
+                    {"name": "BR-ON", "kind": "on", "n_planned": 400, "n_departed": 400},
+                ],
+            }
+        )
+        (run_dir / "meta.json").write_text(json.dumps(meta))
+
+    def test_counters_are_rendered_with_the_starved_ramps(self, tmp_path: Path):
+        root = tmp_path / "runs" / "cafe01234567"
+        self._add_insertion(_write_run(root / "1", seed=1), 1000, 400, 300)
+        self._add_insertion(_write_run(root / "2", seed=2), 1000, 600, 500)
+        out = tmp_path / "report.md"
+        generate_report(root.parent, out)
+        line = next(ln for ln in out.read_text().splitlines() if ln.startswith("Insertion: "))
+        # 2000 planned, 1000 departed, 800 arrived; mean fraction 0.5, worst 0.4.
+        assert "2000 vehicles planned over 2 run(s)" in line
+        assert "1000 departed" in line
+        assert "800 arrived" in line
+        assert "0.5" in line and "0.4" in line
+        assert "backlog: 50 % of planned vehicles never departed" in line
+        assert "OH-ON" in line and "BR-ON" not in line
+
+    def test_runs_without_the_counters_get_no_line(self, micro_run_set: Path, tmp_path: Path):
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out)
+        assert "Insertion: " not in out.read_text()
+
+
 class TestWaveSpeedCriterion:
     """The criterion must be scoreable: measured with the profile's detector."""
 

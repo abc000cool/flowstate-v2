@@ -87,10 +87,13 @@ from microsim.networks import (
     RAMP_SPLIT_OFF,
     RAMP_SPLIT_ON,
     NetBundle,
+    accel_lane_end,
     corridor,
     expand_ramp_splits,
+    lane_end_patch_file,
     merge_patch_files,
     osm_import,
+    patch_net,
     ring,
 )
 from microsim.vehicles import (
@@ -210,6 +213,161 @@ def require_complete_run(run_dir: str | Path) -> Path:
     raise FileNotFoundError(f"incomplete micro replicate {path}: no {COMPLETION_MARKER}{detail}")
 
 
+def _apply_merge_models(
+    net: OSMNetwork, bundle: NetBundle, workdir: Path, keep: tuple[str, ...]
+) -> NetBundle:
+    """Apply the on-ramp merge models to a freshly imported OSM network.
+
+    The merge models (``RampSpec.merge``, docs/CONTRACTS.md §2) all need the
+    acceleration lane — lane 0 of the attach edge — to dead-end at that edge's
+    end: ``zipper``/``acceleration_lane`` patch the lane drop there, and the
+    runner's ``scripted`` merge drives the vehicles standing on it. Whether
+    netconvert's ramp guessing leaves it that way depends on the attach edge's
+    length: for an edge longer than ``--ramps.ramp-length`` the lane lives on a
+    split ``-AddedOnRampEdge`` piece and dead-ends by construction, while on a
+    shorter edge the guessed lane covers the whole edge and spills into the
+    following corridor edges, dead-ending there instead (docs/ONBOARDING_MNDOT.md
+    §6 — every short entrance of the MnDOT corridor).
+
+    That spill is deleted here: :func:`~microsim.networks.accel_lane_end`
+    follows lane 0 downstream, and when it is a spill (it dead-ends within
+    :data:`~microsim.networks.ACCEL_LANE_TAIL_MAX_M` and feeds nothing but the
+    next corridor edge's lane 0) a ``<delete>`` connection patch terminates it
+    at the attach edge's end, shifting nothing else — lanes ``1..n`` keep the
+    connections netconvert guessed. The patch names compiled edge ids, so it
+    goes through :func:`~microsim.networks.patch_net` (a netconvert pass over
+    the built network) rather than an OSM re-import, which reads connection
+    files before ramp guessing has created those ids. The dead-end check then
+    runs on the patched network.
+
+    Refused, with the geometry in the message: an attach edge that carries no
+    added lane at all, and a lane 0 that is not a taper — one feeding an exit
+    (a weaving section's auxiliary lane) or running on as a through lane. Those
+    entrances are not acceleration-lane merges and belong on ``lane_change``.
+
+    Args:
+        net: The scenario's OSM network block, ramps already resolved to their
+            compiled attach pieces.
+        bundle: The imported network.
+        workdir: Run working directory (patches land in ``workdir/patches``).
+        keep: Ramp edge ids pinned through pruning, as on the first import.
+
+    Returns:
+        The bundle to simulate: unchanged when no merge model asks for a patch,
+        else the patched one, carrying ``patch_files`` and ``terminated_lanes``.
+
+    Raises:
+        ValueError: A merge model cannot be applied to the geometry (message
+            names the ramp, the lane counts and the reason).
+        RuntimeError: The termination patch did not take (netconvert kept the
+            connection).
+    """
+    merge_ramps = [r for r in net.ramps if r.kind == "on" and r.merge != "lane_change"]
+    if not merge_ramps:
+        return bundle
+    compiled = sumolib.net.readNet(str(bundle.net_path))
+    chain = expand_ramp_splits(list(net.corridor_edges), bundle.edge_ids)
+    patch_dir = workdir / "patches"
+
+    def _index(ramp: RampSpec) -> int:
+        i = chain.index(ramp.attach_edge)
+        if i + 1 >= len(chain):
+            raise ValueError(
+                f"ramp {ramp.name or ramp.attach_edge}: merge model {ramp.merge!r} needs a "
+                "corridor edge after the attach edge"
+            )
+        return i
+
+    # (1) Terminate a guessed acceleration lane that spills past the attach edge.
+    term_patches: list[Path] = []
+    terminated: list[str] = []
+    for ramp in merge_ramps:
+        i = _index(ramp)
+        attach = compiled.getEdge(ramp.attach_edge)
+        outgoing = attach.getLanes()[0].getOutgoing()
+        if not outgoing or ramp.attach_edge in terminated:
+            continue  # dead-ends already, or a second ramp on the same attach edge
+        label = ramp.name or ramp.attach_edge
+        prev_id = chain[i - 1] if i else None
+        prev_lanes = compiled.getEdge(prev_id).getLaneNumber() if prev_id is not None else None
+        nxt_lanes = compiled.getEdge(chain[i + 1]).getLaneNumber()
+        geometry = (
+            f"{ramp.attach_edge} has {attach.getLaneNumber()} lanes, the corridor edge before it "
+            f"({prev_id}) {prev_lanes}, the one after it ({chain[i + 1]}) {nxt_lanes}"
+        )
+        if prev_lanes is not None and attach.getLaneNumber() <= prev_lanes:
+            raise ValueError(
+                f"ramp {label}: merge model {ramp.merge!r} needs an acceleration lane on the "
+                f"attach edge and this merge added none — {geometry}. Put --ramps.guess in "
+                "network.netconvert_extra, or use merge: 'lane_change' on this ramp."
+            )
+        verdict = accel_lane_end(compiled, chain, ramp.attach_edge)
+        if not verdict.ok:
+            raise ValueError(
+                f"ramp {label}: merge model {ramp.merge!r} needs the acceleration lane (lane 0 of "
+                f"the attach edge) to dead-end at the edge's end, and it cannot be terminated "
+                f"there: {verdict.reason} — {geometry}. Use merge: 'lane_change' on this ramp."
+            )
+        term_patches.append(
+            lane_end_patch_file(
+                patch_dir,
+                ramp.attach_edge,
+                chain[i + 1],
+                sorted({c.getToLane().getIndex() for c in outgoing}),
+            )
+        )
+        terminated.append(ramp.attach_edge)
+    if term_patches:
+        bundle = patch_net(
+            bundle, term_patches, internal_links=net.internal_links, stem="osm_accel_end"
+        )
+        bundle = dataclasses.replace(bundle, terminated_lanes=tuple(terminated))
+        compiled = sumolib.net.readNet(str(bundle.net_path))
+
+    # (2) The merge-model patches themselves, on a lane 0 that now dead-ends.
+    model_patches: list[Path] = []
+    for ramp in merge_ramps:
+        i = _index(ramp)
+        attach = compiled.getEdge(ramp.attach_edge)
+        if attach.getLanes()[0].getOutgoing():
+            raise RuntimeError(
+                f"ramp {ramp.name or ramp.attach_edge}: merge model {ramp.merge!r} needs the "
+                "acceleration lane (lane 0 of the attach edge) to dead-end at the edge's end; the "
+                f"termination patch did not take (lane 0 of {ramp.attach_edge} still connects)"
+            )
+        if ramp.merge == "scripted":
+            continue  # no patch: the runner drives the acceleration lane
+        model_patches += merge_patch_files(
+            patch_dir,
+            ramp.attach_edge,
+            chain[i + 1],
+            attach.getToNode().getID(),
+            attach.getLaneNumber(),
+            compiled.getEdge(chain[i + 1]).getLaneNumber(),
+            ramp.merge,
+            visibility_m=ramp.merge_visibility_m,
+        )
+    if not model_patches:
+        return bundle
+    if term_patches:
+        # the termination lives in the compiled network, so an OSM re-import
+        # would build it away: patch the built network again instead
+        return patch_net(
+            bundle, model_patches, internal_links=net.internal_links, stem="osm_merge_models"
+        )
+    bundle = osm_import(
+        osm_file=net.osm_file,
+        bbox=net.bbox,
+        corridor_edges=tuple(net.corridor_edges),
+        workdir=workdir,
+        keep_edges=keep,
+        patch_files=model_patches,
+        internal_links=net.internal_links,
+        netconvert_extra=tuple(net.netconvert_extra),
+    )
+    return dataclasses.replace(bundle, patch_files=tuple(str(p) for p in model_patches))
+
+
 def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
     """Build the SUMO network for the scenario's network block."""
     net = cfg.network
@@ -247,52 +405,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             )
         if any(r is not o for r, o in zip(resolved_ramps, net.ramps, strict=True)):
             net = net.model_copy(update={"ramps": resolved_ramps})
-        merge_ramps = [r for r in net.ramps if r.kind == "on" and r.merge != "lane_change"]
-        if merge_ramps:
-            # Second pass: on-ramp merge models are netconvert patches whose
-            # inputs (lane counts, the end node, a dead-ending lane 0) come
-            # from the first import (RampSpec.merge, docs/CONTRACTS.md §2).
-            compiled = sumolib.net.readNet(str(bundle.net_path))
-            chain = expand_ramp_splits(list(net.corridor_edges), bundle.edge_ids)
-            patches: list[Path] = []
-            for ramp in merge_ramps:
-                i = chain.index(ramp.attach_edge)
-                if i + 1 >= len(chain):
-                    raise ValueError(
-                        f"ramp {ramp.name or ramp.attach_edge}: merge model {ramp.merge!r} needs a "
-                        "corridor edge after the attach edge"
-                    )
-                attach = compiled.getEdge(ramp.attach_edge)
-                if attach.getLanes()[0].getOutgoing():
-                    raise ValueError(
-                        f"ramp {ramp.name or ramp.attach_edge}: merge model {ramp.merge!r} needs the "
-                        "acceleration lane (lane 0 of the attach edge) to dead-end at the edge's end"
-                    )
-                nxt = compiled.getEdge(chain[i + 1])
-                if ramp.merge == "scripted":
-                    continue  # no patch: the runner drives the acceleration lane
-                patches += merge_patch_files(
-                    workdir / "patches",
-                    ramp.attach_edge,
-                    chain[i + 1],
-                    attach.getToNode().getID(),
-                    attach.getLaneNumber(),
-                    nxt.getLaneNumber(),
-                    ramp.merge,
-                    visibility_m=ramp.merge_visibility_m,
-                )
-            if patches:
-                bundle = osm_import(
-                    osm_file=net.osm_file,
-                    bbox=net.bbox,
-                    corridor_edges=tuple(net.corridor_edges),
-                    workdir=workdir,
-                    keep_edges=keep,
-                    patch_files=patches,
-                    internal_links=net.internal_links,
-                    netconvert_extra=tuple(net.netconvert_extra),
-                )
-                bundle = dataclasses.replace(bundle, patch_files=tuple(str(p) for p in patches))
+        bundle = _apply_merge_models(net, bundle, workdir, keep)
         if net.boundary is not None:
             # docs/CONTRACTS.md §2: on an OSM corridor the LAST corridor edge
             # plays the exit-buffer role and hosts the boundary schedule.
@@ -1706,6 +1819,12 @@ def run_micro(
                     "n_planned_exiting": sum(
                         1 for i in range(plan.n) if _route_exit(plan.route_of(i)) == k
                     ),
+                    # the guessed acceleration lane spilled past the attach
+                    # edge and a connection patch terminated it at that edge's
+                    # end (_apply_merge_models)
+                    "acceleration_lane_terminated": (
+                        r.kind == "on" and r.attach_edge in bundle.terminated_lanes
+                    ),
                 }
                 for k, r in enumerate(cfg.network.ramps)
             ]
@@ -1794,12 +1913,40 @@ def _kill_pool(ex: ProcessPoolExecutor) -> None:
     ex.shutdown(wait=False, cancel_futures=True)
 
 
+class ReplicatesAborted(RuntimeError):
+    """A completion guard stopped the pool before every replicate had run.
+
+    Raised by :func:`run_replicates` when its ``on_complete`` callback
+    returns False for a finished replicate: the remaining workers are killed
+    (:func:`_kill_pool`) and the outstanding seeds never run. The caller
+    decides what that means — ``scripts/corridor_battery.py`` writes a
+    partial artifact and exits non-zero rather than spending an hour of
+    cloud time on a configuration whose first replicate already showed it
+    was not simulating the demand it was given.
+
+    Attributes:
+        seed: Seed of the replicate whose result tripped the guard.
+        reason: The guard's own one-line explanation.
+        completed: Seeds that had finished when the pool was stopped.
+    """
+
+    def __init__(self, seed: int, reason: str, completed: Sequence[int]) -> None:
+        self.seed = seed
+        self.reason = reason
+        self.completed = list(completed)
+        super().__init__(
+            f"replicate pool stopped after seed {seed}: {reason} "
+            f"({len(self.completed)} replicate(s) completed)"
+        )
+
+
 def _map_replicates(
     worker: Callable[[Any], Any],
     payloads: Sequence[Any],
     seeds: Sequence[int],
     n_procs: int,
     timeout_s: float,
+    on_complete: Callable[[int, Any], str | None] | None = None,
 ) -> list[Any]:
     """Run ``worker(payload)`` per seed in a spawn pool, bounded and diagnosable.
 
@@ -1818,11 +1965,18 @@ def _map_replicates(
         n_procs: Pool size.
         timeout_s: Per-replicate wall-clock budget; the wait is that budget
             times the number of waves (``ceil(len(seeds)/n_procs)``).
+        on_complete: Called as ``on_complete(seed, result)`` the moment a
+            replicate finishes, in completion order. Returning None lets the
+            pool carry on; returning a string stops it, killing the workers
+            and raising :class:`ReplicatesAborted` with that string as the
+            reason. Exceptions from the callback propagate unchanged (the
+            pool is killed first).
 
     Returns:
         Worker results in seed order.
 
     Raises:
+        ReplicatesAborted: ``on_complete`` stopped the pool.
         RuntimeError: A worker process died, or a replicate raised. The
             message names the seed(s).
         TimeoutError: The budget elapsed with replicates outstanding; the
@@ -1861,6 +2015,10 @@ def _map_replicates(
                     raise RuntimeError(
                         f"micro replicate seed={seed} failed: {type(exc).__name__}"
                     ) from exc
+                if on_complete is not None:
+                    reason = on_complete(seed, results[seed])
+                    if reason is not None:
+                        raise ReplicatesAborted(seed, reason, sorted(results))
         except TimeoutError as exc:
             stuck = sorted(s for s in seeds if s not in results)
             raise TimeoutError(
@@ -1883,6 +2041,7 @@ def run_replicates(
     n_procs: int | None = None,
     *,
     timeout_s: float | None = None,
+    on_complete: Callable[[int, RunPaths], str | None] | None = None,
 ) -> list[RunPaths]:
     """Run ``cfg.replicates`` seeded replicates in a spawn process pool.
 
@@ -1904,11 +2063,17 @@ def run_replicates(
         n_procs: Pool size (default: ``min(cpu_count, replicates)``).
         timeout_s: Per-replicate wall-clock budget (default:
             :func:`replicate_timeout_s`, derived from ``sim.duration_s``).
+        on_complete: Optional guard called as ``on_complete(seed, paths)``
+            the moment each replicate finishes, in completion order — the
+            place to read the finished replicate's ``meta.json`` while the
+            rest of the batch is still running. Returning a string stops the
+            pool and raises :class:`ReplicatesAborted` with that reason.
 
     Returns:
         One :class:`RunPaths` per replicate, in seed order.
 
     Raises:
+        ReplicatesAborted: ``on_complete`` stopped the pool.
         RuntimeError: A worker died or a replicate raised (seed named).
         TimeoutError: The budget elapsed with replicates outstanding.
     """
@@ -1916,17 +2081,30 @@ def run_replicates(
     cfg_json = cfg.model_dump(mode="json")
     payloads = [(cfg_json, s, str(out_root)) for s in seeds]
     n_procs = n_procs or min(multiprocessing.cpu_count(), len(seeds))
+
+    def _guard(seed: int, result: Any) -> str | None:
+        a, b, c, d = result
+        return None if on_complete is None else on_complete(seed, _run_paths(a, b, c, d))
+
     raw = _map_replicates(
         _replicate_worker,
         payloads,
         seeds,
         n_procs,
         replicate_timeout_s(cfg) if timeout_s is None else timeout_s,
+        on_complete=None if on_complete is None else _guard,
     )
-    paths = [
-        RunPaths(run_dir=Path(a), trajectories=Path(b), edges=Path(c), meta=Path(d))
-        for a, b, c, d in raw
-    ]
+    paths = [_run_paths(*row) for row in raw]
     for p in paths:
         require_complete_run(p.run_dir)
     return paths
+
+
+def _run_paths(run_dir: str, trajectories: str, edges: str, meta: str) -> RunPaths:
+    """One worker result tuple as :class:`RunPaths`."""
+    return RunPaths(
+        run_dir=Path(run_dir),
+        trajectories=Path(trajectories),
+        edges=Path(edges),
+        meta=Path(meta),
+    )

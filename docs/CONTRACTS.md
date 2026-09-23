@@ -118,7 +118,8 @@ Pydantic v2 models, YAML round-trip via `ScenarioConfig.from_yaml(path)` /
   linear `x` and are not written to `trajectories.parquet` — a ramp vehicle
   appears once it is on a corridor edge — while its fuel is accounted
   throughout. `meta.json` gains a `ramps` list (`index, name, kind,
-  attach_edge, edges, n_planned, n_departed, n_planned_exiting`). Ramp demand
+  attach_edge, edges, n_planned, n_departed, n_planned_exiting,
+  acceleration_lane_terminated`). Ramp demand
   derived from observations is a calibration input: it does NOT set
   `seeded=True`.
 
@@ -192,8 +193,28 @@ Other blocks:
   and makes the end node a zipper junction. Both are netconvert patches
   (`microsim.networks.merge_patch_files`, `.edg.xml` / `.nod.xml` +
   `.con.xml`) applied in a second import pass; they need lane 0 to
-  dead-end at the attach edge's end node and exactly one lane to drop into
-  the next edge (checked at run time). `meta.json` lists `merge_models` and
+  dead-end at the attach edge's end node and either exactly one lane to drop
+  into the next edge or the same width when the lane was terminated there
+  (checked at run time). `meta.json` lists `merge_models` and
+  `net_patch_files`.
+- Acceleration-lane termination (2026-09-23, every merge model): with
+  `--ramps.guess` the guessed lane dead-ends at the attach edge only when
+  that edge is longer than `--ramps.ramp-length`; on a shorter edge it
+  spills into the following corridor edges and lane 0 continues, which every
+  merge model refuses. `microsim.runner._apply_merge_models` then follows
+  lane 0 downstream (`microsim.networks.accel_lane_end`) and, when it is a
+  spill — it dead-ends within `ACCEL_LANE_TAIL_MAX_M` (400 m) and feeds
+  nothing but the next corridor edge's lane 0 — terminates it at the attach
+  edge's end with a `<delete>` connection patch
+  (`microsim.networks.lane_end_patch_file`), lanes `1..n` untouched. The
+  patch names compiled edge ids, so it is applied by
+  `microsim.networks.patch_net` (a netconvert pass over the built network,
+  `--sumo-net-file`), not by an OSM re-import, which reads connection files
+  before ramp guessing has created those ids. Refused, with the lane counts
+  in the message: an attach edge with no added lane, a lane 0 that feeds an
+  exit (a weaving section's auxiliary lane) and a lane that runs on as an
+  added through lane. `meta.json` marks the ramps it fired on
+  (`ramps[].acceleration_lane_terminated`) and lists the patches in
   `net_patch_files`.
 - `RampSpec.meter: RampMeterSpec | None` (2026-09-06, on-ramps): ramp
   metering as a virtual signal `stop_line_m` before the end of the ramp's

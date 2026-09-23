@@ -4,6 +4,12 @@ One 60 s replicate of a 1 km corridor scored against a synthetic
 ``flowstate.observations/1`` artifact: the battery must write the per-seed
 files, the validation artifact and the report, and ``--criteria-only`` must
 re-score from what is on disk without touching the simulator.
+
+A second scenario asks a single lane for an inflow it cannot take, so the
+insertion guard (``--abort-if-departed-below``) must stop the pool on the
+first finished replicate, write a partial artifact that says so and exit
+``ABORT_EXIT_CODE`` instead of validating a run of demand that never entered
+the network.
 """
 
 from __future__ import annotations
@@ -39,7 +45,12 @@ def _load_script() -> ModuleType:
     return module
 
 
-def _scenario(path: Path) -> Path:
+def _scenario(
+    path: Path,
+    *,
+    inflow_veh_s: float = 0.2,
+    duration_s: float = DURATION_S,
+) -> Path:
     config: dict[str, Any] = {
         "name": "battery_smoke_corridor",
         "tier": "micro",
@@ -47,11 +58,11 @@ def _scenario(path: Path) -> Path:
             "kind": "corridor",
             "length_m": CORRIDOR_M,
             "lanes": 1,
-            "inflow": [[0.0, 0.2]],
+            "inflow": [[0.0, inflow_veh_s]],
         },
         "fleet": {"model": "IDM", "T": 1.4},
         "sim": {
-            "duration_s": DURATION_S,
+            "duration_s": duration_s,
             "step_length_s": 0.5,
             "warmup_s": 0.0,
             "output_hz": 1.0,
@@ -139,6 +150,17 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     rmspe_row = next(r for r in artifact["criteria"] if r["name"] == "speeds_rmspe")
     assert rmspe_row["evaluated"] is True
 
+    # Insertion: the counters the guard reads are recorded per seed, pooled
+    # into the artifact and stated in the report.
+    insertion = artifact["insertion"]
+    assert insertion["n_runs"] == 1
+    assert insertion["planned"] > 0
+    assert insertion["departed"] == seed_row["insertion"]["departed"]
+    assert insertion["mean_departed_fraction"] == pytest.approx(
+        seed_row["insertion"]["departed_fraction"]
+    )
+    assert seed_row["insertion"]["verdict"]
+
     run_dir = Path(seed_row["run_dir"])
     assert (run_dir / battery.METRICS_FILE).is_file()
     assert (run_dir / battery.SCORES_FILE).is_file()
@@ -147,6 +169,7 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     report = (report_dir / "report.md").read_text()
     assert "### Observed data" in report
     assert "synthetic" in report
+    assert "Insertion: " in report
     assert list(report_dir.glob("*.png"))
 
     # --criteria-only re-scores from disk and never re-simulates.
@@ -161,3 +184,56 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     assert rescored["metrics_ci"]["throughput_veh_h"]["mean"] == pytest.approx(
         artifact["metrics_ci"]["throughput_veh_h"]["mean"], rel=1e-9
     )
+
+
+#: Per-lane inflow no single lane can take (≈ 10× a lane's capacity), so most
+#: of the plan is still queued outside the network when the run ends.
+IMPOSSIBLE_INFLOW_VEH_S = 3.0
+ABORT_DURATION_S = 90.0
+
+
+def test_insertion_guard_aborts_on_the_first_replicate(tmp_path: Path) -> None:
+    """A starved first replicate stops the pool and writes a partial artifact."""
+    battery = _load_script()
+    scenario = _scenario(
+        tmp_path / "battery_starved_corridor.yaml",
+        inflow_veh_s=IMPOSSIBLE_INFLOW_VEH_S,
+        duration_s=ABORT_DURATION_S,
+    )
+    observations = _observations(tmp_path / "observations.json")
+    artifact_path = tmp_path / "artifacts" / "validation_starved.json"
+    report_dir = tmp_path / "report"
+    argv = [
+        "--scenario",
+        str(scenario),
+        "--observations",
+        str(observations),
+        "--replicates",
+        "2",
+        "--procs",
+        "2",
+        "--out",
+        str(tmp_path / "runs"),
+        "--artifact",
+        str(artifact_path),
+        "--report-dir",
+        str(report_dir),
+        "--ring-seeds",
+        "0",
+        "--abort-if-departed-below",
+        "0.9",
+    ]
+    assert battery.main(argv) == battery.ABORT_EXIT_CODE
+
+    artifact = json.loads(artifact_path.read_text())
+    assert artifact["aborted"] is True
+    assert artifact["criteria"] == [] and artifact["per_seed"] == []
+    abort = artifact["abort"]
+    assert abort["threshold_departed_fraction"] == pytest.approx(0.9)
+    assert abort["n_replicates_completed"] >= 1
+    assert "never departed" in abort["reason"]
+    first = abort["per_seed"][0]["insertion"]
+    assert first["departed"] < first["planned"]
+    assert first["departed_fraction"] < 0.9
+    # Nothing was validated, so no report was generated either.
+    assert not (report_dir / "report.md").exists()

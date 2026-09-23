@@ -17,6 +17,10 @@ Builders:
 * :func:`osm_import` — the ``osm_generic`` "any city" onboarding pipeline
   (CLAUDE.md §3.2.4): OSM extract (file or bbox download) → ``netconvert``
   with the highway typemap → optional corridor pruning to named edges.
+* :func:`patch_net` — a second ``netconvert`` pass over an already compiled
+  network, for patches that name edges netconvert generated itself (the
+  ``-AddedOnRampEdge`` pieces of ``--ramps.guess``; see
+  :func:`lane_end_patch_file`).
 
 All geometry is SI (meters). ``netconvert`` always receives
 ``--no-internal-links`` so vehicles never occupy internal junction lanes and
@@ -25,6 +29,7 @@ edge lengths partition the drivable length exactly.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 import os
 import subprocess
@@ -86,6 +91,10 @@ class NetBundle:
     exit_edge: str | None = None
     patch_files: tuple[str, ...] = ()
     """netconvert patch files applied on import (on-ramp merge models); empty otherwise."""
+    terminated_lanes: tuple[str, ...] = ()
+    """Attach edges whose guessed acceleration lane (lane 0) was terminated at
+    the edge's end by a connection patch (:func:`lane_end_patch_file`); empty
+    otherwise."""
 
     def linear_x(self, edge_id: str, lane_pos: float) -> float:
         """Map (edge id, position-on-edge [m]) → linear x [m].
@@ -475,18 +484,22 @@ def merge_patch_files(
     """netconvert patches for an on-ramp merge model (``RampSpec.merge``).
 
     The acceleration lane is lane 0 of ``attach_edge`` and dead-ends at
-    ``end_node``; the mainline lanes ``1..n_attach_lanes-1`` continue as
-    lanes ``0..n_next_lanes-1`` of ``next_edge`` (the netconvert default for
-    a right-side lane drop, verified on the I-24 replica).
+    ``end_node``; the mainline lanes ``1..n_attach_lanes-1`` continue into
+    ``next_edge`` shifted by ``shift = n_attach_lanes - n_next_lanes``, which
+    is one where the lane really drops at ``end_node`` (the netconvert default
+    for a right-side lane drop, verified on the I-24 replica) and zero where
+    the lane instead spilled into ``next_edge`` and was terminated at
+    ``end_node`` by :func:`lane_end_patch_file` — then ``next_edge`` keeps its
+    width and its lane 0 is the unfed remnant of the spill.
 
     * ``acceleration_lane`` — an edge patch marking lane 0 of the attach
       edge with SUMO's ``acceleration="true"`` (vehicles do not brake for
       the lane end).
-    * ``zipper`` — a connection patch adding lane 0 → ``next_edge`` lane 0
-      beside the mainline lane 1 → lane 0 (all other connections restated,
-      since explicit connections replace the guessed ones for the edge) and
-      a node patch making ``end_node`` a ``zipper`` junction, so the two
-      incoming lanes interleave.
+    * ``zipper`` — a connection patch adding lane 0 → ``next_edge`` lane
+      ``1 - shift`` beside the mainline lane 1 → the same lane (all other
+      connections restated, since explicit connections replace the guessed
+      ones for the edge) and a node patch making ``end_node`` a ``zipper``
+      junction, so the two incoming lanes interleave.
 
     Args:
         workdir: Directory the patch files are written into.
@@ -504,15 +517,17 @@ def merge_patch_files(
         The written patch paths (empty for ``"lane_change"`` and ``"scripted"``).
 
     Raises:
-        ValueError: Unknown merge model, or a lane layout that is not a
-            right-side lane drop of exactly one lane.
+        ValueError: Unknown merge model, or a lane layout that neither drops
+            exactly one lane into ``next_edge`` nor keeps its width.
     """
     if merge in ("lane_change", "scripted"):
         return []  # the scripted merge drives vehicles at run time on the unpatched net
-    if n_next_lanes != n_attach_lanes - 1:
+    shift = n_attach_lanes - n_next_lanes
+    if shift not in (0, 1):
         raise ValueError(
             f"merge model {merge!r} needs {attach_edge} ({n_attach_lanes} lanes) to drop exactly "
-            f"one lane into {next_edge} ({n_next_lanes} lanes)"
+            f"one lane into {next_edge} ({n_next_lanes} lanes), or to keep its width when the "
+            "acceleration lane was terminated at its end"
         )
     workdir.mkdir(parents=True, exist_ok=True)
     tag = f"merge_{attach_edge.replace('#', '_')}"
@@ -532,12 +547,13 @@ def merge_patch_files(
         vis = "" if visibility_m is None else f' visibility="{visibility_m:g}"'
         lines = ["<connections>"]
         lines.append(
-            f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="0" toLane="0"{vis}/>'
+            f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="0" '
+            f'toLane="{1 - shift}"{vis}/>'
         )
         for i in range(1, n_attach_lanes):
             lines.append(
-                f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="{i}" toLane="{i - 1}"'
-                f"{vis if i == 1 else ''}/>"
+                f'  <connection from="{attach_edge}" to="{next_edge}" fromLane="{i}" '
+                f'toLane="{i - shift}"{vis if i == 1 else ""}/>'
             )
         lines.append("</connections>")
         con.write_text("\n".join(lines) + "\n")
@@ -545,6 +561,256 @@ def merge_patch_files(
         nod.write_text(f'<nodes>\n  <node id="{end_node}" type="zipper"/>\n</nodes>\n')
         return [nod, con]
     raise ValueError(f"unknown merge model {merge!r}")
+
+
+#: How far past the attach edge a guessed acceleration lane may still run for
+#: :func:`accel_lane_end` to call it a taper that may be terminated early [m].
+#: ``--ramps.ramp-length`` (100 m by default, 250 m on the onboarded corridors)
+#: is spent on the attach edge first and spills into the following edges, so a
+#: tail of a few hundred metres is that spill; a lane that runs on beyond this
+#: is an added through lane (an interchange that widens the roadway), not a
+#: merge taper, and terminating it would delete real capacity.
+ACCEL_LANE_TAIL_MAX_M: Final[float] = 400.0
+
+
+@dataclass(frozen=True)
+class AccelLaneEnd:
+    """Where the acceleration lane starting on an attach edge stops.
+
+    Produced by :func:`accel_lane_end`. ``reason`` is empty when lane 0 of the
+    attach edge may be terminated at that edge's end (the lane either already
+    dead-ends there, or runs on through ``tail`` and dead-ends within
+    :data:`ACCEL_LANE_TAIL_MAX_M`); otherwise it states why it may not, in
+    words that name the edges involved.
+
+    Attributes:
+        tail: Corridor edges after the attach edge the lane runs through, in
+            driving order (empty when it dead-ends at the attach edge's end).
+        tail_length_m: Summed length of ``tail`` [m].
+        reason: Empty when the lane may be terminated, else the refusal.
+    """
+
+    tail: tuple[str, ...]
+    tail_length_m: float
+    reason: str
+
+    @property
+    def ok(self) -> bool:
+        """Whether lane 0 may be terminated at the attach edge's end."""
+        return not self.reason
+
+
+def accel_lane_end(
+    net: sumolib.net.Net,
+    chain: Sequence[str],
+    attach_edge: str,
+    max_tail_m: float = ACCEL_LANE_TAIL_MAX_M,
+) -> AccelLaneEnd:
+    """Follow lane 0 downstream from ``attach_edge`` and say where it ends.
+
+    ``--ramps.guess`` adds an acceleration lane of ``--ramps.ramp-length``
+    metres at a merge. When the attach edge is longer than that, netconvert
+    splits it and the lane dead-ends at the end of the ``-AddedOnRampEdge``
+    piece; when it is shorter, the lane covers the whole attach edge and
+    spills into the following corridor edges, dead-ending there instead. The
+    merge models (``RampSpec.merge``) need the lane to dead-end at the attach
+    edge's end, so the spill is deleted by a patch — but only when it really
+    is a spill. This walk decides that: it follows lane-0 → lane-0
+    connections along ``chain`` and reports
+
+    * ``reason=""`` — the lane dead-ends at the attach edge (``tail`` empty)
+      or after ``tail`` (a spill, safe to terminate early);
+    * a refusal naming the edges — the lane feeds something other than the
+      next corridor edge's lane 0 (a weaving section whose auxiliary lane
+      also serves an exit), or it runs on past ``max_tail_m`` (an added
+      through lane).
+
+    Args:
+        net: The compiled network (``sumolib.net.readNet``).
+        chain: Corridor edge ids in driving order, ramp splits expanded
+            (:func:`expand_ramp_splits`).
+        attach_edge: The on-ramp's attach edge; must appear in ``chain``.
+        max_tail_m: Longest tail still counted as a taper spill [m].
+
+    Returns:
+        The :class:`AccelLaneEnd` verdict.
+
+    Raises:
+        ValueError: ``attach_edge`` is not in ``chain``.
+    """
+    if attach_edge not in chain:
+        raise ValueError(f"attach edge {attach_edge!r} is not on the corridor chain")
+    i = chain.index(attach_edge)
+    edge = net.getEdge(attach_edge)
+    tail: list[str] = []
+    length = 0.0
+    while True:
+        outgoing = edge.getLanes()[0].getOutgoing()
+        if not outgoing:
+            return AccelLaneEnd(tuple(tail), length, "")
+        targets = sorted({c.getTo().getID() for c in outgoing})
+        nxt = chain[i + 1] if i + 1 < len(chain) else None
+        if nxt is None or targets != [nxt]:
+            return AccelLaneEnd(
+                tuple(tail),
+                length,
+                f"lane 0 of {edge.getID()} feeds {targets} and not only the next corridor edge "
+                f"({nxt}): the lane doubles as an exit or branch lane (a weaving section), so "
+                "terminating it would strand that movement",
+            )
+        to_lanes = sorted({c.getToLane().getIndex() for c in outgoing})
+        if to_lanes != [0]:
+            return AccelLaneEnd(
+                tuple(tail),
+                length,
+                f"lane 0 of {edge.getID()} feeds lanes {to_lanes} of {nxt}, not its lane 0: "
+                "the lane is not a right-side taper",
+            )
+        edge = net.getEdge(nxt)
+        i += 1
+        tail.append(nxt)
+        length += float(edge.getLength())
+        if length > max_tail_m:
+            return AccelLaneEnd(
+                tuple(tail),
+                length,
+                f"lane 0 runs on through {list(tail)} for {length:.0f} m past {attach_edge} "
+                f"(more than {max_tail_m:.0f} m): this is an added through lane, not a merge "
+                "taper, and terminating it would delete real capacity",
+            )
+
+
+def lane_end_patch_file(
+    workdir: Path, attach_edge: str, next_edge: str, to_lanes: Sequence[int] = (0,)
+) -> Path:
+    """Write the connection patch that terminates lane 0 of ``attach_edge``.
+
+    ``<delete>`` elements remove lane 0's outgoing connections and nothing
+    else, so the lane dead-ends at the edge's end while lanes ``1..n`` keep
+    the connections netconvert guessed. The patch names a compiled edge id
+    (possibly a ``-AddedOnRampEdge`` piece netconvert itself created), so it
+    must be applied to the **compiled** network with :func:`patch_net`, not on
+    an OSM re-import: connection files are read before ramp guessing runs, and
+    netconvert refuses a connection naming an edge that does not exist yet.
+
+    Args:
+        workdir: Directory the patch file is written into.
+        attach_edge: Edge whose lane 0 is terminated.
+        next_edge: The corridor edge its lane 0 currently connects to.
+        to_lanes: Lane indices of ``next_edge`` that lane 0 connects to.
+
+    Returns:
+        The written ``.con.xml`` path.
+    """
+    workdir.mkdir(parents=True, exist_ok=True)
+    path = workdir / f"accel_end_{attach_edge.replace('#', '_')}.con.xml"
+    lines = ["<connections>"]
+    for lane in to_lanes:
+        lines.append(
+            f'  <delete from="{attach_edge}" to="{next_edge}" fromLane="0" toLane="{lane}"/>'
+        )
+    lines.append("</connections>")
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def _patch_args(patch_files: Sequence[Path]) -> list[str]:
+    """netconvert flags loading plain-XML patches, routed by file suffix.
+
+    Patches of the same kind are passed as one comma-separated value:
+    netconvert refuses a repeated option ("a value for the option
+    'connection-files' was already set"), which a corridor with two patched
+    merges would otherwise produce.
+
+    Args:
+        patch_files: ``*.nod.xml`` / ``*.edg.xml`` / ``*.con.xml`` patches.
+
+    Returns:
+        The flag/value pairs to append to a netconvert command line.
+
+    Raises:
+        ValueError: A patch file has none of the three suffixes.
+    """
+    by_flag: dict[str, list[str]] = {}
+    for patch in patch_files:
+        name = Path(patch).name
+        flag = {
+            ".nod.xml": "--node-files",
+            ".edg.xml": "--edge-files",
+            ".con.xml": "--connection-files",
+        }.get(name[name.find(".") :] if name.count(".") >= 2 else "", None)
+        if flag is None:
+            raise ValueError(f"patch file {patch} must end in .nod.xml, .edg.xml or .con.xml")
+        by_flag.setdefault(flag, []).append(str(patch))
+    args: list[str] = []
+    for flag, paths in by_flag.items():
+        args += [flag, ",".join(paths)]
+    return args
+
+
+def patch_net(
+    bundle: NetBundle,
+    patch_files: Sequence[Path],
+    *,
+    internal_links: bool = False,
+    stem: str = "patched",
+) -> NetBundle:
+    """Re-run netconvert over a **compiled** network with plain-XML patches.
+
+    ``netconvert -s <net> --connection-files …`` edits the network that was
+    built, so a patch may name edges netconvert generated itself (the
+    ``-AddedOnRampEdge`` pieces of ``--ramps.guess``); an OSM re-import cannot,
+    because its patches are read before those edges exist. The edge set must
+    survive unchanged — the corridor order, entry/exit roles and ramp
+    resolution of ``bundle`` all refer to it — and lengths/offsets are read
+    back from the patched network.
+
+    Args:
+        bundle: The network to patch (any builder).
+        patch_files: Patches routed by suffix (see :func:`_patch_args`).
+        internal_links: Keep SUMO's internal junction lanes, as on the import
+            that produced ``bundle``.
+        stem: Basename of the patched network inside ``bundle.workdir``.
+
+    Returns:
+        A bundle pointing at the patched network, with ``patch_files``
+        extended by the applied patches.
+
+    Raises:
+        RuntimeError: netconvert failed, or the patch changed the edge set.
+        ValueError: A patch file has an unroutable suffix.
+    """
+    out = bundle.workdir / f"{stem}.net.xml"
+    args = [
+        "--sumo-net-file",
+        str(bundle.net_path),
+        "-o",
+        str(out),
+        *([] if internal_links else ["--no-internal-links"]),
+        "--no-turnarounds",
+        *_patch_args(patch_files),
+    ]
+    _netconvert(args)
+    parsed = sumolib.net.readNet(str(out))
+    by_id = {e.getID(): e for e in parsed.getEdges(withInternal=False)}
+    missing = [e for e in bundle.edge_ids if e not in by_id]
+    if missing:
+        raise RuntimeError(
+            f"netconvert patches {[Path(p).name for p in patch_files]} dropped corridor edges "
+            f"{missing} from the network"
+        )
+    lengths = [float(by_id[e].getLength()) for e in bundle.edge_ids]
+    offsets: list[float] = [0.0]
+    for elen in lengths[:-1]:
+        offsets.append(offsets[-1] + elen)
+    return dataclasses.replace(
+        bundle,
+        net_path=out,
+        edge_lengths=tuple(lengths),
+        offsets=tuple(offsets),
+        total_length_m=float(sum(lengths)),
+        patch_files=bundle.patch_files + tuple(str(p) for p in patch_files),
+    )
 
 
 def osm_import(
@@ -673,16 +939,7 @@ def osm_import(
     typemap = _osm_typemap()
     if typemap is not None:
         args += ["--type-files", str(typemap)]
-    for patch in patch_files:
-        name = Path(patch).name
-        flag = {
-            ".nod.xml": "--node-files",
-            ".edg.xml": "--edge-files",
-            ".con.xml": "--connection-files",
-        }.get(name[name.find(".") :] if name.count(".") >= 2 else "", None)
-        if flag is None:
-            raise ValueError(f"patch file {patch} must end in .nod.xml, .edg.xml or .con.xml")
-        args += [flag, str(patch)]
+    args += _patch_args(patch_files)
     if corridor_edges:
         # Pruning happens at load time, i.e. at raw-OSM-way granularity and
         # BEFORE --geometry.remove joins edges; the named corridor edges must

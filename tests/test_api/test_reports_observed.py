@@ -132,6 +132,9 @@ def test_report_with_observations_evaluates_geh_and_rmspe(
     assert md.status_code == 200
     assert "### Observed data" in md.text
     assert "synthetic detectors" in md.text
+    # The staged runs carry insertion counters, so the API report states how
+    # much of the configured demand actually entered the network.
+    assert "Insertion: " in md.text
     # Both rows are evaluated (the "Evaluated" column reads yes), from computed
     # comparisons rather than caller-supplied numbers.
     assert "| yes |" in _criterion_row(md.text, "link_flows_geh")

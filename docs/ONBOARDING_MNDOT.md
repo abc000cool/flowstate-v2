@@ -200,6 +200,17 @@ attach to short edges whose added lane runs on into the next edge. What would
 be needed next: a merge model that does not need a dead-ending lane (or a
 network patch that ends the added lane), and a Minnesota driver population.
 
+A last attempt the same night (03:00–03:40): the engine can now end an added
+acceleration lane with a connection patch so the gap-acceptance (`scripted`)
+merge applies to entrances on short attach edges; on the peak slice it took
+four of seven entrances, and the three it refused — Ruth St (the added lane
+feeds the White Bear Ave exit: a weave), T.H.61 NB (a 1,071 m added lane
+that runs on as a through lane) and T.H.52 (the lane feeds both lanes of an
+exit piece) — are exactly where the jam starts. Merge waits fell with a
+stronger gap acceptance (7.2 → 4.4 s) but the downstream speeds did not move
+(3.4, 1.0, 1.7 m/s at the last three stations). The next model is a weave
+section, not a merge.
+
 Cost of both rounds: about 2.2 hours of n2-standard-32, ≈ $3.3.
 
 ## 7. What needed hand work (product backlog)

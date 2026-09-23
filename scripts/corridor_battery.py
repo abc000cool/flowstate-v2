@@ -19,6 +19,17 @@ and the observations artifact describe. The comparison conventions live in
 :mod:`validation.observed` and :mod:`validation.battery`, so this script and
 ``api.jobs.report_job`` compute the same numbers.
 
+**Insertion guard.** Every replicate's realized insertion
+(:func:`validation.battery.insertion_stats`: planned vs departed vehicles,
+per on-ramp) is printed the moment that replicate finishes, recorded per seed
+and pooled into the artifact's ``insertion`` block. A battery whose vehicles
+never departed is not a congested corridor but a different scenario, and two
+20-seed cloud batteries (2026-09-22) each burned an hour before that was
+visible. ``--abort-if-departed-below F`` (default 0.0 = off) makes it cheap:
+when the FIRST replicate to finish departed less than fraction ``F`` of its
+plan, the remaining workers are killed, a partial artifact stating the abort
+is written and the process exits 4.
+
 Per-seed results are written into each replicate directory (``metrics.json``,
 ``observed_scores.json``) so ``--criteria-only`` can re-score a finished
 battery — a threshold profile change, a fresh ring benchmark — without
@@ -51,9 +62,13 @@ from typing import Any
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
 from microsim.demand_adapter import corridor_x_offset_m
-from microsim.runner import _versions, run_replicates
+from microsim.runner import ReplicatesAborted, RunPaths, _versions, run_replicates
 from microsim.scenarios import load_scenario
 from validation.battery import (
+    InsertionStats,
+    aggregate_insertion,
+    insertion_stats,
+    load_meta,
     mean_finite,
     replicate_wave_speed_kmh,
     score_replicate,
@@ -69,6 +84,110 @@ ARTIFACT_SCHEMA = "flowstate.corridor_validation/1"
 #: Per-replicate files this script writes beside the run artifacts.
 METRICS_FILE = "metrics.json"
 SCORES_FILE = "observed_scores.json"
+
+#: Exit code of an insertion abort (``--abort-if-departed-below``).
+ABORT_EXIT_CODE = 4
+
+
+class InsertionGuard:
+    """Prints each finished replicate's insertion; optionally aborts the pool.
+
+    Passed to ``microsim.runner.run_replicates`` as its ``on_complete``
+    callback, so it runs in the parent the moment a replicate finishes —
+    while the rest of the batch is still simulating. The abort test is made
+    on the FIRST replicate to finish only: that is the earliest honest
+    evidence about a configuration, and it is the whole point of the guard
+    (the later replicates are the hour this saves).
+
+    Attributes:
+        threshold: Departed fraction the first replicate must reach; 0.0
+            disables the abort and leaves the printing.
+        stats: The finished replicates' ``(seed, stats)``, in completion
+            order — the first entry is the one the abort test was made on.
+    """
+
+    def __init__(self, threshold: float) -> None:
+        """Args:
+        threshold: ``--abort-if-departed-below`` (0.0 = print only).
+        """
+        self.threshold = float(threshold)
+        self.stats: list[tuple[int, InsertionStats]] = []
+
+    def __call__(self, seed: int, paths: RunPaths) -> str | None:
+        """Report one finished replicate; return an abort reason or None."""
+        stats = insertion_stats(load_meta(paths.run_dir))
+        self.stats.append((seed, stats))
+        print(
+            f"    seed {seed}: departed {stats.departed}/{stats.planned} "
+            f"({stats.departed_fraction:.3f}), arrived {stats.arrived} — {stats.verdict}",
+            flush=True,
+        )
+        if self.threshold <= 0.0 or len(self.stats) > 1:
+            return None
+        if stats.departed_fraction >= self.threshold or not math.isfinite(stats.departed_fraction):
+            return None
+        return (
+            f"{stats.verdict} (departed fraction {stats.departed_fraction:.3f} < "
+            f"--abort-if-departed-below {self.threshold:.3f})"
+        )
+
+
+def abort_artifact(
+    *,
+    scenario: str,
+    cfg: ScenarioConfig,
+    seeds: Sequence[int],
+    guard: InsertionGuard,
+    reason: str,
+    observations_path: str,
+    wall_s: float,
+) -> dict[str, Any]:
+    """Partial artifact for a battery stopped by the insertion guard.
+
+    It carries no criteria and no metrics: nothing was validated, and a
+    validation artifact that implied otherwise would be exactly the
+    unearned claim CLAUDE.md §0.1 forbids.
+
+    Args:
+        scenario: Scenario name or path as the caller gave it.
+        cfg: The scenario configuration (for the config hash).
+        seeds: The seeds that were planned.
+        guard: The guard, holding the replicates that did finish.
+        reason: The guard's abort reason.
+        observations_path: Observations artifact the battery would have used.
+        wall_s: Wall-clock seconds spent before the abort.
+
+    Returns:
+        The artifact dict.
+    """
+    return {
+        "schema": ARTIFACT_SCHEMA,
+        "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "scenario": scenario,
+        "config_hash": config_hash(cfg),
+        "seeds": list(seeds),
+        "replicates": len(seeds),
+        "wall_s": round(wall_s, 1),
+        "versions": _versions(),
+        "observations_path": observations_path,
+        "aborted": True,
+        "abort": {
+            "reason": reason,
+            "threshold_departed_fraction": guard.threshold,
+            "n_replicates_completed": len(guard.stats),
+            "per_seed": [
+                {"seed": seed, "insertion": stats.to_dict()} for seed, stats in guard.stats
+            ],
+        },
+        "criteria": [],
+        "per_seed": [],
+        "notes": [
+            "Battery aborted by --abort-if-departed-below after the first replicate "
+            "finished; no criterion was evaluated and no metric was computed.",
+            "The replicates listed under abort.per_seed are the only ones that ran; "
+            "the remaining seeds were never simulated.",
+        ],
+    }
 
 
 def _json_safe(obj: object) -> object:
@@ -113,7 +232,7 @@ def analyse_seed(
     x_ref: float,
     span: tuple[float, float],
     x_offset_m: float,
-) -> tuple[Metrics, ObservedScores, float]:
+) -> tuple[Metrics, ObservedScores, float, InsertionStats]:
     """Measure one replicate and write its per-seed files.
 
     Args:
@@ -125,11 +244,12 @@ def analyse_seed(
         x_offset_m: Simulation ``x`` of the observed origin [m].
 
     Returns:
-        ``(metrics, scores, wave_speed_kmh)``.
+        ``(metrics, scores, wave_speed_kmh, insertion)``.
     """
     metrics = compute_metrics(run_dir, x_ref=x_ref, span=span)
     scores = score_replicate(run_dir, observed, x_offset_m=x_offset_m)
     wave_speed = replicate_wave_speed_kmh(run_dir, profile.wave_detector)
+    insertion = insertion_stats(load_meta(run_dir))
     (run_dir / METRICS_FILE).write_text(
         json.dumps(
             _json_safe(
@@ -139,6 +259,7 @@ def analyse_seed(
                     "criterion_detector": profile.wave_detector.name,
                     "x_ref_m": x_ref,
                     "span_m": list(span),
+                    "insertion": insertion.to_dict(),
                 }
             ),
             indent=2,
@@ -148,11 +269,16 @@ def analyse_seed(
     (run_dir / SCORES_FILE).write_text(
         json.dumps(_json_safe(scores.to_dict()), indent=2, allow_nan=False)
     )
-    return metrics, scores, wave_speed
+    return metrics, scores, wave_speed, insertion
 
 
-def load_seed(run_dir: Path) -> tuple[Metrics, ObservedScores, float]:
+def load_seed(run_dir: Path) -> tuple[Metrics, ObservedScores, float, InsertionStats]:
     """Re-read one replicate's stored per-seed files (``--criteria-only``).
+
+    The insertion stats are re-read from ``meta.json`` rather than from the
+    stored ``metrics.json`` block: ``meta.json`` is the completion marker and
+    is never pruned, so there is one source for these counters and no way for
+    the stored copy to be the one a reader sees.
 
     Raises:
         FileNotFoundError: The replicate was never analysed.
@@ -169,7 +295,8 @@ def load_seed(run_dir: Path) -> tuple[Metrics, ObservedScores, float]:
             raw[key] = math.nan
     wave = stored.get("criterion_wave_speed_kmh")
     scores = ObservedScores.from_dict(json.loads((run_dir / SCORES_FILE).read_text()))
-    return Metrics(**raw), scores, math.nan if wave is None else float(wave)
+    insertion = insertion_stats(load_meta(run_dir))
+    return Metrics(**raw), scores, math.nan if wave is None else float(wave), insertion
 
 
 def ring_block(n_seeds: int, out_dir: Path) -> dict[str, Any] | None:
@@ -215,6 +342,7 @@ def build_artifact(
     metrics_list: Sequence[Metrics],
     scores_list: Sequence[ObservedScores],
     wave_speeds: Sequence[float],
+    insertion_list: Sequence[InsertionStats],
     observed: ObservedCorridor,
     observations_path: str,
     criteria_rows: Sequence[CriteriaResult],
@@ -236,11 +364,13 @@ def build_artifact(
             "n_speed_cells": s.n_speed_cells,
             "criterion_wave_speed_kmh": wave,
             "metrics": asdict(m),
+            "insertion": ins.to_dict(),
         }
-        for seed, run_dir, s, wave, m in zip(
-            seeds, dirs, scores_list, wave_speeds, metrics_list, strict=True
+        for seed, run_dir, s, wave, m, ins in zip(
+            seeds, dirs, scores_list, wave_speeds, metrics_list, insertion_list, strict=True
         )
     ]
+    insertion = aggregate_insertion(list(insertion_list))
     _, _, _, _, provenance = pool_scores(observed, list(scores_list), path=observations_path)
     return {
         "schema": ARTIFACT_SCHEMA,
@@ -256,6 +386,11 @@ def build_artifact(
         "criteria": [asdict(row) for row in criteria_rows],
         "observations": provenance.to_dict(),
         "x_offset_m": x_offset_m,
+        # How much of the configured demand actually entered the network. A
+        # battery that inserted a fraction of its plan simulated a different
+        # scenario from the one it was asked for, so this block sits beside
+        # the criteria rather than inside a per-seed table nobody opens.
+        "insertion": None if insertion is None else insertion.to_dict(),
         "geh": {
             "pooled_values": [round(g, 4) for g in pooled_geh],
             "n_comparisons": len(pooled_geh),
@@ -309,6 +444,9 @@ def build_artifact(
             "The wave_speed row is measured with the profile's own detector on its own "
             "bins; validation.metrics.wave_speed_kmh in metrics_ci is the standard "
             "detector's separate diagnostic.",
+            "The insertion block counts the vehicles the runs actually put on the "
+            "network against their demand plan; a mean departed fraction well under 1 "
+            "means the metrics above describe less demand than was configured.",
             (
                 "Ring rows evaluated on a fresh ring benchmark."
                 if ring is not None
@@ -369,6 +507,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="keep every replicate's trajectories.parquet (default: only the first seed's)",
     )
     ap.add_argument(
+        "--abort-if-departed-below",
+        type=float,
+        default=0.0,
+        metavar="F",
+        help=f"stop the battery (exit {ABORT_EXIT_CODE}) when the first replicate to "
+        "finish departed less than fraction F of its planned vehicles; 0.0 (the "
+        "default) only prints the per-replicate insertion verdict",
+    )
+    ap.add_argument(
         "--ring-seeds",
         type=int,
         default=0,
@@ -403,21 +550,58 @@ def main(argv: Sequence[str] | None = None) -> int:
     span = (x_refs[0] + x_offset, x_refs[-1] + x_offset)
     x_ref = x_refs[len(x_refs) // 2] + x_offset
 
+    guard = InsertionGuard(args.abort_if_departed_below)
     if not args.criteria_only:
         print(
             f"{args.scenario}: {args.replicates} replicate(s), config {config_hash(cfg)} ...",
             flush=True,
         )
-        run_replicates(cfg, out_root, n_procs=max(1, min(args.procs, args.replicates)))
+        try:
+            run_replicates(
+                cfg,
+                out_root,
+                n_procs=max(1, min(args.procs, args.replicates)),
+                on_complete=guard,
+            )
+        except ReplicatesAborted as exc:
+            artifact_path = Path(args.artifact)
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text(
+                json.dumps(
+                    _json_safe(
+                        abort_artifact(
+                            scenario=str(args.scenario),
+                            cfg=cfg,
+                            seeds=seeds,
+                            guard=guard,
+                            reason=exc.reason,
+                            observations_path=str(args.observations),
+                            wall_s=time.perf_counter() - t0,
+                        )
+                    ),
+                    indent=2,
+                    allow_nan=False,
+                )
+            )
+            print(
+                f"ABORTED after {len(guard.stats)} replicate(s): {exc.reason}. "
+                f"Nothing was validated; partial artifact -> {artifact_path}",
+                flush=True,
+            )
+            return ABORT_EXIT_CODE
 
     metrics_list: list[Metrics] = []
     scores_list: list[ObservedScores] = []
     wave_speeds: list[float] = []
-    for run_dir in dirs:
+    insertion_list: list[InsertionStats] = []
+    for seed, run_dir in zip(seeds, dirs, strict=True):
         if args.criteria_only:
-            metrics, scores, wave = load_seed(run_dir)
+            metrics, scores, wave, insertion = load_seed(run_dir)
+            # Outside --criteria-only the guard already printed this line the
+            # moment the replicate finished, which is the point of it.
+            print(f"    seed {seed}: {insertion.verdict}", flush=True)
         else:
-            metrics, scores, wave = analyse_seed(
+            metrics, scores, wave, insertion = analyse_seed(
                 run_dir,
                 observed,
                 profile=profile,
@@ -428,6 +612,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         metrics_list.append(metrics)
         scores_list.append(scores)
         wave_speeds.append(wave)
+        insertion_list.append(insertion)
 
     ring = ring_block(args.ring_seeds, out_root / "ring")
     pooled_geh, mean_rmspe, sim_speeds, obs_speeds, provenance = pool_scores(
@@ -480,6 +665,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         metrics_list=metrics_list,
         scores_list=scores_list,
         wave_speeds=wave_speeds,
+        insertion_list=insertion_list,
         observed=observed,
         observations_path=str(args.observations),
         criteria_rows=criteria_rows,
@@ -497,6 +683,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if deleted:
             print(f"pruned {deleted} trajectory file(s); the first seed's is kept", flush=True)
 
+    summary = aggregate_insertion(insertion_list)
+    if summary is not None:
+        print(
+            f"    {'insertion':<18} {summary.verdict:<14} "
+            f"departed {summary.departed}/{summary.planned} "
+            f"(mean {summary.mean_departed_fraction:.3f}, lowest "
+            f"{summary.min_departed_fraction:.3f})",
+            flush=True,
+        )
     for row in criteria_rows:
         state = ("PASS" if row.passed else "FAIL") if row.evaluated else "NOT EVALUATED"
         print(f"    {row.name:<18} {state:<14} {row.value}  ({row.threshold})", flush=True)

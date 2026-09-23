@@ -12,6 +12,10 @@ Generated: {{ created_at }}
 Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
 
 {{ measurement_note }}
+{% if insertion_note %}
+
+{{ insertion_note }}
+{% endif %}
 
 | Run | Config hash | Seed | Tier | seeded | Wall time [s] |
 |---|---|---|---|---|---|

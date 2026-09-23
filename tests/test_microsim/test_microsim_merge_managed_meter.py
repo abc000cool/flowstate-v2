@@ -8,10 +8,18 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import sumolib
 
 from flowstate_core.config import RampSpec, ScenarioConfig, config_hash
 from microsim import run_micro
-from microsim.networks import merge_patch_files
+from microsim.networks import (
+    AccelLaneEnd,
+    accel_lane_end,
+    lane_end_patch_file,
+    merge_patch_files,
+    osm_import,
+    patch_net,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -89,8 +97,16 @@ class TestMergePatches:
         assert lines[0].endswith('fromLane="0" toLane="0" visibility="250"/>')
         assert lines[1].endswith('fromLane="1" toLane="0" visibility="250"/>')
         assert "visibility" not in lines[2]
+        # a terminated spill keeps the next edge's width: lanes go through
+        # unshifted and the ramp lane zippers into lane 1
+        nod0, con0 = merge_patch_files(tmp_path, "a", "b", "n", 3, 3, "zipper")
+        assert 'type="zipper"' in nod0.read_text()
+        lines0 = [ln for ln in con0.read_text().splitlines() if "<connection " in ln]
+        assert lines0[0].endswith('fromLane="0" toLane="1"/>')
+        assert lines0[1].endswith('fromLane="1" toLane="1"/>')
+        assert lines0[2].endswith('fromLane="2" toLane="2"/>')
         with pytest.raises(ValueError, match="drop exactly one lane"):
-            merge_patch_files(tmp_path, "a", "b", "n", 3, 3, "zipper")
+            merge_patch_files(tmp_path, "a", "b", "n", 3, 1, "zipper")
         with pytest.raises(ValueError, match="unknown merge"):
             merge_patch_files(tmp_path, "a", "b", "n", 3, 2, "teleport")
 
@@ -279,3 +295,211 @@ class TestScriptedMerge:
         (sm,) = meta["scripted_merges"]
         assert sm["params"]["force_after_s"] == 0.0
         assert sm["n_forced"] == sm["n_changed"] > 0  # every merge was a forced one
+
+
+# --- A short attach edge: the guessed acceleration lane spills past it ------
+#
+# ``--ramps.guess`` adds an acceleration lane ``--ramps.ramp-length`` metres
+# long at a merge. Way 102 below is ~153 m, shorter than that, so the lane
+# covers the whole attach edge (3 lanes → 4) and the ~100 m that is left over
+# splits the next way into a 4-lane ``103-AddedOnRampEdge`` piece and the
+# 3-lane rest. Lane 0 of the attach edge therefore does NOT dead-end at that
+# edge's end, which is what every merge model needs — the shape of every short
+# entrance of the MnDOT corridor (docs/ONBOARDING_MNDOT.md §6).
+#: Longitudes of the fixture's mainline nodes (0.006° ≈ 510 m at 40° N; the
+#: third gap is deliberately ~153 m so way 102 is shorter than the ramp
+#: length).
+SPILL_LONS: tuple[float, ...] = (
+    -96.0000,
+    -95.9940,
+    -95.9880,
+    -95.98624,
+    -95.9800,
+    -95.9740,
+)
+SPILL_CORRIDOR: tuple[str, ...] = ("100", "101", "102", "103", "104")
+SPILL_EXTRA: tuple[str, ...] = ("--ramps.guess", "--ramps.ramp-length", "250")
+
+
+def _spill_osm() -> str:
+    """The fixture OSM: a 3-lane mainline with an on-ramp at a short way."""
+
+    def way(way_id: int, refs: list[int], highway: str, lanes: int) -> str:
+        nds = "".join(f'<nd ref="{r}"/>' for r in refs)
+        return (
+            f'  <way id="{way_id}">\n    {nds}\n'
+            f'    <tag k="highway" v="{highway}"/>\n'
+            '    <tag k="oneway" v="yes"/>\n'
+            f'    <tag k="lanes" v="{lanes}"/>\n'
+            '    <tag k="maxspeed" v="70 mph"/>\n  </way>'
+        )
+
+    nodes = [
+        f'  <node id="{i}" lat="40.0000" lon="{lon:.5f}"/>' for i, lon in enumerate(SPILL_LONS, 1)
+    ]
+    # the ramp approaches at a shallow angle, like real gore geometry
+    nodes.append('  <node id="10" lat="39.9988" lon="-95.99300"/>')
+    ways = [
+        way(100, [1, 2], "motorway", 3),
+        way(101, [2, 3], "motorway", 3),
+        way(102, [3, 4], "motorway", 3),  # ~153 m: shorter than the ramp length
+        way(103, [4, 5], "motorway", 3),
+        way(104, [5, 6], "motorway", 3),
+        way(200, [10, 3], "motorway_link", 1),  # on-ramp joining at node 3
+    ]
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<osm version="0.6" generator="hand-written-test-fixture">\n'
+        + "\n".join(nodes)
+        + "\n"
+        + "\n".join(ways)
+        + "\n</osm>\n"
+    )
+
+
+@pytest.fixture(scope="module")
+def spill_osm(tmp_path_factory):
+    p = tmp_path_factory.mktemp("spill") / "spill.osm"
+    p.write_text(_spill_osm())
+    return p
+
+
+def _spill_scenario(
+    osm_path: Path,
+    merge: str,
+    *,
+    internal_links: bool = False,
+    guess: bool = True,
+    duration_s: float = 60.0,
+) -> ScenarioConfig:
+    """A scenario on the spill fixture with one on-ramp carrying ``merge``."""
+    network: dict = {
+        "kind": "osm",
+        "osm_file": str(osm_path),
+        "corridor_edges": list(SPILL_CORRIDOR),
+        "inflow": [[0.0, 0.5]],
+        "internal_links": internal_links,
+        "ramps": [
+            {
+                "kind": "on",
+                "name": "spill on-ramp",
+                "edges": ["200"],
+                "attach_edge": "102",
+                "inflow": [[0.0, 0.25]],
+                "merge": merge,
+            }
+        ],
+    }
+    if guess:
+        network["netconvert_extra"] = list(SPILL_EXTRA)
+    return ScenarioConfig.model_validate(
+        {"name": f"spill_{merge}", "network": network, "sim": {"duration_s": duration_s}, "seed": 3}
+    )
+
+
+def _lane_connections(edge) -> list[list[tuple[str, int]]]:
+    """Per-lane outgoing connections as ``(target edge id, target lane)``."""
+    return [
+        [(c.getTo().getID(), c.getToLane().getIndex()) for c in lane.getOutgoing()]
+        for lane in edge.getLanes()
+    ]
+
+
+class TestSpilledAccelerationLane:
+    """Terminating an acceleration lane that runs past its attach edge."""
+
+    def test_walk_reports_the_spill_and_its_limits(self, spill_osm, tmp_path):
+        bundle = osm_import(
+            osm_file=spill_osm,
+            corridor_edges=SPILL_CORRIDOR,
+            keep_edges=("200",),
+            workdir=tmp_path / "raw",
+            netconvert_extra=SPILL_EXTRA,
+        )
+        assert bundle.edge_ids == ("100", "101", "102", "103-AddedOnRampEdge", "103", "104")
+        net = sumolib.net.readNet(str(bundle.net_path))
+        chain = list(bundle.edge_ids)
+        assert net.getEdge("102").getLaneNumber() == 4
+        assert _lane_connections(net.getEdge("102"))[0] == [("103-AddedOnRampEdge", 0)]
+
+        end = accel_lane_end(net, chain, "102")
+        assert end.ok and end.reason == ""
+        assert end.tail == ("103-AddedOnRampEdge",) and 90.0 < end.tail_length_m < 120.0
+        # a lane that already dead-ends has nothing after it
+        assert accel_lane_end(net, chain, "103-AddedOnRampEdge") == AccelLaneEnd((), 0.0, "")
+        # too long a tail is an added through lane, not a taper
+        tight = accel_lane_end(net, chain, "102", max_tail_m=10.0)
+        assert not tight.ok and "added through lane" in tight.reason
+        # a lane feeding anything but the next corridor edge is a weave
+        weave = accel_lane_end(net, ["100", "101", "102"], "102")
+        assert not weave.ok and "weaving section" in weave.reason
+        with pytest.raises(ValueError, match="not on the corridor chain"):
+            accel_lane_end(net, chain, "200")
+
+    def test_scripted_merge_terminates_the_lane_and_runs(self, spill_osm, tmp_path):
+        cfg = _spill_scenario(spill_osm, "scripted")
+        paths = run_micro(cfg, 3, tmp_path / "scripted")
+        meta = json.loads(paths.meta.read_text())
+        assert [Path(p).name for p in meta["net_patch_files"]] == ["accel_end_102.con.xml"]
+        (ramp_meta,) = meta["ramps"]
+        assert ramp_meta["acceleration_lane_terminated"] is True
+        assert ramp_meta["n_departed"] > 0, "no ramp vehicle departed"
+        (sm,) = meta["scripted_merges"]
+        assert sm["attach_edge"] == "102" and sm["n_entered"] > 0 and sm["n_changed"] > 0
+        assert meta["n_collisions"] == 0
+
+        net = sumolib.net.readNet(str(paths.run_dir / "net" / "osm_accel_end.net.xml"))
+        attach = net.getEdge("102")
+        assert attach.getLaneNumber() == 4
+        conns = _lane_connections(attach)
+        assert conns[0] == [], "the acceleration lane still continues"
+        assert conns[1:] == [[("103-AddedOnRampEdge", i)] for i in (1, 2, 3)]
+        # the ramp still feeds the acceleration lane
+        assert _lane_connections(net.getEdge("200"))[0] == [("102", 0)]
+
+    def test_zipper_merge_on_the_terminated_lane(self, spill_osm, tmp_path):
+        cfg = _spill_scenario(spill_osm, "zipper", internal_links=True)
+        paths = run_micro(cfg, 3, tmp_path / "zipper")
+        meta = json.loads(paths.meta.read_text())
+        assert sorted(Path(p).name for p in meta["net_patch_files"]) == [
+            "accel_end_102.con.xml",
+            "merge_102.con.xml",
+            "merge_102.nod.xml",
+        ]
+        (ramp_meta,) = meta["ramps"]
+        assert ramp_meta["acceleration_lane_terminated"] is True
+        assert ramp_meta["n_departed"] > 0, "no ramp vehicle departed"
+        assert meta["n_collisions"] == 0
+
+        net = sumolib.net.readNet(str(paths.run_dir / "net" / "osm_merge_models.net.xml"))
+        attach = net.getEdge("102")
+        assert attach.getToNode().getType() == "zipper"
+        # the ramp lane and the mainline lane beside it interleave into one lane
+        conns = _lane_connections(attach)
+        assert conns[0] == [("103-AddedOnRampEdge", 1)] and conns[1] == [("103-AddedOnRampEdge", 1)]
+        assert conns[2:] == [[("103-AddedOnRampEdge", i)] for i in (2, 3)]
+
+    def test_two_connection_patches_load_in_one_pass(self, spill_osm, tmp_path):
+        """netconvert refuses a repeated option; patches of a kind are joined."""
+        bundle = osm_import(
+            osm_file=spill_osm,
+            corridor_edges=SPILL_CORRIDOR,
+            keep_edges=("200",),
+            workdir=tmp_path / "two",
+            netconvert_extra=SPILL_EXTRA,
+        )
+        patches = [
+            lane_end_patch_file(tmp_path / "patches", "102", "103-AddedOnRampEdge"),
+            lane_end_patch_file(tmp_path / "patches", "103", "104"),
+        ]
+        patched = patch_net(bundle, patches)
+        assert len(patched.patch_files) == 2
+        net = sumolib.net.readNet(str(patched.net_path))
+        assert _lane_connections(net.getEdge("102"))[0] == []
+        assert _lane_connections(net.getEdge("103"))[0] == []
+        assert _lane_connections(net.getEdge("103"))[1] == [("104", 1)]
+
+    def test_merge_model_refuses_an_attach_edge_with_no_added_lane(self, spill_osm, tmp_path):
+        cfg = _spill_scenario(spill_osm, "scripted", guess=False)
+        with pytest.raises(ValueError, match="added none"):
+            run_micro(cfg, 3, tmp_path / "noguess")

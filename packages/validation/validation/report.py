@@ -4,6 +4,10 @@
 directory of run results: provenance (config hash, seeds, and the package
 and SUMO versions of *every* run — a run set mixing engine versions is
 listed value by value and carries a comparability warning, CLAUDE.md §9),
+how much of the configured demand actually entered the network
+(:func:`validation.battery.insertion_stats`, printed when the runs record
+the counters — a run set that inserted a fraction of its plan simulated a
+different scenario from the one it was asked for),
 calibration artifacts used, the acceptance criteria table
 (:mod:`validation.criteria`), metric tables with replicate confidence
 intervals (:mod:`validation.metrics`), and speed-contour figures rendered
@@ -61,6 +65,13 @@ import numpy as np
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from scipy.stats import t as student_t
 
+from validation.battery import (
+    STARVED_RAMP_FRACTION,
+    STARVED_RAMP_MIN_PLANNED,
+    aggregate_insertion,
+    insertion_stats,
+    records_insertion,
+)
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate
 from validation.fields import SpeedField, speed_field
 from validation.metrics import (
@@ -822,6 +833,45 @@ def _measurement_note(
     )
 
 
+def _insertion_note(micro_runs: list[_RunInfo]) -> str | None:
+    """One sentence on how much of the demand the run set actually inserted.
+
+    A run whose vehicles never departed is not a congested corridor but a
+    different scenario: the queue waits outside the network, so throughput
+    is the insertion rate and every flow metric below describes demand that
+    was never applied. The counters come from each run's ``meta.json``
+    (:func:`validation.battery.insertion_stats`) — the same reading the
+    corridor battery prints per replicate, so the report and the battery
+    cannot disagree.
+
+    Args:
+        micro_runs: The run set's microscopic runs.
+
+    Returns:
+        The sentence, or None when no run recorded insertion counters (older
+        runs and hand-written fixtures): silence, not a zero.
+    """
+    summary = aggregate_insertion(
+        [insertion_stats(r.meta) for r in micro_runs if records_insertion(r.meta)]
+    )
+    if summary is None:
+        return None
+    text = (
+        f"Insertion: {summary.planned} vehicles planned over {summary.n_runs} run(s), "
+        f"{summary.departed} departed ({_fmt(summary.mean_departed_fraction, 3)} of plan on "
+        f"average, lowest {_fmt(summary.min_departed_fraction, 3)}), {summary.arrived} arrived; "
+        f"verdict: {summary.verdict}."
+    )
+    if summary.starved_ramps:
+        text += (
+            " Starved on-ramps (a ramp of at least "
+            f"{STARVED_RAMP_MIN_PLANNED} planned vehicles delivering under "
+            f"{_fmt(STARVED_RAMP_FRACTION, 2)} of them): "
+            f"{', '.join(summary.starved_ramps)}."
+        )
+    return text
+
+
 def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for c in results:
@@ -1281,6 +1331,7 @@ def generate_report(
         versions=versions,
         versions_warning=versions_warning,
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
+        insertion_note=_insertion_note(micro_runs),
         calibrations=calibrations,
         observed=_observed_rows(observed) if observed is not None else None,
         observed_note=OBSERVED_NOTE,
