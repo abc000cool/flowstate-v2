@@ -19,16 +19,22 @@ freeway loop detector at 30-s resolution, no registration:
 | What | Where | Notes |
 |---|---|---|
 | Detector inventory | `https://data.dot.state.mn.us/iris_xml/metro_config.xml.gz` | 151 corridors, 15,162 nodes, 10,377 detectors; single-quoted XML attributes |
-| 30-s samples | `https://data.dot.state.mn.us/mayfly/{counts,occupancy,speed}?district=metro&year=YYYY&date=YYYYMMDD&detector=ID` | JSON list of 2,880 values, `null` = missing, 404 = no data; ≈0.4 s per request |
+| 30-s samples | `https://data.dot.state.mn.us/mayfly/{counts,occupancy,speed}?district=metro&year=YYYY&date=YYYYMMDD&detector=ID` | JSON list of 2,880 values, `null` = missing, 404 = no data; about 0.4 s per request as timed in the session |
 | Date index | `/mayfly/dates?district=metro&year=2026` | |
 
 The older `trafdat` archive path (documented in most papers) is behind a web
 application firewall that rejects every client we tried, and the host answers
 only over HTTPS. `calibration.loaders.mndot` wraps the API with a per
-detector-day JSON cache (`data/mndot/cache/`, untracked, re-fetchable; 15 MB for
-this corridor's nine days).
+detector-day JSON cache (`data/mndot/cache/`, untracked, re-fetchable; about 15 MB for
+this corridor's nine days as measured in the session).
 
 ## 2. Corridor choice (scan, not opinion)
+
+*The scan below is a session record: `selection.json` commits only the
+chosen corridor and its bounds, not the ranking or the per-corridor coverage
+and speed figures quoted here. The committed nine-day profile agrees on the
+free-flow entry (65.9–72.1 mph upstream) and on the queue from Ruth St
+downstream (minima 10.9–30.5 mph).*
 
 `scan_corridors` (kept in the session scratchpad; the ranking is reproduced
 by `scripts/mndot_fetch.py` + the observations artifact) pulled one weekday
@@ -47,6 +53,8 @@ Selection record: `data/mndot/mndot_i94_wb_stpaul/selection.json`.
 
 ## 3. Steps, commands and wall-clock
 
+*Wall-clock figures were measured in the session and are not committed.*
+
 | Step | Command | Time |
 |---|---|---|
 | Fetch nine weekdays (72 detectors × 3 series) into the cache | `scripts/mndot_fetch.py` (or the loader) | 106 s |
@@ -55,11 +63,14 @@ Selection record: `data/mndot/mndot_i94_wb_stpaul/selection.json`.
 | Demand, ramps, boundary, population | `uv run --no-sync python scripts/corridor_demand.py --scenario scenarios/mndot_i94_wb_stpaul.yaml --observations …/observations.json --stations-x …/stations_x.csv --upstream S1063 --downstream S97 --idm-calibration artifacts/idm_i24_capacity.json --demand-out artifacts/demand_mndot_i94_wb_stpaul.json` | 3 s |
 | Fundamental diagram from per-lane 1-min samples | `calibration.fd_fit.fit_triangular_fd` on the cache (see the artifact's `source`) | 40 s |
 
-Result of the network step (`scripts/onboard_corridor.py` output): 11.82 km
-chain of 32 OSM edges, lanes 3 → 4 → 3 → 4 → 3 → 5 → 3 → 4 → 3 → 5/6 along the
-chain, 17 ramps discovered, 31 of 31 inventory nodes placed on the chain with
-offsets ≤ 22 m (S1063 at x = 1,110 m, S97 at x = 11,027 m; the chain extends
-1.1 km upstream and 0.8 km downstream of the observed span).
+Result of the network step as committed (`scenarios/mndot_i94_wb_stpaul.yaml`,
+`data/mndot/mndot_i94_wb_stpaul/stations_x.csv`, `observations.json`): an
+11.48 km chain of 29 corridor edges (the first build before the chain cap and
+ramp guessing was 11.82 km over 32 edges — a session figure), 16 ramps in the
+scenario (17 ramp nodes in the inventory), 31 of 31 inventory nodes placed on
+the chain with offsets up to 22.1 m (S1063 at x = 1,089 m, S97 at
+x = 11,072 m; the chain extends 1.1 km upstream and 407 m downstream of the
+observed span — the scenario's `exit_buffer_m`).
 
 ### From the dashboard
 
@@ -104,8 +115,9 @@ data.
 
 Data quirks found by a mass-balance check between consecutive stations (the
 reason the demand step does not trust ramp detectors alone):
-- three on/off ramp "Merge"/"Exit" detectors read zero on every day (T.H.120
-  exit, the second Hudson Rd entrance, McKnight Rd entrance);
+- three on/off ramp "Merge"/"Exit" detectors read zero, or as good as zero,
+  on every day (T.H.120 exit and McKnight Rd entrance at 0.0 veh/h; the second
+  Hudson Rd entrance at 0.7 veh/h mean);
 - the Mounds Blvd "Exit" pair reads more than the mainline — it counts the
   collector–distributor split, not an exit;
 - S1063 has two auxiliary lanes; the station total therefore includes the
@@ -194,11 +206,11 @@ Ramp flows close the mainline balance bracket by bracket: live ramp detectors
 fix the split between ramps of the same kind and the flow of the kind that is
 not closing; the closing kind absorbs the remainder; a bracket with no ramp of
 the needed kind carries its residual forward (listed under
-`bracket_residuals` — the largest is the White Bear Ave entrance, which the
-OSM discovery did not find as a link and whose +442 veh/h lands on the T.H.61
-NB entrance one bracket later, and the collector–distributor re-entry before
-Kellogg Blvd, +775 veh/h). Two ramps outside the observed span are zero (their
-traffic is inside the nearest station count). The downstream boundary is S97's
+`bracket_residuals` — the largest is the collector–distributor re-entry
+before Kellogg Blvd, +775 veh/h; the other is the White Bear Ave entrance,
+which the OSM discovery did not find as a link and whose +442 veh/h lands on
+the T.H.61 NB entrance one bracket later). One ramp outside the observed span
+is zero (its traffic is inside the nearest station count). The downstream boundary is S97's
 observed mean speed per window. Warm-up 1,800 s; analysed span 06:00–09:30.
 
 Driver population: `artifacts/idm_i24_capacity.json` — the I-24 MOTION fit
@@ -208,7 +220,8 @@ should challenge.
 
 Fundamental diagram (`artifacts/fd_mndot_i94_wb_stpaul.json`, 300k per-lane
 1-min samples, density = occupancy / 7 m): v_f 26.9 m/s, w −2.8 m/s, ρ_jam
-0.210 veh/m, ρ_c 0.0199 veh/m, q_max 0.535 veh/s. The same fit from 5-min
+0.210 veh/m, ρ_c 0.0199 veh/m, q_max 0.536 veh/s (the fit itself ran on a
+seeded 50,000-row subsample of those samples, with bootstrap CIs). The same fit from 5-min
 station means fails the plausibility check (flat congested branch); the raw
 30-s cache is kept for this reason. ρ_c is the ALINEA target in the sweep.
 
@@ -216,9 +229,11 @@ station means fails the plausibility check (flat congested branch); the raw
 
 The first 20-seed battery (VM round 1, scenario `adfb118b0015`) scored GEH < 5 on
 17 % of link-hours, RMSPE 93 % and found no waves: the corridor never congested.
-Reading the first seed's `meta.json` showed why — 34,367 vehicles planned,
-25,051 departed; the entrances at Hudson Rd (both), McKnight Rd and the
-downtown approach delivered 4–6 % of their demand. OSM tags the mainline as
+Reading the first seed's `meta.json` on the VM showed why — 34,367 vehicles
+planned, 25,051 departed; the entrances at Hudson Rd (both), McKnight Rd and
+the downtown approach delivered 4–6 % of their demand (a session reading; the
+round-1 run metadata was not kept, the free-flow speeds of that seed are
+committed in `artifacts/mndot_rounds/round1_first_seed_station_speeds.json`). OSM tags the mainline as
 three lanes straight through those merges, so SUMO joined each ramp to lane 0
 at a plain priority junction where ramp vehicles yield to a 1,400 veh/h lane.
 Lane-change parameters (assertiveness, strategic eagerness) changed nothing;
@@ -229,10 +244,10 @@ lanes by splitting the highway edge; the importer maps the split pieces back
 onto the scenario's edge ids. The chain also now ends on a 3-lane edge 440 m
 past S97 (`--max-chain-m 11400`) so the downstream speed boundary can throttle
 (the first chain ended on a 5-lane edge at the I-35E split, which no schedule
-could restrict). In a 35-minute peak slice on the rebuilt network every
-upstream entrance delivers 100 % of its demand and the two downtown-approach
-entrances queue under the mainline's congestion (37 % and 52 % in the slice),
-which is the observed condition there. Round 2 (§6) runs this scenario
+could restrict). In a 35-minute peak slice on the rebuilt network (a local session run, not
+committed) every upstream entrance delivered 100 % of its demand and the two
+downtown-approach entrances queued under the mainline's congestion (37 % and
+52 % in the slice), which is the observed condition there. Round 2 (§6) runs this scenario
 (`21720f1e998c`).
 
 ## 6. Baseline batteries (two cloud rounds, 2026-09-23) — the corridor is not reproduced
@@ -241,11 +256,11 @@ Both rounds are recorded under `artifacts/mndot_rounds/`; no validated
 baseline exists for this corridor and no sweep was run on it.
 
 **Round 1** (scenario `adfb118b0015`, `round1_starved_ramps_validation.json`,
-`round1_starved_ramps_report.md`; 20 seeds, wall 350–470 s per 4-hour
+`round1_starved_ramps_report.md`; 20 seeds, wall 344–470 s per 4-hour
 replicate): GEH < 5 on 17% of 840 pooled link-hours (FAIL), RMSPE
-93% over 11,760 speed cells, no waves detected, throughput at x = 6.67 km
-1,805 veh/h [1,798, 1,812] against an observed
-mean near 2,700. Cause (§5a): OSM carries no acceleration lanes; four
+93% over 11,760 speed cells, no waves detected, throughput at the span's mid-point
+1,805 veh/h [1,798, 1,812] against observed station means of 2,900–3,000 veh/h at the nearest station
+(S1069, `observations.json`). Cause (§5a): OSM carries no acceleration lanes; four
 entrances delivered 4–6 % of their demand and the corridor ran in free flow.
 
 **Round 2** (scenario `21720f1e998c` — ramp guessing, chain ended before the
@@ -254,14 +269,16 @@ I-35E widening, I-24 lane-change settings; `round2_gridlock_record.json`;
 40.6% of planned vehicles departed (min 39.1%,
 max 42.1%); the one seed scored before the VM was stopped
 has RMSPE 90% and no passing link-hour, with simulated mean speeds
-below 2 m/s at every station. Departure fractions by entrance (mean over
+below 2 m/s at every station (`round2_first_seed_station_speeds.json`). Departure fractions by entrance (mean over
 seeds): Hudson Rd 0.49 and 0.67, McKnight Rd 0.99, Ruth St 1.00, T.H.61 NB
 0.18, the downtown approach 0.25 and T.H.52 0.41. The three large entrances
-near the downtown approach (T.H.61 NB ≈ 2,000 veh/h, the collector–distributor
-re-entry ≈ 1,700, T.H.52 ≈ 1,400) merge into a mainline already near 4,300
-veh/h on three lanes; SUMO's lane-change merge locks there, the queue grows
-for three hours and fills the corridor. A 35-minute peak slice reproduces the
-onset locally (speeds fall to 1–7 m/s from S1070 downstream).
+near the downtown approach (peak demand in `demand_mndot_i94_wb_stpaul.json`:
+T.H.61 NB 2,196 veh/h, the collector–distributor re-entry 1,696, T.H.52 1,419)
+merge into a mainline whose observed peaks on the three-lane sections there are
+4,100–5,200 veh/h; SUMO's lane-change merge locks there, the queue grows
+for three hours and fills the corridor. A 35-minute peak slice reproduced the
+onset locally in the session (speeds fell to 1–7 m/s from S1070 downstream;
+not committed).
 
 This is the flagship's merge finding again (docs/I24_VALIDATION.md §0.11:
 the I-24 replica discharges about 5,880 veh/h where the recording sustains
@@ -273,7 +290,8 @@ attach to short edges whose added lane runs on into the next edge. What would
 be needed next: a merge model that does not need a dead-ending lane (or a
 network patch that ends the added lane), and a Minnesota driver population.
 
-A last attempt the same night (03:00–03:40): the engine can now end an added
+A last attempt the same night (03:00–03:40; the slice figures below are
+session records, not committed): the engine can now end an added
 acceleration lane with a connection patch so the gap-acceptance (`scripted`)
 merge applies to entrances on short attach edges; on the peak slice it took
 four of seven entrances, and the three it refused — Ruth St (the added lane
@@ -284,7 +302,8 @@ stronger gap acceptance (7.2 → 4.4 s) but the downstream speeds did not move
 (3.4, 1.0, 1.7 m/s at the last three stations). The next model is a weave
 section, not a merge.
 
-Cost of both rounds: about 2.2 hours of n2-standard-32, ≈ $3.3.
+Cost of both rounds: an estimate from the machine-hours, about 2.2 hours of
+n2-standard-32, ≈ $3.3.
 
 ## 7. What needed hand work (product backlog)
 

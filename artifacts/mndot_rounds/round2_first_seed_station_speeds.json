@@ -1,0 +1,81 @@
+{
+ "schema": "flowstate.mndot_first_seed_station_speeds/1",
+ "windows_used": "observation windows 18-41 (07:00-09:00)",
+ "rmspe": 0.9011231021623982,
+ "n_link_hours": 42,
+ "geh_pass_fraction": 0.0,
+ "stations": [
+  {
+   "station": "S1063",
+   "obs_mean_speed_ms_0700_0900": 31.83,
+   "sim_mean_speed_ms_0700_0900": 0.45
+  },
+  {
+   "station": "S1064",
+   "obs_mean_speed_ms_0700_0900": 29.81,
+   "sim_mean_speed_ms_0700_0900": 0.31
+  },
+  {
+   "station": "S1065",
+   "obs_mean_speed_ms_0700_0900": 30.51,
+   "sim_mean_speed_ms_0700_0900": 0.28
+  },
+  {
+   "station": "S1066",
+   "obs_mean_speed_ms_0700_0900": 28.47,
+   "sim_mean_speed_ms_0700_0900": 0.65
+  },
+  {
+   "station": "S1067",
+   "obs_mean_speed_ms_0700_0900": 22.46,
+   "sim_mean_speed_ms_0700_0900": 0.96
+  },
+  {
+   "station": "S1068",
+   "obs_mean_speed_ms_0700_0900": 14.16,
+   "sim_mean_speed_ms_0700_0900": 1.08
+  },
+  {
+   "station": "S1947",
+   "obs_mean_speed_ms_0700_0900": 11.26,
+   "sim_mean_speed_ms_0700_0900": 1.05
+  },
+  {
+   "station": "S1069",
+   "obs_mean_speed_ms_0700_0900": 8.49,
+   "sim_mean_speed_ms_0700_0900": 0.95
+  },
+  {
+   "station": "S1070",
+   "obs_mean_speed_ms_0700_0900": 12.33,
+   "sim_mean_speed_ms_0700_0900": 0.77
+  },
+  {
+   "station": "S1948",
+   "obs_mean_speed_ms_0700_0900": 13.21,
+   "sim_mean_speed_ms_0700_0900": 0.87
+  },
+  {
+   "station": "S792",
+   "obs_mean_speed_ms_0700_0900": 9.42,
+   "sim_mean_speed_ms_0700_0900": 0.74
+  },
+  {
+   "station": "S791",
+   "obs_mean_speed_ms_0700_0900": 8.08,
+   "sim_mean_speed_ms_0700_0900": 0.58
+  },
+  {
+   "station": "S790",
+   "obs_mean_speed_ms_0700_0900": 11.44,
+   "sim_mean_speed_ms_0700_0900": 0.87
+  },
+  {
+   "station": "S97",
+   "obs_mean_speed_ms_0700_0900": 15.95,
+   "sim_mean_speed_ms_0700_0900": 1.85
+  }
+ ],
+ "round": 2,
+ "scenario_config_hash": "21720f1e998c"
+}
