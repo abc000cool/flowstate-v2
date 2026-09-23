@@ -66,6 +66,7 @@ const sweepOut = {
   sweep_id: 'swp-1',
   scenario_id: 'scn-corridor',
   status: 'running',
+  tier: 'micro',
   error: null,
   created_at: '2026-09-16T00:00:00',
   runs_total: 3,
@@ -133,6 +134,15 @@ const noObsSweepOut = {
   ],
 };
 
+/** A screening-tier grid: the API reports `tier: macro` on the sweep itself,
+ * and every delta in it is a first-order CTM comparison, not evidence. */
+const macroSweepOut = {
+  ...sweepOut,
+  sweep_id: 'swp-macro',
+  status: 'done',
+  tier: 'macro',
+};
+
 /** Two cells the API gave the *same* config hash (a p=0 pair differs in no
  * modelled parameter, so one configuration is run twice): identical numbers
  * there are the expected result and must not be flagged as a finding. */
@@ -179,6 +189,7 @@ describe('SweepsView (real API shapes)', () => {
         if (url.endsWith('/sweeps/swp-twins')) return json(twinSweepOut);
         if (url.endsWith('/sweeps/swp-same')) return json(sameConfigSweepOut);
         if (url.endsWith('/sweeps/swp-noobs')) return json(noObsSweepOut);
+        if (url.endsWith('/sweeps/swp-macro')) return json(macroSweepOut);
         return json({ detail: `unexpected ${method} ${url}` }, 404);
       }),
     );
@@ -302,6 +313,9 @@ describe('SweepsView (real API shapes)', () => {
     expect(first.controllers).toEqual(['follower_stopper']);
     expect(first).not.toHaveProperty('controller');
     expect(first.include_baseline).toBe(true);
+    // the tier is always stated: omitting it ran the grid on whatever tier the
+    // stored scenario happened to carry
+    expect(first.tier).toBe('micro');
     expect(first).toMatchObject({ scenario_id: 'scn-corridor', replicates: 5 });
     expect(first.penetrations).toEqual([0.01, 0.02, 0.05, 0.1, 0.15, 0.2]);
     expect(first.compliances).toEqual([0.25, 0.5, 0.8, 1.0]);
@@ -316,6 +330,62 @@ describe('SweepsView (real API shapes)', () => {
     });
     const second = calls.filter((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))[1].body as Record<string, unknown>;
     expect(second.include_baseline).toBe(false);
+  });
+
+  it('sends the selected tier and labels a macro grid as screening, up front', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('option', { name: 'corridor_10km' }, { timeout: 4000 });
+    // micro by default: no screening label on a grid that is not screening
+    expect(screen.queryByText(/Screening tier \(CTM\)/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Tier'), { target: { value: 'macro' } });
+    // the label is up before anything is enqueued, and it is text, not a hover
+    expect(screen.getAllByText(/Screening tier \(CTM\)/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    expect(within(dialog).getByText('macro (CTM screening)')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Screening tier \(CTM\)/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Launch \d+ runs$/ }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))).toBe(true);
+    });
+    const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))!
+      .body as Record<string, unknown>;
+    expect(body.tier).toBe('macro');
+  });
+
+  it('keeps the screening-tier banner on a macro sweep matrix', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps?sweep=swp-macro']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    // the matrix is rendered ...
+    expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
+    // ... and its numbers are labelled screening, from the API's own tier
+    const banners = screen.getAllByText(/Screening tier \(CTM\)/);
+    expect(banners.length).toBeGreaterThan(0);
+    expect(banners[0].textContent).toMatch(/not a validation result/);
+    // the full reason is in the banner itself, not behind a hover
+    expect(banners[0].closest('p')?.textContent).toMatch(
+      /refuses to generate a validation report/,
+    );
+  });
+
+  it('does not label a micro sweep matrix as screening', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps?sweep=swp-1']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Screening tier \(CTM\)/)).toBeNull();
   });
 
   it('cancelling the confirmation enqueues nothing', async () => {

@@ -63,6 +63,7 @@ from validation.metrics import (
     default_travel_span,
     warmup_from_meta,
 )
+from validation.observed import ObservedProvenance
 from validation.waves import WaveDetector, get_detector
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -634,6 +635,51 @@ def speed_aggregation_rows(
     return rows
 
 
+def _observed_rows(observed: ObservedProvenance) -> list[dict[str, str]]:
+    """Provenance rows for the observed side of a comparison.
+
+    Every value is taken from the artifact or from the scoring; rows the
+    artifact left empty (a source that states no provider, dates or URL) are
+    omitted rather than printed as blanks. Coverage is reported as the share
+    of the mainline station-window grid that actually carries a measurement,
+    on both series separately — a corridor whose speeds are dense and whose
+    flows are sparse is a different comparison from one that is dense in
+    both, and one pooled number would hide that (CLAUDE.md §7.4).
+    """
+    rows: list[tuple[str, str]] = [
+        ("artifact", observed.path),
+        ("corridor", observed.corridor),
+        ("source provider", observed.provider),
+        ("source dates", observed.dates),
+        ("source url", observed.url),
+        ("aggregation", observed.aggregation),
+        ("local clock time of simulation t = 0", observed.t0_local),
+        ("observation window [s]", _fmt(observed.window_s)),
+        ("mainline stations compared", str(observed.n_stations)),
+        ("observation windows", str(observed.n_windows)),
+        ("windows inside the measurement window", str(observed.n_windows_compared)),
+        ("station-windows with an observed flow [fraction]", _fmt(observed.flow_fraction)),
+        ("station-windows with an observed speed [fraction]", _fmt(observed.speed_fraction)),
+        ("link-hour comparisons (pooled over replicates)", str(observed.n_link_hours)),
+        ("speed cells compared (pooled over replicates)", str(observed.n_speed_cells)),
+        ("replicates scored against the observations", str(observed.n_replicates)),
+    ]
+    return [{"name": name, "detail": detail} for name, detail in rows if detail]
+
+
+#: What the observed-data block means; prose only, no numbers (those are rows).
+OBSERVED_NOTE = (
+    "The link-flow and segment-speed criteria are scored against this observed "
+    "artifact: hourly volumes formed from the fully observed windows of each hour at "
+    "every mainline station, and mean speeds per station segment (each station owns "
+    "the span to the midpoints with its neighbours). Simulation time zero is the "
+    "artifact's local start time; the run's warm-up, and any window the run does not "
+    "cover to its end, are excluded, and a station-window the detector did not measure "
+    "is skipped, never imputed — the coverage rows say how much of the grid was "
+    "compared."
+)
+
+
 def _wave_criterion_note(
     *,
     reference: _Group,
@@ -864,6 +910,10 @@ def generate_report(
     x_ref: float | None = ...,
     span: tuple[float, float] | None = ...,
     pdf: Literal[False] = ...,
+    segment_speeds_obs: Sequence[Sequence[float]] | None = ...,
+    segment_speeds_sim: Sequence[Sequence[float]] | None = ...,
+    segment_window_s: float | None = ...,
+    observed: ObservedProvenance | None = ...,
 ) -> Path: ...
 
 
@@ -882,6 +932,10 @@ def generate_report(
     x_ref: float | None = ...,
     span: tuple[float, float] | None = ...,
     pdf: Literal[True],
+    segment_speeds_obs: Sequence[Sequence[float]] | None = ...,
+    segment_speeds_sim: Sequence[Sequence[float]] | None = ...,
+    segment_window_s: float | None = ...,
+    observed: ObservedProvenance | None = ...,
 ) -> tuple[Path, Path]: ...
 
 
@@ -902,6 +956,7 @@ def generate_report(
     segment_speeds_obs: Sequence[Sequence[float]] | None = None,
     segment_speeds_sim: Sequence[Sequence[float]] | None = None,
     segment_window_s: float | None = None,
+    observed: ObservedProvenance | None = None,
 ) -> Path | tuple[Path, Path]:
     """Generate a markdown (optionally PDF) validation report for a run set.
 
@@ -955,6 +1010,13 @@ def generate_report(
         segment_speeds_sim: The simulated (replicate-mean) matrix on the same
             bins.
         segment_window_s: The matrices' window length [s] (labels the rows).
+        observed: Provenance of the observations ``geh_values`` and
+            ``rmspe_value`` were computed against
+            (:func:`validation.observed.pool_scores`); adds the
+            **Observed data** block naming the source, its window grid, its
+            coverage and how many comparisons were formed. ``None`` omits the
+            block — and, with ``geh_values``/``rmspe_value`` also ``None``,
+            leaves the two criteria rows honestly *not evaluated*.
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -1037,9 +1099,15 @@ def generate_report(
             "check is under Metrics."
         )
 
+    # An empty matrix (no analysis window fully inside the run, or no observed
+    # cell) is "nothing to compare", not a malformed input: the RMSPE row stays
+    # NOT EVALUATED and the observed-data block states the zero coverage.
     aggregation_rows = (
         speed_aggregation_rows(segment_speeds_obs, segment_speeds_sim, segment_window_s)
-        if segment_speeds_obs is not None and segment_speeds_sim is not None
+        if segment_speeds_obs is not None
+        and segment_speeds_sim is not None
+        and np.size(segment_speeds_obs) > 0
+        and np.size(segment_speeds_sim) > 0
         else None
     )
     figures = _render_figures(groups, baseline, out.parent)
@@ -1111,6 +1179,8 @@ def generate_report(
         versions_warning=versions_warning,
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         calibrations=calibrations,
+        observed=_observed_rows(observed) if observed is not None else None,
+        observed_note=OBSERVED_NOTE,
         criteria=_criteria_rows(criteria_results),
         criteria_note=criteria_note,
         wave_row_note=(

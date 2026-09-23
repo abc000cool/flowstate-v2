@@ -290,6 +290,26 @@ Other blocks:
   `heavy_fraction_realized` carry the flags. The macro tier does not
   represent heavy vehicles (a calibrated fundamental diagram already embeds
   the observed mix; `meta.json` says so).
+- `fd_calibration: str | None = None` (2026-09-23): path to an
+  `FDCalibration` artifact (as given, else resolved against the repository
+  root — the `fleet.idm_calibration` rule, and confined to the API's
+  allow-listed roots with the same 422). When set, the macro tier runs on
+  that fitted triangular diagram instead of the uncalibrated `v1_legacy`
+  preset (CLAUDE.md §5.1: FD parameters are calibrated per-corridor inputs,
+  not constants) and `meta.json["fd"]` names the artifact. Tier-independent
+  on purpose, so one scenario can be run on both tiers; the micro tier has
+  no fundamental diagram and records a note in `meta.json["notes"]` saying
+  it did not use the field. Hash-neutral when unset.
+- `macro: MacroOptions | None = None` (2026-09-23): macro-tier solver
+  options — `dx_m: float = 100.0` (target cell length; the grid is
+  `n_cells = max(10, round(length / dx_m))` and the realized Δx is in
+  `meta.json["grid"]`) and `bottleneck_variant: "flux_cap" | "capacity" =
+  "flux_cap"` (the discretization of a controlled vehicle's moving
+  bottleneck, CLAUDE.md §5.5). `extra="forbid"`: an unknown key or variant is
+  a 422. `macrosim.run_macro`'s `dx_m` / `bottleneck_variant` arguments now
+  default to `None` = "take the config's block", an explicit argument still
+  wins, and the effective pair is recorded in `meta.json["macro_options"]`.
+  The micro tier notes that it ignored the block. Hash-neutral when unset.
 - `seed: int`, `replicates: int = 20`, `tier: Literal["micro","macro"]`.
 
   `lc_cooperative: float = 1.0` (SUMO `lcCooperative`, mainline willingness
@@ -613,3 +633,212 @@ Headline reporting requires `n >= 20` (CLAUDE.md §0.6); `aggregate` sets
   `artifacts/i24_heavy_by_lane.json` and the entry flow shares into
   p_lane ∝ flow_share_lane × heavy_fraction_lane (I-24: 0.048 / 0.172 / 0.459 /
   0.321).
+
+## Detector observations (`flowstate.observations/1`) and demand (`flowstate.demand/1`) — 2026-09-22
+
+Corridor onboarding from public detector archives (WP-A; CLAUDE.md §6.1/§6.3).
+
+**Tidy detector frame** (`calibration.loaders.detector_csv`,
+`DETECTOR_COLUMNS`) — what every detector loader returns and what the generic
+CSV upload contains, one row per station × window: `timestamp` (ISO-8601 with
+offset, the window START, on one regular grid), `station` (str), `flow_veh_h`
+(station TOTAL across the mainline lanes, NaN when the window was not measured
+well enough), `occupancy_pct`, `speed_ms`, `lanes` (int; 0 = not stated),
+`kind` ∈ {`mainline`, `on_ramp`, `off_ramp`}, `x_m` (optional corridor
+position). `load_detector_csv(path, *, column_map=None, speed_unit="ms",
+occupancy_unit="pct", kind_default="mainline")` accepts any spelling through
+`column_map` (canonical fields `timestamp, station, flow, occupancy, speed,
+lanes, kind, x_m`); `write_detector_csv(df, path)` is its inverse.
+`detector_interval_s(df)` validates the grid: the shortest gap is the
+interval and every other gap must be a whole multiple of it (gaps are
+expected — an unmeasured window, the overnight break between fetched dates;
+a *second* interval is refused). Missing is NaN and is never filled in.
+
+**Stations table** (§2 of the contract; `mndot.stations_table`): `station,
+label, lat, lon, x_m, lanes, kind, speed_limit_ms, detectors`.
+
+**MnDOT source** (`calibration.loaders.mndot`): `MetroConfig.load(path_or_gz)`
+parses the IRIS `metro_config.xml(.gz)` into corridors → `Station` (id, label,
+lat, lon, lanes, `speed_limit_ms`, `x_m` = cumulative great-circle distance
+along the r_node chain, mainline detector names) and `RampNode`
+(Entrance/Exit, detectors by IRIS category; `Merge` → `on_ramp`, `Exit` →
+`off_ramp`); abandoned detectors are excluded. `fetch_detector_day(detector,
+date, endpoint, *, cache_dir, session=None)` reads one detector-day of the
+30-second archive (`counts` veh/30 s, `occupancy` percent, `speed` mph;
+`null` = missing, HTTP 404 = an empty series) through a JSON cache.
+`station_frame(config, corridor, stations, dates, *, window_s=300,
+cache_dir, max_workers=8)` aggregates to the tidy frame. **Validity rule:** a
+window is valid when ≥ 80% (`MIN_SAMPLE_FRACTION`) of the station's mainline
+30-second samples are present, otherwise flow, speed and occupancy are all
+NaN; in a valid window the count is scaled to the full window in two stages —
+per detector by its own presence, then by
+`n_detectors / n_detectors_with_data` — speed is the mean of the present lane
+speeds (a 0 mph sample is no measurement, not a measured standstill) and
+occupancy the mean of the present samples.
+
+**Observations artifact** (`calibration.observations.Observations`,
+`schema: "flowstate.observations/1"`): `corridor`, `source`, `window_s`,
+`t0_local`, `duration_s`, `n_windows`, `aggregation`, `stations` (id, label,
+x_m, lanes, kind, lat, lon, speed_limit_ms), `flows_veh_h` / `speeds_ms` /
+`occupancy_pct` (station id → per-window list), `spread`
+(`flows_veh_h_sd`, `speeds_ms_sd`, sample sd across dates) and `quality`
+(`fraction_valid`, `n_dates`). Simulation t=0 is `t0_local`; window `k` is
+`[t0 + k·window_s, t0 + (k+1)·window_s)` and starts at `k·window_s` in
+simulation time; the span must lie inside one local day. NaN means "not
+observed" and is written as JSON `null` — no value is ever invented.
+`from_frame(df, stations, *, window_s, t0_local, duration_s, corridor,
+source)` averages the dates per window (a row inside the span that is off the
+window grid is an error, not a silent drop); `to_json`/`from_json` round-trip.
+Derived views: `hourly_link_flows(obs) -> DataFrame(x_ref_m, window_start_s,
+flow_veh_h, station)` for GEH, hours reported only when **all** of their
+windows are valid at that station; `segment_speed_matrix(obs) -> (windows ×
+stations array, station x list)` for RMSPE; `coverage(obs)` per station.
+
+**Demand artifact** (`calibration.demand.DemandArtifact`, `schema:
+"flowstate.demand/1"`): `corridor`, `observations` (path), `upstream_station`,
+`step_s`, `inflow_steps` `[[t_start_s, veh_s], ...]`, `ramps` and `method`.
+`demand_from_observations(obs, upstream_station, *, step_s=300)` is the
+boundary inflow in SI; `ramp_flows_from_observations(obs, ramps)` gives each
+ramp `inflow_steps` (on) or `exit_fraction_steps` (off) with `method:
+"detector"` where the ramp has its own station, else `"conservation"`
+(`q_on = max(0, q_down − q_up)`, `f_off = max(0, (q_up − q_down)/q_up)`
+between the bracketing mainline stations). A step no window was observed in
+is omitted, so the previous step holds across it, and the count is recorded
+(`coverage.n_steps_carried`, per-ramp `n_steps_carried`); a station with
+nothing observed is an error, not a filled profile. The scenario YAML carries
+these numbers literally (`network.inflow`, `network.ramps[*]`), the artifact
+records provenance.
+
+**API** (`POST /api/v1/calibrations/{kind}`): `CalibrationParams` gains
+`column_map`, `kind_default`, `occupancy_unit: "pct"` (alias of `"percent"`;
+the PeMS loader is given its own spelling) and the demand options `window_s`,
+`t0_local`, `duration_s`, `upstream_station`, `stations`, `ramps`, `corridor`
+(extra keys still refused with 422; the caps are `MAX_COLUMN_MAP_ENTRIES`,
+`MAX_WINDOW_S`, `MAX_OBSERVED_DURATION_S`, `MAX_STATIONS`). `loader:
+"detector_csv"` fits an FD from the tidy frame (per-lane flow; density from
+`q/v`, else from occupancy through the PeMS g-factor). The new kind
+`"demand"` (`api.calibration_jobs.demand_calibration_job`) writes
+`observations.json` and `demand.json` into the calibration's artifact
+directory; `CalibrationOut.artifact_paths` carries both
+(`{"observations": ..., "demand": ...}`), `artifact_path`/`artifact` remain
+the observations artifact. `scripts/mndot_fetch.py` is the CLI form
+(`stations.csv`, `detectors.csv`, `observations.json` + a coverage print).
+
+## Scoring a run set against observations — 2026-09-23
+
+The observed side of the validation report (WP-B; CLAUDE.md §7.1/§7.4).
+
+**Reader** (`validation.observed`, no dependency on `calibration` — the two
+packages agree on the file, not on an import). `ObservedCorridor.from_json(
+path)` parses a `flowstate.observations/1` artifact; `from_dict` refuses a
+different `schema`, a series of the wrong length, an `n_windows · window_s`
+that disagrees with `duration_s`, and two mainline stations at the same
+position. Views: `mainline_stations()` / `mainline_x_refs()` (positioned
+`kind: mainline` stations, ordered by x — ramps and unpositioned stations take
+part in no comparison), `segment_bins() -> [(x_start_m, x_end_m)]` (each
+station owns the span to the midpoints with its neighbours; outer half-spans
+mirror the adjacent spacing; needs ≥ 2 stations), `speed_matrix(windows=None)`
+(`[window][station]`), `analysis_windows(warmup_s, duration_s)` (windows wholly
+inside the measurement window), `hourly_link_flows()` (rows `x_ref_m,
+window_start_s, flow_veh_h, station`; hours aligned to window 0, reported only
+when **every** window of the hour is valid at that station; `window_start_s` is
+simulation time `k · window_s`) and `coverage()` (`flow_fraction`,
+`speed_fraction` over the mainline station-window grid).
+
+`score_run_against_observed(trajectories, observed, *, warmup_s, duration_s,
+x_offset_m=0.0) -> ObservedScores(geh_values, n_link_hours, rmspe,
+n_speed_cells, segment_speeds_sim, segment_speeds_obs, windows)` scores one
+replicate: GEH via `metrics.link_hour_geh` on hourly volumes, RMSPE on the
+simulated mean sampled speed per (window, segment) cell. `x_offset_m` maps the
+observed origin onto simulation `x` (a generated corridor's insertion buffer,
+`microsim.demand_adapter.corridor_x_offset_m`; 0 for ring/OSM). NaN
+observations, unsampled cells and zero observed speeds are skipped and
+counted. `pool_scores(observed, scores, path=...)` pools GEH across
+replicates, means the RMSPE, means the simulated matrices and builds the
+`ObservedProvenance` the report prints. `metrics.link_hour_geh` gained
+`sim_span=(t_lo, t_hi)`: the recorded span the observed windows must lie
+inside, so a run whose last output sample falls short of its nominal end does
+not lose its final hour. `metrics.ci(values) -> CI` is `aggregate`'s
+replicate-interval convention for one series.
+
+`validation.battery` holds what the CLI and the API job share:
+`load_meta`, `measurement_window(meta) -> (warmup_s, duration_s)`,
+`read_trajectories`, `score_replicate(run_dir, observed, *, x_offset_m)`,
+`replicate_wave_speed_kmh(run_dir, detector)` and `mean_finite`.
+
+**Report.** `validation.report.generate_report(..., observed=ObservedProvenance
+| None)` adds an **Observed data** block (artifact, corridor, provider, dates,
+url, aggregation, `t0_local`, window, stations, windows, windows compared,
+flow/speed coverage fractions, link-hours and speed cells compared, replicates
+scored) and a limitations bullet; the template body still contains no
+free-text numerals. `geh_values` / `rmspe_value` keep their meaning: supplied
+→ the row is evaluated, absent → NOT EVALUATED.
+
+**API.** `ReportCreateRequest.observations_path: str | None` — a server-side
+artifact path confined to `Settings.config_path_roots` (422 with
+`type: "path_outside_roots"`, 404 when missing; relative values resolve
+against the repository root). `report_job` then scores every completed micro
+replicate of every run in the set, pools the GEH values, means the RMSPE and
+passes them plus the provenance into `generate_report`. `ReportOut` gains
+`observations_path` and `observed` (the provenance dict, null until the report
+is done); the `reports` table gains `observations_path` and `observed_json`
+(both nulled by a re-claim).
+
+**Corridor battery artifact** (`scripts/corridor_battery.py`, schema
+`flowstate.corridor_validation/1`): `created_at`, `scenario`, `corridor`,
+`config_hash`, `seeds`, `replicates`, `wall_s`, `versions`,
+`criteria_profile {name, source}`, `criteria` (the `CriteriaResult` rows),
+`observations` (the provenance dict), `x_offset_m`, `geh` (pooled values,
+threshold, pooled pass fraction, CI over the per-replicate pass fractions),
+`rmspe` (mean + CI + pooled cell count), `wave_speed` (profile detector, mean,
+CI, replicates with a backward front), `metrics_ci` (per-metric mean/lo95/hi95
+/n/underpowered), `per_seed` (seed, run dir, per-seed scores and metrics),
+`ring` (a `validation.ring_benchmark` block or null), `report_path` and
+`notes`. Each replicate directory also carries `metrics.json` and
+`observed_scores.json`, which `--criteria-only` re-scores from without
+re-simulating; trajectories are pruned to the first seed unless
+`--keep-trajectories`.
+
+## Calibrated screening tier: FD provenance and macro options — 2026-09-23
+
+- **`meta.json["fd"]` (macro tier)** gains `source`, `artifact`, `rho_c` and
+  `q_max` beside the existing `preset`, `v_f`, `w`, `rho_jam`. `preset` is
+  `"v1_legacy"` (no diagram supplied), `"artifact"` (read from an
+  `FDCalibration`) or `"custom"` (a caller-supplied diagram); `source` is the
+  artifact path or `"v1_legacy preset"`, `artifact` is the path or `null`.
+  Parameters are recorded *as the solver used them*, so a multi-lane corridor
+  shows the effective single pipe's `rho_jam`/`rho_c`/`q_max`. An
+  `fd_artifact=` without an `fd=` is dropped with a note rather than claiming
+  a provenance the run does not have.
+- **`meta.json["macro_options"]`** records the effective `{dx_m,
+  bottleneck_variant}` of every macro replicate.
+- **`POST /api/v1/runs` and `POST /api/v1/sweeps`** accept
+  `macro: {dx_m?, bottleneck_variant?}` (`api.schemas` re-exports
+  `flowstate_core.config.MacroOptions`, `extra="forbid"`). It is applied to
+  the effective config like `tier`/`replicates` — so it is hashed with the
+  run, stored on the row, and survives a reconciliation re-enqueue — and every
+  sweep cell inherits it. An unknown key or variant, or `dx_m <= 0`, is a 422.
+- **`fd_calibration` is a config file field**: `POST /scenarios`, `/runs`
+  overrides and every `/sweeps` cell answer 422 `type:
+  "path_outside_roots"`, `loc: ["fd_calibration"]` when it escapes the
+  allow-listed roots. The worker re-checks it against the same roots before
+  opening the artifact (`api.jobs._load_fd_calibration`, the macro-tier
+  counterpart of `microsim.vehicles.load_idm_calibration`; it does not import
+  `microsim`, which would pull SUMO into a macro worker). A named-but-absent
+  artifact fails the run (`FileNotFoundError`) — never a silent fallback to
+  the preset.
+- **`SweepOut.tier`** (`"micro" | "macro" | null`): the tier every cell runs
+  on, read from the stored cell configs so it is available before the fan-out
+  job has created a run. `null` only for a sweep with no cells.
+- **`MetricsOut.fd_source`** (`str | null`): `meta.json["fd"]["source"]` of a
+  macro run's first replicate; `null` for micro runs and when the meta cannot
+  be read (the dashboard then says the source is unknown rather than naming
+  one).
+- **Dashboard**: the sweep launcher sends `tier` explicitly (a micro/macro
+  select; omitting it ran macro requests on the scenario's own tier), the
+  launcher, the confirmation dialog and the sweep matrix carry a persistent
+  "Screening tier (CTM) — not a validation result" banner for macro sweeps,
+  and the run detail of a macro run states the FD source, flagging
+  `v1_legacy preset` as uncalibrated. `frontend/src/api/types.ts` mirrors
+  `MacroOptions`, `ScenarioConfig.fd_calibration`/`macro`, `SweepDetail.tier`
+  and `RunMetrics.fd_source`.

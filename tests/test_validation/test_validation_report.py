@@ -717,3 +717,76 @@ class TestAggregationAndLabels:
             }
         }
         assert group_label(meter) == "ramp meter alinea on OH + merge zipper on OH"
+
+
+class TestObservedDataBlock:
+    """The observed-data provenance block and the two criteria rows it feeds."""
+
+    @staticmethod
+    def _provenance() -> Any:
+        from validation.observed import ObservedProvenance
+
+        return ObservedProvenance(
+            path="artifacts/observations_test.json",
+            corridor="test_corridor",
+            provider="Test DOT archive",
+            dates="20260915, 20260916",
+            url="https://example.invalid/archive",
+            aggregation="mean over dates per window",
+            t0_local="06:00",
+            window_s=300.0,
+            n_stations=3,
+            n_windows=24,
+            n_windows_compared=22,
+            flow_fraction=0.9861,
+            speed_fraction=0.9861,
+            n_link_hours=4,
+            n_speed_cells=130,
+            n_replicates=2,
+        )
+
+    def test_block_is_rendered_and_criteria_rows_are_evaluated(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        out = tmp_path / "report.md"
+        generate_report(
+            micro_run_set,
+            out,
+            geh_values=[1.0] * 9 + [12.0],  # 90% under 5 — above the 85% bound
+            rmspe_value=0.11,
+            observed=self._provenance(),
+        )
+        text = out.read_text()
+        assert "### Observed data" in text
+        assert "Test DOT archive" in text
+        assert "20260915, 20260916" in text
+        assert "artifacts/observations_test.json" in text
+        assert "link-hour comparisons (pooled over replicates)" in text
+        # Both criteria rows are scored, not "NOT EVALUATED".
+        geh_row = next(line for line in text.splitlines() if line.startswith("| link_flows_geh"))
+        assert "PASS" in geh_row
+        rmspe_row = next(line for line in text.splitlines() if line.startswith("| speeds_rmspe"))
+        assert "PASS" in rmspe_row
+        assert "excluded from both" in text  # the limitations bullet
+
+    def test_without_observations_the_block_is_absent_and_rows_not_evaluated(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out)
+        text = out.read_text()
+        assert "### Observed data" not in text
+        geh_row = next(line for line in text.splitlines() if line.startswith("| link_flows_geh"))
+        assert "NOT EVALUATED" in geh_row
+        rmspe_row = next(line for line in text.splitlines() if line.startswith("| speeds_rmspe"))
+        assert "NOT EVALUATED" in rmspe_row
+
+    def test_empty_provenance_fields_are_dropped(self, micro_run_set: Path, tmp_path: Path):
+        import dataclasses
+
+        provenance = dataclasses.replace(self._provenance(), provider="", dates="", url="")
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out, geh_values=[1.0], observed=provenance)
+        text = out.read_text()
+        assert "source provider" not in text
+        assert "corridor | test_corridor" in text

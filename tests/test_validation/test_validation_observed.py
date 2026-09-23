@@ -1,0 +1,327 @@
+"""``validation.observed``: the observed side of a corridor comparison.
+
+The fixtures are analytic on both sides. The "run" is a platoon of vehicles
+departing on a fixed headway at one constant speed, so its crossings of every
+station and its mean speed in every space-time cell are known exactly; the
+observations are constants with two planted NaN holes. Every GEH and the
+RMSPE are therefore hand-computable and asserted to 1e-6 (CLAUDE.md §9:
+metric fixtures with hand-computed values).
+"""
+
+from __future__ import annotations
+
+import itertools
+import json
+import math
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from validation.observed import (
+    OBSERVATIONS_SCHEMA,
+    ObservedCorridor,
+    pool_scores,
+    score_run_against_observed,
+)
+
+# -- the analytic fixture ----------------------------------------------------
+
+WINDOW_S = 300.0
+N_WINDOWS = 24  # two hours
+DURATION_S = N_WINDOWS * WINDOW_S
+WARMUP_S = 600.0  # windows 0 and 1 are warm-up
+STATION_X = (1000.0, 2000.0, 3000.0)
+
+HEADWAY_S = 12.0
+SPEED_MS = 20.0
+SAMPLE_DT_S = 2.0
+TRIP_S = 176.0  # samples at 0, 2, ... 174 s after departure
+
+#: Crossings of every station inside the scored hour [3600, 7200) s: one
+#: vehicle every 12 s is 300 veh/h, and the constant speed makes each
+#: station's count exactly that (verified per station in the test below).
+SIM_VEH_H = 3600.0 / HEADWAY_S
+
+#: Observed values, deliberately different from the simulated ones so the
+#: statistics are non-degenerate.
+OBS_VEH_H = 330.0
+OBS_SPEED_MS = 25.0
+
+#: The planted holes: one flow window at the middle station, one speed window
+#: at the last station (both inside the scored span).
+NAN_FLOW_WINDOW = 15
+NAN_SPEED_WINDOW = 5
+
+
+def observations_payload(
+    *,
+    x_m: tuple[float, ...] = STATION_X,
+    with_ramp: bool = True,
+) -> dict[str, Any]:
+    """A ``flowstate.observations/1`` payload matching the analytic run."""
+    ids = [f"S{i}" for i in range(len(x_m))]
+    flows = {sid: [OBS_VEH_H] * N_WINDOWS for sid in ids}
+    speeds = {sid: [OBS_SPEED_MS] * N_WINDOWS for sid in ids}
+    if len(ids) > 1:
+        flows[ids[1]][NAN_FLOW_WINDOW] = None  # type: ignore[call-overload]
+        speeds[ids[-1]][NAN_SPEED_WINDOW] = None  # type: ignore[call-overload]
+    stations: list[dict[str, Any]] = [
+        {"id": sid, "label": f"station {sid}", "x_m": x, "lanes": 2, "kind": "mainline"}
+        for sid, x in zip(ids, x_m, strict=True)
+    ]
+    if with_ramp:
+        # A ramp station is demand, not a corridor cross-section: it must not
+        # become a GEH cross-section or a speed segment.
+        stations.append({"id": "R1", "x_m": 1500.0, "lanes": 1, "kind": "on_ramp"})
+        flows["R1"] = [100.0] * N_WINDOWS
+        speeds["R1"] = [15.0] * N_WINDOWS
+    return {
+        "schema": OBSERVATIONS_SCHEMA,
+        "corridor": "test_corridor",
+        "source": {
+            "provider": "Test DOT archive",
+            "dates": ["20260915", "20260916"],
+            "url": "https://example.invalid/archive",
+        },
+        "window_s": WINDOW_S,
+        "t0_local": "06:00",
+        "duration_s": DURATION_S,
+        "n_windows": N_WINDOWS,
+        "aggregation": "mean over dates per window",
+        "stations": stations,
+        "flows_veh_h": flows,
+        "speeds_ms": speeds,
+        "quality": {sid: {"fraction_valid": 1.0, "n_dates": 2} for sid in ids},
+    }
+
+
+def trajectory_frame(x_offset_m: float = 0.0) -> pd.DataFrame:
+    """Vehicles on a fixed headway at one constant speed.
+
+    Rows are clipped to ``t < duration_s`` so the frame's last sample falls
+    short of the run's nominal end — the case ``link_hour_geh``'s ``sim_span``
+    exists for.
+    """
+    n_veh = int(DURATION_S // HEADWAY_S)
+    offsets = np.arange(0.0, TRIP_S, SAMPLE_DT_S)
+    departs = HEADWAY_S * np.arange(n_veh, dtype=np.float64)
+    t = (departs[:, None] + offsets[None, :]).ravel()
+    x = np.tile(SPEED_MS * offsets, n_veh) + x_offset_m
+    veh = np.repeat([f"v{i}" for i in range(n_veh)], offsets.size)
+    frame = pd.DataFrame({"t": t, "veh_id": veh, "x": x, "v": np.full(t.size, SPEED_MS)})
+    return frame.loc[frame["t"] < DURATION_S].reset_index(drop=True)
+
+
+@pytest.fixture(scope="module")
+def observed() -> ObservedCorridor:
+    return ObservedCorridor.from_dict(observations_payload())
+
+
+@pytest.fixture(scope="module")
+def trajectories() -> pd.DataFrame:
+    return trajectory_frame()
+
+
+# -- parsing -----------------------------------------------------------------
+
+
+class TestObservedCorridor:
+    def test_parses_the_artifact(self, observed: ObservedCorridor) -> None:
+        assert observed.corridor == "test_corridor"
+        assert observed.window_s == WINDOW_S
+        assert observed.n_windows == N_WINDOWS
+        assert observed.t0_local == "06:00"
+        assert len(observed.stations) == len(STATION_X) + 1  # incl. the ramp
+
+    def test_ramps_and_unpositioned_stations_are_not_cross_sections(
+        self, observed: ObservedCorridor
+    ) -> None:
+        assert observed.mainline_x_refs() == list(STATION_X)
+        assert [s.id for s in observed.mainline_stations()] == ["S0", "S1", "S2"]
+
+    def test_from_json_round_trip(self, tmp_path: Path) -> None:
+        path = tmp_path / "obs.json"
+        path.write_text(json.dumps(observations_payload()))
+        obs = ObservedCorridor.from_json(path)
+        assert obs.path == str(path)
+        assert obs.mainline_x_refs() == list(STATION_X)
+
+    def test_wrong_schema_refused(self) -> None:
+        payload = observations_payload()
+        payload["schema"] = "flowstate.observations/2"
+        with pytest.raises(ValueError, match="expected schema"):
+            ObservedCorridor.from_dict(payload)
+
+    def test_series_length_mismatch_refused(self) -> None:
+        payload = observations_payload()
+        payload["flows_veh_h"]["S0"] = [1.0, 2.0]
+        with pytest.raises(ValueError, match="expected 24"):
+            ObservedCorridor.from_dict(payload)
+
+    def test_duplicate_station_position_refused(self) -> None:
+        payload = observations_payload(x_m=(1000.0, 1000.0, 3000.0))
+        with pytest.raises(ValueError, match="share the position"):
+            ObservedCorridor.from_dict(payload)
+
+    def test_window_count_must_match_duration(self) -> None:
+        payload = observations_payload()
+        payload["duration_s"] = DURATION_S + 1.0
+        with pytest.raises(ValueError, match="does not match"):
+            ObservedCorridor.from_dict(payload)
+
+    def test_segment_bins_tile_the_corridor(self, observed: ObservedCorridor) -> None:
+        bins = observed.segment_bins()
+        assert bins == [(500.0, 1500.0), (1500.0, 2500.0), (2500.0, 3500.0)]
+        for (_, hi), (lo, _) in itertools.pairwise(bins):
+            assert hi == lo  # no gaps, no overlaps
+
+    def test_segment_bins_need_two_stations(self) -> None:
+        payload = observations_payload(x_m=(1000.0,), with_ramp=False)
+        obs = ObservedCorridor.from_dict(payload)
+        with pytest.raises(ValueError, match="at least two"):
+            obs.segment_bins()
+
+    def test_analysis_windows_exclude_warmup_and_partial_windows(
+        self, observed: ObservedCorridor
+    ) -> None:
+        assert observed.analysis_windows(WARMUP_S, DURATION_S) == list(range(2, N_WINDOWS))
+        # A span ending mid-window drops that window rather than half-scoring it.
+        assert observed.analysis_windows(0.0, DURATION_S - 1.0) == list(range(N_WINDOWS - 1))
+        assert observed.analysis_windows(DURATION_S, DURATION_S) == []
+
+    def test_hourly_link_flows_only_from_fully_observed_hours(
+        self, observed: ObservedCorridor
+    ) -> None:
+        rows = observed.hourly_link_flows()
+        # 3 stations x 2 hours, less the hour holding the planted NaN flow.
+        assert len(rows) == 5
+        assert set(rows["window_start_s"]) == {0.0, 3600.0}
+        assert rows["flow_veh_h"].to_numpy() == pytest.approx(OBS_VEH_H, abs=1e-12)
+        dropped = rows.loc[(rows["station"] == "S1") & (rows["window_start_s"] == 3600.0)]
+        assert dropped.empty
+
+    def test_hourly_link_flows_refuse_a_window_that_does_not_divide_an_hour(self) -> None:
+        payload = observations_payload()
+        payload["window_s"] = 700.0
+        payload["duration_s"] = 700.0 * N_WINDOWS
+        obs = ObservedCorridor.from_dict(payload)
+        with pytest.raises(ValueError, match="does not divide one hour"):
+            obs.hourly_link_flows()
+
+    def test_speed_matrix_shape_and_slice(self, observed: ObservedCorridor) -> None:
+        full = observed.speed_matrix()
+        assert full.shape == (N_WINDOWS, len(STATION_X))
+        assert math.isnan(full[NAN_SPEED_WINDOW, -1])
+        assert observed.speed_matrix(slice(2, 6)).shape == (4, len(STATION_X))
+
+    def test_coverage_counts_the_planted_holes(self, observed: ObservedCorridor) -> None:
+        coverage = observed.coverage()
+        cells = len(STATION_X) * N_WINDOWS
+        assert coverage.n_stations == len(STATION_X)
+        assert coverage.n_windows == N_WINDOWS
+        assert coverage.flow_fraction == pytest.approx((cells - 1) / cells, abs=1e-12)
+        assert coverage.speed_fraction == pytest.approx((cells - 1) / cells, abs=1e-12)
+
+
+# -- scoring -----------------------------------------------------------------
+
+
+class TestScoreRunAgainstObserved:
+    def test_crossings_are_the_analytic_count(self, trajectories: pd.DataFrame) -> None:
+        """The fixture really does put 300 veh through each station in the hour."""
+        from validation.metrics import count_crossings
+
+        for x_ref in STATION_X:
+            n = count_crossings(trajectories, x_ref, t_lo=3600.0, t_hi=7200.0)
+            assert n == int(SIM_VEH_H)
+
+    def test_geh_and_rmspe_are_hand_computable(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        scores = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        # Only the second hour lies inside [warmup, duration); the middle
+        # station's NaN flow removes it, leaving two station-hours.
+        assert scores.n_link_hours == 2
+        expected = math.sqrt(2.0 * (SIM_VEH_H - OBS_VEH_H) ** 2 / (SIM_VEH_H + OBS_VEH_H))
+        assert scores.geh_values == pytest.approx((expected, expected), abs=1e-6)
+
+        # 22 scored windows x 3 segments, less the planted NaN speed cell.
+        assert scores.n_speed_cells == 22 * len(STATION_X) - 1
+        assert scores.rmspe == pytest.approx(abs(SPEED_MS - OBS_SPEED_MS) / OBS_SPEED_MS, abs=1e-6)
+        assert scores.windows == tuple(range(2, N_WINDOWS))
+        assert len(scores.segment_speeds_sim) == 22
+        assert len(scores.segment_speeds_obs) == 22
+
+    def test_x_offset_maps_observed_positions_onto_the_simulation(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        shifted = trajectory_frame(x_offset_m=2000.0)
+        base = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        moved = score_run_against_observed(
+            shifted, observed, warmup_s=WARMUP_S, duration_s=DURATION_S, x_offset_m=2000.0
+        )
+        assert moved.geh_values == pytest.approx(base.geh_values, abs=1e-12)
+        assert moved.rmspe == pytest.approx(base.rmspe, abs=1e-12)
+        assert moved.n_speed_cells == base.n_speed_cells
+
+    def test_a_warmup_covering_everything_scores_nothing(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        scores = score_run_against_observed(
+            trajectories, observed, warmup_s=DURATION_S, duration_s=DURATION_S
+        )
+        assert scores.n_link_hours == 0
+        assert scores.n_speed_cells == 0
+        assert math.isnan(scores.rmspe)
+
+    def test_missing_columns_refused(self, observed: ObservedCorridor) -> None:
+        frame = pd.DataFrame({"t": [0.0], "veh_id": ["a"], "x": [0.0]})
+        with pytest.raises(ValueError, match="missing column 'v'"):
+            score_run_against_observed(frame, observed, warmup_s=0.0, duration_s=DURATION_S)
+
+    def test_scores_round_trip_through_json(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        from validation.observed import ObservedScores
+
+        scores = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        again = ObservedScores.from_dict(json.loads(json.dumps(scores.to_dict())))
+        assert again.n_link_hours == scores.n_link_hours
+        assert again.n_speed_cells == scores.n_speed_cells
+        assert again.rmspe == pytest.approx(scores.rmspe, abs=1e-6)
+        assert again.windows == scores.windows
+
+
+class TestPoolScores:
+    def test_pools_geh_and_averages_rmspe(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        scores = score_run_against_observed(
+            trajectories, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        geh, value, sim, obs, provenance = pool_scores(
+            observed, [scores, scores], path="artifacts/obs.json"
+        )
+        assert len(geh) == 2 * scores.n_link_hours
+        assert value == pytest.approx(scores.rmspe, abs=1e-12)
+        assert len(sim) == len(obs) == len(scores.windows)
+        assert provenance.n_replicates == 2
+        assert provenance.n_link_hours == 2 * scores.n_link_hours
+        assert provenance.n_speed_cells == 2 * scores.n_speed_cells
+        assert provenance.provider == "Test DOT archive"
+        assert provenance.dates == "20260915, 20260916"
+        assert provenance.path == "artifacts/obs.json"
+        assert provenance.n_windows_compared == len(scores.windows)
+
+    def test_no_scores_refused(self, observed: ObservedCorridor) -> None:
+        with pytest.raises(ValueError, match="at least one"):
+            pool_scores(observed, [])

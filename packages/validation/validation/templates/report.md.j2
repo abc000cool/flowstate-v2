@@ -45,6 +45,18 @@ Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
 No calibration artifacts recorded — defaults in use are literature values,
 not calibrated claims.
 {% endif %}
+{% if observed %}
+
+### Observed data
+
+{{ observed_note }}
+
+| Field | Value |
+|---|---|
+{% for o in observed %}
+| {{ o.name }} | {{ o.detail }} |
+{% endfor %}
+{% endif %}
 
 ## Acceptance criteria
 
@@ -167,4 +179,10 @@ contrast is not evidence of an effect in either direction.
 {% if seeded_any %}
 - Some runs used a seeded perturbation ({{ seeded_flag_text }}); those
   results demonstrate controlled response, not emergent wave formation.
+{% endif %}
+{% if observed %}
+- The observed comparison covers the artifact's stations, windows and days
+  only; station-windows the detectors did not measure are excluded from both
+  criteria rather than filled in, so the coverage rows bound how much of the
+  corridor and period the two rows actually speak for.
 {% endif %}

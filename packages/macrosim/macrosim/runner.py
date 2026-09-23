@@ -67,6 +67,7 @@ from flowstate_core.artifacts import TriangularFD
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
     CorridorNetwork,
+    MacroOptions,
     RingNetwork,
     ScenarioConfig,
     config_hash,
@@ -370,9 +371,10 @@ def run_macro(
     out_dir: str | Path,
     *,
     fd: TriangularFD | None = None,
-    dx_m: float = 100.0,
+    fd_artifact: str | None = None,
+    dx_m: float | None = None,
     v_star_ms: float | None = None,
-    bottleneck_variant: BottleneckVariant = "flux_cap",
+    bottleneck_variant: BottleneckVariant | None = None,
     use_numba: bool | None = None,
     prescribed_avs: Sequence[VStarTrajectory] | None = None,
 ) -> Path:
@@ -389,14 +391,24 @@ def run_macro(
         fd: Fundamental diagram to use. ``None`` selects the documented
             ``v1_legacy`` preset (uncalibrated; CLAUDE.md §5.1). Calibrated
             runs pass the FD from an ``FDCalibration`` artifact explicitly.
+        fd_artifact: Provenance of ``fd`` — the path of the ``FDCalibration``
+            artifact it was read from (``cfg.fd_calibration``), recorded in
+            ``meta.json["fd"]`` so a calibrated run names its diagram's
+            source instead of reading as an anonymous "custom" FD. Only
+            meaningful together with ``fd``; ignored (with a note) otherwise.
         dx_m: Target cell length [m]; the actual grid uses
-            ``n_cells = max(10, round(length/dx_m))``.
+            ``n_cells = max(10, round(length/dx_m))``. ``None`` (default)
+            takes ``cfg.macro.dx_m``, and 100 m when the config carries no
+            macro block.
         v_star_ms: Fixed bottleneck command speed [m/s] used when no
             controller is configured or the ``controllers`` package is not
             yet importable (it may be building concurrently — noted in
             meta.json when the fallback engages).
         bottleneck_variant: ``"flux_cap"`` (primary) or ``"capacity"``
-            (:mod:`macrosim.bottleneck`).
+            (:mod:`macrosim.bottleneck`). ``None`` (default) takes
+            ``cfg.macro.bottleneck_variant``, and ``"flux_cap"`` when the
+            config carries no macro block. The effective pair is recorded in
+            ``meta.json["macro_options"]``.
         use_numba: Kernel selection forwarded to :class:`CTMSolver`.
         prescribed_avs: Optional prescribed moving-bottleneck trajectories
             (:class:`macrosim.bottleneck.VStarTrajectory` — the
@@ -420,10 +432,34 @@ def run_macro(
     """
     t_wall0 = time.perf_counter()
     notes: list[str] = []
+    # Solver options: the explicit argument wins, then the scenario's own
+    # macro block, then the documented defaults. Whatever wins is recorded in
+    # meta.json["macro_options"], so a config's block is never honoured
+    # silently and never overridden silently either.
+    opts = cfg.macro if cfg.macro is not None else MacroOptions()
+    dx_target = opts.dx_m if dx_m is None else dx_m
+    variant: BottleneckVariant = (
+        opts.bottleneck_variant if bottleneck_variant is None else bottleneck_variant
+    )
     fd_preset = "custom"
     if fd is None:
         fd = v1_legacy_fd()
         fd_preset = "v1_legacy"
+        if fd_artifact is not None:
+            notes.append(
+                f"fd_artifact={fd_artifact!r} was supplied without a fundamental diagram; "
+                "the run used the uncalibrated v1_legacy preset"
+            )
+            fd_artifact = None
+    elif fd_artifact is not None:
+        fd_preset = "artifact"
+    fd_source = (
+        fd_artifact
+        if fd_artifact is not None
+        else "v1_legacy preset"
+        if fd_preset == "v1_legacy"
+        else "caller-supplied fundamental diagram"
+    )
 
     net = cfg.network
     if isinstance(net, RingNetwork):
@@ -443,7 +479,7 @@ def run_macro(
         fd = TriangularFD(v_f=fd.v_f, w=fd.w, rho_jam=fd.rho_jam * lanes)
         notes.append(f"effective single-pipe: rho_jam scaled by {lanes} lanes")
 
-    n_cells = max(10, round(length_m / dx_m))
+    n_cells = max(10, round(length_m / dx_target))
     dx = length_m / n_cells
     dt = min(cfg.sim.step_length_s, _CFL_SAFETY * cfl_max_dt(fd, dx))
     solver = CTMSolver(
@@ -499,7 +535,7 @@ def run_macro(
                 MovingBottleneck(
                     x_m=(j + 0.5) * length_m / n_avs,
                     v_star_ms=float(v0),
-                    variant=bottleneck_variant,
+                    variant=variant,
                     active=is_compliant,
                 )
             )
@@ -558,7 +594,7 @@ def run_macro(
                 x_av, v_star = state
                 if not 0.0 <= x_av < solver.length_m:
                     continue
-                mb = MovingBottleneck(x_m=x_av, v_star_ms=v_star, variant=bottleneck_variant)
+                mb = MovingBottleneck(x_m=x_av, v_star_ms=v_star, variant=variant)
                 cell = mb.cell_index(solver)
                 prescribed_active_steps += 1
                 if v_star < equilibrium_speed_scalar(fd, float(solver.density[cell])):
@@ -669,7 +705,20 @@ def run_macro(
         "fuel_total_ml": None,  # no emission model in the macro tier (micro-tier output)
         "clamped": solver.clamped,
         "grid": {"n_cells": n_cells, "dx_m": dx, "dt_s": dt, "boundary": boundary},
-        "fd": {"preset": fd_preset, "v_f": fd.v_f, "w": fd.w, "rho_jam": fd.rho_jam},
+        # Parameters as the solver used them (a multi-lane corridor has
+        # already had rho_jam — and with it rho_c and q_max — scaled to the
+        # effective single pipe), plus where the diagram came from.
+        "fd": {
+            "preset": fd_preset,
+            "source": fd_source,
+            "artifact": fd_artifact,
+            "v_f": fd.v_f,
+            "w": fd.w,
+            "rho_jam": fd.rho_jam,
+            "rho_c": fd.rho_c,
+            "q_max": fd.q_max,
+        },
+        "macro_options": {"dx_m": dx_target, "bottleneck_variant": variant},
         "ledger": {
             "vehicles_in": solver.vehicles_in,
             "vehicles_out": solver.vehicles_out,
@@ -682,7 +731,7 @@ def run_macro(
             "controller": cfg.av.controller,
             "controller_applied": controller_fn is not None,
             "v_star_fallback_ms": v_star_ms,
-            "variant": bottleneck_variant,
+            "variant": variant,
             "prescribed": (
                 {
                     "n_trajectories": len(prescribed_avs),

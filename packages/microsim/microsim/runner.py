@@ -873,6 +873,20 @@ def run_micro(
             "acceleration exponent at 4 (not a vType attribute); ran with delta=4"
         )
 
+    # Macro-tier-only config blocks reaching a micro run: recorded, never
+    # silently dropped (docs/CONTRACTS.md §2). The micro tier has no
+    # fundamental diagram and no CTM grid, so neither can be honoured here.
+    if cfg.fd_calibration is not None:
+        notes.append(
+            f"fd_calibration={cfg.fd_calibration!r} is a macro-tier (screening) input: "
+            "the micro tier has no fundamental diagram and did not use it"
+        )
+    if cfg.macro is not None:
+        notes.append(
+            "macro options (dx_m, bottleneck_variant) are macro-tier (screening) inputs "
+            "and were not used by this micro-tier run"
+        )
+
     # Calibrated-fleet provenance (docs/CONTRACTS.md §2): when the fleet draws
     # from an IDMCalibration artifact, meta.json records its data_hash.
     fleet_calibration: dict[str, str] | None = None

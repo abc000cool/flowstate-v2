@@ -282,3 +282,56 @@ def test_unknown_request_fields_are_refused(client: TestClient) -> None:
     assert r.status_code == 422
     r = client.post("/api/v1/reports", json={"run_ids": ["x"], "titel": "t"}, headers=HEADERS)
     assert r.status_code == 422
+
+
+def test_sweep_reports_its_tier_and_carries_macro_options_into_every_cell(
+    client: TestClient,
+) -> None:
+    """A macro sweep says so, and its solver options reach each cell's config.
+
+    The dashboard labels a screening matrix from ``SweepOut.tier`` (macro
+    results may never be read as a validation result, CLAUDE.md §5.6), and the
+    tier has to be readable before the fan-out job has created a single run —
+    so it comes from the stored cell configs, not from a run row.
+    """
+    scenario = post_scenario(client, macro_corridor_config())
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "controllers": ["follower_stopper"],
+            "replicates": 1,
+            "macro": {"dx_m": 200.0, "bottleneck_variant": "capacity"},
+            "overrides": {"sim": {"duration_s": 60.0}},
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 202, r.text
+    assert r.json()["tier"] == "macro"
+
+    body = client.get(f"/api/v1/sweeps/{r.json()['sweep_id']}", headers=HEADERS).json()
+    assert body["tier"] == "macro"
+    (cell,) = body["cells"]
+    run = client.get(f"/api/v1/runs/{cell['run_id']}", headers=HEADERS).json()
+    assert run["status"] == "done", run["error"]
+    row = client.app.state.store.get_run(run["run_id"])  # type: ignore[attr-defined]
+    assert row["config"]["macro"] == {"dx_m": 200.0, "bottleneck_variant": "capacity"}
+
+
+def test_sweep_with_an_unknown_bottleneck_variant_is_422(client: TestClient) -> None:
+    scenario = post_scenario(client, macro_corridor_config())
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "controllers": [None],
+            "replicates": 1,
+            "macro": {"bottleneck_variant": "sideways"},
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 422

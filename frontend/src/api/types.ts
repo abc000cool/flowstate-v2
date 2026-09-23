@@ -60,6 +60,18 @@ export interface SimSpec {
   output_hz?: number;
 }
 
+/** Mirrors `flowstate_core.config.MacroOptions` — the macro (CTM screening)
+ * tier's solver options. `dx_m` is the target cell length; the realized Δx is
+ * `length / max(10, round(length / dx_m))`. `bottleneck_variant` picks the
+ * discretization of a controlled vehicle's moving bottleneck: `flux_cap`
+ * (`F <- min(F, rho*v*)`, the discrete Delle Monache-Goatin constraint) or
+ * `capacity` (`F <- min(F, alpha*q_max(v*))`). The micro tier has neither and
+ * ignores the block. */
+export interface MacroOptions {
+  dx_m?: number;
+  bottleneck_variant?: 'flux_cap' | 'capacity';
+}
+
 export interface PerturbationSpec {
   t_s: number;
   position_m: number;
@@ -74,6 +86,11 @@ export interface ScenarioConfig {
   fleet: FleetSpec;
   av: AVSpec;
   sim: SimSpec;
+  /** Path to an `FDCalibration` artifact; when set the macro tier runs on
+   * that fitted fundamental diagram instead of the uncalibrated `v1_legacy`
+   * preset. */
+  fd_calibration?: string | null;
+  macro?: MacroOptions | null;
   perturbation?: PerturbationSpec | null;
   seed: number;
   replicates: number;
@@ -138,6 +155,9 @@ export interface CreateRunRequest {
   overrides?: Record<string, unknown>;
   replicates?: number;
   tier?: Tier;
+  /** Macro-tier solver options; merged into the effective config, so they are
+   * part of the run's `config_hash`. Unknown keys are refused with 422. */
+  macro?: MacroOptions;
 }
 
 /** Mirrors the API's `CIOut` — a t-distribution CI over the replicates that
@@ -181,6 +201,12 @@ export interface RunMetrics {
   underpowered?: boolean;
   replicates: ReplicateMetrics[];
   aggregate: Record<string, AggregateStat>;
+  /** Macro (screening) runs only: where the fundamental diagram came from —
+   * the `FDCalibration` artifact path the config named, or `'v1_legacy
+   * preset'` for the documented *uncalibrated* default. Absent/null on micro
+   * runs and on a service older than the field, in which case the provenance
+   * is unknown and must not be presented as either one. */
+  fd_source?: string | null;
 }
 
 /** Mirrors the API's `HeatmapOut`: bin CENTERS, not edges. */
@@ -209,6 +235,9 @@ export interface CreateSweepRequest {
   include_baseline: boolean;
   overrides?: Record<string, unknown>;
   tier?: Tier;
+  /** Macro-tier solver options applied to every cell (see
+   * `CreateRunRequest.macro`). */
+  macro?: MacroOptions;
 }
 
 /** Mirrors the API's `SweepCellOut`. `run_id`/`status` are null until the
@@ -229,6 +258,10 @@ export interface SweepDetail {
   sweep_id: string;
   scenario_id?: string | null;
   status?: RunStatus;
+  /** Tier every cell of the grid runs on (`SweepOut.tier`): `macro` means the
+   * whole matrix is screening-tier output and cannot support a validation
+   * claim. Absent on a service older than the field. */
+  tier?: Tier | null;
   error?: string | null;
   created_at?: string;
   runs_total?: number;

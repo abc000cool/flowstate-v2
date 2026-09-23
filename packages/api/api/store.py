@@ -25,7 +25,7 @@ import json
 import sqlite3
 import time
 import uuid
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,7 +50,7 @@ _CLAIM_RESET_COLUMNS = {
     "run": ("error", "error_kind", "completed_replicates"),
     "sweep": ("error",),
     "calibration": ("error", "artifact_path"),
-    "report": ("error", "error_kind", "report_dir", "report_path"),
+    "report": ("error", "error_kind", "report_dir", "report_path", "observed_json"),
 }
 _CLAIM_RESET_VALUES: dict[str, Any] = {"completed_replicates": 0}
 
@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS reports (
     title         TEXT NOT NULL,
     status        TEXT NOT NULL,
     profile       TEXT NOT NULL DEFAULT 'fhwa_default',
+    observations_path TEXT,
+    observed_json TEXT,
     report_dir    TEXT,
     report_path   TEXT,
     error         TEXT,
@@ -130,6 +132,8 @@ CREATE TABLE IF NOT EXISTS reports (
 #: a store file written by an earlier version must keep opening.
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("reports", "profile", "TEXT NOT NULL DEFAULT 'fhwa_default'"),
+    ("reports", "observations_path", "TEXT"),
+    ("reports", "observed_json", "TEXT"),
 )
 
 
@@ -435,7 +439,11 @@ class Store:
     # -- reports -----------------------------------------------------------
 
     def create_report(
-        self, run_ids: list[str], title: str, profile: str = DEFAULT_CRITERIA_PROFILE
+        self,
+        run_ids: list[str],
+        title: str,
+        profile: str = DEFAULT_CRITERIA_PROFILE,
+        observations_path: str | None = None,
     ) -> str:
         """Insert a queued report row.
 
@@ -445,13 +453,17 @@ class Store:
             profile: ``validation.criteria`` profile name the report is
                 scored against (validated at the API boundary, recorded here
                 so the report's header and ``ReportOut.profile`` agree).
+            observations_path: Server-side ``flowstate.observations/1``
+                artifact the run set is scored against (already confined to
+                the allow-listed roots at the API boundary), or ``None`` for
+                a report with no observed side.
         """
         pid = new_id("rpt")
         with self._conn() as con:
             con.execute(
-                "INSERT INTO reports (id, run_ids_json, title, status, profile, created_at)"
-                " VALUES (?, ?, ?, 'queued', ?, ?)",
-                (pid, json.dumps(run_ids), title, profile, now_iso()),
+                "INSERT INTO reports (id, run_ids_json, title, status, profile,"
+                " observations_path, created_at) VALUES (?, ?, ?, 'queued', ?, ?, ?)",
+                (pid, json.dumps(run_ids), title, profile, observations_path, now_iso()),
             )
         return pid
 
@@ -490,13 +502,36 @@ class Store:
         report_path: str | None = None,
         error: str | None = None,
         error_kind: str | None = None,
+        observed: Mapping[str, Any] | None = None,
     ) -> None:
+        """Record a report's terminal state.
+
+        Args:
+            report_id: Row id.
+            status: New status.
+            report_dir: Bundle directory.
+            report_path: Markdown path inside it.
+            error: Failure text.
+            error_kind: Failure marker (e.g. ``report_refused``).
+            observed: What the observed comparison rested on
+                (``validation.observed.ObservedProvenance.to_dict()``) —
+                stored as JSON and surfaced on ``GET /reports/{id}``. Left out
+                on a failure, and on a report with no observations.
+        """
         _check_status(status)
         with self._conn() as con:
             con.execute(
                 "UPDATE reports SET status = ?, report_dir = ?, report_path = ?,"
-                " error = ?, error_kind = ? WHERE id = ?",
-                (status, report_dir, report_path, error, error_kind, report_id),
+                " error = ?, error_kind = ?, observed_json = ? WHERE id = ?",
+                (
+                    status,
+                    report_dir,
+                    report_path,
+                    error,
+                    error_kind,
+                    None if observed is None else json.dumps(dict(observed)),
+                    report_id,
+                ),
             )
 
     # -- lifecycle guards, all kinds ----------------------------------------
@@ -653,6 +688,8 @@ def _calibration_dict(row: sqlite3.Row) -> dict[str, Any]:
 def _report_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     d["run_ids"] = json.loads(d.pop("run_ids_json"))
+    raw = d.pop("observed_json", None)
+    d["observed"] = json.loads(raw) if raw else None
     return d
 
 

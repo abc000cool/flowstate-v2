@@ -66,6 +66,8 @@ from api.store import KINDS, Store, new_id, now_iso
 if TYPE_CHECKING:
     from rq.job import Job
 
+    from flowstate_core.artifacts import FDCalibration
+
 _log = logging.getLogger(__name__)
 
 #: RQ queue name shared by the API producer and ``api.worker`` consumers.
@@ -350,6 +352,58 @@ def _calibration_error_text(exc: BaseException) -> str:
 # Simulation runs
 # ---------------------------------------------------------------------------
 
+#: Repository root, the base a *relative* config file path resolves against —
+#: the same fallback ``api.main._resolve_config_path`` and
+#: ``microsim.vehicles.resolve_calibration_path`` apply, so a shipped preset's
+#: ``artifacts/...`` reference works whatever the worker's working directory is.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _load_fd_calibration(path: str, roots: Sequence[Path]) -> FDCalibration:
+    """Read the ``FDCalibration`` artifact a macro run's config names.
+
+    The macro-tier counterpart of
+    :func:`microsim.vehicles.load_idm_calibration`, implemented here rather
+    than imported from ``microsim`` because importing that package pulls the
+    whole SUMO micro tier into a macro-tier worker (see
+    :data:`WORKER_PATH_ROOTS_ENV`).
+
+    Containment is decided on the *resolved* candidates, before existence, so
+    a refusal can never be read as an existence oracle for a file outside the
+    roots; the message names the configured value and the roots and nothing
+    read from the file.
+
+    Args:
+        path: ``ScenarioConfig.fd_calibration`` as configured — absolute, or
+            relative to the worker's working directory or the repository root.
+        roots: Directories the artifact must resolve inside
+            (:func:`_worker_path_roots`).
+
+    Returns:
+        The parsed ``flowstate_core.artifacts.FDCalibration``.
+
+    Raises:
+        ValueError: Every candidate resolves outside ``roots``.
+        FileNotFoundError: No candidate exists.
+    """
+    from flowstate_core.artifacts import FDCalibration
+
+    candidates = [Path(path)]
+    repo_candidate = _REPO_ROOT / path
+    if repo_candidate != candidates[0]:
+        candidates.append(repo_candidate)
+    inside = [c for c in candidates if any(c.resolve().is_relative_to(r) for r in roots)]
+    if not inside:
+        raise ValueError(
+            f"fd_calibration {path!r} is outside the allowed data roots {[str(r) for r in roots]}"
+        )
+    for candidate in inside:
+        if candidate.is_file():
+            return FDCalibration.load(candidate)
+    raise FileNotFoundError(
+        f"FDCalibration artifact not found: {path!r} (also tried {repo_candidate})"
+    )
+
 
 def run_scenario_job(
     run_id: str, db_path: str | None = None, results_root: str | None = None
@@ -364,10 +418,17 @@ def run_scenario_job(
     (:func:`api.results.precompute_run_metrics`) so the API never reduces a
     trajectory file inside a request.
 
+    A macro run whose config names an ``fd_calibration`` artifact runs on
+    that fitted triangular diagram instead of the uncalibrated ``v1_legacy``
+    preset (:func:`_load_fd_calibration`), and its ``meta.json["fd"]`` names
+    the artifact. Its ``macro`` block (cell length, bottleneck variant) rides
+    in the config and is read by the runner itself.
+
     The simulation runs inside :func:`_confined_worker_paths`, so the config's
     ``osm_file`` / ``idm_calibration`` fields are re-checked against the
     allow-list by the code that opens them — the API's 422 is the first line
-    of that defence, this is the second.
+    of that defence, this is the second. ``fd_calibration`` is checked against
+    the same roots here, before the artifact is opened.
 
     Returns without working when the row cannot be claimed (already running
     under another execution, or done): a duplicate delivery is a no-op.
@@ -386,12 +447,18 @@ def run_scenario_job(
         cfg = ScenarioConfig.model_validate(run["config"])
         run_root = Path(run["run_root"])
         run_root.mkdir(parents=True, exist_ok=True)
-        with _confined_worker_paths(_worker_path_roots(root)):
+        roots = _worker_path_roots(root)
+        with _confined_worker_paths(roots):
             if cfg.tier == "macro":
                 from macrosim.runner import run_macro
 
+                fd = (
+                    None
+                    if cfg.fd_calibration is None
+                    else _load_fd_calibration(cfg.fd_calibration, roots).fd
+                )
                 for i, seed in enumerate(run["seeds"]):
-                    run_macro(cfg, int(seed), run_root)
+                    run_macro(cfg, int(seed), run_root, fd=fd, fd_artifact=cfg.fd_calibration)
                     store.set_run_progress(run_id, i + 1)
             else:
                 from microsim.runner import run_replicates
@@ -507,6 +574,42 @@ _PEMS_LOADER_KEYS = (
     "max_out_of_range_fraction",
 )
 
+_DETECTOR_LOADER_KEYS = (
+    "column_map",
+    "speed_unit",
+    "occupancy_unit",
+    "kind_default",
+)
+
+#: Options of the demand/observations job (``api.calibration_jobs``) on top of
+#: :data:`_DETECTOR_LOADER_KEYS`.
+_OBSERVATIONS_KEYS = (
+    "window_s",
+    "t0_local",
+    "duration_s",
+    "upstream_station",
+    "stations",
+    "ramps",
+    "corridor",
+    "notes",
+)
+
+
+def pems_loader_kwargs(params: dict[str, Any]) -> dict[str, Any]:
+    """PeMS loader options from the request params, with its unit spelling.
+
+    ``CalibrationParams.occupancy_unit`` accepts the detector-CSV spelling
+    ``"pct"`` as well as the PeMS one; the PeMS loader only knows
+    ``"fraction"``/``"percent"`` and treats anything else as a fraction, so
+    the alias is translated here rather than silently changing the scale of a
+    whole column.
+    """
+    kwargs = _subset(params, _PEMS_LOADER_KEYS)
+    if kwargs.get("occupancy_unit") == "pct":
+        kwargs["occupancy_unit"] = "percent"
+    return kwargs
+
+
 _IDM_FIT_KEYS = (
     "seed",
     "holdout_frac",
@@ -617,7 +720,11 @@ def fd_calibration_job(
     CSV with ``density_veh_m``/``flow_veh_s`` (optional ``occupancy``)
     columns; ``"pems"`` runs the PeMS station-CSV loader first. The
     ``FDCalibration`` artifact is saved under the results root and its path
-    recorded on the row.
+    recorded on the row. ``"detector_csv"`` reads the tidy detector frame of
+    the observations contract instead and converts it to the per-lane
+    (density, flow) table: density from ``q/v`` where the frame carries a
+    speed, else from occupancy through the same g-factor estimate the PeMS
+    path uses (``calibration.loaders.detector_csv.to_fd_frame``).
 
     Bad uploads are diagnosed before the fit (:func:`_read_calibration_csv`):
     an empty or truncated file, a header-only file, and a non-numeric column
@@ -647,12 +754,20 @@ def fd_calibration_job(
             from calibration.loaders.pems import load_pems_station_csv
 
             try:
-                df = load_pems_station_csv(data_path, **_subset(params, _PEMS_LOADER_KEYS))
+                df = load_pems_station_csv(data_path, **pems_loader_kwargs(params))
             except (pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
                 raise ValueError(
                     f"{data_path.name}: not a readable CSV (no header row parsed) — the "
                     f"file is empty, truncated, or not delimited text"
                 ) from exc
+        elif loader == "detector_csv":
+            # WP-A: the tidy detector frame of the observations contract — a
+            # station-total flow, so the FD table is per lane (``to_fd_frame``).
+            from calibration.loaders.detector_csv import load_detector_csv, to_fd_frame
+
+            tidy = load_detector_csv(data_path, **_subset(params, _DETECTOR_LOADER_KEYS))
+            fd_kwargs = _subset(params, ("g_effective_length_m",))
+            df = to_fd_frame(tidy, **fd_kwargs)
         elif loader == "tidy":
             # `occupancy` reaches the fit as numbers only when no explicit
             # density cut is given; checking it otherwise would fail a file
@@ -662,7 +777,9 @@ def fd_calibration_job(
                 numeric.append("occupancy")
             df = _read_calibration_csv(data_path, numeric, _FD_REQUIRED_COLUMNS)
         else:
-            raise ValueError(f"unknown fd loader {loader!r} (expected 'tidy' or 'pems')")
+            raise ValueError(
+                f"unknown fd loader {loader!r} (expected 'tidy', 'pems' or 'detector_csv')"
+            )
         if df.empty:
             raise ValueError(
                 f"{data_path.name}: the {loader!r} loader produced 0 usable rows — "
@@ -838,6 +955,96 @@ def _pdf_available() -> bool:
     return importlib.util.find_spec("fpdf") is not None
 
 
+def _observed_x_offset(meta: dict[str, Any]) -> float:
+    """Simulation ``x`` of the corridor's start [m] for one replicate.
+
+    A generated corridor is built with an upstream insertion buffer
+    (``microsim.runner.CORRIDOR_INSERTION_BUFFER_M``, capped at the corridor
+    length), so a station measured at ``x_m`` along the corridor sits at
+    ``x_m + offset`` in trajectory coordinates — the same convention
+    :func:`api.results.analysis_span` applies to the travel-time span. Ring
+    and OSM networks carry no such synthetic buffer, so their observations are
+    expected in the network's own coordinates and the offset is zero.
+
+    Args:
+        meta: The replicate's parsed ``meta.json``.
+
+    Returns:
+        The offset [m].
+    """
+    config = meta.get("config")
+    network = config.get("network") if isinstance(config, dict) else None
+    if not isinstance(network, dict) or network.get("kind") != "corridor":
+        return 0.0
+    length = network.get("length_m")
+    if not isinstance(length, (int, float)) or isinstance(length, bool) or length <= 0:
+        return 0.0
+    # Imported here, not at module import: the report worker must not load
+    # SUMO to read a geometry constant (the reason api.results does the same).
+    from microsim.runner import CORRIDOR_INSERTION_BUFFER_M
+
+    return float(min(CORRIDOR_INSERTION_BUFFER_M, float(length)))
+
+
+def _observed_report_inputs(
+    observations_path: str, runs: list[dict[str, Any]]
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Score a report's runs against an observations artifact.
+
+    Every completed micro replicate of every run in the set is scored with
+    :func:`validation.battery.score_replicate` — the same function
+    ``scripts/corridor_battery.py`` uses, so an API report and a battery
+    artifact cannot disagree about the same run. The per-replicate GEH values
+    are pooled (each replicate contributes its own station-hours, so the
+    criterion's pass fraction is measured over the ensemble rather than over
+    one arbitrary seed) and the RMSPE is the mean of the replicates'.
+
+    Args:
+        observations_path: The ``flowstate.observations/1`` artifact, already
+            confined to the allow-listed roots by the API boundary.
+        runs: Store rows of the report's runs.
+
+    Returns:
+        ``(kwargs, provenance)`` — keyword arguments for
+        :func:`validation.report.generate_report` and the JSON provenance for
+        the report row. Both are empty/None when no replicate could be scored,
+        which leaves the two criteria rows honestly *not evaluated*.
+    """
+    import math
+
+    from api.results import load_meta, replicate_dirs
+    from validation.battery import score_replicate
+    from validation.observed import ObservedCorridor, ObservedScores, pool_scores
+
+    observed = ObservedCorridor.from_json(observations_path)
+    scores: list[ObservedScores] = []
+    for run in runs:
+        if run.get("tier") == "macro":
+            continue  # the screening tier has no trajectories to compare
+        for rep_dir in replicate_dirs(Path(run["run_root"])):
+            if not (rep_dir / "trajectories.parquet").is_file():
+                continue
+            scores.append(
+                score_replicate(
+                    rep_dir, observed, x_offset_m=_observed_x_offset(load_meta(rep_dir))
+                )
+            )
+    if not scores:
+        return {}, None
+    geh, rmspe_value, sim_speeds, obs_speeds, provenance = pool_scores(
+        observed, scores, path=observations_path
+    )
+    kwargs: dict[str, Any] = {
+        "geh_values": geh or None,
+        "rmspe_value": rmspe_value if math.isfinite(rmspe_value) else None,
+        "segment_speeds_obs": obs_speeds,
+        "segment_speeds_sim": sim_speeds,
+        "segment_window_s": observed.window_s,
+        "observed": provenance,
+    }
+    return kwargs, provenance.to_dict()
+
+
 _warned_no_pdf = False
 
 
@@ -860,14 +1067,23 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
     its own protocol — the profile's ``source`` and thresholds are printed in
     the report. Only the *thresholds* come from the request. The
     measurements are computed from the staged run artifacts, and the
-    criteria whose evidence is observed field data this service does not
-    hold — ``link_flows_geh`` (observed link counts), ``speeds_rmspe``
-    (an observed segment-speed field), ``ring_emergence``/``ring_dampening``
+    criteria whose evidence this service does not hold are left *not
+    evaluated*: numbers typed into a request body would be exactly the
+    free-text report values CLAUDE.md §7.4 forbids.
+
+    **Observed comparisons.** When the request named an
+    ``observations_path``, the two observed rows stop being a product gap:
+    every completed micro replicate is scored against the corridor's
+    detectors (:func:`_observed_report_inputs`), ``link_flows_geh`` is
+    evaluated on the pooled station-hour GEH values and ``speeds_rmspe`` on
+    the replicate-mean segment-speed RMSPE, and the report gains the
+    observed-data provenance block. The numbers are computed from the run
+    artifacts and the artifact file, never from the request. Without an
+    ``observations_path`` — and for ``ring_emergence``/``ring_dampening``
     (the two benchmark runs) and ``sensitivity_grid`` (the realized
-    penetration × compliance cells) — are left *not evaluated*: numbers
-    typed into a request body would be exactly the free-text report values
-    CLAUDE.md §7.4 forbids. Feeding them from observed data is a product
-    gap, tracked in docs/DEPLOYMENT.md rather than papered over here.
+    penetration × compliance cells), which the API still cannot supply —
+    the rows stay not evaluated; ``scripts/corridor_battery.py`` is the
+    offline path that fills the ring rows too.
 
     **Travel-time span.** A run set that is one corridor geometry is measured
     over that corridor (:func:`_report_span`), not over the replicates'
@@ -930,6 +1146,11 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
             _warn_no_pdf_once()
         profile = get_profile(str(report["profile"]))
         span = _report_span(runs)
+        observations_path = report.get("observations_path")
+        observed_kwargs: dict[str, Any] = {}
+        observed_meta: dict[str, Any] | None = None
+        if observations_path:
+            observed_kwargs, observed_meta = _observed_report_inputs(str(observations_path), runs)
         try:
             if want_pdf:
                 generate_report(
@@ -940,6 +1161,7 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
                     profile=profile,
                     span=span,
                     pdf=True,
+                    **observed_kwargs,
                 )
             else:
                 generate_report(
@@ -949,6 +1171,7 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
                     created_at=now_iso(),
                     profile=profile,
                     span=span,
+                    **observed_kwargs,
                 )
         except ReportRefusedError as exc:
             store.set_report_status(
@@ -960,7 +1183,11 @@ def report_job(report_id: str, db_path: str | None = None, results_root: str | N
             )
             return
         store.set_report_status(
-            report_id, "done", report_dir=str(report_dir), report_path=str(out_path)
+            report_id,
+            "done",
+            report_dir=str(report_dir),
+            report_path=str(out_path),
+            observed=observed_meta,
         )
     except Exception as exc:
         _log.exception("report %s failed", report_id)
@@ -998,6 +1225,10 @@ def _job_for(kind: str, row: dict[str, Any]) -> Callable[..., Any]:
     if kind == "report":
         return report_job
     if kind == "calibration":
+        if row["kind"] == "demand":  # WP-A (imported here: calibration_jobs imports this module)
+            from api.calibration_jobs import demand_calibration_job
+
+            return demand_calibration_job
         return fd_calibration_job if row["kind"] == "fd" else idm_calibration_job
     raise ValueError(f"unknown row kind {kind!r}")
 

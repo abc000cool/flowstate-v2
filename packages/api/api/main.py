@@ -65,6 +65,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 import api as api_pkg
 from api import results as res
+from api.calibration_jobs import demand_calibration_job  # WP-A
 from api.jobs import (
     REPORT_REFUSED_KIND,
     fd_calibration_job,
@@ -99,7 +100,7 @@ from api.schemas import (
 )
 from api.settings import REPO_ROOT, Settings, check_api_key_not_default, load_settings
 from api.store import Store, new_id
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import MacroOptions, ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
 from validation.metrics import MIN_REPLICATES
 
@@ -169,6 +170,8 @@ def _config_file_fields(cfg: ScenarioConfig) -> list[tuple[tuple[str, ...], str]
     heavy = cfg.fleet.heavy
     if heavy is not None and heavy.idm_calibration is not None:
         fields.append((("fleet", "heavy", "idm_calibration"), heavy.idm_calibration))
+    if cfg.fd_calibration is not None:
+        fields.append((("fd_calibration",), cfg.fd_calibration))
     return fields
 
 
@@ -190,11 +193,12 @@ def _resolve_config_path(value: str) -> Path:
 def _confine_config_paths(cfg: ScenarioConfig, settings: Settings) -> None:
     """Refuse config file fields that escape :attr:`Settings.config_path_roots`.
 
-    ``network.osm_file``, ``fleet.idm_calibration`` and
-    ``fleet.heavy.idm_calibration`` are read by the worker (netconvert, the
-    ``IDMCalibration`` loader), and a parse failure there can quote the
-    file's bytes back through the run's error text — so, like a calibration
-    ``data_path``, they may only point inside the allow-listed roots.
+    ``network.osm_file``, ``fleet.idm_calibration``,
+    ``fleet.heavy.idm_calibration`` and ``fd_calibration`` are read by the
+    worker (netconvert, the ``IDMCalibration`` / ``FDCalibration`` loaders),
+    and a parse failure there can quote the file's bytes back through the
+    run's error text — so, like a calibration ``data_path``, they may only
+    point inside the allow-listed roots.
     Existence is not checked here: a missing file is the worker's honest
     ``FileNotFoundError``, and the API host need not mount every dataset.
 
@@ -261,12 +265,24 @@ def _apply_overrides(
     overrides: dict[str, Any],
     replicates: int | None,
     tier: str | None,
+    macro: MacroOptions | None = None,
 ) -> dict[str, Any]:
+    """The effective config of a run/sweep request.
+
+    The typed request fields are applied after the free-form ``overrides``
+    patch, so a request that sets both wins with the typed one. ``macro``
+    lands in the config (rather than staying on the request) because the
+    config is the reproducible record: it is hashed, stored on the run row,
+    re-read by the worker on a reconciliation re-enqueue, and snapshotted
+    into every replicate's ``meta.json``.
+    """
     merged = deep_merge(base, overrides)
     if replicates is not None:
         merged["replicates"] = replicates
     if tier is not None:
         merged["tier"] = tier
+    if macro is not None:
+        merged["macro"] = macro.model_dump(mode="json")
     return merged
 
 
@@ -400,7 +416,9 @@ def create_run(request: Request, body: RunCreateRequest) -> RunOut:
     scenario = store.get_scenario(body.scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail=f"scenario {body.scenario_id!r} not found")
-    merged = _apply_overrides(scenario["config"], body.overrides, body.replicates, body.tier)
+    merged = _apply_overrides(
+        scenario["config"], body.overrides, body.replicates, body.tier, body.macro
+    )
     config, chash, cfg = _validate_config(merged, settings)
     run_id = new_id("run")
     store.create_run(
@@ -442,7 +460,10 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
 
     ``underpowered`` is reported honestly: any aggregate over fewer than 20
     replicates is flagged and must not be quoted as a headline result
-    (CLAUDE.md §0.6).
+    (CLAUDE.md §0.6). A macro (screening) run also reports ``fd_source`` —
+    the ``FDCalibration`` artifact its fundamental diagram was read from, or
+    the uncalibrated ``v1_legacy`` preset — so a screening number is never
+    shown without the provenance of the diagram that produced it.
     """
     row = _get_run_or_404(request, run_id)
     _require_done(row)
@@ -466,7 +487,36 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
             for seed, m in per_replicate
         ],
         aggregate={name: CIOut(**res.ci_to_json(ci)) for name, ci in agg.items()},
+        fd_source=_fd_source(row),
     )
+
+
+def _fd_source(row: dict[str, Any]) -> str | None:
+    """Provenance of a macro run's fundamental diagram, from its ``meta.json``.
+
+    Reads the first replicate's meta (the config, and therefore the diagram,
+    is identical across replicates). Returns ``None`` for a micro-tier run,
+    and for any run whose meta cannot be read or predates the field — the
+    dashboard then says the source is unknown rather than naming one.
+
+    Args:
+        row: The run's store row (``tier``, ``run_root``).
+
+    Returns:
+        ``meta["fd"]["source"]`` — an artifact path or ``"v1_legacy preset"``
+        — or ``None``.
+    """
+    if row["tier"] != "macro":
+        return None
+    try:
+        dirs = res.replicate_dirs(row["run_root"])
+        if not dirs:
+            return None
+        fd = res.load_meta(dirs[0]).get("fd") or {}
+    except (OSError, ValueError):
+        return None
+    source = fd.get("source")
+    return source if isinstance(source, str) else None
 
 
 @router.get("/runs/{run_id}/heatmap", response_model=None, responses=_NOT_FOUND_RESPONSE)
@@ -565,10 +615,16 @@ def _sweep_out(request: Request, sweep: dict[str, Any]) -> SweepOut:
                 aggregate=aggregate,
             )
         )
+    grid = sweep["grid"]
+    # One base config builds every cell, so the grid is single-tier; read it
+    # from the stored cell config rather than from a run row, which does not
+    # exist until the fan-out job has created it.
+    tier = grid[0]["config"].get("tier", "micro") if grid else None
     return SweepOut(
         sweep_id=sweep["id"],
         scenario_id=sweep["scenario_id"],
         status=sweep["status"],
+        tier=tier,
         error=sweep["error"],
         created_at=sweep["created_at"],
         runs_total=len(sweep["grid"]),
@@ -609,7 +665,9 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
     scenario = store.get_scenario(body.scenario_id)
     if scenario is None:
         raise HTTPException(status_code=404, detail=f"scenario {body.scenario_id!r} not found")
-    base = _apply_overrides(scenario["config"], body.overrides, body.replicates, body.tier)
+    base = _apply_overrides(
+        scenario["config"], body.overrides, body.replicates, body.tier, body.macro
+    )
     grid: list[dict[str, Any]] = []
     for pen, comp, ctrl in body.grid_cells():
         cell_patch = {"av": {"penetration": pen, "compliance": comp, "controller": ctrl}}
@@ -764,6 +822,27 @@ async def _save_upload(file: UploadFile, dest: Path, cap: int) -> None:
         raise
 
 
+#: Extra artifact files a calibration kind writes beside ``artifact_path``,
+#: published under ``CalibrationOut.artifact_paths`` (WP-A: a ``demand``
+#: calibration writes the observations artifact *and* the demand artifact).
+_EXTRA_ARTIFACTS: dict[str, dict[str, str]] = {"demand": {"demand": "demand.json"}}
+
+
+def _artifact_paths(row: dict[str, Any]) -> dict[str, str]:
+    """Every artifact file of a finished calibration, keyed by name."""
+    primary = row["artifact_path"]
+    if row["status"] != "done" or not primary:
+        return {}
+    kind = str(row["kind"])
+    name = "observations" if kind == "demand" else kind
+    paths = {name: str(primary)}
+    for label, filename in _EXTRA_ARTIFACTS.get(kind, {}).items():
+        sibling = Path(primary).parent / filename
+        if sibling.is_file():
+            paths[label] = str(sibling)
+    return paths
+
+
 def _calibration_out(row: dict[str, Any]) -> CalibrationOut:
     artifact = None
     if row["status"] == "done" and row["artifact_path"]:
@@ -780,25 +859,35 @@ def _calibration_out(row: dict[str, Any]) -> CalibrationOut:
         error=row["error"],
         created_at=row["created_at"],
         artifact=artifact,
+        artifact_paths=_artifact_paths(row),
     )
 
 
 @router.post("/calibrations/{kind}", status_code=202, response_model=CalibrationOut)
 async def create_calibration(
     request: Request,
-    kind: Literal["fd", "idm"],
+    kind: Literal["fd", "idm", "demand"],  # WP-A: 'demand' → observations + demand artifacts
     file: Annotated[UploadFile | None, File()] = None,
     data_path: Annotated[str | None, Form()] = None,
     params: Annotated[str | None, Form()] = None,
     source: Annotated[str | None, Form()] = None,
 ) -> CalibrationOut:
-    """Run an FD or IDM calibration on an uploaded file or a server path.
+    """Run an FD, IDM or demand calibration on an uploaded file or server path.
 
     Multipart/form fields: exactly one of ``file`` (upload) or ``data_path``
     (path visible to the workers); optional ``params`` (JSON object of fit
     options, validated against ``api.schemas.CalibrationParams`` — bounded
     values, unknown keys refused with HTTP 422) and ``source`` (provenance
     string stored on the artifact).
+
+    ``demand`` (WP-A) takes the tidy detector CSV of the observations contract
+    and writes two artifacts — ``observations.json``
+    (``flowstate.observations/1``) and ``demand.json``
+    (``flowstate.demand/1``) — both listed in ``artifact_paths`` on
+    ``GET /calibrations/{id}``; its options are ``window_s``, ``t0_local``,
+    ``duration_s``, ``upstream_station``, ``stations``, ``ramps``,
+    ``corridor`` plus the detector-loader keys (``column_map``,
+    ``speed_unit``, ``occupancy_unit``, ``kind_default``).
 
     ``data_path`` is confined to the results root (which holds uploads) and
     the optional ``FLOWSTATE_DATA_DIR``; anything resolving outside those
@@ -822,7 +911,11 @@ async def create_calibration(
     cal_id = store.create_calibration(
         kind, resolved, params_dict, source or f"{kind} upload {resolved.name}"
     )
-    job = fd_calibration_job if kind == "fd" else idm_calibration_job
+    job = {  # WP-A: 'demand' added to the dispatch
+        "fd": fd_calibration_job,
+        "idm": idm_calibration_job,
+        "demand": demand_calibration_job,
+    }[kind]
     get_queue(settings).enqueue(
         job,
         cal_id,
@@ -878,6 +971,8 @@ def _report_out(row: dict[str, Any], settings: Settings) -> ReportOut:
         run_ids=row["run_ids"],
         title=row["title"],
         profile=row["profile"],
+        observations_path=row["observations_path"],
+        observed=row["observed"],
         report_path=_relative_report_path(row["report_path"], settings),
         error=row["error"],
         error_kind=row["error_kind"],
@@ -955,6 +1050,49 @@ def _refuse_macro_runs_in_report(rows: list[dict[str, Any]]) -> None:
     )
 
 
+def _resolve_observations_path(value: str, settings: Settings) -> Path:
+    """Resolve a report's ``observations_path`` inside the allow-listed roots.
+
+    The artifact names a file on the *worker's* filesystem, exactly like a
+    calibration ``data_path`` (:func:`_resolve_data_path`) or a config file
+    field (:func:`_confine_config_paths`), so it is confined the same way —
+    to :attr:`Settings.config_path_roots`, which is the data roots plus the
+    repository's ``artifacts/`` and ``data/`` directories where corridor
+    onboarding writes its observations. Relative values resolve against the
+    repository root, never the API process's working directory.
+
+    Args:
+        value: The requested path.
+        settings: Live settings (the allow-list).
+
+    Returns:
+        The resolved path.
+
+    Raises:
+        HTTPException: 422 when it escapes the roots, 404 when it is missing.
+    """
+    resolved = _resolve_config_path(value)
+    roots = settings.config_path_roots
+    if not any(resolved.is_relative_to(root) for root in roots):
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": "path_outside_roots",
+                    "loc": ["body", "observations_path"],
+                    "msg": (
+                        f"observations_path {value!r} is outside the allowed data roots "
+                        f"{[str(r) for r in roots]}"
+                    ),
+                    "input": value,
+                }
+            ],
+        )
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail=f"observations_path {value!r} not found")
+    return resolved
+
+
 @router.post("/reports", status_code=202, response_model=ReportOut, responses=_NOT_FOUND_RESPONSE)
 def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     """Generate a validation report for a set of finished runs.
@@ -977,6 +1115,14 @@ def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
     back **not evaluated**. An API report is therefore a run-set metrics
     bundle with the profile's thresholds stated, not a signed-off calibration
     acceptance deliverable — see docs/DEPLOYMENT.md.
+
+    ``observations_path`` is the one way to supply the missing evidence: a
+    server-side ``flowstate.observations/1`` artifact (docs/CONTRACTS.md,
+    "Detector observations"), confined to the allow-listed roots like every
+    other path in a request. With it the worker scores every completed micro
+    replicate against the corridor's detectors and the ``link_flows_geh`` and
+    ``speeds_rmspe`` rows are evaluated from *computed* comparisons — still
+    never from a number in the request body.
     """
     store = _store(request)
     settings = _settings(request)
@@ -987,7 +1133,12 @@ def create_report(request: Request, body: ReportCreateRequest) -> ReportOut:
             raise HTTPException(status_code=404, detail=f"run {rid!r} not found")
         rows.append(run)
     _refuse_macro_runs_in_report(rows)
-    report_id = store.create_report(body.run_ids, body.title, body.profile)
+    observations = (
+        str(_resolve_observations_path(body.observations_path, settings))
+        if body.observations_path is not None
+        else None
+    )
+    report_id = store.create_report(body.run_ids, body.title, body.profile, observations)
     get_queue(settings).enqueue(
         report_job,
         report_id,

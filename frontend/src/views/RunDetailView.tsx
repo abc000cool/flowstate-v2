@@ -1,5 +1,13 @@
 /** Run detail: the space-time heatmap centerpiece with a speed/density
- * toggle, then aggregate metric cards with CIs and per-replicate strips. */
+ * toggle, then aggregate metric cards with CIs and per-replicate strips.
+ *
+ * A macro (CTM screening) run also states the provenance of its fundamental
+ * diagram, which is the calibration its every number rests on: the
+ * `FDCalibration` artifact the config named, or the documented *uncalibrated*
+ * `v1_legacy` preset (CLAUDE.md §5.1 — FD parameters are calibrated
+ * per-corridor inputs, not constants). A service that does not report it
+ * leaves the source unknown, and the view says exactly that rather than
+ * assuming the preset. */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -81,6 +89,10 @@ export function RunDetailView(): JSX.Element {
   );
 
   const heatmap = heatmaps[field];
+  // the preset is uncalibrated by definition, so it is flagged rather than
+  // printed like a corridor's fitted diagram
+  const fdSource = run?.tier === 'macro' ? (metrics?.fd_source ?? null) : null;
+  const fdIsPreset = fdSource === 'v1_legacy preset';
 
   return (
     <div className="view">
@@ -102,6 +114,28 @@ export function RunDetailView(): JSX.Element {
           <span className="kv">
             config <b className="hash">{run.config_hash}</b>
           </span>
+          {run.tier === 'macro' && metrics && (
+            <span
+              className="kv"
+              title={
+                fdIsPreset
+                  ? 'Fundamental diagram: the documented v1_legacy preset — uncalibrated ' +
+                    'defaults, not a fit to this corridor. Run against an FDCalibration ' +
+                    'artifact (scenario field fd_calibration) before reading the numbers as ' +
+                    'this corridor’s.'
+                  : fdSource
+                    ? `Fundamental diagram fitted in the FDCalibration artifact ${fdSource}`
+                    : 'This service did not report where the fundamental diagram came from, ' +
+                      'so the calibration behind these numbers is unknown.'
+              }
+            >
+              FD{' '}
+              <b className={fdIsPreset || !fdSource ? 'hint-amber' : undefined}>
+                {fdSource ?? 'source unknown'}
+                {fdIsPreset ? ' (uncalibrated)' : ''}
+              </b>
+            </span>
+          )}
           <span className="kv">
             seeds{' '}
             <b>

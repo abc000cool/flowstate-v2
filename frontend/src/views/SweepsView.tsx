@@ -12,7 +12,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createSweep, getSweep, listScenarios, OFFLINE_WRITE_MESSAGE } from '../api/client';
-import type { ScenarioSummary, SweepCell, SweepDetail } from '../api/types';
+import type { ScenarioSummary, SweepCell, SweepDetail, Tier } from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
 import { deltaColor } from '../lib/colormap';
@@ -39,6 +39,20 @@ const SWEEP_POLL_MS = 2500;
  * starts cheap and says what the reporting standard is. */
 const DEFAULT_SWEEP_REPLICATES = 5;
 
+/** Said wherever a macro sweep's numbers are shown. The macro tier is a
+ * first-order CTM: it is string-stable by construction, so its cells are a
+ * screening comparison and never evidence about wave formation or dampening
+ * (CLAUDE.md §5.6 — the API also refuses to build a validation report from
+ * them). The banner is persistent, not a tooltip: a matrix of deltas reads as
+ * a result whether or not anyone hovers it. */
+const MACRO_SWEEP_BANNER =
+  'Screening tier (CTM) — not a validation result';
+const MACRO_SWEEP_DETAIL =
+  'Macro (CTM) cells are a fast first-order screening comparison. The model is string-stable ' +
+  'by construction, so these deltas cannot support a claim about phantom-jam formation or ' +
+  'dampening, and the API refuses to generate a validation report from them. Re-run the ' +
+  'grid on the micro (SUMO/IDM) tier before quoting any of it.';
+
 const IDENTICAL_TITLE =
   'Identical realisation: this cell\u2019s whole aggregate vector matches another cell\u2019s, ' +
   'so the two runs produced the same numbers despite different configurations.';
@@ -47,6 +61,15 @@ interface Tip {
   x: number;
   y: number;
   cell: SweepCell;
+}
+
+/** The persistent screening-tier label (see MACRO_SWEEP_BANNER). */
+function MacroBanner(): JSX.Element {
+  return (
+    <p className="hint-amber" role="note" title={MACRO_SWEEP_DETAIL} style={{ marginBottom: 12 }}>
+      <b>{MACRO_SWEEP_BANNER}</b> · {MACRO_SWEEP_DETAIL}
+    </p>
+  );
 }
 
 /** A p=0 cell is the sweep's baseline: with no controlled vehicles the
@@ -135,6 +158,7 @@ export function SweepsView(): JSX.Element {
   const [pens, setPens] = useState<number[]>([0.01, 0.02, 0.05, 0.1, 0.15, 0.2]);
   const [coms, setComs] = useState<number[]>([0.25, 0.5, 0.8, 1.0]);
   const [controller, setController] = useState(CONTROLLERS[0]);
+  const [tier, setTier] = useState<Tier>('micro');
   const [replicates, setReplicates] = useState(DEFAULT_SWEEP_REPLICATES);
   const [includeBaseline, setIncludeBaseline] = useState(true);
   const [confirming, setConfirming] = useState(false);
@@ -201,7 +225,9 @@ export function SweepsView(): JSX.Element {
   const doLaunch = async (): Promise<void> => {
     setLaunching(true);
     try {
-      // the API contract is the plural `controllers` list (SweepCreateRequest)
+      // the API contract is the plural `controllers` list (SweepCreateRequest);
+      // `tier` is sent explicitly — omitting it ran every macro grid on the
+      // scenario's own tier, silently producing micro runs for a macro request
       const res = await createSweep({
         scenario_id: scenarioId,
         penetrations: [...pens].sort((a, b) => a - b),
@@ -209,6 +235,7 @@ export function SweepsView(): JSX.Element {
         controllers: [controller],
         replicates,
         include_baseline: includeBaseline,
+        tier,
       });
       setSweep(null);
       setSweepId(res.sweep_id);
@@ -311,6 +338,7 @@ export function SweepsView(): JSX.Element {
           <span className="panel-title">Launch sweep</span>
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {tier === 'macro' && <MacroBanner />}
           <div className="row wrap">
             <div className="field">
               <label htmlFor="s-scn">Scenario</label>
@@ -341,6 +369,18 @@ export function SweepsView(): JSX.Element {
                     {c}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="s-tier">Tier</label>
+              <select
+                id="s-tier"
+                className="input"
+                value={tier}
+                onChange={(e) => setTier(e.target.value as Tier)}
+              >
+                <option value="micro">micro (SUMO)</option>
+                <option value="macro">macro (CTM screening)</option>
               </select>
             </div>
             <div className="field">
@@ -466,6 +506,7 @@ export function SweepsView(): JSX.Element {
             </div>
           </div>
           <div className="panel-body table-wrap">
+            {sweep.tier === 'macro' && <MacroBanner />}
             <table className="sweep-matrix">
               <thead>
                 <tr>
@@ -624,6 +665,7 @@ export function SweepsView(): JSX.Element {
           onCancel={() => setConfirming(false)}
           facts={[
             ['Scenario', scenarioName],
+            ['Tier', tier === 'macro' ? 'macro (CTM screening)' : 'micro (SUMO)'],
             ['Controller', controller],
             ['Grid', `${pens.length} penetrations × ${coms.length} compliances`],
             ['Cells', `${cellCount}${includeBaseline ? ' + 1 baseline' : ''} = ${totalCells}`],
@@ -631,6 +673,7 @@ export function SweepsView(): JSX.Element {
             ['Total runs', String(totalRuns)],
           ]}
         >
+          {tier === 'macro' && <MacroBanner />}
           <p className="small muted">
             Every run is a full-length simulation of the scenario. {replicates} replicates per cell
             is {replicates < MIN_REPLICATES ? 'exploratory' : 'at'} the reporting standard of n ≥{' '}

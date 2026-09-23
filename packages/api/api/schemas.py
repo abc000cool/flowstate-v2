@@ -13,6 +13,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from flowstate_core.config import MacroOptions
+
 # ---------------------------------------------------------------------------
 # Request size caps
 # ---------------------------------------------------------------------------
@@ -58,6 +60,16 @@ MIN_MAX_FIT_ROWS = 1000
 #: tolerates any unit mistake the guard exists to catch, so nothing above it
 #: is worth accepting.
 SPEED_RATIO_FACTOR_CEILING = 100.0
+
+#: Ceilings on the detector-observation options of :class:`CalibrationParams`.
+#: They bound what one request can ask the worker to materialise: the window
+#: grid of an observations artifact is ``duration_s / window_s`` entries per
+#: station, so an unbounded span with a small window is an unbounded artifact.
+#: A day of 30-second windows (2880) sits inside all three.
+MAX_COLUMN_MAP_ENTRIES = 16
+MAX_WINDOW_S = 3600.0
+MAX_OBSERVED_DURATION_S = 86400.0
+MAX_STATIONS = 500
 
 
 def deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -123,6 +135,13 @@ class RunCreateRequest(BaseModel):
     replicates: int | None = Field(default=None, ge=1, le=MAX_REPLICATES)
     """Replicates for this run; capped at ``MAX_REPLICATES`` (200)."""
     tier: Literal["micro", "macro"] | None = None
+    macro: MacroOptions | None = None
+    """Macro-tier (CTM screening) solver options for this run: cell length
+    ``dx_m`` and moving-bottleneck discretization ``bottleneck_variant``
+    (``flux_cap`` | ``capacity``, CLAUDE.md §5.5). Merged into the effective
+    config like ``tier``/``replicates``, so it is hashed with the run and
+    echoed in every replicate's ``meta.json["macro_options"]``. Unknown keys
+    are refused (the model forbids extras); an unknown variant is a 422."""
 
 
 class ProgressOut(BaseModel):
@@ -200,6 +219,14 @@ class MetricsOut(BaseModel):
     such values must not be quoted as headline results (CLAUDE.md §0.6)."""
     replicates: list[ReplicateMetricsOut]
     aggregate: dict[str, CIOut]
+    fd_source: str | None = None
+    """Where the macro (screening) tier's fundamental diagram came from, as
+    the run's own ``meta.json["fd"]["source"]`` records it: the path of the
+    ``FDCalibration`` artifact the config named, or ``"v1_legacy preset"``
+    for the documented *uncalibrated* default (CLAUDE.md §5.1). ``None`` on
+    micro-tier runs, which have no fundamental diagram, and on runs written
+    before the field existed — a screening number quoted without it is a
+    number whose diagram's provenance is unknown."""
 
 
 class HeatmapOut(BaseModel):
@@ -257,6 +284,10 @@ class SweepCreateRequest(BaseModel):
     replicates: int | None = Field(default=None, ge=1, le=MAX_REPLICATES)
     """Replicates per cell; capped at ``MAX_REPLICATES`` (200)."""
     tier: Literal["micro", "macro"] | None = None
+    macro: MacroOptions | None = None
+    """Macro-tier solver options applied to every cell before the grid values
+    (see :attr:`RunCreateRequest.macro`); they enter each cell's effective
+    config and therefore its ``config_hash``."""
     include_baseline: bool = False
     """Append *one* uncontrolled reference cell (penetration 0, compliance 1,
     no controller) after the grid, so a "Δ vs baseline" comparison has an
@@ -346,6 +377,12 @@ class SweepOut(BaseModel):
     sweep_id: str
     scenario_id: str | None
     status: Literal["queued", "running", "done", "failed"]
+    tier: Literal["micro", "macro"] | None = None
+    """Tier every cell of the grid runs on, read from the stored cell configs
+    (they are built from one base config, so a sweep is single-tier).
+    ``macro`` means the whole matrix is screening-tier output and may not be
+    read as a validation result (CLAUDE.md §5.6); ``None`` only for a sweep
+    with no cells."""
     error: str | None = None
     created_at: str
     runs_total: int
@@ -387,7 +424,7 @@ class CalibrationParams(BaseModel, extra="forbid"):
     seed: int | None = Field(default=None, ge=0)
     notes: str | None = Field(default=None, max_length=4000)
     # FD fit (``calibration.fd_fit.fit_triangular_fd``)
-    loader: Literal["tidy", "pems"] | None = None
+    loader: Literal["tidy", "pems", "detector_csv"] | None = None
     n_bootstrap: int | None = Field(default=None, ge=0, le=MAX_N_BOOTSTRAP)
     min_points: int | None = Field(default=None, ge=3)
     congested_quantile: float | None = Field(default=None, gt=0.0, lt=1.0)
@@ -409,7 +446,10 @@ class CalibrationParams(BaseModel, extra="forbid"):
     g_effective_length_m: float | None = Field(default=None, gt=0.0)
     interval_s: float | None = Field(default=None, gt=0.0)
     speed_unit: Literal["mph", "kmh", "ms"] | None = None
-    occupancy_unit: Literal["fraction", "percent"] | None = None
+    occupancy_unit: Literal["fraction", "percent", "pct"] | None = None
+    """Occupancy unit of the input column. ``"pct"`` is the detector-CSV
+    spelling of ``"percent"`` and is accepted for both loaders (the PeMS
+    loader is given the spelling it knows — ``api.jobs.pems_loader_kwargs``)."""
     max_speed_ratio_factor: float | None = Field(
         default=None, gt=1.0, le=SPEED_RATIO_FACTOR_CEILING
     )
@@ -419,6 +459,33 @@ class CalibrationParams(BaseModel, extra="forbid"):
     data-hygiene guard and the API does not expose a way to disable it."""
     max_out_of_range_fraction: float | None = Field(default=None, ge=0.0, le=1.0)
     """Share of occupancy rows allowed above 100% before the load is refused."""
+    # Detector CSV loader (``loader: "detector_csv"``, and every demand job)
+    column_map: dict[str, str] | None = Field(default=None, max_length=MAX_COLUMN_MAP_ENTRIES)
+    """Canonical field → the uploaded file's own column name, for
+    ``calibration.loaders.detector_csv.load_detector_csv`` (fields:
+    ``timestamp, station, flow, occupancy, speed, lanes, kind, x_m``). An
+    unknown field name is refused by the loader, naming it."""
+    kind_default: Literal["mainline", "on_ramp", "off_ramp"] | None = None
+    """``kind`` for rows in a file that carries no ``kind`` column."""
+    # Demand / observations job (``POST /calibrations/demand``)
+    window_s: float | None = Field(default=None, gt=0.0, le=MAX_WINDOW_S)
+    """Analysis window [s] of the uploaded detector frame (must equal its
+    own interval)."""
+    t0_local: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}(:\d{2})?$")
+    """Local wall-clock time of simulation t=0 (``"HH:MM"``)."""
+    duration_s: float | None = Field(default=None, gt=0.0, le=MAX_OBSERVED_DURATION_S)
+    """Analysed span [s]; a whole multiple of ``window_s``."""
+    upstream_station: str | None = Field(default=None, max_length=200)
+    """Station id whose observed flow becomes the corridor inflow."""
+    stations: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_STATIONS)
+    """Optional stations table (``station``/``id``, ``label``, ``lat``,
+    ``lon``, ``x_m``, ``lanes``, ``kind``, ``speed_limit_ms``); without it the
+    station metadata is taken from the uploaded frame."""
+    ramps: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_STATIONS)
+    """Optional ramp descriptors (``name``, ``kind``, ``x_m``, optional
+    ``station``) turned into the demand artifact's ramp profiles."""
+    corridor: str | None = Field(default=None, max_length=200)
+    """Corridor name recorded on the observations artifact."""
     # IDM fit (``calibration.idm_fit.fit_population``)
     min_duration_s: float | None = Field(default=None, gt=0.0, le=3600.0)
     holdout_frac: float | None = Field(default=None, ge=0.0, lt=1.0)
@@ -444,7 +511,7 @@ class CalibrationParams(BaseModel, extra="forbid"):
 
 class CalibrationOut(BaseModel):
     calibration_id: str
-    kind: Literal["fd", "idm"]
+    kind: Literal["fd", "idm", "demand"]
     status: Literal["queued", "running", "done", "failed"]
     data_path: str
     source: str
@@ -453,6 +520,11 @@ class CalibrationOut(BaseModel):
     created_at: str
     artifact: dict[str, Any] | None = None
     """Parsed artifact JSON when the fit is done (docs/CONTRACTS.md §5)."""
+    artifact_paths: dict[str, str] = Field(default_factory=dict)
+    """Every artifact file the job wrote, keyed by name. A fit that writes one
+    file carries just its kind (``{"fd": ...}``); a ``demand`` calibration
+    writes two and carries both (``{"observations": ..., "demand": ...}``), so
+    a client never has to guess the second path from the first."""
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +564,22 @@ class ReportCreateRequest(BaseModel):
     against observed link counts, segment-speed RMSPE against an observed
     field, the ring benchmarks, the sensitivity grid) is reported as **not
     evaluated**, never as a number the caller typed (CLAUDE.md §7.4)."""
+
+    observations_path: str | None = None
+    """Server-side ``flowstate.observations/1`` artifact the run set is scored
+    against (docs/CONTRACTS.md, "Detector observations"), or null for a report
+    with no observed side.
+
+    This supplies the *evidence*, not the answer: the worker loads the
+    artifact, scores every completed micro replicate against it
+    (``validation.observed.score_run_against_observed``) and fills the
+    ``link_flows_geh`` and ``speeds_rmspe`` criteria rows from the pooled
+    comparisons, so both numbers remain computed from run artifacts. Like
+    every other path in a request it must resolve inside the allow-listed
+    roots (the results and uploads roots, ``FLOWSTATE_DATA_DIR``, and the
+    repository's ``artifacts/`` and ``data/``); anything else is 422 with
+    ``type: "path_outside_roots"``, and a missing file is 404. Relative values
+    resolve against the repository root."""
 
     @model_validator(mode="after")
     def _check_profile(self) -> Self:
@@ -540,6 +628,18 @@ class ReportOut(BaseModel):
     title: str
     profile: str = DEFAULT_CRITERIA_PROFILE
     """The acceptance-criteria profile the report was scored against."""
+    observations_path: str | None = None
+    """The observations artifact the run set was scored against, as resolved
+    on the server; null when the report has no observed side."""
+    observed: dict[str, Any] | None = None
+    """What the observed comparison rested on, once the report is done
+    (``validation.observed.ObservedProvenance.to_dict()``): ``corridor``,
+    ``provider``, ``dates``, ``url``, ``aggregation``, ``t0_local``,
+    ``window_s``, ``n_stations``, ``n_windows``, ``n_windows_compared``,
+    ``flow_fraction`` and ``speed_fraction`` (coverage of the station-window
+    grid), ``n_link_hours``, ``n_speed_cells`` and ``n_replicates``. Null
+    while the job is running, on failure, and for a report with no
+    observations."""
     report_path: str | None = None
     """The bundle's markdown file *relative to the server's results root*
     (``reports/<report_id>/report.md``) — an identifier for the bundle, not a

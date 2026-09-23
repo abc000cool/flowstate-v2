@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from flowstate_core.constants import HETEROGENEITY_FRAC_DEFAULT, IDM_DEFAULTS
 
@@ -643,6 +643,36 @@ class ManagedLaneSpec(BaseModel):
         return self
 
 
+class MacroOptions(BaseModel):
+    """Macro-tier (CTM screening) solver options — CLAUDE.md §5.
+
+    Two knobs of the screening tier that are model choices rather than
+    physics of the corridor, so they are carried on the scenario (and in the
+    config hash when set) instead of being runner-call arguments no artifact
+    records: the CTM cell length and which discretization of the moving
+    bottleneck the AV cells use. The micro tier has neither a cell grid nor a
+    moving flux constraint and ignores the block (it says so in its
+    ``meta.json`` notes rather than dropping it silently).
+
+    Attributes:
+        dx_m: Target cell length [m]; the grid uses
+            ``n_cells = max(10, round(length / dx_m))``, so the realized
+            ``Δx`` recorded in ``meta.json["grid"]`` can differ slightly.
+            The CFL step is derived from it (``macrosim.ctm.cfl_max_dt``).
+        bottleneck_variant: Discretization of an AV's moving bottleneck —
+            ``"flux_cap"`` (the v1 constraint ``F ← min(F, ρ·v*)``, the
+            discrete analog of the Delle Monache–Goatin (2014) moving flux
+            constraint) or ``"capacity"`` (``F ← min(F, α·q_max(v*))``).
+            CLAUDE.md §5.5 asks for both to be reachable and compared
+            against micro-tier ground truth.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dx_m: float = Field(default=100.0, gt=0.0, le=2000.0)
+    bottleneck_variant: Literal["flux_cap", "capacity"] = "flux_cap"
+
+
 class ScenarioConfig(BaseModel):
     """A complete, hashable scenario description."""
 
@@ -652,6 +682,19 @@ class ScenarioConfig(BaseModel):
     fleet: FleetSpec = Field(default_factory=FleetSpec)
     av: AVSpec = Field(default_factory=AVSpec)
     sim: SimSpec
+    fd_calibration: str | None = None
+    """Path to an ``FDCalibration`` artifact (as given, else resolved against
+    the repository root — the same rule as ``FleetSpec.idm_calibration``, and
+    confined to the API's allow-listed data roots). When set, the macro tier
+    runs on that fitted triangular diagram instead of the uncalibrated
+    ``v1_legacy`` preset (CLAUDE.md §5.1: FD parameters are calibrated
+    per-corridor inputs, not constants) and ``meta.json["fd"]`` names the
+    artifact. The micro tier has no fundamental diagram and does not use it;
+    the field is deliberately tier-independent so the same scenario can be
+    run on both tiers (the micro runner notes that it was ignored)."""
+    macro: MacroOptions | None = None
+    """Macro-tier solver options (:class:`MacroOptions`); ``None`` keeps the
+    runner defaults (Δx = 100 m, ``flux_cap``)."""
     perturbation: PerturbationSpec | None = None
     closures: list[LaneClosureSpec] = Field(default_factory=list)
     """Temporary lane closures (:class:`LaneClosureSpec`); any entry labels

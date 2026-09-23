@@ -22,6 +22,7 @@ from pathlib import Path
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
     HeavyVehicleSpec,
+    MacroOptions,
     ScenarioConfig,
     config_hash,
     config_hash_payload,
@@ -103,6 +104,36 @@ def test_heavy_lane_shares_is_hash_neutral_until_it_is_set():
     assert config_hash_payload(placed)["config"]["fleet"]["heavy"]["lane_shares"] == [0.3, 0.7]
     # ... and a different placement is a different run
     assert config_hash(_with_heavy(lane_shares=[0.7, 0.3])) != config_hash(placed)
+
+
+def test_macro_tier_fields_are_hash_neutral_until_they_are_set():
+    """``fd_calibration`` and ``macro`` are new optional fields (policy v2).
+
+    A calibrated fundamental diagram and the CTM solver options change what a
+    screening run computes, so setting either must move the hash — but no
+    scenario that leaves them alone may be re-hashed by their existence.
+    """
+    base = _canonical()
+    payload = config_hash_payload(base)["config"]
+    assert "fd_calibration" not in payload
+    assert "macro" not in payload
+    assert config_hash(base.model_copy(update={"fd_calibration": None, "macro": None})) == (
+        config_hash(base)
+    )
+
+    calibrated = base.model_copy(update={"fd_calibration": "artifacts/fd_i24.json"})
+    assert config_hash(calibrated) != config_hash(base)
+    assert config_hash_payload(calibrated)["config"]["fd_calibration"] == "artifacts/fd_i24.json"
+
+    # Explicit defaults inside the macro block hash like an absent block's
+    # values, but the block's presence is itself a choice and is recorded.
+    default_opts = base.model_copy(update={"macro": MacroOptions()})
+    assert config_hash_payload(default_opts)["config"]["macro"] == {}
+    variant = base.model_copy(update={"macro": MacroOptions(bottleneck_variant="capacity")})
+    assert config_hash(variant) != config_hash(base)
+    assert config_hash(base.model_copy(update={"macro": MacroOptions(dx_m=50.0)})) != config_hash(
+        variant
+    )
 
 
 def test_pinned_ring_hash():

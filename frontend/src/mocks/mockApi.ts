@@ -130,6 +130,9 @@ interface RunRecord {
   scenario_id: string;
   scenario_name: string;
   tier: Tier;
+  /** Macro runs only: `meta.json["fd"]["source"]` — the FDCalibration artifact
+   * path, or the uncalibrated `v1_legacy` preset. */
+  fd_source?: string;
   seeded: boolean;
   n: number;
   seedBase: number;
@@ -260,6 +263,7 @@ const runs: RunRecord[] = [
     scenario_id: 'scn-corridor',
     scenario_name: 'corridor_10km · macro screen',
     tier: 'macro',
+    fd_source: 'v1_legacy preset',
     seeded: true,
     n: 8,
     seedBase: 4000,
@@ -419,6 +423,7 @@ function buildMetrics(r: RunRecord): RunMetrics {
     underpowered: r.n < 20,
     replicates: per,
     aggregate,
+    fd_source: r.tier === 'macro' ? (r.fd_source ?? 'v1_legacy preset') : null,
   };
 }
 
@@ -449,12 +454,15 @@ interface SweepRecord {
   scenario_id: string;
   created_at: string;
   createdAt: number;
+  /** The tier every cell runs on, like the API's `SweepOut.tier`. */
+  tier: Tier;
   cells: SweepCell[];
 }
 
 const sweeps = new Map<string, SweepRecord>();
 
 function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
+  const tier: Tier = req.tier ?? 'micro';
   const cells: SweepCell[] = [];
   const mkCell = (p: number, c: number, controller: string | null): SweepCell => {
     // no controller (or no AVs) => nothing to dampen with: baseline physics
@@ -480,7 +488,8 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
       run_id: runId,
       scenario_id: req.scenario_id,
       scenario_name: `sweep ${tag} p=${Math.round(p * 100)}% c=${Math.round(c * 100)}%`,
-      tier: 'micro',
+      tier,
+      fd_source: tier === 'macro' ? 'v1_legacy preset' : undefined,
       seeded: true,
       n: req.replicates,
       seedBase: 9000 + Math.round(p * 1000) * 7 + Math.round(c * 100),
@@ -524,6 +533,7 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
     scenario_id: req.scenario_id,
     created_at: new Date().toISOString(),
     createdAt: Date.now(),
+    tier,
     cells,
   };
 }
@@ -551,6 +561,7 @@ function sweepView(s: SweepRecord): SweepDetail {
   return {
     sweep_id: s.sweep_id,
     scenario_id: s.scenario_id,
+    tier: s.tier,
     status: done >= s.cells.length ? 'done' : 'running',
     error: null,
     created_at: s.created_at,

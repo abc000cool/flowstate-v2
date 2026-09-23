@@ -614,21 +614,40 @@ def aggregate(metrics_list: list[Metrics]) -> dict[str, CI]:
     """
     if not metrics_list:
         raise ValueError("metrics_list is empty")
-    out: dict[str, CI] = {}
-    for f in dataclasses.fields(Metrics):
-        values = np.asarray([float(getattr(m, f.name)) for m in metrics_list], dtype=np.float64)
-        finite = values[np.isfinite(values)]
-        n = int(finite.size)
-        if n == 0:
-            out[f.name] = CI(math.nan, math.nan, math.nan, 0)
-            continue
-        mean = float(finite.mean())
-        if n == 1:
-            out[f.name] = CI(mean, math.nan, math.nan, 1)
-            continue
-        half = float(student_t.ppf(0.5 + CI_LEVEL / 2.0, n - 1) * finite.std(ddof=1) / math.sqrt(n))
-        out[f.name] = CI(mean, mean - half, mean + half, n)
-    return out
+    return {
+        f.name: ci([float(getattr(m, f.name)) for m in metrics_list])
+        for f in dataclasses.fields(Metrics)
+    }
+
+
+def ci(values: Sequence[float]) -> CI:
+    """Two-sided t-distribution interval over replicate values.
+
+    The convention :func:`aggregate` applies field by field, exposed for
+    replicate quantities that are not :class:`Metrics` fields (a per-seed GEH
+    pass fraction, RMSPE or criterion wave speed): NaN values are dropped —
+    a replicate that produced no reading contributes nothing rather than a
+    zero — then the interval is ``mean ± t_{α/2, n−1}·s/√n`` at
+    :data:`CI_LEVEL`. With ``n == 1`` the bounds are NaN; with ``n == 0`` the
+    mean is NaN too.
+
+    Args:
+        values: One value per replicate.
+
+    Returns:
+        The :class:`CI`; its ``underpowered`` flag marks ``n <``
+        :data:`MIN_REPLICATES` (CLAUDE.md §0.6).
+    """
+    finite = np.asarray([float(v) for v in values], dtype=np.float64)
+    finite = finite[np.isfinite(finite)]
+    n = int(finite.size)
+    if n == 0:
+        return CI(math.nan, math.nan, math.nan, 0)
+    mean = float(finite.mean())
+    if n == 1:
+        return CI(mean, math.nan, math.nan, 1)
+    half = float(student_t.ppf(0.5 + CI_LEVEL / 2.0, n - 1) * finite.std(ddof=1) / math.sqrt(n))
+    return CI(mean, mean - half, mean + half, n)
 
 
 def geh_pass_fraction(geh_values: Sequence[float], threshold: float = 5.0) -> float:
@@ -690,6 +709,7 @@ def link_hour_geh(
     *,
     x_refs_m: Sequence[float],
     window_s: float = 3600.0,
+    sim_span: tuple[float, float] | None = None,
 ) -> LinkHourGEH:
     """GEH per link-window between simulated crossings and observed counts.
 
@@ -711,16 +731,25 @@ def link_hour_geh(
             ``x_refs_m`` (a guard against coordinate mix-ups).
         x_refs_m: Cross-sections the comparison may use [m].
         window_s: Window length [s] shared by every observed row.
+        sim_span: The recorded simulation span ``(t_lo, t_hi)`` [s] every
+            observed window must lie inside. ``None`` infers it from the
+            frame's own smallest and largest ``t``, which is right for a
+            measured dataset but rejects a run's final window whenever the
+            output grid's last sample falls short of the nominal end (a 3600 s
+            run sampled at 1 Hz ends at t = 3599 s). A caller that knows the
+            recorded span — the scenario's duration — states it here; the
+            containment check, and with it the guard against comparing
+            windows the run never covered, is unchanged.
 
     Returns:
         A :class:`LinkHourGEH` with one GEH per matched bin.
 
     Raises:
         ValueError: On missing columns, an empty simulation, a negative
-            observed flow, an observed cross-section absent from
-            ``x_refs_m``, or an observed window not fully covered by the
-            simulated time span (an unmatched bin is an error, never a
-            silent skip).
+            observed flow, a non-increasing ``sim_span``, an observed
+            cross-section absent from ``x_refs_m``, or an observed window not
+            fully covered by the simulated time span (an unmatched bin is an
+            error, never a silent skip).
     """
     if window_s <= 0:
         raise ValueError(f"window_s must be > 0, got {window_s}")
@@ -736,8 +765,13 @@ def link_hour_geh(
     if sim.empty:
         raise ValueError("sim holds no trajectory rows")
     tol = 1e-6
-    t_min = float(sim["t"].min())
-    t_max = float(sim["t"].max())
+    if sim_span is None:
+        t_min = float(sim["t"].min())
+        t_max = float(sim["t"].max())
+    else:
+        t_min, t_max = float(sim_span[0]), float(sim_span[1])
+        if t_max <= t_min:
+            raise ValueError(f"sim_span must be increasing, got [{t_min}, {t_max}]")
     obs_x = observed["x_ref_m"].to_numpy(dtype=np.float64)
     obs_w = observed["window_start_s"].to_numpy(dtype=np.float64)
     obs_q = observed["flow_veh_h"].to_numpy(dtype=np.float64)

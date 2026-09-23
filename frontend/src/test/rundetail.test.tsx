@@ -39,5 +39,26 @@ describe('RunDetailView (mock data)', () => {
     // heatmap field toggle present
     expect(screen.getByRole('tab', { name: 'SPEED' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'DENSITY' })).toBeInTheDocument();
+    // a micro run has no fundamental diagram, so no FD provenance is claimed
+    expect(screen.queryByText(/v1_legacy/)).toBeNull();
+  });
+
+  it('names the fundamental diagram a macro run used, and flags the preset', async () => {
+    render(
+      <AppStateProvider>
+        <MemoryRouter initialEntries={['/runs/run-d0417a']}>
+          <Routes>
+            <Route path="/runs/:runId" element={<RunDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </AppStateProvider>,
+    );
+
+    expect(await screen.findByText('MACRO SCREENING', {}, { timeout: 4000 })).toBeInTheDocument();
+    // the FD is the calibration every screening number rests on: named, and
+    // marked uncalibrated when it is the documented v1_legacy preset
+    const fd = await screen.findByText(/v1_legacy preset/, {}, { timeout: 4000 });
+    expect(fd).toBeInTheDocument();
+    expect(fd.textContent).toContain('(uncalibrated)');
   });
 });

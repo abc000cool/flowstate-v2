@@ -22,6 +22,7 @@ from validation.metrics import (
     LinkHourGEH,
     Metrics,
     aggregate,
+    ci,
     compute_metrics,
     count_crossings,
     crossings_per_window,
@@ -32,6 +33,15 @@ from validation.metrics import (
     rmspe,
     travel_times,
     warmup_from_meta,
+)
+from validation.observed import (
+    ObservedCorridor,
+    ObservedCoverage,
+    ObservedProvenance,
+    ObservedScores,
+    ObservedStation,
+    pool_scores,
+    score_run_against_observed,
 )
 from validation.report import ReportRefusedError, generate_report
 from validation.ring_benchmark import evaluate_ring_benchmark
@@ -67,6 +77,11 @@ __all__ = [
     "IDMPartials",
     "LinkHourGEH",
     "Metrics",
+    "ObservedCorridor",
+    "ObservedCoverage",
+    "ObservedProvenance",
+    "ObservedScores",
+    "ObservedStation",
     "ReportRefusedError",
     "SpeedField",
     "Wave",
@@ -74,6 +89,7 @@ __all__ = [
     "WaveMeasurement",
     "WaveSet",
     "aggregate",
+    "ci",
     "compute_metrics",
     "count_crossings",
     "crossings_per_window",
@@ -94,7 +110,9 @@ __all__ = [
     "is_string_stable",
     "link_hour_geh",
     "planted_stripe_field",
+    "pool_scores",
     "rmspe",
+    "score_run_against_observed",
     "speed_field",
     "stability_criterion",
     "stack_wave_speed",

@@ -10,9 +10,11 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from flowstate_core.artifacts import TriangularFD
 from flowstate_core.config import (
     AVSpec,
     CorridorNetwork,
+    MacroOptions,
     OSMNetwork,
     PerturbationSpec,
     RingNetwork,
@@ -328,3 +330,49 @@ def test_lane_closure_caps_capacity_and_labels_seeded(tmp_path: Path) -> None:
     down_before = downstream[(downstream["t_bin"] > 300.0) & (downstream["t_bin"] < 390.0)]
     assert down_during["flow"].max() <= 0.5 * q_max * 1.05 + 1e-9
     assert down_during["flow"].mean() < 0.85 * down_before["flow"].mean()
+
+
+def test_macro_options_come_from_the_config_and_are_recorded(tmp_path: Path) -> None:
+    """``cfg.macro`` reaches the solver without a caller threading arguments.
+
+    A scenario that asks for a 50 m grid and the capacity variant of the
+    moving bottleneck (CLAUDE.md §5.5) must not run at the defaults just
+    because the caller passed no keywords — and ``meta.json`` records the
+    pair that was actually used.
+    """
+    cfg = _corridor_cfg(macro=MacroOptions(dx_m=50.0, bottleneck_variant="capacity"))
+    _, meta = _read(run_macro(cfg, seed=3, out_dir=tmp_path))
+    assert meta["macro_options"] == {"dx_m": 50.0, "bottleneck_variant": "capacity"}
+    assert meta["grid"]["n_cells"] == 200  # 10 km at 50 m
+    assert meta["av"]["variant"] == "capacity"
+
+    # An explicit argument still wins over the config, and the record follows.
+    _, meta2 = _read(run_macro(cfg, seed=3, out_dir=tmp_path / "b", dx_m=250.0))
+    assert meta2["macro_options"] == {"dx_m": 250.0, "bottleneck_variant": "capacity"}
+    assert meta2["grid"]["n_cells"] == 40
+
+
+def test_fd_provenance_is_recorded(tmp_path: Path) -> None:
+    """meta.json["fd"] names where the diagram came from, with rho_c/q_max."""
+    cfg = _corridor_cfg()
+    _, legacy = _read(run_macro(cfg, seed=1, out_dir=tmp_path))
+    assert legacy["fd"]["preset"] == "v1_legacy"
+    assert legacy["fd"]["source"] == "v1_legacy preset"
+    assert legacy["fd"]["artifact"] is None
+
+    fd = TriangularFD(v_f=30.0, w=-4.0, rho_jam=0.2)
+    _, fitted = _read(
+        run_macro(cfg, seed=1, out_dir=tmp_path / "b", fd=fd, fd_artifact="artifacts/fd_x.json")
+    )
+    assert fitted["fd"]["preset"] == "artifact"
+    assert fitted["fd"]["source"] == "artifacts/fd_x.json"
+    assert fitted["fd"]["artifact"] == "artifacts/fd_x.json"
+    assert fitted["fd"]["rho_c"] == pytest.approx(fd.rho_c)
+    assert fitted["fd"]["q_max"] == pytest.approx(fd.q_max)
+
+    # An artifact path without a diagram would be a provenance claim about a
+    # run that used the preset: it is dropped and the note says so.
+    _, bogus = _read(run_macro(cfg, seed=1, out_dir=tmp_path / "c", fd_artifact="artifacts/x.json"))
+    assert bogus["fd"]["preset"] == "v1_legacy"
+    assert bogus["fd"]["artifact"] is None
+    assert any("fd_artifact" in note for note in bogus["notes"])
