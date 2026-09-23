@@ -43,6 +43,11 @@ MAX_REPLICATES = 200
 #: all of them into a dashboard poll.
 MAX_REPORT_LIST = 200
 
+#: Maximum (and default) rows returned by ``GET /api/v1/corridors``. Corridor
+#: rows are the same kind of small metadata record as report rows, and the
+#: summary — the bulky part — is served only by ``GET /corridors/{id}``.
+MAX_CORRIDOR_LIST = 200
+
 #: Ceilings on the calibration fit options a request may set
 #: (:class:`CalibrationParams`): bootstrap resamples of the FD fit, and the
 #: differential-evolution generation cap and population multiplier of the
@@ -866,8 +871,16 @@ class CorridorSummaryOut(BaseModel):
     """The same summary as plain text (``summary.txt`` in the bundle)."""
 
 
-class CorridorOut(BaseModel):
-    """A corridor onboarding job's row (``POST``/``GET /corridors``)."""
+class CorridorRowOut(BaseModel):
+    """One corridor onboarding job without its summary (``GET /corridors``).
+
+    The status row: what a listing needs to offer a corridor as the target of
+    a run or a report (``scenario_id``, ``observations_path``,
+    ``config_hash``). The summary — what the onboarding discovered and
+    derived — is several hundred lines of geometry and demand provenance per
+    corridor and belongs to the one corridor being looked at, so it is served
+    only by ``GET /corridors/{id}``.
+    """
 
     corridor_id: str
     name: str
@@ -886,7 +899,12 @@ class CorridorOut(BaseModel):
     corridor_dir: str | None = None
     """Where the bundle (scenario YAML, stations table, observations, demand,
     OSM extract, summary) was written, relative to the results root."""
-    summary: CorridorSummaryOut | None = None
     error: str | None = None
     error_kind: str | None = None
     created_at: str
+
+
+class CorridorOut(CorridorRowOut):
+    """A corridor onboarding job's row (``POST``/``GET /corridors/{id}``)."""
+
+    summary: CorridorSummaryOut | None = None

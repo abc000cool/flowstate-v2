@@ -81,12 +81,14 @@ from api.schemas import (
     CORRIDOR_NAME_PATTERN,
     CORRIDOR_STAGES,
     DEFAULT_CRITERIA_PROFILE,
+    MAX_CORRIDOR_LIST,
     MAX_REPORT_LIST,
     CalibrationOut,
     CalibrationParams,
     CIOut,
     CorridorOut,
     CorridorProgressOut,
+    CorridorRowOut,
     CriteriaProfileOut,
     HealthOut,
     HeatmapOut,
@@ -1450,7 +1452,18 @@ def _confine_corridor_path(value: str, field: str, settings: Settings) -> str:
     return str(resolved)
 
 
-def _corridor_out(row: dict[str, Any], settings: Settings) -> CorridorOut:
+def _corridor_row_fields(row: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    """The status fields both corridor responses carry (all but the summary).
+
+    Args:
+        row: A ``corridors`` store row.
+        settings: The app settings, for the results root ``corridor_dir`` is
+            reported relative to.
+
+    Returns:
+        Keyword arguments shared by :class:`CorridorRowOut` and
+        :class:`CorridorOut`.
+    """
     stage = row["stage"]
     completed = CORRIDOR_STAGES.index(stage) if stage in CORRIDOR_STAGES else 0
     corridor_dir = row["corridor_dir"]
@@ -1459,25 +1472,32 @@ def _corridor_out(row: dict[str, Any], settings: Settings) -> CorridorOut:
             corridor_dir = str(Path(corridor_dir).relative_to(settings.results_dir))
         except ValueError:
             pass  # a results root moved between runs: report the path as stored
-    return CorridorOut(
-        corridor_id=row["id"],
-        name=row["name"],
-        status=row["status"],
-        progress=CorridorProgressOut(
+    return {
+        "corridor_id": row["id"],
+        "name": row["name"],
+        "status": row["status"],
+        "progress": CorridorProgressOut(
             stage=stage,
             completed_stages=completed,
             total_stages=len(CORRIDOR_STAGES) - 1,
         ),
-        scenario_id=row["scenario_id"],
-        preset_filename=f"{row['name']}.yaml" if row["scenario_id"] else None,
-        config_hash=row["config_hash"],
-        observations_path=row["observations_path"],
-        corridor_dir=corridor_dir,
-        summary=row["summary"],
-        error=row["error"],
-        error_kind=row["error_kind"],
-        created_at=row["created_at"],
-    )
+        "scenario_id": row["scenario_id"],
+        "preset_filename": f"{row['name']}.yaml" if row["scenario_id"] else None,
+        "config_hash": row["config_hash"],
+        "observations_path": row["observations_path"],
+        "corridor_dir": corridor_dir,
+        "error": row["error"],
+        "error_kind": row["error_kind"],
+        "created_at": row["created_at"],
+    }
+
+
+def _corridor_row_out(row: dict[str, Any], settings: Settings) -> CorridorRowOut:
+    return CorridorRowOut(**_corridor_row_fields(row, settings))
+
+
+def _corridor_out(row: dict[str, Any], settings: Settings) -> CorridorOut:
+    return CorridorOut(**_corridor_row_fields(row, settings), summary=row["summary"])
 
 
 @router.post("/corridors", status_code=202, response_model=CorridorOut)
@@ -1629,6 +1649,29 @@ async def create_corridor(
     row = store.get_corridor(corridor_id)
     assert row is not None
     return _corridor_out(row, settings)
+
+
+@router.get("/corridors", response_model=list[CorridorRowOut])
+def list_corridors(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=MAX_CORRIDOR_LIST)] = MAX_CORRIDOR_LIST,
+) -> list[CorridorRowOut]:
+    """Corridor onboardings newest first, at most ``limit`` (default/max 200).
+
+    The status rows only — ``status``, ``name``, ``scenario_id``,
+    ``observations_path``, ``config_hash`` — so a client can pick a corridor
+    onboarded in another session (or another browser) and hand its
+    ``scenario_id`` to ``POST /runs`` and its ``observations_path`` to
+    ``POST /reports``. The summary of what each onboarding discovered belongs
+    to the corridor being looked at and is served by
+    ``GET /corridors/{id}`` alone.
+
+    A listed corridor is an onboarding this server ran, never a claim that it
+    reproduces its road: that is what a report scored against its
+    observations answers (CLAUDE.md §0.1).
+    """
+    settings = _settings(request)
+    return [_corridor_row_out(row, settings) for row in _store(request).list_corridors(limit=limit)]
 
 
 @router.get("/corridors/{corridor_id}", response_model=CorridorOut, responses=_NOT_FOUND_RESPONSE)

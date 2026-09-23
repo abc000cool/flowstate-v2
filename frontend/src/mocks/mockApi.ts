@@ -16,6 +16,7 @@
 import type {
   AggregateStat,
   CorridorOut,
+  CorridorRow,
   CorridorSummary,
   CreateRunRequest,
   CreateScenarioResponse,
@@ -1181,6 +1182,21 @@ export async function mockCreateCorridor(form: FormData): Promise<CorridorOut> {
   };
   corridors.set(id, row);
   return corridorView(row);
+}
+
+/** `GET /corridors` — the corridors this *session* onboarded, newest first
+ * and without their summaries. The demo backend has no history of its own: a
+ * browser that just loaded the dashboard lists nothing, rather than inventing
+ * corridors some server is supposed to hold. */
+export async function mockListCorridors(limit = 200): Promise<CorridorRow[]> {
+  await latency();
+  return [...corridors.values()]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, Math.max(1, limit))
+    .map((row) => {
+      const { summary: _summary, ...rest } = corridorView(row);
+      return rest;
+    });
 }
 
 /** `GET /corridors/{id}`. An id this session never created is unknown, never

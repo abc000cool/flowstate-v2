@@ -18,6 +18,7 @@
 import * as mock from '../mocks/mockApi';
 import type {
   CorridorOut,
+  CorridorRow,
   CreateRunRequest,
   CreateScenarioResponse,
   CreateSweepRequest,
@@ -510,6 +511,20 @@ export async function createCorridor(form: FormData): Promise<CorridorOut> {
   if (isMockEnv()) return mock.mockCreateCorridor(form);
   assertWritable();
   return request<CorridorOut>('/corridors', { method: 'POST', form });
+}
+
+/** `GET /corridors` — the corridors this server has onboarded, newest first
+ * (at most `limit`, the API's own default and maximum being 200).
+ *
+ * Status rows without the summary: enough to offer a corridor onboarded in
+ * another session as the target of a run (`scenario_id`) or of a report
+ * scored against its detectors (`observations_path`). A service older than
+ * the endpoint answers 404, which callers treat as "no history to offer"
+ * rather than as an error. */
+export function listCorridors(limit?: number): Promise<CorridorRow[]> {
+  if (isMockActive()) return mock.mockListCorridors(limit);
+  const q = limit === undefined ? '' : `?limit=${encodeURIComponent(limit)}`;
+  return request<CorridorRow[]>(`/corridors${q}`);
 }
 
 /** `GET /corridors/{id}` — status, stage progress and, once done, the

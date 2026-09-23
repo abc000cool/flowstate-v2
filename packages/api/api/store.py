@@ -617,6 +617,33 @@ class Store:
             row = con.execute("SELECT * FROM corridors WHERE id = ?", (corridor_id,)).fetchone()
         return _corridor_dict(row) if row else None
 
+    def list_corridors(self, limit: int = 200) -> list[dict[str, Any]]:
+        """Corridor rows newest first, at most ``limit``.
+
+        Newest first (descending rowid — ``created_at`` has 1 s resolution, so
+        two onboardings started in the same second would tie), like
+        :meth:`list_reports`: a client listing corridors wants the recent
+        ones. ``GET /api/v1/corridors`` passes its own ceiling
+        (``api.schemas.MAX_CORRIDOR_LIST``); the default here matches it so a
+        direct caller is bounded too.
+
+        Args:
+            limit: Maximum number of rows to return.
+
+        Returns:
+            Corridor rows, each as :func:`_corridor_dict` renders it.
+
+        Raises:
+            ValueError: If ``limit`` is not positive.
+        """
+        if limit < 1:
+            raise ValueError(f"limit must be >= 1, got {limit}")
+        with self._conn() as con:
+            rows = con.execute(
+                "SELECT * FROM corridors ORDER BY rowid DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_corridor_dict(r) for r in rows]
+
     def claim_corridor(self, corridor_id: str) -> bool:
         return self.claim("corridor", corridor_id)
 

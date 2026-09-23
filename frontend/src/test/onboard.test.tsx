@@ -355,6 +355,51 @@ describe('OnboardView', () => {
     expect(runPost.body).toEqual({ scenario_id: SCENARIO_ID, replicates: 20 });
   });
 
+  it('leaves the Advanced fields out of a request that names none', async () => {
+    renderView();
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Onboard corridor' }));
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/corridors'))).toBe(true);
+    });
+    const form = calls.find((c) => c.method === 'POST' && c.url.endsWith('/corridors'))!.form!;
+    // an empty mapping is not "the canonical columns": the field is absent,
+    // so the loader reads the contract's own spellings
+    expect(form.get('column_map')).toBeNull();
+    expect(form.get('idm_calibration')).toBeNull();
+    expect(form.get('source')).toBeNull();
+  });
+
+  it('sends the Advanced column map, calibration path and source', async () => {
+    renderView();
+    fillForm();
+    fireEvent.change(screen.getByLabelText('Timestamp column'), { target: { value: 'ts' } });
+    fireEvent.change(screen.getByLabelText('Flow column'), { target: { value: 'volume' } });
+    // typed and then cleared: an emptied field is not part of the mapping
+    fireEvent.change(screen.getByLabelText('Speed column'), { target: { value: 'mph' } });
+    fireEvent.change(screen.getByLabelText('Speed column'), { target: { value: '  ' } });
+    fireEvent.change(screen.getByLabelText('IDM calibration (server path)'), {
+      target: { value: '  artifacts/idm_i24_capacity.json  ' },
+    });
+    fireEvent.change(screen.getByLabelText('Source'), {
+      target: { value: 'MnDOT IRIS 30-second archive, 2026-04-14' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Onboard corridor' }));
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/corridors'))).toBe(true);
+    });
+    const form = calls.find((c) => c.method === 'POST' && c.url.endsWith('/corridors'))!.form!;
+    // exactly the fields that were named, as the API's column_map JSON object
+    expect(JSON.parse(String(form.get('column_map')))).toEqual({
+      timestamp: 'ts',
+      flow: 'volume',
+    });
+    expect(form.get('idm_calibration')).toBe('artifacts/idm_i24_capacity.json');
+    expect(form.get('source')).toBe('MnDOT IRIS 30-second archive, 2026-04-14');
+  });
+
   it('reports the finished run against the uploaded observations', async () => {
     // coming back to the view after the run finished: the panel is restored
     // from the API, not from a copy in this browser
@@ -423,6 +468,102 @@ describe('OnboardView field-level validation', () => {
     expect(screen.getByText('Choose the stations CSV')).toBeInTheDocument();
     expect(screen.getByText(/shorter than the duration/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Onboard corridor' })).toBeDisabled();
+  });
+});
+
+/** A corridor onboarded in another session exists only on the server: its
+ * scenario and its observations artifact are server-side, and this browser's
+ * localStorage remembers one onboarding at most. `GET /corridors` is what
+ * makes those corridors reachable from here — listed, and selectable as the
+ * target of the two follow-on actions. */
+describe('OnboardView corridor history', () => {
+  const OTHER_ID = 'cor_0000aaaa1111';
+
+  function listRow(id: string, name: string, done: boolean, created: string): unknown {
+    return {
+      corridor_id: id,
+      name,
+      status: done ? 'done' : 'failed',
+      progress: { stage: done ? 'done' : 'network', completed_stages: done ? 5 : 1, total_stages: 5 },
+      scenario_id: done ? SCENARIO_ID : null,
+      preset_filename: done ? `${name}.yaml` : null,
+      config_hash: done ? 'a1b2c3d4e5f6' : null,
+      observations_path: done ? OBSERVATIONS : null,
+      corridor_dir: `corridors/${id}`,
+      error: done ? null : 'no chain on that bearing',
+      error_kind: done ? null : 'corridor_network',
+      created_at: created,
+    };
+  }
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    window.localStorage.clear();
+    calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        calls.push({ url, method });
+        if (url.endsWith('/corridors') && method === 'GET') {
+          return json([
+            listRow(CORRIDOR_ID, 'mndot_i94_wb', true, '2026-09-23T06:00:00'),
+            listRow(OTHER_ID, 'mndot_i35_nb', false, '2026-09-22T06:00:00'),
+          ]);
+        }
+        if (url.includes('/corridors/')) return json(corridorRow('done', true));
+        if (url.includes('/runs/')) return json(runRow('done'));
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('lists what the server has onboarded, newest first', async () => {
+    renderView();
+    const table = await screen.findByRole(
+      'table',
+      { name: 'corridors on this server' },
+      { timeout: 4000 },
+    );
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows.map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual([
+      'mndot_i94_wb',
+      'mndot_i35_nb',
+    ]);
+    // the row states what the onboarding did, not what the corridor does
+    expect(within(rows[0]).getByText('done')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('failed')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('2026-09-23 06:00:00 UTC')).toBeInTheDocument();
+  });
+
+  it('prefills the run and report actions from the corridor that is picked', async () => {
+    // a run this browser launched for that corridor, before the page reloaded
+    window.localStorage.setItem(
+      'flowstate.onboard.last',
+      JSON.stringify({ corridor_id: CORRIDOR_ID, run_id: RUN_ID }),
+    );
+    renderView();
+    const use = await screen.findByRole('button', { name: 'use mndot_i94_wb' }, { timeout: 4000 });
+    fireEvent.click(use);
+
+    // the full row is re-read: a listing carries no summary, and the panel
+    // states what the onboarding found rather than reconstructing it
+    await waitFor(() => {
+      expect(calls.some((c) => c.url.includes(`/corridors/${CORRIDOR_ID}`))).toBe(true);
+    });
+    expect(await screen.findByText(/11.8 km chain of/, {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run 20 seeds' })).toBeEnabled();
+    // and the finished run it already has makes the observed report available
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Report against observations' })).toBeEnabled();
+    });
   });
 });
 

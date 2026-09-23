@@ -16,6 +16,7 @@ import {
   getReportPdf,
   isAuthFailed,
   isAuthRetryScheduled,
+  listCorridors,
   listCriteriaProfiles,
   listReports,
   listRuns,
@@ -382,6 +383,18 @@ describe('api client error rendering', () => {
     expect((fetchMock.mock.calls[0] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports`);
     await listReports(50);
     expect((fetchMock.mock.calls[1] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/reports?limit=50`);
+  });
+
+  it('lists the onboarded corridors from GET /corridors', async () => {
+    fetchMock.mockResolvedValue(fakeResponse([]));
+    await listCorridors();
+    expect((fetchMock.mock.calls[0] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/corridors`);
+    await listCorridors(25);
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe(`${DEFAULT_BASE_URL}/corridors?limit=25`);
+    // a read, like every other listing: no body and no content-type of its own
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe('GET');
+    expect(init.body).toBeUndefined();
   });
 
   it('downloads the archive and the PDF from their own routes', async () => {

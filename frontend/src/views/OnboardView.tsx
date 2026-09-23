@@ -17,6 +17,17 @@
  * then "Report against observations" — the second only once a run has
  * finished, because there is nothing to score before that.
  *
+ * Advanced holds what an arbitrary export needs and a tidy one does not: the
+ * `column_map` naming the upload's own columns, an `IDMCalibration` the fleet
+ * is drawn from (a path on the *server*, inside its allow-listed roots), and
+ * the provenance string recorded on the observations artifact. Each is sent
+ * only when it is filled in.
+ *
+ * `GET /corridors` lists the onboardings this server holds, so a corridor
+ * built in another session can be picked up and run or reported on: its
+ * scenario and its observations live on the server, and nothing but the two
+ * ids is kept in this browser.
+ *
  * Writes never fall back to the in-browser demo backend (`assertWritable`):
  * an onboarding accepted by this browser would be a corridor calibrated
  * against nothing. */
@@ -24,14 +35,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ApiError,
   createCorridor,
   createReport,
   createRun,
   getCorridor,
   getRun,
+  isMockActive,
+  listCorridors,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
-import type { CorridorOut, RunDetail } from '../api/types';
+import type { CorridorOut, CorridorRow, RunDetail } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { StatusChip } from '../components/bits';
 import { toast, toastError } from '../components/toast';
@@ -40,6 +54,12 @@ import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 
 const CORRIDOR_POLL_MS = 2000;
 const RUN_POLL_MS = 3000;
+/** How often the corridor history (`GET /corridors`) is re-read. Slower than
+ * the job poll: it changes only when an onboarding starts or finishes. */
+const HISTORY_POLL_MS = 5000;
+/** Retry interval once `GET /corridors` has answered 404 (a service older
+ * than the list endpoint). Watched for an upgrade, not hammered. */
+const HISTORY_RETRY_MS = 60_000;
 
 /** The reporting standard a headline metric must meet (CLAUDE.md §0.6); the
  * launch button commits to it rather than offering a cheaper, unquotable n. */
@@ -88,6 +108,30 @@ const DEFAULTS = {
   duration_s: '14400',
   warmup_s: '1800',
 };
+
+/** The canonical detector fields the loader names
+ * (`calibration.loaders.detector_csv`, docs/CONTRACTS.md "Detector
+ * observations"), each with the Advanced input that maps it onto whatever the
+ * uploaded export calls it. Only the ones filled in are sent, as the
+ * `column_map` JSON object `POST /corridors` accepts; an empty form sends no
+ * mapping at all and the loader reads the canonical spellings. */
+const COLUMN_FIELDS: { key: string; label: string; placeholder: string }[] = [
+  { key: 'timestamp', label: 'Timestamp column', placeholder: 'timestamp' },
+  { key: 'station', label: 'Station column', placeholder: 'station' },
+  { key: 'flow', label: 'Flow column', placeholder: 'flow_veh_h' },
+  { key: 'occupancy', label: 'Occupancy column', placeholder: 'occupancy_pct' },
+  { key: 'speed', label: 'Speed column', placeholder: 'speed_ms' },
+  { key: 'lanes', label: 'Lanes column', placeholder: 'lanes' },
+];
+
+/** The filled-in column names as the `column_map` request field, or null when
+ * none is set (the field is then omitted rather than sent as `{}`). */
+export function columnMapField(raw: Record<string, string>): string | null {
+  const entries = COLUMN_FIELDS.map((f) => [f.key, (raw[f.key] ?? '').trim()] as const).filter(
+    ([, value]) => value !== '',
+  );
+  return entries.length === 0 ? null : JSON.stringify(Object.fromEntries(entries));
+}
 
 interface Bbox {
   south: number;
@@ -166,8 +210,24 @@ export function OnboardView(): JSX.Element {
   const [t0Local, setT0Local] = useState(DEFAULTS.t0_local);
   const [durationRaw, setDurationRaw] = useState(DEFAULTS.duration_s);
   const [warmupRaw, setWarmupRaw] = useState(DEFAULTS.warmup_s);
+  // Advanced: the export's own column names, a driver population to draw
+  // from, and where the detector data came from. All optional, all sent only
+  // when filled in.
+  const [columns, setColumns] = useState<Record<string, string>>({});
+  const [idmCalibration, setIdmCalibration] = useState('');
+  const [source, setSource] = useState('');
 
   const [corridor, setCorridor] = useState<CorridorOut | null>(null);
+  /** `GET /corridors` — the onboardings this server holds; null until it has
+   * answered. */
+  const [history, setHistory] = useState<CorridorRow[] | null>(null);
+  /** False once the service answered 404 to `GET /corridors` (an API older
+   * than the list endpoint): the panel says so instead of claiming the server
+   * has onboarded nothing. */
+  const [historyListed, setHistoryListed] = useState(true);
+  /** Whether the list currently held in `history` came from the in-browser
+   * demo backend rather than a server. */
+  const [historyDemo, setHistoryDemo] = useState(false);
   const [run, setRun] = useState<RunDetail | null>(null);
   const [busy, setBusy] = useState(false);
   // The ids the polls read. They live in refs, not in the poll callbacks'
@@ -292,6 +352,57 @@ export function OnboardView(): JSX.Element {
   }, []);
   usePoll(pollRun, run && !isTerminal(run.status) && !authFailed ? RUN_POLL_MS : null);
 
+  // The corridors this server has onboarded. Without it a corridor built in
+  // another session (or another browser) is unreachable from here: its
+  // scenario_id and observations_path live only on the server, and the two
+  // follow-on actions need both.
+  const loadHistory = useCallback(async () => {
+    // capture the source before the call: a list answered by the in-browser
+    // backend is not this server's history and must not be shown as one
+    const demo = isMockActive();
+    try {
+      const rows = await listCorridors();
+      setHistory(rows);
+      setHistoryDemo(demo);
+      setHistoryListed(true);
+    } catch (err) {
+      // 404 = a service older than GET /corridors; anything else is transient
+      if (err instanceof ApiError && err.status === 404) setHistoryListed(false);
+    }
+  }, []);
+  usePoll(loadHistory, authFailed ? null : historyListed ? HISTORY_POLL_MS : HISTORY_RETRY_MS);
+
+  /** Make a listed corridor the one this view acts on.
+   *
+   * The row is re-read in full (`GET /corridors/{id}`): a listing carries no
+   * summary, and the panel below states what the onboarding found, never a
+   * reconstruction of it. A run this browser launched for that same corridor
+   * is picked up with it, so "Report against observations" is offered exactly
+   * when there is a finished run to score. */
+  async function selectCorridor(row: CorridorRow): Promise<void> {
+    setBusy(true);
+    try {
+      const fetched = await getCorridor(row.corridor_id);
+      trackCorridor(fetched);
+      const last = readLast();
+      const runId = last?.corridor_id === row.corridor_id ? last.run_id : undefined;
+      runIdRef.current = null;
+      setRun(null);
+      writeLast({ corridor_id: row.corridor_id, run_id: runId });
+      if (runId) {
+        try {
+          trackRun(await getRun(runId));
+        } catch {
+          /* the run is gone; the panel simply offers a fresh launch */
+        }
+      }
+    } catch (err) {
+      toastError(err, 'Corridor');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onboard(): Promise<void> {
     if (problem || 'error' in bbox) return;
     const form = new FormData();
@@ -307,6 +418,12 @@ export function OnboardView(): JSX.Element {
     form.set('t0_local', t0Local);
     form.set('duration_s', String(Number(durationRaw)));
     form.set('warmup_s', String(Number(warmupRaw)));
+    // Advanced, all optional: an empty one is left out of the request rather
+    // than sent blank — `{}` and `""` are not what "unset" means to the API.
+    const columnMap = columnMapField(columns);
+    if (columnMap) form.set('column_map', columnMap);
+    if (idmCalibration.trim()) form.set('idm_calibration', idmCalibration.trim());
+    if (source.trim()) form.set('source', source.trim());
     if (detectors) form.set('detectors', detectors);
     if (stations) form.set('stations', stations);
     setBusy(true);
@@ -518,6 +635,70 @@ export function OnboardView(): JSX.Element {
             />
             {problems.warmup && <span className="hint-amber">{problems.warmup}</span>}
           </div>
+        </div>
+        <div className="panel-body">
+          <details>
+            <summary className="small muted">
+              Advanced — detector column names, driver population, provenance
+            </summary>
+            <p className="small muted">
+              An export whose columns are not the canonical ones is read through a{' '}
+              <span className="mono">column_map</span>: name the upload&rsquo;s own column beside
+              each field it carries. Blank fields are left out of the request.
+            </p>
+            <div className="row wrap">
+              {COLUMN_FIELDS.map((f) => (
+                <div className="field" key={f.key}>
+                  <label htmlFor={`ob-col-${f.key}`}>{f.label}</label>
+                  <input
+                    id={`ob-col-${f.key}`}
+                    className="input mono"
+                    style={{ width: 150 }}
+                    placeholder={f.placeholder}
+                    value={columns[f.key] ?? ''}
+                    onChange={(e) =>
+                      setColumns((prev) => ({ ...prev, [f.key]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="row wrap">
+              <div className="field">
+                <label htmlFor="ob-idm">IDM calibration (server path)</label>
+                <input
+                  id="ob-idm"
+                  className="input mono"
+                  style={{ minWidth: 300 }}
+                  placeholder="artifacts/idm_i24_capacity.json"
+                  value={idmCalibration}
+                  onChange={(e) => setIdmCalibration(e.target.value)}
+                />
+                <span className="small muted">
+                  A driver population the fleet is drawn from. Read by the server, so it must lie
+                  inside the server&rsquo;s allow-listed roots (its artifacts/ or data/
+                  directories, or the results root) — a path on this machine means nothing there.
+                </span>
+              </div>
+              <div className="field">
+                <label htmlFor="ob-source">Source</label>
+                <input
+                  id="ob-source"
+                  className="input"
+                  style={{ minWidth: 260 }}
+                  placeholder="MnDOT IRIS 30-second archive, 2026-04-14"
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                />
+                <span className="small muted">
+                  Recorded on the observations artifact as the provenance of these detector
+                  counts; it travels into every report scored against them.
+                </span>
+              </div>
+            </div>
+          </details>
+        </div>
+        <div className="panel-body row wrap">
           <div className="field">
             <label>&nbsp;</label>
             <button
@@ -538,6 +719,82 @@ export function OnboardView(): JSX.Element {
             </span>
           </div>
         </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <span className="panel-title">Corridors on this server</span>
+          <span className="spacer" />
+          <span
+            className="small muted"
+            title={
+              historyDemo
+                ? 'The API is unreachable, so these rows come from the built-in demo backend. Nothing here was onboarded by a server.'
+                : historyListed
+                  ? 'GET /corridors, newest first. Picking one makes it the corridor the two actions below act on — its scenario and its observations live on the server, not in this browser.'
+                  : 'This service answered 404 to GET /corridors, so corridors onboarded in other sessions cannot be listed here.'
+            }
+          >
+            {historyDemo
+              ? 'built-in demo data — onboarded by no server'
+              : historyListed
+                ? 'GET /corridors, newest first'
+                : 'this service has no GET /corridors'}
+          </span>
+        </div>
+        {historyListed && (history?.length ?? 0) > 0 && (
+          <div className="table-wrap">
+            <table className="data" aria-label="corridors on this server">
+              <thead>
+                <tr>
+                  <th>corridor</th>
+                  <th>status</th>
+                  <th>started</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {(history ?? []).map((row) => (
+                  <tr key={row.corridor_id}>
+                    <td style={{ fontWeight: 700 }} title={row.corridor_id}>
+                      {row.name}
+                    </td>
+                    <td>
+                      <StatusChip status={row.status} />
+                    </td>
+                    <td className="muted">{row.created_at.replace('T', ' ').slice(0, 19)} UTC</td>
+                    <td>
+                      <button
+                        className="btn sm"
+                        aria-label={`use ${row.name}`}
+                        disabled={busy || corridor?.corridor_id === row.corridor_id}
+                        title={
+                          corridor?.corridor_id === row.corridor_id
+                            ? 'Already the selected corridor'
+                            : row.scenario_id
+                              ? 'Load this corridor: its summary, and the run and report actions'
+                              : 'Load this corridor — it installed no scenario, so there is nothing to run on it'
+                        }
+                        onClick={() => void selectCorridor(row)}
+                      >
+                        Use
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {historyListed && (history?.length ?? 0) === 0 && (
+          <div className="panel-body">
+            <div className="empty">
+              {history === null
+                ? 'reading the corridor history…'
+                : 'no corridors onboarded on this server yet'}
+            </div>
+          </div>
+        )}
       </div>
 
       {corridor && (

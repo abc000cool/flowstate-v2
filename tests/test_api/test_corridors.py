@@ -259,6 +259,62 @@ class TestOnboardingHappyPath:
         assert "already exists" in response.json()["detail"]
 
 
+class TestListing:
+    """``GET /corridors``: the history the dashboard offers as run/report targets."""
+
+    def test_the_finished_corridor_is_listed_without_its_summary(
+        self, client: TestClient, onboarded: dict[str, Any]
+    ) -> None:
+        listed = client.get("/api/v1/corridors", headers=HEADERS)
+        assert listed.status_code == 200, listed.text
+        (row,) = listed.json()
+        # the fields a client needs to launch a run and score a report on it
+        assert row["corridor_id"] == onboarded["corridor_id"]
+        assert row["name"] == "fixture_corridor_eb"
+        assert row["status"] == "done"
+        assert row["scenario_id"] == onboarded["scenario_id"]
+        assert row["observations_path"] == onboarded["observations_path"]
+        assert row["config_hash"] == onboarded["config_hash"]
+        # everything the detail row carries except the summary, which belongs
+        # to the corridor being looked at, not to a listing of all of them
+        assert "summary" not in row
+        assert set(row) == set(onboarded) - {"summary"}
+
+    def test_rows_are_newest_first_and_bounded_by_limit(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two onboardings that fail at the first stage: the listing is not
+        about success, it is about which corridors this server has."""
+        from api import onboarding_jobs
+
+        def refuse(bbox: Any, dest: Path) -> Path:
+            raise RuntimeError("no network in tests")
+
+        monkeypatch.setattr(onboarding_jobs, "fetch_extract", refuse)
+        first = post_corridor(client, name="fixture_list_one")
+        second = post_corridor(client, name="fixture_list_two")
+
+        rows = client.get("/api/v1/corridors", headers=HEADERS).json()
+        assert [r["corridor_id"] for r in rows] == [
+            second["corridor_id"],
+            first["corridor_id"],
+        ]
+        assert [r["name"] for r in rows] == ["fixture_list_two", "fixture_list_one"]
+        assert [r["status"] for r in rows] == ["failed", "failed"]
+        # a failed onboarding offers nothing to run or report against, and
+        # says so rather than being left out of the history
+        assert rows[0]["scenario_id"] is None
+        assert rows[0]["observations_path"] is None
+        assert rows[0]["error_kind"] == "corridor_extract"
+
+        newest = client.get("/api/v1/corridors?limit=1", headers=HEADERS).json()
+        assert [r["corridor_id"] for r in newest] == [second["corridor_id"]]
+        assert client.get("/api/v1/corridors?limit=0", headers=HEADERS).status_code == 422
+
+    def test_an_empty_server_lists_nothing(self, client: TestClient) -> None:
+        assert client.get("/api/v1/corridors", headers=HEADERS).json() == []
+
+
 class TestRunAndReport:
     def test_the_corridor_runs_and_scores_against_its_observations(
         self, client: TestClient, onboarded: dict[str, Any]

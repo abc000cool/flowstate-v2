@@ -25,6 +25,14 @@
  * "GEH passed" over two link-hours is a different claim from the same line
  * over two hundred.
  *
+ * Beside the profile, the launcher chooses the *evidence*: an observations
+ * artifact from one of the corridors this server has onboarded
+ * (`GET /corridors`), or a server-side path typed by hand. Without one the
+ * link-flow and speed criteria are reported as "not evaluated" — the honest
+ * default, and what the option says — so the choice is offered rather than
+ * assumed. A refusal of the request (a 422 naming a path outside the allowed
+ * roots, a 404) stays on screen beside the button in the server's own words.
+ *
  * The table is `GET /reports` (the server's own history, newest first) merged
  * with this browser's localStorage records, which now cover only what the
  * server list does not return — a report requested against another API, or
@@ -51,13 +59,14 @@ import {
   getReportMarkdown,
   getReportPdf,
   isMockActive,
+  listCorridors,
   listCriteriaProfiles,
   listReports,
   listRuns,
   listScenarios,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
-import type { ReportOut, ReportRecord, RunSummary } from '../api/types';
+import type { CorridorRow, ReportOut, ReportRecord, RunSummary } from '../api/types';
 import { SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { toast, toastError } from '../components/toast';
 import { saveBlob, saveText } from '../lib/download';
@@ -78,6 +87,17 @@ const SCENARIOS_POLL_MS = 3000;
  * is fixed for a service, so this poll stops on the first answer (including
  * the 404 of a service that has no such endpoint). */
 const CRITERIA_POLL_MS = 3000;
+/** How often the onboarded corridors are re-read for the observations
+ * selector (`GET /corridors`), and the backoff once the service has answered
+ * 404 to it. */
+const CORRIDOR_POLL_MS = 5000;
+const CORRIDOR_RETRY_MS = 60_000;
+
+/** The observations select's two non-corridor options: score against nothing
+ * (the API's own default — the GEH and speed rows then read "not evaluated"),
+ * and a path typed by hand for an artifact this dashboard cannot list. */
+const OBSERVATIONS_NONE = '';
+const OBSERVATIONS_CUSTOM = '__server_path__';
 
 /** What the selector needs from a `CriteriaProfile`: the name the request
  * carries, and the provenance text the option shows so a profile is picked
@@ -282,6 +302,20 @@ export function ReportsView(): JSX.Element {
    * service applies, and the request carries no `profile` field. */
   const [criteriaListed, setCriteriaListed] = useState(true);
   const [profile, setProfile] = useState(DEFAULT_CRITERIA_PROFILE);
+  /** The corridors this server has onboarded, for the observations selector;
+   * null until `GET /corridors` has answered (404 included). */
+  const [corridors, setCorridors] = useState<CorridorRow[] | null>(null);
+  /** False once the service answered 404 to `GET /corridors`: the selector
+   * then offers only "none" and a typed server path. */
+  const [corridorsListed, setCorridorsListed] = useState(true);
+  /** Which observations artifact the next report is scored against: a listed
+   * corridor's path, `OBSERVATIONS_CUSTOM` (the typed one), or none. */
+  const [observations, setObservations] = useState(OBSERVATIONS_NONE);
+  const [customObservations, setCustomObservations] = useState('');
+  /** The server's last refusal of `POST /reports`, shown verbatim beside the
+   * button — a 422 naming an unreadable observations path is the message the
+   * user has to act on, and a toast that has already faded is not it. */
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const authFailed = useAuthFailed();
   const offline = useOfflineFallback();
@@ -380,6 +414,33 @@ export function ReportsView(): JSX.Element {
     }
   }, []);
   usePoll(loadCriteria, authFailed || profileOptions !== null ? null : CRITERIA_POLL_MS);
+
+  // the onboarded corridors, for the observations selector: a report scored
+  // against a corridor's own detectors is the only one whose GEH and speed
+  // rows are evaluated at all, and the artifact path lives on the server
+  const loadCorridors = useCallback(async () => {
+    try {
+      setCorridors(await listCorridors());
+      setCorridorsListed(true);
+    } catch (err) {
+      // 404 = a service older than GET /corridors; anything else is transient
+      if (err instanceof ApiError && err.status === 404) {
+        setCorridors([]);
+        setCorridorsListed(false);
+      }
+    }
+  }, []);
+  usePoll(
+    loadCorridors,
+    authFailed ? null : corridorsListed ? CORRIDOR_POLL_MS : CORRIDOR_RETRY_MS,
+  );
+
+  /** Corridors whose onboarding finished and left an observations artifact —
+   * the only ones a report can be scored against. */
+  const observationChoices = useMemo(
+    () => (corridors ?? []).filter((c) => c.status === 'done' && c.observations_path),
+    [corridors],
+  );
   const profileChoices = profileOptions ?? LOADING_PROFILE_OPTIONS;
   const profileSources = useMemo(
     () => new Map(profileChoices.map((p) => [p.name, p.source])),
@@ -482,9 +543,15 @@ export function ReportsView(): JSX.Element {
     // the whole request refused (422) over a field whose value that service
     // applies anyway, so it is omitted rather than sent
     const requested = criteriaListed ? profile : undefined;
+    // the evidence the report is scored against, when one was chosen: a
+    // server-side path, never a file this browser holds
+    const chosen =
+      observations === OBSERVATIONS_CUSTOM ? customObservations.trim() : observations;
+    const observationsPath = chosen === '' ? undefined : chosen;
     setBusy(true);
+    setLaunchError(null);
     try {
-      const out = await createReport(ids, undefined, requested);
+      const out = await createReport(ids, undefined, requested, observationsPath);
       const rec = recordFromOut(out, ids, demo, requested);
       const next = [rec, ...reportsRef.current.filter((r) => r.report_id !== rec.report_id)];
       if (demo) show(next);
@@ -495,6 +562,12 @@ export function ReportsView(): JSX.Element {
         toast('error', `report ${rec.report_id} failed: ${rec.error ?? 'unknown error'}`);
       else toast('info', `report ${rec.report_id} queued — download unlocks once it is done`);
     } catch (err) {
+      // the server's own words, kept on screen: a 422 ("observations_path is
+      // outside the allowed data roots") or a 404 is a correction to make,
+      // not a notification to miss
+      const status = err instanceof ApiError ? err.status : 0;
+      const text = err instanceof Error ? err.message : String(err);
+      setLaunchError(status ? `HTTP ${status} — ${text}` : text);
       toastError(err, 'report');
     } finally {
       setBusy(false);
@@ -569,6 +642,43 @@ export function ReportsView(): JSX.Element {
               ))}
             </select>
           </div>
+          <div className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <label htmlFor="r-observations">Score against observations</label>
+            <select
+              id="r-observations"
+              className="input"
+              style={{ minWidth: 210 }}
+              value={observations}
+              title={
+                corridorsListed
+                  ? 'The detector observations the link-flow (GEH) and segment-speed rows are scored against. Without one those criteria are reported as "not evaluated" — the report still states what was simulated, but nothing is compared with a road.'
+                  : 'This service answered 404 to GET /corridors, so the corridors it has onboarded cannot be listed here. A server-side observations path can still be typed.'
+              }
+              onChange={(e) => setObservations(e.target.value)}
+            >
+              <option value={OBSERVATIONS_NONE}>none — criteria not evaluated</option>
+              {observationChoices.map((c) => (
+                <option
+                  key={c.corridor_id}
+                  value={c.observations_path ?? ''}
+                  title={`Onboarded ${c.created_at.replace('T', ' ').slice(0, 19)} UTC (${c.corridor_id})`}
+                >
+                  {c.name}
+                </option>
+              ))}
+              <option value={OBSERVATIONS_CUSTOM}>server path…</option>
+            </select>
+            {observations === OBSERVATIONS_CUSTOM && (
+              <input
+                className="input mono"
+                aria-label="Observations path on the server"
+                style={{ minWidth: 260 }}
+                placeholder="corridors/cor_…/observations.json"
+                value={customObservations}
+                onChange={(e) => setCustomObservations(e.target.value)}
+              />
+            )}
+          </div>
           <button
             className="btn primary"
             disabled={busy || microSelected.length === 0 || offline}
@@ -578,6 +688,13 @@ export function ReportsView(): JSX.Element {
             Generate report ({microSelected.length})
           </button>
         </div>
+        {launchError && (
+          <div className="panel-body">
+            <span className="small" style={{ color: 'var(--danger)' }}>
+              {launchError}
+            </span>
+          </div>
+        )}
         <div className="table-wrap">
           <table className="data" aria-label="finished runs">
             <thead>

@@ -518,10 +518,12 @@ export interface CorridorSummary {
   lines: string[];
 }
 
-/** Mirrors the API's `CorridorOut` — returned by `POST /corridors` (202) and
- * by `GET /corridors/{id}`, which the view polls until the status is
- * terminal. */
-export interface CorridorOut {
+/** Mirrors the API's `CorridorRowOut` — one onboarding's status row, as
+ * `GET /corridors` lists them (newest first). The summary is not listed: it
+ * belongs to the corridor being looked at, and a row is here to be picked as
+ * the target of a run (`scenario_id`) or a report (`observations_path`), not
+ * to restate what the onboarding found. */
+export interface CorridorRow {
   corridor_id: string;
   name: string;
   status: RunStatus;
@@ -537,8 +539,14 @@ export interface CorridorOut {
   /** The bundle directory, relative to the server's results root — an
    * identifier, not a path this browser can open. */
   corridor_dir: string | null;
-  summary: CorridorSummary | null;
   error: string | null;
   error_kind: string | null;
   created_at: string;
+}
+
+/** Mirrors the API's `CorridorOut` — returned by `POST /corridors` (202) and
+ * by `GET /corridors/{id}`, which the view polls until the status is
+ * terminal: the status row plus the summary of what was discovered. */
+export interface CorridorOut extends CorridorRow {
+  summary: CorridorSummary | null;
 }

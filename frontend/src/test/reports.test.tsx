@@ -105,6 +105,40 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
+/** `GET /corridors` rows (the status rows, no summary): one finished corridor
+ * carrying the observations artifact a report can be scored against, and one
+ * still running, which carries none. */
+const CORRIDORS = [
+  {
+    corridor_id: 'cor_9f21ab77cd10',
+    name: 'mndot_i94_wb',
+    status: 'done',
+    progress: { stage: 'done', completed_stages: 5, total_stages: 5 },
+    scenario_id: 'scn_onboarded01',
+    preset_filename: 'mndot_i94_wb.yaml',
+    config_hash: 'a1b2c3d4e5f6',
+    observations_path: '/srv/runs/corridors/cor_9f21ab77cd10/observations.json',
+    corridor_dir: 'corridors/cor_9f21ab77cd10',
+    error: null,
+    error_kind: null,
+    created_at: '2026-09-23T06:00:00',
+  },
+  {
+    corridor_id: 'cor_1111bbbb2222',
+    name: 'mndot_i35_nb',
+    status: 'running',
+    progress: { stage: 'network', completed_stages: 1, total_stages: 5 },
+    scenario_id: null,
+    preset_filename: null,
+    config_hash: null,
+    observations_path: null,
+    corridor_dir: 'corridors/cor_1111bbbb2222',
+    error: null,
+    error_kind: null,
+    created_at: '2026-09-23T07:00:00',
+  },
+];
+
 interface Call {
   url: string;
   method: string;
@@ -122,6 +156,10 @@ describe('ReportsView (asynchronous report contract)', () => {
   /** What GET /criteria answers; null = the service has no such endpoint (an
    * API older than the criteria-profile registry). */
   let criteria: typeof CRITERIA | null = CRITERIA;
+  /** What GET /corridors answers; null = the service has no such endpoint. */
+  let corridorList: typeof CORRIDORS | null = CORRIDORS;
+  /** A refusal POST /reports answers with instead of 202, when set. */
+  let postRefusal: { status: number; detail: unknown } | null = null;
   /** The profile the service recorded on rpt-1 — whatever the POST carried,
    * so the status poll does not contradict the row it created. */
   let createdProfile = 'fhwa_default';
@@ -134,6 +172,8 @@ describe('ReportsView (asynchronous report contract)', () => {
     status = 'queued';
     serverList = [];
     criteria = CRITERIA;
+    corridorList = CORRIDORS;
+    postRefusal = null;
     createdProfile = 'fhwa_default';
     // jsdom has neither blob URLs nor navigation
     urlApi.createObjectURL = vi.fn(() => 'blob:report');
@@ -154,9 +194,14 @@ describe('ReportsView (asynchronous report contract)', () => {
           if (criteria === null) return json({ detail: 'Not Found' }, 404);
           return json(criteria);
         }
+        if (url.includes('/corridors') && method === 'GET') {
+          if (corridorList === null) return json({ detail: 'Not Found' }, 404);
+          return json(corridorList);
+        }
         // the Redis-queue answer: accepted, not yet generated; the profile is
         // echoed exactly as the API records it on the row
         if (url.endsWith('/reports') && method === 'POST') {
+          if (postRefusal) return json({ detail: postRefusal.detail }, postRefusal.status);
           const sent = JSON.parse(body ?? '{}') as { profile?: string };
           createdProfile = sent.profile ?? 'fhwa_default';
           return json(reportOut('queued', 'rpt-1', createdProfile), 202);
@@ -491,6 +536,108 @@ describe('ReportsView (asynchronous report contract)', () => {
       // default there would be this dashboard's assumption, shown as the
       // server's answer
       expect(criteriaCells).toEqual(['txdot_tsap_ch13', 'unknown']);
+    },
+    15000,
+  );
+
+  it(
+    'offers the finished corridors’ observations and sends the chosen path',
+    async () => {
+      render(<ReportsView />);
+      const select = (await screen.findByLabelText(
+        'Score against observations',
+      )) as HTMLSelectElement;
+      await waitFor(() => {
+        expect(within(select).getAllByRole('option')).toHaveLength(3);
+      });
+      const options = within(select).getAllByRole('option') as HTMLOptionElement[];
+      // none (the API's own default), the one corridor that finished with an
+      // observations artifact, and a path typed by hand. The corridor still
+      // running has nothing to be scored against and is not offered.
+      expect(options.map((o) => o.value)).toEqual([
+        '',
+        '/srv/runs/corridors/cor_9f21ab77cd10/observations.json',
+        '__server_path__',
+      ]);
+      expect(options[0].textContent).toContain('not evaluated');
+      expect(options[1].textContent).toBe('mndot_i94_wb');
+      expect(select.value).toBe(''); // scoring against nothing is the default
+
+      fireEvent.change(select, {
+        target: { value: '/srv/runs/corridors/cor_9f21ab77cd10/observations.json' },
+      });
+      fireEvent.click(await screen.findByLabelText('select run-a', {}, { timeout: 4000 }));
+      fireEvent.click(screen.getByRole('button', { name: 'Generate report (1)' }));
+      await waitFor(() => {
+        expect(calls.some((c) => c.url.endsWith('/reports') && c.method === 'POST')).toBe(true);
+      });
+      const post = calls.find((c) => c.url.endsWith('/reports') && c.method === 'POST');
+      expect(JSON.parse(post?.body ?? '{}')).toEqual({
+        run_ids: ['run-a'],
+        profile: 'fhwa_default',
+        observations_path: '/srv/runs/corridors/cor_9f21ab77cd10/observations.json',
+      });
+    },
+    15000,
+  );
+
+  it(
+    'sends a typed server path and shows the API’s refusal in its own words',
+    async () => {
+      postRefusal = {
+        status: 422,
+        detail: [
+          {
+            type: 'path_outside_roots',
+            loc: ['body', 'observations_path'],
+            msg: "observations_path '/etc/passwd' is outside the allowed data roots",
+          },
+        ],
+      };
+      render(<ReportsView />);
+      const select = await screen.findByLabelText('Score against observations');
+      await waitFor(() => {
+        expect(within(select).getAllByRole('option')).toHaveLength(3);
+      });
+      fireEvent.change(select, { target: { value: '__server_path__' } });
+      fireEvent.change(screen.getByLabelText('Observations path on the server'), {
+        target: { value: '  /etc/passwd  ' },
+      });
+      fireEvent.click(await screen.findByLabelText('select run-a', {}, { timeout: 4000 }));
+      fireEvent.click(screen.getByRole('button', { name: 'Generate report (1)' }));
+
+      await waitFor(() => {
+        expect(calls.some((c) => c.url.endsWith('/reports') && c.method === 'POST')).toBe(true);
+      });
+      const post = calls.find((c) => c.url.endsWith('/reports') && c.method === 'POST');
+      expect(JSON.parse(post?.body ?? '{}')).toEqual({
+        run_ids: ['run-a'],
+        profile: 'fhwa_default',
+        observations_path: '/etc/passwd',
+      });
+      // the server's own message, on screen rather than in a faded toast
+      expect(
+        await screen.findByText(/observations_path.*outside the allowed data roots/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/HTTP 422/)).toBeInTheDocument();
+      // nothing was recorded as requested
+      expect(window.localStorage.getItem(LS_REPORTS)).toBeNull();
+    },
+    15000,
+  );
+
+  it(
+    'offers only "none" and a typed path when the service has no GET /corridors',
+    async () => {
+      corridorList = null; // 404: an API older than the corridor list
+      render(<ReportsView />);
+      const select = await screen.findByLabelText('Score against observations');
+      await waitFor(() => {
+        expect(within(select).getAllByRole('option')).toHaveLength(2);
+      });
+      const options = within(select).getAllByRole('option') as HTMLOptionElement[];
+      expect(options.map((o) => o.value)).toEqual(['', '__server_path__']);
+      expect(select).toHaveAttribute('title', expect.stringContaining('404'));
     },
     15000,
   );
