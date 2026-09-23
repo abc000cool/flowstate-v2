@@ -53,6 +53,8 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   extra="$extra $(ls runs/i24_sweep/*/*/*/metrics.json runs/i24_sweep/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # regenerated reports and the episode-position sidecar (data/, gitignored) ride along too
   [ -d docs/reports ] && extra="$extra docs/reports"
+  # onboarded corridors: per-seed metrics/scores of every run, first-seed trajectories only, sweep metrics + summaries
+  extra="$extra $(ls runs/mndot_*/*/*/metrics.json runs/mndot_*/*/*/observed_scores.json runs/mndot_*_sweep/*/*/metrics.json runs/mndot_*_sweep/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
@@ -277,6 +279,19 @@ stage cap_sweep $RUN scripts/i24_cap_sweep.py --procs "$PROCS" --replicates "$RE
 
 # 8. Re-score the criteria rows with the published sweep grid.
 stage rescore bash -c "$RUN scripts/i24_validate.py --family zip --criteria-only --arms all --ring-seeds 0 && $RUN scripts/i24_validate.py --criteria-only --arms speedcal_heavy --ring-seeds 0" || true
+
+# 10. Onboarded corridors (opt-in; generic scripts, no corridor names in code). The MnDOT I-94 WB
+#     St. Paul round (2026-09-23): 20-seed baseline scored against the detector observations, then
+#     a small controller/strategy sweep with the baseline cell; trajectories pruned to the first seed.
+MNDOT=mndot_i94_wb_stpaul
+stage battery_mndot $RUN scripts/corridor_battery.py --scenario scenarios/$MNDOT.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates "$REPS" --procs "$PROCS" \
+  --out runs/$MNDOT/baseline --artifact artifacts/validation_$MNDOT.json --report-dir docs/reports/$MNDOT \
+  --criteria-profile fhwa_tat3_2004 || say "battery_mndot failed; continuing"
+stage sweep_mndot $RUN scripts/corridor_sweep.py --scenario scenarios/$MNDOT.yaml \
+  --penetration 0.02 0.05 0.10 0.20 --compliance 0.5 1.0 --controllers follower_stopper \
+  --strategies none vsl alinea --replicates "$REPS" --procs "$PROCS" \
+  --out runs/${MNDOT}_sweep --summary artifacts/sweep_${MNDOT}_summary.json || say "sweep_mndot failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

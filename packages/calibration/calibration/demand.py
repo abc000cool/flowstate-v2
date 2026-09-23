@@ -31,24 +31,36 @@ fractions, a boundary speed schedule, ...) against an injected objective —
 deterministic compass search on a shrinking grid, memoized and resumable,
 with the round's candidates evaluated through an injected ``map_fn`` so a
 driver script can spread them over a process pool.
+
+Finally, the *direct* path from measurements to a scenario's boundary
+conditions: :func:`demand_from_observations` and
+:func:`ramp_flows_from_observations` read a ``flowstate.observations/1``
+artifact (:mod:`calibration.observations`) and produce the inflow and ramp
+steps a corridor scenario needs, recorded together as a
+``flowstate.demand/1`` :class:`DemandArtifact`. No fitting is involved there —
+the numbers are the detectors', scaled into SI — so it is the fast path for
+onboarding a corridor whose boundary is instrumented; the GEH fitter above
+remains the way to correct a boundary that is not.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import tempfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from math import sqrt
 from pathlib import Path
-from typing import Any, overload
+from typing import Any, Literal, overload
 
 import numpy as np
 import pandas as pd
 
+from calibration.observations import Observations
 from flowstate_core.artifacts import DemandProfile
 from flowstate_core.config import ScenarioConfig
-from flowstate_core.units import veh_s_to_veh_h
+from flowstate_core.units import veh_h_to_veh_s, veh_s_to_veh_h
 
 SimulateFn = Callable[[DemandProfile], pd.DataFrame]
 """Injected simulator: profile → DataFrame with columns ``t_start_s``,
@@ -750,3 +762,410 @@ def fit_multipliers(
         if on_round is not None:
             on_round(snapshot())
     return snapshot()
+
+
+# --- observations → scenario boundary conditions --------------------------------
+
+DEMAND_SCHEMA = "flowstate.demand/1"
+"""Schema tag of the demand artifact (docs/CONTRACTS.md, "Detector observations")."""
+
+CONSERVATION_METHOD = (
+    "ramp detectors where present, else conservation between consecutive mainline "
+    "stations (q_on = max(0, q_down - q_up); f_off = max(0, (q_up - q_down)/q_up))"
+)
+"""The artifact's ``method`` string — what the numbers below actually are."""
+
+RampKind = Literal["on", "off"]
+
+
+def _step_grid(obs: Observations, step_s: float) -> tuple[int, int]:
+    """``(windows_per_step, n_steps)`` for a step length on the window grid.
+
+    Raises:
+        ValueError: ``step_s`` is not a whole multiple of the observations'
+            window, or does not divide the analysed span.
+    """
+    ratio = step_s / obs.window_s
+    if step_s <= 0 or abs(ratio - round(ratio)) > 1e-9:
+        raise ValueError(
+            f"step_s ({step_s}) must be a positive whole multiple of the observations' "
+            f"window_s ({obs.window_s})"
+        )
+    per_step = round(ratio)
+    if obs.n_windows % per_step:
+        raise ValueError(
+            f"step_s ({step_s}) does not divide the analysed span: {obs.n_windows} windows "
+            f"of {obs.window_s} s leave a partial step"
+        )
+    return per_step, obs.n_windows // per_step
+
+
+def _step_means(values: Sequence[float], per_step: int, n_steps: int) -> list[float]:
+    """Per-step mean of the *observed* windows (NaN when a step observed none)."""
+    out: list[float] = []
+    for k in range(n_steps):
+        chunk = [v for v in values[k * per_step : (k + 1) * per_step] if not math.isnan(v)]
+        out.append(sum(chunk) / len(chunk) if chunk else float("nan"))
+    return out
+
+
+def _steps_from_means(
+    means: Sequence[float], step_s: float, convert: Callable[[float], float], label: str
+) -> tuple[list[tuple[float, float]], int]:
+    """Per-step means → profile steps, dropping the steps nothing was observed in.
+
+    A piecewise-constant profile holds its last value until the next step, so
+    *omitting* an unobserved step carries the previous one across it — the one
+    assumption this path makes, and the reason the number of carried steps is
+    returned and recorded on the artifact instead of being swallowed. The
+    profile always starts at t=0: when the first steps are unobserved the
+    first observed value is used, rather than inventing a level for them.
+
+    Args:
+        means: Per-step observed means (NaN = nothing observed).
+        step_s: Step length [s].
+        convert: Unit conversion applied to each value.
+        label: Name used in the error message.
+
+    Returns:
+        ``(steps, n_carried)`` — the ``(t_start_s, value)`` steps and the
+        number of steps that were not observed.
+
+    Raises:
+        ValueError: No step was observed at all.
+    """
+    observed = [(k, v) for k, v in enumerate(means) if not math.isnan(v)]
+    if not observed:
+        raise ValueError(
+            f"{label}: no window of the analysed span was observed — there is nothing to "
+            f"build a demand profile from (check the station id, dates and coverage)"
+        )
+    steps: list[tuple[float, float]] = []
+    for k, value in observed:
+        t_start = 0.0 if not steps and k > 0 else float(k * step_s)
+        steps.append((t_start, float(convert(value))))
+    return steps, len(means) - len(observed)
+
+
+def demand_from_observations(
+    obs: Observations, upstream_station: str, *, step_s: float = 300.0
+) -> list[tuple[float, float]]:
+    """Corridor inflow steps [veh/s] from the upstream station's observed flow.
+
+    The boundary of a corridor scenario is the flow its most upstream mainline
+    detector measured, on the simulation clock: step ``k`` starts at
+    ``k · step_s`` (t=0 is the artifact's ``t0_local``) and carries that
+    period's mean observed flow. Nothing is fitted and nothing is smoothed.
+
+    Args:
+        obs: Observations artifact.
+        upstream_station: Station id at the corridor's upstream boundary.
+        step_s: Step length [s]; a whole multiple of the artifact's window
+            that divides the analysed span.
+
+    Returns:
+        ``[(t_start_s, inflow_veh_s), ...]`` — the scenario's
+        ``network.inflow``, ordered and starting at t=0.
+
+    Raises:
+        KeyError: The artifact holds no such station.
+        ValueError: A malformed ``step_s``, or a station with no observed
+            window (see :func:`_steps_from_means`).
+    """
+    if upstream_station not in obs.flows_veh_h:
+        raise KeyError(
+            f"observations for {obs.corridor!r} hold no station {upstream_station!r}; "
+            f"stations: {sorted(obs.flows_veh_h)}"
+        )
+    per_step, n_steps = _step_grid(obs, step_s)
+    means = _step_means(obs.flows_veh_h[upstream_station], per_step, n_steps)
+    steps, _ = _steps_from_means(
+        means, step_s, veh_h_to_veh_s, f"inflow from station {upstream_station!r}"
+    )
+    return steps
+
+
+def _bracketing_stations(obs: Observations, x_m: float) -> tuple[str | None, str | None]:
+    """Ids of the mainline stations immediately up- and downstream of ``x_m``."""
+    upstream: str | None = None
+    downstream: str | None = None
+    for station in obs.mainline_stations():
+        position = float(station.x_m or 0.0)
+        if position <= x_m:
+            upstream = station.id
+        elif downstream is None:
+            downstream = station.id
+    return upstream, downstream
+
+
+def _conservation_means(
+    obs: Observations, kind: RampKind, x_m: float, per_step: int, n_steps: int
+) -> tuple[list[float], str, str]:
+    """Per-step ramp means from the flow difference across the ramp.
+
+    ``q_on = max(0, q_down − q_up)`` [veh/h] and
+    ``f_off = max(0, (q_up − q_down) / q_up)``: the standard closure when a
+    ramp carries no detector. It attributes *all* of the flow change between
+    two stations to this ramp, so it is only as good as the assumption that
+    nothing else happens in between — which is why a ramp detector is
+    preferred whenever one exists.
+
+    Returns:
+        ``(means, upstream_id, downstream_id)``; the means are NaN in any
+        step where either station was unobserved.
+
+    Raises:
+        ValueError: The ramp is not bracketed by two mainline stations.
+    """
+    upstream, downstream = _bracketing_stations(obs, x_m)
+    if upstream is None or downstream is None:
+        raise ValueError(
+            f"ramp at x_m={x_m:g} is not bracketed by two mainline stations "
+            f"(upstream={upstream!r}, downstream={downstream!r}); give it a detector "
+            f"station or extend the observed span"
+        )
+    up = _step_means(obs.flows_veh_h[upstream], per_step, n_steps)
+    down = _step_means(obs.flows_veh_h[downstream], per_step, n_steps)
+    means: list[float] = []
+    for q_up, q_down in zip(up, down, strict=True):
+        if math.isnan(q_up) or math.isnan(q_down):
+            means.append(float("nan"))
+        elif kind == "on":
+            means.append(max(0.0, q_down - q_up))
+        else:
+            means.append(max(0.0, (q_up - q_down) / q_up) if q_up > 0.0 else 0.0)
+    return means, upstream, downstream
+
+
+def _exit_fraction_means(
+    obs: Observations, station_id: str, x_m: float, per_step: int, n_steps: int
+) -> tuple[list[float], str]:
+    """Exit fractions from a ramp detector: ramp flow over upstream mainline flow.
+
+    Raises:
+        ValueError: No mainline station upstream of the ramp.
+    """
+    upstream, _ = _bracketing_stations(obs, x_m)
+    if upstream is None:
+        raise ValueError(
+            f"off-ramp at x_m={x_m:g} has no mainline station upstream of it, so its "
+            f"measured flow cannot be turned into an exit fraction"
+        )
+    ramp = _step_means(obs.flows_veh_h[station_id], per_step, n_steps)
+    main = _step_means(obs.flows_veh_h[upstream], per_step, n_steps)
+    means = [
+        float("nan")
+        if math.isnan(q_ramp) or math.isnan(q_main) or q_main <= 0.0
+        else min(1.0, max(0.0, q_ramp / q_main))
+        for q_ramp, q_main in zip(ramp, main, strict=True)
+    ]
+    return means, upstream
+
+
+def _observed(obs: Observations, station_id: str | None) -> bool:
+    """True when the artifact holds at least one observed window for a station."""
+    if not station_id or station_id not in obs.flows_veh_h:
+        return False
+    return any(not math.isnan(v) for v in obs.flows_veh_h[station_id])
+
+
+def ramp_flows_from_observations(
+    obs: Observations,
+    ramps: Sequence[Mapping[str, Any]],
+    *,
+    step_s: float = 300.0,
+) -> list[dict[str, Any]]:
+    """Ramp inflow / exit-fraction steps from the observations artifact.
+
+    A ramp with its own detector station uses it (``method: "detector"``);
+    otherwise the flow difference between the mainline stations bracketing the
+    ramp supplies it (``method: "conservation"``, :data:`CONSERVATION_METHOD`).
+
+    Args:
+        obs: Observations artifact.
+        ramps: Ramp descriptors — ``name``, ``kind`` (``on``/``on_ramp`` or
+            ``off``/``off_ramp``), ``x_m``, and optionally ``station`` (the
+            observations key of its detector row).
+        step_s: Step length [s] (see :func:`demand_from_observations`).
+
+    Returns:
+        One dict per ramp, in input order: ``name``, ``kind`` (``on``/``off``),
+        ``x_m``, ``method``, ``n_steps``, ``n_steps_carried`` and either
+        ``inflow_steps`` ``[[t_start_s, veh_s], ...]`` (on-ramps) or
+        ``exit_fraction_steps`` ``[[t_start_s, fraction], ...]`` (off-ramps).
+
+    Raises:
+        ValueError: A malformed descriptor or ``step_s``, a ramp that is
+            neither measured nor bracketed by two mainline stations, or a
+            ramp with no observed step at all.
+    """
+    per_step, n_steps = _step_grid(obs, step_s)
+    out: list[dict[str, Any]] = []
+    for index, raw in enumerate(ramps):
+        name = str(raw.get("name") or f"ramp_{index}")
+        kind_raw = str(raw.get("kind") or "").strip().lower()
+        kind: RampKind
+        if kind_raw in ("on", "on_ramp"):
+            kind = "on"
+        elif kind_raw in ("off", "off_ramp"):
+            kind = "off"
+        else:
+            raise ValueError(
+                f"ramp {name!r}: kind must be 'on'/'on_ramp' or 'off'/'off_ramp', got {kind_raw!r}"
+            )
+        if raw.get("x_m") is None:
+            raise ValueError(f"ramp {name!r}: needs an 'x_m' position on the corridor")
+        x_m = float(raw["x_m"])
+        station_id = raw.get("station")
+        station_id = str(station_id) if station_id else None
+
+        record: dict[str, Any] = {"name": name, "kind": kind, "x_m": x_m}
+        if _observed(obs, station_id):
+            assert station_id is not None
+            record["station"] = station_id
+            record["method"] = "detector"
+            if kind == "on":
+                means = _step_means(obs.flows_veh_h[station_id], per_step, n_steps)
+            else:
+                means, upstream = _exit_fraction_means(obs, station_id, x_m, per_step, n_steps)
+                record["reference_station"] = upstream
+        else:
+            means, upstream, downstream = _conservation_means(obs, kind, x_m, per_step, n_steps)
+            record["method"] = "conservation"
+            record["reference_station"] = upstream
+            record["downstream_station"] = downstream
+        convert: Callable[[float], float] = veh_h_to_veh_s if kind == "on" else (lambda v: v)
+        steps, carried = _steps_from_means(means, step_s, convert, f"ramp {name!r}")
+        key = "inflow_steps" if kind == "on" else "exit_fraction_steps"
+        record[key] = [[t, v] for t, v in steps]
+        record["n_steps"] = n_steps
+        record["n_steps_carried"] = carried
+        out.append(record)
+    return out
+
+
+@dataclass(frozen=True)
+class DemandArtifact:
+    """A corridor's boundary conditions as measured (``flowstate.demand/1``).
+
+    The scenario YAML carries these numbers literally (``network.inflow``,
+    ``network.ramps[*].inflow`` / ``exit_fraction``) so it stays
+    self-contained; this artifact is the provenance record that says where
+    they came from and how they were derived.
+
+    Attributes:
+        corridor: Corridor name.
+        observations: Path of the observations artifact they derive from.
+        upstream_station: Station id supplying the mainline inflow.
+        inflow_steps: ``[(t_start_s, veh_s), ...]``.
+        ramps: Ramp records (:func:`ramp_flows_from_observations`).
+        method: How the numbers were derived (:data:`CONSERVATION_METHOD`).
+        step_s: Step length [s] of every profile.
+        coverage: Honest counts — ``n_steps`` and ``n_steps_carried`` of the
+            mainline inflow.
+        schema: :data:`DEMAND_SCHEMA`.
+    """
+
+    corridor: str
+    observations: str
+    upstream_station: str
+    inflow_steps: list[tuple[float, float]]
+    ramps: list[dict[str, Any]] = field(default_factory=list)
+    method: str = CONSERVATION_METHOD
+    step_s: float = 300.0
+    coverage: dict[str, float] = field(default_factory=dict)
+    schema: str = DEMAND_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        """The artifact's JSON form."""
+        return {
+            "schema": self.schema,
+            "corridor": self.corridor,
+            "observations": self.observations,
+            "upstream_station": self.upstream_station,
+            "step_s": self.step_s,
+            "inflow_steps": [[float(t), float(q)] for t, q in self.inflow_steps],
+            "ramps": [dict(r) for r in self.ramps],
+            "method": self.method,
+            "coverage": dict(self.coverage),
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> DemandArtifact:
+        """Rebuild from the JSON form.
+
+        Raises:
+            ValueError: The payload carries a different ``schema``.
+        """
+        schema = str(raw.get("schema", DEMAND_SCHEMA))
+        if schema != DEMAND_SCHEMA:
+            raise ValueError(f"expected schema {DEMAND_SCHEMA!r}, got {schema!r}")
+        return cls(
+            corridor=str(raw.get("corridor", "")),
+            observations=str(raw.get("observations", "")),
+            upstream_station=str(raw.get("upstream_station", "")),
+            inflow_steps=[(float(t), float(q)) for t, q in raw.get("inflow_steps", ())],
+            ramps=[dict(r) for r in raw.get("ramps", ())],
+            method=str(raw.get("method", CONSERVATION_METHOD)),
+            step_s=float(raw.get("step_s", 300.0)),
+            coverage={k: float(v) for k, v in (raw.get("coverage") or {}).items()},
+            schema=schema,
+        )
+
+    def to_json(self, path: str | Path) -> Path:
+        """Write the artifact as JSON (parents created)."""
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(self.to_dict(), indent=2, allow_nan=False))
+        return target
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> DemandArtifact:
+        """Read an artifact written by :meth:`to_json`."""
+        return cls.from_dict(json.loads(Path(path).read_text()))
+
+
+def demand_from_observations_artifact(
+    obs: Observations,
+    upstream_station: str,
+    *,
+    ramps: Sequence[Mapping[str, Any]] = (),
+    observations_path: str = "",
+    step_s: float = 300.0,
+) -> DemandArtifact:
+    """Build the whole :class:`DemandArtifact` from an observations artifact.
+
+    Args:
+        obs: Observations artifact.
+        upstream_station: Station id at the upstream boundary.
+        ramps: Ramp descriptors (:func:`ramp_flows_from_observations`).
+        observations_path: Path recorded as the artifact's provenance.
+        step_s: Step length [s].
+
+    Returns:
+        The demand artifact, including the mainline inflow's coverage counts.
+
+    Raises:
+        KeyError: Unknown ``upstream_station``.
+        ValueError: See :func:`demand_from_observations` and
+            :func:`ramp_flows_from_observations`.
+    """
+    per_step, n_steps = _step_grid(obs, step_s)
+    if upstream_station not in obs.flows_veh_h:
+        raise KeyError(
+            f"observations for {obs.corridor!r} hold no station {upstream_station!r}; "
+            f"stations: {sorted(obs.flows_veh_h)}"
+        )
+    means = _step_means(obs.flows_veh_h[upstream_station], per_step, n_steps)
+    inflow, carried = _steps_from_means(
+        means, step_s, veh_h_to_veh_s, f"inflow from station {upstream_station!r}"
+    )
+    return DemandArtifact(
+        corridor=obs.corridor,
+        observations=observations_path,
+        upstream_station=upstream_station,
+        inflow_steps=inflow,
+        ramps=ramp_flows_from_observations(obs, ramps, step_s=step_s),
+        step_s=float(step_s),
+        coverage={"n_steps": float(n_steps), "n_steps_carried": float(carried)},
+    )

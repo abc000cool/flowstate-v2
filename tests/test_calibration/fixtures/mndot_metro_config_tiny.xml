@@ -1,0 +1,58 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tms_config time_stamp='Tue Sep 22 20:00:04 CDT 2026'>
+<corridor route='I-94' dir='WB'>
+<r_node name='rnd_10786' station_id='S2104' label='E of Co Rd 71' lon='-92.83261' lat='44.94874' lanes='3' shift='7' s_limit='70'>
+    <detector name='9063' label='94/ECR71W1' lane='1' controller='ctl_2412'/>
+    <detector name='9064' label='94/ECR71W2' lane='2' controller='ctl_2412'/>
+    <detector name='9065' label='94/ECR71W3' lane='3' controller='ctl_2412'/>
+  </r_node>
+  <r_node name='rnd_90267' station_id='S1361' label='Co Rd 71' lon='-92.84318' lat='44.94875' lanes='3' shift='7' s_limit='70'>
+    <detector name='6006' label='94/CR71W1' lane='1' controller='ctl_09231302'/>
+    <detector name='6007' label='94/CR71W2' lane='2' controller='ctl_09231302'/>
+    <detector name='6008' label='94/CR71W3' lane='3' controller='ctl_09231302'/>
+  </r_node>
+  <r_node name='rnd_10787' station_id='S2105' label='Manning Ave' lon='-92.85368' lat='44.94876' lanes='3' shift='7' s_limit='70'>
+    <detector name='9066' label='94/MnningW1' lane='1' controller='ctl_2410'/>
+    <detector name='9067' label='94/MnningW2' lane='2' controller='ctl_2410'/>
+    <detector name='9068' label='94/MnningW3' lane='3' controller='ctl_2410'/>
+  </r_node>
+  <r_node name='rnd_88851' n_type='Exit' transition='Leg' label='Manning Ave' lon='-92.85782' lat='44.94876' lanes='1' shift='7'>
+    <detector name='5100' label='94/MnningWX' category='Exit' controller='ctl_60812'/>
+  </r_node>
+  <r_node name='rnd_10788' station_id='S2106' label='Manning Ave' lon='-92.86176' lat='44.94876' lanes='3' shift='7' s_limit='70'>
+    <detector name='9069' label='94/MnningW1' lane='1' controller='ctl_2409'/>
+    <detector name='9070' label='94/MnningW2' lane='2' controller='ctl_2409'/>
+    <detector name='9071' label='94/MnningW3' lane='3' controller='ctl_2409'/>
+  </r_node>
+  <r_node name='rnd_88853' pickable='t' station_id='S1058' label='Manning Ave' lon='-92.86596' lat='44.94873' lanes='3' shift='7' s_limit='70'>
+    <detector name='5101' label='94/MnningW1-ABND' abandoned='t' lane='1' field='45.0' controller='ctl_60812'/>
+    <detector name='5102' label='94/MnningW2-ABND' abandoned='t' lane='2' field='28.0' controller='ctl_60812'/>
+    <detector name='5103' label='94/MnningW3-ABND' abandoned='t' lane='3' field='25.0' controller='ctl_60812'/>
+  </r_node>
+  <r_node name='rnd_88855' n_type='Entrance' transition='Leg' label='Manning Ave' lon='-92.86794' lat='44.94873' lanes='1' shift='7'>
+    <detector name='4980' label='94/MnningWG' category='Green'/>
+    <detector name='5104' label='94/MnningWM' category='Merge' controller='ctl_60812'/>
+    <detector name='7755' label='94/MnningWQ1' category='Queue' lane='1' controller='ctl_60812'/>
+    <detector name='7756' label='94/MnningWQ2' category='Queue' lane='2' controller='ctl_60812'/>
+    <meter name='M94W20' lon='-92.86435' lat='44.94946' storage='700'/>
+  </r_node>
+  <r_node name='rnd_10789' station_id='S2107' label='W of Manning Ave' lon='-92.87277' lat='44.94873' lanes='3' shift='7' s_limit='70'>
+    <detector name='9072' label='94/WMnningW1' lane='1' controller='ctl_2408'/>
+    <detector name='9073' label='94/WMnningW2' lane='2' controller='ctl_2408'/>
+    <detector name='9074' label='94/WMnningW3' lane='3' controller='ctl_2408'/>
+  </r_node>
+  <r_node name='rnd_88857' station_id='S1059' label='Co Rd 17B' lon='-92.88364' lat='44.94872' lanes='3' shift='7' s_limit='70'>
+    <detector name='5105' label='94/CR17BW1' lane='1' field='28.0' controller='ctl_2405'/>
+    <detector name='5106' label='94/CR17BW2' lane='2' field='32.3' controller='ctl_2405'/>
+    <detector name='5107' label='94/CR17BW3' lane='3' field='23.6' controller='ctl_2405'/>
+  </r_node>
+  <r_node name='rnd_10790' station_id='S2108' label='W of Co Rd 17B' lon='-92.89178' lat='44.9487' lanes='3' shift='7' s_limit='70'>
+    <detector name='9075' label='94/WCR17BW1' lane='1' controller='ctl_2406'/>
+    <detector name='9076' label='94/WCR17BW2' lane='2' controller='ctl_2406'/>
+    <detector name='9077' label='94/WCR17BW3' lane='3' controller='ctl_2406'/>
+  </r_node>
+  <r_node name='rnd_88859' n_type='Exit' transition='Leg' label='Co Rd 19' lon='-92.89653' lat='44.94869' lanes='1' shift='7'>
+    <detector name='5108' label='94/CR19WX' category='Exit' controller='ctl_60810'/>
+  </r_node>
+</corridor>
+</tms_config>

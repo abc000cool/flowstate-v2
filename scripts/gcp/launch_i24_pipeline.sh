@@ -19,7 +19,7 @@
 #   scripts/gcp/launch_i24_pipeline.sh [--vm NAME] [--zone Z] [--machine TYPE] [--cap-min 480]
 #       [--bucket gs://bucket/prefix] [--self-delete] [--quick] [--pipeline-args '--stages "..."'] [--allow-dirty]
 set -euo pipefail
-VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=480; QUICK=""; BUCKET=""; SELF_DELETE=0; PIPELINE_ARGS=""; ALLOW_DIRTY=0
+VM=flowstate-pipeline; ZONE=us-west1-b; MACHINE=n2-standard-32; CAP_MIN=480; QUICK=""; BUCKET=""; SELF_DELETE=0; PIPELINE_ARGS=""; ALLOW_DIRTY=0; DATA_SET=i24
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -32,6 +32,7 @@ while [ $# -gt 0 ]; do
     --self-delete) SELF_DELETE=1; shift ;;
     --pipeline-args) PIPELINE_ARGS="$2"; shift 2 ;;   # e.g. --pipeline-args '--stages "battery_lost prune_lost cap_sweep rescore"'
     --allow-dirty) ALLOW_DIRTY=1; shift ;;   # the VM runs `git archive HEAD` either way; skip the clean-tree check
+    --data-set) DATA_SET="$2"; shift 2 ;;   # i24 (default: ship the I-24 MOTION processed data) | none (onboarded-corridor rounds: inputs are tracked in git)
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -85,6 +86,9 @@ echo "== waiting for ssh"
 for i in $(seq 1 30); do if ssh_cmd "true" 2>/dev/null; then break; fi; sleep 10; done
 echo "== data archive"
 DATA=$(mktemp -d)/i24_data.tar
+if [ "${DATA_SET:-i24}" = "none" ]; then
+  tar cf "$DATA" --files-from /dev/null
+else
 tar cf "$DATA" data/i24motion/processed/i24_wb_20221130 data/i24motion/processed/i24_wb_episodes.pkl \
   data/i24motion/processed/i24_wb_episodes_heavy.pkl data/i24motion/processed/i24_wb_episode_summary.json \
   data/i24motion/processed/i24_wb_episode_summary_heavy.json data/i24motion/auxiliary_information \
@@ -96,6 +100,7 @@ for pat in "runs/i24_cap_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/metrics.jso
   # shellcheck disable=SC2086
   ls $pat >/dev/null 2>&1 && tar rf "$DATA" $pat
 done
+fi
 ls -la "$DATA" | awk '{print "   ", $5, "bytes"}'
 # The repository is private: the code goes up as a git-archive snapshot of HEAD
 # (no clone, no token on the VM); scripts/gcp/vm_setup.sh installs the system
