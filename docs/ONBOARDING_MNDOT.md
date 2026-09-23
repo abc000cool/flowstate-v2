@@ -311,7 +311,9 @@ exit piece) — are exactly where the jam starts. Merge waits fell with a
 stronger gap acceptance (7.2 → 4.4 s) but the downstream speeds did not move
 (3.4, 1.0, 1.7 m/s at the last three stations). What is missing is a model
 of a weaving section — an entrance lane that also serves an exit over a short
-distance — not another merge model.
+distance — not another merge model; T.H.61 NB is a different case again (a
+two-lane entrance adding lanes before a five-lane station: a lane addition).
+The design note is docs/WEAVE_MODEL_PLAN.md.
 
 Cost of both rounds: an estimate from the machine-hours, about 2.2 hours of
 n2-standard-32, ≈ $3.3.
