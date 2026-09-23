@@ -11,8 +11,10 @@
  *
  * (1) **Nothing here is progress the server did not report.** Every step is
  * `done`, `current` or `blocked`, and `done` is only ever set by an answer
- * from the API (a stored `scenario_id`, a `RunOut` that says `done`, a
- * `ReportOut` that says `done`). While the demo fallback is serving reads —
+ * from the API (a stored `scenario_id`, a `RunOut` that says `done`, the
+ * `RunMetrics` the metrics route handed over, a `ReportOut` that says
+ * `done`) — never by a click, which is a thing the browser did and not a
+ * thing the service answered. While the demo fallback is serving reads —
  * or under `VITE_MOCK` — every step that needs the server is `blocked` with
  * the reason (`OFFLINE_WRITE_MESSAGE`, the same refusal `api/client` raises),
  * and reads captured from the in-browser backend are discarded rather than
@@ -41,6 +43,7 @@ import {
   getReport,
   getReportMarkdown,
   getRun,
+  getRunMetrics,
   getSettings,
   isMockActive,
   isMockEnv,
@@ -49,7 +52,7 @@ import {
   listRuns,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
-import type { PresetSummary, ReportOut, RunDetail } from '../api/types';
+import type { PresetSummary, ReportOut, RunDetail, RunMetrics } from '../api/types';
 import { saveText } from '../lib/download';
 import { failureReason } from '../lib/format';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
@@ -154,7 +157,10 @@ export function GuidedFirstRun({
   const [scenarioId, setScenarioId] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<RunDetail | null>(null);
-  const [openedDetail, setOpenedDetail] = useState(false);
+  /** The run's metrics, once `GET /runs/{id}/metrics` has answered from a
+   * real server. A click on a link is not a read: the step is done when the
+   * service has handed over the numbers, not when the browser navigated. */
+  const [metrics, setMetrics] = useState<RunMetrics | null>(null);
   const [report, setReport] = useState<ReportOut | null>(null);
   const [downloaded, setDownloaded] = useState(false);
   /** The criteria profile the report will be scored against, as the service
@@ -310,6 +316,23 @@ export function GuidedFirstRun({
       fail('run', err);
     } finally {
       setBusy(null);
+    }
+  };
+
+  /** Pull the metrics the run detail is about to render. Fired by the same
+   * click that opens that view, so the step ticks on the service's answer
+   * rather than on the navigation. */
+  const readMetrics = async (): Promise<void> => {
+    if (runId === null) return;
+    // capture the source before the call: metrics from the in-browser backend
+    // are not this run's
+    const fromDemo = isMockActive();
+    setError(null);
+    try {
+      const out = await getRunMetrics(runId);
+      if (!fromDemo) setMetrics(out);
+    } catch (err) {
+      fail('read', err);
     }
   };
 
@@ -509,7 +532,7 @@ export function GuidedFirstRun({
     steps.push({
       key: 'read',
       title: 'Read the metrics and the space-time heatmap',
-      done: openedDetail,
+      done: metrics !== null,
       why: readWhy,
       what: (
         <>
@@ -520,9 +543,17 @@ export function GuidedFirstRun({
       ),
       action:
         run?.status === 'done' && runId !== null ? (
-          <Link className="btn sm" to={`/runs/${runId}`} onClick={() => setOpenedDetail(true)}>
+          <Link className="btn sm" to={`/runs/${runId}`} onClick={() => void readMetrics()}>
             Open run detail
           </Link>
+        ) : null,
+      extra:
+        metrics !== null ? (
+          <div className="small muted">
+            metrics read · {metrics.replicates.length} replicate
+            {metrics.replicates.length === 1 ? '' : 's'}
+            {metrics.underpowered ? ' · underpowered' : ''}
+          </div>
         ) : null,
     });
 

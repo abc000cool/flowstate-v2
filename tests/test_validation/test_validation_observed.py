@@ -391,6 +391,10 @@ WAVE_CONTEXT: dict[str, Any] = {
         "n_used": 6,
         "rejected": {"peak correlation below the acceptance floor": 7},
         "method": "normalised cross-correlation",
+        "loo_median_min_kmh": 18.47,
+        "loo_median_max_kmh": 21.55,
+        "loo_pairs_min": 5,
+        "leave_one_date_out": {"n_dates": 9},
     }
 }
 
@@ -413,6 +417,29 @@ class TestDetectorWaveSpeedContext:
         assert wave.n_pairs == 13 and wave.n_used == 6
         assert wave.rejections == "7 peak correlation below the acceptance floor"
         assert wave.to_dict()["median_kmh"] == pytest.approx(21.206)
+
+    def test_the_leave_one_date_out_range_comes_with_it(self) -> None:
+        """A median over six pairs is quoted with the range it moves in.
+
+        The artifact carries the same estimate re-run without each date; the
+        report prints that range beside the headline, so a number that is 3
+        km/h wide is not read as a 0.1 km/h one.
+        """
+        wave = DetectorWaveSpeed.from_context(WAVE_CONTEXT)
+        assert wave is not None and wave.has_loo
+        assert wave.loo_n_dates == 9
+        assert wave.loo_median_min_kmh == pytest.approx(18.47)
+        assert wave.loo_median_max_kmh == pytest.approx(21.55)
+        assert wave.loo_pairs_min == 5
+        assert wave.to_dict()["loo_pairs_min"] == 5
+
+    def test_an_artifact_without_a_range_reports_none(self) -> None:
+        """An older artifact carries no sensitivity; none is invented."""
+        older = {"detector_wave_speed": {"median_kmh": 18.0, "n_pairs": 4, "n_used": 3}}
+        wave = DetectorWaveSpeed.from_context(older)
+        assert wave is not None and not wave.has_loo
+        assert wave.loo_n_dates == 0 and math.isnan(wave.loo_median_min_kmh)
+        assert wave.to_dict()["loo_median_min_kmh"] is None
 
     def test_an_estimate_with_no_usable_pair_is_still_read(self) -> None:
         empty = {"detector_wave_speed": {"median_kmh": None, "n_pairs": 4, "n_used": 0}}

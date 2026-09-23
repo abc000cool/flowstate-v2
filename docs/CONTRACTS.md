@@ -1048,29 +1048,53 @@ waves run outside 14–22 km/h is not a corridor whose model has failed.
 
 **Estimator** (`calibration.waves_observed.detector_wave_speed(station_series,
 x_m, *, dt_s, v_thresh_ms=V_JAM_THRESH, max_lag_s=900, min_events=3,
-detrend_s=1200) -> ObservedWaveSpeed`). `station_series` is station id → speeds
+detrend_s=1200, gap_s=0, loo=None) -> ObservedWaveSpeed`). `station_series` is station id → speeds
 [m/s] on one regular `dt_s` grid (`None`/NaN = not measured, every series the
 same length), `x_m` is station id → corridor position [m] increasing
 downstream. For each adjacent pair, with the wave reaching the **downstream**
 station (larger x) first: the downstream series' samples below `v_thresh_ms`
 mark congested episodes (a run of ≥ `MIN_EVENT_SAMPLES` = 2 bins is one event;
-fewer than `min_events` events rejects the pair); both series have a centred
-moving mean of width `detrend_s` removed, which takes out the slow envelope
-every station of a corridor shares and leaves the oscillation; over the
+fewer than `min_events` events rejects the pair — `min_events` counts **runs,
+not dates**); a run of ≥ `gap_s` samples unmeasured at both stations is a
+**barrier** (the separator between two concatenated dates, `gap_s = 0` = one
+continuous record) that no correlation pair and no detrending window may
+cross, so no lag can align one date against the next whatever `max_lag_s` is;
+both series have a centred moving mean of width `detrend_s` removed, which
+takes out the slow envelope every station of a corridor shares and leaves the
+oscillation, and which is defined only where that window is **two-sided**
+(wholly inside the series and barrier-free — a one-sided mean would leave the
+local trend in the residual); over the
 congested episodes dilated by the maximum lag, the Pearson correlation of
 `v_down(t)` against `v_up(t + k)` is computed for every lag
 `k ∈ [−max_lag, max_lag]`; the peak lag, refined by a parabola through its two
 neighbours (clamped to ±½ bin), divided into the spacing, is the pair's wave
-speed. A pair is used only when the peak correlation is ≥
-`MIN_PEAK_CORRELATION` (0.3), the peak lag is strictly positive (a
-non-positive lag is not a backward wave) and the peak is not on the search
-bound; every rejection carries its reason. The corridor summary is the median
+speed. A pair is used only when — **tested in this order** — the peak lag is
+strictly positive (a non-positive lag is not a backward wave, and a peak at
+`−max_lag` is reported as that rather than as a bound artefact), the peak is
+not on the search bound, the peak lag is ≥ `MIN_PEAK_LAG_BINS` (2; below that
+the half-bin clamp alone spans a factor of three, and the ±10–15% resolution
+is reached at 3 bins), and the peak correlation is ≥ `MIN_PEAK_CORRELATION`
+(0.3); every rejection carries its reason. The corridor summary is the median
 of the used pairs with their IQR. `ObservedWaveSpeed.to_dict()` is the JSON
 form: `median_kmh`, `iqr_kmh`, `n_pairs`, `n_used`, `dt_s`, `v_thresh_ms`,
-`max_lag_s`, `min_events`, `detrend_s`, `min_peak_correlation`, `band_kmh`,
+`max_lag_s`, `min_events`, `detrend_s`, `gap_s`, `min_peak_correlation`,
+`min_peak_lag_bins`, `band_kmh`,
 `method`, `pairs` (per pair: `upstream`, `downstream`, `dx_m`, `lag_s`,
 `lag_bins`, `speed_kmh`, `correlation`, `n_samples`, `n_events`, `used`,
 `reason`) and `rejected` (reason → count). NaN is `null` throughout.
+
+**Leave-one-date-out** (`leave_one_date_out(by_date, x_m, *, dt_s, …, gap_s)
+-> LeaveOneDateOut`, with `concatenate_dates(by_date, *, gap_bins)` joining
+per-date series into the separator-delimited one the estimator takes). A
+median over a handful of pairs moves when one morning is dropped, so the whole
+estimate — pair rejection included — is re-run once per omitted date; the
+result carries the omitted `dates`, the `medians_kmh` and the `n_used` of each
+subset, and its `median_min_kmh` / `median_max_kmh` / `pairs_min`. Passed to
+`detector_wave_speed(..., loo=...)` it is written into the same JSON block,
+flat as `loo_median_min_kmh`, `loo_median_max_kmh` and `loo_pairs_min` and in
+full under `leave_one_date_out` (`n_dates`, `by_omitted_date`); the keys are
+**absent**, not null, when no sensitivity was computed. It is a sensitivity,
+not a confidence interval: the subsets share most of their data.
 
 **Series** (`calibration.loaders.mndot.station_speed_series(config, corridor,
 stations, dates, *, t0_s=0, duration_s=None, cache_dir, max_workers=8,
@@ -1088,20 +1112,26 @@ congestion stays a separate event.
 one is byte-for-byte what earlier versions wrote, and `from_dict` of an
 artifact without one yields `{}` — old artifacts load unchanged.
 `scripts/mndot_fetch.py --wave-context` computes the estimate over the same
-span and dates as the artifact and stores it under
-`context["detector_wave_speed"]`, printing the per-pair table.
+span and dates as the artifact (one `station_speed_series` call per date, then
+`concatenate_dates`) and stores it under `context["detector_wave_speed"]`,
+printing the per-pair table, the leave-one-date-out table and the summary
+line.
 
 **Report** (`validation.observed`, `validation.report`): `ObservedCorridor`
 carries `context` verbatim; `DetectorWaveSpeed.from_context(context)` reads
 the `detector_wave_speed` block into `(median_kmh, iqr_kmh, n_pairs, n_used,
-rejections)` and returns None when the artifact carries none or carries one
-this version cannot read (never a report failure). `ObservedProvenance` gains
+rejections)` plus the leave-one-date-out numbers (`loo_n_dates`,
+`loo_median_min_kmh`, `loo_median_max_kmh`, `loo_pairs_min`, with `has_loo`
+saying whether they are usable) and returns None when the artifact carries
+none or carries one this version cannot read (never a report failure). `ObservedProvenance` gains
 `wave_speed: DetectorWaveSpeed | None` (`to_dict()` gains
 `detector_wave_speed`, null when absent), filled by both `pool_scores` and
 `no_comparison_provenance`. The report's **Observed data** block then prints
 one computed row, "detector-estimated backward wave speed (context, not a
-criterion)" → "median X km/h (IQR a–b) from U of N station pairs; the model's
-band is lo–hi km/h", the band taken from the active `CriteriaProfile`. The
+criterion)" → "median X km/h (IQR a–b) from U of N station pairs;
+leave-one-date-out y–z km/h over D dates (fewest P pairs); the model's
+band is lo–hi km/h", the band taken from the active `CriteriaProfile` and the
+leave-one-date-out clause present only when the artifact carries one. The
 acceptance-criteria table is untouched.
 
 ## Measurement-window refusal: micro only, and once per sweep — 2026-09-23

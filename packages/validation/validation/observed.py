@@ -230,6 +230,15 @@ class DetectorWaveSpeed:
         n_used: Pairs that yielded an estimate.
         rejections: Why the others did not, as ``"3 reason, 2 other reason"``;
             empty when every pair was used.
+        loo_n_dates: Dates the leave-one-date-out sensitivity covered; 0 when
+            the artifact carries none.
+        loo_median_min_kmh: Smallest median over the subsets that leave one
+            date out [km/h]; NaN when the artifact carries none.
+        loo_median_max_kmh: Largest such median [km/h]; NaN likewise.
+        loo_pairs_min: Fewest pairs any of those subsets kept; 0 when the
+            artifact carries none. A median that rests on five pairs on some
+            days is a different number from one that always rests on ten, and
+            the report says so beside the headline.
     """
 
     median_kmh: float
@@ -237,6 +246,19 @@ class DetectorWaveSpeed:
     n_pairs: int
     n_used: int
     rejections: str = ""
+    loo_n_dates: int = 0
+    loo_median_min_kmh: float = math.nan
+    loo_median_max_kmh: float = math.nan
+    loo_pairs_min: int = 0
+
+    @property
+    def has_loo(self) -> bool:
+        """Whether a usable leave-one-date-out range came with the artifact."""
+        return (
+            self.loo_n_dates > 1
+            and math.isfinite(self.loo_median_min_kmh)
+            and math.isfinite(self.loo_median_max_kmh)
+        )
 
     @classmethod
     def from_context(cls, context: Mapping[str, Any]) -> DetectorWaveSpeed | None:
@@ -261,6 +283,11 @@ class DetectorWaveSpeed:
             iqr_raw = raw.get("iqr_kmh") or (None, None)
             iqr = (_optional_float(iqr_raw[0]), _optional_float(iqr_raw[1]))
             rejected = {str(k): int(v) for k, v in (raw.get("rejected") or {}).items()}
+            loo = raw.get("leave_one_date_out")
+            n_dates = int(loo["n_dates"]) if isinstance(loo, Mapping) else 0
+            loo_min = _optional_float(raw.get("loo_median_min_kmh"))
+            loo_max = _optional_float(raw.get("loo_median_max_kmh"))
+            pairs_min = int(raw.get("loo_pairs_min") or 0)
         except (KeyError, IndexError, TypeError, ValueError):
             return None
         if n_used > 0 and not math.isfinite(median):
@@ -271,6 +298,10 @@ class DetectorWaveSpeed:
             n_pairs=n_pairs,
             n_used=n_used,
             rejections=", ".join(f"{n} {reason}" for reason, n in sorted(rejected.items())),
+            loo_n_dates=n_dates,
+            loo_median_min_kmh=loo_min,
+            loo_median_max_kmh=loo_max,
+            loo_pairs_min=pairs_min,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -281,6 +312,10 @@ class DetectorWaveSpeed:
             "n_pairs": self.n_pairs,
             "n_used": self.n_used,
             "rejections": self.rejections,
+            "loo_n_dates": self.loo_n_dates,
+            "loo_median_min_kmh": _optional_number(self.loo_median_min_kmh),
+            "loo_median_max_kmh": _optional_number(self.loo_median_max_kmh),
+            "loo_pairs_min": self.loo_pairs_min,
         }
 
 

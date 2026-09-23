@@ -133,33 +133,56 @@ Nine weekdays, 05:30–09:30, 13 adjacent pairs:
 |---|---|---|---|---|---|
 | S1064 ← S1063 | 1212.8 | — | — | — | no: fewer than 3 congested episodes |
 | S1065 ← S1064 | 1150.5 | — | — | — | no: fewer than 3 congested episodes |
-| S1066 ← S1065 | 584.2 | — | — | 0.223 | no: peak on the search bound |
+| S1066 ← S1065 | 584.2 | — | — | 0.223 | no: peak lag not positive |
 | S1067 ← S1066 | 907.5 | — | — | 0.168 | no: r below 0.3 |
 | S1068 ← S1067 | 607.5 | — | — | 0.153 | no: r below 0.3 |
-| S1947 ← S1068 | 491.0 | 94.5 | 18.7 | 0.326 | yes |
-| S1069 ← S1947 | 603.7 | — | — | 0.248 | no: r below 0.3 |
-| S1070 ← S1069 | 979.1 | 145.4 | 24.2 | 0.300 | yes |
-| S1948 ← S1070 | 725.1 | — | — | 0.155 | no: r below 0.3 |
-| S792 ← S1948 | 565.3 | 110.8 | 18.4 | 0.338 | yes |
-| S791 ← S792 | 742.6 | 102.2 | 26.2 | 0.450 | yes |
-| S790 ← S791 | 399.7 | 80.3 | 17.9 | 0.479 | yes |
-| S97 ← S790 | 939.9 | 142.7 | 23.7 | 0.317 | yes |
+| S1947 ← S1068 | 491.0 | 94.6 | 18.7 | 0.327 | yes |
+| S1069 ← S1947 | 603.7 | — | — | 0.255 | no: r below 0.3 |
+| S1070 ← S1069 | 979.1 | 145.1 | 24.3 | 0.325 | yes |
+| S1948 ← S1070 | 725.1 | — | — | 0.156 | no: r below 0.3 |
+| S792 ← S1948 | 565.3 | 111.4 | 18.3 | 0.357 | yes |
+| S791 ← S792 | 742.6 | 102.4 | 26.1 | 0.484 | yes |
+| S790 ← S791 | 399.7 | 80.7 | 17.8 | 0.504 | yes |
+| S97 ← S790 | 939.9 | 141.9 | 23.8 | 0.315 | yes |
 
-**Median 21.2 km/h, IQR 18.5–24.1, from 6 of 13 pairs** — the corridor's
-recurrent waves run at the fast edge of the band the model is asked to
-reproduce, and the two upstream pairs never congest at all (§2: the entry is
-free-flowing). What the number is worth:
+**Median 21.3 km/h (IQR 18.4–24.2) from 6 of 13 pairs; leaving any one of the
+nine dates out moves that median between 18.4 and 21.6 km/h, and on two of the
+nine subsets only five pairs survive at all.** The median is a median over six
+numbers, so the range it moves in belongs beside it wherever it is quoted: a
+21.3 with a 3 km/h leave-one-out spread is not a 21.3 to one decimal. Read that
+way, the corridor's recurrent waves run at the fast edge of the band the model
+is asked to reproduce, and the two upstream pairs never congest at all (§2: the
+entry is free-flowing). What the number is worth:
 
+- **Leave-one-date-out.** `calibration.waves_observed.leave_one_date_out`
+  re-runs the whole estimate — pair rejection included — once per omitted date;
+  `--wave-context` prints the table and stores `loo_median_min_kmh`,
+  `loo_median_max_kmh` and `loo_pairs_min` in the artifact, and the report
+  prints the range in the same line as the median. Omitting 2026-09-03 or
+  09-16 leaves five pairs and a median near 18.4 km/h; omitting 09-01 leaves
+  seven pairs and 18.7; the other six subsets sit at 20.9–21.6. The estimate
+  is one corridor's nine mornings, not a population statistic, and the spread
+  is a sensitivity, not a confidence interval (the subsets share eight ninths
+  of their data).
 - **Resolution.** The lag is measured on 30-second bins, so a 0.5 km pair
   resolves the speed to roughly ±15% and a 1 km pair to ±8%; the parabolic
-  sub-bin refinement helps but does not remove that. The IQR is the honest
-  spread, not a confidence interval.
+  sub-bin refinement helps but does not remove that. Peaks below two bins are
+  rejected outright — at one bin the half-bin clamp alone spans a factor of
+  three — and the ±10–15% figure holds from three bins up. Every pair used
+  here peaks at three bins or more. The IQR is the honest spread, not a
+  confidence interval.
 - **Detrending matters.** Without removing the ~20-minute envelope, three
   pairs peak at a zero or negative lag (the whole corridor's peak turns on
   almost together) and the median rises to 22.7 km/h with 8 pairs used. Across
-  detrending widths of 600–3600 s the median stays between 18.0 and 22.0 km/h
-  and the used-pair count between 3 and 8 — the estimate is stable, the pair
-  selection is not.
+  detrending widths of 600–3600 s the median stays between 18.1 and 21.4 km/h
+  and the used-pair count between 3 and 9 — the estimate is stable, the pair
+  selection is not. The moving mean is only subtracted where its window is
+  two-sided: within half a window of a date's first or last sample there is no
+  residual, because a one-sided mean would leave the morning's own trend in it.
+- **Dates are not mixed.** The nine mornings are correlated as one series
+  separated by an hour of NaN, and no correlation pair or detrending window may
+  cross that separator, so no lag can align one morning against the next
+  whatever `max_lag_s` is set to.
 - **Spacing.** The estimate uses the IRIS inventory spacing; the SUMO chain's
   projected spacings differ by ≤ 3% (worst case the 400 m S791→S790 pair),
   well inside the lag quantisation.

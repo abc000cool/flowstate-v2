@@ -866,6 +866,10 @@ class TestObservedDataBlock:
                 n_pairs=13,
                 n_used=6,
                 rejections="7 peak correlation below the acceptance floor",
+                loo_n_dates=9,
+                loo_median_min_kmh=18.47,
+                loo_median_max_kmh=21.55,
+                loo_pairs_min=5,
             ),
         )
         out = tmp_path / "report.md"
@@ -878,6 +882,8 @@ class TestObservedDataBlock:
         )
         assert "context, not a criterion" in line
         assert "median 21.2 km/h (IQR 18.5–24.1) from 6 of 13 station pairs" in line
+        # the headline never appears without the range it moves in
+        assert "leave-one-date-out 18.5–21.6 km/h over 9 dates (fewest 5 pairs)" in line
         assert "the model's band is 14–22 km/h" in line
         # It sits in the observed-data block, above the criteria table, and
         # the criteria table itself gained no row.

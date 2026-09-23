@@ -352,6 +352,24 @@ class TestLaneCheck:
         # an integral value written as a float is still a lane count
         assert build.lanes_compared([{"station": "S_ok", "lanes": "3.0"}]) == 1
 
+    def test_an_impossible_lane_count_is_unusable_not_a_mismatch(self):
+        build = _synthetic_build()
+        # No freeway carriageway carries 40 lanes: the row is a unit error or
+        # a both-directions total, and reporting "map 3, inventory 40" as a
+        # lane disagreement would put a data-entry slip into a map check.
+        rows = [
+            {"station": "S_ok", "lanes": scenarios.MAX_INVENTORY_LANES + 1, "kind": "mainline"},
+            {"station": "S_merge", "lanes": 40, "kind": "mainline"},
+        ]
+        assert build.lanes_compared(rows) == 0
+        assert build.lane_check(rows) == []
+        # the bound itself is still a lane count
+        at_bound = [{"station": "S_ok", "lanes": scenarios.MAX_INVENTORY_LANES}]
+        assert build.lanes_compared(at_bound) == 1
+        assert [m.inventory_lanes for m in build.lane_check(at_bound)] == [
+            scenarios.MAX_INVENTORY_LANES
+        ]
+
     def test_summary_carries_the_block_only_when_stations_are_given(self):
         build = _synthetic_build()
         assert "lanes vs inventory" not in build.summary()
@@ -436,3 +454,39 @@ class TestFailingMismatches:
             ]
         )
         assert args.lane_tolerance == 0 and args.strict_lanes is False
+
+    @staticmethod
+    def _argv(*extra: str) -> list[str]:
+        return [
+            "--name",
+            "x",
+            "--bbox",
+            "1",
+            "2",
+            "3",
+            "4",
+            "--bearing",
+            "90",
+            "--workdir",
+            "w",
+            "--out",
+            "x.yaml",
+            *extra,
+        ]
+
+    def test_strict_lanes_with_a_tolerance_is_refused_not_silently_ignored(self, capsys):
+        """The combination asks for a stricter check and would get a looser one.
+
+        ``lane_check(tolerance=1)`` drops every one-lane disagreement — the
+        guessed acceleration lane among them — before ``failing_mismatches``
+        can add it back, so ``--strict-lanes`` does nothing there. The CLI
+        refuses the pair (exit 2) before it spends a minute on Overpass and
+        netconvert.
+        """
+        cli = _load_onboard_cli()
+        code = cli.main(self._argv("--strict-lanes", "--lane-tolerance", "1"))
+        assert code == cli.BAD_USAGE_EXIT == 2
+        out = capsys.readouterr().out
+        assert "--strict-lanes" in out and "--lane-tolerance" in out
+        # nothing was built: the refusal comes before the bounding box is read
+        assert "scenario" not in out

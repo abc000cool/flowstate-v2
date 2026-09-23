@@ -160,11 +160,32 @@ class TestLaneEndPatchFile:
 
     def test_a_dotted_edge_id_is_sanitised_and_still_routes(self, tmp_path):
         path = networks.lane_end_patch_file(tmp_path / "patches", "103.5#2/a", "104")
-        assert path.name == "accel_end_103_5_2_a.con.xml"
+        assert path.name.startswith("accel_end_103_5_2_a_")
         assert path.suffixes[-2:] == [".con", ".xml"]
         # The id inside the XML is untouched: netconvert matches on that.
         assert 'from="103.5#2/a"' in path.read_text()
         assert networks._patch_args([path]) == ["--connection-files", str(path)]
+
+    def test_ids_that_sanitise_alike_do_not_share_a_file(self, tmp_path):
+        """``e#1`` and ``e.1`` both sanitise to ``e_1`` — and OSM carries both.
+
+        Sharing a stem would have the second patch overwrite the first, so one
+        merge would be built from the other merge's connections. A digest of
+        the raw id keeps them apart in both patch writers.
+        """
+        assert networks._safe_file_stem("e#1") != networks._safe_file_stem("e.1")
+        first = networks.lane_end_patch_file(tmp_path / "patches", "e#1", "n")
+        second = networks.lane_end_patch_file(tmp_path / "patches", "e.1", "n")
+        assert first != second
+        assert 'from="e#1"' in first.read_text() and 'from="e.1"' in second.read_text()
+        (hash_edg,) = networks.merge_patch_files(
+            tmp_path / "patches", "e#1", "b", "n", 3, 2, "acceleration_lane"
+        )
+        (dot_edg,) = networks.merge_patch_files(
+            tmp_path / "patches", "e.1", "b", "n", 3, 2, "acceleration_lane"
+        )
+        assert hash_edg != dot_edg
+        assert 'id="e#1"' in hash_edg.read_text() and 'id="e.1"' in dot_edg.read_text()
 
     def test_the_kind_comes_from_the_last_two_suffixes(self, tmp_path):
         nod = tmp_path / "a.b.nod.xml"

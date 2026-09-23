@@ -83,6 +83,16 @@ MAX_STATION_OFFSET_M: float = 60.0
 #: area, so a station inside the widened stretch is attributed to it.
 LANE_HINT_RAMP_WINDOW_M: float = 400.0
 
+#: Most lanes an inventory row may claim at one mainline cross-section and
+#: still be compared with the compiled map. No freeway carriageway in the
+#: world runs more than about eight general-purpose lanes in one direction, so
+#: a larger number is a unit error, a both-directions total or a stray column
+#: — none of which says anything about this carriageway. Such a row is
+#: unusable rather than a mismatch: reporting "map 3, inventory 40" as a lane
+#: disagreement would put a data-entry slip into a pre-flight check that
+#: exists to find map defects.
+MAX_INVENTORY_LANES: int = 12
+
 #: Named scenario whose fleet, time-discretization and replicate settings seed
 #: the defaults of an OSM-onboarded scenario: ``corridor_10km`` carries the
 #: Phase-1 tuning record (EIDM, heterogeneity 0.15, 0.5 s steps) that makes an
@@ -555,7 +565,8 @@ class CorridorBuild:
         """Comparable mainline stations as ``(id, chain x [m], inventory lanes)``.
 
         A row is comparable when it names a station, is mainline (``kind``
-        absent or ``"mainline"``), carries a positive integer ``lanes``, and
+        absent or ``"mainline"``), carries an integer ``lanes`` between 1 and
+        :data:`MAX_INVENTORY_LANES`, and
         has a position on this chain — the build's own projection
         (:attr:`station_x`) when it placed the station, else a numeric
         ``x_m`` already in the row. Stations the projection rejected, and
@@ -580,7 +591,7 @@ class CorridorBuild:
             if not math.isfinite(lane_value) or lane_value != int(lane_value):
                 continue
             lanes = int(lane_value)
-            if lanes <= 0:
+            if lanes <= 0 or lanes > MAX_INVENTORY_LANES:
                 continue
             point = self.station_x.get(station_id)
             if point is not None:

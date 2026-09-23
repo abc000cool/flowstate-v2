@@ -60,6 +60,24 @@ const CRITERIA = [
   },
 ];
 
+/** `GET /runs/run_ring/metrics` as the API serves a two-replicate smoke run:
+ * the aggregate is badged underpowered, which is what the step promises. */
+const METRICS = {
+  run_id: 'run_ring',
+  config_hash: 'a226444c0145',
+  tier: 'micro',
+  seeded: false,
+  n_replicates: SMOKE_REPLICATES,
+  underpowered: true,
+  replicates: [
+    { seed: 42, metrics: { speed_std_ms: 1.2 } },
+    { seed: 43, metrics: { speed_std_ms: 1.3 } },
+  ],
+  aggregate: {
+    speed_std_ms: { mean: 1.25, ci95_lo: 1.1, ci95_hi: 1.4, n: SMOKE_REPLICATES },
+  },
+};
+
 type Status = 'queued' | 'running' | 'done' | 'failed';
 
 function json(body: unknown, status = 200): Response {
@@ -119,6 +137,10 @@ describe('GuidedFirstRun', () => {
         if (url.endsWith('/criteria')) return json(CRITERIA);
         if (url.endsWith('/runs') && method === 'POST') return json({ run_id: 'run_ring' }, 202);
         if (url.endsWith('/runs') && method === 'GET') return json([]);
+        if (url.endsWith('/runs/run_ring/metrics')) {
+          if (runStatus !== 'done') return json({ detail: 'run is not done' }, 409);
+          return json(METRICS);
+        }
         if (url.endsWith('/runs/run_ring')) {
           const failed = runStatus === 'failed';
           return json({
@@ -235,7 +257,20 @@ describe('GuidedFirstRun', () => {
       // (e) the run detail becomes reachable only once the run is done
       const detail = await screen.findByRole('link', { name: 'Open run detail' }, { timeout: 6000 });
       expect(detail).toHaveAttribute('href', '/runs/run_ring');
+      // the step is ticked by the metrics answer, not by the click: the link
+      // fires GET /runs/{id}/metrics and stays 'current' until it lands
+      const readStep = screen.getAllByRole('listitem')[4];
+      expect(readStep.className).toContain('current');
       fireEvent.click(detail);
+      await waitFor(() => {
+        expect(calls.some((c) => c.url.endsWith('/runs/run_ring/metrics'))).toBe(true);
+      });
+      expect(
+        await screen.findByText(/metrics read/, {}, { timeout: 4000 }),
+      ).toHaveTextContent(`${SMOKE_REPLICATES} replicates · underpowered`);
+      await waitFor(() =>
+        expect(screen.getAllByRole('listitem')[4].className).toContain('done'),
+      );
 
       // (f) the report: 202 queued, polled, then the markdown download
       fireEvent.click(screen.getByRole('button', { name: 'Generate report' }));

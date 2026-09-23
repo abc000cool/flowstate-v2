@@ -19,13 +19,23 @@ pair ``(upstream at x_u, downstream at x_d > x_u)``:
 1. **Congested episodes.** The downstream speed series marks a sample jammed
    when it is below ``v_thresh_ms``; a run of ≥ :data:`MIN_EVENT_SAMPLES`
    consecutive jammed samples is one *event*. A pair with fewer than
-   ``min_events`` events is rejected — a single morning's congestion is an
-   anecdote, not a wave-speed measurement.
-2. **Analysed samples.** The jam indicator dilated by the maximum searched lag
+   ``min_events`` events is rejected. ``min_events`` counts **runs, not
+   days**: several episodes of one morning satisfy it, and on a
+   multi-date series it says nothing about how many dates contributed. How
+   much the answer rests on any one date is measured separately, by
+   :func:`leave_one_date_out`.
+2. **Date separators.** Dates concatenated into one series are separated by a
+   run of ``gap_s`` seconds of NaN (:func:`calibration.loaders.mndot.station_speed_series`
+   writes exactly that). Any run of at least ``gap_bins`` samples unmeasured
+   at *both* stations is a **barrier**: no correlation pair and no detrending
+   window may cross one, so a lag longer than the separator can never align
+   one day against the next. With ``gap_s = 0`` the series is taken as one
+   continuous record and there are no barriers.
+3. **Analysed samples.** The jam indicator dilated by the maximum searched lag
    on both sides. The informative part of the signal is the free-flow → jam
    transition and its upstream echo, and both have to be inside the analysed
    set for the correlation to see them.
-3. **Detrending.** Each series has a centred moving mean of width
+4. **Detrending.** Each series has a centred moving mean of width
    ``detrend_s`` subtracted from it. What is left is the oscillation; what is
    removed is the slow envelope of the congestion — the onset, the plateau
    and the recovery, which every station of a corridor shares and which
@@ -33,37 +43,50 @@ pair ``(upstream at x_u, downstream at x_d > x_u)``:
    times the growth of the queue rather than the passage of a jam wave, which
    is a different quantity (and on the MnDOT corridor it lands three pairs on
    a zero or negative lag, because the whole corridor's morning peak turns on
-   almost together). ``detrend_s = 0`` disables the step.
-4. **Normalised cross-correlation.** For every lag ``k`` in
+   almost together). The residual is defined only where the window is
+   genuinely **two-sided** — wholly inside the series and free of barriers —
+   because a truncated window's mean is a one-sided mean, and subtracting one
+   leaves the local trend in the residual instead of removing it.
+   ``detrend_s = 0`` disables the step.
+5. **Normalised cross-correlation.** For every lag ``k`` in
    ``[−max_lag, +max_lag]`` bins, the Pearson correlation of the detrended
    ``v_down(t)`` against the detrended ``v_up(t + k)`` over the analysed
-   samples at which both are finite — the normalised cross-correlation for
-   series with gaps (a detector-day the archive never reported is NaN and
-   simply contributes no pair).
-5. **Peak.** The lag maximising the correlation, refined to sub-bin resolution
+   samples at which both are finite and no barrier separates them — the
+   normalised cross-correlation for series with gaps (a detector-day the
+   archive never reported is NaN and simply contributes no pair).
+6. **Peak.** The lag maximising the correlation, refined to sub-bin resolution
    by a parabola through the peak and its two neighbours (the offset is
    clamped to ±½ bin, and is zero unless the three points are concave). The
    implied wave speed is ``Δx / lag``, positive by construction because only a
    positive lag — the disturbance arriving upstream *later* — is accepted.
 
-A pair is used only when its peak correlation is at least
-:data:`MIN_PEAK_CORRELATION`, the peak lag is strictly positive, and the peak
-does not sit on the search bound (a peak at ``±max_lag`` means the true lag is
-outside the searched range, or that there is no peak at all). Every rejection
-is reported with its reason; nothing is silently dropped.
+A pair is used only when its peak lag is strictly positive (tested first, so a
+peak at ``−max_lag`` is reported as the forward-moving thing it is rather than
+as a search-bound artefact), does not sit on the search bound (a peak at
+``max_lag`` means the true lag is outside the searched range, or that there is
+no peak at all), is at least :data:`MIN_PEAK_LAG_BINS` bins, and carries a
+correlation of at least :data:`MIN_PEAK_CORRELATION`. Every rejection is
+reported with its reason; nothing is silently dropped.
 
 The corridor summary is the **median** of the per-pair speeds with its
 interquartile range — a median because a single pair straddling a bottleneck
 or a lane drop can produce a lag that is a queue-growth rate rather than a
 wave speed, and the per-pair table is printed so that such a pair is visible.
+A median over a handful of pairs moves when one date is taken away, so
+:func:`leave_one_date_out` re-estimates the corridor once per omitted date and
+reports the range of medians and the fewest pairs any subset kept; both belong
+beside the headline number wherever it is quoted.
 
 Resolution
 ----------
 With 30-s bins the lag is measured to ±½ bin before refinement, so a 0.7 km
-pair resolves a wave speed to roughly ±10% and a 0.5 km pair to ±15%. That is
-the honest precision of the method on archive data; it is why the summary
-reports an IQR over pairs rather than a single number, and why the per-pair
-sample counts are kept.
+pair resolves a wave speed to roughly ±10% and a 0.5 km pair to ±15% **at a
+lag of three bins or more**; at two bins the same ±½ bin is ±25%, and at one
+bin the half-bin clamp alone spans a factor of three. That is why lags below
+:data:`MIN_PEAK_LAG_BINS` are rejected rather than reported. It is the honest
+precision of the method on archive data; it is why the summary reports an IQR
+over pairs rather than a single number, and why the per-pair sample counts are
+kept.
 
 Lineage: timing a moving jam by cross-correlating adjacent loop-detector
 series is the standard freeway-oscillation measurement — Mauch & Cassidy
@@ -109,6 +132,16 @@ MIN_PAIRED_SAMPLES: Final[int] = 10
 MIN_EVENT_SAMPLES: Final[int] = 2
 """Consecutive jammed samples that make a congested episode (60 s at 30 s)."""
 
+MIN_PEAK_LAG_BINS: Final[int] = 2
+"""Shortest peak lag a pair may be used at [bins].
+
+A one-bin peak is refined by an offset the parabola clamps to ±½ bin, so its
+implied speed is anywhere in ``[Δx/(1.5·Δt), Δx/(0.5·Δt)]`` — a factor of
+three, and the upper end is not a wave speed but the grid's Nyquist limit
+wearing one. Two bins is the shortest lag at which the method says anything;
+the ±10–15% resolution quoted in the module docstring is reached at three.
+"""
+
 DEFAULT_MAX_LAG_S: Final[float] = 900.0
 """Widest lag searched [s]; 0.9 km at 3.6 km/h, slower than any moving jam."""
 
@@ -128,6 +161,7 @@ _REASON_NO_PEAK: Final[str] = "no lag had enough paired samples for a correlatio
 _REASON_WEAK: Final[str] = "peak correlation below the acceptance floor"
 _REASON_BOUND: Final[str] = "peak lag sits on the search bound"
 _REASON_NOT_BACKWARD: Final[str] = "peak lag is not positive (no backward propagation)"
+_REASON_SHORT_LAG: Final[str] = f"lag below resolution (peak lag under {MIN_PEAK_LAG_BINS} bins)"
 _REASON_SPACING: Final[str] = "stations share a position"
 
 
@@ -184,6 +218,62 @@ class WavePairEstimate:
 
 
 @dataclass(frozen=True)
+class LeaveOneDateOut:
+    """How far the corridor median moves when one date is taken away.
+
+    A median over six surviving pairs, each of which is itself a correlation
+    over a handful of mornings, is not a number to quote alone: one date whose
+    congestion is unusually sharp can carry a pair over the correlation floor
+    and, with it, move the median. Re-estimating the corridor once per omitted
+    date says how much of the headline is that date's doing. It is a
+    sensitivity, not a confidence interval — the subsets share most of their
+    data — and it is reported as the plain range of what was computed.
+
+    Attributes:
+        dates: The omitted date labels, in the order they were given.
+        medians_kmh: The corridor median with that date left out [km/h]; NaN
+            where the remaining dates yielded no usable pair.
+        n_used: Pairs the corridor kept with that date left out.
+    """
+
+    dates: tuple[str, ...]
+    medians_kmh: tuple[float, ...]
+    n_used: tuple[int, ...]
+
+    @property
+    def median_min_kmh(self) -> float:
+        """Smallest leave-one-out median [km/h]; NaN when none is finite."""
+        finite = [v for v in self.medians_kmh if math.isfinite(v)]
+        return min(finite) if finite else math.nan
+
+    @property
+    def median_max_kmh(self) -> float:
+        """Largest leave-one-out median [km/h]; NaN when none is finite."""
+        finite = [v for v in self.medians_kmh if math.isfinite(v)]
+        return max(finite) if finite else math.nan
+
+    @property
+    def pairs_min(self) -> int:
+        """Fewest pairs any subset kept; 0 when there is no subset."""
+        return min(self.n_used) if self.n_used else 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form (NaN written as ``None``)."""
+        return {
+            "n_dates": len(self.dates),
+            "loo_median_min_kmh": _json_number(self.median_min_kmh),
+            "loo_median_max_kmh": _json_number(self.median_max_kmh),
+            "loo_pairs_min": int(self.pairs_min),
+            "by_omitted_date": [
+                {"date": date, "median_kmh": _json_number(median), "n_used": int(used)}
+                for date, median, used in zip(
+                    self.dates, self.medians_kmh, self.n_used, strict=True
+                )
+            ],
+        }
+
+
+@dataclass(frozen=True)
 class ObservedWaveSpeed:
     """A corridor's detector-estimated backward wave speed.
 
@@ -198,12 +288,16 @@ class ObservedWaveSpeed:
         dt_s: Sampling interval of the input series [s].
         v_thresh_ms: Congestion threshold used [m/s].
         max_lag_s: Widest lag searched [s].
-        min_events: Congested episodes a pair needed.
+        min_events: Congested episodes (runs, not days) a pair needed.
         detrend_s: Width of the moving mean removed before correlating [s];
             0 when the step was disabled.
+        gap_s: Width of the all-NaN separator between concatenated dates [s];
+            0 when the series was taken as one continuous record.
         band_kmh: The model's acceptance band, carried so a consumer can
             print the comparison without re-deriving it.
         method: :data:`METHOD`.
+        loo: The leave-one-date-out sensitivity when it was computed
+            (:func:`leave_one_date_out`), else None.
     """
 
     pairs: tuple[WavePairEstimate, ...]
@@ -216,8 +310,10 @@ class ObservedWaveSpeed:
     max_lag_s: float
     min_events: int
     detrend_s: float = DEFAULT_DETREND_S
+    gap_s: float = 0.0
     band_kmh: tuple[float, float] = WAVE_SPEED_BAND_KMH
     method: str = METHOD
+    loo: LeaveOneDateOut | None = None
 
     @property
     def rejected(self) -> tuple[WavePairEstimate, ...]:
@@ -232,8 +328,15 @@ class ObservedWaveSpeed:
         return counts
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON form — what an observations artifact carries as context."""
-        return {
+        """JSON form — what an observations artifact carries as context.
+
+        The three leave-one-date-out numbers are written at the top level
+        (``loo_median_min_kmh``, ``loo_median_max_kmh``, ``loo_pairs_min``)
+        as well as inside ``leave_one_date_out``, so a consumer that prints
+        the headline beside its sensitivity needs no nested lookup. They are
+        absent — not null — when no sensitivity was computed.
+        """
+        payload: dict[str, Any] = {
             "median_kmh": _json_number(self.median_kmh),
             "iqr_kmh": [_json_number(v) for v in self.iqr_kmh],
             "n_pairs": int(self.n_pairs),
@@ -243,12 +346,21 @@ class ObservedWaveSpeed:
             "max_lag_s": float(self.max_lag_s),
             "min_events": int(self.min_events),
             "detrend_s": float(self.detrend_s),
+            "gap_s": float(self.gap_s),
             "min_peak_correlation": MIN_PEAK_CORRELATION,
+            "min_peak_lag_bins": MIN_PEAK_LAG_BINS,
             "band_kmh": [float(v) for v in self.band_kmh],
             "method": self.method,
             "pairs": [p.to_dict() for p in self.pairs],
             "rejected": self.rejection_counts(),
         }
+        if self.loo is not None:
+            loo = self.loo.to_dict()
+            payload["loo_median_min_kmh"] = loo["loo_median_min_kmh"]
+            payload["loo_median_max_kmh"] = loo["loo_median_max_kmh"]
+            payload["loo_pairs_min"] = loo["loo_pairs_min"]
+            payload["leave_one_date_out"] = loo
+        return payload
 
 
 def detector_wave_speed(
@@ -260,6 +372,8 @@ def detector_wave_speed(
     max_lag_s: float = DEFAULT_MAX_LAG_S,
     min_events: int = 3,
     detrend_s: float = DEFAULT_DETREND_S,
+    gap_s: float = 0.0,
+    loo: LeaveOneDateOut | None = None,
 ) -> ObservedWaveSpeed:
     """Estimate a corridor's backward wave speed from detector speed series.
 
@@ -270,10 +384,11 @@ def detector_wave_speed(
         station_series: Station id → speeds [m/s] on a regular ``dt_s`` grid,
             ``None``/NaN where the detector measured nothing. Every series
             must have the same length and share one clock. Several days are
-            passed as one series separated by a NaN gap longer than
-            ``max_lag_s`` (:func:`calibration.loaders.mndot.station_speed_series`
-            builds exactly that), so no correlation pairs samples from
-            different days.
+            passed as one series separated by a NaN gap of ``gap_s``
+            (:func:`calibration.loaders.mndot.station_speed_series` builds
+            exactly that, and :func:`concatenate_dates` builds it from
+            per-date pieces); state that width in ``gap_s`` and no
+            correlation pairs samples from different days.
         x_m: Station id → corridor position [m], increasing downstream. A
             station missing here, or carrying a non-finite position, takes
             part in no pair.
@@ -283,9 +398,20 @@ def detector_wave_speed(
             (40 km/h ≈ 11.1 m/s), the same threshold
             :mod:`validation.waves` uses on the simulated field.
         max_lag_s: Widest lag searched [s].
-        min_events: Congested episodes a pair's downstream station needs.
+        min_events: Congested episodes (runs of jammed samples, not days) a
+            pair's downstream station needs.
         detrend_s: Width of the moving mean removed from each series before
-            the correlation [s]; 0 disables the step (step 3 above).
+            the correlation [s]; 0 disables the step (step 4 above).
+        gap_s: Width of the all-NaN separator between concatenated dates [s].
+            A run of at least this many samples unmeasured at both stations is
+            a barrier no correlation pair and no detrending window may cross
+            (step 2 above). 0 — the default — means the series is one
+            continuous record; pass the separator's real width whenever it is
+            not, because ``max_lag_s`` alone does not stop a long lag from
+            aligning one day against the next.
+        loo: A leave-one-date-out sensitivity (:func:`leave_one_date_out`) to
+            carry on the result; computed by the caller, since only the
+            caller holds the per-date series.
 
     Returns:
         The per-pair estimates and the corridor summary. With fewer than two
@@ -294,7 +420,8 @@ def detector_wave_speed(
 
     Raises:
         ValueError: Non-positive ``dt_s``, a ``max_lag_s`` shorter than one
-            bin, ``min_events`` below one, or series of differing lengths.
+            bin, ``min_events`` below one, a negative ``detrend_s`` or
+            ``gap_s``, or series of differing lengths.
     """
     if dt_s <= 0.0:
         raise ValueError(f"dt_s must be > 0, got {dt_s}")
@@ -304,6 +431,8 @@ def detector_wave_speed(
         raise ValueError(f"min_events must be >= 1, got {min_events}")
     if detrend_s < 0.0:
         raise ValueError(f"detrend_s must be >= 0, got {detrend_s}")
+    if gap_s < 0.0:
+        raise ValueError(f"gap_s must be >= 0, got {gap_s}")
 
     arrays: dict[str, FloatArray] = {}
     lengths: set[int] = set()
@@ -337,6 +466,7 @@ def detector_wave_speed(
                 max_lag=max_lag,
                 min_events=min_events,
                 detrend_bins=round(detrend_s / dt_s),
+                gap_bins=round(gap_s / dt_s),
             )
         )
 
@@ -358,7 +488,114 @@ def detector_wave_speed(
         max_lag_s=float(max_lag * dt_s),
         min_events=int(min_events),
         detrend_s=float(round(detrend_s / dt_s) * dt_s),
+        gap_s=float(round(gap_s / dt_s) * dt_s),
+        loo=loo,
     )
+
+
+def concatenate_dates(
+    by_date: Mapping[str, Mapping[str, Sequence[float | None]]], *, gap_bins: int
+) -> dict[str, list[float | None]]:
+    """Join per-date station series into one series per station.
+
+    The dates are laid end to end in the order given, separated by ``gap_bins``
+    samples of ``None`` — the separator :func:`detector_wave_speed` is told
+    about through ``gap_s`` and treats as a barrier.
+
+    Args:
+        by_date: Date label → (station id → that date's speeds [m/s]). Every
+            station of one date must carry the same number of samples; a
+            station absent from a date is filled with that date's length of
+            ``None``.
+        gap_bins: Samples of ``None`` between two dates.
+
+    Returns:
+        Station id → the concatenated series. The station order is the order
+        the stations first appear.
+
+    Raises:
+        ValueError: A date whose stations have differing lengths, or a
+            negative ``gap_bins``.
+    """
+    if gap_bins < 0:
+        raise ValueError(f"gap_bins must be >= 0, got {gap_bins}")
+    stations = list(dict.fromkeys(station for day in by_date.values() for station in day))
+    out: dict[str, list[float | None]] = {station: [] for station in stations}
+    for index, (date, day) in enumerate(by_date.items()):
+        lengths = {len(values) for values in day.values()}
+        if len(lengths) > 1:
+            raise ValueError(
+                f"date {date!r} has station series of differing lengths {sorted(lengths)}; "
+                "they must share one clock"
+            )
+        length = lengths.pop() if lengths else 0
+        for station in stations:
+            if index:
+                out[station].extend([None] * gap_bins)
+            values = day.get(station)
+            out[station].extend([None] * length if values is None else list(values))
+    return out
+
+
+def leave_one_date_out(
+    by_date: Mapping[str, Mapping[str, Sequence[float | None]]],
+    x_m: Mapping[str, float],
+    *,
+    dt_s: float,
+    v_thresh_ms: float = V_JAM_THRESH,
+    max_lag_s: float = DEFAULT_MAX_LAG_S,
+    min_events: int = 3,
+    detrend_s: float = DEFAULT_DETREND_S,
+    gap_s: float = 0.0,
+) -> LeaveOneDateOut:
+    """Re-estimate the corridor once per omitted date.
+
+    The headline median is a median over the pairs that survived, and the
+    pairs that survive depend on which mornings are in the archive. Leaving
+    each date out in turn and re-running the whole estimate — pair rejection
+    included — says how much the answer rests on any one of them
+    (:class:`LeaveOneDateOut`).
+
+    Args:
+        by_date: Date label → (station id → that date's 30-s speeds [m/s]),
+            in the order the dates are concatenated. The same mapping
+            :func:`concatenate_dates` takes.
+        x_m: Station id → corridor position [m], increasing downstream.
+        dt_s: Sampling interval [s].
+        v_thresh_ms: Congestion threshold [m/s].
+        max_lag_s: Widest lag searched [s].
+        min_events: Congested episodes a pair needs.
+        detrend_s: Width of the moving mean removed [s].
+        gap_s: Width of the separator between two dates [s].
+
+    Returns:
+        One median and one used-pair count per omitted date.
+
+    Raises:
+        ValueError: Fewer than two dates — a single date cannot be left out,
+            and reporting a range over one subset would be a claim about a
+            sensitivity that was never measured.
+    """
+    if len(by_date) < 2:
+        raise ValueError(f"leave-one-date-out needs at least two dates, got {len(by_date)}")
+    dates = tuple(by_date)
+    medians: list[float] = []
+    used: list[int] = []
+    for omitted in dates:
+        kept = {date: day for date, day in by_date.items() if date != omitted}
+        result = detector_wave_speed(
+            concatenate_dates(kept, gap_bins=round(gap_s / dt_s)),
+            x_m,
+            dt_s=dt_s,
+            v_thresh_ms=v_thresh_ms,
+            max_lag_s=max_lag_s,
+            min_events=min_events,
+            detrend_s=detrend_s,
+            gap_s=gap_s,
+        )
+        medians.append(result.median_kmh)
+        used.append(result.n_used)
+    return LeaveOneDateOut(dates=dates, medians_kmh=tuple(medians), n_used=tuple(used))
 
 
 def summary_line(result: ObservedWaveSpeed) -> str:
@@ -369,10 +606,13 @@ def summary_line(result: ObservedWaveSpeed) -> str:
             artifact's context block).
 
     Returns:
-        ``"median 18.0 km/h (IQR 16.4–19.8) from 7 of 13 station pairs; the
+        ``"median 18.0 km/h (IQR 16.4–19.8) from 7 of 13 station pairs;
+        leave-one-date-out 17.2–18.6 km/h over 9 dates (fewest 5 pairs); the
         model's band is 14–22 km/h"``, or a sentence naming the reason when
-        no pair survived. Numbers only — the caller supplies the label, so
-        that no number in a report is ever free text (CLAUDE.md §7.4).
+        no pair survived. The leave-one-date-out clause is present only when
+        the estimate carries one. Numbers only — the caller supplies the
+        label, so that no number in a report is ever free text
+        (CLAUDE.md §7.4).
     """
     lo, hi = result.band_kmh
     band = f"the model's band is {lo:g}–{hi:g} km/h"
@@ -385,74 +625,32 @@ def summary_line(result: ObservedWaveSpeed) -> str:
     q25, q75 = result.iqr_kmh
     return (
         f"median {result.median_kmh:.1f} km/h (IQR {q25:.1f}–{q75:.1f}) from "
-        f"{result.n_used} of {result.n_pairs} station pairs; {band}"
+        f"{result.n_used} of {result.n_pairs} station pairs; {loo_clause(result.loo)}{band}"
     )
 
 
-def summary_line_from_context(context: Mapping[str, Any]) -> str:
-    """:func:`summary_line` for a context block read back from JSON.
+def loo_clause(loo: LeaveOneDateOut | None) -> str:
+    """The leave-one-date-out clause of a summary line, or ``""``.
 
     Args:
-        context: The ``detector_wave_speed`` mapping of an observations
-            artifact's ``context``.
+        loo: The sensitivity, or None when none was computed.
 
     Returns:
-        The sentence, or ``""`` when the mapping carries no usable summary
-        (an artifact written by a different version is not a reason to fail a
-        report; the line is simply not printed).
+        ``"leave-one-date-out 17.2–18.6 km/h over 9 dates (fewest 5 pairs); "``
+        — trailing separator included so a caller can concatenate it — and
+        ``""`` when there is nothing to report or no subset produced a median.
     """
-    try:
-        n_pairs = int(context["n_pairs"])
-        n_used = int(context["n_used"])
-        band_raw = context.get("band_kmh") or WAVE_SPEED_BAND_KMH
-        band = (float(band_raw[0]), float(band_raw[1]))
-        median = _float_or_nan(context.get("median_kmh"))
-        iqr_raw = context.get("iqr_kmh") or (None, None)
-        iqr = (_float_or_nan(iqr_raw[0]), _float_or_nan(iqr_raw[1]))
-        rejected = {str(k): int(v) for k, v in (context.get("rejected") or {}).items()}
-    except (KeyError, IndexError, TypeError, ValueError):
+    if loo is None or not math.isfinite(loo.median_min_kmh):
         return ""
-    if n_used > 0 and not math.isfinite(median):
-        return ""
-    stub = ObservedWaveSpeed(
-        pairs=tuple(
-            WavePairEstimate(
-                upstream="",
-                downstream="",
-                dx_m=math.nan,
-                lag_s=math.nan,
-                lag_bins=0,
-                speed_kmh=math.nan,
-                correlation=math.nan,
-                n_samples=0,
-                n_events=0,
-                used=False,
-                reason=reason,
-            )
-            for reason, count in sorted(rejected.items())
-            for _ in range(count)
-        ),
-        median_kmh=median,
-        iqr_kmh=iqr,
-        n_pairs=n_pairs,
-        n_used=n_used,
-        dt_s=float(context.get("dt_s", math.nan)),
-        v_thresh_ms=float(context.get("v_thresh_ms", math.nan)),
-        max_lag_s=float(context.get("max_lag_s", math.nan)),
-        min_events=int(context.get("min_events", 0)),
-        band_kmh=band,
+    return (
+        f"leave-one-date-out {loo.median_min_kmh:.1f}–{loo.median_max_kmh:.1f} km/h over "
+        f"{len(loo.dates)} dates (fewest {loo.pairs_min} pairs); "
     )
-    return summary_line(stub)
 
 
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
-
-
-def _float_or_nan(value: Any) -> float:
-    """``None`` → NaN, anything numeric → float."""
-    return math.nan if value is None else float(value)
 
 
 def _json_number(value: float) -> float | None:
@@ -472,8 +670,9 @@ def _pair_estimate(
     max_lag: int,
     min_events: int,
     detrend_bins: int,
+    gap_bins: int,
 ) -> WavePairEstimate:
-    """One pair's estimate (module docstring, steps 1–5)."""
+    """One pair's estimate (module docstring, steps 1–6)."""
 
     def rejected(reason: str, **fields: Any) -> WavePairEstimate:
         base: dict[str, Any] = {
@@ -497,8 +696,13 @@ def _pair_estimate(
         return rejected(_REASON_FEW_EVENTS, n_events=n_events)
 
     analysed = _dilate(jam, max_lag)
+    barrier = _barriers(up, down, gap_bins)
     correlations, counts = _lag_correlations(
-        _detrend(down, detrend_bins), _detrend(up, detrend_bins), analysed, max_lag
+        _detrend(down, detrend_bins, barrier),
+        _detrend(up, detrend_bins, barrier),
+        analysed,
+        max_lag,
+        barrier,
     )
     finite = np.isfinite(correlations)
     if not bool(finite.any()):
@@ -513,10 +717,15 @@ def _pair_estimate(
         "n_samples": n_samples,
         "n_events": n_events,
     }
-    if abs(peak_lag) == max_lag:
-        return rejected(_REASON_BOUND, **fields)
+    # order matters: a peak at −max_lag is first of all a disturbance that
+    # reached the upstream station *earlier*, and calling that a search-bound
+    # artefact would hide what the data said.
     if peak_lag <= 0:
         return rejected(_REASON_NOT_BACKWARD, **fields)
+    if peak_lag == max_lag:
+        return rejected(_REASON_BOUND, **fields)
+    if peak_lag < MIN_PEAK_LAG_BINS:
+        return rejected(_REASON_SHORT_LAG, **fields)
     if peak_r < MIN_PEAK_CORRELATION:
         return rejected(_REASON_WEAK, **fields)
     lag_s = (peak_lag + _sub_bin_offset(correlations, index)) * dt_s
@@ -555,17 +764,58 @@ def _dilate(mask: NDArray[np.bool_], radius: int) -> NDArray[np.bool_]:
     return out
 
 
-def _detrend(series: FloatArray, window_bins: int) -> FloatArray:
+def _barriers(up: FloatArray, down: FloatArray, gap_bins: int) -> NDArray[np.bool_]:
+    """Samples inside a date separator (module docstring, step 2).
+
+    A separator is a run of at least ``gap_bins`` consecutive samples that
+    *both* stations left unmeasured — what
+    :func:`calibration.loaders.mndot.station_speed_series` writes between two
+    dates, and equally what a joint outage that long is. Nothing may be
+    correlated or averaged across one: on the far side is another morning,
+    and the method has no way to tell how far the far side's jam travelled.
+
+    Args:
+        up: Upstream speeds [m/s], NaN where unmeasured.
+        down: Downstream speeds [m/s], NaN where unmeasured.
+        gap_bins: Samples that make a separator; ``<= 0`` means the series is
+            one continuous record and there are none.
+
+    Returns:
+        A mask of the barrier samples.
+    """
+    empty = np.zeros(down.size, dtype=np.bool_)
+    if gap_bins <= 0:
+        return empty
+    missing = ~np.isfinite(up) & ~np.isfinite(down)
+    if not bool(missing.any()):
+        return empty
+    padded = np.concatenate(([False], missing, [False]))
+    edges = np.flatnonzero(padded[1:] != padded[:-1])
+    for start, stop in zip(edges[0::2], edges[1::2], strict=True):
+        if stop - start >= gap_bins:
+            empty[start:stop] = True
+    return empty
+
+
+def _detrend(series: FloatArray, window_bins: int, barrier: NDArray[np.bool_]) -> FloatArray:
     """The series minus its centred moving mean over ``window_bins`` samples.
 
     The mean is taken over the finite samples inside the window only, and is
-    undefined — so the residual is NaN — where fewer than
-    :data:`MIN_DETREND_COVERAGE` of the window was measured. A window of 0 or
-    1 bins is the identity (the step is disabled).
+    undefined — so the residual is NaN — in three cases: fewer than
+    :data:`MIN_DETREND_COVERAGE` of the window was measured; the window runs
+    off an end of the series; or the window contains a barrier sample. The
+    last two are the same defect. A window that reaches past the data is a
+    *one-sided* mean, and subtracting a one-sided mean from a series that is
+    going anywhere leaves the local trend in the residual instead of removing
+    it — at the start of a morning peak exactly the slow envelope the step
+    exists to take out. A half-window at each end of each date is the price;
+    it is paid in NaN rather than in a biased residual.
 
     Args:
         series: Speeds [m/s], NaN where unmeasured.
-        window_bins: Width of the moving mean [samples].
+        window_bins: Width of the moving mean [samples]; 0 or 1 is the
+            identity (the step is disabled).
+        barrier: Date separators (:func:`_barriers`).
 
     Returns:
         The residual, NaN wherever the series or the local mean is.
@@ -576,6 +826,7 @@ def _detrend(series: FloatArray, window_bins: int) -> FloatArray:
     values = np.where(finite, series, 0.0)
     cumulative = np.concatenate(([0.0], np.cumsum(values)))
     counts = np.concatenate(([0], np.cumsum(finite.astype(np.int64))))
+    blocked = np.concatenate(([0], np.cumsum(barrier.astype(np.int64))))
     n = series.size
     half = window_bins // 2
     index = np.arange(n)
@@ -583,9 +834,10 @@ def _detrend(series: FloatArray, window_bins: int) -> FloatArray:
     hi = np.clip(index + half + 1, 0, n)
     total = cumulative[hi] - cumulative[lo]
     present = counts[hi] - counts[lo]
+    two_sided = (index >= half) & (index + half < n) & (blocked[hi] - blocked[lo] == 0)
     enough = present >= max(1, math.ceil(MIN_DETREND_COVERAGE * window_bins))
     with np.errstate(invalid="ignore", divide="ignore"):
-        baseline = np.where(enough, total / np.maximum(present, 1), math.nan)
+        baseline = np.where(enough & two_sided, total / np.maximum(present, 1), math.nan)
     return series - baseline
 
 
@@ -594,14 +846,20 @@ def _lag_correlations(
     up: FloatArray,
     analysed: NDArray[np.bool_],
     max_lag: int,
+    barrier: NDArray[np.bool_],
 ) -> tuple[FloatArray, NDArray[np.int64]]:
     """Pearson correlation of ``down(t)`` against ``up(t + k)`` per lag.
+
+    A pair whose two samples are separated by a barrier is dropped, so a lag
+    longer than the separator between two dates pairs nothing rather than
+    pairing one morning against the next (module docstring, step 2).
 
     Args:
         down: Downstream speeds [m/s], NaN where unmeasured.
         up: Upstream speeds [m/s], NaN where unmeasured.
         analysed: Samples ``t`` the correlation is taken over.
         max_lag: Widest lag in bins.
+        barrier: Date separators (:func:`_barriers`).
 
     Returns:
         ``(correlations, counts)``, both indexed ``k + max_lag`` for
@@ -613,6 +871,8 @@ def _lag_correlations(
     correlations = np.full(2 * max_lag + 1, math.nan, dtype=np.float64)
     counts = np.zeros(2 * max_lag + 1, dtype=np.int64)
     base = analysed & np.isfinite(down)
+    blocked = np.concatenate(([0], np.cumsum(barrier.astype(np.int64))))
+    any_barrier = bool(barrier.any())
     for lag in range(-max_lag, max_lag + 1):
         lo = max(0, -lag)
         hi = min(n, n - lag)
@@ -621,6 +881,12 @@ def _lag_correlations(
         left = down[lo:hi]
         right = up[lo + lag : hi + lag]
         keep = base[lo:hi] & np.isfinite(right)
+        if any_barrier and lag != 0:
+            here = np.arange(lo, hi)
+            there = here + lag
+            first = np.minimum(here, there)
+            last = np.maximum(here, there)
+            keep &= blocked[last + 1] - blocked[first] == 0
         count = int(np.count_nonzero(keep))
         counts[lag + max_lag] = count
         if count < MIN_PAIRED_SAMPLES:

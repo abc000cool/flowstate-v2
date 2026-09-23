@@ -440,7 +440,10 @@ class TestSpilledAccelerationLane:
         cfg = _spill_scenario(spill_osm, "scripted")
         paths = run_micro(cfg, 3, tmp_path / "scripted")
         meta = json.loads(paths.meta.read_text())
-        assert [Path(p).name for p in meta["net_patch_files"]] == ["accel_end_102.con.xml"]
+        # the patch is named after the attach edge plus a digest of its raw id
+        # (two ids that sanitise alike must not share a file)
+        (patch,) = [Path(p).name for p in meta["net_patch_files"]]
+        assert patch.startswith("accel_end_102_") and patch.endswith(".con.xml")
         (ramp_meta,) = meta["ramps"]
         assert ramp_meta["acceleration_lane_terminated"] is True
         assert ramp_meta["n_departed"] > 0, "no ramp vehicle departed"
@@ -461,11 +464,10 @@ class TestSpilledAccelerationLane:
         cfg = _spill_scenario(spill_osm, "zipper", internal_links=True)
         paths = run_micro(cfg, 3, tmp_path / "zipper")
         meta = json.loads(paths.meta.read_text())
-        assert sorted(Path(p).name for p in meta["net_patch_files"]) == [
-            "accel_end_102.con.xml",
-            "merge_102.con.xml",
-            "merge_102.nod.xml",
-        ]
+        # every stem is the attach edge plus a digest of its raw id
+        names = sorted(Path(p).name for p in meta["net_patch_files"])
+        assert [n.split("_1", 1)[0] for n in names] == ["accel_end", "merge", "merge"]
+        assert [n.rsplit(".", 2)[-2] for n in names] == ["con", "con", "nod"]
         (ramp_meta,) = meta["ramps"]
         assert ramp_meta["acceleration_lane_terminated"] is True
         assert ramp_meta["n_departed"] > 0, "no ramp vehicle departed"

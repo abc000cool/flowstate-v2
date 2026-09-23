@@ -7202,10 +7202,10 @@
   },
   "context": {
     "detector_wave_speed": {
-      "median_kmh": 21.206031882742465,
+      "median_kmh": 21.26495534474855,
       "iqr_kmh": [
-        18.457320230899846,
-        24.101594898780128
+        18.375554628510084,
+        24.17925039834189
       ],
       "n_pairs": 13,
       "n_used": 6,
@@ -7214,7 +7214,9 @@
       "max_lag_s": 900.0,
       "min_events": 3,
       "detrend_s": 1200.0,
+      "gap_s": 3600.0,
       "min_peak_correlation": 0.3,
+      "min_peak_lag_bins": 2,
       "band_kmh": [
         14.0,
         22.0
@@ -7258,7 +7260,7 @@
           "n_samples": 319,
           "n_events": 9,
           "used": false,
-          "reason": "peak lag sits on the search bound"
+          "reason": "peak lag is not positive (no backward propagation)"
         },
         {
           "upstream": "S1066",
@@ -7290,11 +7292,11 @@
           "upstream": "S1068",
           "downstream": "S1947",
           "dx_m": 491.02351382259076,
-          "lag_s": 94.49997559354999,
+          "lag_s": 94.60845066944604,
           "lag_bins": 3,
-          "speed_kmh": 18.705662500530618,
-          "correlation": 0.3264153595649728,
-          "n_samples": 2509,
+          "speed_kmh": 18.684215175845843,
+          "correlation": 0.3269029225263354,
+          "n_samples": 2485,
           "n_events": 80,
           "used": true,
           "reason": ""
@@ -7306,8 +7308,8 @@
           "lag_s": null,
           "lag_bins": 4,
           "speed_kmh": null,
-          "correlation": 0.24823395996377115,
-          "n_samples": 2900,
+          "correlation": 0.2554761129038564,
+          "n_samples": 2850,
           "n_events": 63,
           "used": false,
           "reason": "peak correlation below the acceptance floor"
@@ -7316,11 +7318,11 @@
           "upstream": "S1069",
           "downstream": "S1070",
           "dx_m": 979.0885670398347,
-          "lag_s": 145.44923900813,
+          "lag_s": 145.1072732587337,
           "lag_bins": 5,
-          "speed_kmh": 24.233326110055398,
-          "correlation": 0.30009654541405467,
-          "n_samples": 2596,
+          "speed_kmh": 24.290435359905434,
+          "correlation": 0.3252196463710245,
+          "n_samples": 2517,
           "n_events": 180,
           "used": true,
           "reason": ""
@@ -7332,8 +7334,8 @@
           "lag_s": null,
           "lag_bins": 6,
           "speed_kmh": null,
-          "correlation": 0.15506573225978273,
-          "n_samples": 2667,
+          "correlation": 0.15634568685606323,
+          "n_samples": 2549,
           "n_events": 112,
           "used": false,
           "reason": "peak correlation below the acceptance floor"
@@ -7342,11 +7344,11 @@
           "upstream": "S1948",
           "downstream": "S792",
           "dx_m": 565.2920491630866,
-          "lag_s": 110.75387112843049,
+          "lag_s": 111.37133348867458,
           "lag_bins": 4,
-          "speed_kmh": 18.374539474356258,
-          "correlation": 0.33815376018452825,
-          "n_samples": 3315,
+          "speed_kmh": 18.272667779398166,
+          "correlation": 0.3566761584655015,
+          "n_samples": 3135,
           "n_events": 234,
           "used": true,
           "reason": ""
@@ -7355,11 +7357,11 @@
           "upstream": "S792",
           "downstream": "S791",
           "dx_m": 742.6127919104256,
-          "lag_s": 102.20252991469084,
+          "lag_s": 102.41203670139578,
           "lag_bins": 3,
-          "speed_kmh": 26.1579243988289,
-          "correlation": 0.4503730013116179,
-          "n_samples": 3373,
+          "speed_kmh": 26.104412498624747,
+          "correlation": 0.4842483002083064,
+          "n_samples": 3193,
           "n_events": 151,
           "used": true,
           "reason": ""
@@ -7368,11 +7370,11 @@
           "upstream": "S791",
           "downstream": "S790",
           "dx_m": 399.6704320791541,
-          "lag_s": 80.34090857459431,
+          "lag_s": 80.66220593108464,
           "lag_bins": 3,
-          "speed_kmh": 17.908853422401318,
-          "correlation": 0.47889068915889177,
-          "n_samples": 3283,
+          "speed_kmh": 17.837518065328315,
+          "correlation": 0.5044827225795183,
+          "n_samples": 3104,
           "n_events": 186,
           "used": true,
           "reason": ""
@@ -7381,11 +7383,11 @@
           "upstream": "S790",
           "downstream": "S97",
           "dx_m": 939.9270736436156,
-          "lag_s": 142.7351805657347,
+          "lag_s": 141.9013952929108,
           "lag_bins": 5,
-          "speed_kmh": 23.706401264954316,
-          "correlation": 0.3173714128966767,
-          "n_samples": 2098,
+          "speed_kmh": 23.845695513651254,
+          "correlation": 0.3147855938362793,
+          "n_samples": 2019,
           "n_events": 104,
           "used": true,
           "reason": ""
@@ -7393,8 +7395,64 @@
       ],
       "rejected": {
         "fewer than min_events congested episodes downstream": 2,
-        "peak lag sits on the search bound": 1,
+        "peak lag is not positive (no backward propagation)": 1,
         "peak correlation below the acceptance floor": 4
+      },
+      "loo_median_min_kmh": 18.426656518439465,
+      "loo_median_max_kmh": 21.57559690402194,
+      "loo_pairs_min": 5,
+      "leave_one_date_out": {
+        "n_dates": 9,
+        "loo_median_min_kmh": 18.426656518439465,
+        "loo_median_max_kmh": 21.57559690402194,
+        "loo_pairs_min": 5,
+        "by_omitted_date": [
+          {
+            "date": "20260901",
+            "median_kmh": 18.68309074486496,
+            "n_used": 7
+          },
+          {
+            "date": "20260902",
+            "median_kmh": 21.361978480661474,
+            "n_used": 6
+          },
+          {
+            "date": "20260903",
+            "median_kmh": 18.449720849605693,
+            "n_used": 5
+          },
+          {
+            "date": "20260908",
+            "median_kmh": 21.57559690402194,
+            "n_used": 6
+          },
+          {
+            "date": "20260909",
+            "median_kmh": 21.03898675322129,
+            "n_used": 6
+          },
+          {
+            "date": "20260910",
+            "median_kmh": 21.26750774126269,
+            "n_used": 6
+          },
+          {
+            "date": "20260915",
+            "median_kmh": 20.861654157201656,
+            "n_used": 6
+          },
+          {
+            "date": "20260916",
+            "median_kmh": 18.426656518439465,
+            "n_used": 5
+          },
+          {
+            "date": "20260917",
+            "median_kmh": 21.47017773675119,
+            "n_used": 6
+          }
+        ]
       }
     }
   }

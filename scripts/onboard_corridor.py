@@ -36,7 +36,9 @@ larger than ``--lane-tolerance`` (default 0: every disagreement) exit 3 so a
 batch script stops there. One disagreement is exempt by default — a single
 *extra* compiled lane at a guessed ramp, which is the acceleration lane
 ``netconvert`` was asked to build rather than a defect; ``--strict-lanes``
-fails on that one too.
+fails on that one too — and is refused (exit 2) together with
+``--lane-tolerance 1`` or more, a tolerance that has already dropped every
+one-lane disagreement before ``--strict-lanes`` could report it.
 
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
@@ -71,6 +73,21 @@ STATION_OUT_COLUMNS: tuple[str, ...] = ("x_m", "offset_m", "edge_id", "lane_pos_
 #: code (not 1) so a batch script can tell a lane disagreement apart from a
 #: build that failed outright.
 LANE_MISMATCH_EXIT: int = 3
+
+#: Exit status of a self-cancelling combination of flags (usage error).
+BAD_USAGE_EXIT: int = 2
+
+#: Why ``--strict-lanes`` and a tolerance of one lane or more cannot both be
+#: asked for. ``--strict-lanes`` exists to report the *one* extra compiled lane
+#: at a guessed ramp, and ``lane_check`` has already dropped every disagreement
+#: of that size before ``failing_mismatches`` sees it, so the combination asks
+#: for a stricter check and silently gets a looser one.
+STRICT_TOLERANCE_MESSAGE: str = (
+    "--strict-lanes has no effect with --lane-tolerance 1 or more: the tolerance drops "
+    "the one-lane disagreements (the guessed acceleration lane among them) before "
+    "--strict-lanes could report them. Use --strict-lanes with --lane-tolerance 0, or "
+    "drop --strict-lanes."
+)
 
 #: The one hint (:func:`microsim.scenarios._lane_hint`) that describes a
 #: disagreement the build itself asked for: ``--ramps.guess`` adds the
@@ -251,7 +268,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--strict-lanes",
         action="store_true",
-        help="count the guessed acceleration lane as a mismatch too (with --fail-on-lane-mismatch)",
+        help="count the guessed acceleration lane as a mismatch too (with "
+        "--fail-on-lane-mismatch); refused with --lane-tolerance 1 or more, which "
+        "would drop those disagreements first",
     )
     return parser.parse_args(argv)
 
@@ -259,6 +278,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Build the corridor, write the scenario and the stations CSV, report."""
     args = parse_args(argv)
+    # refused before the build, not after: a run that spends a minute on
+    # Overpass and netconvert to then apply neither flag as asked is worse
+    # than a usage error
+    if args.strict_lanes and args.lane_tolerance >= 1:
+        print(STRICT_TOLERANCE_MESSAGE)
+        return BAD_USAGE_EXIT
     rows = read_stations(args.stations) if args.stations else []
     stations: list[dict[str, Any]] = [dict(r) for r in rows]
 

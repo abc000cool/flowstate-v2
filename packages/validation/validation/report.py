@@ -665,6 +665,13 @@ def _wave_speed_context_line(wave: DetectorWaveSpeed, band_kmh: tuple[float, flo
     the right target for *this* corridor. It scores nothing: the wave-speed
     criterion stays a statement about the simulated field (CLAUDE.md §7.1).
 
+    The median is a median over a handful of station pairs, so the artifact's
+    leave-one-date-out range — the same estimate re-run without each date in
+    turn — is printed beside it whenever the artifact carries one, together
+    with the fewest pairs any of those subsets kept. A headline that moves by
+    3 km/h when one morning is dropped is not a 0.1 km/h number, and the line
+    has to say so where the number is read.
+
     Args:
         wave: The estimate read from the observations artifact.
         band_kmh: The active profile's acceptance band [km/h].
@@ -678,9 +685,16 @@ def _wave_speed_context_line(wave: DetectorWaveSpeed, band_kmh: tuple[float, flo
         detail = f" ({wave.rejections})" if wave.rejections else ""
         return f"not estimated from {wave.n_pairs} station pairs{detail}; {band}"
     q25, q75 = wave.iqr_kmh
+    loo = ""
+    if wave.has_loo:
+        loo = (
+            f"leave-one-date-out {_fmt(wave.loo_median_min_kmh, 3)}–"
+            f"{_fmt(wave.loo_median_max_kmh, 3)} km/h over {wave.loo_n_dates} dates "
+            f"(fewest {wave.loo_pairs_min} pairs); "
+        )
     return (
         f"median {_fmt(wave.median_kmh, 3)} km/h (IQR {_fmt(q25, 3)}–{_fmt(q75, 3)}) from "
-        f"{wave.n_used} of {wave.n_pairs} station pairs; {band}"
+        f"{wave.n_used} of {wave.n_pairs} station pairs; {loo}{band}"
     )
 
 

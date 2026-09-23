@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pytest
@@ -25,8 +25,14 @@ from calibration.loaders.mndot import (
 )
 from calibration.waves_observed import (
     MIN_PEAK_CORRELATION,
+    MIN_PEAK_LAG_BINS,
     ObservedWaveSpeed,
+    _barriers,
+    _detrend,
+    _lag_correlations,
+    concatenate_dates,
     detector_wave_speed,
+    leave_one_date_out,
     summary_line,
 )
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
@@ -49,14 +55,28 @@ DX_M = 750.0
 PLANTED_LAG_BINS = round(DX_M / kmh_to_ms(PLANTED_KMH) / DT_S)
 
 
-def _wave_series(lag_bins: int, *, seed: int, noise_ms: float = 0.4) -> list[float | None]:
+def _wave_series(
+    lag_bins: int,
+    *,
+    seed: int,
+    noise_ms: float = 0.4,
+    starts: tuple[int, ...] = EVENT_STARTS,
+    n_bins: int = N_BINS,
+    event_bins: int = EVENT_BINS,
+) -> list[float | None]:
     """Free flow with the planted jams, delayed by ``lag_bins``, plus noise."""
     rng = np.random.default_rng(seed)
-    values = np.full(N_BINS, FREE_FLOW_MS) + rng.normal(0.0, noise_ms, N_BINS)
-    for start in EVENT_STARTS:
+    values = np.full(n_bins, FREE_FLOW_MS) + rng.normal(0.0, noise_ms, n_bins)
+    for start in starts:
         lo = start + lag_bins
-        values[lo : lo + EVENT_BINS] = JAM_MS + rng.normal(0.0, noise_ms, EVENT_BINS)
+        values[lo : lo + event_bins] = JAM_MS + rng.normal(0.0, noise_ms, event_bins)
     return [float(v) for v in values]
+
+
+def _free_flow(*, seed: int, noise_ms: float = 0.4, n_bins: int = N_BINS) -> list[float | None]:
+    """A morning that never congests."""
+    rng = np.random.default_rng(seed)
+    return [float(v) for v in np.full(n_bins, FREE_FLOW_MS) + rng.normal(0.0, noise_ms, n_bins)]
 
 
 @pytest.fixture(scope="module")
@@ -285,3 +305,308 @@ class TestStationSpeedSeries:
         dates = call.pop("dates")
         with pytest.raises(ValueError, match=match):
             station_speed_series(config, "I-94 WB", ["S2104"], dates, **call)
+
+
+class TestResolutionFloor:
+    """Lags too short for a 30-second grid to resolve are rejected."""
+
+    def test_a_one_bin_lag_is_below_the_resolution_of_the_grid(self) -> None:
+        """``dx / (0.5 · dt)`` is the grid's limit, not a wave speed.
+
+        A one-bin peak carries a sub-bin offset the parabola clamps to ±½
+        bin, so the implied speed spans a factor of three. The pair is
+        rejected with its lag on the record rather than reported.
+        """
+        series: dict[str, Any] = {
+            "UP": _wave_series(1, seed=1),
+            "DOWN": _wave_series(0, seed=2),
+        }
+        result = detector_wave_speed(series, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S)
+        pair = result.pairs[0]
+        assert pair.lag_bins == 1 < MIN_PEAK_LAG_BINS
+        assert not pair.used and math.isnan(pair.speed_kmh)
+        assert pair.reason.startswith("lag below resolution")
+        # the correlation is excellent: it is the resolution, not the fit,
+        # that makes the number unusable
+        assert pair.correlation > MIN_PEAK_CORRELATION
+        assert result.n_used == 0 and math.isnan(result.median_kmh)
+
+    def test_the_floor_is_two_bins(self) -> None:
+        series: dict[str, Any] = {
+            "UP": _wave_series(MIN_PEAK_LAG_BINS, seed=1),
+            "DOWN": _wave_series(0, seed=2),
+        }
+        result = detector_wave_speed(series, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S)
+        assert result.pairs[0].lag_bins == MIN_PEAK_LAG_BINS
+        assert result.pairs[0].used
+
+
+class TestRejectionOrder:
+    def test_a_negative_peak_on_the_bound_is_labelled_not_backward(self) -> None:
+        """What the data said comes before what the search window did.
+
+        A peak at −max_lag is first of all a disturbance that reached the
+        *upstream* station earlier — downstream propagation. Reporting it as
+        "peak lag sits on the search bound" would blame the search window for
+        a direction the data chose, and would invite widening the window.
+        """
+        series: dict[str, Any] = {
+            "UP": _wave_series(0, seed=1),
+            "DOWN": _wave_series(10, seed=2),
+        }
+        result = detector_wave_speed(
+            series, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, max_lag_s=10 * DT_S
+        )
+        pair = result.pairs[0]
+        assert pair.lag_bins == -10  # exactly on the bound, and negative
+        assert pair.reason == "peak lag is not positive (no backward propagation)"
+
+
+class TestEventCounting:
+    def test_min_events_counts_runs_not_days(self) -> None:
+        """Three episodes of one morning satisfy ``min_events=3``.
+
+        The parameter is a floor on *congested episodes*, which is what the
+        rejection reason says; it is no guarantee that several dates
+        contributed. That question is answered by
+        :func:`leave_one_date_out`, not by this counter.
+        """
+        starts = (60, 160, 260)
+        series: dict[str, Any] = {
+            "UP": _wave_series(PLANTED_LAG_BINS, seed=1, starts=starts),
+            "DOWN": _wave_series(0, seed=2, starts=starts),
+        }
+        result = detector_wave_speed(
+            series, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, min_events=len(starts)
+        )
+        pair = result.pairs[0]
+        assert pair.n_events == len(starts)  # one day, three runs
+        assert pair.used and pair.reason == ""
+        # one run short of the floor is a rejection, whatever the day count
+        strict = detector_wave_speed(
+            series, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, min_events=len(starts) + 1
+        )
+        assert strict.pairs[0].reason.startswith("fewer than min_events")
+
+
+class TestDetrendWindow:
+    """A centred mean that is not centred leaves the trend in the residual."""
+
+    def test_a_ramp_detrends_to_zero_only_where_the_window_is_two_sided(self) -> None:
+        ramp = np.arange(50.0)
+        residual = _detrend(ramp, 11, np.zeros(50, dtype=np.bool_))
+        half = 11 // 2
+        # the interior: the mean of a straight line is the line
+        assert residual[half:-half] == pytest.approx(0.0, abs=1e-12)
+        # the ends: the window runs off the data, so there is no residual —
+        # a one-sided mean would have left the ramp's slope behind
+        assert np.isnan(residual[:half]).all()
+        assert np.isnan(residual[-half:]).all()
+
+    def test_a_window_reaching_into_a_separator_has_no_residual_either(self) -> None:
+        ramp = np.concatenate([np.arange(30.0), np.full(10, math.nan), np.arange(30.0)])
+        barrier = _barriers(ramp, ramp, 10)
+        assert barrier[30:40].all() and not barrier[:30].any()
+        residual = _detrend(ramp, 11, barrier)
+        half = 11 // 2
+        # the last samples of the first date are as one-sided as the first
+        # samples of the whole series
+        assert np.isnan(residual[30 - half : 30]).all()
+        assert np.isnan(residual[40 : 40 + half]).all()
+        assert residual[half : 30 - half] == pytest.approx(0.0, abs=1e-12)
+
+    def test_the_step_is_the_identity_below_two_bins(self) -> None:
+        values = np.array([1.0, 5.0, 2.0])
+        assert _detrend(values, 1, np.zeros(3, dtype=np.bool_)) == pytest.approx(values)
+
+
+class TestDateSeparator:
+    """No correlation pair may span the NaN run between two dates."""
+
+    #: A short synthetic day, so that one day plus the separator (230 bins)
+    #: is inside a two-hour lag search (240 bins at 30 s).
+    DAY_BINS = 200
+    GAP_BINS = 30
+    STARTS = (25, 47, 88, 109, 151, 177)
+
+    def _two_days(self) -> dict[str, Any]:
+        """Day 1 carries the only wave; day 2's upstream repeats day 1's downstream.
+
+        The repeat is the worst case on purpose: at a lag of exactly one day
+        plus the separator the two series line up perfectly, so an estimator
+        that pairs across the separator prefers that alignment to anything
+        inside a day. A real archive only needs a partial repeat to do the
+        same — every weekday morning of a corridor looks like the last one.
+        """
+        kwargs: dict[str, Any] = {"n_bins": self.DAY_BINS, "event_bins": 4}
+        day1_down = _wave_series(0, seed=2, starts=self.STARTS, **kwargs)
+        day1_up = _free_flow(seed=7, n_bins=self.DAY_BINS)
+        day2_down = _free_flow(seed=13, n_bins=self.DAY_BINS)
+        gap: list[float | None] = [None] * self.GAP_BINS
+        return {
+            "UP": [*day1_up, *gap, *day1_down],
+            "DOWN": [*day1_down, *gap, *day2_down],
+        }
+
+    def test_a_lag_longer_than_the_separator_pairs_two_mornings(self) -> None:
+        """The defect, stated: ``max_lag_s`` alone does not stop it."""
+        result = detector_wave_speed(
+            self._two_days(), {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, max_lag_s=7200.0
+        )
+        pair = result.pairs[0]
+        assert pair.lag_bins == self.DAY_BINS + self.GAP_BINS  # one day later
+        assert pair.correlation == pytest.approx(1.0)
+        assert pair.used and pair.speed_kmh < 1.0  # 0.4 km/h is not a jam wave
+
+    def test_the_separator_width_removes_those_pairs(self) -> None:
+        result = detector_wave_speed(
+            self._two_days(),
+            {"UP": 0.0, "DOWN": DX_M},
+            dt_s=DT_S,
+            max_lag_s=7200.0,
+            gap_s=self.GAP_BINS * DT_S,
+        )
+        pair = result.pairs[0]
+        assert result.gap_s == self.GAP_BINS * DT_S
+        assert pair.lag_bins != self.DAY_BINS + self.GAP_BINS
+        assert pair.correlation < 1.0
+        # what is left rests on a handful of samples at a long lag — the
+        # method's own limit at a two-hour search window, and it is reported
+        # with that count rather than hidden
+        assert pair.n_samples < 0.25 * self.DAY_BINS
+
+    def test_no_lag_crossing_a_barrier_keeps_a_single_pair(self) -> None:
+        series = self._two_days()
+        down = np.asarray(series["DOWN"], dtype=np.float64)
+        up = np.asarray(series["UP"], dtype=np.float64)
+        max_lag = 240
+        barrier = _barriers(up, down, self.GAP_BINS)
+        assert barrier.sum() == self.GAP_BINS
+        analysed = np.ones(down.size, dtype=np.bool_)
+        _, counts = _lag_correlations(down, up, analysed, max_lag, barrier)
+        # a lag as long as a whole date cannot fit inside one: every pair at
+        # such a lag would have to cross the separator, so none survives
+        too_long = [lag for lag in range(-max_lag, max_lag + 1) if abs(lag) >= self.DAY_BINS]
+        assert counts[[lag + max_lag for lag in too_long]].max() == 0
+        # without the barrier they are the best-populated lags of all
+        open_counts = _lag_correlations(down, up, analysed, max_lag, np.zeros_like(barrier))[1]
+        assert open_counts[max_lag + self.DAY_BINS + self.GAP_BINS] > 100
+        # and the short lags, which never cross, are unaffected by either
+        assert counts[max_lag + 5] == open_counts[max_lag + 5] > 0
+
+    def test_without_a_separator_width_there_are_no_barriers(self) -> None:
+        values = np.full(10, math.nan)
+        assert not _barriers(values, values, 0).any()
+
+
+class TestLeaveOneDateOut:
+    """How much the corridor median rests on any one date."""
+
+    def _dates(self) -> dict[str, dict[str, Any]]:
+        """Three mornings over three stations, each with the same planted wave."""
+        return {
+            f"2026090{i}": {
+                "UP": _wave_series(2 * PLANTED_LAG_BINS, seed=10 * i + 1),
+                "MID": _wave_series(PLANTED_LAG_BINS, seed=10 * i + 2),
+                "DOWN": _wave_series(0, seed=10 * i + 3),
+            }
+            for i in (1, 2, 3)
+        }
+
+    #: UP–MID is 750 m (18 km/h at five bins), MID–DOWN is 500 m (12 km/h).
+    POSITIONS: ClassVar[dict[str, float]] = {"UP": 0.0, "MID": DX_M, "DOWN": DX_M + 500.0}
+
+    def test_the_range_of_medians_and_the_fewest_pairs_are_reported(self) -> None:
+        by_date = self._dates()
+        loo = leave_one_date_out(by_date, self.POSITIONS, dt_s=DT_S, gap_s=60.0 * DT_S)
+        assert loo.dates == tuple(by_date)
+        assert len(loo.medians_kmh) == len(loo.n_used) == 3
+        # both pairs survive every subset here, so the range is narrow — and
+        # it is the range that was computed, not an assumption
+        assert loo.n_used == (2, 2, 2)
+        assert loo.pairs_min == 2
+        assert loo.median_min_kmh <= loo.median_max_kmh
+        assert loo.median_min_kmh == pytest.approx(15.0, rel=0.10)
+        assert loo.median_max_kmh == pytest.approx(15.0, rel=0.10)
+
+    def test_an_estimate_resting_on_one_date_says_so(self) -> None:
+        """Two free-flowing mornings and one congested one.
+
+        Leaving the congested date out leaves the pair with no episode at
+        all, so its median is NaN and the fewest-pairs count is zero — the
+        honest reading of a headline that one morning produced.
+        """
+        by_date: dict[str, dict[str, Any]] = {
+            "20260901": {"UP": _free_flow(seed=21), "DOWN": _free_flow(seed=22)},
+            "20260902": {"UP": _free_flow(seed=23), "DOWN": _free_flow(seed=24)},
+            "20260903": {
+                "UP": _wave_series(PLANTED_LAG_BINS, seed=1),
+                "DOWN": _wave_series(0, seed=2),
+            },
+        }
+        loo = leave_one_date_out(by_date, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, gap_s=60.0 * DT_S)
+        assert loo.n_used == (1, 1, 0)
+        assert loo.pairs_min == 0
+        assert math.isnan(loo.medians_kmh[2])
+        assert loo.median_min_kmh == pytest.approx(PLANTED_KMH, rel=0.10)
+
+    def test_the_artifact_carries_the_three_numbers_at_the_top_level(self) -> None:
+        by_date = self._dates()
+        gap_s = 60.0 * DT_S
+        loo = leave_one_date_out(by_date, self.POSITIONS, dt_s=DT_S, gap_s=gap_s)
+        result = detector_wave_speed(
+            concatenate_dates(by_date, gap_bins=round(gap_s / DT_S)),
+            self.POSITIONS,
+            dt_s=DT_S,
+            gap_s=gap_s,
+            loo=loo,
+        )
+        payload = json.loads(json.dumps(result.to_dict(), allow_nan=False))
+        assert payload["loo_median_min_kmh"] == pytest.approx(loo.median_min_kmh)
+        assert payload["loo_median_max_kmh"] == pytest.approx(loo.median_max_kmh)
+        assert payload["loo_pairs_min"] == loo.pairs_min
+        assert payload["gap_s"] == gap_s
+        block = payload["leave_one_date_out"]
+        assert block["n_dates"] == 3
+        assert [row["date"] for row in block["by_omitted_date"]] == list(by_date)
+        assert "leave-one-date-out" in summary_line(result)
+
+    def test_an_estimate_without_one_carries_no_loo_keys(self) -> None:
+        payload = detector_wave_speed(
+            {"UP": _wave_series(PLANTED_LAG_BINS, seed=1), "DOWN": _wave_series(0, seed=2)},
+            {"UP": 0.0, "DOWN": DX_M},
+            dt_s=DT_S,
+        ).to_dict()
+        assert "loo_median_min_kmh" not in payload
+        assert "leave_one_date_out" not in payload
+
+    def test_a_single_date_cannot_be_left_out(self) -> None:
+        with pytest.raises(ValueError, match="at least two dates"):
+            leave_one_date_out({"20260901": {"UP": _free_flow(seed=1)}}, {"UP": 0.0}, dt_s=DT_S)
+
+
+class TestConcatenateDates:
+    def test_the_dates_are_laid_end_to_end_with_the_separator(self) -> None:
+        by_date: dict[str, dict[str, Any]] = {
+            "d1": {"A": [1.0, 2.0], "B": [3.0, 4.0]},
+            "d2": {"A": [5.0, 6.0], "B": [7.0, 8.0]},
+        }
+        joined = concatenate_dates(by_date, gap_bins=3)
+        assert list(joined) == ["A", "B"]
+        assert joined["A"] == [1.0, 2.0, None, None, None, 5.0, 6.0]
+        assert joined["B"] == [3.0, 4.0, None, None, None, 7.0, 8.0]
+
+    def test_a_station_a_date_never_reported_is_filled_not_dropped(self) -> None:
+        by_date: dict[str, dict[str, Any]] = {
+            "d1": {"A": [1.0, 2.0], "B": [3.0, 4.0]},
+            "d2": {"A": [5.0, 6.0]},
+        }
+        joined = concatenate_dates(by_date, gap_bins=1)
+        assert joined["B"] == [3.0, 4.0, None, None, None]
+        assert len(joined["A"]) == len(joined["B"])  # one clock for every station
+
+    def test_a_date_whose_stations_disagree_on_length_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="one clock"):
+            concatenate_dates({"d1": {"A": [1.0], "B": [1.0, 2.0]}}, gap_bins=0)
+        with pytest.raises(ValueError, match="gap_bins"):
+            concatenate_dates({"d1": {"A": [1.0]}}, gap_bins=-1)

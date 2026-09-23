@@ -30,6 +30,7 @@ edge lengths partition the drivable length exactly.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import math
 import os
 import re
@@ -531,7 +532,7 @@ def merge_patch_files(
             "acceleration lane was terminated at its end"
         )
     workdir.mkdir(parents=True, exist_ok=True)
-    tag = f"merge_{attach_edge.replace('#', '_')}"
+    tag = f"merge_{_safe_file_stem(attach_edge)}"
     if merge == "acceleration_lane":
         edg = workdir / f"{tag}.edg.xml"
         edg.write_text(
@@ -684,15 +685,22 @@ def accel_lane_end(
 def _safe_file_stem(edge_id: str) -> str:
     """An edge id made safe to embed in a file name.
 
+    Replacing every unsafe character by ``_`` is not injective: an OSM
+    corridor can carry both ``123#1`` and ``123.1``, which would collide on
+    ``123_1`` and silently overwrite each other's patch — one merge would then
+    be built from the other's connections. A short digest of the **raw** id is
+    appended so two different ids can never share a stem.
+
     Args:
         edge_id: A compiled edge id, which may hold ``#``, ``.``, ``/`` or
             any other character SUMO allows and a file name does not.
 
     Returns:
         The id with every character outside ``[A-Za-z0-9_-]`` replaced by
-        ``_``.
+        ``_``, followed by ``_`` and 8 hex digits of its digest.
     """
-    return re.sub(r"[^A-Za-z0-9_-]", "_", edge_id)
+    digest = hashlib.blake2s(edge_id.encode("utf-8"), digest_size=4).hexdigest()
+    return f"{re.sub(r'[^A-Za-z0-9_-]', '_', edge_id)}_{digest}"
 
 
 def lane_end_patch_file(

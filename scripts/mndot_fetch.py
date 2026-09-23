@@ -15,7 +15,8 @@ and write the three files a corridor build needs:
 
 ``--wave-context`` adds the corridor's *observed* backward wave speed
 (:mod:`calibration.waves_observed`) to the artifact under
-``context["detector_wave_speed"]`` and prints the per-pair table. It is
+``context["detector_wave_speed"]`` and prints the per-pair table, the
+leave-one-date-out medians and the summary line. It is
 estimated from the raw 30-second speed series, not from the analysis windows,
 and is context for a validation report — the reviewer's comparison between the
 corridor's real wave speed and the 14–22 km/h band the model is scored
@@ -50,6 +51,7 @@ from calibration.loaders.mndot import (
     MAYFLY_DISTRICT,
     METRO_CONFIG_URL,
     SAMPLE_INTERVAL_S,
+    SPEED_SERIES_GAP_S,
     MetroConfig,
     Station,
     fetch_metro_config,
@@ -58,7 +60,14 @@ from calibration.loaders.mndot import (
     stations_table,
 )
 from calibration.observations import Observations, coverage, parse_clock
-from calibration.waves_observed import ObservedWaveSpeed, detector_wave_speed, summary_line
+from calibration.waves_observed import (
+    LeaveOneDateOut,
+    ObservedWaveSpeed,
+    concatenate_dates,
+    detector_wave_speed,
+    leave_one_date_out,
+    summary_line,
+)
 
 DEFAULT_CONFIG_PATH = "data/mndot/metro_config.xml.gz"
 """Where the IRIS configuration is kept (downloaded on first use)."""
@@ -124,21 +133,41 @@ def _wave_context(
         district: MnDOT district.
 
     Returns:
-        The per-pair estimates and the corridor summary.
+        The per-pair estimates, the corridor summary and — with two dates or
+        more — the leave-one-date-out sensitivity of the median.
     """
-    series = station_speed_series(
-        config,
-        corridor_name,
-        [s.id for s in span],
-        dates,
-        t0_s=parse_clock(t0_local),
-        duration_s=duration_s,
-        cache_dir=cache_dir,
-        max_workers=max_workers,
-        district=district,
-    )
+    by_date = {
+        date: station_speed_series(
+            config,
+            corridor_name,
+            [s.id for s in span],
+            [date],
+            t0_s=parse_clock(t0_local),
+            duration_s=duration_s,
+            cache_dir=cache_dir,
+            max_workers=max_workers,
+            district=district,
+        )
+        for date in dates
+    }
     positions = {s.id: s.x_m - span[0].x_m for s in span}
-    return detector_wave_speed(series, positions, dt_s=SAMPLE_INTERVAL_S)
+    gap_bins = round(SPEED_SERIES_GAP_S / SAMPLE_INTERVAL_S)
+    # the dates are correlated as one series with the same separator
+    # `station_speed_series` would have written for the whole list at once
+    series = concatenate_dates(by_date, gap_bins=gap_bins)
+    loo = (
+        leave_one_date_out(
+            by_date,
+            positions,
+            dt_s=SAMPLE_INTERVAL_S,
+            gap_s=SPEED_SERIES_GAP_S,
+        )
+        if len(by_date) > 1
+        else None
+    )
+    return detector_wave_speed(
+        series, positions, dt_s=SAMPLE_INTERVAL_S, gap_s=SPEED_SERIES_GAP_S, loo=loo
+    )
 
 
 def _wave_table(result: ObservedWaveSpeed) -> pd.DataFrame:
@@ -158,6 +187,20 @@ def _wave_table(result: ObservedWaveSpeed) -> pd.DataFrame:
                 "reason": pair.reason,
             }
             for pair in result.pairs
+        ]
+    )
+
+
+def _loo_table(loo: LeaveOneDateOut) -> pd.DataFrame:
+    """The leave-one-date-out medians as a printable frame (one row per date)."""
+    return pd.DataFrame(
+        [
+            {
+                "omitted": date,
+                "median_kmh": round(median, 1),
+                "n_used": used,
+            }
+            for date, median, used in zip(loo.dates, loo.medians_kmh, loo.n_used, strict=True)
         ]
     )
 
@@ -241,6 +284,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         print("\nobserved backward wave speed, adjacent mainline station pairs:")
         print(_wave_table(wave).to_string(index=False))
+        if wave.loo is not None:
+            print("\nleave-one-date-out (the corridor re-estimated without each date):")
+            print(_loo_table(wave.loo).to_string(index=False))
         print(f"detector-estimated backward wave speed: {summary_line(wave)}")
     observations.to_json(out_dir / "observations.json")
 
