@@ -1,10 +1,11 @@
 # Onboarding a third corridor from public data: MnDOT I-94 westbound, east St. Paul
 
-**Status (2026-09-23):** data, network, demand and fundamental diagram are
-committed; the 20-seed baseline against the detector observations and the
-strategy sweep are being run on a self-deleting cloud VM (§6 is filled in
-from the committed artifacts when they land). Every number below traces to a
-file named next to it.
+**Status (2026-09-23, end of the block):** data, network, demand and
+fundamental diagram are committed and the onboarding path works end to end;
+the corridor itself is **not reproduced** — two 20-seed cloud batteries
+failed for the reasons in §5a and §6, and no sweep was run on it. Numbers
+trace to a file named next to them; figures marked as session records are
+not committed.
 
 The point of this exercise is the product path, not the corridor: a
 traffic engineer with a bounding box and a detector export should get a
@@ -58,10 +59,10 @@ Selection record: `data/mndot/mndot_i94_wb_stpaul/selection.json`.
 | Step | Command | Time |
 |---|---|---|
 | Fetch nine weekdays (72 detectors × 3 series) into the cache | `scripts/mndot_fetch.py` (or the loader) | 106 s |
-| Station table, tidy frame, observations artifact | `uv run --no-sync python scripts/mndot_fetch.py --corridor "I-94 WB" --from-station S1063 --to-station S97 --dates 20260901,…,20260917 --window-s 300 --t0 05:30 --duration-s 14400 --out data/mndot/mndot_i94_wb_stpaul --config data/mndot/config/metro_config.xml.gz` | 2 s from cache |
+| Station table, tidy frame, observations artifact | `uv run --no-sync python scripts/mndot_fetch.py --corridor "I-94 WB" --from-station S1063 --to-station S97 --dates 20260901,20260902,20260903,20260908,20260909,20260910,20260915,20260916,20260917 --window-s 300 --t0 05:30 --duration-s 14400 --out data/mndot/mndot_i94_wb_stpaul --config data/mndot/config/metro_config.xml.gz --cache-dir data/mndot/cache --wave-context` (the first run fetches from the API; later runs read the cache) | 2 s from cache |
 | Network from the bounding box, ramps, station positions | `uv run --no-sync python scripts/onboard_corridor.py --name mndot_i94_wb_stpaul --bbox 44.9425 -93.0990 44.9613 -92.9612 --bearing 265 --stations …/stations.csv --stations-out …/stations_x.csv --workdir runs/onboard/mndot_i94_wb_stpaul --out scenarios/mndot_i94_wb_stpaul.yaml --duration-s 14400 --netconvert-extra "--ramps.guess --ramps.ramp-length 250" --max-chain-m 11400` | ≈60 s (Overpass + netconvert) |
 | Demand, ramps, boundary, population | `uv run --no-sync python scripts/corridor_demand.py --scenario scenarios/mndot_i94_wb_stpaul.yaml --observations …/observations.json --stations-x …/stations_x.csv --upstream S1063 --downstream S97 --idm-calibration artifacts/idm_i24_capacity.json --demand-out artifacts/demand_mndot_i94_wb_stpaul.json` | 3 s |
-| Fundamental diagram from per-lane 1-min samples | `calibration.fd_fit.fit_triangular_fd` on the cache (see the artifact's `source`) | 40 s |
+| Fundamental diagram from per-lane 1-min samples | no script yet: the fit was made in a session with `calibration.fd_fit.fit_triangular_fd` on per-lane 1-min samples built from the cache; the artifact's `source` and `notes` record the inputs, subsample and seed (backlog item 5 in §7) | 40 s |
 
 Result of the network step as committed (`scenarios/mndot_i94_wb_stpaul.yaml`,
 `data/mndot/mndot_i94_wb_stpaul/stations_x.csv`, `observations.json`): an
@@ -79,15 +80,21 @@ one guided flow in the dashboard's **Onboard corridor** view, which closes
 item 4 of §7: the same three inputs, no Python session.
 
 1. **Name, bounding box, bearing, and the two boundary stations.** For this
-   corridor: `mndot_i94_wb_stpaul`, `44.9425, -93.0990, 44.9613, -92.9612`,
-   bearing 265, upstream `S1063`, downstream `S97`.
+   corridor: a *new* name such as `mndot_i94_wb_trial` (the service answers
+   409 for a name whose preset or extract already exists, and
+   `mndot_i94_wb_stpaul` ships with the repository), the box
+   `44.9425, -93.0990, 44.9613, -92.9612`, bearing 265, upstream `S1063`,
+   downstream `S97`.
 2. **The two CSVs.** The detector export on the tidy contract
    (`timestamp, station, flow_veh_h, occupancy_pct, speed_ms, lanes, kind`;
    a `column_map` maps a state DOT's own column names onto it) and the
    station inventory (`station,label,lat,lon,lanes,kind`).
    `scripts/mndot_fetch.py` writes both for MnDOT.
-3. **Window, span start, duration and warm-up** default to 300 s, 06:00,
-   14,400 s and 1,800 s — the span §4 analyses.
+3. **Window, span start, duration and warm-up.** Enter 300 s, **05:30**,
+   14,400 s and 1,800 s to match the committed artifact (`t0_local` 05:30,
+   48 windows to 09:30; the warm-up makes the analysed span 06:00–09:30). The
+   form's default start of 06:00 would ask for a span the upload does not
+   cover.
 
 `POST /api/v1/corridors` (docs/CONTRACTS.md, "Corridor onboarding from the
 dashboard") runs the same pipeline as a job: Overpass extract → chain, lanes,
@@ -98,8 +105,8 @@ table above is now a thin wrapper over) → the scenario installed as a
 length, lane profile, the ramps and *where each ramp's flow came from*, the
 stations it placed and the ones it refused to place, the demand peaks, the
 carried residuals and the zeroed ramps — and offers **Run 20 seeds** followed
-by **Report against observations**, which is the report of §6 scored against
-the detector export that was uploaded.
+by **Report against observations**, which scores the finished run's GEH and
+RMSPE against the detector export that was uploaded.
 
 A name that already exists as a preset is refused (409) rather than
 overwritten, so re-onboarding a corridor is an explicit new name. Nothing in
@@ -202,10 +209,12 @@ entry is free-flowing). What the number is worth:
 ## 5. Demand (`artifacts/demand_mndot_i94_wb_stpaul.json`)
 
 Entry inflow = S1063's cross-section count per 5-min window (peak 4,275 veh/h).
-Ramp flows close the mainline balance bracket by bracket: live ramp detectors
-fix the split between ramps of the same kind and the flow of the kind that is
-not closing; the closing kind absorbs the remainder; a bracket with no ramp of
-the needed kind carries its residual forward (listed under
+Ramp flows are set so that, between two consecutive stations, the entrances
+and exits account for the observed change in flow: where a ramp detector is
+live its reading is used (and fixes the shares between ramps of the same
+kind), and the ramps without a usable detector take whatever remains of the
+observed change; a bracket with no ramp of the needed kind carries its
+residual forward (listed under
 `bracket_residuals` — the largest is the collector–distributor re-entry
 before Kellogg Blvd, +775 veh/h; the other is the White Bear Ave entrance,
 which the OSM discovery did not find as a link and whose +442 veh/h lands on
@@ -247,7 +256,8 @@ past S97 (`--max-chain-m 11400`) so the downstream speed boundary can throttle
 could restrict). In a 35-minute peak slice on the rebuilt network (a local session run, not
 committed) every upstream entrance delivered 100 % of its demand and the two
 downtown-approach entrances queued under the mainline's congestion (37 % and
-52 % in the slice), which is the observed condition there. Round 2 (§6) runs this scenario
+52 % in the slice), which is the observed condition there. The 20-seed battery on this network
+then gridlocked (§6). Round 2 (§6) runs this scenario
 (`21720f1e998c`).
 
 ## 6. Baseline batteries (two cloud rounds, 2026-09-23) — the corridor is not reproduced
@@ -299,8 +309,9 @@ feeds the White Bear Ave exit: a weave), T.H.61 NB (a 1,071 m added lane
 that runs on as a through lane) and T.H.52 (the lane feeds both lanes of an
 exit piece) — are exactly where the jam starts. Merge waits fell with a
 stronger gap acceptance (7.2 → 4.4 s) but the downstream speeds did not move
-(3.4, 1.0, 1.7 m/s at the last three stations). The next model is a weave
-section, not a merge.
+(3.4, 1.0, 1.7 m/s at the last three stations). What is missing is a model
+of a weaving section — an entrance lane that also serves an exit over a short
+distance — not another merge model.
 
 Cost of both rounds: an estimate from the machine-hours, about 2.2 hours of
 n2-standard-32, ≈ $3.3.
@@ -309,16 +320,19 @@ n2-standard-32, ≈ $3.3.
 
 1. The White Bear Ave entrance is not a `motorway_link` chain in OSM; ramp
    discovery should also accept lane-add merges tagged on the mainline way.
-1b. Acceleration lanes are usually absent from OSM; the onboarding path
-   should apply ramp guessing by default and print the lane profile beside the
-   inventory's lane counts at every station so a mismatch is caught before a
-   battery runs (this round caught it after one).
+1b. Acceleration lanes are usually absent from OSM. Done the same night: the
+   onboarding step compiles with ramp guessing when `--netconvert-extra` asks
+   for it and prints the lane profile beside the inventory's lane counts at
+   every station (`--fail-on-lane-mismatch` turns a disagreement into a
+   failure). Still open: applying ramp guessing by default.
 2. Collector–distributor roads: the discovery captures the split as an
    off-ramp and misses the re-entry; the balance step carries the residual.
    A C-D road should become a parallel edge chain with its own ramps.
 3. Dead detectors are common (4 of 13 ramp detectors here); the loader flags
    them by mass balance, but a reviewer-facing "detector health" table
    belongs in the report.
-4. The demand step is a script; the dashboard needs the same three inputs
-   (bounding box + bearing, detector CSV, upstream/downstream station) as a
-   guided flow.
+4. Done the same night: the dashboard's Onboard view takes the same three
+   inputs (bounding box + bearing, detector CSV, upstream/downstream station)
+   and installs the preset (§3, "From the dashboard").
+5. The fundamental-diagram fit from the raw cache is not a script yet; the
+   committed artifact records its inputs.

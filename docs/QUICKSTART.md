@@ -66,7 +66,7 @@ results_root    PASS    <repo>/runs writable
 data_roots      PASS    <repo>/runs/uploads, <repo>/runs
 scenarios       PASS    22/22 parse
 scenario_files  PASS    38/38 referenced files present
-osm_extracts    PASS    5 under <repo>/data/osm: i24_motion.osm, i24_motion_corrected.osm, i24_nashville.osm, mndot_i94_wb_stpaul.osm
+osm_extracts    PASS    5 under <repo>/data/osm: i24_motion.osm, i24_motion_corrected.osm, i24_nashville.osm, mndot_i94_wb_stpaul.osm (the doctor lists the first four)
 disk            PASS    31.6 GB free at <repo>/runs
 memory          PASS    16.0 GB total
 smoke           PASS    ring_sugiyama 10 sim-s in 0.21 s (93 steps/s, 47x real time)
@@ -151,7 +151,7 @@ curl -s -X POST http://127.0.0.1:8000/api/v1/scenarios -H "X-API-Key: $KEY" \
   -H 'Content-Type: application/x-yaml' --data-binary @scenarios/ring_sugiyama.yaml
 ```
 
-Run it with **2 replicates** (1.0 s here — the ring runs at ~1,450× real time):
+Run it with **2 replicates** (about a second here; the doctor's 10-second smoke above reported 47× real time on this laptop while other work ran — the §3.4 performance targets are measured by the perf workflow, not by the doctor):
 
 ```sh
 export SCN=scn_785240552ea8          # the scenario_id you just got back
@@ -218,9 +218,9 @@ Read the criteria table of *this* report as the honest output it is:
 
 Criteria whose evidence is observed field data the service does not hold
 (link counts, an observed speed field, the ring benchmarks, the sensitivity
-grid) come back **not evaluated**, and an unevaluated criterion counts as
-failing — the API never accepts a number typed into a request body
-(CLAUDE.md §7.4). An API report is a run-set metrics bundle with the profile's
+grid) come back **NOT EVALUATED** — a third status beside PASS and FAIL; a
+report with such rows does not claim validation, and the API never accepts a
+number typed into a request body (CLAUDE.md §7.4). An API report is a run-set metrics bundle with the profile's
 thresholds stated; the signed-off corridor reports under `docs/reports/` are
 produced by scripts that compute the observed side from data.
 
