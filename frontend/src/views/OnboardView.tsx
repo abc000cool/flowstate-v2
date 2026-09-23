@@ -610,6 +610,22 @@ export function OnboardView(): JSX.Element {
               </table>
             </div>
 
+            {summary.lanes_compared !== undefined && summary.lanes_compared > 0 && (
+              <>
+                <p className="small">
+                  lanes vs inventory:{' '}
+                  {summary.lanes_compared - (summary.lane_mismatches?.length ?? 0)} of{' '}
+                  {summary.lanes_compared} stations match
+                </p>
+                {(summary.lane_mismatches ?? []).map((m) => (
+                  <p className="small hint-amber" key={`lanes-${m.station}`}>
+                    {m.station} at {formatDistKm(m.x_m)}: the map carries {m.compiled_lanes} lanes,
+                    the inventory says {m.inventory_lanes} — {m.hint}.
+                  </p>
+                ))}
+              </>
+            )}
+
             {summary.stations_rejected.length > 0 && (
               <p className="small">
                 {summary.stations_rejected.map((s) => (

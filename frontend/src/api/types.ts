@@ -476,6 +476,21 @@ export interface CorridorRamp {
   station?: string | null;
 }
 
+/** Mirrors the API's `CorridorLaneMismatchOut`: one mainline station where the
+ * compiled map and the detector inventory disagree on the lane count. Reported,
+ * never enforced — which of the two is wrong is the operator's call. */
+export interface CorridorLaneMismatch {
+  station: string;
+  /** Position along the corridor [m]. */
+  x_m: number;
+  /** Lanes the compiled network carries there — what SUMO simulates. */
+  compiled_lanes: number;
+  /** Lanes the detector inventory reports at that station. */
+  inventory_lanes: number;
+  /** One line naming the likeliest cause (a triage aid, not a diagnosis). */
+  hint: string;
+}
+
 /** Mirrors the API's `CorridorSummaryOut`: what the onboarding discovered and
  * derived. None of it is a claim about how the corridor behaves — that is
  * what a report scored against the observations answers. */
@@ -495,6 +510,11 @@ export interface CorridorSummary {
   residuals: Record<string, unknown>[];
   zeroed_ramps: string[];
   unmatched_detectors: string[];
+  /** Mainline stations whose lane count could be compared with the map
+   * (absent on a corridor onboarded before the check existed). */
+  lanes_compared?: number;
+  /** Of those, the ones that disagree. */
+  lane_mismatches?: CorridorLaneMismatch[];
   lines: string[];
 }
 

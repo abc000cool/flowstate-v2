@@ -30,7 +30,9 @@ from microsim.runner import (
 )
 from microsim.scenarios import (
     CorridorBuild,
+    LaneMismatch,
     corridor_from_bbox,
+    lanes_at_x,
     load_scenario,
     resolve_scenario,
     run_scenario,
@@ -52,6 +54,7 @@ from microsim.vehicles import (
 __all__ = [
     "CorridorBuild",
     "FleetPlan",
+    "LaneMismatch",
     "MicrosimBackend",
     "NetBundle",
     "NetProjection",
@@ -67,6 +70,7 @@ __all__ = [
     "draw_vehicle_params",
     "fuel_mg_to_ml",
     "is_run_complete",
+    "lanes_at_x",
     "load_idm_calibration",
     "load_scenario",
     "lonlat_to_net_xy",

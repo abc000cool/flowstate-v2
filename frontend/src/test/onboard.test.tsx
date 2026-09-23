@@ -36,6 +36,16 @@ const SUMMARY = {
   ],
   stations_rejected: [{ station: 'S1450', x_m: 4820, offset_m: 168.4 }],
   stations_without_chain_x: ['S1450'],
+  lanes_compared: 2,
+  lane_mismatches: [
+    {
+      station: 'S1063',
+      x_m: 1110,
+      compiled_lanes: 4,
+      inventory_lanes: 3,
+      hint: 'acceleration lane added by ramp guessing',
+    },
+  ],
   inflow_peak_veh_h: 4275,
   ramps: [
     {
@@ -319,6 +329,11 @@ describe('OnboardView', () => {
     expect(screen.getByText(/could not be assigned to any ramp/)).toHaveTextContent('775 veh/h');
     expect(screen.getByText(/Zeroed: Kellogg Blvd exit/)).toBeInTheDocument();
     expect(screen.getByText(/S1450 sits 168 m from the centreline/)).toBeInTheDocument();
+    // the lane pre-flight: the station the map and the inventory disagree on
+    expect(screen.getByText(/lanes vs inventory: 1 of 2 stations match/)).toBeInTheDocument();
+    expect(screen.getByText(/S1063 at 1.1 km/)).toHaveTextContent(
+      'the map carries 4 lanes, the inventory says 3',
+    );
   });
 
   it('launches 20 seeds and only then offers the observed report', async () => {

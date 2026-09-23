@@ -347,7 +347,7 @@ def _run_onboarding(
     result.demand["scenario"] = str(scenario_path)
     result.demand["observations"] = str(observations_path)
     (corridor_dir / DEMAND_FILENAME).write_text(json.dumps(result.demand, indent=1))
-    summary = _summary(name, build, result)
+    summary = _summary(name, build, result, station_rows)
     (corridor_dir / SUMMARY_FILENAME).write_text("\n".join(summary["lines"]) + "\n")
 
     _install_atomic(scenario_path, preset_path)
@@ -435,8 +435,22 @@ def _write_station_table(path: Path, rows: list[dict[str, Any]], build: Corridor
 # ---------------------------------------------------------------------------
 
 
-def _summary(name: str, build: CorridorBuild, result: OnboardingResult) -> dict[str, Any]:
-    """What the onboarding found, in the shape of ``api.schemas.CorridorSummaryOut``."""
+def _summary(
+    name: str,
+    build: CorridorBuild,
+    result: OnboardingResult,
+    stations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """What the onboarding found, in the shape of ``api.schemas.CorridorSummaryOut``.
+
+    ``stations`` is the uploaded inventory: it carries the ``lanes`` column
+    the compiled lane profile is checked against
+    (:meth:`microsim.scenarios.CorridorBuild.lane_check`, the pre-flight of
+    docs/ONBOARDING_MNDOT.md §7), which is reported rather than enforced —
+    a lane disagreement is for the operator to judge, not for the job to
+    fail on.
+    """
+    lane_mismatches = build.lane_check(stations)
     inflow_peak = max((v for _, v in result.demand["inflow_steps"]), default=0.0) * 3600.0
     ramps = []
     for record in result.demand["ramps"]:
@@ -474,5 +488,16 @@ def _summary(name: str, build: CorridorBuild, result: OnboardingResult) -> dict[
         "residuals": list(result.residuals),
         "zeroed_ramps": list(result.zeroed_ramps),
         "unmatched_detectors": list(result.unmatched_detectors),
-        "lines": [build.summary(), *result.summary],
+        "lanes_compared": build.lanes_compared(stations),
+        "lane_mismatches": [
+            {
+                "station": m.station,
+                "x_m": m.x_m,
+                "compiled_lanes": m.compiled_lanes,
+                "inventory_lanes": m.inventory_lanes,
+                "hint": m.hint,
+            }
+            for m in lane_mismatches
+        ],
+        "lines": [build.summary(stations), *result.summary],
     }

@@ -174,6 +174,12 @@ class TestOnboardingHappyPath:
         assert [s["station"] for s in summary["stations_rejected"]] == ["SOFF"]
         assert summary["stations_rejected"][0]["offset_m"] > 60.0
         assert summary["stations_without_chain_x"] == ["SOFF"]
+        # The lane pre-flight: the fixture is 3 lanes throughout and every
+        # mainline station's inventory says 3, so nothing disagrees. The
+        # rejected station is not on this carriageway and is not compared.
+        assert summary["lanes_compared"] == 3
+        assert summary["lane_mismatches"] == []
+        assert any("lanes vs inventory: 3 of 3" in line for line in summary["lines"])
 
     def test_demand_traces_to_the_stations(self, onboarded: dict[str, Any]) -> None:
         summary = onboarded["summary"]

@@ -805,6 +805,27 @@ class CorridorRampOut(BaseModel):
     """The observed ramp detector it was matched to, when there was one."""
 
 
+class CorridorLaneMismatchOut(BaseModel):
+    """One mainline station where the compiled map and the inventory disagree.
+
+    Reported, never enforced: the map and the detector inventory are both
+    evidence, and which of them is wrong is the operator's call. A
+    disagreement at a merge usually means the map tags the mainline straight
+    through it (no acceleration lane), which starves the on-ramp — worth
+    knowing before a battery runs, not after.
+    """
+
+    station: str
+    x_m: float
+    """Position along the corridor [m]."""
+    compiled_lanes: int
+    """Lanes the compiled network carries there — what SUMO will simulate."""
+    inventory_lanes: int
+    """Lanes the detector inventory reports at that station."""
+    hint: str
+    """One line naming the likeliest cause (a triage aid, not a diagnosis)."""
+
+
 class CorridorSummaryOut(BaseModel):
     """What the onboarding found — the panel the dashboard shows.
 
@@ -836,6 +857,11 @@ class CorridorSummaryOut(BaseModel):
     remainder is recorded and carried, never smeared (CLAUDE.md §0.1)."""
     zeroed_ramps: list[str] = Field(default_factory=list)
     unmatched_detectors: list[str] = Field(default_factory=list)
+    lanes_compared: int = 0
+    """Mainline stations whose lane count could be compared with the map."""
+    lane_mismatches: list[CorridorLaneMismatchOut] = Field(default_factory=list)
+    """Of those, the ones that disagree (``lanes_compared`` minus this many
+    match)."""
     lines: list[str] = Field(default_factory=list)
     """The same summary as plain text (``summary.txt`` in the bundle)."""
 

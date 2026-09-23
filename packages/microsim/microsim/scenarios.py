@@ -74,6 +74,14 @@ REPO_ROOT: Path = SCENARIOS_DIR.parent
 #: (``scripts/i24_geometry.py``).
 MAX_STATION_OFFSET_M: float = 60.0
 
+#: How close a discovered ramp must be to a station [m] for a lane-count
+#: disagreement there to be read as ramp geometry — an acceleration or
+#: auxiliary lane — rather than a plain map/inventory disagreement. It covers
+#: ``netconvert``'s guessed ramp length (``--ramps.ramp-length``, 100 m by
+#: default and 250 m on corridors onboarded with ramp guessing) plus the gore
+#: area, so a station inside the widened stretch is attributed to it.
+LANE_HINT_RAMP_WINDOW_M: float = 400.0
+
 #: Named scenario whose fleet, time-discretization and replicate settings seed
 #: the defaults of an OSM-onboarded scenario: ``corridor_10km`` carries the
 #: Phase-1 tuning record (EIDM, heterogeneity 0.15, 0.5 s steps) that makes an
@@ -414,6 +422,83 @@ def _station_rows(
 
 
 @dataclass(frozen=True)
+class LaneMismatch:
+    """One station where the compiled network and the detector inventory disagree.
+
+    The compiled lane count is what SUMO will actually simulate at that
+    position; the inventory count is how many lanes the agency's detector
+    station covers. They must agree before a battery runs: a corridor whose
+    map is a lane short at a merge starves the on-ramps it was calibrated
+    with, and nothing downstream of that — flows, GEH, wave speeds — means
+    anything (docs/ONBOARDING_MNDOT.md §7).
+
+    Attributes:
+        station: Inventory station id.
+        x_m: Position along the corridor chain [m] (docs/CONTRACTS.md §3).
+        compiled_lanes: Lane count of the compiled network there.
+        inventory_lanes: Lane count the detector inventory reports.
+        hint: One line naming the likeliest cause. It is a triage aid, not a
+            diagnosis: the network and the inventory are both evidence and
+            which one is wrong is for the operator to decide.
+    """
+
+    station: str
+    x_m: float
+    compiled_lanes: int
+    inventory_lanes: int
+    hint: str
+
+    @property
+    def delta(self) -> int:
+        """Compiled minus inventory lanes (positive: the map has more)."""
+        return self.compiled_lanes - self.inventory_lanes
+
+
+def lanes_at_x(profile: Sequence[tuple[float, float, int]], x_m: float) -> int | None:
+    """Compiled lane count at a chain position.
+
+    Args:
+        profile: ``(x_start_m, x_end_m, lanes)`` runs, as
+            :attr:`CorridorBuild.lanes_profile` carries them.
+        x_m: Position along the chain [m].
+
+    Returns:
+        The lane count of the run containing ``x_m`` (the last run at the
+        chain's exact end), or ``None`` when ``x_m`` lies off the chain.
+    """
+    for x0, x1, lanes in profile:
+        if x0 <= x_m < x1:
+            return int(lanes)
+    if profile and x_m == profile[-1][1]:
+        return int(profile[-1][2])
+    return None
+
+
+def _lane_hint(delta: int, x_m: float, ramps: Sequence[RampCandidate]) -> str:
+    """One line naming the likeliest cause of a lane-count disagreement.
+
+    Args:
+        delta: Compiled minus inventory lanes (non-zero).
+        x_m: Station position along the chain [m].
+        ramps: Discovered ramps, for their positions.
+
+    Returns:
+        A short hint. Near a ramp the disagreement is read as ramp geometry:
+        an extra compiled lane is the acceleration lane ``netconvert``'s
+        ``--ramps.guess`` builds, and an extra inventory lane is an
+        auxiliary/deceleration lane the detector station covers but the map
+        does not carry. Away from every ramp neither story applies and the
+        hint says only that the two sources differ.
+    """
+    near_ramp = any(abs(float(r.x_m) - x_m) <= LANE_HINT_RAMP_WINDOW_M for r in ramps)
+    if near_ramp and delta > 0:
+        return "acceleration lane added by ramp guessing"
+    if near_ramp and delta < 0:
+        return "auxiliary lane counted in the inventory"
+    return "map lane count differs from the inventory"
+
+
+@dataclass(frozen=True)
 class CorridorBuild:
     """A corridor onboarded from a bounding box (CLAUDE.md §3.2.4).
 
@@ -461,8 +546,105 @@ class CorridorBuild:
         """Write the scenario YAML (``ScenarioConfig.to_yaml``)."""
         self.config.to_yaml(path)
 
-    def summary(self) -> str:
-        """A plain-text report of what was discovered (for a CLI or a log)."""
+    def _lane_rows(self, stations: Sequence[Mapping[str, Any]]) -> list[tuple[str, float, int]]:
+        """Comparable mainline stations as ``(id, chain x [m], inventory lanes)``.
+
+        A row is comparable when it names a station, is mainline (``kind``
+        absent or ``"mainline"``), carries a positive integer ``lanes``, and
+        has a position on this chain — the build's own projection
+        (:attr:`station_x`) when it placed the station, else a numeric
+        ``x_m`` already in the row. Stations the projection rejected, and
+        positions off the chain, are dropped: they are not on this
+        carriageway, so their lane count says nothing about it.
+        """
+        rows: list[tuple[str, float, int]] = []
+        for row in stations:
+            station_id = str(row.get("station", row.get("id", ""))).strip()
+            if not station_id or station_id in self.stations_rejected:
+                continue
+            kind = str(row.get("kind") or "mainline").strip().lower()
+            if kind != "mainline":
+                continue
+            try:
+                lanes = int(float(str(row.get("lanes")).strip()))
+            except (TypeError, ValueError):
+                continue
+            if lanes <= 0:
+                continue
+            point = self.station_x.get(station_id)
+            if point is not None:
+                x_m = float(point.x_m)
+            else:
+                try:
+                    x_m = float(str(row.get("x_m")).strip())
+                except (TypeError, ValueError):
+                    continue
+            if lanes_at_x(self.lanes_profile, x_m) is None:
+                continue
+            rows.append((station_id, x_m, lanes))
+        return rows
+
+    def lane_check(
+        self, stations: Sequence[Mapping[str, Any]], *, tolerance: int = 0
+    ) -> list[LaneMismatch]:
+        """Compare the compiled lane profile with the detector inventory.
+
+        The pre-flight check of docs/ONBOARDING_MNDOT.md §7: at every
+        mainline station, how many lanes the compiled network carries versus
+        how many the agency's inventory says are there. It costs one build
+        and catches, before a 20-seed battery is spent on it, the two
+        onboarding defects that silently ruin one — a map that tags the
+        mainline straight through its merges (no acceleration lane, so the
+        on-ramps starve) and a map whose lane count is simply wrong.
+
+        Args:
+            stations: The onboarding station table: mappings with
+                ``station`` (or ``id``), ``lanes``, an optional ``kind``
+                (only ``mainline`` rows are compared) and, for a station
+                this build did not place itself, a numeric ``x_m``.
+            tolerance: Largest lane difference not reported; ``0`` (the
+                default) reports every disagreement.
+
+        Returns:
+            The mismatches, ordered by position along the corridor. An empty
+            list means every comparable mainline station agrees — it does
+            NOT mean the map is right where no station stands.
+        """
+        mismatches = []
+        for station_id, x_m, inventory in self._lane_rows(stations):
+            compiled = lanes_at_x(self.lanes_profile, x_m)
+            assert compiled is not None  # _lane_rows dropped the off-chain rows
+            if abs(compiled - inventory) <= tolerance:
+                continue
+            mismatches.append(
+                LaneMismatch(
+                    station=station_id,
+                    x_m=x_m,
+                    compiled_lanes=compiled,
+                    inventory_lanes=inventory,
+                    hint=_lane_hint(compiled - inventory, x_m, self.ramps),
+                )
+            )
+        return sorted(mismatches, key=lambda m: m.x_m)
+
+    def lanes_compared(self, stations: Sequence[Mapping[str, Any]]) -> int:
+        """How many mainline stations :meth:`lane_check` was able to compare.
+
+        The denominator of the lanes-vs-inventory line: rows that are not
+        mainline, carry no usable ``lanes``, or sit off this chain are not
+        compared and are not counted here.
+        """
+        return len(self._lane_rows(stations))
+
+    def summary(self, stations: Sequence[Mapping[str, Any]] | None = None) -> str:
+        """A plain-text report of what was discovered (for a CLI or a log).
+
+        Args:
+            stations: The onboarding station table. When given, the report
+                ends with the lanes-vs-inventory block
+                (:meth:`lane_check`); without it that check is not run and
+                the block is omitted.
+        """
         south, west, north, east = self.bbox
         lines = [
             f"corridor {self.config.name}: {self.length_m / 1000.0:.2f} km along "
@@ -499,6 +681,18 @@ class CorridorBuild:
                     f"    {sid:>12s} REJECTED offset {p.offset_m:8.1f} m "
                     f"(nearest x={p.x_m / 1000.0:.3f} km)"
                 )
+        if stations is not None:
+            compared = self.lanes_compared(stations)
+            mismatches = self.lane_check(stations)
+            lines.append(
+                f"  lanes vs inventory: {compared - len(mismatches)} of "
+                f"{compared} mainline stations match"
+            )
+            lines += [
+                f"    {m.station:>12s} x={m.x_m / 1000.0:7.3f} km  map {m.compiled_lanes} lanes, "
+                f"inventory {m.inventory_lanes} lanes  ({m.hint})"
+                for m in mismatches
+            ]
         return "\n".join(lines)
 
 

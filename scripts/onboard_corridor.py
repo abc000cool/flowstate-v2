@@ -16,14 +16,23 @@ Usage (from the repository root)::
         --out scenarios/mndot_i94_wb.yaml
 
 The stations CSV carries the detector inventory — columns ``station``,
-``label``, ``lat``, ``lon``, ``lanes``, ``kind`` (only ``station``/``id``,
-``lat`` and ``lon`` are read; every column is preserved on write). It is
+``label``, ``lat``, ``lon``, ``lanes``, ``kind`` (``station``/``id``, ``lat``
+and ``lon`` place the station; ``lanes`` and ``kind`` feed the lane check
+below; every column is preserved on write). It is
 written back with ``x_m`` (position along the corridor) and ``offset_m``
 (perpendicular distance from the centreline) filled in; a station farther
 than ``--max-station-offset-m`` from the corridor is left with an empty
 ``x_m`` and reported as rejected — it sits on the opposite carriageway, a
 frontage road or another route, and comparing its counts against this
 corridor would be wrong.
+
+**Lane pre-flight.** The report ends with a lanes-vs-inventory block: the
+compiled lane count at every mainline station against that station's ``lanes``
+column (:meth:`microsim.scenarios.CorridorBuild.lane_check`). It is the check
+of docs/ONBOARDING_MNDOT.md §7 — a map that tags the mainline straight through
+its merges starves the on-ramps, and finding that out costs one build here
+instead of a 20-seed battery. ``--fail-on-lane-mismatch`` makes a disagreement
+larger than ``--lane-tolerance`` exit 3 so a batch script stops there.
 
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
@@ -46,6 +55,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Columns the CLI adds to the stations CSV it writes back.
 STATION_OUT_COLUMNS: tuple[str, ...] = ("x_m", "offset_m", "edge_id", "lane_pos_m")
+
+#: Exit status of ``--fail-on-lane-mismatch`` when the compiled lane profile
+#: and the detector inventory disagree by more than the tolerance. Its own
+#: code (not 1) so a batch script can tell a lane disagreement apart from a
+#: build that failed outright.
+LANE_MISMATCH_EXIT: int = 3
 
 
 def read_stations(path: Path) -> list[dict[str, str]]:
@@ -178,6 +193,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="drop chain edges starting beyond this length [m]",
     )
+    parser.add_argument(
+        "--lane-tolerance",
+        type=int,
+        default=1,
+        help="lane difference between the compiled map and the inventory that "
+        "--fail-on-lane-mismatch tolerates (default: 1)",
+    )
+    parser.add_argument(
+        "--fail-on-lane-mismatch",
+        action="store_true",
+        help="exit 3 when any mainline station's compiled lane count differs "
+        "from the inventory by more than --lane-tolerance",
+    )
     return parser.parse_args(argv)
 
 
@@ -207,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         max_chain_m=args.max_chain_m,
     )
     build.to_yaml(args.out)
-    print(build.summary())
+    print(build.summary(stations))
     print(f"  scenario  {args.out}")
     if rows:
         out_csv = args.stations_out or args.out.parent / f"{args.name}_stations.csv"
@@ -218,6 +246,16 @@ def main(argv: list[str] | None = None) -> int:
         f"({args.inflow_veh_h:g} veh/h) and every ramp carries 0 veh/h — "
         "calibrate (CLAUDE.md §6) before any claim about this corridor."
     )
+    over = build.lane_check(stations, tolerance=args.lane_tolerance)
+    if over and args.fail_on_lane_mismatch:
+        print(
+            f"  FAIL: {len(over)} mainline station(s) differ from the inventory by more "
+            f"than {args.lane_tolerance} lane(s): "
+            + ", ".join(
+                f"{m.station} (map {m.compiled_lanes}, inventory {m.inventory_lanes})" for m in over
+            )
+        )
+        return LANE_MISMATCH_EXIT
     return 0
 
 

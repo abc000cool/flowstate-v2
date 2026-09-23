@@ -1049,6 +1049,16 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
   ],
   stations_rejected: [{ station: 'S1450', x_m: 4820, offset_m: 168.4 }],
   stations_without_chain_x: ['S1450'],
+  lanes_compared: 5,
+  lane_mismatches: [
+    {
+      station: 'S1947',
+      x_m: 3260,
+      compiled_lanes: 4,
+      inventory_lanes: 3,
+      hint: 'acceleration lane added by ramp guessing',
+    },
+  ],
   inflow_peak_veh_h: 4275,
   ramps: [
     {

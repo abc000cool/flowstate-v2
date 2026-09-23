@@ -14,10 +14,13 @@ lon/lat → linear x) and :func:`microsim.scenarios.corridor_from_bbox`, the
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 import urllib.parse
 import urllib.request
 from itertools import pairwise
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import sumolib
@@ -474,3 +477,74 @@ class TestCorridorFromBbox:
         bearing = params.pop("bearing_deg")
         with pytest.raises(ValueError, match=needle):
             corridor_from_bbox(name, bbox, bearing, **params)
+
+
+# --- the onboarding CLI's lane pre-flight (docs/ONBOARDING_MNDOT.md §7) -------
+
+
+def _load_cli() -> ModuleType:
+    """Import ``scripts/onboard_corridor.py`` by path (``scripts/`` is not a package)."""
+    path = Path(__file__).resolve().parents[2] / "scripts" / "onboard_corridor.py"
+    spec = importlib.util.spec_from_file_location("flowstate_onboard_corridor", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclass annotations resolve through sys.modules
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestOnboardCLILaneCheck:
+    """``main([...])`` on the fixture: the block prints, the flag gates the exit."""
+
+    def _stations_csv(self, path: Path, lanes_at_s2: int) -> Path:
+        path.write_text(
+            "station,lat,lon,lanes,kind\n"
+            f"S1,{LATS[1]:.6f},{LONS[1]:.6f},3,mainline\n"
+            f"S2,{LATS[4]:.6f},{LONS[4]:.6f},{lanes_at_s2},mainline\n"
+            f"R1,{LATS[2] - 0.0012:.6f},{LONS[2] + 0.004:.6f},1,off_ramp\n"
+        )
+        return path
+
+    def _argv(self, tmp_path: Path, osm_file: Path, stations: Path) -> list[str]:
+        return [
+            "--name",
+            "fixture_cli",
+            "--bbox",
+            *[f"{v:.4f}" for v in BBOX],
+            "--bearing",
+            "90",
+            "--workdir",
+            str(tmp_path / "work"),
+            "--out",
+            str(tmp_path / "fixture_cli.yaml"),
+            "--stations",
+            str(stations),
+            "--osm-file",
+            str(osm_file),
+            "--duration-s",
+            "60",
+        ]
+
+    def test_matching_inventory_prints_the_block_and_exits_zero(self, tmp_path, osm_file, capsys):
+        cli = _load_cli()
+        stations = self._stations_csv(tmp_path / "stations.csv", lanes_at_s2=3)
+        code = cli.main([*self._argv(tmp_path, osm_file, stations), "--lane-tolerance", "0"])
+        out = capsys.readouterr().out
+        assert code == 0
+        # The ramp detector is not a mainline station, so 2 of 3 rows are compared.
+        assert "lanes vs inventory: 2 of 2 mainline stations match" in out
+
+    def test_fail_flag_exits_three_on_a_disagreement(self, tmp_path, osm_file, capsys):
+        cli = _load_cli()
+        stations = self._stations_csv(tmp_path / "stations.csv", lanes_at_s2=4)
+        argv = self._argv(tmp_path, osm_file, stations)
+        assert cli.main([*argv, "--lane-tolerance", "0"]) == 0  # reported, not enforced
+        assert "lanes vs inventory: 1 of 2 mainline stations match" in capsys.readouterr().out
+
+        code = cli.main([*argv, "--lane-tolerance", "0", "--fail-on-lane-mismatch"])
+        out = capsys.readouterr().out
+        assert code == cli.LANE_MISMATCH_EXIT == 3
+        assert "map 3 lanes, inventory 4 lanes" in out
+        assert "FAIL: 1 mainline station(s) differ" in out and "S2 (map 3, inventory 4)" in out
+        # One lane of slack is the default, so the same build passes without it.
+        assert cli.main([*argv, "--fail-on-lane-mismatch"]) == 0

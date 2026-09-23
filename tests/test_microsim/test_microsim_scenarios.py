@@ -23,9 +23,10 @@ from flowstate_core.config import (
     ScenarioConfig,
     config_hash,
 )
-from microsim import load_scenario, resolve_scenario, run_micro, scenario_from_osm
+from microsim import load_scenario, resolve_scenario, run_micro, scenario_from_osm, scenarios
 from microsim import networks as microsim_networks
-from microsim.scenarios import OSM_DEFAULTS_SCENARIO, SCENARIOS_DIR
+from microsim.geo import PointOnChain, RampCandidate
+from microsim.scenarios import OSM_DEFAULTS_SCENARIO, SCENARIOS_DIR, CorridorBuild
 
 
 class TestRingSugiyamaYaml:
@@ -233,3 +234,108 @@ class TestScenarioFromOSM:
         assert meta["seeded"] is False
         assert meta["n_vehicles_departed"] > 0
         assert paths.trajectories.is_file() and paths.edges.is_file()
+
+
+# --- lane profile vs detector inventory (docs/ONBOARDING_MNDOT.md §7) ---------
+
+
+def _synthetic_build() -> CorridorBuild:
+    """A :class:`CorridorBuild` with a hand-made lane profile and two ramps.
+
+    No SUMO: the lane check reads only the lane profile, the ramp positions
+    and the projected station positions, so the whole check is exercised from
+    literals. Lanes: 3 up to x=1000 m, 4 through the merge (1000–1400 m,
+    an acceleration lane), 3 again to the end at 3000 m.
+    """
+    return CorridorBuild(
+        config=load_scenario("corridor_10km"),
+        chain_edges=("e0", "e1"),
+        length_m=3000.0,
+        lanes_profile=((0.0, 1000.0, 3), (1000.0, 1400.0, 4), (1400.0, 3000.0, 3)),
+        ramps=(
+            RampCandidate(kind="on", edges=("r1",), attach_edge="e1", x_m=1000.0),
+            RampCandidate(kind="off", edges=("r2",), attach_edge="e1", x_m=2600.0),
+        ),
+        net_path=Path("net.xml"),
+        osm_file=Path("extract.osm"),
+        bbox=(44.0, -93.0, 45.0, -92.0),
+        bearing_deg=270.0,
+        station_x={
+            "S_ok": PointOnChain(x_m=500.0, offset_m=3.0, edge_id="e0", lane_pos=500.0),
+            "S_merge": PointOnChain(x_m=1200.0, offset_m=4.0, edge_id="e1", lane_pos=200.0),
+            "S_far": PointOnChain(x_m=2000.0, offset_m=4.0, edge_id="e1", lane_pos=1000.0),
+            "S_exit": PointOnChain(x_m=2500.0, offset_m=4.0, edge_id="e1", lane_pos=1500.0),
+            "R_on": PointOnChain(x_m=1000.0, offset_m=5.0, edge_id="e1", lane_pos=0.0),
+        },
+        stations_rejected={
+            "S_other": PointOnChain(x_m=800.0, offset_m=180.0, edge_id="e0", lane_pos=800.0)
+        },
+    )
+
+
+#: The inventory the synthetic build is checked against: one agreeing
+#: station, one at the guessed merge, one plain disagreement away from any
+#: ramp, one auxiliary lane beside an exit, plus rows that must not be
+#: compared at all (a ramp detector, an off-corridor station, a blank count).
+_INVENTORY: list[dict[str, object]] = [
+    {"station": "S_ok", "lanes": 3, "kind": "mainline"},
+    {"station": "S_merge", "lanes": 3, "kind": "mainline"},
+    {"station": "S_far", "lanes": 2, "kind": "mainline"},
+    {"station": "S_exit", "lanes": 4, "kind": "mainline"},
+    {"station": "R_on", "lanes": 1, "kind": "on_ramp"},
+    {"station": "S_other", "lanes": 2, "kind": "mainline"},
+    {"station": "S_blank", "lanes": "", "kind": "mainline", "x_m": 500.0},
+]
+
+
+class TestLaneCheck:
+    def test_lanes_at_x_covers_the_chain_and_stops_at_its_ends(self):
+        profile = _synthetic_build().lanes_profile
+        assert scenarios.lanes_at_x(profile, 0.0) == 3
+        assert scenarios.lanes_at_x(profile, 1200.0) == 4
+        assert scenarios.lanes_at_x(profile, 1400.0) == 3
+        assert scenarios.lanes_at_x(profile, 3000.0) == 3  # the chain's exact end
+        assert scenarios.lanes_at_x(profile, 3000.1) is None
+        assert scenarios.lanes_at_x(profile, -1.0) is None
+
+    def test_reports_each_disagreement_with_a_hint(self):
+        build = _synthetic_build()
+        found = {m.station: m for m in build.lane_check(_INVENTORY)}
+        assert set(found) == {"S_merge", "S_far", "S_exit"}  # S_ok matches
+        assert (found["S_merge"].compiled_lanes, found["S_merge"].inventory_lanes) == (4, 3)
+        assert found["S_merge"].hint == "acceleration lane added by ramp guessing"
+        assert found["S_merge"].x_m == pytest.approx(1200.0) and found["S_merge"].delta == 1
+        assert found["S_far"].hint == "map lane count differs from the inventory"
+        assert found["S_exit"].hint == "auxiliary lane counted in the inventory"
+        assert found["S_exit"].delta == -1
+        assert [m.station for m in build.lane_check(_INVENTORY)] == ["S_merge", "S_far", "S_exit"]
+
+    def test_skips_rows_it_cannot_or_must_not_compare(self):
+        build = _synthetic_build()
+        # 4 of 7 rows: the ramp detector, the rejected station (another
+        # carriageway) and the row with no lane count are not comparable.
+        assert build.lanes_compared(_INVENTORY) == 4
+        assert build.lane_check([{"station": "S_ok", "lanes": 3}]) == []  # kind may be absent
+        off_chain = [{"station": "X", "lanes": 9, "x_m": 9999.0}]
+        assert build.lane_check(off_chain) == [] and build.lanes_compared(off_chain) == 0
+
+    def test_a_row_x_is_used_when_the_build_placed_no_station(self):
+        build = _synthetic_build()
+        rows = [{"station": "S_csv", "lanes": 3, "kind": "mainline", "x_m": 1200.0}]
+        (mismatch,) = build.lane_check(rows)
+        assert mismatch.x_m == pytest.approx(1200.0) and mismatch.compiled_lanes == 4
+
+    def test_tolerance_hides_differences_it_covers(self):
+        build = _synthetic_build()
+        # Every disagreement in the inventory is one lane wide.
+        assert build.lane_check(_INVENTORY, tolerance=1) == []
+        rows = [*_INVENTORY, {"station": "S_two", "lanes": 5, "kind": "mainline", "x_m": 2000.0}]
+        assert [m.station for m in build.lane_check(rows, tolerance=1)] == ["S_two"]
+        assert build.lane_check(rows, tolerance=2) == []
+
+    def test_summary_carries_the_block_only_when_stations_are_given(self):
+        build = _synthetic_build()
+        assert "lanes vs inventory" not in build.summary()
+        text = build.summary(_INVENTORY)
+        assert "lanes vs inventory: 1 of 4 mainline stations match" in text
+        assert "map 4 lanes, inventory 3 lanes  (acceleration lane added by ramp guessing)" in text
