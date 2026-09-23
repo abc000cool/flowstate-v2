@@ -28,6 +28,7 @@ from __future__ import annotations
 import math
 import os
 import subprocess
+import urllib.parse
 import urllib.request
 from bisect import bisect_right
 from collections.abc import Iterable, Sequence
@@ -356,6 +357,69 @@ def _download_bbox(bbox: tuple[float, float, float, float], dest: Path) -> Path:
     return dest
 
 
+#: Overpass API endpoint used by :func:`_download_bbox_overpass`.
+OVERPASS_ENDPOINT: str = "https://overpass-api.de/api/interpreter"
+
+#: Default OSM ``highway`` values fetched for a freeway corridor: the mainline
+#: and its interchange ramps, and nothing else — the extract stays small
+#: (well under a megabyte for a 15 km corridor) and ``netconvert`` has no
+#: arterial network to prune away.
+OVERPASS_HIGHWAY_REGEX: str = "motorway|motorway_link"
+
+
+def _download_bbox_overpass(
+    bbox: tuple[float, float, float, float],
+    *,
+    highway_regex: str = OVERPASS_HIGHWAY_REGEX,
+    timeout_s: float = 180.0,
+) -> str:
+    """Download a filtered OSM extract for a bbox through the Overpass API.
+
+    The OSM API (:func:`_download_bbox`) returns *everything* in the window
+    and refuses anything but a small area, which rules out a 10–15 km
+    corridor; Overpass answers a filtered query over an arbitrary bbox. The
+    query is::
+
+        [out:xml][timeout:<t>];
+        (way["highway"~"^(<regex>)$"](<south>,<west>,<north>,<east>); );
+        (._;>;); out body;
+
+    ``(._;>;)`` recurses down from the matched ways to their nodes, so the
+    result is a self-contained OSM XML document ``netconvert`` accepts
+    directly (same query shape as ``scripts/fetch_gallery_osm.py``).
+
+    Args:
+        bbox: ``(south, west, north, east)`` in WGS84 degrees.
+        highway_regex: Alternation of OSM ``highway`` values to keep.
+        timeout_s: Overpass server-side timeout and HTTP read timeout [s].
+
+    Returns:
+        The OSM XML document.
+
+    Raises:
+        RuntimeError: The endpoint answered with something that is not XML
+            (Overpass reports rate limits and query errors as HTML).
+    """
+    south, west, north, east = bbox
+    query = (
+        f"[out:xml][timeout:{int(timeout_s)}];"
+        f'(way["highway"~"^({highway_regex})$"]({south},{west},{north},{east}); );'
+        "(._;>;); out body;"
+    )
+    data = urllib.parse.urlencode({"data": query}).encode()
+    request = urllib.request.Request(
+        OVERPASS_ENDPOINT, data=data, headers={"User-Agent": "flowstate-onboarding/2.0"}
+    )
+    with urllib.request.urlopen(request, timeout=timeout_s) as resp:
+        payload: bytes = resp.read()
+    if not payload.lstrip().startswith(b"<?xml"):
+        raise RuntimeError(
+            f"{OVERPASS_ENDPOINT}: non-XML response ({payload[:120]!r}) — "
+            "Overpass is community-run and rate-limits; retry or use a mirror"
+        )
+    return payload.decode("utf-8")
+
+
 def merge_patch_files(
     workdir: Path,
     attach_edge: str,
@@ -451,6 +515,7 @@ def osm_import(
     patch_files: Sequence[Path] = (),
     internal_links: bool = False,
     *,
+    download: Literal["osm_api", "overpass"] = "osm_api",
     allowed_roots: Iterable[str | Path] | None = None,
 ) -> NetBundle:
     """Import an OSM extract into a SUMO network (the ``osm_generic`` pipeline).
@@ -466,7 +531,18 @@ def osm_import(
     Args:
         osm_file: Path to an ``.osm`` XML extract. Takes precedence over bbox.
         bbox: ``(south, west, north, east)`` WGS84 download window; requires
-            network access.
+            network access. The extract is written to
+            ``<workdir>/extract.osm`` and an existing non-empty file there is
+            reused instead of downloading again, so re-importing the same
+            workdir (the second pass of a merge-model build, a rebuilt run)
+            uses the same map rather than whatever the map says today.
+        download: Which service a ``bbox`` is fetched from. ``"osm_api"``
+            (default) is the OSM API, which returns every feature in the
+            window and refuses anything but a small area. ``"overpass"`` is
+            the Overpass API filtered to motorway ways
+            (:func:`_download_bbox_overpass`) — the corridor-onboarding path
+            (:func:`microsim.scenarios.corridor_from_bbox`), which needs
+            10–15 km windows.
         corridor_edges: SUMO edge ids forming the corridor after import, in
             driving order. Empty ⇒ keep the whole network.
         workdir: Directory for inputs/outputs. Required.
@@ -521,7 +597,14 @@ def osm_import(
 
     if osm_file is None:
         assert bbox is not None
-        osm_path = _download_bbox(bbox, workdir / "extract.osm")
+        extract = workdir / "extract.osm"
+        if extract.is_file() and extract.stat().st_size > 0:
+            osm_path = extract  # reuse: the map moves, a scenario must not
+        elif download == "overpass":
+            extract.write_text(_download_bbox_overpass(bbox))
+            osm_path = extract
+        else:
+            osm_path = _download_bbox(bbox, extract)
     else:
         osm_path = Path(osm_file)
         if not osm_path.is_file():

@@ -35,6 +35,10 @@ embed/dist/
 
 # Small OSM extracts the versioned scenarios depend on (ODbL attribution in data/osm/README.md).
 !data/osm/
+# MnDOT corridor onboarding inputs (station table, tidy detector windows, observations) are small and tracked;
+# the raw 30-s per-detector cache is re-fetchable and stays out.
+!data/mndot/
+data/mndot/cache/
 
 # local pipeline logs (scripts/gcp)
 logs/

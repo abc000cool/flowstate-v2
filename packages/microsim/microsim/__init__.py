@@ -6,6 +6,18 @@ dispatch, and contract-compliant Parquet/JSON run artifacts.
 """
 
 from microsim.demand_adapter import make_simulate_fn
+from microsim.geo import (
+    NetProjection,
+    PointOnChain,
+    RampCandidate,
+    chain_polyline,
+    lonlat_to_net_xy,
+    mainline_chain,
+    ramps_for_chain,
+    read_net_projection,
+    utm_forward,
+    x_of_lonlat,
+)
 from microsim.gym_backend import MicrosimBackend
 from microsim.networks import NetBundle, corridor, osm_import, ring
 from microsim.runner import (
@@ -16,7 +28,14 @@ from microsim.runner import (
     run_micro,
     run_replicates,
 )
-from microsim.scenarios import load_scenario, resolve_scenario, run_scenario, scenario_from_osm
+from microsim.scenarios import (
+    CorridorBuild,
+    corridor_from_bbox,
+    load_scenario,
+    resolve_scenario,
+    run_scenario,
+    scenario_from_osm,
+)
 from microsim.vehicles import (
     FleetPlan,
     build_corridor_plan,
@@ -31,21 +50,31 @@ from microsim.vehicles import (
 )
 
 __all__ = [
+    "CorridorBuild",
     "FleetPlan",
     "MicrosimBackend",
     "NetBundle",
+    "NetProjection",
+    "PointOnChain",
+    "RampCandidate",
     "RunPaths",
     "build_corridor_plan",
     "build_ring_plan",
+    "chain_polyline",
     "corridor",
     "corridor_departures",
+    "corridor_from_bbox",
     "draw_vehicle_params",
     "fuel_mg_to_ml",
     "is_run_complete",
     "load_idm_calibration",
     "load_scenario",
+    "lonlat_to_net_xy",
+    "mainline_chain",
     "make_simulate_fn",
     "osm_import",
+    "ramps_for_chain",
+    "read_net_projection",
     "require_complete_run",
     "resolve_calibration_path",
     "resolve_scenario",
@@ -55,8 +84,10 @@ __all__ = [
     "run_scenario",
     "scenario_from_osm",
     "tag_avs",
+    "utm_forward",
     "write_corridor_routes",
     "write_ring_routes",
+    "x_of_lonlat",
 ]
 
 __version__ = "2.0.0"

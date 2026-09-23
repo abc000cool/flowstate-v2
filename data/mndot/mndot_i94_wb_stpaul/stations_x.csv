@@ -1,0 +1,32 @@
+station,label,lat,lon,lanes,kind,n_type,speed_limit_mph,detectors,x_m,offset_m,edge_id,lane_pos_m
+S1063,W of I-494 (E Jct),44.94877,-92.96922,4,mainline,Station,55,5136:1:Auxiliary;5137:2:main;5138:3:main;5139:4:Auxiliary,1109.5,5.6,638519815,197.9
+rnd_88835,T.H.120,44.94854,-92.9833,1,off_ramp,Exit,55,5140:0:Exit,2199.7,3.3,996266724,157.5
+S1064,T.H.120,44.94855,-92.98462,3,mainline,Station,55,5141:1:main;5142:2:main;5153:3:main,2303.9,5.2,996266724,261.6
+rnd_88833,Hudson Rd,44.94855,-92.98892,1,off_ramp,Exit,55,5143:0:Exit,2652.0,6.9,43917735#0,97.5
+rnd_88831,Hudson Rd,44.94932,-92.99639,1,on_ramp,Entrance,55,5144:2:Merge,3182.4,0.4,43917735#0,628.0
+S1065,Hudson Rd,44.94971,-92.99909,3,mainline,Station,55,5145:1:main;5146:2:main;5148:3:main,3467.6,0.6,43917735#1,165.3
+rnd_88827,Hudson Rd,44.94995,-93.00079,1,on_ramp,Entrance,55,5147:1:Merge,3588.1,6.0,43917735#1,285.8
+S1066,McKnight Rd,44.95058,-93.00641,3,mainline,Station,55,5052:1:main;5053:2:main;5054:3:main,4030.2,4.1,638377595,76.3
+rnd_88823,McKnight Rd,44.95088,-93.00895,1,on_ramp,Entrance,55,4926:0:Green;5149:0:Merge,4195.0,0.5,638377595,241.1
+S1067,Ruth St,44.95173,-93.01782,3,mainline,Station,55,5150:1:main;5151:2:main;5152:3:main,4925.2,9.7,638519829,702.2
+rnd_88819,Ruth St,44.95165,-93.01945,1,on_ramp,Entrance,55,4927:0:Green;5154:0:Merge,5044.1,7.9,638519829,821.1
+rnd_88817,White Bear Ave,44.95142,-93.02278,1,off_ramp,Exit,55,5155:0:Exit,5371.5,1.2,95085307,45.6
+S1068,White Bear Ave,44.95144,-93.02552,3,mainline,Station,55,5156:1:main;5157:2:main;5158:3:main,5579.6,7.4,95085307,253.7
+rnd_88813,White Bear Ave,44.95151,-93.02745,1,on_ramp,Entrance,55,4928:0:Green;5159:0:Passage,5726.8,7.9,95085307,400.9
+S1947,E of T.H.61,44.95196,-93.03171,3,mainline,Station,55,7743:1:main;7744:2:main;7745:3:main,6061.9,5.2,998737536,145.9
+rnd_88811,T.H.61,44.95245,-93.0354,1,off_ramp,Exit,55,5160:0:Exit,6372.5,2.9,998737535,57.3
+S1069,T.H.61,44.95278,-93.03929,3,mainline,Station,55,5161:1:main;5162:2:main;5163:3:main,6669.5,2.0,998737535,354.3
+rnd_88807,T.H.61 NB,44.95245,-93.047,2,on_ramp,Entrance,55,5164:1:Merge;5165:2:Merge,7277.5,2.3,45608474,350.6
+S1070,Johnson Pkwy,44.95201,-93.05166,5,mainline,Station,55,5171:1:main;5172:2:main;5173:3:main;5174:4:main;5175:5:main,7648.4,1.8,45608485,171.3
+S1948,E of Mounds Blvd,44.95196,-93.06087,5,mainline,Station,55,7746:1:main;7747:2:main;7748:3:main;7749:4:main;7750:5:main,8375.4,4.3,45608485,898.4
+rnd_87205,Mounds Blvd,44.95208,-93.06737,2,off_ramp,Exit,55,3241:1:Exit;3242:2:Exit,8891.2,0.6,45782590,395.6
+S792,Mounds Blvd,44.95211,-93.06805,3,mainline,Station,55,3238:1:main;3239:2:main;3240:3:main,8945.3,0.8,45782590,449.8
+rnd_87209,I-94 CD WB,44.95532,-93.07543,1,off_ramp,Exit,55,T9342:0:Exit,9660.2,5.1,1000805867,125.8
+S791,Kellogg Blvd,44.9553,-93.07585,3,mainline,Station,55,3234:1:main;3235:2:main;3236:3:main,9690.3,0.5,1000805867,155.9
+rnd_87211,Mounds Blvd,44.95477,-93.07788,1,on_ramp,Entrance,55,3244:0:Passage;4865:0:Green;2578:1:Queue;2589:2:Queue,9846.9,22.1,40648793#0,17.0
+S790,Kittson St,44.95377,-93.08043,3,mainline,Station,55,3231:1:main;T9333:1:main;3232:2:main;T9334:2:main;3233:3:main,10083.0,5.8,40648738,25.8
+rnd_87217,7th St,44.95333,-93.08169,1,on_ramp,Entrance,55,,10174.1,2.8,40648738,116.9
+rnd_91040,T.H.52 NB,44.9533,-93.08177,1,on_ramp,Entrance,55,7815:0:Merge,10180.0,2.7,40648738,122.8
+rnd_87219,I-35E CD NB,44.95322,-93.08854,1,off_ramp,Exit,55,,10803.4,3.9,1001426896,81.8
+rnd_87221,Jackson St,44.95429,-93.09023,1,off_ramp,Exit,55,1896:0:Exit,10965.2,1.2,82578022,52.1
+S97,I-35E,44.9545,-93.09098,3,mainline,Station,55,1897:1:main;1898:2:main;1899:3:main,11027.0,1.0,82578022,113.9

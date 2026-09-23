@@ -13,13 +13,24 @@ hashable :class:`ScenarioConfig` whose ``to_yaml`` writes the versioned
 scenario file. The compiled network is checked with ``sumolib`` before the
 config is returned, so a scenario that comes out of here is one the runner
 can start.
+
+:func:`corridor_from_bbox` is the *whole* pipeline in one call — the "any
+freeway corridor from a bounding box" entry point: bbox → Overpass extract →
+``netconvert`` → mainline chain and ramps discovered with :mod:`microsim.geo`
+→ scenario config, plus the corridor geometry (length, lane profile, ramp
+positions) and the linear-x position of each detector station given as
+(lat, lon). It returns a :class:`CorridorBuild`; the demand, fleet and ramp
+flows it carries are placeholders until the corridor is calibrated
+(CLAUDE.md §6).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from itertools import pairwise
 from pathlib import Path
+from typing import Any, Literal
 
 import sumolib
 
@@ -32,12 +43,36 @@ from flowstate_core.config import (
     ScenarioConfig,
     SimSpec,
 )
+from microsim.geo import (
+    MAX_HEADING_DEV_DEG,
+    MOTORWAY_TYPES,
+    PointOnChain,
+    RampCandidate,
+    chain_length_m,
+    chain_offsets,
+    lanes_profile,
+    mainline_chain,
+    ramps_for_chain,
+    x_of_lonlat,
+)
 from microsim.networks import osm_import
 from microsim.runner import RunPaths, run_micro
 
 #: Repository ``scenarios/`` directory (this file sits at
 #: ``packages/microsim/microsim/scenarios.py`` → three parents up is the root).
 SCENARIOS_DIR: Path = Path(__file__).resolve().parents[3] / "scenarios"
+
+#: Repository root (``scenarios/``'s parent): paths under it are recorded
+#: repository-relative in generated scenario files, as the versioned
+#: scenarios do (``osm_file: data/osm/…``).
+REPO_ROOT: Path = SCENARIOS_DIR.parent
+
+#: Largest perpendicular distance [m] a detector station may sit from the
+#: corridor centreline and still be placed on it. Beyond it the station
+#: belongs to the opposite carriageway, a frontage road or another route;
+#: the same threshold the I-24 landmark projection uses
+#: (``scripts/i24_geometry.py``).
+MAX_STATION_OFFSET_M: float = 60.0
 
 #: Named scenario whose fleet, time-discretization and replicate settings seed
 #: the defaults of an OSM-onboarded scenario: ``corridor_10km`` carries the
@@ -180,6 +215,7 @@ def scenario_from_osm(
     av: AVSpec | None = None,
     warmup_s: float | None = None,
     replicates: int | None = None,
+    download: Literal["osm_api", "overpass"] = "osm_api",
 ) -> ScenarioConfig:
     """Onboard an OSM corridor as a runnable, hashable scenario (CLAUDE.md §3.2.4).
 
@@ -236,6 +272,9 @@ def scenario_from_osm(
             warm-up when it fits inside ``duration_s``, else 0 (a warm-up
             longer than the run would discard every sample).
         replicates: Seeded replicates; default: the ``corridor_10km`` value.
+        download: Service a ``bbox`` is fetched from (``osm_import``):
+            ``"osm_api"`` (default, unchanged) or ``"overpass"`` for windows
+            larger than the OSM API allows.
 
     Returns:
         A ``tier="micro"`` scenario with an :class:`OSMNetwork` and no
@@ -264,6 +303,7 @@ def scenario_from_osm(
         corridor_edges=tuple(edges),
         workdir=net_dir,
         keep_edges=tuple(e for r in ramps for e in r.edges),
+        download=download,
     )
     _check_corridor_in_net(bundle.net_path, edges, lanes)
 
@@ -301,4 +341,340 @@ def scenario_from_osm(
         perturbation=None,
         seed=seed,
         replicates=replicates if replicates is not None else base.replicates,
+    )
+
+
+def _ramp_placeholder(candidate: RampCandidate) -> RampSpec:
+    """A discovered ramp as a zero-flow :class:`RampSpec` placeholder.
+
+    Discovery knows where a ramp is, never how much it carries: the flows are
+    a calibration input (ramp counts, CLAUDE.md §6.3). The placeholder is
+    therefore explicit about carrying none — an on-ramp with a single
+    ``(0 s, 0 veh/s)`` step and an off-ramp with a ``(0 s, 0)`` exit
+    fraction, which is what ``RampSpec`` requires as a non-empty profile —
+    so the scenario runs with the geometry in place and the operator has one
+    number per ramp to fill in.
+    """
+    label = candidate.name or f"{candidate.kind}-ramp {candidate.edges[0]}"
+    if candidate.kind == "on":
+        return RampSpec(
+            kind="on",
+            edges=list(candidate.edges),
+            attach_edge=candidate.attach_edge,
+            inflow=[(0.0, 0.0)],
+            name=label,
+        )
+    return RampSpec(
+        kind="off",
+        edges=list(candidate.edges),
+        attach_edge=candidate.attach_edge,
+        exit_fraction=[(0.0, 0.0)],
+        name=label,
+    )
+
+
+def _record_path(path: Path) -> str:
+    """Record a path repository-relative when it lies inside the repository."""
+    resolved = Path(path).resolve()
+    try:
+        return str(resolved.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(resolved)
+
+
+def _station_rows(
+    stations: Sequence[Mapping[str, Any]],
+) -> list[tuple[str, float, float]]:
+    """Normalize station dicts to ``(id, lon, lat)``.
+
+    Accepts ``id`` or ``station`` for the identifier (the column name a
+    detector-inventory CSV usually carries), and requires ``lat``/``lon``.
+    """
+    rows: list[tuple[str, float, float]] = []
+    seen: set[str] = set()
+    for i, row in enumerate(stations):
+        raw_id = row.get("id", row.get("station", ""))
+        station_id = str(raw_id).strip()
+        if not station_id:
+            raise ValueError(f"station #{i} has no 'id' (or 'station') field: {dict(row)}")
+        if station_id in seen:
+            raise ValueError(f"duplicate station id {station_id!r}")
+        seen.add(station_id)
+        try:
+            lat, lon = float(row["lat"]), float(row["lon"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"station {station_id!r} needs numeric 'lat'/'lon': {exc}") from exc
+        rows.append((station_id, lon, lat))
+    return rows
+
+
+@dataclass(frozen=True)
+class CorridorBuild:
+    """A corridor onboarded from a bounding box (CLAUDE.md §3.2.4).
+
+    Everything :func:`corridor_from_bbox` learned about the corridor: the
+    runnable scenario, the geometry needed to read its outputs (linear x is
+    measured along ``chain_edges``, docs/CONTRACTS.md §3), and where the
+    detector stations fall on it.
+
+    Attributes:
+        config: The validated scenario. Its demand, fleet and ramp flows are
+            defaults and placeholders — the corridor is NOT calibrated
+            (CLAUDE.md §6) and nothing computed from this scenario is a
+            claim about the real road until it is.
+        chain_edges: Mainline edge ids, upstream → downstream (also
+            ``config.network.corridor_edges``).
+        length_m: Chain length [m] = the corridor's linear-x extent.
+        lanes_profile: ``(x_start_m, x_end_m, lanes)`` runs along the chain.
+        ramps: Ramps discovered beside the chain, in position order; they
+            appear in ``config`` as zero-flow :class:`RampSpec` placeholders.
+        net_path: The compiled ``.net.xml`` the geometry was measured on.
+        osm_file: The persisted OSM extract the scenario rebuilds from.
+        bbox: The ``(south, west, north, east)`` window it came from.
+        bearing_deg: Requested travel direction (compass degrees).
+        station_x: Accepted stations → their :class:`PointOnChain`.
+        stations_rejected: Stations whose perpendicular offset exceeded
+            ``max_station_offset_m`` — they sit on another carriageway or
+            another road and must not be compared against this corridor.
+        max_station_offset_m: The offset threshold used [m].
+    """
+
+    config: ScenarioConfig
+    chain_edges: tuple[str, ...]
+    length_m: float
+    lanes_profile: tuple[tuple[float, float, int], ...]
+    ramps: tuple[RampCandidate, ...]
+    net_path: Path
+    osm_file: Path
+    bbox: tuple[float, float, float, float]
+    bearing_deg: float
+    station_x: dict[str, PointOnChain] = field(default_factory=dict)
+    stations_rejected: dict[str, PointOnChain] = field(default_factory=dict)
+    max_station_offset_m: float = MAX_STATION_OFFSET_M
+
+    def to_yaml(self, path: str | Path) -> None:
+        """Write the scenario YAML (``ScenarioConfig.to_yaml``)."""
+        self.config.to_yaml(path)
+
+    def summary(self) -> str:
+        """A plain-text report of what was discovered (for a CLI or a log)."""
+        south, west, north, east = self.bbox
+        lines = [
+            f"corridor {self.config.name}: {self.length_m / 1000.0:.2f} km along "
+            f"{len(self.chain_edges)} edges, bearing {self.bearing_deg:g}°",
+            f"  bbox      {south:.5f},{west:.5f} .. {north:.5f},{east:.5f}",
+            f"  extract   {self.osm_file}",
+            f"  network   {self.net_path}",
+            f"  chain     {' '.join(self.chain_edges)}",
+            "  lanes",
+        ]
+        lines += [
+            f"    {x0 / 1000.0:7.3f} - {x1 / 1000.0:7.3f} km: {lanes} lanes"
+            for x0, x1, lanes in self.lanes_profile
+        ]
+        lines.append(f"  ramps ({len(self.ramps)}; flows are 0 placeholders)")
+        lines += [
+            f"    {r.kind:>3s} x={r.x_m / 1000.0:7.3f} km  attach {r.attach_edge:>12s}  "
+            f"edges {','.join(r.edges)}" + (f'  "{r.name}"' if r.name else "")
+            for r in self.ramps
+        ]
+        if self.station_x or self.stations_rejected:
+            total = len(self.station_x) + len(self.stations_rejected)
+            lines.append(
+                f"  stations  {len(self.station_x)}/{total} on the corridor "
+                f"(offset <= {self.max_station_offset_m:g} m)"
+            )
+            for sid, p in sorted(self.station_x.items(), key=lambda kv: kv[1].x_m):
+                lines.append(
+                    f"    {sid:>12s} x={p.x_m / 1000.0:7.3f} km  offset {p.offset_m:5.1f} m  "
+                    f"{p.edge_id}@{p.lane_pos:.0f}"
+                )
+            for sid, p in sorted(self.stations_rejected.items(), key=lambda kv: kv[1].offset_m):
+                lines.append(
+                    f"    {sid:>12s} REJECTED offset {p.offset_m:8.1f} m "
+                    f"(nearest x={p.x_m / 1000.0:.3f} km)"
+                )
+        return "\n".join(lines)
+
+
+def corridor_from_bbox(
+    name: str,
+    bbox: tuple[float, float, float, float],
+    bearing_deg: float,
+    *,
+    inflow: Sequence[tuple[float, float]] | float,
+    workdir: str | Path,
+    start_near: tuple[float, float] | None = None,
+    stations: Sequence[Mapping[str, Any]] | None = None,
+    duration_s: float = 1200.0,
+    seed: int = 0,
+    osm_file: str | Path | None = None,
+    download: Literal["osm_api", "overpass"] = "overpass",
+    highway_types: Sequence[str] = MOTORWAY_TYPES,
+    max_heading_dev_deg: float = MAX_HEADING_DEV_DEG,
+    max_station_offset_m: float = MAX_STATION_OFFSET_M,
+    discover_ramps: bool = True,
+    fleet: FleetSpec | None = None,
+    av: AVSpec | None = None,
+    boundary: BoundarySpec | None = None,
+    warmup_s: float | None = None,
+    replicates: int | None = None,
+) -> CorridorBuild:
+    """Onboard any freeway corridor from a bounding box (CLAUDE.md §3.2.4).
+
+    The whole ``osm_generic`` path in one call:
+
+    1. **Extract** — the bbox is fetched through the Overpass API filtered to
+       motorway ways and persisted at ``<workdir>/net/extract.osm``; an
+       extract already there (or one passed as ``osm_file``) is reused, so
+       the build is repeatable even though the map is not.
+    2. **Discovery import** — ``netconvert`` with ``geometry_remove=False``,
+       i.e. raw OSM way ids, the granularity corridor edges must be named at
+       (:func:`microsim.networks.osm_import`).
+    3. **Chain** — :func:`microsim.geo.mainline_chain` follows the motorway
+       edges travelling in ``bearing_deg`` (270 = westbound), seeded at
+       ``start_near`` when given, and stops at the window's edge.
+    4. **Ramps** — :func:`microsim.geo.ramps_for_chain` finds the
+       ``motorway_link`` chains joining and leaving it; they enter the
+       scenario as **zero-flow placeholders** (:func:`_ramp_placeholder`).
+    5. **Scenario** — :func:`scenario_from_osm` re-imports with the corridor
+       and ramp edges pinned, checks the chain against the compiled net and
+       returns the validated config.
+    6. **Geometry** — chain length, lane profile, ramp positions and each
+       station's linear x are measured on that compiled net.
+
+    What comes back is runnable, not calibrated: the demand is whatever
+    ``inflow`` says, the ramps carry nothing, and the fleet is the
+    ``corridor_10km`` default population. Calibration (FD, IDM population,
+    demand) is CLAUDE.md §6 and happens after onboarding.
+
+    Args:
+        name: Scenario name.
+        bbox: ``(south, west, north, east)`` WGS84 window around the corridor.
+        bearing_deg: Direction of travel, compass degrees (0 = north,
+            90 = east, 180 = south, 270 = west).
+        inflow: Mainline demand — constant [veh/s] or ``(t_start_s, veh/s)``
+            steps, total across lanes (``flowstate_core.units.veh_h_to_veh_s``
+            converts from veh/h).
+        workdir: Build directory; the extract and the compiled network land
+            under ``<workdir>/net/``.
+        start_near: ``(lon, lat)`` anchor picking which corridor the chain
+            follows when the window holds more than one motorway in that
+            direction.
+        stations: Detector stations as mappings with ``id`` (or ``station``),
+            ``lat`` and ``lon``. Each is projected onto the chain; those
+            farther than ``max_station_offset_m`` from it are reported
+            separately instead of being silently placed.
+        duration_s: Simulated duration [s].
+        seed: Scenario master seed.
+        osm_file: Use this extract instead of downloading (the bbox is still
+            recorded for provenance).
+        download: ``"overpass"`` (default here — the OSM API refuses windows
+            this size) or ``"osm_api"``.
+        highway_types: SUMO edge types treated as mainline.
+        max_heading_dev_deg: Heading tolerance for the chain walk [deg].
+        max_station_offset_m: Station acceptance threshold [m].
+        discover_ramps: Set ``False`` for a mainline-only scenario (the
+            gallery convention); the corridor then conserves no ramp flow.
+        fleet: Human-driver fleet; default: the ``corridor_10km`` fleet.
+        av: Controlled-vehicle deployment; default: none.
+        boundary: Optional measured downstream boundary schedule.
+        warmup_s: Metrics warm-up [s]; default: the ``corridor_10km`` value
+            when it fits inside ``duration_s``.
+        replicates: Seeded replicates; default: the ``corridor_10km`` value.
+
+    Returns:
+        The :class:`CorridorBuild`.
+
+    Raises:
+        ValueError: Degenerate or out-of-range bbox, no motorway edge
+            heading that way, a malformed station row, or any of the
+            :func:`scenario_from_osm` validation failures (corridor edge
+            missing from the compiled net, broken chain, bad demand).
+        RuntimeError: ``netconvert`` or the Overpass download failed.
+    """
+    south, west, north, east = (float(v) for v in bbox)
+    if not (south < north and west < east):
+        raise ValueError(
+            f"bbox must be (south, west, north, east) with south<north, west<east: {bbox}"
+        )
+    if not (-90.0 <= south and north <= 90.0 and -180.0 <= west and east <= 180.0):
+        raise ValueError(f"bbox outside WGS84 range: {bbox}")
+    box = (south, west, north, east)
+    work = Path(workdir)
+    net_dir = work / "net"
+
+    # Discovery pass: raw way ids (a geometry-joined id would prune to one way).
+    raw = osm_import(
+        osm_file=osm_file,
+        bbox=box,
+        workdir=net_dir,
+        geometry_remove=False,
+        download=download,
+    )
+    raw_net = sumolib.net.readNet(str(raw.net_path))
+    chain = mainline_chain(
+        raw_net,
+        bearing_deg,
+        start_near=start_near,
+        highway_types=highway_types,
+        max_heading_dev_deg=max_heading_dev_deg,
+    )
+    candidates = ramps_for_chain(raw_net, chain) if discover_ramps else []
+
+    extract = Path(osm_file) if osm_file is not None else net_dir / "extract.osm"
+    cfg = scenario_from_osm(
+        name=name,
+        osm_file=extract,
+        bbox=box,
+        corridor_edges=chain,
+        inflow=inflow,
+        workdir=work,
+        fleet=fleet,
+        duration_s=duration_s,
+        seed=seed,
+        ramps=[_ramp_placeholder(c) for c in candidates],
+        boundary=boundary,
+        av=av,
+        warmup_s=warmup_s,
+        replicates=replicates,
+    )
+    recorded = _record_path(extract)
+    if recorded != cfg.network.osm_file:
+        dumped = cfg.model_dump(mode="json")
+        dumped["network"]["osm_file"] = recorded
+        cfg = ScenarioConfig.model_validate(dumped)
+
+    # Measure on the pruned network the runner will rebuild, not the raw one:
+    # scenario_from_osm re-imported into the same file, pinning the chain ids.
+    net_path = net_dir / "osm.net.xml"
+    net = sumolib.net.readNet(str(net_path))
+    offsets = dict(zip(chain, chain_offsets(net, chain), strict=True))
+    ramps = tuple(
+        replace(
+            c,
+            x_m=offsets[c.attach_edge]
+            + (float(net.getEdge(c.attach_edge).getLength()) if c.kind == "off" else 0.0),
+        )
+        for c in candidates
+    )
+    accepted: dict[str, PointOnChain] = {}
+    rejected: dict[str, PointOnChain] = {}
+    for station_id, lon, lat in _station_rows(stations or ()):
+        point = x_of_lonlat(net, chain, lon, lat)
+        target = accepted if point.offset_m <= max_station_offset_m else rejected
+        target[station_id] = point
+    return CorridorBuild(
+        config=cfg,
+        chain_edges=tuple(chain),
+        length_m=chain_length_m(net, chain),
+        lanes_profile=tuple(lanes_profile(net, chain)),
+        ramps=ramps,
+        net_path=net_path,
+        osm_file=extract,
+        bbox=box,
+        bearing_deg=float(bearing_deg),
+        station_x=accepted,
+        stations_rejected=rejected,
+        max_station_offset_m=float(max_station_offset_m),
     )
