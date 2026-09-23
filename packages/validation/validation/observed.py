@@ -35,7 +35,7 @@ import json
 import math
 import warnings
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
@@ -204,6 +204,96 @@ class ObservedScores:
         )
 
 
+#: Key under an observations artifact's ``context`` that carries the corridor's
+#: detector-estimated backward wave speed (``calibration.waves_observed``).
+WAVE_SPEED_CONTEXT_KEY: Final[str] = "detector_wave_speed"
+
+
+@dataclass(frozen=True)
+class DetectorWaveSpeed:
+    """A corridor's observed backward wave speed, read from an artifact.
+
+    The estimate is made by the calibration side
+    (``calibration.waves_observed.detector_wave_speed``: the lag of the
+    normalised cross-correlation peak between adjacent stations' 30-second
+    speed series, divided into the station spacing) and travels in the
+    artifact's ``context`` block. This package reads it and prints it; it
+    scores nothing with it. The corridor's real wave speed is a property of
+    the corridor, not a target the model must hit, so it is context in the
+    report's observed-data block and never a criterion row (CLAUDE.md §7.1).
+
+    Attributes:
+        median_kmh: Median over the station pairs that yielded an estimate
+            [km/h]; NaN when none did.
+        iqr_kmh: ``(q25, q75)`` of those pairs [km/h]; NaN when none.
+        n_pairs: Adjacent mainline station pairs examined.
+        n_used: Pairs that yielded an estimate.
+        rejections: Why the others did not, as ``"3 reason, 2 other reason"``;
+            empty when every pair was used.
+    """
+
+    median_kmh: float
+    iqr_kmh: tuple[float, float]
+    n_pairs: int
+    n_used: int
+    rejections: str = ""
+
+    @classmethod
+    def from_context(cls, context: Mapping[str, Any]) -> DetectorWaveSpeed | None:
+        """Read the estimate out of an artifact's ``context`` block.
+
+        Args:
+            context: The artifact's ``context`` mapping (possibly empty).
+
+        Returns:
+            The estimate, or None when the artifact carries none or carries
+            one this version cannot read. A context block written by another
+            version is not a reason to fail a report: the line is simply not
+            printed.
+        """
+        raw = context.get(WAVE_SPEED_CONTEXT_KEY)
+        if not isinstance(raw, Mapping):
+            return None
+        try:
+            n_pairs = int(raw["n_pairs"])
+            n_used = int(raw["n_used"])
+            median = _optional_float(raw.get("median_kmh"))
+            iqr_raw = raw.get("iqr_kmh") or (None, None)
+            iqr = (_optional_float(iqr_raw[0]), _optional_float(iqr_raw[1]))
+            rejected = {str(k): int(v) for k, v in (raw.get("rejected") or {}).items()}
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+        if n_used > 0 and not math.isfinite(median):
+            return None
+        return cls(
+            median_kmh=median,
+            iqr_kmh=iqr,
+            n_pairs=n_pairs,
+            n_used=n_used,
+            rejections=", ".join(f"{n} {reason}" for reason, n in sorted(rejected.items())),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form (NaN written as ``null``)."""
+        return {
+            "median_kmh": _optional_number(self.median_kmh),
+            "iqr_kmh": [_optional_number(v) for v in self.iqr_kmh],
+            "n_pairs": self.n_pairs,
+            "n_used": self.n_used,
+            "rejections": self.rejections,
+        }
+
+
+def _optional_float(value: Any) -> float:
+    """``None`` → NaN, anything numeric → float."""
+    return math.nan if value is None else float(value)
+
+
+def _optional_number(value: float) -> float | None:
+    """NaN → ``None`` (JSON has no NaN)."""
+    return float(value) if math.isfinite(value) else None
+
+
 @dataclass(frozen=True)
 class ObservedProvenance:
     """What the report prints about the observed side of a comparison.
@@ -233,6 +323,9 @@ class ObservedProvenance:
             simulated position span.
         stations_outside_span: The ids of those stations, comma-joined.
         note: Why no comparison was formed, when none was; empty otherwise.
+        wave_speed: The corridor's detector-estimated backward wave speed
+            when the artifact carries one (:class:`DetectorWaveSpeed`) —
+            context for the reader, scored by nothing.
     """
 
     path: str
@@ -254,6 +347,7 @@ class ObservedProvenance:
     n_stations_outside_span: int = 0
     stations_outside_span: str = ""
     note: str = ""
+    wave_speed: DetectorWaveSpeed | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (the API's report row, the battery artifact)."""
@@ -277,6 +371,7 @@ class ObservedProvenance:
             "n_stations_outside_span": self.n_stations_outside_span,
             "stations_outside_span": self.stations_outside_span,
             "note": self.note,
+            "detector_wave_speed": None if self.wave_speed is None else self.wave_speed.to_dict(),
         }
 
 
@@ -298,6 +393,10 @@ class ObservedCorridor:
         speeds_ms: Station id → per-window mean speed [m/s], NaN likewise.
         quality: Station id → the loader's quality block.
         path: Where the artifact was read from (provenance only).
+        context: The artifact's optional ``context`` block — computed
+            statements about the corridor that are not per-window
+            measurements (currently the detector-estimated wave speed). Read
+            and printed, never scored.
     """
 
     corridor: str
@@ -312,6 +411,7 @@ class ObservedCorridor:
     speeds_ms: dict[str, FloatArray]
     quality: dict[str, dict[str, float]]
     path: str = ""
+    context: dict[str, Any] = field(default_factory=dict)
 
     # -- construction -------------------------------------------------------
 
@@ -389,6 +489,7 @@ class ObservedCorridor:
             speeds_ms=speeds,
             quality={k: dict(v) for k, v in (raw.get("quality") or {}).items()},
             path=path,
+            context=dict(raw.get("context") or {}),
         )
         positions = obs.mainline_x_refs()
         for a, b in itertools.pairwise(positions):
@@ -767,6 +868,7 @@ def no_comparison_provenance(
         n_link_hours=0,
         n_speed_cells=0,
         n_replicates=0,
+        wave_speed=DetectorWaveSpeed.from_context(observed.context),
         note=(
             f"the artifact holds {n_stations} positioned mainline station(s); a link-flow "
             "and segment-speed comparison needs at least two, so no run was scored "
@@ -852,6 +954,7 @@ def pool_scores(
         n_replicates=len(scores),
         n_stations_outside_span=len(excluded),
         stations_outside_span=", ".join(excluded),
+        wave_speed=DetectorWaveSpeed.from_context(observed.context),
     )
     return (
         geh,

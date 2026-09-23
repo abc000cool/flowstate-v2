@@ -22,6 +22,7 @@ import pytest
 
 from validation.observed import (
     OBSERVATIONS_SCHEMA,
+    DetectorWaveSpeed,
     ObservedCorridor,
     pool_scores,
     score_run_against_observed,
@@ -379,6 +380,69 @@ class TestScoreRunAgainstObserved:
         assert again.n_speed_cells == scores.n_speed_cells
         assert again.rmspe == pytest.approx(scores.rmspe, abs=1e-6)
         assert again.windows == scores.windows
+
+
+#: A context block as ``calibration.waves_observed`` writes it.
+WAVE_CONTEXT: dict[str, Any] = {
+    "detector_wave_speed": {
+        "median_kmh": 21.206,
+        "iqr_kmh": [18.457, 24.102],
+        "n_pairs": 13,
+        "n_used": 6,
+        "rejected": {"peak correlation below the acceptance floor": 7},
+        "method": "normalised cross-correlation",
+    }
+}
+
+
+class TestDetectorWaveSpeedContext:
+    """The corridor's own wave speed travels in the artifact as context."""
+
+    def test_artifact_without_context_carries_none(self, observed: ObservedCorridor) -> None:
+        assert observed.context == {}
+        assert DetectorWaveSpeed.from_context(observed.context) is None
+
+    def test_context_is_read_and_summarised(self) -> None:
+        payload = observations_payload() | {"context": WAVE_CONTEXT}
+        corridor = ObservedCorridor.from_dict(payload)
+        assert corridor.context == WAVE_CONTEXT
+        wave = DetectorWaveSpeed.from_context(corridor.context)
+        assert wave is not None
+        assert wave.median_kmh == pytest.approx(21.206)
+        assert wave.iqr_kmh == pytest.approx((18.457, 24.102))
+        assert wave.n_pairs == 13 and wave.n_used == 6
+        assert wave.rejections == "7 peak correlation below the acceptance floor"
+        assert wave.to_dict()["median_kmh"] == pytest.approx(21.206)
+
+    def test_an_estimate_with_no_usable_pair_is_still_read(self) -> None:
+        empty = {"detector_wave_speed": {"median_kmh": None, "n_pairs": 4, "n_used": 0}}
+        wave = DetectorWaveSpeed.from_context(empty)
+        assert wave is not None
+        assert wave.n_used == 0
+        assert math.isnan(wave.median_kmh)
+        assert wave.to_dict()["median_kmh"] is None
+
+    @pytest.mark.parametrize(
+        "context",
+        [
+            {},
+            {"detector_wave_speed": "not a mapping"},
+            {"detector_wave_speed": {"n_used": 2}},  # no n_pairs
+            {"detector_wave_speed": {"n_pairs": 2, "n_used": 1, "median_kmh": None}},
+        ],
+    )
+    def test_an_unreadable_context_is_not_a_report_failure(self, context: Any) -> None:
+        assert DetectorWaveSpeed.from_context(context) is None
+
+    def test_the_provenance_carries_it_through_pooling(self, trajectories: pd.DataFrame) -> None:
+        corridor = ObservedCorridor.from_dict(observations_payload() | {"context": WAVE_CONTEXT})
+        scores = score_run_against_observed(
+            trajectories, corridor, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        _, _, _, _, provenance = pool_scores(corridor, [scores])
+        assert provenance.wave_speed is not None
+        assert provenance.wave_speed.n_used == 6
+        assert provenance.to_dict()["detector_wave_speed"]["n_pairs"] == 13
 
 
 class TestPoolScores:

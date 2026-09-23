@@ -1015,3 +1015,91 @@ a run has finished). `createCorridor(FormData)` / `getCorridor(id)` in
 argument for `observations_path`. Onboarding is not validation: the summary
 states what was measured and where each demand number came from, and the
 report is what scores the corridor.
+
+**`GET /api/v1/corridors` — 2026-09-23.** Lists the onboardings this server
+holds, newest first (`?limit=`, default and maximum `MAX_CORRIDOR_LIST` =
+200; `limit < 1` is 422). Each row is `CorridorRowOut` — `CorridorOut` minus
+`summary` (`corridor_id`, `name`, `status`, `progress`, `scenario_id`,
+`preset_filename`, `config_hash`, `observations_path`, `corridor_dir`,
+`error`, `error_kind`, `created_at`) — because the summary belongs to the one
+corridor being looked at and `GET /corridors/{id}` serves it. A failed
+onboarding is listed with `scenario_id`/`observations_path` null rather than
+hidden. `api.store.Store.list_corridors(limit)` is the query (rowid
+descending, like `list_reports`). Dashboard: `listCorridors(limit?)` in
+`frontend/src/api/client.ts` (`CorridorRow` in `types.ts`); OnboardView lists
+the corridors and loads one into the run/report actions (re-reading the full
+row, so the summary is the server's, not reconstructed); ReportsView's
+launcher has a "Score against observations" select offering the finished
+corridors' `observations_path` values plus a typed server path, sent as
+`POST /reports`'s `observations_path`, with the API's refusal shown verbatim
+beside the button. OnboardView's **Advanced** disclosure sends the optional
+`column_map` (the six canonical detector fields, JSON only when one is
+filled in), `idm_calibration` and `source` form fields. A service without the
+list route answers 404 and both views say so rather than claiming an empty
+history.
+
+## Observed backward wave speed as report context — 2026-09-23
+
+The corridor's *own* stop-and-go wave speed, measured from the detector
+archive and printed beside the band the simulated one is scored against
+(CLAUDE.md §7.1; `docs/ONBOARDING_MNDOT.md` §4a). It is **context, never a
+criterion**: no acceptance row is evaluated from it, and a corridor whose real
+waves run outside 14–22 km/h is not a corridor whose model has failed.
+
+**Estimator** (`calibration.waves_observed.detector_wave_speed(station_series,
+x_m, *, dt_s, v_thresh_ms=V_JAM_THRESH, max_lag_s=900, min_events=3,
+detrend_s=1200) -> ObservedWaveSpeed`). `station_series` is station id → speeds
+[m/s] on one regular `dt_s` grid (`None`/NaN = not measured, every series the
+same length), `x_m` is station id → corridor position [m] increasing
+downstream. For each adjacent pair, with the wave reaching the **downstream**
+station (larger x) first: the downstream series' samples below `v_thresh_ms`
+mark congested episodes (a run of ≥ `MIN_EVENT_SAMPLES` = 2 bins is one event;
+fewer than `min_events` events rejects the pair); both series have a centred
+moving mean of width `detrend_s` removed, which takes out the slow envelope
+every station of a corridor shares and leaves the oscillation; over the
+congested episodes dilated by the maximum lag, the Pearson correlation of
+`v_down(t)` against `v_up(t + k)` is computed for every lag
+`k ∈ [−max_lag, max_lag]`; the peak lag, refined by a parabola through its two
+neighbours (clamped to ±½ bin), divided into the spacing, is the pair's wave
+speed. A pair is used only when the peak correlation is ≥
+`MIN_PEAK_CORRELATION` (0.3), the peak lag is strictly positive (a
+non-positive lag is not a backward wave) and the peak is not on the search
+bound; every rejection carries its reason. The corridor summary is the median
+of the used pairs with their IQR. `ObservedWaveSpeed.to_dict()` is the JSON
+form: `median_kmh`, `iqr_kmh`, `n_pairs`, `n_used`, `dt_s`, `v_thresh_ms`,
+`max_lag_s`, `min_events`, `detrend_s`, `min_peak_correlation`, `band_kmh`,
+`method`, `pairs` (per pair: `upstream`, `downstream`, `dx_m`, `lag_s`,
+`lag_bins`, `speed_kmh`, `correlation`, `n_samples`, `n_events`, `used`,
+`reason`) and `rejected` (reason → count). NaN is `null` throughout.
+
+**Series** (`calibration.loaders.mndot.station_speed_series(config, corridor,
+stations, dates, *, t0_s=0, duration_s=None, cache_dir, max_workers=8,
+session=None, district, gap_s=SPEED_SERIES_GAP_S)`): the raw 30-second grid,
+not the analysis-window grid (a 5-minute window is longer than the lag being
+measured). Each bin is the mean over the station's mainline lane detectors of
+the samples that reported it, in m/s, with a 0 mph sample dropped as no
+measurement; a bin no detector reported is `None`. The requested daily span of
+each date is concatenated in the order given, separated by `gap_s` (3600 s) of
+`None`, so no correlation pairs samples of two different days and each day's
+congestion stays a separate event.
+
+**Artifact** (`flowstate.observations/1`): `Observations` gains an optional
+`context: dict`. It is written **only when non-empty**, so an artifact without
+one is byte-for-byte what earlier versions wrote, and `from_dict` of an
+artifact without one yields `{}` — old artifacts load unchanged.
+`scripts/mndot_fetch.py --wave-context` computes the estimate over the same
+span and dates as the artifact and stores it under
+`context["detector_wave_speed"]`, printing the per-pair table.
+
+**Report** (`validation.observed`, `validation.report`): `ObservedCorridor`
+carries `context` verbatim; `DetectorWaveSpeed.from_context(context)` reads
+the `detector_wave_speed` block into `(median_kmh, iqr_kmh, n_pairs, n_used,
+rejections)` and returns None when the artifact carries none or carries one
+this version cannot read (never a report failure). `ObservedProvenance` gains
+`wave_speed: DetectorWaveSpeed | None` (`to_dict()` gains
+`detector_wave_speed`, null when absent), filled by both `pool_scores` and
+`no_comparison_provenance`. The report's **Observed data** block then prints
+one computed row, "detector-estimated backward wave speed (context, not a
+criterion)" → "median X km/h (IQR a–b) from U of N station pairs; the model's
+band is lo–hi km/h", the band taken from the active `CriteriaProfile`. The
+acceptance-criteria table is untouched.

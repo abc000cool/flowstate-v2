@@ -13,6 +13,14 @@ and write the three files a corridor build needs:
 * ``observations.json`` — the ``flowstate.observations/1`` artifact for the
   analysed span, plus a per-station coverage table printed to stdout.
 
+``--wave-context`` adds the corridor's *observed* backward wave speed
+(:mod:`calibration.waves_observed`) to the artifact under
+``context["detector_wave_speed"]`` and prints the per-pair table. It is
+estimated from the raw 30-second speed series, not from the analysis windows,
+and is context for a validation report — the reviewer's comparison between the
+corridor's real wave speed and the 14–22 km/h band the model is scored
+against — never a criterion of its own.
+
 Responses are cached as JSON per detector-day under ``--cache-dir``, so a
 re-run costs no requests and an interrupted pull resumes. Memory stays flat:
 one station-day of 30-second samples is aggregated and released before the next
@@ -29,8 +37,11 @@ Run (network; never from tests):
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
+
+import pandas as pd
 
 from calibration.loaders.detector_csv import write_detector_csv
 from calibration.loaders.mndot import (
@@ -38,12 +49,16 @@ from calibration.loaders.mndot import (
     MAYFLY_BASE_URL,
     MAYFLY_DISTRICT,
     METRO_CONFIG_URL,
+    SAMPLE_INTERVAL_S,
     MetroConfig,
+    Station,
     fetch_metro_config,
     station_frame,
+    station_speed_series,
     stations_table,
 )
-from calibration.observations import Observations, coverage
+from calibration.observations import Observations, coverage, parse_clock
+from calibration.waves_observed import ObservedWaveSpeed, detector_wave_speed, summary_line
 
 DEFAULT_CONFIG_PATH = "data/mndot/metro_config.xml.gz"
 """Where the IRIS configuration is kept (downloaded on first use)."""
@@ -71,7 +86,80 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-ramps", action="store_true", help="Skip Entrance/Exit ramp detectors."
     )
+    parser.add_argument(
+        "--wave-context",
+        action="store_true",
+        help=(
+            "Estimate the corridor's observed backward wave speed from the raw 30-s "
+            "station speed series and record it under the artifact's "
+            "context.detector_wave_speed (context for a report, never a criterion)."
+        ),
+    )
     return parser
+
+
+def _wave_context(
+    config: MetroConfig,
+    corridor_name: str,
+    span: tuple[Station, ...],
+    dates: list[str],
+    *,
+    t0_local: str,
+    duration_s: float,
+    cache_dir: str,
+    max_workers: int,
+    district: str,
+) -> ObservedWaveSpeed:
+    """Estimate the observed backward wave speed over the analysed span.
+
+    Args:
+        config: Parsed IRIS configuration.
+        corridor_name: Corridor the span belongs to.
+        span: The mainline stations, upstream first.
+        dates: Local dates, concatenated into one series per station.
+        t0_local: Local wall clock of the span's start.
+        duration_s: Analysed span [s].
+        cache_dir: JSON cache root (a cached corridor costs no requests).
+        max_workers: Thread-pool size for the archive requests.
+        district: MnDOT district.
+
+    Returns:
+        The per-pair estimates and the corridor summary.
+    """
+    series = station_speed_series(
+        config,
+        corridor_name,
+        [s.id for s in span],
+        dates,
+        t0_s=parse_clock(t0_local),
+        duration_s=duration_s,
+        cache_dir=cache_dir,
+        max_workers=max_workers,
+        district=district,
+    )
+    positions = {s.id: s.x_m - span[0].x_m for s in span}
+    return detector_wave_speed(series, positions, dt_s=SAMPLE_INTERVAL_S)
+
+
+def _wave_table(result: ObservedWaveSpeed) -> pd.DataFrame:
+    """The per-pair estimates as a printable frame (one row per pair)."""
+    return pd.DataFrame(
+        [
+            {
+                "downstream": pair.downstream,
+                "upstream": pair.upstream,
+                "dx_m": round(pair.dx_m, 1),
+                "lag_s": round(pair.lag_s, 1),
+                "speed_kmh": round(pair.speed_kmh, 1),
+                "corr": round(pair.correlation, 3),
+                "n_samples": pair.n_samples,
+                "n_events": pair.n_events,
+                "used": pair.used,
+                "reason": pair.reason,
+            }
+            for pair in result.pairs
+        ]
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -136,6 +224,24 @@ def main(argv: list[str] | None = None) -> int:
             "fetched_at": datetime.now(UTC).isoformat(),
         },
     )
+    if args.wave_context:
+        wave = _wave_context(
+            config,
+            corridor.name,
+            span,
+            dates,
+            t0_local=args.t0,
+            duration_s=args.duration_s,
+            cache_dir=args.cache_dir,
+            max_workers=args.max_workers,
+            district=args.district,
+        )
+        observations = dataclasses.replace(
+            observations, context={"detector_wave_speed": wave.to_dict()}
+        )
+        print("\nobserved backward wave speed, adjacent mainline station pairs:")
+        print(_wave_table(wave).to_string(index=False))
+        print(f"detector-estimated backward wave speed: {summary_line(wave)}")
     observations.to_json(out_dir / "observations.json")
 
     print(f"\ncoverage over {observations.n_windows} windows from {args.t0}:")

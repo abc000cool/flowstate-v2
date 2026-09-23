@@ -8,6 +8,8 @@ detectors and the conservation closure), all against hand-computed numbers.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import math
 import re
 from pathlib import Path
@@ -218,6 +220,38 @@ class TestArtifactRoundTrip:
         assert back.to_dict() == obs.to_dict()
         assert math.isnan(back.flows_veh_h["S1"][4])
         assert back.n_windows == obs.n_windows
+
+    def test_context_round_trips_and_is_absent_when_empty(self, tmp_path: Path) -> None:
+        """The optional context block, e.g. an observed wave-speed estimate.
+
+        An artifact that carries none is byte-for-byte what earlier versions
+        wrote (no ``"context"`` key at all), and one that carries a context
+        survives the round trip untouched.
+        """
+        plain = _observations(tmp_path)
+        assert "context" not in plain.to_dict()
+        assert '"context"' not in plain.to_json(tmp_path / "plain.json").read_text()
+
+        context = {
+            "detector_wave_speed": {
+                "median_kmh": 19.4,
+                "iqr_kmh": [17.1, 21.8],
+                "n_pairs": 13,
+                "n_used": 6,
+                "rejected": {"peak correlation below the acceptance floor": 7},
+            }
+        }
+        annotated = dataclasses.replace(plain, context=context)
+        path = annotated.to_json(tmp_path / "annotated.json")
+        assert json.loads(path.read_text())["context"] == context
+        back = Observations.from_json(path)
+        assert back.context == context
+        assert back.to_dict() == annotated.to_dict()
+        # The context is the only difference from the plain artifact.
+        plain_payload = plain.to_dict()
+        annotated_payload = back.to_dict()
+        assert annotated_payload.pop("context") == context
+        assert annotated_payload == plain_payload
 
     def test_foreign_schema_is_refused(self) -> None:
         with pytest.raises(ValueError, match=re.escape("flowstate.observations/1")):

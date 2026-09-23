@@ -934,6 +934,144 @@ def station_frame(
     return frame
 
 
+SPEED_SERIES_GAP_S: Final[float] = 3600.0
+"""NaN gap inserted between two dates of a concatenated 30-s series [s].
+
+Longer than any lag a wave-speed estimate searches
+(:data:`calibration.waves_observed.DEFAULT_MAX_LAG_S`), so no cross-correlation
+can ever pair a sample of one day with a sample of the next.
+"""
+
+
+def station_speed_series(
+    config: MetroConfig,
+    corridor: str,
+    stations: Sequence[str],
+    dates: Sequence[str],
+    *,
+    t0_s: float = 0.0,
+    duration_s: float | None = None,
+    cache_dir: str | Path = DEFAULT_CACHE_DIR,
+    max_workers: int = 8,
+    session: FetchFn | None = None,
+    district: str = MAYFLY_DISTRICT,
+    gap_s: float = SPEED_SERIES_GAP_S,
+) -> dict[str, list[float | None]]:
+    """Per-station 30-second speed series over one daily span, dates in a row.
+
+    The raw archive grid, *not* the analysis window grid: this is what a
+    wave-speed estimate needs (:func:`calibration.waves_observed.detector_wave_speed`),
+    because a 5-minute window is longer than the propagation lag between two
+    adjacent stations. Each 30-second bin is the mean over the station's
+    mainline lane detectors of the samples that reported it, in m/s; a bin no
+    detector reported is ``None``, and — as everywhere in this module — a
+    0 mph sample is an absence of evidence, not a measured standstill, so it
+    is dropped before the mean.
+
+    The requested span of each date is taken in the order ``dates`` are given
+    and concatenated into one series per station, separated by ``gap_s`` of
+    ``None``. A consumer that never looks further than ``gap_s`` across the
+    series therefore never mixes two days, and the days' congestion events are
+    kept as the separate events they are (averaging the dates per bin, as the
+    observations artifact does, would smear each day's onset over the
+    day-to-day spread of onset times and destroy exactly the signal a
+    propagation lag is measured from).
+
+    Args:
+        config: Parsed :class:`MetroConfig`.
+        corridor: Corridor name (``"I-94 WB"``).
+        stations: Station ids; the returned mapping is keyed by them.
+        dates: ``YYYYMMDD`` local dates, in the order they are concatenated.
+        t0_s: Start of the daily span, seconds after local midnight; a
+            multiple of :data:`SAMPLE_INTERVAL_S`.
+        duration_s: Length of the daily span [s]; the rest of the day when
+            None. Also a multiple of :data:`SAMPLE_INTERVAL_S`.
+        cache_dir: JSON cache root (see :func:`fetch_detector_day`) — a
+            cached corridor costs no requests.
+        max_workers: Thread-pool size for the archive requests.
+        session: Injected fetcher; tests always pass one.
+        district: MnDOT district.
+        gap_s: NaN gap between two dates [s].
+
+    Returns:
+        Station id → the concatenated series, every value in m/s or None.
+
+    Raises:
+        KeyError: Unknown corridor or station id.
+        ValueError: No dates, or a span that is not on the 30-second grid or
+            does not lie inside one local day.
+    """
+    if not dates:
+        raise ValueError("station_speed_series needs at least one date")
+    corr = config.corridor(corridor)
+    picked = [corr.station(sid) for sid in stations]
+    start = _grid_index(t0_s, "t0_s")
+    length = (
+        SAMPLES_PER_DAY - start if duration_s is None else _grid_index(duration_s, "duration_s")
+    )
+    if length <= 0 or start + length > SAMPLES_PER_DAY:
+        raise ValueError(
+            f"the span [{t0_s:g}, {t0_s + length * SAMPLE_INTERVAL_S:g}) s does not lie inside "
+            f"one local day of {SAMPLES_PER_DAY} bins"
+        )
+    gap = _grid_index(max(0.0, gap_s), "gap_s")
+    series: dict[str, list[float | None]] = {station.id: [] for station in picked}
+    with ThreadPoolExecutor(max_workers=max(1, int(max_workers))) as pool:
+        for index, date in enumerate(dates):
+            for station in picked:
+                if index:
+                    series[station.id].extend([None] * gap)
+                jobs = {
+                    name: pool.submit(
+                        fetch_detector_day,
+                        name,
+                        date,
+                        "speed",
+                        cache_dir=cache_dir,
+                        session=session,
+                        district=district,
+                    )
+                    for name in station.detectors
+                }
+                lanes = [job.result() for job in jobs.values()]
+                series[station.id].extend(_mean_speed_bins(lanes, start, length))
+    return series
+
+
+def _grid_index(seconds: float, name: str) -> int:
+    """Seconds → whole 30-second bins.
+
+    Raises:
+        ValueError: Negative, or not a multiple of :data:`SAMPLE_INTERVAL_S`.
+    """
+    bins = seconds / SAMPLE_INTERVAL_S
+    if seconds < 0.0 or abs(bins - round(bins)) > 1e-9:
+        raise ValueError(
+            f"{name} must be a non-negative multiple of {SAMPLE_INTERVAL_S:g} s, got {seconds!r}"
+        )
+    return round(bins)
+
+
+def _mean_speed_bins(
+    lanes: Sequence[Sequence[float | None]], start: int, length: int
+) -> list[float | None]:
+    """Lane-mean speed [m/s] per 30-s bin of one station-day's span."""
+    out: list[float | None] = []
+    for index in range(start, start + length):
+        total = 0.0
+        n = 0
+        for lane in lanes:
+            if index >= len(lane):
+                continue
+            value = lane[index]
+            if value is None or value <= 0.0:
+                continue
+            total += value
+            n += 1
+        out.append(total / n * MPH_TO_MS if n else None)
+    return out
+
+
 def _targets(
     stations: Iterable[Station], ramps: Iterable[RampNode]
 ) -> list[tuple[DetectorKind, str, int, float, tuple[str, ...]]]:

@@ -833,6 +833,71 @@ class TestObservedDataBlock:
         assert "PASS" in rmspe_row
         assert "excluded from both" in text  # the limitations bullet
 
+    def test_detector_wave_speed_is_context_not_a_criterion(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        """The corridor's own wave speed is printed beside the model's band.
+
+        It belongs to the observed-data block: it is a measurement of the
+        corridor, not a target the run is scored against, so no criterion row
+        may appear for it (CLAUDE.md §7.1).
+        """
+        import dataclasses
+
+        from validation.observed import DetectorWaveSpeed
+
+        provenance = dataclasses.replace(
+            self._provenance(),
+            wave_speed=DetectorWaveSpeed(
+                median_kmh=21.2,
+                iqr_kmh=(18.5, 24.1),
+                n_pairs=13,
+                n_used=6,
+                rejections="7 peak correlation below the acceptance floor",
+            ),
+        )
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out, observed=provenance)
+        text = out.read_text()
+        line = next(
+            row
+            for row in text.splitlines()
+            if row.startswith("| detector-estimated backward wave speed")
+        )
+        assert "context, not a criterion" in line
+        assert "median 21.2 km/h (IQR 18.5–24.1) from 6 of 13 station pairs" in line
+        assert "the model's band is 14–22 km/h" in line
+        # It sits in the observed-data block, above the criteria table, and
+        # the criteria table itself gained no row.
+        assert text.index(line) < text.index("## Acceptance criteria")
+        criteria = text.split("## Acceptance criteria", 1)[1].split("## Metrics", 1)[0]
+        assert "detector-estimated" not in criteria
+
+    def test_an_estimate_with_no_usable_pair_says_so(self, micro_run_set: Path, tmp_path: Path):
+        import dataclasses
+
+        from validation.observed import DetectorWaveSpeed
+
+        provenance = dataclasses.replace(
+            self._provenance(),
+            wave_speed=DetectorWaveSpeed(
+                median_kmh=float("nan"),
+                iqr_kmh=(float("nan"), float("nan")),
+                n_pairs=4,
+                n_used=0,
+                rejections="4 fewer than min_events congested episodes downstream",
+            ),
+        )
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out, observed=provenance)
+        line = next(
+            row
+            for row in out.read_text().splitlines()
+            if row.startswith("| detector-estimated backward wave speed")
+        )
+        assert "not estimated from 4 station pairs" in line
+        assert "fewer than min_events congested episodes downstream" in line
+
     def test_without_observations_the_block_is_absent_and_rows_not_evaluated(
         self, micro_run_set: Path, tmp_path: Path
     ):

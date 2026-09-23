@@ -156,6 +156,14 @@ class Observations:
         spread: ``{"flows_veh_h_sd": {...}, "speeds_ms_sd": {...}}`` — the
             sample standard deviation across dates, NaN below two dates.
         quality: Station id → ``{"fraction_valid": ..., "n_dates": ...}``.
+        context: Optional computed context about the corridor that is not a
+            measurement of the window grid — currently
+            ``{"detector_wave_speed": ...}``
+            (:func:`calibration.waves_observed.detector_wave_speed`). It is
+            written only when non-empty, so an artifact that carries none is
+            byte-for-byte what earlier versions wrote, and it is never
+            scored: a validation report prints it as context, never as a
+            criterion.
         aggregation: How the dates were combined.
         schema: :data:`OBSERVATIONS_SCHEMA`.
     """
@@ -171,6 +179,7 @@ class Observations:
     occupancy_pct: dict[str, list[float]]
     spread: dict[str, dict[str, list[float]]] = field(default_factory=dict)
     quality: dict[str, dict[str, float]] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
     aggregation: str = DEFAULT_AGGREGATION
     schema: str = OBSERVATIONS_SCHEMA
 
@@ -323,8 +332,12 @@ class Observations:
     # -- serialization -----------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        """The artifact's JSON form (NaN written as ``null``)."""
-        return {
+        """The artifact's JSON form (NaN written as ``null``).
+
+        ``context`` appears only when the artifact carries one: an artifact
+        without it is exactly the payload earlier versions wrote.
+        """
+        payload: dict[str, Any] = {
             "schema": self.schema,
             "corridor": self.corridor,
             "source": dict(self.source),
@@ -343,6 +356,9 @@ class Observations:
             },
             "quality": {k: dict(v) for k, v in self.quality.items()},
         }
+        if self.context:
+            payload["context"] = dict(self.context)
+        return payload
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> Observations:
@@ -371,6 +387,7 @@ class Observations:
             occupancy_pct={k: _none_to_nan(v) for k, v in (raw.get("occupancy_pct") or {}).items()},
             spread=spread,
             quality={k: dict(v) for k, v in (raw.get("quality") or {}).items()},
+            context=dict(raw.get("context") or {}),
             aggregation=str(raw.get("aggregation", DEFAULT_AGGREGATION)),
             schema=schema,
         )

@@ -7199,5 +7199,203 @@
       "fraction_valid": 1.0,
       "n_dates": 9.0
     }
+  },
+  "context": {
+    "detector_wave_speed": {
+      "median_kmh": 21.206031882742465,
+      "iqr_kmh": [
+        18.457320230899846,
+        24.101594898780128
+      ],
+      "n_pairs": 13,
+      "n_used": 6,
+      "dt_s": 30.0,
+      "v_thresh_ms": 11.11111111111111,
+      "max_lag_s": 900.0,
+      "min_events": 3,
+      "detrend_s": 1200.0,
+      "min_peak_correlation": 0.3,
+      "band_kmh": [
+        14.0,
+        22.0
+      ],
+      "method": "normalised cross-correlation of adjacent-station 30-s speed series, detrended by a centred moving mean, over the downstream station's congested episodes; lag of the correlation peak, parabolically refined, divided into the station spacing",
+      "pairs": [
+        {
+          "upstream": "S1063",
+          "downstream": "S1064",
+          "dx_m": 1212.8094566562213,
+          "lag_s": null,
+          "lag_bins": 0,
+          "speed_kmh": null,
+          "correlation": null,
+          "n_samples": 0,
+          "n_events": 0,
+          "used": false,
+          "reason": "fewer than min_events congested episodes downstream"
+        },
+        {
+          "upstream": "S1064",
+          "downstream": "S1065",
+          "dx_m": 1150.4656611105565,
+          "lag_s": null,
+          "lag_bins": 0,
+          "speed_kmh": null,
+          "correlation": null,
+          "n_samples": 0,
+          "n_events": 0,
+          "used": false,
+          "reason": "fewer than min_events congested episodes downstream"
+        },
+        {
+          "upstream": "S1065",
+          "downstream": "S1066",
+          "dx_m": 584.1979629592097,
+          "lag_s": null,
+          "lag_bins": -30,
+          "speed_kmh": null,
+          "correlation": 0.2234930356242306,
+          "n_samples": 319,
+          "n_events": 9,
+          "used": false,
+          "reason": "peak lag sits on the search bound"
+        },
+        {
+          "upstream": "S1066",
+          "downstream": "S1067",
+          "dx_m": 907.5278413551096,
+          "lag_s": null,
+          "lag_bins": 22,
+          "speed_kmh": null,
+          "correlation": 0.1675383743072239,
+          "n_samples": 986,
+          "n_events": 28,
+          "used": false,
+          "reason": "peak correlation below the acceptance floor"
+        },
+        {
+          "upstream": "S1067",
+          "downstream": "S1068",
+          "dx_m": 607.5028696616828,
+          "lag_s": null,
+          "lag_bins": 12,
+          "speed_kmh": null,
+          "correlation": 0.15315551516811157,
+          "n_samples": 2026,
+          "n_events": 62,
+          "used": false,
+          "reason": "peak correlation below the acceptance floor"
+        },
+        {
+          "upstream": "S1068",
+          "downstream": "S1947",
+          "dx_m": 491.02351382259076,
+          "lag_s": 94.49997559354999,
+          "lag_bins": 3,
+          "speed_kmh": 18.705662500530618,
+          "correlation": 0.3264153595649728,
+          "n_samples": 2509,
+          "n_events": 80,
+          "used": true,
+          "reason": ""
+        },
+        {
+          "upstream": "S1947",
+          "downstream": "S1069",
+          "dx_m": 603.7449479168281,
+          "lag_s": null,
+          "lag_bins": 4,
+          "speed_kmh": null,
+          "correlation": 0.24823395996377115,
+          "n_samples": 2900,
+          "n_events": 63,
+          "used": false,
+          "reason": "peak correlation below the acceptance floor"
+        },
+        {
+          "upstream": "S1069",
+          "downstream": "S1070",
+          "dx_m": 979.0885670398347,
+          "lag_s": 145.44923900813,
+          "lag_bins": 5,
+          "speed_kmh": 24.233326110055398,
+          "correlation": 0.30009654541405467,
+          "n_samples": 2596,
+          "n_events": 180,
+          "used": true,
+          "reason": ""
+        },
+        {
+          "upstream": "S1070",
+          "downstream": "S1948",
+          "dx_m": 725.1400834726046,
+          "lag_s": null,
+          "lag_bins": 6,
+          "speed_kmh": null,
+          "correlation": 0.15506573225978273,
+          "n_samples": 2667,
+          "n_events": 112,
+          "used": false,
+          "reason": "peak correlation below the acceptance floor"
+        },
+        {
+          "upstream": "S1948",
+          "downstream": "S792",
+          "dx_m": 565.2920491630866,
+          "lag_s": 110.75387112843049,
+          "lag_bins": 4,
+          "speed_kmh": 18.374539474356258,
+          "correlation": 0.33815376018452825,
+          "n_samples": 3315,
+          "n_events": 234,
+          "used": true,
+          "reason": ""
+        },
+        {
+          "upstream": "S792",
+          "downstream": "S791",
+          "dx_m": 742.6127919104256,
+          "lag_s": 102.20252991469084,
+          "lag_bins": 3,
+          "speed_kmh": 26.1579243988289,
+          "correlation": 0.4503730013116179,
+          "n_samples": 3373,
+          "n_events": 151,
+          "used": true,
+          "reason": ""
+        },
+        {
+          "upstream": "S791",
+          "downstream": "S790",
+          "dx_m": 399.6704320791541,
+          "lag_s": 80.34090857459431,
+          "lag_bins": 3,
+          "speed_kmh": 17.908853422401318,
+          "correlation": 0.47889068915889177,
+          "n_samples": 3283,
+          "n_events": 186,
+          "used": true,
+          "reason": ""
+        },
+        {
+          "upstream": "S790",
+          "downstream": "S97",
+          "dx_m": 939.9270736436156,
+          "lag_s": 142.7351805657347,
+          "lag_bins": 5,
+          "speed_kmh": 23.706401264954316,
+          "correlation": 0.3173714128966767,
+          "n_samples": 2098,
+          "n_events": 104,
+          "used": true,
+          "reason": ""
+        }
+      ],
+      "rejected": {
+        "fewer than min_events congested episodes downstream": 2,
+        "peak lag sits on the search bound": 1,
+        "peak correlation below the acceptance floor": 4
+      }
+    }
   }
 }

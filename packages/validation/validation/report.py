@@ -84,7 +84,7 @@ from validation.metrics import (
     default_travel_span,
     warmup_from_meta,
 )
-from validation.observed import ObservedProvenance
+from validation.observed import DetectorWaveSpeed, ObservedProvenance
 from validation.waves import WaveDetector, get_detector
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -656,7 +656,37 @@ def speed_aggregation_rows(
     return rows
 
 
-def _observed_rows(observed: ObservedProvenance) -> list[dict[str, str]]:
+def _wave_speed_context_line(wave: DetectorWaveSpeed, band_kmh: tuple[float, float]) -> str:
+    """The observed block's detector wave-speed line — context, not a criterion.
+
+    A corridor's own recurrent wave speed is what the profile's band
+    (:data:`flowstate_core.constants.WAVE_SPEED_BAND_KMH`) is a generic stand-in
+    for, so printing the two side by side tells a reviewer whether the band is
+    the right target for *this* corridor. It scores nothing: the wave-speed
+    criterion stays a statement about the simulated field (CLAUDE.md §7.1).
+
+    Args:
+        wave: The estimate read from the observations artifact.
+        band_kmh: The active profile's acceptance band [km/h].
+
+    Returns:
+        The line, with every number formatted from the arguments.
+    """
+    lo, hi = band_kmh
+    band = f"the model's band is {_fmt(lo, 3)}–{_fmt(hi, 3)} km/h"
+    if wave.n_used <= 0:
+        detail = f" ({wave.rejections})" if wave.rejections else ""
+        return f"not estimated from {wave.n_pairs} station pairs{detail}; {band}"
+    q25, q75 = wave.iqr_kmh
+    return (
+        f"median {_fmt(wave.median_kmh, 3)} km/h (IQR {_fmt(q25, 3)}–{_fmt(q75, 3)}) from "
+        f"{wave.n_used} of {wave.n_pairs} station pairs; {band}"
+    )
+
+
+def _observed_rows(
+    observed: ObservedProvenance, band_kmh: tuple[float, float]
+) -> list[dict[str, str]]:
     """Provenance rows for the observed side of a comparison.
 
     Every value is taken from the artifact or from the scoring; rows the
@@ -696,6 +726,13 @@ def _observed_rows(observed: ObservedProvenance) -> list[dict[str, str]]:
         ),
         ("comparison not formed", observed.note),
     ]
+    if observed.wave_speed is not None:
+        rows.append(
+            (
+                "detector-estimated backward wave speed (context, not a criterion)",
+                _wave_speed_context_line(observed.wave_speed, band_kmh),
+            )
+        )
     return [{"name": name, "detail": detail} for name, detail in rows if detail]
 
 
@@ -710,7 +747,10 @@ OBSERVED_NOTE = (
     "is skipped, never imputed — the coverage rows say how much of the grid was "
     "compared. A station whose cross-section lies outside the simulated position span "
     "is excluded from both comparisons rather than scored against a simulated flow of "
-    "zero; the rows say how many were."
+    "zero; the rows say how many were. When the artifact carries a "
+    "detector-estimated backward wave speed, it is printed here as context for the "
+    "band the simulated wave speed is scored against — it is a property of the "
+    "corridor, not a target, and no criterion is evaluated from it."
 )
 
 
@@ -1333,7 +1373,9 @@ def generate_report(
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         insertion_note=_insertion_note(micro_runs),
         calibrations=calibrations,
-        observed=_observed_rows(observed) if observed is not None else None,
+        observed=(
+            _observed_rows(observed, p.wave_speed_band_kmh) if observed is not None else None
+        ),
         observed_note=OBSERVED_NOTE,
         criteria=_criteria_rows(criteria_results),
         criteria_note=criteria_note,

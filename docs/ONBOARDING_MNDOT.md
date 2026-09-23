@@ -114,6 +114,56 @@ reason the demand step does not trust ramp detectors alone):
 - two "T…" temporary loops at S790 never report; they are excluded from the
   validity denominator so the station keeps its three live lanes.
 
+### 4a. The corridor's own wave speed (context, not a criterion)
+
+`scripts/mndot_fetch.py --wave-context` estimates the *observed* backward wave
+speed from the raw 30-second speed series — for each adjacent station pair, the
+lag of the normalised cross-correlation peak between the detrended series over
+the downstream station's congested episodes, divided into the spacing
+(`calibration.waves_observed`, docs/CONTRACTS.md "Observed backward wave speed
+as report context"). It is stored under the artifact's
+`context.detector_wave_speed` and printed by the validation report as one line
+of the **Observed data** block, so a reviewer can put the corridor's real wave
+speed next to the 14–22 km/h band the *simulated* one is scored against. No
+criterion is evaluated from it.
+
+Nine weekdays, 05:30–09:30, 13 adjacent pairs:
+
+| downstream ← upstream | Δx [m] | lag [s] | km/h | peak r | used |
+|---|---|---|---|---|---|
+| S1064 ← S1063 | 1212.8 | — | — | — | no: fewer than 3 congested episodes |
+| S1065 ← S1064 | 1150.5 | — | — | — | no: fewer than 3 congested episodes |
+| S1066 ← S1065 | 584.2 | — | — | 0.223 | no: peak on the search bound |
+| S1067 ← S1066 | 907.5 | — | — | 0.168 | no: r below 0.3 |
+| S1068 ← S1067 | 607.5 | — | — | 0.153 | no: r below 0.3 |
+| S1947 ← S1068 | 491.0 | 94.5 | 18.7 | 0.326 | yes |
+| S1069 ← S1947 | 603.7 | — | — | 0.248 | no: r below 0.3 |
+| S1070 ← S1069 | 979.1 | 145.4 | 24.2 | 0.300 | yes |
+| S1948 ← S1070 | 725.1 | — | — | 0.155 | no: r below 0.3 |
+| S792 ← S1948 | 565.3 | 110.8 | 18.4 | 0.338 | yes |
+| S791 ← S792 | 742.6 | 102.2 | 26.2 | 0.450 | yes |
+| S790 ← S791 | 399.7 | 80.3 | 17.9 | 0.479 | yes |
+| S97 ← S790 | 939.9 | 142.7 | 23.7 | 0.317 | yes |
+
+**Median 21.2 km/h, IQR 18.5–24.1, from 6 of 13 pairs** — the corridor's
+recurrent waves run at the fast edge of the band the model is asked to
+reproduce, and the two upstream pairs never congest at all (§2: the entry is
+free-flowing). What the number is worth:
+
+- **Resolution.** The lag is measured on 30-second bins, so a 0.5 km pair
+  resolves the speed to roughly ±15% and a 1 km pair to ±8%; the parabolic
+  sub-bin refinement helps but does not remove that. The IQR is the honest
+  spread, not a confidence interval.
+- **Detrending matters.** Without removing the ~20-minute envelope, three
+  pairs peak at a zero or negative lag (the whole corridor's peak turns on
+  almost together) and the median rises to 22.7 km/h with 8 pairs used. Across
+  detrending widths of 600–3600 s the median stays between 18.0 and 22.0 km/h
+  and the used-pair count between 3 and 8 — the estimate is stable, the pair
+  selection is not.
+- **Spacing.** The estimate uses the IRIS inventory spacing; the SUMO chain's
+  projected spacings differ by ≤ 3% (worst case the 400 m S791→S790 pair),
+  well inside the lag quantisation.
+
 ## 5. Demand (`artifacts/demand_mndot_i94_wb_stpaul.json`)
 
 Entry inflow = S1063's cross-section count per 5-min window (peak 4,275 veh/h).
