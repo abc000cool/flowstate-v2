@@ -55,6 +55,7 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   [ -d docs/reports ] && extra="$extra docs/reports"
   # onboarded corridors: per-seed metrics/scores of every run, first-seed trajectories only, sweep metrics + summaries
   # run trees are <root>/<cell-or-arm>/<config hash>/<seed>/ — four levels below runs/mndot_*
+  extra="$extra $(ls runs/i24_strat_sweep/*/*/*/metrics.json runs/i24_strat_sweep/MANIFEST.json runs/i24_strat_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
   extra="$extra $(ls runs/mndot_*/*/*/*/metrics.json runs/mndot_*/*/*/*/observed_scores.json runs/mndot_*_sweep/MANIFEST.json runs/mndot_*_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
   # shellcheck disable=SC2086
@@ -298,6 +299,16 @@ stage sweep_mndot $RUN scripts/corridor_sweep.py --scenario scenarios/$MNDOT.yam
   --strategies none vsl alinea --rho-target-veh-km 19.9 --x-ref 11027 --span 1110 11027 \
   --replicates "$REPS" --procs "$PROCS" \
   --out runs/${MNDOT}_sweep --summary artifacts/sweep_${MNDOT}_summary.json || say "sweep_mndot failed; continuing"
+
+# 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
+#     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
+#     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
+#     18.912 m/s (artifacts/idm_i24_capacity_equilibrium.json). Throughput at data x = 2,200 m
+#     (sim x 4,412 m); analysed span the measured 2,256–7,638 m (artifacts/i24_replica_inputs.json).
+stage sweep_i24_strat $RUN scripts/corridor_sweep.py --scenario scenarios/i24_replica_flow_speedcal_ramps.yaml \
+  --penetration 0.10 --compliance 1.0 --controllers follower_stopper --strategies none vsl alinea \
+  --rho-target-veh-km 29.2 --x-ref 4411.8 --span 2256.2 7637.8 --replicates "$REPS" --procs "$PROCS" \
+  --out runs/i24_strat_sweep --summary artifacts/sweep_i24_strategies_summary.json || say "sweep_i24_strat failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
