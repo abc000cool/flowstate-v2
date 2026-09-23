@@ -150,9 +150,11 @@ interface RunRecord {
   /** `RunOut.error` — why a failed run failed, in the worker's own words. */
   error?: string;
   error_kind?: string;
-  fixedStatus?: 'done' | 'failed';
-  /** for launched runs: wall-clock schedule */
-  launchedAt?: number;
+  /** The status this demo row *is*. Every row has one: see `runStatus`. */
+  fixedStatus: 'queued' | 'running' | 'done' | 'failed';
+  /** Completed replicates for a `queued`/`running` row; `done` and `failed`
+   * derive their own (all of them, and a third of them, respectively). */
+  fixedDone?: number;
 }
 
 const BASELINE: RunProfile = {
@@ -316,21 +318,23 @@ const runs: RunRecord[] = [
     kind: 'corridor',
     profile: DAMPENED,
     damping: 0.6,
-    launchedAt: Date.now() - 4000, // appears live on first view
+    // a partly-finished row, frozen: see `runStatus`
+    fixedStatus: 'running',
+    fixedDone: 7,
   },
 ];
 
-const moduleStart = Date.now();
-
+/** The status and progress of a demo row — a constant, by design.
+ *
+ * These rows used to advance from wall-clock (`launchedAt`, `moduleStart`), so
+ * a dashboard left open with the API dead showed 4/20 replicates becoming
+ * 19/20: a progress bar filling for a job no server was running. Demo data may
+ * illustrate the shapes the API returns; it may never look like live compute.
+ * Every row therefore states what it is, and stays it. */
 function runStatus(r: RunRecord): { status: RunSummary['status']; done: number } {
   if (r.fixedStatus === 'done') return { status: 'done', done: r.n };
   if (r.fixedStatus === 'failed') return { status: 'failed', done: Math.floor(r.n / 3) };
-  const started = r.launchedAt ?? moduleStart;
-  const elapsed = (Date.now() - started) / 1000;
-  if (elapsed < 3) return { status: 'queued', done: 0 };
-  const done = Math.floor((elapsed - 3) / 2.2);
-  if (done >= r.n) return { status: 'done', done: r.n };
-  return { status: 'running', done };
+  return { status: r.fixedStatus, done: Math.min(r.fixedDone ?? 0, r.n) };
 }
 
 function toSummary(r: RunRecord): RunSummary {
@@ -890,7 +894,10 @@ export async function mockCreateRun(req: CreateRunRequest): Promise<{ run_id: st
     kind,
     profile: damp > 0.3 ? DAMPENED : kind === 'ring' ? RING_PROFILE : BASELINE,
     damping: damp,
-    launchedAt: Date.now(),
+    // demo mode (VITE_MOCK) only, and finished the moment it is made: a demo
+    // run that appeared to progress would be the dashboard animating compute
+    // that never happened (see `runStatus`)
+    fixedStatus: 'done',
   });
   return { run_id: runId };
 }

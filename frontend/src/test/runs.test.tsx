@@ -403,6 +403,36 @@ describe('RunsView demo fallback', () => {
   }, 10000);
 });
 
+/** The demo backend itself used to advance its rows from the wall clock, so a
+ * dashboard left open with the API dead walked a run from 4/20 to 19/20 —
+ * compute no worker had been asked for, shown as progress (CLAUDE.md §0.1).
+ * Demo data may illustrate the shapes the API returns; it may never look
+ * live. */
+describe('mock backend run progress', () => {
+  it('serves the same n/N however long the page has been open', async () => {
+    const shape = (rows: Awaited<ReturnType<typeof mockListRuns>>): string[] =>
+      rows.map(
+        (r) =>
+          `${r.run_id} ${r.status} ` +
+          `${r.progress.completed_replicates}/${r.progress.total_replicates}`,
+      );
+
+    const before = await mockListRuns();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 45 * 60_000);
+    try {
+      expect(shape(await mockListRuns())).toEqual(shape(before));
+    } finally {
+      clock.mockRestore();
+    }
+
+    // and the partly-finished row is a fixed fraction: still a running row,
+    // just not one that moves
+    const running = before.find((r) => r.status === 'running');
+    expect(running?.progress.completed_replicates).toBe(7);
+    expect(before.some((r) => r.status === 'queued')).toBe(false);
+  }, 10000);
+});
+
 /** The launcher used to offer stored scenarios only, so a fresh install — no
  * stored scenario yet — had an empty dropdown and no way to start anything.
  * Presets are repo YAMLs: they are stored first, then run. */

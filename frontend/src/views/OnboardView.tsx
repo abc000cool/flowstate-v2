@@ -43,6 +43,7 @@ import {
   getRun,
   isMockActive,
   listCorridors,
+  OFFLINE_INFLIGHT_MESSAGE,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
 import type { CorridorOut, CorridorRow, RunDetail } from '../api/types';
@@ -479,7 +480,15 @@ export function OnboardView(): JSX.Element {
     }
   }
 
-  const writeBlocked = offline ? OFFLINE_WRITE_MESSAGE : undefined;
+  /** Why the write controls are disabled. While one of this view's own writes
+   * is still open, `/healthz` going quiet does not mean the request was never
+   * sent — a corridor onboarding is precisely the request that keeps the
+   * server from answering the probe (see `OFFLINE_INFLIGHT_MESSAGE`). */
+  const writeBlocked = offline
+    ? busy
+      ? OFFLINE_INFLIGHT_MESSAGE
+      : OFFLINE_WRITE_MESSAGE
+    : undefined;
   const summary = corridor?.summary ?? null;
 
   return (
@@ -701,18 +710,21 @@ export function OnboardView(): JSX.Element {
         <div className="panel-body row wrap">
           <div className="field">
             <label>&nbsp;</label>
+            {/* the hint is the button's *description*, never its name: a
+                control announced as "Name: letters, digits, - and _" tells a
+                screen-reader user nothing about what pressing it does */}
             <button
               className="btn primary"
               onClick={() => void onboard()}
               disabled={problem !== null || busy || offline}
-              title={writeBlocked ?? problem ?? undefined}
+              aria-describedby="onboard-hint"
             >
               Onboard corridor
             </button>
           </div>
           <div className="field">
             <label>&nbsp;</label>
-            <span className="small muted">
+            <span className="small muted" id="onboard-hint">
               {writeBlocked ??
                 problem ??
                 'Downloads the map extract, builds the network and derives the demand.'}
@@ -766,7 +778,11 @@ export function OnboardView(): JSX.Element {
                     <td>
                       <button
                         className="btn sm"
-                        aria-label={`use ${row.name}`}
+                        // the status is part of the name: two rows for the
+                        // same corridor differ only by how their onboarding
+                        // ended, and "use walk2_i94" alone cannot tell a
+                        // screen-reader user which one is the failed attempt
+                        aria-label={`use ${row.name} (${row.status})`}
                         disabled={busy || corridor?.corridor_id === row.corridor_id}
                         title={
                           corridor?.corridor_id === row.corridor_id

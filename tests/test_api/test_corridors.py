@@ -157,6 +157,26 @@ def onboarded(client: TestClient, no_download: list[Any]) -> dict[str, Any]:
 
 
 class TestOnboardingHappyPath:
+    def test_the_post_answers_queued_and_does_not_onboard_in_the_request(
+        self, client: TestClient, no_download: list[Any]
+    ) -> None:
+        """202 carries the queued row, inline queue included.
+
+        An onboarding run inside the request holds the server for its whole
+        duration — seconds — and ``/healthz`` stops answering, which the
+        dashboard reads as the API being offline while its own request is
+        being served. The job is a background task after the response, so the
+        202 body is the queued row and the work is visible only on the poll.
+        """
+        body = post_corridor(client, name="fixture_corridor_bg")
+        assert body["status"] == "queued"
+        assert body["scenario_id"] is None
+        assert body["summary"] is None
+        # and the job did run, once the response was out
+        polled = client.get(f"/api/v1/corridors/{body['corridor_id']}", headers=HEADERS).json()
+        assert polled["status"] == "done", polled["error"]
+        assert polled["scenario_id"] is not None
+
     def test_the_job_reports_done_with_the_corridor_it_found(
         self, onboarded: dict[str, Any]
     ) -> None:

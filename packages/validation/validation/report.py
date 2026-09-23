@@ -1231,7 +1231,10 @@ def generate_report(
             **Observed data** block naming the source, its window grid, its
             coverage and how many comparisons were formed. ``None`` omits the
             block — and, with ``geh_values``/``rmspe_value`` also ``None``,
-            leaves the two criteria rows honestly *not evaluated*.
+            leaves the two criteria rows honestly *not evaluated* for want of
+            an input. Supplied but with those two ``None`` (no comparable
+            window was formed), the rows stay unevaluated and say *that*
+            instead.
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -1299,6 +1302,10 @@ def generate_report(
         ring_dampening=ring_dampening,
         n_seeds=len(set(smallest.seeds)),
         wave_detector=det,
+        # An artifact that yielded no comparable window is still an artifact:
+        # the two rows stay unevaluated, but they may not report the operator's
+        # upload as missing (the observed-data block holds the reason).
+        observations_supplied=observed is not None,
     )
     criteria_note = _wave_criterion_note(
         reference=reference,

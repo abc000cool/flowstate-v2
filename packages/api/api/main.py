@@ -47,6 +47,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     FastAPI,
     File,
     Form,
@@ -1522,6 +1523,7 @@ def _corridor_out(row: dict[str, Any], settings: Settings) -> CorridorOut:
 @router.post("/corridors", status_code=202, response_model=CorridorOut)
 async def create_corridor(
     request: Request,
+    background: BackgroundTasks,
     name: Annotated[str, Form()],
     bbox: Annotated[str, Form()],
     bearing_deg: Annotated[float, Form()],
@@ -1548,7 +1550,10 @@ async def create_corridor(
     the presets directory so it is selectable beside the shipped corridors.
     Poll ``GET /corridors/{id}``; the finished row carries the
     ``scenario_id`` for ``POST /runs`` and the ``observations_path`` for
-    ``POST /reports``.
+    ``POST /reports``. The 202 body is always the *queued* row — under the
+    inline queue too, where the job is handed to a background task once the
+    response has gone out rather than run inside the request (an onboarding
+    held in-request blocks ``/healthz`` for its whole duration).
 
     Multipart form fields: ``name`` (also the preset filename, so
     ``[A-Za-z0-9_-]``), ``bbox`` as ``"south west north east"``,
@@ -1658,13 +1663,34 @@ async def create_corridor(
         detectors_path,
         stations_path,
     )
-    get_queue(settings).enqueue(
-        corridor_onboarding_job,
-        corridor_id,
-        job_id=corridor_id,
-        db_path=str(settings.db_path),
-        results_root=str(settings.results_dir),
-    )
+    queue = get_queue(settings)
+    if queue.kind == "inline":
+        # The inline queue *is* the caller's thread, and an onboarding is
+        # seconds of work (an OSM download, netconvert, a demand fit). Running
+        # it inside the request holds the event loop for that long, so
+        # ``/healthz`` stops answering and the dashboard declares the server
+        # offline while the very request it is waiting on is being served
+        # normally. The store row is already ``queued`` (``create_corridor``
+        # above), so the response is the same asynchronous contract the Redis
+        # queue gives: 202 with a queued row, poll ``GET /corridors/{id}``.
+        # Starlette runs a sync background task in a threadpool, after the
+        # response has gone out.
+        background.add_task(
+            queue.enqueue,
+            corridor_onboarding_job,
+            corridor_id,
+            job_id=corridor_id,
+            db_path=str(settings.db_path),
+            results_root=str(settings.results_dir),
+        )
+    else:
+        queue.enqueue(
+            corridor_onboarding_job,
+            corridor_id,
+            job_id=corridor_id,
+            db_path=str(settings.db_path),
+            results_root=str(settings.results_dir),
+        )
     row = store.get_corridor(corridor_id)
     assert row is not None
     return _corridor_out(row, settings)

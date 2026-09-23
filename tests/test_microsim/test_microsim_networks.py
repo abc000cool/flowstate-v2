@@ -3,7 +3,10 @@
 All tests run real ``netconvert`` (SUMO tooling) → marked integration.
 """
 
+import io
 import math
+import urllib.error
+import urllib.request
 
 import pytest
 import sumolib
@@ -139,6 +142,54 @@ class TestOSMImport:
     def test_no_source_raises(self, tmp_path):
         with pytest.raises(ValueError, match="osm_file or bbox"):
             osm_import(workdir=tmp_path)
+
+
+class TestOverpassDownloadErrors:
+    """What a failed Overpass download says (``urlopen`` is stubbed: no network)."""
+
+    BBOX = (36.0, -87.0, 36.01, -86.99)
+
+    @staticmethod
+    def _raise_http_error(status, reason, body=b"<html>SECRET-BODY</html>"):
+        def urlopen(request, timeout=None):
+            raise urllib.error.HTTPError(
+                networks.OVERPASS_ENDPOINT, status, reason, {}, io.BytesIO(body)
+            )
+
+        return urlopen
+
+    def test_http_status_and_reason_are_surfaced_body_is_not(self, monkeypatch):
+        """A download's status line cannot quote the caller's input, so it is
+        named — a 504 is a community-server outage to retry, not a bad bbox —
+        while the response body stays out of the message."""
+        monkeypatch.setattr(
+            urllib.request, "urlopen", self._raise_http_error(504, "Gateway Timeout")
+        )
+        with pytest.raises(RuntimeError) as excinfo:
+            networks._download_bbox_overpass(self.BBOX)
+
+        message = str(excinfo.value)
+        assert "Overpass API answered HTTP 504 Gateway Timeout" in message
+        assert "retry later" in message
+        assert "SECRET-BODY" not in message
+        # No HTTPError hangs off this one: the API's redacting failure record
+        # walks the chain and would add a "message withheld" line for it.
+        assert excinfo.value.__cause__ is None
+        assert excinfo.value.__context__ is None
+
+    def test_a_multiline_reason_phrase_is_reduced_to_one_line(self, monkeypatch):
+        monkeypatch.setattr(
+            urllib.request,
+            "urlopen",
+            self._raise_http_error(429, "Too Many\nRequests " + "x" * 200),
+        )
+        with pytest.raises(RuntimeError) as excinfo:
+            networks._download_bbox_overpass(self.BBOX)
+
+        message = str(excinfo.value)
+        assert "\n" not in message
+        assert "HTTP 429 Too Many Requests" in message
+        assert len(message) < 200
 
 
 class TestNetBundleMath:

@@ -9,11 +9,12 @@
  * observations path so its GEH and speed rows are evaluated rather than
  * "not evaluated". */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../api/client';
 import { AppStateProvider, useAppState } from '../components/AppContext';
+import { ERROR_TOAST_MS, TOAST_MS, Toasts, toast } from '../components/toast';
 import { OnboardView, parseBbox } from '../views/OnboardView';
 
 const CORRIDOR_ID = 'cor_9f21ab77cd10';
@@ -239,7 +240,9 @@ describe('OnboardView', () => {
     renderView();
     const button = screen.getByRole('button', { name: 'Onboard corridor' });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', expect.stringContaining('Name'));
+    // the hint is the button's description; its *name* says what it does
+    expect(button).toHaveAccessibleName('Onboard corridor');
+    expect(button).toHaveAccessibleDescription(expect.stringContaining('Name'));
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'mndot_i94_wb' } });
     fireEvent.change(screen.getByLabelText('Bounding box (S, W, N, E)'), {
@@ -256,11 +259,11 @@ describe('OnboardView', () => {
     fireEvent.change(screen.getByLabelText('Upstream station'), { target: { value: 'S1063' } });
     fireEvent.change(screen.getByLabelText('Downstream station'), { target: { value: 'S97' } });
     // both files are still missing, and the button says which
-    expect(button).toHaveAttribute('title', 'Choose the detector CSV');
+    expect(button).toHaveAccessibleDescription('Choose the detector CSV');
     fireEvent.change(screen.getByLabelText('Detector CSV'), {
       target: { files: [new File(['x'], 'det.csv')] },
     });
-    expect(button).toHaveAttribute('title', 'Choose the stations CSV');
+    expect(button).toHaveAccessibleDescription('Choose the stations CSV');
     fireEvent.change(screen.getByLabelText('Stations CSV'), {
       target: { files: [new File(['x'], 'sta.csv')] },
     });
@@ -276,7 +279,8 @@ describe('OnboardView', () => {
     // a corridor "calibrated" by the in-browser backend would be a claim
     // about a road no server ever saw (api/client.assertWritable)
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', OFFLINE_WRITE_MESSAGE);
+    expect(button).toHaveAccessibleName('Onboard corridor');
+    expect(button).toHaveAccessibleDescription(OFFLINE_WRITE_MESSAGE);
     expect(calls).toHaveLength(0);
   });
 
@@ -286,7 +290,7 @@ describe('OnboardView', () => {
     fireEvent.change(screen.getByLabelText('Downstream station'), { target: { value: 'S1063' } });
     const button = screen.getByRole('button', { name: 'Onboard corridor' });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', expect.stringContaining('must be different'));
+    expect(button).toHaveAccessibleDescription(expect.stringContaining('must be different'));
   });
 
   it('sends the documented multipart body and follows the job to done', async () => {
@@ -541,6 +545,15 @@ describe('OnboardView corridor history', () => {
     expect(within(rows[0]).getByText('done')).toBeInTheDocument();
     expect(within(rows[1]).getByText('failed')).toBeInTheDocument();
     expect(within(rows[0]).getByText('2026-09-23 06:00:00 UTC')).toBeInTheDocument();
+
+    // the two Use buttons read the same to a screen reader until the status
+    // is part of the name — and picking the failed attempt is a different act
+    expect(
+      within(rows[0]).getByRole('button', { name: 'use mndot_i94_wb (done)' }),
+    ).toBeInTheDocument();
+    expect(
+      within(rows[1]).getByRole('button', { name: 'use mndot_i35_nb (failed)' }),
+    ).toBeInTheDocument();
   });
 
   it('prefills the run and report actions from the corridor that is picked', async () => {
@@ -550,7 +563,11 @@ describe('OnboardView corridor history', () => {
       JSON.stringify({ corridor_id: CORRIDOR_ID, run_id: RUN_ID }),
     );
     renderView();
-    const use = await screen.findByRole('button', { name: 'use mndot_i94_wb' }, { timeout: 4000 });
+    const use = await screen.findByRole(
+      'button',
+      { name: 'use mndot_i94_wb (done)' },
+      { timeout: 4000 },
+    );
     fireEvent.click(use);
 
     // the full row is re-read: a listing carries no summary, and the panel
@@ -628,4 +645,46 @@ describe('OnboardView active-corridor label', () => {
       { timeout: 6000 },
     );
   }, 15000);
+});
+
+/** A refusal is the whole answer to the click. The 409 that says a corridor of
+ * that name already exists used to be gone in 5.2 s — while the operator was
+ * still reading the form it came from — and there was no way to keep it or to
+ * clear it by hand. An error toast now outlives the acknowledgements and has a
+ * dismiss control. */
+describe('refusal toasts', () => {
+  const MSG = "corridor 'mndot_i94_wb' already exists";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps a 409 up past 15 s, and dismisses it when asked', () => {
+    vi.useFakeTimers();
+    render(<Toasts />);
+
+    act(() => {
+      toast('error', MSG);
+      toast('ok', 'preset stored');
+    });
+    expect(screen.getByText(new RegExp('already exists'))).toBeInTheDocument();
+
+    // the acknowledgement goes at its own pace; the refusal stays
+    act(() => {
+      vi.advanceTimersByTime(TOAST_MS + 200);
+    });
+    expect(screen.queryByText(/preset stored/)).toBeNull();
+    expect(screen.getByText(new RegExp('already exists'))).toBeInTheDocument();
+
+    // still up just short of the error lifetime
+    act(() => {
+      vi.advanceTimersByTime(ERROR_TOAST_MS - TOAST_MS - 400);
+    });
+    expect(screen.getByText(new RegExp('already exists'))).toBeInTheDocument();
+    expect(ERROR_TOAST_MS).toBeGreaterThanOrEqual(15_000);
+
+    // and it goes when the operator says so, not only when it times out
+    fireEvent.click(screen.getByRole('button', { name: `dismiss: ${MSG}` }));
+    expect(screen.queryByText(new RegExp('already exists'))).toBeNull();
+  });
 });

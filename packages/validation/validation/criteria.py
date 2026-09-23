@@ -320,14 +320,36 @@ class CriteriaResult:
     detail: str = ""
 
 
-def _not_evaluated(name: str, threshold: str) -> CriteriaResult:
+def _not_evaluated(
+    name: str, threshold: str, *, observations_supplied: bool = False
+) -> CriteriaResult:
+    """An unevaluated row, saying honestly *why* it could not be evaluated.
+
+    Args:
+        name: Criterion identifier.
+        threshold: Human-readable threshold description.
+        observations_supplied: For the two rows scored against an
+            observations artifact: the artifact was supplied but produced no
+            comparable window (no station pair, no window inside the
+            measurement span, no observed cell). "Input not supplied" would
+            be false, and would send the reader looking for an upload that
+            is already there.
+
+    Returns:
+        The row, with ``evaluated=False``.
+    """
+    detail = (
+        "not evaluated: observations supplied, no comparable window (see the observed-data block)"
+        if observations_supplied
+        else "not evaluated: input not supplied"
+    )
     return CriteriaResult(
         name=name,
         value=None,
         threshold=threshold,
         passed=False,
         evaluated=False,
-        detail="not evaluated: input not supplied",
+        detail=detail,
     )
 
 
@@ -351,6 +373,7 @@ def evaluate(
     ring_dampening: bool | None = None,
     n_seeds: int | None = None,
     sweep_grid: Sequence[tuple[float, float]] | None = None,
+    observations_supplied: bool = False,
 ) -> list[CriteriaResult]:
     """Evaluate acceptance criteria against measured values.
 
@@ -380,6 +403,11 @@ def evaluate(
             sensitivity sweep, as fractions. Pass only cells whose metrics
             carry replicate CIs (CLAUDE.md §7.1 "published with CIs") — the
             row checks presence of every required cell, not the CIs.
+        observations_supplied: Whether an observations artifact was supplied
+            for the two rows scored against one (``link_flows_geh``,
+            ``speeds_rmspe``). With ``geh_values`` / ``rmspe_value`` still
+            ``None`` the rows stay unevaluated, but say that the artifact
+            yielded no comparable window rather than that no input was given.
 
     Returns:
         One :class:`CriteriaResult` per profile check, in table order.
@@ -392,7 +420,13 @@ def evaluate(
         f"GEH < {p.geh_threshold:g} for {cmp} {p.geh_pass_fraction:.0%} of link-hour comparisons"
     )
     if geh_values is None:
-        rows.append(_not_evaluated("link_flows_geh", geh_threshold_text))
+        rows.append(
+            _not_evaluated(
+                "link_flows_geh",
+                geh_threshold_text,
+                observations_supplied=observations_supplied,
+            )
+        )
     elif len(geh_values) == 0:
         rows.append(
             CriteriaResult(
@@ -421,7 +455,13 @@ def evaluate(
     if p.rmspe_max is not None:
         rmspe_text = f"segment-speed RMSPE <= {p.rmspe_max:.0%}"
         if rmspe_value is None:
-            rows.append(_not_evaluated("speeds_rmspe", rmspe_text))
+            rows.append(
+                _not_evaluated(
+                    "speeds_rmspe",
+                    rmspe_text,
+                    observations_supplied=observations_supplied,
+                )
+            )
         else:
             rows.append(
                 CriteriaResult(

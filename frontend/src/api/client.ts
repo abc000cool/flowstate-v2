@@ -340,6 +340,21 @@ export async function checkHealth(timeoutMs = 2500): Promise<boolean> {
 export const OFFLINE_WRITE_MESSAGE =
   'API offline — reconnect before launching (nothing was sent to the server)';
 
+/** What the same controls say while a write of their own is still in flight.
+ *
+ * `OFFLINE_WRITE_MESSAGE` is only ever true of a request this client refused
+ * *before* sending it (`assertWritable`, status 0). The offline flag itself
+ * says nothing of the kind: it is raised when `/healthz` stops answering, and
+ * a long write — a corridor onboarding takes seconds — is exactly what stops
+ * `/healthz` answering while the request it belongs to is being served
+ * normally. Claiming "nothing was sent" over a request that was sent, and may
+ * be running, is the unvalidated claim in miniature (CLAUDE.md §0.1), and it
+ * invites the operator to re-send a job the server already has. */
+export const OFFLINE_INFLIGHT_MESSAGE =
+  'The server did not answer the /healthz probe, and a request from this panel is still ' +
+  'open — it was sent, so it may still be running. Wait for it (or reload and look at the ' +
+  'server) rather than sending it again.';
+
 /** Refuse a write while the demo fallback is serving reads.
  *
  * Reads may fall back to the in-memory backend (the dashboard stays

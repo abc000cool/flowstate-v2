@@ -111,6 +111,10 @@ describe('GuidedFirstRun', () => {
   let reportStatus: Status = 'queued';
   const urlApi = URL as unknown as { createObjectURL?: unknown; revokeObjectURL?: unknown };
 
+  /** What `GET /scenarios` currently holds — the restore path's evidence
+   * that a remembered scenario id is still this server's. */
+  let scenarios: unknown[] = [];
+
   beforeEach(() => {
     setOfflineFallback(false);
     clearAuthFailure();
@@ -118,6 +122,8 @@ describe('GuidedFirstRun', () => {
     runStatus = 'running';
     runError = null;
     reportStatus = 'queued';
+    scenarios = [];
+    window.sessionStorage.clear();
     // jsdom has neither blob URLs nor navigation
     urlApi.createObjectURL = vi.fn(() => 'blob:guided');
     urlApi.revokeObjectURL = vi.fn();
@@ -130,7 +136,7 @@ describe('GuidedFirstRun', () => {
         const body = typeof init?.body === 'string' ? init.body : undefined;
         calls.push({ url, method, body });
         if (url.endsWith('/scenarios/preset')) return json([PRESET]);
-        if (url.endsWith('/scenarios') && method === 'GET') return json([]);
+        if (url.endsWith('/scenarios') && method === 'GET') return json(scenarios);
         if (url.endsWith('/scenarios') && method === 'POST') {
           return json({ scenario_id: 'scn_ring01', config_hash: PRESET.config_hash }, 201);
         }
@@ -317,6 +323,59 @@ describe('GuidedFirstRun', () => {
       expect(within(steps[4]).getByText('The run failed, so it produced no metrics.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Generate report' })).toBeDisabled();
       expect(screen.queryByRole('link', { name: 'Open run detail' })).toBeNull();
+    },
+    20000,
+  );
+
+  /** Every step used to live in plain `useState`, so leaving the panel — by
+   * its own step-5 link, among other ways — put a walkthrough at 4/6 back to
+   * 1/6. The ids survive in `sessionStorage`; what they *mean* is asked of the
+   * server again on mount, so a step is still only ever ticked by an answer. */
+  it(
+    'restores 4/6 on remount, from the server and not from the browser record',
+    async () => {
+      scenarios = [{ scenario_id: 'scn_ring01', name: 'ring_sugiyama' }];
+      runStatus = 'done';
+      window.sessionStorage.setItem(
+        'flowstate.guided.ids',
+        JSON.stringify({ scenario_id: 'scn_ring01', run_id: 'run_ring' }),
+      );
+      renderPanel();
+
+      expect(await screen.findByText('4/6 done', {}, { timeout: 6000 })).toBeInTheDocument();
+      // and each one is a read, not a recollection
+      expect(calls.some((c) => c.url.endsWith('/scenarios') && c.method === 'GET')).toBe(true);
+      expect(calls.some((c) => c.url.endsWith('/runs/run_ring'))).toBe(true);
+      expect(await screen.findByText('scn_ring01', {}, { timeout: 4000 })).toBeInTheDocument();
+      // the metrics step is open again: the numbers were never re-read
+      const steps = screen.getAllByRole('listitem');
+      expect(steps[4].className).toContain('current');
+    },
+    20000,
+  );
+
+  it(
+    'resets a step whose remembered id this server does not have',
+    async () => {
+      // the scenario is gone from `GET /scenarios` and the run 404s
+      window.sessionStorage.setItem(
+        'flowstate.guided.ids',
+        JSON.stringify({ scenario_id: 'scn_gone', run_id: 'run_gone' }),
+      );
+      renderPanel();
+
+      const notes = await screen.findAllByText(/does not have what the walkthrough recorded/, {}, {
+        timeout: 6000,
+      });
+      expect(notes.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('1/6 done')).toBeInTheDocument();
+      // nothing claims the vanished ids
+      expect(screen.queryByText('scn_gone')).toBeNull();
+      expect(screen.queryByText('run_gone')).toBeNull();
+      // and the step is takeable again rather than stuck
+      expect(
+        await screen.findByRole('button', { name: 'Use ring_sugiyama' }, { timeout: 4000 }),
+      ).toBeEnabled();
     },
     20000,
   );

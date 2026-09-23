@@ -174,7 +174,11 @@ def fetch_extract(bbox: tuple[float, float, float, float], dest: Path) -> Path:
         ``dest``.
 
     Raises:
-        RuntimeError: Overpass answered with something that is not XML.
+        RuntimeError: Overpass answered with an HTTP error status, or with
+            something that is not XML. The failure record this job stores
+            withholds third-party messages, but this one is raised inside
+            ``microsim`` and carries only the download's HTTP status line, so
+            the operator can tell a server outage (retry) from a bad bbox.
     """
     from microsim.networks import _download_bbox_overpass
 

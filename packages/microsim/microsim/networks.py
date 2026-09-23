@@ -35,6 +35,7 @@ import math
 import os
 import re
 import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 from bisect import bisect_right
@@ -419,6 +420,25 @@ OVERPASS_ENDPOINT: str = "https://overpass-api.de/api/interpreter"
 #: arterial network to prune away.
 OVERPASS_HIGHWAY_REGEX: str = "motorway|motorway_link"
 
+#: Longest HTTP reason phrase kept in a download failure message.
+_REASON_PHRASE_MAX_CHARS: Final[int] = 60
+
+
+def _reason_phrase(reason: object) -> str:
+    """Sanitise an HTTP reason phrase for a user-visible failure message.
+
+    The phrase is server-supplied text, so it is reduced to printable ASCII
+    on one line and truncated — a status line, never a document.
+
+    Args:
+        reason: ``urllib.error.HTTPError.reason``.
+
+    Returns:
+        The cleaned phrase, possibly empty.
+    """
+    cleaned = "".join(c if 0x20 <= ord(c) < 0x7F else " " for c in str(reason))
+    return " ".join(cleaned.split())[:_REASON_PHRASE_MAX_CHARS]
+
 
 def _download_bbox_overpass(
     bbox: tuple[float, float, float, float],
@@ -450,8 +470,9 @@ def _download_bbox_overpass(
         The OSM XML document.
 
     Raises:
-        RuntimeError: The endpoint answered with something that is not XML
-            (Overpass reports rate limits and query errors as HTML).
+        RuntimeError: The endpoint answered with an HTTP error status, or with
+            something that is not XML (Overpass reports rate limits and query
+            errors as HTML).
     """
     south, west, north, east = bbox
     query = (
@@ -463,8 +484,28 @@ def _download_bbox_overpass(
     request = urllib.request.Request(
         OVERPASS_ENDPOINT, data=data, headers={"User-Agent": "flowstate-onboarding/2.0"}
     )
-    with urllib.request.urlopen(request, timeout=timeout_s) as resp:
-        payload: bytes = resp.read()
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as resp:
+            payload: bytes = resp.read()
+    except urllib.error.HTTPError as exc:
+        # Status line only. The code and reason phrase are the server's own
+        # answer about the *download* — they cannot quote the caller's input,
+        # so they are safe to surface verbatim through the API's redacting
+        # failure record (``api.jobs._calibration_error_text``), and they are
+        # the difference between "retry later" and "fix your query". The body
+        # is dropped: Overpass answers errors with an HTML page.
+        status_line = f"HTTP {exc.code} {_reason_phrase(exc.reason)}".rstrip()
+        exc.close()
+        payload = b""
+    else:
+        status_line = ""
+    # Raised outside the ``except`` block so the HTTPError is not attached as
+    # the context of this one (it would add a "message withheld" line).
+    if status_line:
+        raise RuntimeError(
+            f"Overpass API answered {status_line} — a community server outage, "
+            "retry later or use a mirror (response body withheld)"
+        )
     if not payload.lstrip().startswith(b"<?xml"):
         raise RuntimeError(
             f"{OVERPASS_ENDPOINT}: non-XML response ({payload[:120]!r}) — "

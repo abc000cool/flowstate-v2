@@ -33,7 +33,7 @@
  * already use, and the preset is stored through `lib/library.ensureStored`,
  * the same path the Scenarios and Runs launchers take. */
 
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ApiError,
@@ -50,6 +50,8 @@ import {
   listCriteriaProfiles,
   listPresetScenarios,
   listRuns,
+  listScenarios,
+  OFFLINE_INFLIGHT_MESSAGE,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
 import type { PresetSummary, ReportOut, RunDetail, RunMetrics } from '../api/types';
@@ -97,7 +99,58 @@ export const AUTH_REASON =
 
 const REPORT_TITLE = 'Ring smoke (guided first run)';
 
+/** Where the walkthrough's identifiers survive a navigation.
+ *
+ * `sessionStorage`, not `localStorage`: these are the ids of *this* sitting at
+ * the dashboard, and a walkthrough half-finished last week is not progress.
+ * Only identifiers are kept — never a step's state. What each id *means* is
+ * re-derived from the service on mount (`restoreIds`), so a run the server no
+ * longer knows resets its step instead of ticking it off a browser record.
+ * Every access is wrapped: storage throws in a private window and comes back
+ * empty with site data cleared, and the panel has to work either way. */
+const STORAGE_KEY = 'flowstate.guided.ids';
+
+/** The identifiers the panel remembers across a navigation. */
+interface GuidedIds {
+  scenario_id?: string;
+  run_id?: string;
+  report_id?: string;
+}
+
+/** Read the remembered identifiers, or `{}` when there are none. */
+function readIds(): GuidedIds {
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (raw === null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== 'object') return {};
+    return parsed as GuidedIds;
+  } catch {
+    return {};
+  }
+}
+
+/** Merge `patch` into the remembered identifiers; a `null` value drops one. */
+function rememberIds(patch: Record<string, string | null>): void {
+  try {
+    const next: Record<string, string> = { ...readIds() } as Record<string, string>;
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null) delete next[k];
+      else next[k] = v;
+    }
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* private window, or site data blocked: the panel simply forgets */
+  }
+}
+
+/** What a step says when the id it was remembering is gone from the server. */
+export const STALE_ID_MESSAGE =
+  'This server does not have what the walkthrough recorded here (it answered 404), so the ' +
+  'step is open again — take it from the top.';
+
 const PRESET_POLL_MS = 3000;
+const RESTORE_POLL_MS = 2000;
 const CRITERIA_POLL_MS = 3000;
 const RUN_POLL_MS = 1500;
 const REPORT_POLL_MS = 1500;
@@ -173,6 +226,14 @@ export function GuidedFirstRun({
    * in-browser backend). */
   const [serverRuns, setServerRuns] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** The identifiers this sitting recorded, read once. Nothing here is state:
+   * each one is a question put to the server by `restoreIds`. */
+  const stored = useRef<GuidedIds>(readIds());
+  const [restored, setRestored] = useState(
+    Object.keys(stored.current).length === 0,
+  );
+  /** Steps whose remembered id the server answered 404 for, keyed by step. */
+  const [stale, setStale] = useState<Record<string, boolean>>({});
   /** The service's own words for the last refusal, kept beside the step that
    * asked — a toast that has already faded is not the message to act on. */
   const [error, setError] = useState<{ step: string; msg: string } | null>(null);
@@ -184,6 +245,77 @@ export function GuidedFirstRun({
     setError({ step, msg: err instanceof Error ? err.message : String(err) });
     toastError(err, step);
   };
+
+  /* ---------------------------- restore ----------------------------- */
+
+  /** Re-derive the walkthrough's state from the service, once per mount.
+   *
+   * The panel unmounts whenever the operator leaves it — including by its own
+   * step-5 link — and plain component state goes with it, which is what made
+   * a finished step 4 come back as step 1. The identifiers survive in
+   * `sessionStorage`, but an identifier is not progress: each one is put back
+   * to the server here (`GET /scenarios`, `GET /runs/{id}`, `GET /reports/{id}`)
+   * and a step is re-ticked only by the answer. A 404 means this service does
+   * not have it — a different server, a wiped database — and that step resets
+   * with `STALE_ID_MESSAGE` rather than claiming work nobody did. Any other
+   * failure is transient: nothing is restored and the poll comes round again.
+   */
+  const restoreIds = useCallback(async () => {
+    if (isMockActive()) return;
+    const ids = stored.current;
+    const gone: Record<string, boolean> = {};
+    /** Run `probe`; true when it answered, false when the id is gone. */
+    const confirm = async (step: string, probe: () => Promise<boolean>): Promise<boolean> => {
+      try {
+        return await probe();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          gone[step] = true;
+          return false;
+        }
+        throw err;
+      }
+    };
+    try {
+      if (ids.scenario_id !== undefined) {
+        const id = ids.scenario_id;
+        const ok = await confirm('preset', async () => {
+          const all = await listScenarios();
+          return all.some((s) => s.scenario_id === id);
+        });
+        if (ok) setScenarioId(id);
+        else gone.preset = true;
+      }
+      if (ids.run_id !== undefined) {
+        const id = ids.run_id;
+        const ok = await confirm('run', async () => {
+          const r = await getRun(id);
+          setRun(r);
+          return true;
+        });
+        if (ok) setRunId(id);
+      }
+      if (ids.report_id !== undefined) {
+        const id = ids.report_id;
+        await confirm('report', async () => {
+          setReport(await getReport(id));
+          return true;
+        });
+      }
+    } catch {
+      return; // transient: try the whole restore again on the next tick
+    }
+    if (Object.keys(gone).length > 0) {
+      setStale(gone);
+      rememberIds({
+        scenario_id: gone.preset ? null : (ids.scenario_id ?? null),
+        run_id: gone.run ? null : (ids.run_id ?? null),
+        report_id: gone.report ? null : (ids.report_id ?? null),
+      });
+    }
+    setRestored(true);
+  }, []);
+  usePoll(restoreIds, restored || authFailed || demo ? null : RESTORE_POLL_MS);
 
   /* ----------------------------- polls ------------------------------ */
 
@@ -286,11 +418,13 @@ export function GuidedFirstRun({
     try {
       // a preset is a repo YAML, not a stored scenario: the same path the
       // Scenarios launcher takes, so the same config hash is reused
-      const { scenario_id, stored } = await ensureStored(preset);
+      const { scenario_id, stored: wasStored } = await ensureStored(preset);
       setScenarioId(scenario_id);
+      setStale((s) => ({ ...s, preset: false }));
+      rememberIds({ scenario_id });
       toast(
         'ok',
-        stored
+        wasStored
           ? `preset ${preset.name} stored as ${scenario_id}`
           : `preset ${preset.name} already stored as ${scenario_id}`,
       );
@@ -311,6 +445,8 @@ export function GuidedFirstRun({
       const res = await createRun({ scenario_id: scenarioId, replicates: SMOKE_REPLICATES });
       setRunId(res.run_id);
       setRun(null);
+      setStale((s) => ({ ...s, run: false }));
+      rememberIds({ run_id: res.run_id });
       toast('ok', `run ${res.run_id} queued`);
     } catch (err) {
       fail('run', err);
@@ -348,6 +484,8 @@ export function GuidedFirstRun({
       );
       setReport(out);
       setDownloaded(false);
+      setStale((s) => ({ ...s, report: false }));
+      rememberIds({ report_id: out.report_id });
     } catch (err) {
       fail('report', err);
     } finally {
@@ -372,13 +510,21 @@ export function GuidedFirstRun({
 
   /* ----------------------------- steps ------------------------------ */
 
-  /** Why a step that talks to the server cannot run, or null. */
+  /** Why a step that talks to the server cannot run, or null.
+   *
+   * `OFFLINE_WRITE_MESSAGE` is the refusal `api/client` raises for a write it
+   * declined to send, and it says so ("nothing was sent"). That is only true
+   * while this panel has nothing open: a write already in flight is exactly
+   * what can silence `/healthz`, and the answer to it may still be coming
+   * (see `OFFLINE_INFLIGHT_MESSAGE`). */
   const serverBlock = authFailed
     ? AUTH_REASON
     : mockEnv
       ? MOCK_ENV_REASON
       : offline
-        ? OFFLINE_WRITE_MESSAGE
+        ? busy !== null
+          ? OFFLINE_INFLIGHT_MESSAGE
+          : OFFLINE_WRITE_MESSAGE
         : null;
 
   /** A launch that leaves no measurement window dies on the worker; the same
@@ -543,7 +689,17 @@ export function GuidedFirstRun({
       ),
       action:
         run?.status === 'done' && runId !== null ? (
-          <Link className="btn sm" to={`/runs/${runId}`} onClick={() => void readMetrics()}>
+          // a new tab, so the panel is not unmounted by its own step: the
+          // walkthrough stays where it is while the run detail is read. The
+          // ids are in sessionStorage either way (`restoreIds`), so a same-tab
+          // navigation is recoverable too — this just spares the round trip.
+          <Link
+            className="btn sm"
+            to={`/runs/${runId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => void readMetrics()}
+          >
             Open run detail
           </Link>
         ) : null,
@@ -658,6 +814,9 @@ export function GuidedFirstRun({
                 </div>
                 <div className="small muted g-what">{s.what}</div>
                 {!s.done && s.why !== null && <div className="g-why">{s.why}</div>}
+                {!s.done && stale[s.key] === true && (
+                  <div className="g-why">{STALE_ID_MESSAGE}</div>
+                )}
                 {s.extra}
                 {s.action}
                 {error !== null && error.step === s.key && (

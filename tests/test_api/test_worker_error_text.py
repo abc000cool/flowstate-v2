@@ -221,3 +221,38 @@ def test_a_message_that_is_itself_a_traceback_is_withheld() -> None:
     exc = _Odd('Traceback (most recent call last):\n  File "/srv/x.py", line 2, in f\n')
     text = _error_text(exc)
     assert text == "_Odd: child traceback withheld (see the worker log)"
+
+
+def test_a_download_http_status_reaches_the_calibration_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Corridor onboarding stores the calibration-class record, which withholds
+    third-party messages — but a *download's* HTTP status line is the server's
+    answer about the fetch, not a quote of the operator's upload, so it must
+    reach the operator: without it a community-server 504 is indistinguishable
+    from a malformed bounding box. The response body still never appears."""
+    import io
+    import urllib.error
+    import urllib.request
+
+    from api.onboarding_jobs import fetch_extract
+    from microsim import networks
+
+    def urlopen(request: object, timeout: float | None = None) -> None:
+        raise urllib.error.HTTPError(
+            networks.OVERPASS_ENDPOINT,
+            504,
+            "Gateway Timeout",
+            {},  # type: ignore[arg-type]
+            io.BytesIO(b"<html>SECRET-BODY</html>"),
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    with pytest.raises(RuntimeError) as excinfo:
+        fetch_extract((36.0, -87.0, 36.01, -86.99), tmp_path / "corridor.osm.xml")
+
+    text = _calibration_error_text(excinfo.value)
+    assert "Overpass API answered HTTP 504 Gateway Timeout" in text
+    assert "retry later" in text
+    assert "message withheld" not in text
+    assert "SECRET-BODY" not in text and "<html>" not in text

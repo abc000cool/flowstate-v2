@@ -1056,6 +1056,26 @@ table.data tr.disabled {
   font-size: 12px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   animation: toast-in 160ms ease-out;
+  padding-right: 30px;
+  position: relative;
+}
+
+.toast-x {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: none;
+  border: 0;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.toast-x:hover {
+  opacity: 1;
 }
 
 .toast.error {

@@ -925,8 +925,40 @@ class TestObservedDataBlock:
         assert "### Observed data" not in text
         geh_row = next(line for line in text.splitlines() if line.startswith("| link_flows_geh"))
         assert "NOT EVALUATED" in geh_row
+        assert "input not supplied" in geh_row
         rmspe_row = next(line for line in text.splitlines() if line.startswith("| speeds_rmspe"))
         assert "NOT EVALUATED" in rmspe_row
+        assert "input not supplied" in rmspe_row
+
+    def test_supplied_observations_with_no_comparison_do_not_claim_a_missing_input(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        """An artifact that formed no comparable window (too few stations, or
+        no window inside the measurement span) leaves both rows unevaluated —
+        but "input not supplied" would be false about an upload that is right
+        there in the observed-data block, and sends the reader to re-upload it
+        (CLAUDE.md §0.1)."""
+        import dataclasses
+
+        provenance = dataclasses.replace(
+            self._provenance(),
+            n_stations=1,
+            n_windows_compared=0,
+            n_link_hours=0,
+            n_speed_cells=0,
+            note="at least two positioned mainline stations are needed to form a segment",
+        )
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out, observed=provenance)
+        text = out.read_text()
+        assert "### Observed data" in text
+        for name in ("link_flows_geh", "speeds_rmspe"):
+            row = next(line for line in text.splitlines() if line.startswith(f"| {name}"))
+            assert "NOT EVALUATED" in row
+            assert (
+                "observations supplied, no comparable window (see the observed-data block)" in row
+            )
+            assert "input not supplied" not in row
 
     def test_empty_provenance_fields_are_dropped(self, micro_run_set: Path, tmp_path: Path):
         import dataclasses
