@@ -18,7 +18,7 @@ mkdir -p "$HOME/flowstate" && tar xf /tmp/repo.tar -C "$HOME/flowstate"
 cd "$HOME/flowstate"
 git init -q && git add -A && git -c user.name=vm -c user.email=vm@local commit -qm "snapshot $SHA" && echo "snapshot committed ($(git rev-parse --short HEAD))"
 echo "== data"
-tar xf /tmp/i24_data.tar && rm -f /tmp/i24_data.tar /tmp/repo.tar && du -sh data/i24motion/processed
+tar xf /tmp/i24_data.tar && rm -f /tmp/i24_data.tar /tmp/repo.tar && (du -sh data/i24motion/processed 2>/dev/null || echo "no I-24 data shipped (--data-set none)")
 echo "== python workspace"
 uv python install 3.12 >/dev/null
 uv sync --all-packages --dev >/dev/null
