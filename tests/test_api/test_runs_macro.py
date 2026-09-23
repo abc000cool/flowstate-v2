@@ -166,6 +166,36 @@ def test_failed_run_records_error_and_blocks_metrics(client: TestClient) -> None
     assert r.status_code == 409
 
 
+def test_duration_inside_the_warmup_is_refused_not_queued(client: TestClient) -> None:
+    """A run with nothing left to measure is refused, not enqueued to fail.
+
+    Everything before ``sim.warmup_s`` is discarded from the metrics, so a
+    duration at or below it kills every replicate on the worker ("warm-up N s
+    leaves no measurement window"). Typically a shortened ``duration_s``
+    override against a scenario calibrated with a long warm-up.
+    """
+    cfg = macro_corridor_config(
+        name="macro_warmup_window",
+        sim={"duration_s": 600.0, "step_length_s": 0.5, "output_hz": 1.0, "warmup_s": 120.0},
+    )
+    scenario = post_scenario(client, cfg)
+    # the scenario as stored is fine: 600 s of run, 120 s of warm-up
+    post_run(client, scenario["scenario_id"])
+
+    r = client.post(
+        "/api/v1/runs",
+        json={"scenario_id": scenario["scenario_id"], "overrides": {"sim": {"duration_s": 120.0}}},
+        headers=HEADERS,
+    )
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert "no measurement window" in detail
+    assert "120" in detail
+    # and nothing was queued: the only run is the good one above
+    listing = client.get("/api/v1/runs", headers=HEADERS).json()
+    assert len(listing) == 1
+
+
 def test_missing_run_404(client: TestClient) -> None:
     assert client.get("/api/v1/runs/run_missing", headers=HEADERS).status_code == 404
     assert client.get("/api/v1/runs/run_missing/metrics", headers=HEADERS).status_code == 404

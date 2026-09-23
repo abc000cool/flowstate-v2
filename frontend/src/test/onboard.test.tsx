@@ -13,6 +13,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearAuthFailure, OFFLINE_WRITE_MESSAGE, setOfflineFallback } from '../api/client';
+import { AppStateProvider, useAppState } from '../components/AppContext';
 import { OnboardView, parseBbox } from '../views/OnboardView';
 
 const CORRIDOR_ID = 'cor_9f21ab77cd10';
@@ -369,4 +370,106 @@ describe('OnboardView', () => {
       observations_path: OBSERVATIONS,
     });
   });
+});
+
+/** The form used to name one problem at a time, beside the button, with an
+ * inline message only for the bounding box: fixing one field to be told about
+ * the next is a round trip per field. Every failing field now states its own
+ * reason under its own control. */
+describe('OnboardView field-level validation', () => {
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    window.localStorage.clear();
+    vi.stubGlobal('fetch', vi.fn(async (): Promise<Response> => json({}, 404)));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('states every failing field at once, next to the field', () => {
+    renderView();
+    fireEvent.change(screen.getByLabelText('Bounding box (S, W, N, E)'), {
+      target: { value: '44.94, -93.10' },
+    });
+    fireEvent.change(screen.getByLabelText('Bearing (deg)'), { target: { value: '400' } });
+    fireEvent.change(screen.getByLabelText('Warm-up (s)'), { target: { value: '99999' } });
+
+    // every wrong field says so simultaneously (the first problem is also
+    // repeated beside the button, which is why this one matches twice)
+    expect(screen.getAllByText(/letters, digits/).length).toBe(2);
+    expect(screen.getAllByText(/needs four numbers/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/compass degrees within/)).toBeInTheDocument();
+    expect(screen.getByText('Name the upstream boundary station')).toBeInTheDocument();
+    expect(screen.getByText('Name the downstream boundary station')).toBeInTheDocument();
+    expect(screen.getByText('Choose the detector CSV')).toBeInTheDocument();
+    expect(screen.getByText('Choose the stations CSV')).toBeInTheDocument();
+    expect(screen.getByText(/shorter than the duration/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Onboard corridor' })).toBeDisabled();
+  });
+});
+
+/** The shell's CORRIDOR label named whatever was active before — or nothing —
+ * after an onboarding finished. A finished corridor is the corridor being
+ * worked on. */
+describe('OnboardView active-corridor label', () => {
+  function CorridorProbe(): JSX.Element {
+    const { corridor } = useAppState();
+    return <div data-testid="active">{corridor ?? '— none —'}</div>;
+  }
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    window.localStorage.clear();
+    calls.length = 0;
+    corridorDone = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        calls.push({ url, method });
+        if (url.endsWith('/corridors') && method === 'POST') {
+          return json(corridorRow('extract', false), 202);
+        }
+        if (url.includes('/corridors/')) {
+          return json(corridorRow(corridorDone ? 'done' : 'network', corridorDone));
+        }
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+  });
+
+  it('names the corridor in the shell once the job finishes', async () => {
+    render(
+      <AppStateProvider>
+        <CorridorProbe />
+        <MemoryRouter initialEntries={['/onboard']}>
+          <Routes>
+            <Route path="/onboard" element={<OnboardView />} />
+          </Routes>
+        </MemoryRouter>
+      </AppStateProvider>,
+    );
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Onboard corridor' }));
+
+    // while it runs, nothing is claimed
+    expect(await screen.findByText(/network · 1\/5 stages/, {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByTestId('active')).toHaveTextContent('— none —');
+
+    corridorDone = true;
+    await waitFor(
+      () => expect(screen.getByTestId('active')).toHaveTextContent('mndot_i94_wb'),
+      { timeout: 6000 },
+    );
+  }, 15000);
 });

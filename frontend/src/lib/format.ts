@@ -85,6 +85,20 @@ export function spaceTicks(x0: number, x1: number, target = 5): number[] {
   return ticks;
 }
 
+/** What a failed run says when the service sent no text with the failure. */
+export const NO_FAILURE_REASON = 'the service reported no reason';
+
+/** The failure line of a run (`RunOut.error` / `RunOut.error_kind`).
+ *
+ * A failed run must say *why*: "RUN FAILED 2/2" with the reason dropped sends
+ * the user to the server logs for something the API already answered. When the
+ * service sent no text, that absence is stated rather than rendered as blank. */
+export function failureReason(error?: string | null, kind?: string | null): string {
+  const body = (error ?? '').trim() || NO_FAILURE_REASON;
+  const k = (kind ?? '').trim();
+  return k ? `${k}: ${body}` : body;
+}
+
 /** Space axis label that adapts to network scale (m for rings, km else). */
 export function formatDistAdaptive(metres: number, span: number): string {
   if (span < M_PER_KM) return `${trim(metres, 0)} m`;

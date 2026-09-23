@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { getRun, getRunHeatmap, getRunMetrics } from '../api/client';
+import { getRun, getRunHeatmap, getRunMetrics, isMockActive } from '../api/client';
 import type { HeatField, Heatmap, RunDetail, RunMetrics } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import {
@@ -24,6 +24,8 @@ import {
 } from '../components/bits';
 import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
 import { toastError } from '../components/toast';
+import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
+import { failureReason } from '../lib/format';
 import { useAuthFailed, usePoll } from '../lib/hooks';
 import { hasNoObservations, orderedMetricKeys } from '../lib/metrics';
 
@@ -41,15 +43,20 @@ export function RunDetailView(): JSX.Element {
   };
   const [heatmaps, setHeatmaps] = useState<Partial<Record<HeatField, Heatmap>>>({});
   const [seedsOpen, setSeedsOpen] = useState(false);
+  // Whether the row on screen came from the in-browser demo backend, captured
+  // at fetch time (the client decides mock vs live per call).
+  const [demo, setDemo] = useState(false);
   const { setCorridor } = useAppState();
   const authFailed = useAuthFailed();
 
   const finished = run?.status === 'done';
 
   const pollRun = useCallback(async () => {
+    const fromDemo = isMockActive();
     try {
       const r = await getRun(runId);
       setRun(r);
+      setDemo(fromDemo);
       if (r.scenario_name) setCorridor(r.scenario_name.split('·')[0].trim());
     } catch (err) {
       toastError(err, runId);
@@ -108,11 +115,21 @@ export function RunDetailView(): JSX.Element {
           <StatusChip status={run.status} />
           <TierBadge tier={run.tier} />
           <SeededBadge seeded={run.seeded} />
+          {demo && (
+            <span className="tag demo" title={DEMO_ROW_TITLE}>
+              DEMO
+            </span>
+          )}
           <span className="kv">
             scenario <b>{run.scenario_name ?? run.scenario_id}</b>
           </span>
           <span className="kv">
-            config <b className="hash">{run.config_hash}</b>
+            config{' '}
+            {demo ? (
+              <b className="hash muted">{DEMO_HASH_LABEL}</b>
+            ) : (
+              <b className="hash">{run.config_hash}</b>
+            )}
           </span>
           {run.tier === 'macro' && metrics && (
             <span
@@ -167,8 +184,27 @@ export function RunDetailView(): JSX.Element {
             </span>
           </div>
           <div className="panel-body">
-            <ProgressBar done={run.progress.completed_replicates} total={run.progress.total_replicates} status={run.status} />
-            {run.status !== 'failed' && (
+            {demo ? (
+              // no worker is computing these replicates, so nothing moves
+              <span className="mono small muted">
+                {run.progress.completed_replicates}/{run.progress.total_replicates} — demo
+              </span>
+            ) : (
+              <ProgressBar done={run.progress.completed_replicates} total={run.progress.total_replicates} status={run.status} />
+            )}
+            {run.status === 'failed' ? (
+              // the API already answers *why* (RunOut.error): showing only
+              // "run failed 2/2" sends the user to the server logs for a
+              // reason the dashboard was holding all along
+              <>
+                <p className="small muted" style={{ marginTop: 12 }}>
+                  No replicate produced results. The service reported:
+                </p>
+                <pre className="fail-reason mono small">
+                  {failureReason(run.error, run.error_kind)}
+                </pre>
+              </>
+            ) : (
               <p className="small muted" style={{ marginTop: 12 }}>
                 Heatmap and metrics appear when all replicates finish.
               </p>

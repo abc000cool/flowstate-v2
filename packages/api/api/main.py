@@ -409,6 +409,28 @@ def _require_done(row: dict[str, Any]) -> None:
         raise HTTPException(status_code=409, detail=detail)
 
 
+def _check_measurement_window(cfg: ScenarioConfig) -> None:
+    """Refuse a run whose warm-up swallows its whole duration.
+
+    Everything before ``sim.warmup_s`` is discarded from the metrics, so a
+    duration at or below it leaves nothing to measure and every replicate
+    dies on the worker with "warm-up N s leaves no measurement window". The
+    request is unsatisfiable as posted — usually a shortened ``duration_s``
+    override against a scenario calibrated with a long warm-up — so it is
+    refused here instead of consuming a queue slot per replicate.
+    """
+    warmup = cfg.sim.warmup_s
+    if warmup > 0 and cfg.sim.duration_s <= warmup:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"sim.duration_s ({cfg.sim.duration_s:g} s) leaves no measurement window: "
+                f"the first {warmup:g} s are discarded as warm-up (sim.warmup_s). "
+                "Raise the duration past the warm-up, or lower the warm-up."
+            ),
+        )
+
+
 @router.post("/runs", status_code=202, response_model=RunOut, responses=_NOT_FOUND_RESPONSE)
 def create_run(request: Request, body: RunCreateRequest) -> RunOut:
     """Enqueue a run: stored config + deep-merged overrides, re-validated.
@@ -429,6 +451,7 @@ def create_run(request: Request, body: RunCreateRequest) -> RunOut:
         scenario["config"], body.overrides, body.replicates, body.tier, body.macro
     )
     config, chash, cfg = _validate_config(merged, settings)
+    _check_measurement_window(cfg)
     run_id = new_id("run")
     store.create_run(
         scenario_id=body.scenario_id,

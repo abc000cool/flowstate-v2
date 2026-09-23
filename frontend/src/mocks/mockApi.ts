@@ -146,6 +146,9 @@ interface RunRecord {
   profile: RunProfile | null;
   /** 0..1, thins out the wave bands in the heatmap. */
   damping: number;
+  /** `RunOut.error` — why a failed run failed, in the worker's own words. */
+  error?: string;
+  error_kind?: string;
   fixedStatus?: 'done' | 'failed';
   /** for launched runs: wall-clock schedule */
   launchedAt?: number;
@@ -290,6 +293,13 @@ const runs: RunRecord[] = [
     kind: 'corridor',
     profile: null,
     damping: 0.5,
+    // a real failure text, shaped like the worker's: a failed run that shows
+    // only "failed 6/20" makes the user read server logs for a reason the API
+    // already answered
+    error:
+      'ValueError: warm-up 120 s leaves no measurement window in a run recorded over '
+      + '[1.5, 120] s — lower sim.warmup_s or raise sim.duration_s',
+    error_kind: 'ValueError',
     fixedStatus: 'failed',
   },
   {
@@ -333,6 +343,8 @@ function toSummary(r: RunRecord): RunSummary {
     config_hash: r.config_hash,
     seeded: r.seeded,
     tier: r.tier,
+    error: status === 'failed' ? (r.error ?? null) : null,
+    error_kind: status === 'failed' ? (r.error_kind ?? null) : null,
     created_at: r.created_at,
   };
 }

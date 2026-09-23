@@ -52,6 +52,28 @@ export function describeSimMinutes(minutes: number): string {
   return `${mins} sim-min (${(minutes / 60).toFixed(1)} sim-h)`;
 }
 
+/** The shortest measurement window a launch must leave after the warm-up.
+ *
+ * The runner discards everything before `sim.warmup_s`, so a duration at or
+ * below the warm-up leaves nothing to measure and every replicate dies with
+ * "warm-up N s leaves no measurement window". One minute of simulated time is
+ * the smallest window worth enqueueing compute for. */
+export const MIN_MEASUREMENT_WINDOW_S = 60;
+
+/** Why a launch would leave no usable measurement window, or null when it
+ * would. Stated in the numbers the user typed, so the fix is obvious without
+ * a round trip to the API. */
+export function warmupProblem(durationS: number | null, warmupS: number | null): string | null {
+  if (durationS === null || warmupS === null) return null;
+  if (!Number.isFinite(durationS) || !Number.isFinite(warmupS) || warmupS <= 0) return null;
+  if (durationS > warmupS + MIN_MEASUREMENT_WINDOW_S) return null;
+  return (
+    `Duration ${durationS} s leaves no measurement window: the scenario discards ` +
+    `its first ${warmupS} s as warm-up. Use at least ` +
+    `${warmupS + MIN_MEASUREMENT_WINDOW_S + 1} s, or lower the warm-up.`
+  );
+}
+
 /** Clamp a number-input value into [lo, hi]; non-numeric input falls back. */
 export function clampInt(v: number, lo: number, hi: number, fallback = lo): number {
   if (!Number.isFinite(v)) return fallback;

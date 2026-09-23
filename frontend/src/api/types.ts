@@ -21,12 +21,24 @@ export interface CorridorNetwork {
   inflow: [number, number][];
 }
 
+/** One interchange ramp of an OSM corridor (`flowstate_core.config.RampSpec`).
+ * Only the fields the dashboard states as read-only facts are modelled. */
+export interface OSMRamp {
+  kind: 'on' | 'off';
+  attach_edge?: string;
+}
+
 export interface OSMNetwork {
   kind: 'osm';
   osm_file?: string | null;
   bbox?: [number, number, number, number] | null;
   corridor_edges?: string[];
   inflow?: [number, number][];
+  ramps?: OSMRamp[];
+  /** Measured downstream boundary condition, when the onboarding derived one
+   * (`flowstate_core.config.BoundarySpec`). Its presence is a fact about the
+   * corridor; the schedule itself is not something the composer edits. */
+  boundary?: { kind?: string } | null;
 }
 
 export type Network = RingNetwork | CorridorNetwork | OSMNetwork;
@@ -143,6 +155,13 @@ export interface RunSummary {
   config_hash: string;
   seeded: boolean;
   tier: Tier;
+  /** Why the run failed, as the worker reported it (`RunOut.error`) — the
+   * text a failed run must show instead of a bare "RUN FAILED". Optional so a
+   * service older than the field still type-checks. */
+  error?: string | null;
+  /** Coarse classification of `error` (`RunOut.error_kind`), when the service
+   * sends one. */
+  error_kind?: string | null;
   created_at?: string;
 }
 

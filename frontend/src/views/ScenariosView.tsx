@@ -22,11 +22,13 @@ import {
   listScenarios,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
-
-/** A library card: a stored scenario, or a repo preset that has no id yet. */
-type LibraryItem = ScenarioSummary | PresetSummary;
-const isPreset = (s: LibraryItem): s is PresetSummary => !('scenario_id' in s);
-const itemKey = (s: LibraryItem): string => (isPreset(s) ? `preset:${s.filename}` : s.scenario_id);
+import {
+  ensureStored,
+  isPreset,
+  itemKey,
+  mergeLibrary,
+  type LibraryItem,
+} from '../lib/library';
 
 /** Whether to badge a card PRESET. The API now stamps its own marker —
  * `PresetOut.preset` is always true, `ScenarioOut.preset` always false, so a
@@ -35,13 +37,7 @@ const itemKey = (s: LibraryItem): string => (isPreset(s) ? `preset:${s.filename}
  * falls back to the endpoint the item was loaded from. */
 const showsPresetBadge = (s: LibraryItem): boolean =>
   typeof s.preset === 'boolean' ? s.preset : isPreset(s);
-import type {
-  CreateRunRequest,
-  Network,
-  ScenarioConfig,
-  ScenarioSummary,
-  PresetSummary,
-} from '../api/types';
+import type { CreateRunRequest, Network, OSMNetwork, ScenarioConfig } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { SchematicThumb } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -58,6 +54,7 @@ import {
   MIN_DURATION_S,
   MIN_SEED,
   simMinutes,
+  warmupProblem,
 } from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
 
@@ -69,9 +66,16 @@ const DEFAULT_INFLOW_VEH_S = 0.55;
 /** Where the currently displayed library came from. */
 type DemoSource = 'none' | 'env' | 'offline';
 
+/** The network kinds the composer can hold. `osm` is **read-only**: an
+ * imported corridor is an onboarding artifact (a map extract, the edge chain
+ * along it, its ramps and its measured boundary), none of which this form
+ * models — coercing one to a 10 km single-lane corridor, as it used to,
+ * silently threw the corridor away. */
+type ComposeKind = 'ring' | 'corridor' | 'osm';
+
 interface ComposeState {
   name: string;
-  kind: 'ring' | 'corridor';
+  kind: ComposeKind;
   length_m: number;
   lanes: number;
   circumference_m: number;
@@ -106,18 +110,21 @@ const DEFAULT_COMPOSE: ComposeState = {
 function composeToConfig(c: ComposeState, base: ScenarioConfig | null): ScenarioConfig {
   const baseNet = base?.network;
   const network: Network =
-    c.kind === 'ring'
-      ? baseNet?.kind === 'ring'
-        ? { ...baseNet, circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
-        : { kind: 'ring', circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
-      : baseNet?.kind === 'corridor'
-        ? { ...baseNet, length_m: c.length_m, lanes: c.lanes }
-        : {
-            kind: 'corridor',
-            length_m: c.length_m,
-            lanes: c.lanes,
-            inflow: [[0, DEFAULT_INFLOW_VEH_S]],
-          };
+    // an imported corridor's network block is passed through byte for byte
+    c.kind === 'osm' && baseNet?.kind === 'osm'
+      ? baseNet
+      : c.kind === 'ring'
+        ? baseNet?.kind === 'ring'
+          ? { ...baseNet, circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
+          : { kind: 'ring', circumference_m: c.circumference_m, n_vehicles: c.n_vehicles }
+        : baseNet?.kind === 'corridor'
+          ? { ...baseNet, length_m: c.length_m, lanes: c.lanes }
+          : {
+              kind: 'corridor',
+              length_m: c.length_m,
+              lanes: c.lanes,
+              inflow: [[0, DEFAULT_INFLOW_VEH_S]],
+            };
   return {
     ...(base ?? {}),
     name: c.name,
@@ -141,13 +148,19 @@ function composeToConfig(c: ComposeState, base: ScenarioConfig | null): Scenario
  * `dropped` cannot survive the requested network-kind change. */
 function passthroughFields(
   base: ScenarioConfig | null,
-  kind: 'ring' | 'corridor',
+  kind: ComposeKind,
 ): { carried: string[]; dropped: string[] } {
   if (!base) return { carried: [], dropped: [] };
   const carried: string[] = [];
   const dropped: string[] = [];
+  // nothing of an OSM network is modelled here, so every field of it is
+  // carried — the form never rewrites the block
   const netModelled =
-    kind === 'ring' ? ['kind', 'circumference_m', 'n_vehicles'] : ['kind', 'length_m', 'lanes'];
+    kind === 'osm'
+      ? ['kind']
+      : kind === 'ring'
+        ? ['kind', 'circumference_m', 'n_vehicles']
+        : ['kind', 'length_m', 'lanes'];
   const net = base.network as unknown as Record<string, unknown>;
   const netExtras = Object.keys(net).filter(
     (k) => k !== 'kind' && !netModelled.includes(k) && net[k] != null,
@@ -276,9 +289,7 @@ export function ScenariosView(): JSX.Element {
     const source: DemoSource = isMockEnv() ? 'env' : isOfflineFallback() ? 'offline' : 'none';
     const [presets, all] = await Promise.all([listPresetScenarios(), listScenarios()]);
     // A preset whose config is already stored shows as the stored scenario.
-    const storedHashes = new Set(all.map((s) => s.config_hash));
-    const merged: LibraryItem[] = [...presets.filter((p) => !storedHashes.has(p.config_hash)), ...all];
-    setItems(merged);
+    setItems(mergeLibrary(presets, all));
     setDemoSource(source);
     setLoaded(true);
   }, []);
@@ -315,17 +326,6 @@ export function ScenariosView(): JSX.Element {
     }
   };
 
-  /** Presets are repo YAMLs, not stored scenarios: store one (or reuse the
-   * stored copy with the same config hash) before it can be run. */
-  const ensureStored = async (s: LibraryItem): Promise<string> => {
-    if (!isPreset(s)) return s.scenario_id;
-    const existing = (await listScenarios()).find((x) => x.config_hash === s.config_hash);
-    if (existing) return existing.scenario_id;
-    const res = await createScenario(s.config);
-    toast('ok', `preset ${s.filename} stored as ${res.scenario_id}`);
-    return res.scenario_id;
-  };
-
   /** The card's Run opens the launcher instead of firing: a preset's own
    * `replicates` × `sim.duration_s` can be hours of compute. */
   const openLauncher = (s: LibraryItem): void => {
@@ -335,10 +335,13 @@ export function ScenariosView(): JSX.Element {
 
   const launchRun = async (): Promise<void> => {
     const s = launchTarget;
-    if (!s) return;
+    if (!s || launchWarmupBlock) return;
     setBusy(true);
     try {
-      const scenarioId = await ensureStored(s);
+      // presets are repo YAMLs, not stored scenarios: store one (or reuse the
+      // stored copy with the same config hash) before it can be run
+      const { scenario_id: scenarioId, stored } = await ensureStored(s);
+      if (stored) toast('ok', `preset ${s.name} stored as ${scenarioId}`);
       const overrides: Record<string, unknown> = {};
       if (launchForm.duration_s !== s.config?.sim.duration_s) {
         overrides.sim = { duration_s: launchForm.duration_s };
@@ -372,7 +375,9 @@ export function ScenariosView(): JSX.Element {
     setBaseName(s.name);
     setCompose({
       name: `${cfg.name}_variant`,
-      kind: cfg.network.kind === 'ring' ? 'ring' : 'corridor',
+      // `osm` is carried as itself: the composer edits the non-network fields
+      // of an imported corridor and leaves its network block alone
+      kind: cfg.network.kind,
       length_m: cfg.network.kind === 'corridor' ? cfg.network.length_m : 10000,
       lanes: cfg.network.kind === 'corridor' ? cfg.network.lanes : 1,
       circumference_m: cfg.network.kind === 'ring' ? cfg.network.circumference_m : 230,
@@ -390,6 +395,9 @@ export function ScenariosView(): JSX.Element {
   const clearBase = (): void => {
     setBaseConfig(null);
     setBaseName(null);
+    // an OSM network exists only as the loaded corridor's own block; with no
+    // base there is nothing to carry, so the form returns to a buildable kind
+    setCompose((c) => (c.kind === 'osm' ? { ...c, kind: 'corridor' } : c));
   };
 
   const handleYamlText = async (text: string, filename: string): Promise<void> => {
@@ -418,6 +426,15 @@ export function ScenariosView(): JSX.Element {
   const launchTotal = simMinutes(launchForm.replicates, launchForm.duration_s);
   /** What an emptied launcher field falls back to: the target's own value. */
   const launchBase = launchDefaults(launchTarget);
+  /** A duration inside the warm-up leaves nothing to measure and kills every
+   * replicate on the worker; the launcher refuses it here instead. */
+  const launchWarmupBlock = warmupProblem(
+    launchForm.duration_s,
+    launchTarget?.config?.sim.warmup_s ?? null,
+  );
+  /** The loaded corridor's OSM network, when the composer is holding one. */
+  const osmNet: OSMNetwork | null =
+    compose.kind === 'osm' && baseConfig?.network.kind === 'osm' ? baseConfig.network : null;
 
   return (
     <div className="view">
@@ -533,13 +550,61 @@ export function ScenariosView(): JSX.Element {
                 id="c-kind"
                 className="input"
                 value={compose.kind}
+                // an imported corridor cannot be turned into a ring or a
+                // synthetic corridor: the chain, ramps and boundary have no
+                // counterpart there, and the coercion used to drop them
+                disabled={compose.kind === 'osm'}
+                title={
+                  compose.kind === 'osm'
+                    ? 'Imported (OSM) network — read-only here. Start blank to compose a ' +
+                      'synthetic network instead.'
+                    : undefined
+                }
                 onChange={(e) => set('kind', e.target.value as ComposeState['kind'])}
               >
-                <option value="corridor">corridor</option>
-                <option value="ring">ring</option>
+                {compose.kind === 'osm' ? (
+                  <option value="osm">osm (imported, read-only)</option>
+                ) : (
+                  <>
+                    <option value="corridor">corridor</option>
+                    <option value="ring">ring</option>
+                  </>
+                )}
               </select>
             </div>
-            {compose.kind === 'corridor' ? (
+            {osmNet ? (
+              <div className="field" style={{ gridColumn: 'span 2' }}>
+                <label>Imported network</label>
+                <dl className="fact-list osm-facts" aria-label="imported network">
+                  <div className="fact">
+                    <dt>OSM extract</dt>
+                    <dd className="mono">
+                      {osmNet.osm_file ??
+                        (osmNet.bbox ? `bbox ${osmNet.bbox.join(', ')}` : 'not named')}
+                    </dd>
+                  </div>
+                  <div className="fact">
+                    <dt>Corridor chain</dt>
+                    <dd className="mono">{osmNet.corridor_edges?.length ?? 0} edges</dd>
+                  </div>
+                  <div className="fact">
+                    <dt>Ramps</dt>
+                    <dd className="mono">{osmNet.ramps?.length ?? 0}</dd>
+                  </div>
+                  <div className="fact">
+                    <dt>Downstream boundary</dt>
+                    <dd className="mono">
+                      {osmNet.boundary
+                        ? `measured (${osmNet.boundary.kind ?? 'set'})`
+                        : 'none — free outflow'}
+                    </dd>
+                  </div>
+                </dl>
+                <span className="small muted">
+                  Read-only: the network block of {baseName} is sent back unchanged.
+                </span>
+              </div>
+            ) : compose.kind === 'corridor' ? (
               <>
                 <div className="field">
                   <label htmlFor="c-len">Length (m)</label>
@@ -730,7 +795,8 @@ export function ScenariosView(): JSX.Element {
       {launchTarget && (
         <ConfirmDialog
           title={`Launch ${launchTarget.name}`}
-          busy={busy}
+          // a launch that cannot measure anything is not confirmable
+          busy={busy || launchWarmupBlock !== null}
           confirmLabel="Launch run"
           onConfirm={() => void launchRun()}
           onCancel={() => setLaunchTarget(null)}
@@ -781,6 +847,7 @@ export function ScenariosView(): JSX.Element {
                 }))
               }
             />
+            {launchWarmupBlock && <span className="hint-amber">{launchWarmupBlock}</span>}
           </div>
           <div className="field">
             <label htmlFor="lr-seed">Seed</label>

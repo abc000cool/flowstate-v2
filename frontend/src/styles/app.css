@@ -1309,3 +1309,33 @@ table.data tr.disabled {
   border-color: var(--panel-edge);
   background: var(--panel-inset);
 }
+
+/* ================= failure reasons (RunOut.error) =================== */
+/* A failed run states why it failed, in the service's own words: the text is
+   long (a ValueError line), so it wraps instead of being clipped. */
+
+.fail-reason {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(240, 100, 122, 0.35);
+  border-radius: var(--r2);
+  background: var(--danger-dim);
+  color: var(--danger);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+td .fail-reason {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  max-width: 320px;
+}
+
+/* read-only network facts of an OSM preset in the composer */
+.osm-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

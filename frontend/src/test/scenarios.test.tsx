@@ -160,7 +160,9 @@ describe('ScenariosView (real API shapes)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Launch ring_sugiyama' });
     fireEvent.change(within(dialog).getByLabelText('Replicates'), { target: { value: '20' } });
-    fireEvent.change(within(dialog).getByLabelText('Duration (s)'), { target: { value: '120' } });
+    // past this preset's 180 s warm-up: a shorter run is refused by the
+    // launcher now, since it would leave no measurement window
+    fireEvent.change(within(dialog).getByLabelText('Duration (s)'), { target: { value: '300' } });
     fireEvent.change(within(dialog).getByLabelText('Seed'), { target: { value: '7' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Launch run' }));
     await waitFor(() => {
@@ -170,7 +172,7 @@ describe('ScenariosView (real API shapes)', () => {
     expect(run?.body).toMatchObject({
       scenario_id: 'scn_new',
       replicates: 20,
-      overrides: { sim: { duration_s: 120 }, seed: 7 },
+      overrides: { sim: { duration_s: 300 }, seed: 7 },
     });
   });
 
@@ -325,5 +327,125 @@ describe('ScenariosView preset marker (API ScenarioOut.preset / PresetOut.preset
     expect(badges.length).toBe(1);
     expect(badges[0].parentElement?.textContent).toContain('ring_sugiyama');
     expect(badges[0].parentElement?.textContent).not.toContain('ring_stored_from_preset');
+  });
+});
+
+/** An onboarded corridor is an OSM network: a map extract, the edge chain
+ * along it, its ramps and its measured boundary. The composer models none of
+ * that, and used to coerce the whole block to a 10 km single-lane corridor
+ * while printing "Dropped by the network-kind change" — silently throwing the
+ * corridor away. It is now a third, read-only kind. */
+const osmPreset = {
+  name: 'mndot_i94_wb_stpaul',
+  filename: 'mndot_i94_wb_stpaul.yaml',
+  config_hash: 'osmhash000001',
+  preset: true,
+  config: {
+    name: 'mndot_i94_wb_stpaul',
+    tier: 'micro',
+    network: {
+      kind: 'osm',
+      osm_file: 'data/osm/mndot_i94_wb_stpaul.osm',
+      bbox: [44.9425, -93.099, 44.9613, -92.9612],
+      corridor_edges: ['78288791', '638519815', '996266724'],
+      inflow: [[0, 1.1]],
+      ramps: [
+        { kind: 'on', attach_edge: '638519815' },
+        { kind: 'off', attach_edge: '996266724' },
+      ],
+      boundary: { kind: 'speed_schedule' },
+    },
+    fleet: { model: 'IDM' },
+    av: { penetration: 0, compliance: 1, controller: null },
+    sim: { duration_s: 14400, warmup_s: 1800 },
+    seed: 42,
+    replicates: 20,
+  },
+};
+
+describe('ScenariosView with an OSM (onboarded) preset', () => {
+  const calls: Call[] = [];
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
+        calls.push({ url, method, body });
+        if (url.endsWith('/scenarios/preset')) return json([osmPreset]);
+        if (url.endsWith('/scenarios') && method === 'GET') return json([]);
+        if (url.endsWith('/scenarios') && method === 'POST') {
+          return json({ scenario_id: 'scn_osm', config_hash: osmPreset.config_hash }, 201);
+        }
+        if (url.endsWith('/runs') && method === 'POST') return json({ run_id: 'run_new' }, 202);
+        return json({ detail: `unexpected ${method} ${url}` }, 404);
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setOfflineFallback(false);
+  });
+
+  it('keeps the imported network read-only and sends it back unchanged', async () => {
+    renderView();
+    expect(await screen.findByText('mndot_i94_wb_stpaul', {}, { timeout: 4000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Load in composer' }));
+
+    // the kind is `osm`, and it cannot be switched to a synthetic network
+    const kind = screen.getByLabelText('Network kind');
+    expect(kind).toHaveValue('osm');
+    expect(kind).toBeDisabled();
+    // the corridor's own fields are not offered for editing …
+    expect(screen.queryByLabelText('Length (m)')).toBeNull();
+    expect(screen.queryByLabelText('Lanes')).toBeNull();
+    // … they are stated as read-only facts
+    const facts = within(screen.getByLabelText('imported network'));
+    expect(facts.getByText('data/osm/mndot_i94_wb_stpaul.osm')).toBeInTheDocument();
+    expect(facts.getByText('3 edges')).toBeInTheDocument();
+    expect(facts.getByText('2')).toBeInTheDocument();
+    expect(facts.getByText('measured (speed_schedule)')).toBeInTheDocument();
+    // and nothing of the network is reported as dropped
+    expect(screen.queryByText(/Dropped by the network-kind change/)).toBeNull();
+
+    // editing a non-network field still creates a scenario, network intact
+    fireEvent.change(screen.getByLabelText('AV penetration'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create scenario' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/scenarios'))).toBe(true);
+    });
+    const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/scenarios'))
+      ?.body as Record<string, unknown>;
+    expect(body.network).toEqual(osmPreset.config.network);
+    expect(body.av).toMatchObject({ penetration: 0.1 });
+  });
+
+  /** A duration at or inside the warm-up leaves nothing to measure: both
+   * replicates die on the worker with "warm-up N s leaves no measurement
+   * window in a run recorded over …". The launcher refuses it here. */
+  it('refuses a launch whose duration leaves no measurement window', async () => {
+    renderView();
+    expect(await screen.findByText('mndot_i94_wb_stpaul', {}, { timeout: 4000 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch mndot_i94_wb_stpaul' });
+
+    fireEvent.change(within(dialog).getByLabelText('Duration (s)'), { target: { value: '1800' } });
+    expect(
+      within(dialog).getByText(/Duration 1800 s leaves no measurement window/),
+    ).toHaveTextContent('first 1800 s as warm-up');
+    const confirm = within(dialog).getByRole('button', { name: 'Launch run' });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+
+    // clear of the warm-up by a measurable window: launchable again
+    fireEvent.change(within(dialog).getByLabelText('Duration (s)'), { target: { value: '3600' } });
+    expect(within(dialog).getByRole('button', { name: 'Launch run' })).toBeEnabled();
   });
 });

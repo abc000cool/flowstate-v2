@@ -43,6 +43,32 @@ describe('RunDetailView (mock data)', () => {
     expect(screen.queryByText(/v1_legacy/)).toBeNull();
   });
 
+  /** A failed run answers *why*: the reason is in `RunOut.error`, which this
+   * view already fetched, and sending the user to the server logs for it is
+   * the defect being fixed. */
+  it('shows the service’s reason for a failed run', async () => {
+    render(
+      <AppStateProvider>
+        <MemoryRouter initialEntries={['/runs/run-e2190c']}>
+          <Routes>
+            <Route path="/runs/:runId" element={<RunDetailView />} />
+          </Routes>
+        </MemoryRouter>
+      </AppStateProvider>,
+    );
+
+    expect(await screen.findByText('Run failed', {}, { timeout: 4000 })).toBeInTheDocument();
+    const reason = await screen.findByText(
+      /leaves no measurement window/,
+      {},
+      { timeout: 4000 },
+    );
+    expect(reason.textContent).toContain('ValueError');
+    // demo rows say so and never print a config hash no server holds
+    expect(screen.getAllByText('DEMO').length).toBeGreaterThan(0);
+    expect(screen.getByText('— demo, no server hash —')).toBeInTheDocument();
+  });
+
   it('names the fundamental diagram a macro run used, and flags the preset', async () => {
     render(
       <AppStateProvider>

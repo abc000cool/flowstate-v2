@@ -32,6 +32,7 @@ import {
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
 import type { CorridorOut, RunDetail } from '../api/types';
+import { useAppState } from '../components/AppContext';
 import { StatusChip } from '../components/bits';
 import { toast, toastError } from '../components/toast';
 import { formatDistKm, formatNumber } from '../lib/format';
@@ -122,6 +123,37 @@ function isTerminal(status: string): boolean {
   return status === 'done' || status === 'failed';
 }
 
+/** The form fields that can refuse an onboarding, in the order the button
+ * reports them. Every failing one states its reason under its own control:
+ * fixing one problem to be told about the next, one round at a time, is the
+ * behaviour this replaces. */
+type ProblemField =
+  | 'name'
+  | 'bbox'
+  | 'bearing'
+  | 'upstream'
+  | 'downstream'
+  | 'detectors'
+  | 'stations'
+  | 'window'
+  | 'duration'
+  | 'warmup';
+
+const PROBLEM_ORDER: ProblemField[] = [
+  'name',
+  'bbox',
+  'bearing',
+  'upstream',
+  'downstream',
+  'detectors',
+  'stations',
+  'window',
+  'duration',
+  'warmup',
+];
+
+export type Problems = Partial<Record<ProblemField, string>>;
+
 export function OnboardView(): JSX.Element {
   const [name, setName] = useState('');
   const [bboxRaw, setBboxRaw] = useState('');
@@ -157,29 +189,41 @@ export function OnboardView(): JSX.Element {
   const navigate = useNavigate();
   const authFailed = useAuthFailed();
   const offline = useOfflineFallback();
+  // the shell's CORRIDOR label; renamed here because `setCorridor` is already
+  // this view's onboarding-job setter
+  const { setCorridor: setActiveCorridor } = useAppState();
+
+  // A finished onboarding is what makes a corridor the one being worked on:
+  // without this the top bar keeps naming whatever was active before (or
+  // nothing at all) until some other view sets it.
+  const onboardedName = corridor?.status === 'done' ? corridor.name : null;
+  useEffect(() => {
+    if (onboardedName) setActiveCorridor(onboardedName);
+  }, [onboardedName, setActiveCorridor]);
 
   const bbox = useMemo(() => parseBbox(bboxRaw), [bboxRaw]);
   const bearing = Number(bearingRaw);
 
-  const problem = useMemo(() => {
-    if (!NAME_RE.test(name)) return 'Name: letters, digits, - and _ (it becomes a preset file)';
-    if ('error' in bbox) return `Bounding box: ${bbox.error}`;
+  const problems = useMemo<Problems>(() => {
+    const p: Problems = {};
+    if (!NAME_RE.test(name)) p.name = 'Name: letters, digits, - and _ (it becomes a preset file)';
+    if ('error' in bbox) p.bbox = `Bounding box: ${bbox.error}`;
     if (!Number.isFinite(bearing) || bearing < 0 || bearing > 360) {
-      return 'Bearing: compass degrees within 0–360 (270 = westbound)';
+      p.bearing = 'Bearing: compass degrees within 0–360 (270 = westbound)';
     }
-    if (!upstream.trim() || !downstream.trim()) return 'Name both boundary stations';
-    if (upstream.trim() === downstream.trim()) {
-      return 'The upstream and downstream stations must be different';
+    if (!upstream.trim()) p.upstream = 'Name the upstream boundary station';
+    if (!downstream.trim()) p.downstream = 'Name the downstream boundary station';
+    else if (upstream.trim() === downstream.trim()) {
+      p.downstream = 'The upstream and downstream stations must be different';
     }
-    if (!detectors) return 'Choose the detector CSV';
-    if (!stations) return 'Choose the stations CSV';
-    if (!(Number(windowRaw) > 0) || !(Number(durationRaw) > 0)) {
-      return 'Window and duration must be positive';
-    }
+    if (!detectors) p.detectors = 'Choose the detector CSV';
+    if (!stations) p.stations = 'Choose the stations CSV';
+    if (!(Number(windowRaw) > 0)) p.window = 'Window must be positive';
+    if (!(Number(durationRaw) > 0)) p.duration = 'Duration must be positive';
     if (!(Number(warmupRaw) >= 0) || Number(warmupRaw) >= Number(durationRaw)) {
-      return 'Warm-up must be at least 0 and shorter than the duration';
+      p.warmup = 'Warm-up must be at least 0 and shorter than the duration';
     }
-    return null;
+    return p;
   }, [
     name,
     bbox,
@@ -192,6 +236,9 @@ export function OnboardView(): JSX.Element {
     durationRaw,
     warmupRaw,
   ]);
+
+  /** What the button says, and whether it can be pressed at all. */
+  const problem = PROBLEM_ORDER.map((f) => problems[f]).find((m) => m !== undefined) ?? null;
 
   // Launching a run leaves for the Runs view, so the last onboarding is
   // restored from the API (not from a copy in this browser) on the way back.
@@ -344,6 +391,7 @@ export function OnboardView(): JSX.Element {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
+            {problems.name && <span className="hint-amber">{problems.name}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-bbox">Bounding box (S, W, N, E)</label>
@@ -355,8 +403,8 @@ export function OnboardView(): JSX.Element {
               value={bboxRaw}
               onChange={(e) => setBboxRaw(e.target.value)}
             />
-            {bboxRaw.trim() !== '' && 'error' in bbox && (
-              <span className="hint-amber">{bbox.error}</span>
+            {bboxRaw.trim() !== '' && problems.bbox && (
+              <span className="hint-amber">{problems.bbox}</span>
             )}
           </div>
           <div className="field">
@@ -371,6 +419,7 @@ export function OnboardView(): JSX.Element {
               value={bearingRaw}
               onChange={(e) => setBearingRaw(e.target.value)}
             />
+            {problems.bearing && <span className="hint-amber">{problems.bearing}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-up">Upstream station</label>
@@ -382,6 +431,7 @@ export function OnboardView(): JSX.Element {
               value={upstream}
               onChange={(e) => setUpstream(e.target.value)}
             />
+            {problems.upstream && <span className="hint-amber">{problems.upstream}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-down">Downstream station</label>
@@ -393,6 +443,7 @@ export function OnboardView(): JSX.Element {
               value={downstream}
               onChange={(e) => setDownstream(e.target.value)}
             />
+            {problems.downstream && <span className="hint-amber">{problems.downstream}</span>}
           </div>
         </div>
         <div className="panel-body row wrap">
@@ -405,6 +456,7 @@ export function OnboardView(): JSX.Element {
               accept=".csv,text/csv"
               onChange={(e) => setDetectors(e.target.files?.[0] ?? null)}
             />
+            {problems.detectors && <span className="hint-amber">{problems.detectors}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-stations">Stations CSV</label>
@@ -415,6 +467,7 @@ export function OnboardView(): JSX.Element {
               accept=".csv,text/csv"
               onChange={(e) => setStations(e.target.files?.[0] ?? null)}
             />
+            {problems.stations && <span className="hint-amber">{problems.stations}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-window">Window (s)</label>
@@ -427,6 +480,7 @@ export function OnboardView(): JSX.Element {
               value={windowRaw}
               onChange={(e) => setWindowRaw(e.target.value)}
             />
+            {problems.window && <span className="hint-amber">{problems.window}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-t0">Span start (local)</label>
@@ -449,6 +503,7 @@ export function OnboardView(): JSX.Element {
               value={durationRaw}
               onChange={(e) => setDurationRaw(e.target.value)}
             />
+            {problems.duration && <span className="hint-amber">{problems.duration}</span>}
           </div>
           <div className="field">
             <label htmlFor="ob-warmup">Warm-up (s)</label>
@@ -461,6 +516,7 @@ export function OnboardView(): JSX.Element {
               value={warmupRaw}
               onChange={(e) => setWarmupRaw(e.target.value)}
             />
+            {problems.warmup && <span className="hint-amber">{problems.warmup}</span>}
           </div>
           <div className="field">
             <label>&nbsp;</label>
