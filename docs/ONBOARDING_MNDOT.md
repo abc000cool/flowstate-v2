@@ -51,7 +51,7 @@ Selection record: `data/mndot/mndot_i94_wb_stpaul/selection.json`.
 |---|---|---|
 | Fetch nine weekdays (72 detectors × 3 series) into the cache | `scripts/mndot_fetch.py` (or the loader) | 106 s |
 | Station table, tidy frame, observations artifact | `uv run --no-sync python scripts/mndot_fetch.py --corridor "I-94 WB" --from-station S1063 --to-station S97 --dates 20260901,…,20260917 --window-s 300 --t0 05:30 --duration-s 14400 --out data/mndot/mndot_i94_wb_stpaul --config data/mndot/config/metro_config.xml.gz` | 2 s from cache |
-| Network from the bounding box, ramps, station positions | `uv run --no-sync python scripts/onboard_corridor.py --name mndot_i94_wb_stpaul --bbox 44.9425 -93.0990 44.9613 -92.9612 --bearing 265 --stations …/stations.csv --stations-out …/stations_x.csv --workdir runs/onboard/mndot_i94_wb_stpaul --out scenarios/mndot_i94_wb_stpaul.yaml --duration-s 14400` | ≈60 s (Overpass + netconvert) |
+| Network from the bounding box, ramps, station positions | `uv run --no-sync python scripts/onboard_corridor.py --name mndot_i94_wb_stpaul --bbox 44.9425 -93.0990 44.9613 -92.9612 --bearing 265 --stations …/stations.csv --stations-out …/stations_x.csv --workdir runs/onboard/mndot_i94_wb_stpaul --out scenarios/mndot_i94_wb_stpaul.yaml --duration-s 14400 --netconvert-extra "--ramps.guess --ramps.ramp-length 250" --max-chain-m 11400` | ≈60 s (Overpass + netconvert) |
 | Demand, ramps, boundary, population | `uv run --no-sync python scripts/corridor_demand.py --scenario scenarios/mndot_i94_wb_stpaul.yaml --observations …/observations.json --stations-x …/stations_x.csv --upstream S1063 --downstream S97 --idm-calibration artifacts/idm_i24_capacity.json --demand-out artifacts/demand_mndot_i94_wb_stpaul.json` | 3 s |
 | Fundamental diagram from per-lane 1-min samples | `calibration.fd_fit.fit_triangular_fd` on the cache (see the artifact's `source`) | 40 s |
 
@@ -139,6 +139,29 @@ Fundamental diagram (`artifacts/fd_mndot_i94_wb_stpaul.json`, 300k per-lane
 station means fails the plausibility check (flat congested branch); the raw
 30-s cache is kept for this reason. ρ_c is the ALINEA target in the sweep.
 
+### 5a. The first battery, and the merge fix (2026-09-23, 01:10–01:40)
+
+The first 20-seed battery (VM round 1, scenario `adfb118b0015`) scored GEH < 5 on
+17 % of link-hours, RMSPE 93 % and found no waves: the corridor never congested.
+Reading the first seed's `meta.json` showed why — 34,367 vehicles planned,
+25,051 departed; the entrances at Hudson Rd (both), McKnight Rd and the
+downtown approach delivered 4–6 % of their demand. OSM tags the mainline as
+three lanes straight through those merges, so SUMO joined each ramp to lane 0
+at a plain priority junction where ramp vehicles yield to a 1,400 veh/h lane.
+Lane-change parameters (assertiveness, strategic eagerness) changed nothing;
+an acceleration lane did. The scenario now compiles with netconvert's ramp
+guessing (`--ramps.guess --ramps.ramp-length 250`, recorded in
+`network.netconvert_extra`), which adds 250 m acceleration and deceleration
+lanes by splitting the highway edge; the importer maps the split pieces back
+onto the scenario's edge ids. The chain also now ends on a 3-lane edge 440 m
+past S97 (`--max-chain-m 11400`) so the downstream speed boundary can throttle
+(the first chain ended on a 5-lane edge at the I-35E split, which no schedule
+could restrict). In a 35-minute peak slice on the rebuilt network every
+upstream entrance delivers 100 % of its demand and the two downtown-approach
+entrances queue under the mainline's congestion (37 % and 52 % in the slice),
+which is the observed condition there. Round 2 (§6) runs this scenario
+(`21720f1e998c`).
+
 ## 6. Baseline and sweep (cloud round)
 
 Filled in from `artifacts/validation_mndot_i94_wb_stpaul.json`,
@@ -149,6 +172,10 @@ Filled in from `artifacts/validation_mndot_i94_wb_stpaul.json`,
 
 1. The White Bear Ave entrance is not a `motorway_link` chain in OSM; ramp
    discovery should also accept lane-add merges tagged on the mainline way.
+1b. Acceleration lanes are usually absent from OSM; the onboarding path
+   should apply ramp guessing by default and print the lane profile beside the
+   inventory's lane counts at every station so a mismatch is caught before a
+   battery runs (this round caught it after one).
 2. Collector–distributor roads: the discovery captures the split as an
    off-ramp and misses the re-entry; the balance step carries the residual.
    A C-D road should become a parallel edge chain with its own ramps.
