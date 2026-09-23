@@ -288,9 +288,14 @@ stage battery_mndot $RUN scripts/corridor_battery.py --scenario scenarios/$MNDOT
   --observations data/mndot/$MNDOT/observations.json --replicates "$REPS" --procs "$PROCS" \
   --out runs/$MNDOT/baseline --artifact artifacts/validation_$MNDOT.json --report-dir docs/reports/$MNDOT \
   --criteria-profile fhwa_tat3_2004 || say "battery_mndot failed; continuing"
+#     Sweep grid (12 cells × 20 seeds): baseline, VSL-only, ALINEA-only, then FollowerStopper at
+#     5/10/20 % (full compliance) under none / vsl / alinea. ALINEA target = the corridor FD's
+#     critical density per lane (artifacts/fd_mndot_i94_wb_stpaul.json, rho_c 0.0199 veh/m).
+#     Throughput at S97 (x = 11 027 m on the chain); analysed span S1063..S97 (1 110..11 027 m).
 stage sweep_mndot $RUN scripts/corridor_sweep.py --scenario scenarios/$MNDOT.yaml \
-  --penetration 0.02 0.05 0.10 0.20 --compliance 0.5 1.0 --controllers follower_stopper \
-  --strategies none vsl alinea --replicates "$REPS" --procs "$PROCS" \
+  --penetration 0.05 0.10 0.20 --compliance 1.0 --controllers follower_stopper \
+  --strategies none vsl alinea --rho-target-veh-km 19.9 --x-ref 11027 --span 1110 11027 \
+  --replicates "$REPS" --procs "$PROCS" \
   --out runs/${MNDOT}_sweep --summary artifacts/sweep_${MNDOT}_summary.json || say "sweep_mndot failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).

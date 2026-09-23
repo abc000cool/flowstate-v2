@@ -1,0 +1,52 @@
+{
+ "schema_version": 2,
+ "created_at": "2026-09-23T05:34:57+00:00",
+ "source": "MnDOT RTMC Mayfly API, I-94 WB S1063..S97 mainline+auxiliary lane detectors, 9 weekdays 2026-09-01..17; per-lane 1-min samples (50% random subsample), density = occupancy / 7 m",
+ "data_hash": "55aba18a33ec387f",
+ "kind": "fd",
+ "fd": {
+  "v_f": 26.865853690990395,
+  "w": -2.82030620467365,
+  "rho_jam": 0.2098785714285715,
+  "ci95": {
+   "v_f": [
+    26.805600556055712,
+    26.944291707838307
+   ],
+   "w": [
+    -3.0558614863852545,
+    -2.4796948897512983
+   ],
+   "rho_jam": [
+    0.1965727777777779,
+    0.23482203571428573
+   ],
+   "rho_c": [
+    0.019689902961793862,
+    0.020122603748388534
+   ],
+   "q_max": [
+    0.5297580030969321,
+    0.5404618282475747
+   ]
+  }
+ },
+ "n_observations": 50000,
+ "n_rows_input": 298440,
+ "dropped_rows": {
+  "occupancy_above_100pct": 19
+ },
+ "input_ranges": {
+  "density_veh_m_min": 0.0,
+  "density_veh_m_max": 0.14240714285714287,
+  "flow_veh_s_min": 0.0,
+  "flow_veh_s_max": 0.85
+ },
+ "branch_counts": {
+  "free": 41761,
+  "congested": 6535
+ },
+ "r2_freeflow": 0.9135783779863133,
+ "congested_quantile": 0.9,
+ "notes": "rows: 298440 input, 50000 fitted, 19 dropped as non-physical ({'occupancy_above_100pct': 19}), subsampled from 298421 usable (seeded, seed 0). bootstrap: 200/200 resamples usable (seed 0)."
+}
