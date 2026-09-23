@@ -12,7 +12,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createSweep, getSweep, listScenarios, OFFLINE_WRITE_MESSAGE } from '../api/client';
-import type { ScenarioSummary, SweepCell, SweepDetail, Tier } from '../api/types';
+import type {
+  CreateSweepRequest,
+  ScenarioSummary,
+  SweepCell,
+  SweepDetail,
+  SweepStrategy,
+  Tier,
+} from '../api/types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { toast, toastError } from '../components/toast';
 import { deltaColor } from '../lib/colormap';
@@ -32,6 +39,20 @@ import {
 const PEN_CHOICES = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3];
 const COM_CHOICES = [0.25, 0.5, 0.8, 1.0];
 const CONTROLLERS = ['follower_stopper', 'pi_saturation', 'jad'];
+
+/** The API's infrastructure axis (`flowstate_core.strategies.STRATEGIES`),
+ * in its own order. `none` runs the scenario as calibrated. */
+const STRATEGIES: SweepStrategy[] = ['none', 'vsl', 'alinea', 'vsl+alinea'];
+const STRATEGY_TITLES: Record<SweepStrategy, string> = {
+  none: 'the scenario as calibrated — no infrastructure deployed',
+  vsl: 'gantry speed limits posted along the corridor (controllers.vsl)',
+  alinea: 'every on-ramp metered by ALINEA at the corridor’s critical density',
+  'vsl+alinea': 'both speed limits and ramp metering',
+};
+/** Each strategy other than `none` also runs one uncontrolled cell, so the
+ * infrastructure can be priced without any controlled vehicle. */
+const infraCells = (s: SweepStrategy[]): number => s.filter((x) => x !== 'none').length;
+const needsAlinea = (s: SweepStrategy[]): boolean => s.some((x) => x.includes('alinea'));
 const SWEEP_METRICS = METRIC_DEFS.filter((d) => d.good !== 'neutral');
 const SWEEP_POLL_MS = 2500;
 /** Exploratory default. Headline numbers need MIN_REPLICATES (§0.6); a grid
@@ -72,14 +93,26 @@ function MacroBanner(): JSX.Element {
   );
 }
 
-/** A p=0 cell is the sweep's baseline: with no controlled vehicles the
- * controller cannot act, so the cell is the uncontrolled reference. */
-const isBaseline = (c: SweepCell): boolean => c.penetration === 0;
+/** The cell's infrastructure strategy; a service older than the axis ran
+ * every cell as calibrated. */
+const strategyOf = (c: SweepCell): SweepStrategy => c.strategy ?? 'none';
+
+/** A p=0 cell with no strategy is the sweep's baseline: no controlled vehicle
+ * acts and nothing is deployed, so the cell is the uncontrolled reference. A
+ * p=0 cell that *does* deploy something is not a baseline — it is the
+ * infrastructure priced on its own, and calling it the reference would hide
+ * the very effect it was run to measure. */
+const isBaseline = (c: SweepCell): boolean => c.penetration === 0 && strategyOf(c) === 'none';
+
+/** p=0 with a strategy: the infrastructure-only reference cells. */
+const isInfraOnly = (c: SweepCell): boolean => c.penetration === 0 && strategyOf(c) !== 'none';
 
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
 
 const cellKey = (c: SweepCell): string =>
-  c.run_id ?? c.config_hash ?? `${c.penetration}:${c.compliance}:${c.controller ?? 'none'}`;
+  c.run_id ??
+  c.config_hash ??
+  `${c.penetration}:${c.compliance}:${c.controller ?? 'none'}:${strategyOf(c)}`;
 
 /** The cell's whole aggregate vector as a string — two cells sharing one are
  * the same realisation, whatever their config hashes say. */
@@ -99,7 +132,8 @@ function aggregateSignature(cell: SweepCell): string | null {
 /** A cell's configuration identity: the hash the API stamped on it, falling
  * back to the grid coordinates for a sweep that carries none. */
 const configKey = (c: SweepCell): string =>
-  c.config_hash ?? `${c.penetration}:${c.compliance}:${c.controller ?? 'none'}`;
+  c.config_hash ??
+  `${c.penetration}:${c.compliance}:${c.controller ?? 'none'}:${strategyOf(c)}`;
 
 /** Keys of cells whose aggregates are bit-identical to those of a cell with a
  * *different* configuration. Cells sharing a config hash are one configuration
@@ -123,33 +157,63 @@ function identicalCells(cells: SweepCell[]): Set<string> {
   return dup;
 }
 
+/** One matrix row: a penetration under one infrastructure strategy. With a
+ * strategy axis a penetration is no longer one row — the same 5 % of
+ * controlled vehicles under VSL and without it are two configurations. */
+interface MatrixRow {
+  penetration: number;
+  strategy: SweepStrategy;
+  key: string;
+}
+
 interface MatrixLayout {
-  rows: number[];
+  rows: MatrixRow[];
   cols: number[];
-  /** Every p=0 cell (one per compliance when the request listed p=0). */
+  /** Every p=0 no-strategy cell (one per compliance when the request listed
+   * p=0). */
   baselines: SweepCell[];
+  /** p=0 cells that deploy something: the infrastructure priced alone. */
+  infra: SweepCell[];
   /** The delta reference: the first baseline, or — when the sweep has no
    * p=0 cell — the lowest p·c grid cell, flagged as such in the header. */
   reference: SweepCell;
   hasBaseline: boolean;
-  at: (p: number, c: number) => SweepCell | undefined;
+  at: (row: MatrixRow, c: number) => SweepCell | undefined;
 }
+
+const rowKey = (p: number, s: SweepStrategy): string => `${p}|${s}`;
 
 function layoutMatrix(sweep: SweepDetail): MatrixLayout | null {
   if (sweep.cells.length === 0) return null;
-  const grid = sweep.cells.filter((c) => !isBaseline(c));
-  const rows = [...new Set(grid.map((c) => c.penetration))].sort((a, b) => a - b);
+  const grid = sweep.cells.filter((c) => !isBaseline(c) && !isInfraOnly(c));
+  const rows: MatrixRow[] = [];
+  for (const c of grid) {
+    const key = rowKey(c.penetration, strategyOf(c));
+    if (!rows.some((r) => r.key === key)) {
+      rows.push({ penetration: c.penetration, strategy: strategyOf(c), key });
+    }
+  }
+  rows.sort(
+    (a, b) =>
+      a.penetration - b.penetration ||
+      STRATEGIES.indexOf(a.strategy) - STRATEGIES.indexOf(b.strategy),
+  );
   const cols = [...new Set(grid.map((c) => c.compliance))].sort((a, b) => a - b);
-  const baselines = sweep.cells
-    .filter(isBaseline)
-    .sort((a, b) => (a.config_hash ?? '').localeCompare(b.config_hash ?? ''));
+  const byHash = (a: SweepCell, b: SweepCell): number =>
+    (a.config_hash ?? '').localeCompare(b.config_hash ?? '');
+  const baselines = sweep.cells.filter(isBaseline).sort(byHash);
+  const infra = sweep.cells
+    .filter(isInfraOnly)
+    .sort((a, b) => STRATEGIES.indexOf(strategyOf(a)) - STRATEGIES.indexOf(strategyOf(b)));
   const lowest = [...grid].sort(
     (a, b) => a.penetration * a.compliance - b.penetration * b.compliance,
   )[0];
   const reference = baselines[0] ?? lowest ?? sweep.cells[0];
-  const at = (p: number, c: number): SweepCell | undefined =>
-    grid.find((x) => x.penetration === p && x.compliance === c);
-  return { rows, cols, baselines, reference, hasBaseline: baselines.length > 0, at };
+  const at = (row: MatrixRow, c: number): SweepCell | undefined =>
+    grid.find(
+      (x) => x.penetration === row.penetration && x.compliance === c && strategyOf(x) === row.strategy,
+    );
+  return { rows, cols, baselines, infra, reference, hasBaseline: baselines.length > 0, at };
 }
 
 export function SweepsView(): JSX.Element {
@@ -158,6 +222,8 @@ export function SweepsView(): JSX.Element {
   const [pens, setPens] = useState<number[]>([0.01, 0.02, 0.05, 0.1, 0.15, 0.2]);
   const [coms, setComs] = useState<number[]>([0.25, 0.5, 0.8, 1.0]);
   const [controller, setController] = useState(CONTROLLERS[0]);
+  const [strategies, setStrategies] = useState<SweepStrategy[]>(['none']);
+  const [alineaTarget, setAlineaTarget] = useState('');
   const [tier, setTier] = useState<Tier>('micro');
   const [replicates, setReplicates] = useState(DEFAULT_SWEEP_REPLICATES);
   const [includeBaseline, setIncludeBaseline] = useState(true);
@@ -205,14 +271,26 @@ export function SweepsView(): JSX.Element {
   }, [sweepId]);
   usePoll(pollSweep, sweepId && !settled && !authFailed ? SWEEP_POLL_MS : null);
 
-  const cellCount = pens.length * coms.length;
-  const totalCells = cellCount + (includeBaseline ? 1 : 0);
+  const cellCount = pens.length * coms.length * strategies.length;
+  const infra = infraCells(strategies);
+  const totalCells = cellCount + infra + (includeBaseline ? 1 : 0);
   const totalRuns = totalCells * replicates;
   const scenarioName = scenarios.find((s) => s.scenario_id === scenarioId)?.name ?? scenarioId;
+  const alineaRequested = needsAlinea(strategies);
 
   const launch = (): void => {
     if (!scenarioId || pens.length === 0 || coms.length === 0) {
       toast('error', 'pick a scenario plus at least one penetration and compliance');
+      return;
+    }
+    if (strategies.length === 0) {
+      toast('error', 'pick at least one strategy (none = the scenario as calibrated)');
+      return;
+    }
+    // Empty is the documented "read it from the scenario's FD calibration";
+    // a typo must not be sent as a metering target.
+    if (alineaRequested && alineaTarget.trim() && !(Number(alineaTarget) > 0)) {
+      toast('error', 'the ALINEA target density must be a positive number of veh/km');
       return;
     }
     if (totalCells > MAX_SWEEP_CELLS) {
@@ -228,22 +306,32 @@ export function SweepsView(): JSX.Element {
       // the API contract is the plural `controllers` list (SweepCreateRequest);
       // `tier` is sent explicitly — omitting it ran every macro grid on the
       // scenario's own tier, silently producing micro runs for a macro request
-      const res = await createSweep({
+      const body: CreateSweepRequest = {
         scenario_id: scenarioId,
         penetrations: [...pens].sort((a, b) => a - b),
         compliances: [...coms].sort((a, b) => a - b),
         controllers: [controller],
+        // stated even when it is the default, like `tier`
+        strategies: [...strategies].sort(
+          (a, b) => STRATEGIES.indexOf(a) - STRATEGIES.indexOf(b),
+        ),
         replicates,
         include_baseline: includeBaseline,
         tier,
-      });
+      };
+      // No target field: the API reads the critical density from the
+      // scenario's FD calibration, or refuses — the dashboard invents none.
+      if (alineaRequested && alineaTarget.trim()) {
+        body.alinea = { rho_target_veh_km: Number(alineaTarget) };
+      }
+      const res = await createSweep(body);
       setSweep(null);
       setSweepId(res.sweep_id);
       setSearchParams({ sweep: res.sweep_id }, { replace: true });
       setConfirming(false);
       toast(
         'ok',
-        `sweep ${res.sweep_id} launched · ${cellCount} cells${includeBaseline ? ' + baseline' : ''} × ${replicates} reps = ${totalRuns} runs`,
+        `sweep ${res.sweep_id} launched · ${cellCount} cells${infra ? ` + ${infra} infrastructure` : ''}${includeBaseline ? ' + baseline' : ''} × ${replicates} reps = ${totalRuns} runs`,
       );
     } catch (err) {
       toastError(err, 'sweep');
@@ -254,6 +342,14 @@ export function SweepsView(): JSX.Element {
 
   const toggle = (list: number[], v: number, set: (l: number[]) => void): void => {
     set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v].sort((a, b) => a - b));
+  };
+
+  const toggleStrategy = (s: SweepStrategy): void => {
+    setStrategies((cur) =>
+      cur.includes(s)
+        ? cur.filter((x) => x !== s)
+        : [...cur, s].sort((a, b) => STRATEGIES.indexOf(a) - STRATEGIES.indexOf(b)),
+    );
   };
 
   /* matrix layout */
@@ -321,6 +417,55 @@ export function SweepsView(): JSX.Element {
         </div>
         <div className="n">
           BASELINE · n={stat?.n ?? '—'}
+          {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
+        </div>
+      </td>
+    );
+  };
+
+  /** One measured cell: its delta against the reference, its replicate count
+   * and — since a penetration alone no longer identifies a configuration —
+   * the infrastructure it deploys. Shared by the grid rows and the
+   * infrastructure-only rows, which are deltas like any other cell: at p=0
+   * with a strategy, the whole difference from the baseline is the
+   * deployment. */
+  const renderCell = (cell: SweepCell, key: string | number, colSpan: number): JSX.Element => {
+    if (cell.status !== 'done' || !cell.aggregate) {
+      return (
+        <td key={key} colSpan={colSpan} className="cell pending">
+          {cell.status ?? 'queued'}
+        </td>
+      );
+    }
+    const delta = cellDelta(cell);
+    const twin = duplicates.has(cellKey(cell));
+    // no replicate produced the metric here: there is no delta to colour, and
+    // a bare '·' would read as "still computing" rather than "measured nothing"
+    const noObs = hasNoObservations(cell.aggregate[metricKey]);
+    const strategy = strategyOf(cell);
+    return (
+      <td
+        key={key}
+        colSpan={colSpan}
+        className="cell"
+        title={
+          noObs
+            ? NO_OBSERVATIONS_TITLE
+            : strategy !== 'none'
+              ? STRATEGY_TITLES[strategy]
+              : undefined
+        }
+        style={{ background: delta === null || noObs ? undefined : deltaColor(goodness(delta)) }}
+        onClick={() => openCell(cell)}
+        onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, cell })}
+        onMouseLeave={() => setTip(null)}
+      >
+        <div className={noObs ? 'd noobs' : 'd'}>
+          {noObs ? NO_OBSERVATIONS_LABEL : delta === null ? '·' : formatDeltaPct(delta)}
+        </div>
+        <div className="n">
+          n={cell.aggregate[metricKey]?.n ?? '—'}
+          {strategy !== 'none' ? ` · ${strategy}` : ''}
           {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
         </div>
       </td>
@@ -421,6 +566,37 @@ export function SweepsView(): JSX.Element {
           </div>
           <div className="row wrap">
             <div className="field">
+              <label>Strategies</label>
+              <div className="row wrap" style={{ gap: 2 }}>
+                {STRATEGIES.map((s) => (
+                  <label key={s} className="check" title={STRATEGY_TITLES[s]}>
+                    <input
+                      type="checkbox"
+                      checked={strategies.includes(s)}
+                      onChange={() => toggleStrategy(s)}
+                    />
+                    {s}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {alineaRequested && (
+              <div className="field">
+                <label htmlFor="s-alinea">ALINEA target [veh/km/lane]</label>
+                <input
+                  id="s-alinea"
+                  className="input"
+                  style={{ width: 240 }}
+                  value={alineaTarget}
+                  placeholder="from the scenario's FD calibration"
+                  onChange={(e) => setAlineaTarget(e.target.value)}
+                  title="Per-lane critical density the ramp meters hold downstream. Left empty, the API reads it from the scenario's fitted fundamental diagram and refuses the sweep when the scenario names none."
+                />
+              </div>
+            )}
+          </div>
+          <div className="row wrap">
+            <div className="field">
               <label>Compliance set</label>
               <div className="row wrap" style={{ gap: 2 }}>
                 {COM_CHOICES.map((c) => (
@@ -459,7 +635,8 @@ export function SweepsView(): JSX.Element {
               disabled={offline}
               title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
             >
-              Launch {cellCount} cells{includeBaseline ? ' + baseline' : ''}…
+              Launch {cellCount} cells{infra ? ` + ${infra} infrastructure` : ''}
+              {includeBaseline ? ' + baseline' : ''}…
             </button>
           </div>
         </div>
@@ -536,48 +713,30 @@ export function SweepsView(): JSX.Element {
                         )}
                   </tr>
                 )}
-                {matrix.rows.map((p) => (
-                  <tr key={p}>
-                    <th className="rowh">{pct(p)}</th>
+                {matrix.infra.map((cell) => (
+                  <tr key={`infra-${strategyOf(cell)}`}>
+                    <th
+                      className="rowh"
+                      title="p=0 with infrastructure deployed: no controlled vehicle acts, so the whole difference from the baseline is the deployment"
+                    >
+                      0% · {strategyOf(cell)}
+                    </th>
+                    {renderCell(cell, strategyOf(cell), Math.max(1, matrix.cols.length))}
+                  </tr>
+                ))}
+                {matrix.rows.map((row) => (
+                  <tr key={row.key}>
+                    <th className="rowh" title={STRATEGY_TITLES[row.strategy]}>
+                      {pct(row.penetration)}
+                      {row.strategy !== 'none' ? ` · ${row.strategy}` : ''}
+                    </th>
                     {matrix.cols.map((c) => {
-                      const cell = matrix.at(p, c);
-                      if (!cell || cell.status !== 'done' || !cell.aggregate) {
-                        return (
-                          <td key={c} className="cell pending">
-                            {cell ? (cell.status ?? 'queued') : '—'}
-                          </td>
-                        );
-                      }
-                      const delta = cellDelta(cell);
-                      const twin = duplicates.has(cellKey(cell));
-                      // no replicate produced the metric here: there is no
-                      // delta to colour, and a bare '·' would read as "still
-                      // computing" rather than "measured nothing"
-                      const noObs = hasNoObservations(cell.aggregate[metricKey]);
-                      return (
-                        <td
-                          key={c}
-                          className="cell"
-                          title={noObs ? NO_OBSERVATIONS_TITLE : undefined}
-                          style={{
-                            background:
-                              delta === null || noObs ? undefined : deltaColor(goodness(delta)),
-                          }}
-                          onClick={() => openCell(cell)}
-                          onMouseMove={(e) => setTip({ x: e.clientX, y: e.clientY, cell })}
-                          onMouseLeave={() => setTip(null)}
-                        >
-                          <div className={noObs ? 'd noobs' : 'd'}>
-                            {noObs
-                              ? NO_OBSERVATIONS_LABEL
-                              : delta === null
-                                ? '·'
-                                : formatDeltaPct(delta)}
-                          </div>
-                          <div className="n">
-                            n={cell.aggregate[metricKey]?.n ?? '—'}
-                            {twin && <span className="identical" title={IDENTICAL_TITLE}> ≡</span>}
-                          </div>
+                      const cell = matrix.at(row, c);
+                      return cell ? (
+                        renderCell(cell, c, 1)
+                      ) : (
+                        <td key={c} className="cell pending">
+                          —
                         </td>
                       );
                     })}
@@ -623,6 +782,7 @@ export function SweepsView(): JSX.Element {
                 <span className="t-muted">
                   p={pct(tip.cell.penetration)} · c={pct(tip.cell.compliance)}
                   {isBaseline(tip.cell) ? ' · baseline' : ''}
+                  {strategyOf(tip.cell) !== 'none' ? ` · ${strategyOf(tip.cell)}` : ''}
                 </span>
               </div>
             );
@@ -668,7 +828,20 @@ export function SweepsView(): JSX.Element {
             ['Tier', tier === 'macro' ? 'macro (CTM screening)' : 'micro (SUMO)'],
             ['Controller', controller],
             ['Grid', `${pens.length} penetrations × ${coms.length} compliances`],
-            ['Cells', `${cellCount}${includeBaseline ? ' + 1 baseline' : ''} = ${totalCells}`],
+            [
+              'Strategies',
+              `${strategies.join(', ')}${
+                alineaRequested
+                  ? ` · ALINEA target ${alineaTarget.trim() || "from the scenario's FD calibration"}`
+                  : ''
+              }`,
+            ],
+            [
+              'Cells',
+              `${cellCount}${infra ? ` + ${infra} infrastructure` : ''}${
+                includeBaseline ? ' + 1 baseline' : ''
+              } = ${totalCells}`,
+            ],
             ['Replicates / cell', String(replicates)],
             ['Total runs', String(totalRuns)],
           ]}

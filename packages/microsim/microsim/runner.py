@@ -83,7 +83,15 @@ from flowstate_core.controller_types import (
     VehicleControllerFn,
 )
 from flowstate_core.rng import make_rng, spawn_seeds, sumo_seed
-from microsim.networks import NetBundle, corridor, merge_patch_files, osm_import, ring
+from microsim.networks import (
+    RAMP_SPLIT_OFF,
+    RAMP_SPLIT_ON,
+    NetBundle,
+    corridor,
+    merge_patch_files,
+    osm_import,
+    ring,
+)
 from microsim.vehicles import (
     FleetPlan,
     build_corridor_plan,
@@ -221,7 +229,23 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             workdir=workdir,
             keep_edges=keep,
             internal_links=net.internal_links,
+            netconvert_extra=tuple(net.netconvert_extra),
         )
+        # netconvert's ramp guessing (OSMNetwork.netconvert_extra) splits the
+        # highway edge at a merge into the acceleration-lane piece
+        # ``<id>-AddedOnRampEdge`` + ``<id>`` (and ``<id>`` + ``<id>-AddedOffRampEdge``
+        # before an exit). The scenario names the load-time id; the compiled
+        # ramp joins the piece, so every downstream use (routes, checks,
+        # meters, meta) sees the piece as the attach edge.
+        compiled_ids = set(bundle.edge_ids)
+        resolved_ramps = []
+        for ramp in net.ramps:
+            piece = ramp.attach_edge + (RAMP_SPLIT_ON if ramp.kind == "on" else RAMP_SPLIT_OFF)
+            resolved_ramps.append(
+                ramp.model_copy(update={"attach_edge": piece}) if piece in compiled_ids else ramp
+            )
+        if any(r is not o for r, o in zip(resolved_ramps, net.ramps, strict=True)):
+            net = net.model_copy(update={"ramps": resolved_ramps})
         merge_ramps = [r for r in net.ramps if r.kind == "on" and r.merge != "lane_change"]
         if merge_ramps:
             # Second pass: on-ramp merge models are netconvert patches whose
@@ -265,6 +289,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
                     keep_edges=keep,
                     patch_files=patches,
                     internal_links=net.internal_links,
+                    netconvert_extra=tuple(net.netconvert_extra),
                 )
                 bundle = dataclasses.replace(bundle, patch_files=tuple(str(p) for p in patches))
         if net.boundary is not None:
@@ -273,6 +298,34 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             bundle = dataclasses.replace(bundle, exit_edge=bundle.edge_ids[-1])
         return bundle
     raise TypeError(f"unsupported network type: {type(net).__name__}")
+
+
+def _resolve_ramp_pieces(cfg: ScenarioConfig, bundle: NetBundle) -> ScenarioConfig:
+    """Point every ramp at the compiled piece of its attach edge.
+
+    netconvert's ramp guessing (``OSMNetwork.netconvert_extra``) splits the
+    highway edge at a merge into ``<id>-AddedOnRampEdge`` + ``<id>`` and the
+    edge before an exit into ``<id>`` + ``<id>-AddedOffRampEdge``. The
+    scenario names the load-time id; the compiled ramp joins the piece, so
+    routes, checks and meters must see the piece. The config hash and the
+    ``meta.json`` snapshot keep the scenario as written.
+    """
+    net = cfg.network
+    if not isinstance(net, OSMNetwork) or not net.ramps:
+        return cfg
+    compiled = set(bundle.edge_ids)
+    resolved = []
+    changed = False
+    for ramp in net.ramps:
+        piece = ramp.attach_edge + (RAMP_SPLIT_ON if ramp.kind == "on" else RAMP_SPLIT_OFF)
+        if piece in compiled:
+            resolved.append(ramp.model_copy(update={"attach_edge": piece}))
+            changed = True
+        else:
+            resolved.append(ramp)
+    if not changed:
+        return cfg
+    return cfg.model_copy(update={"network": net.model_copy(update={"ramps": resolved})})
 
 
 def _build_plan_and_routes(
@@ -861,6 +914,8 @@ def run_micro(
 
     is_ring = isinstance(cfg.network, RingNetwork)
     bundle = _build_network(cfg, workdir)
+    cfg_snapshot = cfg  # meta.json records the scenario as written (load-time ramp ids)
+    cfg = _resolve_ramp_pieces(cfg, bundle)
     rng = make_rng(seed)
     routes_path = workdir / "demand.rou.xml"
     plan = _build_plan_and_routes(
@@ -1478,7 +1533,7 @@ def run_micro(
     fuel_ml = {vid: fuel_mg_to_ml(mg) for vid, mg in sorted(fuel_mg.items())}
     wall = time.perf_counter() - t_wall0
     meta: dict[str, Any] = {
-        "config": cfg.model_dump(mode="json"),
+        "config": cfg_snapshot.model_dump(mode="json"),
         "config_hash": chash,
         "config_hash_version": CONFIG_HASH_VERSION,
         "seed": seed,

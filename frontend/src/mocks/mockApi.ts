@@ -15,6 +15,8 @@
 
 import type {
   AggregateStat,
+  CorridorOut,
+  CorridorSummary,
   CreateRunRequest,
   CreateScenarioResponse,
   CreateSweepRequest,
@@ -30,6 +32,7 @@ import type {
   ScenarioSummary,
   SweepCell,
   SweepDetail,
+  SweepStrategy,
   Tier,
 } from '../api/types';
 import { corridorSpeedField, mulberry32, ringSpeedField, toDensityField } from './heatmap';
@@ -461,15 +464,33 @@ interface SweepRecord {
 
 const sweeps = new Map<string, SweepRecord>();
 
+/** Demo-only effect of an infrastructure strategy on the damping term.
+ *
+ * Fabricated, like every other number in this file: it exists so a strategy
+ * cell is not a bit-identical twin of its `none` counterpart (which the
+ * matrix would flag, correctly, as one realisation under two configurations).
+ * Nothing here is a claim about VSL or ramp metering. */
+const STRATEGY_DAMPING: Record<SweepStrategy, number> = {
+  none: 0,
+  vsl: 0.06,
+  alinea: 0.09,
+  'vsl+alinea': 0.13,
+};
+
 function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
   const tier: Tier = req.tier ?? 'micro';
   const cells: SweepCell[] = [];
-  const mkCell = (p: number, c: number, controller: string | null): SweepCell => {
+  const mkCell = (
+    p: number,
+    c: number,
+    controller: string | null,
+    strategy: SweepStrategy = 'none',
+  ): SweepCell => {
     // no controller (or no AVs) => nothing to dampen with: baseline physics
     const eff = controller ? p * c : 0;
     const tag = controller ?? 'none';
-    const runId = `run-sw-${sweepId.slice(-4)}-${tag.slice(0, 3)}-p${Math.round(p * 100)}-c${Math.round(c * 100)}`;
-    const damp = Math.min(0.92, eff * 9);
+    const runId = `run-sw-${sweepId.slice(-4)}-${tag.slice(0, 3)}-p${Math.round(p * 100)}-c${Math.round(c * 100)}-${strategy}`;
+    const damp = Math.min(0.92, eff * 9 + STRATEGY_DAMPING[strategy]);
     const profile: RunProfile = {
       throughput_veh_h: BASELINE.throughput_veh_h * (1 + damp * 0.045),
       mean_tt_s: BASELINE.mean_tt_s * (1 - damp * 0.14),
@@ -505,6 +526,7 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
       penetration: p,
       compliance: c,
       controller,
+      strategy,
       config_hash: rec.config_hash,
       run_id: runId,
       status: 'done',
@@ -513,6 +535,7 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
     };
   };
   const controllers = req.controllers.length > 0 ? req.controllers : [null];
+  const strategies = req.strategies?.length ? req.strategies : (['none'] as SweepStrategy[]);
   // baseline cells as the delta reference, shaped like the API's
   // SweepCreateRequest.baseline_cells(): one (p=0, compliance 1) cell per
   // distinct controller, skipped when the grid already holds p=0. The API
@@ -521,10 +544,17 @@ function buildSweep(sweepId: string, req: CreateSweepRequest): SweepRecord {
   if (req.include_baseline && !req.penetrations.includes(0)) {
     for (const ctrl of new Set(controllers)) cells.push(mkCell(0, 1.0, ctrl));
   }
-  for (const p of req.penetrations) {
-    for (const c of req.compliances) {
-      for (const ctrl of controllers) {
-        cells.push(mkCell(p, c, ctrl));
+  // one uncontrolled cell per strategy (SweepCreateRequest.strategy_cells()),
+  // so the infrastructure can be read without any controlled vehicle
+  for (const s of new Set(strategies)) {
+    if (s !== 'none') cells.push(mkCell(0, 1.0, null, s));
+  }
+  for (const s of strategies) {
+    for (const p of req.penetrations) {
+      for (const c of req.compliances) {
+        for (const ctrl of controllers) {
+          cells.push(mkCell(p, c, ctrl, s));
+        }
       }
     }
   }
@@ -975,4 +1005,167 @@ export async function mockGetReportPdf(reportId: string): Promise<Blob> {
   const view = reportView(requireReport(reportId));
   if (view.status !== 'done') throw new Error(`report ${reportId} is ${view.status}, not done`);
   throw new Error('demo data has no PDF rendering — connect the API to download the PDF');
+}
+
+/* ------------------------ corridor onboarding ------------------------- */
+
+/** A canned onboarding, shaped like the MnDOT I-94 WB corridor the real
+ * pipeline was built on (docs/ONBOARDING_MNDOT.md §3–§5): a ~11.8 km chain,
+ * a varying lane profile, discovered ramps whose flows come partly from
+ * detectors and partly from the station balance, one carried residual and
+ * one rejected station. The numbers are demo data and are labelled DEMO
+ * wherever the dashboard shows them — nothing here was measured in this
+ * browser. */
+const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
+  corridor: 'mndot_i94_wb_stpaul',
+  chain_length_m: 11820,
+  n_chain_edges: 32,
+  lanes_profile: [
+    [0, 1600, 3],
+    [1600, 3200, 4],
+    [3200, 6400, 3],
+    [6400, 8100, 5],
+    [8100, 11820, 3],
+  ],
+  n_ramps: 17,
+  stations_placed: [
+    { station: 'S1063', x_m: 1110, offset_m: 4.2 },
+    { station: 'S1947', x_m: 3260, offset_m: 9.8 },
+    { station: 'S1069', x_m: 5180, offset_m: 3.1 },
+    { station: 'S792', x_m: 8640, offset_m: 12.5 },
+    { station: 'S97', x_m: 11027, offset_m: 6.7 },
+  ],
+  stations_rejected: [{ station: 'S1450', x_m: 4820, offset_m: 168.4 }],
+  stations_without_chain_x: ['S1450'],
+  inflow_peak_veh_h: 4275,
+  ramps: [
+    {
+      name: 'I-494 entrance',
+      kind: 'on',
+      x_m: 1980,
+      method: 'detector',
+      peak: 1260,
+      unit: 'veh/h',
+      station: 'D1064',
+    },
+    {
+      name: 'T.H.120 exit',
+      kind: 'off',
+      x_m: 3420,
+      method: 'conservation',
+      peak: 0.11,
+      unit: 'frac',
+      station: null,
+    },
+    {
+      name: 'White Bear Ave entrance',
+      kind: 'on',
+      x_m: 6120,
+      method: 'conservation',
+      peak: 442,
+      unit: 'veh/h',
+      station: null,
+    },
+    {
+      name: 'T.H.61 NB entrance',
+      kind: 'on',
+      x_m: 8980,
+      method: 'detector',
+      peak: 705,
+      unit: 'veh/h',
+      station: 'D801',
+    },
+    {
+      name: 'Mounds Blvd exit',
+      kind: 'off',
+      x_m: 10240,
+      method: 'conservation',
+      peak: 0.08,
+      unit: 'frac',
+      station: null,
+    },
+  ],
+  residuals: [
+    {
+      from: 'S792',
+      to: 'S791',
+      mean_residual_veh_h: 775,
+      note: 'unexplained change with no ramp of the needed kind (or sign) in this bracket; carried into the next bracket',
+    },
+  ],
+  zeroed_ramps: ['Kellogg Blvd exit (x=11510 m): outside the observed span [1110, 11027] m'],
+  unmatched_detectors: ['D1210'],
+  lines: [
+    'corridor mndot_i94_wb_stpaul: 11.82 km along 32 edges, bearing 265°',
+    '  inflow from S1063: 48 steps, peak 4275 veh/h',
+    '  residual carried S792→S791: mean +775 veh/h',
+    '  boundary: 48 speed steps from S97, exit buffer 795.7 m',
+  ],
+};
+
+interface CorridorRow {
+  out: CorridorOut;
+  createdAt: number;
+}
+
+const corridors = new Map<string, CorridorRow>();
+
+/** `CorridorOut` view of a row: the demo job walks the real stage list, so a
+ * view polling to completion sees the same progression a server produces. */
+function corridorView(row: CorridorRow): CorridorOut {
+  const stages = ['extract', 'network', 'observations', 'demand', 'install'];
+  const elapsed = (Date.now() - row.createdAt) / 1000;
+  const index = Math.floor(elapsed / 0.4);
+  const done = index >= stages.length;
+  const stage = done ? 'done' : stages[index];
+  return {
+    ...row.out,
+    status: done ? 'done' : index === 0 ? 'queued' : 'running',
+    progress: { stage, completed_stages: Math.min(index, stages.length), total_stages: 5 },
+    scenario_id: done ? `scn_demo_${row.out.corridor_id.slice(-6)}` : null,
+    preset_filename: done ? `${row.out.name}.yaml` : null,
+    config_hash: done ? fakeHash(row.out.name) : null,
+    observations_path: done ? `corridors/${row.out.corridor_id}/observations.json` : null,
+    corridor_dir: `corridors/${row.out.corridor_id}`,
+    summary: done ? { ...DEMO_CORRIDOR_SUMMARY, corridor: row.out.name } : null,
+  };
+}
+
+/** `POST /corridors` — accepted only under VITE_MOCK (the client refuses to
+ * answer a write from the offline fallback). The canned summary is returned
+ * whatever the bbox says: the demo backend downloads no map and reads no
+ * detector file, and pretending otherwise would be a fabricated corridor. */
+export async function mockCreateCorridor(form: FormData): Promise<CorridorOut> {
+  await latency();
+  const name = String(form.get('name') ?? 'demo_corridor');
+  const id = `cor_${Math.random().toString(16).slice(2, 14)}`;
+  const row: CorridorRow = {
+    createdAt: Date.now(),
+    out: {
+      corridor_id: id,
+      name,
+      status: 'queued',
+      progress: { stage: 'extract', completed_stages: 0, total_stages: 5 },
+      scenario_id: null,
+      preset_filename: null,
+      config_hash: null,
+      observations_path: null,
+      corridor_dir: null,
+      summary: null,
+      error: null,
+      error_kind: null,
+      created_at: new Date().toISOString(),
+    },
+  };
+  corridors.set(id, row);
+  return corridorView(row);
+}
+
+/** `GET /corridors/{id}`. An id this session never created is unknown, never
+ * minted as a finished corridor. */
+export async function mockGetCorridor(corridorId: string): Promise<CorridorOut> {
+  await latency();
+  const row = corridors.get(corridorId);
+  if (!row) throw new Error(`corridor ${corridorId} not found in the demo backend`);
+  return corridorView(row);
 }

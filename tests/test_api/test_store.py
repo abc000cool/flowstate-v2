@@ -97,6 +97,8 @@ def _row_of_kind(store: Store, kind: str, tmp_path: Path) -> str:
         return store.create_sweep(None, [])
     if kind == "calibration":
         return store.create_calibration("fd", tmp_path / "d.csv", {}, "src")
+    if kind == "corridor":
+        return store.create_corridor("c", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
     return store.create_report(["run_x"], "t")
 
 
@@ -128,6 +130,8 @@ def test_claim_is_a_compare_and_set(kind: str, tmp_path: Path) -> None:
         store.set_sweep_status(row_id, "done")
     elif kind == "calibration":
         store.set_calibration_status(row_id, "done", artifact_path="a.json")
+    elif kind == "corridor":
+        store.set_corridor_status(row_id, "done", stage="done", scenario_id="scn_x")
     else:
         store.set_report_status(row_id, "done", report_dir="d", report_path="d/report.md")
     assert store.claim(kind, row_id) is False
@@ -143,6 +147,8 @@ def test_claim_is_a_compare_and_set(kind: str, tmp_path: Path) -> None:
         store.set_sweep_status(row_id, "failed", error="boom")
     elif kind == "calibration":
         store.set_calibration_status(row_id, "failed", error="boom")
+    elif kind == "corridor":
+        store.set_corridor_status(row_id, "failed", stage="network", error="boom", error_kind="k")
     else:
         store.set_report_status(row_id, "failed", error="boom", error_kind="k")
     assert store.claim(kind, row_id) is True
@@ -154,6 +160,9 @@ def test_claim_is_a_compare_and_set(kind: str, tmp_path: Path) -> None:
         assert row["completed_replicates"] == 0
     if kind == "report":
         assert row["error_kind"] is None
+    if kind == "corridor":
+        # a re-claim starts from a clean row: no stale stage, scenario or summary
+        assert (row["error_kind"], row["stage"], row["scenario_id"]) == (None, None, None)
 
     assert store.claim(kind, "nope_missing") is False
 

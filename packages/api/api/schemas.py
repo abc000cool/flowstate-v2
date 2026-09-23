@@ -14,6 +14,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from flowstate_core.config import MacroOptions
+from flowstate_core.strategies import Strategy, needs_target
 
 # ---------------------------------------------------------------------------
 # Request size caps
@@ -24,11 +25,13 @@ from flowstate_core.config import MacroOptions
 # enqueues an unbounded number of simulations. These caps are the service's
 # hard limits, quoted in the endpoint docstrings so they show up in /docs.
 
-#: Maximum values per sweep axis (penetrations, compliances, controllers).
+#: Maximum values per sweep axis (penetrations, compliances, controllers,
+#: strategies).
 MAX_SWEEP_AXIS_VALUES = 50
 
 #: Maximum total cells in one sweep grid (penetrations × compliances ×
-#: controllers), checked from the list lengths before any cell is built.
+#: controllers × strategies), checked from the list lengths before any cell
+#: is built.
 MAX_SWEEP_CELLS = 200
 
 #: Maximum replicates a single request may ask for, per run and per sweep cell.
@@ -255,20 +258,44 @@ BASELINE_COMPLIANCE = 1.0
 #: (``microsim.vehicles``: ``n_avs = round(penetration * n)``), so the
 #: controller name is inert simulation input — see :meth:`baseline_cells`.
 BASELINE_CONTROLLER: str | None = None
+#: Its strategy: the scenario as calibrated, no infrastructure deployed.
+BASELINE_STRATEGY: Strategy = "none"
 
-#: One grid cell: (penetration, compliance, controller).
-SweepCellKey = tuple[float, float, str | None]
+#: One grid cell: (penetration, compliance, controller, strategy).
+SweepCellKey = tuple[float, float, str | None, Strategy]
+
+
+class AlineaOptions(BaseModel):
+    """Metering target of a sweep's ``alinea``/``vsl+alinea`` cells.
+
+    ALINEA has no built-in target (CLAUDE.md §0.1: no uncalibrated
+    constants), so a metered sweep either states it here or inherits it from
+    the scenario's ``fd_calibration`` artifact (``fd.rho_c``); with neither,
+    ``POST /sweeps`` answers 422 rather than inventing a critical density.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rho_target_veh_km: float = Field(gt=0.0)
+    """Per-lane critical density [veh/km] written into every on-ramp meter."""
 
 
 class SweepCreateRequest(BaseModel):
-    """Penetration × compliance × controller grid over one scenario.
+    """Penetration × compliance × controller × strategy grid over one scenario.
 
-    Bounded on both axes and in total: each list holds at most
+    The first three axes are Lagrangian (what the controlled vehicles do);
+    ``strategies`` is the infrastructure axis (what the operator deploys —
+    VSL gantries, ALINEA ramp metering, both or neither), applied by
+    :func:`flowstate_core.strategies.apply_strategy`, the same patch
+    ``scripts/corridor_sweep.py`` uses, so a CLI cell and an API cell of the
+    same grid point carry the same ``config_hash``.
+
+    Bounded on every axis and in total: each list holds at most
     ``MAX_SWEEP_AXIS_VALUES`` (50) values and their product — plus the
-    baseline cells ``include_baseline`` adds — may not exceed
-    ``MAX_SWEEP_CELLS`` (200) cells. The total is checked here, from the
-    list lengths alone, so an oversized grid is rejected before a single cell
-    config is built or validated.
+    infrastructure-only and baseline cells described on :meth:`grid_cells` —
+    may not exceed ``MAX_SWEEP_CELLS`` (200) cells. The total is checked
+    here, from the list lengths alone, so an oversized grid is rejected
+    before a single cell config is built or validated.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -279,6 +306,17 @@ class SweepCreateRequest(BaseModel):
     controllers: list[str | None] = Field(
         default_factory=lambda: [None], min_length=1, max_length=MAX_SWEEP_AXIS_VALUES
     )
+    strategies: list[Strategy] = Field(
+        default_factory=lambda: [BASELINE_STRATEGY],
+        min_length=1,
+        max_length=MAX_SWEEP_AXIS_VALUES,
+    )
+    """Infrastructure strategies fanned out over the Lagrangian grid
+    (:data:`flowstate_core.strategies.STRATEGIES`). The default runs the
+    scenario as calibrated."""
+    alinea: AlineaOptions | None = None
+    """Metering target of the ALINEA strategies; ``None`` reads it from the
+    scenario's ``fd_calibration`` artifact (:class:`AlineaOptions`)."""
     overrides: dict[str, Any] = Field(default_factory=dict)
     """Applied to every cell before the grid values (deep merge)."""
     replicates: int | None = Field(default=None, ge=1, le=MAX_REPLICATES)
@@ -311,50 +349,92 @@ class SweepCreateRequest(BaseModel):
         controller-minus-baseline contrast table and the seed-matched
         contour pairs entirely.
 
-        Returns nothing when the grid already contains an uncontrolled cell:
-        penetration 0 in ``penetrations``, or ``None`` in ``controllers``
+        Returns nothing when the grid already contains an uncontrolled cell
+        *with no strategy*: ``none`` among ``strategies`` and either
+        penetration 0 in ``penetrations`` or ``None`` in ``controllers``
         (``validation.report.group_label`` labels *any* cell with no
         controller ``baseline``, whatever its penetration, so appending a
-        second one would re-create the same two-baseline tie).
+        second one would re-create the same two-baseline tie). An
+        uncontrolled cell that deploys VSL or metering is not a baseline —
+        the label names the strategy — so it does not suppress this one.
         """
-        if (
-            not self.include_baseline
-            or BASELINE_PENETRATION in self.penetrations
-            or None in self.controllers
-        ):
+        uncontrolled_in_grid = BASELINE_STRATEGY in self.strategies and (
+            BASELINE_PENETRATION in self.penetrations or None in self.controllers
+        )
+        if not self.include_baseline or uncontrolled_in_grid:
             return []
-        return [(BASELINE_PENETRATION, BASELINE_COMPLIANCE, BASELINE_CONTROLLER)]
+        return [
+            (
+                BASELINE_PENETRATION,
+                BASELINE_COMPLIANCE,
+                BASELINE_CONTROLLER,
+                BASELINE_STRATEGY,
+            )
+        ]
+
+    def strategy_cells(self) -> list[SweepCellKey]:
+        """One no-AV cell per requested infrastructure strategy.
+
+        VSL and ramp metering act on every vehicle whether or not any is
+        controlled, so each strategy is also its own configuration: without
+        these cells a grid could only price "controller *and* strategy"
+        against the bare baseline, never the strategy alone — and the two
+        levers are bought by different budgets. The mirror of
+        ``scripts/corridor_sweep.py``'s ``strategy_<s>`` cells.
+
+        ``none`` yields nothing (that cell is the baseline), and a strategy
+        listed twice yields one cell.
+        """
+        return [
+            (BASELINE_PENETRATION, BASELINE_COMPLIANCE, BASELINE_CONTROLLER, strategy)
+            for strategy in dict.fromkeys(self.strategies)
+            if strategy != BASELINE_STRATEGY
+        ]
+
+    def needs_alinea_target(self) -> bool:
+        """Whether any requested strategy meters ramps and so needs a target."""
+        return any(needs_target(s) for s in self.strategies)
 
     def grid_cells(self) -> list[SweepCellKey]:
-        """Every cell of the sweep in fan-out order: the product, then baselines.
+        """Every cell in fan-out order: product, strategy-only cells, baseline.
 
         Repeated axis values collapse: two identical ``(penetration,
-        compliance, controller)`` triples produce the same effective config
-        and the same ``config_hash``, so they would be two run rows writing
-        the same ``runs/<hash>/<seed>/`` tree — duplicate simulation for one
-        result. First occurrence wins, so fan-out order is unchanged.
+        compliance, controller, strategy)`` tuples produce the same effective
+        config and the same ``config_hash``, so they would be two run rows
+        writing the same ``runs/<hash>/<seed>/`` tree — duplicate simulation
+        for one result. First occurrence wins, so fan-out order is unchanged
+        (a strategy-only cell already in the product is not repeated).
         """
         product = [
-            (pen, comp, ctrl)
+            (pen, comp, ctrl, strategy)
+            for strategy in self.strategies
             for pen in self.penetrations
             for comp in self.compliances
             for ctrl in self.controllers
         ]
-        return list(dict.fromkeys(product + self.baseline_cells()))
+        return list(dict.fromkeys(product + self.strategy_cells() + self.baseline_cells()))
 
     @model_validator(mode="after")
     def _check_grid_size(self) -> Self:
         # The ceiling is checked from the list lengths (before any cell is
         # built), so it counts the *requested* product — de-duplication in
         # grid_cells() can only make the realized grid smaller.
-        product = len(self.penetrations) * len(self.compliances) * len(self.controllers)
+        product = (
+            len(self.penetrations)
+            * len(self.compliances)
+            * len(self.controllers)
+            * len(self.strategies)
+        )
+        infra = len(self.strategy_cells())
         baselines = len(self.baseline_cells())
-        cells = product + baselines
+        cells = product + infra + baselines
         if cells > MAX_SWEEP_CELLS:
-            extra = f" + {baselines} baseline cells" if baselines else ""
+            extra = f" + {infra} infrastructure-only cells" if infra else ""
+            extra += f" + {baselines} baseline cells" if baselines else ""
             raise ValueError(
                 f"sweep grid is {len(self.penetrations)} penetrations × "
                 f"{len(self.compliances)} compliances × {len(self.controllers)} controllers"
+                f" × {len(self.strategies)} strategies"
                 f"{extra} = {cells} cells, over the limit of {MAX_SWEEP_CELLS}; "
                 f"split the grid across several sweeps"
             )
@@ -365,6 +445,10 @@ class SweepCellOut(BaseModel):
     penetration: float
     compliance: float
     controller: str | None
+    strategy: Strategy = BASELINE_STRATEGY
+    """Infrastructure strategy of this cell
+    (:data:`flowstate_core.strategies.STRATEGIES`); ``none`` on a sweep
+    created before the axis existed."""
     config_hash: str
     run_id: str | None = None
     status: str | None = None
@@ -660,3 +744,123 @@ class HealthOut(BaseModel):
     store: str
     queue: str
     queue_kind: str
+
+
+# ---------------------------------------------------------------------------
+# Corridor onboarding (WP-F: POST /corridors)
+# ---------------------------------------------------------------------------
+
+#: The stages ``api.onboarding_jobs.corridor_onboarding_job`` reports, in
+#: order. ``GET /corridors/{id}`` turns the current one into a progress
+#: fraction, so a 60–90 s onboarding is not an opaque spinner.
+CORRIDOR_STAGES: tuple[str, ...] = (
+    "extract",
+    "network",
+    "observations",
+    "demand",
+    "install",
+    "done",
+)
+
+#: Scenario names accepted by ``POST /corridors``. The name becomes a
+#: directory under the results root and a ``scenarios/<name>.yaml`` preset
+#: file, so it is restricted to characters that mean the same thing in both.
+CORRIDOR_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+
+
+class CorridorProgressOut(BaseModel):
+    """How far the onboarding has got (stage names, not a time estimate)."""
+
+    stage: str | None = None
+    """The stage currently running, the one that failed, or ``"done"``."""
+    completed_stages: int = 0
+    total_stages: int = len(CORRIDOR_STAGES) - 1
+
+
+class CorridorStationOut(BaseModel):
+    """One detector station's place on the corridor chain."""
+
+    station: str
+    x_m: float
+    """Position along the corridor [m] (the nearest chain point for a
+    rejected station)."""
+    offset_m: float
+    """Perpendicular distance from the corridor centreline [m]."""
+
+
+class CorridorRampOut(BaseModel):
+    """One discovered ramp and where its profile came from."""
+
+    name: str
+    kind: Literal["on", "off"]
+    x_m: float
+    method: str
+    """``detector`` (a live ramp detector), ``detector_scaled``,
+    ``conservation`` (it closes the station balance) or
+    ``zero_outside_observed_span``."""
+    peak: float
+    """Peak of the profile: veh/h for an on-ramp, a fraction for an off-ramp."""
+    unit: Literal["veh/h", "frac"]
+    station: str | None = None
+    """The observed ramp detector it was matched to, when there was one."""
+
+
+class CorridorSummaryOut(BaseModel):
+    """What the onboarding found — the panel the dashboard shows.
+
+    Every field is measured or derived by the job; none is a claim about the
+    corridor's behaviour. A corridor is onboarded, not validated: the numbers
+    here say what geometry was discovered and which detector each demand
+    number came from, and the report (``POST /reports`` with
+    ``observations_path``) is what scores the result against the observations.
+    """
+
+    corridor: str
+    chain_length_m: float
+    n_chain_edges: int
+    lanes_profile: list[tuple[float, float, int]]
+    """``(x_start_m, x_end_m, lanes)`` runs along the chain."""
+    n_ramps: int
+    stations_placed: list[CorridorStationOut]
+    stations_rejected: list[CorridorStationOut]
+    """Stations farther from the centreline than the acceptance threshold —
+    another carriageway, a frontage road or another route. Their counts are
+    not comparable with this corridor and are not used."""
+    stations_without_chain_x: list[str] = Field(default_factory=list)
+    """Observed stations the projection placed nowhere, kept at their
+    inventory position."""
+    inflow_peak_veh_h: float
+    ramps: list[CorridorRampOut] = Field(default_factory=list)
+    residuals: list[dict[str, Any]] = Field(default_factory=list)
+    """Brackets whose flow change no ramp of the needed kind could carry; the
+    remainder is recorded and carried, never smeared (CLAUDE.md §0.1)."""
+    zeroed_ramps: list[str] = Field(default_factory=list)
+    unmatched_detectors: list[str] = Field(default_factory=list)
+    lines: list[str] = Field(default_factory=list)
+    """The same summary as plain text (``summary.txt`` in the bundle)."""
+
+
+class CorridorOut(BaseModel):
+    """A corridor onboarding job's row (``POST``/``GET /corridors``)."""
+
+    corridor_id: str
+    name: str
+    status: Literal["queued", "running", "done", "failed"]
+    progress: CorridorProgressOut
+    scenario_id: str | None = None
+    """The stored scenario the calibrated corridor was installed as — what
+    ``POST /runs`` takes."""
+    preset_filename: str | None = None
+    """The ``scenarios/<name>.yaml`` preset file the scenario was written to,
+    so it is selectable next to the shipped corridors."""
+    config_hash: str | None = None
+    observations_path: str | None = None
+    """Server-side path of the observations artifact, ready to hand to
+    ``POST /reports`` as ``observations_path``."""
+    corridor_dir: str | None = None
+    """Where the bundle (scenario YAML, stations table, observations, demand,
+    OSM extract, summary) was written, relative to the results root."""
+    summary: CorridorSummaryOut | None = None
+    error: str | None = None
+    error_kind: str | None = None
+    created_at: str

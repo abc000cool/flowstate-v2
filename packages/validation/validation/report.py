@@ -30,6 +30,16 @@ otherwise, with a ``resolved`` flag when the confidence interval excludes
 zero — the conventions of docs/CONTROLLER_COMPARISON.md. Speed contours are
 then rendered as baseline-versus-controller pairs per matched seed.
 
+A run set with more than one configuration also carries a **strategy
+comparison**: one table, one row per group (baseline first), one column per
+headline metric (:data:`COMPARISON_METRICS`), each cell the group's mean with
+its replicate interval and — off the baseline row — the same contrast
+(:func:`contrast`) with its interval and whether it is resolved. It answers
+"which deployment, on the numbers that get quoted" on one page, where the
+per-group sections answer it one configuration at a time; it introduces no
+new statistic (:func:`_comparison_rows` re-reads the group aggregates and the
+same contrasts) and is omitted for a single-configuration run set.
+
 Every number in the rendered report is a computed value passed into the
 Jinja2 template (packaged at ``validation/templates/report.md.j2``); the
 template body contains no free-text numerals (CLAUDE.md §7.4). The optional
@@ -889,6 +899,86 @@ def _delta_context(groups: list[_Group], baseline: _Group) -> list[dict[str, Any
     return out
 
 
+#: Columns of the strategy-comparison table: metric field → column header.
+#: The five headline metrics of CLAUDE.md §0.3 (throughput, travel time,
+#: σ_v, energy, waves) — one representative each, so the table fits a page
+#: and no reader picks the flattering variant of a metric from a wide grid.
+#: The per-group Metrics sections carry every field.
+COMPARISON_METRICS: tuple[tuple[str, str], ...] = (
+    ("throughput_veh_h", "Throughput [veh/h]"),
+    ("mean_tt_s", "Mean travel time [s]"),
+    ("sigma_v_temporal_ms", "σ_v temporal [m/s]"),
+    ("fuel_ml_per_veh_km", "Fuel [ml/veh·km]"),
+    ("wave_count", "Wave count"),
+)
+
+#: Marker printed for a contrast whose interval excludes / includes zero.
+RESOLVED_MARK = "resolved"
+UNRESOLVED_MARK = "unresolved"
+
+
+def _ci_text(ci: CI | None) -> str:
+    """``mean [lo, hi]`` of one aggregate, or ``—`` when the group has none."""
+    if ci is None:
+        return _fmt(None)
+    return f"{_fmt(ci.mean)} [{_fmt(ci.lo95)}, {_fmt(ci.hi95)}]"
+
+
+def _delta_text(d: DeltaCI) -> str:
+    """``Δ mean [lo, hi] resolved|unresolved`` of one contrast."""
+    mark = RESOLVED_MARK if d.resolved else UNRESOLVED_MARK
+    return f"Δ {_fmt(d.mean)} [{_fmt(d.lo95)}, {_fmt(d.hi95)}] {mark}"
+
+
+def _comparison_rows(groups: list[_Group], baseline: _Group | None) -> list[dict[str, Any]]:
+    """One row per configuration for the strategy-comparison table.
+
+    Each cell of a row carries that group's mean with its replicate interval
+    and, off the baseline row, the group-minus-baseline contrast
+    (:func:`contrast` — seed-paired or Welch, exactly as the per-group
+    contrast tables compute it) with its interval and resolution. Nothing is
+    re-derived here: the means come from the group aggregates and the deltas
+    from the same function the contrast tables use, so the summary table can
+    never disagree with the sections above it.
+
+    Args:
+        groups: Every configuration group, baseline first
+            (:func:`_group_runs` sorts them).
+        baseline: The single uncontrolled group, or ``None`` when the run set
+            has no baseline or more than one — the rows then carry means
+            only, since there is no unambiguous reference to subtract.
+
+    Returns:
+        One dict per group with its label, config hash, baseline flag, the
+        contrast method (empty on the baseline row and when there is none)
+        and one cell string per :data:`COMPARISON_METRICS` column.
+    """
+    rows: list[dict[str, Any]] = []
+    for g in groups:
+        cells: list[str] = []
+        methods: set[str] = set()
+        for name, _ in COMPARISON_METRICS:
+            text = _ci_text(g.agg.get(name))
+            if baseline is not None and g is not baseline:
+                d = contrast(baseline.values(name), g.values(name))
+                methods.add(d.method)
+                text = f"{text} · {_delta_text(d)}"
+            cells.append(text)
+        method_text = ""
+        if methods:
+            method_text = "seed-paired" if methods == {"paired"} else "Welch"
+        rows.append(
+            {
+                "label": g.label,
+                "config_hash": g.config_hash,
+                "is_baseline": g is baseline,
+                "method_text": method_text,
+                "cells": cells,
+            }
+        )
+    return rows
+
+
 def _render_pdf(markdown_path: Path) -> Path:
     from validation.report_pdf import render_pdf
 
@@ -1195,6 +1285,21 @@ def generate_report(
         groups=_group_context(groups, p),
         deltas=deltas,
         delta_note=delta_note,
+        # One table across configurations; a single-configuration run set has
+        # nothing to compare, so the section is omitted rather than printed
+        # with one row.
+        comparison=_comparison_rows(groups, baseline) if len(groups) > 1 else None,
+        comparison_headers=[header for _, header in COMPARISON_METRICS],
+        resolved_mark=RESOLVED_MARK,
+        unresolved_mark=UNRESOLVED_MARK,
+        comparison_note=(
+            None
+            if baseline is not None
+            else (
+                "No Δ column: this run set has no single baseline group, so there is "
+                "no unambiguous reference to subtract. The cells are group means only."
+            )
+        ),
         figures=figures,
     )
     out.write_text(rendered)

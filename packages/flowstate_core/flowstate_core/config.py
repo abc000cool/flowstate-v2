@@ -303,6 +303,16 @@ class OSMNetwork(BaseModel):
     """Measured share of mainline entries per lane, LEFT to RIGHT, on the
     first corridor edge (its lane count comes from the map and is checked at
     run time); ``None`` = round-robin. See :class:`CorridorNetwork`."""
+    netconvert_extra: list[str] = Field(default_factory=list)
+    """Extra ``netconvert`` options appended verbatim at every import of this
+    network (before the pruning flags). The onboarding path uses
+    ``["--ramps.guess", "--ramps.no-split", "--ramps.ramp-length", "250"]``
+    when the map lacks acceleration lanes: OSM often tags a motorway as three
+    lanes straight through a merge, and a link that joins lane 0 at a plain
+    junction starves under SUMO's yielding (observed 2026-09-23 on I-94 WB:
+    four on-ramps delivered 4-6 % of their demand). ``--ramps.no-split`` keeps
+    the attach edge's id, so ``corridor_edges`` and station positions stay
+    valid. Recorded in the config hash whenever set."""
     internal_links: bool = False
     """Compile the network with SUMO's internal junction lanes (netconvert
     without ``--no-internal-links``). Off by default (every existing import

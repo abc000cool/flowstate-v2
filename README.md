@@ -144,6 +144,10 @@ auto-generated report at
 
 ## Quickstart
 
+New here? [docs/QUICKSTART.md](docs/QUICKSTART.md) is the ten-minute path from
+clone to a downloaded report; run `uv run --no-sync python scripts/doctor.py`
+first — it checks this machine and prints a one-line fix for anything broken.
+
 One command (Docker + Compose):
 
 ```sh

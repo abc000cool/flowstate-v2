@@ -34,7 +34,7 @@ from bisect import bisect_right
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 import sumolib
 
@@ -336,6 +336,41 @@ def corridor(
     )
 
 
+RAMP_SPLIT_ON: Final[str] = "-AddedOnRampEdge"
+RAMP_SPLIT_OFF: Final[str] = "-AddedOffRampEdge"
+
+
+def expand_ramp_splits(edge_ids: Sequence[str], present: Iterable[str]) -> list[str]:
+    """Expand corridor edge ids into the pieces netconvert's ramp guessing made.
+
+    ``--ramps.guess`` (without ``--ramps.no-split``) splits the highway edge
+    after an on-ramp into ``<id>-AddedOnRampEdge`` (the acceleration-lane
+    piece, first) and ``<id>`` (the rest), and the edge before an off-ramp
+    into ``<id>`` and ``<id>-AddedOffRampEdge`` (the deceleration-lane piece,
+    last). Scenario files keep the load-time ids (pruning happens before the
+    split); the compiled chain is the expanded one.
+
+    Args:
+        edge_ids: Driving-order corridor ids as named in the scenario.
+        present: Edge ids of the compiled net.
+
+    Returns:
+        The driving-order chain with every split piece in place.
+    """
+    have = set(present)
+    out: list[str] = []
+    for edge_id in edge_ids:
+        if edge_id + RAMP_SPLIT_ON in have:
+            out.append(edge_id + RAMP_SPLIT_ON)
+        if edge_id in have or not (
+            edge_id + RAMP_SPLIT_ON in have or edge_id + RAMP_SPLIT_OFF in have
+        ):
+            out.append(edge_id)
+        if edge_id + RAMP_SPLIT_OFF in have:
+            out.append(edge_id + RAMP_SPLIT_OFF)
+    return out
+
+
 def _osm_typemap() -> Path | None:
     """Locate SUMO's OSM highway typemap next to the pip-installed binaries."""
     binary = Path(sumolib.checkBinary("netconvert"))
@@ -517,6 +552,7 @@ def osm_import(
     *,
     download: Literal["osm_api", "overpass"] = "osm_api",
     allowed_roots: Iterable[str | Path] | None = None,
+    netconvert_extra: Sequence[str] = (),
 ) -> NetBundle:
     """Import an OSM extract into a SUMO network (the ``osm_generic`` pipeline).
 
@@ -624,6 +660,9 @@ def osm_import(
     ]
     if geometry_remove:
         args.append("--geometry.remove")
+    # Scenario-level netconvert options (OSMNetwork.netconvert_extra), e.g. ramp
+    # guessing for maps without acceleration lanes; appended verbatim.
+    args += [str(a) for a in netconvert_extra]
     typemap = _osm_typemap()
     if typemap is not None:
         args += ["--type-files", str(typemap)]
@@ -656,13 +695,13 @@ def osm_import(
     parsed = sumolib.net.readNet(str(net))
     by_id = {e.getID(): e for e in parsed.getEdges(withInternal=False)}
     if corridor_edges:
-        missing = [e for e in [*corridor_edges, *keep_edges] if e not in by_id]
+        ordered = expand_ramp_splits(corridor_edges, by_id)
+        missing = [e for e in [*ordered, *keep_edges] if e not in by_id]
         if missing:
             raise ValueError(
                 f"corridor/kept edges not present after import: {missing}; "
                 f"available: {sorted(by_id)}"
             )
-        ordered = list(corridor_edges)
     else:
         ordered = sorted(by_id)
 

@@ -268,9 +268,18 @@ class TestGenerateReport:
         import validation.report as report_mod
 
         template = (Path(report_mod.__file__).parent / "templates" / "report.md.j2").read_text()
+        # Every section of the report is inside this one check, including the
+        # strategy comparison, whose column headers and cells are numbers-in-
+        # context and must therefore all arrive through the render context.
+        for section in ("## Metrics", "### Controller minus baseline", "## Strategy comparison"):
+            assert section in template
         # Strip jinja expressions/statements; no digits may remain.
         body = re.sub(r"\{\{.*?\}\}|\{%.*?%\}", "", template, flags=re.S)
         assert not re.search(r"\d", body), "template body contains free-text numerals"
+        # The comparison table's columns are named by the module, not the
+        # template, so the two can never list different metrics.
+        assert "comparison_headers" in template
+        assert "| Configuration | " in template
 
     def test_seeded_run_labeled_prominently(self, tmp_path: Path):
         root = tmp_path / "runs"
@@ -664,6 +673,13 @@ class TestPdf:
         blocks = parse_markdown(
             "# Title\n\n> **banner**\n\nGenerated: now\n\n| A | B |\n|---|---|\n"
             "| `x` | 1 |\n\n- one\n  continued\n- two\n\n![cap](fig.png)\n"
+            # The strategy-comparison section: a level-2 heading and a table
+            # whose cells carry an interval and a contrast. The PDF may not
+            # reformat either of them — it renders the markdown, it does not
+            # re-derive a number (§7.4).
+            "\n## Strategy comparison\n\n| Configuration | Throughput [veh/h] |\n|---|---|\n"
+            "| baseline (reference) | 1700 [1650, 1750] |\n"
+            "| VSL vsl_threshold (Δ seed-paired) | 1780 [1740, 1820] · Δ 80 [40, 120] resolved |\n"
         )
         kinds = [(b.kind, b.level) for b in blocks]
         assert kinds == [
@@ -673,10 +689,18 @@ class TestPdf:
             ("table", 0),
             ("bullets", 0),
             ("image", 0),
+            ("heading", 2),
+            ("table", 0),
         ]
         assert blocks[3].rows == [["A", "B"], ["x", "1"]]
         assert blocks[4].items == ["one continued", "two"]
         assert blocks[5].path == "fig.png" and blocks[5].text == "cap"
+        assert blocks[6].text == "Strategy comparison"
+        assert blocks[7].rows == [
+            ["Configuration", "Throughput [veh/h]"],
+            ["baseline (reference)", "1700 [1650, 1750]"],
+            ["VSL vsl_threshold (Δ seed-paired)", "1780 [1740, 1820] · Δ 80 [40, 120] resolved"],
+        ]
 
 
 class TestAggregationAndLabels:
@@ -790,3 +814,110 @@ class TestObservedDataBlock:
         text = out.read_text()
         assert "source provider" not in text
         assert "corridor | test_corridor" in text
+
+
+class TestStrategyComparison:
+    """The one table that puts every configuration side by side (§7.4).
+
+    It introduces no statistic of its own: the means are the group
+    aggregates already tabulated per configuration, the deltas the same
+    ``contrast`` the per-metric contrast sections use. What it adds is the
+    reading a deployment decision needs — VSL versus metering versus
+    controlled vehicles, on the metrics that get quoted, on one page.
+    """
+
+    def test_rows_carry_means_and_paired_deltas_with_the_baseline_first(
+        self, two_group_run_set: Path, tmp_path: Path
+    ):
+        from validation.report import COMPARISON_METRICS
+
+        out = tmp_path / "report" / "report.md"
+        generate_report(two_group_run_set, out)
+        text = out.read_text()
+        assert "## Strategy comparison" in text
+        rows = _table_after(text, "## Strategy comparison")
+
+        base_key = "baseline (reference)"
+        ctrl_key = "follower_stopper @ 5% / 100% (Δ seed-paired)"
+        assert list(rows) == ["Configuration", base_key, ctrl_key]  # baseline first
+        assert rows["Configuration"][1:] == [header for _, header in COMPARISON_METRICS]
+        assert [name for name, _ in COMPARISON_METRICS] == [
+            "throughput_veh_h",
+            "mean_tt_s",
+            "sigma_v_temporal_ms",
+            "fuel_ml_per_veh_km",
+            "wave_count",
+        ]
+
+        # The reference row is means only — a group has no delta against itself.
+        assert all("Δ" not in cell for cell in rows[base_key][1:])
+        base_tt = re.fullmatch(r"(\S+) \[(\S+), (\S+)\]", rows[base_key][2])
+        assert base_tt is not None
+
+        # Every other cell is "mean [lo, hi] · Δ mean [lo, hi] <marker>".
+        ctrl_tt = re.fullmatch(
+            r"(\S+) \[(\S+), (\S+)\] · Δ (\S+) \[(\S+), (\S+)\] (resolved|unresolved)",
+            rows[ctrl_key][2],
+        )
+        assert ctrl_tt is not None
+        mean, lo, hi, d_mean, d_lo, d_hi = (float(g) for g in ctrl_tt.groups()[:6])
+        marker = ctrl_tt.group(7)
+        assert lo < mean < hi
+        assert d_lo < d_mean < d_hi
+        # The controller's travel time is longer by exactly the difference of
+        # the two means, and the interval excludes zero.
+        assert d_mean == pytest.approx(mean - float(base_tt.group(1)), abs=5e-3)
+        assert d_lo > 0.0 and marker == "resolved"
+
+        # A metric no replicate produced stays NaN in both halves of the cell.
+        assert rows[ctrl_key][4].startswith("NaN [NaN, NaN] · Δ NaN")
+        assert rows[ctrl_key][4].endswith("unresolved")
+
+    def test_infrastructure_groups_are_named_by_their_strategy(self, tmp_path: Path):
+        """A VSL deployment is a row of its own, labelled by what it deploys."""
+        root = tmp_path / "runs"
+        vsl_av = {**BASELINE_AV, "vsl": "vsl_threshold"}
+        for seed in (1, 2):
+            _write_run(
+                root / BASE_HASH / str(seed),
+                seed=seed,
+                config_hash=BASE_HASH,
+                av=BASELINE_AV,
+                spread=5.0,
+            )
+            _write_run(
+                root / "vsl000000001" / str(seed),
+                seed=seed,
+                config_hash="vsl000000001",
+                av=vsl_av,
+                spread=4.0,
+            )
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        rows = _table_after(out.read_text(), "## Strategy comparison")
+        assert list(rows) == [
+            "Configuration",
+            "baseline (reference)",
+            "VSL vsl_threshold (Δ seed-paired)",
+        ]
+
+    def test_single_configuration_has_no_comparison_table(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        """Nothing to compare: the section is omitted, not printed with one row."""
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out)
+        assert "## Strategy comparison" not in out.read_text()
+
+    def test_without_a_single_baseline_the_table_carries_means_only(self, tmp_path: Path):
+        """Two baselines: no unambiguous reference, so no Δ is invented."""
+        root = tmp_path / "runs"
+        _write_run(root / "a" / "1", seed=1, config_hash="aaaa00000000", av=BASELINE_AV)
+        _write_run(root / "b" / "1", seed=1, config_hash="bbbb00000000", av=BASELINE_AV)
+        out = tmp_path / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        rows = _table_after(text, "## Strategy comparison")
+        assert len(rows) == 3  # header + two configurations
+        assert all("Δ" not in cell for key in rows for cell in rows[key][1:])
+        assert "no unambiguous reference to subtract" in text

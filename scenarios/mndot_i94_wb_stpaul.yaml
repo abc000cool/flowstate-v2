@@ -38,9 +38,6 @@ network:
   - '51388891'
   - '1001426896'
   - '82578022'
-  - '1419530368'
-  - '1121912463'
-  - '18210920'
   inflow:
   - - 0.0
     - 0.3875
@@ -237,7 +234,7 @@ network:
       - 19.063772444444442
     - - 14100.0
       - 20.570462814814814
-    exit_buffer_m: 795.7
+    exit_buffer_m: 407.4
   ramps:
   - kind: 'on'
     edges:
@@ -1967,116 +1964,11 @@ network:
     merge_visibility_m: null
     merge: lane_change
     merge_params: {}
-  - kind: 'on'
-    edges:
-    - '1419530369'
-    - '82582610'
-    - '82582647'
-    attach_edge: '1121912463'
-    inflow:
-    - - 0.0
-      - 0.0
-    - - 300.0
-      - 0.0
-    - - 600.0
-      - 0.0
-    - - 900.0
-      - 0.0
-    - - 1200.0
-      - 0.0
-    - - 1500.0
-      - 0.0
-    - - 1800.0
-      - 0.0
-    - - 2100.0
-      - 0.0
-    - - 2400.0
-      - 0.0
-    - - 2700.0
-      - 0.0
-    - - 3000.0
-      - 0.0
-    - - 3300.0
-      - 0.0
-    - - 3600.0
-      - 0.0
-    - - 3900.0
-      - 0.0
-    - - 4200.0
-      - 0.0
-    - - 4500.0
-      - 0.0
-    - - 4800.0
-      - 0.0
-    - - 5100.0
-      - 0.0
-    - - 5400.0
-      - 0.0
-    - - 5700.0
-      - 0.0
-    - - 6000.0
-      - 0.0
-    - - 6300.0
-      - 0.0
-    - - 6600.0
-      - 0.0
-    - - 6900.0
-      - 0.0
-    - - 7200.0
-      - 0.0
-    - - 7500.0
-      - 0.0
-    - - 7800.0
-      - 0.0
-    - - 8100.0
-      - 0.0
-    - - 8400.0
-      - 0.0
-    - - 8700.0
-      - 0.0
-    - - 9000.0
-      - 0.0
-    - - 9300.0
-      - 0.0
-    - - 9600.0
-      - 0.0
-    - - 9900.0
-      - 0.0
-    - - 10200.0
-      - 0.0
-    - - 10500.0
-      - 0.0
-    - - 10800.0
-      - 0.0
-    - - 11100.0
-      - 0.0
-    - - 11400.0
-      - 0.0
-    - - 11700.0
-      - 0.0
-    - - 12000.0
-      - 0.0
-    - - 12300.0
-      - 0.0
-    - - 12600.0
-      - 0.0
-    - - 12900.0
-      - 0.0
-    - - 13200.0
-      - 0.0
-    - - 13500.0
-      - 0.0
-    - - 13800.0
-      - 0.0
-    - - 14100.0
-      - 0.0
-    exit_fraction: []
-    name: on-ramp 1419530369
-    meter: null
-    merge_visibility_m: null
-    merge: lane_change
-    merge_params: {}
   entry_lane_shares: null
+  netconvert_extra:
+  - --ramps.guess
+  - --ramps.ramp-length
+  - '250'
   internal_links: false
 fleet:
   model: EIDM
@@ -2088,9 +1980,9 @@ fleet:
   delta: 4.0
   heterogeneity_frac: 0.15
   idm_calibration: artifacts/idm_i24_capacity.json
-  lc_strategic: 1.0
-  lc_strategic_ramp: null
-  lc_keep_right: 1.0
+  lc_strategic: 5.0
+  lc_strategic_ramp: 1.0
+  lc_keep_right: 0.0
   lc_cooperative: 1.0
   lc_assertive: 1.0
   lc_speed_gain: 1.0
@@ -2124,6 +2016,8 @@ sim:
   warmup_s: 1800.0
   output_hz: 2.0
   lateral_resolution_m: null
+fd_calibration: null
+macro: null
 perturbation: null
 closures: []
 managed_lanes: []

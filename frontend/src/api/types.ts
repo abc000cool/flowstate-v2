@@ -219,16 +219,29 @@ export interface Heatmap {
   values: (number | null)[][];
 }
 
+/** The infrastructure axis of a sweep (`flowstate_core.strategies.Strategy`):
+ * what the operator deploys, as opposed to what the controlled vehicles do.
+ * `vsl` posts gantry speed limits, `alinea` meters every on-ramp. */
+export type SweepStrategy = 'none' | 'vsl' | 'alinea' | 'vsl+alinea';
+
 /** Mirrors the API's `SweepCreateRequest` (packages/api/api/schemas.py): the
- * grid is penetrations × compliances × controllers. The field is the plural
- * `controllers` — a singular `controller` is not part of the contract and
- * would be dropped, leaving every cell without a controller. */
+ * grid is penetrations × compliances × controllers × strategies. The field is
+ * the plural `controllers` — a singular `controller` is not part of the
+ * contract and would be dropped, leaving every cell without a controller. */
 export interface CreateSweepRequest {
   scenario_id: string;
   penetrations: number[];
   compliances: number[];
   /** Controller names; `null` = AVs drive as humans. */
   controllers: (string | null)[];
+  /** Infrastructure strategies; omitted = `['none']` (the scenario as
+   * calibrated). Each strategy other than `none` also gets one uncontrolled
+   * cell of its own, so it can be priced without any controlled vehicle. */
+  strategies?: SweepStrategy[];
+  /** Metering target of the `alinea` strategies. Omitted, the API reads the
+   * critical density from the scenario's `fd_calibration` artifact and
+   * answers 422 when there is none — it never invents a target. */
+  alinea?: { rho_target_veh_km: number };
   replicates: number;
   /** Ask the API to add a p=0 (no controlled vehicles) baseline cell so the
    * matrix has an uncontrolled reference from the same sweep. */
@@ -246,6 +259,10 @@ export interface SweepCell {
   penetration: number;
   compliance: number;
   controller?: string | null;
+  /** `SweepCellOut.strategy`: the infrastructure this cell deploys. Absent on
+   * a service older than the axis, where every cell ran the scenario as
+   * calibrated (`none`). */
+  strategy?: SweepStrategy;
   config_hash?: string;
   run_id: string | null;
   status: RunStatus | null;
@@ -355,4 +372,86 @@ export interface ReportRecord {
    * API was unreachable), so it is not evidence about any server's report.
    * Demo rows are badged DEMO and are never persisted to localStorage. */
   demo?: boolean;
+}
+
+/* ------------------------- corridor onboarding ------------------------ */
+
+/** Mirrors the API's `CorridorProgressOut`: named stages, not a time
+ * estimate — onboarding downloads a map extract and runs `netconvert`, and a
+ * percentage of unknown work is a guess. */
+export interface CorridorProgress {
+  /** `extract` | `network` | `observations` | `demand` | `install` | `done`. */
+  stage: string | null;
+  completed_stages: number;
+  total_stages: number;
+}
+
+/** Mirrors the API's `CorridorStationOut` — where a detector station fell on
+ * the corridor. A rejected station carries the nearest chain position and the
+ * offset that got it rejected. */
+export interface CorridorStation {
+  station: string;
+  x_m: number;
+  offset_m: number;
+}
+
+/** Mirrors the API's `CorridorRampOut`. `method` says where the ramp's
+ * profile came from — a detector, or the station-to-station balance — which
+ * is the provenance a reviewer asks for first. */
+export interface CorridorRamp {
+  name: string;
+  kind: 'on' | 'off';
+  x_m: number;
+  method: string;
+  /** veh/h for an on-ramp, a diverging fraction for an off-ramp. */
+  peak: number;
+  unit: 'veh/h' | 'frac';
+  station?: string | null;
+}
+
+/** Mirrors the API's `CorridorSummaryOut`: what the onboarding discovered and
+ * derived. None of it is a claim about how the corridor behaves — that is
+ * what a report scored against the observations answers. */
+export interface CorridorSummary {
+  corridor: string;
+  chain_length_m: number;
+  n_chain_edges: number;
+  /** `(x_start_m, x_end_m, lanes)` runs along the chain. */
+  lanes_profile: [number, number, number][];
+  n_ramps: number;
+  stations_placed: CorridorStation[];
+  stations_rejected: CorridorStation[];
+  stations_without_chain_x: string[];
+  inflow_peak_veh_h: number;
+  ramps: CorridorRamp[];
+  /** Brackets whose flow change no ramp of the needed kind could carry. */
+  residuals: Record<string, unknown>[];
+  zeroed_ramps: string[];
+  unmatched_detectors: string[];
+  lines: string[];
+}
+
+/** Mirrors the API's `CorridorOut` — returned by `POST /corridors` (202) and
+ * by `GET /corridors/{id}`, which the view polls until the status is
+ * terminal. */
+export interface CorridorOut {
+  corridor_id: string;
+  name: string;
+  status: RunStatus;
+  progress: CorridorProgress;
+  /** The stored scenario to launch runs against, once the job is done. */
+  scenario_id: string | null;
+  /** The `scenarios/<name>.yaml` preset the scenario was installed as. */
+  preset_filename: string | null;
+  config_hash: string | null;
+  /** Server-side path of the observations artifact, to hand back to
+   * `POST /reports` as `observations_path`. */
+  observations_path: string | null;
+  /** The bundle directory, relative to the server's results root — an
+   * identifier, not a path this browser can open. */
+  corridor_dir: string | null;
+  summary: CorridorSummary | null;
+  error: string | null;
+  error_kind: string | null;
+  created_at: string;
 }

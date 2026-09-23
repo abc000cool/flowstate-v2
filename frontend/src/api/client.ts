@@ -17,6 +17,7 @@
 
 import * as mock from '../mocks/mockApi';
 import type {
+  CorridorOut,
   CreateRunRequest,
   CreateScenarioResponse,
   CreateSweepRequest,
@@ -195,6 +196,11 @@ export class ApiError extends Error {
 interface RequestInitLite {
   method?: string;
   body?: unknown;
+  /** Multipart body (file uploads: `POST /corridors`). Sent as-is and
+   * *without* a Content-Type header — the browser writes the one carrying
+   * the multipart boundary, and setting it by hand produces a body the
+   * server cannot parse. Takes precedence over `body`. */
+  form?: FormData;
 }
 
 /* --------------------- server error-detail rendering ------------------ */
@@ -255,8 +261,10 @@ export function formatDetail(d: unknown): string {
 async function rawFetch(path: string, init?: RequestInitLite): Promise<Response> {
   const { baseUrl, apiKey } = getSettings();
   const headers: Record<string, string> = { 'X-API-Key': apiKey };
-  let body: string | undefined;
-  if (init?.body !== undefined) {
+  let body: string | FormData | undefined;
+  if (init?.form !== undefined) {
+    body = init.form; // Content-Type deliberately unset (see RequestInitLite)
+  } else if (init?.body !== undefined) {
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(init.body);
   }
@@ -433,12 +441,18 @@ export async function createReport(
   runIds: string[],
   title?: string,
   profile?: string,
+  observationsPath?: string,
 ): Promise<ReportOut> {
   if (isMockEnv()) return mock.mockCreateReport(runIds, title, profile);
   assertWritable();
   const body: Record<string, unknown> = { run_ids: runIds };
   if (title !== undefined) body.title = title;
   if (profile !== undefined) body.profile = profile;
+  // `observations_path` is the *evidence*, never the answer: with it the
+  // worker scores the replicates against the corridor's detectors and the
+  // GEH / speed-RMSPE rows stop being "not evaluated". Sent only when the
+  // caller has one (the request model forbids extra keys).
+  if (observationsPath !== undefined) body.observations_path = observationsPath;
   return request<ReportOut>('/reports', { method: 'POST', body });
 }
 
@@ -479,4 +493,29 @@ export function getReportArchive(reportId: string): Promise<Blob> {
 export function getReportPdf(reportId: string): Promise<Blob> {
   if (isMockActive()) return mock.mockGetReportPdf(reportId);
   return requestBlob(`/reports/${encodeURIComponent(reportId)}/pdf`);
+}
+
+/* ------------------------ corridor onboarding ------------------------- */
+
+/** `POST /corridors` — onboard a freeway corridor from a bounding box, a
+ * detector export and the two boundary station ids (multipart). Answers 202
+ * with a `CorridorOut` that is still `queued`/`running`; poll `getCorridor`
+ * until the status is terminal.
+ *
+ * The caller builds the `FormData` so the file parts stay `File` objects the
+ * browser streams. Write: demo backend under VITE_MOCK only (see
+ * `assertWritable`) — an onboarding accepted by the in-browser backend would
+ * report a corridor calibrated that no server has ever seen. */
+export async function createCorridor(form: FormData): Promise<CorridorOut> {
+  if (isMockEnv()) return mock.mockCreateCorridor(form);
+  assertWritable();
+  return request<CorridorOut>('/corridors', { method: 'POST', form });
+}
+
+/** `GET /corridors/{id}` — status, stage progress and, once done, the
+ * summary of what was discovered and derived, the `scenario_id` to run and
+ * the `observations_path` to report against. */
+export function getCorridor(corridorId: string): Promise<CorridorOut> {
+  if (isMockActive()) return mock.mockGetCorridor(corridorId);
+  return request<CorridorOut>(`/corridors/${encodeURIComponent(corridorId)}`);
 }

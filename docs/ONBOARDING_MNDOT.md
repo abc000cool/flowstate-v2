@@ -61,6 +61,39 @@ chain, 17 ramps discovered, 31 of 31 inventory nodes placed on the chain with
 offsets ≤ 22 m (S1063 at x = 1,110 m, S97 at x = 11,027 m; the chain extends
 1.1 km upstream and 0.8 km downstream of the observed span).
 
+### From the dashboard
+
+The three commands above (network, then demand, then a run and a report) are
+one guided flow in the dashboard's **Onboard corridor** view, which closes
+item 4 of §7: the same three inputs, no Python session.
+
+1. **Name, bounding box, bearing, and the two boundary stations.** For this
+   corridor: `mndot_i94_wb_stpaul`, `44.9425, -93.0990, 44.9613, -92.9612`,
+   bearing 265, upstream `S1063`, downstream `S97`.
+2. **The two CSVs.** The detector export on the tidy contract
+   (`timestamp, station, flow_veh_h, occupancy_pct, speed_ms, lanes, kind`;
+   a `column_map` maps a state DOT's own column names onto it) and the
+   station inventory (`station,label,lat,lon,lanes,kind`).
+   `scripts/mndot_fetch.py` writes both for MnDOT.
+3. **Window, span start, duration and warm-up** default to 300 s, 06:00,
+   14,400 s and 1,800 s — the span §4 analyses.
+
+`POST /api/v1/corridors` (docs/CONTRACTS.md, "Corridor onboarding from the
+dashboard") runs the same pipeline as a job: Overpass extract → chain, lanes,
+ramps and station positions → observations artifact → demand
+(`calibration.onboarding.calibrate_scenario`, the library the CLI of the
+table above is now a thin wrapper over) → the scenario installed as a
+`scenarios/<name>.yaml` preset. The view then shows what was found — chain
+length, lane profile, the ramps and *where each ramp's flow came from*, the
+stations it placed and the ones it refused to place, the demand peaks, the
+carried residuals and the zeroed ramps — and offers **Run 20 seeds** followed
+by **Report against observations**, which is the report of §6 scored against
+the detector export that was uploaded.
+
+A name that already exists as a preset is refused (409) rather than
+overwritten, so re-onboarding a corridor is an explicit new name. Nothing in
+the summary panel is a claim about the corridor's behaviour; the report is.
+
 ## 4. Observations (`data/mndot/mndot_i94_wb_stpaul/observations.json`)
 
 Nine weekdays (Tue–Thu, 2026-09-01 … 09-17), 05:30–09:30 local, 48 five-minute

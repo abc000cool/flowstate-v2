@@ -312,5 +312,10 @@ def test_sweep_overrides_cannot_escape_the_roots(client: TestClient) -> None:
     )
     assert r.status_code == 422
     detail = r.json()["detail"]
-    assert detail["cell"] == {"penetration": 0.05, "compliance": 1.0, "controller": None}
+    assert detail["cell"] == {
+        "penetration": 0.05,
+        "compliance": 1.0,
+        "controller": None,
+        "strategy": "none",
+    }
     assert "outside the allowed data roots" in str(detail["errors"])

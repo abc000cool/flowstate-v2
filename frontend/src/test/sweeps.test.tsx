@@ -134,6 +134,24 @@ const noObsSweepOut = {
   ],
 };
 
+/** A grid with the infrastructure axis: the baseline, the same VSL deployment
+ * with and without controlled vehicles, and the controlled cell alone. A
+ * penetration is no longer one row — 5 % under VSL and 5 % without it are two
+ * configurations, and the matrix has to say which is which. */
+const strategySweepOut = {
+  ...sweepOut,
+  sweep_id: 'swp-strat',
+  status: 'done',
+  runs_total: 4,
+  runs_done: 4,
+  cells: [
+    { penetration: 0, compliance: 1.0, controller: null, strategy: 'none', config_hash: 'b0', run_id: 'run-base', status: 'done', progress, aggregate: aggregate(5.8, 1700) },
+    { penetration: 0, compliance: 1.0, controller: null, strategy: 'vsl', config_hash: 'i1', run_id: 'run-vsl', status: 'done', progress, aggregate: aggregate(5.22, 1720) },
+    { penetration: 0.05, compliance: 0.8, controller: 'follower_stopper', strategy: 'none', config_hash: 'c1', run_id: 'run-p5', status: 'done', progress, aggregate: aggregate(2.9, 1785) },
+    { penetration: 0.05, compliance: 0.8, controller: 'follower_stopper', strategy: 'vsl', config_hash: 'c2', run_id: 'run-p5-vsl', status: 'done', progress, aggregate: aggregate(2.32, 1800) },
+  ],
+};
+
 /** A screening-tier grid: the API reports `tier: macro` on the sweep itself,
  * and every delta in it is a first-order CTM comparison, not evidence. */
 const macroSweepOut = {
@@ -190,6 +208,7 @@ describe('SweepsView (real API shapes)', () => {
         if (url.endsWith('/sweeps/swp-same')) return json(sameConfigSweepOut);
         if (url.endsWith('/sweeps/swp-noobs')) return json(noObsSweepOut);
         if (url.endsWith('/sweeps/swp-macro')) return json(macroSweepOut);
+        if (url.endsWith('/sweeps/swp-strat')) return json(strategySweepOut);
         return json({ detail: `unexpected ${method} ${url}` }, 404);
       }),
     );
@@ -386,6 +405,114 @@ describe('SweepsView (real API shapes)', () => {
     );
     expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.queryByText(/Screening tier \(CTM\)/)).toBeNull();
+  });
+
+  it('names the strategy in every row and cell of the matrix', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps?sweep=swp-strat']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    // the controlled cell without infrastructure, and the same cell with it
+    expect(await screen.findByText('-50.0%', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText('-60.0%')).toBeInTheDocument();
+    // p=0 with VSL is not a second baseline: it is the deployment priced
+    // alone, and it carries a delta like any other cell
+    expect(screen.getByText('-10.0%')).toBeInTheDocument();
+    // one row per (penetration, strategy) pair — a penetration alone no
+    // longer identifies a configuration (scoped to the matrix: the launcher
+    // has its own "5%" checkboxes)
+    const matrix = within(screen.getByRole('table'));
+    expect(matrix.getByText('0% · baseline')).toBeInTheDocument();
+    expect(matrix.getByText('0% · vsl')).toBeInTheDocument();
+    expect(matrix.getByText('5%')).toBeInTheDocument();
+    expect(matrix.getByText('5% · vsl')).toBeInTheDocument();
+    // and the cell labels say which configuration produced the number
+    expect(screen.getAllByText('n=20 · vsl').length).toBe(2);
+    expect(screen.getByText('n=20')).toBeInTheDocument();
+    // identical realisations are still the only thing flagged as a surprise
+    expect(screen.queryByText(/share an identical aggregate vector/)).toBeNull();
+  });
+
+  it('sends the strategy axis and the ALINEA target, and asks for neither by default', async () => {
+    render(
+      <MemoryRouter initialEntries={['/sweeps']}>
+        <SweepsView />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('option', { name: 'corridor_10km' }, { timeout: 4000 });
+
+    // Default: the scenario as calibrated, stated explicitly like `tier`, and
+    // no metering target field to fill in.
+    expect(screen.queryByLabelText(/ALINEA target/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const plain = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    expect(within(plain).getByText('none')).toBeInTheDocument();
+    fireEvent.click(within(plain).getByRole('button', { name: /^Launch \d+ runs$/ }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))).toBe(true);
+    });
+    const first = calls.find((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))!.body as Record<string, unknown>;
+    expect(first.strategies).toEqual(['none']);
+    expect(first).not.toHaveProperty('alinea');
+
+    // Two strategies: the cell count grows by the product *and* by one
+    // uncontrolled cell per strategy, and the metering target appears.
+    fireEvent.click(screen.getByLabelText('none'));
+    fireEvent.click(screen.getByLabelText('alinea'));
+    fireEvent.click(screen.getByLabelText('vsl'));
+    const target = screen.getByLabelText('ALINEA target [veh/km/lane]');
+    expect(target).toHaveAttribute('placeholder', "from the scenario's FD calibration");
+    fireEvent.change(target, { target: { value: '19.9' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    expect(within(dialog).getByText(/vsl, alinea/)).toBeInTheDocument();
+    // 6 x 4 x 2 grid cells + 2 infrastructure-only cells + 1 baseline
+    expect(within(dialog).getByText('48 + 2 infrastructure + 1 baseline = 51')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Launch \d+ runs$/ }));
+    await waitFor(() => {
+      expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/sweeps')).length).toBe(2);
+    });
+    const body = calls.filter((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))[1].body as Record<string, unknown>;
+    expect(body.strategies).toEqual(['vsl', 'alinea']); // the API's own order
+    expect(body.alinea).toEqual({ rho_target_veh_km: 19.9 });
+  });
+
+  it('never invents a metering target: an empty field is sent as no target', async () => {
+    render(
+      <>
+        <Toasts />
+        <MemoryRouter initialEntries={['/sweeps']}>
+          <SweepsView />
+        </MemoryRouter>
+      </>,
+    );
+    await screen.findByRole('option', { name: 'corridor_10km' }, { timeout: 4000 });
+    fireEvent.click(screen.getByLabelText('none'));
+    fireEvent.click(screen.getByLabelText('vsl+alinea'));
+
+    // a typo is refused here rather than posted as a density
+    fireEvent.change(screen.getByLabelText('ALINEA target [veh/km/lane]'), {
+      target: { value: 'twenty' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    expect(await screen.findByText(/positive number of veh\/km/)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // left empty, the request carries no target and the API reads the
+    // scenario's fitted diagram (or refuses)
+    fireEvent.change(screen.getByLabelText('ALINEA target [veh/km/lane]'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Launch/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Launch this sweep?' });
+    expect(within(dialog).getByText(/from the scenario's FD calibration/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Launch \d+ runs$/ }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))).toBe(true);
+    });
+    const body = calls.find((c) => c.method === 'POST' && c.url.endsWith('/sweeps'))!.body as Record<string, unknown>;
+    expect(body.strategies).toEqual(['vsl+alinea']);
+    expect(body).not.toHaveProperty('alinea');
   });
 
   it('cancelling the confirmation enqueues nothing', async () => {

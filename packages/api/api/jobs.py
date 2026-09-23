@@ -1224,6 +1224,10 @@ def _job_for(kind: str, row: dict[str, Any]) -> Callable[..., Any]:
         return sweep_job
     if kind == "report":
         return report_job
+    if kind == "corridor":  # WP-F (imported here: onboarding_jobs imports this module)
+        from api.onboarding_jobs import corridor_onboarding_job
+
+        return corridor_onboarding_job
     if kind == "calibration":
         if row["kind"] == "demand":  # WP-A (imported here: calibration_jobs imports this module)
             from api.calibration_jobs import demand_calibration_job

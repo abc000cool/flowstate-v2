@@ -15,8 +15,9 @@ Lifecycle guards: a job *claims* its row with a compare-and-set
 (:meth:`Store.claim` — ``queued``/``failed`` → ``running``) so a duplicate
 delivery of the same job is a no-op, and abandoned rows are failed with
 :meth:`Store.fail_active`, which never overwrites a finished row. Row ids are
-prefixed per kind (``run_…``, ``swp_…``, ``cal_…``, ``rpt_…``) and double as
-the RQ job ids, so :func:`kind_of_id` maps a queue job back to its row.
+prefixed per kind (``run_…``, ``swp_…``, ``cal_…``, ``rpt_…``, ``cor_…``) and
+double as the RQ job ids, so :func:`kind_of_id` maps a queue job back to its
+row.
 """
 
 from __future__ import annotations
@@ -37,12 +38,24 @@ from api.schemas import DEFAULT_CRITERIA_PROFILE
 STATUSES = ("queued", "running", "done", "failed")
 
 #: Row kinds that go through the job queue, in reconciliation order.
-KINDS = ("sweep", "run", "calibration", "report")
+KINDS = ("sweep", "run", "calibration", "report", "corridor")
 
-_TABLES = {"run": "runs", "sweep": "sweeps", "calibration": "calibrations", "report": "reports"}
+_TABLES = {
+    "run": "runs",
+    "sweep": "sweeps",
+    "calibration": "calibrations",
+    "report": "reports",
+    "corridor": "corridors",
+}
 
 #: Id prefix per kind (``new_id`` argument); the reverse map serves ``kind_of_id``.
-ID_PREFIXES = {"run": "run", "sweep": "swp", "calibration": "cal", "report": "rpt"}
+ID_PREFIXES = {
+    "run": "run",
+    "sweep": "swp",
+    "calibration": "cal",
+    "report": "rpt",
+    "corridor": "cor",
+}
 _KIND_OF_PREFIX = {prefix: kind for kind, prefix in ID_PREFIXES.items()}
 
 #: Columns a claim resets besides ``status``: a re-run starts from a clean row.
@@ -51,6 +64,16 @@ _CLAIM_RESET_COLUMNS = {
     "sweep": ("error",),
     "calibration": ("error", "artifact_path"),
     "report": ("error", "error_kind", "report_dir", "report_path", "observed_json"),
+    "corridor": (
+        "error",
+        "error_kind",
+        "stage",
+        "scenario_id",
+        "corridor_dir",
+        "observations_path",
+        "config_hash",
+        "summary_json",
+    ),
 }
 _CLAIM_RESET_VALUES: dict[str, Any] = {"completed_replicates": 0}
 
@@ -123,6 +146,23 @@ CREATE TABLE IF NOT EXISTS reports (
     error         TEXT,
     error_kind    TEXT,
     created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS corridors (
+    id                TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    status            TEXT NOT NULL,
+    params_json       TEXT NOT NULL,
+    detectors_path    TEXT NOT NULL,
+    stations_path     TEXT NOT NULL,
+    stage             TEXT,
+    scenario_id       TEXT,
+    corridor_dir      TEXT,
+    observations_path TEXT,
+    config_hash       TEXT,
+    summary_json      TEXT,
+    error             TEXT,
+    error_kind        TEXT,
+    created_at        TEXT NOT NULL
 );
 """
 
@@ -534,6 +574,106 @@ class Store:
                 ),
             )
 
+    # -- corridors (WP-F: POST /corridors) ----------------------------------
+
+    def create_corridor(
+        self,
+        name: str,
+        params: Mapping[str, Any],
+        detectors_path: str | Path,
+        stations_path: str | Path,
+    ) -> str:
+        """Queue a corridor onboarding job.
+
+        Args:
+            name: Scenario name the corridor will be installed under.
+            params: The request's onboarding options (bbox, bearing, boundary
+                stations, window/span, warm-up) — the reproducible record of
+                what was asked for.
+            detectors_path: Uploaded tidy detector CSV.
+            stations_path: Uploaded station inventory CSV.
+
+        Returns:
+            The new row id (also the queue job id).
+        """
+        cid = new_id(ID_PREFIXES["corridor"])
+        with self._conn() as con:
+            con.execute(
+                "INSERT INTO corridors (id, name, status, params_json, detectors_path,"
+                " stations_path, created_at) VALUES (?, ?, 'queued', ?, ?, ?, ?)",
+                (
+                    cid,
+                    name,
+                    json.dumps(dict(params)),
+                    str(detectors_path),
+                    str(stations_path),
+                    now_iso(),
+                ),
+            )
+        return cid
+
+    def get_corridor(self, corridor_id: str) -> dict[str, Any] | None:
+        with self._conn() as con:
+            row = con.execute("SELECT * FROM corridors WHERE id = ?", (corridor_id,)).fetchone()
+        return _corridor_dict(row) if row else None
+
+    def claim_corridor(self, corridor_id: str) -> bool:
+        return self.claim("corridor", corridor_id)
+
+    def set_corridor_stage(self, corridor_id: str, stage: str) -> None:
+        """Record which onboarding stage is running (the progress the API shows)."""
+        with self._conn() as con:
+            con.execute("UPDATE corridors SET stage = ? WHERE id = ?", (stage, corridor_id))
+
+    def set_corridor_status(
+        self,
+        corridor_id: str,
+        status: str,
+        *,
+        stage: str | None = None,
+        scenario_id: str | None = None,
+        corridor_dir: str | None = None,
+        observations_path: str | None = None,
+        config_hash: str | None = None,
+        summary: Mapping[str, Any] | None = None,
+        error: str | None = None,
+        error_kind: str | None = None,
+    ) -> None:
+        """Record a corridor onboarding's terminal state.
+
+        Args:
+            corridor_id: Row id.
+            status: New status.
+            stage: Stage reached (the one that failed, or ``"done"``).
+            scenario_id: The stored scenario the corridor was installed as.
+            corridor_dir: Where the artifacts were written.
+            observations_path: The observations artifact a report is scored
+                against.
+            config_hash: Hash of the calibrated scenario.
+            summary: What the onboarding found, as JSON.
+            error: Failure text.
+            error_kind: Failure marker.
+        """
+        _check_status(status)
+        with self._conn() as con:
+            con.execute(
+                "UPDATE corridors SET status = ?, stage = ?, scenario_id = ?, corridor_dir = ?,"
+                " observations_path = ?, config_hash = ?, summary_json = ?, error = ?,"
+                " error_kind = ? WHERE id = ?",
+                (
+                    status,
+                    stage,
+                    scenario_id,
+                    corridor_dir,
+                    observations_path,
+                    config_hash,
+                    None if summary is None else json.dumps(dict(summary)),
+                    error,
+                    error_kind,
+                    corridor_id,
+                ),
+            )
+
     # -- lifecycle guards, all kinds ----------------------------------------
 
     def get(self, kind: str, row_id: str) -> dict[str, Any] | None:
@@ -693,9 +833,18 @@ def _report_dict(row: sqlite3.Row) -> dict[str, Any]:
     return d
 
 
+def _corridor_dict(row: sqlite3.Row) -> dict[str, Any]:
+    d = dict(row)
+    d["params"] = json.loads(d.pop("params_json"))
+    raw = d.pop("summary_json", None)
+    d["summary"] = json.loads(raw) if raw else None
+    return d
+
+
 _CONVERTERS: dict[str, Callable[[sqlite3.Row], dict[str, Any]]] = {
     "run": _run_dict,
     "sweep": _sweep_dict,
     "calibration": _calibration_dict,
     "report": _report_dict,
+    "corridor": _corridor_dict,
 }

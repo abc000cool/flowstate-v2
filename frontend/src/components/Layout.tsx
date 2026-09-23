@@ -1,4 +1,4 @@
-/** App shell: left rail nav (Scenarios/Runs/Sweeps/Reports) with a live
+/** App shell: left rail nav (Onboard/Scenarios/Runs/Sweeps/Reports) with a live
  * status dot from /healthz polling, top bar with the FLOWSTATE wordmark and
  * active corridor name, offline-fallback banner, settings drawer. */
 
@@ -18,6 +18,16 @@ import { SettingsDrawer } from './SettingsDrawer';
 import { Toasts } from './toast';
 
 const NAV = [
+  {
+    to: '/onboard',
+    label: 'Onboard corridor',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
+        <path d="M7 1.5 C4.8 1.5 3.2 3.1 3.2 5.2 C3.2 8 7 12.5 7 12.5 S10.8 8 10.8 5.2 C10.8 3.1 9.2 1.5 7 1.5 Z" />
+        <circle cx="7" cy="5.2" r="1.3" />
+      </svg>
+    ),
+  },
   {
     to: '/scenarios',
     label: 'Scenarios',

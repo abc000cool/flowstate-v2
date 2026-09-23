@@ -54,7 +54,8 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # regenerated reports and the episode-position sidecar (data/, gitignored) ride along too
   [ -d docs/reports ] && extra="$extra docs/reports"
   # onboarded corridors: per-seed metrics/scores of every run, first-seed trajectories only, sweep metrics + summaries
-  extra="$extra $(ls runs/mndot_*/*/*/metrics.json runs/mndot_*/*/*/observed_scores.json runs/mndot_*_sweep/*/*/metrics.json runs/mndot_*_sweep/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
+  # run trees are <root>/<cell-or-arm>/<config hash>/<seed>/ — four levels below runs/mndot_*
+  extra="$extra $(ls runs/mndot_*/*/*/*/metrics.json runs/mndot_*/*/*/*/observed_scores.json runs/mndot_*_sweep/MANIFEST.json runs/mndot_*_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \

@@ -153,6 +153,30 @@ contrast is not evidence of an effect in either direction.
 {{ delta_note }}
 {% endif %}
 
+{% if comparison %}
+## Strategy comparison
+
+One row per configuration, the baseline first. Each cell is that group's mean
+with its {{ ci_level_pct }} percent replicate interval in brackets and, off
+the baseline row, the group-minus-baseline difference with its own interval
+and whether that interval excludes zero ({{ resolved_mark }}) or not
+({{ unresolved_mark }}); an {{ unresolved_mark }} difference is inconclusive,
+not a null result. The numbers are the ones already tabulated above — this
+table only puts the configurations side by side on the metrics that get
+quoted; the per-configuration sections carry every metric, and the contrast
+sections the per-metric detail.
+{% if comparison_note %}
+
+{{ comparison_note }}
+{% endif %}
+
+| Configuration | {{ comparison_headers | join(' | ') }} |
+|---|{{ '---|' * (comparison_headers | length) }}
+{% for r in comparison %}
+| {{ r.label }}{% if r.is_baseline %} (reference){% elif r.method_text %} (Δ {{ r.method_text }}){% endif %} | {{ r.cells | join(' | ') }} |
+{% endfor %}
+{% endif %}
+
 ## Speed contours
 
 {% for f in figures %}

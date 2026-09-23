@@ -202,7 +202,7 @@
   {
    "name": "on-ramp 1077665160",
    "kind": "on",
-   "x_m": 911.59,
+   "x_m": 957.37,
    "method": "zero_outside_observed_span",
    "n_steps": 48,
    "n_steps_carried": 0,
@@ -404,10 +404,10 @@
   {
    "name": "off-ramp 18279036",
    "kind": "off",
-   "x_m": 2042.29,
+   "x_m": 2043.54,
    "method": "conservation",
    "station": "rnd_88835",
-   "match_distance_m": 157.4,
+   "match_distance_m": 157.5,
    "n_steps": 48,
    "n_steps_carried": 0,
    "exit_fraction_steps": [
@@ -608,10 +608,10 @@
   {
    "name": "off-ramp 18207390",
    "kind": "off",
-   "x_m": 2554.46,
+   "x_m": 2541.37,
    "method": "detector_scaled",
    "station": "rnd_88833",
-   "match_distance_m": 97.5,
+   "match_distance_m": 109.9,
    "n_steps": 48,
    "n_steps_carried": 0,
    "exit_fraction_steps": [
@@ -812,10 +812,10 @@
   {
    "name": "on-ramp 18207436",
    "kind": "on",
-   "x_m": 3302.24,
+   "x_m": 3384.7,
    "method": "detector",
    "station": "rnd_88831",
-   "match_distance_m": 119.8,
+   "match_distance_m": 135.1,
    "n_steps": 48,
    "n_steps_carried": 0,
    "inflow_steps": [
@@ -1016,10 +1016,10 @@
   {
    "name": "on-ramp 18207653",
    "kind": "on",
-   "x_m": 3664.5299999999997,
+   "x_m": 3691.26,
    "method": "conservation",
    "station": "rnd_88827",
-   "match_distance_m": 76.4,
+   "match_distance_m": 87.1,
    "n_steps": 48,
    "n_steps_carried": 0,
    "inflow_steps": [
@@ -1220,10 +1220,10 @@
   {
    "name": "on-ramp 178547099",
    "kind": "on",
-   "x_m": 4222.93,
+   "x_m": 4297.84,
    "method": "conservation",
    "station": "rnd_88823",
-   "match_distance_m": 27.9,
+   "match_distance_m": 34.4,
    "n_steps": 48,
    "n_steps_carried": 0,
    "inflow_steps": [
@@ -1424,10 +1424,10 @@
   {
    "name": "on-ramp 745524613",
    "kind": "on",
-   "x_m": 5120.4400000000005,
+   "x_m": 5180.87,
    "method": "detector_scaled",
    "station": "rnd_88819",
-   "match_distance_m": 76.3,
+   "match_distance_m": 82.4,
    "n_steps": 48,
    "n_steps_carried": 0,
    "inflow_steps": [
@@ -1628,10 +1628,10 @@
   {
    "name": "off-ramp 18208090",
    "kind": "off",
-   "x_m": 5325.860000000001,
+   "x_m": 5316.64,
    "method": "detector_scaled",
    "station": "rnd_88817",
-   "match_distance_m": 45.6,
+   "match_distance_m": 47.5,
    "n_steps": 48,
    "n_steps_carried": 0,
    "exit_fraction_steps": [
@@ -1832,10 +1832,10 @@
   {
    "name": "off-ramp 18207880",
    "kind": "off",
-   "x_m": 6315.170000000001,
+   "x_m": 6315.250000000001,
    "method": "detector_scaled",
    "station": "rnd_88811",
-   "match_distance_m": 57.3,
+   "match_distance_m": 59.5,
    "n_steps": 48,
    "n_steps_carried": 0,
    "exit_fraction_steps": [
@@ -2036,10 +2036,10 @@
   {
    "name": "on-ramp 53062592",
    "kind": "on",
-   "x_m": 7372.380000000001,
+   "x_m": 7389.020000000001,
    "method": "detector_scaled",
    "station": "rnd_88807",
-   "match_distance_m": 94.9,
+   "match_distance_m": 94.8,
    "n_steps": 48,
    "n_steps_carried": 0,
    "inflow_steps": [
@@ -2240,7 +2240,7 @@
   {
    "name": "off-ramp 18207912",
    "kind": "off",
-   "x_m": 8495.59,
+   "x_m": 8524.550000000001,
    "method": "conservation",
    "n_steps": 48,
    "n_steps_carried": 0,
@@ -2442,10 +2442,10 @@
   {
    "name": "off-ramp 42165869",
    "kind": "off",
-   "x_m": 9534.45,
+   "x_m": 9547.390000000001,
    "method": "conservation",
    "station": "rnd_87209",
-   "match_distance_m": 125.8,
+   "match_distance_m": 136.2,
    "n_steps": 48,
    "n_steps_carried": 0,
    "exit_fraction_steps": [
@@ -2646,7 +2646,7 @@
   {
    "name": "on-ramp 40648744",
    "kind": "on",
-   "x_m": 9881.420000000002,
+   "x_m": 9943.87,
    "method": "conservation",
    "n_steps": 48,
    "n_steps_carried": 0,
@@ -2848,10 +2848,10 @@
   {
    "name": "on-ramp 769818012",
    "kind": "on",
-   "x_m": 10329.500000000002,
+   "x_m": 10426.62,
    "method": "detector",
    "station": "rnd_91040",
-   "match_distance_m": 149.5,
+   "match_distance_m": 181.0,
    "n_steps": 48,
    "n_steps_carried": 0,
    "inflow_steps": [
@@ -3052,7 +3052,7 @@
   {
    "name": "off-ramp 18207598",
    "kind": "off",
-   "x_m": 10721.640000000001,
+   "x_m": 10731.87,
    "method": "conservation",
    "n_steps": 48,
    "n_steps_carried": 0,
@@ -3254,10 +3254,10 @@
   {
    "name": "off-ramp 82150350",
    "kind": "off",
-   "x_m": 10913.150000000001,
+   "x_m": 10954.61,
    "method": "detector",
    "station": "rnd_87221",
-   "match_distance_m": 52.0,
+   "match_distance_m": 53.4,
    "n_steps": 48,
    "n_steps_carried": 0,
    "exit_fraction_steps": [
@@ -3454,227 +3454,24 @@
      0.08124174372523119
     ]
    ]
-  },
-  {
-   "name": "on-ramp 1419530369",
-   "kind": "on",
-   "x_m": 11488.060000000001,
-   "method": "zero_outside_observed_span",
-   "n_steps": 48,
-   "n_steps_carried": 0,
-   "inflow_steps": [
-    [
-     0.0,
-     0.0
-    ],
-    [
-     300.0,
-     0.0
-    ],
-    [
-     600.0,
-     0.0
-    ],
-    [
-     900.0,
-     0.0
-    ],
-    [
-     1200.0,
-     0.0
-    ],
-    [
-     1500.0,
-     0.0
-    ],
-    [
-     1800.0,
-     0.0
-    ],
-    [
-     2100.0,
-     0.0
-    ],
-    [
-     2400.0,
-     0.0
-    ],
-    [
-     2700.0,
-     0.0
-    ],
-    [
-     3000.0,
-     0.0
-    ],
-    [
-     3300.0,
-     0.0
-    ],
-    [
-     3600.0,
-     0.0
-    ],
-    [
-     3900.0,
-     0.0
-    ],
-    [
-     4200.0,
-     0.0
-    ],
-    [
-     4500.0,
-     0.0
-    ],
-    [
-     4800.0,
-     0.0
-    ],
-    [
-     5100.0,
-     0.0
-    ],
-    [
-     5400.0,
-     0.0
-    ],
-    [
-     5700.0,
-     0.0
-    ],
-    [
-     6000.0,
-     0.0
-    ],
-    [
-     6300.0,
-     0.0
-    ],
-    [
-     6600.0,
-     0.0
-    ],
-    [
-     6900.0,
-     0.0
-    ],
-    [
-     7200.0,
-     0.0
-    ],
-    [
-     7500.0,
-     0.0
-    ],
-    [
-     7800.0,
-     0.0
-    ],
-    [
-     8100.0,
-     0.0
-    ],
-    [
-     8400.0,
-     0.0
-    ],
-    [
-     8700.0,
-     0.0
-    ],
-    [
-     9000.0,
-     0.0
-    ],
-    [
-     9300.0,
-     0.0
-    ],
-    [
-     9600.0,
-     0.0
-    ],
-    [
-     9900.0,
-     0.0
-    ],
-    [
-     10200.0,
-     0.0
-    ],
-    [
-     10500.0,
-     0.0
-    ],
-    [
-     10800.0,
-     0.0
-    ],
-    [
-     11100.0,
-     0.0
-    ],
-    [
-     11400.0,
-     0.0
-    ],
-    [
-     11700.0,
-     0.0
-    ],
-    [
-     12000.0,
-     0.0
-    ],
-    [
-     12300.0,
-     0.0
-    ],
-    [
-     12600.0,
-     0.0
-    ],
-    [
-     12900.0,
-     0.0
-    ],
-    [
-     13200.0,
-     0.0
-    ],
-    [
-     13500.0,
-     0.0
-    ],
-    [
-     13800.0,
-     0.0
-    ],
-    [
-     14100.0,
-     0.0
-    ]
-   ]
   }
  ],
  "method": "entry inflow = upstream station count; ramp flows close the mainline balance bracket by bracket (live ramp detectors fix shares; the closing kind absorbs the remainder; residuals carried)",
  "coverage": {
   "n_steps": 48.0,
-  "n_ramps": 17.0,
+  "n_ramps": 16.0,
   "n_ramps_detector": 3.0,
   "n_ramps_conservation": 7.0,
-  "n_ramps_zeroed": 2.0,
+  "n_ramps_zeroed": 1.0,
   "n_brackets_with_residual": 6.0
  },
  "scenario": "scenarios/mndot_i94_wb_stpaul.yaml",
- "config_hash": "adfb118b0015",
+ "config_hash": "21720f1e998c",
  "downstream_station": "S97",
  "boundary": "speed_schedule from the downstream station's observed mean speed; NaN windows carry",
  "idm_calibration": "artifacts/idm_i24_capacity.json",
  "zeroed_ramps": [
-  "on-ramp 1077665160 (x=912 m): outside the observed span [1110, 11027] m",
-  "on-ramp 1419530369 (x=11488 m): outside the observed span [1110, 11027] m"
+  "on-ramp 1077665160 (x=957 m): outside the observed span [1089, 11072] m"
  ],
  "unmatched_ramp_detectors": [
   "rnd_87205"

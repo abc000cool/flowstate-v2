@@ -167,6 +167,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-ramps", action="store_true", help="mainline only: do not attach discovered ramps"
     )
+    parser.add_argument(
+        "--netconvert-extra",
+        default="",
+        help='extra netconvert options recorded in the scenario, e.g. "--ramps.guess --ramps.no-split --ramps.ramp-length 250"',
+    )
+    parser.add_argument(
+        "--max-chain-m",
+        type=float,
+        default=None,
+        help="drop chain edges starting beyond this length [m]",
+    )
     return parser.parse_args(argv)
 
 
@@ -192,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
         max_station_offset_m=args.max_station_offset_m,
         discover_ramps=not args.no_ramps,
         replicates=args.replicates,
+        netconvert_extra=tuple(args.netconvert_extra.split()),
+        max_chain_m=args.max_chain_m,
     )
     build.to_yaml(args.out)
     print(build.summary())

@@ -335,3 +335,232 @@ def test_sweep_with_an_unknown_bottleneck_variant_is_422(client: TestClient) -> 
         headers=HEADERS,
     )
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Strategies: the infrastructure axis (none | vsl | alinea | vsl+alinea)
+# ---------------------------------------------------------------------------
+#
+# The Lagrangian axes say what the controlled vehicles do; ``strategies`` says
+# what the operator deploys. The two are priced from different budgets, so
+# each requested strategy also runs one uncontrolled cell of its own — the
+# same grid ``scripts/corridor_sweep.py`` builds, through the same
+# ``flowstate_core.strategies.apply_strategy`` patch, so a CLI cell and an API
+# cell of one grid point share a config hash.
+
+
+def test_grid_cells_fold_strategies_in_with_one_no_av_cell_each() -> None:
+    """Cardinality and fan-out order of the four-axis grid (no HTTP, no runs)."""
+    from api.schemas import SweepCreateRequest
+
+    body = SweepCreateRequest(
+        scenario_id="scn",
+        penetrations=[0.05, 0.1],
+        compliances=[1.0],
+        controllers=["follower_stopper"],
+        strategies=["none", "vsl", "alinea"],
+        include_baseline=True,
+    )
+    assert body.grid_cells() == [
+        (0.05, 1.0, "follower_stopper", "none"),
+        (0.1, 1.0, "follower_stopper", "none"),
+        (0.05, 1.0, "follower_stopper", "vsl"),
+        (0.1, 1.0, "follower_stopper", "vsl"),
+        (0.05, 1.0, "follower_stopper", "alinea"),
+        (0.1, 1.0, "follower_stopper", "alinea"),
+        # infrastructure alone, then the uncontrolled baseline
+        (0.0, 1.0, None, "vsl"),
+        (0.0, 1.0, None, "alinea"),
+        (0.0, 1.0, None, "none"),
+    ]
+    assert body.needs_alinea_target() is True
+
+    # Default: one strategy, the scenario as calibrated — the pre-existing grid.
+    plain = SweepCreateRequest(
+        scenario_id="scn", penetrations=[0.05], compliances=[1.0], controllers=[None]
+    )
+    assert plain.strategies == ["none"]
+    assert plain.grid_cells() == [(0.05, 1.0, None, "none")]
+    assert plain.needs_alinea_target() is False
+
+
+def test_repeated_strategies_and_an_uncontrolled_grid_cell_collapse() -> None:
+    """A strategy cell already in the product is not run a second time."""
+    from api.schemas import SweepCreateRequest
+
+    body = SweepCreateRequest(
+        scenario_id="scn",
+        penetrations=[0.0],
+        compliances=[1.0],
+        controllers=[None],
+        strategies=["none", "vsl", "vsl"],
+        include_baseline=True,
+    )
+    assert body.grid_cells() == [(0.0, 1.0, None, "none"), (0.0, 1.0, None, "vsl")]
+
+
+def test_strategies_multiply_the_cell_ceiling(client: TestClient) -> None:
+    """The cap counts the strategy axis too, before any cell is built."""
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": "scn_does_not_exist",
+            "penetrations": [0.01 * i for i in range(1, 11)],
+            "compliances": [0.1 * i for i in range(1, 11)],
+            "controllers": ["follower_stopper"],
+            "strategies": ["none", "vsl"],
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+    detail = str(r.json()["detail"])
+    assert "2 strategies" in detail
+    assert "1 infrastructure-only cells" in detail
+    assert "201 cells" in detail  # 100 x 2 + the uncontrolled vsl cell
+
+
+def test_unknown_strategy_and_unknown_alinea_option_are_refused(client: TestClient) -> None:
+    scenario = post_scenario(client, macro_corridor_config())
+    bad_strategy = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "strategies": ["ramp_meter"],
+        },
+        headers=HEADERS,
+    )
+    assert bad_strategy.status_code == 422
+    assert "strategies" in str(bad_strategy.json()["detail"])
+
+    bad_option = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "strategies": ["alinea"],
+            "alinea": {"rho_target_veh_km": 20.0, "gain": 50.0},
+        },
+        headers=HEADERS,
+    )
+    assert bad_option.status_code == 422
+    detail = str(bad_option.json()["detail"]).lower()
+    assert "gain" in detail and "extra" in detail
+
+
+def test_alinea_without_a_target_anywhere_is_422(client: TestClient) -> None:
+    """No request target and no fitted diagram: refuse, never invent one."""
+    scenario = post_scenario(client, macro_corridor_config())
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "replicates": 1,
+            "strategies": ["vsl+alinea"],
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+    detail = str(r.json()["detail"])
+    assert "alinea.rho_target_veh_km" in detail
+    assert "fd_calibration" in detail
+    assert (
+        client.get(f"/api/v1/runs?scenario_id={scenario['scenario_id']}", headers=HEADERS).json()
+        == []
+    )
+
+
+def test_alinea_on_a_corridor_without_on_ramps_is_422(client: TestClient) -> None:
+    """Nothing to meter is a client error, not a silently unmetered sweep."""
+    scenario = post_scenario(client, macro_corridor_config())
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "replicates": 1,
+            "strategies": ["alinea"],
+            "alinea": {"rho_target_veh_km": 19.9},
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+    assert "on-ramp" in str(r.json()["detail"])
+
+
+def test_alinea_target_falls_back_to_the_scenario_fd_calibration(client: TestClient) -> None:
+    """With no request target the critical density comes from the artifact.
+
+    Proven by the refusal that follows it: the request gets as far as the
+    on-ramp check (the scenario has none), which is only reachable once a
+    target has been resolved — the missing-target refusal would have fired
+    first.
+    """
+    scenario = post_scenario(
+        client, macro_corridor_config(fd_calibration="artifacts/fd_us101.json")
+    )
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.05],
+            "compliances": [1.0],
+            "replicates": 1,
+            "strategies": ["alinea"],
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 422
+    assert "on-ramp" in str(r.json()["detail"])
+
+    # ... and it is the artifact's own rho_c, in veh/km.
+    from api.main import _alinea_target_veh_km
+    from api.schemas import SweepCreateRequest
+
+    body = SweepCreateRequest(
+        scenario_id=scenario["scenario_id"],
+        penetrations=[0.05],
+        compliances=[1.0],
+        strategies=["alinea"],
+    )
+    target = _alinea_target_veh_km(
+        scenario["config"],
+        body,
+        client.app.state.settings,  # type: ignore[attr-defined]
+    )
+    assert target is not None and 30.0 < target < 45.0
+
+
+def test_strategy_axis_fans_out_and_reaches_the_cell_configs(client: TestClient) -> None:
+    """Two-cell macro smoke: the vsl cell posts limits, the none cell does not."""
+    scenario = post_scenario(client, macro_corridor_config())
+    body = _sweep(
+        client,
+        scenario["scenario_id"],
+        penetrations=[0.0],
+        compliances=[1.0],
+        controllers=[None],
+        strategies=["none", "vsl"],
+    )
+    assert body["status"] == "done", body["error"]
+    assert (body["runs_total"], body["runs_done"], body["runs_failed"]) == (2, 2, 0)
+    cells = body["cells"]
+    assert [(c["penetration"], c["controller"], c["strategy"]) for c in cells] == [
+        (0.0, None, "none"),
+        (0.0, None, "vsl"),
+    ]
+    # Two strategies are two configurations, hashed and run apart.
+    assert len({c["config_hash"] for c in cells}) == 2
+    store = client.app.state.store  # type: ignore[attr-defined]
+    assert [store.get_run(c["run_id"])["config"]["av"]["vsl"] for c in cells] == [
+        None,
+        "vsl_threshold",
+    ]
+    for cell in cells:
+        assert cell["status"] == "done"
+        assert cell["aggregate"]["throughput_veh_h"]["mean"] is not None

@@ -39,7 +39,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-STRATEGIES = ("none", "vsl", "alinea", "vsl+alinea")
+from flowstate_core.strategies import STRATEGIES, apply_strategy, needs_target
+
 FIELDS = (
     "throughput_veh_h",
     "sigma_v_temporal_ms",
@@ -51,29 +52,6 @@ FIELDS = (
     "wave_speed_kmh",
     "wave_amplitude_ms",
 )
-
-
-def apply_strategy(cfg: dict[str, Any], strategy: str, rho_target_veh_km: float | None) -> None:
-    """Patch a scenario dict in place for one strategy (idempotent)."""
-    if strategy not in STRATEGIES:
-        raise ValueError(f"unknown strategy {strategy!r}; choose from {STRATEGIES}")
-    if "vsl" in strategy:
-        cfg["av"]["vsl"] = "vsl_threshold"
-        cfg["av"].setdefault("vsl_params", {})
-    if "alinea" in strategy:
-        if rho_target_veh_km is None:
-            raise ValueError("--rho-target-veh-km is required for the alinea strategy")
-        ramps = cfg.get("network", {}).get("ramps") or []
-        n_on = 0
-        for ramp in ramps:
-            if str(ramp.get("kind")) == "on":
-                ramp["meter"] = {
-                    "controller": "alinea",
-                    "params": {"rho_target_veh_km": float(rho_target_veh_km)},
-                }
-                n_on += 1
-        if n_on == 0:
-            raise ValueError("alinea strategy needs at least one on-ramp in network.ramps")
 
 
 def cell_config(
@@ -259,6 +237,11 @@ def main() -> None:
         print(f"analysed {len(s['cells'])} cells; incomplete {s['incomplete_cells']}")
         return
 
+    if any(needs_target(s) for s in args.strategies) and args.rho_target_veh_km is None:
+        raise SystemExit(
+            "--rho-target-veh-km is required for the alinea strategies (the corridor's "
+            "per-lane critical density, e.g. rho_c of its FD artifact); there is no default"
+        )
     base_cfg = ScenarioConfig.from_yaml(args.scenario)
     base_json = json.loads(base_cfg.model_dump_json())
     seeds = spawn_seeds(base_cfg.seed, args.replicates)

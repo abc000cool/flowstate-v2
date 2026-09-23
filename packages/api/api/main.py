@@ -40,6 +40,7 @@ import shutil
 import time
 import uuid
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -75,12 +76,17 @@ from api.jobs import (
     run_scenario_job,
     sweep_job,
 )
+from api.onboarding_jobs import corridor_onboarding_job  # WP-F
 from api.schemas import (
+    CORRIDOR_NAME_PATTERN,
+    CORRIDOR_STAGES,
     DEFAULT_CRITERIA_PROFILE,
     MAX_REPORT_LIST,
     CalibrationOut,
     CalibrationParams,
     CIOut,
+    CorridorOut,
+    CorridorProgressOut,
     CriteriaProfileOut,
     HealthOut,
     HeatmapOut,
@@ -100,8 +106,11 @@ from api.schemas import (
 )
 from api.settings import REPO_ROOT, Settings, check_api_key_not_default, load_settings
 from api.store import Store, new_id
+from flowstate_core.artifacts import FDCalibration
 from flowstate_core.config import MacroOptions, ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
+from flowstate_core.strategies import StrategyError, apply_strategy
+from flowstate_core.units import veh_m_to_veh_km
 from validation.metrics import MIN_REPLICATES
 
 router = APIRouter(prefix="/api/v1")
@@ -608,6 +617,9 @@ def _sweep_out(request: Request, sweep: dict[str, Any]) -> SweepOut:
                 penetration=cell["penetration"],
                 compliance=cell["compliance"],
                 controller=cell["controller"],
+                # Sweeps stored before the strategy axis carry no such key;
+                # every one of their cells ran the scenario as calibrated.
+                strategy=cell.get("strategy", "none"),
                 config_hash=cell["config_hash"],
                 run_id=run_id,
                 status=status,
@@ -634,12 +646,78 @@ def _sweep_out(request: Request, sweep: dict[str, Any]) -> SweepOut:
     )
 
 
+def _alinea_target_veh_km(
+    base: dict[str, Any], body: SweepCreateRequest, settings: Settings
+) -> float | None:
+    """The ALINEA target density [veh/km] a sweep's metered cells post.
+
+    ``None`` when no requested strategy meters ramps. Otherwise the request's
+    own ``alinea.rho_target_veh_km``, or the critical density of the
+    scenario's ``FDCalibration`` artifact (``fd.rho_c``, per lane) when the
+    request states none. There is no third source: a metering target that
+    traced to no diagram would be an uncalibrated constant driving a
+    published result (CLAUDE.md §0.1).
+
+    The artifact is read here, in the request path, so the refusal is a 422
+    the caller can act on rather than a worker failure per cell; it is a
+    small JSON file and only read when metering is requested. The base config
+    is validated and path-confined first (:func:`_confine_config_paths`), so
+    this read cannot reach outside the allow-listed roots.
+
+    Raises:
+        HTTPException: 422 when metering is requested and neither source
+            supplies a target, or the named artifact cannot be read.
+    """
+    if not body.needs_alinea_target():
+        return None
+    if body.alinea is not None:
+        return body.alinea.rho_target_veh_km
+    try:
+        cfg = ScenarioConfig.model_validate(base)
+    except ValidationError as exc:
+        raise _validation_422(exc) from exc
+    _confine_config_paths(cfg, settings)
+    if cfg.fd_calibration is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "an alinea strategy needs a metering target: set "
+                "alinea.rho_target_veh_km on the request, or fd_calibration on the "
+                "scenario so the target can be read from its fitted diagram"
+            ),
+        )
+    path = _resolve_config_path(cfg.fd_calibration)
+    try:
+        artifact = FDCalibration.load(path)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"the scenario's fd_calibration {cfg.fd_calibration!r} could not be read "
+                f"as an FDCalibration artifact ({type(exc).__name__}); set "
+                "alinea.rho_target_veh_km explicitly or fix the artifact"
+            ),
+        ) from exc
+    return veh_m_to_veh_km(artifact.fd.rho_c)
+
+
 @router.post("/sweeps", status_code=202, response_model=SweepOut, responses=_NOT_FOUND_RESPONSE)
 def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
-    """Fan a penetration × compliance × controller grid into child runs.
+    """Fan a penetration × compliance × controller × strategy grid into runs.
 
     Every cell's effective config is validated and hashed here (422 on any
     invalid cell); the fan-out itself runs as a job.
+
+    ``strategies`` is the infrastructure axis — ``none``, ``vsl``,
+    ``alinea``, ``vsl+alinea`` — applied to each cell by
+    :func:`flowstate_core.strategies.apply_strategy`, the same patch
+    ``scripts/corridor_sweep.py`` applies, so a CLI cell and an API cell of
+    one grid point share a ``config_hash``. Each requested strategy also gets
+    one uncontrolled cell of its own, so the infrastructure can be priced
+    without any controlled vehicle. An ``alinea`` strategy needs a metering
+    target (``alinea.rho_target_veh_km``, else the scenario's
+    ``fd_calibration`` critical density) and at least one on-ramp to meter;
+    without either, 422.
 
     ``include_baseline`` appends a *single* uncontrolled reference cell
     (penetration 0, compliance 1, no controller) after the grid, unless the
@@ -655,10 +733,10 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
 
     Caps (HTTP 422 when exceeded, all checked before any cell is built):
     at most 50 values per axis (``api.schemas.MAX_SWEEP_AXIS_VALUES``), 200
-    total cells including baseline cells (``MAX_SWEEP_CELLS``), and 200
-    replicates per cell (``MAX_REPLICATES``). The grid is a cartesian
-    product, so the cell ceiling is checked from the three list lengths
-    rather than by materializing them.
+    total cells including the infrastructure-only and baseline cells
+    (``MAX_SWEEP_CELLS``), and 200 replicates per cell (``MAX_REPLICATES``).
+    The grid is a cartesian product, so the cell ceiling is checked from the
+    four list lengths rather than by materializing them.
     """
     store = _store(request)
     settings = _settings(request)
@@ -668,16 +746,30 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
     base = _apply_overrides(
         scenario["config"], body.overrides, body.replicates, body.tier, body.macro
     )
+    rho_target_veh_km = _alinea_target_veh_km(base, body, settings)
     grid: list[dict[str, Any]] = []
-    for pen, comp, ctrl in body.grid_cells():
+    for pen, comp, ctrl, strategy in body.grid_cells():
         cell_patch = {"av": {"penetration": pen, "compliance": comp, "controller": ctrl}}
+        # deepcopy: deep_merge shares the sub-dicts the patch does not touch
+        # with `base`, and a strategy patches network.ramps in place — one
+        # metered cell would otherwise meter every later cell too.
+        merged = deepcopy(deep_merge(base, cell_patch))
         try:
-            config, chash, _ = _validate_config(deep_merge(base, cell_patch), settings)
+            apply_strategy(merged, strategy, rho_target_veh_km)
+        except StrategyError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            config, chash, _ = _validate_config(merged, settings)
         except HTTPException as exc:
             raise HTTPException(
                 status_code=422,
                 detail={
-                    "cell": {"penetration": pen, "compliance": comp, "controller": ctrl},
+                    "cell": {
+                        "penetration": pen,
+                        "compliance": comp,
+                        "controller": ctrl,
+                        "strategy": strategy,
+                    },
                     "errors": exc.detail,
                 },
             ) from exc
@@ -686,6 +778,7 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
                 "penetration": pen,
                 "compliance": comp,
                 "controller": ctrl,
+                "strategy": strategy,
                 "config": config,
                 "config_hash": chash,
                 "run_id": None,
@@ -1234,6 +1327,277 @@ def get_report_archive(request: Request, report_id: str) -> Response:
 
 
 # ---------------------------------------------------------------------------
+# Corridor onboarding (WP-F)
+# ---------------------------------------------------------------------------
+
+_CORRIDOR_NAME_RE = re.compile(CORRIDOR_NAME_PATTERN)
+
+
+def _parse_bbox(raw: str) -> list[float]:
+    """``"S W N E"`` (or comma-separated) → the four WGS84 bounds.
+
+    Raises:
+        HTTPException: 422 when it is not four numbers in range with
+            ``south < north`` and ``west < east``. The message says which,
+            because a transposed bbox is the most common onboarding mistake.
+    """
+    parts = [p for p in re.split(r"[,\s]+", raw.strip()) if p]
+    if len(parts) != 4:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"bbox must be four numbers 'south west north east' (comma or space "
+                f"separated), got {raw!r}"
+            ),
+        )
+    try:
+        south, west, north, east = (float(p) for p in parts)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"bbox is not numeric: {exc}") from exc
+    if not (south < north and west < east):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"bbox must be (south, west, north, east) with south < north and west < east, "
+                f"got south={south}, west={west}, north={north}, east={east}"
+            ),
+        )
+    if not (-90.0 <= south and north <= 90.0 and -180.0 <= west and east <= 180.0):
+        raise HTTPException(status_code=422, detail=f"bbox is outside the WGS84 range: {raw!r}")
+    return [south, west, north, east]
+
+
+def _parse_column_map(raw: str | None) -> dict[str, str]:
+    """The optional ``column_map`` form field → the detector loader's mapping.
+
+    Raises:
+        HTTPException: 422 when it is not a JSON object of strings.
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"column_map is not valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()
+    ):
+        raise HTTPException(
+            status_code=422, detail="column_map must be a JSON object of string → string"
+        )
+    return {str(k): str(v) for k, v in parsed.items()}
+
+
+def _confine_corridor_path(value: str, field: str, settings: Settings) -> str:
+    """Confine a server-side path named in a corridor request to the roots.
+
+    The same rule as a scenario config's file fields
+    (:func:`_confine_config_paths`): the worker opens the file, so an
+    unchecked value reads anything the worker can see.
+
+    Raises:
+        HTTPException: 422 in the pydantic error-list shape.
+    """
+    resolved = _resolve_config_path(value)
+    roots = settings.config_path_roots
+    if not any(resolved.is_relative_to(root) for root in roots):
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": "path_outside_roots",
+                    "loc": ["body", field],
+                    "msg": (
+                        f"{field} {value!r} is outside the allowed data roots "
+                        f"{[str(r) for r in roots]}; reference a file under the repo's "
+                        f"artifacts/ or data/ directories, FLOWSTATE_DATA_DIR, or the "
+                        f"results root"
+                    ),
+                    "input": value,
+                }
+            ],
+        )
+    return str(resolved)
+
+
+def _corridor_out(row: dict[str, Any], settings: Settings) -> CorridorOut:
+    stage = row["stage"]
+    completed = CORRIDOR_STAGES.index(stage) if stage in CORRIDOR_STAGES else 0
+    corridor_dir = row["corridor_dir"]
+    if corridor_dir:
+        try:
+            corridor_dir = str(Path(corridor_dir).relative_to(settings.results_dir))
+        except ValueError:
+            pass  # a results root moved between runs: report the path as stored
+    return CorridorOut(
+        corridor_id=row["id"],
+        name=row["name"],
+        status=row["status"],
+        progress=CorridorProgressOut(
+            stage=stage,
+            completed_stages=completed,
+            total_stages=len(CORRIDOR_STAGES) - 1,
+        ),
+        scenario_id=row["scenario_id"],
+        preset_filename=f"{row['name']}.yaml" if row["scenario_id"] else None,
+        config_hash=row["config_hash"],
+        observations_path=row["observations_path"],
+        corridor_dir=corridor_dir,
+        summary=row["summary"],
+        error=row["error"],
+        error_kind=row["error_kind"],
+        created_at=row["created_at"],
+    )
+
+
+@router.post("/corridors", status_code=202, response_model=CorridorOut)
+async def create_corridor(
+    request: Request,
+    name: Annotated[str, Form()],
+    bbox: Annotated[str, Form()],
+    bearing_deg: Annotated[float, Form()],
+    upstream_station: Annotated[str, Form()],
+    downstream_station: Annotated[str, Form()],
+    detectors: Annotated[UploadFile, File()],
+    stations: Annotated[UploadFile, File()],
+    column_map: Annotated[str | None, Form()] = None,
+    idm_calibration: Annotated[str | None, Form()] = None,
+    window_s: Annotated[float, Form()] = 300.0,
+    t0_local: Annotated[str, Form()] = "06:00",
+    duration_s: Annotated[float, Form()] = 14400.0,
+    warmup_s: Annotated[float, Form()] = 1800.0,
+    source: Annotated[str | None, Form()] = None,
+) -> CorridorOut:
+    """Onboard a freeway corridor from a bounding box and a detector export.
+
+    The "any city" path of CLAUDE.md §3.2.4 as one asynchronous job
+    (``api.onboarding_jobs``): the OSM extract is downloaded, the mainline
+    chain, lane profile and ramps are discovered, the detector CSV becomes a
+    ``flowstate.observations/1`` artifact, the demand is derived from it
+    (upstream station inflow, ramps closing the station balance, downstream
+    speed boundary), and the calibrated scenario is stored *and* written into
+    the presets directory so it is selectable beside the shipped corridors.
+    Poll ``GET /corridors/{id}``; the finished row carries the
+    ``scenario_id`` for ``POST /runs`` and the ``observations_path`` for
+    ``POST /reports``.
+
+    Multipart form fields: ``name`` (also the preset filename, so
+    ``[A-Za-z0-9_-]``), ``bbox`` as ``"south west north east"``,
+    ``bearing_deg`` (270 = westbound), ``upstream_station`` and
+    ``downstream_station`` (the mainline detectors at the two ends of the
+    analysed span), the ``detectors`` CSV (the tidy detector contract, with
+    an optional ``column_map`` JSON object naming the file's own columns) and
+    the ``stations`` CSV (``station,label,lat,lon,lanes,kind``). Optional:
+    ``idm_calibration`` (a driver population, a server-side path confined to
+    the allow-listed roots), ``window_s`` (300), ``t0_local`` (06:00),
+    ``duration_s`` (14400), ``warmup_s`` (1800) and ``source`` (provenance
+    recorded on the observations artifact).
+
+    Refusals: HTTP 422 for a malformed name, bbox, bearing, window/span or
+    ``column_map``, and for an ``idm_calibration`` outside the roots; HTTP
+    409 when a preset of that name already exists (a corridor is never
+    onboarded over an existing preset — that would silently redefine a
+    scenario other runs were launched from). Uploads over
+    ``FLOWSTATE_MAX_UPLOAD_MB`` are refused with HTTP 413.
+
+    Onboarding is not validation: the job derives numbers and records where
+    each came from. Whether the corridor reproduces the observations is what
+    ``POST /reports`` with ``observations_path`` answers (CLAUDE.md §0.1).
+    """
+    settings = _settings(request)
+    store = _store(request)
+    if not _CORRIDOR_NAME_RE.match(name):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"name {name!r} must match {CORRIDOR_NAME_PATTERN} — it becomes a directory "
+                f"and a scenarios/<name>.yaml preset file"
+            ),
+        )
+    bounds = _parse_bbox(bbox)
+    if not 0.0 <= bearing_deg <= 360.0:
+        raise HTTPException(
+            status_code=422, detail=f"bearing_deg must be within [0, 360], got {bearing_deg}"
+        )
+    for field, value in (("window_s", window_s), ("duration_s", duration_s)):
+        if value <= 0.0:
+            raise HTTPException(status_code=422, detail=f"{field} must be positive, got {value}")
+    if warmup_s < 0.0 or warmup_s >= duration_s:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"warmup_s must be within [0, duration_s), got warmup_s={warmup_s} and "
+                f"duration_s={duration_s}"
+            ),
+        )
+    columns = _parse_column_map(column_map)
+    calibration = (
+        _confine_corridor_path(idm_calibration, "idm_calibration", settings)
+        if idm_calibration
+        else None
+    )
+    preset = settings.scenarios_dir / f"{name}.yaml"
+    if preset.exists():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"a preset named {preset.name!r} already exists; onboard this corridor under "
+                f"another name rather than redefining a scenario runs were launched from"
+            ),
+        )
+
+    upload_dir = settings.uploads_dir / new_id("upl")
+    detectors_path = upload_dir / _upload_name(detectors.filename)
+    await _save_upload(detectors, detectors_path, settings.max_upload_bytes)
+    stations_path = upload_dir / f"stations_{_upload_name(stations.filename)}"
+    await _save_upload(stations, stations_path, settings.max_upload_bytes)
+
+    corridor_id = store.create_corridor(
+        name,
+        {
+            "bbox": bounds,
+            "bearing_deg": float(bearing_deg),
+            "upstream_station": upstream_station,
+            "downstream_station": downstream_station,
+            "column_map": columns,
+            "idm_calibration": calibration,
+            "window_s": float(window_s),
+            "t0_local": t0_local,
+            "duration_s": float(duration_s),
+            "warmup_s": float(warmup_s),
+            "source": source,
+        },
+        detectors_path,
+        stations_path,
+    )
+    get_queue(settings).enqueue(
+        corridor_onboarding_job,
+        corridor_id,
+        job_id=corridor_id,
+        db_path=str(settings.db_path),
+        results_root=str(settings.results_dir),
+    )
+    row = store.get_corridor(corridor_id)
+    assert row is not None
+    return _corridor_out(row, settings)
+
+
+@router.get("/corridors/{corridor_id}", response_model=CorridorOut, responses=_NOT_FOUND_RESPONSE)
+def get_corridor(request: Request, corridor_id: str) -> CorridorOut:
+    """Status, stage progress and — once done — the onboarding summary.
+
+    The summary is what was *discovered and derived*, never a judgement:
+    chain length and lane profile, the ramps found and the method behind each
+    ramp's profile, which stations were placed and which were rejected, the
+    demand peaks, and the brackets whose flow change no ramp could carry.
+    """
+    row = _store(request).get_corridor(corridor_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"corridor {corridor_id!r} not found")
+    return _corridor_out(row, _settings(request))
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
@@ -1249,25 +1613,34 @@ def _declared_body_length(request: Request) -> int | None:
         return None
 
 
-def _is_calibration_path(path: str) -> bool:
-    """Whether ``path`` is the multipart upload route (the larger cap)."""
-    return path.startswith(f"{router.prefix}/calibrations/")
+#: Route prefixes that accept multipart data uploads (the larger body cap):
+#: ``POST /calibrations/{kind}`` and ``POST /corridors`` (WP-F, which carries
+#: a detector export and a station inventory).
+_UPLOAD_PATH_PREFIXES: tuple[str, ...] = (
+    f"{router.prefix}/calibrations/",
+    f"{router.prefix}/corridors",
+)
+
+
+def _is_upload_path(path: str) -> bool:
+    """Whether ``path`` is a multipart upload route (the larger cap)."""
+    return path.startswith(_UPLOAD_PATH_PREFIXES)
 
 
 def _body_cap(path: str, settings: Settings) -> int:
     """Byte ceiling for a request body on ``path``.
 
-    Calibration uploads may carry one data file plus the small form fields
+    An upload route may carry its data file(s) plus the small form fields
     and multipart framing; everything else is a JSON/YAML document.
     """
-    if _is_calibration_path(path):
+    if _is_upload_path(path):
         return settings.max_upload_bytes + settings.max_body_bytes
     return settings.max_body_bytes
 
 
 def _cap_env_hint(path: str) -> str:
     """The environment variable(s) that set the cap for ``path``."""
-    if _is_calibration_path(path):
+    if _is_upload_path(path):
         return "FLOWSTATE_MAX_UPLOAD_MB + FLOWSTATE_MAX_BODY_MB"
     return "FLOWSTATE_MAX_BODY_MB"
 

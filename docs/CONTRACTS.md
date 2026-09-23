@@ -842,3 +842,144 @@ re-simulating; trajectories are pruned to the first seed unless
   `v1_legacy preset` as uncalibrated. `frontend/src/api/types.ts` mirrors
   `MacroOptions`, `ScenarioConfig.fd_calibration`/`macro`, `SweepDetail.tier`
   and `RunMetrics.fd_source`.
+
+## Sweep strategies: the infrastructure axis — 2026-09-23
+
+- **`flowstate_core.strategies`** is the one implementation of the patch:
+  `Strategy = "none" | "vsl" | "alinea" | "vsl+alinea"`, `STRATEGIES` in that
+  order, and `apply_strategy(cfg, strategy, rho_target_veh_km)` mutating a
+  serialized `ScenarioConfig` in place — `vsl` sets `av.vsl =
+  "vsl_threshold"` (leaving `av.vsl_params` as configured), `alinea` writes
+  `meter = {controller: "alinea", params: {rho_target_veh_km}}` on every
+  `network.ramps` entry with `kind: "on"`. It is idempotent and additive:
+  `none` never strips a VSL or a meter the scenario itself configures.
+  `StrategyError` (a `ValueError`) names the three refusals: unknown
+  strategy, an ALINEA strategy without a target, an ALINEA strategy on a
+  network with no on-ramp. `scripts/corridor_sweep.py` and
+  `POST /api/v1/sweeps` both call it, so a CLI cell and an API cell of one
+  grid point are the same configuration and share a `config_hash`.
+- **`POST /api/v1/sweeps`** gains `strategies: ["none" | "vsl" | "alinea" |
+  "vsl+alinea"]` (default `["none"]`, at most `MAX_SWEEP_AXIS_VALUES`
+  entries) and `alinea: {rho_target_veh_km}` (`extra="forbid"`, `> 0`).
+- **Cell set** (`SweepCreateRequest.grid_cells()`, fan-out order): the
+  product `strategies × penetrations × compliances × controllers`; then one
+  uncontrolled cell per requested strategy other than `none`
+  (`strategy_cells()`: penetration 0, compliance 1, controller `null` — the
+  API's form of `scripts/corridor_sweep.py`'s `strategy_<s>` cells, so an
+  infrastructure strategy can be priced without any controlled vehicle);
+  then the `include_baseline` cell (penetration 0, compliance 1, controller
+  `null`, strategy `none`), skipped when `none` is among the strategies and
+  the product already holds an uncontrolled cell. Repeated tuples collapse,
+  first occurrence winning. `MAX_SWEEP_CELLS` counts all three groups, from
+  the four list lengths, before any cell is built.
+- **ALINEA target resolution**: `alinea.rho_target_veh_km` when given;
+  otherwise `fd.rho_c` of the scenario's `fd_calibration` artifact converted
+  to veh/km (`flowstate_core.units.veh_m_to_veh_km`), read in the request
+  path after the base config is path-confined. With neither, 422 naming both
+  sources; an unreadable artifact, or a network with no on-ramp, is likewise
+  422 — the service never invents a metering target (CLAUDE.md §0.1).
+- **`SweepCellOut.strategy`** (`"none"` default) echoes each cell's strategy;
+  sweeps stored before this axis have no `strategy` key in their grid rows
+  and report `none`.
+- **Report**: a `## Strategy comparison` section — one table, one row per run
+  group (`validation.report.group_label`, baseline first), one column per
+  metric in `validation.report.COMPARISON_METRICS` (throughput, mean travel
+  time, σ_v temporal, fuel per veh-km, wave count). Each cell is `mean [lo95,
+  hi95]` and, off the baseline row, `· Δ mean [lo95, hi95] resolved|
+  unresolved` from the same `contrast()` the per-metric contrast tables use
+  (seed-paired or Welch, named in the row's first cell). Rendered from
+  `_comparison_rows(groups, baseline)`; shown only for a run set with at
+  least two configurations, and without the Δ half when the set has no single
+  baseline group.
+- **Dashboard**: the sweep launcher has a strategies multi-select (default
+  `none`) and an ALINEA target field shown only when a metering strategy is
+  selected — empty means "read it from the scenario's FD calibration", and a
+  non-numeric entry is refused client-side rather than posted. The matrix has
+  one row per (penetration, strategy) pair, an infrastructure-only row per
+  strategy beside the baseline row, and names the strategy in each cell's
+  label. `frontend/src/api/types.ts` mirrors `SweepStrategy`,
+  `CreateSweepRequest.strategies`/`alinea` and `SweepCell.strategy`.
+
+## Corridor onboarding from the dashboard — 2026-09-23
+
+**`POST /api/v1/corridors`** (202, multipart) onboards a freeway corridor from
+public data in one asynchronous job (CLAUDE.md §3.2.4, §6.3). Form fields:
+
+| field | required | default | meaning |
+|---|---|---|---|
+| `name` | yes | — | scenario name, `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`; it becomes the results directory and the `scenarios/<name>.yaml` preset |
+| `bbox` | yes | — | `"south west north east"` (commas and/or spaces), WGS84 |
+| `bearing_deg` | yes | — | direction of travel, compass degrees (270 = westbound) |
+| `upstream_station` / `downstream_station` | yes | — | mainline detector ids at the two ends of the analysed span |
+| `detectors` | yes | — | the tidy detector CSV (see "Detector observations") |
+| `stations` | yes | — | station inventory CSV: `station,label,lat,lon,lanes,kind` |
+| `column_map` | no | `{}` | JSON object of string → string mapping the canonical detector fields to the upload's own column names |
+| `idm_calibration` | no | `null` | server-side `IDMCalibration` path, confined to the allow-listed roots |
+| `window_s` | no | `300` | observation window [s]; must equal the upload's interval |
+| `t0_local` | no | `"06:00"` | local wall-clock time of simulation t = 0 |
+| `duration_s` | no | `14400` | analysed span and simulated duration [s] |
+| `warmup_s` | no | `1800` | metrics warm-up [s]; `0 ≤ warmup_s < duration_s` |
+| `source` | no | — | provenance string recorded on the observations artifact |
+
+Refusals: 422 for a malformed name, bbox (four numbers, `south < north`,
+`west < east`, WGS84 range), bearing, window/duration/warm-up or
+`column_map`, and for an `idm_calibration` outside
+`Settings.config_path_roots` (`type: "path_outside_roots"`,
+`loc: ["body", "idm_calibration"]`); **409** when a preset of that name
+already exists — a corridor is never onboarded over a scenario other runs
+were launched from; 413 above `FLOWSTATE_MAX_UPLOAD_MB`.
+
+**Stages** (`api.schemas.CORRIDOR_STAGES`, recorded on the row as it runs):
+`extract` (Overpass, motorway ways only) → `network`
+(`microsim.scenarios.corridor_from_bbox`) → `observations`
+(`Observations.from_frame` over the uploaded CSV) → `demand`
+(`calibration.onboarding.calibrate_scenario`) → `install` → `done`.
+
+**`GET /api/v1/corridors/{id}`** answers `CorridorOut`:
+
+- `status` (`queued`/`running`/`done`/`failed`), `progress`
+  `{stage, completed_stages, total_stages}`;
+- `scenario_id` — the stored scenario `POST /runs` takes;
+  `preset_filename` — the `scenarios/<name>.yaml` it was installed as;
+  `config_hash`;
+- `observations_path` — the server-side `flowstate.observations/1` artifact,
+  ready to pass to `POST /reports` as `observations_path`;
+- `corridor_dir` — the bundle directory *relative to the results root*
+  (`corridors/<id>/`, holding `scenario.yaml`, `stations_x.csv`,
+  `observations.json`, `demand.json`, `extract.osm`, `summary.txt`) — an
+  identifier, not a URL;
+- `summary` (`CorridorSummaryOut`): `chain_length_m`, `n_chain_edges`,
+  `lanes_profile` `[(x_start_m, x_end_m, lanes)]`, `n_ramps`,
+  `stations_placed` / `stations_rejected` (`{station, x_m, offset_m}`),
+  `stations_without_chain_x`, `inflow_peak_veh_h`, `ramps`
+  (`{name, kind, x_m, method, peak, unit, station}` — `method` is `detector`,
+  `detector_scaled`, `conservation` or `zero_outside_observed_span`),
+  `residuals`, `zeroed_ramps`, `unmatched_detectors` and `lines` (the plain
+  text of `summary.txt`);
+- `error` + `error_kind` (`corridor_<stage>`) on failure, as plain messages
+  with no frames or file contents.
+
+The OSM extract is persisted at `FLOWSTATE_DATA_DIR/osm/<name>.osm` (the
+results root when no data directory is mounted) and the installed scenario's
+`network.osm_file` points at it, so the preset re-imports the same map the
+corridor was measured on and the path stays inside the allow-listed roots.
+
+**Library.** `calibration.onboarding.calibrate_scenario(scenario, *,
+observations, stations_x, net_path, upstream, downstream, idm_calibration,
+warmup_s, match_radius_m=350, alive_veh_h=30) -> OnboardingResult` holds the
+derivation (station positions onto the chain, ramp matching, the bracket
+balance, the downstream boundary, the demand artifact). It writes no file:
+`OnboardingResult.demand` carries empty `observations`/`scenario` fields for
+the caller to fill. `scripts/corridor_demand.py` and
+`api.onboarding_jobs.corridor_onboarding_job` are both thin callers, so the
+CLI and the dashboard derive identical numbers.
+
+**Dashboard.** `frontend/src/views/OnboardView.tsx` ("Onboard corridor" in
+the rail) posts the form, polls the stages, shows what was discovered and
+derived, and offers "Run 20 seeds" (`POST /runs`, `replicates: 20`) and then
+"Report against observations" (`POST /reports` with `observations_path`, once
+a run has finished). `createCorridor(FormData)` / `getCorridor(id)` in
+`frontend/src/api/client.ts`; `createReport` gained an optional fourth
+argument for `observations_path`. Onboarding is not validation: the summary
+states what was measured and where each demand number came from, and the
+report is what scores the corridor.

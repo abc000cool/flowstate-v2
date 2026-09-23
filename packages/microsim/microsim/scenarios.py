@@ -55,7 +55,7 @@ from microsim.geo import (
     ramps_for_chain,
     x_of_lonlat,
 )
-from microsim.networks import osm_import
+from microsim.networks import expand_ramp_splits, osm_import
 from microsim.runner import RunPaths, run_micro
 
 #: Repository ``scenarios/`` directory (this file sits at
@@ -216,6 +216,7 @@ def scenario_from_osm(
     warmup_s: float | None = None,
     replicates: int | None = None,
     download: Literal["osm_api", "overpass"] = "osm_api",
+    netconvert_extra: Sequence[str] = (),
 ) -> ScenarioConfig:
     """Onboard an OSM corridor as a runnable, hashable scenario (CLAUDE.md §3.2.4).
 
@@ -304,8 +305,11 @@ def scenario_from_osm(
         workdir=net_dir,
         keep_edges=tuple(e for r in ramps for e in r.edges),
         download=download,
+        netconvert_extra=tuple(netconvert_extra),
     )
-    _check_corridor_in_net(bundle.net_path, edges, lanes)
+    # The compiled chain may carry netconvert's ramp-split pieces; the scenario
+    # keeps the load-time ids (networks.expand_ramp_splits).
+    _check_corridor_in_net(bundle.net_path, list(bundle.edge_ids), lanes)
 
     if osm_file is not None:
         source = str(osm_file)
@@ -330,6 +334,7 @@ def scenario_from_osm(
         inflow=steps,
         boundary=boundary,
         ramps=list(ramps),
+        netconvert_extra=[str(a) for a in netconvert_extra],
     )
     return ScenarioConfig(
         name=name,
@@ -519,6 +524,8 @@ def corridor_from_bbox(
     boundary: BoundarySpec | None = None,
     warmup_s: float | None = None,
     replicates: int | None = None,
+    netconvert_extra: Sequence[str] = (),
+    max_chain_m: float | None = None,
 ) -> CorridorBuild:
     """Onboard any freeway corridor from a bounding box (CLAUDE.md §3.2.4).
 
@@ -620,6 +627,18 @@ def corridor_from_bbox(
         highway_types=highway_types,
         max_heading_dev_deg=max_heading_dev_deg,
     )
+    if max_chain_m is not None:
+        # Keep the edges that START before the cap, so the corridor ends on a
+        # chosen edge (e.g. before a downstream widening that would defeat the
+        # exit-speed boundary).
+        kept: list[str] = []
+        x = 0.0
+        for edge_id in chain:
+            if x >= max_chain_m:
+                break
+            kept.append(edge_id)
+            x += float(raw_net.getEdge(edge_id).getLength())
+        chain = kept
     candidates = ramps_for_chain(raw_net, chain) if discover_ramps else []
 
     extract = Path(osm_file) if osm_file is not None else net_dir / "extract.osm"
@@ -638,6 +657,7 @@ def corridor_from_bbox(
         av=av,
         warmup_s=warmup_s,
         replicates=replicates,
+        netconvert_extra=netconvert_extra,
     )
     recorded = _record_path(extract)
     if recorded != cfg.network.osm_file:
@@ -649,6 +669,9 @@ def corridor_from_bbox(
     # scenario_from_osm re-imported into the same file, pinning the chain ids.
     net_path = net_dir / "osm.net.xml"
     net = sumolib.net.readNet(str(net_path))
+    # Measure on the compiled chain (ramp-split pieces included); the scenario
+    # names the load-time ids.
+    chain = expand_ramp_splits(chain, [e.getID() for e in net.getEdges(withInternal=False)])
     offsets = dict(zip(chain, chain_offsets(net, chain), strict=True))
     ramps = tuple(
         replace(

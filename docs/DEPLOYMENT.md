@@ -58,6 +58,10 @@ PeMS/I-24 payloads) is excluded from the build context.
 
 ## 3. First start
 
+Verify the host first — `uv run --no-sync python scripts/doctor.py` (exit 1 on
+any FAIL) — then bring the stack up; the no-Docker walkthrough is
+[QUICKSTART.md](QUICKSTART.md).
+
 ```sh
 FLOWSTATE_API_KEY="$(openssl rand -hex 24)" docker compose up -d --build
 curl -s http://127.0.0.1:8000/healthz
