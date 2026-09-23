@@ -381,3 +381,14 @@ and survive any slip in the critical path.
 - Published reports regenerated under the corrected definitions; the sweep and cap
   sweep re-run is on the cloud chain and lands overnight.
 - Next product step: a pilot-shaped onboarding of a third corridor, end to end.
+
+### Addendum 2026-09-23 — third corridor from public data, strategy axis, screening FD, tester path
+
+Built in the 2026-09-22/23 block (CHANGELOG 2026-09-23):
+- **Any-corridor onboarding** is a function and a dashboard flow, not a script: bounding box + bearing → OSM motorway extract → one-direction chain, ramps, station positions (`microsim.geo`, `corridor_from_bbox`); detector CSV → observations and demand artifacts (`flowstate.observations/1`, `flowstate.demand/1`); `POST /corridors` installs a preset and `POST /reports` scores GEH and RMSPE against the observations. MnDOT I-94 WB through east St. Paul is the third corridor (`docs/ONBOARDING_MNDOT.md`).
+- **What the first battery taught:** a map's lane count through a merge is not to be trusted — OSM tags I-94 as three lanes straight through its entrances, four on-ramps starved, and the corridor never congested. The onboarding path now compiles with netconvert's ramp guessing and maps the split pieces back onto the scenario's ids (lesson 28). The next product item is a lane-profile-versus-inventory check printed before any battery, and ramp discovery that accepts lane-add merges (White Bear Ave) and collector–distributor roads (Mounds Blvd).
+- **Strategies beside AV controllers:** `strategies` on sweeps (VSL, ALINEA, both) through one shared config patch for CLI and API; ALINEA's target traces to the corridor's fitted diagram; the report carries a strategy-comparison table.
+- **Screening tier on a calibrated diagram:** `ScenarioConfig.fd_calibration`, macro options on runs and sweeps, dashboard banners; the MnDOT diagram is fitted from per-lane one-minute samples.
+- **Tester path:** `scripts/doctor.py` and `docs/QUICKSTART.md`.
+
+Open after the block: the driver population on MnDOT is the I-24 fit (no Minnesota trajectories); the demand's bracket-closing residuals at White Bear Ave and the Mounds Blvd re-entry; the detector wave speed as a report context row (30-s data allows it); the dashboard onboarding flow needs a guided first run and progress detail per stage; a hosted deployment for an external tester was prepared for but not deployed (owner undecided).
