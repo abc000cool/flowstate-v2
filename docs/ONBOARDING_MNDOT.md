@@ -162,11 +162,45 @@ entrances queue under the mainline's congestion (37 % and 52 % in the slice),
 which is the observed condition there. Round 2 (§6) runs this scenario
 (`21720f1e998c`).
 
-## 6. Baseline and sweep (cloud round)
+## 6. Baseline batteries (two cloud rounds, 2026-09-23) — the corridor is not reproduced
 
-Filled in from `artifacts/validation_mndot_i94_wb_stpaul.json`,
-`docs/reports/mndot_i94_wb_stpaul/` and
-`artifacts/sweep_mndot_i94_wb_stpaul_summary.json` when the VM round lands.
+Both rounds are recorded under `artifacts/mndot_rounds/`; no validated
+baseline exists for this corridor and no sweep was run on it.
+
+**Round 1** (scenario `adfb118b0015`, `round1_starved_ramps_validation.json`,
+`round1_starved_ramps_report.md`; 20 seeds, wall 350–470 s per 4-hour
+replicate): GEH < 5 on 17% of 840 pooled link-hours (FAIL), RMSPE
+93% over 11,760 speed cells, no waves detected, throughput at x = 6.67 km
+1,805 veh/h [1,798, 1,812] against an observed
+mean near 2,700. Cause (§5a): OSM carries no acceleration lanes; four
+entrances delivered 4–6 % of their demand and the corridor ran in free flow.
+
+**Round 2** (scenario `21720f1e998c` — ramp guessing, chain ended before the
+I-35E widening, I-24 lane-change settings; `round2_gridlock_record.json`;
+20 seeds, wall 2,780 s per replicate): every seed gridlocked —
+40.6% of planned vehicles departed (min 39.1%,
+max 42.1%); the one seed scored before the VM was stopped
+has RMSPE 90% and no passing link-hour, with simulated mean speeds
+below 2 m/s at every station. Departure fractions by entrance (mean over
+seeds): Hudson Rd 0.49 and 0.67, McKnight Rd 0.99, Ruth St 1.00, T.H.61 NB
+0.18, the downtown approach 0.25 and T.H.52 0.41. The three large entrances
+near the downtown approach (T.H.61 NB ≈ 2,000 veh/h, the collector–distributor
+re-entry ≈ 1,700, T.H.52 ≈ 1,400) merge into a mainline already near 4,300
+veh/h on three lanes; SUMO's lane-change merge locks there, the queue grows
+for three hours and fills the corridor. A 35-minute peak slice reproduces the
+onset locally (speeds fall to 1–7 m/s from S1070 downstream).
+
+This is the flagship's merge finding again (docs/I24_VALIDATION.md §0.11:
+the I-24 replica discharges about 5,880 veh/h where the recording sustains
+6,630) at a corridor whose peak sits at the discharge the model cannot reach,
+so the deficit compounds instead of costing a few per cent. The engine's
+gap-acceptance (`scripted`) merge could be applied only to the two entrances
+whose acceleration lane dead-ends on a split piece; the locking entrances
+attach to short edges whose added lane runs on into the next edge. What would
+be needed next: a merge model that does not need a dead-ending lane (or a
+network patch that ends the added lane), and a Minnesota driver population.
+
+Cost of both rounds: about 2.2 hours of n2-standard-32, ≈ $3.3.
 
 ## 7. What needed hand work (product backlog)
 
