@@ -896,10 +896,18 @@ def _insertion_note(micro_runs: list[_RunInfo]) -> str | None:
     )
     if summary is None:
         return None
+    arrived = (
+        "arrival not recorded"
+        if summary.mean_arrived is None
+        else (
+            f"{summary.mean_arrived:.1f} arrived per run "
+            f"(over {summary.n_with_arrived} of {summary.n_runs})"
+        )
+    )
     text = (
         f"Insertion: {summary.planned} vehicles planned over {summary.n_runs} run(s), "
         f"{summary.departed} departed ({_fmt(summary.mean_departed_fraction, 3)} of plan on "
-        f"average, lowest {_fmt(summary.min_departed_fraction, 3)}), {summary.arrived} arrived; "
+        f"average, lowest {_fmt(summary.min_departed_fraction, 3)}), {arrived}; "
         f"verdict: {summary.verdict}."
     )
     if summary.starved_ramps:

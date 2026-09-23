@@ -32,22 +32,33 @@ PLANNED = 1000
 def _meta(
     planned: int = PLANNED,
     departed: int = PLANNED,
-    arrived: int = 900,
+    arrived: int | None = 900,
     ramps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """A meta.json fragment carrying only what insertion_stats reads."""
     meta: dict[str, Any] = {
         "n_vehicles_planned": planned,
         "n_vehicles_departed": departed,
-        "n_vehicles_arrived": arrived,
     }
+    if arrived is not None:
+        meta["n_vehicles_arrived"] = arrived
     if ramps is not None:
         meta["ramps"] = ramps
     return meta
 
 
-def _ramp(name: str, kind: str, planned: int, departed: int) -> dict[str, Any]:
-    return {"name": name, "kind": kind, "n_planned": planned, "n_departed": departed}
+def _ramp(
+    name: str, kind: str, planned: int, departed: int, index: int | None = None
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "name": name,
+        "kind": kind,
+        "n_planned": planned,
+        "n_departed": departed,
+    }
+    if index is not None:
+        entry["index"] = index
+    return entry
 
 
 class TestInsertionStats:
@@ -111,6 +122,38 @@ class TestInsertionStats:
         with pytest.raises(ValueError, match="insertion counters"):
             insertion_stats({"seed": 1})
 
+    def test_a_missing_arrived_counter_stays_missing(self) -> None:
+        """A zero would read as "nothing completed the corridor" — gridlock."""
+        stats = insertion_stats(_meta(arrived=None))
+        assert stats.arrived is None
+        assert json.loads(json.dumps(stats.to_dict()))["arrived"] is None
+        assert stats.verdict == OK_VERDICT  # the counter says nothing about insertion
+
+    def test_an_unnamed_ramp_is_labelled_by_its_scenario_index(self) -> None:
+        """``meta["ramps"][k]["index"]`` is what the label must resolve against.
+
+        Counting on-ramps only made the second on-ramp "ramp 1" although the
+        scenario's ramps[1] is the off-ramp in front of it.
+        """
+        big = 4 * STARVED_RAMP_MIN_PLANNED
+        stats = insertion_stats(
+            _meta(
+                ramps=[
+                    _ramp("", "on", big, 0, index=0),
+                    _ramp("OH-OFF", "off", big, 0, index=1),
+                    _ramp("", "on", big, 0, index=2),
+                ]
+            )
+        )
+        assert [r.name for r in stats.ramps] == ["ramp 0", "ramp 2"]
+        assert stats.starved_ramps == ("ramp 0", "ramp 2")
+
+    def test_an_unnamed_ramp_without_an_index_falls_back_to_its_position(self) -> None:
+        stats = insertion_stats(
+            _meta(ramps=[_ramp("OH-OFF", "off", 10, 0), _ramp("", "on", 10, 0)])
+        )
+        assert [r.name for r in stats.ramps] == ["ramp 1"]
+
     def test_to_dict_is_json_serialisable(self) -> None:
         stats = insertion_stats(_meta(ramps=[_ramp("OH-ON", "on", 200, 10)]))
         payload = json.loads(json.dumps(stats.to_dict()))
@@ -127,7 +170,8 @@ class TestAggregateInsertion:
         summary = aggregate_insertion(stats)
         assert summary is not None
         assert summary.n_runs == 3
-        assert (summary.planned, summary.departed, summary.arrived) == (3000, 2400, 2700)
+        assert (summary.planned, summary.departed) == (3000, 2400)
+        assert summary.mean_arrived == pytest.approx(900.0) and summary.n_with_arrived == 3
         assert summary.mean_departed_fraction == pytest.approx(0.8)
         assert summary.min_departed_fraction == pytest.approx(0.6)
         assert summary.verdict == "backlog: 20 % of planned vehicles never departed"
@@ -155,6 +199,25 @@ class TestAggregateInsertion:
         assert summary.mean_departed_fraction == pytest.approx(1.0)
         assert summary.min_departed_fraction == pytest.approx(1.0)
         assert summary.verdict == OK_VERDICT
+
+    def test_arrived_is_a_mean_over_the_runs_that_recorded_it(self) -> None:
+        """Summing a subset beside two full sums would read as vanished vehicles."""
+        summary = aggregate_insertion(
+            [
+                insertion_stats(_meta(arrived=900)),
+                insertion_stats(_meta(arrived=None)),
+                insertion_stats(_meta(arrived=700)),
+            ]
+        )
+        assert summary is not None
+        assert summary.n_runs == 3 and summary.n_with_arrived == 2
+        assert summary.mean_arrived == pytest.approx(800.0)
+        assert json.loads(json.dumps(summary.to_dict()))["mean_arrived"] == pytest.approx(800.0)
+
+    def test_no_run_recorded_arrival_says_so(self) -> None:
+        summary = aggregate_insertion([insertion_stats(_meta(arrived=None))])
+        assert summary is not None
+        assert summary.mean_arrived is None and summary.n_with_arrived == 0
 
     def test_stats_are_frozen(self) -> None:
         stats = insertion_stats(_meta())

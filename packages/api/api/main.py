@@ -412,7 +412,7 @@ def _require_done(row: dict[str, Any]) -> None:
 
 
 def _check_measurement_window(cfg: ScenarioConfig) -> None:
-    """Refuse a run whose warm-up swallows its whole duration.
+    """Refuse a **micro** run whose warm-up swallows its whole duration.
 
     Everything before ``sim.warmup_s`` is discarded from the metrics, so a
     duration at or below it leaves nothing to measure and every replicate
@@ -420,7 +420,14 @@ def _check_measurement_window(cfg: ScenarioConfig) -> None:
     request is unsatisfiable as posted — usually a shortened ``duration_s``
     override against a scenario calibrated with a long warm-up — so it is
     refused here instead of consuming a queue slot per replicate.
+
+    The macro tier is exempt: ``api.results.macro_metrics`` reports over the
+    whole run and never applies ``sim.warmup_s``, so a macro run with
+    ``duration_s <= warmup_s`` completes and yields metrics. Refusing it
+    would be a false refusal of a request the platform can satisfy.
     """
+    if cfg.tier == "macro":
+        return
     warmup = cfg.sim.warmup_s
     if warmup > 0 and cfg.sim.duration_s <= warmup:
         raise HTTPException(
@@ -762,6 +769,12 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
     (``MAX_SWEEP_CELLS``), and 200 replicates per cell (``MAX_REPLICATES``).
     The grid is a cartesian product, so the cell ceiling is checked from the
     four list lengths rather than by materializing them.
+
+    The measurement window is checked once for the whole grid
+    (:func:`_check_measurement_window`, the same check ``POST /runs``
+    makes): no cell patch touches ``sim``, so a micro grid whose overrides
+    leave ``duration_s`` at or below ``sim.warmup_s`` is one 422 naming the
+    two numbers rather than a fan-out of cells that each die on the worker.
     """
     store = _store(request)
     settings = _settings(request)
@@ -784,7 +797,7 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
         except StrategyError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
-            config, chash, _ = _validate_config(merged, settings)
+            config, chash, cell_cfg = _validate_config(merged, settings)
         except HTTPException as exc:
             raise HTTPException(
                 status_code=422,
@@ -798,6 +811,12 @@ def create_sweep(request: Request, body: SweepCreateRequest) -> SweepOut:
                     "errors": exc.detail,
                 },
             ) from exc
+        if not grid:
+            # No cell patch touches `sim`, so the measurement window is the
+            # same in every cell: check it once, on the first cell built, and
+            # refuse the whole grid rather than fanning out cells that would
+            # each die on the worker.
+            _check_measurement_window(cell_cfg)
         grid.append(
             {
                 "penetration": pen,

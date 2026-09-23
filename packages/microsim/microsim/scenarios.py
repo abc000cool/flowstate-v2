@@ -26,6 +26,7 @@ flows it carries are placeholders until the corridor is calibrated
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import pairwise
@@ -485,16 +486,20 @@ def _lane_hint(delta: int, x_m: float, ramps: Sequence[RampCandidate]) -> str:
     Returns:
         A short hint. Near a ramp the disagreement is read as ramp geometry:
         an extra compiled lane is the acceleration lane ``netconvert``'s
-        ``--ramps.guess`` builds, and an extra inventory lane is an
-        auxiliary/deceleration lane the detector station covers but the map
-        does not carry. Away from every ramp neither story applies and the
-        hint says only that the two sources differ.
+        ``--ramps.guess`` builds. A *missing* compiled lane has two readings
+        and the hint names both, because one of them is the defect this
+        check exists for: an auxiliary/deceleration lane the detector
+        station covers but the map does not carry, **or** an acceleration
+        lane the map does not carry at all — a mainline tagged straight
+        through its merge, which starves the on-ramp. Away from every ramp
+        neither story applies and the hint says only that the two sources
+        differ.
     """
     near_ramp = any(abs(float(r.x_m) - x_m) <= LANE_HINT_RAMP_WINDOW_M for r in ramps)
     if near_ramp and delta > 0:
         return "acceleration lane added by ramp guessing"
     if near_ramp and delta < 0:
-        return "auxiliary lane counted in the inventory"
+        return "auxiliary lane in the inventory, or an acceleration lane the map does not carry"
     return "map lane count differs from the inventory"
 
 
@@ -566,9 +571,15 @@ class CorridorBuild:
             if kind != "mainline":
                 continue
             try:
-                lanes = int(float(str(row.get("lanes")).strip()))
+                lane_value = float(str(row.get("lanes")).strip())
             except (TypeError, ValueError):
                 continue
+            # A non-integral count is not a lane count: "3.7" truncated to 3
+            # invented an agreement (or a disagreement) the inventory never
+            # stated. Drop the row as unusable rather than guess.
+            if not math.isfinite(lane_value) or lane_value != int(lane_value):
+                continue
+            lanes = int(lane_value)
             if lanes <= 0:
                 continue
             point = self.station_x.get(station_id)
@@ -643,7 +654,9 @@ class CorridorBuild:
             stations: The onboarding station table. When given, the report
                 ends with the lanes-vs-inventory block
                 (:meth:`lane_check`); without it that check is not run and
-                the block is omitted.
+                the block is omitted. An empty table, or one with no
+                comparable mainline row, says so rather than reporting
+                "0 of 0 ... match", which reads as a check that passed.
         """
         south, west, north, east = self.bbox
         lines = [
@@ -684,10 +697,17 @@ class CorridorBuild:
         if stations is not None:
             compared = self.lanes_compared(stations)
             mismatches = self.lane_check(stations)
-            lines.append(
-                f"  lanes vs inventory: {compared - len(mismatches)} of "
-                f"{compared} mainline stations match"
-            )
+            if not stations:
+                # "0 of 0 match" reads as a check that passed; nothing was
+                # checked at all.
+                lines.append("  lanes vs inventory: no station table given")
+            elif compared == 0:
+                lines.append("  lanes vs inventory: no comparable mainline stations")
+            else:
+                lines.append(
+                    f"  lanes vs inventory: {compared - len(mismatches)} of "
+                    f"{compared} mainline stations match"
+                )
             lines += [
                 f"    {m.station:>12s} x={m.x_m / 1000.0:7.3f} km  map {m.compiled_lanes} lanes, "
                 f"inventory {m.inventory_lanes} lanes  ({m.hint})"

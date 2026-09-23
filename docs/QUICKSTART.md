@@ -248,6 +248,19 @@ dashboard falls back to demo data and says so in an amber banner.
 A production dashboard is served by the API itself at `/` (same origin, no
 CORS, built into the Docker image).
 
+### From the dashboard
+
+Steps 2–5 above also exist as a panel: **First run** in the left rail (and at
+the top of Scenarios while the server holds no runs yet) walks the same path —
+connect, store the `ring_sugiyama` preset, launch the 2-replicate smoke run,
+watch it finish, open its metrics and heatmap, then generate the report and
+download the markdown. Each step reports `done` / `current` / `blocked` from
+what the API actually answered, with one line of why when it is blocked; a
+step is never ticked off demo data, so while the API is unreachable every step
+that would write says so and the buttons stay disabled. The 2-replicate note
+is the same one as above: it is a smoke test, and a headline number needs at
+least 20 seeds.
+
 ## 7. The Docker path
 
 For a pilot — Redis queue, a real worker, concurrency, a published port —

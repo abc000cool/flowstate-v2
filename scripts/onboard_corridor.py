@@ -32,7 +32,11 @@ column (:meth:`microsim.scenarios.CorridorBuild.lane_check`). It is the check
 of docs/ONBOARDING_MNDOT.md §7 — a map that tags the mainline straight through
 its merges starves the on-ramps, and finding that out costs one build here
 instead of a 20-seed battery. ``--fail-on-lane-mismatch`` makes a disagreement
-larger than ``--lane-tolerance`` exit 3 so a batch script stops there.
+larger than ``--lane-tolerance`` (default 0: every disagreement) exit 3 so a
+batch script stops there. One disagreement is exempt by default — a single
+*extra* compiled lane at a guessed ramp, which is the acceleration lane
+``netconvert`` was asked to build rather than a defect; ``--strict-lanes``
+fails on that one too.
 
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
@@ -45,11 +49,17 @@ from __future__ import annotations
 
 import argparse
 import csv
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from flowstate_core.units import veh_h_to_veh_s
-from microsim.scenarios import MAX_STATION_OFFSET_M, CorridorBuild, corridor_from_bbox
+from microsim.scenarios import (
+    MAX_STATION_OFFSET_M,
+    CorridorBuild,
+    LaneMismatch,
+    corridor_from_bbox,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -61,6 +71,36 @@ STATION_OUT_COLUMNS: tuple[str, ...] = ("x_m", "offset_m", "edge_id", "lane_pos_
 #: code (not 1) so a batch script can tell a lane disagreement apart from a
 #: build that failed outright.
 LANE_MISMATCH_EXIT: int = 3
+
+#: The one hint (:func:`microsim.scenarios._lane_hint`) that describes a
+#: disagreement the build itself asked for: ``--ramps.guess`` adds the
+#: acceleration lane the inventory does not list.
+ACCEL_LANE_HINT: str = "acceleration lane added by ramp guessing"
+
+
+def failing_mismatches(
+    mismatches: Sequence[LaneMismatch], *, strict: bool = False
+) -> list[LaneMismatch]:
+    """The mismatches ``--fail-on-lane-mismatch`` exits on.
+
+    A tolerance cannot separate the benign disagreement from the dangerous
+    one: both are one lane wide, and a tolerance of 1 that hides the
+    acceleration lane also hides a mainline tagged straight through its
+    merge — the defect the check exists for. The benign case is suppressed
+    by its *hint class* instead: exactly one extra compiled lane at a
+    guessed ramp (``delta == +1`` with :data:`ACCEL_LANE_HINT`).
+
+    Args:
+        mismatches: What :meth:`CorridorBuild.lane_check` reported.
+        strict: ``--strict-lanes``: report the acceleration lane as well,
+            for a corridor whose inventory is known to include it.
+
+    Returns:
+        The reportable subset, in the order given.
+    """
+    if strict:
+        return list(mismatches)
+    return [m for m in mismatches if not (m.delta == 1 and m.hint == ACCEL_LANE_HINT)]
 
 
 def read_stations(path: Path) -> list[dict[str, str]]:
@@ -196,15 +236,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--lane-tolerance",
         type=int,
-        default=1,
+        default=0,
         help="lane difference between the compiled map and the inventory that "
-        "--fail-on-lane-mismatch tolerates (default: 1)",
+        "--fail-on-lane-mismatch tolerates (default: 0, i.e. every disagreement "
+        "is reported)",
     )
     parser.add_argument(
         "--fail-on-lane-mismatch",
         action="store_true",
         help="exit 3 when any mainline station's compiled lane count differs "
-        "from the inventory by more than --lane-tolerance",
+        "from the inventory by more than --lane-tolerance; one extra compiled "
+        "lane at a guessed ramp is the acceleration lane and does not count",
+    )
+    parser.add_argument(
+        "--strict-lanes",
+        action="store_true",
+        help="count the guessed acceleration lane as a mismatch too (with --fail-on-lane-mismatch)",
     )
     return parser.parse_args(argv)
 
@@ -246,7 +293,9 @@ def main(argv: list[str] | None = None) -> int:
         f"({args.inflow_veh_h:g} veh/h) and every ramp carries 0 veh/h — "
         "calibrate (CLAUDE.md §6) before any claim about this corridor."
     )
-    over = build.lane_check(stations, tolerance=args.lane_tolerance)
+    over = failing_mismatches(
+        build.lane_check(stations, tolerance=args.lane_tolerance), strict=args.strict_lanes
+    )
     if over and args.fail_on_lane_mismatch:
         print(
             f"  FAIL: {len(over)} mainline station(s) differ from the inventory by more "

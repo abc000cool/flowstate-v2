@@ -32,6 +32,7 @@ from __future__ import annotations
 import dataclasses
 import math
 import os
+import re
 import subprocess
 import urllib.parse
 import urllib.request
@@ -680,6 +681,20 @@ def accel_lane_end(
             )
 
 
+def _safe_file_stem(edge_id: str) -> str:
+    """An edge id made safe to embed in a file name.
+
+    Args:
+        edge_id: A compiled edge id, which may hold ``#``, ``.``, ``/`` or
+            any other character SUMO allows and a file name does not.
+
+    Returns:
+        The id with every character outside ``[A-Za-z0-9_-]`` replaced by
+        ``_``.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]", "_", edge_id)
+
+
 def lane_end_patch_file(
     workdir: Path, attach_edge: str, next_edge: str, to_lanes: Sequence[int] = (0,)
 ) -> Path:
@@ -693,6 +708,13 @@ def lane_end_patch_file(
     an OSM re-import: connection files are read before ramp guessing runs, and
     netconvert refuses a connection naming an edge that does not exist yet.
 
+    The edge id goes into the file *name*, so every character outside
+    ``[A-Za-z0-9_-]`` is replaced by ``_``: an OSM id may carry ``#``, ``.``
+    or ``/``, and a dot in particular would give the file a suffix that
+    :func:`_patch_args` could not route (and a slash a path that does not
+    exist). The id inside the XML is untouched — that is what netconvert
+    matches on.
+
     Args:
         workdir: Directory the patch file is written into.
         attach_edge: Edge whose lane 0 is terminated.
@@ -703,7 +725,7 @@ def lane_end_patch_file(
         The written ``.con.xml`` path.
     """
     workdir.mkdir(parents=True, exist_ok=True)
-    path = workdir / f"accel_end_{attach_edge.replace('#', '_')}.con.xml"
+    path = workdir / f"accel_end_{_safe_file_stem(attach_edge)}.con.xml"
     lines = ["<connections>"]
     for lane in to_lanes:
         lines.append(
@@ -722,6 +744,10 @@ def _patch_args(patch_files: Sequence[Path]) -> list[str]:
     'connection-files' was already set"), which a corridor with two patched
     merges would otherwise produce.
 
+    The kind is read from the file's **last two** suffixes, not from its
+    first dot: a name built around an edge id that itself holds a dot is a
+    ``.con.xml`` patch all the same.
+
     Args:
         patch_files: ``*.nod.xml`` / ``*.edg.xml`` / ``*.con.xml`` patches.
 
@@ -733,12 +759,11 @@ def _patch_args(patch_files: Sequence[Path]) -> list[str]:
     """
     by_flag: dict[str, list[str]] = {}
     for patch in patch_files:
-        name = Path(patch).name
         flag = {
             ".nod.xml": "--node-files",
             ".edg.xml": "--edge-files",
             ".con.xml": "--connection-files",
-        }.get(name[name.find(".") :] if name.count(".") >= 2 else "", None)
+        }.get("".join(Path(patch).suffixes[-2:]), None)
         if flag is None:
             raise ValueError(f"patch file {patch} must end in .nod.xml, .edg.xml or .con.xml")
         by_flag.setdefault(flag, []).append(str(patch))

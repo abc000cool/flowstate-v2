@@ -128,7 +128,11 @@ class InsertionStats:
     Attributes:
         planned: Vehicles in the run's demand plan (``n_vehicles_planned``).
         departed: Vehicles that entered the network (``n_vehicles_departed``).
-        arrived: Vehicles that left it again (``n_vehicles_arrived``).
+        arrived: Vehicles that left it again (``n_vehicles_arrived``), or
+            None when the run did not record the counter — runs written
+            before it existed, and hand-written fixtures. A zero there would
+            read as "nothing completed the corridor", the signature of a
+            gridlocked run, so the absence is carried rather than filled.
         departed_fraction: ``departed / planned``; NaN when nothing was
             planned.
         ramps: One entry per on-ramp, in scenario order (empty for networks
@@ -143,7 +147,7 @@ class InsertionStats:
 
     planned: int
     departed: int
-    arrived: int
+    arrived: int | None
     departed_fraction: float
     ramps: tuple[RampInsertion, ...]
     starved_ramps: tuple[str, ...]
@@ -170,7 +174,12 @@ class InsertionSummary:
         n_runs: Replicates contributing.
         planned: Planned vehicles summed over them.
         departed: Departed vehicles summed over them.
-        arrived: Arrived vehicles summed over them.
+        mean_arrived: Mean arrived count over the replicates that recorded
+            one, or None when none did. A *mean*, not a sum, precisely
+            because it may rest on fewer replicates than
+            :attr:`planned` and :attr:`departed` do — a partial sum beside
+            two full ones would read as vehicles that vanished.
+        n_with_arrived: How many replicates :attr:`mean_arrived` rests on.
         mean_departed_fraction: Mean of the per-replicate fractions (NaN
             contributions dropped, as :func:`mean_finite` does).
         min_departed_fraction: The worst replicate's fraction; NaN when none
@@ -184,7 +193,8 @@ class InsertionSummary:
     n_runs: int
     planned: int
     departed: int
-    arrived: int
+    mean_arrived: float | None
+    n_with_arrived: int
     mean_departed_fraction: float
     min_departed_fraction: float
     starved_ramps: tuple[str, ...]
@@ -196,7 +206,8 @@ class InsertionSummary:
             "n_runs": self.n_runs,
             "planned": self.planned,
             "departed": self.departed,
-            "arrived": self.arrived,
+            "mean_arrived": self.mean_arrived,
+            "n_with_arrived": self.n_with_arrived,
             "mean_departed_fraction": self.mean_departed_fraction,
             "min_departed_fraction": self.min_departed_fraction,
             "starved_ramps": list(self.starved_ramps),
@@ -266,14 +277,21 @@ def insertion_stats(meta: Mapping[str, Any]) -> InsertionStats:
     raw_ramps = meta.get("ramps")
     ramps: list[RampInsertion] = []
     if isinstance(raw_ramps, list):
-        for entry in raw_ramps:
+        for position, entry in enumerate(raw_ramps):
             if not isinstance(entry, dict) or str(entry.get("kind", "")) != "on":
                 continue
             r_planned = _count(entry, "n_planned") or 0
             r_departed = _count(entry, "n_departed") or 0
+            # An unnamed ramp is labelled by its index in the scenario's ramp
+            # list, the key `meta["ramps"][k]["index"]` carries. Numbering the
+            # on-ramps only produced a label that resolved against nothing:
+            # "ramp 1" was the second on-ramp, which on a corridor with an
+            # off-ramp before it is ramps[2].
+            index = _count(entry, "index")
             ramps.append(
                 RampInsertion(
-                    name=str(entry.get("name", "")) or f"ramp {len(ramps)}",
+                    name=str(entry.get("name", ""))
+                    or f"ramp {position if index is None else index}",
                     planned=r_planned,
                     departed=r_departed,
                     fraction=(r_departed / r_planned) if r_planned > 0 else math.nan,
@@ -284,7 +302,7 @@ def insertion_stats(meta: Mapping[str, Any]) -> InsertionStats:
     return InsertionStats(
         planned=planned,
         departed=departed,
-        arrived=0 if arrived is None else arrived,
+        arrived=arrived,
         departed_fraction=fraction,
         ramps=tuple(ramps),
         starved_ramps=starved,
@@ -312,11 +330,13 @@ def aggregate_insertion(stats: Sequence[InsertionStats]) -> InsertionSummary | N
         for name in s.starved_ramps:
             starved.setdefault(name, None)
     mean_fraction = mean_finite(fractions)
+    with_arrived = [s.arrived for s in stats if s.arrived is not None]
     return InsertionSummary(
         n_runs=len(stats),
         planned=sum(s.planned for s in stats),
         departed=sum(s.departed for s in stats),
-        arrived=sum(s.arrived for s in stats),
+        mean_arrived=(sum(with_arrived) / len(with_arrived)) if with_arrived else None,
+        n_with_arrived=len(with_arrived),
         mean_departed_fraction=mean_fraction,
         min_departed_fraction=min(finite) if finite else math.nan,
         starved_ramps=tuple(starved),

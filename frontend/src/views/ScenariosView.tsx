@@ -41,6 +41,7 @@ import type { CreateRunRequest, Network, OSMNetwork, ScenarioConfig } from '../a
 import { useAppState } from '../components/AppContext';
 import { SchematicThumb } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { GuidedFirstRun } from '../components/GuidedFirstRun';
 import { toast, toastError } from '../components/toast';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import {
@@ -438,6 +439,10 @@ export function ScenariosView(): JSX.Element {
 
   return (
     <div className="view">
+      {/* the guided QUICKSTART path, shown only once this server has itself
+          reported that it holds no runs; the rail's "First run" always has it */}
+      <GuidedFirstRun onlyWhenEmpty />
+
       <div className="view-title">
         Scenario Library <span className="count mono">{items.length} configs</span>
         {showingDemo && (

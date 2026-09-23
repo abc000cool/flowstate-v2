@@ -1339,3 +1339,98 @@ td .fail-reason {
   flex-direction: column;
   gap: 4px;
 }
+
+/* =================== guided first run (QUICKSTART) ================== */
+/* A checklist, not a wizard: every step states done / current / blocked and,
+   when blocked, one line of why. Nothing here is styled to look finished
+   before the API has said it is. */
+
+.guided-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.guided-step {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: var(--s2);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--panel-edge);
+}
+
+.guided-step:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.guided-step.blocked {
+  opacity: 0.72;
+}
+
+.guided-step .g-num {
+  font-size: 11px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--faint);
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  height: 20px;
+  background: var(--panel-inset);
+}
+
+.guided-step.done .g-num {
+  color: var(--ok);
+  border-color: rgba(88, 214, 163, 0.35);
+}
+
+.guided-step.current .g-num {
+  color: var(--accent);
+  border-color: rgba(79, 209, 224, 0.35);
+}
+
+.guided-step .g-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.guided-step .g-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.guided-step .g-title {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.guided-step .g-what {
+  line-height: 1.55;
+}
+
+.guided-step .g-why {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--amber);
+  border-left: 2px solid rgba(245, 184, 92, 0.45);
+  padding-left: 8px;
+  word-break: break-word;
+}
+
+.chip.blocked {
+  color: var(--faint);
+  border-color: var(--panel-edge);
+  background: var(--panel-inset);
+}
+
+.chip.blocked .dot {
+  background: var(--faint);
+}

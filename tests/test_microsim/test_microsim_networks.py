@@ -8,7 +8,7 @@ import math
 import pytest
 import sumolib
 
-from microsim import corridor, osm_import, ring
+from microsim import corridor, networks, osm_import, ring
 
 pytestmark = pytest.mark.integration
 
@@ -149,3 +149,31 @@ class TestNetBundleMath:
         chord = 2.0 * (RING_C / (2.0 * math.pi)) * math.sin(math.pi / 8)
         assert chord < seg  # geometry sanity: chord < arc
         assert bundle.edge_lengths == pytest.approx(tuple([seg] * 8))
+
+
+class TestLaneEndPatchFile:
+    """An edge id is data, not a file name: it may hold a dot (or a slash).
+
+    The patch's *kind* is read from its last two suffixes, so a compiled id
+    like ``103.5-AddedOnRampEdge`` still produces a routable ``.con.xml``.
+    """
+
+    def test_a_dotted_edge_id_is_sanitised_and_still_routes(self, tmp_path):
+        path = networks.lane_end_patch_file(tmp_path / "patches", "103.5#2/a", "104")
+        assert path.name == "accel_end_103_5_2_a.con.xml"
+        assert path.suffixes[-2:] == [".con", ".xml"]
+        # The id inside the XML is untouched: netconvert matches on that.
+        assert 'from="103.5#2/a"' in path.read_text()
+        assert networks._patch_args([path]) == ["--connection-files", str(path)]
+
+    def test_the_kind_comes_from_the_last_two_suffixes(self, tmp_path):
+        nod = tmp_path / "a.b.nod.xml"
+        edg = tmp_path / "x.edg.xml"
+        assert networks._patch_args([nod, edg]) == [
+            "--node-files",
+            str(nod),
+            "--edge-files",
+            str(edg),
+        ]
+        with pytest.raises(ValueError, match="must end in"):
+            networks._patch_args([tmp_path / "a.con.txt"])

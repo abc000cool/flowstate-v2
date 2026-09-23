@@ -166,22 +166,28 @@ def test_failed_run_records_error_and_blocks_metrics(client: TestClient) -> None
     assert r.status_code == 409
 
 
+def _micro_warmup_config() -> dict:
+    """A micro corridor with a long warm-up (600 s of run, 120 s discarded)."""
+    return {
+        "name": "micro_warmup_window",
+        "tier": "micro",
+        "network": {"kind": "corridor", "length_m": 1000.0, "lanes": 1, "inflow": [[0.0, 0.2]]},
+        "sim": {"duration_s": 600.0, "step_length_s": 0.5, "output_hz": 1.0, "warmup_s": 120.0},
+        "seed": 7,
+        "replicates": 1,
+    }
+
+
 def test_duration_inside_the_warmup_is_refused_not_queued(client: TestClient) -> None:
-    """A run with nothing left to measure is refused, not enqueued to fail.
+    """A micro run with nothing left to measure is refused, not enqueued.
 
-    Everything before ``sim.warmup_s`` is discarded from the metrics, so a
-    duration at or below it kills every replicate on the worker ("warm-up N s
-    leaves no measurement window"). Typically a shortened ``duration_s``
-    override against a scenario calibrated with a long warm-up.
+    Everything before ``sim.warmup_s`` is discarded from the micro metrics,
+    so a duration at or below it kills every replicate on the worker
+    ("warm-up N s leaves no measurement window"). Typically a shortened
+    ``duration_s`` override against a scenario calibrated with a long
+    warm-up. Nothing is simulated here: the refusal precedes the enqueue.
     """
-    cfg = macro_corridor_config(
-        name="macro_warmup_window",
-        sim={"duration_s": 600.0, "step_length_s": 0.5, "output_hz": 1.0, "warmup_s": 120.0},
-    )
-    scenario = post_scenario(client, cfg)
-    # the scenario as stored is fine: 600 s of run, 120 s of warm-up
-    post_run(client, scenario["scenario_id"])
-
+    scenario = post_scenario(client, _micro_warmup_config())
     r = client.post(
         "/api/v1/runs",
         json={"scenario_id": scenario["scenario_id"], "overrides": {"sim": {"duration_s": 120.0}}},
@@ -191,9 +197,53 @@ def test_duration_inside_the_warmup_is_refused_not_queued(client: TestClient) ->
     detail = r.json()["detail"]
     assert "no measurement window" in detail
     assert "120" in detail
-    # and nothing was queued: the only run is the good one above
-    listing = client.get("/api/v1/runs", headers=HEADERS).json()
-    assert len(listing) == 1
+    # and nothing was queued
+    assert client.get("/api/v1/runs", headers=HEADERS).json() == []
+
+
+def test_a_sweep_grid_with_no_measurement_window_is_one_refusal(client: TestClient) -> None:
+    """The grid is refused once, before any cell fans out.
+
+    ``sim`` is identical in every cell, so the window check that ``POST
+    /runs`` makes belongs to the grid as a whole: without it a 2 x 2 grid
+    queued four runs that each died on the worker.
+    """
+    scenario = post_scenario(client, _micro_warmup_config())
+    r = client.post(
+        "/api/v1/sweeps",
+        json={
+            "scenario_id": scenario["scenario_id"],
+            "penetrations": [0.02, 0.05],
+            "compliances": [0.5, 1.0],
+            "controllers": ["follower_stopper"],
+            "replicates": 1,
+            "overrides": {"sim": {"duration_s": 120.0}},
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 422, r.text
+    detail = r.json()["detail"]
+    assert "no measurement window" in detail and "120" in detail
+    # nothing fanned out: no sweep, no runs
+    assert client.get("/api/v1/runs", headers=HEADERS).json() == []
+
+
+def test_the_macro_tier_is_exempt_from_the_window_check(client: TestClient) -> None:
+    """Macro metrics cover the whole run, so a warm-up cannot swallow it.
+
+    ``api.results.macro_metrics`` never applies ``sim.warmup_s``; refusing a
+    macro run with ``duration_s <= warmup_s`` was a false refusal of a
+    request the screening tier satisfies.
+    """
+    cfg = macro_corridor_config(
+        name="macro_warmup_window",
+        sim={"duration_s": 120.0, "step_length_s": 0.5, "output_hz": 1.0, "warmup_s": 120.0},
+    )
+    scenario = post_scenario(client, cfg)
+    run = post_run(client, scenario["scenario_id"])
+    assert run["status"] == "done", run["error"]
+    r = client.get(f"/api/v1/runs/{run['run_id']}/metrics", headers=HEADERS)
+    assert r.status_code == 200, r.text
 
 
 def test_missing_run_404(client: TestClient) -> None:

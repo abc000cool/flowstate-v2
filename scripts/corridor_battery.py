@@ -117,14 +117,23 @@ class InsertionGuard:
         """Report one finished replicate; return an abort reason or None."""
         stats = insertion_stats(load_meta(paths.run_dir))
         self.stats.append((seed, stats))
+        arrived = "arrival not recorded" if stats.arrived is None else f"arrived {stats.arrived}"
         print(
             f"    seed {seed}: departed {stats.departed}/{stats.planned} "
-            f"({stats.departed_fraction:.3f}), arrived {stats.arrived} — {stats.verdict}",
+            f"({stats.departed_fraction:.3f}), {arrived} — {stats.verdict}",
             flush=True,
         )
         if self.threshold <= 0.0 or len(self.stats) > 1:
             return None
-        if stats.departed_fraction >= self.threshold or not math.isfinite(stats.departed_fraction):
+        if not math.isfinite(stats.departed_fraction):
+            # No planned vehicles: the departed fraction is undefined, so the
+            # threshold can never be met. An empty demand plan is the most
+            # complete insertion failure there is, not a pass.
+            return (
+                f"{stats.verdict} (no vehicles were planned, so the departed fraction "
+                f"--abort-if-departed-below {self.threshold:.3f} asks for is undefined)"
+            )
+        if stats.departed_fraction >= self.threshold:
             return None
         return (
             f"{stats.verdict} (departed fraction {stats.departed_fraction:.3f} < "

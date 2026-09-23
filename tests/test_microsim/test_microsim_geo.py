@@ -546,5 +546,8 @@ class TestOnboardCLILaneCheck:
         assert code == cli.LANE_MISMATCH_EXIT == 3
         assert "map 3 lanes, inventory 4 lanes" in out
         assert "FAIL: 1 mainline station(s) differ" in out and "S2 (map 3, inventory 4)" in out
-        # One lane of slack is the default, so the same build passes without it.
-        assert cli.main([*argv, "--fail-on-lane-mismatch"]) == 0
+        # The tolerance defaults to 0, so a missing mainline lane fails
+        # without it too: a one-lane slack would have hidden exactly this.
+        assert cli.main([*argv, "--fail-on-lane-mismatch"]) == cli.LANE_MISMATCH_EXIT
+        capsys.readouterr()
+        assert cli.main([*argv, "--fail-on-lane-mismatch", "--lane-tolerance", "1"]) == 0

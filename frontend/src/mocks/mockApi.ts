@@ -1126,16 +1126,16 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
   ],
 };
 
-interface CorridorRow {
+interface MockCorridorRecord {
   out: CorridorOut;
   createdAt: number;
 }
 
-const corridors = new Map<string, CorridorRow>();
+const corridors = new Map<string, MockCorridorRecord>();
 
 /** `CorridorOut` view of a row: the demo job walks the real stage list, so a
  * view polling to completion sees the same progression a server produces. */
-function corridorView(row: CorridorRow): CorridorOut {
+function corridorView(row: MockCorridorRecord): CorridorOut {
   const stages = ['extract', 'network', 'observations', 'demand', 'install'];
   const elapsed = (Date.now() - row.createdAt) / 1000;
   const index = Math.floor(elapsed / 0.4);
@@ -1162,7 +1162,7 @@ export async function mockCreateCorridor(form: FormData): Promise<CorridorOut> {
   await latency();
   const name = String(form.get('name') ?? 'demo_corridor');
   const id = `cor_${Math.random().toString(16).slice(2, 14)}`;
-  const row: CorridorRow = {
+  const row: MockCorridorRecord = {
     createdAt: Date.now(),
     out: {
       corridor_id: id,

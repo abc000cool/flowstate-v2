@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -306,7 +307,11 @@ class TestLaneCheck:
         assert found["S_merge"].hint == "acceleration lane added by ramp guessing"
         assert found["S_merge"].x_m == pytest.approx(1200.0) and found["S_merge"].delta == 1
         assert found["S_far"].hint == "map lane count differs from the inventory"
-        assert found["S_exit"].hint == "auxiliary lane counted in the inventory"
+        # A missing compiled lane near a ramp has two readings and the hint
+        # must name the one the check exists for as well.
+        assert found["S_exit"].hint == (
+            "auxiliary lane in the inventory, or an acceleration lane the map does not carry"
+        )
         assert found["S_exit"].delta == -1
         assert [m.station for m in build.lane_check(_INVENTORY)] == ["S_merge", "S_far", "S_exit"]
 
@@ -333,9 +338,101 @@ class TestLaneCheck:
         assert [m.station for m in build.lane_check(rows, tolerance=1)] == ["S_two"]
         assert build.lane_check(rows, tolerance=2) == []
 
+    def test_a_non_integral_lane_count_is_unusable_not_truncated(self):
+        build = _synthetic_build()
+        # 3.7 truncated to 3 used to invent an agreement at S_ok (3 lanes)
+        # and a disagreement at S_merge (4); neither is in the inventory.
+        rows = [
+            {"station": "S_ok", "lanes": "3.7", "kind": "mainline"},
+            {"station": "S_merge", "lanes": "3.7", "kind": "mainline"},
+            {"station": "S_far", "lanes": "nan", "kind": "mainline"},
+        ]
+        assert build.lanes_compared(rows) == 0
+        assert build.lane_check(rows) == []
+        # an integral value written as a float is still a lane count
+        assert build.lanes_compared([{"station": "S_ok", "lanes": "3.0"}]) == 1
+
     def test_summary_carries_the_block_only_when_stations_are_given(self):
         build = _synthetic_build()
         assert "lanes vs inventory" not in build.summary()
         text = build.summary(_INVENTORY)
         assert "lanes vs inventory: 1 of 4 mainline stations match" in text
         assert "map 4 lanes, inventory 3 lanes  (acceleration lane added by ramp guessing)" in text
+
+    def test_summary_does_not_call_an_unchecked_table_a_match(self):
+        build = _synthetic_build()
+        # "0 of 0 mainline stations match" reads as a check that passed.
+        assert "lanes vs inventory: no station table given" in build.summary([])
+        assert "of 0 mainline stations match" not in build.summary([])
+        uncomparable = [{"station": "R_on", "lanes": 1, "kind": "on_ramp"}]
+        assert "lanes vs inventory: no comparable mainline stations" in build.summary(uncomparable)
+
+
+def _load_onboard_cli():
+    """Import ``scripts/onboard_corridor.py`` by path (``scripts/`` is not a package)."""
+    path = Path(__file__).resolve().parents[2] / "scripts" / "onboard_corridor.py"
+    spec = importlib.util.spec_from_file_location("_onboard_corridor_cli", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestFailingMismatches:
+    """Which disagreements ``--fail-on-lane-mismatch`` exits on.
+
+    A tolerance cannot tell the benign one-lane case from the dangerous one
+    (both are one lane wide), so the acceleration lane is suppressed by hint
+    class and the tolerance stays at 0.
+    """
+
+    def _mismatch(self, station, compiled, inventory, hint):
+        return scenarios.LaneMismatch(
+            station=station,
+            x_m=1000.0,
+            compiled_lanes=compiled,
+            inventory_lanes=inventory,
+            hint=hint,
+        )
+
+    def test_the_guessed_acceleration_lane_is_not_a_failure(self):
+        cli = _load_onboard_cli()
+        accel = self._mismatch("S_merge", 4, 3, cli.ACCEL_LANE_HINT)
+        assert cli.failing_mismatches([accel]) == []
+        # ... unless it is asked for explicitly
+        assert cli.failing_mismatches([accel], strict=True) == [accel]
+
+    def test_every_other_disagreement_survives_at_tolerance_zero(self):
+        cli = _load_onboard_cli()
+        missing = self._mismatch(
+            "S_merge",
+            3,
+            4,
+            "auxiliary lane in the inventory, or an acceleration lane the map does not carry",
+        )
+        two_lanes = self._mismatch("S_wide", 5, 3, cli.ACCEL_LANE_HINT)  # delta +2
+        plain = self._mismatch("S_far", 4, 3, "map lane count differs from the inventory")
+        got = cli.failing_mismatches([missing, two_lanes, plain])
+        assert [m.station for m in got] == ["S_merge", "S_wide", "S_far"]
+
+    def test_the_tolerance_defaults_to_zero(self):
+        cli = _load_onboard_cli()
+        args = cli.parse_args(
+            [
+                "--name",
+                "x",
+                "--bbox",
+                "1",
+                "2",
+                "3",
+                "4",
+                "--bearing",
+                "90",
+                "--workdir",
+                "w",
+                "--out",
+                "x.yaml",
+            ]
+        )
+        assert args.lane_tolerance == 0 and args.strict_lanes is False

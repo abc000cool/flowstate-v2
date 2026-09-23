@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppStateProvider } from './components/AppContext';
+import { GuidedFirstRun } from './components/GuidedFirstRun';
 import { Layout } from './components/Layout';
 import { OnboardView } from './views/OnboardView';
 import { ReportsView } from './views/ReportsView';
@@ -14,6 +15,9 @@ export function App(): JSX.Element {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/scenarios" replace />} />
+          {/* the rail's "First run": the guided panel on its own, always
+              shown (the Scenarios mount hides itself once the server has runs) */}
+          <Route path="/first-run" element={<GuidedFirstRun standalone />} />
           <Route path="/onboard" element={<OnboardView />} />
           <Route path="/scenarios" element={<ScenariosView />} />
           <Route path="/runs" element={<RunsView />} />

@@ -19,6 +19,17 @@ import { Toasts } from './toast';
 
 const NAV = [
   {
+    // first for a first-time tester: the guided QUICKSTART path
+    to: '/first-run',
+    label: 'First run',
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
+        <circle cx="7" cy="7" r="5.2" />
+        <path d="M5.6 4.6 L9.6 7 L5.6 9.4 Z" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
+  {
     to: '/onboard',
     label: 'Onboard corridor',
     icon: (
