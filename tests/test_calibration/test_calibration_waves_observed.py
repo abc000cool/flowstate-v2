@@ -610,3 +610,133 @@ class TestConcatenateDates:
             concatenate_dates({"d1": {"A": [1.0], "B": [1.0, 2.0]}}, gap_bins=0)
         with pytest.raises(ValueError, match="gap_bins"):
             concatenate_dates({"d1": {"A": [1.0]}}, gap_bins=-1)
+
+
+class TestRefinedLagFloor:
+    """The resolution floor applies to the lag the speed is divided by."""
+
+    @staticmethod
+    def _fake_correlations(
+        by_lag: dict[int, float],
+    ) -> Any:
+        """A ``_lag_correlations`` stand-in with a hand-made peak."""
+
+        def fake(down: Any, up: Any, analysed: Any, max_lag: int, barrier: Any) -> tuple[Any, Any]:
+            correlations = np.full(2 * max_lag + 1, math.nan)
+            counts = np.zeros(2 * max_lag + 1, dtype=np.int64)
+            for lag, r in by_lag.items():
+                correlations[lag + max_lag] = r
+                counts[lag + max_lag] = 100
+            return correlations, counts
+
+        return fake
+
+    def _estimate(self, monkeypatch: pytest.MonkeyPatch, by_lag: dict[int, float]) -> Any:
+        from calibration import waves_observed
+
+        monkeypatch.setattr(waves_observed, "_lag_correlations", self._fake_correlations(by_lag))
+        series: dict[str, Any] = {
+            "UP": _wave_series(PLANTED_LAG_BINS, seed=1),
+            "DOWN": _wave_series(0, seed=2),
+        }
+        result = detector_wave_speed(
+            series, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, max_lag_s=10 * DT_S
+        )
+        return result.pairs[0]
+
+    def test_a_two_bin_peak_pulled_below_the_floor_is_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """0.90 / 0.92 / 0.40 at lags 1 / 2 / 3 refines to ≈ 1.54 bins.
+
+        The integer peak clears :data:`MIN_PEAK_LAG_BINS`, but the parabola
+        through it and its neighbours puts the lag at 1.54 bins — below the
+        grid's resolution, and the speed divided out of it (≈ 59 km/h here)
+        is the artefact the floor exists to refuse.
+        """
+        pair = self._estimate(monkeypatch, {1: 0.90, 2: 0.92, 3: 0.40})
+        assert pair.lag_bins == MIN_PEAK_LAG_BINS  # the integer peak passed
+        assert not pair.used
+        assert pair.reason.startswith("lag below resolution")
+        assert math.isnan(pair.speed_kmh) and math.isnan(pair.lag_s)
+
+    def test_a_two_bin_peak_pushed_above_the_floor_is_kept(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The mirror image: the refinement moves the lag up, and it is used."""
+        pair = self._estimate(monkeypatch, {1: 0.40, 2: 0.92, 3: 0.90})
+        assert pair.used and pair.lag_bins == MIN_PEAK_LAG_BINS
+        assert pair.lag_s > MIN_PEAK_LAG_BINS * DT_S
+        assert pair.speed_kmh == pytest.approx(DX_M / pair.lag_s * 3.6)
+
+
+class TestSeparatorWidth:
+    """A separator narrower than one bin is a refusal, not a rounding."""
+
+    def _series(self) -> dict[str, Any]:
+        return {"UP": _wave_series(PLANTED_LAG_BINS, seed=1), "DOWN": _wave_series(0, seed=2)}
+
+    def test_a_sub_bin_gap_is_refused_rather_than_rounded_away(self) -> None:
+        """``round`` would make it 0 — no barrier at all, recorded as ``gap_s: 0``."""
+        with pytest.raises(ValueError, match="at least one bin"):
+            detector_wave_speed(
+                self._series(), {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, gap_s=DT_S / 4.0
+            )
+
+    def test_leave_one_date_out_refuses_it_too(self) -> None:
+        """It concatenates before the estimator ever sees the width."""
+        by_date: dict[str, dict[str, Any]] = {
+            "20260901": self._series(),
+            "20260902": self._series(),
+        }
+        with pytest.raises(ValueError, match="at least one bin"):
+            leave_one_date_out(by_date, {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, gap_s=DT_S / 4.0)
+        with pytest.raises(ValueError, match="dt_s"):
+            leave_one_date_out(by_date, {"UP": 0.0, "DOWN": DX_M}, dt_s=0.0)
+
+    def test_one_whole_bin_is_accepted(self) -> None:
+        result = detector_wave_speed(
+            self._series(), {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, gap_s=DT_S
+        )
+        assert result.gap_s == pytest.approx(DT_S)
+
+
+class TestEventsInsideTheDetrendWindow:
+    """An episode the detrending leaves undefined is not evidence."""
+
+    #: 1200 s of moving mean at 30 s bins is a 20-bin half-window, so an
+    #: episode starting at bin 2 lies wholly inside it.
+    STARTS: ClassVar[tuple[int, ...]] = (2, 160, 260)
+
+    def _series(self) -> dict[str, Any]:
+        return {
+            "UP": _wave_series(PLANTED_LAG_BINS, seed=1, starts=self.STARTS),
+            "DOWN": _wave_series(0, seed=2, starts=self.STARTS),
+        }
+
+    def test_an_episode_in_the_half_window_does_not_count_towards_min_events(self) -> None:
+        """It pairs with nothing at any lag, so it cannot satisfy the floor."""
+        result = detector_wave_speed(
+            self._series(), {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, min_events=len(self.STARTS)
+        )
+        pair = result.pairs[0]
+        assert pair.n_events == len(self.STARTS) - 1
+        assert not pair.used and pair.reason.startswith("fewer than min_events")
+
+    def test_the_usable_episodes_still_carry_the_pair(self) -> None:
+        result = detector_wave_speed(
+            self._series(), {"UP": 0.0, "DOWN": DX_M}, dt_s=DT_S, min_events=len(self.STARTS) - 1
+        )
+        assert result.pairs[0].used
+        assert result.pairs[0].speed_kmh == pytest.approx(PLANTED_KMH, rel=0.10)
+
+    def test_without_detrending_every_episode_counts(self) -> None:
+        """The count follows the step that defines usability, not the threshold."""
+        result = detector_wave_speed(
+            self._series(),
+            {"UP": 0.0, "DOWN": DX_M},
+            dt_s=DT_S,
+            min_events=len(self.STARTS),
+            detrend_s=0.0,
+        )
+        assert result.pairs[0].n_events == len(self.STARTS)

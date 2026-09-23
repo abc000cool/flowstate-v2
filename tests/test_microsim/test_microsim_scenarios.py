@@ -385,6 +385,37 @@ class TestLaneCheck:
         uncomparable = [{"station": "R_on", "lanes": 1, "kind": "on_ramp"}]
         assert "lanes vs inventory: no comparable mainline stations" in build.summary(uncomparable)
 
+    def test_summary_counts_the_rows_whose_lane_count_it_could_not_use(self):
+        """A dropped row must not hide inside the denominator.
+
+        "4 of 4 mainline stations match" over a table of five reads as a
+        clean inventory; the fifth row was a lane count the check refused,
+        and the reader has to be told it was there.
+        """
+        build = _synthetic_build()
+        rows = [*_INVENTORY, {"station": "S_bad", "lanes": 14, "kind": "mainline", "x_m": 500.0}]
+        assert build.lanes_unusable(rows) == [("S_bad", "14")]
+        assert build.lanes_compared(rows) == 4  # unchanged: it was never comparable
+        assert (
+            "lanes vs inventory: 1 of 4 mainline stations match; 1 row unusable (lanes=14)"
+            in build.summary(rows)
+        )
+        # a table whose mainline rows are all unusable says so too
+        only_bad = [
+            {"station": "S_ok", "lanes": "3.7", "kind": "mainline"},
+            {"station": "S_merge", "lanes": 40, "kind": "mainline"},
+        ]
+        assert (
+            "lanes vs inventory: no comparable mainline stations; "
+            "2 rows unusable (lanes=3.7, lanes=40)" in build.summary(only_bad)
+        )
+        # stating no lane count claims nothing, and is not a bad row
+        assert build.lanes_unusable([{"station": "S_ok", "lanes": "", "kind": "mainline"}]) == []
+        assert build.lanes_unusable([{"station": "S_ok", "kind": "mainline"}]) == []
+        # nor is a row that is not this carriageway's to judge
+        assert build.lanes_unusable([{"station": "S_other", "lanes": 14}]) == []
+        assert build.lanes_unusable([{"station": "R_on", "lanes": 14, "kind": "on_ramp"}]) == []
+
 
 def _load_onboard_cli():
     """Import ``scripts/onboard_corridor.py`` by path (``scripts/`` is not a package)."""

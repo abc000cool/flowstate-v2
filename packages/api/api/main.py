@@ -70,6 +70,7 @@ from api import results as res
 from api.calibration_jobs import demand_calibration_job  # WP-A
 from api.jobs import (
     REPORT_REFUSED_KIND,
+    JobQueue,
     fd_calibration_job,
     get_queue,
     idm_calibration_job,
@@ -108,7 +109,7 @@ from api.schemas import (
     deep_merge,
 )
 from api.settings import REPO_ROOT, Settings, check_api_key_not_default, load_settings
-from api.store import Store, new_id
+from api.store import CorridorNameTaken, Store, new_id
 from flowstate_core.artifacts import FDCalibration
 from flowstate_core.config import MacroOptions, ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
@@ -1520,6 +1521,52 @@ def _corridor_out(row: dict[str, Any], settings: Settings) -> CorridorOut:
     return CorridorOut(**_corridor_row_fields(row, settings), summary=row["summary"])
 
 
+def _run_corridor_inline(
+    queue: JobQueue, store: Store, corridor_id: str, settings: Settings
+) -> None:
+    """Run one inline corridor onboarding as a background task, and settle it.
+
+    Nothing reconciles an inline queue: it has no worker, no Redis record and
+    no startup sweep behind it, so this call is the only thing that will ever
+    look at the row. An exception that escapes
+    :func:`api.onboarding_jobs.corridor_onboarding_job`'s own handler — raised
+    before it claimed the row, or by the claim itself — would otherwise leave
+    the row ``queued`` for ever and a polling client waiting for ever. The row
+    is therefore failed from outside, exactly as the worker's work-horse death
+    handler does it (:meth:`api.store.Store.fail_active`, which never
+    overwrites an outcome the job already recorded).
+
+    Nothing is re-raised: a Starlette background task has no caller left to
+    raise to — the response went out before it ran — so the store row, not an
+    exception, is how this failure reaches anyone.
+
+    Args:
+        queue: The inline queue; its ``enqueue`` *is* the call.
+        store: Store holding the corridor row.
+        corridor_id: Corridor row id (also the job id).
+        settings: Server settings; the job is given the store path and the
+            results root explicitly, as a worker would be.
+    """
+    try:
+        queue.enqueue(
+            corridor_onboarding_job,
+            corridor_id,
+            job_id=corridor_id,
+            db_path=str(settings.db_path),
+            results_root=str(settings.results_dir),
+        )
+    # BaseException, and nothing re-raised: the row is the only report left.
+    except BaseException as exc:
+        logging.getLogger("api").exception(
+            "inline corridor onboarding %s crashed outside the job's own handler", corridor_id
+        )
+        store.fail_active(
+            "corridor",
+            corridor_id,
+            f"the onboarding job stopped without recording an outcome: {type(exc).__name__}: {exc}",
+        )
+
+
 @router.post("/corridors", status_code=202, response_model=CorridorOut)
 async def create_corridor(
     request: Request,
@@ -1577,8 +1624,13 @@ async def create_corridor(
 
     A name whose onboarding *failed* is free again: the job removes the preset
     and extract it wrote before failing, so the same name can simply be
-    retried. Two concurrent requests for one name both pass this check; the
-    second job then refuses the name itself and is recorded as failed.
+    retried. A name whose onboarding is still ``queued`` or ``running`` is
+    taken: the store holds it from the moment the row is created
+    (:exc:`api.store.CorridorNameTaken`), so of two concurrent requests for
+    one name the second is refused with HTTP 409 and no second job is ever
+    dispatched. The job re-checks the preset and the extract anyway — the row
+    lock is released when the onboarding settles, and the files it installed
+    outlive it.
 
     Onboarding is not validation: the job derives numbers and records where
     each came from. Whether the corridor reproduces the observations is what
@@ -1645,24 +1697,31 @@ async def create_corridor(
     stations_path = upload_dir / STATIONS_UPLOAD_NAME
     await _save_upload(stations, stations_path, settings.max_upload_bytes)
 
-    corridor_id = store.create_corridor(
-        name,
-        {
-            "bbox": bounds,
-            "bearing_deg": float(bearing_deg),
-            "upstream_station": upstream_station,
-            "downstream_station": downstream_station,
-            "column_map": columns,
-            "idm_calibration": calibration,
-            "window_s": float(window_s),
-            "t0_local": t0_local,
-            "duration_s": float(duration_s),
-            "warmup_s": float(warmup_s),
-            "source": source,
-        },
-        detectors_path,
-        stations_path,
-    )
+    try:
+        corridor_id = store.create_corridor(
+            name,
+            {
+                "bbox": bounds,
+                "bearing_deg": float(bearing_deg),
+                "upstream_station": upstream_station,
+                "downstream_station": downstream_station,
+                "column_map": columns,
+                "idm_calibration": calibration,
+                "window_s": float(window_s),
+                "t0_local": t0_local,
+                "duration_s": float(duration_s),
+                "warmup_s": float(warmup_s),
+                "source": source,
+            },
+            detectors_path,
+            stations_path,
+        )
+    except CorridorNameTaken as exc:
+        # Nothing was created, so the two uploads this request saved have no
+        # row to belong to; they go again rather than accumulate under a name
+        # that was refused.
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     queue = get_queue(settings)
     if queue.kind == "inline":
         # The inline queue *is* the caller's thread, and an onboarding is
@@ -1675,14 +1734,7 @@ async def create_corridor(
         # queue gives: 202 with a queued row, poll ``GET /corridors/{id}``.
         # Starlette runs a sync background task in a threadpool, after the
         # response has gone out.
-        background.add_task(
-            queue.enqueue,
-            corridor_onboarding_job,
-            corridor_id,
-            job_id=corridor_id,
-            db_path=str(settings.db_path),
-            results_root=str(settings.results_dir),
-        )
+        background.add_task(_run_corridor_inline, queue, store, corridor_id, settings)
     else:
         queue.enqueue(
             corridor_onboarding_job,

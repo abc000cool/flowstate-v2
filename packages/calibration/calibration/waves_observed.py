@@ -18,7 +18,10 @@ pair ``(upstream at x_u, downstream at x_d > x_u)``:
 
 1. **Congested episodes.** The downstream speed series marks a sample jammed
    when it is below ``v_thresh_ms``; a run of ≥ :data:`MIN_EVENT_SAMPLES`
-   consecutive jammed samples is one *event*. A pair with fewer than
+   consecutive jammed samples is one *event*. Only the samples the detrending
+   of step 4 leaves defined are counted: an episode sitting wholly inside a
+   half-window at the end of a date contributes no paired sample at any lag,
+   so it is not evidence this pair has. A pair with fewer than
    ``min_events`` events is rejected. ``min_events`` counts **runs, not
    days**: several episodes of one morning satisfy it, and on a
    multi-date series it says nothing about how many dates contributed. How
@@ -64,8 +67,10 @@ A pair is used only when its peak lag is strictly positive (tested first, so a
 peak at ``−max_lag`` is reported as the forward-moving thing it is rather than
 as a search-bound artefact), does not sit on the search bound (a peak at
 ``max_lag`` means the true lag is outside the searched range, or that there is
-no peak at all), is at least :data:`MIN_PEAK_LAG_BINS` bins, and carries a
-correlation of at least :data:`MIN_PEAK_CORRELATION`. Every rejection is
+no peak at all), carries a correlation of at least
+:data:`MIN_PEAK_CORRELATION`, and is — *after* the sub-bin refinement, since
+that is the lag the speed is divided by — at least
+:data:`MIN_PEAK_LAG_BINS` bins. Every rejection is
 reported with its reason; nothing is silently dropped.
 
 The corridor summary is the **median** of the per-pair speeds with its
@@ -133,7 +138,12 @@ MIN_EVENT_SAMPLES: Final[int] = 2
 """Consecutive jammed samples that make a congested episode (60 s at 30 s)."""
 
 MIN_PEAK_LAG_BINS: Final[int] = 2
-"""Shortest peak lag a pair may be used at [bins].
+"""Shortest lag a pair may be used at [bins], after sub-bin refinement.
+
+The floor is applied to the refined lag, the one the reported speed is
+divided by, and not only to the integer bin of the peak: a peak at two bins
+whose parabola pulls it to 1.5 bins is as far below the grid's resolution as
+a one-bin peak is.
 
 A one-bin peak is refined by an offset the parabola clamps to ±½ bin, so its
 implied speed is anywhere in ``[Δx/(1.5·Δt), Δx/(0.5·Δt)]`` — a factor of
@@ -161,7 +171,9 @@ _REASON_NO_PEAK: Final[str] = "no lag had enough paired samples for a correlatio
 _REASON_WEAK: Final[str] = "peak correlation below the acceptance floor"
 _REASON_BOUND: Final[str] = "peak lag sits on the search bound"
 _REASON_NOT_BACKWARD: Final[str] = "peak lag is not positive (no backward propagation)"
-_REASON_SHORT_LAG: Final[str] = f"lag below resolution (peak lag under {MIN_PEAK_LAG_BINS} bins)"
+_REASON_SHORT_LAG: Final[str] = (
+    f"lag below resolution (refined peak lag under {MIN_PEAK_LAG_BINS} bins)"
+)
 _REASON_SPACING: Final[str] = "stations share a position"
 
 
@@ -420,8 +432,9 @@ def detector_wave_speed(
 
     Raises:
         ValueError: Non-positive ``dt_s``, a ``max_lag_s`` shorter than one
-            bin, ``min_events`` below one, a negative ``detrend_s`` or
-            ``gap_s``, or series of differing lengths.
+            bin, ``min_events`` below one, a negative ``detrend_s``, a
+            ``gap_s`` that is negative or narrower than one bin (:func:`_gap_bins`),
+            or series of differing lengths.
     """
     if dt_s <= 0.0:
         raise ValueError(f"dt_s must be > 0, got {dt_s}")
@@ -431,8 +444,7 @@ def detector_wave_speed(
         raise ValueError(f"min_events must be >= 1, got {min_events}")
     if detrend_s < 0.0:
         raise ValueError(f"detrend_s must be >= 0, got {detrend_s}")
-    if gap_s < 0.0:
-        raise ValueError(f"gap_s must be >= 0, got {gap_s}")
+    gap_bins = _gap_bins(gap_s, dt_s)
 
     arrays: dict[str, FloatArray] = {}
     lengths: set[int] = set()
@@ -466,7 +478,7 @@ def detector_wave_speed(
                 max_lag=max_lag,
                 min_events=min_events,
                 detrend_bins=round(detrend_s / dt_s),
-                gap_bins=round(gap_s / dt_s),
+                gap_bins=gap_bins,
             )
         )
 
@@ -488,7 +500,7 @@ def detector_wave_speed(
         max_lag_s=float(max_lag * dt_s),
         min_events=int(min_events),
         detrend_s=float(round(detrend_s / dt_s) * dt_s),
-        gap_s=float(round(gap_s / dt_s) * dt_s),
+        gap_s=float(gap_bins * dt_s),
         loo=loo,
     )
 
@@ -574,17 +586,23 @@ def leave_one_date_out(
     Raises:
         ValueError: Fewer than two dates — a single date cannot be left out,
             and reporting a range over one subset would be a claim about a
-            sensitivity that was never measured.
+            sensitivity that was never measured — a non-positive ``dt_s``, or
+            a ``gap_s`` narrower than one bin (:func:`_gap_bins`); the checks
+            :func:`detector_wave_speed` makes are made here too, because the
+            series are concatenated before it ever sees them.
     """
     if len(by_date) < 2:
         raise ValueError(f"leave-one-date-out needs at least two dates, got {len(by_date)}")
+    if dt_s <= 0.0:
+        raise ValueError(f"dt_s must be > 0, got {dt_s}")
+    gap_bins = _gap_bins(gap_s, dt_s)
     dates = tuple(by_date)
     medians: list[float] = []
     used: list[int] = []
     for omitted in dates:
         kept = {date: day for date, day in by_date.items() if date != omitted}
         result = detector_wave_speed(
-            concatenate_dates(kept, gap_bins=round(gap_s / dt_s)),
+            concatenate_dates(kept, gap_bins=gap_bins),
             x_m,
             dt_s=dt_s,
             v_thresh_ms=v_thresh_ms,
@@ -658,6 +676,37 @@ def _json_number(value: float) -> float | None:
     return None if not math.isfinite(value) else float(value)
 
 
+def _gap_bins(gap_s: float, dt_s: float) -> int:
+    """A date separator's width in whole samples.
+
+    A separator narrower than one bin is refused rather than rounded: a
+    ``gap_s`` under half a bin rounds to zero, which silently means *no
+    barrier at all* — correlations and detrending windows would then run
+    across the join between two mornings, and the result would record
+    ``gap_s: 0.0`` as if the caller had declared one continuous record. This
+    is the same refusal ``max_lag_s < dt_s`` already makes.
+
+    Args:
+        gap_s: Declared separator width [s]; 0 means one continuous record.
+        dt_s: Sampling interval [s].
+
+    Returns:
+        ``round(gap_s / dt_s)``, and 0 exactly when ``gap_s`` is 0.
+
+    Raises:
+        ValueError: A negative ``gap_s``, or one between 0 and one bin.
+    """
+    if gap_s < 0.0:
+        raise ValueError(f"gap_s must be >= 0, got {gap_s}")
+    if 0.0 < gap_s < dt_s:
+        raise ValueError(
+            f"gap_s ({gap_s} s) must be 0 or at least one bin ({dt_s} s): a narrower "
+            "separator would round to no barrier, and the series would be correlated "
+            "across the join between two dates"
+        )
+    return round(gap_s / dt_s)
+
+
 def _pair_estimate(
     upstream: str,
     downstream: str,
@@ -690,15 +739,21 @@ def _pair_estimate(
 
     if not (dx_m > 0.0):
         return rejected(_REASON_SPACING)
+    barrier = _barriers(up, down, gap_bins)
+    down_residual = _detrend(down, detrend_bins, barrier)
     jam = np.isfinite(down) & (down < v_thresh_ms)
-    n_events = _count_events(jam, MIN_EVENT_SAMPLES)
+    # The episodes that count are the ones the correlation can use. Detrending
+    # leaves a half-window undefined at each end of each date, so an episode
+    # sitting wholly inside one contributes no paired sample at any lag;
+    # counting it would pass a pair through ``min_events`` on evidence that
+    # never enters the estimate.
+    n_events = _count_events(jam & np.isfinite(down_residual), MIN_EVENT_SAMPLES)
     if n_events < min_events:
         return rejected(_REASON_FEW_EVENTS, n_events=n_events)
 
     analysed = _dilate(jam, max_lag)
-    barrier = _barriers(up, down, gap_bins)
     correlations, counts = _lag_correlations(
-        _detrend(down, detrend_bins, barrier),
+        down_residual,
         _detrend(up, detrend_bins, barrier),
         analysed,
         max_lag,
@@ -728,7 +783,15 @@ def _pair_estimate(
         return rejected(_REASON_SHORT_LAG, **fields)
     if peak_r < MIN_PEAK_CORRELATION:
         return rejected(_REASON_WEAK, **fields)
-    lag_s = (peak_lag + _sub_bin_offset(correlations, index)) * dt_s
+    # The floor belongs on the lag that is *reported*, not on the bin the peak
+    # sits in: a two-bin peak whose parabola pulls it to 1.5 bins is a
+    # sub-resolution lag like any other, and dividing the spacing by it would
+    # publish a speed the 30-s grid cannot support (module docstring,
+    # "Resolution").
+    refined_lag = peak_lag + _sub_bin_offset(correlations, index)
+    if refined_lag < MIN_PEAK_LAG_BINS:
+        return rejected(_REASON_SHORT_LAG, **fields)
+    lag_s = refined_lag * dt_s
     return WavePairEstimate(
         upstream=upstream,
         downstream=downstream,

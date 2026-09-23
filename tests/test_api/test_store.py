@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import multiprocessing
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from api.schemas import DEFAULT_CRITERIA_PROFILE
-from api.store import KINDS, Store, _add_missing_columns, kind_of_id, new_id
+from api.store import (
+    KINDS,
+    CorridorNameTaken,
+    Store,
+    _add_missing_columns,
+    kind_of_id,
+    new_id,
+)
 
 #: Repository root — spawned children import this module from here (see
 #: ``test_concurrent_store_init_on_an_upgraded_database``).
@@ -98,7 +106,12 @@ def _row_of_kind(store: Store, kind: str, tmp_path: Path) -> str:
     if kind == "calibration":
         return store.create_calibration("fd", tmp_path / "d.csv", {}, "src")
     if kind == "corridor":
-        return store.create_corridor("c", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
+        # A distinct name per row: an onboarding holds its name while it is
+        # queued or running (``Store.create_corridor``), and these lifecycle
+        # tests want two rows at once, not one name twice.
+        return store.create_corridor(
+            f"c_{uuid.uuid4().hex[:8]}", {}, tmp_path / "det.csv", tmp_path / "sta.csv"
+        )
     return store.create_report(["run_x"], "t")
 
 
@@ -182,6 +195,21 @@ def test_fail_active_never_overwrites_a_recorded_outcome(kind: str, tmp_path: Pa
     # Already failed: not active, untouched (the first error is kept).
     assert store.fail_active(kind, running, "later") is False
     assert store.get(kind, running)["error"] == "gone"
+
+
+def test_a_corridor_name_is_held_while_its_onboarding_is_active(tmp_path: Path) -> None:
+    """One name, one live onboarding: the preset and the extract are shared paths."""
+    store = Store(tmp_path / "meta.db")
+    first = store.create_corridor("i94", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
+    with pytest.raises(CorridorNameTaken, match="queued"):
+        store.create_corridor("i94", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
+    assert store.claim("corridor", first) is True
+    with pytest.raises(CorridorNameTaken, match="running"):
+        store.create_corridor("i94", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
+    # another name is unaffected, and the name is free again once it settles
+    assert store.create_corridor("i35", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
+    store.set_corridor_status(first, "failed", stage="network", error="boom")
+    assert store.create_corridor("i94", {}, tmp_path / "det.csv", tmp_path / "sta.csv")
 
 
 def test_reset_to_queued_only_from_running(tmp_path: Path) -> None:

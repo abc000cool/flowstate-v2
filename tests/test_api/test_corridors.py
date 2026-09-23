@@ -577,3 +577,79 @@ class TestUploadsAndRetries:
         assert retried["progress"]["stage"] == "network"
         assert "already exists" not in retried["error"]
         assert not extract.exists()
+
+
+class TestInlineDispatch:
+    """The background task behind the inline queue: crashes, and the name lock.
+
+    Nothing reconciles an inline queue, so this dispatch is the only thing
+    that will ever settle the row it created. Both tests replace the job
+    itself — what the onboarding does is tested above; what is tested here is
+    the dispatch around it.
+    """
+
+    def test_a_job_that_crashes_before_claiming_fails_its_row(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An exception outside the job's own handler still reaches the client."""
+        from api import main
+
+        def crash(corridor_id: str, **kwargs: Any) -> None:
+            raise RuntimeError("the worker could not start")
+
+        monkeypatch.setattr(main, "corridor_onboarding_job", crash)
+        body = post_corridor(client, name="fixture_crash")
+        assert body["status"] == "queued"
+
+        polled = client.get(f"/api/v1/corridors/{body['corridor_id']}", headers=HEADERS).json()
+        assert polled["status"] == "failed"
+        assert "the worker could not start" in polled["error"]
+        assert "RuntimeError" in polled["error"]
+
+    @pytest.mark.parametrize("claimed", [False, True], ids=["queued", "running"])
+    def test_a_second_post_for_a_name_being_onboarded_is_refused(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch, claimed: bool
+    ) -> None:
+        """The store takes the name at row creation; the loser never dispatches.
+
+        The first request's job is blocked (it never settles its row), so the
+        second POST arrives while the name is still ``queued`` or
+        ``running``. Both rows would otherwise race for one preset file and
+        one OSM extract.
+        """
+        from api import main
+        from api.store import Store
+
+        def block(corridor_id: str, db_path: str | None = None, **kwargs: Any) -> None:
+            if claimed:
+                assert Store(str(db_path)).claim_corridor(corridor_id)
+
+        monkeypatch.setattr(main, "corridor_onboarding_job", block)
+        first = post_corridor(client, name="fixture_locked")
+        holder = client.get(f"/api/v1/corridors/{first['corridor_id']}", headers=HEADERS).json()
+        assert holder["status"] == ("running" if claimed else "queued")
+
+        response = client.post(
+            "/api/v1/corridors",
+            data={
+                "name": "fixture_locked",
+                "bbox": " ".join(f"{v}" for v in BBOX),
+                "bearing_deg": "90",
+                "upstream_station": "SU",
+                "downstream_station": "SD",
+            },
+            files={
+                "detectors": ("d.csv", detectors_csv(), "text/csv"),
+                "stations": ("s.csv", stations_csv(), "text/csv"),
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 409, response.text
+        assert "already" in response.json()["detail"]
+        assert first["corridor_id"] in response.json()["detail"]
+
+        # no second row, and no uploads left behind by the refused request
+        listed = client.get("/api/v1/corridors", headers=HEADERS).json()
+        assert [row["corridor_id"] for row in listed] == [first["corridor_id"]]
+        uploads = Path(client.app.state.settings.uploads_dir)
+        assert len([p for p in uploads.iterdir() if p.is_dir()]) == 1

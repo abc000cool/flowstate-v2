@@ -88,6 +88,19 @@ ACTIVE = ("queued", "running")
 
 _BUSY_TIMEOUT_MS = 30_000
 
+
+class CorridorNameTaken(ValueError):
+    """An onboarding for that corridor name is already queued or running.
+
+    The name is a scenario preset file and an OSM extract, so two onboardings
+    for one name race for the same two paths. :meth:`Store.create_corridor`
+    takes the name when it inserts the row and raises this instead of
+    creating a second row; ``POST /corridors`` answers HTTP 409. The name is
+    free again the moment the onboarding settles (``done`` or ``failed``) —
+    a failed onboarding removes what it installed, so the name is retryable.
+    """
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS scenarios (
     id          TEXT PRIMARY KEY,
@@ -595,9 +608,32 @@ class Store:
 
         Returns:
             The new row id (also the queue job id).
+
+        Raises:
+            CorridorNameTaken: An onboarding for ``name`` is already
+                ``queued`` or ``running``. The check and the insert are one
+                immediate transaction, so of two concurrent requests for one
+                name exactly one gets a row and the other is refused before
+                any job is dispatched.
         """
         cid = new_id(ID_PREFIXES["corridor"])
+        marks = ", ".join("?" for _ in ACTIVE)
         with self._conn() as con:
+            # BEGIN IMMEDIATE, not the implicit deferred transaction: the
+            # write lock has to be held *before* the name is looked up, or
+            # both requests read an empty result and both insert.
+            con.execute("BEGIN IMMEDIATE")
+            taken = con.execute(
+                f"SELECT id, status FROM corridors WHERE name = ? AND status IN ({marks})"
+                " ORDER BY rowid LIMIT 1",
+                (name, *ACTIVE),
+            ).fetchone()
+            if taken is not None:
+                raise CorridorNameTaken(
+                    f"an onboarding of {name!r} is already {taken['status']} "
+                    f"(corridor {taken['id']}); wait for it to finish, or onboard this "
+                    f"corridor under another name"
+                )
             con.execute(
                 "INSERT INTO corridors (id, name, status, params_json, detectors_path,"
                 " stations_path, created_at) VALUES (?, ?, 'queued', ?, ?, ?, ?)",

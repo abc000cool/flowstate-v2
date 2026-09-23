@@ -561,8 +561,10 @@ class CorridorBuild:
         """Write the scenario YAML (``ScenarioConfig.to_yaml``)."""
         self.config.to_yaml(path)
 
-    def _lane_rows(self, stations: Sequence[Mapping[str, Any]]) -> list[tuple[str, float, int]]:
-        """Comparable mainline stations as ``(id, chain x [m], inventory lanes)``.
+    def _lane_scan(
+        self, stations: Sequence[Mapping[str, Any]]
+    ) -> tuple[list[tuple[str, float, int]], list[tuple[str, str]]]:
+        """Split the inventory into comparable rows and unusable lane counts.
 
         A row is comparable when it names a station, is mainline (``kind``
         absent or ``"mainline"``), carries an integer ``lanes`` between 1 and
@@ -572,8 +574,23 @@ class CorridorBuild:
         ``x_m`` already in the row. Stations the projection rejected, and
         positions off the chain, are dropped: they are not on this
         carriageway, so their lane count says nothing about it.
+
+        A mainline row that *states* a lane count the contract cannot use —
+        not a number, not integral, or outside 1 …
+        :data:`MAX_INVENTORY_LANES` — is unusable rather than comparable, and
+        is collected so the summary can say so. A row that states no count at
+        all is neither: nothing was claimed about it.
+
+        Args:
+            stations: The onboarding station table.
+
+        Returns:
+            ``(comparable, unusable)``: the comparable rows as
+            ``(id, chain x [m], inventory lanes)``, and the unusable ones as
+            ``(id, the lane count as written)``.
         """
         rows: list[tuple[str, float, int]] = []
+        unusable: list[tuple[str, str]] = []
         for row in stations:
             station_id = str(row.get("station", row.get("id", ""))).strip()
             if not station_id or station_id in self.stations_rejected:
@@ -581,17 +598,24 @@ class CorridorBuild:
             kind = str(row.get("kind") or "mainline").strip().lower()
             if kind != "mainline":
                 continue
+            raw = row.get("lanes")
+            written = "" if raw is None else str(raw).strip()
+            if not written:
+                continue  # no lane count stated; nothing to agree or disagree with
             try:
-                lane_value = float(str(row.get("lanes")).strip())
-            except (TypeError, ValueError):
+                lane_value = float(written)
+            except ValueError:
+                unusable.append((station_id, written))
                 continue
             # A non-integral count is not a lane count: "3.7" truncated to 3
             # invented an agreement (or a disagreement) the inventory never
             # stated. Drop the row as unusable rather than guess.
             if not math.isfinite(lane_value) or lane_value != int(lane_value):
+                unusable.append((station_id, written))
                 continue
             lanes = int(lane_value)
             if lanes <= 0 or lanes > MAX_INVENTORY_LANES:
+                unusable.append((station_id, written))
                 continue
             point = self.station_x.get(station_id)
             if point is not None:
@@ -604,7 +628,31 @@ class CorridorBuild:
             if lanes_at_x(self.lanes_profile, x_m) is None:
                 continue
             rows.append((station_id, x_m, lanes))
-        return rows
+        return rows, unusable
+
+    def _lane_rows(self, stations: Sequence[Mapping[str, Any]]) -> list[tuple[str, float, int]]:
+        """The comparable rows of :meth:`_lane_scan`."""
+        return self._lane_scan(stations)[0]
+
+    def lanes_unusable(self, stations: Sequence[Mapping[str, Any]]) -> list[tuple[str, str]]:
+        """Mainline rows whose stated lane count cannot be compared.
+
+        The rows :meth:`lane_check` neither matched nor reported: a lane
+        count that is not a whole number between 1 and
+        :data:`MAX_INVENTORY_LANES` is a data-entry slip, not a lane
+        disagreement, and putting "map 3, inventory 40" in a pre-flight check
+        for map defects would bury the real ones. Dropping such a row in
+        silence is the other failure — "7 of 7 stations match" then counts 7
+        of 8 — so :meth:`summary` names how many there were.
+
+        Args:
+            stations: The onboarding station table.
+
+        Returns:
+            ``(station id, the lane count as written)`` per unusable row, in
+            table order.
+        """
+        return self._lane_scan(stations)[1]
 
     def lane_check(
         self, stations: Sequence[Mapping[str, Any]], *, tolerance: int = 0
@@ -667,7 +715,10 @@ class CorridorBuild:
                 (:meth:`lane_check`); without it that check is not run and
                 the block is omitted. An empty table, or one with no
                 comparable mainline row, says so rather than reporting
-                "0 of 0 ... match", which reads as a check that passed.
+                "0 of 0 ... match", which reads as a check that passed, and
+                mainline rows whose stated lane count could not be used are
+                counted beside the tally (:meth:`lanes_unusable`) rather than
+                dropped in silence.
         """
         south, west, north, east = self.bbox
         lines = [
@@ -706,18 +757,28 @@ class CorridorBuild:
                     f"(nearest x={p.x_m / 1000.0:.3f} km)"
                 )
         if stations is not None:
-            compared = self.lanes_compared(stations)
+            comparable, unusable = self._lane_scan(stations)
+            compared = len(comparable)
             mismatches = self.lane_check(stations)
+            # A row whose lane count the check could not use is not part of
+            # "n of n match": without this clause a table of eight stations
+            # one of which says "lanes=14" reports "7 of 7 match", which reads
+            # as a clean inventory rather than as one that was not all read.
+            suffix = ""
+            if unusable:
+                plural = "row" if len(unusable) == 1 else "rows"
+                listed = ", ".join(f"lanes={value}" for _, value in unusable)
+                suffix = f"; {len(unusable)} {plural} unusable ({listed})"
             if not stations:
                 # "0 of 0 match" reads as a check that passed; nothing was
                 # checked at all.
                 lines.append("  lanes vs inventory: no station table given")
             elif compared == 0:
-                lines.append("  lanes vs inventory: no comparable mainline stations")
+                lines.append(f"  lanes vs inventory: no comparable mainline stations{suffix}")
             else:
                 lines.append(
                     f"  lanes vs inventory: {compared - len(mismatches)} of "
-                    f"{compared} mainline stations match"
+                    f"{compared} mainline stations match{suffix}"
                 )
             lines += [
                 f"    {m.station:>12s} x={m.x_m / 1000.0:7.3f} km  map {m.compiled_lanes} lanes, "

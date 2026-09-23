@@ -959,7 +959,12 @@ Refusals: 422 for a malformed name, bbox (four numbers, `south < north`,
 `Settings.config_path_roots` (`type: "path_outside_roots"`,
 `loc: ["body", "idm_calibration"]`); **409** when a preset of that name
 already exists — a corridor is never onboarded over a scenario other runs
-were launched from; 413 above `FLOWSTATE_MAX_UPLOAD_MB`.
+were launched from — and **409** when an onboarding of that name is still
+`queued` or `running`: the store takes the name when it creates the row
+(`api.store.CorridorNameTaken`), so two requests for one name never both
+dispatch a job onto the same preset and extract paths, and the name is free
+again as soon as the first settles (a failed onboarding removes what it
+installed); 413 above `FLOWSTATE_MAX_UPLOAD_MB`.
 
 **Stages** (`api.schemas.CORRIDOR_STAGES`, recorded on the row as it runs):
 `extract` (Overpass, motorway ways only) → `network`
