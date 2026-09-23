@@ -6,7 +6,9 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
-(nothing yet)
+### 2026-09-23 — after 2.3.0
+
+- Onboarding flow gaps closed: the onboard form's Advanced section sends a column map, a driver-population artifact path and a source; `GET /api/v1/corridors` lists onboarded corridors newest first and the Onboard view's corridors panel prefills the run and report actions from any of them; the report launcher offers the finished corridors' observations (or a typed server path) so a report can be scored against observations from the dashboard.
 
 ## [2.3.0] — 2026-09-23
 
