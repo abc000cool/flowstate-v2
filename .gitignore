@@ -15,6 +15,7 @@ build/
 # Data & results (fetch scripts are versioned; payloads are not)
 data/*
 !data/fetch/
+!data/README.md
 runs/
 results/
 
