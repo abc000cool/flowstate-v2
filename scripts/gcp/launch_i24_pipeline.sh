@@ -101,6 +101,12 @@ for pat in "runs/i24_cap_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/metrics.jso
   ls $pat >/dev/null 2>&1 && tar rf "$DATA" $pat
 done
 fi
+# per-run metrics of an interrupted strategy sweep ride along whatever the data set (small; the
+# sweep resumes from them — 2026-09-24: 8 of 120 runs were lost to an instance deletion)
+for pat in "runs/i24_strat_sweep/*/*/*/metrics.json" "runs/i24_strat_sweep/*/*/*/meta.json" "runs/i24_strat_sweep/MANIFEST.json"; do
+  # shellcheck disable=SC2086
+  ls $pat >/dev/null 2>&1 && tar rf "$DATA" $pat
+done
 ls -la "$DATA" | awk '{print "   ", $5, "bytes"}'
 # The repository is private: the code goes up as a git-archive snapshot of HEAD
 # (no clone, no token on the VM); scripts/gcp/vm_setup.sh installs the system

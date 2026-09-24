@@ -322,6 +322,16 @@ stage battery_mndot_mnpop bash -c "sed -e 's#^name: $MNDOT\$#name: ${MNDOT}_mnpo
   --out runs/${MNDOT}_mnpop/baseline --artifact artifacts/validation_${MNDOT}_mnpop.json \
   --report-dir docs/reports/${MNDOT}_mnpop --criteria-profile fhwa_tat3_2004" || say "battery_mndot_mnpop failed; continuing"
 
+# 10b-ii. Why the capacity-scaled Minnesota population plateaus (2026-09-24, block 3): the same T-scaling
+#     grid with (a) the MnDOT fleet on a 4-lane road and (b) the I-24 corrected fleet (its lane-change
+#     settings) on the 3-lane road. Diagnostics, not populations: nothing points at these artifacts.
+stage capprobe_mnfleet_4l $RUN scripts/calibrate_capacity.py --source artifacts/idm_i24.json \
+  --fd artifacts/fd_mndot_i94_wb_stpaul.json --lanes 4 --base-scenario scenarios/$MNDOT.yaml \
+  --out artifacts/idm_capacity_probe_mnfleet_4l.json --procs "$PROCS" || say "capprobe_mnfleet_4l failed; continuing"
+stage capprobe_i24fleet_3l $RUN scripts/calibrate_capacity.py --source artifacts/idm_i24.json \
+  --fd artifacts/fd_mndot_i94_wb_stpaul.json --lanes 3 --base-scenario scenarios/i24_replica_corrected.yaml \
+  --out artifacts/idm_capacity_probe_i24fleet_3l.json --procs "$PROCS" || say "capprobe_i24fleet_3l failed; continuing"
+
 # 10c. Weaving-section round (2026-09-24): the same corridor with the Ruth St and T.H.52 entrances as
 #     weaving sections (merge: weave, docs/WEAVE_MODEL_PLAN.md) and two entrances on the scripted merge,
 #     scenarios/mndot_i94_wb_stpaul_weave.yaml; 20 seeds with the I-24 population, then with the
