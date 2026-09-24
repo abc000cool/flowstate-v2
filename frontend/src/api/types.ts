@@ -270,6 +270,16 @@ export interface WeaveSectionDiagnostics {
   n_forced_deferred: number;
   n_missed: number;
   n_unfinished: number;
+  /** Vehicle-steps on which a target-lane follower was given a speed target
+   * for a changer (2026-09-24, block 3). Absent (null) in a meta written
+   * before the follower-cooperation rule existed. */
+  n_cooperations?: number | null;
+  /** Mean commanded deceleration over those steps [m/s²], positive braking;
+   * null without any cooperation, and in an older meta. */
+  mean_follower_decel_ms2?: number | null;
+  /** Vehicle-steps on which a changer was given a speed target towards its
+   * gap's leader; null in an older meta. */
+  n_changer_eased?: number | null;
   wait_s_mean?: number | null;
   wait_in_s_mean?: number | null;
   wait_out_s_mean?: number | null;

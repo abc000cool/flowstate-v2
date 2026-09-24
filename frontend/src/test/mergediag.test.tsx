@@ -34,6 +34,9 @@ const WEAVE = {
   n_forced_deferred: 57,
   n_missed: 1,
   n_unfinished: 1,
+  n_cooperations: 612,
+  mean_follower_decel_ms2: 0.416,
+  n_changer_eased: 208,
   wait_s_mean: 4.84,
   wait_in_s_mean: 3.9,
   wait_out_s_mean: 6.3,
@@ -86,6 +89,9 @@ describe('MergeDiagnosticsPanel', () => {
       'Missed',
       'Unfinished',
       'Mean wait [s]',
+      'Follower cooperations (vehicle-steps)',
+      'Mean follower decel [m/s²]',
+      'Changer easings',
     ]) {
       expect(table.getByText(header)).toBeInTheDocument();
     }
@@ -101,6 +107,47 @@ describe('MergeDiagnosticsPanel', () => {
     expect(ones).toHaveLength(2);
     for (const cell of ones) expect(cell).toHaveClass('hint-amber');
     expect(table.getByText('4.8')).toBeInTheDocument();
+    // the follower-cooperation counters: steps, the mean decel to two places, easings
+    expect(table.getByText('612')).toBeInTheDocument();
+    expect(table.getByText('0.42')).toBeInTheDocument();
+    expect(table.getByText('208')).toBeInTheDocument();
+  });
+
+  it('shows a dash for each cooperation counter a meta written before the rule lacks', () => {
+    const older = render(
+      <MergeDiagnosticsPanel
+        diagnostics={{
+          seed: 2,
+          ramp_meters: [],
+          weave_sections: [
+            {
+              ...WEAVE,
+              n_cooperations: null,
+              mean_follower_decel_ms2: null,
+              n_changer_eased: null,
+            },
+          ],
+        }}
+      />,
+    );
+    const table = within(screen.getByLabelText('weaving sections'));
+    // the three new cells are dashes; the wait is still shown
+    expect(table.getAllByText('—')).toHaveLength(3);
+    expect(table.getByText('4.8')).toBeInTheDocument();
+    older.unmount();
+    // a section with cooperations but no commanded deceleration shows the count and a dash
+    render(
+      <MergeDiagnosticsPanel
+        diagnostics={{
+          seed: 3,
+          ramp_meters: [],
+          weave_sections: [{ ...WEAVE, n_cooperations: 0, mean_follower_decel_ms2: null }],
+        }}
+      />,
+    );
+    const again = within(screen.getByLabelText('weaving sections'));
+    expect(again.getAllByText('—')).toHaveLength(1);
+    expect(again.getByText('0')).toBeInTheDocument();
   });
 
   it('shows both tables when both kinds ran, and a dash for an unknown wait', () => {

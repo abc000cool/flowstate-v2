@@ -47,6 +47,9 @@ WEAVE_SECTION: dict[str, Any] = {
     "n_missed": 1,
     "n_forced_deferred": 57,
     "n_unfinished": 1,
+    "n_cooperations": 612,
+    "mean_follower_decel_ms2": 0.42,
+    "n_changer_eased": 208,
     "n_exited": 143,
     "n_reached_section_exiting": 145,
     "n_departed_exiting": 147,
@@ -127,12 +130,34 @@ def test_meter_and_weave_counters_are_read_from_the_first_replicate(client: Test
         "n_forced_deferred",
         "n_missed",
         "n_unfinished",
+        "n_cooperations",
+        "mean_follower_decel_ms2",
+        "n_changer_eased",
         "wait_s_mean",
         "wait_in_s_mean",
         "wait_out_s_mean",
     ):
         assert weave[key] == WEAVE_SECTION[key], key
     assert "params" not in weave
+
+
+def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: TestClient) -> None:
+    """A meta from before the follower-cooperation rule (2026-09-24, block 3)
+    has no ``n_cooperations``, ``mean_follower_decel_ms2`` or
+    ``n_changer_eased``: the three read as null, the rest as written."""
+    scenario = post_scenario(client, macro_corridor_config())
+    run = post_run(client, scenario["scenario_id"])
+    new_keys = ("n_cooperations", "mean_follower_decel_ms2", "n_changer_eased")
+    old_weave = {k: v for k, v in WEAVE_SECTION.items() if k not in new_keys}
+    _amend_meta(_first_meta_path(client, run["run_id"]), weave_sections=[old_weave])
+
+    diag = _metrics(client, run["run_id"])["merge_diagnostics"]
+    assert diag is not None
+    (weave,) = diag["weave_sections"]
+    for key in new_keys:
+        assert weave[key] is None, key
+    assert weave["n_forced_deferred"] == 57
+    assert weave["n_reached_section_exiting"] == 145
 
 
 def test_one_kind_alone_and_a_meter_written_before_the_counter(client: TestClient) -> None:

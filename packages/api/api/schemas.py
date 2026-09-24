@@ -251,6 +251,14 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     ``n_reached_section_exiting`` is ``None`` for a meta written before the
     counter existed (2026-09-24); the dashboard then falls back to
     ``n_departed_exiting`` as the denominator.
+
+    The follower-cooperation counters (2026-09-24, block 3) are ``None`` for
+    a meta written before the rule existed: ``n_cooperations`` counts
+    vehicle-steps on which a target-lane follower was given a speed target
+    for a changer, ``mean_follower_decel_ms2`` the mean commanded
+    deceleration over them (``None`` also when there were none; positive is
+    braking) and ``n_changer_eased`` the vehicle-steps on which a changer was
+    given a speed target towards its gap's leader.
     """
 
     ramp: str
@@ -266,6 +274,9 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_forced_deferred: int
     n_missed: int
     n_unfinished: int
+    n_cooperations: int | None = None
+    mean_follower_decel_ms2: float | None = None
+    n_changer_eased: int | None = None
     wait_s_mean: float | None = None
     wait_in_s_mean: float | None = None
     wait_out_s_mean: float | None = None

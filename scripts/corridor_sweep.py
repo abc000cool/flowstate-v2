@@ -113,7 +113,9 @@ def _done(root: Path, cell_name: str, chash: str, seed: int) -> bool:
 #: ``meta.json["ramp_meters"][i]`` counters aggregated per ramp meter.
 METER_COUNTERS = ("n_released", "n_passed_unstoppable")
 #: ``meta.json["weave_sections"][i]`` fields aggregated per weaving section
-#: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections).
+#: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections). The last
+#: three are the follower-cooperation counters (2026-09-24, block 3); a meta
+#: written before them contributes nothing to their intervals (``n`` = 0).
 WEAVE_FIELDS = (
     "n_entered",
     "n_exited",
@@ -122,6 +124,9 @@ WEAVE_FIELDS = (
     "n_forced_deferred",
     "n_unfinished",
     "wait_s_mean",
+    "n_cooperations",
+    "mean_follower_decel_ms2",
+    "n_changer_eased",
 )
 
 
@@ -149,7 +154,8 @@ def _ci(vals: list[float]) -> dict[str, Any]:
 
 
 def _num(value: Any) -> float:
-    """A meta counter as a float; ``None`` (a section with no wait) becomes nan and is skipped."""
+    """A meta counter as a float; ``None`` (a section with no wait, or a counter the meta
+    predates) becomes nan and is skipped."""
     return float("nan") if value is None else float(value)
 
 
@@ -238,7 +244,10 @@ def print_diagnostics(summary: dict[str, Any]) -> None:
                 f"exited {_fmt_ci(w['n_exited'])}, "
                 f"reached (exiting) {_fmt_ci(w['n_reached_section_exiting'])}, "
                 f"forced {_fmt_ci(w['n_forced'])}, deferred {_fmt_ci(w['n_forced_deferred'])}, "
-                f"unfinished {_fmt_ci(w['n_unfinished'])}, wait {_fmt_ci(w['wait_s_mean'])} s"
+                f"unfinished {_fmt_ci(w['n_unfinished'])}, wait {_fmt_ci(w['wait_s_mean'])} s, "
+                f"cooperations {_fmt_ci(w['n_cooperations'])}, "
+                f"follower decel {_fmt_ci(w['mean_follower_decel_ms2'], 2)} m/s², "
+                f"changer easings {_fmt_ci(w['n_changer_eased'])}"
             )
 
 

@@ -2,8 +2,10 @@
  * and weaving-section counters the runner writes to one replicate's
  * `meta.json` (`ramp_meters[i]`, `weave_sections[i]`). They say how the
  * merge models behaved — vehicles held and released, vehicles that could not
- * stop for the meter, changes made, forced, deferred or never made — and are
- * one seed's counters, not a replicate aggregate and never a corridor result.
+ * stop for the meter, changes made, forced, deferred or never made — and, since
+ * 2026-09-24 (block 3), the follower cooperations, their mean commanded
+ * deceleration and the changer easings of the weave step — and are one
+ * seed's counters, not a replicate aggregate and never a corridor result.
  * The section renders only when the run has at least one of the two lists. */
 
 import type { MergeDiagnostics, RampMeterDiagnostics, WeaveSectionDiagnostics } from '../api/types';
@@ -21,6 +23,18 @@ const DEFERRED_TITLE =
 const UNFINISHED_TITLE = 'Vehicles still under the section’s control when the run ended.';
 
 const MISSED_TITLE = 'Vehicles that left the section, or the network, still owing their change.';
+
+const COOPERATIONS_TITLE =
+  'Vehicle-steps on which a target-lane follower was given a speed target to open a gap for a ' +
+  'changer — steps, not vehicles. A dash is a meta written before the rule existed.';
+
+const FOLLOWER_DECEL_TITLE =
+  'Mean deceleration commanded to cooperating followers over those steps; positive is braking. ' +
+  'A dash means no cooperation was commanded, or a meta written before the rule existed.';
+
+const EASINGS_TITLE =
+  'Vehicle-steps on which a changer was given a speed target towards the leader of its chosen ' +
+  'gap — steps, not vehicles. A dash is a meta written before the rule existed.';
 
 const EXITED_TITLE =
   'Exit-bound vehicles that took the exit, against the exit-bound vehicles that entered the ' +
@@ -76,6 +90,9 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
             <th title={MISSED_TITLE}>Missed</th>
             <th title={UNFINISHED_TITLE}>Unfinished</th>
             <th>Mean wait [s]</th>
+            <th title={COOPERATIONS_TITLE}>Follower cooperations (vehicle-steps)</th>
+            <th title={FOLLOWER_DECEL_TITLE}>Mean follower decel [m/s²]</th>
+            <th title={EASINGS_TITLE}>Changer easings</th>
           </tr>
         </thead>
         <tbody>
@@ -95,6 +112,9 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
               <td className={`mono${w.n_missed > 0 ? ' hint-amber' : ''}`}>{w.n_missed}</td>
               <td className={`mono${w.n_unfinished > 0 ? ' hint-amber' : ''}`}>{w.n_unfinished}</td>
               <td className="mono">{formatNumber(w.wait_s_mean ?? null, 1)}</td>
+              <td className="mono">{w.n_cooperations ?? '—'}</td>
+              <td className="mono">{formatNumber(w.mean_follower_decel_ms2 ?? null, 2)}</td>
+              <td className="mono">{w.n_changer_eased ?? '—'}</td>
             </tr>
           ))}
         </tbody>

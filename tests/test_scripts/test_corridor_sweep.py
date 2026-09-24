@@ -64,6 +64,9 @@ WEAVE = {
         "n_forced_deferred": 7,
         "n_unfinished": 1,
         "wait_s_mean": 4.0,
+        "n_cooperations": 600,
+        "mean_follower_decel_ms2": 0.40,
+        "n_changer_eased": 200,
     },
     22: {
         "n_entered": 44,
@@ -73,6 +76,9 @@ WEAVE = {
         "n_forced_deferred": 9,
         "n_unfinished": 0,
         "wait_s_mean": 5.0,
+        "n_cooperations": 660,
+        "mean_follower_decel_ms2": 0.44,
+        "n_changer_eased": 220,
     },
     33: {
         "n_entered": 48,
@@ -82,6 +88,9 @@ WEAVE = {
         "n_forced_deferred": 11,
         "n_unfinished": 2,
         "wait_s_mean": 6.0,
+        "n_cooperations": 720,
+        "mean_follower_decel_ms2": 0.48,
+        "n_changer_eased": 240,
     },
 }
 
@@ -194,6 +203,38 @@ def test_diagnostics_aggregate_meters_and_weaves(tmp_path: Path) -> None:
 
     # The artifact on disk is the returned summary.
     assert json.loads((tmp_path / "summary.json").read_text()) == summary
+
+
+def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None:
+    """A weave section written before the follower-cooperation counters
+    (2026-09-24, block 3) has no ``n_cooperations``, ``mean_follower_decel_ms2``
+    or ``n_changer_eased``: their intervals are empty (``n`` = 0), never a
+    zero mean, and the counters that are there aggregate as before. A section
+    with cooperations but ``mean_follower_decel_ms2`` null (none commanded)
+    contributes to the count and not to the decel."""
+    old_meta = {"weave_sections": [{"ramp": "w", **{k: 1.0 for k in sweep.WEAVE_FIELDS[:7]}}]}
+    new_meta = {
+        "weave_sections": [
+            {
+                "ramp": "w",
+                **{k: 3.0 for k in sweep.WEAVE_FIELDS[:7]},
+                "n_cooperations": 0,
+                "mean_follower_decel_ms2": None,
+                "n_changer_eased": 5,
+            }
+        ]
+    }
+    weave = sweep.diagnostics_block([old_meta, new_meta])["weave_sections"]["w"]
+    assert set(weave) == set(sweep.WEAVE_FIELDS)
+    for field in sweep.WEAVE_FIELDS[:7]:
+        _assert_ci(weave[field], [1.0, 3.0])
+    # one seed: the mean is that seed's value and the t-interval has no width to give
+    for field, value in (("n_cooperations", 0.0), ("n_changer_eased", 5.0)):
+        assert weave[field]["n"] == 1
+        assert weave[field]["mean"] == value
+        assert math.isnan(weave[field]["lo95"]) and math.isnan(weave[field]["hi95"])
+    assert weave["mean_follower_decel_ms2"]["n"] == 0
+    assert weave["mean_follower_decel_ms2"]["mean"] is None
 
 
 def test_diagnostics_share_skips_seeds_with_no_vehicle() -> None:

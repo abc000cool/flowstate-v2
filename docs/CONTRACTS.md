@@ -1099,11 +1099,16 @@ trajectory and `--criteria-only` regenerates it after pruning.
   `ramp_meters[<ramp>]` = `{controller, n_released, n_passed_unstoppable,
   share_passed_unstoppable}` and `weave_sections[<on-ramp>]` =
   `{n_entered, n_exited, n_reached_section_exiting, n_forced,
-  n_forced_deferred, n_unfinished, wait_s_mean}`, each value a seed mean with
-  `lo95`/`hi95` (t-interval), `n` and `underpowered`, the share being
-  `n_passed_unstoppable / (n_released + n_passed_unstoppable)` per seed (a
-  seed on which the meter saw no vehicle is left out of the share). Every
-  pre-existing key of the summary is unchanged.
+  n_forced_deferred, n_unfinished, wait_s_mean}` and, since 2026-09-24
+  block 3, the follower-cooperation counters `n_cooperations`,
+  `mean_follower_decel_ms2`, `n_changer_eased` (`WEAVE_FIELDS`), each value
+  a seed mean with `lo95`/`hi95` (t-interval), `n` and `underpowered`, the
+  share being `n_passed_unstoppable / (n_released + n_passed_unstoppable)`
+  per seed (a seed on which the meter saw no vehicle is left out of the
+  share). A meta written before a counter existed contributes nothing to
+  that counter's interval (`n` = 0, `mean` null), as a section without a
+  wait does to `wait_s_mean`. Every pre-existing key of the summary is
+  unchanged.
 
 ## Corridor onboarding from the dashboard — 2026-09-23
 
@@ -1330,10 +1335,18 @@ length of the `rates` log — the log itself and `releases_s` stay in the meta);
 written before 2026-09-24; the dashboard's "Exited / reached" column then
 falls back to `n_departed_exiting`), `n_departed_exiting`, `n_forced`,
 `n_forced_deferred` (vehicle-steps), `n_missed`, `n_unfinished`,
-`wait_s_mean`, `wait_in_s_mean`, `wait_out_s_mean`. The field is `null` when
+`wait_s_mean`, `wait_in_s_mean`, `wait_out_s_mean`, and (2026-09-24, block
+3, the follower-cooperation weave step) `n_cooperations` (vehicle-steps),
+`mean_follower_decel_ms2` (null when none was commanded) and
+`n_changer_eased` (vehicle-steps) — the three are null for a meta written
+before the rule existed, and the dashboard shows them as the columns
+"Follower cooperations (vehicle-steps)", "Mean follower decel [m/s²]" and
+"Changer easings" with a dash for null; the sweep summary's `diagnostics`
+block aggregates them the same way (`scripts/corridor_sweep.py`
+`WEAVE_FIELDS`). The field is `null` when
 the run has neither list or both are empty (every ring and plain corridor
 run), when the meta cannot be read, and when an entry lacks the counters the
-schema names — absent is honest, a partly filled table is not. They are one
+schema requires — absent is honest, a partly filled table is not. They are one
 seed's counters, not a replicate aggregate, and describe the merge models'
 behaviour, never a corridor result. Dashboard: the Onboard view's corridors
 panel renders `CorridorSummaryOut.split_audit` as a "Split audit" table
