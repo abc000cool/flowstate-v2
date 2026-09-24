@@ -73,6 +73,7 @@ WEAVE = {
         "n_vacate_requests": 240,
         "n_pair_releases": 2,
         "n_missed_exit": 0,
+        "n_giveup_waited": 0,
     },
     22: {
         "n_entered": 44,
@@ -91,6 +92,7 @@ WEAVE = {
         "n_vacate_requests": 260,
         "n_pair_releases": 3,
         "n_missed_exit": 1,
+        "n_giveup_waited": 1,
     },
     33: {
         "n_entered": 48,
@@ -109,6 +111,7 @@ WEAVE = {
         "n_vacate_requests": 280,
         "n_pair_releases": 4,
         "n_missed_exit": 2,
+        "n_giveup_waited": 2,
     },
 }
 
@@ -237,8 +240,8 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
     """A weave section written before the follower-cooperation counters
     (2026-09-24, block 3) has no ``n_cooperations``, ``mean_follower_decel_ms2``
     or ``n_changer_eased``, nor the later ``n_vacated``, ``n_vacate_refused``,
-    ``n_pair_releases``, ``n_missed_exit``, ``n_vacate_skipped_no_gap`` and
-    ``n_vacate_requests``: their intervals are empty
+    ``n_pair_releases``, ``n_missed_exit``, ``n_vacate_skipped_no_gap``,
+    ``n_vacate_requests`` and ``n_giveup_waited`` (WP-52): their intervals are empty
     (``n`` = 0), never a zero mean, and the counters that are there aggregate
     as before. A section with cooperations but ``mean_follower_decel_ms2``
     null (none commanded) contributes to the count and not to the decel; one
@@ -274,6 +277,7 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
         "n_missed_exit",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
+        "n_giveup_waited",
     ):
         assert weave[field]["n"] == 0, field
         assert weave[field]["mean"] is None, field

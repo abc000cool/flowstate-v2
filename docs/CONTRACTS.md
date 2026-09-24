@@ -453,11 +453,12 @@ vehicle back on mode 512. Golden `merge_weave` regenerated for this change.
 derivations below each added keys): `ramp, exit, edges, exit_edge,
 exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
-n_missed, n_missed_exit, n_forced_deferred, n_cooperations,
+n_missed, n_missed_exit, n_giveup_waited, n_forced_deferred, n_cooperations,
 mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
 n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
 n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 32 keys
+wait_in_s_mean, wait_out_s_mean` — 33 keys (`n_giveup_waited` added by
+WP-52, 2026-09-24 block 3, the bounded give-up patience)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1025,6 +1026,38 @@ of the guard binds 6 vehicle-steps): mean travel time 69.345 → 69.500 s,
 p90 84.58 → 84.13 s, σ_v spatial 3.848 → 3.940 m/s, temporal 3.349 → 3.449,
 VHT 1.7399 → 1.7492 veh-h, fuel 90.67 → 90.54 ml/veh-km, throughput 1,680.0
 veh/h and changes 14 / 19 / 2, exits 33, collisions 0 unchanged.
+
+**Bounded give-up patience, 2026-09-24 (block 3, WP-52; measured, shipped
+off).** `WEAVE_DEFAULTS["exit_giveup_patience_s"]` (default **0**,
+hash-neutral unless set): a halted exiter within `exit_giveup_m` whose
+request is refused may wait instead of being given up on the first refused
+step, while the refusal is a transient of its auxiliary-lane follower still
+braking towards the gap — the follower reported this step is the one
+reported last step, behind it (a positive reported gap: a vehicle overlapping
+the exiter is beside it, not braking towards a gap), its speed falling by
+more than `microsim.runner.WEAVE_GIVEUP_DECEL_TOL_MS2` (0.1 m/s², not
+fitted) times the step, not at rest — and no longer than the bound, the
+value or the follower's braking time to rest at its own `decel` from its
+speed on the first refused step (`v_F / b_F`), whichever is shorter
+(`microsim.runner._weave_giveup_patient`; the state in the vehicle's `st`:
+`foll_prev`, `giveup_since`, `giveup_v_foll`; the budget runs from the
+first refused step and is never renewed). Any other state gives up at once
+as before, and `0` never waits, so the rule cannot lock. The waited
+vehicle-steps are `weave_sections[i].n_giveup_waited` (the 33rd key above;
+`WeaveSectionDiagnosticsOut.n_giveup_waited`, null for an older meta, not
+shown by the dashboard; aggregated by `WEAVE_FIELDS`). Measured on the
+speed-aware acceptance's 30-run grid (docs/WEAVE_MODEL_PLAN.md, dated
+section) and not made the default: at 10 s the give-ups read 48 against
+44, lane 1 at the gore is slower on more runs than faster, and the T.H.52
+capacity entrance at seed 4 departs 358 of 466 (the no-lock test's 80 %
+pin fails); the give-up at the gore's end is not the transient the rule
+waits for — of the 44, 34 are a lane-0 vehicle overlapping the halted
+exiter and the 6 followers braking towards the gap had been caught by the
+cooperation's hold inside their own brake distance at `b` and slid
+alongside. A bound without the deceleration condition (10 s) locks the
+Ruth St corridor fleet at the 271 m window (lane 1 at 0.0 m/s for twelve
+minutes, 20 unfinished). Golden `merge_weave` unchanged (the default is
+the previous behaviour; the summary does not carry the new key).
 
 ## 3. Run outputs
 
@@ -1912,8 +1945,11 @@ vacated", "Vacate refused" and "Pair releases" with a dash for null; and
 `n_missed_exit` (exit-side derivation: exit-bound vehicles rerouted through
 at the gore's end, halted still owing their change within `exit_giveup_m`
 of the end — a subset of `n_missed`), null for a meta written before the
-rule and not shown by the dashboard; the sweep summary's `diagnostics`
-block aggregates all seven the same way (`scripts/corridor_sweep.py`
+rule and not shown by the dashboard, and (WP-52, 2026-09-24 block 3)
+`n_giveup_waited` (vehicle-steps on which such a give-up was deferred by
+the bounded patience, `exit_giveup_patience_s`; zero at its default), null
+for a meta written before and not shown by the dashboard; the sweep
+summary's `diagnostics` block aggregates all eight the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema
 brought in line with `_weave_meta`): `WeaveSectionDiagnosticsOut` also

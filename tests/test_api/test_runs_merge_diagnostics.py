@@ -56,6 +56,7 @@ WEAVE_SECTION: dict[str, Any] = {
     "n_vacate_requests": 301,
     "n_pair_releases": 9,
     "n_missed_exit": 1,
+    "n_giveup_waited": 0,
     "short_section": False,
     "vacate_window_edges": ["e0", "e-1"],
     "n_exited": 143,
@@ -147,6 +148,7 @@ def test_meter_and_weave_counters_are_read_from_the_first_replicate(client: Test
         "n_vacate_requests",
         "n_pair_releases",
         "n_missed_exit",
+        "n_giveup_waited",
         "short_section",
         "vacate_window_edges",
         "wait_s_mean",
@@ -178,8 +180,9 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
     ``n_changer_eased``, nor the later ``n_vacated`` / ``n_vacate_refused``
     (third derivation), ``n_pair_releases`` (fifth), ``n_missed_exit``
     (exit side), the re-derived vacate rule's ``n_vacate_skipped_no_gap``
-    / ``n_vacate_requests``, the short-section flag ``short_section`` and the
-    cross-edge window's ``vacate_window_edges``: the eleven read as null, the
+    / ``n_vacate_requests``, the short-section flag ``short_section``, the
+    cross-edge window's ``vacate_window_edges`` and the bounded give-up
+    patience's ``n_giveup_waited`` (WP-52): the twelve read as null, the
     rest as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
@@ -191,6 +194,7 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
         "n_vacate_refused",
         "n_pair_releases",
         "n_missed_exit",
+        "n_giveup_waited",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",
@@ -212,8 +216,9 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
     """A meta from between the second and the third weave derivation carries
     the cooperation counters but none of ``n_vacated``, ``n_vacate_refused``,
     ``n_pair_releases``, ``n_missed_exit``, ``n_vacate_skipped_no_gap``,
-    ``n_vacate_requests``, ``short_section``, ``vacate_window_edges``: those
-    eight read as null, the cooperation counters as written."""
+    ``n_vacate_requests``, ``short_section``, ``vacate_window_edges``,
+    ``n_giveup_waited``: those nine read as null, the cooperation counters as
+    written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     later = (
@@ -221,6 +226,7 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
         "n_vacate_refused",
         "n_pair_releases",
         "n_missed_exit",
+        "n_giveup_waited",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",

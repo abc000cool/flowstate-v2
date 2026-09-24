@@ -760,6 +760,13 @@ VACATE_LANE_CAPACITY_VEH_H = 2050.0  # one IDM lane at the fleet defaults (CLAUD
 VACATE_FLOW_WINDOW_S = 60.0  # the window of the target lane's flow and of the asks
 SCRIPTED_MERGE_CREEP_MS = 3.0  # desired-speed floor on the acceleration lane [m/s]
 HALTING_SPEED_MS = 0.1  # SUMO's own halting threshold (waiting time accrues below it) [m/s]
+#: The give-up patience (2026-09-24, block 3, WP-52) reads a follower as still
+#: braking towards the gap while its speed falls by more than this
+#: deceleration times the step per step; below it the follower is at its
+#: speed (SUMO's speeds settle at an equilibrium within a few hundredths of a
+#: m/s per step). One tenth of the fleet's smallest comfortable deceleration
+#: of interest, not a fitted value.
+WEAVE_GIVEUP_DECEL_TOL_MS2 = 0.1
 NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
 NEIGHBOR_LEFT_LEADERS = 2
 NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
@@ -1025,6 +1032,79 @@ def _weave_force_gap_ok(
     if b_foll is not None:
         foll_min = max(foll_min, closing_foll**2 / (2.0 * b_foll))
     return g_lead > lead_min and g_foll > foll_min
+
+
+def _weave_giveup_patient(
+    st: dict[str, Any],
+    t: float,
+    patience_s: float,
+    f_id: str | None,
+    g_foll: float,
+    v_foll: float,
+    b_foll: float | None,
+    step_s: float,
+) -> bool:
+    """Whether a halted exiter whose request is refused waits this step (WP-52).
+
+    Bounded give-up patience (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
+    dated section). Under the speed-aware guard (:func:`_weave_force_gap_ok`)
+    the first step on which a halted exiter at the gore's end can request no
+    change often comes while its auxiliary-lane follower is still braking
+    towards the gap the priority hold opened for it — the follower's brake
+    gap ``(v_F − v_c)⁺²/(2·b_F)`` is above the gap it is closing for two or
+    three seconds and then is not. Giving up on that step (the exit-side
+    derivation) reroutes an exiter whose change would have been accepted a
+    few steps later; the unbounded patient form (a halted exiter is never
+    given up while its follower is held) locks the short section, because
+    a held follower at rest behind a halted exiter is the abreast-pair state
+    the pair release exists for (WP-51, variant E).
+
+    The exiter waits only while the refusal is that transient: the follower
+    reported this step, ``f_id``, is the one recorded on the previous step in
+    ``st["foll_prev"]`` (so its speed history is one vehicle's), its speed
+    fell since by more than ``WEAVE_GIVEUP_DECEL_TOL_MS2 · step_s``, it has
+    not come to rest (``HALTING_SPEED_MS``), and the wait since the first
+    refused step (``st["giveup_since"]``, set here) is shorter than the
+    bound — ``patience_s`` or the follower's braking time to rest at its own
+    ``b`` from its speed on that first step, ``v_F / b_F``, whichever is
+    shorter, so a follower already crawling earns no patience. Any other
+    state gives up at once, as before: no follower, a different follower, a
+    follower at its speed or at rest, or the bound reached. The budget runs
+    from the first refused step and is not reset, so an exiter that rolls
+    again and halts again cannot renew it; ``patience_s`` of ``0`` never
+    waits.
+
+    Args:
+        st: The exiter's per-vehicle state (``foll_prev``, ``giveup_since``,
+            ``giveup_v_foll`` read and written here).
+        t: Simulation time [s].
+        patience_s: ``exit_giveup_patience_s``.
+        f_id: The auxiliary-lane follower reported this step (``None`` = none).
+        v_foll: Its speed [m/s] (``nan`` with none).
+        b_foll: Its comfortable deceleration [m/s²] (``None`` with none).
+        step_s: The step length [s].
+
+    Returns:
+        ``True`` to keep the exiter this step (the refusal is deferred as a
+        forced change is, ``n_giveup_waited`` counted by the caller); ``False``
+        to give the exit up now.
+    """
+    if patience_s <= 0.0 or f_id is None or b_foll is None or math.isnan(v_foll):
+        return False
+    if g_foll <= 0.0:
+        return False
+    prev = st.get("foll_prev")
+    if prev is None or prev[0] != f_id:
+        return False
+    if st.get("giveup_since") is None:
+        st["giveup_since"] = t
+        st["giveup_v_foll"] = v_foll
+    bound = min(patience_s, st["giveup_v_foll"] / b_foll if b_foll > 0.0 else 0.0)
+    if t - st["giveup_since"] >= bound:
+        return False
+    if v_foll < HALTING_SPEED_MS:
+        return False
+    return v_foll < prev[1] - WEAVE_GIVEUP_DECEL_TOL_MS2 * step_s
 
 
 def _idm_accel(
@@ -2372,6 +2452,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 "mode": LC_MODE_SCRIPTED_SAFE,
                 # the gap chosen on the ramp, if any, carries over
                 "target": ws["pre"].pop(vid, None),
+                # the give-up patience (WP-52): last step's target-lane
+                # follower and its speed, the first refused step
+                "foll_prev": None,
+                "giveup_since": None,
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
@@ -2454,23 +2538,33 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             and v_ego < HALTING_SPEED_MS
             and not (accepted or forced_ok)
         ):
-            # the exit is missed: a vehicle halted within exit_giveup_m of
-            # the gore's end with no change to request this step continues
-            # on the mainline (rerouted to the corridor's end) instead of
-            # being held by SUMO at the end of a lane its route does not
-            # continue on, where it stopped the through lane behind it and
-            # the auxiliary lane beside it (exit-side derivation, 2026-09-24
-            # block 3). One still rolling there may yet drop in: v00010 of
-            # the moderate fixture forced its change in the last 3 m at
-            # 2-3 m/s (session record)
-            mod.vehicle.changeTarget(vid, ws["through_target"])
-            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
-            del veh[vid]
-            ws["gave_up"].add(vid)
-            awaiting_exit.discard(vid)
-            ws["n_missed"] += 1
-            ws["n_missed_exit"] += 1
-            continue
+            if _weave_giveup_patient(
+                st, t, prm["exit_giveup_patience_s"], f_id, g_foll, v_foll, b_f, step_s
+            ):
+                # the refusal is the follower still braking towards the gap
+                # (bounded give-up patience, WP-52): kept this step, the
+                # request deferred below as a forced change is
+                ws["n_giveup_waited"] += 1
+            else:
+                # the exit is missed: a vehicle halted within exit_giveup_m
+                # of the gore's end with no change to request this step
+                # continues on the mainline (rerouted to the corridor's end)
+                # instead of being held by SUMO at the end of a lane its
+                # route does not continue on, where it stopped the through
+                # lane behind it and the auxiliary lane beside it (exit-side
+                # derivation, 2026-09-24 block 3). One still rolling there
+                # may yet drop in: v00010 of the moderate fixture forced its
+                # change in the last 3 m at 2-3 m/s (session record)
+                mod.vehicle.changeTarget(vid, ws["through_target"])
+                mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+                del veh[vid]
+                ws["gave_up"].add(vid)
+                awaiting_exit.discard(vid)
+                ws["n_missed"] += 1
+                ws["n_missed_exit"] += 1
+                continue
+        # the follower reported this step, for the patience's speed history
+        st["foll_prev"] = (f_id, v_foll)
         if vid in yielders:
             # yields to its released partner: no target, no request, the
             # gap commitment dropped (re-chosen next step)
@@ -2587,7 +2681,11 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     runner itself rerouted through at the gore's end, halted (below
     ``HALTING_SPEED_MS``) still owing their change with no more than
     ``exit_giveup_m`` of section ahead — a subset of ``n_missed``, so the
-    identity above holds. ``n_exited``
+    identity above holds; ``n_giveup_waited`` (WP-52, the bounded give-up
+    patience) the vehicle-steps on which such a give-up was deferred because
+    the exiter's auxiliary-lane follower was still braking towards the gap
+    (:func:`_weave_giveup_patient`; zero at ``exit_giveup_patience_s`` = 0).
+    ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
     the network after the section — :func:`_weave_step`, exit bookkeeping),
@@ -2627,6 +2725,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_forced": ws["n_forced"],
         "n_missed": ws["n_missed"],
         "n_missed_exit": ws["n_missed_exit"],
+        "n_giveup_waited": ws["n_giveup_waited"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -3354,6 +3453,9 @@ def run_micro(
                     "n_forced": 0,
                     "n_missed": 0,
                     "n_missed_exit": 0,
+                    # vehicle-steps a halted exiter's give-up was deferred
+                    # by the bounded patience (WP-52)
+                    "n_giveup_waited": 0,
                     # exit-bound vehicles rerouted through at the gore's end
                     # (exit-side derivation): no longer driven; their new
                     # destination is the corridor's last edge

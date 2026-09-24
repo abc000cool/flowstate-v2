@@ -273,7 +273,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     derivation, 2026-09-24 block 3) counts exit-bound vehicles the runner
     rerouted through at the gore's end, halted still owing their change with
     no more than ``exit_giveup_m`` of section ahead — a subset of ``n_missed``;
-    ``None`` for a meta written before the rule existed. Two keys that are
+    ``None`` for a meta written before the rule existed. ``n_giveup_waited``
+    (WP-52, 2026-09-24 block 3, the bounded give-up patience) counts the
+    vehicle-steps on which such a give-up was deferred while the exiter's
+    auxiliary-lane follower was still braking towards the gap
+    (``exit_giveup_patience_s``; zero at its default of 0); ``None`` for a
+    meta written before. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -305,6 +310,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_vacate_requests: int | None = None
     n_pair_releases: int | None = None
     n_missed_exit: int | None = None
+    n_giveup_waited: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

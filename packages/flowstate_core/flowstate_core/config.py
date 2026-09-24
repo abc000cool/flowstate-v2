@@ -185,6 +185,7 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "vacate_no_follower_braking": 0.0,
     "pair_release_s": 2.0,
     "exit_giveup_m": 5.0,
+    "exit_giveup_patience_s": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -246,7 +247,29 @@ WB standstill at the T.H.52 gore's end, ``microsim.runner._weave_step``). One
 still rolling there may yet drop in and is left to. The default, 5 m, is one
 vehicle length: a driver halted within its own length of the gore's nose is
 not going to cross the taper; not a fitted value. ``0`` gives up only at the
-lane end."""
+lane end. ``exit_giveup_patience_s`` (2026-09-24, block 3, WP-52, the
+bounded give-up patience): the longest a halted exiter within ``exit_giveup_m``
+whose request is refused waits before it is given up, while the refusal is a
+transient of its auxiliary-lane follower still braking towards the gap — the
+follower reported this step is the one reported last step, its speed is
+still falling by more than ``microsim.runner.WEAVE_GIVEUP_DECEL_TOL_MS2`` per
+step and it has not come to rest (``microsim.runner._weave_giveup_patient``).
+The wait ends, and the exit is given up, the first step the follower's speed
+is no longer falling, it is at rest, no follower is reported, or the bound
+is reached — the bound being this value or the follower's own braking time
+to rest at its ``b`` from its speed on the first refused step, ``v_F / b_F``,
+whichever is shorter. The wait is counted in ``n_giveup_waited``
+(vehicle-steps). The default is **0** — give up on the first refused step,
+the exit-side derivation's behaviour — because the rule was measured and
+found not to help (docs/WEAVE_MODEL_PLAN.md, dated section): on the 30
+fixture runs of the speed-aware acceptance's grid the give-ups read 44 at 0
+against 48 at 10 s, because the give-up at the gore's end is not the braking
+transient the rule waits for — of the 44, 34 are a lane-0 vehicle overlapping
+the halted exiter and the 6 followers that were braking towards the gap were
+caught by the cooperation's hold inside their own brake distance at ``b``, so
+they slid alongside whatever the wait. A positive value is a measured option,
+never a lock (the bound and the deceleration condition end every wait; 1–16
+vehicle-steps per run at 10 s). Not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

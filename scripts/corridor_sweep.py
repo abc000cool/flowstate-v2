@@ -116,9 +116,10 @@ METER_COUNTERS = ("n_released", "n_passed_unstoppable")
 #: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections). After
 #: ``wait_s_mean`` come the follower-cooperation counters (2026-09-24, block
 #: 3), the vacate counters (third derivation), the pair releases (fifth), the
-#: exits given up (exit side) and the re-derived vacate rule's skipped vehicles
-#: and requests (block 3); a meta written before a counter contributes nothing
-#: to its interval (``n`` = 0).
+#: exits given up (exit side), the re-derived vacate rule's skipped vehicles
+#: and requests (block 3) and the give-ups deferred by the bounded patience
+#: (WP-52); a meta written before a counter contributes nothing to its
+#: interval (``n`` = 0).
 WEAVE_FIELDS = (
     "n_entered",
     "n_exited",
@@ -136,6 +137,7 @@ WEAVE_FIELDS = (
     "n_missed_exit",
     "n_vacate_skipped_no_gap",
     "n_vacate_requests",
+    "n_giveup_waited",
 )
 
 

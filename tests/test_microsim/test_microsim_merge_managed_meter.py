@@ -864,6 +864,8 @@ class TestWeaveSchema:
             "vacate_no_follower_braking": 0.0,
             "pair_release_s": 2.0,
             "exit_giveup_m": 5.0,
+            # WP-52: the bounded give-up patience, shipped off
+            "exit_giveup_patience_s": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -1870,6 +1872,8 @@ def _weave_state(**params) -> dict:
         "n_missed": 0,
         # exit-side derivation: exits given up at the gore's end
         "n_missed_exit": 0,
+        # WP-52: give-ups deferred by the bounded patience (vehicle-steps)
+        "n_giveup_waited": 0,
         "gave_up": set(),
         "through_target": "z",
         "n_forced_deferred": 0,
@@ -2886,6 +2890,142 @@ class TestWeaveExitPriority:
                 assert ws["veh"]["e"]["target"] == "f" and held and held[0][1] == "f", t
 
 
+class TestWeaveGiveupPatience:
+    """The bounded give-up patience (WP-52, 2026-09-24 block 3):
+    ``microsim.runner._weave_giveup_patient`` and the give-up branch of
+    ``_weave_step`` under ``exit_giveup_patience_s``. Measured and shipped
+    off (default 0; docs/WEAVE_MODEL_PLAN.md, dated section); these pin the
+    rule's statement so a positive value behaves as documented."""
+
+    @staticmethod
+    def _st(prev=("f", 7.0), since=None):
+        return {"foll_prev": prev, "giveup_since": since}
+
+    def test_waits_only_while_the_same_follower_behind_is_still_braking(self):
+        from microsim.runner import HALTING_SPEED_MS
+        from microsim.runner import _weave_giveup_patient as p
+
+        # the follower reported last step at 7.0 m/s, now 6.0 with 8 m behind: wait
+        st = self._st()
+        assert p(st, 10.0, 10.0, "f", 8.0, 6.0, 1.67, 0.5) is True
+        assert st["giveup_since"] == 10.0 and st["giveup_v_foll"] == 6.0
+        # its speed no longer falling (within the tolerance, 0.1 m/s² · 0.5 s): give up
+        st["foll_prev"] = ("f", 6.0)
+        assert p(st, 10.5, 10.0, "f", 7.5, 5.96, 1.67, 0.5) is False
+        # falling by more than the tolerance: still waiting
+        assert p(st, 10.5, 10.0, "f", 7.5, 5.9, 1.67, 0.5) is True
+        # at rest: give up
+        st["foll_prev"] = ("f", 0.2)
+        assert p(st, 11.0, 10.0, "f", 7.0, HALTING_SPEED_MS / 2, 1.67, 0.5) is False
+        # a different follower than last step, or none reported: give up
+        assert p(self._st(), 10.0, 10.0, "g", 8.0, 6.0, 1.67, 0.5) is False
+        assert p(self._st(prev=None), 10.0, 10.0, "f", 8.0, 6.0, 1.67, 0.5) is False
+        assert p(self._st(), 10.0, 10.0, None, math.inf, math.nan, None, 0.5) is False
+        # a follower overlapping the exiter (beside it) is not braking towards a gap
+        assert p(self._st(), 10.0, 10.0, "f", -3.0, 6.0, 1.67, 0.5) is False
+        # patience 0: never
+        assert p(self._st(), 10.0, 0.0, "f", 8.0, 6.0, 1.67, 0.5) is False
+
+    def test_the_bound_is_the_value_or_the_follower_braking_time(self):
+        from microsim.runner import _weave_giveup_patient as p
+
+        # v_F / b_F = 6 / 1.67 = 3.59 s is shorter than 10 s: the wait ends
+        # at 3.59 s after the first refused step, the follower still braking
+        st = self._st(since=10.0)
+        st["giveup_v_foll"] = 6.0
+        st["foll_prev"] = ("f", 3.0)
+        assert p(st, 13.5, 10.0, "f", 8.0, 2.5, 1.67, 0.5) is True
+        st["foll_prev"] = ("f", 2.5)
+        assert p(st, 14.0, 10.0, "f", 8.0, 2.0, 1.67, 0.5) is False
+        # a bound of 2 s shorter than the braking time binds instead
+        st["foll_prev"] = ("f", 4.0)
+        assert p(st, 11.5, 2.0, "f", 8.0, 3.5, 1.67, 0.5) is True
+        assert p(st, 12.0, 2.0, "f", 8.0, 3.5, 1.67, 0.5) is False
+        # the budget is not renewed: since stays at the first refused step
+        assert st["giveup_since"] == 10.0
+
+    def test_step_waits_counts_and_then_gives_up(self):
+        """``_at_the_gore`` of ``TestWeaveExitPriority``: ``e`` halted 3 m
+        from the end with ``b`` 3 m ahead in lane 0 and ``f`` 8 m behind
+        closing — the speed-aware guard refuses on the follower side (its
+        brake gap on a halted ``e``, 6²/(2 · 1.67) = 10.8 m, is above the 8 m).
+        With the patience, the step after ``f`` was reported at 7 m/s and now
+        reads 6 is a wait (counted in ``n_giveup_waited``, the forced request
+        deferred, no reroute); the step on which ``f`` is no longer slowing is
+        the give-up."""
+        from microsim.runner import (
+            LC_MODE_SCRIPTED_SAFE,
+            NEIGHBOR_RIGHT_LEADERS,
+            _weave_meta,
+            _weave_step,
+        )
+
+        ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(exit_giveup_patience_s=10.0)
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        veh.neighbors[("e", 1)] = (("f", 8.0),)
+        veh.speeds.update({"e": 1.0, "b": 2.0, "f": 7.0})
+        res = {
+            "e": _res("b", 1, 97.0, 1.0),
+            "b": _res("b", 0, 105.0, 2.0),
+            "f": _res("b", 0, 84.0, 7.0),
+        }
+        # still rolling: not given up, the follower's speed recorded
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "e" in ws["veh"] and ws["veh"]["e"]["foll_prev"] == ("f", 7.0)
+        assert ws["n_giveup_waited"] == 0 and not [c for c in veh.calls if c[0] == "target"]
+        # halted, f slowing 7 → 6: waited
+        veh.speeds.update({"e": 0.0, "f": 6.0})
+        res["e"] = _res("b", 1, 97.0, 0.0)
+        res["f"] = _res("b", 0, 84.0, 6.0)
+        veh.calls.clear()
+        deferred = ws["n_forced_deferred"]
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert "e" in ws["veh"] and ws["n_giveup_waited"] == 1 and ws["n_missed_exit"] == 0
+        assert not [c for c in veh.calls if c[0] in ("target", "change")]
+        assert ws["n_forced_deferred"] == deferred + 1
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
+        assert ws["veh"]["e"]["giveup_since"] == 0.5 and ws["veh"]["e"]["foll_prev"] == ("f", 6.0)
+        # f at its speed: given up, counted, handed back
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 1.0)
+        assert ("target", "e", "z") in veh.calls and "e" not in ws["veh"]
+        assert ws["n_missed_exit"] == 1 and ws["n_giveup_waited"] == 1
+        assert _weave_meta(ws, {})["n_giveup_waited"] == 1
+
+    def test_step_gives_up_at_the_bound_while_the_follower_still_brakes(self):
+        """``f`` 2 m behind (under ``s0``, never accepted) slowing 0.5 m/s a
+        step from 6 m/s: waited every step until the follower's braking time
+        at ``b``, 6 / 1.67 = 3.59 s after the first refused step, then given
+        up although it is still slowing."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(exit_giveup_patience_s=10.0)
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        veh.neighbors[("e", 1)] = (("f", 2.0),)
+        veh.speeds.update({"e": 1.0, "b": 2.0, "f": 6.5})
+        res = {
+            "e": _res("b", 1, 97.0, 1.0),
+            "b": _res("b", 0, 105.0, 2.0),
+            "f": _res("b", 0, 90.0, 6.5),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        res["e"] = _res("b", 1, 97.0, 0.0)
+        veh.speeds["e"] = 0.0
+        t, v_f = 0.5, 6.0
+        while "e" in ws["veh"]:
+            veh.speeds["f"] = v_f
+            res["f"] = _res("b", 0, 90.0, v_f)
+            _weave_step(mod, _tc, ws, res, t)
+            t, v_f = t + 0.5, v_f - 0.5
+        # waited at t = 0.5 … 4.0 (elapsed 0 … 3.5 s < 3.59), given up at 4.5
+        assert ws["n_giveup_waited"] == 8 and ws["n_missed_exit"] == 1
+        assert t - 0.5 == pytest.approx(4.5) and ("target", "e", "z") in veh.calls
+
+    def test_default_never_waits(self):
+        ws, *_ = TestWeaveExitPriority._at_the_gore()
+        assert ws["params"]["exit_giveup_patience_s"] == 0.0
+
+
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""
 
@@ -3752,6 +3892,7 @@ class TestWeaveReviewDerivations3To6:
             "n_forced": 0,
             "n_missed": 0,
             "n_missed_exit": 0,
+            "n_giveup_waited": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,
