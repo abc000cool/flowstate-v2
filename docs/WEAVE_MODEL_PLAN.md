@@ -529,3 +529,155 @@ Seeds 4 / 5: default fleet — third derivation E1 240 / 218, E2 426 / 429; ship
 **Recommendation.** `vacate_ahead_m` stays 500 m independent of the section's length; no section-length-dependent window is added, and the 2·L cap's numbers above are its rejection. What the re-measurement hands to the vacate-window review (WP-49) is the exit-side acceptance: a lead-gap term that reads the leader's speed (the changer's braking distance to a slower leader, as `_weave_vacate_gap_ok` already does for the follower in the gap-conditioned form), with the two traces above (500 m seed 4 at 600.5 s, 271 m seed 5 at 717.5 s) as its regression cases. The Ruth St markers are re-recorded with the 500 m numbers: the exit-peak marks stay strict (the give-ups are within 2 % at every seed now; what fails is lane 1 at seeds 3 and 5 and the collision at seed 4), the entrance-peak marks stay non-strict (seed 3 pays the pair, seeds 4 / 5 pass).
 
 **Bookkeeping.** `tests/test_microsim/test_microsim_weave_short_section.py` (the marks' reasons and the class docstring; no new test); this section; no runner or fixture change. Session artifacts (the 36-run grid, the trace script) not committed.
+
+## 2026-09-24 (block 3, speed-aware acceptance): the weave's gap acceptance reads the other party's speed — both Ruth St collisions gone, a third of the same family closed on the guard's follower side, no lock, later exits
+
+**Why.** The short-section re-measurement above handed over two seeded collisions of the exit-side acceptance (Ruth St, corridor fleet, exit peak: seed 4 at the 500 m window, t = 600.5 s on `102_0` at 35.5 m; seed 5 at the 271.4 m window, t = 717.5 s at 39.2 m). Both reproduce at 8503d7c to the step and the metre (`TestExitSideAcceptance`, `tests/test_microsim/test_microsim_weave_short_section.py`). The acceptance's leader side was the movement's time gap at the changer's own speed, `g_lead ≥ s0 + accept · v_c` (16 m for the 23 m/s exiter), and the forced guard's two sides the closing distance over that time gap, `s0 + accept · Δv⁺`; neither reads whether the party behind can brake for the party ahead.
+
+**The rule (ships; `microsim.runner._weave_brake_gap`, `_weave_lead_gap_min`, `_weave_force_gap_ok`; docs/CONTRACTS.md §2).** The brake distance of the party behind to the speed of the party ahead at its own comfortable deceleration `b` (SUMO's `decel`, the calibrated draw), the party ahead holding its speed: `Δv⁺² / (2·b)`. Three checks change. (1) The acceptance's leader side, both movements: `g_lead ≥ max(s0 + accept · v_c, s0 + (v_c − v_L)⁺²/(2·b_c))` — 147 m for the trace, against 27 m offered. (2) The guard's leader side: `g_lead > max(s0 + accept · Δv⁺, s0 + Δv⁺²/(2·b_c))`, so forcing cannot command a change onto a slower leader that the acceptance refuses. (3) The guard's follower side: `g_foll > max(s0 + accept · Δv⁺, Δv⁺²/(2·b_F))` at the follower's `decel` (no `s0` term: the reported follower gap already excludes the follower's `minGap`), released pairs included — the release drops the changer's `s0` floor, not the follower's braking. The acceptance's follower side (the time gap plus the follower's IDM absorption within its `b`) is unchanged; so are the vacate rule, the gap choice, the cooperation, the exit priority and the give-up. No parameter, hash-neutral. Refused at speed, the exiter eases in its lane towards the queue's speed (`_weave_cooperate`, as before) and drops in once the gap it is offered is one it can brake for.
+
+**Why the third check.** The leader-side form alone (variant D below) removed both Ruth St collisions and left the golden, the moderate fixture and the fleet defaults byte-identical — and collided once elsewhere: `weave_th52.osm` at the corridor's demand, seed 5, t = 978.5 s at the gore's end (`102_0`, 303 m). The trace (`_weave_force_gap_ok` and `changeLane` wrapped; session record): exiter v01013, a released pair partner (`s0 = 0`) at 0.54 m/s, forced into lane 0 at 977.5 s with 10.7 m to follower v01934 at 16.13 m/s — the closing-speed bound asked `0.6 · 15.6 = 9.35 m`, the follower needed 73 m at its `b` — and was hit a second later after the follower braked at −9 m/s². The same defect on the guard's other side; it is at 8503d7c too, where seed 5 does not happen to roll it. With the follower term the pair release keeps its regime (both below the creep speed, both brake gaps near zero) and loses the fast follower.
+
+**Variants measured and rejected (the same 30-run grid: seeds 3 / 4 / 5 on the Ruth St module at both demand points and both fleets, the T.H.52 corridor-demand and capacity fixtures, the two two-entrance fixtures, the moderate fixture and the golden; 20 simulated minutes at step 0.5 s, macOS, session harness).** A: the changer's IDM desired gap `s*(v_c, v_c − v_L)` (`_idm_desired_gap`, the changer's own `T`, `a`, `b`, `s0`; the time gap as the floor) as the leader bound of the acceptance and the guard — the form the block's brief named. It is the *no-braking* gap (`s0 + v·T` at equal speeds: 35 m at 23 m/s against the 0.6 s time gap's 16 m; 263 m for the trace): it removed the collisions and locked every T.H.52 fixture. B: the gap at which the changer's IDM towards the leader asks exactly −b, `s*/√(1 + b/a − (v/v0)⁴)` (153 m for the trace, ≈ 20 m at equal speeds at 23 m/s), leader side only: no collision anywhere, but IDM's kinematic term `v·Δv/(2√(ab))` is conservative at a weave's moderate closing rates (32 m for 15 → 10 m/s where the brake distance is 10 m), so the exiters ease in lane 1 longer and the gore slows (corridor demand seed 3: 3.4 m/s in two minutes against 6.5). C: B on both sides of the guard — the follower's IDM −b gap: locks the short section (Ruth St entrance peak: lane 1 at 1.2–1.5 m/s in 8–16 minutes, 1,288–3,910 deferred) and moves the golden's mean travel time 69.3 → 73.8 s. D: the kinematic form on the leader side alone — the seed-5 collision above. E: D plus the follower side plus a *patient* give-up (a halted exiter whose gap follower is still held is not rerouted that step): the held follower at rest behind a halted exiter is the abreast-pair state the release exists for, and waiting on it is the pre-release lock — Ruth St exit peak at 0.0 m/s for the whole run, 19,253 deferred, 24 unfinished. The shipped form is D plus the follower side.
+
+*Table — the two regression cases and every fixture the block measures, 8503d7c against the shipped rule. Columns: exits given up of the exit-bound vehicles that reach the section (`n_missed_exit`); exited of reached; lane 1 over the section's last 60 m, minimum minute after 120 s (minutes at or below 5 m/s); lane 1 over the section's first 60 m (T.H.52) or E1's acceleration-lane end (two-entrance), the same; forced / forced deferred (vehicle-steps) / pair releases; driven vehicles unfinished; the entrance departed of its plan (and E1's); collisions.*
+
+| fixture | seed | variant | given up of reached (%) | exited of reached | lane 1 last 60 m min [m/s] (min ≤ 5) | lane 1 first 60 m / E1 accel end min (min ≤ 5) | forced / deferred / releases | unfinished | entrance departed | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | **ships** | 1 of 280 (0.4) | 279 of 280 | 4.2 (1) | — | 25 / 402 / 6 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | **ships** | 8 of 274 (2.9) | 265 of 274 | 2.1 (3) | — | 28 / 814 / 26 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | 8503d7c | 4 of 290 (1.4) | 284 of 290 | 4.6 (1) | — | 9 / 252 / 2 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | **ships** | 9 of 290 (3.1) | 273 of 290 | 2.8 (4) | — | 40 / 1168 / 32 | 2 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 4 | **ships** | 1 of 280 (0.4) | 279 of 280 | 4.2 (1) | — | 25 / 402 / 6 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 5 | 8503d7c | 4 of 274 (1.5) | 269 of 274 | 3.6 (1) | — | 15 / 275 / 2 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 5 | **ships** | 4 of 274 (1.5) | 267 of 274 | 6.7 (0) | — | 6 / 132 / 0 | 2 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | 8503d7c | 2 of 45 (4.4) | 43 of 45 | 2.9 (1) | — | 13 / 252 / 7 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | **ships** | 0 of 45 (0.0) | 45 of 45 | 6.3 (0) | — | 14 / 138 / 1 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 4 | 8503d7c | 0 of 41 (0.0) | 41 of 41 | 16.7 (0) | — | 5 / 5 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 4 | **ships** | 1 of 41 (2.4) | 40 of 41 | 5.9 (0) | — | 9 / 120 / 1 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 5 | 8503d7c | 0 of 34 (0.0) | 34 of 34 | 15.7 (0) | — | 6 / 9 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 5 | **ships** | 0 of 34 (0.0) | 34 of 34 | 3.6 (1) | — | 8 / 119 / 4 | 0 | 128 of 128 | 0 |
+| Ruth St, fleet defaults, exit peak | 3 | 8503d7c | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 0 | 1 | 73 of 73 | 0 |
+| Ruth St, fleet defaults, exit peak | 3 | **ships** | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 0 | 1 | 73 of 73 | 0 |
+| Ruth St, fleet defaults, exit peak | 4 | 8503d7c | 0 of 282 (0.0) | 281 of 282 | 13.7 (0) | — | 6 / 0 / 0 | 0 | 73 of 73 | 0 |
+| Ruth St, fleet defaults, exit peak | 4 | **ships** | 1 of 282 (0.4) | 280 of 282 | 11.3 (0) | — | 6 / 21 / 0 | 0 | 73 of 73 | 0 |
+| Ruth St, fleet defaults, exit peak | 5 | 8503d7c | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 |
+| Ruth St, fleet defaults, exit peak | 5 | **ships** | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 |
+| Ruth St, fleet defaults, entrance peak | 3 | 8503d7c | 0 of 33 (0.0) | 33 of 33 | 7.9 (0) | — | 26 / 59 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, fleet defaults, entrance peak | 3 | **ships** | 0 of 33 (0.0) | 33 of 33 | 7.9 (0) | — | 34 / 53 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, fleet defaults, entrance peak | 4 | 8503d7c | 0 of 44 (0.0) | 43 of 44 | 12.4 (0) | — | 2 / 8 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, fleet defaults, entrance peak | 4 | **ships** | 0 of 44 (0.0) | 43 of 44 | 12.4 (0) | — | 2 / 8 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, fleet defaults, entrance peak | 5 | 8503d7c | 0 of 44 (0.0) | 44 of 44 | 12.6 (0) | — | 7 / 0 / 0 | 1 | 128 of 128 | 0 |
+| Ruth St, fleet defaults, entrance peak | 5 | **ships** | 0 of 44 (0.0) | 44 of 44 | 12.6 (0) | — | 7 / 0 / 0 | 1 | 128 of 128 | 0 |
+| T.H.52, corridor demand | 3 | 8503d7c | 0 of 301 (0.0) | 297 of 301 | 6.5 (0) | 3.7 (2) | 13 / 35 / 4 | 1 | 398 of 470 | 0 |
+| T.H.52, corridor demand | 3 | **ships** | 1 of 299 (0.3) | 292 of 299 | 3.8 (1) | 3.7 (2) | 12 / 67 / 5 | 2 | 403 of 470 | 0 |
+| T.H.52, corridor demand | 4 | 8503d7c | 0 of 312 (0.0) | 302 of 312 | 11.7 (0) | 4.8 (1) | 18 / 47 / 3 | 4 | 394 of 470 | 0 |
+| T.H.52, corridor demand | 4 | **ships** | 0 of 317 (0.0) | 308 of 317 | 11.9 (0) | 4.4 (1) | 18 / 22 / 9 | 2 | 388 of 470 | 0 |
+| T.H.52, corridor demand | 5 | 8503d7c | 3 of 303 (1.0) | 299 of 303 | 1.7 (3) | 3.7 (2) | 30 / 534 / 39 | 1 | 395 of 470 | 0 |
+| T.H.52, corridor demand | 5 | **ships** | 5 of 308 (1.6) | 296 of 308 | 1.7 (2) | 3.7 (1) | 30 / 601 / 29 | 6 | 401 of 470 | 0 |
+| T.H.52, capacity | 3 | 8503d7c | 0 of 316 (0.0) | 309 of 316 | 8.3 (0) | 3.7 (2) | 29 / 102 / 14 | 3 | 398 of 466 | 0 |
+| T.H.52, capacity | 3 | **ships** | 1 of 319 (0.3) | 309 of 319 | 4.7 (1) | 3.9 (2) | 34 / 172 / 9 | 4 | 395 of 466 | 0 |
+| T.H.52, capacity | 4 | 8503d7c | 0 of 379 (0.0) | 374 of 379 | 5.2 (0) | 4.1 (4) | 49 / 365 / 27 | 5 | 365 of 466 | 0 |
+| T.H.52, capacity | 4 | **ships** | 1 of 379 (0.3) | 373 of 379 | 10.7 (0) | 4.3 (5) | 22 / 71 / 23 | 2 | 401 of 466 | 0 |
+| T.H.52, capacity | 5 | 8503d7c | 0 of 361 (0.0) | 354 of 361 | 4.5 (1) | 3.2 (3) | 30 / 202 / 19 | 1 | 389 of 466 | 0 |
+| T.H.52, capacity | 5 | **ships** | 1 of 369 (0.3) | 361 of 369 | 5.0 (1) | 3.3 (4) | 38 / 194 / 18 | 3 | 373 of 466 | 0 |
+| two-entrance, fleet defaults | 3 | 8503d7c | 0 of 308 (0.0) | 300 of 308 | 7.4 (0) | 1.2 (14) | 30 / 110 / 0 | 2 | 417 of 470; E1 205 of 360 | 0 |
+| two-entrance, fleet defaults | 3 | **ships** | 3 of 301 (1.0) | 294 of 301 | 3.7 (1) | 0.2 (16) | 25 / 181 / 6 | 3 | 417 of 470; E1 216 of 360 | 0 |
+| two-entrance, fleet defaults | 4 | 8503d7c | 0 of 307 (0.0) | 300 of 307 | 8.5 (0) | 0.2 (16) | 18 / 102 / 3 | 3 | 405 of 470; E1 206 of 360 | 0 |
+| two-entrance, fleet defaults | 4 | **ships** | 3 of 307 (1.0) | 301 of 307 | 4.4 (1) | 0.8 (13) | 35 / 317 / 15 | 1 | 399 of 470; E1 210 of 360 | 0 |
+| two-entrance, fleet defaults | 5 | 8503d7c | 1 of 312 (0.3) | 298 of 312 | 7.5 (0) | 0.6 (15) | 17 / 65 / 7 | 8 | 419 of 470; E1 246 of 360 | 0 |
+| two-entrance, fleet defaults | 5 | **ships** | 1 of 308 (0.3) | 299 of 308 | 5.6 (0) | 0.4 (14) | 30 / 172 / 2 | 6 | 407 of 470; E1 256 of 360 | 0 |
+| two-entrance, corridor fleet | 3 | 8503d7c | 0 of 316 (0.0) | 307 of 316 | 8.0 (0) | 1.0 (16) | 24 / 48 / 7 | 4 | 358 of 470; E1 272 of 360 | 0 |
+| two-entrance, corridor fleet | 3 | **ships** | 0 of 314 (0.0) | 309 of 314 | 7.3 (0) | 1.6 (13) | 22 / 55 / 4 | 1 | 356 of 470; E1 253 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | 8503d7c | 1 of 306 (0.3) | 303 of 306 | 2.9 (2) | 1.1 (14) | 37 / 402 / 19 | 0 | 374 of 470; E1 258 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | **ships** | 3 of 308 (1.0) | 301 of 308 | 2.9 (2) | 1.5 (14) | 41 / 536 / 23 | 5 | 351 of 470; E1 256 of 360 | 0 |
+| two-entrance, corridor fleet | 5 | 8503d7c | 0 of 281 (0.0) | 277 of 281 | 7.6 (0) | 0.6 (16) | 24 / 31 / 10 | 1 | 344 of 470; E1 248 of 360 | 0 |
+| two-entrance, corridor fleet | 5 | **ships** | 0 of 301 (0.0) | 291 of 301 | 8.3 (0) | 0.6 (14) | 25 / 22 / 5 | 4 | 374 of 470; E1 253 of 360 | 0 |
+| moderate (weave.osm, 300 s) | 3 | 8503d7c | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 |
+| moderate (weave.osm, 300 s) | 3 | **ships** | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 |
+| moderate (weave.osm, 300 s) | 4 | 8503d7c | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 |
+| moderate (weave.osm, 300 s) | 4 | **ships** | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 |
+| moderate (weave.osm, 300 s) | 5 | 8503d7c | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 |
+| moderate (weave.osm, 300 s) | 5 | **ships** | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 |
+
+*Table — the variants on the cases that decided between them (same columns).*
+
+| fixture | seed | variant | given up of reached (%) | exited of reached | lane 1 last 60 m min [m/s] (min ≤ 5) | lane 1 first 60 m / E1 accel end min (min ≤ 5) | forced / deferred / releases | unfinished | entrance departed | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | A: s* leader side | 7 of 281 (2.5) | 273 of 281 | 2.8 (7) | — | 53 / 1554 / 31 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | B: IDM −b gap, leader side | 6 of 280 (2.1) | 272 of 280 | 1.5 (3) | — | 37 / 1072 / 21 | 1 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | C: IDM −b gap, both sides of the guard | 22 of 280 (7.9) | 258 of 280 | 1.2 (8) | — | 47 / 2963 / 77 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | D: kinematic, leader side only | 1 of 280 (0.4) | 279 of 280 | 2.8 (2) | — | 30 / 362 / 11 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | E: D + follower side + patient give-up | 0 of 135 (0.0) | 99 of 135 | 0.0 (12) | — | 7 / 11395 / 34 | 25 | 62 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 500 m | 4 | **ships** (D + follower side) | 1 of 280 (0.4) | 279 of 280 | 4.2 (1) | — | 25 / 402 / 6 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | A: s* leader side | 9 of 274 (3.3) | 264 of 274 | 1.8 (2) | — | 26 / 1106 / 18 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | B: IDM −b gap, leader side | 4 of 274 (1.5) | 269 of 274 | 2.3 (2) | — | 29 / 606 / 6 | 2 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | C: IDM −b gap, both sides of the guard | 14 of 258 (5.4) | 231 of 258 | 0.0 (11) | — | 50 / 5521 / 179 | 8 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | D: kinematic, leader side only | 6 of 274 (2.2) | 267 of 274 | 2.5 (2) | — | 28 / 657 / 5 | 2 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | E: D + follower side + patient give-up | 0 of 134 (0.0) | 103 of 134 | 0.0 (12) | — | 0 / 12916 / 18 | 20 | 64 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | **ships** (D + follower side) | 8 of 274 (2.9) | 265 of 274 | 2.1 (3) | — | 28 / 814 / 26 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | A: s* leader side | 10 of 290 (3.4) | 273 of 290 | 2.5 (6) | — | 44 / 1844 / 25 | 4 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | B: IDM −b gap, leader side | 6 of 290 (2.1) | 282 of 290 | 4.1 (3) | — | 40 / 789 / 8 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | C: IDM −b gap, both sides of the guard | 17 of 290 (5.9) | 269 of 290 | 1.8 (9) | — | 54 / 2871 / 78 | 1 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | D: kinematic, leader side only | 6 of 290 (2.1) | 282 of 290 | 5.1 (0) | — | 19 / 456 / 5 | 0 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | E: D + follower side + patient give-up | 0 of 56 (0.0) | 21 of 56 | 0.0 (18) | — | 0 / 19253 / 43 | 24 | 40 of 73 | 0 |
+| Ruth St, corridor fleet, exit peak | 3 | **ships** (D + follower side) | 9 of 290 (3.1) | 273 of 290 | 2.8 (4) | — | 40 / 1168 / 32 | 2 | 73 of 73 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | A: s* leader side | 1 of 45 (2.2) | 44 of 45 | 4.7 (1) | — | 13 / 124 / 1 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | B: IDM −b gap, leader side | 0 of 45 (0.0) | 45 of 45 | 10.4 (0) | — | 14 / 34 / 0 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | C: IDM −b gap, both sides of the guard | 2 of 41 (4.9) | 38 of 41 | 1.5 (16) | — | 45 / 3910 / 182 | 1 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | D: kinematic, leader side only | 2 of 45 (4.4) | 43 of 45 | 4.9 (1) | — | 15 / 166 / 2 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | E: D + follower side + patient give-up | 0 of 45 (0.0) | 45 of 45 | 6.3 (0) | — | 14 / 138 / 1 | 0 | 128 of 128 | 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | **ships** (D + follower side) | 0 of 45 (0.0) | 45 of 45 | 6.3 (0) | — | 14 / 138 / 1 | 0 | 128 of 128 | 0 |
+| T.H.52, capacity | 3 | A: s* leader side | 14 of 252 (5.6) | 224 of 252 | 1.2 (13) | 1.3 (14) | 48 / 5232 / 860 | 9 | 294 of 466 | 0 |
+| T.H.52, capacity | 3 | B: IDM −b gap, leader side | 0 of 310 (0.0) | 305 of 310 | 6.1 (0) | 3.9 (2) | 24 / 137 / 8 | 4 | 381 of 466 | 0 |
+| T.H.52, capacity | 3 | C: IDM −b gap, both sides of the guard | 7 of 291 (2.4) | 277 of 291 | 3.3 (7) | 2.0 (6) | 46 / 1003 / 101 | 4 | 370 of 466 | 0 |
+| T.H.52, capacity | 3 | D: kinematic, leader side only | 0 of 317 (0.0) | 310 of 317 | 10.6 (0) | 3.7 (2) | 23 / 92 / 14 | 5 | 396 of 466 | 0 |
+| T.H.52, capacity | 3 | E: D + follower side + patient give-up | 1 of 321 (0.3) | 304 of 321 | 2.1 (5) | 3.9 (2) | 42 / 433 / 18 | 4 | 381 of 466 | 0 |
+| T.H.52, capacity | 3 | **ships** (D + follower side) | 1 of 319 (0.3) | 309 of 319 | 4.7 (1) | 3.9 (2) | 34 / 172 / 9 | 4 | 395 of 466 | 0 |
+| T.H.52, capacity | 5 | A: s* leader side | 11 of 298 (3.7) | 263 of 298 | 2.4 (14) | 1.9 (15) | 41 / 4437 / 559 | 17 | 308 of 466 | 0 |
+| T.H.52, capacity | 5 | B: IDM −b gap, leader side | 1 of 377 (0.3) | 361 of 377 | 6.2 (0) | 4.8 (2) | 34 / 222 / 9 | 10 | 392 of 466 | 0 |
+| T.H.52, capacity | 5 | C: IDM −b gap, both sides of the guard | 8 of 347 (2.3) | 325 of 347 | 2.6 (6) | 3.7 (4) | 50 / 1090 / 49 | 12 | 358 of 466 | 0 |
+| T.H.52, capacity | 5 | D: kinematic, leader side only | 0 of 368 (0.0) | 362 of 368 | 5.0 (1) | 3.2 (4) | 43 / 184 / 22 | 3 | 373 of 466 | 0 |
+| T.H.52, capacity | 5 | E: D + follower side + patient give-up | 0 of 370 (0.0) | 353 of 370 | 2.8 (3) | 3.2 (4) | 40 / 529 / 28 | 9 | 372 of 466 | 0 |
+| T.H.52, capacity | 5 | **ships** (D + follower side) | 1 of 369 (0.3) | 361 of 369 | 5.0 (1) | 3.3 (4) | 38 / 194 / 18 | 3 | 373 of 466 | 0 |
+| T.H.52, corridor demand | 3 | A: s* leader side | 13 of 260 (5.0) | 242 of 260 | 1.3 (12) | 1.3 (13) | 38 / 3704 / 446 | 3 | 311 of 470 | 0 |
+| T.H.52, corridor demand | 3 | B: IDM −b gap, leader side | 2 of 317 (0.6) | 307 of 317 | 3.4 (2) | 4.1 (5) | 32 / 370 / 20 | 2 | 380 of 470 | 0 |
+| T.H.52, corridor demand | 3 | C: IDM −b gap, both sides of the guard | 3 of 318 (0.9) | 303 of 318 | 4.4 (1) | 4.2 (2) | 26 / 422 / 6 | 9 | 416 of 470 | 0 |
+| T.H.52, corridor demand | 3 | D: kinematic, leader side only | 0 of 301 (0.0) | 297 of 301 | 6.5 (0) | 3.7 (2) | 13 / 35 / 4 | 2 | 398 of 470 | 0 |
+| T.H.52, corridor demand | 3 | E: D + follower side + patient give-up | 0 of 297 (0.0) | 281 of 297 | 1.1 (1) | 3.7 (3) | 11 / 150 / 23 | 8 | 404 of 470 | 0 |
+| T.H.52, corridor demand | 3 | **ships** (D + follower side) | 1 of 299 (0.3) | 292 of 299 | 3.8 (1) | 3.7 (2) | 12 / 67 / 5 | 2 | 403 of 470 | 0 |
+| T.H.52, corridor demand | 5 | A: s* leader side | 11 of 260 (4.2) | 239 of 260 | 2.3 (12) | 1.8 (14) | 42 / 3755 / 423 | 6 | 310 of 470 | 0 |
+| T.H.52, corridor demand | 5 | B: IDM −b gap, leader side | 1 of 311 (0.3) | 300 of 311 | 4.6 (1) | 5.0 (0) | 28 / 268 / 0 | 7 | 392 of 470 | 0 |
+| T.H.52, corridor demand | 5 | C: IDM −b gap, both sides of the guard | 8 of 306 (2.6) | 291 of 306 | 3.4 (3) | 5.0 (0) | 21 / 366 / 13 | 4 | 395 of 470 | 0 |
+| T.H.52, corridor demand | 5 | D: kinematic, leader side only | 3 of 309 (1.0) | 300 of 309 | 1.7 (3) | 3.7 (1) | 40 / 671 / 30 | 3 | 399 of 470 | 1 |
+| T.H.52, corridor demand | 5 | E: D + follower side + patient give-up | 0 of 112 (0.0) | 67 of 112 | 0.0 (16) | 0.0 (15) | 4 / 12801 / 35 | 17 | 147 of 470 | 0 |
+| T.H.52, corridor demand | 5 | **ships** (D + follower side) | 5 of 308 (1.6) | 296 of 308 | 1.7 (2) | 3.7 (1) | 30 / 601 / 29 | 6 | 401 of 470 | 0 |
+| two-entrance, corridor fleet | 4 | A: s* leader side | 3 of 302 (1.0) | 291 of 302 | 4.0 (1) | 0.8 (14) | 30 / 594 / 23 | 1 | 363 of 470; E1 264 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | B: IDM −b gap, leader side | 1 of 298 (0.3) | 296 of 298 | 7.0 (0) | 1.0 (15) | 35 / 135 / 3 | 1 | 370 of 470; E1 262 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | C: IDM −b gap, both sides of the guard | 12 of 288 (4.2) | 259 of 288 | 1.2 (8) | 0.4 (14) | 38 / 2075 / 169 | 4 | 310 of 470; E1 249 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | D: kinematic, leader side only | 2 of 307 (0.7) | 298 of 307 | 2.9 (2) | 1.4 (13) | 34 / 504 / 22 | 3 | 364 of 470; E1 266 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | E: D + follower side + patient give-up | 0 of 94 (0.0) | 37 of 94 | 0.0 (17) | 0.0 (16) | 2 / 14753 / 49 | 34 | 138 of 470; E1 140 of 360 | 0 |
+| two-entrance, corridor fleet | 4 | **ships** (D + follower side) | 3 of 308 (1.0) | 301 of 308 | 2.9 (2) | 1.5 (14) | 41 / 536 / 23 | 5 | 351 of 470; E1 256 of 360 | 0 |
+
+*Table — golden `merge_weave` under each variant: config hash, mean and p90 travel time [s], σ_v spatial / temporal [m/s], VMT [veh-km], VHT [veh-h], fuel [ml/veh-km], throughput [veh/h], changes in / out / forced / forced deferred, exits, collisions.*
+
+| variant | hash | mean TT | p90 TT | σ_v | VMT | VHT | fuel | throughput | in / out / forced / deferred | exits | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 8503d7c | 436cd4ec9e5d | 69.345 | 84.583 | 3.848 / 3.349 | 169.648 | 1.7399 | 90.67 | 1680.0 | 14 / 19 / 2 / 0 | 33 | 0 |
+| A | 436cd4ec9e5d | 68.584 | 83.944 | 4.058 / 3.413 | 169.638 | 1.7444 | 90.80 | 1691.3 | 14 / 19 / 2 / 2 | 33 | 0 |
+| B | 436cd4ec9e5d | 69.342 | 84.577 | 3.850 / 3.352 | 169.648 | 1.7400 | 90.66 | 1680.0 | 14 / 19 / 2 / 0 | 33 | 0 |
+| C | 436cd4ec9e5d | 73.811 | 90.381 | 5.219 / 4.446 | 169.741 | 1.8617 | 90.77 | 1665.2 | 15 / 19 / 5 / 85 | 33 | 0 |
+| D | 436cd4ec9e5d | 69.345 | 84.583 | 3.848 / 3.349 | 169.648 | 1.7399 | 90.67 | 1680.0 | 14 / 19 / 2 / 0 | 33 | 0 |
+| E | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 |
+| ships | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 |
+
+**Reading.**
+
+1. *The collisions vanish and nothing locks.* No collision on any of the 30 runs (8503d7c: two on the Ruth St corridor fleet); the driven vehicles unfinished stay at 0–6 of 230–500 per run, lane 1 at the gore never reads a lock's 0.0 m/s, and the entrance departs 73 of 73 / 128 of 128 on Ruth St at every seed.
+2. *The exiters change later, and more of them reach the gore's end still owing the change.* On the Ruth St corridor fleet at the exit peak the forced changes go 9 / 9 / 15 → 40 / 25 / 6, the deferred steps 252 / 111 / 275 → 1,168 / 402 / 132, the releases 2 / 1 / 2 → 32 / 6 / 0, and the give-ups 4 / 2 / 4 → 9 / 1 / 4 of 290 / 280 / 274 (3.1 / 0.4 / 1.5 %; seed 3 leaves the 2 % threshold again). The mechanism is the one the rule intends: an exiter at 20–23 m/s no longer drops in behind the auxiliary lane's queue at a 16 m gap; it eases in lane 1 behind the queue's tail and drops in near its speed, so the auxiliary lane's queue is joined from behind at the price of lane 1's speed at the gore (2.8 / 4.2 / 6.7 m/s at the minimum against 4.6 / 6.5 / 3.6) — and seed 5, which failed on lane 1 before, now meets every exit-side criterion and loses its strict marker (seeds 3 / 4 keep theirs: the give-ups at 3, lane 1 at both). At the entrance peak the same fleet improves at seed 3 (2 of 45 given up → 0, lane 1 2.9 → 6.3 m/s, 252 → 138 deferred) and pays at seeds 4 / 5 (1 of 41 given up; one minute at 3.6 m/s). The fleet defaults are unchanged within one give-up (seed 4 at the exit peak: 1 of 282) and the moderate fixture byte-identical.
+3. *T.H.52.* At the corridor's demand seed 3 reads 3.8 m/s in one minute at the gore (was 6.5 at the minimum; 292 of 299 exit, 1 given up), seed 4 is unchanged (11.9 m/s, 308 of 317) and seed 5's stall shortens by a minute (1.7 m/s in two minutes, was three; 5 of 308 given up, was 3); the exit-side test at seed 3 gains a non-strict marker. At capacity the entrance departs 395 / 401 / 373 against 398 / 365 / 389, one exit is given up per seed (was none) and the no-lock pins hold at both seeds — seed 4 passes the 80 % pin on macOS again (401), seed 5 by one vehicle (373 against 372.8) — with the `n_missed` pin moved from 0 to at most 1: the exit given up is a vehicle halted at the gore's end whose lane-0 follower could not brake for it, the forced change that at the corridor's demand ended in the seed-5 collision. On the two-entrance fixtures the section side keeps passing on the fleet defaults at seeds 4 / 5 and slips to 3.7 m/s in one minute at seed 3; E1's head is untouched (205 / 206 / 246 → 216 / 210 / 256 of 360 on the defaults, 272 / 258 / 248 → 253 / 256 / 253 on the corridor fleet); both strict markers stay.
+4. *The golden moves by the follower term.* Variant D (the leader side alone) reproduces the golden bit for bit — no changer on `weave.osm` closes on a slower leader beyond the time gap — and the follower side binds six vehicle-steps of the forced guard: mean travel time 69.345 → 69.500 s, σ_v spatial 3.848 → 3.940 m/s, fuel 90.67 → 90.54 ml/veh-km, the counts unchanged. Regenerated.
+
+**What this hands on.** The exits given up rise where the auxiliary lane queues, because a halted exiter at the gore's end is rerouted on the first step no request is possible — under the speed-aware guard that step now comes while its held follower is still braking towards it, a transient of two or three seconds. The patient form (E) shows the naive fix locks; a bounded patience (wait while the held follower's speed is still falling, give up when it has come to rest and the guard still refuses) is the next thing to measure, together with the corridor round these rules were derived for (VM, the 35-min I-94 slice, 4 seeds: `n_missed_exit`, `n_forced_deferred`, the first standstill's position, and the collision count that was the slice's one).
+
+**Bookkeeping.** `packages/microsim/microsim/runner.py` (`_weave_brake_gap` new, `_weave_lead_gap_min` new, `_weave_force_gap_ok` two optional decelerations, the acceptance in `_weave_step`); `tests/test_microsim/test_microsim_weave_short_section.py` (`TestExitSideAcceptance`, the marks' reasons); `tests/test_microsim/test_microsim_merge_managed_meter.py` (`TestWeaveForceGapGuard::test_speed_aware_guard` and `::test_acceptance_refuses_a_fast_changer_behind_a_slow_leader`, the exit-priority scenario re-recorded — a halted exiter's forced request now equals its accepted one on the follower side, so the "guard alone" case is a give-up and a 14 m follower the accepted one — the marks and pins above); `tests/golden/merge_weave.json`; docs/CONTRACTS.md §2; this section. Session artifacts (the measurement harness, the six grids, the seed-5 trace) not committed.

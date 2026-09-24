@@ -196,9 +196,9 @@ class TestRuthStWeave:
     pass the exit-side criteria at every seed; with the corridor's own
     drivers (:data:`CORRIDOR_FLEET`) the section reproduces the corridor's
     give-ups — see the marks and docs/WEAVE_MODEL_PLAN.md (short sections;
-    re-measured at the 500 m vacate window, where the give-ups at the exit
-    peak fall within the threshold and the marks fail on lane 1 and one
-    collision of the exit-side acceptance instead).
+    re-measured at the 500 m vacate window; the speed-aware acceptance of
+    2026-09-24 block 3 removes the collision at seed 4 and the exit-peak
+    marks fail on lane 1 and, at seed 3, on the give-ups).
     """
 
     @pytest.mark.parametrize("seed", [3, 4, 5])
@@ -233,7 +233,11 @@ class TestRuthStWeave:
                         "by the bound, the entrance departs 128 of 128, no collision) while "
                         "seeds 4 / 5 give up none with lane 1 never below 15.7 m/s — so the "
                         "marks are not strict (docs/WEAVE_MODEL_PLAN.md, the short section at "
-                        "the 500 m window)",
+                        "the 500 m window). Under the speed-aware acceptance (2026-09-24, "
+                        "block 3) seed 3 passes (45 of 45, lane 1 never below 6.3 m/s, 138 "
+                        "deferred, 1 release), seed 4 gives up 1 of 41 (2.4 %; lane 1 never "
+                        "below 5.9 m/s) and seed 5 reads 3.6 m/s in one minute (34 of 34 "
+                        "exit); no collision at any",
                     ),
                 )
                 for seed in (3, 4, 5)
@@ -262,11 +266,20 @@ class TestRuthStWeave:
                         "The entrance departs 73 of 73 at both. The trace, the "
                         "measured-and-rejected scalings and the 2 L window: "
                         "docs/WEAVE_MODEL_PLAN.md, short sections and the short section at "
-                        "the 500 m window",
+                        "the 500 m window. Under the speed-aware acceptance (2026-09-24, "
+                        "block 3; the collision's fix, TestExitSideAcceptance) seeds 3 / 4 / 5 "
+                        "give up 9 / 1 / 4 of 290 / 280 / 274 (3.1 / 0.4 / 1.5 %), lane 1's "
+                        "last 60 m reads 2.8 / 4.2 / 6.7 m/s at the minimum (4 / 1 / 0 "
+                        "minutes at or below 5), 40 / 25 / 6 forced, 1,168 / 402 / 132 "
+                        "deferred, 32 / 6 / 0 releases, no collision: the exiters that used to "
+                        "drop in at speed now ease in lane 1 behind the auxiliary lane's queue, "
+                        "and more of them reach the gore's end still owing the change. Seed 5 "
+                        "meets every criterion under it and is unmarked",
                     ),
                 )
-                for seed in (3, 4, 5)
+                for seed in (3, 4)
             ),
+            ("exit_peak", 5),
         ],
     )
     def test_short_section_with_the_corridor_fleet(self, tmp_path, seed, demand):
@@ -274,3 +287,40 @@ class TestRuthStWeave:
         paths = run_micro(cfg, seed, tmp_path / f"ruth_fleet_{demand}_{seed}")
         meta = json.loads(paths.meta.read_text())
         assert_exit_side(paths, meta)
+
+
+class TestExitSideAcceptance:
+    """The two seeded collisions of the exit-side acceptance (2026-09-24, block
+    3, the short section at the 500 m window; docs/WEAVE_MODEL_PLAN.md).
+
+    Corridor fleet at the C-D split's exit peak. At the 500 m vacate window,
+    seed 4 collided at t = 600.5 s on ``102_0`` at 35.5 m: exiter v00447
+    changed into the auxiliary lane 15 m into the section at 23 m/s with a
+    27 m gap to a queue head at 1.0 m/s, braked at −9 m/s² and stopped 1.9 m
+    short; v00450 did the same 3 s later at 20 m/s with 22 m and hit it. At
+    the 271.4 m window (twice the section's length, the cap measured and
+    rejected) seed 5 collided at t = 717.5 s at 39.2 m by the same trace
+    (v00542 into v00539). The exit-side acceptance was a time gap at the
+    changer's own speed, ``s0 + 0.6 · 23 = 16 m``, with no term for the
+    leader's; the speed-aware acceptance (the changer's IDM desired gap at
+    its speed and closing rate, ``microsim.runner._weave_lead_gap_min``, in
+    the acceptance and the forced guard) refuses both changes.
+    """
+
+    @pytest.mark.parametrize(
+        ("seed", "vacate_ahead_m"),
+        [(4, 500.0), (5, 271.4)],
+        ids=["seed4_window500m", "seed5_window271m"],
+    )
+    def test_no_collision_at_the_traced_seed_and_window(self, tmp_path, seed, vacate_ahead_m):
+        cfg = ruth_config(
+            seed,
+            **RUTH_DEMAND["exit_peak"],
+            weave_params={"vacate_ahead_m": vacate_ahead_m},
+            fleet=CORRIDOR_FLEET,
+        )
+        paths = run_micro(cfg, seed, tmp_path / f"ruth_accept_{seed}")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        assert meta["n_collisions"] == 0, meta["collisions"]
+        assert ws["n_exited"] >= 0.9 * ws["n_reached_section_exiting"], ws

@@ -973,6 +973,59 @@ edge): throughput 1,687.5 → 1,680.0 veh/h, changes in / out / forced
 17 / 20 / 1 → 14 / 19 / 2, exits 33, mean travel time 70.82 → 69.35 s, σ_v
 spatial 4.294 → 3.848 m/s, fuel 93.03 → 90.67 ml/veh-km, collisions 0.
 
+Speed-aware acceptance (2026-09-24, block 3): the weave's gap acceptance
+and its forced guard read the *other* party's speed. Until this the
+acceptance's leader side was the movement's time gap at the changer's own
+speed alone, `g_lead ≥ s0 + accept · v_c`, and the guard's two sides the
+closing distance over that time gap, `s0 + accept · Δv⁺`; on the Ruth St
+fixture an exiter at 23 m/s changed into the auxiliary lane 27 m behind a
+queue head at 1 m/s (16 m asked), braked at −9 m/s², stopped 1.9 m short and
+was hit by the next exiter (seed 4 at the 500 m window, t = 600.5 s; seed 5
+at a 271 m window, t = 717.5 s), and on `weave_th52.osm` at the corridor's
+demand a released exiter (`s0 = 0`) forced into lane 0 at 0.54 m/s with
+10.7 m to a follower at 16.1 m/s (9.35 m asked) and was hit (seed 5,
+t = 977.5 s, surfaced by the leader-side form alone). **Three checks
+change** (`microsim.runner`): (1) the acceptance's leader side, both
+movements, is `g_lead ≥ max(s0 + accept · v_c, s0 + (v_c − v_L)⁺²/(2·b_c))`
+(`_weave_lead_gap_min`, `_weave_brake_gap`: the changer's brake distance to
+the leader's speed at its own comfortable deceleration, SUMO's `decel`,
+the leader holding its speed; 147 m for the trace); (2) the forced guard's
+leader side, `g_lead > max(s0 + accept · Δv⁺, s0 + Δv⁺²/(2·b_c))`
+(`_weave_force_gap_ok`, `b_ego`), so forcing cannot command what the
+acceptance refuses on the leader side; (3) the guard's follower side,
+`g_foll > max(s0 + accept · Δv⁺, Δv⁺²/(2·b_F))` at the follower's `decel`
+(`b_foll`; no `s0` term, the reported follower gap already excluding the
+follower's `minGap`), a released pair included — the release drops the
+changer's `s0` floor, not the follower's braking. The acceptance's follower
+side (the time gap plus the follower's IDM absorption within its `b`) is
+unchanged; so are the vacate rule, the gap choice, the cooperation and the
+give-up. Hash-neutral (no parameter). Measured and rejected on the same
+grid (docs/WEAVE_MODEL_PLAN.md, dated section): the changer's IDM desired
+gap `s*(v_c, v_c − v_L)` as the leader bound (the no-braking gap, `s0 +
+v·T` at equal speeds) locks every T.H.52 fixture; the gap at which the
+changer's IDM asks exactly −b, `s*/√(1 + b/a − (v/v0)⁴)`, removes the
+collisions but slows lane 1 at the gore and locks the short section when
+applied to the guard's follower side; a give-up that waits while a follower
+is held locks everything. Effect: no collision on any of the 30 fixture
+runs (seeds 3–5, both fleets, both demand points, all T.H.52 fixtures, the
+moderate fixture, the golden) and no lock; the exiters change later — on
+the Ruth St corridor fleet at the exit peak 40 / 25 / 6 forced (was 9 / 9 /
+15), 1,168 / 402 / 132 deferred (252 / 111 / 275), 9 / 1 / 4 of 290 / 280 /
+274 given up (4 / 2 / 4); the exit-peak strict marks stay at seeds 3 / 4 and
+seed 5 passes every criterion, unmarked — and one exit is given up per seed
+at the T.H.52 capacity (was none), where `test_th52_weave_at_capacity_does_not_lock`'s
+`n_missed` pin moves from 0 to ≤ 1 and `test_th52_weave_at_corridor_demand_exit_side`
+gains a non-strict `xfail` (seed 3: lane 1's last 60 m 3.8 m/s in one
+minute). `TestExitSideAcceptance` in `test_microsim_weave_short_section.py`
+pins the two Ruth St traces at zero collisions; `TestWeaveForceGapGuard`
+the guard's two sides and the acceptance through `_weave_step`. The
+moderate fixture and the fleet defaults on Ruth St are unchanged. Golden
+`merge_weave` regenerated (hash 436cd4ec9e5d unchanged; the follower side
+of the guard binds 6 vehicle-steps): mean travel time 69.345 → 69.500 s,
+p90 84.58 → 84.13 s, σ_v spatial 3.848 → 3.940 m/s, temporal 3.349 → 3.449,
+VHT 1.7399 → 1.7492 veh-h, fuel 90.67 → 90.54 ml/veh-km, throughput 1,680.0
+veh/h and changes 14 / 19 / 2, exits 33, collisions 0 unchanged.
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:

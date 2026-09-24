@@ -875,6 +875,82 @@ def _weave_set_mode(mod: Any, vid: str, st: dict[str, Any], mode: int) -> None:
         st["mode"] = mode
 
 
+def _weave_brake_gap(s0: float, v_ego: float, v_lead: float, b: float) -> float:
+    """The gap a vehicle closing on a slower leader needs to match its speed at ``b`` [m].
+
+    Speed-aware acceptance (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
+    dated section): ``s0 + max(v_ego − v_lead, 0)² / (2·b)`` — constant
+    deceleration ``b`` (the vehicle's own comfortable deceleration, SUMO's
+    ``decel``; :func:`_weave_veh`) from the closing speed to the leader's,
+    the leader holding its speed, plus the minimum-gap floor given. Zero
+    closing speed (a leader as fast or faster) leaves ``s0`` alone. For the
+    Ruth St trace (a 23 m/s exiter, a queue head at 1 m/s, ``b`` 1.67 m/s²)
+    it is 147 m against the 27 m offered; for a follower at 16 m/s behind a
+    halted changer 78 m against 10.7 (the corridor-demand trace, seed 5).
+
+    Two IDM forms were measured and rejected on the fixtures (the plan's
+    dated section has the table): the changer's desired gap ``s*(v, v −
+    v_L)`` itself (:func:`_idm_desired_gap`, the *no-braking* gap, ``s0 +
+    v·T`` at equal speeds — 263 m for the trace) removed the collisions and
+    locked every T.H.52 fixture (entrance 398 → 294 of 466 at seed 3, 102 →
+    5,232 deferred); the gap at which the changer's IDM towards the leader
+    asks exactly ``−b``, ``s*/√(1 + b/a_max − (v/v0)^4)`` (153 m for the
+    trace, ≈ 20 m at equal speeds at 23 m/s) removed them too but, through
+    IDM's kinematic term ``v·Δv/(2√(a·b))`` — conservative at the moderate
+    closing rates of a weave (32 m for 15 → 10 m/s against 10 m here) —
+    slowed lane 1 at the gore (corridor demand seed 3: 3.4 m/s in two
+    minutes against 6.5) and, on the follower side of the forced guard,
+    locked the short section. This kinematic form is the statement of the
+    goal — no change onto a leader, and no forced change in front of a
+    follower, that the party behind cannot brake for at ``b``.
+
+    Args:
+        s0: The minimum-gap floor [m] (the changer's ``minGap``; ``0`` for a
+            released pair, :func:`_weave_pair_release`).
+        v_ego: The speed of the vehicle behind [m/s].
+        v_lead: The speed of the vehicle ahead [m/s].
+        b: The comfortable deceleration of the vehicle behind [m/s²].
+
+    Returns:
+        The gap [m].
+    """
+    return s0 + max(v_ego - v_lead, 0.0) ** 2 / (2.0 * b)
+
+
+def _weave_lead_gap_min(
+    s0: float, accept_s: float, v_ego: float, g_lead: float, v_lead: float, b_ego: float
+) -> float:
+    """The leader-side gap a weave change needs: the time gap or the brake gap, whichever is larger.
+
+    Speed-aware acceptance (2026-09-24, block 3): ``max(s0 + accept_s · v_ego,
+    s0 + (v_ego − v_lead)⁺² / (2·b))`` (:func:`_weave_brake_gap`) — the time
+    gap reads the changer's speed and not the leader's: a 23 m/s exiter with
+    a 27 m gap to a queue head at 1 m/s passed ``s0 + 0.6 · 23 = 16 m``,
+    dropped in, braked at −9 m/s² and stopped 1.9 m short, and the next
+    exiter hit it (Ruth St fixture, seed 4 at the 500 m vacate window,
+    t = 600.5 s; the same trace at the 271 m window, seed 5, t = 717.5 s).
+    Refused, the exiter eases in its lane towards the queue's speed
+    (:func:`_weave_cooperate`) and drops in once the gap it is offered is
+    one it can brake for at ``b``.
+
+    Args:
+        s0: The minimum-gap floor [m].
+        accept_s: Accepted time gap of the movement [s].
+        v_ego: The changer's speed [m/s].
+        g_lead: Gap to the target-lane leader [m] (``inf`` when none).
+        v_lead: That leader's speed [m/s] (``nan`` when none).
+        b_ego: The changer's comfortable deceleration [m/s²].
+
+    Returns:
+        The gap [m] the leader side must clear; ``s0 + accept_s · v_ego``
+        with no leader.
+    """
+    floor = s0 + accept_s * v_ego
+    if g_lead == math.inf:
+        return floor
+    return max(floor, _weave_brake_gap(s0, v_ego, v_lead, b_ego))
+
+
 def _weave_force_gap_ok(
     s0: float,
     accept_s: float,
@@ -883,6 +959,8 @@ def _weave_force_gap_ok(
     v_lead: float,
     g_foll: float,
     v_foll: float,
+    b_ego: float | None = None,
+    b_foll: float | None = None,
 ) -> bool:
     """Minimum-gap guard of a forced weave change (``LC_MODE_SCRIPTED_FORCE``).
 
@@ -898,6 +976,28 @@ def _weave_force_gap_ok(
     closing speed) — that is what forcing means — but never admits a gap
     below ``s0`` or one closing within the accepted time gap.
 
+    Speed-aware guard (2026-09-24, block 3): with ``b_ego`` given, the
+    leader-side bound is also at least the changer's brake gap on that
+    leader, ``s0 + (v_ego − v_lead)⁺²/(2·b_ego)`` (:func:`_weave_brake_gap`,
+    the term the acceptance in :func:`_weave_step` uses through
+    :func:`_weave_lead_gap_min`), so forcing cannot command a change onto a
+    slower leader that the acceptance refuses on the leader side; with
+    ``b_foll`` given, the follower side is the mirror image, the follower's
+    brake gap towards the changer, ``(v_foll − v_ego)⁺²/(2·b_foll)`` (no
+    ``s0`` term: the reported follower gap already excludes the follower's
+    ``minGap``, as the acceptance's absorption check reads it). A forced
+    change is thus never commanded into a gap either party would have to
+    brake beyond its ``b`` for, and forcing stays laxer than acceptance by
+    the full-speed time gaps alone. The follower side was derived from the
+    trace of a *released* pair (``s0 = 0``, :func:`_weave_pair_release`) on
+    ``weave_th52.osm`` at the corridor's demand, seed 5, t = 977.5 s
+    (session record, the grid of the leader-side form alone): an exiter
+    halted at the gore's end forced into lane 0 at 0.54 m/s with 10.7 m to
+    a follower at 16.1 m/s — the closing-speed bound asked 9.35 m, the
+    follower needed 73 m at ``b`` — and was hit a second later. The pair
+    release keeps its regime (both below the creep speed, both brake gaps
+    near zero) and loses the fast follower.
+
     Args:
         s0: The changing vehicle's minimum gap [m].
         accept_s: Accepted time gap of the movement [s].
@@ -906,13 +1006,25 @@ def _weave_force_gap_ok(
         v_lead: That leader's speed [m/s] (``nan`` when none).
         g_foll: Gap to the target-lane follower [m] (``inf`` when none).
         v_foll: That follower's speed [m/s] (``nan`` when none).
+        b_ego: The changer's comfortable deceleration [m/s²] for the
+            speed-aware leader side; ``None`` keeps the closing-speed bound
+            alone.
+        b_foll: The follower's comfortable deceleration [m/s²] for the
+            speed-aware follower side; ``None`` keeps the closing-speed
+            bound alone.
 
     Returns:
         Whether the forced change may be requested this step.
     """
     closing_lead = max(v_ego - v_lead, 0.0) if g_lead < math.inf else 0.0
     closing_foll = max(v_foll - v_ego, 0.0) if g_foll < math.inf else 0.0
-    return g_lead > s0 + accept_s * closing_lead and g_foll > s0 + accept_s * closing_foll
+    lead_min = s0 + accept_s * closing_lead
+    if b_ego is not None:
+        lead_min = max(lead_min, s0 + closing_lead**2 / (2.0 * b_ego))
+    foll_min = s0 + accept_s * closing_foll
+    if b_foll is not None:
+        foll_min = max(foll_min, closing_foll**2 / (2.0 * b_foll))
+    return g_lead > lead_min and g_foll > foll_min
 
 
 def _idm_accel(
@@ -2105,11 +2217,17 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
 
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
-    clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``), the
+    clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
+    the leader side, for both movements, also the changer's brake gap on
+    that leader, ``s0 + (v − v_L)⁺²/(2·b)`` at its own ``decel``
+    (:func:`_weave_brake_gap` through :func:`_weave_lead_gap_min`;
+    2026-09-24 block 3, speed-aware acceptance: a fast exiter no longer
+    drops in behind a queue head it cannot brake for at ``b``) — the
     immediate follower can absorb the changer within its ``b`` (its IDM
     acceleration towards the changer, gap = reported gap + its ``minGap``)
     and :func:`_weave_force_gap_ok` passes; a forced change uses the guard
-    alone. A step with no request leaves the vehicle on mode 512. Control is
+    alone, whose two sides carry the brake gaps of the changer and of the
+    follower. A step with no request leaves the vehicle on mode 512. Control is
     handed back (mode restored) when the vehicle has no change left to make;
     a driven vehicle on an internal junction lane between two section pieces
     (``OSMNetwork.internal_links``) is neither driven nor handed back that
@@ -2278,8 +2396,13 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         # same gaps were accepted at once) ---------------------------------
         g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
         g_foll, v_foll, f_id = _neighbor_gap(mod, vid, modes[1])
-        ok_lead = g_lead >= st["s0"] + accept * v_ego
+        # the leader side reads the leader's speed as well (2026-09-24, block
+        # 3, speed-aware acceptance): the changer's brake gap on that leader
+        # at its own b, floored by the movement's time gap
+        b_c = _weave_veh(mod, ws, vid)["b"]
+        ok_lead = g_lead >= _weave_lead_gap_min(st["s0"], accept, v_ego, g_lead, v_lead, b_c)
         ok_foll = g_foll >= st["s0"] + accept * (v_foll if g_foll < math.inf else 0.0)
+        b_f = _weave_veh(mod, ws, f_id)["b"] if f_id is not None else None
         if ok_foll and f_id is not None:
             # the immediate follower must absorb the changer within its own b
             p_i = _weave_veh(mod, ws, f_id)
@@ -2313,14 +2436,17 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         accepted = (
             ok_lead
             and ok_foll
-            and _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll)
+            and _weave_force_gap_ok(
+                st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
+            )
         )
         # a released partner is guarded against closing only: both of the
         # pair are below the creep speed, the s0 floor is a comfort margin
-        # at speed, and mode 256 still refuses an overlap
+        # at speed, and mode 256 still refuses an overlap — and, since the
+        # speed-aware guard, against a follower that cannot brake for it at b
         s0_guard = 0.0 if vid in released else st["s0"]
         forced_ok = force and _weave_force_gap_ok(
-            s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll
+            s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
         )
         if (
             d < 0
