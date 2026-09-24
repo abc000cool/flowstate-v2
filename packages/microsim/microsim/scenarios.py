@@ -378,8 +378,26 @@ def _ramp_placeholder(candidate: RampCandidate) -> RampSpec:
     fraction, which is what ``RampSpec`` requires as a non-empty profile —
     so the scenario runs with the geometry in place and the operator has one
     number per ramp to fill in.
+
+    The two ends of a collector–distributor road carry ``cd_road`` and their
+    shared ``cd_pair`` into the spec, so the demand step can pair them. A
+    candidate with ``attach_via_cd`` attaches to the C-D road, not to a
+    corridor edge, and has no spec (:func:`corridor_from_bbox` lists it in
+    the inventory only).
+
+    Raises:
+        ValueError: The candidate attaches via a C-D road.
     """
-    label = candidate.name or f"{candidate.kind}-ramp {candidate.edges[0]}"
+    if candidate.attach_via_cd:
+        raise ValueError(
+            f"ramp {candidate.edges[0]} attaches to C-D road {candidate.attach_via_cd}, "
+            "not to a corridor edge; it cannot be a RampSpec"
+        )
+    if candidate.cd_road:
+        role = "split" if candidate.kind == "off" else "re-entry"
+        label = candidate.name or f"C-D {role} {candidate.edges[0]}"
+    else:
+        label = candidate.name or f"{candidate.kind}-ramp {candidate.edges[0]}"
     if candidate.kind == "on":
         return RampSpec(
             kind="on",
@@ -387,6 +405,8 @@ def _ramp_placeholder(candidate: RampCandidate) -> RampSpec:
             attach_edge=candidate.attach_edge,
             inflow=[(0.0, 0.0)],
             name=label,
+            cd_road=candidate.cd_road,
+            cd_pair=candidate.cd_pair if candidate.cd_road else "",
         )
     return RampSpec(
         kind="off",
@@ -394,6 +414,8 @@ def _ramp_placeholder(candidate: RampCandidate) -> RampSpec:
         attach_edge=candidate.attach_edge,
         exit_fraction=[(0.0, 0.0)],
         name=label,
+        cd_road=candidate.cd_road,
+        cd_pair=candidate.cd_pair if candidate.cd_road else "",
     )
 
 
@@ -734,10 +756,17 @@ class CorridorBuild:
             f"    {x0 / 1000.0:7.3f} - {x1 / 1000.0:7.3f} km: {lanes} lanes"
             for x0, x1, lanes in self.lanes_profile
         ]
-        lines.append(f"  ramps ({len(self.ramps)}; flows are 0 placeholders)")
+        inventory_only = sum(1 for r in self.ramps if r.attach_via_cd)
+        lines.append(
+            f"  ramps ({len(self.ramps)}"
+            + (f"; {inventory_only} attach to a C-D road, inventory only" if inventory_only else "")
+            + "; flows are 0 placeholders)"
+        )
         lines += [
             f"    {r.kind:>3s} x={r.x_m / 1000.0:7.3f} km  attach {r.attach_edge:>12s}  "
-            f"edges {','.join(r.edges)}" + (f'  "{r.name}"' if r.name else "")
+            f"edges {','.join(r.edges)}"
+            + (f'  "{r.name}"' if r.name else "")
+            + f"  [{_ramp_discovery_note(r)}]"
             for r in self.ramps
         ]
         if self.station_x or self.stations_rejected:
@@ -786,6 +815,18 @@ class CorridorBuild:
                 for m in mismatches
             ]
         return "\n".join(lines)
+
+
+def _ramp_discovery_note(r: RampCandidate) -> str:
+    """How a ramp was found, for the inventory print (``RampCandidate.discovery``)."""
+    note = str(r.discovery)
+    if r.cd_road:
+        note += f", C-D pair {r.cd_pair}"
+        if r.kind == "off" and r.rejoin_x_m is not None:
+            note += f", rejoins {r.rejoin_edge} at x={r.rejoin_x_m / 1000.0:.3f} km"
+    if r.attach_via_cd:
+        note += f", via C-D road {r.attach_via_cd}: inventory only"
+    return note
 
 
 def _ramp_x(net: Any, offsets: Mapping[str, float], attach_edge: str, kind: str) -> float:
@@ -948,7 +989,7 @@ def corridor_from_bbox(
         fleet=fleet,
         duration_s=duration_s,
         seed=seed,
-        ramps=[_ramp_placeholder(c) for c in candidates],
+        ramps=[_ramp_placeholder(c) for c in candidates if not c.attach_via_cd],
         boundary=boundary,
         av=av,
         warmup_s=warmup_s,
@@ -969,10 +1010,17 @@ def corridor_from_bbox(
     # names the load-time ids.
     chain = expand_ramp_splits(chain, [e.getID() for e in net.getEdges(withInternal=False)])
     offsets = dict(zip(chain, chain_offsets(net, chain), strict=True))
+    # A ramp attaching to a C-D road keeps its raw-net position (its attach
+    # edge is not on the chain); a C-D split also re-measures its rejoin.
     ramps = tuple(
-        replace(
+        c
+        if c.attach_via_cd
+        else replace(
             c,
             x_m=_ramp_x(net, offsets, c.attach_edge, c.kind),
+            rejoin_x_m=(
+                _ramp_x(net, offsets, c.rejoin_edge, "on") if c.rejoin_edge else c.rejoin_x_m
+            ),
         )
         for c in candidates
     )

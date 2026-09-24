@@ -321,6 +321,13 @@ stage battery_mndot_mnpop bash -c "sed -e 's#^name: $MNDOT\$#name: ${MNDOT}_mnpo
 #     weaving sections (merge: weave, docs/WEAVE_MODEL_PLAN.md) and two entrances on the scripted merge,
 #     scenarios/mndot_i94_wb_stpaul_weave.yaml; 20 seeds with the I-24 population, then with the
 #     Minnesota capacity-scaled population from stage mndot_population.
+#     A 4-seed probe on the committed 35-minute peak slice first (scenarios/${MNDOT}_weave_slice.yaml):
+#     minutes, not hours, and it says whether the map correction at the two downstream splits
+#     (data/osm/mndot_i94_wb_stpaul.splits.con.xml, --ramps.unset 1001426896) removed the lock.
+stage mndot_slice_weave $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave_slice.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates 4 --procs "$PROCS" \
+  --out runs/${MNDOT}_weave_slice/baseline --artifact artifacts/validation_${MNDOT}_weave_slice.json \
+  --report-dir docs/reports/${MNDOT}_weave_slice --criteria-profile fhwa_tat3_2004 || say "mndot_slice_weave failed; continuing"
 stage battery_mndot_weave $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave.yaml \
   --observations data/mndot/$MNDOT/observations.json --replicates "$REPS" --procs "$PROCS" \
   --out runs/${MNDOT}_weave/baseline --artifact artifacts/validation_${MNDOT}_weave.json \

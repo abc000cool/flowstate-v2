@@ -1969,7 +1969,11 @@ network:
   - --ramps.guess
   - --ramps.ramp-length
   - '250'
+  - --ramps.unset
+  - '1001426896'
   internal_links: false
+  patch_files:
+  - data/osm/mndot_i94_wb_stpaul.splits.con.xml
 fleet:
   model: EIDM
   v0: 33.3

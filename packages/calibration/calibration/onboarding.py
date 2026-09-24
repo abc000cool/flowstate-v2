@@ -35,6 +35,20 @@ set to zero (their traffic is inside the nearest mainline count already).
 Discovered ramps are matched to observed ramp detectors of the same kind by
 global nearest distance within ``match_radius_m``, each detector used once.
 
+**Collector–distributor pairs** (2026-09-24). The two ends of a C-D road
+(``RampSpec.cd_road`` with a shared ``cd_pair``, from ``microsim.geo``) are
+one road whose flow leaves the mainline at the split and returns at the
+re-entry. Each end is matched and closed like a ramp of its kind, with one
+rule on top: when the re-entry has no live detector it first takes back what
+its split sent out in the same window (the pair is conservative) before the
+bracket's remainder is shared, so the re-entry's flow is
+``split outflow + the road's own net exchange`` — the entries minus the exits
+of the streets the C-D road serves, which the mainline counts fix by
+conservation (no ramp of the C-D road itself is in the scenario: such a ramp
+attaches to a C-D edge, not a corridor edge, and is inventory only). The
+artifact lists every pair under ``cd_pairs`` with the split's outflow, the
+re-entry's return flow, their difference and the bracket the re-entry closes.
+
 Nothing here invents a measurement: a window no detector reported carries the
 previous window's value and says so, an unexplained change is recorded as a
 residual rather than smeared, and the artifact counts how many ramps came from
@@ -130,6 +144,10 @@ class OnboardingResult:
         stations_without_chain_x: Observed stations absent from ``stations_x``;
             they keep their inventory position, which is not comparable with
             the simulation's ``x``.
+        cd_pairs: One record per collector–distributor pair (module
+            docstring): the split's mean outflow, the re-entry's mean return
+            flow, their difference (the road's own net exchange), how each end
+            was derived and the bracket the re-entry closes.
     """
 
     scenario: dict[str, Any]
@@ -142,6 +160,7 @@ class OnboardingResult:
     zeroed_ramps: list[str] = field(default_factory=list)
     unmatched_detectors: list[str] = field(default_factory=list)
     stations_without_chain_x: list[str] = field(default_factory=list)
+    cd_pairs: list[dict[str, Any]] = field(default_factory=list)
 
 
 def chain_edge_x(net_path: str | Path, chain: list[str]) -> dict[str, tuple[float, float]]:
@@ -284,6 +303,7 @@ def calibrate_scenario(
         alive_veh_h=alive_veh_h,
     )
     ramp_records = _ramp_records(descriptors, n_steps, step_s)
+    cd_pairs = _cd_pair_records(descriptors, n_steps)
 
     # 4. Fill the scenario.
     scenario["network"]["inflow"] = [[float(t), float(v)] for t, v in inflow_steps]
@@ -320,6 +340,7 @@ def calibrate_scenario(
         zeroed=zeroed,
         unmatched_detectors=unmatched_detectors,
         residual_log=residual_log,
+        cd_pairs=cd_pairs,
     )
     summary = _summary_lines(
         config_hash_value=chash,
@@ -332,6 +353,7 @@ def calibrate_scenario(
         unmatched_detectors=unmatched_detectors,
         residual_log=residual_log,
         boundary=scenario["network"]["boundary"],
+        cd_pairs=cd_pairs,
     )
     return OnboardingResult(
         scenario=scenario,
@@ -344,6 +366,7 @@ def calibrate_scenario(
         zeroed_ramps=zeroed,
         unmatched_detectors=unmatched_detectors,
         stations_without_chain_x=missing_x,
+        cd_pairs=cd_pairs,
     )
 
 
@@ -407,7 +430,14 @@ def _ramp_descriptors(
         piece = attach + ("-AddedOnRampEdge" if kind == "on" else "-AddedOffRampEdge")
 
         x0, x1 = edge_x[piece] if piece in edge_x else edge_x[attach]
-        descriptors.append({"name": ramp["name"], "kind": kind, "x_m": x0 if kind == "on" else x1})
+        descriptors.append(
+            {
+                "name": ramp["name"],
+                "kind": kind,
+                "x_m": x0 if kind == "on" else x1,
+                "cd_pair": str(ramp.get("cd_pair") or "") if ramp.get("cd_road") else "",
+            }
+        )
     pairs = sorted(
         (abs(st.x_m - d["x_m"]), i, sid)
         for i, d in enumerate(descriptors)
@@ -491,13 +521,27 @@ def _close_balance(
     for d in descriptors:
         d["on_veh_h"] = [0.0] * n_steps
         d["exit_frac"] = [0.0] * n_steps
+        d["out_veh_h"] = [0.0] * n_steps
         d["method"] = "zero_outside_observed_span"
+    splits = {d["cd_pair"]: d for d in descriptors if d.get("cd_pair") and d["kind"] == "off"}
     zeroed = [
         f"{d['name']} (x={d['x_m']:.0f} m): outside the observed span "
         f"[{first_x:.0f}, {last_x:.0f}] m"
         for d in descriptors
         if not (first_x < d["x_m"] <= last_x)
     ]
+
+    def split_outflow(
+        reentry: dict[str, Any], k: int, offs: list[dict[str, Any]], off_total: list[float]
+    ) -> float | None:
+        """What the re-entry's split sent out in window ``k`` (its own bracket, or this one)."""
+        split = splits.get(str(reentry.get("cd_pair") or ""))
+        if split is None:
+            return None
+        if any(o is split for o in offs):
+            return float(off_total[next(i for i, o in enumerate(offs) if o is split)])
+        return float(split["out_veh_h"][k])
+
     residual_log: list[dict[str, Any]] = []
     carried = [0.0] * n_steps
     for up, down in pairwise(mainline):
@@ -511,8 +555,10 @@ def _close_balance(
         live_off = {id(d) for d in offs if alive(d, q_up)}
         for d in bracket:
             d["method"] = "detector" if id(d) in live_on | live_off else "conservation"
+            d["bracket"] = [up.id, down.id]
         last_on = [0.0] * len(ons)
         last_off = [0.0] * len(offs)
+        last_out = [0.0] * len(offs)
         for k in range(n_steps):
             if math.isnan(q_up[k]) or math.isnan(q_down[k]):
                 for d in bracket:
@@ -521,6 +567,7 @@ def _close_balance(
                     d["on_veh_h"][k] = last_on[j]
                 for j, d in enumerate(offs):
                     d["exit_frac"][k] = last_off[j]
+                    d["out_veh_h"][k] = last_out[j]
                 continue
             delta = q_down[k] - q_up[k] + carried[k]
             on_total = [
@@ -541,6 +588,14 @@ def _close_balance(
             dead_off = [j for j, d in enumerate(offs) if id(d) not in live_off]
             leftover = 0.0
             if r > 0 and dead_on:
+                # a C-D re-entry first takes back what its split sent out
+                # (the pair is conservative); the remainder is shared equally
+                for j in dead_on:
+                    back = split_outflow(ons[j], k, offs, off_total)
+                    if back is not None:
+                        take = min(r, max(back, 0.0))
+                        on_total[j] += take
+                        r -= take
                 for j in dead_on:
                     on_total[j] += r / len(dead_on)
             elif r < 0 and dead_off:
@@ -576,12 +631,14 @@ def _close_balance(
                         leftover -= (frac - clipped) * q_cur
                     frac = clipped
                     d["exit_frac"][k] = frac
+                    d["out_veh_h"][k] = frac * q_cur
                     q_cur -= frac * q_cur
             carried[k] = leftover
             for j, d in enumerate(ons):
                 last_on[j] = d["on_veh_h"][k]
             for j, d in enumerate(offs):
                 last_off[j] = d["exit_frac"][k]
+                last_out[j] = d["out_veh_h"][k]
         if [v for v in carried if v != 0.0]:
             residual_log.append(
                 {
@@ -595,6 +652,47 @@ def _close_balance(
                 }
             )
     return zeroed, residual_log
+
+
+def _cd_pair_records(descriptors: list[dict[str, Any]], n_steps: int) -> list[dict[str, Any]]:
+    """One record per collector–distributor pair (module docstring).
+
+    ``mean_net_veh_h`` = mean return flow − mean outflow: the C-D road's own
+    exchange with the streets it serves. The re-entry's bracket is the one
+    whose observed flow change it closes — on a corridor whose discovery
+    missed the re-entry, that bracket carried a residual.
+    """
+    ends: dict[str, dict[str, dict[str, Any]]] = {}
+    for d in descriptors:
+        if d.get("cd_pair"):
+            ends.setdefault(str(d["cd_pair"]), {})[str(d["kind"])] = d
+    records: list[dict[str, Any]] = []
+    for pair, by_kind in sorted(ends.items()):
+        split, reentry = by_kind.get("off"), by_kind.get("on")
+        out = sum(split["out_veh_h"]) / n_steps if split else 0.0
+        back = sum(reentry["on_veh_h"]) / n_steps if reentry else 0.0
+        rec: dict[str, Any] = {
+            "pair": pair,
+            "split": split["name"] if split else None,
+            "split_x_m": split["x_m"] if split else None,
+            "split_method": split.get("method") if split else None,
+            "reentry": reentry["name"] if reentry else None,
+            "reentry_x_m": reentry["x_m"] if reentry else None,
+            "reentry_method": reentry.get("method") if reentry else None,
+            "reentry_bracket": reentry.get("bracket") if reentry else None,
+            "mean_out_veh_h": round(out, 1),
+            "mean_back_veh_h": round(back, 1),
+            "mean_net_veh_h": round(back - out, 1),
+            "note": (
+                "flow that leaves at the split returns at the re-entry; the net is the C-D road's "
+                "own exchange with the streets it serves, fixed by the mainline counts "
+                "(no ramp of the C-D road itself is in the scenario)"
+                if split and reentry
+                else "one end of this pair is missing from the scenario; closed as a plain ramp"
+            ),
+        }
+        records.append(rec)
+    return records
 
 
 def _ramp_records(
@@ -632,6 +730,7 @@ def _demand_payload(
     zeroed: list[str],
     unmatched_detectors: list[str],
     residual_log: list[dict[str, Any]],
+    cd_pairs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The ``flowstate.demand/1`` artifact plus this pipeline's provenance keys.
 
@@ -657,6 +756,7 @@ def _demand_payload(
             ),
             "n_ramps_zeroed": float(len(zeroed)),
             "n_brackets_with_residual": float(len(residual_log)),
+            "n_cd_pairs": float(len(cd_pairs or [])),
         },
     )
     # The round trip is the honesty guard the artifact's own writer applies:
@@ -670,6 +770,7 @@ def _demand_payload(
     payload["zeroed_ramps"] = zeroed
     payload["unmatched_ramp_detectors"] = unmatched_detectors
     payload["bracket_residuals"] = residual_log
+    payload["cd_pairs"] = list(cd_pairs or [])
     payload["method"] = DERIVATION_METHOD
     return payload
 
@@ -686,6 +787,7 @@ def _summary_lines(
     unmatched_detectors: list[str],
     residual_log: list[dict[str, Any]],
     boundary: Mapping[str, Any],
+    cd_pairs: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     """The plain report: what was derived and from which detector."""
     peak_veh_h = max(v for _, v in inflow_steps) * _S_PER_HOUR
@@ -716,6 +818,14 @@ def _summary_lines(
         f"  residual carried {r['from']}→{r['to']}: mean {r['mean_residual_veh_h']:+.0f} veh/h"
         for r in residual_log
     ]
+    for c in cd_pairs or []:
+        bracket = c.get("reentry_bracket") or ["?", "?"]
+        lines.append(
+            f"  C-D pair {c['pair']}: out {c['mean_out_veh_h']:.0f} veh/h at the split "
+            f"({c.get('split_method')}) → back {c['mean_back_veh_h']:.0f} veh/h at the re-entry "
+            f"({c.get('reentry_method')}); net {c['mean_net_veh_h']:+.0f} veh/h is the road's own "
+            f"exchange; the re-entry closes bracket {bracket[0]}→{bracket[1]}"
+        )
     lines.append(
         f"  boundary: {len(boundary['steps'])} speed steps from {downstream}, "
         f"exit buffer {boundary['exit_buffer_m']} m"

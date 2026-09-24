@@ -218,7 +218,9 @@ residual forward (listed under
 `bracket_residuals` — the largest is the collector–distributor re-entry
 before Kellogg Blvd, +775 veh/h; the other is the White Bear Ave entrance,
 which the OSM discovery did not find as a link and whose +442 veh/h lands on
-the T.H.61 NB entrance one bracket later). One ramp outside the observed span
+the T.H.61 NB entrance one bracket later; *2026-09-24: the White Bear
+residual is closed by C-D pairing and the Kellogg reading was wrong — see
+§7 items 1 and 2*). One ramp outside the observed span
 is zero (its traffic is inside the nearest station count). The downstream boundary is S97's
 observed mean speed per window. Warm-up 1,800 s; analysed span 06:00–09:30.
 
@@ -322,6 +324,27 @@ n2-standard-32, ≈ $3.3.
 
 1. The White Bear Ave entrance is not a `motorway_link` chain in OSM; ramp
    discovery should also accept lane-add merges tagged on the mainline way.
+   *2026-09-24, diagnosed from the extract and the live OSM database:* the
+   entrance is not a merge on the mainline at all. The exit link 18208090
+   continues as 991112953 and 745524608 back onto the mainline (edge
+   998737536) 590 m downstream of the split on the raw net (613 m on the
+   ramp-guessed build) — a collector–distributor road — and White Bear Avenue
+   North (`highway=secondary`, two-way) meets that road at grade at node
+   6978586133; its turns are the entrance and the exit. The extract carries
+   motorway and motorway_link ways only (`networks.OVERPASS_HIGHWAY_REGEX`),
+   so the arterial is absent and no non-link way touches any mainline node;
+   the entrance is therefore found as the C-D re-entry (item 2). Done:
+   `microsim.geo.ramps_for_chain` also accepts a drivable non-link way
+   (`geo.DRIVABLE_TYPES`) that ends on a mainline node within 35° of the
+   mainline's heading and does not continue past the node, recorded as
+   `discovery="lane_add"` when the mainline gains a lane there and
+   `"shallow_join"` otherwise (a crossing road through a shared node, bridge
+   or at grade, fails the heading or the pass-through test); the reason is
+   printed in the inventory (`[motorway_link]`, `[lane_add]`, …). Tested on
+   synthetic fixtures (`tests/test_microsim/test_microsim_geo_ramps.py`); it
+   has no instance on this extract. Still open: an Overpass filter that also
+   fetches the arterial classes near the mainline, so at-grade junctions on a
+   C-D road are inventoried; ramp guessing by default (1b).
 1b. Acceleration lanes are usually absent from OSM. Done the same night: the
    onboarding step compiles with ramp guessing when `--netconvert-extra` asks
    for it and prints the lane profile beside the inventory's lane counts at
@@ -330,6 +353,36 @@ n2-standard-32, ≈ $3.3.
 2. Collector–distributor roads: the discovery captures the split as an
    off-ramp and misses the re-entry; the balance step carries the residual.
    A C-D road should become a parallel edge chain with its own ramps.
+   *2026-09-24, done for the White Bear Ave road:* before a link leaving the
+   chain is taken as an exit, `ramps_for_chain` searches the links for a way
+   back onto the chain within 3 km. The split becomes an `off` candidate with
+   `cd_road`, `rejoin_edge` and `rejoin_x_m`, the re-entry an `on` candidate
+   with the same `cd_pair` (both carried into `RampSpec.cd_road`/`cd_pair`);
+   ramps attaching to the C-D road itself are inventoried with
+   `attach_via_cd` and not simulated (a `RampSpec` attaches to a corridor
+   edge). The balance step (`calibration.onboarding`) pairs the ends: a
+   re-entry without a live detector first takes back what its split sent out
+   in the window, then the bracket's remainder, and the artifact lists the
+   pair under `cd_pairs` (out, back, net = the road's own exchange). Re-run on
+   the committed extract with the §3 options into a scratch directory: 17
+   ramps (was 16); the split, matched to rnd_88817, sends out 374 veh/h on
+   average (detector_scaled), the re-entry returns 442 veh/h (conservation),
+   net +68 veh/h; the S1068→S1947 residual (+442 veh/h) is closed, 5 brackets
+   carry residuals (was 6). Because that +442 used to be carried forward, the
+   next brackets now show their own size: S1947→S1069 +9 (was +338),
+   S1069→S1070 −317 (was −131), S1070→S1948 −262 (was −76). *Not a C-D road,
+   contrary to §5:* the Mounds Blvd split (18207912) fans out to North Mounds
+   Boulevard (`highway=primary`) at grade at two nodes, and the entrance
+   before Kittson St (40648744, x = 9.94 km) is fed from North Mounds
+   Boulevard and East 6th Street downstream of S791 — no way joins the
+   mainline between S792 and S791 in OSM (checked against the live
+   database), so the +775 veh/h residual there has no map explanation; both
+   stations report 3 lanes, and rnd_87205 at the split counts 4,219 veh/h,
+   more than the 4,162 veh/h arriving at S1948, so the split detector or S792
+   is the question. Not done: the committed scenario and demand artifact are
+   unchanged (a re-onboard rewrites the scenario and needs a battery to
+   validate); a C-D road as a parallel edge chain with its own simulated
+   ramps.
 3. Dead detectors are common (4 of 13 ramp detectors here); the loader flags
    them by mass balance, but a reviewer-facing "detector health" table
    belongs in the report.
@@ -372,3 +425,31 @@ headway. The episode-cost rows are empty because the cloud stage ran without
 the I-24 episodes. Any run with this population is labelled "capacity-scaled,
 target not met" — it is a population that carries more than the I-24 one,
 not one that carries the observed flow.
+
+## 9. The lock's origin was a map defect at two exits (2026-09-24)
+
+The weave-model slice (§8's neighbour, `docs/WEAVE_MODEL_PLAN.md`; single
+seed, session record) was read for where the queue starts, without a new
+simulation: on edge `1001426896` (10,732–10,955 m), the last mainline edge
+before the 12th Street / State Capitol exit, at t = 87 s, spreading upstream
+at about 8 km/h (10.0 km by 300 s, 8.75 km by 600 s, 6.25 km by 1,800 s).
+Through vehicles were stopped in the leftmost lane, which led only to that
+exit; the other lanes stalled behind them (SUMO's cooperative braking), and
+the entrances upstream — 40648744 at 9.94 km, T.H.61 NB at 7.39 km — were
+victims of the queue, not its cause.
+
+The compiled network is wrong at that split, and at one more:
+
+| split | OSM | compiled (2026-09-23 rounds) | fix |
+|---|---|---|---|
+| `1001426896` → 12th Street exit `82150350` | 3 lanes, `turn:lanes none\|none\|through;slight_right`; the link leaves 4–29 m to the RIGHT of the mainline | 4 lanes under `--ramps.guess`, the added LEFT lane the only way into the exit | `--ramps.unset 1001426896`: 3 lanes, lane 0 an option lane (exit and through) |
+| `45608485` → Mounds Blvd / Kellogg Blvd exit `18207912` | 5 lanes, `\|\|\|slight_right\|slight_right`; the link leaves 8–14 m to the RIGHT | the two LEFTMOST lanes (3, 4) feed the exit, with or without guessing | explicit connections: lanes 0–1 exit, 2–4 continue (`data/osm/mndot_i94_wb_stpaul.splits.con.xml`, `OSMNetwork.patch_files`) |
+
+The 6th Street exit (`42165869`, the collector–distributor split) really is a
+left exit and is left alone. `tests/test_microsim/test_microsim_osm_split_patch.py`
+pins both compiled splits on the committed extract; the five guessed
+acceleration lanes survive the exclusion. Round 1 (no guessing) ran with the
+Mounds/Kellogg defect, round 2 and the weave slice with both. The corrected
+network is in all three MnDOT scenarios; whether it removes the lock is the
+question of the 2026-09-24 cloud round (`mndot_slice_weave`, then the two
+20-seed weave batteries), reported in §10 when it has run.

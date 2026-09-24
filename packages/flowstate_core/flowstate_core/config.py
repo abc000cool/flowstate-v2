@@ -392,6 +392,16 @@ class OSMNetwork(BaseModel):
     four on-ramps delivered 4-6 % of their demand). ``--ramps.no-split`` keeps
     the attach edge's id, so ``corridor_edges`` and station positions stay
     valid. Recorded in the config hash whenever set."""
+    patch_files: list[str] = Field(default_factory=list)
+    """Plain-XML ``netconvert`` patches (``*.nod.xml`` / ``*.edg.xml`` /
+    ``*.con.xml``, paths relative to the working directory, inside the
+    allowed data roots) loaded at every import of this network, before the
+    merge-model patches the runner adds. They are the place for map
+    corrections that netconvert cannot be talked into with options: an
+    explicit connection list for an edge replaces every connection netconvert
+    computed for it. First use (2026-09-24, I-94 WB St. Paul): netconvert put
+    a right-hand exit on the leftmost lanes at two splits, trapping through
+    traffic there. Recorded in the config hash whenever set."""
     internal_links: bool = False
     """Compile the network with SUMO's internal junction lanes (netconvert
     without ``--no-internal-links``). Off by default (every existing import

@@ -1218,3 +1218,12 @@ window is unchanged by this (it remains the whole run).
 cell it builds: no cell patch touches `sim`, so one 422 replaces a fan-out of
 cells that each died on the worker. The refusal precedes the sweep row and
 every child run, so nothing is queued.
+
+**Network patches (2026-09-24).** `OSMNetwork.patch_files` lists plain-XML
+netconvert patches (`*.nod.xml` / `*.edg.xml` / `*.con.xml`) loaded at every
+import of the network, before the merge-model patches the runner generates;
+paths are relative to the working directory and must lie inside the allowed
+data roots (the `osm_file` rule; `microsim.runner._user_patch_files`). An
+explicit connection list for an edge replaces every connection netconvert
+computed for it. The field is in the config hash whenever set. First use:
+`data/osm/mndot_i94_wb_stpaul.splits.con.xml`, the Mounds/Kellogg split.

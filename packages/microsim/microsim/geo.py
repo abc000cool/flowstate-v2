@@ -39,10 +39,11 @@ silently drop the rest of the chain (see :func:`microsim.networks.osm_import`).
 
 from __future__ import annotations
 
+import heapq
 import math
 import re
 import xml.etree.ElementTree as ET
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -69,6 +70,40 @@ LINK_TYPES: tuple[str, ...] = ("highway.motorway_link",)
 
 #: Default cap on how many link edges one ramp chain may span.
 MAX_LINK_EDGES: int = 4
+
+#: SUMO edge types of drivable roads that are neither the mainline nor its
+#: links (OSM arterial classes after the shipped typemap). An entrance mapped
+#: on one of these — a lane-add merge tagged on the mainline way, or a frontage
+#: road joining at grade — is accepted by :func:`ramps_for_chain` when the way
+#: ends on a mainline node and heads the mainline's way (:data:`MAX_JOIN_DEV_DEG`).
+DRIVABLE_TYPES: tuple[str, ...] = (
+    "highway.trunk",
+    "highway.trunk_link",
+    "highway.primary",
+    "highway.primary_link",
+    "highway.secondary",
+    "highway.secondary_link",
+    "highway.tertiary",
+    "highway.tertiary_link",
+    "highway.unclassified",
+    "highway.residential",
+)
+
+#: Largest heading deviation [deg] between a joining non-link way and the
+#: mainline for the join to count as an entrance. A road crossing the mainline
+#: at a shared node (an at-grade crossing, or a bridge whose mapper shared the
+#: node) meets it near 90° and is rejected; a merge meets it at a few degrees.
+MAX_JOIN_DEV_DEG: float = 35.0
+
+#: Longest collector–distributor road [m]: a link chain that leaves the
+#: mainline and returns to it within this distance is a C-D road, not an exit.
+MAX_CD_LENGTH_M: float = 3000.0
+
+#: Cap on the number of link edges walked when looking for a C-D re-entry.
+MAX_CD_EDGES: int = 12
+
+#: How a :class:`RampCandidate` was recognised.
+Discovery = Literal["motorway_link", "lane_add", "shallow_join", "cd_road", "at_grade"]
 
 #: Default heading tolerance when discovering a one-direction chain [deg].
 MAX_HEADING_DEV_DEG: float = 60.0
@@ -526,6 +561,30 @@ class RampCandidate:
         x_m: Linear position of the junction along the chain [m]: the start
             of ``attach_edge`` for an on-ramp, its end for an off-ramp.
         name: The link edge's street name from the map, when it has one.
+        discovery: How the ramp was recognised (2026-09-24): ``"motorway_link"``
+            — a chain of link-class edges; ``"lane_add"`` — a drivable non-link
+            way ending on a mainline node where the mainline gains a lane;
+            ``"shallow_join"`` — the same without a lane gain, accepted on the
+            heading alone; ``"cd_road"`` — one end of a collector–distributor
+            road (below).
+        cd_road: This candidate is one end of a collector–distributor road:
+            a link chain that leaves the chain and rejoins it downstream
+            within :data:`MAX_CD_LENGTH_M`. The split is the ``"off"`` end,
+            the re-entry the ``"on"`` end; flow that leaves at the split comes
+            back at the re-entry, so the demand step treats the two as a pair
+            (``calibration.onboarding``), not as an exit and an entrance.
+        cd_pair: Identifier shared by both ends of one C-D road (the id of the
+            split's first link edge); also set on ramps that attach to the C-D
+            road itself (see ``attach_via_cd``). Empty otherwise.
+        rejoin_edge: Split only — the chain edge at which the C-D road
+            rejoins (the re-entry's ``attach_edge``).
+        rejoin_x_m: Split only — chain position of the rejoin [m].
+        attach_via_cd: Set on a ramp that leaves or joins the C-D road rather
+            than the mainline: the pair id of that road. Such a ramp cannot be
+            a :class:`flowstate_core.config.RampSpec` (its ``attach_edge`` is
+            a C-D edge, not a corridor edge) and is inventoried only; its
+            traffic is the pair's net exchange. ``x_m`` is then the split's
+            position plus the distance along the C-D road to the junction.
     """
 
     kind: Literal["on", "off"]
@@ -533,6 +592,12 @@ class RampCandidate:
     attach_edge: str
     x_m: float
     name: str = ""
+    discovery: Discovery = "motorway_link"
+    cd_road: bool = False
+    cd_pair: str = ""
+    rejoin_edge: str = ""
+    rejoin_x_m: float | None = None
+    attach_via_cd: str = ""
 
 
 def _walk_links(
@@ -558,12 +623,165 @@ def _walk_links(
     return ids
 
 
+def _cd_path(
+    net: Any,
+    start: Any,
+    *,
+    chain_index: Mapping[str, int],
+    split_index: int,
+    link_types: set[str],
+    used: set[str],
+    max_length_m: float,
+    max_edges: int,
+) -> tuple[list[str], str] | None:
+    """The shortest link-edge path from ``start`` back onto the chain.
+
+    A uniform-cost search over link edges (forks included, so a C-D road
+    that also fans out into an exit is followed past the fork) until an edge
+    feeds a chain edge *downstream* of the split; bounded by ``max_length_m``
+    of path and ``max_edges`` edges.
+
+    Returns:
+        ``(path edge ids, chain edge the path rejoins)``, or ``None`` when
+        no path returns within the bounds — the link is an exit.
+    """
+    heap: list[tuple[float, int, list[str]]] = [(float(start.getLength()), 0, [start.getID()])]
+    best: dict[str, float] = {start.getID(): float(start.getLength())}
+    counter = 1
+    while heap:
+        length, _, path = heapq.heappop(heap)
+        if length > max_length_m or len(path) > max_edges:
+            continue
+        current = net.getEdge(path[-1])
+        rejoins = sorted(
+            (chain_index[e.getID()], e.getID())
+            for e in current.getOutgoing()
+            if e.getID() in chain_index and chain_index[e.getID()] > split_index
+        )
+        if rejoins:
+            return path, rejoins[0][1]
+        for nxt in current.getOutgoing():
+            nid = nxt.getID()
+            if nxt.getType() not in link_types or nid in used or nid in chain_index or nid in path:
+                continue
+            total = length + float(nxt.getLength())
+            if total >= best.get(nid, math.inf):
+                continue
+            best[nid] = total
+            heapq.heappush(heap, (total, counter, [*path, nid]))
+            counter += 1
+    return None
+
+
+def _cd_attachments(
+    net: Any,
+    path: Sequence[str],
+    *,
+    pair: str,
+    split_x_m: float,
+    on_chain: set[str],
+    link_types: set[str],
+    drivable_types: set[str],
+) -> list[RampCandidate]:
+    """Ramps that leave or join a C-D road at its interior nodes (inventory only)."""
+    found: list[RampCandidate] = []
+    in_path = set(path)
+    x = split_x_m
+    for k, eid in enumerate(path[:-1]):
+        x += float(net.getEdge(eid).getLength())
+        node = net.getEdge(eid).getToNode()
+        for e in node.getOutgoing():
+            if e.getID() in in_path or e.getID() in on_chain:
+                continue
+            if e.getType() in link_types or e.getType() in drivable_types:
+                found.append(
+                    RampCandidate(
+                        kind="off",
+                        edges=(e.getID(),),
+                        attach_edge=eid,
+                        x_m=x,
+                        name=str(e.getName() or ""),
+                        discovery="motorway_link" if e.getType() in link_types else "at_grade",
+                        cd_pair=pair,
+                        attach_via_cd=pair,
+                    )
+                )
+        for e in node.getIncoming():
+            if e.getID() in in_path or e.getID() in on_chain:
+                continue
+            if e.getType() in link_types or e.getType() in drivable_types:
+                found.append(
+                    RampCandidate(
+                        kind="on",
+                        edges=(e.getID(),),
+                        attach_edge=path[k + 1],
+                        x_m=x,
+                        name=str(e.getName() or ""),
+                        discovery="motorway_link" if e.getType() in link_types else "at_grade",
+                        cd_pair=pair,
+                        attach_via_cd=pair,
+                    )
+                )
+    return found
+
+
+def _split_cd_path(cd_attachments: Sequence[RampCandidate], path: Sequence[str]) -> int:
+    """Number of path edges that belong to the split (the rest is the re-entry).
+
+    The split runs to the last interior node at which something attaches to
+    the C-D road, so the point where an off-ramp's vehicles leave and an
+    on-ramp's vehicles are inserted is the road's last junction; with no
+    attachment the split takes every edge but the last.
+    """
+    last = 0
+    for k, eid in enumerate(path[:-1]):
+        if any(a.attach_edge in (eid, path[k + 1]) for a in cd_attachments):
+            last = k + 1
+    return last if last else len(path) - 1
+
+
+def _non_link_join(
+    link: Any,
+    edge: Any,
+    prev_edge: Any | None,
+    *,
+    on_chain: set[str],
+    link_types: set[str],
+    drivable_types: set[str],
+    max_dev_deg: float,
+) -> Literal["lane_add", "shallow_join"] | None:
+    """Whether a drivable non-link edge ending on ``edge``'s start node is an entrance.
+
+    Accepted when it heads within ``max_dev_deg`` of the mainline there and
+    does not pass through the node (no non-link, non-chain edge leaves the
+    node continuing its heading — a crossing road does, a merge does not).
+    ``"lane_add"`` when the mainline gains a lane at that node.
+    """
+    if link.getType() not in drivable_types:
+        return None
+    in_heading = _heading_at(link, end=True)
+    if heading_dev_deg(in_heading, _heading_at(edge, end=False)) > max_dev_deg:
+        return None
+    for out in link.getToNode().getOutgoing():
+        if out.getID() in on_chain or out.getType() in link_types:
+            continue
+        if heading_dev_deg(_heading_at(out, end=False), in_heading) <= max_dev_deg:
+            return None  # the road continues past the mainline: a crossing, not a merge
+    if prev_edge is not None and int(edge.getLaneNumber()) > int(prev_edge.getLaneNumber()):
+        return "lane_add"
+    return "shallow_join"
+
+
 def ramps_for_chain(
     net: Any,
     chain: Sequence[str],
     *,
     link_types: Sequence[str] = LINK_TYPES,
     max_link_edges: int = MAX_LINK_EDGES,
+    drivable_types: Sequence[str] = DRIVABLE_TYPES,
+    max_join_dev_deg: float = MAX_JOIN_DEV_DEG,
+    max_cd_length_m: float = MAX_CD_LENGTH_M,
+    max_cd_edges: int = MAX_CD_EDGES,
 ) -> list[RampCandidate]:
     """Find the on- and off-ramps of a corridor chain.
 
@@ -575,31 +793,117 @@ def ramps_for_chain(
     or three ways is captured whole, and a ramp fanning out into an
     interchange stops at the fork.
 
-    Each link edge is claimed by at most one ramp, so a collector–distributor
-    road that leaves the mainline and rejoins it downstream is reported as
-    the off-ramp it starts as, not twice.
+    **Collector–distributor roads** (2026-09-24). Before a link leaving the
+    chain is taken as an exit, the links are searched for a way back onto
+    the chain downstream (:func:`_cd_path`, within ``max_cd_length_m`` and
+    ``max_cd_edges``). One that returns is a C-D road and yields two
+    candidates sharing a ``cd_pair`` id: the split (``"off"``, with
+    ``rejoin_edge``/``rejoin_x_m``) and the re-entry (``"on"``, attached to
+    the rejoin edge), the path divided at the road's last interior junction
+    (:func:`_split_cd_path`). Ramps leaving or joining the C-D road at its
+    interior nodes are listed with ``attach_via_cd`` set — inventory only,
+    since a ``RampSpec`` must attach to a corridor edge. A single link edge
+    that leaves and rejoins (a bypass) stays an off-ramp: it cannot be split
+    into two ends.
+
+    **Non-link entrances** (2026-09-24). A drivable non-link edge
+    (``drivable_types``) ending on a chain edge's start node is an entrance
+    when it heads within ``max_join_dev_deg`` of the mainline and does not
+    continue past the node (:func:`_non_link_join`): ``discovery="lane_add"``
+    when the mainline gains a lane there, ``"shallow_join"`` otherwise. Only
+    the joining edge is taken as the ramp. A crossing road that shares a node
+    with the mainline (an at-grade crossing, or a bridge mapped through the
+    node) fails the heading test or the pass-through test and is not a ramp.
+    Note that the corridor-onboarding extract carries motorway and
+    motorway_link ways only (``networks.OVERPASS_HIGHWAY_REGEX``), so on such
+    an extract no non-link entrance can exist; the rule applies to extracts
+    that include the arterial classes.
+
+    Each link edge is claimed by at most one candidate.
 
     Args:
         net: A ``sumolib.net.Net``.
         chain: Mainline edge ids in driving order.
         link_types: SUMO edge types treated as ramps.
         max_link_edges: Cap on the number of edges in one ramp chain.
+        drivable_types: SUMO edge types accepted as non-link entrances.
+        max_join_dev_deg: Heading tolerance for a non-link entrance [deg].
+        max_cd_length_m: Longest C-D road followed back to the chain [m].
+        max_cd_edges: Most link edges walked when looking for a re-entry.
 
     Returns:
         Candidates ordered by position along the chain, off-ramps before
         on-ramps at the same position. Their ``edges`` never include a chain
-        edge, so they can be handed straight to
-        :class:`flowstate_core.config.RampSpec`.
+        edge; every candidate without ``attach_via_cd`` can be handed straight
+        to :class:`flowstate_core.config.RampSpec`.
     """
     types = set(link_types)
+    drivable = set(drivable_types) - types
     on_chain = set(chain)
+    chain_index = {eid: i for i, eid in enumerate(chain)}
+    offsets = chain_offsets(net, chain)
     used: set[str] = set()
     found: list[RampCandidate] = []
-    for eid, offset in zip(chain, chain_offsets(net, chain), strict=True):
+    prev_edge: Any | None = None
+    for i, (eid, offset) in enumerate(zip(chain, offsets, strict=True)):
         edge = net.getEdge(eid)
         end_x = offset + float(edge.getLength())
         for link in edge.getOutgoing():
             if link.getType() not in types or link.getID() in on_chain | used:
+                continue
+            cd = _cd_path(
+                net,
+                link,
+                chain_index=chain_index,
+                split_index=i,
+                link_types=types,
+                used=used,
+                max_length_m=max_cd_length_m,
+                max_edges=max_cd_edges,
+            )
+            if cd is not None and len(cd[0]) >= 2:
+                path, rejoin_edge = cd
+                pair = path[0]
+                used.update(path)
+                attachments = _cd_attachments(
+                    net,
+                    path,
+                    pair=pair,
+                    split_x_m=end_x,
+                    on_chain=on_chain,
+                    link_types=types,
+                    drivable_types=drivable,
+                )
+                used.update(e for a in attachments for e in a.edges)
+                cut = _split_cd_path(attachments, path)
+                rejoin_x = offsets[chain_index[rejoin_edge]]
+                found.append(
+                    RampCandidate(
+                        kind="off",
+                        edges=tuple(path[:cut]),
+                        attach_edge=eid,
+                        x_m=end_x,
+                        name=str(link.getName() or ""),
+                        discovery="cd_road",
+                        cd_road=True,
+                        cd_pair=pair,
+                        rejoin_edge=rejoin_edge,
+                        rejoin_x_m=rejoin_x,
+                    )
+                )
+                found.append(
+                    RampCandidate(
+                        kind="on",
+                        edges=tuple(path[cut:]),
+                        attach_edge=rejoin_edge,
+                        x_m=rejoin_x,
+                        name=str(net.getEdge(path[-1]).getName() or ""),
+                        discovery="cd_road",
+                        cd_road=True,
+                        cd_pair=pair,
+                    )
+                )
+                found.extend(attachments)
                 continue
             ids = _walk_links(
                 link, forward=True, link_types=types, used=used, max_edges=max_link_edges
@@ -615,20 +919,45 @@ def ramps_for_chain(
                 )
             )
         for link in edge.getIncoming():
-            if link.getType() not in types or link.getID() in on_chain | used:
+            if link.getID() in on_chain | used:
                 continue
-            ids = _walk_links(
-                link, forward=False, link_types=types, used=used, max_edges=max_link_edges
+            if link.getType() in types:
+                ids = _walk_links(
+                    link, forward=False, link_types=types, used=used, max_edges=max_link_edges
+                )
+                used.update(ids)
+                found.append(
+                    RampCandidate(
+                        kind="on",
+                        edges=tuple(ids),
+                        attach_edge=eid,
+                        x_m=offset,
+                        name=str(link.getName() or ""),
+                    )
+                )
+                continue
+            join = _non_link_join(
+                link,
+                edge,
+                prev_edge,
+                on_chain=on_chain,
+                link_types=types,
+                drivable_types=drivable,
+                max_dev_deg=max_join_dev_deg,
             )
-            used.update(ids)
+            if join is None:
+                continue
+            used.add(link.getID())
             found.append(
                 RampCandidate(
                     kind="on",
-                    edges=tuple(ids),
+                    edges=(link.getID(),),
                     attach_edge=eid,
                     x_m=offset,
                     name=str(link.getName() or ""),
+                    discovery=join,
                 )
             )
+        prev_edge = edge
     found.sort(key=lambda r: (r.x_m, r.kind, r.attach_edge))
     return found

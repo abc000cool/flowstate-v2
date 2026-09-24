@@ -99,6 +99,7 @@ from microsim.networks import (
     ring,
     weave_sections,
 )
+from microsim.paths import effective_roots, ensure_within_roots
 from microsim.vehicles import (
     FleetPlan,
     build_corridor_plan,
@@ -374,7 +375,7 @@ def _apply_merge_models(
         corridor_edges=tuple(net.corridor_edges),
         workdir=workdir,
         keep_edges=keep,
-        patch_files=model_patches,
+        patch_files=[*_user_patch_files(net), *model_patches],
         internal_links=net.internal_links,
         netconvert_extra=tuple(net.netconvert_extra),
     )
@@ -436,6 +437,26 @@ def _check_weave_pairs(net: OSMNetwork, compiled: Any, chain: Sequence[str]) -> 
     return out
 
 
+def _user_patch_files(net: OSMNetwork) -> list[Path]:
+    """The scenario's own netconvert patches (``OSMNetwork.patch_files``).
+
+    Each path is resolved against the working directory and must lie inside
+    the allowed data roots (the same rule as ``osm_file``), so a scenario
+    uploaded through the API cannot make netconvert read an arbitrary file.
+
+    Raises:
+        ValueError: a patch outside the allowed roots or missing.
+    """
+    out: list[Path] = []
+    for raw in net.patch_files:
+        path = Path(raw)
+        ensure_within_roots(raw, path.resolve(), effective_roots(None), field="patch_files")
+        if not path.is_file():
+            raise ValueError(f"patch_files entry not found: {raw}")
+        out.append(path)
+    return out
+
+
 def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
     """Build the SUMO network for the scenario's network block."""
     net = cfg.network
@@ -455,6 +476,7 @@ def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
             corridor_edges=tuple(net.corridor_edges),
             workdir=workdir,
             keep_edges=keep,
+            patch_files=_user_patch_files(net),
             internal_links=net.internal_links,
             netconvert_extra=tuple(net.netconvert_extra),
         )
