@@ -502,6 +502,38 @@ point of lane 0 (2,525 veh/h against a lane's ≈ 2,050 veh/h at T = 1.4 s), so
 a jam formed at the gore never discharges; and an accepted change at the
 0.6 s gap makes an IDM follower with T = 1.4 s brake at ≈ 4 m/s², so lane 1
 is compressed into platoons with no acceptable hole after a few insertions.
+Second attempt (2026-09-24, block 3): the rules above are **replaced**. No
+desired-speed cap is written any more (no speed matching, no station-keeping,
+no exchange rule; `courtesy` is accepted for hash stability and inert). A
+driven vehicle keeps SUMO's car-following under mode 512 and every speed
+request is a one-step target `vehicle.slowDown(v, 0.0)` (duration 0 is the
+one-step form on SUMO 1.27.1; the default `speedMode` clamps it to the safe
+speed and to the vehicle's `decel`). Each step a changer lists the target
+lane on the section's linear axis — the section edges, the through lanes of
+the corridor edge before and after them (`_weave_lane_map`) and the on-ramp
+at negative positions — and chooses, among the gaps it is in or abreast of
+within `lookahead_m` behind it, the nearest whose follower F can open it at
+no more than F's comfortable deceleration (IDM towards the changer as
+virtual leader, F's own `tau/accel/decel/minGap/maxSpeed`), gaps it can also
+follow into first; the commitment holds while F still opens it within its
+b. F is driven at min(its own IDM, that acceleration clipped at −b); the
+changer is driven towards its gap's leader the same way when it would have
+to brake for it (only the rear one of an abreast pair has such a gap); an
+entering vehicle still on the ramp within `lookahead_m` of the section is
+anticipated the same way before it appears on lane 0. Both movements are
+forced in the last `force_within_m` after `force_after_s`, under
+`_weave_force_gap_ok`; acceptance is the time gaps (`accept_gap_s` /
+`exit_accept_gap_s`) plus the immediate follower absorbing the changer
+within its b, executed under mode 256 for one step. `weave_sections[i]`
+gains `n_cooperations` (vehicle-steps a follower was given a target),
+`mean_follower_decel_ms2` (mean commanded deceleration over them, `None`
+without any) and `n_changer_eased`. Fixture, seed 3, before → after: lane 1
+over the first 60 m 20.2, 10.9, 2.9, 0.2 then 0.0 → 12.7, 11.8, 12.4, 10.3
+then 4.2–6.4 m/s; entrance 81 → 225 of 466; driven 92 → 334 with unfinished
+49 → 2 and deferred 16,576 → 0; exits 3 of 62 → 273 of 280; collisions 0. The
+strict `xfail` stays: what remains is a crawl equilibrium at the section
+entry (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the lane flows), not
+a lock. Golden `merge_weave` regenerated (hash unchanged).
 
 ## 3. Run outputs
 

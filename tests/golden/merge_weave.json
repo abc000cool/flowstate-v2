@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_weave",
-  "generated_at": "2026-09-24T06:56:22+00:00",
+  "generated_at": "2026-09-24T14:19:49+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -191,24 +191,24 @@
     "n_meter_releases": 0,
     "n_scripted_merged": 0,
     "n_scripted_forced": 0,
-    "fuel_total_ml": 17404.584664070397,
-    "n_weave_changed_in": 23,
-    "n_weave_changed_out": 27,
-    "n_weave_forced": 7,
+    "fuel_total_ml": 15720.261740551261,
+    "n_weave_changed_in": 20,
+    "n_weave_changed_out": 13,
+    "n_weave_forced": 2,
     "n_weave_exited": 33
   },
   "metrics": {
-    "throughput_veh_h": 1429.1115311909264,
-    "mean_tt_s": 97.10084745790901,
-    "p90_tt_s": 123.10110920797877,
-    "sigma_v_spatial_ms": 7.593355402058996,
-    "sigma_v_temporal_ms": 9.048005231296818,
-    "vmt_veh_km": 169.78033429995102,
-    "vht_veh_h": 2.5025000000000004,
-    "fuel_ml_per_veh_km": 102.51237126981802,
-    "wave_count": 1,
+    "throughput_veh_h": 1657.8947368421052,
+    "mean_tt_s": 70.09464974527353,
+    "p90_tt_s": 86.89206116473247,
+    "sigma_v_spatial_ms": 4.568988662030287,
+    "sigma_v_temporal_ms": 3.5218561163666413,
+    "vmt_veh_km": 169.57294588205593,
+    "vht_veh_h": 1.7365277777777783,
+    "fuel_ml_per_veh_km": 92.70501057099797,
+    "wave_count": 0,
     "wave_speed_kmh": null,
-    "wave_amplitude_ms": 25.05071498255987,
+    "wave_amplitude_ms": null,
     "n_travel_time_veh": 53
   }
 }

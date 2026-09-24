@@ -757,8 +757,6 @@ NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 
 NEIGHBOR_LEFT_LEADERS = 2
 NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
 NEIGHBOR_RIGHT_LEADERS = 3
-WEAVE_HOLD_TAU_S = 2.0  # relaxation time of an exiting vehicle's station-keeping [s]
-WEAVE_EXCHANGE_YIELD_MS = 2.0  # speed deficit of the rear vehicle of an exchange pair [m/s]
 
 
 def _neighbor_gap(mod: Any, vid: str, mode: int) -> tuple[float, float, str | None]:
@@ -910,49 +908,412 @@ def _weave_force_gap_ok(
     return g_lead > s0 + accept_s * closing_lead and g_foll > s0 + accept_s * closing_foll
 
 
+def _idm_accel(
+    v: float, v0: float, s: float, dv: float, T: float, a_max: float, b: float, s0: float
+) -> float:
+    """Intelligent Driver Model acceleration [m/s²] (Treiber, Hennecke & Helbing 2000).
+
+    ``a = a_max · [1 − (v/v0)^4 − (s*/s)²]`` with
+    ``s* = s0 + max(0, v·T + v·Δv / (2·√(a_max·b)))`` (CLAUDE.md §3.1), where
+    ``s`` is the bumper-to-bumper gap to the leader and ``Δv = v − v_leader``.
+    A gap of zero or less (the leader overlaps or is behind) returns ``-inf``:
+    no finite braking reaches a positive gap from there.
+
+    Args:
+        v: Own speed [m/s].
+        v0: Desired speed [m/s].
+        s: Bumper-to-bumper gap [m]; ``inf`` for a free road.
+        dv: Approach rate ``v − v_leader`` [m/s].
+        T: Desired time headway [s].
+        a_max: Maximum acceleration [m/s²].
+        b: Comfortable deceleration [m/s²].
+        s0: Minimum gap [m].
+
+    Returns:
+        The acceleration; negative is braking.
+    """
+    if s <= 0.0:
+        return -math.inf
+    free = 1.0 - (v / v0) ** 4 if v0 > 0.0 else 0.0
+    if s == math.inf:
+        return a_max * free
+    s_star = s0 + max(0.0, v * T + v * dv / (2.0 * math.sqrt(a_max * b)))
+    return a_max * (free - (s_star / s) ** 2)
+
+
+def _weave_veh(mod: Any, ws: dict[str, Any], vid: str) -> dict[str, float]:
+    """A vehicle's car-following constants, read once per run and cached in ``ws``.
+
+    SUMO exposes the drawn IDM/EIDM parameters as ``tau`` (T), ``accel``
+    (a_max), ``decel`` (b), ``minGap`` (s0) and ``maxSpeed`` (v0, the fleet
+    sets ``speedFactor="1.0"``), plus the vehicle ``length``.
+    """
+    cache: dict[str, dict[str, float]] = ws["veh_params"]
+    p = cache.get(vid)
+    if p is None:
+        p = cache[vid] = {
+            "len": float(mod.vehicle.getLength(vid)),
+            "T": float(mod.vehicle.getTau(vid)),
+            "a": float(mod.vehicle.getAccel(vid)),
+            "b": float(mod.vehicle.getDecel(vid)),
+            "s0": float(mod.vehicle.getMinGap(vid)),
+            "vmax": float(mod.vehicle.getMaxSpeed(vid)),
+        }
+    return p
+
+
+def _weave_lane_vmax(mod: Any, ws: dict[str, Any], road: str, lane: int) -> float:
+    """A lane's speed limit [m/s], cached in ``ws``."""
+    cache: dict[str, float] = ws["lane_vmax"]
+    lane_id = f"{road}_{lane}"
+    v = cache.get(lane_id)
+    if v is None:
+        v = cache[lane_id] = float(mod.lane.getMaxSpeed(lane_id))
+    return v
+
+
+def _weave_lane_map(
+    net: Any, chain: Sequence[str], section_edges: Sequence[str]
+) -> dict[tuple[str, int], int]:
+    """``(edge, lane index) → section lane index`` for the lanes a changer's gaps lie on.
+
+    The section's own lanes map to themselves; on the corridor edge before
+    the section, the lanes that connect into a section lane ≥ 1 (the through
+    lanes — lane 0 comes from the ramp), and on the edge after it, the lanes
+    fed by a section lane ≥ 1, map to that section lane. Gaps are then found
+    on one lane of consecutive edges from up to a lookahead behind the section
+    to one edge beyond it, which is where the follower of an entering
+    vehicle's gap is while the vehicle is still near the section start.
+    """
+    m: dict[tuple[str, int], int] = {}
+    for e in section_edges:
+        for lane in net.getEdge(e).getLanes():
+            m[(e, int(lane.getIndex()))] = int(lane.getIndex())
+    first, last = section_edges[0], section_edges[-1]
+    i0, i1 = chain.index(first), chain.index(last)
+    if i0 > 0:
+        prev = chain[i0 - 1]
+        for lane in net.getEdge(prev).getLanes():
+            for conn in lane.getOutgoing():
+                to_lane = conn.getToLane()
+                if conn.getTo().getID() == first and int(to_lane.getIndex()) >= 1:
+                    m[(prev, int(lane.getIndex()))] = int(to_lane.getIndex())
+    if i1 + 1 < len(chain):
+        nxt = chain[i1 + 1]
+        for lane in net.getEdge(last).getLanes():
+            if int(lane.getIndex()) == 0:
+                continue
+            for conn in lane.getOutgoing():
+                if conn.getTo().getID() == nxt:
+                    m[(nxt, int(conn.getToLane().getIndex()))] = int(lane.getIndex())
+    return m
+
+
+def _weave_choose_gap(
+    vid: str,
+    x_c: float,
+    v_c: float,
+    p_c: dict[str, float],
+    v0_c: float,
+    lane_list: Sequence[tuple[float, str]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    p_of: dict[str, dict[str, float]],
+    v0_of: dict[str, float],
+    lookahead_m: float,
+    committed: str | None,
+) -> tuple[str | None, str | None, float, float]:
+    """The target-lane gap a changer works towards: ``(leader, follower, a_F, a_c)``.
+
+    Candidates are the gaps between consecutive target-lane vehicles (plus the
+    open road ahead of the first and behind the last) that the changer is in
+    or abreast of: the follower F, if any, is behind the changer's rear bumper
+    and within ``lookahead_m`` of it, and the leader L, if any, has its front
+    bumper no farther back than the changer's rear (the changer overlaps L at
+    most — it can drop in behind a vehicle beside it, not behind one it has
+    passed). For each, ``a_F`` is the IDM acceleration F would need towards
+    the changer as its leader (:func:`_idm_accel` with F's own parameters) and
+    ``a_c`` the changer's towards L. A gap is *open* when ``a_F ≥ −b_F`` (F
+    opens it at no more than its comfortable deceleration) and *enterable*
+    when ``a_c ≥ −b_c`` as well. Ranking: enterable gaps first, then open
+    ones, nearest follower first within a tier (the open road behind the
+    rearmost vehicle counts as nearest). A ``committed`` follower's gap is
+    kept while it is still a candidate and still open (2026-09-24, block 3:
+    docs/WEAVE_MODEL_PLAN.md).
+
+    Why nearest and not "least deceleration" within a tier: ranked by
+    ``a_F`` alone the farthest follower always wins (it needs none), the
+    changer then rides beside a platoon waiting for a gap that only arrives
+    if the target lane is faster, and the change is made at the gore.
+
+    Args:
+        vid: The changer's id (tie-break of an exactly abreast pair).
+        x_c: The changer's front-bumper position on the section axis [m].
+        v_c: Its speed [m/s].
+        p_c: Its constants (:func:`_weave_veh`).
+        v0_c: Its desired speed on the target lane [m/s].
+        lane_list: Target-lane vehicles as ``(x, id)``, ascending ``x``.
+        x_of: Front-bumper position of every vehicle in ``lane_list`` [m].
+        v_of: Their speeds [m/s].
+        p_of: Their constants.
+        v0_of: Their desired speeds [m/s].
+        lookahead_m: How far behind the changer a follower may be [m].
+        committed: The follower of the gap chosen on an earlier step, if any.
+
+    Returns:
+        ``(leader, follower, a_F, a_c)``; ``None`` where the gap has no such
+        vehicle, ``a_F = inf`` without a follower, ``a_c = inf`` without a
+        leader. ``(None, None, inf, inf)`` when no gap qualifies.
+    """
+    best: tuple[tuple[bool, bool, float], str | None, str | None, float, float] | None = None
+    n = len(lane_list)
+    for i in range(n + 1):
+        l_id = lane_list[i][1] if i < n else None
+        f_id = lane_list[i - 1][1] if i > 0 else None
+        if f_id is not None:
+            p_f = p_of[f_id]
+            s_f = x_c - p_c["len"] - x_of[f_id]
+            dist = x_c - x_of[f_id]
+            if s_f <= 0.0 or dist > lookahead_m:
+                continue
+            a_f = _idm_accel(
+                v_of[f_id],
+                v0_of[f_id],
+                s_f,
+                v_of[f_id] - v_c,
+                p_f["T"],
+                p_f["a"],
+                p_f["b"],
+                p_f["s0"],
+            )
+            open_ = a_f >= -p_f["b"]
+        else:
+            a_f, dist, open_ = math.inf, 0.0, True
+        if l_id is not None:
+            if x_of[l_id] < x_c or (x_of[l_id] == x_c and l_id < vid):
+                # L's front is behind the changer's own: not a gap the
+                # changer is in. Strictly the front one of an abreast pair,
+                # so only the rear one eases off (mutual easing stopped both)
+                continue
+            s_l = x_of[l_id] - p_of[l_id]["len"] - x_c
+            a_c = _idm_accel(
+                v_c, v0_c, s_l, v_c - v_of[l_id], p_c["T"], p_c["a"], p_c["b"], p_c["s0"]
+            )
+        else:
+            a_c = math.inf
+        enterable = open_ and a_c >= -p_c["b"]
+        if f_id is not None and f_id == committed and open_:
+            return l_id, f_id, a_f, a_c
+        key = (enterable, open_, -dist)
+        if best is None or key > best[0]:
+            best = (key, l_id, f_id, a_f, a_c)
+    if best is None:
+        return None, None, math.inf, math.inf
+    return best[1], best[2], best[3], best[4]
+
+
+def _weave_command(
+    mod: Any,
+    coop: dict[str, tuple[float, float, bool]],
+    vid: str,
+    v: float,
+    v0: float,
+    p: dict[str, float],
+    a_target: float,
+    step_s: float,
+    follower: bool = True,
+) -> None:
+    """Record a one-step speed target for a vehicle driven towards a virtual leader.
+
+    ``a_target`` (the IDM acceleration towards the virtual leader) is clipped
+    at the vehicle's comfortable deceleration ``−b`` and compared with the
+    acceleration its own model would take this step — IDM towards its real
+    leader (``vehicle.getLeader``) or the free-road term without one. Only a
+    target *below* that is recorded in ``coop`` (a higher one would make the
+    vehicle accelerate faster than its own model); several requests on one
+    vehicle keep the lowest speed. ``follower`` marks a target-lane follower
+    opening a gap (counted in ``n_cooperations``) as opposed to a changer
+    dropping in behind its gap's leader (``n_changer_eased``).
+    """
+    a_cmd = max(a_target, -p["b"])
+    lead = mod.vehicle.getLeader(vid, LEADER_LOOKAHEAD_M)
+    if lead is None or lead[0] == "" or lead[1] < 0.0:
+        a_own = _idm_accel(v, v0, math.inf, 0.0, p["T"], p["a"], p["b"], p["s0"])
+    else:
+        a_own = _idm_accel(
+            v,
+            v0,
+            float(lead[1]) + p["s0"],
+            v - float(mod.vehicle.getSpeed(lead[0])),
+            p["T"],
+            p["a"],
+            p["b"],
+            p["s0"],
+        )
+    if a_cmd < a_own:
+        v_new = max(v + a_cmd * step_s, 0.0)
+        prev = coop.get(vid)
+        if prev is None or v_new < prev[0]:
+            coop[vid] = (v_new, a_cmd, follower if prev is None else prev[2] or follower)
+
+
+def _weave_cooperate(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    p_of: dict[str, dict[str, float]],
+    v0_of: dict[str, float],
+    coop: dict[str, tuple[float, float, bool]],
+    vid: str,
+    target_lane: int,
+    committed: str | None,
+) -> str | None:
+    """Choose a changer's gap on ``target_lane`` and record the two speed targets.
+
+    :func:`_weave_choose_gap` over the lane's listing, then
+    :func:`_weave_command` for the gap's follower (the changer as its virtual
+    leader) and, when the changer would have to brake for the gap's leader,
+    for the changer itself (L as its virtual leader — an abreast pair
+    resolves by the one behind easing off, not by a station-keeping cap).
+    ``p_of`` / ``v0_of`` are filled for the listed vehicles as needed.
+
+    Returns:
+        The chosen gap's follower id (the commitment carried to the next
+        step), or ``None``.
+    """
+    prm = ws["params"]
+    res = results[vid]
+    road = res[tc.VAR_ROAD_ID]
+    v_c = float(res[tc.VAR_SPEED])
+    p_c = _weave_veh(mod, ws, vid)
+    # the target lane's limit: on the ramp, that of the section's first edge
+    v_road = road if road in ws["edge_index"] else ws["edges"][0]
+    v0_c = min(p_c["vmax"], _weave_lane_vmax(mod, ws, v_road, target_lane))
+    lane_list = lanes.get(target_lane, [])
+    for _x, oid in lane_list:
+        if oid not in p_of:
+            p_of[oid] = _weave_veh(mod, ws, oid)
+            r_o = results[oid]
+            v0_of[oid] = min(
+                p_of[oid]["vmax"],
+                _weave_lane_vmax(mod, ws, r_o[tc.VAR_ROAD_ID], int(r_o[tc.VAR_LANE_INDEX])),
+            )
+    l_t, f_t, a_f, a_c = _weave_choose_gap(
+        vid,
+        x_of[vid],
+        v_c,
+        p_c,
+        v0_c,
+        lane_list,
+        x_of,
+        v_of,
+        p_of,
+        v0_of,
+        prm["lookahead_m"],
+        committed,
+    )
+    step_s = float(ws["step_s"])
+    if f_t is not None:
+        _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
+    if l_t is not None and a_c < 0.0:
+        _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
+    return f_t
+
+
 def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -> None:
     """One step of a weaving section (``RampSpec.merge = "weave"``).
 
     :func:`_scripted_merge_step` generalised to the two crossing movements of
     a one-sided ramp weave (HCM 7th ed. ch. 13; docs/WEAVE_MODEL_PLAN.md
-    §2(A)). A vehicle on a section edge is driven when it has a change to
-    make there:
+    §2(A)), rewritten 2026-09-24 (block 3, second attempt) around
+    **anticipatory follower cooperation as a car-following target**. A
+    vehicle on a section edge is driven when it has a change to make there:
 
     * **entering** (direction +1): a vehicle not bound for the paired exit on
-      lane 0 of an edge whose lane 0 leads only to the exit changes left, with
-      the left-neighbour gaps and ``accept_gap_s``; it is never forced (it
-      waits for a gap, SUMO refusing unsafe changes under
-      ``LC_MODE_SCRIPTED_SAFE``);
+      lane 0 of an edge whose lane 0 leads only to the exit changes left;
     * **exiting** (direction -1): a vehicle bound for the paired exit on lane
-      1 or above changes right, one lane per request, with the right-neighbour
-      gaps and ``exit_accept_gap_s``; after ``force_after_s`` inside the last
-      ``force_within_m`` before the exit gore it is forced
-      (``LC_MODE_SCRIPTED_FORCE``: the follower yields, SUMO still refusing
-      collisions), because missing the exit is not an option — but only
-      through the minimum-gap guard :func:`_weave_force_gap_ok`; a refused
-      forced change is deferred to the next step and counted in
-      ``n_forced_deferred``.
+      1 or above changes right, one lane per request.
 
-    Both movements match their desired speed to the target lane's vehicle
-    ahead within ``lookahead_m`` (``vehicle.setMaxSpeed``, never
-    ``setSpeed``), and with ``courtesy`` > 0 the target-lane follower that
-    blocks an otherwise acceptable gap — for either movement, so politeness is
-    two-sided — holds its desired speed ``courtesy`` m/s below the changer's
-    for one step (re-applied while it still blocks).
+    Either movement is **forced** after ``force_after_s`` inside the last
+    ``force_within_m`` before the exit gore (``LC_MODE_SCRIPTED_FORCE``: the
+    follower yields, SUMO still refusing collisions) as its last resort — an
+    exit missed is a route missed, and an entrant held at the lane end brakes
+    its cooperating follower down to a standstill with it — but only through
+    the minimum-gap guard :func:`_weave_force_gap_ok`; a refused forced change
+    is deferred to the next step and counted in ``n_forced_deferred``.
 
-    Two rules keep the crossing from deadlocking whatever ``courtesy`` is
-    (a lane-discrete swap between two vehicles abreast at the gore is
-    impossible — the lock this model exists to remove,
-    docs/WEAVE_MODEL_PLAN.md §1): an **exchange** — the target-lane follower
-    is itself driven and wants this vehicle's lane — makes the rear vehicle
-    drop back (desired speed ``WEAVE_EXCHANGE_YIELD_MS`` below the front
-    one's, no creep floor), and an exiting vehicle **holds station** behind
-    the auxiliary-lane vehicle ahead (gap ``2 s0 + exit_accept_gap_s · v``,
-    relaxation ``WEAVE_HOLD_TAU_S``) instead of drawing up alongside it.
-    Yielding is applied after every driven vehicle's own speed has been set,
-    so a follower that is itself being driven still yields. Control is handed
-    back when the vehicle has no change left to make; a driven vehicle on an
-    internal junction lane between two section pieces
+    **No desired-speed caps.** A driven vehicle's ``maxSpeed`` is never
+    touched: it follows its lane by SUMO's own car-following under
+    ``LC_MODE_SCRIPTED_SAFE`` (every model-driven change off). The speed
+    matching, the station-keeping cap and the exchange rule of the first
+    attempt are gone — a max-speed cap below the current speed is an
+    emergency brake to IDM's free term and, applied through ``getNeighbors``
+    with no floor, stopped a through lane (docs/WEAVE_MODEL_PLAN.md, block 3
+    trace). ``courtesy`` is accepted for config-hash stability but inert.
+    Every speed request below is a one-step car-following target
+    (:func:`_weave_command`).
+
+    **Gap choice** (:func:`_weave_choose_gap`): each step, until committed,
+    the changer picks among the target-lane gaps it is in or abreast of,
+    within ``lookahead_m`` behind it, the one its follower F can open at no
+    more than F's own comfortable deceleration ``b_F`` (nearest such gap
+    first, gaps the changer can also follow into preferred); the committed
+    gap is kept while F still opens it within ``b_F``, else re-chosen.
+    Target-lane vehicles are listed from the section's edges, the through
+    lanes of the corridor edge before and after it and the on-ramp's lane
+    (``lane_map``, :func:`_weave_lane_map`), on the section's linear axis
+    ``x_offset`` (negative on the ramp).
+
+    **Cooperation.** F is driven towards the changer as a *virtual leader*:
+    ``a_F`` is F's IDM acceleration to a leader at the changer's position
+    (gap ``x_c − length_c − x_F``, ``Δv = v_F − v_c``, F's own ``tau``,
+    ``accel``, ``decel``, ``minGap``, ``maxSpeed``), clipped at ``−b_F``;
+    when it is below F's own acceleration (IDM towards F's real leader,
+    ``vehicle.getLeader``) the speed ``v_F + a·Δt`` is set with
+    ``vehicle.slowDown(F, v, 0.0)`` — a one-step target: with duration 0
+    SUMO's influencer reaches the target on the next step and hands F back
+    to its model on the one after (a duration of one step lingers two steps,
+    half-way then full, measured on SUMO 1.27.1), and under the default
+    ``speedMode`` the target is clamped to F's safe speed and its ``decel``,
+    so a collision or a brake beyond ``b_F`` cannot be commanded. Several
+    changers on one follower take the lowest target. Through vehicles are
+    touched only as followers of a chosen gap; a driven vehicle may be one.
+    Cooperation begins when the changer is within ``lookahead_m`` of the gap
+    and ends on the change (nothing to restore). Counted in
+    ``n_cooperations`` (vehicle-steps) and ``mean_follower_decel_ms2``.
+
+    **Easing.** The changer gets the same one-step target towards its gap's
+    leader L when it would have to brake for L (``a_c < 0``, clipped at its
+    own ``b``; ``n_changer_eased``): a vehicle abreast of L drops in behind
+    it. Only the rear one of an abreast pair has such a gap — the front one
+    takes no gap whose leader's front is behind its own — so the pair
+    resolves by the rear one easing off; with both easing they braked each
+    other to a standstill (fixture trace, t = 55–70 s), and without easing
+    the pair rode abreast into the gore, where the follower tracking the
+    stopped entrant stopped too (33,876 deferred forced changes, 56 driven
+    vehicles unfinished).
+
+    **Anticipation on the ramp.** An entering vehicle still on the on-ramp
+    within ``lookahead_m`` of the section chooses its gap, its follower
+    cooperates and it eases before it appears on lane 0 (``pre``, carried
+    into ``target`` on arrival); nothing else is done to it there. Without
+    this a through vehicle arriving at 28.7 m/s met an entrant appearing at
+    19 m/s 7 m ahead of it and could not open the gap in time (fixture
+    trace, t = 20–45 s).
+
+    **Acceptance and execution.** The change is executed under mode 256 for
+    one step as soon as the immediate target-lane gaps (``getNeighbors``)
+    clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``), the
+    immediate follower can absorb the changer within its ``b`` (its IDM
+    acceleration towards the changer, gap = reported gap + its ``minGap``)
+    and :func:`_weave_force_gap_ok` passes; a forced change uses the guard
+    alone. A step with no request leaves the vehicle on mode 512. Control is
+    handed back (mode restored) when the vehicle has no change left to make;
+    a driven vehicle on an internal junction lane between two section pieces
     (``OSMNetwork.internal_links``) is neither driven nor handed back that
     step. Bookkeeping lands in ``ws`` for ``meta.json``.
 
@@ -978,8 +1339,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     edges: dict[str, int] = ws["edge_index"]
     exiting: frozenset[str] = ws["exiting_ids"]
     exit_edges: frozenset[str] = ws["exit_edges"]
+    lane_map: dict[tuple[str, int], int] = ws["lane_map"]
+    x_offset: dict[str, float] = ws["x_offset"]
+    ramp_edges: frozenset[str] = ws["ramp_edges"]
+    x_start = x_offset[ws["edges"][0]]
+    step_s = float(ws["step_s"])
     veh = ws["veh"]
     pending: dict[str, int] = {}
+    # entering vehicles still on the ramp within lookahead_m of the section:
+    # gap choice and cooperation only (see the docstring, anticipation)
+    approaching: set[str] = set()
     # driven vehicles on an internal junction lane this step (a section of
     # several pieces under ``OSMNetwork.internal_links``): still under
     # control, decided again on the next edge — handing them back here would
@@ -1002,6 +1371,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             awaiting_exit.discard(vid)
         elif road_a not in edges and not road_a.startswith(":"):
             awaiting_exit.discard(vid)  # left by the mainline: never counted
+    # target-lane listings on the section axis (see _weave_lane_map)
+    lanes: dict[int, list[tuple[float, str]]] = {}
+    x_of: dict[str, float] = {}
+    v_of: dict[str, float] = {}
     for vid, res in results.items():
         road = res[tc.VAR_ROAD_ID]
         if road in exit_edges:
@@ -1011,11 +1384,19 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 ws["reached"].add(vid)
                 ws["exited"].add(vid)
             continue
+        lane = int(res[tc.VAR_LANE_INDEX])
+        k = lane_map.get((road, lane))
+        if k is not None:
+            x = x_offset[road] + float(res[tc.VAR_LANEPOSITION])
+            x_of[vid] = x
+            v_of[vid] = float(res[tc.VAR_SPEED])
+            lanes.setdefault(k, []).append((x, vid))
+            if road in ramp_edges and vid not in exiting and x >= x_start - prm["lookahead_m"]:
+                approaching.add(vid)
         if road not in edges:
             if vid in veh and road.startswith(":"):
                 in_transit.add(vid)
             continue
-        lane = int(res[tc.VAR_LANE_INDEX])
         if vid in exiting:
             if vid not in ws["exited"] and vid not in ws["reached"]:
                 ws["reached"].add(vid)
@@ -1024,18 +1405,13 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 pending[vid] = -1
         elif lane == 0 and ws["exit_only"][road]:
             pending[vid] = 1
-    # restore last step's courtesy yielders before any hand-back, so a
-    # vehicle leaving control ends on its own desired speed
-    for fid, v_orig in ws["yielding"].items():
-        if fid in results:
-            mod.vehicle.setMaxSpeed(fid, v_orig)
-    ws["yielding"] = {}
+    for lst in lanes.values():
+        lst.sort()
     for vid in [v for v in veh if v not in pending and v not in in_transit]:
         st = veh.pop(vid)
         if vid not in results:
             ws["n_missed"] += 1  # left the network while still owing a change
             continue
-        mod.vehicle.setMaxSpeed(vid, st["v_max_orig"])
         mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
         road = results[vid][tc.VAR_ROAD_ID]
         lane = int(results[vid][tc.VAR_LANE_INDEX])
@@ -1049,7 +1425,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         ws["n_changed_out" if st["dir"] < 0 else "n_changed_in"] += 1
         ws["n_forced"] += int(st["forced"])
         ws["waits_out_s" if st["dir"] < 0 else "waits_in_s"].append(t - st["entered_s"])
-    courtesy: dict[str, float] = {}
+    # vehicle id -> (speed target, commanded acceleration, is a follower) this step
+    coop: dict[str, tuple[float, float, bool]] = {}
+    p_of: dict[str, dict[str, float]] = {}
+    v0_of: dict[str, float] = {}
     for vid in sorted(pending):
         d = pending[vid]
         st = veh.get(vid)
@@ -1061,9 +1440,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 "requested_s": -math.inf,
                 "forced": False,
                 "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
-                "v_max_orig": float(mod.vehicle.getMaxSpeed(vid)),
                 "s0": float(mod.vehicle.getMinGap(vid)),
                 "mode": LC_MODE_SCRIPTED_SAFE,
+                # the gap chosen on the ramp, if any, carries over
+                "target": ws["pre"].pop(vid, None),
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
@@ -1079,82 +1459,74 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         else:
             modes = (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
             accept = prm["exit_accept_gap_s"]
+        # --- gap choice and cooperation ------------------------------------
+        st["target"] = _weave_cooperate(
+            mod,
+            tc,
+            ws,
+            results,
+            lanes,
+            x_of,
+            v_of,
+            p_of,
+            v0_of,
+            coop,
+            vid,
+            lane + d,
+            st["target"],
+        )
+        # --- acceptance and execution --------------------------------------
         g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
         g_foll, v_foll, f_id = _neighbor_gap(mod, vid, modes[1])
-        v_limit = float(mod.lane.getMaxSpeed(f"{road}_{lane + d}"))
-        v_match = v_lead if g_lead < prm["lookahead_m"] else v_limit
-        v_des = max(v_match, SCRIPTED_MERGE_CREEP_MS)
-        committing = d > 0 or remaining <= prm["force_within_m"]
-        if d < 0 and not committing:
-            # 2026-09-24: an exiting vehicle still in a through lane with more
-            # than force_within_m to go drives with its lane. Matching the
-            # auxiliary lane's speed from up to lookahead_m behind pulled lane
-            # 1 down to the speed of a slow entering vehicle (a jump of the
-            # speed cap, braking at up to 9 m/s^2 in the fixture trace) and
-            # the queue behind it stopped the section (MnDOT T.H.52 lock,
-            # docs/ONBOARDING_MNDOT.md §10)
-            v_des = st["v_max_orig"]
-        elif d < 0 and g_lead < prm["lookahead_m"]:
-            # the exiting vehicle holds station behind the auxiliary-lane
-            # vehicle ahead (no creep floor), so it never draws up alongside a
-            # waiting entering vehicle: two vehicles abreast at the lane end,
-            # each wanting the other's lane, can never swap
-            g_hold = 2.0 * st["s0"] + accept * v_lead
-            v_des = max(min(v_des, v_lead + (g_lead - g_hold) / WEAVE_HOLD_TAU_S), 0.0)
-        mod.vehicle.setMaxSpeed(vid, min(v_des, st["v_max_orig"]))
         ok_lead = g_lead >= st["s0"] + accept * v_ego
         ok_foll = g_foll >= st["s0"] + accept * (v_foll if g_foll < math.inf else 0.0)
-        if (
-            not ok_foll
-            and f_id is not None
-            and pending.get(f_id) == -d
-            and _weave_pos(ws, tc, results[f_id]) < _weave_pos(ws, tc, res)
-        ):
-            # an exchange: the target-lane follower wants this vehicle's lane.
-            # The one behind drops back (no creep floor) so the one ahead
-            # changes first and the follower then takes the space it left;
-            # otherwise the pair rides abreast into the gore and neither can
-            # go. Strictly the rear one: an overlapping pair may each report
-            # the other as follower, and mutual yielding would stop both.
-            v_yield = max(v_ego - WEAVE_EXCHANGE_YIELD_MS, 0.0)
-            courtesy[f_id] = min(courtesy.get(f_id, math.inf), v_yield)
-        elif prm["courtesy"] > 0.0 and ok_lead and not ok_foll and f_id is not None:
-            v_yield = max(v_ego - prm["courtesy"], SCRIPTED_MERGE_CREEP_MS)
-            courtesy[f_id] = min(courtesy.get(f_id, math.inf), v_yield)
-        force = False
-        if d < 0:
-            if remaining <= prm["force_within_m"] and st["zone_s"] is None:
-                st["zone_s"] = t
-            force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
+        if ok_foll and f_id is not None:
+            # the immediate follower must absorb the changer within its own b
+            p_i = _weave_veh(mod, ws, f_id)
+            r_i = results.get(f_id)
+            v0_i = (
+                min(
+                    p_i["vmax"],
+                    _weave_lane_vmax(mod, ws, r_i[tc.VAR_ROAD_ID], int(r_i[tc.VAR_LANE_INDEX])),
+                )
+                if r_i is not None
+                else p_i["vmax"]
+            )
+            a_i = _idm_accel(
+                v_foll,
+                v0_i,
+                g_foll + p_i["s0"],
+                v_foll - v_ego,
+                p_i["T"],
+                p_i["a"],
+                p_i["b"],
+                p_i["s0"],
+            )
+            ok_foll = a_i >= -p_i["b"]
+        # the forced change is the last resort of both movements: an exit
+        # missed is a route missed, an entrant held at the lane end brakes
+        # its cooperating follower down to a standstill with it
+        if remaining <= prm["force_within_m"] and st["zone_s"] is None:
+            st["zone_s"] = t
+        force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
         if (
             ok_lead
             and ok_foll
-            and d > 0
             and _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll)
         ):
-            # 2026-09-24: an entering vehicle whose gaps are accepted executes
-            # the change (mode 256, the follower yields), one step only, under
-            # the same minimum-gap guard as a forced exit. Under mode 512 SUMO
-            # refused the change while the through-lane follower was closing
-            # from far back (its own brake-gap test) and adapted the entering
-            # vehicle's speed to drop in behind it: a vehicle on the auxiliary
-            # lane braked at 1.8 m/s^2 from its first metre and merged at
-            # 7 m/s, the speed the section then ran at (fixture trace,
-            # docs/ONBOARDING_MNDOT.md §10)
+            # accepted: executed under mode 256 for one step (the follower
+            # yields; SUMO still refuses an immediate collision). Under mode
+            # 512 SUMO refused the change while the follower was closing from
+            # far back and braked the changer to drop in behind it
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
-            mod.vehicle.changeLane(vid, lane + d, ws["step_s"])
+            mod.vehicle.changeLane(vid, lane + d, step_s)
             st["requested_s"] = t
-        elif ok_lead and ok_foll:
-            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-            if t - st["requested_s"] >= prm["change_duration_s"]:
-                mod.vehicle.changeLane(vid, lane + d, prm["change_duration_s"])
-                st["requested_s"] = t
         elif force:
             if _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll):
                 # a forced request lives one step only, so it is executed
                 # under the gaps just checked or not at all
                 _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
-                mod.vehicle.changeLane(vid, lane + d, ws["step_s"])
+                mod.vehicle.changeLane(vid, lane + d, step_s)
                 st["requested_s"] = t
                 st["forced"] = True
             else:
@@ -1165,10 +1537,35 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         else:
             # no request this step: never leave a one-step forced mode standing
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-    for fid in sorted(courtesy):
-        if fid in results:
-            ws["yielding"][fid] = float(mod.vehicle.getMaxSpeed(fid))
-            mod.vehicle.setMaxSpeed(fid, courtesy[fid])
+    # entering vehicles still on the ramp: their gap is chosen and its
+    # follower cooperates before they appear on lane 0
+    pre: dict[str, str | None] = ws["pre"]
+    for vid in [v for v in pre if v not in approaching]:
+        del pre[vid]
+    for vid in sorted(approaching):
+        pre[vid] = _weave_cooperate(
+            mod,
+            tc,
+            ws,
+            results,
+            lanes,
+            x_of,
+            v_of,
+            p_of,
+            v0_of,
+            coop,
+            vid,
+            1,
+            pre.get(vid),
+        )
+    for fid in sorted(coop):
+        v_new, a_cmd, follower = coop[fid]
+        mod.vehicle.slowDown(fid, v_new, 0.0)
+        if follower:
+            ws["n_cooperations"] += 1
+            ws["coop_decel_sum"] += -a_cmd
+        else:
+            ws["n_changer_eased"] += 1
 
 
 def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict[str, Any]:
@@ -1182,7 +1579,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``n_forced`` counts completed changes that needed the forced mode
     (exiting movement only); ``n_forced_deferred`` counts vehicle-steps on
     which a due forced change was refused by the minimum-gap guard
-    (:func:`_weave_force_gap_ok`). ``n_exited`` is the number of exit-bound
+    (:func:`_weave_force_gap_ok`); ``n_cooperations`` counts vehicle-steps on
+    which a target-lane follower was given a speed target for a changer and
+    ``mean_follower_decel_ms2`` the mean commanded deceleration over them
+    (``None`` without any; positive is braking); ``n_changer_eased`` counts
+    vehicle-steps on which a changer was given a speed target towards its
+    gap's leader. ``n_exited`` is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
     the network after the section — :func:`_weave_step`, exit bookkeeping),
     each once; ``n_reached_section_exiting`` the exit-bound vehicles that
@@ -1212,6 +1614,11 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_forced": ws["n_forced"],
         "n_missed": ws["n_missed"],
         "n_forced_deferred": ws["n_forced_deferred"],
+        "n_cooperations": ws["n_cooperations"],
+        "mean_follower_decel_ms2": (
+            ws["coop_decel_sum"] / ws["n_cooperations"] if ws["n_cooperations"] else None
+        ),
+        "n_changer_eased": ws["n_changer_eased"],
         "n_unfinished": len(ws["veh"]),
         "n_exited": len(ws["exited"]),
         "n_reached_section_exiting": len(ws["reached"]),
@@ -1862,13 +2269,43 @@ def run_micro(
                     "reached": set(),
                     "awaiting_exit": set(),
                     "veh": {},
-                    "yielding": {},
+                    # target-lane listings for the gap choice (_weave_lane_map);
+                    # the ramp's lane 0 continues lane 0 of the section, at
+                    # negative positions, so an entrant is seen before it arrives
+                    "lane_map": {
+                        **{
+                            k: v
+                            for k, v in _weave_lane_map(
+                                net_for_weaves, chain_w, section.edges
+                            ).items()
+                            if k[0] in offsets_by_edge
+                        },
+                        **{(e, 0): 0 for e in ramp_w.edges},
+                    },
+                    "x_offset": {
+                        **offsets_by_edge,
+                        **{
+                            e: offsets_by_edge[section.edges[0]]
+                            - sum(
+                                float(net_for_weaves.getEdge(x).getLength())
+                                for x in ramp_w.edges[n:]
+                            )
+                            for n, e in enumerate(ramp_w.edges)
+                        },
+                    },
+                    "ramp_edges": frozenset(ramp_w.edges),
+                    "pre": {},
+                    "veh_params": {},
+                    "lane_vmax": {},
                     "n_entered": 0,
                     "n_changed_in": 0,
                     "n_changed_out": 0,
                     "n_forced": 0,
                     "n_missed": 0,
                     "n_forced_deferred": 0,
+                    "n_cooperations": 0,
+                    "coop_decel_sum": 0.0,
+                    "n_changer_eased": 0,
                     "step_s": float(cfg.sim.step_length_s),
                     "waits_in_s": [],
                     "waits_out_s": [],
