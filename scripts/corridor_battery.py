@@ -30,6 +30,18 @@ when the FIRST replicate to finish departed less than fraction ``F`` of its
 plan, the remaining workers are killed, a partial artifact stating the abort
 is written and the process exits 4.
 
+**Weave exits.** A weaving section's exit-bound vehicles given up at the
+gore's end (``meta.json["weave_sections"][i]["n_missed_exit"]``, rerouted
+through, docs/CONTRACTS.md §2) are missing from the exit's link flow and
+present on every mainline link downstream, which the GEH comparison cannot
+tell from a demand error. :func:`validation.battery.weave_exit_summary`
+pools them per section over the replicates into the artifact's ``weave_exits``
+block (null when the corridor has no weaving section), prints one ``weave
+exits`` line per section beside the insertion line and degrades the insertion
+verdict ("exits given up: k % at <section>") above
+:data:`validation.battery.MISSED_EXIT_SHARE_THRESHOLD` (2 % of the section's
+reached exiters; the derivation is on the constant).
+
 **Phases.** ``simulate`` (the SUMO pool, ``--procs``), ``score`` (per-replicate
 metrics, observed scores and wave speed, :func:`validation.battery.analyse_replicates`
 in a second spawn pool of ``--score-procs`` workers — one trajectory frame per
@@ -85,6 +97,7 @@ from validation.battery import (
     aggregate_insertion,
     analyse_replicates,
     available_memory_bytes,
+    degraded_verdict,
     insertion_stats,
     json_safe,
     load_meta,
@@ -92,6 +105,7 @@ from validation.battery import (
     mean_finite,
     score_pool_size,
     trajectory_rows,
+    weave_exit_summary,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
 from validation.metrics import Metrics, aggregate, ci, geh_pass_fraction
@@ -405,6 +419,7 @@ def build_artifact(
     scores_list: Sequence[ObservedScores],
     wave_speeds: Sequence[float],
     insertion_list: Sequence[InsertionStats],
+    weave_exits: dict[str, Any],
     observed: ObservedCorridor,
     observations_path: str,
     criteria_rows: Sequence[CriteriaResult],
@@ -412,7 +427,13 @@ def build_artifact(
     x_offset_m: float,
     wall_s: float,
 ) -> dict[str, Any]:
-    """Assemble the validation artifact for one corridor battery."""
+    """Assemble the validation artifact for one corridor battery.
+
+    ``weave_exits`` (:func:`validation.battery.weave_exit_summary` over the
+    replicates' metas) is written beside ``insertion`` when the run set has
+    weaving sections and as ``null`` otherwise — a corridor without a weave
+    says nothing about given-up exits.
+    """
     pooled_geh = [g for s in scores_list for g in s.geh_values]
     per_seed = [
         {
@@ -453,6 +474,10 @@ def build_artifact(
         # scenario from the one it was asked for, so this block sits beside
         # the criteria rather than inside a per-seed table nobody opens.
         "insertion": None if insertion is None else insertion.to_dict(),
+        # Given-up exits per weaving section: the exit's link flow is short by
+        # `missed_exit.n` and every mainline link downstream carries them, so
+        # the GEH rows above are wrong by that count on those links.
+        "weave_exits": weave_exits if weave_exits["sections"] else None,
         "geh": {
             "pooled_values": [round(g, 4) for g in pooled_geh],
             "n_comparisons": len(pooled_geh),
@@ -509,6 +534,17 @@ def build_artifact(
             "The insertion block counts the vehicles the runs actually put on the "
             "network against their demand plan; a mean departed fraction well under 1 "
             "means the metrics above describe less demand than was configured.",
+            *(
+                [
+                    "The weave_exits block counts, per weaving section, the exit-bound "
+                    "vehicles given up at the gore's end and rerouted through; the "
+                    "exit's link flow is short by missed_exit.n and every mainline link "
+                    "downstream carries them, so the geh rows are wrong by that count on "
+                    "those links (flagged above threshold_share of reached exiters)."
+                ]
+                if weave_exits["sections"]
+                else []
+            ),
             (
                 "Ring rows evaluated on a fresh ring benchmark."
                 if ring is not None
@@ -517,6 +553,19 @@ def build_artifact(
             ),
         ],
     }
+
+
+def weave_exit_line(section: dict[str, Any], threshold_share: float) -> str:
+    """The console line for one ``weave_exits`` section (beside the insertion line)."""
+    missed = section["missed_exit"]
+    share = missed["share"]
+    share_text = f"{100.0 * share:.1f} %" if math.isfinite(share) else "no exiter reached"
+    state = "ABOVE" if section["flagged"] else "within"
+    return (
+        f"    {'weave exits':<18} {section['ramp']}: {missed['n']} of {section['reached']} "
+        f"reached exiters given up ({share_text}, {state} the "
+        f"{100.0 * threshold_share:g} % threshold, {section['n_runs']} run(s))"
+    )
 
 
 def prune_trajectories(dirs: Sequence[Path], keep_first: bool = True) -> int:
@@ -685,6 +734,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     scores_list: list[ObservedScores] = [a.scores for a in analyses]
     wave_speeds: list[float] = [a.wave_speed_kmh for a in analyses]
     insertion_list: list[InsertionStats] = [a.insertion for a in analyses]
+    # Every replicate's meta.json is on disk after the runs (it is the
+    # completion marker and is never pruned), so --criteria-only reads the
+    # same weave counters as a fresh battery.
+    weave_exits = weave_exit_summary([load_meta(run_dir) for run_dir in dirs])
 
     with phase("ring", timings):
         ring = ring_block(args.ring_seeds, out_root / "ring")
@@ -753,6 +806,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         scores_list=scores_list,
         wave_speeds=wave_speeds,
         insertion_list=insertion_list,
+        weave_exits=weave_exits,
         observed=observed,
         observations_path=str(args.observations),
         criteria_rows=criteria_rows,
@@ -773,13 +827,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     summary = aggregate_insertion(insertion_list)
     if summary is not None:
+        verdict = degraded_verdict(summary.verdict, weave_exits["verdict"])
         print(
-            f"    {'insertion':<18} {summary.verdict:<14} "
+            f"    {'insertion':<18} {verdict:<14} "
             f"departed {summary.departed}/{summary.planned} "
             f"(mean {summary.mean_departed_fraction:.3f}, lowest "
             f"{summary.min_departed_fraction:.3f})",
             flush=True,
         )
+    for section in weave_exits["sections"]:
+        print(weave_exit_line(section, weave_exits["threshold_share"]), flush=True)
     for row in criteria_rows:
         state = ("PASS" if row.passed else "FAIL") if row.evaluated else "NOT EVALUATED"
         print(f"    {row.name:<18} {state:<14} {row.value}  ({row.threshold})", flush=True)

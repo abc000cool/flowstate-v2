@@ -382,6 +382,47 @@ class TestInsertionLine:
         assert "Insertion: " not in out.read_text()
 
 
+class TestWeaveExitLines:
+    """One line per weaving section on the exits its runs gave up."""
+
+    @staticmethod
+    def _add_weave(run_dir: Path, missed_b: int) -> None:
+        meta = json.loads((run_dir / "meta.json").read_text())
+        meta["weave_sections"] = [
+            {"ramp": "A-ON", "exit": "A-OFF", "n_missed_exit": 0, "n_reached_section_exiting": 200},
+            {
+                "ramp": "B-ON",
+                "exit": "B-OFF",
+                "n_missed_exit": missed_b,
+                "n_reached_section_exiting": 200,
+            },
+        ]
+        (run_dir / "meta.json").write_text(json.dumps(meta))
+
+    def test_each_section_gets_a_line_with_its_pooled_share(self, tmp_path: Path):
+        root = tmp_path / "runs" / "cafe01234567"
+        self._add_weave(_write_run(root / "1", seed=1), 12)
+        self._add_weave(_write_run(root / "2", seed=2), 18)
+        out = tmp_path / "report.md"
+        generate_report(root.parent, out)
+        lines = [ln for ln in out.read_text().splitlines() if ln.startswith("Weave exits at ")]
+        assert len(lines) == 2
+        assert lines[0].startswith(
+            "Weave exits at A-ON (exit A-OFF): 0 of 400 reached exiters (0 %)"
+        )
+        assert "within the 2 % threshold" in lines[0]
+        assert lines[1].startswith(
+            "Weave exits at B-ON (exit B-OFF): 30 of 400 reached exiters (7.5 %)"
+        )
+        assert "over 2 run(s), above the 2 % threshold" in lines[1]
+        assert "every mainline link downstream carries it" in lines[1]
+
+    def test_runs_without_sections_get_no_line(self, micro_run_set: Path, tmp_path: Path):
+        out = tmp_path / "report.md"
+        generate_report(micro_run_set, out)
+        assert "Weave exits at " not in out.read_text()
+
+
 class TestWaveSpeedCriterion:
     """The criterion must be scoreable: measured with the profile's detector."""
 

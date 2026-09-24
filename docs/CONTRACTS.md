@@ -777,7 +777,8 @@ corridor's end, so the exit's `exit_fraction` is honoured by `n_missed_exit`
 fewer vehicles and the mainline beyond the exit carries them; a corridor
 whose sections give up many exits has its exit and downstream link flows
 wrong by that count, which only `weave_sections[i].n_missed_exit` records —
-the battery artifact does not surface it), handed back at once and counted
+surfaced since 2026-09-24 block 3 as the battery artifact's `weave_exits`
+block, see "Corridor battery artifact"), handed back at once and counted
 in `n_missed` **and** the new
 `n_missed_exit` (a subset, so `n_entered = n_changed_in + n_changed_out +
 n_missed + n_unfinished` holds); it is never held by SUMO at the end of a
@@ -1266,7 +1267,27 @@ re-simulating; trajectories are pruned to the first seed unless
 `validation.battery.analyse_replicate` in a scoring pool (`--score-procs`),
 the report's speed contour is the first seed's only, and its per-replicate
 numbers come from the stored scoring, so the report needs no other seed's
-trajectory and `--criteria-only` regenerates it after pruning.
+trajectory and `--criteria-only` regenerates it after pruning. Since
+2026-09-24 (block 3) the artifact also carries `insertion` (the pooled
+`validation.battery.InsertionSummary`, null when no replicate recorded the
+counters) and the additive optional key `weave_exits`
+(`validation.battery.weave_exit_summary` over the replicates' `meta.json`,
+re-read on `--criteria-only` too): `{threshold_share, n_runs, sections:
+[{ramp, exit, n_runs, reached, missed_exit: {n, share}, flagged}], verdict}`
+with `n` = Σ `weave_sections[i].n_missed_exit`, `reached` = Σ
+`n_reached_section_exiting`, `share = n / reached` (a meta written before the
+counter existed contributes nothing to its section), `flagged` when the share
+is strictly above `MISSED_EXIT_SHARE_THRESHOLD` = 0.02 and `verdict` either
+`ok` or `exits given up: k % at <ramp>` (flagged sections in order, `, `
+between them); null when no replicate lists weaving sections. The console
+prints one `weave exits` line per section beside the `insertion` line, whose
+verdict is degraded by the same text; the report renders one "Weave exits at
+<ramp>" sentence per section below its insertion line. The 2 % is not the
+GEH-5 tolerance itself (at 1,000 veh/h that is ≈ 15 % of the flow, far too
+loose since the exit flow would be wrong by the whole criterion) but the share
+at which the reroute alone moves a 1,000 veh/h exit link-hour's GEH by
+≈ 0.6 (`s √c`), an eighth of the threshold; the derivation is on the constant.
+The schema version is unchanged.
 
 ## Calibrated screening tier: FD provenance and macro options — 2026-09-23
 

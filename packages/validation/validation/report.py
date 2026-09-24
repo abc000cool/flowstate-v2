@@ -71,6 +71,7 @@ from validation.battery import (
     aggregate_insertion,
     insertion_stats,
     records_insertion,
+    weave_exit_summary,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate
 from validation.fields import SpeedField, speed_field
@@ -968,6 +969,45 @@ def _insertion_note(micro_runs: list[_RunInfo]) -> str | None:
     return text
 
 
+def _weave_exit_notes(micro_runs: list[_RunInfo]) -> list[str]:
+    """One sentence per weaving section on the exits its runs gave up.
+
+    An exit-bound vehicle halted at the gore's end is rerouted through
+    (``meta.json["weave_sections"][i]["n_missed_exit"]``, docs/CONTRACTS.md
+    §2): it is missing from the exit's link flow and present on every
+    mainline link downstream, which the GEH rows below cannot tell from a
+    demand error. The counters are pooled by
+    :func:`validation.battery.weave_exit_summary`, the same reading the
+    corridor battery prints beside its insertion line.
+
+    Args:
+        micro_runs: The run set's microscopic runs.
+
+    Returns:
+        One sentence per section in the runs' section order; empty when no
+        run lists weaving sections (silence, not a zero).
+    """
+    summary = weave_exit_summary([r.meta for r in micro_runs])
+    threshold = f"{_fmt(_PERCENT * float(summary['threshold_share']), 3)} % threshold"
+    notes: list[str] = []
+    for section in summary["sections"]:
+        missed = section["missed_exit"]
+        share = float(missed["share"])
+        share_text = (
+            f"{_fmt(_PERCENT * share, 3)} %" if math.isfinite(share) else "no exiter reached"
+        )
+        exit_name = f" (exit {section['exit']})" if section["exit"] else ""
+        state = f"above the {threshold}" if section["flagged"] else f"within the {threshold}"
+        notes.append(
+            f"Weave exits at {section['ramp']}{exit_name}: {missed['n']} of "
+            f"{section['reached']} reached exiters ({share_text}) were given up at the "
+            f"gore's end and rerouted through over {section['n_runs']} run(s), {state}; "
+            "the exit's link flow is short by that count and every mainline link "
+            "downstream carries it."
+        )
+    return notes
+
+
 def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for c in results:
@@ -1476,6 +1516,7 @@ def generate_report(
         versions_warning=versions_warning,
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         insertion_note=_insertion_note(micro_runs),
+        weave_exit_notes=_weave_exit_notes(micro_runs),
         calibrations=calibrations,
         observed=(
             _observed_rows(observed, p.wave_speed_band_kmh) if observed is not None else None

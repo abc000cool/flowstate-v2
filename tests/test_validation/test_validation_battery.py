@@ -18,6 +18,7 @@ import pytest
 
 from validation.battery import (
     HEALTHY_DEPARTED_FRACTION,
+    MISSED_EXIT_SHARE_THRESHOLD,
     NO_PLAN_VERDICT,
     OK_VERDICT,
     SCORE_MEMORY_FRACTION,
@@ -27,11 +28,13 @@ from validation.battery import (
     InsertionStats,
     aggregate_insertion,
     available_memory_bytes,
+    degraded_verdict,
     insertion_stats,
     records_insertion,
     score_pool_size,
     score_worker_bytes,
     trajectory_rows,
+    weave_exit_summary,
 )
 
 PLANNED = 1000
@@ -67,6 +70,123 @@ def _ramp(
     if index is not None:
         entry["index"] = index
     return entry
+
+
+def _weave_section(
+    ramp: str, missed: int | None, reached: int | None, exit_name: str = "X-OFF"
+) -> dict[str, Any]:
+    """A ``meta.json["weave_sections"][i]`` fragment carrying what the summary reads."""
+    entry: dict[str, Any] = {"ramp": ramp, "exit": exit_name, "n_missed": 0}
+    if missed is not None:
+        entry["n_missed_exit"] = missed
+    if reached is not None:
+        entry["n_reached_section_exiting"] = reached
+    return entry
+
+
+class TestWeaveExitSummary:
+    """Given-up exits per weaving section, pooled over the replicate metas."""
+
+    def test_two_sections_over_two_replicates(self) -> None:
+        metas = [
+            {"weave_sections": [_weave_section("A-ON", 0, 200), _weave_section("B-ON", 12, 200)]},
+            {"weave_sections": [_weave_section("A-ON", 0, 200), _weave_section("B-ON", 18, 200)]},
+        ]
+        out = weave_exit_summary(metas)
+        assert out["threshold_share"] == MISSED_EXIT_SHARE_THRESHOLD == 0.02
+        assert out["n_runs"] == 2
+        assert [s["ramp"] for s in out["sections"]] == ["A-ON", "B-ON"]
+        a, b = out["sections"]
+        assert a == {
+            "ramp": "A-ON",
+            "exit": "X-OFF",
+            "n_runs": 2,
+            "reached": 400,
+            "missed_exit": {"n": 0, "share": 0.0},
+            "flagged": False,
+        }
+        assert b["missed_exit"] == {"n": 30, "share": pytest.approx(0.075)}
+        assert b["reached"] == 400 and b["n_runs"] == 2 and b["flagged"] is True
+        assert out["verdict"] == "exits given up: 7.5 % at B-ON"
+
+    def test_the_threshold_is_strict(self) -> None:
+        at = weave_exit_summary([{"weave_sections": [_weave_section("A-ON", 8, 400)]}])
+        assert at["sections"][0]["missed_exit"]["share"] == pytest.approx(0.02)
+        assert at["sections"][0]["flagged"] is False
+        assert at["verdict"] == OK_VERDICT
+        above = weave_exit_summary([{"weave_sections": [_weave_section("A-ON", 9, 400)]}])
+        assert above["sections"][0]["flagged"] is True
+        assert above["verdict"] == "exits given up: 2.2 % at A-ON"
+
+    def test_several_flagged_sections_are_listed_in_order(self) -> None:
+        out = weave_exit_summary(
+            [{"weave_sections": [_weave_section("A-ON", 40, 400), _weave_section("B-ON", 4, 40)]}]
+        )
+        assert out["verdict"] == "exits given up: 10.0 % at A-ON, 10.0 % at B-ON"
+
+    def test_a_custom_threshold_is_honoured_and_recorded(self) -> None:
+        out = weave_exit_summary(
+            [{"weave_sections": [_weave_section("A-ON", 30, 400)]}], threshold=0.1
+        )
+        assert out["threshold_share"] == 0.1
+        assert out["sections"][0]["flagged"] is False
+        assert out["verdict"] == OK_VERDICT
+
+    def test_runs_without_sections_say_nothing(self) -> None:
+        out = weave_exit_summary([_meta(), _meta()])
+        assert out == {
+            "threshold_share": MISSED_EXIT_SHARE_THRESHOLD,
+            "n_runs": 0,
+            "sections": [],
+            "verdict": OK_VERDICT,
+        }
+
+    def test_a_meta_written_before_the_counter_contributes_nothing(self) -> None:
+        metas = [
+            {"weave_sections": [_weave_section("A-ON", None, 200)]},
+            {"weave_sections": [_weave_section("A-ON", 10, 200)]},
+        ]
+        out = weave_exit_summary(metas)
+        assert out["n_runs"] == 2
+        section = out["sections"][0]
+        assert section["n_runs"] == 1
+        assert section["reached"] == 200
+        assert section["missed_exit"] == {"n": 10, "share": pytest.approx(0.05)}
+
+    def test_no_reached_exiter_is_an_undefined_share_not_a_zero(self) -> None:
+        out = weave_exit_summary([{"weave_sections": [_weave_section("A-ON", 0, 0)]}])
+        section = out["sections"][0]
+        assert math.isnan(section["missed_exit"]["share"])
+        assert section["flagged"] is False
+        assert out["verdict"] == OK_VERDICT
+
+    def test_an_unnamed_section_is_labelled_by_its_position(self) -> None:
+        out = weave_exit_summary(
+            [{"weave_sections": [_weave_section("", 0, 10), _weave_section("", 5, 10, "")]}]
+        )
+        assert [s["ramp"] for s in out["sections"]] == ["section 0", "section 1"]
+        assert out["sections"][1]["exit"] is None
+        assert out["verdict"] == "exits given up: 50.0 % at section 1"
+
+    def test_the_summary_is_json_serialisable(self) -> None:
+        out = weave_exit_summary([{"weave_sections": [_weave_section("A-ON", 3, 100)]}])
+        assert json.loads(json.dumps(out))["sections"][0]["missed_exit"]["n"] == 3
+
+
+class TestDegradedVerdict:
+    def test_an_ok_weave_verdict_leaves_the_insertion_verdict_alone(self) -> None:
+        assert degraded_verdict(OK_VERDICT, OK_VERDICT) == OK_VERDICT
+        assert degraded_verdict("backlog: 5 % ...", OK_VERDICT) == "backlog: 5 % ..."
+
+    def test_a_flagged_section_degrades_an_ok_insertion(self) -> None:
+        assert degraded_verdict(OK_VERDICT, "exits given up: 7.5 % at B-ON") == (
+            "exits given up: 7.5 % at B-ON"
+        )
+
+    def test_both_problems_are_joined_like_the_insertion_verdict(self) -> None:
+        assert degraded_verdict("starved ramps: A-ON", "exits given up: 7.5 % at B-ON") == (
+            "starved ramps: A-ON; exits given up: 7.5 % at B-ON"
+        )
 
 
 class TestInsertionStats:

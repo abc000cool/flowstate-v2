@@ -16,6 +16,10 @@ Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
 
 {{ insertion_note }}
 {% endif %}
+{% for note in weave_exit_notes %}
+
+{{ note }}
+{% endfor %}
 
 | Run | Config hash | Seed | Tier | seeded | Wall time [s] |
 |---|---|---|---|---|---|

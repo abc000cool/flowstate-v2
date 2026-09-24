@@ -14,8 +14,10 @@ the network.
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -23,6 +25,8 @@ from typing import Any
 
 import pytest
 import yaml
+
+from validation.battery import MISSED_EXIT_SHARE_THRESHOLD
 
 pytestmark = pytest.mark.integration
 
@@ -160,6 +164,8 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
         seed_row["insertion"]["departed_fraction"]
     )
     assert seed_row["insertion"]["verdict"]
+    # A corridor without a weaving section says nothing about given-up exits.
+    assert artifact["weave_exits"] is None
 
     run_dir = Path(seed_row["run_dir"])
     assert (run_dir / battery.METRICS_FILE).is_file()
@@ -184,6 +190,152 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     assert rescored["metrics_ci"]["throughput_veh_h"]["mean"] == pytest.approx(
         artifact["metrics_ci"]["throughput_veh_h"]["mean"], rel=1e-9
     )
+
+
+def _weave_section(ramp: str, exit_name: str, missed: int, reached: int) -> dict[str, Any]:
+    return {
+        "ramp": ramp,
+        "exit": exit_name,
+        "n_missed": missed,
+        "n_missed_exit": missed,
+        "n_reached_section_exiting": reached,
+    }
+
+
+def _write_scored_replicate(
+    run_dir: Path, *, seed: int, config_hash: str, weave_sections: list[dict[str, Any]]
+) -> None:
+    """A replicate directory as a finished, pruned battery leaves it.
+
+    ``meta.json`` (the completion marker), ``metrics.json`` and
+    ``observed_scores.json`` are present; the trajectory is not, as after
+    pruning — ``--criteria-only`` must work from the stored files alone.
+    """
+    battery = sys.modules["corridor_battery"]
+    run_dir.mkdir(parents=True)
+    meta = {
+        "config_hash": config_hash,
+        "seed": seed,
+        "tier": "micro",
+        "seeded": False,
+        "n_vehicles_planned": 500,
+        "n_vehicles_departed": 500,
+        "n_vehicles_arrived": 480,
+        "weave_sections": weave_sections,
+    }
+    (run_dir / "meta.json").write_text(json.dumps(meta))
+    metrics = {
+        f.name: (3 if f.type is int or f.name in ("wave_count", "n_travel_time_veh") else 10.0)
+        for f in dataclasses.fields(battery.Metrics)
+    }
+    (run_dir / battery.METRICS_FILE).write_text(
+        json.dumps(
+            {
+                "metrics": metrics,
+                "criterion_wave_speed_kmh": None,
+                "criterion_detector": "profile",
+                "x_ref_m": 0.0,
+                "span_m": [0.0, 0.0],
+                "insertion": {},
+            }
+        )
+    )
+    scores = battery.ObservedScores(
+        geh_values=(4.0, 6.0),
+        n_link_hours=2,
+        rmspe=0.1,
+        n_speed_cells=2,
+        segment_speeds_sim=((25.0, 24.0),),
+        segment_speeds_obs=((25.0, 25.0),),
+        windows=(0,),
+    )
+    (run_dir / battery.SCORES_FILE).write_text(json.dumps(scores.to_dict()))
+
+
+def test_criteria_only_surfaces_weave_exits_from_the_stored_metas(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Two stored replicates, two sections: one clean, one giving up 30 of 400."""
+    battery = _load_script()
+    scenario = _scenario(tmp_path / "battery_smoke_corridor.yaml")
+    observations = _observations(tmp_path / "observations.json")
+    out_root = tmp_path / "runs"
+    cfg = battery.load_scenario(scenario).model_copy(update={"replicates": 2})
+    seeds = battery.spawn_seeds(cfg.seed, 2)
+    dirs = battery.seed_dirs(out_root, cfg, seeds)
+    assert len(dirs) == 2
+    for run_dir, seed, missed_b in zip(dirs, seeds, (12, 18), strict=True):
+        _write_scored_replicate(
+            run_dir,
+            seed=seed,
+            config_hash=battery.config_hash(cfg),
+            weave_sections=[
+                _weave_section("A-ON", "A-OFF", 0, 200),
+                _weave_section("B-ON", "B-OFF", missed_b, 200),
+            ],
+        )
+
+    def _refuse(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("--criteria-only must not re-simulate")
+
+    battery.run_replicates = _refuse
+    artifact_path = tmp_path / "artifacts" / "validation.json"
+    argv = [
+        "--scenario",
+        str(scenario),
+        "--observations",
+        str(observations),
+        "--replicates",
+        "2",
+        "--procs",
+        "1",
+        "--out",
+        str(out_root),
+        "--artifact",
+        str(artifact_path),
+        "--report-dir",
+        str(tmp_path / "report"),
+        "--criteria-profile",
+        "fhwa_default",
+        "--ring-seeds",
+        "0",
+        "--criteria-only",
+    ]
+    assert battery.main(argv) == 0
+    console = capsys.readouterr().out
+
+    artifact = json.loads(artifact_path.read_text())
+    assert artifact["schema"] == battery.ARTIFACT_SCHEMA  # additive: no version bump
+    weave = artifact["weave_exits"]
+    assert weave["threshold_share"] == MISSED_EXIT_SHARE_THRESHOLD == 0.02
+    assert weave["n_runs"] == 2
+    a, b = weave["sections"]
+    assert a["ramp"] == "A-ON" and a["exit"] == "A-OFF"
+    assert a["missed_exit"] == {"n": 0, "share": 0.0}
+    assert a["reached"] == 400 and a["n_runs"] == 2 and a["flagged"] is False
+    assert b["ramp"] == "B-ON" and b["exit"] == "B-OFF"
+    assert b["missed_exit"]["n"] == 30
+    assert b["missed_exit"]["share"] == pytest.approx(0.075)
+    assert b["reached"] == 400 and b["flagged"] is True
+    assert weave["verdict"] == "exits given up: 7.5 % at B-ON"
+    # The insertion block itself is untouched; the console verdict is degraded.
+    assert artifact["insertion"]["verdict"] == "ok"
+    assert any("weave_exits block" in note for note in artifact["notes"])
+    insertion_line = next(ln for ln in console.splitlines() if ln.strip().startswith("insertion"))
+    assert "exits given up: 7.5 % at B-ON" in insertion_line
+    assert "departed 1000/1000" in insertion_line
+    weave_lines = [ln for ln in console.splitlines() if ln.strip().startswith("weave exits")]
+    assert len(weave_lines) == 2
+    assert (
+        "A-ON: 0 of 400 reached exiters given up (0.0 %, within the 2 % threshold"
+        in (weave_lines[0])
+    )
+    assert (
+        "B-ON: 30 of 400 reached exiters given up (7.5 %, ABOVE the 2 % threshold"
+        in (weave_lines[1])
+    )
+    assert "2 run(s)" in weave_lines[1]
+    assert math.isfinite(artifact["metrics_ci"]["throughput_veh_h"]["mean"])
 
 
 #: Artifact keys that legitimately differ between two batteries of the same

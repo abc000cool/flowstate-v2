@@ -133,6 +133,29 @@ NO_PLAN_VERDICT: Final[str] = "no vehicles planned"
 #: Verdict of a run that inserted its plan and fed every sizeable on-ramp.
 OK_VERDICT: Final[str] = "ok"
 
+#: Share of a weaving section's reached exiters given up at the gore's end
+#: (``weave_sections[i].n_missed_exit / n_reached_section_exiting``, summed
+#: over the replicates) above which the battery's insertion verdict is
+#: degraded ("exits given up: k % at <section>"). A given-up exiter is
+#: rerouted through (docs/CONTRACTS.md §2, exit side), so the exit's link
+#: flow is short by one vehicle and every mainline link downstream carries
+#: one more: the GEH link-flow comparison is wrong by that count on every
+#: one of those links. Derivation: for an hourly flow ``c`` short by the
+#: share ``s``, ``GEH = √(2 (s c)² / ((2 − s) c)) = s √c · √(2 / (2 − s))``,
+#: ≈ ``s √c`` for small ``s``. The full GEH-5 tolerance at ~1,000 veh/h (an
+#: exit at the T.H.52 weave's demand) is therefore ``s ≈ 5 / √1000`` — 15 %
+#: short (16 % over) — far too loose a threshold: an exit flow 15 % wrong is
+#: the whole criterion spent on the artefact. At 2 % the reroute alone moves
+#: a 1,000 veh/h exit link-hour's GEH by ``0.02 · √1000 · √(2/1.98)`` ≈ 0.64,
+#: an eighth of the threshold, and the same 20 veh/h over-count moves a
+#: 4,900 veh/h downstream mainline link-hour's by ≈ 0.29; only a link-hour
+#: already within ~0.6 of GEH 5 can change its pass/fail because of it. The
+#: verdict is degraded when the share is strictly above this value.
+MISSED_EXIT_SHARE_THRESHOLD: Final[float] = 0.02
+
+#: Prefix of the degraded verdict a weave section's given-up exits produce.
+MISSED_EXIT_VERDICT_PREFIX: Final[str] = "exits given up: "
+
 
 def load_meta(run_dir: str | Path) -> dict[str, Any]:
     """Parse one replicate's ``meta.json``.
@@ -414,6 +437,108 @@ def aggregate_insertion(stats: Sequence[InsertionStats]) -> InsertionSummary | N
         starved_ramps=tuple(starved),
         verdict=_verdict(mean_fraction, tuple(starved)),
     )
+
+
+def weave_exit_summary(
+    metas: Sequence[Mapping[str, Any]], *, threshold: float = MISSED_EXIT_SHARE_THRESHOLD
+) -> dict[str, Any]:
+    """Given-up exits per weaving section, pooled over the replicates.
+
+    The weave step reroutes an exit-bound vehicle halted within
+    ``exit_giveup_m`` of the gore's end onto the corridor's last edge and
+    counts it in ``meta.json["weave_sections"][i]["n_missed_exit"]``
+    (docs/CONTRACTS.md §2, exit side). Such a vehicle is missing from the
+    exit's link flow and present on every mainline link downstream, which the
+    GEH comparison cannot tell from a demand error; this summary is how the
+    battery artifact and the report surface the count
+    (:data:`MISSED_EXIT_SHARE_THRESHOLD` documents the threshold).
+
+    Args:
+        metas: One parsed ``meta.json`` per replicate (:func:`load_meta`).
+        threshold: Share of reached exiters above which a section is flagged.
+
+    Returns:
+        ``{"threshold_share", "n_runs", "sections", "verdict"}``: ``n_runs``
+        is the number of metas that list ``weave_sections`` at all;
+        ``sections`` has one entry per section, keyed by its on-ramp in
+        first-seen order, ``{"ramp", "exit", "n_runs", "reached",
+        "missed_exit": {"n", "share"}, "flagged"}`` with ``n`` and
+        ``reached`` summed over the replicates that recorded both counters
+        (a meta written before ``n_missed_exit`` existed contributes nothing
+        to the section, and ``n_runs`` counts the ones that did), ``share =
+        n / reached`` (NaN when no exiter reached the section) and
+        ``flagged`` true when the share is finite and strictly above
+        ``threshold``; ``verdict`` is :data:`OK_VERDICT` or
+        ``"exits given up: k % at <ramp>"`` over the flagged sections, in
+        order, separated by ``", "``. A run set without weaving sections
+        yields an empty ``sections`` list and the OK verdict — it says
+        nothing, it does not claim zero.
+    """
+    sections: dict[str, dict[str, Any]] = {}
+    n_runs = 0
+    for meta in metas:
+        raw = meta.get("weave_sections")
+        if not isinstance(raw, list):
+            continue
+        n_runs += 1
+        for position, entry in enumerate(raw):
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("ramp", "") or "") or f"section {position}"
+            section = sections.setdefault(
+                name, {"ramp": name, "exit": None, "n_runs": 0, "reached": 0, "n": 0}
+            )
+            if section["exit"] is None and entry.get("exit"):
+                section["exit"] = str(entry["exit"])
+            missed = _count(entry, "n_missed_exit")
+            reached = _count(entry, "n_reached_section_exiting")
+            if missed is None or reached is None:
+                continue
+            section["n_runs"] += 1
+            section["reached"] += reached
+            section["n"] += missed
+    rows: list[dict[str, Any]] = []
+    flagged: list[str] = []
+    for section in sections.values():
+        share = section["n"] / section["reached"] if section["reached"] > 0 else math.nan
+        is_flagged = math.isfinite(share) and share > threshold
+        rows.append(
+            {
+                "ramp": section["ramp"],
+                "exit": section["exit"],
+                "n_runs": section["n_runs"],
+                "reached": section["reached"],
+                "missed_exit": {"n": section["n"], "share": share},
+                "flagged": is_flagged,
+            }
+        )
+        if is_flagged:
+            flagged.append(f"{_PERCENT * share:.1f} % at {section['ramp']}")
+    return {
+        "threshold_share": threshold,
+        "n_runs": n_runs,
+        "sections": rows,
+        "verdict": (MISSED_EXIT_VERDICT_PREFIX + ", ".join(flagged)) if flagged else OK_VERDICT,
+    }
+
+
+def degraded_verdict(verdict: str, weave_verdict: str) -> str:
+    """The insertion verdict with a weave-exit verdict appended.
+
+    Args:
+        verdict: :attr:`InsertionSummary.verdict` (or a replicate's).
+        weave_verdict: ``weave_exit_summary(...)["verdict"]``.
+
+    Returns:
+        ``verdict`` unchanged when the weave verdict is :data:`OK_VERDICT`;
+        the weave verdict alone when only the insertion is OK; otherwise both,
+        joined by ``"; "`` like the insertion verdict's own problems.
+    """
+    if weave_verdict == OK_VERDICT:
+        return verdict
+    if verdict == OK_VERDICT:
+        return weave_verdict
+    return f"{verdict}; {weave_verdict}"
 
 
 def measurement_window(meta: Mapping[str, Any]) -> tuple[float, float]:
