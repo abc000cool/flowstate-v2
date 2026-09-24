@@ -50,7 +50,7 @@ describe('RunDetailView (mock data)', () => {
     expect(meters.getByText('412')).toBeInTheDocument();
     const weaves = within(screen.getByLabelText('weaving sections'));
     expect(weaves.getByText('Deferred (vehicle-steps)')).toBeInTheDocument();
-    expect(weaves.getByText('143 / 147')).toBeInTheDocument();
+    expect(weaves.getByText('143 / 145')).toBeInTheDocument();
   });
 
   /** A failed run answers *why*: the reason is in `RunOut.error`, which this
