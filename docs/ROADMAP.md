@@ -236,7 +236,7 @@ result you can defend under questioning.
   missing?" — is the real product spec. *Kit ready 2026-09-02:*
   [INTERVIEWS.md](INTERVIEWS.md) (target roles, script, outreach template,
   record sheet); the conversations themselves need introductions (§6 item 6).
-- **C2.** A hosted demo so a link can be sent to someone. Currently local-only
+- **C2.** A hosted demo so a link can be sent to someone. *Done 2026-09-24 in its smallest form: docs/HOSTED_TESTER.md (Cloud Run).* Was local-only
   by design; a small cloud VM would change what outreach can accomplish.
 - **C3.** Harden the auto-report as the sellable artifact — it is the one
   feature a consultant would pay for.
@@ -392,3 +392,44 @@ Built in the 2026-09-22/23 block (CHANGELOG 2026-09-23):
 - **Tester path:** `scripts/doctor.py` and `docs/QUICKSTART.md`.
 
 Open after the block (design note: docs/WEAVE_MODEL_PLAN.md — the weaving-section model, ranked candidates, a two-day first slice and the falsifiers): the driver population on MnDOT is the I-24 fit (no Minnesota trajectories); the demand's bracket-closing residuals at White Bear Ave and the Mounds Blvd re-entry; the detector wave speed as a report context row (30-s data allows it); the dashboard onboarding flow needs a guided first run and progress detail per stage; a hosted deployment for an external tester was prepared for but not deployed (owner undecided).
+
+### Addendum 2026-09-24 — the I-94 lock was a map defect; ALINEA ran; a hosted tester exists
+
+Overnight block 2026-09-23 23:14 → 09-24 03:45 CDT, all compute on
+self-deleting cloud VMs. What changed the picture:
+
+- **The I-94 WB lock had a map cause, not a driver-model cause.** Reading the
+  weave-model slice (no new run) put the queue's origin at the corridor's
+  downstream end, where netconvert had compiled the right-hand 12th Street
+  exit onto an added left lane and the Mounds/Kellogg exit onto the two
+  leftmost lanes of five; through traffic trapped in exit-only lanes stalled
+  the corridor from t = 87 s (docs/ONBOARDING_MNDOT.md §9, lesson 32). Fixed
+  with `--ramps.unset` and a connection patch through the new
+  `OSMNetwork.patch_files`, pinned by a test on the committed extract, and
+  generalised into a **split audit** on every onboarding (verdicts, generated
+  patch, `--fail-on-split-defect`, dashboard table). The 4-seed slice probe
+  on the corrected network raised the departed share to 0.878 (from 0.834);
+  the 20-seed batteries on the corrected network with the weave model ran on
+  the second VM (§10 of the MnDOT record reports them).
+- **Weaving-section model** (`merge: weave`, docs/WEAVE_MODEL_PLAN.md) built,
+  golden-tested, reviewed (one latent defect fixed); its pre-registered slice
+  criterion was not met on the defective map and is re-asked on the corrected
+  one.
+- **ALINEA ran** on the I-24 replica after the stop-placement fix: 20 seeds
+  paired, travel time −33.4 %, fuel −15.6 %, σ_v −11.7 %, throughput −5.8 % at
+  the reference section, many more and larger waves (docs/I24_STRATEGIES.md).
+  The instance was deleted mid-sweep, so the two combined cells are partial.
+- **Minnesota driver population** by capacity scaling: the target
+  (1,907 veh/h/lane) is not reached — the curve plateaus near 1,700 — and the
+  artifact says so (docs/ONBOARDING_MNDOT.md §8).
+- **Ramp discovery** now finds collector–distributor split/re-entry pairs
+  (White Bear Ave is one) and lane-add joins; ramp guessing and split fixes
+  are the onboarding defaults.
+- **C2 done in its smallest form:** a hosted tester on Cloud Run
+  (docs/HOSTED_TESTER.md; the API key is handed out by the owner).
+
+Open: the 20-seed weave batteries' verdict (this block's second VM); the
+Mounds Blvd +775 veh/h detector residual; what limits the capacity plateau
+of the scaled population; the meter counters in sweep archives; why the
+first VM was deleted at 71 minutes (the pipeline now archives the guest's
+idle-guard log and journal on exit).
