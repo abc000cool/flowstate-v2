@@ -231,6 +231,59 @@ export interface RunMetrics {
    * or null when the run has neither, and on a service older than the
    * field. One seed's counters, not a replicate aggregate. */
   merge_diagnostics?: MergeDiagnostics | null;
+  /** The corridor battery artifact's `insertion` block, pooled over every
+   * replicate that recorded the counters (2026-09-24, block 3): whether the
+   * run put its demand on the network at all. Absent or null when none did
+   * (a macro run, an older meta), and on a service older than the field. */
+  insertion?: InsertionSummary | null;
+  /** The battery artifact's `weave_exits` block: given-up exits per weaving
+   * section, pooled over the replicates. Absent or null when no replicate
+   * lists a weaving section, and on a service older than the field. */
+  weave_exits?: WeaveExits | null;
+}
+
+/** Mirrors the API's `InsertionOut` (`validation.battery.InsertionSummary`).
+ * `planned` / `departed` are sums over the replicates; `mean_arrived` is a
+ * mean over the `n_with_arrived` replicates that recorded the counter. The
+ * fractions are null when nothing was planned. */
+export interface InsertionSummary {
+  n_runs: number;
+  planned: number;
+  departed: number;
+  mean_arrived?: number | null;
+  n_with_arrived: number;
+  mean_departed_fraction?: number | null;
+  min_departed_fraction?: number | null;
+  /** Ramps starved (under half their planned vehicles delivered) in at
+   * least one replicate. */
+  starved_ramps: string[];
+  /** `'ok'`, `'no vehicles planned'`, or the problems joined by `'; '`. */
+  verdict: string;
+}
+
+/** Mirrors the API's `WeaveExitSectionOut`: one section's given-up exits
+ * pooled over the `n_runs` replicates that recorded both counters. */
+export interface WeaveExitSection {
+  ramp: string;
+  exit?: string | null;
+  n_runs: number;
+  /** Exit-bound vehicles that reached the section. */
+  reached: number;
+  /** Given up: rerouted through at the gore's end. `share` is `n / reached`,
+   * null when no exiter reached the section. */
+  missed_exit: { n: number; share?: number | null };
+  /** The share is finite and strictly above `threshold_share`. */
+  flagged: boolean;
+}
+
+/** Mirrors the API's `WeaveExitsOut` (`validation.battery.weave_exit_summary`). */
+export interface WeaveExits {
+  threshold_share: number;
+  /** Replicates whose meta lists weaving sections at all. */
+  n_runs: number;
+  sections: WeaveExitSection[];
+  /** `'ok'` or `'exits given up: k % at <ramp>'` over the flagged sections. */
+  verdict: string;
 }
 
 /** Mirrors the API's `RampMeterDiagnosticsOut`: one ramp meter's counters. */

@@ -310,6 +310,78 @@ class MergeDiagnosticsOut(BaseModel):
     weave_sections: list[WeaveSectionDiagnosticsOut] = Field(default_factory=list)
 
 
+class InsertionOut(BaseModel):
+    """Whether the run actually ran the demand it was configured with, pooled
+    over its replicates (2026-09-24, block 3).
+
+    The ``insertion`` block of the corridor battery artifact
+    (``validation.battery.aggregate_insertion``, ``InsertionSummary.to_dict``),
+    computed from every replicate's ``meta.json`` counters
+    ``n_vehicles_planned`` / ``n_vehicles_departed`` / ``n_vehicles_arrived``
+    and ``ramps[i]`` the same way the battery computes it. A replicate whose
+    vehicles never departed is not a slow corridor, it is a different
+    scenario, and every metric computed from it describes demand that was
+    never applied — which is why this sits beside the metrics. ``planned``
+    and ``departed`` are sums over the replicates; ``mean_arrived`` is a mean
+    over the ``n_with_arrived`` replicates that recorded the counter (null
+    when none did). The fractions are null when nothing was planned.
+    ``verdict`` is ``"ok"``, ``"no vehicles planned"``, or the problems
+    (``"backlog: N % of planned vehicles never departed"``, ``"starved
+    ramps: <names>"``) joined by ``"; "``.
+    """
+
+    n_runs: int
+    planned: int
+    departed: int
+    mean_arrived: float | None = None
+    n_with_arrived: int = 0
+    mean_departed_fraction: float | None = None
+    min_departed_fraction: float | None = None
+    starved_ramps: list[str] = Field(default_factory=list)
+    verdict: str
+
+
+class MissedExitOut(BaseModel):
+    """Given-up exits of one weaving section: the count and its share of the
+    exit-bound vehicles that reached the section (null when none did)."""
+
+    n: int
+    share: float | None = None
+
+
+class WeaveExitSectionOut(BaseModel):
+    """One weaving section's given-up exits, pooled over the replicates that
+    recorded both ``n_missed_exit`` and ``n_reached_section_exiting``
+    (``n_runs`` counts them; a meta written before the exit-side rule
+    contributes nothing). ``flagged`` is true when the share is finite and
+    strictly above the parent's ``threshold_share``."""
+
+    ramp: str
+    exit: str | None = None
+    n_runs: int
+    reached: int
+    missed_exit: MissedExitOut
+    flagged: bool
+
+
+class WeaveExitsOut(BaseModel):
+    """The ``weave_exits`` block of the corridor battery artifact
+    (``validation.battery.weave_exit_summary``; 2026-09-24, block 3): the
+    exit-bound vehicles the weave step rerouted through at the gore's end,
+    per section, pooled over the run's replicates. Such a vehicle is missing
+    from the exit's link flow and present on every mainline link downstream,
+    which a GEH comparison cannot tell from a demand error. ``n_runs`` is the
+    number of replicates whose meta lists ``weave_sections`` at all;
+    ``verdict`` is ``"ok"`` or ``"exits given up: k % at <ramp>"`` over the
+    flagged sections, ``", "``-separated.
+    """
+
+    threshold_share: float
+    n_runs: int
+    sections: list[WeaveExitSectionOut] = Field(default_factory=list)
+    verdict: str
+
+
 class MetricsOut(BaseModel):
     run_id: str
     config_hash: str
@@ -333,6 +405,15 @@ class MetricsOut(BaseModel):
     """Ramp-meter and weaving-section counters of the first replicate
     (2026-09-24); ``None`` when the run has neither (every ring and plain
     corridor run), or when its meta cannot be read."""
+    insertion: InsertionOut | None = None
+    """How much of the demand plan entered the network, pooled over every
+    replicate that recorded the counters (2026-09-24, block 3); ``None``
+    when none did (a macro run, a run written before the counters existed)
+    or when a meta cannot be read — absent, never a claimed zero."""
+    weave_exits: WeaveExitsOut | None = None
+    """Given-up exits per weaving section, pooled over the replicates
+    (2026-09-24, block 3); ``None`` when no replicate lists a weaving
+    section or when a meta cannot be read."""
 
 
 class HeatmapOut(BaseModel):

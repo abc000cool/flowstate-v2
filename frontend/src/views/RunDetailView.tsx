@@ -23,6 +23,7 @@ import {
   MetricCard,
 } from '../components/bits';
 import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
+import { InsertionPanel } from '../components/InsertionPanel';
 import { MergeDiagnosticsPanel } from '../components/MergeDiagnostics';
 import { toastError } from '../components/toast';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
@@ -276,6 +277,9 @@ export function RunDetailView(): JSX.Element {
         </div>
       )}
 
+      {finished && metrics && (
+        <InsertionPanel insertion={metrics.insertion} weaveExits={metrics.weave_exits} />
+      )}
       {finished && metrics && <MergeDiagnosticsPanel diagnostics={metrics.merge_diagnostics} />}
     </div>
   );

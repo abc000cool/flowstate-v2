@@ -94,6 +94,7 @@ from api.schemas import (
     CriteriaProfileOut,
     HealthOut,
     HeatmapOut,
+    InsertionOut,
     MergeDiagnosticsOut,
     MetricsOut,
     PresetOut,
@@ -107,6 +108,7 @@ from api.schemas import (
     SweepCellOut,
     SweepCreateRequest,
     SweepOut,
+    WeaveExitsOut,
     deep_merge,
 )
 from api.settings import REPO_ROOT, Settings, check_api_key_not_default, load_settings
@@ -116,6 +118,12 @@ from flowstate_core.config import MacroOptions, ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
 from flowstate_core.strategies import StrategyError, apply_strategy
 from flowstate_core.units import veh_m_to_veh_km
+from validation.battery import (
+    aggregate_insertion,
+    insertion_stats,
+    records_insertion,
+    weave_exit_summary,
+)
 from validation.metrics import MIN_REPLICATES
 
 router = APIRouter(prefix="/api/v1")
@@ -519,6 +527,7 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
         per_replicate, agg = cached if cached is not None else res.run_metrics(row["run_root"])
     except FileNotFoundError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    insertion, weave_exits = _insertion_and_weave_exits(row)
     return MetricsOut(
         run_id=run_id,
         config_hash=row["config_hash"],
@@ -533,6 +542,8 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
         aggregate={name: CIOut(**res.ci_to_json(ci)) for name, ci in agg.items()},
         fd_source=_fd_source(row),
         merge_diagnostics=_merge_diagnostics(row),
+        insertion=insertion,
+        weave_exits=weave_exits,
     )
 
 
@@ -598,6 +609,46 @@ def _merge_diagnostics(row: dict[str, Any]) -> MergeDiagnosticsOut | None:
     except (OSError, ValueError):
         return None
     return out
+
+
+def _insertion_and_weave_exits(
+    row: dict[str, Any],
+) -> tuple[InsertionOut | None, WeaveExitsOut | None]:
+    """The battery artifact's ``insertion`` and ``weave_exits`` blocks of a run.
+
+    Every replicate's ``meta.json`` is read and pooled by the same
+    ``validation.battery`` functions the corridor battery uses
+    (``aggregate_insertion`` over ``insertion_stats``, ``weave_exit_summary``),
+    so the dashboard's verdicts are the battery's verdicts. Non-finite shares
+    and fractions become null (strict JSON). Both are ``None`` when a meta
+    cannot be read; ``insertion`` is ``None`` when no replicate records the
+    counters, ``weave_exits`` when no replicate lists a weaving section — a
+    run set that recorded nothing says nothing, it does not claim zero.
+
+    Args:
+        row: The run's store row (``run_root``).
+
+    Returns:
+        ``(insertion, weave_exits)``.
+    """
+    try:
+        metas = [res.load_meta(d) for d in res.replicate_dirs(row["run_root"])]
+    except (OSError, ValueError):
+        return None, None
+    insertion: InsertionOut | None = None
+    summary = aggregate_insertion([insertion_stats(m) for m in metas if records_insertion(m)])
+    if summary is not None:
+        block = summary.to_dict()
+        for key in ("mean_departed_fraction", "min_departed_fraction"):
+            block[key] = res.finite_or_none(block[key])
+        insertion = InsertionOut.model_validate(block)
+    weave_exits: WeaveExitsOut | None = None
+    weave = weave_exit_summary(metas)
+    if weave["sections"]:
+        for section in weave["sections"]:
+            section["missed_exit"]["share"] = res.finite_or_none(section["missed_exit"]["share"])
+        weave_exits = WeaveExitsOut.model_validate(weave)
+    return insertion, weave_exits
 
 
 @router.get("/runs/{run_id}/heatmap", response_model=None, responses=_NOT_FOUND_RESPONSE)

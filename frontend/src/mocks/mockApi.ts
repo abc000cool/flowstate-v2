@@ -25,6 +25,7 @@ import type {
   HeatField,
   Heatmap,
   ReportOut,
+  InsertionSummary,
   MergeDiagnostics,
   RunDetail,
   RunMetrics,
@@ -36,6 +37,7 @@ import type {
   SweepDetail,
   SweepStrategy,
   Tier,
+  WeaveExits,
 } from '../api/types';
 import { corridorSpeedField, mulberry32, ringSpeedField, toDensityField } from './heatmap';
 
@@ -151,6 +153,10 @@ interface RunRecord {
   /** `MetricsOut.merge_diagnostics` — the ramp-meter / weaving-section
    * counters of the first replicate, on runs whose corridor has them. */
   merge_diagnostics?: MergeDiagnostics;
+  /** `MetricsOut.insertion` / `MetricsOut.weave_exits` — the battery
+   * artifact's demand-integrity blocks, pooled over the replicates. */
+  insertion?: InsertionSummary;
+  weave_exits?: WeaveExits;
   /** `RunOut.error` — why a failed run failed, in the worker's own words. */
   error?: string;
   error_kind?: string;
@@ -294,6 +300,35 @@ const runs: RunRecord[] = [
           wait_out_s_mean: 6.3,
         },
       ],
+    },
+    // the battery's demand-integrity blocks over the 20 seeds: the plan ran
+    // (a healthy departed fraction, no starved ramp) and the weaving section
+    // gave up on a handful of exiters, under the 2 % threshold
+    insertion: {
+      n_runs: 20,
+      planned: 31_640,
+      departed: 31_402,
+      mean_arrived: 1_498.4,
+      n_with_arrived: 20,
+      mean_departed_fraction: 0.9925,
+      min_departed_fraction: 0.981,
+      starved_ramps: [],
+      verdict: 'ok',
+    },
+    weave_exits: {
+      threshold_share: 0.02,
+      n_runs: 20,
+      sections: [
+        {
+          ramp: 'Ruth St entrance',
+          exit: 'T.H.52 exit',
+          n_runs: 20,
+          reached: 2_900,
+          missed_exit: { n: 23, share: 0.0079 },
+          flagged: false,
+        },
+      ],
+      verdict: 'ok',
     },
     profile: DAMPENED,
     damping: 0.8,
@@ -492,6 +527,8 @@ function buildMetrics(r: RunRecord): RunMetrics {
     aggregate,
     fd_source: r.tier === 'macro' ? (r.fd_source ?? 'v1_legacy preset') : null,
     merge_diagnostics: r.merge_diagnostics ?? null,
+    insertion: r.insertion ?? null,
+    weave_exits: r.weave_exits ?? null,
   };
 }
 

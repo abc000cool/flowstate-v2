@@ -1717,6 +1717,32 @@ panel renders `CorridorSummaryOut.split_audit` as a "Split audit" table
 `RampMeterDiagnostics`, `WeaveSectionDiagnostics` and
 `RunMetrics.merge_diagnostics`.
 
+**`MetricsOut.insertion` and `MetricsOut.weave_exits` — 2026-09-24, block 3.**
+`GET /api/v1/runs/{id}/metrics` gains two additive fields, both `null` by
+default, that are the corridor battery artifact's blocks of the same names
+computed over the run's replicates by the battery's own functions
+(`validation.battery.aggregate_insertion` over `insertion_stats`, and
+`weave_exit_summary`; `api.main._insertion_and_weave_exits` reads every
+replicate's `meta.json`): `insertion` (`InsertionOut`: `n_runs`, `planned`
+and `departed` summed, `mean_arrived` over the `n_with_arrived` replicates
+that recorded it, `mean_departed_fraction`, `min_departed_fraction`,
+`starved_ramps`, `verdict`) is `null` when no replicate carries
+`n_vehicles_planned` / `n_vehicles_departed` (every macro run, a meta written
+before the counters), and `weave_exits` (`WeaveExitsOut`: `threshold_share`,
+`n_runs`, `sections[i]` = `{ramp, exit, n_runs, reached, missed_exit: {n,
+share}, flagged}`, `verdict`) is `null` when no replicate lists a weaving
+section; NaN fractions and shares are `null`, and both are `null` when a meta
+cannot be read. Dashboard: the run detail shows a "Demand integrity" panel
+above the merge diagnostics only when at least one block is present — each
+verdict as a badge (`ok` green, a problem red, `no vehicles planned` grey),
+the insertion line (departed share of planned, worst seed, arrived per
+replicate, starved ramps) and a "weave exits" table (section, reached,
+given up, share with a red "above k %" badge on a flagged row, replicates);
+`frontend/src/api/types.ts` mirrors `InsertionSummary`, `WeaveExitSection`,
+`WeaveExits`, `RunMetrics.insertion` and `RunMetrics.weave_exits`. Pinned by
+`tests/test_api/test_runs_insertion.py` and
+`frontend/src/test/insertion.test.tsx`.
+
 ## Observed backward wave speed as report context — 2026-09-23
 
 The corridor's *own* stop-and-go wave speed, measured from the detector
