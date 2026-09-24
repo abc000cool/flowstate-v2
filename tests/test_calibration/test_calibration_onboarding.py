@@ -204,6 +204,56 @@ class TestScenarioFilling:
         assert result.chain_length_m == pytest.approx(4000.0)
         assert result.config_hash == result.demand["config_hash"]
 
+    def test_the_fleet_block_is_recorded_in_the_artifact_and_the_summary(
+        self, result: OnboardingResult, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A fleet reset by a re-onboarding (docs/ONBOARDING_MNDOT.md §11) must
+        show up in the demand artifact and in the printed record, not only in
+        the scenario file: ``fleet_settings`` states the block the scenario
+        carries, with ``idm_calibration`` applied."""
+        assert result.demand["fleet_settings"] == {
+            "model": "IDM",
+            "heterogeneity_frac": 0.12,
+            "lc_strategic": 1.0,
+            "lc_strategic_ramp": None,
+            "lc_keep_right": 1.0,
+            "idm_calibration": "artifacts/idm_unit.json",
+        }
+        assert result.summary[-1] == (
+            "  fleet: model IDM, heterogeneity_frac 0.12, lc_strategic 1.0, "
+            "lc_strategic_ramp None, lc_keep_right 1.0, idm_calibration artifacts/idm_unit.json"
+        )
+
+        # the I-94 corridor's deliberate settings, as the record shows them
+        monkeypatch.setattr(onboarding, "chain_edge_x", lambda net_path, chain: EDGE_X)
+        scenario = _scenario()
+        scenario["fleet"] = {
+            "model": "EIDM",
+            "heterogeneity_frac": 0.15,
+            "lc_strategic": 5.0,
+            "lc_strategic_ramp": 1.0,
+            "lc_keep_right": 0.0,
+        }
+        deliberate = calibrate_scenario(
+            scenario,
+            observations=_observations(),
+            stations_x=STATIONS_X,
+            net_path="unused.net.xml",
+            upstream="M1",
+            downstream="M3",
+            warmup_s=120.0,
+        )
+        assert deliberate.demand["fleet_settings"] == {
+            "model": "EIDM",
+            "heterogeneity_frac": 0.15,
+            "lc_strategic": 5.0,
+            "lc_strategic_ramp": 1.0,
+            "lc_keep_right": 0.0,
+            "idm_calibration": None,
+        }
+        assert deliberate.summary[-1].startswith("  fleet: model EIDM, heterogeneity_frac 0.15, ")
+        assert deliberate.demand["fleet_settings"] != result.demand["fleet_settings"]
+
     def test_unmeasured_boundary_window_carries_the_previous_value(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

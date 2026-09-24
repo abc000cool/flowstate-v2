@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
@@ -639,6 +640,51 @@ class FleetSpec(BaseModel):
     fleets without managed lanes reproduce their draws exactly); eligible
     vehicles carry SUMO ``vClass="hov"``. A measured or assumed occupancy
     share — record its source in the scenario header."""
+
+
+FLEET_SETTINGS_FIELDS: Final[tuple[str, ...]] = (
+    "model",
+    "heterogeneity_frac",
+    "lc_strategic",
+    "lc_strategic_ramp",
+    "lc_keep_right",
+    "idm_calibration",
+)
+"""The :class:`FleetSpec` fields a demand record states (``fleet_settings``,
+docs/CONTRACTS.md, onboarding): the car-following model and its population
+draw, the three lane-change eagernesses a corridor sets deliberately, and the
+population artifact. A fleet block silently reset to the builder's defaults
+(the I-94 regeneration of 2026-09-24, docs/ONBOARDING_MNDOT.md §11) shows up
+in the artifact through these, not only in the scenario file."""
+
+
+def fleet_settings(fleet: FleetSpec | Mapping[str, Any]) -> dict[str, Any]:
+    """The :data:`FLEET_SETTINGS_FIELDS` of a fleet block, JSON-ready.
+
+    Args:
+        fleet: A :class:`FleetSpec`, or a fleet mapping as a scenario file
+            carries it (validated here, so absent fields read as their
+            defaults).
+
+    Returns:
+        Field name → value, in :data:`FLEET_SETTINGS_FIELDS` order.
+    """
+    spec = fleet if isinstance(fleet, FleetSpec) else FleetSpec.model_validate(dict(fleet))
+    dumped = spec.model_dump(mode="json")
+    return {name: dumped[name] for name in FLEET_SETTINGS_FIELDS}
+
+
+def fleet_non_defaults(fleet: FleetSpec) -> dict[str, Any]:
+    """The fields of ``fleet`` that differ from :class:`FleetSpec`'s defaults.
+
+    The same omission rule as the config hash (policy v2,
+    :func:`config_hash_payload`): a field at its default is absent.
+
+    Returns:
+        Field name → value (JSON-ready), in field order; empty for a default
+        fleet.
+    """
+    return fleet.model_dump(mode="json", exclude_defaults=True)
 
 
 class OracleSpec(BaseModel):

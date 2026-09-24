@@ -108,6 +108,17 @@ final audit. Re-onboarding this extract under the defaults: 8 exits audited,
 2 defects before the fixes, 0 after, the generated patch's connection lines
 equal to the committed file's (`tests/test_microsim/test_microsim_split_audit.py`).
 
+*Re-onboarding over the committed scenario (2026-09-24, block 3).* Running the
+network step with `--out scenarios/mndot_i94_wb_stpaul.yaml` again now keeps
+the file's fleet, sim, seed, replicates, `fd_calibration` and `macro` blocks
+and rebuilds only the network (the report says `fleet block kept from … (…
+lc_strategic 5.0, lc_strategic_ramp 1.0, lc_keep_right 0.0)`); `--fresh-fleet`
+asks for the builder's defaults instead, and a file that does not parse is
+refused with exit 2 rather than overwritten — the §11 reset cannot recur
+silently, and `scripts/corridor_demand.py` now records the fleet block in the
+demand artifact's `fleet_settings` and its summary (docs/CONTRACTS.md,
+"Re-onboarding keeps the fleet block").
+
 ### From the dashboard
 
 The three commands above (network, then demand, then a run and a report) are

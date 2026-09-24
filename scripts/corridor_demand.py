@@ -9,6 +9,12 @@ rewritten observations and the ``flowstate.demand/1`` artifact come out.
 The same function backs ``POST /api/v1/corridors`` (``api.onboarding_jobs``),
 so the dashboard's guided onboarding and this command derive identical numbers.
 
+The printed summary and the demand artifact (top-level key ``fleet_settings``:
+model, heterogeneity, the three lane-change eagernesses, the population
+artifact) both state which fleet block the scenario written here carries, so a
+fleet reset by a re-onboarding (docs/ONBOARDING_MNDOT.md §11) shows up in the
+artifact and in the record, not only in the scenario file.
+
 Example::
 
     uv run --no-sync python scripts/corridor_demand.py \\

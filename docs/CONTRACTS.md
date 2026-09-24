@@ -1494,6 +1494,48 @@ defect (`tests/test_microsim/test_microsim_split_audit.py`,
 The dashboard's Onboard form has no netconvert options in its Advanced
 section and is unchanged; the API defaults apply to it.
 
+**Re-onboarding keeps the fleet block — 2026-09-24, block 3.** Until this,
+`scripts/onboard_corridor.py --out <existing scenario>` rewrote the whole
+file from the builder, so the fleet block fell back to the `FleetSpec`
+defaults (`lc_strategic` 1.0, `lc_keep_right` 1.0) and the I-94 corridor's
+deliberate 5.0 / 1.0 / 0.0 were lost unnoticed until a 20-seed battery had
+run on them (docs/ONBOARDING_MNDOT.md §11 and its correction). Now, when
+`--out` names a file that parses as a `ScenarioConfig`, its `fleet`, `sim`,
+`seed`, `replicates`, `fd_calibration` and `macro` blocks are kept
+byte-for-byte and only the network is rebuilt (`corridor_from_bbox(defaults=)`
+→ `scenario_from_osm(defaults=)`, the parsed scenario standing in for
+`corridor_10km` as the source of every default; `fd_calibration` and `macro`
+are now taken from that source too, both `null` on `corridor_10km`, so a
+fresh onboarding is unchanged); `--duration-s`, `--seed` and `--replicates`
+given on the command line still win (their parser defaults are now `None`;
+1800 s, 42 and 20 apply when neither the flag nor a kept file gives them),
+`av`, `perturbation`, `closures` and `managed_lanes` come from the builder as
+before. The report prints one line after the inventory: `fleet block kept
+from <path> (model EIDM, heterogeneity_frac 0.15, idm_calibration …,
+lc_strategic 5.0, lc_strategic_ramp 1.0, lc_keep_right 0.0)` — the fields
+that differ from the `FleetSpec` defaults, in field order
+(`flowstate_core.config.fleet_non_defaults`, the config hash's omission
+rule) — or `fleet block: builder defaults`. `--fresh-fleet` asks for the
+builder's defaults over an existing file. A file at `--out` that does not
+parse (YAML error, a validation error, no mapping) is refused with **exit 2**
+and a message naming the file and the reason, before Overpass or netconvert
+is spent and without touching the file; `--fresh-fleet` overrides that too.
+`POST /api/v1/corridors` is unchanged: it refuses an existing name with 409
+(and the job re-checks before writing), so nothing is ever re-onboarded over
+a scenario there. The demand record states the fleet block the scenario it
+wrote carries, so a reset shows up in the artifact and in the record:
+`calibrate_scenario` (so `scripts/corridor_demand.py` and the API job) adds
+the additive top-level key `fleet_settings` to the `flowstate.demand/1`
+payload — `model`, `heterogeneity_frac`, `lc_strategic`, `lc_strategic_ramp`,
+`lc_keep_right`, `idm_calibration` (`flowstate_core.config.fleet_settings`,
+`FLEET_SETTINGS_FIELDS`), read after `idm_calibration` is applied — and ends
+the printed summary with `fleet: model EIDM, heterogeneity_frac 0.15, …` (the
+demand artifact carries its provenance top-level, `idm_calibration`,
+`boundary`, `method`; it has no `source` mapping, so the key sits beside
+them). Pinned by `tests/test_scripts/test_onboard_corridor.py`
+(`TestReonboardingKeepsTheFleet`, on `tests/fixtures/splits.osm`) and
+`tests/test_calibration/test_calibration_onboarding.py`.
+
 **`MetricsOut.merge_diagnostics` and the dashboard's diagnostics — 2026-09-24.**
 `GET /api/v1/runs/{id}/metrics` gains the additive field `merge_diagnostics`
 (`MergeDiagnosticsOut`, `null` by default): the ramp-meter and weaving-section

@@ -68,7 +68,7 @@ from typing import Any
 
 from calibration.demand import DemandArtifact, demand_from_observations
 from calibration.observations import Observations, ObservedStation
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import ScenarioConfig, config_hash, fleet_settings
 
 #: Ramps farther than this from an observed ramp detector of the same kind are
 #: never matched to it [m].
@@ -354,6 +354,7 @@ def calibrate_scenario(
         residual_log=residual_log,
         boundary=scenario["network"]["boundary"],
         cd_pairs=cd_pairs,
+        fleet=payload["fleet_settings"],
     )
     return OnboardingResult(
         scenario=scenario,
@@ -767,6 +768,9 @@ def _demand_payload(
     payload["downstream_station"] = downstream
     payload["boundary"] = BOUNDARY_METHOD
     payload["idm_calibration"] = idm_calibration
+    # The fleet block the scenario carries (with ``idm_calibration`` applied),
+    # so a fleet reset by a re-onboarding shows up in the artifact.
+    payload["fleet_settings"] = fleet_settings(scenario.get("fleet") or {})
     payload["zeroed_ramps"] = zeroed
     payload["unmatched_ramp_detectors"] = unmatched_detectors
     payload["bracket_residuals"] = residual_log
@@ -788,8 +792,13 @@ def _summary_lines(
     residual_log: list[dict[str, Any]],
     boundary: Mapping[str, Any],
     cd_pairs: list[dict[str, Any]] | None = None,
+    fleet: Mapping[str, Any] | None = None,
 ) -> list[str]:
-    """The plain report: what was derived and from which detector."""
+    """The plain report: what was derived and from which detector.
+
+    ``fleet`` is the artifact's ``fleet_settings`` record; when given, the
+    report ends with the fleet block the scenario carries.
+    """
     peak_veh_h = max(v for _, v in inflow_steps) * _S_PER_HOUR
     lines = [
         f"config_hash {config_hash_value}  chain {length_m:.0f} m",
@@ -830,4 +839,11 @@ def _summary_lines(
         f"  boundary: {len(boundary['steps'])} speed steps from {downstream}, "
         f"exit buffer {boundary['exit_buffer_m']} m"
     )
+    if fleet is not None:
+        lines.append("  fleet: " + format_fleet_settings(fleet))
     return lines
+
+
+def format_fleet_settings(settings: Mapping[str, Any]) -> str:
+    """``fleet_settings`` as one line: ``model EIDM, heterogeneity_frac 0.15, …``."""
+    return ", ".join(f"{name} {value}" for name, value in settings.items())

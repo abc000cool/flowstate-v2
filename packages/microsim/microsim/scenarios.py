@@ -303,6 +303,7 @@ def scenario_from_osm(
     replicates: int | None = None,
     download: Literal["osm_api", "overpass"] = "osm_api",
     netconvert_extra: Sequence[str] = (),
+    defaults: ScenarioConfig | None = None,
 ) -> ScenarioConfig:
     """Onboard an OSM corridor as a runnable, hashable scenario (CLAUDE.md §3.2.4).
 
@@ -316,12 +317,13 @@ def scenario_from_osm(
     The compiled network stays at ``<workdir>/net/osm.net.xml`` for
     inspection; the runner rebuilds it from the scenario at run time.
 
-    Defaults not given here are taken from the versioned
-    ``scenarios/corridor_10km.yaml`` (``OSM_DEFAULTS_SCENARIO``): the fleet
-    block, the ``sim`` time discretization and output cadence, and the
-    replicate count. They are corridor tuning results, not calibration —
-    an onboarded corridor still needs its own FD/IDM/demand calibration
-    (CLAUDE.md §6) before any claim is made about it.
+    Defaults not given here are taken from ``defaults`` when given, else from
+    the versioned ``scenarios/corridor_10km.yaml`` (``OSM_DEFAULTS_SCENARIO``):
+    the fleet block, the ``sim`` time discretization and output cadence, the
+    replicate count, and the ``fd_calibration`` / ``macro`` blocks (both
+    ``None`` on ``corridor_10km``). They are corridor tuning results, not
+    calibration — an onboarded corridor still needs its own FD/IDM/demand
+    calibration (CLAUDE.md §6) before any claim is made about it.
 
     Args:
         name: Scenario name.
@@ -362,6 +364,11 @@ def scenario_from_osm(
         download: Service a ``bbox`` is fetched from (``osm_import``):
             ``"osm_api"`` (default, unchanged) or ``"overpass"`` for windows
             larger than the OSM API allows.
+        defaults: The scenario whose fleet, ``sim``, replicates,
+            ``fd_calibration`` and ``macro`` blocks seed the defaults —
+            the scenario being re-onboarded, so that its deliberate fleet
+            settings survive a network rebuild (docs/ONBOARDING_MNDOT.md
+            §11). ``None`` (default): ``corridor_10km``.
 
     Returns:
         A ``tier="micro"`` scenario with an :class:`OSMNetwork` and no
@@ -407,7 +414,7 @@ def scenario_from_osm(
             )
         source = str(extracts[0])
 
-    base = load_scenario(OSM_DEFAULTS_SCENARIO)
+    base = defaults if defaults is not None else load_scenario(OSM_DEFAULTS_SCENARIO)
     if warmup_s is None:
         warmup_s = base.sim.warmup_s if base.sim.warmup_s < duration_s else 0.0
     sim = SimSpec.model_validate(
@@ -429,6 +436,8 @@ def scenario_from_osm(
         fleet=fleet if fleet is not None else base.fleet,
         av=av if av is not None else AVSpec(),
         sim=sim,
+        fd_calibration=base.fd_calibration,
+        macro=base.macro,
         perturbation=None,
         seed=seed,
         replicates=replicates if replicates is not None else base.replicates,
@@ -990,6 +999,7 @@ def corridor_from_bbox(
     ramp_guessing: bool = True,
     split_fixes: bool = True,
     split_patch_path: str | Path | None = None,
+    defaults: ScenarioConfig | None = None,
 ) -> CorridorBuild:
     """Onboard any freeway corridor from a bounding box (CLAUDE.md §3.2.4).
 
@@ -1073,6 +1083,12 @@ def corridor_from_bbox(
             ``False`` reports the defects and leaves the network as compiled.
         split_patch_path: Where the connection patch goes when a
             ``wrong_side`` finding needs one; default: beside the extract.
+        defaults: The scenario whose fleet, ``sim``, replicates,
+            ``fd_calibration`` and ``macro`` blocks seed the defaults
+            instead of ``corridor_10km`` (:func:`scenario_from_osm`) — the
+            scenario being re-onboarded, so a network rebuild keeps its
+            deliberate fleet settings. ``fleet``, ``warmup_s`` and
+            ``replicates`` given here still win.
 
     Returns:
         The :class:`CorridorBuild`.
@@ -1143,6 +1159,7 @@ def corridor_from_bbox(
         warmup_s=warmup_s,
         replicates=replicates,
         netconvert_extra=extra,
+        defaults=defaults,
     )
     recorded = _record_path(extract)
     if recorded != cfg.network.osm_file:

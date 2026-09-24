@@ -69,11 +69,27 @@ split fixes: 2 applied, 0 remaining``. ``--no-split-fixes`` reports the
 defects and leaves the network as compiled. ``--fail-on-split-defect`` exits
 4 on any defect the *final* audit still carries.
 
+**Re-onboarding keeps the fleet block (2026-09-24, block 3).** When ``--out``
+names a scenario YAML that already exists and parses as a ``ScenarioConfig``,
+its ``fleet`` block — and its ``sim`` block, ``seed``, ``replicates``,
+``fd_calibration`` and ``macro`` — are kept and only the network is rebuilt;
+``--duration-s``, ``--seed`` and ``--replicates`` given on the command line
+still win. Until this the whole file was rewritten from the builder, and the
+I-94 corridor's deliberate ``lc_strategic 5.0 / lc_strategic_ramp 1.0 /
+lc_keep_right 0.0`` fell back to the ``FleetSpec`` defaults unnoticed until a
+20-seed cloud battery had run on them (docs/ONBOARDING_MNDOT.md §11). The
+report says which it did: ``fleet block kept from <path> (lc_strategic 5.0,
+lc_keep_right 0.0, …)`` listing the fields that differ from the ``FleetSpec``
+defaults, or ``fleet block: builder defaults``. ``--fresh-fleet`` asks for the
+builder's defaults over an existing file. An existing file that does not
+parse is refused with exit 2 and the reason — a broken file is never
+overwritten silently; ``--fresh-fleet`` overrides that too.
+
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
-the ``corridor_10km`` default population. FD, IDM and demand calibration
-(CLAUDE.md §6) come after onboarding; nothing produced by the scenario this
-writes is a claim about the real road until they are done.
+the ``corridor_10km`` default population (or the kept one). FD, IDM and demand
+calibration (CLAUDE.md §6) come after onboarding; nothing produced by the
+scenario this writes is a claim about the real road until they are done.
 """
 
 from __future__ import annotations
@@ -84,6 +100,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+import yaml
+from pydantic import ValidationError
+
+from flowstate_core.config import ScenarioConfig, fleet_non_defaults
 from flowstate_core.units import veh_h_to_veh_s
 from microsim.scenarios import (
     MAX_STATION_OFFSET_M,
@@ -93,6 +113,17 @@ from microsim.scenarios import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: Scenario master seed when neither ``--seed`` nor a kept scenario gives one.
+DEFAULT_SEED: int = 42
+
+#: Simulated duration [s] when neither ``--duration-s`` nor a kept scenario
+#: gives one.
+DEFAULT_DURATION_S: float = 1800.0
+
+#: What the report says when no scenario was kept (a new file, or
+#: ``--fresh-fleet``).
+FLEET_DEFAULTS_LINE: str = "fleet block: builder defaults"
 
 #: Exit status of ``--fail-on-split-defect`` when an exit is compiled on the
 #: wrong side of the mainline in the final audit (after the split fixes,
@@ -161,6 +192,59 @@ def failing_mismatches(
     if strict:
         return list(mismatches)
     return [m for m in mismatches if not (m.delta == 1 and m.hint == ACCEL_LANE_HINT)]
+
+
+def existing_scenario(path: Path) -> ScenarioConfig | None:
+    """The scenario ``--out`` already names, whose non-network blocks are kept.
+
+    Args:
+        path: The ``--out`` path.
+
+    Returns:
+        The parsed scenario, or ``None`` when there is no file there.
+
+    Raises:
+        ValueError: The file exists but does not parse as a
+            :class:`ScenarioConfig`; the message names the reason. The CLI
+            refuses to overwrite such a file (exit 2) unless ``--fresh-fleet``
+            says so — a file that was hand-edited into a broken state is not
+            a file to replace silently.
+    """
+    if not path.exists():
+        return None
+    try:
+        return ScenarioConfig.from_yaml(path)
+    except (yaml.YAMLError, ValidationError, ValueError, OSError) as exc:
+        reason = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+        raise ValueError(
+            f"{path} exists but does not parse as a ScenarioConfig ({reason}); not "
+            "overwriting it. Fix the file, name another --out, or pass --fresh-fleet to "
+            "rebuild it from the builder's defaults."
+        ) from exc
+
+
+def fleet_line(kept: ScenarioConfig | None, path: Path) -> str:
+    """The report line saying which fleet block the scenario carries.
+
+    Args:
+        kept: The scenario whose blocks were kept, or ``None``.
+        path: Where it was read from.
+
+    Returns:
+        ``fleet block kept from <path> (<field> <value>, …)`` listing the
+        fields that differ from the :class:`FleetSpec` defaults (``no field
+        differs from the defaults`` when none does), or
+        :data:`FLEET_DEFAULTS_LINE`.
+    """
+    if kept is None:
+        return FLEET_DEFAULTS_LINE
+    differing = fleet_non_defaults(kept.fleet)
+    listed = (
+        ", ".join(f"{name} {value}" for name, value in differing.items())
+        if differing
+        else "no field differs from the defaults"
+    )
+    return f"fleet block kept from {path} ({listed})"
 
 
 def read_stations(path: Path) -> list[dict[str, str]]:
@@ -255,9 +339,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=6000.0,
         help="UNCALIBRATED placeholder mainline demand across all lanes [veh/h]",
     )
-    parser.add_argument("--duration-s", type=float, default=1800.0, help="simulated duration [s]")
-    parser.add_argument("--seed", type=int, default=42, help="scenario master seed")
-    parser.add_argument("--replicates", type=int, help="seeded replicates (default: 20)")
+    parser.add_argument(
+        "--duration-s",
+        type=float,
+        default=None,
+        help=f"simulated duration [s] (default: {DEFAULT_DURATION_S:g}, or the kept "
+        "scenario's when --out already exists)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=f"scenario master seed (default: {DEFAULT_SEED}, or the kept scenario's)",
+    )
+    parser.add_argument(
+        "--replicates", type=int, help="seeded replicates (default: 20, or the kept scenario's)"
+    )
+    parser.add_argument(
+        "--fresh-fleet",
+        action="store_true",
+        help="when --out already exists, rebuild its fleet, sim, seed, replicates, "
+        "fd_calibration and macro blocks from the builder's defaults instead of keeping "
+        "them (default: kept, and a file that does not parse is refused with exit 2)",
+    )
     parser.add_argument(
         "--osm-file", type=Path, help="use this OSM extract instead of downloading the bbox"
     )
@@ -359,8 +463,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_split_fixes and args.write_split_patch is not None:
         print(NO_FIXES_PATCH_MESSAGE)
         return BAD_USAGE_EXIT
+    # Also before the build: the scenario already at --out is what the fleet,
+    # sim, seed, replicates, fd_calibration and macro blocks are kept from,
+    # and a file that does not parse is not overwritten.
+    kept: ScenarioConfig | None = None
+    if not args.fresh_fleet:
+        try:
+            kept = existing_scenario(args.out)
+        except ValueError as exc:
+            print(str(exc))
+            return BAD_USAGE_EXIT
     rows = read_stations(args.stations) if args.stations else []
     stations: list[dict[str, Any]] = [dict(r) for r in rows]
+    duration_s = (
+        args.duration_s
+        if args.duration_s is not None
+        else (kept.sim.duration_s if kept is not None else DEFAULT_DURATION_S)
+    )
+    seed = args.seed if args.seed is not None else (kept.seed if kept is not None else DEFAULT_SEED)
 
     build = corridor_from_bbox(
         args.name,
@@ -370,8 +490,9 @@ def main(argv: list[str] | None = None) -> int:
         workdir=args.workdir,
         start_near=tuple(args.start_near) if args.start_near else None,
         stations=stations,
-        duration_s=args.duration_s,
-        seed=args.seed,
+        duration_s=duration_s,
+        seed=seed,
+        defaults=kept,
         osm_file=args.osm_file,
         download=args.download,
         max_heading_dev_deg=args.max_heading_dev_deg,
@@ -387,6 +508,7 @@ def main(argv: list[str] | None = None) -> int:
     # The summary carries both audits and the "applied" line: what the
     # scenario will compile is what was fixed and re-imported, not assumed.
     print(build.summary(stations))
+    print(f"  {fleet_line(kept, args.out)}")
     build.to_yaml(args.out)
     print(f"  scenario  {args.out}")
     if rows:
