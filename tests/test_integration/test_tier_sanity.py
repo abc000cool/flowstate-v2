@@ -20,8 +20,8 @@ in the macro tier — inside the modeled road in both, which is all the
 qualitative check needs.
 
 Run order matters: libsumo's bundled libarrow breaks path-based parquet
-writes for the rest of the process (see ``tests/test_microsim/conftest.py``;
-the shim there is only installed when that directory is collected), and
+writes for the rest of the process (see ``tests/conftest.py``, whose shim
+covers the test session but not the product code path), and
 :func:`run_macro` writes ``edges.parquet`` by path — so the macro run comes
 first, before SUMO is loaded.
 """
