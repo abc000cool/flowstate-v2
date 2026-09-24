@@ -558,7 +558,13 @@ two-lane section or a section with no corridor edge before it makes the
 rule inert (`_weave_vacate_lanes`). Mode 768 (the same check, no speed
 adaptation) executed 5 of 159 requests on the fixture and was rejected; the
 weave's own 0.6-s acceptance under a one-step mode 256 executed 8–14 and
-was rejected. `weave_sections[i]` gains `n_vacated` and
+was rejected. Review (2026-09-24, block 3): a vehicle already under a
+scripted `laneChangeMode` (512 / 256 — driven by a section whose last edge
+is the edge before this one, or by a scripted merge) is not asked while
+that hold lasts and is not marked seen; its real mode is not readable
+there, and two holds on one vehicle restored each other's (the harness
+showed the other section's one-step mode 256 left on the vehicle).
+`weave_sections[i]` gains `n_vacated` and
 `n_vacate_refused`. Fixture, seed 3, second → third derivation: lane 1
 over the first 60 m in minutes 2–19 from 12.7, 11.8, 12.4, 10.3 then 2.3–6.4
 to 11.5, 10.0, 6.9, 8.1, 11.2, 12.9, 12.6, 8.6, 11.7, 11.1, 5.4, 4.5, 7.1,

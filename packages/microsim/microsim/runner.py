@@ -1077,7 +1077,12 @@ def _weave_vacate_step(
     (``lane_map`` lists no earlier edge); ``vacate_ahead_m = 0`` disables the
     rule. The cooperative-follower rules of the second derivation are
     untouched: a vacating vehicle may still be a chosen gap's follower and
-    receive its speed target.
+    receive its speed target. A vehicle already under a scripted
+    ``laneChangeMode`` (512 / 256: driven by a section whose last edge is
+    this edge, or by a scripted merge) is not asked while that hold lasts
+    and not marked seen — its real mode is not readable here, and two holds
+    on one vehicle restored each other's (review, 2026-09-24 block 3: the
+    vehicle was left on the other section's one-step mode 256).
     """
     spec = ws["vacate_lanes"]
     ahead = float(ws["params"]["vacate_ahead_m"])
@@ -1117,13 +1122,17 @@ def _weave_vacate_step(
         res = results[vid]
         if res[tc.VAR_ROAD_ID] != edge or int(res[tc.VAR_LANE_INDEX]) != lane_from:
             continue
+        mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
+        if mode_orig in (LC_MODE_SCRIPTED_SAFE, LC_MODE_SCRIPTED_FORCE):
+            # already under a scripted hold (a driven vehicle of a section
+            # whose last edge is this edge, or a scripted merge's): its real
+            # mode is not readable here and two holds would restore each
+            # other's. Not asked while the hold lasts (review, 2026-09-24)
+            continue
         seen.add(vid)
         v = float(res[tc.VAR_SPEED])
         duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
-        active[vid] = {
-            "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
-            "until_s": t + duration,
-        }
+        active[vid] = {"lc_mode_orig": mode_orig, "until_s": t + duration}
         mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
         mod.vehicle.changeLane(vid, lane_to, duration)
 

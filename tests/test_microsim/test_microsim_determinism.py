@@ -80,3 +80,53 @@ class TestDeterminism:
         w1 = json.loads(p1.meta.read_text())["weave_sections"]
         w2 = json.loads(p2.meta.read_text())["weave_sections"]
         assert w1 == w2 and w1[0]["n_entered"] > 0
+
+    def test_th52_weave_at_capacity_is_byte_identical(self, tmp_path):
+        """The T.H.52 fixture at capacity (2026-09-24, block 3), where the
+        third to sixth derivations all act — through vehicles vacate, pairs
+        are released (seed 5), changers are eased — writes byte-identical
+        trajectories and an identical ``weave_sections`` entry twice."""
+        from pathlib import Path
+
+        from flowstate_core.config import ScenarioConfig
+
+        osm = Path(__file__).resolve().parents[1] / "fixtures" / "weave_th52.osm"
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "weave_th52_determinism",
+                "network": {
+                    "kind": "osm",
+                    "osm_file": str(osm),
+                    "corridor_edges": ["100", "101", "102", "103", "104"],
+                    "inflow": [[0.0, 4500.0 / 3600.0]],
+                    "ramps": [
+                        {
+                            "kind": "on",
+                            "name": "th52",
+                            "edges": ["200"],
+                            "attach_edge": "102",
+                            "inflow": [[0.0, 1400.0 / 3600.0]],
+                            "merge": "weave",
+                            "weave": {"exit_ramp": "cd exit"},
+                        },
+                        {
+                            "kind": "off",
+                            "name": "cd exit",
+                            "edges": ["201"],
+                            "attach_edge": "102",
+                            "exit_fraction": [[0.0, 0.25]],
+                        },
+                    ],
+                },
+                "sim": {"duration_s": 1200.0},
+            }
+        )
+        p1 = run_micro(cfg, 5, tmp_path / "a")
+        p2 = run_micro(cfg, 5, tmp_path / "b")
+        assert p1.trajectories.read_bytes() == p2.trajectories.read_bytes()
+        (w1,) = json.loads(p1.meta.read_text())["weave_sections"]
+        (w2,) = json.loads(p2.meta.read_text())["weave_sections"]
+        assert w1 == w2
+        # every rule of the third to sixth derivations fired in this run
+        assert w1["n_vacated"] > 0 and w1["n_pair_releases"] > 0 and w1["n_changer_eased"] > 0
+        assert w1["n_cooperations"] > 0 and w1["n_forced"] > 0
