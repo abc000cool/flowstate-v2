@@ -39,15 +39,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from bisect import bisect_right
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 import sumolib
 
 from controllers.vsl import VSL_SEGMENT_TARGET_M, gantry_segments
 from microsim.paths import effective_roots, ensure_within_roots
+
+if TYPE_CHECKING:
+    from flowstate_core.config import RampSpec
 
 #: Free-flow speed limit written on generated edges [m/s]. Deliberately above
 #: any plausible per-vehicle desired-speed draw (v0 ≤ 38 + 3σ, CLAUDE.md §3.1)
@@ -683,12 +686,21 @@ def accel_lane_end(
     """
     if attach_edge not in chain:
         raise ValueError(f"attach edge {attach_edge!r} is not on the corridor chain")
-    i = chain.index(attach_edge)
-    edge = net.getEdge(attach_edge)
+    i0 = chain.index(attach_edge)
     tail: list[str] = []
     length = 0.0
-    while True:
-        outgoing = edge.getLanes()[0].getOutgoing()
+    for edge, i, outgoing in _lane0_walk(net, chain, attach_edge):
+        if i > i0:
+            tail.append(edge.getID())
+            length += float(edge.getLength())
+            if length > max_tail_m:
+                return AccelLaneEnd(
+                    tuple(tail),
+                    length,
+                    f"lane 0 runs on through {list(tail)} for {length:.0f} m past {attach_edge} "
+                    f"(more than {max_tail_m:.0f} m): this is an added through lane, not a merge "
+                    "taper, and terminating it would delete real capacity",
+                )
         if not outgoing:
             return AccelLaneEnd(tuple(tail), length, "")
         targets = sorted({c.getTo().getID() for c in outgoing})
@@ -709,18 +721,162 @@ def accel_lane_end(
                 f"lane 0 of {edge.getID()} feeds lanes {to_lanes} of {nxt}, not its lane 0: "
                 "the lane is not a right-side taper",
             )
-        edge = net.getEdge(nxt)
+    # _lane0_walk stops only where lane 0 does not reach the next edge's lane
+    # 0, and every such case returned above
+    raise AssertionError("unreachable: the lane-0 walk ended on a taper")
+
+
+def _lane0_walk(
+    net: sumolib.net.Net, chain: Sequence[str], attach_edge: str
+) -> Iterator[tuple[Any, int, list[Any]]]:
+    """Walk lane 0 downstream along ``chain``, starting on ``attach_edge``.
+
+    The single traversal behind :func:`accel_lane_end` (a taper that may be
+    terminated) and :func:`weave_sections` (an auxiliary lane that reaches an
+    exit). Each step yields the edge, its index in ``chain`` and the outgoing
+    connections of its lane 0; the walk moves to the next chain edge only
+    while lane 0 connects to that edge's lane 0.
+
+    Args:
+        net: The compiled network.
+        chain: Corridor edge ids in driving order, ramp splits expanded.
+        attach_edge: First edge of the walk; must be in ``chain``.
+
+    Yields:
+        ``(edge, chain index, lane-0 connections)`` in driving order.
+    """
+    i = chain.index(attach_edge)
+    edge = net.getEdge(attach_edge)
+    while True:
+        outgoing = list(edge.getLanes()[0].getOutgoing())
+        yield edge, i, outgoing
+        nxt = chain[i + 1] if i + 1 < len(chain) else None
+        if nxt is None or not any(
+            c.getTo().getID() == nxt and c.getToLane().getIndex() == 0 for c in outgoing
+        ):
+            return
         i += 1
-        tail.append(nxt)
-        length += float(edge.getLength())
-        if length > max_tail_m:
-            return AccelLaneEnd(
-                tuple(tail),
-                length,
-                f"lane 0 runs on through {list(tail)} for {length:.0f} m past {attach_edge} "
-                f"(more than {max_tail_m:.0f} m): this is an added through lane, not a merge "
-                "taper, and terminating it would delete real capacity",
-            )
+        edge = net.getEdge(nxt)
+
+
+#: Longest short length L_S :func:`weave_sections` pairs an entrance and an
+#: exit over [m]. HCM 7th ed. ch. 13 bounds a weave by L_MAX, typically
+#: 600-1,800 m; beyond this an auxiliary lane that ends at an exit is an added
+#: lane with a lane-drop exit, not a weave. A detection bound only: the runner
+#: validates the configured pairing against the walk itself.
+WEAVE_LENGTH_MAX_M: Final[float] = 1500.0
+
+
+@dataclass(frozen=True)
+class WeaveSection:
+    """An entrance and an exit joined by an auxiliary lane (a one-sided weave).
+
+    Produced by :func:`weave_sections`. The on-ramp joins at the start of
+    ``edges[0]`` and feeds its lane 0; lane 0 runs lane-0 to lane-0 along
+    ``edges`` and, at the end of ``edges[-1]`` (the off-ramp's attach edge,
+    ramp splits resolved), feeds the off-ramp's first edge ``exit_edge``.
+
+    Attributes:
+        on_ramp: Index of the on-ramp in the ramp list.
+        off_ramp: Index of the paired off-ramp in the ramp list.
+        edges: Corridor edges of the section, in driving order.
+        length_m: Short length L_S between the gores [m] (summed length of
+            ``edges``).
+        exit_edge: First edge of the off-ramp.
+        exit_only: Per edge of ``edges``: whether its lane 0 leads only to the
+            exit (a vehicle staying on the corridor must leave it there); a
+            lane 0 that also feeds a through lane downstream is not.
+    """
+
+    on_ramp: int
+    off_ramp: int
+    edges: tuple[str, ...]
+    length_m: float
+    exit_edge: str
+    exit_only: tuple[bool, ...]
+
+
+def weave_sections(
+    net: sumolib.net.Net,
+    chain: Sequence[str],
+    ramps: Sequence[RampSpec],
+    max_length_m: float = WEAVE_LENGTH_MAX_M,
+) -> list[WeaveSection]:
+    """Find every on-ramp whose auxiliary lane reaches an off-ramp.
+
+    For each on-ramp (any merge model) the lane-0 walk of
+    :func:`accel_lane_end` runs from its attach edge; the first edge along the
+    walk whose lane 0 connects to the first edge of an off-ramp attached
+    there closes a section. That is the geometry :func:`accel_lane_end`
+    refuses to terminate as "a weaving section" (HCM 7th ed. ch. 13, a
+    one-sided ramp weave: every weaving vehicle makes exactly one change).
+
+    Args:
+        net: The compiled network (``sumolib.net.readNet``).
+        chain: Corridor edge ids in driving order, ramp splits expanded
+            (:func:`expand_ramp_splits`).
+        ramps: The scenario's ramps with attach edges resolved to their
+            compiled pieces (their indices are the ones reported).
+        max_length_m: Longest short length paired [m].
+
+    Returns:
+        The sections in on-ramp order (empty when no entrance feeds an exit).
+    """
+    by_attach: dict[str, list[int]] = {}
+    for j, ramp in enumerate(ramps):
+        if ramp.kind == "off":
+            by_attach.setdefault(ramp.attach_edge, []).append(j)
+    out: list[WeaveSection] = []
+    for k, ramp in enumerate(ramps):
+        if ramp.kind != "on" or ramp.attach_edge not in chain:
+            continue
+        edges: list[str] = []
+        length = 0.0
+        for edge, _i, outgoing in _lane0_walk(net, chain, ramp.attach_edge):
+            edges.append(edge.getID())
+            length += float(edge.getLength())
+            if length > max_length_m:
+                break
+            targets = {c.getTo().getID() for c in outgoing}
+            found = [j for j in by_attach.get(edge.getID(), []) if ramps[j].edges[0] in targets]
+            if found:
+                out.append(
+                    WeaveSection(
+                        on_ramp=k,
+                        off_ramp=found[0],
+                        edges=tuple(edges),
+                        length_m=length,
+                        exit_edge=ramps[found[0]].edges[0],
+                        exit_only=_exit_only_lanes(net, chain, edges),
+                    )
+                )
+                break
+    return out
+
+
+def _exit_only_lanes(
+    net: sumolib.net.Net, chain: Sequence[str], edges: Sequence[str]
+) -> tuple[bool, ...]:
+    """Per section edge: whether lane 0 reaches nothing but the exit.
+
+    Computed backwards: lane 0 of the last edge is exit-only when it feeds no
+    corridor edge; an earlier edge's lane 0 is exit-only when it feeds only
+    lane 0 of the next section edge and that lane is exit-only.
+    """
+    flags: list[bool] = []
+    downstream_exit_only = True
+    for eid in reversed(edges):
+        i = chain.index(eid)
+        nxt = chain[i + 1] if i + 1 < len(chain) else None
+        conns = net.getEdge(eid).getLanes()[0].getOutgoing()
+        corridor_lanes = {c.getToLane().getIndex() for c in conns if c.getTo().getID() == nxt}
+        if eid == edges[-1]:
+            exit_only = not corridor_lanes
+        else:
+            exit_only = corridor_lanes == {0} and downstream_exit_only
+        flags.append(exit_only)
+        downstream_exit_only = exit_only
+    return tuple(reversed(flags))
 
 
 def _safe_file_stem(edge_id: str) -> str:

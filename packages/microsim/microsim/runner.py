@@ -67,6 +67,7 @@ from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
     SCRIPTED_MERGE_DEFAULTS,
+    WEAVE_DEFAULTS,
     CorridorNetwork,
     OSMNetwork,
     RampSpec,
@@ -87,6 +88,7 @@ from microsim.networks import (
     RAMP_SPLIT_OFF,
     RAMP_SPLIT_ON,
     NetBundle,
+    WeaveSection,
     accel_lane_end,
     corridor,
     expand_ramp_splits,
@@ -95,6 +97,7 @@ from microsim.networks import (
     osm_import,
     patch_net,
     ring,
+    weave_sections,
 )
 from microsim.vehicles import (
     FleetPlan,
@@ -243,7 +246,10 @@ def _apply_merge_models(
     Refused, with the geometry in the message: an attach edge that carries no
     added lane at all, and a lane 0 that is not a taper — one feeding an exit
     (a weaving section's auxiliary lane) or running on as a through lane. Those
-    entrances are not acceleration-lane merges and belong on ``lane_change``.
+    entrances are not acceleration-lane merges and belong on ``lane_change``
+    — or on ``weave`` when the lane feeds the paired exit: a weave ramp skips
+    both the termination and the patches (lane 0 must stay connected to the
+    exit) and only has its pairing validated (:func:`_check_weave_pairs`).
 
     Args:
         net: The scenario's OSM network block, ramps already resolved to their
@@ -262,11 +268,18 @@ def _apply_merge_models(
         RuntimeError: The termination patch did not take (netconvert kept the
             connection).
     """
-    merge_ramps = [r for r in net.ramps if r.kind == "on" and r.merge != "lane_change"]
-    if not merge_ramps:
+    merge_ramps = [
+        r for r in net.ramps if r.kind == "on" and r.merge not in ("lane_change", "weave")
+    ]
+    has_weave = any(r.kind == "on" and r.merge == "weave" for r in net.ramps)
+    if not merge_ramps and not has_weave:
         return bundle
     compiled = sumolib.net.readNet(str(bundle.net_path))
     chain = expand_ramp_splits(list(net.corridor_edges), bundle.edge_ids)
+    if has_weave:
+        _check_weave_pairs(net, compiled, chain)
+    if not merge_ramps:
+        return bundle
     patch_dir = workdir / "patches"
 
     def _index(ramp: RampSpec) -> int:
@@ -366,6 +379,61 @@ def _apply_merge_models(
         netconvert_extra=tuple(net.netconvert_extra),
     )
     return dataclasses.replace(bundle, patch_files=tuple(str(p) for p in model_patches))
+
+
+def _check_weave_pairs(net: OSMNetwork, compiled: Any, chain: Sequence[str]) -> list[WeaveSection]:
+    """The weaving section of every ``merge="weave"`` on-ramp, validated.
+
+    The schema already requires the paired off-ramp (``WeaveSpec.exit_ramp``)
+    to name the same attach edge; here the compiled network must agree: lane
+    0 of the on-ramp's attach edge has to reach that off-ramp's first edge
+    along the lane-0 walk of :func:`~microsim.networks.weave_sections`.
+
+    Args:
+        net: The OSM network block, ramps resolved to their compiled pieces.
+        compiled: The compiled network (``sumolib.net.readNet``).
+        chain: Corridor edge ids in driving order, ramp splits expanded.
+
+    Returns:
+        One :class:`~microsim.networks.WeaveSection` per weave ramp, in ramp
+        order.
+
+    Raises:
+        ValueError: A weave ramp's lane 0 does not reach its paired exit
+            (the message names the edges and where lane 0 goes instead).
+    """
+    ramps = list(net.ramps)
+    found = {s.on_ramp: s for s in weave_sections(compiled, chain, ramps)}
+    out: list[WeaveSection] = []
+    for k, ramp in enumerate(ramps):
+        if ramp.kind != "on" or ramp.merge != "weave" or ramp.weave is None:
+            continue
+        label = ramp.name or ramp.attach_edge
+        j = next(
+            i for i, r in enumerate(ramps) if r.kind == "off" and r.name == ramp.weave.exit_ramp
+        )
+        off = ramps[j]
+        section = found.get(k)
+        if section is None or section.off_ramp != j:
+            lane0 = sorted(
+                (c.getTo().getID(), c.getToLane().getIndex())
+                for c in compiled.getEdge(ramp.attach_edge).getLanes()[0].getOutgoing()
+            )
+            reached = (
+                f"lane 0 reaches the exit {ramps[section.off_ramp].name!r} "
+                f"({section.exit_edge}) instead"
+                if section is not None
+                else "lane 0 reaches no exit"
+            )
+            raise ValueError(
+                f"ramp {label}: merge model 'weave' pairs it with the exit {off.name!r} "
+                f"(leaving {off.attach_edge} for {off.edges[0]}), but lane 0 of "
+                f"{ramp.attach_edge} does not carry the entering traffic there: it connects to "
+                f"{lane0} and {reached}. Use merge: 'lane_change' on this ramp, or name the "
+                "exit its auxiliary lane feeds."
+            )
+        out.append(section)
+    return out
 
 
 def _build_network(cfg: ScenarioConfig, workdir: Path) -> NetBundle:
@@ -665,6 +733,10 @@ LC_MODE_SCRIPTED_FORCE = 256  # avoid immediate collisions only (the follower yi
 SCRIPTED_MERGE_CREEP_MS = 3.0  # desired-speed floor on the acceleration lane [m/s]
 NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
 NEIGHBOR_LEFT_LEADERS = 2
+NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
+NEIGHBOR_RIGHT_LEADERS = 3
+WEAVE_HOLD_TAU_S = 2.0  # relaxation time of an exiting vehicle's station-keeping [s]
+WEAVE_EXCHANGE_YIELD_MS = 2.0  # speed deficit of the rear vehicle of an exchange pair [m/s]
 
 
 def _neighbor_gap(mod: Any, vid: str, mode: int) -> tuple[float, float, str | None]:
@@ -762,6 +834,281 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
             if t - st["requested_s"] >= prm["change_duration_s"]:
                 mod.vehicle.changeLane(vid, 1, prm["change_duration_s"])
                 st["requested_s"] = t
+
+
+def _weave_pos(ws: dict[str, Any], tc: Any, res: Any) -> tuple[int, float]:
+    """Driving-order key of a vehicle on a weaving section: (edge index, position)."""
+    return ws["edge_index"][res[tc.VAR_ROAD_ID]], float(res[tc.VAR_LANEPOSITION])
+
+
+def _weave_set_mode(mod: Any, vid: str, st: dict[str, Any], mode: int) -> None:
+    """Set a driven vehicle's ``laneChangeMode`` when it differs from the last one set."""
+    if st["mode"] != mode:
+        mod.vehicle.setLaneChangeMode(vid, mode)
+        st["mode"] = mode
+
+
+def _weave_force_gap_ok(
+    s0: float,
+    accept_s: float,
+    v_ego: float,
+    g_lead: float,
+    v_lead: float,
+    g_foll: float,
+    v_foll: float,
+) -> bool:
+    """Minimum-gap guard of a forced weave change (``LC_MODE_SCRIPTED_FORCE``).
+
+    Mode 256 only avoids an *immediate* overlap, so a forced change into a
+    gap the follower is closing on fast can still end in a rear-end collision
+    (MnDOT I-94 WB slice, 2026-09-23: one on ``999007700_0`` at t = 1018 s).
+    The forced change is allowed only when each target-lane gap exceeds the
+    vehicle's own ``minGap`` plus the distance the pair closes in
+    ``accept_s`` seconds (the movement's accepted time gap, ``exit_accept_gap_s``
+    for the exiting movement): ``g_lead > s0 + accept_s · max(v_ego - v_lead, 0)``
+    and ``g_foll > s0 + accept_s · max(v_foll - v_ego, 0)``. It is laxer than
+    normal acceptance (``s0 + accept_s · v``, the full speed rather than the
+    closing speed) — that is what forcing means — but never admits a gap
+    below ``s0`` or one closing within the accepted time gap.
+
+    Args:
+        s0: The changing vehicle's minimum gap [m].
+        accept_s: Accepted time gap of the movement [s].
+        v_ego: Its speed [m/s].
+        g_lead: Gap to the target-lane leader [m] (``inf`` when none).
+        v_lead: That leader's speed [m/s] (``nan`` when none).
+        g_foll: Gap to the target-lane follower [m] (``inf`` when none).
+        v_foll: That follower's speed [m/s] (``nan`` when none).
+
+    Returns:
+        Whether the forced change may be requested this step.
+    """
+    closing_lead = max(v_ego - v_lead, 0.0) if g_lead < math.inf else 0.0
+    closing_foll = max(v_foll - v_ego, 0.0) if g_foll < math.inf else 0.0
+    return g_lead > s0 + accept_s * closing_lead and g_foll > s0 + accept_s * closing_foll
+
+
+def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -> None:
+    """One step of a weaving section (``RampSpec.merge = "weave"``).
+
+    :func:`_scripted_merge_step` generalised to the two crossing movements of
+    a one-sided ramp weave (HCM 7th ed. ch. 13; docs/WEAVE_MODEL_PLAN.md
+    §2(A)). A vehicle on a section edge is driven when it has a change to
+    make there:
+
+    * **entering** (direction +1): a vehicle not bound for the paired exit on
+      lane 0 of an edge whose lane 0 leads only to the exit changes left, with
+      the left-neighbour gaps and ``accept_gap_s``; it is never forced (it
+      waits for a gap, SUMO refusing unsafe changes under
+      ``LC_MODE_SCRIPTED_SAFE``);
+    * **exiting** (direction -1): a vehicle bound for the paired exit on lane
+      1 or above changes right, one lane per request, with the right-neighbour
+      gaps and ``exit_accept_gap_s``; after ``force_after_s`` inside the last
+      ``force_within_m`` before the exit gore it is forced
+      (``LC_MODE_SCRIPTED_FORCE``: the follower yields, SUMO still refusing
+      collisions), because missing the exit is not an option — but only
+      through the minimum-gap guard :func:`_weave_force_gap_ok`; a refused
+      forced change is deferred to the next step and counted in
+      ``n_forced_deferred``.
+
+    Both movements match their desired speed to the target lane's vehicle
+    ahead within ``lookahead_m`` (``vehicle.setMaxSpeed``, never
+    ``setSpeed``), and with ``courtesy`` > 0 the target-lane follower that
+    blocks an otherwise acceptable gap — for either movement, so politeness is
+    two-sided — holds its desired speed ``courtesy`` m/s below the changer's
+    for one step (re-applied while it still blocks).
+
+    Two rules keep the crossing from deadlocking whatever ``courtesy`` is
+    (a lane-discrete swap between two vehicles abreast at the gore is
+    impossible — the lock this model exists to remove,
+    docs/WEAVE_MODEL_PLAN.md §1): an **exchange** — the target-lane follower
+    is itself driven and wants this vehicle's lane — makes the rear vehicle
+    drop back (desired speed ``WEAVE_EXCHANGE_YIELD_MS`` below the front
+    one's, no creep floor), and an exiting vehicle **holds station** behind
+    the auxiliary-lane vehicle ahead (gap ``2 s0 + exit_accept_gap_s · v``,
+    relaxation ``WEAVE_HOLD_TAU_S``) instead of drawing up alongside it.
+    Yielding is applied after every driven vehicle's own speed has been set,
+    so a follower that is itself being driven still yields. Control is handed
+    back when the vehicle has no change left to make; bookkeeping lands in
+    ``ws`` for ``meta.json``.
+    """
+    prm = ws["params"]
+    edges: dict[str, int] = ws["edge_index"]
+    exiting: frozenset[str] = ws["exiting_ids"]
+    pending: dict[str, int] = {}
+    for vid, res in results.items():
+        road = res[tc.VAR_ROAD_ID]
+        if road == ws["exit_edge"]:
+            ws["exited"].add(vid)
+            continue
+        if road not in edges:
+            continue
+        lane = int(res[tc.VAR_LANE_INDEX])
+        if vid in exiting:
+            if lane >= 1:
+                pending[vid] = -1
+        elif lane == 0 and ws["exit_only"][road]:
+            pending[vid] = 1
+    # restore last step's courtesy yielders before any hand-back, so a
+    # vehicle leaving control ends on its own desired speed
+    for fid, v_orig in ws["yielding"].items():
+        if fid in results:
+            mod.vehicle.setMaxSpeed(fid, v_orig)
+    ws["yielding"] = {}
+    veh = ws["veh"]
+    for vid in [v for v in veh if v not in pending]:
+        st = veh.pop(vid)
+        if vid not in results:
+            ws["n_missed"] += 1  # left the network while still owing a change
+            continue
+        mod.vehicle.setMaxSpeed(vid, st["v_max_orig"])
+        mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+        road = results[vid][tc.VAR_ROAD_ID]
+        lane = int(results[vid][tc.VAR_LANE_INDEX])
+        if st["dir"] < 0:
+            done = road == ws["exit_edge"] or (road in edges and lane == 0)
+        else:
+            done = road != ws["exit_edge"]
+        if not done:
+            ws["n_missed"] += 1
+            continue
+        ws["n_changed_out" if st["dir"] < 0 else "n_changed_in"] += 1
+        ws["n_forced"] += int(st["forced"])
+        ws["waits_out_s" if st["dir"] < 0 else "waits_in_s"].append(t - st["entered_s"])
+    courtesy: dict[str, float] = {}
+    for vid in sorted(pending):
+        d = pending[vid]
+        st = veh.get(vid)
+        if st is None:
+            st = veh[vid] = {
+                "dir": d,
+                "entered_s": t,
+                "zone_s": None,
+                "requested_s": -math.inf,
+                "forced": False,
+                "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
+                "v_max_orig": float(mod.vehicle.getMaxSpeed(vid)),
+                "s0": float(mod.vehicle.getMinGap(vid)),
+                "mode": LC_MODE_SCRIPTED_SAFE,
+            }
+            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+            ws["n_entered"] += 1
+        res = results[vid]
+        road = res[tc.VAR_ROAD_ID]
+        lane = int(res[tc.VAR_LANE_INDEX])
+        v_ego = float(res[tc.VAR_SPEED])
+        # distance to the exit gore (the end of the section's last edge)
+        remaining = ws["lane_len_m"][road] - float(res[tc.VAR_LANEPOSITION]) + ws["beyond_m"][road]
+        if d > 0:
+            modes = (NEIGHBOR_LEFT_LEADERS, NEIGHBOR_LEFT_FOLLOWERS)
+            accept = prm["accept_gap_s"]
+        else:
+            modes = (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
+            accept = prm["exit_accept_gap_s"]
+        g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
+        g_foll, v_foll, f_id = _neighbor_gap(mod, vid, modes[1])
+        v_limit = float(mod.lane.getMaxSpeed(f"{road}_{lane + d}"))
+        v_match = v_lead if g_lead < prm["lookahead_m"] else v_limit
+        v_des = max(v_match, SCRIPTED_MERGE_CREEP_MS)
+        if d < 0 and g_lead < prm["lookahead_m"]:
+            # the exiting vehicle holds station behind the auxiliary-lane
+            # vehicle ahead (no creep floor), so it never draws up alongside a
+            # waiting entering vehicle: two vehicles abreast at the lane end,
+            # each wanting the other's lane, can never swap
+            g_hold = 2.0 * st["s0"] + accept * v_lead
+            v_des = max(min(v_des, v_lead + (g_lead - g_hold) / WEAVE_HOLD_TAU_S), 0.0)
+        mod.vehicle.setMaxSpeed(vid, min(v_des, st["v_max_orig"]))
+        ok_lead = g_lead >= st["s0"] + accept * v_ego
+        ok_foll = g_foll >= st["s0"] + accept * (v_foll if g_foll < math.inf else 0.0)
+        if (
+            not ok_foll
+            and f_id is not None
+            and pending.get(f_id) == -d
+            and _weave_pos(ws, tc, results[f_id]) < _weave_pos(ws, tc, res)
+        ):
+            # an exchange: the target-lane follower wants this vehicle's lane.
+            # The one behind drops back (no creep floor) so the one ahead
+            # changes first and the follower then takes the space it left;
+            # otherwise the pair rides abreast into the gore and neither can
+            # go. Strictly the rear one: an overlapping pair may each report
+            # the other as follower, and mutual yielding would stop both.
+            v_yield = max(v_ego - WEAVE_EXCHANGE_YIELD_MS, 0.0)
+            courtesy[f_id] = min(courtesy.get(f_id, math.inf), v_yield)
+        elif prm["courtesy"] > 0.0 and ok_lead and not ok_foll and f_id is not None:
+            v_yield = max(v_ego - prm["courtesy"], SCRIPTED_MERGE_CREEP_MS)
+            courtesy[f_id] = min(courtesy.get(f_id, math.inf), v_yield)
+        force = False
+        if d < 0:
+            if remaining <= prm["force_within_m"] and st["zone_s"] is None:
+                st["zone_s"] = t
+            force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
+        if ok_lead and ok_foll:
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            if t - st["requested_s"] >= prm["change_duration_s"]:
+                mod.vehicle.changeLane(vid, lane + d, prm["change_duration_s"])
+                st["requested_s"] = t
+        elif force:
+            if _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll):
+                # a forced request lives one step only, so it is executed
+                # under the gaps just checked or not at all
+                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
+                mod.vehicle.changeLane(vid, lane + d, ws["step_s"])
+                st["requested_s"] = t
+                st["forced"] = True
+            else:
+                # deferred: back under SUMO's own safety check, so a pending
+                # request cannot execute into the gap that was just refused
+                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+                ws["n_forced_deferred"] += 1
+    for fid in sorted(courtesy):
+        if fid in results:
+            ws["yielding"][fid] = float(mod.vehicle.getMaxSpeed(fid))
+            mod.vehicle.setMaxSpeed(fid, courtesy[fid])
+
+
+def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict[str, Any]:
+    """``meta.json["weave_sections"]`` entry of one weaving section.
+
+    ``n_entered`` counts vehicles taken under control (both movements);
+    each leaves control as ``n_changed_in`` (entering, now off the auxiliary
+    lane), ``n_changed_out`` (exiting, now on the auxiliary lane or the exit),
+    ``n_missed`` (left the section, or the network, still owing its change) or
+    is still under control at the end of the run (``n_unfinished``).
+    ``n_forced`` counts completed changes that needed the forced mode
+    (exiting movement only); ``n_forced_deferred`` counts vehicle-steps on
+    which a due forced change was refused by the minimum-gap guard
+    (:func:`_weave_force_gap_ok`). ``n_exited`` is the number of vehicles seen on
+    the exit's first edge, against ``n_departed_exiting``, the departed
+    vehicles routed through it.
+    """
+    waits = ws["waits_in_s"] + ws["waits_out_s"]
+
+    def _mean(xs: list[float]) -> float | None:
+        return float(np.mean(xs)) if xs else None
+
+    return {
+        "ramp": ws["ramp"],
+        "exit": ws["exit"],
+        "edges": ws["edges"],
+        "exit_edge": ws["exit_edge"],
+        "length_m": ws["length_m"] if ws["length_m"] is not None else ws["length_m_measured"],
+        "length_m_measured": ws["length_m_measured"],
+        "params": dict(ws["params"]),
+        "n_entered": ws["n_entered"],
+        "n_changed_in": ws["n_changed_in"],
+        "n_changed_out": ws["n_changed_out"],
+        "n_forced": ws["n_forced"],
+        "n_missed": ws["n_missed"],
+        "n_forced_deferred": ws["n_forced_deferred"],
+        "n_unfinished": len(ws["veh"]),
+        "n_exited": len(ws["exited"]),
+        "n_departed_exiting": sum(
+            n for rid, n in n_departed_by_route.items() if _route_exit(rid) == ws["off_index"]
+        ),
+        "wait_s_mean": _mean(waits),
+        "wait_in_s_mean": _mean(ws["waits_in_s"]),
+        "wait_out_s_mean": _mean(ws["waits_out_s"]),
+    }
 
 
 def _leader_obs(lib_mod: Any, veh_id: str, ego_min_gap: float) -> tuple[float, float]:
@@ -1356,6 +1703,60 @@ def run_micro(
                 }
             )
 
+    # --- Weaving sections (RampSpec.merge == "weave") ----------------------
+    # An entrance whose auxiliary lane also feeds the next exit: lane 0 stays
+    # connected to the exit (_apply_merge_models validated the pairing) and
+    # _weave_step drives both crossing movements. Which vehicles exit there is
+    # known from the plan's route ids ("*_off<j>").
+    weave_states: list[dict[str, Any]] = []
+    if isinstance(cfg.network, OSMNetwork) and any(
+        r.kind == "on" and r.merge == "weave" for r in cfg.network.ramps
+    ):
+        net_for_weaves = sumolib.net.readNet(str(bundle.net_path))
+        chain_w = expand_ramp_splits(list(cfg.network.corridor_edges), bundle.edge_ids)
+        for section in _check_weave_pairs(cfg.network, net_for_weaves, chain_w):
+            ramp_w = cfg.network.ramps[section.on_ramp]
+            exit_w = cfg.network.ramps[section.off_ramp]
+            assert ramp_w.weave is not None  # guaranteed by _check_weave_pairs
+            lens_w = {e: float(net_for_weaves.getEdge(e).getLength()) for e in section.edges}
+            weave_states.append(
+                {
+                    "ramp": ramp_w.name or ramp_w.attach_edge,
+                    "exit": exit_w.name or exit_w.attach_edge,
+                    "off_index": section.off_ramp,
+                    "edges": list(section.edges),
+                    "edge_index": {e: n for n, e in enumerate(section.edges)},
+                    "exit_edge": section.exit_edge,
+                    "exit_only": dict(zip(section.edges, section.exit_only, strict=True)),
+                    "lane_len_m": lens_w,
+                    # section length still ahead once an edge is done [m]
+                    "beyond_m": {
+                        e: sum(lens_w[x] for x in section.edges[n + 1 :])
+                        for n, e in enumerate(section.edges)
+                    },
+                    "length_m_measured": section.length_m,
+                    "length_m": ramp_w.weave.length_m,
+                    "params": {**WEAVE_DEFAULTS, **dict(ramp_w.weave.weave_params)},
+                    "exiting_ids": frozenset(
+                        vid
+                        for vid, rid in route_by_id.items()
+                        if _route_exit(rid) == section.off_ramp
+                    ),
+                    "exited": set(),
+                    "veh": {},
+                    "yielding": {},
+                    "n_entered": 0,
+                    "n_changed_in": 0,
+                    "n_changed_out": 0,
+                    "n_forced": 0,
+                    "n_missed": 0,
+                    "n_forced_deferred": 0,
+                    "step_s": float(cfg.sim.step_length_s),
+                    "waits_in_s": [],
+                    "waits_out_s": [],
+                }
+            )
+
     # --- Managed (HOV) lanes: lane permission windows like closures ---------
     managed_states: list[dict[str, Any]] = []
     if cfg.managed_lanes:
@@ -1575,6 +1976,9 @@ def run_micro(
             # Scripted on-ramp merges (see the setup block above).
             for ss in scripted_states:
                 _scripted_merge_step(mod, tc, ss, results, t)
+            # Weaving sections (see the setup block above).
+            for ws in weave_states:
+                _weave_step(mod, tc, ws, results, t)
 
             # Managed lanes: admit only the hov class for the window, then
             # restore the lanes' original permissions.
@@ -1803,6 +2207,7 @@ def run_micro(
             }
             for ss in scripted_states
         ],
+        "weave_sections": [_weave_meta(ws, n_departed_by_route) for ws in weave_states],
         "closures": [
             {
                 "label": cs["spec"].label,

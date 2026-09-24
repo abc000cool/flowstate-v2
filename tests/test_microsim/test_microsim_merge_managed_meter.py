@@ -10,15 +10,23 @@ import pandas as pd
 import pytest
 import sumolib
 
-from flowstate_core.config import RampSpec, ScenarioConfig, config_hash
+from flowstate_core.config import (
+    SCRIPTED_MERGE_DEFAULTS,
+    WEAVE_DEFAULTS,
+    RampSpec,
+    ScenarioConfig,
+    config_hash,
+)
 from microsim import run_micro
 from microsim.networks import (
     AccelLaneEnd,
+    WeaveSection,
     accel_lane_end,
     lane_end_patch_file,
     merge_patch_files,
     osm_import,
     patch_net,
+    weave_sections,
 )
 
 pytestmark = pytest.mark.integration
@@ -634,3 +642,271 @@ class TestSpilledAccelerationLane:
         cfg = _spill_scenario(spill_osm, "scripted", guess=False)
         with pytest.raises(ValueError, match="added none"):
             run_micro(cfg, 3, tmp_path / "noguess")
+
+
+# --- Weaving sections (RampSpec.merge = "weave", docs/WEAVE_MODEL_PLAN.md) ---
+#
+# ``WEAVE_OSM`` (test_microsim_osm_ramps.py): an on-ramp feeds lane 0 of way
+# 102 and that lane leaves as exit link 201 ~180 m downstream, so the entering
+# and the exiting streams cross over the same auxiliary lane.
+WEAVE_OSM: str = _ramps_fixture.WEAVE_OSM
+WEAVE_CORRIDOR: tuple[str, ...] = _ramps_fixture.WEAVE_CORRIDOR
+
+
+@pytest.fixture(scope="module")
+def weave_osm(tmp_path_factory):
+    p = tmp_path_factory.mktemp("weave") / "weave.osm"
+    p.write_text(WEAVE_OSM)
+    return p
+
+
+def _weave_ramps(merge: str = "weave", weave: dict | None = None) -> list[dict]:
+    """On-ramp 200 and exit 201, both attached to way 102 (load-time ids)."""
+    on_ramp: dict = {
+        "kind": "on",
+        "name": "weave on-ramp",
+        "edges": ["200"],
+        "attach_edge": "102",
+        "inflow": [[0.0, 0.15], [100.0, 0.0]],
+        "merge": merge,
+    }
+    if merge == "weave":
+        on_ramp["weave"] = weave if weave is not None else {"exit_ramp": "weave exit"}
+    off_ramp = {
+        "kind": "off",
+        "name": "weave exit",
+        "edges": ["201"],
+        "attach_edge": "102",
+        "exit_fraction": [[0.0, 0.3]],
+    }
+    return [on_ramp, off_ramp]
+
+
+def _weave_scenario(
+    osm_path: Path, merge: str = "weave", weave: dict | None = None, duration_s: float = 200.0
+) -> ScenarioConfig:
+    """Mainline 0.4 veh/s and ramp 0.15 veh/s for 100 s, 30 % of the mainline exiting.
+
+    Demand stops at 100 s so every vehicle has crossed the section by 200 s:
+    a vehicle still under weave control at the end would be a stuck one.
+    """
+    return ScenarioConfig.model_validate(
+        {
+            "name": f"weave_{merge}",
+            "network": {
+                "kind": "osm",
+                "osm_file": str(osm_path),
+                "corridor_edges": list(WEAVE_CORRIDOR),
+                "inflow": [[0.0, 0.4], [100.0, 0.0]],
+                "ramps": _weave_ramps(merge, weave),
+            },
+            "sim": {"duration_s": duration_s},
+            "seed": 3,
+        }
+    )
+
+
+class TestWeaveGeometry:
+    """``microsim.networks.weave_sections`` and the lane-0 walk it shares."""
+
+    def test_pairs_the_entrance_with_its_exit(self, weave_osm, tmp_path):
+        bundle = osm_import(
+            osm_file=weave_osm,
+            corridor_edges=WEAVE_CORRIDOR,
+            keep_edges=("200", "201"),
+            workdir=tmp_path / "w",
+        )
+        net = sumolib.net.readNet(str(bundle.net_path))
+        chain = list(bundle.edge_ids)
+        assert _lane_connections(net.getEdge("102")) == [[("201", 0)], [("103", 0)], [("103", 1)]]
+        # the positive detector of the refusal: lane 0 is an auxiliary lane
+        # serving an exit, not a taper that may be terminated
+        refusal = accel_lane_end(net, chain, "102")
+        assert not refusal.ok and "weaving section" in refusal.reason and "201" in refusal.reason
+
+        ramps = [RampSpec.model_validate(r) for r in _weave_ramps("lane_change")]
+        (section,) = weave_sections(net, chain, ramps)
+        assert isinstance(section, WeaveSection)
+        assert (section.on_ramp, section.off_ramp) == (0, 1)
+        assert section.edges == ("102",) and section.exit_edge == "201"
+        assert section.exit_only == (True,)
+        # L_S runs from the entrance gore (start of 102) to the exit gore (its end)
+        assert section.length_m == pytest.approx(net.getEdge("102").getLength())
+        assert 150.0 < section.length_m < 220.0
+        # no exit, no weave; and a short-length bound below L_S pairs nothing
+        assert weave_sections(net, chain, ramps[:1]) == []
+        assert weave_sections(net, chain, ramps, max_length_m=100.0) == []
+
+    def test_an_exit_elsewhere_is_not_paired(self, merge_osm, tmp_path):
+        """On the merge fixture the exit leaves before the entrance: no section."""
+        bundle = osm_import(
+            osm_file=merge_osm,
+            corridor_edges=("100", "101", "102", "103"),
+            keep_edges=("200", "201"),
+            workdir=tmp_path / "m",
+        )
+        net = sumolib.net.readNet(str(bundle.net_path))
+        ramps = [
+            RampSpec.model_validate(
+                {"kind": "on", "edges": ["200"], "attach_edge": "102", "inflow": [[0.0, 0.1]]}
+            ),
+            RampSpec.model_validate(
+                {"kind": "off", "edges": ["201"], "attach_edge": "100", "exit_fraction": [[0, 0.1]]}
+            ),
+        ]
+        assert weave_sections(net, list(bundle.edge_ids), ramps) == []
+
+
+class TestWeaveSchema:
+    """``RampSpec.merge = "weave"`` / ``WeaveSpec`` validation and hashing."""
+
+    def test_rejections(self, weave_osm):
+        on = _weave_ramps()[0]
+        with pytest.raises(ValueError, match="needs a weave block"):
+            RampSpec.model_validate({**on, "weave": None})
+        with pytest.raises(ValueError, match="merge='weave' only"):
+            RampSpec.model_validate({**on, "merge": "scripted"})
+        with pytest.raises(ValueError, match="unknown weave_params"):
+            RampSpec.model_validate({**on, "weave": {"exit_ramp": "x", "weave_params": {"b": 1}}})
+        off = _weave_ramps()[1]
+        with pytest.raises(ValueError, match="off-ramp cannot carry weave"):
+            RampSpec.model_validate({**off, "weave": {"exit_ramp": "weave exit"}})
+        with pytest.raises(ValueError, match="on-ramps only"):
+            RampSpec.model_validate({**off, "merge": "weave"})
+        with pytest.raises(ValueError, match="length_m"):
+            RampSpec.model_validate({**on, "weave": {"exit_ramp": "x", "length_m": 0.0}})
+        # the pairing: the named exit must exist, once, on the same attach edge
+        with pytest.raises(ValueError, match="exactly one off-ramp"):
+            _weave_scenario(weave_osm, weave={"exit_ramp": "no such exit"})
+        raw = _weave_scenario(weave_osm).model_dump(mode="json")
+        raw["network"]["ramps"][1]["attach_edge"] = "101"
+        with pytest.raises(ValueError, match="not from the on-ramp's attach edge"):
+            ScenarioConfig.model_validate(raw)
+
+    def test_defaults_and_hash(self, weave_osm):
+        cfg = _weave_scenario(weave_osm)
+        spec = cfg.network.ramps[0].weave
+        assert spec is not None and spec.length_m is None and spec.weave_params == {}
+        assert WEAVE_DEFAULTS == {**SCRIPTED_MERGE_DEFAULTS, "exit_accept_gap_s": 0.6}
+        # both fields enter the hash when set, and only then
+        raw = cfg.model_dump(mode="json")
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"exit_accept_gap_s": 1.0}
+        assert config_hash(ScenarioConfig.model_validate(raw)) != config_hash(cfg)
+        raw = cfg.model_dump(mode="json")
+        raw["network"]["ramps"][0]["weave"]["length_m"] = 136.0
+        assert config_hash(ScenarioConfig.model_validate(raw)) != config_hash(cfg)
+        plain = _weave_scenario(weave_osm, merge="lane_change")
+        explicit = plain.model_dump(mode="json")
+        explicit["network"]["ramps"][0]["weave"] = None
+        assert config_hash(ScenarioConfig.model_validate(explicit)) == config_hash(plain)
+
+
+class TestWeaveRun:
+    """The runner drives both crossing movements of the section."""
+
+    def test_both_movements_complete(self, weave_osm, tmp_path):
+        cfg = _weave_scenario(weave_osm)
+        paths = run_micro(cfg, 3, tmp_path / "weave")
+        meta = json.loads(paths.meta.read_text())
+        assert meta["merge_models"] == [
+            {"ramp": "weave on-ramp", "attach_edge": "102", "merge": "weave"}
+        ]
+        assert meta["net_patch_files"] == []  # lane 0 stays connected to the exit
+        assert meta["scripted_merges"] == []
+        (ws,) = meta["weave_sections"]
+        assert ws["ramp"] == "weave on-ramp" and ws["exit"] == "weave exit"
+        assert ws["edges"] == ["102"] and ws["exit_edge"] == "201"
+        assert ws["length_m"] == ws["length_m_measured"] and 150.0 < ws["length_m"] < 220.0
+        assert ws["params"] == WEAVE_DEFAULTS
+        # both movements happened, under control, and nobody is left owing a change
+        assert ws["n_changed_in"] > 5 and ws["n_changed_out"] > 5, ws
+        assert ws["n_unfinished"] == 0 and ws["n_missed"] == 0, ws
+        assert ws["n_changed_in"] + ws["n_changed_out"] == ws["n_entered"], ws
+        assert ws["n_forced"] <= ws["n_changed_out"], ws
+        assert ws["n_forced_deferred"] >= 0
+        assert ws["wait_s_mean"] is not None and ws["wait_s_mean"] < 60.0
+        # every departed vehicle routed to the exit reached it
+        assert ws["n_departed_exiting"] > 5
+        assert ws["n_exited"] == ws["n_departed_exiting"], ws
+        (on_meta, off_meta) = meta["ramps"]
+        assert on_meta["n_departed"] == on_meta["n_planned"] > 0
+        assert off_meta["n_planned_exiting"] == ws["n_departed_exiting"]
+        assert meta["n_vehicles_departed"] == meta["n_vehicles_planned"]
+        assert meta["n_collisions"] == 0
+
+    def test_weave_params_override_the_defaults(self, weave_osm, tmp_path):
+        weave = {"exit_ramp": "weave exit", "length_m": 136.0, "weave_params": {"courtesy": 2.0}}
+        cfg = _weave_scenario(weave_osm, weave=weave)
+        meta = json.loads(run_micro(cfg, 3, tmp_path / "courtesy").meta.read_text())
+        (ws,) = meta["weave_sections"]
+        assert ws["params"]["courtesy"] == 2.0 and ws["params"]["accept_gap_s"] == 0.6
+        # the configured L_S is reported, the measured one kept beside it
+        assert ws["length_m"] == 136.0 and ws["length_m_measured"] > 150.0
+        assert ws["n_unfinished"] == 0 and meta["n_collisions"] == 0
+
+    @pytest.mark.parametrize(
+        ("seed", "exit_accept_gap_s"),
+        # with _weave_force_gap_ok stubbed to True, each of these seeds
+        # collides once on 102_1 (checked 2026-09-23; seeds 1-8 scanned); a
+        # 3 s exit gap makes almost every exiting change a forced one
+        [(1, 3.0), (6, 3.0)],
+    )
+    def test_forced_changes_never_collide(self, weave_osm, tmp_path, seed, exit_accept_gap_s):
+        """Dense crossing demand with forcing allowed everywhere on the section:
+        every forced change goes through ``_weave_force_gap_ok`` and a refused
+        one is deferred, so SUMO reports no collision."""
+        weave = {
+            "exit_ramp": "weave exit",
+            "weave_params": {
+                "force_after_s": 0.0,
+                "force_within_m": 1000.0,
+                "exit_accept_gap_s": exit_accept_gap_s,
+            },
+        }
+        raw = _weave_scenario(weave_osm, weave=weave, duration_s=300.0).model_dump(mode="json")
+        raw["network"]["inflow"] = [[0.0, 0.9]]
+        raw["network"]["ramps"][0]["inflow"] = [[0.0, 0.35]]
+        raw["network"]["ramps"][1]["exit_fraction"] = [[0.0, 0.6]]
+        cfg = ScenarioConfig.model_validate(raw)
+        meta = json.loads(run_micro(cfg, seed, tmp_path / "dense").meta.read_text())
+        (ws,) = meta["weave_sections"]
+        assert ws["n_forced"] > 5 and ws["n_forced_deferred"] > 0, ws
+        assert ws["n_changed_out"] > 10 and ws["n_changed_in"] > 5, ws
+        assert meta["n_collisions"] == 0, meta["collisions"]
+
+    def test_unpaired_geometry_is_refused_with_the_edges(self, merge_osm, tmp_path):
+        """The schema pairing holds (same attach edge) but lane 0 of 102 never
+        reaches exit link 201, which leaves the merge fixture upstream."""
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "weave_unpaired",
+                "network": {
+                    "kind": "osm",
+                    "osm_file": str(merge_osm),
+                    "corridor_edges": ["100", "101", "102", "103"],
+                    "inflow": [[0.0, 0.3]],
+                    "ramps": [
+                        {
+                            "kind": "on",
+                            "name": "on",
+                            "edges": ["200"],
+                            "attach_edge": "102",
+                            "inflow": [[0.0, 0.1]],
+                            "merge": "weave",
+                            "weave": {"exit_ramp": "off"},
+                        },
+                        {
+                            "kind": "off",
+                            "name": "off",
+                            "edges": ["201"],
+                            "attach_edge": "102",
+                            "exit_fraction": [[0.0, 0.1]],
+                        },
+                    ],
+                },
+                "sim": {"duration_s": 30.0},
+            }
+        )
+        with pytest.raises(ValueError, match="does not carry the entering traffic") as exc:
+            run_micro(cfg, 3, tmp_path / "unpaired")
+        assert "102" in str(exc.value) and "201" in str(exc.value)

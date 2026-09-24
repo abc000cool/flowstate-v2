@@ -72,6 +72,10 @@ GOLDEN_SCHEMA_VERSION = 1
 #: Interchange fixture of the merge cases, repo-relative (module docstring).
 MERGE_OSM = "tests/fixtures/merge.osm"
 
+#: Weaving-section fixture of the weave case, repo-relative: the checked-in
+#: copy of ``WEAVE_OSM`` in ``test_microsim_osm_ramps.py``.
+WEAVE_OSM = "tests/fixtures/weave.osm"
+
 #: Relative tolerance on floating-point summary statistics (see module docstring).
 REL_TOL = 1e-6
 
@@ -87,6 +91,10 @@ EXACT_KEYS = frozenset(
         "n_meter_releases",
         "n_scripted_merged",
         "n_scripted_forced",
+        "n_weave_changed_in",
+        "n_weave_changed_out",
+        "n_weave_forced",
+        "n_weave_exited",
     }
 )
 
@@ -263,6 +271,46 @@ def _merge_config(
     )
 
 
+def _weave_config() -> ScenarioConfig:
+    """Weaving section (``WEAVE_OSM``) under load, ``RampSpec.merge = "weave"``.
+
+    Mainline 0.55 veh/s and on-ramp 0.2 veh/s for 140 s, 30 % of the mainline
+    bound for the exit that leaves the entrance's auxiliary lane ~180 m
+    downstream; 300 sim-s so the section drains.
+    """
+    return ScenarioConfig.model_validate(
+        {
+            "name": "merge_weave",
+            "network": {
+                "kind": "osm",
+                "osm_file": WEAVE_OSM,
+                "corridor_edges": ["100", "101", "102", "103", "104"],
+                "inflow": [[0.0, 0.55], [140.0, 0.0]],
+                "ramps": [
+                    {
+                        "kind": "on",
+                        "name": "weave on-ramp",
+                        "edges": ["200"],
+                        "attach_edge": "102",
+                        "inflow": [[0.0, 0.2], [140.0, 0.0]],
+                        "merge": "weave",
+                        "weave": {"exit_ramp": "weave exit"},
+                    },
+                    {
+                        "kind": "off",
+                        "name": "weave exit",
+                        "edges": ["201"],
+                        "attach_edge": "102",
+                        "exit_fraction": [[0.0, 0.3]],
+                    },
+                ],
+            },
+            "sim": {"duration_s": 300.0},
+            "seed": 3,
+        }
+    )
+
+
 #: Golden cases by name; the case's config is :func:`case_config`.
 CASES: dict[str, GoldenCase] = {
     "ring_sugiyama": GoldenCase(
@@ -317,6 +365,12 @@ CASES: dict[str, GoldenCase] = {
         "tests/fixtures/merge.osm interchange, mainline 0.6 veh/s + on-ramp 0.25 veh/s "
         "under an ALINEA ramp meter (240–600 veh/h, 30 s interval), 240 sim-s, seed 3",
     ),
+    "merge_weave": GoldenCase(
+        _weave_config,
+        "tests/fixtures/weave.osm weaving section, mainline 0.55 veh/s + on-ramp 0.2 veh/s "
+        "for 140 s, 30 % exiting over the auxiliary lane, weave model (runner-driven "
+        "two-sided gap acceptance), 300 sim-s, seed 3",
+    ),
 }
 
 
@@ -369,6 +423,18 @@ def summarize(paths: RunPaths) -> dict[str, Any]:
             "n_scripted_merged": sum(s["n_changed"] for s in meta["scripted_merges"]),
             "n_scripted_forced": sum(s["n_forced"] for s in meta["scripted_merges"]),
             "fuel_total_ml": _json_float(meta["fuel_total_ml"]),
+            # weave counters only where a weave runs, so every other golden's
+            # key set is unchanged
+            **(
+                {
+                    "n_weave_changed_in": sum(w["n_changed_in"] for w in weaves),
+                    "n_weave_changed_out": sum(w["n_changed_out"] for w in weaves),
+                    "n_weave_forced": sum(w["n_forced"] for w in weaves),
+                    "n_weave_exited": sum(w["n_exited"] for w in weaves),
+                }
+                if (weaves := meta.get("weave_sections"))
+                else {}
+            ),
         },
         "metrics": {k: _json_float(v) for k, v in dataclasses.asdict(metrics).items()},
     }
@@ -471,6 +537,8 @@ def test_merge_fixture_is_checked_in_and_repo_relative() -> None:
     assert (REPO_ROOT / MERGE_OSM).is_file(), f"missing fixture {MERGE_OSM}"
     for case in ("merge_zipper", "merge_scripted", "merge_meter_alinea"):
         assert getattr(case_config(case).network, "osm_file", None) == MERGE_OSM
+    assert not Path(WEAVE_OSM).is_absolute() and (REPO_ROOT / WEAVE_OSM).is_file()
+    assert getattr(case_config("merge_weave").network, "osm_file", None) == WEAVE_OSM
 
 
 @pytest.mark.parametrize("case", sorted(CASES))

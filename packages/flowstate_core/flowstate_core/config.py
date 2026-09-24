@@ -176,6 +176,46 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
 """Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
 SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 
+WEAVE_DEFAULTS: dict[str, float] = {
+    **SCRIPTED_MERGE_DEFAULTS,
+    "exit_accept_gap_s": 0.6,
+}
+"""Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
+(applied to the entering movement, ``courtesy`` to both movements) plus
+``exit_accept_gap_s``, the time gap the exiting movement accepts."""
+WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
+
+
+class WeaveSpec(BaseModel):
+    """A weaving section run by the runner's two-sided gap acceptance (2026-09-23).
+
+    HCM 7th ed. ch. 13: an entrance followed closely by an exit joined by an
+    auxiliary lane, over which the entering stream (aux lane → mainline) and
+    the exiting stream (mainline → aux lane) cross. Carried by an on-ramp
+    whose ``merge`` is ``"weave"``; the auxiliary lane keeps its connection to
+    the exit (no termination, no netconvert patch) and
+    ``microsim.runner._weave_step`` drives both movements. docs/CONTRACTS.md
+    §2, docs/WEAVE_MODEL_PLAN.md §2(A).
+    """
+
+    exit_ramp: str = Field(min_length=1)
+    """``name`` of the paired off-ramp; it must attach to the same corridor
+    edge as the on-ramp (schema check) and be reached along lane 0 of the
+    compiled network (run-time check, ``microsim.networks.weave_sections``)."""
+    length_m: float | None = Field(default=None, gt=0.0)
+    """Short length L_S between the gores [m] as measured in the field;
+    ``None`` = measured from the compiled network. Recorded in
+    ``meta.json["weave_sections"]`` beside the measured length."""
+    weave_params: dict[str, float] = Field(default_factory=dict)
+    """Overrides of :data:`WEAVE_DEFAULTS`; unknown keys are rejected."""
+
+    @model_validator(mode="after")
+    def _check_params(self) -> Self:
+        unknown = set(self.weave_params) - WEAVE_KEYS
+        if unknown:
+            raise ValueError(f"unknown weave_params keys: {sorted(unknown)}")
+        return self
+
 
 class RampSpec(BaseModel):
     """One on- or off-ramp attached to an OSM corridor (docs/CONTRACTS.md §2).
@@ -225,7 +265,9 @@ class RampSpec(BaseModel):
     100 m). ``None`` keeps the default. Set to the acceleration lane's length
     to let the ramp feed the mainline over the lane instead of at its end
     (docs/I24_VALIDATION.md §0.7)."""
-    merge: Literal["lane_change", "acceleration_lane", "zipper", "scripted"] = "lane_change"
+    merge: Literal["lane_change", "acceleration_lane", "zipper", "scripted", "weave"] = (
+        "lane_change"
+    )
     """How an on-ramp's acceleration lane hands its traffic to the mainline
     (micro tier, 2026-09-06). ``lane_change`` (default): the lane dead-ends
     and ramp vehicles change lanes under the lane-change model — on the I-24
@@ -246,7 +288,13 @@ class RampSpec(BaseModel):
     and after ``merge_params["force_after_s"]`` of waiting inside the last
     ``merge_params["force_within_m"]`` of the lane it forces the change (the
     mainline follower yields, SUMO still refusing collisions). Recorded per
-    ramp in ``meta.json["scripted_merges"]``."""
+    ramp in ``meta.json["scripted_merges"]``. ``weave`` (2026-09-23): the
+    entrance is the upstream end of a weaving section whose auxiliary lane
+    also feeds the off-ramp named in :attr:`weave` — lane 0 is left connected
+    to the exit and the runner drives both crossing movements (entering
+    vehicles change left, exiting vehicles change right) with two-sided gap
+    acceptance (:class:`WeaveSpec`). Recorded per section in
+    ``meta.json["weave_sections"]``."""
     merge_params: dict[str, float] = Field(default_factory=dict)
     """Tuning of the ``scripted`` merge (ignored by the other models).
     Keys and defaults: ``accept_gap_s`` 0.6 (time gap accepted to the mainline
@@ -256,6 +304,9 @@ class RampSpec(BaseModel):
     ``courtesy`` 0.0 (m/s; when > 0 the mainline follower that blocks an
     otherwise acceptable gap is asked to hold its desired speed this far below
     the ramp vehicle's until the gap opens — courtesy yielding)."""
+    weave: WeaveSpec | None = None
+    """The weaving section this on-ramp opens (:class:`WeaveSpec`); required
+    by, and only allowed with, ``merge="weave"``. Hash-neutral when unset."""
 
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
@@ -264,6 +315,12 @@ class RampSpec(BaseModel):
             raise ValueError(f"unknown merge_params keys: {sorted(unknown)}")
         if self.merge_params and self.merge != "scripted":
             raise ValueError("merge_params apply to merge='scripted' only")
+        if self.kind == "off" and self.weave is not None:
+            raise ValueError("a weave is opened by an on-ramp; an off-ramp cannot carry weave")
+        if self.kind == "on" and self.merge == "weave" and self.weave is None:
+            raise ValueError("merge='weave' needs a weave block naming its exit_ramp")
+        if self.weave is not None and self.merge != "weave":
+            raise ValueError("a weave block applies to merge='weave' only")
         if self.kind == "on":
             if not self.inflow:
                 raise ValueError("an on-ramp needs a non-empty inflow")
@@ -289,6 +346,18 @@ class RampSpec(BaseModel):
             if any(not 0.0 <= f <= 1.0 for _, f in self.exit_fraction):
                 raise ValueError("exit_fraction values must lie in [0, 1]")
         return self
+
+    # Collector–distributor pairing (2026-09-24, additive; hash-neutral when unset).
+    cd_road: bool = False
+    """This ramp is one end of a collector–distributor road: an ``off`` ramp
+    that is the split where the C-D road leaves the corridor, or an ``on``
+    ramp that is its re-entry. Both ends carry the same :attr:`cd_pair`, so
+    the demand step can treat them as one road whose flow leaves and returns
+    (``calibration.onboarding``) instead of an exit and an unrelated
+    entrance. The runner treats each end exactly like any ramp of its kind."""
+    cd_pair: str = ""
+    """Identifier shared by the two ends of one C-D road (the id of the first
+    link edge of the split); empty unless :attr:`cd_road`."""
 
 
 class OSMNetwork(BaseModel):
@@ -347,6 +416,22 @@ class OSMNetwork(BaseModel):
                 raise ValueError(f"ramp attach_edge {ramp.attach_edge!r} is not in corridor_edges")
             if corridor & set(ramp.edges):
                 raise ValueError(f"ramp edges {ramp.edges} overlap corridor_edges")
+        for ramp in self.ramps:
+            if ramp.weave is None:
+                continue
+            label = ramp.name or ramp.attach_edge
+            exits = [r for r in self.ramps if r.kind == "off" and r.name == ramp.weave.exit_ramp]
+            if len(exits) != 1:
+                raise ValueError(
+                    f"ramp {label}: weave exit_ramp {ramp.weave.exit_ramp!r} must name exactly "
+                    f"one off-ramp of this network (found {len(exits)})"
+                )
+            if exits[0].attach_edge != ramp.attach_edge:
+                raise ValueError(
+                    f"ramp {label}: weave exit_ramp {ramp.weave.exit_ramp!r} leaves from "
+                    f"{exits[0].attach_edge!r}, not from the on-ramp's attach edge "
+                    f"{ramp.attach_edge!r}"
+                )
         return self
 
     @model_validator(mode="after")

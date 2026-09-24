@@ -400,6 +400,50 @@ vehicle holding a stop assignment, including those still upstream of the
 last ramp edge (ALINEA does not read it). The fix is verified on synthetic
 ramp fixtures only; the I-24 ramps arm has not been rerun.
 
+**Weaving sections: `RampSpec.merge = "weave"` and `WeaveSpec` (2026-09-23,
+docs/WEAVE_MODEL_PLAN.md §2(A)).** An entrance whose auxiliary lane also
+feeds the next exit (HCM 7th ed. ch. 13, a one-sided ramp weave) — the
+geometry `accel_lane_end` refuses to terminate — can now run on its own
+merge model. `RampSpec.weave: WeaveSpec | None = None` is required by, and
+only allowed with, `merge="weave"` on an on-ramp: `exit_ramp: str` names the
+paired off-ramp, which must be the only off-ramp of that `name` and attach to
+the same `attach_edge` (schema check, `OSMNetwork`); `length_m: float | None`
+is the field short length L_S (`None` = measured); `weave_params:
+dict[str, float]` is validated against `WEAVE_DEFAULTS` = the scripted-merge
+defaults plus `exit_accept_gap_s` 0.6 (unknown keys rejected). Hash-neutral
+when unset (policy v2); both fields enter the hash when set. At run time
+`microsim.networks.weave_sections(net, chain, ramps)` (the lane-0 walk shared
+with `accel_lane_end`) must find the pair — lane 0 of the attach edge reaching
+the exit's first edge, lane 0 to lane 0 along the chain, within
+`WEAVE_LENGTH_MAX_M` 1,500 m — else `_apply_merge_models` refuses with the
+edges and lane-0 connections in the message. A weave ramp gets no termination
+and no netconvert patch. `microsim.runner._weave_step` then drives, on the
+section's edges: entering vehicles (not routed to the paired exit) on a lane 0
+that leads only to the exit change left under `accept_gap_s`, never forced;
+exiting vehicles (route id `*_off<j>`) on lanes ≥ 1 change right one lane per
+request under `exit_accept_gap_s`, forced (`laneChangeMode` 256) after
+`force_after_s` inside the last `force_within_m` before the exit gore. A
+forced change passes a minimum-gap guard (`_weave_force_gap_ok`: leader and
+follower gaps must exceed the vehicle's `minGap` plus `exit_accept_gap_s` ×
+the closing speed) and is requested for one step only; a refused one is
+deferred, the vehicle is put back on mode 512, and the vehicle-step is
+counted in `n_forced_deferred`. Both
+match the target lane's speed via `setMaxSpeed` (never `setSpeed`);
+`courtesy` > 0 makes the blocking target-lane follower yield for either
+movement. Two fixed rules prevent the abreast-at-the-gore deadlock: in an
+exchange (the target-lane follower is driven and wants this vehicle's lane)
+the rear vehicle drops back (`WEAVE_EXCHANGE_YIELD_MS` 2 m/s below, no creep
+floor), and an exiting vehicle holds station `2 s0 + exit_accept_gap_s · v`
+behind the auxiliary-lane vehicle ahead (`WEAVE_HOLD_TAU_S` 2 s).
+`meta.json["weave_sections"]` lists per section `ramp, exit, edges,
+exit_edge, length_m, length_m_measured, params, n_entered, n_changed_in,
+n_changed_out, n_forced, n_missed, n_forced_deferred, n_unfinished, n_exited,
+n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean`
+(`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`).
+Verified on the synthetic fixture `tests/fixtures/weave.osm` (golden
+`merge_weave.json`); on the MnDOT I-94 WB 35-min slice it has one seed and no
+validation claim.
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:

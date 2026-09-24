@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "case": "merge_weave",
+  "description": "tests/fixtures/weave.osm weaving section, mainline 0.55 veh/s + on-ramp 0.2 veh/s for 140 s, 30 % exiting over the auxiliary lane, weave model (runner-driven two-sided gap acceptance), 300 sim-s, seed 3",
+  "scenario": null,
+  "overrides": {},
+  "producer": "microsim.run_micro + validation.metrics.compute_metrics",
+  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_weave",
+  "generated_at": "2026-09-24T04:29:34+00:00",
+  "tolerance": {
+    "relative": 1e-06,
+    "exact": [
+      "n_collisions",
+      "n_heavy",
+      "n_hov",
+      "n_meter_releases",
+      "n_scripted_forced",
+      "n_scripted_merged",
+      "n_vehicles_departed",
+      "n_vehicles_planned",
+      "n_weave_changed_in",
+      "n_weave_changed_out",
+      "n_weave_exited",
+      "n_weave_forced",
+      "wave_count"
+    ]
+  },
+  "config_hash": "436cd4ec9e5d",
+  "seed": 3,
+  "sumo_seed": 3,
+  "tier": "micro",
+  "seeded": false,
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "config": {
+    "name": "merge_weave",
+    "tier": "micro",
+    "network": {
+      "kind": "osm",
+      "osm_file": "tests/fixtures/weave.osm",
+      "bbox": null,
+      "corridor_edges": [
+        "100",
+        "101",
+        "102",
+        "103",
+        "104"
+      ],
+      "inflow": [
+        [
+          0.0,
+          0.55
+        ],
+        [
+          140.0,
+          0.0
+        ]
+      ],
+      "boundary": null,
+      "ramps": [
+        {
+          "kind": "on",
+          "edges": [
+            "200"
+          ],
+          "attach_edge": "102",
+          "inflow": [
+            [
+              0.0,
+              0.2
+            ],
+            [
+              140.0,
+              0.0
+            ]
+          ],
+          "exit_fraction": [],
+          "name": "weave on-ramp",
+          "meter": null,
+          "merge_visibility_m": null,
+          "merge": "weave",
+          "merge_params": {},
+          "weave": {
+            "exit_ramp": "weave exit",
+            "length_m": null,
+            "weave_params": {}
+          }
+        },
+        {
+          "kind": "off",
+          "edges": [
+            "201"
+          ],
+          "attach_edge": "102",
+          "inflow": [],
+          "exit_fraction": [
+            [
+              0.0,
+              0.3
+            ]
+          ],
+          "name": "weave exit",
+          "meter": null,
+          "merge_visibility_m": null,
+          "merge": "lane_change",
+          "merge_params": {},
+          "weave": null
+        }
+      ],
+      "entry_lane_shares": null,
+      "netconvert_extra": [],
+      "internal_links": false
+    },
+    "fleet": {
+      "model": "IDM",
+      "v0": 33.3,
+      "T": 1.4,
+      "a_max": 0.73,
+      "b": 1.67,
+      "s0": 2.0,
+      "delta": 4.0,
+      "heterogeneity_frac": 0.12,
+      "idm_calibration": null,
+      "lc_strategic": 1.0,
+      "lc_strategic_ramp": null,
+      "lc_keep_right": 1.0,
+      "lc_cooperative": 1.0,
+      "lc_assertive": 1.0,
+      "lc_speed_gain": 1.0,
+      "heavy": null,
+      "jm_timegap_minor_s": null,
+      "jm_ignore_foe_prob": null,
+      "lc_sublane": null,
+      "lc_pushy": null,
+      "lc_impatience": null,
+      "lc_accel_lat": null,
+      "max_speed_lat": null,
+      "min_gap_lat": null,
+      "lat_alignment": null,
+      "lc_overtake_right": null,
+      "hov_fraction": 0.0
+    },
+    "av": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "controller_params": {},
+      "vsl": null,
+      "vsl_params": {},
+      "oracle": {
+        "kind": "perfect",
+        "delay_s": 0.0,
+        "amplitude_noise_frac": 0.0
+      }
+    },
+    "sim": {
+      "duration_s": 300.0,
+      "step_length_s": 0.5,
+      "action_step_s": 0.5,
+      "warmup_s": 0.0,
+      "output_hz": 2.0,
+      "lateral_resolution_m": null
+    },
+    "fd_calibration": null,
+    "macro": null,
+    "perturbation": null,
+    "closures": [],
+    "managed_lanes": [],
+    "seed": 3,
+    "replicates": 20
+  },
+  "run": {
+    "n_vehicles_planned": 105,
+    "n_vehicles_departed": 105,
+    "n_collisions": 0,
+    "n_heavy": 0,
+    "n_hov": 0,
+    "n_meter_releases": 0,
+    "n_scripted_merged": 0,
+    "n_scripted_forced": 0,
+    "fuel_total_ml": 17965.316385699305,
+    "n_weave_changed_in": 23,
+    "n_weave_changed_out": 27,
+    "n_weave_forced": 0,
+    "n_weave_exited": 33
+  },
+  "metrics": {
+    "throughput_veh_h": 1437.2623574144488,
+    "mean_tt_s": 93.03664904737003,
+    "p90_tt_s": 138.78991451451665,
+    "sigma_v_spatial_ms": 8.645917212355634,
+    "sigma_v_temporal_ms": 8.988448190846684,
+    "vmt_veh_km": 169.73180117844444,
+    "vht_veh_h": 2.51,
+    "fuel_ml_per_veh_km": 105.84531750070687,
+    "wave_count": 1,
+    "wave_speed_kmh": null,
+    "wave_amplitude_ms": 24.878723098646855,
+    "n_travel_time_veh": 53
+  }
+}

@@ -35,3 +35,48 @@ class TestDeterminism:
         p1 = run_micro(cfg, 42, tmp_path / "a")
         p2 = run_micro(cfg, 43, tmp_path / "b")
         assert p1.trajectories.read_bytes() != p2.trajectories.read_bytes()
+
+    def test_weave_section_is_byte_identical(self, tmp_path):
+        """The runner-driven weave (``RampSpec.merge = "weave"``) adds no
+        unseeded randomness: TraCI requests are issued in sorted-id order."""
+        from pathlib import Path
+
+        from flowstate_core.config import ScenarioConfig
+
+        osm = Path(__file__).resolve().parents[1] / "fixtures" / "weave.osm"
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "weave_determinism",
+                "network": {
+                    "kind": "osm",
+                    "osm_file": str(osm),
+                    "corridor_edges": ["100", "101", "102", "103", "104"],
+                    "inflow": [[0.0, 0.5]],
+                    "ramps": [
+                        {
+                            "kind": "on",
+                            "name": "on",
+                            "edges": ["200"],
+                            "attach_edge": "102",
+                            "inflow": [[0.0, 0.2]],
+                            "merge": "weave",
+                            "weave": {"exit_ramp": "off"},
+                        },
+                        {
+                            "kind": "off",
+                            "name": "off",
+                            "edges": ["201"],
+                            "attach_edge": "102",
+                            "exit_fraction": [[0.0, 0.3]],
+                        },
+                    ],
+                },
+                "sim": {"duration_s": 150.0},
+            }
+        )
+        p1 = run_micro(cfg, 5, tmp_path / "a")
+        p2 = run_micro(cfg, 5, tmp_path / "b")
+        assert p1.trajectories.read_bytes() == p2.trajectories.read_bytes()
+        w1 = json.loads(p1.meta.read_text())["weave_sections"]
+        w2 = json.loads(p2.meta.read_text())["weave_sections"]
+        assert w1 == w2 and w1[0]["n_entered"] > 0

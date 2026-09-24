@@ -72,6 +72,73 @@ RAMP_OSM = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+# A one-sided ramp weave (HCM 7th ed. ch. 13; docs/WEAVE_MODEL_PLAN.md §2):
+# a two-lane mainline widens to three lanes at node 3, where on-ramp link 200
+# feeds the new lane 0 of way 102, and that lane leaves ~180 m downstream at
+# node 4 as exit link 201 while the mainline carries on with two lanes (ways
+# 103, 104). Lane 0 of 102 therefore serves both the entrance and the exit:
+# every entering vehicle bound for the corridor must change left and every
+# mainline vehicle bound for the exit must change right over the same short
+# length. ``tests/fixtures/weave.osm`` is a checked-in copy (the golden case
+# names it repo-relative); ``test_weave_fixture_copy_is_identical`` keeps the
+# two in step.
+WEAVE_OSM = """<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <node id="1" lat="40.0000" lon="-96.0000"/>
+  <node id="2" lat="40.0000" lon="-95.9940"/>
+  <node id="3" lat="40.0000" lon="-95.9880"/>
+  <node id="4" lat="40.0000" lon="-95.98700"/>
+  <node id="5" lat="40.0000" lon="-95.9800"/>
+  <node id="6" lat="40.0000" lon="-95.9740"/>
+  <node id="10" lat="39.9994" lon="-95.9960"/>
+  <node id="11" lat="39.9994" lon="-95.9780"/>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="101">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="102">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="103">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="104">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="200">
+    <nd ref="10"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="201">
+    <nd ref="4"/><nd ref="11"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>
+"""
+WEAVE_CORRIDOR: tuple[str, ...] = ("100", "101", "102", "103", "104")
+
+
 @pytest.fixture
 def osm_path(tmp_path):
     p = tmp_path / "ramps.osm"
@@ -265,3 +332,11 @@ class TestOSMImportPathRoots:
         monkeypatch.delenv(ROOTS_ENV_VAR, raising=False)
         with pytest.raises(ValueError, match="osm_file not found"):
             osm_import(osm_file=tmp_path / "missing.osm", workdir=tmp_path / "w")
+
+
+def test_weave_fixture_copy_is_identical():
+    """The golden case's checked-in weave fixture is this module's WEAVE_OSM."""
+    from pathlib import Path
+
+    copy = Path(__file__).resolve().parents[1] / "fixtures" / "weave.osm"
+    assert copy.read_text() == WEAVE_OSM

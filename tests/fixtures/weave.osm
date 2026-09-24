@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <node id="1" lat="40.0000" lon="-96.0000"/>
+  <node id="2" lat="40.0000" lon="-95.9940"/>
+  <node id="3" lat="40.0000" lon="-95.9880"/>
+  <node id="4" lat="40.0000" lon="-95.98700"/>
+  <node id="5" lat="40.0000" lon="-95.9800"/>
+  <node id="6" lat="40.0000" lon="-95.9740"/>
+  <node id="10" lat="39.9994" lon="-95.9960"/>
+  <node id="11" lat="39.9994" lon="-95.9780"/>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="101">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="102">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="103">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="104">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+  <way id="200">
+    <nd ref="10"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="201">
+    <nd ref="4"/><nd ref="11"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>
