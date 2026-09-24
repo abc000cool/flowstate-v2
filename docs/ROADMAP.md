@@ -541,6 +541,23 @@ committed file named in parentheses.
   (the revision times are the service's own record, not reproducible from the
   tree).
 
+- **The exit side of the weave (later on 2026-09-24).** The corridor's own
+  slice showed the T.H.52 weave locking at its EXIT end (exit-bound vehicles
+  could not drop into the auxiliary lane; 8,971 deferred forced changes in
+  35 minutes) while the six entrance-side derivations had been tuned on the
+  fixture's entrance. A fixture at the corridor's own T.H.52 flows (4,873
+  veh/h arriving, 21 % exiting, 1,412 entering) reproduced the stall, and
+  the exit-side rule — a due exiter has priority over the auxiliary lane
+  (its beside-follower holds at rest), a halted exiter within 5 m of the
+  gore's end is rerouted through and counted as a missed exit — makes that
+  fixture pass; the review fixed the give-up's ordering. On the corridor
+  slice it lifts the departed share to **0.979** (4 seeds, no starved ramp;
+  0.848 with the sixth derivation, 0.892 with the second on the reset
+  settings). The battery artifact now reports given-up exits per section
+  and degrades its verdict above a 2 % share (`weave_exits`). The 20-seed
+  four-hour battery with this runner is VM H (pending: its verdict is the
+  next entry of docs/ONBOARDING_MNDOT.md §10).
+
 Open / pending: the 20-seed four-hour battery on the regenerated corridor
 with the sixth derivation (VM F, run on the reset lane-change settings: departed 0.233 over 20 seeds, worse than 0.444; the corrected scenarios run on VM G — docs/ONBOARDING_MNDOT.md §10); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
 symmetrically rather than by which side pays — was then measured in fifteen
