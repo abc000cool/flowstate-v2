@@ -195,7 +195,10 @@ class TestRuthStWeave:
     With the fleet defaults (as every T.H.52 fixture test) both demand points
     pass the exit-side criteria at every seed; with the corridor's own
     drivers (:data:`CORRIDOR_FLEET`) the section reproduces the corridor's
-    give-ups — see the marks and docs/WEAVE_MODEL_PLAN.md (short sections).
+    give-ups — see the marks and docs/WEAVE_MODEL_PLAN.md (short sections;
+    re-measured at the 500 m vacate window, where the give-ups at the exit
+    peak fall within the threshold and the marks fail on lane 1 and one
+    collision of the exit-side acceptance instead).
     """
 
     @pytest.mark.parametrize("seed", [3, 4, 5])
@@ -218,13 +221,19 @@ class TestRuthStWeave:
                     marks=pytest.mark.xfail(
                         strict=False,
                         reason="Ruth St twin, the corridor's fleet at the entrance's peak "
-                        "(2026-09-24, block 3, short sections): one abreast pair at the gore's "
-                        "end costs 2 of the 41-45 exits that reach the section (4-5 % against "
-                        "2 %) and which seed pays flips with the vacate rule — on the runner of "
-                        "01dd5ec seed 4 (39 of 41 exit, lane 1's last 60 m never below 13.4 m/s, "
-                        "108 forced changes deferred, no collision), under the vacate rule "
-                        "re-derived beside this test (WP-44) seed 3 (43 of 45) — so the marks are "
-                        "not strict; the other seeds give up none",
+                        "(2026-09-24, block 3, short sections; re-measured at the 500 m vacate "
+                        "window): one abreast pair at the gore's end costs 2 of the 41-45 exits "
+                        "that reach the section (4-5 % against 2 %) and which seed pays moves "
+                        "with the vacate rule and its window — on the runner of 01dd5ec seed 4 "
+                        "(39 of 41 exit, lane 1's last 60 m never below 13.4 m/s, 108 forced "
+                        "changes deferred, no collision), under the vacate rule re-derived "
+                        "beside this test (WP-44) at 150 m seed 3 (43 of 45), at the 500 m "
+                        "default seed 3 again (43 of 45, lane 1's last 60 m 2.9 m/s in one "
+                        "minute, 13 forced, 252 deferred, 7 releases, 60 vacated and 149 skipped "
+                        "by the bound, the entrance departs 128 of 128, no collision) while "
+                        "seeds 4 / 5 give up none with lane 1 never below 15.7 m/s — so the "
+                        "marks are not strict (docs/WEAVE_MODEL_PLAN.md, the short section at "
+                        "the 500 m window)",
                     ),
                 )
                 for seed in (3, 4, 5)
@@ -236,15 +245,24 @@ class TestRuthStWeave:
                     marks=pytest.mark.xfail(
                         strict=True,
                         reason="Ruth St twin, the corridor's fleet at the C-D split's exit "
-                        "peak (2026-09-24, block 3, short sections): the 136 m section "
-                        "reproduces the corridor's give-ups — seeds 3 / 4 / 5 give up 8 / 3 / 4 "
-                        "of 290 / 281 / 274 exits (2.8 / 1.1 / 1.5 %) and lane 1's last 60 m "
-                        "reads 3.3 / 4.1 / 4.3 m/s in its worst minute (2 / 1 / 1 minutes at or "
-                        "below 5), 280 / 277 / 269 exit, 33 / 15 / 17 changes forced, 608 / 268 "
-                        "/ 326 deferred, 14 / 3 / 7 pairs released, the entrance departs 73 of "
-                        "73, nothing collides (runner of 01dd5ec; fails under the re-derived "
-                        "vacate rule as well). The trace and the measured-and-rejected "
-                        "scalings: docs/WEAVE_MODEL_PLAN.md, short sections",
+                        "peak (2026-09-24, block 3, short sections; re-measured at the 500 m "
+                        "vacate window): at the 500 m default seeds 3 / 4 / 5 give up 4 / 2 / 4 "
+                        "of 290 / 280 / 274 exits (1.4 / 0.7 / 1.5 %, within 2 % now that 135 / "
+                        "145 / 137 through vehicles vacate the weave lane 430-500 m upstream "
+                        "against 44 / 52 / 56 at 150 m; 9 / 9 / 15 changes forced against 33 / "
+                        "15 / 17, 252 / 111 / 275 deferred against 608 / 268 / 326, 2 / 1 / 2 "
+                        "pairs released against 14 / 3 / 7), but lane 1's last 60 m reads 4.6 / "
+                        "6.5 / 3.6 m/s in its worst minute with one minute empty at seed 3 (the "
+                        "weave lane carries 0.2 vehicles per sample there) and seed 4 collides "
+                        "once at 600.5 s: an exiter changes into the auxiliary lane 15 m into "
+                        "the section at 20 m/s onto a leader at 1 m/s 22 m ahead, the exit-side "
+                        "acceptance being a time gap at the changer's own speed. At 150 m: 8 / "
+                        "3 / 4 given up (2.8 / 1.1 / 1.5 %), lane 1 3.3 / 4.1 / 4.3 m/s, no "
+                        "collision (runner of 01dd5ec and the re-derived vacate rule alike). "
+                        "The entrance departs 73 of 73 at both. The trace, the "
+                        "measured-and-rejected scalings and the 2 L window: "
+                        "docs/WEAVE_MODEL_PLAN.md, short sections and the short section at "
+                        "the 500 m window",
                     ),
                 )
                 for seed in (3, 4, 5)
