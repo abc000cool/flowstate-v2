@@ -808,3 +808,22 @@ constant estimated 68 GB per worker for 106 M rows per replicate; the diet
 committed since brings that to about 17 GB, so the next round scores in
 parallel). The next battery (VM G) runs the corrected scenarios (lane-change
 settings restored) with the sixth-derivation runner.
+
+
+**VM G (2026-09-24, block 3): the corrected scenarios (lane-change settings
+restored, config hash 53e4b208fd1d) with the sixth-derivation runner
+(commit 68b69f0).** Slice, 4 seeds: departed 0.848 (lowest 0.834) — below the
+0.892 of the second derivation on the reset settings; the first seed's
+standstill forms at minute 11 at the END of the T.H.52 section (10.60–10.70
+km, lanes 0 and 1; 8,971 deferred forced changes, 21 unfinished, 133
+exit-bound vehicles reached the section and 88 exited — evidence under
+).
+Battery, 20 seeds: departed 0.247 (lowest 0.180; the first seed 0.528, the
+rest 0.18–0.35), speed RMSPE 0.963 (95 % interval 0.954–0.972), GEH < 5 on
+0.000 of 840 link-hours, "wave speed" 6.9 km/h (the queue front) —
+no better than VM F. The scoring phase took 158 s on six workers (VM F:
+6,719 s in one) — the memory diet holds. Read together with the slice
+diagnosis: the entrance-side derivations moved the fixture but on the
+corridor the EXIT movement of the T.H.52 weave locks at the gore's end; the
+exit-side rule (commit ecf6d79, reviewed in 84cc857) is the next round
+(VM H).
