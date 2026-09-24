@@ -315,9 +315,11 @@ def _run_onboarding(
     # Rows created before 2026-09-24 carry neither key: the defaults apply.
     split_fixes = bool(params.get("split_fixes", True))
     patch_path = split_patch_path(name, settings, results)
-    if split_fixes:
+    if split_fixes and not patch_path.exists():
         # Registered before the build: a fix that wrote the patch and then
-        # failed on the re-import must not leave it beside the extract.
+        # failed on the re-import must not leave it beside the extract. One
+        # already there was not this job's doing and stays (the cleanup
+        # removes what the job installed, never what it found).
         installed.append(patch_path)
     build = corridor_from_bbox(
         name,

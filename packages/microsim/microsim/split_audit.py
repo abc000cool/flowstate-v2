@@ -34,6 +34,7 @@ extract is a light XML parse.
 from __future__ import annotations
 
 import math
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -267,15 +268,54 @@ def _continuing_polyline(
             if len(refs) >= 2:
                 break
             refs = ()
+
+    def _heading_into(node_id: str, way: OSMWay | None) -> tuple[float, float] | None:
+        """Unit direction of ``way`` arriving at ``node_id`` (its last segment)."""
+        if way is None or node_id not in way.nodes:
+            return None
+        idx = way.nodes.index(node_id)
+        for prev in reversed(way.nodes[:idx]):
+            a, b = _local_xy(graph, prev, origin), _local_xy(graph, node_id, origin)
+            if a is not None and b is not None and math.dist(a, b) > 0.0:
+                return ((b[0] - a[0]) / math.dist(a, b), (b[1] - a[1]) / math.dist(a, b))
+        return None
+
+    def _straightest(candidates: list[OSMWay], arriving: tuple[float, float] | None) -> OSMWay:
+        """Of the ways leaving a node, the one continuing straightest.
+
+        At a genuine fork two same-class ways leave the node; file order
+        would pick whichever the extract lists first and could call the
+        branch the mainline (a right link then reads as left of it). The
+        continuation is the way whose first segment turns least from the
+        arriving direction; without an arriving direction, file order.
+        """
+        if arriving is None or len(candidates) == 1:
+            return candidates[0]
+
+        def _turn(way: OSMWay) -> float:
+            start = _local_xy(graph, way.nodes[0], origin)
+            for ref in way.nodes[1:]:
+                point = _local_xy(graph, ref, origin)
+                if start is not None and point is not None and math.dist(start, point) > 0.0:
+                    d = math.dist(start, point)
+                    dot = arriving[0] * (point[0] - start[0]) + arriving[1] * (point[1] - start[1])
+                    return -dot / d  # smallest = straightest
+            return math.inf
+
+        return min(candidates, key=_turn)
+
+    arriving = _heading_into(split_node, from_way)
     if len(refs) < 2:
-        for way in graph.ways_from(split_node):
-            if (
-                way.id != link_way.id
-                and not way.is_link
-                and (not highway or way.highway == highway)
-            ):
-                refs = way.nodes
-                break
+        candidates = [
+            way
+            for way in graph.ways_from(split_node)
+            if way.id != link_way.id
+            and not way.is_link
+            and (not highway or way.highway == highway)
+            and len(way.nodes) >= 2
+        ]
+        if candidates:
+            refs = _straightest(candidates, arriving).nodes
     if len(refs) < 2:
         return []
 
@@ -291,8 +331,14 @@ def _continuing_polyline(
         ]
         if not nxt:
             break
-        last = nxt[0].nodes[-1]
-        points += [p for p in (_local_xy(graph, n, origin) for n in nxt[0].nodes[1:]) if p]
+        step = (
+            (points[-1][0] - points[-2][0], points[-1][1] - points[-2][1])
+            if len(points) >= 2
+            else None
+        )
+        chosen = _straightest(nxt, step)
+        last = chosen.nodes[-1]
+        points += [p for p in (_local_xy(graph, n, origin) for n in chosen.nodes[1:]) if p]
     return points
 
 
@@ -478,10 +524,31 @@ class SplitFinding:
     continuing_lanes: int | None
     verdict: Verdict
     remedy: str
+    exit_connections: tuple[tuple[int, int], ...] = ()
+    """The compiled ``(fromLane, toLane)`` pairs into ``exit_edge``, sorted.
+    Internal (not in :meth:`as_dict`): a connection patch restating another
+    exit of the same edge repeats these, since netconvert drops every
+    computed connection of an edge that a patch names."""
 
     @property
     def is_defect(self) -> bool:
         return self.verdict in DEFECT_VERDICTS
+
+    @property
+    def is_ramp_split_piece(self) -> bool:
+        """``from_edge`` is a piece ``--ramps.guess`` split off (one lane added)."""
+        return self.from_edge != load_time_edge_id(self.from_edge)
+
+    @property
+    def load_time_lanes(self) -> int:
+        """Lane count of the load-time edge a patch names.
+
+        A ramp-split piece carries the one lane guessing added on top of the
+        load-time edge; a patch is read before the split exists, so it must
+        use the count without it (with the edge in ``--ramps.unset``, the
+        piece is not built and the patch lands where it was computed).
+        """
+        return self.compiled_lanes - 1 if self.is_ramp_split_piece else self.compiled_lanes
 
     @property
     def expected_side(self) -> Side:
@@ -616,6 +683,11 @@ def audit_splits(
                     continuing_lanes=int(cont_edge.getLaneNumber()) if cont_edge else None,
                     verdict=verdict,
                     remedy=remedy,
+                    exit_connections=tuple(
+                        sorted(
+                            (c.getFromLane().getIndex(), c.getToLane().getIndex()) for c in conns
+                        )
+                    ),
                 )
             )
     return findings
@@ -627,14 +699,27 @@ def split_defects(findings: Iterable[SplitFinding]) -> list[SplitFinding]:
 
 
 def ramps_unset_edges(findings: Iterable[SplitFinding]) -> list[str]:
-    """Load-time edge ids ``--ramps.unset`` must name (``added_lane_wrong_side`` findings)."""
+    """Load-time edge ids ``--ramps.unset`` must name.
+
+    The ``added_lane_wrong_side`` findings, and every ``wrong_side`` finding
+    on a ramp-split piece: its patch names the load-time edge with the
+    load-time lane count (:attr:`SplitFinding.load_time_lanes`), and ramp
+    guessing would otherwise rebuild the piece over the patched connections
+    and move the exit again.
+    """
     out: list[str] = []
     for f in findings:
-        if f.verdict == "added_lane_wrong_side":
+        if f.verdict == "added_lane_wrong_side" or (
+            f.verdict == "wrong_side" and f.is_ramp_split_piece
+        ):
             edge = load_time_edge_id(f.from_edge)
             if edge not in out:
                 out.append(edge)
     return out
+
+
+def _connection_line(from_edge: str, to: str, from_lane: int, to_lane: int) -> str:
+    return f'  <connection from="{from_edge}" to="{to}" fromLane="{from_lane}" toLane="{to_lane}"/>'
 
 
 def connection_patch_lines(finding: SplitFinding) -> list[str]:
@@ -643,10 +728,16 @@ def connection_patch_lines(finding: SplitFinding) -> list[str]:
     Exit lanes: the ``turn:lanes`` count when the tag reads, else the exit
     edge's lane count; they are the rightmost lanes for a right exit, the
     leftmost for a left one. Every other lane continues, mapped onto the
-    continuing edge in order; an option lane (``through;slight_right``)
-    continues as well, keeping its index. The lines are what
-    ``data/osm/mndot_i94_wb_stpaul.splits.con.xml`` states for the
-    Mounds/Kellogg split.
+    continuing edge in order; an option lane continues as well, keeping its
+    index — the tag's option lanes when it reads for that side, else every
+    exit lane the continuing edge has room for (a split where the mainline
+    keeps its lane count is an option lane, not a drop lane). The lines are
+    what ``data/osm/mndot_i94_wb_stpaul.splits.con.xml`` states for the
+    Mounds/Kellogg split (five lanes to three: two drop lanes, no option).
+
+    On a ramp-split piece the lines name the load-time edge with its
+    load-time lane count (:attr:`SplitFinding.load_time_lanes`); the edge
+    must then be in ``--ramps.unset`` (:func:`ramps_unset_edges`).
 
     Returns:
         Nothing for a finding without a continuing edge or a known side.
@@ -654,7 +745,7 @@ def connection_patch_lines(finding: SplitFinding) -> list[str]:
     expected = finding.expected_side
     if finding.continuing_edge is None or finding.continuing_lanes is None or expected == "unknown":
         return []
-    n = finding.compiled_lanes
+    n = finding.load_time_lanes
     reading = read_turn_lanes(finding.turn_lanes)
     k = (
         reading.n_exit
@@ -662,16 +753,16 @@ def connection_patch_lines(finding: SplitFinding) -> list[str]:
         else finding.exit_lanes
     )
     k = max(1, min(k, finding.exit_lanes, n - 1 if n > 1 else 1))
-    n_option = min(reading.n_option, k) if reading and reading.side == expected else 0
     from_edge = load_time_edge_id(finding.from_edge)
     cont, cont_n = finding.continuing_edge, finding.continuing_lanes
+    if reading and reading.side == expected:
+        n_option = min(reading.n_option, k)
+    else:
+        n_option = max(0, k - max(0, n - cont_n))
     lines: list[str] = []
 
     def _line(to: str, from_lane: int, to_lane: int) -> str:
-        return (
-            f'  <connection from="{from_edge}" to="{to}" '
-            f'fromLane="{from_lane}" toLane="{to_lane}"/>'
-        )
+        return _connection_line(from_edge, to, from_lane, to_lane)
 
     if expected == "right":
         exit_lanes = list(range(k))
@@ -694,6 +785,13 @@ def connection_patch_lines(finding: SplitFinding) -> list[str]:
 def split_patch_xml(findings: Iterable[SplitFinding], *, note: str = "") -> str:
     """A ``*.con.xml`` patch restating every ``wrong_side`` split.
 
+    netconvert drops every computed connection of an edge a patch names, so
+    a restated split also repeats, as compiled, the connections into every
+    other exit leaving the same edge (a node with a right and a left exit
+    would otherwise lose the one that was fine). An XML comment may not
+    contain ``--`` (netconvert refuses the file), so runs of hyphens in
+    ``note`` are collapsed.
+
     Args:
         findings: Audit findings; only ``wrong_side`` ones are restated
             (``added_lane_wrong_side`` is fixed by ``--ramps.unset``, see
@@ -703,15 +801,30 @@ def split_patch_xml(findings: Iterable[SplitFinding], *, note: str = "") -> str:
     Returns:
         The file text, or an empty string when nothing needs restating.
     """
+    all_findings = list(findings)
     lines: list[str] = []
-    for f in findings:
-        if f.verdict == "wrong_side":
-            lines += connection_patch_lines(f)
+    for f in all_findings:
+        if f.verdict != "wrong_side":
+            continue
+        lines += connection_patch_lines(f)
+        # A piece's added lane is its lane 0 (netconvert 1.27.1 puts the
+        # deceleration lane on the right and shifts the rest up by one, for a
+        # left exit too), so a sibling's lanes shift down by one on the
+        # load-time edge and a connection from the added lane is dropped.
+        shift = 1 if f.is_ramp_split_piece else 0
+        for other in all_findings:
+            if other.from_edge == f.from_edge and other.exit_edge != f.exit_edge:
+                lines += [
+                    _connection_line(load_time_edge_id(f.from_edge), other.exit_edge, a - shift, b)
+                    for a, b in other.exit_connections
+                    if 0 <= a - shift < f.load_time_lanes
+                ]
     if not lines:
         return ""
+    lines = list(dict.fromkeys(lines))
     head = "<!-- split audit (microsim.split_audit): exits restated on the side OSM draws them"
     if note:
-        head += f"; {note}"
+        head += f"; {re.sub(r'-{2,}', '-', note).replace('>', ' ')}"
     head += " -->"
     return "\n".join([head, "<connections>", *lines, "</connections>", ""])
 

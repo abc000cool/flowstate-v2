@@ -1201,12 +1201,27 @@ def corridor_from_bbox(
         # The remedy is applied and the network re-imported before the build
         # goes out, so the scenario names what it will compile; the audit it
         # was derived from stays on the build.
-        patch = Path(split_patch_path) if split_patch_path else default_split_patch_path(extract)
-        build = apply_split_fixes(build, patch)
+        if split_patch_path:
+            build = apply_split_fixes(build, Path(split_patch_path))
+        else:
+            # Two corridors onboarded from one extract (``--osm-file``) share
+            # the default path; a patch already there that says something
+            # else belongs to the other corridor and is not overwritten.
+            build = apply_split_fixes(
+                build,
+                default_split_patch_path(extract),
+                fallback_path=extract.with_name(f"{extract.stem}.{name}{SPLIT_PATCH_SUFFIX}"),
+            )
     return build
 
 
-def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> CorridorBuild:
+def _connection_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if "<connection " in line]
+
+
+def apply_split_fixes(
+    build: CorridorBuild, patch_path: Path | None, *, fallback_path: Path | None = None
+) -> CorridorBuild:
     """Write the remedies the split audit named into the scenario and re-audit.
 
     ``wrong_side`` findings become a connection patch
@@ -1224,6 +1239,9 @@ def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> Corridor
             (recorded repository-relative in the scenario when it lies inside
             the repository). ``None`` refuses a ``wrong_side`` finding with
             :class:`ValueError`, since there is nowhere to write its fix.
+        fallback_path: Written instead when ``patch_path`` already holds a
+            patch whose connection lines differ (another corridor's, from
+            the same extract); ``None`` overwrites.
 
     Returns:
         ``build`` unchanged when the audit found no defect; otherwise a new
@@ -1254,22 +1272,43 @@ def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> Corridor
             raise ValueError(
                 "a wrong_side split needs a connection patch: give a path to write it to"
             )
+        if (
+            fallback_path is not None
+            and patch_path.is_file()
+            and _connection_lines(patch_path.read_text()) != _connection_lines(patch_xml)
+        ):
+            patch_path = fallback_path
         patch_path.parent.mkdir(parents=True, exist_ok=True)
         patch_path.write_text(patch_xml)
         recorded = _record_path(patch_path)
         if recorded not in network["patch_files"]:
             network["patch_files"].append(recorded)
-        patches.append(patch_path)
+        if patch_path not in patches:
+            patches.append(patch_path)
 
     extra = [str(a) for a in net.netconvert_extra]
     unset = ramps_unset_edges(defects)
     if unset:
-        if "--ramps.unset" in extra:
-            at = extra.index("--ramps.unset") + 1
-            present = extra[at].split(",") if at < len(extra) else []
-            extra[at] = ",".join([*present, *[e for e in unset if e not in present]])
-        else:
+        # netconvert refuses a repeated option ("a value for the option
+        # 'ramps.unset' was already set"), so an existing list — given as
+        # ``--ramps.unset a,b`` or ``--ramps.unset=a,b`` — is extended in place.
+        at = next(
+            (
+                i
+                for i, a in enumerate(extra)
+                if a == "--ramps.unset" or a.startswith("--ramps.unset=")
+            ),
+            None,
+        )
+        if at is None:
             extra += ["--ramps.unset", ",".join(unset)]
+        elif extra[at] == "--ramps.unset" and at + 1 < len(extra):
+            present = extra[at + 1].split(",")
+            extra[at + 1] = ",".join([*present, *[e for e in unset if e not in present]])
+        else:
+            present = extra[at].partition("=")[2].split(",") if "=" in extra[at] else []
+            merged = ",".join([*[p for p in present if p], *[e for e in unset if e not in present]])
+            extra[at : at + 1] = [f"--ramps.unset={merged}"]
     network["netconvert_extra"] = extra
     cfg = ScenarioConfig.model_validate(dumped)
 

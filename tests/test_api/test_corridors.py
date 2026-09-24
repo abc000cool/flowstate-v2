@@ -649,6 +649,22 @@ class TestUploadsAndRetries:
         assert "already exists" not in retried["error"]
         assert not extract.exists()
 
+    def test_a_failed_job_leaves_a_patch_it_found(
+        self, client: TestClient, no_download: list[Any]
+    ) -> None:
+        """The cleanup removes what the job installed, never what it found: a
+        split patch already beside the extract's path (a SIGKILLed job's
+        leftover, or an operator's) survives a failure."""
+        settings = client.app.state.settings
+        patch = Path(settings.data_dir) / "osm" / "fixture_retry.splits.con.xml"
+        patch.parent.mkdir(parents=True, exist_ok=True)
+        patch.write_text("<connections>\n</connections>\n")
+
+        body = post_corridor(client, name="fixture_retry", bearing_deg="0")
+        payload = client.get(f"/api/v1/corridors/{body['corridor_id']}", headers=HEADERS).json()
+        assert payload["status"] == "failed"
+        assert patch.is_file() and patch.read_text() == "<connections>\n</connections>\n"
+
 
 class TestInlineDispatch:
     """The background task behind the inline queue: crashes, and the name lock.

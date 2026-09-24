@@ -1177,10 +1177,18 @@ the two §9 defects (`45608485 → 18207912` wrong_side, lanes 3–4 of 5 for a
 link 8–9 m to the right; `1001426896 → 82150350` added_lane_wrong_side, lane
 3 of 4 for a link 1–45 m to the right) and the 6th Street exit `42165869` as
 a genuine left exit (`ok`); with the fixes, none
-(`tests/test_microsim/test_microsim_split_audit.py`). Limits: a `wrong_side`
-verdict on a ramp-split piece (`…-AddedOffRampEdge`) is patched by its
-load-time id and should be re-audited after `--ramps.unset`; an exit whose
-link the extract does not carry is `unknown`.
+(`tests/test_microsim/test_microsim_split_audit.py`). A `wrong_side` verdict
+on a ramp-split piece (`…-AddedOffRampEdge`) is patched by its load-time id
+with the load-time lane count (`SplitFinding.load_time_lanes`, the piece
+minus the guessed lane) and the edge is added to `--ramps.unset`
+(`ramps_unset_edges`), since a patch is read before the split exists and
+guessing would rebuild the piece over it; a restated split repeats, as
+compiled, the connections into every other exit of the same edge
+(netconvert drops the computed ones of an edge a patch names); the patch
+comment never carries `--` (netconvert refuses it). Limits: an exit whose
+link the extract does not carry is `unknown`; a lane guessing added under
+`--ramps.no-split` (no piece) on a way without a `lanes` tag cannot be told
+from a mapped lane.
 
 **Onboarding defaults: ramp guessing and split fixes — 2026-09-24.** Every
 onboarding (`microsim.scenarios.corridor_from_bbox`, so
@@ -1200,8 +1208,13 @@ and a caller's own `--ramps.ramp-length` wins. After the split audit a
 → `<workdir>/net/extract.splits.con.xml`; the API job →
 `<data root>/osm/<name>.splits.con.xml` beside the installed extract,
 `api.onboarding_jobs.split_patch_path`, registered for the failure cleanup
-like the extract; `--write-split-patch PATH` / `split_patch_path=` choose
-another place, refused together with `--no-split-fixes`, exit 2), adds it to
+like the extract, and registered only when no file was there, so a failed
+job never deletes one it found; `--write-split-patch PATH` /
+`split_patch_path=` choose another place, refused together with
+`--no-split-fixes`, exit 2; a default-path patch already there whose
+connection lines differ — another corridor's, from the same `--osm-file` —
+is left alone and the new one goes to `<extract stem>.<scenario
+name>.splits.con.xml`, `apply_split_fixes(fallback_path=)`), adds it to
 `patch_files` and `--ramps.unset <edge>` to `netconvert_extra`, re-imports
 and audits again. `CorridorBuild` keeps both audits — `split_audit` is the
 network the scenario compiles, `split_audit_before_fixes` the one the fixes

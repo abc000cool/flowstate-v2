@@ -24,24 +24,30 @@ each); no SUMO simulation is started.
 from __future__ import annotations
 
 import importlib.util
+import math
 import shutil
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+import sumolib
 import yaml
 
 from flowstate_core.config import OSMNetwork, ScenarioConfig
 from microsim.networks import osm_import
 from microsim.scenarios import (
     RAMP_GUESSING_OPTIONS,
+    CorridorBuild,
     apply_split_fixes,
     corridor_from_bbox,
     default_split_patch_path,
     with_ramp_guessing,
 )
 from microsim.split_audit import (
+    OSMGraph,
+    OSMWay,
     SplitFinding,
     audit_splits,
     compiled_side,
@@ -273,11 +279,11 @@ class TestSideComputationOnTheFixture:
         right, left = findings
         assert right.turn_lanes_side == "right" and left.turn_lanes is None
         assert all(f.added_lane == bool(extra) for f in findings)
-        # a left exit's patch puts the exit on the LEFTMOST lane and the rest
-        # continue in order
-        assert connection_patch_lines(left)[-1].endswith(
-            f'to="401" fromLane="{left.compiled_lanes - 1}" toLane="0"/>'
-        )
+        # a left exit's patch puts the exit on the LEFTMOST lane of the
+        # load-time edge (a guessed piece has one lane more than the way it
+        # was split from) and the rest continue in order
+        assert left.load_time_lanes == 3 and left.is_ramp_split_piece == bool(extra)
+        assert connection_patch_lines(left)[-1].endswith('to="401" fromLane="2" toLane="0"/>')
         assert connection_patch_lines(right)[0].endswith('to="400" fromLane="0" toLane="0"/>')
 
 
@@ -539,3 +545,352 @@ class TestOnboardingPath:
         assert code == cli.BAD_USAGE_EXIT == 2
         assert "--write-split-patch" in out and "--no-split-fixes" in out
         assert "scenario" not in out
+
+
+def _fixture_variant(tmp_path: Path, name: str, *edits: tuple[str, str]) -> Path:
+    """The synthetic fixture with string edits applied, written under ``tmp_path``."""
+    text = FIXTURE.read_text()
+    for old, new in edits:
+        assert old in text, old
+        text = text.replace(old, new)
+    out = tmp_path / name
+    out.write_text(text)
+    return out
+
+
+def _both_exits_at_node_2(tmp_path: Path) -> Path:
+    """The fixture with its left exit moved to node 2, beside the right one."""
+    return _fixture_variant(
+        tmp_path,
+        "both.osm",
+        ('<nd ref="4"/><nd ref="30"/><nd ref="31"/>', '<nd ref="2"/><nd ref="32"/><nd ref="33"/>'),
+        (
+            '  <node id="31" lat="40.0015" lon="-95.9740"/>',
+            '  <node id="31" lat="40.0015" lon="-95.9740"/>\n'
+            '  <node id="32" lat="40.0006" lon="-95.9900"/>\n'
+            '  <node id="33" lat="40.0015" lon="-95.9860"/>',
+        ),
+    )
+
+
+def _connections(net_path: Path, from_edge: str) -> dict[str, list[tuple[int, int]]]:
+    net = sumolib.net.readNet(str(net_path))
+    return {
+        to.getID(): sorted((c.getFromLane().getIndex(), c.getToLane().getIndex()) for c in cs)
+        for to, cs in net.getEdge(from_edge).getOutgoing().items()
+    }
+
+
+def _synthetic_graph(bearing_deg: float, *, fork_first: bool) -> OSMGraph:
+    """A mainline of three nodes along ``bearing_deg`` with a right link and a
+    left link leaving the middle node; with ``fork_first`` a second MOTORWAY
+    (not a link) leaves the node to the right and is listed before the
+    continuing way in the extract."""
+    lat0, lon0 = 40.0, -96.0
+    m_lat = 110_574.0
+    m_lon = 111_320.0 * math.cos(math.radians(lat0))
+    th = math.radians(bearing_deg)
+    fwd, right = (math.sin(th), math.cos(th)), (math.cos(th), -math.sin(th))
+
+    def node(along: float, lateral_right: float) -> tuple[float, float]:
+        x = along * fwd[0] + lateral_right * right[0]
+        y = along * fwd[1] + lateral_right * right[1]
+        return (lat0 + y / m_lat, lon0 + x / m_lon)
+
+    nodes = {
+        "1": node(0, 0),
+        "2": node(500, 0),
+        "3": node(1000, 0),
+        "4": node(1500, 0),
+        "20": node(600, 30),
+        "21": node(800, 80),
+        "30": node(600, -30),
+        "31": node(800, -80),
+        "40": node(600, 30),
+        "41": node(800, 120),
+    }
+    motorway = {"highway": "motorway", "oneway": "yes", "lanes": "3"}
+    link = {"highway": "motorway_link", "oneway": "yes", "lanes": "1"}
+    ways: dict[str, OSMWay] = {}
+    if fork_first:
+        ways["299"] = OSMWay("299", ("2", "40", "41"), {**motorway, "lanes": "2"})
+    ways["300"] = OSMWay("300", ("1", "2"), motorway)
+    ways["301"] = OSMWay("301", ("2", "3", "4"), motorway)
+    ways["400"] = OSMWay("400", ("2", "20", "21"), link)
+    ways["401"] = OSMWay("401", ("2", "30", "31"), link)
+    return OSMGraph(nodes=nodes, ways=ways)
+
+
+class TestReviewFindings:
+    """The 2026-09-24 adversarial review of the audit and the fixes."""
+
+    @pytest.mark.parametrize("bearing", [0, 45, 90, 135, 180, 225, 270, 315, 179, 181])
+    def test_the_sign_convention_holds_in_every_heading(self, bearing: float) -> None:
+        graph = _synthetic_graph(bearing, fork_first=False)
+        assert osm_exit_side(graph, "300", "400") == ("right", (-30.0, -80.0))
+        assert osm_exit_side(graph, "300", "401") == ("left", (30.0, 80.0))
+
+    @pytest.mark.parametrize("bearing", [90, 270])
+    def test_a_fork_listed_first_is_not_taken_for_the_mainline(self, bearing: float) -> None:
+        """Continuing way unknown (the corridor ends at the node): the
+        straightest same-class way is the mainline, not the first in file
+        order — which was the fork branch, and flipped the right link to left."""
+        graph = _synthetic_graph(bearing, fork_first=True)
+        assert osm_exit_side(graph, "300", "400") == ("right", (-30.0, -80.0))
+        assert osm_exit_side(graph, "300", "401") == ("left", (30.0, 80.0))
+        # the fork branch itself audits as a right exit against the mainline
+        assert osm_exit_side(graph, "300", "299") == ("right", (-30.0, -120.0))
+        # and a named continuing way is still taken as given
+        assert osm_exit_side(graph, "300", "400", continuing_way_id="301")[0] == "right"
+
+    def test_the_patch_comment_never_carries_a_double_hyphen(self, tmp_path: Path) -> None:
+        """netconvert refuses an XML comment containing ``--``; a scenario
+        name is free text and reaches the comment through ``note``."""
+        chain = ("300", "301", "302", "303")
+        bundle = osm_import(
+            osm_file=FIXTURE,
+            corridor_edges=chain,
+            workdir=tmp_path / "plain",
+            keep_edges=("400", "401"),
+        )
+        right, _left = audit_splits(bundle.net_path, FIXTURE, chain)
+        forced = replace(right, verdict="wrong_side")
+        xml = split_patch_xml([forced], note="scenario i94--wb --> x")
+        assert xml.count("--") == 2  # the comment's own <!-- and -->
+        assert "i94-wb" in xml and ">" not in xml.split("-->")[0][4:]
+        patch = tmp_path / "note.con.xml"
+        patch.write_text(xml)
+        osm_import(
+            osm_file=FIXTURE,
+            corridor_edges=chain,
+            workdir=tmp_path / "noted",
+            keep_edges=("400", "401"),
+            patch_files=[patch],
+        )
+
+    def test_an_untagged_split_that_keeps_its_lanes_is_an_option_lane(self, tmp_path: Path) -> None:
+        """Three lanes into three with a one-lane exit and no ``turn:lanes``:
+        the exit lane also continues, as netconvert itself compiles it; a
+        tagged exit-only lane (``none|none|slight_right``) stays exit-only."""
+        chain = ("300", "301", "302", "303")
+        bundle = osm_import(
+            osm_file=FIXTURE, corridor_edges=chain, workdir=tmp_path, keep_edges=("400", "401")
+        )
+        right, left = audit_splits(bundle.net_path, FIXTURE, chain)
+        assert connection_patch_lines(left) == [
+            '  <connection from="302" to="303" fromLane="0" toLane="0"/>',
+            '  <connection from="302" to="303" fromLane="1" toLane="1"/>',
+            '  <connection from="302" to="303" fromLane="2" toLane="2"/>',
+            '  <connection from="302" to="401" fromLane="2" toLane="0"/>',
+        ]
+        assert connection_patch_lines(right) == [
+            '  <connection from="300" to="400" fromLane="0" toLane="0"/>',
+            '  <connection from="300" to="301" fromLane="1" toLane="0"/>',
+            '  <connection from="300" to="301" fromLane="2" toLane="1"/>',
+        ]
+
+    def test_a_restated_split_keeps_the_other_exit_of_the_same_edge(self, tmp_path: Path) -> None:
+        """A right and a left exit at one node: restating the right one alone
+        made netconvert drop every computed connection of the edge, so the
+        left exit lost its way in (found by the review); the patch now repeats
+        the sibling as compiled, and both survive the compile."""
+        osm = _both_exits_at_node_2(tmp_path)
+        chain = ("300", "301", "302", "303")
+        bundle = osm_import(
+            osm_file=osm,
+            corridor_edges=chain,
+            workdir=tmp_path / "plain",
+            keep_edges=("400", "401"),
+        )
+        assert _connections(bundle.net_path, "300") == {
+            "400": [(0, 0)],
+            "301": [(0, 0), (1, 1), (2, 2)],
+            "401": [(2, 0)],
+        }
+        findings = audit_splits(bundle.net_path, osm, chain)
+        assert [(f.exit_edge, f.verdict, f.exit_connections) for f in findings] == [
+            ("400", "ok", ((0, 0),)),
+            ("401", "ok", ((2, 0),)),
+        ]
+        right, left = findings
+        xml = split_patch_xml([replace(right, verdict="wrong_side"), left])
+        assert '<connection from="300" to="401" fromLane="2" toLane="0"/>' in xml
+        assert xml.count("<connection ") == 4
+        patch = tmp_path / "both.con.xml"
+        patch.write_text(xml)
+        patched = osm_import(
+            osm_file=osm,
+            corridor_edges=chain,
+            workdir=tmp_path / "patched",
+            keep_edges=("400", "401"),
+            patch_files=[patch],
+        )
+        assert _connections(patched.net_path, "300") == {
+            "400": [(0, 0)],
+            "301": [(1, 0), (2, 1)],
+            "401": [(2, 0)],
+        }
+        assert [(f.exit_edge, f.verdict) for f in audit_splits(patched.net_path, osm, chain)] == [
+            ("400", "ok"),
+            ("401", "ok"),
+        ]
+
+    def test_a_wrong_side_piece_is_patched_at_load_time_and_unset(self, tmp_path: Path) -> None:
+        """A ``wrong_side`` finding on a ``-AddedOffRampEdge`` piece (possible
+        when the way has no ``lanes`` tag): the piece has the guessed lane on
+        top of the load-time edge, so a patch with its lane count named a lane
+        the edge does not have at load time and netconvert refused it
+        ("Could not insert connection ... after build"); with the load-time
+        count alone, guessing rebuilt the piece over the patch and moved the
+        exit again. The patch uses the load-time count and the edge goes into
+        ``--ramps.unset``; compiled together the exit sits where drawn."""
+        chain = ("300", "301", "302", "303")
+        guessed = osm_import(
+            osm_file=FIXTURE,
+            corridor_edges=chain,
+            workdir=tmp_path / "guess",
+            keep_edges=("400", "401"),
+            netconvert_extra=("--ramps.guess",),
+        )
+        right, left = audit_splits(guessed.net_path, FIXTURE, chain)
+        assert left.from_edge == "302-AddedOffRampEdge" and left.compiled_lanes == 4
+        forced = replace(left, verdict="wrong_side")
+        assert ramps_unset_edges([forced, right]) == ["302"]
+        lines = connection_patch_lines(forced)
+        assert lines[-1] == '  <connection from="302" to="401" fromLane="2" toLane="0"/>'
+        assert all('from="302"' in line for line in lines) and len(lines) == 4
+        patch = tmp_path / "piece.con.xml"
+        patch.write_text(split_patch_xml([forced, right]))
+        # the patch alone: guessing rebuilds the piece over it and the exit
+        # lands on the piece's lane 2 of 4 — still a defect
+        alone = osm_import(
+            osm_file=FIXTURE,
+            corridor_edges=chain,
+            workdir=tmp_path / "patch_only",
+            keep_edges=("400", "401"),
+            patch_files=[patch],
+            netconvert_extra=("--ramps.guess",),
+        )
+        after = audit_splits(alone.net_path, FIXTURE, chain)
+        assert (after[1].from_edge, after[1].exit_from_lanes, after[1].verdict) == (
+            "302-AddedOffRampEdge",
+            (2,),
+            "added_lane_wrong_side",
+        )
+        fixed = osm_import(
+            osm_file=FIXTURE,
+            corridor_edges=chain,
+            workdir=tmp_path / "fixed",
+            keep_edges=("400", "401"),
+            patch_files=[patch],
+            netconvert_extra=("--ramps.guess", "--ramps.unset", "302"),
+        )
+        assert [
+            (f.from_edge, f.exit_edge, f.compiled_lanes, f.exit_from_lanes, f.verdict)
+            for f in audit_splits(fixed.net_path, FIXTURE, chain)
+        ] == [
+            ("300-AddedOffRampEdge", "400", 4, (0,), "ok"),
+            ("302", "401", 3, (2,), "ok"),
+        ]
+
+    def test_connection_patch_lines_on_one_lane_severs_nothing(self) -> None:
+        """Not reachable from the audit (a one-lane edge feeding its exit is
+        ``all``, never a defect) but a public function: the single lane both
+        exits and continues rather than leaving the mainline unconnected."""
+        finding = SplitFinding(
+            from_edge="a",
+            exit_edge="x",
+            continuing_edge="b",
+            x_m=0.0,
+            osm_way="a",
+            osm_lanes=1,
+            turn_lanes=None,
+            turn_lanes_side="unknown",
+            osm_side="right",
+            osm_offsets_m=(-5.0,),
+            compiled_lanes=1,
+            exit_from_lanes=(0,),
+            compiled_side="all",
+            option_lanes=(),
+            added_lane=False,
+            exit_lanes=1,
+            continuing_lanes=1,
+            verdict="ok",
+            remedy="",
+        )
+        assert connection_patch_lines(finding) == [
+            '  <connection from="a" to="x" fromLane="0" toLane="0"/>',
+            '  <connection from="a" to="b" fromLane="0" toLane="0"/>',
+        ]
+
+
+@mndot_files
+class TestReviewFindingsOnTheCommittedExtract:
+    def test_a_callers_ramps_unset_in_equals_form_is_merged_not_repeated(
+        self, tmp_path: Path
+    ) -> None:
+        """netconvert refuses a second ``--ramps.unset`` ("a value for the
+        option 'ramps.unset' was already set"); the fixes merge into the
+        caller's list whichever form it came in."""
+        extract = _extract_copy(tmp_path)
+        build = corridor_from_bbox(
+            "split_eq",
+            MNDOT_BBOX,
+            MNDOT_BEARING,
+            inflow=1.0,
+            workdir=tmp_path / "work",
+            osm_file=extract,
+            duration_s=60.0,
+            netconvert_extra=("--ramps.unset=45608485",),
+            max_chain_m=MNDOT_CHAIN_CAP_M,
+        )
+        network = build.config.network
+        assert isinstance(network, OSMNetwork)
+        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset=45608485,1001426896"]
+        assert build.split_fixes_applied == 2 and build.split_defects() == []
+
+    def test_two_corridors_from_one_extract_do_not_overwrite_each_others_patch(
+        self, tmp_path: Path
+    ) -> None:
+        """The default patch path is named after the extract, so a second
+        corridor onboarded from the same ``--osm-file`` would have replaced
+        the first one's patch and silently changed what the first scenario
+        compiles. A patch already there that states other connections is left
+        alone and the new one is named by corridor; one stating the same
+        connections is shared."""
+        extract = _extract_copy(tmp_path)
+        default = tmp_path / "osm" / "mndot_i94_wb_stpaul.splits.con.xml"
+        foreign = (
+            "<!-- corridor A -->\n<connections>\n"
+            '  <connection from="1" to="2" fromLane="0" toLane="0"/>\n'
+            "</connections>\n"
+        )
+        default.write_text(foreign)
+
+        def _build(name: str) -> CorridorBuild:
+            return corridor_from_bbox(
+                name,
+                MNDOT_BBOX,
+                MNDOT_BEARING,
+                inflow=1.0,
+                workdir=tmp_path / "work" / name,
+                osm_file=extract,
+                duration_s=60.0,
+                max_chain_m=MNDOT_CHAIN_CAP_M,
+            )
+
+        build_b = _build("split_b")
+        by_name = tmp_path / "osm" / "mndot_i94_wb_stpaul.split_b.splits.con.xml"
+        assert default.read_text() == foreign
+        assert build_b.split_patch_file == by_name and by_name.is_file()
+        network = build_b.config.network
+        assert isinstance(network, OSMNetwork)
+        assert network.patch_files == [str(by_name)] and build_b.split_defects() == []
+
+        # the same connections already there: shared, not renamed
+        default.unlink()
+        shutil.copyfile(by_name, default)
+        build_c = _build("split_c")
+        assert build_c.split_patch_file == default
+        assert build_c.config.network.patch_files == [str(default)]
+        assert not (tmp_path / "osm" / "mndot_i94_wb_stpaul.split_c.splits.con.xml").exists()
