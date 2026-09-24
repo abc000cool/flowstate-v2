@@ -273,7 +273,14 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     derivation, 2026-09-24 block 3) counts exit-bound vehicles the runner
     rerouted through at the gore's end, halted still owing their change with
     no more than ``exit_giveup_m`` of section ahead — a subset of ``n_missed``;
-    ``None`` for a meta written before the rule existed.
+    ``None`` for a meta written before the rule existed. Two keys that are
+    not counters (2026-09-24, block 3): ``short_section`` is true for a
+    section shorter than twice ``force_within_m`` (flagged, not scaled;
+    ``microsim.runner._weave_short_section_rule``) and
+    ``vacate_window_edges`` lists the corridor edges the cross-edge vacate
+    window reaches, nearest the section first (``[]`` = the rule is inert).
+    Both are ``None`` for a meta written before them; the sweep aggregates
+    neither.
     """
 
     ramp: str
@@ -298,6 +305,8 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_vacate_requests: int | None = None
     n_pair_releases: int | None = None
     n_missed_exit: int | None = None
+    short_section: bool | None = None
+    vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None
     wait_in_s_mean: float | None = None
     wait_out_s_mean: float | None = None

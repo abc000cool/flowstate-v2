@@ -448,12 +448,21 @@ follower yields) instead of a mode-512 request, which SUMO refused while a
 through-lane follower was closing from far back and answered by braking the
 entering vehicle to drop in behind it; a step with no request puts the
 vehicle back on mode 512. Golden `merge_weave` regenerated for this change.
-`meta.json["weave_sections"]` lists per section `ramp, exit, edges,
-exit_edge, exit_edges, length_m, length_m_measured, params, n_entered,
-n_changed_in, n_changed_out, n_forced, n_missed, n_forced_deferred,
-n_unfinished, n_exited, n_reached_section_exiting, n_departed_exiting,
-wait_s_mean, wait_in_s_mean, wait_out_s_mean`
-(`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`).
+`meta.json["weave_sections"]` lists per section, in `_weave_meta`'s order
+(the list brought in line with the code on 2026-09-24, block 3, after the
+derivations below each added keys): `ramp, exit, edges, exit_edge,
+exit_edges, length_m, length_m_measured, params, short_section,
+vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
+n_missed, n_missed_exit, n_forced_deferred, n_cooperations,
+mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
+n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
+n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
+wait_in_s_mean, wait_out_s_mean` — 32 keys
+(`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
+`n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
+n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
+of the section, not counters; each dated block below names the derivation
+that added its keys.
 Exit counting (2026-09-24, review finding): an exit-bound vehicle (route
 `*_off<j>`) is `n_exited` once when seen on **any** edge of the paired
 off-ramp (`exit_edges` = its `RampSpec.edges`) or when, having reached the
@@ -816,8 +825,9 @@ Short sections (2026-09-24, block 3): a section shorter than the fixed
 forced-zone defaults fit — less than one zone length of cooperative stretch
 before the zone, `length_m < 2 · force_within_m` (160 m at the defaults),
 `microsim.runner._weave_short_section_rule` — is **flagged**, not scaled:
-`weave_sections[i]` gains `short_section: bool` (additive; the API schema
-ignores it, an older meta lacks it) and the forced zone and its delay stay
+`weave_sections[i]` gains `short_section: bool` (additive; an older meta
+lacks it; carried by `WeaveSectionDiagnosticsOut` as `bool | null` since
+2026-09-24 block 3, not aggregated by the sweep) and the forced zone and its delay stay
 the fixed `force_within_m` / `force_after_s` on every section. The fixture
 `tests/fixtures/weave_ruth.osm` is the Ruth St twin (entrance 745524613 →
 C-D split 18208090, docs/ONBOARDING_MNDOT.md §11a–§11b: three through lanes,
@@ -927,8 +937,9 @@ step. The request logic — one ask per vehicle, mode 512 by default, the
 gap-conditioned option under 768, the spare-capacity bound, the counters —
 is unchanged, and at `vacate_ahead_m = 150` the runner reproduces the
 previous numbers exactly. `weave_sections[i]` gains `vacate_window_edges`
-(the corridor edges the window reaches, nearest first; `[]` = inert; not in
-`WeaveSectionDiagnosticsOut`). The default: 150 m was the HCM 7th ed. ch. 13
+(the corridor edges the window reaches, nearest first; `[]` = inert; carried
+by `WeaveSectionDiagnosticsOut` as `list[str] | null` since 2026-09-24 block
+3, not aggregated by the sweep). The default: 150 m was the HCM 7th ed. ch. 13
 weaving segment's 500-ft influence area, where the segment's own gap
 search binds; a through driver moves left where the advance signage tells
 him to, and the MUTCD (2009 ed., §2E.33, Advance Guide Signs) places the
@@ -1851,7 +1862,20 @@ of the end — a subset of `n_missed`), null for a meta written before the
 rule and not shown by the dashboard; the sweep summary's `diagnostics`
 block aggregates all seven the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
-and its console line prints them. The field
+and its console line prints them. Amended 2026-09-24 (block 3, the schema
+brought in line with `_weave_meta`): `WeaveSectionDiagnosticsOut` also
+carries `n_vacate_skipped_no_gap` and `n_vacate_requests` (the re-derived
+vacate rule: through vehicles that crossed the window never asked, each
+once, and the requests made in vehicle-steps; null for a meta written
+before; aggregated by `WEAVE_FIELDS` and printed by the console line, not
+shown by the dashboard), and the two per-section facts that are not
+counters: `short_section: bool | null` (the section is shorter than twice
+`force_within_m`, flagged not scaled) and `vacate_window_edges: list[str] |
+null` (the corridor edges the cross-edge vacate window reaches, nearest the
+section first; `[]` = inert) — null for a meta written before them, not
+aggregated by the sweep (they are not numeric), not shown by the dashboard.
+`params`, `edges`, `exit_edge`, `exit_edges` and `length_m_measured` stay in
+the meta only. The field
 is `null` when
 the run has neither list or both are empty (every ring and plain corridor
 run), when the meta cannot be read, and when an entry lacks the counters the

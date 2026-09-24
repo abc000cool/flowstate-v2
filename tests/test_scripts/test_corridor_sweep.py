@@ -136,7 +136,17 @@ def _meta(cell: str, seed: int) -> dict[str, Any]:
                 "rates": [],
             }
         ],
-        "weave_sections": [{"ramp": "old_hickory", "exit": "bell", **WEAVE[seed]}],
+        # short_section and vacate_window_edges are per-section facts, not
+        # counters: a meta carries them, the aggregate (WEAVE_FIELDS) never does.
+        "weave_sections": [
+            {
+                "ramp": "old_hickory",
+                "exit": "bell",
+                "short_section": False,
+                "vacate_window_edges": ["e0", "e-1"],
+                **WEAVE[seed],
+            }
+        ],
     }
 
 
