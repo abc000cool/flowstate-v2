@@ -798,8 +798,8 @@ config hash 0901cc8beaff — the §11 inputs with the lane-change settings still
 reset to the builder's defaults, and the runner at commit 42ce900, i.e. the
 second weave derivation with the cooperative follower).** Departed share
 mean 0.233 (lowest 0.184), eight starved entrances including the
-collector–distributor re-entry; speed RMSPE 0.968; GEH < 5 on a share of
-None of 840 link-hours; the "wave speed" of 7.5 km/h is again the queue
+collector–distributor re-entry; speed RMSPE 0.968 (95 % interval 0.956–0.981); GEH < 5 on a share of
+0.000 of 840 link-hours; the "wave speed" of 7.5 km/h is again the queue
 front. Worse than the 0.444 of the old inputs and the first derivation: the
 reset lane-change settings (keep-right 1.0 pushes through traffic into the
 merge lanes) and the added C-D re-entry demand both weigh on the same
