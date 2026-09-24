@@ -534,7 +534,7 @@ committed file named in parentheses.
   probes and fixed two divergences on inputs the runner never produces (NaN
   timestamps, missing vehicle ids). The report's run set is the battery's own
   config-hash tree, so ring-benchmark runs are no longer report groups.
-- **Hosted tester:** unchanged in the tree since 2.4.0 — docs/HOSTED_TESTER.md
+- **Hosted tester:** redeployed three times during the day from the pushed `HEAD` (revisions 00003–00005: the split-audit and merge-diagnostics panels, the onboarding opt-outs, the block-3 dashboard changes) with `scripts/gcp/deploy_cloud_run.sh`; the service record is docs/HOSTED_TESTER.md.
   records revisions 00001–00002 and the `/health` alias (pending: no later
   revision of the service is committed).
 
