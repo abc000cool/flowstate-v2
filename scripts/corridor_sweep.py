@@ -8,7 +8,14 @@ list, so per-seed deltas against the baseline are paired. Each run stores
 warm-up discarded per the run's config) and drops its trajectories unless
 ``--keep-trajectories``. The summary (``--summary``) carries per-cell marginal
 95 % t-CIs, paired deltas versus baseline with 95 % CIs, every config hash and
-the metric arguments — the only source for numbers quoted in documents.
+the metric arguments — the only source for numbers quoted in documents. When a
+run directory also holds its ``meta.json`` (the pipeline archives it beside
+``metrics.json``), each cell carries a ``diagnostics`` block: per ramp meter
+(keyed by ramp) the seed mean, 95 % t-interval and n of ``n_released``,
+``n_passed_unstoppable`` and the share ``n_passed_unstoppable / (n_released +
+n_passed_unstoppable)``; per weaving section (keyed by on-ramp) the same for
+its counters and mean wait. Runs without ``meta.json`` contribute nothing and
+``n_runs_with_meta`` says how many did.
 
 Strategies:
   ``none``    the scenario as calibrated;
@@ -97,6 +104,138 @@ def _done(root: Path, cell_name: str, chash: str, seed: int) -> bool:
     return (d / "meta.json").is_file() and (d / "metrics.json").is_file()
 
 
+#: ``meta.json["ramp_meters"][i]`` counters aggregated per ramp meter.
+METER_COUNTERS = ("n_released", "n_passed_unstoppable")
+#: ``meta.json["weave_sections"][i]`` fields aggregated per weaving section
+#: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections).
+WEAVE_FIELDS = (
+    "n_entered",
+    "n_exited",
+    "n_reached_section_exiting",
+    "n_forced",
+    "n_forced_deferred",
+    "n_unfinished",
+    "wait_s_mean",
+)
+
+
+def _ci(vals: list[float]) -> dict[str, Any]:
+    """Mean with its 95 % t-interval over the finite values (n = 1 gives a nan half-width)."""
+    import numpy as np
+    from scipy import stats
+
+    arr = np.asarray(vals, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    n = len(arr)
+    if n == 0:
+        return {"mean": None, "lo95": None, "hi95": None, "n": 0}
+    mean = float(arr.mean())
+    half = (
+        float(stats.t.ppf(0.975, n - 1) * arr.std(ddof=1) / np.sqrt(n)) if n > 1 else float("nan")
+    )
+    return {
+        "mean": mean,
+        "lo95": mean - half,
+        "hi95": mean + half,
+        "n": n,
+        "underpowered": n < 20,
+    }
+
+
+def _num(value: Any) -> float:
+    """A meta counter as a float; ``None`` (a section with no wait) becomes nan and is skipped."""
+    return float("nan") if value is None else float(value)
+
+
+def diagnostics_block(metas: list[dict[str, Any]]) -> dict[str, Any]:
+    """The ``diagnostics`` entry of one cell from the ``meta.json`` of its runs.
+
+    ``ramp_meters`` is keyed by ramp name and carries, per counter of
+    :data:`METER_COUNTERS`, the seed mean with its 95 % t-interval and n
+    (:func:`_ci`), plus ``share_passed_unstoppable`` = ``n_passed_unstoppable /
+    (n_released + n_passed_unstoppable)`` per seed (a seed on which the meter
+    saw no vehicle contributes nothing to the share). ``weave_sections`` is
+    keyed by on-ramp and carries :data:`WEAVE_FIELDS` the same way. A ramp
+    absent from one seed's meta is aggregated over the seeds that have it.
+
+    Args:
+        metas: Parsed ``meta.json`` of the cell's runs that have one.
+
+    Returns:
+        ``{"n_runs_with_meta", "ramp_meters", "weave_sections"}``; the two
+        maps are empty when no run has a meta or the metas carry no such block.
+    """
+    meter_vals: dict[str, dict[str, list[float]]] = {}
+    meter_ctl: dict[str, str | None] = {}
+    for meta in metas:
+        for ms in meta.get("ramp_meters") or []:
+            name = str(ms.get("ramp"))
+            store = meter_vals.setdefault(name, {k: [] for k in (*METER_COUNTERS, "share")})
+            meter_ctl.setdefault(name, ms.get("controller"))
+            released = _num(ms.get("n_released"))
+            passed = _num(ms.get("n_passed_unstoppable"))
+            store["n_released"].append(released)
+            store["n_passed_unstoppable"].append(passed)
+            total = released + passed
+            store["share"].append(passed / total if total > 0 else float("nan"))
+    weave_vals: dict[str, dict[str, list[float]]] = {}
+    for meta in metas:
+        for ws in meta.get("weave_sections") or []:
+            name = str(ws.get("ramp"))
+            store = weave_vals.setdefault(name, {k: [] for k in WEAVE_FIELDS})
+            for k in WEAVE_FIELDS:
+                store[k].append(_num(ws.get(k)))
+    return {
+        "n_runs_with_meta": len(metas),
+        "ramp_meters": {
+            name: {
+                "controller": meter_ctl[name],
+                **{k: _ci(vals[k]) for k in METER_COUNTERS},
+                "share_passed_unstoppable": _ci(vals["share"]),
+            }
+            for name, vals in sorted(meter_vals.items())
+        },
+        "weave_sections": {
+            name: {k: _ci(vals[k]) for k in WEAVE_FIELDS}
+            for name, vals in sorted(weave_vals.items())
+        },
+    }
+
+
+def _fmt_ci(c: dict[str, Any], digits: int = 1, scale: float = 1.0) -> str:
+    """``mean [lo, hi] (n)`` of one :func:`_ci` entry for the console; ``—`` when empty."""
+    if c["n"] == 0:
+        return "—"
+    return (
+        f"{c['mean'] * scale:.{digits}f} [{c['lo95'] * scale:.{digits}f}, "
+        f"{c['hi95'] * scale:.{digits}f}] (n={c['n']})"
+    )
+
+
+def print_diagnostics(summary: dict[str, Any]) -> None:
+    """Print each cell's ramp-meter and weaving-section diagnostics, when any run had a meta."""
+    for cell, entry in summary["cells"].items():
+        diag = entry.get("diagnostics")
+        if not diag or diag["n_runs_with_meta"] == 0:
+            continue
+        n_seeds = entry["aggregate"][FIELDS[0]]["n"]
+        print(f"  diagnostics {cell} (meta in {diag['n_runs_with_meta']}/{n_seeds} runs):")
+        for ramp, m in diag["ramp_meters"].items():
+            print(
+                f"    meter {ramp} ({m['controller']}): released {_fmt_ci(m['n_released'])}, "
+                f"passed unstoppable {_fmt_ci(m['n_passed_unstoppable'])}, "
+                f"share {_fmt_ci(m['share_passed_unstoppable'], 2, 100.0)} %"
+            )
+        for ramp, w in diag["weave_sections"].items():
+            print(
+                f"    weave {ramp}: entered {_fmt_ci(w['n_entered'])}, "
+                f"exited {_fmt_ci(w['n_exited'])}, "
+                f"reached (exiting) {_fmt_ci(w['n_reached_section_exiting'])}, "
+                f"forced {_fmt_ci(w['n_forced'])}, deferred {_fmt_ci(w['n_forced_deferred'])}, "
+                f"unfinished {_fmt_ci(w['n_unfinished'])}, wait {_fmt_ci(w['wait_s_mean'])} s"
+            )
+
+
 def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str, Any]:
     import numpy as np
     from scipy import stats
@@ -104,9 +243,11 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
     manifest = json.loads((root / "MANIFEST.json").read_text())
     seeds = [int(s) for s in manifest["seeds"]]
     per_cell: dict[str, dict[int, dict[str, float]]] = {}
+    metas: dict[str, list[dict[str, Any]]] = {}
     missing: list[tuple[str, int]] = []
     for cell, chash in manifest["cells"].items():
         per_cell[cell] = {}
+        metas[cell] = []
         for seed in seeds:
             p = root / cell / chash / str(seed) / "metrics.json"
             if not p.is_file():
@@ -114,6 +255,9 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
                 continue
             m = json.loads(p.read_text())
             per_cell[cell][seed] = {f: float(m[f]) for f in FIELDS if f in m and m[f] is not None}
+            meta_path = p.with_name("meta.json")
+            if meta_path.is_file():
+                metas[cell].append(json.loads(meta_path.read_text()))
     incomplete = sorted({c for c, _ in missing})
     if missing and not allow_partial:
         raise SystemExit(
@@ -123,31 +267,11 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
         raise SystemExit("baseline cell incomplete; nothing to pair against")
     per_cell = {c: v for c, v in per_cell.items() if c not in incomplete}
 
-    def ci(vals: list[float]) -> dict[str, Any]:
-        arr = np.asarray(vals, dtype=float)
-        arr = arr[np.isfinite(arr)]
-        n = len(arr)
-        if n == 0:
-            return {"mean": None, "lo95": None, "hi95": None, "n": 0}
-        mean = float(arr.mean())
-        half = (
-            float(stats.t.ppf(0.975, n - 1) * arr.std(ddof=1) / np.sqrt(n))
-            if n > 1
-            else float("nan")
-        )
-        return {
-            "mean": mean,
-            "lo95": mean - half,
-            "hi95": mean + half,
-            "n": n,
-            "underpowered": n < 20,
-        }
-
     base = per_cell["baseline"]
     cells_out: dict[str, Any] = {}
     for cell, by_seed in per_cell.items():
         agg = {
-            f: ci([by_seed[s][f] for s in seeds if s in by_seed and f in by_seed[s]])
+            f: _ci([by_seed[s][f] for s in seeds if s in by_seed and f in by_seed[s]])
             for f in FIELDS
         }
         entry: dict[str, Any] = {
@@ -184,6 +308,7 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
                     "resolved": bool((mean - half) > 0 or (mean + half) < 0),
                 }
             entry["vs_baseline_paired"] = deltas
+        entry["diagnostics"] = diagnostics_block(metas[cell])
         cells_out[cell] = entry
     summary = {
         "experiment": manifest["experiment"],
@@ -235,6 +360,7 @@ def main() -> None:
     if args.analyze_only:
         s = analyze(root, args.summary, allow_partial=args.allow_partial)
         print(f"analysed {len(s['cells'])} cells; incomplete {s['incomplete_cells']}")
+        print_diagnostics(s)
         return
 
     if any(needs_target(s) for s in args.strategies) and args.rho_target_veh_km is None:
@@ -333,6 +459,7 @@ def main() -> None:
     print(f"runs done in {time.perf_counter() - t0:.0f} s; {n_fail} failed", flush=True)
     s = analyze(root, args.summary, allow_partial=True)
     print(f"summary → {args.summary}; incomplete cells: {s['incomplete_cells']}")
+    print_diagnostics(s)
 
 
 if __name__ == "__main__":

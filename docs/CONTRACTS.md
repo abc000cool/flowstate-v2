@@ -397,8 +397,10 @@ schema field changed (config hashes unchanged); on a single-edge ramp whose
 line is beyond every vehicle's braking distance the behaviour is identical
 to before (same releases). `RampMeterObs.queue_len` now counts every
 vehicle holding a stop assignment, including those still upstream of the
-last ramp edge (ALINEA does not read it). The fix is verified on synthetic
-ramp fixtures only; the I-24 ramps arm has not been rerun.
+last ramp edge (ALINEA does not read it). The fix was verified on synthetic
+ramp fixtures; the I-24 ramps arm was then rerun on 2026-09-24 (ALINEA alone,
+20 seeds paired, docs/I24_STRATEGIES.md dated section) with no ALINEA cell
+failing, though that round did not archive the meter counters.
 
 **Weaving sections: `RampSpec.merge = "weave"` and `WeaveSpec` (2026-09-23,
 docs/WEAVE_MODEL_PLAN.md §2(A)).** An entrance whose auxiliary lane also
@@ -1012,6 +1014,19 @@ re-simulating; trajectories are pruned to the first seed unless
   strategy beside the baseline row, and names the strategy in each cell's
   label. `frontend/src/api/types.ts` mirrors `SweepStrategy`,
   `CreateSweepRequest.strategies`/`alinea` and `SweepCell.strategy`.
+- **Sweep summary `diagnostics` (2026-09-24)**: every cell of a
+  `scripts/corridor_sweep.py` summary carries an additive `diagnostics` key,
+  `{n_runs_with_meta, ramp_meters, weave_sections}`, read from the runs'
+  archived `meta.json` (a run without one contributes nothing; the two maps
+  are empty and `n_runs_with_meta` is 0 on an archive that has none).
+  `ramp_meters[<ramp>]` = `{controller, n_released, n_passed_unstoppable,
+  share_passed_unstoppable}` and `weave_sections[<on-ramp>]` =
+  `{n_entered, n_exited, n_reached_section_exiting, n_forced,
+  n_forced_deferred, n_unfinished, wait_s_mean}`, each value a seed mean with
+  `lo95`/`hi95` (t-interval), `n` and `underpowered`, the share being
+  `n_passed_unstoppable / (n_released + n_passed_unstoppable)` per seed (a
+  seed on which the meter saw no vehicle is left out of the share). Every
+  pre-existing key of the summary is unchanged.
 
 ## Corridor onboarding from the dashboard — 2026-09-23
 
