@@ -792,6 +792,7 @@ class TestWeaveSchema:
             **SCRIPTED_MERGE_DEFAULTS,
             "exit_accept_gap_s": 0.6,
             "vacate_ahead_m": 150.0,
+            "pair_release_s": 2.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -804,6 +805,64 @@ class TestWeaveSchema:
         explicit = plain.model_dump(mode="json")
         explicit["network"]["ramps"][0]["weave"] = None
         assert config_hash(ScenarioConfig.model_validate(explicit)) == config_hash(plain)
+
+
+def _th52_config(seed: int) -> ScenarioConfig:
+    """The T.H.52 weave at capacity on ``tests/fixtures/weave_th52.osm``
+    (``TestWeaveRun.test_th52_weave_at_capacity_flows``): mainline 4,500 veh/h
+    with 25 % exiting, entrance 1,400 veh/h, 20 simulated minutes, step 0.5 s,
+    the fleet defaults."""
+    return ScenarioConfig.model_validate(
+        {
+            "name": "weave_th52",
+            "network": {
+                "kind": "osm",
+                "osm_file": str(Path(__file__).parents[1] / "fixtures" / "weave_th52.osm"),
+                "corridor_edges": ["100", "101", "102", "103", "104"],
+                "inflow": [[0.0, 4500.0 / 3600.0]],
+                "ramps": [
+                    {
+                        "kind": "on",
+                        "name": "th52",
+                        "edges": ["200"],
+                        "attach_edge": "102",
+                        "inflow": [[0.0, 1400.0 / 3600.0]],
+                        "merge": "weave",
+                        "weave": {"exit_ramp": "cd exit"},
+                    },
+                    {
+                        "kind": "off",
+                        "name": "cd exit",
+                        "edges": ["201"],
+                        "attach_edge": "102",
+                        "exit_fraction": [[0.0, 0.25]],
+                    },
+                ],
+            },
+            "sim": {"duration_s": 1200.0},
+            "seed": seed,
+        }
+    )
+
+
+def _th52_lane1_windows(paths, meta: dict) -> tuple[pd.Series, dict]:
+    """Mean speed of section lane 1 over its first 60 m per 60-s window after
+    a 120-s warm-up, and the state dict the assertions report."""
+    net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+    x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
+    df = pd.read_parquet(paths.trajectories)
+    start = df[
+        (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == 1)
+    ]
+    windows = start.groupby((start.t // 60.0).astype(int)).v.mean()
+    (ws,) = meta["weave_sections"]
+    (on_meta, _off_meta) = meta["ramps"]
+    state = {
+        "lane1_first60m_by_minute": {int(k): round(float(v), 1) for k, v in windows.items()},
+        "entrance_departed": (on_meta["n_departed"], on_meta["n_planned"]),
+        "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
+    }
+    return windows, state
 
 
 class TestWeaveRun:
@@ -914,10 +973,10 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, fourth "
-        "derivation): lane 1 at the section start flows at 6-13 m/s at seed 3 but the entrance "
-        "departs 325 of 466 (the ramp queues at 3.3 m/s over its first 100 m behind the "
-        "anticipation zone; the entrant-side rules tried either crawl or lock, see the plan)",
+        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, fifth "
+        "derivation): lane 1 at the section start flows at 6-12 m/s at seed 3, nothing locks "
+        "at seeds 3-5, but the entrance departs 395 of 466 against 419 required (the ramp "
+        "still queues at 4-5 m/s over its first 100 m)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -984,59 +1043,61 @@ class TestWeaveRun:
         only when the drop is needed within the horizon gives 400 of 466 at
         seeds 3 and 5 but locks at seed 4 (the plan's dated paragraph has
         the table), so the marker stays.
+
+        Fifth derivation (2026-09-24, block 3: easing only when needed,
+        ``0 < a_req``, with the ramp follower on, and a stopped
+        changer-follower pair released after ``pair_release_s`` = 2 s,
+        ``microsim.runner._weave_pair_release``): lane 1's first 60 m read
+        7.0, 8.2, 6.3, 8.8, 10.1, 9.4, 9.3, 8.1, 8.6, 10.2, 9.2, 12.2,
+        10.4, 7.8, 8.2, 8.6, 10.4, 11.6 m/s in minutes 2-19 (every window
+        above 5); the entrance departs 395 of 466 (85 %); 452 driven (211
+        in, 235 out, 20 forced, 6 unfinished); 310 of 323 exit-bound
+        vehicles that reach the section exit; 1,529 of 1,966 depart; no
+        collision; no pair is released at this seed. Without the release,
+        the "needed" condition with the ramp follower on locks at seeds 4
+        and 5 from minute 16 (a changer stopped at the gore with its gap's
+        follower held bumper to bumper behind it by its own cooperation
+        command; seed 5 with 10 collisions in the jam); with it neither
+        seed locks (392 and 389 of 466, 2 and 4 unfinished, 0 collisions;
+        ``test_th52_weave_at_capacity_does_not_lock`` pins that). The
+        entrance criterion (419) still fails at every seed, so the marker
+        stays.
         """
-        cfg = ScenarioConfig.model_validate(
-            {
-                "name": "weave_th52",
-                "network": {
-                    "kind": "osm",
-                    "osm_file": str(Path(__file__).parents[1] / "fixtures" / "weave_th52.osm"),
-                    "corridor_edges": ["100", "101", "102", "103", "104"],
-                    "inflow": [[0.0, 4500.0 / 3600.0]],
-                    "ramps": [
-                        {
-                            "kind": "on",
-                            "name": "th52",
-                            "edges": ["200"],
-                            "attach_edge": "102",
-                            "inflow": [[0.0, 1400.0 / 3600.0]],
-                            "merge": "weave",
-                            "weave": {"exit_ramp": "cd exit"},
-                        },
-                        {
-                            "kind": "off",
-                            "name": "cd exit",
-                            "edges": ["201"],
-                            "attach_edge": "102",
-                            "exit_fraction": [[0.0, 0.25]],
-                        },
-                    ],
-                },
-                "sim": {"duration_s": 1200.0},
-                "seed": 3,
-            }
-        )
-        paths = run_micro(cfg, 3, tmp_path / "th52")
+        paths = run_micro(_th52_config(3), 3, tmp_path / "th52")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
         assert 300.0 < ws["length_m"] < 315.0, ws["length_m"]
         assert meta["n_collisions"] == 0, meta["collisions"]
-        net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
-        x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
-        df = pd.read_parquet(paths.trajectories)
-        start = df[
-            (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == 1)
-        ]
-        windows = start.groupby((start.t // 60.0).astype(int)).v.mean()
+        windows, state = _th52_lane1_windows(paths, meta)
         (on_meta, _off_meta) = meta["ramps"]
-        state = {
-            "lane1_first60m_by_minute": {int(k): round(float(v), 1) for k, v in windows.items()},
-            "entrance_departed": (on_meta["n_departed"], on_meta["n_planned"]),
-            "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
-        }
         assert len(windows) == 18 and (windows > 5.0).all(), state
         assert on_meta["n_departed"] >= 0.9 * on_meta["n_planned"], state
         assert ws["n_missed"] == 0 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+
+    @pytest.mark.parametrize("seed", [4, 5])
+    def test_th52_weave_at_capacity_does_not_lock(self, tmp_path, seed):
+        """The seeds at which the fifth derivation's "ease only when needed"
+        condition locked the section before the pair release (2026-09-24,
+        block 3): from minute 16 lane 1 at the section start read 0.0 m/s to
+        the end, 25-38 driven vehicles were left unfinished and the entrance
+        departed 343 / 335 of 466 (seed 5 with 10 collisions in the jam). A
+        lock reads 0.0 m/s from its minute on and leaves the driven vehicles
+        of the jam unfinished; this pins its absence, not the entrance
+        criterion of ``test_th52_weave_at_capacity_flows`` (392 / 389 of 466
+        here against 419). Measured after the release: seed 4 lane 1 never
+        below 5.4 m/s, 2 of 501 unfinished, 9 pairs released; seed 5 one
+        minute at 5.0 m/s, 4 of 483 unfinished, 1 pair released; no
+        collision at either."""
+        paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        windows, state = _th52_lane1_windows(paths, meta)
+        (on_meta, _off_meta) = meta["ramps"]
+        assert meta["n_collisions"] == 0, meta["collisions"]
+        assert len(windows) == 18 and (windows > 2.0).all(), state
+        assert ws["n_missed"] == 0 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+        assert on_meta["n_departed"] >= 0.8 * on_meta["n_planned"], state
+        assert ws["n_pair_releases"] >= 1, state
 
     def test_unpaired_geometry_is_refused_with_the_edges(self, merge_osm, tmp_path):
         """The schema pairing holds (same attach edge) but lane 0 of 102 never
@@ -1201,6 +1262,10 @@ def _weave_state(**params) -> dict:
         "n_changer_eased": 0,
         "n_vacated": 0,
         "n_vacate_refused": 0,
+        # fifth derivation: stopped crossing pairs
+        "pair_since": {},
+        "pair_released": set(),
+        "n_pair_releases": 0,
         "step_s": 0.5,
         "waits_in_s": [],
         "waits_out_s": [],
@@ -1568,12 +1633,15 @@ class TestWeaveEasingFeasibility:
         t_a = 4.0
         assert _weave_easing_ok(10.0, 10.0, 8.0 - 0.99 * b * t_a * t_a / 2.0, 8.0, 40.0, b)
         assert not _weave_easing_ok(10.0, 10.0, 8.0 - 1.01 * b * t_a * t_a / 2.0, 8.0, 40.0, b)
-        # a faster leader opens the gap by itself: 13 − 5·4 < 0, a_req < 0
-        assert _weave_easing_ok(10.0, 15.0, -5.0, 8.0, 40.0, b)
+        # a faster leader opens the gap by itself: 13 − 5·4 < 0, a_req < 0 —
+        # feasible but not needed, so not eased (fifth derivation)
+        assert not _weave_easing_ok(10.0, 15.0, -5.0, 8.0, 40.0, b)
         # a slower leader adds the closing distance: 2·(13 + 5·2)/4 = 11.5
         assert not _weave_easing_ok(10.0, 5.0, -5.0, 8.0, 20.0, b)
-        # already clear by more than needed: nothing to drop, always feasible
-        assert _weave_easing_ok(10.0, 10.0, 20.0, 8.0, 1.0, b)
+        # already clear by more than needed: nothing to drop, not eased
+        assert not _weave_easing_ok(10.0, 10.0, 20.0, 8.0, 1.0, b)
+        # exactly the accepted gap at equal speed: a_req = 0, not needed
+        assert not _weave_easing_ok(10.0, 10.0, 8.0, 8.0, 40.0, b)
 
     def test_stopped_changer_uses_the_creep_floor(self):
         from microsim.runner import SCRIPTED_MERGE_CREEP_MS, _weave_easing_ok
@@ -1581,6 +1649,128 @@ class TestWeaveEasingFeasibility:
         # v_c = 0: t_a = remaining / creep, not a division by zero
         assert _weave_easing_ok(0.0, 0.0, -2.0, 2.0, 30.0 * SCRIPTED_MERGE_CREEP_MS, 1.67)
         assert not _weave_easing_ok(0.0, 0.0, -2.0, 2.0, 0.0, 1.67)
+
+
+class TestWeavePairRelease:
+    """``_weave_pair_release`` (fifth derivation, 2026-09-24 block 3): a changer
+    stopped at the section end with the follower of its committed gap standing
+    bumper to bumper behind it, both held for ever otherwise (the follower by
+    the changer's own cooperation command, the changer by the guard)."""
+
+    @staticmethod
+    def _stopped_pair(**params):
+        """Exiter ``e`` at 0.5 m before the section end in lane 1, stopped; the
+        follower ``f`` of its lane-0 gap 1.5 m behind its rear, stopped — an
+        exit-bound vehicle already in lane 0 (the fixture's lock pair), so it
+        is not itself driven."""
+        from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS
+
+        ws = _weave_state(**params)
+        ws["exiting_ids"] = frozenset({"e", "f"})
+        veh = _WeaveVehicle({"e": 0.0, "f": 0.0}, {("e", NEIGHBOR_RIGHT_FOLLOWERS): (("f", 1.5),)})
+        res = {"e": _res("b", 1, 99.5, 0.0), "f": _res("b", 0, 93.0, 0.0)}
+        return ws, veh, _WeaveMod(veh), res
+
+    def test_follower_released_after_pair_release_s_and_the_changer_forces_at_once(self):
+        from microsim.runner import LC_MODE_SCRIPTED_FORCE, _weave_step
+
+        ws, veh, mod, res = self._stopped_pair()
+        # e is taken under control at t = 0 (its commitment to f exists from
+        # then on), the pair stands from t = 0.5 and is released once it has
+        # stood for more than pair_release_s = 2 s: at t = 3.0
+        for t in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5):
+            veh.calls.clear()
+            _weave_step(mod, _tc, ws, res, t)
+            assert ws["veh"]["e"]["target"] == "f"
+            # f is held: IDM towards e at a 1.5 m gap, to a stop, every step
+            assert [c for c in veh.calls if c[0] == "slow"] == [("slow", "f", 0.0, 0.0)], t
+            # e's own forced change (zone entered at t = 0, due at 4 s) is not
+            # yet due, and its accepted gap (s0 = 2.5 m) is not met
+            assert not [c for c in veh.calls if c[0] == "change"], t
+            assert ws["n_pair_releases"] == 0
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 3.0)
+        assert ws["n_pair_releases"] == 1
+        # f yields (farther from the section end): no target this step
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        # e forces at once, guarded against closing only (1.5 m > 0 at rest)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_FORCE
+        assert ws["veh"]["e"]["forced"] is True
+        # the same pair standing on counts once; a pair that breaks up and
+        # stands again counts again
+        _weave_step(mod, _tc, ws, res, 3.5)
+        assert ws["n_pair_releases"] == 1 and ("e", "f") in ws["pair_released"]
+        res["f"] = _res("b", 0, 60.0, 0.0)  # f has dropped back out of reach
+        _weave_step(mod, _tc, ws, res, 4.0)
+        assert ws["pair_since"] == {} and ws["pair_released"] == set()
+        res["f"] = _res("b", 0, 93.0, 0.0)
+        for t in (4.5, 5.0, 5.5, 6.0, 6.5, 7.0):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["n_pair_releases"] == 2
+
+    def test_pair_release_s_is_the_standing_time(self):
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._stopped_pair(pair_release_s=0.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        _weave_step(mod, _tc, ws, res, 0.5)  # the pair is first seen standing
+        assert ws["n_pair_releases"] == 0
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 1.0)  # stood for 0.5 s > 0
+        assert ws["n_pair_releases"] == 1
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+
+    def test_a_moving_or_separated_pair_is_not_released(self):
+        from microsim.runner import SCRIPTED_MERGE_CREEP_MS, _weave_step
+
+        ws, veh, mod, res = self._stopped_pair()
+        # the follower at the creep speed: not standing
+        veh.speeds["f"] = SCRIPTED_MERGE_CREEP_MS
+        res["f"] = _res("b", 0, 93.0, SCRIPTED_MERGE_CREEP_MS)
+        for t in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["pair_since"] == {} and ws["n_pair_releases"] == 0
+        # stopped, but more than a vehicle length behind: not a pair
+        veh.speeds["f"] = 0.0
+        res["f"] = _res("b", 0, 89.0, 0.0)  # gap 5.5 m > 5 m
+        for t in (4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["pair_since"] == {} and ws["n_pair_releases"] == 0
+
+    def test_a_driven_follower_that_yields_gets_no_target_and_makes_no_request(self):
+        """The pair the fourth derivation described: an entrant that is the
+        exiter's cooperating follower with the exiter as its gap leader. The
+        entrant, farther from the section end, yields: neither its follower
+        target nor its easing is applied and its commitment is dropped."""
+        from microsim.runner import NEIGHBOR_LEFT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS, _weave_step
+
+        ws = _weave_state()
+        veh = _WeaveVehicle(
+            {"e": 0.0, "n": 0.0},
+            {
+                ("e", NEIGHBOR_RIGHT_FOLLOWERS): (("n", 1.5),),
+                ("n", NEIGHBOR_LEFT_LEADERS): (("e", 1.5),),
+            },
+        )
+        mod = _WeaveMod(veh)
+        res = {"e": _res("b", 1, 99.5, 0.0), "n": _res("b", 0, 93.0, 0.0)}
+        for t in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5):
+            veh.calls.clear()
+            _weave_step(mod, _tc, ws, res, t)
+            # n is held as e's follower and eased towards e as its gap leader
+            # (the drop it needs, 1 m, is feasible: a_req = 0.37 m/s²); one
+            # target, counted in the role that recorded it first (e's
+            # follower — e is processed before n)
+            assert [c for c in veh.calls if c[0] == "slow"] == [("slow", "n", 0.0, 0.0)], t
+        assert ws["n_cooperations"] == 6 and ws["n_changer_eased"] == 0
+        assert ws["veh"]["n"]["target"] is None and ws["veh"]["e"]["target"] == "n"
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 3.0)
+        assert ws["n_pair_releases"] == 1
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_cooperations"] == 6 and ws["n_changer_eased"] == 0
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
 
 
 class TestMeterStopPlacementReview:

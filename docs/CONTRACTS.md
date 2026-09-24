@@ -596,6 +596,49 @@ reaches 400 of 466 at seeds 3 and 5 and locks at seed 4; it is the lead for
 a fifth derivation, not shipped. The strict `xfail` stays (entrance 325 of
 466 against 419). Golden `merge_weave` unchanged (the bound never binds on
 `weave.osm`); determinism preserved.
+Fifth derivation (2026-09-24, block 3): two rules, on top of the fourth.
+**(1) Easing only when needed** — `_weave_easing_ok` now requires
+`0 < a_req ≤ b`: a changer gets no brake for a gap leader that opens the gap
+by itself within the horizon (faster than the changer, or already clear by
+more than the accepted gap). **(2) A stopped changer–follower pair is
+released** (`microsim.runner._weave_pair_release`, new `WEAVE_DEFAULTS` key
+`pair_release_s` = 2 s, two ≈ 1 s human reaction times, Treiber & Kesting
+2013 ch. 12, not a fitted value; hash-neutral unless set): a driven changer X
+and the follower F of its committed gap whose front is within one vehicle
+length (the longer of the two) behind X's rear on the section axis, both
+below the creep speed `SCRIPTED_MERGE_CREEP_MS` for more than
+`pair_release_s` (`t − since > pair_release_s`), are released: the one
+farther from the section end (more section ahead of its front; ties, which
+cannot arise since F is behind X, by the vehicle id string, the greater
+yielding) yields for the step — no speed target in either role, no request
+if it is itself driven, its own commitment dropped and re-chosen next step —
+while the other executes its change under the normal acceptance, or under
+the forced mode at once when within `force_within_m`, guarded by
+`_weave_force_gap_ok` against closing only (`s0` floor dropped; both are
+below the creep speed and mode 256 still refuses an overlap). The pair the
+fourth derivation described (an entrant that is the exiter's cooperating
+follower, the exiter its gap leader) is this state with F a driven entrant;
+the pair that actually locks `weave_th52.osm` under (1) at seeds 4 and 5 is
+an exiter stopped at the gore in lane 1 (held by SUMO: lane 1 does not
+continue on its route) with a *done* exit-bound vehicle in lane 0 held bumper
+to bumper behind its rear by the exiter's own cooperation command every
+step; a release of entrant–exiter pairs alone was measured inert on it
+(session record), so the pair is defined by the commitment, not the
+movement. `weave_sections[i]` gains `n_pair_releases` (each pair once per
+release). Fixture, fourth → fifth derivation: seed 3 lane 1 over the first
+60 m 7.0–12.2 m/s in every minute (was 6.2–12.9), entrance 325 → 395 of
+466, all vehicles 1,376 → 1,529 of 1,966, driven 308 → 452 with unfinished
+0 → 6 and forced 5 → 20, no release fires, no collision; seed 4 307 → 392
+(2 of 501 unfinished, 9 releases, was a lock from minute 16 under (1)
+alone with 25 unfinished); seed 5 295 → 389 (4 of 483 unfinished, 1
+release; under (1) alone a lock from minute 16 with 10 collisions in the
+jam, none after). `test_th52_weave_at_capacity_does_not_lock` pins seeds 4
+and 5 (every minute above 2 m/s, ≤ 10 % unfinished, no collision, entrance
+≥ 80 %); the strict `xfail` stays on the entrance criterion (395 against
+419; the ramp still queues at 4–5 m/s over its first 100 m). Golden
+`merge_weave` regenerated (throughput 1,661.5 → 1,687.5 veh/h, mean travel
+time 69.51 → 69.82 s, σ_v spatial 4.34 → 4.28 m/s, changes in/out/forced
+18/17/1 → 17/20/1, hash 436cd4ec9e5d unchanged); determinism preserved.
 
 ## 3. Run outputs
 

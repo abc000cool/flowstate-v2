@@ -127,6 +127,7 @@ WEAVE_FIELDS = (
     "n_cooperations",
     "mean_follower_decel_ms2",
     "n_changer_eased",
+    "n_pair_releases",
 )
 
 
@@ -247,7 +248,8 @@ def print_diagnostics(summary: dict[str, Any]) -> None:
                 f"unfinished {_fmt_ci(w['n_unfinished'])}, wait {_fmt_ci(w['wait_s_mean'])} s, "
                 f"cooperations {_fmt_ci(w['n_cooperations'])}, "
                 f"follower decel {_fmt_ci(w['mean_follower_decel_ms2'], 2)} m/s², "
-                f"changer easings {_fmt_ci(w['n_changer_eased'])}"
+                f"changer easings {_fmt_ci(w['n_changer_eased'])}, "
+                f"pair releases {_fmt_ci(w['n_pair_releases'])}"
             )
 
 

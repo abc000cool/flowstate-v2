@@ -1298,6 +1298,15 @@ def _weave_easing_ok(
     car-following speed and the change waits for its follower's cooperation
     or the forced mode.
 
+    Fifth derivation (2026-09-24, block 3): easing is asked for only when it
+    is *needed* as well — ``0 < a_req``. A leader that opens the gap by
+    itself within the horizon (faster than the changer, or already clear by
+    more than the accepted gap) gets no brake from the changer: the fourth
+    derivation measured that brake as the head of the ramp queue (the
+    entrant at the anticipation zone's entry braking for a lane-1 vehicle
+    that is passing it anyway) and this condition as the one lead that moved
+    the entrance criterion (docs/WEAVE_MODEL_PLAN.md, dated paragraphs).
+
     Args:
         v_c: The changer's speed [m/s].
         v_l: The gap leader's speed [m/s].
@@ -1309,14 +1318,115 @@ def _weave_easing_ok(
         b_c: Its comfortable deceleration [m/s²].
 
     Returns:
-        Whether the changer may be eased towards L this step.
+        Whether the changer may be eased towards L this step: the drop is
+        needed and feasible, ``0 < a_req ≤ b_c``.
     """
     t_a = remaining_m / max(v_c, SCRIPTED_MERGE_CREEP_MS)
     if t_a <= 0.0:
         return False
     d = s_need - s_l
     a_req = 2.0 * (d + (v_c - v_l) * t_a) / (t_a * t_a)
-    return a_req <= b_c
+    return 0.0 < a_req <= b_c
+
+
+def _weave_pair_release(
+    mod: Any,
+    ws: dict[str, Any],
+    pending: dict[str, int],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    t: float,
+) -> tuple[set[str], set[str]]:
+    """Release a stopped changer–follower pair (fifth derivation, 2026-09-24 block 3).
+
+    The state the "ease only when needed" condition reaches at seeds 4 and 5
+    of ``weave_th52.osm`` (docs/WEAVE_MODEL_PLAN.md, dated paragraph): a
+    changer X stopped at the end of its lane — an exiting vehicle at the
+    gore in lane 1, held there by SUMO because lane 1 does not continue on
+    its route — with the follower F of its committed gap standing bumper to
+    bumper behind X's rear in the target lane, held there by X's own
+    cooperation command (IDM towards X as a virtual leader at a zero gap,
+    clipped at ``−b``, every step). The gap cannot open — F cannot back up
+    and X cannot move on — and the change is refused for ever (the guard's
+    ``s0`` floor, and SUMO's neighbour geometry reporting the pair
+    overlapping). The pair the fourth derivation described, an entrant that
+    is the exiter's cooperating follower with the exiter as its gap leader,
+    is the same state with F a driven entrant; the abreast tie-break of
+    :func:`_weave_choose_gap` does not cover it once both are stopped (a
+    stopped changer's ``a_req`` is small and positive at any distance, so
+    :func:`_weave_easing_ok` never releases it), and a release of the
+    entrant–exiter pair alone was measured inert on the lock (session
+    record).
+
+    A *pair* is a driven changer X and the follower F of its committed gap
+    (``veh[X]["target"]``, any vehicle) whose front is within one vehicle
+    length — the longer of the two — behind X's rear on the section axis,
+    with both below the creep speed ``SCRIPTED_MERGE_CREEP_MS``. A pair
+    standing so for more than ``pair_release_s`` (``t − since >
+    pair_release_s``, ``since`` the first step the condition held for that
+    pair) is released: the one **farther from the section end** — more
+    section length ahead of its front; ties, impossible here since F is
+    behind X, by the vehicle id string with the greater one yielding —
+    *yields* this step: it is given no speed target in either role, makes no
+    request if it is itself driven, and its own gap commitment is dropped
+    (re-chosen next step), so it moves on under its own car-following. The
+    other is the released *partner*: it executes its change under the normal
+    acceptance, or under the forced mode at once when it is within
+    ``force_within_m``, guarded against closing only (:func:`_weave_step`);
+    a changer at the lane end thus drops in behind the follower it had held.
+    A vehicle that yields in one pair yields in every pair it is in.
+    ``n_pair_releases`` counts each pair once per release (a pair that breaks
+    up and stands again counts again).
+
+    Args:
+        mod: The libsumo / traci module (vehicle lengths, cached in ``ws``).
+        ws: The section's state (``veh``, ``pair_since``, ``pair_released``,
+            ``n_pair_releases``, ``params["pair_release_s"]``).
+        pending: The vehicles driven this step and their direction.
+        x_of: Front-bumper positions on the section axis [m].
+        v_of: Speeds [m/s].
+        t: Simulation time [s].
+
+    Returns:
+        ``(yielders, partners)``: the vehicles that yield this step and the
+        released partners that may force their change (disjoint).
+    """
+    release_s = float(ws["params"]["pair_release_s"])
+    veh: dict[str, dict[str, Any]] = ws["veh"]
+    since: dict[tuple[str, str], float] = ws["pair_since"]
+    released: set[tuple[str, str]] = ws["pair_released"]
+    x_end = float(ws["x_offset"][ws["edges"][0]]) + float(sum(ws["lane_len_m"].values()))
+    standing: set[tuple[str, str]] = set()
+    yielders: set[str] = set()
+    partners: set[str] = set()
+    for x_id in sorted(pending):
+        st = veh.get(x_id)
+        f_id = st["target"] if st is not None else None
+        if f_id is None or x_id not in x_of or f_id not in x_of:
+            continue
+        if v_of[x_id] >= SCRIPTED_MERGE_CREEP_MS or v_of[f_id] >= SCRIPTED_MERGE_CREEP_MS:
+            continue
+        len_x = _weave_veh(mod, ws, x_id)["len"]
+        len_f = _weave_veh(mod, ws, f_id)["len"]
+        gap = x_of[x_id] - len_x - x_of[f_id]
+        if x_of[f_id] > x_of[x_id] or gap > max(len_x, len_f):
+            continue
+        key = (x_id, f_id)
+        standing.add(key)
+        first = since.setdefault(key, t)
+        if t - first <= release_s:
+            continue
+        if key not in released:
+            released.add(key)
+            ws["n_pair_releases"] += 1
+        # the one with more section ahead of its front yields; ties by id
+        yielder = max((x_end - x_of[x_id], x_id), (x_end - x_of[f_id], f_id))[1]
+        yielders.add(yielder)
+        partners.add(f_id if yielder == x_id else x_id)
+    for key in [k for k in since if k not in standing]:
+        del since[key]
+        released.discard(key)
+    return yielders, partners - yielders
 
 
 def _weave_cooperate(
@@ -1634,6 +1744,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         ws["n_changed_out" if st["dir"] < 0 else "n_changed_in"] += 1
         ws["n_forced"] += int(st["forced"])
         ws["waits_out_s" if st["dir"] < 0 else "waits_in_s"].append(t - st["entered_s"])
+    # a stopped crossing pair is released (fifth derivation, 2026-09-24 block
+    # 3): the one farther from the section end yields this step, the other
+    # may force its change at once
+    yielders, released = _weave_pair_release(mod, ws, pending, x_of, v_of, t)
     # vehicle id -> (speed target, commanded acceleration, is a follower) this step
     coop: dict[str, tuple[float, float, bool]] = {}
     p_of: dict[str, dict[str, float]] = {}
@@ -1668,6 +1782,14 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         else:
             modes = (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
             accept = prm["exit_accept_gap_s"]
+        if remaining <= prm["force_within_m"] and st["zone_s"] is None:
+            st["zone_s"] = t
+        if vid in yielders:
+            # yields to its released partner: no target, no request, the
+            # gap commitment dropped (re-chosen next step)
+            st["target"] = None
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            continue
         # --- gap choice and cooperation ------------------------------------
         st["target"] = _weave_cooperate(
             mod,
@@ -1716,10 +1838,11 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             ok_foll = a_i >= -p_i["b"]
         # the forced change is the last resort of both movements: an exit
         # missed is a route missed, an entrant held at the lane end brakes
-        # its cooperating follower down to a standstill with it
-        if remaining <= prm["force_within_m"] and st["zone_s"] is None:
-            st["zone_s"] = t
-        force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
+        # its cooperating follower down to a standstill with it. A released
+        # partner within the zone forces at once
+        force = st["zone_s"] is not None and (
+            t - st["zone_s"] >= prm["force_after_s"] or vid in released
+        )
         if (
             ok_lead
             and ok_foll
@@ -1733,7 +1856,11 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             mod.vehicle.changeLane(vid, lane + d, step_s)
             st["requested_s"] = t
         elif force:
-            if _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll):
+            # a released partner is guarded against closing only: both of
+            # the pair are below the creep speed, the s0 floor is a comfort
+            # margin at speed, and mode 256 still refuses an overlap
+            s0_guard = 0.0 if vid in released else st["s0"]
+            if _weave_force_gap_ok(s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll):
                 # a forced request lives one step only, so it is executed
                 # under the gaps just checked or not at all
                 _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
@@ -1772,6 +1899,8 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             # the ramp to the gore, then the whole section
             x_start - x_of[vid] + section_len,
         )
+    for vid in yielders:
+        coop.pop(vid, None)  # no target in either role this step
     for fid in sorted(coop):
         v_new, a_cmd, follower = coop[fid]
         mod.vehicle.slowDown(fid, v_new, 0.0)
@@ -1801,7 +1930,9 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     gap's leader; ``n_vacated`` / ``n_vacate_refused`` count through
     vehicles asked to vacate the weave lane upstream of the section
     (:func:`_weave_vacate_step`) that did / did not change before it, each
-    once. ``n_exited`` is the number of exit-bound
+    once; ``n_pair_releases`` counts stopped crossing pairs released
+    (:func:`_weave_pair_release`), each pair once per release. ``n_exited``
+    is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
     the network after the section — :func:`_weave_step`, exit bookkeeping),
     each once; ``n_reached_section_exiting`` the exit-bound vehicles that
@@ -1838,6 +1969,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_changer_eased": ws["n_changer_eased"],
         "n_vacated": ws["n_vacated"],
         "n_vacate_refused": ws["n_vacate_refused"],
+        "n_pair_releases": ws["n_pair_releases"],
         "n_unfinished": len(ws["veh"]),
         "n_exited": len(ws["exited"]),
         "n_reached_section_exiting": len(ws["reached"]),
@@ -2531,6 +2663,11 @@ def run_micro(
                     "n_changer_eased": 0,
                     "n_vacated": 0,
                     "n_vacate_refused": 0,
+                    # stopped crossing pairs (_weave_pair_release): first
+                    # step each pair stood, the pairs already released
+                    "pair_since": {},
+                    "pair_released": set(),
+                    "n_pair_releases": 0,
                     "step_s": float(cfg.sim.step_length_s),
                     "waits_in_s": [],
                     "waits_out_s": [],

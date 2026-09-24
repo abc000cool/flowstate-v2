@@ -258,7 +258,9 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     for a changer, ``mean_follower_decel_ms2`` the mean commanded
     deceleration over them (``None`` also when there were none; positive is
     braking) and ``n_changer_eased`` the vehicle-steps on which a changer was
-    given a speed target towards its gap's leader.
+    given a speed target towards its gap's leader. ``n_pair_releases``
+    (fifth derivation) counts stopped changer–follower pairs released, each
+    once per release; ``None`` before the rule existed.
     """
 
     ramp: str
@@ -277,6 +279,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_cooperations: int | None = None
     mean_follower_decel_ms2: float | None = None
     n_changer_eased: int | None = None
+    n_pair_releases: int | None = None
     wait_s_mean: float | None = None
     wait_in_s_mean: float | None = None
     wait_out_s_mean: float | None = None

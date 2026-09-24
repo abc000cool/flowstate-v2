@@ -67,6 +67,7 @@ WEAVE = {
         "n_cooperations": 600,
         "mean_follower_decel_ms2": 0.40,
         "n_changer_eased": 200,
+        "n_pair_releases": 2,
     },
     22: {
         "n_entered": 44,
@@ -79,6 +80,7 @@ WEAVE = {
         "n_cooperations": 660,
         "mean_follower_decel_ms2": 0.44,
         "n_changer_eased": 220,
+        "n_pair_releases": 3,
     },
     33: {
         "n_entered": 48,
@@ -91,6 +93,7 @@ WEAVE = {
         "n_cooperations": 720,
         "mean_follower_decel_ms2": 0.48,
         "n_changer_eased": 240,
+        "n_pair_releases": 4,
     },
 }
 

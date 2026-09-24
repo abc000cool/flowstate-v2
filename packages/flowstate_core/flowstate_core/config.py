@@ -180,10 +180,11 @@ WEAVE_DEFAULTS: dict[str, float] = {
     **SCRIPTED_MERGE_DEFAULTS,
     "exit_accept_gap_s": 0.6,
     "vacate_ahead_m": 150.0,
+    "pair_release_s": 2.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
-``exit_accept_gap_s``, the time gap the exiting movement accepts, and
+``exit_accept_gap_s``, the time gap the exiting movement accepts,
 ``vacate_ahead_m`` (2026-09-24, block 3, third derivation): how far upstream
 of the section start a through vehicle in the weave lane is asked, once, to
 move one lane left — the "through traffic keep left" signage and driver
@@ -192,7 +193,16 @@ anticipation of a weave — under SUMO's own safety check
 segment's upstream influence area, 500 ft (HCM 7th ed. ch. 13: the segment's
 influence extends 500 ft upstream of the entry gore), not a fitted value;
 ``0`` disables the rule, and the window is truncated to the corridor edge
-before the section."""
+before the section. ``pair_release_s`` (2026-09-24, block 3, fifth
+derivation): how long an entering and an exiting vehicle may stand within one
+vehicle length of each other in section lanes 0 and 1, both below the creep
+speed (``microsim.runner.SCRIPTED_MERGE_CREEP_MS``), before the pair is
+released — the one farther from the section end yields for a step
+(``microsim.runner._weave_pair_release``). The default, 2 s, is two human
+reaction times of about 1 s (Treiber & Kesting 2013, ch. 12, the human driver
+model's reaction time; the IDM itself has none): a pair standing longer than
+the time in which each could have reacted to the other once is not resolving
+by itself. Not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 
