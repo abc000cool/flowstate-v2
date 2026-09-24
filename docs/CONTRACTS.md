@@ -534,6 +534,43 @@ then 4.2–6.4 m/s; entrance 81 → 225 of 466; driven 92 → 334 with unfinishe
 strict `xfail` stays: what remains is a crawl equilibrium at the section
 entry (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the lane flows), not
 a lock. Golden `merge_weave` regenerated (hash unchanged).
+Third derivation (2026-09-24, block 3): one rule **added**, the second
+derivation's rules untouched — **through traffic vacates the weave lane
+upstream of the section** (`microsim.runner._weave_vacate_step`). A through
+vehicle (not bound for the paired exit) on the lane of the corridor edge
+before the section that feeds section lane 1, once within `vacate_ahead_m`
+of the section start (new `WEAVE_DEFAULTS` key, default 150 m = the HCM 7th
+ed. ch. 13 weaving segment's 500-ft upstream influence area, not a fitted
+value; `0` disables; hash-neutral unless set), is asked **once** to move one
+lane left: `vehicle.changeLane(vid, lane_to, duration)` under mode 512
+(`LC_MODE_SCRIPTED_SAFE`: every model-driven change off, SUMO's own safety
+check on the target lane's leader and follower gaps decides, the vehicle
+adapts its speed to reach such a gap), the request living for the travel
+time to the section start at the vehicle's speed when asked (floored at
+`SCRIPTED_MERGE_CREEP_MS`). The original `laneChangeMode` is restored when
+the vehicle is seen in the target lane (`n_vacated`) or when the request
+has expired or the vehicle has reached the section still in the weave lane
+(`n_vacate_refused`); a request still open then is ended with a one-step
+stay in the current lane (it is by lane *index*, and on the section's edge
+that index is the weave lane). The window is truncated to the edge before
+the section (its lanes are the only upstream lanes in `lane_map`); a
+two-lane section or a section with no corridor edge before it makes the
+rule inert (`_weave_vacate_lanes`). Mode 768 (the same check, no speed
+adaptation) executed 5 of 159 requests on the fixture and was rejected; the
+weave's own 0.6-s acceptance under a one-step mode 256 executed 8–14 and
+was rejected. `weave_sections[i]` gains `n_vacated` and
+`n_vacate_refused`. Fixture, seed 3, second → third derivation: lane 1
+over the first 60 m in minutes 2–19 from 12.7, 11.8, 12.4, 10.3 then 4.2–6.4
+to 11.5, 10.0, 6.9, 8.1, 11.2, 12.9, 12.6, 8.6, 11.7, 11.1, 5.4, 4.5, 7.1,
+6.3, 12.0, 13.4, 12.5, 10.8 m/s; entrance 225 → 317 of 466; driven 334 → 307
+with unfinished 2 → 0; 228 through vehicles vacate, 28 refused; collisions
+0. The strict `xfail` stays: one minute is below 5 m/s and the entrance
+criterion (≥ 419) fails at every window (docs/WEAVE_MODEL_PLAN.md, dated
+paragraph: the sensitivity table, and the ramp now held at 3 m/s over its
+first 100 m by the easing rule at the anticipation-zone entry). Golden
+`merge_weave` regenerated (throughput 1,658 → 1,662 veh/h, mean travel time
+70.1 → 69.5 s, σ_v spatial 4.57 → 4.34 m/s, changes in/out/forced
+20/13/2 → 18/17/1, hash unchanged).
 
 ## 3. Run outputs
 

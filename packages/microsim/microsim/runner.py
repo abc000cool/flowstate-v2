@@ -1009,6 +1009,125 @@ def _weave_lane_map(
     return m
 
 
+def _weave_vacate_lanes(
+    chain: Sequence[str], section_edges: Sequence[str], lane_map: dict[tuple[str, int], int]
+) -> tuple[str, int, int] | None:
+    """``(edge before the section, its lane feeding section lane 1, its lane feeding lane 2)``.
+
+    The lanes a through vehicle vacates from and to under ``vacate_ahead_m``
+    (:func:`_weave_vacate_step`), read off ``lane_map``
+    (:func:`_weave_lane_map`). ``None`` — the rule is inert — when the
+    section has no corridor edge before it or that edge has no lane feeding
+    section lane 2 (a two-lane section).
+    """
+    i0 = chain.index(section_edges[0])
+    if i0 == 0:
+        return None
+    prev = chain[i0 - 1]
+    lane_from = [lane for (e, lane), k in lane_map.items() if e == prev and k == 1]
+    lane_to = [lane for (e, lane), k in lane_map.items() if e == prev and k == 2]
+    if len(lane_from) != 1 or len(lane_to) != 1:
+        return None
+    return prev, lane_from[0], lane_to[0]
+
+
+def _weave_vacate_step(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    t: float,
+) -> None:
+    """Through traffic vacates the weave lane upstream of the section (2026-09-24, block 3).
+
+    The one rule of the third derivation (docs/WEAVE_MODEL_PLAN.md, dated
+    paragraph): a saturated one-sided weave is carried by *through* vehicles
+    leaving the weave lane before the section — "through traffic keep left"
+    signage and driver anticipation — so that the entering and the exiting
+    movements exchange over the auxiliary lane and the weave lane alone.
+    SUMO's LC2013 does not do this on its own once the lane crawls (a
+    speed-gain change needs a speed advantage a uniform crawl does not
+    offer).
+
+    Each through vehicle (not bound for the paired exit) on the lane of the
+    corridor edge before the section that feeds section lane 1
+    (``vacate_lanes``, :func:`_weave_vacate_lanes`), once it is within
+    ``vacate_ahead_m`` of the section start, is asked **once**:
+    ``vehicle.changeLane(vid, lane_to, duration)`` under
+    ``LC_MODE_SCRIPTED_SAFE`` (mode 512: every model-driven change off — no
+    speed-gain, keep-right or cooperative change of SUMO's own — and the
+    request executed only when SUMO's safety check on the target lane's
+    leader and follower gaps passes, the vehicle adapting its speed to reach
+    such a gap and the follower informed as for any urgent change). Mode
+    768 (the same check, no speed adaptation) was measured and rejected: on
+    the T.H.52 fixture it executed 5 of 159 requests, a 1,500 veh/h target
+    lane rarely holding a gap that clears both secure gaps at once. The
+    request lives for the travel time to the section start at the vehicle's
+    current speed (floored at ``SCRIPTED_MERGE_CREEP_MS``, at least one
+    step), so SUMO may execute it at any point of the remaining window. The
+    vehicle's original ``laneChangeMode`` is restored when it is seen in the
+    target lane (``n_vacated``), or when the request has expired or the
+    vehicle has reached the section still in the weave lane
+    (``n_vacate_refused``); a request still open at the hand-back is ended
+    with a one-step stay in the current lane, because the request is by lane
+    *index* and on the section's edge (one lane more, the ramp's) that index
+    is the weave lane itself. A vehicle that cannot change stays and behaves
+    as before. The window is truncated to the edge before the section
+    (``lane_map`` lists no earlier edge); ``vacate_ahead_m = 0`` disables the
+    rule. The cooperative-follower rules of the second derivation are
+    untouched: a vacating vehicle may still be a chosen gap's follower and
+    receive its speed target.
+    """
+    spec = ws["vacate_lanes"]
+    ahead = float(ws["params"]["vacate_ahead_m"])
+    if spec is None or ahead <= 0.0:
+        return
+    edge, lane_from, lane_to = spec
+    step_s = float(ws["step_s"])
+    active: dict[str, dict[str, Any]] = ws["vacate"]
+    for vid in sorted(active):
+        st = active[vid]
+        res = results.get(vid)
+        if res is None:
+            del active[vid]  # left the network before the section: nothing to restore
+            continue
+        road = res[tc.VAR_ROAD_ID]
+        lane = int(res[tc.VAR_LANE_INDEX])
+        if road == edge and lane == lane_to:
+            ws["n_vacated"] += 1
+        elif road == edge and lane == lane_from and t < st["until_s"]:
+            continue  # request still open, still in the weave lane
+        else:
+            ws["n_vacate_refused"] += 1
+        if t < st["until_s"]:
+            # the request is by lane *index* and outlives the hand-back: on
+            # the section's edge (one lane more, the ramp's) the same index
+            # is the weave lane, so a live request would pull a vacated
+            # vehicle back in. A one-step stay in the current lane ends it
+            mod.vehicle.changeLane(vid, lane, step_s)
+        mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+        del active[vid]
+    x_start = float(ws["x_offset"][ws["edges"][0]])
+    seen: set[str] = ws["vacate_seen"]
+    exiting: frozenset[str] = ws["exiting_ids"]
+    for x, vid in lanes.get(1, []):
+        if x >= x_start or x < x_start - ahead or vid in seen or vid in exiting:
+            continue
+        res = results[vid]
+        if res[tc.VAR_ROAD_ID] != edge or int(res[tc.VAR_LANE_INDEX]) != lane_from:
+            continue
+        seen.add(vid)
+        v = float(res[tc.VAR_SPEED])
+        duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
+        active[vid] = {
+            "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
+            "until_s": t + duration,
+        }
+        mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+        mod.vehicle.changeLane(vid, lane_to, duration)
+
+
 def _weave_choose_gap(
     vid: str,
     x_c: float,
@@ -1305,6 +1424,15 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     19 m/s 7 m ahead of it and could not open the gap in time (fixture
     trace, t = 20–45 s).
 
+    **Vacating the weave lane** (2026-09-24, block 3, third derivation;
+    :func:`_weave_vacate_step`). A through vehicle in the lane feeding
+    section lane 1, within ``vacate_ahead_m`` of the section start on the
+    corridor edge before it, is asked once to move one lane left under mode
+    512 (SUMO's own safety check decides; the vehicle adapts its speed) — the
+    signage / anticipation that empties the weave lane for the exchange; a
+    vehicle that cannot change stays. Counted in ``n_vacated`` and
+    ``n_vacate_refused``.
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``), the
@@ -1407,6 +1535,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             pending[vid] = 1
     for lst in lanes.values():
         lst.sort()
+    # through traffic vacates the weave lane upstream of the section (third
+    # derivation, 2026-09-24 block 3): the only rule touching through vehicles
+    # other than as a chosen gap's follower
+    _weave_vacate_step(mod, tc, ws, results, lanes, t)
     for vid in [v for v in veh if v not in pending and v not in in_transit]:
         st = veh.pop(vid)
         if vid not in results:
@@ -1584,7 +1716,10 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``mean_follower_decel_ms2`` the mean commanded deceleration over them
     (``None`` without any; positive is braking); ``n_changer_eased`` counts
     vehicle-steps on which a changer was given a speed target towards its
-    gap's leader. ``n_exited`` is the number of exit-bound
+    gap's leader; ``n_vacated`` / ``n_vacate_refused`` count through
+    vehicles asked to vacate the weave lane upstream of the section
+    (:func:`_weave_vacate_step`) that did / did not change before it, each
+    once. ``n_exited`` is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
     the network after the section — :func:`_weave_step`, exit bookkeeping),
     each once; ``n_reached_section_exiting`` the exit-bound vehicles that
@@ -1619,6 +1754,8 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
             ws["coop_decel_sum"] / ws["n_cooperations"] if ws["n_cooperations"] else None
         ),
         "n_changer_eased": ws["n_changer_eased"],
+        "n_vacated": ws["n_vacated"],
+        "n_vacate_refused": ws["n_vacate_refused"],
         "n_unfinished": len(ws["veh"]),
         "n_exited": len(ws["exited"]),
         "n_reached_section_exiting": len(ws["reached"]),
@@ -2239,6 +2376,14 @@ def run_micro(
             exit_w = cfg.network.ramps[section.off_ramp]
             assert ramp_w.weave is not None  # guaranteed by _check_weave_pairs
             lens_w = {e: float(net_for_weaves.getEdge(e).getLength()) for e in section.edges}
+            lane_map_w: dict[tuple[str, int], int] = {
+                **{
+                    k: v
+                    for k, v in _weave_lane_map(net_for_weaves, chain_w, section.edges).items()
+                    if k[0] in offsets_by_edge
+                },
+                **{(e, 0): 0 for e in ramp_w.edges},
+            }
             weave_states.append(
                 {
                     "ramp": ramp_w.name or ramp_w.attach_edge,
@@ -2272,16 +2417,12 @@ def run_micro(
                     # target-lane listings for the gap choice (_weave_lane_map);
                     # the ramp's lane 0 continues lane 0 of the section, at
                     # negative positions, so an entrant is seen before it arrives
-                    "lane_map": {
-                        **{
-                            k: v
-                            for k, v in _weave_lane_map(
-                                net_for_weaves, chain_w, section.edges
-                            ).items()
-                            if k[0] in offsets_by_edge
-                        },
-                        **{(e, 0): 0 for e in ramp_w.edges},
-                    },
+                    "lane_map": lane_map_w,
+                    # the lanes of the edge before the section a through
+                    # vehicle vacates from and to (_weave_vacate_step)
+                    "vacate_lanes": _weave_vacate_lanes(chain_w, section.edges, lane_map_w),
+                    "vacate": {},
+                    "vacate_seen": set(),
                     "x_offset": {
                         **offsets_by_edge,
                         **{
@@ -2306,6 +2447,8 @@ def run_micro(
                     "n_cooperations": 0,
                     "coop_decel_sum": 0.0,
                     "n_changer_eased": 0,
+                    "n_vacated": 0,
+                    "n_vacate_refused": 0,
                     "step_s": float(cfg.sim.step_length_s),
                     "waits_in_s": [],
                     "waits_out_s": [],

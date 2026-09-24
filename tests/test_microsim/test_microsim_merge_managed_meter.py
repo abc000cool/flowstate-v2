@@ -788,7 +788,11 @@ class TestWeaveSchema:
         cfg = _weave_scenario(weave_osm)
         spec = cfg.network.ramps[0].weave
         assert spec is not None and spec.length_m is None and spec.weave_params == {}
-        assert WEAVE_DEFAULTS == {**SCRIPTED_MERGE_DEFAULTS, "exit_accept_gap_s": 0.6}
+        assert WEAVE_DEFAULTS == {
+            **SCRIPTED_MERGE_DEFAULTS,
+            "exit_accept_gap_s": 0.6,
+            "vacate_ahead_m": 150.0,
+        }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
         raw["network"]["ramps"][0]["weave"]["weave_params"] = {"exit_accept_gap_s": 1.0}
@@ -910,9 +914,10 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave at capacity crawls (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "second attempt): no lock any more, but lane 1 at the section start falls to 4-6 m/s "
-        "from minute 6 and the entrance departs 225 of 466",
+        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, third "
+        "derivation): lane 1 at the section start flows at 10-13 m/s in most minutes but dips "
+        "to 4.5 m/s in one, and the entrance departs 317 of 466 (the ramp is held by the "
+        "easing rule at the anticipation-zone entry)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -948,6 +953,20 @@ class TestWeaveRun:
         collision. The remaining failure is a crawl equilibrium at the
         section entry, not a lock (the plan's dated paragraph has the lane
         flows), so the marker stays.
+
+        Third derivation (2026-09-24, block 3: through traffic vacates the
+        weave lane within ``vacate_ahead_m`` = 150 m of the section start,
+        ``microsim.runner._weave_vacate_step``): lane 1's first 60 m read
+        11.5, 10.0, 6.9, 8.1, 11.2, 12.9, 12.6, 8.6, 11.7, 11.1, 5.4, 4.5,
+        7.1, 6.3, 12.0, 13.4, 12.5, 10.8 m/s in minutes 2-19 (one window
+        below 5); the entrance departs 317 of 466; 307 driven (130 in, 177
+        out, 0 unfinished), 228 through vehicles vacate and 28 are refused;
+        no collision. The entrance criterion fails at every window tried
+        (150-500 m: 240-317 of 466): the ramp is now held at 3 m/s over its
+        first 100 m by the second derivation's easing rule at the
+        anticipation-zone entry, not by lane 1 (the plan's dated paragraph
+        has the sensitivity table and the ramp profile), so the marker
+        stays.
         """
         cfg = ScenarioConfig.model_validate(
             {
@@ -1146,6 +1165,10 @@ def _weave_state(**params) -> dict:
         # axis and the cooperation counters
         "lane_map": {(e, k): k for e in edges for k in range(3)},
         "x_offset": {"a": 0.0, "b": 100.0},
+        # third derivation: no corridor edge before the section here
+        "vacate_lanes": None,
+        "vacate": {},
+        "vacate_seen": set(),
         "ramp_edges": frozenset(),
         "pre": {},
         "veh_params": {},
@@ -1159,6 +1182,8 @@ def _weave_state(**params) -> dict:
         "n_cooperations": 0,
         "coop_decel_sum": 0.0,
         "n_changer_eased": 0,
+        "n_vacated": 0,
+        "n_vacate_refused": 0,
         "step_s": 0.5,
         "waits_in_s": [],
         "waits_out_s": [],
@@ -1629,3 +1654,102 @@ class TestWeaveCooperation:
         assert downstream and all(v == k[1] + 1 for k, v in downstream.items()), downstream
         assert 0 not in upstream.values() and 0 not in downstream.values()
         assert not [k for k in m if k[0] not in ("101", "102", "103")]
+
+
+class TestWeaveVacateStep:
+    """The third derivation's one rule (2026-09-24, block 3): through traffic
+    vacates the weave lane upstream of the section (``_weave_vacate_step``)."""
+
+    @staticmethod
+    def _state(**params) -> dict:
+        ws = _weave_state(**params)
+        # the corridor edge "p" before the section: its lane 0 feeds section
+        # lane 1 (the weave lane), its lane 1 feeds section lane 2
+        ws["vacate_lanes"] = ("p", 0, 1)
+        ws["lane_map"].update({("p", 0): 1, ("p", 1): 2})
+        ws["x_offset"]["p"] = -200.0
+        return ws
+
+    def test_lanes_from_the_lane_map(self):
+        from microsim.runner import _weave_vacate_lanes
+
+        lane_map = {("p", 0): 1, ("p", 1): 2, ("a", 0): 0, ("a", 1): 1, ("a", 2): 2}
+        assert _weave_vacate_lanes(("p", "a", "b"), ("a", "b"), lane_map) == ("p", 0, 1)
+        # no corridor edge before the section, or no lane feeding section lane 2
+        assert _weave_vacate_lanes(("a", "b"), ("a", "b"), lane_map) is None
+        assert _weave_vacate_lanes(("p", "a"), ("a",), {("p", 0): 1, ("a", 1): 1}) is None
+
+    def test_through_vehicle_asked_once_then_counted_vacated(self):
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_meta, _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"t": 20.0, "e": 20.0, "u": 20.0})
+        mod = _WeaveMod(veh)
+        # t: through, 100 m before the section start (inside the 150 m
+        # window); e: exit-bound beside it, never asked; u: 180 m out
+        res = {
+            "t": _res("p", 0, 100.0, 20.0),
+            "e": _res("p", 0, 90.0, 20.0),
+            "u": _res("p", 0, 20.0, 20.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ("lc", "t", LC_MODE_SCRIPTED_SAFE) in veh.calls
+        assert ("change", "t", 1, 5.0) in veh.calls  # 100 m at 20 m/s
+        assert not [c for c in veh.calls if c[1] in ("e", "u")]
+        veh.calls.clear()
+        # still in the weave lane with the request open: nothing more is sent
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 110.0, 20.0)}, 0.5)
+        assert not [c for c in veh.calls if c[1] == "t"]
+        # seen in the target lane: vacated, the still-open request ended by
+        # a one-step stay, the original mode restored
+        _weave_step(mod, _tc, ws, {"t": _res("p", 1, 120.0, 20.0)}, 1.0)
+        assert (ws["n_vacated"], ws["n_vacate_refused"]) == (1, 0)
+        assert ("change", "t", 1, 0.5) in veh.calls and ("lc", "t", 1621) in veh.calls
+        assert "t" not in ws["vacate"]
+        veh.calls.clear()
+        # back in the weave lane later: asked once only
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 150.0, 20.0)}, 1.5)
+        assert not [c for c in veh.calls if c[1] == "t"]
+        meta = _weave_meta(ws, {})
+        assert (meta["n_vacated"], meta["n_vacate_refused"]) == (1, 0)
+
+    def test_reaching_the_section_in_the_weave_lane_is_refused(self):
+        from microsim.runner import _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"t": 20.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0)}, 0.0)
+        veh.calls.clear()
+        # on the section's first edge, lane index 1 = the weave lane, with the
+        # request (5 s) still open: refused, and the request is ended there
+        # (by index it now points at the weave lane itself)
+        _weave_step(mod, _tc, ws, {"t": _res("a", 1, 2.0, 20.0)}, 0.5)
+        assert (ws["n_vacated"], ws["n_vacate_refused"]) == (0, 1)
+        assert ("change", "t", 1, 0.5) in veh.calls and ("lc", "t", 1621) in veh.calls
+        assert "t" not in ws["vacate"]
+
+    def test_expired_request_is_refused_without_a_stay(self):
+        from microsim.runner import _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"t": 20.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0)}, 0.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 190.0, 20.0)}, 5.0)
+        assert (ws["n_vacated"], ws["n_vacate_refused"]) == (0, 1)
+        assert ("lc", "t", 1621) in veh.calls
+        assert not [c for c in veh.calls if c[0] == "change"]
+
+    @pytest.mark.parametrize("how", ["no_lanes", "zero_window"])
+    def test_inert_without_lanes_or_window(self, how):
+        from microsim.runner import _weave_step
+
+        ws = _weave_state() if how == "no_lanes" else self._state(vacate_ahead_m=0.0)
+        if how == "no_lanes":
+            ws["lane_map"].update({("p", 0): 1, ("p", 1): 2})
+            ws["x_offset"]["p"] = -200.0
+        veh = _WeaveVehicle({"t": 20.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, {"t": _res("p", 0, 100.0, 20.0)}, 0.0)
+        assert veh.calls == []

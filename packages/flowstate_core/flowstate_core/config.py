@@ -179,10 +179,20 @@ SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 WEAVE_DEFAULTS: dict[str, float] = {
     **SCRIPTED_MERGE_DEFAULTS,
     "exit_accept_gap_s": 0.6,
+    "vacate_ahead_m": 150.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
-``exit_accept_gap_s``, the time gap the exiting movement accepts."""
+``exit_accept_gap_s``, the time gap the exiting movement accepts, and
+``vacate_ahead_m`` (2026-09-24, block 3, third derivation): how far upstream
+of the section start a through vehicle in the weave lane is asked, once, to
+move one lane left — the "through traffic keep left" signage and driver
+anticipation of a weave — under SUMO's own safety check
+(``microsim.runner._weave_vacate_step``). The default is the HCM weaving
+segment's upstream influence area, 500 ft (HCM 7th ed. ch. 13: the segment's
+influence extends 500 ft upstream of the entry gore), not a fitted value;
+``0`` disables the rule, and the window is truncated to the corridor edge
+before the section."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 
