@@ -1537,7 +1537,15 @@ builder's defaults over an existing file. A file at `--out` that does not
 parse (YAML error, a validation error, no mapping) is refused with **exit 2**
 and a message naming the file and the reason, before Overpass or netconvert
 is spent and without touching the file; `--fresh-fleet` overrides that too.
-`POST /api/v1/corridors` is unchanged: it refuses an existing name with 409
+A file that parses but is a ring or straight-corridor scenario (`network.kind`
+other than `osm`) is refused the same way (exit 2, the message naming the
+kind): its fleet, `sim` block, seed and replicates are not the corridor's to
+keep, and keeping them silently would be the §11 mistake in another form
+(review of 2026-09-24, block 3; `TestReonboardingReview` also pins the
+flag → kept file → default precedence for `--duration-s` / `--seed` /
+`--replicates`, that both refusals happen before the builder is called — so
+before any download — and that the I-94 scenario prints exactly the line
+above). `POST /api/v1/corridors` is unchanged: it refuses an existing name with 409
 (and the job re-checks before writing), so nothing is ever re-onboarded over
 a scenario there. The demand record states the fleet block the scenario it
 wrote carries, so a reset shows up in the artifact and in the record:

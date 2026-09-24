@@ -83,7 +83,10 @@ lc_keep_right 0.0, …)`` listing the fields that differ from the ``FleetSpec``
 defaults, or ``fleet block: builder defaults``. ``--fresh-fleet`` asks for the
 builder's defaults over an existing file. An existing file that does not
 parse is refused with exit 2 and the reason — a broken file is never
-overwritten silently; ``--fresh-fleet`` overrides that too.
+overwritten silently — and so is one that parses as a ring or straight
+corridor scenario (``network.kind`` other than ``osm``): its fleet, ``sim``
+block and seed are not this corridor's to keep. ``--fresh-fleet`` overrides
+both.
 
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
@@ -205,15 +208,18 @@ def existing_scenario(path: Path) -> ScenarioConfig | None:
 
     Raises:
         ValueError: The file exists but does not parse as a
-            :class:`ScenarioConfig`; the message names the reason. The CLI
-            refuses to overwrite such a file (exit 2) unless ``--fresh-fleet``
-            says so — a file that was hand-edited into a broken state is not
-            a file to replace silently.
+            :class:`ScenarioConfig` (the message names the reason), or parses
+            as a ring or straight-corridor scenario rather than an OSM one —
+            a ring's fleet, ``sim`` block and seed kept onto a rebuilt freeway
+            corridor would be a silent mistake. The CLI refuses to overwrite
+            such a file (exit 2) unless ``--fresh-fleet`` says so — a file
+            that was hand-edited into a broken state, or is another kind of
+            scenario, is not a file to replace silently.
     """
     if not path.exists():
         return None
     try:
-        return ScenarioConfig.from_yaml(path)
+        cfg = ScenarioConfig.from_yaml(path)
     except (yaml.YAMLError, ValidationError, ValueError, OSError) as exc:
         reason = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         raise ValueError(
@@ -221,6 +227,14 @@ def existing_scenario(path: Path) -> ScenarioConfig | None:
             "overwriting it. Fix the file, name another --out, or pass --fresh-fleet to "
             "rebuild it from the builder's defaults."
         ) from exc
+    if cfg.network.kind != "osm":
+        raise ValueError(
+            f"{path} exists but is a {cfg.network.kind!r} scenario, not an OSM corridor; its "
+            "fleet, sim, seed, replicates, fd_calibration and macro blocks are not this "
+            "corridor's to keep, so it is not overwritten. Name another --out, or pass "
+            "--fresh-fleet to rebuild it from the builder's defaults."
+        )
+    return cfg
 
 
 def fleet_line(kept: ScenarioConfig | None, path: Path) -> str:
@@ -360,7 +374,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="when --out already exists, rebuild its fleet, sim, seed, replicates, "
         "fd_calibration and macro blocks from the builder's defaults instead of keeping "
-        "them (default: kept, and a file that does not parse is refused with exit 2)",
+        "them (default: kept; a file that does not parse is refused with exit 2, as is a "
+        "ring or corridor scenario)",
     )
     parser.add_argument(
         "--osm-file", type=Path, help="use this OSM extract instead of downloading the bbox"

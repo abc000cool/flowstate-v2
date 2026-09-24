@@ -260,3 +260,198 @@ class TestReonboardingKeepsTheFleet:
         out = capsys.readouterr().out
         assert f"  {cli.FLEET_DEFAULTS_LINE}\n" in out
         assert ScenarioConfig.from_yaml(broken).fleet.lc_strategic == 1.0
+
+
+#: The report line docs/CONTRACTS.md ("Re-onboarding keeps the fleet block")
+#: gives for the I-94 corridor, checked against the committed scenario.
+I94_SCENARIO = REPO_ROOT / "scenarios" / "mndot_i94_wb_stpaul.yaml"
+I94_KEPT_LINE = (
+    f"fleet block kept from {I94_SCENARIO} (model EIDM, heterogeneity_frac 0.15, "
+    "idm_calibration artifacts/idm_i24_capacity.json, lc_strategic 5.0, "
+    "lc_strategic_ramp 1.0, lc_keep_right 0.0)"
+)
+
+
+class _FakeBuild:
+    """What ``main`` needs of a :class:`CorridorBuild`, without netconvert."""
+
+    def __init__(self, config: ScenarioConfig) -> None:
+        self.config = config
+        self.station_x: dict[str, object] = {}
+        self.stations_rejected: dict[str, object] = {}
+
+    def summary(self, stations: object) -> str:
+        return "  (fake build)"
+
+    def to_yaml(self, path: Path) -> None:
+        self.config.to_yaml(path)
+
+    def lane_check(self, stations: object, tolerance: int = 0) -> list[object]:
+        return []
+
+    def split_defects(self) -> list[object]:
+        return []
+
+
+def _osm_scenario(**overrides: object) -> ScenarioConfig:
+    """A minimal OSM scenario carrying ``corridor_10km``'s other blocks."""
+    raw = ScenarioConfig.from_yaml(REPO_ROOT / "scenarios" / "corridor_10km.yaml").model_dump(
+        mode="json"
+    )
+    raw["name"] = "kept"
+    raw["network"] = {
+        "kind": "osm",
+        "osm_file": "x.osm",
+        "corridor_edges": ["1"],
+        "inflow": [[0.0, 1.0]],
+    }
+    raw.update(overrides)
+    return ScenarioConfig.model_validate(raw)
+
+
+def _spy_builder(cli: ModuleType, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Replace the builder with one that records its keyword arguments."""
+    seen: list[dict[str, object]] = []
+
+    def fake(name: str, bbox: object, bearing: float, **kwargs: object) -> _FakeBuild:
+        seen.append(kwargs)
+        return _FakeBuild(_osm_scenario())
+
+    monkeypatch.setattr(cli, "corridor_from_bbox", fake)
+    return seen
+
+
+def _refusing_builder(cli: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A builder that must not be reached: it is where the bbox is downloaded."""
+
+    def refuse(*args: object, **kwargs: object) -> _FakeBuild:
+        raise AssertionError("corridor_from_bbox was called: the bbox would be downloaded")
+
+    monkeypatch.setattr(cli, "corridor_from_bbox", refuse)
+
+
+def _bbox_argv(tmp_path: Path, out: Path, *extra: str) -> list[str]:
+    """A command line that would download the bbox (no ``--osm-file``)."""
+    return [
+        "--name",
+        "keep_fleet",
+        "--bbox",
+        *SPLITS_BBOX,
+        "--bearing",
+        "90",
+        "--workdir",
+        str(tmp_path / "work"),
+        "--out",
+        str(out),
+        *extra,
+    ]
+
+
+class TestReonboardingReview:
+    """Review of the re-onboarding rules (2026-09-24, block 3): the three-way
+    precedence of the flags, the kept file and the defaults; the refusals
+    happening before the builder (and so before any download); a scenario of
+    another kind at ``--out``; the I-94 report line."""
+
+    def test_duration_seed_and_replicates_precedence(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Explicit flag, else the kept file, else 1800 s / 42 / the builder's
+        replicate default (``None`` → ``corridor_10km``'s 20)."""
+        cli = _load_cli()
+        seen = _spy_builder(cli, monkeypatch)
+        out_yaml = tmp_path / "new.yaml"
+
+        # neither a flag nor a file: the module defaults, no scenario kept
+        assert cli.main(_bbox_argv(tmp_path, out_yaml)) == 0
+        assert seen[-1]["duration_s"] == cli.DEFAULT_DURATION_S == 1800.0
+        assert seen[-1]["seed"] == cli.DEFAULT_SEED == 42
+        assert seen[-1]["replicates"] is None and seen[-1]["defaults"] is None
+        assert f"  {cli.FLEET_DEFAULTS_LINE}\n" in capsys.readouterr().out
+
+        # a kept file with a different duration, seed and replicate count
+        kept = _osm_scenario(seed=7, replicates=3, fd_calibration="artifacts/fd_unit.json")
+        kept = kept.model_copy(update={"sim": kept.sim.model_copy(update={"duration_s": 600.0})})
+        kept.to_yaml(out_yaml)
+        assert cli.main(_bbox_argv(tmp_path, out_yaml)) == 0
+        assert seen[-1]["duration_s"] == 600.0 and seen[-1]["seed"] == 7
+        assert seen[-1]["replicates"] is None  # the builder takes the kept 3 from defaults
+        defaults = seen[-1]["defaults"]
+        assert isinstance(defaults, ScenarioConfig)
+        assert defaults.replicates == 3 and defaults.fd_calibration == "artifacts/fd_unit.json"
+        assert "fleet block kept from" in capsys.readouterr().out
+
+        # the flags win over the kept file
+        kept.to_yaml(out_yaml)
+        argv = _bbox_argv(
+            tmp_path, out_yaml, "--duration-s", "90", "--seed", "9", "--replicates", "5"
+        )
+        assert cli.main(argv) == 0
+        assert seen[-1]["duration_s"] == 90.0 and seen[-1]["seed"] == 9
+        assert seen[-1]["replicates"] == 5
+        assert isinstance(seen[-1]["defaults"], ScenarioConfig)
+
+        # --fresh-fleet drops the kept file entirely: fd_calibration and macro too
+        kept.to_yaml(out_yaml)
+        assert cli.main(_bbox_argv(tmp_path, out_yaml, "--fresh-fleet")) == 0
+        assert seen[-1]["defaults"] is None
+        assert seen[-1]["duration_s"] == 1800.0 and seen[-1]["seed"] == 42
+        capsys.readouterr()
+
+    def test_a_broken_file_is_refused_before_the_builder_and_the_download(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        cli = _load_cli()
+        _refusing_builder(cli, monkeypatch)
+        broken = tmp_path / "broken.yaml"
+        broken.write_text("fleet: [\n")
+        assert cli.main(_bbox_argv(tmp_path, broken)) == cli.BAD_USAGE_EXIT
+        out = capsys.readouterr().out
+        assert "does not parse as a ScenarioConfig" in out
+        assert broken.read_text() == "fleet: [\n"
+        assert not (tmp_path / "work").exists()
+
+    @pytest.mark.parametrize("preset", ["ring_sugiyama", "corridor_10km"])
+    def test_a_scenario_of_another_kind_at_out_is_refused(
+        self,
+        preset: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A ring's or a straight corridor's fleet, sim block and seed kept
+        onto a rebuilt freeway corridor would be a silent mistake: refused
+        with exit 2, the file untouched, the builder never reached;
+        ``--fresh-fleet`` overrides."""
+        cli = _load_cli()
+        _refusing_builder(cli, monkeypatch)
+        out_yaml = tmp_path / f"{preset}.yaml"
+        original = (REPO_ROOT / "scenarios" / f"{preset}.yaml").read_text()
+        out_yaml.write_text(original)
+        kind = ScenarioConfig.from_yaml(out_yaml).network.kind
+        assert kind != "osm"
+
+        assert cli.main(_bbox_argv(tmp_path, out_yaml)) == cli.BAD_USAGE_EXIT == 2
+        out = capsys.readouterr().out
+        assert str(out_yaml) in out and f"is a {kind!r} scenario, not an OSM corridor" in out
+        assert "--fresh-fleet" in out and "scenario  " not in out
+        assert out_yaml.read_text() == original and not (tmp_path / "work").exists()
+
+        seen = _spy_builder(cli, monkeypatch)
+        assert cli.main(_bbox_argv(tmp_path, out_yaml, "--fresh-fleet")) == 0
+        assert seen[-1]["defaults"] is None
+        assert f"  {cli.FLEET_DEFAULTS_LINE}\n" in capsys.readouterr().out
+        assert ScenarioConfig.from_yaml(out_yaml).network.kind == "osm"
+
+    def test_the_i94_report_line_matches_the_contract(self) -> None:
+        """The committed I-94 scenario prints exactly the line docs/CONTRACTS.md
+        gives: the fields differing from the ``FleetSpec`` defaults, in field
+        order (``model`` and ``heterogeneity_frac`` are ``corridor_10km``'s
+        builder values and differ from the class defaults, so they are listed)."""
+        cli = _load_cli()
+        assert cli.fleet_line(ScenarioConfig.from_yaml(I94_SCENARIO), I94_SCENARIO) == I94_KEPT_LINE
+        assert cli.fleet_line(None, I94_SCENARIO) == cli.FLEET_DEFAULTS_LINE
+        plain = _osm_scenario(fleet={})
+        assert cli.fleet_line(plain, Path("p.yaml")).endswith(
+            "(no field differs from the defaults)"
+        )

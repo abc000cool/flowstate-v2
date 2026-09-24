@@ -21,11 +21,15 @@ from pathlib import Path
 
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
+    FLEET_SETTINGS_FIELDS,
+    FleetSpec,
     HeavyVehicleSpec,
     MacroOptions,
     ScenarioConfig,
     config_hash,
     config_hash_payload,
+    fleet_non_defaults,
+    fleet_settings,
 )
 
 GOLDEN = Path(__file__).resolve().parents[1] / "golden" / "config_defaults.json"
@@ -179,3 +183,46 @@ if __name__ == "__main__":
         print(f"wrote {GOLDEN}")
     else:
         print(__doc__)
+
+
+def test_fleet_non_defaults_follows_the_hash_omission_rule():
+    """``fleet_non_defaults`` (the re-onboarding report line) omits exactly
+    what the config hash omits: a field at its default, an int ``1`` for a
+    float default ``1.0`` included, ``idm_calibration: None`` included; a
+    path and a changed float are listed in field order."""
+    assert fleet_non_defaults(FleetSpec()) == {}
+    assert (
+        fleet_non_defaults(FleetSpec.model_validate({"lc_strategic": 1, "lc_keep_right": 1})) == {}
+    )
+    assert fleet_non_defaults(FleetSpec(idm_calibration=None)) == {}
+    listed = fleet_non_defaults(
+        FleetSpec.model_validate(
+            {
+                "lc_keep_right": 0,
+                "idm_calibration": "artifacts/idm_unit.json",
+                "model": "EIDM",
+                "lc_strategic": 5,
+            }
+        )
+    )
+    assert list(listed) == ["model", "idm_calibration", "lc_strategic", "lc_keep_right"]
+    assert listed == {
+        "model": "EIDM",
+        "idm_calibration": "artifacts/idm_unit.json",
+        "lc_strategic": 5.0,
+        "lc_keep_right": 0.0,
+    }
+    cfg = _canonical().model_copy(update={"fleet": FleetSpec.model_validate(dict(listed))})
+    assert config_hash_payload(cfg)["config"]["fleet"] == listed
+    assert "fleet" not in config_hash_payload(_canonical())["config"]
+
+
+def test_fleet_settings_states_every_field_in_order():
+    """The demand record's ``fleet_settings`` always carries the six fields,
+    defaults and ``None`` included, in ``FLEET_SETTINGS_FIELDS`` order; a
+    mapping as the scenario file carries it validates like the spec."""
+    settings = fleet_settings({"lc_keep_right": 0})
+    assert tuple(settings) == FLEET_SETTINGS_FIELDS
+    assert settings == fleet_settings(FleetSpec(lc_keep_right=0.0))
+    assert settings["lc_keep_right"] == 0.0 and settings["idm_calibration"] is None
+    assert settings["lc_strategic_ramp"] is None and settings["model"] == "IDM"

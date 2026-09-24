@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 
 from calibration import onboarding
+from calibration.demand import DEMAND_SCHEMA, DemandArtifact
 from calibration.observations import Observations, ObservedStation
 from calibration.onboarding import OnboardingResult, calibrate_scenario
 
@@ -253,6 +254,10 @@ class TestScenarioFilling:
         }
         assert deliberate.summary[-1].startswith("  fleet: model EIDM, heterogeneity_frac 0.15, ")
         assert deliberate.demand["fleet_settings"] != result.demand["fleet_settings"]
+        # additive: the schema is unchanged and the artifact reader takes the key
+        assert deliberate.demand["schema"] == DEMAND_SCHEMA == "flowstate.demand/1"
+        reread = DemandArtifact.from_dict(deliberate.demand)
+        assert reread.schema == DEMAND_SCHEMA and "fleet_settings" not in reread.to_dict()
 
     def test_unmeasured_boundary_window_carries_the_previous_value(
         self, monkeypatch: pytest.MonkeyPatch

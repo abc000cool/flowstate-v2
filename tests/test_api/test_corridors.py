@@ -271,6 +271,9 @@ class TestOnboardingHappyPath:
         assert seen[0]["ramp_guessing"] is True and seen[0]["split_fixes"] is True
         assert seen[0]["split_patch_path"] == expected
         assert seen[0]["osm_file"] == expected.with_name("fixture_corridor_spy.osm")
+        # the API never re-onboards over a scenario (409 on an existing name), so
+        # it hands the build no ``defaults``: the preset comes from corridor_10km
+        assert "defaults" not in seen[0]
 
     def test_demand_traces_to_the_stations(self, onboarded: dict[str, Any]) -> None:
         summary = onboarded["summary"]
@@ -319,6 +322,15 @@ class TestOnboardingHappyPath:
         assert stored["config_hash"] == onboarded["config_hash"]
         assert stored["config"]["network"]["kind"] == "osm"
         assert stored["config"]["sim"]["warmup_s"] == 0.0
+        # the installed preset carries corridor_10km's fleet and no FD / macro block
+        from flowstate_core.config import ScenarioConfig
+
+        base = ScenarioConfig.from_yaml(
+            Path(__file__).resolve().parents[2] / "scenarios" / "corridor_10km.yaml"
+        )
+        assert stored["config"]["fleet"] == base.fleet.model_dump(mode="json")
+        assert stored["config"]["fd_calibration"] is None and stored["config"]["macro"] is None
+        assert stored["config"]["replicates"] == base.replicates == 20
 
     def test_the_extract_is_installed_under_the_corridor_name(
         self, client: TestClient, onboarded: dict[str, Any]
