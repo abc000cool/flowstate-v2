@@ -395,10 +395,18 @@ def main(argv: list[str] | None = None) -> None:
     elif args.episodes is not None:
         print(f"episodes not found at {args.episodes}: cost not evaluated")
     sample = sample_episodes(episodes, args.episode_sample, args.episode_seed)
+    cap_at_star = next((r["capacity_veh_h_lane"] for r in table if r["T_scale"] == f_star), None)
+    outcome = (
+        f"so that the straight {args.lanes}-lane capacity meets {target:.0f} veh/h/lane"
+        if "not reached" not in how
+        else (
+            f"the best grid point: the straight {args.lanes}-lane capacity reaches "
+            f"{cap_at_star:.0f} veh/h/lane there and the target {target:.0f} veh/h/lane is NOT met"
+        )
+    )
     note = (
         f"Derived from {_rel(args.source)} by scripts/calibrate_capacity.py: population mean T "
-        f"scaled by {f_star:.4f} so that the straight {args.lanes}-lane capacity meets "
-        f"{target:.0f} veh/h/lane ({target_source}). Covariance and other means unchanged. "
+        f"scaled by {f_star:.4f}, {outcome} ({target_source}). Covariance and other means unchanged. "
         f"FHWA Traffic Analysis Toolbox Vol. III step 1 (capacity calibration). "
         f"Details: {_rel(sidecar)}. Source notes: {src.notes}"
     )

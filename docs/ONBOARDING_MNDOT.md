@@ -338,3 +338,37 @@ n2-standard-32, ≈ $3.3.
    and installs the preset (§3, "From the dashboard").
 5. The fundamental-diagram fit from the raw cache is not a script yet; the
    committed artifact records its inputs.
+
+## 8. A Minnesota driver population by capacity scaling (2026-09-24) — target not reached
+
+The corridor has no trajectory data, so no population can be fitted on it;
+the honest alternative is the US-101 procedure (docs/US101_CALIBRATED.md,
+`scripts/calibrate_capacity.py`): take the I-24 episode-fitted population
+(`artifacts/idm_i24.json`, mean T 1.511 s) and scale its mean desired time
+headway until a straight 3-lane road carries the corridor's own fitted
+capacity — the fundamental diagram's `q_max` bootstrap lower bound,
+1,907 veh/h/lane (`artifacts/fd_mndot_i94_wb_stpaul.json`). Pipeline stage
+`mndot_population`, n2-standard-32, 37 s wall-clock, two seeds per grid point,
+saturating demand 2,400 veh/h/lane, throughput at 3.0 km of 4.0 km:
+
+| T scale | mean T [s] | capacity [veh/h/lane], mean of 2 seeds |
+|---|---|---|
+| 1.00 | 1.511 | 1,591 |
+| 0.95 | 1.436 | 1,626 |
+| 0.90 | 1.360 | 1,670 |
+| 0.85 | 1.284 | 1,656 |
+| 0.80 | 1.209 | 1,709 |
+| 0.75 | 1.133 | 1,703 |
+
+The curve flattens near 1,700 veh/h/lane from T × 0.80 on, 10 % short of the
+target; headway scaling alone does not reach it, and the script took the best
+grid point (T × 0.80) and says so in the artifact's notes
+(`artifacts/idm_mndot_i94_wb_stpaul_capacity.json`, sidecar
+`…capacity.calibration.json`). What limits the plateau is not resolved here:
+the closed-form equilibrium capacity of the same population at T = 1.21 s is
+well above the simulated value, so the ceiling lies in the multi-lane dynamics
+(lane changes, insertion) of the straight-road measurement, not in the
+headway. The episode-cost rows are empty because the cloud stage ran without
+the I-24 episodes. Any run with this population is labelled "capacity-scaled,
+target not met" — it is a population that carries more than the I-24 one,
+not one that carries the observed flow.

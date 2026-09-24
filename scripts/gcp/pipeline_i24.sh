@@ -317,6 +317,21 @@ stage battery_mndot_mnpop bash -c "sed -e 's#^name: $MNDOT\$#name: ${MNDOT}_mnpo
   --out runs/${MNDOT}_mnpop/baseline --artifact artifacts/validation_${MNDOT}_mnpop.json \
   --report-dir docs/reports/${MNDOT}_mnpop --criteria-profile fhwa_tat3_2004" || say "battery_mndot_mnpop failed; continuing"
 
+# 10c. Weaving-section round (2026-09-24): the same corridor with the Ruth St and T.H.52 entrances as
+#     weaving sections (merge: weave, docs/WEAVE_MODEL_PLAN.md) and two entrances on the scripted merge,
+#     scenarios/mndot_i94_wb_stpaul_weave.yaml; 20 seeds with the I-24 population, then with the
+#     Minnesota capacity-scaled population from stage mndot_population.
+stage battery_mndot_weave $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates "$REPS" --procs "$PROCS" \
+  --out runs/${MNDOT}_weave/baseline --artifact artifacts/validation_${MNDOT}_weave.json \
+  --report-dir docs/reports/${MNDOT}_weave --criteria-profile fhwa_tat3_2004 || say "battery_mndot_weave failed; continuing"
+stage battery_mndot_weave_mnpop bash -c "sed -e 's#^name: ${MNDOT}_weave\$#name: ${MNDOT}_weave_mnpop#' \
+    -e 's#artifacts/idm_i24_capacity.json#artifacts/idm_${MNDOT}_capacity.json#' scenarios/${MNDOT}_weave.yaml \
+    > scenarios/${MNDOT}_weave_mnpop.yaml && $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave_mnpop.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates $REPS --procs $PROCS \
+  --out runs/${MNDOT}_weave_mnpop/baseline --artifact artifacts/validation_${MNDOT}_weave_mnpop.json \
+  --report-dir docs/reports/${MNDOT}_weave_mnpop --criteria-profile fhwa_tat3_2004" || say "battery_mndot_weave_mnpop failed; continuing"
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at

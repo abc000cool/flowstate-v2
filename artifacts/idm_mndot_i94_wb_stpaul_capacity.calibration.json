@@ -1,0 +1,206 @@
+{
+ "schema_version": 1,
+ "created_at": "2026-09-24T04:30:54Z",
+ "versions": {
+  "python": "3.12.14",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "script": "scripts/calibrate_capacity.py",
+ "source": "artifacts/idm_i24.json",
+ "base_scenario": "scenarios/mndot_i94_wb_stpaul.yaml",
+ "target_veh_h_lane": 1907.1,
+ "target_source": "artifacts/fd_mndot_i94_wb_stpaul.json fd.ci95.q_max[0] (bootstrap lower bound)",
+ "corridor": {
+  "length_m": 4000.0,
+  "lanes": 3,
+  "x_ref_m": 3000.0,
+  "demand_veh_h_lane": 2400.0,
+  "duration_s": 1800.0,
+  "warmup_s": 300.0
+ },
+ "t_scales": [
+  1.0,
+  0.95,
+  0.9,
+  0.85,
+  0.8,
+  0.75
+ ],
+ "seeds": [
+  1,
+  2
+ ],
+ "table": [
+  {
+   "T_scale": 1.0,
+   "T_mean_s": 1.5112,
+   "capacity_veh_h_lane": 1590.8,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.95,
+   "T_mean_s": 1.4356,
+   "capacity_veh_h_lane": 1625.6,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.9,
+   "T_mean_s": 1.3601,
+   "capacity_veh_h_lane": 1670.4,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.85,
+   "T_mean_s": 1.2845,
+   "capacity_veh_h_lane": 1656.0,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.8,
+   "T_mean_s": 1.209,
+   "capacity_veh_h_lane": 1709.2,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.75,
+   "T_mean_s": 1.1334,
+   "capacity_veh_h_lane": 1703.2,
+   "n": 2,
+   "demand_limited": false
+  }
+ ],
+ "runs": [
+  {
+   "T_scale": 1.0,
+   "seed": 1,
+   "config_hash": "841bfc281e80",
+   "throughput_veh_h_lane": 1627.2,
+   "inserted_fraction": 0.6953,
+   "mean_speed_ms_at_ref": 15.274,
+   "wall_s": 23.8
+  },
+  {
+   "T_scale": 1.0,
+   "seed": 2,
+   "config_hash": "7bb918ab90a7",
+   "throughput_veh_h_lane": 1554.4,
+   "inserted_fraction": 0.6853,
+   "mean_speed_ms_at_ref": 14.397,
+   "wall_s": 24.4
+  },
+  {
+   "T_scale": 0.95,
+   "seed": 1,
+   "config_hash": "e04adb5794d4",
+   "throughput_veh_h_lane": 1660.0,
+   "inserted_fraction": 0.7219,
+   "mean_speed_ms_at_ref": 14.923,
+   "wall_s": 27.0
+  },
+  {
+   "T_scale": 0.95,
+   "seed": 2,
+   "config_hash": "04601aafa48c",
+   "throughput_veh_h_lane": 1591.2,
+   "inserted_fraction": 0.7031,
+   "mean_speed_ms_at_ref": 14.946,
+   "wall_s": 25.8
+  },
+  {
+   "T_scale": 0.9,
+   "seed": 1,
+   "config_hash": "f108a8d9f3ea",
+   "throughput_veh_h_lane": 1708.0,
+   "inserted_fraction": 0.7511,
+   "mean_speed_ms_at_ref": 15.622,
+   "wall_s": 27.2
+  },
+  {
+   "T_scale": 0.9,
+   "seed": 2,
+   "config_hash": "d6cc4f187735",
+   "throughput_veh_h_lane": 1632.8,
+   "inserted_fraction": 0.7281,
+   "mean_speed_ms_at_ref": 15.146,
+   "wall_s": 28.0
+  },
+  {
+   "T_scale": 0.85,
+   "seed": 1,
+   "config_hash": "2377287d1705",
+   "throughput_veh_h_lane": 1668.8,
+   "inserted_fraction": 0.7378,
+   "mean_speed_ms_at_ref": 14.831,
+   "wall_s": 27.0
+  },
+  {
+   "T_scale": 0.85,
+   "seed": 2,
+   "config_hash": "b3d7b86d3ddd",
+   "throughput_veh_h_lane": 1643.2,
+   "inserted_fraction": 0.7211,
+   "mean_speed_ms_at_ref": 15.185,
+   "wall_s": 29.3
+  },
+  {
+   "T_scale": 0.8,
+   "seed": 1,
+   "config_hash": "d84106d50823",
+   "throughput_veh_h_lane": 1721.6,
+   "inserted_fraction": 0.7647,
+   "mean_speed_ms_at_ref": 15.703,
+   "wall_s": 26.7
+  },
+  {
+   "T_scale": 0.8,
+   "seed": 2,
+   "config_hash": "84067bc954e2",
+   "throughput_veh_h_lane": 1696.8,
+   "inserted_fraction": 0.7344,
+   "mean_speed_ms_at_ref": 15.158,
+   "wall_s": 29.9
+  },
+  {
+   "T_scale": 0.75,
+   "seed": 1,
+   "config_hash": "885020e58568",
+   "throughput_veh_h_lane": 1689.6,
+   "inserted_fraction": 0.7497,
+   "mean_speed_ms_at_ref": 15.555,
+   "wall_s": 27.8
+  },
+  {
+   "T_scale": 0.75,
+   "seed": 2,
+   "config_hash": "1a7d4caf0391",
+   "throughput_veh_h_lane": 1716.8,
+   "inserted_fraction": 0.7581,
+   "mean_speed_ms_at_ref": 14.875,
+   "wall_s": 30.5
+  }
+ ],
+ "T_scale": 0.8,
+ "T_mean_s": {
+  "before": 1.5112009904800698,
+  "after": 1.208960792384056
+ },
+ "interpolation": "target not reached within the grid; best grid point taken",
+ "episode_gap_rmse_m": {
+  "episodes": null,
+  "n_episodes": 0,
+  "seed": 7,
+  "before": null,
+  "after": null
+ }
+}
