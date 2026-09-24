@@ -1017,25 +1017,55 @@ def _weave_lane_map(
 
 
 def _weave_vacate_lanes(
-    chain: Sequence[str], section_edges: Sequence[str], lane_map: dict[tuple[str, int], int]
-) -> tuple[str, int, int] | None:
-    """``(edge before the section, its lane feeding section lane 1, its lane feeding lane 2)``.
+    net: Any,
+    chain: Sequence[str],
+    section_edges: Sequence[str],
+    offsets: dict[str, float],
+    ahead_m: float,
+) -> dict[str, tuple[int, int]]:
+    """``{corridor edge → (its lane feeding section lane 1, its lane feeding section lane 2)}`` over the vacate window.
 
     The lanes a through vehicle vacates from and to under ``vacate_ahead_m``
-    (:func:`_weave_vacate_step`), read off ``lane_map``
-    (:func:`_weave_lane_map`). ``None`` — the rule is inert — when the
-    section has no corridor edge before it or that edge has no lane feeding
-    section lane 2 (a two-lane section).
+    (:func:`_weave_vacate_step`), walked upstream from the section start
+    along the corridor chain, edge by edge, as far as the window reaches
+    (2026-09-24, block 3, the cross-edge window; before it the window was
+    truncated to the edge before the section). On each edge the feeding
+    lane is the one lane whose netconvert connection leads into the lane
+    found on the edge after it, so the index shifts where a lane is added
+    or dropped — an acceleration lane on the right shifts both by one (on
+    ``tests/fixtures/weave_th52_upstream.osm``: way 111 lanes 0 → 1, way 110
+    lanes 1 → 2, way 101 lanes 0 → 1). The walk stops, and the window is
+    truncated there, at an edge missing from ``offsets``, at one where
+    either lane has no unique feeder (a lane that splits, or two lanes that
+    merge into one), or where both feeders are one lane. Empty — the rule
+    is inert — when the section has no corridor edge before it, ``ahead_m``
+    is not positive, or the edge before it has no lane feeding section lane
+    2 (a two-lane section). Listed nearest the section first.
     """
+    out: dict[str, tuple[int, int]] = {}
     i0 = chain.index(section_edges[0])
-    if i0 == 0:
-        return None
-    prev = chain[i0 - 1]
-    lane_from = [lane for (e, lane), k in lane_map.items() if e == prev and k == 1]
-    lane_to = [lane for (e, lane), k in lane_map.items() if e == prev and k == 2]
-    if len(lane_from) != 1 or len(lane_to) != 1:
-        return None
-    return prev, lane_from[0], lane_to[0]
+    if ahead_m <= 0.0 or i0 == 0:
+        return out
+    x_lo = float(offsets[section_edges[0]]) - ahead_m
+    cur, k_from, k_to = section_edges[0], 1, 2
+    for prev in reversed(chain[:i0]):
+        if prev not in offsets:
+            break
+        feeders: dict[int, set[int]] = {}
+        for lane in net.getEdge(prev).getLanes():
+            for conn in lane.getOutgoing():
+                if conn.getTo().getID() == cur:
+                    k = int(conn.getToLane().getIndex())
+                    feeders.setdefault(k, set()).add(int(lane.getIndex()))
+        f_from, f_to = feeders.get(k_from, set()), feeders.get(k_to, set())
+        if len(f_from) != 1 or len(f_to) != 1 or f_from == f_to:
+            break
+        (k_from,), (k_to,) = f_from, f_to
+        out[prev] = (k_from, k_to)
+        cur = prev
+        if float(offsets[prev]) <= x_lo:
+            break
+    return out
 
 
 def _idm_desired_gap(v: float, dv: float, T: float, a_max: float, b: float, s0: float) -> float:
@@ -1145,10 +1175,13 @@ def _weave_vacate_step(
     (``WEAVE_DEFAULTS``), both under the bound below.
 
     **The default form (0).** Each through vehicle (not bound for the
-    paired exit) on the lane of the corridor edge before the section that
-    feeds section lane 1 (``vacate_lanes``, :func:`_weave_vacate_lanes`),
-    once within ``vacate_ahead_m`` of the section start, is asked **once**:
-    ``vehicle.changeLane(vid, lane_to, duration)`` under
+    paired exit) in the lane feeding section lane 1 of a corridor edge
+    within ``vacate_ahead_m`` of the section start (``vacate_lanes``,
+    :func:`_weave_vacate_lanes`: the window measured along the corridor
+    chain across as many upstream edges as it reaches, the feeding lane's
+    index derived per edge from netconvert's connections — 2026-09-24,
+    block 3, the cross-edge window), once inside the window, is asked
+    **once**: ``vehicle.changeLane(vid, lane_to, duration)`` under
     ``LC_MODE_SCRIPTED_SAFE`` (mode 512: every model-driven change off — no
     speed-gain, keep-right or cooperative change of SUMO's own — and the
     request executed only when SUMO's safety check on the target lane's
@@ -1157,14 +1190,16 @@ def _weave_vacate_step(
     request lives for the travel time to the section start at the vehicle's
     current speed (floored at ``SCRIPTED_MERGE_CREEP_MS``, at least one
     step), so SUMO may execute it at any point of the remaining window. The
-    vehicle's original ``laneChangeMode`` is restored when it is seen in the
-    target lane (``n_vacated``), or when the request has expired or the
-    vehicle has reached the section still in the weave lane
-    (``n_vacate_refused``); a request still open at the hand-back is ended
-    with a one-step stay in the current lane, because the request is by lane
-    *index* and on the section's edge (one lane more, the ramp's) that index
-    is the weave lane itself. A vehicle that cannot change stays and behaves
-    as before.
+    request is by lane *index*: when the vehicle crosses onto the next
+    window edge still in the weave lane and that edge's target lane has
+    another index (a lane added or dropped), the open request is re-issued
+    there for its remaining life. The vehicle's original ``laneChangeMode``
+    is restored when it is seen in the target lane (``n_vacated``), or when
+    the request has expired or the vehicle has reached the section still in
+    the weave lane (``n_vacate_refused``); a request still open at the
+    hand-back is ended with a one-step stay in the current lane, because on
+    the section's edge (one lane more, the ramp's) the index is the weave
+    lane itself. A vehicle that cannot change stays and behaves as before.
 
     **The gap-conditioned form (1; block 3, the rule re-derived so that it
     never asks the target lane to brake).** On the corridor's last 850 m
@@ -1201,9 +1236,12 @@ def _weave_vacate_step(
     own model is not counted); ``n_vacate_requests`` the requests made, in
     vehicle-steps.
 
-    The window is truncated to the edge before the section (``lane_map``
-    lists no earlier edge); ``vacate_ahead_m = 0`` disables the rule. The
-    cooperative-follower rules of the second derivation are untouched: a
+    The window's lanes are listed here from ``results`` (the section's own
+    ``lane_map`` lists only the edge before it); the target lane continues
+    onto the section through ``lanes[2]``. ``vacate_ahead_m = 0`` disables
+    the rule. A held vehicle on a junction's internal lane between two
+    window edges (``OSMNetwork.internal_links``) is left as it is for that
+    step. The cooperative-follower rules of the second derivation are untouched: a
     vacating vehicle may still be a chosen gap's follower and receive its
     speed target. A vehicle already under a scripted ``laneChangeMode``
     (512 / 256 / 768: driven by a section whose last edge is this edge, by
@@ -1213,20 +1251,49 @@ def _weave_vacate_step(
     (review, 2026-09-24 block 3: the vehicle was left on the other
     section's one-step mode 256).
     """
-    spec = ws["vacate_lanes"]
+    spec: dict[str, tuple[int, int]] = ws["vacate_lanes"]
     ahead = float(ws["params"]["vacate_ahead_m"])
-    if spec is None or ahead <= 0.0:
+    if not spec or ahead <= 0.0:
         return
-    edge, lane_from, lane_to = spec
     prm = ws["params"]
     gap_conditioned = float(prm["vacate_no_follower_braking"]) > 0.0
     step_s = float(ws["step_s"])
-    x_start = float(ws["x_offset"][ws["edges"][0]])
+    x_offset: dict[str, float] = ws["x_offset"]
+    x_start = float(x_offset[ws["edges"][0]])
     x_lo = x_start - ahead
     active: dict[str, dict[str, Any]] = ws["vacate"]
     seen: set[str] = ws["vacate_seen"]
     pending: set[str] = ws["vacate_pending"]
     exiting: frozenset[str] = ws["exiting_ids"]
+    # --- the window's lanes this step, across its edges ---------------------
+    # (road, lane index) of every vehicle on a window edge; the weave lane's
+    # and the target lane's listings on the section axis
+    where: dict[str, tuple[str, int]] = {}
+    weave: list[tuple[float, str]] = []
+    target: list[tuple[float, str]] = []
+    for vid, res in results.items():
+        road = res[tc.VAR_ROAD_ID]
+        lanes_e = spec.get(road)
+        if lanes_e is None:
+            continue
+        lane = int(res[tc.VAR_LANE_INDEX])
+        where[vid] = (road, lane)
+        if lane == lanes_e[0]:
+            weave.append((x_offset[road] + float(res[tc.VAR_LANEPOSITION]), vid))
+        elif lane == lanes_e[1]:
+            target.append((x_offset[road] + float(res[tc.VAR_LANEPOSITION]), vid))
+    # the target lane continues onto the section and the edge after it (the
+    # leader of a gap near the section start); the edge before the section
+    # is listed by both and taken once
+    listed = {vid for _, vid in target}
+    target.extend((x, vid) for x, vid in lanes.get(2, []) if vid not in listed)
+    target.sort()
+
+    def in_lane(vid: str, side: int) -> bool:
+        """Whether ``vid`` is on a window edge in its weave (0) / target (1) lane."""
+        at = where.get(vid)
+        return at is not None and at[1] == spec[at[0]][side]
+
     # --- settle the held vehicles ---------------------------------------
     for vid in sorted(active):
         st = active[vid]
@@ -1236,9 +1303,18 @@ def _weave_vacate_step(
             continue
         road = res[tc.VAR_ROAD_ID]
         lane = int(res[tc.VAR_LANE_INDEX])
-        if road == edge and lane == lane_to:
+        if road.startswith(":"):
+            continue  # on a junction between window edges: decided on the next edge
+        if in_lane(vid, 1):
             ws["n_vacated"] += 1
-        elif road == edge and lane == lane_from and (gap_conditioned or t < st["until_s"]):
+        elif in_lane(vid, 0) and (gap_conditioned or t < st["until_s"]):
+            lane_to_here = spec[road][1]
+            if not gap_conditioned and lane_to_here != st["lane_to"]:
+                # crossed onto a window edge where the target lane has
+                # another index (a lane added or dropped): the open request
+                # re-addressed there for the rest of its life
+                st["lane_to"] = lane_to_here
+                mod.vehicle.changeLane(vid, lane_to_here, max(st["until_s"] - t, step_s))
             continue  # still in the weave lane with the request open (or re-evaluated below)
         else:
             ws["n_vacate_refused"] += 1
@@ -1252,33 +1328,23 @@ def _weave_vacate_step(
         del active[vid]
     # --- the through vehicles in the window this step ---------------------
     now: dict[str, float] = {}
-    for x, vid in lanes.get(1, []):
-        if x >= x_start or x < x_lo or vid in exiting:
-            continue
-        res = results[vid]
-        if res[tc.VAR_ROAD_ID] != edge or int(res[tc.VAR_LANE_INDEX]) != lane_from:
-            continue
-        now[vid] = x
+    for x, vid in weave:
+        if x_lo <= x < x_start and vid not in exiting:
+            now[vid] = x
     # not asked last step and no longer in the window: skipped, unless the
     # vehicle moved left by its own model
     for vid in sorted(pending - set(now)):
-        res = results.get(vid)
-        if res is None:
-            continue
-        if res[tc.VAR_ROAD_ID] == edge and int(res[tc.VAR_LANE_INDEX]) == lane_to:
+        if vid not in results or in_lane(vid, 1):
             continue
         ws["n_vacate_skipped_no_gap"] += 1
     pending.clear()
     # --- the target lane's inflow to the window (the bound's flow) ----------
-    target = lanes.get(2, [])
     flow_ids: set[str] = ws["vacate_flow_ids"]
     flow_ids.intersection_update(results.keys())
     for x, vid in target:
-        if x_lo <= x < x_start and vid not in flow_ids:
-            res = results[vid]
-            if res[tc.VAR_ROAD_ID] == edge and int(res[tc.VAR_LANE_INDEX]) == lane_to:
-                flow_ids.add(vid)
-                ws["vacate_flow_s"].append(t)
+        if x_lo <= x < x_start and vid not in flow_ids and in_lane(vid, 1):
+            flow_ids.add(vid)
+            ws["vacate_flow_s"].append(t)
     bound = _weave_vacate_bound_veh_h(ws, t)
     asks_s: deque[float] = ws["vacate_asks_s"]
     while asks_s and asks_s[0] <= t - VACATE_FLOW_WINDOW_S:
@@ -1320,17 +1386,22 @@ def _weave_vacate_step(
             seen.add(vid)
             asks_s.append(t)
             budget -= 1
+            lane_to = spec[where[vid][0]][1]
             if gap_conditioned:
-                active[vid] = {"lc_mode_orig": mode_orig, "until_s": math.inf}
+                active[vid] = {"lc_mode_orig": mode_orig, "until_s": math.inf, "lane_to": lane_to}
                 mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE_NO_ADAPT)
             else:
                 duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
-                active[vid] = {"lc_mode_orig": mode_orig, "until_s": t + duration}
+                active[vid] = {
+                    "lc_mode_orig": mode_orig,
+                    "until_s": t + duration,
+                    "lane_to": lane_to,
+                }
                 mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
                 mod.vehicle.changeLane(vid, lane_to, duration)
                 ws["n_vacate_requests"] += 1
                 continue
-        mod.vehicle.changeLane(vid, lane_to, step_s)
+        mod.vehicle.changeLane(vid, spec[where[vid][0]][1], step_s)
         ws["n_vacate_requests"] += 1
 
 
@@ -2383,6 +2454,9 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         # short sections: shorter than the fixed forced zone's defaults fit
         # (_weave_short_section_rule; no scaling ships, the values are the fixed ones)
         "short_section": bool(rule["short"]),
+        # the corridor edges the vacate window reaches, nearest the section
+        # first (the cross-edge window, 2026-09-24 block 3; empty = inert)
+        "vacate_window_edges": list(ws["vacate_lanes"]),
         "n_entered": ws["n_entered"],
         "n_changed_in": ws["n_changed_in"],
         "n_changed_out": ws["n_changed_out"],
@@ -3025,6 +3099,7 @@ def run_micro(
             exit_w = cfg.network.ramps[section.off_ramp]
             assert ramp_w.weave is not None  # guaranteed by _check_weave_pairs
             lens_w = {e: float(net_for_weaves.getEdge(e).getLength()) for e in section.edges}
+            params_w: dict[str, float] = {**WEAVE_DEFAULTS, **dict(ramp_w.weave.weave_params)}
             lane_map_w: dict[tuple[str, int], int] = {
                 **{
                     k: v
@@ -3053,12 +3128,9 @@ def run_micro(
                     },
                     "length_m_measured": section.length_m,
                     "length_m": ramp_w.weave.length_m,
-                    "params": {**WEAVE_DEFAULTS, **dict(ramp_w.weave.weave_params)},
+                    "params": params_w,
                     # the forced zone and its delay, and the short-section flag
-                    "rule": _weave_short_section_rule(
-                        float(sum(lens_w.values())),
-                        {**WEAVE_DEFAULTS, **dict(ramp_w.weave.weave_params)},
-                    ),
+                    "rule": _weave_short_section_rule(float(sum(lens_w.values())), params_w),
                     "exiting_ids": frozenset(
                         vid
                         for vid, rid in route_by_id.items()
@@ -3072,9 +3144,15 @@ def run_micro(
                     # the ramp's lane 0 continues lane 0 of the section, at
                     # negative positions, so an entrant is seen before it arrives
                     "lane_map": lane_map_w,
-                    # the lanes of the edge before the section a through
-                    # vehicle vacates from and to (_weave_vacate_step)
-                    "vacate_lanes": _weave_vacate_lanes(chain_w, section.edges, lane_map_w),
+                    # per corridor edge of the vacate window, the lanes a
+                    # through vehicle vacates from and to (_weave_vacate_step)
+                    "vacate_lanes": _weave_vacate_lanes(
+                        net_for_weaves,
+                        chain_w,
+                        section.edges,
+                        offsets_by_edge,
+                        float(params_w["vacate_ahead_m"]),
+                    ),
                     "vacate": {},
                     # the vehicles asked (the default form asks once); those
                     # in the window last step and not asked; the vehicles

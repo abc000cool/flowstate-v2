@@ -859,7 +859,7 @@ class TestWeaveSchema:
         assert WEAVE_DEFAULTS == {
             **SCRIPTED_MERGE_DEFAULTS,
             "exit_accept_gap_s": 0.6,
-            "vacate_ahead_m": 150.0,
+            "vacate_ahead_m": 500.0,
             "vacate_max_veh_h": 0.0,
             "vacate_no_follower_braking": 0.0,
             "pair_release_s": 2.0,
@@ -1159,10 +1159,10 @@ class TestWeaveRun:
     @pytest.mark.xfail(
         strict=True,
         reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "the vacate rule under its spare-capacity bound): nothing locks at seeds 3-5, the "
-        "entrance departs 406 / 386 / 393 of 466 against 420 required (90 % of 466 is 419.4; "
-        "419 / 414 / 419 before the bound), and lane 1 at the section start reads 5.0 m/s in "
-        "minute 2 at seed 3 (the ramp still queues over its first 100 m)",
+        "the cross-edge vacate window at 500 m): nothing locks at seeds 3-5, the entrance "
+        "departs 398 / 365 / 389 of 466 against 420 required (90 % of 466 is 419.4; 406 / "
+        "386 / 393 with the 150 m window), and lane 1 at the section start reads 3.7 and "
+        "4.4 m/s in minutes 2-3 at seed 3 (the ramp still queues over its first 100 m)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -1297,6 +1297,23 @@ class TestWeaveRun:
         entrance 414 / 419, one minute at 5.0 / 4.3 m/s, 5 of 509 / 2 of
         483 unfinished, 2 / 14 releases. The marker stays: 419 against
         419.4 and the two minutes at 5.0 m/s at this seed.
+
+        Cross-edge vacate window (2026-09-24, block 3: ``vacate_ahead_m``
+        measured along the corridor chain across edges, default 500 m —
+        here over the 282 m approach edge onto the 300 m entry edge; with
+        the 150 m window this fixture read entrance 406 / 386 / 393, lane 1
+        minimum 5.0 / 5.0 / 5.6 m/s): lane 1's first 60 m read 3.7, 4.4,
+        5.6, 6.3, 7.2, 7.1, 6.7, 6.5, 7.1, 9.3, 10.8, 11.7, 10.7, 7.0, 10.0,
+        10.2, 6.1, 7.0 m/s in minutes 2-19 (two below 5); the entrance
+        departs 398 of 466; 458 driven (224 in, 231 out, 29 forced, 102
+        deferred, 3 unfinished); 309 of 316 exit-bound vehicles that reach
+        the section exit; 145 vacated, 56 refused, 39 skipped by the bound;
+        14 releases; no collision. Seeds 4 / 5: entrance 365 / 389, lane 1
+        minimum 4.1 / 3.2 m/s, 5 of 499 / 1 of 477 unfinished, 27 / 19
+        releases, no collision. The window that suits this fixture alone is
+        300 m (entrance 396 / 388 / 407); the default is set for the
+        two-entrance fixture (docs/WEAVE_MODEL_PLAN.md, dated section, has
+        the 150 / 300 / 500 / 800 m table). The marker stays.
         """
         paths = run_micro(_th52_config(3), 3, tmp_path / "th52")
         meta = json.loads(paths.meta.read_text())
@@ -1320,8 +1337,11 @@ class TestWeaveRun:
                     reason=(
                         "platform-sensitive at capacity: on the Linux CI runner (eclipse-sumo "
                         "1.27.1 wheel, 2026-09-24) seed 4 locks — entrance 331 of 466, a lane-1 "
-                        "minute at or below 2 m/s — while it passes on macOS with 412; recorded in "
-                        "docs/WEAVE_MODEL_PLAN.md (block 3, CI note)"
+                        "minute at or below 2 m/s — while it passed on macOS with 412; recorded in "
+                        "docs/WEAVE_MODEL_PLAN.md (block 3, CI note). With the cross-edge vacate "
+                        "window at 500 m (same date) it fails on macOS too, on the entrance pin "
+                        "alone: 365 of 466 (78 % against 80 %) with no lock — lane 1 never below "
+                        "4.1 m/s, 5 of 499 unfinished, nothing missed, 27 releases"
                     ),
                 ),
             ),
@@ -1355,7 +1375,12 @@ class TestWeaveRun:
         (2026-09-24, block 3, the rule re-derived; 4 / 15 through vehicles
         skipped by it): seed 4 never below 5.0 m/s, 3 of 511 unfinished,
         entrance 386, no release; seed 5 never below 5.6 m/s, 4 of 494
-        unfinished, entrance 393, 4 releases; no collision at either."""
+        unfinished, entrance 393, 4 releases; no collision at either. The
+        cross-edge vacate window at 500 m (2026-09-24, block 3): seed 4
+        never below 4.1 m/s, 5 of 499 unfinished, entrance 365 (the 80 %
+        pin fails there, hence its marker's second clause), 27 releases;
+        seed 5 never below 3.2 m/s, 1 of 477 unfinished, entrance 389, 19
+        releases; no collision and nothing missed at either."""
         paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
@@ -1420,6 +1445,14 @@ class TestWeaveRun:
         seeds 3-5): 299 of 306 / 305 of 312 / 302 of 311 exit, 3 / 1 / 2
         unfinished, the last 60 m never below 11.9 / 7.5 / 8.7 m/s, the
         entrance 386 / 398 / 384 of 470, no give-up, no collision.
+        The cross-edge vacate window at 500 m (2026-09-24, block 3; 140 /
+        143 / 138 vacated, 35 / 45 / 48 skipped at seeds 3-5): 297 of 301 /
+        302 of 312 / 299 of 303 exit, 1 / 4 / 1 unfinished, the last 60 m
+        never below 6.5 / 11.7 m/s at seeds 3 / 4, the entrance 398 / 394 /
+        395; at seed 5 (not run here) the gore's end stalls for one minute
+        (last 60 m 1.7 m/s, 534 deferred, 39 releases, 3 exits given up),
+        which the 300 m window does not show (5.3 m/s, 82 deferred, no
+        give-up; docs/WEAVE_MODEL_PLAN.md, dated section).
         """
         cfg = _th52_config(3, **TH52_CORRIDOR_DEMAND)
         paths = run_micro(cfg, 3, tmp_path / "th52_corridor")
@@ -1437,13 +1470,16 @@ class TestWeaveRun:
         strict=True,
         reason="T.H.52 weave with the corridor's upstream entrance in front of it "
         "(docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the upstream-entrance fixture; "
-        "numbers of the vacate rule under its spare-capacity bound, same date): at seed 3 "
-        "the entrance E1 departs 225 of 360 (0.63 against 0.90 required), lane 1 over its "
-        "acceleration-lane end reads 0.4-6.8 m/s (above 5 m/s in 4 of 18 minutes) and lane "
-        "1 over the section's last 60 m 3.6 m/s in minute 12; 279 of 289 exiters exit, 3 of "
-        "431 driven are unfinished, nothing collides. The head is lane 1 of the 230 m "
-        "before the gore (1.3-3.8 m/s in every minute after the second), the same with no "
-        "upstream entrance at all; the gap-conditioned form of the rule does not move it",
+        "numbers of the cross-edge vacate window at 500 m, same date): at seed 3 the "
+        "entrance E1 departs 205 of 360 (0.57 against 0.90 required) and lane 1 over its "
+        "acceleration-lane end reads 1.2-13.9 m/s (above 5 m/s in 4 of 18 minutes); the "
+        "section's side passes — lane 1 over its last 60 m never below 7.4 m/s, 300 of 308 "
+        "exiters exit, 2 of 455 driven unfinished, nothing collides. The head has moved: "
+        "lane 1 of the 230 m before the gore is above 5 m/s in 10 of 18 minutes (was 2, at "
+        "1.3-3.8 m/s); lane 0 is the first lane below 2 m/s there (minute 4 at 50 m, lane 1 "
+        "minute 12), as it already was under the bound at 150 m (minute 2; lane 1 minute "
+        "6); the queue stands on E1's merge (way 110: the acceleration lane below 2 m/s "
+        "from minute 0, lane 1 beside it from minute 3)",
     )
     def test_th52_with_upstream_entrance_at_corridor_demand(self, tmp_path):
         """The corridor's last 850 m (2026-09-24, block 3): the T.H.52 weave of
@@ -1495,12 +1531,14 @@ class TestWeaveRun:
         strict=True,
         reason="The two-entrance fixture on the corridor's own fleet block (EIDM, "
         "heterogeneity 0.15, the I-24 capacity calibration, lc_strategic 5.0, lc_keep_right "
-        "0.0; docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the vacate rule re-derived): at "
-        "seed 3 E1 departs 250 of 360 (0.69 against 0.90), lane 1 over its acceleration-lane "
-        "end 2.1-6.7 m/s (above 5 m/s in 1 of 18 minutes), lane 1 over the section's last "
-        "60 m 4.9 m/s in minute 2; 295 of 301 exiters exit, 3 of 337 driven are unfinished, "
-        "nothing collides. The head is the same stretch, lane 0 and lane 1 both below 2 m/s "
-        "from minutes 4-7 on",
+        "0.0; docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the cross-edge vacate window at "
+        "500 m): at seed 3 E1 departs 272 of 360 (0.76 against 0.90) and lane 1 over its "
+        "acceleration-lane end reads 1.0-12.7 m/s (above 5 m/s in 2 of 18 minutes); the "
+        "section's side passes — lane 1 over its last 60 m never below 8.0 m/s, 307 of 316 "
+        "exiters exit, 4 of 378 driven unfinished, nothing collides. Lane 1 of the 230 m "
+        "before the gore is above 5 m/s in 10 of 18 minutes (was 4) and lane 0 is now the "
+        "first lane below 2 m/s there (minute 3 at 100 m; lane 1 minute 5) where at 150 m "
+        "lane 1 was (minute 4; lane 0 minute 7) — the cloud's lane order on this fleet",
     )
     def test_th52_with_upstream_entrance_on_the_corridor_fleet(self, tmp_path):
         """:func:`test_th52_with_upstream_entrance_at_corridor_demand` with the
@@ -1554,16 +1592,32 @@ class TestWeaveRun:
         stepping order was fixed, so not the order's doing. The per-section
         counters of this scenario at 0.5 / 0.12, 0.4 / 0.10, 0.35 / 0.10 and
         0.3 / 0.10, both listings, were identical before and after the fix
-        (sections 560 m apart: the order cannot matter here)."""
+        (sections 560 m apart: the order cannot matter here).
+
+        With the cross-edge vacate window (2026-09-24, block 3; 500 m, so
+        B's window reaches over 104 onto 103 and A's over 101 onto 100) B's
+        twelve entrants all change in by SUMO's own strategic change at the
+        junction, lane 1 having been vacated 500 m back, and none is driven
+        (``n_changed_in`` 2 → 0 at B; A 6 → 5): the pin is that each section
+        drives vehicles and hands every one back, not that the entering
+        movement needs driving at this demand."""
         cfg = two_weave_scenario(downstream_first=True, ramp_rate=0.10, mainline_rate=0.4)
         paths = run_micro(cfg, 3, tmp_path / "two")
         meta = json.loads(paths.meta.read_text())
         assert [m["ramp"] for m in meta["merge_models"]] == ["B on", "A on"]
         assert [w["ramp"] for w in meta["weave_sections"]] == ["A on", "B on"]
         assert [w["edges"] for w in meta["weave_sections"]] == [["102"], ["105"]]
+        assert [w["vacate_window_edges"] for w in meta["weave_sections"]] == [
+            ["101", "100"],
+            ["104", "103"],
+        ]
         for w in meta["weave_sections"]:
-            assert w["n_changed_in"] > 0 and w["n_changed_out"] > 0, w
-            assert w["n_unfinished"] == 0, w
+            assert w["n_entered"] > 0 and w["n_changed_out"] > 0, w
+            assert w["n_changed_in"] + w["n_changed_out"] == w["n_entered"], w
+            assert w["n_unfinished"] == 0 and w["n_missed"] == 0, w
+        (on_b, _off_b, on_a, _off_a) = meta["ramps"]
+        assert on_a["n_departed"] == on_a["n_planned"] == 12
+        assert on_b["n_departed"] == on_b["n_planned"] == 12
         assert meta["n_collisions"] == 0
 
     def test_listing_the_downstream_pair_first_is_byte_identical(self, tmp_path):
@@ -1748,7 +1802,7 @@ def _weave_state(**params) -> dict:
         "lane_map": {(e, k): k for e in edges for k in range(3)},
         "x_offset": {"a": 0.0, "b": 100.0},
         # third derivation: no corridor edge before the section here
-        "vacate_lanes": None,
+        "vacate_lanes": {},
         "vacate": {},
         "vacate_seen": set(),
         "vacate_pending": set(),
@@ -1810,7 +1864,7 @@ def _sections_back_to_back() -> tuple[dict, dict]:
                 ("b", 2): 2,
             },
             "x_offset": {"b": 100.0, "c": 200.0, "d": 300.0},
-            "vacate_lanes": ("b", 1, 2),
+            "vacate_lanes": {"b": (1, 2)},
         }
     )
     return ws_b, ws_a
@@ -2846,22 +2900,166 @@ class TestWeaveVacateStep:
 
     @staticmethod
     def _state(**params) -> dict:
-        ws = _weave_state(**params)
+        # the third derivation's 150 m window (the request logic under test
+        # was laid out on it; the default is 500 m since the cross-edge window)
+        ws = _weave_state(**{"vacate_ahead_m": 150.0, **params})
         # the corridor edge "p" before the section: its lane 0 feeds section
         # lane 1 (the weave lane), its lane 1 feeds section lane 2
-        ws["vacate_lanes"] = ("p", 0, 1)
+        ws["vacate_lanes"] = {"p": (0, 1)}
         ws["lane_map"].update({("p", 0): 1, ("p", 1): 2})
         ws["x_offset"]["p"] = -200.0
         return ws
 
-    def test_lanes_from_the_lane_map(self):
+    def test_lanes_walked_upstream_across_edges(self, tmp_path):
+        """The cross-edge window (2026-09-24, block 3) on
+        ``tests/fixtures/weave_th52_upstream.osm``: the lane feeding section
+        lane 1 is way 111's lane 0, way 110's lane 1 (its lane 0 is the
+        entrance's acceleration lane) and way 101's lane 0 again; the window
+        lists the edges it reaches, nearest the section first."""
         from microsim.runner import _weave_vacate_lanes
 
-        lane_map = {("p", 0): 1, ("p", 1): 2, ("a", 0): 0, ("a", 1): 1, ("a", 2): 2}
-        assert _weave_vacate_lanes(("p", "a", "b"), ("a", "b"), lane_map) == ("p", 0, 1)
-        # no corridor edge before the section, or no lane feeding section lane 2
-        assert _weave_vacate_lanes(("a", "b"), ("a", "b"), lane_map) is None
-        assert _weave_vacate_lanes(("p", "a"), ("a",), {("p", 0): 1, ("a", 1): 1}) is None
+        chain = ["100", "101", "110", "111", "102", "103", "104"]
+        bundle = osm_import(
+            osm_file=Path(__file__).parents[1] / "fixtures" / "weave_th52_upstream.osm",
+            corridor_edges=chain,
+            keep_edges=("300", "200", "201"),
+            workdir=tmp_path / "up",
+        )
+        net = sumolib.net.readNet(str(bundle.net_path))
+        offsets = dict(zip(bundle.edge_ids, bundle.offsets, strict=True))
+        assert offsets["102"] - offsets["110"] == pytest.approx(332.0, abs=1.0)
+        walk = _weave_vacate_lanes(net, chain, ["102"], offsets, 500.0)
+        assert walk == {"111": (0, 1), "110": (1, 2), "101": (0, 1)}
+        assert list(walk) == ["111", "110", "101"]
+        assert _weave_vacate_lanes(net, chain, ["102"], offsets, 150.0) == {"111": (0, 1)}
+        assert _weave_vacate_lanes(net, chain, ["102"], offsets, 2000.0) == {
+            "111": (0, 1),
+            "110": (1, 2),
+            "101": (0, 1),
+            "100": (0, 1),
+        }
+        assert _weave_vacate_lanes(net, chain, ["102"], offsets, 0.0) == {}
+        # no corridor edge before the section
+        assert _weave_vacate_lanes(net, chain[3:], ["111", "102"], offsets, 500.0) == {}
+
+    def test_walk_stops_where_a_lane_has_no_unique_feeder(self):
+        """A fake net: the walk ends (the window truncated there) at an edge
+        where the lane it follows has two feeders or none, or where both
+        lanes are fed by one lane; a two-lane section makes it empty."""
+        from microsim.runner import _weave_vacate_lanes
+
+        class Conn:
+            def __init__(self, to_edge, to_lane):
+                self._to, self._lane = to_edge, to_lane
+
+            def getTo(self):
+                return self._to
+
+            def getToLane(self):
+                return self._lane
+
+        class Lane:
+            def __init__(self, index, outgoing):
+                self._index, self._out = index, outgoing
+
+            def getIndex(self):
+                return self._index
+
+            def getOutgoing(self):
+                return self._out
+
+        class Edge:
+            def __init__(self, eid, lanes):
+                self._id, self._lanes = eid, lanes
+
+            def getID(self):
+                return self._id
+
+            def getLanes(self):
+                return self._lanes
+
+        class Net:
+            def __init__(self, conns: dict[str, dict[int, list[tuple[str, int]]]]):
+                self.edges = {e: Edge(e, []) for e in conns}
+                for e, by_lane in conns.items():
+                    self.edges[e]._lanes = [
+                        Lane(k, [Conn(self.edges[to], Lane(to_k, [])) for to, to_k in outs])
+                        for k, outs in sorted(by_lane.items())
+                    ]
+
+            def getEdge(self, eid):
+                return self.edges[eid]
+
+        offsets = {"q": 0.0, "p": 200.0, "a": 400.0}
+        # p's lanes 0 / 1 feed a's lanes 1 / 2; q's lanes 1 and 2 both merge into p's lane 1
+        net = Net(
+            {
+                "q": {0: [("p", 0)], 1: [("p", 1)], 2: [("p", 1)]},
+                "p": {0: [("a", 1)], 1: [("a", 2)]},
+                "a": {0: [], 1: [], 2: []},
+            }
+        )
+        assert _weave_vacate_lanes(net, ["q", "p", "a"], ["a"], offsets, 1000.0) == {"p": (0, 1)}
+        # p's lane 0 splits into a's lanes 1 and 2: both fed by one lane, inert
+        net = Net({"p": {0: [("a", 1), ("a", 2)], 1: []}, "a": {0: [], 1: [], 2: []}})
+        assert _weave_vacate_lanes(net, ["p", "a"], ["a"], offsets, 1000.0) == {}
+        # a two-lane section: nothing feeds a lane 2
+        net = Net({"p": {0: [("a", 1)]}, "a": {0: [], 1: []}})
+        assert _weave_vacate_lanes(net, ["p", "a"], ["a"], offsets, 1000.0) == {}
+        # an edge missing from the offsets ends the walk
+        net = Net(
+            {
+                "q": {0: [("p", 0)], 1: [("p", 1)]},
+                "p": {0: [("a", 1)], 1: [("a", 2)]},
+                "a": {0: [], 1: [], 2: []},
+            }
+        )
+        offs = {"p": 200.0, "a": 400.0}
+        assert _weave_vacate_lanes(net, ["q", "p", "a"], ["a"], offs, 1000.0) == {"p": (0, 1)}
+        assert _weave_vacate_lanes(net, ["q", "p", "a"], ["a"], offsets, 1000.0) == {
+            "p": (0, 1),
+            "q": (0, 1),
+        }
+
+    def test_open_request_is_re_addressed_where_the_target_lane_index_shifts(self):
+        """The cross-edge window (2026-09-24, block 3): a vehicle asked on
+        edge ``q`` (weave lane 1, target lane 2 — an acceleration lane on its
+        right) that crosses onto ``p`` (lanes 0 / 1) still in the weave lane
+        with its request open has the request re-issued for ``p``'s target
+        index and its remaining life; seen in ``p``'s target lane it is
+        vacated, the request ended by the one-step stay, the mode restored."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        ws = self._state(vacate_ahead_m=500.0)
+        ws["vacate_lanes"] = {"p": (0, 1), "q": (1, 2)}
+        ws["x_offset"]["q"] = -400.0
+        veh = _WeaveVehicle({"t": 20.0})
+        mod = _WeaveMod(veh)
+        # t: on q's lane 1 at x = -300 (300 m before the section start)
+        _weave_step(mod, _tc, ws, {"t": _res("q", 1, 100.0, 20.0)}, 0.0)
+        assert veh.calls == [("lc", "t", LC_MODE_SCRIPTED_SAFE), ("change", "t", 2, 15.0)]
+        assert ws["vacate"]["t"]["lane_to"] == 2 and ws["n_vacate_requests"] == 1
+        veh.calls.clear()
+        # crossed onto p in the weave lane (index 0 there): re-addressed to 1
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 5.0, 20.0)}, 10.0)
+        assert veh.calls == [("change", "t", 1, 5.0)]
+        assert ws["vacate"]["t"]["lane_to"] == 1 and ws["n_vacate_requests"] == 1
+        veh.calls.clear()
+        # still there next step: nothing more is sent
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 15.0, 20.0)}, 10.5)
+        assert veh.calls == []
+        # in p's target lane: vacated, the open request ended by the stay
+        _weave_step(mod, _tc, ws, {"t": _res("p", 1, 25.0, 20.0)}, 11.0)
+        assert veh.calls == [("change", "t", 1, 0.5), ("lc", "t", 1621)]
+        assert (ws["n_vacated"], ws["n_vacate_refused"]) == (1, 0) and "t" not in ws["vacate"]
+        # the target lane's inflow to the window is read across the edges too
+        ws2 = self._state(vacate_ahead_m=500.0)
+        ws2["vacate_lanes"] = {"p": (0, 1), "q": (1, 2)}
+        ws2["x_offset"]["q"] = -400.0
+        veh2 = _WeaveVehicle({"k": 20.0, "m": 20.0})
+        res = {"k": _res("q", 2, 50.0, 20.0), "m": _res("p", 1, 50.0, 20.0)}
+        _weave_step(_WeaveMod(veh2), _tc, ws2, res, 0.0)
+        assert ws2["vacate_flow_ids"] == {"k", "m"} and veh2.calls == []
 
     def test_through_vehicle_asked_once_then_counted_vacated(self):
         from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_meta, _weave_step
@@ -2950,8 +3148,10 @@ class TestWeaveVacateGapConditioned:
 
     @staticmethod
     def _state(**params) -> dict:
-        ws = _weave_state(**params)
-        ws["vacate_lanes"] = ("p", 0, 1)
+        # the 150 m window the form was laid out on (the default is 500 m
+        # since the cross-edge window, 2026-09-24 block 3)
+        ws = _weave_state(**{"vacate_ahead_m": 150.0, **params})
+        ws["vacate_lanes"] = {"p": (0, 1)}
         ws["lane_map"].update({("p", 0): 1, ("p", 1): 2})
         ws["x_offset"]["p"] = -200.0
         return ws
@@ -3140,8 +3340,8 @@ class TestWeaveReviewDerivations3To6:
     def _vacate_state(lane_from: int = 0, lane_to: int = 1, **params) -> dict:
         """Section ``a`` -> ``b`` with the corridor edge ``p`` before it; its
         lane ``lane_from`` feeds section lane 1 and ``lane_to`` lane 2."""
-        ws = _weave_state(**params)
-        ws["vacate_lanes"] = ("p", lane_from, lane_to)
+        ws = _weave_state(**{"vacate_ahead_m": 150.0, **params})  # the window it was laid out on
+        ws["vacate_lanes"] = {"p": (lane_from, lane_to)}
         ws["lane_map"].update({("p", lane_from): 1, ("p", lane_to): 2})
         ws["x_offset"]["p"] = -200.0
         return ws

@@ -902,6 +902,66 @@ the hash 436cd4ec9e5d unchanged; mean travel time 70.998 → 70.816 s, fuel
 93.00 → 93.03 ml/veh-km; the drift is the bound delaying an ask by a step
 in a burst — lifting it reproduces the old totals exactly).
 
+Cross-edge vacate window (2026-09-24, block 3): `vacate_ahead_m` is
+measured along the corridor chain from the section start across as many
+upstream corridor edges as it reaches, and its default rises **150 → 500 m**.
+`microsim.runner._weave_vacate_lanes(net, chain, section_edges, offsets,
+ahead_m)` walks upstream edge by edge and returns `{edge: (lane feeding
+section lane 1, lane feeding section lane 2)}`, nearest the section first,
+the feeding lane derived per edge from netconvert's connections into the
+lane found on the edge after it — so the index shifts where a lane is added
+or dropped (`tests/fixtures/weave_th52_upstream.osm`: way 111 lanes 0 → 1,
+way 110 lanes 1 → 2 beside E1's acceleration lane, way 101 lanes 0 → 1); the
+walk stops, truncating the window there, at an edge missing from the
+runner's offsets, at a lane with no unique feeder (a split, two lanes
+merging into one) or where both lanes are fed by one lane; empty = inert (no
+edge before the section, a two-lane section, `vacate_ahead_m = 0`).
+`_weave_vacate_step` lists the window's weave and target lanes from the
+step's `results` (the section's `lane_map`, and so the driven movements'
+gap choice, is unchanged), the target lane continuing onto the section by
+the lane-2 listing; an open default-form request (by lane *index*) is
+re-issued for its remaining life when the vehicle crosses onto a window
+edge whose target lane has another index still in the weave lane; a held
+vehicle on a junction's internal lane (`internal_links`) is left for that
+step. The request logic — one ask per vehicle, mode 512 by default, the
+gap-conditioned option under 768, the spare-capacity bound, the counters —
+is unchanged, and at `vacate_ahead_m = 150` the runner reproduces the
+previous numbers exactly. `weave_sections[i]` gains `vacate_window_edges`
+(the corridor edges the window reaches, nearest first; `[]` = inert; not in
+`WeaveSectionDiagnosticsOut`). The default: 150 m was the HCM 7th ed. ch. 13
+weaving segment's 500-ft influence area, where the segment's own gap
+search binds; a through driver moves left where the advance signage tells
+him to, and the MUTCD (2009 ed., §2E.33, Advance Guide Signs) places the
+nearest advance guide sign of a freeway exit 1/2 mile (≈ 800 m) ahead — 500 m
+is a stated engineering choice between the two, not a fitted value; 300 /
+500 / 800 m measured (docs/WEAVE_MODEL_PLAN.md, dated section: 800 m is
+worse everywhere and collides at one seed, 300 m suits the T.H.52-only
+fixtures better and the two-entrance fixture equally). **Hash-neutral**:
+`config_hash_payload` omits defaults and `weave_params` is a dict the
+scenario sets, so no committed scenario or golden sets `vacate_ahead_m` and
+no committed hash changes; a scenario that set `vacate_ahead_m: 150`
+explicitly keeps its hash and its behaviour. Measured on the two-entrance
+fixture at 500 m (seed 3; both fleets): the section side passes — gore
+never below 7.4 / 8.0 m/s, 300 of 308 / 307 of 316 exit — and lane 1 of the
+230 m before the gore is above 5 m/s in 10 of 18 minutes on both fleets
+(was 2 / 4); E1 departs 205 / 272 of 360 (was 225 / 250) with its
+acceleration lane's end at 1.2 / 1.0 m/s at the minimum: the head is now
+the entrance's merge and the approach, and both two-entrance tests keep
+their strict `xfail`. T.H.52 alone: the corridor-demand exit-side test
+passes (297 of 301, gore ≥ 6.5 m/s, entrance 398 of 470), the capacity test
+keeps its strict marker (398 of 466, lane 1 3.7 / 4.4 m/s in minutes 2–3),
+the no-lock pin at seed 5 holds (389, 19 releases) and at seed 4 — the
+platform-sensitive non-strict `xfail` — now fails on macOS too on the 80 %
+entrance pin alone (365 of 466; no lock); the moderate fixture passes;
+`weave_two.osm`'s test no longer pins `n_changed_in > 0` per section (its
+12 entrants at B change in by SUMO's own strategic change once lane 1 is
+vacated 500 m back; every one departs, none unfinished) and asserts the
+window's edges instead. Golden `merge_weave` regenerated (hash 436cd4ec9e5d
+unchanged; the window reaches over the 470.5 m approach onto the entry
+edge): throughput 1,687.5 → 1,680.0 veh/h, changes in / out / forced
+17 / 20 / 1 → 14 / 19 / 2, exits 33, mean travel time 70.82 → 69.35 s, σ_v
+spatial 4.294 → 3.848 m/s, fuel 93.03 → 90.67 ml/veh-km, collisions 0.
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:

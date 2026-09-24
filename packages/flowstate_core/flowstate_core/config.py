@@ -180,7 +180,7 @@ SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 WEAVE_DEFAULTS: dict[str, float] = {
     **SCRIPTED_MERGE_DEFAULTS,
     "exit_accept_gap_s": 0.6,
-    "vacate_ahead_m": 150.0,
+    "vacate_ahead_m": 500.0,
     "vacate_max_veh_h": 0.0,
     "vacate_no_follower_braking": 0.0,
     "pair_release_s": 2.0,
@@ -193,11 +193,21 @@ WEAVE_DEFAULTS: dict[str, float] = {
 of the section start a through vehicle in the weave lane is asked, once, to
 move one lane left — the "through traffic keep left" signage and driver
 anticipation of a weave — under SUMO's own safety check
-(``microsim.runner._weave_vacate_step``). The default is the HCM weaving
-segment's upstream influence area, 500 ft (HCM 7th ed. ch. 13: the segment's
-influence extends 500 ft upstream of the entry gore), not a fitted value;
-``0`` disables the rule, and the window is truncated to the corridor edge
-before the section. ``vacate_max_veh_h`` (2026-09-24, block 3, the rule
+(``microsim.runner._weave_vacate_step``). The window is measured along the
+corridor chain from the section start across as many upstream edges as it
+reaches (2026-09-24, block 3, the cross-edge window; until then it was
+truncated to the edge before the section, and its default was the HCM 7th
+ed. ch. 13 weaving segment's 500-ft upstream influence area, 150 m). The
+default is now **500 m**: the influence area is where the weave's own gap
+search binds, but a through driver moves left for a weave where the advance
+signage tells him to — the MUTCD (2009 ed., §2E.33, Advance Guide Signs)
+places the nearest advance guide sign of a freeway exit 1/2 mile (≈ 800 m)
+ahead of it — so the request should be made where the through lane still
+moves, not in the last 230 m between an entrance's merge and the gore.
+500 m is a stated engineering choice between the two distances, not a
+fitted value; both ends are in the sensitivity table (300 / 500 / 800 m,
+docs/WEAVE_MODEL_PLAN.md, dated section). ``0`` disables the rule.
+``vacate_max_veh_h`` (2026-09-24, block 3, the rule
 re-derived): the most through vehicles the rule may ask into the target
 lane per hour, counted over the last 60 s; a positive value is the bound,
 ``0`` (the default) uses the target lane's spare capacity — one IDM lane's
