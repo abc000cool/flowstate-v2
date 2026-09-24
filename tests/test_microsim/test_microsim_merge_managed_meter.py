@@ -903,6 +903,87 @@ class TestWeaveRun:
         assert start[start.lane == 0].v.mean() > 5.0, start.groupby("lane").v.mean()
         assert start[start.lane == 1].v.mean() > 5.0, start.groupby("lane").v.mean()
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="T.H.52 weave at capacity stalls at its start (docs/WEAVE_MODEL_PLAN.md, "
+        "2026-09-24 block 3): the conflict handling of a saturated weave is open",
+    )
+    def test_th52_weave_at_capacity_flows(self, tmp_path):
+        """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
+        (docs/ONBOARDING_MNDOT.md §10): ``tests/fixtures/weave_th52.osm``, three
+        through lanes, a 305 m auxiliary lane from the entrance to the exit
+        (netconvert: 308 m), 600 m of approach and downstream; mainline
+        4,500 veh/h with 25 % exiting, entrance 1,400 veh/h (all through),
+        20 simulated minutes, step 0.5 s, the fleet defaults, seed 3.
+
+        Reality carries this weave (the corridor's lowest station speed at
+        the peak is 8.5 m/s). The criterion is a flowing section: mean speed
+        in lane 1 over the section's first 60 m above 5 m/s in every 60-s
+        window after a 120-s warm-up, at least 90 % of the entrance's planned
+        vehicles departed and at most 10 % of the driven vehicles still under
+        control at the end, no collision. At 462b731 it fails: lane 1's
+        first 60 m read 20.2, 10.9, 2.9, 0.2 m/s in minutes 0-3 and 0.0 from
+        minute 4 to the end, the entrance departs 81 of 466, 92 vehicles are
+        driven (25 in, 18 out, 0 forced, 16,576 forced changes deferred, 49
+        unfinished), 3 of the 62 exit-bound vehicles that reach the section
+        exit, 583 of 1,966 planned vehicles depart. The mechanism (per-step
+        trace, same seed) and the eight re-derivations tried on 2026-09-24,
+        each of which locked the section as hard or harder, are in
+        docs/WEAVE_MODEL_PLAN.md (dated paragraph); the run takes ~8 s.
+        """
+        cfg = ScenarioConfig.model_validate(
+            {
+                "name": "weave_th52",
+                "network": {
+                    "kind": "osm",
+                    "osm_file": str(Path(__file__).parents[1] / "fixtures" / "weave_th52.osm"),
+                    "corridor_edges": ["100", "101", "102", "103", "104"],
+                    "inflow": [[0.0, 4500.0 / 3600.0]],
+                    "ramps": [
+                        {
+                            "kind": "on",
+                            "name": "th52",
+                            "edges": ["200"],
+                            "attach_edge": "102",
+                            "inflow": [[0.0, 1400.0 / 3600.0]],
+                            "merge": "weave",
+                            "weave": {"exit_ramp": "cd exit"},
+                        },
+                        {
+                            "kind": "off",
+                            "name": "cd exit",
+                            "edges": ["201"],
+                            "attach_edge": "102",
+                            "exit_fraction": [[0.0, 0.25]],
+                        },
+                    ],
+                },
+                "sim": {"duration_s": 1200.0},
+                "seed": 3,
+            }
+        )
+        paths = run_micro(cfg, 3, tmp_path / "th52")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        assert 300.0 < ws["length_m"] < 315.0, ws["length_m"]
+        assert meta["n_collisions"] == 0, meta["collisions"]
+        net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+        x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
+        df = pd.read_parquet(paths.trajectories)
+        start = df[
+            (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == 1)
+        ]
+        windows = start.groupby((start.t // 60.0).astype(int)).v.mean()
+        (on_meta, _off_meta) = meta["ramps"]
+        state = {
+            "lane1_first60m_by_minute": {int(k): round(float(v), 1) for k, v in windows.items()},
+            "entrance_departed": (on_meta["n_departed"], on_meta["n_planned"]),
+            "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
+        }
+        assert len(windows) == 18 and (windows > 5.0).all(), state
+        assert on_meta["n_departed"] >= 0.9 * on_meta["n_planned"], state
+        assert ws["n_missed"] == 0 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+
     def test_unpaired_geometry_is_refused_with_the_edges(self, merge_osm, tmp_path):
         """The schema pairing holds (same attach edge) but lane 0 of 102 never
         reaches exit link 201, which leaves the merge fixture upstream."""

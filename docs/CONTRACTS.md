@@ -472,6 +472,36 @@ is never counted.
 Verified on the synthetic fixture `tests/fixtures/weave.osm` (golden
 `merge_weave.json`); on the MnDOT I-94 WB 35-min slice it has one seed and no
 validation claim.
+Amended 2026-09-24 (block 3, the T.H.52 lock): the rules above are unchanged
+and are **known to lock a one-sided weave at capacity**. The fixture
+`tests/fixtures/weave_th52.osm` (three through lanes, a 308 m auxiliary lane
+from entrance to exit, 583 m of approach; mainline 4,500 veh/h with 25 %
+exiting, entrance 1,400 veh/h, 20 min, seed 3) is pinned by
+`TestWeaveRun::test_th52_weave_at_capacity_flows`, `xfail(strict=True)`: lane
+1 over the section's first 60 m must average above 5 m/s in every 60-s window
+after a 120-s warm-up, the entrance must depart 90 % of its plan, at most 10 %
+of driven vehicles may be unfinished, no collision. Under these rules lane 1
+reads 20.2, 10.9, 2.9, 0.2 m/s in minutes 0–3 and 0.0 thereafter, the
+entrance departs 81 of 466, 0 changes are forced and 16,576 are deferred. The
+per-step trace names the rule: at t = 55.5 s the station-keeping rule
+(`v_lead + (g_lead − g_hold)/τ`, no floor) commands 0.0 m/s to an exit-bound
+vehicle in the **middle** through lane at x = 228 m — it holds behind
+whatever is ahead in the lane to its right, here a lane-1 vehicle, while its
+forced change is deferred — and lane 2 queues to a stop behind it; lane 1's
+first stop at the section start (t = 116 s) is an exit-bound vehicle braking
+at −8 m/s² after the exchange rule dropped it to 4 m/s and an entering vehicle
+speed-matched to a 3.2 m/s lane-1 leader executed its mode-256 change at
+2.9 m/s ahead of it. Gap parameters, SUMO's cooperative model (driven
+vehicles run under modes 512/256 with every model change off) and the exit
+link are not involved. The zipper re-derivation of docs/WEAVE_MODEL_PLAN.md
+(dated paragraph) was tried in eight forms on this fixture and every one
+locked the section as hard or harder, so nothing of it ships; the golden
+`merge_weave` is unchanged. Two facts constrain the next attempt: a change
+confined to the last `force_within_m` puts entrants and exiters through one
+point of lane 0 (2,525 veh/h against a lane's ≈ 2,050 veh/h at T = 1.4 s), so
+a jam formed at the gore never discharges; and an accepted change at the
+0.6 s gap makes an IDM follower with T = 1.4 s brake at ≈ 4 m/s², so lane 1
+is compressed into platoons with no acceptable hole after a few insertions.
 
 ## 3. Run outputs
 
