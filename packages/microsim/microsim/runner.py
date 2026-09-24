@@ -955,10 +955,29 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     internal junction lane between two section pieces
     (``OSMNetwork.internal_links``) is neither driven nor handed back that
     step. Bookkeeping lands in ``ws`` for ``meta.json``.
+
+    **Exit bookkeeping** (2026-09-24, review finding). An exit-bound vehicle
+    (``exiting_ids``) is added to ``reached`` the first step it is seen on a
+    section edge — ``n_reached_section_exiting``, the denominator that
+    excludes vehicles still upstream when the run ends — and to ``exited``
+    (``n_exited``, each vehicle once) when it is seen on **any** edge of the
+    paired off-ramp (``exit_edges``, the ramp's ``RampSpec.edges``), or when,
+    having reached the section, it is gone from the network while last seen
+    on a section edge or on an internal junction lane after one. The second
+    rule is what makes the count robust: a per-step sighting on the ramp
+    misses a ramp edge — or a whole ramp — shorter than one step of travel
+    (12.5 m at 25 m/s and 0.5 s), whereas an exit-bound vehicle can leave the
+    network from the section only by driving its route to the ramp's end
+    (teleporting is off, ``--time-to-teleport -1``, and ``collision.action
+    warn`` removes nobody). A reached vehicle next seen on any other named
+    edge left by the mainline (possible only under a reroute) and is never
+    counted; whichever way it leaves, it is dropped from ``awaiting_exit`` so
+    the per-step check stays bounded by the vehicles at the section.
     """
     prm = ws["params"]
     edges: dict[str, int] = ws["edge_index"]
     exiting: frozenset[str] = ws["exiting_ids"]
+    exit_edges: frozenset[str] = ws["exit_edges"]
     veh = ws["veh"]
     pending: dict[str, int] = {}
     # driven vehicles on an internal junction lane this step (a section of
@@ -966,10 +985,31 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # control, decided again on the next edge — handing them back here would
     # book a miss and re-enter them with their timers reset
     in_transit: set[str] = set()
+    # exit-bound vehicles that reached the section and have not been counted
+    # as exited yet (see the docstring, exit bookkeeping)
+    awaiting_exit: set[str] = ws["awaiting_exit"]
+    for vid in list(awaiting_exit):
+        res_a = results.get(vid)
+        if res_a is None:
+            # gone from the network after the section: it drove the ramp to
+            # its end within the step (a ramp shorter than a step of travel)
+            ws["exited"].add(vid)
+            awaiting_exit.discard(vid)
+            continue
+        road_a = res_a[tc.VAR_ROAD_ID]
+        if road_a in exit_edges:
+            ws["exited"].add(vid)
+            awaiting_exit.discard(vid)
+        elif road_a not in edges and not road_a.startswith(":"):
+            awaiting_exit.discard(vid)  # left by the mainline: never counted
     for vid, res in results.items():
         road = res[tc.VAR_ROAD_ID]
-        if road == ws["exit_edge"]:
-            ws["exited"].add(vid)
+        if road in exit_edges:
+            if vid in exiting and vid not in ws["exited"]:
+                # never sighted on the section (a section shorter than a
+                # step of travel): still an exit, and it did reach the section
+                ws["reached"].add(vid)
+                ws["exited"].add(vid)
             continue
         if road not in edges:
             if vid in veh and road.startswith(":"):
@@ -977,6 +1017,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             continue
         lane = int(res[tc.VAR_LANE_INDEX])
         if vid in exiting:
+            if vid not in ws["exited"] and vid not in ws["reached"]:
+                ws["reached"].add(vid)
+                awaiting_exit.add(vid)
             if lane >= 1:
                 pending[vid] = -1
         elif lane == 0 and ws["exit_only"][road]:
@@ -997,9 +1040,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         road = results[vid][tc.VAR_ROAD_ID]
         lane = int(results[vid][tc.VAR_LANE_INDEX])
         if st["dir"] < 0:
-            done = road == ws["exit_edge"] or (road in edges and lane == 0)
+            done = road in exit_edges or (road in edges and lane == 0)
         else:
-            done = road != ws["exit_edge"]
+            done = road not in exit_edges
         if not done:
             ws["n_missed"] += 1
             continue
@@ -1108,9 +1151,15 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``n_forced`` counts completed changes that needed the forced mode
     (exiting movement only); ``n_forced_deferred`` counts vehicle-steps on
     which a due forced change was refused by the minimum-gap guard
-    (:func:`_weave_force_gap_ok`). ``n_exited`` is the number of vehicles seen on
-    the exit's first edge, against ``n_departed_exiting``, the departed
-    vehicles routed through it.
+    (:func:`_weave_force_gap_ok`). ``n_exited`` is the number of exit-bound
+    vehicles that took the paired exit (seen on any of its edges, or gone from
+    the network after the section — :func:`_weave_step`, exit bookkeeping),
+    each once; ``n_reached_section_exiting`` the exit-bound vehicles that
+    entered the section during the run, its denominator; and
+    ``n_departed_exiting`` the departed vehicles routed through the exit,
+    including those still upstream of the section when the run ends (so
+    ``n_exited <= n_reached_section_exiting <= n_departed_exiting``, and the
+    last two agree only once demand has drained through the section).
     """
     waits = ws["waits_in_s"] + ws["waits_out_s"]
 
@@ -1122,6 +1171,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "exit": ws["exit"],
         "edges": ws["edges"],
         "exit_edge": ws["exit_edge"],
+        "exit_edges": sorted(ws["exit_edges"]),
         "length_m": ws["length_m"] if ws["length_m"] is not None else ws["length_m_measured"],
         "length_m_measured": ws["length_m_measured"],
         "params": dict(ws["params"]),
@@ -1133,6 +1183,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_unfinished": len(ws["veh"]),
         "n_exited": len(ws["exited"]),
+        "n_reached_section_exiting": len(ws["reached"]),
         "n_departed_exiting": sum(
             n for rid, n in n_departed_by_route.items() if _route_exit(rid) == ws["off_index"]
         ),
@@ -1758,6 +1809,9 @@ def run_micro(
                     "edges": list(section.edges),
                     "edge_index": {e: n for n, e in enumerate(section.edges)},
                     "exit_edge": section.exit_edge,
+                    # every edge of the paired off-ramp: an exit is counted on
+                    # any of them (_weave_step, exit bookkeeping)
+                    "exit_edges": frozenset(exit_w.edges),
                     "exit_only": dict(zip(section.edges, section.exit_only, strict=True)),
                     "lane_len_m": lens_w,
                     # section length still ahead once an edge is done [m]
@@ -1774,6 +1828,8 @@ def run_micro(
                         if _route_exit(rid) == section.off_ramp
                     ),
                     "exited": set(),
+                    "reached": set(),
+                    "awaiting_exit": set(),
                     "veh": {},
                     "yielding": {},
                     "n_entered": 0,

@@ -22,6 +22,11 @@ const UNFINISHED_TITLE = 'Vehicles still under the section’s control when the 
 
 const MISSED_TITLE = 'Vehicles that left the section, or the network, still owing their change.';
 
+const EXITED_TITLE =
+  'Exit-bound vehicles that took the exit, against the exit-bound vehicles that entered the ' +
+  'section during the run (a meta written before that counter existed falls back to every ' +
+  'departed vehicle routed through the exit).';
+
 function RampMeterTable({ rows }: { rows: RampMeterDiagnostics[] }): JSX.Element {
   return (
     <div className="table-wrap">
@@ -65,9 +70,7 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
             <th>Entered</th>
             <th>Changed in</th>
             <th>Changed out</th>
-            <th title="Vehicles seen on the exit, against the departed vehicles routed through it">
-              Exited / routed
-            </th>
+            <th title={EXITED_TITLE}>Exited / reached</th>
             <th>Forced</th>
             <th title={DEFERRED_TITLE}>Deferred (vehicle-steps)</th>
             <th title={MISSED_TITLE}>Missed</th>
@@ -85,7 +88,7 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
               <td className="mono">{w.n_changed_in}</td>
               <td className="mono">{w.n_changed_out}</td>
               <td className="mono">
-                {w.n_exited} / {w.n_departed_exiting}
+                {w.n_exited} / {w.n_reached_section_exiting ?? w.n_departed_exiting}
               </td>
               <td className="mono">{w.n_forced}</td>
               <td className="mono">{w.n_forced_deferred}</td>

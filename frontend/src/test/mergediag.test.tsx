@@ -28,6 +28,7 @@ const WEAVE = {
   n_changed_in: 241,
   n_changed_out: 145,
   n_exited: 143,
+  n_reached_section_exiting: 145,
   n_departed_exiting: 147,
   n_forced: 19,
   n_forced_deferred: 57,
@@ -79,7 +80,7 @@ describe('MergeDiagnosticsPanel', () => {
       'Entered',
       'Changed in',
       'Changed out',
-      'Exited / routed',
+      'Exited / reached',
       'Forced',
       'Deferred (vehicle-steps)',
       'Missed',
@@ -92,7 +93,7 @@ describe('MergeDiagnosticsPanel', () => {
     expect(table.getByText('388')).toBeInTheDocument();
     expect(table.getByText('241')).toBeInTheDocument();
     expect(table.getByText('145')).toBeInTheDocument();
-    expect(table.getByText('143 / 147')).toBeInTheDocument();
+    expect(table.getByText('143 / 145')).toBeInTheDocument();
     expect(table.getByText('19')).toBeInTheDocument();
     expect(table.getByText('57')).toBeInTheDocument();
     // a change never made and a vehicle still under control are flagged
@@ -108,13 +109,23 @@ describe('MergeDiagnosticsPanel', () => {
         diagnostics={{
           seed: 1,
           ramp_meters: [METER],
-          weave_sections: [{ ...WEAVE, wait_s_mean: null, n_missed: 0, n_unfinished: 0 }],
+          weave_sections: [
+            {
+              ...WEAVE,
+              wait_s_mean: null,
+              n_missed: 0,
+              n_unfinished: 0,
+              n_reached_section_exiting: null,
+            },
+          ],
         }}
       />,
     );
     expect(screen.getByLabelText('ramp meters')).toBeInTheDocument();
     const weaves = within(screen.getByLabelText('weaving sections'));
     expect(weaves.getByText('—')).toBeInTheDocument();
+    // an older meta without the reached counter falls back to the routed vehicles
+    expect(weaves.getByText('143 / 147')).toBeInTheDocument();
     // zero counters are not flagged
     for (const cell of weaves.getAllByText('0')) expect(cell).not.toHaveClass('hint-amber');
     // the section is honest about what the numbers are

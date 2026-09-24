@@ -259,6 +259,12 @@ export interface WeaveSectionDiagnostics {
   n_changed_in: number;
   n_changed_out: number;
   n_exited: number;
+  /** Exit-bound vehicles that entered the section during the run — the
+   * denominator of `n_exited`. Absent (null) in a meta written before the
+   * counter existed (2026-09-24); `n_departed_exiting` then stands in. */
+  n_reached_section_exiting?: number | null;
+  /** Departed vehicles routed through the exit, including those still
+   * upstream of the section when the run ended. */
   n_departed_exiting: number;
   n_forced: number;
   n_forced_deferred: number;

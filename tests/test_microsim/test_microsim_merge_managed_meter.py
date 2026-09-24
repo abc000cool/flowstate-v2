@@ -828,7 +828,9 @@ class TestWeaveRun:
         assert ws["wait_s_mean"] is not None and ws["wait_s_mean"] < 60.0
         # every departed vehicle routed to the exit reached it
         assert ws["n_departed_exiting"] > 5
-        assert ws["n_exited"] == ws["n_departed_exiting"], ws
+        # demand drains within the run, so all three exit counters agree
+        assert ws["n_exited"] == ws["n_reached_section_exiting"] == ws["n_departed_exiting"], ws
+        assert ws["exit_edges"] == ["201"]
         (on_meta, off_meta) = meta["ramps"]
         assert on_meta["n_departed"] == on_meta["n_planned"] > 0
         assert off_meta["n_planned_exiting"] == ws["n_departed_exiting"]
@@ -983,6 +985,7 @@ def _weave_state(**params) -> dict:
         "edges": list(edges),
         "edge_index": {e: n for n, e in enumerate(edges)},
         "exit_edge": "x",
+        "exit_edges": frozenset({"x", "x2"}),
         "exit_only": {"a": True, "b": True},
         "lane_len_m": lens,
         "beyond_m": {"a": 100.0, "b": 0.0},
@@ -991,6 +994,8 @@ def _weave_state(**params) -> dict:
         "params": {**WEAVE_DEFAULTS, **params},
         "exiting_ids": frozenset({"e"}),
         "exited": set(),
+        "reached": set(),
+        "awaiting_exit": set(),
         "veh": {},
         "yielding": {},
         "n_entered": 0,
@@ -1134,6 +1139,107 @@ class TestWeaveStepBookkeeping:
         assert veh.max_speeds["e"] >= 3.0  # the front vehicle is never told to yield
         # neither gap is acceptable, so no change is requested by either
         assert not [c for c in veh.calls if c[0] == "change"]
+
+
+class TestWeaveExitBookkeeping:
+    """Exit counting of ``_weave_step`` (review finding of 2026-09-24): an
+    exit-bound vehicle is counted once, on any edge of the exit ramp or when
+    it leaves the network from the section, against the vehicles that reached
+    the section rather than every departed one."""
+
+    @staticmethod
+    def _meta(ws: dict, n_departed_exiting: int) -> dict:
+        from microsim.runner import _weave_meta
+
+        return _weave_meta(ws, {"main_off1": n_departed_exiting})
+
+    def test_exit_edge_crossed_within_one_step_is_still_counted_once(self):
+        """The ramp's first edge is never sighted (shorter than a step of
+        travel): the vehicle is counted on the ramp's second edge, once."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        mod = _WeaveMod(_WeaveVehicle({"e": 25.0}))
+        # on lane 0 of the section: exit-bound, nothing left to change, not driven
+        _weave_step(mod, _tc, ws, {"e": _res("b", 0, 95.0, 25.0)}, 0.0)
+        assert ws["reached"] == {"e"} and ws["exited"] == set() and ws["veh"] == {}
+        _weave_step(mod, _tc, ws, {"e": _res("x2", 0, 2.0, 25.0)}, 0.5)
+        assert ws["exited"] == {"e"} and ws["awaiting_exit"] == set()
+        _weave_step(mod, _tc, ws, {"e": _res("x2", 0, 14.0, 25.0)}, 1.0)
+        _weave_step(mod, _tc, ws, {}, 1.5)
+        meta = self._meta(ws, 1)
+        assert meta["n_exited"] == 1 and meta["n_reached_section_exiting"] == 1
+        assert meta["n_departed_exiting"] == 1 and meta["exit_edges"] == ["x", "x2"]
+
+    def test_whole_ramp_driven_within_one_step_is_counted_once(self):
+        """Neither ramp edge is ever sighted: the vehicle leaves the network
+        from the section's last edge and is counted then, once."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        mod = _WeaveMod(_WeaveVehicle({"e": 25.0}))
+        _weave_step(mod, _tc, ws, {"e": _res("b", 0, 99.0, 25.0)}, 0.0)
+        assert ws["awaiting_exit"] == {"e"} and ws["exited"] == set()
+        _weave_step(mod, _tc, ws, {}, 0.5)
+        assert ws["exited"] == {"e"} and ws["awaiting_exit"] == set()
+        _weave_step(mod, _tc, ws, {}, 1.0)
+        assert self._meta(ws, 1)["n_exited"] == 1
+
+    def test_internal_lane_after_the_section_then_gone_is_counted_once(self):
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        mod = _WeaveMod(_WeaveVehicle({"e": 25.0}))
+        _weave_step(mod, _tc, ws, {"e": _res("b", 0, 99.0, 25.0)}, 0.0)
+        _weave_step(mod, _tc, ws, {"e": _res(":k_0", 0, 3.0, 25.0)}, 0.5)
+        assert ws["exited"] == set() and ws["awaiting_exit"] == {"e"}
+        _weave_step(mod, _tc, ws, {}, 1.0)
+        assert ws["exited"] == {"e"} and ws["awaiting_exit"] == set()
+
+    def test_vehicle_still_upstream_at_the_end_is_departed_not_reached(self):
+        """An exit-bound vehicle seen only upstream of the section is in
+        ``n_departed_exiting`` and in neither ``n_reached_section_exiting``
+        nor ``n_exited``."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        ws["exiting_ids"] = frozenset({"e", "u"})
+        mod = _WeaveMod(_WeaveVehicle({"e": 25.0, "u": 25.0}))
+        res = {"e": _res("b", 0, 50.0, 25.0), "u": _res("up", 0, 10.0, 25.0)}
+        for k in range(3):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        _weave_step(mod, _tc, ws, {"u": _res("up", 0, 40.0, 25.0)}, 1.5)
+        assert ws["reached"] == {"e"} and ws["exited"] == {"e"}
+        meta = self._meta(ws, 2)
+        assert meta["n_departed_exiting"] == 2
+        assert meta["n_reached_section_exiting"] == 1 and meta["n_exited"] == 1
+
+    def test_leaving_by_the_mainline_is_never_counted(self):
+        """A reached vehicle next seen on a named non-section, non-ramp edge
+        (a reroute) left by the mainline: dropped, never an exit, even when
+        it later leaves the network."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        mod = _WeaveMod(_WeaveVehicle({"e": 25.0}))
+        _weave_step(mod, _tc, ws, {"e": _res("b", 0, 99.0, 25.0)}, 0.0)
+        _weave_step(mod, _tc, ws, {"e": _res("c", 0, 5.0, 25.0)}, 0.5)
+        assert ws["awaiting_exit"] == set() and ws["exited"] == set()
+        _weave_step(mod, _tc, ws, {}, 1.0)
+        assert ws["exited"] == set() and ws["reached"] == {"e"}
+
+    def test_hand_back_on_a_later_ramp_edge_is_a_completed_change(self):
+        """A driven exiting vehicle next seen on the ramp's second edge made
+        its change (``n_changed_out``), not a miss, and is counted as exited."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        mod = _WeaveMod(_WeaveVehicle({"e": 20.0}))
+        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 95.0, 20.0)}, 0.0)
+        assert ws["n_entered"] == 1
+        _weave_step(mod, _tc, ws, {"e": _res("x2", 0, 3.0, 20.0)}, 0.5)
+        assert ws["n_changed_out"] == 1 and ws["n_missed"] == 0 and ws["veh"] == {}
+        assert ws["exited"] == {"e"}
 
 
 class TestWeaveForceGapGuard:

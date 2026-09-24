@@ -277,6 +277,7 @@ const runs: RunRecord[] = [
           n_changed_in: 241,
           n_changed_out: 145,
           n_exited: 143,
+          n_reached_section_exiting: 145,
           n_departed_exiting: 147,
           n_forced: 19,
           n_forced_deferred: 57,

@@ -436,10 +436,26 @@ the rear vehicle drops back (`WEAVE_EXCHANGE_YIELD_MS` 2 m/s below, no creep
 floor), and an exiting vehicle holds station `2 s0 + exit_accept_gap_s · v`
 behind the auxiliary-lane vehicle ahead (`WEAVE_HOLD_TAU_S` 2 s).
 `meta.json["weave_sections"]` lists per section `ramp, exit, edges,
-exit_edge, length_m, length_m_measured, params, n_entered, n_changed_in,
-n_changed_out, n_forced, n_missed, n_forced_deferred, n_unfinished, n_exited,
-n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean`
+exit_edge, exit_edges, length_m, length_m_measured, params, n_entered,
+n_changed_in, n_changed_out, n_forced, n_missed, n_forced_deferred,
+n_unfinished, n_exited, n_reached_section_exiting, n_departed_exiting,
+wait_s_mean, wait_in_s_mean, wait_out_s_mean`
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`).
+Exit counting (2026-09-24, review finding): an exit-bound vehicle (route
+`*_off<j>`) is `n_exited` once when seen on **any** edge of the paired
+off-ramp (`exit_edges` = its `RampSpec.edges`) or when, having reached the
+section, it is gone from the network while last seen on a section edge or an
+internal lane after one — a per-step sighting on the ramp's first edge alone
+undercounts a ramp edge shorter than one step of travel (12.5 m at 25 m/s,
+0.5 s); with teleporting off and `collision.action warn` an exit-bound
+vehicle can leave the network from the section only by driving its route to
+the ramp's end. `n_reached_section_exiting` counts the exit-bound vehicles
+seen on a section (or ramp) edge during the run and is the denominator of
+`n_exited`; `n_departed_exiting` also counts those still upstream when the
+run ends (`n_exited ≤ n_reached_section_exiting ≤ n_departed_exiting`, the
+last two equal only once demand has drained through the section). A reached
+vehicle next seen on another named edge left by the mainline (a reroute) and
+is never counted.
 Verified on the synthetic fixture `tests/fixtures/weave.osm` (golden
 `merge_weave.json`); on the MnDOT I-94 WB 35-min slice it has one seed and no
 validation claim.
@@ -1162,7 +1178,9 @@ the replicate; `ramp_meters[i]` (`RampMeterDiagnosticsOut`) carries `ramp`,
 length of the `rates` log — the log itself and `releases_s` stay in the meta);
 `weave_sections[i]` (`WeaveSectionDiagnosticsOut`) carries `ramp`, `exit`,
 `length_m` and the `_weave_meta` counters `n_entered`, `n_changed_in`,
-`n_changed_out`, `n_exited`, `n_departed_exiting`, `n_forced`,
+`n_changed_out`, `n_exited`, `n_reached_section_exiting` (null for a meta
+written before 2026-09-24; the dashboard's "Exited / reached" column then
+falls back to `n_departed_exiting`), `n_departed_exiting`, `n_forced`,
 `n_forced_deferred` (vehicle-steps), `n_missed`, `n_unfinished`,
 `wait_s_mean`, `wait_in_s_mean`, `wait_out_s_mean`. The field is `null` when
 the run has neither list or both are empty (every ring and plain corridor

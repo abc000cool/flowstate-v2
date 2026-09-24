@@ -245,8 +245,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     the section still owing its change) or is still under control at the end
     (``n_unfinished``). ``n_forced`` completed changes needed the forced mode;
     ``n_forced_deferred`` is in vehicle-steps, not vehicles. ``n_exited``
-    against ``n_departed_exiting`` says how many of the vehicles routed through
-    the exit were seen on it.
+    against ``n_reached_section_exiting`` says how many of the exit-bound
+    vehicles that entered the section took the exit; ``n_departed_exiting``
+    also counts the ones still upstream when the run ended.
+    ``n_reached_section_exiting`` is ``None`` for a meta written before the
+    counter existed (2026-09-24); the dashboard then falls back to
+    ``n_departed_exiting`` as the denominator.
     """
 
     ramp: str
@@ -256,6 +260,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_changed_in: int
     n_changed_out: int
     n_exited: int
+    n_reached_section_exiting: int | None = None
     n_departed_exiting: int
     n_forced: int
     n_forced_deferred: int
