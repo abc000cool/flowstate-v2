@@ -17,7 +17,7 @@ changed, whether or not anyone meant it to.
 | `merge_zipper.json` | same | inline `_merge_config()` on `tests/fixtures/merge.osm`: mainline 0.6 veh/s + on-ramp 0.25 veh/s, `RampSpec.merge = zipper` (netconvert patch), 200 sim-s, seed 3 | `integration` |
 | `merge_scripted.json` | same | same interchange, `RampSpec.merge = scripted` (runner-driven acceleration lane), 300 sim-s, seed 3 | `integration` |
 | `merge_meter_alinea.json` | same | same interchange, `merge = lane_change` under an ALINEA `RampMeterSpec` (240–600 veh/h, 30 s interval, stop line 40 m), 240 sim-s, seed 3 | `integration` |
-| `merge_weave.json` | same | inline `_weave_config()` on `tests/fixtures/weave.osm` (an on-ramp whose auxiliary lane leaves as an exit ~180 m downstream): mainline 0.55 veh/s + on-ramp 0.2 veh/s for 140 s, 30 % exiting, `RampSpec.merge = weave` (runner-driven two-sided gap acceptance), 300 sim-s, seed 3 | `integration` |
+| `merge_weave.json` | same | inline `_weave_config()` on `tests/fixtures/weave.osm` (an on-ramp whose auxiliary lane leaves as an exit ~150 m downstream; edge `102` compiles to 152 m): mainline 0.55 veh/s + on-ramp 0.2 veh/s for 140 s, 30 % exiting, `RampSpec.merge = weave` (runner-driven two-sided gap acceptance), 300 sim-s, seed 3 | `integration` |
 
 Tests: `tests/test_microsim/test_microsim_golden.py`,
 `tests/test_macrosim/test_macrosim_golden.py`.

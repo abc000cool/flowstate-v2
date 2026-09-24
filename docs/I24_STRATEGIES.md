@@ -58,7 +58,7 @@ Paired deltas versus baseline:
 | VSL alone | -420 [-441, -398] (-7.4 %, resolved) | +45.4 [+33.5, +57.2] (+7.9 %, resolved) | -1.39 [-1.44, -1.34] (-29.1 %, resolved) | +14.6 [+13.4, +15.8] (+16.3 %, resolved) | +7.0 [+5.1, +8.9] (+68.3 %, resolved) |
 | FollowerStopper 10 % | -2,812 [-3,271, -2,354] (-49.6 %, resolved) | +717.3 [+516.1, +918.5] (+124.7 %, resolved) | -2.83 [-2.92, -2.74] (-59.5 %, resolved) | +186.3 [+139.4, +233.3] (+208.0 %, resolved) | -1.2 [-3.5, +1.0] (-12.2 %) |
 
-Incomplete cells in the artifact: ['follower_stopper_p0.10_c1.00_alinea', 'follower_stopper_p0.10_c1.00_vsl', 'strategy_alinea']; seeds per cell: 20; base config hash `0cddf2002979`; ALINEA target 29.2 veh/km/lane; metrics args {'x_ref': 4411.8, 'span': [2256.2, 7637.8]}.
+Incomplete cells in the artifact: ['follower_stopper_p0.10_c1.00_alinea', 'follower_stopper_p0.10_c1.00_vsl', 'strategy_alinea']; seeds per cell: 20; base config hash `0cddf2002979`; ALINEA target 29.2 veh/km/lane; metrics args {'x_ref': 4411.8, 'span': [2256.2, 7637.8]}. *(The artifact as written on 2026-09-23. The 2026-09-24 round below overwrote it: its `incomplete_cells` are now the two combined cells only, and the complete cells above reproduce to the digit — same seeds.)*
 
 ## Reading
 
@@ -121,6 +121,7 @@ the share of vehicles that passed the meter unstoppable is not known for
 these runs — the next round archives `meta.json` with them.
 
 The two combined cells are **not reported**: FollowerStopper 10 % under ALINEA
-reached 15 seeds and under VSL 17 seeds before the instance was deleted; their
-aggregates are in the artifact under `incomplete_cells` and are not headline
-numbers.
+reached 15 seeds and under VSL 17 seeds before the instance was deleted (counts
+from the fetched run directories — a session record); the artifact names them
+under `incomplete_cells` and carries no aggregate for them, so nothing from
+those cells is quoted.

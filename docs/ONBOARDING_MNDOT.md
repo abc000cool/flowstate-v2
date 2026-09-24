@@ -405,7 +405,9 @@ n2-standard-32, ≈ $3.3.
    re-entry without a live detector first takes back what its split sent out
    in the window, then the bracket's remainder, and the artifact lists the
    pair under `cd_pairs` (out, back, net = the road's own exchange). Re-run on
-   the committed extract with the §3 options into a scratch directory: 17
+   the committed extract with the §3 options into a scratch directory (a
+   session record: the figures that follow are in no committed artifact; the
+   "was" values are the committed demand artifact's): 17
    ramps (was 16); the split, matched to rnd_88817, sends out 374 veh/h on
    average (detector_scaled), the re-entry returns 442 veh/h (conservation),
    net +68 veh/h; the S1068→S1947 residual (+442 veh/h) is closed, 5 brackets
@@ -442,7 +444,9 @@ the honest alternative is the US-101 procedure (docs/US101_CALIBRATED.md,
 headway until a straight 3-lane road carries the corridor's own fitted
 capacity — the fundamental diagram's `q_max` bootstrap lower bound,
 1,907 veh/h/lane (`artifacts/fd_mndot_i94_wb_stpaul.json`). Pipeline stage
-`mndot_population`, n2-standard-32, 37 s wall-clock, two seeds per grid point,
+`mndot_population` on an n2-standard-32 (37 s wall-clock for the twelve runs
+in parallel — the pipeline log, a session record; the artifact records 24–31 s
+per run), two seeds per grid point,
 saturating demand 2,400 veh/h/lane, throughput at 3.0 km of 4.0 km:
 
 | T scale | mean T [s] | capacity [veh/h/lane], mean of 2 seeds |
@@ -460,7 +464,9 @@ grid point (T × 0.80) and says so in the artifact's notes
 (`artifacts/idm_mndot_i94_wb_stpaul_capacity.json`, sidecar
 `…capacity.calibration.json`). What limits the plateau is not resolved here:
 the closed-form equilibrium capacity of the same population at T = 1.21 s is
-well above the simulated value, so the ceiling lies in the multi-lane dynamics
+well above the simulated value (2,127 veh/h/lane at T = 1.209 s in the
+`model_factor` rows of `artifacts/idm_i24_capacity_equilibrium.json`, against
+1,709 simulated here), so the ceiling lies in the multi-lane dynamics
 (lane changes, insertion) of the straight-road measurement, not in the
 headway. The episode-cost rows are empty because the cloud stage ran without
 the I-24 episodes. Any run with this population is labelled "capacity-scaled,
@@ -486,8 +492,9 @@ The compiled network is wrong at that split, and at one more:
 | `1001426896` → 12th Street exit `82150350` | 3 lanes, `turn:lanes none\|none\|through;slight_right`; the link leaves 4–29 m to the RIGHT of the mainline | 4 lanes under `--ramps.guess`, the added LEFT lane the only way into the exit | `--ramps.unset 1001426896`: 3 lanes, lane 0 an option lane (exit and through) |
 | `45608485` → Mounds Blvd / Kellogg Blvd exit `18207912` | 5 lanes, `\|\|\|slight_right\|slight_right`; the link leaves 8–14 m to the RIGHT | the two LEFTMOST lanes (3, 4) feed the exit, with or without guessing | explicit connections: lanes 0–1 exit, 2–4 continue (`data/osm/mndot_i94_wb_stpaul.splits.con.xml`, `OSMNetwork.patch_files`) |
 
-The 6th Street exit (`42165869`, the collector–distributor split) really is a
-left exit and is left alone. `tests/test_microsim/test_microsim_osm_split_patch.py`
+The 6th Street exit (`42165869`, the left exit towards the Lafayette Freeway;
+ramp discovery classes it as a plain `motorway_link` exit, not a C-D road)
+really is a left exit and is left alone. `tests/test_microsim/test_microsim_osm_split_patch.py`
 pins both compiled splits on the committed extract; the five guessed
 acceleration lanes survive the exclusion. Round 1 (no guessing) ran with the
 Mounds/Kellogg defect, round 2 and the weave slice with both. The corrected

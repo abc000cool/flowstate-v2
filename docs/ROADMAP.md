@@ -395,8 +395,8 @@ Open after the block (design note: docs/WEAVE_MODEL_PLAN.md — the weaving-sect
 
 ### Addendum 2026-09-24 — the I-94 lock was a map defect; ALINEA ran; a hosted tester exists
 
-Overnight block 2026-09-23 23:14 → 09-24 03:45 CDT, all compute on
-self-deleting cloud VMs. What changed the picture:
+Overnight block from 2026-09-23 23:14 CDT (scheduled to 09-24 03:45), all
+compute on self-deleting cloud VMs. What changed the picture:
 
 - **The I-94 WB lock had a map cause, not a driver-model cause.** Reading the
   weave-model slice (no new run) put the queue's origin at the corridor's
@@ -408,9 +408,10 @@ self-deleting cloud VMs. What changed the picture:
   `OSMNetwork.patch_files`, pinned by a test on the committed extract, and
   generalised into a **split audit** on every onboarding (verdicts, generated
   patch, `--fail-on-split-defect`, dashboard table). The 4-seed slice probe
-  on the corrected network raised the departed share to 0.878 (from 0.834);
-  the 20-seed batteries on the corrected network with the weave model ran on
-  the second VM (§10 of the MnDOT record reports them).
+  on the corrected network raised the departed share to 0.878 (from 0.834;
+  a session record, not yet in a committed artifact); the 20-seed batteries on
+  the corrected network with the weave model were launched on the second VM
+  and are not yet reported (they will be §10 of the MnDOT record).
 - **Weaving-section model** (`merge: weave`, docs/WEAVE_MODEL_PLAN.md) built,
   golden-tested, reviewed (one latent defect fixed); its pre-registered slice
   criterion was not met on the defective map and is re-asked on the corrected
