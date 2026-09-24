@@ -273,3 +273,13 @@ def test_print_diagnostics_lists_only_cells_with_meta(
     assert "diagnostics strategy_alinea (meta in 3/3 runs)" in out
     assert "meter hickory_hollow (alinea): released 110.0 [" in out
     assert "weave old_hickory: entered 44.0 [" in out
+
+
+def test_a_run_with_metrics_but_no_meta_counts_as_done(tmp_path: Path) -> None:
+    """Archives older than 2026-09-24 hold ``metrics.json`` only; a resume must
+    not redo them (the diagnostics block simply reports no meta)."""
+    d = tmp_path / "cell" / "abc123" / "7"
+    d.mkdir(parents=True)
+    assert not sweep._done(tmp_path, "cell", "abc123", 7)
+    (d / "metrics.json").write_text("{}")
+    assert sweep._done(tmp_path, "cell", "abc123", 7)

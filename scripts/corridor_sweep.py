@@ -100,8 +100,14 @@ def _worker(
 
 
 def _done(root: Path, cell_name: str, chash: str, seed: int) -> bool:
-    d = root / cell_name / chash / str(seed)
-    return (d / "meta.json").is_file() and (d / "metrics.json").is_file()
+    """A run counts as done when its ``metrics.json`` exists.
+
+    ``meta.json`` is not required: it only feeds the optional diagnostics
+    block, and archives before 2026-09-24 carried ``metrics.json`` alone —
+    requiring both made a resumed sweep redo every stored run (the 2026-09-24
+    resume of 112 stored runs started all 120 over).
+    """
+    return (root / cell_name / chash / str(seed) / "metrics.json").is_file()
 
 
 #: ``meta.json["ramp_meters"][i]`` counters aggregated per ramp meter.
