@@ -1,5 +1,5 @@
 /** App shell: left rail nav (Onboard/Scenarios/Runs/Sweeps/Reports) with a live
- * status dot from /healthz polling, top bar with the FLOWSTATE wordmark and
+ * status dot from /health polling, top bar with the FLOWSTATE wordmark and
  * active corridor name, offline-fallback banner, settings drawer. */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -115,7 +115,7 @@ export function Layout(): JSX.Element {
   let statusText = 'DEMO DATA';
   if (!mockEnv) {
     if (authFailed) {
-      // /healthz needs no key, so it is green while every real call 401s —
+      // /health needs no key, so it is green while every real call 401s —
       // the rail must report the connection the app actually has.
       dotCls = 'dot down pulse';
       statusText = 'KEY REJECTED';
@@ -147,7 +147,7 @@ export function Layout(): JSX.Element {
           ))}
         </nav>
         <div className="rail-foot">
-          <div className="statusline" title="Live /healthz probe, every 5 s">
+          <div className="statusline" title="Live /health probe, every 5 s">
             <span className={dotCls} />
             {statusText}
           </div>

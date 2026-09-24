@@ -1,6 +1,6 @@
 /** RunsView: what the launcher actually sends, the cost gate in front of a
  * long replicate set, the scenario name in the table, and the response to a
- * rejected API key (stop polling, say so — `/healthz` is auth-exempt, so a
+ * rejected API key (stop polling, say so — `/health` is auth-exempt, so a
  * silent retry loop behind a green dot is the failure mode being prevented).
  *
  * Plus the honesty rules a browser walkthrough found missing: a failed run
@@ -243,7 +243,7 @@ describe('RunsView with a rejected API key', () => {
   }, 15000);
 });
 
-/** When `/healthz` stops answering the dashboard serves demo data for reads.
+/** When `/health` stops answering the dashboard serves demo data for reads.
  * A launch is not a read: `POST /runs` answered by the in-browser backend
  * would report a run queued that no worker will ever pick up, so the launcher
  * closes and a confirmation already on screen is refused. */

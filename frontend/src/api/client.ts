@@ -2,11 +2,11 @@
  *
  * Base URL and key live in localStorage (Settings drawer) with dev defaults.
  * Mock mode: VITE_MOCK=1 forces the in-memory backend; independently, when
- * /healthz is unreachable the app falls back to demo data and shows a banner
+ * /health is unreachable the app falls back to demo data and shows a banner
  * (see `setOfflineFallback`, driven by the Layout health poll).
  *
  * Connection state (offline fallback + rejected API key) is a tiny observable
- * store: `/healthz` is auth-exempt, so a wrong key leaves the health probe
+ * store: `/health` is auth-exempt, so a wrong key leaves the health probe
  * green while every authenticated call 401s. Views subscribe through
  * `lib/hooks` and pause their polls while `isAuthFailed()`, instead of
  * retrying a rejected key forever behind a green status dot. The latch is not
@@ -275,7 +275,7 @@ async function rawFetch(path: string, init?: RequestInitLite): Promise<Response>
     body,
   });
   if (!res.ok) {
-    // /healthz is auth-exempt, so a rejected key shows up only here: latch it
+    // /health is auth-exempt, so a rejected key shows up only here: latch it
     // so the shell can say so and every poll can stand down.
     if (res.status === 401 || res.status === 403) latchAuthFailure();
     let detail = '';
@@ -308,11 +308,13 @@ async function requestBlob(path: string, init?: RequestInitLite): Promise<Blob> 
   return res.blob();
 }
 
-/** /healthz lives at the server root, not under /api/v1. */
+/** The health probe lives at the server root, not under /api/v1. It is
+ * `/health`, not `/healthz`: a Cloud Run front end answers `/healthz` with its
+ * own 404 before the container sees it (the server serves both). */
 export function healthUrl(): string {
   const { baseUrl } = getSettings();
   const root = baseUrl.replace(/\/api\/v1\/?$/, '');
-  return `${root}/healthz`;
+  return `${root}/health`;
 }
 
 /** Probe the API; used by the status dot and the offline auto-fallback. */
@@ -344,14 +346,14 @@ export const OFFLINE_WRITE_MESSAGE =
  *
  * `OFFLINE_WRITE_MESSAGE` is only ever true of a request this client refused
  * *before* sending it (`assertWritable`, status 0). The offline flag itself
- * says nothing of the kind: it is raised when `/healthz` stops answering, and
+ * says nothing of the kind: it is raised when `/health` stops answering, and
  * a long write — a corridor onboarding takes seconds — is exactly what stops
- * `/healthz` answering while the request it belongs to is being served
+ * `/health` answering while the request it belongs to is being served
  * normally. Claiming "nothing was sent" over a request that was sent, and may
  * be running, is the unvalidated claim in miniature (CLAUDE.md §0.1), and it
  * invites the operator to re-send a job the server already has. */
 export const OFFLINE_INFLIGHT_MESSAGE =
-  'The server did not answer the /healthz probe, and a request from this panel is still ' +
+  'The server did not answer the /health probe, and a request from this panel is still ' +
   'open — it was sent, so it may still be running. Wait for it (or reload and look at the ' +
   'server) rather than sending it again.';
 

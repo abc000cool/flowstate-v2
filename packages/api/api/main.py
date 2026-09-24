@@ -2148,8 +2148,16 @@ def create_app() -> FastAPI:
         response_model=HealthOut,
         responses={503: {"description": "store or queue unreachable", "model": HealthOut}},
     )
+    @app.get("/health", response_model=HealthOut, include_in_schema=False)
     def healthz() -> Any:
-        """Store + queue health; 503 when either backend is unreachable."""
+        """Store + queue health; 503 when either backend is unreachable.
+
+        Served at ``/healthz`` and ``/health``: Google's front end answers
+        ``/healthz`` on a Cloud Run URL with its own 404 before the request
+        reaches the container (observed 2026-09-24 on the hosted tester), so
+        the dashboard probes ``/health``. Both are outside ``/api/`` and
+        therefore auth-exempt.
+        """
         store_status = "ok"
         queue_status = "ok"
         try:

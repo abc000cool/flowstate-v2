@@ -481,7 +481,7 @@ export function OnboardView(): JSX.Element {
   }
 
   /** Why the write controls are disabled. While one of this view's own writes
-   * is still open, `/healthz` going quiet does not mean the request was never
+   * is still open, `/health` going quiet does not mean the request was never
    * sent — a corridor onboarding is precisely the request that keeps the
    * server from answering the probe (see `OFFLINE_INFLIGHT_MESSAGE`). */
   const writeBlocked = offline

@@ -1,4 +1,4 @@
-/** The shell's connection reporting. `/healthz` needs no key, so a rejected
+/** The shell's connection reporting. `/health` needs no key, so a rejected
  * key leaves the health probe green while every authenticated call 401s — the
  * rail must not claim a live API link, and the banner must say what to fix.
  *
@@ -38,7 +38,7 @@ describe('Layout connection status', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
         const url = String(input);
-        if (url.endsWith('/healthz')) {
+        if (url.endsWith('/health')) {
           // auth-exempt: healthy whatever the key is
           return new Response(JSON.stringify({ status: 'ok' }), {
             status: 200,

@@ -219,7 +219,7 @@ describe('GuidedFirstRun', () => {
     const refusals = screen.getAllByText(OFFLINE_WRITE_MESSAGE);
     expect(refusals.length).toBeGreaterThanOrEqual(3);
     // and the connection step says what to do about it
-    expect(screen.getByText(/healthz probe is not answering/)).toBeInTheDocument();
+    expect(screen.getByText(/\/health probe is not answering/)).toBeInTheDocument();
 
     // no step claims to be done, and nothing was sent to any server
     const items = screen.getAllByRole('listitem');

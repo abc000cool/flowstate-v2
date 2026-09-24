@@ -88,9 +88,9 @@ export const MOCK_ENV_REASON =
   'Demo mode (VITE_MOCK=1) — this dashboard is answering itself, so nothing launched here ' +
   'would be a run on any server.';
 
-/** Why the connection step is blocked while `/healthz` is silent. */
+/** Why the connection step is blocked while `/health` is silent. */
 export const OFFLINE_HEALTH_REASON =
-  'The /healthz probe is not answering, so the dashboard is showing demo data. Start the ' +
+  'The /health probe is not answering, so the dashboard is showing demo data. Start the ' +
   'API (docs/QUICKSTART.md §3), then check the base URL and key in Settings.';
 
 /** Why every step is blocked once the key has been rejected. */
@@ -515,7 +515,7 @@ export function GuidedFirstRun({
    * `OFFLINE_WRITE_MESSAGE` is the refusal `api/client` raises for a write it
    * declined to send, and it says so ("nothing was sent"). That is only true
    * while this panel has nothing open: a write already in flight is exactly
-   * what can silence `/healthz`, and the answer to it may still be coming
+   * what can silence `/health`, and the answer to it may still be coming
    * (see `OFFLINE_INFLIGHT_MESSAGE`). */
   const serverBlock = authFailed
     ? AUTH_REASON
@@ -558,7 +558,7 @@ export function GuidedFirstRun({
       why: apiWhy,
       what: (
         <>
-          The same <span className="mono">/healthz</span> probe as the rail&apos;s status dot,
+          The same <span className="mono">/health</span> probe as the rail&apos;s status dot,
           and the key from Settings. Base <span className="mono">{baseUrl}</span>.
         </>
       ),

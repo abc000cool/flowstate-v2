@@ -21,7 +21,7 @@ export function usePoll(fn: () => void | Promise<void>, ms: number | null): void
 
 /** True once the API rejected the configured key. Every view gates its poll
  * on this: retrying a rejected key at 2 s forever produces nothing but 401s
- * (and `/healthz` is auth-exempt, so the status dot would stay green). */
+ * (and `/health` is auth-exempt, so the status dot would stay green). */
 export function useAuthFailed(): boolean {
   return useSyncExternalStore(subscribeConnection, isAuthFailed, isAuthFailed);
 }

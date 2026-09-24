@@ -19,6 +19,16 @@ def test_healthz_is_exempt_and_ok(client: TestClient) -> None:
     assert body["queue_kind"] == "inline"
 
 
+def test_health_alias_matches_healthz(client: TestClient) -> None:
+    """``/health`` is the dashboard's probe (a Cloud Run front end answers
+    ``/healthz`` with its own 404); both are auth-exempt and identical."""
+    a = client.get("/health")
+    b = client.get("/healthz")
+    assert a.status_code == b.status_code == 200
+    assert a.json() == b.json()
+    assert "/health" not in client.get("/openapi.json").json()["paths"]
+
+
 def test_docs_are_exempt(client: TestClient) -> None:
     assert client.get("/docs").status_code == 200
     assert client.get("/openapi.json").status_code == 200
