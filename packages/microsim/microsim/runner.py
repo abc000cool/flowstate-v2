@@ -2635,6 +2635,11 @@ def run_micro(
                     "waits_s": [],
                 }
             )
+        # Stepped in corridor order (the attach edge's offset along the
+        # chain), whatever the ramp list's order (2026-09-24, block 3): the
+        # step order of every runner-driven section is its position, so that
+        # a section upstream of another always acts first in a step.
+        scripted_states.sort(key=lambda ss: float(offsets_by_edge[ss["edge"]]))
 
     # --- Weaving sections (RampSpec.merge == "weave") ----------------------
     # An entrance whose auxiliary lane also feeds the next exit: lane 0 stays
@@ -2735,6 +2740,17 @@ def run_micro(
                     "waits_out_s": [],
                 }
             )
+        # Stepped upstream-first — by the section's start offset along the
+        # chain, not by where its ramp sits in the ramp list (2026-09-24,
+        # block 3). The vacate guard of _weave_vacate_step (a vehicle already
+        # held at mode 512 / 256 by another section is not asked) covers a
+        # downstream section reading a vehicle the upstream one already
+        # drives; stepped the other way round, an upstream section's
+        # exit-bound vehicle would find the downstream section's vacate hold
+        # (512) on it first, capture that as its "original" mode and restore
+        # it at hand-back after the downstream section had restored the real
+        # one. meta.json["weave_sections"] lists the sections in this order.
+        weave_states.sort(key=lambda ws: float(ws["x_offset"][ws["edges"][0]]))
 
     # --- Managed (HOV) lanes: lane permission windows like closures ---------
     managed_states: list[dict[str, Any]] = []

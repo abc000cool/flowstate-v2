@@ -564,7 +564,18 @@ is the edge before this one, or by a scripted merge) is not asked while
 that hold lasts and is not marked seen; its real mode is not readable
 there, and two holds on one vehicle restored each other's (the harness
 showed the other section's one-step mode 256 left on the vehicle).
-`weave_sections[i]` gains `n_vacated` and
+Stepping order (2026-09-24, block 3): the weaving sections — and the
+scripted merges — are stepped upstream-first, by the start offset of the
+section (the attach edge) along the corridor chain, whatever the order of
+the ramp list, and `meta.json["weave_sections"]` lists them in that order;
+the guard above covers only a downstream section reading a vehicle the
+upstream one already drives, and stepped the other way round an upstream
+section's exit-bound vehicle would find the downstream section's vacate
+hold (512) on it first, capture it as its original mode and restore it at
+hand-back after the real one had been restored (the harness shows the
+vehicle left at 512 under that order; `tests/fixtures/weave_two.osm`, two
+sections 560 m apart, runs byte-identically with the pairs listed either
+way). `weave_sections[i]` gains `n_vacated` and
 `n_vacate_refused`. Fixture, seed 3, second → third derivation: lane 1
 over the first 60 m in minutes 2–19 from 12.7, 11.8, 12.4, 10.3 then 2.3–6.4
 to 11.5, 10.0, 6.9, 8.1, 11.2, 12.9, 12.6, 8.6, 11.7, 11.1, 5.4, 4.5, 7.1,

@@ -707,6 +707,72 @@ def _weave_scenario(
     )
 
 
+#: Two T.H.52-shaped sections in series on a three-lane mainline (2026-09-24,
+#: block 3): A = entrance 200 / exit 201 on way 102, B = entrance 202 / exit
+#: 203 on way 105, 560 m of three-lane mainline (103, 104) between them.
+TWO_WEAVE_OSM = Path(__file__).resolve().parents[1] / "fixtures" / "weave_two.osm"
+TWO_WEAVE_CORRIDOR: tuple[str, ...] = tuple(str(i) for i in range(100, 108))
+
+
+def two_weave_scenario(
+    *,
+    downstream_first: bool,
+    ramp_rate: float,
+    mainline_rate: float = 0.5,
+    demand_end_s: float = 120.0,
+    duration_s: float = 300.0,
+) -> ScenarioConfig:
+    """Scenario on :data:`TWO_WEAVE_OSM`, the pairs listed either way round.
+
+    Mainline ``mainline_rate`` veh/s and each entrance ``ramp_rate`` veh/s
+    until ``demand_end_s`` (a rate of 0 draws nothing from the RNG, so the
+    plan is the same whichever pair is listed first), 25 % of the mainline
+    exiting at each exit; ``duration_s`` leaves time for every vehicle to
+    clear the 2.3 km corridor.
+    """
+    pairs = {
+        "A": ("A on", "200", "102", "A off", "201"),
+        "B": ("B on", "202", "105", "B off", "203"),
+    }
+    ramps: list[dict] = []
+    for key in "BA" if downstream_first else "AB":
+        on_name, on_edge, attach, off_name, off_edge = pairs[key]
+        ramps.append(
+            {
+                "kind": "on",
+                "name": on_name,
+                "edges": [on_edge],
+                "attach_edge": attach,
+                "inflow": [[0.0, ramp_rate], [demand_end_s, 0.0]],
+                "merge": "weave",
+                "weave": {"exit_ramp": off_name},
+            }
+        )
+        ramps.append(
+            {
+                "kind": "off",
+                "name": off_name,
+                "edges": [off_edge],
+                "attach_edge": attach,
+                "exit_fraction": [[0.0, 0.25]],
+            }
+        )
+    return ScenarioConfig.model_validate(
+        {
+            "name": "weave_two_" + ("downstream_first" if downstream_first else "upstream_first"),
+            "network": {
+                "kind": "osm",
+                "osm_file": str(TWO_WEAVE_OSM),
+                "corridor_edges": list(TWO_WEAVE_CORRIDOR),
+                "inflow": [[0.0, mainline_rate], [demand_end_s, 0.0]],
+                "ramps": ramps,
+            },
+            "sim": {"duration_s": duration_s},
+            "seed": 3,
+        }
+    )
+
+
 class TestWeaveGeometry:
     """``microsim.networks.weave_sections`` and the lane-0 walk it shares."""
 
@@ -1157,6 +1223,68 @@ class TestWeaveRun:
         assert on_meta["n_departed"] >= 0.8 * on_meta["n_planned"], state
         assert ws["n_pair_releases"] >= min_releases, state
 
+    def test_two_sections_are_stepped_and_listed_upstream_first(self, tmp_path):
+        """``tests/fixtures/weave_two.osm`` (two T.H.52-shaped sections, 560 m
+        apart) with entrants on both ramps and the downstream pair listed
+        first: ``weave_sections`` lists the upstream section first — the
+        stepping order, by the section's start offset, not the ramp list's
+        (2026-09-24, block 3) — while ``merge_models`` keeps the list's
+        order; both sections drive both movements and every driven vehicle
+        is handed back by the end of the run (demand stops at 120 s).
+
+        Mainline 0.4 veh/s, entrances 0.10 veh/s: at 0.5 / 0.12 and seed 3
+        section A locks at its gore (2 driven vehicles unfinished, 708
+        forced changes deferred, 7 vehicles at 0 m/s at the section end) —
+        the known one-sided weave lock, identical on the runner before the
+        stepping order was fixed, so not the order's doing. The per-section
+        counters of this scenario at 0.5 / 0.12, 0.4 / 0.10, 0.35 / 0.10 and
+        0.3 / 0.10, both listings, were identical before and after the fix
+        (sections 560 m apart: the order cannot matter here)."""
+        cfg = two_weave_scenario(downstream_first=True, ramp_rate=0.10, mainline_rate=0.4)
+        paths = run_micro(cfg, 3, tmp_path / "two")
+        meta = json.loads(paths.meta.read_text())
+        assert [m["ramp"] for m in meta["merge_models"]] == ["B on", "A on"]
+        assert [w["ramp"] for w in meta["weave_sections"]] == ["A on", "B on"]
+        assert [w["edges"] for w in meta["weave_sections"]] == [["102"], ["105"]]
+        for w in meta["weave_sections"]:
+            assert w["n_changed_in"] > 0 and w["n_changed_out"] > 0, w
+            assert w["n_unfinished"] == 0, w
+        assert meta["n_collisions"] == 0
+
+    def test_listing_the_downstream_pair_first_is_byte_identical(self, tmp_path):
+        """The ramp list's order does not reach the run (2026-09-24, block
+        3): on ``tests/fixtures/weave_two.osm`` the scenario listing the
+        downstream pair first writes the same trajectory bytes as the one
+        listing it second, and the same ``weave_sections`` entries matched by
+        ramp name (listed upstream-first in both), with every driven vehicle
+        handed back. Mainline demand only, the entrances at rate 0: the
+        fleet plan draws each on-ramp's departures in config order
+        (``microsim.vehicles.build_corridor_plan``), so entrants would make
+        the two listings different plans rather than different runs; the
+        exit draws are made in corridor order and are the same for both. The
+        exiting movement and the vacate rule (both sections' driven
+        vehicles) act in both runs."""
+        cfg_down = two_weave_scenario(downstream_first=True, ramp_rate=0.0)
+        cfg_up = two_weave_scenario(downstream_first=False, ramp_rate=0.0)
+        assert config_hash(cfg_down) != config_hash(cfg_up)  # different listings
+        p_down = run_micro(cfg_down, 5, tmp_path / "down")
+        p_up = run_micro(cfg_up, 5, tmp_path / "up")
+        assert p_down.trajectories.read_bytes() == p_up.trajectories.read_bytes()
+        m_down = json.loads(p_down.meta.read_text())
+        m_up = json.loads(p_up.meta.read_text())
+        assert [m["ramp"] for m in m_down["merge_models"]] == ["B on", "A on"]
+        assert [m["ramp"] for m in m_up["merge_models"]] == ["A on", "B on"]
+        w_down = {w["ramp"]: w for w in m_down["weave_sections"]}
+        w_up = {w["ramp"]: w for w in m_up["weave_sections"]}
+        assert list(w_down) == list(w_up) == ["A on", "B on"]
+        assert w_down == w_up
+        for w in w_down.values():
+            assert w["n_entered"] == w["n_changed_out"] > 0 and w["n_changed_in"] == 0, w
+            assert w["n_unfinished"] == 0 and w["n_missed"] == 0, w
+            assert w["n_vacated"] > 0, w
+        assert m_down["n_collisions"] == m_up["n_collisions"] == 0
+        assert m_down["n_vehicles_departed"] == m_up["n_vehicles_departed"] > 0
+
     def test_unpaired_geometry_is_refused_with_the_edges(self, merge_osm, tmp_path):
         """The schema pairing holds (same attach edge) but lane 0 of 102 never
         reaches exit link 201, which leaves the merge fixture upstream."""
@@ -1328,6 +1456,36 @@ def _weave_state(**params) -> dict:
         "waits_in_s": [],
         "waits_out_s": [],
     }
+
+
+def _sections_back_to_back() -> tuple[dict, dict]:
+    """``(B, A)``: two weave states with B's last edge the edge before A.
+
+    B is :func:`_weave_state` (edges a, b; e exits there); A's section is
+    (c, d) with its vacate window on b, so an exit-bound vehicle of B in B's
+    lane 1 is "through" for A and inside A's window while B drives it.
+    """
+    ws_b = _weave_state()
+    ws_a = _weave_state()
+    ws_a.update(
+        {
+            "off_index": 2,
+            "edges": ["c", "d"],
+            "edge_index": {"c": 0, "d": 1},
+            "exit_only": {"c": True, "d": True},
+            "lane_len_m": {"c": 100.0, "d": 100.0},
+            "beyond_m": {"c": 100.0, "d": 0.0},
+            "exiting_ids": frozenset(),
+            "lane_map": {
+                **{(e, k): k for e in ("c", "d") for k in range(3)},
+                ("b", 1): 1,
+                ("b", 2): 2,
+            },
+            "x_offset": {"b": 100.0, "c": 200.0, "d": 300.0},
+            "vacate_lanes": ("b", 1, 2),
+        }
+    )
+    return ws_b, ws_a
 
 
 def _res(road: str, lane: int, pos: float, v: float) -> dict:
@@ -2231,26 +2389,7 @@ class TestWeaveReviewDerivations3To6:
         while that hold lasts."""
         from microsim.runner import LC_MODE_SCRIPTED_FORCE, LC_MODE_SCRIPTED_SAFE, _weave_step
 
-        ws_b = _weave_state()
-        ws_a = _weave_state()
-        ws_a.update(
-            {
-                "off_index": 2,
-                "edges": ["c", "d"],
-                "edge_index": {"c": 0, "d": 1},
-                "exit_only": {"c": True, "d": True},
-                "lane_len_m": {"c": 100.0, "d": 100.0},
-                "beyond_m": {"c": 100.0, "d": 0.0},
-                "exiting_ids": frozenset(),
-                "lane_map": {
-                    **{(e, k): k for e in ("c", "d") for k in range(3)},
-                    ("b", 1): 1,
-                    ("b", 2): 2,
-                },
-                "x_offset": {"b": 100.0, "c": 200.0, "d": 300.0},
-                "vacate_lanes": ("b", 1, 2),
-            }
-        )
+        ws_b, ws_a = _sections_back_to_back()
         veh = _WeaveVehicle({"e": 5.0})
         mod = _WeaveMod(veh)
         res = {"e": _res("b", 1, 60.0, 5.0)}  # x = 160: inside A's 150 m window
@@ -2273,6 +2412,35 @@ class TestWeaveReviewDerivations3To6:
         res = {"e": _res("b", 1, 70.0, 5.0)}
         _weave_step(mod, _tc, ws_a, res, 1.0)
         assert ws_a["vacate"]["e"]["lc_mode_orig"] == 1621
+
+    def test_stepping_the_downstream_section_first_leaves_its_hold_on_the_vehicle(self):
+        """Why ``run_micro`` steps the sections upstream-first whatever the
+        ramp list's order (2026-09-24, block 3): the two sections of the test
+        above with A (downstream) stepped before B (upstream) — the ramp
+        list's order when the downstream pair is listed first. A asks e to
+        vacate first (mode 512, e's real mode 1621 captured); B then admits
+        its exit-bound e reading 512 and captures that as the original. When
+        e reaches lane 0, A books a refusal and restores 1621, then B, done,
+        restores 512: the vehicle is left with every model-driven change off.
+        The guard of ``_weave_vacate_step`` cannot see this — it is B's
+        admission, not A's request, that reads the other hold."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        ws_b, ws_a = _sections_back_to_back()
+        veh = _WeaveVehicle({"e": 5.0})
+        mod = _WeaveMod(veh)
+        res = {"e": _res("b", 1, 60.0, 5.0)}  # x = 160: inside A's 150 m window
+        _weave_step(mod, _tc, ws_a, res, 0.0)
+        assert ws_a["vacate"]["e"]["lc_mode_orig"] == 1621
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
+        _weave_step(mod, _tc, ws_b, res, 0.0)
+        assert ws_b["veh"]["e"]["lc_mode_orig"] == LC_MODE_SCRIPTED_SAFE  # A's hold, captured
+        res = {"e": _res("b", 0, 65.0, 5.0)}
+        _weave_step(mod, _tc, ws_a, res, 0.5)
+        assert ws_a["n_vacate_refused"] == 1 and veh.lc_modes["e"] == 1621
+        _weave_step(mod, _tc, ws_b, res, 0.5)
+        assert ws_b["n_changed_out"] == 1 and not ws_b["veh"]
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE  # handed back to the wrong mode
 
     def test_pair_release_compares_positions_on_the_section_axis_across_edges(self):
         """The changer on the section's first edge, the follower of its gap
