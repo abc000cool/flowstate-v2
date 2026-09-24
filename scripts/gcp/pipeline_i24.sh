@@ -354,6 +354,19 @@ stage battery_mndot_weave_mnpop bash -c "sed -e 's#^name: ${MNDOT}_weave\$#name:
   --out runs/${MNDOT}_weave_mnpop/baseline --artifact artifacts/validation_${MNDOT}_weave_mnpop.json \
   --report-dir docs/reports/${MNDOT}_weave_mnpop --criteria-profile fhwa_tat3_2004" || say "battery_mndot_weave_mnpop failed; continuing"
 
+# 10d. Where the head of the I-94 queue forms (2026-09-24, block 3, WP-42): the first hour of the
+#     corrected weave scenario, 4 seeds, as is and with the 40648744 entrance on the scripted merge;
+#     then the standstill maps (50 m x 1 min, lanes; 100 m x 5 min) of each variant's first seed.
+for V in head60 head60_scripted; do
+  stage mndot_${V} $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave_${V}.yaml \
+    --observations data/mndot/$MNDOT/observations.json --replicates 4 --procs "$PROCS" \
+    --out runs/${MNDOT}_weave_${V}/baseline --artifact artifacts/validation_${MNDOT}_weave_${V}.json \
+    --report-dir docs/reports/${MNDOT}_weave_${V} --criteria-profile fhwa_tat3_2004 || say "mndot_${V} failed; continuing"
+  stage mndot_${V}_diag bash -c "D=\$(dirname \$(find runs/${MNDOT}_weave_${V} -name trajectories.parquet | head -1)) && \
+    $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_fine.py.txt \$D > logs/diag_${V}_50m_1min_lanes.txt && \
+    $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$D > logs/diag_${V}_100m_5min.txt" || say "mndot_${V}_diag failed; continuing"
+done
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
