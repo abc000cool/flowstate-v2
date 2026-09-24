@@ -1,0 +1,8 @@
+t= 14 min  x=10.30 km lane 0: mean v 1.5 m/s (n=379)
+t= 15 min  x=10.10 km lane 2: mean v 2.0 m/s (n=508)
+t= 16 min  x=10.20 km lane 1: mean v 1.9 m/s (n=553)
+t= 16 min  x=10.25 km lane 1: mean v 1.9 m/s (n=518)
+t= 17 min  x=10.10 km lane 2: mean v 2.0 m/s (n=548)
+t= 17 min  x=10.15 km lane 2: mean v 1.9 m/s (n=535)
+t= 17 min  x=10.20 km lane 1: mean v 2.0 m/s (n=513)
+t= 19 min  x=10.10 km lane 2: mean v 1.4 m/s (n=616)

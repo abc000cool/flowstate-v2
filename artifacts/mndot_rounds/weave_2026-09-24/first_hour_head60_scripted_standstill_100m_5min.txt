@@ -1,0 +1,4 @@
+schema ['t', 'veh_id', 'x', 'lane', 'v', 'a', 'is_av', 'complied', 'is_heavy', 'is_hov'] rows 3946366
+first standstill bins (mean v < 2 m/s, >=20 samples) per 5-min window:
+  t=   55 min: x bins stopped = 7.8-8.0 km (3 bins); min-speed bin at 7.9 km
+  t=   60 min: x bins stopped = 7.0-9.7 km (8 bins); min-speed bin at 7.2 km

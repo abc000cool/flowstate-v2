@@ -1208,3 +1208,30 @@ the S1063 cell's recovered 06–07 flow is 2,100 veh/h against the 2,990 veh/h
 demand while the cell is free-flowing all hour (1,060 in the locking seed
 with 50 free minutes); either the recovery's bias or an entry inserting
 below its demand — a per-window crossing count at S1063 decides it.
+
+### 11b. The first hour, watched at 50 m × 1 min (VM I, 2026-09-24, block 3)
+
+Two 60-minute, 4-seed runs of the corrected weave scenario with the
+exit-side runner (commit 65826a2; scenarios `…_weave_head60.yaml` as is and
+`…_weave_head60_scripted.yaml` with the 40648744 entrance on the scripted
+merge; artifacts and standstill maps under
+`artifacts/mndot_rounds/weave_2026-09-24/first_hour_*`), the measurement
+§11a asked for:
+
+| variant | departed, 4 seeds (lowest) | first standstill (50 m × 1 min, mean speed < 2 m/s) | stopped bins at minute 60 (100 m × 5 min) | given-up exits |
+|---|---|---|---|---|
+| as is (40648744 lane-change) | 0.989 (0.984) | minute 11, 10.25–10.30 km, lane 0; lane 1 from minute 12 at 10.20 km | 6.8–9.8 km | Ruth St 4.2 % (above the 2 % threshold), T.H.52 within |
+| 40648744 scripted | 0.988 (0.986) | minute 14, 10.30 km, lane 0; lane 2 from minute 15 at 10.10 km | 7.0–9.7 km | Ruth St 3.3 % (above), T.H.52 within |
+
+So the head forms in the 230 m between the end of the 40648744 acceleration
+lane (10.198 km) and the T.H.52 gore (10.43 km), in lane 0 first, about ten
+minutes into the peak, and spreads upstream through the hour; the whole
+first hour still departs 0.99 of its demand — the 0.743 of the four-hour
+battery is that queue accumulated. Scripting the 40648744 merge delays the
+head by three minutes and moves nothing else, so the merge model of that
+entrance is not the lever; what stands in those 230 m is lane 0 carrying the
+40648744 entrants plus the T.H.52 entrants' approach and the exiters'
+target lane at once. Ruth St's give-ups above the threshold are a second
+finding: the 136 m section rejects 3–4 % of its exiters in the first hour.
+Next: a fixture with both entrances (the local twin, docs/WEAVE_MODEL_PLAN.md)
+and a rule for the stretch between an entrance and a weave.
