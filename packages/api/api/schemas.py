@@ -216,6 +216,70 @@ class ReplicateMetricsOut(BaseModel):
     metrics: dict[str, float | int | None]
 
 
+class RampMeterDiagnosticsOut(BaseModel):
+    """One ramp meter's counters from ``meta.json["ramp_meters"][i]``.
+
+    ``n_passed_unstoppable`` (2026-09-24) counts ramp vehicles that were
+    already too close to the stop line to brake for it when first seen on the
+    ramp and so passed the meter uncounted by its release logic; a large share
+    against ``n_released`` means the stop line sits too near the ramp's end
+    for the entry speeds (docs/LESSONS.md row 31).
+    """
+
+    ramp: str
+    controller: str
+    edge: str
+    interval_s: float
+    n_released: int
+    n_passed_unstoppable: int = 0
+    n_rate_updates: int = 0
+    """Length of the meter's ``rates`` log — how many times the rate was set."""
+
+
+class WeaveSectionDiagnosticsOut(BaseModel):
+    """One weaving section's counters from ``meta.json["weave_sections"][i]``
+    (``microsim.runner._weave_meta``; docs/CONTRACTS.md §2, weaving sections).
+
+    ``n_entered`` vehicles were taken under control; each left it as
+    ``n_changed_in`` / ``n_changed_out`` (its change made), ``n_missed`` (left
+    the section still owing its change) or is still under control at the end
+    (``n_unfinished``). ``n_forced`` completed changes needed the forced mode;
+    ``n_forced_deferred`` is in vehicle-steps, not vehicles. ``n_exited``
+    against ``n_departed_exiting`` says how many of the vehicles routed through
+    the exit were seen on it.
+    """
+
+    ramp: str
+    exit: str
+    length_m: float | None = None
+    n_entered: int
+    n_changed_in: int
+    n_changed_out: int
+    n_exited: int
+    n_departed_exiting: int
+    n_forced: int
+    n_forced_deferred: int
+    n_missed: int
+    n_unfinished: int
+    wait_s_mean: float | None = None
+    wait_in_s_mean: float | None = None
+    wait_out_s_mean: float | None = None
+
+
+class MergeDiagnosticsOut(BaseModel):
+    """Ramp-meter and weaving-section counters of one replicate (2026-09-24).
+
+    Read from the first replicate's ``meta.json`` (``seed`` names it) so a
+    tester sees them without opening the run directory. They are one seed's
+    counters, not a replicate aggregate, and describe how the merge models
+    behaved — never a corridor result.
+    """
+
+    seed: int
+    ramp_meters: list[RampMeterDiagnosticsOut] = Field(default_factory=list)
+    weave_sections: list[WeaveSectionDiagnosticsOut] = Field(default_factory=list)
+
+
 class MetricsOut(BaseModel):
     run_id: str
     config_hash: str
@@ -235,6 +299,10 @@ class MetricsOut(BaseModel):
     micro-tier runs, which have no fundamental diagram, and on runs written
     before the field existed — a screening number quoted without it is a
     number whose diagram's provenance is unknown."""
+    merge_diagnostics: MergeDiagnosticsOut | None = None
+    """Ramp-meter and weaving-section counters of the first replicate
+    (2026-09-24); ``None`` when the run has neither (every ring and plain
+    corridor run), or when its meta cannot be read."""
 
 
 class HeatmapOut(BaseModel):

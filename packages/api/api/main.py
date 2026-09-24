@@ -94,6 +94,7 @@ from api.schemas import (
     CriteriaProfileOut,
     HealthOut,
     HeatmapOut,
+    MergeDiagnosticsOut,
     MetricsOut,
     PresetOut,
     ProgressOut,
@@ -531,6 +532,7 @@ def get_run_metrics(request: Request, run_id: str) -> MetricsOut:
         ],
         aggregate={name: CIOut(**res.ci_to_json(ci)) for name, ci in agg.items()},
         fd_source=_fd_source(row),
+        merge_diagnostics=_merge_diagnostics(row),
     )
 
 
@@ -560,6 +562,42 @@ def _fd_source(row: dict[str, Any]) -> str | None:
         return None
     source = fd.get("source")
     return source if isinstance(source, str) else None
+
+
+def _merge_diagnostics(row: dict[str, Any]) -> MergeDiagnosticsOut | None:
+    """Ramp-meter and weaving-section counters of the run's first replicate.
+
+    Reads ``meta.json["ramp_meters"]`` and ``meta.json["weave_sections"]``
+    (``microsim.runner``) so the dashboard can show them without the run
+    directory. Returns ``None`` when the run has neither list, when the meta
+    cannot be read, or when an entry predates the fields the schema names —
+    absent is honest; a partly filled table is not.
+
+    Args:
+        row: The run's store row (``run_root``).
+
+    Returns:
+        One replicate's counters, labelled with its seed, or ``None``.
+    """
+    try:
+        dirs = res.replicate_dirs(row["run_root"])
+        if not dirs:
+            return None
+        meta = res.load_meta(dirs[0])
+        meters = meta.get("ramp_meters") or []
+        weaves = meta.get("weave_sections") or []
+        if not meters and not weaves:
+            return None
+        out = MergeDiagnosticsOut.model_validate(
+            {
+                "seed": meta.get("seed", int(dirs[0].name)),
+                "ramp_meters": [{**m, "n_rate_updates": len(m.get("rates") or [])} for m in meters],
+                "weave_sections": weaves,
+            }
+        )
+    except (OSError, ValueError):
+        return None
+    return out
 
 
 @router.get("/runs/{run_id}/heatmap", response_model=None, responses=_NOT_FOUND_RESPONSE)

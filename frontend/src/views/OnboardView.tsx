@@ -49,6 +49,7 @@ import {
 import type { CorridorOut, CorridorRow, RunDetail } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { StatusChip } from '../components/bits';
+import { SplitAuditTable } from '../components/SplitAuditTable';
 import { toast, toastError } from '../components/toast';
 import { formatDistKm, formatNumber } from '../lib/format';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
@@ -898,6 +899,8 @@ export function OnboardView(): JSX.Element {
                 ))}
               </>
             )}
+
+            <SplitAuditTable findings={summary.split_audit} />
 
             {summary.stations_rejected.length > 0 && (
               <p className="small">

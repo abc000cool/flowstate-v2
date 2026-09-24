@@ -47,6 +47,29 @@ const SUMMARY = {
       hint: 'acceleration lane added by ramp guessing',
     },
   ],
+  split_audit: [
+    {
+      from_edge: '1001426896',
+      exit_edge: '82150350',
+      continuing_edge: '1001426897',
+      x_m: 10730,
+      osm_way: '82150350',
+      osm_lanes: 3,
+      turn_lanes: 'none|none|through;slight_right',
+      turn_lanes_side: 'right',
+      osm_side: 'right',
+      osm_offsets_m: [-1.4, -45.0],
+      compiled_lanes: 4,
+      exit_from_lanes: [3],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: true,
+      exit_lanes: 1,
+      continuing_lanes: 3,
+      verdict: 'added_lane_wrong_side',
+      remedy: '--ramps.unset 1001426896',
+    },
+  ],
   inflow_peak_veh_h: 4275,
   ramps: [
     {
@@ -338,6 +361,13 @@ describe('OnboardView', () => {
     expect(screen.getByText(/S1063 at 1.1 km/)).toHaveTextContent(
       'the map carries 4 lanes, the inventory says 3',
     );
+    // the split audit: the exit compiled from a lane ramp guessing added on
+    // the wrong side is a red verdict with its remedy under the row
+    const splits = within(screen.getByLabelText('split audit'));
+    expect(splits.getByText('10.7 km')).toBeInTheDocument();
+    expect(splits.getByText('1001426896 → 82150350')).toBeInTheDocument();
+    expect(splits.getByText('ADDED LANE, WRONG SIDE')).toHaveClass('verdict-defect');
+    expect(splits.getByText(/^remedy:/)).toHaveTextContent('--ramps.unset 1001426896');
   });
 
   it('launches 20 seeds and only then offers the observed report', async () => {

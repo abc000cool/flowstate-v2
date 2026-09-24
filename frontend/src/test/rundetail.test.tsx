@@ -1,6 +1,6 @@
 /** Render smoke of the Run detail view against the mock backend. */
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { setOfflineFallback } from '../api/client';
@@ -41,6 +41,16 @@ describe('RunDetailView (mock data)', () => {
     expect(screen.getByRole('tab', { name: 'DENSITY' })).toBeInTheDocument();
     // a micro run has no fundamental diagram, so no FD provenance is claimed
     expect(screen.queryByText(/v1_legacy/)).toBeNull();
+    // this demo run carries one ramp meter and one weaving section, so the
+    // merge diagnostics section shows both tables, labelled with their seed
+    expect(await screen.findByText('Merge diagnostics · seed 2000', {}, { timeout: 4000 }))
+      .toBeInTheDocument();
+    const meters = within(screen.getByLabelText('ramp meters'));
+    expect(meters.getByText('Passed unstoppable')).toBeInTheDocument();
+    expect(meters.getByText('412')).toBeInTheDocument();
+    const weaves = within(screen.getByLabelText('weaving sections'));
+    expect(weaves.getByText('Deferred (vehicle-steps)')).toBeInTheDocument();
+    expect(weaves.getByText('143 / 147')).toBeInTheDocument();
   });
 
   /** A failed run answers *why*: the reason is in `RunOut.error`, which this
@@ -86,5 +96,8 @@ describe('RunDetailView (mock data)', () => {
     const fd = await screen.findByText(/v1_legacy preset/, {}, { timeout: 4000 });
     expect(fd).toBeInTheDocument();
     expect(fd.textContent).toContain('(uncalibrated)');
+    // a run with no ramp meter and no weaving section has no merge
+    // diagnostics to show — the section is absent, not empty
+    expect(screen.queryByTestId('merge-diagnostics')).toBeNull();
   });
 });

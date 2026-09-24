@@ -23,6 +23,7 @@ import {
   MetricCard,
 } from '../components/bits';
 import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
+import { MergeDiagnosticsPanel } from '../components/MergeDiagnostics';
 import { toastError } from '../components/toast';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason } from '../lib/format';
@@ -274,6 +275,8 @@ export function RunDetailView(): JSX.Element {
           </div>
         </div>
       )}
+
+      {finished && metrics && <MergeDiagnosticsPanel diagnostics={metrics.merge_diagnostics} />}
     </div>
   );
 }

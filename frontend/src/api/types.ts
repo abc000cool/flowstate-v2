@@ -226,6 +226,55 @@ export interface RunMetrics {
    * runs and on a service older than the field, in which case the provenance
    * is unknown and must not be presented as either one. */
   fd_source?: string | null;
+  /** Ramp-meter and weaving-section counters of the run's first replicate
+   * (`meta.json["ramp_meters"]` / `["weave_sections"]`, 2026-09-24). Absent
+   * or null when the run has neither, and on a service older than the
+   * field. One seed's counters, not a replicate aggregate. */
+  merge_diagnostics?: MergeDiagnostics | null;
+}
+
+/** Mirrors the API's `RampMeterDiagnosticsOut`: one ramp meter's counters. */
+export interface RampMeterDiagnostics {
+  ramp: string;
+  controller: string;
+  edge: string;
+  interval_s: number;
+  /** Vehicles the meter held and released. */
+  n_released: number;
+  /** Vehicles already too close to the stop line to brake when first seen on
+   * the ramp, which passed the meter that cycle (docs/LESSONS.md row 31). */
+  n_passed_unstoppable: number;
+  /** How many times the rate was set (length of the `rates` log). */
+  n_rate_updates: number;
+}
+
+/** Mirrors the API's `WeaveSectionDiagnosticsOut`: one weaving section's
+ * counters (`microsim.runner._weave_meta`). `n_forced_deferred` counts
+ * vehicle-steps, not vehicles. */
+export interface WeaveSectionDiagnostics {
+  ramp: string;
+  exit: string;
+  length_m?: number | null;
+  n_entered: number;
+  n_changed_in: number;
+  n_changed_out: number;
+  n_exited: number;
+  n_departed_exiting: number;
+  n_forced: number;
+  n_forced_deferred: number;
+  n_missed: number;
+  n_unfinished: number;
+  wait_s_mean?: number | null;
+  wait_in_s_mean?: number | null;
+  wait_out_s_mean?: number | null;
+}
+
+/** Mirrors the API's `MergeDiagnosticsOut`. */
+export interface MergeDiagnostics {
+  /** The replicate the counters were read from. */
+  seed: number;
+  ramp_meters: RampMeterDiagnostics[];
+  weave_sections: WeaveSectionDiagnostics[];
 }
 
 /** Mirrors the API's `HeatmapOut`: bin CENTERS, not edges. */
@@ -491,6 +540,38 @@ export interface CorridorLaneMismatch {
   hint: string;
 }
 
+export type SplitVerdict = 'ok' | 'wrong_side' | 'added_lane_wrong_side' | 'unknown';
+
+/** Mirrors the API's `CorridorSplitFindingOut`: one exit leaving the corridor,
+ * the side OSM draws it on versus the lanes the compiled network feeds it
+ * from (`microsim.split_audit`). A `wrong_side` / `added_lane_wrong_side`
+ * verdict traps through traffic in a lane that leads only to the exit; the
+ * `remedy` names the fix in the engine's terms. Reported, never enforced. */
+export interface CorridorSplitFinding {
+  from_edge: string;
+  exit_edge: string;
+  continuing_edge?: string | null;
+  /** Chain position of the split [m]. */
+  x_m: number;
+  osm_way: string;
+  osm_lanes?: number | null;
+  turn_lanes?: string | null;
+  turn_lanes_side: 'left' | 'right' | 'unknown';
+  osm_side: 'left' | 'right' | 'unknown';
+  /** Signed lateral offsets [m] of the link's first nodes (+ left, − right). */
+  osm_offsets_m: number[];
+  compiled_lanes: number;
+  /** SUMO lane indices (0 = rightmost) that feed the exit. */
+  exit_from_lanes: number[];
+  compiled_side: 'rightmost' | 'leftmost' | 'middle' | 'all';
+  option_lanes: number[];
+  added_lane: boolean;
+  exit_lanes: number;
+  continuing_lanes?: number | null;
+  verdict: SplitVerdict;
+  remedy: string;
+}
+
 /** Mirrors the API's `CorridorSummaryOut`: what the onboarding discovered and
  * derived. None of it is a claim about how the corridor behaves — that is
  * what a report scored against the observations answers. */
@@ -515,6 +596,9 @@ export interface CorridorSummary {
   lanes_compared?: number;
   /** Of those, the ones that disagree. */
   lane_mismatches?: CorridorLaneMismatch[];
+  /** Every exit leaving the chain, audited for the side it was compiled on
+   * (absent on a corridor onboarded before the audit existed, 2026-09-24). */
+  split_audit?: CorridorSplitFinding[];
   lines: string[];
 }
 

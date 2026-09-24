@@ -25,6 +25,7 @@ import type {
   HeatField,
   Heatmap,
   ReportOut,
+  MergeDiagnostics,
   RunDetail,
   RunMetrics,
   RunSummary,
@@ -147,6 +148,9 @@ interface RunRecord {
   profile: RunProfile | null;
   /** 0..1, thins out the wave bands in the heatmap. */
   damping: number;
+  /** `MetricsOut.merge_diagnostics` — the ramp-meter / weaving-section
+   * counters of the first replicate, on runs whose corridor has them. */
+  merge_diagnostics?: MergeDiagnostics;
   /** `RunOut.error` — why a failed run failed, in the worker's own words. */
   error?: string;
   error_kind?: string;
@@ -248,6 +252,42 @@ const runs: RunRecord[] = [
     config_hash: fakeHash('corridor-fs-5-80'),
     created_at: iso(9),
     kind: 'corridor',
+    // one metered entrance and one weaving section, with the counters the
+    // runner writes: a few vehicles that could not stop for the meter, one
+    // change never made, one vehicle still under control at the end
+    merge_diagnostics: {
+      seed: 2000,
+      ramp_meters: [
+        {
+          ramp: 'I-494 entrance',
+          controller: 'alinea',
+          edge: '19441652#1',
+          interval_s: 30,
+          n_released: 412,
+          n_passed_unstoppable: 6,
+          n_rate_updates: 40,
+        },
+      ],
+      weave_sections: [
+        {
+          ramp: 'Ruth St entrance',
+          exit: 'T.H.52 exit',
+          length_m: 305.2,
+          n_entered: 388,
+          n_changed_in: 241,
+          n_changed_out: 145,
+          n_exited: 143,
+          n_departed_exiting: 147,
+          n_forced: 19,
+          n_forced_deferred: 57,
+          n_missed: 1,
+          n_unfinished: 1,
+          wait_s_mean: 4.8,
+          wait_in_s_mean: 3.9,
+          wait_out_s_mean: 6.3,
+        },
+      ],
+    },
     profile: DAMPENED,
     damping: 0.8,
     fixedStatus: 'done',
@@ -444,6 +484,7 @@ function buildMetrics(r: RunRecord): RunMetrics {
     replicates: per,
     aggregate,
     fd_source: r.tier === 'macro' ? (r.fd_source ?? 'v1_legacy preset') : null,
+    merge_diagnostics: r.merge_diagnostics ?? null,
   };
 }
 
@@ -1065,6 +1106,53 @@ const DEMO_CORRIDOR_SUMMARY: CorridorSummary = {
       compiled_lanes: 4,
       inventory_lanes: 3,
       hint: 'acceleration lane added by ramp guessing',
+    },
+  ],
+  // the split audit of 2026-09-24: one exit compiled on the drawn side, one
+  // fed from a lane ramp guessing added on the wrong side (the I-94 WB
+  // 12th Street shape), so the demo shows both a green and a red verdict
+  split_audit: [
+    {
+      from_edge: '42165869',
+      exit_edge: '42165870',
+      continuing_edge: '42165871',
+      x_m: 3420,
+      osm_way: '42165870',
+      osm_lanes: 4,
+      turn_lanes: 'slight_left|none|none|none',
+      turn_lanes_side: 'left',
+      osm_side: 'left',
+      osm_offsets_m: [5.2, 11.8, 19.1],
+      compiled_lanes: 4,
+      exit_from_lanes: [3],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: false,
+      exit_lanes: 1,
+      continuing_lanes: 3,
+      verdict: 'ok',
+      remedy: '',
+    },
+    {
+      from_edge: '1001426896',
+      exit_edge: '82150350',
+      continuing_edge: '1001426897',
+      x_m: 10730,
+      osm_way: '82150350',
+      osm_lanes: 3,
+      turn_lanes: 'none|none|through;slight_right',
+      turn_lanes_side: 'right',
+      osm_side: 'right',
+      osm_offsets_m: [-1.4, -12.6, -45.0],
+      compiled_lanes: 4,
+      exit_from_lanes: [3],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: true,
+      exit_lanes: 1,
+      continuing_lanes: 3,
+      verdict: 'added_lane_wrong_side',
+      remedy: '--ramps.unset 1001426896 (the lane ramp guessing added feeds the exit from the left)',
     },
   ],
   inflow_peak_veh_h: 4275,

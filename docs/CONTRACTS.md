@@ -1151,6 +1151,33 @@ verdict on a ramp-split piece (`…-AddedOffRampEdge`) is patched by its
 load-time id and should be re-audited after `--ramps.unset`; an exit whose
 link the extract does not carry is `unknown`.
 
+**`MetricsOut.merge_diagnostics` and the dashboard's diagnostics — 2026-09-24.**
+`GET /api/v1/runs/{id}/metrics` gains the additive field `merge_diagnostics`
+(`MergeDiagnosticsOut`, `null` by default): the ramp-meter and weaving-section
+counters of the run's **first replicate**, read from its `meta.json` the way
+`fd_source` is, so a tester sees them without the run directory. `seed` names
+the replicate; `ramp_meters[i]` (`RampMeterDiagnosticsOut`) carries `ramp`,
+`controller`, `edge`, `interval_s`, `n_released`, `n_passed_unstoppable`
+(0 for a meter written before the counter existed) and `n_rate_updates` (the
+length of the `rates` log — the log itself and `releases_s` stay in the meta);
+`weave_sections[i]` (`WeaveSectionDiagnosticsOut`) carries `ramp`, `exit`,
+`length_m` and the `_weave_meta` counters `n_entered`, `n_changed_in`,
+`n_changed_out`, `n_exited`, `n_departed_exiting`, `n_forced`,
+`n_forced_deferred` (vehicle-steps), `n_missed`, `n_unfinished`,
+`wait_s_mean`, `wait_in_s_mean`, `wait_out_s_mean`. The field is `null` when
+the run has neither list or both are empty (every ring and plain corridor
+run), when the meta cannot be read, and when an entry lacks the counters the
+schema names — absent is honest, a partly filled table is not. They are one
+seed's counters, not a replicate aggregate, and describe the merge models'
+behaviour, never a corridor result. Dashboard: the Onboard view's corridors
+panel renders `CorridorSummaryOut.split_audit` as a "Split audit" table
+(verdict badge `ok` green, `wrong_side` / `added_lane_wrong_side` red,
+`unknown` grey, the remedy under a defect row) and the run detail shows a
+"Merge diagnostics" section only when `merge_diagnostics` has a row;
+`frontend/src/api/types.ts` mirrors `CorridorSplitFinding`,
+`RampMeterDiagnostics`, `WeaveSectionDiagnostics` and
+`RunMetrics.merge_diagnostics`.
+
 ## Observed backward wave speed as report context — 2026-09-23
 
 The corridor's *own* stop-and-go wave speed, measured from the detector
