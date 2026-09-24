@@ -790,3 +790,21 @@ on the reset values (its record below says so); the three scenarios now
 carry 5.0 / 1.0 / 0.0 again, with new config hashes, and every later run
 uses them. The onboarding path is being changed so that a re-onboard keeps
 an existing scenario's fleet block instead of resetting it.
+
+
+**The 20-seed battery on the regenerated inputs (VM F, 2026-09-24, block 3;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_regenerated_inputs_reset_lc_runner_42ce900.json`,
+config hash 0901cc8beaff — the §11 inputs with the lane-change settings still
+reset to the builder's defaults, and the runner at commit 42ce900, i.e. the
+second weave derivation with the cooperative follower).** Departed share
+mean 0.233 (lowest 0.184), eight starved entrances including the
+collector–distributor re-entry; speed RMSPE 0.968; GEH < 5 on a share of
+None of 840 link-hours; the "wave speed" of 7.5 km/h is again the queue
+front. Worse than the 0.444 of the old inputs and the first derivation: the
+reset lane-change settings (keep-right 1.0 pushes through traffic into the
+merge lanes) and the added C-D re-entry demand both weigh on the same
+merges. The scoring phase took 6,719 s in one process (the older memory
+constant estimated 68 GB per worker for 106 M rows per replicate; the diet
+committed since brings that to about 17 GB, so the next round scores in
+parallel). The next battery (VM G) runs the corrected scenarios (lane-change
+settings restored) with the sixth-derivation runner.

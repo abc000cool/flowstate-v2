@@ -542,9 +542,7 @@ committed file named in parentheses.
   tree).
 
 Open / pending: the 20-seed four-hour battery on the regenerated corridor
-with the sixth derivation (pending: VM F, running; it lands in
-docs/ONBOARDING_MNDOT.md and the corridor stays "not reproduced" until it
-does); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
+with the sixth derivation (VM F, run on the reset lane-change settings: departed 0.233 over 20 seeds, worse than 0.444; the corrected scenarios run on VM G — docs/ONBOARDING_MNDOT.md §10); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
 symmetrically rather than by which side pays — was then measured in fifteen
 forms at seeds 3–8 and rejected (entrance mean 361.7 against the sixth's 411.8,
 and a lock at a seed the sixth does not lock), so the runner keeps the sixth
