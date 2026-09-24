@@ -561,3 +561,15 @@ flow through 305 m stalls at its first conflict. The next step is a
 re-derivation of the weave's conflict handling (and a slice test that fails
 on this exact case), not a parameter change. The Minnesota-population
 battery on the same scenario is reported below when it has run.
+
+**After the fixture-level fix (commit 462b731 — an accepted entering change
+executes under SUMO lane-change mode 256 instead of being refused by its
+brake-gap test, and station-keeping applies only inside the last
+`force_within_m`):** the same 4-seed slice on the corrected map departs
+0.879 (0.838–0.904; `artifacts/mndot_rounds/weave_2026-09-24/probe_fix_462b731.json`,
+session record run on the VM with that runner) against 0.878 before — no
+material change at 35 minutes, one seed with 40648744 and 769818012 starved.
+The fixture improvement (a 3-lane weave at 1,620 veh/h from a 3 m/s crawl to
+11–17 m/s) does not carry to T.H.52 at its demand; the dense fixture case
+(3,240 veh/h) still crawls too. The conflict handling of a weaving section
+at capacity is the open modelling problem for the next round.
