@@ -186,6 +186,7 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "pair_release_s": 2.0,
     "exit_giveup_m": 5.0,
     "exit_giveup_patience_s": 0.0,
+    "exit_abreast_patience_s": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -269,7 +270,30 @@ the halted exiter and the 6 followers that were braking towards the gap were
 caught by the cooperation's hold inside their own brake distance at ``b``, so
 they slid alongside whatever the wait. A positive value is a measured option,
 never a lock (the bound and the deceleration condition end every wait; 1–16
-vehicle-steps per run at 10 s). Not a fitted value."""
+vehicle-steps per run at 10 s). Not a fitted value. ``exit_abreast_patience_s``
+(2026-09-24, block 3, WP-53, the abreast state): the longest a halted exiter
+within ``exit_giveup_m`` whose request is refused waits for the
+auxiliary-lane vehicle *beside* it (a negative reported gap on either side)
+to clear its front — while that vehicle is not a driven entrant of the
+section (halted at the end of its lane beside the exiter, the crossing pair
+at the lane ends: nothing local resolves it and the exiter's reroute is
+what frees both), is moving, and would clear the exiter's leader side at its
+current speed within the budget left of this value since the first refused
+step (``microsim.runner._weave_giveup_abreast``, the distance from
+``_weave_abreast_clear_m``); the budget is shared with
+``exit_giveup_patience_s`` and never renewed, and the wait is counted in
+``n_giveup_waited`` like the other. The default is **0** — give up on the
+first refused step — because the rule was measured on the same 29-run
+fixture grid as WP-52 and found not to help (docs/WEAVE_MODEL_PLAN.md, dated
+section): at 10 s it rescues the exiters it was written for (the vehicle
+sliding past, 10 → 1 of the give-ups) and the give-ups still read 46 against
+44, the waited exiter meeting the next follower inside its brake distance,
+while the wait holds lane 1 at the gore (T.H.52 at capacity, seed 4: the
+entrance 386 of 466 against 401); of the 44 give-ups, 24 are a driven
+entrant halted beside the exiter, which no wait moves. 5 and 20 s read as
+10 s. A positive value is a measured option, never a lock (the clearing
+condition and the bound end every wait; at most 15 vehicle-steps per run
+at 10 s). Not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

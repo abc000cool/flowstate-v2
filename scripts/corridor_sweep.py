@@ -117,9 +117,10 @@ METER_COUNTERS = ("n_released", "n_passed_unstoppable")
 #: ``wait_s_mean`` come the follower-cooperation counters (2026-09-24, block
 #: 3), the vacate counters (third derivation), the pair releases (fifth), the
 #: exits given up (exit side), the re-derived vacate rule's skipped vehicles
-#: and requests (block 3) and the give-ups deferred by the bounded patience
-#: (WP-52); a meta written before a counter contributes nothing to its
-#: interval (``n`` = 0).
+#: and requests (block 3) and the give-ups deferred by the bounded patiences
+#: (WP-52, the braking follower; WP-53, the vehicle beside the exiter); a
+#: meta written before a counter contributes nothing to its interval
+#: (``n`` = 0).
 WEAVE_FIELDS = (
     "n_entered",
     "n_exited",

@@ -1064,10 +1064,12 @@ def _weave_giveup_patient(
     ``st["foll_prev"]`` (so its speed history is one vehicle's), its speed
     fell since by more than ``WEAVE_GIVEUP_DECEL_TOL_MS2 · step_s``, it has
     not come to rest (``HALTING_SPEED_MS``), and the wait since the first
-    refused step (``st["giveup_since"]``, set here) is shorter than the
+    refused step (``st["giveup_since"]``, set here or by
+    :func:`_weave_giveup_abreast`, the budget being one) is shorter than the
     bound — ``patience_s`` or the follower's braking time to rest at its own
-    ``b`` from its speed on that first step, ``v_F / b_F``, whichever is
-    shorter, so a follower already crawling earns no patience. Any other
+    ``b`` from its speed on the first step this rule read it
+    (``st["giveup_v_foll"]``), ``v_F / b_F``, whichever is shorter, so a
+    follower already crawling earns no patience. Any other
     state gives up at once, as before: no follower, a different follower, a
     follower at its speed or at rest, or the bound reached. The budget runs
     from the first refused step and is not reset, so an exiter that rolls
@@ -1098,6 +1100,11 @@ def _weave_giveup_patient(
         return False
     if st.get("giveup_since") is None:
         st["giveup_since"] = t
+    if st.get("giveup_v_foll") is None:
+        # the budget may have been opened by the abreast patience (WP-53,
+        # :func:`_weave_giveup_abreast`) with no follower behind: the
+        # braking time is then from the follower's speed on the first
+        # step this rule reads it
         st["giveup_v_foll"] = v_foll
     bound = min(patience_s, st["giveup_v_foll"] / b_foll if b_foll > 0.0 else 0.0)
     if t - st["giveup_since"] >= bound:
@@ -1105,6 +1112,131 @@ def _weave_giveup_patient(
     if v_foll < HALTING_SPEED_MS:
         return False
     return v_foll < prev[1] - WEAVE_GIVEUP_DECEL_TOL_MS2 * step_s
+
+
+def _weave_abreast_clear_m(
+    g_lead: float,
+    g_foll: float,
+    lead_need: float,
+    len_c: float,
+    s0_c: float,
+    len_a: float,
+    s0_a: float,
+) -> float:
+    """How far the auxiliary-lane vehicle beside a halted exiter must still advance [m].
+
+    The abreast state (2026-09-24, block 3, WP-53; docs/WEAVE_MODEL_PLAN.md,
+    dated section): a vehicle reported by ``getNeighbors`` with a negative
+    gap overlaps the exiter longitudinally. SUMO reports a leader's gap as
+    ``rear_A − front_c − s0_c`` (the ego's ``minGap`` taken off) and a
+    follower's as ``rear_c − front_A − s0_A`` (the follower's). The exiter's
+    leader side accepts the vehicle once the reported gap reaches
+    ``lead_need`` — the acceptance's floor ``s0_c + accept · v_c``, which at
+    a halted changer is ``s0_c`` (:func:`_weave_lead_gap_min`; the brake
+    term is zero against a vehicle pulling away) — so from the leader side
+    the distance is ``lead_need − g_lead`` whenever ``g_lead`` is under the
+    floor (a vehicle just clear of the overlap but inside the floor is still
+    clearing); from a follower-side overlap the vehicle's rear is
+    ``len_c + g_foll + s0_A + len_A`` behind the exiter's front, so
+    ``len_c + s0_c + lead_need + g_foll + s0_A + len_A``. Zero otherwise.
+
+    Args:
+        g_lead: Reported gap to the target-lane leader [m] (``inf`` = none).
+        g_foll: Reported gap to the target-lane follower [m] (``inf`` = none).
+        lead_need: The reported leader gap the acceptance needs [m].
+        len_c: The exiter's length [m].
+        s0_c: The exiter's ``minGap`` [m].
+        len_a: The overlapping vehicle's length [m].
+        s0_a: The overlapping vehicle's ``minGap`` [m].
+
+    Returns:
+        The distance [m], ``0`` when no vehicle is in the way on either side.
+    """
+    if g_lead < lead_need:
+        return lead_need - g_lead
+    if g_foll < 0.0:
+        return max(len_c + s0_c + lead_need + g_foll + s0_a + len_a, 0.0)
+    return 0.0
+
+
+def _weave_giveup_abreast(
+    st: dict[str, Any],
+    t: float,
+    patience_s: float,
+    a_id: str | None,
+    v_a: float,
+    clear_m: float,
+    a_is_entrant: bool,
+) -> bool:
+    """Whether a halted exiter waits for the vehicle beside it to clear (WP-53).
+
+    The abreast state (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md, dated
+    section): of the 44 give-ups on the fixture grid at 6497b2d, 34 had an
+    auxiliary-lane vehicle overlapping the halted exiter. A per-give-up
+    trace of their geometry splits them: **24** are a *driven entrant*
+    halted at the end of the auxiliary lane beside the exiter — the crossing
+    pair at the lane ends, each owing the change into the other's lane,
+    which no local rule resolves (neither can move on, neither can change
+    across the other; the exiter's reroute is what frees both) — and **10**
+    are an exit-bound queue vehicle sliding past the exiter's rear at
+    0.7–7 m/s, most often its own held follower caught inside its brake
+    distance (WP-52), whose leader ahead is moving: it clears the exiter's
+    front within ``clear_m / v_a`` = 1.7–8 s at its speed, after which the
+    gap behind it is the exiter's (its follower is held by the exit priority,
+    :func:`_weave_choose_gap`).
+
+    The exiter waits this step when the overlapping vehicle is not a driven
+    entrant (its lane ends at the gore for its route: it never clears), is
+    moving (``v_a`` at or above ``HALTING_SPEED_MS``), and would clear the
+    exiter's leader side at its current speed within the budget left —
+    ``patience_s`` less the time since the first refused step
+    (``st["giveup_since"]``, set here or by :func:`_weave_giveup_patient`,
+    never renewed). A halted or slower vehicle, one that needs longer than
+    the budget, or an exhausted budget gives up at once, so the wait is
+    bounded by ``patience_s`` per exiter and a stopped queue beside a halted
+    exiter is given up on the first step as before; ``patience_s`` of ``0``
+    never waits. Holding the abreast vehicle instead (commanding it to stop
+    beside the exiter) was derived inert — a vehicle beside the exiter opens
+    nothing by stopping, it makes the crossing pair — and measured as such
+    (one vehicle-step held over the grid, the runs otherwise this rule's).
+
+    Measured on the same grid and **shipped off** (``exit_abreast_patience_s``
+    defaults to 0): at 10 s the rule rescues the sliding vehicle's exiter
+    where it was written (the creeping-past give-ups 10 → 1, Ruth St
+    corridor fleet at the exit peak seed 3: 273 → 280 of 290 exited) but
+    the give-ups read 46 against 44, because the waited exiter then meets
+    the next follower inside its brake distance (the brake-distance class
+    9 → 18), and the wait holds lane 1: T.H.52 at capacity seed 4 departs
+    386 of 466 against 401 with lane 1 at the gore at 2.7 m/s for three
+    minutes against 10.7 in none, the two-entrance defaults at seed 3
+    394 of 470 against 417. With WP-52's braking patience beside it the
+    give-ups are 44 again, with 16 fewer exits, six more lane-1 minutes at
+    or below 5 m/s and the T.H.52 capacity entrance at seed 5 at 372 of
+    466, under the no-lock pin. The 5 s and 20 s bounds are the 10 s runs
+    within one give-up (the clearing condition ends the wait, the bound
+    binds nowhere above 10 s).
+
+    Args:
+        st: The exiter's per-vehicle state (``giveup_since`` read and written).
+        t: Simulation time [s].
+        patience_s: ``exit_abreast_patience_s``.
+        a_id: The overlapping auxiliary-lane vehicle (``None`` = none).
+        v_a: Its speed [m/s].
+        clear_m: :func:`_weave_abreast_clear_m` for it.
+        a_is_entrant: Whether it is a driven entrant of this section.
+
+    Returns:
+        ``True`` to keep the exiter this step (deferred as a forced change
+        is, ``n_giveup_waited`` counted by the caller); ``False`` to give up.
+    """
+    if patience_s <= 0.0 or a_id is None or a_is_entrant:
+        return False
+    if st.get("giveup_since") is None:
+        st["giveup_since"] = t
+    budget = patience_s - (t - st["giveup_since"])
+    if budget <= 0.0 or v_a < HALTING_SPEED_MS:
+        return False
+    return clear_m / v_a <= budget
 
 
 def _idm_accel(
@@ -2538,12 +2670,39 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             and v_ego < HALTING_SPEED_MS
             and not (accepted or forced_ok)
         ):
+            # the vehicle beside the exiter (WP-53): the leader side's while
+            # it is under the acceptance's floor, else an overlapping follower
+            lead_need = st["s0"] + accept * v_ego
+            if g_lead < lead_need:
+                a_id, v_a = _l_id, v_lead
+            elif g_foll < 0.0:
+                a_id, v_a = f_id, v_foll
+            else:
+                a_id, v_a = None, math.nan
+            if a_id is not None:
+                p_a = _weave_veh(mod, ws, a_id)
+                p_c = _weave_veh(mod, ws, vid)
+                clear_m = _weave_abreast_clear_m(
+                    g_lead, g_foll, lead_need, p_c["len"], st["s0"], p_a["len"], p_a["s0"]
+                )
+            else:
+                clear_m = 0.0
             if _weave_giveup_patient(
                 st, t, prm["exit_giveup_patience_s"], f_id, g_foll, v_foll, b_f, step_s
+            ) or _weave_giveup_abreast(
+                st,
+                t,
+                prm["exit_abreast_patience_s"],
+                a_id,
+                v_a,
+                clear_m,
+                a_id in veh and veh[a_id]["dir"] > 0,
             ):
-                # the refusal is the follower still braking towards the gap
-                # (bounded give-up patience, WP-52): kept this step, the
-                # request deferred below as a forced change is
+                # the refusal is a transient — the follower still braking
+                # towards the gap (bounded give-up patience, WP-52) or the
+                # vehicle beside the exiter clearing it within the budget
+                # (the abreast state, WP-53): kept this step, the request
+                # deferred below as a forced change is
                 ws["n_giveup_waited"] += 1
             else:
                 # the exit is missed: a vehicle halted within exit_giveup_m

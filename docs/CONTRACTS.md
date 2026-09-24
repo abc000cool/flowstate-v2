@@ -458,7 +458,8 @@ mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
 n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
 n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
 wait_in_s_mean, wait_out_s_mean` — 33 keys (`n_giveup_waited` added by
-WP-52, 2026-09-24 block 3, the bounded give-up patience)
+WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
+abreast state, counts its waits in the same key and adds none)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1058,6 +1059,32 @@ alongside. A bound without the deceleration condition (10 s) locks the
 Ruth St corridor fleet at the 271 m window (lane 1 at 0.0 m/s for twelve
 minutes, 20 unfinished). Golden `merge_weave` unchanged (the default is
 the previous behaviour; the summary does not carry the new key).
+
+**The abreast state, 2026-09-24 (block 3, WP-53; measured, shipped off).**
+`WEAVE_DEFAULTS["exit_abreast_patience_s"]` (default **0**, hash-neutral
+unless set): a halted exiter within `exit_giveup_m` whose request is refused
+may wait for the auxiliary-lane vehicle *beside* it to clear — the vehicle
+reported on the leader side under the acceptance's floor `s0 + accept · v`
+or on the follower side with a negative gap — while that vehicle is not a
+driven entrant of the section (halted at the end of its lane beside the
+exiter: the crossing pair at the lane ends, which the trace shows in 24 of
+the 44 give-ups and which no local rule resolves), is moving, and would
+clear the floor at its current speed within the budget left of the value
+since the first refused step (`microsim.runner._weave_giveup_abreast`, the
+distance from `_weave_abreast_clear_m` under SUMO's reported-gap conventions;
+the budget `st["giveup_since"]` is the one `exit_giveup_patience_s` uses and
+is never renewed). Nothing new is held. The wait is counted in
+`n_giveup_waited` with WP-52's; no key is added. Measured on the same
+29-run grid (docs/WEAVE_MODEL_PLAN.md, dated section) and not made the
+default: at 10 s the sliding-vehicle give-ups fall 10 → 1 and the total
+reads 46 against 44 (the waited exiter meets the next follower inside its
+brake distance), lane 1 at the gore is held for the wait (T.H.52 at
+capacity, seed 4: the entrance 386 of 466 against 401, lane 1 at 2.7 m/s for
+three minutes), and with the braking patience beside it the give-ups are
+44 again with 16 fewer exits and the T.H.52 capacity entrance at seed 5 at
+372 of 466, under the no-lock pin; 5 and 20 s read as 10 s; commanding the
+abreast vehicle to hold was derived inert and bound on one vehicle-step
+over the grid. Golden `merge_weave` unchanged.
 
 ## 3. Run outputs
 
@@ -1945,9 +1972,11 @@ vacated", "Vacate refused" and "Pair releases" with a dash for null; and
 `n_missed_exit` (exit-side derivation: exit-bound vehicles rerouted through
 at the gore's end, halted still owing their change within `exit_giveup_m`
 of the end — a subset of `n_missed`), null for a meta written before the
-rule and not shown by the dashboard, and (WP-52, 2026-09-24 block 3)
-`n_giveup_waited` (vehicle-steps on which such a give-up was deferred by
-the bounded patience, `exit_giveup_patience_s`; zero at its default), null
+rule and not shown by the dashboard, and (WP-52 and WP-53, 2026-09-24
+block 3) `n_giveup_waited` (vehicle-steps on which such a give-up was
+deferred by either bounded patience, `exit_giveup_patience_s` for the
+follower still braking towards the gap or `exit_abreast_patience_s` for
+the vehicle beside the exiter clearing it; zero at both defaults), null
 for a meta written before and not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all eight the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)

@@ -274,11 +274,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     rerouted through at the gore's end, halted still owing their change with
     no more than ``exit_giveup_m`` of section ahead — a subset of ``n_missed``;
     ``None`` for a meta written before the rule existed. ``n_giveup_waited``
-    (WP-52, 2026-09-24 block 3, the bounded give-up patience) counts the
-    vehicle-steps on which such a give-up was deferred while the exiter's
-    auxiliary-lane follower was still braking towards the gap
-    (``exit_giveup_patience_s``; zero at its default of 0); ``None`` for a
-    meta written before. Two keys that are
+    (WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
+    abreast state) counts the vehicle-steps on which such a give-up was
+    deferred while the exiter's auxiliary-lane follower was still braking
+    towards the gap (``exit_giveup_patience_s``) or the vehicle beside the
+    exiter was clearing it within the budget (``exit_abreast_patience_s``);
+    zero at both keys' default of 0; ``None`` for a meta written before. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and

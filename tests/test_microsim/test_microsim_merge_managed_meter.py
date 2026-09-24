@@ -866,6 +866,8 @@ class TestWeaveSchema:
             "exit_giveup_m": 5.0,
             # WP-52: the bounded give-up patience, shipped off
             "exit_giveup_patience_s": 0.0,
+            # WP-53: the abreast patience (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "exit_abreast_patience_s": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -3024,6 +3026,194 @@ class TestWeaveGiveupPatience:
     def test_default_never_waits(self):
         ws, *_ = TestWeaveExitPriority._at_the_gore()
         assert ws["params"]["exit_giveup_patience_s"] == 0.0
+
+
+class TestWeaveAbreastPatience:
+    """The abreast state (WP-53, 2026-09-24 block 3):
+    ``microsim.runner._weave_abreast_clear_m``, ``_weave_giveup_abreast`` and
+    the give-up branch of ``_weave_step`` under ``exit_abreast_patience_s``
+    (docs/WEAVE_MODEL_PLAN.md, dated section). These pin the rule's
+    statement so a positive value behaves as documented, whatever the
+    default."""
+
+    def test_clear_distance_reads_the_reported_gaps_and_the_floor(self):
+        from microsim.runner import _weave_abreast_clear_m as clear
+
+        # a leader inside the acceptance's floor (2.5 m at a halted changer):
+        # the shortfall, whether it still overlaps (negative) or not
+        assert clear(-7.0, math.inf, 2.5, 5.0, 2.5, 5.0, 2.5) == pytest.approx(9.5)
+        assert clear(1.78, 5.0, 2.5, 5.0, 2.5, 5.0, 2.5) == pytest.approx(0.72)
+        # a follower overlapping: its rear is len_c + g + s0_a + len_a behind
+        # the exiter's front; it must be lead_need + s0_c ahead of it
+        assert clear(math.inf, -6.0, 2.5, 5.0, 2.5, 5.0, 2.5) == pytest.approx(11.5)
+        assert clear(30.0, -7.5, 2.5, 5.0, 2.5, 5.0, 2.5) == pytest.approx(10.0)
+        # the leader side is read first; nothing in the way is zero
+        assert clear(-1.0, -6.0, 2.5, 5.0, 2.5, 5.0, 2.5) == pytest.approx(3.5)
+        assert clear(3.0, 5.0, 2.5, 5.0, 2.5, 5.0, 2.5) == 0.0
+        assert clear(math.inf, math.inf, 2.5, 5.0, 2.5, 5.0, 2.5) == 0.0
+
+    def test_waits_only_for_a_moving_non_entrant_that_clears_within_the_budget(self):
+        from microsim.runner import HALTING_SPEED_MS
+        from microsim.runner import _weave_giveup_abreast as p
+
+        # 11.5 m to clear at 4 m/s = 2.9 s within 10 s: wait, the budget started
+        st: dict = {}
+        assert p(st, 10.0, 10.0, "a", 4.0, 11.5, False) is True
+        assert st["giveup_since"] == 10.0
+        # at its speed it needs longer than the budget left: give up
+        assert p(st, 18.0, 10.0, "a", 4.0, 11.5, False) is False
+        # the budget is exhausted: give up, and it is never renewed
+        assert p(st, 20.0, 10.0, "a", 40.0, 1.0, False) is False
+        assert st["giveup_since"] == 10.0
+        # a halted vehicle beside the exiter never clears: give up
+        assert p({}, 10.0, 10.0, "a", HALTING_SPEED_MS / 2, 1.0, False) is False
+        # a driven entrant beside it (the crossing pair at the lane ends): give up
+        assert p({}, 10.0, 10.0, "a", 4.0, 11.5, True) is False
+        # nobody beside it, or patience 0: give up
+        assert p({}, 10.0, 10.0, None, math.nan, 0.0, False) is False
+        assert p({}, 10.0, 0.0, "a", 4.0, 11.5, False) is False
+
+    def test_step_waits_while_the_vehicle_beside_clears_then_changes(self):
+        """``_at_the_gore`` of ``TestWeaveExitPriority``: ``e`` halted 3 m
+        from the end; ``b`` in lane 0 sliding past it at 4 m/s (reported as
+        an overlapping follower, then as a leader inside the floor, then
+        clear), ``f`` held 5 m behind at rest. The two steps on which ``b``
+        is still in the way are waits (counted, the request deferred, no
+        reroute); on the third the change is accepted under mode 256."""
+        from microsim.runner import (
+            LC_MODE_SCRIPTED_FORCE,
+            LC_MODE_SCRIPTED_SAFE,
+            NEIGHBOR_RIGHT_LEADERS,
+            _weave_meta,
+            _weave_step,
+        )
+
+        ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(exit_abreast_patience_s=10.0)
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = ()
+        veh.neighbors[("e", 1)] = (("b", -6.0), ("f", 5.0))
+        veh.speeds.update({"e": 0.0, "b": 4.0, "f": 0.0})
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 95.0, 4.0),
+            "f": _res("b", 0, 87.0, 0.0),
+        }
+        deferred = ws["n_forced_deferred"]
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "e" in ws["veh"] and ws["n_giveup_waited"] == 1 and ws["n_missed_exit"] == 0
+        assert not [c for c in veh.calls if c[0] in ("target", "change")]
+        assert ws["n_forced_deferred"] == deferred + 1
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
+        assert ws["veh"]["e"]["giveup_since"] == 0.0
+        # b now 1 m ahead (inside the 2.5 m floor) at 4 m/s: 0.4 s to clear, waited
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 1.0),)
+        veh.neighbors[("e", 1)] = (("f", 5.0),)
+        res["b"] = _res("b", 0, 103.5, 4.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert "e" in ws["veh"] and ws["n_giveup_waited"] == 2 and ws["n_missed_exit"] == 0
+        assert not [c for c in veh.calls if c[0] in ("target", "change")]
+        # clear of the floor: accepted, not forced
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        res["b"] = _res("b", 0, 105.5, 4.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 1.0)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_FORCE and ws["veh"]["e"]["forced"] is False
+        assert ws["n_missed_exit"] == 0 and _weave_meta(ws, {})["n_giveup_waited"] == 2
+
+    def test_step_gives_up_at_once_beside_a_halted_entrant_or_a_halted_vehicle(self):
+        """The crossing pair at the lane ends: ``b`` is a driven entrant
+        halted beside ``e`` (lane 0, not exit-bound), and ``e`` is given up
+        on the first refused step with nothing waited; the same with an
+        exit-bound ``b`` at rest beside it."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(exit_abreast_patience_s=10.0)
+        ws["exiting_ids"] = frozenset({"e", "f"})
+        veh.neighbors[("e", 1)] = (("b", -7.0), ("f", 0.0))
+        veh.speeds.update({"e": 0.0, "b": 0.0, "f": 0.0})
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 96.5, 0.0),
+            "f": _res("b", 0, 89.5, 0.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["b"]["dir"] == 1 and "e" not in ws["veh"]
+        assert ("target", "e", "z") in veh.calls
+        assert ws["n_missed_exit"] == 1 and ws["n_giveup_waited"] == 0
+        ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(exit_abreast_patience_s=10.0)
+        veh.neighbors[("e", 1)] = (("b", -7.0), ("f", 0.0))
+        veh.speeds.update({"e": 0.0, "b": 0.0, "f": 0.0})
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 96.5, 0.0),
+            "f": _res("b", 0, 89.5, 0.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ("target", "e", "z") in veh.calls and ws["n_giveup_waited"] == 0
+
+    def test_step_gives_up_at_the_bound(self):
+        """``b`` beside ``e`` on the leader side (reported −3 m: 5.5 m to
+        the 2.5 m floor) creeping at 0.5 m/s needs 11 s, beyond a 10 s
+        budget: given up on the first refused step. At 2 m/s (2.75 s) it is
+        waited for — ``b`` re-reported in the same place each step, never
+        clearing — on every step on which the budget left is still 2.75 s
+        or more (t = 0 … 7.0, fifteen steps), then given up."""
+        from microsim.runner import _weave_step
+
+        for v_b, waited in ((0.5, 0), (2.0, 15)):
+            ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(exit_abreast_patience_s=10.0)
+            veh.neighbors[("e", 1)] = (("f", 5.0),)
+            veh.speeds.update({"e": 0.0, "b": v_b, "f": 0.0})
+            res = {
+                "e": _res("b", 1, 97.0, 0.0),
+                "b": _res("b", 0, 98.0, v_b),
+                "f": _res("b", 0, 87.0, 0.0),
+            }
+            _weave_step(mod, _tc, ws, res, 0.0)
+            t = 0.5
+            while "e" in ws["veh"]:
+                _weave_step(mod, _tc, ws, res, t)
+                t += 0.5
+            assert ws["n_giveup_waited"] == waited and ws["n_missed_exit"] == 1
+            assert ("target", "e", "z") in veh.calls
+
+    def test_default_never_waits(self):
+        ws, *_ = TestWeaveExitPriority._at_the_gore()
+        assert ws["params"]["exit_abreast_patience_s"] == 0.0
+
+    def test_the_budget_opened_by_the_abreast_wait_is_read_by_the_braking_patience(self):
+        """Both patiences on: ``b`` sliding past opens the budget (the
+        abreast wait, no follower speed recorded); a step later ``b`` is
+        clear and ``f`` 8 m behind is braking 7 → 6 m/s towards the gap —
+        the braking patience (WP-52) then reads the budget it did not open
+        and records ``f``'s speed on that step as its braking-time basis
+        (a KeyError before the fix, session record)."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws, veh, mod, res = TestWeaveExitPriority._at_the_gore(
+            exit_abreast_patience_s=10.0, exit_giveup_patience_s=10.0
+        )
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = ()
+        veh.neighbors[("e", 1)] = (("b", -6.0), ("f", 20.0))
+        veh.speeds.update({"e": 0.0, "b": 4.0, "f": 7.0})
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 95.0, 4.0),
+            "f": _res("b", 0, 72.0, 7.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_giveup_waited"] == 1 and ws["veh"]["e"]["giveup_since"] == 0.0
+        assert ws["veh"]["e"].get("giveup_v_foll") is None
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        veh.neighbors[("e", 1)] = (("f", 8.0),)
+        veh.speeds["f"] = 6.0
+        res["b"] = _res("b", 0, 105.5, 4.0)
+        res["f"] = _res("b", 0, 84.0, 6.0)
+        ws["veh"]["e"]["foll_prev"] = ("f", 7.0)
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert "e" in ws["veh"] and ws["n_giveup_waited"] == 2
+        assert ws["veh"]["e"]["giveup_v_foll"] == 6.0 and ws["veh"]["e"]["giveup_since"] == 0.0
 
 
 class TestMeterStopPlacementReview:
