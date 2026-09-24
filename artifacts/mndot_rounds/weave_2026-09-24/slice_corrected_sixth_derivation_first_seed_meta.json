@@ -1,0 +1,132 @@
+{
+ "departed": 4808,
+ "planned": 5765,
+ "collisions": 0,
+ "weave_sections": [
+  {
+   "ramp": "on-ramp 745524613",
+   "exit": "C-D split 18208090",
+   "edges": [
+    "999007700"
+   ],
+   "exit_edge": "18208090",
+   "exit_edges": [
+    "18208090",
+    "991112953"
+   ],
+   "length_m": 135.77,
+   "length_m_measured": 135.77,
+   "params": {
+    "accept_gap_s": 0.6,
+    "force_after_s": 4.0,
+    "force_within_m": 80.0,
+    "change_duration_s": 2.0,
+    "lookahead_m": 120.0,
+    "courtesy": 0.0,
+    "exit_accept_gap_s": 0.6,
+    "vacate_ahead_m": 150.0,
+    "pair_release_s": 2.0
+   },
+   "n_entered": 47,
+   "n_changed_in": 19,
+   "n_changed_out": 5,
+   "n_forced": 4,
+   "n_missed": 0,
+   "n_forced_deferred": 16306,
+   "n_cooperations": 12760,
+   "mean_follower_decel_ms2": 1.157836273798847,
+   "n_changer_eased": 17474,
+   "n_vacated": 200,
+   "n_vacate_refused": 109,
+   "n_pair_releases": 123,
+   "n_unfinished": 23,
+   "n_exited": 29,
+   "n_reached_section_exiting": 55,
+   "n_departed_exiting": 265,
+   "wait_s_mean": 41.6875,
+   "wait_in_s_mean": 51.6578947368421,
+   "wait_out_s_mean": 3.8
+  },
+  {
+   "ramp": "on-ramp 769818012",
+   "exit": "off-ramp 18207598",
+   "edges": [
+    "51388891"
+   ],
+   "exit_edge": "18207598",
+   "exit_edges": [
+    "18207598"
+   ],
+   "length_m": 305.02,
+   "length_m_measured": 305.02,
+   "params": {
+    "accept_gap_s": 0.6,
+    "force_after_s": 4.0,
+    "force_within_m": 80.0,
+    "change_duration_s": 2.0,
+    "lookahead_m": 120.0,
+    "courtesy": 0.0,
+    "exit_accept_gap_s": 0.6,
+    "vacate_ahead_m": 150.0,
+    "pair_release_s": 2.0
+   },
+   "n_entered": 61,
+   "n_changed_in": 14,
+   "n_changed_out": 10,
+   "n_forced": 0,
+   "n_missed": 0,
+   "n_forced_deferred": 11296,
+   "n_cooperations": 32647,
+   "mean_follower_decel_ms2": 0.08042759518517816,
+   "n_changer_eased": 66078,
+   "n_vacated": 59,
+   "n_vacate_refused": 10,
+   "n_pair_releases": 85,
+   "n_unfinished": 37,
+   "n_exited": 11,
+   "n_reached_section_exiting": 64,
+   "n_departed_exiting": 471,
+   "wait_s_mean": 13.604166666666666,
+   "wait_in_s_mean": 21.464285714285715,
+   "wait_out_s_mean": 2.6
+  }
+ ],
+ "scripted_merges": [
+  {
+   "ramp": "on-ramp 18207436",
+   "attach_edge": "43917735#1-AddedOnRampEdge",
+   "params": {
+    "accept_gap_s": 0.6,
+    "force_after_s": 4.0,
+    "force_within_m": 80.0,
+    "change_duration_s": 2.0,
+    "lookahead_m": 120.0,
+    "courtesy": 0.0
+   },
+   "n_entered": 95,
+   "n_changed": 74,
+   "n_forced": 29,
+   "n_unfinished": 21,
+   "wait_s_mean": 51.41891891891892,
+   "wait_s_p90": 190.80000000000007
+  },
+  {
+   "ramp": "on-ramp 178547099",
+   "attach_edge": "638519829-AddedOnRampEdge",
+   "params": {
+    "accept_gap_s": 0.6,
+    "force_after_s": 4.0,
+    "force_within_m": 80.0,
+    "change_duration_s": 2.0,
+    "lookahead_m": 120.0,
+    "courtesy": 0.0
+   },
+   "n_entered": 131,
+   "n_changed": 120,
+   "n_forced": 86,
+   "n_unfinished": 11,
+   "wait_s_mean": 73.775,
+   "wait_s_p90": 206.20000000000027
+  }
+ ]
+}
