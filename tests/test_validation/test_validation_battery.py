@@ -318,3 +318,114 @@ class TestScorePoolSize:
         meminfo.write_text("MemTotal:       131072000 kB\nMemAvailable:   122070312 kB\n")
         monkeypatch.setattr(battery, "_MEMINFO_PATH", meminfo)
         assert available_memory_bytes() == 122070312 * 1024
+
+
+class TestReadScoringFrame:
+    """``read_scoring_frame`` equals ``read_trajectories`` with ``veh_id``
+    factorized (``sort=True``) on every file layout the reader can meet, and
+    the batched read hands the same numbers to the metrics as the file read."""
+
+    @staticmethod
+    def _frame(n_veh: int, samples: int = 100, headway_s: float = 1.0):
+        """Time-major rows: ``n_veh`` vehicles of ``samples`` rows each."""
+        import numpy as np
+        import pandas as pd
+
+        offsets = 0.5 * np.arange(samples)
+        t = (headway_s * np.arange(n_veh)[:, None] + offsets[None, :]).ravel()
+        veh = np.repeat([f"veh_{k}" for k in range(n_veh)], samples)
+        rng = np.random.default_rng(0)
+        v = rng.uniform(5.0, 30.0, t.size)
+        x = np.tile(offsets, n_veh) * np.repeat(rng.uniform(10.0, 30.0, n_veh), samples)
+        frame = pd.DataFrame({"t": t, "veh_id": veh, "x": x, "v": v})
+        return frame.sort_values("t", kind="stable").reset_index(drop=True)
+
+    @staticmethod
+    def _write(run_dir: Path, frame, *, row_group_size: int | None = None, dictionary=False):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        run_dir.mkdir(parents=True, exist_ok=True)
+        table = pa.Table.from_pandas(frame, preserve_index=False)
+        if dictionary:
+            i = table.schema.get_field_index("veh_id")
+            table = table.set_column(i, "veh_id", table.column("veh_id").dictionary_encode())
+        with open(run_dir / "trajectories.parquet", "wb") as f:
+            pq.write_table(table, f, row_group_size=row_group_size)
+        (run_dir / "meta.json").write_text(
+            json.dumps({"config": {"sim": {"warmup_s": 20.0, "duration_s": 1000.0}}})
+        )
+        return run_dir
+
+    @staticmethod
+    def _assert_same(run_dir: Path) -> None:
+        import numpy as np
+        import pandas as pd
+
+        from validation.battery import read_scoring_frame, read_trajectories
+
+        got = read_scoring_frame(run_dir)
+        ref = read_trajectories(run_dir)
+        assert list(got.columns) == list(ref.columns) == ["t", "veh_id", "x", "v"]
+        assert got["veh_id"].dtype == np.intp
+        for col in ("t", "x", "v"):
+            assert got[col].dtype == np.float64
+            assert np.array_equal(got[col].to_numpy(), ref[col].to_numpy(), equal_nan=True)
+        codes, _ = pd.factorize(ref["veh_id"].astype("str"), sort=True)
+        assert np.array_equal(got["veh_id"].to_numpy(), codes)
+
+    def test_batches_split_vehicles_and_the_last_batch_is_short(self, tmp_path: Path) -> None:
+        from validation.battery import SCORING_READ_BATCH_ROWS
+
+        frame = self._frame(n_veh=3000)  # 300k rows: two batches, the second short
+        assert SCORING_READ_BATCH_ROWS < len(frame) < 2 * SCORING_READ_BATCH_ROWS
+        assert len(frame) % SCORING_READ_BATCH_ROWS != 0
+        self._assert_same(self._write(tmp_path / "split", frame, row_group_size=100_000))
+
+    def test_extra_and_reordered_columns_and_nan_positions(self, tmp_path: Path) -> None:
+        import numpy as np
+
+        frame = self._frame(n_veh=20)
+        frame.loc[[3, 40, 41], "x"] = np.nan
+        frame.loc[[7, 8], "v"] = np.nan
+        frame["lane"] = np.zeros(len(frame), dtype=np.int32)
+        frame = frame[["lane", "v", "x", "veh_id", "t"]]
+        self._assert_same(self._write(tmp_path / "wide", frame))
+
+    def test_dictionary_encoded_ids_get_the_string_order(self, tmp_path: Path) -> None:
+        frame = self._frame(n_veh=20)
+        self._assert_same(self._write(tmp_path / "dict", frame, dictionary=True))
+
+    def test_empty_and_single_row_files(self, tmp_path: Path) -> None:
+        frame = self._frame(n_veh=2)
+        self._assert_same(self._write(tmp_path / "empty", frame.iloc[:0]))
+        self._assert_same(self._write(tmp_path / "one", frame.iloc[:1]))
+
+    def test_a_null_id_is_refused(self, tmp_path: Path) -> None:
+        from validation.battery import read_scoring_frame
+
+        frame = self._frame(n_veh=5)
+        frame.loc[[2, 9], "veh_id"] = None
+        with pytest.raises(ValueError, match="null veh_id"):
+            read_scoring_frame(self._write(tmp_path / "null", frame))
+
+    def test_the_frame_yields_the_file_reads_metrics(self, tmp_path: Path) -> None:
+        import dataclasses
+
+        from validation.battery import read_scoring_frame, replicate_wave_speed_kmh
+        from validation.criteria import CRITERIA_PROFILES
+        from validation.metrics import compute_metrics
+
+        frame = self._frame(n_veh=60)
+        # Two duplicated (veh_id, t) rows exercise the tie rule on the codes.
+        frame = frame.iloc[[*range(len(frame)), 5, 700]].reset_index(drop=True)
+        run_dir = self._write(tmp_path / "run", frame, row_group_size=1000)
+        handed = read_scoring_frame(run_dir)
+        via_file = dataclasses.asdict(compute_metrics(run_dir, x_ref=300.0))
+        via_frame = dataclasses.asdict(compute_metrics(run_dir, x_ref=300.0, trajectories=handed))
+        # JSON text: byte identity, NaN included.
+        assert json.dumps(via_frame) == json.dumps(via_file)
+        detector = next(iter(CRITERIA_PROFILES.values())).wave_detector
+        assert json.dumps(replicate_wave_speed_kmh(run_dir, detector, trajectories=handed)) == (
+            json.dumps(replicate_wave_speed_kmh(run_dir, detector))
+        )

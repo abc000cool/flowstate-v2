@@ -87,3 +87,20 @@ class TestEdieFields:
         traj = pd.DataFrame({"t": [0.0], "veh_id": ["a"], "x": [0.0], "v": [10.0]})
         with pytest.raises(ValueError, match="cannot infer"):
             flow_field(traj)
+
+
+class TestClean:
+    def test_a_complete_frame_is_returned_itself(self):
+        from validation.fields import _clean
+
+        traj = _constant_speed_traj()
+        assert _clean(traj, 15.0, 75.0) is traj
+
+    def test_incomplete_rows_are_dropped_like_dropna(self):
+        from validation.fields import _clean
+
+        traj = _constant_speed_traj()
+        traj.loc[[3, 10], "v"] = np.nan
+        traj.loc[[5], "x"] = np.nan
+        cleaned = _clean(traj, 15.0, 75.0)
+        pd.testing.assert_frame_equal(cleaned, traj.dropna(subset=["t", "x", "v"]))

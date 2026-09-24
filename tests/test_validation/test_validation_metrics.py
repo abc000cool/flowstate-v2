@@ -16,6 +16,7 @@ from validation.metrics import (
     MIN_REPLICATES,
     LinkHourGEH,
     Metrics,
+    _ByVehicle,
     aggregate,
     compute_metrics,
     count_crossings,
@@ -24,8 +25,12 @@ from validation.metrics import (
     geh,
     geh_pass_fraction,
     link_hour_geh,
+    n_window_rows,
     rmspe,
+    time_ordered,
+    time_window_rows,
     travel_times,
+    vehicle_codes,
     warmup_from_meta,
 )
 
@@ -522,3 +527,216 @@ class TestLinkHourGEH:
             link_hour_geh(traj, bad, x_refs_m=[1000.0], window_s=50.0)
         with pytest.raises(ValueError, match="x_refs_m is empty"):
             link_hour_geh(traj, self._observed(), x_refs_m=[], window_s=50.0)
+
+
+# -- the one-sort machinery behind every per-vehicle metric -------------------
+
+
+def _tie_frame(n: int, partial: bool, seed: int = 0) -> pd.DataFrame:
+    """The staggered fixture plus three vehicles of ``n`` rows with equal
+    timestamps (all equal, or runs of three), positions scrambled, every row
+    shuffled — the input whose per-vehicle time order is *not* unique."""
+    rng = np.random.default_rng(seed)
+    parts = [_staggered_traj()[["t", "veh_id", "x", "v"]]]
+    for k in range(3):
+        if partial:
+            t = np.repeat(np.arange(100.0, 100.0 + (n + 2) // 3), 3)[:n]
+        else:
+            t = np.full(n, 100.0)
+        parts.append(
+            pd.DataFrame(
+                {
+                    "t": t,
+                    "veh_id": f"tie{k}",
+                    "x": rng.permutation(np.linspace(0.0, CORRIDOR_M, n)),
+                    "v": rng.uniform(1.0, 30.0, n),
+                }
+            )
+        )
+    frame = pd.concat(parts, ignore_index=True)
+    return frame.iloc[rng.permutation(len(frame))].reset_index(drop=True)
+
+
+def _sorted_positions(by: _ByVehicle, code: int) -> np.ndarray:
+    rows = by.rows(code)
+    return np.asarray(by.order[rows] if isinstance(rows, slice) else rows)
+
+
+class TestByVehicleTieOrder:
+    """``_ByVehicle.rows`` reproduces the per-vehicle ``group.sort_values("t")``
+    order the travel-time and VMT loops used, tie rule included: pandas'
+    ``nargsort`` is a ``quicksort`` argsort of the finite timestamps in frame
+    order with the NaN rows appended, and that is the call made here."""
+
+    @pytest.mark.parametrize("partial", [False, True], ids=["all_equal", "runs_of_three"])
+    @pytest.mark.parametrize("n", [2, 15, 16, 17, 100, 1000])
+    def test_rows_reproduce_sort_values_order(self, n: int, partial: bool) -> None:
+        frame = _tie_frame(n, partial)
+        codes = vehicle_codes(frame["veh_id"])
+        by = _ByVehicle.from_frame(frame)
+        tie_codes = set(codes[frame["veh_id"].str.startswith("tie")])
+        for code in range(int(codes.max()) + 1):
+            expected = frame.loc[codes == code].sort_values("t").index.to_numpy()
+            assert np.array_equal(_sorted_positions(by, code), expected), code
+            assert isinstance(by.rows(code), slice) == (code not in tie_codes)
+
+    def test_the_tie_rule_is_exercised(self) -> None:
+        """A stable rule would order the 1000-row tie vehicles differently."""
+        frame = _tie_frame(1000, partial=True)
+        group = frame.loc[frame["veh_id"] == "tie0"]
+        quick = group.sort_values("t").index.to_numpy()
+        stable = group.sort_values("t", kind="stable").index.to_numpy()
+        assert not np.array_equal(quick, stable)
+
+    def test_nan_timestamps_follow_nargsort(self) -> None:
+        """NaN ``t`` rows go last in frame order; the finite rows are argsorted
+        on their own (not together with the NaNs, which changes the pivots)."""
+        frame = _tie_frame(100, partial=True, seed=3)
+        rng = np.random.default_rng(1)
+        tie_rows = np.flatnonzero(frame["veh_id"] == "tie1")
+        frame.loc[rng.choice(tie_rows, 20, replace=False), "t"] = np.nan
+        codes = vehicle_codes(frame["veh_id"])
+        by = _ByVehicle.from_frame(frame)
+        for code in range(int(codes.max()) + 1):
+            expected = frame.loc[codes == code].sort_values("t").index.to_numpy()
+            assert np.array_equal(_sorted_positions(by, code), expected), code
+
+    def test_travel_times_and_crossings_on_ties_equal_the_per_group_sort(self) -> None:
+        """The public functions on a tie frame equal a per-group reference."""
+        frame = _tie_frame(100, partial=True, seed=5)
+        expected = []
+        for _, group in frame.groupby("veh_id", sort=False):
+            g = group.sort_values("t")
+            t, x = g["t"].to_numpy(), g["x"].to_numpy()
+            if x[0] >= 500.0:
+                continue
+            enter = t[0] if x[0] >= 100.0 else None
+            if enter is None:
+                i = int(np.flatnonzero(x >= 100.0)[0])
+                dx = x[i] - x[i - 1]
+                enter = t[i] if dx <= 0 else t[i - 1] + (100.0 - x[i - 1]) / dx * (t[i] - t[i - 1])
+            above = np.flatnonzero(x >= 500.0)
+            if above.size == 0:
+                continue
+            i = int(above[0])
+            dx = x[i] - x[i - 1]
+            exit_ = t[i] if dx <= 0 else t[i - 1] + (500.0 - x[i - 1]) / dx * (t[i] - t[i - 1])
+            if exit_ > enter:
+                expected.append(exit_ - enter)
+        assert np.array_equal(travel_times(frame, 100.0, 500.0), np.asarray(expected))
+
+
+class TestMissingVehicleIds:
+    """A NaN ``veh_id`` (code −1) is no vehicle: the ``groupby`` these functions
+    replaced dropped such rows, and the sorted-frame crossing test never
+    paired them. They still count as samples (σ_v spatial, the wave field,
+    the position range)."""
+
+    @staticmethod
+    def _frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        frame = _staggered_traj()[["t", "veh_id", "x", "v"]].copy()
+        rng = np.random.default_rng(2)
+        missing = rng.choice(len(frame), 60, replace=False)
+        frame.loc[missing, "veh_id"] = None
+        frame.loc[missing[0], "x"] = -5.0  # the global minimum sits on a missing-id row
+        dropped = frame.dropna(subset=["veh_id"]).reset_index(drop=True)
+        dummies = frame.copy()
+        dummies.loc[missing, "veh_id"] = [f"zz{i}" for i in range(len(missing))]
+        return frame, dropped, dummies
+
+    def test_codes_mark_missing_ids(self) -> None:
+        frame, _, _ = self._frames()
+        codes = vehicle_codes(frame["veh_id"])
+        assert np.array_equal(codes < 0, frame["veh_id"].isna().to_numpy())
+        assert codes.max() == len(ENTRY_TIMES) - 1
+
+    def test_per_vehicle_functions_drop_them(self) -> None:
+        frame, dropped, _ = self._frames()
+        for x_ref in (500.0, 1250.0, 2000.0):
+            assert count_crossings(frame, x_ref) == count_crossings(dropped, x_ref)
+        assert np.array_equal(
+            travel_times(frame, 100.0, 2400.0), travel_times(dropped, 100.0, 2400.0)
+        )
+        obs = pd.DataFrame(
+            {"x_ref_m": [500.0, 1250.0], "window_start_s": [0.0, 100.0], "flow_veh_h": [72.0, 36.0]}
+        )
+        assert (
+            link_hour_geh(frame, obs, x_refs_m=[500.0, 1250.0], window_s=100.0).geh
+            == link_hour_geh(dropped, obs, x_refs_m=[500.0, 1250.0], window_s=100.0).geh
+        )
+
+    def test_span_keeps_their_positions_but_not_a_vehicle(self) -> None:
+        frame, dropped, _ = self._frames()
+        x_lo, x_hi = default_travel_span(frame)
+        assert x_lo == -5.0
+        assert x_hi == default_travel_span(dropped)[1]
+
+    def test_compute_metrics_matches_the_groupby_semantics(self, tmp_path: Path) -> None:
+        frame, dropped, dummies = self._frames()
+        full = compute_metrics(_write_run(tmp_path / "full", traj=frame, warmup_s=WARMUP_S))
+        per_vehicle = compute_metrics(
+            _write_run(tmp_path / "dropped", traj=dropped, warmup_s=WARMUP_S)
+        )
+        samples = compute_metrics(_write_run(tmp_path / "dummies", traj=dummies, warmup_s=WARMUP_S))
+        for name in ("throughput_veh_h", "mean_tt_s", "p90_tt_s", "vmt_veh_km", "vht_veh_h"):
+            assert getattr(full, name) == getattr(per_vehicle, name), name
+        assert full.sigma_v_temporal_ms == per_vehicle.sigma_v_temporal_ms
+        assert full.sigma_v_spatial_ms == samples.sigma_v_spatial_ms
+        assert full.wave_count == samples.wave_count
+
+
+class TestVehicleCodes:
+    def test_dense_codes_pass_through_and_equal_a_factorization(self) -> None:
+        ids = pd.Series(["b", "a", "c", "a", "b"])
+        codes = vehicle_codes(ids)
+        assert codes.tolist() == [1, 0, 2, 0, 1]
+        for dtype in (np.int64, np.int32):
+            again = vehicle_codes(pd.Series(codes.astype(dtype)))
+            assert again.dtype == np.intp
+            assert np.array_equal(again, codes)
+
+    def test_integer_ids_with_gaps_or_negatives_are_ranked(self) -> None:
+        ids = pd.Series([10, -3, 10, 7, 100])
+        assert vehicle_codes(ids).tolist() == [2, 0, 2, 1, 3]
+        # Dense but not starting at zero, and dense with one value absent.
+        assert vehicle_codes(pd.Series([1, 2, 3])).tolist() == [0, 1, 2]
+        assert vehicle_codes(pd.Series([0, 2, 2])).tolist() == [0, 1, 1]
+
+    def test_integer_looking_strings_sort_as_strings(self) -> None:
+        """The string sort ``sort_values`` used: "1" < "10" < "2"."""
+        ids = pd.Series(["2", "10", "1", "10"])
+        assert vehicle_codes(ids).tolist() == [2, 1, 0, 1]
+
+    def test_whitespace_and_case_variants_stay_distinct(self) -> None:
+        ids = pd.Series(["v1", "V1", " v1", "v1 ", "v1"])
+        codes = vehicle_codes(ids)
+        assert len(set(codes.tolist())) == 4
+        assert codes[0] == codes[4]
+        expected, _ = pd.factorize(ids, sort=True)
+        assert np.array_equal(codes, expected)
+
+
+class TestTimeWindowRows:
+    def test_time_ordered_rows_select_by_slice(self) -> None:
+        t = np.array([0.0, 0.0, 1.0, 2.0, 2.0, 3.0])
+        rows = time_window_rows(t, 1.0, 2.0)
+        assert rows == slice(2, 3)
+        assert n_window_rows(rows) == 1
+        assert time_window_rows(t, 2.0) == slice(3, 6)
+        assert time_window_rows(t, 5.0) == slice(6, 6)
+        assert time_window_rows(t, 1.0, 1.0) == slice(2, 2)
+
+    def test_unordered_rows_fall_back_to_the_mask(self) -> None:
+        t = np.array([3.0, 1.0, 2.0, 0.0, 2.0])
+        assert not time_ordered(t)
+        rows = time_window_rows(t, 1.0, 2.5)
+        assert isinstance(rows, np.ndarray)
+        assert rows.tolist() == [False, True, True, False, True]
+        assert n_window_rows(rows) == 3
+
+    def test_nan_is_never_ordered_and_never_selected(self) -> None:
+        t = np.array([0.0, np.nan, 2.0])
+        assert not time_ordered(t)
+        assert time_window_rows(t, 0.0).tolist() == [True, False, True]
+        assert time_ordered(np.empty(0))
+        assert time_window_rows(np.empty(0), 0.0) == slice(0, 0)

@@ -546,3 +546,33 @@ class TestNoComparisonProvenance:
         from validation.observed import no_comparison_provenance
 
         assert no_comparison_provenance(observed) is None
+
+
+class TestSimulatedSpeedMatrix:
+    """The per-window position shift equals shifting the whole column, on
+    both the time-ordered (slice) and the unordered (mask) path, with an
+    origin offset and a station past the run's extent."""
+
+    def test_slice_and_mask_paths_agree_with_the_shifted_column(self) -> None:
+        from validation.observed import _simulated_speed_matrix
+
+        frame = trajectory_frame(x_offset_m=250.0)
+        shuffled = frame.iloc[np.random.default_rng(0).permutation(len(frame))]
+        bins = [(0.0, 500.0), (500.0, 1000.0), (9000.0, 9500.0)]
+        windows = [12, 13, 14]
+        kwargs = dict(bins=bins, windows=windows, window_s=WINDOW_S, x_offset_m=250.0)
+        ordered = _simulated_speed_matrix(frame, **kwargs)
+        unordered = _simulated_speed_matrix(shuffled, **kwargs)
+        t = frame["t"].to_numpy()
+        x = frame["x"].to_numpy() - 250.0
+        v = frame["v"].to_numpy()
+        expected = np.full((3, 3), np.nan)
+        for i, k in enumerate(windows):
+            for j, (lo, hi) in enumerate(bins):
+                cell = (t >= k * WINDOW_S) & (t < (k + 1) * WINDOW_S) & (x >= lo) & (x < hi)
+                if cell.any():
+                    expected[i, j] = v[cell].mean()
+        assert np.array_equal(ordered, expected, equal_nan=True)
+        assert np.array_equal(unordered, expected, equal_nan=True)
+        assert np.isnan(expected[:, 2]).all()
+        assert np.isfinite(expected[:, :2]).all()

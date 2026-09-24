@@ -502,6 +502,10 @@ def read_scoring_frame(run_dir: str | Path) -> pd.DataFrame:
             x[lo:hi] = batch.column("x").to_numpy(zero_copy_only=False)
             v[lo:hi] = batch.column("v").to_numpy(zero_copy_only=False)
             encoded = pc.dictionary_encode(batch.column("veh_id"))
+            if encoded.null_count:
+                # A null index would be cast to an arbitrary code and silently
+                # merged into some vehicle; the contract (§3) has no null ids.
+                raise ValueError(f"{path} holds rows with a null veh_id")
             local[lo:hi] = encoded.indices.to_numpy(zero_copy_only=False)
             dictionaries.append(encoded.dictionary.to_pylist())
             bounds.append((lo, hi))

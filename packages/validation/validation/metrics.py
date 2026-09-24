@@ -189,7 +189,10 @@ def vehicle_codes(veh_id: pd.Series) -> NDArray[np.intp]:
     first-appearance order is the ids'. Every trajectory function here uses
     ``veh_id`` only as a grouping key, so a frame whose ``veh_id`` column
     already holds these codes (``validation.battery.read_scoring_frame``)
-    produces the same output as the string frame it came from.
+    produces the same output as the string frame it came from. A missing id
+    is code ``−1`` (``factorize``'s convention) and is no vehicle: the
+    consumers here skip such rows where the ``groupby`` they replaced
+    dropped them.
 
     Args:
         veh_id: The ``veh_id`` column (strings, or codes from an earlier call).
@@ -268,8 +271,18 @@ class _ByVehicle:
         starts = np.asarray(starts, dtype=np.intp)
         same = np.ones(max(n - 1, 0), dtype=np.bool_)
         same[boundaries - 1] = False
+        # Rows with a missing id (code −1, sorted first) are no vehicle: the
+        # ``groupby`` this replaces dropped them and the sorted-frame
+        # crossing test never paired them (NaN ≠ NaN). They keep no run and
+        # form no consecutive pair.
+        n_missing = int(np.count_nonzero(sorted_codes < 0))
+        if n_missing:
+            starts = starts[1:]
+            same[: n_missing - 1] = False
         del sorted_codes
-        first_row = np.minimum.reduceat(order, starts) if n else np.empty(0, dtype=np.intp)
+        first_row = (
+            np.minimum.reduceat(order, starts) if starts.size else np.empty(0, dtype=np.intp)
+        )
         by_first_row = np.asarray(np.argsort(first_row, kind="stable"), dtype=np.intp)
         return cls(
             order=order,
@@ -301,9 +314,11 @@ class _ByVehicle:
 
         A vehicle whose timestamps are distinct has one time order, and it is
         the sorted run. A vehicle with equal timestamps needs the tie rule of
-        the per-vehicle ``group.sort_values("t")`` this replaced: a
-        ``quicksort`` argsort of the vehicle's rows in frame order (not
-        stable) — reproduced by making that call on those rows.
+        the per-vehicle ``group.sort_values("t")`` this replaced
+        (``pandas.core.sorting.nargsort``): a ``quicksort`` argsort of the
+        vehicle's *finite* timestamps in frame order (not stable), the NaN
+        rows appended in frame order — reproduced by making that call on
+        those rows.
 
         Returns:
             A slice into the sorted arrays, or frame-row positions to gather.
@@ -312,7 +327,15 @@ class _ByVehicle:
         t = self.t[run]
         if t.size > 1 and bool(np.any(t[1:] == t[:-1])):
             frame_rows = np.sort(self.order[run])
-            perm = np.argsort(self.t_frame[frame_rows], kind="quicksort")
+            t_rows = self.t_frame[frame_rows]
+            nan = np.isnan(t_rows)
+            if bool(nan.any()):
+                finite = np.flatnonzero(~nan)
+                perm = np.concatenate(
+                    [finite[np.argsort(t_rows[finite], kind="quicksort")], np.flatnonzero(nan)]
+                )
+            else:
+                perm = np.argsort(t_rows, kind="quicksort")
             return np.asarray(frame_rows[perm], dtype=np.intp)
         return run
 
@@ -568,12 +591,17 @@ def _travel_span(
 
     The per-vehicle furthest position skips NaN like the groupby ``max`` it
     replaces (NaN only for a vehicle observed at no finite position); the
-    median does not depend on the vehicles' order.
+    median does not depend on the vehicles' order. Rows with a missing id
+    (code −1) count towards ``x_lo`` but belong to no vehicle, as the
+    groupby dropped them.
     """
     x_rows = x[rows]
     codes_rows = codes[rows]
     known = ~np.isnan(x_rows)
     x_lo = float(np.nanmin(x_rows)) if bool(known.any()) else math.nan
+    if bool(np.any(codes_rows < 0)):
+        identified = codes_rows >= 0
+        x_rows, codes_rows, known = x_rows[identified], codes_rows[identified], known[identified]
     n_veh = int(codes.max()) + 1 if codes.size else 0
     per_veh_max = np.full(n_veh, -np.inf, dtype=np.float64)
     present = np.zeros(n_veh, dtype=np.bool_)
@@ -842,7 +870,13 @@ def compute_metrics(
     spatial_stds = by_t.std(ddof=1)[by_t.count() >= 2]
     sigma_spatial = float(spatial_stds.mean()) if len(spatial_stds) else math.nan
     del by_t, spatial_stds
-    by_veh = v_w.groupby(codes[win])
+    codes_w = codes[win]
+    if bool(np.any(codes_w < 0)):
+        # A missing id (code −1) is no vehicle: the keyed groupby dropped it.
+        identified = codes_w >= 0
+        by_veh = v_w[identified].groupby(codes_w[identified])
+    else:
+        by_veh = v_w.groupby(codes_w)
     temporal_stds = by_veh.std(ddof=1)[by_veh.count() >= 2]
     sigma_temporal = float(temporal_stds.mean()) if len(temporal_stds) else math.nan
     del by_veh, temporal_stds, v_w, codes
