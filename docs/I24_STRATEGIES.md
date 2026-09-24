@@ -115,13 +115,25 @@ stop-and-go pattern moves from a few long waves to many short ones. Two
 things are outside these numbers and must be read with them: the ramp queue
 wait is not part of `mean_tt_s` (the travel-time span is the mainline
 2,256–7,638 m, and a metered vehicle's wait at the stop line lies upstream of
-it), and the meter counters (`n_released`, `n_passed_unstoppable` per ramp)
-were not archived by this round (the archive carries `metrics.json` only), so
-the share of vehicles that passed the meter unstoppable is not known for
-these runs — the next round archives `meta.json` with them.
+it), and the meter counters are now in the summary's `diagnostics` block
+(rerun of 2026-09-24, block 3, with `meta.json` archived): over 20 seeds the
+Hickory Hollow Pkwy meter released 645 vehicles per run and let 0.8 pass
+unstoppable (share 0.13 %, 95 % interval 0.06–0.20 %), the Old Hickory Blvd
+meter released 674 and let none pass — the stop-placement fix holds on this
+arm.
 
 The two combined cells are **not reported**: FollowerStopper 10 % under ALINEA
 reached 15 seeds and under VSL 17 seeds before the instance was deleted (counts
 from the fetched run directories — a session record); the artifact names them
 under `incomplete_cells` and carries no aggregate for them, so nothing from
 those cells is quoted.
+
+
+**Rerun 2026-09-24 (block 3).** The six-cell grid was resumed on a third VM
+(`flowstate-r3-c`); it too was cut, at 117 of 120 runs, and this time the
+guest journal came home with the archive: the kernel OOM killer took a
+FollowerStopper-under-strategy run (anon-rss 8.8 GB) with the 32-process
+pool holding all 125 GB — the same wave that ended the first VM at 112 of
+120. The pipeline now caps that stage's pool at 12 processes. The four
+complete cells are unchanged to the digit; the two FollowerStopper-under-
+strategy cells remain incomplete (19 and 18 seeds) and unreported.

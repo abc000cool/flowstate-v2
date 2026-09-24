@@ -359,9 +359,12 @@ stage battery_mndot_weave_mnpop bash -c "sed -e 's#^name: ${MNDOT}_weave\$#name:
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
 #     18.912 m/s (artifacts/idm_i24_capacity_equilibrium.json). Throughput at data x = 2,200 m
 #     (sim x 4,412 m); analysed span the measured 2,256–7,638 m (artifacts/i24_replica_inputs.json).
+#     Memory: a FollowerStopper-under-strategy run of this arm takes about 9 GB of RAM (the kernel
+#     OOM-killed the 32-process pool twice on 2026-09-24, at 112/120 and 117/120 runs — the guest
+#     journal in logs/guest_exit.log), so the pool is capped at 12 on the 125 GB machine.
 stage sweep_i24_strat $RUN scripts/corridor_sweep.py --scenario scenarios/i24_replica_flow_speedcal_ramps.yaml \
   --penetration 0.10 --compliance 1.0 --controllers follower_stopper --strategies none vsl alinea \
-  --rho-target-veh-km 29.2 --x-ref 4411.8 --span 2256.2 7637.8 --replicates "$REPS" --procs "$PROCS" \
+  --rho-target-veh-km 29.2 --x-ref 4411.8 --span 2256.2 7637.8 --replicates "$REPS" --procs "$(( PROCS < 12 ? PROCS : 12 ))" \
   --out runs/i24_strat_sweep --summary artifacts/sweep_i24_strategies_summary.json || say "sweep_i24_strat failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).

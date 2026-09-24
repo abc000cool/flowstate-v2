@@ -126,7 +126,12 @@
         "controller": null,
         "strategy": "none"
       },
-      "config_hash": "0cddf2002979"
+      "config_hash": "0cddf2002979",
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
     },
     "strategy_vsl": {
       "aggregate": {
@@ -274,6 +279,11 @@
           "pct_of_baseline": -24.484249079139992,
           "resolved": true
         }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
       }
     },
     "strategy_alinea": {
@@ -422,6 +432,60 @@
           "pct_of_baseline": 26.83506518073758,
           "resolved": true
         }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {
+          "Hickory Hollow Pkwy on-ramp": {
+            "controller": "alinea",
+            "n_released": {
+              "mean": 645.4,
+              "lo95": 642.6399468937733,
+              "hi95": 648.1600531062267,
+              "n": 20,
+              "underpowered": false
+            },
+            "n_passed_unstoppable": {
+              "mean": 0.85,
+              "lo95": 0.41320121635962204,
+              "hi95": 1.286798783640378,
+              "n": 20,
+              "underpowered": false
+            },
+            "share_passed_unstoppable": {
+              "mean": 0.0013085095261003168,
+              "lo95": 0.0006399061620798861,
+              "hi95": 0.0019771128901207476,
+              "n": 20,
+              "underpowered": false
+            }
+          },
+          "Old Hickory Blvd on-ramp": {
+            "controller": "alinea",
+            "n_released": {
+              "mean": 673.8,
+              "lo95": 669.8796027692482,
+              "hi95": 677.7203972307517,
+              "n": 20,
+              "underpowered": false
+            },
+            "n_passed_unstoppable": {
+              "mean": 0.0,
+              "lo95": 0.0,
+              "hi95": 0.0,
+              "n": 20,
+              "underpowered": false
+            },
+            "share_passed_unstoppable": {
+              "mean": 0.0,
+              "lo95": 0.0,
+              "hi95": 0.0,
+              "n": 20,
+              "underpowered": false
+            }
+          }
+        },
+        "weave_sections": {}
       }
     },
     "follower_stopper_p0.10_c1.00_none": {
@@ -570,6 +634,11 @@
           "pct_of_baseline": -24.24963658134734,
           "resolved": true
         }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
       }
     }
   }
