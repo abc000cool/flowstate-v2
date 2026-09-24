@@ -558,8 +558,7 @@ committed file named in parentheses.
   four-hour battery with this runner is VM H (pending: its verdict is the
   next entry of docs/ONBOARDING_MNDOT.md §10).
 
-Open / pending: the 20-seed four-hour battery on the regenerated corridor
-with the sixth derivation (VM F, run on the reset lane-change settings: departed 0.233 over 20 seeds, worse than 0.444; the corrected scenarios run on VM G — docs/ONBOARDING_MNDOT.md §10); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
+Open / pending: the 20-seed four-hour battery with the exit-side runner (VM H); the two earlier batteries on the regenerated corridor are recorded in docs/ONBOARDING_MNDOT.md §10 (VM F on the reset lane-change settings: departed 0.233 over 20 seeds; VM G on the corrected settings with the sixth derivation: 0.247, the lock at the T.H.52 exit end); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
 symmetrically rather than by which side pays — was then measured in fifteen
 forms at seeds 3–8 and rejected (entrance mean 361.7 against the sixth's 411.8,
 and a lock at a seed the sixth does not lock), so the runner keeps the sixth

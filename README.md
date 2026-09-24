@@ -291,9 +291,11 @@ ramps, calibrated on the same day's 17,652 episodes;
 sweep in [docs/I24_SWEEP.md](docs/I24_SWEEP.md) and its six-cell strategy
 grid (VSL, ALINEA, alone and under FollowerStopper) in
 [docs/I24_STRATEGIES.md](docs/I24_STRATEGIES.md). The third corridor (MnDOT
-I-94 WB) is onboarded from public data but not reproduced: its 20-seed
-battery on the regenerated inputs with the sixth weave derivation is pending,
-and the weaving-section model is still short of its pre-registered criterion
+I-94 WB) is onboarded from public data but not reproduced: two 20-seed
+batteries on the regenerated inputs departed 0.233 and 0.247 of their demand,
+the exit-side weave rule lifted the 35-minute slice to 0.979 and its 20-seed
+battery is pending, and the weaving-section model is still short of its
+pre-registered criterion
 ([docs/WEAVE_MODEL_PLAN.md](docs/WEAVE_MODEL_PLAN.md)). Still ahead: the
 radar-detector counts that would replace fragment counts, a flow-based
 downstream boundary variant, the CTM/Kalman state-estimation tier, and RL
