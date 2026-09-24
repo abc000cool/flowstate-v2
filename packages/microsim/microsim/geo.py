@@ -638,36 +638,44 @@ def _cd_path(
 
     A uniform-cost search over link edges (forks included, so a C-D road
     that also fans out into an exit is followed past the fork) until an edge
-    feeds a chain edge *downstream* of the split; bounded by ``max_length_m``
-    of path and ``max_edges`` edges.
+    feeds a chain edge *downstream of the split node* — ``chain[split_index
+    + 1]`` starts at that node, so a loop that comes straight back to it is
+    not a rejoin (nor is one returning upstream); bounded by ``max_length_m``
+    of path (metres walked, not the crow-flies distance) and ``max_edges``
+    edges. Dominance is kept per ``(edge, edges walked)``: a route that
+    reaches an edge in fewer metres but too many edges must not hide one that
+    is admissible under ``max_edges``.
 
     Returns:
         ``(path edge ids, chain edge the path rejoins)``, or ``None`` when
         no path returns within the bounds — the link is an exit.
     """
     heap: list[tuple[float, int, list[str]]] = [(float(start.getLength()), 0, [start.getID()])]
-    best: dict[str, float] = {start.getID(): float(start.getLength())}
+    best: dict[tuple[str, int], float] = {(start.getID(), 1): float(start.getLength())}
     counter = 1
     while heap:
         length, _, path = heapq.heappop(heap)
-        if length > max_length_m or len(path) > max_edges:
+        if length > max_length_m:
             continue
         current = net.getEdge(path[-1])
         rejoins = sorted(
             (chain_index[e.getID()], e.getID())
             for e in current.getOutgoing()
-            if e.getID() in chain_index and chain_index[e.getID()] > split_index
+            if e.getID() in chain_index and chain_index[e.getID()] > split_index + 1
         )
         if rejoins:
             return path, rejoins[0][1]
+        if len(path) >= max_edges:
+            continue
         for nxt in current.getOutgoing():
             nid = nxt.getID()
             if nxt.getType() not in link_types or nid in used or nid in chain_index or nid in path:
                 continue
             total = length + float(nxt.getLength())
-            if total >= best.get(nid, math.inf):
+            key = (nid, len(path) + 1)
+            if total > max_length_m or total >= best.get(key, math.inf):
                 continue
-            best[nid] = total
+            best[key] = total
             heapq.heappush(heap, (total, counter, [*path, nid]))
             counter += 1
     return None
