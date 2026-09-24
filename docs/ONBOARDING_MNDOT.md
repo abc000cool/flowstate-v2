@@ -767,3 +767,15 @@ to the figures above:*
 departed 0.892 over 4 seeds (lowest 0.847; one seed starves 40648744 and
 769818012) against 0.878 on the old inputs and rules — a small gain at 35
 minutes. The 20-seed four-hour battery on the same inputs runs next (VM E).
+
+**Correction (2026-09-24, block 3, after the traceability audit).** The
+§11 regeneration wrote the scenario with the builder's fleet defaults for
+lane changing (`lc_strategic` 1.0, `lc_strategic_ramp` unset,
+`lc_keep_right` 1.0), silently dropping the corridor's deliberate settings
+of 5.0 / 1.0 / 0.0 (the I-24 replica's, chosen because a strategic eagerness
+of 5 removes SUMO's diverge lane-change stall and keep-right 0 stops
+through traffic crowding the merge lanes). The 20-seed battery of VM F ran
+on the reset values (its record below says so); the three scenarios now
+carry 5.0 / 1.0 / 0.0 again, with new config hashes, and every later run
+uses them. The onboarding path is being changed so that a re-onboard keeps
+an existing scenario's fleet block instead of resetting it.

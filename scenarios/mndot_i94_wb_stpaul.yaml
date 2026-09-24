@@ -2141,9 +2141,9 @@ fleet:
   delta: 4.0
   heterogeneity_frac: 0.15
   idm_calibration: artifacts/idm_i24_capacity.json
-  lc_strategic: 1.0
-  lc_strategic_ramp: null
-  lc_keep_right: 1.0
+  lc_strategic: 5.0
+  lc_strategic_ramp: 1.0
+  lc_keep_right: 0.0
   lc_cooperative: 1.0
   lc_assertive: 1.0
   lc_speed_gain: 1.0
