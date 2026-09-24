@@ -126,10 +126,11 @@ synthetic 10 km corridor, 27 cells × 20 common-random-number seeds:
 | Controller comparison at 5% / 100% | FollowerStopper (σ_v −61.2%, waves −96.1%) and JAD under a realistic 30 s/±20% detection oracle (−60.6%, −90.9%) are statistically tied; faithful PI-saturation trails at −29.7%. All resolved, no throughput cost ([CONTROLLER_COMPARISON.md](docs/CONTROLLER_COMPARISON.md)) |
 | Detection realism | JAD is *unreliable with a perfect oracle* — it chatters and worsens 5/20 seeds; 30–60 s latency with ±20% noise removes the failure entirely ([JAD_ORACLE_RESULTS.md](docs/JAD_ORACLE_RESULTS.md)) |
 | US-101 replica validation | **1 PASS / 5 FAIL** on the FHWA-style criteria table; the same capacity-and-demand calibration as I-24, applied with no retuning, takes speed RMSPE 36.6% → 27.9% but overshoots flows and leaves the wave speed at its site-limited value ([US101_CALIBRATED.md](docs/US101_CALIBRATED.md)) |
-| MnDOT I-94 WB St. Paul (third corridor, from public data) | **Not reproduced.** Onboarded end to end from MnDOT's public 30-s loop data through the new any-corridor path (bounding box + detector export → preset, demand, observations); two 20-seed batteries failed for documented reasons — no acceleration lanes in OSM (fixed in the engine), then SUMO's lane-change merge locking at three large entrances near capacity. No sweep exists for it. The detectors themselves put the corridor's backward wave speed at a median 21.3 km/h (IQR 18.4–24.2 over 6 of 13 station pairs; 18.4–21.6 under leave-one-date-out across the nine days), the fast edge of the model's 14–22 km/h band ([ONBOARDING_MNDOT.md](docs/ONBOARDING_MNDOT.md)) |
-| VSL on the I-24 replica (first infrastructure strategy on a validated corridor) | The threshold ladder at its defaults, 20 seeds paired against baseline: σ_v -29.1 % and wave amplitude -24.5 %, but throughput -7.4 %, mean travel time +7.9 %, fuel +16.3 %, wave count +68.3 % — all resolved; smoothing paid for in capacity, at a higher price than FollowerStopper. ALINEA did not run (a stop-line defect the sweep exposed) ([I24_STRATEGIES.md](docs/I24_STRATEGIES.md)) |
+| MnDOT I-94 WB St. Paul (third corridor, from public data) | **Not reproduced.** Onboarded end to end from MnDOT's public 30-s loop data through the any-corridor path (bounding box + detector export → preset, demand, observations); three 20-seed batteries failed for documented reasons — no acceleration lanes in OSM, then two exits compiled on the wrong side of the road (both fixed in the onboarding path: ramp guessing, a split audit), then the lane-discrete merge locking at the T.H.52 weaving section (departed 0.444 over 20 seeds). A weaving-section model has been re-derived six times on a T.H.52 fixture (entrants 81 → 411–420 of 466, no lock since the fifth derivation, its criterion of 419 not yet met at every seed; [WEAVE_MODEL_PLAN.md](docs/WEAVE_MODEL_PLAN.md)); the inputs were regenerated with a chattering lane loop excluded (the S792→S791 residual +775 → +366 veh/h) and the 35-min slice departs 0.892 over 4 seeds (pending: the 20-seed battery on the regenerated corridor). No sweep exists for it. The detectors themselves put the corridor's backward wave speed at a median 21.3 km/h (IQR 18.6–24.2 over 6 of 13 station pairs; 18.4–21.6 under leave-one-date-out across the nine days), the fast edge of the model's 14–22 km/h band ([ONBOARDING_MNDOT.md](docs/ONBOARDING_MNDOT.md)) |
+| Minnesota driver population by capacity scaling | **Target not met, and the cause is the car-following model, not the headway.** Scaling the I-24 population's headway on the corridor's `model: EIDM` fleet block flattens near 1,700 veh/h/lane on 3 lanes from T × 0.80 on (1,709 at 0.80, 1,703 at 0.75; 1,609–1,689 on 4 lanes) against a 1,907 target; the I-24 replica's plain-IDM block on the same 3-lane road meets it at T × 0.795 (T = 1.201 s). Running an IDM-fitted population under EIDM costs about 11 % of straight-road capacity at every headway (`artifacts/idm_capacity_probe_*.json`; [ONBOARDING_MNDOT.md](docs/ONBOARDING_MNDOT.md) §8, §10) |
+| VSL on the I-24 replica (first infrastructure strategy on a validated corridor) | The threshold ladder at its defaults, 20 seeds paired against baseline: σ_v -29.1 % and wave amplitude -24.5 %, but throughput -7.4 %, mean travel time +7.9 %, fuel +16.3 %, wave count +68.3 % — all resolved; smoothing paid for in capacity, at a higher price than FollowerStopper. ALINEA's first sweep exposed a stop-line defect in the meter; its rerun is the next row ([I24_STRATEGIES.md](docs/I24_STRATEGIES.md)) |
 | ALINEA ramp metering on the I-24 replica (20 seeds paired, 2026-09-24) | Metering the two entrances at the critical density: mean travel time -33.4 %, fuel -15.6 %, σ_v -11.7 %, at the price of throughput -5.8 % at the reference section and +326.8 % more, larger waves; the ramp queue wait is outside the measured span (`docs/I24_STRATEGIES.md`). |
-| FollowerStopper 10 % under ALINEA on the I-24 replica (20 seeds paired, 2026-09-24) | Metering the entrances recovers most of what the smoothing controller costs alone: throughput -49.6 % → -28.9 %, travel time +124.7 % → +26.7 %, fuel +208.0 % → +61.7 %, σ_v -54.8 %; under VSL it is worse than alone (`docs/I24_STRATEGIES.md`). |
+| FollowerStopper 10 % under ALINEA and under VSL on the I-24 replica (the six-cell strategy grid, 20 seeds paired per cell, 2026-09-24) | Metering the entrances recovers most of what the smoothing controller costs alone: throughput -49.6 % → -28.9 %, travel time +124.7 % → +26.7 %, fuel +208.0 % → +61.7 %, σ_v -54.8 % (all resolved); under VSL it is worse than alone on every capacity metric (throughput -53.3 %, travel time +154.4 %, fuel +238.3 %). One calibrated arm, one penetration (`artifacts/sweep_i24_strategies_summary.json`; [I24_STRATEGIES.md](docs/I24_STRATEGIES.md)). |
 | **I-24 MOTION flagship** (3.4 miles, ramps, 17,652-episode calibration on the same day) | **5 PASS / 2 FAIL on each congested demand arm** (4 / 3 on the tracked arm) after FHWA-style capacity, demand-level and ramp calibration, 20 seeds per arm: ring emergence, dampening, replicate count, the published sensitivity grid and the wave-speed row pass; link-flow GEH (17–20% of link-hours under 5, scored against the recommended-coverage count table; 0.7% on the tracked arm) and segment-speed RMSPE (34–36%) fail. The wave-speed row passes with the criterion's slant-stack estimator (15.7–15.9 km/h simulated, 19.9 observed, both inside 14–22) and would fail with the standard 40 km/h detector (8–10 km/h); the detector dependence is reported with it. Capacity calibration moved RMSPE 36.8% → 33.7% and throughput 5,266 → 5,710 veh/h; the residual is a standing queue at the Old Hickory merge. Before calibration: 1 PASS / 5 FAIL ([I24_VALIDATION.md](docs/I24_VALIDATION.md), [I24_CAPACITY.md](docs/I24_CAPACITY.md)). |
 | **I-24 flagship sweep** (500 runs, 20 seeds per cell, unvalidated replica) | **FollowerStopper costs throughput at every penetration and compliance level**: at 5% / 100% compliance throughput −38%, travel time +102%, fuel +111% while σ_v −59% and waves halve (500 runs re-run under the corrected metric definitions, 2026-09-19). The synthetic corridor's no-cost result does not survive a real corridor near capacity ([I24_SWEEP.md](docs/I24_SWEEP.md)). |
 | Flux-cap comparison | the v1 ρ·v* cap (discrete Delle Monache–Goatin) beats the reduced-capacity variant against micro ground truth: paired speed-RMSE difference 0.84 m/s [0.36, 1.33] |
@@ -282,15 +283,23 @@ documents (each has the full version):
    CI spans zero) but trails FollowerStopper and JAD (σ_v −29.7% against
    about −61% in the comparison table above).
 
-Roadmap ([docs/ROADMAP.md](docs/ROADMAP.md)): the `i24_replica` flagship is
-built (3.4 miles of real geometry with interchange ramps, calibrated on the
-same day's 17,652 episodes; [docs/I24_DATA.md](docs/I24_DATA.md)) and its
-criteria battery is in [docs/I24_VALIDATION.md](docs/I24_VALIDATION.md);
-next are the flagship penetration × compliance sweep, the radar-detector
-counts that would replace fragment counts, a flow-based downstream boundary
-variant, the CTM/Kalman state-estimation tier, and RL controllers through the
-existing Gymnasium hook. The reconstructed-NGSIM refit is dropped from scope:
-its host domain has lapsed and I-24 MOTION supersedes it.
+Roadmap ([docs/ROADMAP.md](docs/ROADMAP.md), dated addenda at the end): the
+`i24_replica` flagship is built (3.4 miles of real geometry with interchange
+ramps, calibrated on the same day's 17,652 episodes;
+[docs/I24_DATA.md](docs/I24_DATA.md)), its criteria battery is in
+[docs/I24_VALIDATION.md](docs/I24_VALIDATION.md), its penetration × compliance
+sweep in [docs/I24_SWEEP.md](docs/I24_SWEEP.md) and its six-cell strategy
+grid (VSL, ALINEA, alone and under FollowerStopper) in
+[docs/I24_STRATEGIES.md](docs/I24_STRATEGIES.md). The third corridor (MnDOT
+I-94 WB) is onboarded from public data but not reproduced: its 20-seed
+battery on the regenerated inputs with the sixth weave derivation is pending,
+and the weaving-section model is still short of its pre-registered criterion
+([docs/WEAVE_MODEL_PLAN.md](docs/WEAVE_MODEL_PLAN.md)). Still ahead: the
+radar-detector counts that would replace fragment counts, a flow-based
+downstream boundary variant, the CTM/Kalman state-estimation tier, and RL
+controllers through the existing Gymnasium hook. The reconstructed-NGSIM refit
+is dropped from scope: its host domain has lapsed and I-24 MOTION supersedes
+it.
 
 ## Non-negotiables
 

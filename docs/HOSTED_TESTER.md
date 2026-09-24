@@ -11,7 +11,7 @@ smokes are what it is for.
 (builds the image with Cloud Build from a clean export of `HEAD`; the key is
 never committed — it lives only in the service's environment and with the
 owner). First deployed 2026-09-23 23:28 CDT (revision 00001); revision 00002
-at 23:39 CDT added the `/health` alias (below).
+at 23:39 CDT added the `/health` alias (below); revision 00003 (2026-09-24 00:34 CDT) carried the split-audit and merge-diagnostics panels, 00004 (01:29 CDT) the onboarding opt-outs, 00005 (10:03 CDT) the block-3 dashboard changes — each deployed with `scripts/gcp/deploy_cloud_run.sh` from the pushed `HEAD`.
 
 **Service (project `project-357fa2a7-490c-4a4b-a71`, `us-west1`):**
 

@@ -434,3 +434,116 @@ Mounds Blvd +775 veh/h detector residual; what limits the capacity plateau
 of the scaled population; the meter counters in sweep archives; why the
 first VM was deleted at 71 minutes (the pipeline now archives the guest's
 idle-guard log and journal on exit).
+
+### Addendum 2026-09-24 (block 3) — the grid closed, the weave re-derived six times, the scoring made to fit
+
+Daytime block on 2026-09-24 (CHANGELOG `## [Unreleased]`, "2026-09-24 —
+block 3"), compute on four more self-deleting cloud VMs. The runner, the
+scoring and the MnDOT inputs all moved; every number below is from the
+committed file named in parentheses.
+
+- **Two sweep VMs died of memory, not of a mystery (lesson 33).** The guest
+  journal, archived on exit since the previous block, shows the kernel OOM
+  killer taking a FollowerStopper-under-strategy run of the I-24 arm
+  (anon-rss 8.8 GB; 32 of them in the pool on a 125 GB machine), at 112/120
+  and then 117/120 runs (docs/LESSONS.md row 33; CHANGELOG block 3). The
+  pipeline caps that stage's pool at 12 (`scripts/gcp/pipeline_i24.sh`), the
+  per-run metrics of a strategy sweep ride along with every data set so an
+  interrupted sweep resumes, and a stored run counts as done on
+  `metrics.json` alone — the 2026-09-24 resume of 112 stored runs had started
+  all 120 over because the older archive carried no `meta.json` (CHANGELOG
+  block 3).
+- **The I-24 strategy grid is complete: six cells × 20 seeds, no incomplete
+  cell** (`artifacts/sweep_i24_strategies_summary.json`, `incomplete_cells`
+  empty; docs/I24_STRATEGIES.md, block-3 section). FollowerStopper 10 % alone
+  costs throughput −49.6 %, travel time +124.7 %, fuel +208.0 %; **under
+  ALINEA the same controller costs −28.9 % / +26.7 % / +61.7 % with σ_v still
+  −54.8 %** — the meter keeps the mainline below the density at which the
+  smoothing controller starves it. Under VSL it is worse than alone on every
+  capacity metric (−53.3 % / +154.4 % / +238.3 %). ALINEA alone remains the
+  only cell that improves travel time (−33.4 %) and fuel (−15.6 %). The meter
+  counters sit in each cell's `diagnostics` (ALINEA alone: 0.13 % unstoppable
+  passes at Hickory Hollow, none at Old Hickory; under FollowerStopper 444 /
+  571 releases per run). One calibrated arm, one penetration.
+- **Why the Minnesota population plateaus: EIDM on an IDM-fitted
+  population.** Two more capacity grids (`artifacts/idm_capacity_probe_mnfleet_4l.json`,
+  `artifacts/idm_capacity_probe_i24fleet_3l.json`; docs/ONBOARDING_MNDOT.md
+  §10, "Why the plateau"): the corridor's fleet block on four lanes plateaus
+  the same way (1,609–1,689 veh/h/lane), so the lane count is not the cause;
+  the I-24 replica's plain-IDM fleet block on the same 3-lane road reaches the
+  1,907 veh/h/lane target at T × 0.795 (T = 1.201 s). The corridor's
+  onboarding default `model: EIDM` costs about 11 % of straight-road capacity
+  at every headway. The car-following model of an onboarded corridor is a
+  calibration decision to make deliberately; the probes are diagnostics and no
+  scenario points at them.
+- **The Mounds Blvd residual was a chattering lane loop, and the inputs were
+  regenerated.** The +775 veh/h between S792 and S791 is S792's degraded
+  lane-3 loop 3240 (617 veh/h at 14.3 % occupancy against 943 and 1,394 in
+  the leftmost lane of the neighbouring stations; 78 % of its 00–04 samples null),
+  not the split detector (docs/ONBOARDING_MNDOT.md §7 item 2). The loader
+  takes reviewer-declared exclusions by name (`--exclude-detectors 3240`,
+  written into the observations' `source`), and the observations, demand and
+  scenario were rebuilt with the onboarding defaults: 17 ramps with the White
+  Bear Ave C-D pair (out 374 / back 442 veh/h), the Mounds exit 701 instead of
+  1,226 veh/h, the S792→S791 residual +366 (was +775) (§11; CHANGELOG
+  block 3). The review of the rebuild found the wave context computed with the
+  loop still in (recomputed: median 21.3 km/h unchanged, IQR 18.6–24.2), the
+  slice's boundary schedule unshifted (fixed, pinned by a test), and the
+  downtown entrance assigned 889 veh/h against its passage loop's 552 —
+  evidence the +366 is still a detector question, not traffic (§11).
+- **Weave model, six derivations on one fixture.** `tests/fixtures/weave_th52.osm`
+  mirrors the T.H.52 section (mainline 4,500 veh/h with 25 % exiting, entrance
+  1,400 veh/h, 20 min) and a strict `xfail` pins the lock; the entrance's
+  departed count of 466 planned is the ledger (docs/WEAVE_MODEL_PLAN.md, the
+  six dated sections; CHANGELOG block 3): **81** at the lock (lane 1 at
+  0.0 m/s from minute 4; eight zipper variants worse) → **225** with follower
+  cooperation as a car-following target (deferred forced changes 16,576 → 0,
+  lock to crawl) → **317** with through traffic vacating the weave lane 150 m
+  upstream (the HCM influence area) → **325** with the easing bounded by
+  feasibility (`a_req ≤ b`; within seed noise, two premises measured and
+  rejected) → **389–395** across seeds 3–5 with easing only when needed and a
+  stopped changer–follower pair released after 2 s — no lock since the fifth,
+  no collision → **411 / 412 / 420** with the sixth, whose trace put the bound
+  on the ramp's own queue (3.1-s discharge headways imposed by easing against
+  an overlapping leader; now 2.95 s, 1,215 veh/h). The criterion is 419
+  entrants and lane 1 above 5 m/s in every minute; the sixth meets the first
+  at seed 5 only and the second at no seed, so the `xfail` stays. Golden
+  `merge_weave` followed the rules: mean travel time 97.1 → 70.1 → 69.5 →
+  69.82 → 70.83 s, σ_v spatial 7.59 → 4.274 m/s, throughput 1,429 → 1,687.5
+  veh/h, config hash unchanged (`tests/golden/merge_weave.json`). The new
+  counters (cooperations, vacated / refused, pair releases) are in `meta.json`,
+  the API schema, the sweep summary and the dashboard's merge panel. The
+  35-minute slice of the regenerated corridor under the second derivation's
+  runner departs 0.892 over 4 seeds (lowest 0.847) against 0.878 on the old
+  inputs and rules
+  (`artifacts/mndot_rounds/weave_2026-09-24/slice_regenerated_corridor_cooperative_weave_1bed27f.json`).
+- **Battery scoring: parallel, then made to fit in memory.** The cloud log
+  showed 20 seeds of a four-hour corridor (1.15 GB of trajectory each) scored
+  serially for about 100 min while 31 CPUs idled, then the report re-reading
+  every trajectory three times; scoring now runs in a spawn pool
+  (`--score-procs`), the report takes the stored metrics and draws the first
+  seed only, artifacts byte-identical across pool sizes (CHANGELOG block 3).
+  The pool is sized by memory: one worker measured at ≈ 545 B per trajectory
+  row, ≈ 45 GB on an 80 M-row replicate — six of them would have asked a
+  125 GB machine for ≈ 260 GB — so the default fits `640 B/row + 512 MB` per
+  worker into 80 % of `MemAvailable`. Then the worker's copies were removed
+  (one read into four arrays, one stable sort per replicate, windows as
+  slices): `analyse_replicate` 416 → 115 B/row with byte-identical outputs,
+  the constant 640 → 160 B/row (`validation.battery.SCORE_WORKER_BYTES_PER_ROW`;
+  ≈ 13 GB per worker instead of 45). A review re-proved the outputs on 640
+  probes and fixed two divergences on inputs the runner never produces (NaN
+  timestamps, missing vehicle ids). The report's run set is the battery's own
+  config-hash tree, so ring-benchmark runs are no longer report groups.
+- **Hosted tester:** unchanged in the tree since 2.4.0 — docs/HOSTED_TESTER.md
+  records revisions 00001–00002 and the `/health` alias (pending: no later
+  revision of the service is committed).
+
+Open / pending: the 20-seed four-hour battery on the regenerated corridor
+with the sixth derivation (pending: VM F, running; it lands in
+docs/ONBOARDING_MNDOT.md and the corridor stays "not reproduced" until it
+does); a seventh weave derivation that addresses the resolution of an abreast
+entrant–lane-1 pair itself — a gentle mutual adjustment rather than which side
+pays (pending: not in the tree); the corridor's car-following model as a
+stated calibration choice with a population derived under it; the +366 veh/h
+at S792 as a detector question; the sixth derivation's trace harness and
+per-variant runs are session records, not committed.
