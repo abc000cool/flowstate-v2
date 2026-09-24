@@ -577,8 +577,8 @@ at capacity is the open modelling problem for the next round.
 **The 20-seed weave battery, numbers** (per-run files fetched from the VM
 while its scoring was still running; `artifacts/mndot_rounds/weave_2026-09-24/battery_weave_partial_scores.txt`,
 a session record until the stage's own artifact is ingested): departed share
-over 20 seeds mean 0.444 (0.225–0.557); of the 9 seeds scored at the time of
-writing, speed RMSPE 0.880 (0.840–0.956), GEH < 5 on 0 of 378 link-hours,
+over 20 seeds mean 0.444 (0.225–0.557); over all 20 seeds (scored on the VM before its cap; `battery_weave_final_scores.txt`
+beside it), speed RMSPE 0.883 (0.840–0.957), GEH < 5 on a share of 0.000 of 840 link-hours,
 a "wave speed" of 7.2–7.6 km/h that is the queue front, not a stop-and-go
 wave; collisions 0–2 per seed (7 in 20 seeds). Round 2 (2026-09-23, the
 defective map, lane-change merges) had departed 0.41 (`artifacts/mndot_rounds/round2_gridlock_record.json`); the

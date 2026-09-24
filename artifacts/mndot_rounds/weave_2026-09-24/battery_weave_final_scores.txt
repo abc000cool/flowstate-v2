@@ -1,0 +1,1 @@
+20-seed weave battery, all runs scored on the VM before the cap (the stage's own aggregate artifact was not written): speed RMSPE mean 0.883 (min 0.840, max 0.957) over 20 seeds; GEH<5 share 0.000 over 840 link-hours
