@@ -137,3 +137,34 @@ pool holding all 125 GB — the same wave that ended the first VM at 112 of
 120. The pipeline now caps that stage's pool at 12 processes. The four
 complete cells are unchanged to the digit; the two FollowerStopper-under-
 strategy cells remain incomplete (19 and 18 seeds) and unreported.
+
+
+## 2026-09-24 (block 3) — the six-cell grid is complete
+
+The last three runs were resumed on a fourth VM (`flowstate-r3-d`, pool 12,
+clean exit); every cell now has 20 seeds and every paired delta below is
+resolved unless marked n.s. (`artifacts/sweep_i24_strategies_summary.json`,
+`incomplete_cells` empty; per-cell `diagnostics` carry the meter counters).
+
+| cell (20 seeds paired vs baseline) | throughput [veh/h] | mean travel time [s] | σ_v spatial [m/s] | fuel [ml/veh-km] | wave count | wave amplitude [m/s] |
+|---|---|---|---|---|---|---|
+| baseline means | 5671.35 | 575.36 | 5.58 | 89.60 | 10.25 | 7.00 |
+| VSL alone | -7.4 % | +7.9 % | -19.2 % | +16.3 % | +68.3 % | -24.5 % |
+| ALINEA alone | -5.8 % | -33.4 % | -11.7 % | -15.6 % | +326.8 % | +26.8 % |
+| FollowerStopper 10 % alone | -49.6 % | +124.7 % | -67.7 % | +208.0 % | -12.2 % (n.s.) | -24.2 % |
+| FollowerStopper 10 % + ALINEA | -28.9 % | +26.7 % | -54.8 % | +61.7 % | +378.0 % | -28.4 % |
+| FollowerStopper 10 % + VSL | -53.3 % | +154.4 % | -74.1 % | +238.3 % | -46.3 % | -31.2 % |
+
+Reading, with the caution that this is one calibrated arm and one
+penetration: ALINEA alone is the only cell that improves travel time and
+fuel; the FollowerStopper at 10 % costs half the throughput alone, and
+**metering the entrances upstream of it recovers much of that** — under
+ALINEA the FollowerStopper's throughput loss falls from -49.6 % to
+-28.9 %, its travel-time cost from +124.7 % to +26.7 %, its fuel cost
+from +208.0 % to +61.7 %, while σ_v stays down (-54.8 %) — the meter
+keeps the mainline below the density at which the smoothing controller
+starves it. Under VSL the FollowerStopper is worse than alone on every
+capacity metric. The meters under FollowerStopper released 444 (Hickory
+Hollow) and 571 (Old Hickory) vehicles per run with 0.2 % / 0 % unstoppable
+passes. Waves: ALINEA multiplies their count (more, shorter waves) in every
+cell it is in; the FollowerStopper reduces their amplitude in every cell.

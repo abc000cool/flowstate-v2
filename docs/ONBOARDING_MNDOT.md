@@ -755,3 +755,10 @@ to the figures above:*
   and this fix used the unshifted boundary. Fixed (nine steps from 07:00,
   22.1 m/s at t = 0), with `tests/test_calibration/test_mndot_slice_variant.py`
   pinning every series of the slice to one offset.
+
+**Slice on the regenerated inputs with the cooperative-follower weave
+(2026-09-24, block 3; commit 1bed27f's runner, VM `flowstate-r3-d`,
+`artifacts/mndot_rounds/weave_2026-09-24/slice_regenerated_corridor_cooperative_weave_1bed27f.json`):**
+departed 0.892 over 4 seeds (lowest 0.847; one seed starves 40648744 and
+769818012) against 0.878 on the old inputs and rules — a small gain at 35
+minutes. The 20-seed four-hour battery on the same inputs runs next (VM E).
