@@ -1081,6 +1081,20 @@ class TestWeaveRun:
         veh/h) instead of 4-4.5; the cost moved to lane 1 at the section
         start. The entrance criterion fails at seed 3 (411) and the lane-1
         criterion at every seed, so the marker stays.
+
+        Seventh derivation (2026-09-24, block 3; measured and rejected, the
+        runner unchanged): the abreast entrant-lane-1 pair at speed parity
+        resolved symmetrically (each side half the offset over a horizon,
+        the rear one at <= b/2, the front one at half its headway) instead
+        of the rear one at -b. Fifteen variants at seeds 3-8: the best
+        (relative speed fixed at entry, 2-s horizon) meets this criterion at
+        seed 3 alone (421 of 466, every minute above 5 m/s, 2 of 477
+        unfinished) but departs 386 / 386 / 362 / 408 at seeds 4-7 and locks
+        seed 8 with a collision; the 3-s form locks seed 7. This rule reads
+        411 / 412 / 420 / 397 / 424 / 407 at seeds 3-8 and locks none (at
+        seed 7 it meets the whole criterion, which is seed noise, not a
+        pass). The marker stays with the sixth derivation's numbers
+        (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the table).
         """
         paths = run_micro(_th52_config(3), 3, tmp_path / "th52")
         meta = json.loads(paths.meta.read_text())
@@ -1110,7 +1124,10 @@ class TestWeaveRun:
         seed 4 never below 4.6 m/s, 6 of 491 unfinished, entrance 412, no
         pair stands long enough to be released (the pin of the release
         firing is kept at seed 5: 16 releases, 2 of 501 unfinished, one
-        minute at 4.3 m/s, entrance 420); no collision at either."""
+        minute at 4.3 m/s, entrance 420); no collision at either. Seventh
+        derivation (the symmetric abreast-pair resolution, rejected): its
+        forms read 368-392 / 353-409 here and lock seeds 7 or 8, where this
+        rule departs 424 / 407 and locks neither."""
         paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]

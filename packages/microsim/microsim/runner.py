@@ -1248,9 +1248,17 @@ def _weave_command(
     at the vehicle's comfortable deceleration ``−b`` and compared with the
     acceleration its own model would take this step — IDM towards its real
     leader (``vehicle.getLeader``) or the free-road term without one. Only a
-    target *below* that is recorded in ``coop`` (a higher one would make the
-    vehicle accelerate faster than its own model); several requests on one
-    vehicle keep the lowest speed. ``follower`` marks a target-lane follower
+    target *below* that is recorded in ``coop``; several requests on one
+    vehicle keep the lowest speed. A higher target would be inert, not
+    faster: under SUMO's default ``speedMode`` the influencer clamps a
+    ``slowDown`` / ``setSpeed`` target at the vehicle's safe speed, which for
+    the IDM is the model's own next speed (measured on 1.27.1, 2026-09-24
+    block 3, seventh derivation: a target of ``v + 0.42`` m/s per step on an
+    IDM vehicle near its desired speed left its acceleration at the model's
+    0.10 m/s², and only ``speedMode`` 30 — the safety check off, which
+    CLAUDE.md §3.3 forbids — gave ``a_max``). The one-step targets of this
+    step are therefore ceilings: the runner can ask a vehicle to hold or
+    drop back, never to open a gap ahead by a speed target. ``follower`` marks a target-lane follower
     opening a gap (counted in ``n_cooperations``) as opposed to a changer
     dropping in behind its gap's leader (``n_changer_eased``).
     """
@@ -1500,6 +1508,20 @@ def _weave_cooperate(
     pass completes there and the follower absorbs at −b — which reads as
     one to three minutes of lane 1 at 2–5 m/s at some seeds
     (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the table).
+
+    Seventh derivation (2026-09-24, block 3), **measured and rejected**: a
+    symmetric resolution of the abreast entrant–lane-1 pair at speed parity
+    (each side adjusting by half the offset the pair needs over a horizon
+    ``pair_tau_s``, the rear one braking at ≤ ``b/2``, the front one let open
+    ahead by its own model at half its headway, since a speed target above
+    the model is inert — :func:`_weave_command`). In every form measured
+    (the offset re-read each step or the relative speed fixed at entry,
+    horizons 1.5–6 s, with and without the headway concession, each
+    geometry alone, the ``−b`` easing kept beside it; 15 variants, seeds
+    3–8) it departs fewer entrants than this rule on average and locks the
+    section at some seed where this rule does not (docs/WEAVE_MODEL_PLAN.md,
+    dated paragraph, has the table). The ``−b`` resolution of the abreast
+    pair on the section stays.
 
     Returns:
         The chosen gap's follower id (the commitment carried to the next

@@ -683,6 +683,31 @@ pin at seed 5 only (seed 4 releases none). `TestWeaveRampBesideLeader`
 spatial 4.280 → 4.274 m/s, σ_v temporal 3.939 → 3.944 m/s, VHT 1.767 →
 1.768 veh-h, fuel 93.08 → 93.02 ml/veh-km, throughput 1,687.5 veh/h and
 hash 436cd4ec9e5d unchanged); determinism preserved.
+Seventh derivation (2026-09-24, block 3, the abreast pair): **measured and
+rejected, the runner's behaviour unchanged.** The symmetric resolution of an
+entrant and a lane-1 vehicle abreast at speed parity (each side half the
+offset the pair needs over a horizon `pair_tau_s`, the rear one at ≤ b/2, the
+front one let open ahead by its own model at half its headway) was
+implemented, measured in fifteen forms at seeds 3–8 of `weave_th52.osm` and
+reverted: every form departs fewer entrants on average than the sixth
+derivation (361.7 against 411.8 over seeds 3–8 for the rule as derived) and
+locks the section at some seed where the sixth derivation does not (its 3-s
+form seed 7, its 2-s form seed 8 with a collision; the sixth derivation reads
+411 / 412 / 420 / 397 / 424 / 407 and locks none). The 2-s form meets the
+whole T.H.52 criterion at seed 3 alone, which is the horizon chosen by one
+seed, not a pass; the strict `xfail` stays with the sixth derivation's
+numbers. Two facts are contractual from it: (1) a `slowDown` / `setSpeed`
+target **above** an IDM vehicle's own next speed is inert under the default
+`speedMode` (the influencer clamps at the model's speed; measured on 1.27.1,
+only `speedMode` 30 with the safety check off accelerates), so every one-step
+target of `_weave_command` is a ceiling — the runner can ask a vehicle to
+hold or drop back, never to open a gap ahead by a speed target (its
+docstring, which said the opposite, is corrected); (2) the −b resolution of
+an abreast pair on the section is load-bearing at every seed measured, as
+the sixth derivation had recorded for its softenings. No `weave_params` key,
+no `meta.json` counter and no API or sweep field was added (a counter no run
+writes would be a claim). Golden `merge_weave` unchanged
+(docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the table).
 
 ## 3. Run outputs
 
