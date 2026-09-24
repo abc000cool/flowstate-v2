@@ -931,6 +931,82 @@ def _th52_config(
     )
 
 
+#: The corridor's last 850 m at the same 6000 s step of
+#: ``scenarios/mndot_i94_wb_stpaul_weave.yaml`` (07:10-07:15), propagated in
+#: the scenario's ramp order: 3,793 veh/h arriving at on-ramp 40648744 (the
+#: entry's 1.0956 veh/s through the thirteen ramps before it), that entrance's
+#: ``inflow`` 0.3 veh/s = 1,080 veh/h (``artifacts/demand_mndot_i94_wb_stpaul.json``:
+#: ``method: conservation``, no detector), so 4,873 veh/h arrive at the weave
+#: (:data:`TH52_CORRIDOR_DEMAND` says 4,919 from an earlier propagation; the
+#: 46 veh/h are within the artifact's carried residuals), on-ramp 769818012's
+#: ``inflow`` 0.3922 veh/s = 1,412 veh/h and off-ramp 18207598's
+#: ``exit_fraction`` 0.2122, both as the weave-only constant.
+TH52_UPSTREAM_DEMAND = {
+    "mainline_vph": 3793.0,
+    "upstream_entrance_vph": 1080.0,
+    "exit_fraction": 0.2122,
+    "entrance_vph": 1412.0,
+}
+
+
+def _th52_upstream_config(seed: int, merge: str) -> ScenarioConfig:
+    """The T.H.52 weave with the corridor's upstream entrance E1 in front of it
+    (``tests/fixtures/weave_th52_upstream.osm``: E1 = way 300 onto the added
+    lane of way 110, 102 m, then 230 m of three lanes, then the weave, way
+    102) under :data:`TH52_UPSTREAM_DEMAND`; E1's ``merge`` is ``merge``
+    (``lane_change`` as the corridor, or ``scripted``), 20 simulated minutes."""
+    d = TH52_UPSTREAM_DEMAND
+    return ScenarioConfig.model_validate(
+        {
+            "name": f"weave_th52_upstream_{merge}",
+            "network": {
+                "kind": "osm",
+                "osm_file": str(Path(__file__).parents[1] / "fixtures" / "weave_th52_upstream.osm"),
+                "corridor_edges": ["100", "101", "110", "111", "102", "103", "104"],
+                "inflow": [[0.0, d["mainline_vph"] / 3600.0]],
+                "ramps": [
+                    {
+                        "kind": "on",
+                        "name": "upstream entrance",
+                        "edges": ["300"],
+                        "attach_edge": "110",
+                        "inflow": [[0.0, d["upstream_entrance_vph"] / 3600.0]],
+                        "merge": merge,
+                    },
+                    {
+                        "kind": "on",
+                        "name": "th52",
+                        "edges": ["200"],
+                        "attach_edge": "102",
+                        "inflow": [[0.0, d["entrance_vph"] / 3600.0]],
+                        "merge": "weave",
+                        "weave": {"exit_ramp": "cd exit"},
+                    },
+                    {
+                        "kind": "off",
+                        "name": "cd exit",
+                        "edges": ["201"],
+                        "attach_edge": "102",
+                        "exit_fraction": [[0.0, d["exit_fraction"]]],
+                    },
+                ],
+            },
+            "sim": {"duration_s": 1200.0},
+            "seed": seed,
+        }
+    )
+
+
+def _lane_speed_windows(df: pd.DataFrame, x0: float, lane: int) -> pd.Series:
+    """Mean speed of ``lane`` over ``[x0, x0 + 60 m)`` per 60-s window after
+    a 120-s warm-up, to 1200 s (the section-style criterion of
+    :func:`_th52_lane1_windows` at any position)."""
+    part = df[
+        (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == lane)
+    ]
+    return part.groupby((part.t // 60.0).astype(int)).v.mean()
+
+
 def _th52_lane1_windows(paths, meta: dict, last_60m: bool = False) -> tuple[pd.Series, dict]:
     """Mean speed of section lane 1 over its first (``last_60m``: last) 60 m
     per 60-s window after a 120-s warm-up, and the state dict the assertions
@@ -1327,6 +1403,63 @@ class TestWeaveRun:
         assert ws["n_exited"] >= 0.9 * ws["n_reached_section_exiting"], state
         assert len(windows) == 18 and (windows > 5.0).all(), state
         assert ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="T.H.52 weave with the corridor's upstream entrance in front of it "
+        "(docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the upstream-entrance fixture): "
+        "at seed 3 the entrance E1 departs 225 of 360 (0.63 against 0.90 required), lane 1 "
+        "over its acceleration-lane end reads 2.0-5.2 m/s (above 5 m/s in 2 of 18 minutes) "
+        "and lane 1 over the section's last 60 m 3.8 m/s in minute 11; 283 of 291 exiters "
+        "exit, 2 of 414 driven are unfinished, nothing collides. The head is lane 1 of the "
+        "230 m before the gore (1.4 m/s over its first 100 m), the same with no upstream "
+        "entrance at all",
+    )
+    def test_th52_with_upstream_entrance_at_corridor_demand(self, tmp_path):
+        """The corridor's last 850 m (2026-09-24, block 3): the T.H.52 weave of
+        ``weave_th52.osm`` with the 40648744 entrance 230 m in front of its
+        gore, ``tests/fixtures/weave_th52_upstream.osm``, under the flows of
+        :data:`TH52_UPSTREAM_DEMAND` (the scenario's 6000 s step: 3,793 veh/h
+        arriving at the entrance, 1,080 veh/h entering on a lane-change merge
+        over a 102 m acceleration lane, 1,412 veh/h entering the weave, 21.2 %
+        exiting), 20 simulated minutes at seed 3.
+
+        docs/ONBOARDING_MNDOT.md §11a puts the head of every I-94 WB queue in
+        this stretch from the warm-up on while
+        ``test_th52_weave_at_corridor_demand_exit_side`` (the weave alone)
+        passes; this fixture is the local twin of that stretch. Criteria: the
+        exit-side test's (no collision, at least 90 % of the exit-bound
+        vehicles that reach the section exit, lane 1 over the section's last
+        60 m above 5 m/s in every 60-s window after 120 s, at most 10 % of
+        the driven vehicles unfinished) plus the entrance E1 departing at
+        least 90 % of its plan and lane 1 over the last 60 m of E1's
+        acceleration lane above 5 m/s in every such window.
+        """
+        cfg = _th52_upstream_config(3, "lane_change")
+        paths = run_micro(cfg, 3, tmp_path / "th52_upstream")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        e1_meta, _e2_meta, _x_meta = meta["ramps"]
+        net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+        x_accel_end = sum(net.getEdge(e).getLength() for e in ("100", "101", "110"))
+        x_section_end = x_accel_end + sum(net.getEdge(e).getLength() for e in ("111", "102"))
+        df = pd.read_parquet(paths.trajectories)
+        accel = _lane_speed_windows(df, x_accel_end - 60.0, 1)
+        gore = _lane_speed_windows(df, x_section_end - 60.0, 1)
+        state = {
+            "lane1_accel_end_by_minute": {int(k): round(float(v), 1) for k, v in accel.items()},
+            "lane1_section_end_by_minute": {int(k): round(float(v), 1) for k, v in gore.items()},
+            "e1_departed": (e1_meta["n_departed"], e1_meta["n_planned"]),
+            "exit_share": (ws["n_exited"], ws["n_reached_section_exiting"]),
+            "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
+        }
+        assert meta["n_collisions"] == 0, meta["collisions"]
+        assert ws["n_reached_section_exiting"] > 0, state
+        assert ws["n_exited"] >= 0.9 * ws["n_reached_section_exiting"], state
+        assert len(gore) == 18 and (gore > 5.0).all(), state
+        assert ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+        assert e1_meta["n_departed"] >= 0.9 * e1_meta["n_planned"], state
+        assert len(accel) == 18 and (accel > 5.0).all(), state
 
     def test_two_sections_are_stepped_and_listed_upstream_first(self, tmp_path):
         """``tests/fixtures/weave_two.osm`` (two T.H.52-shaped sections, 560 m

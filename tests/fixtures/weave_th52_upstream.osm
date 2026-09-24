@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <!-- The T.H.52 weave of tests/fixtures/weave_th52.osm with the corridor's
+       upstream entrance in front of it (docs/ONBOARDING_MNDOT.md section 11a,
+       docs/WEAVE_MODEL_PLAN.md dated section): I-94 WB St. Paul's last 850 m.
+       Three through lanes; a lane-change entrance E1 (way 300, the Mounds /
+       Kittson entrance 40648744 at 9.88 km of the corridor chain) whose
+       acceleration lane is the added lane of way 110 (the guessed 102 m,
+       9.944-10.198 km); 229 m of three lanes (way 111, edge 40648738,
+       10.198-10.427 km); the weaving section (way 102, four lanes, 305 m,
+       edge 51388891) from the entrance E2 (way 200, 769818012) to the exit X
+       (way 201, 18207598); about 600 m of approach (100, 101) and 600 m
+       downstream (103, 104). At lat 40 one degree of longitude is about
+       85.28 km: 0.003518 deg = 300 m, 0.001196 deg = 102 m, 0.002685 deg =
+       229 m, 0.003130 deg = 267 m (netconvert gives way 102 about 305 m once
+       the junction geometry is added, as on weave_th52.osm). -->
+  <node id="1" lat="40.0000" lon="-96.000000"/>
+  <node id="2" lat="40.0000" lon="-95.996482"/>
+  <node id="3" lat="40.0000" lon="-95.992964"/>
+  <node id="4" lat="40.0000" lon="-95.991991"/>
+  <node id="5" lat="40.0000" lon="-95.989083"/>
+  <node id="6" lat="40.0000" lon="-95.985953"/>
+  <node id="7" lat="40.0000" lon="-95.981989"/>
+  <node id="8" lat="40.0000" lon="-95.978471"/>
+  <node id="20" lat="39.9994" lon="-95.995500"/>
+  <node id="10" lat="39.9994" lon="-95.991619"/>
+  <node id="11" lat="39.9994" lon="-95.982919"/>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="101">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="110">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="4"/>
+  </way>
+  <way id="111">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="102">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="4"/>
+  </way>
+  <way id="103">
+    <nd ref="6"/><nd ref="7"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="104">
+    <nd ref="7"/><nd ref="8"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="300">
+    <nd ref="20"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="200">
+    <nd ref="10"/><nd ref="5"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="201">
+    <nd ref="6"/><nd ref="11"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>
