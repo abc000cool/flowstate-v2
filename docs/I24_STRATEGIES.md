@@ -78,3 +78,49 @@ one.
 
 **Cells not measured:** FollowerStopper under VSL (6 of 20 seeds before the
 cut-off; not reported) and both ALINEA cells (the stop-line defect).
+
+
+## 2026-09-24 — ALINEA ran: 20 seeds paired, after the stop-placement fix
+
+The ramp-meter stop placement was fixed on 2026-09-24 (CHANGELOG; a vehicle
+that cannot brake for the line passes that cycle and is counted), and the
+six-cell grid was rerun on a self-deleting VM (`flowstate-strat-a`,
+n2-standard-32, us-west1-c; stage `sweep_i24_strat`). The instance was
+deleted by its own service account at 05:40:59 UTC with the sweep at 112 of
+120 runs (the pipeline logged a SIGTERM and archived on exit; the guest logs
+did not survive, so the cause is not proven — the idle guard is the only
+other actor with that identity, and its 75-minute grace was minutes away).
+The 112 per-run metrics were fetched and the summary rebuilt with
+`--analyze-only --allow-partial` (`artifacts/sweep_i24_strategies_summary.json`,
+`incomplete_cells` lists the two cut cells).
+
+**ALINEA alone versus baseline, 20 seeds paired** (per-seed deltas, 95 % t-intervals; `resolved` = the interval excludes zero):
+
+| metric | baseline mean | ALINEA mean | Δ vs baseline | paired Δ [95 % CI] | resolved |
+|---|---|---|---|---|---|
+| throughput [veh/h] | 5671.35 | 5344.35 | -5.8 % | -327.00 [-337.4, -316.6] | yes |
+| mean travel time [s] | 575.36 | 383.22 | -33.4 % | -192.14 [-202.8, -181.5] | yes |
+| σ_v spatial [m/s] | 5.58 | 4.92 | -11.7 % | -0.65 [-0.7, -0.6] | yes |
+| fuel [ml/veh-km] | 89.60 | 75.59 | -15.6 % | -14.01 [-15.1, -12.9] | yes |
+| wave count | 10.25 | 43.75 | +326.8 % | +33.50 [+30.5, +36.5] | yes |
+| wave amplitude [m/s] | 7.00 | 8.88 | +26.8 % | +1.88 [+1.6, +2.2] | yes |
+| wave speed [km/h] | 10.37 | 12.42 | +19.8 % | +2.05 [+1.3, +2.8] | yes |
+
+Reading: metering the two entrances (Old Hickory Blvd, Hickory Hollow Pkwy) at the corridor's critical density
+(29.2 veh/km/lane) lowers the mainline travel time by a third and fuel per
+vehicle-kilometre by 16 % at the price of 5.8 % of the throughput measured at
+the reference section (the held ramp vehicles are not on the mainline), and
+it multiplies the number of detected waves while making them larger: the
+stop-and-go pattern moves from a few long waves to many short ones. Two
+things are outside these numbers and must be read with them: the ramp queue
+wait is not part of `mean_tt_s` (the travel-time span is the mainline
+2,256–7,638 m, and a metered vehicle's wait at the stop line lies upstream of
+it), and the meter counters (`n_released`, `n_passed_unstoppable` per ramp)
+were not archived by this round (the archive carries `metrics.json` only), so
+the share of vehicles that passed the meter unstoppable is not known for
+these runs — the next round archives `meta.json` with them.
+
+The two combined cells are **not reported**: FollowerStopper 10 % under ALINEA
+reached 15 seeds and under VSL 17 seeds before the instance was deleted; their
+aggregates are in the artifact under `incomplete_cells` and are not headline
+numbers.

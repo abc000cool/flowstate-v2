@@ -77,6 +77,9 @@ finish() {
   rc=$?
   say "PIPELINE_EXIT rc=$rc"
   echo "rc=$rc $(date -u +%FT%TZ)" > logs/PIPELINE_EXIT
+  # guest-side evidence of WHY the machine is going down rides along (2026-09-24: an instance
+  # was deleted mid-sweep and nothing on the laptop side could say by whom)
+  { sudo tail -n 50 /var/log/idle-guard.log 2>/dev/null; echo "--- journal"; sudo journalctl -n 120 --no-pager 2>/dev/null; echo "--- uptime $(uptime)"; } > logs/guest_exit.log 2>&1 || true
   make_archive light   # seconds: survives a systemd stop window
   make_archive full    # minutes: the first-seed replicates for the figures
   if [ "$SHUTDOWN" -eq 1 ]; then
