@@ -49,7 +49,7 @@ import {
 import type { CorridorOut, CorridorRow, RunDetail } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { StatusChip } from '../components/bits';
-import { SplitAuditTable } from '../components/SplitAuditTable';
+import { SplitAuditTable, isSplitDefect } from '../components/SplitAuditTable';
 import { toast, toastError } from '../components/toast';
 import { formatDistKm, formatNumber } from '../lib/format';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
@@ -218,6 +218,11 @@ export function OnboardView(): JSX.Element {
   const [columns, setColumns] = useState<Record<string, string>>({});
   const [idmCalibration, setIdmCalibration] = useState('');
   const [source, setSource] = useState('');
+  // The build stage's two switches (2026-09-24), both on by default as on the
+  // API and the CLI: always sent, since "unset" means "on" to the API and a
+  // tester who unticked one expects the request to say so.
+  const [rampGuessing, setRampGuessing] = useState(true);
+  const [splitFixes, setSplitFixes] = useState(true);
 
   const [corridor, setCorridor] = useState<CorridorOut | null>(null);
   /** `GET /corridors` — the onboardings this server holds; null until it has
@@ -426,6 +431,8 @@ export function OnboardView(): JSX.Element {
     if (columnMap) form.set('column_map', columnMap);
     if (idmCalibration.trim()) form.set('idm_calibration', idmCalibration.trim());
     if (source.trim()) form.set('source', source.trim());
+    form.set('ramp_guessing', rampGuessing ? 'true' : 'false');
+    form.set('split_fixes', splitFixes ? 'true' : 'false');
     if (detectors) form.set('detectors', detectors);
     if (stations) form.set('stations', stations);
     setBusy(true);
@@ -649,7 +656,7 @@ export function OnboardView(): JSX.Element {
         <div className="panel-body">
           <details>
             <summary className="small muted">
-              Advanced — detector column names, driver population, provenance
+              Advanced — detector column names, driver population, provenance, map fixes
             </summary>
             <p className="small muted">
               An export whose columns are not the canonical ones is read through a{' '}
@@ -703,6 +710,38 @@ export function OnboardView(): JSX.Element {
                 <span className="small muted">
                   Recorded on the observations artifact as the provenance of these detector
                   counts; it travels into every report scored against them.
+                </span>
+              </div>
+            </div>
+            {/* the two build switches of 2026-09-24, on by default as on the
+                API and the CLI; both faults were found on I-94 WB St. Paul */}
+            <div className="row wrap">
+              <div className="field">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={rampGuessing}
+                    onChange={(e) => setRampGuessing(e.target.checked)}
+                  />
+                  Guess acceleration lanes (netconvert ramps.guess)
+                </label>
+                <span className="small muted">
+                  OSM usually lacks acceleration lanes, so entrances starve without them; found on
+                  I-94 WB St. Paul.
+                </span>
+              </div>
+              <div className="field">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={splitFixes}
+                    onChange={(e) => setSplitFixes(e.target.checked)}
+                  />
+                  Fix exits compiled on the wrong side (split audit)
+                </label>
+                <span className="small muted">
+                  A diverge compiled on the wrong side traps through traffic in a lane that leads
+                  only to the exit; found on I-94 WB St. Paul.
                 </span>
               </div>
             </div>
@@ -900,6 +939,23 @@ export function OnboardView(): JSX.Element {
               </>
             )}
 
+            {/* what the build stage ran (2026-09-24): the API's one-line
+                `applied`, then the audit the fixes were derived from when it
+                differs from the audit the scenario compiles — a defect count
+                only; the table below is the audit that stands */}
+            {summary.applied && <p className="small">applied: {summary.applied}</p>}
+            {(() => {
+              const before = summary.split_audit_before_fixes;
+              if (!before || JSON.stringify(before) === JSON.stringify(summary.split_audit ?? [])) {
+                return null;
+              }
+              const defects = before.filter((f) => isSplitDefect(f.verdict)).length;
+              return (
+                <p className="small muted">
+                  before fixes: {defects} defect{defects === 1 ? '' : 's'}
+                </p>
+              );
+            })()}
             <SplitAuditTable findings={summary.split_audit} />
 
             {summary.stations_rejected.length > 0 && (

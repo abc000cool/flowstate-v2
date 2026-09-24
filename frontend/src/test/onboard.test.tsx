@@ -70,6 +70,58 @@ const SUMMARY = {
       remedy: '--ramps.unset 1001426896',
     },
   ],
+  // the audit the fixes were derived from: one more defect than the audit
+  // that stands (a wrong_side exit the connection patch fixed)
+  split_audit_before_fixes: [
+    {
+      from_edge: '45608485',
+      exit_edge: '18207912',
+      continuing_edge: '45608486',
+      x_m: 11510,
+      osm_way: '18207912',
+      osm_lanes: 5,
+      turn_lanes: null,
+      turn_lanes_side: 'unknown',
+      osm_side: 'right',
+      osm_offsets_m: [-8.0, -14.0],
+      compiled_lanes: 5,
+      exit_from_lanes: [3, 4],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: false,
+      exit_lanes: 2,
+      continuing_lanes: 3,
+      verdict: 'wrong_side',
+      remedy: 'patch_files connection restating the split',
+    },
+    {
+      from_edge: '1001426896',
+      exit_edge: '82150350',
+      continuing_edge: '1001426897',
+      x_m: 10730,
+      osm_way: '82150350',
+      osm_lanes: 3,
+      turn_lanes: 'none|none|through;slight_right',
+      turn_lanes_side: 'right',
+      osm_side: 'right',
+      osm_offsets_m: [-1.4, -45.0],
+      compiled_lanes: 4,
+      exit_from_lanes: [3],
+      compiled_side: 'leftmost',
+      option_lanes: [],
+      added_lane: true,
+      exit_lanes: 1,
+      continuing_lanes: 3,
+      verdict: 'added_lane_wrong_side',
+      remedy: '--ramps.unset 1001426896',
+    },
+  ],
+  ramp_guessing: true,
+  split_fixes: true,
+  split_fixes_applied: 1,
+  split_defects_remaining: 1,
+  split_patch_file: 'data/osm/mndot_i94_wb.splits.con.xml',
+  applied: 'ramp guessing on; split fixes: 1 applied, 1 remaining',
   inflow_peak_veh_h: 4275,
   ramps: [
     {
@@ -361,6 +413,12 @@ describe('OnboardView', () => {
     expect(screen.getByText(/S1063 at 1.1 km/)).toHaveTextContent(
       'the map carries 4 lanes, the inventory says 3',
     );
+    // what the build stage ran, and the audit the fixes were derived from
+    // (a count only: the table is the audit that stands)
+    expect(screen.getByText(/^applied:/)).toHaveTextContent(
+      'ramp guessing on; split fixes: 1 applied, 1 remaining',
+    );
+    expect(screen.getByText('before fixes: 2 defects')).toBeInTheDocument();
     // the split audit: the exit compiled from a lane ramp guessing added on
     // the wrong side is a red verdict with its remedy under the row
     const splits = within(screen.getByLabelText('split audit'));
@@ -403,6 +461,29 @@ describe('OnboardView', () => {
     expect(form.get('column_map')).toBeNull();
     expect(form.get('idm_calibration')).toBeNull();
     expect(form.get('source')).toBeNull();
+    // the two build switches are on by default and always travel with the
+    // request, so what the server ran is what the form showed
+    expect(form.get('ramp_guessing')).toBe('true');
+    expect(form.get('split_fixes')).toBe('true');
+  });
+
+  it('shows the build switches ticked and sends "false" for an unticked one', async () => {
+    renderView();
+    fillForm();
+    const guess = screen.getByLabelText('Guess acceleration lanes (netconvert ramps.guess)');
+    const fixes = screen.getByLabelText('Fix exits compiled on the wrong side (split audit)');
+    expect(guess).toBeChecked();
+    expect(fixes).toBeChecked();
+    fireEvent.click(fixes);
+    expect(fixes).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Onboard corridor' }));
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/corridors'))).toBe(true);
+    });
+    const form = calls.find((c) => c.method === 'POST' && c.url.endsWith('/corridors'))!.form!;
+    expect(form.get('ramp_guessing')).toBe('true');
+    expect(form.get('split_fixes')).toBe('false');
   });
 
   it('sends the Advanced column map, calibration path and source', async () => {

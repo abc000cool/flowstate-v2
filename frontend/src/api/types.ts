@@ -605,6 +605,25 @@ export interface CorridorSummary {
   /** Every exit leaving the chain, audited for the side it was compiled on
    * (absent on a corridor onboarded before the audit existed, 2026-09-24). */
   split_audit?: CorridorSplitFinding[];
+  /** The audit the split fixes were derived from; null (or absent) when no
+   * fix was applied, the two audits then being one. Additive, 2026-09-24. */
+  split_audit_before_fixes?: CorridorSplitFinding[] | null;
+  /** Whether the network was compiled with `--ramps.guess` (the default
+   * since 2026-09-24; false for a corridor onboarded before, or opted out). */
+  ramp_guessing?: boolean;
+  /** Whether the split audit's fixes were asked for (`split_fixes` on the
+   * request). */
+  split_fixes?: boolean;
+  /** Defects the fixes addressed (patch + `--ramps.unset`). */
+  split_fixes_applied?: number;
+  /** Defects the final audit still carries. */
+  split_defects_remaining?: number;
+  /** The connection patch written beside the extract, when a `wrong_side`
+   * finding needed one. */
+  split_patch_file?: string | null;
+  /** One line saying what ran: `ramp guessing on; split fixes: 2 applied,
+   * 0 remaining`. Empty or absent on a corridor onboarded before the field. */
+  applied?: string;
   lines: string[];
 }
 
