@@ -1,8 +1,4 @@
-<!-- I-94 WB St. Paul, map correction (2026-09-24): netconvert assigns the right-hand
-     Mounds Blvd / Kellogg Blvd exit (18207912, OSM turn:lanes |||slight_right|slight_right,
-     the link leaves 8-14 m to the RIGHT of the mainline 45782590) to the two LEFTMOST lanes
-     of the five-lane edge 45608485. Restated: the two rightmost lanes exit, the other three
-     continue. The 12th Street exit (82150350) is fixed by the ramps.unset option on edge 1001426896 instead. -->
+<!-- split audit (microsim.split_audit): exits restated on the side OSM draws them; scenario mndot_i94_wb_stpaul -->
 <connections>
   <connection from="45608485" to="18207912" fromLane="0" toLane="0"/>
   <connection from="45608485" to="18207912" fromLane="1" toLane="1"/>

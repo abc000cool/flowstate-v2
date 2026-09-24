@@ -1007,7 +1007,7 @@ network:
     merge: weave
     merge_params: {}
     weave:
-      exit_ramp: off-ramp 18208090
+      exit_ramp: C-D split 18208090
       length_m: null
       weave_params: {}
     cd_road: false
