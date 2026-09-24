@@ -58,8 +58,34 @@ SCORES_FILE: Final[str] = "observed_scores.json"
 
 #: Default cap on the scoring pool. One replicate's ``(t, veh_id, x, v)``
 #: frame of a 1.15 GB trajectory is several GB in pandas, so the pool is
-#: sized for memory, not for the CPU count.
+#: sized for memory, not for the CPU count — and further capped by
+#: :func:`score_pool_size` from the machine's available memory.
 DEFAULT_SCORE_PROCS: Final[int] = 6
+
+#: Peak RSS one scoring worker reaches per trajectory row [bytes]. Measured
+#: 2026-09-24 on synthetic contract-schema trajectories (10 columns, 500k-row
+#: groups; pandas 3.0.5, pyarrow 25.0.1, Python 3.12) at 1, 2 and 4 M rows:
+#: :func:`validation.metrics.compute_metrics` ≈ 400 B/row (the sort and the
+#: two per-vehicle groupby iterations each copy the frame, ``veh_id`` becomes
+#: an object array in the crossing count), :func:`score_replicate` ≈ 470
+#: B/row, and the high-water mark of the whole :func:`analyse_replicate`
+#: ≈ 545 B/row (blocks freed by one function are not all reused by the
+#: next). Rounded up for longer vehicle ids and allocator slack. An 80 M-row
+#: replicate (a 4-hour corridor at 2 Hz) is therefore ≈ 45 GB per worker,
+#: which is what the pool must be sized by.
+SCORE_WORKER_BYTES_PER_ROW: Final[int] = 640
+
+#: Fixed part of a scoring worker's RSS [bytes]: interpreter, pandas/scipy
+#: imports and the observations (≈ 180 MB measured; rounded up).
+SCORE_WORKER_BASE_BYTES: Final[int] = 512 * 1024**2
+
+#: Share of the machine's available memory the scoring pool may plan on;
+#: the rest is for the parent, the page cache the reads need, and the error
+#: in the per-row estimate.
+SCORE_MEMORY_FRACTION: Final[float] = 0.8
+
+#: Where Linux reports the memory a new process can use without swapping.
+_MEMINFO_PATH: Final[Path] = Path("/proc/meminfo")
 
 #: Dimensionless fraction → percent (not an SI conversion; kept in one place
 #: so no bare ``* 100`` appears in the verdict text).
@@ -609,6 +635,86 @@ def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
         wave_speed_kmh=math.nan if wave is None else float(wave),
         insertion=insertion_stats(load_meta(path)),
     )
+
+
+def trajectory_rows(run_dir: str | Path) -> int | None:
+    """Row count of a replicate's trajectory file, from the parquet footer only.
+
+    Args:
+        run_dir: Replicate directory.
+
+    Returns:
+        The number of rows, or ``None`` when the file is absent (pruned).
+    """
+    import pyarrow.parquet as pq
+
+    path = Path(run_dir) / "trajectories.parquet"
+    if not path.is_file():
+        return None
+    with open(path, "rb") as f:
+        return int(pq.ParquetFile(f).metadata.num_rows)
+
+
+def score_worker_bytes(rows: int) -> int:
+    """Estimated peak RSS [bytes] of one scoring worker on a ``rows``-row replicate."""
+    return SCORE_WORKER_BASE_BYTES + SCORE_WORKER_BYTES_PER_ROW * max(0, int(rows))
+
+
+def available_memory_bytes() -> int | None:
+    """``MemAvailable`` from ``/proc/meminfo`` [bytes]; ``None`` where absent.
+
+    Linux only (the cloud VMs); on other platforms the pool is not capped by
+    memory and the caller's own limit stands.
+    """
+    if not _MEMINFO_PATH.is_file():
+        return None
+    for line in _MEMINFO_PATH.read_text().splitlines():
+        if line.startswith("MemAvailable:"):
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].isdigit():
+                return int(parts[1]) * 1024
+    return None
+
+
+def score_pool_size(
+    n_procs: int,
+    dirs: Sequence[Path],
+    *,
+    available_bytes: int | None = None,
+    fraction: float = SCORE_MEMORY_FRACTION,
+) -> tuple[int, int | None]:
+    """Scoring-pool size that fits in memory: ``n_procs`` capped by the estimate.
+
+    Every worker holds one replicate's trajectory frame and its copies
+    (:data:`SCORE_WORKER_BYTES_PER_ROW`), so the pool is bounded by
+    ``fraction × available / per_worker``, where ``per_worker`` is
+    :func:`score_worker_bytes` of the largest replicate in ``dirs``. A 20-seed
+    battery of a 4-hour corridor (80 M rows a replicate) needs ≈ 45 GB per
+    worker: six workers on a 125 GB machine would be killed in the scoring
+    phase after the simulation had already run for hours.
+
+    Args:
+        n_procs: The requested pool size (the CPU-side limit).
+        dirs: Replicate directories; pruned ones (no trajectory) are ignored.
+        available_bytes: Memory to plan against; ``None`` reads
+            :func:`available_memory_bytes`, and when that is unknown too
+            (not Linux) the pool is not capped.
+        fraction: Share of ``available_bytes`` the pool may plan on.
+
+    Returns:
+        ``(pool_size, per_worker_bytes)`` — the size, at least 1 and at most
+        ``n_procs``, and the per-worker estimate it rests on (``None`` when no
+        replicate holds a trajectory).
+    """
+    rows = [r for r in (trajectory_rows(d) for d in dirs) if r is not None]
+    if not rows:
+        return max(1, n_procs), None
+    per_worker = score_worker_bytes(max(rows))
+    available = available_memory_bytes() if available_bytes is None else available_bytes
+    if available is None:
+        return max(1, n_procs), per_worker
+    fits = int(fraction * available) // per_worker
+    return max(1, min(n_procs, fits)), per_worker
 
 
 #: One scoring-pool payload: ``(run_dir, observed, profile, x_ref, span, x_offset_m)``.

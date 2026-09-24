@@ -312,3 +312,85 @@ def test_insertion_guard_aborts_on_the_first_replicate(tmp_path: Path) -> None:
     assert first["departed_fraction"] < 0.9
     # Nothing was validated, so no report was generated either.
     assert not (report_dir / "report.md").exists()
+
+
+#: Config hash planted for the fake ring benchmark runs below.
+RING_HASH = "ring0000ring"
+
+
+def test_ring_benchmark_runs_are_not_report_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Runs under ``<out>/ring/`` never join the corridor's report.
+
+    ``--ring-seeds N`` writes the ring benchmark's replicates under
+    ``<out>/ring/<hash>/<seed>/`` — micro runs with their own ``meta.json``.
+    The report discovers runs by walking its root, so given ``<out>`` it
+    would take them as extra configuration groups: a second baseline (no Δ
+    column, the corridor unseated as reference when it is a controlled
+    scenario), and their seed count feeding the replicate criterion. The
+    battery therefore hands the report its own configuration's tree only.
+    The ring benchmark itself is stubbed: it plants one ring-like run (the
+    corridor's first replicate under another hash) and reports both rows
+    passed.
+    """
+    battery = _load_script()
+    scenario = _scenario(tmp_path / "battery_ring_corridor.yaml")
+    observations = _observations(tmp_path / "observations.json")
+    out_root = tmp_path / "runs"
+    artifact_path = tmp_path / "artifacts" / "validation.json"
+    report_dir = tmp_path / "report"
+
+    def fake_ring_block(n_seeds: int, out_dir: Path) -> dict[str, Any]:
+        corridor_run = next(p for p in out_root.rglob("meta.json") if "ring" not in p.parts)
+        planted = out_dir / RING_HASH / "7"
+        planted.mkdir(parents=True, exist_ok=True)
+        meta = json.loads(corridor_run.read_text())
+        meta["config_hash"] = RING_HASH
+        meta["seed"] = 7
+        (planted / "meta.json").write_text(json.dumps(meta))
+        (planted / "trajectories.parquet").write_bytes(
+            (corridor_run.parent / "trajectories.parquet").read_bytes()
+        )
+        return {
+            "emergence": {"passed": True},
+            "dampening": {"passed": True},
+            "seeds": [7],
+        }
+
+    monkeypatch.setattr(battery, "ring_block", fake_ring_block)
+    argv = [
+        "--scenario",
+        str(scenario),
+        "--observations",
+        str(observations),
+        "--replicates",
+        "1",
+        "--procs",
+        "1",
+        "--out",
+        str(out_root),
+        "--artifact",
+        str(artifact_path),
+        "--report-dir",
+        str(report_dir),
+        "--ring-seeds",
+        "1",
+    ]
+    assert battery.main(argv) == 0
+    assert (out_root / "ring" / RING_HASH / "7" / "meta.json").is_file()
+    artifact = json.loads(artifact_path.read_text())
+    assert artifact["ring"]["emergence"]["passed"] is True
+
+    report = (report_dir / "report.md").read_text()
+    assert RING_HASH not in report
+    assert "strategy comparison" not in report.lower()
+    assert "no unambiguous reference to subtract" not in report
+    # The replicate criterion sees the corridor's own seed count, as the artifact does.
+    n_seeds = next(row for row in artifact["criteria"] if row["name"] == "n_seeds")
+    assert f"| n_seeds | {n_seeds['value']:g} |" in report
+
+    # --criteria-only regenerates the report from the pruned tree with the same run set.
+    (report_dir / "report.md").unlink()
+    assert battery.main([*argv, "--criteria-only"]) == 0
+    assert RING_HASH not in (report_dir / "report.md").read_text()

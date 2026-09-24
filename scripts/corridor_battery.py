@@ -84,11 +84,14 @@ from validation.battery import (
     ReplicateAnalysis,
     aggregate_insertion,
     analyse_replicates,
+    available_memory_bytes,
     insertion_stats,
     json_safe,
     load_meta,
     load_replicate_analysis,
     mean_finite,
+    score_pool_size,
+    trajectory_rows,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
 from validation.metrics import Metrics, aggregate, ci, geh_pass_fraction
@@ -312,6 +315,52 @@ def score_seeds(
     )
 
 
+def choose_score_procs(requested: int | None, n_procs: int, dirs: Sequence[Path]) -> int:
+    """The scoring-pool size, printed with the memory estimate behind it.
+
+    ``requested`` (``--score-procs``) is used as given; ``None`` takes
+    ``min(n_procs, DEFAULT_SCORE_PROCS)`` capped by
+    :func:`validation.battery.score_pool_size` so the workers' estimated peak
+    RSS fits the machine's available memory. Either way the console line
+    states the per-worker estimate and the replicate size it rests on, and an
+    explicit value the estimate says does not fit is warned about rather than
+    silently obeyed — the scoring phase runs after hours of simulation, and a
+    worker the kernel kills there costs all of it.
+
+    Args:
+        requested: ``--score-procs``, or ``None`` for the default.
+        n_procs: The simulation pool size (the CPU-side limit).
+        dirs: Replicate directories (their trajectory sizes set the estimate).
+
+    Returns:
+        The pool size, at least 1.
+    """
+    limit = min(n_procs, DEFAULT_SCORE_PROCS)
+    fitted, per_worker = score_pool_size(limit, dirs)
+    if requested is None:
+        chosen = fitted
+    else:
+        chosen = max(1, requested)
+    rows = [r for r in (trajectory_rows(d) for d in dirs) if r is not None]
+    detail = ""
+    if per_worker is not None and rows:
+        detail = f"; est. {per_worker / 1e9:.1f} GB per worker over {max(rows):,} rows"
+        available = available_memory_bytes()
+        if available is not None:
+            detail += f", {available / 1e9:.0f} GB available"
+            if requested is not None and chosen * per_worker > available:
+                detail += (
+                    f" — WARNING: {chosen} worker(s) exceed the available memory; "
+                    f"the estimate fits {fitted}"
+                )
+        elif requested is None:
+            detail += ", available memory unknown on this platform (no cap)"
+        if requested is None and fitted < limit:
+            detail += f" (capped from {limit} by memory)"
+    print(f"scoring {len(dirs)} replicate(s), {chosen} proc(s){detail} ...", flush=True)
+    return chosen
+
+
 def ring_block(n_seeds: int, out_dir: Path) -> dict[str, Any] | None:
     """Ring emergence/dampening rows from ``n_seeds`` ring replicates.
 
@@ -510,8 +559,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help=f"scoring processes for the post-run phase (default: min(--procs, "
-        f"{DEFAULT_SCORE_PROCS}); each holds one replicate's trajectory frame, several GB "
-        "for a 4-hour corridor); 1 scores in this process",
+        f"{DEFAULT_SCORE_PROCS}), further capped so the workers' estimated peak memory "
+        "fits MemAvailable — each holds one replicate's trajectory frame and its copies, "
+        "tens of GB for a 4-hour corridor); an explicit value is used as given, with a "
+        "warning when the estimate says it does not fit; 1 scores in this process",
     )
     ap.add_argument("--out", required=True, help="run-tree root for the replicates")
     ap.add_argument("--artifact", required=True, help="validation artifact path (JSON)")
@@ -572,9 +623,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     x_ref = x_refs[len(x_refs) // 2] + x_offset
 
     n_procs = max(1, min(args.procs, args.replicates))
-    score_procs = (
-        min(n_procs, DEFAULT_SCORE_PROCS) if args.score_procs is None else max(1, args.score_procs)
-    )
     timings: dict[str, float] = {}
 
     guard = InsertionGuard(args.abort_if_departed_below)
@@ -622,7 +670,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for seed, analysis in zip(seeds, analyses, strict=True):
                 print(f"    seed {seed}: {analysis.insertion.verdict}", flush=True)
         else:
-            print(f"scoring {len(dirs)} replicate(s), {score_procs} proc(s) ...", flush=True)
+            score_procs = choose_score_procs(args.score_procs, n_procs, dirs)
             analyses = score_seeds(
                 dirs,
                 seeds,
@@ -660,9 +708,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         # The report takes every replicate's metrics and wave reading from
         # the scoring above and renders its contour from the first seed —
         # the one that survives pruning — so it reads one trajectory, not N.
+        # Its run set is this configuration's tree, ``<out>/<config_hash>/``:
+        # the report discovers every ``meta.json`` under the root it is given,
+        # and ``<out>/ring/`` (the ring benchmark's runs) or another
+        # configuration's replicates in the same tree would become extra
+        # groups — a second "baseline" that unseats the corridor as the
+        # reference group, its seed count feeding the replicate criterion.
         if (dirs[0] / "trajectories.parquet").is_file():
             result = generate_report(
-                out_root,
+                dirs[0].parent,
                 report_dir / "report.md",
                 profile=profile,
                 geh_values=pooled_geh or None,

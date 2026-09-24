@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -19,11 +20,18 @@ from validation.battery import (
     HEALTHY_DEPARTED_FRACTION,
     NO_PLAN_VERDICT,
     OK_VERDICT,
+    SCORE_MEMORY_FRACTION,
+    SCORE_WORKER_BASE_BYTES,
+    SCORE_WORKER_BYTES_PER_ROW,
     STARVED_RAMP_MIN_PLANNED,
     InsertionStats,
     aggregate_insertion,
+    available_memory_bytes,
     insertion_stats,
     records_insertion,
+    score_pool_size,
+    score_worker_bytes,
+    trajectory_rows,
 )
 
 PLANNED = 1000
@@ -224,3 +232,89 @@ class TestAggregateInsertion:
         assert isinstance(stats, InsertionStats)
         with pytest.raises(AttributeError):
             stats.departed = 0  # type: ignore[misc]
+
+
+class TestScorePoolSize:
+    """The scoring pool is sized by memory, from the parquet footer (no SUMO).
+
+    A scoring worker's peak RSS grows with the replicate's row count
+    (``SCORE_WORKER_BYTES_PER_ROW``, measured); six workers on a 4-hour
+    corridor would exceed a 125 GB machine, so the default pool is capped by
+    ``MemAvailable``.
+    """
+
+    ROWS = 1000
+
+    @pytest.fixture
+    def run_dir(self, tmp_path: Path) -> Path:
+        import numpy as np
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        d = tmp_path / "abc" / "1"
+        d.mkdir(parents=True)
+        table = pa.table(
+            {
+                "t": np.arange(self.ROWS, dtype=np.float64),
+                "veh_id": ["v0"] * self.ROWS,
+                "x": np.zeros(self.ROWS),
+                "v": np.zeros(self.ROWS),
+            }
+        )
+        with open(d / "trajectories.parquet", "wb") as f:
+            pq.write_table(table, f)
+        return d
+
+    def test_rows_come_from_the_footer(self, run_dir: Path) -> None:
+        assert trajectory_rows(run_dir) == self.ROWS
+        assert trajectory_rows(run_dir.parent / "pruned") is None
+
+    def test_estimate_is_base_plus_rows(self) -> None:
+        assert score_worker_bytes(0) == SCORE_WORKER_BASE_BYTES
+        assert score_worker_bytes(self.ROWS) == (
+            SCORE_WORKER_BASE_BYTES + SCORE_WORKER_BYTES_PER_ROW * self.ROWS
+        )
+
+    def test_pool_is_capped_by_available_memory(self, run_dir: Path) -> None:
+        per_worker = score_worker_bytes(self.ROWS)
+        # Room for exactly two workers inside the planning fraction.
+        available = int(2 * per_worker / SCORE_MEMORY_FRACTION) + 1
+        assert score_pool_size(6, [run_dir], available_bytes=available) == (2, per_worker)
+        # Plenty of memory: the CPU-side limit stands.
+        assert score_pool_size(6, [run_dir], available_bytes=10**12) == (6, per_worker)
+        # Not even one worker fits: one runs anyway (the caller's choice to score at all).
+        assert score_pool_size(6, [run_dir], available_bytes=1) == (1, per_worker)
+
+    def test_largest_replicate_sets_the_estimate(self, run_dir: Path, tmp_path: Path) -> None:
+        import numpy as np
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        bigger = tmp_path / "abc" / "2"
+        bigger.mkdir()
+        n = 4 * self.ROWS
+        with open(bigger / "trajectories.parquet", "wb") as f:
+            pq.write_table(pa.table({"t": np.zeros(n)}), f)
+        pruned = tmp_path / "abc" / "3"
+        pruned.mkdir()
+        _, per_worker = score_pool_size(6, [run_dir, bigger, pruned], available_bytes=10**12)
+        assert per_worker == score_worker_bytes(n)
+
+    def test_without_trajectories_or_meminfo_there_is_no_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import validation.battery as battery
+
+        assert score_pool_size(4, [tmp_path], available_bytes=1) == (4, None)
+        monkeypatch.setattr(battery, "_MEMINFO_PATH", tmp_path / "absent")
+        assert available_memory_bytes() is None
+
+    def test_meminfo_is_parsed_in_kib(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import validation.battery as battery
+
+        meminfo = tmp_path / "meminfo"
+        meminfo.write_text("MemTotal:       131072000 kB\nMemAvailable:   122070312 kB\n")
+        monkeypatch.setattr(battery, "_MEMINFO_PATH", meminfo)
+        assert available_memory_bytes() == 122070312 * 1024
