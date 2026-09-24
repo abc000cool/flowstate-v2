@@ -40,21 +40,34 @@ fails on that one too — and is refused (exit 2) together with
 ``--lane-tolerance 1`` or more, a tolerance that has already dropped every
 one-lane disagreement before ``--strict-lanes`` could report it.
 
-**Split audit.** The inventory also lists every exit leaving the chain with
-the side OSM draws it on (the signed lateral offset of the link's first nodes
-from the continuing mainline, and the ``turn:lanes`` tag when there is one)
-against the lanes the compiled network feeds it from
-(:func:`microsim.split_audit.audit_splits`, docs/ONBOARDING_MNDOT.md §9). A
-right-hand exit compiled from the leftmost lane traps through traffic in a
-lane that leads only to the exit — the map fault behind the I-94 WB lock —
-and the lane check cannot see it because the lane *count* is right.
-``--fail-on-split-defect`` exits 4 on any ``wrong_side`` /
-``added_lane_wrong_side`` verdict; ``--write-split-patch PATH`` writes the
-remedy first — a connection patch restating the ``wrong_side`` splits at
-``PATH`` (added to the scenario's ``patch_files``) and ``--ramps.unset`` for
-the lanes ramp guessing added on the wrong side (added to
-``netconvert_extra``) — re-imports the network with the fixes, prints the
-audit again and only then applies the failure flag.
+**Ramp guessing, on by default (2026-09-24).** OSM rarely draws acceleration
+lanes, and an entrance joining lane 0 at a plain junction starves under
+SUMO's yielding (docs/ONBOARDING_MNDOT.md §6), so the network is compiled
+with ``--ramps.guess --ramps.ramp-length 250``
+(:data:`microsim.scenarios.RAMP_GUESSING_OPTIONS`, the MnDOT values) unless
+``--no-ramp-guessing`` is given. Options the caller passes in
+``--netconvert-extra`` are kept verbatim and never duplicated: a
+``--ramps.ramp-length`` of its own wins.
+
+**Split audit and fixes, on by default.** The inventory also lists every
+exit leaving the chain with the side OSM draws it on (the signed lateral
+offset of the link's first nodes from the continuing mainline, and the
+``turn:lanes`` tag when there is one) against the lanes the compiled network
+feeds it from (:func:`microsim.split_audit.audit_splits`,
+docs/ONBOARDING_MNDOT.md §9). A right-hand exit compiled from the leftmost
+lane traps through traffic in a lane that leads only to the exit — the map
+fault behind the I-94 WB lock — and the lane check cannot see it because the
+lane *count* is right. A ``wrong_side`` / ``added_lane_wrong_side`` finding
+is fixed before the YAML is written (:func:`microsim.scenarios.apply_split_fixes`):
+a connection patch restating the ``wrong_side`` splits is written beside the
+extract as ``<extract stem>.splits.con.xml`` (``--write-split-patch PATH``
+chooses another place; added to the scenario's ``patch_files``),
+``--ramps.unset`` is added for the lanes ramp guessing put on the wrong side
+(``netconvert_extra``), the network is re-imported with the fixes and audited
+again; both audits are printed, then the line ``applied ramp guessing on;
+split fixes: 2 applied, 0 remaining``. ``--no-split-fixes`` reports the
+defects and leaves the network as compiled. ``--fail-on-split-defect`` exits
+4 on any defect the *final* audit still carries.
 
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
@@ -76,17 +89,24 @@ from microsim.scenarios import (
     MAX_STATION_OFFSET_M,
     CorridorBuild,
     LaneMismatch,
-    apply_split_fixes,
     corridor_from_bbox,
 )
-from microsim.split_audit import format_split_table
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Exit status of ``--fail-on-split-defect`` when an exit is compiled on the
-#: wrong side of the mainline (after ``--write-split-patch``, when given).
-#: Its own code so a batch script can tell it from a lane disagreement (3).
+#: wrong side of the mainline in the final audit (after the split fixes,
+#: unless ``--no-split-fixes``). Its own code so a batch script can tell it
+#: from a lane disagreement (3).
 SPLIT_DEFECT_EXIT: int = 4
+
+#: Why ``--no-split-fixes`` and ``--write-split-patch`` cannot both be asked
+#: for: the path is where the fixes write their patch, and there are none.
+NO_FIXES_PATCH_MESSAGE: str = (
+    "--write-split-patch has no effect with --no-split-fixes: the path is where the "
+    "split fixes write their connection patch, and --no-split-fixes applies none. Drop "
+    "one of the two."
+)
 
 #: Columns the CLI adds to the stations CSV it writes back.
 STATION_OUT_COLUMNS: tuple[str, ...] = ("x_m", "offset_m", "edge_id", "lane_pos_m")
@@ -265,7 +285,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--netconvert-extra",
         default="",
-        help='extra netconvert options recorded in the scenario, e.g. "--ramps.guess --ramps.no-split --ramps.ramp-length 250"',
+        help='extra netconvert options recorded in the scenario, e.g. "--ramps.no-split"; '
+        "the ramp-guessing defaults (--ramps.guess --ramps.ramp-length 250) are added in "
+        "front unless given here or turned off with --no-ramp-guessing",
+    )
+    parser.add_argument(
+        "--no-ramp-guessing",
+        action="store_true",
+        help="compile without netconvert's ramp guessing (default: on, so entrances the map "
+        "draws without an acceleration lane do not starve)",
+    )
+    parser.add_argument(
+        "--no-split-fixes",
+        action="store_true",
+        help="report the split audit's defects but do not apply their fixes (default: a "
+        "wrong_side / added_lane_wrong_side finding is fixed and the network re-audited)",
     )
     parser.add_argument(
         "--max-chain-m",
@@ -298,17 +332,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--fail-on-split-defect",
         action="store_true",
-        help="exit 4 when the split audit finds an exit compiled on the wrong side "
-        "of the mainline (wrong_side / added_lane_wrong_side); applied after "
-        "--write-split-patch when both are given",
+        help="exit 4 when the final split audit (after the fixes, unless --no-split-fixes) "
+        "still has an exit compiled on the wrong side of the mainline "
+        "(wrong_side / added_lane_wrong_side)",
     )
     parser.add_argument(
         "--write-split-patch",
         type=Path,
         metavar="PATH",
-        help="write the connection patch that restates every wrong_side split at PATH, "
-        "add it (and --ramps.unset for lanes ramp guessing added on the wrong side) to "
-        "the scenario, re-import the network with the fixes and print the audit again",
+        help="where the split fixes write the connection patch restating every wrong_side "
+        "split (default: beside the extract, <extract stem>.splits.con.xml); refused "
+        "with --no-split-fixes",
     )
     return parser.parse_args(argv)
 
@@ -321,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
     # than a usage error
     if args.strict_lanes and args.lane_tolerance >= 1:
         print(STRICT_TOLERANCE_MESSAGE)
+        return BAD_USAGE_EXIT
+    if args.no_split_fixes and args.write_split_patch is not None:
+        print(NO_FIXES_PATCH_MESSAGE)
         return BAD_USAGE_EXIT
     rows = read_stations(args.stations) if args.stations else []
     stations: list[dict[str, Any]] = [dict(r) for r in rows]
@@ -343,19 +380,13 @@ def main(argv: list[str] | None = None) -> int:
         replicates=args.replicates,
         netconvert_extra=tuple(args.netconvert_extra.split()),
         max_chain_m=args.max_chain_m,
+        ramp_guessing=not args.no_ramp_guessing,
+        split_fixes=not args.no_split_fixes,
+        split_patch_path=args.write_split_patch,
     )
+    # The summary carries both audits and the "applied" line: what the
+    # scenario will compile is what was fixed and re-imported, not assumed.
     print(build.summary(stations))
-    if args.write_split_patch is not None and build.split_defects():
-        # The remedy is written and the network re-imported with it before
-        # the YAML goes out, so the scenario names what it will compile.
-        build = apply_split_fixes(build, args.write_split_patch)
-        network = build.config.network
-        print(
-            f"  split fixes: patch_files {getattr(network, 'patch_files', [])}, "
-            f"netconvert_extra {' '.join(getattr(network, 'netconvert_extra', []))}; "
-            "network re-imported and audited again:"
-        )
-        print("\n".join(format_split_table(build.split_audit)))
     build.to_yaml(args.out)
     print(f"  scenario  {args.out}")
     if rows:

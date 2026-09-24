@@ -188,7 +188,9 @@ class TestOnboardingHappyPath:
         summary = onboarded["summary"]
         assert summary["corridor"] == "fixture_corridor_eb"
         assert summary["chain_length_m"] == pytest.approx(2370.0, abs=60.0)
-        assert summary["n_chain_edges"] == 3
+        # three edges as drawn; ramp guessing (the default since 2026-09-24)
+        # splits two of them at the ramps, so the compiled chain has five
+        assert summary["n_chain_edges"] == 5
         assert summary["n_ramps"] == 2
         assert [s["station"] for s in summary["stations_placed"]] == ["SU", "SM", "SD"]
         assert [s["station"] for s in summary["stations_rejected"]] == ["SOFF"]
@@ -200,6 +202,75 @@ class TestOnboardingHappyPath:
         assert summary["lanes_compared"] == 3
         assert summary["lane_mismatches"] == []
         assert any("lanes vs inventory: 3 of 3" in line for line in summary["lines"])
+
+    def test_the_defaults_are_recorded(self, client: TestClient, onboarded: dict[str, Any]) -> None:
+        """Ramp guessing on, split fixes on, nothing to fix on this fixture:
+        the summary says what was applied and the scenario carries it."""
+        summary = onboarded["summary"]
+        assert summary["ramp_guessing"] is True and summary["split_fixes"] is True
+        assert summary["split_fixes_applied"] == 0
+        assert summary["split_defects_remaining"] == 0
+        assert summary["split_audit_before_fixes"] is None
+        assert summary["split_patch_file"] is None
+        assert summary["applied"] == "ramp guessing on; split fixes: 0 applied, 0 remaining"
+        assert any(
+            "  applied   ramp guessing on; split fixes: 0 applied, 0 remaining" in line
+            for line in summary["lines"]
+        )
+        # the fixture's one exit, on the guessed deceleration lane, is on its side
+        assert [f["verdict"] for f in summary["split_audit"]] == ["ok"]
+        assert summary["split_audit"][0]["added_lane"] is True
+        # the two 250 m guessed lanes show in the profile
+        assert [run[2] for run in summary["lanes_profile"]] == [3, 4, 3, 4, 3]
+        stored = client.get(f"/api/v1/scenarios/{onboarded['scenario_id']}", headers=HEADERS).json()
+        network = stored["config"]["network"]
+        assert network["netconvert_extra"] == ["--ramps.guess", "--ramps.ramp-length", "250"]
+        assert network["patch_files"] == []
+        settings = client.app.state.settings
+        assert not (Path(settings.data_dir) / "osm" / "fixture_corridor_eb.splits.con.xml").exists()
+
+    def test_the_opt_outs_are_honoured(self, client: TestClient, no_download: list[Any]) -> None:
+        body = post_corridor(
+            client, name="fixture_corridor_raw", ramp_guessing="false", split_fixes="false"
+        )
+        payload = client.get(f"/api/v1/corridors/{body['corridor_id']}", headers=HEADERS).json()
+        assert payload["status"] == "done", payload["error"]
+        summary = payload["summary"]
+        assert summary["ramp_guessing"] is False and summary["split_fixes"] is False
+        assert summary["applied"] == "ramp guessing off; split fixes: off, 0 remaining"
+        assert summary["n_chain_edges"] == 3
+        assert [run[2] for run in summary["lanes_profile"]] == [3]
+        stored = client.get(f"/api/v1/scenarios/{payload['scenario_id']}", headers=HEADERS).json()
+        assert stored["config"]["network"]["netconvert_extra"] == []
+
+    def test_the_job_hands_the_build_its_defaults_and_the_patch_path(
+        self, client: TestClient, no_download: list[Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The patch the fixes would write goes beside the installed extract
+        (``<data root>/osm/<name>.splits.con.xml``), inside the data roots the
+        runner confines ``patch_files`` to; the fixture needs none, so the
+        call is pinned rather than the file."""
+        import microsim.scenarios as scenarios
+        from api.onboarding_jobs import split_patch_path
+
+        seen: list[dict[str, Any]] = []
+        original = scenarios.corridor_from_bbox
+
+        def spy(*args: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(scenarios, "corridor_from_bbox", spy)
+        body = post_corridor(client, name="fixture_corridor_spy")
+        payload = client.get(f"/api/v1/corridors/{body['corridor_id']}", headers=HEADERS).json()
+        assert payload["status"] == "done", payload["error"]
+        settings = client.app.state.settings
+        expected = Path(settings.data_dir) / "osm" / "fixture_corridor_spy.splits.con.xml"
+        assert split_patch_path("fixture_corridor_spy", settings) == expected
+        assert len(seen) == 1
+        assert seen[0]["ramp_guessing"] is True and seen[0]["split_fixes"] is True
+        assert seen[0]["split_patch_path"] == expected
+        assert seen[0]["osm_file"] == expected.with_name("fixture_corridor_spy.osm")
 
     def test_demand_traces_to_the_stations(self, onboarded: dict[str, Any]) -> None:
         summary = onboarded["summary"]

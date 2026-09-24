@@ -7,8 +7,15 @@ from lanes 3–4 of the five on ``45608485`` — and through traffic trapped the
 locked the corridor. The audit compares the side OSM draws every exit on with
 the lanes the compiled network feeds it from; these tests pin it on that
 extract compiled without and with the committed fixes, on a synthetic
-fixture with one right and one left exit, and through the onboarding CLI's
-``--write-split-patch`` / ``--fail-on-split-defect``.
+fixture with one right and one left exit, and through ``corridor_from_bbox``
+and the onboarding CLI under their defaults (since 2026-09-24: ramp guessing
+on, the fixes applied and the network re-audited; ``--no-ramp-guessing`` /
+``--no-split-fixes`` opt out, ``--fail-on-split-defect`` judges the final
+audit, ``--write-split-patch`` chooses where the patch goes).
+
+The MnDOT extract is copied into ``tmp_path`` before every build whose
+defaults would write the patch beside it: the committed
+``data/osm/mndot_i94_wb_stpaul.splits.con.xml`` is never rewritten by a test.
 
 ``netconvert`` runs on the small committed extracts (well under a second
 each); no SUMO simulation is started.
@@ -17,6 +24,7 @@ each); no SUMO simulation is started.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -26,7 +34,13 @@ import yaml
 
 from flowstate_core.config import OSMNetwork, ScenarioConfig
 from microsim.networks import osm_import
-from microsim.scenarios import apply_split_fixes, corridor_from_bbox
+from microsim.scenarios import (
+    RAMP_GUESSING_OPTIONS,
+    apply_split_fixes,
+    corridor_from_bbox,
+    default_split_patch_path,
+    with_ramp_guessing,
+)
 from microsim.split_audit import (
     SplitFinding,
     audit_splits,
@@ -86,6 +100,48 @@ def _compile(net: OSMNetwork, workdir: Path, *, fixed: bool) -> Path:
 
 def _by_exit(findings: list[SplitFinding]) -> dict[str, SplitFinding]:
     return {f.exit_edge: f for f in findings}
+
+
+def _extract_copy(tmp_path: Path) -> Path:
+    """The MnDOT extract under ``tmp_path``, so the default patch lands there."""
+    copy = tmp_path / "osm" / OSM.name
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(OSM, copy)
+    return copy
+
+
+class TestRampGuessingOptions:
+    """``with_ramp_guessing``: the defaults added once, never twice, or not at all."""
+
+    def test_the_defaults_are_the_mndot_values(self) -> None:
+        assert with_ramp_guessing(()) == MNDOT_EXTRA
+        assert tuple(o for o, _ in RAMP_GUESSING_OPTIONS) == (
+            "--ramps.guess",
+            "--ramps.ramp-length",
+        )
+
+    def test_options_already_given_are_not_duplicated(self) -> None:
+        assert with_ramp_guessing(MNDOT_EXTRA) == MNDOT_EXTRA
+        # the caller's own ramp length wins; only the missing flag is added
+        assert with_ramp_guessing(("--ramps.ramp-length", "300", "--ramps.no-split")) == (
+            "--ramps.guess",
+            "--ramps.ramp-length",
+            "300",
+            "--ramps.no-split",
+        )
+        assert with_ramp_guessing(("--ramps.guess=true",)) == (
+            "--ramps.ramp-length",
+            "250",
+            "--ramps.guess=true",
+        )
+
+    def test_disabled_keeps_the_options_verbatim(self) -> None:
+        assert with_ramp_guessing((), enabled=False) == ()
+        assert with_ramp_guessing(("--ramps.no-split",), enabled=False) == ("--ramps.no-split",)
+
+    def test_the_patch_goes_beside_the_extract(self) -> None:
+        assert default_split_patch_path(Path("data/osm/x.osm")) == Path("data/osm/x.splits.con.xml")
+        assert default_split_patch_path("w/net/extract.osm") == Path("w/net/extract.splits.con.xml")
 
 
 @mndot_files
@@ -271,6 +327,8 @@ class TestOnboardingPath:
     """``corridor_from_bbox`` on the committed extract, then the fixes, then the CLI."""
 
     def test_the_build_audits_and_the_fixes_leave_no_defect(self, tmp_path: Path) -> None:
+        # split_fixes=False: the audit as compiled; the caller's own MNDOT_EXTRA
+        # already carries the guessing defaults, which must not be added twice
         build = corridor_from_bbox(
             "split_probe",
             MNDOT_BBOX,
@@ -281,18 +339,29 @@ class TestOnboardingPath:
             duration_s=60.0,
             netconvert_extra=MNDOT_EXTRA,
             max_chain_m=MNDOT_CHAIN_CAP_M,
+            split_fixes=False,
         )
+        assert build.config.network.netconvert_extra == list(MNDOT_EXTRA)
         assert [(d.from_edge, d.verdict) for d in build.split_defects()] == [
             ("45608485", "wrong_side"),
             ("1001426896", "added_lane_wrong_side"),
         ]
+        assert build.split_audit_before_fixes is None and build.split_fixes_applied == 0
+        assert build.applied_line() == "ramp guessing on; split fixes: off, 2 remaining"
         assert "  splits (8 exits audited against the extract; 2 defects)" in build.summary()
+        assert "splits before fixes" not in build.summary()
         with pytest.raises(ValueError, match="connection patch"):
             apply_split_fixes(build, None)
 
         patch = tmp_path / "split_probe.splits.con.xml"
         fixed = apply_split_fixes(build, patch)
         assert fixed.split_defects() == [] and len(fixed.split_audit) == 8
+        assert fixed.split_audit_before_fixes == build.split_audit
+        assert fixed.split_fixes_applied == 2 and fixed.split_patch_file == patch
+        assert fixed.applied_line() == "ramp guessing on; split fixes: 2 applied, 0 remaining"
+        assert "  splits before fixes (8 exits audited against the extract; 2 defects)" in (
+            fixed.summary()
+        )
         network = fixed.config.network
         assert isinstance(network, OSMNetwork)
         assert network.patch_files == [str(patch)]  # outside the repository: absolute
@@ -310,8 +379,87 @@ class TestOnboardingPath:
         # a build without defects is returned as is
         assert apply_split_fixes(fixed, patch) is fixed
 
+    def test_the_defaults_guess_ramps_and_apply_the_fixes(self, tmp_path: Path) -> None:
+        """No options at all: ramp guessing on, both defects fixed, the patch
+        beside the extract, both audits kept, the YAML naming the fixes."""
+        extract = _extract_copy(tmp_path)
+        build = corridor_from_bbox(
+            "split_default",
+            MNDOT_BBOX,
+            MNDOT_BEARING,
+            inflow=1.0,
+            workdir=tmp_path / "work",
+            osm_file=extract,
+            duration_s=60.0,
+            max_chain_m=MNDOT_CHAIN_CAP_M,
+        )
+        patch = tmp_path / "osm" / "mndot_i94_wb_stpaul.splits.con.xml"
+        assert build.ramp_guessing and build.split_fixes
+        assert build.split_fixes_applied == 2 and build.split_defects() == []
+        assert build.split_patch_file == patch and patch.is_file()
+        assert build.split_audit_before_fixes is not None
+        assert [
+            (d.from_edge, d.verdict) for d in split_defects(build.split_audit_before_fixes)
+        ] == [
+            ("45608485", "wrong_side"),
+            ("1001426896", "added_lane_wrong_side"),
+        ]
+        assert len(build.split_audit) == 8
+        network = build.config.network
+        assert isinstance(network, OSMNetwork)
+        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        assert network.patch_files == [str(patch)]
+        committed = [
+            line for line in COMMITTED_PATCH.read_text().splitlines() if "<connection " in line
+        ]
+        assert [
+            line for line in patch.read_text().splitlines() if "<connection " in line
+        ] == committed
+        assert COMMITTED_PATCH.read_text().count("<connection ") == len(committed)  # untouched
+        text = build.summary()
+        assert "  splits before fixes (8 exits audited against the extract; 2 defects)" in text
+        assert "  splits (8 exits audited against the extract; 0 defects)" in text
+        assert "  applied   ramp guessing on; split fixes: 2 applied, 0 remaining" in text
+        assert f"patch {patch}" in text and "--ramps.unset 1001426896" in text
+        out_yaml = tmp_path / "split_default.yaml"
+        build.to_yaml(out_yaml)
+        dumped = yaml.safe_load(out_yaml.read_text())["network"]
+        assert dumped["patch_files"] == [str(patch)]
+        assert dumped["netconvert_extra"] == [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        # the recorded scenario reloads and compiles the fixed network
+        assert ScenarioConfig.from_yaml(out_yaml) == build.config
+
+    def test_both_opt_outs(self, tmp_path: Path) -> None:
+        """Without guessing only the Mounds/Kellogg defect exists (the 12th
+        Street lane is one guessing adds); without fixes it stays, labelled."""
+        extract = _extract_copy(tmp_path)
+        build = corridor_from_bbox(
+            "split_raw",
+            MNDOT_BBOX,
+            MNDOT_BEARING,
+            inflow=1.0,
+            workdir=tmp_path / "work",
+            osm_file=extract,
+            duration_s=60.0,
+            max_chain_m=MNDOT_CHAIN_CAP_M,
+            ramp_guessing=False,
+            split_fixes=False,
+        )
+        assert not build.ramp_guessing and not build.split_fixes
+        assert build.config.network.netconvert_extra == []
+        assert build.config.network.patch_files == []
+        assert [(d.from_edge, d.verdict) for d in build.split_defects()] == [
+            ("45608485", "wrong_side")
+        ]
+        assert build.split_audit_before_fixes is None and build.split_patch_file is None
+        assert build.applied_line() == "ramp guessing off; split fixes: off, 1 remaining"
+        assert not list((tmp_path / "osm").glob("*.splits.con.xml"))
+        # 12th Street compiles as the three lanes OSM tags; no guessed fourth
+        assert build.lanes_profile[-1][2] == 3
+
     def test_the_cli_flags(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         cli = _load_cli()
+        extract = _extract_copy(tmp_path)
         out_yaml = tmp_path / "split_cli.yaml"
         argv = [
             "--name",
@@ -325,36 +473,69 @@ class TestOnboardingPath:
             "--out",
             str(out_yaml),
             "--osm-file",
-            str(OSM),
+            str(extract),
             "--duration-s",
             "60",
-            "--netconvert-extra",
-            " ".join(MNDOT_EXTRA),
             "--max-chain-m",
             f"{MNDOT_CHAIN_CAP_M:g}",
         ]
-        # reported, not enforced
-        assert cli.main(argv) == 0
-        out = capsys.readouterr().out
-        assert "splits (8 exits audited against the extract; 2 defects)" in out
-        assert "WRONG_SIDE" in out and "ADDED_LANE_WRONG_SIDE" in out
-        assert "netconvert_extra" not in yaml.safe_load(out_yaml.read_text())["network"] or (
-            "--ramps.unset"
-            not in yaml.safe_load(out_yaml.read_text())["network"]["netconvert_extra"]
-        )
+        default_patch = tmp_path / "osm" / "mndot_i94_wb_stpaul.splits.con.xml"
+        fixed_extra = [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
 
-        assert cli.main([*argv, "--fail-on-split-defect"]) == cli.SPLIT_DEFECT_EXIT == 4
+        # the defaults: guessing on, fixes applied, the failure flag has nothing left
+        assert cli.main([*argv, "--fail-on-split-defect"]) == 0
+        out = capsys.readouterr().out
+        assert "splits before fixes (8 exits audited against the extract; 2 defects)" in out
+        assert "WRONG_SIDE" in out and "ADDED_LANE_WRONG_SIDE" in out
+        assert "splits (8 exits audited against the extract; 0 defects)" in out
+        assert "applied   ramp guessing on; split fixes: 2 applied, 0 remaining" in out
+        assert "network re-imported and audited again" in out and "FAIL" not in out
+        assert default_patch.is_file()
+        network = yaml.safe_load(out_yaml.read_text())["network"]
+        assert network["patch_files"] == [str(default_patch)]
+        assert network["netconvert_extra"] == fixed_extra
+
+        # the caller's own options are kept and not duplicated; the patch goes
+        # where --write-split-patch says
+        default_patch.unlink()
+        patch = tmp_path / "elsewhere" / "split_cli.splits.con.xml"
+        code = cli.main(
+            [*argv, "--netconvert-extra", " ".join(MNDOT_EXTRA), "--write-split-patch", str(patch)]
+        )
+        out = capsys.readouterr().out
+        assert code == 0, out
+        assert patch.is_file() and not default_patch.exists()
+        network = yaml.safe_load(out_yaml.read_text())["network"]
+        assert network["patch_files"] == [str(patch)]
+        assert network["netconvert_extra"] == fixed_extra
+
+        # --no-split-fixes: reported, not fixed; the failure flag then fires
+        assert cli.main([*argv, "--no-split-fixes"]) == 0
+        out = capsys.readouterr().out
+        assert "applied   ramp guessing on; split fixes: off, 2 remaining" in out
+        assert "splits before fixes" not in out
+        network = yaml.safe_load(out_yaml.read_text())["network"]
+        assert network["netconvert_extra"] == list(MNDOT_EXTRA)
+        assert network["patch_files"] == []
+        assert cli.main([*argv, "--no-split-fixes", "--fail-on-split-defect"]) == (
+            cli.SPLIT_DEFECT_EXIT
+        )
         out = capsys.readouterr().out
         assert "FAIL: 2 exit(s) compiled on the wrong side of the mainline" in out
         assert "45608485 -> 18207912 (wrong_side, OSM right, compiled leftmost)" in out
 
-        patch = tmp_path / "split_cli.splits.con.xml"
-        code = cli.main([*argv, "--fail-on-split-defect", "--write-split-patch", str(patch)])
+        # --no-ramp-guessing: the map as drawn; the one defect that is not
+        # guessing's is still fixed
+        assert cli.main([*argv, "--no-ramp-guessing"]) == 0
         out = capsys.readouterr().out
-        assert code == 0, out
-        assert "network re-imported and audited again:" in out
-        assert "splits (8 exits audited against the extract; 0 defects)" in out
-        assert patch.is_file()
+        assert "applied   ramp guessing off; split fixes: 1 applied, 0 remaining" in out
         network = yaml.safe_load(out_yaml.read_text())["network"]
-        assert network["patch_files"] == [str(patch)]
-        assert network["netconvert_extra"] == [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        assert network["netconvert_extra"] == []
+        assert network["patch_files"] == [str(default_patch)]
+
+        # self-cancelling flags are refused before anything is built
+        code = cli.main([*argv, "--no-split-fixes", "--write-split-patch", str(patch)])
+        out = capsys.readouterr().out
+        assert code == cli.BAD_USAGE_EXIT == 2
+        assert "--write-split-patch" in out and "--no-split-fixes" in out
+        assert "scenario" not in out

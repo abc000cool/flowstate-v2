@@ -76,6 +76,65 @@ SCENARIOS_DIR: Path = Path(__file__).resolve().parents[3] / "scenarios"
 #: scenarios do (``osm_file: data/osm/…``).
 REPO_ROOT: Path = SCENARIOS_DIR.parent
 
+#: ``netconvert`` options every onboarding compiles with unless asked not to
+#: (``ramp_guessing=False``; 2026-09-24). OSM rarely draws acceleration lanes —
+#: a motorway is tagged three lanes straight through its merges — and a link
+#: joining lane 0 at a plain junction starves under SUMO's yielding
+#: (docs/ONBOARDING_MNDOT.md §6: four I-94 WB on-ramps delivered 4-6 % of
+#: their demand). ``--ramps.guess`` adds a ``--ramps.ramp-length`` metre
+#: acceleration / deceleration lane at every ramp; the values are the ones the
+#: MnDOT scenarios use. Pairs of ``(option, value)``; ``None`` = a flag.
+RAMP_GUESSING_OPTIONS: tuple[tuple[str, str | None], ...] = (
+    ("--ramps.guess", None),
+    ("--ramps.ramp-length", "250"),
+)
+
+#: Name of the connection patch the split fixes write beside the OSM extract:
+#: ``<extract stem>.splits.con.xml`` (``data/osm/mndot_i94_wb_stpaul.splits.con.xml``
+#: is the committed instance).
+SPLIT_PATCH_SUFFIX: str = ".splits.con.xml"
+
+
+def with_ramp_guessing(extra: Sequence[str], enabled: bool = True) -> tuple[str, ...]:
+    """The ``netconvert_extra`` an onboarding compiles with.
+
+    Adds :data:`RAMP_GUESSING_OPTIONS` in front of the caller's options —
+    each one only when the caller did not already give it (as ``--opt`` or
+    ``--opt=value``), so a scenario that names its own ramp length keeps it
+    and nothing is passed to ``netconvert`` twice.
+
+    Args:
+        extra: The caller's own options, kept verbatim and in order.
+        enabled: ``False`` returns ``extra`` unchanged (``--no-ramp-guessing``).
+
+    Returns:
+        The options, defaults first.
+    """
+    given = [str(a) for a in extra]
+    if not enabled:
+        return tuple(given)
+    added: list[str] = []
+    for option, value in RAMP_GUESSING_OPTIONS:
+        if any(a == option or a.startswith(option + "=") for a in given):
+            continue
+        added.append(option)
+        if value is not None:
+            added.append(value)
+    return (*added, *given)
+
+
+def default_split_patch_path(osm_file: str | Path) -> Path:
+    """Where the split fixes write their connection patch: beside the extract.
+
+    ``data/osm/<name>.osm`` → ``data/osm/<name>.splits.con.xml``; a bbox
+    download (``<workdir>/net/extract.osm``) → ``<workdir>/net/extract.splits.con.xml``.
+    The patch lives with the map it corrects, so it is inside the data roots
+    whenever the extract is and moves with it.
+    """
+    extract = Path(osm_file)
+    return extract.with_name(extract.stem + SPLIT_PATCH_SUFFIX)
+
+
 #: Largest perpendicular distance [m] a detector station may sit from the
 #: corridor centreline and still be placed on it. Beyond it the station
 #: belongs to the opposite carriageway, a frontage road or another route;
@@ -572,6 +631,18 @@ class CorridorBuild:
             ``max_station_offset_m`` — they sit on another carriageway or
             another road and must not be compared against this corridor.
         max_station_offset_m: The offset threshold used [m].
+        split_audit: Every exit leaving the chain audited against the
+            extract, for the network the scenario will compile (after the
+            split fixes, when any were applied).
+        split_audit_before_fixes: The audit the fixes were derived from;
+            ``None`` when no fix was applied (the two audits are then one).
+        split_fixes_applied: Defects the fixes addressed (``wrong_side`` by
+            the connection patch, ``added_lane_wrong_side`` by
+            ``--ramps.unset``); 0 when none were needed or fixes were off.
+        split_fixes: Whether fixes were asked for (``corridor_from_bbox``'s
+            ``split_fixes``); the summary says ``off`` when not.
+        split_patch_file: The connection patch written, when a
+            ``wrong_side`` finding needed one.
     """
 
     config: ScenarioConfig
@@ -590,6 +661,10 @@ class CorridorBuild:
     """Every exit leaving the chain, audited against the extract
     (:func:`microsim.split_audit.audit_splits`, docs/ONBOARDING_MNDOT.md §9):
     the side OSM draws it on versus the lanes the compiled net feeds it from."""
+    split_audit_before_fixes: tuple[SplitFinding, ...] | None = None
+    split_fixes_applied: int = 0
+    split_fixes: bool = True
+    split_patch_file: Path | None = None
 
     def to_yaml(self, path: str | Path) -> None:
         """Write the scenario YAML (``ScenarioConfig.to_yaml``)."""
@@ -598,6 +673,28 @@ class CorridorBuild:
     def split_defects(self) -> list[SplitFinding]:
         """The audited splits compiled on the wrong side (``wrong_side`` / ``added_lane_wrong_side``)."""
         return split_defects(self.split_audit)
+
+    @property
+    def ramp_guessing(self) -> bool:
+        """Whether the scenario compiles with ``--ramps.guess`` (``network.netconvert_extra``)."""
+        extra = getattr(self.config.network, "netconvert_extra", [])
+        return any(a == "--ramps.guess" or a.startswith("--ramps.guess=") for a in extra)
+
+    def applied_line(self) -> str:
+        """What the onboarding applied, in one line of the inventory.
+
+        ``ramp guessing on; split fixes: 2 applied, 0 remaining`` — the
+        guessing state, how many defects the fixes addressed and how many the
+        network the scenario compiles still has (``off`` when fixes were not
+        asked for, so a remaining defect is read as a choice, not a failure).
+        """
+        guessing = "on" if self.ramp_guessing else "off"
+        remaining = len(self.split_defects())
+        if self.split_fixes or self.split_fixes_applied:
+            fixes = f"{self.split_fixes_applied} applied, {remaining} remaining"
+        else:
+            fixes = f"off, {remaining} remaining"
+        return f"ramp guessing {guessing}; split fixes: {fixes}"
 
     def _lane_scan(
         self, stations: Sequence[Mapping[str, Any]]
@@ -785,8 +882,17 @@ class CorridorBuild:
             + f"  [{_ramp_discovery_note(r)}]"
             for r in self.ramps
         ]
+        if self.split_audit_before_fixes is not None:
+            lines += format_split_table(self.split_audit_before_fixes, label="splits before fixes")
         if self.split_audit:
             lines += format_split_table(self.split_audit)
+        lines.append(f"  applied   {self.applied_line()}")
+        if self.split_fixes_applied:
+            network = self.config.network
+            detail = f"netconvert_extra {' '.join(getattr(network, 'netconvert_extra', []))}"
+            if self.split_patch_file is not None:
+                detail = f"patch {self.split_patch_file}; " + detail
+            lines.append(f"            {detail}; network re-imported and audited again")
         if self.station_x or self.stations_rejected:
             total = len(self.station_x) + len(self.stations_rejected)
             lines.append(
@@ -881,6 +987,9 @@ def corridor_from_bbox(
     replicates: int | None = None,
     netconvert_extra: Sequence[str] = (),
     max_chain_m: float | None = None,
+    ramp_guessing: bool = True,
+    split_fixes: bool = True,
+    split_patch_path: str | Path | None = None,
 ) -> CorridorBuild:
     """Onboard any freeway corridor from a bounding box (CLAUDE.md §3.2.4).
 
@@ -901,9 +1010,20 @@ def corridor_from_bbox(
        scenario as **zero-flow placeholders** (:func:`_ramp_placeholder`).
     5. **Scenario** — :func:`scenario_from_osm` re-imports with the corridor
        and ramp edges pinned, checks the chain against the compiled net and
-       returns the validated config.
+       returns the validated config. The import carries ramp guessing
+       (:data:`RAMP_GUESSING_OPTIONS`) unless ``ramp_guessing=False``:
+       without it an entrance the map draws without an acceleration lane
+       starves (docs/ONBOARDING_MNDOT.md §6).
     6. **Geometry** — chain length, lane profile, ramp positions and each
        station's linear x are measured on that compiled net.
+    7. **Split audit and fixes** — every exit leaving the chain is audited
+       for the side it was compiled on (:func:`microsim.split_audit.audit_splits`);
+       with ``split_fixes`` (the default) a ``wrong_side`` /
+       ``added_lane_wrong_side`` finding is fixed by :func:`apply_split_fixes`
+       — the connection patch written beside the extract
+       (:func:`default_split_patch_path`, or ``split_patch_path``) and
+       ``--ramps.unset`` added — the network re-imported and audited again.
+       Both audits are kept (``split_audit_before_fixes``, ``split_audit``).
 
     What comes back is runnable, not calibrated: the demand is whatever
     ``inflow`` says, the ramps carry nothing, and the fleet is the
@@ -944,6 +1064,15 @@ def corridor_from_bbox(
         warmup_s: Metrics warm-up [s]; default: the ``corridor_10km`` value
             when it fits inside ``duration_s``.
         replicates: Seeded replicates; default: the ``corridor_10km`` value.
+        netconvert_extra: The caller's own ``netconvert`` options, recorded
+            in the scenario; the ramp-guessing defaults are added in front
+            of them unless already given (:func:`with_ramp_guessing`).
+        max_chain_m: Drop chain edges starting beyond this length [m].
+        ramp_guessing: Compile with :data:`RAMP_GUESSING_OPTIONS` (default).
+        split_fixes: Apply the split audit's remedies and re-audit (default);
+            ``False`` reports the defects and leaves the network as compiled.
+        split_patch_path: Where the connection patch goes when a
+            ``wrong_side`` finding needs one; default: beside the extract.
 
     Returns:
         The :class:`CorridorBuild`.
@@ -995,6 +1124,7 @@ def corridor_from_bbox(
             x += float(raw_net.getEdge(edge_id).getLength())
         chain = kept
     candidates = ramps_for_chain(raw_net, chain) if discover_ramps else []
+    extra = with_ramp_guessing(netconvert_extra, ramp_guessing)
 
     extract = Path(osm_file) if osm_file is not None else net_dir / "extract.osm"
     cfg = scenario_from_osm(
@@ -1012,7 +1142,7 @@ def corridor_from_bbox(
         av=av,
         warmup_s=warmup_s,
         replicates=replicates,
-        netconvert_extra=netconvert_extra,
+        netconvert_extra=extra,
     )
     recorded = _record_path(extract)
     if recorded != cfg.network.osm_file:
@@ -1048,7 +1178,7 @@ def corridor_from_bbox(
         point = x_of_lonlat(net, chain, lon, lat)
         target = accepted if point.offset_m <= max_station_offset_m else rejected
         target[station_id] = point
-    return CorridorBuild(
+    build = CorridorBuild(
         config=cfg,
         chain_edges=tuple(chain),
         length_m=chain_length_m(net, chain),
@@ -1065,7 +1195,15 @@ def corridor_from_bbox(
         # a lane count can be right at every station while an exit is fed from
         # the wrong side of the road, and that traps through traffic.
         split_audit=tuple(audit_splits(net_path, extract, cfg.network.corridor_edges)),
+        split_fixes=split_fixes,
     )
+    if split_fixes and build.split_defects():
+        # The remedy is applied and the network re-imported before the build
+        # goes out, so the scenario names what it will compile; the audit it
+        # was derived from stays on the build.
+        patch = Path(split_patch_path) if split_patch_path else default_split_patch_path(extract)
+        build = apply_split_fixes(build, patch)
+    return build
 
 
 def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> CorridorBuild:
@@ -1090,7 +1228,10 @@ def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> Corridor
     Returns:
         ``build`` unchanged when the audit found no defect; otherwise a new
         build with the fixed config, the re-imported network's lane profile
-        and length, and the post-fix audit. Ramp and station positions are
+        and length, and the post-fix audit, with the audit it started from
+        as ``split_audit_before_fixes`` (the first one, when applied twice),
+        the defects addressed added to ``split_fixes_applied`` and the patch
+        written as ``split_patch_file``. Ramp and station positions are
         kept: the fixes change lanes and connections, not the chain's length.
 
     Raises:
@@ -1150,4 +1291,11 @@ def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> Corridor
         lanes_profile=tuple(lanes_profile(compiled, chain)),
         net_path=bundle.net_path,
         split_audit=tuple(audit_splits(bundle.net_path, build.osm_file, net.corridor_edges)),
+        split_audit_before_fixes=(
+            build.split_audit
+            if build.split_audit_before_fixes is None
+            else build.split_audit_before_fixes
+        ),
+        split_fixes_applied=build.split_fixes_applied + len(defects),
+        split_patch_file=patch_path if patch_xml else build.split_patch_file,
     )

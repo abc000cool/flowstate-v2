@@ -1623,6 +1623,8 @@ async def create_corridor(
     duration_s: Annotated[float, Form()] = 14400.0,
     warmup_s: Annotated[float, Form()] = 1800.0,
     source: Annotated[str | None, Form()] = None,
+    ramp_guessing: Annotated[bool, Form()] = True,
+    split_fixes: Annotated[bool, Form()] = True,
 ) -> CorridorOut:
     """Onboard a freeway corridor from a bounding box and a detector export.
 
@@ -1649,8 +1651,14 @@ async def create_corridor(
     the ``stations`` CSV (``station,label,lat,lon,lanes,kind``). Optional:
     ``idm_calibration`` (a driver population, a server-side path confined to
     the allow-listed roots), ``window_s`` (300), ``t0_local`` (06:00),
-    ``duration_s`` (14400), ``warmup_s`` (1800) and ``source`` (provenance
-    recorded on the observations artifact).
+    ``duration_s`` (14400), ``warmup_s`` (1800), ``source`` (provenance
+    recorded on the observations artifact), and two opt-outs of the network
+    stage's defaults (2026-09-24, additive): ``ramp_guessing`` (``true``:
+    compile with ``--ramps.guess --ramps.ramp-length 250``, so entrances the
+    map draws without an acceleration lane do not starve) and ``split_fixes``
+    (``true``: a split audit defect is fixed — the connection patch written
+    beside the installed extract as ``<name>.splits.con.xml``, ``--ramps.unset``
+    added — and the network re-audited; the summary carries both audits).
 
     Refusals: HTTP 422 for a malformed name, bbox, bearing, window/span or
     ``column_map``, and for an ``idm_calibration`` outside the roots; HTTP
@@ -1750,6 +1758,8 @@ async def create_corridor(
                 "duration_s": float(duration_s),
                 "warmup_s": float(warmup_s),
                 "source": source,
+                "ramp_guessing": bool(ramp_guessing),
+                "split_fixes": bool(split_fixes),
             },
             detectors_path,
             stations_path,

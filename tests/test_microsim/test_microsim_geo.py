@@ -359,6 +359,9 @@ def build(tmp_path_factory, osm_file):
         {"station": "S2", "lat": LATS[4], "lon": LONS[4]},
         {"station": "S9", "lat": LATS[3] - 0.0018, "lon": LONS[3]},  # ~200 m off
     ]
+    # ramp_guessing=False: these tests pin the chain and lane profile the map
+    # draws; the default (ramp guessing on, since 2026-09-24) splits the edges
+    # at the ramps and is pinned by ``test_the_default_compiles_with_ramp_guessing``.
     return corridor_from_bbox(
         "fixture_eb",
         BBOX,
@@ -369,10 +372,53 @@ def build(tmp_path_factory, osm_file):
         stations=stations,
         duration_s=60.0,
         seed=11,
+        ramp_guessing=False,
     )
 
 
 class TestCorridorFromBbox:
+    def test_the_default_compiles_with_ramp_guessing(self, tmp_path, osm_file, build):
+        """Ramp guessing is on unless asked off: the fixture's two ramps each
+        gain a 250 m lane, the chain carries netconvert's split pieces, the
+        scenario records the options, and the audit finds nothing to fix."""
+        guessed = corridor_from_bbox(
+            "fixture_eb_guessed",
+            BBOX,
+            90.0,
+            inflow=0.5,
+            workdir=tmp_path / "guessed",
+            osm_file=osm_file,
+            duration_s=60.0,
+        )
+        assert guessed.ramp_guessing and not build.ramp_guessing
+        assert guessed.config.network.netconvert_extra == [
+            "--ramps.guess",
+            "--ramps.ramp-length",
+            "250",
+        ]
+        assert build.config.network.netconvert_extra == []
+        # the scenario keeps the load-time ids; the compiled chain has the pieces
+        assert guessed.config.network.corridor_edges == EB_EDGES
+        assert guessed.chain_edges == (
+            "100",
+            "100-AddedOffRampEdge",
+            "101",
+            "102-AddedOnRampEdge",
+            "102",
+        )
+        assert [lanes for _, _, lanes in guessed.lanes_profile] == [3, 4, 3, 4, 3]
+        for x0, x1, lanes in guessed.lanes_profile:
+            if lanes == 4:
+                assert x1 - x0 == pytest.approx(250.0, abs=2.0)
+        assert guessed.split_defects() == [] and guessed.split_fixes_applied == 0
+        assert guessed.split_audit_before_fixes is None
+        assert guessed.applied_line() == "ramp guessing on; split fixes: 0 applied, 0 remaining"
+        assert build.applied_line() == "ramp guessing off; split fixes: 0 applied, 0 remaining"
+        assert "  applied   ramp guessing on; split fixes: 0 applied, 0 remaining" in (
+            guessed.summary()
+        )
+        assert not list((tmp_path / "guessed" / "net").glob("*.splits.con.xml"))
+
     def test_config_validates_and_carries_the_discovered_chain(self, build):
         cfg = build.config
         assert isinstance(cfg, ScenarioConfig) and isinstance(cfg.network, OSMNetwork)
@@ -439,6 +485,7 @@ class TestCorridorFromBbox:
             inflow=0.4,
             workdir=tmp_path / "w",
             duration_s=60.0,
+            ramp_guessing=False,  # the westbound chain as drawn, no split pieces
         )
         assert calls == [BBOX]  # one download; the pruning import reuses the extract
         assert built.chain_edges == tuple(WB_EDGES)
@@ -523,7 +570,30 @@ class TestOnboardCLILaneCheck:
             str(osm_file),
             "--duration-s",
             "60",
+            # the map as drawn: S2 sits at the on-ramp gore, where the default
+            # ramp guessing adds the acceleration lane the next test is about
+            "--no-ramp-guessing",
         ]
+
+    def test_the_default_exempts_the_guessed_acceleration_lane(self, tmp_path, osm_file, capsys):
+        """Under the default (ramp guessing on) S2 reads four compiled lanes
+        against three in the inventory — the acceleration lane the build
+        itself asked for — which the block names and the failure flag exempts."""
+        cli = _load_cli()
+        stations = self._stations_csv(tmp_path / "stations.csv", lanes_at_s2=3)
+        argv = [a for a in self._argv(tmp_path, osm_file, stations) if a != "--no-ramp-guessing"]
+        code = cli.main([*argv, "--fail-on-lane-mismatch"])
+        out = capsys.readouterr().out
+        assert code == 0, out
+        assert "applied   ramp guessing on; split fixes: 0 applied, 0 remaining" in out
+        assert "lanes vs inventory: 1 of 2 mainline stations match" in out
+        assert "map 4 lanes, inventory 3 lanes  (acceleration lane added by ramp guessing)" in out
+        assert "FAIL" not in out
+        # ... unless asked to count it
+        assert cli.main([*argv, "--fail-on-lane-mismatch", "--strict-lanes"]) == (
+            cli.LANE_MISMATCH_EXIT
+        )
+        assert "S2 (map 4, inventory 3)" in capsys.readouterr().out
 
     def test_matching_inventory_prints_the_block_and_exits_zero(self, tmp_path, osm_file, capsys):
         cli = _load_cli()

@@ -23,7 +23,11 @@ Stages (``api.schemas.CORRIDOR_STAGES``), each recorded on the row so
 ``network``
     :func:`microsim.scenarios.corridor_from_bbox`: mainline chain by bearing,
     lane profile, discovered ramps, and each station's position along the
-    chain.
+    chain. Compiled with ramp guessing and the split audit's fixes applied
+    unless the request's ``ramp_guessing`` / ``split_fixes`` say otherwise
+    (2026-09-24); a connection patch the fixes need is installed beside the
+    extract (``<name>.splits.con.xml``, :func:`split_patch_path`) and, like
+    the extract, removed again when a later stage fails.
 ``observations``
     The uploaded tidy detector CSV
     (:func:`calibration.loaders.detector_csv.load_detector_csv`) aggregated
@@ -40,12 +44,13 @@ Stages (``api.schemas.CORRIDOR_STAGES``), each recorded on the row so
     is selectable beside the shipped corridors.
 
 **A name is free again after a failure.** The preset and the extract are the
-two files this job writes outside its own directory, and they are what
-``POST /corridors`` refuses a name over (HTTP 409). A job that fails removes
-the ones *it* installed, never one it found, so a failed onboarding can be
-retried under its own name with no operator cleanup. A crash hard enough to
-skip that cleanup (SIGKILL) leaves them behind: delete
-``scenarios/<name>.yaml`` and the ``osm/<name>.osm`` under the data root, then
+two files this job writes outside its own directory that ``POST /corridors``
+refuses a name over (HTTP 409); the split patch beside the extract is the
+third file. A job that fails removes the ones *it* installed, never one it
+found, so a failed onboarding can be retried under its own name with no
+operator cleanup. A crash hard enough to skip that cleanup (SIGKILL) leaves
+them behind: delete ``scenarios/<name>.yaml`` and the ``osm/<name>.osm``
+(with its ``osm/<name>.splits.con.xml``, if any) under the data root, then
 retry.
 
 **What this is not.** Onboarding is not validation. The job writes a corridor
@@ -129,6 +134,19 @@ def extract_path(name: str, settings: Settings, results: Path | None = None) -> 
     """
     root = settings.data_dir or (results if results is not None else settings.results_dir)
     return root / "osm" / f"{name}.osm"
+
+
+def split_patch_path(name: str, settings: Settings, results: Path | None = None) -> Path:
+    """Where the split fixes' connection patch is written: beside the extract.
+
+    ``<data root>/osm/<name>.splits.con.xml`` (:func:`extract_path`'s
+    directory, the pattern of :func:`microsim.scenarios.default_split_patch_path`),
+    so the scenario's ``patch_files`` entry lies inside the data roots the
+    runner confines it to, exactly as ``osm_file`` does.
+    """
+    from microsim.scenarios import default_split_patch_path
+
+    return default_split_patch_path(extract_path(name, settings, results))
 
 
 def _install_atomic(source: Path, dest: Path) -> Path:
@@ -294,6 +312,13 @@ def _run_onboarding(
     # -- network ----------------------------------------------------------
     store.set_corridor_stage(corridor_id, "network")
     station_rows = _read_station_rows(Path(row["stations_path"]))
+    # Rows created before 2026-09-24 carry neither key: the defaults apply.
+    split_fixes = bool(params.get("split_fixes", True))
+    patch_path = split_patch_path(name, settings, results)
+    if split_fixes:
+        # Registered before the build: a fix that wrote the patch and then
+        # failed on the re-import must not leave it beside the extract.
+        installed.append(patch_path)
     build = corridor_from_bbox(
         name,
         bbox,
@@ -305,6 +330,9 @@ def _run_onboarding(
         seed=int(params.get("seed") or DEFAULT_SEED),
         osm_file=osm_path,
         replicates=int(params.get("replicates") or DEFAULT_REPLICATES),
+        ramp_guessing=bool(params.get("ramp_guessing", True)),
+        split_fixes=split_fixes,
+        split_patch_path=patch_path,
     )
     _write_station_table(corridor_dir / STATIONS_FILENAME, station_rows, build)
 
@@ -504,7 +532,21 @@ def _summary(
             for m in lane_mismatches
         ],
         # The split audit (docs/ONBOARDING_MNDOT.md §9) beside the lane check:
-        # reported, never enforced, its remedy stated per finding.
+        # the one the scenario compiles, the one the fixes were derived from
+        # (when any were applied), and what was applied — never enforced.
         "split_audit": [f.as_dict() for f in build.split_audit],
+        "split_audit_before_fixes": (
+            None
+            if build.split_audit_before_fixes is None
+            else [f.as_dict() for f in build.split_audit_before_fixes]
+        ),
+        "ramp_guessing": build.ramp_guessing,
+        "split_fixes": build.split_fixes,
+        "split_fixes_applied": build.split_fixes_applied,
+        "split_defects_remaining": len(build.split_defects()),
+        "split_patch_file": (
+            None if build.split_patch_file is None else str(build.split_patch_file)
+        ),
+        "applied": build.applied_line(),
         "lines": [build.summary(stations), *result.summary],
     }

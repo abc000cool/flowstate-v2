@@ -1167,6 +1167,49 @@ verdict on a ramp-split piece (`…-AddedOffRampEdge`) is patched by its
 load-time id and should be re-audited after `--ramps.unset`; an exit whose
 link the extract does not carry is `unknown`.
 
+**Onboarding defaults: ramp guessing and split fixes — 2026-09-24.** Every
+onboarding (`microsim.scenarios.corridor_from_bbox`, so
+`scripts/onboard_corridor.py` and `POST /corridors`) compiles with
+`--ramps.guess --ramps.ramp-length 250` (`RAMP_GUESSING_OPTIONS`, the MnDOT
+values) unless told not to: `corridor_from_bbox(ramp_guessing=False)`,
+`--no-ramp-guessing`, form field `ramp_guessing=false` (additive, default
+`true`). `with_ramp_guessing(extra, enabled)` puts the defaults in front of
+the caller's `netconvert_extra` and skips each option the caller already
+gave (as `--opt` or `--opt=value`), so nothing reaches `netconvert` twice
+and a caller's own `--ramps.ramp-length` wins. After the split audit a
+`wrong_side` / `added_lane_wrong_side` finding is fixed by default
+(`split_fixes=True`, `--no-split-fixes`, form field `split_fixes=false`):
+`apply_split_fixes` writes the connection patch beside the extract at
+`default_split_patch_path(osm_file)` = `<extract stem>.splits.con.xml`
+(`data/osm/<name>.osm` → `data/osm/<name>.splits.con.xml`; a bbox download
+→ `<workdir>/net/extract.splits.con.xml`; the API job →
+`<data root>/osm/<name>.splits.con.xml` beside the installed extract,
+`api.onboarding_jobs.split_patch_path`, registered for the failure cleanup
+like the extract; `--write-split-patch PATH` / `split_patch_path=` choose
+another place, refused together with `--no-split-fixes`, exit 2), adds it to
+`patch_files` and `--ramps.unset <edge>` to `netconvert_extra`, re-imports
+and audits again. `CorridorBuild` keeps both audits — `split_audit` is the
+network the scenario compiles, `split_audit_before_fixes` the one the fixes
+were derived from (`None` when none were applied) — with
+`split_fixes_applied`, `split_fixes`, `split_patch_file` and the
+`ramp_guessing` property; `applied_line()` is the inventory's
+`applied   ramp guessing on; split fixes: 2 applied, 0 remaining` (`off, N
+remaining` when fixes were not asked for); `summary()` prints `splits before
+fixes`, `splits`, then that line. `--fail-on-split-defect` exits 4 on the
+final audit. `CorridorSummaryOut` gains, additively, `split_audit_before_fixes`
+(`null` when no fix was applied), `ramp_guessing`, `split_fixes`,
+`split_fixes_applied`, `split_defects_remaining`, `split_patch_file` and
+`applied`; corridors onboarded before this date read as `ramp_guessing:
+false`, `split_fixes_applied: 0`. On the committed I-94 WB extract under the
+defaults: 8 exits, 2 defects before the fixes, 0 after, `netconvert_extra`
+`--ramps.guess --ramps.ramp-length 250 --ramps.unset 1001426896`, the
+generated patch's connection lines equal to the committed file's; on the
+synthetic API fixture, five chain pieces with two 250 m guessed lanes and no
+defect (`tests/test_microsim/test_microsim_split_audit.py`,
+`tests/test_scripts/test_onboard_corridor.py`, `tests/test_api/test_corridors.py`).
+The dashboard's Onboard form has no netconvert options in its Advanced
+section and is unchanged; the API defaults apply to it.
+
 **`MetricsOut.merge_diagnostics` and the dashboard's diagnostics — 2026-09-24.**
 `GET /api/v1/runs/{id}/metrics` gains the additive field `merge_diagnostics`
 (`MergeDiagnosticsOut`, `null` by default): the ramp-meter and weaving-section

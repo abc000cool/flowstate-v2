@@ -88,6 +88,26 @@ command of the table above (no `--ramps.unset`, no patch) the audit finds the
 two §9 defects and the fixes it writes leave none; the committed scenario
 already carries them.
 
+*Defaults (2026-09-24, later the same day).* Both are now the default, so the
+table's command no longer needs `--netconvert-extra` or a patch flag: every
+onboarding (`corridor_from_bbox`, the CLI, `POST /corridors`) compiles with
+`--ramps.guess --ramps.ramp-length 250` (`microsim.scenarios.RAMP_GUESSING_OPTIONS`;
+options given in `--netconvert-extra` are kept and never duplicated) and,
+when the audit finds a `wrong_side` / `added_lane_wrong_side` exit, applies
+the fixes — the connection patch written beside the extract as
+`<extract stem>.splits.con.xml` (the committed
+`data/osm/mndot_i94_wb_stpaul.splits.con.xml` follows that pattern;
+`--write-split-patch PATH` chooses another place), `--ramps.unset` added —
+re-imports and audits again. The inventory prints the audit the fixes were
+derived from (`splits before fixes`), the audit the scenario compiles
+(`splits`) and one line saying what was applied:
+`applied   ramp guessing on; split fixes: 2 applied, 0 remaining`. Opt-outs:
+`--no-ramp-guessing`, `--no-split-fixes` (`ramp_guessing=false`,
+`split_fixes=false` on the API form); `--fail-on-split-defect` judges the
+final audit. Re-onboarding this extract under the defaults: 8 exits audited,
+2 defects before the fixes, 0 after, the generated patch's connection lines
+equal to the committed file's (`tests/test_microsim/test_microsim_split_audit.py`).
+
 ### From the dashboard
 
 The three commands above (network, then demand, then a run and a report) are
@@ -366,7 +386,11 @@ n2-standard-32, ≈ $3.3.
    every station (`--fail-on-lane-mismatch` turns a disagreement into a
    failure), and since 2026-09-24 audits the side every exit is compiled on
    beside it (`--fail-on-split-defect`, `--write-split-patch`; §3, §9).
-   Still open: applying ramp guessing by default.
+   *2026-09-24, done:* ramp guessing (`--ramps.guess --ramps.ramp-length 250`)
+   and the split fixes are the defaults of every onboarding path;
+   `--no-ramp-guessing` / `--no-split-fixes` (CLI) and `ramp_guessing` /
+   `split_fixes` (API form) opt out; the inventory's `applied` line says
+   which ran (§3, "Defaults").
 2. Collector–distributor roads: the discovery captures the split as an
    off-ramp and misses the re-entry; the balance step carries the residual.
    A C-D road should become a parallel edge chain with its own ramps.

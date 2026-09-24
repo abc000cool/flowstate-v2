@@ -973,7 +973,28 @@ class CorridorSummaryOut(BaseModel):
     match)."""
     split_audit: list[CorridorSplitFindingOut] = Field(default_factory=list)
     """Every exit leaving the chain, audited for the side it was compiled on
-    (2026-09-24); a defect here is the map fault behind the I-94 WB lock."""
+    (2026-09-24); a defect here is the map fault behind the I-94 WB lock. The
+    audit of the network the scenario compiles — after the split fixes, when
+    any were applied."""
+    split_audit_before_fixes: list[CorridorSplitFindingOut] | None = None
+    """The audit the split fixes were derived from; ``null`` when no fix was
+    applied (the two audits are then one). Additive, 2026-09-24."""
+    ramp_guessing: bool = False
+    """Whether the network was compiled with ``--ramps.guess`` (the default
+    since 2026-09-24; ``false`` for corridors onboarded before, or opted
+    out)."""
+    split_fixes: bool = True
+    """Whether the split audit's fixes were asked for (``split_fixes`` on the
+    request)."""
+    split_fixes_applied: int = 0
+    """Defects the fixes addressed (patch + ``--ramps.unset``)."""
+    split_defects_remaining: int = 0
+    """Defects the final audit still carries."""
+    split_patch_file: str | None = None
+    """The connection patch written beside the extract, when a ``wrong_side``
+    finding needed one."""
+    applied: str = ""
+    """One line: ``ramp guessing on; split fixes: 2 applied, 0 remaining``."""
     lines: list[str] = Field(default_factory=list)
     """The same summary as plain text (``summary.txt`` in the bundle)."""
 

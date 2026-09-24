@@ -716,11 +716,18 @@ def split_patch_xml(findings: Iterable[SplitFinding], *, note: str = "") -> str:
     return "\n".join([head, "<connections>", *lines, "</connections>", ""])
 
 
-def format_split_table(findings: Sequence[SplitFinding]) -> list[str]:
-    """Plain-text lines for the onboarding inventory, one split per line."""
+def format_split_table(findings: Sequence[SplitFinding], *, label: str = "splits") -> list[str]:
+    """Plain-text lines for the onboarding inventory, one split per line.
+
+    Args:
+        findings: The audit to print.
+        label: Heading of the block — ``"splits"`` for the audit the scenario
+            will compile, ``"splits before fixes"`` for the one the fixes
+            were derived from.
+    """
     defects = split_defects(findings)
     lines = [
-        f"  splits ({len(findings)} exits audited against the extract; "
+        f"  {label} ({len(findings)} exits audited against the extract; "
         f"{len(defects)} defect{'s' if len(defects) != 1 else ''})"
     ]
     for f in findings:
