@@ -367,6 +367,19 @@ for V in head60 head60_scripted; do
     $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$D > logs/diag_${V}_100m_5min.txt" || say "mndot_${V}_diag failed; continuing"
 done
 
+# 10e. The seed that fell to 0.743 under the speed-aware acceptance (VM K, 2026-09-24, block 3;
+#     docs/ONBOARDING_MNDOT.md §11): seed index 4 of the weave scenario's spawn (677105600768189526,
+#     0.865 under VM J) — the first five replicates, so that seed runs with its trajectory kept, then
+#     the standstill maps (100 m x 5 min; 50 m x 1 min x lane over the whole corridor and run).
+stage mndot_weave_seed5 $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates 5 --procs "$PROCS" \
+  --out runs/${MNDOT}_weave_seed5/baseline --artifact artifacts/validation_${MNDOT}_weave_seed5.json \
+  --report-dir docs/reports/${MNDOT}_weave_seed5 --criteria-profile fhwa_tat3_2004 || say "mndot_weave_seed5 failed; continuing"
+stage mndot_weave_seed5_diag bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/baseline/*/677105600768189526 | head -1) && \
+  $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$D > logs/diag_seed5_100m_5min.txt && \
+  $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_seed.py.txt \$D > logs/diag_seed5_50m_1min_lanes.txt && \
+  for d in runs/${MNDOT}_weave_seed5/baseline/*/*/; do echo \$d; $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$d | tail -n 12; done > logs/diag_seed5_all_100m_5min.txt" || say "mndot_weave_seed5_diag failed; continuing"
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at

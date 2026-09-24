@@ -1,0 +1,36 @@
+# Standstill map of one run over the whole corridor and the whole run: 50 m x 1 min x lane.
+# Prints, per 5-min window, the stopped cells' extent per lane (mean v < 2 m/s, >= 10 samples),
+# the first minute a cell stops, and the queue's upstream-most stopped cell — the read that says
+# whether a lane stood at 0.0 m/s (a lock) or the queue merely reached the corridor's upstream end.
+import sys, numpy as np, pyarrow.parquet as pq
+run = sys.argv[1]; pf = pq.ParquetFile(f"{run}/trajectories.parquet")
+DX, DT = 50.0, 60.0
+print("schema", pf.schema_arrow.names, "rows", pf.metadata.num_rows, flush=True)
+acc = {}
+for i in range(pf.num_row_groups):
+    tb = pf.read_row_group(i, columns=["t", "x", "v", "lane"])
+    t = tb["t"].to_numpy(); x = tb["x"].to_numpy(); v = tb["v"].to_numpy(); ln = tb["lane"].to_numpy().astype(int)
+    key = ((t // DT).astype(np.int64) * 100000 + (x // DX).astype(np.int64)) * 10 + ln
+    u, inv = np.unique(key, return_inverse=True); s = np.bincount(inv, weights=v); c = np.bincount(inv)
+    for k, sv, cv in zip(u, s, c):
+        a = acc.setdefault(int(k), [0.0, 0]); a[0] += sv; a[1] += cv
+cells = {k: a[0] / a[1] for k, a in acc.items() if a[1] >= 10}
+stopped = sorted((k // 1000000, (k // 10) % 100000, k % 10, mv) for k, mv in cells.items() if mv < 2.0)
+if not stopped:
+    print("no stopped cell (mean v < 2 m/s) anywhere in the run"); sys.exit()
+first = {}
+for tb, xb, ln, mv in stopped:
+    first.setdefault((xb, ln), tb)
+print("first stopped minute per (x, lane), earliest 12:")
+for (xb, ln), tb in sorted(first.items(), key=lambda kv: kv[1])[:12]:
+    print(f"  t={tb:4d} min  x={xb*DX/1000:.2f} km lane {ln}")
+print("per 5-min window: stopped extent per lane [km], and the number of cells at 0.0 m/s (mean v < 0.05):")
+by_win = {}
+for tb, xb, ln, mv in stopped:
+    by_win.setdefault(tb // 5, []).append((xb, ln, mv))
+for w in sorted(by_win):
+    lanes = {}
+    for xb, ln, mv in by_win[w]:
+        d = lanes.setdefault(ln, [xb, xb, 0, 0]); d[0] = min(d[0], xb); d[1] = max(d[1], xb); d[2] += 1; d[3] += mv < 0.05
+    txt = "; ".join(f"lane {ln}: {d[0]*DX/1000:.2f}-{d[1]*DX/1000:.2f} km ({d[2]} cells, {d[3]} at 0.0)" for ln, d in sorted(lanes.items()))
+    print(f"  t={w*5:4d}-{w*5+5:4d} min: {txt}")
