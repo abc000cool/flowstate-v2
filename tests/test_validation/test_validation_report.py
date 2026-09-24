@@ -1076,3 +1076,72 @@ class TestStrategyComparison:
         assert len(rows) == 3  # header + two configurations
         assert all("Δ" not in cell for key in rows for cell in rows[key][1:])
         assert "no unambiguous reference to subtract" in text
+
+
+class TestPrecomputedInputs:
+    """The battery hands the report its per-replicate numbers and one figure run."""
+
+    X_REF = 1000.0
+    SPAN = (0.0, 2000.0)
+
+    def test_only_the_listed_trajectory_is_read(self, micro_run_set: Path, tmp_path: Path):
+        """With metrics and wave readings supplied for every run and one figure
+        run, the other replicate's trajectory can be gone (pruned) and every
+        table row is what a full read produces."""
+        from validation.fields import speed_field
+        from validation.metrics import compute_metrics
+
+        root = micro_run_set / "cafe01234567"
+        first, second = root / "1", root / "2"
+        full = tmp_path / "full" / "report.md"
+        generate_report(micro_run_set, full, x_ref=self.X_REF, span=self.SPAN)
+
+        det = CriteriaProfile().wave_detector
+        metrics = {}
+        readings = {}
+        for run_dir in (first, second):
+            metrics[run_dir] = compute_metrics(run_dir, x_ref=self.X_REF, span=self.SPAN)
+            traj = pd.read_parquet(run_dir / "trajectories.parquet", columns=["t", "x", "v"])
+            field = speed_field(traj, dt_bin=det.dt_bin_s, dx_bin=det.dx_bin_m)
+            readings[run_dir] = det.measure(field).speed_kmh
+        (second / "trajectories.parquet").unlink()
+
+        out = tmp_path / "first" / "report.md"
+        generate_report(
+            micro_run_set,
+            out,
+            x_ref=self.X_REF,
+            span=self.SPAN,
+            metrics_by_run=metrics,
+            wave_readings_by_run=readings,
+            figure_runs=[str(first)],
+        )
+        pngs = sorted(p.name for p in out.parent.glob("speed_contour_*.png"))
+        assert pngs == ["speed_contour_00_seed_1.png"]
+
+        def rows(text: str) -> list[str]:
+            return [line for line in text.splitlines() if line.startswith("|")]
+
+        assert rows(out.read_text()) == rows(full.read_text())
+
+    def test_a_run_missing_from_the_mappings_is_measured(self, micro_run_set: Path, tmp_path: Path):
+        """A partial mapping covers only its runs; the rest are read as before."""
+        from validation.metrics import compute_metrics
+
+        first = micro_run_set / "cafe01234567" / "1"
+        full = tmp_path / "full" / "report.md"
+        generate_report(micro_run_set, full, x_ref=self.X_REF, span=self.SPAN)
+        out = tmp_path / "partial" / "report.md"
+        generate_report(
+            micro_run_set,
+            out,
+            x_ref=self.X_REF,
+            span=self.SPAN,
+            metrics_by_run={first: compute_metrics(first, x_ref=self.X_REF, span=self.SPAN)},
+        )
+        assert len(list(out.parent.glob("speed_contour_*.png"))) == 2
+
+        def rows(text: str) -> list[str]:
+            return [line for line in text.splitlines() if line.startswith("|")]
+
+        assert rows(out.read_text()) == rows(full.read_text())

@@ -14,27 +14,52 @@ and the same number in an artifact were computed by two copies of the code.
 Everything in this module reads a replicate directory as written by
 ``microsim.runner.run_micro`` (docs/CONTRACTS.md §3): ``meta.json`` plus
 ``trajectories.parquet``.
+
+:func:`analyse_replicate` is the whole per-replicate measurement (metrics,
+observed scores, the profile detector's wave speed, insertion) and writes the
+two per-seed files the battery re-scores from; :func:`analyse_replicates`
+runs it over a run set in a spawn process pool. It lives here rather than in
+the script because a spawn worker must be importable in the child, and the
+script is loaded by path. Each replicate's trajectory is read by three
+functions in one process, so the post-run phase of a 20-seed corridor battery
+(1.15 GB per trajectory, about 5 min per replicate) is bounded by the pool
+size, not by the replicate count: the 2026-09-24 cloud round spent 100 min
+scoring in one process while 31 CPUs idled.
 """
 
 from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+import multiprocessing
+import time
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Final
 
 import numpy as np
 import pandas as pd
 
+from validation.criteria import CriteriaProfile
 from validation.fields import speed_field
-from validation.metrics import warmup_from_meta
+from validation.metrics import Metrics, compute_metrics, warmup_from_meta
 from validation.observed import ObservedCorridor, ObservedScores, score_run_against_observed
 from validation.waves import WaveDetector
 
 #: Trajectory columns every comparison here needs (contract §3).
 TRAJECTORY_COLUMNS: tuple[str, ...] = ("t", "veh_id", "x", "v")
+
+#: Per-replicate files :func:`analyse_replicate` writes beside the run
+#: artifacts (docs/CONTRACTS.md, "Corridor battery artifact").
+METRICS_FILE: Final[str] = "metrics.json"
+SCORES_FILE: Final[str] = "observed_scores.json"
+
+#: Default cap on the scoring pool. One replicate's ``(t, veh_id, x, v)``
+#: frame of a 1.15 GB trajectory is several GB in pandas, so the pool is
+#: sized for memory, not for the CPU count.
+DEFAULT_SCORE_PROCS: Final[int] = 6
 
 #: Dimensionless fraction → percent (not an SI conversion; kept in one place
 #: so no bare ``* 100`` appears in the verdict text).
@@ -457,3 +482,215 @@ def mean_finite(values: Sequence[float]) -> float:
     """
     finite = [float(v) for v in values if math.isfinite(float(v))]
     return float(np.mean(finite)) if finite else math.nan
+
+
+def json_safe(obj: object) -> object:
+    """Recursively replace non-finite floats with ``None`` (JSON has no NaN)."""
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list | tuple):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    return obj
+
+
+@dataclass(frozen=True)
+class ReplicateAnalysis:
+    """Everything the battery measures on one completed replicate.
+
+    Attributes:
+        metrics: The standard metric set (:func:`validation.metrics.compute_metrics`).
+        scores: The replicate against the corridor's observations.
+        wave_speed_kmh: The criteria profile detector's backward wave speed
+            [km/h] (:func:`replicate_wave_speed_kmh`); NaN = no front.
+        insertion: Planned vs departed vehicles (:func:`insertion_stats`).
+    """
+
+    metrics: Metrics
+    scores: ObservedScores
+    wave_speed_kmh: float
+    insertion: InsertionStats
+
+
+def analyse_replicate(
+    run_dir: str | Path,
+    observed: ObservedCorridor,
+    *,
+    profile: CriteriaProfile,
+    x_ref: float,
+    span: tuple[float, float],
+    x_offset_m: float,
+) -> ReplicateAnalysis:
+    """Measure one replicate and write its per-seed files.
+
+    Writes :data:`METRICS_FILE` (metrics, the criterion wave speed and its
+    detector, ``x_ref``/``span``, insertion) and :data:`SCORES_FILE` (the
+    :class:`validation.observed.ObservedScores`) into ``run_dir``, so a
+    finished battery can be re-scored (:func:`load_replicate_analysis`)
+    without re-simulating. The trajectory is read three times (metrics,
+    scores, wave speed) — the reads are cheap beside the binning and the
+    groupbys, and one process per replicate is the unit of parallelism.
+
+    Args:
+        run_dir: Replicate directory.
+        observed: The corridor's observations.
+        profile: Criteria profile (its detector measures the wave speed).
+        x_ref: Throughput cross-section [m], trajectory coordinates.
+        span: Travel-time span [m], trajectory coordinates.
+        x_offset_m: Simulation ``x`` of the observed origin [m].
+
+    Returns:
+        The replicate's :class:`ReplicateAnalysis`.
+    """
+    path = Path(run_dir)
+    metrics = compute_metrics(path, x_ref=x_ref, span=span)
+    scores = score_replicate(path, observed, x_offset_m=x_offset_m)
+    wave_speed = replicate_wave_speed_kmh(path, profile.wave_detector)
+    insertion = insertion_stats(load_meta(path))
+    (path / METRICS_FILE).write_text(
+        json.dumps(
+            json_safe(
+                {
+                    "metrics": asdict(metrics),
+                    "criterion_wave_speed_kmh": wave_speed,
+                    "criterion_detector": profile.wave_detector.name,
+                    "x_ref_m": x_ref,
+                    "span_m": list(span),
+                    "insertion": insertion.to_dict(),
+                }
+            ),
+            indent=2,
+            allow_nan=False,
+        )
+    )
+    (path / SCORES_FILE).write_text(
+        json.dumps(json_safe(scores.to_dict()), indent=2, allow_nan=False)
+    )
+    return ReplicateAnalysis(
+        metrics=metrics, scores=scores, wave_speed_kmh=wave_speed, insertion=insertion
+    )
+
+
+def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
+    """Re-read one replicate's stored per-seed files (``--criteria-only``).
+
+    The insertion stats are re-read from ``meta.json`` rather than from the
+    stored ``metrics.json`` block: ``meta.json`` is the completion marker and
+    is never pruned, so there is one source for these counters and no way for
+    the stored copy to be the one a reader sees.
+
+    Args:
+        run_dir: Replicate directory holding the files
+            :func:`analyse_replicate` wrote.
+
+    Returns:
+        The stored :class:`ReplicateAnalysis` (NaN restored from ``null``).
+
+    Raises:
+        FileNotFoundError: The replicate was never analysed.
+    """
+    path = Path(run_dir)
+    for name in (METRICS_FILE, SCORES_FILE):
+        if not (path / name).is_file():
+            raise FileNotFoundError(
+                f"{path / name} is missing; run the battery without --criteria-only first"
+            )
+    stored = json.loads((path / METRICS_FILE).read_text())
+    raw = dict(stored["metrics"])
+    for key, value in raw.items():
+        if value is None:
+            raw[key] = math.nan
+    wave = stored.get("criterion_wave_speed_kmh")
+    scores = ObservedScores.from_dict(json.loads((path / SCORES_FILE).read_text()))
+    return ReplicateAnalysis(
+        metrics=Metrics(**raw),
+        scores=scores,
+        wave_speed_kmh=math.nan if wave is None else float(wave),
+        insertion=insertion_stats(load_meta(path)),
+    )
+
+
+#: One scoring-pool payload: ``(run_dir, observed, profile, x_ref, span, x_offset_m)``.
+_AnalysePayload = tuple[str, ObservedCorridor, CriteriaProfile, float, tuple[float, float], float]
+
+
+def _analyse_worker(payload: _AnalysePayload) -> ReplicateAnalysis:
+    """Spawn-pool worker: :func:`analyse_replicate` on one payload."""
+    run_dir, observed, profile, x_ref, span, x_offset_m = payload
+    return analyse_replicate(
+        run_dir, observed, profile=profile, x_ref=x_ref, span=span, x_offset_m=x_offset_m
+    )
+
+
+def analyse_replicates(
+    dirs: Sequence[Path],
+    observed: ObservedCorridor,
+    *,
+    profile: CriteriaProfile,
+    x_ref: float,
+    span: tuple[float, float],
+    x_offset_m: float,
+    n_procs: int = 1,
+    on_complete: Callable[[Path, ReplicateAnalysis, float], None] | None = None,
+) -> list[ReplicateAnalysis]:
+    """:func:`analyse_replicate` over a run set, in a spawn process pool.
+
+    Replicates are independent, so the result of each is the same whatever
+    the pool size and the per-seed files are byte-identical; only the
+    wall-clock changes. ``n_procs <= 1`` runs in the calling process (no
+    pool, no spawn cost — the CI path). Fresh spawned children never load
+    libsumo, so pandas reads the parquet files by path without the libarrow
+    clash documented on ``microsim.runner._write_parquet``; that is why the
+    scoring is not done inside the simulation worker.
+
+    Args:
+        dirs: Replicate directories, in seed order.
+        observed: The corridor's observations.
+        profile: Criteria profile.
+        x_ref: Throughput cross-section [m].
+        span: Travel-time span [m].
+        x_offset_m: Simulation ``x`` of the observed origin [m].
+        n_procs: Pool size; sized for memory (:data:`DEFAULT_SCORE_PROCS`),
+            since each worker holds one trajectory frame.
+        on_complete: Called as ``on_complete(run_dir, analysis, seconds)``
+            the moment a replicate is scored, in completion order, with the
+            seconds that replicate took (in-process) or the seconds since the
+            pool started (pool).
+
+    Returns:
+        One :class:`ReplicateAnalysis` per directory, in ``dirs`` order.
+
+    Raises:
+        RuntimeError: A pool worker died or a replicate raised; the message
+            names the directory.
+    """
+    payloads: list[_AnalysePayload] = [
+        (str(d), observed, profile, x_ref, span, x_offset_m) for d in dirs
+    ]
+    t0 = time.perf_counter()
+    if n_procs <= 1 or len(dirs) <= 1:
+        out: list[ReplicateAnalysis] = []
+        for d, payload in zip(dirs, payloads, strict=True):
+            t_rep = time.perf_counter()
+            analysis = _analyse_worker(payload)
+            out.append(analysis)
+            if on_complete is not None:
+                on_complete(d, analysis, time.perf_counter() - t_rep)
+        return out
+
+    results: dict[int, ReplicateAnalysis] = {}
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=min(n_procs, len(dirs)), mp_context=ctx) as ex:
+        futures = {ex.submit(_analyse_worker, p): i for i, p in enumerate(payloads)}
+        for fut in as_completed(futures):
+            index = futures[fut]
+            try:
+                results[index] = fut.result()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"scoring {dirs[index]} failed in the scoring pool: {type(exc).__name__}"
+                ) from exc
+            if on_complete is not None:
+                on_complete(dirs[index], results[index], time.perf_counter() - t0)
+    return [results[i] for i in range(len(dirs))]

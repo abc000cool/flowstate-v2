@@ -985,7 +985,11 @@ CI, replicates with a backward front), `metrics_ci` (per-metric mean/lo95/hi95
 `notes`. Each replicate directory also carries `metrics.json` and
 `observed_scores.json`, which `--criteria-only` re-scores from without
 re-simulating; trajectories are pruned to the first seed unless
-`--keep-trajectories`.
+`--keep-trajectories`. Since 2026-09-24 the per-seed files are written by
+`validation.battery.analyse_replicate` in a scoring pool (`--score-procs`),
+the report's speed contour is the first seed's only, and its per-replicate
+numbers come from the stored scoring, so the report needs no other seed's
+trajectory and `--criteria-only` regenerates it after pruning.
 
 ## Calibrated screening tier: FD provenance and macro options — 2026-09-23
 

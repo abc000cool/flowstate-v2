@@ -429,12 +429,31 @@ def _shared_span(reference: _Group) -> tuple[float, float] | None:
     return min(los), float(np.median(np.asarray(his, dtype=np.float64)))
 
 
+def _run_key(path: str | Path) -> Path:
+    """The key a caller-supplied per-run mapping is looked up by."""
+    return Path(path).resolve()
+
+
 def _fill_metrics(
-    groups: list[_Group], x_ref: float | None, span: tuple[float, float] | None
+    groups: list[_Group],
+    x_ref: float | None,
+    span: tuple[float, float] | None,
+    precomputed: Mapping[Path, Metrics] | None = None,
 ) -> None:
-    """Compute and aggregate every group's replicate metrics in place."""
+    """Compute and aggregate every group's replicate metrics in place.
+
+    A run whose directory is in ``precomputed`` (keyed by :func:`_run_key`)
+    takes its metrics from there and its trajectory is not read; every other
+    run is measured with :func:`validation.metrics.compute_metrics`.
+    """
+    stored = precomputed or {}
     for g in groups:
-        g.metrics = {r.seed: compute_metrics(r.path, x_ref=x_ref, span=span) for r in g.runs}
+        g.metrics = {}
+        for r in g.runs:
+            known = stored.get(_run_key(r.path))
+            g.metrics[r.seed] = (
+                known if known is not None else compute_metrics(r.path, x_ref=x_ref, span=span)
+            )
         g.agg = aggregate(list(g.metrics.values()))
 
 
@@ -543,16 +562,31 @@ def _render_contour_pair(
 
 
 def _render_figures(
-    groups: list[_Group], baseline: _Group | None, out_dir: Path
+    groups: list[_Group],
+    baseline: _Group | None,
+    out_dir: Path,
+    figure_runs: frozenset[Path] | None = None,
 ) -> list[dict[str, str]]:
-    """Speed-contour figures: seed-matched pairs when a baseline exists."""
+    """Speed-contour figures: seed-matched pairs when a baseline exists.
+
+    ``figure_runs`` (directories keyed by :func:`_run_key`) restricts the
+    runs that get a contour; ``None`` renders every run. A seed-matched pair
+    is rendered when the controlled run is selected (its baseline partner is
+    read for the left panel whether or not it is selected itself).
+    """
+
+    def selected(runs: list[_RunInfo]) -> list[_RunInfo]:
+        if figure_runs is None:
+            return runs
+        return [r for r in runs if _run_key(r.path) in figure_runs]
+
     figures: list[dict[str, str]] = []
     others = [g for g in groups if g is not baseline]
     if baseline is None or not others:
         index = 0
         for g in groups:
             label = None if len(groups) == 1 else g.label
-            for r in g.runs:
+            for r in selected(g.runs):
                 name, caption = _render_contour(r, out_dir, index, label)
                 figures.append({"path": name, "caption": caption})
                 index += 1
@@ -562,7 +596,7 @@ def _render_figures(
     matched: set[str] = set()
     single_index = 0
     for pair_index, g in enumerate(others, start=1):
-        for r in g.runs:
+        for r in selected(g.runs):
             base_run = base_by_seed.get(r.seed)
             if base_run is None:
                 name, caption = _render_contour(r, out_dir, single_index, g.label)
@@ -571,7 +605,7 @@ def _render_figures(
                 matched.add(r.seed)
                 name, caption = _render_contour_pair(base_run, r, g.label, out_dir, pair_index)
             figures.append({"path": name, "caption": caption})
-    for r in baseline.runs:
+    for r in selected(baseline.runs):
         if r.seed not in matched:
             name, caption = _render_contour(r, out_dir, single_index, baseline.label)
             single_index += 1
@@ -1129,6 +1163,9 @@ def generate_report(
     segment_speeds_sim: Sequence[Sequence[float]] | None = ...,
     segment_window_s: float | None = ...,
     observed: ObservedProvenance | None = ...,
+    metrics_by_run: Mapping[str | Path, Metrics] | None = ...,
+    wave_readings_by_run: Mapping[str | Path, float] | None = ...,
+    figure_runs: Sequence[str | Path] | None = ...,
 ) -> Path: ...
 
 
@@ -1151,6 +1188,9 @@ def generate_report(
     segment_speeds_sim: Sequence[Sequence[float]] | None = ...,
     segment_window_s: float | None = ...,
     observed: ObservedProvenance | None = ...,
+    metrics_by_run: Mapping[str | Path, Metrics] | None = ...,
+    wave_readings_by_run: Mapping[str | Path, float] | None = ...,
+    figure_runs: Sequence[str | Path] | None = ...,
 ) -> tuple[Path, Path]: ...
 
 
@@ -1172,6 +1212,9 @@ def generate_report(
     segment_speeds_sim: Sequence[Sequence[float]] | None = None,
     segment_window_s: float | None = None,
     observed: ObservedProvenance | None = None,
+    metrics_by_run: Mapping[str | Path, Metrics] | None = None,
+    wave_readings_by_run: Mapping[str | Path, float] | None = None,
+    figure_runs: Sequence[str | Path] | None = None,
 ) -> Path | tuple[Path, Path]:
     """Generate a markdown (optionally PDF) validation report for a run set.
 
@@ -1235,6 +1278,25 @@ def generate_report(
             an input. Supplied but with those two ``None`` (no comparable
             window was formed), the rows stay unevaluated and say *that*
             instead.
+        metrics_by_run: Per-replicate metrics the caller already computed,
+            keyed by run directory (any spelling of the path; resolved
+            before lookup). A run found here is not re-measured and its
+            trajectory is not read; every other run is measured with
+            :func:`validation.metrics.compute_metrics` and the ``x_ref`` /
+            ``span`` above. The caller vouches that the stored metrics were
+            computed with those same arguments (``scripts/corridor_battery.py``
+            records them in each replicate's ``metrics.json``).
+        wave_readings_by_run: The profile detector's per-replicate backward
+            wave speed [km/h] (NaN = no front), keyed likewise; a run found
+            here is not re-binned for the wave-speed criterion row. The
+            reading must come from ``profile.wave_detector`` on the run's
+            measurement window (:func:`validation.battery.replicate_wave_speed_kmh`
+            is that measurement).
+        figure_runs: Run directories that get a speed-contour figure;
+            ``None`` renders one for every run. With the two mappings above
+            covering every run, the report then reads only the listed runs'
+            trajectories — the corridor battery lists its first seed, the
+            one it keeps after pruning.
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -1269,7 +1331,12 @@ def generate_report(
     # caller fixed one; each replicate's own default would measure the
     # groups over different distances.
     measure_span = span if span is not None else _shared_span(reference)
-    _fill_metrics(groups, x_ref, measure_span)
+    _fill_metrics(
+        groups,
+        x_ref,
+        measure_span,
+        {_run_key(k): v for k, v in (metrics_by_run or {}).items()},
+    )
 
     # Wave-speed criterion: emergent means unseeded (CLAUDE.md §0.2, §7.1),
     # measured with the profile's own detector on that detector's own bins.
@@ -1278,8 +1345,11 @@ def generate_report(
     det = p.wave_detector
     unseeded_runs = [r for r in reference.runs if not r.seeded]
     n_seeded_excluded = len(reference.runs) - len(unseeded_runs)
+    known_readings = {_run_key(k): float(v) for k, v in (wave_readings_by_run or {}).items()}
     readings = [
-        det.measure(_load_field(r, dt_bin=det.dt_bin_s, dx_bin=det.dx_bin_m)).speed_kmh
+        known_readings[_run_key(r.path)]
+        if _run_key(r.path) in known_readings
+        else det.measure(_load_field(r, dt_bin=det.dt_bin_s, dx_bin=det.dx_bin_m)).speed_kmh
         for r in unseeded_runs
     ]
     finite = [v for v in readings if math.isfinite(v)]
@@ -1332,7 +1402,12 @@ def generate_report(
         and np.size(segment_speeds_sim) > 0
         else None
     )
-    figures = _render_figures(groups, baseline, out.parent)
+    figures = _render_figures(
+        groups,
+        baseline,
+        out.parent,
+        None if figure_runs is None else frozenset(_run_key(p) for p in figure_runs),
+    )
 
     seeded_any = any(r.seeded for r in runs)
     run_rows = [

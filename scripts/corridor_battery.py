@@ -30,18 +30,29 @@ when the FIRST replicate to finish departed less than fraction ``F`` of its
 plan, the remaining workers are killed, a partial artifact stating the abort
 is written and the process exits 4.
 
+**Phases.** ``simulate`` (the SUMO pool, ``--procs``), ``score`` (per-replicate
+metrics, observed scores and wave speed, :func:`validation.battery.analyse_replicates`
+in a second spawn pool of ``--score-procs`` workers — one trajectory frame per
+worker, so the default is capped at 6 for memory), ``ring`` (the optional ring
+benchmark), ``report``, ``prune``. Each phase's wall-clock is printed as it
+ends and summarised at the end: the 2026-09-24 cloud round scored 20 seeds of
+a 4-hour corridor (1.15 GB of trajectory each) one after another in the
+parent, about 5 min each, while 31 CPUs idled.
+
 Per-seed results are written into each replicate directory (``metrics.json``,
 ``observed_scores.json``) so ``--criteria-only`` can re-score a finished
 battery — a threshold profile change, a fresh ring benchmark — without
-re-simulating anything. Trajectories are pruned to the first seed afterwards
-(``--keep-trajectories`` keeps them all); the report is always generated
-*before* pruning, since it re-reads every replicate's field.
+re-simulating anything. The report takes the per-replicate numbers from
+those results and renders its contour figure from the first seed's trajectory
+only, so it never re-reads the other replicates; trajectories are pruned to
+the first seed afterwards (``--keep-trajectories`` keeps them all), and
+``--criteria-only`` can regenerate the report after pruning.
 
 Usage (repo root)::
 
     uv run --no-sync python scripts/corridor_battery.py \\
         --scenario scenarios/X.yaml --observations artifacts/observations_X.json \\
-        --replicates 20 --procs 30 --out runs/X/baseline \\
+        --replicates 20 --procs 30 --score-procs 6 --out runs/X/baseline \\
         --artifact artifacts/validation_X.json --report-dir docs/reports/X \\
         --criteria-profile fhwa_default
 """
@@ -53,7 +64,8 @@ import importlib.util
 import json
 import math
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,28 +77,34 @@ from microsim.demand_adapter import corridor_x_offset_m
 from microsim.runner import ReplicatesAborted, RunPaths, _versions, run_replicates
 from microsim.scenarios import load_scenario
 from validation.battery import (
+    DEFAULT_SCORE_PROCS,
+    METRICS_FILE,
+    SCORES_FILE,
     InsertionStats,
+    ReplicateAnalysis,
     aggregate_insertion,
+    analyse_replicates,
     insertion_stats,
+    json_safe,
     load_meta,
+    load_replicate_analysis,
     mean_finite,
-    replicate_wave_speed_kmh,
-    score_replicate,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
-from validation.metrics import Metrics, aggregate, ci, compute_metrics, geh_pass_fraction
+from validation.metrics import Metrics, aggregate, ci, geh_pass_fraction
 from validation.observed import ObservedCorridor, ObservedScores, pool_scores
 from validation.report import generate_report
+
+__all__ = ["ABORT_EXIT_CODE", "ARTIFACT_SCHEMA", "METRICS_FILE", "SCORES_FILE", "main"]
 
 #: Artifact schema written by this script.
 ARTIFACT_SCHEMA = "flowstate.corridor_validation/1"
 
-#: Per-replicate files this script writes beside the run artifacts.
-METRICS_FILE = "metrics.json"
-SCORES_FILE = "observed_scores.json"
-
 #: Exit code of an insertion abort (``--abort-if-departed-below``).
 ABORT_EXIT_CODE = 4
+
+#: Battery phases, in the order they run and are printed.
+PHASES: tuple[str, ...] = ("simulate", "score", "ring", "report", "prune")
 
 
 class InsertionGuard:
@@ -199,15 +217,25 @@ def abort_artifact(
     }
 
 
-def _json_safe(obj: object) -> object:
-    """Recursively replace non-finite floats with ``null`` (JSON has no NaN)."""
-    if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, list | tuple):
-        return [_json_safe(v) for v in obj]
-    if isinstance(obj, float) and not math.isfinite(obj):
-        return None
-    return obj
+@contextmanager
+def phase(name: str, timings: dict[str, float]) -> Iterator[None]:
+    """Time one battery phase; record it in ``timings`` and print it as it ends.
+
+    The print happens on the way out whatever the outcome (an insertion
+    abort returns from inside the ``simulate`` phase), so the console log
+    always says where the wall-clock went.
+    """
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        timings[name] = time.perf_counter() - t0
+        print(f"    phase {name}: {timings[name]:.1f} s", flush=True)
+
+
+def phase_summary(timings: dict[str, float]) -> str:
+    """One line with every phase's seconds, in :data:`PHASES` order."""
+    return "phases: " + " | ".join(f"{name} {timings.get(name, 0.0):.1f} s" for name in PHASES)
 
 
 def _ci_dict(values: Sequence[float]) -> dict[str, Any]:
@@ -233,79 +261,55 @@ def seed_dirs(out_root: Path, cfg: ScenarioConfig, seeds: Sequence[int]) -> list
     return [root / str(seed) for seed in seeds]
 
 
-def analyse_seed(
-    run_dir: Path,
+def score_seeds(
+    dirs: Sequence[Path],
+    seeds: Sequence[int],
     observed: ObservedCorridor,
     *,
     profile: CriteriaProfile,
     x_ref: float,
     span: tuple[float, float],
     x_offset_m: float,
-) -> tuple[Metrics, ObservedScores, float, InsertionStats]:
-    """Measure one replicate and write its per-seed files.
+    n_procs: int,
+) -> list[ReplicateAnalysis]:
+    """Score every replicate (:func:`validation.battery.analyse_replicates`).
+
+    Prints one line per replicate the moment it is scored, with the seconds
+    since the phase started, so the next cloud log shows the pool draining.
 
     Args:
-        run_dir: Replicate directory.
+        dirs: Replicate directories, in seed order.
+        seeds: The matching seeds (for the console lines).
         observed: The corridor's observations.
-        profile: Criteria profile (its detector measures the wave speed).
-        x_ref: Throughput cross-section [m], trajectory coordinates.
-        span: Travel-time span [m], trajectory coordinates.
+        profile: Criteria profile.
+        x_ref: Throughput cross-section [m].
+        span: Travel-time span [m].
         x_offset_m: Simulation ``x`` of the observed origin [m].
+        n_procs: Scoring-pool size (``--score-procs``).
 
     Returns:
-        ``(metrics, scores, wave_speed_kmh, insertion)``.
+        One :class:`validation.battery.ReplicateAnalysis` per directory, in
+        ``dirs`` order.
     """
-    metrics = compute_metrics(run_dir, x_ref=x_ref, span=span)
-    scores = score_replicate(run_dir, observed, x_offset_m=x_offset_m)
-    wave_speed = replicate_wave_speed_kmh(run_dir, profile.wave_detector)
-    insertion = insertion_stats(load_meta(run_dir))
-    (run_dir / METRICS_FILE).write_text(
-        json.dumps(
-            _json_safe(
-                {
-                    "metrics": asdict(metrics),
-                    "criterion_wave_speed_kmh": wave_speed,
-                    "criterion_detector": profile.wave_detector.name,
-                    "x_ref_m": x_ref,
-                    "span_m": list(span),
-                    "insertion": insertion.to_dict(),
-                }
-            ),
-            indent=2,
-            allow_nan=False,
+    seed_of = {run_dir: seed for run_dir, seed in zip(dirs, seeds, strict=True)}
+    t0 = time.perf_counter()
+
+    def _report(run_dir: Path, _analysis: ReplicateAnalysis, _seconds: float) -> None:
+        print(
+            f"    seed {seed_of[run_dir]}: scored at {time.perf_counter() - t0:.1f} s",
+            flush=True,
         )
+
+    return analyse_replicates(
+        dirs,
+        observed,
+        profile=profile,
+        x_ref=x_ref,
+        span=span,
+        x_offset_m=x_offset_m,
+        n_procs=n_procs,
+        on_complete=_report,
     )
-    (run_dir / SCORES_FILE).write_text(
-        json.dumps(_json_safe(scores.to_dict()), indent=2, allow_nan=False)
-    )
-    return metrics, scores, wave_speed, insertion
-
-
-def load_seed(run_dir: Path) -> tuple[Metrics, ObservedScores, float, InsertionStats]:
-    """Re-read one replicate's stored per-seed files (``--criteria-only``).
-
-    The insertion stats are re-read from ``meta.json`` rather than from the
-    stored ``metrics.json`` block: ``meta.json`` is the completion marker and
-    is never pruned, so there is one source for these counters and no way for
-    the stored copy to be the one a reader sees.
-
-    Raises:
-        FileNotFoundError: The replicate was never analysed.
-    """
-    for name in (METRICS_FILE, SCORES_FILE):
-        if not (run_dir / name).is_file():
-            raise FileNotFoundError(
-                f"{run_dir / name} is missing; run the battery without --criteria-only first"
-            )
-    stored = json.loads((run_dir / METRICS_FILE).read_text())
-    raw = dict(stored["metrics"])
-    for key, value in raw.items():
-        if value is None:
-            raw[key] = math.nan
-    wave = stored.get("criterion_wave_speed_kmh")
-    scores = ObservedScores.from_dict(json.loads((run_dir / SCORES_FILE).read_text()))
-    insertion = insertion_stats(load_meta(run_dir))
-    return Metrics(**raw), scores, math.nan if wave is None else float(wave), insertion
 
 
 def ring_block(n_seeds: int, out_dir: Path) -> dict[str, Any] | None:
@@ -328,7 +332,7 @@ def ring_block(n_seeds: int, out_dir: Path) -> dict[str, Any] | None:
         result: dict[str, Any] = pool.apply(_ring_worker, ((seeds, str(out_dir)),))
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "ring_benchmark.json").write_text(
-        json.dumps(_json_safe(result), indent=2, allow_nan=False)
+        json.dumps(json_safe(result), indent=2, allow_nan=False)
     )
     return result
 
@@ -501,6 +505,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     ap.add_argument("--replicates", type=int, default=20)
     ap.add_argument("--procs", type=int, default=8, help="simulation processes (one per seed)")
+    ap.add_argument(
+        "--score-procs",
+        type=int,
+        default=None,
+        help=f"scoring processes for the post-run phase (default: min(--procs, "
+        f"{DEFAULT_SCORE_PROCS}); each holds one replicate's trajectory frame, several GB "
+        "for a 4-hour corridor); 1 scores in this process",
+    )
     ap.add_argument("--out", required=True, help="run-tree root for the replicates")
     ap.add_argument("--artifact", required=True, help="validation artifact path (JSON)")
     ap.add_argument("--report-dir", required=True, help="directory for report.md and figures")
@@ -559,25 +571,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     span = (x_refs[0] + x_offset, x_refs[-1] + x_offset)
     x_ref = x_refs[len(x_refs) // 2] + x_offset
 
+    n_procs = max(1, min(args.procs, args.replicates))
+    score_procs = (
+        min(n_procs, DEFAULT_SCORE_PROCS) if args.score_procs is None else max(1, args.score_procs)
+    )
+    timings: dict[str, float] = {}
+
     guard = InsertionGuard(args.abort_if_departed_below)
     if not args.criteria_only:
         print(
-            f"{args.scenario}: {args.replicates} replicate(s), config {config_hash(cfg)} ...",
+            f"{args.scenario}: {args.replicates} replicate(s), config {config_hash(cfg)}, "
+            f"{n_procs} simulation proc(s) ...",
             flush=True,
         )
         try:
-            run_replicates(
-                cfg,
-                out_root,
-                n_procs=max(1, min(args.procs, args.replicates)),
-                on_complete=guard,
-            )
+            with phase("simulate", timings):
+                run_replicates(cfg, out_root, n_procs=n_procs, on_complete=guard)
         except ReplicatesAborted as exc:
             artifact_path = Path(args.artifact)
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
             artifact_path.write_text(
                 json.dumps(
-                    _json_safe(
+                    json_safe(
                         abort_artifact(
                             scenario=str(args.scenario),
                             cfg=cfg,
@@ -599,31 +614,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return ABORT_EXIT_CODE
 
-    metrics_list: list[Metrics] = []
-    scores_list: list[ObservedScores] = []
-    wave_speeds: list[float] = []
-    insertion_list: list[InsertionStats] = []
-    for seed, run_dir in zip(seeds, dirs, strict=True):
+    with phase("score", timings):
         if args.criteria_only:
-            metrics, scores, wave, insertion = load_seed(run_dir)
+            analyses = [load_replicate_analysis(run_dir) for run_dir in dirs]
             # Outside --criteria-only the guard already printed this line the
             # moment the replicate finished, which is the point of it.
-            print(f"    seed {seed}: {insertion.verdict}", flush=True)
+            for seed, analysis in zip(seeds, analyses, strict=True):
+                print(f"    seed {seed}: {analysis.insertion.verdict}", flush=True)
         else:
-            metrics, scores, wave, insertion = analyse_seed(
-                run_dir,
+            print(f"scoring {len(dirs)} replicate(s), {score_procs} proc(s) ...", flush=True)
+            analyses = score_seeds(
+                dirs,
+                seeds,
                 observed,
                 profile=profile,
                 x_ref=x_ref,
                 span=span,
                 x_offset_m=x_offset,
+                n_procs=score_procs,
             )
-        metrics_list.append(metrics)
-        scores_list.append(scores)
-        wave_speeds.append(wave)
-        insertion_list.append(insertion)
+    metrics_list: list[Metrics] = [a.metrics for a in analyses]
+    scores_list: list[ObservedScores] = [a.scores for a in analyses]
+    wave_speeds: list[float] = [a.wave_speed_kmh for a in analyses]
+    insertion_list: list[InsertionStats] = [a.insertion for a in analyses]
 
-    ring = ring_block(args.ring_seeds, out_root / "ring")
+    with phase("ring", timings):
+        ring = ring_block(args.ring_seeds, out_root / "ring")
     pooled_geh, mean_rmspe, sim_speeds, obs_speeds, provenance = pool_scores(
         observed, scores_list, path=str(args.observations)
     )
@@ -640,30 +656,38 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     report_dir = Path(args.report_dir)
     report_path: Path | None = None
-    if all((d / "trajectories.parquet").is_file() for d in dirs):
-        result = generate_report(
-            out_root,
-            report_dir / "report.md",
-            profile=profile,
-            geh_values=pooled_geh or None,
-            rmspe_value=mean_rmspe if math.isfinite(mean_rmspe) else None,
-            title=args.title,
-            created_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            x_ref=x_ref,
-            span=span,
-            segment_speeds_obs=obs_speeds,
-            segment_speeds_sim=sim_speeds,
-            segment_window_s=observed.window_s,
-            observed=provenance,
-            pdf=_pdf_available(),
-        )
-        report_path = result[0] if isinstance(result, tuple) else result
-    else:
-        print(
-            "report skipped: some replicates no longer hold trajectories.parquet (pruned by an "
-            "earlier run); re-run without --criteria-only to regenerate it",
-            flush=True,
-        )
+    with phase("report", timings):
+        # The report takes every replicate's metrics and wave reading from
+        # the scoring above and renders its contour from the first seed —
+        # the one that survives pruning — so it reads one trajectory, not N.
+        if (dirs[0] / "trajectories.parquet").is_file():
+            result = generate_report(
+                out_root,
+                report_dir / "report.md",
+                profile=profile,
+                geh_values=pooled_geh or None,
+                rmspe_value=mean_rmspe if math.isfinite(mean_rmspe) else None,
+                title=args.title,
+                created_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                x_ref=x_ref,
+                span=span,
+                segment_speeds_obs=obs_speeds,
+                segment_speeds_sim=sim_speeds,
+                segment_window_s=observed.window_s,
+                observed=provenance,
+                pdf=_pdf_available(),
+                metrics_by_run=dict(zip(dirs, metrics_list, strict=True)),
+                wave_readings_by_run=dict(zip(dirs, wave_speeds, strict=True)),
+                figure_runs=[dirs[0]],
+            )
+            report_path = result[0] if isinstance(result, tuple) else result
+        else:
+            print(
+                f"report skipped: {dirs[0] / 'trajectories.parquet'} is missing (the first "
+                "seed's trajectory renders the contour figure); re-run without "
+                "--criteria-only to regenerate it",
+                flush=True,
+            )
 
     artifact = build_artifact(
         scenario=str(args.scenario),
@@ -685,10 +709,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     artifact["report_path"] = None if report_path is None else str(report_path)
     artifact_path = Path(args.artifact)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    artifact_path.write_text(json.dumps(_json_safe(artifact), indent=2, allow_nan=False))
+    artifact_path.write_text(json.dumps(json_safe(artifact), indent=2, allow_nan=False))
 
     if not args.keep_trajectories and not args.criteria_only:
-        deleted = prune_trajectories(dirs)
+        with phase("prune", timings):
+            deleted = prune_trajectories(dirs)
         if deleted:
             print(f"pruned {deleted} trajectory file(s); the first seed's is kept", flush=True)
 
@@ -704,6 +729,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for row in criteria_rows:
         state = ("PASS" if row.passed else "FAIL") if row.evaluated else "NOT EVALUATED"
         print(f"    {row.name:<18} {state:<14} {row.value}  ({row.threshold})", flush=True)
+    print(phase_summary(timings), flush=True)
     print(
         f"done in {time.perf_counter() - t0:.0f} s -> {artifact_path}"
         + (f", {report_path}" if report_path is not None else ""),

@@ -186,6 +186,81 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     )
 
 
+#: Artifact keys that legitimately differ between two batteries of the same
+#: scenario (timestamps, wall-clock, and the output tree each was given).
+VOLATILE_ARTIFACT_KEYS = ("created_at", "wall_s", "report_path")
+
+
+def _comparable(artifact: dict[str, Any]) -> dict[str, Any]:
+    """The artifact without its volatile keys and per-seed run directories."""
+    stripped = {k: v for k, v in artifact.items() if k not in VOLATILE_ARTIFACT_KEYS}
+    stripped["per_seed"] = [
+        {k: v for k, v in row.items() if k != "run_dir"} for row in artifact["per_seed"]
+    ]
+    return stripped
+
+
+def test_score_pool_matches_in_process_scoring(tmp_path: Path) -> None:
+    """``--score-procs 2`` writes byte-identical per-seed files and the same artifact.
+
+    Two 2-replicate batteries of one scenario: one scored in the parent
+    (``--score-procs 1``), one in a two-process spawn pool. Replicates are
+    independent, so the pool may only change the wall-clock. The report
+    renders one contour (the first seed's, the one kept after pruning), not
+    one per replicate.
+    """
+    battery = _load_script()
+    scenario = _scenario(tmp_path / "battery_pool_corridor.yaml")
+    observations = _observations(tmp_path / "observations.json")
+    artifacts: dict[int, dict[str, Any]] = {}
+    per_seed_files: dict[int, list[tuple[bytes, bytes]]] = {}
+    for score_procs in (1, 2):
+        root = tmp_path / f"score_procs_{score_procs}"
+        artifact_path = root / "validation.json"
+        report_dir = root / "report"
+        argv = [
+            "--scenario",
+            str(scenario),
+            "--observations",
+            str(observations),
+            "--replicates",
+            "2",
+            "--procs",
+            "2",
+            "--score-procs",
+            str(score_procs),
+            "--out",
+            str(root / "runs"),
+            "--artifact",
+            str(artifact_path),
+            "--report-dir",
+            str(report_dir),
+            "--ring-seeds",
+            "0",
+        ]
+        assert battery.main(argv) == 0
+        artifact = json.loads(artifact_path.read_text())
+        artifacts[score_procs] = artifact
+        per_seed_files[score_procs] = [
+            (
+                (Path(row["run_dir"]) / battery.METRICS_FILE).read_bytes(),
+                (Path(row["run_dir"]) / battery.SCORES_FILE).read_bytes(),
+            )
+            for row in artifact["per_seed"]
+        ]
+        assert len(artifact["per_seed"]) == 2
+        # One figure for the whole battery: the first seed's contour.
+        assert len(list(report_dir.glob("speed_contour_*.png"))) == 1
+        assert (report_dir / "report.md").is_file()
+        # The first seed's trajectory is kept, the second's pruned.
+        dirs = [Path(row["run_dir"]) for row in artifact["per_seed"]]
+        assert (dirs[0] / "trajectories.parquet").is_file()
+        assert not (dirs[1] / "trajectories.parquet").exists()
+
+    assert per_seed_files[2] == per_seed_files[1]
+    assert _comparable(artifacts[2]) == _comparable(artifacts[1])
+
+
 #: Per-lane inflow no single lane can take (≈ 10× a lane's capacity), so most
 #: of the plan is still queued outside the network when the run ends.
 IMPOSSIBLE_INFLOW_VEH_S = 3.0
