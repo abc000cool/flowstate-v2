@@ -832,24 +832,25 @@ exit-side rule (commit ecf6d79, reviewed in 84cc857) is the next round
 **VM H (2026-09-24, block 3): the corrected scenarios (config hash
 53e4b208fd1d) with the exit-side runner (commit 84cc857).** Slice, 4 seeds:
 departed 0.979 (lowest 0.976), no starved ramp
-().
-Battery, 20 seeds (, per-seed
-shares in ): departed **0.743**
-(19 seeds between 0.696 and 0.799; one seed collapses to 0.230 with three
-collisions and 152,153 deferred forced changes at the Ruth St section), speed
-RMSPE **0.782** (95 % interval 0.760–0.804; 0.963 the round before), GEH < 5 on
-0.000 of 840 link-hours, "wave speed" 6.8 km/h (the queue front,
-still), 26 % of the planned vehicles never departed and eight entrances
-still starve at the peak. Given-up exits (the re-scored artifact
-, ): Ruth St 70 of 8838 reached
-exiters (0.8 %), T.H.52 206 of 63782 (0.3 %) — both within the
-2 % threshold, so the exit flows are honest. Scoring 137 s on six workers.
+(`artifacts/mndot_rounds/weave_2026-09-24/slice_corrected_inputs_exit_side_84cc857.json`).
+Battery, 20 seeds (`battery_corrected_inputs_exit_side_84cc857.json` beside
+it, per-seed shares in `battery_exit_side_per_seed_departed.txt`): departed
+**0.743** (19 seeds between 0.696 and 0.799; one seed collapses to 0.230
+with three collisions and 152,153 deferred forced changes at the Ruth St
+section), speed RMSPE **0.782** (95 % interval 0.760–0.804; 0.963 the
+round before), GEH < 5 on 0.000 of 840 link-hours, "wave speed"
+6.8 km/h (the queue front, still), 26 % of the planned vehicles never
+departed and eight entrances still starve at the peak. Given-up exits (the
+re-scored artifact `…_rescored_weave_exits.json`, key `weave_exits`): Ruth St
+70 of 8838 reached exiters (0.8 %), T.H.52 206 of 63782
+(0.3 %) — both within the 2 % threshold, so the exit flows are honest.
+Scoring 137 s on six workers.
 
 Reading: the exit-side rule is the first change that moves the four-hour
 corridor — from 0.247 to 0.743 of demand departed and RMSPE from 0.96 to
-0.78 — but the corridor is **not reproduced**: a quarter of the demand still
-queues at the boundary, the entrances still starve at the peak, one seed in
-twenty locks, and no link-hour meets GEH 5. The next levers are the
+0.78 — but the corridor is **not reproduced**: a quarter of the demand
+still queues at the boundary, the entrances still starve at the peak, one
+seed in twenty locks, and no link-hour meets GEH 5. The next levers are the
 entrances that still starve (the scripted merges 18207436 and 178547099, the
 Ruth St weave) and the seed that locks; the per-seed metas are in the
 round's archive.
