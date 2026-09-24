@@ -495,7 +495,7 @@ committed file named in parentheses.
   mirrors the T.H.52 section (mainline 4,500 veh/h with 25 % exiting, entrance
   1,400 veh/h, 20 min) and a strict `xfail` pins the lock; the entrance's
   departed count of 466 planned is the ledger (docs/WEAVE_MODEL_PLAN.md, the
-  six dated sections; CHANGELOG block 3): **81** at the lock (lane 1 at
+  seven dated sections, the seventh measured and rejected; CHANGELOG block 3): **81** at the lock (lane 1 at
   0.0 m/s from minute 4; eight zipper variants worse) → **225** with follower
   cooperation as a car-following target (deferred forced changes 16,576 → 0,
   lock to crawl) → **317** with through traffic vacating the weave lane 150 m
@@ -507,7 +507,10 @@ committed file named in parentheses.
   on the ramp's own queue (3.1-s discharge headways imposed by easing against
   an overlapping leader; now 2.95 s, 1,215 veh/h). The criterion is 419
   entrants and lane 1 above 5 m/s in every minute; the sixth meets the first
-  at seed 5 only and the second at no seed, so the `xfail` stays. Golden
+  at seed 5 only and the second at no seed over seeds 3–5, so the `xfail`
+  stays (the seventh derivation's table extends the sixth to seeds 6–8, 397 /
+  424 / 407, where seed 7 meets both — seed noise around a rule 5–25 entrants
+  short, not a pass). Golden
   `merge_weave` followed the rules: mean travel time 97.1 → 70.1 → 69.5 →
   69.82 → 70.83 s, σ_v spatial 7.59 → 4.274 m/s, throughput 1,429 → 1,687.5
   veh/h, config hash unchanged (`tests/golden/merge_weave.json`). The new
@@ -534,16 +537,18 @@ committed file named in parentheses.
   probes and fixed two divergences on inputs the runner never produces (NaN
   timestamps, missing vehicle ids). The report's run set is the battery's own
   config-hash tree, so ring-benchmark runs are no longer report groups.
-- **Hosted tester:** redeployed three times during the day from the pushed `HEAD` (revisions 00003–00005: the split-audit and merge-diagnostics panels, the onboarding opt-outs, the block-3 dashboard changes) with `scripts/gcp/deploy_cloud_run.sh`; the service record is docs/HOSTED_TESTER.md.
-  records revisions 00001–00002 and the `/health` alias (pending: no later
-  revision of the service is committed).
+- **Hosted tester:** redeployed three times during the day from the pushed `HEAD` (revisions 00003–00005: the split-audit and merge-diagnostics panels, the onboarding opt-outs, the block-3 dashboard changes) with `scripts/gcp/deploy_cloud_run.sh`; the service record is docs/HOSTED_TESTER.md
+  (the revision times are the service's own record, not reproducible from the
+  tree).
 
 Open / pending: the 20-seed four-hour battery on the regenerated corridor
 with the sixth derivation (pending: VM F, running; it lands in
 docs/ONBOARDING_MNDOT.md and the corridor stays "not reproduced" until it
-does); a seventh weave derivation that addresses the resolution of an abreast
-entrant–lane-1 pair itself — a gentle mutual adjustment rather than which side
-pays (pending: not in the tree); the corridor's car-following model as a
+does); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
+symmetrically rather than by which side pays — was then measured in fifteen
+forms at seeds 3–8 and rejected (entrance mean 361.7 against the sixth's 411.8,
+and a lock at a seed the sixth does not lock), so the runner keeps the sixth
+(CHANGELOG block 3; docs/WEAVE_MODEL_PLAN.md, seventh dated section); the corridor's car-following model as a
 stated calibration choice with a population derived under it; the +366 veh/h
 at S792 as a detector question; the sixth derivation's trace harness and
 per-variant runs are session records, not committed.

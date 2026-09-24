@@ -117,7 +117,7 @@ wait is not part of `mean_tt_s` (the travel-time span is the mainline
 2,256–7,638 m, and a metered vehicle's wait at the stop line lies upstream of
 it), and the meter counters are now in the summary's `diagnostics` block
 (rerun of 2026-09-24, block 3, with `meta.json` archived): over 20 seeds the
-Hickory Hollow Pkwy meter released 645 vehicles per run and let 0.8 pass
+Hickory Hollow Pkwy meter released 645 vehicles per run and let 0.85 pass
 unstoppable (share 0.13 %, 95 % interval 0.06–0.20 %), the Old Hickory Blvd
 meter released 674 and let none pass — the stop-placement fix holds on this
 arm.

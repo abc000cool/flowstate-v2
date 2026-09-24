@@ -529,7 +529,7 @@ gains `n_cooperations` (vehicle-steps a follower was given a target),
 `mean_follower_decel_ms2` (mean commanded deceleration over them, `None`
 without any) and `n_changer_eased`. Fixture, seed 3, before → after: lane 1
 over the first 60 m 20.2, 10.9, 2.9, 0.2 then 0.0 → 12.7, 11.8, 12.4, 10.3
-then 4.2–6.4 m/s; entrance 81 → 225 of 466; driven 92 → 334 with unfinished
+then 2.3–6.4 m/s; entrance 81 → 225 of 466; driven 92 → 334 with unfinished
 49 → 2 and deferred 16,576 → 0; exits 3 of 62 → 273 of 280; collisions 0. The
 strict `xfail` stays: what remains is a crawl equilibrium at the section
 entry (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the lane flows), not
@@ -560,7 +560,7 @@ adaptation) executed 5 of 159 requests on the fixture and was rejected; the
 weave's own 0.6-s acceptance under a one-step mode 256 executed 8–14 and
 was rejected. `weave_sections[i]` gains `n_vacated` and
 `n_vacate_refused`. Fixture, seed 3, second → third derivation: lane 1
-over the first 60 m in minutes 2–19 from 12.7, 11.8, 12.4, 10.3 then 4.2–6.4
+over the first 60 m in minutes 2–19 from 12.7, 11.8, 12.4, 10.3 then 2.3–6.4
 to 11.5, 10.0, 6.9, 8.1, 11.2, 12.9, 12.6, 8.6, 11.7, 11.1, 5.4, 4.5, 7.1,
 6.3, 12.0, 13.4, 12.5, 10.8 m/s; entrance 225 → 317 of 466; driven 334 → 307
 with unfinished 2 → 0; 228 through vehicles vacate, 28 refused; collisions
@@ -592,7 +592,7 @@ positioning brake to lane 0's first metres and settles lanes 0 and 1 at
 3–5 m/s in every minute (entrance 277); no cooperation from a ramp vehicle
 for an exit-bound changer locks the section at seed 4 (0.0 m/s from minute
 13, entrance 204). Easing only when the drop is needed within the horizon
-reaches 400 of 466 at seeds 3 and 5 and locks at seed 4; it is the lead for
+reaches 400 / 394 of 466 at seeds 3 / 5 and locks at seed 4; it is the lead for
 a fifth derivation, not shipped. The strict `xfail` stays (entrance 325 of
 466 against 419). Golden `merge_weave` unchanged (the bound never binds on
 `weave.osm`); determinism preserved.
@@ -626,7 +626,7 @@ step; a release of entrant–exiter pairs alone was measured inert on it
 (session record), so the pair is defined by the commitment, not the
 movement. `weave_sections[i]` gains `n_pair_releases` (each pair once per
 release). Fixture, fourth → fifth derivation: seed 3 lane 1 over the first
-60 m 7.0–12.2 m/s in every minute (was 6.2–12.9), entrance 325 → 395 of
+60 m 6.3–12.2 m/s in every minute (was 6.2–12.9), entrance 325 → 395 of
 466, all vehicles 1,376 → 1,529 of 1,966, driven 308 → 452 with unfinished
 0 → 6 and forced 5 → 20, no release fires, no collision; seed 4 307 → 392
 (2 of 501 unfinished, 9 releases, was a lock from minute 16 under (1)
@@ -656,8 +656,8 @@ IDM equilibrium at 4–4.5 m/s and ≈ 75 veh/km over the ramp's first 100 m,
 auxiliary-lane steps (median 5 s from the gore to the change, at 47–52 m),
 no entrant forced; the IDM's own queue discharge is 2.2–2.3 s, so the head
 was throttled: 34–38 % of the eased ramp steps had the gap leader
-overlapping the entrant (63–70 % within 5 m), the entrant 0.15–0.55 m/s
-faster, and the IDM term against that leader at −19 to −41 m/s² clipped to
+overlapping the entrant (63–70 % within 5 m), the entrant faster by a median
+0.15–0.27 m/s, and the IDM term against that leader at −19 to −41 m/s² clipped to
 −b for a positioning that needs hundredths of a m/s² — ≈ 2.5 m/s per event,
 8 s of recovery at the IDM's 0.2–0.4 m/s², the platoon behind following.
 Softening that brake everywhere (no easing towards an overlapping leader,
@@ -670,7 +670,7 @@ at seed 3). Fixture, fifth → sixth derivation, seeds 3 / 4 / 5: entrance
 395 / 392 / 389 → 411 / 412 / 420 of 466, all vehicles 1,529 / 1,550 /
 1,546 → 1,527 / 1,548 / 1,549, driven unfinished 6 / 2 / 4 → 3 / 6 / 2,
 forced 20 / 40 / 25 → 22 / 23 / 24, pairs released 0 / 9 / 1 → 14 / 0 /
-16, no collision; the ramp's first 100 m 5.0–5.9 m/s (was 4.0–4.5),
+16, no collision; the ramp's first 100 m 5.0–5.9 m/s at seeds 3 / 4 and 6.2–7.7 at seed 5 (was 4.0–5.3 and 4.8–6.4),
 headways 2.95 s = 1,215 veh/h (was 3.1 s), the backlog at the end 41–54
 (was 68–71); lane 1 over the section's first 60 m falls to 4.4–5.0 m/s in
 three minutes at seed 3 and 4.6 / 4.3 in one at seeds 4 / 5 (was none /

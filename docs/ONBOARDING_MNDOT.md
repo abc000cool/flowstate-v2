@@ -677,8 +677,12 @@ The lane count is not the cause (4 lanes change nothing). The two fleet
 blocks differ in the car-following model (the onboarding path writes
 `model: EIDM`, SUMO's extended IDM with estimation errors and action points;
 the I-24 replica runs plain IDM) and in the heterogeneity draw (0.15 vs
-0.12); the lane-change settings are the same (`lc_strategic` 5.0,
-`lc_keep_right` 0). The population was fitted as IDM on I-24 trajectories,
+0.12); the lane-change settings were the same (`lc_strategic` 5.0,
+`lc_keep_right` 0) in the corridor scenario the probes inherited from — the one
+committed before the §11 regeneration (the probes' `created_at` 13:09–13:10Z
+precedes commit 0ef3b67, whose onboarding defaults wrote `lc_strategic` 1.0 and
+`lc_keep_right` 1.0 into the corridor's fleet block; the sidecars record the
+base scenario's path, not its lane-change values). The population was fitted as IDM on I-24 trajectories,
 so running it under EIDM is a model-form change that costs about 11 % of
 straight-road capacity at every headway and flattens the curve. Consequence:
 a Minnesota population that meets its capacity target exists under IDM
@@ -703,7 +707,8 @@ two split fixes applied by the audit, and the carried residuals
 S1066→S1067 −1, S1947→S1069 +9, S1069→S1070 −317, S1070→S1948 −262,
 S1948→S792 +1, **S792→S791 +366** veh/h (was +775; what remains there is
 still a detector question — the downtown entrance's passage loop reads
-552 veh/h against the 524 the balance now assigns). The weave variant and
+552 veh/h against the 889 the balance now assigns — first written here as
+524; the review below corrects it). The weave variant and
 the 35-minute slice were rebuilt on the new base with the same merge
 settings and the same slice offset. Rounds 1–2 and the 2026-09-24 weave
 round keep their own config hashes in their records; every later run uses
