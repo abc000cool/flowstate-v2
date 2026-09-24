@@ -573,3 +573,13 @@ The fixture improvement (a 3-lane weave at 1,620 veh/h from a 3 m/s crawl to
 11–17 m/s) does not carry to T.H.52 at its demand; the dense fixture case
 (3,240 veh/h) still crawls too. The conflict handling of a weaving section
 at capacity is the open modelling problem for the next round.
+
+**The 20-seed weave battery, numbers** (per-run files fetched from the VM
+while its scoring was still running; `artifacts/mndot_rounds/weave_2026-09-24/battery_weave_partial_scores.txt`,
+a session record until the stage's own artifact is ingested): departed share
+over 20 seeds mean 0.444 (0.225–0.557); of the 9 seeds scored at the time of
+writing, speed RMSPE 0.880 (0.840–0.956), GEH < 5 on 0 of 378 link-hours,
+a "wave speed" of 7.2–7.6 km/h that is the queue front, not a stop-and-go
+wave; collisions 0–2 per seed (7 in 20 seeds). Round 2 (2026-09-23, the
+defective map, lane-change merges) had departed 0.41 and RMSPE 0.93; the
+corrected map with the weave model is not better on the four-hour window.

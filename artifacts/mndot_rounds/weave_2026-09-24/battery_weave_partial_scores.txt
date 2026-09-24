@@ -1,0 +1,4 @@
+seeds with meta 20: departed mean 0.444, min 0.225, max 0.557
+seeds scored 9: speed RMSPE mean 0.880 (min 0.840, max 0.956); GEH<5 share 0.000 over 378 link-hours
+wave speed criterion values [7.608022713786627, 7.239476644996007, 7.467485002413543, 7.408174344691731, 7.400542460095118, 7.316123231854082, 7.351327353003786, 7.303105851435644, 7.242424019737491]
+collisions per seed [0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 1, 0]
