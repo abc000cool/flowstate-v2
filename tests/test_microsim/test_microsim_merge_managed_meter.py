@@ -1793,6 +1793,9 @@ def _weave_state(**params) -> dict:
         "length_m": None,
         "params": {**WEAVE_DEFAULTS, **params},
         "exiting_ids": frozenset({"e"}),
+        # never asked to vacate: the paired exit's vehicles and those bound
+        # for an off-ramp leaving from a window edge (review, 2026-09-24)
+        "vacate_exempt_ids": frozenset({"e"}),
         "exited": set(),
         "reached": set(),
         "awaiting_exit": set(),
@@ -1845,7 +1848,9 @@ def _sections_back_to_back() -> tuple[dict, dict]:
 
     B is :func:`_weave_state` (edges a, b; e exits there); A's section is
     (c, d) with its vacate window on b, so an exit-bound vehicle of B in B's
-    lane 1 is "through" for A and inside A's window while B drives it.
+    lane 1 is "through" for A and inside A's window while B drives it. B's
+    exit leaves from A's window edge b, so e stays in A's
+    ``vacate_exempt_ids`` (as ``run_micro`` builds them, review 2026-09-24).
     """
     ws_b = _weave_state()
     ws_a = _weave_state()
@@ -3440,11 +3445,15 @@ class TestWeaveReviewDerivations3To6:
         _weave_step(mod, _tc, ws_a, res, 0.5)
         assert veh.lc_modes["e"] == 1621 and ws_b["n_changed_out"] == 1
         assert (ws_a["n_vacated"], ws_a["n_vacate_refused"]) == (0, 0)
-        # once the hold is over and the vehicle is still in the window in the
-        # weave lane, it is asked as any other
-        res = {"e": _res("b", 1, 70.0, 5.0)}
+        # once the hold is over, e is still not asked: its exit leaves from
+        # A's window edge (``vacate_exempt_ids``; review 2026-09-24 — until
+        # then it was asked left, away from its exit); a through vehicle in
+        # the same place is asked as any other
+        res = {"e": _res("b", 1, 70.0, 5.0), "t": _res("b", 1, 60.0, 5.0)}
+        veh.speeds["t"] = 5.0
         _weave_step(mod, _tc, ws_a, res, 1.0)
-        assert ws_a["vacate"]["e"]["lc_mode_orig"] == 1621
+        assert "e" not in ws_a["vacate"] and "e" not in ws_a["vacate_seen"]
+        assert ws_a["vacate"]["t"]["lc_mode_orig"] == 1621
 
     def test_stepping_the_downstream_section_first_leaves_its_hold_on_the_vehicle(self):
         """Why ``run_micro`` steps the sections upstream-first whatever the
@@ -3456,10 +3465,14 @@ class TestWeaveReviewDerivations3To6:
         e reaches lane 0, A books a refusal and restores 1621, then B, done,
         restores 512: the vehicle is left with every model-driven change off.
         The guard of ``_weave_vacate_step`` cannot see this — it is B's
-        admission, not A's request, that reads the other hold."""
+        admission, not A's request, that reads the other hold. Since the
+        review of 2026-09-24 ``run_micro`` exempts B's exiters from A's ask
+        (``vacate_exempt_ids``: B's exit leaves from A's window edge), so the
+        exemption is lifted here to keep the ordering hazard on record."""
         from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
 
         ws_b, ws_a = _sections_back_to_back()
+        ws_a["vacate_exempt_ids"] = frozenset()
         veh = _WeaveVehicle({"e": 5.0})
         mod = _WeaveMod(veh)
         res = {"e": _res("b", 1, 60.0, 5.0)}  # x = 160: inside A's 150 m window

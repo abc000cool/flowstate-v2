@@ -49,7 +49,7 @@ import os
 import platform
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
@@ -1068,6 +1068,35 @@ def _weave_vacate_lanes(
     return out
 
 
+def _weave_vacate_exempt_ids(
+    net: Any,
+    ramps: Sequence[RampSpec],
+    section: WeaveSection,
+    window_edges: Iterable[str],
+    route_by_id: Mapping[str, str],
+) -> frozenset[str]:
+    """The vehicles :func:`_weave_vacate_step` never asks: not through the section.
+
+    Those bound for the section's paired exit (``exiting_ids``) and those
+    bound for an off-ramp that leaves from a window edge
+    (:func:`_weave_vacate_lanes`) — they need the right-hand lane the rule
+    would move them out of, and they never reach the section (review,
+    2026-09-24 block 3: a vehicle exiting inside the window was "through"
+    for the section and asked left, away from its exit). An off-ramp
+    leaving upstream of the window is behind every vehicle in it: a
+    vehicle still on the corridor with such a route gave its exit up
+    (``exit_giveup_m``) and is through now, so it is not exempt.
+    """
+    exits = {section.off_ramp}
+    window = set(window_edges)
+    for j, ramp in enumerate(ramps):
+        if ramp.kind != "off" or not net.hasEdge(ramp.edges[0]):
+            continue
+        if any(e.getID() in window for e in net.getEdge(ramp.edges[0]).getIncoming()):
+            exits.add(j)
+    return frozenset(vid for vid, rid in route_by_id.items() if _route_exit(rid) in exits)
+
+
 def _idm_desired_gap(v: float, dv: float, T: float, a_max: float, b: float, s0: float) -> float:
     """IDM desired (safe) gap ``s*(v, Δv) = s0 + max(0, v·T + v·Δv / (2·√(a_max·b)))`` [m].
 
@@ -1175,7 +1204,9 @@ def _weave_vacate_step(
     (``WEAVE_DEFAULTS``), both under the bound below.
 
     **The default form (0).** Each through vehicle (not bound for the
-    paired exit) in the lane feeding section lane 1 of a corridor edge
+    paired exit, nor for an off-ramp leaving from a window edge —
+    ``vacate_exempt_ids``, :func:`_weave_vacate_exempt_ids`; review,
+    2026-09-24 block 3) in the lane feeding section lane 1 of a corridor edge
     within ``vacate_ahead_m`` of the section start (``vacate_lanes``,
     :func:`_weave_vacate_lanes`: the window measured along the corridor
     chain across as many upstream edges as it reaches, the feeding lane's
@@ -1194,7 +1225,10 @@ def _weave_vacate_step(
     window edge still in the weave lane and that edge's target lane has
     another index (a lane added or dropped), the open request is re-issued
     there for its remaining life. The vehicle's original ``laneChangeMode``
-    is restored when it is seen in the target lane (``n_vacated``), or when
+    is restored when it is seen in the target lane — on a window edge, or
+    on the section's lane 2 when the change and the crossing onto the
+    section fell in one step (review, 2026-09-24 block 3: counted refused
+    until then) — (``n_vacated``), or when
     the request has expired or the vehicle has reached the section still in
     the weave lane (``n_vacate_refused``); a request still open at the
     hand-back is ended with a one-step stay in the current lane, because on
@@ -1264,7 +1298,7 @@ def _weave_vacate_step(
     active: dict[str, dict[str, Any]] = ws["vacate"]
     seen: set[str] = ws["vacate_seen"]
     pending: set[str] = ws["vacate_pending"]
-    exiting: frozenset[str] = ws["exiting_ids"]
+    exempt: frozenset[str] = ws["vacate_exempt_ids"]
     # --- the window's lanes this step, across its edges ---------------------
     # (road, lane index) of every vehicle on a window edge; the weave lane's
     # and the target lane's listings on the section axis
@@ -1288,6 +1322,7 @@ def _weave_vacate_step(
     listed = {vid for _, vid in target}
     target.extend((x, vid) for x, vid in lanes.get(2, []) if vid not in listed)
     target.sort()
+    target_ids = {vid for _, vid in target}
 
     def in_lane(vid: str, side: int) -> bool:
         """Whether ``vid`` is on a window edge in its weave (0) / target (1) lane."""
@@ -1305,7 +1340,10 @@ def _weave_vacate_step(
         lane = int(res[tc.VAR_LANE_INDEX])
         if road.startswith(":"):
             continue  # on a junction between window edges: decided on the next edge
-        if in_lane(vid, 1):
+        if vid in target_ids:
+            # in the target lane: on a window edge, or on the section's lane
+            # 2 (``lanes[2]``) when the change and the crossing fell in one
+            # step — under mode 512 the request is the only change it can make
             ws["n_vacated"] += 1
         elif in_lane(vid, 0) and (gap_conditioned or t < st["until_s"]):
             lane_to_here = spec[road][1]
@@ -1329,7 +1367,7 @@ def _weave_vacate_step(
     # --- the through vehicles in the window this step ---------------------
     now: dict[str, float] = {}
     for x, vid in weave:
-        if x_lo <= x < x_start and vid not in exiting:
+        if x_lo <= x < x_start and vid not in exempt:
             now[vid] = x
     # not asked last step and no longer in the window: skipped, unless the
     # vehicle moved left by its own model
@@ -3100,6 +3138,15 @@ def run_micro(
             assert ramp_w.weave is not None  # guaranteed by _check_weave_pairs
             lens_w = {e: float(net_for_weaves.getEdge(e).getLength()) for e in section.edges}
             params_w: dict[str, float] = {**WEAVE_DEFAULTS, **dict(ramp_w.weave.weave_params)}
+            # per corridor edge of the vacate window, the lanes a through
+            # vehicle vacates from and to (_weave_vacate_step)
+            vacate_lanes_w = _weave_vacate_lanes(
+                net_for_weaves,
+                chain_w,
+                section.edges,
+                offsets_by_edge,
+                float(params_w["vacate_ahead_m"]),
+            )
             lane_map_w: dict[tuple[str, int], int] = {
                 **{
                     k: v
@@ -3144,14 +3191,11 @@ def run_micro(
                     # the ramp's lane 0 continues lane 0 of the section, at
                     # negative positions, so an entrant is seen before it arrives
                     "lane_map": lane_map_w,
-                    # per corridor edge of the vacate window, the lanes a
-                    # through vehicle vacates from and to (_weave_vacate_step)
-                    "vacate_lanes": _weave_vacate_lanes(
-                        net_for_weaves,
-                        chain_w,
-                        section.edges,
-                        offsets_by_edge,
-                        float(params_w["vacate_ahead_m"]),
+                    "vacate_lanes": vacate_lanes_w,
+                    # never asked to vacate: bound for the paired exit or for
+                    # an off-ramp leaving from a window edge
+                    "vacate_exempt_ids": _weave_vacate_exempt_ids(
+                        net_for_weaves, cfg.network.ramps, section, vacate_lanes_w, route_by_id
                     ),
                     "vacate": {},
                     # the vehicles asked (the default form asks once); those
