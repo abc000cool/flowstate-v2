@@ -6,7 +6,9 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
-(nothing yet)
+### 2026-09-24 — block 3
+
+- Why the capacity-scaled Minnesota population plateaus: two more capacity grids on a cloud VM (`artifacts/idm_capacity_probe_mnfleet_4l.json`, `..._i24fleet_3l.json`) show the lane count is not the cause (4 lanes: 1,609–1,689 veh/h/lane) and the corridor's fleet block is — it runs `model: EIDM` with 15 % heterogeneity on an IDM-fitted population, about 11 % below plain IDM at every headway; the I-24 replica's IDM fleet block on the same 3-lane road meets the 1,907 veh/h/lane target at T × 0.795 (`docs/ONBOARDING_MNDOT.md` §8). The corridor's car-following model is a calibration decision to make deliberately.
 
 ## [2.4.0] — 2026-09-24
 

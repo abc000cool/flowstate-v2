@@ -1,0 +1,206 @@
+{
+ "schema_version": 1,
+ "created_at": "2026-09-24T13:10:08Z",
+ "versions": {
+  "python": "3.12.14",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "script": "scripts/calibrate_capacity.py",
+ "source": "artifacts/idm_i24.json",
+ "base_scenario": "scenarios/i24_replica_corrected.yaml",
+ "target_veh_h_lane": 1907.1,
+ "target_source": "artifacts/fd_mndot_i94_wb_stpaul.json fd.ci95.q_max[0] (bootstrap lower bound)",
+ "corridor": {
+  "length_m": 4000.0,
+  "lanes": 3,
+  "x_ref_m": 3000.0,
+  "demand_veh_h_lane": 2400.0,
+  "duration_s": 1800.0,
+  "warmup_s": 300.0
+ },
+ "t_scales": [
+  1.0,
+  0.95,
+  0.9,
+  0.85,
+  0.8,
+  0.75
+ ],
+ "seeds": [
+  1,
+  2
+ ],
+ "table": [
+  {
+   "T_scale": 1.0,
+   "T_mean_s": 1.5112,
+   "capacity_veh_h_lane": 1671.6,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.95,
+   "T_mean_s": 1.4356,
+   "capacity_veh_h_lane": 1726.4,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.9,
+   "T_mean_s": 1.3601,
+   "capacity_veh_h_lane": 1765.6,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.85,
+   "T_mean_s": 1.2845,
+   "capacity_veh_h_lane": 1836.4,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.8,
+   "T_mean_s": 1.209,
+   "capacity_veh_h_lane": 1903.6,
+   "n": 2,
+   "demand_limited": false
+  },
+  {
+   "T_scale": 0.75,
+   "T_mean_s": 1.1334,
+   "capacity_veh_h_lane": 1937.6,
+   "n": 2,
+   "demand_limited": false
+  }
+ ],
+ "runs": [
+  {
+   "T_scale": 1.0,
+   "seed": 1,
+   "config_hash": "d4ae9058e48e",
+   "throughput_veh_h_lane": 1660.8,
+   "inserted_fraction": 0.7019,
+   "mean_speed_ms_at_ref": 17.073,
+   "wall_s": 19.9
+  },
+  {
+   "T_scale": 1.0,
+   "seed": 2,
+   "config_hash": "fb2710eb4c14",
+   "throughput_veh_h_lane": 1682.4,
+   "inserted_fraction": 0.7036,
+   "mean_speed_ms_at_ref": 16.92,
+   "wall_s": 20.2
+  },
+  {
+   "T_scale": 0.95,
+   "seed": 1,
+   "config_hash": "d89c4cbf15f3",
+   "throughput_veh_h_lane": 1729.6,
+   "inserted_fraction": 0.7278,
+   "mean_speed_ms_at_ref": 17.934,
+   "wall_s": 19.9
+  },
+  {
+   "T_scale": 0.95,
+   "seed": 2,
+   "config_hash": "025d0c4bd907",
+   "throughput_veh_h_lane": 1723.2,
+   "inserted_fraction": 0.7236,
+   "mean_speed_ms_at_ref": 16.808,
+   "wall_s": 21.1
+  },
+  {
+   "T_scale": 0.9,
+   "seed": 1,
+   "config_hash": "45de3c24ab6b",
+   "throughput_veh_h_lane": 1775.2,
+   "inserted_fraction": 0.7531,
+   "mean_speed_ms_at_ref": 16.744,
+   "wall_s": 21.2
+  },
+  {
+   "T_scale": 0.9,
+   "seed": 2,
+   "config_hash": "d91dbfd9d22d",
+   "throughput_veh_h_lane": 1756.0,
+   "inserted_fraction": 0.7336,
+   "mean_speed_ms_at_ref": 16.458,
+   "wall_s": 22.0
+  },
+  {
+   "T_scale": 0.85,
+   "seed": 1,
+   "config_hash": "1b31dfd68373",
+   "throughput_veh_h_lane": 1844.0,
+   "inserted_fraction": 0.7717,
+   "mean_speed_ms_at_ref": 17.344,
+   "wall_s": 22.6
+  },
+  {
+   "T_scale": 0.85,
+   "seed": 2,
+   "config_hash": "f7d7d16c2e60",
+   "throughput_veh_h_lane": 1828.8,
+   "inserted_fraction": 0.7692,
+   "mean_speed_ms_at_ref": 16.201,
+   "wall_s": 23.5
+  },
+  {
+   "T_scale": 0.8,
+   "seed": 1,
+   "config_hash": "05bfeb978a98",
+   "throughput_veh_h_lane": 1920.8,
+   "inserted_fraction": 0.8094,
+   "mean_speed_ms_at_ref": 17.733,
+   "wall_s": 22.6
+  },
+  {
+   "T_scale": 0.8,
+   "seed": 2,
+   "config_hash": "b454224954f7",
+   "throughput_veh_h_lane": 1886.4,
+   "inserted_fraction": 0.7881,
+   "mean_speed_ms_at_ref": 17.186,
+   "wall_s": 23.2
+  },
+  {
+   "T_scale": 0.75,
+   "seed": 1,
+   "config_hash": "5e36a373f1de",
+   "throughput_veh_h_lane": 1958.4,
+   "inserted_fraction": 0.8139,
+   "mean_speed_ms_at_ref": 17.115,
+   "wall_s": 24.0
+  },
+  {
+   "T_scale": 0.75,
+   "seed": 2,
+   "config_hash": "5a995cc6ebcf",
+   "throughput_veh_h_lane": 1916.8,
+   "inserted_fraction": 0.8053,
+   "mean_speed_ms_at_ref": 16.828,
+   "wall_s": 24.5
+  }
+ ],
+ "T_scale": 0.7948,
+ "T_mean_s": {
+  "before": 1.5112009904800698,
+  "after": 1.201118523408293
+ },
+ "interpolation": "linear interpolation between T x 0.8 (1904) and T x 0.75 (1938)",
+ "episode_gap_rmse_m": {
+  "episodes": null,
+  "n_episodes": 0,
+  "seed": 7,
+  "before": null,
+  "after": null
+ }
+}

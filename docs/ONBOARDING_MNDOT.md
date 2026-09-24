@@ -583,3 +583,31 @@ a "wave speed" of 7.2–7.6 km/h that is the queue front, not a stop-and-go
 wave; collisions 0–2 per seed (7 in 20 seeds). Round 2 (2026-09-23, the
 defective map, lane-change merges) had departed 0.41 (`artifacts/mndot_rounds/round2_gridlock_record.json`); the
 corrected map with the weave model is not better on the four-hour window.
+
+**Why the plateau (2026-09-24, block 3; stages `capprobe_mnfleet_4l` and
+`capprobe_i24fleet_3l`, artifacts `artifacts/idm_capacity_probe_*.json` with
+their `.calibration.json` sidecars — diagnostics, no scenario points at
+them).** The same T-scaling grid was run twice more: the corridor's own
+fleet block on a 4-lane road, and the I-24 replica's fleet block
+(`scenarios/i24_replica_corrected.yaml`) on the 3-lane road.
+
+| fleet block | lanes | T × 1.00 | 0.95 | 0.90 | 0.85 | 0.80 | 0.75 | outcome |
+|---|---|---|---|---|---|---|---|---|
+| I-94 corridor (`model: EIDM`, heterogeneity 0.15) | 3 (§8) | 1,591 | 1,626 | 1,670 | 1,656 | 1,709 | 1,703 | target not reached |
+| I-94 corridor (same block) | 4 | 1,609 | 1,637 | 1,676 | 1,670 | 1,653 | 1,689 | target not reached |
+| I-24 replica (`model: IDM`, heterogeneity 0.12) | 3 | 1,672 | 1,726 | 1,766 | 1,836 | 1,904 | 1,938 | 1,907 met at T × 0.795 (T = 1.201 s) |
+
+The lane count is not the cause (4 lanes change nothing). The two fleet
+blocks differ in the car-following model (the onboarding path writes
+`model: EIDM`, SUMO's extended IDM with estimation errors and action points;
+the I-24 replica runs plain IDM) and in the heterogeneity draw (0.15 vs
+0.12); the lane-change settings are the same (`lc_strategic` 5.0,
+`lc_keep_right` 0). The population was fitted as IDM on I-24 trajectories,
+so running it under EIDM is a model-form change that costs about 11 % of
+straight-road capacity at every headway and flattens the curve. Consequence:
+a Minnesota population that meets its capacity target exists under IDM
+(the I-24 fleet block, T × 0.795); under the corridor's EIDM block the
+target cannot be met by headway alone. The corridor scenario's `model` is
+therefore a calibration decision to be made deliberately (EIDM was the
+onboarding default, not a fit), and the next corridor round should state
+which model it runs and derive its population under that model.
