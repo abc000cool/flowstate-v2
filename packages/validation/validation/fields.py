@@ -85,7 +85,13 @@ def _clean(trajectories: pd.DataFrame, dt_bin: float, dx_bin: float) -> pd.DataF
     missing = [c for c in _REQUIRED_COLUMNS if c not in trajectories.columns]
     if missing:
         raise ValueError(f"trajectories missing required columns: {missing}")
-    clean = trajectories.dropna(subset=list(_REQUIRED_COLUMNS))
+    # The rows ``dropna(subset=...)`` keeps, in order — but the frame itself
+    # when nothing is dropped (the usual case), so binning an 80 M-row window
+    # does not start by copying its three columns.
+    complete = np.ones(len(trajectories), dtype=np.bool_)
+    for col in _REQUIRED_COLUMNS:
+        complete &= trajectories[col].notna().to_numpy(dtype=np.bool_)
+    clean = trajectories if bool(complete.all()) else trajectories.loc[complete]
     if clean.empty:
         raise ValueError("trajectories contain no usable (t, x, v) samples")
     return clean

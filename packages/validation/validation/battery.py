@@ -44,12 +44,23 @@ import pandas as pd
 
 from validation.criteria import CriteriaProfile
 from validation.fields import speed_field
-from validation.metrics import Metrics, compute_metrics, warmup_from_meta
+from validation.metrics import (
+    Metrics,
+    compute_metrics,
+    n_window_rows,
+    time_window_rows,
+    vehicle_codes,
+    warmup_from_meta,
+)
 from validation.observed import ObservedCorridor, ObservedScores, score_run_against_observed
 from validation.waves import WaveDetector
 
 #: Trajectory columns every comparison here needs (contract §3).
 TRAJECTORY_COLUMNS: tuple[str, ...] = ("t", "veh_id", "x", "v")
+
+#: Rows per batch when :func:`read_scoring_frame` fills its arrays: the
+#: transient Arrow memory is one batch, not the file.
+SCORING_READ_BATCH_ROWS: Final[int] = 262_144
 
 #: Per-replicate files :func:`analyse_replicate` writes beside the run
 #: artifacts (docs/CONTRACTS.md, "Corridor battery artifact").
@@ -57,26 +68,36 @@ METRICS_FILE: Final[str] = "metrics.json"
 SCORES_FILE: Final[str] = "observed_scores.json"
 
 #: Default cap on the scoring pool. One replicate's ``(t, veh_id, x, v)``
-#: frame of a 1.15 GB trajectory is several GB in pandas, so the pool is
+#: frame of a 1.15 GB trajectory is a few GB in pandas, so the pool is
 #: sized for memory, not for the CPU count — and further capped by
 #: :func:`score_pool_size` from the machine's available memory.
 DEFAULT_SCORE_PROCS: Final[int] = 6
 
 #: Peak RSS one scoring worker reaches per trajectory row [bytes]. Measured
-#: 2026-09-24 on synthetic contract-schema trajectories (10 columns, 500k-row
-#: groups; pandas 3.0.5, pyarrow 25.0.1, Python 3.12) at 1, 2 and 4 M rows:
-#: :func:`validation.metrics.compute_metrics` ≈ 400 B/row (the sort and the
-#: two per-vehicle groupby iterations each copy the frame, ``veh_id`` becomes
-#: an object array in the crossing count), :func:`score_replicate` ≈ 470
-#: B/row, and the high-water mark of the whole :func:`analyse_replicate`
-#: ≈ 545 B/row (blocks freed by one function are not all reused by the
-#: next). Rounded up for longer vehicle ids and allocator slack. An 80 M-row
-#: replicate (a 4-hour corridor at 2 Hz) is therefore ≈ 45 GB per worker,
-#: which is what the pool must be sized by.
-SCORE_WORKER_BYTES_PER_ROW: Final[int] = 640
+#: 2026-09-24 (block 3) on synthetic contract-schema trajectories (the ten
+#: ``_TRAJ_SCHEMA_BASE`` columns, 500k-row groups, ``veh_{k}`` ids; pandas
+#: 3.0.5, pyarrow 25.0.1, numpy 2.5.2, Python 3.12, macOS arm64) at 0.97,
+#: 1.97 and 3.88 M rows, one fresh process per function,
+#: ``resource.getrusage(RUSAGE_SELF).ru_maxrss`` minus the 177 MB import
+#: floor. Before the rewrite the whole :func:`analyse_replicate` reached
+#: 416 B/row at 3.88 M rows (slope 418 B/row between 0.97 and 3.88 M):
+#: :func:`validation.metrics.compute_metrics` 341, :func:`score_replicate`
+#: 239, :func:`replicate_wave_speed_kmh` 130 — sorted copies of the frame,
+#: ``veh_id`` as an object array, two ``groupby`` iterations each taking a
+#: sorted copy, one sort per station cross-section. After: the trajectory
+#: is read once in row batches into four arrays (32 B/row live,
+#: :func:`read_scoring_frame` 78 B/row peak), ids are integer codes, one
+#: ``(veh_id, t)`` sort serves every per-vehicle quantity, and the whole
+#: :func:`analyse_replicate` peaks at 115 B/row (slope 95 B/row); the
+#: outputs are byte-identical. Rounded up for allocator slack (macOS never
+#: returns freed pages; the estimate is an upper bound for glibc). An 80
+#: M-row replicate (a 4-hour corridor at 2 Hz) is therefore ≈ 13 GB per
+#: worker, which is what the pool is sized by.
+SCORE_WORKER_BYTES_PER_ROW: Final[int] = 160
 
 #: Fixed part of a scoring worker's RSS [bytes]: interpreter, pandas/scipy
-#: imports and the observations (≈ 180 MB measured; rounded up).
+#: imports, pyarrow's compute and parquet modules and the observations
+#: (≈ 240 MB measured as the intercept of the reader's fit; rounded up).
 SCORE_WORKER_BASE_BYTES: Final[int] = 512 * 1024**2
 
 #: Share of the machine's available memory the scoring pool may plan on;
@@ -436,11 +457,75 @@ def read_trajectories(
     return pd.read_parquet(Path(run_dir) / "trajectories.parquet", columns=list(columns))
 
 
+def read_scoring_frame(run_dir: str | Path) -> pd.DataFrame:
+    """One replicate's ``(t, veh_id, x, v)`` rows with ``veh_id`` as integer codes.
+
+    The frame :func:`analyse_replicate` hands to its three measurements. The
+    file is read in row batches straight into preallocated arrays, so the
+    transient Arrow memory is one batch rather than the whole file (reading
+    through ``pd.read_parquet`` left ≈ 100 B/row in Arrow's allocator pool,
+    which numpy cannot reuse, before any measurement began). ``veh_id`` is
+    dictionary-encoded per batch and the batch dictionaries are united and
+    ordered by :func:`validation.metrics.vehicle_codes` — codes in the ids'
+    sort order, so every sort and grouping over them is the one over the
+    strings; the strings themselves are never held beside the numbers. Every
+    function the frame reaches uses ``veh_id`` only as a grouping key, so the
+    outputs equal those on the string frame — pinned by the battery's
+    byte-identity test.
+
+    Args:
+        run_dir: Replicate directory.
+
+    Returns:
+        Frame with ``t`` [s], ``veh_id`` (``np.intp`` codes), ``x`` [m],
+        ``v`` [m/s], in the file's row order.
+    """
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    path = Path(run_dir) / "trajectories.parquet"
+    with open(path, "rb") as f:
+        reader = pq.ParquetFile(f)
+        n = int(reader.metadata.num_rows)
+        t = np.empty(n, dtype=np.float64)
+        x = np.empty(n, dtype=np.float64)
+        v = np.empty(n, dtype=np.float64)
+        local = np.empty(n, dtype=np.int32)
+        dictionaries: list[list[str]] = []
+        bounds: list[tuple[int, int]] = []
+        lo = 0
+        for batch in reader.iter_batches(
+            batch_size=SCORING_READ_BATCH_ROWS, columns=list(TRAJECTORY_COLUMNS)
+        ):
+            hi = lo + batch.num_rows
+            t[lo:hi] = batch.column("t").to_numpy(zero_copy_only=False)
+            x[lo:hi] = batch.column("x").to_numpy(zero_copy_only=False)
+            v[lo:hi] = batch.column("v").to_numpy(zero_copy_only=False)
+            encoded = pc.dictionary_encode(batch.column("veh_id"))
+            local[lo:hi] = encoded.indices.to_numpy(zero_copy_only=False)
+            dictionaries.append(encoded.dictionary.to_pylist())
+            bounds.append((lo, hi))
+            lo = hi
+    # Global codes in the ids' sort order: the batches' dictionaries are
+    # united and ordered by the same factorization the string column would
+    # get, and each batch's local indices are mapped through it.
+    ids = sorted(set().union(*dictionaries)) if dictionaries else []
+    ranks = vehicle_codes(pd.Series(ids, dtype="str"))
+    rank = dict(zip(ids, ranks.tolist(), strict=True))
+    codes = np.empty(n, dtype=np.intp)
+    for (lo, hi), dictionary in zip(bounds, dictionaries, strict=True):
+        mapping = np.asarray([rank[s] for s in dictionary], dtype=np.intp)
+        codes[lo:hi] = mapping[local[lo:hi]]
+    del local
+    return pd.DataFrame({"t": t, "veh_id": codes, "x": x, "v": v}, copy=False)
+
+
 def score_replicate(
     run_dir: str | Path,
     observed: ObservedCorridor,
     *,
     x_offset_m: float = 0.0,
+    trajectories: pd.DataFrame | None = None,
 ) -> ObservedScores:
     """Score one completed replicate against a corridor's observations.
 
@@ -449,13 +534,16 @@ def score_replicate(
         observed: The corridor's observations.
         x_offset_m: Simulation ``x`` of the observed origin [m]; see
             :func:`validation.observed.score_run_against_observed`.
+        trajectories: The replicate's rows (:data:`TRAJECTORY_COLUMNS`) when
+            the caller already holds them; ``None`` reads them.
 
     Returns:
         The replicate's :class:`validation.observed.ObservedScores`.
     """
     meta = load_meta(run_dir)
     warmup_s, duration_s = measurement_window(meta)
-    trajectories = read_trajectories(run_dir)
+    if trajectories is None:
+        trajectories = read_trajectories(run_dir)
     return score_run_against_observed(
         trajectories,
         observed,
@@ -465,7 +553,12 @@ def score_replicate(
     )
 
 
-def replicate_wave_speed_kmh(run_dir: str | Path, detector: WaveDetector) -> float:
+def replicate_wave_speed_kmh(
+    run_dir: str | Path,
+    detector: WaveDetector,
+    *,
+    trajectories: pd.DataFrame | None = None,
+) -> float:
     """Backward wave-front speed [km/h] one detector reads on a replicate.
 
     The field is binned at the detector's own bins (a
@@ -477,6 +570,8 @@ def replicate_wave_speed_kmh(run_dir: str | Path, detector: WaveDetector) -> flo
     Args:
         run_dir: Replicate directory.
         detector: Detector recipe, normally the criteria profile's.
+        trajectories: The replicate's rows (``t``, ``x``, ``v`` at least)
+            when the caller already holds them; ``None`` reads them.
 
     Returns:
         Mean backward-front speed magnitude [km/h]; NaN when the detector
@@ -484,12 +579,25 @@ def replicate_wave_speed_kmh(run_dir: str | Path, detector: WaveDetector) -> flo
     """
     meta = load_meta(run_dir)
     warmup_s, _ = measurement_window(meta)
-    traj = read_trajectories(run_dir, columns=("t", "x", "v"))
+    if trajectories is None:
+        trajectories = read_trajectories(run_dir, columns=("t", "x", "v"))
+    t = trajectories["t"].to_numpy(dtype=np.float64)
+    rows: slice | np.ndarray = slice(0, t.size)
     if warmup_s > 0.0:
-        windowed = traj.loc[traj["t"] >= warmup_s]
-        if not windowed.empty:
-            traj = windowed
-    field = speed_field(traj, dt_bin=detector.dt_bin_s, dx_bin=detector.dx_bin_m)
+        windowed = time_window_rows(t, warmup_s)
+        if n_window_rows(windowed) > 0:
+            rows = windowed
+    # The window's three columns, views when the rows are time-ordered.
+    window = pd.DataFrame(
+        {
+            "t": t[rows],
+            "x": trajectories["x"].to_numpy(dtype=np.float64)[rows],
+            "v": trajectories["v"].to_numpy(dtype=np.float64)[rows],
+        },
+        copy=False,
+    )
+    del t, trajectories
+    field = speed_field(window, dt_bin=detector.dt_bin_s, dx_bin=detector.dx_bin_m)
     return float(detector.measure(field).speed_kmh)
 
 
@@ -554,9 +662,12 @@ def analyse_replicate(
     detector, ``x_ref``/``span``, insertion) and :data:`SCORES_FILE` (the
     :class:`validation.observed.ObservedScores`) into ``run_dir``, so a
     finished battery can be re-scored (:func:`load_replicate_analysis`)
-    without re-simulating. The trajectory is read three times (metrics,
-    scores, wave speed) — the reads are cheap beside the binning and the
-    groupbys, and one process per replicate is the unit of parallelism.
+    without re-simulating. The trajectory is read once
+    (:func:`read_scoring_frame`: ``veh_id`` factorized to integer codes, the
+    strings dropped) and the one frame serves the three measurements
+    (metrics, scores, wave speed), each of which works on views of it; one
+    process per replicate is the unit of parallelism and its peak RSS is
+    what :func:`score_pool_size` plans with.
 
     Args:
         run_dir: Replicate directory.
@@ -570,9 +681,11 @@ def analyse_replicate(
         The replicate's :class:`ReplicateAnalysis`.
     """
     path = Path(run_dir)
-    metrics = compute_metrics(path, x_ref=x_ref, span=span)
-    scores = score_replicate(path, observed, x_offset_m=x_offset_m)
-    wave_speed = replicate_wave_speed_kmh(path, profile.wave_detector)
+    frame = read_scoring_frame(path)
+    metrics = compute_metrics(path, x_ref=x_ref, span=span, trajectories=frame)
+    scores = score_replicate(path, observed, x_offset_m=x_offset_m, trajectories=frame)
+    wave_speed = replicate_wave_speed_kmh(path, profile.wave_detector, trajectories=frame)
+    del frame
     insertion = insertion_stats(load_meta(path))
     (path / METRICS_FILE).write_text(
         json.dumps(

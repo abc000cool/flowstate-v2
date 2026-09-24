@@ -178,6 +178,163 @@ def rmspe(sim: NDArray[np.float64], obs: NDArray[np.float64]) -> float:
     return float(np.sqrt(np.mean(((sim_a - obs_a) / obs_a) ** 2)))
 
 
+def vehicle_codes(veh_id: pd.Series) -> NDArray[np.intp]:
+    """Vehicle ids as integer codes in the ids' sort order.
+
+    One factorization (``pd.factorize(sort=True)``) replaces every later
+    sort and grouping over the id column: code ``k`` is the ``k``-th smallest
+    id under the ordering ``sort_values`` and ``groupby(sort=True)`` use, so
+    sorting rows by ``(code, t)`` is the sort by ``(veh_id, t)``, grouping by
+    code in ascending order is the sorted groupby, and the codes'
+    first-appearance order is the ids'. Every trajectory function here uses
+    ``veh_id`` only as a grouping key, so a frame whose ``veh_id`` column
+    already holds these codes (``validation.battery.read_scoring_frame``)
+    produces the same output as the string frame it came from.
+
+    Args:
+        veh_id: The ``veh_id`` column (strings, or codes from an earlier call).
+
+    Returns:
+        ``np.intp`` codes, one per row.
+    """
+    if pd.api.types.is_integer_dtype(veh_id.dtype):
+        # Codes already (a frame from ``read_scoring_frame``): dense values
+        # ``0 … K−1`` all present are exactly what ``factorize(sort=True)``
+        # would return, so the pass over them is skipped. ``to_numpy`` of an
+        # integer column is a view; of a string column it would materialize
+        # every id as a Python object, which is why the dtype is tested first.
+        values = veh_id.to_numpy()
+        if values.size:
+            lo, hi = int(values.min()), int(values.max())
+            if (
+                lo >= 0
+                and hi < values.size
+                and bool(np.all(np.bincount(values, minlength=hi + 1) > 0))
+            ):
+                return np.asarray(values, dtype=np.intp)
+    codes, _ = pd.factorize(veh_id, sort=True)
+    return np.asarray(codes, dtype=np.intp)
+
+
+@dataclass(frozen=True)
+class _ByVehicle:
+    """Trajectory rows sorted stably by ``(veh_id, t)``, as arrays.
+
+    This is the one sort the crossing count, the travel times and the
+    per-vehicle integrations share. It replaces ``sort_values`` copies of the
+    frame and ``groupby`` iteration (each of which copied every column,
+    ``veh_id`` as an object array) with one permutation and two sorted
+    columns.
+
+    Attributes:
+        order: Frame row positions in sorted order — ``np.lexsort`` on the
+            vehicle codes and ``t``, i.e. stable: rows of one vehicle with
+            equal ``t`` keep their frame order, the tie rule of
+            ``sort_values(["veh_id", "t"], kind="stable")``.
+        t: ``t`` in sorted order.
+        x: ``x`` in sorted order.
+        starts: Start offset of each vehicle's run of rows, by ascending
+            code; the run of code ``k`` is ``[starts[k], starts[k + 1])``.
+        same: ``same[i]`` — sorted rows ``i`` and ``i + 1`` belong to one
+            vehicle (the consecutive-pair mask of :func:`count_crossings`).
+        by_first_row: Vehicle codes in the order the vehicles first appear
+            in the frame — the iteration order of ``groupby(sort=False)``,
+            which fixes the summation order of every per-vehicle total.
+        t_frame: ``t`` in frame order (the tie fallback re-sorts from it).
+    """
+
+    order: NDArray[np.intp]
+    t: FloatArray
+    x: FloatArray
+    starts: NDArray[np.intp]
+    same: NDArray[np.bool_]
+    by_first_row: NDArray[np.intp]
+    t_frame: FloatArray
+
+    @classmethod
+    def build(cls, codes: NDArray[np.intp], t: FloatArray, x: FloatArray) -> _ByVehicle:
+        """Sort once. ``codes`` from :func:`vehicle_codes`; ``t``/``x`` in frame order."""
+        n = t.size
+        if n and time_ordered(t):
+            # Time-ordered rows (the runner writes them so): a stable sort by
+            # code alone is the (code, t) sort, at a fraction of the cost.
+            order = np.argsort(codes, kind="stable")
+        else:
+            order = np.lexsort((t, codes))
+        order = np.asarray(order, dtype=np.intp)
+        sorted_codes = codes[order]
+        boundaries = np.flatnonzero(sorted_codes[1:] != sorted_codes[:-1]) + 1
+        starts = np.concatenate([np.zeros(1 if n else 0, dtype=np.intp), boundaries])
+        starts = np.asarray(starts, dtype=np.intp)
+        same = np.ones(max(n - 1, 0), dtype=np.bool_)
+        same[boundaries - 1] = False
+        del sorted_codes
+        first_row = np.minimum.reduceat(order, starts) if n else np.empty(0, dtype=np.intp)
+        by_first_row = np.asarray(np.argsort(first_row, kind="stable"), dtype=np.intp)
+        return cls(
+            order=order,
+            t=t[order],
+            x=x[order],
+            starts=starts,
+            same=same,
+            by_first_row=by_first_row,
+            t_frame=t,
+        )
+
+    @classmethod
+    def from_frame(cls, trajectories: pd.DataFrame) -> _ByVehicle:
+        """Build from a frame with ``t``, ``veh_id`` and ``x`` columns."""
+        return cls.build(
+            vehicle_codes(trajectories["veh_id"]),
+            trajectories["t"].to_numpy(dtype=np.float64),
+            trajectories["x"].to_numpy(dtype=np.float64),
+        )
+
+    def run(self, code: int) -> slice:
+        """The sorted-row run of vehicle ``code``."""
+        lo = int(self.starts[code])
+        hi = int(self.starts[code + 1]) if code + 1 < self.starts.size else self.order.size
+        return slice(lo, hi)
+
+    def rows(self, code: int) -> slice | NDArray[np.intp]:
+        """Frame-row positions of one vehicle in the order ``sort_values("t")`` gives.
+
+        A vehicle whose timestamps are distinct has one time order, and it is
+        the sorted run. A vehicle with equal timestamps needs the tie rule of
+        the per-vehicle ``group.sort_values("t")`` this replaced: a
+        ``quicksort`` argsort of the vehicle's rows in frame order (not
+        stable) — reproduced by making that call on those rows.
+
+        Returns:
+            A slice into the sorted arrays, or frame-row positions to gather.
+        """
+        run = self.run(code)
+        t = self.t[run]
+        if t.size > 1 and bool(np.any(t[1:] == t[:-1])):
+            frame_rows = np.sort(self.order[run])
+            perm = np.argsort(self.t_frame[frame_rows], kind="quicksort")
+            return np.asarray(frame_rows[perm], dtype=np.intp)
+        return run
+
+    def crossing_times(self, x_ref: float) -> FloatArray:
+        """Times of every upward crossing of ``x_ref`` (see :func:`count_crossings`)."""
+        if self.order.size < 2:
+            return np.empty(0, dtype=np.float64)
+        x = self.x
+        hit = self.same & (x[:-1] < x_ref) & (x[1:] >= x_ref)
+        return np.asarray(self.t[1:][hit], dtype=np.float64)
+
+
+def _gather(
+    rows: slice | NDArray[np.intp], sorted_values: FloatArray, frame_values: FloatArray
+) -> FloatArray:
+    """One vehicle's column in time order: a view of the sorted column, or a gather
+    from the frame-order column when :meth:`_ByVehicle.rows` re-sorted ties."""
+    if isinstance(rows, slice):
+        return sorted_values[rows]
+    return frame_values[rows]
+
+
 def travel_times(trajectories: pd.DataFrame, x_lo: float, x_hi: float) -> FloatArray:
     """Per-vehicle travel time across the measurement span ``[x_lo, x_hi]``.
 
@@ -193,7 +350,8 @@ def travel_times(trajectories: pd.DataFrame, x_lo: float, x_hi: float) -> FloatA
         x_hi: Span exit position [m], must exceed ``x_lo``.
 
     Returns:
-        Array of travel times [s], one per vehicle completing the span.
+        Array of travel times [s], one per vehicle completing the span, in
+        the vehicles' first-appearance order.
 
     Raises:
         ValueError: If ``x_hi <= x_lo`` or required columns are missing.
@@ -203,11 +361,26 @@ def travel_times(trajectories: pd.DataFrame, x_lo: float, x_hi: float) -> FloatA
     for col in ("t", "x", "veh_id"):
         if col not in trajectories.columns:
             raise ValueError(f"trajectories missing column {col!r}")
+    if trajectories.empty:
+        return np.empty(0, dtype=np.float64)
+    by = _ByVehicle.from_frame(trajectories)
+    x_frame = trajectories["x"].to_numpy(dtype=np.float64)
+    return _travel_times(by, x_frame, by.by_first_row, x_lo, x_hi)
+
+
+def _travel_times(
+    by: _ByVehicle,
+    x_frame: FloatArray,
+    vehicles: NDArray[np.intp],
+    x_lo: float,
+    x_hi: float,
+) -> FloatArray:
+    """:func:`travel_times` over ``vehicles`` (codes, in iteration order)."""
     out: list[float] = []
-    for _, group in trajectories.groupby("veh_id", sort=False):
-        g = group.sort_values("t")
-        t = g["t"].to_numpy(dtype=np.float64)
-        x = g["x"].to_numpy(dtype=np.float64)
+    for code in vehicles:
+        rows = by.rows(int(code))
+        t = _gather(rows, by.t, by.t_frame)
+        x = _gather(rows, by.x, x_frame)
         t_enter = _first_crossing(t, x, x_lo)
         t_exit = _first_crossing(t, x, x_hi)
         if t_enter is None or t_exit is None:
@@ -239,19 +412,15 @@ def _crossing_times(trajectories: pd.DataFrame, x_ref: float) -> FloatArray:
 
     Each crossing is stamped with the time of the later sample of the pair
     that brackets ``x_ref``. Vectorised over the whole frame: rows are sorted
-    by ``(veh_id, t)`` and consecutive same-vehicle pairs are tested.
+    by ``(veh_id, t)`` (:class:`_ByVehicle`) and consecutive same-vehicle
+    pairs are tested.
     """
     for col in ("t", "veh_id", "x"):
         if col not in trajectories.columns:
             raise ValueError(f"trajectories missing column {col!r}")
     if len(trajectories) < 2:
         return np.empty(0, dtype=np.float64)
-    ordered = trajectories.sort_values(["veh_id", "t"], kind="stable")
-    vid = ordered["veh_id"].to_numpy()
-    x = ordered["x"].to_numpy(dtype=np.float64)
-    t = ordered["t"].to_numpy(dtype=np.float64)
-    hit = (vid[1:] == vid[:-1]) & (x[:-1] < x_ref) & (x[1:] >= x_ref)
-    return np.asarray(t[1:][hit], dtype=np.float64)
+    return _ByVehicle.from_frame(trajectories).crossing_times(x_ref)
 
 
 def count_crossings(
@@ -388,9 +557,94 @@ def default_travel_span(trajectories: pd.DataFrame) -> tuple[float, float]:
             raise ValueError(f"trajectories missing column {col!r}")
     if trajectories.empty:
         raise ValueError("cannot derive a travel-time span from an empty frame")
-    x_lo = float(trajectories["x"].min())
-    per_veh_max = trajectories.groupby("veh_id", sort=False)["x"].max().to_numpy(dtype=np.float64)
-    return x_lo, float(np.median(per_veh_max))
+    x = trajectories["x"].to_numpy(dtype=np.float64)
+    return _travel_span(vehicle_codes(trajectories["veh_id"]), x, np.ones(x.size, dtype=np.bool_))
+
+
+def _travel_span(
+    codes: NDArray[np.intp], x: FloatArray, rows: NDArray[np.bool_]
+) -> tuple[float, float]:
+    """:func:`default_travel_span` over the rows flagged in ``rows`` (frame order).
+
+    The per-vehicle furthest position skips NaN like the groupby ``max`` it
+    replaces (NaN only for a vehicle observed at no finite position); the
+    median does not depend on the vehicles' order.
+    """
+    x_rows = x[rows]
+    codes_rows = codes[rows]
+    known = ~np.isnan(x_rows)
+    x_lo = float(np.nanmin(x_rows)) if bool(known.any()) else math.nan
+    n_veh = int(codes.max()) + 1 if codes.size else 0
+    per_veh_max = np.full(n_veh, -np.inf, dtype=np.float64)
+    present = np.zeros(n_veh, dtype=np.bool_)
+    present[codes_rows] = True
+    if bool(known.all()):
+        np.fmax.at(per_veh_max, codes_rows, x_rows)
+    else:
+        seen = np.zeros(n_veh, dtype=np.bool_)
+        seen[codes_rows[known]] = True
+        np.fmax.at(per_veh_max, codes_rows[known], x_rows[known])
+        per_veh_max[~seen] = np.nan
+    return x_lo, float(np.median(per_veh_max[present]))
+
+
+def time_ordered(t: FloatArray) -> bool:
+    """Whether ``t`` is non-decreasing — the order the runner writes rows in.
+
+    Args:
+        t: Sample times [s] in frame order.
+
+    Returns:
+        True for an empty or non-decreasing array (a NaN makes it False).
+    """
+    return bool(t.size == 0 or np.all(t[1:] >= t[:-1]))
+
+
+def time_window_rows(
+    t: FloatArray, t_lo: float, t_hi: float | None = None, *, ordered: bool | None = None
+) -> slice | NDArray[np.bool_]:
+    """Rows with ``t_lo <= t`` (and ``t < t_hi`` when given), in frame order.
+
+    The same rows in the same order as the mask ``(t >= t_lo) & (t < t_hi)``
+    selects — as a slice, which indexes to a view, when ``t`` is
+    non-decreasing (:func:`time_ordered`), else as that mask. Selecting a
+    window of an 80 M-row corridor trajectory by slice costs nothing; by
+    mask it copies every column the caller indexes.
+
+    Args:
+        t: Sample times [s] in frame order.
+        t_lo: Inclusive lower bound [s].
+        t_hi: Exclusive upper bound [s]; ``None`` for no bound.
+        ordered: :func:`time_ordered` of ``t`` when the caller already knows
+            it (one check serves many windows); ``None`` checks here.
+
+    Returns:
+        A slice or a boolean mask over the rows.
+    """
+    if ordered is None:
+        ordered = time_ordered(t)
+    if ordered:
+        lo = int(np.searchsorted(t, t_lo, side="left"))
+        hi = t.size if t_hi is None else int(np.searchsorted(t, t_hi, side="left"))
+        return slice(lo, max(hi, lo))
+    mask = t >= t_lo
+    if t_hi is not None:
+        mask &= t < t_hi
+    return np.asarray(mask, dtype=np.bool_)
+
+
+def n_window_rows(rows: slice | NDArray[np.bool_]) -> int:
+    """Number of rows a :func:`time_window_rows` selection holds.
+
+    Args:
+        rows: The selection.
+
+    Returns:
+        Its row count.
+    """
+    if isinstance(rows, slice):
+        return int(rows.stop - rows.start)
+    return int(np.count_nonzero(rows))
 
 
 def compute_metrics(
@@ -402,6 +656,8 @@ def compute_metrics(
     v_jam_thresh: float = V_JAM_THRESH,
     min_area_bins: int = 4,
     warmup_s: float | None = None,
+    *,
+    trajectories: pd.DataFrame | None = None,
 ) -> Metrics:
     """Compute the standard metric set for one run directory.
 
@@ -425,6 +681,18 @@ def compute_metrics(
     times are undefined (``n_travel_time_veh == 0``) — the ring's headline
     metrics are σ_v and the wave set, not travel time.
 
+    **Memory.** The frame is reduced to arrays once — vehicle codes
+    (:func:`vehicle_codes`) and one ``(veh_id, t)`` sort
+    (:class:`_ByVehicle`) — and every per-vehicle quantity is read from
+    views of that sort, so no copy of the frame is made and nothing but the
+    window's own columns is alive during the σ_v and wave phases. Measured
+    2026-09-24 on a 3.9 M-row synthetic corridor trajectory (see
+    ``validation.battery.SCORE_WORKER_BYTES_PER_ROW``): the previous
+    implementation peaked at 341 B per row (sorted copies, ``veh_id`` as an
+    object array, two ``groupby`` iterations each taking a sorted copy);
+    this one at 147 B per row, most of it the parquet read itself, and at
+    about 35 B per row above a frame the caller already holds.
+
     Args:
         run_dir: Directory holding ``trajectories.parquet`` and ``meta.json``.
         x_ref: Reference cross-section for throughput [m]; ``None`` uses the
@@ -441,6 +709,10 @@ def compute_metrics(
         warmup_s: Warm-up to discard [s]; ``None`` (the default) takes the
             run's own ``config.sim.warmup_s`` (:func:`warmup_from_meta`).
             Pass ``0.0`` to measure over the whole recorded run.
+        trajectories: The run's trajectory rows (``t``, ``veh_id``, ``x``,
+            ``v``), for a caller that already holds them
+            (``validation.battery.analyse_replicate`` reads them once for
+            three measurements); ``None`` reads ``trajectories.parquet``.
 
     Returns:
         A :class:`Metrics` instance.
@@ -453,20 +725,27 @@ def compute_metrics(
     run_path = Path(run_dir)
     traj_path = run_path / "trajectories.parquet"
     meta_path = run_path / "meta.json"
-    if not traj_path.is_file():
+    if trajectories is None and not traj_path.is_file():
         raise FileNotFoundError(f"missing {traj_path}")
     if not meta_path.is_file():
         raise FileNotFoundError(f"missing {meta_path}")
-    # Only the columns the metrics use: a 7,800 s corridor run holds ~10 M
-    # rows, and the full eight-column frame plus groupby copies peaked at
-    # ~7 GB of RSS in the report generator (part of what crashed a 16 GB
-    # machine during the I-24 validation).
-    traj = pd.read_parquet(traj_path, columns=["t", "veh_id", "x", "v"])
+    if trajectories is None:
+        # Only the columns the metrics use: a 7,800 s corridor run holds
+        # ~10 M rows, and the full eight-column frame plus groupby copies
+        # peaked at ~7 GB of RSS in the report generator (part of what
+        # crashed a 16 GB machine during the I-24 validation).
+        traj = pd.read_parquet(traj_path, columns=["t", "veh_id", "x", "v"])
+    else:
+        traj = trajectories
     if traj.empty:
         raise ValueError(f"{traj_path} holds no trajectory rows")
     meta = json.loads(meta_path.read_text())
 
     t_all = traj["t"].to_numpy(dtype=np.float64)
+    x_all = traj["x"].to_numpy(dtype=np.float64)
+    v_all = traj["v"].to_numpy(dtype=np.float64)
+    codes = vehicle_codes(traj["veh_id"])
+    del traj
     t_start, t_end = float(t_all.min()), float(t_all.max())
 
     # Measurement window: the recorded run minus its configured warm-up.
@@ -482,59 +761,60 @@ def compute_metrics(
             "pass warmup_s=0.0 to measure the whole record deliberately."
         )
     windowed = warm > t_start
-    window = traj.loc[traj["t"] >= t_lo] if windowed else traj
+    win = time_window_rows(t_all, t_lo) if windowed else slice(0, t_all.size)
 
-    x_win = window["x"].to_numpy(dtype=np.float64)
+    x_win = x_all[win]
     x_min, x_max = float(x_win.min()), float(x_win.max())
+    del x_win
     if x_ref is None:
         x_ref = 0.5 * (x_min + x_max)
     default_span = span is None
     if span is None:
-        span = default_travel_span(window)
+        in_window = np.zeros(t_all.size, dtype=np.bool_)
+        in_window[win] = True
+        span = _travel_span(codes, x_all, in_window)
+        del in_window
+
+    by = _ByVehicle.build(codes, t_all, x_all)
 
     # Throughput at the reference cross-section, over the measurement window.
     t_span_s = t_end - t_lo
-    crossings = count_crossings(traj, x_ref, t_lo=t_lo)
+    times = by.crossing_times(x_ref)
+    crossings = int(np.count_nonzero(times >= t_lo))
+    del times
     throughput = veh_s_to_veh_h(crossings / t_span_s) if t_span_s > 0 else math.nan
 
     # Travel times over the measurement span, whole journeys only: a vehicle
     # already in flight at t_lo would otherwise be credited an entry time of
     # t_lo and report a truncated travel time.
     if windowed:
-        first_t = traj.groupby("veh_id", sort=False)["t"].transform("min")
-        tt_frame = traj.loc[first_t >= t_lo]
+        whole = by.t[by.starts] >= t_lo
+        vehicles = by.by_first_row[whole[by.by_first_row]]
     else:
-        tt_frame = traj
-    if tt_frame.empty or (default_span and span[1] <= span[0]):
+        vehicles = by.by_first_row
+    if vehicles.size == 0 or (default_span and span[1] <= span[0]):
         tts = np.empty(0, dtype=np.float64)
+    elif span[1] <= span[0]:
+        raise ValueError(f"need x_hi > x_lo, got [{span[0]}, {span[1]}]")
     else:
-        tts = travel_times(tt_frame, span[0], span[1])
+        tts = _travel_times(by, x_all, vehicles, span[0], span[1])
     # One completing vehicle is a sample, not a fleet mean (it also makes
     # p90 equal the mean); report the sample size and leave both undefined.
     n_tt = int(tts.size)
     mean_tt = float(tts.mean()) if n_tt >= 2 else math.nan
     p90_tt = float(np.percentile(tts, 90)) if n_tt >= 2 else math.nan
 
-    # σ_v spatial: std across vehicles at each shared output timestamp.
-    by_t = window.groupby("t")["v"]
-    spatial_stds = by_t.std(ddof=1)[by_t.count() >= 2]
-    sigma_spatial = float(spatial_stds.mean()) if len(spatial_stds) else math.nan
-
-    # σ_v temporal: std over time per vehicle.
-    by_veh = window.groupby("veh_id")["v"]
-    temporal_stds = by_veh.std(ddof=1)[by_veh.count() >= 2]
-    sigma_temporal = float(temporal_stds.mean()) if len(temporal_stds) else math.nan
-
     # VMT / VHT via trapezoid integration of sampled speeds. The whole-run
     # VMT is accumulated in the same pass: it is the denominator of a
-    # whole-run fuel total (see Metrics.fuel_ml_per_veh_km).
+    # whole-run fuel total (see Metrics.fuel_ml_per_veh_km). Vehicles in
+    # first-appearance order, as the groupby iteration summed them.
     vmt_km = 0.0
     vht_h = 0.0
     vmt_km_whole = 0.0
-    for _, group in traj.groupby("veh_id", sort=False):
-        g = group.sort_values("t")
-        t = g["t"].to_numpy(dtype=np.float64)
-        v = g["v"].to_numpy(dtype=np.float64)
+    for code in by.by_first_row:
+        rows = by.rows(int(code))
+        t = _gather(rows, by.t, by.t_frame)
+        v = v_all[by.order[rows]] if isinstance(rows, slice) else v_all[rows]
         if len(t) < 2:
             continue
         mid_v = 0.5 * (v[:-1] + v[1:])
@@ -551,6 +831,21 @@ def compute_metrics(
         first = int(np.searchsorted(t, t_lo, side="left"))
         if len(t) - first >= 2:
             vht_h += s_to_h(float(t[-1] - t[first]))
+    del by
+
+    # σ_v spatial: std across vehicles at each shared output timestamp.
+    # σ_v temporal: std over time per vehicle. Both group the window's rows
+    # in frame order (the accumulation order of the groupby they replace).
+    t_w = t_all[win]
+    v_w = pd.Series(v_all[win], copy=False)
+    by_t = v_w.groupby(t_w)
+    spatial_stds = by_t.std(ddof=1)[by_t.count() >= 2]
+    sigma_spatial = float(spatial_stds.mean()) if len(spatial_stds) else math.nan
+    del by_t, spatial_stds
+    by_veh = v_w.groupby(codes[win])
+    temporal_stds = by_veh.std(ddof=1)[by_veh.count() >= 2]
+    sigma_temporal = float(temporal_stds.mean()) if len(temporal_stds) else math.nan
+    del by_veh, temporal_stds, v_w, codes
 
     # Fuel per vehicle-km from meta totals, when recorded. A whole-run total
     # keeps a whole-run denominator; a windowed total gets the window's VMT.
@@ -563,8 +858,11 @@ def compute_metrics(
     else:
         fuel_per_km = math.nan
 
-    # Wave metrics from the binned speed field.
+    # Wave metrics from the binned speed field of the window's rows.
+    window = pd.DataFrame({"t": t_w, "x": x_all[win], "v": v_all[win]}, copy=False)
+    del t_w, t_all, x_all, v_all
     field = speed_field(window, dt_bin=dt_bin, dx_bin=dx_bin)
+    del window
     wave_set = detect_waves(field, v_jam_thresh=v_jam_thresh, min_area_bins=min_area_bins)
     backward = wave_set.backward()
     if backward:
@@ -795,6 +1093,7 @@ def link_hour_geh(
     outside: list[float] = []
     n_outside = 0
 
+    by: _ByVehicle | None = None
     crossing_times: dict[int, FloatArray] = {}
     gehs: list[float] = []
     xs: list[float] = []
@@ -819,7 +1118,9 @@ def link_hour_geh(
             )
         i = matches[0]
         if i not in crossing_times:
-            crossing_times[i] = _crossing_times(sim, x_refs[i])
+            if by is None:
+                by = _ByVehicle.from_frame(sim)  # one sort for every cross-section
+            crossing_times[i] = by.crossing_times(x_refs[i])
         times = crossing_times[i]
         n = int(np.count_nonzero((times >= w_o) & (times < w_o + window_s)))
         q_sim = veh_s_to_veh_h(n / window_s)

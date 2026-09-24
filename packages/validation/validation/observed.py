@@ -44,7 +44,7 @@ import pandas as pd
 from numpy.typing import NDArray
 
 from flowstate_core.units import s_to_h
-from validation.metrics import link_hour_geh, rmspe
+from validation.metrics import link_hour_geh, n_window_rows, rmspe, time_ordered, time_window_rows
 
 FloatArray = NDArray[np.float64]
 
@@ -705,14 +705,18 @@ def _simulated_speed_matrix(
     if not windows or not bins:
         return out
     t = np.asarray(trajectories["t"].to_numpy(), dtype=np.float64)
-    x = np.asarray(trajectories["x"].to_numpy(), dtype=np.float64) - x_offset_m
+    x = np.asarray(trajectories["x"].to_numpy(), dtype=np.float64)
     v = np.asarray(trajectories["v"].to_numpy(), dtype=np.float64)
+    ordered = time_ordered(t)
     for i, k in enumerate(windows):
         lo = k * window_s
-        in_window = (t >= lo) & (t < lo + window_s)
-        if not bool(in_window.any()):
+        # The window's rows as a view when the rows are time-ordered; the
+        # origin shift is applied to the window's positions only, never to a
+        # copy of the whole column.
+        in_window = time_window_rows(t, lo, lo + window_s, ordered=ordered)
+        if n_window_rows(in_window) == 0:
             continue
-        xs = x[in_window]
+        xs = x[in_window] - x_offset_m
         vs = v[in_window]
         for j, (x_lo, x_hi) in enumerate(bins):
             cell = (xs >= x_lo) & (xs < x_hi)
