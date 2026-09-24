@@ -106,7 +106,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from flowstate_core.config import ScenarioConfig, fleet_non_defaults
+from flowstate_core.config import OSMNetwork, ScenarioConfig, fleet_non_defaults
 from flowstate_core.units import veh_h_to_veh_s
 from microsim.scenarios import (
     MAX_STATION_OFFSET_M,
@@ -195,6 +195,33 @@ def failing_mismatches(
     if strict:
         return list(mismatches)
     return [m for m in mismatches if not (m.delta == 1 and m.hint == ACCEL_LANE_HINT)]
+
+
+def calibrated_demand_summary(cfg: ScenarioConfig) -> str:
+    """One phrase naming the demand a kept scenario carried, or ``""``.
+
+    The network step rebuilds ``network.inflow``, every ramp's flow and the
+    boundary schedule as placeholders; a scenario that had been through the
+    demand step (an inflow profile of more than one step, any ramp with a
+    non-zero flow or exit share, a boundary schedule) loses that silently
+    unless the report says so (2026-09-24 review finding).
+    """
+    net = cfg.network
+    if not isinstance(net, OSMNetwork):
+        return ""
+    parts: list[str] = []
+    if len(net.inflow) > 1:
+        parts.append(f"{len(net.inflow)} inflow steps")
+    ramps = [
+        r
+        for r in net.ramps
+        if any(v > 0 for _, v in r.inflow) or any(v > 0 for _, v in r.exit_fraction)
+    ]
+    if ramps:
+        parts.append(f"{len(ramps)} ramp(s) with flows")
+    if net.boundary is not None and getattr(net.boundary, "steps", None):
+        parts.append("a boundary schedule")
+    return ", ".join(parts)
 
 
 def existing_scenario(path: Path) -> ScenarioConfig | None:
@@ -535,6 +562,14 @@ def main(argv: list[str] | None = None) -> int:
         f"({args.inflow_veh_h:g} veh/h) and every ramp carries 0 veh/h — "
         "calibrate (CLAUDE.md §6) before any claim about this corridor."
     )
+    if kept is not None:
+        discarded = calibrated_demand_summary(kept)
+        if discarded:
+            print(
+                f"  WARNING: {args.out} carried a calibrated demand ({discarded}); the network "
+                "step rebuilt it as the placeholder above — run scripts/corridor_demand.py again "
+                "before this scenario is used."
+            )
     over = failing_mismatches(
         build.lane_check(stations, tolerance=args.lane_tolerance), strict=args.strict_lanes
     )

@@ -455,3 +455,37 @@ class TestReonboardingReview:
         assert cli.fleet_line(plain, Path("p.yaml")).endswith(
             "(no field differs from the defaults)"
         )
+
+
+class TestReonboardingWarnsAboutDemand:
+    """A kept scenario that had been through the demand step loses that demand
+    to the placeholder rebuild; the report must say so (2026-09-24 review)."""
+
+    def test_a_calibrated_demand_is_named_when_it_is_discarded(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        cli = _load_cli()
+        out_yaml = tmp_path / "calibrated.yaml"
+        assert cli.main(_build_argv(tmp_path, out_yaml, "--duration-s", "60")) == 0
+        assert "carried a calibrated demand" not in capsys.readouterr().out
+
+        raw = yaml.safe_load(out_yaml.read_text())
+        raw["network"]["inflow"] = [[0.0, 0.3], [30.0, 0.5]]
+        ramps = raw["network"]["ramps"]
+        on = next(r for r in ramps if r["kind"] == "on")
+        on["inflow"] = [[0.0, 0.05]]
+        ScenarioConfig.model_validate(raw).to_yaml(out_yaml)
+
+        assert cli.main(_build_argv(tmp_path, out_yaml)) == 0
+        out = capsys.readouterr().out
+        assert (
+            f"  WARNING: {out_yaml} carried a calibrated demand (2 inflow steps, "
+            "1 ramp(s) with flows); the network step rebuilt it as the placeholder above"
+        ) in out
+
+    def test_the_summary_is_empty_for_a_placeholder(self) -> None:
+        cli = _load_cli()
+        cfg = ScenarioConfig.model_validate(
+            yaml.safe_load((REPO_ROOT / "scenarios" / "ring_sugiyama.yaml").read_text())
+        )
+        assert cli.calibrated_demand_summary(cfg) == ""
