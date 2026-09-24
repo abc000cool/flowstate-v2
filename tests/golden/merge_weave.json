@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_weave",
-  "generated_at": "2026-09-24T04:29:34+00:00",
+  "generated_at": "2026-09-24T06:56:22+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -92,7 +92,9 @@
             "exit_ramp": "weave exit",
             "length_m": null,
             "weave_params": {}
-          }
+          },
+          "cd_road": false,
+          "cd_pair": ""
         },
         {
           "kind": "off",
@@ -112,11 +114,14 @@
           "merge_visibility_m": null,
           "merge": "lane_change",
           "merge_params": {},
-          "weave": null
+          "weave": null,
+          "cd_road": false,
+          "cd_pair": ""
         }
       ],
       "entry_lane_shares": null,
       "netconvert_extra": [],
+      "patch_files": [],
       "internal_links": false
     },
     "fleet": {
@@ -186,24 +191,24 @@
     "n_meter_releases": 0,
     "n_scripted_merged": 0,
     "n_scripted_forced": 0,
-    "fuel_total_ml": 17965.316385699305,
+    "fuel_total_ml": 17404.584664070397,
     "n_weave_changed_in": 23,
     "n_weave_changed_out": 27,
-    "n_weave_forced": 0,
+    "n_weave_forced": 7,
     "n_weave_exited": 33
   },
   "metrics": {
-    "throughput_veh_h": 1437.2623574144488,
-    "mean_tt_s": 93.03664904737003,
-    "p90_tt_s": 138.78991451451665,
-    "sigma_v_spatial_ms": 8.645917212355634,
-    "sigma_v_temporal_ms": 8.988448190846684,
-    "vmt_veh_km": 169.73180117844444,
-    "vht_veh_h": 2.51,
-    "fuel_ml_per_veh_km": 105.84531750070687,
+    "throughput_veh_h": 1429.1115311909264,
+    "mean_tt_s": 97.10084745790901,
+    "p90_tt_s": 123.10110920797877,
+    "sigma_v_spatial_ms": 7.593355402058996,
+    "sigma_v_temporal_ms": 9.048005231296818,
+    "vmt_veh_km": 169.78033429995102,
+    "vht_veh_h": 2.5025000000000004,
+    "fuel_ml_per_veh_km": 102.51237126981802,
     "wave_count": 1,
     "wave_speed_kmh": null,
-    "wave_amplitude_ms": 24.878723098646855,
+    "wave_amplitude_ms": 25.05071498255987,
     "n_travel_time_veh": 53
   }
 }

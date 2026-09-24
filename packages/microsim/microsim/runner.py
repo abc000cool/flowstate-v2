@@ -1084,7 +1084,17 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         v_limit = float(mod.lane.getMaxSpeed(f"{road}_{lane + d}"))
         v_match = v_lead if g_lead < prm["lookahead_m"] else v_limit
         v_des = max(v_match, SCRIPTED_MERGE_CREEP_MS)
-        if d < 0 and g_lead < prm["lookahead_m"]:
+        committing = d > 0 or remaining <= prm["force_within_m"]
+        if d < 0 and not committing:
+            # 2026-09-24: an exiting vehicle still in a through lane with more
+            # than force_within_m to go drives with its lane. Matching the
+            # auxiliary lane's speed from up to lookahead_m behind pulled lane
+            # 1 down to the speed of a slow entering vehicle (a jump of the
+            # speed cap, braking at up to 9 m/s^2 in the fixture trace) and
+            # the queue behind it stopped the section (MnDOT T.H.52 lock,
+            # docs/ONBOARDING_MNDOT.md §10)
+            v_des = st["v_max_orig"]
+        elif d < 0 and g_lead < prm["lookahead_m"]:
             # the exiting vehicle holds station behind the auxiliary-lane
             # vehicle ahead (no creep floor), so it never draws up alongside a
             # waiting entering vehicle: two vehicles abreast at the lane end,
@@ -1116,7 +1126,25 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             if remaining <= prm["force_within_m"] and st["zone_s"] is None:
                 st["zone_s"] = t
             force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
-        if ok_lead and ok_foll:
+        if (
+            ok_lead
+            and ok_foll
+            and d > 0
+            and _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll)
+        ):
+            # 2026-09-24: an entering vehicle whose gaps are accepted executes
+            # the change (mode 256, the follower yields), one step only, under
+            # the same minimum-gap guard as a forced exit. Under mode 512 SUMO
+            # refused the change while the through-lane follower was closing
+            # from far back (its own brake-gap test) and adapted the entering
+            # vehicle's speed to drop in behind it: a vehicle on the auxiliary
+            # lane braked at 1.8 m/s^2 from its first metre and merged at
+            # 7 m/s, the speed the section then ran at (fixture trace,
+            # docs/ONBOARDING_MNDOT.md §10)
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
+            mod.vehicle.changeLane(vid, lane + d, ws["step_s"])
+            st["requested_s"] = t
+        elif ok_lead and ok_foll:
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
             if t - st["requested_s"] >= prm["change_duration_s"]:
                 mod.vehicle.changeLane(vid, lane + d, prm["change_duration_s"])
@@ -1134,6 +1162,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 # request cannot execute into the gap that was just refused
                 _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
                 ws["n_forced_deferred"] += 1
+        else:
+            # no request this step: never leave a one-step forced mode standing
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
     for fid in sorted(courtesy):
         if fid in results:
             ws["yielding"][fid] = float(mod.vehicle.getMaxSpeed(fid))

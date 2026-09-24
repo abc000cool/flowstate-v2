@@ -820,7 +820,10 @@ class TestWeaveRun:
         assert ws["length_m"] == ws["length_m_measured"] and 150.0 < ws["length_m"] < 220.0
         assert ws["params"] == WEAVE_DEFAULTS
         # both movements happened, under control, and nobody is left owing a change
-        assert ws["n_changed_in"] > 5 and ws["n_changed_out"] > 5, ws
+        # 2026-09-24: with entering vehicles off the auxiliary lane sooner, most
+        # exit-bound vehicles reach lane 0 by SUMO's own strategic change at
+        # the junction and are never driven (9 in / 5 out of 17 exits, seed 3)
+        assert ws["n_changed_in"] > 5 and ws["n_changed_out"] >= 3, ws
         assert ws["n_unfinished"] == 0 and ws["n_missed"] == 0, ws
         assert ws["n_changed_in"] + ws["n_changed_out"] == ws["n_entered"], ws
         assert ws["n_forced"] <= ws["n_changed_out"], ws
@@ -876,6 +879,29 @@ class TestWeaveRun:
         assert ws["n_forced"] > 5 and ws["n_forced_deferred"] > 0, ws
         assert ws["n_changed_out"] > 10 and ws["n_changed_in"] > 5, ws
         assert meta["n_collisions"] == 0, meta["collisions"]
+
+    def test_moderate_crossing_demand_does_not_crawl(self, weave_osm, tmp_path):
+        """Regression of the T.H.52 lock (docs/ONBOARDING_MNDOT.md §10,
+        2026-09-24) on the fixture: 1,620 veh/h through a 3-lane 178 m section
+        (mainline 0.3 veh/s, entrance 0.15 veh/s, 30 % exiting, from t = 0).
+        Before the fix the auxiliary lane ran at 1.7-2.9 m/s in the section's
+        first 50 m (seeds 3, 4), the mean wait was 10-14 s and 2-3 vehicles were
+        still under control at 300 s; after it 11-17 m/s, 4-6 s, none."""
+        raw = _weave_scenario(weave_osm, duration_s=300.0).model_dump(mode="json")
+        raw["network"]["inflow"] = [[0.0, 0.3]]
+        raw["network"]["ramps"][0]["inflow"] = [[0.0, 0.15]]
+        cfg = ScenarioConfig.model_validate(raw)
+        paths = run_micro(cfg, 3, tmp_path / "crawl")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        assert meta["n_collisions"] == 0 and ws["n_missed"] == 0
+        assert ws["n_unfinished"] == 0 and ws["wait_s_mean"] < 8.0, ws
+        net = sumolib.net.readNet(str(paths.run_dir.glob("**/*.net.xml").__next__()))
+        x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
+        df = pd.read_parquet(paths.trajectories)
+        start = df[(df.x >= x0) & (df.x < x0 + 50.0) & (df.t >= 60.0)]
+        assert start[start.lane == 0].v.mean() > 5.0, start.groupby("lane").v.mean()
+        assert start[start.lane == 1].v.mean() > 5.0, start.groupby("lane").v.mean()
 
     def test_unpaired_geometry_is_refused_with_the_edges(self, merge_osm, tmp_path):
         """The schema pairing holds (same attach edge) but lane 0 of 102 never
@@ -1058,7 +1084,9 @@ class TestWeaveStepBookkeeping:
         mod = _WeaveMod(veh)
         _weave_step(mod, _tc, ws, {"e": _res("a", 1, 10.0, 20.0)}, 0.0)
         assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
-        assert veh.max_speeds["e"] == pytest.approx(30.0)  # lane limit, no leader
+        # 190 m from the gore, outside force_within_m: drives with its own lane
+        # (2026-09-24), not the target lane's limit
+        assert veh.max_speeds["e"] == pytest.approx(31.0)
         assert ("change", "e", 0, WEAVE_DEFAULTS["change_duration_s"]) in veh.calls
         _weave_step(mod, _tc, ws, {"e": _res("a", 0, 30.0, 20.0)}, 0.5)
         assert ws["n_changed_out"] == 1 and ws["veh"] == {}
@@ -1138,6 +1166,53 @@ class TestWeaveStepBookkeeping:
         assert veh.max_speeds["n"] == pytest.approx(3.0 - WEAVE_EXCHANGE_YIELD_MS)
         assert veh.max_speeds["e"] >= 3.0  # the front vehicle is never told to yield
         # neither gap is acceptable, so no change is requested by either
+        assert not [c for c in veh.calls if c[0] == "change"]
+
+
+class TestWeaveLockRules:
+    """The two rule changes of 2026-09-24 (docs/ONBOARDING_MNDOT.md §10)."""
+
+    def test_exiting_vehicle_outside_the_zone_drives_with_its_lane(self):
+        """An exiting vehicle 150 m from the gore behind a stopped auxiliary-lane
+        vehicle keeps its own desired speed; inside ``force_within_m`` it holds
+        station behind that vehicle as before."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws = _weave_state()
+        veh = _WeaveVehicle({"e": 20.0, "q": 0.0}, {("e", NEIGHBOR_RIGHT_LEADERS): (("q", 30.0),)})
+        veh.max_speeds["e"] = 31.0
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 50.0, 20.0), "q": _res("a", 0, 85.0, 0.0)}, 0)
+        assert veh.max_speeds["e"] == 31.0
+        # 60 m from the gore (force_within_m 80): station-keeping applies
+        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 40.0, 20.0), "q": _res("b", 0, 75.0, 0.0)}, 1)
+        assert veh.max_speeds["e"] < 31.0
+
+    def test_entering_vehicle_with_accepted_gaps_changes_at_once(self):
+        """Accepted gaps: the entering change is executed under mode 256 for one
+        step (a far, fast follower no longer makes SUMO refuse it and brake the
+        entering vehicle); an unaccepted gap keeps mode 512 and no request."""
+        from microsim.runner import (
+            LC_MODE_SCRIPTED_FORCE,
+            LC_MODE_SCRIPTED_SAFE,
+            NEIGHBOR_LEFT_FOLLOWERS,
+            _weave_step,
+        )
+
+        ws = _weave_state()
+        veh = _WeaveVehicle(
+            {"n": 18.0, "f": 29.0}, {("n", NEIGHBOR_LEFT_FOLLOWERS): (("f", 130.0),)}
+        )
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"n": _res("a", 0, 5.0, 18.0), "f": _res("a", 1, 1.0, 29.0)}, 0.0)
+        assert veh.lc_modes["n"] == LC_MODE_SCRIPTED_FORCE
+        assert ("change", "n", 1, ws["step_s"]) in veh.calls
+        veh.calls.clear()
+        veh.neighbors = {("n", NEIGHBOR_LEFT_FOLLOWERS): (("f", 10.0),)}
+        _weave_step(
+            mod, _tc, ws, {"n": _res("a", 0, 14.0, 18.0), "f": _res("a", 1, 1.0, 29.0)}, 0.5
+        )
+        assert veh.lc_modes["n"] == LC_MODE_SCRIPTED_SAFE
         assert not [c for c in veh.calls if c[0] == "change"]
 
 

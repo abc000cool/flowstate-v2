@@ -529,7 +529,7 @@ no GEH/RMSPE).
 **The 4-hour battery locks again.** Per-seed departed shares 0.32–0.43 with
 `on-ramp 18207436` (scripted merge) starved — worse than round 2's 0.41. Read
 from the first finished seed's trajectories on the VM (scripts and outputs
-under `artifacts/mndot_rounds/weave_2026-09-24/`): the first standstill
+under `artifacts/mndot_rounds/weave_2026-09-24/`, the scripts kept as `.py.txt`): the first standstill
 (50 m × 60 s bins, mean speed < 2 m/s, ≥ 10 samples) is at **x = 10.40 km in
 lanes 0 and 1 at minute 4** of the run — the START of the T.H.52 weaving
 section (entrance 769818012 on edge 51388891, the exit 18207598 at

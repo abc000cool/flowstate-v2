@@ -437,6 +437,17 @@ exchange (the target-lane follower is driven and wants this vehicle's lane)
 the rear vehicle drops back (`WEAVE_EXCHANGE_YIELD_MS` 2 m/s below, no creep
 floor), and an exiting vehicle holds station `2 s0 + exit_accept_gap_s · v`
 behind the auxiliary-lane vehicle ahead (`WEAVE_HOLD_TAU_S` 2 s).
+Amended 2026-09-24 (the T.H.52 lock, docs/ONBOARDING_MNDOT.md §10): the
+speed matching and the station-keeping of an exiting vehicle apply only
+inside the last `force_within_m` before the exit gore — farther out it drives
+with its own lane (matching a slow auxiliary-lane vehicle from up to
+`lookahead_m` behind pulled the through lane down to that vehicle's speed);
+and an entering vehicle whose gaps are accepted **and** pass
+`_weave_force_gap_ok` executes the change under mode 256 for one step (the
+follower yields) instead of a mode-512 request, which SUMO refused while a
+through-lane follower was closing from far back and answered by braking the
+entering vehicle to drop in behind it; a step with no request puts the
+vehicle back on mode 512. Golden `merge_weave` regenerated for this change.
 `meta.json["weave_sections"]` lists per section `ramp, exit, edges,
 exit_edge, exit_edges, length_m, length_m_measured, params, n_entered,
 n_changed_in, n_changed_out, n_forced, n_missed, n_forced_deferred,
