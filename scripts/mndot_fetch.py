@@ -133,6 +133,7 @@ def _wave_context(
     cache_dir: str,
     max_workers: int,
     district: str,
+    exclude_detectors: list[str] | None = None,
 ) -> ObservedWaveSpeed:
     """Estimate the observed backward wave speed over the analysed span.
 
@@ -146,6 +147,8 @@ def _wave_context(
         cache_dir: JSON cache root (a cached corridor costs no requests).
         max_workers: Thread-pool size for the archive requests.
         district: MnDOT district.
+        exclude_detectors: The reviewer-declared exclusions the observations
+            were fetched with, so the context reads the same lanes.
 
     Returns:
         The per-pair estimates, the corridor summary and — with two dates or
@@ -162,6 +165,7 @@ def _wave_context(
             cache_dir=cache_dir,
             max_workers=max_workers,
             district=district,
+            exclude_detectors=exclude_detectors or (),
         )
         for date in dates
     }
@@ -303,6 +307,7 @@ def main(argv: list[str] | None = None) -> int:
             cache_dir=args.cache_dir,
             max_workers=args.max_workers,
             district=args.district,
+            exclude_detectors=excluded,
         )
         observations = dataclasses.replace(
             observations, context={"detector_wave_speed": wave.to_dict()}

@@ -7272,7 +7272,7 @@
     "detector_wave_speed": {
       "median_kmh": 21.26495534474855,
       "iqr_kmh": [
-        18.375554628510084,
+        18.58513742016639,
         24.17925039834189
       ],
       "n_pairs": 13,
@@ -7412,12 +7412,12 @@
           "upstream": "S1948",
           "downstream": "S792",
           "dx_m": 565.2920491630866,
-          "lag_s": 111.37133348867458,
+          "lag_s": 109.69378751366821,
           "lag_bins": 4,
-          "speed_kmh": 18.272667779398166,
-          "correlation": 0.3566761584655015,
-          "n_samples": 3135,
-          "n_events": 226,
+          "speed_kmh": 18.552111501606575,
+          "correlation": 0.35699978637461716,
+          "n_samples": 3130,
+          "n_events": 228,
           "used": true,
           "reason": ""
         },
@@ -7425,11 +7425,11 @@
           "upstream": "S792",
           "downstream": "S791",
           "dx_m": 742.6127919104256,
-          "lag_s": 102.41203670139578,
+          "lag_s": 104.03530312267702,
           "lag_bins": 3,
-          "speed_kmh": 26.104412498624747,
-          "correlation": 0.4842483002083064,
-          "n_samples": 3193,
+          "speed_kmh": 25.697104450448784,
+          "correlation": 0.47853938758785464,
+          "n_samples": 3192,
           "n_events": 139,
           "used": true,
           "reason": ""
@@ -7466,12 +7466,12 @@
         "peak lag is not positive (no backward propagation)": 1,
         "peak correlation below the acceptance floor": 4
       },
-      "loo_median_min_kmh": 18.426656518439465,
+      "loo_median_min_kmh": 18.449720849605693,
       "loo_median_max_kmh": 21.57559690402194,
       "loo_pairs_min": 5,
       "leave_one_date_out": {
         "n_dates": 9,
-        "loo_median_min_kmh": 18.426656518439465,
+        "loo_median_min_kmh": 18.449720849605693,
         "loo_median_max_kmh": 21.57559690402194,
         "loo_pairs_min": 5,
         "by_omitted_date": [
@@ -7482,7 +7482,7 @@
           },
           {
             "date": "20260902",
-            "median_kmh": 21.361978480661474,
+            "median_kmh": 21.42692099667873,
             "n_used": 6
           },
           {
@@ -7512,7 +7512,7 @@
           },
           {
             "date": "20260916",
-            "median_kmh": 18.426656518439465,
+            "median_kmh": 18.81518372304523,
             "n_used": 5
           },
           {

@@ -269,6 +269,38 @@ class TestStationSpeedSeries:
         assert got[3:5] == [None, None]  # the separator between the dates
         assert got[5] == pytest.approx(55.0 * MPH_TO_MS)
 
+    def test_an_excluded_detector_is_left_out_of_the_lane_mean(self, tmp_path: Path) -> None:
+        """The context reads the lanes the observations were built from.
+
+        ``station_frame(exclude_detectors=...)`` drops a reviewer-excluded loop
+        from the 5-minute speeds; the 30-second series behind the wave-speed
+        context must drop the same loop, or the artifact's ``source`` would
+        name an exclusion its ``context`` never applied (I-94 WB S792, loop
+        3240, docs/ONBOARDING_MNDOT.md §11).
+        """
+        config = MetroConfig.load(FIXTURE)
+        lanes: dict[str, list[float | None]] = {
+            "9063": [60.0] * SAMPLES_PER_DAY,
+            "9064": [50.0] * SAMPLES_PER_DAY,
+            "9065": [10.0] * SAMPLES_PER_DAY,  # the degraded lane
+        }
+        for name, values in lanes.items():
+            self._cache(tmp_path, "20260901", name, values)
+        call: dict[str, Any] = {
+            "duration_s": SAMPLE_INTERVAL_S,
+            "cache_dir": tmp_path,
+        }
+        with_all = station_speed_series(config, "I-94 WB", ["S2104"], ["20260901"], **call)
+        assert with_all["S2104"] == [pytest.approx(40.0 * MPH_TO_MS)]
+        without = station_speed_series(
+            config, "I-94 WB", ["S2104"], ["20260901"], exclude_detectors=["9065"], **call
+        )
+        assert without["S2104"] == [pytest.approx(55.0 * MPH_TO_MS)]
+        with pytest.raises(ValueError, match="belong to no requested station"):
+            station_speed_series(
+                config, "I-94 WB", ["S2104"], ["20260901"], exclude_detectors=["3240"], **call
+            )
+
     def test_the_span_is_taken_from_the_local_clock(self, tmp_path: Path) -> None:
         config = MetroConfig.load(FIXTURE)
         values: list[float | None] = [float(i % 70) for i in range(SAMPLES_PER_DAY)]

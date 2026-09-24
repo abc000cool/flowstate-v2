@@ -985,6 +985,7 @@ def station_speed_series(
     session: FetchFn | None = None,
     district: str = MAYFLY_DISTRICT,
     gap_s: float = SPEED_SERIES_GAP_S,
+    exclude_detectors: Iterable[str] = (),
 ) -> dict[str, list[float | None]]:
     """Per-station 30-second speed series over one daily span, dates in a row.
 
@@ -1021,19 +1022,28 @@ def station_speed_series(
         session: Injected fetcher; tests always pass one.
         district: MnDOT district.
         gap_s: NaN gap between two dates [s].
+        exclude_detectors: Detector names a reviewer has ruled faulty (module
+            docstring) — the same set given to :func:`station_frame`, so the
+            wave-speed context is estimated from the lanes the observations
+            were built from; an excluded lane's speed samples are left out of
+            the mean. Every name must belong to a requested station.
 
     Returns:
         Station id → the concatenated series, every value in m/s or None.
 
     Raises:
         KeyError: Unknown corridor or station id.
-        ValueError: No dates, or a span that is not on the 30-second grid or
-            does not lie inside one local day.
+        ValueError: No dates, a span that is not on the 30-second grid or
+            does not lie inside one local day, or an excluded detector that
+            belongs to no requested station.
     """
     if not dates:
         raise ValueError("station_speed_series needs at least one date")
     corr = config.corridor(corridor)
     picked = [corr.station(sid) for sid in stations]
+    excluded = frozenset(str(name) for name in exclude_detectors)
+    if unknown := sorted(excluded - {name for st in picked for name in st.detectors}):
+        raise ValueError(f"exclude_detectors {unknown} belong to no requested station")
     start = _grid_index(t0_s, "t0_s")
     length = (
         SAMPLES_PER_DAY - start if duration_s is None else _grid_index(duration_s, "duration_s")
@@ -1060,7 +1070,7 @@ def station_speed_series(
                         session=session,
                         district=district,
                     )
-                    for name in station.detectors
+                    for name in _without(station.detectors, excluded)
                 }
                 lanes = [job.result() for job in jobs.values()]
                 series[station.id].extend(_mean_speed_bins(lanes, start, length))

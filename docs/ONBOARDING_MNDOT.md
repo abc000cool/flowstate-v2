@@ -708,3 +708,50 @@ the 35-minute slice were rebuilt on the new base with the same merge
 settings and the same slice offset. Rounds 1–2 and the 2026-09-24 weave
 round keep their own config hashes in their records; every later run uses
 these inputs.
+
+*Review of the regenerated inputs (2026-09-24, later the same day), corrections
+to the figures above:*
+
+- **The entrance figure is wrong.** The balance assigns the Mounds/Kittson
+  entrance (on-ramp 40648744) **889 veh/h**, not 524: S790 − S791 is 522 veh/h
+  and the carried S792→S791 residual (+366) lands on it, the only entrance in
+  the next bracket. Its passage loop 3244 reads 552 veh/h (05:30–09:30 mean),
+  so the carried residual overshoots the loop by 337 veh/h — the same evidence
+  that the +366 is not real traffic. The +366 is the mean of the *positive*
+  part of S791 − S792′ (34 of 48 windows); the net change is +239 (§7's +238),
+  and the negative part (−127 veh/h mean) is what the C-D exit rnd_87209
+  (off-ramp 42165869) takes by conservation (126 veh/h). The "was +775" is
+  the same measure on the old artifact.
+- **rnd_87205 is 428 m from the exit's cross-section** (8,923.5 − 8,495.6 m
+  on the chain), not 399 m as §7 says — 399.0 is the node's lane position on
+  edge 45782590 in `stations_x.csv`. Unmatched either way (radius 350 m).
+  Using its live loop 3242 as one lane of two would not move the residual:
+  2 × 3242 is 229 veh/h at the peak against the 683 veh/h the exit must take
+  (S1948's two exit lanes carry 535), so the share rule scales the exit to
+  the bracket's remainder as before (965 → 972 veh/h, `detector_scaled`
+  instead of `conservation`; S1948→S792 +1 → +8) and S792→S791 stays at
+  +365.6 exactly (re-run of `calibration.onboarding._close_balance` on the
+  committed observations with the synthetic match).
+- **The first entrance is unchanged.** On-ramp 1077665160 (x = 912 m) is
+  zeroed (`zero_outside_observed_span`, the artifact's `zeroed_ramps` lists
+  it), its scenario inflow is 0 in every step, and the entry inflow at x = 0
+  is S1063's count (mean 3,050 veh/h, peak 4,275), which already includes
+  it; `entry_lane_shares` is null. Nothing is double-counted.
+- **The wave context had not applied the exclusion.** `station_speed_series`
+  read every inventory lane, so `context.detector_wave_speed` was estimated
+  with loop 3240 still in S792's 30-second series (the committed context
+  reproduces bit for bit from the cache that way). Fixed: the series takes
+  `exclude_detectors` and `mndot_fetch.py --wave-context` passes the same
+  names; the context was recomputed from the cache with 3240 excluded
+  (everything else in `observations.json` unchanged). S1948→S792 18.3 → 18.6
+  km/h, S792→S791 26.1 → 25.7 km/h, median 21.3 km/h unchanged, IQR
+  18.6–24.2 (was 18.4–24.2), leave-one-date-out 18.4–21.6 unchanged. §4a's
+  table shows the pre-exclusion values.
+- **The rebuilt slice's boundary was not shifted.** Its inflow and every ramp
+  series were the weave's shifted by 5,400 s, but the boundary speed schedule
+  was the weave's own 48 steps from 05:30 — the slice's exit was throttled by
+  the 05:30–06:05 speeds (27 m/s) while its demand was the 07:00 peak. The
+  §10 slice rows predate the rebuild; any slice run between the 08:26 rebuild
+  and this fix used the unshifted boundary. Fixed (nine steps from 07:00,
+  22.1 m/s at t = 0), with `tests/test_calibration/test_mndot_slice_variant.py`
+  pinning every series of the slice to one offset.
