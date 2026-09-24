@@ -38,6 +38,19 @@ the reporting lanes, which is *not* true lane by lane; it is bounded by the
 80% rule (at three lanes a fully missing lane already fails it) and is
 recorded, so a consumer can tell a scaled window from a complete one.
 
+A detector a reviewer has ruled faulty is **excluded by name**
+(``station_frame(exclude_detectors=...)``, ``mndot_fetch.py --exclude-detectors``):
+it is never fetched, the lane it served becomes a dead lane under the second
+stage above (the station is scaled by ``lanes / lanes_reporting`` and the
+day is listed under ``attrs["scaled_station_days"]``), and a ramp node left
+with no flow detector is dropped from the frame. The exclusion is a
+documented decision, not an automatic health test: the loader records the
+names under ``attrs["excluded_detectors"]`` and the fetch script writes them
+with the reviewer's reason into the observations' ``source``. The case that
+motivated it is the I-94 WB Mounds Blvd station S792, whose lane-3 loop 3240
+counts a quarter of what the same lane carries one station up- and downstream
+(``docs/ONBOARDING_MNDOT.md`` §7 item 2, 2026-09-24).
+
 Nothing in this module is called from the test suite over the network: the
 fetcher takes an injected ``session`` and a JSON cache directory, and the
 tests exercise the parser and the aggregation on fixtures.
@@ -799,6 +812,7 @@ def station_frame(
     include_ramps: bool = True,
     district: str = MAYFLY_DISTRICT,
     timezone: str = DEFAULT_TIMEZONE,
+    exclude_detectors: Iterable[str] = (),
 ) -> pd.DataFrame:
     """Fetch and aggregate a corridor's stations into the tidy frame.
 
@@ -822,17 +836,24 @@ def station_frame(
         include_ramps: Include ramp-detector rows.
         district: MnDOT district.
         timezone: IANA zone stamping the timestamps' UTC offset.
+        exclude_detectors: Detector names a reviewer has ruled faulty (module
+            docstring): never fetched; a mainline lane served only by an
+            excluded detector is a dead lane and the station is scaled by
+            the existing rule; a ramp node with no flow detector left is
+            dropped. Every name must belong to a node this call fetches.
 
     Returns:
         Tidy detector frame (``calibration.loaders.detector_csv``
         :data:`~calibration.loaders.detector_csv.DETECTOR_COLUMNS`) covering
         every whole-day window of each date, sorted by timestamp then
-        station. Windows failing the validity rule are NaN.
+        station. Windows failing the validity rule are NaN. ``attrs`` carry
+        ``interval_s``, ``samples_per_window``, ``scaled_station_days`` and
+        ``excluded_detectors`` (sorted names).
 
     Raises:
         KeyError: Unknown corridor or station id.
-        ValueError: ``window_s`` is not a multiple of 30 s, or ``dates`` is
-            empty.
+        ValueError: ``window_s`` is not a multiple of 30 s, ``dates`` is
+            empty, or an excluded detector belongs to no fetched node.
     """
     per_window = samples_per_window(window_s)
     if not dates:
@@ -844,6 +865,13 @@ def station_frame(
     if include_ramps and picked:
         xs = [s.x_m for s in picked]
         ramps = [r for r in corr.ramps_between(min(xs), max(xs)) if r.flow_detectors]
+    excluded = frozenset(str(name) for name in exclude_detectors)
+    fetched_names = {name for *_, names in _targets(picked, ramps) for name in names}
+    if unknown := sorted(excluded - fetched_names):
+        raise ValueError(
+            f"exclude_detectors {unknown} belong to no station or ramp node fetched here"
+        )
+    targets = _targets(picked, ramps, excluded)
     zone = _zone(timezone)
     rows: list[dict[str, object]] = []
     with ThreadPoolExecutor(max_workers=max(1, int(max_workers))) as pool:
@@ -876,7 +904,7 @@ def station_frame(
             midnight = parse_date(date)
             if zone is not None:
                 midnight = midnight.replace(tzinfo=zone)  # type: ignore[arg-type]
-            for kind, key, lanes, x_m, detectors in _targets(picked, ramps):
+            for kind, key, lanes, x_m, detectors in targets:
                 fetched = series(detectors, date)
                 # A detector that returned nothing for the whole day (HTTP 404: not
                 # installed, not communicating, or an inventory placeholder such as
@@ -931,6 +959,7 @@ def station_frame(
     frame.attrs["interval_s"] = float(window_s)
     frame.attrs["scaled_station_days"] = scaled_station_days
     frame.attrs["samples_per_window"] = per_window
+    frame.attrs["excluded_detectors"] = sorted(excluded)
     return frame
 
 
@@ -1073,27 +1102,49 @@ def _mean_speed_bins(
 
 
 def _targets(
-    stations: Iterable[Station], ramps: Iterable[RampNode]
+    stations: Iterable[Station],
+    ramps: Iterable[RampNode],
+    exclude: frozenset[str] = frozenset(),
 ) -> list[tuple[DetectorKind, str, int, float, tuple[str, ...]]]:
-    """``(kind, id, lanes, x_m, detectors)`` for every node to fetch."""
+    """``(kind, id, lanes, x_m, detectors)`` for every node to fetch.
+
+    Excluded detector names are removed; a station keeps its row with the
+    detectors it has left (none is a station that reports nothing), a ramp
+    node with no flow detector left is dropped.
+    """
     out: list[tuple[DetectorKind, str, int, float, tuple[str, ...]]] = [
-        ("mainline", s.id, s.lanes, s.x_m, s.detectors) for s in stations
+        ("mainline", s.id, s.lanes, s.x_m, _without(s.detectors, exclude)) for s in stations
     ]
-    out.extend((r.kind, r.node, r.lanes, r.x_m, r.flow_detectors) for r in ramps)
+    for r in ramps:
+        if kept := _without(r.flow_detectors, exclude):
+            out.append((r.kind, r.node, r.lanes, r.x_m, kept))
     return out
 
 
-def stations_table(stations: Iterable[Station], ramps: Iterable[RampNode] = ()) -> pd.DataFrame:
+def _without(detectors: tuple[str, ...], exclude: frozenset[str]) -> tuple[str, ...]:
+    """``detectors`` minus the excluded names, order kept."""
+    return tuple(name for name in detectors if name not in exclude)
+
+
+def stations_table(
+    stations: Iterable[Station],
+    ramps: Iterable[RampNode] = (),
+    exclude_detectors: Iterable[str] = (),
+) -> pd.DataFrame:
     """The stations table of the observations contract (§2).
 
     Args:
         stations: Mainline stations.
         ramps: Ramp nodes to append as ``on_ramp``/``off_ramp`` rows.
+        exclude_detectors: Names left out of the ``detectors`` column (the
+            same set given to :func:`station_frame`); a ramp node with no
+            flow detector left is not listed.
 
     Returns:
         DataFrame with ``station, label, lat, lon, x_m, lanes, kind,
         speed_limit_ms, detectors`` (detector names joined by ``|``).
     """
+    exclude = frozenset(str(name) for name in exclude_detectors)
     rows: list[dict[str, object]] = [
         {
             "station": s.id,
@@ -1104,7 +1155,7 @@ def stations_table(stations: Iterable[Station], ramps: Iterable[RampNode] = ()) 
             "lanes": s.lanes,
             "kind": "mainline",
             "speed_limit_ms": s.speed_limit_ms,
-            "detectors": "|".join(s.detectors),
+            "detectors": "|".join(_without(s.detectors, exclude)),
         }
         for s in stations
     ]
@@ -1118,9 +1169,10 @@ def stations_table(stations: Iterable[Station], ramps: Iterable[RampNode] = ()) 
             "lanes": r.lanes,
             "kind": r.kind,
             "speed_limit_ms": None,
-            "detectors": "|".join(r.flow_detectors),
+            "detectors": "|".join(_without(r.flow_detectors, exclude)),
         }
         for r in ramps
+        if _without(r.flow_detectors, exclude)
     )
     return pd.DataFrame(
         rows,

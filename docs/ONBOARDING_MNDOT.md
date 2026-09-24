@@ -161,7 +161,14 @@ reason the demand step does not trust ramp detectors alone):
   on every day (T.H.120 exit and McKnight Rd entrance at 0.0 veh/h; the second
   Hudson Rd entrance at 0.7 veh/h mean);
 - the Mounds Blvd "Exit" pair reads more than the mainline — it counts the
-  collector–distributor split, not an exit;
+  collector–distributor split, not an exit; *corrected 2026-09-24: it counts
+  nothing — its lane-1 loop 3241 is a chattering loop (3,600 veh/h at
+  00–04, no correlation with any station), see §7 item 2;*
+- S792's lane-3 loop 3240 is degraded (a quarter of the lane's flow, §7
+  item 2); the loader can now exclude such a loop by name
+  (`mndot_fetch.py --exclude-detectors`) so the station is scaled as a
+  two-lane count, but the committed observations were fetched before that
+  and still carry it;
 - S1063 has two auxiliary lanes; the station total therefore includes the
   `Auxiliary` category (a simulated vehicle crossing that x is counted
   whatever lane it is in);
@@ -251,7 +258,8 @@ kind), and the ramps without a usable detector take whatever remains of the
 observed change; a bracket with no ramp of the needed kind carries its
 residual forward (listed under
 `bracket_residuals` — the largest is the collector–distributor re-entry
-before Kellogg Blvd, +775 veh/h; the other is the White Bear Ave entrance,
+before Kellogg Blvd, +775 veh/h (*2026-09-24: not a re-entry — S792's
+lane-3 loop under-counts; §7 item 2*); the other is the White Bear Ave entrance,
 which the OSM discovery did not find as a link and whose +442 veh/h lands on
 the T.H.61 NB entrance one bracket later; *2026-09-24: the White Bear
 residual is closed by C-D pairing and the Kellogg reading was wrong — see
@@ -426,9 +434,77 @@ n2-standard-32, ≈ $3.3.
    unchanged (a re-onboard rewrites the scenario and needs a battery to
    validate); a C-D road as a parallel edge chain with its own simulated
    ramps.
+   *2026-09-24, the detector question answered from the IRIS inventory
+   (`metro_config.xml` of 2026-09-22) and the 9-weekday 30-s cache.* What
+   rnd_87205 is: an `Exit` node of 2 lanes (the mainline's `shift` goes 9 → 7
+   as the lanes go 5 → 3) with one `Exit`-category loop per lane, 3241
+   (lane 1, "94/MoundsWX1") and 3242 (lane 2, "94/MoundsWX2", field 12 ft),
+   both on controller ctl_60415, whose location is "I-94 EB @ Mounds Blvd
+   (243.5)" and which also serves the EB merge loop 3194. The loader sums the
+   two lanes once (`aggregate_day`), so the 4,219 veh/h is not a double
+   count: it is 3241 alone. 3241 is a chattering loop, not a mis-categorised
+   mainline lane — it reads 2,400–4,600 veh/h at 00–04 when the whole
+   5-lane mainline carries 250–900, its 5-min series has no correlation with
+   any station (r = −0.07 against S1948 over 2,355 windows, r ≤ 0.13 against
+   every other) and it reports no speed; 3242 reads 115 veh/h at the peak and
+   does follow S1948's two exit lanes (r = 0.74), but is one lane of a
+   two-lane exit. The balance step's 90 %-share rule rejects the node (and it
+   is unmatched anyway: the IRIS node sits 399 m from the OSM gore, past the
+   350 m radius), so rnd_87205 never touched the demand; the +775 veh/h is
+   not its doing. Where the +775 is: the inventory chain from S792 (rnd_87207)
+   to S791 (rnd_87213) holds rnd_676, rnd_91430, rnd_91428 ("T…" loops, no
+   data) and the *left* C-D exit rnd_87209 — no Entrance node, as OSM has no
+   joining way — so the count can only fall between the two stations, yet it
+   rises by 775 veh/h. Lane by lane (peak 05:30–09:30, mean of 9 weekdays):
+
+   | cross-section | lanes | veh/h (per lane) | reading |
+   |---|---|---|---|
+   | S1070 | 5 | 4,107 | |
+   | S1948 | 5 | 4,145 (211 / 323 / 1,024 / 1,192 / 1,394) | lanes 1–2 are the exit lanes (534); lanes 3–5 continue (3,610) |
+   | rnd_87205 lane 1, loop 3241 | | 4,104 | chatter (3,592 at 00–04) |
+   | rnd_87205 lane 2, loop 3242 | | 115 | follows S1948 lanes 1–2 |
+   | S792 | 3 | 2,925 (1,325 / 983 / 617) | lane 3 (loop 3240): 617 at 14.3 % occupancy against 943 at 32.0 % one station down (S791 lane 3) and 1,394 at 26.6 % one station up (S1948 lane 5); at midday 245 veh/h at 1.6 % against 918 at 9.1 % and 1,138 at 6.6 %; 78 % of its 00–04 samples are null (IRIS no-hit auto-fail) while the station's other two loops report 100 % |
+   | S791 | 3 | 3,699 (1,479 / 1,277 / 943) | = S1948 lanes 3–5 − 87 (r = 0.976 at 5-min) |
+   | S790 | 3 | 4,221 | = S791 + 522; the Mounds Blvd entrance's passage loop 3244 (rnd_87211, metered) reads 552 |
+
+   Loop 3240 is degraded: the leftmost lane cannot lose two thirds of its
+   flow in 570 m with no exit on the left, and its occupancy falls with the
+   count (missed vehicles, not short detections). The correction the
+   inventory justifies is therefore at S792, not at the split: exclude 3240
+   and let the loader's dead-lane rule scale the station's two reporting
+   lanes by 3/2 — the same rule that already stands in for S790's "T…"
+   lanes. Done: `station_frame(exclude_detectors=...)` /
+   `mndot_fetch.py --exclude-detectors 3240 --exclude-reason "…"` (the
+   names and reason are written under the observations' `source`, the scaled
+   station-days beside them; a test on a fixture copied from these r_nodes,
+   `tests/test_calibration/fixtures/mndot_metro_config_mounds.xml`). What the
+   bracket becomes, from the cache (S792′ = lanes 1–2 × 3/2 = 3,460 veh/h at
+   the peak; the committed artifact is unchanged, a re-fetch and a battery
+   are the owner's call):
+
+   | peak 05:30–09:30, veh/h | committed | 3240 excluded |
+   |---|---|---|
+   | Mounds Blvd exit (S1948 − S792) | 1,226 (30 % of arriving) | 701 (17 %) |
+   | residual S792 → S791 | +775 | +238 |
+   | Mounds/Kittson entrance (S790 − S791 + carried) | 1,299 | 524 (passage loop 3244: 552) |
+
+   Over the analysed 06:00–09:30 span: 1,251 / +812 / 1,354 → 768 / +328 /
+   542 (passage 571); at midday 10:00–14:00: 1,116 / +514 / 1,046 → 213 /
+   −388 / 533 (577) — the negative midday remainder is what the C-D exit
+   rnd_87209 then takes by conservation, which is the sign a left exit
+   should have. The entrance's agreement with its own passage loop (524 vs
+   552, 542 vs 571, 533 vs 577) is the independent check that the
+   correction is right and not a fit to the balance; the +238 that remains
+   at the peak is the dead-lane rule's assumption (lane 3 carries the mean
+   of lanes 1–2) and stays a residual. rnd_87205 itself is left as it is
+   (rejected by the share rule and unmatched); excluding 3241 alone would
+   leave the node reading 115 veh/h from one lane, which is worse.
 3. Dead detectors are common (4 of 13 ramp detectors here); the loader flags
    them by mass balance, but a reviewer-facing "detector health" table
-   belongs in the report.
+   belongs in the report. *2026-09-24:* a degraded loop that still reports
+   (S792's 3240, item 2) passes every automatic rule; the reviewer's
+   exclusion by name (`--exclude-detectors`) is the honest tool until a
+   lane-continuity check exists.
 4. Done the same night: the dashboard's Onboard view takes the same three
    inputs (bounding box + bearing, detector CSV, upstream/downstream station)
    and installs the preset (§3, "From the dashboard").

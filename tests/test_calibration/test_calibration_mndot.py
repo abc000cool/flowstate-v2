@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import itertools
 import json
+import urllib.parse
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -287,3 +289,164 @@ class TestStationFrame:
                 cache_dir=tmp_path,
                 session=lambda url: b"[]",
             )
+
+
+MOUNDS_FIXTURE = Path(__file__).parent / "fixtures" / "mndot_metro_config_mounds.xml"
+"""The I-94 WB nodes from E of Mounds Blvd (S1948) to Kellogg Blvd (S791), copied
+from the 2026-09-22 ``metro_config.xml``: the 2-lane Mounds Blvd exit
+rnd_87205, the 3-lane station S792 whose lane-3 loop 3240 is degraded, the
+temporary "T…" nodes and the left collector-distributor exit between S792 and
+S791 (``docs/ONBOARDING_MNDOT.md`` §7 item 2, 2026-09-24)."""
+
+
+@pytest.fixture(scope="module")
+def mounds() -> MetroConfig:
+    return MetroConfig.load(MOUNDS_FIXTURE)
+
+
+def _mounds_session(dead: str = "3240", veh_per_bin: int = 2) -> Callable[[str], bytes]:
+    """Every detector counts ``veh_per_bin`` per 30 s except ``dead``, which counts 0."""
+
+    def session(url: str) -> bytes:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+        name = query["detector"][0]
+        if "/counts?" in url:
+            value = 0 if name == dead else veh_per_bin
+            return json.dumps([value] * SAMPLES_PER_DAY).encode()
+        if "/speed?" in url:
+            return json.dumps([60] * SAMPLES_PER_DAY).encode()
+        return json.dumps([10.0] * SAMPLES_PER_DAY).encode()
+
+    return session
+
+
+class TestMoundsInventory:
+    """What the IRIS inventory says about the bracket S1948 -> S792 -> S791."""
+
+    def test_the_mounds_exit_is_a_two_lane_exit_with_one_detector_per_lane(
+        self, mounds: MetroConfig
+    ) -> None:
+        by_node = {r.node: r for r in mounds.corridor("I-94 WB").ramps}
+        split = by_node["rnd_87205"]
+        assert split.kind == "off_ramp" and split.lanes == 2
+        # Lane 1 and lane 2 of the exit, in lane order; both are fetched and
+        # summed once (aggregate_day adds the lanes), never twice.
+        assert split.flow_detectors == ("3241", "3242")
+        assert split.detectors == {"Exit": ("3241", "3242")}
+
+    def test_five_lanes_drop_to_three_at_the_split(self, mounds: MetroConfig) -> None:
+        corridor = mounds.corridor("I-94 WB")
+        assert corridor.station("S1948").lanes == 5
+        assert corridor.station("S792").lanes == 3
+        assert corridor.station("S792").detectors == ("3238", "3239", "3240")
+
+    def test_nothing_enters_between_s792_and_s791(self, mounds: MetroConfig) -> None:
+        corridor = mounds.corridor("I-94 WB")
+        s792, s791 = corridor.station("S792"), corridor.station("S791")
+        between = corridor.ramps_between(s792.x_m + 1.0, s791.x_m)
+        # Only the left collector-distributor exit, whose sole detector is a
+        # "T…" placeholder: the count between the two stations can only fall.
+        assert [(r.node, r.kind) for r in between] == [("rnd_87209", "off_ramp")]
+        assert between[0].flow_detectors == ("T9342",)
+
+
+class TestDetectorExclusion:
+    def test_an_excluded_lane_detector_is_scaled_as_a_dead_lane(
+        self, mounds: MetroConfig, tmp_path: Path
+    ) -> None:
+        common = dict(
+            corridor="I-94 WB",
+            stations=["S1948", "S792", "S791"],
+            dates=["20260915"],
+            window_s=300.0,
+            session=_mounds_session(dead="3240"),
+            max_workers=2,
+        )
+        as_read = station_frame(mounds, cache_dir=tmp_path / "raw", **common)  # type: ignore[arg-type]
+        # The degraded loop reports (zeros), so nothing is scaled: S792 reads
+        # two lanes' worth, 2 x 10 x 2 veh per 5 min = 40 veh -> 480 veh/h.
+        s792 = as_read[as_read["station"] == "S792"]
+        assert s792["flow_veh_h"].iloc[0] == pytest.approx(480.0)
+        assert as_read.attrs["scaled_station_days"] == []
+        assert as_read.attrs["excluded_detectors"] == []
+
+        fixed = station_frame(
+            mounds,
+            cache_dir=tmp_path / "fixed",
+            exclude_detectors=["3240"],
+            **common,  # type: ignore[arg-type]
+        )
+        s792 = fixed[fixed["station"] == "S792"]
+        # Lane 3 is now a dead lane: the two reporting lanes are scaled by 3/2
+        # and the day is listed, so a reader can tell a scaled count from a
+        # complete one.
+        assert s792["flow_veh_h"].iloc[0] == pytest.approx(720.0)
+        assert s792["lanes"].iloc[0] == 3
+        assert fixed.attrs["excluded_detectors"] == ["3240"]
+        assert fixed.attrs["scaled_station_days"] == [
+            {
+                "station": "S792",
+                "date": "20260915",
+                "lanes": 3,
+                "lanes_reporting": 2,
+                "factor": 1.5,
+            }
+        ]
+        # The other stations are untouched by the exclusion.
+        for sid in ("S1948", "S791"):
+            assert (
+                fixed[fixed["station"] == sid]["flow_veh_h"].iloc[0]
+                == as_read[as_read["station"] == sid]["flow_veh_h"].iloc[0]
+            )
+        # The excluded detector was never requested.
+        assert not (tmp_path / "fixed" / "20260915" / "3240.counts.json").exists()
+
+    def test_a_ramp_node_left_without_a_flow_detector_is_dropped(
+        self, mounds: MetroConfig, tmp_path: Path
+    ) -> None:
+        frame = station_frame(
+            mounds,
+            "I-94 WB",
+            ["S1948", "S792"],
+            ["20260915"],
+            cache_dir=tmp_path,
+            session=_mounds_session(dead="3241"),
+            exclude_detectors=["3241", "3242"],
+        )
+        assert set(frame["station"]) == {"S1948", "S792"}
+        # Excluding one lane of the exit keeps the node on the other lane.
+        one_lane = station_frame(
+            mounds,
+            "I-94 WB",
+            ["S1948", "S792"],
+            ["20260915"],
+            cache_dir=tmp_path / "one",
+            session=_mounds_session(dead="3241"),
+            exclude_detectors=["3241"],
+        )
+        ramp = one_lane[one_lane["station"] == "rnd_87205"]
+        assert ramp["flow_veh_h"].iloc[0] == pytest.approx(240.0)
+
+    def test_an_exclusion_that_matches_no_fetched_detector_is_refused(
+        self, mounds: MetroConfig, tmp_path: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="9999"):
+            station_frame(
+                mounds,
+                "I-94 WB",
+                ["S1948", "S792"],
+                ["20260915"],
+                cache_dir=tmp_path,
+                session=_mounds_session(),
+                exclude_detectors=["9999"],
+            )
+
+    def test_stations_table_reflects_the_exclusion(self, mounds: MetroConfig) -> None:
+        corridor = mounds.corridor("I-94 WB")
+        span = corridor.station_span("S1948", "S791")
+        ramps = corridor.ramps_between(span[0].x_m, span[-1].x_m)
+        table = stations_table(span, ramps, exclude_detectors=["3240", "3241", "3242"])
+        by_station = dict(zip(table["station"], table["detectors"], strict=True))
+        assert by_station["S792"] == "3238|3239"
+        assert "rnd_87205" not in by_station
+        assert by_station["rnd_87209"] == "T9342"

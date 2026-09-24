@@ -96,6 +96,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-ramps", action="store_true", help="Skip Entrance/Exit ramp detectors."
     )
     parser.add_argument(
+        "--exclude-detectors",
+        default="",
+        help=(
+            "Comma-separated detector names a reviewer has ruled faulty (never fetched; "
+            "a mainline lane they served is scaled as a dead lane, a ramp node left "
+            "without a flow detector is dropped). Recorded with --exclude-reason under "
+            "the artifact's source.excluded_detectors."
+        ),
+    )
+    parser.add_argument(
+        "--exclude-reason",
+        default="",
+        help="Why the --exclude-detectors are excluded (required with them).",
+    )
+    parser.add_argument(
         "--wave-context",
         action="store_true",
         help=(
@@ -213,6 +228,11 @@ def main(argv: list[str] | None = None) -> int:
         print("--dates needs at least one YYYYMMDD date")
         return 2
 
+    excluded = [d.strip() for d in args.exclude_detectors.split(",") if d.strip()]
+    if excluded and not args.exclude_reason.strip():
+        print("--exclude-detectors needs --exclude-reason (the decision is recorded)")
+        return 2
+
     config_path = Path(args.config)
     if not config_path.is_file():
         print(f"downloading {METRO_CONFIG_URL} -> {config_path}")
@@ -227,10 +247,12 @@ def main(argv: list[str] | None = None) -> int:
         f"(x={span[-1].x_m - span[0].x_m:.0f} m), {len(ramps)} ramp detectors, "
         f"{len(dates)} date(s)"
     )
+    if excluded:
+        print(f"excluded detectors {excluded}: {args.exclude_reason.strip()}")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    table = stations_table(span, ramps)
+    table = stations_table(span, ramps, exclude_detectors=excluded)
     # Corridor coordinates are reported from the first requested station, not
     # from the corridor's first node, so x=0 is the modelled boundary.
     table["x_m"] = table["x_m"] - span[0].x_m
@@ -246,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         max_workers=args.max_workers,
         include_ramps=not args.no_ramps,
         district=args.district,
+        exclude_detectors=excluded,
     )
     frame["x_m"] = frame["x_m"] - span[0].x_m
     write_detector_csv(frame, out_dir / "detectors.csv")
@@ -265,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
             "config": METRO_CONFIG_URL,
             "config_time_stamp": config.time_stamp,
             "fetched_at": datetime.now(UTC).isoformat(),
+            "excluded_detectors": {name: args.exclude_reason.strip() for name in excluded},
+            "scaled_station_days": frame.attrs.get("scaled_station_days", []),
         },
     )
     if args.wave_context:

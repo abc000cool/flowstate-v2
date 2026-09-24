@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tms_config time_stamp='Tue Sep 22 20:00:04 CDT 2026'>
+<corridor route='I-94' dir='WB'>
+  <r_node name='rnd_1891' station_id='S1948' label='E of Mounds Blvd' lon='-93.06087' lat='44.95196' lanes='5' shift='9'>
+    <detector name='7746' label='94/EMoundsW1' lane='1' controller='ctl_279'/>
+    <detector name='7747' label='94/EMoundsW2' lane='2' controller='ctl_279'/>
+    <detector name='7748' label='94/EMoundsW3' lane='3' controller='ctl_279'/>
+    <detector name='7749' label='94/EMoundsW4' lane='4' controller='ctl_279'/>
+    <detector name='7750' label='94/EMoundsW5' lane='5' controller='ctl_279'/>
+  </r_node>
+  <r_node name='rnd_10888' label='Mounds Blvd' lon='-93.06176' lat='44.95198' lanes='5' shift='9'>
+    <detector name='T9355' label='94/MoundsW1' lane='1'/>
+    <detector name='T9356' label='94/MoundsW2' lane='2'/>
+    <detector name='T9357' label='94/MoundsW3' lane='3'/>
+    <detector name='T9358' label='94/MoundsW4' lane='4'/>
+    <detector name='T9359' label='94/MoundsW5' lane='5'/>
+  </r_node>
+  <r_node name='rnd_87205' n_type='Exit' transition='Leg' label='Mounds Blvd' lon='-93.06737' lat='44.95208' lanes='2' shift='7'>
+    <detector name='3241' label='94/MoundsWX1' category='Exit' lane='1' controller='ctl_60415'/>
+    <detector name='3242' label='94/MoundsWX2' category='Exit' lane='2' field='12.0' controller='ctl_60415'/>
+  </r_node>
+  <r_node name='rnd_87207' pickable='t' station_id='S792' label='Mounds Blvd' lon='-93.06805' lat='44.95211' lanes='3' shift='7'>
+    <detector name='3238' label='94/MoundsW1' lane='1' field='22.4' controller='ctl_263'/>
+    <detector name='3239' label='94/MoundsW2' lane='2' field='21.6' controller='ctl_263'/>
+    <detector name='3240' label='94/MoundsW3' lane='3' field='20.5' controller='ctl_263'/>
+  </r_node>
+  <r_node name='rnd_676' pickable='t' label='Mounds Blvd' lon='-93.06932' lat='44.95226' lanes='3' shift='7'>
+    <detector name='T9347' label='94/MoundsW1' lane='1'/>
+    <detector name='T9348' label='94/MoundsW2' lane='2'/>
+    <detector name='T9349' label='94/MoundsW3' lane='3'/>
+  </r_node>
+  <r_node name='rnd_91430' pickable='t' label='Mounds Blvd' lon='-93.07068' lat='44.9527' lanes='3' shift='7'/>
+  <r_node name='rnd_91428' pickable='t' label='W of Mounds Blvd' lon='-93.07384' lat='44.95507' lanes='3' shift='7'>
+    <detector name='T9339' label='94/WMoundsW1' lane='1'/>
+    <detector name='T9340' label='94/WMoundsW2' lane='2'/>
+    <detector name='T9341' label='94/WMoundsW3' lane='3'/>
+  </r_node>
+  <r_node name='rnd_87209' n_type='Exit' transition='Leg' label='I-94 CD WB' lon='-93.07543' lat='44.95532' lanes='1' attach_side='left' shift='4' forks='rnd_91051'>
+    <detector name='T9342' label='94/WB94CDWX' category='Exit'/>
+  </r_node>
+  <r_node name='rnd_87213' station_id='S791' label='Kellogg Blvd' lon='-93.07585' lat='44.9553' lanes='3' shift='7'>
+    <detector name='3234' label='94/KeloggW1' lane='1' field='26.5' controller='ctl_262'/>
+    <detector name='3235' label='94/KeloggW2' lane='2' field='25.0' controller='ctl_262'/>
+    <detector name='3236' label='94/KeloggW3' lane='3' field='22.6' controller='ctl_262'/>
+  </r_node>
+</corridor>
+<controller name='ctl_60415' condition='ACTIVE' drop='1' commlink='L1630' location='I-94 EB @ Mounds Blvd (243.5)'/>
+</tms_config>
