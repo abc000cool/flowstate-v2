@@ -113,9 +113,10 @@ def _done(root: Path, cell_name: str, chash: str, seed: int) -> bool:
 #: ``meta.json["ramp_meters"][i]`` counters aggregated per ramp meter.
 METER_COUNTERS = ("n_released", "n_passed_unstoppable")
 #: ``meta.json["weave_sections"][i]`` fields aggregated per weaving section
-#: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections). The last
-#: three are the follower-cooperation counters (2026-09-24, block 3); a meta
-#: written before them contributes nothing to their intervals (``n`` = 0).
+#: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections). After
+#: ``wait_s_mean`` come the follower-cooperation counters (2026-09-24, block
+#: 3), the vacate counters (third derivation) and the pair releases (fifth); a
+#: meta written before a counter contributes nothing to its interval (``n`` = 0).
 WEAVE_FIELDS = (
     "n_entered",
     "n_exited",
@@ -127,6 +128,8 @@ WEAVE_FIELDS = (
     "n_cooperations",
     "mean_follower_decel_ms2",
     "n_changer_eased",
+    "n_vacated",
+    "n_vacate_refused",
     "n_pair_releases",
 )
 
@@ -249,6 +252,8 @@ def print_diagnostics(summary: dict[str, Any]) -> None:
                 f"cooperations {_fmt_ci(w['n_cooperations'])}, "
                 f"follower decel {_fmt_ci(w['mean_follower_decel_ms2'], 2)} m/s², "
                 f"changer easings {_fmt_ci(w['n_changer_eased'])}, "
+                f"through vacated {_fmt_ci(w['n_vacated'])}, "
+                f"vacate refused {_fmt_ci(w['n_vacate_refused'])}, "
                 f"pair releases {_fmt_ci(w['n_pair_releases'])}"
             )
 

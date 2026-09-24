@@ -4,8 +4,10 @@
  * merge models behaved — vehicles held and released, vehicles that could not
  * stop for the meter, changes made, forced, deferred or never made — and, since
  * 2026-09-24 (block 3), the follower cooperations, their mean commanded
- * deceleration and the changer easings of the weave step — and are one
- * seed's counters, not a replicate aggregate and never a corridor result.
+ * deceleration, the changer easings, the through vehicles asked to vacate the
+ * weave lane upstream (made or refused) and the stopped pairs released by the
+ * weave step — and are one seed's counters, not a replicate aggregate and
+ * never a corridor result.
  * The section renders only when the run has at least one of the two lists. */
 
 import type { MergeDiagnostics, RampMeterDiagnostics, WeaveSectionDiagnostics } from '../api/types';
@@ -35,6 +37,19 @@ const FOLLOWER_DECEL_TITLE =
 const EASINGS_TITLE =
   'Vehicle-steps on which a changer was given a speed target towards the leader of its chosen ' +
   'gap — steps, not vehicles. A dash is a meta written before the rule existed.';
+
+const VACATED_TITLE =
+  'Through vehicles asked to leave the weave lane upstream of the section that moved over ' +
+  'before reaching it — vehicles, each once. A dash is a meta written before the rule existed.';
+
+const VACATE_REFUSED_TITLE =
+  'Such requests that expired or reached the section with the vehicle still in the weave lane ' +
+  '— vehicles, each once. A dash is a meta written before the rule existed.';
+
+const PAIR_RELEASES_TITLE =
+  'Stopped crossing pairs (a changer and the follower of its committed gap, both stopped ' +
+  'behind each other) released so one yields and the other goes — each pair once per ' +
+  'release. A dash is a meta written before the rule existed.';
 
 const EXITED_TITLE =
   'Exit-bound vehicles that took the exit, against the exit-bound vehicles that entered the ' +
@@ -93,6 +108,9 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
             <th title={COOPERATIONS_TITLE}>Follower cooperations (vehicle-steps)</th>
             <th title={FOLLOWER_DECEL_TITLE}>Mean follower decel [m/s²]</th>
             <th title={EASINGS_TITLE}>Changer easings</th>
+            <th title={VACATED_TITLE}>Through vacated</th>
+            <th title={VACATE_REFUSED_TITLE}>Vacate refused</th>
+            <th title={PAIR_RELEASES_TITLE}>Pair releases</th>
           </tr>
         </thead>
         <tbody>
@@ -115,6 +133,9 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
               <td className="mono">{w.n_cooperations ?? '—'}</td>
               <td className="mono">{formatNumber(w.mean_follower_decel_ms2 ?? null, 2)}</td>
               <td className="mono">{w.n_changer_eased ?? '—'}</td>
+              <td className="mono">{w.n_vacated ?? '—'}</td>
+              <td className="mono">{w.n_vacate_refused ?? '—'}</td>
+              <td className="mono">{w.n_pair_releases ?? '—'}</td>
             </tr>
           ))}
         </tbody>

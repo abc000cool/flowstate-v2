@@ -258,9 +258,13 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     for a changer, ``mean_follower_decel_ms2`` the mean commanded
     deceleration over them (``None`` also when there were none; positive is
     braking) and ``n_changer_eased`` the vehicle-steps on which a changer was
-    given a speed target towards its gap's leader. ``n_pair_releases``
-    (fifth derivation) counts stopped changer–follower pairs released, each
-    once per release; ``None`` before the rule existed.
+    given a speed target towards its gap's leader. ``n_vacated`` /
+    ``n_vacate_refused`` (third derivation) count through vehicles asked to
+    leave the weave lane upstream of the section that did change before it /
+    whose request expired or reached the section unchanged, each once;
+    ``n_pair_releases`` (fifth derivation) counts stopped changer–follower
+    pairs released, each once per release. All three are ``None`` for a meta
+    written before their rule existed.
     """
 
     ramp: str
@@ -279,6 +283,8 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_cooperations: int | None = None
     mean_follower_decel_ms2: float | None = None
     n_changer_eased: int | None = None
+    n_vacated: int | None = None
+    n_vacate_refused: int | None = None
     n_pair_releases: int | None = None
     wait_s_mean: float | None = None
     wait_in_s_mean: float | None = None

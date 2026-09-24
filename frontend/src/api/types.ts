@@ -280,6 +280,16 @@ export interface WeaveSectionDiagnostics {
   /** Vehicle-steps on which a changer was given a speed target towards its
    * gap's leader; null in an older meta. */
   n_changer_eased?: number | null;
+  /** Through vehicles asked to leave the weave lane upstream of the section
+   * that changed before reaching it, each once (third weave derivation);
+   * null in a meta written before the rule existed. */
+  n_vacated?: number | null;
+  /** Such requests that expired or reached the section unchanged, each once;
+   * null in an older meta. */
+  n_vacate_refused?: number | null;
+  /** Stopped changer–follower pairs released, each pair once per release
+   * (fifth weave derivation); null in an older meta. */
+  n_pair_releases?: number | null;
   wait_s_mean?: number | null;
   wait_in_s_mean?: number | null;
   wait_out_s_mean?: number | null;

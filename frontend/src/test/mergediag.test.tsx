@@ -37,6 +37,9 @@ const WEAVE = {
   n_cooperations: 612,
   mean_follower_decel_ms2: 0.416,
   n_changer_eased: 208,
+  n_vacated: 228,
+  n_vacate_refused: 28,
+  n_pair_releases: 9,
   wait_s_mean: 4.84,
   wait_in_s_mean: 3.9,
   wait_out_s_mean: 6.3,
@@ -92,6 +95,9 @@ describe('MergeDiagnosticsPanel', () => {
       'Follower cooperations (vehicle-steps)',
       'Mean follower decel [m/s²]',
       'Changer easings',
+      'Through vacated',
+      'Vacate refused',
+      'Pair releases',
     ]) {
       expect(table.getByText(header)).toBeInTheDocument();
     }
@@ -111,6 +117,10 @@ describe('MergeDiagnosticsPanel', () => {
     expect(table.getByText('612')).toBeInTheDocument();
     expect(table.getByText('0.42')).toBeInTheDocument();
     expect(table.getByText('208')).toBeInTheDocument();
+    // the vacate counters (through traffic asked off the weave lane) and the pair releases
+    expect(table.getByText('228')).toBeInTheDocument();
+    expect(table.getByText('28')).toBeInTheDocument();
+    expect(table.getByText('9')).toBeInTheDocument();
   });
 
   it('shows a dash for each cooperation counter a meta written before the rule lacks', () => {
@@ -125,16 +135,42 @@ describe('MergeDiagnosticsPanel', () => {
               n_cooperations: null,
               mean_follower_decel_ms2: null,
               n_changer_eased: null,
+              n_vacated: null,
+              n_vacate_refused: null,
+              n_pair_releases: null,
             },
           ],
         }}
       />,
     );
     const table = within(screen.getByLabelText('weaving sections'));
-    // the three new cells are dashes; the wait is still shown
-    expect(table.getAllByText('—')).toHaveLength(3);
+    // the six new cells are dashes; the wait is still shown
+    expect(table.getAllByText('—')).toHaveLength(6);
     expect(table.getByText('4.8')).toBeInTheDocument();
     older.unmount();
+    // a meta from between the second and the third derivation: cooperation counters
+    // shown, the vacate counters and the pair releases (absent, not null) dashes
+    const between = render(
+      <MergeDiagnosticsPanel
+        diagnostics={{
+          seed: 5,
+          ramp_meters: [],
+          weave_sections: [
+            {
+              ...WEAVE,
+              n_vacated: undefined,
+              n_vacate_refused: undefined,
+              n_pair_releases: undefined,
+            },
+          ],
+        }}
+      />,
+    );
+    const mid = within(screen.getByLabelText('weaving sections'));
+    expect(mid.getAllByText('—')).toHaveLength(3);
+    expect(mid.getByText('612')).toBeInTheDocument();
+    expect(mid.getByText('208')).toBeInTheDocument();
+    between.unmount();
     // a section with cooperations but no commanded deceleration shows the count and a dash
     render(
       <MergeDiagnosticsPanel

@@ -1446,9 +1446,17 @@ falls back to `n_departed_exiting`), `n_departed_exiting`, `n_forced`,
 `n_changer_eased` (vehicle-steps) — the three are null for a meta written
 before the rule existed, and the dashboard shows them as the columns
 "Follower cooperations (vehicle-steps)", "Mean follower decel [m/s²]" and
-"Changer easings" with a dash for null; the sweep summary's `diagnostics`
-block aggregates them the same way (`scripts/corridor_sweep.py`
-`WEAVE_FIELDS`). The field is `null` when
+"Changer easings" with a dash for null; likewise `n_vacated` and
+`n_vacate_refused` (third weave derivation: through vehicles asked to leave
+the weave lane upstream of the section that changed before it / whose request
+expired or reached the section unchanged, each once) and `n_pair_releases`
+(fifth: stopped changer–follower pairs released, each pair once per release),
+null for a meta written before their rule and shown as the columns "Through
+vacated", "Vacate refused" and "Pair releases" with a dash for null; the
+sweep summary's `diagnostics` block aggregates all six the same way
+(`scripts/corridor_sweep.py` `WEAVE_FIELDS`, an older meta contributing
+nothing to a counter's interval) and its console line prints them. The field
+is `null` when
 the run has neither list or both are empty (every ring and plain corridor
 run), when the meta cannot be read, and when an entry lacks the counters the
 schema requires — absent is honest, a partly filled table is not. They are one

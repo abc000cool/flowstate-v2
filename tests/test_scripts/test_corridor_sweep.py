@@ -67,6 +67,8 @@ WEAVE = {
         "n_cooperations": 600,
         "mean_follower_decel_ms2": 0.40,
         "n_changer_eased": 200,
+        "n_vacated": 220,
+        "n_vacate_refused": 20,
         "n_pair_releases": 2,
     },
     22: {
@@ -80,6 +82,8 @@ WEAVE = {
         "n_cooperations": 660,
         "mean_follower_decel_ms2": 0.44,
         "n_changer_eased": 220,
+        "n_vacated": 230,
+        "n_vacate_refused": 25,
         "n_pair_releases": 3,
     },
     33: {
@@ -93,6 +97,8 @@ WEAVE = {
         "n_cooperations": 720,
         "mean_follower_decel_ms2": 0.48,
         "n_changer_eased": 240,
+        "n_vacated": 240,
+        "n_vacate_refused": 30,
         "n_pair_releases": 4,
     },
 }
@@ -211,10 +217,12 @@ def test_diagnostics_aggregate_meters_and_weaves(tmp_path: Path) -> None:
 def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None:
     """A weave section written before the follower-cooperation counters
     (2026-09-24, block 3) has no ``n_cooperations``, ``mean_follower_decel_ms2``
-    or ``n_changer_eased``: their intervals are empty (``n`` = 0), never a
+    or ``n_changer_eased``, nor the later ``n_vacated``, ``n_vacate_refused``
+    and ``n_pair_releases``: their intervals are empty (``n`` = 0), never a
     zero mean, and the counters that are there aggregate as before. A section
     with cooperations but ``mean_follower_decel_ms2`` null (none commanded)
-    contributes to the count and not to the decel."""
+    contributes to the count and not to the decel; one with the cooperation
+    counters but none of the later three leaves those three empty."""
     old_meta = {"weave_sections": [{"ramp": "w", **{k: 1.0 for k in sweep.WEAVE_FIELDS[:7]}}]}
     new_meta = {
         "weave_sections": [
@@ -238,6 +246,9 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
         assert math.isnan(weave[field]["lo95"]) and math.isnan(weave[field]["hi95"])
     assert weave["mean_follower_decel_ms2"]["n"] == 0
     assert weave["mean_follower_decel_ms2"]["mean"] is None
+    for field in ("n_vacated", "n_vacate_refused", "n_pair_releases"):
+        assert weave[field]["n"] == 0, field
+        assert weave[field]["mean"] is None, field
 
 
 def test_diagnostics_share_skips_seeds_with_no_vehicle() -> None:
@@ -317,6 +328,9 @@ def test_print_diagnostics_lists_only_cells_with_meta(
     assert "diagnostics strategy_alinea (meta in 3/3 runs)" in out
     assert "meter hickory_hollow (alinea): released 110.0 [" in out
     assert "weave old_hickory: entered 44.0 [" in out
+    assert "through vacated 230.0 [" in out
+    assert "vacate refused 25.0 [" in out
+    assert "pair releases 3.0 [" in out
 
 
 def test_a_run_with_metrics_but_no_meta_counts_as_done(tmp_path: Path) -> None:
