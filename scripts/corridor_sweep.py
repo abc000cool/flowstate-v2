@@ -115,8 +115,10 @@ METER_COUNTERS = ("n_released", "n_passed_unstoppable")
 #: ``meta.json["weave_sections"][i]`` fields aggregated per weaving section
 #: (the runner's exact keys, docs/CONTRACTS.md §2 weaving sections). After
 #: ``wait_s_mean`` come the follower-cooperation counters (2026-09-24, block
-#: 3), the vacate counters (third derivation) and the pair releases (fifth); a
-#: meta written before a counter contributes nothing to its interval (``n`` = 0).
+#: 3), the vacate counters (third derivation), the pair releases (fifth), the
+#: exits given up (exit side) and the re-derived vacate rule's skipped vehicles
+#: and requests (block 3); a meta written before a counter contributes nothing
+#: to its interval (``n`` = 0).
 WEAVE_FIELDS = (
     "n_entered",
     "n_exited",
@@ -132,6 +134,8 @@ WEAVE_FIELDS = (
     "n_vacate_refused",
     "n_pair_releases",
     "n_missed_exit",
+    "n_vacate_skipped_no_gap",
+    "n_vacate_requests",
 )
 
 
@@ -255,6 +259,8 @@ def print_diagnostics(summary: dict[str, Any]) -> None:
                 f"changer easings {_fmt_ci(w['n_changer_eased'])}, "
                 f"through vacated {_fmt_ci(w['n_vacated'])}, "
                 f"vacate refused {_fmt_ci(w['n_vacate_refused'])}, "
+                f"vacate skipped (no gap) {_fmt_ci(w['n_vacate_skipped_no_gap'])}, "
+                f"vacate requests {_fmt_ci(w['n_vacate_requests'])}, "
                 f"pair releases {_fmt_ci(w['n_pair_releases'])}, "
                 f"exits given up {_fmt_ci(w['n_missed_exit'])}"
             )

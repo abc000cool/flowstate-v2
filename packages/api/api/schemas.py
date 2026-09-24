@@ -264,7 +264,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     whose request expired or reached the section unchanged, each once;
     ``n_pair_releases`` (fifth derivation) counts stopped changer–follower
     pairs released, each once per release. All three are ``None`` for a meta
-    written before their rule existed. ``n_missed_exit`` (exit-side
+    written before their rule existed. ``n_vacate_skipped_no_gap`` and
+    ``n_vacate_requests`` (block 3, the vacate rule re-derived: a through
+    vehicle is asked only on a step when the target-lane gap accepts it
+    without the follower braking) count the through vehicles that crossed
+    the window never asked, each once, and the requests made in
+    vehicle-steps; ``None`` for a meta written before. ``n_missed_exit`` (exit-side
     derivation, 2026-09-24 block 3) counts exit-bound vehicles the runner
     rerouted through at the gore's end, halted still owing their change with
     no more than ``exit_giveup_m`` of section ahead — a subset of ``n_missed``;
@@ -289,6 +294,8 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_changer_eased: int | None = None
     n_vacated: int | None = None
     n_vacate_refused: int | None = None
+    n_vacate_skipped_no_gap: int | None = None
+    n_vacate_requests: int | None = None
     n_pair_releases: int | None = None
     n_missed_exit: int | None = None
     wait_s_mean: float | None = None

@@ -181,6 +181,8 @@ WEAVE_DEFAULTS: dict[str, float] = {
     **SCRIPTED_MERGE_DEFAULTS,
     "exit_accept_gap_s": 0.6,
     "vacate_ahead_m": 150.0,
+    "vacate_max_veh_h": 0.0,
+    "vacate_no_follower_braking": 0.0,
     "pair_release_s": 2.0,
     "exit_giveup_m": 5.0,
 }
@@ -195,7 +197,24 @@ anticipation of a weave — under SUMO's own safety check
 segment's upstream influence area, 500 ft (HCM 7th ed. ch. 13: the segment's
 influence extends 500 ft upstream of the entry gore), not a fitted value;
 ``0`` disables the rule, and the window is truncated to the corridor edge
-before the section. ``pair_release_s`` (2026-09-24, block 3, fifth
+before the section. ``vacate_max_veh_h`` (2026-09-24, block 3, the rule
+re-derived): the most through vehicles the rule may ask into the target
+lane per hour, counted over the last 60 s; a positive value is the bound,
+``0`` (the default) uses the target lane's spare capacity — one IDM lane's
+capacity at the fleet defaults, ``microsim.runner.VACATE_LANE_CAPACITY_VEH_H``
+= 2,050 veh/h, less the flow that lane carried into the vacate window over
+the same 60 s — so the rule cannot push more into the lane than it has room
+for. Not a fitted value. ``vacate_no_follower_braking`` (same date): ``1``
+selects the re-derived form of the rule — a vehicle is asked only on a step
+when the target-lane gap it is in accepts it without the follower braking
+(the weave's time gaps plus the follower's IDM desired gap at its current
+speed), under mode 768 (no speed adaptation), re-evaluated every step; ``0``
+(the default) keeps the third derivation's form (asked once, mode 512, SUMO
+adapting the vehicle's speed and informing the follower). The re-derived
+form was measured and not made the default: at the corridor's demand the
+candidates reach the window far slower than the target lane, no gap accepts
+them, and the section's own lock returns (docs/WEAVE_MODEL_PLAN.md, dated
+section). Both keys are hash-neutral unless set. ``pair_release_s`` (2026-09-24, block 3, fifth
 derivation): how long an entering and an exiting vehicle may stand within one
 vehicle length of each other in section lanes 0 and 1, both below the creep
 speed (``microsim.runner.SCRIPTED_MERGE_CREEP_MS``), before the pair is

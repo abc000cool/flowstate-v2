@@ -812,6 +812,95 @@ spatial 4.274 → 4.276 m/s, σ_v temporal 3.944 → 3.945 m/s, VMT 169.630 →
 169.629 veh-km, VHT 1.7681 → 1.7685 veh-h, fuel 93.02 → 93.00 ml/veh-km,
 throughput 1,687.5 veh/h, changes in/out/forced 17/20/1 and exits 33
 unchanged, collisions 0, hash 436cd4ec9e5d unchanged); determinism preserved.
+Short sections (2026-09-24, block 3): a section shorter than the fixed
+forced-zone defaults fit — less than one zone length of cooperative stretch
+before the zone, `length_m < 2 · force_within_m` (160 m at the defaults),
+`microsim.runner._weave_short_section_rule` — is **flagged**, not scaled:
+`weave_sections[i]` gains `short_section: bool` (additive; the API schema
+ignores it, an older meta lacks it) and the forced zone and its delay stay
+the fixed `force_within_m` / `force_after_s` on every section. The fixture
+`tests/fixtures/weave_ruth.osm` is the Ruth St twin (entrance 745524613 →
+C-D split 18208090, docs/ONBOARDING_MNDOT.md §11a–§11b: three through lanes,
+a 136 m auxiliary lane — netconvert measures 135.7 m — ≈ 600 m of approach
+and downstream); `tests/test_microsim/test_microsim_weave_short_section.py`
+runs it 20 min at the corridor's Ruth St flows read from
+`scenarios/mndot_i94_wb_stpaul_weave.yaml` (`RUTH_DEMAND`: the entrance's
+peak step 3900 s — 4,049 veh/h arriving, 385 veh/h entering, 2.95 % exiting —
+and the C-D split's exit peak 9000 s — 2,824 / 220 / 28.9 %) and judges the
+exit side: ≥ 90 % of the exit-bound vehicles that reach the section exit,
+≤ 2 % given up (`n_missed_exit`, the battery's threshold), lane 1's last
+60 m above 5 m/s in every minute after 120 s, ≤ 10 % of driven vehicles
+unfinished, no collision, the entrance departing ≥ 90 %. With the fleet
+defaults every seed of 3–5 passes at both demand points (given up 0, lane 1
+never below 8.4 m/s); with the corridor's own fleet (`CORRIDOR_FLEET`: EIDM,
+the I-24 capacity-scaled population, `lc_strategic` 5, no keep-right) the
+exit peak reproduces the corridor's give-ups at every seed — 8 / 3 / 4 of
+290 / 281 / 274 (2.8 / 1.1 / 1.5 %), lane 1's last 60 m 3.3 / 4.1 / 4.3 m/s,
+33 / 15 / 17 forced, 608 / 268 / 326 deferred, no collision — and is a
+strict expected failure; the entrance peak at seed 4 (2 of 41 given up) a
+non-strict one. The per-step trace: every exiter enters lane 1 at ≈ 17 m/s;
+69 of 116 change within the first 56 m; the rest enter the 80 m zone 3.5 s
+after the section at ≈ 11 m/s, are due 4 s later with 26–40 m and ≈ 3 s left
+at 8–10 m/s, and halt at the gore's end beside an entrant halted at the end
+of the auxiliary lane — an abreast crossing pair, every due step refused on
+an overlap (one entrant stood 30 s while three exiters were given up beside
+it). The scalings measured and rejected (the whole section as the zone at
+the fixed, a 2 s, 3.4 s, 0.5 s or 0 s delay; the exit priority from the
+section's start, after 1 s or 4 s, or for both movements) are tabulated in
+docs/WEAVE_MODEL_PLAN.md (short sections): the only form that cuts the
+give-ups (whole section, one-step delay: 0–3 of ≈ 285 over thirteen seeds)
+collides at three of them (forced changes at speed in the auxiliary lane's
+first 30 m), the rest are no better than the baseline, and a brake beyond
+`b` cannot be commanded under the default `speedMode`. The vacate window
+(`vacate_ahead_m` 150 m) lies on the edge before the section and is
+truncated to it, so its length against the section's is immaterial there.
+Golden `merge_weave` (178.4 m, not short) and every T.H.52 number are
+unchanged (the golden reproduced, the T.H.52 tests keep their marks).
+
+Vacate rule re-derived (2026-09-24, block 3): two `WEAVE_DEFAULTS` keys
+**added**, both hash-neutral unless set, the third derivation's form kept as
+the default (`microsim.runner._weave_vacate_step`). (1)
+`vacate_no_follower_braking` (default `0`): `1` selects a form that never
+asks the target lane to brake — a through vehicle in the window is
+evaluated every step, nearest the section first, against the target-lane
+gap it is in (`_weave_vacate_gap_ok`: the weave's time gaps to the leader
+and the follower, `accept_gap_s`, plus the follower's IDM desired gap at
+its current speed and approach rate, `_idm_desired_gap`, so the follower
+needs no braking beyond its free-road term) and asked only on a step when
+the gap accepts, `changeLane(vid, lane_to, step_s)` under mode 768
+(`LC_MODE_SCRIPTED_SAFE_NO_ADAPT`: SUMO's safety check, no speed
+adaptation), one request per accepting step, the hold set at the first
+request and restored at the target lane (`n_vacated`) or the section
+(`n_vacate_refused`) with no one-step stay (a request lives one step); a
+vehicle never offered a gap keeps its own mode. (2) `vacate_max_veh_h`
+(default `0`): the vehicles first asked in the last 60 s
+(`VACATE_FLOW_WINDOW_S`) are limited to this many per hour in **both**
+forms; `0` uses the target lane's spare capacity,
+`VACATE_LANE_CAPACITY_VEH_H` = 2,050 veh/h (one IDM lane at the fleet
+defaults) less the flow that lane carried into the window over the same
+60 s (`_weave_vacate_bound_veh_h`; the first minute of a run
+underestimates the flow and is permissive), floored at zero. The hold
+guard now also skips a vehicle at mode 768 (another section's vacate
+hold). `weave_sections[i]` gains `n_vacate_skipped_no_gap` (through
+vehicles that crossed the window never asked — no accepting step, or the
+bound — each once; one that moves left by its own model is not counted)
+and `n_vacate_requests` (requests, in vehicle-steps), also in
+`WeaveSectionDiagnosticsOut` (`None` for an older meta) and the sweep's
+`WEAVE_FIELDS`. Measured (docs/WEAVE_MODEL_PLAN.md, dated section): the
+gap-conditioned form is not the default because at the corridor's demand
+the candidates reach the window at 2–6 m/s against a 10–25 m/s target
+lane, no gap accepts them (3 of 38 requests execute on the default fleet
+at seed 3), vacating collapses and the section's end locks; the
+spare-capacity bound binds in bursts (0–19 skipped per 20 min on the
+T.H.52 fixtures, none on the moderate fixture, whose runs are
+byte-identical) and moves the T.H.52 numbers by a few percent — the
+corridor-demand exit-side test passes (entrance 386 / 398 / 384 of 470,
+gore never below 11.9 / 7.5 / 8.7 m/s at seeds 3–5), the capacity test
+keeps its strict marker (406 / 386 / 393 of 466), the no-lock pins hold.
+Golden `merge_weave` regenerated (throughput, the change counts, exits and
+the hash 436cd4ec9e5d unchanged; mean travel time 70.998 → 70.816 s, fuel
+93.00 → 93.03 ml/veh-km; the drift is the bound delaying an ask by a step
+in a burst — lifting it reproduces the old totals exactly).
 
 ## 3. Run outputs
 

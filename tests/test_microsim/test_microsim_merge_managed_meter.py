@@ -5,7 +5,9 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+from collections import deque
 from pathlib import Path
+from typing import ClassVar
 
 import pandas as pd
 import pytest
@@ -858,6 +860,8 @@ class TestWeaveSchema:
             **SCRIPTED_MERGE_DEFAULTS,
             "exit_accept_gap_s": 0.6,
             "vacate_ahead_m": 150.0,
+            "vacate_max_veh_h": 0.0,
+            "vacate_no_follower_braking": 0.0,
             "pair_release_s": 2.0,
             "exit_giveup_m": 5.0,
         }
@@ -949,16 +953,32 @@ TH52_UPSTREAM_DEMAND = {
 }
 
 
-def _th52_upstream_config(seed: int, merge: str) -> ScenarioConfig:
+def corridor_fleet_block() -> dict:
+    """The I-94 WB St. Paul corridor's ``fleet`` block, read from
+    ``scenarios/mndot_i94_wb_stpaul_weave.yaml`` (EIDM, heterogeneity 0.15,
+    ``idm_calibration: artifacts/idm_i24_capacity.json``, ``lc_strategic``
+    5.0, ``lc_strategic_ramp`` 1.0, ``lc_keep_right`` 0.0) so a fixture can
+    run the corridor's population instead of the builder's defaults
+    (2026-09-24, block 3, the vacate rule re-derived)."""
+    import yaml
+
+    path = Path(__file__).parents[2] / "scenarios" / "mndot_i94_wb_stpaul_weave.yaml"
+    return dict(yaml.safe_load(path.read_text())["fleet"])
+
+
+def _th52_upstream_config(seed: int, merge: str, fleet: dict | None = None) -> ScenarioConfig:
     """The T.H.52 weave with the corridor's upstream entrance E1 in front of it
     (``tests/fixtures/weave_th52_upstream.osm``: E1 = way 300 onto the added
     lane of way 110, 102 m, then 230 m of three lanes, then the weave, way
     102) under :data:`TH52_UPSTREAM_DEMAND`; E1's ``merge`` is ``merge``
-    (``lane_change`` as the corridor, or ``scripted``), 20 simulated minutes."""
+    (``lane_change`` as the corridor, or ``scripted``), 20 simulated minutes;
+    ``fleet`` replaces the builder's fleet defaults (:func:`corridor_fleet_block`
+    for the corridor's)."""
     d = TH52_UPSTREAM_DEMAND
     return ScenarioConfig.model_validate(
         {
             "name": f"weave_th52_upstream_{merge}",
+            **({"fleet": fleet} if fleet is not None else {}),
             "network": {
                 "kind": "osm",
                 "osm_file": str(Path(__file__).parents[1] / "fixtures" / "weave_th52_upstream.osm"),
@@ -1139,10 +1159,10 @@ class TestWeaveRun:
     @pytest.mark.xfail(
         strict=True,
         reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "exit-side derivation): nothing locks at seeds 3-5, the entrance departs 419 / 414 / "
-        "419 of 466 against 420 required (90 % of 466 is 419.4), and lane 1 at the section "
-        "start reads 5.0 m/s in two minutes at seed 3 (the ramp still queues at 5-6 m/s over "
-        "its first 100 m)",
+        "the vacate rule under its spare-capacity bound): nothing locks at seeds 3-5, the "
+        "entrance departs 406 / 386 / 393 of 466 against 420 required (90 % of 466 is 419.4; "
+        "419 / 414 / 419 before the bound), and lane 1 at the section start reads 5.0 m/s in "
+        "minute 2 at seed 3 (the ramp still queues over its first 100 m)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -1331,7 +1351,11 @@ class TestWeaveRun:
         (2026-09-24, block 3): seed 4 never below 5.0 m/s, 5 of 509
         unfinished, entrance 414, 2 releases; seed 5 one minute at 4.3 m/s,
         2 of 483 unfinished, entrance 419, 14 releases; no collision and no
-        exit given up at either."""
+        exit given up at either. The vacate rule's spare-capacity bound
+        (2026-09-24, block 3, the rule re-derived; 4 / 15 through vehicles
+        skipped by it): seed 4 never below 5.0 m/s, 3 of 511 unfinished,
+        entrance 386, no release; seed 5 never below 5.6 m/s, 4 of 494
+        unfinished, entrance 393, 4 releases; no collision at either."""
         paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
@@ -1391,6 +1415,11 @@ class TestWeaveRun:
         is given up, 37 forced changes are deferred, no pair is released,
         the entrance departs 419 of 470; seeds 4 / 5: 307 of 315 / 317 of
         325 exit, 1 / 4 unfinished, the last 60 m never below 12.3 m/s.
+        Under the vacate rule's spare-capacity bound (2026-09-24, block 3,
+        the rule re-derived; 19 / 17 / 17 through vehicles skipped by it at
+        seeds 3-5): 299 of 306 / 305 of 312 / 302 of 311 exit, 3 / 1 / 2
+        unfinished, the last 60 m never below 11.9 / 7.5 / 8.7 m/s, the
+        entrance 386 / 398 / 384 of 470, no give-up, no collision.
         """
         cfg = _th52_config(3, **TH52_CORRIDOR_DEMAND)
         paths = run_micro(cfg, 3, tmp_path / "th52_corridor")
@@ -1407,13 +1436,14 @@ class TestWeaveRun:
     @pytest.mark.xfail(
         strict=True,
         reason="T.H.52 weave with the corridor's upstream entrance in front of it "
-        "(docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the upstream-entrance fixture): "
-        "at seed 3 the entrance E1 departs 225 of 360 (0.63 against 0.90 required), lane 1 "
-        "over its acceleration-lane end reads 2.0-5.2 m/s (above 5 m/s in 2 of 18 minutes) "
-        "and lane 1 over the section's last 60 m 3.8 m/s in minute 11; 283 of 291 exiters "
-        "exit, 2 of 414 driven are unfinished, nothing collides. The head is lane 1 of the "
-        "230 m before the gore (1.4 m/s over its first 100 m), the same with no upstream "
-        "entrance at all",
+        "(docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the upstream-entrance fixture; "
+        "numbers of the vacate rule under its spare-capacity bound, same date): at seed 3 "
+        "the entrance E1 departs 225 of 360 (0.63 against 0.90 required), lane 1 over its "
+        "acceleration-lane end reads 0.4-6.8 m/s (above 5 m/s in 4 of 18 minutes) and lane "
+        "1 over the section's last 60 m 3.6 m/s in minute 12; 279 of 289 exiters exit, 3 of "
+        "431 driven are unfinished, nothing collides. The head is lane 1 of the 230 m "
+        "before the gore (1.3-3.8 m/s in every minute after the second), the same with no "
+        "upstream entrance at all; the gap-conditioned form of the rule does not move it",
     )
     def test_th52_with_upstream_entrance_at_corridor_demand(self, tmp_path):
         """The corridor's last 850 m (2026-09-24, block 3): the T.H.52 weave of
@@ -1437,6 +1467,53 @@ class TestWeaveRun:
         """
         cfg = _th52_upstream_config(3, "lane_change")
         paths = run_micro(cfg, 3, tmp_path / "th52_upstream")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        e1_meta, _e2_meta, _x_meta = meta["ramps"]
+        net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+        x_accel_end = sum(net.getEdge(e).getLength() for e in ("100", "101", "110"))
+        x_section_end = x_accel_end + sum(net.getEdge(e).getLength() for e in ("111", "102"))
+        df = pd.read_parquet(paths.trajectories)
+        accel = _lane_speed_windows(df, x_accel_end - 60.0, 1)
+        gore = _lane_speed_windows(df, x_section_end - 60.0, 1)
+        state = {
+            "lane1_accel_end_by_minute": {int(k): round(float(v), 1) for k, v in accel.items()},
+            "lane1_section_end_by_minute": {int(k): round(float(v), 1) for k, v in gore.items()},
+            "e1_departed": (e1_meta["n_departed"], e1_meta["n_planned"]),
+            "exit_share": (ws["n_exited"], ws["n_reached_section_exiting"]),
+            "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
+        }
+        assert meta["n_collisions"] == 0, meta["collisions"]
+        assert ws["n_reached_section_exiting"] > 0, state
+        assert ws["n_exited"] >= 0.9 * ws["n_reached_section_exiting"], state
+        assert len(gore) == 18 and (gore > 5.0).all(), state
+        assert ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
+        assert e1_meta["n_departed"] >= 0.9 * e1_meta["n_planned"], state
+        assert len(accel) == 18 and (accel > 5.0).all(), state
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="The two-entrance fixture on the corridor's own fleet block (EIDM, "
+        "heterogeneity 0.15, the I-24 capacity calibration, lc_strategic 5.0, lc_keep_right "
+        "0.0; docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, the vacate rule re-derived): at "
+        "seed 3 E1 departs 250 of 360 (0.69 against 0.90), lane 1 over its acceleration-lane "
+        "end 2.1-6.7 m/s (above 5 m/s in 1 of 18 minutes), lane 1 over the section's last "
+        "60 m 4.9 m/s in minute 2; 295 of 301 exiters exit, 3 of 337 driven are unfinished, "
+        "nothing collides. The head is the same stretch, lane 0 and lane 1 both below 2 m/s "
+        "from minutes 4-7 on",
+    )
+    def test_th52_with_upstream_entrance_on_the_corridor_fleet(self, tmp_path):
+        """:func:`test_th52_with_upstream_entrance_at_corridor_demand` with the
+        corridor's fleet block (:func:`corridor_fleet_block`) in place of the
+        builder's defaults — the alignment docs/WEAVE_MODEL_PLAN.md's
+        upstream-entrance section named as the next thing to do before
+        reading the lane order across: the fixtures ran IDM with
+        ``lc_strategic`` 1.0 and ``lc_keep_right`` 1.0, the corridor EIDM with
+        5.0 / 0.0 and the calibrated population. Same criteria, same seed.
+        The default-fleet test is kept as it is."""
+        cfg = _th52_upstream_config(3, "lane_change", fleet=corridor_fleet_block())
+        assert cfg.fleet.model == "EIDM" and cfg.fleet.lc_keep_right == 0.0
+        paths = run_micro(cfg, 3, tmp_path / "th52_upstream_fleet")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
         e1_meta, _e2_meta, _x_meta = meta["ramps"]
@@ -1674,6 +1751,10 @@ def _weave_state(**params) -> dict:
         "vacate_lanes": None,
         "vacate": {},
         "vacate_seen": set(),
+        "vacate_pending": set(),
+        "vacate_asks_s": deque(),
+        "vacate_flow_ids": set(),
+        "vacate_flow_s": deque(),
         "ramp_edges": frozenset(),
         "pre": {},
         "veh_params": {},
@@ -1693,6 +1774,8 @@ def _weave_state(**params) -> dict:
         "n_changer_eased": 0,
         "n_vacated": 0,
         "n_vacate_refused": 0,
+        "n_vacate_skipped_no_gap": 0,
+        "n_vacate_requests": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -2856,6 +2939,197 @@ class TestWeaveVacateStep:
         assert veh.calls == []
 
 
+class TestWeaveVacateGapConditioned:
+    """The vacate rule re-derived so that it never asks the target lane to
+    brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
+    a form that asks only on a step when the target-lane gap accepts the
+    through vehicle without follower braking, under mode 768, and both forms
+    ask no more per minute than ``vacate_max_veh_h`` (the target lane's
+    spare capacity by default). Measured on the fixtures and not made the
+    default (docs/WEAVE_MODEL_PLAN.md, dated section)."""
+
+    @staticmethod
+    def _state(**params) -> dict:
+        ws = _weave_state(**params)
+        ws["vacate_lanes"] = ("p", 0, 1)
+        ws["lane_map"].update({("p", 0): 1, ("p", 1): 2})
+        ws["x_offset"]["p"] = -200.0
+        return ws
+
+    # the harness constants: length 5, T 1.4, a 0.73, b 1.67, s0 2.5
+    P: ClassVar[dict[str, float]] = {
+        "len": 5.0,
+        "T": 1.4,
+        "a": 0.73,
+        "b": 1.67,
+        "s0": 2.5,
+        "vmax": 33.3,
+    }
+
+    def _ok(self, x_c, v_c, target, v_of):
+        from microsim.runner import _weave_vacate_gap_ok
+
+        p_of = {vid: dict(self.P) for _, vid in target}
+        return _weave_vacate_gap_ok(x_c, v_c, dict(self.P), target, v_of, p_of, 0.6)
+
+    def test_gap_acceptance_time_gaps_and_the_follower_desired_gap(self):
+        from microsim.runner import _idm_desired_gap
+
+        # an empty target lane accepts
+        assert self._ok(100.0, 20.0, [], {})
+        # leader: the gap to its rear must clear s0 + 0.6 v_c = 14.5 m at 20 m/s
+        assert self._ok(100.0, 20.0, [(119.6, "l")], {"l": 20.0})
+        assert not self._ok(100.0, 20.0, [(119.4, "l")], {"l": 20.0})
+        # a vehicle beside the changer (front ahead, rear behind its front) refuses
+        assert not self._ok(100.0, 20.0, [(103.0, "l")], {"l": 20.0})
+        # follower at the changer's speed: the time gap s0 + 0.6 v_F = 14.5 m
+        # behind the changer's rear, and the desired gap s0 + v T = 30.5 m
+        s_star = _idm_desired_gap(20.0, 0.0, 1.4, 0.73, 1.67, 2.5)
+        assert s_star == pytest.approx(30.5)
+        assert self._ok(100.0, 20.0, [(100.0 - 5.0 - 30.6, "f")], {"f": 20.0})
+        assert not self._ok(100.0, 20.0, [(100.0 - 5.0 - 30.4, "f")], {"f": 20.0})
+        # a follower closing at 15 m/s on a 5 m/s changer needs its approach
+        # term as well: 2.5 + 28 + 20·15/(2·√(0.73·1.67)) ≈ 166 m
+        s_fast = _idm_desired_gap(20.0, 15.0, 1.4, 0.73, 1.67, 2.5)
+        assert s_fast > 160.0
+        assert not self._ok(100.0, 5.0, [(100.0 - 5.0 - 100.0, "f")], {"f": 20.0})
+        assert self._ok(100.0, 5.0, [(100.0 - 5.0 - s_fast - 0.1, "f")], {"f": 20.0})
+        # a follower whose front is level with the changer's overlaps: refused
+        assert not self._ok(100.0, 20.0, [(100.0, "f")], {"f": 20.0})
+
+    def test_gap_conditioned_form_asks_per_accepting_step_under_mode_768(self):
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE_NO_ADAPT, _weave_meta, _weave_step
+
+        ws = self._state(vacate_no_follower_braking=1.0)
+        veh = _WeaveVehicle({"t": 20.0})
+        mod = _WeaveMod(veh)
+        # 100 m before the section start, the target lane empty: asked at once
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0)}, 0.0)
+        assert ("lc", "t", LC_MODE_SCRIPTED_SAFE_NO_ADAPT) in veh.calls
+        assert ("change", "t", 1, 0.5) in veh.calls
+        assert ws["vacate"]["t"]["lc_mode_orig"] == 1621 and ws["n_vacate_requests"] == 1
+        veh.calls.clear()
+        # still in the weave lane, the gap still accepting: asked again, the
+        # hold not set twice
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 110.0, 20.0)}, 0.5)
+        assert veh.calls == [("change", "t", 1, 0.5)] and ws["n_vacate_requests"] == 2
+        veh.calls.clear()
+        # a fast follower appears behind in the target lane: not asked this step
+        res = {"t": _res("p", 0, 120.0, 20.0), "f": _res("p", 1, 80.0, 30.0)}
+        veh.speeds["f"] = 30.0
+        _weave_step(mod, _tc, ws, res, 1.0)
+        assert not [c for c in veh.calls if c[1] == "t"]
+        assert "t" in ws["vacate"]  # the hold stays while it is in the window
+        veh.calls.clear()
+        # seen in the target lane: vacated, the mode restored, no stay
+        _weave_step(mod, _tc, ws, {"t": _res("p", 1, 130.0, 20.0)}, 1.5)
+        assert (ws["n_vacated"], ws["n_vacate_refused"]) == (1, 0)
+        assert veh.calls == [("lc", "t", 1621)] and "t" not in ws["vacate"]
+        meta = _weave_meta(ws, {})
+        assert (meta["n_vacated"], meta["n_vacate_skipped_no_gap"], meta["n_vacate_requests"]) == (
+            1,
+            0,
+            2,
+        )
+
+    def test_gap_conditioned_form_counts_a_vehicle_never_offered_a_gap_as_skipped(self):
+        from microsim.runner import _weave_step
+
+        ws = self._state(vacate_no_follower_braking=1.0)
+        veh = _WeaveVehicle({"t": 5.0, "f": 25.0, "u": 5.0})
+        mod = _WeaveMod(veh)
+        # t crawls at 5 m/s with a 25 m/s follower 60 m behind it in the
+        # target lane: never asked; u does the same but moves left by itself
+        res = {
+            "t": _res("p", 0, 100.0, 5.0),
+            "f": _res("p", 1, 40.0, 25.0),
+            "u": _res("p", 0, 90.0, 5.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert veh.calls == [] and ws["vacate_pending"] == {"t", "u"}
+        res = {"t": _res("a", 1, 2.0, 5.0), "u": _res("p", 1, 95.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert ws["n_vacate_skipped_no_gap"] == 1 and ws["vacate_pending"] == set()
+        assert (ws["n_vacated"], ws["n_vacate_refused"], ws["n_vacate_requests"]) == (0, 0, 0)
+
+    def test_gap_conditioned_form_refuses_at_the_section_and_restores_the_mode(self):
+        from microsim.runner import _weave_step
+
+        ws = self._state(vacate_no_follower_braking=1.0)
+        veh = _WeaveVehicle({"t": 20.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0)}, 0.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"t": _res("a", 1, 2.0, 20.0)}, 0.5)
+        assert (ws["n_vacated"], ws["n_vacate_refused"]) == (0, 1)
+        assert veh.calls == [("lc", "t", 1621)]  # no one-step stay in this form
+
+    @pytest.mark.parametrize("form", [0.0, 1.0])
+    def test_a_fixed_bound_limits_the_vehicles_asked_per_minute(self, form):
+        from microsim.runner import _weave_step
+
+        # 60 veh/h = one vehicle per minute; n nearest the section is asked,
+        # u is not and is counted skipped when it reaches the section
+        ws = self._state(vacate_no_follower_braking=form, vacate_max_veh_h=60.0)
+        veh = _WeaveVehicle({"n": 20.0, "u": 20.0})
+        mod = _WeaveMod(veh)
+        res = {"n": _res("p", 0, 150.0, 20.0), "u": _res("p", 0, 100.0, 20.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        changes = [c for c in veh.calls if c[0] == "change"]
+        assert [c[1] for c in changes] == ["n"] and ws["vacate_pending"] == {"u"}
+        assert len(ws["vacate_asks_s"]) == 1
+        res = {"n": _res("p", 1, 160.0, 20.0), "u": _res("a", 1, 2.0, 20.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert (ws["n_vacated"], ws["n_vacate_skipped_no_gap"]) == (1, 1)
+        # within the minute the bound is spent; a minute after the ask it has room
+        veh.speeds["w"] = 20.0
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"w": _res("p", 0, 100.0, 20.0)}, 59.5)
+        assert veh.calls == [] and ws["vacate_pending"] == {"w"}
+        _weave_step(mod, _tc, ws, {"w": _res("p", 0, 110.0, 20.0)}, 60.5)
+        assert [c[1] for c in veh.calls if c[0] == "change"] == ["w"]
+
+    def test_the_default_bound_is_the_target_lane_spare_capacity(self):
+        from microsim.runner import (
+            VACATE_LANE_CAPACITY_VEH_H,
+            _weave_step,
+            _weave_vacate_bound_veh_h,
+        )
+
+        ws = self._state()
+        assert _weave_vacate_bound_veh_h(ws, 0.0) == VACATE_LANE_CAPACITY_VEH_H
+        # 40 target-lane vehicles sighted in the window within a minute read
+        # as 2,400 veh/h: no spare capacity, nobody is asked
+        speeds = {f"f{i}": 20.0 for i in range(40)}
+        speeds["t"] = 20.0
+        veh = _WeaveVehicle(speeds)
+        mod = _WeaveMod(veh)
+        res = {f"f{i}": _res("p", 1, 50.0 + 3.7 * i, 20.0) for i in range(40)}
+        res["t"] = _res("p", 0, 100.0, 20.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert _weave_vacate_bound_veh_h(ws, 0.0) == 0.0
+        assert veh.calls == [] and ws["vacate_pending"] == {"t"}
+        # sightings older than the window drop out of the flow
+        assert _weave_vacate_bound_veh_h(ws, 60.5) == VACATE_LANE_CAPACITY_VEH_H
+        # a positive vacate_max_veh_h is the bound itself, whatever the flow
+        ws2 = self._state(vacate_max_veh_h=120.0)
+        ws2["vacate_flow_s"].extend([0.0] * 40)
+        assert _weave_vacate_bound_veh_h(ws2, 0.0) == 120.0
+
+    def test_default_form_counts_requests_once_per_vehicle(self):
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"t": 20.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0)}, 0.0)
+        assert ("lc", "t", LC_MODE_SCRIPTED_SAFE) in veh.calls
+        assert ("change", "t", 1, 5.0) in veh.calls and ws["n_vacate_requests"] == 1
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"t": _res("p", 0, 110.0, 20.0)}, 0.5)
+        assert veh.calls == [] and ws["n_vacate_requests"] == 1
+
+
 class TestWeaveReviewDerivations3To6:
     """Review of 2026-09-24 (block 3) on the third to sixth derivations:
     the vacate rule's "through" set and its mode hand-offs, the pair release's
@@ -3132,6 +3406,8 @@ class TestWeaveReviewDerivations3To6:
             "n_changer_eased": 0,
             "n_vacated": 0,
             "n_vacate_refused": 0,
+            "n_vacate_skipped_no_gap": 0,
+            "n_vacate_requests": 0,
             "n_pair_releases": 0,
             "n_unfinished": 0,
             "n_exited": 0,

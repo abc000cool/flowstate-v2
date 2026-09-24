@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <!-- Synthetic one-sided ramp weave shaped like Ruth St on I-94 WB St. Paul
+       (docs/ONBOARDING_MNDOT.md section 11a-11b: entrance 745524613 into the
+       collector-distributor split 18208090, 136 m): three through lanes, an
+       entrance (200) whose auxiliary lane runs 136 m to the exit (201), about
+       600 m of approach (100, 101) and 600 m downstream (103, 104). At lat 40
+       one degree of longitude is about 85.28 km, so 0.003518 deg = 300 m and
+       0.001150 deg = 98 m (netconvert gives edge 102 about 136 m once the
+       junction geometry is added, as weave_th52.osm's 267 m becomes 305 m). -->
+  <node id="1" lat="40.0000" lon="-96.000000"/>
+  <node id="2" lat="40.0000" lon="-95.996482"/>
+  <node id="3" lat="40.0000" lon="-95.992964"/>
+  <node id="4" lat="40.0000" lon="-95.991814"/>
+  <node id="5" lat="40.0000" lon="-95.988296"/>
+  <node id="6" lat="40.0000" lon="-95.984778"/>
+  <node id="10" lat="39.9994" lon="-95.995500"/>
+  <node id="11" lat="39.9994" lon="-95.989300"/>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="101">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="102">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="4"/>
+  </way>
+  <way id="103">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="104">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="200">
+    <nd ref="10"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="201">
+    <nd ref="4"/><nd ref="11"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>
