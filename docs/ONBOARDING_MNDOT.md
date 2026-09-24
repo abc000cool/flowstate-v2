@@ -1261,3 +1261,33 @@ boundary and the speeds upstream are still far from the observed
 free-flow half of the morning. The next change in flight is a
 speed-aware exit-side acceptance (a fast exiter no longer drops in behind
 a queue head it cannot brake for).
+
+**VM K (2026-09-24, block 3): the same corrected scenarios (config hash
+53e4b208fd1d) under the speed-aware weave acceptance (commit 20f9fcb).**
+Slice, 4 seeds: departed 0.968 (lowest 0.965), no starved ramp, one
+collision on one seed (t = 1275.5 s, the added lane of on-ramp edge
+43917735#1), given-up exits 9 of 992 and 16 of 1,853 (0.9 % each)
+(`artifacts/mndot_rounds/weave_2026-09-24/slice_corrected_inputs_speed_aware_20f9fcb.json`)
+— the same 0.968 as VM J. Battery, 20 seeds
+(`battery_corrected_inputs_speed_aware_20f9fcb.json`, per-seed shares and
+collisions in `battery_speed_aware_per_seed_departed.txt`): departed
+**0.855** (19 seeds between 0.846 and 0.902; one seed, 677105600768189526,
+at **0.743** where VM J had 0.865 — its two upstream on-ramps departed 787 of
+1,583 and 617 of 995 and 22,688 vehicles arrived, the signature of a queue
+reaching the corridor's upstream end; whether a lane stood at 0.0 m/s is
+not diagnosed, the round shipped no trajectories), speed RMSPE **0.709**
+(95 % interval 0.699–0.718), GEH < 5 on **0.079** of 840 link-hours
+(0.059–0.098), "wave speed" 6.5 km/h (the queue front), 15 % of the
+planned vehicles never departed, **15 collisions over 20 seeds** (VM J: 31)
+on two on-ramp acceleration lanes and two mainline edges; given-up exits
+Ruth St 157 of 18,997 (0.8 %), T.H.52 692 of 68,872 (1.0 %), both within
+the 2 % threshold. Scoring 2,247 s.
+
+Reading: the speed-aware acceptance halves the collisions and leaves the
+corridor where VM J put it — departed 0.855 against 0.859, RMSPE 0.709
+against 0.706, the GEH share unchanged — with the exiters giving up a
+little more often (0.8 / 1.0 % against 0.6 / 0.5 %), as the fixtures
+predicted. The one seed at 0.743 is new: on VM J every seed stayed above
+0.844. Not reproduced. The next derivation in flight is the abreast state
+(docs/WEAVE_MODEL_PLAN.md, WP-53): the queue vehicle beside a halted, due
+exiter, which a trace of the fixture give-ups names as 34 of 44.

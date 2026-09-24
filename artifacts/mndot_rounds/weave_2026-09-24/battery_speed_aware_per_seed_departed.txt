@@ -1,0 +1,3 @@
+per-seed departed share, 20 seeds, VM K (speed-aware acceptance, runner 20f9fcb, config 53e4b208fd1d):
+0.743 0.846 0.85 0.851 0.852 0.852 0.855 0.855 0.856 0.858 0.858 0.859 0.86 0.86 0.862 0.862 0.867 0.87 0.88 0.902
+the 0.743 seed is 677105600768189526 (0.865 under VM J); collisions per seed (artifact order): 0 2 1 2 1 2 0 1 0 2 0 1 1 1 1 0 0 0 0 0
