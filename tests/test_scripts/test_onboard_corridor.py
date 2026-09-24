@@ -472,8 +472,8 @@ class TestReonboardingWarnsAboutDemand:
         raw = yaml.safe_load(out_yaml.read_text())
         raw["network"]["inflow"] = [[0.0, 0.3], [30.0, 0.5]]
         ramps = raw["network"]["ramps"]
-        on = next(r for r in ramps if r["kind"] == "on")
-        on["inflow"] = [[0.0, 0.05]]
+        off = next(r for r in ramps if r["kind"] == "off")  # the fixture has exits only
+        off["exit_fraction"] = [[0.0, 0.2]]
         ScenarioConfig.model_validate(raw).to_yaml(out_yaml)
 
         assert cli.main(_build_argv(tmp_path, out_yaml)) == 0
