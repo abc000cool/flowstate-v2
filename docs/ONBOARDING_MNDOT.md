@@ -513,3 +513,51 @@ the right, lane 3 of 4 with OSM `lanes=3`) — and the 6th Street exit
 as `ok`; the patch it generates for the Mounds/Kellogg split is the committed
 file's five connection lines, and with the fixes it reports none
 (`tests/test_microsim/test_microsim_split_audit.py`).
+
+## 10. Weave batteries on the corrected map (2026-09-24) — still locked, now at the T.H.52 weave
+
+Second VM of the night (`flowstate-weave-b`, n2-standard-32, us-west1-c),
+stages `mndot_slice_weave` → `battery_mndot_weave` → `battery_mndot_weave_mnpop`
+on `scenarios/mndot_i94_wb_stpaul_weave.yaml` (the corrected map of §9, Ruth
+St and T.H.52 as weaving sections, two entrances on the scripted merge).
+
+**Slice probe (4 seeds, 35 min):** departed 0.878 (lowest 0.877), no starved
+ramp (`artifacts/validation_mndot_i94_wb_stpaul_weave_slice.json` in the
+round's archive; the observed windows do not overlap a 35-minute slice, so
+no GEH/RMSPE).
+
+**The 4-hour battery locks again.** Per-seed departed shares 0.32–0.43 with
+`on-ramp 18207436` (scripted merge) starved — worse than round 2's 0.41. Read
+from the first finished seed's trajectories on the VM (scripts and outputs
+under `artifacts/mndot_rounds/weave_2026-09-24/`): the first standstill
+(50 m × 60 s bins, mean speed < 2 m/s, ≥ 10 samples) is at **x = 10.40 km in
+lanes 0 and 1 at minute 4** of the run — the START of the T.H.52 weaving
+section (entrance 769818012 on edge 51388891, the exit 18207598 at
+10.73 km): the auxiliary lane and the rightmost through lane stop together.
+By minute 6 the standstill covers 10.30–10.40 km, by minute 35 it reaches
+7.3 km (100 m × 5 min bins). The 12th Street and Mounds/Kellogg splits of §9
+are no longer where it starts. The section's own counters for that seed:
+3,542 entered / 2,329 exited, mean wait 17 s; Ruth St 598 / 219, mean wait
+177 s.
+
+**Weave-parameter probe on the slice** (4 seeds each, run beside the
+battery; session record with artifacts under
+`artifacts/mndot_rounds/weave_2026-09-24/probe_*.json`):
+
+| variant (both weaves) | departed, mean of 4 seeds (lowest) | starved ramps |
+|---|---|---|
+| defaults (`accept_gap_s` 0.6, `exit_accept_gap_s` 0.6, `force_within_m` 80, `courtesy` 0) | 0.878 (0.877) | none |
+| `courtesy` 1.0 | 0.873 (0.871) | none |
+| `force_within_m` 250, `force_after_s` 2 | 0.861 (0.805) | 40648744, 769818012 |
+| `accept_gap_s` 0.3, `exit_accept_gap_s` 0.3 | 0.883 (0.879) | none |
+
+None of the three knobs moves the slice; the gap-acceptance parameters are
+not the lever. Hypothesis, not tested: the two movements block each other at
+the section's start — entering vehicles hold the auxiliary lane while the
+rule that keeps an exiting vehicle behind the vehicle ahead in that lane
+stops lane 1 behind them (docs/CONTRACTS.md §2, the deadlock rules) — so a
+weave that in reality carries about 1,400 veh/h of entries plus the exit
+flow through 305 m stalls at its first conflict. The next step is a
+re-derivation of the weave's conflict handling (and a slice test that fails
+on this exact case), not a parameter change. The Minnesota-population
+battery on the same scenario is reported below when it has run.
