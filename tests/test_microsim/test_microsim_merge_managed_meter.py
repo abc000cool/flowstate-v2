@@ -2340,6 +2340,138 @@ class TestWeaveExitPriority:
         _weave_step(mod, _tc, ws, res, 0.5)
         assert ws["n_missed_exit"] == 1 and ("target", "e", "z") in veh.calls
 
+    def test_a_halted_exiter_that_can_request_its_change_is_not_given_up(self):
+        """Review (2026-09-24, block 3): the give-up is read after the
+        acceptance. Halted 3 m from the end with both lane-0 gaps clear
+        (``b`` 3 m ahead, ``f`` held 5 m behind at rest — the state the
+        priority hold produces) the exiter requests its change under mode
+        256 exactly as it does 8 m from the end
+        (``test_the_exiter_changes_once_the_vehicle_beside_it_has_cleared``);
+        with the give-up first it was rerouted through instead. The same
+        holds for a forced request that passes the guard alone. Given up
+        only when neither can be requested this step."""
+        from microsim.runner import LC_MODE_SCRIPTED_FORCE, NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws, veh, mod, res = self._at_the_gore()
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        veh.neighbors[("e", 1)] = (("f", 5.0),)
+        veh.speeds.update({"e": 0.0, "b": 2.0, "f": 0.0})
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 105.0, 2.0),
+            "f": _res("b", 0, 87.0, 0.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+        assert not [c for c in veh.calls if c[0] == "target"]
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_FORCE and "e" in ws["veh"]
+        assert (
+            ws["n_missed_exit"] == 0 and ws["n_missed"] == 0 and ws["veh"]["e"]["forced"] is False
+        )
+        # the forced guard alone: f 8 m behind closing at 6 m/s fails the
+        # acceptance (its IDM absorption of e is below -b) but clears the
+        # guard's closing margin (8 > 2.5 + 0.6 * 6); the due forced change
+        # is requested, not given up
+        ws, veh, mod, res = self._at_the_gore()
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        veh.neighbors[("e", 1)] = (("f", 8.0),)
+        veh.speeds.update({"e": 0.0, "b": 2.0, "f": 6.0})
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 105.0, 2.0),
+            "f": _res("b", 0, 84.0, 6.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+        assert not [c for c in veh.calls if c[0] == "target"]
+        assert ws["veh"]["e"]["forced"] is True and ws["n_missed_exit"] == 0
+        # neither accepted nor forced (b still beside it, overlapping): given up
+        ws, veh, mod, res = self._at_the_gore()
+        veh.speeds.update({"e": 0.0})
+        res["e"] = _res("b", 1, 97.0, 0.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ("target", "e", "z") in veh.calls and ws["n_missed_exit"] == 1
+        assert not [c for c in veh.calls if c[0] == "change"]
+
+    def test_an_entrant_halted_at_the_lane_end_is_never_given_up(self):
+        """The give-up is the exiting movement's alone: an entrant halted at
+        the end of lane 0 beside a lane-1 vehicle is deferred every step,
+        never rerouted, and ``n_missed_exit`` stays at zero."""
+        from microsim.runner import NEIGHBOR_LEFT_LEADERS, _weave_step
+
+        ws = _weave_state(force_after_s=0.0)
+        veh = _WeaveVehicle({"n": 0.0, "l": 0.0}, {("n", NEIGHBOR_LEFT_LEADERS): (("l", -2.0),)})
+        mod = _WeaveMod(veh)
+        res = {"n": _res("b", 0, 99.5, 0.0), "l": _res("b", 1, 98.0, 0.0)}
+        for t in (0.0, 0.5, 1.0):
+            _weave_step(mod, _tc, ws, res, t)
+        assert not [c for c in veh.calls if c[0] == "target"]
+        assert ws["n_missed"] == 0 and ws["n_missed_exit"] == 0
+        assert ws["n_forced_deferred"] == 3 and "n" in ws["veh"]
+
+    def test_n_missed_exit_is_a_subset_of_n_missed(self):
+        """A miss by the mainline (an exiter leaving the section in lane 1)
+        counts in ``n_missed`` only; a give-up counts in both; the identity
+        ``n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished``
+        holds with both kinds present."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws = _weave_state(force_after_s=0.0)
+        ws["exiting_ids"] = frozenset({"e", "g", "b"})
+        # e halted 3 m from the end with b beside it in lane 0 (overlapping,
+        # so no change can be requested); g leaves the section in lane 1
+        veh = _WeaveVehicle(
+            {"e": 0.0, "g": 10.0, "b": 0.0}, {("e", NEIGHBOR_RIGHT_LEADERS): (("b", -3.0),)}
+        )
+        mod = _WeaveMod(veh)
+        res = {
+            "e": _res("b", 1, 97.0, 0.0),
+            "b": _res("b", 0, 95.0, 0.0),
+            "g": _res("b", 1, 50.0, 10.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        res["g"] = _res("c", 1, 4.0, 10.0)
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert ws["n_missed"] == 2 and ws["n_missed_exit"] == 1
+        assert ws["n_entered"] == 2 == ws["n_changed_in"] + ws["n_changed_out"] + ws["n_missed"]
+        assert ws["veh"] == {}
+
+    def test_priority_is_due_by_time_in_the_zone_not_by_distance(self):
+        """Review (2026-09-24, block 3): ``force_after_s`` runs from the step
+        the exiter is first within ``force_within_m``, whatever its speed.
+        Crawling into the zone at 1 m/s it is due 4 s later, 4 m in — with
+        priority over the auxiliary lane for the remaining 76 m, its lane-0
+        follower held from there. Recorded as the rule's consequence; the
+        alternative (priority from zone entry) was measured and rejected on
+        the entrance (docs/WEAVE_MODEL_PLAN.md, exit-side derivation)."""
+        from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS, NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws = _weave_state()  # force_after_s = 4 s, force_within_m = 80 m
+        ws["exiting_ids"] = frozenset({"e", "b", "f"})
+        veh = _WeaveVehicle(
+            {"e": 1.0, "b": 1.0, "f": 1.0},
+            {
+                ("e", NEIGHBOR_RIGHT_LEADERS): (("b", -3.0),),
+                ("e", NEIGHBOR_RIGHT_FOLLOWERS): (("f", 12.0),),
+            },
+        )
+        mod = _WeaveMod(veh)
+        for t in (0.0, 0.5, 3.5, 4.0, 4.5):
+            x = 20.0 + t  # 1 m/s along the last edge: remaining = 100 - x
+            res = {
+                "e": _res("b", 1, x, 1.0),
+                "b": _res("b", 0, x - 2.0, 1.0),
+                "f": _res("b", 0, x - 17.0, 1.0),
+            }
+            veh.calls.clear()
+            _weave_step(mod, _tc, ws, res, t)
+            assert ws["veh"]["e"]["zone_s"] == 0.0, t
+            held = [c for c in veh.calls if c[0] == "slow"]
+            if t < 4.0:
+                assert ws["veh"]["e"]["target"] is None and not held, t
+            else:
+                assert ws["veh"]["e"]["target"] == "f" and held and held[0][1] == "f", t
+
 
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""

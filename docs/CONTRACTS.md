@@ -768,8 +768,17 @@ the entrance at seeds 3–5 against 419 / 414 / 419 (session record). (2)
 **Give-up at the gore's end**: an exit-bound vehicle halted (below
 `HALTING_SPEED_MS` = 0.1 m/s, SUMO's own halting threshold) still owing its
 change with no more than `WEAVE_DEFAULTS["exit_giveup_m"]` = 5 m of section
-ahead is rerouted through (`vehicle.changeTarget` to the corridor's last
-edge), handed back at once and counted in `n_missed` **and** the new
+ahead, and with no change to request that step (review, 2026-09-24 block 3:
+the acceptance and the forced guard are read first — halted 3 m from the
+end with both gaps clear it requests the change, as it does 8 m from the
+end), is rerouted through (`vehicle.changeTarget` to the corridor's last
+edge — not to the paired exit: its route now runs the mainline to the
+corridor's end, so the exit's `exit_fraction` is honoured by `n_missed_exit`
+fewer vehicles and the mainline beyond the exit carries them; a corridor
+whose sections give up many exits has its exit and downstream link flows
+wrong by that count, which only `weave_sections[i].n_missed_exit` records —
+the battery artifact does not surface it), handed back at once and counted
+in `n_missed` **and** the new
 `n_missed_exit` (a subset, so `n_entered = n_changed_in + n_changed_out +
 n_missed + n_unfinished` holds); it is never held by SUMO at the end of a
 lane its route does not continue on. The distance alone, without the halt,

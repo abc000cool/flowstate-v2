@@ -1729,11 +1729,14 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     ``minGap`` farther back than IDM would stop, and the commitment is kept
     while the follower is behind its rear. One that has come to a halt
     (``HALTING_SPEED_MS``) still owing its change within ``exit_giveup_m`` of
-    the gore's end has missed the exit: it is rerouted through
-    (``vehicle.changeTarget`` to the corridor's last edge), handed back at
-    once and counted in ``n_missed`` and ``n_missed_exit`` — never held by
-    SUMO at the end of a lane its route does not continue on, where it
-    stopped the through lane behind it and the auxiliary lane beside it.
+    the gore's end, with no change to request this step (neither the
+    accepted gaps nor the forced guard pass — review, 2026-09-24 block 3),
+    has missed the exit: it is rerouted through (``vehicle.changeTarget``
+    to the corridor's last edge — its original destination, the paired exit,
+    is dropped and it drives the mainline to the corridor's end), handed
+    back at once and counted in ``n_missed`` and ``n_missed_exit`` — never
+    held by SUMO at the end of a lane its route does not continue on, where
+    it stopped the through lane behind it and the auxiliary lane beside it.
 
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
@@ -1900,50 +1903,11 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             accept = prm["exit_accept_gap_s"]
         if remaining <= prm["force_within_m"] and st["zone_s"] is None:
             st["zone_s"] = t
-        if d < 0 and remaining <= prm["exit_giveup_m"] and v_ego < HALTING_SPEED_MS:
-            # the exit is missed: a vehicle halted within exit_giveup_m of
-            # the gore's end continues on the mainline (rerouted to the
-            # corridor's end) instead of being held by SUMO at the end of a
-            # lane its route does not continue on, where it stopped the
-            # through lane behind it and the auxiliary lane beside it
-            # (exit-side derivation, 2026-09-24 block 3). One still rolling
-            # there may yet drop in: v00010 of the moderate fixture forced
-            # its change in the last 3 m at 2-3 m/s (session record)
-            mod.vehicle.changeTarget(vid, ws["through_target"])
-            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
-            del veh[vid]
-            ws["gave_up"].add(vid)
-            awaiting_exit.discard(vid)
-            ws["n_missed"] += 1
-            ws["n_missed_exit"] += 1
-            continue
-        if vid in yielders:
-            # yields to its released partner: no target, no request, the
-            # gap commitment dropped (re-chosen next step)
-            st["target"] = None
-            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-            continue
-        # --- gap choice and cooperation ------------------------------------
-        st["target"] = _weave_cooperate(
-            mod,
-            tc,
-            ws,
-            results,
-            lanes,
-            x_of,
-            v_of,
-            p_of,
-            v0_of,
-            coop,
-            vid,
-            lane + d,
-            st["target"],
-            accept,
-            remaining,
-            # exit priority once the forced change is due (_weave_choose_gap)
-            d < 0 and st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"],
-        )
-        # --- acceptance and execution --------------------------------------
+        # --- acceptance (read before the give-up below: a halted exiter that
+        # can still request its change this step is not given up — review,
+        # 2026-09-24 block 3: with the give-up first, one halted 3 m from the
+        # end with both gaps clear was rerouted where 8 m from the end the
+        # same gaps were accepted at once) ---------------------------------
         g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
         g_foll, v_foll, f_id = _neighbor_gap(mod, vid, modes[1])
         ok_lead = g_lead >= st["s0"] + accept * v_ego
@@ -1978,11 +1942,69 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         force = st["zone_s"] is not None and (
             t - st["zone_s"] >= prm["force_after_s"] or vid in released
         )
-        if (
+        accepted = (
             ok_lead
             and ok_foll
             and _weave_force_gap_ok(st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll)
+        )
+        # a released partner is guarded against closing only: both of the
+        # pair are below the creep speed, the s0 floor is a comfort margin
+        # at speed, and mode 256 still refuses an overlap
+        s0_guard = 0.0 if vid in released else st["s0"]
+        forced_ok = force and _weave_force_gap_ok(
+            s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll
+        )
+        if (
+            d < 0
+            and remaining <= prm["exit_giveup_m"]
+            and v_ego < HALTING_SPEED_MS
+            and not (accepted or forced_ok)
         ):
+            # the exit is missed: a vehicle halted within exit_giveup_m of
+            # the gore's end with no change to request this step continues
+            # on the mainline (rerouted to the corridor's end) instead of
+            # being held by SUMO at the end of a lane its route does not
+            # continue on, where it stopped the through lane behind it and
+            # the auxiliary lane beside it (exit-side derivation, 2026-09-24
+            # block 3). One still rolling there may yet drop in: v00010 of
+            # the moderate fixture forced its change in the last 3 m at
+            # 2-3 m/s (session record)
+            mod.vehicle.changeTarget(vid, ws["through_target"])
+            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            del veh[vid]
+            ws["gave_up"].add(vid)
+            awaiting_exit.discard(vid)
+            ws["n_missed"] += 1
+            ws["n_missed_exit"] += 1
+            continue
+        if vid in yielders:
+            # yields to its released partner: no target, no request, the
+            # gap commitment dropped (re-chosen next step)
+            st["target"] = None
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            continue
+        # --- gap choice and cooperation ------------------------------------
+        st["target"] = _weave_cooperate(
+            mod,
+            tc,
+            ws,
+            results,
+            lanes,
+            x_of,
+            v_of,
+            p_of,
+            v0_of,
+            coop,
+            vid,
+            lane + d,
+            st["target"],
+            accept,
+            remaining,
+            # exit priority once the forced change is due (_weave_choose_gap)
+            d < 0 and st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"],
+        )
+        # --- execution -----------------------------------------------------
+        if accepted:
             # accepted: executed under mode 256 for one step (the follower
             # yields; SUMO still refuses an immediate collision). Under mode
             # 512 SUMO refused the change while the follower was closing from
@@ -1991,11 +2013,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             mod.vehicle.changeLane(vid, lane + d, step_s)
             st["requested_s"] = t
         elif force:
-            # a released partner is guarded against closing only: both of
-            # the pair are below the creep speed, the s0 floor is a comfort
-            # margin at speed, and mode 256 still refuses an overlap
-            s0_guard = 0.0 if vid in released else st["s0"]
-            if _weave_force_gap_ok(s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll):
+            if forced_ok:
                 # a forced request lives one step only, so it is executed
                 # under the gaps just checked or not at all
                 _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)

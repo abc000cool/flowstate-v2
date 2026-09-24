@@ -207,9 +207,10 @@ the time in which each could have reacted to the other once is not resolving
 by itself. Not a fitted value. ``exit_giveup_m`` (2026-09-24, block 3, the
 exit-side derivation): an exit-bound vehicle still owing its change into the
 auxiliary lane that has come to a halt (below SUMO's halting speed, 0.1 m/s)
-with no more than this much of the section ahead of its front has missed the
-exit — it is rerouted through (``vehicle.changeTarget`` to the corridor's
-last edge), handed back and counted in ``n_missed_exit``, instead of being
+with no more than this much of the section ahead of its front, and no change
+to request that step, has missed the exit — it is rerouted through
+(``vehicle.changeTarget`` to the corridor's last edge, its paired exit
+dropped), handed back and counted in ``n_missed_exit``, instead of being
 held by SUMO at the end of a lane its route does not continue on, where it
 stops the through lane behind it and the auxiliary lane beside it (the I-94
 WB standstill at the T.H.52 gore's end, ``microsim.runner._weave_step``). One
