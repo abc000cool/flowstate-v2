@@ -43,3 +43,7 @@ data/mndot/cache/
 
 # local pipeline logs (scripts/gcp)
 logs/
+
+# pipeline results archives are ingested, never committed
+final.tgz
+*.tgz

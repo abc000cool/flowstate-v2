@@ -137,6 +137,16 @@ class RampMeterSpec(BaseModel):
     ``params`` must carry the controller's target (for ALINEA the critical
     density ``rho_target_veh_km`` of the calibrated diagram); there is no
     built-in target. Releases and rates are recorded in ``meta.json``.
+
+    Stop placement (2026-09-23, docs/LESSONS.md row 31): the stop is assigned
+    once per vehicle, at its first step on any ramp edge (normally on entering
+    ``edges[0]``), always at ``stop_line_m`` before the end of ``edges[-1]``.
+    A vehicle already within its braking distance of the line
+    (``v² / (2 b) + v · Δt``, ``b`` = the vehicle's comfortable deceleration)
+    is not stopped: it passes the meter uncontrolled and is counted in
+    ``meta.json["ramp_meters"][i]["n_passed_unstoppable"]``, as is any stop
+    SUMO refuses as "too close to brake". A nonzero count means the line is
+    too close to where vehicles enter the ramp for them all to be metered.
     """
 
     controller: Literal["alinea"] = "alinea"

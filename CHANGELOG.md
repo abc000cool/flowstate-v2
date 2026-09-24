@@ -6,6 +6,12 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
+### 2026-09-24
+
+- Ramp-meter stop placement fixed (the ALINEA defect of 2026-09-23, docs/LESSONS.md row 31): a ramp vehicle is decided once, at its first step on any of the ramp's edges, and receives the meter's stop only if it can still brake for the line (v²/2b + v·Δt with its own comfortable deceleration); a vehicle already inside that distance passes the meter that cycle and is counted in `meta.json["ramp_meters"][i]["n_passed_unstoppable"]`. SUMO's own "too close to brake" refusal is handled the same way; every other TraCI error still fails the run. Checked on synthetic ramps only (a two-edge ramp with a 95 m last edge, the I-24 shape, on which the old code raised; a single-edge ramp where some vehicles cannot stop); the I-24 ALINEA cells are rerun in this night's cloud round. The queue length passed to the meter controller now includes stopped vehicles still upstream of the last edge (ALINEA does not read it).
+- Pipeline stages `mndot_population` and `battery_mndot_mnpop`: the I-24 episode-fitted population scaled to the I-94 WB St. Paul fundamental diagram's capacity by the US-101 procedure (`scripts/calibrate_capacity.py`), and the 20-seed battery with that population.
+- `final.tgz` (a pipeline results archive, 25 MB) is no longer tracked; it was committed by mistake on 2026-09-23 and is ignored from here on.
+
 ### 2026-09-23 — after 2.3.0
 
 - Defect found by the I-24 strategy sweep, not fixed tonight: the ALINEA meter places its stop line 30 m before the end of the ramp's last edge, and on the Hickory Hollow Pkwy entrance (`19441652#1`) SUMO refuses it for a vehicle already too close to brake (`TraCIException: stop … is too close to brake`), so every ALINEA cell fails at the same vehicle in every seed. The meter had only ever run in a single-seed experiment (docs/I24_VALIDATION.md §0.5(j)). The stop must be set only for vehicles with braking distance to spare, or on the ramp's first edge; until then ALINEA results exist on no corridor.

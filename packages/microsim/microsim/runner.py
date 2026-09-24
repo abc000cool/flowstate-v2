@@ -595,6 +595,68 @@ class _TrafficLib:
         self.binary = "sumo-gui" if gui else "sumo"
 
 
+#: TraCI refuses a stop the vehicle cannot reach with its deceleration; the
+#: message carries this phrase (SUMO MSVehicle::addStop).
+_TOO_CLOSE_TO_BRAKE: Final[str] = "too close to brake"
+
+
+def _meter_distance_to_stop_m(ms_r: dict[str, Any], edge: str, lane_pos_m: float) -> float:
+    """Distance along the ramp from a vehicle to its meter's stop line [m].
+
+    Args:
+        ms_r: Meter state (``ramp_edges``, ``edge_len_m``, ``stop_pos_m``;
+            the stop line lies on ``ramp_edges[-1]``).
+        edge: The ramp edge the vehicle is on.
+        lane_pos_m: The vehicle's position on that edge [m].
+
+    Returns:
+        Remaining distance; negative once the vehicle is past the line.
+        Internal junction lanes between ramp edges are not counted, so the
+        value errs short (the conservative side for a braking check).
+    """
+    edges: list[str] = ms_r["ramp_edges"]
+    k = edges.index(edge)
+    if k == len(edges) - 1:
+        return float(ms_r["stop_pos_m"]) - lane_pos_m
+    lengths: dict[str, float] = ms_r["edge_len_m"]
+    between = sum(lengths[e] for e in edges[k + 1 : -1])
+    return lengths[edge] - lane_pos_m + between + float(ms_r["stop_pos_m"])
+
+
+def _meter_assign_stop(mod: Any, ms_r: dict[str, Any], vid: str, edge: str, step_s: float) -> bool:
+    """Give a ramp vehicle the meter's stop if it can still brake for it.
+
+    The braking distance is ``v² / (2 b) + v · Δt`` with ``b`` the vehicle's
+    comfortable deceleration (``vehicle.getDecel``) and one step of reaction
+    margin. A vehicle already inside it is not stopped: it passes the meter
+    this cycle (the caller counts it in ``n_passed_unstoppable``). TraCI's
+    own refusal ("too close to brake", discrete-time brake gap) is handled
+    the same way; any other TraCI error propagates.
+
+    Args:
+        mod: The libsumo or traci module.
+        ms_r: Meter state (see :func:`_meter_distance_to_stop_m`).
+        vid: Vehicle id.
+        edge: The ramp edge the vehicle is on this step.
+        step_s: Simulation step length [s].
+
+    Returns:
+        ``True`` if the stop was set, ``False`` if the vehicle passes.
+    """
+    dist = _meter_distance_to_stop_m(ms_r, edge, float(mod.vehicle.getLanePosition(vid)))
+    v = float(mod.vehicle.getSpeed(vid))
+    b = max(float(mod.vehicle.getDecel(vid)), 1e-6)
+    if dist <= v * v / (2.0 * b) + v * step_s:
+        return False
+    try:
+        mod.vehicle.setStop(vid, ms_r["edge"], ms_r["stop_pos_m"], 0, 1.0e9)
+    except mod.TraCIException as exc:
+        if _TOO_CLOSE_TO_BRAKE in str(exc):
+            return False
+        raise
+    return True
+
+
 # SUMO laneChangeMode bit patterns (TraCI docs, "lane change mode"): every
 # model-driven change off; bits 8-9 decide how a TraCI request treats others.
 COLLISION_LOG_MAX = 50  # collision events kept verbatim in meta.json (the count is exact)
@@ -1201,7 +1263,9 @@ def run_micro(
     collision_log: list[dict[str, Any]] = []
 
     # --- Ramp metering (RampMeterSpec): a virtual signal on each metered
-    # on-ramp's last edge; the rate comes from the registry controller.
+    # on-ramp's last edge; the rate comes from the registry controller. The
+    # stop is assigned when a vehicle is first seen on any ramp edge (from
+    # edges[0]) and only if it can still brake for it (_meter_assign_stop).
     meter_states: list[dict[str, Any]] = []
     if isinstance(cfg.network, OSMNetwork) and any(
         r.kind == "on" and r.meter is not None for r in cfg.network.ramps
@@ -1236,6 +1300,12 @@ def run_micro(
                     },
                     "edge": last_edge,
                     "stop_pos_m": float(e_last.getLength() - spec_r.stop_line_m),
+                    "ramp_edges": list(ramp_m.edges),
+                    "edge_len_m": {
+                        e: float(net_for_meters.getEdge(e).getLength()) for e in ramp_m.edges
+                    },
+                    "seen_set": set(),
+                    "n_passed_unstoppable": 0,
                     "down_edge": down_edge,
                     "down_len_lanes_m": float(e_down.getLength() * e_down.getLaneNumber()),
                     "rate": float(spec_r.rate_init_veh_h or spec_r.rate_max_veh_h),
@@ -1476,13 +1546,19 @@ def run_micro(
                     ms_r["rate"], ms_r["memory"] = ms_r["fn"](obs_r, ms_r["params"], ms_r["memory"])
                     ms_r["rates"].append((t, ms_r["rate"], obs_r.density_downstream))
                     ms_r["next_update_s"] = t + spec_r.interval_s
+                # Each ramp vehicle is decided once, at its first step on a
+                # ramp edge: stopped if it can brake for the line, otherwise
+                # passed this cycle and counted (docs/LESSONS.md row 31).
+                for e_r in ms_r["ramp_edges"]:
+                    for vid in mod.edge.getLastStepVehicleIDs(e_r):
+                        if vid in ms_r["seen_set"]:
+                            continue
+                        ms_r["seen_set"].add(vid)
+                        if _meter_assign_stop(mod, ms_r, vid, e_r, step):
+                            ms_r["stopped_set"].add(vid)
+                        else:
+                            ms_r["n_passed_unstoppable"] += 1
                 on_edge = list(mod.edge.getLastStepVehicleIDs(ms_r["edge"]))
-                for vid in on_edge:
-                    if vid not in ms_r["stopped_set"] and (
-                        mod.vehicle.getLanePosition(vid) < ms_r["stop_pos_m"] - 1.0
-                    ):
-                        mod.vehicle.setStop(vid, ms_r["edge"], ms_r["stop_pos_m"], 0, 1.0e9)
-                        ms_r["stopped_set"].add(vid)
                 if t - ms_r["last_release_s"] >= 3600.0 / max(ms_r["rate"], 1.0):
                     waiting = [
                         vid
@@ -1701,6 +1777,7 @@ def run_micro(
                 "downstream_edge": ms_r["down_edge"],
                 "interval_s": ms_r["spec"].interval_s,
                 "n_released": len(ms_r["released"]),
+                "n_passed_unstoppable": ms_r["n_passed_unstoppable"],
                 "releases_s": ms_r["released"],
                 "rates": [[tt, rr, dd] for tt, rr, dd in ms_r["rates"]],
             }

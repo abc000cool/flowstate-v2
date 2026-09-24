@@ -379,6 +379,27 @@ Policy v1 (sha256 of the full dump) produced every hash quoted in documents
 dated before 2026-09-06; those artifacts keep their v1 hashes and their
 config snapshots, which is enough to rerun them.
 
+**Ramp-meter stop placement (2026-09-23, docs/LESSONS.md row 31).** The
+meter used to set its stop only once a vehicle was on the ramp's last edge;
+on the I-24 Hickory Hollow entrance (`19441652#1`) a vehicle reached that
+short edge at speed, SUMO refused the stop (`TraCIException: ... too close
+to brake`) and every ALINEA cell of the strategy sweep aborted. Now each
+ramp vehicle is decided once, at its first step on any ramp edge (normally
+on entering `edges[0]`); the stop position is unchanged (`stop_line_m`
+before the end of `edges[-1]`). A vehicle already within its braking
+distance `v² / (2 b) + v · Δt` of the line (`b` = `vehicle.getDecel`, the
+comfortable deceleration; `Δt` the step length; distance summed along the
+ramp edges, junction lanes excluded) is not stopped and passes the meter
+that cycle, as does a vehicle whose stop SUMO refuses as "too close to
+brake"; both are counted in the new `meta.json["ramp_meters"][i]
+["n_passed_unstoppable"]`. Any other TraCI error still aborts the run. No
+schema field changed (config hashes unchanged); on a single-edge ramp whose
+line is beyond every vehicle's braking distance the behaviour is identical
+to before (same releases). `RampMeterObs.queue_len` now counts every
+vehicle holding a stop assignment, including those still upstream of the
+last ramp edge (ALINEA does not read it). The fix is verified on synthetic
+ramp fixtures only; the I-24 ramps arm has not been rerun.
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:

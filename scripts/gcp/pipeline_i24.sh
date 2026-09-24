@@ -300,6 +300,23 @@ stage sweep_mndot $RUN scripts/corridor_sweep.py --scenario scenarios/$MNDOT.yam
   --replicates "$REPS" --procs "$PROCS" \
   --out runs/${MNDOT}_sweep --summary artifacts/sweep_${MNDOT}_summary.json || say "sweep_mndot failed; continuing"
 
+# 10b. Minnesota driver population (2026-09-24): the I-24 episode-fitted population scaled to the
+#     I-94 WB St. Paul fundamental diagram's capacity (q_max bootstrap lower bound,
+#     artifacts/fd_mndot_i94_wb_stpaul.json) by the US-101 procedure (docs/US101_CALIBRATED.md;
+#     scripts/calibrate_capacity.py), straight 3-lane corridor, default grid and seeds. The episode
+#     cost rows need data/i24motion (shipped only with --data-set i24). Then the 20-seed battery with
+#     that population on a scenario copy that differs only in the fleet artifact and the name.
+stage mndot_population $RUN scripts/calibrate_capacity.py --source artifacts/idm_i24.json \
+  --fd artifacts/fd_mndot_i94_wb_stpaul.json --lanes 3 --base-scenario scenarios/$MNDOT.yaml \
+  $( [ -f data/i24motion/processed/i24_wb_episodes.pkl ] && echo "--episodes data/i24motion/processed/i24_wb_episodes.pkl" ) \
+  --out artifacts/idm_${MNDOT}_capacity.json --procs "$PROCS" || say "mndot_population failed; continuing"
+stage battery_mndot_mnpop bash -c "sed -e 's#^name: $MNDOT\$#name: ${MNDOT}_mnpop#' \
+    -e 's#artifacts/idm_i24_capacity.json#artifacts/idm_${MNDOT}_capacity.json#' scenarios/$MNDOT.yaml \
+    > scenarios/${MNDOT}_mnpop.yaml && $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_mnpop.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates $REPS --procs $PROCS \
+  --out runs/${MNDOT}_mnpop/baseline --artifact artifacts/validation_${MNDOT}_mnpop.json \
+  --report-dir docs/reports/${MNDOT}_mnpop --criteria-profile fhwa_tat3_2004" || say "battery_mndot_mnpop failed; continuing"
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at

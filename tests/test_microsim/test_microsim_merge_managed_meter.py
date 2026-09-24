@@ -125,6 +125,31 @@ class TestMergePatches:
         assert df["x"].max() > 1500.0
 
 
+# The I-24 defect (docs/LESSONS.md row 31): the stop line sits on a short last
+# ramp edge that vehicles reach at speed. Split way 200 so its last piece (202)
+# is ~95 m; with the stop only set on that edge SUMO refused it ("too close to
+# brake") and the run aborted.
+TWO_EDGE_OSM = (
+    MERGE_OSM.replace(
+        '  <node id="10"', '  <node id="12" lat="39.99988" lon="-95.9896"/>\n  <node id="10"'
+    )
+    .replace('<nd ref="10"/><nd ref="3"/>', '<nd ref="10"/><nd ref="12"/>')
+    .replace(
+        "</osm>",
+        '  <way id="202">\n    <nd ref="12"/><nd ref="3"/>\n'
+        '    <tag k="highway" v="motorway_link"/>\n    <tag k="oneway" v="yes"/>\n'
+        '    <tag k="lanes" v="1"/>\n  </way>\n</osm>',
+    )
+)
+METER_BASE = {
+    "controller": "alinea",
+    "params": {"rho_target_veh_km": 25.0},
+    "interval_s": 30.0,
+    "rate_min_veh_h": 240.0,
+    "rate_max_veh_h": 600.0,
+}
+
+
 class TestRampMeter:
     def test_meter_releases_one_vehicle_per_headway(self, merge_osm, tmp_path):
         meter = {
@@ -144,6 +169,110 @@ class TestRampMeter:
         gaps = [b - a for a, b in zip(m["releases_s"][:-1], m["releases_s"][1:], strict=True)]
         assert min(gaps) >= 3600.0 / 600.0 - 0.51  # never faster than the rate ceiling
         assert len(m["rates"]) >= 4 and all(240.0 <= r <= 600.0 for _, r, _ in m["rates"])
+        assert m["n_passed_unstoppable"] == 0
+
+    def test_short_last_edge_stop_is_set_from_the_first_edge(self, tmp_path):
+        osm = tmp_path / "two_edge.osm"
+        osm.write_text(TWO_EDGE_OSM)
+        meter = {**METER_BASE, "stop_line_m": 30.0}
+        cfg = _merge_scenario(osm, "lane_change", meter=meter, duration_s=240.0)
+        d = cfg.model_dump()
+        d["network"]["ramps"][0]["edges"] = ["200", "202"]
+        cfg = ScenarioConfig.model_validate(d)
+        paths = run_micro(cfg, 3, tmp_path / "two")
+        (m,) = json.loads(paths.meta.read_text())["ramp_meters"]
+        assert m["edge"] == "202"
+        # every vehicle got its stop on edge 200, far enough upstream to brake
+        assert m["n_passed_unstoppable"] == 0
+        assert m["n_released"] >= 3
+
+    def test_unbrakeable_vehicles_pass_and_the_meter_still_holds(self, merge_osm, tmp_path):
+        # Way 200 is a single ~644 m edge; a stop line 510 m before its end is
+        # ~134 m from the insertion point, inside the braking distance of a
+        # vehicle inserted at speed. The old code raised TraCIException there.
+        meter = {**METER_BASE, "stop_line_m": 510.0}
+        cfg = _merge_scenario(merge_osm, "lane_change", meter=meter, duration_s=240.0)
+        metas = []
+        for k in range(2):
+            paths = run_micro(cfg, 3, tmp_path / f"single{k}")
+            (m,) = json.loads(paths.meta.read_text())["ramp_meters"]
+            metas.append(m)
+        m = metas[0]
+        assert m["n_passed_unstoppable"] > 0
+        assert m["n_released"] >= 3  # the others are still held and released
+        assert metas[0] == metas[1]  # deterministic under the same seed
+
+
+class _FakeTraCIException(Exception):
+    pass
+
+
+class _FakeVehicle:
+    def __init__(self, pos: float, speed: float, decel: float, error: str | None) -> None:
+        self.pos, self.speed, self.decel, self.error = pos, speed, decel, error
+        self.stops: list[tuple] = []
+
+    def getLanePosition(self, vid):
+        return self.pos
+
+    def getSpeed(self, vid):
+        return self.speed
+
+    def getDecel(self, vid):
+        return self.decel
+
+    def setStop(self, *args):
+        if self.error is not None:
+            raise _FakeTraCIException(self.error)
+        self.stops.append(args)
+
+
+class _FakeMod:
+    TraCIException = _FakeTraCIException
+
+    def __init__(self, vehicle: _FakeVehicle) -> None:
+        self.vehicle = vehicle
+
+
+METER_STATE = {
+    "ramp_edges": ["a", "b", "c"],
+    "edge_len_m": {"a": 200.0, "b": 50.0, "c": 80.0},
+    "edge": "c",
+    "stop_pos_m": 50.0,
+}
+
+
+class TestMeterStopPlacement:
+    def test_distance_to_stop(self):
+        from microsim.runner import _meter_distance_to_stop_m
+
+        assert _meter_distance_to_stop_m(METER_STATE, "a", 20.0) == pytest.approx(180 + 50 + 50)
+        assert _meter_distance_to_stop_m(METER_STATE, "b", 10.0) == pytest.approx(40 + 50)
+        assert _meter_distance_to_stop_m(METER_STATE, "c", 60.0) == pytest.approx(-10.0)
+
+    def test_stop_set_when_brakeable(self):
+        from microsim.runner import _meter_assign_stop
+
+        veh = _FakeVehicle(pos=0.0, speed=20.0, decel=2.0, error=None)
+        assert _meter_assign_stop(_FakeMod(veh), METER_STATE, "v", "a", 0.5)
+        assert veh.stops == [("v", "c", 50.0, 0, 1.0e9)]
+
+    def test_within_braking_distance_passes_without_a_stop(self):
+        from microsim.runner import _meter_assign_stop
+
+        # 20 m/s at 2 m/s² needs 100 m + 10 m; only 90 m remain from edge b
+        veh = _FakeVehicle(pos=10.0, speed=20.0, decel=2.0, error=None)
+        assert not _meter_assign_stop(_FakeMod(veh), METER_STATE, "v", "b", 0.5)
+        assert veh.stops == []
+
+    def test_traci_refusal_is_a_pass_other_errors_raise(self):
+        from microsim.runner import _meter_assign_stop
+
+        refuse = _FakeVehicle(0.0, 5.0, 2.0, "stop for vehicle 'v' is too close to brake.")
+        assert not _meter_assign_stop(_FakeMod(refuse), METER_STATE, "v", "a", 0.5)
+        broken = _FakeVehicle(0.0, 5.0, 2.0, "unknown edge 'c'")
+        with pytest.raises(_FakeTraCIException, match="unknown edge"):
+            _meter_assign_stop(_FakeMod(broken), METER_STATE, "v", "a", 0.5)
 
 
 class TestManagedLanes:
