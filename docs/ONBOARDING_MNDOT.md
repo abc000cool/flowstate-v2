@@ -1235,3 +1235,29 @@ target lane at once. Ruth St's give-ups above the threshold are a second
 finding: the 136 m section rejects 3–4 % of its exiters in the first hour.
 Next: a fixture with both entrances (the local twin, docs/WEAVE_MODEL_PLAN.md)
 and a rule for the stretch between an entrance and a weave.
+
+
+**VM J (2026-09-24, block 3): the corrected scenarios (config hash
+53e4b208fd1d) with the cross-edge 500 m vacate window (commit cf2e4f6).**
+Slice, 4 seeds: departed 0.968 (lowest 0.966), no starved ramp
+(`artifacts/mndot_rounds/weave_2026-09-24/slice_corrected_inputs_cross_edge_window_cf2e4f6.json`) — below the
+0.979 of the 150 m window. Battery, 20 seeds
+(`battery_corrected_inputs_cross_edge_window_cf2e4f6.json`, per-seed shares in
+`battery_cross_edge_window_per_seed_departed.txt`): departed **0.859**
+(every seed between 0.844 and 0.889 — **no seed locks**), speed RMSPE
+**0.706** (95 % interval 0.704–0.709), GEH < 5 on **0.080** of 840
+link-hours (the first non-zero share on this corridor), "wave speed"
+6.6 km/h (the queue front, still), 14 % of the planned vehicles never
+departed, 31 collisions over 20 seeds; given-up exits Ruth St 121 of
+19381 (0.6 %), T.H.52 313 of 68996 (0.5 %), both
+within the 2 % threshold. Scoring 114 s on six workers.
+
+Reading: the window that asks through traffic to leave the weave lane
+500 m ahead — where lane 0 still moves — is the second change that moves
+the four-hour corridor (0.743 → 0.859 departed, RMSPE 0.78 → 0.71, and
+the locking seed is gone), even though it lowered the 35-minute slice a
+little. Not reproduced: a seventh of the demand still queues at the
+boundary and the speeds upstream are still far from the observed
+free-flow half of the morning. The next change in flight is a
+speed-aware exit-side acceptance (a fast exiter no longer drops in behind
+a queue head it cannot brake for).
