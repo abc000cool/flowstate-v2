@@ -639,6 +639,50 @@ and 5 (every minute above 2 m/s, ≤ 10 % unfinished, no collision, entrance
 `merge_weave` regenerated (throughput 1,661.5 → 1,687.5 veh/h, mean travel
 time 69.51 → 69.82 s, σ_v spatial 4.34 → 4.28 m/s, changes in/out/forced
 18/17/1 → 17/20/1, hash 436cd4ec9e5d unchanged); determinism preserved.
+Sixth derivation (2026-09-24, block 3, the ramp's throttle): one condition
+**added** in `microsim.runner._weave_cooperate`, nothing else changed. An
+entrant still on the ramp (`road in ramp_edges`) is **not** eased towards a
+gap leader that overlaps it — the leader's rear behind the entrant's front,
+`s_l < 0` — and keeps its own car-following speed; the follower's
+cooperation, the gap commitment and everything on the section are as the
+fifth derivation had them (the same geometry on the section still eases —
+removing it there locks the section by minute 4, session record). The
+per-step trace on `weave_th52.osm` (seeds 3 and 4; docs/WEAVE_MODEL_PLAN.md,
+dated paragraph) placed the entrance bound on the ramp itself: a congested
+IDM equilibrium at 4–4.5 m/s and ≈ 75 veh/km over the ramp's first 100 m,
+3.1-s headways = 1,150 veh/h against 1,400 of demand, the insertion at
+`departPos="base"` refused behind it (backlog 71 at the end, depart delay
+187 s), no entrant stopped at the gore, the acceptance passing on 18–22 % of
+auxiliary-lane steps (median 5 s from the gore to the change, at 47–52 m),
+no entrant forced; the IDM's own queue discharge is 2.2–2.3 s, so the head
+was throttled: 34–38 % of the eased ramp steps had the gap leader
+overlapping the entrant (63–70 % within 5 m), the entrant 0.15–0.55 m/s
+faster, and the IDM term against that leader at −19 to −41 m/s² clipped to
+−b for a positioning that needs hundredths of a m/s² — ≈ 2.5 m/s per event,
+8 s of recovery at the IDM's 0.2–0.4 m/s², the platoon behind following.
+Softening that brake everywhere (no easing towards an overlapping leader,
+easing only when the entrant cannot pass the leader within the horizon, the
+minimal constant deceleration over a fixed horizon) locks the section by
+minute 4–5; on the ramp alone none locks, and the overlap boundary is the
+most consistent across seeds (the `s0` boundary read 395 / 401 / 423 of
+466 at seeds 3–5, the "cannot pass" rule 419 with four minutes below 5 m/s
+at seed 3). Fixture, fifth → sixth derivation, seeds 3 / 4 / 5: entrance
+395 / 392 / 389 → 411 / 412 / 420 of 466, all vehicles 1,529 / 1,550 /
+1,546 → 1,527 / 1,548 / 1,549, driven unfinished 6 / 2 / 4 → 3 / 6 / 2,
+forced 20 / 40 / 25 → 22 / 23 / 24, pairs released 0 / 9 / 1 → 14 / 0 /
+16, no collision; the ramp's first 100 m 5.0–5.9 m/s (was 4.0–4.5),
+headways 2.95 s = 1,215 veh/h (was 3.1 s), the backlog at the end 41–54
+(was 68–71); lane 1 over the section's first 60 m falls to 4.4–5.0 m/s in
+three minutes at seed 3 and 4.6 / 4.3 in one at seeds 4 / 5 (was none /
+none / one) — the abreast pair now resolves on the section, at lane 1's
+cost. The strict `xfail` stays (411 against 419 at seed 3, and the lane-1
+criterion); `test_th52_weave_at_capacity_does_not_lock` keeps its release
+pin at seed 5 only (seed 4 releases none). `TestWeaveRampBesideLeader`
+(fake harness). Golden `merge_weave` regenerated (the condition binds on
+`weave.osm`: mean travel time 69.82 → 70.83 s, p90 85.41 → 85.45 s, σ_v
+spatial 4.280 → 4.274 m/s, σ_v temporal 3.939 → 3.944 m/s, VHT 1.767 →
+1.768 veh-h, fuel 93.08 → 93.02 ml/veh-km, throughput 1,687.5 veh/h and
+hash 436cd4ec9e5d unchanged); determinism preserved.
 
 ## 3. Run outputs
 

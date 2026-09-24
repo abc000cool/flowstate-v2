@@ -1475,6 +1475,32 @@ def _weave_cooperate(
     before the gore is what resolves the crossing pair). Both stay as the
     second derivation had them.
 
+    Sixth derivation (2026-09-24, block 3), the ramp's throttle: an entrant
+    still on the ramp is **not** eased towards a gap leader that overlaps it
+    — L's rear behind the entrant's front, ``s_l < 0``. The per-step trace on
+    ``weave_th52.osm`` read the entrance bound as the ramp's own queue
+    (4–4.5 m/s over its first 100 m at 75 veh/km, 3.1-s headways = 1,150
+    veh/h against 1,400 of demand, insertion refused behind it; the IDM's
+    own queue discharge is 2.2–2.3 s) and the queue's head as this case:
+    34–38 % of the eased ramp steps had the gap leader overlapping the
+    entrant (63–70 % within 5 m), the entrant 0.15–0.55 m/s faster, and the
+    IDM term against that leader at −19 to −41 m/s² clipped to −b — a
+    positioning that needs hundredths of a m/s² (``a_req``) taken as a full
+    comfortable brake, ~2.5 m/s per event, then 8 s of recovery at the IDM's
+    0.2–0.4 m/s² with the platoon behind following. A vehicle beside the
+    entrant is not a leader the car-following model can follow (its gap term
+    is undefined at ``s ≤ 0``), and on the ramp the entrant has the whole
+    section ahead to drop in behind it or pass it, so it keeps its own
+    car-following speed. On the section the same geometry still eases (the
+    rear one of an abreast pair drops back at −b — removing that there locks
+    the section by minute 4, session record), and a leader just clear of the
+    entrant (``0 ≤ s_l < s0``) is still followed on the ramp: the ``s0``
+    boundary was measured noisier across seeds (395 / 401 / 423 against
+    414 / 412 / 407 of 466 at seeds 3–5). The cost moves to lane 1 — the
+    pass completes there and the follower absorbs at −b — which reads as
+    one to three minutes of lane 1 at 2–5 m/s at some seeds
+    (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the table).
+
     Returns:
         The chosen gap's follower id (the commitment carried to the next
         step), or ``None``.
@@ -1515,7 +1541,12 @@ def _weave_cooperate(
         _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
     if l_t is not None and a_c < 0.0:
         s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
-        if _weave_easing_ok(v_c, v_of[l_t], s_l, p_c["s0"] + accept_s * v_c, remaining_m, p_c["b"]):
+        # sixth derivation: on the ramp, a gap leader whose rear is behind the
+        # entrant's front is beside it, not ahead of it
+        beside = road in ws["ramp_edges"] and s_l < 0.0
+        if not beside and _weave_easing_ok(
+            v_c, v_of[l_t], s_l, p_c["s0"] + accept_s * v_c, remaining_m, p_c["b"]
+        ):
             _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
     return f_t
 

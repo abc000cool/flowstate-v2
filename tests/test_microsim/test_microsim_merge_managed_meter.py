@@ -973,10 +973,11 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, fifth "
-        "derivation): lane 1 at the section start flows at 6-12 m/s at seed 3, nothing locks "
-        "at seeds 3-5, but the entrance departs 395 of 466 against 419 required (the ramp "
-        "still queues at 4-5 m/s over its first 100 m)",
+        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, sixth "
+        "derivation): nothing locks at seeds 3-5, the entrance departs 411 / 412 / 420 of 466 "
+        "against 419 required, and lane 1 at the section start reads 4.4-5.0 m/s in three "
+        "minutes at seed 3 (the ramp still queues at 5-6 m/s over its first 100 m, 2.95-s "
+        "headways)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -1062,6 +1063,24 @@ class TestWeaveRun:
         ``test_th52_weave_at_capacity_does_not_lock`` pins that). The
         entrance criterion (419) still fails at every seed, so the marker
         stays.
+
+        Sixth derivation (2026-09-24, block 3: an entrant on the ramp is not
+        eased towards a gap leader that overlaps it, ``_weave_cooperate``):
+        the per-step trace read the bound as the ramp's own queue (4-4.5 m/s
+        over its first 100 m, 3.1-s headways = 1,150 veh/h, insertion refused
+        behind it; free IDM queue discharge is 2.2-2.3 s) and its head as
+        the entrant braking at -b for a lane-1 vehicle beside it. Lane 1's
+        first 60 m read 8.8, 6.8, 5.0, 8.1, 5.0, 4.8, 8.9, 7.7, 5.2, 6.1,
+        6.3, 10.7, 10.8, 6.1, 9.2, 4.4, 6.4, 9.1 m/s in minutes 2-19 (three
+        at or below 5); the entrance departs 411 of 466 (88 %); 474 driven
+        (249 in, 222 out, 22 forced, 3 unfinished); 304 of 307 exit-bound
+        vehicles that reach the section exit; 1,527 of 1,966 depart; 14
+        pairs released; no collision. Seeds 4 / 5: entrance 412 / 420, one
+        minute at 4.6 / 4.3 m/s, 6 of 491 / 2 of 501 unfinished, 0 / 16
+        releases. The ramp queue runs at 5-6 m/s (2.95-s headways, 1,215
+        veh/h) instead of 4-4.5; the cost moved to lane 1 at the section
+        start. The entrance criterion fails at seed 3 (411) and the lane-1
+        criterion at every seed, so the marker stays.
         """
         paths = run_micro(_th52_config(3), 3, tmp_path / "th52")
         meta = json.loads(paths.meta.read_text())
@@ -1074,8 +1093,8 @@ class TestWeaveRun:
         assert on_meta["n_departed"] >= 0.9 * on_meta["n_planned"], state
         assert ws["n_missed"] == 0 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
 
-    @pytest.mark.parametrize("seed", [4, 5])
-    def test_th52_weave_at_capacity_does_not_lock(self, tmp_path, seed):
+    @pytest.mark.parametrize(("seed", "min_releases"), [(4, 0), (5, 1)])
+    def test_th52_weave_at_capacity_does_not_lock(self, tmp_path, seed, min_releases):
         """The seeds at which the fifth derivation's "ease only when needed"
         condition locked the section before the pair release (2026-09-24,
         block 3): from minute 16 lane 1 at the section start read 0.0 m/s to
@@ -1087,7 +1106,11 @@ class TestWeaveRun:
         here against 419). Measured after the release: seed 4 lane 1 never
         below 5.4 m/s, 2 of 501 unfinished, 9 pairs released; seed 5 one
         minute at 5.0 m/s, 4 of 483 unfinished, 1 pair released; no
-        collision at either."""
+        collision at either. Sixth derivation (the ramp's overlap rule):
+        seed 4 never below 4.6 m/s, 6 of 491 unfinished, entrance 412, no
+        pair stands long enough to be released (the pin of the release
+        firing is kept at seed 5: 16 releases, 2 of 501 unfinished, one
+        minute at 4.3 m/s, entrance 420); no collision at either."""
         paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
@@ -1097,7 +1120,7 @@ class TestWeaveRun:
         assert len(windows) == 18 and (windows > 2.0).all(), state
         assert ws["n_missed"] == 0 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
         assert on_meta["n_departed"] >= 0.8 * on_meta["n_planned"], state
-        assert ws["n_pair_releases"] >= 1, state
+        assert ws["n_pair_releases"] >= min_releases, state
 
     def test_unpaired_geometry_is_refused_with_the_edges(self, merge_osm, tmp_path):
         """The schema pairing holds (same attach edge) but lane 0 of 102 never
@@ -1649,6 +1672,64 @@ class TestWeaveEasingFeasibility:
         # v_c = 0: t_a = remaining / creep, not a division by zero
         assert _weave_easing_ok(0.0, 0.0, -2.0, 2.0, 30.0 * SCRIPTED_MERGE_CREEP_MS, 1.67)
         assert not _weave_easing_ok(0.0, 0.0, -2.0, 2.0, 0.0, 1.67)
+
+
+class TestWeaveRampBesideLeader:
+    """``_weave_cooperate`` (sixth derivation, 2026-09-24 block 3): an entrant
+    still on the ramp is not eased towards a gap leader that overlaps it —
+    the leader's rear behind the entrant's front — while the same geometry
+    on the section, and a leader just clear of the entrant on the ramp, are
+    eased as before."""
+
+    @staticmethod
+    def _case(road: str, pos: float, x_leader_front: float, remaining_m: float):
+        """Entrant ``n`` at 10 m/s on ``road`` (the ramp ``r`` at offset −100
+        m, or section edge ``a``), a lane-1 leader ``l`` at 9 m/s with its
+        front at ``x_leader_front`` and a lane-1 follower ``f`` at 9 m/s 30 m
+        behind the entrant's front. Returns the chosen follower and the
+        one-step targets recorded."""
+        from microsim.runner import _weave_cooperate
+
+        ws = _weave_state()
+        ws["ramp_edges"] = frozenset({"r"})
+        ws["x_offset"]["r"] = -100.0
+        ws["lane_map"][("r", 0)] = 0
+        veh = _WeaveVehicle({"n": 10.0, "l": 9.0, "f": 9.0})
+        mod = _WeaveMod(veh)
+        res = {
+            "n": _res(road, 0, pos, 10.0),
+            "l": _res("a", 1, 0.0, 9.0),
+            "f": _res("a", 1, 0.0, 9.0),
+        }
+        x_n = ws["x_offset"][road] + pos
+        x_of = {"n": x_n, "l": x_leader_front, "f": x_n - 30.0}
+        v_of = {"n": 10.0, "l": 9.0, "f": 9.0}
+        lanes = {1: sorted([(x_of["f"], "f"), (x_of["l"], "l")])}
+        coop: dict = {}
+        f_t = _weave_cooperate(
+            mod, _tc, ws, res, lanes, x_of, v_of, {}, {}, coop, "n", 1, None, 0.6, remaining_m
+        )
+        return f_t, coop
+
+    def test_overlapping_leader_on_the_ramp_is_not_followed(self):
+        # entrant front at x = −10, leader front at −6: rear at −11, s_l = −1
+        f_t, coop = self._case("r", 90.0, -6.0, 210.0)
+        assert f_t == "f" and "f" in coop and coop["f"][2] is True
+        assert "n" not in coop, coop
+
+    def test_leader_just_clear_on_the_ramp_is_followed(self):
+        # leader front at −2: rear at −7, s_l = 3 ≥ 0 — needed (5.5 m to
+        # drop over t_a = 21 s, a_req = 0.12 m/s²) and feasible, so eased
+        f_t, coop = self._case("r", 90.0, -2.0, 210.0)
+        assert f_t == "f" and "n" in coop and coop["n"][2] is False
+        assert coop["n"][1] == pytest.approx(-1.67)
+
+    def test_overlapping_leader_on_the_section_is_still_eased(self):
+        # the second derivation's rule: the rear one of an abreast pair
+        # drops back at −b — entrant front at x = 10, leader front at 14
+        f_t, coop = self._case("a", 10.0, 14.0, 190.0)
+        assert f_t == "f" and "n" in coop and coop["n"][2] is False
+        assert coop["n"][1] == pytest.approx(-1.67)
 
 
 class TestWeavePairRelease:
