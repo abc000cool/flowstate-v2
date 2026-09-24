@@ -293,8 +293,9 @@ grid (VSL, ALINEA, alone and under FollowerStopper) in
 [docs/I24_STRATEGIES.md](docs/I24_STRATEGIES.md). The third corridor (MnDOT
 I-94 WB) is onboarded from public data but not reproduced: two 20-seed
 batteries on the regenerated inputs departed 0.233 and 0.247 of their demand,
-the exit-side weave rule lifted the 35-minute slice to 0.979 and its 20-seed
-battery is pending, and the weaving-section model is still short of its
+the exit-side weave rule lifted the 35-minute slice to 0.979 and the 20-seed
+battery to 0.743 departed with speed RMSPE 0.78 (one seed in twenty still
+locks, no GEH pass), and the weaving-section model is still short of its
 pre-registered criterion
 ([docs/WEAVE_MODEL_PLAN.md](docs/WEAVE_MODEL_PLAN.md)). Still ahead: the
 radar-detector counts that would replace fragment counts, a flow-based

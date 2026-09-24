@@ -1,0 +1,3089 @@
+{
+  "schema": "flowstate.corridor_validation/1",
+  "created_at": "2026-09-24T20:23:35Z",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave.yaml",
+  "corridor": "I-94 WB",
+  "config_hash": "53e4b208fd1d",
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "replicates": 20,
+  "wall_s": 3128.4,
+  "versions": {
+    "python": "3.12.14",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "criteria_profile": {
+    "name": "fhwa_tat3_2004",
+    "source": "FHWA Traffic Analysis Toolbox Vol. III (2004, FHWA-HRT-04-040), \u00a75.6 'Calibration Targets', Wisconsin DOT freeway model calibration criteria (captioned 'Table 4' on the HTML edition at https://ops.fhwa.dot.gov/trafficanalysistools/tat_vol3/sect5.htm, verified 2026-09-03; attributed there to WisDOT District 2, Paramics Calibration and Validation Guidelines, Technical Report I-33, June 2002). Transcribed row: 'GEH Statistic < 5 for Individual Link Flows: > 85% of cases' \u2014 strict '> 85%' (geh_pass_inclusive=False). Rows of that table NOT evaluated by FlowState: individual link flows within 15% / 100 veh/h / 400 veh/h by flow band for > 85% of cases; sum of all link flows within 5%; GEH < 4 for the sum of all link flows; journey times within 15% (or 1 min, if higher) for > 85% of cases; visual audits of speed-flow relationships and bottleneck queuing 'to analyst's satisfaction'. The table defines no RMSPE speed bound, so this profile produces no speeds_rmspe row (rmspe_max=None). The 2004 volume gives no fixed minimum run count (its \u00a75 example uses ten replications to estimate a parameter within 5%), so min_seeds keeps FlowState's 20 (CLAUDE.md \u00a70.6). The segment-speed RMSPE <= 15% bound is FlowState's own convention (CLAUDE.md \u00a77.1, 'common microsim practice'); the 14-22 km/h emergent backward wave-speed band is the empirical stop-and-go literature value (flowstate_core.constants.WAVE_SPEED_BAND_KMH); the ring emergence/dampening rows reproduce Sugiyama et al. (2008) and Stern et al. (2018) per CLAUDE.md \u00a73.2.1; min_seeds = 20 and the penetration {1,2,5,10,15,20}% x compliance {25,50,80,100}% grid are CLAUDE.md \u00a70.6/\u00a77.1 internal standards. None of these is prescribed by the cited DOT/FHWA documents. The wave-speed row is measured with the profile's wave_detector (validation.waves.WAVE_DETECTORS; default 'stack', chosen on the planted-stripe benchmark in validation.waves), and the evaluated row names that detector and its parameters."
+  },
+  "criteria": [
+    {
+      "name": "link_flows_geh",
+      "value": 0.0,
+      "threshold": "GEH < 5 for > 85% of link-hour comparisons",
+      "passed": false,
+      "evaluated": true,
+      "detail": "fraction of comparisons with GEH < 5"
+    },
+    {
+      "name": "wave_speed",
+      "value": 6.80425788054846,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+      "passed": false,
+      "evaluated": true,
+      "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected"
+    },
+    {
+      "name": "ring_emergence",
+      "value": null,
+      "threshold": "Sugiyama ring emergence benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "ring_dampening",
+      "value": null,
+      "threshold": "Stern single-AV dampening benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "n_seeds",
+      "value": 20.0,
+      "threshold": "n_seeds >= 20",
+      "passed": true,
+      "evaluated": true,
+      "detail": ""
+    },
+    {
+      "name": "sensitivity_grid",
+      "value": null,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    }
+  ],
+  "observations": {
+    "path": "data/mndot/mndot_i94_wb_stpaul/observations.json",
+    "corridor": "I-94 WB",
+    "provider": "MnDOT RTMC Mayfly API",
+    "dates": "20260901, 20260902, 20260903, 20260908, 20260909, 20260910, 20260915, 20260916, 20260917",
+    "url": "https://data.dot.state.mn.us/mayfly",
+    "aggregation": "mean over dates per window (weekday typical profile)",
+    "t0_local": "05:30",
+    "window_s": 300.0,
+    "n_stations": 14,
+    "n_windows": 48,
+    "n_windows_compared": 42,
+    "flow_fraction": 1.0,
+    "speed_fraction": 1.0,
+    "n_link_hours": 840,
+    "n_speed_cells": 11760,
+    "n_replicates": 20,
+    "n_stations_outside_span": 0,
+    "stations_outside_span": "",
+    "note": "",
+    "detector_wave_speed": {
+      "median_kmh": 21.26495534474855,
+      "iqr_kmh": [
+        18.58513742016639,
+        24.17925039834189
+      ],
+      "n_pairs": 13,
+      "n_used": 6,
+      "rejections": "2 fewer than min_events congested episodes downstream, 4 peak correlation below the acceptance floor, 1 peak lag is not positive (no backward propagation)",
+      "loo_n_dates": 9,
+      "loo_median_min_kmh": 18.449720849605693,
+      "loo_median_max_kmh": 21.57559690402194,
+      "loo_pairs_min": 5
+    }
+  },
+  "x_offset_m": 0.0,
+  "insertion": {
+    "n_runs": 20,
+    "planned": 678240,
+    "departed": 504249,
+    "mean_arrived": 21704.4,
+    "n_with_arrived": 20,
+    "mean_departed_fraction": 0.743466914366596,
+    "min_departed_fraction": 0.23044939844302903,
+    "starved_ramps": [
+      "on-ramp 18207436",
+      "on-ramp 745524613",
+      "on-ramp 18207653",
+      "on-ramp 178547099",
+      "C-D re-entry 745524608",
+      "on-ramp 53062592",
+      "on-ramp 40648744",
+      "on-ramp 769818012"
+    ],
+    "verdict": "backlog: 26 % of planned vehicles never departed; starved ramps: on-ramp 18207436, on-ramp 745524613, on-ramp 18207653, on-ramp 178547099, C-D re-entry 745524608, on-ramp 53062592, on-ramp 40648744, on-ramp 769818012"
+  },
+  "geh": {
+    "pooled_values": [
+      18.6199,
+      59.2231,
+      46.8822,
+      24.6073,
+      52.2891,
+      45.766,
+      35.7725,
+      45.9788,
+      40.7972,
+      38.8551,
+      41.0935,
+      36.9238,
+      45.6058,
+      37.5241,
+      37.68,
+      44.593,
+      25.701,
+      35.8888,
+      44.3545,
+      23.8975,
+      33.5411,
+      40.6575,
+      23.9806,
+      29.1242,
+      30.5957,
+      8.8935,
+      15.2506,
+      29.5778,
+      11.2265,
+      17.3621,
+      28.7449,
+      14.0958,
+      20.0856,
+      37.6841,
+      25.7272,
+      27.4149,
+      32.3921,
+      21.485,
+      21.445,
+      25.7546,
+      17.9974,
+      13.7297,
+      17.8008,
+      54.3742,
+      43.3614,
+      24.2193,
+      50.1239,
+      41.913,
+      34.3692,
+      41.1821,
+      41.7231,
+      37.1747,
+      37.7839,
+      38.8082,
+      43.6888,
+      33.4485,
+      39.4105,
+      42.4408,
+      24.0721,
+      36.2426,
+      41.1388,
+      22.8419,
+      34.6288,
+      40.0155,
+      22.1791,
+      31.8893,
+      29.0414,
+      8.6587,
+      18.372,
+      29.7187,
+      10.6492,
+      18.0598,
+      29.5341,
+      14.205,
+      20.1715,
+      38.0671,
+      26.6932,
+      26.3104,
+      32.4283,
+      22.4948,
+      20.7817,
+      26.0598,
+      17.9974,
+      13.8015,
+      18.907,
+      56.5122,
+      43.9923,
+      25.7358,
+      51.0081,
+      42.1608,
+      35.3623,
+      44.0815,
+      39.2424,
+      37.8107,
+      41.3181,
+      34.4498,
+      43.8034,
+      37.9406,
+      33.9954,
+      42.9924,
+      26.1383,
+      31.6103,
+      43.0116,
+      22.3995,
+      30.3198,
+      41.9526,
+      22.1016,
+      27.9084,
+      28.7811,
+      9.8373,
+      15.4696,
+      28.299,
+      10.4334,
+      17.1061,
+      29.653,
+      13.965,
+      20.559,
+      37.4829,
+      26.177,
+      26.5432,
+      31.8505,
+      21.7087,
+      21.9634,
+      26.7628,
+      17.9615,
+      14.323,
+      16.3292,
+      57.583,
+      46.823,
+      22.7446,
+      51.1859,
+      43.0647,
+      30.955,
+      46.5758,
+      39.578,
+      35.0805,
+      41.2057,
+      34.7626,
+      40.8149,
+      35.5171,
+      33.9954,
+      39.3412,
+      25.624,
+      30.6012,
+      38.1061,
+      25.3939,
+      28.2402,
+      37.8633,
+      23.0624,
+      26.2113,
+      29.5633,
+      6.8683,
+      14.7593,
+      27.8986,
+      9.485,
+      16.4683,
+      29.7521,
+      13.0753,
+      19.6356,
+      38.5527,
+      25.4709,
+      26.2893,
+      32.7907,
+      21.4105,
+      20.892,
+      27.3243,
+      17.1202,
+      13.8733,
+      17.7059,
+      52.8569,
+      48.0743,
+      23.362,
+      48.4936,
+      46.2186,
+      32.9349,
+      42.5726,
+      43.1485,
+      35.1728,
+      39.7841,
+      39.3751,
+      41.0163,
+      35.3134,
+      40.1497,
+      39.6095,
+      24.0721,
+      36.8441,
+      38.4531,
+      23.7325,
+      33.3729,
+      38.8325,
+      21.6634,
+      30.9503,
+      28.1414,
+      9.8008,
+      16.6258,
+      26.7906,
+      11.4438,
+      18.4287,
+      29.8314,
+      13.9868,
+      20.8614,
+      37.4628,
+      26.2843,
+      27.5644,
+      31.8144,
+      21.9141,
+      21.6484,
+      26.1857,
+      17.2094,
+      13.7835,
+      19.387,
+      55.8311,
+      47.5659,
+      25.714,
+      51.9599,
+      45.0913,
+      36.1843,
+      44.7966,
+      42.034,
+      39.405,
+      40.1723,
+      37.4793,
+      45.0714,
+      35.5171,
+      38.8665,
+      42.3262,
+      26.5777,
+      35.5364,
+      41.5153,
+      25.4657,
+      32.5121,
+      41.7434,
+      22.932,
+      29.0477,
+      31.7069,
+      7.4026,
+      15.4513,
+      30.4608,
+      9.7884,
+      17.8023,
+      30.2886,
+      13.9214,
+      20.4297,
+      38.9792,
+      26.177,
+      27.5858,
+      32.827,
+      22.3072,
+      22.1119,
+      27.6879,
+      18.1233,
+      13.3894,
+      13.4032,
+      52.1191,
+      43.0474,
+      18.5166,
+      49.2473,
+      42.0368,
+      28.7001,
+      42.7319,
+      38.8414,
+      31.7428,
+      37.7568,
+      35.1623,
+      36.9665,
+      34.4776,
+      34.6956,
+      34.916,
+      26.7333,
+      32.8402,
+      34.3518,
+      24.2518,
+      33.253,
+      34.785,
+      21.6377,
+      30.6134,
+      28.314,
+      7.0995,
+      16.7919,
+      27.3089,
+      10.1463,
+      17.931,
+      29.8513,
+      13.5951,
+      19.6784,
+      37.8251,
+      25.5776,
+      26.9676,
+      32.2474,
+      20.7423,
+      21.7595,
+      25.5753,
+      17.2273,
+      13.4252,
+      19.3293,
+      58.4973,
+      42.5075,
+      25.6268,
+      51.9599,
+      42.4093,
+      36.7014,
+      45.6489,
+      38.7747,
+      38.2842,
+      41.7688,
+      37.0697,
+      42.277,
+      38.9632,
+      37.5729,
+      41.5045,
+      27.1493,
+      36.1336,
+      41.1597,
+      25.4657,
+      33.0852,
+      40.7266,
+      23.8225,
+      31.0802,
+      29.163,
+      10.2755,
+      17.0693,
+      28.6482,
+      11.4619,
+      17.7656,
+      28.8827,
+      14.8625,
+      20.8614,
+      37.6237,
+      26.6717,
+      27.9712,
+      32.1752,
+      22.871,
+      22.335,
+      25.0392,
+      18.7182,
+      14.7202,
+      16.7989,
+      58.553,
+      42.6777,
+      22.7446,
+      51.5424,
+      43.0647,
+      33.11,
+      44.7966,
+      39.9487,
+      35.6351,
+      40.6737,
+      36.1689,
+      39.7467,
+      37.6801,
+      35.1651,
+      39.0291,
+      24.4767,
+      34.889,
+      39.438,
+      21.3132,
+      33.9749,
+      39.7414,
+      20.4626,
+      30.6134,
+      29.163,
+      8.011,
+      14.6504,
+      28.6307,
+      9.2713,
+      17.8023,
+      29.0009,
+      13.7473,
+      19.6356,
+      37.946,
+      25.1515,
+      26.395,
+      32.6456,
+      20.4834,
+      21.3157,
+      25.0392,
+      16.9954,
+      12.9075,
+      16.6672,
+      57.3075,
+      44.2516,
+      22.9571,
+      50.683,
+      44.0725,
+      34.3946,
+      44.3734,
+      41.4477,
+      37.7399,
+      41.1215,
+      38.1266,
+      43.8951,
+      34.7808,
+      41.366,
+      42.2347,
+      24.4514,
+      36.4336,
+      41.3687,
+      23.8739,
+      33.0373,
+      40.9799,
+      21.612,
+      30.0459,
+      31.5122,
+      6.744,
+      16.7365,
+      29.6483,
+      10.4334,
+      17.8575,
+      30.2289,
+      15.3915,
+      20.3005,
+      39.0606,
+      26.8443,
+      26.6915,
+      33.3908,
+      22.2322,
+      21.6854,
+      27.5241,
+      17.782,
+      13.6938,
+      15.8801,
+      69.2127,
+      75.5435,
+      22.3631,
+      64.6482,
+      70.7825,
+      32.6355,
+      59.5774,
+      65.6494,
+      34.6435,
+      63.5515,
+      71.0766,
+      39.9019,
+      66.1433,
+      75.9368,
+      38.1418,
+      57.6419,
+      74.2305,
+      36.9699,
+      49.3321,
+      64.8809,
+      37.5719,
+      38.5155,
+      59.7023,
+      28.6425,
+      9.5642,
+      40.5673,
+      26.8251,
+      10.0209,
+      40.2825,
+      28.4307,
+      14.0958,
+      34.9456,
+      36.7214,
+      25.5136,
+      38.1806,
+      30.738,
+      21.6341,
+      25.1012,
+      24.5407,
+      18.0154,
+      16.4136,
+      18.5244,
+      59.3352,
+      45.8216,
+      24.6289,
+      53.4348,
+      43.3156,
+      35.1067,
+      46.4096,
+      38.5751,
+      38.6883,
+      42.4773,
+      34.535,
+      45.4894,
+      36.9023,
+      35.9525,
+      43.1999,
+      27.0972,
+      32.3936,
+      42.9692,
+      25.1788,
+      28.7678,
+      42.6056,
+      22.438,
+      26.2608,
+      31.955,
+      7.3134,
+      16.2576,
+      30.2307,
+      9.4494,
+      17.9678,
+      30.6876,
+      12.9242,
+      20.15,
+      39.4683,
+      25.4923,
+      25.9727,
+      34.1586,
+      21.2431,
+      20.984,
+      28.4547,
+      18.3753,
+      13.2286,
+      18.907,
+      71.9138,
+      75.5435,
+      25.8668,
+      67.1534,
+      70.7825,
+      35.3111,
+      62.1099,
+      65.6494,
+      39.2134,
+      65.8708,
+      71.0766,
+      44.8861,
+      69.295,
+      75.9368,
+      42.166,
+      62.4908,
+      74.2305,
+      41.0553,
+      52.9881,
+      64.8485,
+      41.0722,
+      42.6555,
+      59.9122,
+      30.543,
+      12.4914,
+      40.7254,
+      29.2614,
+      10.4514,
+      42.0921,
+      30.5678,
+      12.5581,
+      38.589,
+      37.8251,
+      24.727,
+      41.9559,
+      32.2474,
+      20.428,
+      25.9222,
+      25.6649,
+      17.8538,
+      16.0108,
+      15.0054,
+      51.5166,
+      44.5694,
+      21.8986,
+      45.2257,
+      43.9143,
+      33.0099,
+      42.223,
+      39.578,
+      36.7761,
+      35.425,
+      36.1979,
+      41.8703,
+      30.932,
+      37.4123,
+      39.3636,
+      22.1234,
+      33.1831,
+      37.8617,
+      21.7971,
+      30.6001,
+      38.7872,
+      18.5531,
+      25.8162,
+      29.1977,
+      5.8422,
+      13.5487,
+      27.2224,
+      10.0746,
+      14.2352,
+      28.9221,
+      13.965,
+      18.5929,
+      37.2419,
+      26.0697,
+      24.8404,
+      31.6524,
+      21.0759,
+      20.3414,
+      24.6474,
+      16.7639,
+      12.6939,
+      17.5732,
+      56.6489,
+      47.0898,
+      24.4994,
+      51.4829,
+      45.7338,
+      34.5467,
+      44.1787,
+      41.8957,
+      37.4334,
+      39.1495,
+      41.2796,
+      43.5514,
+      36.0536,
+      41.4495,
+      41.8006,
+      26.319,
+      37.5322,
+      41.704,
+      23.5209,
+      35.238,
+      40.2902,
+      21.3297,
+      32.7316,
+      30.7539,
+      8.6948,
+      16.4232,
+      30.2307,
+      9.6455,
+      19.5046,
+      30.4082,
+      14.9504,
+      20.8398,
+      38.5325,
+      27.0171,
+      27.0739,
+      33.0268,
+      22.1198,
+      22.0005,
+      26.9075,
+      17.9795,
+      14.9555,
+      21.112,
+      54.8846,
+      48.2243,
+      26.9643,
+      50.9193,
+      44.0091,
+      38.111,
+      43.4364,
+      41.4134,
+      41.9998,
+      37.3779,
+      37.6554,
+      48.6969,
+      32.6029,
+      38.2446,
+      47.1435,
+      22.4206,
+      33.8194,
+      46.1682,
+      20.969,
+      31.2807,
+      45.2556,
+      19.5532,
+      28.2868,
+      32.6488,
+      5.8246,
+      15.2141,
+      31.9753,
+      8.1734,
+      16.8141,
+      31.108,
+      12.2148,
+      20.0856,
+      39.3459,
+      24.473,
+      26.3738,
+      33.7559,
+      19.9856,
+      21.2051,
+      28.5463,
+      16.942,
+      14.5756,
+      17.5542,
+      58.9155,
+      48.0143,
+      25.1701,
+      51.8404,
+      45.5084,
+      35.3623,
+      45.5501,
+      41.5853,
+      38.4504,
+      42.3352,
+      37.773,
+      45.0946,
+      37.2646,
+      39.111,
+      43.7552,
+      25.8037,
+      35.1582,
+      43.7985,
+      23.5914,
+      32.4168,
+      42.2087,
+      22.1016,
+      28.8951,
+      30.35,
+      5.2449,
+      18.9346,
+      29.7187,
+      8.7388,
+      19.6724,
+      29.1586,
+      13.5517,
+      21.1646,
+      37.5633,
+      25.1515,
+      27.6286,
+      32.6819,
+      20.6498,
+      21.9077,
+      26.3838,
+      17.7282,
+      15.2275,
+      42.8845,
+      84.8105,
+      75.5435,
+      50.3319,
+      77.6974,
+      70.7825,
+      62.5441,
+      69.7352,
+      65.6494,
+      75.1171,
+      75.3464,
+      71.0766,
+      88.638,
+      77.5996,
+      75.9368,
+      87.8922,
+      71.5483,
+      74.2305,
+      93.4437,
+      75.4637,
+      79.9089,
+      86.7151,
+      69.0489,
+      73.9548,
+      100.4071,
+      84.3446,
+      87.8524,
+      99.6223,
+      85.8579,
+      88.8876,
+      90.5334,
+      74.2738,
+      79.1106,
+      94.0857,
+      82.8611,
+      83.9733,
+      99.1032,
+      90.1702,
+      90.7654,
+      95.7724,
+      90.7753,
+      88.1596,
+      16.6108,
+      53.3072,
+      46.6455,
+      21.9408,
+      48.9567,
+      45.5084,
+      33.135,
+      43.9521,
+      40.4228,
+      36.3556,
+      40.4505,
+      34.535,
+      42.6624,
+      36.5414,
+      35.6893,
+      39.811,
+      25.6496,
+      33.9524,
+      39.6441,
+      24.4649,
+      31.2101,
+      39.924,
+      21.3554,
+      28.5398,
+      30.3676,
+      7.2242,
+      16.4047,
+      29.613,
+      9.5742,
+      16.9418,
+      30.8476,
+      13.0321,
+      20.4082,
+      39.142,
+      24.9815,
+      27.0101,
+      33.5185,
+      20.8164,
+      21.8521,
+      26.9799,
+      17.5849,
+      13.9092,
+      18.143,
+      59.8409,
+      47.5957,
+      24.8667,
+      53.4348,
+      45.6693,
+      35.7211,
+      46.9091,
+      41.1732,
+      38.5455,
+      41.7688,
+      37.3035,
+      44.4933,
+      37.8363,
+      36.6134,
+      43.0385,
+      27.6195,
+      32.2626,
+      42.8209,
+      25.1788,
+      29.7148,
+      41.9293,
+      20.9972,
+      28.2615,
+      29.9124,
+      6.1597,
+      14.3243,
+      29.8598,
+      8.8628,
+      15.5269,
+      29.5737,
+      13.2483,
+      19.3367,
+      37.3423,
+      25.6631,
+      25.9306,
+      31.9766,
+      21.1688,
+      20.8736,
+      26.8532,
+      16.9241,
+      12.0377
+    ],
+    "n_comparisons": 840,
+    "threshold": 5.0,
+    "pass_fraction_pooled": 0.0,
+    "pass_fraction_ci": {
+      "mean": 0.0,
+      "lo95": 0.0,
+      "hi95": 0.0,
+      "n": 20,
+      "underpowered": false
+    },
+    "definition": "hourly volumes at every mainline station, per replicate, pooled across replicates for the criterion row; the CI is over the per-replicate pass fractions"
+  },
+  "rmspe": {
+    "mean": 0.7821609018906607,
+    "ci": {
+      "mean": 0.7821609018906607,
+      "lo95": 0.7598421165425365,
+      "hi95": 0.8044796872387848,
+      "n": 20,
+      "underpowered": false
+    },
+    "n_speed_cells_pooled": 11760
+  },
+  "wave_speed": {
+    "detector": "stack",
+    "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+    "mean_kmh": 6.80425788054846,
+    "ci": {
+      "mean": 6.80425788054846,
+      "lo95": 6.188097350833033,
+      "hi95": 7.420418410263887,
+      "n": 20,
+      "underpowered": false
+    },
+    "n_replicates_with_backward_front": 20
+  },
+  "metrics_ci": {
+    "throughput_veh_h": {
+      "mean": 1585.1,
+      "lo95": 1420.757640256923,
+      "hi95": 1749.4423597430768,
+      "n": 20,
+      "underpowered": false
+    },
+    "mean_tt_s": {
+      "mean": 1041.7768399898396,
+      "lo95": 977.9200495488535,
+      "hi95": 1105.6336304308256,
+      "n": 19,
+      "underpowered": true
+    },
+    "p90_tt_s": {
+      "mean": 3041.67606771445,
+      "lo95": 2832.6079389061365,
+      "hi95": 3250.744196522763,
+      "n": 19,
+      "underpowered": true
+    },
+    "sigma_v_spatial_ms": {
+      "mean": 4.663074039260173,
+      "lo95": 4.328204077899534,
+      "hi95": 4.997944000620811,
+      "n": 20,
+      "underpowered": false
+    },
+    "sigma_v_temporal_ms": {
+      "mean": 3.9551499114333373,
+      "lo95": 3.7171982624180253,
+      "hi95": 4.19310156044865,
+      "n": 20,
+      "underpowered": false
+    },
+    "vmt_veh_km": {
+      "mean": 75536.87742005292,
+      "lo95": 68334.81599173031,
+      "hi95": 82738.93884837552,
+      "n": 20,
+      "underpowered": false
+    },
+    "vht_veh_h": {
+      "mean": 9426.40915277776,
+      "lo95": 8956.642940329257,
+      "hi95": 9896.175365226263,
+      "n": 20,
+      "underpowered": false
+    },
+    "fuel_ml_per_veh_km": {
+      "mean": 346.1968987631293,
+      "lo95": 216.69297101538547,
+      "hi95": 475.7008265108731,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_count": {
+      "mean": 9.75,
+      "lo95": 8.165612150831508,
+      "hi95": 11.334387849168492,
+      "n": 20,
+      "underpowered": false
+    },
+    "wave_speed_kmh": {
+      "mean": 4.355407841557851,
+      "lo95": 3.657789690209604,
+      "hi95": 5.0530259929060986,
+      "n": 19,
+      "underpowered": true
+    },
+    "wave_amplitude_ms": {
+      "mean": 15.616880597354873,
+      "lo95": 14.984550050667918,
+      "hi95": 16.24921114404183,
+      "n": 20,
+      "underpowered": false
+    },
+    "n_travel_time_veh": {
+      "mean": 9686.05,
+      "lo95": 8617.813677716194,
+      "hi95": 10754.286322283804,
+      "n": 20,
+      "underpowered": false
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/6914975401685141156",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7716732685960344,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.009431653190092,
+      "metrics": {
+        "throughput_veh_h": 1661.7142857142858,
+        "mean_tt_s": 1097.5635682251338,
+        "p90_tt_s": 3185.093812453043,
+        "sigma_v_spatial_ms": 4.740999265628174,
+        "sigma_v_temporal_ms": 4.033615005106986,
+        "vmt_veh_km": 78882.30217550076,
+        "vht_veh_h": 9506.753055555542,
+        "fuel_ml_per_veh_km": 290.8866441648554,
+        "wave_count": 12,
+        "wave_speed_kmh": 3.248269896193772,
+        "wave_amplitude_ms": 15.257805638773137,
+        "n_travel_time_veh": 10119
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26121,
+        "arrived": 22459,
+        "departed_fraction": 0.7702583156404812,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 740,
+            "fraction": 0.4674668351231838,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1486,
+            "fraction": 0.9513444302176697,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1123,
+            "fraction": 0.8725718725718725,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 977,
+            "fraction": 0.9819095477386934,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2575,
+            "fraction": 0.7282239819004525,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4820,
+            "fraction": 0.9550227858133544,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/134183728835869882",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.767136268153926,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.97589650868094,
+      "metrics": {
+        "throughput_veh_h": 1680.2857142857142,
+        "mean_tt_s": 1086.210872757519,
+        "p90_tt_s": 3173.857492430181,
+        "sigma_v_spatial_ms": 4.725880804932895,
+        "sigma_v_temporal_ms": 4.012471457809218,
+        "vmt_veh_km": 80509.2233315527,
+        "vht_veh_h": 9364.514305555487,
+        "fuel_ml_per_veh_km": 282.45133698078035,
+        "wave_count": 4,
+        "wave_speed_kmh": 1.6081504702194358,
+        "wave_amplitude_ms": 15.379799635444336,
+        "n_travel_time_veh": 10145
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26488,
+        "arrived": 22893,
+        "departed_fraction": 0.7810804435008256,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 779,
+            "fraction": 0.4921036007580543,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1415,
+            "fraction": 0.9058898847631242,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1155,
+            "fraction": 0.8974358974358975,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2558,
+            "fraction": 0.7234162895927602,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4868,
+            "fraction": 0.964533386170002,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 22 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/2378473973028931053",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7662286560639099,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.324365311617312,
+      "metrics": {
+        "throughput_veh_h": 1704.5714285714287,
+        "mean_tt_s": 1096.5960235464233,
+        "p90_tt_s": 3165.180891729262,
+        "sigma_v_spatial_ms": 4.790246210640443,
+        "sigma_v_temporal_ms": 4.089963446934224,
+        "vmt_veh_km": 80075.51241342243,
+        "vht_veh_h": 9343.969305555518,
+        "fuel_ml_per_veh_km": 280.1815529745307,
+        "wave_count": 8,
+        "wave_speed_kmh": 5.0046728971962615,
+        "wave_amplitude_ms": 14.858420023694588,
+        "n_travel_time_veh": 10070
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26368,
+        "arrived": 22832,
+        "departed_fraction": 0.7775418730832744,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 768,
+            "fraction": 0.48515476942514213,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1498,
+            "fraction": 0.9590268886043534,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1199,
+            "fraction": 0.9316239316239316,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2536,
+            "fraction": 0.7171945701357466,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4820,
+            "fraction": 0.9550227858133544,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 22 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/3747978530954135749",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7579758534881683,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.200369025022607,
+      "metrics": {
+        "throughput_veh_h": 1758.0,
+        "mean_tt_s": 1064.5253237879945,
+        "p90_tt_s": 3124.8723163452632,
+        "sigma_v_spatial_ms": 4.733597567214391,
+        "sigma_v_temporal_ms": 4.056324138335841,
+        "vmt_veh_km": 81517.2124866955,
+        "vht_veh_h": 9211.934722222188,
+        "fuel_ml_per_veh_km": 272.75233793423723,
+        "wave_count": 12,
+        "wave_speed_kmh": 4.767567567567567,
+        "wave_amplitude_ms": 15.755871579933114,
+        "n_travel_time_veh": 10225
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26487,
+        "arrived": 23071,
+        "departed_fraction": 0.7810509554140127,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 816,
+            "fraction": 0.5154769425142135,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1505,
+            "fraction": 0.9635083226632523,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1217,
+            "fraction": 0.9456099456099456,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2549,
+            "fraction": 0.7208710407239819,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4869,
+            "fraction": 0.9647315236774321,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 22 % of planned vehicles never departed"
+      }
+    },
+    {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/677105600768189526",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.764523496796445,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.169115512343907,
+      "metrics": {
+        "throughput_veh_h": 1697.7142857142858,
+        "mean_tt_s": 1068.1989970120528,
+        "p90_tt_s": 3102.0697850934685,
+        "sigma_v_spatial_ms": 4.765697971536201,
+        "sigma_v_temporal_ms": 4.092875803754423,
+        "vmt_veh_km": 80477.9110499245,
+        "vht_veh_h": 9307.13527777774,
+        "fuel_ml_per_veh_km": 278.4563331914266,
+        "wave_count": 9,
+        "wave_speed_kmh": 5.2973828258638385,
+        "wave_amplitude_ms": 14.896425518280731,
+        "n_travel_time_veh": 10258
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26439,
+        "arrived": 22936,
+        "departed_fraction": 0.7796355272469923,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 774,
+            "fraction": 0.48894504106127606,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1469,
+            "fraction": 0.940460947503201,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1143,
+            "fraction": 0.8881118881118881,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 981,
+            "fraction": 0.985929648241206,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2587,
+            "fraction": 0.7316176470588235,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4836,
+            "fraction": 0.958192985932237,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 22 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 661281422688282993,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/661281422688282993",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7670853145312273,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.30656687622038,
+      "metrics": {
+        "throughput_veh_h": 1687.142857142857,
+        "mean_tt_s": 1089.4473091247653,
+        "p90_tt_s": 3209.2006987880486,
+        "sigma_v_spatial_ms": 4.755367392670973,
+        "sigma_v_temporal_ms": 4.049124701534183,
+        "vmt_veh_km": 79247.9853154928,
+        "vht_veh_h": 9399.421527777798,
+        "fuel_ml_per_veh_km": 286.7262437946994,
+        "wave_count": 12,
+        "wave_speed_kmh": 4.662328767123287,
+        "wave_amplitude_ms": 14.993436635871353,
+        "n_travel_time_veh": 10134
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26257,
+        "arrived": 22649,
+        "departed_fraction": 0.7742686954470394,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 759,
+            "fraction": 0.47946936197094125,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1488,
+            "fraction": 0.9526248399487837,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1161,
+            "fraction": 0.9020979020979021,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2553,
+            "fraction": 0.7220022624434389,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4813,
+            "fraction": 0.9536358232613433,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 3011106312394044631,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/3011106312394044631",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7532345109436396,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.008043512176283,
+      "metrics": {
+        "throughput_veh_h": 1765.142857142857,
+        "mean_tt_s": 1043.4864659155853,
+        "p90_tt_s": 3102.785960624805,
+        "sigma_v_spatial_ms": 4.7816645148072405,
+        "sigma_v_temporal_ms": 4.0474446177231345,
+        "vmt_veh_km": 83559.40461798955,
+        "vht_veh_h": 9113.467499999962,
+        "fuel_ml_per_veh_km": 267.06638217165175,
+        "wave_count": 14,
+        "wave_speed_kmh": 5.3930232558139535,
+        "wave_amplitude_ms": 15.564108673679053,
+        "n_travel_time_veh": 10413
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 27087,
+        "arrived": 23432,
+        "departed_fraction": 0.7987438075017693,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 819,
+            "fraction": 0.5173720783322805,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1194,
+            "fraction": 0.9277389277389277,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2574,
+            "fraction": 0.7279411764705882,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4892,
+            "fraction": 0.9692886863483258,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 20 % of planned vehicles never departed"
+      }
+    },
+    {
+      "seed": 6953598295321596746,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/6953598295321596746",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7692567701978712,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.33326513227544,
+      "metrics": {
+        "throughput_veh_h": 1655.142857142857,
+        "mean_tt_s": 1098.203840018926,
+        "p90_tt_s": 3203.40330784008,
+        "sigma_v_spatial_ms": 4.767934929406263,
+        "sigma_v_temporal_ms": 4.042286222162781,
+        "vmt_veh_km": 79101.06501953343,
+        "vht_veh_h": 9443.4394444444,
+        "fuel_ml_per_veh_km": 288.77384423221116,
+        "wave_count": 13,
+        "wave_speed_kmh": 5.019906323185012,
+        "wave_amplitude_ms": 15.409953496790441,
+        "n_travel_time_veh": 10166
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26194,
+        "arrived": 22629,
+        "departed_fraction": 0.772410945977825,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 750,
+            "fraction": 0.4737839545167404,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1466,
+            "fraction": 0.93854033290653,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1124,
+            "fraction": 0.8733488733488733,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 968,
+            "fraction": 0.9728643216080402,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1732,
+            "fraction": 0.9902801600914809,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2507,
+            "fraction": 0.7089932126696833,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4908,
+            "fraction": 0.9724588864672082,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 165503670820534583,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/165503670820534583",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7617698251490398,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.036987172047368,
+      "metrics": {
+        "throughput_veh_h": 1718.2857142857142,
+        "mean_tt_s": 1080.1872068425448,
+        "p90_tt_s": 3167.14619914882,
+        "sigma_v_spatial_ms": 4.842510992077754,
+        "sigma_v_temporal_ms": 4.060687943359354,
+        "vmt_veh_km": 81292.29945254186,
+        "vht_veh_h": 9273.494027777737,
+        "fuel_ml_per_veh_km": 278.547547656964,
+        "wave_count": 10,
+        "wave_speed_kmh": 4.486268656716418,
+        "wave_amplitude_ms": 15.407442534763382,
+        "n_travel_time_veh": 10349
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26627,
+        "arrived": 23047,
+        "departed_fraction": 0.7851792875678226,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 794,
+            "fraction": 0.5015792798483891,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1524,
+            "fraction": 0.9756722151088348,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1191,
+            "fraction": 0.9254079254079254,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 973,
+            "fraction": 0.9778894472361809,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2559,
+            "fraction": 0.7236990950226244,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4909,
+            "fraction": 0.9726570239746384,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 21 % of planned vehicles never departed"
+      }
+    },
+    {
+      "seed": 6134032994440706937,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/6134032994440706937",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7680482099358606,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.130300309367159,
+      "metrics": {
+        "throughput_veh_h": 1686.0,
+        "mean_tt_s": 1112.3898181864133,
+        "p90_tt_s": 3261.128802560561,
+        "sigma_v_spatial_ms": 4.813191123246254,
+        "sigma_v_temporal_ms": 4.061689833660098,
+        "vmt_veh_km": 79678.82219657683,
+        "vht_veh_h": 9409.522499999966,
+        "fuel_ml_per_veh_km": 286.7073967955453,
+        "wave_count": 9,
+        "wave_speed_kmh": 1.6481927710843374,
+        "wave_amplitude_ms": 16.188707074719375,
+        "n_travel_time_veh": 10141
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26291,
+        "arrived": 22755,
+        "departed_fraction": 0.7752712903986789,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 764,
+            "fraction": 0.4826279216677195,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1416,
+            "fraction": 0.9065300896286812,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1160,
+            "fraction": 0.9013209013209014,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1748,
+            "fraction": 0.9994282447112636,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2526,
+            "fraction": 0.7143665158371041,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4849,
+            "fraction": 0.9607687735288291,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 22 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 8557154790156791364,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/8557154790156791364",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.8222411301480067,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 3.0227885565451422,
+      "metrics": {
+        "throughput_veh_h": 1280.5714285714284,
+        "mean_tt_s": 690.9712301883142,
+        "p90_tt_s": 1882.5534691361504,
+        "sigma_v_spatial_ms": 5.197356887600896,
+        "sigma_v_temporal_ms": 4.2644371672339805,
+        "vmt_veh_km": 67178.21647056763,
+        "vht_veh_h": 8127.04736111117,
+        "fuel_ml_per_veh_km": 299.46826626801135,
+        "wave_count": 11,
+        "wave_speed_kmh": 5.293604651162791,
+        "wave_amplitude_ms": 16.109966085706716,
+        "n_travel_time_veh": 10088
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 23878,
+        "arrived": 21399,
+        "departed_fraction": 0.7041165369190847,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 635,
+            "fraction": 0.40113708149084015,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 907,
+            "fraction": 0.5806658130601793,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 762,
+            "fraction": 0.5920745920745921,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 511,
+            "fraction": 0.5135678391959799,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2753,
+            "fraction": 0.7785633484162896,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4900,
+            "fraction": 0.970873786407767,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 30 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 6538422657834023852,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/6538422657834023852",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.766311453545511,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.065358551755374,
+      "metrics": {
+        "throughput_veh_h": 1700.0,
+        "mean_tt_s": 1100.193862440718,
+        "p90_tt_s": 3267.0779387976436,
+        "sigma_v_spatial_ms": 4.760635729688883,
+        "sigma_v_temporal_ms": 4.029241598608607,
+        "vmt_veh_km": 79649.15003872653,
+        "vht_veh_h": 9402.203194444364,
+        "fuel_ml_per_veh_km": 282.91755147914836,
+        "wave_count": 12,
+        "wave_speed_kmh": 5.144496778493668,
+        "wave_amplitude_ms": 14.375971398978278,
+        "n_travel_time_veh": 10112
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26219,
+        "arrived": 22711,
+        "departed_fraction": 0.7731481481481481,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 760,
+            "fraction": 0.4801010739102969,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1448,
+            "fraction": 0.9270166453265045,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1143,
+            "fraction": 0.8881118881118881,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2521,
+            "fraction": 0.7129524886877828,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4905,
+            "fraction": 0.9718644739449178,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 6904272788004776631,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/6904272788004776631",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.857877388988904,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 3.0790015870875034,
+      "metrics": {
+        "throughput_veh_h": 1199.4285714285713,
+        "mean_tt_s": 647.5479056451642,
+        "p90_tt_s": 1760.9616715516456,
+        "sigma_v_spatial_ms": 5.168076667182011,
+        "sigma_v_temporal_ms": 4.096343730409264,
+        "vmt_veh_km": 64770.36504437848,
+        "vht_veh_h": 8036.580694444462,
+        "fuel_ml_per_veh_km": 308.50913121534376,
+        "wave_count": 10,
+        "wave_speed_kmh": 4.750872243136994,
+        "wave_amplitude_ms": 16.99416778864897,
+        "n_travel_time_veh": 10116
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 23598,
+        "arrived": 21114,
+        "departed_fraction": 0.695859872611465,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 613,
+            "fraction": 0.3872394188250158,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 826,
+            "fraction": 0.528809218950064,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 695,
+            "fraction": 0.54001554001554,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 464,
+            "fraction": 0.4663316582914573,
+            "starved": true
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2876,
+            "fraction": 0.8133484162895928,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4962,
+            "fraction": 0.9831583118684367,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436",
+          "on-ramp 745524613"
+        ],
+        "verdict": "backlog: 30 % of planned vehicles never departed; starved ramps: on-ramp 18207436, on-ramp 745524613"
+      }
+    },
+    {
+      "seed": 6143473282319009404,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/6143473282319009404",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7576712092879495,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.060364510400799,
+      "metrics": {
+        "throughput_veh_h": 1803.4285714285713,
+        "mean_tt_s": 1060.3221029554338,
+        "p90_tt_s": 3107.501222029577,
+        "sigma_v_spatial_ms": 4.855924236929966,
+        "sigma_v_temporal_ms": 4.080147020450743,
+        "vmt_veh_km": 83228.66413282584,
+        "vht_veh_h": 9208.104166666699,
+        "fuel_ml_per_veh_km": 269.6871037047692,
+        "wave_count": 7,
+        "wave_speed_kmh": 7.182134759225207,
+        "wave_amplitude_ms": 15.33142330123809,
+        "n_travel_time_veh": 10464
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26897,
+        "arrived": 23477,
+        "departed_fraction": 0.793141071007313,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 778,
+            "fraction": 0.4914718888186987,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1561,
+            "fraction": 0.9993597951344431,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1180,
+            "fraction": 0.9168609168609169,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2555,
+            "fraction": 0.7225678733031674,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4928,
+            "fraction": 0.9764216366158114,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 21 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 3944094060050347669,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/3944094060050347669",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7673782254435508,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.202213805961041,
+      "metrics": {
+        "throughput_veh_h": 1666.8571428571427,
+        "mean_tt_s": 1094.1660381496556,
+        "p90_tt_s": 3202.825150647538,
+        "sigma_v_spatial_ms": 4.769730815190814,
+        "sigma_v_temporal_ms": 4.042336145904755,
+        "vmt_veh_km": 79099.73522797071,
+        "vht_veh_h": 9422.813333333292,
+        "fuel_ml_per_veh_km": 290.08862563129276,
+        "wave_count": 16,
+        "wave_speed_kmh": 2.932258064516129,
+        "wave_amplitude_ms": 15.133229124984428,
+        "n_travel_time_veh": 10123
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26316,
+        "arrived": 22626,
+        "departed_fraction": 0.7760084925690022,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 781,
+            "fraction": 0.4933670246367656,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1417,
+            "fraction": 0.9071702944942381,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1145,
+            "fraction": 0.8896658896658897,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1738,
+            "fraction": 0.9937106918238994,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2549,
+            "fraction": 0.7208710407239819,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4887,
+            "fraction": 0.968297998811175,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 22 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 4910985839736976611,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/4910985839736976611",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7699468965097813,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.464887659160806,
+      "metrics": {
+        "throughput_veh_h": 1692.2857142857144,
+        "mean_tt_s": 1096.6665073158438,
+        "p90_tt_s": 3191.6884954853776,
+        "sigma_v_spatial_ms": 4.731205367293232,
+        "sigma_v_temporal_ms": 4.072223427914411,
+        "vmt_veh_km": 79275.38384860462,
+        "vht_veh_h": 9491.612777777742,
+        "fuel_ml_per_veh_km": 289.42506876077624,
+        "wave_count": 12,
+        "wave_speed_kmh": 5.211039829549987,
+        "wave_amplitude_ms": 14.746933410204056,
+        "n_travel_time_veh": 10168
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26123,
+        "arrived": 22608,
+        "departed_fraction": 0.7703172918141071,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 744,
+            "fraction": 0.46999368288060644,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1504,
+            "fraction": 0.9628681177976952,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1149,
+            "fraction": 0.8927738927738927,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2560,
+            "fraction": 0.7239819004524887,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4853,
+            "fraction": 0.9615613235585496,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 7382187975121682178,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/7382187975121682178",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7678712449941548,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.128049682942542,
+      "metrics": {
+        "throughput_veh_h": 1689.4285714285716,
+        "mean_tt_s": 1090.3769396162932,
+        "p90_tt_s": 3236.353639492565,
+        "sigma_v_spatial_ms": 4.770427552030703,
+        "sigma_v_temporal_ms": 4.0530970873612695,
+        "vmt_veh_km": 79190.22017459008,
+        "vht_veh_h": 9440.786527777831,
+        "fuel_ml_per_veh_km": 287.0940939542463,
+        "wave_count": 7,
+        "wave_speed_kmh": 5.418139534883721,
+        "wave_amplitude_ms": 15.129310885039088,
+        "n_travel_time_veh": 10108
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26174,
+        "arrived": 22675,
+        "departed_fraction": 0.7718211842415664,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 763,
+            "fraction": 0.4819962097283639,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1444,
+            "fraction": 0.9244558258642765,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1119,
+            "fraction": 0.8694638694638694,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 986,
+            "fraction": 0.9909547738693467,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2542,
+            "fraction": 0.7188914027149321,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4898,
+            "fraction": 0.9704775113929067,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 5690692725577505498,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/5690692725577505498",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.9568140724652879,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 8.341561556940377,
+      "metrics": {
+        "throughput_veh_h": 231.7142857142857,
+        "mean_tt_s": null,
+        "p90_tt_s": null,
+        "sigma_v_spatial_ms": 1.6734109244762294,
+        "sigma_v_temporal_ms": 1.8059347397182601,
+        "vmt_veh_km": 13157.054557557052,
+        "vht_veh_h": 13330.15194444446,
+        "fuel_ml_per_veh_km": 1521.0957547705327,
+        "wave_count": 2,
+        "wave_speed_kmh": null,
+        "wave_amplitude_ms": 20.725163998384968,
+        "n_travel_time_veh": 0
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 7815,
+        "arrived": 2878,
+        "departed_fraction": 0.23044939844302903,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 452,
+            "fraction": 0.28553379658875555,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 409,
+            "fraction": 0.2618437900128041,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 400,
+            "fraction": 0.3108003108003108,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 283,
+            "fraction": 0.28442211055276384,
+            "starved": true
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 527,
+            "fraction": 0.30131503716409375,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 999,
+            "fraction": 0.16730865851616145,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 255,
+            "fraction": 0.07211538461538461,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 565,
+            "fraction": 0.11194769169803843,
+            "starved": true
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436",
+          "on-ramp 18207653",
+          "on-ramp 178547099",
+          "on-ramp 745524613",
+          "C-D re-entry 745524608",
+          "on-ramp 53062592",
+          "on-ramp 40648744",
+          "on-ramp 769818012"
+        ],
+        "verdict": "backlog: 77 % of planned vehicles never departed; starved ramps: on-ramp 18207436, on-ramp 18207653, on-ramp 178547099, on-ramp 745524613, C-D re-entry 745524608, on-ramp 53062592, on-ramp 40648744, on-ramp 769818012"
+      }
+    },
+    {
+      "seed": 887972120279483394,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/887972120279483394",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7612707039422499,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.139288837878468,
+      "metrics": {
+        "throughput_veh_h": 1715.4285714285713,
+        "mean_tt_s": 1084.6396909804025,
+        "p90_tt_s": 3291.8145593444365,
+        "sigma_v_spatial_ms": 4.839520826796522,
+        "sigma_v_temporal_ms": 4.056229590001914,
+        "vmt_veh_km": 80994.35597892484,
+        "vht_veh_h": 9252.031944444418,
+        "fuel_ml_per_veh_km": 276.7613629967837,
+        "wave_count": 7,
+        "wave_speed_kmh": 2.405027932960894,
+        "wave_amplitude_ms": 15.683568774332397,
+        "n_travel_time_veh": 10238
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26624,
+        "arrived": 23090,
+        "departed_fraction": 0.7850908233073838,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 762,
+            "fraction": 0.4813644977890082,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1514,
+            "fraction": 0.969270166453265,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1156,
+            "fraction": 0.8982128982128982,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2529,
+            "fraction": 0.7152149321266968,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4929,
+            "fraction": 0.9766197741232415,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 21 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    },
+    {
+      "seed": 8026499204807041784,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/8026499204807041784",
+      "geh_pass_fraction": 0.0,
+      "n_link_hours": 42,
+      "rmspe": 0.7689035386316954,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.087301849355653,
+      "metrics": {
+        "throughput_veh_h": 1708.857142857143,
+        "mean_tt_s": 1092.0662570977693,
+        "p90_tt_s": 3156.329873076085,
+        "sigma_v_spatial_ms": 4.778101005853629,
+        "sigma_v_temporal_ms": 4.056524550683309,
+        "vmt_veh_km": 79852.66486768247,
+        "vht_veh_h": 9443.199444444432,
+        "fuel_ml_per_veh_km": 286.3413965847803,
+        "wave_count": 8,
+        "wave_speed_kmh": 3.2794117647058827,
+        "wave_amplitude_ms": 14.395906367630936,
+        "n_travel_time_veh": 10284
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 26246,
+        "arrived": 22807,
+        "departed_fraction": 0.7739443264920972,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 763,
+            "fraction": 0.4819962097283639,
+            "starved": true
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1488,
+            "fraction": 0.9526248399487837,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1191,
+            "fraction": 0.9254079254079254,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2541,
+            "fraction": 0.7186085972850679,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4890,
+            "fraction": 0.9688924113334654,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [
+          "on-ramp 18207436"
+        ],
+        "verdict": "backlog: 23 % of planned vehicles never departed; starved ramps: on-ramp 18207436"
+      }
+    }
+  ],
+  "ring": null,
+  "notes": [
+    "Observed comparisons cover only the artifact's stations and windows; a station-window the detector did not measure is skipped, never imputed.",
+    "The run's configured warm-up is discarded from every metric and from every observed comparison.",
+    "The wave_speed row is measured with the profile's own detector on its own bins; validation.metrics.wave_speed_kmh in metrics_ci is the standard detector's separate diagnostic.",
+    "The insertion block counts the vehicles the runs actually put on the network against their demand plan; a mean departed fraction well under 1 means the metrics above describe less demand than was configured.",
+    "Ring rows not evaluated (--ring-seeds 0); reported as failing per CLAUDE.md \u00a70.1."
+  ],
+  "report_path": "docs/reports/mndot_i94_wb_stpaul_weave/report.md"
+}

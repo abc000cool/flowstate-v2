@@ -555,10 +555,11 @@ committed file named in parentheses.
   0.848 with the sixth derivation, 0.892 with the second on the reset
   settings). The battery artifact now reports given-up exits per section
   and degrades its verdict above a 2 % share (`weave_exits`). The 20-seed
-  four-hour battery with this runner is VM H (pending: its verdict is the
-  next entry of docs/ONBOARDING_MNDOT.md §10).
+  four-hour battery with this runner (VM H) departed 0.743 of demand with
+  speed RMSPE 0.782 — from 0.247 and 0.963 — the first change that moves the
+  four-hour corridor, though it is not reproduced (docs/ONBOARDING_MNDOT.md §10).
 
-Open / pending: the 20-seed four-hour battery with the exit-side runner (VM H); the two earlier batteries on the regenerated corridor are recorded in docs/ONBOARDING_MNDOT.md §10 (VM F on the reset lane-change settings: departed 0.233 over 20 seeds; VM G on the corrected settings with the sixth derivation: 0.247, the lock at the T.H.52 exit end); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
+Open / pending: VM H's 20-seed battery with the exit-side runner departed 0.743 (RMSPE 0.782; one seed locks; no GEH pass — docs/ONBOARDING_MNDOT.md §10), so the next levers are the entrances that still starve and the seed that locks; the two earlier batteries on the regenerated corridor are recorded in docs/ONBOARDING_MNDOT.md §10 (VM F on the reset lane-change settings: departed 0.233 over 20 seeds; VM G on the corrected settings with the sixth derivation: 0.247, the lock at the T.H.52 exit end); the seventh weave derivation — the abreast entrant–lane-1 pair resolved
 symmetrically rather than by which side pays — was then measured in fifteen
 forms at seeds 3–8 and rejected (entrance mean 361.7 against the sixth's 411.8,
 and a lock at a seed the sixth does not lock), so the runner keeps the sixth
