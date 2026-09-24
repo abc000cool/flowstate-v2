@@ -55,8 +55,10 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   [ -d docs/reports ] && extra="$extra docs/reports"
   # onboarded corridors: per-seed metrics/scores of every run, first-seed trajectories only, sweep metrics + summaries
   # run trees are <root>/<cell-or-arm>/<config hash>/<seed>/ — four levels below runs/mndot_*
-  extra="$extra $(ls runs/i24_strat_sweep/*/*/*/metrics.json runs/i24_strat_sweep/MANIFEST.json runs/i24_strat_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
-  extra="$extra $(ls runs/mndot_*/*/*/*/metrics.json runs/mndot_*/*/*/*/observed_scores.json runs/mndot_*_sweep/MANIFEST.json runs/mndot_*_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
+  # meta.json rides along too (2026-09-24): the meter and weave counters live there, and the
+  # ALINEA round's archive carried metrics.json only, so the share of unstoppable passes was lost
+  extra="$extra $(ls runs/i24_strat_sweep/*/*/*/metrics.json runs/i24_strat_sweep/*/*/*/meta.json runs/i24_strat_sweep/MANIFEST.json runs/i24_strat_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
+  extra="$extra $(ls runs/mndot_*/*/*/*/metrics.json runs/mndot_*/*/*/*/meta.json runs/mndot_*/*/*/*/observed_scores.json runs/mndot_*_sweep/MANIFEST.json runs/mndot_*_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \

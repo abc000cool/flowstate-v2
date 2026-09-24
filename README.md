@@ -151,6 +151,8 @@ New here? [docs/QUICKSTART.md](docs/QUICKSTART.md) is the ten-minute path from
 clone to a downloaded report; run `uv run --no-sync python scripts/doctor.py`
 first — it checks this machine and prints a one-line fix for anything broken.
 
+A hosted copy of the API and dashboard exists for testers (Cloud Run, one run at a time, the ring benchmark and short smokes; the owner hands out the API key): [docs/HOSTED_TESTER.md](docs/HOSTED_TESTER.md).
+
 One command (Docker + Compose):
 
 ```sh
