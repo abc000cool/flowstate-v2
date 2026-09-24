@@ -1,0 +1,101 @@
+import json, math, sys
+from pathlib import Path
+import numpy as np
+root=Path("runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d")
+obs=json.load(open("data/mndot/mndot_i94_wb_stpaul/observations.json"))
+stations=[s for s in obs["stations"] if s["kind"]=="mainline"]
+dem=json.load(open("artifacts/demand_mndot_i94_wb_stpaul.json"))
+ramp_x={r["name"]:r["x_m"] for r in dem["ramps"]}
+b=json.load(open("artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_exit_side_84cc857.json"))
+order=[r["seed"] for r in b["per_seed"]]
+LOCK=5690692725577505498
+rows={}
+for seed in order:
+    d=root/str(seed)
+    m=json.load(open(d/"meta.json")); mt=json.load(open(d/"metrics.json")); os_=json.load(open(d/"observed_scores.json"))
+    m.pop("fuel_ml_per_vehicle",None)
+    rows[seed]=(m,mt,os_)
+attach={}
+for m,_,_ in [rows[order[0]]]:
+    for r in m["ramps"]:
+        attach[r["attach_edge"]]=r["name"]
+print("attach map:", attach)
+# Table 1
+print("\n== T1 seed | departed | mainline dep | ramp fractions (on-ramps planned>0, corridor order) | collisions")
+onr=[r["name"] for r in rows[order[0]][0]["ramps"] if r["kind"]=="on" and r["n_planned"]>0]
+print("on-ramps:", [(n, ramp_x[n]) for n in onr])
+agg={n:[] for n in onr}; ml=[]
+for seed in order:
+    m,mt,os_=rows[seed]
+    rp=sum(r["n_planned"] for r in m["ramps"]); rd=sum(r["n_departed"] for r in m["ramps"])
+    mlp=m["n_vehicles_planned"]-rp; mld=m["n_vehicles_departed"]-rd
+    fr={r["name"]:r["n_departed"]/r["n_planned"] for r in m["ramps"] if r["n_planned"]>0}
+    for n in onr: agg[n].append(fr[n])
+    ml.append(mld/mlp)
+    cols=[f"{attach.get(c['lane'].rsplit('_',1)[0],c['lane'])[:22]}@{c['pos_m']:.0f}m t={c['t']/60:.1f}min" for c in m["collisions"]]
+    print(f"{seed} {'LOCK' if seed==LOCK else '    '} dep={m['n_vehicles_departed']/m['n_vehicles_planned']:.3f} main={mld/mlp:.3f} ({mld}/{mlp}) "+" ".join(f"{fr[n]:.2f}" for n in onr)+f" | coll={m['n_collisions']}: "+"; ".join(cols))
+good=[s for s in order if s!=LOCK]
+print("\nmean over 19 good seeds: mainline", np.mean([ml[i] for i,s in enumerate(order) if s!=LOCK]).round(3), {n:round(float(np.mean([agg[n][i] for i,s in enumerate(order) if s!=LOCK])),3) for n in onr})
+print("min over 19 good seeds:", {n:round(float(np.min([agg[n][i] for i,s in enumerate(order) if s!=LOCK])),3) for n in onr})
+print("lock seed:", {n:round(agg[n][order.index(LOCK)],3) for n in onr}, "mainline", round(ml[order.index(LOCK)],3))
+# Table 2 weave
+keys=["n_entered","n_exited","n_reached_section_exiting","n_departed_exiting","n_missed_exit","n_forced","n_forced_deferred","n_unfinished","n_vacated","n_vacate_refused","n_pair_releases","n_cooperations","n_changer_eased","wait_in_s_mean","wait_out_s_mean"]
+for wi,wname in enumerate(["Ruth St (745524613 -> C-D split 18208090)","T.H.52 (769818012 -> off-ramp 18207598)"]):
+    print(f"\n== T2 weave {wname}")
+    print("seed | "+" | ".join(k.replace('n_','') for k in keys))
+    for seed in order:
+        w=rows[seed][0]["weave_sections"][wi]
+        print(f"{seed}{'*' if seed==LOCK else ''} | "+" | ".join(f"{w[k]:.0f}" if isinstance(w[k],float) else str(w[k]) for k in keys))
+    arr={k:[rows[s][0]["weave_sections"][wi][k] for s in good] for k in keys}
+    print("good mean | "+" | ".join(f"{np.mean(arr[k]):.0f}" for k in keys))
+    print("good min..max | "+" | ".join(f"{np.min(arr[k]):.0f}..{np.max(arr[k]):.0f}" for k in keys))
+# Table 3 scripted
+skeys=["n_entered","n_changed","n_forced","n_unfinished","wait_s_mean","wait_s_p90"]
+for si,sname in enumerate(["18207436 (Hudson Rd, x=3302)","178547099 (McKnight Rd, x=4223)"]):
+    print(f"\n== T3 scripted merge {sname}")
+    print("seed | "+" | ".join(skeys))
+    for seed in order:
+        w=rows[seed][0]["scripted_merges"][si]
+        print(f"{seed}{'*' if seed==LOCK else ''} | "+" | ".join(f"{w[k]:.0f}" for k in skeys))
+    arr={k:[rows[s][0]["scripted_merges"][si][k] for s in good] for k in skeys}
+    print("good mean | "+" | ".join(f"{np.mean(arr[k]):.0f}" for k in skeys))
+    print("good min..max | "+" | ".join(f"{np.min(arr[k]):.0f}..{np.max(arr[k]):.0f}" for k in skeys))
+# Table 4 stations
+def station_table(seeds,label):
+    sim=np.array([rows[s][2]["segment_speeds_sim"] for s in seeds],float)  # seeds x 42 x 14
+    ob=np.array([rows[s][2]["segment_speeds_obs"] for s in seeds],float)
+    geh=np.array([rows[s][2]["geh_values"] for s in seeds],float).reshape(len(seeds),14,3)
+    err=((sim-ob)/ob)**2
+    tot=np.nansum(err)
+    print(f"\n== T4 stations, {label}: id | label | x | sim mean | obs mean | RMSPE_station | share of SSE | GEH mean (h1,h2,h3) | first window sim<10 m/s | first window obs<10 m/s | windows sim<10 | obs<10")
+    for i,st in enumerate(stations):
+        e=err[:,:,i]; ss=np.nanmean(sim[:,:,i]); oo=np.nanmean(ob[:,:,i])
+        rm=math.sqrt(np.nanmean(e)); share=np.nansum(e)/tot
+        simw=np.nanmean(sim[:,:,i],axis=0); obw=np.nanmean(ob[:,:,i],axis=0)
+        wins=rows[seeds[0]][2]["windows"]
+        def first(v):
+            idx=[wins[k] for k in range(len(v)) if v[k]<10]
+            return f"w{idx[0]} ({5.5+idx[0]/12:.2f}h)" if idx else "-"
+        print(f"{st['id']} | {st['label']} | {st['x_m']:.0f} | {ss:.1f} | {oo:.1f} | {rm:.3f} | {share:.3f} | {geh[:,i,:].mean(axis=0).round(1).tolist()} | {first(simw)} | {first(obw)} | {(simw<10).sum()} | {(obw<10).sum()}")
+    print("overall rmspe", math.sqrt(np.nanmean(err)))
+    return sim,ob
+sim_g,ob_g=station_table(good,"19 good seeds pooled")
+sim_l,ob_l=station_table([LOCK],"locking seed")
+# time profile at stations (good mean): every 6th window
+wins=rows[good[0]][2]["windows"]
+print("\n== T5 time profile, good-seed mean sim speed (obs) m/s; rows=window start local time; cols=stations")
+print("time | "+" | ".join(s["id"] for s in stations))
+sm=np.nanmean(sim_g,axis=0); om=np.nanmean(ob_g,axis=0)
+for k in range(0,42,3):
+    t=5.5+wins[k]/12; hh=int(t); mm=int(round((t-hh)*60))
+    print(f"{hh:02d}:{mm:02d} | "+" | ".join(f"{sm[k,i]:.0f}({om[k,i]:.0f})" for i in range(14)))
+print("\n== T5b same for the locking seed")
+for k in range(0,42,3):
+    t=5.5+wins[k]/12; hh=int(t); mm=int(round((t-hh)*60))
+    print(f"{hh:02d}:{mm:02d} | "+" | ".join(f"{sim_l[0,k,i]:.0f}" for i in range(14)))
+# metrics
+print("\n== T6 metrics per seed: throughput | mean_tt | p90_tt | sigma_sp | wave_count | wave_speed | rmspe | departed | arrived")
+for seed in order:
+    m,mt,os_=rows[seed]; x=mt["metrics"]
+    print(f"{seed}{'*' if seed==LOCK else ''} | {x['throughput_veh_h']:.0f} | {x['mean_tt_s']:.0f} | {x['p90_tt_s']:.0f} | {x['sigma_v_spatial_ms']:.2f} | {x['wave_count']} | {x['wave_speed_kmh']:.1f} | {os_['rmspe']:.3f} | {m['n_vehicles_departed']} | {m['n_vehicles_arrived']}")
+print("x_ref_m", mt["x_ref_m"], "boundary", rows[order[0]][0]["boundary"])

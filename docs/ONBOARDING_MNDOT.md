@@ -854,3 +854,357 @@ seed in twenty locks, and no link-hour meets GEH 5. The next levers are the
 entrances that still starve (the scripted merges 18207436 and 178547099, the
 Ruth St weave) and the seed that locks; the per-seed metas are in the
 round's archive.
+
+### 11a. VM H read per seed (2026-09-24, block 3): one queue with its head at the T.H.52 end; the locking seed stops at that same end, not at Ruth St
+
+Read from the per-replicate files under
+`runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d/<seed>/` (`meta.json`,
+`metrics.json`, `observed_scores.json`; no trajectories were read — the
+laptop rule) with the battery artifact
+`artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_exit_side_84cc857.json`,
+`data/mndot/mndot_i94_wb_stpaul/observations.json` and
+`artifacts/demand_mndot_i94_wb_stpaul.json`. The two extraction scripts are
+session records beside the battery, `vmh_per_seed.py.txt` and
+`vmh_flows.py.txt` (run from the repo root as `uv run --no-sync python`).
+Conventions: windows are 5 min from 05:30; the scored windows are w6–w47
+(06:00–09:30; the 30-minute warm-up is not scored). A station's cell is the
+span to its neighbours' midpoints
+(`validation.observed.ObservedCorridor.segment_bins`): S1063 0.48–1.70 km,
+…, S791 9.35–9.92 km (its downstream end is the 40648744 entrance at
+9.88 km), S790 9.92–10.60 km (that entrance through the first 270 m of the
+T.H.52 weave, 10.33–10.72 km), S97 10.60–11.54 km (the weave's last 120 m,
+its exit gore, the Jackson St exit at 10.91 km and the boundary edge).
+"Simulated flow" below is the link-hour flow recovered from each
+station-hour's GEH against the observed count (GEH = √(2(m−c)²/(m+c))
+solved for m < c, then averaged over seeds); the three hours at S1063 sum to
+about 20 % less than the mainline's departed count, so treat it as ±15 %:
+it ranks stations and hours, it does not calibrate them. Seeds are
+abbreviated to their last six digits in the battery artifact's `per_seed`
+order; the locking seed is 5690692725577505498 ("lock"), the two low seeds
+8557154790156791364 and 6904272788004776631 ("low"). "Mainline" is the
+entry's own delivery: 12,182 planned in every seed (33,912 less the ramps'
+21,730). Ramp columns are in corridor order with the demand artifact's
+`x_m`; flows at S1069 (`x_ref_m` 6,684) are `metrics.json`'s
+`throughput_veh_h`.
+
+**Per seed** (`meta.json` `n_vehicles_departed/planned`,
+`ramps[].n_departed/n_planned`, `collisions`; `observed_scores.json`
+`rmspe`).
+
+| seed | departed | mainline | Hudson 18207436 (3.30 km) | Hudson 18207653 (3.66 km) | McKnight 178547099 (4.22 km) | Ruth 745524613 (5.12 km) | C-D re-entry (5.92 km) | T.H.61 53062592 (7.37 km) | 40648744 (9.88 km) | T.H.52 769818012 (10.33 km) | collisions (place @ m, minute) | RMSPE | veh/h at S1069 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| …141156 | 0.770 | 0.548 | 0.47 | 0.95 | 0.87 | 0.98 | 1.00 | 1.00 | 0.73 | 0.96 | none | 0.772 | 1662 |
+| …869882 | 0.781 | 0.574 | 0.49 | 0.91 | 0.90 | 1.00 | 1.00 | 1.00 | 0.72 | 0.96 | McKnight 178547099 @237 m, min 8; McKnight 178547099 @238 m, min 60; Hudson 18207436 @231 m, min 69; Hudson 18207436 @228 m, min 74 | 0.767 | 1680 |
+| …931053 | 0.778 | 0.561 | 0.49 | 0.96 | 0.93 | 1.00 | 1.00 | 1.00 | 0.72 | 0.96 | McKnight 178547099 @241 m, min 59 | 0.766 | 1705 |
+| …135749 | 0.781 | 0.560 | 0.52 | 0.96 | 0.95 | 1.00 | 1.00 | 1.00 | 0.72 | 0.96 | C-D split @35 m, min 123 | 0.758 | 1758 |
+| …189526 | 0.780 | 0.569 | 0.49 | 0.94 | 0.89 | 0.99 | 1.00 | 1.00 | 0.73 | 0.96 | McKnight 178547099 @217 m, min 61 | 0.765 | 1698 |
+| …282993 | 0.774 | 0.556 | 0.48 | 0.95 | 0.90 | 1.00 | 1.00 | 1.00 | 0.72 | 0.95 | T.H.52 exit @300 m, min 222; 18207598 @0 m, min 222 | 0.767 | 1687 |
+| …044631 | 0.799 | 0.602 | 0.52 | 1.00 | 0.93 | 1.00 | 1.00 | 1.00 | 0.73 | 0.97 | Hudson 18207436 @231 m, min 75 | 0.753 | 1765 |
+| …596746 | 0.772 | 0.556 | 0.47 | 0.94 | 0.87 | 0.97 | 0.99 | 1.00 | 0.71 | 0.97 | T.H.52 exit @20 m, min 50; Hudson 18207436 @218 m, min 74 | 0.769 | 1655 |
+| …534583 | 0.785 | 0.571 | 0.50 | 0.98 | 0.93 | 0.98 | 1.00 | 1.00 | 0.72 | 0.97 | C-D split @14 m, min 106 | 0.762 | 1718 |
+| …706937 | 0.775 | 0.563 | 0.48 | 0.91 | 0.90 | 1.00 | 1.00 | 1.00 | 0.71 | 0.96 | none | 0.768 | 1686 |
+| …791364 (low) | 0.704 | 0.467 | 0.40 | 0.58 | 0.59 | 0.51 | 1.00 | 1.00 | 0.78 | 0.97 | McKnight 178547099 @214 m, min 57 | 0.822 | 1281 |
+| …023852 | 0.773 | 0.552 | 0.48 | 0.93 | 0.89 | 1.00 | 1.00 | 1.00 | 0.71 | 0.97 | Hudson 18207436 @219 m, min 78 | 0.766 | 1700 |
+| …776631 (low) | 0.696 | 0.447 | 0.39 | 0.53 | 0.54 | 0.47 | 1.00 | 1.00 | 0.81 | 0.98 | McKnight 178547099 @234 m, min 49 | 0.858 | 1199 |
+| …009404 | 0.793 | 0.589 | 0.49 | 1.00 | 0.92 | 1.00 | 1.00 | 1.00 | 0.72 | 0.98 | none | 0.758 | 1803 |
+| …347669 | 0.776 | 0.561 | 0.49 | 0.91 | 0.89 | 1.00 | 0.99 | 1.00 | 0.72 | 0.97 | McKnight 178547099 @220 m, min 63 | 0.767 | 1667 |
+| …976611 | 0.770 | 0.542 | 0.47 | 0.96 | 0.89 | 1.00 | 1.00 | 1.00 | 0.72 | 0.96 | McKnight 178547099 @237 m, min 8 | 0.770 | 1692 |
+| …682178 | 0.772 | 0.550 | 0.48 | 0.92 | 0.87 | 0.99 | 1.00 | 1.00 | 0.72 | 0.97 | Hudson 18207436 @222 m, min 74 | 0.768 | 1689 |
+| …505498 (lock) | 0.230 | 0.322 | 0.29 | 0.26 | 0.31 | 0.28 | 0.30 | 0.17 | 0.07 | 0.11 | McKnight 178547099 @233 m, min 55; McKnight 178547099 @227 m, min 56; McKnight 178547099 @238 m, min 59 | 0.957 | 232 |
+| …483394 | 0.785 | 0.576 | 0.48 | 0.97 | 0.90 | 1.00 | 1.00 | 1.00 | 0.72 | 0.98 | C-D split @26 m, min 73 | 0.761 | 1715 |
+| …041784 | 0.774 | 0.547 | 0.48 | 0.95 | 0.93 | 1.00 | 1.00 | 1.00 | 0.72 | 0.97 | McKnight 178547099 @228 m, min 55 | 0.769 | 1709 |
+
+What the table says. (i) The 19 seeds that run depart 0.696–0.799 and their
+mainline entry 0.447–0.602 (mean 0.552): of the ≈ 7,780 vehicles a good
+seed never inserts, 5,460 (70 %) are the mainline's, 830 (11 %) Hudson Rd
+18207436's, 960 (12 %) 40648744's, the other six entrances together 7 %.
+(ii) The battery's "eight starved entrances" is the union over replicates
+(`validation.battery`: starved = at least 100 planned and under half
+delivered, first-seen order): seven of the eight come from the locking seed
+alone. In the 19 good seeds one entrance is under the threshold — 18207436
+in 16 of them (0.39–0.49; 0.50–0.52 in the other three) — and Ruth St
+745524613 in one low seed (0.47). The C-D re-entry's inferred 442 veh/h is
+delivered in full (0.99–1.00) in every good seed; it is not the entrance
+that starves. (iii) Collisions: 21 in the 19 good seeds, fifteen on the
+two scripted merges' acceleration lanes at 214–241 m
+(`638519829-AddedOnRampEdge_1` = McKnight Rd 178547099, minutes 49–63 and
+twice at minute 8; `43917735#1-AddedOnRampEdge_1` = Hudson Rd 18207436,
+minutes 69–78) — the minutes the queue front reaches each merge (below);
+the other six at the Ruth St split's first metres (three) and the T.H.52
+exit gore (three).
+
+**Weaving sections** (`meta.json["weave_sections"]`, both sections, every
+counter).
+
+Weaving section Ruth St (745524613 → C-D split 18208090, 136 m):
+
+| seed | entered | exited | reached (exiting) | departed exiting | missed exit | forced | deferred | unfinished | vacated | vacate refused | pair releases | cooperations | changer eased | wait in s | wait out s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| …141156 | 736 | 454 | 471 | 763 | 6 | 365 | 69936 | 11 | 1506 | 401 | 3720 | 113941 | 73211 | 144 | 80 |
+| …869882 | 757 | 498 | 503 | 838 | 1 | 351 | 56917 | 11 | 1481 | 550 | 3255 | 103022 | 64441 | 120 | 69 |
+| …931053 | 761 | 494 | 502 | 793 | 5 | 330 | 58278 | 17 | 1597 | 531 | 2960 | 105263 | 57960 | 116 | 68 |
+| …135749 | 815 | 528 | 534 | 776 | 5 | 385 | 53991 | 1 | 1630 | 492 | 3724 | 103502 | 57352 | 116 | 67 |
+| …189526 | 776 | 483 | 496 | 816 | 8 | 399 | 59611 | 5 | 1528 | 501 | 3919 | 97494 | 64747 | 119 | 91 |
+| …282993 | 761 | 463 | 474 | 784 | 4 | 374 | 51015 | 21 | 1593 | 400 | 3206 | 119759 | 68374 | 116 | 63 |
+| …044631 | 813 | 589 | 598 | 933 | 3 | 365 | 49867 | 12 | 1534 | 586 | 3011 | 95877 | 56657 | 109 | 71 |
+| …596746 | 735 | 462 | 470 | 776 | 3 | 335 | 69155 | 8 | 1540 | 391 | 3400 | 123743 | 75795 | 133 | 105 |
+| …534583 | 715 | 473 | 485 | 792 | 3 | 375 | 54651 | 8 | 1632 | 525 | 3187 | 95336 | 61351 | 124 | 75 |
+| …706937 | 764 | 456 | 463 | 739 | 2 | 380 | 66347 | 8 | 1517 | 461 | 4138 | 108825 | 63828 | 132 | 85 |
+| …791364 (low) | 200 | 107 | 125 | 344 | 1 | 87 | 110641 | 17 | 1089 | 305 | 1259 | 162230 | 191320 | 140 | 81 |
+| …023852 | 795 | 515 | 529 | 844 | 4 | 345 | 60371 | 12 | 1449 | 533 | 3236 | 99220 | 61825 | 120 | 71 |
+| …776631 (low) | 191 | 85 | 106 | 305 | 3 | 62 | 180789 | 28 | 951 | 282 | 1175 | 161787 | 288358 | 180 | 102 |
+| …009404 | 782 | 531 | 536 | 868 | 1 | 358 | 53804 | 1 | 1672 | 489 | 3252 | 94303 | 51339 | 113 | 63 |
+| …347669 | 689 | 449 | 469 | 746 | 5 | 316 | 59257 | 21 | 1615 | 411 | 3585 | 133433 | 69460 | 140 | 83 |
+| …976611 | 754 | 468 | 489 | 757 | 5 | 379 | 71671 | 18 | 1543 | 436 | 3979 | 126335 | 73746 | 141 | 95 |
+| …682178 | 779 | 486 | 493 | 793 | 4 | 366 | 65195 | 4 | 1536 | 388 | 3858 | 127698 | 77827 | 137 | 94 |
+| …505498 (lock) | 42 | 51 | 51 | 122 | 0 | 8 | 152153 | 13 | 572 | 106 | 12 | 65703 | 194949 | 7 | 4 |
+| …483394 | 761 | 518 | 532 | 808 | 3 | 301 | 68531 | 8 | 1664 | 380 | 3321 | 125561 | 68953 | 143 | 65 |
+| …041784 | 789 | 501 | 512 | 774 | 4 | 382 | 58357 | 11 | 1562 | 484 | 3790 | 113486 | 62800 | 123 | 71 |
+| mean of 19 | 704 | 451 | 462 | 750 | 4 | 329 | 69389 | 12 | 1507 | 450 | 3262 | 116359 | 83650 | 130 | 79 |
+
+Weaving section T.H.52 (769818012 → off-ramp 18207598, 305 m):
+
+| seed | entered | exited | reached (exiting) | departed exiting | missed exit | forced | deferred | unfinished | vacated | vacate refused | pair releases | cooperations | changer eased | wait in s | wait out s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| …141156 | 3705 | 3338 | 3354 | 3793 | 9 | 370 | 2065 | 2 | 2611 | 89 | 195 | 124998 | 23793 | 7 | 13 |
+| …869882 | 3695 | 3393 | 3404 | 3818 | 7 | 294 | 1125 | 2 | 2635 | 129 | 44 | 117528 | 21608 | 6 | 11 |
+| …931053 | 3801 | 3345 | 3358 | 3747 | 7 | 305 | 1084 | 4 | 2652 | 107 | 41 | 119460 | 21441 | 7 | 11 |
+| …135749 | 3772 | 3313 | 3334 | 3733 | 14 | 326 | 2296 | 3 | 2636 | 132 | 88 | 122011 | 23383 | 8 | 11 |
+| …189526 | 3803 | 3282 | 3300 | 3672 | 13 | 323 | 1728 | 1 | 2727 | 125 | 66 | 121493 | 22725 | 7 | 12 |
+| …282993 | 3745 | 3243 | 3263 | 3667 | 13 | 304 | 1542 | 3 | 2732 | 77 | 76 | 119130 | 21873 | 7 | 11 |
+| …044631 | 3567 | 3252 | 3274 | 3680 | 18 | 334 | 2777 | 4 | 2719 | 157 | 93 | 117834 | 22543 | 8 | 11 |
+| …596746 | 3727 | 3293 | 3312 | 3686 | 12 | 331 | 2405 | 0 | 2720 | 113 | 91 | 121889 | 22812 | 7 | 12 |
+| …534583 | 3595 | 3244 | 3267 | 3676 | 7 | 299 | 943 | 5 | 2705 | 114 | 29 | 119928 | 21301 | 7 | 11 |
+| …706937 | 3701 | 3249 | 3275 | 3665 | 19 | 310 | 2634 | 6 | 2681 | 102 | 141 | 125344 | 24386 | 8 | 12 |
+| …791364 (low) | 3803 | 3343 | 3352 | 3587 | 5 | 281 | 1597 | 2 | 2501 | 113 | 60 | 120699 | 22181 | 7 | 11 |
+| …023852 | 3714 | 3351 | 3364 | 3792 | 9 | 291 | 1299 | 1 | 2753 | 93 | 34 | 116805 | 20834 | 7 | 11 |
+| …776631 (low) | 3625 | 3318 | 3339 | 3594 | 15 | 326 | 2337 | 2 | 2405 | 181 | 106 | 120824 | 23420 | 7 | 12 |
+| …009404 | 3783 | 3339 | 3352 | 3746 | 9 | 336 | 1518 | 0 | 2644 | 103 | 67 | 123461 | 22049 | 7 | 11 |
+| …347669 | 3720 | 3326 | 3337 | 3733 | 9 | 300 | 1529 | 1 | 2679 | 86 | 54 | 118902 | 21586 | 7 | 11 |
+| …976611 | 3814 | 3369 | 3385 | 3818 | 11 | 292 | 1564 | 3 | 2664 | 111 | 60 | 122312 | 21782 | 7 | 11 |
+| …682178 | 3747 | 3385 | 3403 | 3813 | 12 | 345 | 2229 | 4 | 2695 | 133 | 81 | 124946 | 22840 | 7 | 12 |
+| …505498 (lock) | 436 | 369 | 423 | 1218 | 2 | 45 | 130194 | 40 | 170 | 24 | 150 | 219552 | 492902 | 8 | 11 |
+| …483394 | 3789 | 3327 | 3337 | 3732 | 6 | 305 | 1168 | 0 | 2651 | 158 | 32 | 118332 | 21507 | 7 | 11 |
+| …041784 | 3737 | 3337 | 3349 | 3791 | 9 | 369 | 1804 | 1 | 2680 | 121 | 101 | 122943 | 22898 | 7 | 12 |
+| mean of 19 | 3729 | 3318 | 3335 | 3723 | 11 | 318 | 1771 | 2 | 2657 | 118 | 77 | 120992 | 22366 | 7 | 11 |
+
+Ruth St is the corridor's hardest section in every seed: 47 % of its
+entrants are forced (329 of 704), the mean wait is 130 s in and 79 s out,
+1,507 vacates, 3,262 pair releases and 50–72 k deferred forced changes per
+run, where T.H.52 forces 8.5 % (318 of 3,729), waits 7 s in and 11 s out and
+defers 0.9–2.8 k. Ruth St is 136 m long against T.H.52's 305 m and carries
+the C-D split (17 % of the mainline exiting at the peak) beside 254 veh/h
+entering; its `n_exited` runs 60 % of `n_departed_exiting` in every seed
+(the rest exits after the section's end or is still upstream when the run
+ends — the artifact's given-up share is 0.8 %, §11).
+
+**Scripted merges** (`meta.json["scripted_merges"]`; both run
+`accept_gap_s` 0.6, `force_after_s` 4, `force_within_m` 80, `courtesy` 0).
+
+| seed | Hudson 18207436 entered | Hudson 18207436 changed | Hudson 18207436 forced | Hudson 18207436 unfinished | Hudson 18207436 wait mean s | Hudson 18207436 wait p90 s | McKnight 178547099 entered | McKnight 178547099 changed | McKnight 178547099 forced | McKnight 178547099 unfinished | McKnight 178547099 wait mean s | McKnight 178547099 wait p90 s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| …141156 | 309 | 287 | 212 | 22 | 747 | 1498 | 886 | 860 | 706 | 26 | 249 | 432 |
+| …869882 | 327 | 304 | 237 | 23 | 682 | 1255 | 883 | 861 | 705 | 22 | 244 | 468 |
+| …931053 | 325 | 306 | 232 | 19 | 689 | 1245 | 933 | 909 | 743 | 24 | 226 | 415 |
+| …135749 | 384 | 357 | 252 | 27 | 579 | 1169 | 971 | 949 | 780 | 22 | 209 | 401 |
+| …189526 | 331 | 304 | 228 | 27 | 653 | 1170 | 864 | 842 | 696 | 22 | 245 | 438 |
+| …282993 | 333 | 308 | 219 | 25 | 670 | 1472 | 885 | 867 | 697 | 18 | 238 | 421 |
+| …044631 | 364 | 342 | 249 | 22 | 596 | 1266 | 925 | 904 | 762 | 21 | 227 | 433 |
+| …596746 | 314 | 292 | 212 | 22 | 694 | 1379 | 855 | 837 | 690 | 18 | 249 | 470 |
+| …534583 | 360 | 338 | 242 | 22 | 585 | 1296 | 919 | 899 | 729 | 20 | 229 | 432 |
+| …706937 | 331 | 305 | 215 | 26 | 689 | 1315 | 896 | 871 | 688 | 25 | 237 | 444 |
+| …791364 (low) | 198 | 174 | 81 | 24 | 369 | 1274 | 480 | 454 | 304 | 26 | 162 | 378 |
+| …023852 | 327 | 302 | 215 | 25 | 680 | 1464 | 887 | 865 | 696 | 22 | 241 | 440 |
+| …776631 (low) | 170 | 145 | 70 | 25 | 424 | 1561 | 431 | 406 | 261 | 25 | 179 | 447 |
+| …009404 | 330 | 308 | 225 | 22 | 681 | 1283 | 908 | 888 | 724 | 20 | 219 | 407 |
+| …347669 | 350 | 327 | 226 | 23 | 636 | 1210 | 893 | 870 | 693 | 23 | 238 | 444 |
+| …976611 | 330 | 306 | 219 | 24 | 670 | 1484 | 892 | 868 | 710 | 24 | 239 | 436 |
+| …682178 | 319 | 297 | 218 | 22 | 717 | 1378 | 845 | 823 | 666 | 22 | 253 | 504 |
+| …505498 (lock) | 81 | 55 | 5 | 26 | 4 | 12 | 165 | 139 | 28 | 26 | 7 | 14 |
+| …483394 | 315 | 291 | 206 | 24 | 720 | 1388 | 869 | 846 | 683 | 23 | 242 | 439 |
+| …041784 | 329 | 305 | 212 | 24 | 673 | 1319 | 900 | 881 | 727 | 19 | 236 | 407 |
+| mean of 19 | 318 | 295 | 209 | 24 | 640 | 1338 | 849 | 826 | 666 | 22 | 230 | 435 |
+
+Hudson Rd 18207436 waits 640 s mean and 1,340 s p90 with 66 % of its
+entrants forced; McKnight Rd 178547099 230 s / 435 s with 78 % forced. The
+scripted merge waits for a gap that a standing mainline does not offer and
+forces only inside the last 80 m after 4 s, so it starves in proportion to
+its wait; the lane-change entrance between the two, Hudson Rd 18207653
+(SUMO's own model, nothing driven), delivers 0.91. These waits are the
+queue's arrival at each merge, not its cause (the front reaches S1066 at
+06:45 and S1065 at 06:50, below; the merges' collisions cluster at the same
+minutes).
+
+**The locking seed 5690692725577505498 (departed 0.230).** Its station
+trace against the good-seed mean, 5-min windows, m/s (`segment_speeds_sim`;
+lock first, good mean in brackets):
+
+| time | S1063 | S1065 | S1067 | S1069 | S1948 | S791 | S790 | S97 |
+|---|---|---|---|---|---|---|---|---|
+| 06:00 | 24.1 (23.9) | 23.7 (23.5) | 22.6 (23.0) | 23.6 (23.1) | 17.3 (21.6) | 0.1 (5.2) | 0.0 (5.3) | 0.0 (18.8) |
+| 06:05 | 23.8 (23.8) | 23.9 (23.7) | 23.5 (23.3) | 23.0 (23.2) | 1.1 (21.7) | 0.0 (6.3) | 0.0 (5.5) | 0.0 (18.8) |
+| 06:10 | 23.2 (23.5) | 23.8 (23.0) | 23.8 (22.6) | 7.7 (22.9) | 0.5 (20.3) | 0.0 (5.5) | 0.0 (5.4) | 0.0 (18.9) |
+| 06:15 | 22.8 (23.5) | 21.8 (23.0) | 17.1 (21.3) | 2.0 (22.4) | 0.0 (15.2) | 0.0 (3.8) | 0.0 (5.2) | 0.0 (18.8) |
+| 06:20 | 23.7 (23.2) | 21.9 (23.1) | 16.9 (21.0) | 0.4 (22.1) | 0.0 (6.9) | 0.0 (3.3) | 0.0 (5.1) | 0.0 (18.4) |
+| 06:25 | 23.7 (23.1) | 24.0 (22.6) | 6.7 (19.1) | 0.0 (18.0) | 0.0 (4.2) | 0.0 (3.3) | 0.0 (5.2) | 0.0 (19.0) |
+| 06:30 | 22.9 (22.7) | 22.8 (22.4) | 0.2 (14.5) | 0.0 (4.5) | 0.0 (4.3) | 0.0 (3.5) | 0.0 (5.3) | 0.0 (19.1) |
+| 06:35 | 22.5 (22.5) | 4.5 (22.1) | 0.0 (9.1) | 0.0 (1.9) | 0.0 (4.4) | 0.0 (3.5) | 0.0 (5.1) | 0.0 (18.9) |
+| 06:40 | 21.0 (22.5) | 0.3 (21.7) | 0.0 (3.1) | 0.0 (1.9) | 0.0 (5.1) | 0.0 (2.6) | 0.0 (4.7) | 0.0 (19.0) |
+| 06:45 | 21.2 (22.3) | 0.0 (13.0) | 0.0 (1.4) | 0.0 (2.3) | 0.0 (3.7) | 0.0 (2.3) | 0.0 (5.0) | 0.0 (18.8) |
+| 06:50 | 10.1 (22.8) | 0.0 (2.2) | 0.0 (1.2) | 0.0 (1.7) | 0.0 (3.1) | 0.0 (2.4) | 0.0 (4.8) | 0.0 (18.6) |
+| 06:55 | 1.2 (22.9) | 0.0 (0.6) | 0.0 (1.3) | 0.0 (1.4) | 0.0 (3.4) | 0.0 (2.3) | 0.0 (4.8) | 0.0 (19.0) |
+| 07:00 | 0.0 (22.8) | 0.0 (0.5) | 0.0 (1.0) | 0.0 (1.3) | 0.0 (3.0) | 0.0 (2.2) | 0.0 (4.7) | 0.0 (18.9) |
+
+The lock is complete at the corridor's downstream end in the first scored
+window: the S97 cell (10.60–11.54 km: the T.H.52 weave's exit end, the
+Jackson St exit and the boundary edge), S790 and S791 read 0.0–0.1 m/s at
+06:00 where the good seeds read 18.8, 5.3 and 5.2, and S1948 (8.4 km)
+falls from 17 to 1 m/s by 06:05. The standstill then runs upstream — S1069
+06:15, S1067 06:30, S1065 06:35, S1063 06:55 — 20–25 minutes ahead of the
+good seeds' front and to 0.0 m/s rather than their 0.5–5 m/s crawl; from
+07:00 every cell is at zero. The three collisions (McKnight Rd merge,
+minutes 55, 56 and 59, i.e. 06:25–06:29) come an hour after the lock and at
+the minute the standstill reaches that merge; seven good seeds collide at the
+same place and minutes (49–63) without locking. Ruth St's 152,153 deferred
+forced changes are a symptom, not the origin: 42 vehicles entered the
+section all run (8 forced), so the count is a handful of vehicles standing
+in a stopped section and deferring every step (≈ 5 per step over 28,800
+steps); the section's counters diverge from 06:30 at the earliest, after
+S97/S790/S791 (before 06:00), S1948 (06:05) and S1069 (06:15). The state is
+structurally different, not a chaotic late event: the T.H.52 exit end, where
+VM G's every seed locked (the "exit movement at the gore's end", above),
+still locks in one seed of twenty inside the warm-up, before any collision.
+Which of the exit gore, the Jackson St exit 190 m after it or the boundary
+edge holds it, the files cannot say; it needs that seed's first 30 minutes
+at 50 m × 1 min (`diag_lock.py.txt` in the round's archive).
+
+**The two low seeds (8557154790156791364 at 0.704, 6904272788004776631 at
+0.696): Ruth St semi-locks, a second failure mode.** Their Ruth St section
+admits 200 and 191 entrants against 764 in the other seventeen (changed-in
+154/139 against 472, changed-out 28/21 against 277, deferred 110,641 and
+180,789 against 60,409, unfinished 17 and 28 against 10), the three
+entrances upstream of it deliver 0.40/0.58/0.59 and 0.39/0.53/0.54 (the
+seventeen: 0.47–0.52, 0.91–1.00, 0.87–0.95), and the flow at S1069 is
+1,281 and 1,199 veh/h against 1,655–1,803. The cells downstream of the split,
+S1947 and S1069, run at 15.0/15.3 and 13.8/14.2 m/s against 4.8/4.4 in the
+seventeen — starved by a tighter lock upstream — while S1067/S1068 stand
+(4.4/3.7, 4.4/4.2) and their T.H.52 counters and the downstream queue are
+everyone's (S791 3.6/4.5 m/s in the first half hour). Ruth St therefore
+holds the corridor in 2 of 19 seeds on its own, at the C-D split, with the
+downstream queue unchanged.
+
+**Where the queue starts (19 good seeds).** Good-seed mean simulated speed,
+observed in brackets, m/s, 15-min steps (every cell, `segment_speeds_sim` /
+`segment_speeds_obs`):
+
+| time | S1063 | S1064 | S1065 | S1066 | S1067 | S1068 | S1947 | S1069 | S1070 | S1948 | S792 | S791 | S790 | S97 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 06:00 | 24 (32) | 24 (30) | 23 (30) | 23 (30) | 23 (30) | 23 (30) | 23 (29) | 23 (30) | 22 (30) | 22 (30) | 20 (29) | 5 (25) | 5 (26) | 19 (27) |
+| 06:15 | 24 (32) | 23 (30) | 23 (31) | 23 (30) | 21 (30) | 22 (30) | 22 (29) | 22 (30) | 19 (30) | 15 (29) | 10 (28) | 4 (24) | 5 (23) | 19 (26) |
+| 06:30 | 23 (32) | 23 (30) | 22 (30) | 21 (30) | 15 (29) | 19 (29) | 17 (27) | 5 (28) | 3 (25) | 4 (24) | 6 (23) | 3 (19) | 5 (15) | 19 (25) |
+| 06:45 | 22 (32) | 22 (30) | 13 (31) | 2 (30) | 1 (29) | 1 (26) | 2 (19) | 2 (12) | 3 (16) | 4 (16) | 4 (12) | 2 (11) | 5 (13) | 19 (21) |
+| 07:00 | 23 (32) | 5 (30) | 0 (31) | 1 (30) | 1 (29) | 1 (25) | 1 (20) | 1 (14) | 2 (16) | 3 (16) | 4 (14) | 2 (13) | 5 (14) | 19 (22) |
+| 07:15 | 1 (32) | 0 (29) | 0 (30) | 1 (29) | 1 (23) | 1 (15) | 1 (12) | 1 (10) | 2 (14) | 3 (15) | 4 (12) | 2 (10) | 5 (13) | 18 (19) |
+| 07:30 | 1 (32) | 1 (30) | 0 (30) | 1 (26) | 1 (14) | 1 (8) | 1 (8) | 1 (7) | 3 (12) | 3 (13) | 4 (9) | 2 (7) | 5 (11) | 16 (16) |
+| 07:45 | 1 (32) | 1 (30) | 0 (31) | 1 (24) | 1 (15) | 1 (6) | 2 (7) | 1 (5) | 2 (11) | 4 (12) | 3 (7) | 2 (6) | 5 (10) | 13 (12) |
+| 08:00 | 1 (32) | 1 (30) | 0 (31) | 1 (29) | 1 (19) | 1 (9) | 4 (8) | 3 (6) | 2 (11) | 3 (13) | 4 (9) | 2 (7) | 5 (11) | 14 (13) |
+| 08:15 | 1 (32) | 1 (30) | 0 (31) | 1 (30) | 1 (23) | 1 (14) | 4 (9) | 4 (6) | 3 (11) | 3 (13) | 3 (9) | 2 (7) | 5 (11) | 16 (16) |
+| 08:30 | 1 (32) | 1 (30) | 1 (31) | 1 (30) | 1 (27) | 1 (17) | 4 (10) | 4 (8) | 4 (11) | 5 (12) | 4 (9) | 2 (8) | 5 (11) | 15 (14) |
+| 08:45 | 1 (32) | 1 (30) | 0 (31) | 1 (30) | 1 (28) | 1 (19) | 4 (14) | 4 (9) | 4 (13) | 6 (13) | 6 (9) | 3 (8) | 5 (11) | 16 (17) |
+| 09:00 | 1 (32) | 1 (30) | 0 (31) | 1 (30) | 1 (29) | 1 (29) | 4 (22) | 4 (18) | 4 (16) | 6 (14) | 6 (11) | 5 (10) | 6 (12) | 18 (20) |
+| 09:15 | 1 (32) | 0 (30) | 0 (31) | 1 (30) | 1 (29) | 1 (30) | 4 (28) | 4 (26) | 4 (22) | 5 (19) | 6 (13) | 4 (9) | 6 (11) | 18 (19) |
+
+Per station, 19 seeds pooled (RMSPE per station over its 42 windows; share
+of the summed squared relative error; first window under 10 m/s; recovered
+link-hour flow, sim / observed, veh/h):
+
+| station | x km | sim mean m/s | obs mean m/s | station RMSPE | share of SSE | first window < 10 m/s sim / obs | flow 06–07 sim / obs | 07–08 | 08–09 |
+|---|---|---|---|---|---|---|---|---|---|
+| S1063 W of I-494 (E Jct) | 1.09 | 8.2 | 31.9 | 0.81 | 0.079 | 07:10 / never | 2,102 / 2,990 | 1,039 / 3,917 | 977 / 3,214 |
+| S1064 T.H.120 | 2.31 | 6.8 | 29.9 | 0.84 | 0.084 | 07:00 / never | 1,634 / 2,754 | 919 / 3,337 | 776 / 2,743 |
+| S1065 Hudson Rd | 3.47 | 5.6 | 30.5 | 0.87 | 0.091 | 06:50 / never | 1,053 / 2,497 | 853 / 2,835 | 629 / 2,276 |
+| S1066 McKnight Rd | 4.06 | 5.1 | 29.2 | 0.88 | 0.092 | 06:45 / never | 1,221 / 2,919 | 1,242 / 3,270 | 950 / 2,675 |
+| S1067 Ruth St | 4.97 | 4.6 | 25.4 | 0.87 | 0.091 | 06:35 / never | 1,277 / 3,353 | 1,524 / 3,485 | 1,112 / 2,994 |
+| S1068 White Bear Ave | 5.58 | 4.8 | 20.5 | 0.84 | 0.084 | 06:35 / 07:20 | 1,439 / 3,498 | 1,689 / 3,113 | 997 / 2,645 |
+| S1947 E of T.H.61 | 6.07 | 5.9 | 17.4 | 0.83 | 0.082 | 06:35 / 07:20 | 1,872 / 4,104 | 2,050 / 3,445 | 1,317 / 2,959 |
+| S1069 T.H.61 | 6.68 | 5.4 | 15.1 | 0.86 | 0.087 | 06:30 / 07:15 | 1,586 / 3,652 | 1,763 / 2,911 | 1,112 / 2,487 |
+| S1070 Johnson Pkwy | 7.67 | 5.1 | 16.8 | 0.79 | 0.074 | 06:25 / never | 2,992 / 4,874 | 3,640 / 4,139 | 2,627 / 3,671 |
+| S1948 E of Mounds Blvd | 8.40 | 5.7 | 16.8 | 0.73 | 0.064 | 06:20 / never | 2,988 / 4,801 | 3,539 / 4,157 | 2,658 / 3,793 |
+| S792 Mounds Blvd | 8.98 | 5.7 | 13.6 | 0.66 | 0.052 | 06:15 / 07:25 | 2,569 / 4,315 | 2,513 / 3,252 | 1,818 / 2,880 |
+| S791 Kellogg Blvd | 9.72 | 3.1 | 11.4 | 0.78 | 0.072 | 06:00 / 07:15 | 2,054 / 4,181 | 2,401 / 3,841 | 1,995 / 3,465 |
+| S790 Kittson St | 10.13 | 5.1 | 13.5 | 0.62 | 0.046 | 06:00 / 07:45 | 2,628 / 4,582 | 3,090 / 4,400 | 2,852 / 4,148 |
+| S97 I-35E | 11.07 | 17.0 | 18.9 | 0.15 | 0.003 | never / never | 2,581 / 4,109 | 3,262 / 4,351 | 3,212 / 4,059 |
+
+The queue does not start at the S1063 side. It starts at the corridor's
+last kilometre before the scored windows open: at 06:00 S791 (9.35–9.92 km,
+ending at the 40648744 entrance) reads 5.2 m/s and S790 (the entrance
+through the weave's first 270 m) 5.3 m/s against 25–26 observed, while S97
+beyond the weave's exit reads 18.8 (27 observed) — the discharge step sits
+inside the S790 cell — and S1063 is free at 24 m/s until 07:05. The front
+then travels upstream at 7–9 km/h (S1948 at 8.40 km 06:20, S1069 06:30,
+S1067 06:35, S1066 06:45, S1065 06:50, S1064 07:00, S1063 at 1.09 km 07:10),
+which is the battery's "wave speed" of 6.8 km/h, and every cell from
+S1063 to S791 spends the rest of the morning at 0–6 m/s. The recovered
+flows say the same: S790 and S97 carry 2,600–3,300 veh/h in every hour
+against 4,100–4,600 observed, the upstream cells 1,000–1,600 against
+2,500–3,900. The observed corridor has the same head — S791 6–10 m/s from
+07:15 to 08:30 with S790 at 10–14 — but 75 minutes later and at two to three
+times the simulated speed, and its second queue, White Bear Ave to T.H.61
+(S1068/S1947/S1069 at 5–9 m/s 07:25–08:30, the T.H.61 NB entrance 53062592
+at 1,719 veh/h in 07–08) is buried under the front from downstream, which
+passes S1069 at 06:30.
+
+Order in which the entrances starve (good seeds), by the front's arrival:
+40648744 (inside the standing queue from before 06:00; delivered 0.73,
+0.71–0.78, the only entrance under 0.9 besides 18207436; a lane-change
+entrance with nothing driven, 450 m before the weave's start, 889 veh/h mean
+and 1,148 in 07–08, inferred by conservation — no detector) → T.H.61
+53062592 (06:25; 1.00 — its three-edge ramp stores its queue) → the C-D
+re-entry (06:35; 1.00) → Ruth St 745524613 (06:35; 0.94) → McKnight Rd
+178547099 (06:40–06:45; 0.87) → Hudson Rd 18207653 (06:45–06:50; 0.91) →
+Hudson Rd 18207436 (06:50–07:00; 0.48) → the mainline entry (07:10; 0.55).
+Along the corridor the delivered fractions are 0.48, 0.91, 0.87, 0.94, 1.00,
+1.00, 0.73, 0.97: the two lowest are the first entrance the front reaches
+from downstream and the one it reaches last from upstream, whose scripted
+merge then waits 11 minutes for a gap.
+
+Worst stations by RMSPE contribution: S1066 McKnight Rd, S1065 Hudson Rd
+and S1067 Ruth St (0.87–0.88; 9.1–9.2 % of the summed error each), the
+upstream half — observed free at 29–31 m/s all morning, simulated at
+0–1 m/s from 06:50–07:10 on; S1069 T.H.61 next (0.86). The shares are flat
+(0.046–0.092) because every cell but S97 is wrong in the same way; S97 is
+the only cell that matches (0.15) and the only one whose flow matches the
+observed within the recovery's error in 07–09. The RMSPE cannot fall far
+below 0.75 while the corridor is one standing queue; the head is the whole
+error.
+
+**The single next lever: the discharge of the corridor's last 850 m** — the
+40648744 entrance at 9.88 km into the T.H.52 weave at 10.33–10.72 km
+(769818012 entering 1,267 veh/h mean, 18207598 taking 17–21 %). Evidence:
+the head is there from the first scored window in all 19 running seeds
+(S791 5.2, S790 5.3, S97 18.8 m/s at 06:00) and it is where the locking
+seed stopped inside the warm-up; the S790 → S97 cross-sections carry
+2,600–3,300 veh/h against 4,100–4,600 observed in every hour; everything
+upstream — the mainline's 45 % never inserted, 18207436's 0.48, the 0.78
+RMSPE — is the tail of that one queue, reaching the entry at 07:10; and the
+observed corridor has the same head 75 minutes later at two to three times
+the speed, so the model has the right place and a discharge one third to
+one half short. What the files cannot decide is which of the two movements
+holds it: the 40648744 merge (the S791 cell ending at that ramp is the
+slowest cross-section of the corridor at 2–3 m/s, while the weave's own
+entrants wait only 7 s in and 11 s out) or the weave's conflict itself. That
+is the one measurement to take next, on the VM from a good seed's
+trajectories: the 50 m × 1 min standstill map of the first 30 minutes
+(`diag_lock.py.txt`), which places the first standstill between 9.88 and
+10.72 km and names the movement; the design choice that follows (a scripted
+or weave-tracked 40648744, or the T.H.52 rule) is that measurement's, not
+this note's. Not the lever, with the numbers that say so: the C-D
+re-entry's 442 veh/h (1.00 delivered in all 19); the scripted merges'
+parameters at Hudson and McKnight (their waits are the front's arrival at
+06:45–07:00, 6 km behind the head); the downstream boundary (S97 matches
+observed speed in all 19; the schedule's floor is 11.8 m/s and S97 never
+falls below 13). Open beside it, cheap to settle from the same trajectories:
+the S1063 cell's recovered 06–07 flow is 2,100 veh/h against the 2,990 veh/h
+demand while the cell is free-flowing all hour (1,060 in the locking seed
+with 50 free minutes); either the recovery's bias or an entry inserting
+below its demand — a per-window crossing count at S1063 decides it.

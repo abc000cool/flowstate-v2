@@ -1,0 +1,43 @@
+import json, math
+import numpy as np
+from pathlib import Path
+obs=json.load(open("data/mndot/mndot_i94_wb_stpaul/observations.json"))
+st=[s for s in obs["stations"] if s["kind"]=="mainline"]
+b=json.load(open("artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_exit_side_84cc857.json"))
+order=[r["seed"] for r in b["per_seed"]]; LOCK=5690692725577505498; good=[s for s in order if s!=LOCK]
+root=Path("runs/mndot_i94_wb_stpaul_weave/baseline/53e4b208fd1d")
+geh=np.array([json.load(open(root/str(s)/"observed_scores.json"))["geh_values"] for s in order]).reshape(20,14,3)
+hours=[(6,18),(18,30),(30,42)]
+print("station | x | obs veh/h h1(06-07) h2(07-08) h3(08-09) | sim veh/h inverted from GEH, 19-good mean (lock seed)")
+for i,s in enumerate(st):
+    f=np.array(obs["flows_veh_h"][s["id"]],float)
+    line=[]
+    for h,(a,bb) in enumerate(hours):
+        c=float(np.nanmean(f[a:bb]))
+        def inv(G):
+            d=(G*G-math.sqrt(G**4+16*c*G*G))/4
+            return c+d
+        gg=np.mean(geh[[order.index(x) for x in good],i,h]); gl=geh[order.index(LOCK),i,h]
+        line.append(f"{c:.0f} -> {inv(gg):.0f} ({inv(gl):.0f})")
+    print(f"{s['id']} | {s['x_m']:.0f} | "+" | ".join(line))
+dem=json.load(open("artifacts/demand_mndot_i94_wb_stpaul.json"))
+inf=np.array(dem["inflow_steps"],float)
+print("\nmainline inflow demand veh/h by hour from 05:30:", [round(float(inf[a:a+12,1].mean()*3600)) for a in (0,6,18,30,42)], "(05:30-06:30, 06-07, 07-08, 08-09, 09-09:30)")
+print("peak inflow step veh/h:", round(float(inf[:,1].max()*3600)), "at t=", inf[inf[:,1].argmax(),0]/3600+5.5)
+for r in dem["ramps"]:
+    if r["kind"]=="on":
+        a=np.array(r["inflow_steps"],float)[:,1]*3600
+        print(f"  {r['name']:28s} x={r['x_m']:.0f} method={r['method']:26s} mean {a.mean():.0f} veh/h, peak {a.max():.0f} at {5.5+a.argmax()*5/60:.2f}h, 07-08 mean {a[18:30].mean():.0f}")
+    else:
+        a=np.array(r["exit_fraction_steps"],float)[:,1]
+        print(f"  {r['name']:28s} x={r['x_m']:.0f} method={r['method']:26s} exit frac mean {a.mean():.3f}, 07-08 {a[18:30].mean():.3f}")
+# full 42-window trace at selected stations
+sim=np.array([json.load(open(root/str(s)/"observed_scores.json"))["segment_speeds_sim"] for s in order]).reshape(20,42,14)
+ob=np.array(json.load(open(root/str(order[0])/"observed_scores.json"))["segment_speeds_obs"])
+ids=[s["id"] for s in st]
+sel=["S1063","S1067","S1069","S1948","S791","S790","S97"]
+print("\nwindow | time | "+" | ".join(f"{k} good(lock)[obs]" for k in sel))
+gm=sim[[order.index(x) for x in good]].mean(axis=0); lk=sim[order.index(LOCK)]
+for k in range(42):
+    w=6+k; t=5.5+w/12; hh=int(t); mm=int(round((t-hh)*60))
+    print(f"w{w} | {hh:02d}:{mm:02d} | "+" | ".join(f"{gm[k,ids.index(x)]:.1f}({lk[k,ids.index(x)]:.1f})[{ob[k,ids.index(x)]:.0f}]" for x in sel))
