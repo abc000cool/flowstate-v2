@@ -1276,6 +1276,49 @@ def _weave_command(
             coop[vid] = (v_new, a_cmd, follower if prev is None else prev[2] or follower)
 
 
+def _weave_easing_ok(
+    v_c: float, v_l: float, s_l: float, s_need: float, remaining_m: float, b_c: float
+) -> bool:
+    """Whether a changer can drop in behind its gap's leader by the section end at ≤ ``b``.
+
+    Fourth derivation (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md dated
+    paragraph): easing is *positioning* — braking so that the changer's
+    front clears the leader L's rear by the gap it needs before it runs out
+    of section — and is asked for only when that positioning is feasible at
+    the changer's comfortable deceleration. With the time available
+    ``t_a = remaining / max(v_c, creep)`` (at the current speed, floored at
+    ``SCRIPTED_MERGE_CREEP_MS``) and L holding its speed, a constant
+    deceleration ``a`` over ``t_a`` moves the changer relative to L by
+    ``(v_c − v_l)·t_a − a·t_a²/2``; the drop needed is ``d = s_need − s_l``
+    (``≤ 0``: already clear), so ``a_req = 2·(d + (v_c − v_l)·t_a)/t_a²`` and
+    easing is feasible iff ``a_req ≤ b_c``. Far from the section end the
+    requirement is small and easing proceeds as in the second derivation; in
+    the last tens of metres, where only a brake beyond ``b`` (or a stop
+    beside L) would still position the changer, it keeps its own
+    car-following speed and the change waits for its follower's cooperation
+    or the forced mode.
+
+    Args:
+        v_c: The changer's speed [m/s].
+        v_l: The gap leader's speed [m/s].
+        s_l: Bumper-to-bumper gap from the changer's front to L's rear [m]
+            (negative when they overlap).
+        s_need: The gap the changer must clear L by [m] (its accepted gap,
+            ``s0 + accept · v_c``).
+        remaining_m: Section length still ahead of the changer [m].
+        b_c: Its comfortable deceleration [m/s²].
+
+    Returns:
+        Whether the changer may be eased towards L this step.
+    """
+    t_a = remaining_m / max(v_c, SCRIPTED_MERGE_CREEP_MS)
+    if t_a <= 0.0:
+        return False
+    d = s_need - s_l
+    a_req = 2.0 * (d + (v_c - v_l) * t_a) / (t_a * t_a)
+    return a_req <= b_c
+
+
 def _weave_cooperate(
     mod: Any,
     tc: Any,
@@ -1290,6 +1333,8 @@ def _weave_cooperate(
     vid: str,
     target_lane: int,
     committed: str | None,
+    accept_s: float,
+    remaining_m: float,
 ) -> str | None:
     """Choose a changer's gap on ``target_lane`` and record the two speed targets.
 
@@ -1299,6 +1344,26 @@ def _weave_cooperate(
     for the changer itself (L as its virtual leader — an abreast pair
     resolves by the one behind easing off, not by a station-keeping cap).
     ``p_of`` / ``v0_of`` are filled for the listed vehicles as needed.
+
+    Fourth derivation (2026-09-24, block 3), the entrant side: the changer
+    is eased only when (a) it is abreast of or ahead of the gap's follower —
+    guaranteed by the candidate set of :func:`_weave_choose_gap` (F's front
+    is behind the changer's rear) — and (b) dropping in behind the gap's
+    leader by the section end takes no more than its comfortable
+    deceleration (:func:`_weave_easing_ok`, the gap it needs being its
+    accepted gap ``s0 + accept_s · v``, ``remaining_m`` the section still
+    ahead — for an entrant on the ramp, the ramp to the gore plus the
+    section); otherwise it keeps its own car-following speed and the change
+    waits for the follower's cooperation (with consecutive-vehicle gaps the
+    changer is in at most one, so there is no "next gap" to move to). Two
+    entrant-side rules were measured on ``weave_th52.osm`` and rejected
+    (docs/WEAVE_MODEL_PLAN.md, dated paragraph): no easing of an entrant
+    upstream of the gore turned the ramp queue into a 3–5 m/s crawl of lane
+    1 (the easing on the ramp is what positions the entrant before it
+    appears beside its gap), and no cooperation from a ramp vehicle for an
+    exit-bound changer locked the section at seed 4 (the entrant's yielding
+    before the gore is what resolves the crossing pair). Both stay as the
+    second derivation had them.
 
     Returns:
         The chosen gap's follower id (the commitment carried to the next
@@ -1339,7 +1404,9 @@ def _weave_cooperate(
     if f_t is not None:
         _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
     if l_t is not None and a_c < 0.0:
-        _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
+        s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
+        if _weave_easing_ok(v_c, v_of[l_t], s_l, p_c["s0"] + accept_s * v_c, remaining_m, p_c["b"]):
+            _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
     return f_t
 
 
@@ -1414,7 +1481,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     other to a standstill (fixture trace, t = 55–70 s), and without easing
     the pair rode abreast into the gore, where the follower tracking the
     stopped entrant stopped too (33,876 deferred forced changes, 56 driven
-    vehicles unfinished).
+    vehicles unfinished). Fourth derivation (2026-09-24, block 3): the
+    easing is asked for only while it can still position the changer —
+    when dropping in behind L by the section end needs no more than the
+    changer's ``b`` (:func:`_weave_easing_ok`); in the last metres, where
+    only a stop beside L would, the changer keeps its own speed and the
+    change waits for the follower or the forced mode. Measured on
+    ``weave_th52.osm`` at seeds 3–5 the check binds rarely and its effect
+    is within seed noise; the entrant-side rules it was derived with (no
+    easing on the ramp, no ramp follower for an exiter) were measured and
+    rejected (:func:`_weave_cooperate`).
 
     **Anticipation on the ramp.** An entering vehicle still on the on-ramp
     within ``lookahead_m`` of the section chooses its gap, its follower
@@ -1471,6 +1547,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     x_offset: dict[str, float] = ws["x_offset"]
     ramp_edges: frozenset[str] = ws["ramp_edges"]
     x_start = x_offset[ws["edges"][0]]
+    section_len = float(sum(ws["lane_len_m"].values()))
     step_s = float(ws["step_s"])
     veh = ws["veh"]
     pending: dict[str, int] = {}
@@ -1606,6 +1683,8 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             vid,
             lane + d,
             st["target"],
+            accept,
+            remaining,
         )
         # --- acceptance and execution --------------------------------------
         g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
@@ -1689,6 +1768,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             vid,
             1,
             pre.get(vid),
+            prm["accept_gap_s"],
+            # the ramp to the gore, then the whole section
+            x_start - x_of[vid] + section_len,
         )
     for fid in sorted(coop):
         v_new, a_cmd, follower = coop[fid]

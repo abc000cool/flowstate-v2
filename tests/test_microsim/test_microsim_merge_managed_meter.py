@@ -914,10 +914,10 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, third "
-        "derivation): lane 1 at the section start flows at 10-13 m/s in most minutes but dips "
-        "to 4.5 m/s in one, and the entrance departs 317 of 466 (the ramp is held by the "
-        "easing rule at the anticipation-zone entry)",
+        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, fourth "
+        "derivation): lane 1 at the section start flows at 6-13 m/s at seed 3 but the entrance "
+        "departs 325 of 466 (the ramp queues at 3.3 m/s over its first 100 m behind the "
+        "anticipation zone; the entrant-side rules tried either crawl or lock, see the plan)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -967,6 +967,23 @@ class TestWeaveRun:
         anticipation-zone entry, not by lane 1 (the plan's dated paragraph
         has the sensitivity table and the ramp profile), so the marker
         stays.
+
+        Fourth derivation (2026-09-24, block 3: easing only while it can
+        still position the changer at no more than its ``b`` by the section
+        end, ``microsim.runner._weave_easing_ok``): lane 1's first 60 m read
+        11.5, 10.0, 6.9, 8.1, 11.2, 12.9, 11.8, 7.0, 11.2, 10.9, 11.2, 8.7,
+        10.7, 11.3, 6.2, 12.3, 12.3, 12.3 m/s in minutes 2-19 (every window
+        above 5 at this seed; 4.0 in one at seed 4, which is seed noise: the
+        check binds rarely); the entrance departs 325 of 466; 308 driven
+        (134 in, 174 out, 5 forced, 0 unfinished); no collision. The ramp
+        still queues at 3.3 m/s over its first 100 m. The entrant-side rules
+        the derivation set out with were measured and rejected: no easing
+        of an entrant on the ramp gives a 3-5 m/s crawl of lane 1 in every
+        minute (entrance 277), no ramp follower for an exiter locks the
+        section at seed 4 (0.0 m/s from minute 13, entrance 204), and easing
+        only when the drop is needed within the horizon gives 400 of 466 at
+        seeds 3 and 5 but locks at seed 4 (the plan's dated paragraph has
+        the table), so the marker stays.
         """
         cfg = ScenarioConfig.model_validate(
             {
@@ -1337,24 +1354,51 @@ class TestWeaveLockRules:
         towards it as its gap's leader by a one-step car-following target
         (clipped at b), inside and outside ``force_within_m`` alike; its
         desired speed is never written (the station-keeping cap of the first
-        attempt commanded 0 m/s with no floor, 2026-09-24 block 3)."""
+        attempt commanded 0 m/s with no floor, 2026-09-24 block 3). Fourth
+        derivation: only while dropping in behind that leader by the section
+        end needs no more than b (``_weave_easing_ok``) — at 20 m/s with
+        150 m left the drop behind a stopped vehicle 30 m ahead needs
+        4.8 m/s² and the vehicle keeps its own speed; at 10 m/s it needs
+        1.1 m/s² and is eased. The stopped vehicle on the exit-only lane is
+        itself an entering changer whose gap's follower is the exiter, so
+        the exiter also receives the same clipped target as a *follower*
+        (``n_cooperations``); the counters tell the two apart."""
         from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
 
         ws = _weave_state()
         veh = _WeaveVehicle({"e": 20.0, "q": 0.0}, {("e", NEIGHBOR_RIGHT_LEADERS): (("q", 30.0),)})
         veh.max_speeds["e"] = 31.0
         mod = _WeaveMod(veh)
+
+        def slows():
+            return [c for c in veh.calls if c[0] == "slow"]
+
+        # 150 m of section left at 20 m/s (t_a = 7.5 s), s_l = 30 m, accepted
+        # gap 14.5 m: a_req = 2·(−15.5 + 150)/7.5² = 4.8 m/s² > b — not eased;
+        # the one target it gets is as q's follower
         _weave_step(mod, _tc, ws, {"e": _res("a", 1, 50.0, 20.0), "q": _res("a", 0, 85.0, 0.0)}, 0)
-        assert [c for c in veh.calls if c[0] == "slow"] == [
-            ("slow", "e", pytest.approx(20.0 - 1.67 * 0.5), 0.0)
-        ]
-        assert ws["n_changer_eased"] == 1
+        assert slows() == [("slow", "e", pytest.approx(20.0 - 1.67 * 0.5), 0.0)]
+        assert ws["n_changer_eased"] == 0 and ws["n_cooperations"] == 1
         veh.calls.clear()
-        # 60 m from the gore (force_within_m 80): the same rule, no cap
-        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 40.0, 20.0), "q": _res("b", 0, 75.0, 0.0)}, 1)
-        assert [c for c in veh.calls if c[0] == "slow"] == [
-            ("slow", "e", pytest.approx(20.0 - 1.67 * 0.5), 0.0)
-        ]
+        # at 10 m/s (t_a = 15 s): a_req = 2·(−21.5 + 150)/15² = 1.1 m/s² —
+        # eased by IDM towards the stopped leader, clipped at b
+        veh.speeds["e"] = 10.0
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 50.0, 10.0), "q": _res("a", 0, 85.0, 0.0)}, 1)
+        assert slows() == [("slow", "e", pytest.approx(10.0 - 1.67 * 0.5), 0.0)]
+        assert ws["n_changer_eased"] == 1 and ws["n_cooperations"] == 1
+        veh.calls.clear()
+        # 60 m from the gore (force_within_m 80): the same rule, no cap. At
+        # 6 m/s 10 m behind the leader a_req = 2·(−3.9 + 60)/10² = 1.1 m/s²
+        veh.speeds["e"] = 6.0
+        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 40.0, 6.0), "q": _res("b", 0, 55.0, 0.0)}, 2)
+        assert slows() == [("slow", "e", pytest.approx(6.0 - 1.67 * 0.5), 0.0)]
+        assert ws["n_changer_eased"] == 2 and ws["n_cooperations"] == 1
+        veh.calls.clear()
+        # and at 10 m/s 30 m behind it (t_a = 6 s): 2·(−21.5 + 60)/6² = 2.1 > b
+        veh.speeds["e"] = 10.0
+        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 40.0, 10.0), "q": _res("b", 0, 75.0, 0.0)}, 3)
+        assert slows() == [("slow", "e", pytest.approx(10.0 - 1.67 * 0.5), 0.0)]
+        assert ws["n_changer_eased"] == 2 and ws["n_cooperations"] == 2
         assert not [c for c in veh.calls if c[0] == "vmax"] and veh.max_speeds["e"] == 31.0
 
     def test_entering_vehicle_with_accepted_gaps_changes_at_once(self):
@@ -1503,6 +1547,40 @@ class TestWeaveForceGapGuard:
         assert _weave_force_gap_ok(s0, tau, 0.0, 2.6, 0.0, 2.6, 0.0)
         # boundary: exactly the closing distance is refused
         assert not _weave_force_gap_ok(s0, tau, 20.0, s0 + tau * 5.0, 15.0, math.inf, math.nan)
+
+
+class TestWeaveEasingFeasibility:
+    """``_weave_easing_ok`` (fourth derivation, 2026-09-24 block 3): a changer
+    is eased towards its gap's leader only while dropping in behind it by the
+    section end needs no more than its comfortable deceleration."""
+
+    def test_constant_deceleration_kinematics(self):
+        from microsim.runner import _weave_easing_ok
+
+        b = 1.67
+        # abreast of L at equal speed, 300 m of section left at 10 m/s
+        # (t_a = 30 s): a drop of 8 + 5 m needs 2·13/900 = 0.03 m/s²
+        assert _weave_easing_ok(10.0, 10.0, -5.0, 8.0, 300.0, b)
+        # the same drop in the last 20 m (t_a = 2 s): 2·13/4 = 6.5 m/s² > b
+        assert not _weave_easing_ok(10.0, 10.0, -5.0, 8.0, 20.0, b)
+        # just inside b (0.99 b) is allowed, just outside (1.01 b) is not:
+        # a_req = 2 d / t_a² with Δv = 0, t_a = 4 s
+        t_a = 4.0
+        assert _weave_easing_ok(10.0, 10.0, 8.0 - 0.99 * b * t_a * t_a / 2.0, 8.0, 40.0, b)
+        assert not _weave_easing_ok(10.0, 10.0, 8.0 - 1.01 * b * t_a * t_a / 2.0, 8.0, 40.0, b)
+        # a faster leader opens the gap by itself: 13 − 5·4 < 0, a_req < 0
+        assert _weave_easing_ok(10.0, 15.0, -5.0, 8.0, 40.0, b)
+        # a slower leader adds the closing distance: 2·(13 + 5·2)/4 = 11.5
+        assert not _weave_easing_ok(10.0, 5.0, -5.0, 8.0, 20.0, b)
+        # already clear by more than needed: nothing to drop, always feasible
+        assert _weave_easing_ok(10.0, 10.0, 20.0, 8.0, 1.0, b)
+
+    def test_stopped_changer_uses_the_creep_floor(self):
+        from microsim.runner import SCRIPTED_MERGE_CREEP_MS, _weave_easing_ok
+
+        # v_c = 0: t_a = remaining / creep, not a division by zero
+        assert _weave_easing_ok(0.0, 0.0, -2.0, 2.0, 30.0 * SCRIPTED_MERGE_CREEP_MS, 1.67)
+        assert not _weave_easing_ok(0.0, 0.0, -2.0, 2.0, 0.0, 1.67)
 
 
 class TestMeterStopPlacementReview:

@@ -571,6 +571,31 @@ first 100 m by the easing rule at the anticipation-zone entry). Golden
 `merge_weave` regenerated (throughput 1,658 → 1,662 veh/h, mean travel time
 70.1 → 69.5 s, σ_v spatial 4.57 → 4.34 m/s, changes in/out/forced
 20/13/2 → 18/17/1, hash unchanged).
+Fourth derivation (2026-09-24, block 3, the entrant side): one bound
+**added** to the second derivation's easing, nothing else changed —
+`microsim.runner._weave_easing_ok`. A changer is eased towards its gap's
+leader L only while dropping in behind L by the section end needs no more
+than its comfortable deceleration: with `t_a = remaining / max(v_c, creep)`
+(for an entrant on the ramp, the ramp to the gore plus the section), the
+drop `d = (s0 + accept · v_c) − s_l` (its accepted gap behind L's rear) and
+L holding its speed, `a_req = 2·(d + (v_c − v_l)·t_a)/t_a²` must be `≤ b`;
+otherwise the changer keeps its own car-following speed and the change
+waits for its follower's cooperation or the forced mode. `_weave_cooperate`
+takes the movement's accepted time gap and the remaining section length for
+it. The rule binds rarely and its effect on `weave_th52.osm` is within seed
+noise (seed 3: entrance 317 → 325, every minute above 5 m/s; seed 4: 311 →
+307, two minutes below 5; seed 5: unchanged to the counter). The two
+entrant-side rules the derivation set out with were measured at seeds 3–5
+and **rejected** (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the
+table): no easing of an entrant upstream of the gore moves the entrant's
+positioning brake to lane 0's first metres and settles lanes 0 and 1 at
+3–5 m/s in every minute (entrance 277); no cooperation from a ramp vehicle
+for an exit-bound changer locks the section at seed 4 (0.0 m/s from minute
+13, entrance 204). Easing only when the drop is needed within the horizon
+reaches 400 of 466 at seeds 3 and 5 and locks at seed 4; it is the lead for
+a fifth derivation, not shipped. The strict `xfail` stays (entrance 325 of
+466 against 419). Golden `merge_weave` unchanged (the bound never binds on
+`weave.osm`); determinism preserved.
 
 ## 3. Run outputs
 
