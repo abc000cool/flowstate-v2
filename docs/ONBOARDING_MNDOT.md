@@ -687,3 +687,24 @@ target cannot be met by headway alone. The corridor scenario's `model` is
 therefore a calibration decision to be made deliberately (EIDM was the
 onboarding default, not a fit), and the next corridor round should state
 which model it runs and derive its population under that model.
+
+## 11. Inputs regenerated (2026-09-24, block 3)
+
+With the S792 lane loop 3240 excluded (§7 item 2) the observations, the
+station table, the demand and the scenario were rebuilt from the committed
+extract with the onboarding defaults of the night before (ramp guessing on,
+split fixes on, collector–distributor pairs):
+`scripts/mndot_fetch.py … --exclude-detectors 3240 --exclude-reason "…"`,
+`scripts/onboard_corridor.py … --osm-file data/osm/mndot_i94_wb_stpaul.osm`,
+`scripts/corridor_demand.py …` (the §3 commands otherwise unchanged). The
+scenario now has 17 ramps (the White Bear Ave collector–distributor split
+and re-entry as a pair: out 374 veh/h, back 442 veh/h by conservation), the
+two split fixes applied by the audit, and the carried residuals
+S1066→S1067 −1, S1947→S1069 +9, S1069→S1070 −317, S1070→S1948 −262,
+S1948→S792 +1, **S792→S791 +366** veh/h (was +775; what remains there is
+still a detector question — the downtown entrance's passage loop reads
+552 veh/h against the 524 the balance now assigns). The weave variant and
+the 35-minute slice were rebuilt on the new base with the same merge
+settings and the same slice offset. Rounds 1–2 and the 2026-09-24 weave
+round keep their own config hashes in their records; every later run uses
+these inputs.
