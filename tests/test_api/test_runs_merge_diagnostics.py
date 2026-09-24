@@ -53,6 +53,7 @@ WEAVE_SECTION: dict[str, Any] = {
     "n_vacated": 228,
     "n_vacate_refused": 28,
     "n_pair_releases": 9,
+    "n_missed_exit": 1,
     "n_exited": 143,
     "n_reached_section_exiting": 145,
     "n_departed_exiting": 147,
@@ -139,6 +140,7 @@ def test_meter_and_weave_counters_are_read_from_the_first_replicate(client: Test
         "n_vacated",
         "n_vacate_refused",
         "n_pair_releases",
+        "n_missed_exit",
         "wait_s_mean",
         "wait_in_s_mean",
         "wait_out_s_mean",
@@ -151,8 +153,8 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
     """A meta from before the follower-cooperation rule (2026-09-24, block 3)
     has no ``n_cooperations``, ``mean_follower_decel_ms2`` or
     ``n_changer_eased``, nor the later ``n_vacated`` / ``n_vacate_refused``
-    (third derivation) and ``n_pair_releases`` (fifth): the six read as null,
-    the rest as written."""
+    (third derivation), ``n_pair_releases`` (fifth) and ``n_missed_exit``
+    (exit side): the seven read as null, the rest as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     new_keys = (
@@ -162,6 +164,7 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
         "n_vacated",
         "n_vacate_refused",
         "n_pair_releases",
+        "n_missed_exit",
     )
     old_weave = {k: v for k, v in WEAVE_SECTION.items() if k not in new_keys}
     _amend_meta(_first_meta_path(client, run["run_id"]), weave_sections=[old_weave])
@@ -178,11 +181,11 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
 def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: TestClient) -> None:
     """A meta from between the second and the third weave derivation carries
     the cooperation counters but none of ``n_vacated``, ``n_vacate_refused``,
-    ``n_pair_releases``: those three read as null, the cooperation counters
-    as written."""
+    ``n_pair_releases``, ``n_missed_exit``: those four read as null, the
+    cooperation counters as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
-    later = ("n_vacated", "n_vacate_refused", "n_pair_releases")
+    later = ("n_vacated", "n_vacate_refused", "n_pair_releases", "n_missed_exit")
     mid_weave = {k: v for k, v in WEAVE_SECTION.items() if k not in later}
     _amend_meta(_first_meta_path(client, run["run_id"]), weave_sections=[mid_weave])
 

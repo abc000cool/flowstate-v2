@@ -131,6 +131,7 @@ WEAVE_FIELDS = (
     "n_vacated",
     "n_vacate_refused",
     "n_pair_releases",
+    "n_missed_exit",
 )
 
 
@@ -254,7 +255,8 @@ def print_diagnostics(summary: dict[str, Any]) -> None:
                 f"changer easings {_fmt_ci(w['n_changer_eased'])}, "
                 f"through vacated {_fmt_ci(w['n_vacated'])}, "
                 f"vacate refused {_fmt_ci(w['n_vacate_refused'])}, "
-                f"pair releases {_fmt_ci(w['n_pair_releases'])}"
+                f"pair releases {_fmt_ci(w['n_pair_releases'])}, "
+                f"exits given up {_fmt_ci(w['n_missed_exit'])}"
             )
 
 

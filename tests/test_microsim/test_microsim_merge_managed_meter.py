@@ -859,6 +859,7 @@ class TestWeaveSchema:
             "exit_accept_gap_s": 0.6,
             "vacate_ahead_m": 150.0,
             "pair_release_s": 2.0,
+            "exit_giveup_m": 5.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -873,11 +874,30 @@ class TestWeaveSchema:
         assert config_hash(ScenarioConfig.model_validate(explicit)) == config_hash(plain)
 
 
-def _th52_config(seed: int) -> ScenarioConfig:
+#: The corridor's T.H.52 flows at the peak of the 35-min slice
+#: (``scenarios/mndot_i94_wb_stpaul_weave_slice.yaml``, the 600-900 s step;
+#: 2026-09-24, block 3, exit-side derivation): the mainline arriving at the
+#: section edge 51388891 is the scenario's upstream ``inflow`` (1.0956 veh/s =
+#: 3,944 veh/h at 600 s) propagated through the fourteen upstream ramps'
+#: ``exit_fraction`` and ``inflow`` series in corridor order, 1.3663 veh/s =
+#: 4,919 veh/h; off-ramp 18207598's ``exit_fraction`` at 600 s is 0.2122
+#: (1,044 veh/h exiting); on-ramp 769818012's ``inflow`` is 0.3922 veh/s =
+#: 1,412 veh/h. The section edge has four lanes (three through + the
+#: auxiliary) over 305 m, as the fixture.
+TH52_CORRIDOR_DEMAND = {"mainline_vph": 4919.0, "exit_fraction": 0.2122, "entrance_vph": 1412.0}
+
+
+def _th52_config(
+    seed: int,
+    mainline_vph: float = 4500.0,
+    exit_fraction: float = 0.25,
+    entrance_vph: float = 1400.0,
+) -> ScenarioConfig:
     """The T.H.52 weave at capacity on ``tests/fixtures/weave_th52.osm``
     (``TestWeaveRun.test_th52_weave_at_capacity_flows``): mainline 4,500 veh/h
     with 25 % exiting, entrance 1,400 veh/h, 20 simulated minutes, step 0.5 s,
-    the fleet defaults."""
+    the fleet defaults; :data:`TH52_CORRIDOR_DEMAND` for the corridor's flows
+    (``test_th52_weave_at_corridor_demand_exit_side``)."""
     return ScenarioConfig.model_validate(
         {
             "name": "weave_th52",
@@ -885,14 +905,14 @@ def _th52_config(seed: int) -> ScenarioConfig:
                 "kind": "osm",
                 "osm_file": str(Path(__file__).parents[1] / "fixtures" / "weave_th52.osm"),
                 "corridor_edges": ["100", "101", "102", "103", "104"],
-                "inflow": [[0.0, 4500.0 / 3600.0]],
+                "inflow": [[0.0, mainline_vph / 3600.0]],
                 "ramps": [
                     {
                         "kind": "on",
                         "name": "th52",
                         "edges": ["200"],
                         "attach_edge": "102",
-                        "inflow": [[0.0, 1400.0 / 3600.0]],
+                        "inflow": [[0.0, entrance_vph / 3600.0]],
                         "merge": "weave",
                         "weave": {"exit_ramp": "cd exit"},
                     },
@@ -901,7 +921,7 @@ def _th52_config(seed: int) -> ScenarioConfig:
                         "name": "cd exit",
                         "edges": ["201"],
                         "attach_edge": "102",
-                        "exit_fraction": [[0.0, 0.25]],
+                        "exit_fraction": [[0.0, exit_fraction]],
                     },
                 ],
             },
@@ -911,11 +931,14 @@ def _th52_config(seed: int) -> ScenarioConfig:
     )
 
 
-def _th52_lane1_windows(paths, meta: dict) -> tuple[pd.Series, dict]:
-    """Mean speed of section lane 1 over its first 60 m per 60-s window after
-    a 120-s warm-up, and the state dict the assertions report."""
+def _th52_lane1_windows(paths, meta: dict, last_60m: bool = False) -> tuple[pd.Series, dict]:
+    """Mean speed of section lane 1 over its first (``last_60m``: last) 60 m
+    per 60-s window after a 120-s warm-up, and the state dict the assertions
+    report."""
     net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
     x0 = sum(net.getEdge(e).getLength() for e in ("100", "101"))
+    if last_60m:
+        x0 += net.getEdge("102").getLength() - 60.0
     df = pd.read_parquet(paths.trajectories)
     start = df[
         (df.x >= x0) & (df.x < x0 + 60.0) & (df.t >= 120.0) & (df.t < 1200.0) & (df.lane == 1)
@@ -1039,11 +1062,11 @@ class TestWeaveRun:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, sixth "
-        "derivation): nothing locks at seeds 3-5, the entrance departs 411 / 412 / 420 of 466 "
-        "against 419 required, and lane 1 at the section start reads 4.4-5.0 m/s in three "
-        "minutes at seed 3 (the ramp still queues at 5-6 m/s over its first 100 m, 2.95-s "
-        "headways)",
+        reason="T.H.52 weave at capacity (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
+        "exit-side derivation): nothing locks at seeds 3-5, the entrance departs 419 / 414 / "
+        "419 of 466 against 420 required (90 % of 466 is 419.4), and lane 1 at the section "
+        "start reads 5.0 m/s in two minutes at seed 3 (the ramp still queues at 5-6 m/s over "
+        "its first 100 m)",
     )
     def test_th52_weave_at_capacity_flows(self, tmp_path):
         """Mirror of the T.H.52 weaving section on I-94 WB St. Paul
@@ -1161,6 +1184,23 @@ class TestWeaveRun:
         seed 7 it meets the whole criterion, which is seed noise, not a
         pass). The marker stays with the sixth derivation's numbers
         (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the table).
+
+        Exit-side derivation (2026-09-24, block 3: an exit-bound vehicle
+        whose forced change is due has priority over the auxiliary lane —
+        the vehicles behind its rear hold one changer minGap farther back,
+        a vehicle beside it is waited for — and one halted within
+        ``exit_giveup_m`` of the gore's end continues through, counted in
+        ``n_missed_exit``; derived from the corridor's exit-side standstill,
+        ``test_th52_weave_at_corridor_demand_exit_side``): lane 1's first
+        60 m read 8.8, 6.8, 5.0, 7.3, 9.1, 5.1, 5.0, 6.9, 7.7, 9.7, 7.5,
+        7.4, 8.6, 8.3, 6.4, 7.4, 9.7, 11.1 m/s in minutes 2-19 (two at
+        5.0); the entrance departs 419 of 466 (89.9 %; 0.9 x 466 = 419.4);
+        488 driven (253 in, 231 out, 26 forced, 4 unfinished, no exit given
+        up); 311 of 322 exit-bound vehicles that reach the section exit;
+        1,566 of 1,966 depart; 2 pairs released; no collision. Seeds 4 / 5:
+        entrance 414 / 419, one minute at 5.0 / 4.3 m/s, 5 of 509 / 2 of
+        483 unfinished, 2 / 14 releases. The marker stays: 419 against
+        419.4 and the two minutes at 5.0 m/s at this seed.
         """
         paths = run_micro(_th52_config(3), 3, tmp_path / "th52")
         meta = json.loads(paths.meta.read_text())
@@ -1211,7 +1251,11 @@ class TestWeaveRun:
         minute at 4.3 m/s, entrance 420); no collision at either. Seventh
         derivation (the symmetric abreast-pair resolution, rejected): its
         forms read 368-392 / 353-409 here and lock seeds 7 or 8, where this
-        rule departs 424 / 407 and locks neither."""
+        rule departs 424 / 407 and locks neither. Exit-side derivation
+        (2026-09-24, block 3): seed 4 never below 5.0 m/s, 5 of 509
+        unfinished, entrance 414, 2 releases; seed 5 one minute at 4.3 m/s,
+        2 of 483 unfinished, entrance 419, 14 releases; no collision and no
+        exit given up at either."""
         paths = run_micro(_th52_config(seed), seed, tmp_path / f"th52_{seed}")
         meta = json.loads(paths.meta.read_text())
         (ws,) = meta["weave_sections"]
@@ -1222,6 +1266,67 @@ class TestWeaveRun:
         assert ws["n_missed"] == 0 and ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
         assert on_meta["n_departed"] >= 0.8 * on_meta["n_planned"], state
         assert ws["n_pair_releases"] >= min_releases, state
+
+    def test_th52_weave_at_corridor_demand_exit_side(self, tmp_path):
+        """The T.H.52 fixture under the corridor's own flows, judged on the
+        exit side (2026-09-24, block 3, exit-side derivation).
+
+        On the I-94 WB slice (cloud VM, sixth-derivation runner, one seed,
+        session record) the first standstill forms at minute 11 at the END
+        of the T.H.52 section — x = 10.60-10.70 km, lanes 0 and 1, the exit
+        18207598 at 10.73 km — with the section's counters entered 114,
+        exited 88 of 133 reached, forced 1, forced deferred 8,971
+        vehicle-steps, unfinished 21, vacated 131 / refused 24, pair
+        releases 88: the EXIT movement stalls at the gore's end while the
+        fixture work optimised the entrance. Demand is
+        :data:`TH52_CORRIDOR_DEMAND` (mainline 4,919 veh/h arriving, 21.2 %
+        exiting, entrance 1,412 veh/h; the scenario's series at its 600-900 s
+        step), 20 simulated minutes at seed 3. The criterion is the exit
+        side: at least 90 % of the exit-bound vehicles that reach the
+        section exit (``n_exited / n_reached_section_exiting``), mean speed
+        in lane 1 over the section's LAST 60 m above 5 m/s in every 60-s
+        window after a 120-s warm-up, at most 10 % of the driven vehicles
+        still under control at the end, no collision.
+
+        At 3f47446 (the sixth derivation's runner) it fails on lane 1: the
+        last 60 m read 15.0, 16.3, 4.0, 3.7, 11.5 m/s in minutes 2-6 and
+        11-19 m/s after — a standstill at the gore's end in minutes 4-5 (96
+        trajectory samples of lane 1 stopped within the last 20 m in minute
+        4, lane 0 beside it) that resolves after 4 pair releases — while
+        303 of 307 exit-bound vehicles that reach the section exit, 1 of 436
+        driven is unfinished, 125 forced changes are deferred and nothing
+        collides; seeds 4 and 5 never stall. The per-step trace (exiter
+        v00251, docs/WEAVE_MODEL_PLAN.md, dated paragraph): at the lane end
+        its front is ahead of every auxiliary-lane front, so the abreast
+        rule of ``_weave_choose_gap`` discards every gap and nobody is
+        held; lane 0 streams past at 5-11 m/s, each vehicle overlapping it
+        in turn (the guard refuses on the leader or the follower side, 67
+        steps); a follower finally chosen is held by IDM at its own minGap
+        behind the exiter's rear, which the guard's ``s0`` floor never
+        passes, and the pair release lets it go past. With the exit-side
+        rules (an exit-bound vehicle whose forced change is due has
+        priority — the gap behind the vehicle beside it is its, its
+        follower holds one changer minGap farther back — and one halted
+        within ``exit_giveup_m`` of the gore's end continues through,
+        counted in ``n_missed_exit``) the last 60 m read 15.0, 16.3, 10.3,
+        9.6, 15.2 m/s in minutes 2-6 and 14.4-19.1 after, no trajectory
+        sample stops within the last 20 m, 300 of 310 exit-bound vehicles
+        that reach the section exit, 2 of 422 driven are unfinished, no exit
+        is given up, 37 forced changes are deferred, no pair is released,
+        the entrance departs 419 of 470; seeds 4 / 5: 307 of 315 / 317 of
+        325 exit, 1 / 4 unfinished, the last 60 m never below 12.3 m/s.
+        """
+        cfg = _th52_config(3, **TH52_CORRIDOR_DEMAND)
+        paths = run_micro(cfg, 3, tmp_path / "th52_corridor")
+        meta = json.loads(paths.meta.read_text())
+        (ws,) = meta["weave_sections"]
+        windows, state = _th52_lane1_windows(paths, meta, last_60m=True)
+        state["exit_share"] = (ws["n_exited"], ws["n_reached_section_exiting"])
+        assert meta["n_collisions"] == 0, meta["collisions"]
+        assert ws["n_reached_section_exiting"] > 0, state
+        assert ws["n_exited"] >= 0.9 * ws["n_reached_section_exiting"], state
+        assert len(windows) == 18 and (windows > 5.0).all(), state
+        assert ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
 
     def test_two_sections_are_stepped_and_listed_upstream_first(self, tmp_path):
         """``tests/fixtures/weave_two.osm`` (two T.H.52-shaped sections, 560 m
@@ -1388,6 +1493,9 @@ class _WeaveVehicle:
     def changeLane(self, vid, lane, dur):
         self.calls.append(("change", vid, lane, dur))
 
+    def changeTarget(self, vid, edge):
+        self.calls.append(("target", vid, edge))
+
 
 class _WeaveLane:
     def getMaxSpeed(self, lane_id):
@@ -1442,6 +1550,10 @@ def _weave_state(**params) -> dict:
         "n_changed_out": 0,
         "n_forced": 0,
         "n_missed": 0,
+        # exit-side derivation: exits given up at the gore's end
+        "n_missed_exit": 0,
+        "gave_up": set(),
+        "through_target": "z",
         "n_forced_deferred": 0,
         "n_cooperations": 0,
         "coop_decel_sum": 0.0,
@@ -1804,7 +1916,8 @@ class TestWeaveExitBookkeeping:
 
         ws = _weave_state()
         mod = _WeaveMod(_WeaveVehicle({"e": 20.0}))
-        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 95.0, 20.0)}, 0.0)
+        # 10 m of section ahead: beyond exit_giveup_m, so still driven
+        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 90.0, 20.0)}, 0.0)
         assert ws["n_entered"] == 1
         _weave_step(mod, _tc, ws, {"e": _res("x2", 0, 3.0, 20.0)}, 0.5)
         assert ws["n_changed_out"] == 1 and ws["n_missed"] == 0 and ws["veh"] == {}
@@ -1933,16 +2046,18 @@ class TestWeavePairRelease:
 
     @staticmethod
     def _stopped_pair(**params):
-        """Exiter ``e`` at 0.5 m before the section end in lane 1, stopped; the
-        follower ``f`` of its lane-0 gap 1.5 m behind its rear, stopped — an
-        exit-bound vehicle already in lane 0 (the fixture's lock pair), so it
-        is not itself driven."""
+        """Exiter ``e`` at 6 m before the section end in lane 1, stopped (one
+        metre beyond ``exit_giveup_m``, so it is not given up — 2026-09-24,
+        exit-side derivation; it stood 0.5 m before the end when the rule
+        was derived); the follower ``f`` of its lane-0 gap 1.5 m behind its
+        rear, stopped — an exit-bound vehicle already in lane 0 (the
+        fixture's lock pair), so it is not itself driven."""
         from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS
 
         ws = _weave_state(**params)
         ws["exiting_ids"] = frozenset({"e", "f"})
         veh = _WeaveVehicle({"e": 0.0, "f": 0.0}, {("e", NEIGHBOR_RIGHT_FOLLOWERS): (("f", 1.5),)})
-        res = {"e": _res("b", 1, 99.5, 0.0), "f": _res("b", 0, 93.0, 0.0)}
+        res = {"e": _res("b", 1, 94.0, 0.0), "f": _res("b", 0, 87.5, 0.0)}
         return ws, veh, _WeaveMod(veh), res
 
     def test_follower_released_after_pair_release_s_and_the_changer_forces_at_once(self):
@@ -1978,7 +2093,7 @@ class TestWeavePairRelease:
         res["f"] = _res("b", 0, 60.0, 0.0)  # f has dropped back out of reach
         _weave_step(mod, _tc, ws, res, 4.0)
         assert ws["pair_since"] == {} and ws["pair_released"] == set()
-        res["f"] = _res("b", 0, 93.0, 0.0)
+        res["f"] = _res("b", 0, 87.5, 0.0)
         for t in (4.5, 5.0, 5.5, 6.0, 6.5, 7.0):
             _weave_step(mod, _tc, ws, res, t)
         assert ws["n_pair_releases"] == 2
@@ -2001,13 +2116,13 @@ class TestWeavePairRelease:
         ws, veh, mod, res = self._stopped_pair()
         # the follower at the creep speed: not standing
         veh.speeds["f"] = SCRIPTED_MERGE_CREEP_MS
-        res["f"] = _res("b", 0, 93.0, SCRIPTED_MERGE_CREEP_MS)
+        res["f"] = _res("b", 0, 87.5, SCRIPTED_MERGE_CREEP_MS)
         for t in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5):
             _weave_step(mod, _tc, ws, res, t)
         assert ws["pair_since"] == {} and ws["n_pair_releases"] == 0
         # stopped, but more than a vehicle length behind: not a pair
         veh.speeds["f"] = 0.0
-        res["f"] = _res("b", 0, 89.0, 0.0)  # gap 5.5 m > 5 m
+        res["f"] = _res("b", 0, 83.5, 0.0)  # gap 5.5 m > 5 m
         for t in (4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0):
             _weave_step(mod, _tc, ws, res, t)
         assert ws["pair_since"] == {} and ws["n_pair_releases"] == 0
@@ -2028,7 +2143,7 @@ class TestWeavePairRelease:
             },
         )
         mod = _WeaveMod(veh)
-        res = {"e": _res("b", 1, 99.5, 0.0), "n": _res("b", 0, 93.0, 0.0)}
+        res = {"e": _res("b", 1, 94.0, 0.0), "n": _res("b", 0, 87.5, 0.0)}
         for t in (0.0, 0.5, 1.0, 1.5, 2.0, 2.5):
             veh.calls.clear()
             _weave_step(mod, _tc, ws, res, t)
@@ -2045,6 +2160,185 @@ class TestWeavePairRelease:
         assert not [c for c in veh.calls if c[0] == "slow"]
         assert ws["n_cooperations"] == 6 and ws["n_changer_eased"] == 0
         assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+
+
+class TestWeaveExitPriority:
+    """The exit side (2026-09-24, block 3, exit-side derivation): an exit-bound
+    changer whose forced change is due (``force_after_s`` after entering the
+    last ``force_within_m``) has priority over the auxiliary lane — the
+    vehicles behind its rear hold, a vehicle beside it is waited for — and
+    one that reaches the gore's end still in lane 1 continues through,
+    counted, never held there."""
+
+    @staticmethod
+    def _at_the_gore(**params):
+        """Exiter ``e`` in lane 1 at 8 m before the section end, at 1 m/s;
+        ``b`` beside it in lane 0 (front 2 m behind e's front, ahead of e's
+        rear), ``f`` 12 m behind e's rear in lane 0, both at 1 m/s; neither
+        is driven (exit-bound vehicles already in lane 0). The forced change
+        is due at once (``force_after_s`` = 0) unless ``params`` say
+        otherwise."""
+        from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS, NEIGHBOR_RIGHT_LEADERS
+
+        ws = _weave_state(**{"force_after_s": 0.0, **params})
+        ws["exiting_ids"] = frozenset({"e", "b", "f"})
+        veh = _WeaveVehicle(
+            {"e": 1.0, "b": 1.0, "f": 1.0},
+            {
+                ("e", NEIGHBOR_RIGHT_LEADERS): (("b", -3.0),),
+                ("e", NEIGHBOR_RIGHT_FOLLOWERS): (("f", 12.0),),
+            },
+        )
+        res = {
+            "e": _res("b", 1, 92.0, 1.0),
+            "b": _res("b", 0, 90.0, 1.0),
+            "f": _res("b", 0, 75.0, 1.0),
+        }
+        return ws, veh, _WeaveMod(veh), res
+
+    def test_the_gap_behind_the_vehicle_beside_the_exiter_is_held(self):
+        """Without priority the abreast rule discards every gap whose leader's
+        front is behind the changer's (at the gore's end, all of them) and
+        nobody is held; with it the gap behind ``b`` is the exiter's and its
+        follower ``f`` is driven to hold one changer minGap farther back
+        than IDM towards the rear itself would."""
+        from microsim.runner import _idm_accel, _weave_step
+
+        ws, veh, mod, res = self._at_the_gore()
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] == 0.0 and ws["veh"]["e"]["target"] == "f"
+        (slow,) = [c for c in veh.calls if c[0] == "slow"]
+        # f's gap to e's rear is 87 - 75 = 12 m; the hold is IDM towards a
+        # virtual leader at 12 - s0 = 9.5 m, at equal speeds
+        a_hold = _idm_accel(1.0, 30.0, 12.0 - 2.5, 0.0, 1.4, 0.73, 1.67, 2.5)
+        assert slow == ("slow", "f", pytest.approx(1.0 + max(a_hold, -1.67) * 0.5), 0.0)
+        assert a_hold < _idm_accel(1.0, 30.0, 12.0, 0.0, 1.4, 0.73, 1.67, 2.5)
+        assert ws["n_cooperations"] == 1 and ws["n_changer_eased"] == 0
+        # e is not eased towards b (it is the front one) and cannot change
+        # yet: b overlaps it on the leader side
+        assert not [c for c in veh.calls if c[0] == "change"]
+        assert ws["n_forced_deferred"] == 1  # due, refused by the overlap on the leader side
+
+    def test_the_hold_is_kept_while_the_follower_closes(self):
+        """The commitment survives the follower's IDM falling below ``-b`` (it
+        brakes at its ``b`` either way) and ends only when it is no longer
+        behind the exiter's rear."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._at_the_gore()
+        _weave_step(mod, _tc, ws, res, 0.0)
+        # f now 4 m behind e's rear at 6 m/s: IDM says far below -b, the
+        # gap is still f's to hold
+        veh.speeds["f"] = 6.0
+        res["f"] = _res("b", 0, 83.0, 6.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert ws["veh"]["e"]["target"] == "f"
+        assert [c for c in veh.calls if c[0] == "slow"] == [("slow", "f", 6.0 - 1.67 * 0.5, 0.0)]
+        # f has passed e's rear: no longer a follower candidate
+        res["f"] = _res("b", 0, 88.0, 6.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 1.0)
+        assert ws["veh"]["e"]["target"] is None
+        assert not [c for c in veh.calls if c[0] == "slow"]
+
+    def test_before_the_forced_change_is_due_the_abreast_rule_is_unchanged(self):
+        """The same geometry with ``force_after_s`` = 4 s: until the forced
+        change is due the gap behind ``b`` is discarded as before and nobody
+        is held; from the step it is due, ``f`` holds."""
+        from microsim.runner import _idm_accel, _weave_step
+
+        ws, veh, mod, res = self._at_the_gore(force_after_s=4.0)
+        for t in (0.0, 0.5, 3.5):
+            _weave_step(mod, _tc, ws, res, t)
+            assert ws["veh"]["e"]["zone_s"] == 0.0 and ws["veh"]["e"]["target"] is None, t
+            assert not [c for c in veh.calls if c[0] == "slow"], t
+        _weave_step(mod, _tc, ws, res, 4.0)
+        assert ws["veh"]["e"]["target"] == "f"
+        a_hold = _idm_accel(1.0, 30.0, 12.0 - 2.5, 0.0, 1.4, 0.73, 1.67, 2.5)
+        assert [c for c in veh.calls if c[0] == "slow"] == [
+            ("slow", "f", pytest.approx(1.0 + a_hold * 0.5), 0.0)
+        ]
+
+    def test_outside_the_zone_the_abreast_rule_is_unchanged(self):
+        """The same geometry 90 m before the section end (outside
+        ``force_within_m`` = 80): the gap behind ``b`` is discarded as before
+        and nobody is held."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._at_the_gore()
+        res = {
+            "e": _res("a", 1, 10.0, 1.0),
+            "b": _res("a", 0, 8.0, 1.0),
+            "f": _res("a", 0, -7.0, 1.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] is None and ws["veh"]["e"]["target"] is None
+        assert not [c for c in veh.calls if c[0] == "slow"]
+
+    def test_the_exiter_changes_once_the_vehicle_beside_it_has_cleared(self):
+        from microsim.runner import LC_MODE_SCRIPTED_FORCE, NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws, veh, mod, res = self._at_the_gore()
+        # b now 3 m ahead of e's front, f held 5 m behind e's rear at rest:
+        # both gaps clear s0 = 2.5 m at v = 0, so the change is accepted and
+        # executed under mode 256 for one step (the forced mode was due too)
+        veh.neighbors[("e", NEIGHBOR_RIGHT_LEADERS)] = (("b", 3.0),)
+        veh.neighbors[("e", 1)] = (("f", 5.0),)
+        veh.speeds.update({"e": 0.0, "b": 2.0, "f": 0.0})
+        res = {
+            "e": _res("b", 1, 92.0, 0.0),
+            "b": _res("b", 0, 100.0, 2.0),
+            "f": _res("b", 0, 82.0, 0.0),
+        }
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_FORCE and ws["veh"]["e"]["forced"] is False
+
+    def test_an_exiter_halted_at_the_gore_end_continues_through_and_is_counted(self):
+        """Halted within ``exit_giveup_m`` of the section end still in lane 1:
+        the exit is given up — rerouted to the corridor's last edge, the lane
+        change mode restored, handed back at once, ``n_missed`` and
+        ``n_missed_exit`` both counted — and the vehicle is not driven on
+        the following steps even though it is still exit-bound on paper. One
+        still rolling there is left to try (the moderate fixture's v00010
+        forced in during the last 3 m at 2-3 m/s)."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._at_the_gore()
+        veh.lc_modes["e"] = 1621
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "e" in ws["veh"] and ws["n_missed_exit"] == 0
+        veh.speeds["e"] = 2.0
+        res["e"] = _res("b", 1, 96.0, 2.0)  # 4 m ahead but still rolling: kept
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert "e" in ws["veh"] and ws["n_missed_exit"] == 0
+        veh.speeds["e"] = 0.0
+        res["e"] = _res("b", 1, 97.0, 0.0)  # halted: given up
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 1.0)
+        assert ("target", "e", "z") in veh.calls
+        assert veh.lc_modes["e"] == 1621 and "e" not in ws["veh"]
+        assert ws["n_missed"] == 1 and ws["n_missed_exit"] == 1
+        assert ws["n_entered"] == ws["n_changed_in"] + ws["n_changed_out"] + ws["n_missed"]
+        assert ws["gave_up"] == {"e"} and "e" not in ws["awaiting_exit"]
+        assert not [c for c in veh.calls if c[0] == "change"]
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 1.5)
+        assert "e" not in ws["veh"] and ws["n_entered"] == 1
+        assert not [c for c in veh.calls if c[0] in ("target", "change", "slow", "lc")]
+
+    def test_exit_giveup_m_zero_gives_up_only_at_the_lane_end(self):
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._at_the_gore(exit_giveup_m=0.0)
+        veh.speeds["e"] = 0.0
+        res["e"] = _res("b", 1, 99.0, 0.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "e" in ws["veh"] and ws["n_missed_exit"] == 0
+        res["e"] = _res("b", 1, 100.0, 0.0)
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert ws["n_missed_exit"] == 1 and ("target", "e", "z") in veh.calls
 
 
 class TestMeterStopPlacementReview:
@@ -2567,6 +2861,7 @@ class TestWeaveReviewDerivations3To6:
             "n_changed_out": 0,
             "n_forced": 0,
             "n_missed": 0,
+            "n_missed_exit": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

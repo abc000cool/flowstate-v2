@@ -725,6 +725,83 @@ the sixth derivation had recorded for its softenings. No `weave_params` key,
 no `meta.json` counter and no API or sweep field was added (a counter no run
 writes would be a claim). Golden `merge_weave` unchanged
 (docs/WEAVE_MODEL_PLAN.md, dated paragraph, has the table).
+Exit-side derivation (2026-09-24, block 3, the T.H.52 gore's end): two rules
+**added** in `microsim.runner._weave_step` / `_weave_choose_gap`, derived from
+the corridor rather than the fixture. On the I-94 WB 35-min slice (cloud VM,
+one seed, sixth-derivation runner, session record) the first standstill forms
+at minute 11 at the **end** of the T.H.52 section (x = 10.60–10.70 km, lanes
+0 and 1; the exit 18207598 at 10.73 km) with the section's counters entered
+114, exited 88 of 133 reached, forced 1, forced deferred 8,971 vehicle-steps,
+unfinished 21, pair releases 88 — the exit movement stalls where the fixture
+work had optimised the entrance. The corridor's flows at that weave
+(`scenarios/mndot_i94_wb_stpaul_weave_slice.yaml`, the 600–900 s step: the
+upstream `inflow` 3,944 veh/h propagated through the fourteen upstream ramps'
+`exit_fraction` / `inflow` series in corridor order) are 4,919 veh/h arriving,
+21.2 % exiting (1,044 veh/h), 1,412 veh/h entering, on a 305 m four-lane
+section (three through + the auxiliary);
+`tests/test_microsim/test_microsim_merge_managed_meter.py::TH52_CORRIDOR_DEMAND`
+carries them and `TestWeaveRun::test_th52_weave_at_corridor_demand_exit_side`
+(seed 3, 20 min) judges the exit side: ≥ 90 % of the exit-bound vehicles that
+reach the section exit (`n_exited / n_reached_section_exiting`), lane 1 over
+the section's **last** 60 m above 5 m/s in every 60-s window after 120 s,
+≤ 10 % of driven vehicles unfinished, no collision. At 3f47446 it fails on
+lane 1 (4.0 / 3.7 m/s in minutes 4–5, a standstill at the gore's end that
+resolves after 4 pair releases) while 303 of 307 exit. The mechanism (per-step
+trace, docs/WEAVE_MODEL_PLAN.md dated paragraph): an exiter that reaches the
+lane end has its front ahead of every auxiliary-lane front, so the abreast
+rule of `_weave_choose_gap` (a gap whose leader's front is behind the
+changer's is not one it is in) discards every gap — nobody is held and lane 0
+streams past, each vehicle overlapping it in turn (`_weave_force_gap_ok`
+refuses on the leader or the follower side); a follower finally chosen is
+held by IDM at its own `minGap` behind the exiter's rear, which the guard's
+`s0` floor never passes, and the pair release lets it go past. (1) **Exit
+priority**: an exit-bound changer whose forced change is due
+(`force_after_s` after entering the last `force_within_m`) keeps as a
+candidate the gap behind a target-lane vehicle *beside* it (L's front behind
+the changer's front, ahead of its rear; `a_c = inf`, no easing — it waits for
+L to clear), its follower holds whatever its IDM says (the commitment is
+kept while F is behind the changer's rear) and is driven towards a virtual
+leader one changer `minGap` behind the changer's rear (`s_F − s0_c`), so it
+comes to rest `s0_F + s0_c` behind — a gap the guard accepts. From zone
+entry instead of the due moment the same rule read 407 / 416 / 402 of 466 on
+the entrance at seeds 3–5 against 419 / 414 / 419 (session record). (2)
+**Give-up at the gore's end**: an exit-bound vehicle halted (below
+`HALTING_SPEED_MS` = 0.1 m/s, SUMO's own halting threshold) still owing its
+change with no more than `WEAVE_DEFAULTS["exit_giveup_m"]` = 5 m of section
+ahead is rerouted through (`vehicle.changeTarget` to the corridor's last
+edge), handed back at once and counted in `n_missed` **and** the new
+`n_missed_exit` (a subset, so `n_entered = n_changed_in + n_changed_out +
+n_missed + n_unfinished` holds); it is never held by SUMO at the end of a
+lane its route does not continue on. The distance alone, without the halt,
+gave up the moderate fixture's v00010 rolling at 2.9 m/s with 4.7 m left,
+which at 3f47446 forced in during the last 3 m (rejected). The key is
+hash-neutral unless set; `0` gives up only at the lane end.
+`weave_sections[i]` gains `n_missed_exit`, also in the API schema
+(`WeaveSectionDiagnosticsOut`, `None` for an older meta) and the sweep
+summary (`WEAVE_FIELDS`). Fixture, sixth → exit-side derivation: at the
+corridor's demand seeds 3 / 4 / 5 lane 1's last 60 m never at or below 5 m/s
+(was 4.0 / 3.7 in two minutes at seed 3), no trajectory sample stopped in the
+last 20 m (was 96 in lane 1 in minute 4), exit 300 of 310 / 307 of 315 / 317
+of 325 (was 303 of 307 / 308 of 313 / 312 of 320), 2 / 1 / 4 unfinished, no
+exit given up, no collision, entrance 419 / 428 / 434 of 470 (was 418 / 429 /
+426); at the fixture's demand the entrance reads 419 / 414 / 419 of 466
+(sixth: 411 / 412 / 420), lane 1's first 60 m at or below 5 m/s in 2 / 1 / 1
+minutes (was 4 / 1 / 1), forced 26 / 16 / 22 (was 22 / 23 / 24), unfinished
+4 / 5 / 2, releases 2 / 2 / 14, no collision. `test_th52_weave_at_capacity_flows`
+keeps its strict marker (419 against 419.4 required and two minutes at
+5.0 m/s at seed 3); `test_th52_weave_at_capacity_does_not_lock` keeps its
+pins; the exit-side test passes unmarked (a macOS record — the CI note on
+platform sensitivity applies). `TestWeaveExitPriority` (fake harness) covers
+the held gap, the kept commitment, the due moment, the change once the
+beside vehicle has cleared, the halted give-up and `exit_giveup_m = 0`; the
+`TestWeavePairRelease` fixture moves its stopped pair from 0.5 m to 6 m
+before the end (a halted exiter 0.5 m from the end is now given up before
+it can be released). Golden `merge_weave` regenerated (the priority binds on
+`weave.osm`: mean travel time 70.83 → 71.00 s, p90 85.45 → 85.45 s, σ_v
+spatial 4.274 → 4.276 m/s, σ_v temporal 3.944 → 3.945 m/s, VMT 169.630 →
+169.629 veh-km, VHT 1.7681 → 1.7685 veh-h, fuel 93.02 → 93.00 ml/veh-km,
+throughput 1,687.5 veh/h, changes in/out/forced 17/20/1 and exits 33
+unchanged, collisions 0, hash 436cd4ec9e5d unchanged); determinism preserved.
 
 ## 3. Run outputs
 
@@ -1588,10 +1665,14 @@ the weave lane upstream of the section that changed before it / whose request
 expired or reached the section unchanged, each once) and `n_pair_releases`
 (fifth: stopped changer–follower pairs released, each pair once per release),
 null for a meta written before their rule and shown as the columns "Through
-vacated", "Vacate refused" and "Pair releases" with a dash for null; the
-sweep summary's `diagnostics` block aggregates all six the same way
-(`scripts/corridor_sweep.py` `WEAVE_FIELDS`, an older meta contributing
-nothing to a counter's interval) and its console line prints them. The field
+vacated", "Vacate refused" and "Pair releases" with a dash for null; and
+`n_missed_exit` (exit-side derivation: exit-bound vehicles rerouted through
+at the gore's end, halted still owing their change within `exit_giveup_m`
+of the end — a subset of `n_missed`), null for a meta written before the
+rule and not shown by the dashboard; the sweep summary's `diagnostics`
+block aggregates all seven the same way (`scripts/corridor_sweep.py`
+`WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
+and its console line prints them. The field
 is `null` when
 the run has neither list or both are empty (every ring and plain corridor
 run), when the meta cannot be read, and when an entry lacks the counters the

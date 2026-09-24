@@ -264,7 +264,11 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     whose request expired or reached the section unchanged, each once;
     ``n_pair_releases`` (fifth derivation) counts stopped changer–follower
     pairs released, each once per release. All three are ``None`` for a meta
-    written before their rule existed.
+    written before their rule existed. ``n_missed_exit`` (exit-side
+    derivation, 2026-09-24 block 3) counts exit-bound vehicles the runner
+    rerouted through at the gore's end, halted still owing their change with
+    no more than ``exit_giveup_m`` of section ahead — a subset of ``n_missed``;
+    ``None`` for a meta written before the rule existed.
     """
 
     ramp: str
@@ -286,6 +290,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_vacated: int | None = None
     n_vacate_refused: int | None = None
     n_pair_releases: int | None = None
+    n_missed_exit: int | None = None
     wait_s_mean: float | None = None
     wait_in_s_mean: float | None = None
     wait_out_s_mean: float | None = None

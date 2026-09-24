@@ -182,6 +182,7 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "exit_accept_gap_s": 0.6,
     "vacate_ahead_m": 150.0,
     "pair_release_s": 2.0,
+    "exit_giveup_m": 5.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -203,7 +204,19 @@ released — the one farther from the section end yields for a step
 reaction times of about 1 s (Treiber & Kesting 2013, ch. 12, the human driver
 model's reaction time; the IDM itself has none): a pair standing longer than
 the time in which each could have reacted to the other once is not resolving
-by itself. Not a fitted value."""
+by itself. Not a fitted value. ``exit_giveup_m`` (2026-09-24, block 3, the
+exit-side derivation): an exit-bound vehicle still owing its change into the
+auxiliary lane that has come to a halt (below SUMO's halting speed, 0.1 m/s)
+with no more than this much of the section ahead of its front has missed the
+exit — it is rerouted through (``vehicle.changeTarget`` to the corridor's
+last edge), handed back and counted in ``n_missed_exit``, instead of being
+held by SUMO at the end of a lane its route does not continue on, where it
+stops the through lane behind it and the auxiliary lane beside it (the I-94
+WB standstill at the T.H.52 gore's end, ``microsim.runner._weave_step``). One
+still rolling there may yet drop in and is left to. The default, 5 m, is one
+vehicle length: a driver halted within its own length of the gore's nose is
+not going to cross the taper; not a fitted value. ``0`` gives up only at the
+lane end."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 
