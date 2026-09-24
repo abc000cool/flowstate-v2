@@ -831,6 +831,37 @@ class CorridorLaneMismatchOut(BaseModel):
     """One line naming the likeliest cause (a triage aid, not a diagnosis)."""
 
 
+class CorridorSplitFindingOut(BaseModel):
+    """One exit leaving the corridor, audited: the side OSM draws it on versus
+    the lanes the compiled network feeds it from (``microsim.split_audit``,
+    docs/ONBOARDING_MNDOT.md §9). A ``wrong_side`` or ``added_lane_wrong_side``
+    verdict means through traffic is trapped in a lane that leads only to the
+    exit; the ``remedy`` names the fix in the engine's terms. Reported, never
+    enforced, like the lane check."""
+
+    from_edge: str
+    exit_edge: str
+    continuing_edge: str | None = None
+    x_m: float
+    """Chain position of the split [m]."""
+    osm_way: str
+    osm_lanes: int | None = None
+    turn_lanes: str | None = None
+    turn_lanes_side: Literal["left", "right", "unknown"]
+    osm_side: Literal["left", "right", "unknown"]
+    osm_offsets_m: list[float] = Field(default_factory=list)
+    """Signed lateral offsets [m] of the link's first nodes (+ left, − right)."""
+    compiled_lanes: int
+    exit_from_lanes: list[int] = Field(default_factory=list)
+    compiled_side: Literal["rightmost", "leftmost", "middle", "all"]
+    option_lanes: list[int] = Field(default_factory=list)
+    added_lane: bool
+    exit_lanes: int
+    continuing_lanes: int | None = None
+    verdict: Literal["ok", "wrong_side", "added_lane_wrong_side", "unknown"]
+    remedy: str = ""
+
+
 class CorridorSummaryOut(BaseModel):
     """What the onboarding found — the panel the dashboard shows.
 
@@ -867,6 +898,9 @@ class CorridorSummaryOut(BaseModel):
     lane_mismatches: list[CorridorLaneMismatchOut] = Field(default_factory=list)
     """Of those, the ones that disagree (``lanes_compared`` minus this many
     match)."""
+    split_audit: list[CorridorSplitFindingOut] = Field(default_factory=list)
+    """Every exit leaving the chain, audited for the side it was compiled on
+    (2026-09-24); a defect here is the map fault behind the I-94 WB lock."""
     lines: list[str] = Field(default_factory=list)
     """The same summary as plain text (``summary.txt`` in the bundle)."""
 

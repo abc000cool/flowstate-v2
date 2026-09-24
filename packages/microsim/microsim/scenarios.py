@@ -58,6 +58,14 @@ from microsim.geo import (
 )
 from microsim.networks import RAMP_SPLIT_OFF, RAMP_SPLIT_ON, expand_ramp_splits, osm_import
 from microsim.runner import RunPaths, run_micro
+from microsim.split_audit import (
+    SplitFinding,
+    audit_splits,
+    format_split_table,
+    ramps_unset_edges,
+    split_defects,
+    split_patch_xml,
+)
 
 #: Repository ``scenarios/`` directory (this file sits at
 #: ``packages/microsim/microsim/scenarios.py`` → three parents up is the root).
@@ -578,10 +586,18 @@ class CorridorBuild:
     station_x: dict[str, PointOnChain] = field(default_factory=dict)
     stations_rejected: dict[str, PointOnChain] = field(default_factory=dict)
     max_station_offset_m: float = MAX_STATION_OFFSET_M
+    split_audit: tuple[SplitFinding, ...] = ()
+    """Every exit leaving the chain, audited against the extract
+    (:func:`microsim.split_audit.audit_splits`, docs/ONBOARDING_MNDOT.md §9):
+    the side OSM draws it on versus the lanes the compiled net feeds it from."""
 
     def to_yaml(self, path: str | Path) -> None:
         """Write the scenario YAML (``ScenarioConfig.to_yaml``)."""
         self.config.to_yaml(path)
+
+    def split_defects(self) -> list[SplitFinding]:
+        """The audited splits compiled on the wrong side (``wrong_side`` / ``added_lane_wrong_side``)."""
+        return split_defects(self.split_audit)
 
     def _lane_scan(
         self, stations: Sequence[Mapping[str, Any]]
@@ -769,6 +785,8 @@ class CorridorBuild:
             + f"  [{_ramp_discovery_note(r)}]"
             for r in self.ramps
         ]
+        if self.split_audit:
+            lines += format_split_table(self.split_audit)
         if self.station_x or self.stations_rejected:
             total = len(self.station_x) + len(self.stations_rejected)
             lines.append(
@@ -1043,4 +1061,93 @@ def corridor_from_bbox(
         station_x=accepted,
         stations_rejected=rejected,
         max_station_offset_m=float(max_station_offset_m),
+        # Every exit's side, compiled versus drawn (docs/ONBOARDING_MNDOT.md §9):
+        # a lane count can be right at every station while an exit is fed from
+        # the wrong side of the road, and that traps through traffic.
+        split_audit=tuple(audit_splits(net_path, extract, cfg.network.corridor_edges)),
+    )
+
+
+def apply_split_fixes(build: CorridorBuild, patch_path: Path | None) -> CorridorBuild:
+    """Write the remedies the split audit named into the scenario and re-audit.
+
+    ``wrong_side`` findings become a connection patch
+    (:func:`microsim.split_audit.split_patch_xml`) written at ``patch_path``
+    and added to ``OSMNetwork.patch_files``; ``added_lane_wrong_side``
+    findings add ``--ramps.unset <edge>`` to ``netconvert_extra``. The
+    network is then re-imported with the fixes into the build's own net
+    directory (the one the runner rebuilds from the scenario anyway) and
+    audited again, so the returned build states what the scenario will
+    actually compile — a fix that leaves a defect is reported, not assumed.
+
+    Args:
+        build: The onboarded corridor.
+        patch_path: Where the connection patch goes when one is needed
+            (recorded repository-relative in the scenario when it lies inside
+            the repository). ``None`` refuses a ``wrong_side`` finding with
+            :class:`ValueError`, since there is nowhere to write its fix.
+
+    Returns:
+        ``build`` unchanged when the audit found no defect; otherwise a new
+        build with the fixed config, the re-imported network's lane profile
+        and length, and the post-fix audit. Ramp and station positions are
+        kept: the fixes change lanes and connections, not the chain's length.
+
+    Raises:
+        ValueError: A ``wrong_side`` finding and no ``patch_path``, or a
+            network that is not an :class:`OSMNetwork`.
+    """
+    defects = build.split_defects()
+    if not defects:
+        return build
+    net = build.config.network
+    if not isinstance(net, OSMNetwork):
+        raise ValueError("split fixes apply to an OSM corridor only")
+    dumped = build.config.model_dump(mode="json")
+    network = dumped["network"]
+
+    patch_xml = split_patch_xml(defects, note=f"scenario {build.config.name}")
+    patches = [Path(p) for p in net.patch_files]
+    if patch_xml:
+        if patch_path is None:
+            raise ValueError(
+                "a wrong_side split needs a connection patch: give a path to write it to"
+            )
+        patch_path.parent.mkdir(parents=True, exist_ok=True)
+        patch_path.write_text(patch_xml)
+        recorded = _record_path(patch_path)
+        if recorded not in network["patch_files"]:
+            network["patch_files"].append(recorded)
+        patches.append(patch_path)
+
+    extra = [str(a) for a in net.netconvert_extra]
+    unset = ramps_unset_edges(defects)
+    if unset:
+        if "--ramps.unset" in extra:
+            at = extra.index("--ramps.unset") + 1
+            present = extra[at].split(",") if at < len(extra) else []
+            extra[at] = ",".join([*present, *[e for e in unset if e not in present]])
+        else:
+            extra += ["--ramps.unset", ",".join(unset)]
+    network["netconvert_extra"] = extra
+    cfg = ScenarioConfig.model_validate(dumped)
+
+    bundle = osm_import(
+        osm_file=build.osm_file,
+        corridor_edges=tuple(net.corridor_edges),
+        workdir=build.net_path.parent,
+        keep_edges=tuple(e for r in net.ramps for e in r.edges),
+        patch_files=patches,
+        netconvert_extra=tuple(extra),
+    )
+    compiled = sumolib.net.readNet(str(bundle.net_path))
+    chain = list(bundle.edge_ids)
+    return replace(
+        build,
+        config=cfg,
+        chain_edges=tuple(chain),
+        length_m=chain_length_m(compiled, chain),
+        lanes_profile=tuple(lanes_profile(compiled, chain)),
+        net_path=bundle.net_path,
+        split_audit=tuple(audit_splits(bundle.net_path, build.osm_file, net.corridor_edges)),
     )

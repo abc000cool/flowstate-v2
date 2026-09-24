@@ -503,5 +503,8 @@ def _summary(
             }
             for m in lane_mismatches
         ],
+        # The split audit (docs/ONBOARDING_MNDOT.md §9) beside the lane check:
+        # reported, never enforced, its remedy stated per finding.
+        "split_audit": [f.as_dict() for f in build.split_audit],
         "lines": [build.summary(stations), *result.summary],
     }

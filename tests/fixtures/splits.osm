@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A mainline heading east (three lanes) with one RIGHT exit at node 2 and one
+     LEFT exit at node 4, for the split audit (microsim.split_audit). Travelling
+     east, right is south (lower latitude) and left is north. The right exit's
+     way carries a turn:lanes tag; the left exit's does not, so the tag reading
+     and the bare geometry are both exercised. Nodes 0.006 deg apart ~ 510 m. -->
+<osm version="0.6" generator="hand-written-test-fixture">
+  <node id="1" lat="40.0000" lon="-96.0000"/>
+  <node id="2" lat="40.0000" lon="-95.9940"/>
+  <node id="3" lat="40.0000" lon="-95.9880"/>
+  <node id="4" lat="40.0000" lon="-95.9820"/>
+  <node id="5" lat="40.0000" lon="-95.9760"/>
+  <node id="20" lat="39.9994" lon="-95.9900"/>
+  <node id="21" lat="39.9985" lon="-95.9860"/>
+  <node id="30" lat="40.0006" lon="-95.9780"/>
+  <node id="31" lat="40.0015" lon="-95.9740"/>
+  <way id="300">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="turn:lanes" v="none|none|slight_right"/>
+  </way>
+  <way id="301">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="302">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="303">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="400">
+    <nd ref="2"/><nd ref="20"/><nd ref="21"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="401">
+    <nd ref="4"/><nd ref="30"/><nd ref="31"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>

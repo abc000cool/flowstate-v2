@@ -951,19 +951,29 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     relaxation ``WEAVE_HOLD_TAU_S``) instead of drawing up alongside it.
     Yielding is applied after every driven vehicle's own speed has been set,
     so a follower that is itself being driven still yields. Control is handed
-    back when the vehicle has no change left to make; bookkeeping lands in
-    ``ws`` for ``meta.json``.
+    back when the vehicle has no change left to make; a driven vehicle on an
+    internal junction lane between two section pieces
+    (``OSMNetwork.internal_links``) is neither driven nor handed back that
+    step. Bookkeeping lands in ``ws`` for ``meta.json``.
     """
     prm = ws["params"]
     edges: dict[str, int] = ws["edge_index"]
     exiting: frozenset[str] = ws["exiting_ids"]
+    veh = ws["veh"]
     pending: dict[str, int] = {}
+    # driven vehicles on an internal junction lane this step (a section of
+    # several pieces under ``OSMNetwork.internal_links``): still under
+    # control, decided again on the next edge — handing them back here would
+    # book a miss and re-enter them with their timers reset
+    in_transit: set[str] = set()
     for vid, res in results.items():
         road = res[tc.VAR_ROAD_ID]
         if road == ws["exit_edge"]:
             ws["exited"].add(vid)
             continue
         if road not in edges:
+            if vid in veh and road.startswith(":"):
+                in_transit.add(vid)
             continue
         lane = int(res[tc.VAR_LANE_INDEX])
         if vid in exiting:
@@ -977,8 +987,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         if fid in results:
             mod.vehicle.setMaxSpeed(fid, v_orig)
     ws["yielding"] = {}
-    veh = ws["veh"]
-    for vid in [v for v in veh if v not in pending]:
+    for vid in [v for v in veh if v not in pending and v not in in_transit]:
         st = veh.pop(vid)
         if vid not in results:
             ws["n_missed"] += 1  # left the network while still owing a change

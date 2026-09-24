@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -910,3 +911,274 @@ class TestWeaveRun:
         with pytest.raises(ValueError, match="does not carry the entering traffic") as exc:
             run_micro(cfg, 3, tmp_path / "unpaired")
         assert "102" in str(exc.value) and "201" in str(exc.value)
+
+
+# --- Review of 2026-09-24: fake-TraCI harness for the weave step ------------
+# ``_weave_step`` is exercised against a scripted vehicle module so the
+# bookkeeping (control hand-back, counters, mode restoration) can be checked
+# per step without SUMO; the geometry is a two-piece section ``a`` -> ``b``
+# (an attach edge split by ramp guessing) leaving to exit ``x``.
+
+import traci.constants as _tc  # noqa: E402
+
+
+class _WeaveVehicle:
+    """Records every TraCI write; neighbours are scripted per (vid, mode)."""
+
+    def __init__(self, speeds: dict[str, float], neighbors: dict | None = None) -> None:
+        self.speeds = speeds
+        self.neighbors = neighbors or {}
+        self.lc_modes: dict[str, int] = {}
+        self.max_speeds: dict[str, float] = {}
+        self.calls: list[tuple] = []
+
+    def getLaneChangeMode(self, vid):
+        return self.lc_modes.get(vid, 1621)
+
+    def getMaxSpeed(self, vid):
+        return self.max_speeds.get(vid, 33.3)
+
+    def getMinGap(self, vid):
+        return 2.5
+
+    def getSpeed(self, vid):
+        return self.speeds[vid]
+
+    def getNeighbors(self, vid, mode):
+        return self.neighbors.get((vid, mode), ())
+
+    def setLaneChangeMode(self, vid, mode):
+        self.lc_modes[vid] = mode
+        self.calls.append(("lc", vid, mode))
+
+    def setMaxSpeed(self, vid, v):
+        self.max_speeds[vid] = v
+        self.calls.append(("vmax", vid, v))
+
+    def changeLane(self, vid, lane, dur):
+        self.calls.append(("change", vid, lane, dur))
+
+
+class _WeaveLane:
+    def getMaxSpeed(self, lane_id):
+        return 30.0
+
+
+class _WeaveMod:
+    TraCIException = _FakeTraCIException
+
+    def __init__(self, vehicle: _WeaveVehicle) -> None:
+        self.vehicle = vehicle
+        self.lane = _WeaveLane()
+
+
+def _weave_state(**params) -> dict:
+    """``weave_states`` entry as ``run_micro`` builds it (two pieces, exit x)."""
+    edges = ("a", "b")
+    lens = {"a": 100.0, "b": 100.0}
+    return {
+        "ramp": "on",
+        "exit": "off",
+        "off_index": 1,
+        "edges": list(edges),
+        "edge_index": {e: n for n, e in enumerate(edges)},
+        "exit_edge": "x",
+        "exit_only": {"a": True, "b": True},
+        "lane_len_m": lens,
+        "beyond_m": {"a": 100.0, "b": 0.0},
+        "length_m_measured": 200.0,
+        "length_m": None,
+        "params": {**WEAVE_DEFAULTS, **params},
+        "exiting_ids": frozenset({"e"}),
+        "exited": set(),
+        "veh": {},
+        "yielding": {},
+        "n_entered": 0,
+        "n_changed_in": 0,
+        "n_changed_out": 0,
+        "n_forced": 0,
+        "n_missed": 0,
+        "n_forced_deferred": 0,
+        "step_s": 0.5,
+        "waits_in_s": [],
+        "waits_out_s": [],
+    }
+
+
+def _res(road: str, lane: int, pos: float, v: float) -> dict:
+    return {
+        _tc.VAR_ROAD_ID: road,
+        _tc.VAR_LANE_INDEX: lane,
+        _tc.VAR_LANEPOSITION: pos,
+        _tc.VAR_SPEED: v,
+    }
+
+
+class TestWeaveStepBookkeeping:
+    """Review findings of 2026-09-24 on ``microsim.runner._weave_step``."""
+
+    def test_junction_lane_between_section_pieces_keeps_control(self):
+        """With ``internal_links`` an exiting vehicle crossing the junction
+        between two section pieces reports an internal road id for a step; it
+        must stay under control, not be handed back as missed and re-entered
+        (which would reset its wait and forcing timers and double-count it)."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state()
+        veh = _WeaveVehicle({"e": 20.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 95.0, 20.0)}, 0.0)
+        assert ws["n_entered"] == 1 and "e" in ws["veh"]
+        _weave_step(mod, _tc, ws, {"e": _res(":j_0", 1, 3.0, 20.0)}, 0.5)
+        assert ws["n_missed"] == 0, "handed back on the junction lane"
+        assert "e" in ws["veh"] and ws["veh"]["e"]["entered_s"] == 0.0
+        _weave_step(mod, _tc, ws, {"e": _res("b", 1, 5.0, 20.0)}, 1.0)
+        assert ws["n_entered"] == 1 and ws["n_missed"] == 0
+        assert ws["veh"]["e"]["entered_s"] == 0.0
+        # leaving the section on lane 1 through the downstream junction is a miss,
+        # booked once the vehicle is on a non-section edge
+        _weave_step(mod, _tc, ws, {"e": _res(":k_0", 1, 3.0, 20.0)}, 1.5)
+        assert ws["n_missed"] == 0 and "e" in ws["veh"]
+        _weave_step(mod, _tc, ws, {"e": _res("c", 1, 4.0, 20.0)}, 2.0)
+        assert ws["n_missed"] == 1 and ws["veh"] == {}
+        assert ws["n_entered"] == ws["n_changed_in"] + ws["n_changed_out"] + ws["n_missed"]
+
+    def test_hand_back_restores_mode_and_speed_once(self):
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        ws = _weave_state()
+        veh = _WeaveVehicle({"e": 20.0})
+        veh.lc_modes["e"] = 1621
+        veh.max_speeds["e"] = 31.0
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 10.0, 20.0)}, 0.0)
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
+        assert veh.max_speeds["e"] == pytest.approx(30.0)  # lane limit, no leader
+        assert ("change", "e", 0, WEAVE_DEFAULTS["change_duration_s"]) in veh.calls
+        _weave_step(mod, _tc, ws, {"e": _res("a", 0, 30.0, 20.0)}, 0.5)
+        assert ws["n_changed_out"] == 1 and ws["veh"] == {}
+        assert veh.lc_modes["e"] == 1621 and veh.max_speeds["e"] == 31.0
+        assert ws["waits_out_s"] == [0.5]
+
+    def test_forced_deferred_counts_vehicle_steps(self):
+        """One vehicle refused twice by the minimum-gap guard is two
+        ``n_forced_deferred``, as the docstring and CONTRACTS §2 say."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        ws = _weave_state(force_after_s=0.0, force_within_m=1000.0)
+        # a lane-0 follower closing fast on a small gap: acceptance fails, the
+        # forced change is due at once and the guard refuses it. The follower
+        # is exit-bound and already on lane 0, so it is not itself driven.
+        ws["exiting_ids"] = frozenset({"e", "f"})
+        veh = _WeaveVehicle({"e": 10.0, "f": 20.0}, {("e", 1): (("f", 3.0),)})
+        mod = _WeaveMod(veh)
+        for k in range(2):
+            _weave_step(
+                mod,
+                _tc,
+                ws,
+                {"e": _res("b", 1, 50.0 + k, 10.0), "f": _res("b", 0, 40.0, 20.0)},
+                0.5 * k,
+            )
+        assert ws["n_forced_deferred"] == 2 and ws["n_entered"] == 1
+        assert ws["veh"]["e"]["forced"] is False
+        assert veh.lc_modes["e"] == LC_MODE_SCRIPTED_SAFE
+        assert not [c for c in veh.calls if c[0] == "change"]
+
+    def test_courtesy_yield_of_a_through_vehicle_is_restored_next_step(self):
+        """Through traffic on lane 1 (not exit-bound, so never driven) that
+        blocks an entering vehicle's gap is slowed by ``courtesy`` for one step
+        through its desired speed only; its lane-change mode is never touched
+        and its speed comes back the next step."""
+        from microsim.runner import NEIGHBOR_LEFT_FOLLOWERS, _weave_step
+
+        ws = _weave_state(courtesy=2.0)
+        veh = _WeaveVehicle({"n": 15.0, "f": 15.0}, {("n", NEIGHBOR_LEFT_FOLLOWERS): (("f", 4.0),)})
+        veh.max_speeds["f"] = 29.0
+        mod = _WeaveMod(veh)
+        res = {"n": _res("a", 0, 50.0, 15.0), "f": _res("a", 1, 40.0, 15.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_entered"] == 1 and set(ws["veh"]) == {"n"}
+        assert veh.max_speeds["f"] == pytest.approx(13.0) and ws["yielding"] == {"f": 29.0}
+        assert "f" not in veh.lc_modes
+        veh.neighbors = {}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert veh.max_speeds["f"] == 29.0 and ws["yielding"] == {}
+
+    def test_exchange_yields_strictly_the_rear_vehicle(self):
+        """An overlapping exiting/entering pair report each other as follower;
+        only the rear one drops back (no creep floor), so the pair cannot hold
+        each other and the front one changes first."""
+        from microsim.runner import (
+            NEIGHBOR_LEFT_FOLLOWERS,
+            NEIGHBOR_RIGHT_FOLLOWERS,
+            WEAVE_EXCHANGE_YIELD_MS,
+            _weave_step,
+        )
+
+        ws = _weave_state()
+        veh = _WeaveVehicle(
+            {"e": 3.0, "n": 3.0},
+            {
+                ("e", NEIGHBOR_RIGHT_FOLLOWERS): (("n", -1.0),),
+                ("n", NEIGHBOR_LEFT_FOLLOWERS): (("e", -1.0),),
+            },
+        )
+        mod = _WeaveMod(veh)
+        res = {"e": _res("b", 1, 90.0, 3.0), "n": _res("b", 0, 88.0, 3.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert set(ws["veh"]) == {"e", "n"}
+        # n was driven first (no left leader: the lane limit); that is what is restored
+        assert ws["yielding"] == {"n": pytest.approx(30.0)}
+        assert veh.max_speeds["n"] == pytest.approx(3.0 - WEAVE_EXCHANGE_YIELD_MS)
+        assert veh.max_speeds["e"] >= 3.0  # the front vehicle is never told to yield
+        # neither gap is acceptable, so no change is requested by either
+        assert not [c for c in veh.calls if c[0] == "change"]
+
+
+class TestWeaveForceGapGuard:
+    def test_closing_speed_signs(self):
+        from microsim.runner import _weave_force_gap_ok
+
+        s0, tau = 2.5, 0.6
+        # ego faster than the leader closes on it; slower does not
+        assert _weave_force_gap_ok(s0, tau, 20.0, 5.0, 25.0, math.inf, math.nan)
+        assert not _weave_force_gap_ok(s0, tau, 20.0, 5.0, 15.0, math.inf, math.nan)
+        # a faster follower closes on ego; a slower one does not
+        assert _weave_force_gap_ok(s0, tau, 20.0, math.inf, math.nan, 5.0, 15.0)
+        assert not _weave_force_gap_ok(s0, tau, 20.0, math.inf, math.nan, 5.0, 25.0)
+        # never below minGap, whatever the speeds; overlap is never admitted
+        assert not _weave_force_gap_ok(s0, tau, 0.0, 2.5, 0.0, math.inf, math.nan)
+        assert not _weave_force_gap_ok(s0, tau, 0.0, math.inf, math.nan, -1.0, 0.0)
+        assert _weave_force_gap_ok(s0, tau, 0.0, 2.6, 0.0, 2.6, 0.0)
+        # boundary: exactly the closing distance is refused
+        assert not _weave_force_gap_ok(s0, tau, 20.0, s0 + tau * 5.0, 15.0, math.inf, math.nan)
+
+
+class TestMeterStopPlacementReview:
+    """Review of 2026-09-24: the braking inequality and its units."""
+
+    def test_boundary_of_the_braking_check(self):
+        from microsim.runner import _meter_assign_stop
+
+        # 10 m/s, b = 2: 25 m + 0.5 s * 10 m/s = 30 m; 30 m left on the last edge
+        state = {**METER_STATE, "ramp_edges": ["c"], "edge_len_m": {"c": 80.0}}
+        at = _FakeVehicle(pos=20.0, speed=10.0, decel=2.0, error=None)
+        assert not _meter_assign_stop(_FakeMod(at), state, "v", "c", 0.5)
+        above = _FakeVehicle(pos=19.9, speed=10.0, decel=2.0, error=None)
+        assert _meter_assign_stop(_FakeMod(above), state, "v", "c", 0.5)
+        # a standing vehicle is stopped wherever it is short of the line, and
+        # passes once it is on or past it
+        assert _meter_assign_stop(
+            _FakeMod(_FakeVehicle(49.0, 0.0, 2.0, None)), state, "v", "c", 0.5
+        )
+        assert not _meter_assign_stop(
+            _FakeMod(_FakeVehicle(50.0, 0.0, 2.0, None)), state, "v", "c", 0.5
+        )
+        # the step length scales the reaction margin (a 1 s step doubles it)
+        assert not _meter_assign_stop(
+            _FakeMod(_FakeVehicle(15.0, 10.0, 2.0, None)), state, "v", "c", 1.0
+        )
+        assert _meter_assign_stop(
+            _FakeMod(_FakeVehicle(14.9, 10.0, 2.0, None)), state, "v", "c", 1.0
+        )

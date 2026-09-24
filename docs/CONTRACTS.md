@@ -1108,6 +1108,49 @@ filled in), `idm_calibration` and `source` form fields. A service without the
 list route answers 404 and both views say so rather than claiming an empty
 history.
 
+**Split audit — 2026-09-24.** Every onboarding (`corridor_from_bbox`, so
+`scripts/onboard_corridor.py` and `POST /corridors` alike) audits each exit
+leaving the chain against the OSM extract it was compiled from
+(`microsim.split_audit.audit_splits(net_path, osm_path, corridor_edges)`).
+Per connection from a corridor edge into a non-corridor edge it records the
+**OSM side** of the leaving way — the signed lateral offsets [m] of the
+link's first nodes (up to 300 m along it) from the continuing mainline way,
+by cross product in local metres, negative = right of travel — and the
+`turn:lanes` reading when the way is tagged (lanes listed left → right;
+trailing lanes with `right` are a right exit, `through` on one makes it an
+option lane); the **compiled side** — the `fromLane` indices feeding the exit
+relative to the edge's lane count (`rightmost` / `leftmost` / `middle` /
+`all`; SUMO lane 0 is the rightmost), the option lanes that also continue,
+and whether the edge gained a lane over its OSM `lanes` tag; and a
+**verdict**: `ok`, `wrong_side` (drawn right, compiled from the left, or the
+reverse), `added_lane_wrong_side` (the offending lane was added by
+`--ramps.guess`), or `unknown` (no continuing mainline way found, or no
+usable geometry). Geometry decides the expected side; the tag stands in only
+when the geometry is unknown. Each defect carries its `remedy` in the
+engine's terms: an `OSMNetwork.patch_files` connection patch restating the
+split (`connection_patch_lines`: the exit's lanes on the drawn side, every
+other lane continuing in order, an option lane continuing at its own index —
+the lines `data/osm/mndot_i94_wb_stpaul.splits.con.xml` states) for
+`wrong_side`, `--ramps.unset <edge>` (`ramps_unset_edges`) for
+`added_lane_wrong_side`. Stored beside the lane check: `CorridorBuild.split_audit`
+(a tuple of `SplitFinding`; `split_defects()` filters), the `splits` block of
+`CorridorBuild.summary()` / `summary.txt`, and `CorridorSummaryOut.split_audit`
+(`CorridorSplitFindingOut`, additive, empty for corridors onboarded before
+this date). Reported, never enforced by the job; the CLI's
+`--fail-on-split-defect` exits 4 and `--write-split-patch PATH`
+(`microsim.scenarios.apply_split_fixes`) writes the patch, adds it and the
+`--ramps.unset` entries to the scenario, re-imports the network with them into
+the build's net directory and audits again before the YAML is written. On the
+committed I-94 WB extract compiled without its fixes the audit reports exactly
+the two §9 defects (`45608485 → 18207912` wrong_side, lanes 3–4 of 5 for a
+link 8–9 m to the right; `1001426896 → 82150350` added_lane_wrong_side, lane
+3 of 4 for a link 1–45 m to the right) and the 6th Street exit `42165869` as
+a genuine left exit (`ok`); with the fixes, none
+(`tests/test_microsim/test_microsim_split_audit.py`). Limits: a `wrong_side`
+verdict on a ramp-split piece (`…-AddedOffRampEdge`) is patched by its
+load-time id and should be re-audited after `--ramps.unset`; an exit whose
+link the extract does not carry is `unknown`.
+
 ## Observed backward wave speed as report context — 2026-09-23
 
 The corridor's *own* stop-and-go wave speed, measured from the detector

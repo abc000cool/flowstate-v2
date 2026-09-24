@@ -40,6 +40,22 @@ fails on that one too — and is refused (exit 2) together with
 ``--lane-tolerance 1`` or more, a tolerance that has already dropped every
 one-lane disagreement before ``--strict-lanes`` could report it.
 
+**Split audit.** The inventory also lists every exit leaving the chain with
+the side OSM draws it on (the signed lateral offset of the link's first nodes
+from the continuing mainline, and the ``turn:lanes`` tag when there is one)
+against the lanes the compiled network feeds it from
+(:func:`microsim.split_audit.audit_splits`, docs/ONBOARDING_MNDOT.md §9). A
+right-hand exit compiled from the leftmost lane traps through traffic in a
+lane that leads only to the exit — the map fault behind the I-94 WB lock —
+and the lane check cannot see it because the lane *count* is right.
+``--fail-on-split-defect`` exits 4 on any ``wrong_side`` /
+``added_lane_wrong_side`` verdict; ``--write-split-patch PATH`` writes the
+remedy first — a connection patch restating the ``wrong_side`` splits at
+``PATH`` (added to the scenario's ``patch_files``) and ``--ramps.unset`` for
+the lanes ramp guessing added on the wrong side (added to
+``netconvert_extra``) — re-imports the network with the fixes, prints the
+audit again and only then applies the failure flag.
+
 **What this does NOT do:** calibrate. The demand is a flat placeholder from
 ``--inflow-veh-h``, every discovered ramp carries zero flow, and the fleet is
 the ``corridor_10km`` default population. FD, IDM and demand calibration
@@ -60,10 +76,17 @@ from microsim.scenarios import (
     MAX_STATION_OFFSET_M,
     CorridorBuild,
     LaneMismatch,
+    apply_split_fixes,
     corridor_from_bbox,
 )
+from microsim.split_audit import format_split_table
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: Exit status of ``--fail-on-split-defect`` when an exit is compiled on the
+#: wrong side of the mainline (after ``--write-split-patch``, when given).
+#: Its own code so a batch script can tell it from a lane disagreement (3).
+SPLIT_DEFECT_EXIT: int = 4
 
 #: Columns the CLI adds to the stations CSV it writes back.
 STATION_OUT_COLUMNS: tuple[str, ...] = ("x_m", "offset_m", "edge_id", "lane_pos_m")
@@ -272,6 +295,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fail-on-lane-mismatch); refused with --lane-tolerance 1 or more, which "
         "would drop those disagreements first",
     )
+    parser.add_argument(
+        "--fail-on-split-defect",
+        action="store_true",
+        help="exit 4 when the split audit finds an exit compiled on the wrong side "
+        "of the mainline (wrong_side / added_lane_wrong_side); applied after "
+        "--write-split-patch when both are given",
+    )
+    parser.add_argument(
+        "--write-split-patch",
+        type=Path,
+        metavar="PATH",
+        help="write the connection patch that restates every wrong_side split at PATH, "
+        "add it (and --ramps.unset for lanes ramp guessing added on the wrong side) to "
+        "the scenario, re-import the network with the fixes and print the audit again",
+    )
     return parser.parse_args(argv)
 
 
@@ -306,8 +344,19 @@ def main(argv: list[str] | None = None) -> int:
         netconvert_extra=tuple(args.netconvert_extra.split()),
         max_chain_m=args.max_chain_m,
     )
-    build.to_yaml(args.out)
     print(build.summary(stations))
+    if args.write_split_patch is not None and build.split_defects():
+        # The remedy is written and the network re-imported with it before
+        # the YAML goes out, so the scenario names what it will compile.
+        build = apply_split_fixes(build, args.write_split_patch)
+        network = build.config.network
+        print(
+            f"  split fixes: patch_files {getattr(network, 'patch_files', [])}, "
+            f"netconvert_extra {' '.join(getattr(network, 'netconvert_extra', []))}; "
+            "network re-imported and audited again:"
+        )
+        print("\n".join(format_split_table(build.split_audit)))
+    build.to_yaml(args.out)
     print(f"  scenario  {args.out}")
     if rows:
         out_csv = args.stations_out or args.out.parent / f"{args.name}_stations.csv"
@@ -330,6 +379,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return LANE_MISMATCH_EXIT
+    defects = build.split_defects()
+    if defects and args.fail_on_split_defect:
+        print(
+            f"  FAIL: {len(defects)} exit(s) compiled on the wrong side of the mainline: "
+            + ", ".join(
+                f"{d.from_edge} -> {d.exit_edge} ({d.verdict}, OSM {d.expected_side}, "
+                f"compiled {d.compiled_side})"
+                for d in defects
+            )
+        )
+        return SPLIT_DEFECT_EXIT
     return 0
 
 

@@ -73,6 +73,21 @@ the chain with offsets up to 22.1 m (S1063 at x = 1,089 m, S97 at
 x = 11,072 m; the chain extends 1.1 km upstream and 407 m downstream of the
 observed span — the scenario's `exit_buffer_m`).
 
+*Split audit (2026-09-24).* The network step's inventory now ends with a
+`splits` block: every exit leaving the chain, the side OSM draws it on (the
+link's lateral offsets from the continuing mainline and the `turn:lanes` tag)
+against the lanes the compiled network feeds it from, with a verdict
+(`microsim.split_audit`; docs/CONTRACTS.md "Split audit"). Two flags on
+`scripts/onboard_corridor.py` mirror the lane check's: `--fail-on-split-defect`
+exits 4 on a `wrong_side` / `added_lane_wrong_side` verdict, and
+`--write-split-patch data/osm/<name>.splits.con.xml` writes the connection
+patch for the `wrong_side` splits, adds it and `--ramps.unset` for the
+`added_lane_wrong_side` ones to the scenario, re-imports the network with
+the fixes and prints the audit again before the YAML is written. Run on the
+command of the table above (no `--ramps.unset`, no patch) the audit finds the
+two §9 defects and the fixes it writes leave none; the committed scenario
+already carries them.
+
 ### From the dashboard
 
 The three commands above (network, then demand, then a run and a report) are
@@ -349,7 +364,9 @@ n2-standard-32, ≈ $3.3.
    onboarding step compiles with ramp guessing when `--netconvert-extra` asks
    for it and prints the lane profile beside the inventory's lane counts at
    every station (`--fail-on-lane-mismatch` turns a disagreement into a
-   failure). Still open: applying ramp guessing by default.
+   failure), and since 2026-09-24 audits the side every exit is compiled on
+   beside it (`--fail-on-split-defect`, `--write-split-patch`; §3, §9).
+   Still open: applying ramp guessing by default.
 2. Collector–distributor roads: the discovery captures the split as an
    off-ramp and misses the re-entry; the balance step carries the residual.
    A C-D road should become a parallel edge chain with its own ramps.
@@ -453,3 +470,15 @@ Mounds/Kellogg defect, round 2 and the weave slice with both. The corrected
 network is in all three MnDOT scenarios; whether it removes the lock is the
 question of the 2026-09-24 cloud round (`mndot_slice_weave`, then the two
 20-seed weave batteries), reported in §10 when it has run.
+
+The check is generic since the same day (`microsim.split_audit`, §3; the
+offsets there sample the link's first 300 m, so they differ from the
+hand-read figures in the table above): on this extract compiled without the
+fixes it reports the eight exits with exactly these two as defects —
+`45608485 → 18207912` wrong_side (link 8–9 m to the right, compiled lanes
+3–4 of 5) and `1001426896 → 82150350` added_lane_wrong_side (link 1–45 m to
+the right, lane 3 of 4 with OSM `lanes=3`) — and the 6th Street exit
+(`45782590-AddedOffRampEdge → 42165869`, 5–19 m to the left, lane 3 of 4)
+as `ok`; the patch it generates for the Mounds/Kellogg split is the committed
+file's five connection lines, and with the fixes it reports none
+(`tests/test_microsim/test_microsim_split_audit.py`).
