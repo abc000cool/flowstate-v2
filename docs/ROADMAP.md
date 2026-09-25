@@ -261,9 +261,10 @@ blocked.
   band); the I-24 fleet gives 16.4 / 16.9 km/h there (WAVE_SPEED_DIAGNOSIS.md
   follow-up). A labeled variant; the §7.1 criterion stays on the absolute
   threshold.
-- **D2.** Test the multi-lane hypothesis behind the US-101 fuel result by
-  counting lane-change events against penetration. Cheap; either confirms or
-  kills a stated hypothesis.
+- **D2.** ✅ *Done 2026-09-25 (VM AB; docs/US101_PENETRATION.md, last section).* Test the multi-lane hypothesis behind the US-101 fuel result by
+  counting lane-change events against penetration. *Finding:* humans change lanes two to four times more around FollowerStopper vehicles and
+  changing lanes costs about 6 ml/km, but the extra changes are mostly cut-ins into the AV's larger gap, not passes around it; the fuel increase
+  reproduces at 1–10 %; the throughput cost on the replica is 0.7–2.7 %, about twice the published figure (measured upstream of the replica).
 - **D3.** Compliance sweep on real geometry (only 100% has been run).
 - **D4.** highD cross-validation once access arrives: clean multi-lane German
   motorway data, useful precisely because the fuel result hinged on multi-lane

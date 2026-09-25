@@ -1,0 +1,2235 @@
+{
+ "schema_version": 1,
+ "experiment": "us101_lane_change_penetration",
+ "work_package": "WP-81, docs/ROADMAP.md \u00a75 item D2",
+ "hypothesis": "docs/US101_PENETRATION.md: on five lanes, neighbours change lanes around a slower AV, and those changes are accel/decel events that burn fuel",
+ "source_result": {
+  "doc": "docs/US101_PENETRATION.md",
+  "artifact": "artifacts/us101_penetration_summary.json",
+  "sweep": "scripts/us101_penetration_sweep.py",
+  "original_analysis": "scripts/us101_penetration_analyze.py"
+ },
+ "created_at": "2026-09-25T20:34:38Z",
+ "code": "57a86d3 2026-09-25T20:30:29+00:00",
+ "scenario": "scenarios/us101_replica.yaml",
+ "controller": "follower_stopper",
+ "compliance": 1.0,
+ "boundary": "measured downstream (docs/M3_US101_VALIDATION.md)",
+ "boundary_source": "scenarios/us101_replica_calibrated.yaml network.boundary",
+ "config_hashes": {
+  "baseline": "ab879e240aed",
+  "fs_p0.01": "1dfb116ac999",
+  "fs_p0.02": "e0dc898e0fc9",
+  "fs_p0.05": "258d7c037638",
+  "fs_p0.10": "7f646d6e4be8",
+  "fs_p0.20": "ded8acc47c9e"
+ },
+ "seeds": [
+  6914975401685141156,
+  134183728835869882,
+  2378473973028931053,
+  3747978530954135749,
+  677105600768189526,
+  661281422688282993,
+  3011106312394044631,
+  6953598295321596746,
+  165503670820534583,
+  6134032994440706937,
+  8557154790156791364,
+  6538422657834023852,
+  6904272788004776631,
+  6143473282319009404,
+  3944094060050347669,
+  4910985839736976611,
+  7382187975121682178,
+  5690692725577505498,
+  887972120279483394,
+  8026499204807041784
+ ],
+ "n_seeds": 20,
+ "parameters": {
+  "lookback_s": 5.0,
+  "leader_range_m": 200.0,
+  "min_dwell_s": null,
+  "original_x_ref_m": 400.0,
+  "original_span_m": [
+   100.0,
+   600.0
+  ]
+ },
+ "method": "Lane changes against FollowerStopper penetration on the US-101 replica (WP-81).\n\ndocs/ROADMAP.md \u00a75 item D2. On the 5-lane US-101 replica, docs/US101_PENETRATION.md\nmeasured a resolved \u03c3_v reduction at 1\u201310 % FollowerStopper penetration together\nwith a resolved fuel *increase* (+1.4 to +2.7 %, ``artifacts/us101_penetration_summary.json``)\nand offered an untested explanation: neighbours change lanes around a slower AV,\nand those changes are acceleration/deceleration events that burn fuel. This\nscript measures each link of that explanation on the penetration sweep's own\nruns (``scripts/us101_penetration_sweep.py``: same cells, seeds and\nconfiguration). The opt-in pipeline stage ``us101_lane_changes``\n(``scripts/gcp/pipeline_i24.sh``) runs the sweep and this script on a cloud VM;\nnothing here simulates.\n\nDefinitions\n-----------\n**Lane changes.** :func:`calibration.lane_change_gaps.lane_change_gaps` on the\nrun's trajectories, SUMO lane indices mapped to the band convention\n(:func:`calibration.lane_change_gaps.sim_band_lanes`: 1 = leftmost of the\nreplica's lanes; no auxiliary lanes, no zones), with its debounce\n(:func:`calibration.lanechange.held_lanes`: a stay shorter than ``min_dwell_s``\nthat returns to the lane it came from is not a change) and its guards. A change\nis placed and timed at its first sample in the new lane.\n\n**Study span and window.** Rates count the changes made, and the vehicle-km\ndriven, inside the replica itself \u2014 ``x \u2208 [x0, x0 + length_m)`` with ``x0 =\nmeta[\"corridor\"][\"x_first_edge_m\"]`` (the insertion buffer before it and the\nexit buffer after it are excluded) \u2014 at ``t \u2265`` the configured warm-up, the\nwindow ``validation.metrics.compute_metrics`` measures. Vehicle-km: the\ndistance between a vehicle's consecutive samples clipped to the span (``x`` is\nmonotone on a corridor), for sample pairs whose first sample is in the window.\n\n**Classes.** A change is an *AV change* when the changer is AV-tagged\n(``meta[\"av_ids\"]``; the trajectories' ``is_av`` flag must agree and is\nchecked), else a *human change*. For a human change:\n\n* the *origin-lane leader* at one of the changer's samples is the nearest\n  vehicle whose front is strictly ahead of the changer's front in the\n  changer's debounced lane at that time stamp, within ``leader_range_m``\n  bumper to bumper (200 m, ``calibration.lane_change_gaps.DEFAULT_MAX_RANGE_M``);\n* a *pass-around* is a human change whose origin-lane leader was an AV at the\n  change moment (the last sample in the origin lane) or at any of the\n  changer's samples in the origin lane during the ``lookback_s`` (5 s) before\n  it \u2014 the human left the lane of an AV that was directly ahead of it; a\n  *pass-around at change* is the stricter reading, the last sample only;\n* a *cut-in* is a human change that is not a pass-around and whose new\n  follower in the target lane (``lane_change_gaps``' lag, within 200 m) is an\n  AV \u2014 the human moved into the gap ahead of an AV;\n* every other human change is *other*.\n\nHuman-change rates are per human vehicle-km, AV-change rates per AV\nvehicle-km, the all-change rate per vehicle-km of every vehicle.\n\n**Counterfactual pass-arounds.** Under common random numbers a seed gives every\ncell the same drivers, departures and IDM parameters: the corridor plan draws\nthe AV tags after them (``microsim.vehicles.build_corridor_plan``, RNG order).\nThe vehicles that are AVs at penetration p are ordinary drivers in the same\nseed's baseline, so the baseline's human changes behind those same vehicles\n(the same definition; changers that are AVs at p left out; per the baseline's\nvehicle-km of the vehicles that are not AVs at p) are the pass-arounds that\nhappen without the controller. *Excess pass-arounds* = the level's rate minus\nthat; the same for cut-ins.\n\n**Fuel.** The runner records per-vehicle totals only:\n``meta[\"fuel_ml_per_vehicle\"]`` (HBEFA4, accumulated at every step a vehicle is\non the network \u2014 insertion buffer, replica and exit buffer \u2014 from departure\nto arrival; ``microsim.runner``). No per-vehicle fuel inside the span exists,\nso fuel per km is *whole-trip*: a vehicle's fuel over its recorded distance\n(the trapezoid of speed over its samples, the denominator ``compute_metrics``\nuses for its whole-run ratio, so the all-vehicle class ratio reproduces\n``compute_metrics``' ``fuel_ml_per_veh_km``; checked per run). Class ratios are\n\u03a3 fuel / \u03a3 distance over humans, AVs or all vehicles; the change against the\nseed's baseline F0 splits exactly as ``F \u2212 F0 = s_h (f_h \u2212 F0) + s_a (f_a \u2212 F0)``\nwith ``s`` a class's share of the distance.\n\n**Fuel against lane changes.** Humans with a whole journey \u2014 first sample at\n``t \u2265`` the warm-up, and arrived (``vehicles.parquet`` ``arrived``; for a run\nwithout that table, last sample before the recording's end) \u2014 binned by their\nnumber of lane changes over their whole record (the extent of their fuel):\n0, 1, 2+; per bin the count, the mean of the per-vehicle ml/km and the pooled\n\u03a3 fuel / \u03a3 km. The relation is associational: a driver who changes lanes is\nalso more likely to be in the slower traffic that made the change worthwhile.\n\n**Original metrics.** ``compute_metrics`` with the original analysis's\n``x_ref`` 400 m and ``span`` (100, 600) m (``scripts/us101_penetration_analyze.py``),\nso fuel, \u03c3_v, throughput and waves compare with ``artifacts/us101_penetration_summary.json``.\nThose two constants are trajectory (run) coordinates, where ``x \u2208 [0, 640)``\nis the insertion buffer: the throughput and travel-time span of the original\nanalysis lie upstream of the replica (``x0`` = 640 m), while its \u03c3_v, fuel and\nwaves cover the whole recorded road. The span-based rates here do not depend\non either constant, and ``site_metrics`` repeats the two span-dependent ones on\nthe replica itself (throughput at its midpoint, travel time over its length,\nas ``scripts/m3_us101_validate.py`` measures them).",
+ "decision_rule": {
+  "checks": {
+   "a_fuel_increase_reproduces": {
+    "statistic": "orig_fuel_ml_per_veh_km",
+    "meaning": "the fuel increase of docs/US101_PENETRATION.md reproduces on these runs (compute_metrics' fuel_ml_per_veh_km, original definition)"
+   },
+   "b_humans_change_more": {
+    "statistic": "lc_per_veh_km_human",
+    "meaning": "humans change lanes more per human vehicle-km in the replica"
+   },
+   "c_excess_changes_behind_avs": {
+    "statistic": "excess_pass_arounds_per_human_veh_km",
+    "meaning": "more humans leave the lane of an AV directly ahead than leave the lane of the same vehicle in the seed's baseline"
+   },
+   "d_humans_burn_more": {
+    "statistic": "fuel_ml_per_veh_km_human",
+    "meaning": "the humans' own fuel per km rises (whole trip)"
+   },
+   "e_changes_cost_fuel": {
+    "statistic": "fuel_ml_per_km_human_changed_minus_unchanged",
+    "meaning": "within a run, humans who changed lanes burn more per km than humans who did not"
+   }
+  },
+  "holds_when": "the statistic's 95 % CI over seeds lies above 0",
+  "verdict": {
+   "not_applicable": "check a fails: the fuel increase did not reproduce at this level",
+   "supported": "a holds and b, c, d and e all hold",
+   "not_supported": "a holds and at least one of b, c, d, e fails (failed_checks)"
+  },
+  "diagnostic_unchanged_humans_fuel_rises": "the paired change of the zero-change humans' fuel per km is resolved positive: part of the fuel increase does not go through lane changes"
+ },
+ "levels": {
+  "baseline": {
+   "penetration": 0.0,
+   "n_runs": 20,
+   "aggregate": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 67.02514585368145,
+     "lo95": 66.57456378986451,
+     "hi95": 67.47572791749839,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 72.13081259941758,
+     "lo95": 71.43226589463778,
+     "hi95": 72.82935930419738,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 74.03581524310958,
+     "lo95": 73.19620284094998,
+     "hi95": 74.87542764526918,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 5.467944413790944,
+     "lo95": 5.0399049465809,
+     "hi95": 5.895983881000988,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 66.90123128692457,
+     "lo95": 66.47850440812782,
+     "hi95": 67.32395816572132,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_av": null,
+    "fuel_ml_per_veh_km_human": {
+     "mean": 66.90123128692457,
+     "lo95": 66.47850440812782,
+     "hi95": 67.32395816572132,
+     "n": 20
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.04949202036412557,
+     "lo95": 0.044345755063153025,
+     "hi95": 0.05463828566509811,
+     "n": 20
+    },
+    "lc_per_veh_km_av": null,
+    "lc_per_veh_km_human": {
+     "mean": 0.04949202036412557,
+     "lo95": 0.044345755063153025,
+     "hi95": 0.05463828566509811,
+     "n": 20
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 66.90123128692464,
+     "lo95": 66.47850440812788,
+     "hi95": 67.32395816572141,
+     "n": 20
+    },
+    "orig_mean_tt_s": {
+     "mean": 30.509526729309755,
+     "lo95": 30.003550980757986,
+     "hi95": 31.015502477861524,
+     "n": 20
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": 2.9517713685153426,
+     "lo95": 2.8489230022979783,
+     "hi95": 3.054619734732707,
+     "n": 20
+    },
+    "orig_throughput_veh_h": {
+     "mean": 8145.14165792235,
+     "lo95": 8137.327251314655,
+     "hi95": 8152.956064530044,
+     "n": 20
+    },
+    "orig_wave_count": {
+     "mean": 2.15,
+     "lo95": 1.618004241838375,
+     "hi95": 2.6819957581616247,
+     "n": 20
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20
+    },
+    "site_mean_tt_s": {
+     "mean": 52.32223964405085,
+     "lo95": 51.31863360517039,
+     "hi95": 53.325845682931316,
+     "n": 20
+    },
+    "site_throughput_veh_h": {
+     "mean": 8027.093389296957,
+     "lo95": 8008.065215490457,
+     "hi95": 8046.1215631034565,
+     "n": 20
+    }
+   },
+   "fuel_by_changes": {
+    "0": {
+     "mean_ml_per_km": {
+      "mean": 67.02514585368145,
+      "lo95": 66.57456378986451,
+      "hi95": 67.47572791749839,
+      "n": 20
+     },
+     "n_vehicles": 33554
+    },
+    "1": {
+     "mean_ml_per_km": {
+      "mean": 72.13081259941758,
+      "lo95": 71.43226589463778,
+      "hi95": 72.82935930419738,
+      "n": 20
+     },
+     "n_vehicles": 3254
+    },
+    "2+": {
+     "mean_ml_per_km": {
+      "mean": 74.03581524310958,
+      "lo95": 73.19620284094998,
+      "hi95": 74.87542764526918,
+      "n": 20
+     },
+     "n_vehicles": 795
+    },
+    "changed": {
+     "mean_ml_per_km": {
+      "mean": 72.49309026747238,
+      "lo95": 71.86453635798075,
+      "hi95": 73.12164417696401,
+      "n": 20
+     },
+     "n_vehicles": 4049
+    }
+   },
+   "counts_total": {
+    "n_changes": 1345,
+    "n_av": 0,
+    "n_human": 1345,
+    "n_pass_around": 0,
+    "n_pass_around_at_change": 0,
+    "n_cut_in": 0,
+    "n_other_human": 1345,
+    "n_unconfirmed": 0
+   }
+  },
+  "fs_p0.01": {
+   "penetration": 0.01,
+   "n_runs": 20,
+   "aggregate": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.02203072799873644,
+     "lo95": 0.019081586382928097,
+     "hi95": 0.024979869614544785,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 67.77576461762885,
+     "lo95": 67.26844261536164,
+     "hi95": 68.28308661989607,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 73.43676976651145,
+     "lo95": 72.72974512566277,
+     "hi95": 74.14379440736012,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 76.26351076463581,
+     "lo95": 75.14563139962345,
+     "hi95": 77.38139012964817,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 6.285589381821693,
+     "lo95": 5.743837820053801,
+     "hi95": 6.8273409435895855,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 67.76444153575528,
+     "lo95": 67.2718541279856,
+     "hi95": 68.25702894352496,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_av": {
+     "mean": 66.7057018212731,
+     "lo95": 65.93861099916005,
+     "hi95": 67.47279264338614,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 67.77503998335744,
+     "lo95": 67.28222117394039,
+     "hi95": 68.2678587927745,
+     "n": 20
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.08284383096763479,
+     "lo95": 0.07518324210849621,
+     "hi95": 0.09050441982677336,
+     "n": 20
+    },
+    "lc_per_veh_km_av": {
+     "mean": 0.03212552361509001,
+     "lo95": 0.013195498512098412,
+     "hi95": 0.05105554871808161,
+     "n": 20
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.08332152836124238,
+     "lo95": 0.07567011641751165,
+     "hi95": 0.0909729403049731,
+     "n": 20
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 67.76444153575528,
+     "lo95": 67.27185412798559,
+     "hi95": 68.25702894352497,
+     "n": 20
+    },
+    "orig_mean_tt_s": {
+     "mean": 31.995997391981756,
+     "lo95": 31.554305384478244,
+     "hi95": 32.43768939948527,
+     "n": 20
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": 2.686907361968289,
+     "lo95": 2.6143490770046878,
+     "hi95": 2.75946564693189,
+     "n": 20
+    },
+    "orig_throughput_veh_h": {
+     "mean": 8129.0870933892975,
+     "lo95": 8119.618829582213,
+     "hi95": 8138.555357196382,
+     "n": 20
+    },
+    "orig_wave_count": {
+     "mean": 1.8,
+     "lo95": 1.4099058955005732,
+     "hi95": 2.1900941044994267,
+     "n": 20
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.009356158721847892,
+     "lo95": 0.0036768690472516723,
+     "hi95": 0.015035448396444112,
+     "n": 20
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.0008597548419443928,
+     "lo95": 0.00029998502183421153,
+     "hi95": 0.001419524662054574,
+     "n": 20
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.0008597548419443928,
+     "lo95": 0.00029998502183421153,
+     "hi95": 0.001419524662054574,
+     "n": 20
+    },
+    "site_mean_tt_s": {
+     "mean": 53.657851238294754,
+     "lo95": 52.62956698027797,
+     "hi95": 54.686135496311536,
+     "n": 20
+    },
+    "site_throughput_veh_h": {
+     "mean": 7969.296956977964,
+     "lo95": 7950.610757265352,
+     "hi95": 7987.983156690577,
+     "n": 20
+    }
+   },
+   "fuel_by_changes": {
+    "0": {
+     "mean_ml_per_km": {
+      "mean": 67.77576461762885,
+      "lo95": 67.26844261536164,
+      "hi95": 68.28308661989607,
+      "n": 20
+     },
+     "n_vehicles": 32298
+    },
+    "1": {
+     "mean_ml_per_km": {
+      "mean": 73.43676976651145,
+      "lo95": 72.72974512566277,
+      "hi95": 74.14379440736012,
+      "n": 20
+     },
+     "n_vehicles": 3618
+    },
+    "2+": {
+     "mean_ml_per_km": {
+      "mean": 76.26351076463581,
+      "lo95": 75.14563139962345,
+      "hi95": 77.38139012964817,
+      "n": 20
+     },
+     "n_vehicles": 1050
+    },
+    "changed": {
+     "mean_ml_per_km": {
+      "mean": 74.06135399945053,
+      "lo95": 73.3159628615375,
+      "hi95": 74.80674513736356,
+      "n": 20
+     },
+     "n_vehicles": 4668
+    }
+   },
+   "counts_total": {
+    "n_changes": 2236,
+    "n_av": 8,
+    "n_human": 2228,
+    "n_pass_around": 23,
+    "n_pass_around_at_change": 23,
+    "n_cut_in": 589,
+    "n_other_human": 1616,
+    "n_unconfirmed": 1
+   },
+   "paired_delta_vs_baseline": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.02203072799873644,
+     "lo95": 0.019081586382928097,
+     "hi95": 0.024979869614544785,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 0.7506187639473992,
+     "lo95": 0.31475201698323957,
+     "hi95": 1.1864855109115588,
+     "n": 20,
+     "pct_of_baseline": 1.1199061999596833,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 1.305957167093851,
+     "lo95": 0.5717163333432197,
+     "hi95": 2.0401980008444824,
+     "n": 20,
+     "pct_of_baseline": 1.8105399343641886,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 2.227695521526239,
+     "lo95": 1.2977039915288175,
+     "hi95": 3.15768705152366,
+     "n": 20,
+     "pct_of_baseline": 3.0089430557510712,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 0.8176449680307499,
+     "lo95": 0.124338444744434,
+     "hi95": 1.5109514913170659,
+     "n": 20,
+     "pct_of_baseline": 14.95342501962038,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 0.8632102488307091,
+     "lo95": 0.5227901129445709,
+     "hi95": 1.2036303847168472,
+     "n": 20,
+     "pct_of_baseline": 1.2902755782305282,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 0.873808696432878,
+     "lo95": 0.5331845515354761,
+     "hi95": 1.2144328413302798,
+     "n": 20,
+     "pct_of_baseline": 1.306117510282144,
+     "resolved": true
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.03335181060350921,
+     "lo95": 0.027295127854724308,
+     "hi95": 0.03940849335229411,
+     "n": 20,
+     "pct_of_baseline": 67.38825846698383,
+     "resolved": true
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.0338295079971168,
+     "lo95": 0.02779114876703919,
+     "hi95": 0.03986786722719441,
+     "n": 20,
+     "pct_of_baseline": 68.35345930156898,
+     "resolved": true
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 0.8632102488306372,
+     "lo95": 0.5227901129444894,
+     "hi95": 1.203630384716785,
+     "n": 20,
+     "pct_of_baseline": 1.2902755782304196,
+     "resolved": true
+    },
+    "orig_mean_tt_s": {
+     "mean": 1.4864706626720001,
+     "lo95": 0.9059277300536085,
+     "hi95": 2.067013595290392,
+     "n": 20,
+     "pct_of_baseline": 4.872152478340427,
+     "resolved": true
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": -0.26486400654705344,
+     "lo95": -0.38332137794533183,
+     "hi95": -0.14640663514877508,
+     "n": 20,
+     "pct_of_baseline": -8.9730529055261,
+     "resolved": true
+    },
+    "orig_throughput_veh_h": {
+     "mean": -16.054564533053554,
+     "lo95": -26.51976637414672,
+     "hi95": -5.589362691960387,
+     "n": 20,
+     "pct_of_baseline": -0.19710601984973614,
+     "resolved": true
+    },
+    "orig_wave_count": {
+     "mean": -0.35,
+     "lo95": -0.8819957581616248,
+     "hi95": 0.18199575816162483,
+     "n": 20,
+     "pct_of_baseline": -16.27906976744186,
+     "resolved": false
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.009356158721847892,
+     "lo95": 0.0036768690472516723,
+     "hi95": 0.015035448396444112,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.0008597548419443928,
+     "lo95": 0.00029998502183421153,
+     "hi95": 0.001419524662054574,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.0008597548419443928,
+     "lo95": 0.00029998502183421153,
+     "hi95": 0.001419524662054574,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "site_mean_tt_s": {
+     "mean": 1.3356115942439,
+     "lo95": 0.5646483293976959,
+     "hi95": 2.106574859090104,
+     "n": 20,
+     "pct_of_baseline": 2.5526651827790436,
+     "resolved": true
+    },
+    "site_throughput_veh_h": {
+     "mean": -57.796432318992814,
+     "lo95": -72.8537684060912,
+     "hi95": -42.73909623189442,
+     "n": 20,
+     "pct_of_baseline": -0.7200169415750979,
+     "resolved": true
+    }
+   },
+   "counterfactual": {
+    "baseline_pass_arounds_per_human_veh_km": {
+     "mean": 0.0005937369817564463,
+     "lo95": 0.00024420883696239863,
+     "hi95": 0.000943265126550494,
+     "n": 20
+    },
+    "baseline_cut_ins_per_human_veh_km": {
+     "mean": 0.0007804945493253289,
+     "lo95": 0.00036610916225573076,
+     "hi95": 0.0011948799363949271,
+     "n": 20
+    },
+    "excess_pass_arounds_per_human_veh_km": {
+     "mean": 0.0002660178601879465,
+     "lo95": -0.00021785594062239636,
+     "hi95": 0.0007498916609982893,
+     "n": 20,
+     "resolved": false
+    },
+    "excess_cut_ins_per_human_veh_km": {
+     "mean": 0.021250233449411113,
+     "lo95": 0.01831567360054661,
+     "hi95": 0.024184793298275616,
+     "n": 20,
+     "resolved": true
+    }
+   },
+   "fuel_decomposition_ml_per_veh_km": {
+    "from_humans": {
+     "mean": 0.865249402166621,
+     "lo95": 0.5279429406330872,
+     "hi95": 1.2025558637001548,
+     "n": 20
+    },
+    "from_avs": {
+     "mean": -0.002039153335911977,
+     "lo95": -0.008863122565733959,
+     "hi95": 0.004784815893910005,
+     "n": 20
+    },
+    "total": {
+     "mean": 0.8632102488307091,
+     "lo95": 0.5227901129445709,
+     "hi95": 1.2036303847168472,
+     "n": 20
+    }
+   },
+   "hypothesis_checks": {
+    "a_fuel_increase_reproduces": true,
+    "b_humans_change_more": true,
+    "c_excess_changes_behind_avs": false,
+    "d_humans_burn_more": true,
+    "e_changes_cost_fuel": true
+   },
+   "verdict": "not_supported",
+   "failed_checks": [
+    "c_excess_changes_behind_avs"
+   ],
+   "diagnostic_unchanged_humans_fuel_rises": true
+  },
+  "fs_p0.02": {
+   "penetration": 0.02,
+   "n_runs": 20,
+   "aggregate": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.04401284936230473,
+     "lo95": 0.04060173700995787,
+     "hi95": 0.04742396171465159,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 68.13134257489796,
+     "lo95": 67.61546055512865,
+     "hi95": 68.64722459466726,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 73.49087202016786,
+     "lo95": 73.0197318918412,
+     "hi95": 73.96201214849451,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 76.28322484071207,
+     "lo95": 75.43837487826431,
+     "hi95": 77.12807480315982,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 5.994988202131666,
+     "lo95": 5.319063373256797,
+     "hi95": 6.670913031006536,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 68.17948731292839,
+     "lo95": 67.75302379374432,
+     "hi95": 68.60595083211246,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_av": {
+     "mean": 67.94225267174659,
+     "lo95": 67.38265474024519,
+     "hi95": 68.50185060324799,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 68.18432064465702,
+     "lo95": 67.75664535676742,
+     "hi95": 68.61199593254662,
+     "n": 20
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.11233904655185215,
+     "lo95": 0.10633509383242461,
+     "hi95": 0.11834299927127968,
+     "n": 20
+    },
+    "lc_per_veh_km_av": {
+     "mean": 0.03283812785830726,
+     "lo95": 0.010225200748287873,
+     "hi95": 0.05545105496832665,
+     "n": 20
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.11390188725103596,
+     "lo95": 0.10774392106040659,
+     "hi95": 0.12005985344166534,
+     "n": 20
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 68.17948731292837,
+     "lo95": 67.75302379374429,
+     "hi95": 68.60595083211246,
+     "n": 20
+    },
+    "orig_mean_tt_s": {
+     "mean": 33.122817788278226,
+     "lo95": 32.692704844320566,
+     "hi95": 33.552930732235886,
+     "n": 20
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": 2.5521137168857386,
+     "lo95": 2.5004215477728553,
+     "hi95": 2.603805885998622,
+     "n": 20
+    },
+    "orig_throughput_veh_h": {
+     "mean": 8107.932843651625,
+     "lo95": 8100.382356498297,
+     "hi95": 8115.483330804954,
+     "n": 20
+    },
+    "orig_wave_count": {
+     "mean": 2.0,
+     "lo95": 1.3557807889350726,
+     "hi95": 2.6442192110649274,
+     "n": 20
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.021443071629441642,
+     "lo95": 0.011205066687295926,
+     "hi95": 0.031681076571587356,
+     "n": 20
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.002424804605885889,
+     "lo95": 0.001229784014608393,
+     "hi95": 0.0036198251971633847,
+     "n": 20
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.002424804605885889,
+     "lo95": 0.001229784014608393,
+     "hi95": 0.0036198251971633847,
+     "n": 20
+    },
+    "site_mean_tt_s": {
+     "mean": 54.68066248337608,
+     "lo95": 53.879847724313784,
+     "hi95": 55.48147724243838,
+     "n": 20
+    },
+    "site_throughput_veh_h": {
+     "mean": 7943.0430220356775,
+     "lo95": 7928.667573112601,
+     "hi95": 7957.418470958754,
+     "n": 20
+    }
+   },
+   "fuel_by_changes": {
+    "0": {
+     "mean_ml_per_km": {
+      "mean": 68.13134257489796,
+      "lo95": 67.61546055512865,
+      "hi95": 68.64722459466726,
+      "n": 20
+     },
+     "n_vehicles": 31014
+    },
+    "1": {
+     "mean_ml_per_km": {
+      "mean": 73.49087202016786,
+      "lo95": 73.0197318918412,
+      "hi95": 73.96201214849451,
+      "n": 20
+     },
+     "n_vehicles": 4177
+    },
+    "2+": {
+     "mean_ml_per_km": {
+      "mean": 76.28322484071207,
+      "lo95": 75.43837487826431,
+      "hi95": 77.12807480315982,
+      "n": 20
+     },
+     "n_vehicles": 1237
+    },
+    "changed": {
+     "mean_ml_per_km": {
+      "mean": 74.12633077702961,
+      "lo95": 73.64412258363971,
+      "hi95": 74.6085389704195,
+      "n": 20
+     },
+     "n_vehicles": 5414
+    }
+   },
+   "counts_total": {
+    "n_changes": 3022,
+    "n_av": 17,
+    "n_human": 3005,
+    "n_pass_around": 64,
+    "n_pass_around_at_change": 64,
+    "n_cut_in": 1161,
+    "n_other_human": 1780,
+    "n_unconfirmed": 1
+   },
+   "paired_delta_vs_baseline": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.04401284936230473,
+     "lo95": 0.04060173700995787,
+     "hi95": 0.04742396171465159,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 1.1061967212165171,
+     "lo95": 0.6900159280465283,
+     "hi95": 1.522377514386506,
+     "n": 20,
+     "pct_of_baseline": 1.6504204610481392,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 1.360059420750271,
+     "lo95": 0.6342298382015109,
+     "hi95": 2.085889003299031,
+     "n": 20,
+     "pct_of_baseline": 1.8855456797685552,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 2.247409597602478,
+     "lo95": 1.5551137137759088,
+     "hi95": 2.939705481429047,
+     "n": 20,
+     "pct_of_baseline": 3.0355708115358957,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 0.5270437883407226,
+     "lo95": -0.26683605467405536,
+     "hi95": 1.3209236313555006,
+     "n": 20,
+     "pct_of_baseline": 9.638791993046642,
+     "resolved": false
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 1.2782560260038154,
+     "lo95": 0.9708000247851072,
+     "hi95": 1.5857120272225236,
+     "n": 20,
+     "pct_of_baseline": 1.9106614353951996,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 1.2830893577324425,
+     "lo95": 0.9739393761746777,
+     "hi95": 1.5922393392902072,
+     "n": 20,
+     "pct_of_baseline": 1.9178860135317337,
+     "resolved": true
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.06284702618772658,
+     "lo95": 0.05683124717197442,
+     "hi95": 0.06886280520347875,
+     "n": 20,
+     "pct_of_baseline": 126.98415971977865,
+     "resolved": true
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.06440986688691037,
+     "lo95": 0.058313193920702514,
+     "hi95": 0.07050653985311824,
+     "n": 20,
+     "pct_of_baseline": 130.1419227039639,
+     "resolved": true
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 1.2782560260037379,
+     "lo95": 0.9708000247850166,
+     "hi95": 1.5857120272224592,
+     "n": 20,
+     "pct_of_baseline": 1.9106614353950817,
+     "resolved": true
+    },
+    "orig_mean_tt_s": {
+     "mean": 2.6132910589684717,
+     "lo95": 2.1106621757524855,
+     "hi95": 3.115919942184458,
+     "n": 20,
+     "pct_of_baseline": 8.565491959788243,
+     "resolved": true
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": -0.39965765162960376,
+     "lo95": -0.5012673146373577,
+     "hi95": -0.2980479886218497,
+     "n": 20,
+     "pct_of_baseline": -13.539586971148792,
+     "resolved": true
+    },
+    "orig_throughput_veh_h": {
+     "mean": -37.20881427072395,
+     "lo95": -44.73748231427305,
+     "hi95": -29.68014622717484,
+     "n": 20,
+     "pct_of_baseline": -0.4568221871811511,
+     "resolved": true
+    },
+    "orig_wave_count": {
+     "mean": -0.15,
+     "lo95": -0.7991216763214232,
+     "hi95": 0.4991216763214231,
+     "n": 20,
+     "pct_of_baseline": -6.976744186046512,
+     "resolved": false
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.021443071629441642,
+     "lo95": 0.011205066687295926,
+     "hi95": 0.031681076571587356,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.002424804605885889,
+     "lo95": 0.001229784014608393,
+     "hi95": 0.0036198251971633847,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.002424804605885889,
+     "lo95": 0.001229784014608393,
+     "hi95": 0.0036198251971633847,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "site_mean_tt_s": {
+     "mean": 2.358422839325219,
+     "lo95": 1.6413332446254993,
+     "hi95": 3.075512434024939,
+     "n": 20,
+     "pct_of_baseline": 4.507495962270752,
+     "resolved": true
+    },
+    "site_throughput_veh_h": {
+     "mean": -84.05036726128037,
+     "lo95": -103.660975064345,
+     "hi95": -64.43975945821575,
+     "n": 20,
+     "pct_of_baseline": -1.0470834607873152,
+     "resolved": true
+    }
+   },
+   "counterfactual": {
+    "baseline_pass_arounds_per_human_veh_km": {
+     "mean": 0.0013516939071463673,
+     "lo95": 0.0006798362286117989,
+     "hi95": 0.0020235515856809358,
+     "n": 20
+    },
+    "baseline_cut_ins_per_human_veh_km": {
+     "mean": 0.0007133055911068096,
+     "lo95": 0.00038068157970976794,
+     "hi95": 0.0010459296025038512,
+     "n": 20
+    },
+    "excess_pass_arounds_per_human_veh_km": {
+     "mean": 0.0010731106987395213,
+     "lo95": -0.000434575258955412,
+     "hi95": 0.0025807966564344543,
+     "n": 20,
+     "resolved": false
+    },
+    "excess_cut_ins_per_human_veh_km": {
+     "mean": 0.04329954377119792,
+     "lo95": 0.03997012404404621,
+     "hi95": 0.046628963498349635,
+     "n": 20,
+     "resolved": true
+    }
+   },
+   "fuel_decomposition_ml_per_veh_km": {
+    "from_humans": {
+     "mean": 1.2577149710376023,
+     "lo95": 0.9546966838241127,
+     "hi95": 1.560733258251092,
+     "n": 20
+    },
+    "from_avs": {
+     "mean": 0.02054105496621141,
+     "lo95": 0.011149796119118876,
+     "hi95": 0.02993231381330394,
+     "n": 20
+    },
+    "total": {
+     "mean": 1.2782560260038154,
+     "lo95": 0.9708000247851072,
+     "hi95": 1.5857120272225236,
+     "n": 20
+    }
+   },
+   "hypothesis_checks": {
+    "a_fuel_increase_reproduces": true,
+    "b_humans_change_more": true,
+    "c_excess_changes_behind_avs": false,
+    "d_humans_burn_more": true,
+    "e_changes_cost_fuel": true
+   },
+   "verdict": "not_supported",
+   "failed_checks": [
+    "c_excess_changes_behind_avs"
+   ],
+   "diagnostic_unchanged_humans_fuel_rises": true
+  },
+  "fs_p0.05": {
+   "penetration": 0.05,
+   "n_runs": 20,
+   "aggregate": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.09057564615444416,
+     "lo95": 0.08364961151774154,
+     "hi95": 0.09750168079114678,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 67.9805911394764,
+     "lo95": 67.40266731118875,
+     "hi95": 68.55851496776405,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 73.48005820036923,
+     "lo95": 73.04704255976179,
+     "hi95": 73.91307384097666,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 76.85230140883752,
+     "lo95": 75.921218245173,
+     "hi95": 77.78338457250204,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 6.2791269304923025,
+     "lo95": 5.778742443757105,
+     "hi95": 6.7795114172275,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 68.38112327918921,
+     "lo95": 67.86597434393211,
+     "hi95": 68.89627221444631,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_av": {
+     "mean": 68.59873821842876,
+     "lo95": 67.8393432804601,
+     "hi95": 69.35813315639743,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 68.36972279135409,
+     "lo95": 67.86327935093728,
+     "hi95": 68.87616623177091,
+     "n": 20
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.15231548177929696,
+     "lo95": 0.14355821080654577,
+     "hi95": 0.16107275275204816,
+     "n": 20
+    },
+    "lc_per_veh_km_av": {
+     "mean": 0.04920540396985527,
+     "lo95": 0.0376525370318804,
+     "hi95": 0.060758270907830134,
+     "n": 20
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.15769182577058044,
+     "lo95": 0.14861207985279637,
+     "hi95": 0.1667715716883645,
+     "n": 20
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 68.38112327918921,
+     "lo95": 67.86597434393211,
+     "hi95": 68.89627221444631,
+     "n": 20
+    },
+    "orig_mean_tt_s": {
+     "mean": 35.06446747689118,
+     "lo95": 34.38438316266552,
+     "hi95": 35.74455179111684,
+     "n": 20
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": 2.1792081161750927,
+     "lo95": 2.1433337326241118,
+     "hi95": 2.2150824997260736,
+     "n": 20
+    },
+    "orig_throughput_veh_h": {
+     "mean": 8072.990556138509,
+     "lo95": 8058.918123097868,
+     "hi95": 8087.0629891791505,
+     "n": 20
+    },
+    "orig_wave_count": {
+     "mean": 1.9,
+     "lo95": 1.3986850362537773,
+     "hi95": 2.4013149637462226,
+     "n": 20
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.0608035420779082,
+     "lo95": 0.05048960581997603,
+     "hi95": 0.07111747833584037,
+     "n": 20
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.00948337891670628,
+     "lo95": 0.00782240229412117,
+     "hi95": 0.01114435553929139,
+     "n": 20
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.009522544281647097,
+     "lo95": 0.007860000571510269,
+     "hi95": 0.011185087991783926,
+     "n": 20
+    },
+    "site_mean_tt_s": {
+     "mean": 54.86869458903898,
+     "lo95": 53.83898604256068,
+     "hi95": 55.898403135517285,
+     "n": 20
+    },
+    "site_throughput_veh_h": {
+     "mean": 7891.479538300104,
+     "lo95": 7875.588980659866,
+     "hi95": 7907.370095940341,
+     "n": 20
+    }
+   },
+   "fuel_by_changes": {
+    "0": {
+     "mean_ml_per_km": {
+      "mean": 67.9805911394764,
+      "lo95": 67.40266731118875,
+      "hi95": 68.55851496776405,
+      "n": 20
+     },
+     "n_vehicles": 28428
+    },
+    "1": {
+     "mean_ml_per_km": {
+      "mean": 73.48005820036923,
+      "lo95": 73.04704255976179,
+      "hi95": 73.91307384097666,
+      "n": 20
+     },
+     "n_vehicles": 5067
+    },
+    "2+": {
+     "mean_ml_per_km": {
+      "mean": 76.85230140883752,
+      "lo95": 75.921218245173,
+      "hi95": 77.78338457250204,
+      "n": 20
+     },
+     "n_vehicles": 1479
+    },
+    "changed": {
+     "mean_ml_per_km": {
+      "mean": 74.25971806996873,
+      "lo95": 73.82553942723356,
+      "hi95": 74.69389671270389,
+      "n": 20
+     },
+     "n_vehicles": 6546
+    }
+   },
+   "counts_total": {
+    "n_changes": 4071,
+    "n_av": 65,
+    "n_human": 4006,
+    "n_pass_around": 242,
+    "n_pass_around_at_change": 241,
+    "n_cut_in": 2301,
+    "n_other_human": 1463,
+    "n_unconfirmed": 2
+   },
+   "paired_delta_vs_baseline": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.09057564615444416,
+     "lo95": 0.08364961151774154,
+     "hi95": 0.09750168079114678,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 0.9554452857949656,
+     "lo95": 0.35487739289034315,
+     "hi95": 1.556013178699588,
+     "n": 20,
+     "pct_of_baseline": 1.4255027327814258,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 1.3492456009516645,
+     "lo95": 0.5567399644966187,
+     "hi95": 2.1417512374067105,
+     "n": 20,
+     "pct_of_baseline": 1.8705537236143086,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 2.816486165727921,
+     "lo95": 1.4904961408201571,
+     "hi95": 4.142476190635685,
+     "n": 20,
+     "pct_of_baseline": 3.804221181977256,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 0.8111825167013592,
+     "lo95": 0.06388262016829438,
+     "hi95": 1.5584824132344242,
+     "n": 20,
+     "pct_of_baseline": 14.83523707109092,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 1.4798919922646299,
+     "lo95": 1.021817640356757,
+     "hi95": 1.9379663441725028,
+     "n": 20,
+     "pct_of_baseline": 2.2120549409886054,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 1.468491504429504,
+     "lo95": 1.0085672989983632,
+     "hi95": 1.9284157098606447,
+     "n": 20,
+     "pct_of_baseline": 2.1950141666772454,
+     "resolved": true
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.1028234614151714,
+     "lo95": 0.09301075014123747,
+     "hi95": 0.11263617268910533,
+     "n": 20,
+     "pct_of_baseline": 207.75765599923514,
+     "resolved": true
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.10819980540645487,
+     "lo95": 0.09819379266539537,
+     "hi95": 0.11820581814751437,
+     "n": 20,
+     "pct_of_baseline": 218.62070816750048,
+     "resolved": true
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 1.4798919922645752,
+     "lo95": 1.0218176403566779,
+     "hi95": 1.9379663441724726,
+     "n": 20,
+     "pct_of_baseline": 2.2120549409885215,
+     "resolved": true
+    },
+    "orig_mean_tt_s": {
+     "mean": 4.554940747581429,
+     "lo95": 3.8438271161425055,
+     "hi95": 5.2660543790203524,
+     "n": 20,
+     "pct_of_baseline": 14.929568681921275,
+     "resolved": true
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": -0.7725632523402501,
+     "lo95": -0.8719857637711284,
+     "hi95": -0.6731407409093719,
+     "n": 20,
+     "pct_of_baseline": -26.172868962030332,
+     "resolved": true
+    },
+    "orig_throughput_veh_h": {
+     "mean": -72.15110178384016,
+     "lo95": -87.48772216120632,
+     "hi95": -56.814481406474,
+     "n": 20,
+     "pct_of_baseline": -0.8858176421482196,
+     "resolved": true
+    },
+    "orig_wave_count": {
+     "mean": -0.25,
+     "lo95": -0.8737625689403362,
+     "hi95": 0.3737625689403362,
+     "n": 20,
+     "pct_of_baseline": -11.627906976744187,
+     "resolved": false
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.0608035420779082,
+     "lo95": 0.05048960581997603,
+     "hi95": 0.07111747833584037,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.00948337891670628,
+     "lo95": 0.00782240229412117,
+     "hi95": 0.01114435553929139,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.009522544281647097,
+     "lo95": 0.007860000571510269,
+     "hi95": 0.011185087991783926,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "site_mean_tt_s": {
+     "mean": 2.54645494498813,
+     "lo95": 1.5973905248260771,
+     "hi95": 3.4955193651501832,
+     "n": 20,
+     "pct_of_baseline": 4.866869159867218,
+     "resolved": true
+    },
+    "site_throughput_veh_h": {
+     "mean": -135.61385099685194,
+     "lo95": -153.14285365625457,
+     "hi95": -118.08484833744932,
+     "n": 20,
+     "pct_of_baseline": -1.6894515165062693,
+     "resolved": true
+    }
+   },
+   "counterfactual": {
+    "baseline_pass_arounds_per_human_veh_km": {
+     "mean": 0.002053652221104992,
+     "lo95": 0.001640746378970414,
+     "hi95": 0.0024665580632395696,
+     "n": 20
+    },
+    "baseline_cut_ins_per_human_veh_km": {
+     "mean": 0.002361469612278968,
+     "lo95": 0.0018180450706982662,
+     "hi95": 0.00290489415385967,
+     "n": 20
+    },
+    "excess_pass_arounds_per_human_veh_km": {
+     "mean": 0.0074688920605421065,
+     "lo95": 0.005787161125344144,
+     "hi95": 0.00915062299574007,
+     "n": 20,
+     "resolved": true
+    },
+    "excess_cut_ins_per_human_veh_km": {
+     "mean": 0.08821417654216518,
+     "lo95": 0.08104677643873986,
+     "hi95": 0.0953815766455905,
+     "n": 20,
+     "resolved": true
+    }
+   },
+   "fuel_decomposition_ml_per_veh_km": {
+    "from_humans": {
+     "mean": 1.3953064454346755,
+     "lo95": 0.9582168577040648,
+     "hi95": 1.8323960331652862,
+     "n": 20
+    },
+    "from_avs": {
+     "mean": 0.08458554682995365,
+     "lo95": 0.056467939527588586,
+     "hi95": 0.11270315413231871,
+     "n": 20
+    },
+    "total": {
+     "mean": 1.4798919922646299,
+     "lo95": 1.021817640356757,
+     "hi95": 1.9379663441725028,
+     "n": 20
+    }
+   },
+   "hypothesis_checks": {
+    "a_fuel_increase_reproduces": true,
+    "b_humans_change_more": true,
+    "c_excess_changes_behind_avs": true,
+    "d_humans_burn_more": true,
+    "e_changes_cost_fuel": true
+   },
+   "verdict": "supported",
+   "failed_checks": [],
+   "diagnostic_unchanged_humans_fuel_rises": true
+  },
+  "fs_p0.10": {
+   "penetration": 0.1,
+   "n_runs": 20,
+   "aggregate": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.1333735350909496,
+     "lo95": 0.12614052450577923,
+     "hi95": 0.14060654567611997,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 66.96573984227267,
+     "lo95": 66.49353757261336,
+     "hi95": 67.43794211193197,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 71.58306041179213,
+     "lo95": 71.00591674719196,
+     "hi95": 72.1602040763923,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 75.63698475638935,
+     "lo95": 74.93263682468958,
+     "hi95": 76.34133268808912,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 5.763062164999015,
+     "lo95": 5.113879205784949,
+     "hi95": 6.412245124213081,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 67.66129288211381,
+     "lo95": 67.23179802754093,
+     "hi95": 68.09078773668669,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_av": {
+     "mean": 68.09320573859897,
+     "lo95": 67.41478409340885,
+     "hi95": 68.77162738378908,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 67.61396983678233,
+     "lo95": 67.20271215519625,
+     "hi95": 68.02522751836841,
+     "n": 20
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.18526934529092773,
+     "lo95": 0.17726700211630225,
+     "hi95": 0.1932716884655532,
+     "n": 20
+    },
+    "lc_per_veh_km_av": {
+     "mean": 0.07568815247616505,
+     "lo95": 0.06446477601300812,
+     "hi95": 0.08691152893932197,
+     "n": 20
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.1972510259001106,
+     "lo95": 0.18855760211767839,
+     "hi95": 0.2059444496825428,
+     "n": 20
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 67.66129288211383,
+     "lo95": 67.23179802754096,
+     "hi95": 68.09078773668669,
+     "n": 20
+    },
+    "orig_mean_tt_s": {
+     "mean": 36.19068485793146,
+     "lo95": 35.61912826982151,
+     "hi95": 36.76224144604141,
+     "n": 20
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": 1.8034724414948158,
+     "lo95": 1.7691069318558033,
+     "hi95": 1.8378379511338283,
+     "n": 20
+    },
+    "orig_throughput_veh_h": {
+     "mean": 8025.393494228752,
+     "lo95": 8014.029608714608,
+     "hi95": 8036.757379742897,
+     "n": 20
+    },
+    "orig_wave_count": {
+     "mean": 1.35,
+     "lo95": 1.1209722431203126,
+     "hi95": 1.5790277568796875,
+     "n": 20
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.13520003703080255,
+     "lo95": 0.12126315480862046,
+     "hi95": 0.14913691925298464,
+     "n": 20
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.02684781756076022,
+     "lo95": 0.023457205729753704,
+     "hi95": 0.030238429391766734,
+     "n": 20
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.02693049689225758,
+     "lo95": 0.02354900794178931,
+     "hi95": 0.030311985842725847,
+     "n": 20
+    },
+    "site_mean_tt_s": {
+     "mean": 53.559539040704934,
+     "lo95": 52.581324409264525,
+     "hi95": 54.53775367214534,
+     "n": 20
+    },
+    "site_throughput_veh_h": {
+     "mean": 7868.814270724029,
+     "lo95": 7841.779186039715,
+     "hi95": 7895.8493554083425,
+     "n": 20
+    }
+   },
+   "fuel_by_changes": {
+    "0": {
+     "mean_ml_per_km": {
+      "mean": 66.96573984227267,
+      "lo95": 66.49353757261336,
+      "hi95": 67.43794211193197,
+      "n": 20
+     },
+     "n_vehicles": 26333
+    },
+    "1": {
+     "mean_ml_per_km": {
+      "mean": 71.58306041179213,
+      "lo95": 71.00591674719196,
+      "hi95": 72.1602040763923,
+      "n": 20
+     },
+     "n_vehicles": 4839
+    },
+    "2+": {
+     "mean_ml_per_km": {
+      "mean": 75.63698475638935,
+      "lo95": 74.93263682468958,
+      "hi95": 76.34133268808912,
+      "n": 20
+     },
+     "n_vehicles": 1882
+    },
+    "changed": {
+     "mean_ml_per_km": {
+      "mean": 72.72880200727168,
+      "lo95": 72.23378188849769,
+      "hi95": 73.22382212604568,
+      "n": 20
+     },
+     "n_vehicles": 6721
+    }
+   },
+   "counts_total": {
+    "n_changes": 4939,
+    "n_av": 199,
+    "n_human": 4740,
+    "n_pass_around": 647,
+    "n_pass_around_at_change": 645,
+    "n_cut_in": 3205,
+    "n_other_human": 888,
+    "n_unconfirmed": 5
+   },
+   "paired_delta_vs_baseline": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.1333735350909496,
+     "lo95": 0.12614052450577923,
+     "hi95": 0.14060654567611997,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": -0.05940601140877746,
+     "lo95": -0.5434679288382777,
+     "hi95": 0.4246559060207228,
+     "n": 20,
+     "pct_of_baseline": -0.0886324239240943,
+     "resolved": false
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": -0.5477521876254379,
+     "lo95": -1.486444766526334,
+     "hi95": 0.3909403912754582,
+     "n": 20,
+     "pct_of_baseline": -0.7593872408833235,
+     "resolved": false
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 1.601169513279796,
+     "lo95": 0.46733893273690974,
+     "hi95": 2.7350000938226824,
+     "n": 20,
+     "pct_of_baseline": 2.162695862836217,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 0.2951177512080719,
+     "lo95": -0.5135732939845261,
+     "hi95": 1.10380879640067,
+     "n": 20,
+     "pct_of_baseline": 5.397233930610969,
+     "resolved": false
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 0.760061595189238,
+     "lo95": 0.33077102161815164,
+     "hi95": 1.1893521687603243,
+     "n": 20,
+     "pct_of_baseline": 1.1360950771287035,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 0.7127385498577545,
+     "lo95": 0.2901974453132087,
+     "hi95": 1.1352796544023005,
+     "n": 20,
+     "pct_of_baseline": 1.0653593904736622,
+     "resolved": true
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.1357773249268022,
+     "lo95": 0.12528089917199933,
+     "hi95": 0.14627375068160506,
+     "n": 20,
+     "pct_of_baseline": 274.3418513284634,
+     "resolved": true
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.14775900553598503,
+     "lo95": 0.13669921287821732,
+     "hi95": 0.15881879819375275,
+     "n": 20,
+     "pct_of_baseline": 298.55116935797713,
+     "resolved": true
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 0.7600615951891925,
+     "lo95": 0.3307710216181039,
+     "hi95": 1.189352168760281,
+     "n": 20,
+     "pct_of_baseline": 1.1360950771286342,
+     "resolved": true
+    },
+    "orig_mean_tt_s": {
+     "mean": 5.681158128621705,
+     "lo95": 4.914709582311457,
+     "hi95": 6.447606674931953,
+     "n": 20,
+     "pct_of_baseline": 18.62093168152607,
+     "resolved": true
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": -1.1482989270205266,
+     "lo95": -1.2633998168974219,
+     "hi95": -1.0331980371436313,
+     "n": 20,
+     "pct_of_baseline": -38.902028092985006,
+     "resolved": true
+    },
+    "orig_throughput_veh_h": {
+     "mean": -119.7481636935991,
+     "lo95": -131.69909945911937,
+     "hi95": -107.79722792807881,
+     "n": 20,
+     "pct_of_baseline": -1.4701790186439099,
+     "resolved": true
+    },
+    "orig_wave_count": {
+     "mean": -0.8,
+     "lo95": -1.2704711918379232,
+     "hi95": -0.3295288081620768,
+     "n": 20,
+     "pct_of_baseline": -37.2093023255814,
+     "resolved": true
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.13520003703080255,
+     "lo95": 0.12126315480862046,
+     "hi95": 0.14913691925298464,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.02684781756076022,
+     "lo95": 0.023457205729753704,
+     "hi95": 0.030238429391766734,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.02693049689225758,
+     "lo95": 0.02354900794178931,
+     "hi95": 0.030311985842725847,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "site_mean_tt_s": {
+     "mean": 1.2372993966540744,
+     "lo95": 0.32231209913513814,
+     "hi95": 2.1522866941730108,
+     "n": 20,
+     "pct_of_baseline": 2.3647676496102705,
+     "resolved": true
+    },
+    "site_throughput_veh_h": {
+     "mean": -158.27911857292756,
+     "lo95": -180.60450588638528,
+     "hi95": -135.95373125946983,
+     "n": 20,
+     "pct_of_baseline": -1.9718111014376805,
+     "resolved": true
+    }
+   },
+   "counterfactual": {
+    "baseline_pass_arounds_per_human_veh_km": {
+     "mean": 0.005274302853740515,
+     "lo95": 0.004143875923245905,
+     "hi95": 0.006404729784235124,
+     "n": 20
+    },
+    "baseline_cut_ins_per_human_veh_km": {
+     "mean": 0.004704519776257822,
+     "lo95": 0.003384664270287766,
+     "hi95": 0.006024375282227878,
+     "n": 20
+    },
+    "excess_pass_arounds_per_human_veh_km": {
+     "mean": 0.02165619403851707,
+     "lo95": 0.01789731857424561,
+     "hi95": 0.02541506950278853,
+     "n": 20,
+     "resolved": true
+    },
+    "excess_cut_ins_per_human_veh_km": {
+     "mean": 0.12866901531469177,
+     "lo95": 0.1213835545805908,
+     "hi95": 0.13595447604879274,
+     "n": 20,
+     "resolved": true
+    }
+   },
+   "fuel_decomposition_ml_per_veh_km": {
+    "from_humans": {
+     "mean": 0.6425355396462973,
+     "lo95": 0.26170950527410886,
+     "hi95": 1.0233615740184856,
+     "n": 20
+    },
+    "from_avs": {
+     "mean": 0.1175260555429408,
+     "lo95": 0.0574495045958988,
+     "hi95": 0.17760260648998277,
+     "n": 20
+    },
+    "total": {
+     "mean": 0.760061595189238,
+     "lo95": 0.33077102161815164,
+     "hi95": 1.1893521687603243,
+     "n": 20
+    }
+   },
+   "hypothesis_checks": {
+    "a_fuel_increase_reproduces": true,
+    "b_humans_change_more": true,
+    "c_excess_changes_behind_avs": true,
+    "d_humans_burn_more": true,
+    "e_changes_cost_fuel": true
+   },
+   "verdict": "supported",
+   "failed_checks": [],
+   "diagnostic_unchanged_humans_fuel_rises": false
+  },
+  "fs_p0.20": {
+   "penetration": 0.2,
+   "n_runs": 20,
+   "aggregate": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.12153099115816365,
+     "lo95": 0.1114641557849814,
+     "hi95": 0.1315978265313459,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": 66.19475973733185,
+     "lo95": 65.70338193069556,
+     "hi95": 66.68613754396814,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": 71.00196029746624,
+     "lo95": 70.42916306510179,
+     "hi95": 71.57475752983069,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 75.24241361882807,
+     "lo95": 74.5068625392952,
+     "hi95": 75.97796469836094,
+     "n": 20
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 6.244921731151795,
+     "lo95": 5.710564477638396,
+     "hi95": 6.7792789846651935,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 67.19513444764996,
+     "lo95": 66.7114741587014,
+     "hi95": 67.67879473659852,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_av": {
+     "mean": 67.36300780196564,
+     "lo95": 66.7790595094706,
+     "hi95": 67.94695609446067,
+     "n": 20
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 67.15362806576981,
+     "lo95": 66.68969064056833,
+     "hi95": 67.61756549097129,
+     "n": 20
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.16145347863403706,
+     "lo95": 0.15146613929798344,
+     "hi95": 0.17144081797009067,
+     "n": 20
+    },
+    "lc_per_veh_km_av": {
+     "mean": 0.07869242235648628,
+     "lo95": 0.06776110459186968,
+     "hi95": 0.08962374012110289,
+     "n": 20
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.18180523322951603,
+     "lo95": 0.169148014117865,
+     "hi95": 0.19446245234116705,
+     "n": 20
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 67.19513444764999,
+     "lo95": 66.71147415870145,
+     "hi95": 67.67879473659853,
+     "n": 20
+    },
+    "orig_mean_tt_s": {
+     "mean": 37.51137001056587,
+     "lo95": 36.883222107072264,
+     "hi95": 38.139517914059475,
+     "n": 20
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": 1.2993667762291259,
+     "lo95": 1.260730952200546,
+     "hi95": 1.3380026002577057,
+     "n": 20
+    },
+    "orig_throughput_veh_h": {
+     "mean": 7991.395592864637,
+     "lo95": 7984.358791868133,
+     "hi95": 7998.4323938611415,
+     "n": 20
+    },
+    "orig_wave_count": {
+     "mean": 1.0,
+     "lo95": 1.0,
+     "hi95": 1.0,
+     "n": 20
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.25809236560209603,
+     "lo95": 0.2316734192658935,
+     "hi95": 0.2845113119382986,
+     "n": 20
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.04677618393767248,
+     "lo95": 0.04112894356448963,
+     "hi95": 0.05242342431085533,
+     "n": 20
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.046965417620712394,
+     "lo95": 0.0412623447414541,
+     "hi95": 0.05266849049997069,
+     "n": 20
+    },
+    "site_mean_tt_s": {
+     "mean": 50.9933579281626,
+     "lo95": 50.19895397249849,
+     "hi95": 51.78776188382672,
+     "n": 20
+    },
+    "site_throughput_veh_h": {
+     "mean": 7807.240293809024,
+     "lo95": 7790.726321969559,
+     "hi95": 7823.754265648488,
+     "n": 20
+    }
+   },
+   "fuel_by_changes": {
+    "0": {
+     "mean_ml_per_km": {
+      "mean": 66.19475973733185,
+      "lo95": 65.70338193069556,
+      "hi95": 66.68613754396814,
+      "n": 20
+     },
+     "n_vehicles": 24595
+    },
+    "1": {
+     "mean_ml_per_km": {
+      "mean": 71.00196029746624,
+      "lo95": 70.42916306510179,
+      "hi95": 71.57475752983069,
+      "n": 20
+     },
+     "n_vehicles": 3195
+    },
+    "2+": {
+     "mean_ml_per_km": {
+      "mean": 75.24241361882807,
+      "lo95": 74.5068625392952,
+      "hi95": 75.97796469836094,
+      "n": 20
+     },
+     "n_vehicles": 1628
+    },
+    "changed": {
+     "mean_ml_per_km": {
+      "mean": 72.43968146848364,
+      "lo95": 71.93392184733321,
+      "hi95": 72.94544108963407,
+      "n": 20
+     },
+     "n_vehicles": 4823
+    }
+   },
+   "counts_total": {
+    "n_changes": 4273,
+    "n_av": 411,
+    "n_human": 3862,
+    "n_pass_around": 997,
+    "n_pass_around_at_change": 993,
+    "n_cut_in": 2582,
+    "n_other_human": 283,
+    "n_unconfirmed": 2
+   },
+   "paired_delta_vs_baseline": {
+    "cut_ins_per_human_veh_km": {
+     "mean": 0.12153099115816365,
+     "lo95": 0.1114641557849814,
+     "hi95": 0.1315978265313459,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_0_changes": {
+     "mean": -0.8303861163495974,
+     "lo95": -1.2099929016043303,
+     "hi95": -0.4507793310948644,
+     "n": 20,
+     "pct_of_baseline": -1.2389172836152615,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_1_change": {
+     "mean": -1.1288523019513392,
+     "lo95": -1.9112160884670286,
+     "hi95": -0.34648851543564985,
+     "n": 20,
+     "pct_of_baseline": -1.5650070493735908,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_2plus_changes": {
+     "mean": 1.2065983757184937,
+     "lo95": 0.11055653861708548,
+     "hi95": 2.302640212819902,
+     "n": 20,
+     "pct_of_baseline": 1.6297495634463082,
+     "resolved": true
+    },
+    "fuel_ml_per_km_human_changed_minus_unchanged": {
+     "mean": 0.7769773173608513,
+     "lo95": 0.1091331404307112,
+     "hi95": 1.4448214942909914,
+     "n": 20,
+     "pct_of_baseline": 14.209678419575782,
+     "resolved": true
+    },
+    "fuel_ml_per_veh_km_all": {
+     "mean": 0.29390316072539735,
+     "lo95": -0.02797153892757709,
+     "hi95": 0.6157778603783718,
+     "n": 20,
+     "pct_of_baseline": 0.43930904569590323,
+     "resolved": false
+    },
+    "fuel_ml_per_veh_km_human": {
+     "mean": 0.2523967788452353,
+     "lo95": -0.06449380329174087,
+     "hi95": 0.5692873609822116,
+     "n": 20,
+     "pct_of_baseline": 0.37726776322361155,
+     "resolved": false
+    },
+    "lc_per_veh_km_all": {
+     "mean": 0.11196145826991151,
+     "lo95": 0.10179162504668833,
+     "hi95": 0.12213129149313469,
+     "n": 20,
+     "pct_of_baseline": 226.22123212223337,
+     "resolved": true
+    },
+    "lc_per_veh_km_human": {
+     "mean": 0.13231321286539047,
+     "lo95": 0.1196935938953804,
+     "hi95": 0.14493283183540054,
+     "n": 20,
+     "pct_of_baseline": 267.3425168177173,
+     "resolved": true
+    },
+    "orig_fuel_ml_per_veh_km": {
+     "mean": 0.29390316072536676,
+     "lo95": -0.02797153892759574,
+     "hi95": 0.6157778603783293,
+     "n": 20,
+     "pct_of_baseline": 0.43930904569585705,
+     "resolved": false
+    },
+    "orig_mean_tt_s": {
+     "mean": 7.001843281256112,
+     "lo95": 6.303832854185092,
+     "hi95": 7.699853708327131,
+     "n": 20,
+     "pct_of_baseline": 22.94969483918481,
+     "resolved": true
+    },
+    "orig_sigma_v_temporal_ms": {
+     "mean": -1.6524045922862172,
+     "lo95": -1.7687486964981514,
+     "hi95": -1.536060488074283,
+     "n": 20,
+     "pct_of_baseline": -55.98010096281034,
+     "resolved": true
+    },
+    "orig_throughput_veh_h": {
+     "mean": -153.74606505771254,
+     "lo95": -161.8599821079649,
+     "hi95": -145.6321480074602,
+     "n": 20,
+     "pct_of_baseline": -1.8875800018551165,
+     "resolved": true
+    },
+    "orig_wave_count": {
+     "mean": -1.15,
+     "lo95": -1.6819957581616247,
+     "hi95": -0.618004241838375,
+     "n": 20,
+     "pct_of_baseline": -53.48837209302325,
+     "resolved": true
+    },
+    "pass_around_share_of_human_changes": {
+     "mean": 0.25809236560209603,
+     "lo95": 0.2316734192658935,
+     "hi95": 0.2845113119382986,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_at_change_per_human_veh_km": {
+     "mean": 0.04677618393767248,
+     "lo95": 0.04112894356448963,
+     "hi95": 0.05242342431085533,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "pass_arounds_per_human_veh_km": {
+     "mean": 0.046965417620712394,
+     "lo95": 0.0412623447414541,
+     "hi95": 0.05266849049997069,
+     "n": 20,
+     "pct_of_baseline": null,
+     "resolved": true
+    },
+    "site_mean_tt_s": {
+     "mean": -1.3288817158882569,
+     "lo95": -2.135621930113952,
+     "hi95": -0.5221415016625617,
+     "n": 20,
+     "pct_of_baseline": -2.539802816027493,
+     "resolved": true
+    },
+    "site_throughput_veh_h": {
+     "mean": -219.85309548793276,
+     "lo95": -245.25768872467845,
+     "hi95": -194.44850225118708,
+     "n": 20,
+     "pct_of_baseline": -2.7388879738346774,
+     "resolved": true
+    }
+   },
+   "counterfactual": {
+    "baseline_pass_arounds_per_human_veh_km": {
+     "mean": 0.010060095899999495,
+     "lo95": 0.007671545887108335,
+     "hi95": 0.012448645912890655,
+     "n": 20
+    },
+    "baseline_cut_ins_per_human_veh_km": {
+     "mean": 0.007856999363051237,
+     "lo95": 0.006007684068883242,
+     "hi95": 0.009706314657219231,
+     "n": 20
+    },
+    "excess_pass_arounds_per_human_veh_km": {
+     "mean": 0.03690532172071289,
+     "lo95": 0.030708436225454345,
+     "hi95": 0.04310220721597143,
+     "n": 20,
+     "resolved": true
+    },
+    "excess_cut_ins_per_human_veh_km": {
+     "mean": 0.1136739917951124,
+     "lo95": 0.10374293191726117,
+     "hi95": 0.12360505167296362,
+     "n": 20,
+     "resolved": true
+    }
+   },
+   "fuel_decomposition_ml_per_veh_km": {
+    "from_humans": {
+     "mean": 0.20202536289092965,
+     "lo95": -0.05202401642469162,
+     "hi95": 0.4560747422065509,
+     "n": 20
+    },
+    "from_avs": {
+     "mean": 0.0918777978344723,
+     "lo95": 0.015653845123278387,
+     "hi95": 0.1681017505456662,
+     "n": 20
+    },
+    "total": {
+     "mean": 0.29390316072539735,
+     "lo95": -0.02797153892757709,
+     "hi95": 0.6157778603783718,
+     "n": 20
+    }
+   },
+   "hypothesis_checks": {
+    "a_fuel_increase_reproduces": false,
+    "b_humans_change_more": true,
+    "c_excess_changes_behind_avs": true,
+    "d_humans_burn_more": false,
+    "e_changes_cost_fuel": true
+   },
+   "verdict": "not_applicable",
+   "failed_checks": [
+    "a_fuel_increase_reproduces",
+    "d_humans_burn_more"
+   ],
+   "diagnostic_unchanged_humans_fuel_rises": false
+  }
+ },
+ "missing_runs": [],
+ "n_runs_analysed": 120,
+ "n_runs_failed_this_session": 0,
+ "wall_s": 24.8
+}

@@ -196,3 +196,30 @@ travel time on the replica itself.
 wall time on a pipeline VM (`artifacts/us101_validation_calibrated.json`,
 committed 2026-09-17, `arms.with_boundary.simulated.wall_s`). The analysis took about 1 s and 0.5 GB
 per run on a synthetic run of the replica's size (588,212 rows).
+
+## Testing the multi-lane hypothesis — result (2026-09-25, VM AB)
+
+The `us101_lane_changes` stage (snapshot 763a429, n2-standard-8, 243 s) re-ran the sweep — baseline and FollowerStopper at 1, 2, 5,
+10 and 20 %, 100 % compliance, the same 20 seeds — with every trajectory kept, and counted lane changes on the replica
+(`artifacts/us101_lane_change_penetration.json`). Paired against each seed's baseline, means with 95 % intervals over the 20 seeds:
+
+| penetration | fuel (all vehicles) | human lane changes per human veh-km | excess cut-ins ahead of an AV | excess passes around an AV | humans who never changed lanes, fuel | throughput on the replica (original x = 400 m) | pre-registered verdict |
+|---|---|---|---|---|---|---|---|
+| 1 % | +1.29 % | +0.034 [0.028, 0.040] | +0.021 | +0.000 [−0.000, 0.001] | +0.75 ml/km [0.32, 1.19] | −0.72 % (−0.20 %) | not supported (c) |
+| 2 % | +1.91 % | +0.064 [0.058, 0.071] | +0.043 | +0.001 [−0.000, 0.003] | +1.11 ml/km [0.69, 1.52] | −1.05 % (−0.46 %) | not supported (c) |
+| 5 % | +2.21 % | +0.108 [0.098, 0.118] | +0.088 | +0.007 [0.006, 0.009] | +0.96 ml/km [0.36, 1.56] | −1.69 % (−0.89 %) | supported |
+| 10 % | +1.14 % | +0.148 [0.137, 0.159] | +0.129 | +0.022 [0.018, 0.025] | −0.06 ml/km [−0.54, 0.43] | −1.97 % (−1.47 %) | supported |
+| 20 % | +0.44 % (not resolved) | +0.132 [0.120, 0.145] | +0.114 | +0.037 [0.031, 0.043] | −0.83 ml/km [−1.21, −0.45] | −2.74 % (−1.89 %) | not applicable (a) |
+
+The baseline's human rate is 0.049 changes per human veh-km. At every level humans who changed lanes burn about 6 ml/km more than
+those who did not (5.8–6.3 ml/km, every interval above zero), and the extra fuel is almost all the humans' (at 5 %: 1.40 of 1.48 ml per
+veh-km).
+
+**Reading.** The fuel increase reproduces at 1–10 % and fades at 20 %, as first published. Humans do change lanes much more around
+FollowerStopper vehicles — two to four times the baseline rate — and changing lanes costs fuel. But the extra changes are not mainly
+humans *leaving* an AV's lane to pass it, which is what the pre-registered check (c) tested: at 1 and 2 % there is no such excess at
+all, hence "not supported" there. They are humans **cutting in to the larger gap the AV keeps ahead of it**: 80–95 % of the excess
+changes. And at 1–5 % humans who never change lanes also burn more, so lane changes are not the whole mechanism. The stated
+hypothesis therefore holds in its broad form (multi-lane interaction costs fuel) but not in its specific one (passing around the AV);
+the measured mechanism is cut-ins into the controller's gap. Measured on the replica, the throughput cost is 0.7–2.7 %, about twice
+the published figures, which were measured upstream of it (correction note above).
