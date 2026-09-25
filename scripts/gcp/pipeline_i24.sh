@@ -443,6 +443,22 @@ stage mndot_weave_seed5_lockveh bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/ba
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lockveh.py.txt \$D ${LOCK_T0:-140} ${LOCK_T1:-170} ${LOCK_X0:-8300} ${LOCK_X1:-8600} \
   > logs/diag_lockveh.txt 2>&1" || say "mndot_weave_seed5_lockveh failed; continuing"
 
+# 10j. exit_prepare with the lane-end give-up (WP-71, 2026-09-25, block 3): VM Q ran exit_prepare alone — GEH passes
+#     nearly doubled, three of 20 seeds collapsed late at the T.H.61 two-lane weave's gore (VM T: exiters held on through
+#     lanes, through vehicles on exit-only lanes); OSMNetwork.lane_end_giveup_m = 7.5 frees the front vehicle of such a
+#     lane. The corrected scenarios with weave_params {exit_prepare: 1.0} and the network's lane_end_giveup_m: 7.5.
+for V in slice ""; do
+  SUF=${V:+_$V}
+  stage mndot_weave${SUF}_xlend bash -c "sed -e 's#^name: ${MNDOT}_weave${SUF}\$#name: ${MNDOT}_weave${SUF}_xlend#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' scenarios/${MNDOT}_weave${SUF}.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' > scenarios/${MNDOT}_weave${SUF}_xlend.yaml && \
+    grep -c 'exit_prepare: 1.0' scenarios/${MNDOT}_weave${SUF}_xlend.yaml && grep -c '^  lane_end_giveup_m: 7.5' scenarios/${MNDOT}_weave${SUF}_xlend.yaml && \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave${SUF}_xlend.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates \$([ -n '$V' ] && echo 4 || echo $REPS) --procs $PROCS \
+      --out runs/${MNDOT}_weave${SUF}_xlend/baseline --artifact artifacts/validation_${MNDOT}_weave${SUF}_xlend.json \
+      --report-dir docs/reports/${MNDOT}_weave${SUF}_xlend --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlend failed; continuing"
+done
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
