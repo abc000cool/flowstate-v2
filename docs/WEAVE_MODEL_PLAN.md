@@ -6098,3 +6098,12 @@ Reading.
   - the stub render.
 
 Every number above is from those runs, from the committed files named, or from the tests.
+
+**VM Y (2026-09-25, block 3): the first I-24 critical-gap run failed, and the fix.** The `i24_critical_gaps` stage (snapshot bf86a6e,
+n2-standard-8) extracted the lookback over all 16 chunks in 26 s at a 1.7 GB peak, then died in the joint fit with `OverflowError`
+in `_joint_nll`: on a group whose likelihood is flat on one side, Nelder–Mead walked that side's log-sigma past the range of `exp`. The
+same flatness showed without a crash on a synthetic group with no lag vehicle ever in range: the fit returned a lag median of 0.002 s
+with nothing flagged. `calibration.critical_gap` now holds log-sigma at or below ln 10 and mu within ln 0.01 … ln 1,000 s inside both
+likelihoods and in the fitted results, flags a fit at a bound `at_bound` (not identified) in its JSON, and the proposal skips such a
+fit as it skips one at the sigma floor. Two regression tests (`TestBoundedParameters`) fail on the previous code and pass now; no
+fitted value of an identified group changes. The stage is re-run on the next VM.

@@ -154,6 +154,24 @@ rightmost, so entering is a change to the left)."""
 
 _SIGMA_FLOOR: Final[float] = 1e-3
 _P_FLOOR: Final[float] = 1e-300
+_LOG_SIGMA_MAX: Final[float] = math.log(10.0)
+"""Upper bound on a fitted log-normal ``sigma`` (log-gap scale). A side whose likelihood is flat
+(one that never binds, or every gap censored) otherwise lets Nelder–Mead walk ``log sigma`` to an
+overflow — the I-24 fit on VM Y (2026-09-25) died with ``OverflowError`` in :func:`_joint_nll`. A
+fit at this bound, or at a ``mu`` bound, is reported ``at_bound`` (not identified) and skipped by
+the proposal, as a fit at the ``sigma`` floor is."""
+_MU_BOUNDS: Final[tuple[float, float]] = (math.log(0.01), math.log(1000.0))
+"""Bounds on a fitted ``mu`` (log seconds): a critical gap median between 0.01 s and 1,000 s."""
+
+
+def _sigma_of(theta_s: float) -> float:
+    """``sigma`` from its log-scale parameter, held within [floor, exp(_LOG_SIGMA_MAX)]."""
+    return math.exp(min(max(float(theta_s), math.log(_SIGMA_FLOOR)), _LOG_SIGMA_MAX))
+
+
+def _mu_of(theta_m: float) -> float:
+    """``mu`` held within :data:`_MU_BOUNDS`."""
+    return min(max(float(theta_m), _MU_BOUNDS[0]), _MU_BOUNDS[1])
 
 
 # --- driver tables -------------------------------------------------------------
@@ -318,6 +336,15 @@ class LogNormalFit:
     counts: dict[str, int]
 
     @property
+    def at_bound(self) -> bool:
+        """The fit sits at a parameter bound (:data:`_LOG_SIGMA_MAX`, :data:`_MU_BOUNDS`): not identified."""
+        return (
+            self.sigma >= math.exp(_LOG_SIGMA_MAX) * (1.0 - 1e-9)
+            or self.mu <= _MU_BOUNDS[0] + 1e-9
+            or self.mu >= _MU_BOUNDS[1] - 1e-9
+        )
+
+    @property
     def median(self) -> float:
         """Median critical gap, ``exp(mu)``."""
         return math.exp(self.mu)
@@ -349,6 +376,7 @@ class LogNormalFit:
             "loglik": round(self.loglik, 4),
             "converged": self.converged,
             "degenerate": self.sigma <= 2.0 * _SIGMA_FLOOR,
+            "at_bound": self.at_bound,
             **self.counts,
         }
 
@@ -458,15 +486,15 @@ def fit_critical_gap(
     au, ru, wu = a[use], r_eff[use], w[use]
 
     def nll(theta: NDArray[np.float64]) -> float:
-        sigma = max(math.exp(float(theta[1])), _SIGMA_FLOOR)
-        p = _interval_prob(au, ru, float(theta[0]), sigma)
+        sigma = _sigma_of(theta[1])
+        p = _interval_prob(au, ru, _mu_of(theta[0]), sigma)
         return float(-np.sum(wu * np.log(np.maximum(p, _P_FLOOR))))
 
     mu0, s0 = x0 if x0 is not None else _start(au, ru)
     x, fun, ok = _minimize(nll, (mu0, math.log(max(s0, _SIGMA_FLOOR))))
     return LogNormalFit(
-        mu=float(x[0]),
-        sigma=max(math.exp(float(x[1])), _SIGMA_FLOOR),
+        mu=_mu_of(x[0]),
+        sigma=_sigma_of(x[1]),
         loglik=-fun,
         converged=ok,
         counts=counts,
@@ -635,9 +663,9 @@ class JointFit:
 
 
 def _joint_nll(theta: NDArray[np.float64], data: JointData, w: NDArray[np.float64]) -> float:
-    s_l = max(math.exp(float(theta[1])), _SIGMA_FLOOR)
-    s_g = max(math.exp(float(theta[3])), _SIGMA_FLOOR)
-    m_l, m_g = float(theta[0]), float(theta[2])
+    s_l = _sigma_of(theta[1])
+    s_g = _sigma_of(theta[3])
+    m_l, m_g = _mu_of(theta[0]), _mu_of(theta[2])
     inside = _cdf(data.a_lead, m_l, s_l) * _cdf(data.a_lag, m_g, s_g)
     if data.driver.size:
         steps = _cdf(data.x, m_l, s_l) * (_cdf(data.y, m_g, s_g) - _cdf(data.y_prev, m_g, s_g))
@@ -678,10 +706,8 @@ def fit_joint_critical_gaps(
         x0 = (ml, sl, mg, sg)
     start = (x0[0], math.log(max(x0[1], _SIGMA_FLOOR)), x0[2], math.log(max(x0[3], _SIGMA_FLOOR)))
     x, fun, ok = _minimize(lambda th: _joint_nll(th, data, w), start)
-    lead = LogNormalFit(
-        float(x[0]), max(math.exp(float(x[1])), _SIGMA_FLOOR), -fun, ok, data.counts
-    )
-    lag = LogNormalFit(float(x[2]), max(math.exp(float(x[3])), _SIGMA_FLOOR), -fun, ok, data.counts)
+    lead = LogNormalFit(_mu_of(x[0]), _sigma_of(x[1]), -fun, ok, data.counts)
+    lag = LogNormalFit(_mu_of(x[2]), _sigma_of(x[3]), -fun, ok, data.counts)
     return JointFit(lead, lag, -fun, ok, data.counts)
 
 
@@ -1056,7 +1082,12 @@ def acceptance_mapping(
             continue
         lead_d = lead_fit["lead"] if estimator == "joint" else lead_fit
         lag_d = lag_fit["lag"] if estimator == "joint" else lag_fit
-        if lead_d.get("degenerate") or lag_d.get("degenerate"):
+        if (
+            lead_d.get("degenerate")
+            or lag_d.get("degenerate")
+            or lead_d.get("at_bound")
+            or lag_d.get("at_bound")
+        ):
             continue
         t_l = float(lead_d["median_s"])
         t_g = float(lag_d["median_s"])

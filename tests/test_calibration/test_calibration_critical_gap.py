@@ -472,3 +472,38 @@ class TestGroupsAndMapping:
         # an exiting group reads exit_accept_gap_s; no fitted class gives no proposal
         empty = acceptance_mapping(rows[:1], boots[:1], PARAMS, movement="exiting")
         assert empty["parameter"] == "exit_accept_gap_s" and empty["accept_s"] is None
+
+
+class TestBoundedParameters:
+    """VM Y (2026-09-25): the joint fit on the I-24 data died with OverflowError in ``_joint_nll``
+    when Nelder-Mead walked a flat side's log-sigma past exp's range. Parameters are now held within
+    bounds, and a fit at a bound is flagged ``at_bound`` (not identified) and skipped by the proposal."""
+
+    @staticmethod
+    def _uninformative_lag() -> tuple[np.ndarray, ...]:
+        rng = np.random.default_rng(7)
+        n = 200
+        a_lead = np.exp(rng.normal(np.log(1.5), 0.4, n)) * 1.3
+        a_lag = np.full(n, np.inf)  # no lag vehicle ever within range: the lag side carries no information
+        drv = np.repeat(np.arange(n), 2)
+        pl = np.stack([a_lead * 0.6, a_lead * 0.5], axis=1).ravel()
+        pg = np.full(2 * n, np.inf)
+        return a_lead, a_lag, drv, pl, pg
+
+    def test_the_likelihood_does_not_overflow_at_extreme_log_sigma(self) -> None:
+        from calibration import critical_gap as cg
+
+        data = cg.prepare_joint(*self._uninformative_lag())
+        w = np.ones(data.counts["n_used"])
+        for theta in ([0.4, 800.0, 0.4, 800.0], [0.4, -800.0, 800.0, 800.0], [-800.0, 0.0, 0.0, 0.0]):
+            value = cg._joint_nll(np.asarray(theta, dtype=np.float64), data, w)
+            assert np.isfinite(value)
+
+    def test_a_flat_side_is_flagged_not_identified(self) -> None:
+        from calibration import critical_gap as cg
+
+        fit = cg.fit_joint_critical_gaps(cg.prepare_joint(*self._uninformative_lag()))
+        assert fit.lag.at_bound
+        assert fit.lag.to_dict()["at_bound"] is True
+        assert not fit.lead.at_bound
+        assert 1.0 < fit.lead.median < 2.5
