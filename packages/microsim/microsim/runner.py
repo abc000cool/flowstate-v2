@@ -3330,6 +3330,28 @@ def _weave_cooperate(
     Measured on the fixture grid and left off (:func:`_weave_coop_gate`
     has the numbers).
 
+    The anticipation spares the exiters (2026-09-25, block 3, WP-75;
+    ``anticipation_spares_exiters``, off by default): for an entrant still
+    on the ramp (``arrival_s`` given), a gap follower that is itself bound
+    for the paired exit is not commanded; the gap choice, the commitment and
+    the entrant's easing are untouched, and a withheld hold that would have
+    bound is counted in ``n_anticipation_exiter_spared``. The derivation:
+    an exiter held so that an entrant can enter lane 1 in front of it must
+    itself cross into the lane the entrant leaves, so the hold trades one
+    crossing for a slower one. The gap behind the exiter is no alternative:
+    the entrant is in exactly one gap (its follower behind its rear, its
+    leader's front ahead of its own), and the gap behind a vehicle whose
+    front is behind the entrant's is not a candidate. On the corridor
+    section fixture the exiters behind an approaching entrant are slower
+    than it and pass it before the section start on 0–6 % of the steps, so
+    passing them over in the gap choice leaves the entrant no gap on every
+    such step (measured as a harness form: no hold and no easing). The rule
+    therefore withholds only the hold. Measured and left off: the hold
+    moves into the section as the section entrants' own cooperation, the
+    entrants cross later and slower, the T.H.52 entrance falls, and the
+    exit end's lanes 0 and 1 still fail every window
+    (docs/WEAVE_MODEL_PLAN.md, dated section WP-75).
+
     Returns:
         The chosen gap's follower id (the commitment carried to the next
         step), or ``None``.
@@ -3499,6 +3521,21 @@ def _weave_cooperate(
             _weave_command(mod, would, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
             if would:
                 ws["n_anticipation_gated"] += 1
+    if (
+        f_t is not None
+        and not gated
+        and arrival_s is not None
+        and prm["anticipation_spares_exiters"] > 0.0
+        and f_t in ws["exiting_ids"]
+    ):
+        # the anticipation spares the exiters (WP-75): an approaching
+        # entrant's gap follower that is itself bound for the paired exit is
+        # not held; the gap, its commitment and the entrant's easing are kept
+        gated = True
+        spare: dict[str, tuple[float, float, bool]] = {}
+        _weave_command(mod, spare, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
+        if spare:
+            ws["n_anticipation_exiter_spared"] += 1
     if f_t is not None and not gated:
         _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
     if l_t is not None and a_c < 0.0:
@@ -4599,6 +4636,17 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     20 m/s, the capacity fixture's no-lock pin breaks at two seeds and the
     Ruth St section locks at one (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **The anticipation spares the exiters** (2026-09-25, block 3, WP-75;
+    ``anticipation_spares_exiters``, off by default; :func:`_weave_cooperate`
+    has the derivation). An entrant still on the ramp does not hold a gap
+    follower that is itself bound for the paired exit; its gap, commitment
+    and easing are kept. Counted in ``n_anticipation_exiter_spared``.
+    Measured and left off: the exiters reach the section start faster, but
+    the entrants cross later, the hold reappears in the section as the
+    section entrants' cooperation, the T.H.52 entrance falls, and with
+    ``ramp_outlet`` the corridor section fixture locks at one seed
+    (docs/WEAVE_MODEL_PLAN.md, dated section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -5236,7 +5284,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``n_onset_priority`` (WP-73, the exit priority from the braking onset)
     the exiter-steps on which an exiter had the exit priority from its own
     lane-end braking onset before its forced change was due
-    (:func:`_weave_brake_onset_m`; zero at ``exit_priority_onset`` = 0).
+    (:func:`_weave_brake_onset_m`; zero at ``exit_priority_onset`` = 0);
+    ``n_anticipation_exiter_spared`` (WP-75, the anticipation spares the
+    exiters) the vehicle-steps on which an approaching entrant's gap
+    follower was bound for the paired exit and was not held, counted only
+    where the hold would have bound (:func:`_weave_cooperate`; zero at
+    ``anticipation_spares_exiters`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -5288,6 +5341,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_spread_withheld": ws["n_spread_withheld"],
         "n_outlet_spared": ws["n_outlet_spared"],
         "n_onset_priority": ws["n_onset_priority"],
+        "n_anticipation_exiter_spared": ws["n_anticipation_exiter_spared"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -6481,6 +6535,11 @@ def run_micro(
                     # forced zone's (meta)
                     "cf_model": cfg.fleet.model,
                     "n_onset_priority": 0,
+                    # WP-75, the anticipation spares the exiters: the
+                    # approaching entrant-steps whose gap follower is
+                    # exit-bound and whose hold was withheld where it would
+                    # have bound (meta)
+                    "n_anticipation_exiter_spared": 0,
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},

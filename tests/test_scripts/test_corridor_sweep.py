@@ -84,6 +84,7 @@ WEAVE = {
         "n_spread_withheld": 0,
         "n_outlet_spared": 0,
         "n_onset_priority": 0,
+        "n_anticipation_exiter_spared": 0,
     },
     22: {
         "n_entered": 44,
@@ -113,6 +114,7 @@ WEAVE = {
         "n_spread_withheld": 90,
         "n_outlet_spared": 15,
         "n_onset_priority": 30,
+        "n_anticipation_exiter_spared": 20,
     },
     33: {
         "n_entered": 48,
@@ -142,6 +144,7 @@ WEAVE = {
         "n_spread_withheld": 180,
         "n_outlet_spared": 40,
         "n_onset_priority": 60,
+        "n_anticipation_exiter_spared": 45,
     },
 }
 
@@ -279,7 +282,8 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
     ``n_exit_prepared`` (WP-62) and the swap's ``n_swaps`` (WP-64) and the
     crossings spread's ``n_spread_withheld`` (WP-67) and the ramp's outlet's
     ``n_outlet_spared`` (WP-70) and the braking onset's ``n_onset_priority``
-    (WP-73): their intervals are empty
+    (WP-73) and the anticipation's ``n_anticipation_exiter_spared`` (WP-75):
+    their intervals are empty
     (``n`` = 0), never a zero mean, and the counters that are there aggregate
     as before. A section with cooperations but ``mean_follower_decel_ms2``
     null (none commanded) contributes to the count and not to the decel; one
@@ -326,6 +330,7 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
         "n_spread_withheld",
         "n_outlet_spared",
         "n_onset_priority",
+        "n_anticipation_exiter_spared",
     ):
         assert weave[field]["n"] == 0, field
         assert weave[field]["mean"] is None, field

@@ -5026,3 +5026,355 @@ Session artifacts are not committed (`wp74/`):
 - `corr_run.py`, `tab.py`, the JSONL records (`corr_rows.jsonl`, `O_before.jsonl`, `O_after.jsonl`) and the fixture before the change (`weave_th52_corridor.before.osm`).
 
 Every number above is from those runs and compiles, or from the committed files named.
+
+## 2026-09-25 (block 3, WP-75, the exiters on the approach): the ramp anticipation's holds fall on exiters 83–97 % of the time, and the exiters behind an approaching entrant are slower than it, so the gap behind the exiter never opens for the entrant. With `ramp_outlet` set, withholding only the hold on the exiter lifts the exiters to 20.3 / 21.4 / 16.3 m/s at the section start. But the entrants then cross later, the hold reappears in the section, T.H.52 falls, and lanes 0 and 1 still fail every window; with `ramp_outlet` the section locks at seed 5. Nothing ships (`anticipation_spares_exiters` = 0)
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`), now on the fixture WP-74 corrected (its gore link compiles straight, as the corridor's does). With `ramp_outlet` set, the mainline passes at seeds 3–5 and the entrance at seeds 3 and 4 (382 of the 387 asked at seed 5). Criterion (ii) fails in lanes 0 and 1 in every window: every lane of the section's last 60 m above 20 m/s in every 5-min window.
+
+WP-73 found that the exiters lose their speed on the approach, before any in-section priority can act. They fall from about 22 m/s 200–300 m out to 18.2 / 18.8 / 13.4 m/s at the section start, 1.5–4.3 m/s below the through traffic in their lane. In the approach's last 240 m, 17–23 % of their steps carry the ramp anticipation's holds (`ramp_hold`): an entrant still on the ramp holds its lane-1 gap follower. WP-72 found those holds load-bearing for the entrance as a whole. The open question is whether the holds on exiters are.
+
+This package:
+1. measures the holds by the held follower's movement, their speed cost, the geometry each is made in, and the exiters' speeds over the approach and at x = 0, 51.1 and 150 m, at the defaults and with `ramp_outlet`;
+2. derives the rule the package names (the anticipation does not hold an exiter) and its bound;
+3. measures it on the corridor section test (seeds 3–5 and 3–12), on the 29-run grid and on golden `merge_weave`.
+
+The demand, every scenario, every fixture and every existing assertion are untouched.
+
+**How it was measured.**
+- *Harness.* `wp75_harness.py` (session, not committed) is WP-73's harness, on WP-72's per-step logs, WP-70's movements and WP-65's command families, with every hook applied from outside the runner. It adds:
+  - the binding-target log with the changer that asked for the target, and `v`, `v_cmd` and `a_own` per target;
+  - at every call of the ramp anticipation, the gap choice as made and the gap choice with every exit-bound vehicle of the target lane passed over as a follower (a counterfactual; not applied);
+  - a harness form, `none`, that applies the second choice (below).
+- *A logging fix.* WP-65's command hook logs every call of `_weave_command`, including the calls the runner makes into a local dict and never applies: the gated anticipation's `would` (WP-60) and this rule's `spare`. The harness now logs only commands recorded into the step's own target dict. At the defaults and with `ramp_outlet` no such call is made, so their logs are as before (checked: 0 unapplied calls).
+- *Movements* come from each run's `vehicles.parquet` through `validation.vehicles.read_vehicles`: E entrant, R ramp-to-exit, X mainline exiter, T through.
+- *Regions and windows.* x = 0 is the section start; the section is 305.02 m. The approach's lane 0 feeds section lane 1, and the approach's last 229 m is edge 101, the only edge before the section in the weave's lane listing. Minutes 1–4 are t in [60, 300) s. A *ramp hold* is a binding target of the anticipation's family on the gap follower of an entrant still on the ramp. *Set* means it is the lowest target on the vehicle that step, and its deficit is Σ max(0, v + a_own·Δt − v_cmd)·Δt (WP-65's definition).
+- *The test's body.* `wp75_corr_run.py` is WP-74's `corr_run.py`: the test's body with `weave_params` set in a copy of its call, no hooks. It reproduces the harness's criteria rows exactly at seeds 3 / 4 / 5. Its default and `ramp_outlet` rows over seeds 3–12 equal WP-74's corrected-fixture rows to the number. Each run is 20 simulated minutes, 2.1–4.9 s wall-clock, one at a time.
+- *The grid.* `grid75.sh` / `wp75_grid_harness.py` run WP-70's 29-run grid with the new counter in each row. The default equals WP-73's `off` rows and `ramp_outlet` WP-73's `ro` rows: 1,214 fields each, 0 differ.
+- No run of this package collides.
+
+**(1) The ramp anticipation's holds, by the held follower's movement.** All of them fall on the approach's lane 0 (edge 101); none falls in section lane 1.
+
+| form | seed | minutes | ramp holds set (on exiters, %) | on exiters: set / vehicles / deficit [m/s·s] / mean shortfall per step [m/s] | on through vehicles: set / vehicles / deficit |
+|---|---|---|---|---|---|
+| default | 3 | 1–4 | 282 (263, 93 %) | 263 / 23 / 58.8 / 0.45 | 19 / 3 / 6.1 |
+| default | 3 | 0–19 | 6,326 (5,814, 92 %) | 5,814 / 163 / 904.2 / 0.31 | 512 / 28 / 120.5 |
+| default | 4 | 1–4 | 340 (310, 91 %) | 310 / 32 / 66.9 / 0.43 | 30 / 5 / 5.7 |
+| default | 4 | 0–19 | 5,282 (5,017, 95 %) | 5,017 / 151 / 907.6 / 0.36 | 265 / 15 / 49.1 |
+| default | 5 | 1–4 | 584 (567, 97 %) | 567 / 47 / 106.2 / 0.37 | 17 / 4 / 3.0 |
+| default | 5 | 0–19 | 6,957 (6,753, 97 %) | 6,753 / 158 / 1173.4 / 0.35 | 204 / 9 / 43.8 |
+| `ramp_outlet` | 3 | 1–4 | 339 (280, 83 %) | 280 / 26 / 62.2 / 0.44 | 59 / 8 / 13.1 |
+| `ramp_outlet` | 3 | 0–19 | 4,191 (3,594, 86 %) | 3,594 / 175 / 603.5 / 0.34 | 597 / 42 / 117.7 |
+| `ramp_outlet` | 4 | 1–4 | 396 (350, 88 %) | 350 / 32 / 81.6 / 0.47 | 46 / 4 / 12.3 |
+| `ramp_outlet` | 4 | 0–19 | 4,576 (4,109, 90 %) | 4,109 / 171 / 704.6 / 0.34 | 467 / 25 / 93.7 |
+| `ramp_outlet` | 5 | 1–4 | 315 (294, 93 %) | 294 / 34 / 55.8 / 0.38 | 21 / 3 / 4.1 |
+| `ramp_outlet` | 5 | 0–19 | 5,134 (4,863, 95 %) | 4,863 / 190 / 858.9 / 0.35 | 271 / 21 / 48.2 |
+
+- *Between four in five and nineteen in twenty of the holds fall on exiters.* In minutes 1–4 the exiters take 93 / 91 / 97 % of the set ramp holds at the defaults and 83 / 88 / 93 % with `ramp_outlet`; over the run, 92–97 % and 86–95 %. The through vehicles left in the lane take the rest: the vacate rule has moved most of them left.
+- *What a hold costs.* A held exiter's command lies a mean 0.37–0.47 m/s below its own model's next speed on each set step in minutes 1–4. Over minutes 1–4 that is 58.8 / 66.9 / 106.2 m/s·s at the defaults, spread over 23 / 32 / 47 exiters, and 62.2 / 81.6 / 55.8 m/s·s over 26 / 32 / 34 with `ramp_outlet`.
+
+*The geometry of a hold on an exiter* (the anticipation's own readings at each call; "would pass" is the exiter gaining the entrant's front plus one car and the entrant's accepted gap, s0 + 0.6·v, before the entrant reaches x = 0 at the two current speeds; the last column is the counterfactual gap choice with every exit-bound vehicle passed over as a follower).
+
+| form | seed | minutes | anticipation steps with an exiter as follower (entrants) | entrant's front x, speed (median) | exiter's gap behind the entrant's rear, median [q25, q75] m | exiter's speed − entrant's (median; share faster) | would pass the entrant before x = 0 | the gap choice with exiters passed over |
+|---|---|---|---|---|---|---|---|---|
+| default | 3 | 1–4 | 365 (31) | -52 m, 19.8 m/s | 17.5 [9.4, 32.9] | -0.96 m/s; 31 % | 0 % | no gap on 365 of 365 |
+| default | 3 | 0–19 | 7,035 (201) | -57 m, 3.8 m/s | 8.2 [5.5, 12.2] | -0.18 m/s; 39 % | 5 % | no gap on 7,035 of 7,035 |
+| default | 4 | 1–4 | 418 (38) | -57 m, 19.8 m/s | 25.1 [10.0, 58.8] | -0.46 m/s; 40 % | 0 % | no gap on 418 of 418 |
+| default | 4 | 0–19 | 6,277 (191) | -59 m, 4.0 m/s | 9.1 [5.8, 16.4] | -0.21 m/s; 37 % | 3 % | no gap on 6,277 of 6,277 |
+| default | 5 | 1–4 | 795 (47) | -39 m, 9.6 m/s | 6.8 [4.3, 13.3] | -1.32 m/s; 21 % | 1 % | no gap on 795 of 795 |
+| default | 5 | 0–19 | 7,559 (164) | -55 m, 2.8 m/s | 6.5 [4.6, 9.0] | -0.14 m/s; 40 % | 6 % | no gap on 7,559 of 7,559 |
+| `ramp_outlet` | 3 | 1–4 | 342 (29) | -56 m, 20.1 m/s | 19.7 [12.7, 36.5] | -0.91 m/s; 28 % | 0 % | no gap on 342 of 342 |
+| `ramp_outlet` | 3 | 0–19 | 4,768 (227) | -62 m, 7.3 m/s | 13.5 [7.6, 22.7] | -1.16 m/s; 19 % | 3 % | no gap on 4,768 of 4,768 |
+| `ramp_outlet` | 4 | 1–4 | 441 (37) | -57 m, 19.8 m/s | 14.8 [8.6, 39.3] | -1.37 m/s; 31 % | 0 % | no gap on 441 of 441 |
+| `ramp_outlet` | 4 | 0–19 | 5,254 (208) | -62 m, 5.6 m/s | 10.4 [6.7, 18.5] | -0.82 m/s; 24 % | 2 % | no gap on 5,254 of 5,254 |
+| `ramp_outlet` | 5 | 1–4 | 513 (47) | -58 m, 19.2 m/s | 22.2 [11.0, 34.1] | -0.78 m/s; 36 % | 0 % | no gap on 513 of 513 |
+| `ramp_outlet` | 5 | 0–19 | 5,999 (211) | -58 m, 4.9 m/s | 8.6 [5.6, 13.6] | -0.48 m/s; 29 % | 5 % | no gap on 5,999 of 5,999 |
+
+- *In minutes 1–4 the entrant is at speed and the exiter is behind it and slower.* The entrant's front is a median 52–58 m before the section start at 19.2–20.1 m/s; seed 5 at the defaults is the exception, already queued at 9.6 m/s. The exiter is 15–25 m behind the entrant's rear (6.8 m at that seed) and a median 0.46–1.37 m/s slower; it is faster on 21–40 % of the steps.
+- *It never passes the entrant before the section start in minutes 1–4* (0 / 0 / 1 % of steps at the defaults, 0 % with `ramp_outlet`), and over the run on 2–6 %: most of the run is the queue, at 2.8–7.3 m/s.
+- *So the gap behind the exiter never opens for the entrant.* The anticipation's candidate gaps are the gaps the entrant is in or abreast of (`_weave_choose_gap`): the follower behind its rear, the leader's front ahead of its own. With consecutive vehicles that is one gap, and the gap behind a vehicle whose front is behind the entrant's is excluded. Passed over as a follower, the exiter leaves the entrant no gap on every one of these steps (100 %). The gap behind the exiter would need the entrant to drop back past it on the ramp, and the sixth derivation keeps the ramp from easing an entrant towards a vehicle beside or behind it.
+
+*The exiters' speed on the approach and into the section.* Median speed [m/s] in minutes 1–4. The approach's lane 0 is binned by 50 m, exiters / through vehicles in that lane. The last three columns are the exiters' first section sample at or past x = 0, 51.1 and 150 m, with the count at 20 m/s or more.
+
+| form | seed | [-300, -250) | [-250, -200) | [-200, -150) | [-150, -100) | [-100, -50) | [-50, 0) | x = 0 | x = 51.1 | x = 150 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | 3 | 21.9 / 21.3 | 22.2 / 22.6 | 22.0 / 22.7 | 21.0 / 21.6 | 18.9 / 18.0 | 17.0 / 12.8 | 17.8 (21 of 66) | 18.3 (21 of 67) | 18.2 (14 of 64) |
+| default | 4 | 22.0 / 21.9 | 22.2 / 22.2 | 22.1 / 22.4 | 21.0 / 21.4 | 18.8 / 19.7 | 17.8 / 18.7 | 18.2 (19 of 69) | 17.9 (21 of 68) | 18.5 (20 of 68) |
+| default | 5 | 18.9 / 19.6 | 17.2 / 19.9 | 6.8 / 19.8 | 3.6 / 14.7 | 3.3 / 2.9 | 3.2 / 3.7 | 11.0 (23 of 59) | 14.0 (17 of 58) | 12.0 (8 of 59) |
+| `ramp_outlet` | 3 | 21.8 / 23.1 | 22.0 / 22.9 | 21.8 / 22.6 | 20.7 / 21.8 | 19.0 / 19.2 | 17.8 / 17.0 | 18.5 (24 of 66) | 18.8 (25 of 65) | 18.4 (9 of 64) |
+| `ramp_outlet` | 4 | 22.5 / 22.3 | 22.6 / 22.9 | 22.2 / 22.7 | 20.8 / 21.5 | 18.2 / 18.8 | 17.3 / 18.5 | 18.0 (21 of 70) | 18.6 (20 of 69) | 18.1 (19 of 69) |
+| `ramp_outlet` | 5 | 20.9 / 20.4 | 21.1 / 20.4 | 20.4 / 20.1 | 19.7 / 20.0 | 17.3 / 19.7 | 12.8 / 17.6 | 16.2 (19 of 72) | 16.0 (20 of 70) | 12.1 (7 of 69) |
+
+- *The exiters hold about 22 m/s to 200 m out, then slow.* At seeds 3 and 4 they read 20.7–21.0 m/s in [−150, −100), 18.2–19.0 in [−100, −50) and 17.0–17.8 in [−50, 0). The through vehicles in their lane slow as much (17.0–18.5 m/s in [−50, 0) with `ramp_outlet`), so the slowdown belongs to the lane, not only to the exiters.
+- At seed 5 at the defaults the approach queues in minutes 1–4 (the exiters at 3.2–6.8 m/s over its last 200 m).
+- *At the section start* the exiters run 17.8 / 18.2 / 11.0 m/s at the defaults and 18.5 / 18.0 / 16.2 with `ramp_outlet`; 19–24 of 59–72 are at 20 m/s or more.
+
+*Held on the approach or not* (the exiters crossing each line in minutes 1–4, split by whether a ramp hold was ever set on them; median m/s).
+
+| form | seed | x = 0: held / not held | x = 51.1: held / not held | x = 150: held / not held |
+|---|---|---|---|---|
+| default | 3 | 17.7 (n 23) / 17.8 (n 43) | 19.5 (n 24) / 17.7 (n 43) | 19.6 (n 24) / 17.3 (n 40) |
+| default | 4 | 17.6 (n 31) / 18.5 (n 38) | 18.1 (n 31) / 17.8 (n 37) | 19.8 (n 31) / 18.0 (n 37) |
+| default | 5 | 8.0 (n 37) / 20.8 (n 22) | 10.9 (n 35) / 19.6 (n 23) | 11.3 (n 36) / 13.9 (n 23) |
+| `ramp_outlet` | 3 | 18.1 (n 26) / 18.6 (n 40) | 18.8 (n 27) / 18.8 (n 38) | 18.6 (n 26) / 17.6 (n 38) |
+| `ramp_outlet` | 4 | 17.4 (n 31) / 19.1 (n 39) | 18.4 (n 31) / 18.7 (n 38) | 18.5 (n 32) / 17.9 (n 37) |
+| `ramp_outlet` | 5 | 14.7 (n 30) / 16.7 (n 42) | 14.8 (n 28) / 16.1 (n 42) | 12.3 (n 30) / 11.4 (n 39) |
+
+- *With `ramp_outlet`, a held exiter reaches the section start 0.5 / 1.7 / 2.0 m/s slower than one never held.* By x = 51.1 m the difference is 0.0 / 0.3 / 1.3 m/s, and by 150 m the held exiters are the faster at every seed (18.6 / 18.5 / 12.3 against 17.6 / 17.9 / 11.4). At the defaults the seed-5 split is the queue: the held exiters are the ones in it.
+- *So the hold costs an exiter its speed on the approach, and the section takes the rest.* Neither group is at 20 m/s by 51.1 m at the median.
+
+**(2) The rule.** `WEAVE_DEFAULTS["anticipation_spares_exiters"]`: `1` = on, default **0**, hash-neutral unless set. A switch, not a fitted value.
+
+- *The derivation.* An exiter held so that an entrant can enter lane 1 in front of it must itself cross into the lane the entrant is leaving, behind the entrant. The hold slows it for a crossing it has yet to make, and so trades the entrant's crossing for a slower one of the exiter's.
+- *Its form as the package named it,* "the anticipation does not choose an exiter as the follower to hold; it picks the next follower behind, or none". In the gap choice, "the next follower behind" is the gap behind the exiter. By (1) that gap is not a candidate while the exiter is behind the entrant, and the exiter does not pass the entrant before the section. So the form is "none": the entrant has no gap, no hold and no easing on every step its follower is an exiter. That is measured below as the harness form `none`.
+- *The bound.* The entrant must still get a gap, and the package offered "keep the hold" for the case with no feasible follower. That case is every case (100 % above), so keeping the hold there leaves the rule inert. The rule is therefore bounded the other way:
+  - the entrant keeps its gap: the gap choice, the commitment and its easing towards the gap's leader are untouched;
+  - only the exiter's hold is withheld;
+  - nobody is held in the exiter's place, so there is no chain;
+  - the acceptance still requires the exiter to absorb the entrant within its own `b` at the crossing;
+  - once the entrant is on the section, the section's own cooperation (`sece_hold`) holds the exiter if it has to.
+- *Where it acts.* `_weave_cooperate`, on a call from the ramp anticipation (`arrival_s` given), when the chosen follower is in `exiting_ids`. With `anticipation_gate` set, a follower the gate already withholds is not counted again.
+- *Counted.* `n_anticipation_exiter_spared` counts the entrant-steps whose withheld hold would have bound (below the exiter's own model, as WP-60 counts). It is the **44th `weave_sections` key** (docs/CONTRACTS.md §2, `WeaveSectionDiagnosticsOut`, `WEAVE_FIELDS`).
+
+**(3) The corridor section test.** The criteria are the test's: mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s of 16, given up ≤ 2 % of reached, no collision. ✗ marks a failed criterion. The last column counts the rule's binding entrant-steps (`n_anticipation_exiter_spared`). No run collides.
+
+*Table — seeds 3 ; 4 ; 5. The lane-windows cell gives the count at or below 20 m/s, then lanes 0 / 1 / 2 / 3 in brackets.*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s | given up of reached | unfinished | binding entrant-steps |
+|---|---|---|---|---|---|---|
+| default | 1,177 ; 1,162 ; 1,111 ✗ | 381 ✗ ; 381 ✗ ; 336 ✗ | 12 (4/4/2/2) ; 10 (4/4/2/0) ; 13 (4/4/4/1) | 1 of 367 ; 0 of 404 ; 2 of 395 | 4 ; 7 ; 6 | — |
+| `ramp_outlet` | 1,194 ; 1,193 ; 1,183 | 407 ; 391 ; 382 ✗ | 10 (4/4/2/0) ; 13 (4/4/3/2) ; 14 (4/4/4/2) | 2 of 384 ; 4 of 427 ; 2 of 424 | 1 ; 5 ; 4 | — |
+| the rule alone | 1,165 ; 1,128 ✗ ; 1,123 ✗ | 339 ✗ ; 298 ✗ ; 299 ✗ | 11 (4/4/2/1) ; 12 (4/4/3/1) ; 13 (4/4/3/2) | 1 of 348 ; 0 of 355 ; 2 of 372 | 6 ; 3 ; 2 | 5,751 ; 6,873 ; 6,978 |
+| **`ramp_outlet` + the rule** | 1,196 ; 1,191 ; 1,113 ✗ | 377 ✗ ; 345 ✗ ; 319 ✗ | 11 (4/4/2/1) ; 12 (4/4/3/1) ; 13 (4/4/3/2) | 2 of 371 ; 0 of 399 ; 4 of 307 | 10 ; 5 ; 40 | 5,125 ; 5,238 ; 4,969 |
+| `none` (harness) | 1,165 ; 1,091 ✗ ; 1,163 | 290 ✗ ; 283 ✗ ; 291 ✗ | 11 (4/4/2/1) ; 12 (4/4/4/0) ; 13 (4/4/3/2) | 1 of 330 ; 5 of 344 ; 1 of 382 | 2 ; 6 ; 8 | — |
+| `ramp_outlet` + `none` (harness) | 1,196 ; 1,160 ; 1,150 | 382 ✗ ; 355 ✗ ; 363 ✗ | 12 (4/4/2/2) ; 12 (4/4/3/1) ; 13 (4/4/3/2) | 1 of 368 ; 0 of 391 ; 2 of 406 | 5 ; 8 ; 11 | — |
+
+*Table — the last 60 m, lanes 0 and 1: mean speed per 5-min window (windows 0 / 1 / 2 / 3, m/s).*
+
+| form | seed | lane 0 | lane 1 |
+|---|---|---|---|
+| default | 3 | 16.7 / 17.2 / 11.3 / 13.8 | 19.6 / 19.5 / 13.0 / 15.2 |
+| default | 4 | 16.1 / 15.2 / 8.0 / 12.8 | 18.8 / 17.0 / 10.6 / 14.5 |
+| default | 5 | 7.9 / 11.8 / 8.9 / 7.9 | 7.6 / 13.2 / 13.5 / 10.7 |
+| `ramp_outlet` | 3 | 12.3 / 16.1 / 12.8 / 9.4 | 14.9 / 19.1 / 16.6 / 11.6 |
+| `ramp_outlet` | 4 | 12.9 / 13.5 / 8.4 / 7.4 | 18.2 / 14.6 / 10.6 / 9.1 |
+| `ramp_outlet` | 5 | 8.2 / 6.8 / 7.8 / 13.1 | 6.6 / 7.4 / 10.2 / 15.1 |
+| the rule alone | 3 | 12.1 / 15.3 / 13.7 / 14.8 | 12.9 / 17.8 / 15.0 / 15.7 |
+| the rule alone | 4 | 10.6 / 14.4 / 10.7 / 7.9 | 13.1 / 14.2 / 12.4 / 9.0 |
+| the rule alone | 5 | 12.3 / 14.5 / 9.0 / 8.6 | 14.6 / 14.8 / 8.8 / 12.4 |
+| `ramp_outlet` + the rule | 3 | 12.3 / 15.8 / 11.1 / 13.4 | 13.5 / 18.7 / 13.7 / 10.3 |
+| `ramp_outlet` + the rule | 4 | 15.6 / 14.8 / 9.1 / 10.8 | 17.5 / 16.1 / 9.7 / 13.3 |
+| `ramp_outlet` + the rule | 5 | 12.8 / 11.8 / 1.7 / 0.0 | 13.6 / 13.5 / 2.5 / 0.0 |
+
+- *Lanes 0 and 1 fail every window in every form,* the harness forms included. Their best window is 19.6 m/s (lane 1, seed 3, the defaults).
+- *With `ramp_outlet` the rule locks the section at seed 5.* The last 60 m reads 13.7 / 16.2 m/s (lanes 0 / 1) in minute 10 and 12.2 / 14.5 in minute 11, then 0.6 / 1.6 in minute 12 and 0.0–0.2 m/s in both lanes from minute 13 to the end. 40 driven vehicles are unfinished, and 307 exiters reach the section against 424 without the rule. Nothing collides.
+- *The entrance falls in every form.* With `ramp_outlet`, T.H.52 departs 377 / 345 / 319 against 407 / 391 / 382. The rule alone departs 339 / 298 / 299 against 381 / 381 / 336, and the literal `none` 290 / 283 / 291.
+
+*Ten seeds (3–12), the plain test body.*
+
+| form | T.H.52 Σ of 4,070 (seeds ≥ 387) | mainline Σ of 11,960 (seeds ≥ 1,137) | lane-windows ≤ 20 m/s, Σ of 160 (lanes 0 / 1 / 2 / 3) | given up of reached | unfinished | coll. | passes |
+|---|---|---|---|---|---|---|---|
+| default | 3,374 (0) | 11,523 (8) | 123 (40 / 40 / 28 / 15) | 12 of 3,811 | 41 | 0 | 0 |
+| `ramp_outlet` | 3,750 (5) | 11,713 (8) | 124 (40 / 40 / 29 / 15) | 20 of 4,010 | 31 | 0 | 0 |
+| the rule alone | 2,963 (0) | 11,381 (6) | 126 (40 / 40 / 29 / 18) | 17 of 3,586 | 42 | 0 | 0 |
+| `ramp_outlet` + the rule | 3,464 (0) | 11,702 (9) | 117 (40 / 40 / 26 / 11) | 15 of 3,838 | 95 | 0 | 0 |
+
+- Paired by seed, with `ramp_outlet` (the rule on minus off, mean a run, 95 % t-interval):
+  - T.H.52 departures: −28.6 (−46.9 to −10.3); lower at 8 of 10 seeds;
+  - mainline departures: −1.1 (−23.3 to +21.1);
+  - lane-windows at or below 20 m/s: −0.7 (−1.3 to −0.1), all of it in lanes 2 and 3 (29 → 26 and 15 → 11);
+  - unfinished: +6.4 (−1.4 to +14.2).
+- The rule alone, against the defaults: T.H.52 −41.1 (−55.6 to −26.6), lower at every seed; mainline −14.2 (−27.3 to −1.1); lane-windows +0.3 (−0.5 to +1.1).
+- The rule binds on 4,778–6,630 entrant-steps a run with `ramp_outlet` and 5,751–7,962 alone.
+
+*The exiters' speed with the rule* (as in (1): approach lane 0 by 50 m, exiters / through vehicles, then the exiters at x = 0, 51.1 and 150 m; median m/s, minutes 1–4).
+
+| form | seed | [-300, -250) | [-250, -200) | [-200, -150) | [-150, -100) | [-100, -50) | [-50, 0) | x = 0 | x = 51.1 | x = 150 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| the rule alone | 3 | 21.5 / 22.3 | 21.8 / 23.1 | 22.1 / 22.8 | 22.3 / 21.8 | 21.5 / 20.5 | 19.7 / 17.6 | 17.9 (18 of 66) | 13.5 (4 of 66) | 11.7 (2 of 64) |
+| the rule alone | 4 | 22.6 / 20.0 | 22.5 / 21.9 | 22.6 / 21.9 | 22.1 / 21.9 | 21.9 / 19.7 | 19.8 / 9.3 | 19.6 (30 of 67) | 17.4 (18 of 66) | 16.2 (13 of 65) |
+| the rule alone | 5 | 18.6 / 22.0 | 17.4 / 22.6 | 3.6 / 22.3 | 3.0 / 19.5 | 3.2 / 2.9 | 2.7 / 2.6 | 12.2 (21 of 59) | 12.9 (17 of 58) | 16.5 (10 of 58) |
+| `ramp_outlet` + the rule | 3 | 21.9 / 23.2 | 22.4 / 23.1 | 22.7 / 23.0 | 22.6 / 22.5 | 22.2 / 21.5 | 20.7 / 20.0 | 20.3 (36 of 66) | 18.4 (24 of 67) | 16.0 (6 of 64) |
+| `ramp_outlet` + the rule | 4 | 22.4 / 21.4 | 22.2 / 22.1 | 22.3 / 22.6 | 22.1 / 22.6 | 22.1 / 19.8 | 21.2 / 19.0 | 21.4 (44 of 70) | 20.2 (36 of 69) | 17.3 (15 of 67) |
+| `ramp_outlet` + the rule | 5 | 21.0 / 20.8 | 21.2 / 20.5 | 20.2 / 20.5 | 19.7 / 20.1 | 18.0 / 19.3 | 13.7 / 18.0 | 16.3 (22 of 73) | 16.0 (23 of 72) | 15.3 (10 of 71) |
+| none (harness) | 3 | 21.5 / 22.2 | 21.4 / 21.8 | 20.7 / 19.6 | 13.6 / 16.0 | 4.1 / 10.9 | 4.9 / 3.3 | 13.4 (7 of 57) | 9.2 (3 of 55) | 13.2 (1 of 54) |
+| none (harness) | 4 | 22.5 / 22.4 | 22.3 / 22.6 | 21.6 / 22.5 | 6.4 / 17.9 | 1.4 / 22.3 | 1.6 / 1.0 | 19.1 (24 of 54) | 15.6 (11 of 54) | 14.1 (6 of 53) |
+| none (harness) | 5 | 15.3 / 19.3 | 5.0 / 19.3 | 3.8 / 18.5 | 2.8 / 1.3 | 2.0 / 2.1 | 1.8 / 1.8 | 17.5 (22 of 54) | 17.7 (19 of 53) | 17.1 (10 of 53) |
+| `ramp_outlet` + none (harness) | 3 | 21.9 / 22.2 | 22.2 / 22.2 | 22.5 / 22.6 | 22.6 / 22.6 | 22.4 / 21.8 | 21.4 / 21.7 | 20.6 (44 of 66) | 19.6 (30 of 67) | 15.9 (7 of 64) |
+| `ramp_outlet` + none (harness) | 4 | 22.6 / 22.9 | 22.6 / 23.2 | 22.6 / 23.3 | 22.8 / 22.7 | 22.8 / 22.1 | 21.7 / 21.9 | 21.0 (47 of 70) | 19.4 (28 of 71) | 14.8 (11 of 69) |
+| `ramp_outlet` + none (harness) | 5 | 19.4 / 19.7 | 19.4 / 19.4 | 19.6 / 19.5 | 19.5 / 19.7 | 18.7 / 19.3 | 17.1 / 17.6 | 16.8 (24 of 78) | 15.4 (21 of 73) | 12.2 (11 of 70) |
+
+- *The rule does what its derivation asks on the approach.* With `ramp_outlet`, the exiters hold 22.1–22.7 m/s to 50 m out at seeds 3 and 4 and reach the section start at 20.3 / 21.4 / 16.3 m/s, against 18.5 / 18.0 / 16.2. 36 / 44 / 22 are at 20 m/s or more there, against 24 / 21 / 19.
+- *The section takes it back.* By x = 51.1 m they read 18.4 / 20.2 / 16.0 (18.8 / 18.6 / 16.0 without the rule), and by 150 m 16.0 / 17.3 / 15.3 (18.4 / 18.1 / 12.1).
+- The rule alone reads worse from the section start on: 13.5 / 17.4 / 12.9 m/s at 51.1 m.
+- *The literal `none`* queues the approach at every seed alone (1.4–4.9 m/s in [−100, 0)). With `ramp_outlet` it reads like the rule: 20.6 / 21.0 / 16.8 m/s at the section start, 15.9 / 14.8 / 12.2 at 150 m.
+
+*Where the hold goes.* The deficit [m/s·s] of every family set on the exiters in minutes 1–4, by where the exiter is.
+
+| form | seed | approach [−240, 0) | [0, 51) | [51, 150) | [150, 305) |
+|---|---|---|---|---|---|
+| `ramp_outlet` | 3 | `ramp_hold` 62.2; `sece_hold` 5.2 | `sece_hold` 3.9 | `sece_hold` 1.0; `secx_hold` 9.5; `secx_ease` 26.8 | `sece_hold` 2.6; `secx_hold` 19.6; `secx_ease` 53.9; `prio_hold` 9.3 |
+| `ramp_outlet` | 4 | `ramp_hold` 81.6; `sece_hold` 4.1 | `sece_hold` 4.6 | `sece_hold` 4.5; `secx_hold` 4.7; `secx_ease` 19.8 | `sece_hold` 1.6; `secx_hold` 17.4; `secx_ease` 42.5; `prio_hold` 4.3 |
+| `ramp_outlet` | 5 | `ramp_hold` 55.8; `sece_hold` 6.4 | `sece_hold` 37.7; `secx_hold` 0.1; `secx_ease` 1.8 | `sece_hold` 34.4; `secx_hold` 43.5; `secx_ease` 62.3 | `sece_hold` 5.9; `secx_hold` 19.9; `secx_ease` 47.7; `prio_hold` 8.2 |
+| `ramp_outlet` + the rule | 3 | `sece_hold` 12.0 | `sece_hold` 40.2 | `sece_hold` 30.3; `secx_hold` 13.1; `secx_ease` 33.6 | `sece_hold` 3.3; `secx_hold` 18.5; `secx_ease` 78.5; `prio_hold` 2.3 |
+| `ramp_outlet` + the rule | 4 | `sece_hold` 15.3 | `sece_hold` 25.6; `secx_hold` 0.5; `secx_ease` 1.3 | `sece_hold` 24.8; `secx_hold` 12.2; `secx_ease` 34.3 | `sece_hold` 6.2; `secx_hold` 10.8; `secx_ease` 52.1; `prio_hold` 1.2 |
+| `ramp_outlet` + the rule | 5 | `sece_hold` 23.2 | `sece_hold` 55.3; `secx_ease` 2.3 | `sece_hold` 31.2; `secx_hold` 20.3; `secx_ease` 27.7 | `sece_hold` 1.9; `secx_hold` 15.6; `secx_ease` 33.9; `prio_hold` 8.9 |
+| default | 3 | `ramp_hold` 58.8; `sece_hold` 6.9 | `sece_hold` 5.9; `secx_hold` 1.8; `secx_ease` 34.1 | `sece_hold` 8.5; `secx_hold` 8.3; `secx_ease` 24.3 | `sece_hold` 3.1; `secx_hold` 5.5; `secx_ease` 13.0; `prio_hold` 0.2 |
+| default | 4 | `ramp_hold` 66.9; `sece_hold` 8.2 | `sece_hold` 7.7; `secx_hold` 4.3; `secx_ease` 25.2 | `sece_hold` 5.0; `secx_hold` 8.2; `secx_ease` 18.3 | `sece_hold` 4.4; `secx_hold` 17.3; `secx_ease` 13.9; `prio_hold` 4.0 |
+| default | 5 | `ramp_hold` 106.2; `sece_hold` 10.8 | `sece_hold` 27.4; `secx_hold` 5.2; `secx_ease` 38.8 | `sece_hold` 3.6; `secx_hold` 11.1; `secx_ease` 33.3 | `sece_hold` 5.3; `secx_hold` 8.1; `secx_ease` 2.5; `prio_hold` 1.1 |
+| the rule alone | 3 | `sece_hold` 12.0 | `sece_hold` 24.9; `secx_hold` 5.3; `secx_ease` 55.1 | `sece_hold` 24.7; `secx_hold` 18.2; `secx_ease` 95.3 | `sece_hold` 13.0; `secx_hold` 27.6; `secx_ease` 75.4; `prio_hold` 7.9 |
+| the rule alone | 4 | `sece_hold` 17.8 | `sece_hold` 19.0; `secx_hold` 5.6; `secx_ease` 48.4 | `sece_hold` 18.6; `secx_hold` 15.1; `secx_ease` 48.4 | `sece_hold` 7.5; `secx_hold` 17.8; `secx_ease` 61.1; `prio_hold` 5.5 |
+| the rule alone | 5 | `sece_hold` 24.2 | `sece_hold` 41.1; `secx_hold` 2.8; `secx_ease` 42.8 | `sece_hold` 9.4; `secx_hold` 4.8; `secx_ease` 11.6 | `sece_hold` 2.2; `secx_hold` 10.2; `secx_ease` 30.9; `prio_hold` 10.0 |
+
+- *With the rule the exiters' ramp holds are gone, and the section entrants' holds on them (`sece_hold`) take their place.* On the approach, `sece_hold` reads 12.0 / 15.3 / 23.2 against 5.2 / 4.1 / 6.4; in [0, 51) 40.2 / 25.6 / 55.3 against 3.9 / 4.6 / 37.7; and in [51, 150) 30.3 / 24.8 / 31.2 against 1.0 / 4.5 / 34.4.
+- Summed over the approach and the first 150 m, the entrants' holds on exiters read 82.5 / 65.7 / 109.7 m/s·s against 72.3 / 94.8 / 134.3. The same order of cost, paid in the section instead of before it.
+- The rule alone moves it the same way (`sece_hold` in [0, 150): 49.6 / 37.6 / 50.5 against 14.4 / 12.7 / 31.0 at the defaults), and the exiters' own easing in [0, 150) rises to 150.4 / 96.8 / 54.4 against 58.4 / 43.5 / 72.1.
+
+*What the entrants do instead* (minutes 1–4 and the run; crossings as n @ median m/s).
+
+| form | seed | entrants' speed on the ramp's last 120 m, minutes 1–4 / 0–19 (median m/s) | entrants into lane 1, [0, 51) / [51, 225) / [225, 305), minutes 1–4 | the same, minutes 0–19 | exiters into lane 0, minutes 1–4 | the same, minutes 0–19 |
+|---|---|---|---|---|---|---|
+| default | 3 | 19.9 / 3.8 | 31 @ 18.9 / 5 @ 13.2 / 2 @ 11.2 | 168 @ 7.1 / 45 @ 10.2 / 8 @ 8.0 | 35 @ 17.8 / 23 @ 17.2 / 7 @ 13.3 | 140 @ 8.0 / 92 @ 12.8 / 36 @ 9.6 |
+| default | 4 | 20.4 / 3.8 | 30 @ 18.4 / 8 @ 16.6 / 4 @ 12.2 | 157 @ 7.9 / 40 @ 12.8 / 13 @ 9.3 | 35 @ 18.3 / 21 @ 17.9 / 11 @ 10.6 | 142 @ 10.1 / 100 @ 12.0 / 59 @ 9.2 |
+| default | 5 | 8.6 / 2.8 | 26 @ 13.8 / 11 @ 11.6 / 6 @ 9.1 | 131 @ 4.8 / 28 @ 8.4 / 17 @ 8.8 | 33 @ 11.1 / 16 @ 12.1 / 6 @ 9.1 | 156 @ 5.7 / 77 @ 10.4 / 66 @ 7.9 |
+| `ramp_outlet` | 3 | 21.0 / 7.0 | 32 @ 19.8 / 5 @ 17.1 / 2 @ 6.6 | 178 @ 10.2 / 67 @ 11.5 / 8 @ 7.1 | 31 @ 18.5 / 15 @ 17.6 / 17 @ 8.9 | 126 @ 11.5 / 109 @ 13.1 / 45 @ 9.3 |
+| `ramp_outlet` | 4 | 20.0 / 5.4 | 35 @ 18.5 / 5 @ 18.7 / 3 @ 8.7 | 152 @ 9.6 / 67 @ 10.5 / 9 @ 8.7 | 45 @ 18.3 / 11 @ 18.1 / 12 @ 8.8 | 139 @ 12.9 / 100 @ 11.9 / 70 @ 8.6 |
+| `ramp_outlet` | 5 | 19.2 / 4.7 | 20 @ 18.7 / 22 @ 7.0 / 3 @ 6.2 | 111 @ 6.8 / 89 @ 6.7 / 18 @ 8.3 | 22 @ 17.4 / 31 @ 9.1 / 13 @ 6.9 | 93 @ 7.8 / 135 @ 9.0 / 85 @ 7.7 |
+| the rule alone | 3 | 20.8 / 2.2 | 10 @ 18.4 / 22 @ 10.8 / 7 @ 9.1 | 106 @ 5.3 / 59 @ 10.8 / 11 @ 9.1 | 20 @ 16.8 / 23 @ 11.3 / 20 @ 8.7 | 122 @ 6.8 / 98 @ 10.8 / 44 @ 9.3 |
+| the rule alone | 4 | 20.7 / 1.7 | 15 @ 20.0 / 20 @ 17.2 / 5 @ 2.0 | 93 @ 4.8 / 40 @ 11.4 / 16 @ 8.0 | 23 @ 19.9 / 29 @ 15.5 / 13 @ 8.2 | 134 @ 5.3 / 81 @ 11.6 / 73 @ 8.8 |
+| the rule alone | 5 | 3.8 / 1.9 | 21 @ 8.6 / 19 @ 8.6 / 4 @ 8.4 | 96 @ 5.0 / 38 @ 8.7 / 9 @ 8.9 | 23 @ 18.8 / 27 @ 10.1 / 8 @ 8.8 | 129 @ 5.4 / 105 @ 10.2 / 60 @ 9.0 |
+| `ramp_outlet` + the rule | 3 | 22.0 / 3.4 | 15 @ 21.9 / 17 @ 13.9 / 6 @ 7.7 | 87 @ 7.5 / 104 @ 8.2 / 20 @ 9.9 | 24 @ 20.4 / 20 @ 15.4 / 19 @ 8.7 | 75 @ 9.3 / 145 @ 10.1 / 50 @ 9.4 |
+| `ramp_outlet` + the rule | 4 | 21.8 / 2.8 | 20 @ 20.9 / 19 @ 15.7 / 3 @ 8.6 | 70 @ 7.0 / 106 @ 6.9 / 10 @ 8.7 | 23 @ 21.0 / 29 @ 16.3 / 16 @ 9.9 | 78 @ 6.2 / 165 @ 9.3 / 69 @ 9.2 |
+| `ramp_outlet` + the rule | 5 | 18.5 / 0.3 | 17 @ 20.8 / 22 @ 10.1 / 8 @ 8.5 | 42 @ 6.8 / 68 @ 6.5 / 18 @ 9.1 | 21 @ 19.9 / 37 @ 12.6 / 14 @ 8.9 | 43 @ 16.5 / 118 @ 9.9 / 38 @ 9.4 |
+
+- *Without the hold the entrants cross later and slower.* With `ramp_outlet`, the entrants crossing at the entry [0, 51) in minutes 1–4 fall from 32 / 35 / 20 to 15 / 20 / 17. Those crossing in [51, 225) rise from 5 / 5 / 22 to 17 / 19 / 22, at 13.9 / 15.7 / 10.1 m/s. Over the run, the entry's crossings fall from 178 / 152 / 111 to 87 / 70 / 42, and the second half's rise from 67 / 67 / 89 to 104 / 106 / 68.
+- An entrant that has not crossed stays in the auxiliary lane, the ramp's only outlet, and the ramp queues behind it. The entrants' median speed on the ramp's last 120 m over the run falls from 7.0 / 5.4 / 4.7 to 3.4 / 2.8 / 0.3 m/s.
+- *The exiters cross the entry faster and the second half slower.* With `ramp_outlet`, [0, 51) in minutes 1–4 reads 24 @ 20.4 / 23 @ 21.0 / 21 @ 19.9 against 31 @ 18.5 / 45 @ 18.3 / 22 @ 17.4. [51, 225) reads 20 @ 15.4 / 29 @ 16.3 / 37 @ 12.6 against 15 @ 17.6 / 11 @ 18.1 / 31 @ 9.1.
+
+**(4) The fixture grid.** WP-70's 29 runs, in four forms. Totals over the 28 fixture runs, the golden apart:
+
+| form | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth + T.H.52, last 60 m) | T.H.52 first 60 m min ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | outlet-spared exiter-steps / the rule's binding entrant-steps |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 0 | 44 | 5,988 | 6,131 | 14 | 15 | 529 | 5,439 | 218 | 45 | 5,944 | 1,444 | 0 | 0 / 0 |
+| `ramp_outlet` | 12 | 45 | 6,035 | 6,193 | 11 | 19 | 495 | 4,388 | 182 | 70 | 6,055 | 1,482 | 0 | 17,462 / 0 |
+| the rule alone | 28 | 64 | 5,776 | 5,985 | 22 | 28 | 566 | 8,276 | 513 | 67 | 5,544 | 1,462 | 0 | 0 / 48,087 |
+| `ramp_outlet` + the rule | 28 | 59 | 5,977 | 6,163 | 23 | 19 | 666 | 8,891 | 303 | 78 | 5,897 | 1,510 | 0 | 22,437 / 42,073 |
+
+- The default equals WP-73's `off` rows in all 29 rows (1,214 fields compared, 0 differ), and `ramp_outlet` WP-73's `ro` rows (0 differ).
+- The rule moves every fixture row. Give-ups rise 44 → 64 (45 → 59 with `ramp_outlet`) and exits fall 5,988 → 5,776 (6,035 → 5,977). The entrances fall 5,944 → 5,544 (6,055 → 5,897). Deferred forced changes rise 5,439 → 8,276 (4,388 → 8,891), and lane 1's minutes at or below 5 m/s at the last 60 m rise 14 → 22 (11 → 23).
+- Lane 1 of the last 60 m never reads 0.0 m/s in a minute in any row (lowest 1.3 m/s with the rule), nor lane 1 at the T.H.52 section start (lowest 2.5 m/s). The two-entrance fixtures' upstream acceleration lane reads 0.2–1.6 m/s at its lowest at the default and 0.0–1.3 with the rule. Nothing collides.
+
+*Per row.* Each cell: given up / reached; exited; lane 1's last 60 m, lowest minute [m/s] (minutes at or below 5); entrance departed (E1); unfinished; the rule's binding entrant-steps.
+
+| fixture | seed | default | `ramp_outlet` | the rule alone | `ramp_outlet` + the rule |
+|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak | 3 | 9/290; 273; 2.8 (4); 73; 2; 0 | 9/290; 273; 2.8 (4); 73; 2; 0 | 11/290; 269; 2.3 (4); 73; 3; 374 | 11/290; 269; 2.3 (4); 73; 3; 374 |
+| Ruth St, corridor fleet, entrance peak | 3 | 0/45; 45; 6.3 (0); 128; 0; 0 | 0/45; 45; 6.3 (0); 128; 0; 0 | 0/45; 45; 14.5 (0); 128; 0; 127 | 0/45; 45; 14.5 (0); 128; 0; 127 |
+| Ruth St, fleet defaults, exit peak | 3 | 1/281; 276; 10.7 (0); 73; 1; 0 | 1/281; 276; 10.7 (0); 73; 1; 0 | 0/281; 278; 10.4 (0); 73; 0; 308 | 0/281; 278; 10.4 (0); 73; 0; 308 |
+| Ruth St, fleet defaults, entrance peak | 3 | 0/33; 33; 7.9 (0); 128; 0; 0 | 0/33; 33; 7.9 (0); 128; 0; 0 | 1/32; 30; 1.6 (3); 128; 1; 17 | 1/32; 30; 1.6 (3); 128; 1; 17 |
+| Ruth St, corridor fleet, exit peak | 4 | 1/280; 279; 4.2 (1); 73; 0; 0 | 1/280; 279; 4.2 (1); 73; 0; 0 | 5/280; 275; 3.1 (3); 73; 0; 302 | 5/280; 275; 3.1 (3); 73; 0; 302 |
+| Ruth St, corridor fleet, entrance peak | 4 | 1/41; 40; 5.9 (0); 128; 0; 0 | 1/41; 40; 5.9 (0); 128; 0; 0 | 0/41; 41; 3.2 (2); 128; 0; 98 | 0/41; 41; 3.2 (2); 128; 0; 98 |
+| Ruth St, fleet defaults, exit peak | 4 | 1/282; 280; 11.3 (0); 73; 0; 0 | 1/282; 280; 11.3 (0); 73; 0; 0 | 1/282; 280; 6.3 (0); 73; 0; 262 | 1/282; 280; 6.3 (0); 73; 0; 262 |
+| Ruth St, fleet defaults, entrance peak | 4 | 0/44; 43; 12.4 (0); 128; 0; 0 | 0/44; 43; 12.4 (0); 128; 0; 0 | 1/44; 42; 4.6 (1); 128; 0; 83 | 1/44; 42; 4.6 (1); 128; 0; 83 |
+| Ruth St, corridor fleet, exit peak | 5 | 4/274; 267; 6.7 (0); 73; 2; 0 | 4/274; 267; 6.7 (0); 73; 2; 0 | 8/274; 252; 1.3 (1); 73; 9; 306 | 8/274; 252; 1.3 (1); 73; 9; 306 |
+| Ruth St, corridor fleet, entrance peak | 5 | 0/34; 34; 3.6 (1); 128; 0; 0 | 0/34; 34; 3.6 (1); 128; 0; 0 | 0/34; 34; 13.6 (0); 128; 0; 144 | 0/34; 34; 13.6 (0); 128; 0; 144 |
+| Ruth St, fleet defaults, exit peak | 5 | 0/273; 272; 14.6 (0); 73; 0; 0 | 0/273; 272; 14.6 (0); 73; 0; 0 | 0/273; 272; 12.3 (0); 73; 0; 357 | 0/273; 272; 12.3 (0); 73; 0; 357 |
+| Ruth St, fleet defaults, entrance peak | 5 | 0/44; 44; 12.6 (0); 128; 1; 0 | 0/44; 44; 12.6 (0); 128; 1; 0 | 0/44; 44; 12.6 (0); 128; 1; 64 | 0/44; 44; 12.6 (0); 128; 1; 64 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | 8/274; 265; 2.1 (3); 73; 0; 0 | 8/274; 265; 2.1 (3); 73; 0; 0 | 2/274; 268; 3.2 (3); 73; 4; 303 | 2/274; 268; 3.2 (3); 73; 4; 303 |
+| T.H.52, corridor demand | 3 | 1/299; 292; 3.8 (1); 403; 2; 0 | 3/312; 302; 2.0 (1); 399; 7; 0 | 3/295; 287; 1.8 (2); 364; 2; 3,702 | 0/311; 304; 10.5 (0); 416; 6; 3,149 |
+| T.H.52, capacity | 3 | 1/319; 309; 4.7 (1); 395; 4; 0 | 1/314; 302; 5.1 (0); 390; 7; 0 | 1/309; 299; 5.2 (0); 375; 2; 1,817 | 3/315; 304; 4.6 (3); 377; 5; 2,232 |
+| two-entrance, fleet defaults | 3 | 3/301; 294; 3.7 (1); 417, E1 216; 3; 0 | 0/298; 294; 6.8 (0); 399, E1 213; 1; 0 | 2/297; 285; 4.3 (1); 392, E1 211; 4; 1,703 | 4/289; 279; 1.8 (2); 403, E1 225; 7; 2,628 |
+| two-entrance, corridor fleet | 3 | 0/314; 309; 7.3 (0); 356, E1 253; 1; 0 | 0/343; 333; 10.9 (0); 384, E1 276; 3; 0 | 2/299; 291; 7.3 (0); 270, E1 251; 3; 7,406 | 1/331; 324; 10.0 (0); 343, E1 269; 3; 6,345 |
+| moderate (weave.osm, 300 s) | 3 | 0/34; 33; —; —; 0; 0 | 0/34; 33; —; —; 0; 0 | 1/34; 30; —; —; 1; 140 | 1/34; 30; —; —; 1; 140 |
+| T.H.52, corridor demand | 4 | 0/317; 308; 11.9 (0); 388; 2; 0 | 0/311; 303; 11.4 (0); 405; 2; 0 | 4/299; 276; 1.6 (1); 351; 11; 3,122 | 2/321; 308; 4.8 (1); 394; 5; 2,264 |
+| T.H.52, capacity | 4 | 1/379; 373; 10.7 (0); 401; 2; 0 | 1/376; 366; 6.4 (0); 397; 10; 0 | 5/367; 353; 4.1 (2); 340; 0; 3,855 | 2/376; 367; 4.1 (1); 362; 4; 3,396 |
+| two-entrance, fleet defaults | 4 | 3/307; 301; 4.4 (1); 399, E1 210; 1; 0 | 4/324; 311; 2.5 (2); 417, E1 215; 11; 0 | 6/296; 285; 3.2 (2); 398, E1 214; 2; 3,133 | 5/312; 298; 3.0 (4); 408, E1 229; 6; 2,739 |
+| two-entrance, corridor fleet | 4 | 3/308; 301; 2.9 (2); 351, E1 256; 5; 0 | 0/318; 310; 11.2 (0); 399, E1 271; 4; 0 | 1/283; 273; 7.9 (0); 316, E1 249; 7; 6,713 | 1/310; 306; 2.3 (1); 352, E1 279; 3; 4,474 |
+| moderate (weave.osm, 300 s) | 4 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 92 | 0/36; 35; —; —; 0; 92 |
+| T.H.52, corridor demand | 5 | 5/308; 296; 1.7 (2); 401; 6; 0 | 2/322; 310; 6.3 (0); 403; 10; 0 | 2/310; 301; 5.4 (0); 393; 4; 1,854 | 4/309; 295; 3.3 (1); 393; 6; 2,397 |
+| T.H.52, capacity | 5 | 1/369; 361; 5.0 (1); 373; 3; 0 | 3/367; 359; 3.4 (1); 393; 3; 0 | 6/360; 340; 6.8 (0); 359; 7; 3,397 | 3/363; 354; 5.4 (0); 385; 4; 2,766 |
+| two-entrance, fleet defaults | 5 | 1/308; 299; 5.6 (0); 407, E1 256; 6; 0 | 2/304; 295; 9.2 (0); 394, E1 241; 6; 0 | 1/295; 287; 7.3 (0); 384, E1 273; 3; 2,656 | 2/315; 306; 4.8 (1); 400, E1 236; 6; 2,287 |
+| two-entrance, corridor fleet | 5 | 0/301; 291; 8.3 (0); 374, E1 253; 4; 0 | 4/303; 296; 2.0 (2); 396, E1 266; 0; 0 | 1/275; 269; 3.0 (1); 323, E1 264; 3; 5,586 | 2/311; 302; 2.0 (1); 385, E1 272; 4; 4,253 |
+| moderate (weave.osm, 300 s) | 5 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 166 | 0/36; 35; —; —; 0; 166 |
+
+- The outlet rule is inert on the 136 m Ruth St section, so its rows read the same with and without `ramp_outlet`.
+- The rule's largest costs are on the entrances. Two-entrance with the corridor fleet: 356 → 270, 351 → 316 and 374 → 323 alone. T.H.52 at the corridor demand, seed 3: 403 → 364. T.H.52 at capacity: 395 / 401 / 373 → 375 / 340 / 359.
+- Some rows read better:
+  - the Ruth St corridor-fleet exit peak with the 271.4 m window (2 of 274 given up against 8);
+  - the Ruth St corridor-fleet entrance peak at seeds 3 and 5 (lane 1 never below 14.5 / 13.6 m/s against 6.3 / 3.6);
+  - the T.H.52 corridor-demand row at seed 3 with `ramp_outlet` (0 of 311 given up against 3 of 312, lane 1 never below 10.5 m/s, entrance 416 against 399).
+
+  The totals read worse on every count above.
+
+*The no-lock pin of the T.H.52 capacity fixture* (`test_th52_weave_at_capacity_does_not_lock`, applied to each grid row). Cells give (entrance departed; lane 1's lowest minute at the section start [m/s]; pair releases).
+
+| form | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| default | pass (395; 3.9; 9) | pass (401; 4.3; 23) | pass (373; 3.3; 18) |
+| `ramp_outlet` | pass (390; 3.9; 10) | pass (397; 2.9; 22) | 3 missed (393; 3.4; 27) |
+| the rule alone | pass (375; 4.2; 10) | 5 missed, 340 departed (340; 3.8; 35) | 6 missed, 359 departed (359; 2.9; 40) |
+| `ramp_outlet` + the rule | 3 missed (377; 4.7; 5) | 2 missed, 362 departed (362; 3.6; 22) | 3 missed (385; 3.9; 21) |
+
+*Golden `merge_weave`.*
+
+| form | hash | mean TT | p90 TT | σ_v spatial / temporal | VMT | VHT | fuel | throughput | driven / exits | coll. | the rule's binding entrant-steps |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 33 / 33 | 0 | 0 |
+| the rule | 203b10fa8d4b | 73.255 | 90.576 | 4.754 / 3.881 | 169.753 | 1.7960 | 90.59 | 1632.8 | 41 / 33 | 0 | 132 |
+
+At the default the golden is unchanged and not regenerated. With the key set the rule binds on its short section. `ramp_outlet` is inert there: both forms with the rule read the same, as do both without it.
+
+**Reading.**
+
+1. *The holds on the exiters are most of the ramp anticipation.* In minutes 1–4 the exiters take 83–97 % of its set holds. Each held step costs a mean 0.37–0.47 m/s against the exiter's own model, and a held exiter reaches the section start 0.5–2.0 m/s slower than one never held (with `ramp_outlet`). The difference shrinks to 0.0–1.3 m/s by x = 51 m, and neither group is at 20 m/s there.
+2. *"The next follower behind" does not exist on the ramp.* The exiter the anticipation holds is 15–25 m behind the entrant and 0.5–1.4 m/s slower. In minutes 1–4 it never passes the entrant before the section start. The gap choice's only candidate is the gap the entrant is abreast of, so passing the exiter over leaves the entrant no gap at all, on every step measured. Keeping the hold there would make the rule inert. The rule therefore withholds only the hold, and keeps the entrant's gap and easing.
+3. *The rule does what it was derived to do, and the section gives the speed back.* With `ramp_outlet`, the exiters reach the section start at 20.3 / 21.4 / 16.3 m/s against 18.5 / 18.0 / 16.2. By 150 m they read 16.0 / 17.3 / 15.3 against 18.4 / 18.1 / 12.1.
+4. *The hold was not a cost to remove but a positioning to move.* The entrant still needs the gap in front of the exiter.
+   - Without the ramp hold, the section entrants' own cooperation holds the exiters in the section's first 150 m, at about the same total deficit (82.5 / 65.7 / 109.7 against 72.3 / 94.8 / 134.3 m/s·s).
+   - The entrants cross later and slower (15 / 20 / 17 at the entry in minutes 1–4 against 32 / 35 / 20), the auxiliary lane blocks the ramp's outlet, and the ramp queues.
+   - The derivation's premise holds (the exiter held on the approach is slower), but its conclusion does not: the crossing the hold made possible still has to be made, and made later it costs more.
+5. *The guards fail, and criterion (ii) does not move.*
+   - T.H.52 falls at every seed alone and at 8 of 10 with `ramp_outlet` (3,750 → 3,464 over seeds 3–12).
+   - With `ramp_outlet` the section locks at seed 5.
+   - On the grid, give-ups, deferred forced changes and releases rise, the entrances fall, and the capacity fixture's no-lock pin fails at two seeds alone and at all three with `ramp_outlet`.
+   - Lanes 0 and 1 fail all 40 windows over ten seeds in every form. The −0.7 lane-windows a run the rule gains with `ramp_outlet` are lanes 2 and 3.
+   - Nothing collides in any run: 116 grid runs, 25 harness runs and 46 plain-body runs.
+
+**Nothing ships.** `WEAVE_DEFAULTS["anticipation_spares_exiters"]` = 0, hash-neutral unless set.
+- At the default the grid is WP-73's `off` to the number and golden `merge_weave` is unchanged (436cd4ec9e5d).
+- The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stays as marked. The rule passes it at no seed, with or without `ramp_outlet`; its reason string is not touched.
+- The rule stays in the code as a measured option, with its counter (`n_anticipation_exiter_spared`, the 44th key) and six tests.
+- The shipping condition is not met: criterion (ii) does not improve, the section locks at one seed, the entrance rows and give-ups read worse, and the capacity pin breaks. A corridor battery is not proposed for it.
+
+**What this hands on.**
+- *(a) The approach, the entry and the exit end are one exchange.* Since WP-61, rules at the entry (WP-65, WP-67, WP-70), on the exit side (WP-62, WP-64, WP-72, WP-73) and now on the approach have been measured on this fixture. Each moved the conflict between the two movements or locked the section, and none passed criterion (ii). On the corrected fixture, lanes 0 and 1 of the last 60 m have not read above 20 m/s in any window in any form measured on it: WP-74's default, `ramp_outlet` and O, and this package's six.
+  - The next reading should bound what any command can reach, not add a rule.
+  - Pre-position a share p of each movement before the section in a harness: the entrants inserted in lane 1 and the exiters in lane 0, the demand unchanged. Sweep p from 0 to 1 and find the smallest p at which criterion (ii) passes.
+  - WP-68 measured the exit lane alone with every exiter already in it: above 20 m/s in 80 of 80 windows under the observed exit flows. The p at which both lanes pass is the crossing load this 305 m section can carry at 20 m/s under this fleet.
+  - Compare it with the HCM 7th ed. ch. 13 capacity of a one-sided ramp weave of this length and weaving ratio. If the observed movements exceed what the fleet can cross at 20 m/s, criterion (ii) tests the fleet's weaving capacity, not the weave's commands. That is then a decision for the owner, with the number to decide on.
+- *(b) Where the exiters lose the speed this rule gave them:* between x = 0 and 150 m, to the section entrants' holds (`sece_hold`, 25.6–55.3 m/s·s in [0, 51) with the rule) and their own easing. Any exit-side rule starts from there, not from the approach.
+- *(c) For harnesses.*
+  - WP-65's command hook logs every call of `_weave_command`, including the gated anticipation's and this rule's calls into a local dict, which the runner never applies. `wp75_harness.py` logs only commands into the step's own target dict. With both switches off there are no such calls, so WP-65/72/73's family readings are unaffected.
+  - `n_anticipation_exiter_spared` is the rule's binding.
+
+**Bookkeeping.**
+- `packages/flowstate_core/flowstate_core/config.py`: `anticipation_spares_exiters` = 0, with its provenance comment and docstring paragraph.
+- `packages/microsim/microsim/runner.py`:
+  - `_weave_cooperate`: the rule (the exit-bound follower of an approaching entrant not commanded, counted where the command would have bound) and its docstring paragraph;
+  - the section state's `n_anticipation_exiter_spared`, `_weave_meta`, and the docstrings of `_weave_step` and `_weave_meta`.
+- `packages/api/api/schemas.py`: `WeaveSectionDiagnosticsOut.n_anticipation_exiter_spared`.
+- `scripts/corridor_sweep.py`: `WEAVE_FIELDS`.
+- `tests/test_microsim/test_microsim_merge_managed_meter.py`:
+  - `TestWeaveAnticipationSparesExiters`, 6 tests: the default; an exit-bound follower not held and counted; a through follower still held; the entrant's easing kept; the section's cooperation untouched; a binding run on `weave_th52_corridor.osm`;
+  - the `WEAVE_DEFAULTS` pin, the fake state and the counters test.
+- `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py`: the key lists, 44 keys.
+- docs/CONTRACTS.md §2: the key list, the WP-75 paragraph, the API paragraph.
+- CHANGELOG.md and this section.
+
+`frontend/`, `scenarios/`, the fixtures, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md and `scripts/gcp/` are untouched.
+
+Session artifacts are not committed:
+- the harnesses (`wp75_harness.py`, `wp75_grid_harness.py`, `grid75.sh`) and `wp75_corr_run.py`;
+- the analyses (`wp75_holds.py`, `wp75_geom.py`, `wp75_xfam.py`, `wp75_entr.py`, `wp75_tables.py`, `wp75_gtables.py`, `wp75_grows.py`);
+- the per-step logs (`wp75/<label>_<seed>/`), the generated tables (`wp75/out/`) and the JSONL records (`wp75_*.jsonl`, `wp75g_*.jsonl`, `wp75_corr_rows.jsonl`).
+
+Every number above is from those runs, or from the committed test constants.

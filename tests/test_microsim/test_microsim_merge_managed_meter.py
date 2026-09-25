@@ -894,6 +894,8 @@ class TestWeaveSchema:
             "ramp_outlet": 0.0,
             # WP-73: the exit priority from the braking onset (dated section)
             "exit_priority_onset": 0.0,
+            # WP-75: the anticipation spares the exiters (dated section)
+            "anticipation_spares_exiters": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2196,6 +2198,8 @@ def _weave_state(**params) -> dict:
         "n_outlet_spared": 0,
         # WP-73: the exit priority from the braking onset (meta)
         "n_onset_priority": 0,
+        # WP-75: the anticipation spares the exiters (meta)
+        "n_anticipation_exiter_spared": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -5595,6 +5599,123 @@ class TestWeaveOnsetPriority:
         assert meta_on["n_collisions"] == 0
 
 
+class TestWeaveAnticipationSparesExiters:
+    """The anticipation spares the exiters (2026-09-25, block 3, WP-75;
+    ``anticipation_spares_exiters``): an approaching entrant's gap follower
+    that is itself bound for the paired exit is not held; the gap, its
+    commitment and the entrant's easing are kept, a withheld hold that would
+    have bound is counted in ``n_anticipation_exiter_spared``, and the
+    section's own cooperation is untouched (docs/WEAVE_MODEL_PLAN.md, dated
+    section). Measured and left off; ``test_default`` pins the default."""
+
+    @staticmethod
+    def _state(follower_exits: bool, **params):
+        """Entrant ``n`` at 20 m/s on the ramp ``r`` (offset −200 m; at
+        ``pos`` 120 its front is 80 m before the section start),
+        approaching; its lane-1 follower ``F`` at 20 m/s 25 m behind n's
+        rear — exit-bound on the ramp's lane-1 continuation, or a through
+        vehicle on the corridor edge ``u`` before the section, whose lane 0
+        feeds section lane 1 (a through vehicle on the ramp would itself be
+        an approaching entrant)."""
+        ws = _weave_state(**params)
+        ws["ramp_edges"] = frozenset({"r"})
+        ws["x_offset"]["r"] = -200.0
+        ws["lane_map"][("r", 0)] = 0
+        if follower_exits:
+            ws["lane_map"][("r", 1)] = 1
+            ws["exiting_ids"] = frozenset({"e", "F"})
+            res_f = _res("r", 1, 90.0, 20.0)
+        else:
+            ws["x_offset"]["u"] = -200.0
+            ws["lane_map"][("u", 0)] = 1
+            ws["exiting_ids"] = frozenset({"e"})
+            res_f = _res("u", 0, 90.0, 20.0)
+        veh = _WeaveVehicle({"n": 20.0, "F": 20.0})
+        res = {"n": _res("r", 0, 120.0, 20.0), "F": res_f}
+        return ws, veh, _WeaveMod(veh), res
+
+    def test_default(self):
+        """Off by default (measured and left off, docs/WEAVE_MODEL_PLAN.md
+        WP-75): the exit-bound follower is held on every step (IDM towards
+        n 25 m ahead at parity, below its free-road model)."""
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["anticipation_spares_exiters"] == 0.0
+        ws, veh, mod, res = self._state(True)
+        for k in range(4):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        assert [c[1] for c in veh.calls if c[0] == "slow"] == ["F"] * 4
+        assert ws["n_anticipation_exiter_spared"] == 0 and ws["n_cooperations"] == 4
+
+    def test_an_exit_bound_follower_is_not_held(self):
+        """With the switch set the same follower is never commanded, each
+        withheld hold that would have bound is counted, and the gap choice is
+        left alone (``pre`` still reads F)."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._state(True, anticipation_spares_exiters=1.0)
+        for k in range(4):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_anticipation_exiter_spared"] == 4 and ws["n_cooperations"] == 0
+        assert ws["pre"] == {"n": "F"}
+        assert _weave_meta(ws, {})["n_anticipation_exiter_spared"] == 4
+
+    def test_a_through_follower_is_still_held(self):
+        """A follower not bound for the exit is held as without the switch."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._state(False, anticipation_spares_exiters=1.0)
+        for k in range(4):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        assert [c[1] for c in veh.calls if c[0] == "slow"] == ["F"] * 4
+        assert ws["n_anticipation_exiter_spared"] == 0 and ws["n_cooperations"] == 4
+
+    def test_the_entrants_easing_is_kept(self):
+        """A lane-1 leader ``L`` 15 m ahead of n at 15 m/s (exit-bound, on
+        the ramp's lane-1 continuation): n is still eased towards it (the
+        drop behind L by the section end needs 0.71 m/s², within its ``b``)
+        while its exit-bound follower is not held."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._state(True, anticipation_spares_exiters=1.0)
+        ws["exiting_ids"] = frozenset({"e", "F", "L"})
+        veh.speeds["L"] = 15.0
+        res["L"] = _res("r", 1, 140.0, 15.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c[1] for c in veh.calls if c[0] == "slow"] == ["n"]
+        assert ws["n_changer_eased"] == 1 and ws["n_anticipation_exiter_spared"] == 1
+        assert ws["pre"] == {"n": "F"}
+
+    def test_the_section_cooperation_is_untouched(self):
+        """A driven entrant on the section (no ``arrival_s``) holds its
+        exit-bound follower as before with the switch set."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(anticipation_spares_exiters=1.0)
+        ws["exiting_ids"] = frozenset({"e", "F"})
+        veh = _WeaveVehicle({"n": 20.0, "F": 20.0})
+        res = {"n": _res("a", 0, 50.0, 20.0), "F": _res("a", 1, 20.0, 20.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert [c[1] for c in veh.calls if c[0] == "slow"] == ["F"]
+        assert ws["n_anticipation_exiter_spared"] == 0 and ws["n_cooperations"] == 1
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the rule withholds exiters' holds with
+        nothing colliding; at the default it is inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"anticipation_spares_exiters": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_anticipation_exiter_spared"] == 0
+        assert meta_on["weave_sections"][0]["n_anticipation_exiter_spared"] > 0
+        assert meta_on["n_collisions"] == 0
+
+
 class TestWeaveVacateGapConditioned:
     """The vacate rule re-derived so that it never asks the target lane to
     brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
@@ -6078,6 +6199,7 @@ class TestWeaveReviewDerivations3To6:
             "n_spread_withheld": 0,
             "n_outlet_spared": 0,
             "n_onset_priority": 0,
+            "n_anticipation_exiter_spared": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

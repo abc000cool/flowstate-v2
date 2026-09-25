@@ -495,11 +495,11 @@ vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
 n_entrant_yields, n_entry_bounded, n_hold_releases, n_anticipation_gated,
 n_exit_prepared, n_swaps, n_spread_withheld, n_outlet_spared, n_onset_priority,
-n_forced_deferred,
+n_anticipation_exiter_spared, n_forced_deferred,
 n_cooperations, mean_follower_decel_ms2, n_changer_eased, n_vacated,
 n_vacate_refused, n_vacate_skipped_no_gap, n_vacate_requests,
 n_pair_releases, n_unfinished, n_exited, n_reached_section_exiting,
-n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 43 keys (`n_giveup_waited` added by
+n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 44 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
@@ -524,7 +524,11 @@ exiter-steps on which the gap chosen without the rule has as its follower a
 vehicle on the on-ramp or in the auxiliary lane's first stretch;
 `n_onset_priority` added by WP-73, the exit priority from the braking onset,
 the exiter-steps on which an exiter had the exit priority from its own
-lane-end braking onset before its forced change was due)
+lane-end braking onset before its forced change was due;
+`n_anticipation_exiter_spared` added by WP-75, the anticipation spares the
+exiters, the vehicle-steps on which an approaching entrant's gap follower was
+bound for the paired exit and was not held, counted where the hold would have
+bound)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1505,6 +1509,31 @@ the T.H.52 capacity fixture's no-lock pin fails at seeds 3 and 4, and the
 key locks the Ruth St section at seed 5; no collision. Golden `merge_weave`
 unchanged at the default (hash 436cd4ec9e5d; with the key set the rule binds
 there, 122 exiter-steps).
+
+**The anticipation spares the exiters** (2026-09-25, block 3, WP-75;
+docs/WEAVE_MODEL_PLAN.md, dated section;
+`WEAVE_DEFAULTS["anticipation_spares_exiters"]`, default 0 = off, hash-neutral
+unless set; measured and left off): for an entrant still on the ramp (the
+anticipation, `microsim.runner._weave_cooperate` with `arrival_s`), a gap
+follower that is itself bound for the paired exit is not commanded; the gap
+choice, the commitment and the entrant's easing are kept, and the section's
+own cooperation (a driven entrant on the section) is untouched. Passing the
+exiter over in the gap choice instead leaves the entrant no gap at all (its
+one candidate gap is the one it is abreast of, and the gap behind a vehicle
+whose front is behind its own is not a candidate), so only the hold is
+withheld. `weave_sections[i].n_anticipation_exiter_spared` (the **44th key**;
+`WeaveSectionDiagnosticsOut`, null for an older meta, not shown by the
+dashboard; aggregated by `WEAVE_FIELDS`) counts the withheld holds that would
+have bound. On the corridor section test's fixture (seeds 3 / 4 / 5, with
+`ramp_outlet`) the exiters reach the section start at a median 20.3 / 21.4 /
+16.3 m/s against 18.5 / 18.0 / 16.2 in minutes 1–4, but T.H.52 departs 377 /
+345 / 319 of 407 against 407 / 391 / 382, lanes 0 and 1 of the last 60 m fail
+every window, and the section locks at seed 5; on the 29-run grid give-ups
+rise 44 → 64 (45 → 59 with `ramp_outlet`), the entrances fall 5,944 → 5,544
+(6,055 → 5,897), and the T.H.52 capacity fixture's no-lock pin fails at seeds
+4 and 5 (all three with `ramp_outlet`); no collision. Golden `merge_weave`
+unchanged at the default (hash 436cd4ec9e5d; with the key set the rule binds
+there, 132 entrant-steps).
 
 ## 3. Run outputs
 
@@ -2513,7 +2542,11 @@ of 0), null for a meta written before and not shown by the dashboard, and
 (WP-73, 2026-09-25 block 3) `n_onset_priority` (exiter-steps on which an
 exiter had the exit priority from its own lane-end braking onset,
 `exit_priority_onset`, before its forced change was due; zero at its default
-of 0), null for a meta written before and not shown by the dashboard; the sweep
+of 0), null for a meta written before and not shown by the dashboard, and
+(WP-75, 2026-09-25 block 3) `n_anticipation_exiter_spared` (vehicle-steps on
+which the anticipation, `anticipation_spares_exiters`, withheld an approaching
+entrant's hold on an exit-bound gap follower that would have bound; zero at its
+default of 0), null for a meta written before and not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all of them the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema

@@ -238,6 +238,10 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # own drawn parameters and current speed
     # (microsim.runner._weave_brake_onset_m; EIDM: vT + v^2/(2 sqrt(ab)))
     "exit_priority_onset": 0.0,
+    # WP-75 (2026-09-25, block 3): the ramp anticipation spares the exiters —
+    # an approaching entrant's gap follower that is itself bound for the
+    # paired exit is not held; a switch, not a fitted value
+    "anticipation_spares_exiters": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -690,7 +694,32 @@ crossings at 17.1 / 14.6 / 11.9 m/s — the exit end's lanes read at or below
 fixture's no-lock pin fails at seeds 3 and 4 (at seeds 4 and 5 with the key
 alone), and the key locks the Ruth St section at seed 5, where the outlet is
 inert (lane 1 at the gore's end at 0.0 m/s from minute 16); no collision. A
-switch, not a fitted value."""
+switch, not a fitted value. ``anticipation_spares_exiters`` (2026-09-25,
+block 3, WP-75, the exiters on the approach): ``1`` withholds the ramp
+anticipation's hold (``microsim.runner._weave_cooperate``, an entrant still on
+the ramp) on a gap follower that is itself bound for the paired exit — an
+exiter held so that an entrant can enter lane 1 in front of it must itself
+cross into the lane the entrant leaves; the gap choice, the commitment and the
+entrant's easing are kept, and the section's own cooperation is untouched. The
+gap behind the exiter is no alternative (the entrant is in one gap only, and
+on the corridor section test's fixture the exiters behind an approaching
+entrant are slower than it: passed over in the gap choice they leave it no gap
+at all). Withheld holds that would have bound are counted in
+``n_anticipation_exiter_spared``. The default is **0** (off, hash-neutral
+unless set): on the corridor section test's fixture
+(``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5, with
+``ramp_outlet``; docs/WEAVE_MODEL_PLAN.md, dated section WP-75) the exiters
+reach the section start at a median 20.3 / 21.4 / 16.3 m/s against 18.5 /
+18.0 / 16.2 in minutes 1–4, but the hold reappears in the section as the
+section entrants' own, the entrants cross later, T.H.52 departs 377 / 345 /
+319 of 407 against 407 / 391 / 382, lanes 0 and 1 of the last 60 m still read
+at or below 20 m/s in every window, and the section locks at seed 5 (lanes 0
+and 1 at 0.0–0.2 m/s from minute 13); seeds 3–12: T.H.52 3,750 → 3,464 (3,374 →
+2,963 with the key alone). On the 29-run fixture grid give-ups rise 44 → 64
+(45 → 59 with ``ramp_outlet``), the entrances fall 5,944 → 5,544 (6,055 →
+5,897), and the T.H.52 capacity fixture's no-lock pin fails at seeds 4 and 5
+(at all three with ``ramp_outlet``); no collision. A switch, not a fitted
+value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 
