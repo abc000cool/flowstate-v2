@@ -1598,3 +1598,14 @@ starved — and **29 collisions against 15**. Slice: departed 0.969 against 0.97
 Reading: on the corridor, right-hand overtaking does not move the fit or the weave's throughput and nearly doubles the collisions; the
 lane-discipline effect WP-76 measured bounds the fixture's exit-end criterion when nothing crosses, not the corridor's capacity gap.
 Not adopted. Not reproduced.
+
+**VM AA (2026-09-25, block 3): the reference configuration with the weave's acceptance calibrated to real drivers** (VM Z's fitted pair
+from the I-24 MOTION weave's critical gaps, `artifacts/i24_critical_gaps.json`: `accept_gap_s` 0.089 s, `exit_accept_gap_s` 1.78 s, on
+both weave sections, on top of VM U's configuration; runner 4c2206f; stages `mndot_weave[_slice]_xlcal`; config hash ba6306121d75;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_calibrated_pair_4c2206f.json`). Against VM U: departed 0.865 (lowest
+0.835) against 0.884 — lower on 19 of 20 seeds, paired −0.018 — speed RMSPE 0.703 (0.699–0.707) against 0.691, GEH < 5 on 0.104
+(0.079–0.128) against 0.163, **given-up T.H.52 exits 1,356 of 68,955 against 481**, Ruth St 133 of 20,526 against 160, collisions 18
+against 15, S790 3,274–3,301 veh/h against 3,311–3,344. Slice: departed 0.969 against 0.971, T.H.52 exits given up 33 against 10.
+Reading: as WP-79 predicted on the fixtures, the fitted exiting value (a least-squares compromise between a 2.58 s leader side and a
+0.72 s follower side) makes exiters wait and miss the exit, and the entering value alone cannot offset it; one time gap per movement
+cannot carry the real drivers' different leader and follower gaps (WP-80 splits them). Not adopted. Not reproduced.
