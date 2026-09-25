@@ -2630,6 +2630,126 @@ def _weave_yield_at_ends(
                 ws["n_entrant_yields"] += 1
 
 
+def _weave_entry_speed_bound(b: float, dist_m: float, margin_m: float) -> float:
+    """The speed from which a vehicle can still halt at ``b`` within ``dist_m`` less ``margin_m`` [m/s].
+
+    WP-57, the entrant's entry speed (2026-09-24, block 3;
+    docs/WEAVE_MODEL_PLAN.md, dated section). Constant deceleration ``b``
+    from ``v`` to rest covers ``v² / (2·b)``; a vehicle whose front is
+    ``dist_m`` from the end of its lane can come to rest with its front
+    ``margin_m`` short of it iff ``v² / (2·b) ≤ dist_m − margin_m``, so the
+    ceiling is ``√(2·b·(dist_m − margin_m))`` — the constant-``b`` braking
+    curve that ends ``margin_m`` before the lane end, zero at and beyond
+    that point. Read along the ramp with ``dist_m`` the ramp to the gore
+    plus the section, it is the speed at which the entrant may still
+    arrive at any point and halt short of the auxiliary lane's end at its
+    own ``b``: at the section start ``√(2·b·(L_S − s0))``, 21.1 m/s at the
+    fleet defaults (``b`` 1.67 m/s², ``s0`` 2.5 m) on the 136 m Ruth St
+    lane and 11.9 m/s at the corridor fleet's smallest draw (0.53 m/s²);
+    31.8 and 17.9 m/s on the 305 m T.H.52 lane.
+
+    Args:
+        b: The vehicle's comfortable deceleration [m/s²].
+        dist_m: From its front to the end of its lane [m].
+        margin_m: How far short of that end its front comes to rest [m]
+            (its ``minGap``).
+
+    Returns:
+        The ceiling [m/s]; ``0`` when ``dist_m ≤ margin_m``.
+    """
+    return math.sqrt(2.0 * b * max(dist_m - margin_m, 0.0))
+
+
+def _weave_entry_bound(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    coop: dict[str, tuple[float, float, bool]],
+    vid: str,
+    v: float,
+    dist_m: float,
+    step_s: float,
+) -> bool:
+    """Ask an entrant on the ramp to enter no faster than its own stop at ``b`` allows (WP-57).
+
+    The entrant's entry speed (2026-09-24, block 3, WP-57;
+    docs/WEAVE_MODEL_PLAN.md, dated section). WP-55 read the forming half
+    of the crossing pair at the lane ends off the entrant's *arrival*: the
+    12 entrants heading a pair entered the section at 16.6 m/s on average
+    against 9.6 for all 3,122 (the fast mode of a bimodal entry-speed
+    distribution — the ramp queue's discharge at 4–10 m/s and, when the
+    ramp queue is empty, the sixth derivation's throttle admitting 16–21
+    m/s), and 5 of the 12 could not stop within the 136 m Ruth St lane at
+    their own ``b`` (15.7–19.4 m/s at 0.59–0.99 m/s²: 163–225 m to stop
+    against 134 m of lane). Such an entrant has about seven seconds to
+    find a gap and, failing, is halted at the lane end by SUMO's model at
+    more than ``b`` — the pair no yield at the lane ends reaches (WP-54..56).
+    This is the first ramp-side brake since the sixth derivation, and it
+    is the driver's own anticipation of a short auxiliary lane: on the
+    ramp within ``lookahead_m`` of the section (the ``approaching`` set of
+    :func:`_weave_step`) the entrant's speed on the next step is kept at
+    or under :func:`_weave_entry_speed_bound` at its next position —
+    ``√(2·b·(D − v·Δt − s0))``, ``D`` from its front to the gore — as a
+    one-step car-following target through :func:`_weave_command`: only a
+    target *below* the entrant's own model is recorded, it is clipped at
+    ``−b`` (an entrant already over the curve is asked its comfortable
+    brake, which holds its deficit where it is rather than letting the
+    free term grow it; it cannot get back under the curve at ``b``), and
+    SUMO's safety check stays on. Nothing else is asked: not the ramp
+    throttle's demand, not the follower's cooperation, not the easing
+    towards the gap leader (the lowest target on the entrant this step
+    wins, as for every request in ``coop``), and nobody else is commanded
+    through the rule (no chain). Released by construction — the rule is
+    not evaluated once the entrant is on the section, and on the ramp the
+    ceiling is never below ``√(2·b·(L_S − s0))`` (11.9 m/s at the corridor
+    fleet's smallest ``b`` on Ruth St), so it can neither hold an entrant
+    below the creep speed nor stand it on the ramp. Counted in
+    ``n_entry_bounded`` (vehicle-steps on which the target bound) and, as
+    every target, in ``n_cooperations``.
+
+    Measured on the 29-run fixture grid and left off (``entry_speed_bound``
+    = 0; docs/WEAVE_MODEL_PLAN.md, dated section): it binds on 1,383
+    vehicle-steps on 187 entrants, all in the Ruth St corridor-fleet runs
+    (the fleet defaults' ``b`` never falls under the curve, so the T.H.52
+    rows and the golden are byte-identical), takes the bound entrants from
+    21.5 to 18.0 m/s at the section start and the Ruth St entrants that
+    cannot stop within their lane from 40 to 27, and reads worse — give-ups
+    44 → 54, crossing pairs 24 → 31, forced changes deferred 5,439 → 6,644,
+    the entrances 5,944 → 5,967 — because the entrant slowed below lane 1's
+    speed is held by the cooperation, and the give-up chains form behind
+    entrants that can stop within the lane at their ``b``; the bound from
+    the ramp's start (harness only) removes the fast arrivals almost
+    entirely and leaves the crossing pairs where they were. The pair does
+    not form by momentum.
+
+    Args:
+        mod: The libsumo / traci module.
+        tc: Its constants module.
+        ws: The section's state.
+        results: This step's subscription results.
+        coop: This step's speed targets (:func:`_weave_command`).
+        vid: The entrant on the ramp.
+        v: Its speed [m/s].
+        dist_m: From its front to the gore [m] (the ramp to the section
+            start plus the section).
+        step_s: The step length [s].
+
+    Returns:
+        Whether the target bound this step.
+    """
+    p = _weave_veh(mod, ws, vid)
+    v_bound = _weave_entry_speed_bound(p["b"], dist_m - v * step_s, p["s0"])
+    r = results[vid]
+    v0 = min(p["vmax"], _weave_lane_vmax(mod, ws, r[tc.VAR_ROAD_ID], int(r[tc.VAR_LANE_INDEX])))
+    before = coop.get(vid)
+    _weave_command(mod, coop, vid, v, v0, p, (v_bound - v) / step_s, step_s)
+    if coop.get(vid) is before:
+        return False
+    ws["n_entry_bounded"] += 1
+    return True
+
+
 def _weave_short_section_rule(length_m: float, prm: dict[str, float]) -> dict[str, float | bool]:
     """The forced zone and its delay of a section, and whether the section is *short*.
 
@@ -2811,6 +2931,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     crossing pair; :func:`_weave_yield_at_ends`, ``exiter_yields``): a
     halted entrant is not freed by the give-up of the exiter beside it, and
     the next exiters halt beside it and are given up in turn.
+
+    **The entrant's entry speed** (2026-09-24, block 3, WP-57;
+    :func:`_weave_entry_bound`, ``entry_speed_bound``, off by default). An
+    entering vehicle on the ramp within ``lookahead_m`` of the section is
+    asked, on top of the anticipation above, to enter no faster than the
+    speed from which it can still halt at its own ``b`` one ``minGap``
+    short of the auxiliary lane's end (:func:`_weave_entry_speed_bound`),
+    so that it cannot form the crossing pair at the lane ends by momentum;
+    the ramp throttle and the demand are untouched. Measured and left off
+    (docs/WEAVE_MODEL_PLAN.md, dated section).
 
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
@@ -3195,6 +3325,8 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     for vid in [v for v in pre if v not in approaching]:
         del pre[vid]
     for vid in sorted(approaching):
+        # the ramp to the gore, then the whole section
+        dist_m = x_start - x_of[vid] + section_len
         pre[vid] = _weave_cooperate(
             mod,
             tc,
@@ -3210,9 +3342,12 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             1,
             pre.get(vid),
             prm["accept_gap_s"],
-            # the ramp to the gore, then the whole section
-            x_start - x_of[vid] + section_len,
+            dist_m,
         )
+        if prm["entry_speed_bound"] > 0.0:
+            # the entrant's entry speed (WP-57): no faster onto the
+            # auxiliary lane than its own stop at b within it allows
+            _weave_entry_bound(mod, tc, ws, results, coop, vid, v_of[vid], dist_m, step_s)
     for vid in yielders:
         coop.pop(vid, None)  # no target in either role this step
     for fid in sorted(coop):
@@ -3262,7 +3397,11 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     the vehicle-steps on which an exiter was driven to stop behind a halted
     entrant ahead of it / a moving entrant beside a due exiter was driven
     to fall behind its rear (:func:`_weave_yield_at_ends`; zero at a
-    switch's default of 0, counted only when the target bound).
+    switch's default of 0, counted only when the target bound);
+    ``n_entry_bounded`` (WP-57, the entrant's entry speed) the vehicle-steps
+    on which an entrant on the ramp was asked to enter no faster than its
+    own stop at ``b`` within the auxiliary lane allows
+    (:func:`_weave_entry_bound`; zero at ``entry_speed_bound`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -3306,6 +3445,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_giveup_waited": ws["n_giveup_waited"],
         "n_exiter_yields": ws["n_exiter_yields"],
         "n_entrant_yields": ws["n_entrant_yields"],
+        "n_entry_bounded": ws["n_entry_bounded"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -4039,6 +4179,9 @@ def run_micro(
                     # vehicle-steps of the two yields at the lane ends (WP-54)
                     "n_exiter_yields": 0,
                     "n_entrant_yields": 0,
+                    # WP-57: the entrant's entry speed bounded on the ramp
+                    # (vehicle-steps)
+                    "n_entry_bounded": 0,
                     # exit-bound vehicles rerouted through at the gore's end
                     # (exit-side derivation): no longer driven; their new
                     # destination is the corridor's last edge

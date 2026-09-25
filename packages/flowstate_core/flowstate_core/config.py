@@ -194,6 +194,11 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "entrant_yields": 0.0,
     "exiter_yields_halting": 0.0,
     "exiter_yield_lead_s": 0.0,
+    # 2026-09-24 (block 3, WP-57): the entrant's entry-speed anticipation on
+    # the ramp's last metres, measured on the fixture grid and left off —
+    # see the key's paragraph in the docstring below. A switch, not a fitted
+    # value.
+    "entry_speed_bound": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -393,7 +398,45 @@ written for have no feasible stop on any section step. Without the
 lane-end condition it re-rolled the T.H.52 rows from single steps
 (35–42 given up, 17–53 fewer entrants). A positive value is one human
 reaction time or a few (Treiber & Kesting 2013, ch. 12, the figure
-``pair_release_s`` doubles); not a fitted value."""
+``pair_release_s`` doubles); not a fitted value. ``entry_speed_bound``
+(2026-09-24, block 3, WP-57, the entrant's entry speed): ``1`` asks an
+entering vehicle on the on-ramp within ``lookahead_m`` of the section to
+enter no faster than the speed from which it can still halt at its own
+comfortable deceleration with its front one ``minGap`` short of the
+auxiliary lane's end — ``v ≤ √(2·b·(D − s0))`` with ``D`` the distance
+from its front to the gore, the constant-``b`` braking curve that ends at
+the lane end (``microsim.runner._weave_entry_speed_bound``,
+``_weave_entry_bound``) — as a one-step speed ceiling below its own
+car-following (:func:`microsim.runner._weave_command`, clipped at ``−b``,
+SUMO's safety check on), re-evaluated every step on the ramp only and
+never on the section, so that it does not arrive on a short auxiliary
+lane at a speed from which no stop at ``b`` exists and form the crossing
+pair at the lane ends by momentum (WP-55 counted 5 of the 12 entrants
+heading such a pair as unable to stop within the 136 m Ruth St lane at
+their ``b``, having entered at 15.7–19.4 m/s with ``b`` 0.59–0.99 m/s²).
+Bounded by construction: the ceiling on the ramp is never below
+``√(2·b·(L_S − s0))`` (11.9 m/s at the corridor fleet's smallest ``b`` on
+Ruth St, 17.9 m/s on T.H.52), nobody else is commanded through the rule,
+and the ramp throttle and the entrance demand are untouched. The
+vehicle-steps on which it binds are counted in ``n_entry_bounded``. The
+default is **0** (off, hash-neutral unless set): measured on the same
+29-run fixture grid as WP-52..56 (docs/WEAVE_MODEL_PLAN.md, dated section
+WP-57) it binds on 1,383 vehicle-steps, 187 entrants in the seven Ruth St
+corridor-fleet runs (the fleet defaults' ``b`` never falls under the curve
+on either fixture, so the T.H.52 rows and the golden are byte-identical),
+takes the bound entrants from 21.5 to 18.0 m/s at the section start and
+the Ruth St entrants that cannot stop within their lane from 40 to 27 of
+≈ 590 — and reads worse: give-ups 44 → 54 (crossing pairs 24 → 31 on 16 →
+17 halted entrants), 5,988 → 5,995 exits, the entrances 5,944 → 5,967,
+forced changes deferred 5,439 → 6,644, no lock, no collision; the one row
+it helps (Ruth St corridor fleet at the exit peak, seed 3: 9 → 5 given up,
+lane 1 at the gore 2.8 → 6.1 m/s) is paid for on seeds 4 and 5 (1 → 12, 4
+→ 8), where the entrant it slows below lane 1's speed is held by the
+cooperation and the chains form behind entrants that *can* stop within
+the lane at their ``b``. The form that removes the fast arrivals almost
+entirely (the bound from the ramp's start, harness only: 40 → 5 of the
+Ruth St entrants unable to stop) leaves 27 crossing pairs on 16 entrants
+— the pair does not form by momentum. A switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

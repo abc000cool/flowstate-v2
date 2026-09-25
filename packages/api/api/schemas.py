@@ -286,7 +286,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     in the auxiliary lane (``exiter_yields``) and on which a moving entrant
     beside a due exiter was driven to fall behind its rear
     (``entrant_yields``); zero at a switch's default of 0; ``None`` for a
-    meta written before; not shown by the dashboard. Two keys that are
+    meta written before; not shown by the dashboard. ``n_entry_bounded``
+    (WP-57, 2026-09-24 block 3, the entrant's entry speed) counts the
+    vehicle-steps on which an entrant on the ramp was asked to enter no
+    faster than its own stop at ``b`` within the auxiliary lane allows
+    (``entry_speed_bound``); zero at the default of 0; ``None`` for a meta
+    written before; not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -321,6 +326,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_giveup_waited: int | None = None
     n_exiter_yields: int | None = None
     n_entrant_yields: int | None = None
+    n_entry_bounded: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

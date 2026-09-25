@@ -877,6 +877,8 @@ class TestWeaveSchema:
             "exiter_yields_halting": 0.0,
             # WP-56: the brake-scaled yield zone (docs/WEAVE_MODEL_PLAN.md, dated section)
             "exiter_yield_lead_s": 0.0,
+            # WP-57: the entrant's entry speed (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "entry_speed_bound": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -1888,6 +1890,8 @@ def _weave_state(**params) -> dict:
         # WP-54: the two yields at the lane ends (vehicle-steps)
         "n_exiter_yields": 0,
         "n_entrant_yields": 0,
+        # WP-57: the entrant's entry speed bounded on the ramp (vehicle-steps)
+        "n_entry_bounded": 0,
         "gave_up": set(),
         "through_target": "z",
         "n_forced_deferred": 0,
@@ -3617,6 +3621,103 @@ class TestWeaveYieldsAtTheLaneEnds:
         assert ws["n_entrant_yields"] == 0
 
 
+class TestWeaveEntrySpeedBound:
+    """The entrant's entry speed (WP-57, 2026-09-24 block 3):
+    ``microsim.runner._weave_entry_speed_bound`` and ``_weave_entry_bound``
+    under ``entry_speed_bound`` (docs/WEAVE_MODEL_PLAN.md, dated section).
+    The rule's statement is pinned so a set switch behaves as documented,
+    whatever the default; ``test_default`` pins the default."""
+
+    @staticmethod
+    def _state(v: float, road: str = "r", pos: float = 90.0, **params):
+        """Entrant ``n`` at ``v`` on the ramp ``r`` (offset −100 m; at
+        ``pos`` 90 its front is 10 m before the section start, 210 m from
+        the gore) or on section edge ``a``; nobody in lane 1."""
+        ws = _weave_state(**params)
+        ws["ramp_edges"] = frozenset({"r"})
+        ws["x_offset"]["r"] = -100.0
+        ws["lane_map"][("r", 0)] = 0
+        veh = _WeaveVehicle({"n": v})
+        return ws, veh, _WeaveMod(veh), {"n": _res(road, 0, pos, v)}
+
+    def test_the_bound_is_the_constant_b_stop_curve(self):
+        from microsim.runner import _weave_entry_speed_bound
+
+        # v²/(2b) = dist − margin: 20 m/s at 1.67 m/s² needs 119.8 m
+        assert _weave_entry_speed_bound(1.67, 119.76 + 2.5, 2.5) == pytest.approx(20.0, abs=1e-3)
+        assert _weave_entry_speed_bound(1.67, 136.0, 2.5) == pytest.approx(21.116, abs=1e-3)
+        assert _weave_entry_speed_bound(0.53, 136.0, 2.5) == pytest.approx(11.896, abs=1e-3)
+        # at and beyond the rest point: zero, never a domain error
+        assert _weave_entry_speed_bound(1.67, 2.5, 2.5) == 0.0
+        assert _weave_entry_speed_bound(1.67, 1.0, 2.5) == 0.0
+
+    def test_an_entrant_over_the_curve_is_asked_its_comfortable_brake(self):
+        """``n`` at 28 m/s, 210 m from the gore: the ceiling at its next
+        position (210 − 14 − 2.5 m) is 25.4 m/s, below its speed, so the
+        target is clipped at ``−b`` (its own model, the free term towards
+        30 m/s, accelerates); counted in ``n_entry_bounded`` and, as every
+        target, in ``n_cooperations``; ``n_changer_eased`` untouched."""
+        from microsim.runner import _weave_entry_speed_bound, _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._state(28.0, entry_speed_bound=1.0)
+        assert _weave_entry_speed_bound(1.67, 210.0 - 14.0, 2.5) == pytest.approx(25.42, abs=0.01)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "slow"] == [
+            ("slow", "n", pytest.approx(28.0 - 1.67 * 0.5), 0.0)
+        ]
+        assert ws["n_entry_bounded"] == 1
+        assert ws["n_cooperations"] == 1 and ws["n_changer_eased"] == 0
+        meta = _weave_meta(ws, {})
+        assert meta["n_entry_bounded"] == 1
+        # the ramp's anticipation is untouched: no gap, no follower, and
+        # the entrant is not taken under control on the ramp
+        assert ws["pre"] == {"n": None} and "n" not in ws["veh"]
+
+    def test_the_bound_is_released_under_the_curve_and_on_the_section(self):
+        """Not asked of an entrant under the ceiling (20 m/s against
+        25.7), nor of one on the section at any speed (the rule acts on
+        the ramp only; on the section it is the ordinary cooperation)."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._state(20.0, entry_speed_bound=1.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_entry_bounded"] == 0 and ws["n_cooperations"] == 0
+
+        # on section edge ``a`` at 28 m/s with 190 m left: driven, not bounded
+        ws, veh, mod, res = self._state(28.0, road="a", pos=10.0, entry_speed_bound=1.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "n" in ws["veh"] and ws["veh"]["n"]["dir"] == 1
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_entry_bounded"] == 0
+
+    def test_a_target_above_the_model_is_not_recorded(self):
+        """Over the curve but already braking harder for a real leader:
+        ``_weave_command`` records only a target below the model, so an
+        entrant whose own car-following asks more than ``b`` is left to it
+        and the step is not counted."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._state(28.0, entry_speed_bound=1.0)
+        veh.speeds["q"] = 0.0
+        veh.leaders["n"] = ("q", 3.0)  # a standing leader 3 m ahead: IDM asks far below −b
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_entry_bounded"] == 0
+
+    def test_default(self):
+        """Off by default (measured and left off, docs/WEAVE_MODEL_PLAN.md
+        WP-57): the 28 m/s entrant of the test above is not asked."""
+        from flowstate_core.config import WEAVE_DEFAULTS
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["entry_speed_bound"] == 0.0
+        ws, veh, mod, res = self._state(28.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_entry_bounded"] == 0
+
+
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""
 
@@ -4486,6 +4587,7 @@ class TestWeaveReviewDerivations3To6:
             "n_giveup_waited": 0,
             "n_exiter_yields": 0,
             "n_entrant_yields": 0,
+            "n_entry_bounded": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

@@ -454,15 +454,18 @@ derivations below each added keys): `ramp, exit, edges, exit_edge,
 exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
-n_entrant_yields, n_forced_deferred, n_cooperations,
+n_entrant_yields, n_entry_bounded, n_forced_deferred, n_cooperations,
 mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
 n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
 n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 35 keys (`n_giveup_waited` added by
+wait_in_s_mean, wait_out_s_mean` — 36 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
-pair, the vehicle-steps of the two yields at the lane ends)
+pair, the vehicle-steps of the two yields at the lane ends; WP-55 and
+WP-56 count in `n_exiter_yields` and add none; `n_entry_bounded` added by
+WP-57, the entrant's entry speed, the vehicle-steps on which an entrant on
+the ramp was asked to enter no faster than its own stop at `b` allows)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1184,6 +1187,32 @@ GEH 0.077, 19 collisions against 15, given-up exits 0.6 / 0.9 %); `1`
 switches it on. With it off the fixture grid is WP-54's 6e7757e grid to
 the number (44 given up); golden `merge_weave` unchanged at the default
 (hash 436cd4ec9e5d, byte-identical).
+
+**The entrant's entry speed, 2026-09-24 (block 3, WP-57; measured and
+off).** `WEAVE_DEFAULTS["entry_speed_bound"]` (default **0**, hash-neutral
+unless set): `1` asks an entering vehicle on the on-ramp within
+`lookahead_m` of the section to enter no faster than the speed from which
+it can still halt at its own `b` one `minGap` short of the auxiliary
+lane's end — `v ≤ √(2·b·(D − s0))`, `D` from its front to the gore, the
+constant-`b` braking curve that ends at the lane end
+(`microsim.runner._weave_entry_speed_bound`, `_weave_entry_bound`) — as a
+one-step ceiling below its own car-following (clipped at `−b`, SUMO's
+safety check on), on the ramp only, nobody else commanded, the ramp
+throttle and the demand untouched; the first ramp-side brake since the
+sixth derivation. `weave_sections[i].n_entry_bounded` (the **36th key**;
+`WeaveSectionDiagnosticsOut`, null for an older meta, not shown by the
+dashboard; aggregated by `WEAVE_FIELDS`) counts the vehicle-steps on
+which it bound. On the 29-run grid (docs/WEAVE_MODEL_PLAN.md, dated
+section) it binds on 1,383 vehicle-steps on 187 entrants, all in the Ruth
+St corridor-fleet runs (the fleet defaults' `b` never falls under the
+curve; the T.H.52 rows and the golden are byte-identical, so the entrance
+criterion reads 395 / 401 / 373 of 466 as before), and reads worse:
+give-ups 44 → 54 (crossing pairs 24 → 31), the entrances 5,944 → 5,967,
+forced changes deferred 5,439 → 6,644, no lock, no collision; the row it
+helps (seed 3 of the exit peak, 9 → 5) is paid for on seeds 4 and 5 (1 →
+12, 4 → 8) by lane 1 holding for the slowed entrant, and the chains form
+behind entrants that can stop within the lane at their `b`. Golden
+`merge_weave` unchanged at the default (hash 436cd4ec9e5d).
 
 ## 3. Run outputs
 
@@ -2080,8 +2109,11 @@ for a meta written before and not shown by the dashboard, and (WP-54,
 2026-09-24 block 3) `n_exiter_yields` / `n_entrant_yields` (vehicle-steps
 of the two yields at the lane ends, `exiter_yields` / `entrant_yields`;
 zero at a switch's default of 0), null for a meta written before and not
-shown by the dashboard; the sweep
-summary's `diagnostics` block aggregates all ten the same way (`scripts/corridor_sweep.py`
+shown by the dashboard, and (WP-57, 2026-09-24 block 3) `n_entry_bounded`
+(vehicle-steps of the entrant's entry-speed bound, `entry_speed_bound`;
+zero at its default of 0), null for a meta written before and not shown
+by the dashboard; the sweep
+summary's `diagnostics` block aggregates all eleven the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema
 brought in line with `_weave_meta`): `WeaveSectionDiagnosticsOut` also

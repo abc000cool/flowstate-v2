@@ -183,8 +183,9 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
     / ``n_vacate_requests``, the short-section flag ``short_section``, the
     cross-edge window's ``vacate_window_edges`` and the bounded give-up
     patience's ``n_giveup_waited`` (WP-52) and the two yield counters
-    ``n_exiter_yields`` / ``n_entrant_yields`` (WP-54): the fourteen read as
-    null, the rest as written."""
+    ``n_exiter_yields`` / ``n_entrant_yields`` (WP-54) and the entry-speed
+    bound's ``n_entry_bounded`` (WP-57): the fifteen read as null, the rest
+    as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     new_keys = (
@@ -198,6 +199,7 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
         "n_giveup_waited",
         "n_exiter_yields",
         "n_entrant_yields",
+        "n_entry_bounded",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",
@@ -220,8 +222,9 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
     the cooperation counters but none of ``n_vacated``, ``n_vacate_refused``,
     ``n_pair_releases``, ``n_missed_exit``, ``n_vacate_skipped_no_gap``,
     ``n_vacate_requests``, ``short_section``, ``vacate_window_edges``,
-    ``n_giveup_waited``, ``n_exiter_yields``, ``n_entrant_yields``: those
-    eleven read as null, the cooperation counters as written."""
+    ``n_giveup_waited``, ``n_exiter_yields``, ``n_entrant_yields``,
+    ``n_entry_bounded``: those twelve read as null, the cooperation counters
+    as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     later = (
@@ -232,6 +235,7 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
         "n_giveup_waited",
         "n_exiter_yields",
         "n_entrant_yields",
+        "n_entry_bounded",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",
