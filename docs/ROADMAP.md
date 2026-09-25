@@ -265,7 +265,9 @@ blocked.
   counting lane-change events against penetration. *Finding:* humans change lanes two to four times more around FollowerStopper vehicles and
   changing lanes costs about 6 ml/km, but the extra changes are mostly cut-ins into the AV's larger gap, not passes around it; the fuel increase
   reproduces at 1–10 %; the throughput cost on the replica is 0.7–2.7 %, about twice the published figure (measured upstream of the replica).
-- **D3.** Compliance sweep on real geometry (only 100% has been run).
+- **D3.** ✅ *Done 2026-09-04 (recorded 2026-09-25).* Compliance sweep on real geometry: the I-24 flagship battery ran penetration
+  {1, 2, 5, 10, 15, 20} % × compliance {25, 50, 80, 100} % with 20 common-random-number seeds per cell (docs/I24_SWEEP.md,
+  `artifacts/i24_sweep_summary.json`); this line predated it. The US-101 replica has been run at 100 % compliance only.
 - **D4.** highD cross-validation once access arrives: clean multi-lane German
   motorway data, useful precisely because the fuel result hinged on multi-lane
   effects we could not test.
