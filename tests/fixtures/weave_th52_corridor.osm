@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <!-- The T.H.52 weaving section of I-94 WB St. Paul as the corridor scenario
+       compiles it (scenarios/mndot_i94_wb_stpaul_weave.yaml on
+       data/osm/mndot_i94_wb_stpaul.osm; docs/WEAVE_MODEL_PLAN.md, 2026-09-24
+       block 3, WP-61). Compiled lengths, lanes and speeds (netconvert as
+       run_micro calls it; the corridor's edge in brackets):
+         100  600.0 m, 3 lanes, 55 mph   approach, insertion edge
+         101  229.0 m, 3 lanes, 55 mph   [40648738, the 3-lane edge before the gore]
+         102  304.9 m, 4 lanes, 55 mph   [51388891, the weaving section; lane 0 is the
+                                          auxiliary lane, entrance to exit only]
+         103  220.9 m, 3 lanes, 55 mph   [1001426896; lane 0 also feeds the exit 203]
+         104  524.8 m, 3 lanes, 55 mph   [82578022, the corridor's last edge]
+         200   52.4 m, 1 lane,  55 mph   [769818012, T.H.52 entrance, first piece]
+         210  791.9 m, 1 lane,  22.22 m/s [194037903, T.H.52 entrance onto lane 0 of 102]
+         201  478.7 m, 1 lane,  22.22 m/s [18207598, the exit from lane 0 of 102]
+         203  401.1 m, 1 lane,  22.22 m/s [82150350, the 12th St / Jackson exit from lane 0 of 103]
+       Node positions were iterated until netconvert's compiled lengths matched
+       the corridor's to 0.1 m (its junction geometry at the shallow ramp angles
+       moves the edge ends by up to 75 m from the nodes). At lat 40 one degree
+       of longitude is about 85.39 km and one of latitude 111.03 km. -->
+  <node id="1" lat="40.000000" lon="-96.000000"/>
+  <node id="2" lat="40.000000" lon="-95.992976"/>
+  <node id="3" lat="40.000000" lon="-95.989740"/>
+  <node id="4" lat="40.000000" lon="-95.987101"/>
+  <node id="5" lat="40.000000" lon="-95.984521"/>
+  <node id="6" lat="40.000000" lon="-95.978015"/>
+  <node id="11" lat="39.999189" lon="-95.981240"/>
+  <node id="13" lat="39.999370" lon="-95.979520"/>
+  <node id="20" lat="39.999099" lon="-96.000093"/>
+  <node id="21" lat="39.999099" lon="-95.999480"/>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="101">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="102">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="4"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="103">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="104">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="200">
+    <nd ref="20"/><nd ref="21"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="210">
+    <nd ref="21"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="201">
+    <nd ref="4"/><nd ref="11"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="203">
+    <nd ref="5"/><nd ref="13"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>

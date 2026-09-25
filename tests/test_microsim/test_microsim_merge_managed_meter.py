@@ -1036,6 +1036,148 @@ def _th52_upstream_config(seed: int, merge: str, fleet: dict | None = None) -> S
     )
 
 
+#: The T.H.52 weaving section as the corridor scenario compiles it
+#: (2026-09-24, block 3, WP-61; docs/WEAVE_MODEL_PLAN.md, dated section):
+#: 229 m of three lanes before the gore (40648738), the four-lane section of
+#: 304.9 m (51388891), 220.9 m of three lanes (1001426896) whose lane 0 also
+#: feeds the 12th St / Jackson exit (82150350), 524.8 m to the end (82578022),
+#: the 844 m entrance and the 479 m exit, 55 mph on the mainline, compiled
+#: lengths within 0.1 m of the corridor's.
+TH52_CORRIDOR_OSM = Path(__file__).resolve().parents[1] / "fixtures" / "weave_th52_corridor.osm"
+MNDOT_OBSERVATIONS = (
+    Path(__file__).resolve().parents[2] / "data/mndot/mndot_i94_wb_stpaul/observations.json"
+)
+MNDOT_DEMAND = Path(__file__).resolve().parents[2] / "artifacts/demand_mndot_i94_wb_stpaul.json"
+
+#: The observed movements through the T.H.52 section in the first twenty
+#: minutes of the I-94 WB AM window, 05:30-05:50 (nine-weekday means, 5-min
+#: windows 0-3 of ``data/mndot/mndot_i94_wb_stpaul/observations.json``):
+#: the mainline is S790 (Kittson St, 300 m before the gore; it counts the
+#: added lane of the 40648744 entrance, so that entrance's traffic is in it),
+#: the entrance the T.H.52 NB ramp detector rnd_91040 (both veh/h; the
+#: demand artifact's ``inflow_steps`` for on-ramp 769818012 are the same
+#: counts), the exit fraction of off-ramp 18207598 the demand artifact's
+#: conservation closure ``(S790 + rnd_91040 - S97 - rnd_87221) / (S790 +
+#: rnd_91040)`` — applied, as the corridor applies it, to the mainline and
+#: the entrants alike — and the downstream exit's the Jackson St detector
+#: rnd_87221 over ``S97 + rnd_87221``
+#: (``artifacts/demand_mndot_i94_wb_stpaul.json``, ``exit_fraction_steps``).
+#: The observed peak of the four is 05:40 (3,776 + 1,361 = 5,137 veh/h into
+#: the weave, 28.9 % leaving at 18207598); S790 ran 25.8-26.6 m/s and S97
+#: 26.8-27.4 m/s in all four windows.
+TH52_OBSERVED_0530: dict[str, tuple[tuple[float, float], ...]] = {
+    "mainline_vph": (
+        (0.0, 3281.3333333333335),
+        (300.0, 3566.6666666666665),
+        (600.0, 3776.0),
+        (900.0, 3752.0),
+    ),
+    "entrance_vph": (
+        (0.0, 1042.6666666666667),
+        (300.0, 1210.6666666666667),
+        (600.0, 1361.3333333333333),
+        (900.0, 1296.0),
+    ),
+    "exit_fraction": (
+        (0.0, 0.3308664816527907),
+        (300.0, 0.3014233882221602),
+        (600.0, 0.2888658188424604),
+        (900.0, 0.2509244585314316),
+    ),
+    "downstream_exit_fraction": (
+        (0.0, 0.05207373271889401),
+        (300.0, 0.06911705952856573),
+        (600.0, 0.08978102189781023),
+        (900.0, 0.10578279266572638),
+    ),
+}
+
+#: The free-flow boundary the observation is read with [m/s]: the corridor's
+#: record dates each station's queue by its first 5-min window under 20 m/s
+#: (docs/ONBOARDING_MNDOT.md §11, "Where the corridor's queue comes from",
+#: (5)); S790 and S97, the stations either side of the section, stay 5.8 m/s
+#: or more above it in every window of :data:`TH52_OBSERVED_0530`.
+TH52_FREE_FLOW_MS = 20.0
+
+
+def _th52_corridor_config(seed: int) -> ScenarioConfig:
+    """The corridor-faithful T.H.52 fixture (:data:`TH52_CORRIDOR_OSM`) under
+    the observed 05:30-05:50 movements (:data:`TH52_OBSERVED_0530`) on the
+    corridor's fleet block (:func:`corridor_fleet_block`), 20 simulated
+    minutes, step 0.5 s; the entrance is ``merge: weave`` paired with the
+    18207598-like exit, the 12th St-like exit a plain lane-change diverge, as
+    in ``scenarios/mndot_i94_wb_stpaul_weave.yaml``."""
+    d = TH52_OBSERVED_0530
+    return ScenarioConfig.model_validate(
+        {
+            "name": "weave_th52_corridor",
+            "fleet": corridor_fleet_block(),
+            "network": {
+                "kind": "osm",
+                "osm_file": str(TH52_CORRIDOR_OSM),
+                "corridor_edges": ["100", "101", "102", "103", "104"],
+                "inflow": [[t, q / 3600.0] for t, q in d["mainline_vph"]],
+                "ramps": [
+                    {
+                        "kind": "on",
+                        "name": "th52",
+                        "edges": ["200", "210"],
+                        "attach_edge": "102",
+                        "inflow": [[t, q / 3600.0] for t, q in d["entrance_vph"]],
+                        "merge": "weave",
+                        "weave": {"exit_ramp": "th52 exit"},
+                    },
+                    {
+                        "kind": "off",
+                        "name": "th52 exit",
+                        "edges": ["201"],
+                        "attach_edge": "102",
+                        "exit_fraction": [list(s) for s in d["exit_fraction"]],
+                    },
+                    {
+                        "kind": "off",
+                        "name": "jackson exit",
+                        "edges": ["203"],
+                        "attach_edge": "103",
+                        "exit_fraction": [list(s) for s in d["downstream_exit_fraction"]],
+                    },
+                ],
+            },
+            "sim": {"duration_s": 1200.0},
+            "seed": seed,
+        }
+    )
+
+
+def _th52_corridor_state(paths) -> tuple[dict, pd.Series]:
+    """The criteria of ``test_th52_corridor_section_carries_free_flow_demand``
+    read off a run: departures per entrance, the exit movement, and the mean
+    speed of every lane over the section's last 60 m per 5-min window."""
+    meta = json.loads(paths.meta.read_text())
+    (ws,) = meta["weave_sections"]
+    on = next(r for r in meta["ramps"] if r["name"] == "th52")
+    net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+    x_end = sum(net.getEdge(e).getLength() for e in ("100", "101", "102"))
+    df = pd.read_parquet(paths.trajectories, columns=["t", "x", "lane", "v"])
+    end = df[(df.x >= x_end - 60.0) & (df.x < x_end) & (df.t < 1200.0)]
+    windows = end.groupby(["lane", (end.t // 300.0).astype(int)]).v.mean()
+    state = {
+        "length_m": ws["length_m"],
+        "mainline_departed": (
+            meta["n_vehicles_departed"] - on["n_departed"],
+            meta["n_vehicles_planned"] - on["n_planned"],
+        ),
+        "entrance_departed": (on["n_departed"], on["n_planned"]),
+        "n_collisions": meta["n_collisions"],
+        "exits_given_up": (ws["n_missed_exit"], ws["n_reached_section_exiting"]),
+        "exit_end_lane_speed_by_5min": {
+            f"{lane}/{w}": round(float(v), 1) for (lane, w), v in windows.items()
+        },
+        "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
+    }
+    return state, windows
+
+
 def _lane_speed_windows(df: pd.DataFrame, x0: float, lane: int) -> pd.Series:
     """Mean speed of ``lane`` over ``[x0, x0 + 60 m)`` per 60-s window after
     a 120-s warm-up, to 1200 s (the section-style criterion of
@@ -1641,6 +1783,100 @@ class TestWeaveRun:
         assert ws["n_unfinished"] <= 0.1 * ws["n_entered"], state
         assert e1_meta["n_departed"] >= 0.9 * e1_meta["n_planned"], state
         assert len(accel) == 18 and (accel > 5.0).all(), state
+
+    @pytest.mark.skipif(
+        not (MNDOT_OBSERVATIONS.is_file() and MNDOT_DEMAND.is_file()), reason="MnDOT files absent"
+    )
+    def test_th52_corridor_demand_is_the_observation(self):
+        """:data:`TH52_OBSERVED_0530` is the committed observation, not a
+        model output (2026-09-24, block 3, WP-61): the mainline is S790's
+        count and the entrance rnd_91040's in windows 0-3 (the demand
+        artifact's T.H.52 inflow is the same count), the two exit fractions
+        are the demand artifact's and equal the conservation closure of the
+        four counts, and the free-flow premise of
+        ``test_th52_corridor_section_carries_free_flow_demand`` holds: S790
+        and S97 run above :data:`TH52_FREE_FLOW_MS` in every window."""
+        obs = json.loads(MNDOT_OBSERVATIONS.read_text())
+        ramps = {r["name"]: r for r in json.loads(MNDOT_DEMAND.read_text())["ramps"]}
+        flows, speeds = obs["flows_veh_h"], obs["speeds_ms"]
+        d = TH52_OBSERVED_0530
+        assert obs["t0_local"] == "05:30" and obs["window_s"] == 300.0
+        for i in range(4):
+            t = 300.0 * i
+            q_main, q_on = flows["S790"][i], flows["rnd_91040"][i]
+            q_out, q_jackson = flows["S97"][i], flows["rnd_87221"][i]
+            assert d["mainline_vph"][i] == (t, q_main)
+            assert d["entrance_vph"][i] == (t, q_on)
+            on_step = ramps["on-ramp 769818012"]["inflow_steps"][i]
+            assert on_step[0] == t and on_step[1] * 3600.0 == pytest.approx(q_on)
+            assert d["exit_fraction"][i] == tuple(
+                ramps["off-ramp 18207598"]["exit_fraction_steps"][i]
+            )
+            assert d["exit_fraction"][i][1] == pytest.approx(
+                (q_main + q_on - q_out - q_jackson) / (q_main + q_on)
+            )
+            downstream = ramps["off-ramp 82150350"]["exit_fraction_steps"][i]
+            assert d["downstream_exit_fraction"][i] == tuple(downstream)
+            assert downstream[1] == pytest.approx(q_jackson / (q_out + q_jackson))
+            assert min(speeds["S790"][i], speeds["S97"][i]) > TH52_FREE_FLOW_MS + 5.0
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="The T.H.52 section as the corridor compiles it, under the observed 05:30-05:50 "
+        "movements on the corridor's fleet (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
+        "WP-61): the T.H.52 entrance departs 368 / 360 / 350 of 407 at seeds 3 / 4 / 5 "
+        "(387 required), and the section's last 60 m read below 20 m/s in 10 / 11 / 13 of "
+        "the 16 lane-windows — the auxiliary lane at 10.1 / 11.9 / 9.2 m/s at its lowest, "
+        "lane 1 at 12.9 / 15.1 / 8.2; the mainline departs 1,140 / 1,157 / 1,149 of 1,196 "
+        "(1,137 required), 2 / 1 / 2 exits are given up of 356 / 391 / 405 reaching the "
+        "section, no collision",
+    )
+    def test_th52_corridor_section_carries_free_flow_demand(self, tmp_path):
+        """The corridor's T.H.52 weaving section carries its observed demand in
+        free flow (2026-09-24, block 3, WP-61; docs/WEAVE_MODEL_PLAN.md, dated
+        section): ``tests/fixtures/weave_th52_corridor.osm`` — the section's
+        lanes, lengths and speed limit as the corridor scenario compiles them,
+        with the exit geometry past it (the 12th St / Jackson exit sharing
+        lane 0 221 m on) — under :data:`TH52_OBSERVED_0530` (the observed
+        05:30-05:50 windows; 5,137 veh/h into the weave at 05:40, 28.9 %
+        leaving at 18207598) on the corridor's fleet block, 20 simulated
+        minutes, seed 3.
+
+        The real section carried these flows in free flow: S790 ran
+        25.8-26.6 m/s and S97 26.8-27.4 m/s in every window, and no station of
+        the corridor fell under 20 m/s before 06:30. Criteria, each from that
+        observation: (i) the section takes its demand — at least 95 % of the
+        planned vehicles depart on the mainline and on the T.H.52 entrance;
+        (ii) free flow at the exit end, where the corridor restricts first
+        (VM O, docs/ONBOARDING_MNDOT.md §11) — every lane's mean speed over
+        the section's last 60 m above :data:`TH52_FREE_FLOW_MS` in every
+        5-min window (the observation's aggregation), the boundary the
+        corridor's record dates its queue with; (iii) no collision; (iv) at
+        most 2 % of the exit-bound vehicles that reach the section given up
+        at the gore's end (``n_missed_exit``), since the exit fraction is the
+        conservation closure of counts that every exiter left by.
+
+        Measured at the defaults (the physics of 61e3a48; seeds 3 / 4 / 5): the
+        exit end slows first — the auxiliary lane's last 55 m reads 10.2 /
+        10.8 / 7.4 m/s in minute 2 while lanes 0-1 of the section's first 50 m
+        read 13.7 / 14.7 / 15.3 m/s or more — and the breakdown below 8 m/s
+        follows at the approach's lane 0 and the section's entry (minute 7 at
+        seed 3, 5 at seed 4; at seed 5 the exit end's own dip is the first,
+        the entry follows at minute 3), the order VM O read on the corridor;
+        driven at the 05:40 window alone from t = 0 the same fixture breaks at
+        the entry first on all three seeds (the dated section has both).
+        """
+        paths = run_micro(_th52_corridor_config(3), 3, tmp_path / "th52_corridor_section")
+        state, windows = _th52_corridor_state(paths)
+        main_departed, main_planned = state["mainline_departed"]
+        on_departed, on_planned = state["entrance_departed"]
+        given_up, reached = state["exits_given_up"]
+        assert 300.0 < state["length_m"] < 310.0, state["length_m"]
+        assert state["n_collisions"] == 0, state
+        assert main_departed >= 0.95 * main_planned, state
+        assert on_departed >= 0.95 * on_planned, state
+        assert len(windows) == 16 and (windows > TH52_FREE_FLOW_MS).all(), state
+        assert reached > 0 and given_up <= 0.02 * reached, state
 
     def test_two_sections_are_stepped_and_listed_upstream_first(self, tmp_path):
         """``tests/fixtures/weave_two.osm`` (two T.H.52-shaped sections, 560 m
