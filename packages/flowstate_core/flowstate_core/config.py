@@ -199,6 +199,13 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # see the key's paragraph in the docstring below. A switch, not a fitted
     # value.
     "entry_speed_bound": 0.0,
+    # 2026-09-24 (block 3, WP-58): the bounded hold — how long a chosen
+    # gap's follower may be held for a changer that has stopped closing on
+    # the gap, measured on the fixture grid and left off — see the key's
+    # paragraph in the docstring below. A positive value is a time in
+    # seconds (2 s, ``pair_release_s``'s two reaction times, is the measured
+    # form); not a fitted value.
+    "hold_release_s": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -436,7 +443,59 @@ cooperation and the chains form behind entrants that *can* stop within
 the lane at their ``b``. The form that removes the fast arrivals almost
 entirely (the bound from the ramp's start, harness only: 40 → 5 of the
 Ruth St entrants unable to stop) leaves 27 crossing pairs on 16 entrants
-— the pair does not form by momentum. A switch, not a fitted value."""
+— the pair does not form by momentum. A switch, not a fitted value.
+``hold_release_s`` (2026-09-24, block 3, WP-58, the bounded hold): a
+positive value is the longest a chosen gap's follower may be held at IDM
+towards the changer (``microsim.runner._weave_cooperate``) once the
+changer has stopped closing on the gap — its projected arrival at the
+gap, the remaining deficit to the leader-side gap the acceptance asks
+over the rate it closed that deficit at during the last step, no longer
+advancing step over step — while the follower's side of the gap is
+already open by the acceptance's terms (the time gap, the follower
+absorbing the changer within its ``b``, the changer outside the
+follower's brake gap). On the first step the stall has lasted longer
+than the bound the hold is dropped: the follower is not commanded, it is
+blocked for that changer for one bound (no chain: a released follower is
+not asked again for the same changer within the bound) and the changer
+re-chooses its gap with the follower excluded — the next gap behind, into
+which it drops once the follower has passed
+(``microsim.runner._weave_hold_release``). Never dropped while the
+changer is inside the follower's brake gap towards it (the speed-aware
+guard's follower side: that braking is the hold's productive part), and
+never for a pair standing below the creep speed — that pair is
+``pair_release_s``'s, released after two reaction times with the partner
+forcing its change. A time and not a distance bound because the hold's
+cost is the follower's speed deficit integrated over time, a driver's
+patience is in seconds, and at low speed — where the hold locks (VM M's
+seed at a standstill) — a bound on the changer's travel never fires
+(the distance form was measured beside it). Each drop is counted in
+``n_hold_releases``. The default is **0** (off, hash-neutral unless set):
+the hold trace at the default on the 29-run fixture grid
+(docs/WEAVE_MODEL_PLAN.md, dated section WP-58) reads 5,248 of 17,810
+changer–follower episodes stalled for more than 2 s, carrying 133,011 of
+the 206,358 held changer-steps with a target on the follower (53,085 of
+them past the 2 s mark), and 36 of the 40 longest stalls (22.5–43 s) are
+entrants still on the ramp, within ``lookahead_m`` of the section at 3–10
+m/s, holding a lane-1 follower at their speed — but every form of the
+release reads worse than the default: at 2 s (``pair_release_s``'s figure) 8,330 holds
+dropped, give-ups 44 → 74, exits 5,988 → 5,897 of 6,131 → 6,084 reached,
+the entrances 5,944 → 5,830, lane-1 minutes at or below 5 m/s 14 → 31,
+forced changes deferred 5,439 → 9,407, pair releases 218 → 458, and
+T.H.52 at capacity, seed 5, near a lock (288 of 466 departed against 373,
+lane 1 at the section start 0.4 m/s in nine minutes, 257 pair releases);
+at 1 s 70 given up, at 4 s 59, on the section only 59 (74 unfinished),
+without the exit priority 80, as a 40 m distance bound 66, with the
+strict stall reading (the deficit not shrinking at all) 64 — and every
+form fails the no-lock pin of the T.H.52 capacity fixture
+(``test_th52_weave_at_capacity_does_not_lock``) at seed 4 or 5 or both,
+which the default passes at seeds 3–5; with the exiter's yield on 66 and
+63 given up against the yield's own 39, the pin failing at seed 5 and 4. The mechanism: a changer
+released from a gap at speed parity is passed by the through platoon one
+held follower at a time and reaches the section, or the lane end, with no
+gap, so the forced changes, the deferrals and the pairs at the lane ends
+grow. No collision in any form; the default is byte-identical to the
+grid before the key. A positive value is two human reaction times
+(Treiber & Kesting 2013, ch. 12) at 2 s; not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

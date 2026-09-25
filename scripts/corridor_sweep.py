@@ -143,6 +143,7 @@ WEAVE_FIELDS = (
     "n_exiter_yields",
     "n_entrant_yields",
     "n_entry_bounded",
+    "n_hold_releases",
 )
 
 

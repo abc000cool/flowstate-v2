@@ -77,6 +77,7 @@ WEAVE = {
         "n_exiter_yields": 2,
         "n_entrant_yields": 0,
         "n_entry_bounded": 0,
+        "n_hold_releases": 0,
     },
     22: {
         "n_entered": 44,
@@ -99,6 +100,7 @@ WEAVE = {
         "n_exiter_yields": 3,
         "n_entrant_yields": 1,
         "n_entry_bounded": 3,
+        "n_hold_releases": 1,
     },
     33: {
         "n_entered": 48,
@@ -121,6 +123,7 @@ WEAVE = {
         "n_exiter_yields": 4,
         "n_entrant_yields": 2,
         "n_entry_bounded": 6,
+        "n_hold_releases": 2,
     },
 }
 
@@ -252,7 +255,8 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
     ``n_pair_releases``, ``n_missed_exit``, ``n_vacate_skipped_no_gap``,
     ``n_vacate_requests``, ``n_giveup_waited`` (WP-52) and the two yield
     counters ``n_exiter_yields`` / ``n_entrant_yields`` (WP-54) and the
-    entry-speed bound's ``n_entry_bounded`` (WP-57): their intervals are empty
+    entry-speed bound's ``n_entry_bounded`` (WP-57) and the bounded hold's
+    ``n_hold_releases`` (WP-58): their intervals are empty
     (``n`` = 0), never a zero mean, and the counters that are there aggregate
     as before. A section with cooperations but ``mean_follower_decel_ms2``
     null (none commanded) contributes to the count and not to the decel; one
@@ -292,6 +296,7 @@ def test_diagnostics_weave_counters_a_meta_predates_are_empty_not_zero() -> None
         "n_exiter_yields",
         "n_entrant_yields",
         "n_entry_bounded",
+        "n_hold_releases",
     ):
         assert weave[field]["n"] == 0, field
         assert weave[field]["mean"] is None, field

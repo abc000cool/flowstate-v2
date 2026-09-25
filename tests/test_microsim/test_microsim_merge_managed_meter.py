@@ -879,6 +879,8 @@ class TestWeaveSchema:
             "exiter_yield_lead_s": 0.0,
             # WP-57: the entrant's entry speed (docs/WEAVE_MODEL_PLAN.md, dated section)
             "entry_speed_bound": 0.0,
+            # WP-58: the bounded hold (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "hold_release_s": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -1892,6 +1894,9 @@ def _weave_state(**params) -> dict:
         "n_entrant_yields": 0,
         # WP-57: the entrant's entry speed bounded on the ramp (vehicle-steps)
         "n_entry_bounded": 0,
+        # WP-58: the bounded hold (per-changer state; holds dropped)
+        "hold": {},
+        "n_hold_releases": 0,
         "gave_up": set(),
         "through_target": "z",
         "n_forced_deferred": 0,
@@ -3718,6 +3723,173 @@ class TestWeaveEntrySpeedBound:
         assert ws["n_entry_bounded"] == 0
 
 
+class TestWeaveHoldRelease:
+    """The bounded hold (WP-58, 2026-09-24 block 3):
+    ``microsim.runner._weave_hold_release`` and its hook in
+    ``_weave_cooperate`` under ``hold_release_s`` (docs/WEAVE_MODEL_PLAN.md,
+    dated section). The rule's statement is pinned so a set switch behaves
+    as documented, whatever the default; ``test_default`` pins the default."""
+
+    @staticmethod
+    def _state(**params):
+        """Entrant ``n`` at 20 m/s on the ramp ``r`` (offset −100 m; at
+        ``pos`` 99 its front is 1 m before the section start), approaching:
+        the gap it chooses on lane 1 has ``L`` beside it (L's rear 1 m
+        behind n's front, on section edge ``a`` — beside on the ramp, so
+        n is not eased, the sixth derivation) and ``F`` 25 m behind n's
+        rear on the ramp's lane-1 continuation, all at 20 m/s: the
+        follower's side is open (25 m against the 14.5 m time gap, IDM
+        −0.50 m/s² against −b, no closing speed) and the changer's deficit
+        to L's gap never shrinks — the stall the rule bounds."""
+        ws = _weave_state(**params)
+        ws["ramp_edges"] = frozenset({"r"})
+        ws["x_offset"]["r"] = -100.0
+        ws["lane_map"][("r", 0)] = 0
+        ws["lane_map"][("r", 1)] = 1
+        # F is listed on the lane-1 continuation of the ramp's offset; as an
+        # exit-bound id it is not itself an approaching entrant
+        ws["exiting_ids"] = frozenset({"e", "F"})
+        veh = _WeaveVehicle({"n": 20.0, "L": 20.0, "F": 20.0})
+        res = {
+            "n": _res("r", 0, 99.0, 20.0),
+            "L": _res("a", 1, 3.0, 20.0),
+            "F": _res("r", 1, 69.0, 20.0),
+        }
+        return ws, veh, _WeaveMod(veh), res
+
+    def test_projected_arrival_and_the_clock(self):
+        """The helper alone: a new follower starts the state; a shrinking
+        deficit reads as an advancing arrival (``t_arr`` falling); a
+        constant deficit stalls and the clock runs from that step; the
+        drop comes on the first step the clock has run for longer than the
+        bound, blocks the follower for one bound and clears the state; the
+        follower's side not open, the brake distance and the standing pair
+        each reset the clock; a bound of 0 keeps the state and never
+        drops."""
+        from microsim.runner import _weave_hold_release, _weave_hold_state
+
+        hs = _weave_hold_state()
+        step = 0.5
+        args = dict(v_c=20.0, v_f=20.0, follower_open=True, inside_brake=False, priority=False)
+        assert not _weave_hold_release(hs, 0.0, step, "F", deficit_m=10.0, bound_s=2.0, **args)
+        assert hs["f"] == "F" and hs["since"] is None and hs["d"] == 10.0
+        # closing at 2 m/s: t_arr = 9 · 0.5 / 1 = 4.5 s, then 4.0, 3.5 — advancing
+        for k, d in enumerate((9.0, 8.0, 7.0), start=1):
+            assert not _weave_hold_release(
+                hs, k * step, step, "F", deficit_m=d, bound_s=2.0, **args
+            )
+            assert hs["since"] is None
+        assert hs["t_arr"] == pytest.approx(3.5)
+        # the deficit stays: t_arr = inf ≥ 3.5, the clock starts at t = 2.0
+        assert not _weave_hold_release(hs, 2.0, step, "F", deficit_m=7.0, bound_s=2.0, **args)
+        assert hs["since"] == 2.0
+        for t in (2.5, 3.0, 3.5, 4.0):  # t − since ≤ 2: held
+            assert not _weave_hold_release(hs, t, step, "F", deficit_m=7.0, bound_s=2.0, **args)
+        assert _weave_hold_release(hs, 4.5, step, "F", deficit_m=7.0, bound_s=2.0, **args)
+        assert hs["blocked"] == {"F": 6.5} and hs["f"] is None and hs["since"] is None
+        # the resets: the follower's side not open, inside its brake
+        # distance, or a standing pair — the clock does not run
+        for kw in (
+            {"follower_open": False},
+            {"inside_brake": True},
+            {"v_c": 0.5, "v_f": 0.5},
+        ):
+            hs = _weave_hold_state()
+            a = {**args, **kw}
+            _weave_hold_release(hs, 0.0, step, "F", deficit_m=7.0, bound_s=2.0, **a)
+            for t in (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5):
+                assert not _weave_hold_release(hs, t, step, "F", deficit_m=7.0, bound_s=2.0, **a)
+            assert hs["since"] is None, kw
+        # a bound of 0: the clock runs (for the trace), nothing is dropped
+        hs = _weave_hold_state()
+        _weave_hold_release(hs, 0.0, step, "F", deficit_m=7.0, bound_s=0.0, **args)
+        for t in (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0):
+            assert not _weave_hold_release(hs, t, step, "F", deficit_m=7.0, bound_s=0.0, **args)
+        assert hs["since"] == 0.5 and hs["blocked"] == {}
+        # a deficit of zero is an arrival: t_arr = 0
+        hs = _weave_hold_state()
+        _weave_hold_release(hs, 0.0, step, "F", deficit_m=3.0, bound_s=2.0, **args)
+        _weave_hold_release(hs, 0.5, step, "F", deficit_m=0.0, bound_s=2.0, **args)
+        assert hs["t_arr"] == 0.0
+        # no follower resets the state
+        _weave_hold_release(hs, 1.0, step, None, deficit_m=0.0, bound_s=2.0, **args)
+        assert hs["f"] is None and hs["d"] == math.inf
+
+    def test_a_stalled_hold_is_dropped_and_the_gap_rechosen_behind(self):
+        """Six steps at parity: F is held (IDM towards n, −0.50 m/s², below
+        its free-road model) on every step; the deficit to L (the 14.5 m
+        time gap plus the 1 m overlap) never shrinks, the clock runs from
+        the second step, and on the seventh (t = 3.0 s, 2.5 s on the
+        clock) the hold is dropped: F gets no target, ``n_hold_releases``
+        reads 1, F is blocked for one bound, [3.0, 5.0) s, and n has no
+        gap meanwhile (the only one behind F has F as a leader whose front
+        is behind n's, not a gap n is in until F has passed) — nobody else
+        is asked (no chain). At t = 5.0 the block lapses and the gap is
+        chosen again under a fresh clock."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._state(hold_release_s=2.0)
+        # F's IDM towards n over the 25 m gap (s* = 30.5 m at 20 m/s): −0.50 m/s²
+        held = 20.0 + 0.5 * 0.73 * (1.0 - (20.0 / 30.0) ** 4 - (30.5 / 25.0) ** 2)
+        for k in range(6):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+            assert [c for c in veh.calls if c[0] == "slow"] == [
+                ("slow", "F", pytest.approx(held), 0.0)
+            ]
+            veh.calls.clear()
+        assert ws["pre"] == {"n": "F"} and ws["n_hold_releases"] == 0
+        assert ws["hold"]["n"]["since"] == 0.5
+        _weave_step(mod, _tc, ws, res, 3.0)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_hold_releases"] == 1
+        assert ws["hold"]["n"]["blocked"] == {"F": 5.0} and ws["pre"] == {"n": None}
+        assert _weave_meta(ws, {})["n_hold_releases"] == 1
+        # blocked for one bound, [3.0, 5.0): nobody is held for n meanwhile
+        for t in (3.5, 4.0, 4.5):
+            veh.calls.clear()
+            _weave_step(mod, _tc, ws, res, t)
+            assert not [c for c in veh.calls if c[0] == "slow"] and ws["pre"] == {"n": None}
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 5.0)
+        assert [c for c in veh.calls if c[0] == "slow"] == [("slow", "F", pytest.approx(held), 0.0)]
+        assert ws["pre"] == {"n": "F"} and ws["hold"]["n"]["blocked"] == {}
+        assert ws["hold"]["n"]["since"] is None and ws["n_hold_releases"] == 1
+        # the state is dropped with the changer
+        _weave_step(mod, _tc, ws, {"L": res["L"], "F": res["F"]}, 5.5)
+        assert "n" not in ws["hold"]
+
+    def test_the_brake_distance_keeps_the_hold(self):
+        """F closing at 30 m/s on n at 20: its brake gap towards n,
+        10²/(2·1.67) = 29.9 m, exceeds the 25 m between them, so the
+        changer is inside the follower's brake distance on every step and
+        the clock never runs — the hold is kept whatever the deficit
+        does."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._state(hold_release_s=2.0)
+        veh.speeds["F"] = 30.0
+        res["F"] = _res("r", 1, 69.0, 30.0)
+        for k in range(8):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+            assert ws["hold"]["n"]["brake"] and ws["hold"]["n"]["since"] is None
+        assert ws["n_hold_releases"] == 0 and ws["pre"] == {"n": "F"}
+        assert ws["n_cooperations"] == 8
+
+    def test_default(self):
+        """Off by default (measured and left off, docs/WEAVE_MODEL_PLAN.md
+        WP-58): the stalled hold of the test above is kept for ever."""
+        from flowstate_core.config import WEAVE_DEFAULTS
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["hold_release_s"] == 0.0
+        ws, _veh, mod, res = self._state()
+        for k in range(20):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        assert ws["n_hold_releases"] == 0 and ws["pre"] == {"n": "F"}
+        assert ws["n_cooperations"] == 20
+        assert ws["hold"]["n"]["since"] == 0.5  # the clock runs; nothing drops
+
+
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""
 
@@ -4588,6 +4760,7 @@ class TestWeaveReviewDerivations3To6:
             "n_exiter_yields": 0,
             "n_entrant_yields": 0,
             "n_entry_bounded": 0,
+            "n_hold_releases": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

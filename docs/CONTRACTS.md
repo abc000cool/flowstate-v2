@@ -454,18 +454,22 @@ derivations below each added keys): `ramp, exit, edges, exit_edge,
 exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
-n_entrant_yields, n_entry_bounded, n_forced_deferred, n_cooperations,
-mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
-n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
-n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 36 keys (`n_giveup_waited` added by
+n_entrant_yields, n_entry_bounded, n_hold_releases, n_forced_deferred,
+n_cooperations, mean_follower_decel_ms2, n_changer_eased, n_vacated,
+n_vacate_refused, n_vacate_skipped_no_gap, n_vacate_requests,
+n_pair_releases, n_unfinished, n_exited, n_reached_section_exiting,
+n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 37
+keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
 pair, the vehicle-steps of the two yields at the lane ends; WP-55 and
 WP-56 count in `n_exiter_yields` and add none; `n_entry_bounded` added by
 WP-57, the entrant's entry speed, the vehicle-steps on which an entrant on
-the ramp was asked to enter no faster than its own stop at `b` allows)
+the ramp was asked to enter no faster than its own stop at `b` allows;
+`n_hold_releases` added by WP-58, the bounded hold, the cooperating
+followers released after their changer stopped closing on its gap for
+longer than `hold_release_s`, each once)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1212,7 +1216,36 @@ forced changes deferred 5,439 → 6,644, no lock, no collision; the row it
 helps (seed 3 of the exit peak, 9 → 5) is paid for on seeds 4 and 5 (1 →
 12, 4 → 8) by lane 1 holding for the slowed entrant, and the chains form
 behind entrants that can stop within the lane at their `b`. Golden
-`merge_weave` unchanged at the default (hash 436cd4ec9e5d).
+`merge_weave` unchanged at the default (hash 436cd4ec9e5d). **The bounded
+hold** (2026-09-24, block 3, WP-58; `WEAVE_DEFAULTS["hold_release_s"]`,
+default 0 = off, hash-neutral unless set; measured and left off): the
+cooperation's hold on a chosen gap's follower (`_weave_cooperate`) is
+dropped, the follower blocked for the changer for one bound and the gap
+re-chosen with it excluded (the next gap behind, `_weave_choose_gap`'s
+`blocked`), when the changer's projected arrival at the gap — its remaining
+deficit to the leader-side gap the acceptance asks over the rate at which it
+closed that deficit during the last step — has not advanced for longer than
+the bound while the follower's side of the gap is open by the acceptance's
+terms; never while the changer is inside the follower's brake gap (the
+speed-aware guard's follower side), never for a pair standing below the
+creep speed (`_weave_pair_release`'s regime), nobody else commanded through
+it (`microsim.runner._weave_hold_release`, `_weave_hold_state`).
+`weave_sections[i].n_hold_releases` (the **37th key**;
+`WeaveSectionDiagnosticsOut`, null for an older meta, not shown by the
+dashboard; aggregated by `WEAVE_FIELDS`) counts the holds dropped, each
+once. On the 29-run grid (docs/WEAVE_MODEL_PLAN.md, dated section) every
+form measured reads worse than the default — at 2 s (the `pair_release_s`
+figure) 8,330 holds dropped, give-ups 44 → 74, exits 5,988 → 5,897, the
+entrances 5,944 → 5,830, lane-1 minutes at or below 5 m/s 14 → 31, and
+T.H.52 at capacity, seed 5, standing at 0.4 m/s at the section start for
+two minutes (288 of 466 departed against 373, 257 pair releases); at 1 s
+and 4 s, on the section only, without the exit priority, as a distance
+bound on the changer's travel (40 m) and with the strict stall reading
+(the deficit not shrinking at all) 59–80 given up and 5,749–5,948
+entrants; with the exiter's yield on, 66 and 63 given up against 39.
+Every form fails `test_th52_weave_at_capacity_does_not_lock` at seed 4 or
+5; the default passes it at seeds 3–5. No collision in any form. Golden `merge_weave` unchanged at the
+default (hash 436cd4ec9e5d).
 
 ## 3. Run outputs
 
@@ -2112,8 +2145,11 @@ zero at a switch's default of 0), null for a meta written before and not
 shown by the dashboard, and (WP-57, 2026-09-24 block 3) `n_entry_bounded`
 (vehicle-steps of the entrant's entry-speed bound, `entry_speed_bound`;
 zero at its default of 0), null for a meta written before and not shown
-by the dashboard; the sweep
-summary's `diagnostics` block aggregates all eleven the same way (`scripts/corridor_sweep.py`
+by the dashboard, and (WP-58, 2026-09-24 block 3) `n_hold_releases` (the
+cooperating followers released by the bounded hold, `hold_release_s`, each
+once; zero at its default of 0), null for a meta written before and not
+shown by the dashboard; the sweep
+summary's `diagnostics` block aggregates all twelve the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema
 brought in line with `_weave_meta`): `WeaveSectionDiagnosticsOut` also

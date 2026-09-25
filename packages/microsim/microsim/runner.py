@@ -49,7 +49,7 @@ import os
 import platform
 import time
 from collections import deque
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
@@ -1781,6 +1781,7 @@ def _weave_choose_gap(
     lookahead_m: float,
     committed: str | None,
     priority: bool = False,
+    blocked: Collection[str] = (),
 ) -> tuple[str | None, str | None, float, float]:
     """The target-lane gap a changer works towards: ``(leader, follower, a_F, a_c)``.
 
@@ -1841,6 +1842,11 @@ def _weave_choose_gap(
         committed: The follower of the gap chosen on an earlier step, if any.
         priority: The exit priority of an exit-bound changer whose forced
             change is due (above).
+        blocked: Followers whose gap is not a candidate — released from a
+            stalled hold by :func:`_weave_hold_release` (WP-58, the bounded
+            hold) and not asked again for this changer within the bound;
+            the gap *behind* such a vehicle stays a candidate, so the
+            changer drops in behind it once it has passed.
 
     Returns:
         ``(leader, follower, a_F, a_c)``; ``None`` where the gap has no such
@@ -1853,6 +1859,8 @@ def _weave_choose_gap(
         l_id = lane_list[i][1] if i < n else None
         f_id = lane_list[i - 1][1] if i > 0 else None
         if f_id is not None:
+            if f_id in blocked:
+                continue
             p_f = p_of[f_id]
             s_f = x_c - p_c["len"] - x_of[f_id]
             dist = x_c - x_of[f_id]
@@ -2124,6 +2132,7 @@ def _weave_cooperate(
     accept_s: float,
     remaining_m: float,
     priority: bool = False,
+    t: float = 0.0,
 ) -> str | None:
     """Choose a changer's gap on ``target_lane`` and record the two speed targets.
 
@@ -2200,6 +2209,14 @@ def _weave_cooperate(
     hold while it drops in, and a vehicle beside it is waited for, not eased
     towards.
 
+    The bounded hold (2026-09-24, block 3, WP-58; ``hold_release_s``, off
+    by default): the follower's hold is dropped, and the gap re-chosen
+    with that follower blocked, when the changer has stopped closing on
+    the gap for longer than the bound while the follower's side of it is
+    open and the changer is outside the follower's brake distance
+    (:func:`_weave_hold_release`, which has the derivation). ``t`` is the
+    simulation time the bound's clock reads.
+
     Returns:
         The chosen gap's follower id (the commitment carried to the next
         step), or ``None``.
@@ -2221,6 +2238,13 @@ def _weave_cooperate(
                 p_of[oid]["vmax"],
                 _weave_lane_vmax(mod, ws, r_o[tc.VAR_ROAD_ID], int(r_o[tc.VAR_LANE_INDEX])),
             )
+    # the bounded hold's state of this changer (WP-58): the followers it
+    # released and may not ask again within the bound
+    hs: dict[str, Any] = ws["hold"].setdefault(vid, _weave_hold_state())
+    hs_blocked: dict[str, float] = hs["blocked"]
+    for oid in [o for o, until in hs_blocked.items() if until <= t]:
+        del hs_blocked[oid]
+    blocked: set[str] = set(hs_blocked)
     l_t, f_t, a_f, a_c = _weave_choose_gap(
         vid,
         x_of[vid],
@@ -2235,8 +2259,61 @@ def _weave_cooperate(
         prm["lookahead_m"],
         committed,
         priority,
+        blocked,
     )
     step_s = float(ws["step_s"])
+    if f_t is not None:
+        # the hold's progress this step: the follower's side of the gap by
+        # the acceptance's terms, the guard's brake gap, and the changer's
+        # deficit to the leader-side gap the acceptance asks
+        p_f = p_of[f_t]
+        s_f = x_of[vid] - p_c["len"] - x_of[f_t]
+        brake_f = _weave_brake_gap(0.0, v_of[f_t], v_c, p_f["b"])
+        inside_brake = s_f <= brake_f
+        follower_open = (
+            s_f >= p_c["s0"] + accept_s * v_of[f_t] and a_f >= -p_f["b"] and not inside_brake
+        )
+        if l_t is None:
+            deficit = 0.0
+        else:
+            s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
+            deficit = max(
+                _weave_lead_gap_min(p_c["s0"], accept_s, v_c, s_l, v_of[l_t], p_c["b"]) - s_l,
+                0.0,
+            )
+        if _weave_hold_release(
+            hs,
+            t,
+            step_s,
+            f_t,
+            v_c,
+            v_of[f_t],
+            deficit,
+            follower_open,
+            inside_brake,
+            priority,
+            float(prm["hold_release_s"]),
+        ):
+            ws["n_hold_releases"] += 1
+            blocked.add(f_t)
+            l_t, f_t, a_f, a_c = _weave_choose_gap(
+                vid,
+                x_of[vid],
+                v_c,
+                p_c,
+                v0_c,
+                lane_list,
+                x_of,
+                v_of,
+                p_of,
+                v0_of,
+                prm["lookahead_m"],
+                None,
+                priority,
+                blocked,
+            )
+    else:
+        _weave_hold_release(hs, t, step_s, None, v_c, 0.0, 0.0, False, False, priority, 0.0)
     if f_t is not None:
         _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
     if l_t is not None and a_c < 0.0:
@@ -2249,6 +2326,187 @@ def _weave_cooperate(
         ):
             _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
     return f_t
+
+
+def _weave_hold_state() -> dict[str, Any]:
+    """A changer's bounded-hold state (WP-58): the follower under the clock,
+    the first stalled step, last step's deficit and projected arrival, the
+    last readings (for traces), and the released followers with the time
+    until which each is blocked."""
+    return {
+        "f": None,
+        "since": None,
+        "d": math.inf,
+        "t_arr": math.inf,
+        "open": False,
+        "brake": False,
+        "blocked": {},
+    }
+
+
+def _weave_hold_release(
+    hs: dict[str, Any],
+    t: float,
+    step_s: float,
+    f_id: str | None,
+    v_c: float,
+    v_f: float,
+    deficit_m: float,
+    follower_open: bool,
+    inside_brake: bool,
+    priority: bool,
+    bound_s: float,
+) -> bool:
+    """Whether a changer's hold on its gap's follower is dropped this step (WP-58).
+
+    The bounded hold (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md, dated
+    section). The cooperation of :func:`_weave_cooperate` holds the
+    follower F of the changer's chosen gap at IDM towards the changer,
+    clipped at ``−b_F``, on every step the changer keeps the gap — for as
+    long as the changer takes. The hold has two parts. Its *productive*
+    part is F opening its side of the gap: braking from its speed to the
+    changer's and falling back to the gap the acceptance asks — the time
+    gap ``s0_c + accept · v_F``, F's IDM absorbing the changer within
+    ``b_F``, and, the guard's follower side, the changer outside F's brake
+    gap ``(v_F − v_c)⁺² / (2·b_F)`` (:func:`_weave_force_gap_ok`). That
+    part is bounded by F's own kinematics: ``(v_F − v_c)/b_F`` seconds to
+    match speed and a few headway times to fall back. Once F's side is
+    open, every further step of the hold is *for the leader side* — the
+    changer positioning itself behind the gap's leader L by the gap the
+    acceptance asks there (:func:`_weave_lead_gap_min`, the time gap or
+    the changer's brake gap on L) — and F can do nothing for that side: it
+    follows the changer at the changer's speed, and the through lane
+    behind it follows F. That is the cost WP-57 read as the mechanism of
+    its worsening rows (an entrant slowed to 18 m/s beside a 20–22 m/s
+    through lane held its follower at ``−b`` for the section's length —
+    cooperations 1,086 → 1,919, the exiters' wait 7.7 → 14.0 s) and the
+    cost VM M read as the four-hour corridor's lock (18,259 hold
+    vehicle-steps on the locked seed, docs/ONBOARDING_MNDOT.md §11).
+
+    **The rule.** With F's side open and the changer outside F's brake
+    distance, the changer's *projected arrival* at the gap is read each
+    step: its remaining deficit to the leader-side gap, ``d``, over the
+    rate at which it closed that deficit during the last step,
+    ``t_arr = d · Δt / (d_prev − d)`` — infinite when the deficit grew or
+    stayed (the changer is not closing on the gap: L is not pulling ahead
+    of it and it is not dropping back), zero when the deficit is zero. The
+    arrival *advances* when ``t_arr`` falls step over step (a constant
+    closing rate takes ``Δt`` off it every step; the changer being eased at
+    ``−b`` towards L, or L pulling away, both read so). When it does not
+    advance — ``t_arr ≥ t_arr_prev``, the arrival receding or as far as
+    before — a clock runs from that step; on the first step it has run for
+    longer than ``bound_s`` the hold is *dropped*: F is not commanded this
+    step, it is blocked for this changer for ``bound_s`` (not asked again
+    for the same changer within the bound — no chain, the released
+    follower is let go for good), and the changer re-chooses its gap with
+    F excluded (:func:`_weave_choose_gap`): the next gap behind, into which
+    it drops once F has passed, its new follower under a fresh clock. Any
+    step on which the arrival advances, or F's side is not open, or the
+    changer is inside F's brake distance, resets the clock — the last is
+    the safety term: a hold is never dropped while F is still closing on
+    the changer faster than it can shed at ``b_F`` (the speed-aware
+    guard's follower side), because that braking is the hold's productive
+    part whatever the leader side does. A hold is also never dropped while
+    both stand below the creep speed (``SCRIPTED_MERGE_CREEP_MS``): that
+    pair is :func:`_weave_pair_release`'s, released after ``pair_release_s``
+    with the partner forcing its change, and the two rules do not overlap.
+    A new follower, or none, starts the state afresh.
+
+    **Why a time bound.** The hold's cost to the through lane is F's speed
+    deficit integrated over the hold's duration, ``∫ (v_F,own − v_c) dt``;
+    the driver's patience for a merging vehicle that is not making
+    progress is a matter of seconds, not metres; and at low speed — where
+    the hold locks (VM M's seed at a standstill) — a distance bound on the
+    changer's travel never fires, while a time bound fires the same. The
+    distance form (the changer's travel during the stall,
+    ``Σ v_c · Δt ≥ X``) was measured beside this one on the fixture grid
+    (docs/WEAVE_MODEL_PLAN.md, WP-58); it is the time bound scaled by the
+    changer's speed and blind exactly where the hold is longest.
+
+    **Measured and left off** (``hold_release_s`` = 0; docs/WEAVE_MODEL_PLAN.md,
+    WP-58). The hold trace at the default on the 29-run fixture grid reads
+    17,810 changer–follower episodes over 28 runs, 5,248 of them stalled
+    for more than 2 s and carrying 133,011 of the 206,358 held
+    changer-steps with a target on the follower; 53 % of those steps are
+    an entrant still on the ramp (median 5.7 m/s), and 36 of the 40
+    longest stalls (22.5–43 s) are such entrants holding a lane-1
+    follower at their speed. Every form of the release reads worse than
+    the default: at 2 s 8,330 holds dropped, give-ups 44 → 74, exits
+    5,988 → 5,897, the entrances 5,944 → 5,830, and T.H.52 at capacity,
+    seed 5, standing at 0.4 m/s at the section start for two minutes (288
+    of 466 departed against 373); at 1 s and 4 s, on the section only,
+    without the exit priority, as a 40 m distance bound and with the
+    strict stall reading 59–80 given up; with the exiter's yield on 66 and
+    63 against 39; every form fails the T.H.52 no-lock pin at seed 4 or 5.
+    A changer released from a gap at speed parity meets the next follower
+    at the same speed and stalls again (1,118 changers released three
+    times or more at 2 s), and the entrants reach the section with a gap
+    79 % → 62 % of the time. No collision; the default is byte-identical
+    to the grid before the key.
+
+    Args:
+        hs: The changer's hold state (:func:`_weave_hold_state`; updated).
+        t: Simulation time [s].
+        step_s: The step length [s].
+        f_id: The chosen gap's follower, ``None`` for no gap (resets).
+        v_c: The changer's speed [m/s].
+        v_f: The follower's speed [m/s].
+        deficit_m: The changer's remaining deficit to the leader-side gap
+            the acceptance asks [m]; ``0`` once positioned or without a
+            leader.
+        follower_open: Whether F's side of the gap is open by the
+            acceptance's terms (time gap, absorption within ``b_F``, and
+            outside F's brake gap).
+        inside_brake: Whether the changer is inside F's brake gap towards
+            it (the guard's follower side): never dropped then.
+        priority: Whether the changer holds under the exit priority
+            (recorded for the trace; the rule applies alike).
+        bound_s: ``hold_release_s``; ``0`` keeps the state and never
+            drops.
+
+    Returns:
+        Whether the hold on ``f_id`` is dropped this step.
+    """
+    if f_id is None or f_id != hs["f"]:
+        hs["f"] = f_id
+        hs["since"] = None
+        hs["d"] = math.inf
+        hs["t_arr"] = math.inf
+        hs["open"] = follower_open
+        hs["brake"] = inside_brake
+        if f_id is None:
+            return False
+        # the first step under a follower: the closing rate is unread, and
+        # the hold has not stalled yet
+        hs["d"] = deficit_m
+        return False
+    closed = hs["d"] - deficit_m
+    if deficit_m <= 0.0:
+        t_arr = 0.0
+    elif closed > 0.0:
+        t_arr = deficit_m * step_s / closed
+    else:
+        t_arr = math.inf
+    stalled = t_arr >= hs["t_arr"]
+    hs["d"] = deficit_m
+    hs["t_arr"] = t_arr
+    hs["open"] = follower_open
+    hs["brake"] = inside_brake
+    standing = v_c < SCRIPTED_MERGE_CREEP_MS and v_f < SCRIPTED_MERGE_CREEP_MS
+    if not stalled or not follower_open or inside_brake or standing:
+        hs["since"] = None
+        return False
+    if hs["since"] is None:
+        hs["since"] = t
+        return False
+    if bound_s <= 0.0 or t - hs["since"] <= bound_s:
+        return False
+    hs["blocked"][f_id] = t + bound_s
+    hs["f"] = None
+    hs["since"] = None
+    hs["d"] = math.inf
+    hs["t_arr"] = math.inf
+    return True
 
 
 def _weave_halting_first(v_a: float, b_a: float, rem_a: float, v_c: float, rem_c: float) -> bool:
@@ -2942,6 +3200,17 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     the ramp throttle and the demand are untouched. Measured and left off
     (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **The bounded hold** (2026-09-24, block 3, WP-58;
+    :func:`_weave_hold_release`, ``hold_release_s``, off by default). The
+    cooperation's hold on a chosen gap's follower is dropped, the follower
+    blocked for the changer for one bound and the gap re-chosen behind it,
+    once the changer's projected arrival at the gap has not advanced for
+    longer than the bound with the follower's side already open — never
+    inside the follower's brake distance, never for a standing pair (the
+    pair release's regime). Counted in ``n_hold_releases``. Measured on
+    the fixture grid in seven forms and left off: every one reads worse
+    than the unbounded hold (docs/WEAVE_MODEL_PLAN.md, dated section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -3268,6 +3537,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             remaining,
             # exit priority once the forced change is due (_weave_choose_gap)
             d < 0 and st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"],
+            t,
         )
         if d < 0:
             # the yields at the lane ends (WP-54): the exiter for a halted
@@ -3343,11 +3613,17 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             pre.get(vid),
             prm["accept_gap_s"],
             dist_m,
+            t=t,
         )
         if prm["entry_speed_bound"] > 0.0:
             # the entrant's entry speed (WP-57): no faster onto the
             # auxiliary lane than its own stop at b within it allows
             _weave_entry_bound(mod, tc, ws, results, coop, vid, v_of[vid], dist_m, step_s)
+    # the bounded hold's state (WP-58) lives as long as the changer is
+    # driven or approaching
+    hold: dict[str, dict[str, Any]] = ws["hold"]
+    for vid in [v for v in hold if v not in veh and v not in approaching]:
+        del hold[vid]
     for vid in yielders:
         coop.pop(vid, None)  # no target in either role this step
     for fid in sorted(coop):
@@ -3401,7 +3677,11 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``n_entry_bounded`` (WP-57, the entrant's entry speed) the vehicle-steps
     on which an entrant on the ramp was asked to enter no faster than its
     own stop at ``b`` within the auxiliary lane allows
-    (:func:`_weave_entry_bound`; zero at ``entry_speed_bound`` = 0).
+    (:func:`_weave_entry_bound`; zero at ``entry_speed_bound`` = 0);
+    ``n_hold_releases`` (WP-58, the bounded hold) the holds dropped — a
+    changer's cooperating follower released after the changer stopped
+    closing on the gap for longer than ``hold_release_s``, each once
+    (:func:`_weave_hold_release`; zero at the default of 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -3446,6 +3726,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_exiter_yields": ws["n_exiter_yields"],
         "n_entrant_yields": ws["n_entrant_yields"],
         "n_entry_bounded": ws["n_entry_bounded"],
+        "n_hold_releases": ws["n_hold_releases"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -4182,6 +4463,10 @@ def run_micro(
                     # WP-57: the entrant's entry speed bounded on the ramp
                     # (vehicle-steps)
                     "n_entry_bounded": 0,
+                    # WP-58: the bounded hold — per-changer state and the
+                    # holds dropped (each once)
+                    "hold": {},
+                    "n_hold_releases": 0,
                     # exit-bound vehicles rerouted through at the gore's end
                     # (exit-side derivation): no longer driven; their new
                     # destination is the corridor's last edge

@@ -1916,3 +1916,296 @@ the constant-`b` braking curve that ends one `minGap` before the lane end — at
 **What this hands on.** Both sides of the crossing pair have now been measured from every angle the fixtures offer: the exiter's yield from the zone (helps, locks the corridor), from the brake distance, the halt time and the whole section (worse or a re-roll), the entrant's yield (infeasible in 22 of 24), and now the entrant's entry speed (bounded, cheap on the entrance, worse on the pairs, and the momentum hypothesis falsified — 12 of 17 pair-heading entrants can stop). What is left is the state itself, WP-54's persisting half: an entrant halted at the auxiliary lane's end, refused into lane 1 by the speed-aware guard on every lane-1 vehicle arriving inside its brake distance, heading a standing queue that the next exiters halt beside. Two readings of the numbers point at it: (a) the guard's follower side — a lane-1 vehicle arriving at 4–14 m/s inside its brake distance of a *standing* entrant is refused for ever, where a driver would let a halted vehicle in front of him once he is slow enough (a forced entry from rest accepted when the lane-1 follower's own IDM towards the entrant at its speed asks no more than `b`, re-derived for the halted case, and measured against the two Ruth St collisions the speed-aware acceptance closed); (b) the lane-1 hold that the rows which worsen here show — an entrant slower than its gap holds the follower at `−b` for the length of the section — is the same cooperation VM M's lock read as 18,259 yield steps, and a bound on how long a lane-1 follower may be held for one entrant (the fifth derivation's `pair_release_s` applied to the moving pair) has not been measured. The corridor round (VM, the 35-min I-94 slice, 4 seeds; and the 20-seed battery) reads `n_entry_bounded` now if anyone sets the key.
 
 **Bookkeeping.** `packages/flowstate_core/flowstate_core/config.py` (`entry_speed_bound` = 0 with its provenance comment and docstring); `packages/microsim/microsim/runner.py` (`_weave_entry_speed_bound`, `_weave_entry_bound` new; the call in `_weave_step`'s approaching loop; `n_entry_bounded` in the section state and `_weave_meta`; the docstrings of `_weave_step` and `_weave_meta`); `packages/api/api/schemas.py` (`WeaveSectionDiagnosticsOut.n_entry_bounded`); `scripts/corridor_sweep.py` (`WEAVE_FIELDS`); `tests/test_microsim/test_microsim_merge_managed_meter.py` (`TestWeaveEntrySpeedBound`: the curve, the brake over it, the release under it and on the section, a target above the model not recorded, the default; the `WEAVE_DEFAULTS` pin; the fake state and the counters test); `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py` (the key lists, 36 keys); docs/CONTRACTS.md §2 (the key list, the WP-57 paragraph, the API paragraph); CHANGELOG.md; this section. The T.H.52 tests' markers and pins are unchanged (their runs are byte-identical at the default and under the rule); golden `merge_weave` unchanged; `frontend/` untouched (the dashboard lists no weave counter). Session artifacts (the harness with the entry trace and the per-step bound trace, the six grids, the tables, the classifier) not committed.
+
+## 2026-09-24 (block 3, WP-58, the bounded hold): the follower of a chosen gap released once the changer stops closing on it — the long holds are the ramp queue's anticipation, not the pair at the lane ends, and every form of the release reads worse and breaks the T.H.52 no-lock pin; nothing ships (`hold_release_s` = 0)
+
+**Why.** WP-57 above handed on two readings of the persisting crossing pair; this package takes (b), the lane-1 hold. The cooperation of the second attempt (`_weave_cooperate`) drives the follower F of a changer's chosen gap towards the changer as a virtual leader, clipped at `−b_F`, on every step the changer keeps the gap — for as long as the changer takes, with no bound. Three pieces of evidence pointed at it: VM M's locked seed read 18,259 exiter-yield vehicle-steps (docs/ONBOARDING_MNDOT.md §11); WP-57's worsening rows read the follower held longer when the entrant is slower than its gap (Ruth St corridor fleet, exit peak, seed 4: cooperations 1,086 → 1,919, eased 292 → 993, exiter wait 7.7 → 14.0 s); and `pair_release_s` (2 s) bounds the *standing* pair but not the moving hold. This package derives a bound on the moving hold, traces the hold at the default to see what it is, measures the bound in seven forms with the exiter's yield off (the default) and on (WP-54's rule, which VM M locked the corridor under), and reads the give-ups, their classification and honesty, the entrance rows and the no-lock pins before and after. The ramp throttle, the demand and every scenario are untouched.
+
+**The derivation (`microsim.runner._weave_hold_release`, `_weave_hold_state`, called from `_weave_cooperate`; `_weave_choose_gap` takes a `blocked` set; `WEAVE_DEFAULTS["hold_release_s"]`, 0 = off).** The hold has two parts. Its *productive* part is F opening its side of the gap: braking from its speed to the changer's and falling back to the gap the acceptance asks — the time gap `s0_c + accept · v_F`, F's IDM absorbing the changer within `b_F`, and (the speed-aware guard's follower side) the changer outside F's brake gap `(v_F − v_c)⁺² / (2·b_F)`. That part is bounded by F's own kinematics: `(v_F − v_c)/b_F` to match speeds and a few headway times to fall back. Once F's side is open, every further step of the hold is *for the leader side* — the changer positioning itself behind the gap's leader L by the gap the acceptance asks there (`_weave_lead_gap_min`: the time gap or the changer's brake gap on L) — and F can do nothing for that side: it follows the changer at the changer's speed and lane 1 behind it follows F. The rule reads, each step with F's side open, the changer's **projected arrival** at the gap: its remaining leader-side deficit `d` over the rate at which it closed that deficit during the last step, `t_arr = d·Δt / (d_prev − d)` (∞ when the deficit grew or stayed, 0 when it is gone). The arrival *advances* when `t_arr` falls step over step (a constant closing rate takes `Δt` off it every step; the changer eased at `−b` towards L, or L pulling away, both read so). When it does not advance, a clock runs from that step; on the first step it has run for longer than the bound, the hold is **dropped**: F gets no target that step, F is blocked for this changer for one bound (no chain — a released follower is not asked again for the same changer within the bound), and the changer re-chooses its gap with F excluded, i.e. the next gap behind, into which it drops once F has passed, under a fresh clock. Any step on which the arrival advances, F's side is not open, **the changer is inside F's brake gap** (safety first: that braking is the hold's productive part whatever the leader side does), or both stand below the creep speed (3 m/s; that pair is `_weave_pair_release`'s, released after `pair_release_s` with the partner forcing its change — the two rules do not overlap) resets the clock; a new follower, or none, starts the state afresh. The exit priority's "commitment kept while F is behind the changer's rear" is overridden by a drop (the committed follower is blocked), so the priority's holds are bounded like any other; `H2np` below measures the rule with them exempt. Counted in `n_hold_releases`, each drop once — the **37th `weave_sections` key** (docs/CONTRACTS.md §2, `WeaveSectionDiagnosticsOut`, `WEAVE_FIELDS`). The bound's value: 2 s is `pair_release_s`'s two human reaction times (Treiber & Kesting 2013, ch. 12); 1 and 4 s are measured beside it. Not a fitted value.
+
+**Why a time bound and not a distance bound.** The hold's cost to lane 1 is F's speed deficit integrated over the hold's *duration*; a driver's patience with a merging vehicle that is not making progress is a matter of seconds; and where the hold is longest — at low speed, VM M's lock at a standstill, and (below) the ramp queue at 5.7 m/s median — a bound on the changer's travel during the stall fires late or never, while a time bound fires the same at any speed. The distance form is the time form scaled by the changer's speed (`Σ v_c·Δt ≥ X`); it was measured beside it (`D40`, 40 m of travel during the stall, ≈ 4.7 s at the long stalls' mean 8.6 m/s) and reads as the time forms do.
+
+**The hold at the default (the trace).** Session harness `wp58_harness.py` (WP-57's with a per-step `HOLD` line for every changer with a chosen follower — the bound's readings, whether the follower carried a target, the release — and the analysis `hold58.py`); the rule's clock runs at the default and drops nothing, so the trace reads the stalls the bound would see. Over the 28 fixture runs: **17,810 changer–follower episodes on 7,773 changers, 206,358 held changer-steps with a target on the follower** (a follower held by two changers counts for each; `n_cooperations` counts it once, 168,954); episode length median 3.5 s, p90 15.5 s, at most 70.5 s. Split by the changer: **an entrant still on the ramp 109,904 steps (53 %, changer median 5.7 m/s, 84 % of them below 10 m/s)**, an exiter 60,904 (30 %, 10.0 m/s), an entrant on the section 31,444 (15 %, 8.6 m/s), an exiter under the exit priority 4,106 (2 %, 3.5 m/s). **5,248 episodes stall for more than 2 s** (the arrival not advancing, F's side open, outside F's brake gap), carrying 133,011 of the held steps, 53,085 of them past the 2 s mark — the steps a 2 s bound would cut if nothing else moved: 40,107 on the ramp, 6,796 of entrants on the section, 6,104 of exiters, 78 under the priority. Longest stall per episode: median 2.0 s, p90 10.5 s, at most 43.0 s; **36 of the 40 longest (22.5–43 s) are entrants on the ramp** within `lookahead_m` (120 m) of the section at 3–10 m/s mean, holding a lane-1 follower at their own speed — the longest v01886 holding v01441 on the two-entrance corridor fleet at seed 4 (t = 929.5–973.5 s, both at 8.2–8.4 m/s, 43 s on the clock). 136 long episodes (commanded over 5 s) never read F's side open, and 5 were inside F's brake gap on every step. So the long hold is, before anything else, the ramp queue's anticipation: an entrant in the queue chooses its lane-1 gap 120 m out and holds that gap's follower at the queue's speed until it arrives — a lane-1 throttle at the ramp queue's speed — not the moving pair at the lane ends the package was aimed at.
+
+**Variants measured (the same 29-run grid as WP-51..57 — seeds 3 / 4 / 5 on the Ruth St module at both demand points and both fleets, the Ruth St corridor fleet at the 271.4 m window, the T.H.52 corridor-demand and capacity fixtures, the two two-entrance fixtures, the moderate fixture and the golden; 20 simulated minutes at step 0.5 s, macOS; 561 s of wall-clock over the eleven grids).** `off`: the default (identical to WP-57's `off` rows in all 29 rows, every counter and the golden's metrics compared; 44 given up). **H2: the rule as derived at 2 s**; H1 / H4: at 1 s / 4 s. H2sec (harness): the drop asked only of a changer on the section — the clock still runs on the ramp, so a hold stalled on the ramp is dropped on the entrant's first section step. H2np (harness): the exit priority's holds exempt. D40 (harness): the distance form, the drop after 40 m of the changer's travel during the stall (the block still one 2 s bound). S2 (harness): the strict stall reading — the deficit not shrinking at all this step, instead of the arrival not advancing. `on`: `exiter_yields` = 1 (identical to WP-56's `on` rows, 39 given up); onH2 / onS2: H2 / S2 with the yield on. Columns as in WP-57's table; the last one the holds dropped, the exiter-yield vehicle-steps, `n_cooperations` and `n_changer_eased` (vehicle-steps), and the exiters' mean wait.
+
+*Table — every fixture, `off` against the rule at 2 s (H2) and the strict stall (S2); "(= off)" marks a row identical to `off` in every column.*
+
+| fixture | seed | variant | given up of reached (%) | exited of reached | lane 1 last 60 m min [m/s] (min ≤ 5) | lane 1 first 60 m / E1 accel end min (min ≤ 5) | forced / deferred / releases | unfinished | entrance departed | coll. | holds dropped / yields X / cooperations / eased (veh-steps) / exiter wait [s] |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak | 3 | off | 9 of 290 (3.1) | 273 of 290 | 2.8 (4) | — | 40 / 1168 / 32 | 2 | 73 of 73 | 0 | 0 / 0 / 1860 / 628 / 9.5 |
+| Ruth St, corridor fleet, exit peak | 3 | H2 | 11 of 290 (3.8) | 277 of 290 | 1.7 (5) | — | 47 / 1721 / 46 | 0 | 73 of 73 | 0 | 39 / 0 / 2361 / 743 / 12.6 |
+| Ruth St, corridor fleet, exit peak | 3 | S2 | 7 of 290 (2.4) | 281 of 290 | 1.4 (3) | — | 21 / 813 / 24 | 0 | 73 of 73 | 0 | 9 / 0 / 1232 / 420 / 6.2 |
+| Ruth St, corridor fleet, entrance peak | 3 | off | 0 of 45 (0.0) | 45 of 45 | 6.3 (0) | — | 14 / 138 / 1 | 0 | 128 of 128 | 0 | 0 / 0 / 1276 / 268 / 3.6 |
+| Ruth St, corridor fleet, entrance peak | 3 | H2 | 0 of 45 (0.0) | 45 of 45 | 3.3 (4) | — | 16 / 566 / 13 | 0 | 128 of 128 | 0 | 62 / 0 / 1397 / 292 / 2.9 |
+| Ruth St, corridor fleet, entrance peak | 3 | S2 | 1 of 45 (2.2) | 44 of 45 | 3.7 (1) | — | 14 / 174 / 2 | 0 | 128 of 128 | 0 | 5 / 0 / 1286 / 316 / 8.0 |
+| Ruth St, fleet defaults, exit peak | 3 | off | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 0 | 1 | 73 of 73 | 0 | 0 / 0 / 907 / 107 / 1.9 |
+| Ruth St, fleet defaults, exit peak | 3 | H2 | 0 of 281 (0.0) | 279 of 281 | 9.2 (0) | — | 10 / 11 / 0 | 0 | 73 of 73 | 0 | 27 / 0 / 860 / 64 / 2.1 |
+| Ruth St, fleet defaults, exit peak | 3 | S2 | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 1 | 1 | 73 of 73 | 0 | 1 / 0 / 903 / 107 / 1.9 |
+| Ruth St, fleet defaults, entrance peak | 3 | off | 0 of 33 (0.0) | 33 of 33 | 7.9 (0) | — | 34 / 53 / 0 | 0 | 128 of 128 | 0 | 0 / 0 / 1619 / 601 / 5.6 |
+| Ruth St, fleet defaults, entrance peak | 3 | H2 | 0 of 32 (0.0) | 32 of 32 | 8.5 (0) | — | 33 / 48 / 0 | 0 | 128 of 128 | 0 | 48 / 0 / 1506 / 616 / 5.8 |
+| Ruth St, fleet defaults, entrance peak | 3 | S2 | 0 of 32 (0.0) | 32 of 32 | 5.2 (0) | — | 33 / 108 / 0 | 0 | 128 of 128 | 0 | 16 / 0 / 1776 / 715 / 5.6 |
+| Ruth St, corridor fleet, exit peak | 4 | off | 1 of 280 (0.4) | 279 of 280 | 4.2 (1) | — | 25 / 402 / 6 | 0 | 73 of 73 | 0 | 0 / 0 / 1086 / 292 / 7.7 |
+| Ruth St, corridor fleet, exit peak | 4 | H2 | 10 of 281 (3.6) | 270 of 281 | 1.8 (4) | — | 36 / 1309 / 20 | 0 | 73 of 73 | 0 | 45 / 0 / 1460 / 407 / 9.5 |
+| Ruth St, corridor fleet, exit peak | 4 | S2 | 5 of 280 (1.8) | 275 of 280 | 3.7 (1) | — | 24 / 459 / 9 | 0 | 73 of 73 | 0 | 4 / 0 / 1130 / 263 / 5.9 |
+| Ruth St, corridor fleet, entrance peak | 4 | off | 1 of 41 (2.4) | 40 of 41 | 5.9 (0) | — | 9 / 120 / 1 | 0 | 128 of 128 | 0 | 0 / 0 / 1208 / 223 / 5.1 |
+| Ruth St, corridor fleet, entrance peak | 4 | H2 | 1 of 41 (2.4) | 40 of 41 | 3.8 (1) | — | 9 / 228 / 3 | 0 | 128 of 128 | 0 | 58 / 0 / 1060 / 213 / 4.8 |
+| Ruth St, corridor fleet, entrance peak | 4 | S2 | 2 of 41 (4.9) | 39 of 41 | 1.9 (5) | — | 19 / 717 / 24 | 0 | 128 of 128 | 0 | 8 / 0 / 1499 / 484 / 2.0 |
+| Ruth St, fleet defaults, exit peak | 4 | off | 1 of 282 (0.4) | 280 of 282 | 11.3 (0) | — | 6 / 21 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 976 / 102 / 2.0 |
+| Ruth St, fleet defaults, exit peak | 4 | H2 | 0 of 282 (0.0) | 281 of 282 | 13.4 (0) | — | 3 / 0 / 0 | 0 | 73 of 73 | 0 | 25 / 0 / 850 / 92 / 1.9 |
+| Ruth St, fleet defaults, exit peak | 4 | S2 (= off) | 1 of 282 (0.4) | 280 of 282 | 11.3 (0) | — | 6 / 21 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 976 / 102 / 2.0 |
+| Ruth St, fleet defaults, entrance peak | 4 | off | 0 of 44 (0.0) | 43 of 44 | 12.4 (0) | — | 2 / 8 / 0 | 0 | 128 of 128 | 0 | 0 / 0 / 1883 / 224 / 2.1 |
+| Ruth St, fleet defaults, entrance peak | 4 | H2 | 0 of 36 (0.0) | 36 of 36 | 3.7 (1) | — | 16 / 133 / 3 | 0 | 128 of 128 | 0 | 32 / 0 / 1734 / 624 / 4.3 |
+| Ruth St, fleet defaults, entrance peak | 4 | S2 | 0 of 39 (0.0) | 38 of 39 | 6.5 (0) | — | 9 / 26 / 0 | 1 | 128 of 128 | 0 | 6 / 0 / 2104 / 544 / 3.9 |
+| Ruth St, corridor fleet, exit peak | 5 | off | 4 of 274 (1.5) | 267 of 274 | 6.7 (0) | — | 6 / 132 / 0 | 2 | 73 of 73 | 0 | 0 / 0 / 701 / 102 / 3.6 |
+| Ruth St, corridor fleet, exit peak | 5 | H2 | 9 of 274 (3.3) | 264 of 274 | 3.5 (2) | — | 23 / 737 / 12 | 0 | 73 of 73 | 0 | 33 / 0 / 979 / 233 / 7.3 |
+| Ruth St, corridor fleet, exit peak | 5 | S2 | 4 of 274 (1.5) | 267 of 274 | 6.7 (0) | — | 6 / 132 / 0 | 2 | 73 of 73 | 0 | 2 / 0 / 701 / 102 / 3.6 |
+| Ruth St, corridor fleet, entrance peak | 5 | off | 0 of 34 (0.0) | 34 of 34 | 3.6 (1) | — | 8 / 119 / 4 | 0 | 128 of 128 | 0 | 0 / 0 / 1240 / 146 / 8.8 |
+| Ruth St, corridor fleet, entrance peak | 5 | H2 | 0 of 34 (0.0) | 34 of 34 | 13.8 (0) | — | 5 / 139 / 0 | 0 | 128 of 128 | 0 | 56 / 0 / 1056 / 129 / 6.1 |
+| Ruth St, corridor fleet, entrance peak | 5 | S2 | 0 of 34 (0.0) | 34 of 34 | 3.6 (1) | — | 8 / 119 / 4 | 0 | 128 of 128 | 0 | 1 / 0 / 1240 / 146 / 8.8 |
+| Ruth St, fleet defaults, exit peak | 5 | off | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 799 / 43 / 1.5 |
+| Ruth St, fleet defaults, exit peak | 5 | H2 | 0 of 273 (0.0) | 272 of 273 | 12.7 (0) | — | 5 / 0 / 0 | 0 | 73 of 73 | 0 | 23 / 0 / 751 / 41 / 1.5 |
+| Ruth St, fleet defaults, exit peak | 5 | S2 (= off) | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 799 / 43 / 1.5 |
+| Ruth St, fleet defaults, entrance peak | 5 | off | 0 of 44 (0.0) | 44 of 44 | 12.6 (0) | — | 7 / 0 / 0 | 1 | 128 of 128 | 0 | 0 / 0 / 1956 / 361 / 3.5 |
+| Ruth St, fleet defaults, entrance peak | 5 | H2 | 0 of 44 (0.0) | 44 of 44 | 12.1 (0) | — | 9 / 3 / 0 | 0 | 128 of 128 | 0 | 66 / 0 / 1796 / 363 / 3.4 |
+| Ruth St, fleet defaults, entrance peak | 5 | S2 | 0 of 44 (0.0) | 44 of 44 | 14.7 (0) | — | 6 / 0 / 0 | 1 | 128 of 128 | 0 | 2 / 0 / 1916 / 303 / 3.8 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | off | 8 of 274 (2.9) | 265 of 274 | 2.1 (3) | — | 28 / 814 / 26 | 0 | 73 of 73 | 0 | 0 / 0 / 1450 / 450 / 10.1 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | H2 | 5 of 274 (1.8) | 265 of 274 | 5.3 (0) | — | 14 / 284 / 4 | 2 | 73 of 73 | 0 | 21 / 0 / 689 / 162 / 3.8 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | S2 | 11 of 274 (4.0) | 260 of 274 | 2.6 (4) | — | 23 / 1102 / 26 | 3 | 73 of 73 | 0 | 7 / 0 / 1303 / 381 / 7.3 |
+| T.H.52, corridor demand | 3 | off | 1 of 299 (0.3) | 292 of 299 | 3.8 (1) | 3.7 (2) | 12 / 67 / 5 | 2 | 403 of 470 | 0 | 0 / 0 / 11183 / 1944 / 13.3 |
+| T.H.52, corridor demand | 3 | H2 | 1 of 301 (0.3) | 296 of 301 | 4.3 (1) | 4.5 (2) | 16 / 71 / 9 | 3 | 389 of 470 | 0 | 672 / 0 / 11165 / 1917 / 13.4 |
+| T.H.52, corridor demand | 3 | S2 | 0 of 310 (0.0) | 305 of 310 | 8.3 (0) | 3.7 (2) | 12 / 66 / 3 | 2 | 395 of 470 | 0 | 80 / 0 / 11961 / 2247 / 13.8 |
+| T.H.52, capacity | 3 | off | 1 of 319 (0.3) | 309 of 319 | 4.7 (1) | 3.9 (2) | 34 / 172 / 9 | 4 | 395 of 466 | 0 | 0 / 0 / 13647 / 2604 / 14.7 |
+| T.H.52, capacity | 3 | H2 | 5 of 317 (1.6) | 303 of 317 | 3.7 (2) | 3.8 (2) | 42 / 275 / 9 | 6 | 400 of 466 | 0 | 647 / 0 / 12892 / 2695 / 16.4 |
+| T.H.52, capacity | 3 | S2 | 4 of 302 (1.3) | 288 of 302 | 1.6 (5) | 2.9 (6) | 35 / 771 / 81 | 6 | 371 of 466 | 0 | 109 / 0 / 14919 / 3577 / 18.3 |
+| two-entrance, fleet defaults | 3 | off | 3 of 301 (1.0) | 294 of 301 | 3.7 (1) | 0.2 (16) | 25 / 181 / 6 | 3 | 417 of 470; E1 216 of 360 | 0 | 0 / 0 / 11838 / 2443 / 12.9 |
+| two-entrance, fleet defaults | 3 | H2 | 2 of 296 (0.7) | 288 of 296 | 3.7 (2) | 0.2 (12) | 32 / 294 / 12 | 4 | 400 of 470; E1 216 of 360 | 0 | 665 / 0 / 11433 / 2461 / 13.5 |
+| two-entrance, fleet defaults | 3 | S2 | 6 of 276 (2.2) | 264 of 276 | 1.6 (2) | 0.4 (11) | 41 / 903 / 157 | 3 | 352 of 470; E1 209 of 360 | 0 | 102 / 0 / 15044 / 3461 / 19.7 |
+| two-entrance, corridor fleet | 3 | off | 0 of 314 (0.0) | 309 of 314 | 7.3 (0) | 1.6 (13) | 22 / 55 / 4 | 1 | 356 of 470; E1 253 of 360 | 0 | 0 / 0 / 12648 / 2179 / 10.6 |
+| two-entrance, corridor fleet | 3 | H2 | 6 of 310 (1.9) | 295 of 310 | 5.7 (0) | 0.1 (13) | 35 / 155 / 10 | 3 | 339 of 470; E1 257 of 360 | 0 | 612 / 0 / 12048 / 2494 / 11.4 |
+| two-entrance, corridor fleet | 3 | S2 | 2 of 316 (0.6) | 310 of 316 | 2.5 (1) | 0.8 (14) | 26 / 325 / 19 | 0 | 366 of 470; E1 251 of 360 | 0 | 74 / 0 / 12764 / 2319 / 12.0 |
+| moderate (weave.osm, 300 s) | 3 | off | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 0 / 0 / 237 / 18 / 4.0 |
+| moderate (weave.osm, 300 s) | 3 | H2 | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 8 / 0 / 207 / 18 / 4.0 |
+| moderate (weave.osm, 300 s) | 3 | S2 (= off) | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 0 / 0 / 237 / 18 / 4.0 |
+| T.H.52, corridor demand | 4 | off | 0 of 317 (0.0) | 308 of 317 | 11.9 (0) | 4.4 (1) | 18 / 22 / 9 | 2 | 388 of 470 | 0 | 0 / 0 / 12199 / 2083 / 12.5 |
+| T.H.52, corridor demand | 4 | H2 | 5 of 317 (1.6) | 306 of 317 | 2.5 (3) | 4.8 (1) | 28 / 299 / 11 | 2 | 415 of 470 | 0 | 628 / 0 / 11100 / 2164 / 13.6 |
+| T.H.52, corridor demand | 4 | S2 | 0 of 322 (0.0) | 308 of 322 | 8.8 (0) | 5.2 (0) | 21 / 81 / 0 | 6 | 405 of 470 | 0 | 96 / 0 / 11812 / 2382 / 12.7 |
+| T.H.52, capacity | 4 | off | 1 of 379 (0.3) | 373 of 379 | 10.7 (0) | 4.3 (5) | 22 / 71 / 23 | 2 | 401 of 466 | 0 | 0 / 0 / 14174 / 2441 / 14.9 |
+| T.H.52, capacity | 4 | H2 | 1 of 376 (0.3) | 368 of 376 | 3.7 (2) | 4.3 (3) | 77 / 713 / 23 | 6 | 385 of 466 | 0 | 753 / 0 / 14625 / 3264 / 18.8 |
+| T.H.52, capacity | 4 | S2 | 9 of 382 (2.4) | 361 of 382 | 3.7 (1) | 3.9 (1) | 32 / 280 / 11 | 6 | 367 of 466 | 0 | 143 / 0 / 15873 / 2991 / 15.4 |
+| two-entrance, fleet defaults | 4 | off | 3 of 307 (1.0) | 301 of 307 | 4.4 (1) | 0.8 (13) | 35 / 317 / 15 | 1 | 399 of 470; E1 210 of 360 | 0 | 0 / 0 / 11573 / 2465 / 12.9 |
+| two-entrance, fleet defaults | 4 | H2 | 1 of 311 (0.3) | 303 of 311 | 3.8 (1) | 0.5 (15) | 48 / 276 / 9 | 3 | 382 of 470; E1 213 of 360 | 0 | 763 / 0 / 12620 / 2656 / 15.6 |
+| two-entrance, fleet defaults | 4 | S2 | 2 of 298 (0.7) | 289 of 298 | 3.1 (1) | 0.0 (17) | 32 / 235 / 6 | 5 | 393 of 470; E1 245 of 360 | 0 | 94 / 0 / 12387 / 2680 / 14.6 |
+| two-entrance, corridor fleet | 4 | off | 3 of 308 (1.0) | 301 of 308 | 2.9 (2) | 1.5 (14) | 41 / 536 / 23 | 5 | 351 of 470; E1 256 of 360 | 0 | 0 / 0 / 13539 / 2641 / 14.0 |
+| two-entrance, corridor fleet | 4 | H2 | 2 of 315 (0.6) | 301 of 315 | 5.4 (0) | 1.4 (14) | 33 / 168 / 8 | 4 | 363 of 470; E1 270 of 360 | 0 | 598 / 0 / 11187 / 2211 / 10.6 |
+| two-entrance, corridor fleet | 4 | S2 | 3 of 314 (1.0) | 307 of 314 | 5.2 (0) | 1.3 (14) | 24 / 234 / 27 | 1 | 366 of 470; E1 251 of 360 | 0 | 93 / 0 / 11935 / 2200 / 11.5 |
+| moderate (weave.osm, 300 s) | 4 | off | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 222 / 4 / 3.4 |
+| moderate (weave.osm, 300 s) | 4 | H2 | 1 of 36 (2.8) | 34 of 36 | — | — | 0 / 18 / 0 | 0 | — | 0 | 9 / 0 / 209 / 4 / 2.9 |
+| moderate (weave.osm, 300 s) | 4 | S2 (= off) | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 222 / 4 / 3.4 |
+| T.H.52, corridor demand | 5 | off | 5 of 308 (1.6) | 296 of 308 | 1.7 (2) | 3.7 (1) | 30 / 601 / 29 | 6 | 401 of 470 | 0 | 0 / 0 / 12820 / 2635 / 15.2 |
+| T.H.52, corridor demand | 5 | H2 | 2 of 317 (0.6) | 309 of 317 | 3.7 (1) | 5.1 (0) | 51 / 371 / 3 | 1 | 407 of 470 | 0 | 617 / 0 / 11238 / 2641 / 14.4 |
+| T.H.52, corridor demand | 5 | S2 | 1 of 302 (0.3) | 299 of 302 | 11.3 (0) | 4.9 (1) | 16 / 49 / 2 | 5 | 356 of 470 | 0 | 122 / 0 / 12203 / 2273 / 13.3 |
+| T.H.52, capacity | 5 | off | 1 of 369 (0.3) | 361 of 369 | 5.0 (1) | 3.3 (4) | 38 / 194 / 18 | 3 | 373 of 466 | 0 | 0 / 0 / 14604 / 2622 / 15.1 |
+| T.H.52, capacity | 5 | H2 | 10 of 326 (3.1) | 304 of 326 | 1.9 (5) | 0.4 (9) | 42 / 1323 / 257 | 5 | 288 of 466 | 0 | 515 / 0 / 17606 / 4695 / 21.8 |
+| T.H.52, capacity | 5 | S2 | 0 of 362 (0.0) | 354 of 362 | 10.9 (0) | 3.4 (4) | 24 / 53 / 27 | 1 | 380 of 466 | 0 | 108 / 0 / 13564 / 2543 / 13.7 |
+| two-entrance, fleet defaults | 5 | off | 1 of 308 (0.3) | 299 of 308 | 5.6 (0) | 0.4 (14) | 30 / 172 / 2 | 6 | 407 of 470; E1 256 of 360 | 0 | 0 / 0 / 11927 / 2466 / 12.8 |
+| two-entrance, fleet defaults | 5 | H2 | 1 of 307 (0.3) | 293 of 307 | 3.1 (1) | 0.1 (15) | 29 / 183 / 4 | 4 | 404 of 470; E1 230 of 360 | 0 | 604 / 0 / 10617 / 2078 / 12.8 |
+| two-entrance, fleet defaults | 5 | S2 | 3 of 300 (1.0) | 288 of 300 | 3.8 (3) | 0.1 (15) | 31 / 447 / 8 | 5 | 423 of 470; E1 244 of 360 | 0 | 91 / 0 / 11624 / 2491 / 13.9 |
+| two-entrance, corridor fleet | 5 | off | 0 of 301 (0.0) | 291 of 301 | 8.3 (0) | 0.6 (14) | 25 / 22 / 5 | 4 | 374 of 470; E1 253 of 360 | 0 | 0 / 0 / 11100 / 2510 / 11.2 |
+| two-entrance, corridor fleet | 5 | H2 | 1 of 298 (0.3) | 290 of 298 | 9.4 (0) | 0.8 (13) | 47 / 82 / 2 | 5 | 379 of 470; E1 270 of 360 | 0 | 688 / 0 / 12067 / 2239 / 12.6 |
+| two-entrance, corridor fleet | 5 | S2 | 2 of 299 (0.7) | 291 of 299 | 4.4 (1) | 1.5 (13) | 28 / 191 / 35 | 2 | 367 of 470; E1 253 of 360 | 0 | 76 / 0 / 12389 / 2699 / 13.6 |
+| moderate (weave.osm, 300 s) | 5 | off | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 282 / 1 / 2.3 |
+| moderate (weave.osm, 300 s) | 5 | H2 | 0 of 36 (0.0) | 35 of 36 | — | — | 1 / 0 / 0 | 0 | — | 0 | 16 / 0 / 231 / 1 / 2.3 |
+| moderate (weave.osm, 300 s) | 5 | S2 (= off) | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 282 / 1 / 2.3 |
+
+*Table — with the exiter's yield on: every fixture row on which onH2 or onS2 differs from `on` (the `on` row repeated for reading; a variant row identical to `on` is left out).*
+
+| fixture | seed | variant | given up of reached (%) | exited of reached | lane 1 last 60 m min [m/s] (min ≤ 5) | lane 1 first 60 m / E1 accel end min (min ≤ 5) | forced / deferred / releases | unfinished | entrance departed | coll. | holds dropped / yields X / cooperations / eased (veh-steps) / exiter wait [s] |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak | 3 | on | 10 of 290 (3.4) | 279 of 290 | 3.3 (3) | — | 39 / 934 / 21 | 0 | 73 of 73 | 0 | 0 / 9 / 1718 / 472 / 8.5 |
+| Ruth St, corridor fleet, exit peak | 3 | onH2 | 11 of 290 (3.8) | 277 of 290 | 1.9 (4) | — | 38 / 1436 / 44 | 0 | 73 of 73 | 0 | 38 / 8 / 1716 / 523 / 10.3 |
+| Ruth St, corridor fleet, exit peak | 3 | onS2 | 10 of 290 (3.4) | 279 of 290 | 3.3 (3) | — | 39 / 934 / 21 | 0 | 73 of 73 | 0 | 10 / 9 / 1718 / 472 / 8.5 |
+| Ruth St, corridor fleet, entrance peak | 3 | on | 0 of 45 (0.0) | 45 of 45 | 6.3 (0) | — | 14 / 138 / 1 | 0 | 128 of 128 | 0 | 0 / 0 / 1276 / 268 / 3.6 |
+| Ruth St, corridor fleet, entrance peak | 3 | onH2 | 0 of 45 (0.0) | 45 of 45 | 3.3 (4) | — | 16 / 566 / 13 | 0 | 128 of 128 | 0 | 62 / 0 / 1397 / 292 / 2.9 |
+| Ruth St, corridor fleet, entrance peak | 3 | onS2 | 1 of 45 (2.2) | 44 of 45 | 4.2 (1) | — | 14 / 166 / 1 | 0 | 128 of 128 | 0 | 4 / 10 / 1337 / 359 / 5.8 |
+| Ruth St, fleet defaults, exit peak | 3 | on | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 0 | 1 | 73 of 73 | 0 | 0 / 0 / 907 / 107 / 1.9 |
+| Ruth St, fleet defaults, exit peak | 3 | onH2 | 0 of 281 (0.0) | 279 of 281 | 9.2 (0) | — | 10 / 11 / 0 | 0 | 73 of 73 | 0 | 27 / 0 / 860 / 64 / 2.1 |
+| Ruth St, fleet defaults, exit peak | 3 | onS2 | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 1 | 1 | 73 of 73 | 0 | 1 / 0 / 903 / 107 / 1.9 |
+| Ruth St, fleet defaults, entrance peak | 3 | on | 0 of 33 (0.0) | 33 of 33 | 7.9 (0) | — | 34 / 53 / 0 | 0 | 128 of 128 | 0 | 0 / 0 / 1619 / 601 / 5.6 |
+| Ruth St, fleet defaults, entrance peak | 3 | onH2 | 0 of 32 (0.0) | 32 of 32 | 8.5 (0) | — | 33 / 48 / 0 | 0 | 128 of 128 | 0 | 48 / 0 / 1506 / 616 / 5.8 |
+| Ruth St, fleet defaults, entrance peak | 3 | onS2 | 0 of 32 (0.0) | 32 of 32 | 5.2 (0) | — | 33 / 108 / 0 | 0 | 128 of 128 | 0 | 16 / 0 / 1776 / 715 / 5.6 |
+| Ruth St, corridor fleet, exit peak | 4 | on | 1 of 280 (0.4) | 279 of 280 | 4.2 (1) | — | 25 / 402 / 6 | 0 | 73 of 73 | 0 | 0 / 0 / 1086 / 292 / 7.7 |
+| Ruth St, corridor fleet, exit peak | 4 | onH2 | 10 of 281 (3.6) | 270 of 281 | 1.8 (4) | — | 36 / 1309 / 20 | 0 | 73 of 73 | 0 | 45 / 0 / 1460 / 407 / 9.5 |
+| Ruth St, corridor fleet, exit peak | 4 | onS2 | 5 of 280 (1.8) | 275 of 280 | 3.7 (1) | — | 24 / 459 / 9 | 0 | 73 of 73 | 0 | 4 / 0 / 1130 / 263 / 5.9 |
+| Ruth St, corridor fleet, entrance peak | 4 | on | 1 of 41 (2.4) | 40 of 41 | 5.9 (0) | — | 9 / 120 / 1 | 0 | 128 of 128 | 0 | 0 / 0 / 1208 / 223 / 5.1 |
+| Ruth St, corridor fleet, entrance peak | 4 | onH2 | 1 of 41 (2.4) | 40 of 41 | 3.8 (1) | — | 9 / 228 / 3 | 0 | 128 of 128 | 0 | 58 / 0 / 1060 / 213 / 4.8 |
+| Ruth St, corridor fleet, entrance peak | 4 | onS2 | 2 of 41 (4.9) | 39 of 41 | 1.9 (5) | — | 19 / 717 / 24 | 0 | 128 of 128 | 0 | 8 / 0 / 1499 / 484 / 2.0 |
+| Ruth St, fleet defaults, exit peak | 4 | on | 1 of 282 (0.4) | 280 of 282 | 11.3 (0) | — | 6 / 21 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 976 / 102 / 2.0 |
+| Ruth St, fleet defaults, exit peak | 4 | onH2 | 0 of 282 (0.0) | 281 of 282 | 13.4 (0) | — | 3 / 0 / 0 | 0 | 73 of 73 | 0 | 25 / 0 / 850 / 92 / 1.9 |
+| Ruth St, fleet defaults, entrance peak | 4 | on | 0 of 44 (0.0) | 43 of 44 | 12.4 (0) | — | 2 / 8 / 0 | 0 | 128 of 128 | 0 | 0 / 0 / 1883 / 224 / 2.1 |
+| Ruth St, fleet defaults, entrance peak | 4 | onH2 | 0 of 36 (0.0) | 36 of 36 | 3.7 (1) | — | 16 / 133 / 3 | 0 | 128 of 128 | 0 | 32 / 0 / 1734 / 624 / 4.3 |
+| Ruth St, fleet defaults, entrance peak | 4 | onS2 | 0 of 39 (0.0) | 38 of 39 | 6.5 (0) | — | 9 / 26 / 0 | 1 | 128 of 128 | 0 | 6 / 0 / 2104 / 544 / 3.9 |
+| Ruth St, corridor fleet, exit peak | 5 | on | 4 of 274 (1.5) | 267 of 274 | 6.7 (0) | — | 6 / 132 / 0 | 2 | 73 of 73 | 0 | 0 / 0 / 701 / 102 / 3.6 |
+| Ruth St, corridor fleet, exit peak | 5 | onH2 | 6 of 274 (2.2) | 265 of 274 | 3.6 (2) | — | 12 / 454 / 5 | 1 | 73 of 73 | 0 | 26 / 19 / 827 / 200 / 4.8 |
+| Ruth St, corridor fleet, exit peak | 5 | onS2 | 4 of 274 (1.5) | 267 of 274 | 6.7 (0) | — | 6 / 132 / 0 | 2 | 73 of 73 | 0 | 2 / 0 / 701 / 102 / 3.6 |
+| Ruth St, corridor fleet, entrance peak | 5 | on | 0 of 34 (0.0) | 34 of 34 | 3.6 (1) | — | 8 / 119 / 4 | 0 | 128 of 128 | 0 | 0 / 0 / 1240 / 146 / 8.8 |
+| Ruth St, corridor fleet, entrance peak | 5 | onH2 | 0 of 34 (0.0) | 34 of 34 | 13.8 (0) | — | 5 / 139 / 0 | 0 | 128 of 128 | 0 | 56 / 0 / 1056 / 129 / 6.1 |
+| Ruth St, corridor fleet, entrance peak | 5 | onS2 | 0 of 34 (0.0) | 34 of 34 | 3.6 (1) | — | 8 / 119 / 4 | 0 | 128 of 128 | 0 | 1 / 0 / 1240 / 146 / 8.8 |
+| Ruth St, fleet defaults, exit peak | 5 | on | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 799 / 43 / 1.5 |
+| Ruth St, fleet defaults, exit peak | 5 | onH2 | 0 of 273 (0.0) | 272 of 273 | 12.7 (0) | — | 5 / 0 / 0 | 0 | 73 of 73 | 0 | 23 / 0 / 751 / 41 / 1.5 |
+| Ruth St, fleet defaults, entrance peak | 5 | on | 0 of 44 (0.0) | 44 of 44 | 12.6 (0) | — | 7 / 0 / 0 | 1 | 128 of 128 | 0 | 0 / 0 / 1956 / 361 / 3.5 |
+| Ruth St, fleet defaults, entrance peak | 5 | onH2 | 0 of 44 (0.0) | 44 of 44 | 12.1 (0) | — | 9 / 3 / 0 | 0 | 128 of 128 | 0 | 66 / 0 / 1796 / 363 / 3.4 |
+| Ruth St, fleet defaults, entrance peak | 5 | onS2 | 0 of 44 (0.0) | 44 of 44 | 14.7 (0) | — | 6 / 0 / 0 | 1 | 128 of 128 | 0 | 2 / 0 / 1916 / 303 / 3.8 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | on | 4 of 274 (1.5) | 269 of 274 | 4.0 (1) | — | 19 / 358 / 3 | 2 | 73 of 73 | 0 | 0 / 33 / 902 / 241 / 5.1 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | onH2 | 5 of 274 (1.8) | 266 of 274 | 5.1 (0) | — | 11 / 389 / 3 | 3 | 73 of 73 | 0 | 22 / 7 / 753 / 182 / 4.3 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | onS2 | 8 of 274 (2.9) | 265 of 274 | 2.5 (4) | — | 22 / 960 / 14 | 0 | 73 of 73 | 0 | 6 / 30 / 1280 / 381 / 7.4 |
+| T.H.52, corridor demand | 3 | on | 1 of 299 (0.3) | 292 of 299 | 3.8 (1) | 3.7 (2) | 12 / 67 / 5 | 2 | 403 of 470 | 0 | 0 / 0 / 11183 / 1944 / 13.3 |
+| T.H.52, corridor demand | 3 | onH2 | 1 of 301 (0.3) | 296 of 301 | 4.3 (1) | 4.5 (2) | 16 / 71 / 9 | 3 | 389 of 470 | 0 | 672 / 0 / 11165 / 1917 / 13.4 |
+| T.H.52, corridor demand | 3 | onS2 | 0 of 310 (0.0) | 305 of 310 | 8.3 (0) | 3.7 (2) | 12 / 66 / 3 | 2 | 395 of 470 | 0 | 80 / 0 / 11961 / 2247 / 13.8 |
+| T.H.52, capacity | 3 | on | 1 of 319 (0.3) | 309 of 319 | 4.7 (1) | 3.9 (2) | 34 / 172 / 9 | 4 | 395 of 466 | 0 | 0 / 0 / 13647 / 2604 / 14.7 |
+| T.H.52, capacity | 3 | onH2 | 2 of 302 (0.7) | 292 of 302 | 3.4 (2) | 2.1 (4) | 66 / 615 / 77 | 6 | 378 of 466 | 0 | 824 / 2 / 14837 / 3395 / 19.8 |
+| T.H.52, capacity | 3 | onS2 | 2 of 300 (0.7) | 294 of 300 | 1.7 (5) | 3.2 (4) | 34 / 754 / 50 | 1 | 376 of 466 | 0 | 98 / 40 / 13972 / 3230 / 17.1 |
+| two-entrance, fleet defaults | 3 | on | 3 of 301 (1.0) | 294 of 301 | 3.7 (1) | 0.2 (16) | 25 / 181 / 6 | 3 | 417 of 470; E1 216 of 360 | 0 | 0 / 0 / 11838 / 2443 / 12.9 |
+| two-entrance, fleet defaults | 3 | onH2 | 2 of 296 (0.7) | 288 of 296 | 3.7 (2) | 0.2 (12) | 32 / 294 / 12 | 4 | 400 of 470; E1 216 of 360 | 0 | 665 / 0 / 11433 / 2461 / 13.5 |
+| two-entrance, fleet defaults | 3 | onS2 | 7 of 287 (2.4) | 271 of 287 | 1.7 (3) | 0.2 (13) | 40 / 756 / 81 | 1 | 384 of 470; E1 200 of 360 | 0 | 86 / 11 / 13247 / 3019 / 17.0 |
+| two-entrance, corridor fleet | 3 | on | 0 of 314 (0.0) | 309 of 314 | 7.3 (0) | 1.6 (13) | 22 / 55 / 4 | 1 | 356 of 470; E1 253 of 360 | 0 | 0 / 0 / 12648 / 2179 / 10.6 |
+| two-entrance, corridor fleet | 3 | onH2 | 6 of 310 (1.9) | 295 of 310 | 5.7 (0) | 0.1 (13) | 35 / 155 / 10 | 3 | 339 of 470; E1 257 of 360 | 0 | 612 / 0 / 12048 / 2494 / 11.4 |
+| two-entrance, corridor fleet | 3 | onS2 | 2 of 319 (0.6) | 312 of 319 | 2.6 (1) | 1.4 (15) | 23 / 305 / 16 | 0 | 367 of 470; E1 254 of 360 | 0 | 65 / 3 / 11862 / 2218 / 11.4 |
+| moderate (weave.osm, 300 s) | 3 | on | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 0 / 0 / 237 / 18 / 4.0 |
+| moderate (weave.osm, 300 s) | 3 | onH2 | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 8 / 0 / 207 / 18 / 4.0 |
+| T.H.52, corridor demand | 4 | on | 0 of 317 (0.0) | 308 of 317 | 11.9 (0) | 4.4 (1) | 18 / 22 / 9 | 2 | 388 of 470 | 0 | 0 / 0 / 12199 / 2083 / 12.5 |
+| T.H.52, corridor demand | 4 | onH2 | 5 of 317 (1.6) | 306 of 317 | 2.5 (3) | 4.8 (1) | 28 / 299 / 11 | 2 | 415 of 470 | 0 | 628 / 0 / 11100 / 2164 / 13.6 |
+| T.H.52, corridor demand | 4 | onS2 | 0 of 322 (0.0) | 308 of 322 | 8.8 (0) | 5.2 (0) | 21 / 81 / 0 | 6 | 405 of 470 | 0 | 96 / 0 / 11812 / 2382 / 12.7 |
+| T.H.52, capacity | 4 | on | 1 of 379 (0.3) | 373 of 379 | 10.7 (0) | 4.3 (5) | 22 / 71 / 23 | 2 | 401 of 466 | 0 | 0 / 0 / 14174 / 2441 / 14.9 |
+| T.H.52, capacity | 4 | onH2 | 1 of 376 (0.3) | 368 of 376 | 3.7 (2) | 4.3 (3) | 77 / 713 / 23 | 6 | 385 of 466 | 0 | 753 / 0 / 14625 / 3264 / 18.8 |
+| T.H.52, capacity | 4 | onS2 | 9 of 382 (2.4) | 361 of 382 | 3.7 (1) | 3.9 (1) | 32 / 280 / 11 | 6 | 367 of 466 | 0 | 143 / 0 / 15873 / 2991 / 15.4 |
+| two-entrance, fleet defaults | 4 | on | 3 of 307 (1.0) | 301 of 307 | 4.4 (1) | 0.8 (13) | 35 / 317 / 15 | 1 | 399 of 470; E1 210 of 360 | 0 | 0 / 0 / 11573 / 2465 / 12.9 |
+| two-entrance, fleet defaults | 4 | onH2 | 1 of 311 (0.3) | 303 of 311 | 3.8 (1) | 0.5 (15) | 48 / 276 / 9 | 3 | 382 of 470; E1 213 of 360 | 0 | 763 / 0 / 12620 / 2656 / 15.6 |
+| two-entrance, fleet defaults | 4 | onS2 | 2 of 298 (0.7) | 289 of 298 | 3.1 (1) | 0.0 (17) | 32 / 235 / 6 | 5 | 393 of 470; E1 245 of 360 | 0 | 94 / 0 / 12387 / 2680 / 14.6 |
+| two-entrance, corridor fleet | 4 | on | 2 of 304 (0.7) | 301 of 304 | 4.6 (2) | 0.6 (11) | 30 / 305 / 12 | 0 | 380 of 470; E1 252 of 360 | 0 | 0 / 14 / 11294 / 2012 / 11.5 |
+| two-entrance, corridor fleet | 4 | onH2 | 2 of 315 (0.6) | 301 of 315 | 5.4 (0) | 1.4 (14) | 33 / 168 / 8 | 4 | 363 of 470; E1 270 of 360 | 0 | 598 / 0 / 11187 / 2211 / 10.6 |
+| two-entrance, corridor fleet | 4 | onS2 | 3 of 314 (1.0) | 307 of 314 | 5.2 (0) | 1.3 (14) | 24 / 234 / 27 | 1 | 366 of 470; E1 251 of 360 | 0 | 93 / 0 / 11935 / 2200 / 11.5 |
+| moderate (weave.osm, 300 s) | 4 | on | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 222 / 4 / 3.4 |
+| moderate (weave.osm, 300 s) | 4 | onH2 | 1 of 36 (2.8) | 34 of 36 | — | — | 0 / 18 / 0 | 0 | — | 0 | 9 / 0 / 209 / 4 / 2.9 |
+| T.H.52, corridor demand | 5 | on | 4 of 323 (1.2) | 313 of 323 | 4.1 (3) | 3.7 (3) | 48 / 673 / 25 | 7 | 401 of 470 | 0 | 0 / 33 / 14596 / 3217 / 15.4 |
+| T.H.52, corridor demand | 5 | onH2 | 7 of 314 (2.2) | 300 of 314 | 3.7 (3) | 4.7 (1) | 44 / 617 / 7 | 2 | 417 of 470 | 0 | 661 / 1 / 11218 / 2575 / 14.0 |
+| T.H.52, corridor demand | 5 | onS2 | 1 of 302 (0.3) | 299 of 302 | 11.3 (0) | 4.9 (1) | 16 / 49 / 2 | 5 | 356 of 470 | 0 | 122 / 0 / 12203 / 2273 / 13.3 |
+| T.H.52, capacity | 5 | on | 1 of 369 (0.3) | 361 of 369 | 5.0 (1) | 3.3 (4) | 38 / 194 / 18 | 3 | 373 of 466 | 0 | 0 / 0 / 14604 / 2622 / 15.1 |
+| T.H.52, capacity | 5 | onH2 | 3 of 338 (0.9) | 326 of 338 | 1.7 (6) | 0.5 (9) | 52 / 1056 / 214 | 6 | 299 of 466 | 0 | 606 / 7 / 17482 / 4406 / 21.6 |
+| T.H.52, capacity | 5 | onS2 | 0 of 362 (0.0) | 354 of 362 | 10.9 (0) | 3.4 (4) | 24 / 53 / 27 | 1 | 380 of 466 | 0 | 108 / 0 / 13564 / 2543 / 13.7 |
+| two-entrance, fleet defaults | 5 | on | 1 of 308 (0.3) | 299 of 308 | 5.6 (0) | 0.4 (14) | 30 / 172 / 2 | 6 | 407 of 470; E1 256 of 360 | 0 | 0 / 0 / 11927 / 2466 / 12.8 |
+| two-entrance, fleet defaults | 5 | onH2 | 1 of 307 (0.3) | 293 of 307 | 3.1 (1) | 0.1 (15) | 29 / 183 / 4 | 4 | 404 of 470; E1 230 of 360 | 0 | 604 / 0 / 10617 / 2078 / 12.8 |
+| two-entrance, fleet defaults | 5 | onS2 | 3 of 300 (1.0) | 288 of 300 | 3.8 (3) | 0.1 (15) | 31 / 447 / 8 | 5 | 423 of 470; E1 244 of 360 | 0 | 91 / 0 / 11624 / 2491 / 13.9 |
+| two-entrance, corridor fleet | 5 | on | 0 of 301 (0.0) | 291 of 301 | 8.3 (0) | 0.6 (14) | 25 / 22 / 5 | 4 | 374 of 470; E1 253 of 360 | 0 | 0 / 0 / 11100 / 2510 / 11.2 |
+| two-entrance, corridor fleet | 5 | onH2 | 1 of 298 (0.3) | 290 of 298 | 9.4 (0) | 0.8 (13) | 47 / 82 / 2 | 5 | 379 of 470; E1 270 of 360 | 0 | 688 / 0 / 12067 / 2239 / 12.6 |
+| two-entrance, corridor fleet | 5 | onS2 | 2 of 299 (0.7) | 291 of 299 | 4.4 (1) | 1.5 (13) | 28 / 191 / 35 | 2 | 367 of 470; E1 253 of 360 | 0 | 76 / 0 / 12389 / 2699 / 13.6 |
+| moderate (weave.osm, 300 s) | 5 | on | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 282 / 1 / 2.3 |
+| moderate (weave.osm, 300 s) | 5 | onH2 | 0 of 36 (0.0) | 35 of 36 | — | — | 1 / 0 / 0 | 0 | — | 0 | 16 / 0 / 231 / 1 / 2.3 |
+
+*Table — totals over the 28 fixture runs (the golden apart); "rows moved" against `off` for the `off`-based forms and against `on` for onH2 / onS2 (28 and 23 either way; `on` itself moves 4 rows against `off`).*
+
+| variant | runs | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth+T.H.52) | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | holds dropped / yields X / cooperations / eased (veh-steps) / exiter wait [s] |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| off | 28 | 0 | 44 | 5988 | 6131 | 14 | 529 | 5439 | 218 | 45 | 5944 | 1444 | 0 | 0 / 0 / 168954 / 32603 / 10.2 |
+| H2 | 28 | 28 | 74 | 5897 | 6084 | 31 | 709 | 9407 | 458 | 48 | 5830 | 1456 | 0 | 8330 / 0 / 165744 / 35517 / 11.1 |
+| H1 | 28 | 28 | 70 | 5891 | 6082 | 30 | 641 | 8476 | 325 | 62 | 5903 | 1451 | 0 | 15355 / 0 / 158789 / 33465 / 10.3 |
+| H4 | 28 | 28 | 59 | 5892 | 6071 | 16 | 595 | 6531 | 276 | 54 | 5891 | 1420 | 0 | 4048 / 0 / 163166 / 32413 / 10.3 |
+| H2sec | 28 | 28 | 59 | 5884 | 6087 | 27 | 724 | 13257 | 385 | 74 | 5891 | 1488 | 0 | 3708 / 0 / 176055 / 43968 / 11.0 |
+| H2np | 28 | 28 | 80 | 5860 | 6053 | 35 | 771 | 11249 | 567 | 41 | 5749 | 1454 | 0 | 8652 / 0 / 170596 / 37756 / 11.5 |
+| D40 | 28 | 28 | 66 | 5926 | 6090 | 27 | 706 | 9121 | 287 | 41 | 5948 | 1476 | 0 | 4279 / 0 / 168632 / 34212 / 10.9 |
+| S2 | 28 | 23 | 64 | 5909 | 6078 | 21 | 509 | 7360 | 466 | 50 | 5820 | 1453 | 0 | 1249 / 0 / 174081 / 35812 / 10.4 |
+| on | 28 | 4 | 39 | 6015 | 6142 | 12 | 526 | 4590 | 169 | 41 | 5973 | 1440 | 0 | 0 / 89 / 167795 / 32191 / 9.9 |
+| onH2 | 28 | 28 | 66 | 5901 | 6078 | 33 | 713 | 9263 | 477 | 52 | 5829 | 1456 | 0 | 8635 / 44 / 166812 / 35629 / 11.1 |
+| onS2 | 28 | 23 | 63 | 5927 | 6090 | 21 | 521 | 7147 | 340 | 40 | 5858 | 1447 | 0 | 1212 / 103 / 170949 / 35017 / 10.3 |
+
+*Table — golden `merge_weave` (the hash moves only where an override is set; at the default it is 436cd4ec9e5d and the run byte-identical to WP-57's).*
+
+| variant | hash | mean TT | p90 TT | σ_v | VMT | VHT | fuel | throughput | in / out / forced / deferred | exits | coll. | holds dropped |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| off | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 | 0 |
+| H2 | 955b8ba08cc6 | 69.538 | 86.847 | 4.009 / 3.459 | 169.622 | 1.7531 | 90.45 | 1680.0 | 15 / 18 / 2 / 6 | 33 | 0 | 9 |
+| H1 | 7857136923f0 | 69.233 | 85.465 | 3.833 / 3.322 | 169.684 | 1.7454 | 90.40 | 1683.7 | 14 / 18 / 1 / 5 | 33 | 0 | 16 |
+| H4 | 5770b303b336 | 69.016 | 84.159 | 3.946 / 3.459 | 169.651 | 1.7494 | 90.58 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 | 4 |
+| H2sec | 955b8ba08cc6 | 69.012 | 84.145 | 3.941 / 3.453 | 169.648 | 1.7493 | 90.56 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 | 8 |
+| H2np | 955b8ba08cc6 | 69.538 | 86.847 | 4.009 / 3.459 | 169.622 | 1.7531 | 90.45 | 1680.0 | 15 / 18 / 2 / 6 | 33 | 0 | 9 |
+| D40 | 955b8ba08cc6 | 70.287 | 87.036 | 3.976 / 3.445 | 169.658 | 1.7508 | 90.52 | 1680.0 | 15 / 17 / 2 / 5 | 33 | 0 | 11 |
+| S2 | 955b8ba08cc6 | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 | 0 |
+| on | 7a6a58a5e588 | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 | 0 |
+| onH2 | 4ca519397d8e | 69.538 | 86.847 | 4.009 / 3.459 | 169.622 | 1.7531 | 90.45 | 1680.0 | 15 / 18 / 2 / 6 | 33 | 0 | 9 |
+| onS2 | 4ca519397d8e | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 14 / 19 / 2 / 6 | 33 | 0 | 0 |
+
+*Table — the T.H.52 rows, the entrance criterion (the capacity fixture's 420 pin; 395 / 401 / 373 of 466 at the default), under every form: entrance departed / given up / lane 1 first 60 m min [m/s] (minutes ≤ 5) / unfinished / pair releases.*
+
+| fixture | seed | off | H2 | H1 | H4 | H2sec | H2np | D40 | S2 |
+|---|---|---|---|---|---|---|---|---|---|
+| T.H.52, corridor demand | 3 | 403 / 1 / 3.7 (2) / 2 / 5 | 389 / 1 / 4.5 (2) / 3 / 9 | 408 / 0 / 3.4 (5) / 10 / 10 | 402 / 1 / 4.2 (3) / 5 / 15 | 387 / 2 / 4.3 (1) / 4 / 8 | 389 / 1 / 4.5 (2) / 3 / 9 | 409 / 2 / 4.9 (1) / 4 / 6 | 395 / 0 / 3.7 (2) / 2 / 3 |
+| T.H.52, capacity | 3 | 395 / 1 / 3.9 (2) / 4 / 9 | 400 / 5 / 3.8 (2) / 6 / 9 | 390 / 2 / 3.6 (3) / 5 / 25 | 399 / 6 / 4.2 (1) / 9 / 12 | 394 / 3 / 3.8 (2) / 3 / 11 | 359 / 2 / 3.7 (2) / 4 / 24 | 389 / 1 / 4.5 (2) / 0 / 7 | 371 / 4 / 2.9 (6) / 6 / 81 |
+| T.H.52, corridor demand | 4 | 388 / 0 / 4.4 (1) / 2 / 9 | 415 / 5 / 4.8 (1) / 2 / 11 | 380 / 2 / 4.8 (1) / 3 / 8 | 378 / 4 / 3.9 (4) / 0 / 26 | 413 / 3 / 4.7 (2) / 7 / 16 | 415 / 5 / 4.8 (1) / 2 / 11 | 413 / 1 / 4.0 (2) / 2 / 7 | 405 / 0 / 5.2 (0) / 6 / 0 |
+| T.H.52, capacity | 4 | 401 / 1 / 4.3 (5) / 2 / 23 | 385 / 1 / 4.3 (3) / 6 / 23 | 359 / 4 / 4.0 (3) / 1 / 20 | 377 / 1 / 3.9 (4) / 5 / 16 | 367 / 1 / 3.0 (4) / 5 / 25 | 387 / 7 / 4.2 (2) / 4 / 40 | 389 / 3 / 2.7 (3) / 5 / 42 | 367 / 9 / 3.9 (1) / 6 / 11 |
+| T.H.52, corridor demand | 5 | 401 / 5 / 3.7 (1) / 6 / 29 | 407 / 2 / 5.1 (0) / 1 / 3 | 378 / 3 / 5.4 (0) / 6 / 7 | 402 / 5 / 4.2 (1) / 3 / 34 | 412 / 2 / 5.3 (0) / 4 / 5 | 381 / 2 / 4.4 (1) / 6 / 5 | 399 / 1 / 4.6 (3) / 2 / 6 | 356 / 1 / 4.9 (1) / 5 / 2 |
+| T.H.52, capacity | 5 | 373 / 1 / 3.3 (4) / 3 / 18 | 288 / 10 / 0.4 (9) / 5 / 257 | 387 / 3 / 4.7 (3) / 8 / 24 | 384 / 4 / 2.9 (5) / 7 / 35 | 390 / 3 / 2.8 (4) / 6 / 43 | 299 / 8 / 0.4 (9) / 2 / 250 | 378 / 5 / 4.6 (3) / 10 / 48 | 380 / 0 / 3.4 (4) / 1 / 27 |
+
+*Table — the no-lock pin of the T.H.52 capacity fixture (`test_th52_weave_at_capacity_does_not_lock`: no collision, lane 1 at the section start above 2 m/s in every minute, `n_missed` ≤ 1, unfinished ≤ 10 % of the driven, the entrance ≥ 80 % of 466 = 372.8), applied to each grid row; the test runs seeds 4 and 5.*
+
+| variant | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| off | pass | pass | pass |
+| H2 | 5 missed | pass | **lane 1 0.4 m/s**, 10 missed, 288 departed |
+| H1 | 2 missed | 4 missed, 359 departed | 3 missed |
+| H4 | 6 missed | pass | 4 missed |
+| H2sec | 3 missed | 367 departed | 3 missed |
+| H2np | 2 missed, 359 departed | 7 missed | **lane 1 0.4 m/s**, 8 missed, 299 departed |
+| D40 | pass | 3 missed | 5 missed |
+| S2 | 4 missed, 371 departed | 9 missed, 367 departed | pass |
+| on | pass | pass | pass |
+| onH2 | 2 missed | pass | **lane 1 0.5 m/s**, 3 missed, 299 departed |
+| onS2 | 2 missed | 9 missed, 367 departed | pass |
+
+*Table — the give-ups classed as WP-53 classed them, the distinct halted entrants behind the crossing pairs (give-ups per entrant), and WP-55's honesty count over the exiter's in-zone steps.*
+
+| variant | given up | crossing pair | sliding past | standing beside | brake distance | crawling | distinct halted entrants (give-ups per entrant) | no move at `b` | offered, not bound | offered and taken | no entrant ahead |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| off | 44 | 24 | 10 | 0 | 9 | 1 | 16 [4,3,3,2,1 × 12] | 14 | 4 | 0 | 26 |
+| H2 | 74 | 26 | 30 | 2 | 10 | 6 | 13 [5,4,3,3,2,2,1 × 7] | 15 | 5 | 0 | 54 |
+| H1 | 70 | 34 | 17 | 0 | 18 | 1 | 23 [5,3,3,2,2,2,1 × 17] | 23 | 4 | 0 | 43 |
+| H4 | 59 | 26 | 18 | 0 | 11 | 4 | 17 [4,3,2,2,2,2,1 × 11] | 15 | 4 | 0 | 40 |
+| H2sec | 59 | 28 | 19 | 0 | 9 | 3 | 19 [3,3,3,2,2,2,1 × 13] | 17 | 7 | 0 | 35 |
+| H2np | 80 | 26 | 33 | 3 | 11 | 7 | 13 [5,4,3,3,2,2,1 × 7] | 17 | 4 | 0 | 59 |
+| D40 | 66 | 27 | 22 | 0 | 7 | 10 | 15 [5,3,2,2,2,2,2,2,1 × 7] | 19 | 4 | 0 | 43 |
+| S2 | 64 | 29 | 18 | 0 | 11 | 6 | 20 [4,3,3,2,2,1 × 15] | 14 | 5 | 0 | 45 |
+| on | 39 | 17 | 10 | 0 | 9 | 3 | 12 [4,2,2,1 × 9] | 12 | 1 | 1 | 25 |
+| onH2 | 66 | 26 | 28 | 1 | 8 | 3 | 16 [5,3,2,2,2,2,1 × 10] | 16 | 1 | 0 | 49 |
+| onS2 | 63 | 27 | 16 | 0 | 14 | 6 | 19 [4,3,2,2,2,1 × 14] | 18 | 1 | 1 | 43 |
+
+*Table — the releases and the entrants' arrival: holds dropped, the changers released (released three times or more), where the changer was on the release step, and the driven entrants that still hold a chosen gap on their first step on the section.*
+
+| variant | holds dropped | changers released (≥ 3 times) | on the ramp / entrant on the section / exiter (of which under the priority) | changer speed at the release, median (p10–p90) [m/s] | entrants with a gap at section entry |
+|---|---|---|---|---|---|
+| off | 0 | 0 | — | — | 2,478 of 3,117 (79 %) |
+| H2 | 8,330 | 4,265 (1,118) | 5,653 / 1,168 / 1,509 (45) | 7.2 (3.8–13.4) | 1,923 of 3,119 (62 %) |
+| H1 | 15,355 | 5,136 (2,603) | — | — | 1,950 of 3,129 (62 %) |
+| H4 | 4,048 | 3,020 (132) | — | — | 1,967 of 3,201 (61 %) |
+| H2sec | 3,708 | 2,502 (309) | 0 / 2,190 / 1,518 (38) | 8.8 (5.0–13.9) | 1,262 of 3,068 (41 %) |
+| H2np | 8,652 | 4,201 (1,287) | — | — | 1,982 of 3,186 (62 %) |
+| D40 | 4,279 | 3,354 (87) | 2,900 / 636 / 743 (7) | 9.3 (5.2–18.7) | 2,097 of 3,175 (66 %) |
+| S2 | 1,249 | 908 (66) | 955 / 117 / 177 (14) | 6.2 (3.9–10.9) | 2,380 of 3,142 (76 %) |
+| on | 0 | 0 | — | — | 2,481 of 3,108 (80 %) |
+| onH2 | 8,635 | 4,281 (1,244) | — | — | 1,916 of 3,115 (62 %) |
+| onS2 | 1,212 | 882 (65) | — | — | 2,381 of 3,122 (76 %) |
+
+**Reading.**
+
+1. *At the default nothing changes.* `off` is WP-57's grid to the number in all 29 rows (44 given up — 24 crossing pairs on 16 halted entrants, 10 sliding, 9 brake distance, 1 crawling; 14 honest by WP-55's count — 5,988 exits of 6,131 reached, 14 lane-1 minutes at or below 5 m/s, 5,439 deferred, 218 pair releases, 45 unfinished, the entrances 5,944, no collision), the T.H.52 capacity rows read 395 / 401 / 373 of 466 against the 420 pinned, the no-lock pin passes at seeds 3–5, and golden `merge_weave` is byte-identical (hash 436cd4ec9e5d; not regenerated). The key's clock runs at the default (the trace above reads it) and never drops.
+2. *The rule does what it was derived to do, and the hold it cuts is the ramp queue's.* At 2 s it drops 8,330 holds on 4,265 changers; 5,653 of the drops are of an entrant still on the ramp, at 7.2 m/s median, 1,168 of an entrant on the section, 1,509 of an exiter, 45 under the exit priority. The follower released is never inside its brake gap (the clock does not run there), and no form collides (0 in 308 fixture runs). Where the stall is long at the default — the ramp queue, 36 of the 40 longest — the rule cuts it at the bound.
+3. *And it reads worse, in every form, by the same mechanism.* H2: give-ups 44 → 74, exits 5,988 → 5,897 of 6,131 → 6,084 reached, lane-1 minutes at or below 5 m/s 14 → 31, forced changes 529 → 709, deferred 5,439 → 9,407, pair releases 218 → 458, the entrances 5,944 → 5,830, the exiters' mean wait 10.2 → 11.1 s. H1 70, H4 59, H2sec 59 (74 unfinished, 13,257 deferred), H2np 80 (the entrances 5,749, the worst), D40 66 (the entrances 5,948, the best, and still two pinned seeds broken), S2 64. Row by row the sign is consistent, not a re-roll's coin: the given-ups are worse on 9–16 rows and better on 4–7 in every form (H2 9 / 7 / 12 equal; H1 16 / 6; D40 13 / 6), the forced deferrals rise on 13–19 rows. The mechanism is in the last table: **a changer released at speed parity meets the next follower at the same speed and stalls again** — the stall's own condition (F's side open, the changer not closing on L) holds for the next gap as for the last, because the changer is slow relative to lane 1 and not because of which follower is behind it — so 1,118 changers are released three times or more at 2 s (2,603 at 1 s, 132 at 4 s), and **the entrants reach the section with a gap 79 % → 62 % of the time** (41 % in H2sec, where the ramp's accumulated clock drops the hold on the first section step). An entrant arriving with no gap is the state the second attempt built the ramp anticipation against (a through vehicle at 28.7 m/s meeting an entrant appearing at 19 m/s 7 m ahead of it); on the section it hands its change to the forced mode at the lane end, and the deferrals, the pair releases and the pairs at the lane ends follow. The honest give-ups barely move (no move at `b`: 14 → 14–23), the "no entrant ahead" class carries the rise (26 → 35–59: sliding past 10 → 17–33, crawling 1 → 1–10).
+4. *The no-lock pin breaks in every form.* The T.H.52 capacity fixture at seed 5 under H2 stands lane 1 at the section start at 0.4 and 0.5 m/s over t = 600–720 s (5.1 m/s the minute before, back to 6.1 m/s only at t = 1,080–1,140 s), 288 of 466 departed against 373, 10 exits given up, 257 pair releases; H2np the same two minutes (0.4 and 0.5 m/s, 299 departed), onH2 the same two (0.5 and 0.8 m/s, 299 departed). Every other form fails the pin on `n_missed` (2–9 against 1) or the 80 % entrance at one of the two pinned seeds or both (the table above); `off` and `on` pass it at seeds 3–5. None of these is a permanent lock (no row stays at a standstill to the end, no collision), but a rule that breaks the fixture's no-lock pin cannot ship, and it is the kind of transient that VM M's corridor made permanent.
+5. *One worsened row traced: the sequence moves, the pair does not.* Ruth St corridor fleet, exit peak, seed 4: 1 → 10 given up under H2, five of them (t = 254.5–310.5 s) beside v00954, an entrant that reached the section at 20.5 m/s (`b` 1.98) with no gap in both runs and was never released itself; at `off` it changes at 2.4 m/s with 9.8 m of lane left, under H2 it halts with 1.1 m left and the next five exiters are given up beside it. The run had diverged from `off` from t = 64 s through six ramp releases (v00944 … v00955, the last at t = 242.0 s: v00955 at 15.7 m/s released from v00173 at 19.2). That row is the platoon re-sequenced, as the WP-55..57 rows were; what is not a re-roll is the sign over the grid (item 3) and the one variable every form moves the same way — the entrants arriving without a gap.
+6. *Time and distance.* The distance form D40 binds later at low speed, as derived (4,279 drops against 8,330, the drop after 40 m of travel ≈ 4.7 s at the long stalls' 8.6 m/s and 13 s at 3 m/s), and reads between H2 and H4 (66 given up, 5,948 entrants) — no better than the time forms on the pairs, and it breaks the pin at seeds 4 and 5. The strict stall S2 (the deficit not shrinking at all) fires on 1,249 holds, the fewest, and still reads 64 given up with the pin broken at seed 4 (9 missed, 367 departed). The exit priority's holds are not what costs: exempting them (H2np, 8,652 drops) reads worse than H2 (80 against 74) — at the default they are 2 % of the held steps and 78 steps past the 2 s mark.
+7. *With the exiter's yield on the bound does not make it safe.* `on` reproduces WP-56's rows (39 given up, 6,015 exits, the entrances 5,973, 89 exiter-yield vehicle-steps; the pin passes at seeds 3–5). onH2 reads 66 given up with the pin broken at seed 5 (lane 1 0.5 m/s, 299 departed) and 44 yield steps; onS2 63 with the pin broken at seed 4 and 103 yield steps. Two things to be plain about: the fixtures never reproduced VM M's lock (the yield on passes every pin here), so the grid cannot show the yield made safe; and VM M's 18,259 steps are `n_exiter_yields` — the exiter's own yield command (`_weave_yield_at_ends`), which this bound does not touch (it bounds the follower's hold in `_weave_cooperate`). The bound is therefore **not** a candidate for a corridor battery with the yield on.
+8. *The golden with the key set* moves (hash 955b8ba08cc6 at 2 s; 9 holds dropped on `weave.osm`; mean travel time 69.500 → 69.538 s, p90 84.126 → 86.847, σ_v 3.940 → 4.009, 15 / 18 / 2 / 6 against 14 / 19 / 2 / 6); at the default it does not.
+
+**Nothing ships.** `WEAVE_DEFAULTS["hold_release_s"]` = 0: hash-neutral unless set, the fixture grid at the default is WP-57's to the byte, golden `merge_weave` unchanged (hash 436cd4ec9e5d, `test_golden_summary_reproduced[merge_weave]` passes), the T.H.52 tests' markers and pins unchanged. The rule stays as a measured option with its counter and its clock, so a corridor battery can read where it would bind. For the record, as in WP-56 and WP-57: any rule of this series that ships on must pass a 20-seed VM corridor battery before it stays on — VM M's lesson — and this package ran no corridor.
+
+**What this hands on.** The hold trace changes the target. The unbounded hold is, by held steps, first of all the ramp's anticipation (53 %; 36 of the 40 longest stalls): an entrant in the ramp queue chooses its lane-1 gap up to `lookahead_m` (120 m) before the section and holds that gap's follower at the queue's speed, 3–10 m/s, for up to 43 s — a lane-1 throttle at the ramp queue's speed, upstream of the section. Bounding its duration does not help, because the positioning is what the hold buys and a changer released at parity meets the next follower at the same speed. The lead left is not to start that hold before it is needed: gate the ramp anticipation's *cooperation* (not its gap choice or easing) by the entrant's time to the section start against the follower's time to open the gap at `b` — a queued entrant 100 m out at 5 m/s (20 s) gets no follower yet, while the 19 m/s arrival the second attempt derived the anticipation for (≈ 6 s out) keeps it — to be measured against the second attempt's trace (the 28.7 m/s through vehicle meeting a 19 m/s entrant 7 m ahead) and the T.H.52 entrance rows, with this package's hold trace as the baseline. Separately, the exiter's yield's own bound (WP-56's (a): the standstill lapse inside the zone, or a cap on yields per halted entrant) remains the path for `exiter_yields` to return, since VM M's steps are that command's; the fixtures cannot show it safe, only a VM battery can.
+
+**Bookkeeping.** `packages/flowstate_core/flowstate_core/config.py` (`hold_release_s` = 0 with its provenance comment and docstring); `packages/microsim/microsim/runner.py` (`_weave_hold_state`, `_weave_hold_release` new; `_weave_choose_gap` takes `blocked`; `_weave_cooperate` takes `t`, reads the hold's progress and drops it; the two `_weave_cooperate` calls in `_weave_step` pass `t`; the per-changer state and `n_hold_releases` in the section state, the state's cleanup and `_weave_meta`; the docstrings of `_weave_step`, `_weave_cooperate` and `_weave_meta`; `Collection` imported); `packages/api/api/schemas.py` (`WeaveSectionDiagnosticsOut.n_hold_releases`); `scripts/corridor_sweep.py` (`WEAVE_FIELDS`); `tests/test_microsim/test_microsim_merge_managed_meter.py` (`TestWeaveHoldRelease`: the projected arrival and the clock, the drop and the re-choice behind with the block and its lapse, the brake distance keeping the hold, the default; the `WEAVE_DEFAULTS` pin, the fake state and the counters test); `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py` (the key lists, 37 keys); docs/CONTRACTS.md §2 (the key list, the WP-58 paragraph, the API paragraph); CHANGELOG.md; this section. `frontend/` untouched (the dashboard lists no weave counter). Session artifacts (the harness with the hold trace and its variants, the eleven grids, the tables, the episode analysis) not committed.
