@@ -6712,3 +6712,35 @@ Reading.
 - *Session files (`wp80/`, not committed):* `ident.py` and its three row files; `corr80.py`, `acc_hook80.py`, `corr_all.sh`; `colltrace.py`; `cross80.py`, `where80.py`, `cg_all.sh`; `tables.py`, `xtab80.py`, `cgdoc80.py`, `cgtab80.py`, `termdoc80.py`, `gtab80.py`; `grid80.sh` and `wp80_grid_harness.py` beside them; the run rows and the critical-gap and crossing JSONs.
 
 Every number above is from those runs, from the committed files named, or from the tests.
+
+## 2026-09-25 (block 3): where item 1 stands — the weaving section at capacity
+
+The owner's block-3 item 1 asked for a test that fails on the T.H.52 case and a re-derivation of the weave's conflict handling. Both
+exist; the test does not pass, and the reasons are now measured rather than guessed. In order of what was established (every number is
+in the dated sections above and in docs/ONBOARDING_MNDOT.md §11):
+
+1. **The failing test is the corridor's own section.** `test_th52_corridor_section_carries_free_flow_demand` (strict xfail; WP-61,
+   corrected by WP-74) runs the T.H.52 section as the corridor compiles it, at the observed 05:30–05:50 demand, on the corridor's fleet.
+   HCM 7.1 Chapter 13 puts that demand at d/c 0.59–0.70 with the segment at 25 m/s (WP-76); the real section carried it at 26 m/s.
+2. **The corridor's gap is the weave's capacity, not demand.** Capacity-short at S790 by about a third (WP-59); the section saturates at
+   about 4,000 veh/h over four lanes (VM O) and congests first at its exit end (WP-60/61).
+3. **No weave rule closes it.** Fifteen derivations (WP-52–58, 60, 62, 64, 67, 70, 73, 75) moved the conflict, locked the section or
+   read worse; attributions found no command family setting the entry's (WP-65) or the exit end's (WP-72) rate.
+4. **Two rules fixed the corridor's late locks** and are its reference configuration, not defaults: `exit_prepare` with the lane-end
+   give-up at every diverge (WP-62/71; VM U: departed 0.884, lowest seed 0.867, RMSPE 0.691, GEH 16 %).
+5. **The test's exit-end criterion is partly a lane-discipline test.** With every crossing removed it passes at 2 of 10 seeds, because
+   SUMO's default forbids overtaking on the right (WP-76); allowing it on the corridor does not move the fit and doubles collisions
+   (VM W) — not adopted.
+6. **The model's gap acceptance is too conservative for entering drivers, measured on real data.** Real I-24 drivers accept critical
+   gaps of 0.46 s ahead and 0.92 s behind when entering a weave, against the model's own 1.18 / 1.21 s (VM X, VM Z; I-24 tracks about
+   half the vehicles, so these are upper bounds).
+7. **Calibrating the acceptance alone does not transfer.** The fitted values, as one time gap per movement (WP-79, VM AA) or split
+   into leader and follower sides (WP-80), let the model's entrants take real drivers' gaps but not cross any faster — they arrive from
+   the ramp's queue at about 5 m/s, where real entrants cross at 11.7 m/s — and the exiting leader side (2.6 s) makes exiters wait and
+   miss the exit. Nothing was adopted.
+
+What would move it next, and whose call it is: (a) **the owner's** — what criterion (ii) should measure (e.g. HCM 7.1's density
+≤ 35 per window, which the model also fails today), and whether to allow overtaking on the right (evidence says no); (b) **model form**
+— SUMO's LC2013 parameters (`lcAssertive`, `lcCooperative`, `lcSpeedGain`, `lcKeepRight`) make a sixth to two fifths of the crossings
+and have never been calibrated to lane-change data; the new extraction (`calibration.lane_change_gaps`, `calibration.critical_gap`)
+makes that calibration possible against I-24 MOTION; (c) **the ramp queue** that delivers entrants at 5 m/s.
