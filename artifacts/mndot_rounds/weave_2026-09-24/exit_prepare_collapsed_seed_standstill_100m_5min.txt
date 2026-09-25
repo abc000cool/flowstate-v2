@@ -1,0 +1,37 @@
+schema ['t', 'veh_id', 'x', 'lane', 'v', 'a', 'is_av', 'complied', 'is_heavy', 'is_hov'] rows 64644803
+first standstill bins (mean v < 2 m/s, >=20 samples) per 5-min window:
+  t=   70 min: x bins stopped = 7.2-7.3 km (2 bins); min-speed bin at 7.3 km
+  t=   75 min: x bins stopped = 5.8-6.5 km (8 bins); min-speed bin at 6.3 km
+  t=   80 min: x bins stopped = 4.4-5.3 km (10 bins); min-speed bin at 4.8 km
+  t=   85 min: x bins stopped = 3.7-6.9 km (12 bins); min-speed bin at 3.9 km
+  t=   90 min: x bins stopped = 3.4-7.5 km (10 bins); min-speed bin at 7.3 km
+  t=   95 min: x bins stopped = 3.2-6.8 km (26 bins); min-speed bin at 6.1 km
+  t=  100 min: x bins stopped = 2.8-7.3 km (27 bins); min-speed bin at 3.4 km
+  t=  105 min: x bins stopped = 2.6-6.4 km (31 bins); min-speed bin at 3.7 km
+  t=  110 min: x bins stopped = 2.0-8.8 km (42 bins); min-speed bin at 2.4 km
+  t=  115 min: x bins stopped = 1.2-6.2 km (42 bins); min-speed bin at 3.1 km
+  t=  120 min: x bins stopped = 0.6-6.8 km (48 bins); min-speed bin at 2.5 km
+  t=  125 min: x bins stopped = 0.1-7.5 km (54 bins); min-speed bin at 3.2 km
+  t=  130 min: x bins stopped = 0.0-6.5 km (51 bins); min-speed bin at 0.0 km
+  t=  135 min: x bins stopped = 0.3-8.6 km (51 bins); min-speed bin at 2.5 km
+  t=  140 min: x bins stopped = 0.7-7.3 km (45 bins); min-speed bin at 3.4 km
+  t=  145 min: x bins stopped = 0.0-6.2 km (48 bins); min-speed bin at 2.1 km
+  t=  150 min: x bins stopped = 0.0-8.4 km (57 bins); min-speed bin at 3.0 km
+  t=  155 min: x bins stopped = 0.0-8.5 km (60 bins); min-speed bin at 8.4 km
+  t=  160 min: x bins stopped = 0.0-8.5 km (76 bins); min-speed bin at 8.3 km
+  t=  165 min: x bins stopped = 0.1-8.5 km (71 bins); min-speed bin at 7.9 km
+  t=  170 min: x bins stopped = 1.1-8.5 km (75 bins); min-speed bin at 6.5 km
+  t=  175 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 5.3 km
+  t=  180 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 3.9 km
+  t=  185 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 2.9 km
+  t=  190 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 1.6 km
+  t=  195 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.5 km
+  t=  200 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.2 km
+  t=  205 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  210 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  215 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  220 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  225 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  230 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  235 min: x bins stopped = 0.0-8.5 km (86 bins); min-speed bin at 0.0 km
+  t=  240 min: x bins stopped = 0.0-8.4 km (85 bins); min-speed bin at 0.0 km

@@ -1,0 +1,6074 @@
+{
+  "schema": "flowstate.corridor_validation/1",
+  "created_at": "2026-09-25T07:24:59Z",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_diag.yaml",
+  "corridor": "I-94 WB",
+  "config_hash": "5267100cb0a3",
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937
+  ],
+  "replicates": 10,
+  "wall_s": 1774.9,
+  "versions": {
+    "python": "3.12.14",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "criteria_profile": {
+    "name": "fhwa_tat3_2004",
+    "source": "FHWA Traffic Analysis Toolbox Vol. III (2004, FHWA-HRT-04-040), \u00a75.6 'Calibration Targets', Wisconsin DOT freeway model calibration criteria (captioned 'Table 4' on the HTML edition at https://ops.fhwa.dot.gov/trafficanalysistools/tat_vol3/sect5.htm, verified 2026-09-03; attributed there to WisDOT District 2, Paramics Calibration and Validation Guidelines, Technical Report I-33, June 2002). Transcribed row: 'GEH Statistic < 5 for Individual Link Flows: > 85% of cases' \u2014 strict '> 85%' (geh_pass_inclusive=False). Rows of that table NOT evaluated by FlowState: individual link flows within 15% / 100 veh/h / 400 veh/h by flow band for > 85% of cases; sum of all link flows within 5%; GEH < 4 for the sum of all link flows; journey times within 15% (or 1 min, if higher) for > 85% of cases; visual audits of speed-flow relationships and bottleneck queuing 'to analyst's satisfaction'. The table defines no RMSPE speed bound, so this profile produces no speeds_rmspe row (rmspe_max=None). The 2004 volume gives no fixed minimum run count (its \u00a75 example uses ten replications to estimate a parameter within 5%), so min_seeds keeps FlowState's 20 (CLAUDE.md \u00a70.6). The segment-speed RMSPE <= 15% bound is FlowState's own convention (CLAUDE.md \u00a77.1, 'common microsim practice'); the 14-22 km/h emergent backward wave-speed band is the empirical stop-and-go literature value (flowstate_core.constants.WAVE_SPEED_BAND_KMH); the ring emergence/dampening rows reproduce Sugiyama et al. (2008) and Stern et al. (2018) per CLAUDE.md \u00a73.2.1; min_seeds = 20 and the penetration {1,2,5,10,15,20}% x compliance {25,50,80,100}% grid are CLAUDE.md \u00a70.6/\u00a77.1 internal standards. None of these is prescribed by the cited DOT/FHWA documents. The wave-speed row is measured with the profile's wave_detector (validation.waves.WAVE_DETECTORS; default 'stack', chosen on the planted-stripe benchmark in validation.waves), and the evaluated row names that detector and its parameters."
+  },
+  "criteria": [
+    {
+      "name": "link_flows_geh",
+      "value": 0.14047619047619048,
+      "threshold": "GEH < 5 for > 85% of link-hour comparisons",
+      "passed": false,
+      "evaluated": true,
+      "detail": "fraction of comparisons with GEH < 5"
+    },
+    {
+      "name": "wave_speed",
+      "value": 6.546095681328174,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+      "passed": false,
+      "evaluated": true,
+      "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected"
+    },
+    {
+      "name": "ring_emergence",
+      "value": null,
+      "threshold": "Sugiyama ring emergence benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "ring_dampening",
+      "value": null,
+      "threshold": "Stern single-AV dampening benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "n_seeds",
+      "value": 10.0,
+      "threshold": "n_seeds >= 20",
+      "passed": false,
+      "evaluated": true,
+      "detail": ""
+    },
+    {
+      "name": "sensitivity_grid",
+      "value": null,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    }
+  ],
+  "observations": {
+    "path": "data/mndot/mndot_i94_wb_stpaul/observations.json",
+    "corridor": "I-94 WB",
+    "provider": "MnDOT RTMC Mayfly API",
+    "dates": "20260901, 20260902, 20260903, 20260908, 20260909, 20260910, 20260915, 20260916, 20260917",
+    "url": "https://data.dot.state.mn.us/mayfly",
+    "aggregation": "mean over dates per window (weekday typical profile)",
+    "t0_local": "05:30",
+    "window_s": 300.0,
+    "n_stations": 14,
+    "n_windows": 48,
+    "n_windows_compared": 42,
+    "flow_fraction": 1.0,
+    "speed_fraction": 1.0,
+    "n_link_hours": 420,
+    "n_speed_cells": 5848,
+    "n_replicates": 10,
+    "n_stations_outside_span": 0,
+    "stations_outside_span": "",
+    "note": "",
+    "detector_wave_speed": {
+      "median_kmh": 21.26495534474855,
+      "iqr_kmh": [
+        18.58513742016639,
+        24.17925039834189
+      ],
+      "n_pairs": 13,
+      "n_used": 6,
+      "rejections": "2 fewer than min_events congested episodes downstream, 4 peak correlation below the acceptance floor, 1 peak lag is not positive (no backward propagation)",
+      "loo_n_dates": 9,
+      "loo_median_min_kmh": 18.449720849605693,
+      "loo_median_max_kmh": 21.57559690402194,
+      "loo_pairs_min": 5
+    }
+  },
+  "x_offset_m": 0.0,
+  "insertion": {
+    "n_runs": 10,
+    "planned": 339120,
+    "departed": 293471,
+    "mean_arrived": 26341.3,
+    "n_with_arrived": 10,
+    "mean_departed_fraction": 0.865389832507667,
+    "min_departed_fraction": 0.7487909884406699,
+    "starved_ramps": [],
+    "verdict": "backlog: 13 % of planned vehicles never departed"
+  },
+  "weave_exits": {
+    "threshold_share": 0.02,
+    "n_runs": 10,
+    "sections": [
+      {
+        "ramp": "on-ramp 745524613",
+        "exit": "C-D split 18208090",
+        "n_runs": 10,
+        "reached": 9962,
+        "missed_exit": {
+          "n": 70,
+          "share": 0.007026701465569163
+        },
+        "flagged": false
+      },
+      {
+        "ramp": "on-ramp 769818012",
+        "exit": "off-ramp 18207598",
+        "n_runs": 10,
+        "reached": 34328,
+        "missed_exit": {
+          "n": 237,
+          "share": 0.006903985085061757
+        },
+        "flagged": false
+      }
+    ],
+    "verdict": "ok"
+  },
+  "geh": {
+    "pooled_values": [
+      5.802,
+      42.7062,
+      5.9957,
+      11.9687,
+      38.3322,
+      5.9076,
+      21.4521,
+      30.311,
+      11.2103,
+      24.2169,
+      26.533,
+      9.7963,
+      27.8095,
+      25.6571,
+      8.0068,
+      27.6425,
+      15.1579,
+      10.2016,
+      28.2337,
+      12.6118,
+      10.7598,
+      29.4881,
+      10.2044,
+      8.9129,
+      20.005,
+      0.7187,
+      3.5105,
+      21.4159,
+      0.5786,
+      5.2556,
+      24.0949,
+      4.8378,
+      11.384,
+      31.5544,
+      17.4868,
+      17.5272,
+      25.9984,
+      12.1271,
+      13.7968,
+      24.0442,
+      13.3425,
+      10.8583,
+      8.5282,
+      35.9843,
+      2.3357,
+      14.957,
+      29.7097,
+      4.916,
+      22.6219,
+      24.8194,
+      8.1931,
+      25.4155,
+      22.3297,
+      5.8576,
+      29.3822,
+      20.1292,
+      4.6473,
+      27.098,
+      14.6069,
+      8.575,
+      26.9592,
+      12.9504,
+      9.867,
+      28.7182,
+      9.7275,
+      9.9814,
+      20.9674,
+      2.7185,
+      3.2624,
+      18.9038,
+      1.3547,
+      3.5091,
+      24.1706,
+      3.5298,
+      12.4593,
+      31.8616,
+      16.1635,
+      18.4507,
+      26.1883,
+      11.0783,
+      12.9484,
+      23.2501,
+      11.7089,
+      10.6833,
+      12.4557,
+      30.3086,
+      8.2178,
+      19.2753,
+      25.1225,
+      8.8999,
+      26.3526,
+      20.934,
+      12.4607,
+      29.4622,
+      18.1142,
+      10.6565,
+      32.9463,
+      16.9466,
+      10.034,
+      30.7139,
+      9.0011,
+      12.691,
+      30.7645,
+      8.3077,
+      11.1502,
+      31.1494,
+      8.4672,
+      9.8131,
+      20.9674,
+      2.127,
+      5.0268,
+      19.5397,
+      0.6075,
+      5.5048,
+      23.1142,
+      4.8578,
+      13.7679,
+      31.0377,
+      17.1495,
+      18.9846,
+      25.6711,
+      13.1675,
+      13.5191,
+      24.6118,
+      13.3944,
+      9.5169,
+      8.3177,
+      30.6768,
+      2.8373,
+      12.0459,
+      30.9922,
+      2.6406,
+      20.0302,
+      25.5844,
+      2.7088,
+      22.6382,
+      22.3529,
+      3.6665,
+      26.2177,
+      17.9753,
+      4.9395,
+      23.7064,
+      12.8824,
+      8.3477,
+      23.7188,
+      12.908,
+      8.1598,
+      23.9626,
+      11.488,
+      6.7475,
+      16.6968,
+      1.1346,
+      3.0807,
+      16.2135,
+      1.6215,
+      3.5909,
+      21.4909,
+      5.478,
+      11.5029,
+      28.3917,
+      17.7652,
+      18.1158,
+      23.4866,
+      12.924,
+      12.7587,
+      22.3909,
+      14.3329,
+      10.2991,
+      7.114,
+      27.0051,
+      3.8195,
+      11.7762,
+      24.0464,
+      5.7804,
+      20.6943,
+      19.0128,
+      9.7131,
+      22.2264,
+      17.1809,
+      9.1398,
+      25.961,
+      15.17,
+      8.5503,
+      24.6881,
+      9.2826,
+      12.0683,
+      24.5577,
+      9.6337,
+      10.9548,
+      25.951,
+      7.2233,
+      11.3596,
+      17.78,
+      2.7841,
+      5.5982,
+      17.7374,
+      0.3324,
+      7.0776,
+      21.918,
+      3.4905,
+      12.3993,
+      30.1432,
+      15.9869,
+      19.2624,
+      24.5062,
+      12.1444,
+      13.7794,
+      23.4614,
+      11.5723,
+      11.2619,
+      7.8976,
+      32.514,
+      0.5144,
+      13.9128,
+      28.6093,
+      3.5402,
+      23.0526,
+      23.5927,
+      3.8695,
+      23.3002,
+      20.8516,
+      3.8111,
+      27.5894,
+      19.4282,
+      2.6051,
+      26.6562,
+      12.5232,
+      7.096,
+      26.6612,
+      11.0809,
+      7.8746,
+      26.9887,
+      8.848,
+      8.331,
+      19.5507,
+      2.9968,
+      2.7511,
+      18.7412,
+      0.4474,
+      4.7919,
+      23.4716,
+      4.3007,
+      11.0476,
+      30.8087,
+      15.7127,
+      18.5099,
+      24.7281,
+      11.9029,
+      12.8794,
+      23.9557,
+      12.0168,
+      9.5169,
+      5.4591,
+      25.5854,
+      8.1555,
+      11.1239,
+      21.4366,
+      5.348,
+      18.7797,
+      17.9811,
+      1.5399,
+      21.6933,
+      14.4738,
+      0.5765,
+      24.9006,
+      11.6628,
+      0.1824,
+      23.2965,
+      7.7333,
+      4.7369,
+      22.3447,
+      7.8828,
+      6.235,
+      24.122,
+      4.4178,
+      10.2134,
+      17.5244,
+      5.2647,
+      3.5602,
+      16.821,
+      2.8845,
+      5.9545,
+      22.4212,
+      2.0049,
+      11.9801,
+      29.1609,
+      14.5646,
+      18.3915,
+      22.9796,
+      10.3441,
+      13.4845,
+      22.1115,
+      10.5186,
+      11.5963,
+      5.5276,
+      32.0519,
+      0.0859,
+      10.3993,
+      29.5655,
+      1.2887,
+      19.6117,
+      25.4256,
+      2.9531,
+      22.2264,
+      21.3803,
+      3.0698,
+      26.3957,
+      16.436,
+      5.3107,
+      25.1029,
+      11.2097,
+      8.1003,
+      25.347,
+      9.9216,
+      8.3312,
+      25.3852,
+      8.1102,
+      8.6839,
+      17.7161,
+      1.516,
+      3.1632,
+      18.0604,
+      0.4917,
+      4.264,
+      22.4399,
+      5.498,
+      11.2256,
+      30.409,
+      16.7738,
+      17.9389,
+      24.7623,
+      11.4212,
+      12.1743,
+      21.1213,
+      13.0658,
+      10.1074,
+      6.8539,
+      38.2811,
+      8.6029,
+      13.3846,
+      31.6272,
+      8.7033,
+      22.7351,
+      24.7406,
+      11.6986,
+      23.9244,
+      22.1669,
+      10.3248,
+      28.0702,
+      18.9272,
+      7.6259,
+      26.8167,
+      10.9447,
+      11.7477,
+      27.2579,
+      11.3519,
+      10.1767,
+      28.4074,
+      9.7728,
+      9.3097,
+      18.3249,
+      1.3172,
+      3.8256,
+      17.6568,
+      1.3714,
+      4.9904,
+      22.3465,
+      5.0175,
+      12.3593,
+      29.9916,
+      17.2288,
+      18.2929,
+      25.1045,
+      12.6463,
+      12.9829,
+      22.2337,
+      14.0889,
+      9.3092,
+      3.0688,
+      34.1575,
+      74.8313,
+      7.9736,
+      34.4836,
+      70.5286,
+      17.8461,
+      30.6181,
+      65.5124,
+      20.129,
+      30.4134,
+      71.0766,
+      22.7691,
+      33.3487,
+      75.9368,
+      21.4594,
+      26.7852,
+      74.2305,
+      22.3087,
+      26.9614,
+      79.9089,
+      21.4015,
+      28.2978,
+      73.9548,
+      15.9214,
+      23.782,
+      87.8524,
+      15.7516,
+      31.5095,
+      88.8876,
+      21.2871,
+      29.6358,
+      79.1106,
+      30.314,
+      37.2011,
+      83.9733,
+      23.9784,
+      25.961,
+      57.7969,
+      21.6068,
+      20.2637,
+      31.7469
+    ],
+    "n_comparisons": 420,
+    "threshold": 5.0,
+    "pass_fraction_pooled": 0.14047619047619048,
+    "pass_fraction_ci": {
+      "mean": 0.14047619047619048,
+      "lo95": 0.08878345743726267,
+      "hi95": 0.19216892351511827,
+      "n": 10,
+      "underpowered": true
+    },
+    "definition": "hourly volumes at every mainline station, per replicate, pooled across replicates for the criterion row; the CI is over the per-replicate pass fractions",
+    "link_hours": {
+      "t0_local": "05:30",
+      "window_s": 3600.0,
+      "n_seeds": 10,
+      "rows": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3312.0,
+          "sim_veh_h_min": 3009.0,
+          "sim_veh_h_max": 3547.0,
+          "geh_mean": 7.1025,
+          "geh_min": 3.0688,
+          "geh_max": 12.4557
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1879.0,
+          "sim_veh_h_min": 1451.0,
+          "sim_veh_h_max": 2217.0,
+          "geh_mean": 32.9271,
+          "geh_min": 25.5854,
+          "geh_max": 42.7062
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2478.3,
+          "sim_veh_h_min": 18.0,
+          "sim_veh_h_max": 3306.0,
+          "geh_mean": 11.5396,
+          "geh_min": 0.0859,
+          "geh_max": 74.8313
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2632.0,
+          "sim_veh_h_min": 2300.0,
+          "sim_veh_h_max": 2878.0,
+          "geh_mean": 12.6817,
+          "geh_min": 7.9736,
+          "geh_max": 19.2753
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1609.7,
+          "sim_veh_h_min": 1248.0,
+          "sim_veh_h_max": 1949.9999999999998,
+          "geh_mean": 29.3925,
+          "geh_min": 21.4366,
+          "geh_max": 38.3322
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2120.0,
+          "sim_veh_h_min": 6.0,
+          "sim_veh_h_max": 2780.0,
+          "geh_mean": 11.7553,
+          "geh_min": 1.2887,
+          "geh_max": 70.5286
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1930.2,
+          "sim_veh_h_min": 1709.0,
+          "sim_veh_h_max": 2087.0,
+          "geh_mean": 21.3176,
+          "geh_min": 17.8461,
+          "geh_max": 26.3526
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1375.0,
+          "sim_veh_h_min": 1138.0,
+          "sim_veh_h_max": 1622.0,
+          "geh_mean": 24.302,
+          "geh_min": 17.9811,
+          "geh_max": 30.6181
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1670.2,
+          "sim_veh_h_min": 3.0,
+          "sim_veh_h_max": 2227.0,
+          "geh_mean": 12.9859,
+          "geh_min": 1.5399,
+          "geh_max": 65.5124
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2224.5,
+          "sim_veh_h_min": 1944.9999999999998,
+          "sim_veh_h_max": 2389.0,
+          "geh_mean": 23.5233,
+          "geh_min": 20.129,
+          "geh_max": 29.4622
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1803.3,
+          "sim_veh_h_min": 1433.0,
+          "sim_veh_h_max": 2118.0,
+          "geh_mean": 21.5797,
+          "geh_min": 14.4738,
+          "geh_max": 30.4134
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2004.7,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2555.0,
+          "geh_mean": 12.7975,
+          "geh_min": 0.5765,
+          "geh_max": 71.0766
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2399.7,
+          "sim_veh_h_min": 2117.0,
+          "sim_veh_h_max": 2625.0,
+          "geh_mean": 27.2042,
+          "geh_min": 22.7691,
+          "geh_max": 32.9463
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2035.6,
+          "sim_veh_h_min": 1438.0,
+          "sim_veh_h_max": 2404.0,
+          "geh_mean": 19.5681,
+          "geh_min": 11.6628,
+          "geh_max": 33.3487
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2327.4,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2893.0,
+          "geh_mean": 12.7839,
+          "geh_min": 0.1824,
+          "geh_max": 75.9368
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2422.3,
+          "sim_veh_h_min": 2175.0,
+          "sim_veh_h_max": 2639.0,
+          "geh_mean": 25.7181,
+          "geh_min": 21.4594,
+          "geh_max": 30.7139
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1948.0,
+          "sim_veh_h_min": 1372.0,
+          "sim_veh_h_max": 2183.0,
+          "geh_mean": 13.0127,
+          "geh_min": 7.7333,
+          "geh_max": 26.7852
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2061.2,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2512.0,
+          "geh_mean": 15.7795,
+          "geh_min": 4.7369,
+          "geh_max": 74.2305
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2820.0,
+          "sim_veh_h_min": 2556.0,
+          "sim_veh_h_max": 3011.0,
+          "geh_mean": 25.8153,
+          "geh_min": 22.3087,
+          "geh_max": 30.7645
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2230.8,
+          "sim_veh_h_min": 1579.0,
+          "sim_veh_h_max": 2442.0,
+          "geh_mean": 12.361,
+          "geh_min": 7.8828,
+          "geh_max": 26.9614
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2421.1,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2850.0,
+          "geh_mean": 16.3418,
+          "geh_min": 6.235,
+          "geh_max": 79.9089
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2299.8,
+          "sim_veh_h_min": 2077.0,
+          "sim_veh_h_max": 2557.0,
+          "geh_mean": 26.5574,
+          "geh_min": 21.4015,
+          "geh_max": 31.1494
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 1899.6,
+          "sim_veh_h_min": 1188.0,
+          "sim_veh_h_max": 2173.0,
+          "geh_mean": 10.6557,
+          "geh_min": 4.4178,
+          "geh_max": 28.2978
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2044.5,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2393.0,
+          "geh_mean": 15.7307,
+          "geh_min": 6.7475,
+          "geh_max": 73.9548
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3807.9,
+          "sim_veh_h_min": 3658.0000000000005,
+          "sim_veh_h_max": 3972.0,
+          "geh_mean": 18.5454,
+          "geh_min": 15.9214,
+          "geh_max": 20.9674
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3552.9,
+          "sim_veh_h_min": 2273.0,
+          "sim_veh_h_max": 3878.0000000000005,
+          "geh_mean": 4.436,
+          "geh_min": 0.7187,
+          "geh_max": 23.782
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3266.5999999999995,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 3689.9999999999995,
+          "geh_mean": 12.1631,
+          "geh_min": 2.7511,
+          "geh_max": 87.8524
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3768.1,
+          "sim_veh_h_min": 3564.0,
+          "sim_veh_h_max": 3913.0,
+          "geh_mean": 18.0841,
+          "geh_min": 15.7516,
+          "geh_max": 21.4159
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3510.8,
+          "sim_veh_h_min": 2005.0,
+          "sim_veh_h_max": 3863.0000000000005,
+          "geh_mean": 4.1199,
+          "geh_min": 0.3324,
+          "geh_max": 31.5095
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3278.8,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 3733.0,
+          "geh_mean": 13.3826,
+          "geh_min": 3.5091,
+          "geh_max": 88.8876
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2769.6,
+          "sim_veh_h_min": 2690.0,
+          "sim_veh_h_max": 2844.0,
+          "geh_mean": 22.6755,
+          "geh_min": 21.2871,
+          "geh_max": 24.1706
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2422.6,
+          "sim_veh_h_min": 1406.0,
+          "sim_veh_h_max": 2654.0,
+          "geh_mean": 6.8651,
+          "geh_min": 2.0049,
+          "geh_max": 29.6358
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2243.2,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2541.0,
+          "geh_mean": 18.7237,
+          "geh_min": 11.0476,
+          "geh_max": 79.1106
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2623.4,
+          "sim_veh_h_min": 2545.0,
+          "sim_veh_h_max": 2728.0,
+          "geh_mean": 30.3673,
+          "geh_min": 28.3917,
+          "geh_max": 31.8616
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2434.4,
+          "sim_veh_h_min": 1572.0,
+          "sim_veh_h_max": 2631.0,
+          "geh_mean": 18.6033,
+          "geh_min": 14.5646,
+          "geh_max": 37.2011
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 2263.8,
+          "sim_veh_h_min": 0.0,
+          "sim_veh_h_max": 2559.0,
+          "geh_mean": 24.9447,
+          "geh_min": 17.5272,
+          "geh_max": 83.9733
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3323.5,
+          "sim_veh_h_min": 3239.0,
+          "sim_veh_h_max": 3427.0,
+          "geh_mean": 24.7403,
+          "geh_min": 22.9796,
+          "geh_max": 26.1883
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3260.4,
+          "sim_veh_h_min": 2570.0,
+          "sim_veh_h_max": 3432.0,
+          "geh_mean": 13.3717,
+          "geh_min": 10.3441,
+          "geh_max": 25.961
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3101.0,
+          "sim_veh_h_min": 1152.0,
+          "sim_veh_h_max": 3374.0,
+          "geh_mean": 17.612,
+          "geh_min": 12.1743,
+          "geh_max": 57.7969
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3162.4,
+          "sim_veh_h_min": 3064.0,
+          "sim_veh_h_max": 3263.0,
+          "geh_mean": 22.8787,
+          "geh_min": 21.1213,
+          "geh_max": 24.6118
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3303.4,
+          "sim_veh_h_min": 2918.0,
+          "sim_veh_h_max": 3472.0,
+          "geh_mean": 13.4305,
+          "geh_min": 10.5186,
+          "geh_max": 20.2637
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "n_seeds": 10,
+          "sim_veh_h_mean": 3154.8,
+          "sim_veh_h_min": 2143.0,
+          "sim_veh_h_max": 3327.0,
+          "geh_mean": 12.4896,
+          "geh_min": 9.3092,
+          "geh_max": 31.7469
+        }
+      ],
+      "definition": "one row per compared station-hour: station id, x_ref_m in the observations' coordinates (simulation x = x_ref_m + x_offset_m), window_start_s from t0_local and its local clock label, the observed hourly volume, and over the n_seeds seeds that compared it the mean, min and max simulated hourly volume and GEH; pooled_values is per_seed[i].link_hours[*].geh concatenated in seed order"
+    }
+  },
+  "rmspe": {
+    "mean": 0.7026517642094537,
+    "ci": {
+      "mean": 0.7026517642094537,
+      "lo95": 0.6891217179828611,
+      "hi95": 0.7161818104360463,
+      "n": 10,
+      "underpowered": true
+    },
+    "n_speed_cells_pooled": 5848
+  },
+  "wave_speed": {
+    "detector": "stack",
+    "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+    "mean_kmh": 6.546095681328174,
+    "ci": {
+      "mean": 6.546095681328174,
+      "lo95": 6.319220765628595,
+      "hi95": 6.7729705970277525,
+      "n": 10,
+      "underpowered": true
+    },
+    "n_replicates_with_backward_front": 10
+  },
+  "metrics_ci": {
+    "throughput_veh_h": {
+      "mean": 2206.457142857143,
+      "lo95": 2022.5594745919998,
+      "hi95": 2390.3548111222863,
+      "n": 10,
+      "underpowered": true
+    },
+    "mean_tt_s": {
+      "mean": 928.0288827285615,
+      "lo95": 823.6976046161531,
+      "hi95": 1032.36016084097,
+      "n": 10,
+      "underpowered": true
+    },
+    "p90_tt_s": {
+      "mean": 2664.3728801368393,
+      "lo95": 2393.022477670361,
+      "hi95": 2935.723282603318,
+      "n": 10,
+      "underpowered": true
+    },
+    "sigma_v_spatial_ms": {
+      "mean": 5.324782505769288,
+      "lo95": 5.121532558982014,
+      "hi95": 5.528032452556562,
+      "n": 10,
+      "underpowered": true
+    },
+    "sigma_v_temporal_ms": {
+      "mean": 4.4868939270511285,
+      "lo95": 4.330415379024179,
+      "hi95": 4.6433724750780785,
+      "n": 10,
+      "underpowered": true
+    },
+    "vmt_veh_km": {
+      "mean": 102863.08249135445,
+      "lo95": 95303.57887305022,
+      "hi95": 110422.58610965867,
+      "n": 10,
+      "underpowered": true
+    },
+    "vht_veh_h": {
+      "mean": 7891.410652777779,
+      "lo95": 7625.507545562336,
+      "hi95": 8157.313759993222,
+      "n": 10,
+      "underpowered": true
+    },
+    "fuel_ml_per_veh_km": {
+      "mean": 200.91069538479505,
+      "lo95": 175.44384711804784,
+      "hi95": 226.37754365154225,
+      "n": 10,
+      "underpowered": true
+    },
+    "wave_count": {
+      "mean": 16.0,
+      "lo95": 13.568254118181482,
+      "hi95": 18.431745881818518,
+      "n": 10,
+      "underpowered": true
+    },
+    "wave_speed_kmh": {
+      "mean": 6.655004055681742,
+      "lo95": 5.199553864082875,
+      "hi95": 8.11045424728061,
+      "n": 10,
+      "underpowered": true
+    },
+    "wave_amplitude_ms": {
+      "mean": 13.957269810939717,
+      "lo95": 13.467179264637078,
+      "hi95": 14.447360357242356,
+      "n": 10,
+      "underpowered": true
+    },
+    "n_travel_time_veh": {
+      "mean": 10792.6,
+      "lo95": 10468.006205048552,
+      "hi95": 11117.193794951449,
+      "n": 10,
+      "underpowered": true
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/6914975401685141156",
+      "geh_pass_fraction": 0.09523809523809523,
+      "n_link_hours": 42,
+      "rmspe": 0.7060770601558134,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.1726614227884475,
+      "metrics": {
+        "throughput_veh_h": 2238.5714285714284,
+        "mean_tt_s": 1011.4934191364739,
+        "p90_tt_s": 2856.49824255411,
+        "sigma_v_spatial_ms": 5.414975530476254,
+        "sigma_v_temporal_ms": 4.506035439574392,
+        "vmt_veh_km": 102747.18835236893,
+        "vht_veh_h": 8012.235416666652,
+        "fuel_ml_per_veh_km": 199.72057738247935,
+        "wave_count": 15,
+        "wave_speed_kmh": 5.449089829837752,
+        "wave_amplitude_ms": 13.842454787085149,
+        "n_travel_time_veh": 10747
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 29047,
+        "arrived": 26218,
+        "departed_fraction": 0.8565404576551073,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1110,
+            "fraction": 0.7012002526847757,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2709,
+            "fraction": 0.7661199095022625,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4043,
+            "fraction": 0.8010699425401229,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 14 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3386.0,
+          "geh": 5.802
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1451.0,
+          "geh": 42.7062
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2542.0,
+          "geh": 5.9957
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2667.0,
+          "geh": 11.9687
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1248.0,
+          "geh": 38.3322
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2218.0,
+          "geh": 5.9076
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1923.0,
+          "geh": 21.4521
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1149.0,
+          "geh": 30.311
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 1665.0,
+          "geh": 11.2103
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2190.0,
+          "geh": 24.2169
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1590.0,
+          "geh": 26.533
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2057.0,
+          "geh": 9.7963
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2368.0,
+          "geh": 27.8095
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 1758.0,
+          "geh": 25.6571
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2469.0,
+          "geh": 8.0068
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2325.0,
+          "geh": 27.6425
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 1848.0,
+          "geh": 15.1579
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2245.0,
+          "geh": 10.2016
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2689.0,
+          "geh": 28.2337
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2213.0,
+          "geh": 12.6118
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2613.0,
+          "geh": 10.7598
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2156.0,
+          "geh": 29.4881
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1911.0000000000002,
+          "geh": 10.2044
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2288.0,
+          "geh": 8.9129
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3717.0,
+          "geh": 20.005
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3600.0,
+          "geh": 0.7187
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3643.9999999999995,
+          "geh": 3.5105
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3564.0,
+          "geh": 21.4159
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3720.9999999999995,
+          "geh": 0.5786
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3627.0,
+          "geh": 5.2556
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2694.0,
+          "geh": 24.0949
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2510.0,
+          "geh": 4.8378
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2524.0,
+          "geh": 11.384
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2561.0,
+          "geh": 31.5544
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2482.0,
+          "geh": 17.4868
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2559.0,
+          "geh": 17.5272
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3250.0,
+          "geh": 25.9984
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3328.0,
+          "geh": 12.1271
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3280.0,
+          "geh": 13.7968
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3096.0,
+          "geh": 24.0442
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3307.0,
+          "geh": 13.3425
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3238.0,
+          "geh": 10.8583
+        }
+      ]
+    },
+    {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/134183728835869882",
+      "geh_pass_fraction": 0.19047619047619047,
+      "n_link_hours": 42,
+      "rmspe": 0.7038768641619806,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.536013153254274,
+      "metrics": {
+        "throughput_veh_h": 2246.5714285714284,
+        "mean_tt_s": 984.4283080554445,
+        "p90_tt_s": 2827.6023469364695,
+        "sigma_v_spatial_ms": 5.28541467503338,
+        "sigma_v_temporal_ms": 4.469705363330293,
+        "vmt_veh_km": 104557.12992990139,
+        "vht_veh_h": 7886.146527777787,
+        "fuel_ml_per_veh_km": 193.53024975974705,
+        "wave_count": 18,
+        "wave_speed_kmh": 7.239977988300964,
+        "wave_amplitude_ms": 13.34843927269157,
+        "n_travel_time_veh": 10890
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 29576,
+        "arrived": 26687,
+        "departed_fraction": 0.8721396555791461,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1164,
+            "fraction": 0.7353126974099811,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2787,
+            "fraction": 0.7881787330316742,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4178,
+            "fraction": 0.827818506043194,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 13 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3229.0,
+          "geh": 8.5282
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1738.0,
+          "geh": 35.9843
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2730.0,
+          "geh": 2.3357
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2514.0,
+          "geh": 14.957
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1592.0,
+          "geh": 29.7097
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2265.0,
+          "geh": 4.916
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1871.0,
+          "geh": 22.6219
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1352.0,
+          "geh": 24.8194
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 1791.0,
+          "geh": 8.1931
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2133.0,
+          "geh": 25.4155
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1767.0,
+          "geh": 22.3297
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2240.0,
+          "geh": 5.8576
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2290.0,
+          "geh": 29.3822
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2003.0000000000002,
+          "geh": 20.1292
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2639.0,
+          "geh": 4.6473
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2352.0,
+          "geh": 27.098
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 1872.0,
+          "geh": 14.6069
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2323.0,
+          "geh": 8.575
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2757.0,
+          "geh": 26.9592
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2197.0,
+          "geh": 12.9504
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2659.0,
+          "geh": 9.867
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2193.0,
+          "geh": 28.7182
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1931.9999999999998,
+          "geh": 9.7275
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2237.0,
+          "geh": 9.9814
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3658.0000000000005,
+          "geh": 20.9674
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3720.9999999999995,
+          "geh": 2.7185
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3658.9999999999995,
+          "geh": 3.2624
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3717.0,
+          "geh": 18.9038
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3604.0,
+          "geh": 1.3547
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3733.0,
+          "geh": 3.5091
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2690.0,
+          "geh": 24.1706
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2576.0,
+          "geh": 3.5298
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2470.0,
+          "geh": 12.4593
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2545.0,
+          "geh": 31.8616
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2549.0,
+          "geh": 16.1635
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2512.0,
+          "geh": 18.4507
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3239.0,
+          "geh": 26.1883
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3389.0,
+          "geh": 11.0783
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3329.0,
+          "geh": 12.9484
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3141.0,
+          "geh": 23.2501
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3402.0,
+          "geh": 11.7089
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3248.0,
+          "geh": 10.6833
+        }
+      ]
+    },
+    {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/2378473973028931053",
+      "geh_pass_fraction": 0.07142857142857142,
+      "n_link_hours": 42,
+      "rmspe": 0.7101178604174881,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.8564426053936485,
+      "metrics": {
+        "throughput_veh_h": 2231.4285714285716,
+        "mean_tt_s": 1012.245645633534,
+        "p90_tt_s": 2926.6713549373662,
+        "sigma_v_spatial_ms": 5.441318571785044,
+        "sigma_v_temporal_ms": 4.546419829599937,
+        "vmt_veh_km": 102595.3525013706,
+        "vht_veh_h": 8029.800972222199,
+        "fuel_ml_per_veh_km": 200.3648672017144,
+        "wave_count": 14,
+        "wave_speed_kmh": 5.148401420959147,
+        "wave_amplitude_ms": 15.016698043952616,
+        "n_travel_time_veh": 10779
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 29328,
+        "arrived": 26459,
+        "departed_fraction": 0.86482661004954,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1085,
+            "fraction": 0.6854074542008844,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2713,
+            "fraction": 0.7672511312217195,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4256,
+            "fraction": 0.8432732316227461,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 14 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3009.0,
+          "geh": 12.4557
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1994.0,
+          "geh": 30.3086
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2431.0,
+          "geh": 8.2178
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2300.0,
+          "geh": 19.2753
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1787.0,
+          "geh": 25.1225
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2079.0,
+          "geh": 8.8999
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1709.0,
+          "geh": 26.3526
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1503.0,
+          "geh": 20.934
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 1614.0,
+          "geh": 12.4607
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 1944.9999999999998,
+          "geh": 29.4622
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1952.0000000000002,
+          "geh": 18.1142
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2018.0,
+          "geh": 10.6565
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2117.0,
+          "geh": 32.9463
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2150.0,
+          "geh": 16.9466
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2369.0,
+          "geh": 10.034
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2175.0,
+          "geh": 30.7139
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 2124.0,
+          "geh": 9.0011
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2128.0,
+          "geh": 12.691
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2556.0,
+          "geh": 30.7645
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2421.0,
+          "geh": 8.3077
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2593.0,
+          "geh": 11.1502
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2077.0,
+          "geh": 31.1494
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1987.9999999999998,
+          "geh": 8.4672
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2245.0,
+          "geh": 9.8131
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3658.0000000000005,
+          "geh": 20.9674
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3684.9999999999995,
+          "geh": 2.127
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3553.0,
+          "geh": 5.0268
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3678.0,
+          "geh": 19.5397
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3648.9999999999995,
+          "geh": 0.6075
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3612.0000000000005,
+          "geh": 5.5048
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2746.0,
+          "geh": 23.1142
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2509.0,
+          "geh": 4.8578
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2405.0,
+          "geh": 13.7679
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2588.0,
+          "geh": 31.0377
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2499.0,
+          "geh": 17.1495
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2485.0,
+          "geh": 18.9846
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3269.0,
+          "geh": 25.6711
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3268.0,
+          "geh": 13.1675
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3296.0,
+          "geh": 13.5191
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3064.0,
+          "geh": 24.6118
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3304.0,
+          "geh": 13.3944
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3315.0,
+          "geh": 9.5169
+        }
+      ]
+    },
+    {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/3747978530954135749",
+      "geh_pass_fraction": 0.21428571428571427,
+      "n_link_hours": 42,
+      "rmspe": 0.690991109305512,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 7.058834403912703,
+      "metrics": {
+        "throughput_veh_h": 2328.571428571429,
+        "mean_tt_s": 962.8171858001984,
+        "p90_tt_s": 2712.6621665064304,
+        "sigma_v_spatial_ms": 5.324198113363215,
+        "sigma_v_temporal_ms": 4.532390995565225,
+        "vmt_veh_km": 107527.27242600935,
+        "vht_veh_h": 7690.650972222201,
+        "fuel_ml_per_veh_km": 185.25158148440158,
+        "wave_count": 15,
+        "wave_speed_kmh": 7.933734939759036,
+        "wave_amplitude_ms": 13.8793824083904,
+        "n_travel_time_veh": 10891
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 30112,
+        "arrived": 27105,
+        "departed_fraction": 0.8879452701108752,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1227,
+            "fraction": 0.7751105495893872,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2727,
+            "fraction": 0.771210407239819,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4181,
+            "fraction": 0.8284129185654845,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 11 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3241.0,
+          "geh": 8.3177
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1977.0,
+          "geh": 30.6768
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 3007.0,
+          "geh": 2.8373
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2663.0,
+          "geh": 12.0459
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1539.0,
+          "geh": 30.9922
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2639.0,
+          "geh": 2.6406
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1987.0,
+          "geh": 20.0302
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1323.0,
+          "geh": 25.5844
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 2031.0000000000002,
+          "geh": 2.7088
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2266.0,
+          "geh": 22.6382
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1766.0,
+          "geh": 22.3529
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2345.0,
+          "geh": 3.6665
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2448.0,
+          "geh": 26.2177
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2102.0,
+          "geh": 17.9753
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2624.0,
+          "geh": 4.9395
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2523.0,
+          "geh": 23.7064
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 1948.0,
+          "geh": 12.8824
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2334.0,
+          "geh": 8.3477
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2933.0,
+          "geh": 23.7188
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2199.0,
+          "geh": 12.908
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2748.0,
+          "geh": 8.1598
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2427.0,
+          "geh": 23.9626
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1854.9999999999998,
+          "geh": 11.488
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2393.0,
+          "geh": 6.7475
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3923.0,
+          "geh": 16.6968
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3625.0,
+          "geh": 1.1346
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3669.9999999999995,
+          "geh": 3.0807
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3883.9999999999995,
+          "geh": 16.2135
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3588.0,
+          "geh": 1.6215
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3728.0,
+          "geh": 3.5909
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2833.0,
+          "geh": 21.4909
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2478.0,
+          "geh": 5.478
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2518.0,
+          "geh": 11.5029
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2728.0,
+          "geh": 28.3917
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2468.0,
+          "geh": 17.7652
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2529.0,
+          "geh": 18.1158
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3397.0,
+          "geh": 23.4866
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3282.0,
+          "geh": 12.924
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3340.0,
+          "geh": 12.7587
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3190.0,
+          "geh": 22.3909
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3250.0,
+          "geh": 14.3329
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3270.0,
+          "geh": 10.2991
+        }
+      ]
+    },
+    {
+      "seed": 677105600768189526,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/677105600768189526",
+      "geh_pass_fraction": 0.09523809523809523,
+      "n_link_hours": 42,
+      "rmspe": 0.6979564451631419,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.642107578836078,
+      "metrics": {
+        "throughput_veh_h": 2281.714285714286,
+        "mean_tt_s": 965.9305757121608,
+        "p90_tt_s": 2763.9285371144615,
+        "sigma_v_spatial_ms": 5.414036650386876,
+        "sigma_v_temporal_ms": 4.565878770757878,
+        "vmt_veh_km": 106633.02102195486,
+        "vht_veh_h": 7762.292222222231,
+        "fuel_ml_per_veh_km": 187.8348486981879,
+        "wave_count": 12,
+        "wave_speed_kmh": 7.364516129032259,
+        "wave_amplitude_ms": 13.804544522210918,
+        "n_travel_time_veh": 10953
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 29914,
+        "arrived": 26981,
+        "departed_fraction": 0.8821066289219155,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1204,
+            "fraction": 0.7605811749842072,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2662,
+            "fraction": 0.7528280542986425,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4167,
+            "fraction": 0.8256389934614623,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 12 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3310.0,
+          "geh": 7.114
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 2149.0,
+          "geh": 27.0051
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2653.0,
+          "geh": 3.8195
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2677.0,
+          "geh": 11.7762
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1834.0000000000002,
+          "geh": 24.0464
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2224.0,
+          "geh": 5.7804
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1957.0000000000002,
+          "geh": 20.6943
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1580.0,
+          "geh": 19.0128
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 1727.0,
+          "geh": 9.7131
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2286.0,
+          "geh": 22.2264
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1994.0,
+          "geh": 17.1809
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2087.0,
+          "geh": 9.1398
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2461.0,
+          "geh": 25.961
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2234.0,
+          "geh": 15.17
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2442.0,
+          "geh": 8.5503
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2473.0,
+          "geh": 24.6881
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 2111.0,
+          "geh": 9.2826
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2157.0,
+          "geh": 12.0683
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2887.0,
+          "geh": 24.5577
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2356.0,
+          "geh": 9.6337
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2603.0,
+          "geh": 10.9548
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2328.0,
+          "geh": 25.951
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 2044.0000000000002,
+          "geh": 7.2233
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2172.0,
+          "geh": 11.3596
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3855.0,
+          "geh": 17.78
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3725.0000000000005,
+          "geh": 2.7841
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3519.0,
+          "geh": 5.5982
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3789.0,
+          "geh": 17.7374
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3706.0,
+          "geh": 0.3324
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3518.0,
+          "geh": 7.0776
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2810.0,
+          "geh": 21.918
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2578.0,
+          "geh": 3.4905
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2473.0,
+          "geh": 12.3993
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2635.0,
+          "geh": 30.1432
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2558.0,
+          "geh": 15.9869
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2471.0,
+          "geh": 19.2624
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3337.0,
+          "geh": 24.5062
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3327.0,
+          "geh": 12.1444
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3281.0,
+          "geh": 13.7794
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3129.0,
+          "geh": 23.4614
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3410.0,
+          "geh": 11.5723
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3215.0,
+          "geh": 11.2619
+        }
+      ]
+    },
+    {
+      "seed": 661281422688282993,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/661281422688282993",
+      "geh_pass_fraction": 0.23809523809523808,
+      "n_link_hours": 42,
+      "rmspe": 0.6965123241402279,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.774806111314402,
+      "metrics": {
+        "throughput_veh_h": 2304.857142857143,
+        "mean_tt_s": 982.3356614921547,
+        "p90_tt_s": 2867.3435864078997,
+        "sigma_v_spatial_ms": 5.379656979628186,
+        "sigma_v_temporal_ms": 4.561348804931361,
+        "vmt_veh_km": 106804.08473447613,
+        "vht_veh_h": 7747.360000000005,
+        "fuel_ml_per_veh_km": 186.87794437707365,
+        "wave_count": 16,
+        "wave_speed_kmh": 5.477070393374741,
+        "wave_amplitude_ms": 13.706834789557949,
+        "n_travel_time_veh": 10956
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 29869,
+        "arrived": 26978,
+        "departed_fraction": 0.8807796650153338,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1198,
+            "fraction": 0.7567909033480733,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2773,
+            "fraction": 0.7842194570135747,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4122,
+            "fraction": 0.8167228056271052,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 12 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3265.0,
+          "geh": 7.8976
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1893.0000000000002,
+          "geh": 32.514
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2826.0,
+          "geh": 0.5144
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2567.0,
+          "geh": 13.9128
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1638.0,
+          "geh": 28.6093
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2331.0,
+          "geh": 3.5402
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1852.0000000000002,
+          "geh": 23.0526
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1399.0,
+          "geh": 23.5927
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 1979.0,
+          "geh": 3.8695
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2234.0,
+          "geh": 23.3002
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1831.0,
+          "geh": 20.8516
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2338.0,
+          "geh": 3.8111
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2379.0,
+          "geh": 27.5894
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2035.0,
+          "geh": 19.4282
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2745.0,
+          "geh": 2.6051
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2374.0,
+          "geh": 26.6562
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 1964.0,
+          "geh": 12.5232
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2395.0,
+          "geh": 7.096
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2773.0,
+          "geh": 26.6612
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2286.0,
+          "geh": 11.0809
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2763.0,
+          "geh": 7.8746
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2277.0,
+          "geh": 26.9887
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1971.0,
+          "geh": 8.848
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2316.0,
+          "geh": 8.331
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3745.0000000000005,
+          "geh": 19.5507
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3738.0,
+          "geh": 2.9968
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3689.9999999999995,
+          "geh": 2.7511
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3727.0,
+          "geh": 18.7412
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3713.0,
+          "geh": 0.4474
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3655.0,
+          "geh": 4.7919
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2727.0,
+          "geh": 23.4716
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2537.0,
+          "geh": 4.3007
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2541.0,
+          "geh": 11.0476
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2600.0,
+          "geh": 30.8087
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2572.0,
+          "geh": 15.7127
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2509.0,
+          "geh": 18.5099
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3324.0,
+          "geh": 24.7281
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3341.0,
+          "geh": 11.9029
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3333.0,
+          "geh": 12.8794
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3101.0,
+          "geh": 23.9557
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3384.0,
+          "geh": 12.0168
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3315.0,
+          "geh": 9.5169
+        }
+      ]
+    },
+    {
+      "seed": 3011106312394044631,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/3011106312394044631",
+      "geh_pass_fraction": 0.19047619047619047,
+      "n_link_hours": 42,
+      "rmspe": 0.6759154533172049,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.6559431737493115,
+      "metrics": {
+        "throughput_veh_h": 2368.5714285714284,
+        "mean_tt_s": 902.2850771774232,
+        "p90_tt_s": 2552.36969092777,
+        "sigma_v_spatial_ms": 5.479459108247223,
+        "sigma_v_temporal_ms": 4.645001996201167,
+        "vmt_veh_km": 112162.33719510231,
+        "vht_veh_h": 7399.391666666669,
+        "fuel_ml_per_veh_km": 175.01720279552288,
+        "wave_count": 22,
+        "wave_speed_kmh": 6.671062271062271,
+        "wave_amplitude_ms": 12.698848341549995,
+        "n_travel_time_veh": 11119
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 30884,
+        "arrived": 27943,
+        "departed_fraction": 0.9107100731304553,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1303,
+            "fraction": 0.8231206569804169,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2744,
+            "fraction": 0.7760180995475113,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4183,
+            "fraction": 0.8288091935803448,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 9 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3406.0,
+          "geh": 5.4591
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 2217.0,
+          "geh": 25.5854
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 3306.0,
+          "geh": 8.1555
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2711.0,
+          "geh": 11.1239
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1949.9999999999998,
+          "geh": 21.4366
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2780.0,
+          "geh": 5.348
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 2044.0000000000002,
+          "geh": 18.7797
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1622.0,
+          "geh": 17.9811
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 2227.0,
+          "geh": 1.5399
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2312.0,
+          "geh": 21.6933
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 2118.0,
+          "geh": 14.4738
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2555.0,
+          "geh": 0.5765
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2515.0,
+          "geh": 24.9006
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2404.0,
+          "geh": 11.6628
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2893.0,
+          "geh": 0.1824
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2544.0,
+          "geh": 23.2965
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 2183.0,
+          "geh": 7.7333
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2512.0,
+          "geh": 4.7369
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 3009.0,
+          "geh": 22.3447
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2442.0,
+          "geh": 7.8828
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2850.0,
+          "geh": 6.235
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2419.0,
+          "geh": 24.122
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 2173.0,
+          "geh": 4.4178
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2226.0,
+          "geh": 10.2134
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3871.0,
+          "geh": 17.5244
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3878.0000000000005,
+          "geh": 5.2647
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3641.0,
+          "geh": 3.5602
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3846.0,
+          "geh": 16.821
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3863.0000000000005,
+          "geh": 2.8845
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3585.0,
+          "geh": 5.9545
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2783.0,
+          "geh": 22.4212
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2654.0,
+          "geh": 2.0049
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2494.0,
+          "geh": 11.9801
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2687.0,
+          "geh": 29.1609
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2631.0,
+          "geh": 14.5646
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2515.0,
+          "geh": 18.3915
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3427.0,
+          "geh": 22.9796
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3432.0,
+          "geh": 10.3441
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3298.0,
+          "geh": 13.4845
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3206.0,
+          "geh": 22.1115
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3472.0,
+          "geh": 10.5186
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3196.0,
+          "geh": 11.5963
+        }
+      ]
+    },
+    {
+      "seed": 6953598295321596746,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/6953598295321596746",
+      "geh_pass_fraction": 0.19047619047619047,
+      "n_link_hours": 42,
+      "rmspe": 0.6917885928781814,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.349787195750029,
+      "metrics": {
+        "throughput_veh_h": 2322.5714285714284,
+        "mean_tt_s": 946.7365800852863,
+        "p90_tt_s": 2701.581422937422,
+        "sigma_v_spatial_ms": 5.52566038134233,
+        "sigma_v_temporal_ms": 4.601282807971297,
+        "vmt_veh_km": 107873.78365030092,
+        "vht_veh_h": 7640.151805555588,
+        "fuel_ml_per_veh_km": 184.36696985567522,
+        "wave_count": 15,
+        "wave_speed_kmh": 5.541176470588235,
+        "wave_amplitude_ms": 13.92619480345494,
+        "n_travel_time_veh": 11111
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 30131,
+        "arrived": 27369,
+        "departed_fraction": 0.8885055437603209,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1216,
+            "fraction": 0.7681617182564751,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2781,
+            "fraction": 0.7864819004524887,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4198,
+            "fraction": 0.8317812561917971,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 11 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3402.0,
+          "geh": 5.5276
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1913.9999999999998,
+          "geh": 32.0519
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2858.0,
+          "geh": 0.0859
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2749.0,
+          "geh": 10.3993
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1598.0,
+          "geh": 29.5655
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2570.0,
+          "geh": 1.2887
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 2005.9999999999998,
+          "geh": 19.6117
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1329.0,
+          "geh": 25.4256
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 2020.0,
+          "geh": 2.9531
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2286.0,
+          "geh": 22.2264
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1808.0,
+          "geh": 21.3803
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2374.0,
+          "geh": 3.0698
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2439.0,
+          "geh": 26.3957
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2174.0,
+          "geh": 16.436
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2605.0,
+          "geh": 5.3107
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2452.0,
+          "geh": 25.1029
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 2023.0,
+          "geh": 11.2097
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2346.0,
+          "geh": 8.1003
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2844.0,
+          "geh": 25.347
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2342.0,
+          "geh": 9.9216
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2739.0,
+          "geh": 8.3312
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2356.0,
+          "geh": 25.3852
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 2004.0,
+          "geh": 8.1102
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2299.0,
+          "geh": 8.6839
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3858.9999999999995,
+          "geh": 17.7161
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3648.0000000000005,
+          "geh": 1.516
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3664.9999999999995,
+          "geh": 3.1632
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3769.0,
+          "geh": 18.0604
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3656.0,
+          "geh": 0.4917
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3687.0,
+          "geh": 4.264
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2782.0,
+          "geh": 22.4399
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2477.0,
+          "geh": 5.498
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2532.0,
+          "geh": 11.2256
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2621.0,
+          "geh": 30.409
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2518.0,
+          "geh": 16.7738
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2538.0,
+          "geh": 17.9389
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3322.0,
+          "geh": 24.7623
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3369.0,
+          "geh": 11.4212
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3374.0,
+          "geh": 12.1743
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3263.0,
+          "geh": 21.1213
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3323.0,
+          "geh": 13.0658
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3281.0,
+          "geh": 10.1074
+        }
+      ]
+    },
+    {
+      "seed": 165503670820534583,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/165503670820534583",
+      "geh_pass_fraction": 0.09523809523809523,
+      "n_link_hours": 42,
+      "rmspe": 0.7046061710369208,
+      "n_speed_cells": 588,
+      "criterion_wave_speed_kmh": 6.386937028271351,
+      "metrics": {
+        "throughput_veh_h": 2255.714285714286,
+        "mean_tt_s": 988.824017356361,
+        "p90_tt_s": 2807.413572157921,
+        "sigma_v_spatial_ms": 5.442070475061372,
+        "sigma_v_temporal_ms": 4.561387838499729,
+        "vmt_veh_km": 103817.4066494423,
+        "vht_veh_h": 7947.101250000004,
+        "fuel_ml_per_veh_km": 196.37679690973698,
+        "wave_count": 12,
+        "wave_speed_kmh": 4.291353383458647,
+        "wave_amplitude_ms": 14.75222303218046,
+        "n_travel_time_veh": 10933
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 29217,
+        "arrived": 26472,
+        "departed_fraction": 0.8615534324133051,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 1112,
+            "fraction": 0.7024636765634871,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1562,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 1287,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 995,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1749,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 5971,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 2733,
+            "fraction": 0.7729072398190046,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 4110,
+            "fraction": 0.8143451555379433,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 14 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3325.0,
+          "geh": 6.8539
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1638.0,
+          "geh": 38.2811
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 2412.0,
+          "geh": 8.6029
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2594.0,
+          "geh": 13.3846
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1513.0,
+          "geh": 31.6272
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 2088.0,
+          "geh": 8.7033
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 1866.0,
+          "geh": 22.7351
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1355.0,
+          "geh": 24.7406
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 1645.0,
+          "geh": 11.6986
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2204.0,
+          "geh": 23.9244
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1774.0,
+          "geh": 22.1669
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 2033.0,
+          "geh": 10.3248
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2355.0,
+          "geh": 28.0702
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 2058.0,
+          "geh": 18.9272
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 2488.0,
+          "geh": 7.6259
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2366.0,
+          "geh": 26.8167
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 2035.0,
+          "geh": 10.9447
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 2172.0,
+          "geh": 11.7477
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 2741.0,
+          "geh": 27.2579
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 2273.0,
+          "geh": 11.3519
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 2643.0,
+          "geh": 10.1767
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2208.0,
+          "geh": 28.4074
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1930.0,
+          "geh": 9.7728
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 2269.0,
+          "geh": 9.3097
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3821.0,
+          "geh": 18.3249
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 3636.0,
+          "geh": 1.3172
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 3625.0,
+          "geh": 3.8256
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3794.0,
+          "geh": 17.6568
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 3602.9999999999995,
+          "geh": 1.3714
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 3643.0000000000005,
+          "geh": 4.9904
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2787.0,
+          "geh": 22.3465
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 2501.0,
+          "geh": 5.0175
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 2475.0,
+          "geh": 12.3593
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2643.0,
+          "geh": 29.9916
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 2495.0,
+          "geh": 17.2288
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 2520.0,
+          "geh": 18.2929
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3302.0,
+          "geh": 25.1045
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 3298.0,
+          "geh": 12.6463
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 3327.0,
+          "geh": 12.9829
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3199.0,
+          "geh": 22.2337
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 3264.0,
+          "geh": 14.0889
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 3327.0,
+          "geh": 9.3092
+        }
+      ]
+    },
+    {
+      "seed": 6134032994440706937,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/6134032994440706937",
+      "geh_pass_fraction": 0.023809523809523808,
+      "n_link_hours": 42,
+      "rmspe": 0.748675761518067,
+      "n_speed_cells": 556,
+      "criterion_wave_speed_kmh": 6.0274241400115,
+      "metrics": {
+        "throughput_veh_h": 1486.0,
+        "mean_tt_s": 523.1923568365786,
+        "p90_tt_s": 1627.65788088854,
+        "sigma_v_spatial_ms": 4.541034572369,
+        "sigma_v_temporal_ms": 3.879487424080005,
+        "vmt_veh_km": 73913.24845261767,
+        "vht_veh_h": 8798.975694444447,
+        "fuel_ml_per_veh_km": 299.7659153834115,
+        "wave_count": 21,
+        "wave_speed_kmh": 11.433657730444363,
+        "wave_amplitude_ms": 14.597078108323187,
+        "n_travel_time_veh": 9547
+      },
+      "insertion": {
+        "planned": 33912,
+        "departed": 25393,
+        "arrived": 21201,
+        "departed_fraction": 0.7487909884406699,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 1583,
+            "departed": 885,
+            "fraction": 0.5590650663297536,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 1562,
+            "departed": 1162,
+            "fraction": 0.7439180537772087,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 1287,
+            "departed": 929,
+            "fraction": 0.7218337218337219,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 995,
+            "departed": 742,
+            "fraction": 0.7457286432160805,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 1749,
+            "departed": 1337,
+            "fraction": 0.7644368210405946,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 5971,
+            "departed": 4344,
+            "fraction": 0.7275163289231285,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 3536,
+            "departed": 3196,
+            "fraction": 0.9038461538461539,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 5047,
+            "departed": 5027,
+            "fraction": 0.9960372498513969,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 25 % of planned vehicles never departed"
+      },
+      "link_hours": [
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3732.1351410934744,
+          "sim_veh_h": 3547.0,
+          "geh": 3.0688
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3596.4074074074083,
+          "sim_veh_h": 1819.0000000000002,
+          "geh": 34.1575
+        },
+        {
+          "station": "S1063",
+          "x_ref_m": 1089.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2853.412037037037,
+          "sim_veh_h": 18.0,
+          "geh": 74.8313
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3321.95061728395,
+          "sim_veh_h": 2878.0,
+          "geh": 7.9736
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3018.444444444445,
+          "sim_veh_h": 1398.0,
+          "geh": 34.4836
+        },
+        {
+          "station": "S1064",
+          "x_ref_m": 2305.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2505.0833333333335,
+          "sim_veh_h": 6.0,
+          "geh": 70.5286
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 2985.7777777777774,
+          "sim_veh_h": 2087.0,
+          "geh": 17.8461
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2431.4999999999995,
+          "sim_veh_h": 1138.0,
+          "geh": 30.6181
+        },
+        {
+          "station": "S1065",
+          "x_ref_m": 3467.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2154.9228395061727,
+          "sim_veh_h": 3.0,
+          "geh": 65.5124
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3479.3456790123455,
+          "sim_veh_h": 2389.0,
+          "geh": 20.129
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2838.537037037037,
+          "sim_veh_h": 1433.0,
+          "geh": 30.4134
+        },
+        {
+          "station": "S1066",
+          "x_ref_m": 4060.4,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2525.944444444445,
+          "sim_veh_h": 0.0,
+          "geh": 71.0766
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3928.351851851852,
+          "sim_veh_h": 2625.0,
+          "geh": 22.7691
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3010.851851851852,
+          "sim_veh_h": 1438.0,
+          "geh": 33.3487
+        },
+        {
+          "station": "S1067",
+          "x_ref_m": 4970.1,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2883.1975308641977,
+          "sim_veh_h": 0.0,
+          "geh": 75.9368
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3862.5185185185187,
+          "sim_veh_h": 2639.0,
+          "geh": 21.4594
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2559.58024691358,
+          "sim_veh_h": 1372.0,
+          "geh": 26.7852
+        },
+        {
+          "station": "S1068",
+          "x_ref_m": 5580.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2755.0864197530864,
+          "sim_veh_h": 0.0,
+          "geh": 74.2305
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4365.864197530864,
+          "sim_veh_h": 3011.0,
+          "geh": 22.3087
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2847.385802469136,
+          "sim_veh_h": 1579.0,
+          "geh": 26.9614
+        },
+        {
+          "station": "S1947",
+          "x_ref_m": 6074.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3192.7160493827155,
+          "sim_veh_h": 0.0,
+          "geh": 79.9089
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 3759.7530864197524,
+          "sim_veh_h": 2557.0,
+          "geh": 21.4015
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2383.8765432098767,
+          "sim_veh_h": 1188.0,
+          "geh": 28.2978
+        },
+        {
+          "station": "S1069",
+          "x_ref_m": 6683.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 2734.6543209876545,
+          "sim_veh_h": 0.0,
+          "geh": 73.9548
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 5040.7971781305105,
+          "sim_veh_h": 3972.0,
+          "geh": 15.9214
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3557.0066137566137,
+          "sim_veh_h": 2273.0,
+          "geh": 23.782
+        },
+        {
+          "station": "S1070",
+          "x_ref_m": 7674.6,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3859.0185185185182,
+          "sim_veh_h": 0.0,
+          "geh": 87.8524
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4962.3059964726635,
+          "sim_veh_h": 3913.0,
+          "geh": 15.7516
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3685.7901234567903,
+          "sim_veh_h": 2005.0,
+          "geh": 31.5095
+        },
+        {
+          "station": "S1948",
+          "x_ref_m": 8400.9,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3950.5,
+          "sim_veh_h": 0.0,
+          "geh": 88.8876
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4098.148148148149,
+          "sim_veh_h": 2844.0,
+          "geh": 21.2871
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 2758.296296296296,
+          "sim_veh_h": 1406.0,
+          "geh": 29.6358
+        },
+        {
+          "station": "S792",
+          "x_ref_m": 8977.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3129.240740740741,
+          "sim_veh_h": 0.0,
+          "geh": 79.1106
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4426.058641975309,
+          "sim_veh_h": 2626.0,
+          "geh": 30.314
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 3432.9797178130507,
+          "sim_veh_h": 1572.0,
+          "geh": 37.2011
+        },
+        {
+          "station": "S791",
+          "x_ref_m": 9716.3,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3525.759259259259,
+          "sim_veh_h": 0.0,
+          "geh": 83.9733
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4910.719135802469,
+          "sim_veh_h": 3368.0,
+          "geh": 23.9784
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4065.333333333334,
+          "sim_veh_h": 2570.0,
+          "geh": 25.961
+        },
+        {
+          "station": "S790",
+          "x_ref_m": 10128.0,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 4119.1790123456785,
+          "sim_veh_h": 1152.0,
+          "geh": 57.7969
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 3600.0,
+          "clock": "06:30",
+          "obs_veh_h": 4586.172839506173,
+          "sim_veh_h": 3235.0,
+          "geh": 21.6068
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 7200.0,
+          "clock": "07:30",
+          "obs_veh_h": 4120.074074074074,
+          "sim_veh_h": 2918.0,
+          "geh": 20.2637
+        },
+        {
+          "station": "S97",
+          "x_ref_m": 11071.8,
+          "window_start_s": 10800.0,
+          "clock": "08:30",
+          "obs_veh_h": 3886.055555555556,
+          "sim_veh_h": 2143.0,
+          "geh": 31.7469
+        }
+      ]
+    }
+  ],
+  "ring": null,
+  "notes": [
+    "Observed comparisons cover only the artifact's stations and windows; a station-window the detector did not measure is skipped, never imputed.",
+    "The run's configured warm-up is discarded from every metric and from every observed comparison.",
+    "The wave_speed row is measured with the profile's own detector on its own bins; validation.metrics.wave_speed_kmh in metrics_ci is the standard detector's separate diagnostic.",
+    "The insertion block counts the vehicles the runs actually put on the network against their demand plan; a mean departed fraction well under 1 means the metrics above describe less demand than was configured.",
+    "The weave_exits block counts, per weaving section, the exit-bound vehicles given up at the gore's end and rerouted through; the exit's link flow is short by missed_exit.n and every mainline link downstream carries them, so the geh rows are wrong by that count on those links (flagged above threshold_share of reached exiters).",
+    "Ring rows not evaluated (--ring-seeds 0); reported as failing per CLAUDE.md \u00a70.1."
+  ],
+  "report_path": "docs/reports/mndot_i94_wb_stpaul_weave_seed5/report.md"
+}
