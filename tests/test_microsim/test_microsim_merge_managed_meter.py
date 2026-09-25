@@ -6,6 +6,7 @@ import importlib.util
 import json
 import math
 from collections import deque
+from itertools import pairwise
 from pathlib import Path
 from typing import ClassVar
 
@@ -887,6 +888,8 @@ class TestWeaveSchema:
             "exit_prepare": 0.0,
             # WP-64: the swap (docs/WEAVE_MODEL_PLAN.md, dated section)
             "swap_pairs": 0.0,
+            # WP-67: the crossings spread (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "spread_crossings": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2175,6 +2178,15 @@ def _weave_state(**params) -> dict:
         "swap_full": 0,
         "swap_half": 0,
         "swap_none": 0,
+        # WP-67: the crossings spread (meta) and its state
+        "handover": {},
+        "onset": {},
+        "n_onsets": 0,
+        "n_handovers": 0,
+        "n_spread_withheld": 0,
+        "n_spread_opposing": 0,
+        "n_spread_unanticipated": 0,
+        "spread_released": set(),
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -5047,6 +5059,175 @@ class TestWeaveSwap:
         assert meta_on["n_collisions"] == 0
 
 
+class TestWeaveSpread:
+    """The crossings spread (2026-09-25, block 3, WP-67; ``spread_crossings``,
+    ``_weave_spread_length``, ``_weave_spread_fraction``,
+    ``_weave_handover_step``): each crossing is withheld until the vehicle
+    reaches its place in the stretch in which waiting costs it nothing, a
+    vehicle whose crossing would be withheld is taken under the weave's
+    lane-change mode on the step before it can reach the section, and an
+    entrant's accepted change is never commanded beside an opposing entry
+    into lane 1. Measured and left off (docs/WEAVE_MODEL_PLAN.md, dated
+    section)."""
+
+    @staticmethod
+    def _state(**params) -> dict:
+        """The fake section with an approach edge ``p`` (its lanes 0 / 1 feed
+        section lanes 1 / 2) and a ramp ``r`` feeding lane 0, both ending at
+        the section start."""
+        ws = _weave_state(**params)
+        ws["x_offset"].update({"p": -100.0, "r": -50.0})
+        ws["lane_map"].update({("p", 0): 1, ("p", 1): 2, ("r", 0): 0})
+        ws["ramp_edges"] = frozenset({"r"})
+        return ws
+
+    def test_off_by_default(self):
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["spread_crossings"] == 0.0
+        ws = self._state()
+        veh = _WeaveVehicle({"e": 5.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, {"e": _res("p", 0, 97.5, 5.0)}, 0.0)
+        assert veh.calls == [] and ws["handover"] == {} and ws["onset"] == {}
+
+    def test_the_spread_length(self):
+        """``D = max(min(L − s_b, L − zone) − w, 0)``: at the corridor fleet's
+        population means (``artifacts/idm_i24_capacity.json``) on the 304.9 m
+        T.H.52 section at 24.59 m/s, 212.2 m at 5 m/s, 193.2 at 10, 135.2 at
+        15, 59.3 at 18 and none from 20 m/s — the lane-end term binds from
+        about 15 m/s, the forced zone below; at or above ``v0``, none."""
+        from microsim.runner import _weave_spread_length
+
+        p = {"T": 1.3221695251256709, "a": 1.054909533427964, "b": 1.702873868555271}
+        p["s0"] = 2.532705588124531
+        for v, d in ((5.0, 212.2), (10.0, 193.2), (15.0, 135.2), (18.0, 59.3), (20.0, 0.0)):
+            assert _weave_spread_length(304.9, 80.0, v, 24.59, p, 0.6) == pytest.approx(d, abs=0.05)
+        assert _weave_spread_length(304.9, 80.0, 24.59, 24.59, p, 0.6) == 0.0
+        # the closed form by hand at 5 m/s: s* = 2.53 + 6.61 + 25 / (2 sqrt(a b))
+        s_star = p["s0"] + 5.0 * p["T"] + 25.0 / (2.0 * math.sqrt(p["a"] * p["b"]))
+        s_b = s_star / math.sqrt(1.0 - (5.0 / 24.59) ** 4)
+        w = 5.0 * math.sqrt(2.0 * (p["s0"] + 3.0) / p["b"])
+        assert _weave_spread_length(304.9, 80.0, 5.0, 24.59, p, 0.6) == pytest.approx(
+            min(304.9 - s_b, 304.9 - 80.0) - w
+        )
+
+    def test_the_places_are_the_golden_ratio_sequence(self):
+        """``frac(n · φ)``: 0, 0.618, 0.236, 0.854, …; the first n places
+        split the unit interval into gaps of at most three lengths."""
+        from microsim.runner import _weave_spread_fraction
+
+        assert [_weave_spread_fraction(n) for n in range(4)] == pytest.approx(
+            [0.0, 0.6180340, 0.2360680, 0.8541020], abs=1e-6
+        )
+        for n in range(2, 40):
+            pts = sorted([_weave_spread_fraction(k) for k in range(n)] + [1.0])
+            gaps = {round(b - a, 9) for a, b in pairwise(pts)}
+            assert len(gaps) <= 3, (n, gaps)
+
+    def test_an_exiter_is_taken_before_the_section_and_withheld_to_its_place(self):
+        """An exiter on the approach within two steps' travel of the section
+        at 5 m/s (the spread length 107.2 m on the fake's 200 m section) is
+        set to mode 512 before it arrives, its own mode kept; on the section
+        its crossing is withheld short of 0.618 · 107.2 = 66.2 m even with
+        the auxiliary lane empty, requested past it, and the mode it had is
+        restored at hand-back."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_meta, _weave_step
+
+        ws = self._state(spread_crossings=1.0)
+        ws["n_onsets"] = 1  # the second vehicle taken: place 0.618
+        veh = _WeaveVehicle({"e": 5.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("p", 0, 97.5, 5.0)}, 0.0)
+        assert veh.calls == [("lc", "e", LC_MODE_SCRIPTED_SAFE)]
+        assert ws["handover"] == {"e": 1621} and ws["n_handovers"] == 1
+        assert ws["onset"]["e"] == pytest.approx(0.6180340)
+        # arrived in lane 1, 2 m in: driven, its crossing withheld
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 2.0, 5.0)}, 0.5)
+        assert [c for c in veh.calls if c[0] == "change"] == []
+        assert ws["veh"]["e"]["lc_mode_orig"] == 1621 and ws["handover"] == {}
+        assert ws["n_spread_withheld"] == 1
+        # 65 m in: still short of its place; 67 m in: released, the change requested
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 65.0, 5.0)}, 1.0)
+        assert [c for c in veh.calls if c[0] == "change"] == [] and ws["n_spread_withheld"] == 2
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 67.0, 5.0)}, 1.5)
+        assert [c for c in veh.calls if c[0] == "change"] == [("change", "e", 0, 0.5)]
+        assert "e" in ws["spread_released"]
+        # in lane 0: handed back with the mode it had before the section
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"e": _res("a", 0, 70.0, 5.0)}, 2.0)
+        assert ("lc", "e", 1621) in veh.calls and not ws["veh"]
+        assert (ws["n_changed_out"], ws["onset"], ws["spread_released"]) == (1, {}, set())
+        assert _weave_meta(ws, {})["n_spread_withheld"] == 2
+
+    def test_nothing_is_withheld_or_taken_in_free_flow(self):
+        """At 25 m/s the fake section has no stretch in which waiting costs
+        nothing (the vehicle's own lane-end braking starts beyond its start):
+        the exiter keeps its own mode for SUMO's change in the step it
+        arrives, and on the section its change is requested at once."""
+        from microsim.runner import _weave_step
+
+        ws = self._state(spread_crossings=1.0)
+        ws["n_onsets"] = 1
+        veh = _WeaveVehicle({"e": 25.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("p", 0, 97.5, 25.0)}, 0.0)
+        assert veh.calls == [] and ws["handover"] == {}
+        _weave_step(mod, _tc, ws, {"e": _res("a", 1, 10.0, 25.0)}, 0.5)
+        assert ("change", "e", 0, 0.5) in veh.calls and ws["n_spread_withheld"] == 0
+
+    def test_a_withheld_entrant_is_not_anticipated_on_the_ramp(self):
+        """An entrant on the ramp at 5 m/s whose crossing will be withheld
+        chooses no gap there and holds nobody (a lane-1 vehicle beside the
+        section start), and is taken under mode 512 within two steps' travel
+        of it; without the rule it is anticipated."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        res = {"n": _res("r", 0, 47.5, 5.0), "t": _res("p", 0, 90.0, 20.0)}
+        ws = self._state(spread_crossings=1.0)
+        ws["n_onsets"] = 1
+        veh = _WeaveVehicle({"n": 5.0, "t": 20.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert veh.calls == [("lc", "n", LC_MODE_SCRIPTED_SAFE)]
+        assert ws["pre"] == {} and ws["n_spread_unanticipated"] == 1
+        ws = self._state()
+        veh = _WeaveVehicle({"n": 5.0, "t": 20.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert ws["pre"] == {"n": "t"} and ("slow", "t") in [c[:2] for c in veh.calls]
+
+    def test_no_entrant_change_beside_an_opposing_entry_into_lane_1(self):
+        """Under the rule a released entrant's accepted change is refused
+        while a lane-2 vehicle ahead of it would fail the forced guard in
+        lane 1 (WP-64's guard); without the rule the same change is made."""
+        from microsim.runner import _weave_step
+
+        res = {"n": _res("a", 0, 50.0, 5.0), "v": _res("a", 2, 53.0, 5.0)}
+        ws = self._state(spread_crossings=1.0)  # the first place: 0, released at once
+        veh = _WeaveVehicle({"n": 5.0, "v": 5.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "change"] == []
+        assert ws["n_spread_opposing"] == 1 and ws["n_spread_withheld"] == 0
+        ws = self._state()
+        veh = _WeaveVehicle({"n": 5.0, "v": 5.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert ("change", "n", 1, 0.5) in veh.calls
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the rule withholds crossings and nothing
+        collides; at the default it is inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"spread_crossings": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_spread_withheld"] == 0
+        assert meta_on["weave_sections"][0]["n_spread_withheld"] > 0
+        assert meta_on["n_collisions"] == 0
+
+
 class TestWeaveVacateGapConditioned:
     """The vacate rule re-derived so that it never asks the target lane to
     brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
@@ -5527,6 +5708,7 @@ class TestWeaveReviewDerivations3To6:
             "n_anticipation_gated": 0,
             "n_exit_prepared": 0,
             "n_swaps": 0,
+            "n_spread_withheld": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

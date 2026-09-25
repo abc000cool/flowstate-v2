@@ -221,6 +221,10 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # in one step, each into the lane the other leaves; see the key's
     # paragraph in the docstring below. A switch, not a fitted value.
     "swap_pairs": 0.0,
+    # WP-67 (2026-09-25, block 3): the crossings spread along the section —
+    # a switch; the onset positions are derived from the section's geometry
+    # (its unforced length less one cooperative gap opening), not fitted
+    "spread_crossings": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -592,7 +596,34 @@ refused on the offset (overlapping or nearer than the forced guard, a median
 where no exchange is possible until one of them drops back, and the form that
 commands that drop reads worse; on the 29-run fixture grid the entrances fall 5,944 → 5,903 and the T.H.52
 capacity fixture's no-lock pin fails at seeds 3 and 5 (3 and 6 exits missed).
-A switch, not a fitted value."""
+A switch, not a fitted value. ``spread_crossings`` (2026-09-25, block 3,
+WP-67, the crossings spread): ``1`` withholds each crossing — an entrant's
+out of the auxiliary lane, an exiter's into it — until the vehicle reaches
+its place in the spread, ``frac(n · φ)`` (the golden ratio's conjugate, by
+the order the vehicles are taken) of the stretch in which waiting costs it
+nothing: the section less the larger of the forced zone and the distance
+from which its own IDM brakes for the end of its lane, less one cooperative
+gap opening, all at its current speed (``microsim.runner._weave_spread_length``;
+0 in free flow on the 305 m T.H.52 section, 212 m at 5 m/s). A vehicle whose
+crossing is withheld is taken under the weave's lane-change mode on the step
+before it can reach the section, so SUMO's own model cannot make the change
+in the step it arrives (``_weave_handover_step``); an entrant whose crossing
+is withheld is not anticipated on the ramp; and under the rule an entrant's
+accepted change is never commanded beside an opposing entry into lane 1
+(WP-64's guard). Withheld vehicle-steps are counted in ``n_spread_withheld``.
+The default is **0** (off, hash-neutral unless set): on the corridor section
+test's fixture (``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5;
+docs/WEAVE_MODEL_PLAN.md, dated section WP-67) it moves the crossings out of
+the section's first 50 m (entrants 8 / 23 / 8 % there against 75 / 77 / 78 %,
+exiters 7 / 16 / 7 % against 55 / 50 / 49 %) and the entry's lanes 0 and 1
+hold 1.64 / 1.69 / 1.75 lanes' worth against 1.13 / 1.14 / 1.18, but the
+section breaks down in its second half instead, the exit end's lanes read at
+or below 20 m/s in 12 / 12 / 13 of 16 windows against 10 / 11 / 13, and
+11 / 21 / 14 driven vehicles are unfinished against 1 / 6 / 8; on the
+29-run fixture grid the entrances rise 5,944 → 6,060 but exits fall
+5,988 → 5,860, unfinished rise 45 → 208 and the T.H.52 capacity fixture's
+no-lock pin fails at seed 4 (lane 1 at the section start 2.0 m/s). A switch,
+not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

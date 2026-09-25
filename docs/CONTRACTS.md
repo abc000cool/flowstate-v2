@@ -455,11 +455,11 @@ exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
 n_entrant_yields, n_entry_bounded, n_hold_releases, n_anticipation_gated,
-n_exit_prepared, n_swaps, n_forced_deferred, n_cooperations,
-mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
-n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
-n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 40 keys (`n_giveup_waited` added by
+n_exit_prepared, n_swaps, n_spread_withheld, n_forced_deferred,
+n_cooperations, mean_follower_decel_ms2, n_changer_eased, n_vacated,
+n_vacate_refused, n_vacate_skipped_no_gap, n_vacate_requests,
+n_pair_releases, n_unfinished, n_exited, n_reached_section_exiting,
+n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 41 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
@@ -477,7 +477,9 @@ move, the vehicles bound for the paired exit that the rule moved into the
 lane feeding section lane 1 before the section, each once; `n_swaps` added
 by WP-64, the swap, the pairs of a driven entrant in the auxiliary lane and
 a driven exiter beside it in section lane 1 commanded to exchange lanes in
-one step)
+one step; `n_spread_withheld` added by WP-67, the crossings spread, the
+vehicle-steps on which a driven vehicle's crossing was withheld short of its
+place in the spread)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1355,6 +1357,46 @@ veh/h against 1,035 / 1,104 / 1,122); on the 29-run grid give-ups 44 → 42,
 the entrances 5,944 → 5,903, the T.H.52 capacity fixture's no-lock pin
 failing at seeds 3 and 5 (3 and 6 exits missed); no collision. Golden
 `merge_weave` unchanged at the default (hash 436cd4ec9e5d).
+
+**The crossings spread** (2026-09-25, block 3, WP-67; docs/WEAVE_MODEL_PLAN.md,
+dated section; `WEAVE_DEFAULTS["spread_crossings"]`, default 0 = off,
+hash-neutral unless set; measured and left off): each crossing vehicle — an
+entrant not bound for the paired exit, an exit-bound vehicle — takes a place
+`frac(n · φ)` (φ the golden ratio's conjugate, `WEAVE_SPREAD_PHI`; `n` the
+order in which the section takes the vehicles,
+`microsim.runner._weave_spread_fraction`), and its crossing (the entrant out
+of section lane 0 on lane 0, the exiter into it from lane 1) is withheld while
+its front is short of that fraction of `D = max(min(L − s_b, L − zone) − w,
+0)` from the section start (`_weave_spread_length`, re-read at its speed
+each step, released once): `L` the section's length, `zone` the forced zone,
+`s_b = s*(v, v) / sqrt(1 − (v/v0)^4)` the distance from which its own IDM
+brakes for the end of the lane it waits in, `w = v · sqrt(2 · (s0 + accept ·
+v) / b)` one cooperative gap opening. A withheld vehicle chooses no gap,
+holds and eases nobody and requests no change, under mode 512. A vehicle
+whose crossing would be withheld (`frac · D > 0`, arriving in its crossing
+lane) is set to mode 512 on the step before it can reach the section —
+within `2 · Δt · (v + a · Δt)` of its start — so SUMO's own lane-change model
+cannot change it in the step it arrives (`_weave_handover_step`; SUMO moves,
+then changes lanes, within one step, and the weave reads the step after it);
+its mode before is kept and restored at hand-back, and one under another
+scripted hold is left to it. An approaching entrant whose crossing is
+withheld is not anticipated on the ramp. Under the rule an entrant's accepted
+change is not commanded beside an opposing entry into lane 1
+(`_weave_swap_opposing_clear`). `weave_sections[i].n_spread_withheld` (the
+**41st key**; `WeaveSectionDiagnosticsOut`, null for an older meta, not shown
+by the dashboard; aggregated by `WEAVE_FIELDS`) counts the withheld
+vehicle-steps. On the corridor section test's fixture
+(`weave_th52_corridor.osm`, seeds 3 / 4 / 5) the entry's lanes 0 + 1 hold
+1.64 / 1.69 / 1.75 lanes' worth (median per minute) against 1.13 / 1.14 /
+1.18 and 7–23 % of either movement's crossings stand in the section's first
+50 m against 49–78 %, but T.H.52 departs 388 / 372 / 349 of 407 against 368 /
+360 / 350, the exit end's lanes read at or below 20 m/s in 12 / 12 / 13 of 16
+windows against 10 / 11 / 13, and 11 / 21 / 14 driven vehicles are unfinished
+against 1 / 6 / 8; on the 29-run grid the entrances rise 5,944 → 6,060,
+exits fall 5,988 → 5,860, unfinished rise 45 → 208, and the T.H.52 capacity
+fixture's no-lock pin fails at seed 4 (lane 1 at the section start 2.0 m/s);
+no collision. Golden `merge_weave` unchanged at the default (hash
+436cd4ec9e5d).
 
 ## 3. Run outputs
 
@@ -2296,7 +2338,11 @@ lane 1 before the section, each once; zero at its default of 0), null for
 a meta written before and not shown by the dashboard, and (WP-64,
 2026-09-25 block 3) `n_swaps` (the pairs the swap, `swap_pairs`, commanded
 to exchange lanes in one step; zero at its default of 0), null for a meta
-written before and not shown by the dashboard; the sweep
+written before and not shown by the dashboard, and (WP-67, 2026-09-25 block
+3) `n_spread_withheld` (vehicle-steps on which the crossings spread,
+`spread_crossings`, withheld a driven vehicle's crossing short of its place
+in the spread; zero at its default of 0), null for a meta written before
+and not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all of them the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema

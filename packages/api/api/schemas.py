@@ -311,7 +311,13 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     3, the swap) counts the pairs — an entrant in the auxiliary lane and an
     exiter beside it in section lane 1 that block each other — commanded to
     exchange lanes in one step (``swap_pairs``); zero at the default of 0;
-    ``None`` for a meta written before; not shown by the dashboard. Two keys that are
+    ``None`` for a meta written before; not shown by the dashboard.
+    ``n_spread_withheld`` (WP-67, 2026-09-25 block 3, the crossings spread)
+    counts the vehicle-steps on which a driven vehicle's crossing — an
+    entrant's out of the auxiliary lane, an exiter's into it — was withheld
+    short of its place in the spread (``spread_crossings``); zero at the
+    default of 0; ``None`` for a meta written before; not shown by the
+    dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -351,6 +357,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_anticipation_gated: int | None = None
     n_exit_prepared: int | None = None
     n_swaps: int | None = None
+    n_spread_withheld: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

@@ -767,6 +767,14 @@ HALTING_SPEED_MS = 0.1  # SUMO's own halting threshold (waiting time accrues bel
 #: m/s per step). One tenth of the fleet's smallest comfortable deceleration
 #: of interest, not a fitted value.
 WEAVE_GIVEUP_DECEL_TOL_MS2 = 0.1
+#: The crossings spread along the section (2026-09-25, block 3, WP-67;
+#: ``spread_crossings``): the n-th crossing taken under control starts at the
+#: fraction ``frac(n · WEAVE_SPREAD_PHI)`` of the spread length — the golden
+#: ratio's conjugate, the Weyl sequence whose first n points split the unit
+#: interval into gaps of at most three lengths, each new point falling in a
+#: largest gap (the three-gap theorem). A mathematical constant, not a fitted
+#: value.
+WEAVE_SPREAD_PHI: Final[float] = (math.sqrt(5.0) - 1.0) / 2.0
 NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
 NEIGHBOR_LEFT_LEADERS = 2
 NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
@@ -2866,6 +2874,202 @@ def _weave_swap_step(
     return go
 
 
+def _weave_spread_length(
+    length_m: float,
+    zone_m: float,
+    v: float,
+    v0: float,
+    p: dict[str, float],
+    accept_s: float,
+) -> float:
+    """How far into the section a crossing may be withheld at the changer's speed [m].
+
+    The crossings spread along the section (2026-09-25, block 3, WP-67,
+    ``spread_crossings``; docs/WEAVE_MODEL_PLAN.md, dated section). A
+    crossing — an entrant leaving the auxiliary lane, an exiter entering
+    it — ties the two lanes it spans from its gap choice to its change:
+    the changer eases towards the target lane's gap leader and the gap's
+    follower is held behind the changer's projection, so both keep a
+    car-following gap in both lanes. Where every vehicle of lanes 0 and 1
+    is so tied, the pair holds one lane's density at its speed (WP-65:
+    1.14 lanes' worth at the entry after its breakdown, where 75 % of the
+    entrants' crossings stood); where a share θ of them is, the pair
+    carries at most ``2 C / (1 + θ)`` for a lane capacity ``C``. With the
+    crossings' onsets spread uniformly over a length ``D`` and each tie
+    ``w`` long, θ at any cross-section is about the crossers' share times
+    ``w / D``: the longest ``D`` the geometry allows minimises the largest
+    θ. Three lengths bound it, each at the changer's speed ``v``:
+
+    * a crossing withheld costs the waiting vehicle nothing only until its
+      own model brakes for the end of its lane (the lane it waits in does
+      not continue on its route): the IDM's interaction with a standing
+      obstacle outweighs its free term from ``s_b = s*(v, v) / sqrt(1 −
+      (v/v0)^4)`` before it, ``s*(v, v) = s0 + v·T + v² / (2·sqrt(a·b))``
+      (Treiber & Kesting 2013, ch. 11; at the vehicle's own ``T``, ``a``,
+      ``b``, ``s0``, ``v0`` its desired speed on that lane; ``inf`` from
+      ``v0`` on). A lone entrant held in the auxiliary lane of the corridor
+      section fixture at 22.9 m/s decelerates from 99 m in, a lone exiter
+      held in lane 1 at 24.5 m/s from 81 m in (EIDM at the fleet's
+      population means, SUMO 1.27.1, probed); the first measured form,
+      which spread the onsets over the unforced length alone, had the
+      section's last 55 m of the auxiliary lane at 3.5 m/s in minute 1
+      (seed 3);
+    * the forced zone ``zone_m`` (:func:`_weave_short_section_rule`);
+    * one cooperative gap opening must remain before either: from abreast,
+      a follower opens one accepted gap ``s0 + accept · v`` at its ``b`` in
+      ``sqrt(2 · (s0 + accept · v) / b)``, travelled at ``v`` (the stretch
+      the short-section rule derives).
+
+    Hence ``D = max(min(length − s_b, length − zone) − w, 0)``: on the
+    304.9 m T.H.52 section at the fleet's population means, 0 from about
+    19.5 m/s — in free flow the section is too short to withhold a
+    crossing, and the rule leaves it where it is — 59 m at 18 m/s, 135 m
+    at 15 m/s, 193 m at 10 m/s and 212 m at 5 m/s, where the queue stands.
+
+    Args:
+        length_m: The section's driven length [m].
+        zone_m: Its forced zone [m].
+        v: The changer's speed [m/s].
+        v0: Its desired speed on the lane it waits in [m/s].
+        p: Its constants (:func:`_weave_veh`: ``T``, ``a``, ``b``, ``s0``).
+        accept_s: Its movement's accepted time gap [s].
+
+    Returns:
+        ``D ≥ 0`` [m].
+    """
+    v = max(v, 0.0)
+    if v >= v0 or p["b"] <= 0.0 or p["a"] <= 0.0:
+        return 0.0
+    s_star = p["s0"] + v * p["T"] + v * v / (2.0 * math.sqrt(p["a"] * p["b"]))
+    s_b = s_star / math.sqrt(1.0 - (v / v0) ** 4)
+    w = v * math.sqrt(2.0 * (p["s0"] + accept_s * v) / p["b"])
+    return max(min(length_m - s_b, length_m - zone_m) - w, 0.0)
+
+
+def _weave_spread_fraction(n: int) -> float:
+    """The n-th crossing's place in the spread length: ``frac(n · φ)``.
+
+    A zipper by order of arrival (WP-67, ``spread_crossings``): the Weyl
+    sequence of :data:`WEAVE_SPREAD_PHI` puts each new crossing in a largest
+    stretch the recent ones left, so any run of consecutive arrivals covers
+    the spread length nearly uniformly without a count of the crossers in
+    the section. The crossing is withheld while the vehicle is short of
+    ``frac(n · φ) · D`` (:func:`_weave_spread_length`, re-read each step
+    at its current speed).
+    """
+    return math.fmod(n * WEAVE_SPREAD_PHI, 1.0)
+
+
+def _weave_handover_step(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    pending: dict[str, int],
+) -> None:
+    """Take a vehicle whose crossing will be withheld under the weave's mode before it arrives.
+
+    The crossings spread along the section (2026-09-25, block 3, WP-67,
+    ``spread_crossings``). SUMO moves a vehicle and then runs its lane
+    changes within one simulation step, and the weave reads the step's
+    results after it: a vehicle that owes a change on the section is set
+    to ``LC_MODE_SCRIPTED_SAFE`` on the first step the weave sees it
+    there — after SUMO's own lane-change model has had the step it
+    arrived in. Its strategic change (the lane it arrives in does not
+    continue on its route; ``strategic`` or ``strategic|urgent`` in SUMO's
+    lane-change output) then executes in that step whenever its own secure
+    gaps pass, a few metres into the section and unread by the section's
+    acceptance (WP-65: 1,076 of the crossings on the corridor section
+    fixture, ten seeds). Here a vehicle that will arrive in its crossing
+    lane — an entrant not bound for the paired exit on the ramp, an
+    exit-bound vehicle on the corridor lane that feeds section lane 1 —
+    with its crossing withheld (its place in the spread times the spread
+    length at its speed positive, :func:`_weave_spread_length`) is set to
+    that mode on the step before it can reach the section: when its
+    distance to the section start is within two steps' travel at the speed
+    it can reach in one, ``2 · Δt · (v + a · Δt)``. One whose crossing is
+    not withheld keeps its own mode, and SUMO's change in the step it
+    arrives stays as without the rule: taking every crossing vehicle is not
+    neutral, the section's acceptance refusing 19–48 % of the changes
+    SUMO's model makes on arrival (docs/WEAVE_MODEL_PLAN.md, dated section
+    WP-67). Its original mode is kept in
+    ``ws["handover"]`` and restored at hand-back, as for any driven vehicle
+    (:func:`_weave_step`); one that leaves the window without being driven
+    gets it back at once. A vehicle under another scripted hold (the
+    vacate rule's, the exiters' early move, another section's) is left to
+    that hold, whose owner restores its mode. Its place in the spread
+    (:func:`_weave_spread_fraction`) is assigned on that step, in the order
+    the vehicles are taken, unless it had one already (an entrant gets it
+    on its first step within ``lookahead_m`` of the section).
+    """
+    prm = ws["params"]
+    x_start = float(ws["x_offset"][ws["edges"][0]])
+    step_s = float(ws["step_s"])
+    edges: dict[str, int] = ws["edge_index"]
+    exiting: frozenset[str] = ws["exiting_ids"]
+    ramp_edges: frozenset[str] = ws["ramp_edges"]
+    handover: dict[str, int] = ws["handover"]
+    section_len = float(sum(ws["lane_len_m"].values()))
+    zone_m = float((ws.get("rule") or _weave_short_section_rule(section_len, prm))["zone_m"])
+    now: set[str] = set()
+    for vid, x in x_of.items():
+        if vid in ws["veh"] or vid in ws["gave_up"]:
+            continue
+        road = results[vid][tc.VAR_ROAD_ID]
+        if road in edges:
+            continue
+        if vid in exiting:
+            if road in ramp_edges or vid in ws["exited"]:
+                continue
+        elif road not in ramp_edges:
+            continue
+        if x >= x_start:
+            continue  # past the section (the lane map's edge after it)
+        p = _weave_veh(mod, ws, vid)
+        v = v_of[vid]
+        if x_start - x > 2.0 * step_s * (v + p["a"] * step_s):
+            continue
+        if vid not in ws["onset"]:
+            ws["onset"][vid] = _weave_spread_fraction(ws["n_onsets"])
+            ws["n_onsets"] += 1
+        # the section lane it arrives in: the auxiliary lane from the ramp
+        k = (
+            0
+            if road in ramp_edges
+            else ws["lane_map"][(road, int(results[vid][tc.VAR_LANE_INDEX]))]
+        )
+        if vid not in handover:
+            if k != (0 if vid not in exiting else 1):
+                continue  # not arriving in its crossing lane: nothing withheld
+            v0 = min(p["vmax"], _weave_lane_vmax(mod, ws, ws["edges"][0], k))
+            accept = prm["exit_accept_gap_s"] if vid in exiting else prm["accept_gap_s"]
+            if (
+                ws["onset"][vid] * _weave_spread_length(section_len, zone_m, v, v0, p, accept)
+                <= 0.0
+            ):
+                # its crossing is not withheld at this speed: SUMO's own model
+                # keeps the step it arrives in, as without the rule
+                continue
+            mode = int(mod.vehicle.getLaneChangeMode(vid))
+            if mode in (
+                LC_MODE_SCRIPTED_SAFE,
+                LC_MODE_SCRIPTED_FORCE,
+                LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
+            ):
+                continue  # under another scripted hold, whose owner restores it
+            handover[vid] = mode
+            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+            ws["n_handovers"] += 1
+        now.add(vid)
+    for vid in [v for v in handover if v not in now and v not in pending]:
+        # left the window without being driven: its own mode back at once
+        mode = handover.pop(vid)
+        if vid in results:
+            mod.vehicle.setLaneChangeMode(vid, mode)
+
+
 def _weave_cooperate(
     mod: Any,
     tc: Any,
@@ -4157,6 +4361,26 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     capacity fixture's no-lock pin breaks (docs/WEAVE_MODEL_PLAN.md, dated
     section).
 
+    **The crossings spread** (2026-09-25, block 3, WP-67;
+    :func:`_weave_handover_step`, :func:`_weave_spread_length`,
+    :func:`_weave_spread_fraction`, ``spread_crossings``, off by default).
+    Each crossing vehicle takes a place ``frac(n · φ)`` in the order it is
+    taken, and its crossing — an entrant's out of the auxiliary lane, an
+    exiter's into it — is withheld while it is short of that fraction of the
+    stretch in which waiting costs it nothing (its own lane-end braking,
+    the forced zone and one cooperative gap opening bound it, re-read at its
+    speed each step; zero in free flow on a 305 m section); released once,
+    it is driven as above. A vehicle whose crossing would be withheld is
+    taken under ``LC_MODE_SCRIPTED_SAFE`` on the step before it can reach
+    the section, so SUMO's own model cannot change it in the step it
+    arrives; an entrant whose crossing is withheld is not anticipated on the
+    ramp; under the rule an entrant's accepted change is never commanded
+    beside an opposing entry into lane 1 (:func:`_weave_swap_opposing_clear`).
+    Counted in ``n_spread_withheld``. Measured and left off: the entry's two
+    lanes carry more, but the crossings move to the section's second half,
+    the exit end reads slower and the capacity fixture's no-lock pin breaks
+    (docs/WEAVE_MODEL_PLAN.md, dated section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -4277,8 +4501,45 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # asked into the lane feeding section lane 1 before the section, after
     # the vacate rule and before the section takes any vehicle under control
     _weave_exit_prepare_step(mod, tc, ws, results, lanes, t)
+    # the crossings spread along the section (WP-67, ``spread_crossings``):
+    # every crossing vehicle under the weave's lane-change mode on the step
+    # before it can reach the section, and each crossing withheld until the
+    # vehicle reaches its onset (empty at the default)
+    spread = float(prm["spread_crossings"]) > 0.0
+    waiting: set[str] = set()
+    if spread:
+        _weave_handover_step(mod, tc, ws, results, x_of, v_of, pending)
+        frac_of: dict[str, float] = ws["onset"]
+        released_w: set[str] = ws["spread_released"]
+        for vid, d in pending.items():
+            if vid not in frac_of:
+                frac_of[vid] = _weave_spread_fraction(ws["n_onsets"])
+                ws["n_onsets"] += 1
+            res_w = results[vid]
+            lane_w = int(res_w[tc.VAR_LANE_INDEX])
+            if vid in released_w or not ((d > 0 and lane_w == 0) or (d < 0 and lane_w == 1)):
+                # released once, or not at its crossing yet (an exiter still
+                # right of lane 1 moves on and is read when it reaches it)
+                continue
+            p_w = _weave_veh(mod, ws, vid)
+            v0_w = min(p_w["vmax"], _weave_lane_vmax(mod, ws, res_w[tc.VAR_ROAD_ID], lane_w))
+            d_w = _weave_spread_length(
+                section_len,
+                float(rule["zone_m"]),
+                v_of[vid],
+                v0_w,
+                p_w,
+                prm["accept_gap_s"] if d > 0 else prm["exit_accept_gap_s"],
+            )
+            if x_of[vid] - x_start < frac_of[vid] * d_w:
+                waiting.add(vid)
+            else:
+                released_w.add(vid)
     for vid in [v for v in veh if v not in pending and v not in in_transit]:
         st = veh.pop(vid)
+        if spread:
+            ws["onset"].pop(vid, None)
+            ws["spread_released"].discard(vid)
         if vid not in results:
             ws["n_missed"] += 1  # left the network while still owing a change
             continue
@@ -4298,13 +4559,18 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # a stopped crossing pair is released (fifth derivation, 2026-09-24 block
     # 3): the one farther from the section end yields this step, the other
     # may force its change at once
-    yielders, released = _weave_pair_release(mod, ws, pending, x_of, v_of, t)
+    # (a vehicle waiting for its onset is making no change: never one of a pair)
+    driving = {k: d for k, d in pending.items() if k not in waiting} if waiting else pending
+    yielders, released = _weave_pair_release(mod, ws, driving, x_of, v_of, t)
     # the swap (WP-64, ``swap_pairs``): an entrant and an exiter beside it that
     # block each other exchange lanes in one step; decided before any vehicle
     # of the step is driven (empty at the default)
     swapping = _weave_swap_step(
-        mod, tc, ws, results, lanes, x_of, v_of, pending, yielders | released, t
+        mod, tc, ws, results, lanes, x_of, v_of, driving, yielders | released, t
     )
+    # lane 2 as the guard against an opposing entry reads it (WP-67), built
+    # on the first entrant change it guards
+    beyond_l2: list[tuple[float, float, float, float, float, bool]] | None = None
     # vehicle id -> (speed target, commanded acceleration, is a follower) this step
     coop: dict[str, tuple[float, float, bool]] = {}
     p_of: dict[str, dict[str, float]] = {}
@@ -4319,7 +4585,12 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 "zone_s": None,
                 "requested_s": -math.inf,
                 "forced": False,
-                "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
+                # taken before it reached the section (WP-67): the mode it had
+                "lc_mode_orig": (
+                    ws["handover"].pop(vid)
+                    if vid in ws["handover"]
+                    else int(mod.vehicle.getLaneChangeMode(vid))
+                ),
                 "s0": float(mod.vehicle.getMinGap(vid)),
                 "mode": LC_MODE_SCRIPTED_SAFE,
                 # the gap chosen on the ramp, if any, carries over
@@ -4335,6 +4606,13 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
+        if vid in waiting:
+            # before its onset (WP-67): it follows its own lane, chooses no
+            # gap, holds and eases nobody and requests no change
+            st["target"] = None
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            ws["n_spread_withheld"] += 1
+            continue
         res = results[vid]
         road = res[tc.VAR_ROAD_ID]
         lane = int(res[tc.VAR_LANE_INDEX])
@@ -4400,6 +4678,34 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
             )
         ) or vid in swapping
+        if spread and accepted and d > 0 and vid not in swapping:
+            # never two opposing changes into lane 1 in one step (WP-67; the
+            # derived guard of the swap, WP-64): with the crossings spread,
+            # entrants change beside lane 2 along the whole section
+            if beyond_l2 is None:
+                beyond_l2 = []
+                for x_2, v_2 in lanes.get(2, []):
+                    p_2 = _weave_veh(mod, ws, v_2)
+                    r_2 = results[v_2]
+                    driven_2 = (
+                        pending.get(v_2, 0) < 0
+                        and r_2[tc.VAR_ROAD_ID] in edges
+                        and int(r_2[tc.VAR_LANE_INDEX]) == 2
+                    )
+                    beyond_l2.append((x_2, p_2["len"], p_2["s0"], v_of[v_2], p_2["b"], driven_2))
+            p_e = _weave_veh(mod, ws, vid)
+            if not _weave_swap_opposing_clear(
+                x_of[vid],
+                p_e["len"],
+                st["s0"],
+                accept,
+                v_ego,
+                b_c,
+                float(prm["exit_accept_gap_s"]),
+                beyond_l2,
+            ):
+                accepted = False
+                ws["n_spread_opposing"] += 1
         # a released partner is guarded against closing only: both of the
         # pair are below the creep speed, the s0 floor is a comfort margin
         # at speed, and mode 256 still refuses an overlap — and, since the
@@ -4461,6 +4767,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 mod.vehicle.changeTarget(vid, ws["through_target"])
                 mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
                 del veh[vid]
+                if spread:
+                    ws["onset"].pop(vid, None)
+                    ws["spread_released"].discard(vid)
                 ws["gave_up"].add(vid)
                 awaiting_exit.discard(vid)
                 ws["n_missed"] += 1
@@ -4551,6 +4860,27 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     for vid in [v for v in pre if v not in approaching]:
         del pre[vid]
     for vid in sorted(approaching):
+        if spread:
+            # WP-67: the anticipation is the entrant's tie before the section,
+            # for a crossing at its start; one whose crossing is withheld into
+            # the section (its place in the spread times the spread length at
+            # its speed) is not positioned on the ramp — the ramp feeds the
+            # auxiliary lane, which is its own lane until then
+            if vid not in ws["onset"]:
+                ws["onset"][vid] = _weave_spread_fraction(ws["n_onsets"])
+                ws["n_onsets"] += 1
+            p_a = _weave_veh(mod, ws, vid)
+            v0_a = min(p_a["vmax"], _weave_lane_vmax(mod, ws, ws["edges"][0], 0))
+            if (
+                ws["onset"][vid]
+                * _weave_spread_length(
+                    section_len, float(rule["zone_m"]), v_of[vid], v0_a, p_a, prm["accept_gap_s"]
+                )
+                > 0.0
+            ):
+                pre.pop(vid, None)
+                ws["n_spread_unanticipated"] += 1
+                continue
         # the ramp to the gore, then the whole section
         dist_m = x_start - x_of[vid] + section_len
         pre[vid] = _weave_cooperate(
@@ -4656,7 +4986,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``exit_prepare`` = 0); ``n_swaps`` (WP-64, the swap) the pairs of a
     driven entrant in the auxiliary lane and a driven exiter beside it in
     lane 1, blocking each other, commanded to exchange lanes in one step
-    (:func:`_weave_swap_step`; zero at ``swap_pairs`` = 0).
+    (:func:`_weave_swap_step`; zero at ``swap_pairs`` = 0);
+    ``n_spread_withheld`` (WP-67, the crossings spread) the vehicle-steps
+    on which a driven vehicle's crossing — an entrant's out of the
+    auxiliary lane, an exiter's into it — was withheld because the vehicle
+    was short of its place in the spread (:func:`_weave_spread_length`,
+    :func:`_weave_spread_fraction`; zero at ``spread_crossings`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -4705,6 +5040,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_anticipation_gated": ws["n_anticipation_gated"],
         "n_exit_prepared": ws["n_exit_prepared"],
         "n_swaps": ws["n_swaps"],
+        "n_spread_withheld": ws["n_spread_withheld"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -5491,6 +5827,22 @@ def run_micro(
                     "swap_full": 0,
                     "swap_half": 0,
                     "swap_none": 0,
+                    # WP-67, the crossings spread (_weave_handover_step,
+                    # _weave_spread_length, _weave_spread_fraction): the
+                    # original modes of vehicles taken before the section,
+                    # each crossing's place in the spread, the places
+                    # assigned, the crossings released, and the state-only
+                    # counts — vehicles taken, vehicle-steps withheld before
+                    # the onset, entrant changes refused by the opposing-entry
+                    # guard, approaching entrant-steps not anticipated
+                    "handover": {},
+                    "onset": {},
+                    "n_onsets": 0,
+                    "n_handovers": 0,
+                    "n_spread_withheld": 0,
+                    "n_spread_opposing": 0,
+                    "n_spread_unanticipated": 0,
+                    "spread_released": set(),
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},

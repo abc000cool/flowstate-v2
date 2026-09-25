@@ -3212,3 +3212,273 @@ The left drop on `lane_change` at seven more seeds (6–12) does not lock either
 - the weave configuration at seed 3, a strict `xfail` with its measured values.
 
 `microsim.runner`, `flowstate_core.config`, the contract (40 keys), the API schema, the sweep's field list, the scenarios, `data/osm` and every existing test are untouched. Session scripts (the network compiles, the demand propagation, the HCM computation, the 25-run grid and its exploratory predecessor) are not committed.
+
+## 2026-09-25 (block 3, WP-67, spreading the crossings): SUMO makes a sixth to two fifths of the crossings in the step a vehicle arrives, before the weave reads it; a rule that takes those vehicles first and withholds each crossing to a place in the stretch where waiting costs nothing moves the crossings out of the entry and raises its density to 1.6–1.8 lanes' worth, but the section then breaks down in its second half and the capacity pin breaks; nothing ships (`spread_crossings` = 0)
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`). WP-65 (above) attributed the entry's rate: after the breakdown the auxiliary lane (section lane 0) and lane 1 carry about one lane's worth, 1.14 times one lane's equilibrium density at their speed, while every T.H.52 entrant and every mainline exiter must pass through them; 75 % of the entrants' crossings and 49 % of the exiters' stand in the section's first 50 m, 1,076 of them made by SUMO's own lane-change model in the step a vehicle first appears on the section. Its lead: spread the crossings along the 305 m section. This package (1) establishes the mechanism of the bunching, including when the weave takes a vehicle relative to SUMO's own change; (2) derives a rule that spreads the crossings, bounded by the section's geometry; (3) measures it on the corridor section test's fixture, on the 29-run grid and on golden `merge_weave`. The demand, every scenario, every fixture and every existing assertion are untouched.
+
+**How it was measured.** Session harnesses, not committed: `wp67_harness.py` imports WP-65's (`wp65_harness.py`: cells, crossings, command families, the same 0.5-s subscription samples the weave reads) and adds, for every lane change of a vehicle on the section, its position, its movement and who made it — *SUMO at arrival* (its first sample on the section is already off the lane it arrived in), *weave accepted* or *weave forced* (the weave requested it on the previous step), *SUMO later* (anything else). With `FS_WP67_LCOUT` it also runs SUMO with `--lanechange-output`, whose `reason` names the lane-change model's motive. Movements: E an entrant not bound for the paired exit, R an entrant bound for it, X a mainline exiter, T through. A *crossing* is an E leaving lane 0 for lane 1 or an X entering lane 0 from lane 1. The density ratio is WP-65's: lanes 0 + 1 over the section's first 50 m, Edie's density per minute divided by one lane's IDM equilibrium density at the cell's speed (the fleet's population means, `artifacts/idm_i24_capacity.json`: T 1.322 s, s0 2.53 m, 5 m vehicles, the 24.59 m/s limit), median over the minutes before / after WP-65's entry breakdown and over all minutes 1–19. The fixture is `_th52_corridor_config(seed)`, the test's own (20 simulated minutes, macOS, one run at a time, 5–8 s each); the default runs reproduce WP-61 to the number (368 / 360 / 350 T.H.52 entrants of 407 at seeds 3 / 4 / 5, the mainline 1,140 / 1,157 / 1,149, 2 of 356 / 1 of 391 / 2 of 405 exits given up). `wp67_corr.py` is the test's body with the key set in a copy of its call (no hooks; the strict marker untouched) and reproduces the harness's rows exactly. The grid is WP-51..64's 29 runs (`grid67.sh`, `wp67_grid_harness.py` = WP-64's harness plus the rule's state counts). Every run tabled here is collision-free.
+
+**(1) The bunching, measured at the default** (seeds 3 / 4 / 5).
+
+*Table — the crossings by movement and by who made them (positions in metres into the 304.9 m section).*
+
+| movement | seed | crossings | in the first 50 m | p10 / median / p90 | SUMO at arrival | weave accepted (in the first 50 m; median) | weave forced |
+|---|---|---|---|---|---|---|---|
+| E | 3 | 206 | 154 (75 %) | 1.1 / 8.2 / 140.8 | 91 | 111 (63; 40.9) | 4 |
+| E | 4 | 199 | 154 (77 %) | 1.0 / 8.7 / 90.3 | 74 | 123 (80; 35.3) | 2 |
+| E | 5 | 185 | 145 (78 %) | 1.1 / 19.9 / 119.8 | 58 | 123 (87; 31.8) | 4 |
+| X | 3 | 262 | 143 (55 %) | 3.0 / 40.0 / 237.5 | 56 | 186 (87; 56.8) | 20 |
+| X | 4 | 295 | 147 (50 %) | 2.0 / 50.1 / 263.9 | 62 | 210 (85; 62.7) | 23 |
+| X | 5 | 305 | 148 (49 %) | 1.9 / 51.4 / 274.9 | 48 | 215 (100; 52.8) | 42 |
+
+1. *What SUMO's model does at arrival.* SUMO's own changes at arrival stand a median 2.3 / 1.6 / 1.6 m into the section for the entrants and 3.2 / 2.0 / 1.1 m for the exiters, and every one but a single entrant at seed 5 lies within one step's travel (v · 0.5 s) of the section start: the change is made in the very step the vehicle crossed onto the section. The lane-change output names the motive: for the entrants `strategic` (39 / 45 / 40) or `strategic|urgent` (51 / 28 / 18), one `speedGain` at seeds 3 and 4; for the exiters `strategic|urgent` (56 / 62 / 47, one `strategic` at seed 5). The lane each arrives in does not continue on its route (in the compiled network the auxiliary lane connects only to the exit, section lane 1 only to the mainline beyond), so LC2013's route-based (strategic) motive is present from the vehicle's first step on the section. The corridor fleet's `lcStrategic` is 5 on the mainline and 1 on the ramps (`lc_strategic_ramp`); at both, the change is made at the same few metres. SUMO executes such a change whenever its own secure gaps pass.
+2. *The weave takes the vehicle after that change.* In SUMO 1.27.1 a simulation step first moves the vehicles and then runs their lane changes, and the runner calls `_weave_step` after `simulationStep` on the step's results. The weave sets `LC_MODE_SCRIPTED_SAFE` on a vehicle the first step it sees it pending on a section edge, which is the step after the one in which it arrived. Nothing sets the mode earlier: the ramp anticipation (`approaching`) chooses a gap and commands followers but leaves the entrant's mode alone, and an exiter on the approach is untouched unless `exit_prepare` holds it. So every vehicle SUMO's model moves at arrival is moved before the weave reads it, and the weave only ever drives the rest.
+3. *SUMO's arrival changes are ones the weave's acceptance would partly refuse.* Read on the gaps each landed in (`_weave_change_ok`, the section's acceptance), the acceptance would have taken 74 of 91 / 50 of 74 / 43 of 58 of the entrants' arrival changes and 34 of 56 / 35 of 62 / 25 of 48 of the exiters'. The refusals are mostly on the follower side's time gap (entrants 15 / 20 / 13, exiters 15 / 19 / 22; the leader side 2 / 4 / 2 and 4 / 10 / 4). The new follower sits a median 1.58 / 1.62 / 1.61 s behind an entrant and 1.44 / 1.62 / 1.35 s behind an exiter, with a tenth of them under 0.86 / 0.68 / 0.90 s and 0.66 / 0.55 / 0.58 s.
+4. *The weave's own acceptance bunches too.* Of the entrants it drives, 57–71 % cross in the first 50 m (medians 32–41 m), and of the exiters 40–47 % (medians 53–63 m). Its gap choice ranks the nearest follower first, and the ramp anticipation has already positioned the entrant beside a gap before it arrives, so the first acceptable gap is at the entry. Together these give WP-65's 75 % / 49 %.
+5. *The pair at the entry*: 1.20 / 1.20 / 1.19 lanes' worth before the entry breakdown (minute 7 / 5 / 3), 1.09 / 1.10 / 1.18 after, 1.13 / 1.14 / 1.18 over all minutes; 1,778 / 1,781 / 1,712 veh/h cross x = 50 m in lanes 0 + 1 over minutes 1–19.
+
+**(2) The derivation (`microsim.runner._weave_spread_length`, `_weave_spread_fraction`, `_weave_handover_step`, `WEAVE_SPREAD_PHI`; `WEAVE_DEFAULTS["spread_crossings"]`, 0 = off).**
+
+*The capacity argument.* A crossing ties the two lanes it spans from its gap choice to its change: the changer eases towards the gap's leader and the gap's follower is held behind the changer's projection, so both keep a car-following gap in both lanes. If a share θ of the pair's vehicles at a cross-section is so tied, each uses one headway in each lane, and the pair carries at most 2C / (1 + θ) for a lane capacity C: one lane's worth where everything is tied (θ = 1, WP-65's state at the entry), two where nothing is. With crossing onsets spread uniformly over a length D and each tie w long, θ at any cross-section is about the crossers' share times w / D. The largest D the geometry allows therefore minimises the largest θ, and a uniform spread minimises it for a given D.
+
+*Three bounds on D, each at the changer's current speed v.*
+- *The vehicle's own lane-end braking.* A withheld vehicle waits in a lane that does not continue on its route, and its car-following model brakes for that lane's end as for a standing obstacle. For the IDM the interaction outweighs the free term from s_b = s*(v, v) / sqrt(1 − (v/v0)⁴) before the end, with s*(v, v) = s0 + vT + v² / (2 sqrt(ab)) at the vehicle's own parameters (Treiber & Kesting 2013, ch. 11); s_b is infinite from v0 on.
+  - Probed (session script `wp67/laneend_probe.py`): one vehicle alone on the fixture's compiled network, mode 512, the fleet's population means, SUMO 1.27.1. An EIDM entrant held in the auxiliary lane at 22.9 m/s decelerates from 99 m into the section (−0.81 m/s² at 150 m, −1.51 at 200 m) and reaches 290 m at 6.8 m/s. An EIDM exiter held in lane 1 at 24.5 m/s decelerates from 81 m. An IDM vehicle decelerates from the section start. A through vehicle stays within 0.2 m/s² of zero.
+  - The IDM closed form is therefore conservative for the fleet's EIDM.
+- *The forced zone* (`force_within_m`, 80 m).
+- *One cooperative gap opening before either:* w = v · sqrt(2 · (s0 + accept · v) / b), the stretch `_weave_short_section_rule` derives.
+- Hence D = max(min(L − s_b, L − zone) − w, 0). At the population means on the T.H.52 section: 212.2 m at 5 m/s, 193.2 at 10, 135.2 at 15, 59.3 at 18, and 0 from about 19.6 m/s. In free flow the 305 m section is too short to withhold a crossing without the vehicle braking for its lane end. The forced zone binds below about 15 m/s, the lane end above.
+
+*The zipper.* Each crossing vehicle takes a place frac(n · φ), with φ = (√5 − 1)/2 and n the order in which the section takes the vehicles. This is the Weyl sequence of the golden ratio: the first n places split [0, 1) into gaps of at most three lengths, and each new place falls in a largest one (the three-gap theorem, pinned by a unit test). Any run of consecutive arrivals therefore covers the spread nearly uniformly without a count of the crossers present. A driven vehicle's crossing (an entrant on lane 0, an exiter on lane 1) is withheld while its front is short of frac · D, with D re-read each step at its current speed. Once past, it is released for good and driven as before (gap choice, cooperation, acceptance, forced zone), so the exit-side give-up geometry is untouched. A withheld vehicle chooses no gap, holds and eases nobody and requests nothing, under mode 512. It commands nothing and nobody is held for it, so there is no chain and no hold.
+
+*Taking control before SUMO's model can act.* From (1).2, the weave can prevent an arrival-step change only by setting the mode on the step before. A vehicle that will arrive in its crossing lane with its crossing withheld (frac · D > 0 at its speed) is set to mode 512 once it is within two steps' travel of the section start, 2Δt(v + aΔt). Its mode before is kept and restored at hand-back, and one under another scripted hold is left to that hold. A vehicle whose crossing is not withheld keeps its own mode. That is the whole population in free flow, where SUMO's arrival change stays as it was. The first form took every crossing vehicle, and that alone is not neutral (below). An approaching entrant whose crossing is withheld is not anticipated on the ramp: the ramp feeds the auxiliary lane, which is its own lane until its place.
+
+*Never two opposing changes into lane 1 in one step.* With the crossings spread, entrants change beside lane 2 along the whole section. Under the rule an entrant's accepted change is refused while WP-64's `_weave_swap_opposing_clear` finds a lane-2 vehicle ahead of it, or a driven exiter in lane 2 behind it, that would fail the forced guard in lane 1. Exiters' changes into lane 1 from lane 2 are then never commanded beside a conflicting entrant change.
+
+*Counted:* `n_spread_withheld`, the withheld vehicle-steps, is the **41st `weave_sections` key** (docs/CONTRACTS.md §2, `WeaveSectionDiagnosticsOut`, `WEAVE_FIELDS`). The vehicles taken before the section, the guard's refusals and the ramp steps not anticipated are state kept for a harness.
+
+**(3) Measured.**
+
+*Forms, in the order derived; all but the rule are harness forms.*
+- *H*: the hand-over alone. Every crossing vehicle is taken on the step before it can arrive, nothing is withheld, the anticipation is kept, the guard is on.
+- *F1*: the first form. The spread over the unforced length alone, D = L − zone − w, with every crossing vehicle taken and no entrant anticipated.
+- **The rule**: `spread_crossings` = 1.
+- *E-only*: the rule with only the entrants spread; the exiters as at the default.
+- *X-only*: the rule with only the exiters spread; the entrants as at the default, the guard on.
+
+*Table — the corridor section test's criteria and the pair at the entry, seeds 3 / 4 / 5 (criteria: mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s of 16, no collision, given up ≤ 2 % of reached).*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s; lowest lane 0 / lane 1 [m/s] | given up of reached | unfinished | entry breakdown (minute) | lanes 0 + 1 at [0, 50): before / after / all minutes [lanes' worth] | lanes 0 + 1 crossing x = 50 m [veh/h] |
+|---|---|---|---|---|---|---|---|---|
+| default | 1,140 / 1,157 / 1,149 | 368 ✗ / 360 ✗ / 350 ✗ | 10; 10.1 / 12.9 ; 11; 11.9 / 15.1 ; 13; 9.2 / 8.2 | 2 of 356 ; 1 of 391 ; 2 of 405 | 1 / 6 / 8 | 7 / 5 / 3 | 1.20 / 1.09 / 1.13 ; 1.20 / 1.10 / 1.14 ; 1.19 / 1.18 / 1.18 | 1,778 / 1,781 / 1,712 |
+| H | 1,148 / 1,156 / 1,131 ✗ | 385 ✗ / 329 ✗ / 352 ✗ | 10 ; 12 ; 13 | 2 of 360 ; 4 of 385 ; 2 of 396 | 3 / 2 / 8 | 7 / 4 / 3 | 1.17 / 1.15 / 1.15 ; 1.24 / 1.15 / 1.17 ; 1.24 / 1.19 / 1.19 | 1,806 / 1,639 / 1,693 |
+| F1 | 1,175 / 1,156 / 1,137 | 357 ✗ / 345 ✗ / 339 ✗ | 10 ; 13 ; 14 | 1 of 373 ; 2 of 379 ; 4 of 395 | 15 / 17 / 17 | 2 / 3 / 4 | 1.68 / 1.76 / 1.75 ; 1.52 / 1.72 / 1.69 ; 1.40 / 1.82 / 1.78 | 1,838 / 1,648 / 1,655 |
+| **the rule** | 1,196 / 1,177 / 1,136 ✗ | 388 / 372 ✗ / 349 ✗ | 12; 9.2 / 10.2 ; 12; 7.1 / 8.2 ; 13; 6.4 / 7.5 | 1 of 386 ; 2 of 402 ; 2 of 402 | 11 / 21 / 14 | 4 / 7 / 4 | 1.18 / 1.67 / 1.64 ; 1.27 / 1.74 / 1.69 ; 1.33 / 1.78 / 1.75 | 1,936 / 1,847 / 1,705 |
+| E-only | 1,196 / 1,169 / 1,139 | 312 ✗ / 330 ✗ / 308 ✗ | 12 ; 12 ; 12 | 2 of 357 ; 6 of 381 ; 2 of 392 | 7 / 6 / 9 | 2 / 6 / 3 | all minutes 1.36 ; 1.32 ; 1.31 | 1,674 / 1,686 / 1,633 |
+| X-only | 1,193 / 1,173 / 1,186 | 393 / 385 ✗ / 388 | 12; 7.1 / 9.5 ; 12; 6.9 / 9.2 ; 14; 6.4 / 8.2 | 3 of 364 ; 0 of 416 ; 2 of 430 | 5 / 7 / 6 | 7 / 8 / 4 | 1.20 / 1.27 / 1.25 ; 1.23 / 1.37 / 1.26 ; 1.33 / 1.33 / 1.33 | 1,882 / 1,901 / 1,926 |
+
+No form passes criterion (ii) at any seed, and no run collides. The rule's rows are also the plain test body's (`wp67_corr.py`).
+
+*Table — where the crossings stand, seeds 3 / 4 / 5: crossings, in the first 50 m, median position [m], SUMO at arrival / weave accepted / forced.*
+
+| form | E | X |
+|---|---|---|
+| default | 206 / 199 / 185; 75 / 77 / 78 %; 8.2 / 8.7 / 19.9; 91-111-4 / 74-123-2 / 58-123-4 | 262 / 295 / 305; 55 / 50 / 49 %; 40.0 / 50.1 / 51.4; 56-186-20 / 62-210-23 / 48-215-42 |
+| H | 219 / 180 / 184; 71 / 68 / 59 %; 17.5 / 29.3 / 35.8; 1-210-7 / 0-173-7 / 0-175-9 | 263 / 298 / 295; 49 / 44 / 40 %; 52.2 / 63.8 / 72.9; 0-242-21 / 1-258-39 / 1-242-52 |
+| F1 | 195 / 179 / 175; 5 / 2 / 1 %; 174.4 / 185.4 / 186.7; 1-175-19 / 0-157-22 / 0-152-23 | 277 / 282 / 287; 5 / 4 / 2 %; 182.9 / 197.1 / 191.5; 0-233-44 / 1-217-64 / 1-222-64 |
+| **the rule** | 216 / 198 / 179; 8 / 23 / 8 %; 160.1 / 147.0 / 172.0; 7-192-17 / 35-146-17 / 9-156-14 | 286 / 294 / 296; 7 / 16 / 7 %; 180.6 / 170.9 / 183.3; 5-235-46 / 22-221-51 / 8-229-59 |
+| E-only | 157 / 171 / 151; 12 / 23 / 16 %; 133.5 / 129.2 / 125.7 | 275 / 294 / 306; 31 / 30 / 30 %; 100.1 / 107.0 / 111.2 |
+| X-only | 227 / 218 / 225; 49 / 49 / 46 %; 53.0 / 52.7 / 54.9; 70-139-18 / 65-141-12 / 43-169-13 | 264 / 306 / 314; 21 / 17 / 12 %; 144.2 / 145.7 / 154.9; 20-204-40 / 15-234-57 / 7-225-82 |
+
+*Table — the rule's binding on the corridor section fixture, seeds 3 / 4 / 5 (default in brackets).*
+
+| reading | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| vehicles taken before the section | 457 | 376 | 406 |
+| crossing vehicle-steps withheld (`n_spread_withheld`) | 17,264 | 15,845 | 22,080 |
+| entrant changes refused by the opposing guard | 117 | 146 | 188 |
+| ramp entrant-steps not anticipated | 10,867 | 9,534 | 11,915 |
+| forced / deferred / pair releases | 63 / 287 / 40 (24 / 136 / 11) | 68 / 248 / 47 (25 / 56 / 8) | 73 / 492 / 142 (46 / 209 / 25) |
+| first breakdown anywhere (minute, cell) | 2, lane 1 [200, 250) (7, approach lane 0) | 6, lane 0 [250, 305) (5, lane 0 [0, 50)) | 2, lane 0 [250, 305) (2, lane 0 [250, 305)) |
+| lanes 0 + 1 after the entry breakdown, Edie flow over the six cells [veh/h] | 1,829–1,905 (1,507–1,611) | 1,656–1,719 (1,562–1,735) | 1,596–1,694 (1,554–1,698) |
+| exit end (+273.4 m) lane 0, 20-min mean [veh/h] | 1,080 (1,035) | 1,113 (1,104) | 1,119 (1,122) |
+
+At seed 3, over t = 100–150 s, the rule's vehicles below 8 m/s in lanes 0–1 beyond 100 m break down as follows:
+- in lane 0, only exiters already in it, 425 vehicle-steps;
+- in lane 1, driven exiters released and still owing their change, 168 vehicle-steps (131 of them inside the forced zone); through vehicles, 40; undriven exiters, 2.
+
+*Table — the fixture grid, totals over the 28 fixture runs (the golden apart).*
+
+| variant | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth + T.H.52, last 60 m) | T.H.52 first 60 m min ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | taken / withheld vehicle-steps / guard refusals / ramp steps not anticipated |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 0 | 44 | 5,988 | 6,131 | 14 | 15 | 529 | 5,439 | 218 | 45 | 5,944 | 1,444 | 0 | 0 / 0 / 0 / 0 |
+| **the rule** | 24 | 45 | 5,860 | 6,095 | 25 | 58 | 1,316 | 15,138 | 1,287 | 208 | 6,060 | 1,565 | 0 | 5,268 / 208,623 / 8,144 / 167,308 |
+| X-only | 24 | 62 | 5,949 | 6,124 | 22 | 17 | 723 | 11,945 | 544 | 74 | 6,005 | 1,488 | 0 | 1,530 / 41,561 / 5,811 / 0 |
+
+The default grid is WP-64's `off` to the number in all 29 rows (every counter compared, golden hash 436cd4ec9e5d).
+
+*Table — the T.H.52 and two-entrance rows: entrance departed (E1) / given up / lane 1 first 60 m (E1 acceleration-lane end) min [m/s] (minutes ≤ 5) / unfinished / pair releases / withheld vehicle-steps.*
+
+| fixture | seed | default | the rule | X-only |
+|---|---|---|---|---|
+| T.H.52, corridor demand | 3 | 403 / 1 / 3.7 (2) / 2 / 5 / 0 | 399 / 1 / 1.9 (10) / 8 / 110 / 16,365 | 416 / 1 / 4.1 (1) / 12 / 6 / 2,520 |
+| T.H.52, capacity | 3 | 395 / 1 / 3.9 (2) / 4 / 9 / 0 | 413 / 1 / 2.4 (10) / 8 / 59 / 16,970 | 388 / 4 / 3.0 (4) / 2 / 83 / 2,899 |
+| two-entrance, fleet defaults | 3 | 417; E1 216 / 3 / 0.2 (16) / 3 / 6 / 0 | 408; E1 234 / 3 / 0.0 (12) / 27 / 95 / 16,365 | 366; E1 213 / 6 / 0.0 (13) / 3 / 101 / 3,001 |
+| two-entrance, corridor fleet | 3 | 356; E1 253 / 0 / 1.6 (13) / 1 / 4 / 0 | 377; E1 282 / 0 / 1.4 (11) / 14 / 35 / 19,373 | 399; E1 273 / 2 / 0.8 (13) / 4 / 31 / 4,666 |
+| T.H.52, corridor demand | 4 | 388 / 0 / 4.4 (1) / 2 / 9 / 0 | 427 / 1 / 2.7 (8) / 8 / 65 / 14,386 | 418 / 0 / 5.3 (0) / 7 / 0 / 2,478 |
+| T.H.52, capacity | 4 | 401 / 1 / 4.3 (5) / 2 / 23 / 0 | 379 / 1 / 2.0 (12) / 29 / 230 / 19,123 | 394 / 1 / 2.7 (7) / 5 / 65 / 4,533 |
+| two-entrance, fleet defaults | 4 | 399; E1 210 / 3 / 0.8 (13) / 1 / 15 / 0 | 396; E1 254 / 0 / 0.1 (13) / 23 / 89 / 17,660 | 403; E1 215 / 3 / 0.2 (15) / 8 / 5 / 2,920 |
+| two-entrance, corridor fleet | 4 | 351; E1 256 / 3 / 1.5 (14) / 5 / 23 / 0 | 361; E1 269 / 1 / 1.6 (10) / 12 / 43 / 19,183 | 408; E1 289 / 3 / 1.8 (12) / 5 / 4 / 3,360 |
+| T.H.52, corridor demand | 5 | 401 / 5 / 3.7 (1) / 6 / 29 / 0 | 433 / 1 / 2.1 (8) / 19 / 111 / 14,561 | 397 / 2 / 4.6 (1) / 8 / 7 / 2,250 |
+| T.H.52, capacity | 5 | 373 / 1 / 3.3 (4) / 3 / 18 / 0 | 373 / 0 / 2.7 (10) / 12 / 108 / 18,819 | 374 / 1 / 3.9 (4) / 6 / 29 / 3,839 |
+| two-entrance, fleet defaults | 5 | 407; E1 256 / 1 / 0.4 (14) / 6 / 2 / 0 | 398; E1 253 / 1 / 0.6 (12) / 15 / 83 / 16,711 | 383; E1 240 / 0 / 0.1 (16) / 6 / 1 / 2,300 |
+| two-entrance, corridor fleet | 5 | 374; E1 253 / 0 / 0.6 (14) / 4 / 5 / 0 | 417; E1 273 / 2 / 0.8 (14) / 21 / 28 / 15,905 | 380; E1 258 / 2 / 0.6 (15) / 0 / 49 / 4,511 |
+
+*Table — the no-lock pin of the T.H.52 capacity fixture (`test_th52_weave_at_capacity_does_not_lock`: no collision, lane 1 at the section start above 2 m/s in every minute, `n_missed` ≤ 1, unfinished ≤ 10 % of the driven, the entrance ≥ 372.8 of 466) applied to each grid row, with (entrance departed; lane 1's lowest minute; pair releases). `test_th52_weave_at_capacity_flows` asks 420 of 466 and none of the nine capacity rows reaches it (395 / 401 / 373, 413 / 379 / 373, 388 / 394 / 374).*
+
+| variant | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| default | pass (395; 3.9; 9) | pass (401; 4.3; 23) | pass (373; 3.3; 18) |
+| the rule | pass (413; 2.4; 59) | lane 1 at 2.0 m/s (379; 2.0; 230) | pass (373; 2.7; 108) |
+| X-only | 4 missed (388; 3.0; 83) | pass (394; 2.7; 65) | pass (374; 3.9; 29) |
+
+*The per-row grid, the default against the rule* (the rule's binding: vehicles taken before the section / crossing vehicle-steps withheld / entrant changes refused by the opposing guard / ramp entrant-steps not anticipated):
+
+| fixture | seed | variant | given up of reached (%) | exited of reached | lane 1 last 60 m min [m/s] (min ≤ 5) | lane 1 first 60 m / E1 accel end min (min ≤ 5) | forced / deferred / releases | unfinished | entrance departed | coll. | the rule binding: taken before the section / crossing vehicle-steps withheld / entrant changes refused by the opposing guard / ramp entrant-steps not anticipated |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak | 3 | off | 9 of 290 (3.1) | 273 of 290 | 2.8 (4) | — | 40 / 1168 / 32 | 2 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, exit peak | 3 | rule | 8 of 289 (2.8) | 280 of 289 | 2.2 (4) | — | 43 / 996 / 31 | 0 | 73 of 73 | 0 | 49 / 592 / 3 / 28 |
+| Ruth St, corridor fleet, entrance peak | 3 | off | 0 of 45 (0.0) | 45 of 45 | 6.3 (0) | — | 14 / 138 / 1 | 0 | 128 of 128 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, entrance peak | 3 | rule | 1 of 45 (2.2) | 44 of 45 | 1.9 (1) | — | 17 / 378 / 12 | 0 | 128 of 128 | 0 | 3 / 1 / 16 / 7 |
+| Ruth St, fleet defaults, exit peak | 3 | off | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 11 / 49 / 0 | 1 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, fleet defaults, exit peak | 3 | rule | 1 of 281 (0.4) | 276 of 281 | 10.7 (0) | — | 12 / 49 / 0 | 1 | 73 of 73 | 0 | 4 / 10 / 2 / 8 |
+| Ruth St, fleet defaults, entrance peak | 3 | off | 0 of 33 (0.0) | 33 of 33 | 7.9 (0) | — | 34 / 53 / 0 | 0 | 128 of 128 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, fleet defaults, entrance peak | 3 | rule | 1 of 30 (3.3) | 29 of 30 | 1.0 (4) | — | 45 / 1960 / 91 | 0 | 128 of 128 | 0 | 20 / 29 / 90 / 100 |
+| Ruth St, corridor fleet, exit peak | 4 | off | 1 of 280 (0.4) | 279 of 280 | 4.2 (1) | — | 25 / 402 / 6 | 0 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, exit peak | 4 | rule | 3 of 280 (1.1) | 277 of 280 | 3.1 (1) | — | 29 / 476 / 8 | 0 | 73 of 73 | 0 | 9 / 49 / 0 / 4 |
+| Ruth St, corridor fleet, entrance peak | 4 | off | 1 of 41 (2.4) | 40 of 41 | 5.9 (0) | — | 9 / 120 / 1 | 0 | 128 of 128 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, entrance peak | 4 | rule | 1 of 41 (2.4) | 40 of 41 | 5.9 (0) | — | 5 / 120 / 1 | 0 | 128 of 128 | 0 | 5 / 3 / 7 / 5 |
+| Ruth St, fleet defaults, exit peak | 4 | off | 1 of 282 (0.4) | 280 of 282 | 11.3 (0) | — | 6 / 21 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, fleet defaults, exit peak | 4 | rule | 0 of 282 (0.0) | 281 of 282 | 13.7 (0) | — | 8 / 0 / 0 | 0 | 73 of 73 | 0 | 3 / 4 / 9 / 5 |
+| Ruth St, fleet defaults, entrance peak | 4 | off | 0 of 44 (0.0) | 43 of 44 | 12.4 (0) | — | 2 / 8 / 0 | 0 | 128 of 128 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, fleet defaults, entrance peak | 4 | rule | 0 of 44 (0.0) | 43 of 44 | 11.5 (0) | — | 3 / 0 / 0 | 0 | 128 of 128 | 0 | 8 / 4 / 33 / 30 |
+| Ruth St, corridor fleet, exit peak | 5 | off | 4 of 274 (1.5) | 267 of 274 | 6.7 (0) | — | 6 / 132 / 0 | 2 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, exit peak | 5 | rule | 9 of 274 (3.3) | 261 of 274 | 0.7 (3) | — | 36 / 1584 / 44 | 2 | 73 of 73 | 0 | 43 / 571 / 0 / 26 |
+| Ruth St, corridor fleet, entrance peak | 5 | off | 0 of 34 (0.0) | 34 of 34 | 3.6 (1) | — | 8 / 119 / 4 | 0 | 128 of 128 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, entrance peak | 5 | rule | 0 of 34 (0.0) | 34 of 34 | 11.8 (0) | — | 4 / 143 / 1 | 0 | 128 of 128 | 0 | 4 / 12 / 29 / 7 |
+| Ruth St, fleet defaults, exit peak | 5 | off | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, fleet defaults, exit peak | 5 | rule | 0 of 273 (0.0) | 272 of 273 | 14.6 (0) | — | 5 / 5 / 0 | 0 | 73 of 73 | 0 | 0 / 1 / 7 / 3 |
+| Ruth St, fleet defaults, entrance peak | 5 | off | 0 of 44 (0.0) | 44 of 44 | 12.6 (0) | — | 7 / 0 / 0 | 1 | 128 of 128 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, fleet defaults, entrance peak | 5 | rule | 0 of 44 (0.0) | 44 of 44 | 12.0 (0) | — | 10 / 0 / 0 | 1 | 128 of 128 | 0 | 10 / 5 / 30 / 28 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | off | 8 of 274 (2.9) | 265 of 274 | 2.1 (3) | — | 28 / 814 / 26 | 0 | 73 of 73 | 0 | 0 / 0 / 0 / 0 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | rule | 9 of 237 (3.8) | 221 of 237 | 0.0 (5) | — | 23 / 4147 / 43 | 8 | 73 of 73 | 0 | 25 / 1,921 / 18 / 1,837 |
+| T.H.52, corridor demand | 3 | off | 1 of 299 (0.3) | 292 of 299 | 3.8 (1) | 3.7 (2) | 12 / 67 / 5 | 2 | 403 of 470 | 0 | 0 / 0 / 0 / 0 |
+| T.H.52, corridor demand | 3 | rule | 1 of 291 (0.3) | 282 of 291 | 3.8 (2) | 1.9 (10) | 73 / 460 / 110 | 8 | 399 of 470 | 0 | 397 / 16,365 / 594 / 13,886 |
+| T.H.52, capacity | 3 | off | 1 of 319 (0.3) | 309 of 319 | 4.7 (1) | 3.9 (2) | 34 / 172 / 9 | 4 | 395 of 466 | 0 | 0 / 0 / 0 / 0 |
+| T.H.52, capacity | 3 | rule | 1 of 305 (0.3) | 296 of 305 | 3.2 (1) | 2.4 (10) | 102 / 495 / 59 | 8 | 413 of 466 | 0 | 407 / 16,970 / 828 / 14,258 |
+| two-entrance, fleet defaults | 3 | off | 3 of 301 (1.0) | 294 of 301 | 3.7 (1) | 0.2 (16) | 25 / 181 / 6 | 3 | 417 of 470; E1 216 of 360 | 0 | 0 / 0 / 0 / 0 |
+| two-entrance, fleet defaults | 3 | rule | 3 of 295 (1.0) | 270 of 295 | 1.1 (2) | 0.0 (12) | 99 / 927 / 95 | 27 | 408 of 470; E1 234 of 360 | 0 | 410 / 16,365 / 858 / 13,269 |
+| two-entrance, corridor fleet | 3 | off | 0 of 314 (0.0) | 309 of 314 | 7.3 (0) | 1.6 (13) | 22 / 55 / 4 | 1 | 356 of 470; E1 253 of 360 | 0 | 0 / 0 / 0 / 0 |
+| two-entrance, corridor fleet | 3 | rule | 0 of 345 (0.0) | 333 of 345 | 6.2 (0) | 1.4 (11) | 84 / 135 / 35 | 14 | 377 of 470; E1 282 of 360 | 0 | 494 / 19,373 / 429 / 12,582 |
+| moderate (weave.osm, 300 s) | 3 | off | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 0 / 0 / 0 / 0 |
+| moderate (weave.osm, 300 s) | 3 | rule | 0 of 34 (0.0) | 33 of 34 | — | — | 2 / 0 / 0 | 0 | — | 0 | 0 / 0 / 2 / 0 |
+| T.H.52, corridor demand | 4 | off | 0 of 317 (0.0) | 308 of 317 | 11.9 (0) | 4.4 (1) | 18 / 22 / 9 | 2 | 388 of 470 | 0 | 0 / 0 / 0 / 0 |
+| T.H.52, corridor demand | 4 | rule | 1 of 311 (0.3) | 306 of 311 | 4.7 (1) | 2.7 (8) | 93 / 407 / 65 | 8 | 427 of 470 | 0 | 409 / 14,386 / 575 / 12,784 |
+| T.H.52, capacity | 4 | off | 1 of 379 (0.3) | 373 of 379 | 10.7 (0) | 4.3 (5) | 22 / 71 / 23 | 2 | 401 of 466 | 0 | 0 / 0 / 0 / 0 |
+| T.H.52, capacity | 4 | rule | 1 of 359 (0.3) | 334 of 359 | 4.2 (1) | 2.0 (12) | 106 / 920 / 230 | 29 | 379 of 466 | 0 | 383 / 19,123 / 760 / 14,022 |
+| two-entrance, fleet defaults | 4 | off | 3 of 307 (1.0) | 301 of 307 | 4.4 (1) | 0.8 (13) | 35 / 317 / 15 | 1 | 399 of 470; E1 210 of 360 | 0 | 0 / 0 / 0 / 0 |
+| two-entrance, fleet defaults | 4 | rule | 0 of 298 (0.0) | 286 of 298 | 5.0 (0) | 0.1 (13) | 84 / 391 / 89 | 23 | 396 of 470; E1 254 of 360 | 0 | 387 / 17,660 / 762 / 14,523 |
+| two-entrance, corridor fleet | 4 | off | 3 of 308 (1.0) | 301 of 308 | 2.9 (2) | 1.5 (14) | 41 / 536 / 23 | 5 | 351 of 470; E1 256 of 360 | 0 | 0 / 0 / 0 / 0 |
+| two-entrance, corridor fleet | 4 | rule | 1 of 337 (0.3) | 319 of 337 | 5.1 (0) | 1.6 (10) | 73 / 179 / 43 | 12 | 361 of 470; E1 269 of 360 | 0 | 484 / 19,183 / 368 / 14,502 |
+| moderate (weave.osm, 300 s) | 4 | off | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 0 / 0 |
+| moderate (weave.osm, 300 s) | 4 | rule | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 2 / 0 |
+| T.H.52, corridor demand | 5 | off | 5 of 308 (1.6) | 296 of 308 | 1.7 (2) | 3.7 (1) | 30 / 601 / 29 | 6 | 401 of 470 | 0 | 0 / 0 / 0 / 0 |
+| T.H.52, corridor demand | 5 | rule | 1 of 314 (0.3) | 294 of 314 | 3.8 (1) | 2.1 (8) | 94 / 511 / 111 | 19 | 433 of 470 | 0 | 416 / 14,561 / 671 / 13,065 |
+| T.H.52, capacity | 5 | off | 1 of 369 (0.3) | 361 of 369 | 5.0 (1) | 3.3 (4) | 38 / 194 / 18 | 3 | 373 of 466 | 0 | 0 / 0 / 0 / 0 |
+| T.H.52, capacity | 5 | rule | 0 of 344 (0.0) | 335 of 344 | 4.5 (1) | 2.7 (10) | 75 / 345 / 108 | 12 | 373 of 466 | 0 | 389 / 18,819 / 714 / 15,460 |
+| two-entrance, fleet defaults | 5 | off | 1 of 308 (0.3) | 299 of 308 | 5.6 (0) | 0.4 (14) | 30 / 172 / 2 | 6 | 407 of 470; E1 256 of 360 | 0 | 0 / 0 / 0 / 0 |
+| two-entrance, fleet defaults | 5 | rule | 1 of 304 (0.3) | 289 of 304 | 4.3 (1) | 0.6 (12) | 116 / 415 / 83 | 15 | 398 of 470; E1 253 of 360 | 0 | 397 / 16,711 / 859 / 14,323 |
+| two-entrance, corridor fleet | 5 | off | 0 of 301 (0.0) | 291 of 301 | 8.3 (0) | 0.6 (14) | 25 / 22 / 5 | 4 | 374 of 470; E1 253 of 360 | 0 | 0 / 0 / 0 / 0 |
+| two-entrance, corridor fleet | 5 | rule | 2 of 332 (0.6) | 311 of 332 | 3.7 (1) | 0.8 (14) | 75 / 95 / 28 | 21 | 417 of 470; E1 273 of 360 | 0 | 511 / 15,905 / 478 / 12,546 |
+| moderate (weave.osm, 300 s) | 5 | off | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 0 / 0 / 0 / 0 |
+| moderate (weave.osm, 300 s) | 5 | rule | 0 of 36 (0.0) | 35 of 36 | — | — | 0 / 0 / 0 | 0 | — | 0 | 1 / 0 / 0 / 0 |
+
+*Table — golden `merge_weave` (the hash moves only where the key is set; not regenerated).*
+
+| variant | hash | mean TT | p90 TT | σ_v spatial / temporal | VMT | VHT | fuel | throughput | exits | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 33 | 0 |
+| the rule | c2be8dd2e16f | 68.476 | 83.669 | 4.095 / 3.362 | 169.660 | 1.7426 | 91.04 | 1680.0 | 33 | 0 |
+
+The golden's speeds keep every spread length at 0: nothing is taken or withheld there, and the metrics move through the opposing guard alone, which refuses 3 entrant changes.
+
+**Reading.**
+
+1. *The bunching is SUMO's own model plus the weave's first acceptable gap, and taking control from the first step does not spread it.*
+   - SUMO makes 91 / 74 / 58 of the entrants' crossings and 56 / 62 / 48 of the exiters' in the step the vehicle arrives, strategic changes out of a lane that does not continue on its route. The weave only sees the vehicle afterwards, because SUMO moves, then changes lanes, and the runner reads the step's results after both.
+   - Taken one step earlier (H), those vehicles are crossed by the weave's acceptance instead, a median 17–36 m in for the entrants. It refuses 19–48 % of the gaps SUMO had accepted, mostly on the follower's time gap. Entrants still cross 59–71 % in the first 50 m, and the entry's density stays at 1.15–1.19 lanes' worth.
+   - T.H.52 reads 385 / 329 / 352 against 368 / 360 / 350: the arrival step alone is not the lever.
+2. *Withholding the crossings does spread them and does raise the entry's density, as the capacity argument says.*
+   - Under the rule, 8 / 23 / 8 % of the entrants' crossings and 7 / 16 / 7 % of the exiters' stand in the first 50 m (median 147–183 m). Lanes 0 + 1 at the entry hold 1.64 / 1.69 / 1.75 lanes' worth over the run, 1.67–1.78 after the entry breakdown, against 1.13 / 1.14 / 1.18.
+   - The pair carries more at the entry: 1,936 / 1,847 / 1,705 veh/h across x = 50 m against 1,778 / 1,781 / 1,712. At seed 3 it carries 1,829–1,905 veh/h along the section after the breakdown, against 1,507–1,611.
+   - The mainline departs 1,196 / 1,177 / 1,136, and 386 / 402 / 402 exit-bound vehicles reach the section against 356 / 391 / 405: WP-64's arrival deficit shrinks at seeds 3 and 4.
+3. *But the crossings, and the forced changes, move to the section's second half, and the breakdown moves with them.*
+   - Forced changes are 63 / 68 / 73 against 24 / 25 / 46, exiters 46 / 51 / 59 of them.
+   - The first breakdown is in the second half at minute 2 / 6 / 2 (lane 1 [200, 250); lane 0 [250, 305) twice). There the auxiliary lane carries the exiters that have crossed into it (the slow lane-0 vehicles at seed 3 are all exiters already in it), and lane 1 holds the released exiters still waiting for a gap in the forced zone.
+   - The exit end reads at or below 20 m/s in 12 / 12 / 13 of the 16 lane-windows against 10 / 11 / 13, lane 0's lowest window 9.2 / 7.1 / 6.4 m/s against 10.1 / 11.9 / 9.2. 11 / 21 / 14 driven vehicles are unfinished against 1 / 6 / 8.
+   - F1 shows the lane-end bound is needed. Spread over the unforced length alone, the waiting vehicles brake for their lane ends: the auxiliary lane's last 55 m first falls under 8 m/s in minute 1 / 2 / 2, T.H.52 departs 357 / 345 / 339 and 15–17 vehicles are unfinished. With the lane-end term in, nothing is withheld above about 19.6 m/s. The default's entry already runs at 17–18 m/s in minute 1 at seed 3, so the rule binds from the start of the demand.
+4. *The movements are not symmetric at the entry: the auxiliary lane there is the ramp's only outlet.*
+   - Spreading only the entrants (E-only) keeps them in the ramp's lane: T.H.52 falls to 312 / 330 / 308.
+   - Spreading only the exiters (X-only) keeps the exiters out of it while the entrants leave. T.H.52 departs 393 / 385 / 388 (387 asked, met at seeds 3 and 5), the mainline 1,193 / 1,173 / 1,186, the given-up exits stay within 2 %, and 5 / 7 / 6 vehicles are unfinished.
+   - Its exiters then cross a median 144–155 m in, 40 / 57 / 82 of them forced. The exit end reads worse (12 / 12 / 14 windows, lane 0 as low as 6.4 m/s), and on the grid it gives up 62 exits against 44 and breaks the capacity pin at seed 3 (4 exits missed).
+   - The entrance criterion moves by keeping the ramp's lane clear at the entry, not by spreading as such.
+5. *The grid.*
+   - Under the rule the entrances rise 5,944 → 6,060 (E1 1,444 → 1,565), but exits fall 5,988 → 5,860 of 6,131 → 6,095 reached.
+   - Liveness falls on every measure: unfinished 45 → 208, deferred forced changes 5,439 → 15,138, pair releases 218 → 1,287, the T.H.52 section start's minutes at or below 5 m/s 15 → 58, the gore end's 14 → 25.
+   - The capacity fixture's no-lock pin fails at seed 4 (lane 1 at the section start at 2.0 m/s, 230 pair releases).
+   - The Ruth St section (136 m) has at most 56 m less one opening to spread over (43 m at 5 m/s). Of its 13 rows, five read worse on give-ups or on lane 1 at the gore's end: both seed-3 entrance-peak rows, the corridor fleet's exit peak at seeds 4 and 5, and the 271.4 m-window row, which falls to 221 exits of 237 reached with lane 1 at 0.0 m/s. Two read better (the fleet defaults' exit peak at seed 4, the corridor fleet's entrance peak at seed 5); the rest move by a vehicle or not at all.
+   - Nothing collides in any of the 87 grid runs or in any corridor-section run tabled here.
+6. *The exit end's criterion (ii) cannot be met by the fleet in the first three windows once the exiters arrive.*
+   - The exit carries (S790 + rnd_91040) × the exit fraction of the test's own constants: 1,431 / 1,440 / 1,484 / 1,267 veh/h in the four windows.
+   - On the exit ramp's 22.22 m/s limit, the IDM at the fleet's population means carries 1,323 veh/h at 20 m/s in equilibrium, 1,421 at 19.5 and 1,502 at 19 (its maximum is 1,805 at 13.8 m/s). The first three windows' exit flows therefore run at about 19.1–19.5 m/s on the ramp and the lane feeding it.
+   - This is a closed form at the means (the fleet's 15 % heterogeneity is not in it), but it says the auxiliary lane's last 60 m cannot read above 20 m/s at 05:30–05:45 however well the weave delivers the exiters. The more a rule delivers, the lower that lane reads: the rule's and X-only's exit-end lane 0 carries 1,044–1,209 veh/h against the default's 1,035–1,122.
+   - The test's strict marker stays as WP-61 wrote it.
+
+**Nothing ships.** `WEAVE_DEFAULTS["spread_crossings"]` = 0, and the rule is hash-neutral unless set:
+- the fixture grid at the default is WP-64's to the byte;
+- golden `merge_weave` is unchanged (hash 436cd4ec9e5d, not regenerated);
+- the T.H.52 tests' markers and pins are unchanged;
+- the strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stays: the rule makes it pass at no seed, and neither does any form.
+
+The shipping condition is met in part, by mechanism: the entry's density is clearly above 1.14 lanes' worth, the crossings are spread, and nothing collides. It fails on the rest:
+- the section breaks down in its second half instead;
+- the exit end reads worse;
+- the grid's liveness falls (unfinished 45 → 208);
+- the capacity fixture's no-lock pin breaks at seed 4.
+
+The X-only form is a harness form, not in the code. It breaks the pin at seed 3 and gives up 62 exits on the grid. The rule stays as a measured option with its counter, its guard and its unit tests, so a corridor battery can set it.
+
+**What this hands on.**
+- *(a) The lever at the entry is the ramp's outlet.* Of all the forms, the one that moved the entrance criterion kept the exiters out of the auxiliary lane's first stretch while the entrants left it (X-only: 393 / 385 / 388). The one that kept the entrants in it moved the criterion the other way (E-only: 312 / 330 / 308). Spreading the exiters along the section is what costs: forced exiters double in the last 80 m and the pin breaks.
+  - The untried form is narrower: keep exit-bound vehicles out of the auxiliary lane only over the stretch the ramp's vehicles need to leave it, which from (1) is SUMO's arrival step plus the weave's first acceptance, a median 8–20 m. Derive its length from the entrants' crossing distribution, not from the section's.
+  - Judge it by the T.H.52 count, the exit-bound vehicles forced in the zone, the capacity fixture's pin at seed 3 and the grid's give-ups.
+- *(b) Criterion (ii) is an equilibrium question to settle first.* Measure, on a plain one-lane exit fixture at 22.22 m/s with the corridor's fleet block (heterogeneity included), the flow it carries with its mean speed above 20 m/s. If it is below the test's 1,431–1,484 veh/h exit flows, criterion (ii) is out of the fleet's reach at 05:30–05:45 whatever the weave does. The xfail's reason should then say so, and the corridor question becomes the fleet's time gap on exit ramps (WP-65's (b)), not the weave.
+- *(c) For harnesses: SUMO 1.27.1 changes lanes in the step a vehicle arrives, and a TraCI read after the step cannot see it coming.* A rule that must own a vehicle's lane change on arrival has to set its mode on the step before, within two steps' travel. Doing so is not neutral: the weave's acceptance refuses 19–48 % of the arrival-step changes SUMO's model makes (form H).
+
+**Bookkeeping.**
+- `packages/flowstate_core/flowstate_core/config.py`: `spread_crossings` = 0, with its provenance comment and docstring paragraph.
+- `packages/microsim/microsim/runner.py`:
+  - new: `WEAVE_SPREAD_PHI`, `_weave_spread_length`, `_weave_spread_fraction`, `_weave_handover_step`;
+  - `_weave_step`: the hand-over, the withheld crossings and their release, the original mode kept through the hand-over, no anticipation for a withheld entrant, the opposing guard on an entrant's accepted change under the rule;
+  - the rule's state in the section's state, `n_spread_withheld` in `_weave_meta`, and the docstrings of `_weave_step` and `_weave_meta`.
+- `packages/api/api/schemas.py`: `WeaveSectionDiagnosticsOut.n_spread_withheld`.
+- `scripts/corridor_sweep.py`: `WEAVE_FIELDS`.
+- `tests/test_microsim/test_microsim_merge_managed_meter.py`:
+  - `TestWeaveSpread`: off by default; the spread length's closed form and the section's values; the golden-ratio places and the three-gap property; an exiter taken before the section, withheld to its place, released and handed back with its own mode; nothing taken or withheld in free flow; a withheld entrant not anticipated; the opposing guard; a binding run on `weave_th52_corridor.osm`;
+  - the `WEAVE_DEFAULTS` pin, the fake state and the counters test.
+- `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py`: the key lists, 41 keys.
+- docs/CONTRACTS.md §2: the key list, the WP-67 paragraph, the API paragraph.
+- CHANGELOG.md and this section.
+
+`frontend/`, `scenarios/`, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md and `scripts/gcp/` are untouched. Session artifacts are not committed: the harnesses and their forms, the lane-end probe, the lane-change outputs, the grids, the corridor-section runs and the table scripts.
