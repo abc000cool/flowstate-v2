@@ -1432,3 +1432,34 @@ Method (`artifacts/mndot_rounds/weave_2026-09-24/wp59_bottleneck_discharge.py.tx
 `validation.observed.ObservedCorridor.hourly_link_flows` emits station then time, stations sorted by `x_m`), so they reshape to 20 × 14 × 3;
 each GEH = √(2(m − c)²/(m + c)) is solved for the simulated count m against the observed c, and the root below c is kept — the only one that rises
 with each seed's counted throughput (r 0.63–0.999 at all 14 stations) and stays under the fleet's capacity at S97 in the first hour.
+
+**VM O (2026-09-24, block 3): per-lane crossing counts through the T.H.52 weave, the measurement WP-59 named.**
+The corrected weave scenario's first hour (05:30–06:30), four seeds, every trajectory kept, current defaults (the physics of 20f9fcb; config
+hash ec9667bc60b4; departed 0.971, lowest 0.968); per seed, per lane, per 5-min window, the flow and crossing speed at five positions
+(simulation x = data x, offset 0) — `artifacts/mndot_rounds/weave_2026-09-24/first_hour_lane_crossings_20f9fcb_physics.txt`
+(script `diag_lanes.py.txt`, artifact `first_hour_lanes_validation_5874c2f.json`). Hourly totals, the four seeds:
+
+| position | lanes | vehicles in the hour | per lane, right to left (seed 134183728835869882) |
+|---|---|---|---|
+| 9.90 km, just past the 40648744 entrance (9,881) | 3 | 2,753 / 2,770 / 2,770 / 2,771 | 715 / 745 / 1,293 |
+| 10.15 km, at S790 (10,128), the entrance's added lane still open | 4 | 3,054 / 3,110 / 3,084 / 3,101 | 170 / 677 / 854 / 1,353 |
+| 10.30 km, the 3-lane edge before the T.H.52 gore (10,330) | 3 | 3,042 / 3,088 / 3,060 / 3,070 | 661 / 969 / 1,412 |
+| 10.45 km, inside the weave | 4 | 3,998 / 4,024 / 4,026 / 3,990 | 716 / 922 / 962 / 1,398 |
+| 10.70 km, before the exit to 18207598 (10,722) | 4 | 3,978 / 4,003 / 3,998 / 3,967 | 1,022 / 681 / 869 / 1,406 |
+
+Reading, from the 5-min windows (seed 134183728835869882; the other three agree to within about 5 %):
+
+1. *WP-59's lane hypothesis is refuted.* Lane 0 of the 3-lane edge before the gore carries 641–673 vehicles in the hour on every
+   seed, 22 % of the edge, not almost nothing. The lane that carries least is the 40648744 entrance's added lane at S790 (170–207).
+2. *The weave itself saturates at about 4,000 veh/h.* Inside it (10.45 km) the four lanes carry 3,816–4,992 veh/h per window from
+   minute 10 on at 5–19 m/s; at its downstream end (10.70 km) 3,804–4,968 at 9–21 m/s; over the hour 3,967–4,026 vehicles on the four
+   seeds — about 1,000 veh/h per lane, 60 % of the fleet's straight-road capacity (1,670). Into the real weave S790 plus the T.H.52 entrance carried 5,137 veh/h at 25.9 m/s at
+   05:40 and 6,275 at 06:25 (`observations.json`, windows 2 and 11).
+3. *It congests at its downstream end first.* At 10.70 km the auxiliary lane (lane 0, entrants and exiters) runs at 11.2 m/s with
+   1,092 veh/h in minutes 5–10, and lane 1, the lane both movements cross, carries the least of the four there over the hour on every
+   seed (669–715 vehicles; 492–984 veh/h per window from minute 10 at 12–16 m/s); inside the weave lanes 0–1 are at 8 m/s by minutes 10–15; the standstill head (under 2 m/s) appears upstream at
+   10.20–10.35 km at minute 18 (VM N). At S790 the simulation carries 3,492 veh/h at 8 m/s in minutes 15–20, where the real road
+   carries 3,752 at 25.8 m/s.
+
+So the corridor's gap is the T.H.52 weaving section's own capacity — the object of the T.H.52-at-capacity fixture and block 3's
+item 1 — and within it the crossing lane: the fixture target is the right one. Not reproduced.
