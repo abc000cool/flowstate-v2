@@ -498,6 +498,22 @@ for V in slice ""; do
       --report-dir docs/reports/${MNDOT}_weave${SUF}_xlovr --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlovr failed; continuing"
 done
 
+# 10m. The reference configuration (10j, VM U) with the weave's acceptance calibrated to real drivers (VM Z,
+#     2026-09-25, block 3; artifacts/i24_critical_gaps.json proposal: accept_gap_s 0.089 s, exit_accept_gap_s 1.78 s,
+#     from the I-24 MOTION Hickory Hollow-Bell Road weave's fitted critical gaps). A calibration, measured on the corridor.
+for V in slice ""; do
+  SUF=${V:+_$V}
+  stage mndot_weave${SUF}_xlcal bash -c "sed -e 's#^name: ${MNDOT}_weave${SUF}\$#name: ${MNDOT}_weave${SUF}_xlcal#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0, accept_gap_s: 0.089, exit_accept_gap_s: 1.78}#' \
+      scenarios/${MNDOT}_weave${SUF}.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' > scenarios/${MNDOT}_weave${SUF}_xlcal.yaml && \
+    grep -c 'accept_gap_s: 0.089' scenarios/${MNDOT}_weave${SUF}_xlcal.yaml && grep -c '^  lane_end_giveup_m: 7.5' scenarios/${MNDOT}_weave${SUF}_xlcal.yaml && \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave${SUF}_xlcal.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates \$([ -n '$V' ] && echo 4 || echo $REPS) --procs $PROCS \
+      --out runs/${MNDOT}_weave${SUF}_xlcal/baseline --artifact artifacts/validation_${MNDOT}_weave${SUF}_xlcal.json \
+      --report-dir docs/reports/${MNDOT}_weave${SUF}_xlcal --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlcal failed; continuing"
+done
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
