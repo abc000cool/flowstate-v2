@@ -27,12 +27,16 @@ ARCHIVE="$HOME/final.tgz"
 BUCKET="${PIPELINE_BUCKET:-}"
 SELF_DELETE="${PIPELINE_SELF_DELETE:-0}"
 STAGES=""
+DIAG_SEED=677105600768189526   # the seed the mndot_weave_seed5 stage maps (VM L default)
+DIAG_REPS=5                    # its spawn index + 1: the battery runs the first DIAG_REPS replicates
 while [ $# -gt 0 ]; do
   case "$1" in
     --procs) PROCS="$2"; shift 2 ;;
     --no-shutdown) SHUTDOWN=0; shift ;;
     --quick) QUICK=1; shift ;;
     --stages) STAGES="$2"; shift 2 ;;
+    --diag-seed) DIAG_SEED="$2"; shift 2 ;;
+    --diag-reps) DIAG_REPS="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -371,13 +375,15 @@ done
 #     docs/ONBOARDING_MNDOT.md §11): seed index 4 of the weave scenario's spawn (677105600768189526,
 #     0.865 under VM J) — the first five replicates, so that seed runs with its trajectory kept, then
 #     the standstill maps (100 m x 5 min; 50 m x 1 min x lane over the whole corridor and run).
+#     --diag-seed / --diag-reps select the seed and how many leading replicates run (VM N, 2026-09-24:
+#     the seed the exiter-yield rule locked, 6904272788004776631, index 12).
 #     --keep-trajectories: the battery prunes every trajectory but the first seed's (VM L, 2026-09-24,
 #     ran the five replicates — the seed read 0.743 again — and the maps found no file).
 stage mndot_weave_seed5 $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave.yaml \
-  --observations data/mndot/$MNDOT/observations.json --replicates 5 --procs "$PROCS" \
+  --observations data/mndot/$MNDOT/observations.json --replicates "$DIAG_REPS" --procs "$PROCS" \
   --out runs/${MNDOT}_weave_seed5/baseline --artifact artifacts/validation_${MNDOT}_weave_seed5.json \
   --report-dir docs/reports/${MNDOT}_weave_seed5 --criteria-profile fhwa_tat3_2004 --keep-trajectories || say "mndot_weave_seed5 failed; continuing"
-stage mndot_weave_seed5_diag bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/baseline/*/677105600768189526 | head -1) && \
+stage mndot_weave_seed5_diag bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/baseline/*/$DIAG_SEED | head -1) && \
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$D > logs/diag_seed5_100m_5min.txt && \
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_seed.py.txt \$D > logs/diag_seed5_50m_1min_lanes.txt && \
   for d in runs/${MNDOT}_weave_seed5/baseline/*/*/; do echo \$d; $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$d | tail -n 12; done > logs/diag_seed5_all_100m_5min.txt" || say "mndot_weave_seed5_diag failed; continuing"

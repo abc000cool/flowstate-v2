@@ -296,7 +296,8 @@ batteries on the regenerated inputs departed 0.233 and 0.247 of their demand,
 the exit-side weave rule and the cross-edge vacate window lifted the 20-seed
 battery to 0.859 departed with speed RMSPE 0.71 (no seed locks, 8 % of
 link-hours pass GEH; 0.855 under the speed-aware acceptance, which halves
-the collisions), and the weaving-section model is still short of its
+the collisions; a crossing-pair yield that cut the given-up exits locked one
+seed of twenty and is off by default), and the weaving-section model is still short of its
 pre-registered criterion
 ([docs/WEAVE_MODEL_PLAN.md](docs/WEAVE_MODEL_PLAN.md)). Still ahead: the
 radar-detector counts that would replace fragment counts, a flow-based

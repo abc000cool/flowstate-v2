@@ -1303,3 +1303,31 @@ trajectory but the first seed's, and the diagnostic stage found no file
 (`--keep-trajectories` added to the stage). The seed's read stands as in VM
 K's record — upstream ramps starved, a queue at the corridor's upstream end,
 a lane at 0.0 m/s not shown — until the stage is re-run.
+
+**VM M (2026-09-24, block 3): the same corrected scenarios (config hash
+53e4b208fd1d) under the crossing-pair rule — an exiter inside the forced
+zone yields to an entrant already halted at the auxiliary lane's end
+(commit 585e588, `exiter_yields` on).** Slice, 4 seeds: departed 0.966
+(lowest 0.959), two collisions, given-up exits 9 of 995 and 22 of 1,820
+(0.9 / 1.2 %)
+(`artifacts/mndot_rounds/weave_2026-09-24/slice_corrected_inputs_exiter_yields_585e588.json`).
+Battery, 20 seeds (`battery_corrected_inputs_exiter_yields_585e588.json`,
+per-seed shares, collisions and yield counts in
+`battery_exiter_yields_per_seed_departed.txt`): departed **0.836** — 19 seeds
+between 0.843 and 0.899 and **one seed, 6904272788004776631, at 0.356**
+(0.852 under VM K), every on-ramp starved, 18,259 exiter-yield
+vehicle-steps against 769–3,512 on the other seeds: a lock under the new
+rule. The seed VM K lost (677105600768189526, 0.743) reads 0.865 here.
+Speed RMSPE **0.716** (0.695–0.736), GEH < 5 on **0.077** of 840 link-hours
+(0.058–0.097), "wave speed" 6.6 km/h, **19 collisions over 20 seeds** (VM
+K 15), given-up exits Ruth St 112 of 18,750 (0.6 %), T.H.52 626 of 66,790
+(0.9 %) — the lowest shares of the series. Scoring 3,024 s.
+
+Reading: the rule does what it was derived for (fewer exits given up on
+both sections) and locks one seed of twenty on the four-hour corridor, a
+failure the 29-run fixture grid did not show. A rule that locks the
+flagship corridor cannot ship on: `exiter_yields` goes back to 0 by default
+(hash-neutral; the golden never bound on it) until the yield is bounded
+against the chain WP-53 named — the halted entrant that is never freed.
+The lock's standstill map is the next round (the seed's spawn index is
+12; the diagnostic stage keeps its trajectory now). Not reproduced.

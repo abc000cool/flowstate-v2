@@ -1,0 +1,3 @@
+per-seed departed share, 20 seeds, VM M (exiter yields to a halted entrant, runner 585e588, config 53e4b208fd1d):
+0.356 0.843 0.846 0.852 0.852 0.852 0.853 0.855 0.856 0.857 0.857 0.862 0.862 0.862 0.865 0.867 0.867 0.873 0.877 0.899
+the 0.356 seed is 6904272788004776631 (0.852 under VM K; spawn index 12), 18259 exiter-yield vehicle-steps against 769-3512 elsewhere; the 0.743 seed of VM K (677105600768189526) reads 0.865; collisions per seed (artifact order): 1 1 1 1 1 0 0 4 0 0 4 1 0 1 1 0 2 0 1 0
