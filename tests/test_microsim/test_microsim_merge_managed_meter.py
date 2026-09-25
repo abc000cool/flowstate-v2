@@ -1835,11 +1835,12 @@ class TestWeaveRun:
         strict=True,
         reason="The T.H.52 section as the corridor compiles it, under the observed 05:30-05:50 "
         "movements on the corridor's fleet (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "WP-61): the T.H.52 entrance departs 368 / 360 / 350 of 407 at seeds 3 / 4 / 5 "
-        "(387 required), and the section's last 60 m read below 20 m/s in 10 / 11 / 13 of "
-        "the 16 lane-windows — the auxiliary lane at 10.1 / 11.9 / 9.2 m/s at its lowest, "
-        "lane 1 at 12.9 / 15.1 / 8.2; the mainline departs 1,140 / 1,157 / 1,149 of 1,196 "
-        "(1,137 required), 2 / 1 / 2 exits are given up of 356 / 391 / 405 reaching the "
+        "WP-61; the gore link's class corrected to the corridor's, 2026-09-25 block 3, WP-74): "
+        "the T.H.52 entrance departs 381 / 381 / 336 of 407 at seeds 3 / 4 / 5 "
+        "(387 required), and the section's last 60 m read below 20 m/s in 12 / 10 / 13 of "
+        "the 16 lane-windows — the auxiliary lane at 11.3 / 8.0 / 7.9 m/s at its lowest, "
+        "lane 1 at 13.0 / 10.6 / 7.6; the mainline departs 1,177 / 1,162 / 1,111 of 1,196 "
+        "(1,137 required), 1 / 0 / 2 exits are given up of 367 / 404 / 395 reaching the "
         "section, no collision",
     )
     def test_th52_corridor_section_carries_free_flow_demand(self, tmp_path):

@@ -4824,3 +4824,205 @@ Session artifacts are not committed:
 - the per-step logs (`wp73/<label>_<seed>/`) and the JSONL records of every run.
 
 Every number above is from those runs, or from the committed test constants.
+
+## 2026-09-25 (block 3, WP-74, the gore link's class): the corridor compiles every off-ramp connection straight (`dir="s"`), the T.H.52 gore at +1.48°. The corridor section fixture compiled its gore as a partial right (`dir="R"`, +10.2°). Its exit's first node now leaves at the corridor's angle and compiles `s`, with every length unchanged within 0.1 m. A free vehicle then crosses the fixture's gore exactly as it crosses the corridor's. Criterion (ii) still fails in lanes 0 and 1 in every window at every seed; the strict `xfail` stands
+
+**Why.** WP-73 (above, its (5) and hand-on (b)) found that the EIDM, the corridor fleet's model, caps its desired speed at 12 m/s when a partial-right link lies within its 4-s preview. The corridor section fixture's gore link 102_0 → 201 compiled as `dir="R"`. WP-73 took the corridor's own gore links to be partial right as well, and so read lane 0's failure of criterion (ii) as a model limit that no weave rule could lift. The coordinator then checked the corridor's compiled network and found every connection into an off-ramp `dir="s"`. This package verifies that fact, finds netconvert's rule, corrects the fixture's exit geometry to the corridor's class as a faithfulness correction, and re-measures.
+
+It corrects two earlier statements:
+- WP-61's fixture (its dated section): the compiled connections were checked lane by lane, but not their direction class. The gore link was `R` where the corridor's is `s`.
+- WP-73's "the corridor's gore links are partial right" (its (5) and hand-on (b)). They are straight, so the cap never applies on the corridor. Its "changing the fixture's geometry to make the link straight would be tuning the fixture to pass" is withdrawn: the change makes the fixture match the corridor.
+
+WP-61's section is left as it is.
+
+**(1) The corridor.** A session script ran `microsim.runner._build_network` on `scenarios/mndot_i94_wb_stpaul_weave.yaml` at HEAD eefa5bc, as `run_micro` does and as WP-66 did. It ran netconvert only (SUMO 1.27.1) on `data/osm/mndot_i94_wb_stpaul.osm`, with `--ramps.guess --ramps.ramp-length 250 --ramps.unset 1001426896` and the split patch. The patch took: 45608485 lanes 0 and 1 lead only to 18207912, and 51388891 lane 0 only to 18207598. The connections into the eight off-ramps equal those of the coordinator's probe net, direction included.
+
+*Table — every connection into a corridor off-ramp, and the continuing edge at the same node. Angles are netconvert's own (see (2)): the relative angle between the approach's last geometry segment and the outgoing edge's first, with positive meaning right.*
+
+| approach → off-ramp | dir | exit angle | continuing edge, dir, angle |
+|---|---|---|---|
+| 638519815_0 → 18279036 | s | +0.64° | 996266724, s, +0.23° |
+| 1014336806_0 → 18207390 | s | +3.67° | 43917735#0, s, +0.12° |
+| 999007700_0 → 18208090 | s | −1.34° | 95085307, s, −0.63° |
+| 998737536_0 → 18207880 | s | +4.02° | 998737535, s, −0.92° |
+| 45608485_0, _1 → 18207912 | s | +1.44° | 45782590, s, −2.21° |
+| 45782590-AddedOffRampEdge_3 → 42165869 (6th St, a left exit) | s | −14.09° | 1000805867, s, −11.10° |
+| **51388891_0 → 18207598 (T.H.52 exit)** | **s** | **+1.48°** | **1001426896, s, +5.93°** |
+| 1001426896_0 → 82150350 (12th St / Jackson) | s | −0.52° | 82578022, s, −1.97° |
+
+*The T.H.52 gore.*
+- 51388891's last geometry segment is 45.3 m long.
+- 18207598 leaves it at +1.48° for 24.7 m, then turns to +16.1°, and runs at +15.5° to +23.1° over the next 110 m.
+- 1001426896 leaves at +5.93° for 21.3 m, then turns to +8.1°, +12.0° and +15.8°. The corridor bends right here, so the exit starts 4.45° left of the continuing edge.
+- The compiled lane shapes give the same angles (+1.45° and +5.92°).
+- The gore junction extends 8.2 m from its node, and 51388891's lanes end 6.5 m before it.
+
+**(2) netconvert's rule** (SUMO 1.27.1, tag `v1_27_1`: `NBNode::getDirection`, `NBNode::isStraighter`, `NBEdge::getAngleAtNode`; fetched for this package).
+- *The angle.* The angle is `normRelAngle` of the incoming edge's angle at the node and the outgoing edge's angle there. Each is the heading of the edge's own node-to-node geometry (`myGeom`): the incoming edge's last segment and the outgoing edge's first. The lane shapes are not used. Positive means clockwise, a right turn. netconvert rounds the geometry to 0.01 m (`NBEdge::roundGeometry`).
+- *The classes.*
+  - Below 6° in magnitude, a connection is straight (`s`).
+  - From 6° to 44°, it is partial (`R` to the right, `L` to the left) if the next compatible outgoing edge on either side is "straighter"; otherwise it is `s`.
+  - "Straighter" (`isStraighter`) means the two angles differ by 5° or more and the other edge's angle is at least 5° smaller in magnitude. There are lane-count and sign tie-breaks when neither is 5° straighter.
+  - From 44° on, a connection is `R` or `r` (right), or `L` or `l` (left).
+- *Measured on a toy diverge.* A plain-XML network: an approach heading east, a through edge at φ and an exit at θ, both measured right of east, with netconvert `--no-internal-links`.
+  - With φ = 0: θ = 1.5° and 5.9° give `s`; θ = 6.1°, 8°, 10.2°, 14.1° and 43° give `R`; 45° gives `r`; −6.1° and −10° give `L`.
+  - The corridor's pair, (φ, θ) = (5.93, 1.48), gives `s`.
+  - The 5° margin: (3, 7.9), (4, 8.9) and (5.93, 10.2) give `s`, while (3, 8.1) and (4, 9.1) give `R`.
+  - The sign tie-break: (−2, 6.5) gives `R`, with the through edge bending left and the exit right.
+- *So the corridor's T.H.52 gore is straight on the first test.* The exit's 1.48° is below 6°.
+
+**(3) The fixture before and after.**
+- *Before* (WP-61).
+  - Way 201 ran straight from node 4, the section's end, to node 11: 508.7 m at +10.20°. The continuing edge 103 runs at 0.00°.
+  - 10.2° lies between 6° and 44°, and 103 is more than 5° straighter, so the link was `R`.
+  - The gore junction extends 37.5 m from node 4, and 102's lanes end 25.5 m before it: the straight fixture's shallow diverge.
+- *After.*
+  - A new node 12 sits 10.0 m from node 4 at +1.477°, the corridor's angle. Node 11 is moved so that way 201 runs 498.6 m on at +14.14°.
+  - It compiles as `s`, at +1.46° as the net states it. The 0.01-m rounding moves a 10-m leg's angle in steps of about 0.06°: the compiles gave 1.458° and, one step up, 1.519°.
+  - The junction extends 36.9 m, and 102's lanes end 26.8 m before node 4.
+  - The exit's compiled lane starts 36.6 m along the way, past node 12, so its lane shape begins at +14.14°. Without internal links, SUMO uses only the lane lengths and the link's class, not the heading.
+- *Why 10 m and not the corridor's 24.7 m.*
+  - The first node's distance and the second leg's angle set how far the straight fixture's gore junction extends along 102 and 103.
+  - With the second leg's angle bisected so that 102 compiles to the corridor's 305.02 m, 103 comes out at +0.00 / +0.00 / +0.11 / +0.12 / +0.26 / +1.36 m from 220.94 for a first leg of 7.5 / 10 / 12.5 / 15 / 20 / 24.7 m.
+  - The corridor's own first two legs (24.7 m at +1.48°, then 15.8 m at +16.1°) compile 102 at 314.6–315.8 m, whatever the third leg's angle.
+  - Of the legs tried, 10 m is the longest that keeps both edges within 0.1 m; 12.5 m misses by 0.01 m.
+  - The node positions were fitted by repeated compiles (`sweep.py`, `sweepn.py`, `fit_theta2.py`), with the far node placed last for 201's length.
+- The fixture's header comment records the change (and 102's length as 305.0 m). Nothing else in the file changes: not the approach, the section, the entrance, the other exit or the tags.
+
+*Table — compiled lengths (m) through `_build_network` as `run_micro` calls it, before and after, against the corridor's edge.*
+
+| fixture edge [corridor edge] | corridor | before | after |
+|---|---|---|---|
+| 101 [40648738] | 228.96 | 229.02 | 229.02 |
+| 102 [51388891] | 305.02 | 304.95 | 305.02 |
+| 103 [1001426896] | 220.94 | 220.94 | 220.95 |
+| 104 [82578022] | 524.81 | 524.81 | 524.81 |
+| 200 [769818012] | 52.37 | 52.37 | 52.37 |
+| 210 [194037903] | 791.88 | 791.92 | 791.92 |
+| 201 [18207598] | 478.74 | 478.67 | 478.73 |
+| 203 [82150350] | 401.16 | 401.07 | 401.07 |
+| 100 (insertion) | — | 600.05 | 600.05 |
+
+- All 16 connections and all 20 lanes (speed, width, permissions) are identical before and after, except the one class, 102_0 → 201: `R` → `s`.
+- The test's section length reads 305.02 m (304.95 before).
+
+*A lone vehicle through the gore* (`gore_probe.py`). The corridor fleet's mean driver (WP-72/73: T 1.362 s, a 1.065, b 1.851 m/s², s0 2.546 m, `maxSpeed` 32.4 m/s) is inserted at 24.59 m/s in lane 0 of the section, routed onto the exit, with step 0.5 s. The table gives its speed [m/s] at distances from the gore.
+
+| network, model | −200 | −100 | −60 | −20 | 0 | +20 | +50 | +100 | +200 | +300 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| fixture before (`R`), EIDM | 24.38 | 24.01 | 23.06 | 21.98 | 21.04 | 20.10 | 19.25 | 19.83 | 21.44 | 21.98 |
+| fixture after (`s`), EIDM | 24.38 | 24.01 | 23.05 | 22.33 | 22.29 | 22.42 | 22.49 | 22.44 | 22.47 | 22.44 |
+| corridor, 51388891_0 → 18207598 (`s`), EIDM | 24.38 | 24.01 | 23.05 | 22.33 | 22.29 | 22.42 | 22.49 | 22.44 | 22.47 | 22.44 |
+| all three, IDM | 21.89–21.90 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 |
+
+- The corrected fixture's free vehicle reads the corridor's own gore to the hundredth at every mark, 14 marks (−200 to +300 m).
+- Before, it crossed the gore 1.25 m/s slower and fell to 19.25 m/s 50 m onto the ramp. This is WP-73's `R`-against-`s` probe, now on the fixture itself.
+
+**(4) The corridor section test re-measured** (`corr_run.py`: the test's body on a given fixture file, with `weave_params` set in a copy of its call; `wp73_harness.py` with `FS_WP72_FORM=O` and `ramp_outlet` = 0 for WP-70's ramp-origin variant O, as WP-72 re-expressed it).
+- Each run is 20 simulated minutes, 2.1–3.5 s wall-clock, one at a time.
+- The runs before the change reproduce the record to the number: WP-61's default row, WP-72/73's `ramp_outlet` row, WP-72's O row, and WP-73's ten-seed `ramp_outlet` totals.
+- Criteria are those of the test: mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s of 16, given up ≤ 2 % of reached, no collision. ✗ marks a failed criterion.
+
+*Table — seeds 3 ; 4 ; 5. The lane-windows cell gives the count at or below 20 m/s, then lanes 0 / 1 / 2 / 3 in brackets.*
+
+| form | fixture | mainline | T.H.52 | lane-windows ≤ 20 m/s | given up of reached | coll. | unfinished |
+|---|---|---|---|---|---|---|---|
+| default | before | 1,140 ; 1,157 ; 1,149 | 368 ✗ ; 360 ✗ ; 350 ✗ | 10 (4/4/2/0) ; 11 (4/4/2/1) ; 13 (4/4/3/2) | 2 of 356 ; 1 of 391 ; 2 of 405 | 0 ; 0 ; 0 | 1 ; 6 ; 8 |
+| default | **after** | 1,177 ; 1,162 ; 1,111 ✗ | 381 ✗ ; 381 ✗ ; 336 ✗ | 12 (4/4/2/2) ; 10 (4/4/2/0) ; 13 (4/4/4/1) | 1 of 367 ; 0 of 404 ; 2 of 395 | 0 ; 0 ; 0 | 4 ; 7 ; 6 |
+| `ramp_outlet` | before | 1,187 ; 1,181 ; 1,171 | 401 ; 386 ✗ ; 403 | 12 (4/4/3/1) ; 12 (4/4/3/1) ; 13 (4/4/3/2) | 2 of 376 ; 0 of 411 ; 1 of 431 | 0 ; 0 ; 0 | 7 ; 3 ; 5 |
+| `ramp_outlet` | **after** | 1,194 ; 1,193 ; 1,183 | 407 ; 391 ; 382 ✗ | 10 (4/4/2/0) ; 13 (4/4/3/2) ; 14 (4/4/4/2) | 2 of 384 ; 4 of 427 ; 2 of 424 | 0 ; 0 ; 0 | 1 ; 5 ; 4 |
+| O (harness) | before | 1,195 ; 1,169 ; 1,193 | 403 ; 394 ; 399 | 11 (4/4/2/1) ; 10 (4/4/2/0) ; 13 (4/4/3/2) | 2 of 370 ; 0 of 425 ; 1 of 433 | 0 ; 0 ; 0 | 6 ; 4 ; 2 |
+| O (harness) | **after** | 1,184 ; 1,179 ; 1,174 | 403 ; 394 ; 393 | 12 (4/4/3/1) ; 12 (4/4/2/2) ; 14 (4/4/4/2) | 3 of 376 ; 2 of 414 ; 1 of 428 | 0 ; 0 ; 0 | 2 ; 2 ; 3 |
+
+*Table — the last 60 m, lanes 0 and 1 separately: mean speed per 5-min window (windows 0 / 1 / 2 / 3, m/s), and lane 0 per minute in minutes 0–4.*
+
+| form | fixture | seed | lane 0 | lane 1 | lane 0, minutes 0–4 |
+|---|---|---|---|---|---|
+| default | before | 3 | 13.9 / 11.9 / 10.1 / 13.5 | 16.7 / 15.8 / 12.9 / 16.4 | 21.7, 18.0, 10.3, 17.4, 12.2 |
+| default | before | 4 | 14.4 / 15.7 / 11.9 / 13.8 | 18.3 / 17.4 / 15.1 / 15.6 | 22.0, 15.6, 10.9, 15.2, 17.2 |
+| default | before | 5 | 12.9 / 11.8 / 10.7 / 9.2 | 16.2 / 15.0 / 13.3 / 8.2 | 21.5, 20.1, 7.6, 14.2, 13.8 |
+| default | after | 3 | 16.7 / 17.2 / 11.3 / 13.8 | 19.6 / 19.5 / 13.0 / 15.2 | 22.3, 20.9, 17.2, 19.3, 11.7 |
+| default | after | 4 | 16.1 / 15.2 / 8.0 / 12.8 | 18.8 / 17.0 / 10.6 / 14.5 | 22.7, 16.4, 14.5, 17.6, 15.6 |
+| default | after | 5 | 7.9 / 11.8 / 8.9 / 7.9 | 7.6 / 13.2 / 13.5 / 10.7 | 22.4, 5.1, 5.6, 10.7, 12.7 |
+| `ramp_outlet` | before | 3 | 13.2 / 7.7 / 14.4 / 15.7 | 16.7 / 9.7 / 15.9 / 17.1 | 21.7, 18.0, 11.5, 17.7, 9.2 |
+| `ramp_outlet` | before | 4 | 16.4 / 11.9 / 12.2 / 5.6 | 20.0 / 15.0 / 13.8 / 7.8 | 21.8, 16.5, 16.5, 15.7, 16.3 |
+| `ramp_outlet` | before | 5 | 14.3 / 7.6 / 11.1 / 7.8 | 15.9 / 8.2 / 13.2 / 9.6 | 21.5, 19.3, 13.6, 13.4, 11.8 |
+| `ramp_outlet` | after | 3 | 12.3 / 16.1 / 12.8 / 9.4 | 14.9 / 19.1 / 16.6 / 11.6 | 22.3, 18.3, 10.1, 13.6, 10.1 |
+| `ramp_outlet` | after | 4 | 12.9 / 13.5 / 8.4 / 7.4 | 18.2 / 14.6 / 10.6 / 9.1 | 22.4, 16.9, 10.5, 12.2, 12.8 |
+| `ramp_outlet` | after | 5 | 8.2 / 6.8 / 7.8 / 13.1 | 6.6 / 7.4 / 10.2 / 15.1 | 22.4, 6.7, 5.5, 8.6, 12.9 |
+| O | before | 3 / 4 / 5 | 12.5 / 15.6 / 13.2 / 14.1 ; 14.0 / 11.6 / 11.9 / 13.5 ; 12.9 / 8.5 / 9.8 / 14.9 | 14.3 / 18.6 / 14.2 / 15.5 ; 16.5 / 16.9 / 14.8 / 15.5 ; 14.6 / 10.6 / 12.7 / 14.3 | — |
+| O | after | 3 / 4 / 5 | 11.7 / 5.7 / 12.7 / 14.7 ; 17.3 / 15.4 / 7.8 / 8.7 ; 7.0 / 9.6 / 10.0 / 10.5 | 14.6 / 6.2 / 14.2 / 14.9 ; 17.5 / 17.9 / 10.1 / 11.4 ; 6.9 / 10.8 / 11.4 / 13.8 | — |
+
+*Ten seeds (3–12), the plain test body.*
+
+| form | fixture | T.H.52 Σ of 4,070 (seeds ≥ 387) | mainline Σ of 11,960 (seeds ≥ 1,137) | lane-windows ≤ 20 m/s, Σ of 160 (lanes 0 / 1 / 2 / 3) | given up of reached | unfinished | coll. | passes |
+|---|---|---|---|---|---|---|---|---|
+| default | before | 3,418 (0) | 11,546 (8) | 123 (40 / 39 / 30 / 14) | 19 of 3,809 | 46 | 0 | 0 |
+| default | **after** | 3,374 (0) | 11,523 (8) | 123 (40 / 40 / 28 / 15) | 12 of 3,811 | 41 | 0 | 0 |
+| `ramp_outlet` | before | 3,749 (3) | 11,685 (9) | 126 (40 / 40 / 31 / 15) | 16 of 3,982 | 44 | 0 | 0 |
+| `ramp_outlet` | **after** | 3,750 (5) | 11,713 (8) | 124 (40 / 40 / 29 / 15) | 20 of 4,010 | 31 | 0 | 0 |
+
+- Paired by seed, after minus before (mean a run, 95 % t-interval):
+  - lane-windows at or below 20 m/s: 0.0 (−0.95 to +0.95) at the defaults, −0.2 (−1.01 to +0.61) with `ramp_outlet`;
+  - T.H.52 departures: −4.4 (−22.6 to +13.8) and +0.1 (−18.1 to +18.3);
+  - mainline departures: −2.3 (−23.8 to +19.2) and +2.8 (−13.5 to +19.1);
+  - lane 0's minute-1 speed: −0.7 (−4.5 to +3.1) and −1.4 (−4.3 to +1.6) m/s.
+- Lane 0 in minute 0, the fill, which reaches the last 60 m only in its last seconds: 20.5–22.4 m/s before, 21.6–22.7 after. This is the free vehicle's gain.
+- Lane 0 is first at or below 20 m/s from minute 1 on:
+  - at the defaults, in minute 1 at 8 of 10 seeds before and 7 after, and in minute 2 otherwise;
+  - with `ramp_outlet`, in minute 1 at 9 before and 10 after.
+
+*The other tests on the fixture* (`pytest -k "th52_corridor or corridor_section_fixture"`). Seven tests:
+- `test_th52_corridor_demand_is_the_observation` passes (it reads only committed constants).
+- The five `test_binds_on_the_corridor_section_fixture` tests pass: `exit_prepare`, `swap_pairs`, `spread_crossings`, `ramp_outlet` and `exit_priority_onset`, each 600 s at seed 3.
+- `test_th52_corridor_section_carries_free_flow_demand` xfails, strict, as marked. Its reason string now carries the new default values: 381 / 381 / 336; 12 / 10 / 13 lane-windows; lane 0 at 11.3 / 8.0 / 7.9 at its lowest and lane 1 at 13.0 / 10.6 / 7.6; mainline 1,177 / 1,162 / 1,111; 1 / 0 / 2 given up of 367 / 404 / 395; no collision.
+- The test body, its docstring, the criteria and `strict=True` are unchanged. The docstring's measurement paragraph is WP-61's, on the earlier geometry, and says so ("the physics of 61e3a48").
+
+*The 29-run grid* (WP-70's, as `grid73.sh` runs it) uses `weave_ruth.osm`, `weave_th52.osm`, `weave_th52_upstream.osm`, `weave.osm` and the golden `merge_weave`, not this fixture. No row is affected, so none was re-run.
+
+*Two more links of the same kind* (netconvert only, session script `other_fixtures.py`; not changed here).
+- *The fixture's other exit.* 103_0 → 203, the 12th St / Jackson-like exit, compiles `R` at +9.30°, where the corridor's 1001426896_0 → 82150350 is `s`.
+  - It is 221 m past the section's end, beyond the 4-s preview of a vehicle in the last 60 m (about 90–100 m at 22–25 m/s). It applies to the Jackson exiters as they approach it in 103's lane 0.
+  - A session variant (J: way 203 re-shaped the same way, 5 m at +1.46° then 10.85°) compiles `s`, with 103 / 104 / 203 at 221.00 / 524.93 / 401.11 m. 104 is 0.12 m past the tolerance, so J is not a candidate fixture.
+  - Over the same ten seeds, J against the corrected fixture: lane-windows 123 → 115 at the defaults (paired −0.80 a run, −1.61 to +0.01) and 124 → 123 with `ramp_outlet` (−0.10, −0.73 to +0.53). Lanes 0 and 1 fail 40 and 38 (defaults), and 40 and 40 (`ramp_outlet`), of 40 windows each. No seed passes.
+  - With `ramp_outlet`, J has one collision: seed 11, t = 513.5 s, v00445 into v01329 in section lane 1 at 98.1 m, inside the weave and not at the Jackson diverge.
+- *The other fixtures.* The gore links of `weave_th52.osm`, `weave_th52_upstream.osm`, `weave_ruth.osm` and `weave_two.osm` (both exits) compile `R`, and so do both lanes of `weave_th61_lane_end.osm`'s exit; `weave.osm`'s is `s`.
+  - Their default fleets are IDM, which has no turn preview (the table above: the IDM reads the same through `R` and `s`).
+  - But these compile `R` and run on the EIDM corridor fleet: `weave_th61_lane_end.osm` (WP-66), and the Ruth St and two-entrance fixtures under the corridor fleet. The latter are `test_short_section_with_the_corridor_fleet`, `test_th52_with_upstream_entrance_on_the_corridor_fleet`, and the grid's `ruth_cf_*` and `two_cf` rows.
+
+**Reading.**
+1. *The fixture was unfaithful in its gore link's class, and now matches the corridor.* The corridor compiles all eight off-ramp connections straight, the T.H.52 gore at +1.48° with the continuing edge at +5.93°. The fixture's straight 10.2° exit made the link a partial right by netconvert's 6° rule. With its first node at the corridor's angle, the link is straight, every length stays within 0.1 m of the corridor's, and a free EIDM vehicle crosses the fixture's gore exactly as it crosses the corridor's. The EIDM's 12 m/s partial-right cap is gone from the section's exit. As WP-73 measured, it never applied on the corridor.
+2. *Lane 0's failure was not the cap.* On the corrected fixture, lanes 0 and 1 of the last 60 m still read at or below 20 m/s in all 40 windows over ten seeds, at the defaults and with `ramp_outlet`, and in all 12 at seeds 3–5 for O.
+   - The free-flow gain shows only in minute 0: 21.6–22.7 m/s against 20.5–22.4.
+   - From minute 1 or 2 the exit end is below 20 m/s at every seed, before and after.
+   - The paired changes in lane-windows, departures and lane 0's minute-1 speed all lie inside the seed noise.
+   - So what holds lane 0 below 20 m/s is the queue at the gore's end, the exiters' crossings and their speed (WP-72/73). It is not a model ceiling, and criterion (ii)'s lane 0 is a fair criterion on this fixture.
+3. *The test does not pass in any form.*
+   - At the defaults the T.H.52 entrance fails at all three seeds (381 / 381 / 336), and the mainline now also fails at seed 5 (1,111).
+   - With `ramp_outlet`, the mainline passes at all three seeds and the entrance at seeds 3 and 4 (407, 391; 382 at seed 5).
+   - With O, both pass at all three seeds (403 / 394 / 393; 1,184 / 1,179 / 1,174).
+   - Criterion (ii) fails everywhere: 10–14 lane-windows of 16.
+   - No run on the corrected fixture collides: ten seeds each at the defaults and with `ramp_outlet`, and seeds 3–5 with O.
+   - The strict `xfail` stays as marked, with its reason string updated.
+4. *For item 1.* WP-73's hand-on (b), the owner's decision whether lane 0 on an EIDM fleet should be read with the cap documented as a model limit, is moot for the corridor: its gore is straight. The measurements of WP-61 to WP-73 on this fixture were all made with the `R` link and are not re-measured here. On the corrected fixture, the T.H.52 entrance is higher at the defaults at seeds 3 and 4 and lower at seed 5, and every lane-0 window still fails. WP-73's hand-on (a) is untouched and remains the lead: the exiters lose their speed on the approach's lane 0 and at the entry.
+
+**What this hands on.**
+- *(a)* WP-73's hand-on (a), now on the corrected fixture: the approach's last 240 m, where the ramp's holds fall on exiters. Judge it by the exiters' speed at x = 51 m and the lane-1 windows, with `ramp_outlet` set and the capacity pin as the guard. Lane 0 is now a fair reading as well.
+- *(b) The owner or coordinator decides whether to correct the fixture's second exit link* (103_0 → 203, `R` where the corridor has `s`) on the same faithfulness ground. It sits outside the section's last 60 m and moves no criterion beyond seed noise over ten seeds (J above). It was left as it is because this package's remit was the gore link.
+- *(c) Other EIDM fixtures carry `R` exit links where the corridor's are `s`:* `weave_th61_lane_end.osm`, and `weave_ruth.osm` and `weave_th52_upstream.osm` under the corridor fleet (the grid's `ruth_cf_*` / `two_cf` rows and their tests). Any reading of lane-end or exit-end speed on those, on the EIDM, carries the 12 m/s preview. Check a fixture's exit class against the corridor's before trusting such a reading.
+- *(d) For fixture builders.* Match the link class as well as the lengths. On a straight fixture, a single-segment exit at more than 6° is a partial turn whenever the through edge is 5° straighter. A short first leg at the corridor's angle fixes the class with the lengths kept, but the leg can be no longer than about 10 m here.
+
+**Bookkeeping.**
+- `tests/fixtures/weave_th52_corridor.osm`: node 12 added, node 11 moved, way 201 through node 12, and the header comment (the WP-74 paragraph; 102 listed at 305.0 m).
+- `tests/test_microsim/test_microsim_merge_managed_meter.py`: the reason string of `test_th52_corridor_section_carries_free_flow_demand`'s strict `xfail`, with the new values and the WP-74 citation. Nothing else changed.
+- This section.
+
+`microsim.runner`, `flowstate_core.config`, the scenarios, `data/osm`, every other fixture, every test body and criterion, the docstrings that cite measurements on this fixture (`config.py`, `runner.py`, docs/CONTRACTS.md; all made on the `R` link, as dated) and CHANGELOG.md are untouched.
+
+Session artifacts are not committed (`wp74/`):
+- the corridor and fixture compiles (`compile_corridor.py`, `compile_fixture.py`, `angles.py`, `geom_detail.py`, `conn_report.py`);
+- the fitting (`gen.py`, `genn.py`, `sweep.py`, `sweepn.py`, `fit_theta2.py`) and the session variant J (`genj.py`, `sweepj.py`, `variant_J.osm`);
+- the probes (`toy_dir.py`, `gore_probe.py`, `other_fixtures.py`) and the SUMO sources read (`NBNode.cpp`, `NBEdge.cpp`, `NBNodeShapeComputer.cpp`, `NBHelpers.cpp`, `GeomHelper.cpp`, `NWWriter_SUMO.cpp` at `v1_27_1`);
+- `corr_run.py`, `tab.py`, the JSONL records (`corr_rows.jsonl`, `O_before.jsonl`, `O_after.jsonl`) and the fixture before the change (`weave_th52_corridor.before.osm`).
+
+Every number above is from those runs and compiles, or from the committed files named.

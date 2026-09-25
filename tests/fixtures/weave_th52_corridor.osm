@@ -7,7 +7,7 @@
        run_micro calls it; the corridor's edge in brackets):
          100  600.0 m, 3 lanes, 55 mph   approach, insertion edge
          101  229.0 m, 3 lanes, 55 mph   [40648738, the 3-lane edge before the gore]
-         102  304.9 m, 4 lanes, 55 mph   [51388891, the weaving section; lane 0 is the
+         102  305.0 m, 4 lanes, 55 mph   [51388891, the weaving section; lane 0 is the
                                           auxiliary lane, entrance to exit only]
          103  220.9 m, 3 lanes, 55 mph   [1001426896; lane 0 also feeds the exit 203]
          104  524.8 m, 3 lanes, 55 mph   [82578022, the corridor's last edge]
@@ -18,14 +18,22 @@
        Node positions were iterated until netconvert's compiled lengths matched
        the corridor's to 0.1 m (its junction geometry at the shallow ramp angles
        moves the edge ends by up to 75 m from the nodes). At lat 40 one degree
-       of longitude is about 85.39 km and one of latitude 111.03 km. -->
+       of longitude is about 85.39 km and one of latitude 111.03 km.
+       The gore link's class (2026-09-25, block 3, WP-74; docs/WEAVE_MODEL_PLAN.md):
+       the corridor compiles 51388891_0 -> 18207598 as dir="s", its exit leaving
+       the section's last segment at +1.48 deg (netconvert: straight below 6 deg).
+       The exit way 201 here first ran straight at +10.2 deg and compiled dir="R"
+       (partial right), which the EIDM previews as a 12 m/s turn. Node 12 now
+       starts it at the corridor's angle for 10 m (+1.46 deg compiled), then 14.1
+       deg to node 11 (moved); every length above stays within 0.1 m. -->
   <node id="1" lat="40.000000" lon="-96.000000"/>
   <node id="2" lat="40.000000" lon="-95.992976"/>
   <node id="3" lat="40.000000" lon="-95.989740"/>
   <node id="4" lat="40.000000" lon="-95.987101"/>
   <node id="5" lat="40.000000" lon="-95.984521"/>
   <node id="6" lat="40.000000" lon="-95.978015"/>
-  <node id="11" lat="39.999189" lon="-95.981240"/>
+  <node id="11" lat="39.9989007" lon="-95.9813242"/>
+  <node id="12" lat="39.99999768" lon="-95.98698393"/>
   <node id="13" lat="39.999370" lon="-95.979520"/>
   <node id="20" lat="39.999099" lon="-96.000093"/>
   <node id="21" lat="39.999099" lon="-95.999480"/>
@@ -78,7 +86,7 @@
     <tag k="lanes" v="1"/>
   </way>
   <way id="201">
-    <nd ref="4"/><nd ref="11"/>
+    <nd ref="4"/><nd ref="12"/><nd ref="11"/>
     <tag k="highway" v="motorway_link"/>
     <tag k="oneway" v="yes"/>
     <tag k="lanes" v="1"/>
