@@ -408,6 +408,21 @@ stage mndot_head60_exiters_diag bash -c "for d in runs/${MNDOT}_weave_head60_lan
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_exiters.py.txt \$d; done > logs/diag_head60_exiters.txt 2>&1" \
   || say "mndot_head60_exiters_diag failed; continuing"
 
+# 10h. WP-62's exit_prepare rule on the corridor (2026-09-25, block 3): the rule measured off on the
+#     fixtures, whose approach puts 76-89 % of the exiters in the rightmost lane where the corridor puts
+#     55-68 % (VM P) — so the corridor, not the fixture, decides it. Both weave sections of the corrected
+#     scenarios with weave_params {exit_prepare: 1.0}; the slice (4 seeds) then the 20-seed battery.
+for V in slice ""; do
+  SUF=${V:+_$V}
+  stage mndot_weave${SUF}_xprep bash -c "sed -e 's#^name: ${MNDOT}_weave${SUF}\$#name: ${MNDOT}_weave${SUF}_xprep#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' scenarios/${MNDOT}_weave${SUF}.yaml \
+      > scenarios/${MNDOT}_weave${SUF}_xprep.yaml && grep -c 'exit_prepare: 1.0' scenarios/${MNDOT}_weave${SUF}_xprep.yaml && \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave${SUF}_xprep.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates \$([ -n '$V' ] && echo 4 || echo $REPS) --procs $PROCS \
+      --out runs/${MNDOT}_weave${SUF}_xprep/baseline --artifact artifacts/validation_${MNDOT}_weave${SUF}_xprep.json \
+      --report-dir docs/reports/${MNDOT}_weave${SUF}_xprep --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xprep failed; continuing"
+done
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
