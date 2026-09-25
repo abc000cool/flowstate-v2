@@ -12,6 +12,11 @@
 #      instance whenever no pipeline runs after a 75-minute grace: a launch that dies after the
 #      instance exists, a failed self-delete, a laptop asleep or force-shut — none can leave it idle.
 #   6. the launch script itself deletes the instance if any step after creation fails.
+#   7. Compute Engine itself deletes the instance (disk included) $CAP_MIN minutes after it starts
+#      running (`--max-run-duration`, `--instance-termination-action=DELETE`): server-side, so it
+#      fires with the guest hung, the idle guard dead and the laptop off. Its clock counts running
+#      time only, so the guest's own power-off (2.) is pushed 15 minutes past it: a guest power-off
+#      first would stop the clock and leave a stopped VM whose disk still bills (2026-09-24 audit).
 # The hard cap must exceed the expected runtime with margin: the 2026-09-06 run was
 # killed by a 300-min cap during its last stage. Size it at about twice the estimate;
 # the EXIT trap, not the cap, is the normal stop.
@@ -44,20 +49,23 @@ ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 REF=$(git rev-parse HEAD)
 if [ "$ALLOW_DIRTY" -eq 0 ] && [ -n "$(git status --porcelain | grep -v '^??')" ]; then echo "commit and push first (the VM clones $REF); --allow-dirty skips this" >&2; exit 2; fi
 if ! git merge-base --is-ancestor "$REF" origin/main 2>/dev/null; then echo "HEAD is not on origin/main; push first" >&2; exit 2; fi
+GUEST_CAP_MIN=$((CAP_MIN + 15))   # fallback only: Compute Engine deletes the VM at CAP_MIN (see 7.)
 STARTUP=$(mktemp)
 cat > "$STARTUP" <<EOF
 #!/bin/bash
-# boot-time hard cap: the machine powers off $CAP_MIN minutes after every boot, whatever runs on it
-shutdown -h +$CAP_MIN "boot-time hard cap (${CAP_MIN} min)"
+# fallback hard cap: the machine powers off $GUEST_CAP_MIN minutes after every boot, whatever runs on
+# it; Compute Engine's max-run-duration deletes it at $CAP_MIN minutes first
+shutdown -h +$GUEST_CAP_MIN "boot-time fallback cap (${GUEST_CAP_MIN} min)"
 # idle guard (scripts/gcp/idle_guard.sh, shipped as instance metadata): deletes the instance when no
 # pipeline is running after the grace period, independent of any laptop-side watcher
 curl -sf -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/idle-guard > /usr/local/bin/idle-guard.sh \\
   && chmod +x /usr/local/bin/idle-guard.sh \\
   && systemd-run --unit=idle-guard --property=Restart=always /usr/local/bin/idle-guard.sh
 EOF
-echo "== creating $VM ($MACHINE, $ZONE, project $PROJECT), hard cap $CAP_MIN min from boot"
+echo "== creating $VM ($MACHINE, $ZONE, project $PROJECT), deleted by Compute Engine $CAP_MIN min after it starts running"
 # shellcheck disable=SC2086
 gcloud compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" --machine-type "$MACHINE" \
+  --max-run-duration="${CAP_MIN}m" --instance-termination-action=DELETE \
   --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
   --metadata-from-file startup-script="$STARTUP",idle-guard="$ROOT/scripts/gcp/idle_guard.sh" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null
 rm -f "$STARTUP"

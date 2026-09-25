@@ -75,7 +75,7 @@ owner's machine.
 `launch_i24_pipeline.sh` creates one on-demand VM (`n2-standard-32`,
 `us-west1-b`, 120 GB; the code goes up as a `git archive` snapshot of HEAD
 through `vm_setup.sh`, because the repository is private) whose startup script
-arms a boot-time hard cap (`shutdown -h +$CAP_MIN`, default 480 min), ships
+arms a boot-time fallback cap (`shutdown -h +$CAP_MIN+15`; Compute Engine deletes the instance at `CAP_MIN`, default 480 min — see the stop guarantees below), ships
 the I-24 processed data and the observed-side cache and starts
 `pipeline_i24.sh` under `systemd-run --user`. The pipeline is resumable (stage
 markers in `logs/`), rebuilds its results archive `~/final.tgz` atomically
@@ -133,3 +133,17 @@ the launch script's own cleanup (a failure after `instances create` deletes the 
 the data transfer is retried three times); and, as a convenience only, the local
 `watch_pipeline.sh` with its absolute deadline. Post-mortems: 2026-09-06 (archive lost to
 the cap), 2026-09-18 (a 6.5 h sweep not archived; a VM idle 9.5 h after a cut transfer).
+
+**Added 2026-09-24 (cost audit):** Compute Engine's own timer. Every instance is created with
+`--max-run-duration=${CAP_MIN}m --instance-termination-action=DELETE`, so the platform
+deletes it, boot disk included, `CAP_MIN` minutes after it starts running — server-side,
+with the guest hung, the idle guard dead and the laptop off. The timer counts running time
+only, so a guest power-off would stop it and leave a stopped VM whose 120 GB disk still
+bills; the guest's own cap therefore moved to `CAP_MIN + 15` and is a fallback. Verified on a
+throwaway e2-micro with a 90 s limit (the instance and its disk disappeared on schedule).
+The same audit put a cleanup policy on the Cloud Run image repository
+(`cloud-run-source-deploy`: keep the two newest `flowstate-tester` images, delete the rest
+after a day; it held six at 6.7 GB) and a 7-day delete rule on the deploy-source bucket
+`run-sources-…-us-west1`; the hosted tester itself scales to zero (no minimum instances,
+CPU only during requests). The one bucket kept without a rule is `flowstate-tester-results`
+(about 2 MB, the owner's).

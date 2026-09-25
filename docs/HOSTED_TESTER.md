@@ -21,6 +21,7 @@ at 23:39 CDT added the `/health` alias (below); revision 00003 (2026-09-24 00:34
 | auth | public invoker; every `/api/…` route needs `X-API-Key` (the owner hands the key to testers) |
 | resources | 2 vCPU, 4 GiB, startup CPU boost, gen2 |
 | concurrency | 1 request per instance, max 2 instances, scale to zero |
+| image storage | the `cloud-run-source-deploy` repository keeps the two newest images (cleanup policy, 2026-09-24); deploy sources in `run-sources-…` are deleted after 7 days |
 | request timeout | 3,600 s |
 | queue | `FLOWSTATE_QUEUE=inline` (no Redis; a run executes in the request) |
 | results | Cloud Storage bucket `flowstate-tester-results` mounted at `/mnt/results` (`FLOWSTATE_RESULTS_DIR`) |
