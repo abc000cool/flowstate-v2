@@ -3812,3 +3812,441 @@ On the capacity fixture at its own split (the rule with a 25.0 m stretch; harnes
 - CHANGELOG.md and this section.
 
 `frontend/`, `scenarios/`, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md and `scripts/gcp/` are untouched. Session artifacts are not committed: the harnesses and forms (`wp70_harness.py`, `wp70_grid_harness.py`, `grid70.sh`, `wp70_forms.sh`, `wp70_seeds.sh`), the keep-out patch, the diagnostic run, the tables and the JSONL records of every run.
+
+## 2026-09-25 (block 3, WP-72, what sets the exit end's rate): with `ramp_outlet` set, the exit end is below 20 m/s from minute 1 at every seed, and no weave command family sets its rate. Of 19 removals none passes criterion (ii); most read worse and five lock. 96–99 % of the exiters' crossings in the section's second half are made below 20 m/s. SUMO's own model is the cause twice over: its lane-end braking slows each exiter still in lane 1 from about 150 m before the gore, and the auxiliary lane feeds a 22.22 m/s ramp whose limit SUMO undershoots. The gap supply is 1.7–3.6 times the exiters due; nothing ships
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`). With `ramp_outlet` set, WP-70 (above) brought the mainline to its criterion at all three seeds and the T.H.52 entrance at two (386 of the 387 asked at seed 4; the ramp-origin variant O at all three). What still fails is criterion (ii): every lane of the section's last 60 m above 20 m/s in every 5-min window. WP-68 showed a lossless weave passes (ii), so the exit end's slowdown is the weave's. WP-70's hand-on: with the outlet spared, read which commands set the rate in [51, 225) m and at the exit end, the way WP-65 read the entry. This package does that four ways:
+1. per lane and minute at four positions, with the first slow vehicle of each lane;
+2. per command family and region;
+3. by removing each family;
+4. by checking the gap supply for the exiters' crossings, in closed form and measured.
+
+Analysis only: `microsim.runner`, `flowstate_core.config`, every scenario, fixture and test are untouched.
+
+**How it was measured.**
+- *Harness.* `wp72_harness.py` (session, not committed) is WP-70's harness, itself on WP-67's lane-change tracking and WP-65's command families, with every hook applied from outside the runner. It adds a per-step log:
+  - every section sample: t, id, lane, x, v and the driven direction;
+  - from x ≥ 51.1 m, the leader SUMO reports within 150 m, and two readings of the runner's IDM at the vehicle's own parameters: towards that leader (`a_own`) and towards a standing obstacle at the section's end (`a_end`);
+  - the exit ramp's first 150 m, with leaders;
+  - every applied speed target with the family that set it, and every binding target;
+  - the events: accepted and forced requests, deferred forced changes, pair releases, yielders and give-ups.
+
+  Movements come from each run's `vehicles.parquet`: E entrant, R ramp-to-exit, X mainline exiter, T through.
+- *Pinned code.* Another package edited `microsim/runner.py` and `flowstate_core/config.py` in the working tree during this one (a rule that is off by default). Every run below imports both files as committed at 0a3f827 (runner md5 66cde4a7eb58), and every row records the pin. The ten rows first run on the edited working tree were re-run pinned and read the same.
+- *Call path.* `_th52_corridor_config(seed)`: the test's own fixture and demand, with `weave_params {ramp_outlet: 1.0}` set in a copy of its call. 20 simulated minutes at 0.5 s, seeds 3 / 4 / 5, one run at a time (3–9 s each).
+  - The plain test body with the key set (`wp67_corr.py`) gives the harness's criteria row exactly: mainline 1,187 / 1,181 / 1,171; T.H.52 401 / 386 / 403; 12 / 12 / 13 lane-windows at or below 20 m/s; 2 of 376 / 0 of 411 / 1 of 431 given up; 7 / 3 / 5 unfinished; no collision. This is WP-70's row for the rule.
+  - `n_outlet_spared` reads 1,770 / 2,922 / 3,080.
+- *The O variant.* WP-70's ramp-origin form was written against the rule as it then stood, which spared only the entrants. The committed rule spares every vehicle in the outlet, so the old patch adds nothing on top of it: with `ramp_outlet` = 1 it reproduced the rule's rows. Here O is re-expressed as `ramp_outlet` = 0 plus a harness block: in a non-priority exiter's lane-0 gap choice, every vehicle that came from the ramp and is on it or in the first 51.1 m is passed over. So expressed, O reproduces WP-70's O row: T.H.52 403 / 394 / 399; mainline 1,195 / 1,169 / 1,193; 11 / 10 / 13 lane-windows; 2 of 370 / 0 of 425 / 1 of 433 given up; 6 / 4 / 2 unfinished.
+- *Definitions.*
+  - *Regions.* x = 0 at the section start; the section is 304.95 m. The outlet is [0, 51.1). The unforced second half is [51.1, 224.9), written [51, 225). The forced zone is [224.9, 304.95), written [225, 305).
+  - *Flow and speed at 100, 175 and 245 m.* Flow counts crossings of the line per lane per minute, in the lane of the later 0.5-s sample, × 60. Speed is the mean of the samples within ±10 m of the line.
+  - *The last 60 m,* [244.95, 304.95). Flow is Edie's, Σv·Δt / (60 m · 60 s). Speed is the mean of the samples, the test's own aggregation. Minute m is [60m, 60m + 60) s.
+  - *Families,* as WP-65 read them. A target *binds* when the commanded acceleration is below the vehicle's IDM acceleration towards its real leader. A family *sets* a vehicle-step when its target is the lowest on the vehicle. Its *deficit* is Σ(v + a_own·Δt − v_cmd)·Δt [m/s·s] over the steps it sets. The region is the commanded vehicle's.
+  - *SUMO's own braking,* not a weave family. It is read on vehicle-steps with no weave target, at x ≥ 51.1 m, with the next sample 0.5 s later in the same lane; its deficit is max(0, v + a_own·Δt − v_next)·Δt. It counts as *lane-end braking* when the vehicle is a driven changer and `a_end` < `a_own`, and as *other* otherwise. The *other* reading in lanes 2–3 (no lane end, no weave target) is its floor.
+  - *SUMO's own lane changes.* A lane change between two section samples that the weave did not request (WP-67's `sumo_later`). SUMO's arrival-step changes all stand in the section's first 12 m.
+
+**(1) Per lane and minute at four positions** (the rule, seeds 3 / 4 / 5; each cell reads lanes 0 / 1 / 2 / 3 as veh/h @ m/s; the 245 m line is the last 60 m's upstream edge).
+
+| seed | minute | 100 m | 175 m | 245 m | last 60 m |
+|---|---|---|---|---|---|
+| 3 | 0 | 420@20.9 / 300@21.9 / 240@24.3 / 300@24.4 | 420@22.2 / 120@24.2 / 180@24.3 / 180@24.7 | 300@22.6 / 120@24.6 / 120@24.4 / 120@24.6 | 293@21.7 / 122@24.5 / 110@24.4 / 111@24.6 |
+| 3 | 1 | 1,260@18.1 / 1,080@19.1 / 960@23.7 / 960@24.1 | 1,260@18.8 / 960@19.8 / 1,080@23.6 / 1,080@24.2 | 1,320@18.5 / 840@20.0 / 1,080@24.1 / 1,020@24.4 | 1,285@18.0 / 833@15.7 / 1,096@24.1 / 976@24.4 |
+| 3 | 2 | 1,260@15.9 / 1,020@17.4 / 900@23.1 / 1,260@24.4 | 1,380@13.4 / 780@15.7 / 960@21.1 / 1,260@24.3 | 1,560@11.8 / 660@13.6 / 1,080@21.3 / 1,320@24.3 | 1,636@11.5 / 578@13.9 / 1,031@20.4 / 1,360@24.1 |
+| 3 | 3 | 960@19.3 / 900@20.6 / 1,380@23.7 / 1,080@24.2 | 1,080@19.1 / 780@21.4 / 1,380@23.8 / 1,140@24.3 | 1,140@19.3 / 600@22.4 / 1,320@24.1 / 1,200@24.2 | 1,233@17.7 / 588@23.5 / 1,326@24.1 / 1,198@24.2 |
+| 3 | 4 | 960@20.7 / 780@21.1 / 1,080@22.1 / 1,440@23.6 | 1,020@18.2 / 660@19.5 / 1,200@22.3 / 1,380@23.6 | 1,140@11.3 / 660@16.5 / 1,140@22.6 / 1,260@23.4 | 1,266@9.2 / 637@15.5 / 1,083@22.8 / 1,228@23.4 |
+| 3 | 5 | 900@16.8 / 1,080@18.3 / 1,200@23.7 / 1,080@24.3 | 840@17.2 / 900@19.4 / 1,200@22.8 / 1,140@24.3 | 780@6.5 / 660@12.6 / 1,380@20.6 / 1,320@24.0 | 675@3.5 / 617@4.2 / 1,354@20.8 / 1,376@23.7 |
+| 3 | 6 | 900@13.4 / 1,020@16.1 / 1,200@20.9 / 1,500@23.7 | 1,080@5.8 / 840@7.7 / 1,260@21.3 / 1,500@23.7 | 960@4.3 / 780@6.2 / 1,260@19.9 / 1,500@23.6 | 1,172@5.7 / 512@7.0 / 1,356@19.0 / 1,538@23.7 |
+| 3 | 7 | 960@9.8 / 1,020@11.0 / 660@21.6 / 1,260@24.0 | 1,080@12.0 / 780@13.9 / 720@20.0 / 1,260@24.0 | 1,140@11.1 / 780@14.5 / 780@19.5 / 1,320@24.0 | 1,228@11.1 / 742@14.7 / 863@18.8 / 1,266@24.1 |
+| 3 | 8 | 840@11.1 / 960@10.4 / 900@15.9 / 1,620@22.5 | 840@14.2 / 1,020@13.8 / 900@18.0 / 1,560@22.8 | 840@14.2 / 1,020@14.4 / 960@19.7 / 1,560@23.1 | 829@13.8 / 975@15.0 / 904@20.3 / 1,619@23.3 |
+| 3 | 9 | 900@12.9 / 1,020@12.2 / 900@15.5 / 1,680@20.2 | 900@15.3 / 1,020@15.0 / 720@17.5 / 1,860@20.4 | 960@16.3 / 840@16.7 / 720@19.0 / 1,800@20.8 | 992@15.7 / 844@17.8 / 709@19.7 / 1,739@20.8 |
+| 3 | 10 | 900@12.7 / 1,020@11.6 / 600@15.5 / 1,380@20.1 | 1,020@14.4 / 900@13.4 / 780@16.9 / 1,260@21.3 | 1,200@15.1 / 720@15.1 / 900@18.5 / 1,440@21.2 | 1,284@14.9 / 669@15.4 / 904@18.8 / 1,486@21.2 |
+| 3 | 11 | 960@8.6 / 900@9.5 / 1,080@13.4 / 1,860@19.9 | 1,140@12.7 / 780@13.1 / 1,080@15.4 / 1,920@20.1 | 1,140@12.8 / 840@15.4 / 960@14.0 / 1,860@20.2 | 1,202@12.7 / 744@16.5 / 926@15.3 / 1,872@20.4 |
+| 3 | 12 | 720@12.0 / 1,140@12.2 / 840@17.6 / 1,560@20.3 | 840@13.7 / 960@15.4 / 720@18.2 / 1,620@21.6 | 960@15.0 / 720@17.4 / 720@19.7 / 1,560@22.4 | 933@15.2 / 830@18.6 / 660@19.1 / 1,553@22.7 |
+| 3 | 13 | 1,200@11.8 / 840@12.0 / 900@13.2 / 1,560@19.7 | 1,260@13.3 / 600@12.6 / 960@15.3 / 1,560@19.9 | 1,260@13.8 / 540@15.3 / 840@18.2 / 1,620@20.2 | 1,337@14.5 / 447@16.3 / 782@18.9 / 1,606@20.3 |
+| 3 | 14 | 1,080@12.0 / 960@11.5 / 1,020@15.8 / 1,500@21.1 | 1,140@14.4 / 960@13.6 / 1,200@15.2 / 1,500@20.3 | 1,380@14.6 / 780@13.8 / 1,140@15.7 / 1,500@21.0 | 1,277@15.1 / 906@13.8 / 1,151@16.7 / 1,491@21.3 |
+| 3 | 15 | 660@13.1 / 1,140@12.1 / 840@17.4 / 1,200@18.2 | 840@16.2 / 900@15.8 / 840@19.4 / 1,200@19.5 | 780@17.5 / 1,020@17.7 / 1,020@20.6 / 1,200@20.3 | 878@17.2 / 947@18.4 / 1,025@20.7 / 1,239@20.5 |
+| 3 | 16 | 960@11.8 / 780@12.9 / 1,080@15.3 / 1,560@16.3 | 960@13.9 / 720@15.0 / 1,080@16.9 / 1,560@17.1 | 960@14.9 / 540@16.8 / 1,140@17.6 / 1,620@18.0 | 916@14.1 / 435@17.4 / 1,178@18.1 / 1,598@18.3 |
+| 3 | 17 | 1,020@13.2 / 840@13.3 / 1,260@15.7 / 1,620@15.0 | 1,080@15.5 / 780@16.0 / 1,260@16.0 / 1,620@15.9 | 1,080@16.4 / 720@16.8 / 1,200@16.2 / 1,680@16.5 | 1,160@16.3 / 719@16.9 / 1,200@16.4 / 1,707@16.7 |
+| 3 | 18 | 900@13.9 / 1,080@14.2 / 600@17.0 / 1,500@16.5 | 900@15.8 / 1,080@16.2 / 660@17.9 / 1,560@17.7 | 900@15.1 / 960@15.9 / 840@17.9 / 1,560@18.3 | 919@14.9 / 856@15.6 / 946@18.0 / 1,477@18.5 |
+| 3 | 19 | 780@12.1 / 1,080@12.3 / 420@13.6 / 1,500@16.5 | 780@15.4 / 780@15.6 / 480@16.4 / 1,500@17.5 | 840@16.4 / 720@17.2 / 540@17.2 / 1,500@18.3 | 821@16.3 / 707@17.4 / 529@17.9 / 1,511@18.5 |
+| 4 | 0 | 360@22.2 / 240@22.6 / 180@20.8 / 540@22.6 | 300@23.0 / 180@22.0 / 120@20.7 / 420@23.2 | 360@21.8 / 60@24.2 / 60@19.9 / 300@24.3 | 273@21.8 / 60@24.2 / 60@19.8 / 304@24.3 |
+| 4 | 1 | 1,200@21.6 / 900@22.2 / 900@23.3 / 1,260@23.7 | 1,200@20.8 / 780@21.8 / 1,020@23.4 / 1,320@23.5 | 1,200@17.4 / 720@21.4 / 1,140@23.4 / 1,260@23.3 | 1,217@16.5 / 655@20.5 / 1,189@23.3 / 1,250@23.4 |
+| 4 | 2 | 1,140@17.1 / 1,080@17.5 / 1,080@23.8 / 1,080@24.4 | 1,320@17.3 / 960@17.6 / 1,020@23.0 / 1,020@24.3 | 1,440@16.8 / 720@18.5 / 1,020@22.1 / 1,140@23.9 | 1,537@16.5 / 573@20.5 / 1,009@22.9 / 1,048@24.1 |
+| 4 | 3 | 900@19.0 / 1,200@20.1 / 1,080@22.7 / 1,080@23.8 | 1,080@18.4 / 900@20.6 / 1,020@22.2 / 1,320@23.8 | 1,200@17.1 / 900@19.8 / 1,020@21.5 / 1,320@23.7 | 1,338@15.7 / 784@20.6 / 1,053@21.1 / 1,369@23.8 |
+| 4 | 4 | 1,020@15.5 / 1,080@16.8 / 1,260@23.3 / 1,020@24.4 | 1,140@16.5 / 1,020@17.7 / 1,200@22.8 / 1,020@24.4 | 1,320@16.7 / 540@16.9 / 1,140@22.3 / 1,080@24.3 | 1,317@16.3 / 475@17.6 / 1,132@22.6 / 1,090@24.2 |
+| 4 | 5 | 1,080@20.9 / 960@21.5 / 1,020@22.8 / 1,260@23.3 | 1,020@20.0 / 900@20.4 / 1,140@23.0 / 1,200@23.3 | 1,320@19.0 / 840@20.9 / 1,020@23.0 / 1,200@23.5 | 1,398@18.2 / 824@21.1 / 996@23.2 / 1,171@23.7 |
+| 4 | 6 | 780@15.5 / 1,500@15.3 / 1,320@22.1 / 1,260@24.0 | 960@15.3 / 1,140@16.0 / 1,380@21.3 / 1,320@23.6 | 900@12.1 / 1,020@13.7 / 1,500@21.1 / 1,380@23.3 | 948@11.6 / 939@14.4 / 1,496@21.7 / 1,364@23.3 |
+| 4 | 7 | 1,260@15.4 / 840@17.3 / 900@19.3 / 1,200@20.9 | 1,260@14.0 / 840@16.6 / 840@19.3 / 1,260@20.2 | 1,020@12.7 / 780@14.8 / 1,020@19.3 / 1,260@20.3 | 1,135@11.9 / 667@15.0 / 1,071@19.1 / 1,294@20.4 |
+| 4 | 8 | 1,260@10.7 / 900@10.8 / 1,080@18.5 / 1,380@24.0 | 1,320@8.0 / 840@10.1 / 1,140@18.2 / 1,440@24.2 | 1,440@8.6 / 720@11.0 / 1,140@18.9 / 1,440@24.4 | 1,454@8.7 / 607@12.1 / 1,180@19.7 / 1,431@24.5 |
+| 4 | 9 | 1,020@9.6 / 1,020@9.4 / 900@15.8 / 1,560@21.2 | 1,140@13.0 / 960@13.9 / 840@15.9 / 1,380@20.8 | 1,080@13.4 / 780@14.1 / 1,140@15.7 / 1,440@19.9 | 1,180@12.4 / 810@13.8 / 1,054@16.6 / 1,462@20.0 |
+| 4 | 10 | 660@7.1 / 480@6.9 / 840@16.4 / 1,260@23.6 | 600@12.1 / 360@12.8 / 960@15.1 / 1,380@23.1 | 540@13.7 / 480@15.1 / 1,020@15.4 / 1,440@22.4 | 595@13.7 / 545@15.8 / 980@16.1 / 1,421@22.4 |
+| 4 | 11 | 840@7.4 / 660@7.2 / 840@16.0 / 1,500@23.3 | 960@10.4 / 660@11.0 / 660@17.1 / 1,500@23.8 | 1,080@10.0 / 480@10.8 / 660@18.4 / 1,500@24.1 | 1,043@10.3 / 461@11.2 / 647@18.5 / 1,501@24.0 |
+| 4 | 12 | 960@8.2 / 720@8.0 / 840@16.3 / 1,140@23.4 | 900@10.9 / 840@12.0 / 780@18.3 / 1,080@23.2 | 900@11.2 / 780@13.7 / 840@18.7 / 1,140@22.9 | 841@10.6 / 833@12.3 / 833@18.1 / 1,149@23.2 |
+| 4 | 13 | 840@7.5 / 840@7.5 / 1,080@15.7 / 1,620@22.2 | 1,140@12.6 / 960@12.0 / 780@19.6 / 1,620@22.9 | 1,200@15.3 / 780@17.3 / 660@20.6 / 1,620@23.3 | 1,237@15.1 / 832@18.5 / 589@20.7 / 1,582@23.4 |
+| 4 | 14 | 1,020@8.3 / 660@8.3 / 900@13.2 / 1,560@17.2 | 1,020@11.6 / 660@11.6 / 840@15.6 / 1,560@17.4 | 1,080@12.4 / 660@11.3 / 840@14.7 / 1,620@17.4 | 1,236@12.3 / 527@12.4 / 789@16.3 / 1,539@17.9 |
+| 4 | 15 | 1,020@10.4 / 840@9.9 / 1,080@12.0 / 1,440@16.9 | 1,020@7.5 / 900@7.9 / 900@10.4 / 1,380@15.2 | 840@6.2 / 660@6.2 / 780@11.5 / 1,380@15.8 | 1,006@5.2 / 652@6.7 / 679@9.1 / 1,407@16.7 |
+| 4 | 16 | 900@8.6 / 900@6.8 / 900@6.7 / 1,500@16.4 | 900@4.0 / 600@3.8 / 720@8.5 / 1,680@16.1 | 1,020@4.5 / 600@4.9 / 720@9.9 / 1,680@15.9 | 1,176@5.1 / 416@6.5 / 670@11.6 / 1,693@16.5 |
+| 4 | 17 | 780@4.4 / 660@5.4 / 780@12.2 / 1,620@19.0 | 960@6.0 / 840@6.1 / 960@6.3 / 1,740@19.2 | 1,020@4.8 / 840@7.6 / 960@9.2 / 1,860@18.9 | 1,179@5.1 / 705@7.5 / 887@10.0 / 1,852@18.7 |
+| 4 | 18 | 960@9.6 / 840@9.3 / 720@14.8 / 1,440@17.8 | 960@8.4 / 660@10.7 / 600@16.5 / 1,380@18.4 | 1,020@4.2 / 600@9.2 / 600@13.8 / 1,380@19.1 | 1,080@4.8 / 510@10.6 / 598@14.9 / 1,346@19.5 |
+| 4 | 19 | 1,080@8.1 / 720@8.2 / 600@13.3 / 1,500@16.0 | 1,140@9.4 / 720@9.4 / 720@12.8 / 1,620@17.0 | 1,320@8.8 / 660@8.9 / 720@12.5 / 1,620@18.0 | 1,530@8.7 / 475@9.8 / 660@12.9 / 1,609@18.4 |
+| 5 | 0 | 480@22.9 / 120@22.5 / 360@24.1 / 420@24.3 | 420@23.5 / 60@23.5 / 300@24.4 / 300@24.4 | 420@22.6 / 0@– / 300@24.4 / 240@24.4 | 366@21.5 / 0@– / 268@24.4 / 244@24.4 |
+| 5 | 1 | 1,020@20.7 / 1,080@21.0 / 1,020@23.6 / 1,140@24.4 | 1,140@20.6 / 960@20.4 / 1,020@23.5 / 1,200@24.5 | 1,260@19.7 / 780@20.7 / 960@23.5 / 1,200@24.5 | 1,245@19.3 / 817@20.7 / 971@23.4 / 1,175@24.5 |
+| 5 | 2 | 960@17.1 / 900@16.5 / 840@17.9 / 1,140@19.8 | 1,140@16.0 / 600@15.7 / 840@18.5 / 1,080@20.2 | 1,260@13.3 / 360@14.6 / 780@19.4 / 1,020@19.7 | 1,229@13.6 / 354@15.4 / 792@19.8 / 1,027@19.6 |
+| 5 | 3 | 1,200@12.9 / 1,020@12.0 / 1,020@21.9 / 1,080@22.8 | 1,260@14.6 / 840@14.7 / 1,200@20.6 / 1,200@22.2 | 1,320@14.2 / 900@15.1 / 1,320@20.0 / 1,320@21.7 | 1,416@13.4 / 807@16.0 / 1,318@20.0 / 1,392@21.3 |
+| 5 | 4 | 1,140@6.9 / 1,020@7.1 / 960@20.6 / 1,320@24.3 | 1,380@10.9 / 660@10.4 / 960@19.9 / 1,260@24.4 | 1,320@11.4 / 540@10.8 / 960@21.1 / 1,200@24.4 | 1,340@11.8 / 526@11.7 / 942@20.9 / 1,194@24.4 |
+| 5 | 5 | 1,020@7.7 / 1,080@7.5 / 960@16.2 / 900@24.1 | 1,260@11.3 / 780@11.2 / 840@19.4 / 840@24.5 | 1,260@10.6 / 600@12.4 / 900@21.2 / 840@24.5 | 1,356@10.5 / 427@12.9 / 947@22.0 / 819@24.4 |
+| 5 | 6 | 1,020@8.7 / 960@8.6 / 840@17.3 / 1,680@22.7 | 960@10.2 / 1,020@10.5 / 1,020@12.4 / 1,740@22.9 | 840@6.0 / 900@6.2 / 1,320@12.1 / 1,740@23.1 | 1,169@5.1 / 603@5.5 / 1,222@14.3 / 1,773@23.0 |
+| 5 | 7 | 1,140@10.0 / 1,020@10.6 / 900@17.0 / 1,560@23.8 | 1,200@6.4 / 840@7.6 / 960@11.6 / 1,560@23.9 | 1,260@5.4 / 720@6.6 / 780@9.6 / 1,620@23.6 | 1,319@6.2 / 691@8.1 / 782@10.3 / 1,535@23.8 |
+| 5 | 8 | 960@5.7 / 780@6.2 / 1,020@12.9 / 1,620@21.0 | 1,080@8.0 / 600@8.1 / 1,080@10.8 / 1,620@21.8 | 1,080@8.5 / 660@8.2 / 1,080@11.3 / 1,620@22.5 | 1,224@8.2 / 534@8.3 / 1,055@12.5 / 1,638@22.6 |
+| 5 | 9 | 960@8.5 / 900@8.8 / 900@15.7 / 1,200@21.0 | 1,020@10.7 / 900@11.0 / 900@16.6 / 1,080@22.9 | 1,320@10.7 / 540@10.1 / 1,140@15.3 / 1,200@22.9 | 1,524@10.8 / 430@11.8 / 1,065@14.5 / 1,289@22.8 |
+| 5 | 10 | 1,020@9.1 / 1,020@9.2 / 840@15.5 / 1,680@17.2 | 1,200@13.3 / 840@13.4 / 960@16.0 / 1,740@18.0 | 1,140@11.5 / 900@13.6 / 900@17.2 / 1,620@18.9 | 1,221@10.0 / 822@13.4 / 950@17.6 / 1,599@19.1 |
+| 5 | 11 | 1,020@8.6 / 840@8.5 / 300@15.6 / 1,020@20.4 | 1,080@13.2 / 600@12.7 / 480@16.8 / 1,080@20.4 | 1,020@15.4 / 600@14.9 / 600@18.0 / 1,140@20.2 | 1,014@16.0 / 541@15.7 / 587@18.9 / 1,101@20.4 |
+| 5 | 12 | 840@4.8 / 720@4.8 / 1,080@8.4 / 1,680@13.1 | 840@9.2 / 720@8.7 / 900@10.0 / 1,560@14.8 | 1,020@8.8 / 480@11.7 / 840@11.9 / 1,620@16.3 | 1,167@8.3 / 402@12.4 / 698@13.2 / 1,600@16.7 |
+| 5 | 13 | 1,140@8.0 / 720@7.7 / 960@12.1 / 1,320@16.3 | 1,080@9.9 / 900@10.0 / 1,020@14.4 / 1,500@16.6 | 1,200@10.7 / 840@11.1 / 960@15.8 / 1,440@17.1 | 1,216@11.5 / 759@11.9 / 1,069@16.3 / 1,456@17.3 |
+| 5 | 14 | 1,080@8.4 / 900@7.8 / 900@15.2 / 1,020@17.6 | 1,140@9.7 / 780@10.5 / 900@16.3 / 960@18.1 | 1,020@13.7 / 720@12.1 / 1,020@16.6 / 1,080@17.6 | 1,074@13.3 / 635@13.5 / 939@16.8 / 1,184@17.5 |
+| 5 | 15 | 1,020@8.0 / 1,200@7.9 / 960@11.0 / 1,500@17.8 | 1,080@9.5 / 960@9.4 / 840@9.1 / 1,560@18.5 | 1,260@7.7 / 780@7.5 / 840@8.3 / 1,440@19.1 | 1,293@7.7 / 806@6.7 / 716@7.7 / 1,397@19.3 |
+| 5 | 16 | 840@10.0 / 840@9.8 / 960@14.8 / 1,560@19.6 | 960@10.0 / 900@9.6 / 960@14.1 / 1,560@20.1 | 1,080@4.8 / 600@7.4 / 1,200@12.1 / 1,560@20.3 | 1,099@4.8 / 613@6.4 / 1,163@12.6 / 1,578@20.2 |
+| 5 | 17 | 900@11.3 / 1,080@12.7 / 780@14.5 / 1,920@19.0 | 840@13.0 / 1,080@14.1 / 900@16.6 / 1,980@19.3 | 900@9.6 / 900@14.2 / 1,080@17.6 / 2,100@19.5 | 1,042@8.9 / 788@15.8 / 1,149@18.2 / 2,018@19.7 |
+| 5 | 18 | 1,140@12.5 / 1,140@12.6 / 960@16.9 / 1,440@16.0 | 1,200@13.9 / 1,140@14.6 / 840@17.9 / 1,440@17.2 | 1,260@12.6 / 780@13.8 / 960@17.2 / 1,380@18.4 | 1,342@11.6 / 577@12.5 / 1,011@17.0 / 1,385@18.9 |
+| 5 | 19 | 780@12.2 / 840@13.2 / 540@14.5 / 1,440@16.2 | 780@12.3 / 840@15.1 / 420@16.1 / 1,440@17.0 | 780@11.5 / 840@12.5 / 540@17.0 / 1,440@17.5 | 911@9.3 / 688@14.0 / 629@17.7 / 1,458@17.7 |
+
+- *Free flow at the exit end.* In minute 0 (the fill), lane 0's last 60 m reads 21.7 / 21.8 / 21.5 m/s, and lanes 1–3 read 24.2–24.6 where occupied (lane 2 at seed 4: 19.8). The auxiliary lane feeds the exit ramp's 22.22 m/s limit, so its free-flow margin above 20 m/s is 1.5–1.8 m/s.
+- *The exit end slows from minute 1.* Lane 0's last 60 m reads 18.0 / 16.5 / 19.3 m/s in minute 1, at 1,285 / 1,217 / 1,245 veh/h. It stays at or below 20 m/s in every later minute at every seed. Lane 1's first minute at or below 20 m/s is 1 / 4 / 2, lane 2's 6 / 7 / 2, lane 3's 16 / 14 / 2.
+- *In the test's 5-min windows,* lanes 0 and 1 fail window 0 at every seed (lane 1 at seed 4 at exactly 20.0), lane 2 first fails window 1, and lane 3 window 2 or 3. Lanes 0 and 1 fail all four windows at every seed, lane 2 three, lane 3 one / one / two.
+- *Lane 0 slows along the section while its flow grows,* as the exiters cross into it. In minute 1 at seed 4 it reads 21.6, 20.8, 17.4 and 16.5 m/s at 100 m, 175 m, 245 m and the last 60 m. In minute 2 at seed 3 it carries 1,260, 1,380, 1,560 and 1,636 veh/h at the same four positions.
+
+*Where each lane first reads at or below 20 m/s, and why.* The first slow sample is the first 0.5-s sample at or below 20 m/s in the lane's last 60 m after t = 30 s; for lane 0 its leader chain is shown.
+
+| seed | lane | first minute ≤ 20 m/s | first slow sample | what it is doing | its leader chain |
+|---|---|---|---|---|---|
+| 3 | 0 | 1 | t = 59.0 s, v00010 (X), 302.6 m, 20.0 m/s | no target on it in the 3 s before; crossed 1 → 0 at 118 m at 24.0 m/s (accepted, t = 51.0 s); following | v00005 (X, on the exit ramp, 39 m ahead, 18.9 m/s) → v01196 (R, ramp, 20.1) → v00004 (X, ramp, 21.1, no leader within 150 m; entered the ramp at 21.7 m/s and fell to 20.6 m/s 79 m in) |
+| 4 | 0 | 1 | t = 59.0 s, v00006 (X), 303.0 m, 19.9 m/s | no target; crossed at arrival (SUMO) at 9 m at 20.9 m/s; following | v00003 (X, ramp, 19.5) → v01197 (R, ramp, 17.7, 76 m behind its leader; entered at 20.3 m/s, fell to 17.5 m/s 49 m in) → v01196 (R, ramp, 21.2, free; entered at 22.0, fell to 20.6) |
+| 5 | 0 | 1 | t = 57.5 s, v00008 (X), 295.7 m, 19.4 m/s | no target; crossed 1 → 0 at 22 m at 23.7 m/s (accepted); following | v01197 (R, ramp, 18.8) → v01196 (R, ramp, 17.6, 68 m behind its leader; entered at 19.5, fell to 17.4) → v00001 (X, ramp, 20.0) → v00000 (X, ramp, 21.2, free; entered at 22.1, fell to 20.2) |
+| 3 | 1 | 1 | t = 65.0 s, v01199 (E), 248.8 m, 19.5 m/s | no target, free road (260 m); accelerating after crossing 0 → 1 at 145 m at 17.9 m/s (accepted, t = 59.5 s) | — |
+| 4 | 1 | 4 | t = 74.0 s, v00022 (X, owing its change), 251.7 m, 14.0 m/s | no target, no leader within 150 m; `a_own` +1.52 m/s², `a_end` −1.92: braking for the end of lane 1 (SUMO) | — |
+| 5 | 1 | 2 | t = 84.5 s, v01205 (E), 263.9 m, 13.5 m/s | no target, free road (169 m); crossed 0 → 1 at 264 m at 13.5 m/s that step (accepted) | — |
+
+- *Lane 0's first slowdown is not a command.* At every seed the first slow sample is an exiter following the first platoon onto the exit ramp. No vehicle in the chain carries a weave target, then or in the 3 s before. The chain's head is a vehicle that fell below the ramp's 22.22 m/s limit after entering it: SUMO's own speed transition, carried down the platoon.
+  - Every vehicle of these chains on the ramp fell 1.1–2.7 m/s below its entry speed within 47–79 m of the ramp's start.
+  - Over the three runs, the five vehicles that entered the ramp at 21 m/s or more with no leader within 100 m fell to 19.2–20.6 m/s within its first 200 m.
+- *Lane 1's first slow samples* are an entrant still accelerating after a late, slow crossing (seeds 3 and 5) and an exiter braking for its lane end (seed 4).
+- *The O variant, the same readings* (`wp72/out/*_O.md`):
+  - Lane 0's first slow samples are the same three chains.
+  - Lane 1's are v01199 at seed 3 (as the rule), v01202 (E, 17.3 m/s at 251.5 m, crossed that step at 252 m) at seed 4, and v01205 at seed 5.
+  - Lane 0's last 60 m reads 18.1 / 19.7 / 19.6 m/s in minute 1 and is at or below 20 m/s in every later minute. Lanes 0 and 1 fail all four windows at every seed.
+
+**(2) What the commands and SUMO impose in [51, 225) and [225, 305).** The exit end is at or below 20 m/s from minute 1 at every seed, so "before it first slows" is minute 0, the fill. In minute 0 the families bind on at most 11 vehicle-steps in either region. The tables give minute 0, minutes 1 and 2 (the first slow ones), window 0 (minutes 0–4) and the run. Bound / set / deficit follow WP-65's definitions; SUMO's rows give binding steps / deficit.
+
+*Seed 3* (cells: minute 0 ; 1 ; 2 ; minutes 0–4 ; 0–19)
+
+| family, where | bound / set / deficit [m/s·s] |
+|---|---|
+| `sece_hold` (lane-1 follower held for an entrant), [51, 225) | 7 / 7 / 1.6 ; 5 / 5 / 0.8 ; 0 / 0 / 0.0 ; 31 / 27 / 7.5 ; 489 / 469 / 76.8 |
+| `sece_ease` (entrant eased), [51, 225) | 0 ; 0 ; 2 / 1 / 0.1 ; 3 / 1 / 0.1 ; 74 / 52 / 28.1 |
+| `secx_hold` (lane-0 follower held for an exiter), [51, 225) | 11 / 11 / 0.5 ; 70 / 70 / 18.1 ; 94 / 94 / 27.4 ; 313 / 313 / 77.1 ; 1580 / 1552 / 344.9 |
+| `secx_hold` (lane-0 follower held for an exiter), [225, 305) | 0 ; 5 / 5 / 1.9 ; 14 / 14 / 2.7 ; 38 / 38 / 10.7 ; 93 / 93 / 31.6 |
+| `secx_ease` (exiter eased), [51, 225) | 1 / 1 / 0.6 ; 11 / 11 / 4.7 ; 39 / 39 / 24.4 ; 82 / 82 / 44.2 ; 387 / 387 / 177.1 |
+| `secx_ease` (exiter eased), [225, 305) | 0 ; 0 / 0 / 0.0 ; 10 / 10 / 5.0 ; 16 / 16 / 9.0 ; 35 / 35 / 16.4 |
+| `prio_hold` (lane-0 follower held for a due exiter), [225, 305) | 0 ; 15 / 15 / 5.0 ; 4 / 4 / 1.6 ; 21 / 21 / 7.7 ; 84 / 84 / 30.6 |
+| `prio_ease`, [225, 305) | 0 ; 0 ; 1 / 1 / 0.8 ; 1 / 1 / 0.8 ; 8 / 8 / 3.9 |
+| SUMO's lane-end braking of a driven changer (steps binding / deficit), lane 1, [51, 225) | 9 / 0.8 ; 50 / 9.6 ; 24 / 1.3 ; 164 / 28.2 ; 557 / 76.2 |
+| SUMO's lane-end braking of a driven changer (steps binding / deficit), lane 1, [225, 305) | 0 ; 27 / 16.7 ; 15 / 3.4 ; 73 / 37.3 ; 229 / 102.2 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 1, [51, 225) | 1 / 0.0 ; 41 / 1.1 ; 42 / 1.7 ; 153 / 6.3 ; 2078 / 104.6 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 0, [51, 225) | 8 / 0.4 ; 96 / 8.7 ; 88 / 3.1 ; 239 / 13.7 ; 2230 / 106.3 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lanes 2–3, the control, [51, 225) | 36 / 1.2 ; 40 / 0.9 ; 43 / 0.9 ; 213 / 6.4 ; 2114 / 133.0 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 1, [225, 305) | 2 / 0.0 ; 38 / 1.1 ; 27 / 1.7 ; 117 / 4.6 ; 771 / 42.4 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 0, [225, 305) | 17 / 1.8 ; 49 / 6.1 ; 131 / 3.8 ; 389 / 19.1 ; 1902 / 96.9 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lanes 2–3, the control, [225, 305) | 4 / 0.1 ; 10 / 0.2 ; 18 / 0.4 ; 70 / 1.7 ; 797 / 65.4 |
+| requests accepted, [51, 225) | 3 ; 4 ; 10 ; 25 ; 178 |
+| requests accepted, [225, 305) | 0 ; 1 ; 1 ; 4 ; 23 |
+| forced changes executed, [225, 305) | 0 ; 0 ; 3 ; 6 ; 22 |
+| forced changes deferred (vehicle-steps), [225, 305) | 0 ; 19 ; 1 ; 24 ; 123 |
+| pair releases, [225, 305) | 0 ; 0 ; 0 ; 0 ; 11 |
+| give-ups | 0 ; 0 ; 1 ; 1 ; 2 |
+| SUMO's own lane changes (any lanes), [51, 225) | 0 ; 1 ; 8 ; 16 ; 95 |
+| SUMO's own lane changes (any lanes), [225, 305) | 0 ; 0 ; 3 ; 3 ; 35 |
+
+*Seed 4* (cells: minute 0 ; 1 ; 2 ; minutes 0–4 ; 0–19)
+
+| family, where | bound / set / deficit [m/s·s] |
+|---|---|
+| `sece_hold` (lane-1 follower held for an entrant), [51, 225) | 0 ; 4 / 4 / 0.4 ; 8 / 8 / 0.6 ; 16 / 16 / 2.4 ; 1254 / 1120 / 210.3 |
+| `sece_ease` (entrant eased), [51, 225) | 0 ; 1 / 1 / 0.5 ; 0 ; 2 / 1 / 0.5 ; 262 / 170 / 87.3 |
+| `secx_hold` (lane-0 follower held for an exiter), [51, 225) | 9 / 9 / 0.9 ; 33 / 33 / 11.1 ; 108 / 108 / 29.3 ; 299 / 299 / 78.2 ; 3319 / 3201 / 690.3 |
+| `secx_hold` (lane-0 follower held for an exiter), [225, 305) | 0 ; 6 / 6 / 4.7 ; 6 / 6 / 2.6 ; 16 / 16 / 8.7 ; 198 / 193 / 67.4 |
+| `secx_ease` (exiter eased), [51, 225) | 1 / 1 / 0.5 ; 6 / 6 / 3.1 ; 28 / 28 / 20.2 ; 60 / 60 / 35.8 ; 855 / 854 / 451.0 |
+| `secx_ease` (exiter eased), [225, 305) | 0 ; 0 / 0 / 0.0 ; 1 / 1 / 0.7 ; 3 / 3 / 1.8 ; 135 / 135 / 74.6 |
+| `prio_hold` (lane-0 follower held for a due exiter), [225, 305) | 0 ; 1 / 1 / 1.1 ; 1 / 1 / 1.0 ; 3 / 3 / 2.4 ; 181 / 178 / 67.5 |
+| `prio_ease`, [225, 305) | 0 ; 0 ; 0 ; 0 ; 30 / 30 / 17.0 |
+| SUMO's lane-end braking of a driven changer (steps binding / deficit), lane 1, [51, 225) | 15 / 4.8 ; 45 / 9.9 ; 61 / 9.4 ; 217 / 39.6 ; 676 / 93.6 |
+| SUMO's lane-end braking of a driven changer (steps binding / deficit), lane 1, [225, 305) | 0 ; 8 / 6.5 ; 15 / 7.9 ; 41 / 24.4 ; 325 / 124.4 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 1, [51, 225) | 24 / 1.2 ; 66 / 3.6 ; 33 / 1.2 ; 221 / 11.3 ; 2886 / 136.9 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 0, [51, 225) | 36 / 1.1 ; 54 / 3.1 ; 50 / 3.8 ; 248 / 17.9 ; 3508 / 128.2 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lanes 2–3, the control, [51, 225) | 24 / 2.8 ; 53 / 3.5 ; 23 / 0.3 ; 195 / 8.8 ; 2292 / 99.3 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 1, [225, 305) | 6 / 0.1 ; 34 / 3.6 ; 11 / 0.4 ; 93 / 9.6 ; 862 / 56.3 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 0, [225, 305) | 21 / 3.4 ; 66 / 4.9 ; 81 / 5.9 ; 282 / 22.9 ; 3019 / 119.2 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lanes 2–3, the control, [225, 305) | 12 / 0.2 ; 26 / 2.3 ; 15 / 0.4 ; 96 / 3.9 ; 841 / 36.2 |
+| requests accepted, [51, 225) | 1 ; 2 ; 10 ; 32 ; 231 |
+| requests accepted, [225, 305) | 0 ; 1 ; 3 ; 7 ; 48 |
+| forced changes executed, [225, 305) | 0 ; 1 ; 1 ; 4 ; 59 |
+| forced changes deferred (vehicle-steps), [225, 305) | 0 ; 0 ; 0 ; 0 ; 179 |
+| pair releases, [51, 225) | 0 ; 0 ; 0 ; 0 ; 20 |
+| pair releases, [225, 305) | 0 ; 0 ; 0 ; 0 ; 1 |
+| SUMO's own lane changes (any lanes), [51, 225) | 0 ; 3 ; 5 ; 19 ; 104 |
+| SUMO's own lane changes (any lanes), [225, 305) | 0 ; 1 ; 1 ; 5 ; 39 |
+
+*Seed 5* (cells: minute 0 ; 1 ; 2 ; minutes 0–4 ; 0–19)
+
+| family, where | bound / set / deficit [m/s·s] |
+|---|---|
+| `sece_hold` (lane-1 follower held for an entrant), [51, 225) | 0 ; 20 / 20 / 6.5 ; 52 / 45 / 11.5 ; 245 / 214 / 51.5 ; 1391 / 1223 / 240.4 |
+| `sece_ease` (entrant eased), [51, 225) | 0 ; 2 / 0 / 0.0 ; 0 / 0 / 0.0 ; 70 / 35 / 7.9 ; 293 / 137 / 68.1 |
+| `secx_hold` (lane-0 follower held for an exiter), [51, 225) | 0 ; 40 / 40 / 10.3 ; 94 / 93 / 27.2 ; 567 / 566 / 125.0 ; 4022 / 3947 / 772.6 |
+| `secx_hold` (lane-0 follower held for an exiter), [225, 305) | 0 ; 0 / 0 / 0.0 ; 4 / 4 / 1.2 ; 28 / 28 / 9.3 ; 227 / 227 / 73.1 |
+| `secx_ease` (exiter eased), [51, 225) | 0 ; 7 / 7 / 3.7 ; 15 / 15 / 5.7 ; 115 / 115 / 54.6 ; 1051 / 1051 / 567.2 |
+| `secx_ease` (exiter eased), [225, 305) | 0 ; 0 / 0 / 0.0 ; 3 / 3 / 1.2 ; 17 / 17 / 8.6 ; 179 / 179 / 94.5 |
+| `prio_hold` (lane-0 follower held for a due exiter), [225, 305) | 0 ; 0 ; 0 ; 5 / 5 / 2.6 ; 241 / 241 / 82.3 |
+| `prio_ease`, [225, 305) | 0 ; 0 ; 0 ; 0 ; 41 / 41 / 23.6 |
+| SUMO's lane-end braking of a driven changer (steps binding / deficit), lane 1, [51, 225) | 0 ; 45 / 8.3 ; 40 / 7.4 ; 185 / 22.9 ; 799 / 73.4 |
+| SUMO's lane-end braking of a driven changer (steps binding / deficit), lane 1, [225, 305) | 0 ; 1 / 0.6 ; 5 / 2.5 ; 39 / 12.1 ; 435 / 136.7 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 1, [51, 225) | 20 / 0.9 ; 31 / 1.1 ; 59 / 13.3 ; 389 / 23.2 ; 3089 / 127.1 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 0, [51, 225) | 24 / 1.2 ; 53 / 6.0 ; 81 / 9.0 ; 521 / 34.0 ; 3782 / 131.6 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lanes 2–3, the control, [51, 225) | 25 / 0.5 ; 71 / 1.2 ; 138 / 10.4 ; 394 / 17.9 ; 2756 / 138.9 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 1, [225, 305) | 0 ; 15 / 0.8 ; 24 / 4.6 ; 122 / 8.3 ; 1052 / 55.8 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lane 0, [225, 305) | 21 / 3.2 ; 59 / 5.8 ; 100 / 6.2 ; 389 / 22.1 ; 3126 / 119.5 |
+| SUMO, other braking beyond the runner's IDM reading (steps binding / deficit), lanes 2–3, the control, [225, 305) | 4 / 0.1 ; 18 / 0.2 ; 39 / 3.5 ; 151 / 9.6 ; 1209 / 65.9 |
+| requests accepted, [51, 225) | 0 ; 6 ; 11 ; 52 ; 244 |
+| requests accepted, [225, 305) | 0 ; 3 ; 1 ; 9 ; 44 |
+| forced changes executed, [225, 305) | 0 ; 0 ; 1 ; 7 ; 68 |
+| forced changes deferred (vehicle-steps), [225, 305) | 0 ; 0 ; 0 ; 0 ; 220 |
+| give-ups | 0 ; 0 ; 0 ; 0 ; 1 |
+| SUMO's own lane changes (any lanes), [51, 225) | 0 ; 0 ; 6 ; 10 ; 90 |
+| SUMO's own lane changes (any lanes), [225, 305) | 0 ; 0 ; 4 ; 6 ; 41 |
+
+- *In window 0 the largest weave deficit in the second half is `secx_hold` in [51, 225):* the lane-0 followers held for the exiters' crossings, 313 / 299 / 566 set vehicle-steps and 77.1 / 78.2 / 125.0 m/s·s.
+  - The exiters' own easing (`secx_ease`, lane 1) follows with 44.2 / 35.8 / 54.6.
+  - Then the section entrants' holds (`sece_hold`, lane 1) with 7.5 / 2.4 / 51.5, and the exit priority's hold (`prio_hold`, lane 0, [225, 305)) with 7.7 / 2.4 / 2.6.
+- *SUMO's own lane-end braking of the exiters still in lane 1* takes 28.2 / 39.6 / 22.9 m/s·s in [51, 225) and 37.3 / 24.4 / 12.1 in [225, 305) in window 0. That is about as much as the exiters' easing in the second half, and in [225, 305) more than every weave family there together at seed 3 (37.3 against 28.2).
+- *SUMO's other braking in lane 0* reads 13.7 / 17.9 / 34.0 in [51, 225) and 19.1 / 22.9 / 22.1 in [225, 305), against 6.4 / 8.8 / 17.9 and 1.7 / 3.9 / 9.6 in the control lanes 2–3.
+- *Crossings and events in window 0.* Accepted requests in [51, 225), both movements, number 25 / 32 / 52. Forced changes execute 6 / 4 / 7 times in [225, 305). Pair releases: none. SUMO's own lane changes number 16 / 19 / 10 in [51, 225) and 3 / 5 / 6 in [225, 305), mostly from lane 1 to lane 2.
+- *O's window-0 totals.* `secx_hold` in [51, 225): 341 / 327 / 380 set, 93.2 / 70.3 / 83.6 m/s·s. `secx_ease`: 58.3 / 64.6 / 26.8. `prio_hold`: 18.7 / 5.0 / 10.7. SUMO's lane-end braking in lane 1: 28.4 / 23.0 / 19.4 in [51, 225) and 45.7 / 23.5 / 13.6 in [225, 305).
+
+*The crossings' speed.* Crossings are per movement and region, n @ median speed [m/s], forced in parentheses. The last column is the median speed of the exiters still in lane 1 at 150 / 200 / 250 m. Minutes 1–4 and the run; the rule, then O.
+
+| form | seed | minutes | exiters into lane 0: [0, 51) / [51, 225) / [225, 305), n @ median m/s (forced) | entrants into lane 1: the same | exiters' speed in lane 1 at 150 / 200 / 250 m (median) |
+|---|---|---|---|---|---|
+| the rule | 3 | 1–4 | 36 @ 19.5 / 17 @ 18.0 / 10 @ 9.5 (6) | 32 @ 20.9 / 7 @ 16.6 / 0 | 17.6 / 13.7 / 10.2 |
+| the rule | 3 | 1–19 | 126 @ 10.1 / 101 @ 12.0 / 35 @ 9.7 (20) | 167 @ 9.7 / 65 @ 10.2 / 10 @ 10.4 (2) | 13.0 / 13.3 / 10.6 |
+| the rule | 4 | 1–4 | 35 @ 19.4 / 24 @ 17.7 / 10 @ 12.8 (4) | 34 @ 20.1 / 7 @ 17.5 / 2 @ 12.2 | 18.0 / 17.2 / 13.8 |
+| the rule | 4 | 1–19 | 90 @ 17.2 / 140 @ 9.3 / 71 @ 8.0 (49) | 120 @ 16.5 / 72 @ 6.8 / 21 @ 8.6 (10) | 9.5 / 8.0 / 8.7 |
+| the rule | 5 | 1–4 | 28 @ 17.2 / 32 @ 12.3 / 12 @ 10.2 (4) | 24 @ 18.8 / 18 @ 11.6 / 5 @ 9.1 (3) | 10.6 / 14.5 / 10.6 |
+| the rule | 5 | 1–19 | 86 @ 8.0 / 135 @ 9.9 / 84 @ 8.3 (55) | 114 @ 8.0 / 97 @ 8.7 / 20 @ 8.5 (12) | 8.9 / 9.6 / 9.0 |
+| O | 3 | 1–4 | 30 @ 19.4 / 19 @ 16.3 / 12 @ 8.2 (9) | 29 @ 20.1 / 7 @ 16.9 / 2 @ 9.4 (1) | 17.1 / 14.7 / 10.0 |
+| O | 3 | 1–19 | 98 @ 8.8 / 117 @ 11.4 / 48 @ 10.1 (23) | 132 @ 8.3 / 84 @ 9.3 / 19 @ 10.3 (4) | 12.9 / 13.2 / 11.4 |
+| O | 4 | 1–4 | 40 @ 18.9 / 16 @ 18.6 / 14 @ 9.2 (9) | 33 @ 20.3 / 5 @ 14.9 / 5 @ 8.3 (2) | 16.1 / 13.4 / 10.1 |
+| O | 4 | 1–19 | 138 @ 12.6 / 109 @ 13.0 / 60 @ 9.2 (32) | 153 @ 10.4 / 58 @ 10.9 / 12 @ 9.7 (4) | 13.7 / 13.0 / 11.2 |
+| O | 5 | 1–4 | 28 @ 15.4 / 26 @ 10.8 / 5 @ 10.9 (1) | 27 @ 14.1 / 15 @ 7.4 / 4 @ 8.1 (2) | 10.9 / 13.0 / 10.6 |
+| O | 5 | 1–19 | 108 @ 8.2 / 140 @ 10.2 / 65 @ 7.9 (48) | 129 @ 7.9 / 80 @ 7.8 / 15 @ 8.2 (7) | 10.0 / 10.4 / 8.3 |
+
+- *Almost no crossing of the second half is made at 20 m/s.* Exiters crossing into lane 0 in [51, 305) do so at 20 m/s or more 4 of 27 / 3 of 34 / 3 of 44 times in minutes 1–4, and 5 of 136 / 7 of 211 / 3 of 219 over the run. Entrants crossing into lane 1 in [51, 305) do so 2 of 7 / 0 of 9 / 1 of 23 times, and 2 of 75 / 0 of 93 / 1 of 117.
+- *Medians.* In minutes 1–4 the exiters cross in [51, 225) at a median 18.0 / 17.7 / 12.3 m/s and in [225, 305) at 9.5 / 12.8 / 10.2.
+- *The exiters are slower than their lane from the start.* In lane 1's first 25 m in minutes 1–4 they run 17.8 / 18.6 / 12.0 m/s, against the through vehicles' 19.7 / 20.1 / 16.4 and the entrants' 19.8 / 19.7 / 17.3.
+
+*SUMO's lane-end braking, measured.* Exiters in lane 1 with no weave target on the step, minutes 0–4, seeds 3–5 pooled, per 25 m of x (`a` in m/s²; the share is the steps on which `a_end` < `a_own`).
+
+| x [m] | steps | v [m/s] | a realized | `a_own` | `a_end` | `a_end` < `a_own` | realized − `a_own` | realized − min(`a_own`, `a_end`) |
+|---|---|---|---|---|---|---|---|---|
+| [50, 75) | 293 | 15.8 | +0.18 | +0.04 | +0.66 | 29 % | +0.02 | +0.17 |
+| [75, 100) | 236 | 16.3 | +0.25 | +0.24 | +0.60 | 42 % | −0.04 | +0.15 |
+| [100, 125) | 192 | 16.4 | +0.28 | +0.44 | +0.48 | 57 % | −0.09 | +0.17 |
+| [125, 150) | 143 | 16.6 | +0.41 | +0.56 | +0.40 | 74 % | −0.10 | +0.19 |
+| [150, 175) | 127 | 16.8 | +0.12 | +0.59 | +0.14 | 80 % | −0.27 | +0.21 |
+| [175, 200) | 106 | 16.4 | −0.23 | +0.71 | −0.38 | 92 % | −0.50 | +0.18 |
+| [200, 225) | 95 | 14.9 | −0.73 | +0.77 | −0.66 | 91 % | −0.93 | +0.14 |
+| [225, 250) | 71 | 13.0 | −0.74 | +0.90 | −0.91 | 100 % | −1.63 | +0.14 |
+| [250, 275) | 57 | 11.2 | −1.04 | +1.03 | −1.24 | 96 % | −2.09 | +0.28 |
+| [275, 300) | 15 | 7.7 | −1.92 | +1.22 | −2.61 | 100 % | −3.09 | +0.74 |
+
+- *The realized acceleration follows the smaller of the two readings,* within 0.14–0.21 m/s² over [50, 250) m. EIDM accelerates a little more than the runner's IDM reading: at seed 3, through vehicles in lanes 2–3 with no target read a median 0.19–0.30 m/s² above `a_own`. Near the very end SUMO brakes less than the formula.
+- *The lane end is the tighter term* on 29 % of the steps at 50–75 m, 57 % at 100 m, 80 % at 150 m and 91–100 % from 175 m. Relative to the car-following reading it takes 0.27 m/s² at 150 m, 0.50 at 175 m, 0.93 at 200 m and 2.09 at 250 m. The exiters run 15.8–16.8 m/s over [50, 175) and 13.0 / 11.2 / 7.7 m/s at 225 / 250 / 275 m.
+- *Closed form.* The runner's IDM towards a standing obstacle at the lane end asks a < 0 within s*(v, Δv = v) / √(1 − (v/v0)⁴) of it, where s* = s0 + v·T + v² / (2·√(a·b)). This is the stop term WP-67 used to bound its spread length.
+  - At the drawn fleet's means (s0 2.546 m, T 1.362 s, a 1.065 m/s², b 1.851 m/s²; v0 the 24.59 m/s limit): 111 m at 15 m/s, 157 m at 17.5 m/s, 230 m at 20 m/s and 342 m at 22 m/s. That is from x = 194, 148 and 75 m, and at 22 m/s from before the section starts.
+  - So an exiter in lane 1 cannot hold 20 m/s past x ≈ 75 m under SUMO's own model. One not across by then crosses below 20 m/s.
+
+*Where the exit end's slow samples come from.* For every sample of lane 0 (lane 1) in the last 60 m below 20 m/s, the leader chain is walked downstream (section samples, then the exit ramp's log). It continues while the leader is within s0 + 1.5·v·T + 10 m and no more than 1 m/s faster. The root is the frontmost vehicle so constrained. It is classified by a weave target set on it in the last 5 s, else by its lane end being the tighter term, else by the latest of its lane change, a target set on it or a deferred forced change in the last 20 s. A root with none of these is "slow since before its last 20 s". Shares of the samples, the rule:
+
+| lane 0, root of the chain | seed 3, min 1–4 | seed 3, min 1–19 | seed 4, min 1–4 | seed 4, min 1–19 | seed 5, min 1–4 | seed 5, min 1–19 |
+|---|---|---|---|---|---|---|
+| samples below 20 m/s | 789 | 3,489 | 564 | 4,464 | 673 | 4,876 |
+| crossed into lane 0 in [51, 305) below 20 m/s (accepted, forced or SUMO) | 17 % | 30 % | 44 % | 31 % | 36 % | 33 % |
+| held within 20 s (secx_hold / prio_hold) | 39 % | 24 % | 26 % | 28 % | 29 % | 26 % |
+| slow since before its last 20 s (on the exit ramp or free) | 31 % | 34 % | 18 % | 32 % | 19 % | 32 % |
+| crossed at the entry [0, 51) | 7 % | 4 % | 7 % | 2 % | 8 % | 1 % |
+| eased within 20 s (secx_ease / prio_ease / sece_ease) | 4 % | 3 % | 1 % | 7 % | 6 % | 8 % |
+| crossed in [51, 305) at 20 m/s or more | 3 % | 1 % | 4 % | 1 % | 0 % | 0 % |
+| an exiter owing its change, braking for its lane end (SUMO; deferred or not yet due) | 0 % | 5 % | 0 % | 0 % | 2 % | 0 % |
+| on the exit ramp after entering it at 21 m/s or more | 0 % | 0 % | 0 % | 0 % | 0 % | 0 % |
+
+| lane 1, root of the chain | seed 3, min 1–4 | seed 3, min 1–19 | seed 4, min 1–4 | seed 4, min 1–19 | seed 5, min 1–4 | seed 5, min 1–19 |
+|---|---|---|---|---|---|---|
+| samples below 20 m/s | 147 | 1,697 | 80 | 1,615 | 250 | 2,083 |
+| crossed into lane 1 in [51, 305) below 20 m/s (accepted, forced or SUMO) | 17 % | 20 % | 19 % | 25 % | 38 % | 23 % |
+| slow since before its last 20 s (on the exit ramp or free) | 12 % | 28 % | 0 % | 22 % | 20 % | 31 % |
+| held within 20 s (sece_hold / secx_hold / prio_hold / ramp_hold) | 0 % | 23 % | 28 % | 24 % | 13 % | 14 % |
+| an exiter owing its change, braking for its lane end (SUMO; deferred or not yet due) | 50 % | 10 % | 18 % | 9 % | 2 % | 8 % |
+| eased within 20 s (secx_ease / prio_ease / sece_ease) | 15 % | 7 % | 19 % | 15 % | 12 % | 20 % |
+| crossed at the entry [0, 51) | 5 % | 11 % | 18 % | 4 % | 16 % | 3 % |
+| crossed in [51, 305) at 20 m/s or more | 0 % | 0 % | 0 % | 1 % | 0 % | 0 % |
+
+- *Lane 0, the run.* 30 / 31 / 33 % of the slow samples at the exit end trace to an exiter that crossed into lane 0 in [51, 305) below 20 m/s. Another 24 / 28 / 26 % trace to a lane-0 vehicle held for such a crossing (`secx_hold`, `prio_hold`), and 32–34 % to a vehicle slow for more than 20 s (the queue's memory). Crossings made at 20 m/s or more are 0–1 %.
+- *Lane 1, the run.* The roots are late entrants crossing below 20 m/s (20 / 25 / 23 %), holds (23 / 24 / 14 %), easings (7 / 15 / 20 %) and exiters braking for their lane end (10 / 9 / 8 %). In window 0 the lane-end share is 50 / 18 / 2 %.
+- *The census is a heuristic attribution.* Its buckets are where a slow chain starts, not what a removal would give back; (3) reads that.
+
+**(3) Counterfactuals** (harness only, `ramp_outlet` = 1, seeds 3 / 4 / 5). As in WP-65, each switch takes one family out and leaves the others as they are; "in [51, 305) only" withholds the family's targets only where the commanded vehicle is in the second half. *Load-bearing* flags a removal that:
+- locks the exit end: lanes 0 and 1 in [250, 305) at or below 1 m/s in some minute, with 20 or more unfinished or give-ups above 2 %;
+- gives up more than 2 % of the exits;
+- drops the entrance below 387 at a seed where the rule reaches it (seeds 3 and 5);
+- drops the mainline below 1,137;
+- or lowers the exit end's lane-0 delivery by 100 veh/h or more at every seed.
+
+| switched off | lane-windows ≤ 20 m/s of 16 | lowest window lane 0 / 1 [m/s] | exit end at 273.4 m, lane 0 / lane 1 [veh/h] | T.H.52 of 407 | mainline of 1,196 | given up of reached | unfinished | lowest minute [m/s]: lane 1 at the entry; lanes 0 / 1 in [250, 305) | coll. | binding requests withheld | load-bearing |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none (`ramp_outlet` = 1) | 12 / 12 / 13 | 7.7 / 9.7 ; 5.6 / 7.8 ; 7.6 / 8.2 | 1,068 / 684 ; 1,149 / 624 ; 1,197 / 582 | 401 / 386 / 403 | 1,187 / 1,181 / 1,171 | 2 of 376 ; 0 of 411 ; 1 of 431 | 7 / 3 / 5 | 6.3; 3.4 / 4.0 ; 2.6; 4.9 / 6.7 ; 4.2; 4.8 / 5.4 | 0 / 0 / 0 | 0 / 0 / 0 | — |
+| `ramp_hold` | 13 / 12 / 14 | 8.0 / 11.0 ; 8.6 / 9.4 ; 7.8 / 8.4 | 1,032 / 594 ; 1,107 / 558 ; 1,161 / 477 | 340 / 343 / 354 | 1,195 / 1,191 / 1,185 | 1 of 364 ; 3 of 394 ; 1 of 414 | 5 / 6 / 8 | 1.5; 3.8 / 6.4 ; 2.1; 2.3 / 3.2 ; 2.7; 3.2 / 3.8 | 0 / 0 / 0 | 7,292 / 6,001 / 5,563 | entrance < 387 at 3, 5 |
+| `ramp_ease` | 11 / 14 / 14 | 10.5 / 13.3 ; 7.4 / 9.4 ; 4.6 / 4.5 | 1,038 / 654 ; 1,014 / 585 ; 1,032 / 468 | 390 / 363 / 345 | 1,181 / 1,111 / 1,122 | 1 of 363 ; 3 of 378 ; 2 of 387 | 9 / 10 / 9 | 1.6; 8.0 / 7.5 ; 2.5; 2.6 / 4.3 ; 1.5; 0.6 / 1.4 | 0 / 0 / 0 | 1,696 / 1,622 / 1,214 | entrance < 387 at 5; mainline < 1,137 at 4, 5 |
+| `sece_hold` | 13 / 14 / 14 | 6.6 / 7.9 ; 5.4 / 8.4 ; 5.0 / 6.8 | 1,116 / 576 ; 1,122 / 513 ; 1,161 / 477 | 399 / 372 / 369 | 1,190 / 1,150 / 1,152 | 1 of 375 ; 3 of 404 ; 4 of 406 | 2 / 5 / 10 | 3.2; 2.0 / 2.3 ; 2.2; 1.1 / 5.9 ; 2.3; 2.0 / 4.1 | 0 / 0 / 0 | 4,227 / 4,375 / 6,224 | entrance < 387 at 5 |
+| `sece_ease` | 11 / 14 / 13 | 3.8 / 4.9 ; 3.8 / 4.6 ; 5.6 / 6.4 | 1,056 / 666 ; 1,041 / 510 ; 1,200 / 528 | 404 / 370 / 376 | 1,196 / 1,148 / 1,162 | 4 of 382 ; 4 of 402 ; 1 of 418 | 4 / 19 / 4 | 1.9; 0.7 / 2.3 ; 2.0; 1.5 / 2.0 ; 1.4; 1.3 / 2.2 | 0 / 0 / 0 | 1,373 / 1,541 / 1,832 | entrance < 387 at 5 |
+| `secx_hold` | 13 / 15 / 13 | 5.3 / 6.2 ; 3.0 / 3.7 ; 4.9 / 5.4 | 930 / 618 ; 891 / 558 ; 951 / 606 | 386 / 347 / 371 | 1,157 / 1,132 / 1,163 | 3 of 361 ; 5 of 378 ; 2 of 404 | 9 / 20 / 21 | 2.3; 3.3 / 3.2 ; 2.3; 0.5 / 1.2 ; 1.9; 3.5 / 3.7 | 0 / 0 / 0 | 6,507 / 10,590 / 9,948 | entrance < 387 at 3, 5; mainline < 1,137 at 4; exit end lane 0 −100 veh/h or more at every seed |
+| `secx_ease` | 13 / 13 / 13 | 4.9 / 5.0 ; 3.2 / 3.1 ; 3.0 / 3.2 | 915 / 648 ; 879 / 609 ; 822 / 552 | 383 / 384 / 369 | 1,188 / 1,158 / 1,121 | 5 of 368 ; 10 of 399 ; 9 of 397 | 6 / 9 / 7 | 2.0; 1.5 / 2.1 ; 2.3; 2.2 / 2.2 ; 2.3; 1.6 / 1.6 | 0 / 0 / 0 | 1,670 / 1,990 / 3,076 | give-ups > 2 % at 4, 5; entrance < 387 at 3, 5; mainline < 1,137 at 5; exit end lane 0 −100 veh/h or more at every seed |
+| `prio_hold` | 11 / 14 / 13 | 12.7 / 12.7 ; 7.2 / 7.5 ; 8.6 / 11.4 | 1,068 / 714 ; 1,158 / 552 ; 1,251 / 573 | 407 / 386 / 398 | 1,173 / 1,139 / 1,188 | 4 of 375 ; 12 of 413 ; 5 of 436 | 6 / 7 / 3 | 6.8; 8.3 / 6.6 ; 3.1; 2.1 / 4.0 ; 4.3; 5.5 / 6.5 | 0 / 0 / 0 | 95 / 337 / 169 | give-ups > 2 % at 4 |
+| the exit priority entirely | 12 / 13 / 13 | 4.9 / 5.8 ; 7.2 / 6.9 ; 9.0 / 11.6 | 1,050 / 624 ; 1,164 / 570 ; 1,230 / 555 | 396 / 382 / 396 | 1,196 / 1,180 / 1,177 | 7 of 375 ; 11 of 415 ; 4 of 432 | 10 / 5 / 4 | 2.9; 0.6 / 1.7 ; 3.0; 2.4 / 4.0 ; 4.3; 5.5 / 6.5 | 0 / 0 / 0 | 225 / 310 / 119 | give-ups > 2 % at 4 |
+| vacate requests | 12 / 13 / 13 | 6.4 / 7.0 ; 7.3 / 9.6 ; 6.6 / 7.2 | 1,065 / 729 ; 1,113 / 561 ; 1,152 / 612 | 392 / 340 / 371 | 1,196 / 1,191 / 1,191 | 3 of 376 ; 1 of 398 ; 1 of 418 | 10 / 7 / 2 | 2.2; 1.2 / 1.6 ; 1.5; 2.7 / 4.1 ; 3.2; 2.8 / 3.2 | 0 / 0 / 0 | 0 / 0 / 0 | entrance < 387 at 5 |
+| pair releases | 10 / 11 / 13 | 0.0 / 0.0 ; 10.6 / 12.2 ; 7.5 / 8.2 | 315 / 162 ; 1,191 / 615 ; 1,224 / 603 | 232 / 387 / 393 | 791 / 1,172 / 1,177 | 2 of 159 ; 0 of 416 ; 0 of 426 | 26 / 1 / 1 | 0.0; 0.0 / 0.0 ; 2.6; 7.1 / 9.9 ; 3.7; 5.0 / 5.4 | 0 / 0 / 0 | 0 / 0 / 0 | locks the exit end at 3; entrance < 387 at 3; mainline < 1,137 at 3 |
+| forced changes (`force_after_s` = 10⁶) | 13 / 15 / 15 | 4.1 / 3.8 ; 2.3 / 3.0 ; 2.6 / 3.5 | 912 / 573 ; 699 / 432 ; 792 / 381 | 364 / 291 / 297 | 1,175 / 1,078 / 1,073 | 18 of 356 ; 22 of 325 ; 16 of 342 | 13 / 9 / 11 | 3.1; 2.0 / 2.1 ; 1.2; 0.3 / 1.1 ; 1.1; 0.3 / 1.4 | 0 / 0 / 0 | 0 / 0 / 0 | give-ups > 2 % at 3, 4, 5; entrance < 387 at 3, 5; mainline < 1,137 at 4, 5; exit end lane 0 −100 veh/h or more at every seed |
+| `secx_hold` in [51, 305) only | 12 / 15 / 15 | 5.3 / 6.4 ; 3.0 / 3.7 ; 4.6 / 5.4 | 915 / 657 ; 873 / 567 ; 936 / 507 | 383 / 341 / 326 | 1,176 / 1,136 / 1,121 | 4 of 369 ; 6 of 371 ; 3 of 385 | 11 / 14 / 15 | 2.3; 3.3 / 3.8 ; 1.6; 0.5 / 1.2 ; 1.4; 2.1 / 2.7 | 0 / 0 / 0 | 6,267 / 9,150 / 11,095 | entrance < 387 at 3, 5; mainline < 1,137 at 4, 5; exit end lane 0 −100 veh/h or more at every seed |
+| `secx_ease` in [51, 305) only | 13 / 12 / 13 | 4.9 / 7.4 ; 2.7 / 3.1 ; 3.0 / 3.4 | 954 / 759 ; 819 / 603 ; 822 / 546 | 395 / 371 / 361 | 1,196 / 1,179 / 1,144 | 6 of 374 ; 9 of 389 ; 9 of 398 | 2 / 21 / 9 | 2.5; 2.1 / 3.4 ; 2.7; 1.7 / 1.8 ; 2.3; 1.7 / 2.4 | 0 / 0 / 0 | 959 / 2,419 / 3,387 | give-ups > 2 % at 4, 5; entrance < 387 at 5; exit end lane 0 −100 veh/h or more at every seed |
+| `sece_hold` in [51, 305) only | 13 / 14 / 14 | 5.6 / 10.3 ; 5.3 / 8.1 ; 5.0 / 6.7 | 1,077 / 588 ; 1,068 / 504 ; 1,107 / 471 | 399 / 366 / 343 | 1,196 / 1,143 / 1,132 | 2 of 374 ; 4 of 389 ; 3 of 405 | 11 / 12 / 9 | 3.3; 2.0 / 5.1 ; 2.3; 1.1 / 6.0 ; 1.9; 2.0 / 2.8 | 0 / 0 / 0 | 1,671 / 1,970 / 2,640 | entrance < 387 at 5; mainline < 1,137 at 5 |
+| `sece_ease` in [51, 305) only | 11 / 11 / 13 | 7.9 / 13.6 ; 5.1 / 5.9 ; 9.2 / 11.9 | 1,092 / 687 ; 1,068 / 594 ; 1,272 / 579 | 399 / 381 / 404 | 1,196 / 1,167 / 1,196 | 2 of 375 ; 2 of 412 ; 1 of 441 | 1 / 15 / 4 | 6.8; 4.3 / 8.9 ; 1.7; 2.7 / 3.6 ; 4.0; 5.9 / 9.3 | 0 / 0 / 0 | 259 / 420 / 326 | — |
+| every hold | 15 / 15 / 15 | 0.6 / 0.8 ; 0.0 / 0.0 ; 0.1 / 0.1 | 360 / 282 ; 300 / 216 ; 342 / 222 | 224 / 227 / 237 | 999 / 884 / 900 | 64 of 210 ; 41 of 181 ; 43 of 204 | 61 / 74 / 73 | 0.4; 0.3 / 0.5 ; 0.0; 0.0 / 0.0 ; 0.0; 0.0 / 0.0 | 0 / 0 / 0 | 46,496 / 49,763 / 43,197 | locks the exit end at 3, 4, 5; give-ups > 2 % at 3, 4, 5; entrance < 387 at 3, 5; mainline < 1,137 at 3, 4, 5; exit end lane 0 −100 veh/h or more at every seed |
+| every easing | 13 / 14 / 14 | 0.9 / 2.0 ; 1.2 / 1.7 ; 1.1 / 2.1 | 612 / 672 ; 567 / 522 ; 516 / 600 | 376 / 357 / 328 | 1,145 / 1,068 / 1,100 | 32 of 339 ; 43 of 342 ; 40 of 362 | 23 / 39 / 42 | 1.0; 0.0 / 0.8 ; 1.0; 0.0 / 0.6 ; 1.0; 0.6 / 1.6 | 0 / 0 / 0 | 10,360 / 13,063 / 12,048 | locks the exit end at 3, 4; give-ups > 2 % at 3, 4, 5; entrance < 387 at 3, 5; mainline < 1,137 at 4, 5; exit end lane 0 −100 veh/h or more at every seed |
+| every speed target | 14 / 14 / 15 | 0.0 / 0.8 ; 0.0 / 0.8 ; 0.0 / 0.8 | 36 / 345 ; 45 / 351 ; 120 / 357 | 151 / 157 / 183 | 1,076 / 1,069 / 1,047 | 131 of 208 ; 150 of 237 ; 155 of 245 | 56 / 56 / 64 | 0.6; 0.0 / 0.7 ; 0.7; 0.0 / 0.8 ; 0.6; 0.0 / 0.7 | 0 / 0 / 0 | 68,975 / 73,042 / 83,746 | locks the exit end at 3, 4, 5; give-ups > 2 % at 3, 4, 5; entrance < 387 at 3, 5; mainline < 1,137 at 3, 4, 5; exit end lane 0 −100 veh/h or more at every seed |
+| every speed target in [51, 305) | 15 / 14 / 15 | 0.0 / 0.8 ; 0.0 / 0.9 ; 0.0 / 0.8 | 42 / 363 ; 45 / 369 ; 159 / 366 | 157 / 165 / 209 | 1,035 / 1,004 / 1,034 | 131 of 212 ; 135 of 214 ; 134 of 257 | 35 / 31 / 51 | 1.2; 0.0 / 0.7 ; 1.2; 0.0 / 0.8 ; 1.0; 0.0 / 0.7 | 0 / 0 / 0 | 38,848 / 39,152 / 51,304 | locks the exit end at 3, 4, 5; give-ups > 2 % at 3, 4, 5; entrance < 387 at 3, 5; mainline < 1,137 at 3, 4, 5; exit end lane 0 −100 veh/h or more at every seed |
+
+- *No removal passes (ii), and none makes the exit end fast.* Lane 0 fails all four windows in every row. The fewest lane-windows at or below 20 m/s, 10 / 11 / 13, belong to the pair release's removal, which locks the section at seed 3 (T.H.52 232, mainline 791).
+- *Load-bearing for the exit end's delivery.*
+  - Without the exiters' holds, lane 0 at 273.4 m falls 138–258 veh/h and 9–21 vehicles are unfinished; in [51, 305) only, 153–276 veh/h.
+  - Without the exiters' easing it falls 153–375 veh/h and 5–10 exits are given up (above 2 % at seeds 4 and 5).
+  - Without forced changes, 16–22 exits are given up (4.7–6.8 %).
+  - Without the exit priority's hold, 12 of 413 are given up at seed 4.
+- *Load-bearing for liveness.* Five removals lock the exit end (lanes 0 and 1 at 0.0–0.8 m/s in some minute): the pair release at seed 3, every hold, every easing (seeds 3 and 4), every speed target, and every speed target in the second half. Removing every speed target reproduces WP-65's entrance to the vehicle (151 / 157 / 183), because with no target to withhold the outlet rule has nothing to act on.
+- *Load-bearing for the entrance.* The ramp anticipation's holds (T.H.52 −61 / −43 / −49) and easing, the section entrants' holds and easing, and the vacate requests each take the entrance below 387 at seed 5 or at seeds 3 and 5.
+- *The one removal no flag marks* is the section entrants' easing in [51, 305).
+  - It reads 11 / 11 / 13 lane-windows against 12 / 12 / 13, with the lowest windows higher.
+  - But lane 0 at 273.4 m moves +24 / −81 / +75 veh/h, and 15 vehicles are unfinished at seed 4 against 3.
+  - It binds on 259–420 requests a run. Lane 0 still fails every window.
+- No removal collides.
+
+*A diagnostic, not a family.* The forced zone lengthened (`force_within_m`, an existing key), which moves the exit priority's onset with it. The outlet's stretch shrinks with the zone by construction (L − zone − 173.8 m), so the zone was also run with the stretch held at 51.1 m.
+
+| diagnostic (not a family) | lane-windows ≤ 20 m/s of 16 | lowest window lane 0 / 1 [m/s] | exit end at 273.4 m, lane 0 / lane 1 [veh/h] | T.H.52 of 407 | mainline of 1,196 | given up of reached | unfinished | lowest minute [m/s]: lane 1 at the entry; lanes 0 / 1 in [250, 305) | forced / deferred | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `force_within_m` = 120 (the outlet stretch shrinks to 11.2 m by construction) | 10 / 12 / 13 | 9.6 / 13.1 ; 8.1 / 14.2 ; 10.8 / 13.6 | 1,083 / 720 ; 1,149 / 549 ; 1,236 / 570 | 398 / 355 / 391 | 1,196 / 1,165 / 1,185 | 0 of 373 ; 1 of 399 ; 1 of 428 | 2 / 3 / 2 | 6.3; 4.4 / 8.2 ; 2.3; 1.1 / 4.4 ; 3.3; 6.9 / 11.0 | 29 / 106 ; 55 / 279 ; 76 / 129 | 0 / 0 / 0 |
+| `force_within_m` = 160 (the outlet stretch shrinks to 0 by construction) | 10 / 10 / 13 | 11.7 / 13.8 ; 9.4 / 13.0 ; 8.5 / 12.3 | 1,065 / 702 ; 1,161 / 627 ; 1,170 / 501 | 387 / 370 / 360 | 1,175 / 1,176 / 1,136 | 1 of 361 ; 0 of 401 ; 2 of 405 | 2 / 2 / 3 | 4.9; 8.2 / 7.1 ; 4.1; 4.4 / 7.3 ; 4.3; 4.2 / 7.3 | 45 / 113 ; 56 / 200 ; 80 / 401 | 0 / 0 / 0 |
+| `force_within_m` = 120, outlet stretch held at 51.1 m | 11 / 11 / 13 | 12.8 / 15.3 ; 10.7 / 12.4 ; 8.2 / 11.4 | 1,083 / 735 ; 1,197 / 582 ; 1,266 / 600 | 397 / 385 / 401 | 1,173 / 1,157 / 1,180 | 1 of 367 ; 1 of 417 ; 1 of 437 | 1 / 7 / 1 | 4.9; 11.7 / 14.1 ; 3.9; 6.5 / 8.9 ; 4.5; 5.0 / 7.2 | 42 / 68 ; 53 / 195 ; 61 / 199 | 0 / 0 / 0 |
+| `force_within_m` = 160, outlet stretch held at 51.1 m | 9 / 10 / 12 | 14.8 / 16.5 ; 11.9 / 11.5 ; 7.2 / 13.5 | 1,119 / 774 ; 1,200 / 642 ; 1,245 / 597 | 407 / 396 / 402 | 1,166 / 1,168 / 1,175 | 0 of 380 ; 1 of 416 ; 0 of 435 | 4 / 5 / 3 | 5.2; 13.4 / 15.0 ; 3.0; 10.4 / 6.9 ; 4.3; 4.7 / 9.8 | 48 / 14 ; 85 / 287 ; 91 / 503 | 0 / 0 / 0 |
+
+- *With the zone at 160 m and the outlet held at 51.1 m,* both the priority and the forced change start from x ≈ 145 m + 4 s, about where the exiters' lane-end braking begins. This is the best reading of (ii) here:
+  - 9 / 10 / 12 lane-windows;
+  - lane 1's lowest window 16.5 / 11.5 / 13.5 m/s against 9.7 / 7.8 / 8.2;
+  - T.H.52 407 / 396 / 402 and the mainline 1,166 / 1,168 / 1,175, both criteria at all three seeds;
+  - 0 / 1 / 0 exits given up, and no collision.
+- *Lane 0 still fails every window, and the crossings stay slow.* The exiters' crossings in [51, 225) remain below 20 m/s: a median 17.0 / 14.2 / 13.1 m/s in minutes 1–4 (`wp72/out/xspd_z160.md`). Lane 0's last 60 m reads 18.5 / 19.4 / 19.7 m/s in minute 1 (last-60 m table below).
+
+*The last 60 m per minute, O and the zone diagnostic* (lanes 0 / 1 / 2 / 3, m/s).
+
+| minute | O, seed 3 | O, seed 4 | O, seed 5 | zone 160 m, outlet 51.1 m, seed 3 | zone 160 m, outlet 51.1 m, seed 4 | zone 160 m, outlet 51.1 m, seed 5 |
+|---|---|---|---|---|---|---|
+| 0 | 21.7 / 24.5 / 24.4 / 24.6 | 22.0 / 24.2 / 19.8 / 24.3 | 21.5 / – / 24.4 / 24.4 | 21.7 / 24.5 / 24.4 / 24.6 | 21.8 / 24.2 / 19.8 / 24.3 | 21.5 / – / 24.4 / 24.4 |
+| 1 | 18.1 / 15.8 / 24.1 / 24.4 | 19.7 / 22.6 / 23.3 / 23.5 | 19.6 / 20.7 / 23.4 / 24.5 | 18.5 / 21.6 / 24.1 / 24.4 | 19.4 / 22.5 / 23.4 / 23.4 | 19.7 / 21.4 / 23.4 / 24.4 |
+| 2 | 12.0 / 14.7 / 20.4 / 24.0 | 15.2 / 18.3 / 23.2 / 24.2 | 7.4 / 8.6 / 20.2 / 19.7 | 14.5 / 21.1 / 23.1 / 24.3 | 16.7 / 21.8 / 23.9 / 24.5 | 16.2 / 18.1 / 20.0 / 19.7 |
+| 3 | 12.1 / 15.7 / 24.0 / 24.1 | 12.9 / 14.5 / 22.3 / 24.0 | 14.9 / 15.1 / 17.9 / 22.7 | 17.8 / 23.7 / 23.9 / 24.3 | 14.6 / 19.6 / 22.6 / 23.9 | 15.2 / 18.1 / 21.5 / 22.4 |
+| 4 | 9.4 / 10.9 / 21.8 / 22.9 | 10.4 / 12.2 / 23.4 / 23.7 | 13.9 / 15.2 / 22.6 / 24.4 | 16.6 / 19.3 / 22.9 / 23.2 | 16.4 / 20.1 / 22.4 / 23.9 | 14.4 / 17.5 / 22.6 / 24.5 |
+| 5 | 15.2 / 18.1 / 23.1 / 24.2 | 14.6 / 17.6 / 23.5 / 23.7 | 11.3 / 14.0 / 20.7 / 24.1 | 19.4 / 22.4 / 23.4 / 24.3 | 16.4 / 21.9 / 23.4 / 23.5 | 12.7 / 16.4 / 20.0 / 22.7 |
+| 6 | 14.0 / 18.7 / 21.8 / 22.2 | 19.4 / 20.7 / 22.3 / 23.3 | 6.7 / 11.3 / 15.9 / 23.0 | 17.0 / 21.2 / 22.7 / 23.7 | 17.0 / 18.6 / 22.4 / 23.1 | 12.0 / 15.9 / 19.7 / 22.4 |
+| 7 | 16.7 / 19.9 / 22.4 / 24.3 | 11.2 / 16.7 / 19.7 / 19.9 | 13.2 / 16.2 / 18.4 / 19.3 | 17.5 / 20.2 / 23.1 / 23.9 | 17.1 / 20.0 / 20.0 / 20.4 | 13.0 / 15.2 / 20.7 / 23.8 |
+| 8 | 15.7 / 18.5 / 20.5 / 23.4 | 6.8 / 12.3 / 18.7 / 24.4 | 8.8 / 8.7 / 14.4 / 20.3 | 16.4 / 17.4 / 22.1 / 23.5 | 14.6 / 18.2 / 22.0 / 24.5 | 13.2 / 14.8 / 22.9 / 24.0 |
+| 9 | 16.6 / 18.0 / 20.2 / 23.0 | 15.5 / 16.7 / 19.2 / 20.7 | 6.3 / 7.6 / 12.5 / 21.8 | 15.4 / 17.5 / 19.6 / 23.8 | 16.3 / 17.4 / 20.4 / 20.9 | 12.5 / 15.4 / 20.0 / 22.7 |
+| 10 | 15.4 / 16.6 / 20.8 / 21.6 | 15.5 / 16.6 / 17.8 / 21.3 | 6.7 / 11.3 / 12.7 / 20.8 | 14.4 / 16.9 / 18.7 / 21.4 | 14.7 / 16.2 / 18.7 / 23.1 | 9.8 / 16.7 / 20.1 / 21.6 |
+| 11 | 11.6 / 12.4 / 21.3 / 22.6 | 9.4 / 12.8 / 16.2 / 23.6 | 12.3 / 14.3 / 19.0 / 20.4 | 13.3 / 16.4 / 20.7 / 21.9 | 13.3 / 17.8 / 18.9 / 24.1 | 10.9 / 13.8 / 18.3 / 18.9 |
+| 12 | 11.4 / 14.3 / 19.6 / 22.4 | 14.3 / 14.3 / 16.7 / 21.1 | 8.8 / 10.1 / 14.1 / 21.1 | 17.5 / 17.3 / 20.2 / 22.7 | 12.4 / 13.3 / 14.9 / 21.4 | 5.7 / 9.7 / 17.8 / 19.5 |
+| 13 | 14.9 / 14.0 / 18.6 / 19.1 | 13.0 / 16.5 / 19.3 / 23.8 | 10.4 / 13.8 / 16.1 / 11.5 | 14.8 / 15.0 / 18.7 / 20.6 | 11.2 / 12.6 / 17.7 / 20.7 | 4.6 / 12.8 / 16.5 / 17.3 |
+| 14 | 13.5 / 13.4 / 18.9 / 22.7 | 11.0 / 14.3 / 16.3 / 20.5 | 13.2 / 12.4 / 15.7 / 16.3 | 15.7 / 16.4 / 19.7 / 20.6 | 11.2 / 7.1 / 11.7 / 17.2 | 8.2 / 14.7 / 14.6 / 19.5 |
+| 15 | 18.3 / 18.6 / 19.3 / 20.8 | 12.1 / 14.5 / 17.1 / 21.7 | 15.6 / 16.8 / 18.1 / 21.2 | 16.0 / 16.1 / 18.3 / 22.1 | 10.6 / 11.4 / 14.2 / 19.5 | 11.7 / 15.0 / 15.4 / 18.5 |
+| 16 | 14.1 / 13.9 / 15.9 / 19.0 | 14.2 / 17.0 / 20.0 / 22.5 | 10.9 / 14.9 / 18.5 / 18.6 | 15.4 / 18.0 / 18.7 / 20.0 | 10.9 / 15.6 / 15.1 / 18.9 | 14.6 / 14.3 / 17.6 / 18.6 |
+| 17 | 12.8 / 15.1 / 15.4 / 19.6 | 13.5 / 15.9 / 18.4 / 20.1 | 17.4 / 16.7 / 17.9 / 20.6 | 15.4 / 18.0 / 18.8 / 22.2 | 14.9 / 17.8 / 19.2 / 21.8 | 12.5 / 16.6 / 17.6 / 22.0 |
+| 18 | 14.0 / 13.6 / 15.1 / 19.7 | 14.6 / 16.7 / 18.8 / 18.9 | 16.8 / 18.0 / 18.0 / 18.5 | 18.2 / 19.4 / 17.6 / 20.5 | 14.6 / 14.9 / 18.2 / 18.2 | 17.0 / 19.4 / 18.1 / 19.1 |
+| 19 | 14.2 / 16.3 / 16.5 / 19.0 | 13.1 / 14.0 / 17.2 / 18.2 | 14.8 / 9.2 / 16.3 / 18.2 | 15.1 / 16.9 / 19.4 / 20.0 | 10.5 / 14.4 / 16.1 / 18.6 | 16.1 / 17.5 / 17.3 / 17.4 |
+
+**(4) The gap supply for the exiters' crossings, at 20 m/s.**
+
+| seed | minutes | lane 0 at 51.1 m [veh/h] (R / X / E) | exiters still in lanes ≥ 1 at 51.1 m [veh/h] | lane 1 at 51.1 m (through E + T) | one lane at 20 m/s, closed form [veh/h] | room for crossings at 20 m/s | lane-0 headways at 100 m ≥ h_c: share; insertions they take [per hour] | exiter-steps in [51, 225): an acceptable gap abreast / within lane-1 reach / none |
+|---|---|---|---|---|---|---|---|---|
+| 3 | 0–4 | 960 (384 / 492 / 84) | 360 | 900 (540) | 2,047 | 1,087 | 56 %; 1,128 | 5 / 61 / 34 % |
+| 3 | 0–19 | 915 (294 / 399 / 222) | 423 | 999 (615) | 2,047 | 1,132 | 73 %; 1,512 | 5 / 56 / 39 % |
+| 4 | 0–4 | 936 (348 / 480 / 108) | 420 | 948 (528) | 2,071 | 1,135 | 72 %; 1,236 | 5 / 71 / 24 % |
+| 4 | 0–19 | 885 (300 / 309 / 276) | 621 | 945 (429) | 2,071 | 1,186 | 78 %; 1,494 | 4 / 51 / 46 % |
+| 5 | 0–4 | 972 (264 / 420 / 288) | 564 | 888 (336) | 2,092 | 1,120 | 70 %; 1,260 | 4 / 42 / 54 % |
+| 5 | 0–19 | 972 (342 / 282 / 348) | 660 | 975 (378) | 2,092 | 1,120 | 77 %; 1,485 | 3 / 44 / 53 % |
+
+- *Space.* One lane at 20 m/s carries 3600·v / mean(L + s0 + v·T) over the fleet each run drew: 2,047 / 2,071 / 2,092 veh/h, the EIDM equilibrium gap s0 + v·T (WP-68). This is an upper bound: it ignores the platoons that form behind slow drivers in a lane with no passing. Lane 0 at 51.1 m carries 936–972 veh/h in window 0, leaving room for 1,087–1,186 crossings an hour. The exiters still in lanes ≥ 1 there number 360–660 veh/h, a ratio of 1.7–3.0.
+  - For scale, the test's constants ask for 1,086 / 1,075 / 1,091 / 942 veh/h of mainline exiters in the four windows (S790 × the exit fraction) and 345 / 365 / 393 / 325 from the ramp.
+  - Before the second half, 28–36 exiters a run cross in the outlet in minutes 1–4 (the crossings table above), which is why fewer are still due at 51.1 m.
+- *Headways at the weave's own acceptance.* The critical headway h_c is 2.35 / 2.33 / 2.32 s at 20 m/s and speed parity, at the drawn means:
+  - the leader side needs SUMO's gap ≥ s0 + 0.6·v, a bumper gap of 2·s0 + 12 m;
+  - the follower side needs the larger of that and the gap at which the follower's IDM asks −b, s* / √(1 − (v/v0)⁴ + b/a) = 20.0 / 19.5 / 19.4 m;
+  - each further insertion into one headway takes 1.25 / 1.23 / 1.22 s.
+
+  Lane 0's headways at 100 m clear h_c 56–78 % of the time and take 1,128–1,512 insertions an hour: 2.2–3.6 times the exiters due.
+- *Reach, given the through flow in lane 1.* At speed parity an exiter meets no new lane-0 gap. It can take only one within its lane-1 reach: between its lane-1 leader and follower, each kept at s0 + 0.6·v.
+  - Closed form at 20 m/s and mean spacings: lane 1 at 888–948 veh/h leaves an exiter 113–123 m of reach between its leader and its follower. That is more than one lane-0 spacing at 936–972 veh/h (74–77 m, each with an acceptable slot of 28–30 m), so a gap would always be within reach.
+  - Measured with every vehicle's own parameters and the acceptance's full leader and follower terms, it is not: real headways clump, and the leader side's brake gap and the follower's IDM test bind. In window 0 an acceptable gap is abreast on 5 / 5 / 4 % of the exiters' steps in [51, 225) and within reach on 61 / 71 / 42 %; none is within reach on 34 / 24 / 54 %.
+  - The abreast steps are taken at once: 19 / 26 / 33 of them against 19 / 24 / 32 accepted crossings from lane 1 into lane 0 in [51, 225) in window 0.
+  - O reads the same: 4–5 % abreast, 50–73 % within reach, and a headway supply of 1,128–1,494 insertions an hour against 348–621 due.
+- *So the gap supply is not what the exiters lack.* Lane 0 takes 1.7–3.6 times the crossings due at 20 m/s, whether read by capacity or by headways. What an exiter lacks is being at an acceptable gap while still at speed. Reaching one takes a hold (a dip in lane 0), an easing (a dip in lane 1) or time, and after about x = 75 m SUMO is braking the exiter for its lane end in the meantime.
+
+**Conclusion.** No weave command family sets the exit end's rate.
+- *No family is the rate-setter.* Of 19 removals none passes criterion (ii) at any seed, and lane 0 fails every window in every one. Most read worse. Five lock the exit end, nine give up more than 2 % of the exits at some seed, and the exiters' holds, easing, forced changes and priority are each load-bearing for the exit end's delivery or its give-ups.
+- *What sets the exit end's speed is that the crossings of the second half are made below 20 m/s:* over the run, 96–99 % of the exiters' crossings there and 97–100 % of the entrants'. Those crossings, and the holds that make room for them, are the roots of 54–59 % of lane 0's slow samples at the exit end over the run.
+- *SUMO's own model makes them slow, twice over.*
+  - Its lane-end braking decelerates every exiter still in lane 1 from x ≈ 75 m at 20 m/s (157 m before the gore at 17.5 m/s). It is the tighter constraint on 80–100 % of their un-commanded steps from 150 m on. In window 0 it takes about as much speed as the weave's easing of the exiters in [51, 225), and more than all the weave's families together in [225, 305) at seed 3.
+  - The auxiliary lane feeds the exit ramp's 22.22 m/s limit. Vehicles entering the ramp fall 1.1–2.7 m/s below their entry speed in its first 47–79 m, and a free one entering at 21 m/s or more falls to 19.2–20.6 m/s. That leaves the lane 1.5–1.8 m/s above 20 m/s in free flow, and it starts the lane's first slowdown at every seed with no command on any vehicle of the chain.
+- *The exiters also enter lane 1 below its through traffic,* at 12.0–18.6 m/s against 16.4–20.1 in minutes 1–4. That comes from the entry, WP-65's subject.
+- *The gap supply is 1.7–3.6 times the exiters due,* so capacity does not limit.
+- *The weave's families are load-bearing for getting the crossings made at all.* Not one of them sets the rate.
+
+**Nothing ships.** `microsim.runner`, `flowstate_core.config`, the contract (42 keys), the API schema, every scenario, fixture and test are unchanged, and golden `merge_weave` is not touched. The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stays as WP-61 wrote it.
+
+**What this hands on.**
+- *(a) The rule to derive: each exiter's priority brought forward to where its own lane-end braking begins.*
+  - An exiter still in lane 1 would get the exit priority from s_on(v) before the gore: its gap's lane-0 follower holds, and the commitment is kept. Here s_on(v) = s*(v, v) / √(1 − (v/v0)⁴) at the exiter's own parameters, the onset of SUMO's stop term, instead of the forced zone's 80 m + 4 s. At the drawn means that is 157 m at 17.5 m/s and 230 m at 20 m/s.
+  - The forced change itself stays at the 80 m zone. Forcing at speed is what collided on Ruth St (the short-section rule's docstring), and the diagnostic above moved both only because the key ties them.
+  - The derivation must say what the priority does for an exiter whose onset lies in the outlet or upstream of the section (at 22 m/s it is 37 m before the section start), without holding the outlet again.
+  - *Bar:*
+    - the exiters' crossings into lane 0 in [51, 305) at a median of 20 m/s or more in minutes 1–4 at seeds 3 / 4 / 5 (now 9.5–18.0 by region);
+    - lane 1's last 60 m above 20 m/s in every window (now all four at or below);
+    - then criterion (ii) itself, which lane 0 can meet only with its 1.5–1.8 m/s free-flow margin intact;
+    - guards: T.H.52 ≥ 387 and mainline ≥ 1,137 at all three seeds (the diagnostic reached both), give-ups ≤ 2 %, no collision, the capacity fixture's no-lock pin, the 29-run grid, and golden `merge_weave` hash-neutral.
+  - The diagnostic shows the lever moves the reading (lane-windows 12 / 12 / 13 → 9 / 10 / 12) but not lane 0. If lane 0 still fails every window with crossings at 20 m/s, the next reading is lane 0's margin itself: SUMO's transition into the 22.22 m/s ramp.
+- *(b) The exiters reach the second half below their lane's speed* (12.0–18.6 m/s in lane 1's first 25 m in minutes 1–4). Any rule for (a) starts from that deficit, which is the entry's.
+- *(c) For harnesses.*
+  - WP-70's O patch no longer applies on top of the committed rule. Run O as `ramp_outlet` = 0 plus the ramp-origin block (`wp72_harness.py`, `FS_WP72_FORM=O`).
+  - `a_end` (the runner's IDM towards a standing obstacle at the lane end) predicts a driven changer's realized acceleration within about 0.2 m/s² wherever it is the tighter term, so SUMO's lane-end braking can be read without a SUMO hook.
+  - The working tree may carry another package's runner edits. Pin `microsim.runner` and `flowstate_core.config` to a commit (`wp72_pin.py`) when a session's runs must be comparable.
+
+**Bookkeeping.** This section is the only file change. `microsim.runner`, `flowstate_core.config`, the contract, the API schema, the sweep's field list, the scenarios, the fixtures, every test and CHANGELOG.md are untouched. Session artifacts are not committed:
+- the harness (`wp72_harness.py`) and the pin (`wp72_pin.py`, `wp72_pin/`);
+- the counterfactual driver (`wp72_cf.sh`);
+- the analysis scripts (`wp72_an.py`, `wp72_fam.py`, `wp72_famdoc.py`, `wp72_census.py`, `wp72_census2.py`, `wp72_gap.py`, `wp72_reach.py`, `wp72_laneend.py`, `wp72_xspd.py`, `wp72_mindoc.py`, `wp72_cftab.py`, `wp72_cfdoc.py`);
+- the per-step logs of the rule, O and the zone diagnostic (`wp72/<label>_<seed>/`), the generated tables (`wp72/out/`), and every run's JSONL record.
+
+Every number above is from those runs or from the committed test constants.
