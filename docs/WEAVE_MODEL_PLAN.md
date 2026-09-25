@@ -5378,3 +5378,315 @@ Session artifacts are not committed:
 - the per-step logs (`wp75/<label>_<seed>/`), the generated tables (`wp75/out/`) and the JSONL records (`wp75_*.jsonl`, `wp75g_*.jsonl`, `wp75_corr_rows.jsonl`).
 
 Every number above is from those runs, or from the committed test constants.
+
+## 2026-09-25 (block 3, WP-76, the section's ceiling): with no crossing left, the corridor section fixture carries its demand, but criterion (ii) passes at only 2 of 10 seeds. SUMO's rule against overtaking on the right lets one slow driver in the leftmost lane hold every lane below 20 m/s. With that rule relaxed, 9 of 10 pass, and leaving 2.5 % of the observed crossings fails 2 of 3. Crossing at the section start without a gap search collapses the entrance. The HCM puts the observed demand within capacity (Edition 7.1: d/c 0.59–0.70 at 25.1–25.6 m/s). On this fleet, criterion (ii) tests whether any crossing is left at the gore's end, not the section's capacity; nothing ships
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`), on the fixture as WP-74 corrected it. Since WP-61, every rule tried at the entry, on the exit side or on the approach has moved the conflict or locked the section. Lanes 0 and 1 of the last 60 m have failed criterion (ii) in every window at every seed, in every form. WP-75 handed on a different question: instead of adding a rule, bound what any command can reach. Pre-place a share p of each crossing movement with the demand unchanged, find the smallest p at which (ii) passes, and compare that crossing load with the HCM's capacity for this weave. This package does that. It is analysis only. `microsim.runner`, `flowstate_core.config`, every scenario, fixture and test, docs/CONTRACTS.md and CHANGELOG.md are untouched.
+
+**How it was measured.**
+- *Harness.* `wp76/wp76_harness.py` (session, not committed) runs the test's own body: `_th52_corridor_config(seed)`, the corrected fixture, the observed 05:30–05:50 windows, the corridor's EIDM fleet, 20 simulated minutes at 0.5 s. `weave_params {ramp_outlet: 1.0}` is set in a copy of its call (the best entrance form, WP-70/74), and the weave is otherwise at its defaults.
+  - Code state: HEAD 1a8db9f, `runner.py` md5 fe16194895ee, working tree clean.
+  - Every hook is applied from outside the runner.
+  - Runs go one at a time, 1.5–3.3 s wall-clock each; a three-seed process peaked at 503 MB RSS.
+- *Movements and selection.*
+  - E is an entrant: from the ramp and not bound for the T.H.52 exit (routes `on0`, `on0_off2`).
+  - X is a mainline exiter (route `main_off1`).
+  - The ramp-to-exit movement and the through movement never cross and are never touched.
+  - A vehicle is placed when u(vid) < p, where u is a SHA-256 hash of (seed, vid) mapped to [0, 1). The placed sets are therefore nested in p, and every vehicle's route is the plan's at every p. p applies to each crossing movement separately.
+- *Realization A* is the package's specification: placed vehicles cross at once at the section start.
+  - *Mainline exiters on the approach.* At the first step at or past x = −300 m (x = 0 is the section start), a placed exiter gets `changeLane(vid, 0, 120 s)` under its own lane-change mode. On every placed vehicle that mode read 1621, SUMO's default: a TraCI request respects the other drivers' speed and brake gaps, the vehicle adapts its speed, and strategic and speed-gain changes yield to it.
+  - *Why 300 m.*
+    - S790, the station whose count is the mainline demand, stands 300 m before the gore (the comment on `TH52_OBSERVED_0530`).
+    - The point is upstream of the approach's last 240 m, where the ramp anticipation holds (WP-73, WP-75), and inside the 500 m vacate window.
+    - The fixture inserts vehicles 829 m before the section, so SUMO's own lane choice has 529 m before the request.
+    - At 22 m/s, 300 m is 13.6 s.
+  - *On the section.* Each step a placed exiter is in lane 1 or above, or a placed entrant is in lane 0, the harness sets mode 256 (`LC_MODE_SCRIPTED_FORCE`: no gap search; SUMO refuses an immediate collision and adapts the speed). It then issues `changeLane` one lane towards the target for one step, after the weave's own step.
+  - *What the weave still does.* It does not drive a placed vehicle that still owes its placement. `_weave_cooperate` returns no gap for it: no gap choice, no hold for it and no easing of it, which on the ramp means no anticipation. `_weave_pair_release` and `_weave_yield_at_ends` do not see it. The weave still lists it in its lane, so other changers choose gaps around it and may hold it as their follower. It still hands the vehicle back once the vehicle is in its target lane, and it still gives up an exiter halted at the gore's end.
+  - *Sensitivity.* At p = 1 the section requests were also run under mode 512 (SUMO's own safe-gap check).
+- *Realization B* is the relocated origin, and it is what measures the ceiling. The package allowed the entrant side of p to be defined "as you can best realise it". Here a placed crossing vehicle enters on the leg next to its exit, so it has no lane to cross.
+  - *The rewrite.* A placed entrant is written on the mainline route with the same end (`main`, `main_off2`) and inserted as a mainline vehicle (`departPos="base" departSpeed="avg" departLane="free"`, `lcStrategic` 5 like every mainline vType). A placed mainline exiter is written on the ramp's route to the same exit (`on0_off1`) and inserted as a ramp vehicle (the same attributes, `lcStrategic` 1 like every ramp vType). The rewrite is applied to the runner's own routes file between its writing and SUMO's start, by wrapping `libsumo.start`.
+  - *What stays the plan's.* Departure times, destinations and drawn parameters. The ramp (844.3 m to the section) and the approach (829.0 m) differ by 15 m.
+  - *What changes.* The section's exit leg and through leg carry the same flows at every p. The ramp gains, and the approach loses, p·(X − E) of the plan: at p = 1 the ramp inserts 436 / 491 / 506 vehicles and the mainline 1,167 / 1,112 / 1,096 (seeds 3 / 4 / 5), all of those planned on each leg. No step hook acts in B (origins are only recorded); the weave runs at its defaults on what arrives.
+  - *At p = 1.* No vehicle has a lane to cross. Lane 0 carries only the exit movement, which is WP-68's lossless weave but fed here by the 22.22 m/s ramp, and lanes 1–3 carry only the through movement.
+- *Readings.*
+  - Criteria (i)–(iv) and the per-lane 5-min windows of the last 60 m are read by the test's own `_th52_corridor_state`.
+  - Flows cover t = 60–1,200 s: crossings of x = 150 m per lane (counted in the later sample's lane), and Edie's flow per lane over the last 60 m.
+  - Per 5-min window, over the whole section (all lanes, 0–305 m): Edie's space-mean speed, flow per lane and density per lane.
+- *Check.* At p = 0 both realizations reproduce WP-74's `ramp_outlet` row to the number at seeds 3 / 4 / 5. Over seeds 3–12, p = 0 reproduces WP-74's ten-seed row: T.H.52 3,750 (5 seeds ≥ 387), mainline 11,713 (8), 124 lane-windows (lanes 0 / 1 / 2 / 3: 40 / 40 / 29 / 15), 20 of 4,010 exits given up, 31 unfinished, no collision.
+
+**(1) The pre-placement sweep.**
+
+*Realization A, crossing at the section start. Criteria, seeds 3 ; 4 ; 5. ✗ marks a failed criterion (mainline ≥ 1,137, T.H.52 ≥ 387, no lane-window at or below 20 m/s, given up ≤ 2 % of reached, no collision).*
+
+| p | mainline of 1,196 | T.H.52 of 407 | lane-windows ≤ 20 m/s of 16 (lanes 0/1/2/3) | given up of reached | collisions | unfinished |
+|---|---|---|---|---|---|---|
+| 0 | 1,194 ; 1,193 ; 1,183 | 407 ; 391 ; 382 ✗ | 10 (4/4/2/0) ; 13 (4/4/3/2) ; 14 (4/4/4/2) | 2 of 384 ; 4 of 427 ; 2 of 424 | 0 ; 0 ; 0 | 1 ; 5 ; 4 |
+| 0.25 | 1,180 ; 1,176 ; 1,160 | 350 ✗ ; 363 ✗ ; 339 ✗ | 11 (4/4/2/1) ; 12 (4/4/2/2) ; 13 (4/4/3/2) | 1 of 357 ; 1 of 398 ; 3 of 405 | 0 ; 1 ✗ ; 0 | 9 ; 1 ; 3 |
+| 0.5 | 1,171 ; 1,112 ✗ ; 1,182 | 326 ✗ ; 293 ✗ ; 372 ✗ | 11 (4/4/2/1) ; 11 (4/4/3/0) ; 11 (4/4/2/1) | 1 of 324 ; 2 of 350 ; 0 of 410 | 2 ✗ ; 4 ✗ ; 0 | 2 ; 5 ; 3 |
+| 0.75 | 1,184 ; 1,156 ; 1,119 ✗ | 307 ✗ ; 311 ✗ ; 310 ✗ | 10 (4/3/2/1) ; 10 (4/3/2/1) ; 12 (4/4/2/2) | 0 of 318 ; 0 of 357 ; 0 of 366 | 0 ; 3 ✗ ; 1 ✗ | 0 ; 2 ; 2 |
+| 1 | 1,007 ✗ ; 986 ✗ ; 939 ✗ | 200 ✗ ; 222 ✗ ; 202 ✗ | 12 (4/3/3/2) ; 10 (4/3/2/1) ; 13 (4/4/3/2) | 0 of 238 ; 0 of 258 ; 0 of 227 | 4 ✗ ; 1 ✗ ; 2 ✗ | 2 ; 2 ; 3 |
+| 1, mode 512 | 1,007 ✗ ; 995 ✗ ; 948 ✗ | 204 ✗ ; 188 ✗ ; 199 ✗ | 13 (4/4/3/2) ; 13 (4/4/3/2) ; 13 (4/4/3/2) | 0 of 237 ; 0 of 260 ; 0 of 242 | 0 ; 0 ; 0 | 3 ; 4 ; 2 |
+
+*Realization A: lanes 0 and 1 of the last 60 m, windows 0 / 1 / 2 / 3 [m/s].*
+
+| p | seed 3, lane 0 ; lane 1 | seed 4, lane 0 ; lane 1 | seed 5, lane 0 ; lane 1 |
+|---|---|---|---|
+| 0 | 12.3 / 16.1 / 12.8 / 9.4 ; 14.8 / 19.1 / 16.6 / 11.6 | 12.9 / 13.5 / 8.4 / 7.4 ; 18.2 / 14.6 / 10.6 / 9.2 | 8.2 / 6.8 / 7.8 / 13.1 ; 6.6 / 7.4 / 10.2 / 15.1 |
+| 0.25 | 10.1 / 14.3 / 15.9 / 15.1 ; 15.1 / 17.7 / 16.2 / 15.2 | 9.3 / 13.5 / 10.4 / 11.2 ; 12.7 / 16.1 / 11.9 / 15.3 | 13.8 / 12.1 / 7.0 / 9.6 ; 15.0 / 11.9 / 10.6 / 12.0 |
+| 0.5 | 11.4 / 15.1 / 15.5 / 15.2 ; 15.5 / 18.5 / 16.5 / 16.4 | 10.1 / 15.2 / 14.7 / 8.8 ; 10.5 / 15.4 / 17.1 / 10.8 | 15.8 / 12.3 / 10.9 / 14.4 ; 17.9 / 16.5 / 13.6 / 15.6 |
+| 0.75 | 15.3 / 15.9 / 16.9 / 15.1 ; 20.8 / 19.4 / 18.2 / 16.4 | 19.4 / 14.6 / 14.6 / 15.2 ; 20.8 / 16.7 / 17.9 / 16.9 | 16.5 / 15.5 / 17.0 / 15.3 ; 19.9 / 16.5 / 17.9 / 15.3 |
+| 1 | 18.2 / 16.7 / 17.3 / 17.0 ; 20.7 / 18.6 / 18.8 / 18.9 | 19.7 / 17.7 / 17.4 / 15.4 ; 22.0 / 16.3 / 19.0 / 19.5 | 19.3 / 17.4 / 17.5 / 16.3 ; 19.6 / 17.6 / 19.7 / 18.8 |
+| 1, mode 512 | 18.0 / 17.2 / 15.8 / 16.7 ; 19.9 / 18.5 / 17.8 / 18.8 | 19.6 / 17.8 / 15.8 / 17.8 ; 19.7 / 16.7 / 18.0 / 18.9 | 16.2 / 17.2 / 16.6 / 15.6 ; 18.4 / 18.9 / 17.6 / 19.3 |
+
+*Realization A: flows over t = 60–1,200 s [veh/h], total (lanes 0/1/2/3).*
+
+| p | crossing x = 150 m | last 60 m (Edie) |
+|---|---|---|
+| 0 | 4,393 (1,023/973/976/1,421) ; 4,270 (1,064/884/951/1,371) ; 4,203 (1,036/821/846/1,500) | 4,378 (1,138/782/1,026/1,432) ; 4,257 (1,206/696/961/1,394) ; 4,158 (1,214/579/839/1,526) |
+| 0.25 | 4,118 (935/818/900/1,465) ; 4,102 (1,011/802/944/1,345) ; 4,004 (1,004/714/837/1,449) | 4,122 (1,035/691/917/1,479) ; 4,085 (1,145/629/940/1,371) ; 3,972 (1,160/519/816/1,477) |
+| 0.5 | 3,798 (878/688/808/1,424) ; 3,628 (966/597/669/1,396) ; 4,067 (1,124/726/903/1,314) | 3,799 (964/568/815/1,452) ; 3,580 (1,011/494/673/1,402) ; 4,065 (1,211/577/938/1,339) |
+| 0.75 | 3,764 (906/625/821/1,412) ; 3,739 (1,001/654/745/1,339) ; 3,664 (1,052/540/714/1,358) | 3,746 (943/559/840/1,404) ; 3,750 (1,075/552/770/1,353) ; 3,648 (1,092/454/745/1,357) |
+| 1 | 2,924 (698/328/436/1,462) ; 2,880 (780/360/433/1,307) ; 2,482 (679/275/309/1,219) | 2,923 (713/306/429/1,475) ; 2,876 (779/350/466/1,281) ; 2,472 (673/235/346/1,218) |
+| 1, mode 512 | 2,867 (692/284/448/1,443) ; 2,776 (752/319/357/1,348) ; 2,599 (701/275/306/1,317) | 2,875 (704/274/449/1,448) ; 2,778 (776/293/356/1,353) ; 2,584 (715/222/340/1,307) |
+
+*Realization A: the placements, seeds 3 ; 4 ; 5.*
+
+| p | exiters asked on the approach (in lanes 0/1/2 when asked) | exiters reaching the section / of them through the approach's lane 0 | exiters' placement x: median / p90 [m] | entrants reaching the section; placement x: median / p90 [m] |
+|---|---|---|---|---|
+| 0.25 | 75 (66/8/1) ; 80 (63/14/3) ; 80 (64/12/4) | 67 / 62 ; 76 / 69 ; 74 / 66 | 13.7 / 65.8 ; 12.5 / 58.3 ; 13.2 / 46.4 | 53; 14.7 / 71.8 ; 50; 15.9 / 79.6 ; 44; 12.2 / 27.5 |
+| 0.5 | 140 (118/22/0) ; 157 (115/31/11) ; 148 (134/9/5) | 123 / 104 ; 142 / 111 ; 138 / 128 | 14.9 / 60.3 ; 13.3 / 55.5 ; 15.2 / 68.5 | 83; 11.7 / 39.8 ; 70; 11.0 / 53.8 ; 105; 13.1 / 77.7 |
+| 0.75 | 208 (174/22/12) ; 242 (192/40/10) ; 233 (178/43/12) | 175 / 145 ; 212 / 148 ; 208 / 164 | 15.7 / 52.0 ; 15.3 / 50.9 ; 16.2 / 50.1 | 114; 10.7 / 56.6 ; 119; 9.6 / 57.5 ; 111; 11.0 / 41.5 |
+| 1 | 245 (163/74/8) ; 264 (171/72/21) ; 250 (141/86/23) | 197 / 97 ; 214 / 109 ; 192 / 83 | 15.6 / 44.6 ; 17.3 / 45.6 ; 16.5 / 40.8 | 71; 8.9 / 16.9 ; 87; 10.2 / 36.5 ; 75; 9.7 / 22.2 |
+
+Reading A.
+1. *Crossing at the section start without a gap search is not a ceiling. It is a point exchange at the ramp's outlet, and it collapses the entrance.*
+   - At p = 1 the entrants cross at a median 8.9–10.2 m and the exiters at 15.6–17.3 m. That is inside the auxiliary lane's first 51 m, which WP-70 found to be the on-ramp's only outlet.
+   - T.H.52 departs 200 / 222 / 202 of 407, and the mainline 1,007 / 986 / 939.
+   - The section carries 2,482–2,924 veh/h at 150 m, against 4,203–4,393 at p = 0.
+   - The entrance falls with p (seed ranges 382–407 → 339–363 → 293–372 → 307–311 → 200–222).
+2. *The exchange's collapse is not the forced mode's doing.*
+   - Under mode 256, 18 collisions occur over the 12 runs with p > 0; the other 96 runs of this package have none.
+   - Under mode 512 at p = 1 there are no collisions and the same collapse (T.H.52 188–204).
+3. *The approach's rightmost lane cannot take every exiter in 300 m under SUMO's safe gaps.* At p = 1, 83–109 of the 192–214 exiters that reach the section come through it. The rest arrive in section lanes 2–3 and cross twice.
+4. *Criterion (ii) fails at every p.* Lane 0 fails all four windows in every run. Lane 1 passes one window a seed at most, from p = 0.75.
+
+*Realization B, the relocated origin. Criteria, seeds 3 ; 4 ; 5 (the same marks).*
+
+| p | mainline of 1,196 | T.H.52 of 407 | lane-windows ≤ 20 m/s of 16 (lanes 0/1/2/3) | given up of reached | collisions | unfinished |
+|---|---|---|---|---|---|---|
+| 0 | 1,194 ; 1,193 ; 1,183 | 407 ; 391 ; 382 ✗ | 10 (4/4/2/0) ; 13 (4/4/3/2) ; 14 (4/4/4/2) | 2 of 384 ; 4 of 427 ; 2 of 424 | 0 ; 0 ; 0 | 1 ; 5 ; 4 |
+| 0.25 | 1,196 ; 1,195 ; 1,192 | 407 ; 407 ; 400 | 13 (4/4/3/2) ; 12 (4/4/3/1) ; 12 (4/4/2/2) | 0 of 400 ; 1 of 456 ; 3 of 448 | 0 ; 0 ; 0 | 5 ; 5 ; 3 |
+| 0.5 | 1,196 ; 1,195 ; 1,196 | 407 ; 407 ; 407 | 11 (4/4/2/1) ; 12 (4/4/3/1) ; 12 (4/4/2/2) | 2 of 421 ; 2 of 458 ; 0 of 456 | 0 ; 0 ; 0 | 2 ; 4 ; 1 |
+| 0.75 | 1,196 ; 1,196 ; 1,195 | 407 ; 407 ; 407 | 10 (4/3/2/1) ; 7 (4/3/0/0) ; 12 (4/4/2/2) | 1 of 420 ; 0 of 471 ; 1 of 482 | 0 ; 0 ; 0 | 1 ; 1 ; 0 |
+| 1 | 1,196 ; 1,196 ; 1,195 | 407 ; 407 ; 407 | 5 (2/1/1/1) ; 1 (1/0/0/0) ; 4 (1/1/1/1) | 0 of 424 ; 0 of 475 ; 0 of 484 | 0 ; 0 ; 0 | 0 ; 0 ; 0 |
+
+*Realization B: lanes 0 and 1 of the last 60 m, windows 0 / 1 / 2 / 3 [m/s].*
+
+| p | seed 3, lane 0 ; lane 1 | seed 4, lane 0 ; lane 1 | seed 5, lane 0 ; lane 1 |
+|---|---|---|---|
+| 0.25 | 6.0 / 9.4 / 14.9 / 15.1 ; 7.3 / 14.0 / 15.8 / 16.1 | 9.2 / 9.5 / 8.6 / 9.1 ; 12.6 / 11.8 / 10.5 / 12.3 | 14.6 / 5.8 / 11.5 / 16.2 ; 15.0 / 8.3 / 14.3 / 17.0 |
+| 0.5 | 7.2 / 10.9 / 9.9 / 16.5 ; 9.8 / 12.9 / 10.2 / 17.1 | 11.7 / 12.7 / 7.3 / 10.6 ; 16.0 / 15.2 / 7.7 / 13.2 | 13.8 / 7.5 / 11.2 / 16.4 ; 16.7 / 8.8 / 14.5 / 16.9 |
+| 0.75 | 17.9 / 17.6 / 7.8 / 13.8 ; 21.6 / 18.4 / 11.4 / 14.9 | 19.4 / 15.8 / 6.8 / 10.8 ; 22.0 / 19.0 / 10.4 / 14.6 | 14.7 / 7.0 / 6.7 / 11.6 ; 17.3 / 11.1 / 10.0 / 16.4 |
+| 1 | 21.7 / 20.7 / 19.7 / 19.4 ; 22.9 / 22.2 / 20.8 / 18.8 | 21.5 / 20.0 / 21.5 / 19.3 ; 21.8 / 20.1 / 22.7 / 20.7 | 20.6 / 20.1 / 18.6 / 20.1 ; 20.6 / 22.6 / 19.4 / 21.6 |
+
+(p = 0 is realization A's first row.)
+
+*Realization B: flows over t = 60–1,200 s [veh/h], total (lanes 0/1/2/3).*
+
+| p | crossing x = 150 m | last 60 m (Edie) |
+|---|---|---|
+| 0.25 | 4,585 (1,064/878/1,080/1,563) ; 4,620 (1,140/906/1,096/1,478) ; 4,434 (1,127/831/954/1,522) | 4,566 (1,162/709/1,107/1,588) ; 4,598 (1,314/638/1,145/1,501) ; 4,431 (1,301/577/1,002/1,551) |
+| 0.5 | 4,766 (1,121/954/1,257/1,434) ; 4,637 (1,191/856/1,137/1,453) ; 4,591 (1,168/789/1,143/1,491) | 4,753 (1,231/794/1,276/1,452) ; 4,623 (1,335/656/1,143/1,489) ; 4,574 (1,337/557/1,163/1,517) |
+| 0.75 | 4,754 (1,191/831/1,251/1,481) ; 4,772 (1,295/799/1,197/1,481) ; 4,790 (1,301/802/1,219/1,468) | 4,742 (1,255/727/1,255/1,505) ; 4,756 (1,412/668/1,168/1,508) ; 4,788 (1,413/632/1,235/1,508) |
+| 1 | 4,766 (1,311/736/1,244/1,475) ; 4,787 (1,468/673/1,159/1,487) ; 4,788 (1,491/632/1,247/1,418) | 4,753 (1,310/752/1,199/1,492) ; 4,774 (1,474/677/1,141/1,482) ; 4,786 (1,497/652/1,207/1,430) |
+
+Reading B.
+1. *Throughput is not what fails.*
+   - From p = 0.25 on, criterion (i) passes at every seed: mainline 1,192–1,196 of 1,196, T.H.52 400–407 of 407. At p = 0 the entrance fails at seed 5 (382).
+   - At p = 1 the section carries 4,766–4,788 veh/h at 150 m, close to the demand's 1,603 vehicles in 20 minutes (4,809 veh/h).
+2. *Criterion (ii) passes at no p < 1.*
+   - Lane 0 fails all four windows at every seed through p = 0.75, at 5.8–19.4 m/s.
+   - At p = 1 the section passes nowhere at seeds 3–5. Lanes 0–3 read at or below 20 m/s in 5 / 1 / 4 windows, at 18.6–19.7 m/s.
+
+*The zero-crossing ceiling over ten seeds (B, p = 1, seeds 3–12), with three diagnostic changes to the fleet's vTypes. These are diagnostics written into the routes file, not candidate settings.*
+
+| fleet | seeds passing (ii) of 10 | lane-windows ≤ 20 m/s per seed | total (lanes 0/1/2/3) | lowest window per seed [m/s] | last-60 m lane means, t 60–1,200 s [m/s], lanes 0 / 1 / 2 / 3 |
+|---|---|---|---|---|---|
+| the corridor's, as configured | 2 (seeds 7, 8) | 5 ; 1 ; 4 ; 4 ; 0 ; 0 ; 1 ; 1 ; 2 ; 4 | 22 (12/4/3/3) | 18.8 ; 19.3 ; 18.6 ; 18.3 ; 20.2 ; 20.1 ; 19.2 ; 19.6 ; 19.5 ; 18.4 | 19.00–21.10 / 20.65–21.91 / 21.27–22.24 / 21.76–23.14 |
+| `lcOvertakeRight` 1 | 9 | 0 ; 0 ; 0 ; 0 ; 0 ; 0 ; 1 ; 0 ; 0 ; 0 | 1 (1/0/0/0) | 21.3 ; 20.2 ; 20.6 ; 20.4 ; 21.1 ; 21.0 ; 19.9 ; 21.4 ; 22.1 ; 20.1 | 20.78–22.20 / 23.48–23.97 / 23.05–23.66 / 22.59–23.52 |
+| `lcKeepRight` 1 (SUMO's default) | 4 | 0 ; 2 ; 1 ; 3 ; 0 ; 1 ; 2 ; 0 ; 1 ; 0 | 10 (10/0/0/0) | 20.5 ; 19.4 ; 19.1 ; 19.0 ; 20.9 ; 19.3 ; 19.2 ; 20.5 ; 19.8 ; 20.3 | 19.71–21.12 / 22.16–22.74 / 23.17–23.68 / 23.69–24.19 |
+| `speedFactor` 1.114 (seeds 3–5 only) | 0 of 3 | 5 ; 5 ; 5 | 15 (6/4/3/2) | 19.2 ; 19.1 ; 18.0 | 19.51–20.36 / 20.55–20.88 / 21.32–21.52 / 21.91–22.51 |
+
+Every one of these 33 runs departs at least 1,194 of the 1,196 mainline and 406 of the 407 T.H.52 vehicles, and none collides or gives up an exit.
+- *What fails the zero-crossing section is SUMO's rule against overtaking on the right.*
+  - *The source (SUMO 1.27.1, tag `v1_27_1`, read for this package).* `MSFrame.cpp` line 495 registers `lanechange.overtake-right` false by default, and the runner does not set it. In `MSLCM_LC2013::_wantsChange` (lines 1301, 1335–1347, "VARIANT_20 (noOvertakeRight)"), a vehicle with a slower leader in the lane to its left gets a speed advice (`addLCSpeedAdvice`) that stops it passing. `MSAbstractLaneChangeModel::avoidOvertakeRight` (lines 288–296) applies the rule unless the vehicle is congested, and `MSVehicle::congested` (lines 1494–1496) means below 60 km/h.
+  - *Why it bites here.* The corridor fleet writes `lcKeepRight` 0, so a slow driver stays in the lane it is in. In seed 3's plan, 19 of the 1,603 drivers wish for less than 20 m/s (min(v0, 24.59)) and 55 for less than 22.22.
+  - *Traced in the kept runs, over the last 60 m.*
+    - Seed 3: v01091 (desired 16.13 m/s) passes in lane 3 from t = 1,151.5 s, and at t = 1,170–1,200 lanes 0–3 read 17.0 / 16.7 / 15.8 / 15.8 m/s (30-s means). v00899 (17.54) in lane 3 at t = 963.5–992 is followed by lanes 0–3 at 17.2 / 17.3 / 17.5 / 17.4 at t = 990–1,020.
+    - Seed 12: v00989 (16.12) in lane 3 at t = 1,053.5–1,084 is followed by all four lanes at 16.6–16.8 at t = 1,080–1,110.
+  - *The coupling reaches lane 0.* An exiter in lane 0 does not pass a slower lane-1 vehicle either.
+  - *With `lcOvertakeRight` 1* (the probability of breaking the rule, which switches the speed advice off), lanes 1–3 gain about 2 m/s (lane 1: 20.65–21.91 → 23.48–23.97), and 9 of 10 seeds pass. The one failure is lane 0 at 19.91 m/s.
+  - *With `lcKeepRight` 1*, lanes 1–3 never fail, and every failure is lane 0's (19.0–19.8 m/s).
+- *The desired-speed cap is not what binds.* The fleet writes `speedFactor` 1.0, so desired speeds are capped at the 24.59 m/s limit, while S790 and S97 read 25.8–27.4 m/s. Raising the cap to S97's 27.4 m/s (`speedFactor` 1.114) changes the lane means by −0.4 to +0.8 m/s, and the three seeds fail 5 / 5 / 5 windows.
+- *Lane 0 has the least margin even with nothing crossing* (lane means 19.0–22.2 m/s in every row). It is fed by the T.H.52 ramp at 22.22 m/s, the typemap's `motorway_link` default (OSM: `maxspeed:advisory` 30 mph on 194037903 and 769818012), and it feeds the exit at 22.22 m/s (OSM: `maxspeed:advisory` 40 mph on 18207598). A 5-min window holds 99–136 lane-0 vehicles at p = 1 (seeds 3–5). When the lane runs at 20–22 m/s, a platoon of 30–60 s behind one slow driver (the traces above) takes the window's mean under 20 m/s.
+
+*The crossing load with the coupling relaxed (B with `lcOvertakeRight` 1, seeds 3 ; 4 ; 5). Crossers left is (E + X not relocated) × 3, per hour.*
+
+| p | crossers left [veh/h] | mainline ; T.H.52 | lane-windows ≤ 20 m/s (lanes 0/1/2/3) | lane 0, windows 0–3 [m/s] | lane 1, windows 0–3 [m/s] | 150 m total [veh/h] |
+|---|---|---|---|---|---|---|
+| 0 | 1,851 ; 1,932 ; 1,953 | 1,196, 407 ; 1,148, 370 ✗ ; 1,167, 379 ✗ | 11 (4/4/2/1) ; 13 (4/4/3/2) ; 13 (4/4/3/2) | 12.6/16.0/11.0/16.0 ; 7.7/8.1/7.0/7.3 ; 11.6/11.4/7.2/13.1 | 17.8/15.9/13.3/16.6 ; 7.7/10.5/8.6/10.2 ; 10.1/13.5/10.1/14.7 | 4,395 ; 4,060 ; 4,130 |
+| 0.5 | 900 ; 975 ; 984 | 1,196, 407 ; 1,195, 407 ; 1,195, 407 | 8 (4/4/0/0) ; 9 (4/4/1/0) ; 12 (4/4/3/1) | 11.3/10.9/14.5/12.3 ; 12.6/17.4/11.3/11.9 ; 18.6/6.5/10.1/12.6 | 15.2/11.4/16.1/14.4 ; 18.9/18.7/11.0/14.9 ; 14.4/6.8/12.8/14.1 | 4,790 ; 4,720 ; 4,570 |
+| 0.75 | 474 ; 453 ; 495 | all 1,195–1,196, 407 | 7 (4/3/0/0) ; 8 (4/3/1/0) ; 8 (4/3/1/0) | 6.8/15.5/10.8/16.4 ; 16.7/13.1/10.6/7.6 ; 18.9/6.4/9.1/7.8 | 13.1/21.5/13.8/17.7 ; 20.7/18.8/12.6/9.7 ; 21.0/9.9/12.4/10.0 | 4,774 ; 4,718 ; 4,728 |
+| 0.9 | 177 ; 198 ; 195 | all 1,195–1,196, 407 | 5 (3/2/0/0) ; 3 (3/0/0/0) ; 5 (4/1/0/0) | 20.9/19.6/18.7/17.6 ; 17.9/21.7/16.2/17.5 ; 19.6/17.8/10.7/18.6 | 23.6/23.2/15.9/19.9 ; 21.3/23.5/20.4/22.4 ; 22.4/23.0/17.2/23.4 | 4,791 ; 4,802 ; 4,794 |
+| 0.95 | 99 ; 111 ; 84 | all 1,195–1,196, 407 | 1 (0/1/0/0) ; 3 (3/0/0/0) ; 4 (3/1/0/0) | 21.1/21.5/22.3/20.9 ; 19.1/21.3/16.3/19.0 ; 20.0/19.9/21.0/17.9 | 19.99/23.5/23.8/23.3 ; 23.3/22.8/21.4/23.8 ; 23.5/23.7/23.7/18.5 | 4,796 ; 4,801 ; 4,788 |
+| 0.975 | 45 ; 57 ; 42 | all 1,195–1,196, 407 | **0** ; 1 (1/0/0/0) ; 1 (1/0/0/0) | 21.8/21.5/22.4/21.5 ; 18.9/21.3/22.1/20.1 ; 18.6/20.5/20.9/21.1 | 24.4/23.9/23.9/23.6 ; 23.7/23.0/23.7/23.8 ; 23.5/23.6/24.2/23.6 | 4,791 ; 4,801 ; 4,793 |
+| 1 | 0 | all 1,195–1,196, 407 | **0 ; 0 ; 0** | 22.0/21.3/22.5/21.6 ; 22.2/22.1/22.2/20.2 ; 20.8/20.6/21.3/21.1 | 24.2/23.8/23.8/23.9 ; 23.8/23.9/23.8/24.0 ; 23.9/23.7/24.2/24.0 | 4,798 ; 4,807 ; 4,798 |
+
+At p = 0.25 (not shown) lane 0 fails every window at 6.3–16.6 m/s. The p = 0 row counts the plan's crossers: 617 / 644 / 651 in 20 minutes. With `lcOvertakeRight` 1, a handful of crossings fails the exit end: 2 / 5, 0 / 7 and 2 / 4 entrants / exiters are driven by the weave at p = 0.975, and lane 0 still dips to 18.6–18.9 m/s in window 0 at two seeds.
+
+*The smallest p.*
+- *None on the corridor fleet as configured.* Realization A fails at every p, and its entrance falls with p. Realization B fails at every p < 1, and at p = 1 it passes at 2 of 10 seeds.
+- *With SUMO's right-overtaking rule relaxed (a diagnostic).* p = 1 passes at 9 of 10 seeds. p = 0.975 (42–57 crossers an hour left, 2.0–3.2 % of the observed 1,783–2,059 veh/h) passes at 1 of 3 seeds, and p = 0.95 at none.
+- *So (ii) is met, if at all, only with about 50 crossers an hour or fewer left. On the fleet as configured it is not met reliably even with none.*
+
+**(2) The HCM comparison.**
+
+*Sources.*
+- *(A) HCM Edition 7.1 (November 2025).* The replacement Chapters 13, 14, 27 and 28 of the 7th edition, based on NCHRP Research Report 1038 (National Academies Press, `nap.nationalacademies.org/resource/26432/Highway_Capacity_Manual_Edition_7.1_Chapters.pdf`, fetched and read for this package). This is the current Chapter 13, and every equation below was read in it. The implementation (`wp76/hcm.py`) reproduces the chapter's worked examples:
+  - Example Problem 2, a simple weave: W 0.004814, S_b 74.31, S_o 70.70 mi/h, C_W 1,992 pc/h/ln, D 17.7.
+  - Example Problem 3: W 0.005199, S_b 59.31, C_W 1,826.2 against the text's 1,827; the text rounds its intermediates.
+- *(B) The earlier method (NCHRP 3-75).* That HCM 2010, the 6th edition and the 7th edition as published in 2022 use it is not verified against those texts. Its equations were read only as NCHRP Report 1038's proposed-chapters draft reproduces them (TRB, `onlinepubs.trb.org/onlinepubs/nchrp/nchrp_rpt_1038Proposed.pdf`, "Version 7.1 (DRAFT February 2022)", Chapter 27 Example Problem 6, pp. 27-27 to 27-32): Equations 13-4 to 13-8, 13-11 to 13-13 and 13-19 to 13-23. The implementation reproduces that example (c_IWL 2,121 and 2,228 pc/h/ln, c_IW 12,245 pc/h, L_MAX 4,495 and 3,251 ft; LC_W 462, LC_NW 788, W 0.2695, S_W 58.3, S_NW 61.0, S 60.8 mi/h, D 23.6).
+  - **Not verified:** the text of the 6th or the 2022 7th edition, their equation numbers, and the N_WL = 3 constant (not used here). The draft's prose also names a 2,350 pc/h weaving limit and then computes with 2,400.
+
+*Inputs.*
+
+| input | value | source |
+|---|---|---|
+| configuration | one-sided, simple weave: a one-lane on-ramp and a one-lane off-ramp joined by an auxiliary lane; LC_RF = LC_FR = 1, NW_RF = NW_FR = 1 | the compiled section (WP-61): lane 0 runs from the entrance to the exit only, lanes 1–3 continue. HCM 7.1 Exhibits 13-4(a) and 13-5(a): "These parameter values are the same for all simple weaves" |
+| N_WL (method B) | 2 | "All ramp weaves have two weaving lanes" (draft, Example Problem 6). The weaving lanes are the auxiliary lane and lane 1, the lanes from which a weave is completed with one lane change or none. Both qualify here, so N_WL = 1 does not arise |
+| N | 4 | the continuous lanes between the gores, auxiliary lane included (HCM 7.1 "Width of a weaving segment") |
+| L_S | 1,001 ft (305.0 m); 801 ft (0.80 × 1,001) as the sensitivity | HCM 7.1 Exhibit 13-2 (p. 13-4). L_S is the distance between the end points of barrier markings (solid white lines), and every equation uses it. L_B runs between the gore points where the left edge of the ramp-traveled way meets the right edge of the freeway-traveled way. L_S = L_B where there are no solid lines, and L_S averaged 0.80 L_B in the method's data where there were. The 305.0 m is the compiled length of 51388891 between the OSM junctions of the two ramps (the way measures 304.6 m; WP-61). **Not verified:** that those junctions sit at the HCM's gore points, and whether the section is marked with solid lines. The model allows lane changes over the whole 305 m, the L_S = L_B case |
+| FFS | 60 mi/h; 55 mi/h as the sensitivity | HCM 7.1 Exhibit 13-9's default "speed limit + 5 mi/h" on the 55 mph limit (OSM `maxspeed` on 51388891 and 40648738). Consistent with S790 at 25.8–26.6 m/s (57.7–59.5 mi/h) and S97 at 26.8–27.4 m/s (60.0–61.3 mi/h) at 1,094–1,259 veh/h/ln. 55 mi/h is the model's own cap, and it is below Exhibit 13-8's calibrated range for simple weaves (57–81 mi/h) |
+| demand | per 5-min window: S790, rnd_91040 and the exit fraction P of `TH52_OBSERVED_0530` | the test's constants. The split applies P to the mainline and the entrants alike, which is exactly HCM 7.1's simple weaving volume estimation method (Equations 13-2 to 13-6: P = v_OFF / v, v_RF = v_ON(1 − P), v_RR = v_ON·P, v_FR = v_OFF − v_RR, v_FF = v_F − v_FR) |
+| PHF, f_HV | 1, 1 | the 5-min counts are used as flow rates, which is more peaked than the HCM's 15-min basis (Equation 13-1: PHF = 1 when 15-min flow rates are given). The simulated fleet has no heavy vehicles (`heavy: None`). **Not applied:** the real truck share is unknown (HCM default 5 % urban, Exhibit 13-9), and trucks would raise every pc flow |
+| basic segment | C_b,adj = 2,200 + 10 (FFS − 50), BP_adj = 1,000 + 40 (75 − FFS), D_c = 45, a = 2 (Equation 12-1) | as the 7.1 chapters quote Chapter 12 in their Example Problems 2 and 3. Chapter 12's own text was not read |
+
+*Demand, per window.*
+
+| window | S790 / rnd_91040 [veh/h] | P | v_FF / v_FR / v_RF / v_RR | v | v_W = v_RF + v_FR | VR |
+|---|---|---|---|---|---|---|
+| 05:30 | 3,281 / 1,043 | 0.331 | 2,196 / 1,086 / 698 / 345 | 4,324 | 1,783 | 0.412 |
+| 05:35 | 3,567 / 1,211 | 0.301 | 2,492 / 1,075 / 846 / 365 | 4,777 | 1,921 | 0.402 |
+| 05:40 | 3,776 / 1,361 | 0.289 | 2,685 / 1,091 / 968 / 393 | 5,137 | 2,059 | 0.401 |
+| 05:45 | 3,752 / 1,296 | 0.251 | 2,811 / 941 / 971 / 325 | 5,048 | 1,912 | 0.379 |
+
+*(A) HCM 7.1: FFS 60 mi/h, L_S 1,001 ft.* The equations used:
+- W from Equations 13-9 and 13-11 with Exhibit 13-13's simple-weave coefficients.
+- S_o = S_b − S_IW from Equations 13-7 and 13-10.
+- C_W from Equations 13-16 to 13-19, at 35 pc/mi/ln.
+- d/c and D from Equations 13-20 and 13-21, and LOS from Exhibit 13-7.
+
+| window | W | S_b [mi/h] | S_IW [mi/h] | S_o [mi/h] (m/s) | C_W [pc/h/ln] (× 4) | d/c | D [pc/mi/ln] | LOS |
+|---|---|---|---|---|---|---|---|---|
+| 05:30 | 0.004883 | 60.00 | 2.84 | 57.16 (25.55) | 1,836 (7,345) | 0.589 | 18.9 | C |
+| 05:35 | 0.004890 | 60.00 | 3.40 | 56.60 (25.30) | 1,836 (7,344) | 0.651 | 21.1 | C |
+| 05:40 | 0.004898 | 60.00 | 3.84 | 56.16 (25.11) | 1,836 (7,343) | 0.700 | 22.9 | C |
+| 05:45 | 0.004890 | 60.00 | 3.73 | 56.27 (25.16) | 1,836 (7,344) | 0.687 | 22.4 | C |
+
+*(B) The earlier method: FFS 60 mi/h, L_S 1,001 ft, N_WL 2.* The equations used:
+- c_IWL = c_IFL − 438.2 (1 + VR)^1.6 + 0.0765 L_S + 119.8 N_WL, at 43 pc/mi/ln.
+- The density-limited capacity c_W = c_IWL × N.
+- The weaving-flow limit c_IW = 2,400 / VR.
+- L_MAX = 5,728 (1 + VR)^1.6 − 1,566 N_WL.
+
+| window | c_IFL | c_IWL [pc/h/ln] | c_W, density (× 4) | c_IW = 2,400 / VR | capacity (governs) | v/c | L_MAX [ft] |
+|---|---|---|---|---|---|---|---|
+| 05:30 | 2,300 | 1,855 | 7,419 | 5,819 | 5,819 (weaving flow) | 0.743 | 6,821 |
+| 05:35 | 2,300 | 1,864 | 7,455 | 5,969 | 5,969 (weaving flow) | 0.800 | 6,704 |
+| 05:40 | 2,300 | 1,865 | 7,459 | 5,989 | 5,989 (weaving flow) | 0.858 | 6,690 |
+| 05:45 | 2,300 | 1,884 | 7,534 | 6,336 | 6,336 (weaving flow) | 0.797 | 6,445 |
+
+*Sensitivities.*
+- *FFS 55 mi/h.*
+  - 7.1: C_W 1,711 pc/h/ln (6,842–6,845), d/c 0.632 / 0.698 / 0.751 / 0.738, S_o 23.32 / 23.07 / 22.87 / 22.92 m/s, LOS C–D.
+  - B: c_IWL 1,805–1,834, v/c unchanged (the weaving-flow limit governs).
+- *L_S 801 ft (FFS 60).* 7.1: C_W 1,829–1,830, d/c 0.591–0.702. B: v/c unchanged.
+- *The highest-VR split: every exiter from the mainline (v_RR = 0).*
+  - This split is not the observation's; the ramp-to-ramp share is unobserved.
+  - VR is 0.508–0.572 and v_W 2,473–2,845.
+  - B: capacity 4,196–4,728 pc/h, v/c 1.03–1.19, over capacity.
+  - 7.1: d/c 0.589–0.700. The simple-weave W depends on (v_RF + v_FR)^0.021, so it hardly moves.
+- *Legs (HCM 7.1 Exhibits 14-8 and 14-10).* Every leg is below its capacity:
+  - freeway entry 3,281–3,776 and exit 2,893–3,781 against 6,900 (3 lanes at 60 mi/h);
+  - on-ramp 1,043–1,361 against 1,900–2,200 for one lane at a ramp FFS of 20 mi/h or more;
+  - off-ramp 1,267–1,484 against 2,000 at a 30–40 mi/h ramp FFS.
+  - The ramps' FFS is not known. The advisories are 30 and 40 mph.
+- *The earlier method's speeds* (draft Equations 13-11 to 13-13 and 13-19 to 13-22; FFS 60, interchange density ID 1 or 2 per mile).
+  - **Not verified:** ID. The corridor's interchanges within ±3 mi were not counted, and I_NW = 254–628 < 1,300 either way.
+  - S_W is 44.6–46.1 mi/h (19.96–20.62 m/s), S_NW 39.0–42.0 (17.44–18.76) and S 41.1–43.6 (18.37–19.49 m/s), with D 24.8–31.3.
+  - That method puts the segment's average below 20 m/s at the observed demand. The replacement method puts it at 25.1–25.6 m/s, and the stations either side read 25.8–27.4.
+
+*The model's section against the HCM* (the test's fixture and demand; the whole section, all lanes, per 5-min window; the model's value is the mean over seeds, with the range in brackets):
+
+| window | HCM 7.1 S_o, FFS 60 / 55 [m/s]; D [pc/mi/ln] | model, p = 0, seeds 3–12: speed [m/s]; density [veh/mi/ln] | model, no crossing (B, p = 1), seeds 3–5: speed; density | the same with `lcOvertakeRight` 1: speed; density |
+|---|---|---|---|---|
+| 05:30 | 25.55 / 23.32; 18.9 / 20.7 | 15.86 (11.35–19.88); 25.5 | 22.13; 18.6 | 22.93; 18.1 |
+| 05:35 | 25.30 / 23.07; 21.1 / 23.1 | 13.53 (9.43–18.26); 35.7 | 21.70; 24.2 | 22.80; 23.0 |
+| 05:40 | 25.11 / 22.87; 22.9 / 25.1 | 11.81 (8.68–15.19); 40.4 | 20.83; 27.1 | 22.79; 24.8 |
+| 05:45 | 25.16 / 22.92; 22.4 / 24.6 | 12.63 (8.53–15.50); 37.7 | 20.35; 27.4 | 22.45; 25.0 |
+
+At p = 0 the model carries 881–1,040 veh/h per lane through the section (window means), against 1,081–1,284 asked.
+
+Reading.
+1. *The observed demand is within the HCM's capacity for this weave.*
+   - HCM 7.1: d/c 0.59–0.70 at FFS 60 (LOS C) and 0.63–0.76 at the model's FFS of 55 (LOS C–D).
+   - The earlier method: v/c 0.74–0.86, with the weaving-flow limit v_W ≤ 2,400 pc/h governing. The one exception is a split with no ramp-to-ramp traffic, which the observation does not support either way.
+   - HCM 7.1 predicts the segment at 25.1–25.6 m/s (FFS 60): S_b is the FFS itself (v/N of 1,081–1,284 is below the 1,600 pc/h/ln breakpoint), less a weaving impedance of 2.8–3.8 mi/h. The stations either side read 25.8–27.4 m/s.
+2. *The model's weave at the same demand is at or past the HCM's breakdown density.*
+   - The section averages 11.8–15.9 m/s and 25.5–40.4 veh/mi/ln over the four windows (35 pc/mi/ln is HCM 7.1's breakdown threshold, Exhibit 13-7).
+   - With every crossing removed it runs at 20.4–22.1 m/s, and at 22.5–22.9 m/s with the right-overtaking coupling relaxed. HCM 7.1 predicts that for the full weave at FFS 55 (22.9–23.3).
+   - So the gap is the model's crossing process. At speed, the model's section carries at most about 50 crossers an hour where the HCM carries 1,783–2,059 veh/h of weaving at d/c 0.70 or less. Its throughput is closer: it passes criterion (i) at every seed with 75 % of the crossings left (B, p = 0.25), but at 5.8–16.2 m/s in lane 0 and 7.3–17.0 m/s in lane 1.
+
+**(3) What criterion (ii) tests, and the next step.**
+
+*What it tests.* Criterion (ii) asks every lane in the last 60 m before the exit gore to average above 20 m/s in every 5-min window. No observation stands there. S790 is 300 m upstream and S97 is downstream, and 20 m/s is the boundary the corridor's record dates station queues with, applied per lane. The HCM gives no lane speeds; HCM 7.1 gives a segment average of 25.1–25.6 m/s (FFS 60). The exit's own posted advisory is 40 mph (17.9 m/s; OSM `maxspeed:advisory` on 18207598), so real exiters may be below 20 m/s in the auxiliary lane's last 60 m, and nothing observed says otherwise.
+
+On this fleet and map, the ceiling measurement says (ii) holds only when nothing crosses at the gore's end, and only when no slow driver holds the lanes through SUMO's right-overtaking rule. It is not a capacity test on this model:
+- At zero crossing, the exit end's 19-minute lane means are 19.0–23.1 m/s as configured and 20.8–24.0 m/s with the rule relaxed. Lane 0 has the least margin, between two 22.22 m/s ramps.
+- A single slow driver (1.2 % of the fleet wish for less than 20 m/s) in the leftmost lane decides a window, through the right-overtaking rule.
+- With the rule relaxed, about 50 crossers an hour (2–3 % of the observed crossings) fail lane 0 at two seeds in three.
+
+*The next step* is an owner's decision and two fleet questions, not a weave rule.
+- *(a) The owner decides what (ii) should measure.*
+  - Kept as written, the ceiling says it can pass only with (b) settled and practically no crossing left at the gore's end.
+  - The alternative with a source is HCM 7.1's breakdown condition: section density at most 35 pc/mi/ln in every window (Exhibit 13-7), possibly with the section's space-mean speed against S_o.
+  - Either way the test fails today. At p = 0 the model reads 35.7, 40.4 and 37.7 veh/mi/ln in windows 1–3 (seed means). The choice is what the test measures, not whether it passes.
+- *(b) The fleet's right-overtaking rule (a whole-corridor calibration question).*
+  - SUMO's default forbids overtaking a slower vehicle in the lane to the left above 60 km/h. With the corridor fleet's `lcKeepRight` 0, it costs lanes 1–3 about 2 m/s at the observed flows even with nothing crossing.
+  - `FleetSpec.lc_overtake_right` already exists (it writes `lcOvertakeRight`). Setting it changes every corridor config hash and needs a 20-seed corridor battery before it stays.
+  - Whether I-94 or I-24 drivers pass on the right is observable: lane speeds under a slower left lane in I-24 MOTION trajectories. Measure it before adopting.
+- *(c) The model's crossing capacity at speed.* This is the dominant gap: breakdown density at the observed weave, against the HCM's d/c of 0.7. The candidates that bound it, none fitted here:
+  - the weave's acceptance, s0 + 0.6 s·v on both sides with the follower absorbing the changer within its b (`accept_gap_s`, `exit_accept_gap_s`), and its holds and easing;
+  - SUMO's lane-end braking of exiters still in lane 1, which on the EIDM starts at vT + v²/(2√(ab)) (WP-72, WP-73);
+  - LC2013's parameters for SUMO's own changes, which make a sixth to two fifths of the crossings (WP-67): `lcAssertive` 1, `lcCooperative` 1 (with `lcCooperativeSpeed` at SUMO's default), `lcSpeedGain` 1, `lcKeepRight` 0, `lcStrategic` 5 / 1 (ramps), `lcImpatience` and `lcSigma` unset;
+  - the drawn car-following parameters: T 1.322 ± 0.521 s and b 1.703 ± 0.890 m/s² (WP-68's reading of `artifacts/idm_i24_capacity.json`). A crossing needs a car-following gap in the target lane, and the drawn b sets the follower's absorption test;
+  - the EIDM's own coolness 0.99 and estimation errors (sigmagap 0.1, sigmaerror 0.04, sigmaleader 0.02). These are SUMO 1.27.1's defaults (`MSCFModel_EIDM.cpp` lines 63–66); the fleet sets none of them.
+  
+  The test for each is realization B's sweep with the candidate changed, reading the smallest p that passes with (b) settled. The evidence to fit any of them is the accepted gaps and crossing speeds in I-24 MOTION's weaves (WP-65's hand-on (b)), before any value is chosen.
+- *(d) For harnesses.*
+  - A crossing forced at the section start is WP-70's outlet problem, not a ceiling. Relocating the origin through the routes file is the clean way to remove crossing load with the section's exit legs unchanged.
+  - `wp76/hcm.py` carries both HCM methods with their worked-example checks.
+
+**Nothing ships.** No code, configuration, fixture or test changes. The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` and its reason stand as WP-74 left them. The fleet diagnostics above (`lcOvertakeRight`, `lcKeepRight`, `speedFactor`) were written into session routes files only.
+
+**Bookkeeping.**
+- This section is the only file change.
+- `microsim.runner`, `flowstate_core.config`, the contract, the scenarios, the fixtures, every test, docs/CONTRACTS.md and CHANGELOG.md are untouched.
+- Session artifacts are not committed (`wp76/`):
+  - the harness (`wp76_harness.py`) and the HCM computation with its worked-example checks (`hcm.py`, `hcm_out.json`);
+  - the analyses (`slow.py`, `tables.py`, `mdtables.py`);
+  - the JSONL records of the 108 runs (`wp76_rows.jsonl`, `wp76_sec.jsonl`, `wp76_keep.jsonl`) and the two kept runs (`runs/relocB_p1_3`, `runs/relocB_p1_12`);
+  - the HCM 7.1 chapters and the NCHRP 1038 proposed chapters (PDF and extracted text);
+  - the SUMO 1.27.1 sources read: `MSLCM_LC2013.cpp` / `.h`, `MSAbstractLaneChangeModel.cpp`, `MSFrame.cpp`, `MSVehicle.cpp`, `MSCFModel_EIDM.cpp`.
+
+Every number above is from those runs, from the committed files named, or from the two HCM documents cited.
