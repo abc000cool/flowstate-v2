@@ -459,6 +459,22 @@ for V in slice ""; do
       --report-dir docs/reports/${MNDOT}_weave${SUF}_xlend --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlend failed; continuing"
 done
 
+# 10k. The reference configuration (10j, VM U) plus WP-70's ramp_outlet (2026-09-25, block 3): on the corridor section fixture
+#     ramp_outlet lets the T.H.52 entrance pass; on the corridor the question is whether it lifts the weave's throughput
+#     (S790 ~3,340 veh/h against 4,911 observed). weave_params {exit_prepare: 1.0, ramp_outlet: 1.0} + lane_end_giveup_m: 7.5
+#     (ramp_outlet is inert on sections shorter than 253.8 m, so Ruth St is unchanged).
+for V in slice ""; do
+  SUF=${V:+_$V}
+  stage mndot_weave${SUF}_xlout bash -c "sed -e 's#^name: ${MNDOT}_weave${SUF}\$#name: ${MNDOT}_weave${SUF}_xlout#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0, ramp_outlet: 1.0}#' scenarios/${MNDOT}_weave${SUF}.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' > scenarios/${MNDOT}_weave${SUF}_xlout.yaml && \
+    grep -c 'ramp_outlet: 1.0' scenarios/${MNDOT}_weave${SUF}_xlout.yaml && grep -c '^  lane_end_giveup_m: 7.5' scenarios/${MNDOT}_weave${SUF}_xlout.yaml && \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave${SUF}_xlout.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates \$([ -n '$V' ] && echo 4 || echo $REPS) --procs $PROCS \
+      --out runs/${MNDOT}_weave${SUF}_xlout/baseline --artifact artifacts/validation_${MNDOT}_weave${SUF}_xlout.json \
+      --report-dir docs/reports/${MNDOT}_weave${SUF}_xlout --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlout failed; continuing"
+done
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
