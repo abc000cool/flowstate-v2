@@ -194,6 +194,12 @@ class AcceptanceParams:
         v0_ms: Follower's desired speed [m/s] — the runner uses
             ``min(maxSpeed, lane limit)``, so pass the capped value.
         source: Where the numbers come from (recorded in artifacts).
+        accept_lag_gap_s: Follower-side time gap of a change to the left
+            [s] (``WEAVE_DEFAULTS["accept_lag_gap_s"]``, WP-80); ``None``
+            (the default, unset) uses ``accept_gap_s`` on both sides, as
+            the runner does (``microsim.runner._weave_lag_gap_s``).
+        exit_accept_lag_gap_s: The same for a change to the right
+            (``exit_accept_lag_gap_s``); ``None`` uses ``exit_accept_gap_s``.
     """
 
     accept_gap_s: float
@@ -204,6 +210,22 @@ class AcceptanceParams:
     b: float
     v0_ms: float
     source: str = ""
+    accept_lag_gap_s: float | None = None
+    exit_accept_lag_gap_s: float | None = None
+
+    @property
+    def lag_gap_s(self) -> float:
+        """The entering movement's follower-side time gap [s] (unset: ``accept_gap_s``)."""
+        return self.accept_gap_s if self.accept_lag_gap_s is None else self.accept_lag_gap_s
+
+    @property
+    def exit_lag_gap_s(self) -> float:
+        """The exiting movement's follower-side time gap [s] (unset: ``exit_accept_gap_s``)."""
+        return (
+            self.exit_accept_gap_s
+            if self.exit_accept_lag_gap_s is None
+            else self.exit_accept_lag_gap_s
+        )
 
     @classmethod
     def from_population(
@@ -220,27 +242,36 @@ class AcceptanceParams:
             mean: Population means (``IDMCalibration.mean``).
             v0_cap_ms: Lane speed limit the follower's desired speed is capped
                 at (the runner's ``min(maxSpeed, lane limit)``); None = no cap.
-            weave_params: Overrides of ``WEAVE_DEFAULTS`` (the two time gaps).
+            weave_params: Overrides of ``WEAVE_DEFAULTS`` (the time gaps: the
+                two leader-side keys and, WP-80, the two follower-side ones).
             source: Provenance string.
         """
-        prm = {**WEAVE_DEFAULTS, **dict(weave_params or {})}
+        prm: dict[str, float | None] = {**WEAVE_DEFAULTS, **dict(weave_params or {})}
         v0 = float(mean["v0"])
         if v0_cap_ms is not None:
             v0 = min(v0, float(v0_cap_ms))
+        lead_in, lead_out = prm["accept_gap_s"], prm["exit_accept_gap_s"]
+        if lead_in is None or lead_out is None:
+            raise ValueError("accept_gap_s and exit_accept_gap_s must be set")
+        lag_in = prm.get("accept_lag_gap_s")
+        lag_out = prm.get("exit_accept_lag_gap_s")
         return cls(
-            accept_gap_s=float(prm["accept_gap_s"]),
-            exit_accept_gap_s=float(prm["exit_accept_gap_s"]),
+            accept_gap_s=float(lead_in),
+            exit_accept_gap_s=float(lead_out),
             s0_m=float(mean["s0"]),
             T_s=float(mean["T"]),
             a_max=float(mean["a_max"]),
             b=float(mean["b"]),
             v0_ms=v0,
             source=source,
+            accept_lag_gap_s=None if lag_in is None else float(lag_in),
+            exit_accept_lag_gap_s=None if lag_out is None else float(lag_out),
         )
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON form."""
-        return {
+        """JSON form; the follower-side keys (WP-80) only when set, so an
+        artifact written without them reads as before."""
+        out: dict[str, Any] = {
             "accept_gap_s": self.accept_gap_s,
             "exit_accept_gap_s": self.exit_accept_gap_s,
             "s0_m": self.s0_m,
@@ -250,6 +281,11 @@ class AcceptanceParams:
             "v0_ms": self.v0_ms,
             "source": self.source,
         }
+        if self.accept_lag_gap_s is not None:
+            out["accept_lag_gap_s"] = self.accept_lag_gap_s
+        if self.exit_accept_lag_gap_s is not None:
+            out["exit_accept_lag_gap_s"] = self.exit_accept_lag_gap_s
+        return out
 
 
 @dataclass
@@ -311,22 +347,24 @@ def weave_acceptance(
     minus the changer's ``minGap`` on the leader side and minus the
     follower's on the follower side). With ``A`` the movement's time gap
     (``exit_accept_gap_s`` for a change to the right, ``accept_gap_s`` to the
-    left), ``g_L = lead_gap − s0`` and ``g_F = lag_gap − s0``:
+    left) and ``A_F`` its follower-side one (WP-80: ``exit_accept_lag_gap_s``
+    / ``accept_lag_gap_s``, ``A`` when unset), ``g_L = lead_gap − s0`` and
+    ``g_F = lag_gap − s0``:
 
     * ``ok_lead_time``: ``g_L ≥ s0 + A · v``;
     * ``ok_lead_brake``: ``g_L ≥ s0 + (v − v_L)⁺² / (2b)`` (the changer's
       brake gap on its new leader);
-    * ``ok_lag_time``: ``g_F ≥ s0 + A · v_F``;
+    * ``ok_lag_time``: ``g_F ≥ s0 + A_F · v_F``;
     * ``ok_lag_absorb``: the follower's IDM acceleration towards the changer
       at the bumper gap is at least ``−b``;
     * ``ok_guard`` (``_weave_force_gap_ok`` with both brake gaps):
       ``g_L > s0 + A · (v − v_L)⁺``, ``g_L > s0 + (v − v_L)⁺²/(2b)``,
-      ``g_F > s0 + A · (v_F − v)⁺`` and ``g_F > (v_F − v)⁺²/(2b)``.
+      ``g_F > s0 + A_F · (v_F − v)⁺`` and ``g_F > (v_F − v)⁺²/(2b)``.
 
     A side with no vehicle (a non-finite gap) passes. ``accepts`` is the
     conjunction. The ``need_*`` outputs are the bumper-to-bumper gaps each
     side needs (the non-strict bounds): ``need_lead_m = 2 s0 + max(A · v,
-    (v − v_L)⁺²/(2b))`` and ``need_lag_m`` the largest of ``2 s0 + A · v_F``,
+    (v − v_L)⁺²/(2b))`` and ``need_lag_m`` the largest of ``2 s0 + A_F · v_F``,
     the absorption gap ``s*_F / √(1 − (v_F/v0)⁴ + b/a_max)`` (inf when the
     radicand is not positive) and ``s0 + (v_F − v)⁺²/(2b)``; NaN where the
     side is empty.
@@ -348,7 +386,10 @@ def weave_acceptance(
     v = np.asarray(v, dtype=np.float64)
     has_lead = np.isfinite(lead_gap_m)
     has_lag = np.isfinite(lag_gap_m)
-    acc = np.where(np.asarray(rightward, dtype=bool), p.exit_accept_gap_s, p.accept_gap_s)
+    right = np.asarray(rightward, dtype=bool)
+    acc = np.where(right, p.exit_accept_gap_s, p.accept_gap_s)
+    # the follower side (WP-80): the leader side's value when unset
+    acc_f = np.where(right, p.exit_lag_gap_s, p.lag_gap_s)
     s0, b = p.s0_m, p.b
     g_l = np.where(has_lead, lead_gap_m - s0, np.inf)
     g_f = np.where(has_lag, lag_gap_m - s0, np.inf)
@@ -361,13 +402,13 @@ def weave_acceptance(
 
     ok_lead_time = g_l >= s0 + acc * v
     ok_lead_brake = g_l >= s0 + brake_l
-    ok_lag_time = g_f >= s0 + acc * v_f
+    ok_lag_time = g_f >= s0 + acc_f * v_f
     a_f = _idm_accel_vec(v_f, p.v0_ms, g_f + s0, v_f - v, p.T_s, p.a_max, b, s0)
     ok_lag_absorb = ~has_lag | (a_f >= -b)
     ok_guard = (
         (g_l > s0 + acc * close_l)
         & (g_l > s0 + brake_l)
-        & (g_f > s0 + acc * close_f)
+        & (g_f > s0 + acc_f * close_f)
         & (g_f > brake_f)
     )
     accepts = ok_lead_time & ok_lead_brake & ok_lag_time & ok_lag_absorb & ok_guard
@@ -378,7 +419,7 @@ def weave_acceptance(
     with np.errstate(divide="ignore", invalid="ignore"):
         absorb = np.where(rad > 0.0, s_star / np.sqrt(np.where(rad > 0.0, rad, 1.0)), np.inf)
     need_lag = np.where(
-        has_lag, np.maximum(np.maximum(2.0 * s0 + acc * v_f, absorb), s0 + brake_f), np.nan
+        has_lag, np.maximum(np.maximum(2.0 * s0 + acc_f * v_f, absorb), s0 + brake_f), np.nan
     )
     return {
         "need_lead_m": need_lead,

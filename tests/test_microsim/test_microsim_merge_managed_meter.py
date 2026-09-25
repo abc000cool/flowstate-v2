@@ -896,6 +896,9 @@ class TestWeaveSchema:
             "exit_priority_onset": 0.0,
             # WP-75: the anticipation spares the exiters (dated section)
             "anticipation_spares_exiters": 0.0,
+            # WP-80: the follower-side time gaps, unset = the leader side's key
+            "accept_lag_gap_s": None,
+            "exit_accept_lag_gap_s": None,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -6216,3 +6219,262 @@ class TestWeaveReviewDerivations3To6:
         assert meta["mean_follower_decel_ms2"] is None
         assert meta["wait_s_mean"] is None
         assert meta["wait_in_s_mean"] is None and meta["wait_out_s_mean"] is None
+
+
+class TestWeaveLeaderFollowerGapsApart:
+    """The leader and follower gaps apart (2026-09-25, block 3, WP-80):
+    ``accept_lag_gap_s`` / ``exit_accept_lag_gap_s`` give each movement a
+    follower-side time gap of its own; the existing keys keep the leader
+    side, and unset (``None``, the default) the follower side reads the
+    leader side's key, so a run that sets neither is the run before the
+    split (docs/WEAVE_MODEL_PLAN.md, dated section WP-80). Every case at
+    speed parity (10 m/s) with the mock fleet's constants: ``minGap`` 2.5 m,
+    so a side needs ``2.5 + 10 · A`` m of reported gap — 8.5 m at 0.6 s,
+    17.5 m at 1.5 s; a follower 12 m behind absorbs the changer at −0.22
+    m/s² (IDM at s = 14.5 m, s* = 16.5 m), well within its ``b``."""
+
+    @staticmethod
+    def _step_once(movement: str, g_lead: float, g_foll: float, **params):
+        """One ``_weave_step`` with the changer at 10 m/s at ``a`` pos 60
+        (140 m of section ahead, outside the forced zone) and a leader L and
+        a follower F at 10 m/s in the target lane, ``g_lead`` / ``g_foll``
+        the reported gaps; returns whether the changer's change was
+        requested. Entering: ``n`` in the auxiliary lane, L and F through
+        vehicles in lane 1. Exiting: ``e`` in lane 1, L and F exit-bound in
+        lane 0 (so neither is itself driven)."""
+        from microsim.runner import (
+            NEIGHBOR_LEFT_FOLLOWERS,
+            NEIGHBOR_LEFT_LEADERS,
+            NEIGHBOR_RIGHT_FOLLOWERS,
+            NEIGHBOR_RIGHT_LEADERS,
+            _weave_step,
+        )
+
+        ws = _weave_state(**params)
+        if movement == "entering":
+            vid, lane, target = "n", 0, 1
+            modes = (NEIGHBOR_LEFT_LEADERS, NEIGHBOR_LEFT_FOLLOWERS)
+        else:
+            vid, lane, target = "e", 1, 0
+            modes = (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
+            ws["exiting_ids"] = frozenset({"e", "L", "F"})
+        x_l = 60.0 + 2.5 + g_lead + 5.0  # L's front: its rear is g_lead + minGap ahead
+        x_f = 60.0 - 5.0 - 2.5 - g_foll  # F's front: g_foll + its minGap behind the rear
+        res = {
+            vid: _res("a", lane, 60.0, 10.0),
+            "L": _res("a", target, x_l, 10.0)
+            if x_l < 100.0
+            else _res("b", target, x_l - 100.0, 10.0),
+            "F": _res("a", target, x_f, 10.0),
+        }
+        veh = _WeaveVehicle(
+            {vid: 10.0, "L": 10.0, "F": 10.0},
+            {(vid, modes[0]): (("L", g_lead),), (vid, modes[1]): (("F", g_foll),)},
+        )
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        return ("change", vid, target, ws["step_s"]) in veh.calls
+
+    def test_defaults_are_unset(self):
+        """Both keys default to ``None`` (unset), the leader-side keys stay
+        0.6 s; not fitted values."""
+        assert WEAVE_DEFAULTS["accept_lag_gap_s"] is None
+        assert WEAVE_DEFAULTS["exit_accept_lag_gap_s"] is None
+        assert WEAVE_DEFAULTS["accept_gap_s"] == 0.6
+        assert WEAVE_DEFAULTS["exit_accept_gap_s"] == 0.6
+
+    def test_lag_gap_resolution(self):
+        """Unset or absent reads the movement's leader-side key; a set value,
+        0.0 included, is the follower side's; the two movements apart."""
+        from microsim.runner import _weave_lag_gap_s
+
+        prm = dict(WEAVE_DEFAULTS)
+        assert _weave_lag_gap_s(prm, exiting=False) == 0.6
+        assert _weave_lag_gap_s(prm, exiting=True) == 0.6
+        prm = {**WEAVE_DEFAULTS, "accept_gap_s": 0.1, "exit_accept_gap_s": 2.584}
+        assert _weave_lag_gap_s(prm, exiting=False) == 0.1
+        assert _weave_lag_gap_s(prm, exiting=True) == 2.584
+        prm = {**prm, "accept_lag_gap_s": 0.778, "exit_accept_lag_gap_s": 0.721}
+        assert _weave_lag_gap_s(prm, exiting=False) == 0.778
+        assert _weave_lag_gap_s(prm, exiting=True) == 0.721
+        assert _weave_lag_gap_s({**prm, "accept_lag_gap_s": 0.0}, exiting=False) == 0.0
+        # a params dict written before the keys existed
+        assert (
+            _weave_lag_gap_s({"accept_gap_s": 0.3, "exit_accept_gap_s": 0.4}, exiting=True) == 0.4
+        )
+
+    def test_schema_and_hash(self, weave_osm):
+        """The keys are accepted overrides; unset they leave the hash alone,
+        set they move it (like every weave key)."""
+        cfg = _weave_scenario(weave_osm)
+        raw = cfg.model_dump(mode="json")
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {
+            "accept_lag_gap_s": 0.778,
+            "exit_accept_lag_gap_s": 0.721,
+        }
+        split = ScenarioConfig.model_validate(raw)
+        assert split.network.ramps[0].weave.weave_params["exit_accept_lag_gap_s"] == 0.721
+        assert config_hash(split) != config_hash(cfg)
+        assert config_hash(_weave_scenario(weave_osm)) == config_hash(cfg)
+
+    @pytest.mark.parametrize("movement", ["entering", "exiting"])
+    def test_leader_side_reads_only_the_existing_key(self, movement):
+        """A leader-limited change (leader 12 m, follower 50 m): the
+        movement's key at 1.5 s refuses it whatever the follower side's
+        value; the follower-side key at 1.5 s does not."""
+        lead, lag = (
+            ("accept_gap_s", "accept_lag_gap_s")
+            if movement == "entering"
+            else ("exit_accept_gap_s", "exit_accept_lag_gap_s")
+        )
+        assert self._step_once(movement, 12.0, 50.0)
+        assert not self._step_once(movement, 12.0, 50.0, **{lead: 1.5})
+        assert not self._step_once(movement, 12.0, 50.0, **{lead: 1.5, lag: 0.0})
+        assert self._step_once(movement, 12.0, 50.0, **{lag: 1.5})
+
+    @pytest.mark.parametrize("movement", ["entering", "exiting"])
+    def test_follower_side_reads_the_new_key_once_set(self, movement):
+        """A follower-limited change (leader 50 m, follower 12 m): the
+        movement's key at 1.5 s with the follower side unset refuses it, as
+        before the split; with the follower side set to 0.6 s it is
+        accepted; the follower-side key alone at 1.5 s refuses it."""
+        lead, lag = (
+            ("accept_gap_s", "accept_lag_gap_s")
+            if movement == "entering"
+            else ("exit_accept_gap_s", "exit_accept_lag_gap_s")
+        )
+        assert self._step_once(movement, 50.0, 12.0)
+        assert not self._step_once(movement, 50.0, 12.0, **{lead: 1.5})
+        assert self._step_once(movement, 50.0, 12.0, **{lead: 1.5, lag: 0.6})
+        assert not self._step_once(movement, 50.0, 12.0, **{lag: 1.5})
+
+    def test_the_exiting_compromise_against_the_calibrated_sides(self):
+        """VM Z's exiting sides (``artifacts/i24_critical_gaps.json``,
+        ``proposal.exit_accept_gap_s``: leader side 2.584 s, follower side
+        0.721 s) against WP-79's one-value compromise 1.78 s: a follower 12
+        m behind (9.71 m asked by 0.721 s, 20.3 m by 1.78 s) is refused by
+        the compromise and taken by the split; a leader 25 m ahead (28.34 m
+        asked by 2.584 s, 20.3 m by 1.78 s) the other way round."""
+        split = {"exit_accept_gap_s": 2.584, "exit_accept_lag_gap_s": 0.721}
+        assert not self._step_once("exiting", 50.0, 12.0, exit_accept_gap_s=1.78)
+        assert self._step_once("exiting", 50.0, 12.0, **split)
+        assert self._step_once("exiting", 25.0, 50.0, exit_accept_gap_s=1.78)
+        assert not self._step_once("exiting", 25.0, 50.0, **split)
+
+    def test_force_guard_sides(self):
+        """The guard's closing-speed bound reads the leader side's time gap
+        ahead and the follower side's behind; ``None`` is the form before."""
+        from microsim.runner import _weave_force_gap_ok
+
+        inf, nan = math.inf, math.nan
+        # a follower at 15 m/s 10 m behind a 10 m/s changer: 2.5 + 2.584 · 5
+        # = 15.42 m asked on one value, 2.5 + 0.721 · 5 = 6.11 m on the split
+        assert not _weave_force_gap_ok(2.5, 2.584, 10.0, inf, nan, 10.0, 15.0)
+        assert _weave_force_gap_ok(2.5, 2.584, 10.0, inf, nan, 10.0, 15.0, accept_lag_s=0.721)
+        # a changer at 15 m/s 10 m behind a 10 m/s leader: the leader side
+        # reads accept_s alone
+        assert _weave_force_gap_ok(2.5, 0.721, 15.0, 10.0, 10.0, inf, nan, accept_lag_s=2.584)
+        assert not _weave_force_gap_ok(2.5, 2.584, 15.0, 10.0, 10.0, inf, nan, accept_lag_s=0.721)
+        # unset is the single-value guard, on both sides and with the brake gaps
+        for args in (
+            (2.5, 0.6, 10.0, 6.0, 12.0, 4.0, 14.0, 1.67, 1.67),
+            (2.5, 1.5, 12.0, 9.0, 8.0, 12.0, 15.0, 1.67, 1.67),
+            (0.0, 0.6, 0.5, 1.0, 0.0, 30.0, 16.0, None, 1.67),
+        ):
+            assert _weave_force_gap_ok(*args) == _weave_force_gap_ok(*args, accept_lag_s=None)
+            assert _weave_force_gap_ok(*args) == _weave_force_gap_ok(*args, accept_lag_s=args[1])
+
+    def test_forced_change_reads_the_follower_side(self):
+        """Through ``_weave_step``, the forced zone due at once: an exiter
+        at 10 m/s with an exit-bound lane-0 follower at 15 m/s 10 m behind.
+        On one exit time gap of 2.584 s the guard defers the change (15.42
+        m asked); with the follower side at 0.721 s (6.11 m, and the
+        follower's brake gap 7.49 m) the forced change is made."""
+        from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS, _weave_step
+
+        def run(**params):
+            ws = _weave_state(force_after_s=0.0, force_within_m=1000.0, **params)
+            ws["exiting_ids"] = frozenset({"e", "f"})
+            veh = _WeaveVehicle(
+                {"e": 10.0, "f": 15.0}, {("e", NEIGHBOR_RIGHT_FOLLOWERS): (("f", 10.0),)}
+            )
+            res = {"e": _res("b", 1, 50.0, 10.0), "f": _res("b", 0, 32.5, 15.0)}
+            _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+            return ws, ("change", "e", 0, ws["step_s"]) in veh.calls
+
+        ws, changed = run(exit_accept_gap_s=2.584)
+        assert not changed and ws["n_forced_deferred"] == 1
+        ws, changed = run(exit_accept_gap_s=2.584, exit_accept_lag_gap_s=0.721)
+        assert changed and ws["n_forced_deferred"] == 0 and ws["veh"]["e"]["forced"]
+
+    def test_change_ok_and_swap_offset(self):
+        """``_weave_change_ok`` (the swap's acceptance) and the swap's
+        pairwise guard read the follower side where the partner is the
+        follower."""
+        from microsim.runner import _weave_change_ok, _weave_swap_offset_ok
+
+        p_f = {"b": 1.67, "s0": 2.5, "T": 1.4, "a": 0.73}
+        inf, nan = math.inf, math.nan
+        # follower-limited: 12 m behind at parity
+        assert not _weave_change_ok(2.5, 1.5, 10.0, 1.67, inf, nan, 12.0, 10.0, p_f, 30.0)
+        assert _weave_change_ok(
+            2.5, 1.5, 10.0, 1.67, inf, nan, 12.0, 10.0, p_f, 30.0, accept_lag_s=0.6
+        )
+        # leader-limited: 12 m ahead at parity
+        assert not _weave_change_ok(
+            2.5, 1.5, 10.0, 1.67, 12.0, 10.0, inf, nan, None, 0.0, accept_lag_s=0.0
+        )
+        assert _weave_change_ok(
+            2.5, 0.6, 10.0, 1.67, 12.0, 10.0, inf, nan, None, 0.0, accept_lag_s=1.5
+        )
+        # the swap: R at 15 m/s behind P at 10 m/s, 12 m of reported gap. R's
+        # side (its leader side at 0.6 s, its brake gap 9.99 m) passes; P's
+        # side is its follower side: 15.42 m asked at 2.584 s, 6.11 m at 0.721 s
+        args = (14.5, 2.5, 0.6, 15.0, 1.67, 2.5, 2.584, 10.0, 1.67)
+        assert not _weave_swap_offset_ok(*args)
+        assert _weave_swap_offset_ok(*args, lag_p=0.721)
+        assert _weave_swap_offset_ok(*args, lag_p=None) == _weave_swap_offset_ok(*args)
+
+    def test_vacate_gap_check_follower_side(self):
+        """The vacate / early-move gap check borrows the entering key; its
+        follower side reads ``accept_lag_s``. A 10 m/s changer with a 5 m/s
+        follower 8 m behind (the follower's IDM desired gap is its 2.5 m
+        floor): 5.5 m asked at 0.6 s, 10 m at 1.5 s."""
+        from microsim.runner import _weave_vacate_gap_ok
+
+        p = {"s0": 2.5, "len": 5.0, "b": 1.67, "T": 1.4, "a": 0.73}
+        target = [(87.0, "F"), (300.0, "L")]
+        v_of = {"F": 5.0, "L": 10.0}
+        p_of = {"F": p, "L": p}
+        assert _weave_vacate_gap_ok(100.0, 10.0, p, target, v_of, p_of, 0.6)
+        assert not _weave_vacate_gap_ok(100.0, 10.0, p, target, v_of, p_of, 1.5)
+        assert _weave_vacate_gap_ok(100.0, 10.0, p, target, v_of, p_of, 1.5, accept_lag_s=0.6)
+        assert not _weave_vacate_gap_ok(100.0, 10.0, p, target, v_of, p_of, 0.6, accept_lag_s=1.5)
+
+    def test_explicit_leader_values_run_as_unset(self, weave_osm, tmp_path):
+        """On the weave fixture, the follower-side keys set to the leader
+        side's values (0.6 s) write the unset run's trajectories byte for
+        byte; only the config hash and the recorded params differ."""
+        import hashlib
+
+        cfg = _weave_scenario(weave_osm)
+        raw = cfg.model_dump(mode="json")
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {
+            "accept_lag_gap_s": 0.6,
+            "exit_accept_lag_gap_s": 0.6,
+        }
+        same = ScenarioConfig.model_validate(raw)
+        p0 = run_micro(cfg, 3, tmp_path / "unset")
+        p1 = run_micro(same, 3, tmp_path / "set")
+        m0 = json.loads(p0.meta.read_text())
+        m1 = json.loads(p1.meta.read_text())
+        assert m0["config_hash"] != m1["config_hash"]
+        assert (
+            hashlib.md5(p0.trajectories.read_bytes()).hexdigest()
+            == hashlib.md5(p1.trajectories.read_bytes()).hexdigest()
+        )
+        ws0, ws1 = m0["weave_sections"][0], m1["weave_sections"][0]
+        assert ws0["params"]["accept_lag_gap_s"] is None
+        assert ws1["params"]["exit_accept_lag_gap_s"] == 0.6
+        assert {k: v for k, v in ws0.items() if k != "params"} == {
+            k: v for k, v in ws1.items() if k != "params"
+        }

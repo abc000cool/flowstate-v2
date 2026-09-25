@@ -10,6 +10,7 @@ thresholds and, case by case, against the runner's own
 
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import numpy as np
@@ -693,3 +694,126 @@ class TestGapSequences:
             gap_sequences(df, rec.drop(columns="zone"), zones=ZONES)
         no_len = gap_sequences(df.drop(columns="length"), rec, default_length_m=5.0)
         assert no_len.samples["lead_gap_m"].iloc[0] == pytest.approx(13.0)
+
+
+class TestAcceptanceLeaderFollowerApart:
+    """The follower-side time gaps (WP-80, ``accept_lag_gap_s`` /
+    ``exit_accept_lag_gap_s``) in the offline restatement of the acceptance:
+    unset they are the leader side's value, as in the runner
+    (``microsim.runner._weave_lag_gap_s``)."""
+
+    def test_unset_is_the_leader_side_and_is_not_written(self) -> None:
+        assert PARAMS.accept_lag_gap_s is None and PARAMS.exit_accept_lag_gap_s is None
+        assert PARAMS.lag_gap_s == 0.6 and PARAMS.exit_lag_gap_s == 0.6
+        assert "accept_lag_gap_s" not in PARAMS.to_dict()
+        assert "exit_accept_lag_gap_s" not in PARAMS.to_dict()
+        split = dataclasses.replace(PARAMS, exit_accept_gap_s=2.584, exit_accept_lag_gap_s=0.721)
+        assert split.exit_lag_gap_s == 0.721 and split.lag_gap_s == 0.6
+        assert split.to_dict()["exit_accept_lag_gap_s"] == 0.721
+        assert "accept_lag_gap_s" not in split.to_dict()
+
+    def test_from_population_reads_the_follower_keys(self) -> None:
+        mean = {"v0": 32.4, "T": 1.32, "a_max": 1.05, "b": 1.70, "s0": 2.53}
+        p = AcceptanceParams.from_population(mean)
+        assert p.accept_lag_gap_s is None and p.exit_accept_lag_gap_s is None
+        q = AcceptanceParams.from_population(
+            mean, weave_params={"exit_accept_gap_s": 2.584, "exit_accept_lag_gap_s": 0.721}
+        )
+        assert q.exit_accept_gap_s == 2.584 and q.exit_accept_lag_gap_s == 0.721
+        assert q.accept_lag_gap_s is None and q.lag_gap_s == WEAVE_DEFAULTS["accept_gap_s"]
+
+    def test_each_side_reads_its_own_key(self) -> None:
+        """v 20 m/s, leader 30 m ahead and follower 20 m behind, both at 20
+        m/s (reported gaps 27.5 / 17.5 m): 14.5 m asked of each side at 0.6
+        s. A follower side of 1.0 s asks 22.5 m and refuses on the lag time
+        term alone; a leader side of 1.3 s asks 28.5 m and refuses on the
+        lead time term alone."""
+        args = (
+            np.array([20.0]),
+            np.array([30.0]),
+            np.array([20.0]),
+            np.array([20.0]),
+            np.array([20.0]),
+            np.array([False]),
+        )
+        base = weave_acceptance(*args, PARAMS)
+        assert base["accepts"][0]
+        lag = weave_acceptance(*args, dataclasses.replace(PARAMS, accept_lag_gap_s=1.0))
+        assert lag["ok_lead_time"][0] and not lag["ok_lag_time"][0] and not lag["accepts"][0]
+        assert lag["need_lag_m"][0] == pytest.approx(5.0 + 20.0)
+        assert lag["need_lead_m"][0] == pytest.approx(base["need_lead_m"][0])
+        lead = weave_acceptance(
+            *args, dataclasses.replace(PARAMS, accept_gap_s=1.3, accept_lag_gap_s=0.6)
+        )
+        assert not lead["ok_lead_time"][0] and lead["ok_lag_time"][0] and not lead["accepts"][0]
+        # the exit keys leave a change to the left alone
+        other = dataclasses.replace(PARAMS, exit_accept_lag_gap_s=5.0)
+        assert weave_acceptance(*args, other)["accepts"][0]
+
+    def test_guard_follower_side_reads_the_follower_key(self) -> None:
+        """A follower at 25 m/s 12 m behind a 20 m/s changer (9.5 m
+        reported), no leader: the guard asks 2.5 + A_F · 5 m of it — 5.5 m
+        at 0.6 s, 10 m at 1.5 s; the leader side's key does not enter."""
+        args = (
+            np.array([20.0]),
+            np.array([np.nan]),
+            np.array([np.nan]),
+            np.array([12.0]),
+            np.array([25.0]),
+            np.array([True]),
+        )
+        assert weave_acceptance(*args, PARAMS)["ok_guard"][0]
+        tight = dataclasses.replace(PARAMS, exit_accept_lag_gap_s=1.5)
+        assert not weave_acceptance(*args, tight)["ok_guard"][0]
+        loose = dataclasses.replace(PARAMS, exit_accept_gap_s=1.5, exit_accept_lag_gap_s=0.6)
+        assert weave_acceptance(*args, loose)["ok_guard"][0]
+
+    def test_matches_the_runner_case_by_case_with_the_split(self) -> None:
+        """2,000 seeded random cases, four different time gaps (leader and
+        follower side of each movement), against the runner's
+        ``_weave_change_ok`` with ``accept_lag_s``."""
+        from microsim.runner import _weave_change_ok
+
+        p = AcceptanceParams(
+            accept_gap_s=0.4,
+            exit_accept_gap_s=1.2,
+            s0_m=2.53,
+            T_s=1.32,
+            a_max=1.05,
+            b=1.70,
+            v0_ms=24.59,
+            accept_lag_gap_s=0.9,
+            exit_accept_lag_gap_s=0.3,
+        )
+        rng = np.random.default_rng(20260925)
+        n = 2000
+        v = rng.uniform(0.0, 30.0, n)
+        lead_gap = np.where(rng.random(n) < 0.2, np.nan, rng.uniform(-2.0, 90.0, n))
+        lead_v = np.where(np.isnan(lead_gap), np.nan, rng.uniform(0.0, 30.0, n))
+        lag_gap = np.where(rng.random(n) < 0.2, np.nan, rng.uniform(-2.0, 90.0, n))
+        lag_v = np.where(np.isnan(lag_gap), np.nan, rng.uniform(0.0, 30.0, n))
+        right = rng.random(n) < 0.5
+        mine = weave_acceptance(v, lead_gap, lead_v, lag_gap, lag_v, right, p)["accepts"]
+        p_f = {"b": p.b, "s0": p.s0_m, "T": p.T_s, "a": p.a_max}
+        theirs = [
+            _weave_change_ok(
+                p.s0_m,
+                p.exit_accept_gap_s if right[i] else p.accept_gap_s,
+                float(v[i]),
+                p.b,
+                math.inf if np.isnan(lead_gap[i]) else float(lead_gap[i]) - p.s0_m,
+                float(lead_v[i]),
+                math.inf if np.isnan(lag_gap[i]) else float(lag_gap[i]) - p.s0_m,
+                float(lag_v[i]),
+                None if np.isnan(lag_gap[i]) else p_f,
+                p.v0_ms,
+                accept_lag_s=p.exit_lag_gap_s if right[i] else p.lag_gap_s,
+            )
+            for i in range(n)
+        ]
+        assert mine.tolist() == theirs
+        assert 0.1 < float(np.mean(theirs)) < 0.9
+        # the split decides differently from one value per movement somewhere
+        one = dataclasses.replace(p, accept_lag_gap_s=None, exit_accept_lag_gap_s=None)
+        single = weave_acceptance(v, lead_gap, lead_v, lag_gap, lag_v, right, one)["accepts"]
+        assert (single != mine).any()

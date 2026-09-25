@@ -914,6 +914,47 @@ def _weave_set_mode(mod: Any, vid: str, st: dict[str, Any], mode: int) -> None:
         st["mode"] = mode
 
 
+def _weave_lag_gap_s(prm: Mapping[str, Any], exiting: bool) -> float:
+    """The follower-side accepted time gap of a crossing movement [s] (WP-80).
+
+    The leader and follower gaps apart (2026-09-25, block 3;
+    docs/WEAVE_MODEL_PLAN.md, dated section WP-80). Each movement's time gap
+    is two values: the leader side keeps the existing key, ``accept_gap_s``
+    (entering) / ``exit_accept_gap_s`` (exiting), and the follower side
+    reads ``accept_lag_gap_s`` / ``exit_accept_lag_gap_s``. Unset — ``None``,
+    the ``WEAVE_DEFAULTS`` value, or absent from ``prm`` — the follower side
+    is the leader side's key, exactly the value every run before WP-80 used
+    on both sides (so a run that sets neither key is byte-identical to one
+    before the split). Every follower-side use of a movement's time gap
+    reads this function: the acceptance's ``s0 + A · v_F``
+    (:func:`_weave_step`, :func:`_weave_change_ok`), the forced guard's
+    follower-side closing bound (:func:`_weave_force_gap_ok`), the
+    cooperation's and the gated anticipation's follower targets
+    (:func:`_weave_cooperate`, :func:`_weave_coop_gate`), the swap's
+    follower-side checks (:func:`_weave_swap_step`,
+    :func:`_weave_swap_offset_ok`), the spread's gap opening
+    (:func:`_weave_spread_length`) and the follower side of the vacate and
+    early-move gap check (:func:`_weave_vacate_gap_ok`), which borrows the
+    entering movement's key. Not a fitted value; the calibrated per-side
+    values are a proposal in ``artifacts/i24_critical_gaps.json``.
+
+    Args:
+        prm: The section's ``weave_params`` with the defaults applied.
+        exiting: The exiting movement (``exit_accept_*``) instead of the
+            entering one.
+
+    Returns:
+        The follower side's time gap [s].
+    """
+    lead_key, lag_key = (
+        ("exit_accept_gap_s", "exit_accept_lag_gap_s")
+        if exiting
+        else ("accept_gap_s", "accept_lag_gap_s")
+    )
+    lag = prm.get(lag_key)
+    return float(prm[lead_key] if lag is None else lag)
+
+
 def _weave_brake_gap(s0: float, v_ego: float, v_lead: float, b: float) -> float:
     """The gap a vehicle closing on a slower leader needs to match its speed at ``b`` [m].
 
@@ -1000,6 +1041,7 @@ def _weave_force_gap_ok(
     v_foll: float,
     b_ego: float | None = None,
     b_foll: float | None = None,
+    accept_lag_s: float | None = None,
 ) -> bool:
     """Minimum-gap guard of a forced weave change (``LC_MODE_SCRIPTED_FORCE``).
 
@@ -1037,9 +1079,24 @@ def _weave_force_gap_ok(
     release keeps its regime (both below the creep speed, both brake gaps
     near zero) and loses the fast follower.
 
+    The leader and follower gaps apart (2026-09-25, block 3, WP-80): each
+    side's closing-speed bound reads that side's time gap — ``accept_s``
+    on the leader side, ``accept_lag_s`` on the follower side
+    (:func:`_weave_lag_gap_s`; ``None`` = ``accept_s``, the form before
+    WP-80). The guard is part of every *accepted* change as well
+    (:func:`_weave_step`), so a guard on one value would put the leader
+    side's time gap back on the follower side of every change whenever
+    the follower closes: with the exiting movement's calibrated sides
+    (2.58 s / 0.72 s) the guard's follower bound ``s0 + 2.58 · (v_F −
+    v)⁺`` exceeds the acceptance's own ``s0 + 0.72 · v_F`` once the
+    follower closes at more than 28 % of its speed. Per side, the guard
+    stays laxer than the acceptance on each side (``(v − v_L)⁺ ≤ v`` for a
+    leader at or above rest, ``(v_F − v)⁺ ≤ v_F``), which is what forcing
+    means.
+
     Args:
         s0: The changing vehicle's minimum gap [m].
-        accept_s: Accepted time gap of the movement [s].
+        accept_s: Accepted time gap of the movement [s] — its leader side.
         v_ego: Its speed [m/s].
         g_lead: Gap to the target-lane leader [m] (``inf`` when none).
         v_lead: That leader's speed [m/s] (``nan`` when none).
@@ -1051,6 +1108,8 @@ def _weave_force_gap_ok(
         b_foll: The follower's comfortable deceleration [m/s²] for the
             speed-aware follower side; ``None`` keeps the closing-speed
             bound alone.
+        accept_lag_s: The movement's follower-side time gap [s]
+            (:func:`_weave_lag_gap_s`); ``None`` uses ``accept_s``.
 
     Returns:
         Whether the forced change may be requested this step.
@@ -1060,7 +1119,8 @@ def _weave_force_gap_ok(
     lead_min = s0 + accept_s * closing_lead
     if b_ego is not None:
         lead_min = max(lead_min, s0 + closing_lead**2 / (2.0 * b_ego))
-    foll_min = s0 + accept_s * closing_foll
+    lag_s = accept_s if accept_lag_s is None else accept_lag_s
+    foll_min = s0 + lag_s * closing_foll
     if b_foll is not None:
         foll_min = max(foll_min, closing_foll**2 / (2.0 * b_foll))
     return g_lead > lead_min and g_foll > foll_min
@@ -1474,6 +1534,7 @@ def _weave_vacate_gap_ok(
     p_of: dict[str, dict[str, float]],
     accept_s: float,
     brake_lead: bool = False,
+    accept_lag_s: float | None = None,
 ) -> bool:
     """Whether the target-lane gap a through vehicle is in accepts it without follower braking.
 
@@ -1497,13 +1558,17 @@ def _weave_vacate_gap_ok(
         target: Target-lane vehicles as ``(x, id)``, ascending ``x``.
         v_of: Their speeds [m/s].
         p_of: Their constants (every id in ``target`` present).
-        accept_s: The accepted time gap [s] (``accept_gap_s``).
+        accept_s: The accepted time gap [s] (``accept_gap_s``) — the
+            leader side's.
         brake_lead: Also ask of the leader side the changer's brake gap
             on the leader at its own ``b``, ``s0_c + (v_c − v_L)⁺²/(2·b_c)``
             (:func:`_weave_brake_gap`, the speed-aware acceptance's leader
             side) — for a move into a *slower* lane, the exiters' early
             move (:func:`_weave_exit_prepare_step`); the vacate rule's
             target lane is the faster one and leaves it off.
+        accept_lag_s: The follower side's time gap [s] (WP-80,
+            ``accept_lag_gap_s`` through :func:`_weave_lag_gap_s`);
+            ``None`` uses ``accept_s``.
 
     Returns:
         Whether the vehicle may be asked to change this step.
@@ -1522,7 +1587,8 @@ def _weave_vacate_gap_ok(
         p_f = p_of[f_id]
         v_f = v_of[f_id]
         g_foll = x_c - p_c["len"] - x_f
-        if g_foll < p_c["s0"] + accept_s * v_f:
+        lag_s = accept_s if accept_lag_s is None else accept_lag_s
+        if g_foll < p_c["s0"] + lag_s * v_f:
             return False
         if g_foll < _idm_desired_gap(v_f, v_f - v_c, p_f["T"], p_f["a"], p_f["b"], p_f["s0"]):
             return False
@@ -1764,6 +1830,7 @@ def _weave_vacate_step(
     v_of = {vid: float(results[vid][tc.VAR_SPEED]) for _, vid in target} if now else {}
     p_of = {vid: _weave_veh(mod, ws, vid) for _, vid in target} if now else {}
     accept = float(prm["accept_gap_s"])
+    accept_lag = _weave_lag_gap_s(prm, exiting=False)
     for vid, x in sorted(now.items(), key=lambda kv: -kv[1]):
         if vid in active:
             if not gap_conditioned:
@@ -1772,7 +1839,7 @@ def _weave_vacate_step(
             continue  # asked before (the default form asks once)
         v = float(results[vid][tc.VAR_SPEED])
         if gap_conditioned and not _weave_vacate_gap_ok(
-            x, v, _weave_veh(mod, ws, vid), target, v_of, p_of, accept
+            x, v, _weave_veh(mod, ws, vid), target, v_of, p_of, accept, accept_lag_s=accept_lag
         ):
             if vid not in active:
                 pending.add(vid)
@@ -2065,6 +2132,7 @@ def _weave_exit_prepare_step(
         asks_s.popleft()
     budget = int(bound * VACATE_FLOW_WINDOW_S / 3600.0) - len(asks_s)
     accept = float(prm["accept_gap_s"])
+    accept_lag = _weave_lag_gap_s(prm, exiting=False)
     for x, vid, off in sorted(now, key=lambda row: -row[0]):
         if vid in active:
             if not gap_conditioned:
@@ -2079,7 +2147,15 @@ def _weave_exit_prepare_step(
             p_of = {k: _weave_veh(mod, ws, k) for _, k in right if k in results}
             right = [(xk, k) for xk, k in right if k in v_of]
             if not _weave_vacate_gap_ok(
-                x, v, _weave_veh(mod, ws, vid), right, v_of, p_of, accept, brake_lead=True
+                x,
+                v,
+                _weave_veh(mod, ws, vid),
+                right,
+                v_of,
+                p_of,
+                accept,
+                brake_lead=True,
+                accept_lag_s=accept_lag,
             ):
                 if vid not in active:
                     pending.add(vid)
@@ -2480,6 +2556,7 @@ def _weave_change_ok(
     v_foll: float,
     p_f: dict[str, float] | None,
     v0_f: float,
+    accept_lag_s: float | None = None,
 ) -> bool:
     """The section's acceptance of one change read off given target-lane gaps.
 
@@ -2492,11 +2569,13 @@ def _weave_change_ok(
     reported ones — the changer's ``minGap`` excluded on the leader side,
     the follower's on the follower side; ``inf`` / ``nan`` without a
     vehicle there. Used by the swap (:func:`_weave_swap_step`), which reads
-    each change with its partner removed from the target lane.
+    each change with its partner removed from the target lane. The
+    follower side, and the guard's follower side, read ``accept_lag_s``
+    (WP-80, :func:`_weave_lag_gap_s`).
 
     Args:
         s0_c: The changer's ``minGap`` [m].
-        accept_s: The movement's accepted time gap [s].
+        accept_s: The movement's accepted time gap [s] — its leader side.
         v_c: The changer's speed [m/s].
         b_c: Its comfortable deceleration [m/s²].
         g_lead: Reported gap to the target-lane leader [m].
@@ -2505,12 +2584,15 @@ def _weave_change_ok(
         v_foll: Its speed [m/s].
         p_f: The follower's constants (:func:`_weave_veh`), ``None`` without one.
         v0_f: The follower's desired speed [m/s].
+        accept_lag_s: The movement's follower-side time gap [s]; ``None``
+            uses ``accept_s``.
 
     Returns:
         Whether the change is accepted.
     """
+    lag_s = accept_s if accept_lag_s is None else accept_lag_s
     ok_lead = g_lead >= _weave_lead_gap_min(s0_c, accept_s, v_c, g_lead, v_lead, b_c)
-    ok_foll = g_foll >= s0_c + accept_s * (v_foll if g_foll < math.inf else 0.0)
+    ok_foll = g_foll >= s0_c + lag_s * (v_foll if g_foll < math.inf else 0.0)
     b_f = None
     if p_f is not None:
         b_f = p_f["b"]
@@ -2529,7 +2611,9 @@ def _weave_change_ok(
     return (
         ok_lead
         and ok_foll
-        and _weave_force_gap_ok(s0_c, accept_s, v_c, g_lead, v_lead, g_foll, v_foll, b_c, b_f)
+        and _weave_force_gap_ok(
+            s0_c, accept_s, v_c, g_lead, v_lead, g_foll, v_foll, b_c, b_f, accept_lag_s=lag_s
+        )
     )
 
 
@@ -2543,6 +2627,7 @@ def _weave_swap_offset_ok(
     acc_p: float,
     v_p: float,
     b_p: float,
+    lag_p: float | None = None,
 ) -> bool:
     """Whether a swap pair may exchange lanes in one step: the forced guard between the two.
 
@@ -2573,6 +2658,9 @@ def _weave_swap_offset_ok(
         acc_p: P's movement's accepted time gap [s].
         v_p: P's speed [m/s].
         b_p: P's comfortable deceleration [m/s²].
+        lag_p: P's movement's follower-side time gap [s] (WP-80: R is P's
+            follower, so P's follower side decides; ``None`` uses
+            ``acc_p``). R's side is its leader side, ``acc_r``.
 
     Returns:
         Whether both changes pass the forced guard against each other.
@@ -2580,7 +2668,9 @@ def _weave_swap_offset_ok(
     g = d_m - s0_r
     return _weave_force_gap_ok(
         s0_r, acc_r, v_r, g, v_p, math.inf, math.nan, b_r
-    ) and _weave_force_gap_ok(s0_p, acc_p, v_p, math.inf, math.nan, g, v_r, b_p, b_r)
+    ) and _weave_force_gap_ok(
+        s0_p, acc_p, v_p, math.inf, math.nan, g, v_r, b_p, b_r, accept_lag_s=lag_p
+    )
 
 
 def _weave_swap_opposing_clear(
@@ -2704,6 +2794,12 @@ def _weave_swap_step(
     the 29-run fixture grid the entrances fall 5,944 → 5,903 and the T.H.52
     capacity fixture's no-lock pin fails at seeds 3 and 5.
 
+    The leader and follower gaps apart (2026-09-25, block 3, WP-80): each
+    check reads the leader side's time gap of the changer's movement on
+    its leader side and the follower side's (:func:`_weave_lag_gap_s`) on
+    its follower side — in (i) R's side against P is R's leader side and
+    P's against R its follower side.
+
     Args:
         mod: The libsumo / traci module.
         tc: Its constants module.
@@ -2756,6 +2852,9 @@ def _weave_swap_step(
     lane2 = lanes.get(2, [])
     acc_e = float(prm["accept_gap_s"])
     acc_x = float(prm["exit_accept_gap_s"])
+    # the follower sides (WP-80; the leader sides' values when unset)
+    lag_e = _weave_lag_gap_s(prm, exiting=False)
+    lag_x = _weave_lag_gap_s(prm, exiting=True)
     p_of: dict[str, dict[str, float]] = {}
 
     def p(vid: str) -> dict[str, float]:
@@ -2793,6 +2892,8 @@ def _weave_swap_step(
         acc_r: float,
         acc_p: float,
         near: tuple[str | None, str | None, str | None, str | None],
+        lag_r: float,
+        lag_p: float,
     ) -> str:
         """``"go"``, or the first condition that refuses the exchange."""
         behind_p, ahead_p, behind_r, ahead_r = near
@@ -2800,7 +2901,7 @@ def _weave_swap_step(
         v_r, v_p = v_of[r_id], v_of[p_id]
         # (i) the forced guard between the two
         if not _weave_swap_offset_ok(
-            d, p_r["s0"], acc_r, v_r, p_r["b"], p_p["s0"], acc_p, v_p, p_p["b"]
+            d, p_r["s0"], acc_r, v_r, p_r["b"], p_p["s0"], acc_p, v_p, p_p["b"], lag_p=lag_p
         ):
             return "offset"
         # (ii) R into P's lane with P removed: P's leader, the vehicle behind P
@@ -2808,14 +2909,18 @@ def _weave_swap_step(
         gf, vf = foll_gap(r_id, behind_p)
         pf = p(behind_p) if behind_p is not None else None
         v0f = v0(behind_p) if behind_p is not None else 0.0
-        if not _weave_change_ok(p_r["s0"], acc_r, v_r, p_r["b"], gl, vl, gf, vf, pf, v0f):
+        if not _weave_change_ok(
+            p_r["s0"], acc_r, v_r, p_r["b"], gl, vl, gf, vf, pf, v0f, accept_lag_s=lag_r
+        ):
             return "rear"
         # (iii) P into R's lane with R removed: R's leader, the vehicle behind R
         gl, vl = lead_gap(p_id, ahead_r)
         gf, vf = foll_gap(p_id, behind_r)
         pf = p(behind_r) if behind_r is not None else None
         v0f = v0(behind_r) if behind_r is not None else 0.0
-        if not _weave_change_ok(p_p["s0"], acc_p, v_p, p_p["b"], gl, vl, gf, vf, pf, v0f):
+        if not _weave_change_ok(
+            p_p["s0"], acc_p, v_p, p_p["b"], gl, vl, gf, vf, pf, v0f, accept_lag_s=lag_p
+        ):
             return "front"
         # (iv) no opposing entry into lane 1 beside the entrant
         p_e = p(e_id)
@@ -2864,23 +2969,52 @@ def _weave_swap_step(
                 continue
             p_r, p_p = p(r_id), p(p_id)
             acc_r, acc_p = (acc_x, acc_e) if e_front else (acc_e, acc_x)
+            lag_r, lag_p = (lag_x, lag_e) if e_front else (lag_e, lag_x)
             v_r, v_p = v_of[r_id], v_of[p_id]
             d = x_of[p_id] - p_p["len"] - x_of[r_id]
             g = d - p_r["s0"]
             # blocked: the acceptance refuses R with P as its leader, or P with
             # R as its follower — else the section's own acceptance decides
             r_ok = _weave_change_ok(
-                p_r["s0"], acc_r, v_r, p_r["b"], g, v_p, math.inf, math.nan, None, 0.0
+                p_r["s0"],
+                acc_r,
+                v_r,
+                p_r["b"],
+                g,
+                v_p,
+                math.inf,
+                math.nan,
+                None,
+                0.0,
+                accept_lag_s=lag_r,
             )
             p_ok = _weave_change_ok(
-                p_p["s0"], acc_p, v_p, p_p["b"], math.inf, math.nan, g, v_r, p_r, v0(r_id)
+                p_p["s0"],
+                acc_p,
+                v_p,
+                p_p["b"],
+                math.inf,
+                math.nan,
+                g,
+                v_r,
+                p_r,
+                v0(r_id),
+                accept_lag_s=lag_p,
             )
             if r_ok and p_ok:
                 continue
             paired.update((e_id, x_id))
             ws["swap_candidates"] += 1
             reason = decide(
-                e_id, r_id, p_id, d, acc_r, acc_p, (behind_p, ahead_p, behind_r, ahead_r)
+                e_id,
+                r_id,
+                p_id,
+                d,
+                acc_r,
+                acc_p,
+                (behind_p, ahead_p, behind_r, ahead_r),
+                lag_r,
+                lag_p,
             )
             if reason == "go":
                 go.update((e_id, x_id))
@@ -2956,7 +3090,10 @@ def _weave_spread_length(
         v: The changer's speed [m/s].
         v0: Its desired speed on the lane it waits in [m/s].
         p: Its constants (:func:`_weave_veh`: ``T``, ``a``, ``b``, ``s0``).
-        accept_s: Its movement's accepted time gap [s].
+        accept_s: Its movement's accepted time gap on the follower side
+            [s] — the gap the follower opens (WP-80,
+            :func:`_weave_lag_gap_s`; the movement's single time gap
+            before).
 
     Returns:
         ``D ≥ 0`` [m].
@@ -3188,7 +3325,8 @@ def _weave_handover_step(
             if k != (0 if vid not in exiting else 1):
                 continue  # not arriving in its crossing lane: nothing withheld
             v0 = min(p["vmax"], _weave_lane_vmax(mod, ws, ws["edges"][0], k))
-            accept = prm["exit_accept_gap_s"] if vid in exiting else prm["accept_gap_s"]
+            # the gap the follower opens: the follower side's time gap (WP-80)
+            accept = _weave_lag_gap_s(prm, exiting=vid in exiting)
             if (
                 ws["onset"][vid] * _weave_spread_length(section_len, zone_m, v, v0, p, accept)
                 <= 0.0
@@ -3233,6 +3371,7 @@ def _weave_cooperate(
     priority: bool = False,
     t: float = 0.0,
     arrival_s: float | None = None,
+    accept_lag_s: float | None = None,
 ) -> str | None:
     """Choose a changer's gap on ``target_lane`` and record the two speed targets.
 
@@ -3352,11 +3491,20 @@ def _weave_cooperate(
     exit end's lanes 0 and 1 still fail every window
     (docs/WEAVE_MODEL_PLAN.md, dated section WP-75).
 
+    The leader and follower gaps apart (2026-09-25, block 3, WP-80):
+    ``accept_s`` is the movement's leader-side time gap — the changer's
+    deficit to the gap's leader and its easing towards it — and
+    ``accept_lag_s`` its follower-side one (:func:`_weave_lag_gap_s`;
+    ``None`` uses ``accept_s``): whether the follower's side of the gap is
+    open (the bounded hold) and the gated anticipation's opening time, so
+    the cooperation opens the gap the acceptance asks on each side.
+
     Returns:
         The chosen gap's follower id (the commitment carried to the next
         step), or ``None``.
     """
     prm = ws["params"]
+    lag_s = accept_s if accept_lag_s is None else accept_lag_s
     res = results[vid]
     road = res[tc.VAR_ROAD_ID]
     v_c = float(res[tc.VAR_SPEED])
@@ -3451,7 +3599,7 @@ def _weave_cooperate(
         brake_f = _weave_brake_gap(0.0, v_of[f_t], v_c, p_f["b"])
         inside_brake = s_f <= brake_f
         follower_open = (
-            s_f >= p_c["s0"] + accept_s * v_of[f_t] and a_f >= -p_f["b"] and not inside_brake
+            s_f >= p_c["s0"] + lag_s * v_of[f_t] and a_f >= -p_f["b"] and not inside_brake
         )
         if l_t is None:
             deficit = 0.0
@@ -3510,7 +3658,7 @@ def _weave_cooperate(
             v_of[f_t],
             v_c,
             p_c["s0"],
-            accept_s,
+            lag_s,
             p_of[f_t]["b"],
             arrival_s,
         ):
@@ -3652,7 +3800,9 @@ def _weave_coop_gate(
         v_f: F's speed [m/s].
         v_c: The entrant's speed [m/s].
         s0_c: The entrant's ``minGap`` [m].
-        accept_s: The entering movement's accepted time gap [s].
+        accept_s: The entering movement's accepted time gap on the
+            follower side [s] (WP-80, :func:`_weave_lag_gap_s`; the
+            movement's single time gap before).
         b_f: F's comfortable deceleration [m/s²].
         arrival_s: The entrant's time to the section start [s].
 
@@ -4659,8 +4809,15 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     acceleration towards the changer, gap = reported gap + its ``minGap``)
     and :func:`_weave_force_gap_ok` passes; a forced change uses the guard
     alone, whose two sides carry the brake gaps of the changer and of the
-    follower. A step with no request leaves the vehicle on mode 512. Control is
-    handed back (mode restored) when the vehicle has no change left to make;
+    follower. The leader and follower gaps apart (2026-09-25, block 3,
+    WP-80): the leader-side terms read the movement's key (``accept_gap_s``
+    / ``exit_accept_gap_s``), the follower-side ones — the time gap at
+    ``v_F`` and the guard's follower-side closing bound, in the acceptance
+    and in the forced guard alike — ``accept_lag_gap_s`` /
+    ``exit_accept_lag_gap_s``, which default to unset, the leader side's
+    value (:func:`_weave_lag_gap_s`). A step with no request leaves the
+    vehicle on mode 512. Control is handed back (mode restored) when the
+    vehicle has no change left to make;
     a driven vehicle on an internal junction lane between two section pieces
     (``OSMNetwork.internal_links``) is neither driven nor handed back that
     step. Bookkeeping lands in ``ws`` for ``meta.json``.
@@ -4798,7 +4955,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 v_of[vid],
                 v0_w,
                 p_w,
-                prm["accept_gap_s"] if d > 0 else prm["exit_accept_gap_s"],
+                _weave_lag_gap_s(prm, exiting=d < 0),
             )
             if x_of[vid] - x_start < frac_of[vid] * d_w:
                 waiting.add(vid)
@@ -4894,6 +5051,8 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         else:
             modes = (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
             accept = prm["exit_accept_gap_s"]
+        # the follower side's time gap (WP-80; the leader side's when unset)
+        accept_lag = _weave_lag_gap_s(prm, exiting=d < 0)
         if remaining <= rule["zone_m"] and st["zone_s"] is None:
             st["zone_s"] = t
         # the forced change is due (the forced zone's exit priority)
@@ -4921,7 +5080,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         # at its own b, floored by the movement's time gap
         b_c = _weave_veh(mod, ws, vid)["b"]
         ok_lead = g_lead >= _weave_lead_gap_min(st["s0"], accept, v_ego, g_lead, v_lead, b_c)
-        ok_foll = g_foll >= st["s0"] + accept * (v_foll if g_foll < math.inf else 0.0)
+        ok_foll = g_foll >= st["s0"] + accept_lag * (v_foll if g_foll < math.inf else 0.0)
         b_f = _weave_veh(mod, ws, f_id)["b"] if f_id is not None else None
         if ok_foll and f_id is not None:
             # the immediate follower must absorb the changer within its own b
@@ -4957,7 +5116,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             ok_lead
             and ok_foll
             and _weave_force_gap_ok(
-                st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
+                st["s0"],
+                accept,
+                v_ego,
+                g_lead,
+                v_lead,
+                g_foll,
+                v_foll,
+                b_c,
+                b_f,
+                accept_lag_s=accept_lag,
             )
         ) or vid in swapping
         if spread and accepted and d > 0 and vid not in swapping:
@@ -4994,7 +5162,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         # speed-aware guard, against a follower that cannot brake for it at b
         s0_guard = 0.0 if vid in released else st["s0"]
         forced_ok = force and _weave_force_gap_ok(
-            s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
+            s0_guard,
+            accept,
+            v_ego,
+            g_lead,
+            v_lead,
+            g_foll,
+            v_foll,
+            b_c,
+            b_f,
+            accept_lag_s=accept_lag,
         )
         if (
             d < 0
@@ -5086,6 +5263,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             # or (WP-73) from the exiter's own braking onset
             d < 0 and (zone_due or onset_due),
             t,
+            accept_lag_s=accept_lag,
         )
         if onset_due and not zone_due:
             ws["n_onset_priority"] += 1
@@ -5159,7 +5337,12 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             if (
                 ws["onset"][vid]
                 * _weave_spread_length(
-                    section_len, float(rule["zone_m"]), v_of[vid], v0_a, p_a, prm["accept_gap_s"]
+                    section_len,
+                    float(rule["zone_m"]),
+                    v_of[vid],
+                    v0_a,
+                    p_a,
+                    _weave_lag_gap_s(prm, exiting=False),
                 )
                 > 0.0
             ):
@@ -5188,6 +5371,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             # the gated anticipation (WP-60): the entrant's time to the
             # section start at its speed, floored at the creep speed
             arrival_s=(x_start - x_of[vid]) / max(v_of[vid], SCRIPTED_MERGE_CREEP_MS),
+            accept_lag_s=_weave_lag_gap_s(prm, exiting=False),
         )
         if prm["entry_speed_bound"] > 0.0:
             # the entrant's entry speed (WP-57): no faster onto the

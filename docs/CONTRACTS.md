@@ -1535,6 +1535,57 @@ rise 44 → 64 (45 → 59 with `ramp_outlet`), the entrances fall 5,944 → 5,54
 unchanged at the default (hash 436cd4ec9e5d; with the key set the rule binds
 there, 132 entrant-steps).
 
+**The leader and follower gaps apart** (2026-09-25, block 3, WP-80;
+docs/WEAVE_MODEL_PLAN.md, dated section; two `WEAVE_DEFAULTS` keys,
+`accept_lag_gap_s` and `exit_accept_lag_gap_s`, default **`None` = unset**;
+`WEAVE_DEFAULTS` is typed `dict[str, float | None]` from here on, the
+overrides in `WeaveSpec.weave_params` stay `dict[str, float]`, so a key is
+unset by leaving it out). Each crossing movement's accepted time gap is now
+two values: the existing key (`accept_gap_s` entering, `exit_accept_gap_s`
+exiting) governs the **leader side**, the new key the **follower side**;
+unset, the follower side reads the leader side's key
+(`microsim.runner._weave_lag_gap_s`), which is every run before WP-80. The
+split threads through every follower-side use of a movement's time gap: the
+acceptance's `s0 + A · v_F` and the forced guard's follower-side closing
+bound `s0 + A · (v_F − v)⁺` (`_weave_force_gap_ok(..., accept_lag_s)`, used
+by the acceptance and by the forced change alike — amending the single
+`exit_accept_gap_s` × closing speed stated above), `_weave_change_ok` and
+the swap's pairwise guard (`_weave_swap_offset_ok(..., lag_p)`, the front
+vehicle's side being its follower side), the cooperation's
+follower-side test and the gated anticipation's opening time
+(`_weave_cooperate(..., accept_lag_s)`, `_weave_coop_gate`), the spread's
+gap opening (`_weave_spread_length`) and the follower side of the vacate /
+early-move gap check (`_weave_vacate_gap_ok(..., accept_lag_s)`, which
+borrows the entering keys). Every leader-side use keeps the existing key:
+`_weave_lead_gap_min`, the guard's leader side, the changer's easing and
+its deficit to the gap's leader, the give-up's abreast floor, the entrant
+yield's clearance and the opposing-entry guard. The forced guard takes the
+split because it is part of every accepted change: on one value it would
+put the leader side's time gap back on the follower side whenever the
+follower closes (with 2.584 / 0.721 s, once the follower closes at more
+than 28 % of its speed), and per side it stays laxer than the acceptance
+on each side. `calibration.lane_change_gaps.AcceptanceParams` gains the
+two optional fields (see "Lane-change gap records"). Hash-neutral unless
+set; no `meta.json` key is added (`weave_sections[i]` stays at 44 keys;
+`params` records the two keys, `null` when unset). Not fitted values: the
+calibrated per-side values are the proposal of
+`artifacts/i24_critical_gaps.json` (`proposal.*.lead_side_only` /
+`lag_side_only`), measured on the fixtures and not made defaults. Measured
+(docs/WEAVE_MODEL_PLAN.md, dated section WP-80): at the defaults the
+goldens, the hashes, the trajectories and the 29-run grid are
+byte-identical (HEAD against the tree on 7 runs; the grid's default rows
+against WP-79's, 1,276 fields, 0 differ). With the proposal's four values
+(entering 0.0 / 0.778 s, exiting 2.584 / 0.721 s) the corridor section
+test's criterion (ii) fails at every seed; all four against the default
+over seeds 3–12 give up +1.6 [−0.4, +3.6] exits a run with lane 1's worst
+window −2.1 [−3.4, −0.7] m/s; on the grid give-ups rise 44 → 134 and the
+T.H.52 capacity fixture's no-lock pin fails at all three seeds (the
+exiting pair alone: 108, all three seeds; the entering pair alone: 47,
+seed 4); golden `merge_weave` moves with any key set (all four: 1,650.7
+against 1,680.0 veh/h); one collision in 228 runs, the entering pair at
+seed 11, the two-opposing-changes-in-one-step defect the swap and the
+spread guard against.
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:
@@ -2754,9 +2805,9 @@ WP-77 (docs/WEAVE_MODEL_PLAN.md, dated section). `calibration.lane_change_gaps.l
   - With no neighbour within `max_range_m`, the id is null and the numbers NaN.
   - A time gap is NaN below 0.1 m/s.
 - `suspect`: a neighbour gap below `min_gap_m`.
-- *With `acceptance`* (`AcceptanceParams`: `accept_gap_s`, `exit_accept_gap_s`, `s0_m`, `T_s`, `a_max`, `b`, `v0_ms`, `source`):
+- *With `acceptance`* (`AcceptanceParams`: `accept_gap_s`, `exit_accept_gap_s`, `s0_m`, `T_s`, `a_max`, `b`, `v0_ms`, `source`, and since WP-80 the optional follower-side `accept_lag_gap_s` / `exit_accept_lag_gap_s`, `None` = the leader side's value, written by `to_dict` only when set, so an artifact written without them reads as before):
   - `need_lead_m`, `need_lag_m`: the bumper gaps each side needs, NaN on an empty side;
-  - the booleans `ok_lead_time`, `ok_lead_brake`, `ok_lag_time`, `ok_lag_absorb`, `ok_guard`;
+  - the booleans `ok_lead_time`, `ok_lead_brake`, `ok_lag_time`, `ok_lag_absorb`, `ok_guard` (the lag time term and the guard's follower-side closing bound read the follower-side time gap);
   - `model_accepts`: `microsim.runner._weave_change_ok` restated on bumper gaps; the tests check it case by case.
 - *With `groups`:* `group`.
 

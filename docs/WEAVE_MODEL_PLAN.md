@@ -6418,3 +6418,297 @@ Reading.
   - the 101 kept run directories, the critical-gap and crossing JSONs, and the grid rows.
 
 Every number above is from those runs, from the committed files named, or from the tests.
+
+## 2026-09-25 (block 3, WP-80, leader and follower gaps apart): each crossing movement's accepted time gap is now two values, a leader side (`accept_gap_s` / `exit_accept_gap_s`, as before) and a follower side (`accept_lag_gap_s` / `exit_accept_lag_gap_s`, new, unset by default and then the leader side's value), threaded through the acceptance, the forced guard, the cooperation, the swap, the spread and the upstream gap checks; at the defaults every hash, golden, trajectory and grid row is byte-identical. With VM Z's four per-side values the model's entrants keep a follower gap near real drivers' (0.76 s against 0.92 s observed) and take leaders at least as close as they do, but they cross no faster; the exiters' 2.58 s leader side alone makes them wait, cross further downstream and give up more, and the exit end slows. The corridor section test passes in no form; on the 29-run grid all four triple the give-ups (44 → 134) and break the T.H.52 capacity fixture's no-lock pin at all three seeds, as the exiting pair alone does; the entering pair alone holds the grid's totals and breaks the pin at seed 4. One collision in 228 runs, the known defect of two opposing changes into lane 1 in one step. `WEAVE_DEFAULTS` values unchanged
+
+**Why.** VM Z fitted real drivers' critical gaps in the I-24 MOTION Hickory Hollow–Bell Road weave separately for the two sides of each change (`artifacts/i24_critical_gaps.json`, joint fits): entering 0.46 [0.40, 0.53] s to the leader and 0.92 [0.84, 1.03] s to the follower; exiting 2.89 [2.47, 3.38] / 1.11 [0.91, 1.34] s. The weave's acceptance had one time gap per movement applied to both sides. WP-79 applied the one-value least-squares proposal (0.089 / 1.78 s) and found that the exit value, a compromise between a 2.58 s leader side and a 0.72 s follower side, made exiters wait and give up; VM AA (docs/ONBOARDING_MNDOT.md §11) found the same on the corridor (T.H.52 exits given up 1,356 against 481). WP-79 named the remaining step: a change of model form, a time gap per side. This package makes it, proves the default unchanged, and measures the four per-side values the artifact's `proposal` block already gives.
+
+**The split.**
+- *Keys.* `WEAVE_DEFAULTS` gains `accept_lag_gap_s` and `exit_accept_lag_gap_s`, default `None` (unset). `WEAVE_DEFAULTS` is typed `dict[str, float | None]` from here on; the overrides in `WeaveSpec.weave_params` stay `dict[str, float]`, so a key is unset by leaving it out. The existing keys keep governing the leader side, and both sides while the new keys are unset. Not fitted values; the calibrated per-side values stay a proposal in the artifact.
+- *Resolution.* `microsim.runner._weave_lag_gap_s(prm, exiting)` returns the follower side's value: the new key when set (0.0 included), else the movement's existing key — exactly the value every run before WP-80 used on both sides. A params dict without the keys (written before them) resolves the same way.
+- *Where the follower side enters* (every place the movement's time gap was read for a follower-side test):
+  - the acceptance in `_weave_step`: `g_F ≥ s0 + A_F · v_F`;
+  - the forced guard's follower-side closing bound, `g_F > s0 + A_F · (v_F − v)⁺` (`_weave_force_gap_ok(..., accept_lag_s)`), both where it is part of an accepted change and where it guards a forced one;
+  - `_weave_change_ok(..., accept_lag_s)`, the acceptance read off given gaps, used by the swap; the swap's pairwise guard `_weave_swap_offset_ok(..., lag_p)`, where the front vehicle's side against the rear one is its follower side; `_weave_swap_step` passes each changer's own movement's pair;
+  - the cooperation (`_weave_cooperate(..., accept_lag_s)`): whether the follower's side of the chosen gap is open (the bounded hold) and the gated anticipation's opening time (`_weave_coop_gate`);
+  - the spread's gap opening, `sqrt(2 · (s0 + A_F · v) / b)` (`_weave_spread_length`, called with the follower side);
+  - the follower side of the vacate / early-move gap check (`_weave_vacate_gap_ok(..., accept_lag_s)`), which borrows the entering keys.
+- *Where the leader side stays* (the existing key alone): `_weave_lead_gap_min` (the time gap at the changer's speed and its brake gap), the guard's leader side, the changer's easing towards the gap's leader and its deficit to it, the give-up's abreast floor, the entrant yield's clearance (the exiter's leader side), and the opposing-entry guard of the swap and the spread (leader sides only).
+- *The forced guard takes the split, for this reason.* The guard is not only the forced change's test: it is part of every accepted change (`accepted = ok_lead ∧ ok_foll ∧ guard`). On one value it would put the leader side's time gap back on the follower side whenever the follower closes. With the exiting sides 2.584 / 0.721 s, the guard's follower bound `s0 + 2.584 · (v_F − v)⁺` exceeds the acceptance's own `s0 + 0.721 · v_F` once the follower closes at more than 28 % of its speed, so the split would be undone exactly on the closing followers. Per side, the guard stays laxer than the acceptance on each side (`(v − v_L)⁺ ≤ v` for a leader at or above rest, `(v_F − v)⁺ ≤ v_F`), which is what forcing means; the brake-gap terms, which do not involve A, are unchanged.
+- *The upstream gap checks take the split too*, by the same rule: they restate the weave's time-gap acceptance with the entering keys, so their follower side reads the entering follower key. Both rules are off by default (`vacate_no_follower_braking`, `exit_prepare`).
+- *The offline restatement.* `calibration.lane_change_gaps.AcceptanceParams` gains the two optional fields (`None` = the leader side's value; written by `to_dict` only when set, so an artifact written without them reads as before); `weave_acceptance`'s follower time term, its guard's follower-side closing bound and `need_lag_m` read them. A test checks the restatement against the runner's `_weave_change_ok` with four different time gaps on 2,000 seeded random cases.
+- *No `meta.json` key is added* (`weave_sections[i]` stays at 44 keys); `params` records the two keys, `null` when unset.
+
+**Byte identity at the defaults.**
+- *Before and after, same runs.* The golden `merge_weave` run, the T.H.52 capacity fixture at seeds 3–5 and the corridor section fixture at seeds 3–5, once on HEAD 67f543d's packages (`git archive`, shadowing the installed ones through `PYTHONPATH`) and once on the working tree: the config hash, the trajectories' and vehicles' md5 and every weave counter are identical in all 7 runs (`wp80/ident.py`).
+- *The keys set to the leader side's values* (`accept_lag_gap_s` = `exit_accept_lag_gap_s` = 0.6) on the same 7 runs: identical trajectories, vehicles and counters; only the config hash moves, as for any weave key that is set. The unit test `test_explicit_leader_values_run_as_unset` pins the same on `weave.osm`.
+- *The corridor section fixture at seeds 3–12*: the default's trajectories md5 equal WP-79's rows (runner fe16194895ee) at 10 of 10 seeds, and so do `exit_prepare` alone and `ramp_outlet` alone (10 of 10 each), with the acceptance hook installed.
+- *The 29-run grid*: the default rows equal WP-79's: 1,276 fields compared, 0 differ; the acceptance's term counts at the default (`acc80` against WP-79's `acc79`, common keys) 1,376 compared, 0 differ.
+- *The gate's tests*: the 11 golden summaries (`merge_weave` hash 436cd4ec9e5d), the four determinism tests, the config-hash tests pass unchanged, and the corridor section test still fails as its strict `xfail` states (T.H.52 381 / 381 / 336 of 407 at seeds 3 / 4 / 5); the only edited existing assertion is the `WEAVE_DEFAULTS` key list in `test_defaults_and_hash`, which gains the two keys.
+- *The new tests* (13 in `TestWeaveLeaderFollowerGapsApart`, 5 in `TestAcceptanceLeaderFollowerApart`): the resolution (0.0 is a value, not unset); leader-limited and follower-limited changes through `_weave_step` for both movements (a change limited by its leader is refused by the leader key at 1.5 s whatever the follower key, and not by the follower key; one limited by its follower is refused by the follower key at 1.5 s, and by the leader key at 1.5 s only while the follower key is unset, as before the split); the exiting compromise 1.78 s against 2.584 / 0.721 s (it refuses a follower 12 m behind that the split takes, and takes a leader 25 m ahead that the split refuses); the guard's sides; a forced change deferred on one value and made on the split; `_weave_change_ok`, the swap's guard and the vacate check; the schema and hash; the offline restatement. Run against HEAD's packages, 11 of the 13 microsim tests fail and the two leader-side ones pass.
+
+**What was run.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)` (`tests/fixtures/weave_th52_corridor.osm`, the observed 05:30–05:50 movements, the corridor's EIDM fleet, 20 simulated minutes at 0.5 s), `weave_params` on the T.H.52 weave, seeds 3–12, one run at a time.
+- *The four values* (`artifacts/i24_critical_gaps.json`, `proposal`): entering leader side 0.0 (`lead_side_only`: floored at 0, unfloored −0.0142), follower side 0.778 (`lag_side_only` 0.7784); exiting leader side 2.584 (2.5836), follower side 0.721 (0.7214).
+- *Forms* (seeds 3–12 each): the default; all four; the entering pair only; the exiting pair only; all four + `exit_prepare: 1.0` (the corridor's reference weave key; WP-79 showed the network's `lane_end_giveup_m` inert on this fixture); all four + `ramp_outlet: 1.0`; the entering pair + `exit_prepare: 1.0` (added after the grid, as the only part the grid tolerates); and `exit_prepare` alone and `ramp_outlet` alone as bases.
+- *Code.* HEAD 67f543d with this package's tree uncommitted; `runner.py` md5 fe4ce1da5a64 in every measured run. macOS records.
+- *Harness* (session, `wp80/`). `corr80.py` (WP-79's `corr.py`) with `acc_hook80.py`, WP-79's read-only acceptance decomposition evaluated at the run's per-side values and at 0.6 / 0.6; its conjunction is checked against the runner's own functions with the split at every evaluated vehicle-step: 0 mismatches in the 90 runs with the hook. The hook is read-only: all four at seed 3 wrote identical trajectories with and without it. 2.1–3.3 s wall per run, 434 MB peak RSS at seed 3.
+- *Criteria* (the test's): (i) the mainline departs at least 1,137 of 1,196 and T.H.52 at least 387 of 407; (ii) all 16 lane-windows of the section's last 60 m are above 20 m/s; (iii) no collision; (iv) at most 2 % of the exiters that reach the section give up.
+
+**(1) The corridor section test.**
+
+*Seeds 3 / 4 / 5, every criterion. "Fails" lists the failed criteria.*
+
+| form | seed | mainline | T.H.52 | lane-windows ≤ 20 m/s (lanes 0 / 1 / 2 / 3) | lane 0, last 60 m, windows 1–4 [m/s] | lane 1, last 60 m, windows 1–4 [m/s] | given up of reached | unfinished | forced / deferred | fails |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | 3 | 1,177 | 381 | 12 (4 / 4 / 2 / 2) | 16.7 / 17.2 / 11.3 / 13.8 | 19.6 / 19.5 / 13.0 / 15.2 | 1 of 367 | 4 | 21 / 52 | (i) T.H.52, (ii) |
+| default | 4 | 1,162 | 381 | 10 (4 / 4 / 2 / 0) | 16.1 / 15.2 / 8.0 / 12.8 | 18.8 / 17.0 / 10.7 / 14.5 | 0 of 404 | 7 | 34 / 125 | (i) T.H.52, (ii) |
+| default | 5 | 1,111 | 336 | 13 (4 / 4 / 4 / 1) | 7.9 / 11.8 / 8.9 / 7.9 | 7.6 / 13.2 / 13.5 / 10.7 | 2 of 395 | 6 | 53 / 220 | (i) mainline, (i) T.H.52, (ii) |
+| all four | 3 | 1,177 | 354 | 12 (4 / 4 / 2 / 2) | 10.8 / 13.8 / 11.7 / 11.9 | 13.1 / 14.8 / 13.7 / 12.6 | 0 of 357 | 5 | 78 / 39 | (i) T.H.52, (ii) |
+| all four | 4 | 1,123 | 305 | 15 (4 / 4 / 4 / 3) | 6.0 / 12.2 / 5.7 / 8.7 | 5.5 / 10.7 / 7.2 / 10.6 | 7 of 362 | 12 | 106 / 693 | (i) mainline, (i) T.H.52, (ii) |
+| all four | 5 | 1,154 | 347 | 13 (4 / 4 / 3 / 2) | 13.3 / 10.2 / 5.4 / 6.6 | 12.5 / 11.8 / 5.7 / 7.4 | 3 of 406 | 4 | 118 / 767 | (i) T.H.52, (ii) |
+| entering pair only | 3 | 1,185 | 371 | 10 (4 / 3 / 2 / 1) | 16.4 / 13.5 / 15.0 / 14.4 | 20.7 / 14.7 / 15.9 / 16.4 | 1 of 359 | 1 | 10 / 51 | (i) T.H.52, (ii) |
+| entering pair only | 4 | 1,171 | 365 | 10 (4 / 4 / 2 / 1) | 17.5 / 15.9 / 15.2 / 9.4 | 20.0 / 18.3 / 16.5 / 11.4 | 0 of 400 | 7 | 23 / 101 | (i) T.H.52, (ii) |
+| entering pair only | 5 | 1,138 | 335 | 14 (4 / 4 / 4 / 2) | 7.3 / 13.8 / 11.7 / 8.9 | 7.0 / 15.5 / 13.0 / 11.3 | 3 of 400 | 2 | 38 / 202 | (i) T.H.52, (ii) |
+| exiting pair only | 3 | 1,148 | 363 | 13 (4 / 4 / 3 / 2) | 10.8 / 10.6 / 9.3 / 10.7 | 11.9 / 13.6 / 10.2 / 11.5 | 3 of 350 | 0 | 80 / 216 | (i) T.H.52, (ii) |
+| exiting pair only | 4 | 1,157 | 327 | 15 (4 / 4 / 4 / 3) | 6.2 / 12.4 / 7.4 / 9.1 | 5.5 / 13.5 / 6.7 / 10.8 | 7 of 372 | 4 | 97 / 551 | (i) T.H.52, (ii) |
+| exiting pair only | 5 | 1,121 | 349 | 15 (4 / 4 / 4 / 3) | 7.5 / 7.9 / 6.1 / 8.1 | 8.2 / 7.5 / 6.9 / 9.6 | 7 of 397 | 7 | 132 / 729 | (i) mainline, (i) T.H.52, (ii) |
+| all four + `exit_prepare` | 3 | 1,153 | 358 | 12 (4 / 4 / 3 / 1) | 12.3 / 12.5 / 7.2 / 9.7 | 14.8 / 14.0 / 8.3 / 11.5 | 3 of 345 | 7 | 75 / 275 | (i) T.H.52, (ii) |
+| all four + `exit_prepare` | 4 | 1,121 | 324 | 14 (4 / 4 / 4 / 2) | 5.9 / 12.9 / 5.7 / 6.6 | 5.5 / 13.2 / 7.1 / 7.9 | 2 of 361 | 6 | 101 / 748 | (i) mainline, (i) T.H.52, (ii) |
+| all four + `exit_prepare` | 5 | 1,120 | 340 | 13 (4 / 4 / 3 / 2) | 12.8 / 9.5 / 5.7 / 7.7 | 12.6 / 11.6 / 8.1 / 8.4 | 3 of 396 | 9 | 107 / 503 | (i) mainline, (i) T.H.52, (ii) |
+| all four + `ramp_outlet` | 3 | 1,196 | 393 | 13 (4 / 4 / 3 / 2) | 7.7 / 12.9 / 7.1 / 9.9 | 8.7 / 15.2 / 9.7 / 11.0 | 2 of 373 | 6 | 89 / 363 | (ii) |
+| all four + `ramp_outlet` | 4 | 1,170 | 379 | 13 (4 / 4 / 4 / 1) | 7.8 / 11.1 / 6.9 / 7.0 | 10.4 / 12.6 / 9.0 / 7.7 | 6 of 410 | 4 | 117 / 462 | (i) T.H.52, (ii) |
+| all four + `ramp_outlet` | 5 | 1,150 | 390 | 13 (4 / 4 / 3 / 2) | 13.2 / 7.0 / 7.1 / 8.6 | 12.5 / 9.4 / 10.0 / 9.9 | 1 of 422 | 4 | 117 / 302 | (ii) |
+| entering pair + `exit_prepare` | 3 | 1,175 | 381 | 11 (4 / 4 / 2 / 1) | 15.3 / 16.4 / 10.3 / 5.5 | 18.3 / 18.1 / 14.9 / 9.5 | 1 of 361 | 1 | 20 / 291 | (i) T.H.52, (ii) |
+| entering pair + `exit_prepare` | 4 | 1,119 | 361 | 10 (4 / 3 / 2 / 1) | 18.3 / 12.8 / 13.4 / 4.5 | 20.7 / 15.8 / 15.7 / 4.0 | 6 of 381 | 6 | 32 / 538 | (i) mainline, (i) T.H.52, (ii) |
+| entering pair + `exit_prepare` | 5 | 1,103 | 348 | 14 (4 / 4 / 4 / 2) | 7.3 / 8.1 / 12.8 / 11.7 | 7.1 / 10.3 / 15.9 / 14.3 | 2 of 398 | 4 | 31 / 218 | (i) mainline, (i) T.H.52, (ii) |
+
+*Seeds 3–12: mean [95 % t-interval], and the number of seeds passing each criterion.*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s | lane 0 lowest window [m/s] | lane 1 lowest window [m/s] | given up | seeds passing (i) mainline / (i) T.H.52 / (ii) / (iii) / (iv) |
+|---|---|---|---|---|---|---|---|
+| default | 1,152.3 [1,138.0, 1,166.6] | 337.4 [318.5, 356.3] | 12.3 [11.5, 13.1] | 8.7 [7.4, 10.1] | 10.4 [9.3, 11.6] | 1.2 [0.3, 2.1] | 8 / 0 / 0 / 10 / 10 |
+| all four | 1,142.0 [1,122.0, 1,162.0] | 332.9 [318.2, 347.6] | 13.3 [12.5, 14.1] | 7.1 [5.8, 8.5] | 8.3 [6.7, 10.0] | 2.8 [1.2, 4.4] | 5 / 0 / 0 / 10 / 10 |
+| entering pair only | 1,143.5 [1,125.7, 1,161.3] | 347.4 [335.4, 359.4] | 11.7 [10.6, 12.8] | 8.9 [6.8, 10.9] | 10.3 [7.9, 12.8] | 1.6 [0.6, 2.6] | 5 / 0 / 0 / 9 / 10 |
+| exiting pair only | 1,139.1 [1,126.5, 1,151.7] | 333.8 [318.7, 348.9] | 13.6 [12.8, 14.4] | 6.7 [5.6, 7.8] | 7.6 [6.3, 8.9] | 4.6 [3.2, 6.0] | 5 / 0 / 0 / 10 / 10 |
+| all four + `exit_prepare` | 1,122.5 [1,105.7, 1,139.3] | 343.0 [331.6, 354.4] | 12.8 [12.0, 13.6] | 6.4 [5.7, 7.1] | 7.5 [6.4, 8.6] | 3.6 [2.4, 4.8] | 3 / 0 / 0 / 10 / 10 |
+| all four + `ramp_outlet` | 1,159.9 [1,140.6, 1,179.2] | 376.7 [363.8, 389.6] | 13.3 [12.7, 13.9] | 6.5 [6.1, 6.9] | 7.5 [6.5, 8.4] | 3.0 [1.9, 4.1] | 8 / 4 / 0 / 10 / 10 |
+| entering pair + `exit_prepare` | 1,123.0 [1,107.5, 1,138.5] | 347.1 [334.9, 359.3] | 11.3 [10.3, 12.3] | 8.1 [5.9, 10.3] | 10.0 [7.3, 12.6] | 1.6 [0.4, 2.8] | 1 / 0 / 0 / 10 / 10 |
+| `exit_prepare` alone | 1,113.4 [1,085.7, 1,141.1] | 350.0 [334.9, 365.1] | 11.6 [10.8, 12.4] | 8.7 [7.0, 10.4] | 9.5 [8.0, 11.1] | 1.9 [1.0, 2.8] | 4 / 0 / 0 / 10 / 10 |
+| `ramp_outlet` alone | 1,171.3 [1,148.8, 1,193.8] | 375.0 [355.7, 394.3] | 12.4 [11.4, 13.4] | 7.2 [5.7, 8.7] | 9.7 [8.3, 11.2] | 2.0 [1.0, 3.0] | 8 / 5 / 0 / 10 / 10 |
+
+*Seed by seed (seeds 3 to 12 in order). "Lowest" is the run's lowest of its four 5-min windows in that lane's last 60 m.*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s | lane 0 lowest [m/s] | lane 1 lowest [m/s] | given up | passes all |
+|---|---|---|---|---|---|---|---|
+| default | 1177 1162 1111 1147 1168 1162 1125 1156 1158 1157 | 381 381 336 318 349 339 309 312 334 315 | 12 10 13 12 12 13 14 13 11 13 | 11.3 8.0 7.9 8.2 11.9 9.4 7.5 6.5 10.2 6.6 | 13.0 10.7 7.6 9.9 12.0 10.0 8.6 10.7 11.9 10.0 | 1 0 2 0 0 0 3 2 1 3 | 0 |
+| all four | 1177 1123 1154 1096 1150 1135 1124 1115 1167 1179 | 354 305 347 309 334 325 305 351 344 355 | 12 15 13 14 14 12 15 12 13 13 | 10.8 5.7 5.4 5.4 6.6 7.5 6.6 9.9 5.8 7.5 | 12.6 5.5 5.7 6.0 9.3 9.5 8.3 10.3 7.1 9.0 | 0 7 3 3 2 1 3 2 6 1 | 0 |
+| entering pair only | 1185 1171 1138 1117 1123 1121 1135 1168 1157 1120 | 371 365 335 317 357 335 347 339 364 344 | 10 10 14 13 10 13 12 13 11 11 | 13.5 9.4 7.3 5.2 12.2 9.7 6.1 8.0 11.6 6.0 | 14.7 11.4 7.0 6.8 13.9 11.8 6.6 9.3 14.7 7.2 | 1 0 3 3 0 0 1 3 2 3 | 0 |
+| exiting pair only | 1148 1157 1121 1129 1128 1144 1115 1136 1139 1174 | 363 327 349 299 334 345 297 339 341 344 | 13 15 15 13 14 13 15 13 13 12 | 9.3 6.2 6.1 4.6 7.6 6.9 4.9 7.5 5.2 8.3 | 10.2 5.5 6.9 6.2 8.1 8.8 7.3 6.8 5.7 10.5 | 3 7 7 5 5 3 2 7 5 2 | 0 |
+| all four + `exit_prepare` | 1153 1121 1120 1082 1107 1121 1100 1140 1122 1159 | 358 324 340 335 335 351 315 361 362 349 | 12 14 13 13 14 11 14 13 13 11 | 7.2 5.7 5.7 5.3 6.6 7.1 5.4 7.5 5.5 7.9 | 8.3 5.5 8.1 5.7 9.3 8.8 6.7 9.2 5.5 8.3 | 3 2 3 5 4 1 3 7 5 3 | 0 |
+| all four + `ramp_outlet` | 1196 1170 1150 1125 1124 1189 1142 1160 1148 1195 | 393 379 390 349 404 390 354 378 366 364 | 13 13 13 14 13 13 15 13 14 12 | 7.1 6.9 7.0 5.4 6.7 6.5 5.7 7.0 6.2 6.3 | 8.7 7.7 9.4 5.0 6.1 6.4 7.3 8.0 8.1 8.0 | 2 6 1 4 1 2 4 4 3 3 | 0 |
+| entering pair + `exit_prepare` | 1175 1119 1103 1114 1130 1129 1097 1119 1111 1133 | 381 361 348 320 342 350 331 350 354 334 | 11 10 14 12 10 11 13 10 11 11 | 5.5 4.5 7.3 6.5 14.1 8.5 6.1 12.9 8.3 7.2 | 9.5 4.0 7.1 9.5 16.0 10.9 6.7 15.1 11.8 9.1 | 1 6 2 1 0 2 1 0 2 1 | 0 |
+| `exit_prepare` alone | 1164 1125 1138 1071 1089 1104 1049 1093 1164 1137 | 381 383 339 314 352 351 356 331 354 339 | 11 10 14 11 11 11 13 11 12 12 | 11.2 8.6 8.0 9.1 9.8 11.8 7.0 5.9 10.7 4.5 | 12.8 8.8 7.9 10.0 9.6 10.6 8.2 9.6 12.4 5.5 | 0 1 1 2 3 1 1 4 3 3 | 0 |
+| `ramp_outlet` alone | 1194 1193 1183 1102 1193 1196 1135 1179 1153 1185 | 407 391 382 346 389 397 338 329 388 383 | 10 13 14 14 11 11 14 13 12 12 | 9.4 7.4 6.8 4.8 7.7 11.5 5.5 4.7 7.2 7.2 | 11.6 9.2 6.6 8.1 10.5 13.1 8.9 7.4 10.5 11.3 | 2 4 2 3 0 0 3 2 3 1 | 0 |
+
+*Paired by seed (seeds 3–12): the form minus its base, mean [95 % t-interval].*
+
+| form − its base | mainline | T.H.52 | lane-windows ≤ 20 | given up | L0 lowest [m/s] | L1 lowest [m/s] |
+|---|---|---|---|---|---|---|
+| all four − default | −10.3 [−31.9, +11.3] | −4.5 [−28.5, +19.5] | +1.0 [−0.3, +2.3] | +1.6 [−0.4, +3.6] | −1.6 [−3.4, +0.2] | −2.1 [−3.4, −0.7] |
+| entering pair only − default | −8.8 [−27.8, +10.2] | +10.0 [−3.8, +23.8] | −0.6 [−1.5, +0.3] | +0.4 [−0.5, +1.3] | +0.1 [−1.0, +1.3] | −0.1 [−1.6, +1.5] |
+| exiting pair only − default | −13.2 [−25.4, −1.0] | −3.6 [−21.5, +14.3] | +1.3 [+0.1, +2.5] | +3.4 [+1.5, +5.3] | −2.1 [−3.6, −0.6] | −2.8 [−4.3, −1.3] |
+| all four + `exit_prepare` − `exit_prepare` alone | +9.1 [−11.4, +29.6] | −7.0 [−26.9, +12.9] | +1.2 [+0.0, +2.4] | +1.7 [+0.9, +2.5] | −2.3 [−4.3, −0.3] | −2.0 [−4.0, −0.0] |
+| entering pair + `exit_prepare` − `exit_prepare` alone | +9.6 [−14.7, +33.9] | −2.9 [−12.5, +6.7] | −0.3 [−0.8, +0.2] | −0.3 [−2.1, +1.5] | −0.6 [−3.5, +2.3] | +0.4 [−2.2, +3.0] |
+| all four + `ramp_outlet` − `ramp_outlet` alone | −11.4 [−30.2, +7.4] | +1.7 [−13.7, +17.1] | +0.9 [−0.0, +1.8] | +1.0 [+0.2, +1.8] | −0.7 [−2.1, +0.6] | −2.2 [−4.1, −0.4] |
+| `exit_prepare` alone − default | −38.9 [−65.8, −12.0] | +12.6 [+1.6, +23.6] | −0.7 [−1.5, +0.1] | +0.7 [−0.5, +1.9] | −0.1 [−1.0, +0.9] | −0.9 [−2.0, +0.3] |
+| `ramp_outlet` alone − default | +19.0 [−2.4, +40.4] | +37.6 [+24.2, +51.0] | +0.1 [−1.1, +1.3] | +0.8 [−0.5, +2.1] | −1.5 [−2.9, −0.2] | −0.7 [−2.0, +0.6] |
+
+Reading.
+1. *No form passes at any seed, and none passes at seeds 3, 4 and 5.* Criterion (ii) fails in every one of the 70 runs of the seven measured forms. Lanes 0 and 1 of the last 60 m read at or below 20 m/s in all four windows in 66 of them; the four exceptions are all lane 1's first window with the entering pair, alone (20.7 m/s at seed 3, 20.1 at seed 7) or with `exit_prepare` (20.7 at seed 4, 20.2 at seed 7). All four + `ramp_outlet` passes (i), (iii) and (iv) at seeds 3 and 5 (T.H.52 393 / 390, mainline 1,196 / 1,150, 2 / 1 exits given up) and fails (ii) there with 13 lane-windows at or below 20 m/s; the entrance it reaches is `ramp_outlet`'s (+1.7 [−13.7, +17.1] against `ramp_outlet` alone). The strict `xfail` stands.
+2. *All four against the default*: T.H.52 −4.5 [−28.5, +19.5], given up +1.6 [−0.4, +3.6], lane 1's worst window −2.1 [−3.4, −0.7] m/s, lane 0's −1.6 [−3.4, +0.2]. Against WP-79's one-value pair (given up +4.3 [2.1, 6.5], lanes 0 / 1 −2.2 / −3.0 m/s) the split cuts the added give-ups to +1.6, but nothing reads better than the default.
+3. *The exiting pair carries the harm, the entering pair is neutral.* The exiting pair alone: given up +3.4 [+1.5, +5.3], mainline −13.2 [−25.4, −1.0], lanes 0 / 1 −2.1 / −2.8 m/s — the same direction as WP-79's 1.78 s alone (+4.0, −21.0, −3.2 / −4.1), somewhat smaller. The entering pair alone: T.H.52 +10.0 [−3.8, +23.8], nothing else beyond its interval; WP-79's 0.089 s alone read +17.9 [3.3, 32.5].
+4. *On the reference configuration* (against `exit_prepare` alone). All four: given up +1.7 [+0.9, +2.5], lane 0 −2.3 [−4.3, −0.3] m/s, lane 1 −2.0 [−4.0, −0.0], T.H.52 −7.0 [−26.9, +12.9]; WP-79's pair read +2.8 [0.5, 5.1] given up there. The fixture predicts that the corridor with all four reads worse than VM U on give-ups and on the exit end's speed. The entering pair: nothing beyond its interval (T.H.52 −2.9 [−12.5, +6.7], given up −0.3 [−2.1, +1.5], lanes 0 / 1 −0.6 / +0.4 m/s), where WP-79's 0.089 s read T.H.52 +9.9 [−3.1, +22.9] and lane 1 +2.9 [0.2, 5.6] m/s.
+
+**Collisions.** One in 228 measured runs: the 91 corridor-section runs, the 116 grid runs and the 21 identity runs (two trace re-runs reproduce it).
+- *Where.* The entering pair only at seed 11 (config hash aec696f9c0a5), t = 462.5 s, section lane 1 at 91.4 m: the exiter v00380 into the entrant v01306.
+- *Traced* (`colltrace.py`, the full 1,200 s run with the same parameters). At t = 460.5 s the weave commands both into lane 1 under mode 256 in the same step: the entrant from the auxiliary lane (front at 903.7 m on the section axis, 9.6 m/s; lane 1 read before the step: leader 13.6 m ahead at 18.0 m/s, follower 40.4 m behind at 6.9 m/s) and the exiter from lane 2 behind it (front at 890.0 m, 19.5 m/s; lane 1 read before the step: 26.8 m ahead and 26.7 m behind). SUMO executes the front vehicle's change first; the exiter lands with its front 9.1 m behind the entrant's front, closing at 9.0 m/s, brakes at −9.0 m/s² and hits it at t = 462.5 s.
+- *Not the split's terms.* Each acceptance read lane 1 before the step, without the other vehicle. At that step both changes are accepted at 0.6 / 0.6 as well: the entrant's leader side asks 8.41 m at 0.6 s against 13.61 m offered, the exiter's sides 14.78 / 7.24 m against 26.81 / 26.73 m. This is the latent defect of two opposing changes into one lane in one step (WP-60's G, WP-62's N, probed in WP-64), which only the swap and the spread guard (`_weave_swap_opposing_clear`). The entering pair did not make these changes acceptable; it changed the sequence that brought the two vehicles there. At the default it did not fire in any run of this package or WP-79's.
+
+**Crossing speeds and gaps.** WP-77's measure: `calibration.lane_change_gaps` on the kept runs, weave zone. The per-run medians are over all changes; the pooled columns over confirmed, non-suspect changes. The last column is the weave acceptance at the fleet's means evaluated at the run's per-side values / at 0.6 / 0.6 (the offline restatement with the split). Real drivers (VM X, `artifacts/i24_lane_change_gaps.json`): entering at a median 11.7 m/s with lead / lag time gaps of 0.60 / 0.82 s at the 10th percentile; exiting at 14.6 m/s with 0.79 / 0.80 s.
+
+| form | movement | crossings per run | median crossing speed per run [m/s] | pooled v p50 (confirmed) | share ≥ 20 m/s | lead gap p10 / p50 [m] | lag gap p10 / p50 [m] | lead time gap p10 / p50 [s] | lag time gap p10 / p50 [s] | refused at the run's A / at 0.6 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | entering | 124.5 [118.8, 130.2] | 6.35 [5.85, 6.84] | 6.54 (n 1,105) | 0.5 % | 8.17 / 19.38 | 7.18 / 11.78 | 1.19 / 3.29 | 1.53 / 3.17 | 21.2 / 21.2 % |
+| default | exiting | 295.3 [282.9, 307.7] | 8.69 [7.89, 9.49] | 8.55 (n 2,951) | 5.1 % | 8.42 / 17.71 | 7.72 / 14.07 | 1.03 / 2.03 | 1.18 / 2.33 | 22.0 / 22.0 % |
+| all four | entering | 133.9 [128.3, 139.5] | 5.99 [5.58, 6.39] | 6.08 (n 1,061) | 0.4 % | 5.88 / 10.99 | 7.42 / 10.37 | 0.92 / 2.11 | 1.34 / 2.62 | 21.2 / 40.2 % |
+| all four | exiting | 287.0 [276.0, 298.0] | 7.58 [6.91, 8.26] | 7.72 (n 2,864) | 3.4 % | 8.44 / 29.73 | 7.82 / 15.27 | 1.35 / 3.63 | 1.33 / 2.49 | 40.0 / 18.9 % |
+| entering pair only | entering | 136.3 [130.3, 142.3] | 6.17 [5.72, 6.63] | 6.57 (n 1,010) | 0.6 % | 5.88 / 12.18 | 7.52 / 12.32 | 0.87 / 2.09 | 1.74 / 3.50 | 13.2 / 38.5 % |
+| entering pair only | exiting | 291.3 [277.5, 305.1] | 8.70 [7.68, 9.73] | 8.52 (n 2,910) | 6.0 % | 8.34 / 16.99 | 8.06 / 15.06 | 1.04 / 1.95 | 1.23 / 2.35 | 20.8 / 20.8 % |
+| exiting pair only | entering | 132.5 [126.1, 138.9] | 6.09 [5.74, 6.44] | 6.39 (n 1,160) | 0.4 % | 8.26 / 15.23 | 7.28 / 10.46 | 1.19 / 2.81 | 1.37 / 2.55 | 20.6 / 20.6 % |
+| exiting pair only | exiting | 283.1 [271.9, 294.3] | 7.71 [7.28, 8.15] | 7.77 (n 2,827) | 3.2 % | 8.33 / 28.46 | 7.65 / 15.44 | 1.34 / 3.57 | 1.27 / 2.56 | 42.0 / 20.6 % |
+| all four + `exit_prepare` | entering | 139.2 [133.5, 144.9] | 5.99 [5.62, 6.35] | 6.30 (n 1,041) | 0.2 % | 5.89 / 11.55 | 7.50 / 10.51 | 0.88 / 2.10 | 1.36 / 2.55 | 19.4 / 38.9 % |
+| all four + `exit_prepare` | exiting | 279.5 [267.0, 292.0] | 7.82 [7.36, 8.28] | 7.79 (n 2,790) | 3.2 % | 9.10 / 31.50 | 7.83 / 15.40 | 1.42 / 3.65 | 1.29 / 2.39 | 38.1 / 18.1 % |
+| all four + `ramp_outlet` | entering | 157.4 [146.5, 168.3] | 7.40 [6.80, 8.01] | 7.26 (n 1,073) | 0.7 % | 5.28 / 8.57 | 7.73 / 11.71 | 0.68 / 1.37 | 1.26 / 2.07 | 26.2 / 60.5 % |
+| all four + `ramp_outlet` | exiting | 297.8 [287.1, 308.5] | 7.88 [7.31, 8.45] | 7.91 (n 2,971) | 4.5 % | 7.86 / 25.45 | 7.69 / 15.01 | 1.26 / 3.27 | 1.29 / 2.24 | 46.9 / 20.0 % |
+| entering pair + `exit_prepare` | entering | 135.9 [131.4, 140.4] | 6.36 [5.80, 6.92] | 6.55 (n 1,024) | 0.5 % | 6.09 / 12.56 | 7.89 / 12.65 | 0.87 / 2.25 | 1.72 / 3.50 | 12.5 / 34.2 % |
+| entering pair + `exit_prepare` | exiting | 287.9 [275.2, 300.6] | 8.70 [7.82, 9.59] | 8.50 (n 2,876) | 5.8 % | 8.26 / 17.46 | 7.97 / 15.10 | 1.04 / 1.95 | 1.21 / 2.29 | 20.7 / 20.7 % |
+
+*Where along the section* (seeds 3–12, all changes, m from the section start, p10 / p50 / p90), and the entrants' speed on their first sample on the section:
+- default: entering 5.4 / 37.7 / 193.0; exiting 3.5 / 53.8 / 268.8; entrants reach the section at 4.68 m/s (p10 2.34, p90 19.36; 1,846 entrants)
+- all four: entering 3.6 / 26.7 / 114.0; exiting 2.9 / 115.8 / 282.5; entrants reach the section at 4.62 m/s (p10 2.35, p90 19.07; 1,819 entrants)
+- entering pair only: entering 3.5 / 24.4 / 87.1; exiting 2.8 / 48.8 / 267.4; entrants reach the section at 5.00 m/s (p10 2.58, p90 19.62; 1,939 entrants)
+- exiting pair only: entering 4.5 / 36.1 / 216.7; exiting 3.0 / 136.5 / 282.1; entrants reach the section at 4.40 m/s (p10 2.32, p90 17.94; 1,804 entrants)
+- all four + `exit_prepare`: entering 3.4 / 23.5 / 108.9; exiting 2.6 / 102.9 / 283.7; entrants reach the section at 4.70 m/s (p10 2.47, p90 17.63; 1,875 entrants)
+- all four + `ramp_outlet`: entering 4.6 / 32.9 / 176.7; exiting 1.7 / 128.6 / 278.6; entrants reach the section at 7.28 m/s (p10 3.93, p90 19.58; 2,216 entrants)
+- entering pair + `exit_prepare`: entering 3.7 / 25.7 / 88.2; exiting 2.5 / 46.4 / 263.7; entrants reach the section at 5.03 m/s (p10 2.63, p90 19.59; 1,934 entrants)
+
+Reading.
+- *The entrants take closer leaders, not faster crossings.* With all four their lead time gap at p10 falls from 1.19 to 0.92 s and the median lead gap from 19.4 to 11.0 m; their lag time gap at p10 falls from 1.53 to 1.34 s (the follower side's 0.778 s against 0.6 s is stricter, but the leader side no longer holds them back). They cross 11 m sooner at the median, at 5.99 [5.58, 6.39] m/s per run against 6.35 [5.85, 6.84]. They reach the section at a median 4.6 m/s from the ramp's queue, as at the default (4.7), and cross at about that speed.
+- *The exiters at a 2.584 s leader side wait for a leader far ahead.* Their median lead gap rises from 17.7 to 29.7 m and the lead time gap at p10 from 1.03 to 1.35 s; the lag side barely moves (1.18 → 1.33 s at p10). They cross 62 m further downstream at the median (53.8 → 115.8 m), where the exit end breaks down first, and slower: 7.58 [6.91, 8.26] m/s per run against 8.69 [7.89, 9.49]. Of the exiting crossings actually made with all four, 40.0 % are ones the acceptance at 2.584 / 0.721 s refuses (31.4 % on its leader time term): forced changes and SUMO's own LC2013 make them.
+- *Neither movement comes closer to real drivers' crossing speeds* of 11.7 and 14.6 m/s.
+
+**The model's own critical gaps after the change.** `scripts/i24_critical_gaps.py --sim-run-dir` on the kept runs (WP-78's method: joint fits, weave zone, all speeds, median [95 % bootstrap interval] in seconds; 32–35 s and 523–561 MB per form). The default here reproduces WP-79's seeds 3–12 value for value. "Without the no-rejection drivers" is Weinert's sample, WP-78's sensitivity.
+
+| form (seeds 3–12 unless stated) | entering: drivers (share that let a gap go by) | lead | lag | without the no-rejection drivers | exiting: drivers (share) | lead | lag | without the no-rejection drivers |
+|---|---|---|---|---|---|---|---|---|
+| default | 1,048 (0.61) | 1.19 [1.09, 1.30] | 1.30 [1.20, 1.40] | 1.99 / 1.69 | 2,705 (0.40) | 0.80 [0.75, 0.85] | 0.62 [0.54, 0.69] | 2.04 / 0.91 |
+| all four | 1,020 (0.30) | 0.31 [0.24, 0.38] | 0.76 [0.62, 0.89] | 2.21 / 1.17 | 2,713 (0.48) | 1.64 [1.52, 1.73] | 0.70 [0.61, 0.81] | 3.74 / 0.94 |
+| entering pair only | 974 (0.50) | 0.20 [0.13, 0.28] | 1.69 [1.59, 1.80] | 0.60 / 2.30 | 2,655 (0.42) | 0.76 [0.71, 0.80] | 0.83 [0.76, 0.89] | 1.80 / 1.19 |
+| exiting pair only | 1,110 (0.39) | 1.00 [0.90, 1.10] | 0.52 [0.43, 0.66] | 2.67 / 0.76 | 2,676 (0.49) | 1.65 [1.56, 1.74] | 0.62 [0.54, 0.70] | 3.65 / 0.87 |
+| all four + `exit_prepare` | 1,001 (0.29) | 0.22 [0.16, 0.29] | 0.83 [0.72, 0.92] | 2.20 / 1.22 | 2,653 (0.50) | 1.82 [1.72, 1.92] | 0.77 [0.70, 0.84] | 3.79 / 0.96 |
+| all four + `ramp_outlet` | 1,045 (0.30) | 0.22 [0.16, 0.29] | 0.87 [0.78, 0.94] | 1.38 / 1.11 | 2,869 (0.41) | 1.16 [1.08, 1.23] | 0.99 [0.94, 1.04] | 2.96 / 1.18 |
+| entering pair + `exit_prepare` | 989 (0.54) | 0.26 [0.20, 0.34] | 1.74 [1.64, 1.83] | 0.67 / 2.38 | 2,634 (0.42) | 0.78 [0.73, 0.82] | 0.85 [0.79, 0.90] | 1.84 / 1.15 |
+| WP-79's default, seeds 3–12 (`wp79/cg_def.json`) | 1,048 (0.61) | 1.19 [1.09, 1.30] | 1.30 [1.20, 1.40] | 1.99 / 1.69 | 2,705 (0.40) | 0.80 [0.75, 0.85] | 0.62 [0.54, 0.69] | 2.04 / 0.91 |
+| WP-79's pair (0.089 / 1.78 s), seeds 3–12 (`wp79/cg_cal.json`) | 944 (0.18) | 0.25 [0.18, 0.34] | 0.43 [0.32, 0.53] | 1.38 / 1.25 | 2,682 (0.45) | 1.09 [1.00, 1.18] | 0.99 [0.91, 1.07] | 3.23 / 1.49 |
+| I-24 MOTION, HH–BR weave (VM Z, `artifacts/i24_critical_gaps.json`) | 1,449 (0.70) | 0.46 [0.40, 0.53] | 0.92 [0.84, 1.03] | 0.94 / 1.66 | 857 (0.74) | 2.89 [2.47, 3.38] | 1.11 [0.91, 1.34] | 5.33 / 1.77 |
+
+*The self-check* (the artifact's `self_check`: the mapping `A = t̂ − 2 s0 / v̄` applied to the model's own fitted gaps, per side, against the values the runs used):
+- default: entering leader side 0.43 [0.31, 0.53], follower side 0.13 [0.00, 0.28]; exiting leader side 0.26 [0.19, 0.31], follower side not mapped (below the absorption floor)
+- all four: entering leader side 0.00 [0.00, 0.00], unfloored −0.45, follower side not mapped (below the absorption floor); exiting leader side 1.00 [0.90, 1.09], follower side 0.63 [0.57, 0.70]
+- entering pair only: entering leader side 0.00 [0.00, 0.00], unfloored −0.52, follower side 0.46 [0.36, 0.56]; exiting leader side 0.22 [0.17, 0.28], follower side not mapped (below the absorption floor)
+- exiting pair only: entering leader side 0.27 [0.17, 0.37], follower side not mapped (below the absorption floor); exiting leader side 1.03 [0.94, 1.11], follower side not mapped (below the absorption floor)
+- all four + `exit_prepare`: entering leader side 0.00 [0.00, 0.00], unfloored −0.55, follower side not mapped (below the absorption floor); exiting leader side 1.21 [1.11, 1.30], follower side 0.60 [0.54, 0.67]
+- all four + `ramp_outlet`: entering leader side 0.00 [0.00, 0.00], unfloored −0.44, follower side 0.48 [0.36, 0.59]; exiting leader side 0.53 [0.46, 0.60], follower side 0.61 [0.54, 0.67]
+- entering pair + `exit_prepare`: entering leader side 0.00 [0.00, 0.00], unfloored −0.44, follower side 0.53 [0.42, 0.62]; exiting leader side 0.24 [0.19, 0.29], follower side not mapped (below the absorption floor)
+
+Reading.
+- *Entering with all four: both sides land near the observed values.* All four read 0.31 [0.24, 0.38] s to the leader and 0.76 [0.62, 0.89] s to the follower against I-24's 0.46 [0.40, 0.53] / 0.92 [0.84, 1.03] s (upper bounds under coverage, WP-78). The follower side is the one WP-79's single 0.089 s had pushed to 0.43 s. The self-check cannot map it (it lies below the absorption floor at the entrants' low speeds), and the next reading shows that the entering setting alone does not put it there. The share of entrants that let a gap go by is 0.30 (default 0.61, real 0.70, WP-79's pair 0.18): the fit is better anchored than WP-79's but still on fewer rejections than the data.
+- *Exiting: the leader side moves halfway, the follower side does not move.* 1.64 [1.52, 1.73] s to the leader against 2.89 observed (default 0.80), 0.70 [0.61, 0.81] s to the follower against 1.11 (default 0.62). The self-check recovers 1.00 [0.90, 1.09] s of the 2.584 s leader side the runs used, and 0.63 [0.57, 0.70] s of the 0.721 s follower side: the exiters' crossings are still largely made by the forced change and SUMO's model, which the records cannot separate (WP-78).
+- *The fitted entering sides are not a reading of the entering setting alone.* With the same entering values and the exiting side at 0.6 s (the entering pair alone), the entrants' follower side reads 1.69 [1.59, 1.80] s, 1.74 [1.64, 1.83] s with `exit_prepare`, against 0.76 with all four. The crossings are a mixture of the acceptance, the forced change and SUMO's LC2013 (WP-78), and the exiting side's setting changes that mixture.
+
+**Which of the acceptance's terms refuses at the calibrated values.** Run-time vehicle-steps, seeds 3–12 pooled, from `acc_hook80` (the six terms whose conjunction is the acceptance; *no room* = a target-lane bumper gap at or below the changer's own `minGap` on either side, overlap included; *binding* = the run's values decide differently from 0.6 / 0.6; *forced guard flips* = due forced steps refused by both acceptances that one guard admits and the other refuses).
+
+| form | movement | evaluated vehicle-steps | accepted | no room beside the changer (overlapping) | refused with room | of those, refused by: leader time gap / leader brake gap / follower time gap / follower absorbability / guard closing-speed bound / guard follower brake gap | refused by that term alone | binding vehicle-steps vs 0.6 / 0.6 (admitted / refused) | forced guard flips vs 0.6 / 0.6 (admits / refuses) of due steps | mismatch |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | entering | 25,950 | 1,217 (4.7 %) | 14,995 (57.8 %; 43.8 %) | 9,738 (39.4 % of refused) | 68.2 / 0.6 / 38.7 / 5.5 / 1.7 / 0.9 % | 5,611 / 2 / 2,729 / 130 / 0 / 0 | +0 / −0 | 0 / 0 of 324 | 0 |
+| default | exiting | 71,362 | 2,882 (4.0 %) | 41,137 (57.6 %; 42.9 %) | 27,343 (39.9 % of refused) | 73.6 / 3.5 / 32.5 / 6.6 / 2.4 / 0.6 % | 16,866 / 191 / 5,682 / 440 / 0 / 0 | +0 / −0 | 0 / 0 of 1,626 | 0 |
+| all four | entering | 22,444 | 1,278 (5.7 %) | 14,833 (66.1 %; 48.9 %) | 6,333 (29.9 % of refused) | 0.0 / 0.8 / 97.9 / 5.8 / 1.4 / 0.4 % | 0 / 6 / 5,865 / 119 / 0 / 0 | +546 / −1,483 | 0 / 0 of 433 | 0 |
+| all four | exiting | 104,057 | 2,035 (2.0 %) | 41,000 (39.4 %; 28.7 %) | 61,022 (59.8 % of refused) | 92.2 / 2.1 / 20.6 / 3.8 / 4.7 / 0.4 % | 45,207 / 2 / 4,033 / 245 / 0 / 0 | +0 / −35,572 | 0 / 65 of 5,386 | 0 |
+| entering pair only | entering | 17,632 | 1,346 (7.6 %) | 12,148 (68.9 %; 52.7 %) | 4,138 (25.4 % of refused) | 0.0 / 0.7 / 97.4 / 7.7 / 1.5 / 1.0 % | 0 / 8 / 3,753 / 79 / 0 / 0 | +569 / −747 | 0 / 0 of 364 | 0 |
+| entering pair only | exiting | 64,367 | 2,804 (4.4 %) | 37,017 (57.5 %; 42.5 %) | 24,546 (39.9 % of refused) | 77.6 / 4.4 / 28.1 / 6.9 / 2.7 / 0.5 % | 15,938 / 249 / 3,990 / 451 / 0 / 0 | +0 / −0 | 0 / 0 of 1,858 | 0 |
+| exiting pair only | entering | 28,675 | 1,283 (4.5 %) | 15,822 (55.2 %; 41.7 %) | 11,570 (42.2 % of refused) | 72.4 / 0.6 / 34.8 / 2.9 / 1.3 / 0.3 % | 7,304 / 1 / 2,954 / 60 / 0 / 0 | +0 / −0 | 0 / 0 of 417 | 0 |
+| exiting pair only | exiting | 108,477 | 2,000 (1.8 %) | 43,759 (40.3 %; 29.3 %) | 62,718 (58.9 % of refused) | 91.1 / 2.2 / 22.5 / 4.0 / 4.6 / 0.5 % | 45,355 / 10 / 4,766 / 219 / 0 / 0 | +0 / −36,161 | 0 / 72 of 5,723 | 0 |
+| all four + `exit_prepare` | entering | 20,428 | 1,343 (6.6 %) | 13,375 (65.5 %; 47.6 %) | 5,710 (29.9 % of refused) | 0.0 / 0.5 / 98.4 / 4.9 / 1.2 / 0.6 % | 0 / 5 / 5,362 / 73 / 0 / 0 | +549 / −1,469 | 0 / 0 of 421 | 0 |
+| all four + `exit_prepare` | exiting | 94,775 | 1,975 (2.1 %) | 37,518 (39.6 %; 29.6 %) | 55,282 (59.6 % of refused) | 91.6 / 2.5 / 21.0 / 4.1 / 4.7 / 0.5 % | 40,703 / 2 / 3,877 / 256 / 0 / 2 | +0 / −33,060 | 0 / 68 of 5,378 | 0 |
+| all four + `ramp_outlet` | entering | 30,507 | 1,469 (4.8 %) | 20,491 (67.2 %; 44.5 %) | 8,547 (29.4 % of refused) | 0.0 / 1.2 / 98.1 / 6.3 / 1.6 / 0.6 % | 0 / 35 / 7,840 / 99 / 0 / 0 | +855 / −1,648 | 0 / 0 of 495 | 0 |
+| all four + `ramp_outlet` | exiting | 115,822 | 1,582 (1.4 %) | 57,329 (49.5 %; 35.6 %) | 56,911 (49.8 % of refused) | 91.8 / 2.6 / 27.2 / 9.7 / 7.1 / 1.1 % | 37,025 / 10 / 3,001 / 362 / 0 / 5 | +0 / −28,430 | 0 / 52 of 5,706 | 0 |
+
+Reading.
+1. *Entering at 0.0 / 0.778 s: the leader-side time term never refuses; the follower side is the only time term that binds* (97.9 % of the 6,333 refused steps with room, 5,865 of them alone). Against 0.6 / 0.6 the pair admits 546 vehicle-steps and refuses 1,483: net stricter at run time, the stricter follower side refusing more steps than the relaxed leader side admits; in 66.1 % of the entrants' evaluated steps there is no room beside them at all.
+2. *Exiting at 2.584 / 0.721 s: the leader time term refuses 92.2 % of the refused steps with room* (45,207 alone), the follower time term 20.6 %. The exiters' evaluated steps rise by 46 % (71,362 → 104,057): they wait. 35,572 steps are refused that 0.6 / 0.6 accepts, and the run's guard (2.584 / 0.721 s × the closing speeds, both stricter than 0.6 s) refuses 65 due forced steps that the default's guard admits and admits none it refuses.
+
+**(2) The fixture grid.** WP-70's 29 runs (`grid80.sh`, `wp80_grid_harness.py`: WP-79's harness with `acc_hook80`), in four forms: the default, all four, and the two pairs for attribution. *Binding vehicle-steps* are the evaluated steps at which the run's per-side values decide differently from 0.6 / 0.6, per movement: E(ntering) and X (exiting), + admitted / − refused.
+
+At the default the grid equals WP-79's default rows field for field (above, byte identity). No grid run collides in any form.
+
+*Totals over the 28 fixture runs, the golden apart.*
+
+| form | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth + T.H.52, last 60 m) | T.H.52 first 60 m min ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | binding vehicle-steps (E / X: + admitted / − refused) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 0 | 44 | 5988 | 6131 | 14 | 15 | 529 | 5439 | 218 | 45 | 5944 | 1444 | 0 | E +0 / −0; X +0 / −0 (mismatch 0) |
+| all four | 28 | 134 | 5752 | 6017 | 54 | 19 | 1376 | 15019 | 486 | 79 | 5795 | 1461 | 0 | E +1,182 / −1,377; X +0 / −50,199 (mismatch 0) |
+| entering pair only | 26 | 47 | 5933 | 6093 | 13 | 17 | 424 | 4607 | 177 | 37 | 5941 | 1445 | 0 | E +1,252 / −1,138; X +0 / −0 (mismatch 0) |
+| exiting pair only | 28 | 108 | 5748 | 5992 | 48 | 19 | 1462 | 13154 | 577 | 78 | 5823 | 1410 | 0 | E +0 / −0; X +0 / −51,992 (mismatch 0) |
+
+*The no-lock pin of the T.H.52 capacity fixture* (`test_th52_weave_at_capacity_does_not_lock`, applied to each grid row: no collision; lane 1's first 60 m above 2 m/s in all 18 minutes; at most 1 exit missed; unfinished at most 10 % of the driven; at least 80 % of the 466 entrants departed; at seed 5 at least one pair release). Cells give the verdict, then (entrance departed; lane 1's lowest minute [m/s]; pair releases). The test itself runs seed 5, and seed 4 under a non-strict `xfail`.
+
+| form | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| default | pass (395 of 466; 3.9; releases 9) | pass (401 of 466; 4.3; releases 23) | pass (373 of 466; 3.3; releases 18) |
+| all four | 12 missed (387 of 466; 4.7; releases 12) | 6 missed (376 of 466; 4.6; releases 11) | 8 missed, 365 departed (365 of 466; 4.1; releases 23) |
+| entering pair only | pass (398 of 466; 4.2; releases 6) | 4 missed, 369 departed (369 of 466; 3.2; releases 61) | pass (378 of 466; 3.5; releases 18) |
+| exiting pair only | 9 missed (385 of 466; 3.4; releases 85) | lane 1 1.7 m/s, 9 missed, 349 departed (349 of 466; 1.7; releases 106) | 4 missed, 366 departed (366 of 466; 2.8; releases 72) |
+
+*Per row, the default and all four.* Each cell: given up / reached; exited; lane 1's last 60 m, lowest minute [m/s] (minutes at or below 5); entrance departed (E1); unfinished; forced changes deferred; collisions; binding vehicle-steps.
+
+| fixture | seed | default | all four |
+|---|---|---|---|
+| Ruth St, corridor fleet, exit peak | 3 | 9/290; 273; 2.8 (4); 73; 2; 1168; 0; E +0/−0, X +0/−0 | 18/290; 270; 0.9 (6); 73; 0; 2330; 0; E +2/−0, X +0/−480 |
+| Ruth St, corridor fleet, entrance peak | 3 | 0/45; 45; 6.3 (0); 128; 0; 138; 0; E +0/−0, X +0/−0 | 1/45; 44; 2.1 (1); 128; 0; 220; 0; E +17/−19, X +0/−6 |
+| Ruth St, fleet defaults, exit peak | 3 | 1/281; 276; 10.7 (0); 73; 1; 49; 0; E +0/−0, X +0/−0 | 1/281; 278; 9.2 (0); 73; 0; 32; 0; E +10/−23, X +0/−659 |
+| Ruth St, fleet defaults, entrance peak | 3 | 0/33; 33; 7.9 (0); 128; 0; 53; 0; E +0/−0, X +0/−0 | 0/35; 33; 9.3 (0); 128; 2; 22; 0; E +48/−67, X +0/−116 |
+| Ruth St, corridor fleet, exit peak | 4 | 1/280; 279; 4.2 (1); 73; 0; 402; 0; E +0/−0, X +0/−0 | 9/280; 271; 3.6 (5); 73; 0; 991; 0; E +8/−13, X +0/−414 |
+| Ruth St, corridor fleet, entrance peak | 4 | 1/41; 40; 5.9 (0); 128; 0; 120; 0; E +0/−0, X +0/−0 | 1/41; 40; 1.4 (2); 128; 0; 338; 0; E +19/−12, X +0/−3 |
+| Ruth St, fleet defaults, exit peak | 4 | 1/282; 280; 11.3 (0); 73; 0; 21; 0; E +0/−0, X +0/−0 | 1/282; 280; 7.8 (0); 73; 0; 153; 0; E +12/−49, X +0/−933 |
+| Ruth St, fleet defaults, entrance peak | 4 | 0/44; 43; 12.4 (0); 128; 0; 8; 0; E +0/−0, X +0/−0 | 0/43; 42; 9.5 (0); 128; 3; 9; 0; E +33/−133, X +0/−104 |
+| Ruth St, corridor fleet, exit peak | 5 | 4/274; 267; 6.7 (0); 73; 2; 132; 0; E +0/−0, X +0/−0 | 19/274; 251; 0.9 (7); 73; 4; 2947; 0; E +10/−6, X +0/−363 |
+| Ruth St, corridor fleet, entrance peak | 5 | 0/34; 34; 3.6 (1); 128; 0; 119; 0; E +0/−0, X +0/−0 | 0/34; 34; 14.1 (0); 128; 1; 8; 0; E +16/−6, X +0/−0 |
+| Ruth St, fleet defaults, exit peak | 5 | 0/273; 272; 14.6 (0); 73; 0; 5; 0; E +0/−0, X +0/−0 | 0/273; 272; 12.2 (0); 73; 0; 32; 0; E +7/−77, X +0/−755 |
+| Ruth St, fleet defaults, entrance peak | 5 | 0/44; 44; 12.6 (0); 128; 1; 0; 0; E +0/−0, X +0/−0 | 1/40; 39; 3.7 (1); 128; 0; 119; 0; E +43/−41, X +0/−111 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | 8/274; 265; 2.1 (3); 73; 0; 814; 0; E +0/−0, X +0/−0 | 9/274; 261; 3.2 (6); 73; 5; 1531; 0; E +5/−2, X +0/−253 |
+| T.H.52, corridor demand | 3 | 1/299; 292; 3.8 (1); 403; 2; 67; 0; E +0/−0, X +0/−0 | 4/292; 284; 3.7 (3); 399; 3; 431; 0; E +75/−63, X +0/−3,702 |
+| T.H.52, capacity | 3 | 1/319; 309; 4.7 (1); 395; 4; 172; 0; E +0/−0, X +0/−0 | 12/311; 290; 2.5 (6); 387; 6; 825; 0; E +91/−56, X +0/−4,971 |
+| two-entrance, fleet defaults | 3 | 3/301; 294; 3.7 (1); 417, E1 216; 3; 181; 0; E +0/−0, X +0/−0 | 11/277; 257; 1.6 (2); 373, E1 242; 5; 687; 0; E +93/−59, X +0/−3,605 |
+| two-entrance, corridor fleet | 3 | 0/314; 309; 7.3 (0); 356, E1 253; 1; 55; 0; E +0/−0, X +0/−0 | 3/316; 308; 5.2 (0); 357, E1 262; 1; 244; 0; E +78/−202, X +0/−2,594 |
+| moderate (weave.osm, 300 s) | 3 | 0/34; 33; —; —; 0; 0; 0; E +0/−0, X +0/−0 | 0/34; 33; —; —; 0; 18; 0; E +0/−2, X +0/−43 |
+| T.H.52, corridor demand | 4 | 0/317; 308; 11.9 (0); 388; 2; 22; 0; E +0/−0, X +0/−0 | 7/294; 273; 3.4 (4); 381; 5; 473; 0; E +68/−70, X +0/−3,727 |
+| T.H.52, capacity | 4 | 1/379; 373; 10.7 (0); 401; 2; 71; 0; E +0/−0, X +0/−0 | 6/374; 358; 4.0 (4); 376; 8; 838; 0; E +83/−74, X +0/−5,438 |
+| two-entrance, fleet defaults | 4 | 3/307; 301; 4.4 (1); 399, E1 210; 1; 317; 0; E +0/−0, X +0/−0 | 6/306; 290; 4.2 (1); 376, E1 211; 11; 397; 0; E +88/−56, X +0/−4,152 |
+| two-entrance, corridor fleet | 4 | 3/308; 301; 2.9 (2); 351, E1 256; 5; 536; 0; E +0/−0, X +0/−0 | 3/291; 282; 3.9 (1); 342, E1 259; 1; 233; 0; E +65/−55, X +0/−2,054 |
+| moderate (weave.osm, 300 s) | 4 | 0/36; 35; —; —; 0; 0; 0; E +0/−0, X +0/−0 | 0/36; 35; —; —; 0; 2; 0; E +0/−6, X +0/−73 |
+| T.H.52, corridor demand | 5 | 5/308; 296; 1.7 (2); 401; 6; 601; 0; E +0/−0, X +0/−0 | 7/313; 295; 3.0 (3); 402; 8; 661; 0; E +74/−33, X +0/−4,015 |
+| T.H.52, capacity | 5 | 1/369; 361; 5.0 (1); 373; 3; 194; 0; E +0/−0, X +0/−0 | 8/354; 333; 3.4 (6); 365; 7; 906; 0; E +86/−71, X +0/−5,734 |
+| two-entrance, fleet defaults | 5 | 1/308; 299; 5.6 (0); 407, E1 256; 6; 172; 0; E +0/−0, X +0/−0 | 6/292; 272; 4.3 (1); 387, E1 232; 8; 493; 0; E +74/−56, X +0/−3,736 |
+| two-entrance, corridor fleet | 5 | 0/301; 291; 8.3 (0); 374, E1 253; 4; 22; 0; E +0/−0, X +0/−0 | 1/299; 292; 7.7 (0); 371, E1 255; 1; 79; 0; E +77/−125, X +0/−2,104 |
+| moderate (weave.osm, 300 s) | 5 | 0/36; 35; —; —; 0; 0; 0; E +0/−0, X +0/−0 | 0/36; 35; —; —; 0; 0; 0; E +0/−1, X +0/−54 |
+
+*Golden `merge_weave`* (not regenerated). At the default it reproduces `tests/golden/merge_weave.json`: the hash and every metric.
+
+| form | config hash | mean TT [s] | p90 TT [s] | σ_v spatial / temporal [m/s] | VMT [veh·km] | VHT [veh·h] | fuel [ml/veh·km] | throughput [veh/h] | changed in / out / forced / deferred | exited | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1,680.0 | 14 / 19 / 2 / 6 | 33 | 0 |
+| all four | 58bb284040cb | 70.825 | 88.167 | 4.200 / 3.733 | 169.682 | 1.7824 | 89.92 | 1,650.7 | 17 / 18 / 6 / 3 | 33 | 0 |
+| entering pair only | 7bbe41aaee4a | 67.561 | 83.413 | 3.857 / 3.355 | 169.625 | 1.7456 | 90.40 | 1,702.7 | 16 / 18 / 2 / 6 | 33 | 0 |
+| exiting pair only | 60f52ba42a56 | 72.125 | 88.821 | 4.321 / 3.858 | 169.676 | 1.7871 | 90.25 | 1,636.4 | 16 / 19 / 4 / 3 | 33 | 0 |
+
+Reading.
+- *All four move all 28 rows and read worse on every total but E1.* Given up 44 → 134, exited 5,988 → 5,752, lane-1 minutes at or below 5 m/s at the last 60 m 14 → 54, forced changes 529 → 1,376, deferred 5,439 → 15,019, releases 218 → 486, unfinished 45 → 79, the entrances 5,944 → 5,795 (E1 1,444 → 1,461). The capacity fixture's pin fails at all three seeds on missed exits (12 / 6 / 8) and at seed 5 on the entrance (365 against 373 required). WP-79's one-value pair read 151 given up and failed the pin at all three seeds: the split takes off a sixth of the added give-ups and none of the pin failures.
+- *The exiting pair alone carries it:* given up 108, exited 5,748, deferred 13,154, releases 577, the pin failing at all three seeds (lane 1 at 1.7 m/s at seed 4). The exiting side's 51,992 refused vehicle-steps against 0.6 / 0.6 are the waiting exiters.
+- *The entering pair alone moves 26 rows and holds the totals:* given up 47, exited 5,933, deferred 4,607, releases 177, unfinished 37, the entrances 5,941, E1 1,445. The pin passes at seeds 3 and 5 (398 and 378 departed) and fails at seed 4 (4 exits missed, 369 departed against 373) — the test's non-strict parameter; WP-79's 0.089 s alone failed seeds 4 and 5. At run time it admits 1,252 entering vehicle-steps that 0.6 / 0.6 refuses and refuses 1,138 that it admits.
+- *Golden `merge_weave` moves with any form*: with all four throughput 1,680.0 → 1,650.7 veh/h, mean travel time 69.50 → 70.83 s; with the entering pair 1,702.7 veh/h and 67.56 s.
+
+
+**(3) Reading and conclusion.**
+1. *What the split does.* It is the model form WP-79 asked for: each side of each movement reads its own time gap, and at the defaults nothing moves. With VM Z's four values the model's entrants take leaders about as close as real drivers do (fitted leader side 0.31 s against 0.46 s) and keep a follower side near theirs (0.76 s against 0.92 s), where WP-79's single 0.089 s had put it at 0.43 s. They cross no faster: they reach the section from the ramp's queue at 4.6 m/s and cross at about 6 m/s, as at the default.
+2. *The split does not rescue the exit side.* Its follower side (0.721 s) is close to the default and moves little. Its leader side (2.584 s) alone does what WP-79's 1.78 s compromise did: the exiters wait for a leader 30 m ahead, cross 62 m further downstream, give up more (+3.4 [1.5, 5.3] a run on the fixture with the exiting pair alone, 44 → 108 on the grid), and the exit end slows by 2–3 m/s. VM Z could not tell whether real exiters' long lead gap is chosen or is the slower auxiliary-lane traffic they fall in behind; in the model it is a gate at the moment of change, and the section pays for it. The self-check recovers 1.00 s of the 2.584 s from the model's own exiters, so the model's exiters at that setting are not real exiters either.
+3. *The corridor battery.* **The four values should not go to a corridor battery.** On the reference configuration the fixture predicts more give-ups (+1.7 [0.9, 2.5] a run) and a slower exit end (lanes 0 / 1 −2.3 / −2.0 m/s), VM AA's direction; the grid triples the give-ups and fails the capacity pin at all three seeds. The exiting pair should not go in any form. The entering pair alone is the only part the fixture and the grid tolerate: on the reference configuration it moves nothing beyond its interval (T.H.52 −2.9 [−12.5, +6.7], given up −0.3 [−2.1, +1.5], lanes 0 / 1 −0.6 / +0.4 m/s), and on the grid it holds the totals and fails the pin at seed 4 only. No battery is warranted by an expected gain. If the coordinator wants the corridor to test the calibrated entering side as a fidelity check, the form is VM U's configuration plus the entering pair: `weave_params {exit_prepare: 1.0, accept_gap_s: 0.0, accept_lag_gap_s: 0.778}` on the weave sections with the network's `lane_end_giveup_m: 7.5`; the fixture predicts no measurable change.
+4. *No value becomes a default.* All four fail the grid (give-ups 44 → 134, the pin at all three seeds, the golden moves). The entering pair fails the pin at seed 4 and moves the golden (1,680.0 → 1,702.7 veh/h), and no corridor battery has run it. The grid, the capacity pins and a corridor battery would all have to hold first: all four fail the grid and the pins, the entering pair fails a pin, and no corridor battery has run either. `WEAVE_DEFAULTS`' values are unchanged and both new keys stay unset.
+5. *The strict `xfail`* of `test_th52_corridor_section_carries_free_flow_demand` stands: no form passes at any seed, criterion (ii) failing in every run, and none passes at seeds 3, 4 and 5.
+6. *What remains open.*
+   - The exit side's lead gap: a mechanism by which real exiters' long lead gap arises (following the auxiliary lane's slower traffic) rather than a gate at the change.
+   - The opposing-changes defect behind this package's one collision: a guard for every driven change into lane 1 against an opposing driven entry in the same step, as `_weave_swap_opposing_clear` does under the swap and the spread — a model change for its own package, to be measured on the grid.
+   - The observed side of the term decomposition at the calibrated values: the per-change I-24 table, a cloud stage.
+
+**Limitations.**
+- One fixture of the corridor's section at 10 seeds and the 29-run grid, macOS records; the capacity fixture is platform-sensitive (block-3 CI note).
+- The four values are VM Z's medians mapped at speed parity and at the fleet's means; the mapping's own self-check does not recover a 2.584 s leader side from the model's exiters, so the model's exiters under that setting are not a replica of real ones.
+- The critical gaps describe a mixture of the weave's acceptance, its forced changes and SUMO's LC2013.
+- The per-term shares are vehicle-steps: a vehicle waiting 10 steps counts 10 times.
+
+**Bookkeeping.**
+- *Edited:* `packages/flowstate_core/flowstate_core/config.py` (`WEAVE_DEFAULTS` gains the two keys, typed `float | None`, and the docstring paragraph); `packages/microsim/microsim/runner.py` (`_weave_lag_gap_s` and the threading listed above); `packages/calibration/calibration/lane_change_gaps.py` (`AcceptanceParams`' two optional fields, `weave_acceptance`); `tests/test_microsim/test_microsim_merge_managed_meter.py` (the key list; `TestWeaveLeaderFollowerGapsApart`, 13 tests); `tests/test_calibration/test_calibration_lane_change_gaps.py` (`TestAcceptanceLeaderFollowerApart`, 5 tests); docs/CONTRACTS.md (§2 and "Lane-change gap records"); CHANGELOG.md; this section.
+- *Not edited:* every scenario, fixture and golden; `WEAVE_DEFAULTS`' existing values; the API schema and `scripts/corridor_sweep.py` (no meta key added).
+- *Session files (`wp80/`, not committed):* `ident.py` and its three row files; `corr80.py`, `acc_hook80.py`, `corr_all.sh`; `colltrace.py`; `cross80.py`, `where80.py`, `cg_all.sh`; `tables.py`, `xtab80.py`, `cgdoc80.py`, `cgtab80.py`, `termdoc80.py`, `gtab80.py`; `grid80.sh` and `wp80_grid_harness.py` beside them; the run rows and the critical-gap and crossing JSONs.
+
+Every number above is from those runs, from the committed files named, or from the tests.

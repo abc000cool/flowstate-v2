@@ -177,7 +177,7 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
 """Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
 SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 
-WEAVE_DEFAULTS: dict[str, float] = {
+WEAVE_DEFAULTS: dict[str, float | None] = {
     **SCRIPTED_MERGE_DEFAULTS,
     "exit_accept_gap_s": 0.6,
     "vacate_ahead_m": 500.0,
@@ -242,6 +242,15 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # an approaching entrant's gap follower that is itself bound for the
     # paired exit is not held; a switch, not a fitted value
     "anticipation_spares_exiters": 0.0,
+    # WP-80 (2026-09-25, block 3): the follower-side time gap of each
+    # movement, apart from the leader side's (``accept_gap_s`` /
+    # ``exit_accept_gap_s``). None = unset: the follower side reads the
+    # leader side's key, as every run before WP-80 did — not a fitted value.
+    # The calibrated per-side values are a proposal in
+    # artifacts/i24_critical_gaps.json (``proposal``, ``lead_side_only`` /
+    # ``lag_side_only``), not defaults.
+    "accept_lag_gap_s": None,
+    "exit_accept_lag_gap_s": None,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -719,7 +728,33 @@ and 1 at 0.0–0.2 m/s from minute 13); seeds 3–12: T.H.52 3,750 → 3,464 (3,
 (45 → 59 with ``ramp_outlet``), the entrances fall 5,944 → 5,544 (6,055 →
 5,897), and the T.H.52 capacity fixture's no-lock pin fails at seeds 4 and 5
 (at all three with ``ramp_outlet``); no collision. A switch, not a fitted
-value."""
+value. ``accept_lag_gap_s`` and ``exit_accept_lag_gap_s`` (2026-09-25,
+block 3, WP-80, the leader and follower gaps apart): the follower-side
+time gap of the entering and of the exiting movement. Until WP-80 each
+movement had one time gap, ``accept_gap_s`` / ``exit_accept_gap_s``,
+applied to both sides of every test; the I-24 MOTION critical gaps (VM Z,
+``artifacts/i24_critical_gaps.json``) read the two sides differently for
+both movements, and WP-79 measured the one-value compromise failing on the
+exit side. Now the existing key governs the leader side and the new key
+the follower side, everywhere the movement's time gap enters: the
+acceptance's ``s0 + A · v_F``, the forced guard's closing-speed bound on
+the follower side (the guard is part of every accepted change, so a guard
+on one value would re-impose the leader side on the follower side), the
+cooperation's and the anticipation's gap targets for the gap's follower,
+the swap's follower-side checks, the spread length's gap opening, and the
+follower side of the vacate / early-move gap check that borrows the
+entering key (``microsim.runner._weave_lag_gap_s``). **``None``, the
+default, is unset: the follower side reads the leader side's key**, so a
+run that sets neither key is byte-identical to one before WP-80 and the
+config hash moves only when a key is set. Not fitted values: the
+calibrated per-side values are a proposal in the artifact's ``proposal``
+block (``lead_side_only`` / ``lag_side_only``), measured on the fixtures
+in docs/WEAVE_MODEL_PLAN.md (dated section WP-80) and not made defaults:
+with all four (entering 0.0 / 0.778 s, exiting 2.584 / 0.721 s) the 29-run
+fixture grid's give-ups rise 44 → 134 and the T.H.52 capacity fixture's
+no-lock pin fails at all three seeds, driven by the exiting leader side;
+the entering pair alone holds the grid's totals (47 given up) and fails
+the pin at seed 4."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 
