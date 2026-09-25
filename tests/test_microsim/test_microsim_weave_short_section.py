@@ -234,10 +234,12 @@ class TestRuthStWeave:
                         "seeds 4 / 5 give up none with lane 1 never below 15.7 m/s — so the "
                         "marks are not strict (docs/WEAVE_MODEL_PLAN.md, the short section at "
                         "the 500 m window). Under the speed-aware acceptance (2026-09-24, "
-                        "block 3) seed 3 passes (45 of 45, lane 1 never below 6.3 m/s, 138 "
-                        "deferred, 1 release), seed 4 gives up 1 of 41 (2.4 %; lane 1 never "
-                        "below 5.9 m/s) and seed 5 reads 3.6 m/s in one minute (34 of 34 "
-                        "exit); no collision at any",
+                        "block 3), with the exit link's class corrected to the corridor's "
+                        "(2026-09-25, block 3, WP-83), seed 3 gives up 1 of 45 (2.2 %; 44 exit, "
+                        "lane 1 4.3 m/s in one minute, 243 deferred, 6 releases), seed 4 gives "
+                        "up 1 of 41 (2.4 %; lane 1 2.6 m/s in one minute) and seed 5 reads "
+                        "1.1 m/s in one minute (32 of 34 exit, none given up); no collision at "
+                        "any",
                     ),
                 )
                 for seed in (3, 4, 5)
@@ -267,11 +269,12 @@ class TestRuthStWeave:
                         "measured-and-rejected scalings and the 2 L window: "
                         "docs/WEAVE_MODEL_PLAN.md, short sections and the short section at "
                         "the 500 m window. Under the speed-aware acceptance (2026-09-24, "
-                        "block 3; the collision's fix, TestExitSideAcceptance) seeds 3 / 4 / 5 "
-                        "give up 9 / 1 / 4 of 290 / 280 / 274 (3.1 / 0.4 / 1.5 %), lane 1's "
-                        "last 60 m reads 2.8 / 4.2 / 6.7 m/s at the minimum (4 / 1 / 0 "
-                        "minutes at or below 5), 40 / 25 / 6 forced, 1,168 / 402 / 132 "
-                        "deferred, 32 / 6 / 0 releases, no collision: the exiters that used to "
+                        "block 3; the collision's fix, TestExitSideAcceptance; the exit link's "
+                        "class corrected to the corridor's, 2026-09-25, block 3, WP-83) seeds "
+                        "3 / 4 / 5 give up 12 / 2 / 4 of 290 / 280 / 274 (4.1 / 0.7 / 1.5 %), "
+                        "lane 1's last 60 m reads 2.5 / 5.0 / 5.6 m/s at the minimum (3 / 1 / "
+                        "0 minutes at or below 5), 32 / 19 / 10 forced, 1,117 / 196 / 241 "
+                        "deferred, 29 / 8 / 0 releases, no collision: the exiters that used to "
                         "drop in at speed now ease in lane 1 behind the auxiliary lane's queue, "
                         "and more of them reach the gore's end still owing the change. Seed 5 "
                         "meets every criterion under it and is unmarked",

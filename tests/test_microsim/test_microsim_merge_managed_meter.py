@@ -1759,10 +1759,11 @@ class TestWeaveRun:
         "before the gore is above 5 m/s in 10 of 18 minutes (was 4) and lane 0 is now the "
         "first lane below 2 m/s there (minute 3 at 100 m; lane 1 minute 5) where at 150 m "
         "lane 1 was (minute 4; lane 0 minute 7) — the cloud's lane order on this fleet. "
-        "Under the speed-aware acceptance (same date): E1 departs 253 of 360, its "
-        "acceleration-lane end 1.6 m/s at the minimum (13 minutes at or below 5), the "
-        "gore's last 60 m never below 7.3 m/s, 309 of 314 exit, none given up, 1 "
-        "unfinished, no collision",
+        "Under the speed-aware acceptance (same date), with the exit link's class corrected "
+        "to the corridor's (2026-09-25 block 3, WP-83): E1 departs 273 of 360, its "
+        "acceleration-lane end 0.7 m/s at the minimum (16 minutes at or below 5), the "
+        "gore's last 60 m 3.2 m/s at the minimum (3 minutes at or below 5), 306 of 315 "
+        "exit, 4 given up, none unfinished, no collision",
     )
     def test_th52_with_upstream_entrance_on_the_corridor_fleet(self, tmp_path):
         """:func:`test_th52_with_upstream_entrance_at_corridor_demand` with the
@@ -1840,12 +1841,13 @@ class TestWeaveRun:
         strict=True,
         reason="The T.H.52 section as the corridor compiles it, under the observed 05:30-05:50 "
         "movements on the corridor's fleet (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
-        "WP-61; the gore link's class corrected to the corridor's, 2026-09-25 block 3, WP-74): "
-        "the T.H.52 entrance departs 381 / 381 / 336 of 407 at seeds 3 / 4 / 5 "
-        "(387 required), and the section's last 60 m read below 20 m/s in 12 / 10 / 13 of "
-        "the 16 lane-windows — the auxiliary lane at 11.3 / 8.0 / 7.9 m/s at its lowest, "
-        "lane 1 at 13.0 / 10.6 / 7.6; the mainline departs 1,177 / 1,162 / 1,111 of 1,196 "
-        "(1,137 required), 1 / 0 / 2 exits are given up of 367 / 404 / 395 reaching the "
+        "WP-61; the gore link's class corrected to the corridor's, 2026-09-25 block 3, WP-74, "
+        "and the 12th St / Jackson exit's, WP-83): "
+        "the T.H.52 entrance departs 370 / 329 / 323 of 407 at seeds 3 / 4 / 5 "
+        "(387 required), and the section's last 60 m read below 20 m/s in 11 / 10 / 14 of "
+        "the 16 lane-windows — the auxiliary lane at 8.6 / 9.4 / 3.7 m/s at its lowest, "
+        "lane 1 at 11.5 / 14.0 / 4.5; the mainline departs 1,160 / 1,149 / 1,139 of 1,196 "
+        "(1,137 required), 1 / 1 / 4 exits are given up of 360 / 377 / 380 reaching the "
         "section, no collision",
     )
     def test_th52_corridor_section_carries_free_flow_demand(self, tmp_path):

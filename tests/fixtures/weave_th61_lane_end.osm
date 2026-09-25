@@ -30,7 +30,15 @@
        Node positions were iterated until netconvert's compiled lengths matched
        the corridor's to 0.1 m (the junction geometry at the shallow ramp angles
        moves the edge ends by up to 71 m from the nodes). At lat 40 one degree
-       of longitude is about 85.39 km and one of latitude 111.03 km. -->
+       of longitude is about 85.39 km and one of latitude 111.03 km.
+       The exit link's class (2026-09-25, block 3, WP-83; docs/WEAVE_MODEL_PLAN.md):
+       the corridor compiles every off-ramp connection straight (dir="s").
+       Way 201 first ran straight from node 4 at +8.7 deg and both its links
+       compiled dir="R" (partial right; netconvert: straight below 6 deg), where
+       the corridor's 45608485 -> 18207912 are "s" at +1.44 deg; the EIDM previews
+       a partial right as a 12 m/s turn. Node 12 now starts it at +4.5 deg for
+       1.2 m (+4.27 deg compiled), then 8.8 deg to node 11 (moved); every
+       compiled lane length stays within 0.02 m. -->
   <node id="1" lat="40.000000" lon="-96.000000"/>
   <node id="2" lat="40.000000" lon="-95.992973"/>
   <node id="3" lat="40.000000" lon="-95.986913"/>
@@ -38,7 +46,8 @@
   <node id="5" lat="40.000000" lon="-95.965471"/>
   <node id="6" lat="40.000000" lon="-95.956926"/>
   <node id="7" lat="40.000000" lon="-95.949899"/>
-  <node id="11" lat="39.999189" lon="-95.968072"/>
+  <node id="11" lat="39.9991766" lon="-95.9680745"/>
+  <node id="12" lat="39.99999915" lon="-95.97497999"/>
   <node id="20" lat="39.999189" lon="-95.998437"/>
   <way id="100">
     <nd ref="1"/><nd ref="2"/>
@@ -90,7 +99,7 @@
     <tag k="maxspeed" v="45 mph"/>
   </way>
   <way id="201">
-    <nd ref="4"/><nd ref="11"/>
+    <nd ref="4"/><nd ref="12"/><nd ref="11"/>
     <tag k="highway" v="motorway_link"/>
     <tag k="oneway" v="yes"/>
     <tag k="lanes" v="2"/>

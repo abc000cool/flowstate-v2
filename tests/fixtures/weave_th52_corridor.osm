@@ -25,7 +25,12 @@
        The exit way 201 here first ran straight at +10.2 deg and compiled dir="R"
        (partial right), which the EIDM previews as a 12 m/s turn. Node 12 now
        starts it at the corridor's angle for 10 m (+1.46 deg compiled), then 14.1
-       deg to node 11 (moved); every length above stays within 0.1 m. -->
+       deg to node 11 (moved); every length above stays within 0.1 m.
+       The 12th St / Jackson exit's class (2026-09-25, block 3, WP-83): the
+       corridor compiles 1001426896_0 -> 82150350 as dir="s" (-0.52 deg). Way 203
+       first ran straight from node 5 at +9.3 deg and compiled dir="R". Node 14
+       now starts it at +4.5 deg for 1.2 m (+4.31 deg compiled), then 9.5 deg to
+       node 13 (moved); every compiled lane length stays within 0.02 m. -->
   <node id="1" lat="40.000000" lon="-96.000000"/>
   <node id="2" lat="40.000000" lon="-95.992976"/>
   <node id="3" lat="40.000000" lon="-95.989740"/>
@@ -34,7 +39,8 @@
   <node id="6" lat="40.000000" lon="-95.978015"/>
   <node id="11" lat="39.9989007" lon="-95.9813242"/>
   <node id="12" lat="39.99999768" lon="-95.98698393"/>
-  <node id="13" lat="39.999370" lon="-95.979520"/>
+  <node id="13" lat="39.9993560" lon="-95.9795230"/>
+  <node id="14" lat="39.99999915" lon="-95.98450699"/>
   <node id="20" lat="39.999099" lon="-96.000093"/>
   <node id="21" lat="39.999099" lon="-95.999480"/>
   <way id="100">
@@ -92,7 +98,7 @@
     <tag k="lanes" v="1"/>
   </way>
   <way id="203">
-    <nd ref="5"/><nd ref="13"/>
+    <nd ref="5"/><nd ref="14"/><nd ref="13"/>
     <tag k="highway" v="motorway_link"/>
     <tag k="oneway" v="yes"/>
     <tag k="lanes" v="1"/>

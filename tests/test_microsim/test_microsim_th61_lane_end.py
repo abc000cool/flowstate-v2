@@ -342,11 +342,12 @@ class TestTh61LaneEnd:
         strict=True,
         reason="the weave model has one auxiliary lane (docs/CONTRACTS.md §2: entrants on "
         "lane 0 change left, exiters on lanes >= 1 change right to lane 0); here lanes 0 and "
-        "1 both lead only to the exit (docs/WEAVE_MODEL_PLAN.md, 2026-09-25 block 3, WP-66). "
-        "Seed 3: 2,566 of 2,885 depart (lane_change: 2,797), the entrance 834 of 848; the "
-        "section drives 4,982 exits for 604 exiters reaching it — 578 of them change from "
-        "lane 1 to lane 0 4,919 times and back 4,512 times (lane_change: 391 and 204) — and "
-        "gives up 3 exits; no minute at 0.0 m/s at the gore, longest lane-end hold 4.5 s, "
+        "1 both lead only to the exit (docs/WEAVE_MODEL_PLAN.md, 2026-09-25 block 3, WP-66; "
+        "the exit link's class corrected to the corridor's, WP-83). "
+        "Seed 3: 2,565 of 2,885 depart (lane_change: 2,810), the entrance 837 of 848; the "
+        "section drives 4,273 exits for 600 exiters reaching it — 569 of them change from "
+        "lane 1 to lane 0 4,229 times and back 3,807 times (lane_change: 412 and 204) — and "
+        "gives up 5 exits; no minute at 0.0 m/s at the gore, longest lane-end hold 1.0 s, "
         "no collision",
     )
     def test_weave_configuration_carries_the_stretch(self, tmp_path):

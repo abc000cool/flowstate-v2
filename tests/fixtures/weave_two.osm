@@ -10,7 +10,14 @@
        sections are 600 m apart so the second's upstream window (the edge
        before it, 104) is clear of the first's last edge (102): the stepping
        order of the two sections cannot change the result, which is what the
-       order test relies on. -->
+       order test relies on.
+       The exit link's class (2026-09-25, block 3, WP-83; docs/WEAVE_MODEL_PLAN.md):
+       the corridor compiles every off-ramp connection straight (dir="s").
+       Ways 201 and 203 first ran straight from nodes 4 and 7 at +14.4 deg and
+       compiled dir="R" (partial right; netconvert: straight below 6 deg), which
+       the EIDM previews as a 12 m/s turn. Nodes 14 and 15 now start them at
+       +4.5 deg for 1.2 m (+4.26 / +4.74 deg compiled), then 15.1 / 15.0 deg to
+       nodes 11 and 13 (moved); every compiled lane length stays within 0.01 m. -->
   <node id="1" lat="40.0000" lon="-96.000000"/>
   <node id="2" lat="40.0000" lon="-95.996482"/>
   <node id="3" lat="40.0000" lon="-95.992964"/>
@@ -21,9 +28,11 @@
   <node id="8" lat="40.0000" lon="-95.976149"/>
   <node id="9" lat="40.0000" lon="-95.972631"/>
   <node id="10" lat="39.9994" lon="-95.995500"/>
-  <node id="11" lat="39.9994" lon="-95.986800"/>
+  <node id="11" lat="39.9993759" lon="-95.9868086"/>
+  <node id="14" lat="39.99999915" lon="-95.98981999"/>
   <node id="12" lat="39.9994" lon="-95.985331"/>
-  <node id="13" lat="39.9994" lon="-95.976630"/>
+  <node id="13" lat="39.9993774" lon="-95.9766376"/>
+  <node id="15" lat="39.99999915" lon="-95.97965299"/>
   <way id="100">
     <nd ref="1"/><nd ref="2"/>
     <tag k="highway" v="motorway"/>
@@ -79,7 +88,7 @@
     <tag k="lanes" v="1"/>
   </way>
   <way id="201">
-    <nd ref="4"/><nd ref="11"/>
+    <nd ref="4"/><nd ref="14"/><nd ref="11"/>
     <tag k="highway" v="motorway_link"/>
     <tag k="oneway" v="yes"/>
     <tag k="lanes" v="1"/>
@@ -91,7 +100,7 @@
     <tag k="lanes" v="1"/>
   </way>
   <way id="203">
-    <nd ref="7"/><nd ref="13"/>
+    <nd ref="7"/><nd ref="15"/><nd ref="13"/>
     <tag k="highway" v="motorway_link"/>
     <tag k="oneway" v="yes"/>
     <tag k="lanes" v="1"/>

@@ -7019,3 +7019,192 @@ the follower side is shorter than their 0.92 s. The conclusions of points 6–7 
 entrants cross slowly), but "less than half" overstates the entering gap on the follower side. The exiting figures are unaffected.
 SUMO's own lane-change parameters cannot close it either: `lcAssertive` scales both sides by one factor, and the observed sides need
 different factors (WP-82).
+
+## 2026-09-25 (block 3, WP-83, every fixture's exit compiles straight): the seven exit ways (eight connections) that WP-74 left as partial rights (`dir="R"`) on six fixtures now compile straight (`dir="s"`), as every off-ramp connection of the corridor does. Each exit leaves its gore through a new node 1.2 m out at 4.5° (compiled 4.26–4.74°) and every compiled lane length stays within 0.02 m, at 0.00 m on `weave_th52.osm`. No gating test changes outcome and no strict `xfail` passes; one non-strict mark now fails where it passed. On the 29-run grid, 11 rows move: the ten corridor-fleet rows, and one fleet-defaults row moved by a 0.01 m length change, not by the class. Golden `merge_weave` is untouched (`weave.osm` already compiled `s`)
+
+**Why.** WP-74 (above) found that the corrected I-94 corridor compiles every off-ramp connection straight, while the synthetic weave fixtures compiled their exit links as partial rights. SUMO 1.27.1's EIDM previews a partial right as a 12 m/s turn, and the corridor fleet is EIDM. WP-74 corrected the corridor section fixture's gore link and listed the others still `R`. This package corrects every one of them on the same faithfulness ground, keeping each compiled length, and re-measures what runs on them. netconvert's rule is WP-74's: straight below 6°, partial from 6° to 44° when another outgoing edge is at least 5° straighter.
+
+**(1) The fixtures before.** Every `tests/fixtures/*.osm` compiled as its tests compile it: `microsim.runner._build_network` on each test's own config (netconvert only, SUMO 1.27.1), under every network variant the tests use. The T.H.61 fixture was compiled with the left drop, the right drop and no drop; the upstream fixture with a `lane_change` and a `scripted` E1. The angles are netconvert's own (WP-74 (2)): the approach's last geometry segment against the outgoing edge's first, positive to the right.
+
+*Table — every connection into an exit, and the continuing edge at the same node.*
+
+| fixture | exit connection | dir | exit angle | continuing edge, dir, angle | fleet of the runs on it |
+|---|---|---|---|---|---|
+| `weave_th52.osm` | 102_0 → 201 | **R** | +14.42° | 103, s, −0.00° | fleet defaults (IDM): `TestWeaveRun` T.H.52 tests, the determinism test, grid `th52_cd` / `th52_cap` |
+| `weave_th52_upstream.osm` | 102_0 → 201 | **R** | +14.42° | 103, s, −0.00° | IDM and the corridor fleet (EIDM): the two upstream-entrance tests, grid `two_fd` / `two_cf` |
+| `weave_ruth.osm` | 102_0 → 201 | **R** | +17.24° | 103, s, −0.00° | IDM and EIDM: `test_microsim_weave_short_section.py`, grid `ruth_*` |
+| `weave_th61_lane_end.osm` | 102_0, 102_1 → 201 | **R**, **R** | +8.66° | 103, s, −0.01° | EIDM: `test_microsim_th61_lane_end.py` |
+| `weave_th52_corridor.osm` | 103_0 → 203 (12th St / Jackson) | **R** | +9.30° | 104, s, −0.01° | EIDM: the corridor section tests |
+| `weave_th52_corridor.osm` | 102_0 → 201 (the gore, WP-74) | s | +1.46° | 103, s, −0.00° | (unchanged) |
+| `weave_two.osm` | 102_0 → 201; 105_0 → 203 | **R**; **R** | +14.42°; +14.40° | 103 / 106, s, −0.00° | IDM: the two-section tests, `test_microsim_vacate_window_review.py` |
+| `weave.osm` | 102_0 → 201 | s | +4.95° | 103, s, −0.01° | IDM: golden `merge_weave`, grid `moderate` / `golden` (unchanged) |
+| `merge.osm` | 100_0 → 201 | s | +5.57° | 101, s, −0.00° | no test keeps the exit: every config prunes it (unchanged) |
+| `splits.osm` | 300_0 → 400; 302_2 → 401 | R; L | +11.03°; −11.04° | 301 / 303, s | none: the split audit's netconvert-only fixture, whose right and left exits exercise the audit's side reading (unchanged) |
+
+- The corridor's own classes for the exits these fixtures stand for (WP-74's table) are all `s`: T.H.52 at +1.48°, Ruth St (18208090) at −1.34°, Mounds / Kellogg (18207912, two lanes) at +1.44°, and 12th St / Jackson (82150350) at −0.52°.
+- `splits.osm` is not corrected. No vehicle runs on it, and its left exit is `L` by design.
+
+**(2) The correction.** Only node coordinates change: a new node on each exit way, and the way's far node moved.
+- *The rule, one for all seven links.* A first leg of 1.2 m at 4.5° from the gore node. Then θ2, the second leg's angle, is bisected so that the edge into the gore keeps its compiled length. Then the second leg's length is set so that the exit keeps its own. Last, a small local search over both for the smallest largest change.
+- *Why not the corridor's angle, as WP-74 used.* It does not hold the lengths on the straight fixtures:
+  - On the four T.H.52-shaped exits (`weave_th52`, `weave_th52_upstream` and both of `weave_two`), a first leg at +1.48° lengthens the continuing edge by 0.27–0.29 m (2.5 m leg; three of the four tried), 0.32–0.33 m (5 m) and 0.41–0.45 m (10 m), with the edge into the gore held.
+  - On `weave_th52.osm`, legs of 0.5–2 m do the same (+0.20 to +0.33 m), and so does any angle from 0.5° to 5.5° with a leg of 2.5 or 5 m (+0.25 to +0.41 m).
+  - A second kink that rejoins the old line only trades 102 against 103: their sum stays about +0.2 m, and the best split was 0.10 / 0.10 m.
+  - The corridor's leftward angles (Ruth St −1.34°, Jackson −0.52°) shrink the compiled junction whatever the second leg does. Ruth's section 102 comes out 18.67 m short and the corridor fixture's 103 32.16 m short.
+  - At +1.44–1.48° (the corridor's T.H.52 and Mounds / Kellogg angles) the lengths hold on three links only, and only for short legs: T.H.61 (10 m: the mainline edges within 0.04 m), Ruth St (2.5 m: +0.05 m; 5 m: +0.11 m) and Jackson (1.0–2.5 m: 104 +0.05 to +0.09 m; 5 m: +0.17 m).
+- *The island.* Legs of 1.0–1.2 m at 4.5–5.0° held every length within 0.04 m on all seven links. At 1.4 m, or at 1.0 m and 4.0°, the T.H.52-shaped fixtures lose it again (103 +0.21 to +0.27 m). The mechanism in netconvert's junction shape was not traced.
+- *The angle is immaterial beyond the class.* Without internal links SUMO reads the lane lengths and the link's class, not the heading (WP-74 (3)), and the runner places vehicles by lane position. The 4.26–4.74° compiled is 1.26° inside netconvert's 6° line. The corridor's right exits leave at −1.34° to +4.02°.
+
+*Table — the corrected exits.* Legs are in the local metric at lat 40; the compiled angle is netconvert's.
+
+| fixture, way | before | after (new node, then the far node moved) | compiled dir, angle | largest lane-length change |
+|---|---|---|---|---|
+| `weave_th52.osm`, 201 | 4 → 11: 267.51 m at +14.42° | 4 → 12: 1.20 m at +4.51°; 12 → 11: 266.32 m at +15.02° | s, +4.73° | 0.00 m (every lane identical) |
+| `weave_th52_upstream.osm`, 201 | 6 → 11: 267.51 m at +14.42° | 6 → 12: 1.20 m at +4.51°; 12 → 11: 266.33 m at +15.02° | s, +4.73° | 0.01 m (103) |
+| `weave_ruth.osm`, 201 | 4 → 11: 224.78 m at +17.24° | 4 → 12: 1.20 m at +4.51°; 12 → 11: 223.61 m at +18.19° | s, +4.73° | 0.01 m (102, 103) |
+| `weave_th61_lane_end.osm`, 201 | 4 → 11: 597.92 m at +8.66° | 4 → 12: 1.20 m at +4.51°; 12 → 11: 596.72 m at +8.80° | s, s, +4.27° | 0.02 m (102) |
+| `weave_th52_corridor.osm`, 203 | 5 → 13: 432.75 m at +9.30° | 5 → 14: 1.20 m at +4.51°; 14 → 13: 431.55 m at +9.53° | s, +4.31° | 0.02 m (103) |
+| `weave_two.osm`, 201 and 203 | 4 → 11: 267.51 m at +14.42°; 7 → 13: 267.76 m at +14.41° | 4 → 14 and 7 → 15: 1.20 m at +4.51°; then 266.30 m at +15.06° and 266.59 m at +15.01° | s, +4.26°; s, +4.74° | 0.01 m (103, 105, 106, 203) |
+
+*Table — compiled lengths (m) that moved; every other edge is identical to the hundredth, as are all lanes of each edge.*
+
+| fixture | edge: before → after |
+|---|---|
+| `weave_th52.osm` | none |
+| `weave_th52_upstream.osm` (both E1 forms) | 103: 316.62 → 316.63 |
+| `weave_ruth.osm` | 102: 135.71 → 135.72; 103: 282.30 → 282.31 |
+| `weave_th61_lane_end.osm` (all three drops) | 102: 1,135.67 → 1,135.69; 103: 770.35 → 770.34; 201: 555.95 → 555.94 |
+| `weave_th52_corridor.osm` | 103: 220.95 → 220.97; 104: 524.81 → 524.82 |
+| `weave_two.osm` | 103: 278.53 → 278.54; 105: 308.42 → 308.43; 106: 278.50 → 278.51; 203: 247.99 → 248.00 |
+
+- Every connection, lane count, lane speed, width and permission is identical before and after, apart from the exit links' class `R` → `s`.
+- So are every junction's type, incoming lanes and right-of-way requests, and every edge attribute except the shape.
+- Each fixture's header comment records the change.
+
+**(3) The tests.** The five modules that hold every test running on a changed fixture were run before and after: `test_microsim_merge_managed_meter.py`, `test_microsim_weave_short_section.py`, `test_microsim_th61_lane_end.py`, `test_microsim_vacate_window_review.py` and `test_microsim_determinism.py`. That is 240 tests, none marked slow.
+- *Before:* 228 passed, 10 xfailed, 2 xpassed. *After:* 228 passed, 11 xfailed, 1 xpassed.
+- *The one outcome that changed:* `TestRuthStWeave::test_short_section_with_the_corridor_fleet[entrance_peak-3]`, a non-strict mark, xpassed and now xfails. It gives up 1 of 45 exits (2.2 % against 2 %), and lane 1's last 60 m reads 4.3 m/s in one minute.
+- No strict `xfail` passes, and no passing test fails. The unmarked `exit_peak-5` still meets every criterion: 4 of 274 given up, lane 1 never below 5.6 m/s.
+- *Reason strings.* Five marks quote the current physics on a changed fixture. Only their reason strings were updated, with the values measured here; no criterion, body or `strict` flag changed:
+  - `test_th52_corridor_section_carries_free_flow_demand` (strict). Seeds 3 / 4 / 5 read T.H.52 370 / 329 / 323 of 407 (381 / 381 / 336 before) and 11 / 10 / 14 lane-windows at or below 20 m/s (12 / 10 / 13). Lane 0 is at 8.6 / 9.4 / 3.7 m/s at its lowest, lane 1 at 11.5 / 14.0 / 4.5. The mainline departs 1,160 / 1,149 / 1,139, and 1 / 1 / 4 exits are given up of 360 / 377 / 380. No collision.
+  - `test_th52_with_upstream_entrance_on_the_corridor_fleet` (strict), seed 3:
+    - E1 departs 273 of 360 (253 before), and its acceleration-lane end reads 0.7 m/s at the minimum, at or below 5 m/s in 16 minutes (1.6 m/s, 13).
+    - The gore's last 60 m reads 3.2 m/s at the minimum, at or below 5 m/s in 3 minutes (never below 7.3 before).
+    - 306 of 315 exit with 4 given up (309 of 314, none), none unfinished, no collision.
+  - `test_short_section_with_the_corridor_fleet[exit_peak-3/4]` (strict). Seeds 3 / 4 / 5 give up 12 / 2 / 4 of 290 / 280 / 274 (9 / 1 / 4 before). Lane 1 reads 2.5 / 5.0 / 5.6 m/s at the minimum (2.8 / 4.2 / 6.7), with 32 / 19 / 10 forced, 1,117 / 196 / 241 deferred and 29 / 8 / 0 releases.
+  - `test_short_section_with_the_corridor_fleet[entrance_peak-*]` (not strict):
+    - seed 3 gives up 1 of 45, with lane 1 at 4.3 m/s in one minute;
+    - seed 4 gives up 1 of 41, with lane 1 at 2.6 m/s;
+    - seed 5 reads 1.1 m/s in one minute, with 32 of 34 exiting;
+    - no collision.
+  - `test_weave_configuration_carries_the_stretch` (strict), seed 3, left drop (table below).
+- *Unchanged marks.* The strict and non-strict marks on `weave_th52.osm` and the fleet-defaults upstream test quote runs that are identical after (grid rows `th52_*`, `two_fd`), so they are untouched.
+- *The gate:* `pytest -m "not slow"` gives 2,255 passed, 11 xfailed, 1 xpassed and 9 deselected (WP-82: 2,255 / 10 / 2). `ruff check`, `ruff format --check` and `mypy --strict` on the three typed packages are clean.
+
+*The corridor section fixture, ten seeds (3–12), the test body* (WP-74's `corr_run.py`). Before is the fixture as committed, with the Jackson link `R`. It reproduces WP-74's "after" row to the number.
+
+| fixture | T.H.52 Σ of 4,070 (seeds ≥ 387) | mainline Σ of 11,960 (seeds ≥ 1,137) | lane-windows ≤ 20 m/s, Σ of 160 (lanes 0 / 1 / 2 / 3) | given up of reached | unfinished | coll. | passes |
+|---|---|---|---|---|---|---|---|
+| before (Jackson `R`) | 3,374 (0) | 11,523 (8) | 123 (40 / 40 / 28 / 15) | 12 of 3,811 | 41 | 0 | 0 |
+| **after** (Jackson `s`) | 3,401 (0) | 11,486 (8) | 119 (40 / 39 / 27 / 14) | 21 of 3,785 | 44 | 0 | 0 |
+
+- Paired by seed, after minus before (mean a run, 95 % t-interval): lane-windows −0.40 (−1.17 to +0.37), T.H.52 departures +2.7 (−16.4 to +21.8), mainline departures −3.7 (−17.7 to +10.3).
+- Lanes 0 and 1 still fail 40 and 39 of their 40 windows. The Jackson exit is 221 m past the section's end, as WP-74's variant J found.
+
+*The T.H.61 lane end, seed 3, left drop* (WP-66's `wp66_grid.py` reading, through the test module's own config). Before reproduces WP-66's row and the mark's reason to the number.
+
+| merge | fixture | departed of 2,885 | entrance of 848 | exits taken / given up | exiters' changes 1 → 0 / 0 → 1 (exiters changing) | weave: out / reached | longest lane-end hold | 0.0 minutes | coll. |
+|---|---|---|---|---|---|---|---|---|---|
+| weave | before | 2,566 | 834 | 570 / 3 | 4,919 / 4,512 (578) | 4,982 / 604 | 4.5 s | none | 0 |
+| weave | **after** | 2,565 | 837 | 568 / 5 | 4,229 / 3,807 (569) | 4,273 / 600 | 1.0 s | none | 0 |
+| lane_change | before | 2,797 | 848 | 628 / 0 | 391 / 204 (356) | — | 1.0 s | none | 0 |
+| lane_change | **after** | 2,810 | 848 | 606 / 0 | 412 / 204 (379) | — | 19.0 s | none | 0 |
+
+**(4) The 29-run grid** (WP-70's, through WP-80's harness; `grid83.sh`, the defaults).
+- *Before:* on the committed fixtures, the rows equal WP-80's default rows (`wp80g_off`): 1,301 fields, none differ.
+- *After:* 11 of the 29 rows move. They are all ten corridor-fleet rows (Ruth St × 7, two-entrance × 3) and one fleet-defaults row, Ruth St at the entrance peak, seed 3. The other 18 are identical field for field: every T.H.52 row, the other five Ruth fleet-defaults rows, every two-entrance fleet-defaults row, `moderate`, and `golden`.
+- These rows are the new baseline for any later comparison.
+
+*Table — the rows that moved; the others read as in WP-80. Each cell gives: given up / reached; exited; lane 1's last-60 m minimum (minutes at or below 5 m/s); entrance departed (E1 for the two-entrance fixture); forced; deferred; releases; unfinished; collisions.*
+
+| row | seed | fleet | before (= WP-80's default) | after |
+|---|---|---|---|---|
+| Ruth St, exit peak | 3 | EIDM | 9 / 290; 273; 2.8 (4); 73; 40; 1,168; 32; 2; 0 | 12 / 290; 276; 2.5 (3); 73; 32; 1,117; 29; 0; 0 |
+| Ruth St, exit peak | 4 | EIDM | 1 / 280; 279; 4.2 (1); 73; 25; 402; 6; 0; 0 | 2 / 280; 278; 5.0 (1); 73; 19; 196; 8; 0; 0 |
+| Ruth St, exit peak | 5 | EIDM | 4 / 274; 267; 6.7 (0); 73; 6; 132; 0; 2; 0 | 4 / 274; 266; 5.6 (0); 73; 10; 241; 0; 2; 0 |
+| Ruth St, exit peak, window 271.4 m | 5 | EIDM | 8 / 274; 265; 2.1 (3); 73; 28; 814; 26; 0; 0 | 14 / 274; 259; 1.8 (6); 73; 43; 1,853; 59; 0; 0 |
+| Ruth St, entrance peak | 3 | EIDM | 0 / 45; 45; 6.3 (0); 128; 14; 138; 1; 0; 0 | 1 / 45; 44; 4.3 (1); 128; 7; 243; 6; 0; 0 |
+| Ruth St, entrance peak | 4 | EIDM | 1 / 41; 40; 5.9 (0); 128; 9; 120; 1; 0; 0 | 1 / 41; 40; 2.6 (1); 128; 8; 248; 6; 0; 0 |
+| Ruth St, entrance peak | 5 | EIDM | 0 / 34; 34; 3.6 (1); 128; 8; 119; 4; 0; 0 | 0 / 34; 32; 1.1 (1); 128; 6; 496; 16; 4; 0 |
+| Ruth St, entrance peak | 3 | IDM | 0 / 33; 33; 7.9 (0); 128; 34; 53; 0; 0; 0 | 0 / 34; 33; 5.7 (0); 128; 37; 86; 0; 1; 0 |
+| two-entrance | 3 | EIDM | 0 / 314; 309; 7.3 (0); 356, E1 253; 22; 55; 4; 1; 0 | 4 / 315; 306; 3.2 (3); 345, E1 273; 28; 406; 19; 0; 0 |
+| two-entrance | 4 | EIDM | 3 / 308; 301; 2.9 (2); 351, E1 256; 41; 536; 23; 5; 0 | 0 / 298; 295; 5.2 (0); 377, E1 277; 25; 100; 2; 0; 0 |
+| two-entrance | 5 | EIDM | 0 / 301; 291; 8.3 (0); 374, E1 253; 25; 22; 5; 4; 0 | 2 / 297; 281; 5.7 (0); 355, E1 272; 24; 60; 2; 4; 0 |
+
+*Table — totals over the 28 fixture rows.*
+
+| rows | grid | given up | reached | exited | lane-1 minutes ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all 28 | before | 44 | 6,131 | 5,988 | 18 | 529 | 5,439 | 218 | 45 | 5,944 | 1,444 | 0 |
+| all 28 | **after** | 58 | 6,119 | 5,961 | 23 | 516 | 6,926 | 263 | 42 | 5,940 | 1,504 | 0 |
+| corridor fleet (10) | before | 26 | 2,161 | 2,104 | 11 | 218 | 3,506 | 102 | 14 | 1,757 | 762 | 0 |
+| corridor fleet (10) | **after** | 40 | 2,148 | 2,077 | 16 | 202 | 4,960 | 147 | 10 | 1,753 | 822 | 0 |
+| fleet defaults (18) | before | 18 | 3,970 | 3,884 | 7 | 311 | 1,933 | 116 | 31 | 4,187 | 682 | 0 |
+| fleet defaults (18) | **after** | 18 | 3,971 | 3,884 | 7 | 314 | 1,966 | 116 | 32 | 4,187 | 682 | 0 |
+
+- *The T.H.52 capacity fixture's no-lock pin* passes at seeds 3–5 before and after (395 / 401 / 373 of 466; rows identical).
+- *Golden `merge_weave`* is identical: hash 436cd4ec9e5d, every metric and count. `weave.osm` compiles `s` and is unchanged, so the golden needs no regeneration and no golden file changes.
+- *Which change moved the fleet-defaults row* (`ruth_decomp.py`: Ruth St, entrance peak, seed 3, on three geometries).
+  - The third geometry keeps the partial right (a first leg of 1.2 m at 7.0°) but compiles every lane to the corrected fixture's length.
+  - Under the IDM, it writes a byte-identical trajectory file to the corrected fixture's (md5 d2025a8b40): 0 of 34 given up, 37 forced, 86 deferred, lane 1 at 5.7 m/s. So that row moved with the 0.01 m on 102 and 103, not with the class. The IDM has no turn preview (WP-74).
+  - Under the EIDM, both steps move the run:
+    - the lengths alone: 0 of 45 given up → 3 of 45, lane 1 6.3 → 3.1 m/s;
+    - then the class: 3 of 45 → 1 of 45, lane 1 → 4.3 m/s.
+  - A single corridor-fleet run on the short section is sensitive to a 0.01 m change in length.
+
+**Reading.**
+1. *Every exit link on the fixtures now compiles in the corridor's class.* The EIDM's 12 m/s partial-right preview is gone from every exit of every weave fixture, and so the corridor fleet on a fixture meets each exit as it meets the corridor's. Every compiled length is held to 0.02 m, and to 0.00 m on `weave_th52.osm`. `weave.osm` and `merge.osm` already compiled `s`, and `splits.osm` runs no vehicle.
+2. *The class did not decide any criterion.*
+   - The corridor section's ten-seed changes lie inside the seed noise, and lanes 0 and 1 still fail 79 of 80 windows.
+   - On the grid the corridor-fleet rows move both ways. The two-entrance fixture's gore is worse at seed 3 (3.2 m/s, 4 given up) and better at seed 4 (5.2 m/s, none given up). E1 gains 19–21 departures at every seed.
+   - The Ruth St exit-peak marks still fail on lane 1 and, at seed 3, on the give-ups.
+   - The T.H.61 weave configuration still departs 89 % (95 % required).
+3. *No gating outcome changed.* Every strict `xfail` still fails and no passing test fails. The one non-strict mark that passed now fails. Five reason strings carry the new values.
+4. *The fleet-defaults fixtures are unaffected by the class.* Their only moved run moved with a 0.01 m length. Every result on `weave_th52.osm`, the fleet-defaults side of `weave_th52_upstream.osm`, `weave.osm` and the golden is identical.
+
+**What this hands on.**
+- *(a) The corridor-fleet readings on these fixtures before today were made with partial-right exits.* That covers WP-61–82 on the Ruth St, two-entrance and T.H.61 fixtures, and on the corridor section fixture's Jackson exit. The grid rows above are the baseline from now on.
+- *(b) WP-74's (d), for fixture builders, sharpened.*
+  - Check a fixture's exit class against the corridor's as well as its lengths.
+  - On a straight fixture, a first leg at the corridor's small angle (+1.44–1.48°) held the lengths within 0.1 m on three of the seven links (T.H.61 up to 10 m, Ruth St at 2.5 m, Jackson at 1.0–2.5 m).
+  - It held them on none of the four T.H.52-shaped exits (14.4°), at any leg or angle tried. A 1.0–1.2 m leg at 4.5–5° held every length on all seven.
+- *(c)* WP-74's hand-on (b) (the corridor fixture's second exit link) and (c) (the other EIDM fixtures' exit links) are done here.
+
+**Limitations.**
+- *The angle.* The first leg's 4.5° is not the corridor's angle for any of these exits. It is inside netconvert's straight class, and SUMO reads only the class and the lengths here. The corrections rest on a narrow window of netconvert's junction shape (1.0–1.2 m at 4.5–5°) whose mechanism was not traced. A SUMO bump must re-check every fixture's class and lengths (the survey script below does this).
+- *Scale.* One seed per test mark, three per grid row, ten on the corridor section. macOS records.
+- *Not exactly equal.* The lengths are equal to 0.02 m, not identically. On `weave_th52_upstream.osm`, `weave_ruth.osm`, `weave_th61_lane_end.osm`, `weave_th52_corridor.osm` and `weave_two.osm`, runs therefore also move with a 0.01–0.02 m length change, which the Ruth St decomposition shows is enough to move a single run.
+
+**Bookkeeping.**
+- *Edited:*
+  - `tests/fixtures/weave_th52.osm`, `weave_th52_upstream.osm`, `weave_ruth.osm`, `weave_th61_lane_end.osm`, `weave_th52_corridor.osm` (way 203 only) and `weave_two.osm`: one new node per exit way, the far node moved, the way through the new node, and a header-comment paragraph. Nothing else in any file changes.
+  - The reason strings, only, of five marks:
+    - in `tests/test_microsim/test_microsim_merge_managed_meter.py`, `test_th52_corridor_section_carries_free_flow_demand` and `test_th52_with_upstream_entrance_on_the_corridor_fleet`;
+    - in `tests/test_microsim/test_microsim_weave_short_section.py`, the `entrance_peak` and `exit_peak` marks of `test_short_section_with_the_corridor_fleet`;
+    - in `tests/test_microsim/test_microsim_th61_lane_end.py`, `test_weave_configuration_carries_the_stretch`.
+  - CHANGELOG.md and this section.
+- *Not edited:*
+  - `weave.osm`, `merge.osm`, `splits.osm` and every other fixture;
+  - every test body, criterion, `strict` flag and docstring, including the docstrings that cite measurements on these fixtures, which were made on the `R` links as dated;
+  - `microsim.runner`, `flowstate_core.config`, the scenarios, `data/osm` and every golden.
+- *Session files (`wp83/`, not committed):*
+  - the compile survey and comparison: `survey.py`, `compare.py`, `junc.py`, `merge_exit.py`, `before.json` and `after_final.json`;
+  - the fitting: `fit83.py`, `scan83.py`, `scan2.py`, `sweep83.py`, `rejoin83.py`, `three83.py`, `final83.py`, `polish83.py`, `exact83.py`, `exact83b.py` and `exact2.py`, with `cand*/` and `final/`;
+  - the originals in `orig/`;
+  - the tests: `tests_before.log`, `tests_after.log` and `tcmp.py`;
+  - the grid: `grid83.sh`, `wp83g_before.jsonl`, `wp83g_after.jsonl`, `gcmp.py` and `gtab83.py`;
+  - the re-measurements: `corr_run.py` and `corr_rows.jsonl`, `th61_run.py`, `th61_before.jsonl` and `th61_after.jsonl`;
+  - the decomposition: `ruth_attr2.py`, `ruth_R_samelen.osm` and `ruth_decomp.py`.
+  - Run directories were temporary and deleted.
+
+Every number above is from those compiles and runs, or from the committed files named.
