@@ -484,7 +484,9 @@ class TestBoundedParameters:
         rng = np.random.default_rng(7)
         n = 200
         a_lead = np.exp(rng.normal(np.log(1.5), 0.4, n)) * 1.3
-        a_lag = np.full(n, np.inf)  # no lag vehicle ever within range: the lag side carries no information
+        a_lag = np.full(
+            n, np.inf
+        )  # no lag vehicle ever within range: the lag side carries no information
         drv = np.repeat(np.arange(n), 2)
         pl = np.stack([a_lead * 0.6, a_lead * 0.5], axis=1).ravel()
         pg = np.full(2 * n, np.inf)
@@ -495,7 +497,11 @@ class TestBoundedParameters:
 
         data = cg.prepare_joint(*self._uninformative_lag())
         w = np.ones(data.counts["n_used"])
-        for theta in ([0.4, 800.0, 0.4, 800.0], [0.4, -800.0, 800.0, 800.0], [-800.0, 0.0, 0.0, 0.0]):
+        for theta in (
+            [0.4, 800.0, 0.4, 800.0],
+            [0.4, -800.0, 800.0, 800.0],
+            [-800.0, 0.0, 0.0, 0.0],
+        ):
             value = cg._joint_nll(np.asarray(theta, dtype=np.float64), data, w)
             assert np.isfinite(value)
 
