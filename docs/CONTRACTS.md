@@ -455,11 +455,11 @@ exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
 n_entrant_yields, n_entry_bounded, n_hold_releases, n_anticipation_gated,
-n_exit_prepared, n_forced_deferred, n_cooperations, mean_follower_decel_ms2,
-n_changer_eased, n_vacated, n_vacate_refused, n_vacate_skipped_no_gap,
-n_vacate_requests, n_pair_releases, n_unfinished, n_exited,
-n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 39 keys (`n_giveup_waited` added by
+n_exit_prepared, n_swaps, n_forced_deferred, n_cooperations,
+mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
+n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
+n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
+wait_in_s_mean, wait_out_s_mean` — 40 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
@@ -474,7 +474,10 @@ WP-60, the gated anticipation, the vehicle-steps on which an approaching
 entrant's gap follower was not yet commanded, counted where the command
 would have bound; `n_exit_prepared` added by WP-62, the exiters' early
 move, the vehicles bound for the paired exit that the rule moved into the
-lane feeding section lane 1 before the section, each once)
+lane feeding section lane 1 before the section, each once; `n_swaps` added
+by WP-64, the swap, the pairs of a driven entrant in the auxiliary lane and
+a driven exiter beside it in section lane 1 commanded to exchange lanes in
+one step)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1316,6 +1319,42 @@ at seeds 4 and 5, under the 1,137 asked); on the 29-run grid give-ups 44 →
 gore's end 14 → 17, the T.H.52 capacity fixture's no-lock pin failing at
 seed 5 (3 exits missed); no collision. Golden `merge_weave` unchanged at
 the default (hash 436cd4ec9e5d).
+
+**The swap** (2026-09-25, block 3, WP-64; docs/WEAVE_MODEL_PLAN.md, dated
+section; `WEAVE_DEFAULTS["swap_pairs"]`, default 0 = off, hash-neutral
+unless set; measured and left off): a driven entrant in section lane 0 (the
+auxiliary lane) and a driven exiter in section lane 1 that are each other's
+nearest vehicle across — nobody between them in either lane — and of which
+at least one change is refused by the acceptance because of the other
+(`microsim.runner._weave_swap_step`) exchange lanes in one step, both
+changes under mode 256 for one step as accepted changes, with no speed
+target on either in that step, when (i) the two clear the forced guard
+against each other (`_weave_swap_offset_ok`: the reported gap between them,
+the rear's front to the front's rear less the rear's `minGap`, above the
+larger `minGap` plus the closing terms of a faster rear); (ii) the rear's
+change is accepted (`_weave_change_ok`, the section's acceptance restated
+for supplied gaps) in the front vehicle's lane with the front vehicle
+removed; (iii) the front vehicle's change likewise in the rear's lane with
+the rear removed; (iv) no lane-2 vehicle ahead of the entrant, nor a driven
+exiter in lane 2 behind it, would fail the forced guard beside the
+entrant's landing in lane 1 (`_weave_swap_opposing_clear`: SUMO 1.27.1
+executes a step's lane changes front vehicle first, and a mode-256 change
+refuses only an overlap, so a vehicle entering the same lane from the other
+side earlier in the step is the one hazard; an undriven vehicle's change
+cannot be read in advance, so every lane-2 vehicle ahead counts). Entrants
+nearest the section end are paired first; each vehicle in one pair at most;
+nobody else commanded; nothing held. `weave_sections[i].n_swaps` (the
+**40th key**; `WeaveSectionDiagnosticsOut`, null for an older meta, not
+shown by the dashboard; aggregated by `WEAVE_FIELDS`) counts the pairs
+commanded. On the corridor section test's fixture (`weave_th52_corridor.osm`,
+seeds 3 / 4 / 5) it exchanges 44 / 45 / 44 pairs, every one completed in the
+step, and no criterion improves (T.H.52 360 / 365 / 339 of 407 against 368
+/ 360 / 350; the exit end's lanes at or below 20 m/s in 11 / 12 / 13 of 16
+windows against 10 / 11 / 13; the exit end's lane 0 1,044 / 1,104 / 1,161
+veh/h against 1,035 / 1,104 / 1,122); on the 29-run grid give-ups 44 → 42,
+the entrances 5,944 → 5,903, the T.H.52 capacity fixture's no-lock pin
+failing at seeds 3 and 5 (3 and 6 exits missed); no collision. Golden
+`merge_weave` unchanged at the default (hash 436cd4ec9e5d).
 
 ## 3. Run outputs
 
@@ -2254,7 +2293,10 @@ before and not shown by the dashboard, and (WP-62, 2026-09-24 block 3)
 `n_exit_prepared` (the vehicles bound for the paired exit that the
 exiters' early move, `exit_prepare`, moved into the lane feeding section
 lane 1 before the section, each once; zero at its default of 0), null for
-a meta written before and not shown by the dashboard; the sweep
+a meta written before and not shown by the dashboard, and (WP-64,
+2026-09-25 block 3) `n_swaps` (the pairs the swap, `swap_pairs`, commanded
+to exchange lanes in one step; zero at its default of 0), null for a meta
+written before and not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all of them the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema

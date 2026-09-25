@@ -120,9 +120,9 @@ METER_COUNTERS = ("n_released", "n_passed_unstoppable")
 #: and requests (block 3) and the give-ups deferred by the bounded patiences
 #: (WP-52, the braking follower; WP-53, the vehicle beside the exiter), the
 #: two yields at the lane ends (WP-54), the entrant's entry-speed bound
-#: (WP-57), the bounded hold (WP-58), the gated anticipation (WP-60) and the
-#: exiters' early move (WP-62); a meta written before a counter contributes
-#: nothing to its interval (``n`` = 0).
+#: (WP-57), the bounded hold (WP-58), the gated anticipation (WP-60), the
+#: exiters' early move (WP-62) and the swap (WP-64); a meta written before a
+#: counter contributes nothing to its interval (``n`` = 0).
 WEAVE_FIELDS = (
     "n_entered",
     "n_exited",
@@ -147,6 +147,7 @@ WEAVE_FIELDS = (
     "n_hold_releases",
     "n_anticipation_gated",
     "n_exit_prepared",
+    "n_swaps",
 )
 
 

@@ -307,7 +307,11 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     that the rule asked, inside the vacate window, into the lane feeding
     section lane 1 and that were seen there before the section, each once
     (``exit_prepare``); zero at the default of 0; ``None`` for a meta written
-    before; not shown by the dashboard. Two keys that are
+    before; not shown by the dashboard. ``n_swaps`` (WP-64, 2026-09-25 block
+    3, the swap) counts the pairs — an entrant in the auxiliary lane and an
+    exiter beside it in section lane 1 that block each other — commanded to
+    exchange lanes in one step (``swap_pairs``); zero at the default of 0;
+    ``None`` for a meta written before; not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -346,6 +350,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_hold_releases: int | None = None
     n_anticipation_gated: int | None = None
     n_exit_prepared: int | None = None
+    n_swaps: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

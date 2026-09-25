@@ -885,6 +885,8 @@ class TestWeaveSchema:
             "anticipation_gate": 0.0,
             # WP-62: the exiters' early move (docs/WEAVE_MODEL_PLAN.md, dated section)
             "exit_prepare": 0.0,
+            # WP-64: the swap (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "swap_pairs": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2163,6 +2165,16 @@ def _weave_state(**params) -> dict:
         "n_exit_prepare_skipped": 0,
         "n_exit_prepare_yielded": 0,
         "n_exit_prepare_held": 0,
+        # WP-64: the swap (meta) and its state-only counts
+        "n_swaps": 0,
+        "swap_candidates": 0,
+        "swap_refused_offset": 0,
+        "swap_refused_rear": 0,
+        "swap_refused_front": 0,
+        "swap_refused_opposing": 0,
+        "swap_full": 0,
+        "swap_half": 0,
+        "swap_none": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -4855,6 +4867,186 @@ class TestWeaveExitPrepare:
         assert meta_on["n_collisions"] == 0
 
 
+class TestWeaveSwap:
+    """The swap (2026-09-25, block 3, WP-64; ``_weave_swap_step``,
+    ``swap_pairs``): a driven entrant in the auxiliary lane and a driven
+    exiter beside it in section lane 1 that block each other exchange lanes
+    in one step, each change read by the full acceptance against everyone
+    but the partner and by the forced guard against the partner, never
+    beside an opposing entry into lane 1. Measured and left off
+    (docs/WEAVE_MODEL_PLAN.md, dated section)."""
+
+    # the pair of the tests: entrant "n" in lane 0, exiter "e" in lane 1, both
+    # at 5 m/s, e's front 10.5 m ahead of n's (bumper offset 5.5 m); SUMO's
+    # reported gap between them is 5.5 - n's minGap 2.5 = 3.0 m either side
+    @staticmethod
+    def _pair(e_pos: float = 60.5, **extra) -> tuple[dict, dict, dict]:
+        speeds = {"n": 5.0, "e": 5.0}
+        res = {"n": _res("a", 0, 50.0, 5.0), "e": _res("a", 1, e_pos, 5.0)}
+        for vid, (lane, pos) in extra.items():
+            speeds[vid] = 5.0
+            res[vid] = _res("a", lane, pos, 5.0)
+        gap = e_pos - 5.0 - 50.0 - 2.5
+        # the acceptance's neighbours: n's left leader is e, e's right follower n
+        neighbors = {("n", 2): (("e", gap),), ("e", 1): (("n", gap),)}
+        return speeds, res, neighbors
+
+    @staticmethod
+    def _changes(veh: _WeaveVehicle) -> list[tuple]:
+        return [c for c in veh.calls if c[0] == "change"]
+
+    def test_off_by_default(self):
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["swap_pairs"] == 0.0
+        ws = _weave_state()
+        speeds, res, neighbors = self._pair()
+        veh = _WeaveVehicle(speeds, neighbors)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        # both refused by the section's acceptance (3.0 m < 2.5 + 0.6 * 5)
+        assert self._changes(veh) == [] and ws["n_swaps"] == 0 and ws["swap_candidates"] == 0
+
+    def test_the_offset_guard_is_the_forced_guard_between_the_two(self):
+        """At speed parity the reported gap ``d − s0_R`` must exceed the
+        larger ``minGap``: 5.0 m between bumpers refuses, 5.01 m passes. A
+        rear 2 m/s faster adds its accepted time gap over the closing speed
+        (0.6 · 2 = 1.2 m) or its brake gap at ``b`` (4 / 3.34 = 1.198 m),
+        whichever is larger: 6.2 m."""
+        from microsim.runner import _weave_swap_offset_ok
+
+        args = (2.5, 0.6, 5.0, 1.67, 2.5, 0.6)
+        assert not _weave_swap_offset_ok(5.0, *args, 5.0, 1.67)
+        assert _weave_swap_offset_ok(5.01, *args, 5.0, 1.67)
+        assert not _weave_swap_offset_ok(-3.0, *args, 5.0, 1.67)
+        faster = (2.5, 0.6, 7.0, 1.67, 2.5, 0.6)
+        assert not _weave_swap_offset_ok(6.19, *faster, 5.0, 1.67)
+        assert _weave_swap_offset_ok(6.21, *faster, 5.0, 1.67)
+        # a slower rear needs only the parity offset
+        slower = (2.5, 0.6, 3.0, 1.67, 2.5, 0.6)
+        assert _weave_swap_offset_ok(5.01, *slower, 5.0, 1.67)
+
+    def test_the_change_acceptance_restated(self):
+        """``_weave_change_ok`` is the section's acceptance: the leader side
+        at ``s0 + accept · v`` (5.5 m at 5 m/s), the follower side at the
+        time gap and the follower absorbing the changer at its ``b``."""
+        from microsim.runner import _weave_change_ok
+
+        p_f = {"len": 5.0, "T": 1.4, "a": 0.73, "b": 1.67, "s0": 2.5, "vmax": 33.3}
+        inf, nan = math.inf, math.nan
+        assert _weave_change_ok(2.5, 0.6, 5.0, 1.67, 5.5, 5.0, inf, nan, None, 0.0)
+        assert not _weave_change_ok(2.5, 0.6, 5.0, 1.67, 5.49, 5.0, inf, nan, None, 0.0)
+        assert _weave_change_ok(2.5, 0.6, 5.0, 1.67, inf, nan, 20.0, 5.0, p_f, 30.0)
+        # a follower at 15 m/s 6 m behind a 5 m/s changer: the time gap
+        # (2.5 + 0.6 * 15 = 11.5 m) refuses, and so would its absorption
+        assert not _weave_change_ok(2.5, 0.6, 5.0, 1.67, inf, nan, 6.0, 15.0, p_f, 30.0)
+
+    def test_a_blocked_pair_exchanges_lanes_in_one_step(self):
+        from microsim.runner import LC_MODE_SCRIPTED_FORCE, _weave_meta, _weave_step
+
+        ws = _weave_state(swap_pairs=1.0)
+        speeds, res, neighbors = self._pair()
+        veh = _WeaveVehicle(speeds, neighbors)
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        # both changes under mode 256 for one step, in the step's order
+        assert self._changes(veh) == [("change", "e", 0, 0.5), ("change", "n", 1, 0.5)]
+        assert ws["veh"]["e"]["mode"] == ws["veh"]["n"]["mode"] == LC_MODE_SCRIPTED_FORCE
+        # no speed target on either in any role that step
+        assert not [c for c in veh.calls if c[0] == "slow" and c[1] in ("n", "e")]
+        assert (ws["n_swaps"], ws["swap_candidates"]) == (1, 1)
+        # next step: both changed — counted a full exchange, both handed back
+        veh.calls.clear()
+        res2 = {"n": _res("a", 1, 52.5, 5.0), "e": _res("a", 0, 63.0, 5.0)}
+        _weave_step(mod, _tc, ws, res2, 0.5)
+        assert (ws["swap_full"], ws["swap_half"], ws["swap_none"]) == (1, 0, 0)
+        assert (ws["n_changed_in"], ws["n_changed_out"]) == (1, 1) and not ws["veh"]
+        assert _weave_meta(ws, {})["n_swaps"] == 1
+
+    def test_an_overlapping_pair_is_refused_on_the_offset(self):
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(swap_pairs=1.0)
+        speeds, res, neighbors = self._pair(e_pos=52.0)
+        veh = _WeaveVehicle(speeds, neighbors)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert self._changes(veh) == []
+        assert (ws["swap_candidates"], ws["swap_refused_offset"], ws["n_swaps"]) == (1, 1, 0)
+
+    def test_the_rear_change_reads_the_vehicle_behind_the_partner(self):
+        """With the exiter removed, the entrant's follower in lane 1 is the
+        vehicle behind it, 2.5 m reported behind the entrant (2.5 + 0.6 · 5
+        = 5.5 m asked): refused on the rear side; 20 m back it passes."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(swap_pairs=1.0)
+        speeds, res, neighbors = self._pair(q=(1, 40.0))
+        veh = _WeaveVehicle(speeds, neighbors)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert self._changes(veh) == [] and ws["swap_refused_rear"] == 1
+        ws = _weave_state(swap_pairs=1.0)
+        speeds, res, neighbors = self._pair(q=(1, 22.0))
+        veh = _WeaveVehicle(speeds, neighbors)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert len(self._changes(veh)) == 2 and ws["n_swaps"] == 1
+
+    def test_a_vehicle_between_them_makes_no_pair(self):
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(swap_pairs=1.0)
+        speeds, res, neighbors = self._pair(m=(1, 55.0))
+        veh = _WeaveVehicle(speeds, neighbors)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert ws["swap_candidates"] == 0 and self._changes(veh) == []
+
+    def test_no_exchange_beside_an_opposing_entry_into_lane_1(self):
+        """A lane-2 vehicle whose rear is under the forced guard ahead of the
+        entrant (processed before it, it could enter lane 1 first) refuses
+        the exchange; one 20 m ahead or an undriven one behind does not."""
+        from microsim.runner import _weave_step
+
+        for pos, refused in ((53.0, True), (75.0, False), (45.0, False)):
+            ws = _weave_state(swap_pairs=1.0)
+            speeds, res, neighbors = self._pair(v=(2, pos))
+            veh = _WeaveVehicle(speeds, neighbors)
+            _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+            assert (ws["swap_refused_opposing"] == 1) is refused, pos
+            assert (self._changes(veh) == []) is refused, pos
+
+    def test_the_opposing_guard(self):
+        """Ahead of the entrant every lane-2 vehicle counts (its model change
+        cannot be read in advance); behind it only a driven exiter, whose
+        own mode-256 change is processed after the entrant's."""
+        from microsim.runner import _weave_swap_opposing_clear
+
+        e = (50.0, 5.0, 2.5, 0.6, 5.0, 1.67, 0.6)
+        assert _weave_swap_opposing_clear(*e, [])
+        # ahead: reported gap 53 - 5 - 50 - 2.5 = -4.5 m, then 12.5 m
+        assert not _weave_swap_opposing_clear(*e, [(53.0, 5.0, 2.5, 5.0, 1.67, False)])
+        assert _weave_swap_opposing_clear(*e, [(70.0, 5.0, 2.5, 5.0, 1.67, False)])
+        # a much faster entrant needs its brake gap on a slow vehicle ahead
+        fast = (50.0, 5.0, 2.5, 0.6, 20.0, 1.67, 0.6)
+        assert not _weave_swap_opposing_clear(*fast, [(90.0, 5.0, 2.5, 2.0, 1.67, False)])
+        # behind: an undriven vehicle is its own model's, a driven exiter not
+        behind = (46.0, 5.0, 2.5, 5.0, 1.67)
+        assert _weave_swap_opposing_clear(*e, [(*behind, False)])
+        assert not _weave_swap_opposing_clear(*e, [(*behind, True)])
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the rule exchanges pairs and nothing
+        collides; at the default it is inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"swap_pairs": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_swaps"] == 0
+        assert meta_on["weave_sections"][0]["n_swaps"] > 0
+        assert meta_on["n_collisions"] == 0
+
+
 class TestWeaveVacateGapConditioned:
     """The vacate rule re-derived so that it never asks the target lane to
     brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
@@ -5334,6 +5526,7 @@ class TestWeaveReviewDerivations3To6:
             "n_hold_releases": 0,
             "n_anticipation_gated": 0,
             "n_exit_prepared": 0,
+            "n_swaps": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

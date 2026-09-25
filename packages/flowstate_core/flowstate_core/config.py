@@ -216,6 +216,11 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # the exit movement; see the key's paragraph in the docstring below. A
     # switch, not a fitted value.
     "exit_prepare": 0.0,
+    # 2026-09-25 (block 3, WP-64): the swap — an entrant in the auxiliary lane
+    # and an exiter beside it in section lane 1 that block each other change
+    # in one step, each into the lane the other leaves; see the key's
+    # paragraph in the docstring below. A switch, not a fitted value.
+    "swap_pairs": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -563,7 +568,31 @@ queues the move finds no gap (16 / 50 / 54 of the asked reach the section
 still left of it) or joins the queue; on the 29-run fixture grid of WP-52..60
 the entrances fall 5,944 → 5,847, the give-ups read 44 → 45, and the T.H.52
 capacity fixture's no-lock pin fails at seed 5 (3 exits missed against at most
-1); no collision. A switch, not a fitted value."""
+1); no collision. A switch, not a fitted value. ``swap_pairs`` (2026-09-25,
+block 3, WP-64, the swap): ``1`` has a driven entrant in the auxiliary lane and
+a driven exiter beside it in section lane 1 that block each other — each the
+other's nearest vehicle across, and at least one of the two changes refused by
+the acceptance because of the other — exchange lanes in one step, both changes
+under mode 256 as an accepted change is, when the two clear the forced guard
+against each other (at speed parity one ``minGap`` of each between bumpers),
+each change is accepted against every other target-lane neighbour with the
+partner removed, and no lane-2 vehicle could enter lane 1 beside the entrant in
+the same step (``microsim.runner._weave_swap_step``; SUMO 1.27.1 executes the
+two changes of such a pair in one step, front vehicle first, probed). Nobody
+else is commanded, nothing is held; the pairs commanded are counted in
+``n_swaps``. The default is **0** (off, hash-neutral unless set): on the
+corridor section test's fixture (``tests/fixtures/weave_th52_corridor.osm``,
+seeds 3 / 4 / 5; docs/WEAVE_MODEL_PLAN.md, dated section WP-64) it exchanges 44
+/ 45 / 44 pairs, every one completed in the step, no collision, and no
+criterion improves — the T.H.52 entrance 360 / 365 / 339 of 407 against 368 /
+360 / 350, the exit end's lanes at or below 20 m/s in 11 / 12 / 13 of 16
+windows against 10 / 11 / 13 — because 72–82 % of the blocked pair-steps are
+refused on the offset (overlapping or nearer than the forced guard, a median
+15–22 m into the section at 5–6 m/s, the two within about 1 m/s of each other),
+where no exchange is possible until one of them drops back, and the form that
+commands that drop reads worse; on the 29-run fixture grid the entrances fall 5,944 → 5,903 and the T.H.52
+capacity fixture's no-lock pin fails at seeds 3 and 5 (3 and 6 exits missed).
+A switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

@@ -2437,6 +2437,435 @@ def _weave_pair_release(
     return yielders, partners - yielders
 
 
+def _weave_change_ok(
+    s0_c: float,
+    accept_s: float,
+    v_c: float,
+    b_c: float,
+    g_lead: float,
+    v_lead: float,
+    g_foll: float,
+    v_foll: float,
+    p_f: dict[str, float] | None,
+    v0_f: float,
+) -> bool:
+    """The section's acceptance of one change read off given target-lane gaps.
+
+    The acceptance of :func:`_weave_step` restated for gaps the caller
+    supplies instead of ``getNeighbors``: the leader side at
+    :func:`_weave_lead_gap_min`, the follower side at the movement's time
+    gap and the follower absorbing the changer within its ``b`` (its IDM
+    acceleration towards the changer, gap = reported gap + its ``minGap``),
+    and :func:`_weave_force_gap_ok` with both brake gaps. Gaps are SUMO's
+    reported ones — the changer's ``minGap`` excluded on the leader side,
+    the follower's on the follower side; ``inf`` / ``nan`` without a
+    vehicle there. Used by the swap (:func:`_weave_swap_step`), which reads
+    each change with its partner removed from the target lane.
+
+    Args:
+        s0_c: The changer's ``minGap`` [m].
+        accept_s: The movement's accepted time gap [s].
+        v_c: The changer's speed [m/s].
+        b_c: Its comfortable deceleration [m/s²].
+        g_lead: Reported gap to the target-lane leader [m].
+        v_lead: Its speed [m/s].
+        g_foll: Reported gap to the target-lane follower [m].
+        v_foll: Its speed [m/s].
+        p_f: The follower's constants (:func:`_weave_veh`), ``None`` without one.
+        v0_f: The follower's desired speed [m/s].
+
+    Returns:
+        Whether the change is accepted.
+    """
+    ok_lead = g_lead >= _weave_lead_gap_min(s0_c, accept_s, v_c, g_lead, v_lead, b_c)
+    ok_foll = g_foll >= s0_c + accept_s * (v_foll if g_foll < math.inf else 0.0)
+    b_f = None
+    if p_f is not None:
+        b_f = p_f["b"]
+        if ok_foll:
+            a_i = _idm_accel(
+                v_foll,
+                v0_f,
+                g_foll + p_f["s0"],
+                v_foll - v_c,
+                p_f["T"],
+                p_f["a"],
+                p_f["b"],
+                p_f["s0"],
+            )
+            ok_foll = a_i >= -p_f["b"]
+    return (
+        ok_lead
+        and ok_foll
+        and _weave_force_gap_ok(s0_c, accept_s, v_c, g_lead, v_lead, g_foll, v_foll, b_c, b_f)
+    )
+
+
+def _weave_swap_offset_ok(
+    d_m: float,
+    s0_r: float,
+    acc_r: float,
+    v_r: float,
+    b_r: float,
+    s0_p: float,
+    acc_p: float,
+    v_p: float,
+    b_p: float,
+) -> bool:
+    """Whether a swap pair may exchange lanes in one step: the forced guard between the two.
+
+    WP-64 (2026-09-25, block 3; docs/WEAVE_MODEL_PLAN.md, dated section).
+    The rear vehicle R (front bumper behind the front vehicle P's) and P,
+    ``d_m`` the bumper offset from R's front to P's rear (negative while
+    they overlap). In the exchange R lands behind P's old place in P's lane
+    and P ahead of R's old place in R's lane; SUMO executes the two in one
+    step front vehicle first (probed on 1.27.1, docs/WEAVE_MODEL_PLAN.md),
+    so if either is refused by SUMO the pair is left in one lane at this
+    offset, R behind P. Against each other the two changes are therefore
+    read by the forced guard (:func:`_weave_force_gap_ok`, the weave's own
+    minimum for any change): R onto P as its leader, P in front of R as its
+    follower, the reported gap between them ``d − s0_R`` on either side.
+    Both reduce to ``d − s0_R > max(s0_R, s0_P)`` plus the closing terms of
+    a faster R — its accepted time gap over the closing speed and its brake
+    gap at ``b_R`` — so the rear must not be faster by more than the offset
+    covers, and a pair at speed parity needs one ``minGap`` of each between
+    bumpers: from fronts level, one length of P plus the two ``minGap``s.
+
+    Args:
+        d_m: Bumper offset, R's front to P's rear [m].
+        s0_r: R's ``minGap`` [m].
+        acc_r: R's movement's accepted time gap [s].
+        v_r: R's speed [m/s].
+        b_r: R's comfortable deceleration [m/s²].
+        s0_p: P's ``minGap`` [m].
+        acc_p: P's movement's accepted time gap [s].
+        v_p: P's speed [m/s].
+        b_p: P's comfortable deceleration [m/s²].
+
+    Returns:
+        Whether both changes pass the forced guard against each other.
+    """
+    g = d_m - s0_r
+    return _weave_force_gap_ok(
+        s0_r, acc_r, v_r, g, v_p, math.inf, math.nan, b_r
+    ) and _weave_force_gap_ok(s0_p, acc_p, v_p, math.inf, math.nan, g, v_r, b_p, b_r)
+
+
+def _weave_swap_opposing_clear(
+    x_e: float,
+    len_e: float,
+    s0_e: float,
+    acc_e: float,
+    v_e: float,
+    b_e: float,
+    acc_x: float,
+    beyond: Sequence[tuple[float, float, float, float, float, bool]],
+) -> bool:
+    """Whether no vehicle can enter section lane 1 from lane 2 beside a swapping entrant this step.
+
+    The guard against two opposing changes into one lane in one step
+    (WP-64; the latent defect WP-60 and WP-62 recorded). SUMO executes the
+    changes of a step front vehicle first (probed on 1.27.1), and a change
+    under ``LC_MODE_SCRIPTED_FORCE`` (mode 256) refuses only an overlap —
+    so a mode-256 change is unsafe exactly when a vehicle processed before
+    it has entered its target lane from the other side this step, which
+    its acceptance (read before the step) could not see. The swap's
+    entrant E enters lane 1 from lane 0; the only opposing entries into
+    lane 1 come from lane 2 (``beyond``: front, length, ``minGap``, speed,
+    ``b`` and whether it is a driven exiter the weave may command into lane
+    1 this step). The swap is not commanded while
+
+    * a lane-2 vehicle *ahead* of E (front at or ahead of E's) would, in
+      lane 1, fail the forced guard as E's leader — processed before E, it
+      could enter first and E would land behind it at any non-overlapping
+      gap. Whether an undriven vehicle will change cannot be read in
+      advance (SUMO decides and executes a model change in the same step;
+      the saved lane-change state read before it showed nothing, probed),
+      so every vehicle there counts;
+    * a driven exiter in lane 2 *behind* E would, in lane 1, fail the
+      forced guard with E as its leader — its own mode-256 change is
+      processed after E's. An undriven vehicle behind E is processed after
+      it by its own model, whose safety check sees E.
+
+    The partner X enters lane 0, which only lane 1 feeds: no opposing
+    entry. Same-side entries keep the gap the two had in their own lane.
+
+    Returns:
+        Whether E's entry into lane 1 has no opposing entry to meet.
+    """
+    for x_v, len_v, s0_v, v_v, b_v, driven in beyond:
+        if x_v >= x_e:
+            g = x_v - len_v - x_e - s0_e
+            if not _weave_force_gap_ok(s0_e, acc_e, v_e, g, v_v, math.inf, math.nan, b_e):
+                return False
+        elif driven:
+            g = x_e - len_e - x_v - s0_v
+            if not _weave_force_gap_ok(s0_v, acc_x, v_v, g, v_e, math.inf, math.nan, b_v):
+                return False
+    return True
+
+
+def _weave_swap_step(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    pending: dict[str, int],
+    excluded: Collection[str],
+    t: float,
+) -> set[str]:
+    """The swap (2026-09-25, block 3, WP-64): the pairs that exchange lanes this step.
+
+    ``swap_pairs`` (``WEAVE_DEFAULTS``; 0 = off). A driven entrant E in
+    section lane 0 (the auxiliary lane) and a driven exiter X in section
+    lane 1 beside it are each other's natural gap: E's move out of lane 0
+    vacates the place X needs, X's move out of lane 1 the place E needs.
+    The section's acceptance reads the two changes separately, each with
+    the other still in its target lane, so a near-abreast pair refuses
+    both; the entrants then leave lane 0 in the section's first metres and
+    the exiters enter it tens of metres later, both through lane 1 (the
+    corridor section test's crossing order, WP-62).
+
+    **The pair.** R is the one of E and X whose front is behind (ties by
+    id), P the other; ``d`` the bumper offset from R's front to P's rear.
+    E and X form a pair when they are each other's nearest vehicle across —
+    nobody in P's lane between P and R's front, nobody in R's lane between
+    R and P's front — and at least one of the two changes is refused by the
+    acceptance because of the other (R with P as its leader, or P with R
+    as its follower): overlapping, or nearer than the acceptance's gaps.
+
+    **The exchange** is commanded — both changes under mode 256 for one
+    step, as an accepted change is — when (i) the two clear the forced
+    guard against each other (:func:`_weave_swap_offset_ok`: a pair at
+    speed parity one ``minGap`` of each apart between bumpers); (ii) R's
+    change is accepted in P's lane with P removed — the leader P's own
+    leader, the follower the vehicle behind P; (iii) P's change is accepted
+    in R's lane with R removed — the leader R's leader, the follower the
+    vehicle behind R; (iv) no opposing entry into lane 1 beside E can
+    meet E's change (:func:`_weave_swap_opposing_clear`). Each change is
+    thus read by the full acceptance against everyone but the partner, and
+    against the partner by the forced guard, so a pair of which SUMO
+    executes only one change is left at a forced-guard gap, the faster in
+    front. Nobody else is commanded; nothing is held; each vehicle is in
+    one pair at most, entrants nearest the section end first; a pair is
+    re-read every step and exists only while the geometry does.
+
+    The pairs commanded are counted in ``n_swaps`` (meta); the blocked
+    pair-steps, the refusals by condition and the outcome of each exchange
+    on the next step (both changed, one, none) are kept in the section's
+    state for a harness.
+
+    **Measured and left off** (docs/WEAVE_MODEL_PLAN.md, dated section
+    WP-64). On ``tests/fixtures/weave_th52_corridor.osm`` under the observed
+    05:30–05:50 movements (seeds 3 / 4 / 5) it exchanges 44 / 45 / 44 pairs,
+    every one completed in the step, no collision; the exiters' median first
+    lane-0 position moves 40.1 → 31.2 m at seed 3 and not at the others, and
+    no criterion of the corridor section test improves (the T.H.52 entrance
+    360 / 365 / 339 of 407 against 368 / 360 / 350, the exit end's lanes at or
+    below 20 m/s in 11 / 12 / 13 of 16 windows against 10 / 11 / 13). 72–82 %
+    of the blocked pair-steps are refused on the offset, the two a median
+    15–22 m into the section at 5–6 m/s within about 1 m/s of each other,
+    and the rear's drop-back towards the offset (harness) reads worse. On
+    the 29-run fixture grid the entrances fall 5,944 → 5,903 and the T.H.52
+    capacity fixture's no-lock pin fails at seeds 3 and 5.
+
+    Args:
+        mod: The libsumo / traci module.
+        tc: Its constants module.
+        ws: The section's state.
+        results: This step's subscription results.
+        lanes: Target-lane listings on the section axis (:func:`_weave_step`).
+        x_of: Front-bumper positions on the section axis [m].
+        v_of: Speeds [m/s].
+        pending: The vehicles driven this step and their direction.
+        excluded: Vehicles not paired this step (the pair release's
+            yielders and released partners).
+        t: Simulation time [s].
+
+    Returns:
+        The vehicles whose change is commanded as a swap this step.
+    """
+    prm = ws["params"]
+    # the outcome of last step's exchanges: E off lane 0, X on lane 0 or off
+    # the section onto the exit
+    for e_id, x_id in ws.pop("swap_open", []):
+        re_, rx = results.get(e_id), results.get(x_id)
+        e_done = re_ is not None and not (
+            re_[tc.VAR_ROAD_ID] in ws["edge_index"] and int(re_[tc.VAR_LANE_INDEX]) == 0
+        )
+        x_done = rx is None or (
+            rx[tc.VAR_ROAD_ID] in ws["exit_edges"]
+            or (rx[tc.VAR_ROAD_ID] in ws["edge_index"] and int(rx[tc.VAR_LANE_INDEX]) == 0)
+        )
+        key = (
+            "swap_full" if e_done and x_done else ("swap_half" if e_done or x_done else "swap_none")
+        )
+        ws[key] += 1
+    if float(prm["swap_pairs"]) <= 0.0:
+        return set()
+    edges: dict[str, int] = ws["edge_index"]
+    lane_of: dict[str, int] = {}
+    for vid in pending:
+        if results[vid][tc.VAR_ROAD_ID] in edges:
+            lane_of[vid] = int(results[vid][tc.VAR_LANE_INDEX])
+    entrants = sorted(
+        (
+            (x_of[v], v)
+            for v, d in pending.items()
+            if d > 0 and lane_of.get(v) == 0 and v not in excluded
+        ),
+        reverse=True,
+    )
+    lane0 = lanes.get(0, [])
+    lane1 = lanes.get(1, [])
+    lane2 = lanes.get(2, [])
+    acc_e = float(prm["accept_gap_s"])
+    acc_x = float(prm["exit_accept_gap_s"])
+    p_of: dict[str, dict[str, float]] = {}
+
+    def p(vid: str) -> dict[str, float]:
+        if vid not in p_of:
+            p_of[vid] = _weave_veh(mod, ws, vid)
+        return p_of[vid]
+
+    def v0(vid: str) -> float:
+        r = results[vid]
+        return min(
+            p(vid)["vmax"],
+            _weave_lane_vmax(mod, ws, r[tc.VAR_ROAD_ID], int(r[tc.VAR_LANE_INDEX])),
+        )
+
+    def around(lst: list[tuple[float, str]], vid: str) -> tuple[str | None, str | None]:
+        """The vehicles directly behind and ahead of ``vid`` in its listing."""
+        i = bisect.bisect_left(lst, (x_of[vid], vid))
+        return (lst[i - 1][1] if i > 0 else None), (lst[i + 1][1] if i + 1 < len(lst) else None)
+
+    def lead_gap(c: str, lead: str | None) -> tuple[float, float]:
+        if lead is None:
+            return math.inf, math.nan
+        return x_of[lead] - p(lead)["len"] - x_of[c] - p(c)["s0"], v_of[lead]
+
+    def foll_gap(c: str, foll: str | None) -> tuple[float, float]:
+        if foll is None:
+            return math.inf, math.nan
+        return x_of[c] - p(c)["len"] - x_of[foll] - p(foll)["s0"], v_of[foll]
+
+    def decide(
+        e_id: str,
+        r_id: str,
+        p_id: str,
+        d: float,
+        acc_r: float,
+        acc_p: float,
+        near: tuple[str | None, str | None, str | None, str | None],
+    ) -> str:
+        """``"go"``, or the first condition that refuses the exchange."""
+        behind_p, ahead_p, behind_r, ahead_r = near
+        p_r, p_p = p(r_id), p(p_id)
+        v_r, v_p = v_of[r_id], v_of[p_id]
+        # (i) the forced guard between the two
+        if not _weave_swap_offset_ok(
+            d, p_r["s0"], acc_r, v_r, p_r["b"], p_p["s0"], acc_p, v_p, p_p["b"]
+        ):
+            return "offset"
+        # (ii) R into P's lane with P removed: P's leader, the vehicle behind P
+        gl, vl = lead_gap(r_id, ahead_p)
+        gf, vf = foll_gap(r_id, behind_p)
+        pf = p(behind_p) if behind_p is not None else None
+        v0f = v0(behind_p) if behind_p is not None else 0.0
+        if not _weave_change_ok(p_r["s0"], acc_r, v_r, p_r["b"], gl, vl, gf, vf, pf, v0f):
+            return "rear"
+        # (iii) P into R's lane with R removed: R's leader, the vehicle behind R
+        gl, vl = lead_gap(p_id, ahead_r)
+        gf, vf = foll_gap(p_id, behind_r)
+        pf = p(behind_r) if behind_r is not None else None
+        v0f = v0(behind_r) if behind_r is not None else 0.0
+        if not _weave_change_ok(p_p["s0"], acc_p, v_p, p_p["b"], gl, vl, gf, vf, pf, v0f):
+            return "front"
+        # (iv) no opposing entry into lane 1 beside the entrant
+        p_e = p(e_id)
+        beyond = [
+            (
+                xv,
+                p(vv)["len"],
+                p(vv)["s0"],
+                v_of[vv],
+                p(vv)["b"],
+                pending.get(vv, 0) < 0 and lane_of.get(vv) == 2,
+            )
+            for xv, vv in lane2
+        ]
+        if not _weave_swap_opposing_clear(
+            x_of[e_id], p_e["len"], p_e["s0"], acc_e, v_of[e_id], p_e["b"], acc_x, beyond
+        ):
+            return "opposing"
+        return "go"
+
+    paired: set[str] = set()
+    go: set[str] = set()
+    for x_e, e_id in entrants:
+        if e_id in paired:
+            continue
+        i = bisect.bisect_left(lane1, (x_e, e_id))
+        cands = [lane1[k][1] for k in (i, i - 1) if 0 <= k < len(lane1)]
+        cands.sort(key=lambda c: abs(x_of[c] - x_e))
+        for x_id in cands:
+            if (
+                pending.get(x_id, 0) >= 0
+                or lane_of.get(x_id) != 1
+                or x_id in excluded
+                or x_id in paired
+            ):
+                continue
+            e_front = (x_e, e_id) > (x_of[x_id], x_id)
+            r_id, p_id = (x_id, e_id) if e_front else (e_id, x_id)
+            lane_r, lane_p = (lane1, lane0) if e_front else (lane0, lane1)
+            behind_p, ahead_p = around(lane_p, p_id)
+            behind_r, ahead_r = around(lane_r, r_id)
+            # each other's nearest across: nobody between them in either lane
+            if behind_p is not None and x_of[behind_p] > x_of[r_id]:
+                continue
+            if ahead_r is not None and x_of[ahead_r] < x_of[p_id]:
+                continue
+            p_r, p_p = p(r_id), p(p_id)
+            acc_r, acc_p = (acc_x, acc_e) if e_front else (acc_e, acc_x)
+            v_r, v_p = v_of[r_id], v_of[p_id]
+            d = x_of[p_id] - p_p["len"] - x_of[r_id]
+            g = d - p_r["s0"]
+            # blocked: the acceptance refuses R with P as its leader, or P with
+            # R as its follower — else the section's own acceptance decides
+            r_ok = _weave_change_ok(
+                p_r["s0"], acc_r, v_r, p_r["b"], g, v_p, math.inf, math.nan, None, 0.0
+            )
+            p_ok = _weave_change_ok(
+                p_p["s0"], acc_p, v_p, p_p["b"], math.inf, math.nan, g, v_r, p_r, v0(r_id)
+            )
+            if r_ok and p_ok:
+                continue
+            paired.update((e_id, x_id))
+            ws["swap_candidates"] += 1
+            reason = decide(
+                e_id, r_id, p_id, d, acc_r, acc_p, (behind_p, ahead_p, behind_r, ahead_r)
+            )
+            if reason == "go":
+                go.update((e_id, x_id))
+                ws["n_swaps"] += 1
+                ws.setdefault("swap_open", []).append((e_id, x_id))
+            else:
+                ws["swap_refused_" + reason] += 1
+            # a harness may install a list here: every blocked pair-step
+            log: list[tuple[Any, ...]] | None = ws.get("swap_log")
+            if log is not None:
+                log.append(
+                    (t, e_id, x_id, x_e, x_of[x_id], v_of[e_id], v_of[x_id], d, e_front, reason)
+                )
+            break
+    return go
+
+
 def _weave_cooperate(
     mod: Any,
     tc: Any,
@@ -3715,6 +4144,19 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     reads no better and the fixture grid's entrances fall
     (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **The swap** (2026-09-25, block 3, WP-64; :func:`_weave_swap_step`,
+    ``swap_pairs``, off by default). A driven entrant in the auxiliary lane
+    and a driven exiter beside it in lane 1 that block each other change in
+    one step, each into the lane the other leaves: each change read by the
+    acceptance against everyone but the partner and by the forced guard
+    against the partner, never beside an opposing entry into lane 1; both
+    changes then execute as accepted ones, with no speed target on either
+    that step. Counted in ``n_swaps``. Measured and left off: the pairs
+    that block each other mostly overlap near speed parity, the exchanges
+    that clear the guard do not raise the exit end's delivery, and the
+    capacity fixture's no-lock pin breaks (docs/WEAVE_MODEL_PLAN.md, dated
+    section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -3857,6 +4299,12 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # 3): the one farther from the section end yields this step, the other
     # may force its change at once
     yielders, released = _weave_pair_release(mod, ws, pending, x_of, v_of, t)
+    # the swap (WP-64, ``swap_pairs``): an entrant and an exiter beside it that
+    # block each other exchange lanes in one step; decided before any vehicle
+    # of the step is driven (empty at the default)
+    swapping = _weave_swap_step(
+        mod, tc, ws, results, lanes, x_of, v_of, pending, yielders | released, t
+    )
     # vehicle id -> (speed target, commanded acceleration, is a follower) this step
     coop: dict[str, tuple[float, float, bool]] = {}
     p_of: dict[str, dict[str, float]] = {}
@@ -3951,7 +4399,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             and _weave_force_gap_ok(
                 st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
             )
-        )
+        ) or vid in swapping
         # a released partner is guarded against closing only: both of the
         # pair are below the creep speed, the s0 floor is a comfort margin
         # at speed, and mode 256 still refuses an overlap — and, since the
@@ -4135,8 +4583,11 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     hold: dict[str, dict[str, Any]] = ws["hold"]
     for vid in [v for v in hold if v not in veh and v not in approaching]:
         del hold[vid]
-    for vid in yielders:
-        coop.pop(vid, None)  # no target in either role this step
+    for vid in yielders | swapping:
+        # no target in either role this step: a yielder moves on under its own
+        # car-following; a swapping pair leaves the two lanes the targets
+        # were for (WP-64)
+        coop.pop(vid, None)
     for fid in sorted(coop):
         v_new, a_cmd, follower = coop[fid]
         mod.vehicle.slowDown(fid, v_new, 0.0)
@@ -4202,7 +4653,10 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     for the paired exit that the rule asked, inside the vacate window, into
     the lane feeding section lane 1 and that were seen there before the
     section, each once (:func:`_weave_exit_prepare_step`; zero at
-    ``exit_prepare`` = 0).
+    ``exit_prepare`` = 0); ``n_swaps`` (WP-64, the swap) the pairs of a
+    driven entrant in the auxiliary lane and a driven exiter beside it in
+    lane 1, blocking each other, commanded to exchange lanes in one step
+    (:func:`_weave_swap_step`; zero at ``swap_pairs`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -4250,6 +4704,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_hold_releases": ws["n_hold_releases"],
         "n_anticipation_gated": ws["n_anticipation_gated"],
         "n_exit_prepared": ws["n_exit_prepared"],
+        "n_swaps": ws["n_swaps"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -5024,6 +5479,18 @@ def run_micro(
                     "n_exit_prepare_skipped": 0,
                     "n_exit_prepare_yielded": 0,
                     "n_exit_prepare_held": 0,
+                    # WP-64, the swap (_weave_swap_step): the pairs commanded
+                    # (meta), and the state-only counts — blocked pair-steps,
+                    # refusals by condition, the outcome of each exchange
+                    "n_swaps": 0,
+                    "swap_candidates": 0,
+                    "swap_refused_offset": 0,
+                    "swap_refused_rear": 0,
+                    "swap_refused_front": 0,
+                    "swap_refused_opposing": 0,
+                    "swap_full": 0,
+                    "swap_half": 0,
+                    "swap_none": 0,
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},
