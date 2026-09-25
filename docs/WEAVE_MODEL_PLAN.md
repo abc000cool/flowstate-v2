@@ -2868,3 +2868,159 @@ At seed 3 a pair lasts a median 3.5 s (p90 8.5 s, the longest 17.0 s) — the ti
 **What this hands on.** (a) *The crossing at the entry happens inside a queue at speed parity.* Two thirds of the pair-steps on which an entrant and an exiter block each other are pairs overlapping or within a `minGap` of each, at 5–6 m/s, 15–22 m into the section; at that speed any change inside the section asks a length and the `minGap`s of the target lane, exchange or not, and the only way to open them is a brake, which every form of this series has paid for elsewhere. Reordering the crossing inside the queue has nothing to reorder into. (b) *The exit end's deficit is an arrival deficit.* 95–98 % of the exit-bound vehicles that reach the section exit it in every form, the exit end's lane 0 carries exactly them, and 56–78 of the 412–479 departed are still on the approach when the run ends: the corridor section test's exit-end windows read what the approach and the entry let through. The next derivation belongs upstream of the crossing: measure the entry's discharge per lane per minute — lanes 0 and 1 over the section's first 50 m and the approach's lane 0 — against the fleet's straight-road lane capacity (docs/ONBOARDING_MNDOT.md §11) from minute 1 to the entry's breakdown (WP-61), and what the weave's own commands take from it in those minutes (the approaching entrants' held lane-1 followers, the easing, the exit priority's holds); the section carries less than is offered (WP-61's saturation), and the question is which command or which geometry sets that rate before the queue forms. (c) *The latent simultaneous-change defect now has a derived guard.* Probe 3 isolates it: a mode-256 change executed after an opposing entry into its target lane in the same step (SUMO executes front first) is refused only on an overlap. `_weave_swap_opposing_clear` reads it geometrically for the exchange; the same test applied to every accepted and forced change of the section into lanes 1 and above would close the defect WP-60 and WP-62 recorded, at the price of refusing changes beside lane-2 traffic ahead — a rule to be measured on its own grid before any default moves.
 
 **Bookkeeping.** `packages/flowstate_core/flowstate_core/config.py` (`swap_pairs` = 0 with its provenance comment and docstring paragraph); `packages/microsim/microsim/runner.py` (`_weave_change_ok`, `_weave_swap_offset_ok`, `_weave_swap_opposing_clear`, `_weave_swap_step` new; `_weave_step` calls the swap after the pair release, accepts a swapping vehicle's change and gives neither of a pair a speed target that step; the swap's state in the section's state; `n_swaps` in `_weave_meta`; the docstrings of `_weave_step` and `_weave_meta`); `packages/api/api/schemas.py` (`WeaveSectionDiagnosticsOut.n_swaps`); `scripts/corridor_sweep.py` (`WEAVE_FIELDS`); `tests/test_microsim/test_microsim_merge_managed_meter.py` (`TestWeaveSwap`: off by default, the offset guard's closed form, the acceptance restated, a blocked pair exchanged in one step with its outcome counted, an overlapping pair refused on the offset, the rear change reading the vehicle behind the partner, no pair with a vehicle between, the opposing-entry guard in the step and as a function, a binding run on `weave_th52_corridor.osm`; the `WEAVE_DEFAULTS` pin, the fake state and the counters test); `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py` (the key lists, 40 keys); docs/CONTRACTS.md §2 (the key list, the WP-64 paragraph, the API paragraph); CHANGELOG.md; this section. `frontend/`, docs/ONBOARDING_MNDOT.md and `scripts/gcp/` untouched. Session artifacts (the four SUMO probes, the harness patch with the census and the three forms, the grids, the corridor-section runs, the table scripts) not committed.
+
+## 2026-09-25 (block 3, WP-65, what sets the entry's rate): measured on the corridor section fixture. Before the queue forms, the entry carries what arrives. The breakdown starts with a vehicle held or eased to the speed of a changer in the other lane. After it, the auxiliary lane and lane 1 together carry one lane's worth. No command family sets the rate, and every removal reads worse or locks; nothing ships
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`). WP-64 (above) found the exit end's shortfall to be an arrival deficit: 95–98 % of the exiters that reach the section exit it, but only 356 / 391 / 405 of the 412 / 469 / 479 departed reach it at seeds 3 / 4 / 5. Its hand-on: measure the entry's discharge per lane per minute, from minute 1 to the breakdown, against the fleet's lane capacity. That capacity is 1,670 veh/h per lane on a straight road for this fleet (`artifacts/idm_capacity_probe_mnfleet_4l.calibration.json`; docs/ONBOARDING_MNDOT.md §11), and 1,886 by the closed form. Then find which weave command sets that rate before the queue forms. This package measures that on the test's own fixture, removes each command family in turn, and asks whether one family is the rate-setter. The runner, the config, every scenario, fixture and test are untouched.
+
+**How it was measured.** A session harness (`wp65_harness.py`, not committed) wraps module-level functions of `microsim.runner` in its own process: `_weave_step`, `_weave_cooperate`, `_weave_command`, `_weave_yield_at_ends`, `_weave_entry_bound`, `_weave_pair_release` and `_weave_vacate_step`. It reads only the runner's own 0.5-s subscription results and the section state; no runner hook was needed. It drives `_th52_corridor_config(seed)`: the test's fixture and demand, 20 simulated minutes, macOS, one run at a time at 5–7 s each. At the defaults it reproduces WP-61 to the number: T.H.52 departs 368 / 360 / 350 of 407, the mainline 1,140 / 1,157 / 1,149 of 1,196, 2 / 1 / 2 exits are given up of 356 / 391 / 405 reached, 1 / 6 / 8 vehicles are unfinished, and the exit end's lane 0 carries 1,035 / 1,104 / 1,122 veh/h. All 76 runs of this package are collision-free. Definitions:
+
+- *Cells.* The section axis has x = 0 at the section start. Each cell is 50 m, per lane, per minute. The section's last cell is [250, 305). Flow is Edie's, Σ(v·Δt)/(L·60 s), and speed is Σ(v·Δt)/ΣΔt. The *entry cells* are the approach's lanes 0–2 over its last 100 m, section lanes 0–1 over [0, 50) and the ramp's last 100 m.
+- *Crossings.* Vehicles crossing x = 50 m and x = 273.4 m (VM O's 10.70 km) are counted per lane, in the later sample's lane. The *merge point* is the ramp's vehicles first seen on the section.
+- *Breakdown.* The *entry breakdown* is the first minute ≥ 1 in which an entry cell averages under 8 m/s over at least 10 vehicle-seconds. The *first breakdown* is the same reading over every cell of the approach's last 200 m, the section and the ramp's last 200 m.
+- *Command families.* Every speed target is tagged by its caller:
+  - `ramp_hold` and `ramp_ease`: the ramp anticipation, the approaching loop of `_weave_step`. `ramp_hold` is the lane-1 follower held for an entrant still on the ramp; `ramp_ease` is that entrant eased.
+  - `sece_hold` and `sece_ease`: the cooperation of a driven entrant on the section.
+  - `secx_hold` and `secx_ease`: the same for a driven exiter. Lane 0's listing includes the ramp, so a `secx_hold` follower can be an entrant still on the ramp.
+  - `prio_*`: an exiter under the exit priority.
+  - The yields at the lane ends are off at the defaults and bound nothing.
+- *Binding and deficit.* A target *binds* by `_weave_command`'s own test: the commanded acceleration is below the vehicle's IDM acceleration toward its real leader. A family *sets* a vehicle-step when its target is the lowest one on that vehicle that step, the one applied. The *speed deficit* is Σ(v + a_own·Δt − v_cmd)·Δt [m/s·s] over the steps a family sets, with v + a_own·Δt the runner's reading of the vehicle's own model. SUMO's `vehicle.getSpeedWithoutTraCI` would be the natural reference, but under this fleet it read within 0.06 m/s of the commanded speed on the 40 traced commands, so it tracks the influenced speed and was not used.
+- *Other commands.* Vacate requests are counted as vehicle-steps under an open request. That speed adaptation happens inside SUMO's lane-change model, so no deficit is attributed to it. Forced changes executed, forced changes deferred, accepted requests, pair releases and yielders are counted per step.
+
+**The entry, minute by minute, to its breakdown** (seeds 3 / 4 / 5; the breakdown minute is in bold).
+
+| seed | minute | lane 0, first 50 m [veh/h @ m/s] | lane 1, first 50 m | lanes 0 / 1 crossing x = 50 m [veh/h] | approach lane 0, last 100 m | ramp, last 100 m | merge point [veh/h] |
+|---|---|---|---|---|---|---|---|
+| 3 | 1 | 1,237 @ 18.2 | 1,266 @ 17.2 | 1,320 / 1,080 | 1,441 @ 18.3 | 1,052 @ 19.9 | 1,020 |
+| 3 | 2 | 1,140 @ 13.7 | 1,072 @ 14.4 | 1,260 / 1,020 | 1,027 @ 16.5 | 1,060 @ 17.4 | 1,080 |
+| 3 | 3 | 760 @ 19.8 | 1,096 @ 20.5 | 900 / 1,020 | 980 @ 20.5 | 1,038 @ 21.6 | 1,020 |
+| 3 | 4 | 878 @ 20.6 | 1,054 @ 20.4 | 840 / 1,020 | 883 @ 20.4 | 1,042 @ 22.0 | 1,080 |
+| 3 | 5 | 839 @ 18.4 | 1,188 @ 19.0 | 900 / 1,200 | 981 @ 18.6 | 1,034 @ 20.5 | 1,020 |
+| 3 | 6 | 1,014 @ 18.6 | 1,317 @ 18.9 | 1,020 / 1,260 | 1,237 @ 18.9 | 1,177 @ 20.2 | 1,200 |
+| 3 | **7** | 1,018 @ 7.2 | 991 @ 7.8 | 960 / 1,080 | 1,187 @ 8.9 | 1,166 @ 12.0 | 1,020 |
+| 4 | 1 | 1,172 @ 21.2 | 1,073 @ 21.3 | 1,140 / 1,080 | 1,076 @ 21.2 | 1,067 @ 21.8 | 1,020 |
+| 4 | 2 | 942 @ 15.2 | 1,278 @ 14.7 | 1,140 / 1,080 | 1,213 @ 17.4 | 1,025 @ 19.7 | 1,080 |
+| 4 | 3 | 1,016 @ 17.8 | 1,124 @ 18.2 | 1,080 / 1,020 | 1,021 @ 19.5 | 1,062 @ 20.7 | 1,020 |
+| 4 | 4 | 1,075 @ 13.2 | 940 @ 11.4 | 1,020 / 1,020 | 1,266 @ 12.6 | 1,058 @ 14.1 | 1,020 |
+| 4 | **5** | 990 @ 6.6 | 915 @ 6.8 | 1,020 / 900 | 994 @ 11.0 | 1,003 @ 11.1 | 900 |
+| 5 | 1 | 897 @ 20.5 | 1,146 @ 20.8 | 1,080 / 1,020 | 1,094 @ 21.6 | 1,050 @ 21.7 | 1,020 |
+| 5 | 2 | 1,023 @ 15.5 | 1,002 @ 15.3 | 1,020 / 900 | 965 @ 13.9 | 1,021 @ 14.6 | 1,020 |
+| 5 | **3** | 855 @ 6.1 | 1,039 @ 6.3 | 1,020 / 780 | 1,316 @ 8.3 | 1,022 @ 12.7 | 960 |
+
+Before the breakdown no lane of the entry reaches the fleet's lane capacity. Lane 0's first 50 m carries 760–1,237 veh/h and lane 1's 940–1,317, which is 46–79 % of 1,670 and 40–70 % of 1,886. The approach's lane 0 carries 883–1,441 (53–86 %). The ramp carries 1,021–1,177 and hands 1,020–1,200 veh/h to the section. The merge point runs at the ramp's own flow in every minute, so the entrance does not meter the entrants before the queue.
+
+*The breakdown, per seed* (seeds 3–12: the three above plus seven more at the defaults, the same fixture). The *head* is the first vehicle under 8 m/s in an entry cell during the breakdown minute: the command set on it the step before, and its own leader.
+
+| seed | first breakdown (minute, cell) | entry breakdown (minute, cell, m/s) | head: t, cell, mover (X exiter, E entrant), command on it, speed; its own leader: gap, speed, command |
+|---|---|---|---|
+| 3 | 7, approach lane 0 [−50, 0) | 7, approach lane 0 [−50, 0), 6.7 | 442.0 s, section lane 1 at 23.6 m, X, `sece_hold`, 7.6 m/s; leader 29.3 m ahead at 11.6 m/s, none |
+| 4 | 5, lane 0 [0, 50) | 5, lane 0 [0, 50), 6.6 | 280.0 s, approach lane 0 at −33.6 m, X, none, 5.4 m/s; leader 5.5 m ahead at 5.8 m/s, `ramp_hold` |
+| 5 | 2, lane 0 [250, 305) | 3, approach lane 0 [−50, 0), 6.1 | 200.0 s, lane 0 at 11.6 m, X, `secx_hold`, 6.9 m/s; leader 28.4 m ahead at 10.1 m/s, none |
+| 6 | 2, approach lane 0 [−50, 0) | 2, the same, 7.3 | 133.5 s, approach lane 0 at −11.9 m, X, `ramp_hold`, 7.9 m/s; leader 21.6 m ahead at 10.0 m/s, none |
+| 7 | 3, lane 0 [200, 250) | 4, approach lane 0 [−50, 0), 5.3 | 238.5 s, ramp at −29.6 m, E, `ramp_ease`, 7.5 m/s; leader 21.0 m ahead at 7.0 m/s, `secx_hold` |
+| 8 | 2, approach lane 0 [−50, 0) | 2, the same, 7.9 | 143.5 s, lane 0 at 9.2 m, E, `secx_hold`, 8.0 m/s; leader 39.9 m ahead at 8.1 m/s, `secx_hold` |
+| 9 | 2, approach lane 0 [−50, 0) | 2, the same, 2.3 | 120.0 s, lane 1 at 16.8 m, X, `sece_hold`, 5.6 m/s; leader 55.8 m ahead at 12.7 m/s, none |
+| 10 | 2, lane 0 [250, 305) | 5, approach lane 0 [−50, 0), 3.4 | 300.0 s, lane 1 at 10.6 m, X, `secx_ease`, 7.8 m/s; leader 14.4 m ahead at 8.9 m/s, `sece_hold` |
+| 11 | 2, lane 1 [250, 305) | 5, approach lane 0 [−50, 0), 4.4 | 294.5 s, lane 0 at 3.6 m, E, none, 6.5 m/s; leader 12.0 m ahead at 2.6 m/s, `secx_hold` |
+| 12 | 8, approach lane 0 [−50, 0) | 8, the same, 7.7 | 496.0 s, approach lane 0 at −29.1 m, X, `ramp_hold`, 7.9 m/s; leader 10.9 m ahead at 8.9 m/s, none |
+
+The entry breaks down in the approach's lane 0 over its last 50 m at 9 of 10 seeds, and in section lane 0's first 50 m at the tenth. At 4 seeds the first breakdown anywhere is in the section's last 105 m (minutes 2–3; WP-61's precursor), and the entry follows 1–3 minutes later. Every head is an exiter or an entrant, never a through vehicle. At 8 of 10 seeds the head itself carries a hold or an easing, and at the other two its leader carries a hold. At 7 of those 8 the head is slower than its own leader, which is 11–56 m ahead of it: its speed was set by a changer in the other lane, not by its lane.
+
+*What the commands take from the entry before its breakdown* (seeds 3 / 4 / 5, minutes 1 to the entry breakdown; per family: vehicle-steps bound / vehicle-steps set / speed deficit set [m/s·s]).
+
+| command | seed 3 (minutes 1–6) | seed 4 (minutes 1–4) | seed 5 (minutes 1–2) |
+|---|---|---|---|
+| `ramp_hold` (the ramp anticipation's lane-1 follower) | 488 / 488 / 101.6 | 320 / 319 / 68.4 | 232 / 232 / 45.1 |
+| `ramp_ease` | 183 / 168 / 72.8 | 192 / 162 / 49.0 | 61 / 56 / 25.1 |
+| `sece_hold` | 231 / 209 / 50.5 | 133 / 109 / 29.3 | 42 / 39 / 10.0 |
+| `sece_ease` | 43 / 16 / 6.8 | 22 / 14 / 6.1 | 0 / 0 / 0.0 |
+| `secx_hold` | 776 / 766 / 178.1 | 568 / 546 / 119.5 | 211 / 209 / 46.0 |
+| `secx_ease` | 227 / 227 / 107.4 | 119 / 119 / 55.3 | 32 / 32 / 13.2 |
+| `prio_hold` / `prio_ease` | 22 / 22 / 10.2; 0 | 7 / 5 / 3.6; 1 / 1 / 0.7 | 18 / 18 / 9.5; 0 |
+| vehicle-steps under a vacate request / requests | 227 / 50 | 116 / 34 | 85 / 19 |
+| accepted change requests / forced executed / forced deferred | 71 / 8 / 20 | 54 / 5 / 6 | 25 / 0 / 17 |
+| pair releases / yielders | 0 / 0 | 0 / 0 | 0 / 0 |
+
+Per entry cell, before the breakdown, the share of vehicle-steps under a binding target:
+- *Approach lane 0, last 100 m:* 27 / 26 / 41 %. `ramp_hold` sets 92 / 92 / 92 % of those steps.
+- *Section lane 0, first 50 m:* 35 / 38 / 28 %, almost all `secx_hold` (entrants held as an exiter's gap follower).
+- *Section lane 1, first 50 m:* 24 / 18 / 19 %, split between `secx_ease` and `sece_hold`.
+
+The deficit those targets impose is 0.7–1.2 % of the distance travelled in each cell. Each step's target is gentle, but a vehicle that was held stays slower after the command lapses.
+
+*The two weave lanes as one lane* (10 seeds, 3–12). The fleet's single-lane equilibrium at a speed v is IDM at the population means of `artifacts/idm_i24_capacity.json`: T 1.322 s, s0 2.53 m, 5 m vehicles, v0 the 24.59 m/s limit. That gives k_eq(v) = 1/(s_eq(v) + 5 m), q_eq(v) = v·k_eq(v), and a peak of 1,856 veh/h at 15 m/s. Measured against it, per minute (median over the minutes):
+
+| where | before the entry breakdown (33 minutes) | after it (147 minutes) |
+|---|---|---|
+| lanes 0 + 1 over [0, 50): density / one lane's k_eq(v) | 1.21 (at 17.4 m/s, 2,152 veh/h) | **1.14** (p10 1.03, p90 1.27; at 5.3 m/s, 1,478 veh/h) |
+| lanes 0 + 1 over [50, 100) … [250, 305) | 1.18 / 1.17 / 1.18 / 1.15 / 1.13 | 0.97 / 0.94 / 0.94 / 0.93 / 0.97 (1,584–1,620 veh/h at 9.1–12.1 m/s) |
+| lane 2 over [0, 50), the control | — | 0.52 |
+| lanes 0 + 1 crossing x = 50 m, mean [veh/h] | 2,115 | 1,574 |
+
+The exit end's lanes 0 + 1 at 273.4 m carry 1,544–1,791 veh/h over minutes 1–19 at the ten seeds (1,702 / 1,762 / 1,712 at seeds 3–5), against the straight-road lane's 1,670.
+
+*How the two lanes are tied together* (the same ten seeds).
+- *Holds whose changer is itself commanded.* Before the breakdown, 45 % of `sece_hold`'s set-steps hold a vehicle for an entrant whose own speed was set by a hold the step before. An entrant in the auxiliary lane can be held only as an exiter's gap follower. For `secx_hold` the figure is 11 % (23 % more by an easing), and for `ramp_hold` 7 % (25 % more by an easing). After the breakdown: 38 %, 15 % (22 %) and 3 % (14 %).
+- *Where the crossings happen.* SUMO's own lane-change model moves 624 entrants into lane 1, and 452 exiters from the approach's lane 0 straight into section lane 0, in the step they first appear on the section (minutes 1–19). The weave's acceptance never reads those changes. Before the breakdown it is 255 and 194. Counting those, 75 % of the entrants' crossings (1,371 of 1,839) and 49 % of the exiters' (1,412 of 2,882) happen within the first 50 m.
+- *SUMO's arrival-step changes are gentle.* At seeds 3–5 the new lane-1 follower sits a median 1.53–1.69 s behind over the run (1.27–1.49 s before the breakdown). 2 of 213 ask that follower for more than b/2 at its IDM, and none for more than b.
+
+**Counterfactuals** (harness-only, seeds 3 / 4 / 5). Each switch takes one family out and leaves the others as they are. For the speed targets, the target is dropped where it would have been recorded; the last column counts the binding requests withheld over the run. The exit priority can be switched off entirely: `priority` passed as false, so both its gap choice and its hold go. Vacate: `_weave_vacate_step` is not called. Pair releases: `_weave_pair_release` releases nobody. Forced changes: the existing key `force_after_s` = 10⁶.
+
+| switched off | entry breakdown minute | lanes 0 + 1 at x = 50 m, minutes 1–19 [veh/h] | T.H.52 departed of 407 | mainline of 1,196 | lane-windows ≤ 20 m/s of 16 | given up of reached | exit end lane 0 [veh/h] | lane 1 at the entry, lowest minute [m/s] | unfinished | coll. | binding requests withheld |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| none (the default) | 7 / 5 / 3 | 1,778 / 1,781 / 1,712 | 368 / 360 / 350 | 1,140 / 1,157 / 1,149 | 10 / 11 / 13 | 2 of 356 / 1 of 391 / 2 of 405 | 1,035 / 1,104 / 1,122 | 3.7 / 4.1 / 3.9 | 1 / 6 / 8 | 0 / 0 / 0 | — |
+| `ramp_hold` | 2 / 7 / 3 | 1,389 / 1,579 / 1,468 | 282 / 320 / 293 | 1,170 / 1,136 / 1,126 | 12 / 11 / 13 | 1 of 326 / 1 of 367 / 1 of 367 | 930 / 1,026 / 1,026 | 1.5 / 2.0 / 3.0 | 6 / 4 / 3 | 0 / 0 / 0 | 7,564 / 7,244 / 6,536 |
+| `ramp_ease` | 2 / 5 / 3 | 1,532 / 1,585 / 1,557 | 328 / 329 / 323 | 1,147 / 1,127 / 1,143 | 12 / 12 / 13 | 3 of 334 / 3 of 363 / 2 of 386 | 942 / 1,023 / 1,062 | 3.4 / 1.5 / 2.6 | 3 / 3 / 8 | 0 / 0 / 0 | 1,214 / 1,486 / 1,246 |
+| `sece_hold` | 2 / 7 / 4 | 1,781 / 1,705 / 1,705 | 372 / 335 / 355 | 1,183 / 1,162 / 1,138 | 12 / 11 / 13 | 1 of 364 / 2 of 386 / 1 of 400 | 1,074 / 1,083 / 1,122 | 5.9 / 0.8 / 2.6 | 2 / 8 / 12 | 0 / 0 / 0 | 2,935 / 3,061 / 5,010 |
+| `sece_ease` | 7 / 8 / 3 | 1,806 / 1,926 / 1,727 | 370 / 383 / 370 | 1,183 / 1,170 / 1,167 | 11 / 10 / 13 | 3 of 363 / 1 of 414 / 1 of 409 | 1,044 / 1,176 / 1,155 | 4.4 / 4.7 / 3.7 | 5 / 3 / 6 | 0 / 0 / 0 | 477 / 667 / 571 |
+| `secx_hold` | 3 / 5 / 4 | 1,734 / 1,655 / 1,645 | 376 / 355 / 347 | 1,146 / 1,153 / 1,172 | 15 / 13 / 14 | 2 of 355 / 1 of 372 / 3 of 401 | 876 / 930 / 924 | 1.7 / 2.1 / 2.4 | 14 / 21 / 22 | 0 / 0 / 0 | 9,514 / 12,875 / 14,255 |
+| `secx_ease` | 5 / 6 / 4 | 1,835 / 1,686 / 1,639 | 370 / 368 / 354 | 1,178 / 1,168 / 1,153 | 12 / 12 / 13 | 4 of 366 / 9 of 387 / 7 of 392 | 984 / 834 / 828 | 5.7 / 2.8 / 1.3 | 1 / 9 / 13 | 0 / 0 / 0 | 1,282 / 2,952 / 3,456 |
+| `prio_hold` | 7 / 6 / 3 | 1,841 / 1,756 / 1,611 | 381 / 344 / 326 | 1,196 / 1,166 / 1,133 | 12 / 13 / 13 | 3 of 365 / 4 of 391 / 7 of 397 | 1,050 / 1,104 / 1,101 | 4.3 / 4.0 / 3.2 | 2 / 5 / 9 | 0 / 0 / 0 | 180 / 118 / 292 |
+| the exit priority entirely | 7 / 5 / 3 | 1,743 / 1,705 / 1,623 | 362 / 347 / 341 | 1,172 / 1,156 / 1,122 | 13 / 12 / 14 | 4 of 354 / 4 of 382 / 6 of 396 | 1,011 / 1,065 / 1,101 | 4.1 / 3.5 / 3.2 | 2 / 6 / 6 | 0 / 0 / 0 | — |
+| vacate requests | 7 / 6 / 3 | 1,800 / 1,781 / 1,683 | 368 / 352 / 339 | 1,196 / 1,180 / 1,172 | 11 / 12 / 15 | 4 of 363 / 1 of 389 / 3 of 403 | 1,014 / 1,074 / 1,116 | 3.8 / 3.6 / 3.5 | 3 / 5 / 5 | 0 / 0 / 0 | — |
+| pair releases | 7 / 5 / 3 | 1,074 / 1,222 / 1,674 | 296 / 314 / 363 | 1,038 / 1,033 / 1,103 | 12 / 11 / 12 | 3 of 227 / 1 of 269 / 0 of 398 | 534 / 669 / 1,116 | **0.0 / 0.0** / 3.3 | 22 / 25 / 3 | 0 / 0 / 0 | — |
+| forced changes | 5 / 2 / 3 | 1,674 / 1,314 / 1,339 | 355 / 283 / 293 | 1,152 / 1,099 / 1,038 | 13 / 15 / 14 | 16 of 353 / 22 of 328 / 18 of 345 | 900 / 762 / 798 | 3.4 / **0.9 / 1.3** | 3 / 21 / 15 | 0 / 0 / 0 | — |
+| every hold | 2 / 3 / 3 | 546 / 780 / 812 | 202 / 228 / 236 | 838 / 921 / 935 | 13 / 15 / 15 | 26 of 152 / 59 of 203 / 67 of 231 | 222 / 324 / 360 | **0.0 / 0.4 / 0.4** | 66 / 72 / 77 | 0 / 0 / 0 | 51,608 / 51,650 / 50,801 |
+| every easing | 5 / 3 / 4 | 1,819 / 1,421 / 1,301 | 406 / 357 / 318 | 1,185 / 1,111 / 1,105 | 13 / 15 / 15 | 9 of 366 / 33 of 361 / 41 of 360 | 792 / 549 / 483 | 2.6 / 2.1 / **1.5** | 5 / 21 / 14 | 0 / 0 / 0 | 5,455 / 9,046 / 11,471 |
+| every speed target | 2 / 3 / 3 | 562 / 591 / 688 | 151 / 157 / 183 | 1,076 / 1,069 / 1,047 | 14 / 14 / 15 | 131 of 208 / 150 of 237 / 155 of 245 | 36 / 45 / 120 | **0.6 / 0.7 / 0.6** | 56 / 56 / 64 | 0 / 0 / 0 | 77,308 / 81,811 / 91,427 |
+
+One switch reads better at all three seeds on the entrance and the entry's discharge: the section entrants' easing. It is the smallest family, 0–43 bound vehicle-steps before the breakdown. Its removal was therefore run at seven more seeds (6–12) beside the default. Over seeds 3–12, removal against the default:
+
+| reading | easing removed | default |
+|---|---|---|
+| T.H.52 departed | 3,523 (up at 8 seeds, down at 2: −6 and −35) | 3,418 |
+| mainline departed | 11,552 | 11,546 |
+| lane-windows ≤ 20 m/s | 126 | 123 |
+| exits given up | 37 of 3,843 | 19 of 3,809 |
+| unfinished | 59 | 46 |
+| entry breakdown | later at 2 seeds, earlier at 2 | — |
+| lane 1 at the entry, lowest minute | 0.9 m/s at seed 6, 1.0 m/s at seed 12 | never below 2.4 m/s |
+
+Its three-seed reading was the sequence re-rolled in part: it trades exits and lane-1 stalls for entrants.
+
+**Reading.**
+
+1. *Before the queue forms, the entry carries what arrives.* The entry's lanes run at 46–86 % of the fleet's straight-road lane capacity, and the merge point passes the ramp's own flow in every minute. No command meters the entry to a sub-capacity rate: the commands bind on 18–41 % of the entry cells' vehicle-steps and withhold 0.7–1.2 % of the distance travelled, step by step. What the entry lacks is not discharge but stability. Lanes 0 + 1 over the first 50 m carry 2,034–2,155 veh/h before the breakdown (seeds 3–5), and 2,115 veh/h cross x = 50 m in those minutes (ten-seed mean). The breakdown then comes at minute 2–8: under the 05:30 flows at five seeds (minutes 2–4) and in the 05:35 window at the other five (minutes 5–8).
+2. *The breakdown starts where a hold sets a vehicle's speed to a changer's in the other lane.* It forms in the approach's lane 0 just upstream of the gore at 9 of 10 seeds: the lane that feeds section lane 1, whose vehicles the ramp anticipation holds for the entrants. The head is an exiter or an entrant, held (`ramp_hold`, `sece_hold`, `secx_hold`) or eased (`ramp_ease`, `secx_ease`) at 8 seeds, directly behind a held vehicle at the other two. At 7 of those 8 it is slower than its own leader, which is 11–56 m ahead: its speed comes from the changer's projection, which is at the ramp queue's or the section queue's speed.
+3. *What sets the rate: the auxiliary lane and lane 1 run as one lane.* Every entrant and every mainline exiter crosses between these two lanes, and 75 % of the entrants' crossings and 49 % of the exiters' happen in the first 50 m. Each crossing needs a car-following gap in the target lane while the crosser still occupies its own, and the cooperation holds the gap's follower behind the crosser's projection until then. So each vehicle keeps a car-following gap to the vehicle ahead in the *other* lane. The two lanes hold, between them, the density of one lane at their speed:
+   - 1.21 lanes' worth before the breakdown and 1.14 after it at the entry, against lane 2's 0.52 beside them;
+   - 0.93–0.97 downstream in the section after the breakdown;
+   - 1,574 veh/h after the breakdown at x = 50 m, and 1,544–1,791 at the exit end over the run, against 1,670 for one lane on a straight road.
+
+   The holds chain across the two lanes: 45 % of the section entrants' holds are for an entrant that is itself held for an exiter. This is the arithmetic of the failing test. Every T.H.52 entrant (1,043–1,361 veh/h) and every mainline exiter (942–1,091 veh/h: the exit share times S790) passes through lanes 0–1, which is 2,129–2,452 veh/h over the four windows, 1.27–1.47 lanes' worth of 1,670. The model's weave carries about 1.1–1.2 lanes' worth there before the breakdown and about one after. The entrance's shortfall and the exit end's arrival deficit (WP-64) are that cap upstream of the gore: the approach's lane 0 queues, and the exiters in it arrive late.
+4. *No command family is the rate-setter, and each is load-bearing somewhere.* Removing any family advances or leaves the entry breakdown, lowers the entry's discharge, or pays for it elsewhere.
+   - The ramp anticipation's holds and easing position the entrants: removing them costs the entrance 40–86 and 27–40 vehicles, as WP-60 found on the capacity fixture.
+   - Without the exiters' holds, the exit end's lane 0 falls 159–198 veh/h and 14–22 vehicles are unfinished. Without their easing, it falls 51–294 veh/h and 4–9 exits are given up.
+   - Without the exit priority or its holds, 3–7 exits are given up against 1–2, and the entrance falls at two or three seeds. Without the vacate requests the mainline rises (1,172–1,196) and the entrance falls (0 / −8 / −11).
+   - The entrants' easing is described above.
+   
+   Four removals lock the section or break the no-lock pin's 2 m/s floor for lane 1 at the entry: the pair release at seeds 3 and 4 (lane 1 at 0.0 m/s, 22–25 unfinished, the exit end's lane 0 at 534 and 669 veh/h), forced changes at seeds 4 and 5 (0.9 and 1.3 m/s, 16–22 exits given up), every hold, and every speed target (131–155 of 208–245 exits given up). They are load-bearing for the section's liveness. None is load-bearing for collisions: no removal collides in any run of this package, because SUMO's safety check and mode 256's overlap refusal stand under all of them.
+
+**Nothing ships.** No family is clearly the rate-setter, so no targeted change was derived. `microsim.runner` and `flowstate_core.config` are unchanged; the contract stays at 40 keys; golden `merge_weave` is untouched; the strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stays as WP-61 wrote it.
+
+**What this hands on.**
+- *(a) The capacity to gain is the second lane of the pair.* The weave's lanes 0 and 1 carry one lane's worth because every crossing ties a vehicle in one lane to a gap in the other. A rule that raises the section's rate must raise the pair's density above one lane's worth, so that crossers stop holding a car-following gap in both lanes at once. The two in-place forms have been measured and rejected: the swap at speed parity (WP-64) and the shortened hold (WP-58, WP-60). The untried form is geometric. Three quarters of the entrants' crossings and half the exiters' stack in the section's first 50 m. SUMO's own model makes 1,076 of them in the step a vehicle first appears on the section, unseen by the weave's acceptance, and the remaining 255 m carry below one lane's worth after the breakdown. A derivation would spread the two movements' crossing points along the 305 m, so that at no cross-section do both movements hold each other. Judge it by the pair's density ratio at the entry (clearly above the 1.14 measured here), the entry breakdown minute, and the test's criteria, with the capacity fixture's no-lock pin and the 29-run grid as guards.
+- *(b) The failing test's demand is 1.27–1.47 lanes' worth for the pair.* Short of a rule that does (a), the fixture cannot carry it in free flow at any seed. The real section did, at 25.8–26.6 m/s. The corridor question is therefore whether real drivers cross at shorter gaps than the fleet's car-following T, or cross spread along the section, and whether that is observable in I-24 MOTION's weaves before any rule is fit to it.
+- *(c) For future harnesses: `vehicle.getSpeedWithoutTraCI` does not give the model's own speed under this fleet* (it follows the commanded speed). A command's deficit has to be read against the runner's own IDM reading, as here.
+
+**Bookkeeping.** This section and CHANGELOG.md only. `microsim.runner`, `flowstate_core.config`, the contract, the API schema, the sweep's field list, the scenarios, the fixtures and every test are untouched. Session artifacts are not committed: the harness and its three trace additions (lane changes, arrival-step changes, heads and hold chains), the counterfactual scripts, the 76 fixture runs and the table scripts. Every number above is from those runs or from the committed files named.
