@@ -1524,3 +1524,16 @@ So this seed's collapse ends at the gore of a weaving stretch the weave model do
 auxiliary connection (1,135.6 m; an HCM one-sided weave with two weaving lanes, docs/WEAVE_MODEL_PLAN.md WP-66) — the lane-end state the exit-side derivation removed from the two weave sections
 (an exiter held by SUMO at the end of a lane its route does not continue on, stopping the lanes beside it), met here once the T.H.52
 queue has reached it. Not diagnosed per vehicle (the round kept trajectories on the VM only). Not reproduced.
+
+**VM S (2026-09-25, block 3): who stands at that gore** (the same seed and rule re-run, trajectories kept; stage
+`mndot_weave_seed5_lockveh`, `artifacts/mndot_rounds/weave_2026-09-24/exit_prepare_collapsed_seed_lock_vehicles.txt`, script
+`diag_lockveh.py.txt`). Per minute, 50 m cells at 8.30–8.60 km: until minute 154 the through lanes stop and go at 0.1–6 m/s while the
+exit-only lanes 0–1 run at 8–17 m/s; at minute 156 lanes 1–4 read 0.0 over 8.45–8.55 km while lane 0 still moves (11.7–15.4 m/s); from
+minute 158–160 every lane of every cell is at 0.0 to the end. At minute 170 the front row is 23 vehicles at 8,468–8,525 m that never
+move again: the frontmost stands in lane 2 at 8,524.5 m — the end of edge 45608485 (8,524.6 m), where lanes 0–1 turn to the exit and
+lanes 2–4 continue — having entered the corridor at 5,181 m (the Ruth St entrance) at minute 123; behind it T.H.61 entrants (first seen at
+7.39 km in lanes 0–1 at minutes 146–153) stand in lanes 1, 2 and 3, and through vehicles from upstream in lanes 3–4. Not shown: each
+vehicle's route — the trajectories carry none, so whether the frontmost is an exiter held at the end of a lane that does not reach its
+exit (the state the exit-side rule removes at the two weave sections) or a through vehicle blocked by one, and whether the lane-1
+entrants are through vehicles held at the end of an exit-only lane (the state WP-66's fixture showed clearing within 17.5 s), is not yet
+decided. Recording each vehicle's route in the run's outputs is what would decide it. Not reproduced.
