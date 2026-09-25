@@ -2288,6 +2288,101 @@ def _weave_halting_first(v_a: float, b_a: float, rem_a: float, v_c: float, rem_c
     return committed and rem_a / v_a <= rem_c / v_c
 
 
+def _weave_yield_early(
+    st: dict[str, Any],
+    t: float,
+    v_c: float,
+    room: float,
+    need: float,
+    rem_a: float,
+    lead_s: float,
+    bound_s: float,
+    zone_m: float,
+) -> bool:
+    """Whether an exiter outside its forced zone may yield to the halted entrant ahead this step.
+
+    WP-56, the brake-scaled zone (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
+    dated section). The exiter's yield of WP-54 is asked inside the fixed
+    forced zone (``force_within_m``, 80 m), which is blind to the exiter's
+    own brake distance: WP-55 counted 12 of the 39 fixture give-ups as an
+    exiter that entered the zone at 10.8–16.6 m/s needing 41–165 m to stop
+    at its own ``b`` against the 60–69 m the zone offers. Here the yield's
+    zone is scaled to that brake distance — the exiter may yield from the
+    step at which it is within ``lead_s`` seconds of travel of the last
+    point at which the stop is still feasible at ``b``,
+    ``room − need ≤ v_c · lead_s`` with ``need = v_c² / (2·b_c)``, which for
+    an entrant halted at the lane end is ``max(force_within_m, v² / (2·b) +
+    v · lead_s + len_E + s0_E + s0_X)`` upstream of the gore — while the
+    forced change, the exit priority and the give-up keep the fixed zone.
+    The speed in the slack term is floored at the creep speed, so an exiter
+    the rule has brought to rest at the rest point (``room`` ≈ 0, ``need``
+    = 0) is still asked and held there, as inside the zone, instead of
+    being let go by its own model on the next step.
+
+    The premise is the entrant halted **at its lane end** (or in the queue
+    at the gore): the early yield is asked only for an entrant within the
+    fixed zone of the end of its lane, ``rem_a ≤ zone_m``. Without that
+    condition the rule also bound, one to three steps at a time, on
+    exiters crawling in a standing lane-1 queue at the *section start*
+    beside a queued entrant halted 300 m from its lane end (T.H.52,
+    0.3–2.8 m/s, ``room`` ≈ 0) — the queue of the sixth derivation, not
+    the crossing pair — and those single steps re-rolled the T.H.52 rows
+    (the plan's WP-56 section has both forms measured).
+    Against the whole-section yield (XY, WP-54: an exiter braking gently
+    to a stop 100–300 m out held lane 1 for an entrant freed before it
+    arrived) this holds lane 1 for the shortest time a stop at ``b``
+    allows; against the just-in-time form (J, WP-55, harness only:
+    ``lead_s`` ≈ 0.7 s of one step's travel and acceleration) it starts
+    one reaction time earlier and brakes below ``b``.
+
+    Bounded, so it cannot lock: outside the fixed zone an exiter that the
+    rule has held below the creep speed (``SCRIPTED_MERGE_CREEP_MS``) for
+    longer than ``bound_s`` on consecutive asked steps (``pair_release_s``,
+    the fifth derivation's two reaction times: a pair standing longer than
+    that is not resolving by itself) *lapses* — ``st["yield_lapsed"]`` —
+    and is not asked again while a halted entrant stands ahead of it; the
+    caller clears the lapse once none does (the geometry is gone). The
+    clock resets on any step the rule does not ask. Nobody else is
+    commanded through the rule (no chain) and it is re-evaluated every
+    step.
+
+    Args:
+        st: The exiter's state (``yield_rest_s``, ``yield_lapsed``).
+        t: Simulation time [s].
+        v_c: The exiter's speed [m/s].
+        room: The room it has to come to rest behind the entrant's rest
+            point [m] (:func:`_weave_yield_at_ends`).
+        need: Its stopping distance at its own ``b`` [m].
+        rem_a: The halted entrant's remaining lane, front to its lane end
+            [m].
+        lead_s: ``exiter_yield_lead_s``; ``0`` disables the early yield.
+        bound_s: The longest standstill outside the fixed zone [s].
+        zone_m: The fixed forced zone (``force_within_m``) [m]: the entrant
+            must be within it of its lane end.
+
+    Returns:
+        Whether the early yield may be asked this step (its feasibility at
+        ``b`` is the caller's check, as inside the zone).
+    """
+    if lead_s <= 0.0 or st["yield_lapsed"]:
+        return False
+    if rem_a > zone_m or room - need > max(v_c, SCRIPTED_MERGE_CREEP_MS) * lead_s:
+        # not asked this step: the standstill clock runs only while the
+        # rule holds the exiter
+        st["yield_rest_s"] = None
+        return False
+    if v_c < SCRIPTED_MERGE_CREEP_MS:
+        since = st["yield_rest_s"]
+        if since is None:
+            st["yield_rest_s"] = t
+        elif t - since > bound_s:
+            st["yield_lapsed"] = True
+            return False
+    else:
+        st["yield_rest_s"] = None
+    return True
+
+
 def _weave_yield_at_ends(
     mod: Any,
     tc: Any,
@@ -2305,6 +2400,7 @@ def _weave_yield_at_ends(
     remaining_m: float,
     accept_s: float,
     due: bool,
+    t: float = 0.0,
 ) -> None:
     """The two yields at the lane ends of a weaving section (WP-54).
 
@@ -2422,11 +2518,15 @@ def _weave_yield_at_ends(
         remaining_m: Section length ahead of its front [m].
         accept_s: The exiting movement's accepted time gap [s].
         due: Whether its forced change is due (the exit priority active).
+        t: Simulation time [s] (the early yield's standstill bound).
     """
     prm = ws["params"]
     veh: dict[str, dict[str, Any]] = ws["veh"]
     lane_list = lanes.get(target_lane, [])
     if not lane_list:
+        # nobody in the target lane: the early yield's lapse clears (WP-56)
+        veh[vid]["yield_rest_s"] = None
+        veh[vid]["yield_lapsed"] = False
         return
     x_c = x_of[vid]
     v_c = v_of[vid]
@@ -2445,10 +2545,15 @@ def _weave_yield_at_ends(
             )
         return p_of[oid]
 
-    if prm["exiter_yields"] > 0.0 and veh[vid]["zone_s"] is not None:
-        # inside the forced zone only (from the whole section it read worse,
-        # docs/WEAVE_MODEL_PLAN.md WP-54): the nearest driven entrant ahead
-        # of the exiter's front
+    in_zone = veh[vid]["zone_s"] is not None
+    lead_s = float(prm["exiter_yield_lead_s"])
+    if prm["exiter_yields"] > 0.0 and (in_zone or lead_s > 0.0):
+        # inside the forced zone (from the whole section it read worse,
+        # docs/WEAVE_MODEL_PLAN.md WP-54), or outside it within the
+        # brake-scaled yield zone (WP-56, _weave_yield_early): the nearest
+        # driven entrant ahead of the exiter's front
+        st_c = veh[vid]
+        found = False
         for x_a, a in lane_list:
             if x_a <= x_c:
                 continue
@@ -2470,8 +2575,22 @@ def _weave_yield_at_ends(
                 dv = v_c
             else:
                 break
+            found = True
             room = gap - p_c["s0"]
-            if room > 0.0 and v_c * v_c / (2.0 * p_c["b"]) <= room:
+            need = v_c * v_c / (2.0 * p_c["b"])
+            if not in_zone and not _weave_yield_early(
+                st_c,
+                t,
+                v_c,
+                room,
+                need,
+                x_end - x_a,
+                lead_s,
+                float(prm["pair_release_s"]),
+                float(prm["force_within_m"]),
+            ):
+                break
+            if room > 0.0 and need <= room:
                 a_idm = _idm_accel(v_c, v0_c, gap, dv, p_c["T"], p_c["a"], p_c["b"], p_c["s0"])
                 a_stop = -v_c * v_c / (2.0 * room)
                 before = coop.get(vid)
@@ -2481,6 +2600,10 @@ def _weave_yield_at_ends(
                 if coop.get(vid) is not before:
                     ws["n_exiter_yields"] += 1
             break
+        if not found:
+            # the geometry is gone: the early yield's lapse clears
+            st_c["yield_rest_s"] = None
+            st_c["yield_lapsed"] = False
     if prm["entrant_yields"] > 0.0 and due and vid not in coop:
         st = veh[vid]
         clear_m = p_c["s0"] + accept_s * v_c
@@ -2850,6 +2973,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 # follower and its speed, the first refused step
                 "foll_prev": None,
                 "giveup_since": None,
+                # the brake-scaled yield zone (WP-56): the first step of a
+                # standstill outside the fixed zone, and its lapse
+                "yield_rest_s": None,
+                "yield_lapsed": False,
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
@@ -3035,6 +3162,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 remaining,
                 accept,
                 st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"],
+                t,
             )
         # --- execution -----------------------------------------------------
         if accepted:

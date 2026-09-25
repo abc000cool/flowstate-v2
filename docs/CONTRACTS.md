@@ -1094,7 +1094,8 @@ the entrant's is off).** Two `WEAVE_DEFAULTS` switches
 (`microsim.runner._weave_yield_at_ends`; both commands go through
 `_weave_command`, one-step targets clipped at the vehicle's own `b`, SUMO's
 safety check on; counted in `n_cooperations` and in the two new keys).
-`exiter_yields` (default **1**): an exit-bound changer inside its forced
+`exiter_yields` (default **1** when it shipped; **0** since WP-56 below, on
+VM M's corridor lock): an exit-bound changer inside its forced
 zone is driven to stop behind a driven entrant halted (below the creep
 speed) at the auxiliary lane's end ahead of it — a virtual leader one
 entrant `minGap` behind the entrant's rear, the exit priority's hold with
@@ -1151,6 +1152,38 @@ whole section 43. Of the 39 give-ups at the default, 12 are an exiter that
 entered the zone at 10.8–16.6 m/s with a halted or halting entrant ahead
 and no stop at its `b` on any in-zone step. Golden `merge_weave` unchanged
 (hash 436cd4ec9e5d).
+
+**The brake-scaled zone, 2026-09-24 (block 3, WP-56; measured and off), and
+the exiter's yield off by default.** `WEAVE_DEFAULTS["exiter_yield_lead_s"]`
+(default **0**, hash-neutral unless set): a positive value τ has the
+exiter's yield (`exiter_yields`) asked outside the fixed forced zone as
+well, from the step at which the exiter is within τ seconds of travel of
+the last point at which it can still stop at its own `b` behind an entrant
+halted at its lane end (within the fixed zone of the end of its lane) —
+`room − v²/(2·b) ≤ max(v, v_creep)·τ`, the zone `max(force_within_m,
+v²/(2·b) + v·τ + len_E + s0_E + s0_X)` from the gore
+(`microsim.runner._weave_yield_early`); bounded (a standstill outside the
+fixed zone longer than `pair_release_s` on consecutive asked steps lapses
+the yield until no halted entrant is ahead), no chain, re-evaluated every
+step; counted in `n_exiter_yields`, so the `weave_sections` contract is
+unchanged at 35 keys. Inert unless `exiter_yields` is set. On the 29-run
+grid with the exiter's yield on (docs/WEAVE_MODEL_PLAN.md, dated section)
+it binds outside the zone on 16 vehicle-steps at τ = 1 s, on six exiters
+in four runs, where the cooperation already brakes the exiter at `−b`
+towards the halted entrant as the follower of its gap; give-ups 39 → 39,
+exits 6,015 → 6,019, the entrances equal, and its one mechanism row swings
+from the grid's best to its worst reading as τ goes 0.5 → 3 s on the same
+two vehicles. Without the lane-end condition it re-rolls the T.H.52 rows
+from single steps on exiters crawling at the section start (35–42 given
+up, 17–53 fewer entrants). **`WEAVE_DEFAULTS["exiter_yields"]` is 0 since
+this package**: VM M, the 20-seed four-hour I-94 battery under the rule
+(runner 585e588), locks one seed — 0.356 departed against 0.852 without
+it, 18,259 exiter-yield vehicle-steps against 770–3,500 elsewhere, every
+on-ramp starved — the other 19 at 0.843–0.899 (battery 0.836, RMSPE 0.716,
+GEH 0.077, 19 collisions against 15, given-up exits 0.6 / 0.9 %); `1`
+switches it on. With it off the fixture grid is WP-54's 6e7757e grid to
+the number (44 given up); golden `merge_weave` unchanged at the default
+(hash 436cd4ec9e5d, byte-identical).
 
 ## 3. Run outputs
 

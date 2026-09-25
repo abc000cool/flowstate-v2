@@ -868,11 +868,15 @@ class TestWeaveSchema:
             "exit_giveup_patience_s": 0.0,
             # WP-53: the abreast patience (docs/WEAVE_MODEL_PLAN.md, dated section)
             "exit_abreast_patience_s": 0.0,
-            # WP-54: the crossing pair — the exiter's yield ships, the entrant's is off
-            "exiter_yields": 1.0,
+            # WP-54: the crossing pair — the exiter's yield shipped on; off since
+            # WP-56 (VM M locks one seed of the four-hour I-94 battery under it);
+            # the entrant's is off
+            "exiter_yields": 0.0,
             "entrant_yields": 0.0,
             # WP-55: the forming pair — the exiter's yield at the entrant's halt time
             "exiter_yields_halting": 0.0,
+            # WP-56: the brake-scaled yield zone (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "exiter_yield_lead_s": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -3442,28 +3446,167 @@ class TestWeaveYieldsAtTheLaneEnds:
         _weave_step(mod, _tc, ws, res, 0.0)
         assert ws["n_exiter_yields"] == 0
 
+    def test_yield_early_bounds(self):
+        """``_weave_yield_early`` (WP-56, the brake-scaled zone): off at a
+        lead of 0; asked only within ``lead_s`` of travel of the last
+        feasible stop (speed floored at the creep speed, so an exiter at
+        rest at the rest point is held); a standstill longer than the bound
+        lapses and stays lapsed; a speed above the creep resets the clock."""
+        from microsim.runner import _weave_yield_early
+
+        st = {"yield_rest_s": None, "yield_lapsed": False}
+        # 15 m/s, b = 1.67: 67.4 m to stop against 75 m of room, 7.6 m of slack;
+        # the entrant 5 m from its lane end, the zone 80 m
+        assert not _weave_yield_early(st, 0.0, 15.0, 75.0, 67.4, 5.0, 0.0, 2.0, 80.0)
+        assert not _weave_yield_early(
+            st, 0.0, 15.0, 75.0, 67.4, 5.0, 0.25, 2.0, 80.0
+        )  # 3.75 m < 7.6
+        assert _weave_yield_early(st, 0.0, 15.0, 75.0, 67.4, 5.0, 1.0, 2.0, 80.0)  # 15 m >= 7.6
+        # the same exiter for an entrant halted 90 m from its lane end (the
+        # queue at the section start, not the crossing pair): not asked
+        assert not _weave_yield_early(st, 0.0, 15.0, 75.0, 67.4, 90.0, 1.0, 2.0, 80.0)
+        assert st["yield_rest_s"] is None
+        # at rest at the rest point: 0.5 m of room against the creep floor's 3 m
+        assert _weave_yield_early(st, 10.0, 0.0, 0.5, 0.0, 5.0, 1.0, 2.0, 80.0)
+        assert st["yield_rest_s"] == 10.0
+        assert _weave_yield_early(
+            st, 12.0, 0.0, 0.5, 0.0, 5.0, 1.0, 2.0, 80.0
+        )  # 2 s: within the bound
+        assert _weave_yield_early(st, 12.5, 0.0, 0.5, 0.0, 5.0, 1.0, 2.0, 80.0) is False  # lapses
+        assert st["yield_lapsed"] is True
+        assert not _weave_yield_early(
+            st, 13.0, 15.0, 75.0, 67.4, 5.0, 1.0, 2.0, 80.0
+        )  # stays lapsed
+        st = {"yield_rest_s": 10.0, "yield_lapsed": False}
+        assert _weave_yield_early(
+            st, 11.0, 5.0, 8.0, 7.5, 5.0, 1.0, 2.0, 80.0
+        )  # moving again: reset
+        assert st["yield_rest_s"] is None
+        # a step the rule does not ask (the slack is larger) resets the clock too
+        st = {"yield_rest_s": 10.0, "yield_lapsed": False}
+        assert not _weave_yield_early(st, 11.0, 0.0, 5.0, 0.0, 5.0, 1.0, 2.0, 80.0)
+        assert st["yield_rest_s"] is None
+
+    def test_the_exiter_yields_outside_the_zone_within_its_lead(self):
+        """``e`` at 15 m/s with 90 m of section left (outside the 80 m
+        zone), ``d`` halted at the auxiliary lane's end: 67.4 m to stop at
+        ``b`` against 75 m of room, 7.6 m (0.51 s) of slack — asked at a
+        lead of 1 s, not at 0.25 s, and not at 10 m/s (29.9 m to stop,
+        4.5 s of slack); counted in ``n_exiter_yields``."""
+        from microsim.runner import _idm_accel, _weave_step
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yield_lead_s=1.0)
+        veh.speeds["e"] = 15.0
+        res = {"e": _res("b", 1, 10.0, 15.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] is None
+        # gap = 195 - 5 - 110 - 2.5 = 77.5 m; room = 75 m
+        a_idm = _idm_accel(15.0, 30.0, 77.5, 15.0, 1.4, 0.73, 1.67, 2.5)
+        a_stop = -225.0 / (2.0 * 75.0)
+        a_cmd = max(min(a_idm, a_stop), -1.67)
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e"] == [
+            ("slow", "e", pytest.approx(15.0 + a_cmd * 0.5), 0.0)
+        ]
+        assert ws["n_exiter_yields"] == 1
+
+        # at a lead of 0.25 s only the ordinary easing towards ``d`` (its
+        # gap's leader, 80 m ahead) commands ``e``: IDM at −1.11 m/s², above
+        # the yield's −1.5
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yield_lead_s=0.25)
+        veh.speeds["e"] = 15.0
+        res = {"e": _res("b", 1, 10.0, 15.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        a_ease = _idm_accel(15.0, 30.0, 80.0, 15.0, 1.4, 0.73, 1.67, 2.5)
+        assert a_cmd < a_ease < 0.0
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e"] == [
+            ("slow", "e", pytest.approx(15.0 + a_ease * 0.5), 0.0)
+        ]
+        assert ws["n_exiter_yields"] == 0
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yield_lead_s=1.0)
+        res = {"e": _res("b", 1, 10.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e" and c[2] < 10.0] == []
+        assert ws["n_exiter_yields"] == 0
+
+    def test_the_early_yield_lapses_and_clears(self):
+        """``e`` at rest 85.5 m from the gore (outside the zone) 0.5 m short
+        of its rest point behind ``d``, halted 75 m from the lane end
+        (inside the zone of its end): held at rest (a target of 0 below its
+        free-road model) for ``pair_release_s`` = 2 s, then lapsed — no
+        command while ``d`` stands ahead — and asked again once ``d`` is
+        gone and back. The same ``e`` behind a ``d`` halted 90 m from the
+        lane end (the queue at the section start) is not asked at all."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yield_lead_s=1.0)
+        veh.speeds["e"] = 0.0
+        res = {"e": _res("a", 1, 99.5, 0.0), "d": _res("b", 0, 10.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert all(c[2] > 0.0 for c in veh.calls if c[0] == "slow" and c[1] == "e")
+        assert ws["n_exiter_yields"] == 0 and ws["veh"]["e"]["yield_rest_s"] is None
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yield_lead_s=1.0)
+        veh.speeds["e"] = 0.0
+        res = {"e": _res("b", 1, 14.5, 0.0), "d": _res("b", 0, 25.0, 0.0)}
+        for t in (0.0, 0.5, 1.0, 1.5, 2.0):
+            _weave_step(mod, _tc, ws, res, t)
+        assert ws["veh"]["e"]["zone_s"] is None
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e"] == [
+            ("slow", "e", 0.0, 0.0)
+        ] * 5
+        assert ws["n_exiter_yields"] == 5 and not ws["veh"]["e"]["yield_lapsed"]
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, res, 2.5)
+        assert ws["veh"]["e"]["yield_lapsed"] and ws["n_exiter_yields"] == 5
+        _weave_step(mod, _tc, ws, res, 3.0)
+        # (what remains is the ordinary cooperation: ``e`` as the follower of
+        # ``d``'s gap, a target above its speed)
+        assert all(c[2] > 0.0 for c in veh.calls if c[0] == "slow" and c[1] == "e")
+        # ``d`` gone: the lapse clears; back: asked again
+        _weave_step(mod, _tc, ws, {"e": res["e"]}, 3.5)
+        assert not ws["veh"]["e"]["yield_lapsed"] and ws["veh"]["e"]["yield_rest_s"] is None
+        _weave_step(mod, _tc, ws, res, 4.0)
+        assert ws["n_exiter_yields"] == 6 and ws["veh"]["e"]["yield_rest_s"] == 4.0
+
     def test_defaults(self):
-        """The exiter's yield ships on, inside the forced zone; the entrant's
-        ships off (docs/WEAVE_MODEL_PLAN.md, WP-54)."""
+        """The exiter's yield shipped on inside the forced zone (WP-54) and
+        is off since WP-56 — VM M, the four-hour I-94 battery, locks one of
+        20 seeds under it (docs/WEAVE_MODEL_PLAN.md, dated sections); the
+        entrant's and the brake-scaled zone are off (WP-54, WP-56)."""
         from flowstate_core.config import WEAVE_DEFAULTS
         from microsim.runner import _weave_step
 
-        assert WEAVE_DEFAULTS["exiter_yields"] == 1.0
+        assert WEAVE_DEFAULTS["exiter_yields"] == 0.0
         assert WEAVE_DEFAULTS["entrant_yields"] == 0.0
-        # the exiter's yield at the default, inside the zone only: ``e`` 90 m
-        # from the end (outside ``force_within_m`` = 80) is not asked, the
-        # same geometry 80 m out is
+        assert WEAVE_DEFAULTS["exiter_yield_lead_s"] == 0.0
+        # the exiter's yield at the default: ``e`` 80 m from the end (the
+        # zone) behind a halted ``d`` is not asked; set, it is, and only
+        # inside the zone — the same geometry 90 m out is not asked
         ws, veh, mod = self._state()
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] == 0.0
+        assert [c for c in veh.calls if c[0] == "slow" and c[2] < 10.0] == []
+        assert ws["n_exiter_yields"] == 0 and ws["n_entrant_yields"] == 0
+        ws, veh, mod = self._state(exiter_yields=1.0)
         res = {"e": _res("b", 1, 10.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
         _weave_step(mod, _tc, ws, res, 0.0)
         assert ws["veh"]["e"]["zone_s"] is None
         assert [c for c in veh.calls if c[0] == "slow" and c[2] < 10.0] == []
         assert ws["n_exiter_yields"] == 0 and ws["n_entrant_yields"] == 0
-        ws, veh, mod = self._state()
+        ws, veh, mod = self._state(exiter_yields=1.0)
         res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
         _weave_step(mod, _tc, ws, res, 0.0)
         assert ws["veh"]["e"]["zone_s"] == 0.0
         assert ws["n_exiter_yields"] == 1 and ws["n_entrant_yields"] == 0
+        # the brake-scaled zone needs the exiter's yield: the lead alone asks
+        # nothing of ``e`` at 15 m/s, 90 m out (asked with both set)
+        ws, veh, mod = self._state(exiter_yield_lead_s=1.0)
+        veh.speeds["e"] = 15.0
+        res = {"e": _res("b", 1, 10.0, 15.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_exiter_yields"] == 0
         # the entrant's yield at its default of 0: the geometry of
         # ``test_the_entrant_yields_beside_a_due_exiter`` gives no command
         ws, veh, mod = self._state()

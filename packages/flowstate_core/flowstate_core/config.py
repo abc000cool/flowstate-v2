@@ -187,9 +187,13 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "exit_giveup_m": 5.0,
     "exit_giveup_patience_s": 0.0,
     "exit_abreast_patience_s": 0.0,
-    "exiter_yields": 1.0,
+    # 0 since 2026-09-24 (block 3, WP-56): VM M, the four-hour I-94 battery
+    # under this rule (runner 585e588), locks one of its 20 seeds — see the
+    # key's paragraph in the docstring below. Not a fitted value.
+    "exiter_yields": 0.0,
     "entrant_yields": 0.0,
     "exiter_yields_halting": 0.0,
+    "exiter_yield_lead_s": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -297,7 +301,7 @@ entrant halted beside the exiter, which no wait moves. 5 and 20 s read as
 10 s. A positive value is a measured option, never a lock (the clearing
 condition and the bound end every wait; at most 15 vehicle-steps per run
 at 10 s). Not a fitted value. ``exiter_yields`` (2026-09-24, block 3,
-WP-54, the crossing pair): ``1`` (the default) has an exit-bound changer
+WP-54, the crossing pair): ``1`` has an exit-bound changer
 inside its forced zone stop behind a driven entrant halted at the end of
 the auxiliary lane ahead of it — driven towards a virtual leader one
 entrant ``minGap`` behind the entrant's rear, the exit priority's hold with
@@ -315,8 +319,18 @@ demand, seed 5). Measured on the same 29-run grid as WP-52 and WP-53
 releases 218 → 169, no lock, no collision, the T.H.52 rows and the golden
 unchanged; from the whole section instead of the zone it read worse (46
 given up, the T.H.52 capacity fixture 4 / 5 given up at seeds 3 / 4
-against 1 / 1). ``0`` switches it off; hash-neutral unless set; a switch,
-not a fitted value. ``entrant_yields`` (same package): ``1`` has a moving
+against 1 / 1). **The default is 0 since 2026-09-24 (block 3, WP-56)**:
+on the four-hour I-94 corridor (VM M, the 20-seed battery under runner
+585e588, ``artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_exiter_yields_585e588.json``)
+the rule locks one seed — 6904272788004776631 departs 0.356 of its
+demand against 0.852 without the rule (VM K), with 18,259 exiter-yield
+vehicle-steps against 770–3,500 on the other seeds and every on-ramp
+starved — while the other 19 seeds read 0.843–0.899 (battery 0.836
+departed, speed RMSPE 0.716, GEH 0.077, 19 collisions against VM K's 15,
+given-up exits 0.6 / 0.9 % against 0.8 / 1.0 %, VM K's 0.743 seed at
+0.865). A rule that locks a seed of the flagship corridor cannot ship on
+until it is bounded; ``1`` switches it on. Hash-neutral unless set; a
+switch, not a fitted value. ``entrant_yields`` (same package): ``1`` has a moving
 driven entrant beside an exiter whose forced change is due fall behind the
 exiter's rear at its own ``b`` (the same virtual leader, the roles as the
 priority has them) while it can still come to rest behind where the
@@ -347,7 +361,39 @@ through a small drawn ``b`` (0.65–1.22 m/s² at 10–15 m/s) that changed or
 halted regardless — and the give-ups it was written for have no move at
 the exiter's ``b`` inside the zone (12 of the 39: the stop needed 41–165 m
 against 60–69 m offered). Hash-neutral unless set; a switch, not a fitted
-value."""
+value. ``exiter_yield_lead_s`` (2026-09-24, block 3, WP-56, the
+brake-scaled zone): a positive value has the exiter's yield
+(``exiter_yields``) asked *outside* the fixed forced zone as well — from
+the step at which the exiter is within this many seconds of travel of the
+last point at which it can still stop at its own ``b`` behind the halted
+entrant's rest point, ``room − v²/(2·b) ≤ v · lead_s``
+(``microsim.runner._weave_yield_early``); for an entrant halted at the
+lane end that is a yield zone of ``max(force_within_m, v²/(2·b) + v ·
+lead_s + len_E + s0_E + s0_X)`` upstream of the gore, scaled to the
+exiter's own brake distance where the fixed 80 m is blind to it (the
+corridor fleet draws ``b`` down to 0.53 m/s²; WP-55 counted 12 give-ups
+that needed 41–165 m against the 60–69 m the zone offers); the entrant
+must be halted within the fixed zone of its own lane end (the crossing
+pair, not the queue at the section start). The forced change, the exit
+priority and the give-up keep the fixed zone. Bounded: outside the fixed
+zone an exiter the rule has held below the creep speed for longer than
+``pair_release_s`` lapses and is not asked again while that entrant
+stands ahead of it; nobody else is commanded through the rule; it is
+re-evaluated every step and the lapse clears once no halted entrant is
+ahead. Inert unless ``exiter_yields`` is set. The default is **0** (off,
+hash-neutral unless set): measured at 0.5–3 s on the same 29-run grid as
+WP-52..55 with the exiter's yield on (docs/WEAVE_MODEL_PLAN.md, dated
+section) it binds outside the zone on 16 vehicle-steps at 1 s, six
+exiters in four runs, where the cooperation already brakes the exiter at
+``−b`` towards the halted entrant as the follower of its gap — give-ups
+39 → 39, exits 6,015 → 6,019, the entrances equal — and its one
+mechanism row swings from the grid's best to its worst reading as the
+lead goes 0.5 → 3 s on the same two vehicles; the 12 give-ups it was
+written for have no feasible stop on any section step. Without the
+lane-end condition it re-rolled the T.H.52 rows from single steps
+(35–42 given up, 17–53 fewer entrants). A positive value is one human
+reaction time or a few (Treiber & Kesting 2013, ch. 12, the figure
+``pair_release_s`` doubles); not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 
