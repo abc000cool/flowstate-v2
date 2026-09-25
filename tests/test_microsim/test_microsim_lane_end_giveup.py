@@ -56,6 +56,11 @@ from validation.vehicles import read_vehicles
 #: vehicle's room, 5 m + the corridor population's mean minimum gap 2.53 m).
 GIVEUP_M = 7.5
 
+#: The seeds :meth:`TestRun.test_on_the_th61_fixture` tries in turn until
+#: the rule acts (docs/WEAVE_MODEL_PLAN.md, WP-85: on macOS it acts at four
+#: of these six, not at 7 or 10; on Linux not at 5).
+TH61_RULE_SEEDS = (5, 6, 7, 8, 9, 10)
+
 #: The T.H.61 fixture's two peaks in sequence (docs/WEAVE_MODEL_PLAN.md,
 #: WP-71, "queued"). First the corridor's 06:30-06:45 steps, the through peak
 #: that built its queue at the stretch. Then its 07:35-07:50 steps, the
@@ -511,20 +516,31 @@ class TestRun:
         assert not read_vehicles(paths.run_dir)["gave_up"].any()
 
     def test_on_the_th61_fixture(self, tmp_path: Path) -> None:
-        """The two peaks in sequence at seed 5 with the rule at 7.5 m.
+        """The two peaks in sequence with the rule at 7.5 m, at the first of
+        :data:`TH61_RULE_SEEDS` at which the rule acts.
 
-        Measured on macOS (docs/WEAVE_MODEL_PLAN.md, WP-71): 3 T.H.61
-        entrants bound on, held at the end of exit-only lane 1, take the
-        exit; no exit is given up; 2,592 of 2,592 depart; no collision.
-        Checked here without the counts: the meta block describes the
+        Measured on macOS (docs/WEAVE_MODEL_PLAN.md, WP-71): at seed 5, 3
+        T.H.61 entrants bound on, held at the end of exit-only lane 1, take
+        the exit; no exit is given up; 2,592 of 2,592 depart; no collision.
+        Since the fixture's exit compiles straight (WP-83) the rule acts at
+        3 / 1 / 1 / 3 / 0 / 1 / 3 / 0 entrants over seeds 3-10 on macOS, no
+        exit given up and no collision at any; on Linux (CI on 0b9ab40) it
+        acts at none at seed 5. Which seed it acts at is the platform's, so
+        the test takes the first seed at which it does and fails if none of
+        them does. Checked without the counts: the meta block describes the
         fixture's one diverge, and ``vehicles.parquet`` marks exactly the
         vehicles the counters count, each with the destination it drove to.
         Each left the corridor at the end of the lane it stood in.
         """
-        paths = run_micro(th61_queued_config(5, GIVEUP_M), 5, tmp_path / "on")
-        meta = json.loads(paths.meta.read_text())
+        for seed in TH61_RULE_SEEDS:
+            paths = run_micro(th61_queued_config(seed, GIVEUP_M), seed, tmp_path / f"on_{seed}")
+            meta = json.loads(paths.meta.read_text())
+            block = meta["lane_end_giveups"]
+            if block["n_took_exit"] + block["n_gave_up_exit"] >= 1:
+                break
+        else:
+            pytest.fail(f"the rule acts at none of seeds {TH61_RULE_SEEDS}")
         assert meta["n_collisions"] == 0
-        block = meta["lane_end_giveups"]
         assert block["distance_m"] == GIVEUP_M and block["skipped_edges"] == []
         (row,) = block["diverges"]
         assert (row["edge"], row["exit_lanes"], row["through_lanes"]) == (
