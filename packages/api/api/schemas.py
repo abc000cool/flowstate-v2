@@ -317,7 +317,11 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     entrant's out of the auxiliary lane, an exiter's into it — was withheld
     short of its place in the spread (``spread_crossings``); zero at the
     default of 0; ``None`` for a meta written before; not shown by the
-    dashboard. Two keys that are
+    dashboard. ``n_outlet_spared`` (WP-70, 2026-09-25 block 3, the ramp's
+    outlet) counts the exiter-steps on which the gap chosen without the rule
+    has as its follower a vehicle on the on-ramp or in the auxiliary lane's
+    first stretch (``ramp_outlet``); zero at the default of 0; ``None`` for a
+    meta written before; not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -358,6 +362,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_exit_prepared: int | None = None
     n_swaps: int | None = None
     n_spread_withheld: int | None = None
+    n_outlet_spared: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

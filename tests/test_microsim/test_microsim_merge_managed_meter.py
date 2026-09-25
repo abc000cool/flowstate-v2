@@ -890,6 +890,8 @@ class TestWeaveSchema:
             "swap_pairs": 0.0,
             # WP-67: the crossings spread (docs/WEAVE_MODEL_PLAN.md, dated section)
             "spread_crossings": 0.0,
+            # WP-70: the ramp's outlet (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "ramp_outlet": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2187,6 +2189,8 @@ def _weave_state(**params) -> dict:
         "n_spread_opposing": 0,
         "n_spread_unanticipated": 0,
         "spread_released": set(),
+        # WP-70: the ramp's outlet (meta)
+        "n_outlet_spared": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -5228,6 +5232,175 @@ class TestWeaveSpread:
         assert meta_on["n_collisions"] == 0
 
 
+class TestWeaveOutlet:
+    """The ramp's outlet (2026-09-25, block 3, WP-70; ``ramp_outlet``,
+    ``_weave_outlet_length``): an exit-bound changer's gap choice passes over
+    every vehicle on the on-ramp or in the auxiliary lane short of the stretch
+    the ramp's vehicles need to leave it (51.1 m; none on a section shorter
+    than 253.8 m), the exit priority's hold exempt; the exiter's own change is
+    not withheld. Measured and left off (docs/WEAVE_MODEL_PLAN.md, dated
+    section)."""
+
+    @staticmethod
+    def _state(**params) -> dict:
+        """The fake section lengthened to 320 m (two 160 m pieces, so the
+        outlet's stretch is 51.1 m) with a ramp ``r`` feeding lane 0 and
+        ending at the section start 50 m on."""
+        ws = _weave_state(**params)
+        ws["lane_len_m"] = {"a": 160.0, "b": 160.0}
+        ws["beyond_m"] = {"a": 160.0, "b": 0.0}
+        ws["length_m_measured"] = 320.0
+        ws["x_offset"].update({"b": 160.0, "r": -50.0})
+        ws["lane_map"][("r", 0)] = 0
+        ws["ramp_edges"] = frozenset({"r"})
+        return ws
+
+    def test_the_stretch(self):
+        """The two needs fill the unforced length of the section they were
+        measured on (304.9 − 80 m); a longer section keeps 51.1 m, a shorter
+        one keeps the exiters' 173.8 m before the zone, and from 253.8 m
+        down there is no stretch."""
+        from microsim.runner import (
+            WEAVE_OUTLET_ENTRANT_M,
+            WEAVE_OUTLET_EXIT_RESERVE_M,
+            _weave_outlet_length,
+        )
+
+        assert WEAVE_OUTLET_ENTRANT_M + WEAVE_OUTLET_EXIT_RESERVE_M == pytest.approx(304.9 - 80.0)
+        assert _weave_outlet_length(304.9, 80.0) == pytest.approx(51.1)
+        assert _weave_outlet_length(400.0, 80.0) == 51.1
+        assert _weave_outlet_length(280.0, 80.0) == pytest.approx(26.2)
+        assert _weave_outlet_length(253.8, 80.0) == pytest.approx(0.0, abs=1e-9)
+        assert _weave_outlet_length(200.0, 80.0) == 0.0
+        assert _weave_outlet_length(136.0, 80.0) == 0.0
+
+    def test_off_by_default_an_exiter_holds_a_ramp_vehicle(self):
+        """Without the rule an exiter 40 m into the section takes the gap in
+        front of a ramp vehicle 10 m short of the section start and holds it
+        (IDM towards the exiter 45 m ahead, below its free-road term)."""
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["ramp_outlet"] == 0.0
+        ws = self._state()
+        veh = _WeaveVehicle({"e": 10.0, "n": 10.0})
+        res = {"e": _res("a", 1, 40.0, 10.0), "n": _res("r", 0, 40.0, 10.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert [c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "n")]
+        assert ws["n_cooperations"] == 1 and ws["n_outlet_spared"] == 0
+
+    def test_an_exiter_holds_nobody_in_the_outlet(self):
+        """With the rule the same exiter holds nobody — the ramp vehicle is in
+        the outlet — and the step counts as spared; its own change, with the
+        gaps beside it open, is requested as without the rule."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws = self._state(ramp_outlet=1.0)
+        veh = _WeaveVehicle({"e": 10.0, "n": 10.0})
+        res = {"e": _res("a", 1, 40.0, 10.0), "n": _res("r", 0, 40.0, 10.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "slow"] == []
+        assert ws["n_cooperations"] == 0 and ws["n_outlet_spared"] == 1
+        assert ("change", "e", 0, 0.5) in veh.calls and ws["veh"]["e"]["target"] is None
+        assert _weave_meta(ws, {})["n_outlet_spared"] == 1
+
+    def test_an_open_gap_in_front_of_a_vehicle_in_the_outlet_is_still_taken(self):
+        """An entrant 20 m in (inside the stretch) with 15 m to the exiter
+        beside it: the exiter's change is accepted and requested, and the
+        entrant is not held for it."""
+        from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS, _weave_step
+
+        ws = self._state(ramp_outlet=1.0)
+        veh = _WeaveVehicle(
+            {"e": 10.0, "n": 10.0}, {("e", NEIGHBOR_RIGHT_FOLLOWERS): (("n", 15.0),)}
+        )
+        res = {"e": _res("a", 1, 40.0, 10.0), "n": _res("a", 0, 20.0, 10.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert ("change", "e", 0, 0.5) in veh.calls
+        assert [c for c in veh.calls if c[0] == "slow"] == []
+        assert ws["n_outlet_spared"] == 1
+
+    def test_beyond_the_stretch_the_cooperation_is_as_without_the_rule(self):
+        """An entrant 60 m in is past the 51.1 m stretch: the exiter 100 m in
+        holds it as its gap follower with or without the rule."""
+        from microsim.runner import NEIGHBOR_RIGHT_FOLLOWERS, _weave_step
+
+        for params in ({}, {"ramp_outlet": 1.0}):
+            ws = self._state(**params)
+            veh = _WeaveVehicle(
+                {"e": 10.0, "n": 10.0}, {("e", NEIGHBOR_RIGHT_FOLLOWERS): (("n", 1.0),)}
+            )
+            res = {"e": _res("a", 1, 100.0, 10.0), "n": _res("a", 0, 60.0, 10.0)}
+            _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+            assert [c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "n")], params
+            assert ws["n_cooperations"] == 1 and ws["n_outlet_spared"] == 0
+
+    def test_inert_on_a_section_too_short_for_the_stretch(self):
+        """On the 200 m fake section the exiters' reserve and the zone leave
+        no stretch: the ramp vehicle is held as without the rule."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(ramp_outlet=1.0)
+        ws["x_offset"]["r"] = -50.0
+        ws["lane_map"][("r", 0)] = 0
+        ws["ramp_edges"] = frozenset({"r"})
+        veh = _WeaveVehicle({"e": 10.0, "n": 10.0})
+        res = {"e": _res("a", 1, 40.0, 10.0), "n": _res("r", 0, 40.0, 10.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert [c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "n")]
+        assert ws["n_outlet_spared"] == 0
+
+    def test_the_exit_priority_keeps_its_hold(self):
+        """The exit priority's gap choice is exempt: asked with the priority,
+        the exiter holds the ramp vehicle; without it, it holds nobody."""
+        from microsim.runner import _weave_cooperate
+
+        ws = self._state(ramp_outlet=1.0)
+        ws["veh"]["e"] = {"dir": -1}
+        veh = _WeaveVehicle({"e": 10.0, "n": 10.0})
+        results = {"e": _res("a", 1, 40.0, 10.0), "n": _res("r", 0, 40.0, 10.0)}
+        lanes = {0: [(-10.0, "n")], 1: [(40.0, "e")]}
+        x_of = {"e": 40.0, "n": -10.0}
+        v_of = {"e": 10.0, "n": 10.0}
+        for priority, held in ((False, False), (True, True)):
+            coop: dict = {}
+            f = _weave_cooperate(
+                _WeaveMod(veh),
+                _tc,
+                ws,
+                results,
+                lanes,
+                x_of,
+                v_of,
+                {},
+                {},
+                coop,
+                "e",
+                0,
+                None,
+                0.6,
+                280.0,
+                priority,
+                0.0,
+            )
+            assert ("n" in coop) is held and f == ("n" if held else None), priority
+        assert ws["n_outlet_spared"] == 1
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the rule spares vehicles in the outlet and
+        nothing collides; at the default it is inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"ramp_outlet": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_outlet_spared"] == 0
+        assert meta_on["weave_sections"][0]["n_outlet_spared"] > 0
+        assert meta_on["n_collisions"] == 0
+
+
 class TestWeaveVacateGapConditioned:
     """The vacate rule re-derived so that it never asks the target lane to
     brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
@@ -5709,6 +5882,7 @@ class TestWeaveReviewDerivations3To6:
             "n_exit_prepared": 0,
             "n_swaps": 0,
             "n_spread_withheld": 0,
+            "n_outlet_spared": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

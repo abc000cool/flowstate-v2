@@ -225,6 +225,13 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # a switch; the onset positions are derived from the section's geometry
     # (its unforced length less one cooperative gap opening), not fitted
     "spread_crossings": 0.0,
+    # WP-70 (2026-09-25, block 3): the ramp's outlet — an exiter holds no
+    # entrant that still owes its change out of the auxiliary lane while that
+    # entrant is on the ramp or within the stretch the entrants need to leave
+    # it; a switch, not a fitted value: the stretch is derived from the two
+    # movements' crossing distributions at the defaults
+    # (microsim.runner.WEAVE_OUTLET_ENTRANT_M, WEAVE_OUTLET_EXIT_RESERVE_M)
+    "ramp_outlet": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -623,7 +630,31 @@ or below 20 m/s in 12 / 12 / 13 of 16 windows against 10 / 11 / 13, and
 29-run fixture grid the entrances rise 5,944 → 6,060 but exits fall
 5,988 → 5,860, unfinished rise 45 → 208 and the T.H.52 capacity fixture's
 no-lock pin fails at seed 4 (lane 1 at the section start 2.0 m/s). A switch,
-not a fitted value."""
+not a fitted value. ``ramp_outlet`` (2026-09-25, block 3, WP-70, the ramp's
+outlet): ``1`` has an exit-bound changer's gap choice pass over every vehicle
+on the on-ramp or in the auxiliary lane short of the stretch the ramp's
+vehicles need to leave it, so that no exiter holds a vehicle in the ramp's
+only outlet; the exiter still takes a gap the acceptance finds open there,
+SUMO's own changes are untouched and the exit priority's hold is exempt. The
+stretch (``microsim.runner._weave_outlet_length``) is 51.1 m, within which a
+share q* = 0.773 of the entrants have left the auxiliary lane at the defaults,
+capped so that an exiter keeps 173.8 m before the forced zone, within which
+the same share of the exiters have entered it — the minimax split of the
+section's unforced length between the two movements' needs on the corridor
+section test's fixture; none on a section shorter than 253.8 m. The
+exiter-steps on which the gap chosen without the rule has such a vehicle as
+its follower are counted in ``n_outlet_spared``. The default is **0** (off,
+hash-neutral unless set): on the corridor section test's fixture
+(``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5;
+docs/WEAVE_MODEL_PLAN.md, dated section WP-70) the T.H.52 entrance departs
+401 / 386 / 403 of 407 against 368 / 360 / 350 and the mainline 1,187 /
+1,181 / 1,171 of 1,196 against 1,140 / 1,157 / 1,149, and the entry breaks
+down later, but the exit end's lanes read at or below 20 m/s in 12 / 12 / 13
+of 16 windows against 10 / 11 / 13 (seeds 3–12: the entrance 3,418 → 3,749,
+those windows 123 → 126); on the 29-run fixture grid exits rise 5,988 →
+6,035 and the entrances 5,944 → 6,055, but give-ups read 44 → 45, unfinished
+45 → 70, and the T.H.52 capacity fixture's no-lock pin fails at seed 5 (3
+exits missed); no collision. A switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

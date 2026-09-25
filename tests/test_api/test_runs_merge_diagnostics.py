@@ -188,8 +188,9 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
     ``n_hold_releases`` (WP-58) and the gated anticipation's
     ``n_anticipation_gated`` (WP-60) and the exiters' early move's
     ``n_exit_prepared`` (WP-62) and the swap's ``n_swaps`` (WP-64) and the
-    crossings spread's ``n_spread_withheld`` (WP-67): the twenty read as
-    null, the rest as written."""
+    crossings spread's ``n_spread_withheld`` (WP-67) and the ramp's outlet's
+    ``n_outlet_spared`` (WP-70): the twenty-one read as null, the rest as
+    written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     new_keys = (
@@ -209,6 +210,7 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
         "n_exit_prepared",
         "n_swaps",
         "n_spread_withheld",
+        "n_outlet_spared",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",
@@ -233,8 +235,9 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
     ``n_vacate_requests``, ``short_section``, ``vacate_window_edges``,
     ``n_giveup_waited``, ``n_exiter_yields``, ``n_entrant_yields``,
     ``n_entry_bounded``, ``n_hold_releases``, ``n_anticipation_gated``,
-    ``n_exit_prepared``, ``n_swaps``, ``n_spread_withheld``: those seventeen
-    read as null, the cooperation counters as written."""
+    ``n_exit_prepared``, ``n_swaps``, ``n_spread_withheld``,
+    ``n_outlet_spared``: those eighteen read as null, the cooperation
+    counters as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     later = (
@@ -251,6 +254,7 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
         "n_exit_prepared",
         "n_swaps",
         "n_spread_withheld",
+        "n_outlet_spared",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",

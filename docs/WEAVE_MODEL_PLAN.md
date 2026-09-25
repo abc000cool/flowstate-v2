@@ -3600,3 +3600,215 @@ One caveat for a future pass of the test: the every-window reading is strict. On
 - This section is the only file change.
 - `tests/test_microsim/test_microsim_merge_managed_meter.py`, including the strict marker's reason, `microsim.runner`, the config, every scenario and fixture are untouched.
 - Session artifacts are not committed: the fixture generator and the three OSM fixtures (`wp68/fixtures.py`), the harness (`wp68/sweep.py`), the gap check (`wp68/gapcheck.py`), the table script, and the JSONL records of the 90 sweep runs, the 3 on the observed schedule, the 40 of the 20-seed supplements and five diagnostic reruns.
+
+## 2026-09-25 (block 3, WP-70, the ramp's outlet): the auxiliary lane's first 51 m are the on-ramp's only outlet. Keeping the exiters out of them fills lane 1 and moves the breakdown to the exit end. Keeping the exiters' holds out of them raises the T.H.52 entrance at 9 of 10 seeds and delays the entry's breakdown, but the exit end reads no faster and the capacity fixture's no-lock pin breaks at one seed; nothing ships (`ramp_outlet` = 0)
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`). WP-68 (above) showed its exit-end criterion (ii) is within the fleet's reach, so the failure is the weave's. WP-67's hand-on (a): the auxiliary lane at the entry is the T.H.52 ramp's only outlet. Of WP-67's forms, the one that moved the entrance kept the exiters out of that lane while the entrants left it (X-only: 393 / 385 / 388 departed, but 40 / 57 / 82 exiters forced and the capacity pin broken at seed 3); the form that kept the entrants in it made the entrance worse. The next form, as handed on: keep the exiters out of the auxiliary lane only over the stretch the entrants need to leave it, derive that stretch from the entrants' own crossing distribution, and let the exiters in freely after it. This package derives the stretch, measures that form, finds why it fails, derives a narrower form from the measurement, and measures that on the corridor section fixture (seeds 3 / 4 / 5 and 3–12), on the 29-run grid and on golden `merge_weave`. The demand, every scenario, every fixture and every existing assertion are untouched.
+
+**How it was measured.** Session harnesses, not committed. `wp70_harness.py` is WP-67's harness (itself on WP-65's hooks: cells, crossings, command families) plus, for every vehicle, its first sample on the section (time, position, speed, the lane it arrived in). At an entrant's arrival it also records the lane-0 vehicles ahead of it within 100 m and the entrants among them still owing their change. Movements come from the run's `vehicles.parquet` (WP-69: origin and destination), not from route strings: E an entrant not bound for the paired exit, R an entrant bound for it, X a mainline exiter, T through. A *crossing* is an E leaving lane 0 for lane 1 or an X entering lane 0 from lane 1, counted once per vehicle at its first such change, with its position from the section start. `wp67_corr.py` is the test's body with the key set in a copy of its call (no hooks, the strict marker untouched); it reproduces the harness's rows for the rule exactly. `grid70.sh` / `wp70_grid_harness.py` run WP-51..67's 29-run grid. Every run is the fixture's 20 simulated minutes at step 0.5 s on macOS, one run at a time (3–8 s each). At the defaults the corridor runs reproduce WP-61 to the number (T.H.52 368 / 360 / 350 of 407), and the grid is WP-67's `off` in all 29 rows, every counter compared, golden hash 436cd4ec9e5d. Every run of this package is collision-free.
+
+**(1) The stretch, from the two movements' crossing distributions at the defaults** (corridor section fixture, seeds 3 / 4 / 5 pooled; SUMO's own changes on arrival included).
+
+*Table — where the crossings stand [m from the section start].*
+
+| quantile | 0.50 | 0.60 | 0.70 | 0.75 | 0.80 | 0.90 |
+|---|---|---|---|---|---|---|
+| entrants leave lane 0 (590) | 10.3 | 24.7 | 36.0 | 45.2 | 58.2 | 124.5 |
+| … arriving below 8 m/s / at 8 m/s or more | 17.6 / 7.2 | 27.5 / 8.9 | 37.9 / 26.7 | 44.8 / 47.2 | 56.1 / 74.5 | 111.3 / 131.8 |
+| exiters enter lane 0 (862) | 47.3 | 70.2 | 125.5 | 159.7 | 199.7 | 267.6 |
+| the two added | 57.6 | 94.9 | 161.5 | 204.9 | 257.9 | 392.1 |
+
+- *The length.* The section's unforced length is 304.9 − 80 = 224.9 m. The stretch in which the exiters are kept out is the entrants' need; what follows it must hold the exiters' need before the forced zone. At the same share q of each movement, the largest q for which the two fit end to end is q* = 0.773: the entrants have left within **51.1 m** and the exiters entered within **173.8 m** (the minimax split of the unforced length between the two needs). Per seed the same split gives 71.8 / 52.7 / 37.3 m (q* 0.797 / 0.787 / 0.718). Both lengths are module constants with this provenance (`WEAVE_OUTLET_ENTRANT_M`, `WEAVE_OUTLET_EXIT_RESERVE_M`), derived at the defaults, not fitted to a criterion.
+- *Fixed, not adapted to the ramp's flow.* At the share that sets the length, the entrants' distance does not grow with the queue. Its 75th percentile is 44.8 m for entrants arriving below 8 m/s and 47.2 m at 8 m/s or more. With none / one / two entrants still owing their change ahead within 100 m it is 33.2–44.5 / 37.8–56.9 / 38.5–56.3 m (the range over the seeds). The median does grow with the queue (5.9–9.4 m with none ahead, 17.4–25.1 m with one), but the tail that sets the stretch does not. A speed-scaled length does not describe it either: against one cooperative gap opening at the entrant's arrival speed, `w(v) = v · sqrt(2 · (s0 + 0.6 · v) / b)` at the population means, the crossing distance is a median 1.4–2.9 times `w` below 5 m/s and 0.07–0.10 times it above 20 m/s (SUMO's changes in the arrival step).
+- *Shorter sections.* An exiter released at the stretch's end keeps at least the 173.8 m reserve before the zone. A section shorter than stretch + reserve + zone gets a shorter stretch, and none from zone + reserve = 253.8 m down (`_weave_outlet_length`). The rule is therefore inert on the Ruth St section, the moderate fixture and golden `merge_weave`.
+- *The split is the fixture's.* On the T.H.52 capacity fixture (fleet defaults, 4,500 + 1,400 veh/h, 25 % exiting) the same reading gives q* = 0.642: entrants within 25.0 m, exiters within 199.9 m (per seed 18.5 / 26.1 / 33.1 m). That fleet's exiters cross much later (median 117–125 m against 40–51 m).
+
+**(2) The first form: exiters kept out of the auxiliary lane over the stretch** (session patch `wp70/keepout_runner.patch`, not committed).
+
+- *The rule as derived.* A driven exiter in lane 1 is withheld from lane 0 while its front is short of the stretch: `min(51.1, L − zone − 173.8, L − s_b(v))`, where `s_b` is WP-67's IDM lane-end braking distance at its speed. Withheld, it follows its lane and chooses no gap, holds nobody and requests nothing. Past the stretch it is released for good into the ordinary weave (gap choice, cooperation, acceptance, forced zone), with at least the 173.8 m reserve before the zone.
+- *Arrival changes.* WP-67's hand-over is reused, so SUMO's own model cannot move it into lane 0 in its arrival step: an exiter arriving in lane 1 with a positive stretch is taken under mode 512 on the step before it can reach the section, its mode kept and restored.
+- *Bounds.* A withheld exiter below the creep speed (3 m/s) for longer than `pair_release_s` (2 s, the pair release's two reaction times) is released. Nothing else is commanded, and the exit-side give-up geometry is untouched. The stretch is 0 above about 21.3 m/s at the population means (the lane-end term), so in free flow SUMO's arrival changes stay.
+- *Forms measured.* N: without the creep bound. L: without the lane-end term. H: the rule plus form E's exclusion below.
+
+*Table — the corridor section test's criteria, seeds 3 / 4 / 5 (mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s of 16, no collision, given up ≤ 2 % of reached), and the entry.*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s; lowest lane 0 / lane 1 [m/s] | given up of reached | unfinished | entry breakdown (minute) | lanes 0 + 1 at [0, 50), all minutes [lanes' worth] | lanes 0 + 1 across x = 50 m [veh/h] | exit end lane 0 [veh/h] |
+|---|---|---|---|---|---|---|---|---|---|
+| default | 1,140 / 1,157 / 1,149 | 368 ✗ / 360 ✗ / 350 ✗ | 10; 10.1 / 12.9 ; 11; 11.9 / 15.1 ; 13; 9.2 / 8.2 | 2 of 356 ; 1 of 391 ; 2 of 405 | 1 / 6 / 8 | 7 / 5 / 3 | 1.13 / 1.14 / 1.18 | 1,778 / 1,781 / 1,712 | 1,035 / 1,104 / 1,122 |
+| keep-out | 1,196 / 1,155 / 1,118 ✗ | 388 / 342 ✗ / 392 | 12; 8.7 / 11.4 ; 12; 6.3 / 9.2 ; 12; 9.4 / 11.6 | 4 of 371 ; 1 of 390 ; 0 of 421 | 5 / 9 / 3 | 7 / 7 / 4 | 1.23 / 1.24 / 1.37 | 1,854 / 1,699 / 1,803 | 1,032 / 1,113 / 1,176 |
+| N | 1,172 / 1,156 / 1,166 | 388 / 357 ✗ / 369 ✗ | 12 ; 13 ; 13 | 3 of 367 ; 3 of 387 ; 0 of 402 | 6 / 9 / 1 | 7 / 7 / 4 | 1.23 / 1.28 / 1.38 | 1,860 / 1,689 / 1,724 | 1,035 / 1,077 / 1,164 |
+| L | 1,179 / 1,172 / 1,110 ✗ | 385 ✗ / 364 ✗ / 373 ✗ | 11 ; 13 ; 13 | 0 of 363 ; 4 of 401 ; 3 of 416 | 4 / 10 / 2 | 7 / 7 / 4 | 1.24 / 1.25 / 1.30 | 1,838 / 1,775 / 1,841 | 1,044 / 1,104 / 1,176 |
+| H | 1,180 / 1,145 / 1,164 | 387 / 354 ✗ / 370 ✗ | 11 ; 14 ; 12 | 3 of 370 ; 1 of 390 ; 3 of 418 | 6 / 8 / 8 | 7 / 5 / 4 | 1.21 / 1.34 / 1.31 | 1,879 / 1,664 / 1,803 | 1,065 / 1,068 / 1,137 |
+
+*Table — where the crossings stand, seeds 3 / 4 / 5: crossings, the share in the first 50 m, median [m], SUMO at arrival / weave accepted / forced; for the exiters also those in the forced zone (x ≥ 224.9 m).*
+
+| form | entrants leave lane 0 | exiters enter lane 0 | withheld exiter-steps / creep releases / taken before the section |
+|---|---|---|---|
+| default | 206 / 199 / 185; 75 / 77 / 78 %; 8.2 / 8.7 / 19.9; 91-111-4 / 74-123-2 / 58-123-4 | 262 / 295 / 305; 55 / 50 / 49 %; 40.0 / 50.1 / 51.4; 56-186-20 / 62-210-23 / 48-215-42; zone 28 / 48 / 73 | — |
+| keep-out | 221 / 192 / 228; 58 / 58 / 49 %; 33.4 / 37.0 / 50.6; 70-147-4 / 58-128-6 / 46-173-9 | 269 / 297 / 309; 12 / 10 / 8 %; 74.5 / 85.2 / 92.6; 7-231-31 / 11-270-16 / 5-258-46; zone 54 / 52 / 75 | 2,696 / 20 / 223 ; 2,677 / 33 / 229 ; 3,566 / 23 / 243 |
+
+Over seeds 3–12 (table in (3)) the keep-out form departs 3,569 T.H.52 entrants against 3,418 (8 seeds up, 2 down), with the lane-windows at or below 20 m/s unchanged at 123 of 160 and the mainline short at 3 seeds against 2. On the grid (table in (4)) the capacity pin fails at seeds 3 and 4 (2 exits missed each).
+
+*Why it fails: lane 1 has to carry both movements at the entry.* The exiters arrive in section lane 1 (the approach's lane 0 feeds it); held there, they leave no room in it for the entrants leaving lane 0.
+- Across x = 50 m, lane 1 carries 1,181 / 1,080 / 1,058 veh/h against 900 / 903 / 812 at the default, and lane 0 673 / 619 / 745 against 878 / 878 / 900. The entry's two lanes carry about the same total.
+- The entrants leave later: 58 / 58 / 49 % within 50 m against 75 / 77 / 78 %. 76 / 69 / 94 leave between the stretch's end and the forced zone against 43 / 38 / 30, and 13 / 9 / 19 inside the zone against 9 / 6 / 9.
+- At seed 4 an entrant still in lane 0 halts at the auxiliary lane's end: v01287, x = 289 → 302 m at 5.0 → 1.2 m/s over t = 377–382 s (session trajectory, `wp70_diag.py`). The section's last 55 m then read 1.6 / 4.7 m/s in lanes 0 / 1 in minute 6, and the entry's lanes 0 / 1 read 1.0 / 1.0 m/s in minute 8, where the default reads 7.1 / 7.4 m/s.
+
+*The stretch's end is not where it fails.* The released exiters keep their reserve: forced 31 / 16 / 46 against 20 / 23 / 42, a median 75–93 m in. Neither dropping the lane-end term (L), nor dropping the creep bound (N; the bound releases 20–33 exiters a run), nor adding the exclusion below (H) changes the reading. The exiter kept out of the ramp's lane is itself a vehicle in the entrants' target lane.
+
+**(3) The derived refinement: the exiters' holds kept out of the outlet (`ramp_outlet`).** WP-65 attributed the entry's commands. Before the breakdown, 28–38 % of the auxiliary lane's first-50 m vehicle-steps were under a binding target, almost all an entrant held as an exiter's gap follower. Here, over the whole run, 29.3 / 34.9 / 36.0 % of those vehicle-steps are set by such a hold, and 4.9 / 5.0 / 4.8 % of the ramp's last 100 m. A held vehicle in the ramp's only outlet brakes the ramp's discharge behind it. The exiter's presence in lane 0 does not, and its absence from lane 1 is what the entrants need.
+- *The rule.* An exit-bound changer's gap choice (`_weave_cooperate`) passes over every vehicle on the on-ramp or in the auxiliary lane short of the stretch (the same 51.1 m, capped the same way; none on a section shorter than 253.8 m).
+- *What it leaves alone.* The exiter still changes into a gap the acceptance finds open there, SUMO's own changes are untouched, and no one is withheld or taken before the section. The exit priority's hold is exempt: its followers are more than L − zone − `lookahead_m` > 53.8 m into any section the rule applies to, so it never meets the stretch.
+- *Bounded by construction.* The rule only withholds commands, so it cannot chain and holds nobody.
+- *Counted.* `n_outlet_spared`, the exiter-steps on which the gap chosen without the rule has a vehicle in the outlet as its follower, is the **42nd `weave_sections` key** (docs/CONTRACTS.md §2, `WeaveSectionDiagnosticsOut`, `WEAVE_FIELDS`).
+- *Which vehicles to spare, measured as harness forms.* E: the entrants still owing their change (vehicles not bound for the exit). O: every vehicle that came from the ramp, the exit-bound R vehicles included. **The rule**: every vehicle in the outlet, whatever its movement. The rule needs no origin bookkeeping and reads best of the three on the grid; O reads best on the corridor fixture. All three are below.
+
+*Table — the corridor section test's criteria and the entry, seeds 3 / 4 / 5 (as in (2)).*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s; lowest lane 0 / lane 1 [m/s] | given up of reached | unfinished | entry breakdown | lanes 0 + 1 at [0, 50), all minutes | lanes 0 + 1 across x = 50 m | exit end lane 0 |
+|---|---|---|---|---|---|---|---|---|---|
+| default | 1,140 / 1,157 / 1,149 | 368 ✗ / 360 ✗ / 350 ✗ | 10; 10.1 / 12.9 ; 11; 11.9 / 15.1 ; 13; 9.2 / 8.2 | 2 of 356 ; 1 of 391 ; 2 of 405 | 1 / 6 / 8 | 7 / 5 / 3 | 1.13 / 1.14 / 1.18 | 1,778 / 1,781 / 1,712 | 1,035 / 1,104 / 1,122 |
+| E | 1,194 / 1,161 / 1,135 ✗ | 389 / 377 ✗ / 381 ✗ | 10; 5.0 / 5.9 ; 11; 11.0 / 12.8 ; 13; 7.9 / 9.5 | 0 of 365 ; 1 of 418 ; 1 of 416 | 3 / 3 / 4 | 8 / 8 / 4 | 1.23 / 1.23 / 1.28 | 1,863 / 1,936 / 1,775 | 1,056 / 1,203 / 1,170 |
+| O | 1,195 / 1,169 / 1,193 | 403 / 394 / 399 | 11; 12.5 / 14.2 ; 10; 11.6 / 14.8 ; 13; 8.5 / 10.6 | 2 of 370 ; 0 of 425 ; 1 of 433 | 6 / 4 / 2 | 9 / 8 / 4 | 1.24 / 1.21 / 1.31 | 1,952 / 1,999 / 1,983 | 1,065 / 1,197 / 1,227 |
+| **the rule** | 1,187 / 1,181 / 1,171 | 401 / 386 ✗ / 403 | 12; 7.7 / 9.7 ; 12; 5.6 / 7.8 ; 13; 7.6 / 8.2 | 2 of 376 ; 0 of 411 ; 1 of 431 | 7 / 3 / 5 | 7 / 9 / 5 | 1.19 / 1.31 / 1.34 | 1,971 / 1,892 / 2,018 | 1,068 / 1,149 / 1,197 |
+
+*Table — where the crossings stand under the rule (as in (2)), and its binding.*
+
+| form | entrants leave lane 0 | exiters enter lane 0 | spared exiter-steps; forced; deferred; pair releases |
+|---|---|---|---|
+| default | 206 / 199 / 185; 75 / 77 / 78 %; 8.2 / 8.7 / 19.9; 91-111-4 / 74-123-2 / 58-123-4 | 262 / 295 / 305; 55 / 50 / 49 %; 40.0 / 50.1 / 51.4; 56-186-20 / 62-210-23 / 48-215-42; zone 28 / 48 / 73 | —; 24 / 25 / 46; 136 / 56 / 209; 11 / 8 / 25 |
+| **the rule** | 246 / 216 / 234; 69 / 56 / 50 %; 7.0 / 36.4 / 51.2; 117-127-2 / 79-127-10 / 72-150-12 | 269 / 307 / 312; 48 / 31 / 29 %; 64.8 / 89.3 / 105.7; 84-165-20 / 71-187-49 / 62-195-55; zone 35 / 72 / 84 | 1,770 / 2,922 / 3,080; 22 / 59 / 67; 123 / 179 / 220; 3 / 35 / 2 |
+
+Under the rule no vehicle-step in the auxiliary lane's first 50 m or the ramp's last 100 m is set by an exiter's hold, against 29–36 % and about 5 % at the default. Every binding target there falls from 32.5 / 38.7 / 39.6 % to 8.7 / 12.9 / 11.0 % of the first 50 m's vehicle-steps.
+
+*Table — ten seeds (3–12) on the corridor section fixture.*
+
+| form | T.H.52 departed, Σ of 4,070 (seeds ≥ 387; seeds above / below the default) | mainline Σ of 11,960 (seeds ≥ 1,137) | lane-windows ≤ 20 m/s, Σ of 160 | given up of reached | unfinished | coll. |
+|---|---|---|---|---|---|---|
+| default | 3,418 (0; —) | 11,546 (8) | 123 | 19 of 3,809 | 46 | 0 |
+| keep-out (2) | 3,569 (2; 8 / 2) | 11,566 (7) | 123 | 11 of 3,877 | 62 | 0 |
+| E | 3,787 (4; 10 / 0) | 11,602 (7) | 117 | 11 of 3,985 | 39 | 0 |
+| O | 3,819 (5; 10 / 0) | 11,768 (10) | 124 | 18 of 4,024 | 33 | 0 |
+| **the rule** | 3,749 (3; 9 / 1) | 11,685 (9) | 126 | 16 of 3,982 | 44 | 0 |
+
+Per seed, the rule's T.H.52 count is 401 / 386 / 403 / 347 / 391 / 364 / 384 / 343 / 344 / 386 against 368 / 360 / 350 / 304 / 330 / 337 / 308 / 333 / 350 / 378.
+
+*Table — the stretch's length, harness forms, seeds 3 / 4 / 5 (T.H.52; lane-windows ≤ 20 m/s; mainline). The derived length stays 51.1 m; these read how much the length matters.*
+
+| stretch | the rule (every vehicle) | E (entrants) |
+|---|---|---|
+| the ramp only (0 m) | (inert: none) | 371 / 362 / 369; 12 / 12 / 12; all ≥ 1,137 |
+| 25 m | 391 / 393 / 395; 11 / 12 / 13; 1,194 / 1,176 / 1,187 | 365 / 386 / 347; 11 / 12 / 14; all ≥ 1,137 |
+| **51.1 m** | 401 / 386 / 403; 12 / 12 / 13; 1,187 / 1,181 / 1,171 | 389 / 377 / 381; 10 / 11 / 13; 1,135 at seed 5 |
+| 71.8 m (seed 3's split) | 405 / 404 / 405; 11 / 11 / 13; 1,192 / 1,160 / 1,146 | 387 / 351 / 366; 10 / 13 / 15; 1,122 at seed 4 |
+| the whole section | — | 400 / 362 / 336; 12 / 11 / 14; given up 3 / 9 / 5, unfinished 1 / 12 / 14 |
+
+**(4) The fixture grid** (29 runs; the rule inert on the 13 Ruth St rows, the 3 moderate rows and the golden, whose sections are shorter than 253.8 m, and those rows are the default's to the number).
+
+*Table — totals over the 28 fixture runs (the golden apart).*
+
+| form | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth + T.H.52, last 60 m) | T.H.52 first 60 m min ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | binding |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 0 | 44 | 5,988 | 6,131 | 14 | 15 | 529 | 5,439 | 218 | 45 | 5,944 | 1,444 | 0 | — |
+| keep-out (2) | 12 | 43 | 5,998 | 6,146 | 14 | 15 | 568 | 4,783 | 161 | 54 | 5,969 | 1,465 | 0 | 20,932 withheld exiter-steps, 87 creep releases, 1,425 taken |
+| E | 12 | 43 | 5,999 | 6,143 | 18 | 12 | 610 | 6,251 | 356 | 48 | 5,962 | 1,460 | 0 | 12,524 spared |
+| O | 12 | 49 | 5,994 | 6,184 | 17 | 15 | 573 | 5,501 | 225 | 71 | 6,014 | 1,510 | 0 | (harness) |
+| **the rule** | 12 | 45 | 6,035 | 6,193 | 11 | 19 | 495 | 4,388 | 182 | 70 | 6,055 | 1,482 | 0 | 17,462 spared |
+
+*Table — the rows the rule moves, the default against the rule (the rule's binding: spared exiter-steps).*
+
+| fixture | seed | form | given up of reached (%) | exited of reached | lane 1 last 60 m min [m/s] (min ≤ 5) | lane 1 first 60 m / E1 accel end min (min ≤ 5) | forced / deferred / releases | unfinished | entrance departed | coll. | spared |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| T.H.52, corridor demand | 3 | default | 1 of 299 (0.3) | 292 of 299 | 3.8 (1) | 3.7 (2) | 12 / 67 / 5 | 2 | 403 of 470 | 0 | 0 |
+| T.H.52, corridor demand | 3 | rule | 3 of 312 (1.0) | 302 of 312 | 2.0 (1) | 3.6 (3) | 18 / 205 / 24 | 7 | 399 of 470 | 0 | 1,389 |
+| T.H.52, capacity | 3 | default | 1 of 319 (0.3) | 309 of 319 | 4.7 (1) | 3.9 (2) | 34 / 172 / 9 | 4 | 395 of 466 | 0 | 0 |
+| T.H.52, capacity | 3 | rule | 1 of 314 (0.3) | 302 of 314 | 5.1 (0) | 3.9 (3) | 28 / 111 / 10 | 7 | 390 of 466 | 0 | 1,248 |
+| two-entrance, fleet defaults | 3 | default | 3 of 301 (1.0) | 294 of 301 | 3.7 (1) | 0.2 (16) | 25 / 181 / 6 | 3 | 417 of 470; E1 216 of 360 | 0 | 0 |
+| two-entrance, fleet defaults | 3 | rule | 0 of 298 (0.0) | 294 of 298 | 6.8 (0) | 0.5 (14) | 28 / 110 / 3 | 1 | 399 of 470; E1 213 of 360 | 0 | 1,122 |
+| two-entrance, corridor fleet | 3 | default | 0 of 314 (0.0) | 309 of 314 | 7.3 (0) | 1.6 (13) | 22 / 55 / 4 | 1 | 356 of 470; E1 253 of 360 | 0 | 0 |
+| two-entrance, corridor fleet | 3 | rule | 0 of 343 (0.0) | 333 of 343 | 10.9 (0) | 1.3 (13) | 29 / 16 / 8 | 3 | 384 of 470; E1 276 of 360 | 0 | 1,946 |
+| T.H.52, corridor demand | 4 | default | 0 of 317 (0.0) | 308 of 317 | 11.9 (0) | 4.4 (1) | 18 / 22 / 9 | 2 | 388 of 470 | 0 | 0 |
+| T.H.52, corridor demand | 4 | rule | 0 of 311 (0.0) | 303 of 311 | 11.4 (0) | 4.1 (4) | 18 / 18 / 11 | 2 | 405 of 470 | 0 | 1,491 |
+| T.H.52, capacity | 4 | default | 1 of 379 (0.3) | 373 of 379 | 10.7 (0) | 4.3 (5) | 22 / 71 / 23 | 2 | 401 of 466 | 0 | 0 |
+| T.H.52, capacity | 4 | rule | 1 of 376 (0.3) | 366 of 376 | 6.4 (0) | 2.9 (3) | 30 / 121 / 22 | 10 | 397 of 466 | 0 | 1,934 |
+| two-entrance, fleet defaults | 4 | default | 3 of 307 (1.0) | 301 of 307 | 4.4 (1) | 0.8 (13) | 35 / 317 / 15 | 1 | 399 of 470; E1 210 of 360 | 0 | 0 |
+| two-entrance, fleet defaults | 4 | rule | 4 of 324 (1.2) | 311 of 324 | 2.5 (2) | 0.5 (11) | 29 / 248 / 3 | 11 | 417 of 470; E1 215 of 360 | 0 | 1,259 |
+| two-entrance, corridor fleet | 4 | default | 3 of 308 (1.0) | 301 of 308 | 2.9 (2) | 1.5 (14) | 41 / 536 / 23 | 5 | 351 of 470; E1 256 of 360 | 0 | 0 |
+| two-entrance, corridor fleet | 4 | rule | 0 of 318 (0.0) | 310 of 318 | 11.2 (0) | 1.0 (12) | 27 / 21 / 0 | 4 | 399 of 470; E1 271 of 360 | 0 | 1,564 |
+| T.H.52, corridor demand | 5 | default | 5 of 308 (1.6) | 296 of 308 | 1.7 (2) | 3.7 (1) | 30 / 601 / 29 | 6 | 401 of 470 | 0 | 0 |
+| T.H.52, corridor demand | 5 | rule | 2 of 322 (0.6) | 310 of 322 | 6.3 (0) | 4.2 (1) | 25 / 102 / 0 | 10 | 403 of 470 | 0 | 1,114 |
+| T.H.52, capacity | 5 | default | 1 of 369 (0.3) | 361 of 369 | 5.0 (1) | 3.3 (4) | 38 / 194 / 18 | 3 | 373 of 466 | 0 | 0 |
+| T.H.52, capacity | 5 | rule | 3 of 367 (0.8) | 359 of 367 | 3.4 (1) | 3.4 (5) | 27 / 99 / 27 | 3 | 393 of 466 | 0 | 1,627 |
+| two-entrance, fleet defaults | 5 | default | 1 of 308 (0.3) | 299 of 308 | 5.6 (0) | 0.4 (14) | 30 / 172 / 2 | 6 | 407 of 470; E1 256 of 360 | 0 | 0 |
+| two-entrance, fleet defaults | 5 | rule | 2 of 304 (0.7) | 295 of 304 | 9.2 (0) | 1.0 (13) | 14 / 67 / 0 | 6 | 394 of 470; E1 241 of 360 | 0 | 1,326 |
+| two-entrance, corridor fleet | 5 | default | 0 of 301 (0.0) | 291 of 301 | 8.3 (0) | 0.6 (14) | 25 / 22 / 5 | 4 | 374 of 470; E1 253 of 360 | 0 | 0 |
+| two-entrance, corridor fleet | 5 | rule | 4 of 303 (1.3) | 296 of 303 | 2.0 (2) | 1.0 (15) | 25 / 241 / 4 | 0 | 396 of 470; E1 266 of 360 | 0 | 1,442 |
+
+*Table — the no-lock pin of the T.H.52 capacity fixture (`test_th52_weave_at_capacity_does_not_lock`: no collision, lane 1 at the section start above 2 m/s in every minute, `n_missed` ≤ 1, unfinished ≤ 10 % of the driven, the entrance ≥ 372.8 of 466) applied to each grid row, with (entrance departed; lane 1's lowest minute [m/s]; pair releases). `test_th52_weave_at_capacity_flows` asks 420 and no row reaches it.*
+
+| form | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| default | pass (395; 3.9; 9) | pass (401; 4.3; 23) | pass (373; 3.3; 18) |
+| keep-out (2) | 2 missed (398; 3.9; 9) | 2 missed (383; 4.0; 10) | pass (403; 3.7; 20) |
+| E | 2 missed (384; 3.7; 11) | 363 departed (363; 3.0; 54) | 2 missed, 369 departed (369; 2.7; 71) |
+| O | 3 missed (389; 4.5; 9) | pass (394; 3.6; 12) | 2 missed (397; 4.3; 7) |
+| **the rule** | pass (390; 3.9; 10) | pass (397; 2.9; 22) | 3 missed (393; 3.4; 27) |
+
+On the capacity fixture at its own split (the rule with a 25.0 m stretch; harness, seeds 3 / 4 / 5) the entrance reads 374 / 390 / 384 and 1 / 3 / 3 exits are missed, so the pin fails at seeds 4 and 5. The fixture's own derivation does not rescue it.
+
+*Table — golden `merge_weave` (weave.osm's section is shorter than 253.8 m: the rule is inert and the hash moves only because the key is set; not regenerated).*
+
+| form | hash | mean TT | p90 TT | σ_v spatial / temporal | VMT | VHT | fuel | throughput | exits | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 33 | 0 |
+| the rule | b9b2fb8b86e1 | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 33 | 0 |
+
+**Reading.**
+
+1. *The stretch is measurable and short.* At the defaults, 77 % of the entrants have left the auxiliary lane within 51.1 m. At that share the distance does not grow with the ramp's queue. It is the fixture's and fleet's own, though: the capacity fixture's split is 25.0 m.
+2. *Keeping the exiters out of the ramp's lane is keeping them in the entrants' target lane.* Lane 1 across x = 50 m carries 180–280 veh/h more. The entrants leave later and farther in, and at seed 4 one stands at the auxiliary lane's end and the section locks back to the entry. The entrance moves up at 8 of 10 seeds but down 18 at seed 4, and the exit end reads no better. The stretch's end is not the problem: the released exiters keep their reserve.
+3. *Keeping the exiters' holds out of the outlet works at the entry, by the mechanism derived.* Under the rule the exiters' holds vanish from the outlet (29–36 % of the auxiliary lane's first-50 m vehicle-steps at the default, none under the rule).
+   - The entry's two lanes carry 1,892–2,018 veh/h across x = 50 m against 1,712–1,781, both lanes more.
+   - The entry breaks down later (minute 7 / 9 / 5 against 7 / 5 / 3).
+   - T.H.52 departs 401 / 386 / 403 against 368 / 360 / 350, and more at 9 of 10 seeds (3,749 against 3,418). The mainline passes at all three seeds, and more exit-bound vehicles reach the section (376 / 411 / 431 against 356 / 391 / 405).
+   - At every stretch length tried (25–72 m) the entrance rises. Sparing only the entrants (E) or only the ramp's vehicles (O) does the same, O most on this fixture (403 / 394 / 399, the mainline at all ten seeds).
+4. *But the exit end reads no faster, so the test fails where it failed.* Criterion (ii) fails at all three seeds (12 / 12 / 13 lane-windows at or below 20 m/s against 10 / 11 / 13; ten seeds 126 against 123), and the lowest windows are lower (lane 0 at 5.6–7.7 m/s against 9.2–11.9).
+   - The vehicles the entry now passes cross later: the exiters a median 65–106 m in against 40–51 m, 35 / 72 / 84 of them in the forced zone against 28 / 48 / 73, forced 20 / 49 / 55 against 20 / 23 / 42.
+   - The exit end's lane 0 carries 1,068–1,197 veh/h against 1,035–1,122, below the 1,700 veh/h the fleet holds above 20 m/s on one lane (WP-68). What slows it is the crossing in the section's second half, not the exit's capacity.
+   - So the rule moves the section's constraint from the entry to the exit end, as WP-67's spread did, by a smaller step.
+5. *The grid.*
+   - Exits rise 5,988 → 6,035 and the entrances 5,944 → 6,055 (E1 1,444 → 1,482). Deferred forced changes fall 5,439 → 4,388 and pair releases 218 → 182. Lane-1 minutes at or below 5 m/s at the gore's end fall 14 → 11.
+   - But give-ups read 44 → 45, unfinished 45 → 70, and the T.H.52 section start's slow minutes 15 → 19. 5 of the 12 entrance rows read lower (−4 to −18). The capacity fixture's no-lock pin fails at seed 5 (3 exits missed).
+   - E and O break that pin at three and two seeds.
+   - Nothing collides in any run of this package: 232 grid runs (eight grids), 129 harness runs on the corridor section and capacity fixtures, and the plain test body's 6.
+
+**Nothing ships.** `WEAVE_DEFAULTS["ramp_outlet"]` = 0, hash-neutral unless set.
+- The fixture grid at the default is WP-67's `off` to the number, and golden `merge_weave` is unchanged (hash 436cd4ec9e5d, not regenerated; `test_golden_summary_reproduced[merge_weave]` passes).
+- The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stays as WP-61 wrote it: the rule makes it pass at no seed. It passes criteria (i), (iii) and (iv) at seeds 3 and 5, and at seed 4 misses the entrance by one vehicle; criterion (ii) fails at all three seeds.
+- The shipping condition is met in its first part, the corridor section test's entrance improved by the derived mechanism with no lock and no collision. It fails on the rest: the exit end reads slower, give-ups 44 → 45, 5 of 12 entrance rows lower, and the capacity pin broken at seed 5.
+- The rule stays as a measured option with its counter and unit tests, so a corridor battery can set it.
+- The keep-out form is not in the code (its session patch is kept with the harnesses). E and O are harness forms.
+
+**What this hands on.**
+- *(a) The corridor section test is now an exit-end test.* With the outlet spared, the entrance passes at two of three seeds and the mainline at all three (O: both at all three). What remains is the section's second half: exiters that arrive in lane 1 at a higher rate and cross into lane 0 a median 65–106 m in, a quarter of them inside the forced zone at seeds 4 and 5. The exit end's lane-0 flow is 500–630 veh/h below the fleet's one-lane capacity above 20 m/s (WP-68). So its slow windows are crossings, not capacity.
+  - The next derivation: where the exiters cross once the entry flows. Beyond the outlet, lane 0 holds the R vehicles and the exiters already in it, and lane 1 the entrants who have left. Read the exiters' gap choice and holds in [51, 225) m under the rule the way WP-65 read the entry: which command sets the second half's rate.
+  - Judge it by criterion (ii) with the rule set, O as the stronger variant, and the capacity pin as the guard.
+- *(b) The stretch is one fixture's.* A per-section split read online from the two movements' crossing positions (which the runner observes) would carry the derivation to other sections and fleets. But the capacity fixture at its own split reads no better (pin failing at two seeds), and on this fixture the length hardly matters between 25 and 72 m. The length is not the lever.
+- *(c) For harnesses: the rule's binding is `n_outlet_spared`.* Under the rule no exiter hold remains in the outlet, which makes the rule a clean switch for reading the second half's commands.
+
+**Bookkeeping.**
+- `packages/flowstate_core/flowstate_core/config.py`: `ramp_outlet` = 0, with its provenance comment and docstring paragraph.
+- `packages/microsim/microsim/runner.py`:
+  - new: `WEAVE_OUTLET_ENTRANT_M`, `WEAVE_OUTLET_EXIT_RESERVE_M`, `_weave_outlet_length`;
+  - `_weave_cooperate`: the outlet's vehicles passed over for a non-priority exiter's gap, and the binding count;
+  - `n_outlet_spared` in the section's state and in `_weave_meta`, and the docstrings of `_weave_step` and `_weave_meta`.
+- `packages/api/api/schemas.py`: `WeaveSectionDiagnosticsOut.n_outlet_spared`.
+- `scripts/corridor_sweep.py`: `WEAVE_FIELDS`.
+- `tests/test_microsim/test_microsim_merge_managed_meter.py`:
+  - `TestWeaveOutlet`: the stretch's closed form and caps; off by default (an exiter holds a ramp vehicle); with the rule it holds nobody in the outlet and its own change is still requested; an open gap in front of a vehicle in the outlet is still taken; beyond the stretch the cooperation is unchanged; inert on a section too short; the exit priority exempt; a binding run on `weave_th52_corridor.osm`;
+  - the `WEAVE_DEFAULTS` pin, the fake state and the counters test.
+- `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py`: the key lists, 42 keys.
+- docs/CONTRACTS.md §2: the key list, the WP-70 paragraph, the API paragraph.
+- CHANGELOG.md and this section.
+
+`frontend/`, `scenarios/`, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md and `scripts/gcp/` are untouched. Session artifacts are not committed: the harnesses and forms (`wp70_harness.py`, `wp70_grid_harness.py`, `grid70.sh`, `wp70_forms.sh`, `wp70_seeds.sh`), the keep-out patch, the diagnostic run, the tables and the JSONL records of every run.

@@ -778,6 +778,21 @@ WEAVE_GIVEUP_DECEL_TOL_MS2 = 0.1
 #: largest gap (the three-gap theorem). A mathematical constant, not a fitted
 #: value.
 WEAVE_SPREAD_PHI: Final[float] = (math.sqrt(5.0) - 1.0) / 2.0
+#: The ramp's outlet (2026-09-25, block 3, WP-70; ``ramp_outlet``;
+#: :func:`_weave_outlet_length`): the distance from the section start within
+#: which a share q* of the entrants have left the auxiliary lane [m], and
+#: :data:`WEAVE_OUTLET_EXIT_RESERVE_M` the distance within which the same
+#: share of the exiters have entered it, both at the defaults on the
+#: corridor section test's fixture (``tests/fixtures/weave_th52_corridor.osm``
+#: under the observed 05:30–05:50 movements, seeds 3 / 4 / 5 pooled: 590
+#: entrant and 862 exiter crossings, SUMO's own changes on arrival included).
+#: q* = 0.773 is the largest share for which the two distances fit the
+#: section's unforced length (304.9 − 80 = 224.9 m) end to end — the minimax
+#: split of that length between the two movements' needs
+#: (docs/WEAVE_MODEL_PLAN.md, dated section WP-70). Derived from the
+#: crossing distributions at the defaults, not fitted to a criterion.
+WEAVE_OUTLET_ENTRANT_M: Final[float] = 51.1
+WEAVE_OUTLET_EXIT_RESERVE_M: Final[float] = 173.8
 NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
 NEIGHBOR_LEFT_LEADERS = 2
 NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
@@ -2949,6 +2964,65 @@ def _weave_spread_length(
     return max(min(length_m - s_b, length_m - zone_m) - w, 0.0)
 
 
+def _weave_outlet_length(length_m: float, zone_m: float) -> float:
+    """The ramp's outlet: how far into the auxiliary lane no vehicle is held for an exiter [m].
+
+    2026-09-25, block 3, WP-70 (``ramp_outlet``, off by default;
+    docs/WEAVE_MODEL_PLAN.md, dated section). The auxiliary lane at the
+    section start is the on-ramp's only outlet. At the defaults on the
+    corridor section test's fixture 29–36 % of the vehicle-steps in its first
+    50 m are set by a speed target holding the vehicle as an exiter's gap
+    follower (seeds 3 / 4 / 5, the whole run; WP-65 read 28–38 % under any
+    binding target before the entry's breakdown, almost all such holds), and
+    every one of them is a brake on the ramp's discharge behind it. With the
+    rule an exit-bound changer's gap choice (:func:`_weave_cooperate`) passes
+    over every vehicle on the ramp or in the auxiliary lane short of this
+    stretch: the exiter still changes into a gap the acceptance finds open
+    there, and SUMO's own change on arrival is untouched, but it holds nobody
+    in the outlet. The exit priority's hold is exempt, and never meets the
+    outlet: its followers are within ``lookahead_m`` behind a changer inside
+    the forced zone, so more than ``length − zone − lookahead_m`` > 53.8 m
+    into any section the rule applies to (the reserve less the 120 m
+    lookahead), beyond the stretch. Nothing is added: the rule only
+    withholds commands, so it cannot chain and holds nobody at any speed.
+
+    The stretch is where the ramp's vehicles still need the lane and no
+    more: ``WEAVE_OUTLET_ENTRANT_M`` (51.1 m), within which the share q* =
+    0.773 of the entrants have left the auxiliary lane at the defaults, and
+    ``WEAVE_OUTLET_EXIT_RESERVE_M`` (173.8 m), within which the same share of
+    the exiters have entered it — the minimax split of the unforced length
+    they were measured on (:data:`WEAVE_OUTLET_ENTRANT_M` has the
+    provenance). Beyond the stretch an exiter keeps at least the reserve
+    before the forced zone with its cooperation as without the rule; a
+    section shorter than the stretch plus the reserve plus the zone gets a
+    shorter stretch, and none (the rule inert) from ``zone + reserve``
+    (253.8 m with the 80 m zone) down. At that share the entrants' distance
+    does not grow with the ramp's queue (seeds 3 / 4 / 5 at the defaults: its
+    75th percentile is 44.8 m for entrants arriving below 8 m/s and 47.2 m
+    above, 33–45 / 38–57 m with none / one entrant still owing its change
+    ahead within 100 m), so the stretch is fixed, not adapted to the ramp's
+    flow.
+
+    Measured on the corridor section fixture and the 29-run fixture grid and
+    left off (the dated section has the tables): the T.H.52 entrance rises
+    at 9 of seeds 3–12 (3,418 → 3,749 of 4,070) and the entry breaks down
+    later, but the exit end reads no faster (lane-windows at or below 20 m/s
+    123 → 126 of 160) and on the grid the T.H.52 capacity fixture's no-lock
+    pin fails at seed 5 (3 exits missed). The first form derived, exiters
+    kept out of the auxiliary lane over the same stretch, fills lane 1 at the
+    entry, the entrants leave later and the exit end breaks down; it is not
+    in the code.
+
+    Args:
+        length_m: The section's driven length [m].
+        zone_m: Its forced zone [m].
+
+    Returns:
+        The stretch ``≥ 0`` [m] from the section start.
+    """
+    return max(min(WEAVE_OUTLET_ENTRANT_M, length_m - zone_m - WEAVE_OUTLET_EXIT_RESERVE_M), 0.0)
+
+
 def _weave_spread_fraction(n: int) -> float:
     """The n-th crossing's place in the spread length: ``frac(n · φ)``.
 
@@ -3217,6 +3291,48 @@ def _weave_cooperate(
     for oid in [o for o, until in hs_blocked.items() if until <= t]:
         del hs_blocked[oid]
     blocked: set[str] = set(hs_blocked)
+    if (
+        prm["ramp_outlet"] > 0.0
+        and target_lane == 0
+        and not priority
+        and vid in ws["exiting_ids"]
+        and vid in ws["veh"]
+    ):
+        # the ramp's outlet (WP-70): an exiter holds no vehicle on the ramp
+        # or in the auxiliary lane short of the stretch (_weave_outlet_length);
+        # the exit priority's hold is untouched
+        section_m = float(sum(ws["lane_len_m"].values()))
+        rule_o = ws.get("rule") or _weave_short_section_rule(section_m, prm)
+        x_0 = float(ws["x_offset"][ws["edges"][0]])
+        x_end = x_0 + _weave_outlet_length(section_m, float(rule_o["zone_m"]))
+        outlet: set[str] = set()
+        if x_end > x_0:
+            for x_o, oid in lane_list:
+                if x_o >= x_end:
+                    break
+                outlet.add(oid)
+        if outlet:
+            # binding: the gap chosen without the rule has one of them as
+            # its follower
+            _l0, f_0, _af0, _ac0 = _weave_choose_gap(
+                vid,
+                x_of[vid],
+                v_c,
+                p_c,
+                v0_c,
+                lane_list,
+                x_of,
+                v_of,
+                p_of,
+                v0_of,
+                prm["lookahead_m"],
+                committed,
+                priority,
+                blocked,
+            )
+            if f_0 in outlet:
+                ws["n_outlet_spared"] += 1
+            blocked |= outlet
     l_t, f_t, a_f, a_c = _weave_choose_gap(
         vid,
         x_of[vid],
@@ -4384,6 +4500,19 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     the exit end reads slower and the capacity fixture's no-lock pin breaks
     (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **The ramp's outlet** (2026-09-25, block 3, WP-70;
+    :func:`_weave_outlet_length`, ``ramp_outlet``, off by default). An
+    exit-bound changer's gap choice (:func:`_weave_cooperate`) passes over
+    every vehicle on the on-ramp or in the auxiliary lane short of the
+    stretch the ramp's vehicles need to leave it (51.1 m on the T.H.52
+    section; none on a section shorter than 253.8 m), the exit priority's
+    hold exempt: the exiter still takes an open gap there, but holds nobody
+    in the ramp's only outlet. Counted in ``n_outlet_spared`` where the gap
+    chosen without the rule has one of them as its follower. Measured and left
+    off: the entrance rises and the entry breaks down later, but the exit
+    end reads no faster and the capacity fixture's no-lock pin breaks at one
+    seed (docs/WEAVE_MODEL_PLAN.md, dated section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -4994,7 +5123,11 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     on which a driven vehicle's crossing — an entrant's out of the
     auxiliary lane, an exiter's into it — was withheld because the vehicle
     was short of its place in the spread (:func:`_weave_spread_length`,
-    :func:`_weave_spread_fraction`; zero at ``spread_crossings`` = 0).
+    :func:`_weave_spread_fraction`; zero at ``spread_crossings`` = 0);
+    ``n_outlet_spared`` (WP-70, the ramp's outlet) the exiter-steps on which
+    the gap chosen without the rule has as its follower a vehicle on the
+    on-ramp or in the auxiliary lane's first stretch
+    (:func:`_weave_outlet_length`; zero at ``ramp_outlet`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -5044,6 +5177,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_exit_prepared": ws["n_exit_prepared"],
         "n_swaps": ws["n_swaps"],
         "n_spread_withheld": ws["n_spread_withheld"],
+        "n_outlet_spared": ws["n_outlet_spared"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -5981,6 +6115,10 @@ def run_micro(
                     "n_spread_opposing": 0,
                     "n_spread_unanticipated": 0,
                     "spread_released": set(),
+                    # WP-70, the ramp's outlet (_weave_outlet_length): the
+                    # exiter-steps on which the gap chosen without the rule
+                    # has a vehicle in the outlet as its follower (meta)
+                    "n_outlet_spared": 0,
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},

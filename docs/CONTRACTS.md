@@ -461,11 +461,11 @@ exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
 n_entrant_yields, n_entry_bounded, n_hold_releases, n_anticipation_gated,
-n_exit_prepared, n_swaps, n_spread_withheld, n_forced_deferred,
+n_exit_prepared, n_swaps, n_spread_withheld, n_outlet_spared, n_forced_deferred,
 n_cooperations, mean_follower_decel_ms2, n_changer_eased, n_vacated,
 n_vacate_refused, n_vacate_skipped_no_gap, n_vacate_requests,
 n_pair_releases, n_unfinished, n_exited, n_reached_section_exiting,
-n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 41 keys (`n_giveup_waited` added by
+n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 42 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
@@ -485,7 +485,9 @@ by WP-64, the swap, the pairs of a driven entrant in the auxiliary lane and
 a driven exiter beside it in section lane 1 commanded to exchange lanes in
 one step; `n_spread_withheld` added by WP-67, the crossings spread, the
 vehicle-steps on which a driven vehicle's crossing was withheld short of its
-place in the spread)
+place in the spread; `n_outlet_spared` added by WP-70, the ramp's outlet, the
+exiter-steps on which the gap chosen without the rule has as its follower a
+vehicle on the on-ramp or in the auxiliary lane's first stretch)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1403,6 +1405,35 @@ exits fall 5,988 → 5,860, unfinished rise 45 → 208, and the T.H.52 capacity
 fixture's no-lock pin fails at seed 4 (lane 1 at the section start 2.0 m/s);
 no collision. Golden `merge_weave` unchanged at the default (hash
 436cd4ec9e5d).
+
+**The ramp's outlet** (2026-09-25, block 3, WP-70; docs/WEAVE_MODEL_PLAN.md,
+dated section; `WEAVE_DEFAULTS["ramp_outlet"]`, default 0 = off, hash-neutral
+unless set; measured and left off): an exit-bound changer's gap choice
+(`microsim.runner._weave_cooperate`) passes over every vehicle on the on-ramp
+or in the auxiliary lane short of the stretch `min(51.1, L − zone − 173.8)` m
+from the section start, floored at 0 (`_weave_outlet_length`;
+`WEAVE_OUTLET_ENTRANT_M` = 51.1 m, within which a share q* = 0.773 of the
+entrants have left the auxiliary lane at the defaults on the corridor section
+test's fixture, and `WEAVE_OUTLET_EXIT_RESERVE_M` = 173.8 m, within which the
+same share of the exiters have entered it — the minimax split of that
+section's 224.9 m unforced length between the two movements' needs; none on a
+section shorter than 253.8 m with the 80 m zone). The exiter still changes
+into a gap the acceptance finds open there, SUMO's own changes are untouched,
+nothing is withheld or taken before the section, and the exit priority's hold
+is exempt; the rule only withholds commands. `weave_sections[i].n_outlet_spared`
+(the **42nd key**; `WeaveSectionDiagnosticsOut`, null for an older meta, not
+shown by the dashboard; aggregated by `WEAVE_FIELDS`) counts the exiter-steps
+on which the gap chosen without the rule has such a vehicle as its follower.
+On the corridor section test's fixture (`weave_th52_corridor.osm`, seeds 3 /
+4 / 5) T.H.52 departs 401 / 386 / 403 of 407 against 368 / 360 / 350, the
+mainline 1,187 / 1,181 / 1,171 of 1,196 against 1,140 / 1,157 / 1,149, and
+the entry breaks down later, but the exit end's lanes read at or below 20 m/s
+in 12 / 12 / 13 of 16 windows against 10 / 11 / 13 (seeds 3–12: the entrance
+3,418 → 3,749, those windows 123 → 126); on the 29-run grid exits rise 5,988
+→ 6,035 and the entrances 5,944 → 6,055, but give-ups read 44 → 45,
+unfinished 45 → 70 and the T.H.52 capacity fixture's no-lock pin fails at
+seed 5 (3 exits missed); no collision. Golden `merge_weave` unchanged at the
+default (hash 436cd4ec9e5d; the rule is inert on its section).
 
 ## 3. Run outputs
 
@@ -2383,7 +2414,11 @@ written before and not shown by the dashboard, and (WP-67, 2026-09-25 block
 3) `n_spread_withheld` (vehicle-steps on which the crossings spread,
 `spread_crossings`, withheld a driven vehicle's crossing short of its place
 in the spread; zero at its default of 0), null for a meta written before
-and not shown by the dashboard; the sweep
+and not shown by the dashboard, and (WP-70, 2026-09-25 block 3)
+`n_outlet_spared` (exiter-steps on which the ramp's outlet, `ramp_outlet`,
+passed over a vehicle on the on-ramp or in the auxiliary lane's first stretch
+that the gap chosen without the rule has as its follower; zero at its default
+of 0), null for a meta written before and not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all of them the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema
