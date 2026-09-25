@@ -8,7 +8,10 @@ read-only view of that artifact this package needs, and
 :func:`score_run_against_observed` turns one simulated replicate plus that
 view into the two FHWA-style comparison statistics of CLAUDE.md §7.1 — GEH on
 hourly link flows and RMSPE on segment speeds — together with the counts
-behind them.
+behind them. Every GEH comes with its labelled station-hour
+(:class:`LinkHourRecord`: station, position, hour, local clock, observed and
+simulated volume), and :func:`pool_link_hours` summarises those per
+station-hour over the replicates.
 
 The artifact is parsed with the standard library only: ``validation`` is the
 credibility core and must stay importable without the calibration stack that
@@ -36,6 +39,7 @@ import math
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
@@ -134,6 +138,160 @@ class ObservedCoverage:
     speed_fraction: float
 
 
+#: Decimals GEH is stored with in every JSON form (``observed_scores.json``,
+#: the battery artifact's ``geh.pooled_values`` and its link-hour tables), so a
+#: table row and the pooled list carry the identical number.
+GEH_DECIMALS: Final[int] = 4
+
+#: Clock formats ``t0_local`` is accepted in (the observations contract's
+#: ``"HH:MM"`` / ``"HH:MM:SS"``).
+_CLOCK_FORMATS: Final[tuple[str, ...]] = ("%H:%M:%S", "%H:%M")
+
+
+def clock_label(t0_local: str, offset_s: float) -> str:
+    """Local wall-clock label of simulation time ``offset_s``.
+
+    Simulation ``t = 0`` is the observations' ``t0_local``; the label is that
+    clock time advanced by ``offset_s`` (wrapping past midnight). It is a
+    label for a reader, never an input to a statistic, so an artifact whose
+    ``t0_local`` is not a clock time yields an empty label rather than an
+    error.
+
+    Args:
+        t0_local: ``"HH:MM"`` or ``"HH:MM:SS"`` (the observations artifact's
+            ``t0_local``).
+        offset_s: Simulation time [s].
+
+    Returns:
+        ``"HH:MM"`` (``"HH:MM:SS"`` when the seconds are not zero), or ``""``
+        when ``t0_local`` is not a clock time or ``offset_s`` is not finite.
+    """
+    if not math.isfinite(offset_s):
+        return ""
+    text = str(t0_local).strip()
+    for fmt in _CLOCK_FORMATS:
+        try:
+            start = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        moment = start + timedelta(seconds=float(offset_s))
+        return moment.strftime("%H:%M:%S" if moment.second else "%H:%M")
+    return ""
+
+
+@dataclass(frozen=True)
+class LinkHourRecord:
+    """One compared station-hour of the link-flow criterion, labelled.
+
+    The row behind one entry of :attr:`ObservedScores.geh_values`: the same
+    position in :attr:`ObservedScores.link_hours` holds the station, the hour
+    and both volumes the GEH was formed from, so the simulated count is read,
+    never recovered by inverting the GEH.
+
+    Attributes:
+        station: Station id (the observations artifact's ``stations[].id``).
+        x_ref_m: The station's position in the observations' coordinates [m];
+            the simulated cross-section is ``x_ref_m + x_offset_m``.
+        window_start_s: Start of the hour in simulation time, i.e. seconds
+            from the observations' ``t0_local`` [s]; the hour is
+            ``[window_start_s, window_start_s + 3600)``.
+        clock: Local clock time of ``window_start_s`` (:func:`clock_label`),
+            empty when ``t0_local`` is not a clock time.
+        obs_veh_h: Observed hourly volume [veh/h] — the mean of the hour's
+            windows (:meth:`ObservedCorridor.hourly_link_flows`).
+        sim_veh_h: Simulated crossings of the cross-section in the hour
+            [veh/h] (:func:`validation.metrics.link_hour_geh` ``.sim_veh_h``;
+            over one hour the count itself).
+        geh: ``validation.metrics.geh(sim_veh_h, obs_veh_h)`` — the value at
+            this record's position in :attr:`ObservedScores.geh_values`.
+    """
+
+    station: str
+    x_ref_m: float
+    window_start_s: float
+    clock: str
+    obs_veh_h: float
+    sim_veh_h: float
+    geh: float
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form; GEH at :data:`GEH_DECIMALS`, the volumes unrounded."""
+        return {
+            "station": self.station,
+            "x_ref_m": self.x_ref_m,
+            "window_start_s": self.window_start_s,
+            "clock": self.clock,
+            "obs_veh_h": self.obs_veh_h,
+            "sim_veh_h": self.sim_veh_h,
+            "geh": round(self.geh, GEH_DECIMALS),
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> LinkHourRecord:
+        """Rebuild from :meth:`to_dict`."""
+        return cls(
+            station=str(raw["station"]),
+            x_ref_m=float(raw["x_ref_m"]),
+            window_start_s=float(raw["window_start_s"]),
+            clock=str(raw.get("clock") or ""),
+            obs_veh_h=float(raw["obs_veh_h"]),
+            sim_veh_h=float(raw["sim_veh_h"]),
+            geh=float(raw["geh"]),
+        )
+
+
+@dataclass(frozen=True)
+class PooledLinkHour:
+    """One station-hour summarised over the replicates (:func:`pool_link_hours`).
+
+    Attributes:
+        station: Station id.
+        x_ref_m: Station position in the observations' coordinates [m].
+        window_start_s: Hour start, seconds from ``t0_local`` [s].
+        clock: Local clock label of the hour start.
+        obs_veh_h: Observed hourly volume [veh/h] (one artifact, so one value).
+        n_seeds: Replicates that compared this station-hour.
+        sim_veh_h_mean: Mean simulated volume over those replicates [veh/h].
+        sim_veh_h_min: Smallest simulated volume [veh/h].
+        sim_veh_h_max: Largest simulated volume [veh/h].
+        geh_mean: Mean GEH over those replicates, from the GEH values as
+            stored (:data:`GEH_DECIMALS`), so it is recomputable from the
+            per-seed tables.
+        geh_min: Smallest GEH.
+        geh_max: Largest GEH.
+    """
+
+    station: str
+    x_ref_m: float
+    window_start_s: float
+    clock: str
+    obs_veh_h: float
+    n_seeds: int
+    sim_veh_h_mean: float
+    sim_veh_h_min: float
+    sim_veh_h_max: float
+    geh_mean: float
+    geh_min: float
+    geh_max: float
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form; GEH statistics at :data:`GEH_DECIMALS`."""
+        return {
+            "station": self.station,
+            "x_ref_m": self.x_ref_m,
+            "window_start_s": self.window_start_s,
+            "clock": self.clock,
+            "obs_veh_h": self.obs_veh_h,
+            "n_seeds": self.n_seeds,
+            "sim_veh_h_mean": self.sim_veh_h_mean,
+            "sim_veh_h_min": self.sim_veh_h_min,
+            "sim_veh_h_max": self.sim_veh_h_max,
+            "geh_mean": round(self.geh_mean, GEH_DECIMALS),
+            "geh_min": round(self.geh_min, GEH_DECIMALS),
+            "geh_max": round(self.geh_max, GEH_DECIMALS),
+        }
+
+
 @dataclass(frozen=True)
 class ObservedScores:
     """One replicate scored against an :class:`ObservedCorridor`.
@@ -151,6 +309,15 @@ class ObservedScores:
         n_stations_outside_span: Mainline stations excluded because their
             cross-section lies outside the replicate's own position span.
         stations_outside_span: The ids of those stations, in position order.
+        link_hours: One :class:`LinkHourRecord` per entry of ``geh_values``,
+            in the same order (station by position, then hour). ``None`` only
+            for scores read back from an ``observed_scores.json`` written
+            before the table existed; a replicate scored now carries it, empty
+            when no station-hour was compared.
+
+    Raises:
+        ValueError: ``link_hours`` is given and holds a different number of
+            rows than ``geh_values`` holds values.
     """
 
     geh_values: tuple[float, ...]
@@ -162,6 +329,14 @@ class ObservedScores:
     windows: tuple[int, ...]
     n_stations_outside_span: int = 0
     stations_outside_span: tuple[str, ...] = ()
+    link_hours: tuple[LinkHourRecord, ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.link_hours is not None and len(self.link_hours) != len(self.geh_values):
+            raise ValueError(
+                f"link_hours holds {len(self.link_hours)} rows for "
+                f"{len(self.geh_values)} GEH values; the table labels geh_values row by row"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (NaN written as ``null``) for a per-seed artifact."""
@@ -170,7 +345,7 @@ class ObservedScores:
             return None if not math.isfinite(value) else float(value)
 
         return {
-            "geh_values": [round(g, 4) for g in self.geh_values],
+            "geh_values": [round(g, GEH_DECIMALS) for g in self.geh_values],
             "n_link_hours": self.n_link_hours,
             "rmspe": safe(self.rmspe),
             "n_speed_cells": self.n_speed_cells,
@@ -179,11 +354,18 @@ class ObservedScores:
             "segment_speeds_obs": [[safe(v) for v in row] for row in self.segment_speeds_obs],
             "n_stations_outside_span": self.n_stations_outside_span,
             "stations_outside_span": list(self.stations_outside_span),
+            "link_hours": (
+                None if self.link_hours is None else [r.to_dict() for r in self.link_hours]
+            ),
         }
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> ObservedScores:
-        """Rebuild from :meth:`to_dict` (``--criteria-only`` rescoring)."""
+        """Rebuild from :meth:`to_dict` (``--criteria-only`` rescoring).
+
+        A file written before the link-hour table existed has no
+        ``link_hours`` key; it loads with ``link_hours = None``.
+        """
 
         def rows(key: str) -> tuple[tuple[float, ...], ...]:
             return tuple(
@@ -191,6 +373,7 @@ class ObservedScores:
             )
 
         value = raw.get("rmspe")
+        table = raw.get("link_hours")
         return cls(
             geh_values=tuple(float(g) for g in raw.get("geh_values", ())),
             n_link_hours=int(raw["n_link_hours"]),
@@ -201,6 +384,9 @@ class ObservedScores:
             windows=tuple(int(k) for k in raw.get("windows", ())),
             n_stations_outside_span=int(raw.get("n_stations_outside_span", 0)),
             stations_outside_span=tuple(str(s) for s in raw.get("stations_outside_span", ())),
+            link_hours=(
+                None if table is None else tuple(LinkHourRecord.from_dict(r) for r in table)
+            ),
         )
 
 
@@ -742,6 +928,8 @@ def score_run_against_observed(
       (:meth:`ObservedCorridor.hourly_link_flows`) that lies inside the
       measurement window is compared with the simulated crossings of that
       station's cross-section by :func:`validation.metrics.link_hour_geh`.
+      Each comparison is kept as a labelled :class:`LinkHourRecord`
+      (``ObservedScores.link_hours``, row for row with ``geh_values``).
     * **Segment speeds** — the simulated mean sampled speed in each
       (window, segment) cell (:meth:`ObservedCorridor.segment_bins`) is
       compared with the observed cell by
@@ -813,15 +1001,40 @@ def score_run_against_observed(
         ]
         hourly = hourly.loc[np.asarray(keep, dtype=bool)]
     geh_values: tuple[float, ...] = ()
+    link_hours: tuple[LinkHourRecord, ...] = ()
     if not hourly.empty:
         shifted = hourly.assign(x_ref_m=hourly["x_ref_m"].to_numpy(dtype=np.float64) + x_offset_m)
-        geh_values = link_hour_geh(
+        compared = link_hour_geh(
             trajectories,
             shifted,
             x_refs_m=x_refs,
             window_s=_S_PER_HOUR,
             sim_span=(0.0, duration_s),
-        ).geh
+        )
+        geh_values = compared.geh
+        # link_hour_geh reports each row's cross-section as the x_refs entry
+        # it matched, so the station is looked up by that exact value rather
+        # than by assuming its rows line up with ``hourly``'s.
+        station_at = {x_refs[j]: stations[i] for j, i in enumerate(inside)}
+        link_hours = tuple(
+            LinkHourRecord(
+                station=station_at[x].id,
+                x_ref_m=station_at[x].x_m,
+                window_start_s=float(w),
+                clock=clock_label(observed.t0_local, float(w)),
+                obs_veh_h=float(q_obs),
+                sim_veh_h=float(q_sim),
+                geh=float(g),
+            )
+            for x, w, q_obs, q_sim, g in zip(
+                compared.x_ref_m,
+                compared.window_start_s,
+                compared.obs_veh_h,
+                compared.sim_veh_h,
+                compared.geh,
+                strict=True,
+            )
+        )
 
     sim_speeds = _simulated_speed_matrix(
         trajectories,
@@ -850,6 +1063,7 @@ def score_run_against_observed(
         windows=tuple(windows),
         n_stations_outside_span=len(outside_ids),
         stations_outside_span=outside_ids,
+        link_hours=link_hours,
     )
 
 
@@ -1002,3 +1216,71 @@ def pool_scores(
         [[float(v) for v in row] for row in obs],
         provenance,
     )
+
+
+def pool_link_hours(scores: Sequence[ObservedScores]) -> tuple[PooledLinkHour, ...] | None:
+    """Summarise the replicates' link-hour tables per station-hour.
+
+    Rows are keyed by ``(station, window_start_s)`` and appear in the order
+    they are first met (replicate 0's order — station by position, then
+    hour — followed by any station-hour only a later replicate compared). A
+    station-hour a replicate did not compare (its station outside that run's
+    position span) contributes nothing to that row, and ``n_seeds`` says how
+    many did. GEH statistics are taken over the values as stored
+    (:data:`GEH_DECIMALS`), so they are recomputable from the per-seed tables
+    and identical whether the scores were computed now or read back.
+
+    Args:
+        scores: One :class:`ObservedScores` per replicate.
+
+    Returns:
+        One :class:`PooledLinkHour` per station-hour, or ``None`` when any
+        replicate carries no table (scores read back from a file written
+        before the table existed) — a summary over some of the replicates
+        would read as one over all of them.
+
+    Raises:
+        ValueError: No scores, or one station-hour carrying different observed
+            volumes in two replicates (they were scored against different
+            observations and cannot be pooled).
+    """
+    if not scores:
+        raise ValueError("pool_link_hours needs at least one replicate's scores")
+    tables: list[tuple[LinkHourRecord, ...]] = []
+    for replicate in scores:
+        if replicate.link_hours is None:
+            return None
+        tables.append(replicate.link_hours)
+    grouped: dict[tuple[str, float], list[LinkHourRecord]] = {}
+    for table in tables:
+        for record in table:
+            grouped.setdefault((record.station, record.window_start_s), []).append(record)
+    pooled: list[PooledLinkHour] = []
+    for (station, start), records in grouped.items():
+        first = records[0]
+        for other in records[1:]:
+            if not math.isclose(other.obs_veh_h, first.obs_veh_h, rel_tol=1e-12, abs_tol=1e-9):
+                raise ValueError(
+                    f"station {station!r} at {start} s carries observed volumes "
+                    f"{first.obs_veh_h} and {other.obs_veh_h} veh/h in two replicates; "
+                    "replicates scored against different observations cannot be pooled"
+                )
+        sims = [r.sim_veh_h for r in records]
+        gehs = [round(r.geh, GEH_DECIMALS) for r in records]
+        pooled.append(
+            PooledLinkHour(
+                station=station,
+                x_ref_m=first.x_ref_m,
+                window_start_s=start,
+                clock=first.clock,
+                obs_veh_h=first.obs_veh_h,
+                n_seeds=len(records),
+                sim_veh_h_mean=math.fsum(sims) / len(sims),
+                sim_veh_h_min=min(sims),
+                sim_veh_h_max=max(sims),
+                geh_mean=math.fsum(gehs) / len(gehs),
+                geh_min=min(gehs),
+                geh_max=max(gehs),
+            )
+        )
+    return tuple(pooled)

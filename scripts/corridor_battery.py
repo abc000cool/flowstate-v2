@@ -8,7 +8,9 @@ observations"), and writes two deliverables:
   ``validation.criteria`` with pass/fail and the measured value, 95%
   t-distribution confidence intervals over the seeds for every metric and for
   the per-seed GEH pass fraction, RMSPE and criterion wave speed, a per-seed
-  table, and full provenance (scenario, config hash, seeds, package versions,
+  table, every GEH's labelled station-hour (station, hour, local clock,
+  observed and simulated volume) per seed and summarised over the seeds, and
+  full provenance (scenario, config hash, seeds, package versions,
   observations source);
 * the **auto-report** (``validation.report.generate_report``) with the
   observed-data block and the two observed criteria rows scored, plus the PDF
@@ -85,6 +87,7 @@ from typing import Any
 
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.rng import spawn_seeds
+from flowstate_core.units import h_to_s
 from microsim.demand_adapter import corridor_x_offset_m
 from microsim.runner import ReplicatesAborted, RunPaths, _versions, run_replicates
 from microsim.scenarios import load_scenario
@@ -109,7 +112,7 @@ from validation.battery import (
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
 from validation.metrics import Metrics, aggregate, ci, geh_pass_fraction
-from validation.observed import ObservedCorridor, ObservedScores, pool_scores
+from validation.observed import ObservedCorridor, ObservedScores, pool_link_hours, pool_scores
 from validation.report import generate_report
 
 __all__ = ["ABORT_EXIT_CODE", "ARTIFACT_SCHEMA", "METRICS_FILE", "SCORES_FILE", "main"]
@@ -119,6 +122,10 @@ ARTIFACT_SCHEMA = "flowstate.corridor_validation/1"
 
 #: Exit code of an insertion abort (``--abort-if-departed-below``).
 ABORT_EXIT_CODE = 4
+
+#: Length of the station-hours the link-flow comparison is formed on [s]
+#: (``validation.observed`` aligns GEH to whole hours).
+LINK_HOUR_S = h_to_s(1.0)
 
 #: Battery phases, in the order they run and are printed.
 PHASES: tuple[str, ...] = ("simulate", "score", "ring", "report", "prune")
@@ -433,6 +440,15 @@ def build_artifact(
     replicates' metas) is written beside ``insertion`` when the run set has
     weaving sections and as ``null`` otherwise — a corridor without a weave
     says nothing about given-up exits.
+
+    Every GEH is labelled: ``per_seed[i]["link_hours"]`` is replicate ``i``'s
+    :class:`validation.observed.LinkHourRecord` table (station, ``x_ref_m``,
+    hour start and local clock, observed and simulated volume, GEH), row for
+    row with its GEH values, so ``geh.pooled_values`` is those tables'
+    ``geh`` concatenated in seed order; ``geh.link_hours`` summarises them per
+    station-hour (:func:`validation.observed.pool_link_hours`). Both are
+    ``null`` for a replicate whose stored scores predate the table (and the
+    summary then too); ``geh.pooled_values`` itself is unchanged.
     """
     pooled_geh = [g for s in scores_list for g in s.geh_values]
     per_seed = [
@@ -448,6 +464,7 @@ def build_artifact(
             "criterion_wave_speed_kmh": wave,
             "metrics": asdict(m),
             "insertion": ins.to_dict(),
+            "link_hours": (None if s.link_hours is None else [r.to_dict() for r in s.link_hours]),
         }
         for seed, run_dir, s, wave, m, ins in zip(
             seeds, dirs, scores_list, wave_speeds, metrics_list, insertion_list, strict=True
@@ -455,6 +472,7 @@ def build_artifact(
     ]
     insertion = aggregate_insertion(list(insertion_list))
     _, _, _, _, provenance = pool_scores(observed, list(scores_list), path=observations_path)
+    pooled_hours = pool_link_hours(list(scores_list))
     return {
         "schema": ARTIFACT_SCHEMA,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -497,6 +515,27 @@ def build_artifact(
                 "hourly volumes at every mainline station, per replicate, pooled across "
                 "replicates for the criterion row; the CI is over the per-replicate pass "
                 "fractions"
+            ),
+            # The station-hours behind pooled_values, summarised over the
+            # seeds; each seed's own labelled table is per_seed[i].link_hours.
+            "link_hours": (
+                None
+                if pooled_hours is None
+                else {
+                    "t0_local": observed.t0_local,
+                    "window_s": LINK_HOUR_S,
+                    "n_seeds": len(scores_list),
+                    "rows": [row.to_dict() for row in pooled_hours],
+                    "definition": (
+                        "one row per compared station-hour: station id, x_ref_m in the "
+                        "observations' coordinates (simulation x = x_ref_m + x_offset_m), "
+                        "window_start_s from t0_local and its local clock label, the "
+                        "observed hourly volume, and over the n_seeds seeds that compared "
+                        "it the mean, min and max simulated hourly volume and GEH; "
+                        "pooled_values is per_seed[i].link_hours[*].geh concatenated in "
+                        "seed order"
+                    ),
+                }
             ),
         },
         "rmspe": {
@@ -543,6 +582,16 @@ def build_artifact(
                     "those links (flagged above threshold_share of reached exiters)."
                 ]
                 if weave_exits["sections"]
+                else []
+            ),
+            *(
+                [
+                    "geh.link_hours is null: at least one replicate's stored "
+                    "observed_scores.json was written before the link-hour table existed "
+                    "(per_seed[i].link_hours is null for those replicates); "
+                    "geh.pooled_values and the pass fractions are unaffected."
+                ]
+                if pooled_hours is None
                 else []
             ),
             (

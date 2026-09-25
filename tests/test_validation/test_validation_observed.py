@@ -576,3 +576,327 @@ class TestSimulatedSpeedMatrix:
         assert np.array_equal(unordered, expected, equal_nan=True)
         assert np.isnan(expected[:, 2]).all()
         assert np.isfinite(expected[:, :2]).all()
+
+
+# -- the labelled link-hour table (WP-63) --------------------------------------
+#
+# A second analytic fixture whose station-hours all carry DIFFERENT counts, so
+# a row that is mislabelled, misordered or read from the wrong hour cannot pass.
+# Every vehicle drives 0 -> 700 m at 10 m/s sampled every 10 s (x = 0, 100, ...,
+# 700 at t = d, d + 10, ..., d + 70). A crossing is stamped at the later sample
+# of the pair that brackets the cross-section, so with the 50 m origin offset:
+#   S1 (x 100, sim 150 m): stamped d + 20;  S2 (400, sim 450 m): d + 50;
+#   S3 (600, sim 650 m): d + 70.
+# Departures 100, 200, 3540, 3570, 4000, 5000, 7125 s give
+#   S1: 120 220 3560 3590 | 4020 5020 7145  -> 4 in hour 0, 3 in hour 1
+#   S2: 150 250 3590 | 3620 4050 5050 7175  -> 3, 4 (hour 0 unobserved)
+#   S3: 170 270 | 3610 3640 4070 5070 7195  -> 2, 5
+
+TABLE_OFFSET_M = 50.0
+TABLE_WINDOW_S = 1800.0
+TABLE_DURATION_S = 7200.0
+TABLE_SPEED_MS = 10.0
+TABLE_SAMPLE_S = 10.0
+TABLE_DEPARTS_S = (100.0, 200.0, 3540.0, 3570.0, 4000.0, 5000.0, 7125.0)
+TABLE_STATIONS = (("S1", 100.0), ("S2", 400.0), ("S3", 600.0))
+
+#: Observed 30-min flows [veh/h]; S2's first window is a hole, so its first
+#: hour is not fully observed and is never compared.
+TABLE_FLOWS: dict[str, list[float | None]] = {
+    "S1": [6.0, 8.0, 2.0, 2.0],  # hourly 7, 2
+    "S2": [None, 3.0, 4.0, 6.0],  # hour 0 dropped, hourly 5
+    "S3": [2.0, 2.0, 5.0, 5.0],  # hourly 2, 5
+}
+
+#: The hand counts above, in the order the table must list them (station by
+#: position, then hour), with each hour's local clock (t0 05:30) and the
+#: observed hourly volume.
+TABLE_ROWS: tuple[tuple[str, float, float, str, float, float], ...] = (
+    # station, x_ref_m, window_start_s, clock, observed, simulated (hand count)
+    ("S1", 100.0, 0.0, "05:30", 7.0, 4.0),
+    ("S1", 100.0, 3600.0, "06:30", 2.0, 3.0),
+    ("S2", 400.0, 3600.0, "06:30", 5.0, 4.0),
+    ("S3", 600.0, 0.0, "05:30", 2.0, 2.0),
+    ("S3", 600.0, 3600.0, "06:30", 5.0, 5.0),
+)
+
+
+def table_payload() -> dict[str, Any]:
+    """Three stations, two hours of 30-min windows starting at 05:30."""
+    ids = [sid for sid, _ in TABLE_STATIONS]
+    return {
+        "schema": OBSERVATIONS_SCHEMA,
+        "corridor": "table_corridor",
+        "source": {"provider": "Test DOT archive", "dates": ["20260915"], "url": ""},
+        "window_s": TABLE_WINDOW_S,
+        "t0_local": "05:30",
+        "duration_s": TABLE_DURATION_S,
+        "n_windows": 4,
+        "aggregation": "one date",
+        "stations": [
+            {"id": sid, "x_m": x, "lanes": 1, "kind": "mainline"} for sid, x in TABLE_STATIONS
+        ],
+        "flows_veh_h": TABLE_FLOWS,
+        "speeds_ms": {sid: [TABLE_SPEED_MS] * 4 for sid in ids},
+        "quality": {sid: {"fraction_valid": 1.0, "n_dates": 1} for sid in ids},
+    }
+
+
+def table_frame(
+    departs_s: tuple[float, ...] = TABLE_DEPARTS_S, end_m: float = 700.0
+) -> pd.DataFrame:
+    """The vehicles of the hand count, in simulation coordinates."""
+    offsets = np.arange(0.0, end_m / TABLE_SPEED_MS + TABLE_SAMPLE_S / 2, TABLE_SAMPLE_S)
+    departs = np.asarray(departs_s, dtype=np.float64)
+    t = (departs[:, None] + offsets[None, :]).ravel()
+    x = np.tile(TABLE_SPEED_MS * offsets, departs.size)
+    veh = np.repeat([f"v{i}" for i in range(departs.size)], offsets.size)
+    return pd.DataFrame({"t": t, "veh_id": veh, "x": x, "v": np.full(t.size, TABLE_SPEED_MS)})
+
+
+def table_scores(frame: pd.DataFrame | None = None) -> Any:
+    """``score_run_against_observed`` on the table fixture (no warm-up)."""
+    return score_run_against_observed(
+        table_frame() if frame is None else frame,
+        ObservedCorridor.from_dict(table_payload()),
+        warmup_s=0.0,
+        duration_s=TABLE_DURATION_S,
+        x_offset_m=TABLE_OFFSET_M,
+    )
+
+
+#: ``observed_scores.json`` exactly as ``ObservedScores.to_dict`` wrote it before
+#: the link-hour table existed (keys and order of the 2026-09-24 writer).
+OLD_SCORES_FILE: dict[str, Any] = {
+    "geh_values": [1.2792, 0.6325, 0.4714, 0.0, 0.0],
+    "n_link_hours": 5,
+    "rmspe": 0.0,
+    "n_speed_cells": 5,
+    "windows": [0, 1],
+    "segment_speeds_sim": [[10.0, 10.0, None], [10.0, 10.0, 10.0]],
+    "segment_speeds_obs": [[10.0, 10.0, 10.0], [10.0, 10.0, 10.0]],
+    "n_stations_outside_span": 0,
+    "stations_outside_span": [],
+}
+
+
+class TestClockLabel:
+    @pytest.mark.parametrize(
+        ("t0_local", "offset_s", "label"),
+        [
+            ("05:30", 0.0, "05:30"),
+            ("05:30", 3600.0, "06:30"),
+            ("05:30", 12600.0, "09:00"),
+            ("23:30", 3600.0, "00:30"),  # wraps past midnight
+            ("06:00:30", 0.0, "06:00:30"),
+            ("06:00", 90.0, "06:01:30"),
+            ("", 0.0, ""),  # no clock stated: no label, no error
+            ("not a clock", 0.0, ""),
+            ("06:00", math.nan, ""),
+        ],
+    )
+    def test_labels(self, t0_local: str, offset_s: float, label: str) -> None:
+        from validation.observed import clock_label
+
+        assert clock_label(t0_local, offset_s) == label
+
+
+class TestLinkHourTable:
+    """Every GEH is stored with the station-hour and both volumes behind it."""
+
+    def test_simulated_counts_are_the_hand_counted_crossings(self) -> None:
+        from validation.metrics import count_crossings
+
+        scores = table_scores()
+        assert scores.link_hours is not None
+        frame = table_frame()
+        for record, (station, x_ref, start, _, _, hand) in zip(
+            scores.link_hours, TABLE_ROWS, strict=True
+        ):
+            assert (record.station, record.x_ref_m, record.window_start_s) == (
+                station,
+                x_ref,
+                start,
+            )
+            # over one hour the hourly-equivalent flow IS the count
+            assert record.sim_veh_h == pytest.approx(hand, abs=1e-9)
+            counted = count_crossings(
+                frame, x_ref + TABLE_OFFSET_M, t_lo=start, t_hi=start + 3600.0
+            )
+            assert record.sim_veh_h == pytest.approx(counted, abs=1e-9)
+
+    def test_observed_volumes_are_the_hourly_means(self) -> None:
+        scores = table_scores()
+        assert scores.link_hours is not None
+        assert [r.obs_veh_h for r in scores.link_hours] == [row[4] for row in TABLE_ROWS]
+
+    def test_geh_recomputed_from_the_table_is_the_stored_geh(self) -> None:
+        from validation.metrics import geh
+
+        scores = table_scores()
+        assert scores.link_hours is not None
+        for record in scores.link_hours:
+            assert geh(record.sim_veh_h, record.obs_veh_h) == record.geh  # bit for bit
+        # and as stored: the JSON table carries the GEH to 4 decimals, the
+        # volumes unrounded, so the stored GEH is recomputable from the row
+        for row in scores.to_dict()["link_hours"]:
+            assert round(geh(row["sim_veh_h"], row["obs_veh_h"]), 4) == row["geh"]
+
+    def test_the_table_is_ordered_and_labelled_as_geh_values(self) -> None:
+        scores = table_scores()
+        assert scores.link_hours is not None
+        assert tuple(r.geh for r in scores.link_hours) == scores.geh_values
+        assert [(r.station, r.window_start_s, r.clock) for r in scores.link_hours] == [
+            (row[0], row[2], row[3]) for row in TABLE_ROWS
+        ]
+        stored = scores.to_dict()
+        assert [r["geh"] for r in stored["link_hours"]] == stored["geh_values"]
+
+    def test_geh_values_are_the_pre_table_computation(self) -> None:
+        """The table is additive: ``geh_values`` is still exactly what the
+        scorer computed before it existed — ``link_hour_geh(...).geh`` on the
+        artifact's fully observed station-hours — and so is its pass fraction."""
+        from validation.metrics import geh_pass_fraction, link_hour_geh
+
+        observed = ObservedCorridor.from_dict(table_payload())
+        hourly = observed.hourly_link_flows()
+        shifted = hourly.assign(x_ref_m=hourly["x_ref_m"] + TABLE_OFFSET_M)
+        before = link_hour_geh(
+            table_frame(),
+            shifted,
+            x_refs_m=[x + TABLE_OFFSET_M for _, x in TABLE_STATIONS],
+            window_s=3600.0,
+            sim_span=(0.0, TABLE_DURATION_S),
+        ).geh
+        scores = table_scores()
+        assert scores.geh_values == before
+        assert geh_pass_fraction(scores.geh_values, 0.5) == geh_pass_fraction(before, 0.5)
+        hand = tuple(math.sqrt(2.0 * (sim - obs) ** 2 / (sim + obs)) for *_, obs, sim in TABLE_ROWS)
+        assert scores.geh_values == pytest.approx(hand, abs=1e-12)
+
+    def test_the_table_round_trips_through_json(self) -> None:
+        from validation.observed import ObservedScores
+
+        scores = table_scores()
+        again = ObservedScores.from_dict(json.loads(json.dumps(scores.to_dict())))
+        assert again.link_hours is not None and scores.link_hours is not None
+        for a, b in zip(again.link_hours, scores.link_hours, strict=True):
+            assert (a.station, a.x_ref_m, a.window_start_s, a.clock) == (
+                b.station,
+                b.x_ref_m,
+                b.window_start_s,
+                b.clock,
+            )
+            assert (a.obs_veh_h, a.sim_veh_h) == (b.obs_veh_h, b.sim_veh_h)
+            assert a.geh == round(b.geh, 4)
+        assert again.geh_values == tuple(r.geh for r in again.link_hours)
+
+    def test_no_compared_hour_gives_an_empty_table_not_none(
+        self, observed: ObservedCorridor, trajectories: pd.DataFrame
+    ) -> None:
+        scores = score_run_against_observed(
+            trajectories, observed, warmup_s=DURATION_S, duration_s=DURATION_S
+        )
+        assert scores.link_hours == ()
+        assert scores.to_dict()["link_hours"] == []
+
+    def test_an_old_observed_scores_file_still_loads(self) -> None:
+        from validation.observed import ObservedScores
+
+        old = ObservedScores.from_dict(json.loads(json.dumps(OLD_SCORES_FILE)))
+        assert old.link_hours is None
+        assert old.geh_values == tuple(OLD_SCORES_FILE["geh_values"])
+        assert old.n_link_hours == 5
+        assert old.n_speed_cells == 5
+        assert old.windows == (0, 1)
+        assert math.isnan(old.segment_speeds_sim[0][2])
+        # and it writes the absence back as null rather than an empty table
+        assert old.to_dict()["link_hours"] is None
+        assert ObservedScores.from_dict(old.to_dict()).link_hours is None
+
+    def test_a_table_that_does_not_label_every_geh_is_refused(self) -> None:
+        import dataclasses
+
+        scores = table_scores()
+        assert scores.link_hours is not None
+        with pytest.raises(ValueError, match="labels geh_values row by row"):
+            dataclasses.replace(scores, link_hours=scores.link_hours[:-1])
+
+
+#: A second replicate of the table fixture: the vehicles departing at 3570 and
+#: 5000 s are dropped, leaving S1 3 / 2, S2 - / 2, S3 2 / 3 (hand count above),
+#: in table order.
+TABLE_SECOND_DEPARTS_S = (100.0, 200.0, 3540.0, 4000.0, 7125.0)
+TABLE_SECOND_SIM = (3.0, 2.0, 2.0, 2.0, 3.0)
+
+
+class TestPoolLinkHours:
+    def test_mean_and_range_over_the_seeds_per_station_hour(self) -> None:
+        from validation.metrics import geh
+        from validation.observed import pool_link_hours
+
+        first = table_scores()
+        second = table_scores(table_frame(TABLE_SECOND_DEPARTS_S))
+        assert second.link_hours is not None
+        assert [r.sim_veh_h for r in second.link_hours] == pytest.approx(TABLE_SECOND_SIM)
+        pooled = pool_link_hours([first, second])
+        assert pooled is not None
+        assert [(p.station, p.window_start_s, p.clock) for p in pooled] == [
+            (row[0], row[2], row[3]) for row in TABLE_ROWS
+        ]
+        for p, row, sim_b in zip(pooled, TABLE_ROWS, TABLE_SECOND_SIM, strict=True):
+            sim_a, obs = row[5], row[4]
+            assert p.n_seeds == 2
+            assert p.obs_veh_h == obs
+            assert p.x_ref_m == row[1]
+            assert p.sim_veh_h_mean == pytest.approx((sim_a + sim_b) / 2.0)
+            assert p.sim_veh_h_min == pytest.approx(min(sim_a, sim_b))
+            assert p.sim_veh_h_max == pytest.approx(max(sim_a, sim_b))
+            gehs = [round(geh(sim_a, obs), 4), round(geh(sim_b, obs), 4)]
+            assert p.geh_mean == pytest.approx(sum(gehs) / 2.0, abs=1e-12)
+            assert (p.geh_min, p.geh_max) == (min(gehs), max(gehs))
+
+    def test_a_station_hour_some_seeds_did_not_compare_counts_only_those(self) -> None:
+        """A run that never reaches S3 contributes nothing to S3's rows."""
+        from validation.observed import pool_link_hours
+
+        short = table_scores(table_frame(end_m=500.0))
+        assert short.stations_outside_span == ("S3",)
+        pooled = pool_link_hours([table_scores(), short])
+        assert pooled is not None
+        seeds = {(p.station, p.window_start_s): p.n_seeds for p in pooled}
+        assert seeds == {
+            ("S1", 0.0): 2,
+            ("S1", 3600.0): 2,
+            ("S2", 3600.0): 2,
+            ("S3", 0.0): 1,
+            ("S3", 3600.0): 1,
+        }
+
+    def test_none_when_a_replicate_carries_no_table(self) -> None:
+        import dataclasses
+
+        from validation.observed import pool_link_hours
+
+        scores = table_scores()
+        assert pool_link_hours([scores, dataclasses.replace(scores, link_hours=None)]) is None
+
+    def test_different_observations_are_refused(self) -> None:
+        import dataclasses
+
+        from validation.observed import pool_link_hours
+
+        scores = table_scores()
+        assert scores.link_hours is not None
+        moved = (
+            dataclasses.replace(scores.link_hours[0], obs_veh_h=99.0),
+            *scores.link_hours[1:],
+        )
+        with pytest.raises(ValueError, match="different observations"):
+            pool_link_hours([scores, dataclasses.replace(scores, link_hours=moved)])
+
+    def test_no_scores_refused(self) -> None:
+        from validation.observed import pool_link_hours
+
+        with pytest.raises(ValueError, match="at least one"):
+            pool_link_hours([])

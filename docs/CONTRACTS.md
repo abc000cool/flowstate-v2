@@ -1793,6 +1793,34 @@ at which the reroute alone moves a 1,000 veh/h exit link-hour's GEH by
 ≈ 0.6 (`s √c`), an eighth of the threshold; the derivation is on the constant.
 The schema version is unchanged.
 
+Since 2026-09-25 (WP-63) every GEH in the artifact is labelled, additively (schema unchanged).
+`validation.observed.score_run_against_observed` fills `ObservedScores.link_hours`: one
+`LinkHourRecord(station, x_ref_m, window_start_s, clock, obs_veh_h, sim_veh_h, geh)` per entry of
+`geh_values`, in the same order (mainline stations by position, then hour). `x_ref_m` is the station's
+position in the observations' coordinates (the simulated cross-section is `x_ref_m + x_offset_m`);
+`window_start_s` is the hour's start in seconds from `t0_local` (simulation time) and `clock` its local
+label (`validation.observed.clock_label`: `"HH:MM"`, `"HH:MM:SS"` when the seconds are not zero, empty
+when `t0_local` is not a clock time); `obs_veh_h` is the observed hourly volume
+(`ObservedCorridor.hourly_link_flows`); `sim_veh_h` is the simulated hourly volume the GEH was formed from
+(`metrics.link_hour_geh(...).sim_veh_h`, over one hour the crossing count to float precision);
+`geh = metrics.geh(sim_veh_h, obs_veh_h)`. JSON stores GEH at 4 decimals (`GEH_DECIMALS`, as
+`geh_values`) and the volumes unrounded. `observed_scores.json` gains the key `link_hours` (a list of
+those rows, `[]` when no station-hour was compared); a file without the key, written before WP-63, loads
+with `link_hours = None`, and `ObservedScores` refuses a table whose length differs from `geh_values`.
+In the battery artifact, `per_seed[i].link_hours` is replicate `i`'s table (null when its stored scores
+predate it), and `geh.link_hours` is `{t0_local, window_s: 3600, n_seeds, rows, definition}` with one
+row per station-hour from `validation.observed.pool_link_hours`: `{station, x_ref_m, window_start_s,
+clock, obs_veh_h, n_seeds, sim_veh_h_mean, sim_veh_h_min, sim_veh_h_max, geh_mean, geh_min, geh_max}`
+over the seeds that compared it (a station outside a run's position span contributes nothing to its
+rows). Rows follow first-seen order; GEH statistics are over the stored 4-decimal values and written at
+4 decimals. The block is null, and a note says why, when any replicate lacks a table; `pool_link_hours`
+refuses replicates that carry different observed volumes for one station-hour. `geh.pooled_values`,
+`n_comparisons`, `pass_fraction_pooled`, `pass_fraction_ci` and every per-seed `geh_pass_fraction` are
+unchanged, and `pooled_values` equals `per_seed[i].link_hours[*].geh` concatenated in seed order.
+Per-ramp per-hour deliveries are not in the artifact: `meta.json["ramps"]` holds run totals only and
+trajectories carry no vehicle origin, so they need the runner to record each ramp's corridor-entry
+times (and the attach edge's x) in `meta.json`.
+
 ## Calibrated screening tier: FD provenance and macro options — 2026-09-23
 
 - **`meta.json["fd"]` (macro tier)** gains `source`, `artifact`, `rho_c` and

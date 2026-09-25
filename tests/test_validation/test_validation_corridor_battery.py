@@ -149,6 +149,10 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     # A 60 s run spans no whole hour, so the link-flow row is honestly
     # not evaluated rather than scored on a partial hour.
     assert seed_row["n_link_hours"] == 0
+    # ... and its labelled link-hour table is empty, not absent (WP-63)
+    assert seed_row["link_hours"] == []
+    assert artifact["geh"]["link_hours"]["rows"] == []
+    assert artifact["geh"]["link_hours"]["t0_local"] == "06:00"
     geh_row = next(r for r in artifact["criteria"] if r["name"] == "link_flows_geh")
     assert geh_row["evaluated"] is False
     rmspe_row = next(r for r in artifact["criteria"] if r["name"] == "speeds_rmspe")
@@ -187,6 +191,7 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     assert battery.main([*argv, "--criteria-only"]) == 0
     rescored = json.loads(artifact_path.read_text())
     assert rescored["per_seed"][0]["n_speed_cells"] == seed_row["n_speed_cells"]
+    assert rescored["per_seed"][0]["link_hours"] == seed_row["link_hours"]
     assert rescored["metrics_ci"]["throughput_veh_h"]["mean"] == pytest.approx(
         artifact["metrics_ci"]["throughput_veh_h"]["mean"], rel=1e-9
     )
@@ -336,6 +341,12 @@ def test_criteria_only_surfaces_weave_exits_from_the_stored_metas(
     )
     assert "2 run(s)" in weave_lines[1]
     assert math.isfinite(artifact["metrics_ci"]["throughput_veh_h"]["mean"])
+    # Stored scores without a link-hour table (written before WP-63) still
+    # re-score: the tables are null, the GEH rows are unchanged.
+    assert [row["link_hours"] for row in artifact["per_seed"]] == [None, None]
+    assert artifact["geh"]["link_hours"] is None
+    assert artifact["geh"]["pooled_values"] == [4.0, 6.0, 4.0, 6.0]
+    assert artifact["geh"]["pass_fraction_pooled"] == 0.5
 
 
 #: Artifact keys that legitimately differ between two batteries of the same
