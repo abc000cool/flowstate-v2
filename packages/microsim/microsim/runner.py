@@ -2251,6 +2251,192 @@ def _weave_cooperate(
     return f_t
 
 
+def _weave_yield_at_ends(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    p_of: dict[str, dict[str, float]],
+    v0_of: dict[str, float],
+    coop: dict[str, tuple[float, float, bool]],
+    vid: str,
+    target_lane: int,
+    v0_c: float,
+    remaining_m: float,
+    accept_s: float,
+    due: bool,
+) -> None:
+    """The two yields at the lane ends of a weaving section (WP-54).
+
+    The crossing pair (2026-09-24, block 3, WP-54; docs/WEAVE_MODEL_PLAN.md,
+    dated section): the give-ups at the gore's end are, 24 times in 44 on
+    the fixture grid, an exit-bound changer halted at the end of lane 1
+    beside a driven entrant halted at the end of the auxiliary lane, each
+    owing the change into the other's lane. Two rules, each behind its own
+    ``WEAVE_DEFAULTS`` switch, both commanded through :func:`_weave_command`
+    (one-step car-following targets, clipped at the vehicle's own ``b``,
+    SUMO's safety check on) and counted in ``n_cooperations``:
+
+    **The exiter yields** (``exiter_yields``, default 1 — ships, inside the
+    forced zone; ``n_exiter_yields``). The per-pair trace showed that a driven entrant halted at the end of the
+    auxiliary lane is not freed by the give-up of the exiter beside it: it
+    stays, refused into lane 1 by the speed-aware guard on every lane-1
+    vehicle arriving inside its brake distance, and each next exiter drives
+    down lane 1 beside the standing auxiliary-lane queue it heads, halts at
+    the end beside it and is given up in turn (three give-ups on one halted
+    entrant on ``weave_th52.osm`` at the corridor's demand, seed 5, and on
+    the Ruth St corridor fleet at seed 3). Here the halted entrant has
+    nothing left to give, and the exiter's alternative is its reroute, so the
+    exiter pays: an exit-bound changer on the section is driven towards a
+    virtual leader one entrant ``minGap`` behind the rear of the nearest
+    driven entrant ahead of it in the target lane that is below the creep
+    speed (``SCRIPTED_MERGE_CREEP_MS``) — the exit priority's hold with the
+    roles exchanged — so it comes to rest ``s0_c + s0_E`` behind, a follower
+    gap the entrant's forced guard accepts, and the entrant changes ahead of
+    it; the command is the smaller of IDM towards that leader and the
+    constant deceleration that stops at the point (IDM brakes hardest last
+    and would be clipped at ``b`` into an overrun), and it is asked only
+    while feasible at the exiter's ``b``: ``v_c² / (2·b_c) ≤ gap − s0_c``.
+    Re-evaluated every step; nothing to release — the entrant that changes
+    or moves on is no longer ahead and halted. Asked only while the exiter
+    is inside its forced zone (``zone_s`` set): from the whole section it
+    read worse on the grid (46 given up against 44; the T.H.52 capacity
+    fixture 4 / 5 given up at seeds 3 / 4 against 1 / 1, lane 1 at the gore
+    3.9 m/s in two minutes at seed 4 against 10.7 in none) — an exiter
+    braking to a stop 100–300 m out holds lane 1 for an entrant that is
+    often freed before it arrives. Inside the zone: give-ups 44 → 39,
+    exits 5,988 → 6,015, the entrances 5,944 → 5,973, pair releases 218 →
+    169, no lock, no collision, the T.H.52 rows and the golden unchanged;
+    on ``weave_th52.osm`` at the corridor's demand, seed 5, the entrant
+    halted at the lane end for 35 s (three give-ups beside it) changes 11 s
+    after the first exiter stops behind it, and that exiter changes 5 s
+    later.
+
+    **The entrant yields** (``entrant_yields``, default 0 — measured and
+    not made the default; ``n_entrant_yields``; the rule the task named).
+    While an
+    exiter's forced change is ``due`` (its priority active), a driven,
+    moving entrant beside it — its front ahead of the exiter's rear and its
+    rear not yet clear of the exiter's front by the exiter's accepted gap
+    ``s0_c + accept · v_c`` — that is not the follower of the exiter's gap
+    (that one holds already), is not commanded this step by anyone else (no
+    chain) and can come to rest at its own ``b`` behind where the exiter's
+    rear will be at the latest, the lane end
+    (``v_E² / (2·b_E) ≤ rem_E − len_c − s0_c − s0_E``, else it would be
+    halted at its own lane end by yielding), is driven towards a virtual
+    leader one exiter ``minGap`` behind the exiter's rear: at ``−b_E`` while
+    it overlaps, then IDM. Once behind the rear it is the ordinary
+    exit-priority geometry and :func:`_weave_choose_gap` takes it as the
+    gap's follower. Not asked when the exiter is eased towards it this step
+    (the seventh derivation: mutual easing stops both). The trace says why
+    it does not bind: at the due moment the entrant beside the exiter is
+    either halted at its lane end already, abreast at speed parity with both
+    braking for their lane ends at more than its ``b``, or closing from
+    behind already held at ``−b_E`` and sliding past — the feasibility bound
+    holds in 2 of 24 pairs, by 1.4 m. On the grid it binds on 21
+    vehicle-steps, five pairs in five runs (give-ups 44 → 36 with one fewer
+    exit — the sequence moving as much as the mechanism; two of the five do
+    what is derived, the exiter changing 1–2.5 s after the entrant dropped
+    back), returns nothing on top of the exiter's yield (39 → 39, nine
+    fewer exits, 37 fewer entrants) and, asked from the exiter's zone entry
+    instead of the due moment, locks the Ruth St module at the 271 m window
+    (lane 1 at 0.0 m/s for seven minutes, 186 of 218 exited).
+
+    Args:
+        mod: The libsumo / traci module.
+        tc: Its constants module.
+        ws: The section's state.
+        results: This step's subscription results.
+        lanes: Target-lane listings on the section axis (:func:`_weave_step`).
+        x_of: Front-bumper positions on the section axis [m].
+        v_of: Speeds [m/s].
+        p_of: Car-following constants of the listed vehicles (filled here).
+        v0_of: Their desired speeds (filled here).
+        coop: This step's speed targets (:func:`_weave_command`).
+        vid: The exit-bound changer.
+        target_lane: Its target lane (one below its own).
+        v0_c: Its desired speed on the target lane [m/s].
+        remaining_m: Section length ahead of its front [m].
+        accept_s: The exiting movement's accepted time gap [s].
+        due: Whether its forced change is due (the exit priority active).
+    """
+    prm = ws["params"]
+    veh: dict[str, dict[str, Any]] = ws["veh"]
+    lane_list = lanes.get(target_lane, [])
+    if not lane_list:
+        return
+    x_c = x_of[vid]
+    v_c = v_of[vid]
+    p_c = _weave_veh(mod, ws, vid)
+    step_s = float(ws["step_s"])
+    x_end = x_c + remaining_m
+
+    def _constants(oid: str) -> dict[str, float]:
+        # as _weave_cooperate fills them: the vehicle's own lane's limit
+        if oid not in p_of:
+            p_of[oid] = _weave_veh(mod, ws, oid)
+            r_o = results[oid]
+            v0_of[oid] = min(
+                p_of[oid]["vmax"],
+                _weave_lane_vmax(mod, ws, r_o[tc.VAR_ROAD_ID], int(r_o[tc.VAR_LANE_INDEX])),
+            )
+        return p_of[oid]
+
+    if prm["exiter_yields"] > 0.0 and veh[vid]["zone_s"] is not None:
+        # inside the forced zone only (from the whole section it read worse,
+        # docs/WEAVE_MODEL_PLAN.md WP-54): the nearest driven entrant ahead
+        # of the exiter's front
+        for x_a, a in lane_list:
+            if x_a <= x_c:
+                continue
+            sa = veh.get(a)
+            if sa is None or sa["dir"] <= 0:
+                continue
+            if v_of[a] < SCRIPTED_MERGE_CREEP_MS:
+                p_a = _constants(a)
+                gap = x_a - p_a["len"] - x_c - p_a["s0"]
+                room = gap - p_c["s0"]
+                if room > 0.0 and v_c * v_c / (2.0 * p_c["b"]) <= room:
+                    a_idm = _idm_accel(
+                        v_c, v0_c, gap, v_c - v_of[a], p_c["T"], p_c["a"], p_c["b"], p_c["s0"]
+                    )
+                    a_stop = -v_c * v_c / (2.0 * room)
+                    before = coop.get(vid)
+                    _weave_command(mod, coop, vid, v_c, v0_c, p_c, min(a_idm, a_stop), step_s)
+                    # counted when it binds (a target below the exiter's own
+                    # model and below any other request on it this step)
+                    if coop.get(vid) is not before:
+                        ws["n_exiter_yields"] += 1
+            break
+    if prm["entrant_yields"] > 0.0 and due and vid not in coop:
+        st = veh[vid]
+        clear_m = p_c["s0"] + accept_s * v_c
+        for x_a, a in lane_list:
+            if x_a <= x_c - p_c["len"]:
+                continue
+            if x_a - _constants(a)["len"] - x_c >= clear_m:
+                break
+            sa = veh.get(a)
+            if sa is None or sa["dir"] <= 0 or a == st["target"] or a in coop:
+                continue
+            if v_of[a] < HALTING_SPEED_MS:
+                continue
+            p_a = p_of[a]
+            rem_a = x_end - x_a
+            if v_of[a] ** 2 / (2.0 * p_a["b"]) > rem_a - p_c["len"] - p_c["s0"] - p_a["s0"]:
+                continue
+            gap = x_c - p_c["len"] - x_a - p_c["s0"]
+            a_e = _idm_accel(
+                v_of[a], v0_of[a], gap, v_of[a] - v_c, p_a["T"], p_a["a"], p_a["b"], p_a["s0"]
+            )
+            _weave_command(mod, coop, a, v_of[a], v0_of[a], p_a, a_e, step_s)
+            if a in coop:
+                ws["n_entrant_yields"] += 1
+
+
 def _weave_short_section_rule(length_m: float, prm: dict[str, float]) -> dict[str, float | bool]:
     """The forced zone and its delay of a section, and whether the section is *short*.
 
@@ -2426,6 +2612,12 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     back at once and counted in ``n_missed`` and ``n_missed_exit`` — never
     held by SUMO at the end of a lane its route does not continue on, where
     it stopped the through lane behind it and the auxiliary lane beside it.
+    An exit-bound vehicle inside its forced zone with a driven entrant
+    halted at the auxiliary lane's end ahead of it stops behind that
+    entrant's rear so the entrant can change ahead of it (WP-54, the
+    crossing pair; :func:`_weave_yield_at_ends`, ``exiter_yields``): a
+    halted entrant is not freed by the give-up of the exiter beside it, and
+    the next exiters halt beside it and are given up in turn.
 
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
@@ -2750,6 +2942,30 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             # exit priority once the forced change is due (_weave_choose_gap)
             d < 0 and st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"],
         )
+        if d < 0:
+            # the yields at the lane ends (WP-54): the exiter for a halted
+            # entrant ahead of it, the entrant beside a due exiter
+            _weave_yield_at_ends(
+                mod,
+                tc,
+                ws,
+                results,
+                lanes,
+                x_of,
+                v_of,
+                p_of,
+                v0_of,
+                coop,
+                vid,
+                lane + d,
+                min(
+                    _weave_veh(mod, ws, vid)["vmax"],
+                    _weave_lane_vmax(mod, ws, road, lane + d),
+                ),
+                remaining,
+                accept,
+                st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"],
+            )
         # --- execution -----------------------------------------------------
         if accepted:
             # accepted: executed under mode 256 for one step (the follower
@@ -2843,7 +3059,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     identity above holds; ``n_giveup_waited`` (WP-52, the bounded give-up
     patience) the vehicle-steps on which such a give-up was deferred because
     the exiter's auxiliary-lane follower was still braking towards the gap
-    (:func:`_weave_giveup_patient`; zero at ``exit_giveup_patience_s`` = 0).
+    (:func:`_weave_giveup_patient`; zero at ``exit_giveup_patience_s`` = 0);
+    ``n_exiter_yields`` / ``n_entrant_yields`` (WP-54, the crossing pair)
+    the vehicle-steps on which an exiter was driven to stop behind a halted
+    entrant ahead of it / a moving entrant beside a due exiter was driven
+    to fall behind its rear (:func:`_weave_yield_at_ends`; zero at a
+    switch's default of 0, counted only when the target bound).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -2885,6 +3106,8 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_missed": ws["n_missed"],
         "n_missed_exit": ws["n_missed_exit"],
         "n_giveup_waited": ws["n_giveup_waited"],
+        "n_exiter_yields": ws["n_exiter_yields"],
+        "n_entrant_yields": ws["n_entrant_yields"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -3615,6 +3838,9 @@ def run_micro(
                     # vehicle-steps a halted exiter's give-up was deferred
                     # by the bounded patience (WP-52)
                     "n_giveup_waited": 0,
+                    # vehicle-steps of the two yields at the lane ends (WP-54)
+                    "n_exiter_yields": 0,
+                    "n_entrant_yields": 0,
                     # exit-bound vehicles rerouted through at the gore's end
                     # (exit-side derivation): no longer driven; their new
                     # destination is the corridor's last edge

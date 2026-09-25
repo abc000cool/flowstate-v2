@@ -868,6 +868,9 @@ class TestWeaveSchema:
             "exit_giveup_patience_s": 0.0,
             # WP-53: the abreast patience (docs/WEAVE_MODEL_PLAN.md, dated section)
             "exit_abreast_patience_s": 0.0,
+            # WP-54: the crossing pair — the exiter's yield ships, the entrant's is off
+            "exiter_yields": 1.0,
+            "entrant_yields": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -1876,6 +1879,9 @@ def _weave_state(**params) -> dict:
         "n_missed_exit": 0,
         # WP-52: give-ups deferred by the bounded patience (vehicle-steps)
         "n_giveup_waited": 0,
+        # WP-54: the two yields at the lane ends (vehicle-steps)
+        "n_exiter_yields": 0,
+        "n_entrant_yields": 0,
         "gave_up": set(),
         "through_target": "z",
         "n_forced_deferred": 0,
@@ -3216,6 +3222,167 @@ class TestWeaveAbreastPatience:
         assert ws["veh"]["e"]["giveup_v_foll"] == 6.0 and ws["veh"]["e"]["giveup_since"] == 0.0
 
 
+class TestWeaveYieldsAtTheLaneEnds:
+    """The crossing pair (WP-54, 2026-09-24 block 3):
+    ``microsim.runner._weave_yield_at_ends`` under ``exiter_yields`` and
+    ``entrant_yields`` (docs/WEAVE_MODEL_PLAN.md, dated section). These pin
+    each rule's statement so a set switch behaves as documented, whatever
+    the default; ``test_defaults`` pins the defaults."""
+
+    @staticmethod
+    def _state(**params):
+        from microsim.runner import NEIGHBOR_LEFT_FOLLOWERS, NEIGHBOR_RIGHT_LEADERS
+
+        ws = _weave_state(**{"force_after_s": 0.0, **params})
+        ws["exiting_ids"] = frozenset({"e"})
+        # ``d`` (an entrant, lane 0) sorts before ``e`` (the exiter, lane 1),
+        # so it is under control on the step the exiter reads it; neither
+        # can change this step (an overlap on the side it needs)
+        veh = _WeaveVehicle(
+            {"e": 10.0, "d": 0.0},
+            {
+                ("e", NEIGHBOR_RIGHT_LEADERS): (("d", 60.0),),
+                ("d", NEIGHBOR_LEFT_FOLLOWERS): (("e", -2.0),),
+            },
+        )
+        return ws, veh, _WeaveMod(veh)
+
+    def test_the_exiter_yields_to_a_halted_entrant_ahead(self):
+        """``e`` at 10 m/s with 80 m of section left, ``d`` halted at the
+        auxiliary lane's end (5 m left): ``e`` is driven towards a virtual
+        leader one entrant minGap behind ``d``'s rear — the smaller of IDM
+        and the constant deceleration that stops there — feasible at its
+        ``b`` (29.9 m to stop against 65 m of room); counted."""
+        from microsim.runner import _idm_accel, _weave_meta, _weave_step
+
+        ws, veh, mod = self._state(exiter_yields=1.0)
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        # gap = 195 - 5 - 120 - 2.5 = 67.5 m; room = 65 m
+        a_idm = _idm_accel(10.0, 30.0, 67.5, 10.0, 1.4, 0.73, 1.67, 2.5)
+        a_stop = -100.0 / (2.0 * 65.0)
+        a_cmd = max(min(a_idm, a_stop), -1.67)
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e"] == [
+            ("slow", "e", pytest.approx(10.0 + a_cmd * 0.5), 0.0)
+        ]
+        assert ws["n_exiter_yields"] == 1 and ws["n_entrant_yields"] == 0
+        assert ws["n_cooperations"] == 1
+        meta = _weave_meta(ws, {})
+        assert meta["n_exiter_yields"] == 1 and meta["n_entrant_yields"] == 0
+
+    def test_the_exiter_yield_is_bounded(self):
+        """Not asked when the entrant ahead is moving (above the creep
+        speed), is not driven, or the stop is infeasible at the exiter's
+        ``b`` (30 m/s: 269 m to stop against 65 m of room)."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod = self._state(exiter_yields=1.0)
+        veh.speeds["d"] = 4.0
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 95.0, 4.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        # (``e`` is still held as the follower of ``d``'s gap, the ordinary
+        # cooperation: a target above its speed, below its own model)
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e" and c[2] < 10.0] == []
+        assert ws["n_exiter_yields"] == 0
+
+        ws, veh, mod = self._state(exiter_yields=1.0)
+        ws["exit_only"] = {"a": False, "b": False}  # ``d`` is not driven
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert "d" not in ws["veh"] and ws["n_exiter_yields"] == 0
+
+        ws, veh, mod = self._state(exiter_yields=1.0)
+        veh.speeds["e"] = 30.0
+        res = {"e": _res("b", 1, 20.0, 30.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_exiter_yields"] == 0
+
+    def test_the_entrant_yields_beside_a_due_exiter(self):
+        """``e`` at 14 m/s with 50 m left, its forced change due at once;
+        ``d`` moving at 6 m/s with its front 3 m ahead of ``e``'s (beside it,
+        not clear of it by ``e``'s accepted gap), 47 m of lane left. ``e``
+        cannot ease behind ``d`` at its ``b`` (the drop needs 6.5 m/s²), so
+        ``d`` is driven at ``-b`` towards a virtual leader behind ``e``'s
+        rear — feasible: 10.8 m to stop against 37 m of room."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod = self._state(entrant_yields=1.0)
+        veh.speeds.update({"e": 14.0, "d": 6.0})
+        res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 53.0, 6.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] == 0.0 and ws["veh"]["e"]["target"] is None
+        assert not [c for c in veh.calls if c[0] == "slow" and c[1] == "e"]
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "d"] == [
+            ("slow", "d", pytest.approx(6.0 - 1.67 * 0.5), 0.0)
+        ]
+        assert ws["n_entrant_yields"] == 1 and ws["n_exiter_yields"] == 0
+        assert _weave_meta(ws, {})["n_entrant_yields"] == 1
+
+    def test_the_entrant_yield_is_bounded(self):
+        """Not asked before the exiter's forced change is due, for a halted
+        entrant, when the stop is infeasible at the entrant's ``b`` (its
+        remaining lane under its brake distance plus the exiter's length
+        and both minGaps), or when the entrant is clear ahead of the exiter
+        by its accepted gap."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod = self._state(entrant_yields=1.0, force_after_s=4.0)
+        veh.speeds.update({"e": 14.0, "d": 6.0})
+        res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 53.0, 6.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[0] == "slow" and c[1] == "d"]
+        assert ws["n_entrant_yields"] == 0
+
+        ws, veh, mod = self._state(entrant_yields=1.0)
+        veh.speeds.update({"e": 14.0, "d": 0.0})
+        res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 53.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_entrant_yields"] == 0
+
+        ws, veh, mod = self._state(entrant_yields=1.0)
+        veh.speeds.update({"e": 14.0, "d": 12.0})  # 43 m to stop against 37 m of room
+        res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 53.0, 12.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_entrant_yields"] == 0
+
+        ws, veh, mod = self._state(entrant_yields=1.0)
+        veh.speeds.update({"e": 14.0, "d": 6.0})  # d's rear 12 m ahead: clear of 2.5 + 0.6 * 14
+        res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 67.0, 6.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_entrant_yields"] == 0
+
+    def test_defaults(self):
+        """The exiter's yield ships on, inside the forced zone; the entrant's
+        ships off (docs/WEAVE_MODEL_PLAN.md, WP-54)."""
+        from flowstate_core.config import WEAVE_DEFAULTS
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["exiter_yields"] == 1.0
+        assert WEAVE_DEFAULTS["entrant_yields"] == 0.0
+        # the exiter's yield at the default, inside the zone only: ``e`` 90 m
+        # from the end (outside ``force_within_m`` = 80) is not asked, the
+        # same geometry 80 m out is
+        ws, veh, mod = self._state()
+        res = {"e": _res("b", 1, 10.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] is None
+        assert [c for c in veh.calls if c[0] == "slow" and c[2] < 10.0] == []
+        assert ws["n_exiter_yields"] == 0 and ws["n_entrant_yields"] == 0
+        ws, veh, mod = self._state()
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 95.0, 0.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["zone_s"] == 0.0
+        assert ws["n_exiter_yields"] == 1 and ws["n_entrant_yields"] == 0
+        # the entrant's yield at its default of 0: the geometry of
+        # ``test_the_entrant_yields_beside_a_due_exiter`` gives no command
+        ws, veh, mod = self._state()
+        veh.speeds.update({"e": 14.0, "d": 6.0})
+        res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 53.0, 6.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[0] == "slow" and c[1] == "d"]
+        assert ws["n_entrant_yields"] == 0
+
+
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""
 
@@ -4083,6 +4250,8 @@ class TestWeaveReviewDerivations3To6:
             "n_missed": 0,
             "n_missed_exit": 0,
             "n_giveup_waited": 0,
+            "n_exiter_yields": 0,
+            "n_entrant_yields": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

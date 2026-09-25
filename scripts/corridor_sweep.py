@@ -139,6 +139,8 @@ WEAVE_FIELDS = (
     "n_vacate_skipped_no_gap",
     "n_vacate_requests",
     "n_giveup_waited",
+    "n_exiter_yields",
+    "n_entrant_yields",
 )
 
 

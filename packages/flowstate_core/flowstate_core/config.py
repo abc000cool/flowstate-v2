@@ -187,6 +187,8 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "exit_giveup_m": 5.0,
     "exit_giveup_patience_s": 0.0,
     "exit_abreast_patience_s": 0.0,
+    "exiter_yields": 1.0,
+    "entrant_yields": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -293,7 +295,41 @@ entrance 386 of 466 against 401); of the 44 give-ups, 24 are a driven
 entrant halted beside the exiter, which no wait moves. 5 and 20 s read as
 10 s. A positive value is a measured option, never a lock (the clearing
 condition and the bound end every wait; at most 15 vehicle-steps per run
-at 10 s). Not a fitted value."""
+at 10 s). Not a fitted value. ``exiter_yields`` (2026-09-24, block 3,
+WP-54, the crossing pair): ``1`` (the default) has an exit-bound changer
+inside its forced zone stop behind a driven entrant halted at the end of
+the auxiliary lane ahead of it — driven towards a virtual leader one
+entrant ``minGap`` behind the entrant's rear, the exit priority's hold with
+the roles exchanged, only while the stop is feasible at its own ``b``
+(``microsim.runner._weave_yield_at_ends``) — so the entrant changes ahead
+of it and the auxiliary lane it blocked moves again. The per-pair trace of
+the 24 crossing-pair give-ups on the fixture grid showed that such an
+entrant is not freed by the give-up of the exiter beside it: it stays,
+refused into lane 1 by every lane-1 vehicle arriving inside its brake
+distance, and the next exiters halt beside it and are given up in turn
+(one entrant, three give-ups, on ``weave_th52.osm`` at the corridor's
+demand, seed 5). Measured on the same 29-run grid as WP-52 and WP-53
+(docs/WEAVE_MODEL_PLAN.md, dated section): give-ups 44 → 39, exits 5,988
+→ 6,015 of 6,131 → 6,142 reached, the entrances 5,944 → 5,973, pair
+releases 218 → 169, no lock, no collision, the T.H.52 rows and the golden
+unchanged; from the whole section instead of the zone it read worse (46
+given up, the T.H.52 capacity fixture 4 / 5 given up at seeds 3 / 4
+against 1 / 1). ``0`` switches it off; hash-neutral unless set; a switch,
+not a fitted value. ``entrant_yields`` (same package): ``1`` has a moving
+driven entrant beside an exiter whose forced change is due fall behind the
+exiter's rear at its own ``b`` (the same virtual leader, the roles as the
+priority has them) while it can still come to rest behind where the
+exiter's rear will be at the latest, the lane end. The default is **0**:
+the per-pair trace found the bound met in 2 of the 24 pairs (by 1.4 m) —
+at the due moment the entrant beside the exiter is halted at its lane
+end already, abreast at speed parity with both braking for their lane
+ends at more than its ``b``, or closing from behind already held at
+``-b`` — and on the grid it bound on 21 vehicle-steps, five pairs in
+five runs (give-ups 44 → 36 with 5,987 exits; two of the five pairs
+resolve as derived, the rest is the sequence moving), returned nothing on top of the exiter's yield (39 → 39, nine
+fewer exits, 37 fewer entrants) and, asked from the exiter's zone entry,
+locked the Ruth St module at the 271 m window (lane 1 at 0.0 m/s for
+seven minutes). Hash-neutral unless set; a switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

@@ -279,7 +279,14 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     deferred while the exiter's auxiliary-lane follower was still braking
     towards the gap (``exit_giveup_patience_s``) or the vehicle beside the
     exiter was clearing it within the budget (``exit_abreast_patience_s``);
-    zero at both keys' default of 0; ``None`` for a meta written before. Two keys that are
+    zero at both keys' default of 0; ``None`` for a meta written before.
+    ``n_exiter_yields`` and ``n_entrant_yields`` (WP-54, 2026-09-24 block 3,
+    the crossing pair) count the vehicle-steps on which an exit-bound
+    changer was driven to stop behind a driven entrant halted ahead of it
+    in the auxiliary lane (``exiter_yields``) and on which a moving entrant
+    beside a due exiter was driven to fall behind its rear
+    (``entrant_yields``); zero at a switch's default of 0; ``None`` for a
+    meta written before; not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -312,6 +319,8 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_pair_releases: int | None = None
     n_missed_exit: int | None = None
     n_giveup_waited: int | None = None
+    n_exiter_yields: int | None = None
+    n_entrant_yields: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

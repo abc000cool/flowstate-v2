@@ -453,13 +453,16 @@ vehicle back on mode 512. Golden `merge_weave` regenerated for this change.
 derivations below each added keys): `ramp, exit, edges, exit_edge,
 exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
-n_missed, n_missed_exit, n_giveup_waited, n_forced_deferred, n_cooperations,
+n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
+n_entrant_yields, n_forced_deferred, n_cooperations,
 mean_follower_decel_ms2, n_changer_eased, n_vacated, n_vacate_refused,
 n_vacate_skipped_no_gap, n_vacate_requests, n_pair_releases, n_unfinished,
 n_exited, n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 33 keys (`n_giveup_waited` added by
+wait_in_s_mean, wait_out_s_mean` — 35 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
-abreast state, counts its waits in the same key and adds none)
+abreast state, counts its waits in the same key and adds none;
+`n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
+pair, the vehicle-steps of the two yields at the lane ends)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1085,6 +1088,50 @@ three minutes), and with the braking patience beside it the give-ups are
 372 of 466, under the no-lock pin; 5 and 20 s read as 10 s; commanding the
 abreast vehicle to hold was derived inert and bound on one vehicle-step
 over the grid. Golden `merge_weave` unchanged.
+
+**The crossing pair, 2026-09-24 (block 3, WP-54; the exiter's yield ships,
+the entrant's is off).** Two `WEAVE_DEFAULTS` switches
+(`microsim.runner._weave_yield_at_ends`; both commands go through
+`_weave_command`, one-step targets clipped at the vehicle's own `b`, SUMO's
+safety check on; counted in `n_cooperations` and in the two new keys).
+`exiter_yields` (default **1**): an exit-bound changer inside its forced
+zone is driven to stop behind a driven entrant halted (below the creep
+speed) at the auxiliary lane's end ahead of it — a virtual leader one
+entrant `minGap` behind the entrant's rear, the exit priority's hold with
+the roles exchanged, the command the smaller of IDM and the constant
+deceleration that stops there, asked only while feasible at the exiter's
+`b` — so the entrant changes ahead of it and the auxiliary lane it blocked
+moves again. The per-pair trace of the 24 crossing-pair give-ups
+(docs/WEAVE_MODEL_PLAN.md, dated section) found that such an entrant is not
+freed by the give-up of the exiter beside it: it stays, refused into lane 1
+by every lane-1 vehicle arriving inside its brake distance, and the next
+exiters halt beside it and are given up in turn — 16 halted entrants
+account for the 24, one for four. On the 29-run grid: give-ups 44 → 39,
+exits 5,988 of 6,131 → 6,015 of 6,142 reached, the entrances 5,944 → 5,973,
+pair releases 218 → 169, no lock, no collision, the T.H.52 rows and the
+golden unchanged (it binds on 89 vehicle-steps in four runs); from the
+whole section instead of the zone it read worse (46 given up, the T.H.52
+capacity fixture 4 / 5 given up at seeds 3 / 4). `entrant_yields` (default
+**0**): a moving driven entrant beside an exiter whose forced change is due
+is driven to fall behind the exiter's rear at its own `b` while it can
+still come to rest behind where the exiter's rear will be at the latest
+(the lane end; `v_E² / (2·b_E) ≤ rem_E − len_c − s0_c − s0_E`), never the
+follower of the exiter's gap, never one commanded already this step, never
+while the exiter is eased towards it. Measured and not made the default:
+the bound is met in 2 of the 24 pairs (by 1.4 m) — at the due moment the
+entrant is halted at its lane end already, abreast at speed parity with
+both braking for their lane ends at more than its `b`, or closing from
+behind already held at `−b` — and on the grid it binds on 21 vehicle-steps,
+five pairs in five runs (44 → 36 give-ups with one fewer exit; two of the
+five resolve as derived, the rest is the sequence moving), returns nothing on top of the exiter's
+yield (39 → 39, nine fewer exits, 37 fewer entrants) and, from the
+exiter's zone entry, locks the Ruth St module at the 271 m window (lane 1
+at 0.0 m/s for seven minutes). The keys are hash-neutral unless set;
+`weave_sections[i].n_exiter_yields` / `n_entrant_yields` (the 34th and
+35th keys above; `WeaveSectionDiagnosticsOut`, null for an older meta, not
+shown by the dashboard; aggregated by `WEAVE_FIELDS`) count the
+vehicle-steps on which each bound. Golden `merge_weave` unchanged at the
+default (no yield on `weave.osm`; hash 436cd4ec9e5d).
 
 ## 3. Run outputs
 
@@ -1977,8 +2024,12 @@ block 3) `n_giveup_waited` (vehicle-steps on which such a give-up was
 deferred by either bounded patience, `exit_giveup_patience_s` for the
 follower still braking towards the gap or `exit_abreast_patience_s` for
 the vehicle beside the exiter clearing it; zero at both defaults), null
-for a meta written before and not shown by the dashboard; the sweep
-summary's `diagnostics` block aggregates all eight the same way (`scripts/corridor_sweep.py`
+for a meta written before and not shown by the dashboard, and (WP-54,
+2026-09-24 block 3) `n_exiter_yields` / `n_entrant_yields` (vehicle-steps
+of the two yields at the lane ends, `exiter_yields` / `entrant_yields`;
+zero at a switch's default of 0), null for a meta written before and not
+shown by the dashboard; the sweep
+summary's `diagnostics` block aggregates all ten the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema
 brought in line with `_weave_meta`): `WeaveSectionDiagnosticsOut` also
