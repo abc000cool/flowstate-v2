@@ -881,6 +881,8 @@ class TestWeaveSchema:
             "entry_speed_bound": 0.0,
             # WP-58: the bounded hold (docs/WEAVE_MODEL_PLAN.md, dated section)
             "hold_release_s": 0.0,
+            # WP-60: the gated anticipation (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "anticipation_gate": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -1897,6 +1899,8 @@ def _weave_state(**params) -> dict:
         # WP-58: the bounded hold (per-changer state; holds dropped)
         "hold": {},
         "n_hold_releases": 0,
+        # WP-60: the gated anticipation (withheld follower commands)
+        "n_anticipation_gated": 0,
         "gave_up": set(),
         "through_target": "z",
         "n_forced_deferred": 0,
@@ -3890,6 +3894,126 @@ class TestWeaveHoldRelease:
         assert ws["hold"]["n"]["since"] == 0.5  # the clock runs; nothing drops
 
 
+class TestWeaveAnticipationGate:
+    """The gated anticipation (WP-60, 2026-09-24 block 3):
+    ``microsim.runner._weave_coop_gate`` and its hook in ``_weave_cooperate``
+    under ``anticipation_gate`` (docs/WEAVE_MODEL_PLAN.md, dated section). The
+    rule's statement is pinned so a set switch behaves as documented,
+    whatever the default; ``test_default`` pins the default."""
+
+    @staticmethod
+    def _state(v_f: float, **params):
+        """Entrant ``n`` at 20 m/s on the ramp ``r`` (offset −200 m; at
+        ``pos`` 120 its front is 80 m before the section start, 4 s at its
+        speed), approaching, with no lane-1 vehicle ahead of it; ``F`` on
+        the ramp's lane-1 continuation 25 m behind n's rear at ``v_f`` (an
+        exit-bound id, so not itself an approaching entrant)."""
+        ws = _weave_state(**params)
+        ws["ramp_edges"] = frozenset({"r"})
+        ws["x_offset"]["r"] = -200.0
+        ws["lane_map"][("r", 0)] = 0
+        ws["lane_map"][("r", 1)] = 1
+        ws["exiting_ids"] = frozenset({"e", "F"})
+        veh = _WeaveVehicle({"n": 20.0, "F": v_f})
+        res = {"n": _res("r", 0, 120.0, 20.0), "F": _res("r", 1, 90.0, v_f)}
+        return ws, veh, _WeaveMod(veh), res
+
+    def test_the_closed_form(self):
+        """``t_open = (Δv + √(Δv² + 2·b·D)) / b`` with ``D = s0 + accept·v_F
+        − s_f``: the time after which F, braking at ``b`` from now, has its
+        gap back at the acceptance's time gap; F cooperates iff the root is
+        real and the entrant arrives no later. A negative discriminant is
+        the brake-gap test (F can shed its closing speed at ``b`` and keep
+        the gap): never. Open and opening: never."""
+        from microsim.runner import _weave_coop_gate
+
+        b, s0, acc = 1.67, 2.0, 0.6
+        # the queued entrant: F at 10 m/s 20 m behind a 5 m/s projection —
+        # D = −12, discriminant 25 − 40.1 < 0 — is not held at any horizon
+        for t_e in (0.1, 1.0, 5.0, 20.0):
+            assert not _weave_coop_gate(20.0, 10.0, 5.0, s0, acc, b, t_e)
+        # F at the projected rear: D = 8, the root (5 + √(25 + 26.72))/1.67 = 7.30 s
+        root = (5.0 + math.sqrt(25.0 + 2.0 * b * 8.0)) / b
+        assert root == pytest.approx(7.30, abs=0.01)
+        assert _weave_coop_gate(0.0, 10.0, 5.0, s0, acc, b, root - 1e-9)
+        assert not _weave_coop_gate(0.0, 10.0, 5.0, s0, acc, b, root + 1e-9)
+        # braking at b for the root's time returns the gap to s0 + accept·v_F
+        assert -5.0 * root + b * root**2 / 2.0 == pytest.approx(s0 + acc * 10.0)
+        # open and opening: never
+        assert not _weave_coop_gate(30.0, 18.0, 20.0, s0, acc, b, 0.01)
+        # the fast arrival (28.7 m/s behind 19 m/s): the discriminant changes
+        # sign where F's gap is the time gap plus its brake gap, 47.4 m
+        s_brake = s0 + acc * 28.7 + 9.7**2 / (2.0 * b)
+        assert s_brake == pytest.approx(47.4, abs=0.05)
+        assert not _weave_coop_gate(s_brake + 0.1, 28.7, 19.0, s0, acc, b, 0.5)
+        assert _weave_coop_gate(s_brake - 0.1, 28.7, 19.0, s0, acc, b, 4.0)
+
+    def test_a_follower_not_yet_needed_is_not_held(self):
+        """F at parity 25 m behind (D = 2.5 + 12 − 25 = −10.5 m, the
+        discriminant −35 < 0): the gate withholds the hold IDM towards n
+        would give (−0.50 m/s², below F's free-road model), counts the step
+        in ``n_anticipation_gated`` and leaves the gap choice alone (``pre``
+        still reads F); nobody is commanded."""
+        from microsim.runner import _weave_meta, _weave_step
+
+        ws, veh, mod, res = self._state(20.0, anticipation_gate=1.0)
+        for k in range(4):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        assert not [c for c in veh.calls if c[0] == "slow"]
+        assert ws["n_anticipation_gated"] == 4 and ws["n_cooperations"] == 0
+        assert ws["pre"] == {"n": "F"} and ws["hold"]["n"]["gate_f"] is None
+        assert _weave_meta(ws, {})["n_anticipation_gated"] == 4
+
+    def test_a_needed_follower_is_held_and_the_hold_kept(self):
+        """F closing at 28 m/s on n at 20 (D = −5.7 m, the root (8 + √45)/1.67
+        = 8.8 s against n's 4 s): the gate opens and F is held (IDM towards
+        n, clipped at −b: 28 − 0.835 m/s); once started, the hold on F is
+        kept without re-reading the gate — F at parity on the next steps,
+        which the gate alone would refuse, is still held."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod, res = self._state(28.0, anticipation_gate=1.0)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "slow"] == [
+            ("slow", "F", pytest.approx(28.0 - 0.5 * 1.67), 0.0)
+        ]
+        assert ws["hold"]["n"]["gate_f"] == "F" and ws["n_anticipation_gated"] == 0
+        veh.speeds["F"] = 20.0
+        res["F"] = _res("r", 1, 90.0, 20.0)
+        for k in range(1, 4):
+            veh.calls.clear()
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+            assert [c[1] for c in veh.calls if c[0] == "slow"] == ["F"]
+        assert ws["n_anticipation_gated"] == 0 and ws["n_cooperations"] == 4
+
+    def test_the_section_cooperation_is_not_gated(self):
+        """A driven entrant on the section (``arrival_s`` not given) holds
+        its follower as before with the switch set."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(anticipation_gate=1.0)
+        ws["exiting_ids"] = frozenset({"e", "F"})
+        veh = _WeaveVehicle({"n": 20.0, "F": 20.0})
+        res = {"n": _res("a", 0, 50.0, 20.0), "F": _res("a", 1, 20.0, 20.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert [c[1] for c in veh.calls if c[0] == "slow"] == ["F"]
+        assert ws["n_anticipation_gated"] == 0 and ws["n_cooperations"] == 1
+
+    def test_default(self):
+        """Off by default (measured and left off, docs/WEAVE_MODEL_PLAN.md
+        WP-60): the follower of the first case is held from the zone's
+        entry, as the second attempt's anticipation had it."""
+        from flowstate_core.config import WEAVE_DEFAULTS
+        from microsim.runner import _weave_step
+
+        assert WEAVE_DEFAULTS["anticipation_gate"] == 0.0
+        ws, veh, mod, res = self._state(20.0)
+        for k in range(4):
+            _weave_step(mod, _tc, ws, res, 0.5 * k)
+        assert len([c for c in veh.calls if c[0] == "slow"]) == 4
+        assert ws["n_anticipation_gated"] == 0 and ws["n_cooperations"] == 4
+
+
 class TestMeterStopPlacementReview:
     """Review of 2026-09-24: the braking inequality and its units."""
 
@@ -4761,6 +4885,7 @@ class TestWeaveReviewDerivations3To6:
             "n_entrant_yields": 0,
             "n_entry_bounded": 0,
             "n_hold_releases": 0,
+            "n_anticipation_gated": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

@@ -206,6 +206,11 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # seconds (2 s, ``pair_release_s``'s two reaction times, is the measured
     # form); not a fitted value.
     "hold_release_s": 0.0,
+    # 2026-09-24 (block 3, WP-60): the gated anticipation — an approaching
+    # entrant's gap follower held only once the entrant arrives no later than
+    # the follower can open the gap at its own b; see the key's paragraph in
+    # the docstring below. A switch, not a fitted value.
+    "anticipation_gate": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -495,7 +500,31 @@ held follower at a time and reaches the section, or the lane end, with no
 gap, so the forced changes, the deferrals and the pairs at the lane ends
 grow. No collision in any form; the default is byte-identical to the
 grid before the key. A positive value is two human reaction times
-(Treiber & Kesting 2013, ch. 12) at 2 s; not a fitted value."""
+(Treiber & Kesting 2013, ch. 12) at 2 s; not a fitted value.
+``anticipation_gate`` (2026-09-24, block 3, WP-60, the gated anticipation):
+``1`` holds the follower of an approaching entrant's chosen gap (the ramp
+anticipation of ``microsim.runner._weave_cooperate``) only from the step on
+which the entrant's time to the section start, its distance over its speed
+floored at the creep speed, is no longer than the time the follower needs to
+open the gap at its own ``b`` — the positive root ``t_open = (Δv + √(Δv² +
+2·b·D))/b`` of ``b·τ²/2 − Δv·τ − D = 0``, with ``Δv`` the follower's closing
+speed on the entrant's projection and ``D = s0 + accept_gap_s · v_F − s_F``
+the deficit to the acceptance's time gap; no hold while the discriminant is
+negative, the follower able to shed its closing speed at ``b`` and keep the
+gap (``microsim.runner._weave_coop_gate``) — and from then on while it stays
+the chosen follower. The gap choice and the entrant's easing are untouched;
+the withheld commands that would have bound are counted in
+``n_anticipation_gated``. The default is **0** (off, hash-neutral unless
+set): on the same 29-run fixture grid as WP-52..58 (docs/WEAVE_MODEL_PLAN.md,
+dated section WP-60) it removes 88 % of the held steps on ramp entrants
+(109,904 → 13,142) and reads worse on every criterion — give-ups 44 → 58,
+exits 5,988 → 5,782, the entrances 5,944 → 5,415, lane-1 minutes at or below
+5 m/s 14 → 31, forced changes deferred 5,439 → 10,549, pair releases 218 →
+680, the T.H.52 capacity fixture 379 / 315 / 343 of 466 departed (395 / 401
+/ 373 at the default) with lane 1 at the section start at or below 5 m/s in
+6 / 14 / 9 minutes (2 / 5 / 4) and its no-lock pin broken at seeds 4 and 5;
+no collision. The entrants reach the section without their gap: the early
+hold is the positioning they arrive with. A switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

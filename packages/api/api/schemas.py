@@ -296,7 +296,13 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     changer's cooperating follower released after the changer stopped
     closing on its gap for longer than ``hold_release_s``, each once; zero
     at the default of 0; ``None`` for a meta written before; not shown by
-    the dashboard. Two keys that are
+    the dashboard. ``n_anticipation_gated`` (WP-60, 2026-09-24 block 3, the
+    gated anticipation) counts the vehicle-steps on which an approaching
+    entrant's gap follower was not commanded because the entrant arrives
+    later than the follower needs to open the gap at its own ``b``
+    (``anticipation_gate``), counted only where the command would have
+    bound; zero at the default of 0; ``None`` for a meta written before;
+    not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -333,6 +339,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_entrant_yields: int | None = None
     n_entry_bounded: int | None = None
     n_hold_releases: int | None = None
+    n_anticipation_gated: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

@@ -2133,6 +2133,7 @@ def _weave_cooperate(
     remaining_m: float,
     priority: bool = False,
     t: float = 0.0,
+    arrival_s: float | None = None,
 ) -> str | None:
     """Choose a changer's gap on ``target_lane`` and record the two speed targets.
 
@@ -2216,6 +2217,19 @@ def _weave_cooperate(
     open and the changer is outside the follower's brake distance
     (:func:`_weave_hold_release`, which has the derivation). ``t`` is the
     simulation time the bound's clock reads.
+
+    The gated anticipation (2026-09-24, block 3, WP-60; ``anticipation_gate``,
+    off by default): ``arrival_s`` is given for an entrant still on the ramp
+    (the ``approaching`` loop of :func:`_weave_step`) — its time to the
+    section start. With the key set, the gap's follower is first commanded
+    on the step on which :func:`_weave_coop_gate` finds the entrant
+    arriving no later than the time F needs to open the gap at its own
+    ``b``, and from then on while it stays the chosen follower (latched in
+    the hold state's ``gate_f``); the gap choice, the commitment and the
+    entrant's easing are untouched. A withheld command that would have
+    bound (below F's own model) is counted in ``n_anticipation_gated``.
+    Measured on the fixture grid and left off (:func:`_weave_coop_gate`
+    has the numbers).
 
     Returns:
         The chosen gap's follower id (the commitment carried to the next
@@ -2314,7 +2328,34 @@ def _weave_cooperate(
             )
     else:
         _weave_hold_release(hs, t, step_s, None, v_c, 0.0, 0.0, False, False, priority, 0.0)
-    if f_t is not None:
+    gated = False
+    if (
+        f_t is not None
+        and arrival_s is not None
+        and prm["anticipation_gate"] > 0.0
+        and hs["gate_f"] != f_t
+    ):
+        # the gated anticipation (WP-60): an approaching entrant's follower
+        # is held only once the entrant arrives no later than the follower
+        # can open the gap at its own b; once started, the hold on that
+        # follower is kept as the anticipation had it
+        if _weave_coop_gate(
+            x_of[vid] - p_c["len"] - x_of[f_t],
+            v_of[f_t],
+            v_c,
+            p_c["s0"],
+            accept_s,
+            p_of[f_t]["b"],
+            arrival_s,
+        ):
+            hs["gate_f"] = f_t
+        else:
+            gated = True
+            would: dict[str, tuple[float, float, bool]] = {}
+            _weave_command(mod, would, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
+            if would:
+                ws["n_anticipation_gated"] += 1
+    if f_t is not None and not gated:
         _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
     if l_t is not None and a_c < 0.0:
         s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
@@ -2328,11 +2369,130 @@ def _weave_cooperate(
     return f_t
 
 
+def _weave_coop_gate(
+    s_f: float,
+    v_f: float,
+    v_c: float,
+    s0_c: float,
+    accept_s: float,
+    b_f: float,
+    arrival_s: float,
+) -> bool:
+    """Whether the follower of an approaching entrant's chosen gap cooperates yet (WP-60).
+
+    The gated anticipation (2026-09-24, block 3, WP-60; docs/WEAVE_MODEL_PLAN.md,
+    dated section; ``anticipation_gate``). The ramp anticipation of the second
+    attempt (:func:`_weave_step`) has an entrant still on the on-ramp within
+    ``lookahead_m`` of the section choose its lane-1 gap and hold that gap's
+    follower F at IDM towards it (:func:`_weave_cooperate`) from the moment it
+    enters the zone. WP-58's hold trace read 53 % of all held steps on the
+    fixture grid as such entrants, at a median 5.7 m/s, and 36 of the 40
+    longest stalls (22.5–43 s) as ramp-queue entrants holding F at their own
+    speed — a lane-1 throttle at the ramp queue's speed, started 120 m and up
+    to 20 s before the entrant can use the gap. This gate starts the hold
+    only when it is needed: when the entrant's time to the section start is
+    no longer than the time F needs to open the gap at its own ``b``.
+
+    **The closed form.** Take the entrant's projection onto lane 1 (its front
+    at ``x_c``, speed ``v_c``, held constant) and F behind it with the gap
+    ``s_f = x_c − len_c − x_F`` and the closing speed ``Δv = v_F − v_c``.
+    The gap the acceptance asks of the follower side is the time gap at F's
+    speed, ``s_need = s0_c + accept · v_F`` (:func:`_weave_step`, the
+    acceptance; F's current speed, the largest it has over the manoeuvre),
+    so the deficit now is ``D = s_need − s_f`` (negative when open). F
+    braking at ``b_F`` from now holds the gap ``s(τ) = s_f − Δv·τ +
+    b_F·τ²/2`` after ``τ`` seconds: it closes at the closing speed, and
+    braking for ``τ`` opens ``b_F·τ²/2`` against holding the speed. The time
+    F needs to open the gap is when ``s(τ)`` is back at ``s_need`` — the
+    positive root of ``b_F·τ²/2 − Δv·τ − D = 0``::
+
+        t_open = (Δv + √(Δv² + 2·b_F·D)) / b_F
+
+    With ``Δv² + 2·b_F·D < 0`` (``s_f − Δv²/(2·b_F) > s_need``: F can shed
+    its closing speed at ``b_F`` and still keep the accepted gap) braking at
+    ``b_F`` never lets the gap fall short, and nothing is needed yet; with
+    ``D ≤ 0`` and ``Δv ≤ 0`` the root is ``≤ 0`` (open and opening). F
+    cooperates on a step iff the root is real and the entrant's time to the
+    section start ``arrival_s`` (its distance over ``max(v_c, creep)``) is
+    no longer than it: ``arrival_s ≤ t_open``. Otherwise F keeps its own
+    car-following this step. Read every step, the gate opens on the step at
+    which waiting any longer would leave the gap short at the entrant's
+    arrival even with F braking at ``b_F`` from there — or never, when F
+    passes the projection first (a follower that would be ahead of the
+    entrant by the time it arrives is not held behind it). Once it has
+    opened for a follower the hold on that follower is kept as the
+    anticipation had it (:func:`_weave_cooperate`, ``gate_f`` in the
+    changer's hold state): the gate decides when the hold starts, not
+    whether it continues — re-read on every step it let F go again as soon
+    as F had slowed enough and held it again a step later. The brake gap
+    of the speed-aware guard, ``Δv⁺²/(2·b_F)``, is inside the root: under
+    braking at ``b_F`` the gap left after the closing speed is shed,
+    ``s(τ) − (Δv − b_F·τ)²/(2·b_F) = s_f − Δv²/(2·b_F)``, is invariant, so
+    the discriminant's sign is that term's test. The IDM absorption term of
+    the acceptance is F's own model and has no closed form; the section's
+    cooperation (ungated) finishes what the gate starts late.
+
+    Worked at constant speeds and 0.5-s steps (``b_F`` 1.67 m/s², ``s0``
+    2 m, ``accept`` 0.6 s): the queued entrant 100 m out at 5 m/s (20 s)
+    with a lane-1 follower at 10 m/s 20 m behind its projected rear reads
+    ``D`` = −12 m and a discriminant of −15, no hold; F reaches the
+    projected rear 4 s later, when its root is 7.3 s against the entrant's
+    16 s — it is never held. For the arrival the anticipation was built for
+    (a through vehicle at 28.7 m/s meeting an entrant appearing at 19 m/s
+    7 m ahead of it; second attempt, docs/WEAVE_MODEL_PLAN.md) the gate
+    opens with F 44 m behind, 3.8 s before the arrival (6.3 s at the zone's
+    entry ungated); braking at ``b_F`` F arrives at 22.3 m/s 19.2 m behind
+    and settles 15.8 m behind at the entrant's speed (13.4 m asked there),
+    2.0 s into the section.
+
+    **Measured and left off** (``anticipation_gate`` = 0;
+    docs/WEAVE_MODEL_PLAN.md, WP-60). On the 29-run fixture grid the gate
+    does what it was derived to do — the held steps on ramp entrants fall
+    from 109,904 to 13,142 (53 % → 10 % of the held steps), the 40 longest
+    stalls are no longer ramp holds (36 → 11), it opens for 13 % of the
+    (entrant, follower) readings, 3.1 s before the arrival at the median —
+    and reads worse on every criterion: 62 % of the entrants reach the
+    section with no follower held, the lane-1 follower meets the
+    acceptance's time gap at the arrival for 53 % of them against 78 %, the
+    hold moves onto the section (entrants' held steps 31,444 → 48,223),
+    give-ups 44 → 58, exits 5,988 → 5,782, lane-1 minutes at or below 5 m/s
+    14 → 31, forced changes deferred 5,439 → 10,549, pair releases 218 →
+    680, the entrances 5,944 → 5,415, and T.H.52 at capacity departs 379 /
+    315 / 343 of 466 (395 / 401 / 373 at the default) with lane 1 at the
+    section start at or below 5 m/s in 6 / 14 / 9 minutes (2 / 5 / 4),
+    breaking the no-lock pin at seeds 4 and 5. The early hold is the
+    positioning the entrant arrives with, not only a throttle. The form
+    re-read every step collided twice; the deficit at the fleet's 1.4-s
+    headway instead of the acceptance's 0.6 s locked the Ruth St corridor
+    fleet's exit peak at seed 3. No collision in the latched form.
+
+    Args:
+        s_f: F's gap to the entrant's projected rear [m].
+        v_f: F's speed [m/s].
+        v_c: The entrant's speed [m/s].
+        s0_c: The entrant's ``minGap`` [m].
+        accept_s: The entering movement's accepted time gap [s].
+        b_f: F's comfortable deceleration [m/s²].
+        arrival_s: The entrant's time to the section start [s].
+
+    Returns:
+        Whether F is to be commanded this step.
+    """
+    dv = v_f - v_c
+    deficit = s0_c + accept_s * v_f - s_f
+    disc = dv * dv + 2.0 * b_f * deficit
+    if disc < 0.0:
+        return False
+    t_open = (dv + math.sqrt(disc)) / b_f
+    return arrival_s <= t_open
+
+
 def _weave_hold_state() -> dict[str, Any]:
     """A changer's bounded-hold state (WP-58): the follower under the clock,
     the first stalled step, last step's deficit and projected arrival, the
     last readings (for traces), and the released followers with the time
-    until which each is blocked."""
+    until which each is blocked; and (WP-60, the gated anticipation) the
+    follower whose hold the gate has started."""
     return {
         "f": None,
         "since": None,
@@ -2341,6 +2501,8 @@ def _weave_hold_state() -> dict[str, Any]:
         "open": False,
         "brake": False,
         "blocked": {},
+        # WP-60, the gated anticipation: the follower whose hold has started
+        "gate_f": None,
     }
 
 
@@ -3211,6 +3373,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     the fixture grid in seven forms and left off: every one reads worse
     than the unbounded hold (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **The gated anticipation** (2026-09-24, block 3, WP-60;
+    :func:`_weave_coop_gate`, ``anticipation_gate``, off by default). The
+    anticipation's follower is held only from the step on which the
+    entrant's time to the section start is no longer than the time the
+    follower needs to open the gap at its own ``b``, then kept; counted in
+    ``n_anticipation_gated``. Measured on the fixture grid and left off:
+    the ramp holds it removes are the positioning the entrant arrives with,
+    and every criterion reads worse (docs/WEAVE_MODEL_PLAN.md, dated
+    section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -3614,6 +3786,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             prm["accept_gap_s"],
             dist_m,
             t=t,
+            # the gated anticipation (WP-60): the entrant's time to the
+            # section start at its speed, floored at the creep speed
+            arrival_s=(x_start - x_of[vid]) / max(v_of[vid], SCRIPTED_MERGE_CREEP_MS),
         )
         if prm["entry_speed_bound"] > 0.0:
             # the entrant's entry speed (WP-57): no faster onto the
@@ -3681,7 +3856,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``n_hold_releases`` (WP-58, the bounded hold) the holds dropped — a
     changer's cooperating follower released after the changer stopped
     closing on the gap for longer than ``hold_release_s``, each once
-    (:func:`_weave_hold_release`; zero at the default of 0).
+    (:func:`_weave_hold_release`; zero at the default of 0);
+    ``n_anticipation_gated`` (WP-60, the gated anticipation) the
+    vehicle-steps on which an approaching entrant's gap follower was not
+    commanded because the entrant arrives later than the follower needs to
+    open the gap at its ``b``, counted only where the command would have
+    bound (:func:`_weave_coop_gate`; zero at ``anticipation_gate`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -3727,6 +3907,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_entrant_yields": ws["n_entrant_yields"],
         "n_entry_bounded": ws["n_entry_bounded"],
         "n_hold_releases": ws["n_hold_releases"],
+        "n_anticipation_gated": ws["n_anticipation_gated"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -4467,6 +4648,9 @@ def run_micro(
                     # holds dropped (each once)
                     "hold": {},
                     "n_hold_releases": 0,
+                    # WP-60: the gated anticipation — the approaching
+                    # entrants' follower commands withheld (vehicle-steps)
+                    "n_anticipation_gated": 0,
                     # exit-bound vehicles rerouted through at the gore's end
                     # (exit-side derivation): no longer driven; their new
                     # destination is the corridor's last edge
