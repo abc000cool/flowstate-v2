@@ -1,0 +1,49 @@
+# Per-lane crossing counts through the T.H.52 weave (WP-59's next measurement, 2026-09-24, block 3).
+# For each reference position x_ref (simulation x, m) a crossing is a vehicle whose consecutive samples
+# straddle x_ref (x_prev < x_ref <= x_cur); it is counted in the lane of the later sample. Prints, per
+# x_ref and 5-min window of the run's first T_END seconds, the flow per lane and in total [veh/h] and
+# the mean crossing speed per lane [m/s]; then per x_ref the hour's totals. Reads only t, veh_id, x,
+# lane, v for t < T_END, so the first hour of a four-hour run fits in memory on the pipeline VM.
+import sys
+import numpy as np
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
+
+run = sys.argv[1]
+X_REFS = [float(a) for a in (sys.argv[2].split(",") if len(sys.argv) > 2 else "9900,10150,10300,10450,10700".split(","))]
+T_END, WIN = 3600.0, 300.0
+pf = pq.ParquetFile(f"{run}/trajectories.parquet")
+parts = []
+for i in range(pf.num_row_groups):
+    tb = pf.read_row_group(i, columns=["t", "veh_id", "x", "lane", "v"])
+    tb = tb.filter(pc.less(tb["t"], T_END))
+    if tb.num_rows:
+        parts.append(tb)
+if not parts:
+    print("no samples before", T_END); sys.exit()
+t = np.concatenate([p["t"].to_numpy() for p in parts])
+vid = np.concatenate([p["veh_id"].to_numpy(zero_copy_only=False) for p in parts])
+x = np.concatenate([p["x"].to_numpy() for p in parts])
+lane = np.concatenate([p["lane"].to_numpy() for p in parts]).astype(int)
+v = np.concatenate([p["v"].to_numpy() for p in parts])
+_, code = np.unique(vid, return_inverse=True)
+order = np.lexsort((t, code))
+t, code, x, lane, v = t[order], code[order], x[order], lane[order], v[order]
+same = code[1:] == code[:-1]
+x0, x1 = x[:-1], x[1:]
+print(f"run {run}: {len(t)} samples before t={T_END:.0f} s, {code.max() + 1} vehicles")
+for xr in X_REFS:
+    hit = same & (x0 < xr) & (x1 >= xr)
+    tc, ln, vc = t[1:][hit], lane[1:][hit], v[1:][hit]
+    lanes = sorted(set(ln.tolist()))
+    print(f"\nx_ref = {xr / 1000:.2f} km: {hit.sum()} crossings in the first hour, lanes seen {lanes}")
+    print("  window      " + "  ".join(f"lane {k}: veh/h  v" for k in lanes) + "   total veh/h")
+    for w0 in np.arange(0.0, T_END, WIN):
+        m = (tc >= w0) & (tc < w0 + WIN)
+        cells = []
+        for k in lanes:
+            mk = m & (ln == k)
+            n = int(mk.sum())
+            cells.append(f"{n * 3600 / WIN:7.0f} {vc[mk].mean() if n else float('nan'):4.1f}")
+        print(f"  {w0 / 60:3.0f}-{(w0 + WIN) / 60:3.0f} min " + "  ".join(cells) + f"   {int(m.sum()) * 3600 / WIN:7.0f}")
+    print("  hour     " + "  ".join(f"lane {k}: {int((ln == k).sum())} veh" for k in lanes) + f"   total {len(tc)} veh")

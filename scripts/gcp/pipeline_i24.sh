@@ -388,6 +388,19 @@ stage mndot_weave_seed5_diag bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/basel
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_seed.py.txt \$D > logs/diag_seed5_50m_1min_lanes.txt && \
   for d in runs/${MNDOT}_weave_seed5/baseline/*/*/; do echo \$d; $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$d | tail -n 12; done > logs/diag_seed5_all_100m_5min.txt" || say "mndot_weave_seed5_diag failed; continuing"
 
+# 10f. Per-lane crossing counts through the T.H.52 weave (WP-59's next measurement, 2026-09-24, block 3):
+#     the corrected weave scenario's first hour, 4 seeds, every trajectory kept; then, per seed, the
+#     per-lane flow and crossing speed in 5-min windows at 9.90 / 10.15 / 10.30 / 10.45 / 10.70 km
+#     (simulation x) — whether lane 0 carries almost nothing on the 3-lane edge before the gore.
+stage mndot_head60_lanes $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave_head60.yaml \
+  --observations data/mndot/$MNDOT/observations.json --replicates 4 --procs "$PROCS" \
+  --out runs/${MNDOT}_weave_head60_lanes/baseline --artifact artifacts/validation_${MNDOT}_weave_head60_lanes.json \
+  --report-dir docs/reports/${MNDOT}_weave_head60_lanes --criteria-profile fhwa_tat3_2004 --keep-trajectories \
+  || say "mndot_head60_lanes failed; continuing"
+stage mndot_head60_lanes_diag bash -c "for d in runs/${MNDOT}_weave_head60_lanes/baseline/*/*/; do \
+  $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lanes.py.txt \$d; done > logs/diag_head60_lane_crossings.txt 2>&1" \
+  || say "mndot_head60_lanes_diag failed; continuing"
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
