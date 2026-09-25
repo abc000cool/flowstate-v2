@@ -455,11 +455,11 @@ exit_edges, length_m, length_m_measured, params, short_section,
 vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
 n_entrant_yields, n_entry_bounded, n_hold_releases, n_anticipation_gated,
-n_forced_deferred, n_cooperations, mean_follower_decel_ms2,
+n_exit_prepared, n_forced_deferred, n_cooperations, mean_follower_decel_ms2,
 n_changer_eased, n_vacated, n_vacate_refused, n_vacate_skipped_no_gap,
 n_vacate_requests, n_pair_releases, n_unfinished, n_exited,
 n_reached_section_exiting, n_departed_exiting, wait_s_mean,
-wait_in_s_mean, wait_out_s_mean` — 38 keys (`n_giveup_waited` added by
+wait_in_s_mean, wait_out_s_mean` — 39 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
@@ -472,7 +472,9 @@ followers released after their changer stopped closing on its gap for
 longer than `hold_release_s`, each once; `n_anticipation_gated` added by
 WP-60, the gated anticipation, the vehicle-steps on which an approaching
 entrant's gap follower was not yet commanded, counted where the command
-would have bound)
+would have bound; `n_exit_prepared` added by WP-62, the exiters' early
+move, the vehicles bound for the paired exit that the rule moved into the
+lane feeding section lane 1 before the section, each once)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1278,7 +1280,42 @@ T.H.52 capacity fixture 379 / 315 / 343 of 466 departed against 395 / 401
 / 373 and its no-lock pin broken at seeds 4 and 5; no collision. The
 entrants reach the section without their gap (the lane-1 follower at the
 acceptance's time gap at the arrival for 53 % of them against 78 %).
-Golden `merge_weave` unchanged at the default (hash 436cd4ec9e5d).
+Golden `merge_weave` unchanged at the default (hash 436cd4ec9e5d). **The
+exiters' early move** (2026-09-24, block 3, WP-62;
+`WEAVE_DEFAULTS["exit_prepare"]`, default 0 = off, hash-neutral unless set;
+measured and left off): the vacate rule's mirror for the exit movement. A
+vehicle bound for the paired exit (not given up) on a corridor edge of the
+vacate window (`vacate_ahead_m`, the cross-edge walk of
+`_weave_vacate_lanes`) in a lane left of the one feeding section lane 1
+(`k_from`, per edge from netconvert's connections) is asked into that lane
+under the vacate rule's own terms (`microsim.runner._weave_exit_prepare_step`):
+at `vacate_no_follower_braking` = 0 once, `changeLane(k_from)` under mode
+512 for the travel time to the section start, re-addressed across window
+edges; at 1 one lane per accepting step under mode 768, the gap read by
+`_weave_vacate_gap_ok` with the changer's brake gap on the target lane's
+leader (`brake_lead`); bounded by `vacate_max_veh_h` or the target lane's
+spare capacity (`_weave_vacate_bound_veh_h(..., "prep_flow_s")`); handed
+back — mode restored, an open request ended by a one-step stay — when seen
+in `k_from` or in section lane 1 (`n_exit_prepared`), or on reaching the
+section still left of it, before the section takes the vehicle under
+control. Ordering against the vacate rule: the vacate rule runs first each
+step, and an exiter one lane left of `k_from` abreast of a vacate-held
+through vehicle in `k_from` (`_weave_exit_prepare_abreast`) is not asked
+while the pair lasts, an open request suspended by a one-step stay and
+re-issued once clear — without it such pairs, each asking into the
+other's lane under mode 512, stood for up to 82 s on the fixture grid.
+`weave_sections[i].n_exit_prepared` (the **39th key**;
+`WeaveSectionDiagnosticsOut`, null for an older meta, not shown by the
+dashboard; aggregated by `WEAVE_FIELDS`). On the corridor section test's
+fixture (`weave_th52_corridor.osm`, seeds 3 / 4 / 5) it moves 71 / 95 / 95
+exiters and no criterion improves (T.H.52 371 / 355 / 337 of 407 against
+368 / 360 / 350; the exit end's lanes at or below 20 m/s in 11 / 10 / 14
+of 16 windows against 10 / 11 / 13; the mainline 1,105 and 1,116 of 1,196
+at seeds 4 and 5, under the 1,137 asked); on the 29-run grid give-ups 44 →
+45, the entrances 5,944 → 5,847, lane-1 minutes at or below 5 m/s at the
+gore's end 14 → 17, the T.H.52 capacity fixture's no-lock pin failing at
+seed 5 (3 exits missed); no collision. Golden `merge_weave` unchanged at
+the default (hash 436cd4ec9e5d).
 
 ## 3. Run outputs
 
@@ -2185,7 +2222,11 @@ shown by the dashboard, and (WP-60, 2026-09-24 block 3)
 `n_anticipation_gated` (vehicle-steps on which the gated anticipation,
 `anticipation_gate`, withheld an approaching entrant's follower command
 that would have bound; zero at its default of 0), null for a meta written
-before and not shown by the dashboard; the sweep
+before and not shown by the dashboard, and (WP-62, 2026-09-24 block 3)
+`n_exit_prepared` (the vehicles bound for the paired exit that the
+exiters' early move, `exit_prepare`, moved into the lane feeding section
+lane 1 before the section, each once; zero at its default of 0), null for
+a meta written before and not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all of them the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema

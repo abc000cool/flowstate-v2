@@ -211,6 +211,11 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # the follower can open the gap at its own b; see the key's paragraph in
     # the docstring below. A switch, not a fitted value.
     "anticipation_gate": 0.0,
+    # 2026-09-24 (block 3, WP-62): exiters asked, inside the vacate window,
+    # into the lane that feeds section lane 1 — the vacate rule's mirror for
+    # the exit movement; see the key's paragraph in the docstring below. A
+    # switch, not a fitted value.
+    "exit_prepare": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -524,7 +529,41 @@ exits 5,988 → 5,782, the entrances 5,944 → 5,415, lane-1 minutes at or below
 / 373 at the default) with lane 1 at the section start at or below 5 m/s in
 6 / 14 / 9 minutes (2 / 5 / 4) and its no-lock pin broken at seeds 4 and 5;
 no collision. The entrants reach the section without their gap: the early
-hold is the positioning they arrive with. A switch, not a fitted value."""
+hold is the positioning they arrive with. A switch, not a fitted value.
+``exit_prepare`` (2026-09-24, block 3, WP-62, the exiters' early move): ``1``
+asks each vehicle bound for the paired exit that is inside the vacate window
+(``vacate_ahead_m``, measured along the chain as for the vacate rule) in a
+lane *left* of the one feeding section lane 1 to move into that lane — the
+vacate rule's mirror for the exit movement: section lane 0 begins at the
+entrance's gore and leads only to the exit, so section lane 1 is the one lane
+from which a single change reaches it, and an exiter arriving in section lane
+``k`` owes ``k`` changes through lanes the entering movement crosses the
+other way (the HCM 7th ed. ch. 13 ramp weave counts one change per exiter,
+from the lane next to the auxiliary lane). Under the vacate rule's own terms
+(``microsim.runner._weave_exit_prepare_step``): asked once under mode 512 with
+the request living to the section start, or, with
+``vacate_no_follower_braking``, one lane per accepting step under mode 768
+with the changer's brake gap on the (slower) target lane's leader; bounded by
+``vacate_max_veh_h`` or the target lane's spare capacity; nobody else
+commanded; never against the vehicle's route. Where an exiter and a through
+vehicle held by the vacate rule stand abreast, each asking into the other's
+lane, the vacate request goes first (SUMO does not order such a pair: on the
+fixture grid they stood for up to 82 s). The exiters moved into the lane before
+the section are counted in ``n_exit_prepared``. The default is **0** (off,
+hash-neutral unless set): measured on the corridor section test's fixture
+(``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5;
+docs/WEAVE_MODEL_PLAN.md, dated section WP-62) it moves 71 / 95 / 95 exiters
+and no criterion improves — the T.H.52 entrance 371 / 355 / 337 of 407 against
+368 / 360 / 350, the exit end's lanes at or below 20 m/s in 11 / 10 / 14 of 16
+windows against 10 / 11 / 13, the mainline 1,105 and 1,116 of 1,196 at seeds 4
+and 5 (1,137 asked), the exit end's lane 0 1,044 / 1,080 / 1,089 veh/h against
+1,035 / 1,104 / 1,122 — because in free flow SUMO's own strategic change
+(``lcStrategic`` 5) has already put the exiters in that lane, and once it
+queues the move finds no gap (16 / 50 / 54 of the asked reach the section
+still left of it) or joins the queue; on the 29-run fixture grid of WP-52..60
+the entrances fall 5,944 → 5,847, the give-ups read 44 → 45, and the T.H.52
+capacity fixture's no-lock pin fails at seed 5 (3 exits missed against at most
+1); no collision. A switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

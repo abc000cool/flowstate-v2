@@ -883,6 +883,8 @@ class TestWeaveSchema:
             "hold_release_s": 0.0,
             # WP-60: the gated anticipation (docs/WEAVE_MODEL_PLAN.md, dated section)
             "anticipation_gate": 0.0,
+            # WP-62: the exiters' early move (docs/WEAVE_MODEL_PLAN.md, dated section)
+            "exit_prepare": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2114,6 +2116,13 @@ def _weave_state(**params) -> dict:
         "vacate_asks_s": deque(),
         "vacate_flow_ids": set(),
         "vacate_flow_s": deque(),
+        # WP-62: the exiters' early move (its holds, asks and target-lane flow)
+        "prep": {},
+        "prep_seen": set(),
+        "prep_pending": set(),
+        "prep_asks_s": deque(),
+        "prep_flow_ids": set(),
+        "prep_flow_s": deque(),
         "ramp_edges": frozenset(),
         "pre": {},
         "veh_params": {},
@@ -2147,6 +2156,13 @@ def _weave_state(**params) -> dict:
         "n_vacate_refused": 0,
         "n_vacate_skipped_no_gap": 0,
         "n_vacate_requests": 0,
+        # WP-62: the exiters' early move (meta) and its state-only counts
+        "n_exit_prepared": 0,
+        "n_exit_prepare_refused": 0,
+        "n_exit_prepare_requests": 0,
+        "n_exit_prepare_skipped": 0,
+        "n_exit_prepare_yielded": 0,
+        "n_exit_prepare_held": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -4644,6 +4660,201 @@ class TestWeaveVacateStep:
         assert veh.calls == []
 
 
+class TestWeaveExitPrepare:
+    """The exiters' early move (2026-09-24, block 3, WP-62;
+    ``_weave_exit_prepare_step``, ``exit_prepare``): the vacate rule's mirror
+    — a vehicle bound for the paired exit in a lane left of the one feeding
+    section lane 1, inside the vacate window, is asked into that lane under
+    the vacate rule's terms, the vacate request going first where the two
+    stand abreast. Measured and left off (docs/WEAVE_MODEL_PLAN.md, dated
+    section)."""
+
+    @staticmethod
+    def _state(**params) -> dict:
+        # edge "p" before the section: lane 0 feeds section lane 1 (the
+        # target), lane 1 feeds section lane 2; a 150 m window, x on the
+        # section axis = -200 + pos
+        ws = _weave_state(**{"vacate_ahead_m": 150.0, "exit_prepare": 1.0, **params})
+        ws["vacate_lanes"] = {"p": (0, 1)}
+        ws["lane_map"].update({("p", 0): 1, ("p", 1): 2})
+        ws["x_offset"]["p"] = -200.0
+        return ws
+
+    def test_off_by_default(self):
+        from microsim.runner import _weave_step
+
+        ws = self._state()
+        ws["params"]["exit_prepare"] = WEAVE_DEFAULTS["exit_prepare"]
+        assert WEAVE_DEFAULTS["exit_prepare"] == 0.0
+        veh = _WeaveVehicle({"e": 20.0})
+        _weave_step(_WeaveMod(veh), _tc, ws, {"e": _res("p", 1, 100.0, 20.0)}, 0.0)
+        assert veh.calls == [] and ws["prep"] == {} and ws["n_exit_prepared"] == 0
+
+    def test_exiter_left_of_the_target_asked_once_then_counted_prepared(self):
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_meta, _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"e": 20.0})
+        mod = _WeaveMod(veh)
+        # 100 m before the section start at 20 m/s: the request lives 5 s
+        _weave_step(mod, _tc, ws, {"e": _res("p", 1, 100.0, 20.0)}, 0.0)
+        assert veh.calls == [("lc", "e", LC_MODE_SCRIPTED_SAFE), ("change", "e", 0, 5.0)]
+        assert ws["n_exit_prepare_requests"] == 1 and "e" in ws["prep"]
+        veh.calls.clear()
+        # still left of the target with the request open: nothing more is sent
+        _weave_step(mod, _tc, ws, {"e": _res("p", 1, 110.0, 20.0)}, 0.5)
+        assert veh.calls == []
+        # seen in the target lane: prepared, the open request ended by a
+        # one-step stay, the original mode restored
+        _weave_step(mod, _tc, ws, {"e": _res("p", 0, 120.0, 20.0)}, 1.0)
+        assert veh.calls == [("change", "e", 0, 0.5), ("lc", "e", 1621)]
+        assert (ws["n_exit_prepared"], ws["n_exit_prepare_refused"]) == (1, 0)
+        assert "e" not in ws["prep"] and _weave_meta(ws, {})["n_exit_prepared"] == 1
+        veh.calls.clear()
+        # back in the left lane later: asked once only
+        _weave_step(mod, _tc, ws, {"e": _res("p", 1, 130.0, 20.0)}, 1.5)
+        assert veh.calls == []
+
+    def test_reaching_the_section_still_left_is_refused_and_handed_back_first(self):
+        """On the section's first edge (index 0 there is the auxiliary lane)
+        the open request is ended by the stay and the vehicle's own mode
+        restored before the section takes it under control, so the mode the
+        section records is its own; reaching section lane 1 in the step of
+        the change counts as prepared."""
+        from microsim.runner import _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"e": 20.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("p", 1, 100.0, 20.0)}, 0.0)
+        veh.calls.clear()
+        _weave_step(mod, _tc, ws, {"e": _res("a", 2, 2.0, 20.0)}, 0.5)
+        assert (ws["n_exit_prepared"], ws["n_exit_prepare_refused"]) == (0, 1)
+        assert veh.calls[:2] == [("change", "e", 2, 0.5), ("lc", "e", 1621)]
+        assert ws["veh"]["e"]["lc_mode_orig"] == 1621 and "e" not in ws["prep"]
+        # the change and the crossing in one step: section lane 1 is the target
+        ws2 = self._state()
+        veh2 = _WeaveVehicle({"e": 20.0})
+        _weave_step(_WeaveMod(veh2), _tc, ws2, {"e": _res("p", 1, 100.0, 20.0)}, 0.0)
+        _weave_step(_WeaveMod(veh2), _tc, ws2, {"e": _res("a", 1, 2.0, 20.0)}, 0.5)
+        assert (ws2["n_exit_prepared"], ws2["n_exit_prepare_refused"]) == (1, 0)
+
+    def test_only_exiters_left_of_the_target_inside_the_window_are_asked(self):
+        from microsim.runner import _weave_step
+
+        ws = self._state()
+        ws["exiting_ids"] = frozenset({"e", "e0", "far", "gone"})
+        ws["vacate_exempt_ids"] = ws["exiting_ids"]
+        ws["gave_up"] = {"gone"}
+        veh = _WeaveVehicle({v: 20.0 for v in ("e", "e0", "far", "gone", "u")})
+        res = {
+            "e": _res("p", 1, 100.0, 20.0),  # asked
+            "e0": _res("p", 0, 90.0, 20.0),  # already in the target lane
+            "far": _res("p", 1, 20.0, 20.0),  # 180 m out, outside the window
+            "gone": _res("p", 1, 80.0, 20.0),  # gave its exit up: through now
+            "u": _res("p", 1, 70.0, 20.0),  # through, left of the target
+        }
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert {c[1] for c in veh.calls} == {"e"} and set(ws["prep"]) == {"e"}
+
+    def test_the_vacate_request_goes_first_where_the_pair_is_abreast(self):
+        """A through vehicle held by the vacate rule in the target lane
+        abreast of an exiter one lane left of it: the exiter is not asked
+        while the pair lasts; one already asked has its request ended by a
+        one-step stay (counted yielded) and re-issued for its remaining life
+        once clear."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_step
+
+        ws = self._state()
+        veh = _WeaveVehicle({"t": 20.0, "e": 20.0})
+        mod = _WeaveMod(veh)
+        # t (through, lane 0 at 100 m) is asked to vacate; e (lane 1 at 102
+        # m) overlaps it: not asked
+        _weave_step(
+            mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0), "e": _res("p", 1, 102.0, 20.0)}, 0.0
+        )
+        assert "t" in ws["vacate"] and "e" not in ws["prep"] and "e" in ws["prep_pending"]
+        assert not [c for c in veh.calls if c[1] == "e"]
+        veh.calls.clear()
+        # clear of it (e 10 m ahead of t's front): asked now, 88 m at 20 m/s
+        _weave_step(
+            mod, _tc, ws, {"t": _res("p", 0, 101.0, 20.0), "e": _res("p", 1, 112.0, 20.0)}, 0.5
+        )
+        assert ("change", "e", 0, 4.4) in veh.calls and (
+            "lc",
+            "e",
+            LC_MODE_SCRIPTED_SAFE,
+        ) in veh.calls
+        veh.calls.clear()
+        # abreast again (t caught up): the open request ended once, yielded
+        for t in (1.0, 1.5):
+            _weave_step(
+                mod,
+                _tc,
+                ws,
+                {"t": _res("p", 0, 110.0 + t, 20.0), "e": _res("p", 1, 112.0 + t, 20.0)},
+                t,
+            )
+        assert [c for c in veh.calls if c[1] == "e"] == [("change", "e", 1, 0.5)]
+        assert ws["prep"]["e"]["suspended"] and ws["n_exit_prepare_yielded"] == 2
+        veh.calls.clear()
+        # clear again: re-issued for the rest of its life (4.4 s from 0.5 s)
+        _weave_step(
+            mod, _tc, ws, {"t": _res("p", 0, 100.0, 20.0), "e": _res("p", 1, 120.0, 20.0)}, 2.0
+        )
+        assert [c for c in veh.calls if c[1] == "e"] == [("change", "e", 0, pytest.approx(2.9))]
+        assert not ws["prep"]["e"]["suspended"]
+
+    def test_gap_conditioned_form_reads_the_brake_gap_on_the_slower_target_lane(self):
+        """With ``vacate_no_follower_braking`` the exiter is asked one lane
+        right for one step under mode 768 only when the gap to its right
+        accepts it: the time gaps pass behind a 5 m/s leader 15 m ahead (s0
+        2.5 + 0.6 · 20 = 14.5 m) but the changer's brake gap on it does not
+        (2.5 + 15² / (2 · 1.67) = 69.9 m); 100 m ahead it accepts."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE_NO_ADAPT, _weave_step
+
+        ws = self._state(vacate_no_follower_braking=1.0)
+        veh = _WeaveVehicle({"e": 20.0, "k": 5.0})
+        mod = _WeaveMod(veh)
+        res = {"e": _res("p", 1, 100.0, 20.0), "k": _res("p", 0, 120.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert not [c for c in veh.calls if c[1] == "e"] and "e" in ws["prep_pending"]
+        res = {"e": _res("p", 1, 100.0, 20.0), "k": _res("p", 0, 205.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert [c for c in veh.calls if c[1] == "e"] == [
+            ("lc", "e", LC_MODE_SCRIPTED_SAFE_NO_ADAPT),
+            ("change", "e", 0, 0.5),
+        ]
+
+    def test_asks_are_bounded_per_minute(self):
+        from microsim.runner import _weave_step
+
+        # 60 veh/h: one ask per 60 s window, the one nearest the section first
+        ws = self._state(vacate_max_veh_h=60.0)
+        ws["exiting_ids"] = frozenset({"e", "f"})
+        ws["vacate_exempt_ids"] = ws["exiting_ids"]
+        veh = _WeaveVehicle({"e": 20.0, "f": 20.0})
+        res = {"e": _res("p", 1, 120.0, 20.0), "f": _res("p", 1, 90.0, 20.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert set(ws["prep"]) == {"e"} and ws["prep_pending"] == {"f"}
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the rule moves exiters into the lane
+        feeding section lane 1 and nothing collides; at the default it is
+        inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"exit_prepare": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_exit_prepared"] == 0
+        assert meta_on["weave_sections"][0]["n_exit_prepared"] > 0
+        assert meta_on["n_collisions"] == 0
+
+
 class TestWeaveVacateGapConditioned:
     """The vacate rule re-derived so that it never asks the target lane to
     brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
@@ -5122,6 +5333,7 @@ class TestWeaveReviewDerivations3To6:
             "n_entry_bounded": 0,
             "n_hold_releases": 0,
             "n_anticipation_gated": 0,
+            "n_exit_prepared": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

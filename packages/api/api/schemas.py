@@ -302,7 +302,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     later than the follower needs to open the gap at its own ``b``
     (``anticipation_gate``), counted only where the command would have
     bound; zero at the default of 0; ``None`` for a meta written before;
-    not shown by the dashboard. Two keys that are
+    not shown by the dashboard. ``n_exit_prepared`` (WP-62, 2026-09-24 block
+    3, the exiters' early move) counts the vehicles bound for the paired exit
+    that the rule asked, inside the vacate window, into the lane feeding
+    section lane 1 and that were seen there before the section, each once
+    (``exit_prepare``); zero at the default of 0; ``None`` for a meta written
+    before; not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -340,6 +345,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_entry_bounded: int | None = None
     n_hold_releases: int | None = None
     n_anticipation_gated: int | None = None
+    n_exit_prepared: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None
