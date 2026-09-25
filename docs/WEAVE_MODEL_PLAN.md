@@ -7234,3 +7234,269 @@ Every number above is from those compiles and runs, or from the committed files 
 - *Not changed.* The rule, the fixture, the demand and every other test.
 
 *Session files (`th61scan/`, not committed):* `scan.py` and `rows.jsonl`. The Linux values are from the CI log of `0b9ab40`.
+
+## 2026-09-25 (block 3, WP-84, what holds the ramp's queue): the T.H.52 ramp's queue is the entry's breakdown reaching back onto the ramp. It forms with the breakdown of lanes 0 and 1 over the section's first 50 m, its front stands in the ramp's last 10 m, and the ramp then delivers 55–67 % of its demand. Every step of its head traces to a weave speed target: the exiters' holds two thirds, the ramp anticipation's easing a fifth. None traces to SUMO's merge (the ramp's link has no foe) or to a lane end. The targets hold the head at lane 1's speed, and the entrants arrive at 3.8 m/s where lane 1 runs 5.1 m/s. Removing a target on the ramp hands the head to another at the same speed or lower. Only `ramp_outlet` raises lane 1 and the entrants together, to 6.9 and 6.5 m/s, and criterion (ii) still fails at every seed. Nothing ships
+
+**Why.** Item (c) of "where item 1 stands" (above): on the corridor section fixture the T.H.52 entrants reach the section at about 5 m/s from a queue on the ramp. With SUMO's fast arrival crossings counted, WP-82's correction puts them at a per-run median of 7.34 m/s. Real I-24 entrants cross a weave at a median 11.7 m/s (`artifacts/i24_lane_change_gaps.json`), and the real section carried its demand at 25.8–26.6 m/s. The ramp is 844.3 m: edge 200, 52.4 m at 24.59 m/s, then edge 210, 791.9 m at 22.22 m/s, 38.0 s at 22.22 m/s. Its demand peaks at 1,361 veh/h, within one lane's reach, so something holds the queue's head. This package reads the ramp minute by minute, attributes every step of the queue's head to one cause, and switches the ramp's weave commands off one at a time. The runner, the config, the scenarios, the fixtures and the tests are untouched.
+
+**How it was measured.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)`, with the weave defaults unless a key is named. Seeds 3–7, one run at a time (2.9–4.2 s each), macOS.
+- *Harness (session, `wp84/h84.py`).* WP-65's hooks, which tag every speed target by its caller, updated to the current `_weave_cooperate` signature. A reader of the runner's own 0.5-s subscription results runs at every step. The ramp is not in the trajectory table (WP-82), so everything on it is read there.
+- *Read-only.* At every seed the default's trajectories are byte-identical to a run with no hook (md5, `plain84.py`). Its criteria equal WP-83's ten-seed "after" rows.
+- *Definitions.*
+  - *The queue*: the ramp vehicles below 5 m/s; *halted*: below 0.1 m/s (`HALTING_SPEED_MS`). The queue *forms* at the first step with at least three. Its *head* is the downstream-most ramp vehicle below 5 m/s, and each step with one is a *head-step*.
+  - *Entry speed*: a ramp vehicle's speed at its first sample on the section. *Delivery*: the ramp vehicles reaching the section. *Demand*: the departures in the run's route file. *Insertion backlog*: planned minus inserted.
+  - *Speed profile*: Edie's space-mean speed per 50-m bin of the ramp per minute. Positions are on the section axis (x = 0 at the section start), and bin −850 is the ramp's first 44 m.
+  - *The cause of a step.* It is read after the weave's step and finalised with the vehicle's speed one step later. The first of these that applies:
+    1. *a weave target*: one binds by `_weave_command`'s own test, and the vehicle is at it the next step (within 0.05 m/s);
+    2. *a lane end*: the vehicle must leave lane 0, and it is within the EIDM's braking onset of the auxiliary lane's end (`_weave_brake_onset_m`), nearer than its leader;
+    3. *its leader*: the improved IDM (SUMO's EIDM core) towards `vehicle.getLeader` is at least 0.1 m/s² below its free term;
+    4. *free*: none of these, so it accelerates on its own model.
+  - *The origin of a head-step.* Follow "leader" to the leader at the same step, and "free" back to the vehicle's last constrained step, until a weave target or a lane end is reached. For this, every vehicle on the ramp's last 400 m, on the approach edge 101, on the section and on the exit's first 150 m is read at every step.
+  - *Families* (WP-65's names):
+    - `ramp_ease`: the ramp anticipation's easing of an entrant towards its chosen lane-1 gap's leader;
+    - `secx_hold` / `prio_hold`: a vehicle held as the follower of an exiter's chosen lane-0 gap (`prio_` under the exit priority);
+    - `sece_ease`: a section entrant eased towards its lane-1 gap's leader;
+    - `sece_hold` / `ramp_hold`: a lane-1 vehicle held for a section / an approaching entrant;
+    - `secx_ease`: an exiter eased towards its lane-0 gap's leader.
+
+**(1) What can act on a vehicle still on the ramp** (`microsim.runner` at HEAD, and the compiled network).
+- *No junction.* netconvert compiles the ramp's link 210_0 → 102_0 as a major link (`state="M"`), and junction 3's four requests read `foes="0000"`. The ramp is lane 0's continuation, so nothing yields at its end and no lane change is needed there.
+- *The ramp anticipation* (`_weave_step`'s approaching loop) acts on an entrant not bound for the exit, on the ramp within `lookahead_m` (120 m) of the section. `_weave_cooperate` does three things:
+  - it chooses the entrant's lane-1 gap and commits to it (`ws["pre"]`, carried into `target` on arrival);
+  - it holds that gap's follower (`ramp_hold`), which is a vehicle feeding lane 1, never one on the ramp;
+  - it eases the entrant towards the gap's leader when the entrant would brake for it, that leader is not beside it (sixth derivation) and `_weave_easing_ok` passes.
+
+  The commitment is not a command. The easing is the only target the anticipation puts on a ramp vehicle.
+- *The exiters' gap choice.* Lane 0's listing includes the ramp's lane at negative positions (`lane_map`). A ramp vehicle within 120 m behind an exiter can therefore be the follower of the exiter's chosen lane-0 gap. It is then held behind the exiter's projection (`secx_hold`, or `prio_hold` under the exit priority). `ramp_outlet` passes over such vehicles, and over those in the auxiliary lane's first 51.1 m, with the forced zone's priority exempt.
+- *Off at the defaults*: the yields at the lane ends, WP-57's entry-speed bound and WP-60's gate.
+- *SUMO's lane end* acts on an entrant from the EIDM's onset, vT + v²/(2√(ab)): 15.9 m at 5 m/s at the population means. Every ramp vehicle is at least 305 m from the auxiliary lane's end.
+- *Measured* (default, seeds 3–7), ramp vehicle-steps under a binding target: the anticipation's easing 6,413, the exiters' holds 3,334, the exit priority's holds 0, nothing else.
+
+**(2) The ramp, minute by minute** (default, seeds 3–7).
+
+*Table — when the queue forms and what the ramp delivers.*
+
+| seed | queue forms (≥ 3 below 5 m/s) | its back reaches the ramp's first 50 m | before it forms: arrivals from 60 s over the departures planned 38.0 s earlier | after it forms: the ramp delivers / demand [veh/h] | insertion backlog at 1,200 s | entry speed, median before / after [m/s] |
+|---|---|---|---|---|---|---|
+| 3 | 461.5 s (minute 7) | minute 15 | 118 of 121 (98%) | 873 / 1,302 | 37 | 18.5 / 4.8 |
+| 4 | 371.5 s (minute 6) | minute 13 | 87 of 91 (96%) | 713 / 1,291 | 78 | 17.1 / 3.7 |
+| 5 | 218.0 s (minute 3) | minute 13 | 43 of 45 (96%) | 708 / 1,261 | 84 | 19.9 / 3.5 |
+| 6 | 270.0 s (minute 4) | minute 13 | 58 of 61 (95%) | 701 / 1,274 | 91 | 14.0 / 3.9 |
+| 7 | 335.5 s (minute 5) | minute 13 | 77 of 80 (96%) | 837 / 1,287 | 55 | 17.1 / 4.5 |
+
+- *Before it forms*, the ramp runs at 20.3–23.3 m/s in every 50-m bin in minutes 0–1 (the profile below). It delivers what is inserted: 95–98 % of the departures planned one free travel time earlier. The shortfall is the vehicles still on the ramp as it slows.
+- *It forms with the entry's breakdown.* Over the section's first 50 m, lanes 0 and 1 first fall below 8 m/s together, in minute 7 / 5 / 3 / 4 / 5. That is the minute the queue forms at seeds 3, 5, 6 and 7, and the minute before it at seed 4. In the minute it forms, lane 1 there reads 4.9–6.1 m/s.
+- *After it forms*, the ramp delivers 701–873 veh/h against 1,261–1,302 of demand (55–67 %). The queue's back climbs the ramp at 78–109 m per minute and reaches its first 50 m in minute 13–15, 7–10 minutes after the queue forms. Only then does insertion fall behind: the backlog is 0–1 vehicles in every minute before, and 37–91 by the run's end.
+- *Its front stands at the ramp's end.* Over all head-steps, the head's position has a median of −8.5 m (p10 −46.7, p90 −1.8), and 99 % are within the anticipation's 120 m. It crawls rather than stands: 129 of the 8,810 head-steps are halted.
+
+*Table — per minute and seed: ramp vehicles reaching the section · mean ramp vehicles below 5 m/s [the queue's back, front: m from the section start, when there is a queue] · median entry speed [m/s].*
+
+| min | planned (seeds 3–7) | seed 3 | seed 4 | seed 5 | seed 6 | seed 7 |
+|---|---|---|---|---|---|---|
+| 0 | 17–18 | 6 · 0.0 · 21.5 | 6 · 0.0 · 22.1 | 6 · 0.0 · 22.1 | 6 · 0.0 · 22.2 | 6 · 0.0 · 19.7 |
+| 1 | 17–18 | 17 · 0.0 · 18.2 | 17 · 0.0 · 22.1 | 17 · 0.0 · 21.3 | 17 · 0.0 · 18.5 | 18 · 0.0 · 20.3 |
+| 2 | 17–18 | 18 · 0.0 · 13.3 | 18 · 0.0 · 16.0 | 17 · 0.0 · 14.3 | 17 · 0.0 [-21, -21] · 10.8 | 17 · 0.0 · 21.1 |
+| 3 | 17–18 | 17 · 0.0 · 21.3 | 17 · 0.0 · 19.0 | 14 · 1.4 [-27, -7] · 5.1 | 18 · 0.0 · 13.9 | 16 · 0.0 · 14.8 |
+| 4 | 16–17 | 18 · 0.0 · 20.7 | 17 · 0.0 · 10.9 | 16 · 4.0 [-44, -8] · 3.8 | 12 · 2.1 [-23, -5] · 2.8 | 17 · 0.0 [-23, -23] · 7.4 |
+| 5 | 20–20 | 17 · 0.0 · 18.6 | 16 · 0.0 [-2, -2] · 11.6 | 16 · 5.5 [-80, -18] · 5.0 | 12 · 8.3 [-98, -10] · 3.8 | 17 · 0.7 [-12, -8] · 5.3 |
+| 6 | 20–21 | 20 · 0.0 · 16.4 | 14 · 5.1 [-70, -12] · 3.6 | 15 · 9.6 [-138, -8] · 3.5 | 18 · 12.8 [-162, -20] · 5.3 | 13 · 5.2 [-73, -12] · 4.2 |
+| 7 | 20–21 | 15 · 1.6 [-24, -6] · 4.7 | 12 · 13.2 [-147, -8] · 3.5 | 13 · 17.6 [-211, -12] · 4.0 | 16 · 15.0 [-227, -25] · 5.1 | 16 · 10.2 [-135, -10] · 4.5 |
+| 8 | 19–21 | 13 · 9.7 [-126, -9] · 3.8 | 15 · 20.9 [-253, -7] · 3.9 | 14 · 26.3 [-312, -13] · 4.4 | 17 · 17.4 [-332, -31] · 5.1 | 12 · 17.5 [-198, -7] · 3.3 |
+| 9 | 19–20 | 15 · 14.7 [-236, -45] · 5.6 | 12 · 29.0 [-314, -6] · 2.6 | 16 · 26.0 [-428, -13] · 4.2 | 15 · 15.1 [-373, -19] · 4.5 | 15 · 26.0 [-305, -18] · 4.9 |
+| 10 | 22–23 | 17 · 21.0 [-303, -13] · 4.6 | 12 · 38.8 [-425, -6] · 3.0 | 14 · 35.9 [-429, -7] · 3.6 | 8 · 31.8 [-441, -6] · 2.4 | 12 · 35.1 [-411, -8] · 3.3 |
+| 11 | 22–24 | 15 · 25.4 [-431, -14] · 4.6 | 11 · 50.3 [-582, -56] · 6.3 | 8 · 51.4 [-562, -8] · 2.6 | 11 · 50.0 [-573, -6] · 3.6 | 11 · 46.0 [-544, -6] · 2.6 |
+| 12 | 22–23 | 14 · 31.6 [-483, -25] · 3.8 | 11 · 65.2 [-748, -16] · 3.7 | 7 · 68.4 [-669, -8] · 2.5 | 10 · 64.9 [-706, -7] · 3.6 | 14 · 59.6 [-678, -13] · 3.9 |
+| 13 | 23–23 | 13 · 46.4 [-599, -9] · 3.4 | 8 · 76.8 [-835, -7] · 2.2 | 12 · 83.0 [-802, -9] · 3.5 | 10 · 73.5 [-830, -10] · 3.0 | 13 · 67.9 [-820, -17] · 4.1 |
+| 14 | 22–22 | 15 · 58.3 [-735, -8] · 3.8 | 11 · 73.5 [-828, -7] · 3.4 | 14 · 74.2 [-836, -7] · 3.4 | 10 · 72.8 [-833, -9] · 2.9 | 15 · 58.0 [-834, -77] · 5.8 |
+| 15 | 21–22 | 16 · 64.4 [-833, -43] · 5.9 | 14 · 75.1 [-835, -44] · 6.1 | 10 · 64.2 [-834, -6] · 2.4 | 7 · 74.0 [-832, -8] · 1.9 | 13 · 49.6 [-789, -71] · 6.3 |
+| 16 | 21–22 | 15 · 59.1 [-829, -40] · 6.2 | 14 · 70.8 [-834, -10] · 3.8 | 7 · 62.7 [-835, -10] · 2.3 | 7 · 79.2 [-833, -12] · 2.4 | 11 · 49.3 [-812, -16] · 4.6 |
+| 17 | 22–22 | 18 · 54.4 [-834, -85] · 7.7 | 7 · 65.7 [-837, -6] · 2.4 | 6 · 70.9 [-732, -11] · 2.3 | 11 · 80.3 [-824, -31] · 5.2 | 16 · 52.1 [-773, -9] · 4.4 |
+| 18 | 21–21 | 12 · 49.5 [-834, -29] · 3.8 | 12 · 70.7 [-782, -8] · 3.6 | 9 · 88.9 [-833, -5] · 2.1 | 11 · 79.2 [-825, -16] · 3.4 | 15 · 53.2 [-738, -7] · 3.7 |
+| 19 | 22–22 | 12 · 50.7 [-796, -14] · 4.0 | 13 · 75.4 [-836, -8] · 3.5 | 11 · 82.3 [-835, -7] · 2.8 | 12 · 70.8 [-835, -22] · 4.6 | 17 · 61.0 [-814, -41] · 5.4 |
+
+*Table — the ramp's speed profile, Edie's speed [m/s] per 50-m bin (m from the section start), pooled over seeds 3–7.*
+
+| min | -850 | -800 | -750 | -700 | -650 | -600 | -550 | -500 | -450 | -400 | -350 | -300 | -250 | -200 | -150 | -100 | -50 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | 23.2 | 22.2 | 22.3 | 22.3 | 22.2 | 22.2 | 22.1 | 22.1 | 22.1 | 22.0 | 22.0 | 22.0 | 22.0 | 22.1 | 22.1 | 21.8 | 21.6 |
+| 1 | 23.1 | 22.2 | 22.2 | 22.1 | 22.1 | 22.0 | 22.1 | 22.2 | 22.2 | 22.2 | 22.2 | 22.2 | 22.1 | 22.1 | 22.0 | 21.2 | 20.3 |
+| 2 | 23.1 | 22.1 | 22.2 | 22.1 | 22.1 | 22.0 | 21.9 | 21.7 | 21.7 | 21.8 | 21.8 | 21.7 | 21.8 | 21.7 | 21.0 | 18.4 | 15.0 |
+| 3 | 23.0 | 22.1 | 22.2 | 22.1 | 22.1 | 22.0 | 22.0 | 22.1 | 22.1 | 21.9 | 21.9 | 21.8 | 21.8 | 21.6 | 20.5 | 17.1 | 12.1 |
+| 4 | 23.3 | 22.3 | 22.3 | 22.3 | 22.2 | 22.2 | 22.2 | 22.1 | 22.0 | 22.0 | 22.0 | 21.9 | 21.9 | 21.4 | 19.1 | 12.7 | 6.6 |
+| 5 | 23.1 | 22.2 | 22.3 | 22.2 | 22.2 | 22.1 | 22.1 | 22.1 | 22.1 | 22.1 | 22.1 | 22.1 | 21.7 | 19.6 | 13.2 | 6.7 | 6.0 |
+| 6 | 23.1 | 22.2 | 22.2 | 22.2 | 22.1 | 22.1 | 22.1 | 22.0 | 22.0 | 22.0 | 21.9 | 20.8 | 17.6 | 10.8 | 6.2 | 4.9 | 4.6 |
+| 7 | 22.9 | 21.9 | 22.0 | 21.8 | 21.7 | 21.5 | 21.4 | 21.1 | 21.1 | 20.7 | 19.3 | 15.1 | 8.7 | 5.4 | 3.8 | 4.1 | 3.8 |
+| 8 | 23.1 | 22.2 | 22.2 | 22.1 | 22.1 | 22.0 | 22.0 | 21.6 | 19.3 | 12.9 | 8.5 | 5.6 | 4.4 | 3.7 | 3.3 | 3.3 | 3.3 |
+| 9 | 23.1 | 22.2 | 22.2 | 22.1 | 22.0 | 20.9 | 17.8 | 11.5 | 9.1 | 8.3 | 6.1 | 4.3 | 3.3 | 3.0 | 3.0 | 3.2 | 3.5 |
+| 10 | 23.1 | 22.2 | 22.3 | 22.2 | 21.7 | 19.7 | 14.7 | 8.6 | 5.2 | 3.8 | 3.0 | 2.7 | 2.8 | 2.8 | 2.7 | 2.8 | 2.7 |
+| 11 | 22.9 | 22.0 | 21.4 | 17.9 | 10.8 | 5.9 | 4.1 | 3.4 | 2.9 | 2.6 | 2.5 | 2.3 | 2.2 | 2.1 | 2.1 | 2.2 | 2.6 |
+| 12 | 16.9 | 12.7 | 7.9 | 4.3 | 2.9 | 2.5 | 2.0 | 1.8 | 2.0 | 2.1 | 1.9 | 1.8 | 1.9 | 2.0 | 2.0 | 2.1 | 2.4 |
+| 13 | 2.7 | 1.9 | 1.8 | 2.1 | 2.2 | 2.0 | 1.9 | 1.9 | 2.0 | 1.9 | 2.1 | 2.2 | 2.2 | 2.1 | 1.9 | 2.1 | 2.5 |
+| 14 | 2.5 | 2.3 | 2.2 | 2.0 | 2.0 | 2.3 | 2.6 | 2.6 | 2.0 | 1.7 | 1.8 | 2.1 | 2.1 | 2.1 | 2.4 | 2.8 | 3.1 |
+| 15 | 2.4 | 2.6 | 2.4 | 2.0 | 1.7 | 1.7 | 1.8 | 2.0 | 2.5 | 2.9 | 2.8 | 2.5 | 2.3 | 2.4 | 2.3 | 2.9 | 3.2 |
+| 16 | 1.6 | 1.8 | 2.0 | 2.5 | 2.8 | 2.9 | 2.8 | 2.6 | 2.5 | 2.3 | 2.2 | 2.0 | 2.0 | 1.9 | 2.1 | 2.1 | 2.8 |
+| 17 | 2.4 | 2.6 | 2.7 | 2.6 | 2.7 | 2.3 | 2.1 | 2.1 | 2.1 | 2.1 | 2.1 | 2.0 | 1.9 | 1.9 | 2.0 | 2.3 | 2.7 |
+| 18 | 2.2 | 2.3 | 2.2 | 2.1 | 2.1 | 2.0 | 1.9 | 1.9 | 1.8 | 1.9 | 2.1 | 2.3 | 2.4 | 2.5 | 2.4 | 2.6 | 2.6 |
+| 19 | 1.9 | 1.8 | 1.7 | 1.8 | 2.0 | 2.3 | 2.3 | 2.4 | 2.7 | 2.5 | 2.2 | 2.1 | 2.2 | 2.3 | 2.4 | 2.9 | 3.5 |
+
+**(3) What holds the head** (default, seeds 3–7, pooled per minute). "On the head" is the cause of the head's own step. The origin follows it to a weave target or a lane end, one per head-step.
+
+| min | head-steps (halted) | on the head: exiter's hold / anticipation's easing | follows its leader: on the ramp / in the auxiliary lane / just changed to lane 1 | free | lane end | origin: exiters' holds on the ramp / in the auxiliary lane / elsewhere | anticipation's easing | section entrants' easing | lane-1 holds | other |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2 | 1 (0) | 0 / 0 | 0 / 0 / 0 | 1 | 0 | 0 / 0 / 0 | 1 | 0 | 0 | 0 |
+| 3 | 63 (1) | 22 / 7 | 0 / 15 / 4 | 15 | 0 | 22 / 20 / 0 | 8 | 0 | 13 | 0 |
+| 4 | 212 (0) | 56 / 6 | 7 / 117 / 9 | 17 | 0 | 56 / 93 / 0 | 9 | 10 | 44 | 0 |
+| 5 | 308 (1) | 110 / 28 | 34 / 72 / 17 | 47 | 0 | 136 / 78 / 2 | 43 | 23 | 18 | 8 |
+| 6 | 470 (4) | 178 / 18 | 56 / 138 / 17 | 63 | 0 | 203 / 155 / 1 | 60 | 16 | 8 | 27 |
+| 7 | 556 (0) | 163 / 45 | 56 / 180 / 32 | 80 | 0 | 197 / 159 / 25 | 76 | 32 | 49 | 18 |
+| 8 | 600 (4) | 147 / 38 | 57 / 247 / 30 | 81 | 0 | 168 / 188 / 27 | 99 | 51 | 55 | 12 |
+| 9 | 600 (0) | 160 / 35 | 113 / 183 / 20 | 89 | 0 | 216 / 164 / 19 | 105 | 35 | 47 | 14 |
+| 10 | 600 (10) | 203 / 27 | 25 / 256 / 27 | 62 | 0 | 220 / 224 / 0 | 50 | 45 | 55 | 6 |
+| 11 | 600 (14) | 129 / 60 | 43 / 241 / 19 | 108 | 0 | 154 / 203 / 25 | 144 | 45 | 14 | 15 |
+| 12 | 600 (6) | 157 / 43 | 49 / 244 / 23 | 84 | 0 | 166 / 251 / 42 | 89 | 34 | 13 | 5 |
+| 13 | 600 (7) | 243 / 36 | 22 / 196 / 23 | 80 | 0 | 270 / 172 / 19 | 91 | 29 | 16 | 3 |
+| 14 | 600 (18) | 184 / 23 | 39 / 224 / 19 | 111 | 0 | 190 / 188 / 28 | 131 | 36 | 27 | 0 |
+| 15 | 600 (10) | 92 / 65 | 137 / 185 / 8 | 113 | 0 | 114 / 128 / 20 | 236 | 57 | 19 | 26 |
+| 16 | 600 (22) | 151 / 84 | 55 / 162 / 24 | 124 | 0 | 205 / 140 / 12 | 176 | 36 | 31 | 0 |
+| 17 | 600 (27) | 93 / 68 | 84 / 224 / 15 | 116 | 0 | 104 / 207 / 20 | 195 | 31 | 43 | 0 |
+| 18 | 600 (4) | 148 / 44 | 29 / 279 / 21 | 79 | 0 | 167 / 251 / 6 | 101 | 51 | 24 | 0 |
+| 19 | 600 (1) | 206 / 46 | 100 / 139 / 26 | 83 | 0 | 248 / 185 / 13 | 113 | 10 | 19 | 12 |
+| **all** | **8,810 (129)** | 2,442 (28%) / 673 (8%) | 906 (10%) / 3,102 (35%) / 334 (4%) | 1,353 (15%) | 0 (0%) | 2,836 (32%) / 2,806 (32%) / 259 (3%) | 1,727 (20%) | 541 (6%) | 495 (6%) | 146 (2%) |
+
+- *On the head itself*:
+  - a weave target at 35 % of head-steps: the exiters' holds 28 %, the anticipation's easing 8 %;
+  - its leader at 49 %: in the auxiliary lane 35 %, on the ramp 10 %. The other 4 % is a vehicle that has just changed into lane 1, which `vehicle.getLeader` still returns for a vehicle arriving at the ramp's end, and whose reading matches the head's measured acceleration;
+  - free at 15 %: the front discharging after a hold has lapsed (the origin lies a median 1.5 s back, p90 10.5 s);
+  - a lane end at none.
+- *The origin* is a weave target at every head-step:
+  - the exiters' holds 67 % (on the ramp 32 %, in the auxiliary lane 32 %, elsewhere 3 %);
+  - the anticipation's easing 20 %;
+  - the section entrants' easing 6 %, lane-1 holds 6 % and the exiters' easing 2 %.
+
+  Per seed, the exiters' holds give 57–74 % and the easing 14–25 %.
+- *Halted head-steps* (129): the origin is the exiters' holds at 100, the anticipation's easing at 28 and the section entrants' easing at 1.
+- *When the queue forms* (its first 30 s): the exiters' holds are the origin at 60 of 60, 55 of 60, 27 of 60, 49 of 60 and 13 of 17 head-steps at seeds 3–7. At seed 5 a further 23 trace to exiters in lane 1 held for a section entrant (`sece_hold`).
+- *The queue's body is car-following.* Of the 399,357 ramp vehicle-steps below 5 m/s, 96 % follow their leader, 2 % are under a target and 2 % are free.
+- *The four candidate causes, answered.*
+  - Held by the weave: every head-step's origin. The anticipation's easing is 20 % of them, and the anticipation's commitment puts no target on the entrant. Most of the rest, 64 %, are the exit movement's holds of vehicles on the ramp or in the auxiliary lane, not the anticipation.
+  - SUMO's merge or insertion: none. The ramp's link has no foe, SUMO's arrival changes take entrants out of lane 0, and insertion falls behind only once the queue fills the ramp.
+  - Following a slower leader on the ramp: 10 % of head-steps on the head itself, and every such chain ends at a weave target.
+  - A lane-end stop: none.
+
+**(4) Counterfactuals** (harness-only, seeds 3–7, one switch at a time; (d)–(f) are supplementary).
+- *(a) No ramp anticipation.* The approaching loop's `_weave_cooperate` returns at once: no gap is chosen on the ramp, no lane-1 follower is held and no entrant is eased. The weave takes an entrant once it is on the section.
+- *(b) No easing on the ramp.* The anticipation's easing target is withheld; its gap choice, commitment and lane-1 holds stay.
+- *(c) `ramp_outlet` = 1*, WP-70's key (a config change, not a hook).
+- *(d) No target on any vehicle still on the ramp* (every family), and no anticipation: the weave does nothing to the ramp.
+- *(e)* (c) with (b); *(f)* (c) with (a).
+
+*Table — per seed 3 / 4 / 5 / 6 / 7. The test's criteria are mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s (ii), no collision, and given up ≤ 2 %.*
+
+| run | entry speed, run median [m/s] | arrivals below 8 m/s | ramp vehicles below 5 m/s, mean / max | queue forms [s] | T.H.52 departed of 407 (≥ 387) | lane-windows ≤ 20 m/s of 16 (ii) | given up of reached | mainline of 1,196 | unfinished | coll. |
+|---|---|---|---|---|---|---|---|---|---|---|
+| default | 6.5 / 4.8 / 4.0 / 4.6 / 5.2 | 56% / 64% / 82% / 77% / 77% | 24–70 / 37–80 / 39–92 / 37–88 / 30–75 | 462 / 372 / 218 / 270 / 336 | 370 / 329 / 323 / 316 / 352 (Σ 1,690) | 11 / 10 / 14 / 12 / 12 | 1 of 360 / 1 of 377 / 4 of 380 / 1 of 411 / 0 of 355 | 1,160 / 1,149 / 1,139 / 1,148 / 1,122 | 1 / 2 / 6 / 4 / 5 | 0 |
+| (a) no ramp anticipation | 2.8 / 3.0 / 2.9 / 3.0 / 3.1 | 87% / 74% / 72% / 71% / 75% | 50–84 / 48–83 / 48–90 / 48–88 / 44–81 | 153 / 254 / 256 / 277 / 244 | 284 / 293 / 292 / 278 / 295 (Σ 1,442) | 10 / 13 / 14 / 13 / 13 | 0 of 321 / 2 of 351 / 4 of 374 / 1 of 364 / 5 of 333 | 1,158 / 1,125 / 1,147 / 1,117 / 1,150 | 6 / 4 / 3 / 6 / 3 | 0 |
+| (b) no easing on the ramp | 5.9 / 3.8 / 3.7 / 3.1 / 3.9 | 56% / 69% / 84% / 80% / 77% | 26–70 / 39–81 / 34–81 / 46–85 / 36–76 | 471 / 342 / 220 / 196 / 261 | 363 / 328 / 337 / 283 / 325 (Σ 1,636) | 11 / 11 / 13 / 15 / 14 | 0 of 356 / 1 of 371 / 4 of 363 / 1 of 353 / 1 of 342 | 1,186 / 1,159 / 1,085 / 1,055 / 1,161 | 7 / 3 / 4 / 7 / 5 | 0 |
+| (c) `ramp_outlet` = 1 | 8.6 / 7.5 / 7.7 / 7.1 / 7.8 | 44% / 55% / 54% / 64% / 52% | 11–44 / 20–77 / 15–59 / 26–74 / 14–56 | 510 / 496 / 319 / 367 / 386 | 404 / 375 / 399 / 352 / 390 (Σ 1,920) | 11 / 13 / 14 / 12 / 13 | 2 of 378 / 2 of 413 / 3 of 421 / 2 of 426 / 2 of 366 | 1,194 / 1,163 / 1,176 / 1,151 / 1,140 | 5 / 9 / 0 / 3 / 5 | 0 |
+| (d) no target on any ramp vehicle, no anticipation | 2.9 / 3.5 / 3.1 / 3.0 / 3.2 | 85% / 70% / 82% / 84% / 75% | 47–84 / 42–82 / 41–83 / 45–88 / 40–80 | 181 / 312 / 224 / 231 / 264 | 291 / 307 / 319 / 296 / 307 (Σ 1,520) | 12 / 11 / 13 / 13 / 12 | 0 of 320 / 4 of 346 / 1 of 366 / 1 of 362 / 0 of 329 | 1,130 / 1,126 / 1,103 / 1,086 / 1,129 | 5 / 7 / 4 / 5 / 2 | 0 |
+| (e) (c) and (b) together | 4.8 / 4.0 / 5.3 / 3.9 / 4.2 | 83% / 79% / 76% / 85% / 79% | 19–63 / 36–83 / 23–76 / 32–76 / 30–77 | 274 / 270 / 312 / 206 / 270 | 389 / 342 / 384 / 351 / 357 (Σ 1,823) | 12 / 14 / 13 / 15 / 14 | 1 of 358 / 6 of 352 / 2 of 394 / 2 of 391 / 3 of 346 | 1,175 / 1,113 / 1,117 / 1,095 / 1,143 | 12 / 13 / 11 / 9 / 9 | 0 |
+| (f) (c) and (a) together | 4.9 / 4.3 / 4.4 / 3.8 / 4.3 | 54% / 73% / 78% / 82% / 78% | 26–71 / 33–77 / 25–74 / 30–72 / 26–83 | 504 / 326 / 285 / 230 / 295 | 370 / 345 / 366 / 343 / 366 (Σ 1,790) | 12 / 13 / 13 / 13 / 12 | 5 of 361 / 2 of 377 / 1 of 402 / 0 of 390 / 1 of 358 | 1,195 / 1,143 / 1,138 / 1,104 / 1,139 | 6 / 7 / 12 / 19 / 8 | 0 |
+
+*Table — paired by seed, against the default.*
+
+| run, minus the default (mean a run, 95 % t-interval) | entry speed, run median [m/s] | ramp vehicles below 5 m/s, mean | T.H.52 departed | lane-windows ≤ 20 m/s | given up | unfinished |
+|---|---|---|---|---|---|---|
+| (a) no ramp anticipation | -2.1 [-3.3, -0.9] | +14.3 [+6.3, +22.4] | -49.6 [-77.7, -21.5] | +0.8 [-1.0, +2.6] | +1.0 [-1.9, +3.9] | +0.8 [-3.3, +4.9] |
+| (b) no easing on the ramp | -1.0 [-1.6, -0.3] | +2.9 [-3.6, +9.5] | -10.8 [-34.7, +13.1] | +1.0 [-1.0, +3.0] | +0.0 [-0.9, +0.9] | +1.6 [-2.2, +5.4] |
+| (c) `ramp_outlet` = 1 | +2.7 [+1.9, +3.4] | -16.1 [-22.2, -10.1] | +46.0 [+24.4, +67.6] | +0.8 [-0.8, +2.4] | +0.8 [-0.6, +2.2] | +0.8 [-5.4, +7.0] |
+| (d) no target on any ramp vehicle, no anticipation | -1.9 [-3.2, -0.6] | +9.9 [+0.2, +19.7] | -34.0 [-70.1, +2.1] | +0.4 [-0.7, +1.5] | -0.2 [-2.9, +2.5] | +1.0 [-3.4, +5.4] |
+| (e) (c) and (b) together | -0.6 [-2.0, +0.8] | -5.3 [-13.4, +2.8] | +26.6 [-0.9, +54.1] | +1.8 [-0.6, +4.2] | +1.4 [-2.0, +4.8] | +7.2 [+2.9, +11.5] |
+| (f) (c) and (a) together | -0.7 [-1.6, +0.2] | -5.4 [-12.5, +1.6] | +20.0 [+0.1, +39.9] | +0.8 [-1.0, +2.6] | +0.4 [-2.8, +3.6] | +6.8 [+1.0, +12.6] |
+
+*Table — what holds the head under each switch (pooled head-steps, as in (3)), and what the ramp delivers.*
+
+| run | head-steps (halted) | on the head: a weave target / its leader in the auxiliary lane / its leader on the ramp / free | origin: the exiters' holds | the anticipation's easing | the section entrants' easing | lane-1 holds | other | the ramp delivers after the queue forms [veh/h] |
+|---|---|---|---|---|---|---|---|---|
+| default | 8,810 (129) | 35% / 35% / 10% / 15% | 67% (ramp 32%, auxiliary lane 32%) | 20% | 6% | 6% | 2% | 873 / 713 / 708 / 701 / 837 |
+| (a) no ramp anticipation | 9,746 (412) | 39% / 55% / 0% / 6% | 87% (ramp 44%, auxiliary lane 42%) | 0% | 10% | 3% | 1% | 602 / 586 / 569 / 511 / 614 |
+| (b) no easing on the ramp | 9,144 (316) | 30% / 53% / 4% / 9% | 83% (ramp 36%, auxiliary lane 45%) | 0% | 11% | 5% | 0% | 825 / 701 / 764 / 581 / 755 |
+| (c) `ramp_outlet` = 1 | 7,499 (1) | 10% / 24% / 38% / 25% | 13% (ramp 0%, auxiliary lane 12%) | 53% | 25% | 8% | 1% | 1,070 / 957 / 1,067 / 834 / 1,056 |
+| (d) no target on any ramp vehicle, no anticipation | 9,758 (220) | 0% / 93% / 1% / 6% | 79% (ramp 0%, auxiliary lane 78%) | 0% | 17% | 4% | 1% | 622 / 628 / 693 / 583 / 654 |
+| (e) (c) and (b) together | 9,311 (40) | 0% / 77% / 14% / 6% | 27% (ramp 0%, auxiliary lane 25%) | 0% | 66% | 6% | 1% | 1,004 / 801 / 981 / 852 / 871 |
+| (f) (c) and (a) together | 8,821 (62) | 0% / 90% / 5% / 4% | 26% (ramp 0%, auxiliary lane 25%) | 0% | 71% | 3% | 0% | 817 / 824 / 925 / 801 / 919 |
+
+- *(a)* takes away the anticipation's 20 %, and the exiters' holds take 87 % (on the ramp 44 %, in the auxiliary lane 42 %). The entrants arrive unpositioned, the exiters hold them in the outlet, and the entry speed falls to 2.8–3.1 m/s: 2.1 [0.9, 3.3] m/s lower and 50 [22, 78] fewer entrants a run.
+- *(b)* is 1.0 [0.3, 1.6] m/s lower, with the entrance 11 lower, inside the noise [−35, +13]. The exiters' holds take 83 % of the origin.
+- *(c)* is the only switch that raises the arrival speed: +2.7 [1.9, 3.4] m/s, 16 [10, 22] fewer vehicles queued and +46 [24, 68] entrants.
+  - With the exiters' holds gone from the outlet, the anticipation's easing is 53 % of the origin and the section entrants' easing 25 %.
+  - The queue forms 49–125 s later.
+  - Seeds 3, 5 and 7 meet every criterion but (ii), which fails at every seed (11–14 windows).
+- *(d)* moves the head into the auxiliary lane: 93 % of its head-steps follow a leader there, and the exiters' holds there are the origin at 78 %. The entry speed is 2.9–3.5 m/s.
+- *(e)* and *(f)*: with the outlet kept clear, removing the easing or the anticipation brings the entry speed back to 3.8–5.3 m/s.
+  - The section entrants' easing becomes the origin (66 %, 71 %).
+  - 6–19 vehicles are unfinished: +7.2 [2.9, 11.5] and +6.8 [1.0, 12.6] a run.
+- No run of this package collides.
+
+**(5) The entrants arrive at lane 1's speed.** The table compares, per minute over the five seeds, the median entry speed with lane 1's Edie speed over the section's first 50 m. Its last column is WP-65's measure: lanes 0 + 1 there, their density over one lane's k_eq at their speed (the IDM equilibrium at `artifacts/idm_i24_capacity.json`'s means, 5-m vehicles, v0 24.59 m/s).
+
+| run | minutes before / after the queue forms | entrants' entry speed, median of the minutes' medians [m/s] | lane 1 over the section's first 50 m [m/s] | lane 0 there [m/s] | correlation of the two by minute | lanes 0 + 1 there, density over one lane's k_eq(v) |
+|---|---|---|---|---|---|---|
+| default | 25 / 70 | 14.8 / 3.8 | 14.0 / 5.1 | 14.2 / 5.1 | 0.98 / 0.87 | 1.22 / 1.17 |
+| (a) no ramp anticipation | 18 / 77 | 15.8 / 2.5 | 10.7 / 3.7 | 11.7 / 3.7 | 0.93 / 0.53 | 1.27 / 1.13 |
+| (b) no easing on the ramp | 22 / 73 | 19.5 / 3.1 | 17.9 / 4.3 | 17.6 / 4.3 | 0.96 / 0.79 | 1.27 / 1.16 |
+| (c) `ramp_outlet` = 1 | 33 / 62 | 18.1 / 6.5 | 16.2 / 6.9 | 17.2 / 7.2 | 0.97 / 0.93 | 1.29 / 1.27 |
+| (d) no target on any ramp vehicle, no anticipation | 18 / 77 | 16.0 / 2.9 | 10.7 / 3.6 | 12.5 / 3.5 | 0.93 / 0.76 | 1.31 / 1.14 |
+| (e) (c) and (b) together | 20 / 75 | 19.1 / 3.7 | 13.2 / 3.7 | 16.5 / 3.8 | 0.89 / 0.80 | 1.42 / 1.41 |
+| (f) (c) and (a) together | 24 / 71 | 20.2 / 3.7 | 17.2 / 3.7 | 18.4 / 4.0 | 0.92 / 0.76 | 1.37 / 1.43 |
+
+- *At the default, after the queue forms*, the entrants arrive at 3.8 m/s where lane 1 runs 5.1 m/s, and minute by minute the two correlate at r = 0.87 (0.98 before). Under every switch the entrants stay at or below lane 1's speed.
+- *The two weave lanes share one lane's speed, not each its own density.*
+  - After the queue forms, lanes 0 and 1 over the first 50 m each carry 738 / 744 veh/h at 5.1 m/s (median minute), at 39.7 / 41.7 veh/km. That is 0.57 / 0.60 of a lane's equilibrium density at that speed.
+  - Lanes 2 and 3 beside them run at 12.4 and 17.8 m/s.
+  - Together, lanes 0 + 1 hold 1.17 lanes' worth: WP-65's "one lane's worth" (1.14 on the fixture before WP-74/83).
+- *`ramp_outlet` raises the shared speed, not the tie.* Lanes 0 and 1 run at 7.2 / 6.9 m/s and 913 / 909 veh/h, 1.27 lanes' worth together, and the entrants arrive at 6.5 m/s.
+- *Real drivers do the same, at a higher lane speed.* In I-24 MOTION's weave zones (`artifacts/i24_lane_change_gaps.json`, entering, n = 1,881), an entrant crosses a median 0.71 m/s faster than its new leader (`lead_closing_ms`), and its new follower is a median 1.38 m/s slower than it (`lag_closing_ms`). Real entrants also cross at about the target lane's speed. What differs is that lane's speed.
+
+**Reading.**
+1. *The ramp's queue is the entry's breakdown, extended onto the ramp.* Before it, the ramp runs at its limit and delivers its demand. It forms in the minute lanes 0 and 1 of the section's first 50 m break down, or the minute after. Then it delivers 55–67 % of the demand and fills the ramp in 7–10 minutes. Insertion refusals are its consequence, not its cause.
+2. *The weave's cross-lane targets hold the head, not SUMO.* No head-step traces to SUMO's merge, to insertion or to a lane end; every one traces to a weave speed target.
+   - Two thirds are the exit movement's holds, made because lane 0's listing reaches onto the ramp: an exiter in lane 1 picks a lane-0 gap whose follower is on the ramp's last metres or in the auxiliary lane.
+   - A fifth is the ramp anticipation's easing.
+3. *Lane 1's speed at the entry sets the arrival speed.* Those targets hold the head to a vehicle in lane 1: an exiter's projection, or an entrant's lane-1 gap leader. So the entrants arrive at lane 1's speed: 3.8 against 5.1 m/s, r = 0.87 by minute.
+   - Lane 1's speed is not that of its own density (0.60 of a lane at its speed). It is the pair's: lanes 0 and 1 run as one lane of 1.17 lanes' worth, as WP-65 found.
+   - The arrival speed is therefore neither SUMO's merge nor lane 1's own density. It is the weave's coupling of the two lanes, and the ramp's queue is its upstream end.
+4. *No single target sets it.* Removing a target on the ramp hands the head to the next one, at the same speed or lower:
+   - without the anticipation or its easing, the exiters' holds take the head;
+   - without anything on the ramp, the auxiliary lane's first metres take it;
+   - with the outlet clear and without the easing, the section entrants' easing takes it.
+
+   The one switch that raises the speed, `ramp_outlet`, raises lane 1 with it (5.1 → 6.9 m/s) and the pair to 1.27 lanes' worth. The entrants still arrive at lane 1's speed, and criterion (ii) fails at every seed.
+5. *The anticipation is load-bearing again*, as WP-60 and WP-65 found. Every form without it or its easing reads worse on the entrance, with or without the outlet.
+
+**What this hands on.**
+- *(a) The next step: what holds lane 1 at the entry.* The entrants follow lane 1's speed, and lane 1 there runs at 0.60 of its own equilibrium density at that speed, so the question moves from the ramp to lane 1.
+  - *The measurement.* The same head and origin attribution (`h84.py`, with a lane-1 head: the downstream-most lane-1 vehicle below 8 m/s over the approach's last 100 m and the section's first 50 m). At the defaults and with `ramp_outlet`, seeds 3–7.
+  - *If lane 1 is held by targets towards crossing partners in lane 0* (`ramp_hold`, `sece_hold`, `secx_ease`), each lane is held to the other's speed, and no single removal can lift the loop, as (a)–(f) and WP-65's removals found. The model-form question is then a target that does not take the crossing partner's current speed.
+  - *If lane 1 is held by its own car-following from the approach's lane 0*, the question is the approach's delivery into lane 1.
+- *(b) Item (c) of "where item 1 stands" is not a separate defect.* The ramp queue is the entry's breakdown seen from the ramp. `ramp_outlet` is the only form measured to raise the entrants' arrival speed. Its costs stand as WP-70 measured them (the capacity fixture's no-lock pin broken at one seed, the exit end no faster), and it is not proposed here.
+- *(c) For harnesses.* The ramp is not in the trajectory table, so ramp readings must come from the runner's subscription results. For a vehicle arriving at the ramp's end, `vehicle.getLeader` can return, for a step or two, a vehicle that has just changed out of lane 0. SUMO's own car-following reads the same leader.
+
+**Limitations.**
+- *Scale.* Five seeds and one fixture; the paired intervals are over five runs.
+- *Platform.* macOS records. WP-85 (above) found single corridor-fleet runs on these fixtures that land differently on Linux.
+- *The cause reading.* It uses the improved IDM (SUMO's EIDM core, without its estimation errors, drive-off and coolness terms) with a 0.1 m/s² threshold. A target counts only where the vehicle is at it the next step, so a target below which the vehicle's own model already holds it counts as the model's.
+- *The origin* traces a free step to the vehicle's last constrained step, however long ago (free head-steps: a median 1.5 s back, p90 10.5 s).
+- *The I-24 comparison* pools every time of day and every weave zone of the testbed, not the T.H.52 section. I-24 MOTION tracks about half the vehicles, so the nearest tracked leader and follower are not always the nearest vehicles.
+- *Where it is read.* Lane 1's speed in the correlation is that of the section's first 50 m. The entry speed is read at the entrant's first sample on the section, within one step (at most 11 m at 22 m/s) of the section start.
+
+**Bookkeeping.**
+- *Edited:* this section only. The CHANGELOG bullet is handed to the coordinator. The runner, `flowstate_core.config`, the scenarios, the fixtures, every test and every golden are untouched, and no config hash changes.
+- *Session files (`wp84/`, not committed):*
+  - the harness `h84.py` and the no-hook check `plain84.py`;
+  - the readers `an84.py`, `tab84.py`, `extra84.py`, `brk84.py` and `dens84.py`;
+  - the rows `rows_def`, `rows_antic`, `rows_rease`, `rows_outlet`, `rows_rany`, `rows_outlet_rease` and `rows_outlet_antic` (`.jsonl`; 35 runs, plus three smoke runs and five no-hook runs);
+  - the tables `t_*.md`, and the section's assembly `assemble84.py` from `section_tpl.md`.
+  - Run directories were temporary and deleted.
+
+Every number above is from those runs, from the committed files named, or from `microsim.runner` at HEAD.
