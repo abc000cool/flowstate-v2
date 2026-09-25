@@ -1,0 +1,7916 @@
+{
+ "schema_version": 1,
+ "kind": "observed",
+ "created_at": "2026-09-25T18:10:10Z",
+ "source": "scripts/i24_critical_gaps.py",
+ "code": "2bfce81e34c9e3a24c7266ebd97652de65ffa1c7 snapshot 5df300322ffc8bf0a19d63ad4ea0eaa8465ae6b5",
+ "code_dirty": false,
+ "data_hash": "aa97dd93d2bf250ea23c3624f91afe8d7035a672fd13efbd53013709e12c7d56",
+ "data": "data/i24motion/processed/i24_wb_20221130",
+ "time_origin": "t = seconds after 06:00:00 CST, 30 Nov 2022",
+ "x_axis": "data x [m], front bumper, 0 at MM 62.7, westbound",
+ "span_data_x_m": [
+  0.0,
+  5492.4989040731325
+ ],
+ "citation": "Gloudemans, D., Wang, Y., Ji, J., Zachar, G., Barbour, W., Hall, E., Cebelak, M., Smith, L. and Work, D.B. (2023). I-24 MOTION: An instrument for freeway traffic science. Transportation Research Part C 155:104311.",
+ "sequences_file": "data/i24motion/processed/i24_wb_gap_sequences.parquet",
+ "drivers_file": "data/i24motion/processed/i24_wb_critical_gap_drivers.parquet",
+ "method": {
+  "min_dwell_s": 1.0,
+  "max_range_m": 200.0,
+  "min_gap_m": 0.5,
+  "mainline_lanes": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "aux_lanes": [
+   5
+  ],
+  "window_s": [
+   0.0,
+   14400.0
+  ],
+  "x_range_m": [
+   0.0,
+   5492.4989040731325
+  ],
+  "default_length_m": null,
+  "dt_s": 0.2,
+  "max_gap_s": 0.5,
+  "lookback_s": 10.0,
+  "sample_every_s": 1.0,
+  "same_vehicle_tol_m": 2.0,
+  "bounded_by_zone": true,
+  "n_back": 10,
+  "chunk_s": 900.0,
+  "pad_s": 18.0,
+  "modules": [
+   "calibration.lane_change_gaps.gap_sequences",
+   "calibration.critical_gap"
+  ],
+  "lookback_bounds": "the held run of the origin lane before the change, the track, a missing sample slot, and the change's own zone (an auxiliary lane exists only there)",
+  "sensitivity_lookback_s": 5.0,
+  "rejected_gap": "a distinct lag-lead pair of consecutive target-lane vehicles that was beside the changer (lead: nearest vehicle with its front strictly ahead of the changer's front; lag: nearest at or behind it; the extraction's 200 m range) at one or more lookback instants while the changer stayed in its origin lane, and is not the pair it entered; a new pair begins when the lead or the lag is a different vehicle (id, or position continuity within same_vehicle_tol_m, so a tracker fragment switch is not a new gap). The gap-acceptance definition (Troutbeck 1992; Brilon, Koenig & Troutbeck 1999, Transp. Res. A 33:161-186; Tian et al. 1999, Transp. Res. A 33:187-197) transposed to a lane change as Marczak, Daamen & Buisson 2013 (Transp. Res. C 36:530-546, s. 6) define it at a freeway merge: gaps passed by vehicles that merge further downstream.",
+  "accepted_gap": "the lead and lag gaps at the change moment (the first sample in the new debounced lane), as calibration.lane_change_gaps records them",
+  "empty_instant": "no vehicle within range on either side: never a rejection",
+  "time_gaps": "lead: bumper gap over the changer's speed; lag: bumper gap over the lag's speed",
+  "drivers": "confirmed, non-suspect entering and exiting changes in merge, diverge and weave zones; suspect lookback instants (a gap below 0.5 m) left out",
+  "separate_estimator": "Troutbeck's maximum likelihood per side, log-normal: L = prod [F(a_i) - F(r_i)], a_i the accepted and r_i the largest rejected time gap of that side (0 when none); inconsistent drivers (r_i >= a_i) excluded, counted",
+  "joint_estimator": "a driver accepts only when both sides clear independent log-normal critical gaps; likelihood: the probability that the driver's critical pair lies in the accepted pair's rectangle and outside the union of its rejected combinations' rectangles (exact staircase); reduces to the separate estimator when a side never binds; drivers with a rejected combination at least as large on both sides excluded",
+  "no_rejection": "include (r = 0); the sensitivity_no_rejection_excluded entries drop those drivers (Weinert 2000's choice)",
+  "speed_classes_ms": [
+   [
+    "v<10",
+    0.0,
+    10.0
+   ],
+   [
+    "10<=v<20",
+    10.0,
+    20.0
+   ],
+   [
+    "v>=20",
+    20.0,
+    null
+   ]
+  ],
+  "min_drivers": 30,
+  "n_boot": 200,
+  "bootstrap": "drivers resampled with replacement; percentile 95 % intervals; seeds flowstate_core.rng.spawn_seeds(seed, n_rows)",
+  "seed": 20260925,
+  "mapping": "at speed parity the acceptance's leader side needs 2 s0 + A v (critical time gap A + 2 s0 / v over the changer's speed), its follower side the larger of 2 s0 + A v_F and the absorption gap (s0 + v_F T) / sqrt(1 - (v_F/v0)^4 + b/a_max); A implied per class = fitted median - 2 s0 / (class median speed); proposal = the n-weighted mean over classes and sides, floored at 0",
+  "citations": [
+   "Troutbeck, R.J. (1992). Estimating the critical acceptance gap from traffic movements. Physical Infrastructure Centre Research Report 92-5, QUT.",
+   "Brilon, W., Koenig, R., Troutbeck, R.J. (1999). Useful estimation procedures for critical gaps. Transportation Research Part A 33(3-4):161-186.",
+   "Tian, Z. et al. (1999). Implementing the maximum likelihood methodology to measure a driver's critical gap. Transportation Research Part A 33(3-4):187-197.",
+   "Weinert, A. (2000). Estimation of critical gaps and follow-up times at rural unsignalized intersections in Germany. TRB Circular E-C018, 409-421.",
+   "Troutbeck, R.J. (2014). Estimating the mean critical gap. Transportation Research Record 2461:76-84.",
+   "Daamen, W., Loot, M., Hoogendoorn, S.P. (2010). Empirical analysis of merging behavior at freeway on-ramp. Transportation Research Record 2188:108-118.",
+   "Marczak, F., Daamen, W., Buisson, C. (2013). Merging behaviour: empirical comparison between two sites and new theory development. Transportation Research Part C 36:530-546."
+  ]
+ },
+ "zones": [
+  {
+   "name": "upstream_of_OH",
+   "kind": "basic",
+   "x_lo_m": 0.0,
+   "x_hi_m": 751.423566712573
+  },
+  {
+   "name": "OH_acceleration_lane",
+   "kind": "merge",
+   "x_lo_m": 751.423566712573,
+   "x_hi_m": 1898.971405569087
+  },
+  {
+   "name": "OH_to_HH_diverge",
+   "kind": "basic",
+   "x_lo_m": 1898.971405569087,
+   "x_hi_m": 3426.9248707987804
+  },
+  {
+   "name": "HH_diverge",
+   "kind": "diverge",
+   "x_lo_m": 3426.9248707987804,
+   "x_hi_m": 3946.5738632011207
+  },
+  {
+   "name": "HH_off_to_HH_on",
+   "kind": "basic",
+   "x_lo_m": 3946.5738632011207,
+   "x_hi_m": 4507.3292056107675
+  },
+  {
+   "name": "HH_on_BR_off_weave",
+   "kind": "weave",
+   "x_lo_m": 4507.3292056107675,
+   "x_hi_m": 5091.953412589302
+  },
+  {
+   "name": "BR_diverge",
+   "kind": "diverge",
+   "x_lo_m": 5091.953412589302,
+   "x_hi_m": 5492.4989040731325
+  }
+ ],
+ "acceptance": {
+  "accept_gap_s": 0.6,
+  "exit_accept_gap_s": 0.6,
+  "s0_m": 2.532705588124531,
+  "T_s": 1.3221695251256709,
+  "a_max": 1.054909533427964,
+  "b": 1.702873868555271,
+  "v0_ms": 31.29,
+  "source": "artifacts/idm_i24_capacity.json means; v0 capped at the weave edge's lane speed 31.29 m/s; WEAVE_DEFAULTS time gaps"
+ },
+ "counts": {
+  "extraction": {
+   "n_rows": 39835655,
+   "n_transitions_raw": 240914,
+   "n_flicker_samples": 5588,
+   "n_transitions_held": 237124,
+   "n_nonadjacent": 0,
+   "n_other_lanes": 34486,
+   "n_outside_window": 7876,
+   "n_outside_zones_span": 15605,
+   "n_changes": 179157
+  },
+  "sequences": {
+   "n_changes": 10470,
+   "n_unmatched": 0,
+   "n_samples": 59353,
+   "n_accepted_samples": 25985,
+   "n_rejected_samples": 29100,
+   "n_empty_samples": 4268,
+   "n_suspect_samples": 5779,
+   "n_changes_with_rejected": 6788,
+   "n_rejected_gaps": 15513
+  }
+ },
+ "fits": [
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "all",
+   "n_drivers": 76,
+   "v_ms_p50": 13.9594,
+   "lag_v_ms_p50": 17.3138,
+   "lead_closing_ms_p50": 2.941,
+   "lag_closing_ms_p50": 2.8443,
+   "share_with_rejected": 0.3553,
+   "lookback_s_p50": 1.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 76,
+    "n_undefined": 1,
+    "n_no_rejection": 60,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 7,
+    "n_inconsistent_excluded": 7,
+    "n_uninformative": 52,
+    "n_censored": 7,
+    "n_used": 16,
+    "n_with_rejection": 8
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 76,
+    "n_undefined": 0,
+    "n_no_rejection": 62,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 5,
+    "n_inconsistent_excluded": 5,
+    "n_uninformative": 43,
+    "n_censored": 7,
+    "n_used": 28,
+    "n_with_rejection": 9
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.51256,
+     "sigma": 10.0,
+     "median_s": 0.599,
+     "mean_s": 3.1054230598464307e+21,
+     "sd_s": 1.6100704106987917e+43,
+     "p10_s": 0.0,
+     "p90_s": 220345.614,
+     "degenerate": false,
+     "at_bound": true,
+     "ci95": {
+      "median_s": [
+       0.01,
+       240.2174
+      ],
+      "mean_s": [
+       24.7064,
+       1.2454562445298338e+24
+      ],
+      "mu": [
+       -4.6052,
+       5.4811
+      ],
+      "sigma": [
+       3.0516,
+       10.0
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.91906,
+     "sigma": 4.1792,
+     "median_s": 0.3989,
+     "mean_s": 2474.4767,
+     "sd_s": 15349966.7369,
+     "p10_s": 0.0019,
+     "p90_s": 84.5041,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.01,
+       3.2879
+      ],
+      "mean_s": [
+       8.2453,
+       1.560391073154386e+20
+      ],
+      "mu": [
+       -4.6052,
+       1.1902
+      ],
+      "sigma": [
+       1.6965,
+       10.0
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -38.0832,
+    "converged": true,
+    "n_input": 76,
+    "n_undefined": 1,
+    "n_no_rejection": 49,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 11,
+    "n_inconsistent_excluded": 11,
+    "n_uninformative": 24,
+    "n_censored": 39,
+    "n_used": 40,
+    "n_with_rejection": 15,
+    "n_points": 35,
+    "n_steps": 15,
+    "sensitivity_no_rejection_excluded": null
+   }
+  },
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v<10",
+   "n_drivers": 20,
+   "v_ms_p50": 6.6896,
+   "lag_v_ms_p50": 15.8865,
+   "lead_closing_ms_p50": -1.6895,
+   "lag_closing_ms_p50": 6.5315,
+   "share_with_rejected": 0.55,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 20,
+    "n_undefined": 1,
+    "n_no_rejection": 14,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 1,
+    "n_inconsistent_excluded": 1,
+    "n_uninformative": 11,
+    "n_censored": 3,
+    "n_used": 7,
+    "n_with_rejection": 4
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 20,
+    "n_undefined": 0,
+    "n_no_rejection": 13,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 3,
+    "n_inconsistent_excluded": 3,
+    "n_uninformative": 10,
+    "n_censored": 4,
+    "n_used": 7,
+    "n_with_rejection": 4
+   },
+   "joint": {
+    "fitted": false,
+    "n_input": 20,
+    "n_undefined": 1,
+    "n_no_rejection": 9,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 4,
+    "n_inconsistent_excluded": 4,
+    "n_uninformative": 4,
+    "n_censored": 10,
+    "n_used": 11,
+    "n_with_rejection": 6,
+    "n_points": 10,
+    "n_steps": 6
+   }
+  },
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "10<=v<20",
+   "n_drivers": 45,
+   "v_ms_p50": 14.5459,
+   "lag_v_ms_p50": 17.5889,
+   "lead_closing_ms_p50": 4.2308,
+   "lag_closing_ms_p50": 2.6853,
+   "share_with_rejected": 0.2222,
+   "lookback_s_p50": 0.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 45,
+    "n_undefined": 0,
+    "n_no_rejection": 38,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 4,
+    "n_inconsistent_excluded": 4,
+    "n_uninformative": 35,
+    "n_censored": 3,
+    "n_used": 6,
+    "n_with_rejection": 3
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 45,
+    "n_undefined": 0,
+    "n_no_rejection": 41,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 2,
+    "n_inconsistent_excluded": 2,
+    "n_uninformative": 25,
+    "n_censored": 2,
+    "n_used": 18,
+    "n_with_rejection": 2
+   },
+   "joint": {
+    "fitted": false,
+    "n_input": 45,
+    "n_undefined": 0,
+    "n_no_rejection": 35,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 5,
+    "n_inconsistent_excluded": 5,
+    "n_uninformative": 16,
+    "n_censored": 24,
+    "n_used": 24,
+    "n_with_rejection": 5,
+    "n_points": 19,
+    "n_steps": 5
+   }
+  },
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v>=20",
+   "n_drivers": 11,
+   "v_ms_p50": 25.0219,
+   "lag_v_ms_p50": 17.6566,
+   "lead_closing_ms_p50": 23.5446,
+   "lag_closing_ms_p50": -3.2026,
+   "share_with_rejected": 0.5455,
+   "lookback_s_p50": 2.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 11,
+    "n_undefined": 0,
+    "n_no_rejection": 8,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 2,
+    "n_inconsistent_excluded": 2,
+    "n_uninformative": 6,
+    "n_censored": 1,
+    "n_used": 3,
+    "n_with_rejection": 1
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 11,
+    "n_undefined": 0,
+    "n_no_rejection": 8,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 0,
+    "n_inconsistent_excluded": 0,
+    "n_uninformative": 8,
+    "n_censored": 1,
+    "n_used": 3,
+    "n_with_rejection": 3
+   },
+   "joint": {
+    "fitted": false,
+    "n_input": 11,
+    "n_undefined": 0,
+    "n_no_rejection": 5,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 2,
+    "n_inconsistent_excluded": 2,
+    "n_uninformative": 4,
+    "n_censored": 5,
+    "n_used": 5,
+    "n_with_rejection": 4,
+    "n_points": 6,
+    "n_steps": 4
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "all",
+   "n_drivers": 1688,
+   "v_ms_p50": 18.5471,
+   "lag_v_ms_p50": 15.5375,
+   "lead_closing_ms_p50": -1.0084,
+   "lag_closing_ms_p50": -1.9991,
+   "share_with_rejected": 0.644,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.46694,
+    "sigma": 2.27895,
+    "median_s": 4.336,
+    "mean_s": 58.1928,
+    "sd_s": 778.8318,
+    "p10_s": 0.2337,
+    "p90_s": 80.4425,
+    "loglik": -1051.487,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1688,
+    "n_undefined": 7,
+    "n_no_rejection": 762,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 588,
+    "n_inconsistent_excluded": 588,
+    "n_uninformative": 547,
+    "n_censored": 175,
+    "n_used": 546,
+    "n_with_rejection": 331,
+    "ci95": {
+     "median_s": [
+      3.5073,
+      5.5196
+     ],
+     "mean_s": [
+      33.3241,
+      130.2625
+     ],
+     "mu": [
+      1.2549,
+      1.7083
+     ],
+     "sigma": [
+      2.0471,
+      2.5841
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.70106,
+     "sigma": 1.55971,
+     "median_s": 14.8956,
+     "mean_s": 50.2697,
+     "sd_s": 162.0321,
+     "p10_s": 2.0182,
+     "p90_s": 109.9368,
+     "loglik": -802.1794,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1688,
+     "n_undefined": 7,
+     "n_no_rejection": 762,
+     "n_no_rejection_excluded": 762,
+     "n_inconsistent": 588,
+     "n_inconsistent_excluded": 588,
+     "n_uninformative": 0,
+     "n_censored": 175,
+     "n_used": 331,
+     "n_with_rejection": 331
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 1.71866,
+    "sigma": 4.11521,
+    "median_s": 5.5771,
+    "mean_s": 26532.9578,
+    "sd_s": 126231029.8135,
+    "p10_s": 0.0286,
+    "p90_s": 1088.4575,
+    "loglik": -537.0096,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1688,
+    "n_undefined": 53,
+    "n_no_rejection": 1250,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 134,
+    "n_inconsistent_excluded": 134,
+    "n_uninformative": 1049,
+    "n_censored": 172,
+    "n_used": 452,
+    "n_with_rejection": 251,
+    "ci95": {
+     "median_s": [
+      3.7403,
+      8.0966
+     ],
+     "mean_s": [
+      3144.4525,
+      897336.2491
+     ],
+     "mu": [
+      1.3191,
+      2.0911
+     ],
+     "sigma": [
+      3.5975,
+      4.893
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 4.647,
+     "sigma": 2.97734,
+     "median_s": 104.2713,
+     "mean_s": 8771.666,
+     "sd_s": 737851.3737,
+     "p10_s": 2.2965,
+     "p90_s": 4734.4203,
+     "loglik": -322.6865,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1688,
+     "n_undefined": 53,
+     "n_no_rejection": 1250,
+     "n_no_rejection_excluded": 1250,
+     "n_inconsistent": 134,
+     "n_inconsistent_excluded": 134,
+     "n_uninformative": 0,
+     "n_censored": 172,
+     "n_used": 251,
+     "n_with_rejection": 251
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 1.18974,
+     "sigma": 2.1163,
+     "median_s": 3.2862,
+     "mean_s": 30.8493,
+     "sd_s": 287.9476,
+     "p10_s": 0.2182,
+     "p90_s": 49.4961,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       2.6153,
+       3.9716
+      ],
+      "mean_s": [
+       18.1141,
+       57.9857
+      ],
+      "mu": [
+       0.9614,
+       1.3792
+      ],
+      "sigma": [
+       1.8769,
+       2.3704
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 1.0766,
+     "sigma": 4.15143,
+     "median_s": 2.9347,
+     "mean_s": 16216.8127,
+     "sd_s": 89612543.9549,
+     "p10_s": 0.0144,
+     "p90_s": 599.9693,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       1.8062,
+       4.547
+      ],
+      "mean_s": [
+       1387.1447,
+       299571.8722
+      ],
+      "mu": [
+       0.5912,
+       1.5145
+      ],
+      "sigma": [
+       3.4513,
+       4.7936
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1422.614,
+    "converged": true,
+    "n_input": 1688,
+    "n_undefined": 60,
+    "n_no_rejection": 594,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 595,
+    "n_inconsistent_excluded": 595,
+    "n_uninformative": 353,
+    "n_censored": 572,
+    "n_used": 680,
+    "n_with_rejection": 439,
+    "n_points": 1354,
+    "n_steps": 542,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 8.903,
+     "lag_median_s": 15.1964,
+     "n_used": 439
+    }
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v<10",
+   "n_drivers": 163,
+   "v_ms_p50": 3.4312,
+   "lag_v_ms_p50": 18.9617,
+   "lead_closing_ms_p50": -16.3086,
+   "lag_closing_ms_p50": 13.3231,
+   "share_with_rejected": 0.4417,
+   "lookback_s_p50": 2.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 3.25252,
+    "sigma": 2.03001,
+    "median_s": 25.8555,
+    "mean_s": 202.9589,
+    "sd_s": 1580.192,
+    "p10_s": 1.9174,
+    "p90_s": 348.6584,
+    "loglik": -80.9879,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 163,
+    "n_undefined": 7,
+    "n_no_rejection": 101,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 14,
+    "n_inconsistent_excluded": 14,
+    "n_uninformative": 73,
+    "n_censored": 23,
+    "n_used": 69,
+    "n_with_rejection": 41,
+    "ci95": {
+     "median_s": [
+      13.8733,
+      47.1032
+     ],
+     "mean_s": [
+      62.6004,
+      1217.1608
+     ],
+     "mu": [
+      2.6299,
+      3.8523
+     ],
+     "sigma": [
+      1.4036,
+      2.7309
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 4.31076,
+     "sigma": 1.32721,
+     "median_s": 74.4972,
+     "mean_s": 179.7387,
+     "sd_s": 394.6516,
+     "p10_s": 13.5973,
+     "p90_s": 408.1559,
+     "loglik": -49.845,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 163,
+     "n_undefined": 7,
+     "n_no_rejection": 101,
+     "n_no_rejection_excluded": 101,
+     "n_inconsistent": 14,
+     "n_inconsistent_excluded": 14,
+     "n_uninformative": 0,
+     "n_censored": 23,
+     "n_used": 41,
+     "n_with_rejection": 41
+    }
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 163,
+    "n_undefined": 3,
+    "n_no_rejection": 137,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 16,
+    "n_inconsistent_excluded": 16,
+    "n_uninformative": 121,
+    "n_censored": 6,
+    "n_used": 23,
+    "n_with_rejection": 7
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 3.1937,
+     "sigma": 1.61479,
+     "median_s": 24.3785,
+     "mean_s": 89.7895,
+     "sd_s": 318.2847,
+     "p10_s": 3.078,
+     "p90_s": 193.0854,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       14.2989,
+       41.5202
+      ],
+      "mean_s": [
+       42.6413,
+       320.0314
+      ],
+      "mu": [
+       2.6602,
+       3.7261
+      ],
+      "sigma": [
+       1.0875,
+       2.3055
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -4.60517,
+     "sigma": 5.0117,
+     "median_s": 0.01,
+     "mean_s": 2845.2846,
+     "sd_s": 809564435.0648,
+     "p10_s": 0.0,
+     "p90_s": 6.157,
+     "degenerate": false,
+     "at_bound": true,
+     "ci95": {
+      "median_s": [
+       0.01,
+       0.7103
+      ],
+      "mean_s": [
+       0.0117,
+       5.1847055285871714e+19
+      ],
+      "mu": [
+       -4.6052,
+       -0.3421
+      ],
+      "sigma": [
+       0.0292,
+       10.0
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -77.4649,
+    "converged": true,
+    "n_input": 163,
+    "n_undefined": 10,
+    "n_no_rejection": 89,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 25,
+    "n_inconsistent_excluded": 25,
+    "n_uninformative": 56,
+    "n_censored": 64,
+    "n_used": 72,
+    "n_with_rejection": 39,
+    "n_points": 67,
+    "n_steps": 43,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 56.057,
+     "lag_median_s": 0.0515,
+     "n_used": 39
+    }
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "10<=v<20",
+   "n_drivers": 930,
+   "v_ms_p50": 17.2187,
+   "lag_v_ms_p50": 11.4571,
+   "lead_closing_ms_p50": -1.3035,
+   "lag_closing_ms_p50": -4.6027,
+   "share_with_rejected": 0.7194,
+   "lookback_s_p50": 6.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.4711,
+    "sigma": 2.12686,
+    "median_s": 4.354,
+    "mean_s": 41.7982,
+    "sd_s": 399.0774,
+    "p10_s": 0.2852,
+    "p90_s": 66.4714,
+    "loglik": -615.2411,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 930,
+    "n_undefined": 0,
+    "n_no_rejection": 351,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 393,
+    "n_inconsistent_excluded": 393,
+    "n_uninformative": 242,
+    "n_censored": 98,
+    "n_used": 295,
+    "n_with_rejection": 186,
+    "ci95": {
+     "median_s": [
+      3.2241,
+      5.6375
+     ],
+     "mean_s": [
+      19.9983,
+      128.7289
+     ],
+     "mu": [
+      1.1706,
+      1.7294
+     ],
+     "sigma": [
+      1.778,
+      2.5633
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.53536,
+     "sigma": 1.36307,
+     "median_s": 12.621,
+     "mean_s": 31.9556,
+     "sd_s": 74.3313,
+     "p10_s": 2.2001,
+     "p90_s": 72.4003,
+     "loglik": -474.8089,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 930,
+     "n_undefined": 0,
+     "n_no_rejection": 351,
+     "n_no_rejection_excluded": 351,
+     "n_inconsistent": 393,
+     "n_inconsistent_excluded": 393,
+     "n_uninformative": 0,
+     "n_censored": 98,
+     "n_used": 186,
+     "n_with_rejection": 186
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 2.10043,
+    "sigma": 4.18356,
+    "median_s": 8.1697,
+    "mean_s": 51612.0763,
+    "sd_s": 326059461.7762,
+    "p10_s": 0.0383,
+    "p90_s": 1740.4119,
+    "loglik": -304.3381,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 930,
+    "n_undefined": 34,
+    "n_no_rejection": 652,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 88,
+    "n_inconsistent_excluded": 88,
+    "n_uninformative": 535,
+    "n_censored": 110,
+    "n_used": 273,
+    "n_with_rejection": 156,
+    "ci95": {
+     "median_s": [
+      4.5679,
+      14.2377
+     ],
+     "mean_s": [
+      3007.8313,
+      1520488.6507
+     ],
+     "mu": [
+      1.519,
+      2.6559
+     ],
+     "sigma": [
+      3.513,
+      4.9155
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 4.95812,
+     "sigma": 2.85389,
+     "median_s": 142.3255,
+     "mean_s": 8353.5993,
+     "sd_s": 490231.8318,
+     "p10_s": 3.6719,
+     "p90_s": 5516.6058,
+     "loglik": -171.1073,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 930,
+     "n_undefined": 34,
+     "n_no_rejection": 652,
+     "n_no_rejection_excluded": 652,
+     "n_inconsistent": 88,
+     "n_inconsistent_excluded": 88,
+     "n_uninformative": 0,
+     "n_censored": 110,
+     "n_used": 156,
+     "n_with_rejection": 156
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 1.16068,
+     "sigma": 2.01321,
+     "median_s": 3.1921,
+     "mean_s": 24.2202,
+     "sd_s": 182.1685,
+     "p10_s": 0.2419,
+     "p90_s": 42.1279,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       2.3939,
+       4.138
+      ],
+      "mean_s": [
+       13.6032,
+       59.0466
+      ],
+      "mu": [
+       0.8729,
+       1.4202
+      ],
+      "sigma": [
+       1.7109,
+       2.4777
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 1.37697,
+     "sigma": 4.2878,
+     "median_s": 3.9629,
+     "mean_s": 38933.2436,
+     "sd_s": 382499651.5981,
+     "p10_s": 0.0163,
+     "p90_s": 964.888,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       1.8892,
+       9.4007
+      ],
+      "mean_s": [
+       1711.6665,
+       6769530.4077
+      ],
+      "mu": [
+       0.6361,
+       2.2408
+      ],
+      "sigma": [
+       3.4707,
+       5.3823
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -824.1782,
+    "converged": true,
+    "n_input": 930,
+    "n_undefined": 34,
+    "n_no_rejection": 256,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 390,
+    "n_inconsistent_excluded": 390,
+    "n_uninformative": 140,
+    "n_censored": 303,
+    "n_used": 366,
+    "n_with_rejection": 250,
+    "n_points": 842,
+    "n_steps": 326,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 7.331,
+     "lag_median_s": 16.4342,
+     "n_used": 250
+    }
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v>=20",
+   "n_drivers": 595,
+   "v_ms_p50": 22.8237,
+   "lag_v_ms_p50": 20.32,
+   "lead_closing_ms_p50": 0.1654,
+   "lag_closing_ms_p50": -2.5181,
+   "share_with_rejected": 0.5815,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 0.9475,
+    "sigma": 1.61316,
+    "median_s": 2.5793,
+    "mean_s": 9.4749,
+    "sd_s": 33.4918,
+    "p10_s": 0.3263,
+    "p90_s": 20.3861,
+    "loglik": -331.0391,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 595,
+    "n_undefined": 0,
+    "n_no_rejection": 310,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 181,
+    "n_inconsistent_excluded": 181,
+    "n_uninformative": 232,
+    "n_censored": 54,
+    "n_used": 182,
+    "n_with_rejection": 104,
+    "ci95": {
+     "median_s": [
+      1.9829,
+      3.2808
+     ],
+     "mean_s": [
+      5.8202,
+      17.0494
+     ],
+     "mu": [
+      0.6846,
+      1.1881
+     ],
+     "sigma": [
+      1.3049,
+      1.9786
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.89513,
+     "sigma": 1.06229,
+     "median_s": 6.6534,
+     "mean_s": 11.6973,
+     "sd_s": 16.9141,
+     "p10_s": 1.7053,
+     "p90_s": 25.9587,
+     "loglik": -247.157,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 595,
+     "n_undefined": 0,
+     "n_no_rejection": 310,
+     "n_no_rejection_excluded": 310,
+     "n_inconsistent": 181,
+     "n_inconsistent_excluded": 181,
+     "n_uninformative": 0,
+     "n_censored": 54,
+     "n_used": 104,
+     "n_with_rejection": 104
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 1.44152,
+    "sigma": 3.82917,
+    "median_s": 4.2271,
+    "mean_s": 6456.0785,
+    "sd_s": 9860363.592,
+    "p10_s": 0.0312,
+    "p90_s": 571.8031,
+    "loglik": -211.8527,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 595,
+    "n_undefined": 16,
+    "n_no_rejection": 461,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 30,
+    "n_inconsistent_excluded": 30,
+    "n_uninformative": 393,
+    "n_censored": 56,
+    "n_used": 156,
+    "n_with_rejection": 88,
+    "ci95": {
+     "median_s": [
+      2.1595,
+      8.4851
+     ],
+     "mean_s": [
+      318.7527,
+      483981.8067
+     ],
+     "mu": [
+      0.7699,
+      2.1383
+     ],
+     "sigma": [
+      2.9992,
+      4.8465
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 4.03642,
+     "sigma": 3.04863,
+     "median_s": 56.6235,
+     "mean_s": 5904.7396,
+     "sd_s": 615721.7358,
+     "p10_s": 1.1382,
+     "p90_s": 2816.9415,
+     "loglik": -144.6628,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 595,
+     "n_undefined": 16,
+     "n_no_rejection": 461,
+     "n_no_rejection_excluded": 461,
+     "n_inconsistent": 30,
+     "n_inconsistent_excluded": 30,
+     "n_uninformative": 0,
+     "n_censored": 56,
+     "n_used": 88,
+     "n_with_rejection": 88
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.81166,
+     "sigma": 1.4649,
+     "median_s": 2.2516,
+     "mean_s": 6.5838,
+     "sd_s": 18.0905,
+     "p10_s": 0.3445,
+     "p90_s": 14.7169,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       1.743,
+       2.8464
+      ],
+      "mean_s": [
+       4.6733,
+       11.3318
+      ],
+      "mu": [
+       0.5556,
+       1.046
+      ],
+      "sigma": [
+       1.2319,
+       1.8451
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 1.15777,
+     "sigma": 3.77283,
+     "median_s": 3.1828,
+     "mean_s": 3924.1493,
+     "sd_s": 4838127.9112,
+     "p10_s": 0.0253,
+     "p90_s": 400.5549,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       1.3127,
+       6.457
+      ],
+      "mean_s": [
+       123.2943,
+       4491781.7527
+      ],
+      "mu": [
+       0.2721,
+       1.8651
+      ],
+      "sigma": [
+       2.7635,
+       5.3851
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -487.4079,
+    "converged": true,
+    "n_input": 595,
+    "n_undefined": 16,
+    "n_no_rejection": 249,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 180,
+    "n_inconsistent_excluded": 180,
+    "n_uninformative": 157,
+    "n_censored": 205,
+    "n_used": 242,
+    "n_with_rejection": 150,
+    "n_points": 445,
+    "n_steps": 173,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 5.1429,
+     "lag_median_s": 100.2737,
+     "n_used": 150
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "all",
+   "n_drivers": 1881,
+   "v_ms_p50": 11.7044,
+   "lag_v_ms_p50": 9.4867,
+   "lead_closing_ms_p50": 0.7132,
+   "lag_closing_ms_p50": -1.3812,
+   "share_with_rejected": 0.6959,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.22064,
+    "sigma": 1.39805,
+    "median_s": 0.802,
+    "mean_s": 2.1311,
+    "sd_s": 5.2465,
+    "p10_s": 0.1337,
+    "p90_s": 4.8116,
+    "loglik": -1540.3095,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1881,
+    "n_undefined": 3,
+    "n_no_rejection": 588,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 809,
+    "n_inconsistent_excluded": 809,
+    "n_uninformative": 21,
+    "n_censored": 21,
+    "n_used": 1048,
+    "n_with_rejection": 481,
+    "ci95": {
+     "median_s": [
+      0.7159,
+      0.8763
+     ],
+     "mean_s": [
+      1.8575,
+      2.462
+     ],
+     "mu": [
+      -0.3343,
+      -0.132
+     ],
+     "sigma": [
+      1.3081,
+      1.4871
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.84356,
+     "sigma": 0.97525,
+     "median_s": 2.3246,
+     "mean_s": 3.7401,
+     "sd_s": 4.714,
+     "p10_s": 0.6661,
+     "p90_s": 8.1123,
+     "loglik": -1065.6122,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1881,
+     "n_undefined": 3,
+     "n_no_rejection": 588,
+     "n_no_rejection_excluded": 588,
+     "n_inconsistent": 809,
+     "n_inconsistent_excluded": 809,
+     "n_uninformative": 0,
+     "n_censored": 21,
+     "n_used": 481,
+     "n_with_rejection": 481
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.30873,
+    "sigma": 1.20086,
+    "median_s": 1.3617,
+    "mean_s": 2.8004,
+    "sd_s": 5.0325,
+    "p10_s": 0.2922,
+    "p90_s": 6.3452,
+    "loglik": -1905.5757,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1881,
+    "n_undefined": 10,
+    "n_no_rejection": 602,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 663,
+    "n_inconsistent_excluded": 663,
+    "n_uninformative": 35,
+    "n_censored": 16,
+    "n_used": 1173,
+    "n_with_rejection": 606,
+    "ci95": {
+     "median_s": [
+      1.2428,
+      1.4798
+     ],
+     "mean_s": [
+      2.5426,
+      3.0565
+     ],
+     "mu": [
+      0.2174,
+      0.3919
+     ],
+     "sigma": [
+      1.1176,
+      1.2696
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.07649,
+     "sigma": 0.87646,
+     "median_s": 2.9344,
+     "mean_s": 4.3085,
+     "sd_s": 4.6321,
+     "p10_s": 0.9543,
+     "p90_s": 9.0225,
+     "loglik": -1406.8483,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1881,
+     "n_undefined": 10,
+     "n_no_rejection": 602,
+     "n_no_rejection_excluded": 602,
+     "n_inconsistent": 663,
+     "n_inconsistent_excluded": 663,
+     "n_uninformative": 0,
+     "n_censored": 16,
+     "n_used": 606,
+     "n_with_rejection": 606
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.77952,
+     "sigma": 1.44422,
+     "median_s": 0.4586,
+     "mean_s": 1.3013,
+     "sd_s": 3.4554,
+     "p10_s": 0.0721,
+     "p90_s": 2.9192,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.4022,
+       0.529
+      ],
+      "mean_s": [
+       1.162,
+       1.4999
+      ],
+      "mu": [
+       -0.9109,
+       -0.6368
+      ],
+      "sigma": [
+       1.3197,
+       1.5565
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.08327,
+     "sigma": 1.27749,
+     "median_s": 0.9201,
+     "mean_s": 2.0807,
+     "sd_s": 4.2204,
+     "p10_s": 0.179,
+     "p90_s": 4.7299,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.8388,
+       1.0348
+      ],
+      "mean_s": [
+       1.8742,
+       2.2598
+      ],
+      "mu": [
+       -0.1757,
+       0.0342
+      ],
+      "sigma": [
+       1.207,
+       1.3501
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -3016.9395,
+    "converged": true,
+    "n_input": 1881,
+    "n_undefined": 12,
+    "n_no_rejection": 569,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 417,
+    "n_inconsistent_excluded": 417,
+    "n_uninformative": 3,
+    "n_censored": 55,
+    "n_used": 1449,
+    "n_with_rejection": 883,
+    "n_points": 2771,
+    "n_steps": 1315,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.9415,
+     "lag_median_s": 1.6554,
+     "n_used": 883
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "v<10",
+   "n_drivers": 731,
+   "v_ms_p50": 7.3865,
+   "lag_v_ms_p50": 6.1924,
+   "lead_closing_ms_p50": -0.0301,
+   "lag_closing_ms_p50": -0.7669,
+   "share_with_rejected": 0.6512,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.2687,
+    "sigma": 1.48393,
+    "median_s": 0.7644,
+    "mean_s": 2.2986,
+    "sd_s": 6.5191,
+    "p10_s": 0.1141,
+    "p90_s": 5.1194,
+    "loglik": -601.5849,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 731,
+    "n_undefined": 3,
+    "n_no_rejection": 255,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 293,
+    "n_inconsistent_excluded": 293,
+    "n_uninformative": 1,
+    "n_censored": 1,
+    "n_used": 434,
+    "n_with_rejection": 180,
+    "ci95": {
+     "median_s": [
+      0.6278,
+      0.9159
+     ],
+     "mean_s": [
+      1.7591,
+      2.9216
+     ],
+     "mu": [
+      -0.4656,
+      -0.0879
+     ],
+     "sigma": [
+      1.2971,
+      1.6641
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.937,
+     "sigma": 1.07378,
+     "median_s": 2.5523,
+     "mean_s": 4.5426,
+     "sd_s": 6.6881,
+     "p10_s": 0.6446,
+     "p90_s": 10.1057,
+     "loglik": -414.5922,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 731,
+     "n_undefined": 3,
+     "n_no_rejection": 255,
+     "n_no_rejection_excluded": 255,
+     "n_inconsistent": 293,
+     "n_inconsistent_excluded": 293,
+     "n_uninformative": 0,
+     "n_censored": 1,
+     "n_used": 180,
+     "n_with_rejection": 180
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.3189,
+    "sigma": 1.19561,
+    "median_s": 1.3756,
+    "mean_s": 2.8113,
+    "sd_s": 5.0104,
+    "p10_s": 0.2972,
+    "p90_s": 6.367,
+    "loglik": -691.7537,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 731,
+    "n_undefined": 9,
+    "n_no_rejection": 250,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 250,
+    "n_inconsistent_excluded": 250,
+    "n_uninformative": 0,
+    "n_censored": 1,
+    "n_used": 472,
+    "n_with_rejection": 222,
+    "ci95": {
+     "median_s": [
+      1.2052,
+      1.5868
+     ],
+     "mean_s": [
+      2.3798,
+      3.2686
+     ],
+     "mu": [
+      0.1866,
+      0.4617
+     ],
+     "sigma": [
+      1.0814,
+      1.2891
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.12755,
+     "sigma": 0.93616,
+     "median_s": 3.0881,
+     "mean_s": 4.7863,
+     "sd_s": 5.6677,
+     "p10_s": 0.9304,
+     "p90_s": 10.2501,
+     "loglik": -512.4202,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 731,
+     "n_undefined": 9,
+     "n_no_rejection": 250,
+     "n_no_rejection_excluded": 250,
+     "n_inconsistent": 250,
+     "n_inconsistent_excluded": 250,
+     "n_uninformative": 0,
+     "n_censored": 1,
+     "n_used": 222,
+     "n_with_rejection": 222
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.79938,
+     "sigma": 1.50016,
+     "median_s": 0.4496,
+     "mean_s": 1.3852,
+     "sd_s": 4.0368,
+     "p10_s": 0.0657,
+     "p90_s": 3.0745,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.36,
+       0.5744
+      ],
+      "mean_s": [
+       1.1231,
+       1.6858
+      ],
+      "mu": [
+       -1.0216,
+       -0.5544
+      ],
+      "sigma": [
+       1.306,
+       1.7223
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.01106,
+     "sigma": 1.24327,
+     "median_s": 0.989,
+     "mean_s": 2.1421,
+     "sd_s": 4.1156,
+     "p10_s": 0.201,
+     "p90_s": 4.8659,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.8639,
+       1.1411
+      ],
+      "mean_s": [
+       1.7934,
+       2.4832
+      ],
+      "mu": [
+       -0.1464,
+       0.132
+      ],
+      "sigma": [
+       1.1219,
+       1.3669
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1147.0067,
+    "converged": true,
+    "n_input": 731,
+    "n_undefined": 11,
+    "n_no_rejection": 251,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 138,
+    "n_inconsistent_excluded": 138,
+    "n_uninformative": 0,
+    "n_censored": 3,
+    "n_used": 582,
+    "n_with_rejection": 331,
+    "n_points": 1086,
+    "n_steps": 493,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 1.0137,
+     "lag_median_s": 1.7853,
+     "n_used": 331
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "10<=v<20",
+   "n_drivers": 855,
+   "v_ms_p50": 13.7688,
+   "lag_v_ms_p50": 11.754,
+   "lead_closing_ms_p50": 1.2653,
+   "lag_closing_ms_p50": -1.8351,
+   "share_with_rejected": 0.7135,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.23492,
+    "sigma": 1.32142,
+    "median_s": 0.7906,
+    "mean_s": 1.893,
+    "sd_s": 4.118,
+    "p10_s": 0.1454,
+    "p90_s": 4.2997,
+    "loglik": -714.8232,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 855,
+    "n_undefined": 0,
+    "n_no_rejection": 251,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 380,
+    "n_inconsistent_excluded": 380,
+    "n_uninformative": 5,
+    "n_censored": 2,
+    "n_used": 470,
+    "n_with_rejection": 224,
+    "ci95": {
+     "median_s": [
+      0.663,
+      0.9531
+     ],
+     "mean_s": [
+      1.6186,
+      2.2401
+     ],
+     "mu": [
+      -0.4109,
+      -0.0481
+     ],
+     "sigma": [
+      1.2086,
+      1.4635
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.76256,
+     "sigma": 0.91331,
+     "median_s": 2.1438,
+     "mean_s": 3.2532,
+     "sd_s": 3.7132,
+     "p10_s": 0.6651,
+     "p90_s": 6.9103,
+     "loglik": -496.4061,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 855,
+     "n_undefined": 0,
+     "n_no_rejection": 251,
+     "n_no_rejection_excluded": 251,
+     "n_inconsistent": 380,
+     "n_inconsistent_excluded": 380,
+     "n_uninformative": 0,
+     "n_censored": 2,
+     "n_used": 224,
+     "n_with_rejection": 224
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.27535,
+    "sigma": 1.18066,
+    "median_s": 1.317,
+    "mean_s": 2.6441,
+    "sd_s": 4.6031,
+    "p10_s": 0.29,
+    "p90_s": 5.98,
+    "loglik": -867.483,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 855,
+    "n_undefined": 1,
+    "n_no_rejection": 252,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 319,
+    "n_inconsistent_excluded": 319,
+    "n_uninformative": 5,
+    "n_censored": 8,
+    "n_used": 530,
+    "n_with_rejection": 283,
+    "ci95": {
+     "median_s": [
+      1.1639,
+      1.497
+     ],
+     "mean_s": [
+      2.2971,
+      2.9837
+     ],
+     "mu": [
+      0.1518,
+      0.4035
+     ],
+     "sigma": [
+      1.0835,
+      1.2798
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.00587,
+     "sigma": 0.86641,
+     "median_s": 2.7343,
+     "mean_s": 3.9797,
+     "sd_s": 4.2087,
+     "p10_s": 0.9008,
+     "p90_s": 8.2997,
+     "loglik": -641.3529,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 855,
+     "n_undefined": 1,
+     "n_no_rejection": 252,
+     "n_no_rejection_excluded": 252,
+     "n_inconsistent": 319,
+     "n_inconsistent_excluded": 319,
+     "n_uninformative": 0,
+     "n_censored": 8,
+     "n_used": 283,
+     "n_with_rejection": 283
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.79302,
+     "sigma": 1.39005,
+     "median_s": 0.4525,
+     "mean_s": 1.189,
+     "sd_s": 2.8892,
+     "p10_s": 0.0762,
+     "p90_s": 2.6869,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.372,
+       0.543
+      ],
+      "mean_s": [
+       1.0509,
+       1.434
+      ],
+      "mu": [
+       -0.9889,
+       -0.6106
+      ],
+      "sigma": [
+       1.275,
+       1.5137
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.17351,
+     "sigma": 1.27878,
+     "median_s": 0.8407,
+     "mean_s": 1.9043,
+     "sd_s": 3.8704,
+     "p10_s": 0.1633,
+     "p90_s": 4.3289,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.7226,
+       0.9705
+      ],
+      "mean_s": [
+       1.6877,
+       2.1897
+      ],
+      "mu": [
+       -0.3249,
+       -0.0299
+      ],
+      "sigma": [
+       1.1706,
+       1.3776
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1355.8499,
+    "converged": true,
+    "n_input": 855,
+    "n_undefined": 1,
+    "n_no_rejection": 246,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 204,
+    "n_inconsistent_excluded": 204,
+    "n_uninformative": 0,
+    "n_censored": 14,
+    "n_used": 650,
+    "n_with_rejection": 404,
+    "n_points": 1256,
+    "n_steps": 612,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.9047,
+     "lag_median_s": 1.4914,
+     "n_used": 404
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "v>=20",
+   "n_drivers": 295,
+   "v_ms_p50": 23.9898,
+   "lag_v_ms_p50": 19.7434,
+   "lead_closing_ms_p50": 3.511,
+   "lag_closing_ms_p50": -3.896,
+   "share_with_rejected": 0.7559,
+   "lookback_s_p50": 3.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.05717,
+    "sigma": 1.42281,
+    "median_s": 0.9444,
+    "mean_s": 2.5987,
+    "sd_s": 6.6618,
+    "p10_s": 0.1525,
+    "p90_s": 5.8488,
+    "loglik": -221.7039,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 295,
+    "n_undefined": 0,
+    "n_no_rejection": 82,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 136,
+    "n_inconsistent_excluded": 136,
+    "n_uninformative": 15,
+    "n_censored": 18,
+    "n_used": 144,
+    "n_with_rejection": 77,
+    "ci95": {
+     "median_s": [
+      0.6478,
+      1.3166
+     ],
+     "mean_s": [
+      1.9211,
+      3.7209
+     ],
+     "mu": [
+      -0.4342,
+      0.275
+     ],
+     "sigma": [
+      1.1731,
+      1.7431
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.85527,
+     "sigma": 0.86286,
+     "median_s": 2.352,
+     "mean_s": 3.4128,
+     "sd_s": 3.5882,
+     "p10_s": 0.7784,
+     "p90_s": 7.1069,
+     "loglik": -150.0206,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 295,
+     "n_undefined": 0,
+     "n_no_rejection": 82,
+     "n_no_rejection_excluded": 82,
+     "n_inconsistent": 136,
+     "n_inconsistent_excluded": 136,
+     "n_uninformative": 0,
+     "n_censored": 18,
+     "n_used": 77,
+     "n_with_rejection": 77
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.39201,
+    "sigma": 1.26459,
+    "median_s": 1.48,
+    "mean_s": 3.2924,
+    "sd_s": 6.5427,
+    "p10_s": 0.2927,
+    "p90_s": 7.4831,
+    "loglik": -345.2657,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 295,
+    "n_undefined": 0,
+    "n_no_rejection": 100,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 94,
+    "n_inconsistent_excluded": 94,
+    "n_uninformative": 30,
+    "n_censored": 7,
+    "n_used": 171,
+    "n_with_rejection": 101,
+    "ci95": {
+     "median_s": [
+      1.1942,
+      1.8502
+     ],
+     "mean_s": [
+      2.6986,
+      4.0914
+     ],
+     "mu": [
+      0.1775,
+      0.6153
+     ],
+     "sigma": [
+      1.0628,
+      1.4804
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.1628,
+     "sigma": 0.734,
+     "median_s": 3.1989,
+     "mean_s": 4.1878,
+     "sd_s": 3.5383,
+     "p10_s": 1.2487,
+     "p90_s": 8.1944,
+     "loglik": -248.0759,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 295,
+     "n_undefined": 0,
+     "n_no_rejection": 100,
+     "n_no_rejection_excluded": 100,
+     "n_inconsistent": 94,
+     "n_inconsistent_excluded": 94,
+     "n_uninformative": 0,
+     "n_censored": 7,
+     "n_used": 101,
+     "n_with_rejection": 101
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.70012,
+     "sigma": 1.47602,
+     "median_s": 0.4965,
+     "mean_s": 1.4758,
+     "sd_s": 4.1307,
+     "p10_s": 0.0749,
+     "p90_s": 3.2919,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.3751,
+       0.6708
+      ],
+      "mean_s": [
+       1.1042,
+       2.2965
+      ],
+      "mu": [
+       -0.9807,
+       -0.3993
+      ],
+      "sigma": [
+       1.2179,
+       1.8068
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 0.03443,
+     "sigma": 1.32157,
+     "median_s": 1.035,
+     "mean_s": 2.4786,
+     "sd_s": 5.3934,
+     "p10_s": 0.1903,
+     "p90_s": 5.6299,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.7783,
+       1.3485
+      ],
+      "mean_s": [
+       2.0339,
+       3.0851
+      ],
+      "mu": [
+       -0.2507,
+       0.299
+      ],
+      "sigma": [
+       1.1215,
+       1.5381
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -510.7197,
+    "converged": true,
+    "n_input": 295,
+    "n_undefined": 0,
+    "n_no_rejection": 72,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 75,
+    "n_inconsistent_excluded": 75,
+    "n_uninformative": 3,
+    "n_censored": 38,
+    "n_used": 217,
+    "n_with_rejection": 148,
+    "n_points": 429,
+    "n_steps": 210,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.902,
+     "lag_median_s": 1.8711,
+     "n_used": 148
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "all",
+   "n_drivers": 1493,
+   "v_ms_p50": 14.5971,
+   "lag_v_ms_p50": 11.162,
+   "lead_closing_ms_p50": -0.2955,
+   "lag_closing_ms_p50": -0.7674,
+   "share_with_rejected": 0.7448,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.47771,
+    "sigma": 2.02337,
+    "median_s": 4.3829,
+    "mean_s": 33.9444,
+    "sd_s": 260.6904,
+    "p10_s": 0.3278,
+    "p90_s": 58.6016,
+    "loglik": -1091.4552,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1493,
+    "n_undefined": 5,
+    "n_no_rejection": 486,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 502,
+    "n_inconsistent_excluded": 502,
+    "n_uninformative": 263,
+    "n_censored": 266,
+    "n_used": 723,
+    "n_with_rejection": 500,
+    "ci95": {
+     "median_s": [
+      3.7672,
+      5.3038
+     ],
+     "mean_s": [
+      21.1356,
+      58.9482
+     ],
+     "mu": [
+      1.3263,
+      1.6684
+     ],
+     "sigma": [
+      1.811,
+      2.2363
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.32916,
+     "sigma": 1.50866,
+     "median_s": 10.2693,
+     "mean_s": 32.0461,
+     "sd_s": 94.7291,
+     "p10_s": 1.4855,
+     "p90_s": 70.9926,
+     "loglik": -805.9468,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1493,
+     "n_undefined": 5,
+     "n_no_rejection": 486,
+     "n_no_rejection_excluded": 486,
+     "n_inconsistent": 502,
+     "n_inconsistent_excluded": 502,
+     "n_uninformative": 0,
+     "n_censored": 266,
+     "n_used": 500,
+     "n_with_rejection": 500
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.61787,
+    "sigma": 1.64238,
+    "median_s": 1.855,
+    "mean_s": 7.1462,
+    "sd_s": 26.5868,
+    "p10_s": 0.2261,
+    "p90_s": 15.2209,
+    "loglik": -1078.3661,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1493,
+    "n_undefined": 3,
+    "n_no_rejection": 803,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 276,
+    "n_inconsistent_excluded": 276,
+    "n_uninformative": 526,
+    "n_censored": 126,
+    "n_used": 688,
+    "n_with_rejection": 411,
+    "ci95": {
+     "median_s": [
+      1.617,
+      2.1143
+     ],
+     "mean_s": [
+      5.7207,
+      9.2673
+     ],
+     "mu": [
+      0.4806,
+      0.7487
+     ],
+     "sigma": [
+      1.4985,
+      1.8021
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.52934,
+     "sigma": 1.22784,
+     "median_s": 4.6151,
+     "mean_s": 9.8074,
+     "sd_s": 18.3896,
+     "p10_s": 0.9568,
+     "p90_s": 22.2621,
+     "loglik": -794.0372,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1493,
+     "n_undefined": 3,
+     "n_no_rejection": 803,
+     "n_no_rejection_excluded": 803,
+     "n_inconsistent": 276,
+     "n_inconsistent_excluded": 276,
+     "n_uninformative": 0,
+     "n_censored": 126,
+     "n_used": 411,
+     "n_with_rejection": 411
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 1.06038,
+     "sigma": 1.84962,
+     "median_s": 2.8875,
+     "mean_s": 15.9735,
+     "sd_s": 86.9098,
+     "p10_s": 0.2698,
+     "p90_s": 30.9003,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       2.4745,
+       3.3782
+      ],
+      "mean_s": [
+       11.447,
+       22.7567
+      ],
+      "mu": [
+       0.9061,
+       1.2173
+      ],
+      "sigma": [
+       1.6766,
+       2.0273
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 0.10501,
+     "sigma": 1.89999,
+     "median_s": 1.1107,
+     "mean_s": 6.753,
+     "sd_s": 40.4983,
+     "p10_s": 0.0973,
+     "p90_s": 12.679,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.9118,
+       1.3351
+      ],
+      "mean_s": [
+       4.9812,
+       9.9932
+      ],
+      "mu": [
+       -0.0923,
+       0.289
+      ],
+      "sigma": [
+       1.7069,
+       2.1193
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1772.0206,
+    "converged": true,
+    "n_input": 1493,
+    "n_undefined": 7,
+    "n_no_rejection": 379,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 489,
+    "n_inconsistent_excluded": 489,
+    "n_uninformative": 140,
+    "n_censored": 539,
+    "n_used": 857,
+    "n_with_rejection": 618,
+    "n_points": 2372,
+    "n_steps": 858,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 5.3262,
+     "lag_median_s": 1.7685,
+     "n_used": 618
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "v<10",
+   "n_drivers": 377,
+   "v_ms_p50": 7.2935,
+   "lag_v_ms_p50": 7.2706,
+   "lead_closing_ms_p50": -1.1383,
+   "lag_closing_ms_p50": -0.2016,
+   "share_with_rejected": 0.8382,
+   "lookback_s_p50": 7.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.99555,
+    "sigma": 2.19012,
+    "median_s": 7.3562,
+    "mean_s": 80.9516,
+    "sd_s": 887.1468,
+    "p10_s": 0.4443,
+    "p90_s": 121.7893,
+    "loglik": -284.6264,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 377,
+    "n_undefined": 5,
+    "n_no_rejection": 81,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 167,
+    "n_inconsistent_excluded": 167,
+    "n_uninformative": 34,
+    "n_censored": 55,
+    "n_used": 171,
+    "n_with_rejection": 124,
+    "ci95": {
+     "median_s": [
+      5.2526,
+      10.373
+     ],
+     "mean_s": [
+      33.305,
+      267.1684
+     ],
+     "mu": [
+      1.6587,
+      2.3392
+     ],
+     "sigma": [
+      1.8113,
+      2.6093
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.77579,
+     "sigma": 1.85053,
+     "median_s": 16.0514,
+     "mean_s": 88.9452,
+     "sd_s": 484.7788,
+     "p10_s": 1.4982,
+     "p90_s": 171.9737,
+     "loglik": -231.1873,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 377,
+     "n_undefined": 5,
+     "n_no_rejection": 81,
+     "n_no_rejection_excluded": 81,
+     "n_inconsistent": 167,
+     "n_inconsistent_excluded": 167,
+     "n_uninformative": 0,
+     "n_censored": 55,
+     "n_used": 124,
+     "n_with_rejection": 124
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.66118,
+    "sigma": 1.16963,
+    "median_s": 1.9371,
+    "mean_s": 3.839,
+    "sd_s": 6.5686,
+    "p10_s": 0.4327,
+    "p90_s": 8.6722,
+    "loglik": -295.3553,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 377,
+    "n_undefined": 1,
+    "n_no_rejection": 135,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 104,
+    "n_inconsistent_excluded": 104,
+    "n_uninformative": 57,
+    "n_censored": 29,
+    "n_used": 215,
+    "n_with_rejection": 137,
+    "ci95": {
+     "median_s": [
+      1.6572,
+      2.2657
+     ],
+     "mean_s": [
+      2.8825,
+      5.6987
+     ],
+     "mu": [
+      0.5051,
+      0.8179
+     ],
+     "sigma": [
+      0.972,
+      1.4364
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.19714,
+     "sigma": 0.96258,
+     "median_s": 3.3106,
+     "mean_s": 5.2615,
+     "sd_s": 6.4991,
+     "p10_s": 0.9642,
+     "p90_s": 11.3671,
+     "loglik": -225.973,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 377,
+     "n_undefined": 1,
+     "n_no_rejection": 135,
+     "n_no_rejection_excluded": 135,
+     "n_inconsistent": 104,
+     "n_inconsistent_excluded": 104,
+     "n_uninformative": 0,
+     "n_censored": 29,
+     "n_used": 137,
+     "n_with_rejection": 137
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 1.35443,
+     "sigma": 2.06221,
+     "median_s": 3.8745,
+     "mean_s": 32.4853,
+     "sd_s": 270.4221,
+     "p10_s": 0.2757,
+     "p90_s": 54.4486,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       2.6863,
+       5.3249
+      ],
+      "mean_s": [
+       13.3737,
+       80.5454
+      ],
+      "mu": [
+       0.9881,
+       1.6724
+      ],
+      "sigma": [
+       1.6835,
+       2.5442
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 0.21828,
+     "sigma": 1.40144,
+     "median_s": 1.2439,
+     "mean_s": 3.3211,
+     "sd_s": 8.2214,
+     "p10_s": 0.2064,
+     "p90_s": 7.4955,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.93,
+       1.672
+      ],
+      "mean_s": [
+       2.2844,
+       5.3938
+      ],
+      "mu": [
+       -0.0726,
+       0.514
+      ],
+      "sigma": [
+       1.0212,
+       1.7522
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -432.5396,
+    "converged": true,
+    "n_input": 377,
+    "n_undefined": 5,
+    "n_no_rejection": 60,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 158,
+    "n_inconsistent_excluded": 158,
+    "n_uninformative": 8,
+    "n_censored": 100,
+    "n_used": 206,
+    "n_with_rejection": 154,
+    "n_points": 699,
+    "n_steps": 237,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 6.4871,
+     "lag_median_s": 1.5838,
+     "n_used": 154
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "10<=v<20",
+   "n_drivers": 748,
+   "v_ms_p50": 14.6277,
+   "lag_v_ms_p50": 13.0723,
+   "lead_closing_ms_p50": -0.5985,
+   "lag_closing_ms_p50": -1.2594,
+   "share_with_rejected": 0.7567,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.50194,
+    "sigma": 1.8198,
+    "median_s": 4.4904,
+    "mean_s": 23.5182,
+    "sd_s": 120.9094,
+    "p10_s": 0.436,
+    "p90_s": 46.2521,
+    "loglik": -567.6822,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 748,
+    "n_undefined": 0,
+    "n_no_rejection": 241,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 237,
+    "n_inconsistent_excluded": 237,
+    "n_uninformative": 130,
+    "n_censored": 146,
+    "n_used": 381,
+    "n_with_rejection": 270,
+    "ci95": {
+     "median_s": [
+      3.6371,
+      5.4876
+     ],
+     "mean_s": [
+      14.8761,
+      46.1402
+     ],
+     "mu": [
+      1.2912,
+      1.7025
+     ],
+     "sigma": [
+      1.5875,
+      2.1395
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.18954,
+     "sigma": 1.23753,
+     "median_s": 8.9311,
+     "mean_s": 19.207,
+     "sd_s": 36.5691,
+     "p10_s": 1.8287,
+     "p90_s": 43.6191,
+     "loglik": -408.2134,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 748,
+     "n_undefined": 0,
+     "n_no_rejection": 241,
+     "n_no_rejection_excluded": 241,
+     "n_inconsistent": 237,
+     "n_inconsistent_excluded": 237,
+     "n_uninformative": 0,
+     "n_censored": 146,
+     "n_used": 270,
+     "n_with_rejection": 270
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.64637,
+    "sigma": 1.8782,
+    "median_s": 1.9086,
+    "mean_s": 11.1361,
+    "sd_s": 64.0144,
+    "p10_s": 0.1719,
+    "p90_s": 21.1869,
+    "loglik": -561.7416,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 748,
+    "n_undefined": 2,
+    "n_no_rejection": 416,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 126,
+    "n_inconsistent_excluded": 126,
+    "n_uninformative": 271,
+    "n_censored": 69,
+    "n_used": 349,
+    "n_with_rejection": 204,
+    "ci95": {
+     "median_s": [
+      1.478,
+      2.4039
+     ],
+     "mean_s": [
+      7.2073,
+      16.3968
+     ],
+     "mu": [
+      0.3907,
+      0.8771
+     ],
+     "sigma": [
+      1.6759,
+      2.061
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.7435,
+     "sigma": 1.34934,
+     "median_s": 5.7173,
+     "mean_s": 14.2087,
+     "sd_s": 32.3266,
+     "p10_s": 1.0144,
+     "p90_s": 32.225,
+     "loglik": -407.4505,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 748,
+     "n_undefined": 2,
+     "n_no_rejection": 416,
+     "n_no_rejection_excluded": 416,
+     "n_inconsistent": 126,
+     "n_inconsistent_excluded": 126,
+     "n_uninformative": 0,
+     "n_censored": 69,
+     "n_used": 204,
+     "n_with_rejection": 204
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 1.1283,
+     "sigma": 1.72016,
+     "median_s": 3.0904,
+     "mean_s": 13.5689,
+     "sd_s": 58.0104,
+     "p10_s": 0.3409,
+     "p90_s": 28.016,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       2.4227,
+       3.7694
+      ],
+      "mean_s": [
+       9.124,
+       21.3695
+      ],
+      "mu": [
+       0.8849,
+       1.3269
+      ],
+      "sigma": [
+       1.4777,
+       1.9785
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": 0.17409,
+     "sigma": 2.0867,
+     "median_s": 1.1902,
+     "mean_s": 10.4988,
+     "sd_s": 92.0158,
+     "p10_s": 0.0821,
+     "p90_s": 17.2586,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.7951,
+       1.6275
+      ],
+      "mean_s": [
+       6.4257,
+       18.4784
+      ],
+      "mu": [
+       -0.2293,
+       0.487
+      ],
+      "sigma": [
+       1.794,
+       2.3781
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -915.8441,
+    "converged": true,
+    "n_input": 748,
+    "n_undefined": 2,
+    "n_no_rejection": 181,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 241,
+    "n_inconsistent_excluded": 241,
+    "n_uninformative": 64,
+    "n_censored": 290,
+    "n_used": 441,
+    "n_with_rejection": 324,
+    "n_points": 1243,
+    "n_steps": 445,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 5.3868,
+     "lag_median_s": 1.9133,
+     "n_used": 324
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "v>=20",
+   "n_drivers": 368,
+   "v_ms_p50": 23.9851,
+   "lag_v_ms_p50": 22.8901,
+   "lead_closing_ms_p50": 1.407,
+   "lag_closing_ms_p50": -1.5206,
+   "share_with_rejected": 0.625,
+   "lookback_s_p50": 3.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 0.81436,
+    "sigma": 1.7616,
+    "median_s": 2.2577,
+    "mean_s": 10.6544,
+    "sd_s": 49.1373,
+    "p10_s": 0.2362,
+    "p90_s": 21.5838,
+    "loglik": -226.0184,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 368,
+    "n_undefined": 0,
+    "n_no_rejection": 164,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 98,
+    "n_inconsistent_excluded": 98,
+    "n_uninformative": 99,
+    "n_censored": 65,
+    "n_used": 171,
+    "n_with_rejection": 106,
+    "ci95": {
+     "median_s": [
+      1.5893,
+      3.0687
+     ],
+     "mean_s": [
+      5.2472,
+      35.7662
+     ],
+     "mu": [
+      0.4633,
+      1.1212
+     ],
+     "sigma": [
+      1.3212,
+      2.3592
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.74247,
+     "sigma": 1.29122,
+     "median_s": 5.7114,
+     "mean_s": 13.1457,
+     "sd_s": 27.2517,
+     "p10_s": 1.0917,
+     "p90_s": 29.8813,
+     "loglik": -153.8131,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 368,
+     "n_undefined": 0,
+     "n_no_rejection": 164,
+     "n_no_rejection_excluded": 164,
+     "n_inconsistent": 98,
+     "n_inconsistent_excluded": 98,
+     "n_uninformative": 0,
+     "n_censored": 65,
+     "n_used": 106,
+     "n_with_rejection": 106
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.42504,
+    "sigma": 1.91544,
+    "median_s": 1.5297,
+    "mean_s": 9.5783,
+    "sd_s": 59.2067,
+    "p10_s": 0.1314,
+    "p90_s": 17.8103,
+    "loglik": -207.7855,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 368,
+    "n_undefined": 0,
+    "n_no_rejection": 252,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 46,
+    "n_inconsistent_excluded": 46,
+    "n_uninformative": 198,
+    "n_censored": 28,
+    "n_used": 124,
+    "n_with_rejection": 70,
+    "ci95": {
+     "median_s": [
+      1.0406,
+      2.3285
+     ],
+     "mean_s": [
+      4.4938,
+      22.603
+     ],
+     "mu": [
+      0.0397,
+      0.8452
+     ],
+     "sigma": [
+      1.5278,
+      2.3546
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.60767,
+     "sigma": 1.29592,
+     "median_s": 4.9912,
+     "mean_s": 11.5579,
+     "sd_s": 24.14,
+     "p10_s": 0.9483,
+     "p90_s": 26.2707,
+     "loglik": -149.0917,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 368,
+     "n_undefined": 0,
+     "n_no_rejection": 252,
+     "n_no_rejection_excluded": 252,
+     "n_inconsistent": 46,
+     "n_inconsistent_excluded": 46,
+     "n_uninformative": 0,
+     "n_censored": 28,
+     "n_used": 70,
+     "n_with_rejection": 70
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.62745,
+     "sigma": 1.5538,
+     "median_s": 1.8728,
+     "mean_s": 6.2626,
+     "sd_s": 19.9834,
+     "p10_s": 0.2557,
+     "p90_s": 13.7182,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       1.4365,
+       2.3815
+      ],
+      "mean_s": [
+       3.8349,
+       12.7155
+      ],
+      "mu": [
+       0.3622,
+       0.8677
+      ],
+      "sigma": [
+       1.2118,
+       1.9711
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.17496,
+     "sigma": 2.11409,
+     "median_s": 0.8395,
+     "mean_s": 7.8439,
+     "sd_s": 72.8698,
+     "p10_s": 0.0559,
+     "p90_s": 12.6084,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.4864,
+       1.3378
+      ],
+      "mean_s": [
+       3.6131,
+       21.2908
+      ],
+      "mu": [
+       -0.7208,
+       0.291
+      ],
+      "sigma": [
+       1.6695,
+       2.593
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -408.368,
+    "converged": true,
+    "n_input": 368,
+    "n_undefined": 0,
+    "n_no_rejection": 138,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 90,
+    "n_inconsistent_excluded": 90,
+    "n_uninformative": 68,
+    "n_censored": 149,
+    "n_used": 210,
+    "n_with_rejection": 140,
+    "n_points": 430,
+    "n_steps": 176,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 3.4703,
+     "lag_median_s": 1.8261,
+     "n_used": 140
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "all",
+   "n_drivers": 3213,
+   "v_ms_p50": 12.6888,
+   "lag_v_ms_p50": 10.6726,
+   "lead_closing_ms_p50": 0.4645,
+   "lag_closing_ms_p50": -0.8285,
+   "share_with_rejected": 0.6184,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.45587,
+    "sigma": 1.37746,
+    "median_s": 0.6339,
+    "mean_s": 1.6369,
+    "sd_s": 3.8974,
+    "p10_s": 0.1085,
+    "p90_s": 3.704,
+    "loglik": -2320.1054,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 3213,
+    "n_undefined": 24,
+    "n_no_rejection": 1258,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 1298,
+    "n_inconsistent_excluded": 1298,
+    "n_uninformative": 45,
+    "n_censored": 29,
+    "n_used": 1846,
+    "n_with_rejection": 633,
+    "ci95": {
+     "median_s": [
+      0.5794,
+      0.6883
+     ],
+     "mean_s": [
+      1.4672,
+      1.8471
+     ],
+     "mu": [
+      -0.5457,
+      -0.3735
+     ],
+     "sigma": [
+      1.2939,
+      1.4623
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.7938,
+     "sigma": 0.94402,
+     "median_s": 2.2118,
+     "mean_s": 3.4535,
+     "sd_s": 4.1413,
+     "p10_s": 0.6597,
+     "p90_s": 7.4158,
+     "loglik": -1578.5468,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 3213,
+     "n_undefined": 24,
+     "n_no_rejection": 1258,
+     "n_no_rejection_excluded": 1258,
+     "n_inconsistent": 1298,
+     "n_inconsistent_excluded": 1298,
+     "n_uninformative": 0,
+     "n_censored": 29,
+     "n_used": 633,
+     "n_with_rejection": 633
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.13769,
+    "sigma": 1.41519,
+    "median_s": 0.8714,
+    "mean_s": 2.3719,
+    "sd_s": 6.0049,
+    "p10_s": 0.1421,
+    "p90_s": 5.3438,
+    "loglik": -2479.6057,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 3213,
+    "n_undefined": 37,
+    "n_no_rejection": 1314,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 1121,
+    "n_inconsistent_excluded": 1121,
+    "n_uninformative": 115,
+    "n_censored": 44,
+    "n_used": 1940,
+    "n_with_rejection": 741,
+    "ci95": {
+     "median_s": [
+      0.7876,
+      0.9494
+     ],
+     "mean_s": [
+      2.1341,
+      2.6812
+     ],
+     "mu": [
+      -0.2388,
+      -0.0519
+     ],
+     "sigma": [
+      1.3322,
+      1.5059
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.05272,
+     "sigma": 0.99481,
+     "median_s": 2.8654,
+     "mean_s": 4.6999,
+     "sd_s": 6.1104,
+     "p10_s": 0.8008,
+     "p90_s": 10.2535,
+     "loglik": -1692.3611,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 3213,
+     "n_undefined": 37,
+     "n_no_rejection": 1314,
+     "n_no_rejection_excluded": 1314,
+     "n_inconsistent": 1121,
+     "n_inconsistent_excluded": 1121,
+     "n_uninformative": 0,
+     "n_censored": 44,
+     "n_used": 741,
+     "n_with_rejection": 741
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.87379,
+     "sigma": 1.41666,
+     "median_s": 0.4174,
+     "mean_s": 1.1385,
+     "sd_s": 2.8892,
+     "p10_s": 0.0679,
+     "p90_s": 2.5644,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.3747,
+       0.4679
+      ],
+      "mean_s": [
+       1.031,
+       1.2457
+      ],
+      "mu": [
+       -0.9817,
+       -0.7595
+      ],
+      "sigma": [
+       1.3287,
+       1.515
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.53043,
+     "sigma": 1.45526,
+     "median_s": 0.5884,
+     "mean_s": 1.6963,
+     "sd_s": 4.5872,
+     "p10_s": 0.0911,
+     "p90_s": 3.7983,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.5145,
+       0.6595
+      ],
+      "mean_s": [
+       1.5304,
+       1.8513
+      ],
+      "mu": [
+       -0.6645,
+       -0.4162
+      ],
+      "sigma": [
+       1.3666,
+       1.5571
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -4195.408,
+    "converged": true,
+    "n_input": 3213,
+    "n_undefined": 52,
+    "n_no_rejection": 1215,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 814,
+    "n_inconsistent_excluded": 814,
+    "n_uninformative": 14,
+    "n_censored": 137,
+    "n_used": 2333,
+    "n_with_rejection": 1132,
+    "n_points": 4105,
+    "n_steps": 1781,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.9726,
+     "lag_median_s": 1.3747,
+     "n_used": 1132
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "v<10",
+   "n_drivers": 1248,
+   "v_ms_p50": 6.2114,
+   "lag_v_ms_p50": 5.1983,
+   "lead_closing_ms_p50": -0.0147,
+   "lag_closing_ms_p50": -0.6332,
+   "share_with_rejected": 0.5473,
+   "lookback_s_p50": 6.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.72805,
+    "sigma": 1.52175,
+    "median_s": 0.4828,
+    "mean_s": 1.537,
+    "sd_s": 4.6447,
+    "p10_s": 0.0687,
+    "p90_s": 3.3945,
+    "loglik": -771.0893,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1248,
+    "n_undefined": 24,
+    "n_no_rejection": 561,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 456,
+    "n_inconsistent_excluded": 456,
+    "n_uninformative": 0,
+    "n_censored": 0,
+    "n_used": 768,
+    "n_with_rejection": 207,
+    "ci95": {
+     "median_s": [
+      0.3917,
+      0.5762
+     ],
+     "mean_s": [
+      1.2882,
+      1.9458
+     ],
+     "mu": [
+      -0.9372,
+      -0.5513
+     ],
+     "sigma": [
+      1.3546,
+      1.7443
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.89486,
+     "sigma": 1.02627,
+     "median_s": 2.447,
+     "mean_s": 4.1432,
+     "sd_s": 5.6611,
+     "p10_s": 0.6568,
+     "p90_s": 9.1164,
+     "loglik": -483.6109,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1248,
+     "n_undefined": 24,
+     "n_no_rejection": 561,
+     "n_no_rejection_excluded": 561,
+     "n_inconsistent": 456,
+     "n_inconsistent_excluded": 456,
+     "n_uninformative": 0,
+     "n_censored": 0,
+     "n_used": 207,
+     "n_with_rejection": 207
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.37049,
+    "sigma": 1.66503,
+    "median_s": 0.6904,
+    "mean_s": 2.7612,
+    "sd_s": 10.6927,
+    "p10_s": 0.0817,
+    "p90_s": 5.8319,
+    "loglik": -871.186,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1248,
+    "n_undefined": 35,
+    "n_no_rejection": 554,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 411,
+    "n_inconsistent_excluded": 411,
+    "n_uninformative": 1,
+    "n_censored": 3,
+    "n_used": 801,
+    "n_with_rejection": 248,
+    "ci95": {
+     "median_s": [
+      0.5588,
+      0.817
+     ],
+     "mean_s": [
+      2.2581,
+      3.5476
+     ],
+     "mu": [
+      -0.582,
+      -0.2021
+     ],
+     "sigma": [
+      1.5213,
+      1.8604
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.28874,
+     "sigma": 1.11286,
+     "median_s": 3.6282,
+     "mean_s": 6.7394,
+     "sd_s": 10.5494,
+     "p10_s": 0.8716,
+     "p90_s": 15.1035,
+     "loglik": -546.6721,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1248,
+     "n_undefined": 35,
+     "n_no_rejection": 554,
+     "n_no_rejection_excluded": 554,
+     "n_inconsistent": 411,
+     "n_inconsistent_excluded": 411,
+     "n_uninformative": 0,
+     "n_censored": 3,
+     "n_used": 248,
+     "n_with_rejection": 248
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -1.04168,
+     "sigma": 1.51804,
+     "median_s": 0.3529,
+     "mean_s": 1.1169,
+     "sd_s": 3.3541,
+     "p10_s": 0.0504,
+     "p90_s": 2.4689,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.2667,
+       0.4348
+      ],
+      "mean_s": [
+       0.92,
+       1.3472
+      ],
+      "mu": [
+       -1.3216,
+       -0.8328
+      ],
+      "sigma": [
+       1.3468,
+       1.748
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.6957,
+     "sigma": 1.67402,
+     "median_s": 0.4987,
+     "mean_s": 2.0248,
+     "sd_s": 7.9673,
+     "p10_s": 0.0584,
+     "p90_s": 4.2616,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.3981,
+       0.6356
+      ],
+      "mean_s": [
+       1.6855,
+       2.5002
+      ],
+      "mu": [
+       -0.9211,
+       -0.4532
+      ],
+      "sigma": [
+       1.5021,
+       1.8364
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1487.6119,
+    "converged": true,
+    "n_input": 1248,
+    "n_undefined": 50,
+    "n_no_rejection": 554,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 259,
+    "n_inconsistent_excluded": 259,
+    "n_uninformative": 0,
+    "n_censored": 2,
+    "n_used": 939,
+    "n_with_rejection": 385,
+    "n_points": 1398,
+    "n_steps": 588,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 1.0598,
+     "lag_median_s": 1.7521,
+     "n_used": 385
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "10<=v<20",
+   "n_drivers": 1178,
+   "v_ms_p50": 14.6682,
+   "lag_v_ms_p50": 13.2489,
+   "lead_closing_ms_p50": 1.0114,
+   "lag_closing_ms_p50": -1.002,
+   "share_with_rejected": 0.6579,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.37868,
+    "sigma": 1.24114,
+    "median_s": 0.6848,
+    "mean_s": 1.4793,
+    "sd_s": 2.8326,
+    "p10_s": 0.1396,
+    "p90_s": 3.3599,
+    "loglik": -890.5284,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1178,
+    "n_undefined": 0,
+    "n_no_rejection": 412,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 516,
+    "n_inconsistent_excluded": 516,
+    "n_uninformative": 11,
+    "n_censored": 4,
+    "n_used": 651,
+    "n_with_rejection": 250,
+    "ci95": {
+     "median_s": [
+      0.5944,
+      0.7688
+     ],
+     "mean_s": [
+      1.2875,
+      1.6598
+     ],
+     "mu": [
+      -0.5202,
+      -0.2629
+     ],
+     "sigma": [
+      1.1387,
+      1.3474
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.67709,
+     "sigma": 0.85522,
+     "median_s": 1.9681,
+     "mean_s": 2.8371,
+     "sd_s": 2.9456,
+     "p10_s": 0.6578,
+     "p90_s": 5.889,
+     "loglik": -618.3392,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1178,
+     "n_undefined": 0,
+     "n_no_rejection": 412,
+     "n_no_rejection_excluded": 412,
+     "n_inconsistent": 516,
+     "n_inconsistent_excluded": 516,
+     "n_uninformative": 0,
+     "n_censored": 4,
+     "n_used": 250,
+     "n_with_rejection": 250
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.05783,
+    "sigma": 1.30697,
+    "median_s": 0.9438,
+    "mean_s": 2.2172,
+    "sd_s": 4.7134,
+    "p10_s": 0.1768,
+    "p90_s": 5.0386,
+    "loglik": -1011.5722,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1178,
+    "n_undefined": 2,
+    "n_no_rejection": 427,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 441,
+    "n_inconsistent_excluded": 441,
+    "n_uninformative": 23,
+    "n_censored": 15,
+    "n_used": 712,
+    "n_with_rejection": 308,
+    "ci95": {
+     "median_s": [
+      0.8229,
+      1.0855
+     ],
+     "mean_s": [
+      1.9481,
+      2.5348
+     ],
+     "mu": [
+      -0.195,
+      0.0821
+     ],
+     "sigma": [
+      1.1926,
+      1.4108
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.95097,
+     "sigma": 0.89339,
+     "median_s": 2.5882,
+     "mean_s": 3.8576,
+     "sd_s": 4.2633,
+     "p10_s": 0.8237,
+     "p90_s": 8.1327,
+     "loglik": -706.2161,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1178,
+     "n_undefined": 2,
+     "n_no_rejection": 427,
+     "n_no_rejection_excluded": 427,
+     "n_inconsistent": 441,
+     "n_inconsistent_excluded": 441,
+     "n_uninformative": 0,
+     "n_censored": 15,
+     "n_used": 308,
+     "n_with_rejection": 308
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.81685,
+     "sigma": 1.2942,
+     "median_s": 0.4418,
+     "mean_s": 1.0208,
+     "sd_s": 2.1263,
+     "p10_s": 0.0841,
+     "p90_s": 2.3204,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.3629,
+       0.5118
+      ],
+      "mean_s": [
+       0.8981,
+       1.183
+      ],
+      "mu": [
+       -1.0135,
+       -0.6699
+      ],
+      "sigma": [
+       1.1678,
+       1.4244
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.43964,
+     "sigma": 1.35654,
+     "median_s": 0.6443,
+     "mean_s": 1.6168,
+     "sd_s": 3.7214,
+     "p10_s": 0.1133,
+     "p90_s": 3.665,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.5541,
+       0.7556
+      ],
+      "mean_s": [
+       1.4273,
+       1.863
+      ],
+      "mu": [
+       -0.5904,
+       -0.2802
+      ],
+      "sigma": [
+       1.2517,
+       1.4602
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1678.6991,
+    "converged": true,
+    "n_input": 1178,
+    "n_undefined": 2,
+    "n_no_rejection": 403,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 303,
+    "n_inconsistent_excluded": 303,
+    "n_uninformative": 5,
+    "n_censored": 33,
+    "n_used": 868,
+    "n_with_rejection": 470,
+    "n_points": 1687,
+    "n_steps": 745,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.8549,
+     "lag_median_s": 1.3346,
+     "n_used": 470
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "v>=20",
+   "n_drivers": 787,
+   "v_ms_p50": 23.8023,
+   "lag_v_ms_p50": 22.6261,
+   "lead_closing_ms_p50": 1.0299,
+   "lag_closing_ms_p50": -1.1607,
+   "share_with_rejected": 0.6722,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.20785,
+    "sigma": 1.37904,
+    "median_s": 0.8123,
+    "mean_s": 2.1023,
+    "sd_s": 5.018,
+    "p10_s": 0.1387,
+    "p90_s": 4.7562,
+    "loglik": -647.0085,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 787,
+    "n_undefined": 0,
+    "n_no_rejection": 285,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 326,
+    "n_inconsistent_excluded": 326,
+    "n_uninformative": 34,
+    "n_censored": 25,
+    "n_used": 427,
+    "n_with_rejection": 176,
+    "ci95": {
+     "median_s": [
+      0.6606,
+      0.992
+     ],
+     "mean_s": [
+      1.7692,
+      2.4909
+     ],
+     "mu": [
+      -0.4146,
+      -0.0081
+     ],
+     "sigma": [
+      1.2333,
+      1.5314
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.8452,
+     "sigma": 0.94659,
+     "median_s": 2.3284,
+     "mean_s": 3.6445,
+     "sd_s": 4.3884,
+     "p10_s": 0.6922,
+     "p90_s": 7.8327,
+     "loglik": -469.9956,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 787,
+     "n_undefined": 0,
+     "n_no_rejection": 285,
+     "n_no_rejection_excluded": 285,
+     "n_inconsistent": 326,
+     "n_inconsistent_excluded": 326,
+     "n_uninformative": 0,
+     "n_censored": 25,
+     "n_used": 176,
+     "n_with_rejection": 176
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.01328,
+    "sigma": 1.22118,
+    "median_s": 1.0134,
+    "mean_s": 2.136,
+    "sd_s": 3.9633,
+    "p10_s": 0.2119,
+    "p90_s": 4.8467,
+    "loglik": -585.5632,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 787,
+    "n_undefined": 0,
+    "n_no_rejection": 333,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 269,
+    "n_inconsistent_excluded": 269,
+    "n_uninformative": 91,
+    "n_censored": 26,
+    "n_used": 427,
+    "n_with_rejection": 185,
+    "ci95": {
+     "median_s": [
+      0.8532,
+      1.1791
+     ],
+     "mean_s": [
+      1.8497,
+      2.579
+     ],
+     "mu": [
+      -0.1588,
+      0.1647
+     ],
+     "sigma": [
+      1.0942,
+      1.3738
+     ]
+    },
+    "n_boot": 200,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.90472,
+     "sigma": 0.90924,
+     "median_s": 2.4712,
+     "mean_s": 3.7362,
+     "sd_s": 4.2367,
+     "p10_s": 0.7706,
+     "p90_s": 7.9245,
+     "loglik": -423.163,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 787,
+     "n_undefined": 0,
+     "n_no_rejection": 333,
+     "n_no_rejection_excluded": 333,
+     "n_inconsistent": 269,
+     "n_inconsistent_excluded": 269,
+     "n_uninformative": 0,
+     "n_censored": 26,
+     "n_used": 185,
+     "n_with_rejection": 185
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.73332,
+     "sigma": 1.47458,
+     "median_s": 0.4803,
+     "mean_s": 1.4246,
+     "sd_s": 3.9778,
+     "p10_s": 0.0726,
+     "p90_s": 3.1786,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.3957,
+       0.6035
+      ],
+      "mean_s": [
+       1.1561,
+       1.7555
+      ],
+      "mu": [
+       -0.9271,
+       -0.505
+      ],
+      "sigma": [
+       1.3084,
+       1.6439
+      ]
+     },
+     "n_boot": 200
+    },
+    "lag": {
+     "mu": -0.47821,
+     "sigma": 1.28434,
+     "median_s": 0.6199,
+     "mean_s": 1.4142,
+     "sd_s": 2.8998,
+     "p10_s": 0.1195,
+     "p90_s": 3.2147,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": [
+       0.4806,
+       0.7444
+      ],
+      "mean_s": [
+       1.1824,
+       1.6676
+      ],
+      "mu": [
+       -0.7328,
+       -0.2951
+      ],
+      "sigma": [
+       1.1038,
+       1.4465
+      ]
+     },
+     "n_boot": 200
+    },
+    "loglik": -1016.2816,
+    "converged": true,
+    "n_input": 787,
+    "n_undefined": 0,
+    "n_no_rejection": 258,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 252,
+    "n_inconsistent_excluded": 252,
+    "n_uninformative": 9,
+    "n_censored": 102,
+    "n_used": 526,
+    "n_with_rejection": 277,
+    "n_points": 1020,
+    "n_steps": 448,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 1.0887,
+     "lag_median_s": 1.0661,
+     "n_used": 277
+    }
+   }
+  }
+ ],
+ "mapping": [
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "joint": {
+    "parameter": "exit_accept_gap_s",
+    "movement": "exiting",
+    "estimator": "joint",
+    "current": 0.6,
+    "classes": [],
+    "accept_s_lead": null,
+    "accept_s_lag": null,
+    "accept_s": null
+   },
+   "separate": {
+    "parameter": "exit_accept_gap_s",
+    "movement": "exiting",
+    "estimator": "separate",
+    "current": 0.6,
+    "classes": [],
+    "accept_s_lead": null,
+    "accept_s_lag": null,
+    "accept_s": null
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "joint": {
+    "parameter": "exit_accept_gap_s",
+    "movement": "exiting",
+    "estimator": "joint",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "10<=v<20",
+      "n": 366,
+      "v_ms": 17.2187,
+      "lag_v_ms": 11.4571,
+      "fitted_lead_median_s": 3.1921,
+      "fitted_lag_median_s": 3.9629,
+      "model_lead_s_now": 0.8942,
+      "model_lag_s_now": 1.0421,
+      "lag_absorb_floor_s": 0.9578,
+      "implied_accept_s_lead": 2.8979,
+      "implied_accept_s_lag": 3.5208,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": -0.876,
+      "model_lead_s_at_proposal": 3.2139,
+      "model_lag_s_at_proposal": 3.3618
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 242,
+      "v_ms": 22.8237,
+      "lag_v_ms": 20.32,
+      "fitted_lead_median_s": 2.2516,
+      "fitted_lag_median_s": 3.1828,
+      "model_lead_s_now": 0.8219,
+      "model_lag_s_now": 0.9269,
+      "lag_absorb_floor_s": 0.9269,
+      "implied_accept_s_lead": 2.0297,
+      "implied_accept_s_lag": 2.9335,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": -0.6493,
+      "model_lead_s_at_proposal": 3.1416,
+      "model_lag_s_at_proposal": 3.169
+     }
+    ],
+    "accept_s_lead": {
+     "value": 2.5523,
+     "unfloored": 2.5523,
+     "ci95": [
+      2.0749,
+      3.2178
+     ]
+    },
+    "accept_s_lag": {
+     "value": 3.287,
+     "unfloored": 3.287,
+     "ci95": [
+      1.802,
+      6.3389
+     ]
+    },
+    "accept_s": {
+     "value": 2.9197,
+     "unfloored": 2.9197,
+     "ci95": [
+      2.1999,
+      4.3292
+     ]
+    }
+   },
+   "separate": {
+    "parameter": "exit_accept_gap_s",
+    "movement": "exiting",
+    "estimator": "separate",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "10<=v<20",
+      "n": 295,
+      "v_ms": 17.2187,
+      "lag_v_ms": 11.4571,
+      "fitted_lead_median_s": 4.354,
+      "fitted_lag_median_s": 8.1697,
+      "model_lead_s_now": 0.8942,
+      "model_lag_s_now": 1.0421,
+      "lag_absorb_floor_s": 0.9578,
+      "implied_accept_s_lead": 4.0598,
+      "implied_accept_s_lag": 7.7276,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": -0.9983,
+      "model_lead_s_at_proposal": 5.1478,
+      "model_lag_s_at_proposal": 5.2957
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 182,
+      "v_ms": 22.8237,
+      "lag_v_ms": 20.32,
+      "fitted_lead_median_s": 2.5793,
+      "fitted_lag_median_s": 4.2271,
+      "model_lead_s_now": 0.8219,
+      "model_lag_s_now": 0.9269,
+      "lag_absorb_floor_s": 0.9269,
+      "implied_accept_s_lead": 2.3574,
+      "implied_accept_s_lag": 3.9778,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": -0.7437,
+      "model_lead_s_at_proposal": 5.0755,
+      "model_lag_s_at_proposal": 5.1029
+     }
+    ],
+    "accept_s_lead": {
+     "value": 3.4102,
+     "unfloored": 3.4102,
+     "ci95": [
+      2.7157,
+      4.2304
+     ]
+    },
+    "accept_s_lag": {
+     "value": 6.2969,
+     "unfloored": 6.2969,
+     "ci95": [
+      3.9949,
+      10.0315
+     ]
+    },
+    "accept_s": {
+     "value": 4.8536,
+     "unfloored": 4.8536,
+     "ci95": [
+      3.5854,
+      6.7658
+     ]
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "joint": {
+    "parameter": "accept_gap_s",
+    "movement": "entering",
+    "estimator": "joint",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "v<10",
+      "n": 582,
+      "v_ms": 7.3865,
+      "lag_v_ms": 6.1924,
+      "fitted_lead_median_s": 0.4496,
+      "fitted_lag_median_s": 0.989,
+      "model_lead_s_now": 1.2858,
+      "model_lag_s_now": 1.418,
+      "lag_absorb_floor_s": 1.071,
+      "implied_accept_s_lead": -0.2362,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": false,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 2.1789,
+      "model_lead_s_at_proposal": 0.7749,
+      "model_lag_s_at_proposal": 1.071
+     },
+     {
+      "speed_class": "10<=v<20",
+      "n": 650,
+      "v_ms": 13.7688,
+      "lag_v_ms": 11.754,
+      "fitted_lead_median_s": 0.4525,
+      "fitted_lag_median_s": 0.8407,
+      "model_lead_s_now": 0.9679,
+      "model_lag_s_now": 1.031,
+      "lag_absorb_floor_s": 0.9546,
+      "implied_accept_s_lead": 0.0846,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": true,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 2.495,
+      "model_lead_s_at_proposal": 0.457,
+      "model_lag_s_at_proposal": 0.9546
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 217,
+      "v_ms": 23.9898,
+      "lag_v_ms": 19.7434,
+      "fitted_lead_median_s": 0.4965,
+      "fitted_lag_median_s": 1.035,
+      "model_lead_s_now": 0.8111,
+      "model_lag_s_now": 0.9256,
+      "lag_absorb_floor_s": 0.9256,
+      "implied_accept_s_lead": 0.2854,
+      "implied_accept_s_lag": 0.7784,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 1.1841,
+      "model_lead_s_at_proposal": 0.3002,
+      "model_lag_s_at_proposal": 0.9256
+     }
+    ],
+    "accept_s_lead": {
+     "value": 0.0,
+     "unfloored": -0.0142,
+     "ci95": [
+      0.0,
+      0.057
+     ]
+    },
+    "accept_s_lag": {
+     "value": 0.7784,
+     "unfloored": 0.7784,
+     "ci95": [
+      0.5217,
+      1.0919
+     ]
+    },
+    "accept_s": {
+     "value": 0.0891,
+     "unfloored": 0.0891,
+     "ci95": [
+      0.0377,
+      0.1678
+     ]
+    }
+   },
+   "separate": {
+    "parameter": "accept_gap_s",
+    "movement": "entering",
+    "estimator": "separate",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "v<10",
+      "n": 434,
+      "v_ms": 7.3865,
+      "lag_v_ms": 6.1924,
+      "fitted_lead_median_s": 0.7644,
+      "fitted_lag_median_s": 1.3756,
+      "model_lead_s_now": 1.2858,
+      "model_lag_s_now": 1.418,
+      "lag_absorb_floor_s": 1.071,
+      "implied_accept_s_lead": 0.0786,
+      "implied_accept_s_lag": 0.5576,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 0.6175,
+      "model_lead_s_at_proposal": 1.2454,
+      "model_lag_s_at_proposal": 1.3776
+     },
+     {
+      "speed_class": "10<=v<20",
+      "n": 470,
+      "v_ms": 13.7688,
+      "lag_v_ms": 11.754,
+      "fitted_lead_median_s": 0.7906,
+      "fitted_lag_median_s": 1.317,
+      "model_lead_s_now": 0.9679,
+      "model_lag_s_now": 1.031,
+      "lag_absorb_floor_s": 0.9546,
+      "implied_accept_s_lead": 0.4227,
+      "implied_accept_s_lag": 0.886,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 0.4041,
+      "model_lead_s_at_proposal": 0.9275,
+      "model_lag_s_at_proposal": 0.9906
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 144,
+      "v_ms": 23.9898,
+      "lag_v_ms": 19.7434,
+      "fitted_lead_median_s": 0.9444,
+      "fitted_lag_median_s": 1.48,
+      "model_lead_s_now": 0.8111,
+      "model_lag_s_now": 0.9256,
+      "lag_absorb_floor_s": 0.9256,
+      "implied_accept_s_lead": 0.7333,
+      "implied_accept_s_lag": 1.2234,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 0.1255,
+      "model_lead_s_at_proposal": 0.7707,
+      "model_lag_s_at_proposal": 0.9256
+     }
+    ],
+    "accept_s_lead": {
+     "value": 0.3229,
+     "unfloored": 0.3229,
+     "ci95": [
+      0.237,
+      0.4417
+     ]
+    },
+    "accept_s_lag": {
+     "value": 0.7964,
+     "unfloored": 0.7964,
+     "ci95": [
+      0.6953,
+      0.9423
+     ]
+    },
+    "accept_s": {
+     "value": 0.5596,
+     "unfloored": 0.5596,
+     "ci95": [
+      0.4824,
+      0.6647
+     ]
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "joint": {
+    "parameter": "exit_accept_gap_s",
+    "movement": "exiting",
+    "estimator": "joint",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "v<10",
+      "n": 206,
+      "v_ms": 7.2935,
+      "lag_v_ms": 7.2706,
+      "fitted_lead_median_s": 3.8745,
+      "fitted_lag_median_s": 1.2439,
+      "model_lead_s_now": 1.2945,
+      "model_lag_s_now": 1.2967,
+      "lag_absorb_floor_s": 1.0338,
+      "implied_accept_s_lead": 3.18,
+      "implied_accept_s_lag": 0.5472,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 0.8508,
+      "model_lead_s_at_proposal": 2.477,
+      "model_lag_s_at_proposal": 2.4792
+     },
+     {
+      "speed_class": "10<=v<20",
+      "n": 441,
+      "v_ms": 14.6277,
+      "lag_v_ms": 13.0723,
+      "fitted_lead_median_s": 3.0904,
+      "fitted_lag_median_s": 1.1902,
+      "model_lead_s_now": 0.9463,
+      "model_lag_s_now": 0.9875,
+      "lag_absorb_floor_s": 0.9431,
+      "implied_accept_s_lead": 2.7441,
+      "implied_accept_s_lag": 0.8027,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 0.6885,
+      "model_lead_s_at_proposal": 2.1288,
+      "model_lag_s_at_proposal": 2.17
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 210,
+      "v_ms": 23.9851,
+      "lag_v_ms": 22.8901,
+      "fitted_lead_median_s": 1.8728,
+      "fitted_lag_median_s": 0.8395,
+      "model_lead_s_now": 0.8112,
+      "model_lag_s_now": 0.9391,
+      "lag_absorb_floor_s": 0.9391,
+      "implied_accept_s_lead": 1.6616,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": true,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 2.3202,
+      "model_lead_s_at_proposal": 1.9937,
+      "model_lag_s_at_proposal": 2.0038
+     }
+    ],
+    "accept_s_lead": {
+     "value": 2.5836,
+     "unfloored": 2.5836,
+     "ci95": [
+      2.156,
+      3.0291
+     ]
+    },
+    "accept_s_lag": {
+     "value": 0.7214,
+     "unfloored": 0.7214,
+     "ci95": [
+      0.4548,
+      1.0283
+     ]
+    },
+    "accept_s": {
+     "value": 1.7825,
+     "unfloored": 1.7825,
+     "ci95": [
+      1.523,
+      2.0527
+     ]
+    }
+   },
+   "separate": {
+    "parameter": "exit_accept_gap_s",
+    "movement": "exiting",
+    "estimator": "separate",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "v<10",
+      "n": 171,
+      "v_ms": 7.2935,
+      "lag_v_ms": 7.2706,
+      "fitted_lead_median_s": 7.3562,
+      "fitted_lag_median_s": 1.9371,
+      "model_lead_s_now": 1.2945,
+      "model_lag_s_now": 1.2967,
+      "lag_absorb_floor_s": 1.0338,
+      "implied_accept_s_lead": 6.6617,
+      "implied_accept_s_lag": 1.2404,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": -0.2673,
+      "model_lead_s_at_proposal": 3.5184,
+      "model_lag_s_at_proposal": 3.5206
+     },
+     {
+      "speed_class": "10<=v<20",
+      "n": 381,
+      "v_ms": 14.6277,
+      "lag_v_ms": 13.0723,
+      "fitted_lead_median_s": 4.4904,
+      "fitted_lag_median_s": 1.9086,
+      "model_lead_s_now": 0.9463,
+      "model_lag_s_now": 0.9875,
+      "lag_absorb_floor_s": 0.9431,
+      "implied_accept_s_lead": 4.1441,
+      "implied_accept_s_lag": 1.5211,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": -0.3573,
+      "model_lead_s_at_proposal": 3.1702,
+      "model_lag_s_at_proposal": 3.2114
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 171,
+      "v_ms": 23.9851,
+      "lag_v_ms": 22.8901,
+      "fitted_lead_median_s": 2.2577,
+      "fitted_lag_median_s": 1.5297,
+      "model_lead_s_now": 0.8112,
+      "model_lag_s_now": 0.9391,
+      "lag_absorb_floor_s": 0.9391,
+      "implied_accept_s_lead": 2.0465,
+      "implied_accept_s_lag": 1.3084,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 0.1727,
+      "model_lead_s_at_proposal": 3.0351,
+      "model_lag_s_at_proposal": 3.0452
+     }
+    ],
+    "accept_s_lead": {
+     "value": 4.2434,
+     "unfloored": 4.2434,
+     "ci95": [
+      3.4998,
+      5.1223
+     ]
+    },
+    "accept_s_lag": {
+     "value": 1.4044,
+     "unfloored": 1.4044,
+     "ci95": [
+      1.1572,
+      1.7373
+     ]
+    },
+    "accept_s": {
+     "value": 2.8239,
+     "unfloored": 2.8239,
+     "ci95": [
+      2.4198,
+      3.3563
+     ]
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "joint": {
+    "parameter": "accept_gap_s",
+    "movement": "entering",
+    "estimator": "joint",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "v<10",
+      "n": 939,
+      "v_ms": 6.2114,
+      "lag_v_ms": 5.1983,
+      "fitted_lead_median_s": 0.3529,
+      "fitted_lag_median_s": 0.4987,
+      "model_lead_s_now": 1.4155,
+      "model_lag_s_now": 1.5744,
+      "lag_absorb_floor_s": 1.1192,
+      "implied_accept_s_lead": -0.4626,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": false,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 12.8326,
+      "model_lead_s_at_proposal": 0.8155,
+      "model_lag_s_at_proposal": 1.1192
+     },
+     {
+      "speed_class": "10<=v<20",
+      "n": 868,
+      "v_ms": 14.6682,
+      "lag_v_ms": 13.2489,
+      "fitted_lead_median_s": 0.4418,
+      "fitted_lag_median_s": 0.6443,
+      "model_lead_s_now": 0.9453,
+      "model_lag_s_now": 0.9823,
+      "lag_absorb_floor_s": 0.9418,
+      "implied_accept_s_lead": 0.0965,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": true,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 4.7988,
+      "model_lead_s_at_proposal": 0.3453,
+      "model_lag_s_at_proposal": 0.9418
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 526,
+      "v_ms": 23.8023,
+      "lag_v_ms": 22.6261,
+      "fitted_lead_median_s": 0.4803,
+      "fitted_lag_median_s": 0.6199,
+      "model_lead_s_now": 0.8128,
+      "model_lag_s_now": 0.9373,
+      "lag_absorb_floor_s": 0.9373,
+      "implied_accept_s_lead": 0.2675,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": true,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 4.8794,
+      "model_lead_s_at_proposal": 0.2128,
+      "model_lag_s_at_proposal": 0.9373
+     }
+    ],
+    "accept_s_lead": {
+     "value": 0.0,
+     "unfloored": -0.09,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    },
+    "accept_s_lag": null,
+    "accept_s": {
+     "value": 0.0,
+     "unfloored": -0.09,
+     "ci95": [
+      0.0,
+      0.0
+     ]
+    }
+   },
+   "separate": {
+    "parameter": "accept_gap_s",
+    "movement": "entering",
+    "estimator": "separate",
+    "current": 0.6,
+    "classes": [
+     {
+      "speed_class": "v<10",
+      "n": 768,
+      "v_ms": 6.2114,
+      "lag_v_ms": 5.1983,
+      "fitted_lead_median_s": 0.4828,
+      "fitted_lag_median_s": 0.6904,
+      "model_lead_s_now": 1.4155,
+      "model_lag_s_now": 1.5744,
+      "lag_absorb_floor_s": 1.1192,
+      "implied_accept_s_lead": -0.3327,
+      "implied_accept_s_lag": null,
+      "lag_above_absorb_floor": false,
+      "lead_reachable": false,
+      "lag_reachable": false,
+      "implied_follower_decel_ms2": 6.1915,
+      "model_lead_s_at_proposal": 1.1316,
+      "model_lag_s_at_proposal": 1.2905
+     },
+     {
+      "speed_class": "10<=v<20",
+      "n": 651,
+      "v_ms": 14.6682,
+      "lag_v_ms": 13.2489,
+      "fitted_lead_median_s": 0.6848,
+      "fitted_lag_median_s": 0.9438,
+      "model_lead_s_now": 0.9453,
+      "model_lag_s_now": 0.9823,
+      "lag_absorb_floor_s": 0.9418,
+      "implied_accept_s_lead": 0.3395,
+      "implied_accept_s_lag": 0.5615,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 1.6912,
+      "model_lead_s_at_proposal": 0.6614,
+      "model_lag_s_at_proposal": 0.9418
+     },
+     {
+      "speed_class": "v>=20",
+      "n": 427,
+      "v_ms": 23.8023,
+      "lag_v_ms": 22.6261,
+      "fitted_lead_median_s": 0.8123,
+      "fitted_lag_median_s": 1.0134,
+      "model_lead_s_now": 0.8128,
+      "model_lag_s_now": 0.9373,
+      "lag_absorb_floor_s": 0.9373,
+      "implied_accept_s_lead": 0.5995,
+      "implied_accept_s_lag": 0.7895,
+      "lag_above_absorb_floor": true,
+      "lead_reachable": true,
+      "lag_reachable": true,
+      "implied_follower_decel_ms2": 1.3461,
+      "model_lead_s_at_proposal": 0.5289,
+      "model_lag_s_at_proposal": 0.9373
+     }
+    ],
+    "accept_s_lead": {
+     "value": 0.12,
+     "unfloored": 0.12,
+     "ci95": [
+      0.0553,
+      0.1846
+     ]
+    },
+    "accept_s_lag": {
+     "value": 0.6518,
+     "unfloored": 0.6518,
+     "ci95": [
+      0.557,
+      0.7597
+     ]
+    },
+    "accept_s": {
+     "value": 0.3161,
+     "unfloored": 0.3161,
+     "ci95": [
+      0.2606,
+      0.3772
+     ]
+    }
+   }
+  }
+ ],
+ "proposal": {
+  "accept_gap_s": {
+   "zone": "HH_on_BR_off_weave",
+   "movement": "entering",
+   "current": 0.6,
+   "lead_side_only": {
+    "value": 0.0,
+    "unfloored": -0.0142,
+    "ci95": [
+     0.0,
+     0.057
+    ]
+   },
+   "lag_side_only": {
+    "value": 0.7784,
+    "unfloored": 0.7784,
+    "ci95": [
+     0.5217,
+     1.0919
+    ]
+   },
+   "separate_estimator": {
+    "value": 0.5596,
+    "unfloored": 0.5596,
+    "ci95": [
+     0.4824,
+     0.6647
+    ]
+   },
+   "provenance": "this artifact (joint estimator, speed-class medians, n-weighted least squares over both sides at speed parity)",
+   "proposed": {
+    "value": 0.0891,
+    "unfloored": 0.0891,
+    "ci95": [
+     0.0377,
+     0.1678
+    ]
+   }
+  },
+  "exit_accept_gap_s": {
+   "zone": "HH_on_BR_off_weave",
+   "movement": "exiting",
+   "current": 0.6,
+   "lead_side_only": {
+    "value": 2.5836,
+    "unfloored": 2.5836,
+    "ci95": [
+     2.156,
+     3.0291
+    ]
+   },
+   "lag_side_only": {
+    "value": 0.7214,
+    "unfloored": 0.7214,
+    "ci95": [
+     0.4548,
+     1.0283
+    ]
+   },
+   "separate_estimator": {
+    "value": 2.8239,
+    "unfloored": 2.8239,
+    "ci95": [
+     2.4198,
+     3.3563
+    ]
+   },
+   "provenance": "this artifact (joint estimator, speed-class medians, n-weighted least squares over both sides at speed parity)",
+   "proposed": {
+    "value": 1.7825,
+    "unfloored": 1.7825,
+    "ci95": [
+     1.523,
+     2.0527
+    ]
+   }
+  },
+  "status": "proposal only: WEAVE_DEFAULTS is unchanged; a candidate for the weave's acceptance, to be tested on the fixtures before any adoption"
+ },
+ "sensitivity_lookback_5s": [
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "all",
+   "n_drivers": 76,
+   "v_ms_p50": 13.9594,
+   "lag_v_ms_p50": 17.3138,
+   "lead_closing_ms_p50": 2.941,
+   "lag_closing_ms_p50": 2.8443,
+   "share_with_rejected": 0.3289,
+   "lookback_s_p50": 1.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 76,
+    "n_undefined": 1,
+    "n_no_rejection": 61,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 7,
+    "n_inconsistent_excluded": 7,
+    "n_uninformative": 53,
+    "n_censored": 6,
+    "n_used": 15,
+    "n_with_rejection": 7
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 76,
+    "n_undefined": 0,
+    "n_no_rejection": 63,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 5,
+    "n_inconsistent_excluded": 5,
+    "n_uninformative": 44,
+    "n_censored": 6,
+    "n_used": 27,
+    "n_with_rejection": 8
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -1.62902,
+     "sigma": 10.0,
+     "median_s": 0.1961,
+     "mean_s": 1.0168294669853533e+21,
+     "sd_s": 5.27196135910932e+42,
+     "p10_s": 0.0,
+     "p90_s": 72149.2399,
+     "degenerate": false,
+     "at_bound": true,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -1.09429,
+     "sigma": 3.91724,
+     "median_s": 0.3348,
+     "mean_s": 719.152,
+     "sd_s": 1544850.5222,
+     "p10_s": 0.0022,
+     "p90_s": 50.696,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -35.4394,
+    "converged": true,
+    "n_input": 76,
+    "n_undefined": 1,
+    "n_no_rejection": 51,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 11,
+    "n_inconsistent_excluded": 11,
+    "n_uninformative": 25,
+    "n_censored": 38,
+    "n_used": 39,
+    "n_with_rejection": 13,
+    "n_points": 22,
+    "n_steps": 13,
+    "sensitivity_no_rejection_excluded": null
+   }
+  },
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v<10",
+   "n_drivers": 20,
+   "v_ms_p50": 6.6896,
+   "lag_v_ms_p50": 15.8865,
+   "lead_closing_ms_p50": -1.6895,
+   "lag_closing_ms_p50": 6.5315,
+   "share_with_rejected": 0.5,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 20,
+    "n_undefined": 1,
+    "n_no_rejection": 15,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 1,
+    "n_inconsistent_excluded": 1,
+    "n_uninformative": 12,
+    "n_censored": 2,
+    "n_used": 6,
+    "n_with_rejection": 3
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 20,
+    "n_undefined": 0,
+    "n_no_rejection": 13,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 3,
+    "n_inconsistent_excluded": 3,
+    "n_uninformative": 10,
+    "n_censored": 4,
+    "n_used": 7,
+    "n_with_rejection": 4
+   },
+   "joint": {
+    "fitted": false,
+    "n_input": 20,
+    "n_undefined": 1,
+    "n_no_rejection": 10,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 4,
+    "n_inconsistent_excluded": 4,
+    "n_uninformative": 5,
+    "n_censored": 9,
+    "n_used": 10,
+    "n_with_rejection": 5,
+    "n_points": 6,
+    "n_steps": 5
+   }
+  },
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "10<=v<20",
+   "n_drivers": 45,
+   "v_ms_p50": 14.5459,
+   "lag_v_ms_p50": 17.5889,
+   "lead_closing_ms_p50": 4.2308,
+   "lag_closing_ms_p50": 2.6853,
+   "share_with_rejected": 0.2222,
+   "lookback_s_p50": 0.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 45,
+    "n_undefined": 0,
+    "n_no_rejection": 38,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 4,
+    "n_inconsistent_excluded": 4,
+    "n_uninformative": 35,
+    "n_censored": 3,
+    "n_used": 6,
+    "n_with_rejection": 3
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 45,
+    "n_undefined": 0,
+    "n_no_rejection": 41,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 2,
+    "n_inconsistent_excluded": 2,
+    "n_uninformative": 25,
+    "n_censored": 2,
+    "n_used": 18,
+    "n_with_rejection": 2
+   },
+   "joint": {
+    "fitted": false,
+    "n_input": 45,
+    "n_undefined": 0,
+    "n_no_rejection": 35,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 5,
+    "n_inconsistent_excluded": 5,
+    "n_uninformative": 16,
+    "n_censored": 24,
+    "n_used": 24,
+    "n_with_rejection": 5,
+    "n_points": 11,
+    "n_steps": 5
+   }
+  },
+  {
+   "zone": "BR_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v>=20",
+   "n_drivers": 11,
+   "v_ms_p50": 25.0219,
+   "lag_v_ms_p50": 17.6566,
+   "lead_closing_ms_p50": 23.5446,
+   "lag_closing_ms_p50": -3.2026,
+   "share_with_rejected": 0.4545,
+   "lookback_s_p50": 2.0,
+   "separate_lead": {
+    "fitted": false,
+    "n_input": 11,
+    "n_undefined": 0,
+    "n_no_rejection": 8,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 2,
+    "n_inconsistent_excluded": 2,
+    "n_uninformative": 6,
+    "n_censored": 1,
+    "n_used": 3,
+    "n_with_rejection": 1
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 11,
+    "n_undefined": 0,
+    "n_no_rejection": 9,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 0,
+    "n_inconsistent_excluded": 0,
+    "n_uninformative": 9,
+    "n_censored": 0,
+    "n_used": 2,
+    "n_with_rejection": 2
+   },
+   "joint": {
+    "fitted": false,
+    "n_input": 11,
+    "n_undefined": 0,
+    "n_no_rejection": 6,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 2,
+    "n_inconsistent_excluded": 2,
+    "n_uninformative": 4,
+    "n_censored": 5,
+    "n_used": 5,
+    "n_with_rejection": 3,
+    "n_points": 5,
+    "n_steps": 3
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "all",
+   "n_drivers": 1688,
+   "v_ms_p50": 18.5471,
+   "lag_v_ms_p50": 15.5375,
+   "lead_closing_ms_p50": -1.0084,
+   "lag_closing_ms_p50": -1.9991,
+   "share_with_rejected": 0.6155,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.17875,
+    "sigma": 2.02004,
+    "median_s": 3.2503,
+    "mean_s": 25.004,
+    "sd_s": 190.7181,
+    "p10_s": 0.2441,
+    "p90_s": 43.2734,
+    "loglik": -1058.3943,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1688,
+    "n_undefined": 7,
+    "n_no_rejection": 819,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 557,
+    "n_inconsistent_excluded": 557,
+    "n_uninformative": 583,
+    "n_censored": 139,
+    "n_used": 541,
+    "n_with_rejection": 305,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.37458,
+     "sigma": 1.3917,
+     "median_s": 10.7465,
+     "mean_s": 28.3039,
+     "sd_s": 68.964,
+     "p10_s": 1.8059,
+     "p90_s": 63.9513,
+     "loglik": -811.0132,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1688,
+     "n_undefined": 7,
+     "n_no_rejection": 819,
+     "n_no_rejection_excluded": 819,
+     "n_inconsistent": 557,
+     "n_inconsistent_excluded": 557,
+     "n_uninformative": 0,
+     "n_censored": 139,
+     "n_used": 305,
+     "n_with_rejection": 305
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 1.34856,
+    "sigma": 3.54055,
+    "median_s": 3.8519,
+    "mean_s": 2031.081,
+    "sd_s": 1070980.6468,
+    "p10_s": 0.0412,
+    "p90_s": 359.9493,
+    "loglik": -526.037,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1688,
+    "n_undefined": 53,
+    "n_no_rejection": 1275,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 121,
+    "n_inconsistent_excluded": 121,
+    "n_uninformative": 1070,
+    "n_censored": 151,
+    "n_used": 444,
+    "n_with_rejection": 239,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 3.89489,
+     "sigma": 2.70888,
+     "median_s": 49.1507,
+     "mean_s": 1927.3465,
+     "sd_s": 75552.4829,
+     "p10_s": 1.527,
+     "p90_s": 1582.0187,
+     "loglik": -329.3314,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1688,
+     "n_undefined": 53,
+     "n_no_rejection": 1275,
+     "n_no_rejection_excluded": 1275,
+     "n_inconsistent": 121,
+     "n_inconsistent_excluded": 121,
+     "n_uninformative": 0,
+     "n_censored": 151,
+     "n_used": 239,
+     "n_with_rejection": 239
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.94699,
+     "sigma": 1.94977,
+     "median_s": 2.5779,
+     "mean_s": 17.2498,
+     "sd_s": 114.1271,
+     "p10_s": 0.2119,
+     "p90_s": 31.3661,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.80073,
+     "sigma": 3.55059,
+     "median_s": 2.2272,
+     "mean_s": 1216.9014,
+     "sd_s": 664898.5571,
+     "p10_s": 0.0235,
+     "p90_s": 210.8175,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1443.686,
+    "converged": true,
+    "n_input": 1688,
+    "n_undefined": 60,
+    "n_no_rejection": 641,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 553,
+    "n_inconsistent_excluded": 553,
+    "n_uninformative": 376,
+    "n_censored": 573,
+    "n_used": 699,
+    "n_with_rejection": 434,
+    "n_points": 1095,
+    "n_steps": 515,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 6.7956,
+     "lag_median_s": 8.9645,
+     "n_used": 434
+    }
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v<10",
+   "n_drivers": 163,
+   "v_ms_p50": 3.4312,
+   "lag_v_ms_p50": 18.9617,
+   "lead_closing_ms_p50": -16.3086,
+   "lag_closing_ms_p50": 13.3231,
+   "share_with_rejected": 0.4233,
+   "lookback_s_p50": 2.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 3.03131,
+    "sigma": 2.07015,
+    "median_s": 20.7243,
+    "mean_s": 176.6321,
+    "sd_s": 1495.0295,
+    "p10_s": 1.4598,
+    "p90_s": 294.2153,
+    "loglik": -81.2245,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 163,
+    "n_undefined": 7,
+    "n_no_rejection": 105,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 12,
+    "n_inconsistent_excluded": 12,
+    "n_uninformative": 75,
+    "n_censored": 21,
+    "n_used": 69,
+    "n_with_rejection": 39,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 4.16904,
+     "sigma": 1.23335,
+     "median_s": 64.6531,
+     "mean_s": 138.3255,
+     "sd_s": 261.6319,
+     "p10_s": 13.3089,
+     "p90_s": 314.076,
+     "loglik": -47.7424,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 163,
+     "n_undefined": 7,
+     "n_no_rejection": 105,
+     "n_no_rejection_excluded": 105,
+     "n_inconsistent": 12,
+     "n_inconsistent_excluded": 12,
+     "n_uninformative": 0,
+     "n_censored": 21,
+     "n_used": 39,
+     "n_with_rejection": 39
+    }
+   },
+   "separate_lag": {
+    "fitted": false,
+    "n_input": 163,
+    "n_undefined": 3,
+    "n_no_rejection": 138,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 15,
+    "n_inconsistent_excluded": 15,
+    "n_uninformative": 121,
+    "n_censored": 6,
+    "n_used": 24,
+    "n_with_rejection": 7
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 3.13077,
+     "sigma": 1.63621,
+     "median_s": 22.8916,
+     "mean_s": 87.3018,
+     "sd_s": 321.293,
+     "p10_s": 2.812,
+     "p90_s": 186.3572,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -1.35542,
+     "sigma": 2.40971,
+     "median_s": 0.2578,
+     "mean_s": 4.7017,
+     "sd_s": 85.6067,
+     "p10_s": 0.0118,
+     "p90_s": 5.6562,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -80.8774,
+    "converged": true,
+    "n_input": 163,
+    "n_undefined": 10,
+    "n_no_rejection": 91,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 23,
+    "n_inconsistent_excluded": 23,
+    "n_uninformative": 57,
+    "n_censored": 65,
+    "n_used": 73,
+    "n_with_rejection": 39,
+    "n_points": 64,
+    "n_steps": 43,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 55.547,
+     "lag_median_s": 1.3528,
+     "n_used": 39
+    }
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "10<=v<20",
+   "n_drivers": 930,
+   "v_ms_p50": 17.2187,
+   "lag_v_ms_p50": 11.4571,
+   "lead_closing_ms_p50": -1.3035,
+   "lag_closing_ms_p50": -4.6027,
+   "share_with_rejected": 0.6785,
+   "lookback_s_p50": 6.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.11043,
+    "sigma": 1.71173,
+    "median_s": 3.0357,
+    "mean_s": 13.137,
+    "sd_s": 55.3125,
+    "p10_s": 0.3385,
+    "p90_s": 27.2239,
+    "loglik": -609.2828,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 930,
+    "n_undefined": 0,
+    "n_no_rejection": 396,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 370,
+    "n_inconsistent_excluded": 370,
+    "n_uninformative": 271,
+    "n_censored": 69,
+    "n_used": 289,
+    "n_with_rejection": 164,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.10601,
+     "sigma": 1.09784,
+     "median_s": 8.2154,
+     "mean_s": 15.0088,
+     "sd_s": 22.9472,
+     "p10_s": 2.0119,
+     "p90_s": 33.547,
+     "loglik": -469.3662,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 930,
+     "n_undefined": 0,
+     "n_no_rejection": 396,
+     "n_no_rejection_excluded": 396,
+     "n_inconsistent": 370,
+     "n_inconsistent_excluded": 370,
+     "n_uninformative": 0,
+     "n_censored": 69,
+     "n_used": 164,
+     "n_with_rejection": 164
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 1.56457,
+    "sigma": 3.568,
+    "median_s": 4.7806,
+    "mean_s": 2779.1129,
+    "sd_s": 1615582.9779,
+    "p10_s": 0.0494,
+    "p90_s": 462.7308,
+    "loglik": -295.7369,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 930,
+    "n_undefined": 34,
+    "n_no_rejection": 674,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 79,
+    "n_inconsistent_excluded": 79,
+    "n_uninformative": 554,
+    "n_censored": 91,
+    "n_used": 263,
+    "n_with_rejection": 143,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 4.09054,
+     "sigma": 2.61634,
+     "median_s": 59.7722,
+     "mean_s": 1832.0031,
+     "sd_s": 56120.5892,
+     "p10_s": 2.0908,
+     "p90_s": 1708.7516,
+     "loglik": -176.5598,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 930,
+     "n_undefined": 34,
+     "n_no_rejection": 674,
+     "n_no_rejection_excluded": 674,
+     "n_inconsistent": 79,
+     "n_inconsistent_excluded": 79,
+     "n_uninformative": 0,
+     "n_censored": 91,
+     "n_used": 143,
+     "n_with_rejection": 143
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.85905,
+     "sigma": 1.7252,
+     "median_s": 2.3609,
+     "mean_s": 10.4563,
+     "sd_s": 45.1142,
+     "p10_s": 0.2588,
+     "p90_s": 21.5415,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.99775,
+     "sigma": 3.70402,
+     "median_s": 2.7122,
+     "mean_s": 2585.3633,
+     "sd_s": 2464489.6019,
+     "p10_s": 0.0235,
+     "p90_s": 312.5101,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -823.3659,
+    "converged": true,
+    "n_input": 930,
+    "n_undefined": 34,
+    "n_no_rejection": 294,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 360,
+    "n_inconsistent_excluded": 360,
+    "n_uninformative": 159,
+    "n_censored": 302,
+    "n_used": 377,
+    "n_with_rejection": 242,
+    "n_points": 643,
+    "n_steps": 297,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 5.3378,
+     "lag_median_s": 9.4415,
+     "n_used": 242
+    }
+   }
+  },
+  {
+   "zone": "HH_diverge",
+   "zone_kind": "diverge",
+   "movement": "exiting",
+   "speed_class": "v>=20",
+   "n_drivers": 595,
+   "v_ms_p50": 22.8237,
+   "lag_v_ms_p50": 20.32,
+   "lead_closing_ms_p50": 0.1654,
+   "lag_closing_ms_p50": -2.5181,
+   "share_with_rejected": 0.5697,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 0.85005,
+    "sigma": 1.5389,
+    "median_s": 2.3398,
+    "mean_s": 7.6458,
+    "sd_s": 23.786,
+    "p10_s": 0.3256,
+    "p90_s": 16.8143,
+    "loglik": -339.7424,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 595,
+    "n_undefined": 0,
+    "n_no_rejection": 318,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 175,
+    "n_inconsistent_excluded": 175,
+    "n_uninformative": 237,
+    "n_censored": 49,
+    "n_used": 183,
+    "n_with_rejection": 102,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.77107,
+     "sigma": 0.99765,
+     "median_s": 5.8771,
+     "mean_s": 9.6671,
+     "sd_s": 12.625,
+     "p10_s": 1.6364,
+     "p90_s": 21.1072,
+     "loglik": -254.6025,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 595,
+     "n_undefined": 0,
+     "n_no_rejection": 318,
+     "n_no_rejection_excluded": 318,
+     "n_inconsistent": 175,
+     "n_inconsistent_excluded": 175,
+     "n_uninformative": 0,
+     "n_censored": 49,
+     "n_used": 102,
+     "n_with_rejection": 102
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 1.29275,
+    "sigma": 3.40668,
+    "median_s": 3.6428,
+    "mean_s": 1206.5139,
+    "sd_s": 399601.3261,
+    "p10_s": 0.0463,
+    "p90_s": 286.7442,
+    "loglik": -210.2206,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 595,
+    "n_undefined": 16,
+    "n_no_rejection": 463,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 27,
+    "n_inconsistent_excluded": 27,
+    "n_uninformative": 395,
+    "n_censored": 54,
+    "n_used": 157,
+    "n_with_rejection": 89,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 3.52936,
+     "sigma": 2.80885,
+     "median_s": 34.102,
+     "mean_s": 1761.9341,
+     "sd_s": 91016.0831,
+     "p10_s": 0.9321,
+     "p90_s": 1247.6768,
+     "loglik": -146.6731,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 595,
+     "n_undefined": 16,
+     "n_no_rejection": 463,
+     "n_no_rejection_excluded": 463,
+     "n_inconsistent": 27,
+     "n_inconsistent_excluded": 27,
+     "n_uninformative": 0,
+     "n_censored": 54,
+     "n_used": 89,
+     "n_with_rejection": 89
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.73119,
+     "sigma": 1.3958,
+     "median_s": 2.0775,
+     "mean_s": 5.5031,
+     "sd_s": 13.4984,
+     "p10_s": 0.3473,
+     "p90_s": 12.4284,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.88377,
+     "sigma": 3.2821,
+     "median_s": 2.42,
+     "mean_s": 528.3961,
+     "sd_s": 115371.8023,
+     "p10_s": 0.0361,
+     "p90_s": 162.3806,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -501.5249,
+    "converged": true,
+    "n_input": 595,
+    "n_undefined": 16,
+    "n_no_rejection": 256,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 170,
+    "n_inconsistent_excluded": 170,
+    "n_uninformative": 160,
+    "n_censored": 206,
+    "n_used": 249,
+    "n_with_rejection": 153,
+    "n_points": 388,
+    "n_steps": 175,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 4.438,
+     "lag_median_s": 50.5493,
+     "n_used": 153
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "all",
+   "n_drivers": 1881,
+   "v_ms_p50": 11.7044,
+   "lag_v_ms_p50": 9.4867,
+   "lead_closing_ms_p50": 0.7132,
+   "lag_closing_ms_p50": -1.3812,
+   "share_with_rejected": 0.6746,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.24456,
+    "sigma": 1.36555,
+    "median_s": 0.783,
+    "mean_s": 1.9893,
+    "sd_s": 4.6459,
+    "p10_s": 0.1361,
+    "p90_s": 4.5062,
+    "loglik": -1570.2026,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1881,
+    "n_undefined": 3,
+    "n_no_rejection": 628,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 751,
+    "n_inconsistent_excluded": 751,
+    "n_uninformative": 21,
+    "n_censored": 21,
+    "n_used": 1106,
+    "n_with_rejection": 499,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.81149,
+     "sigma": 0.95526,
+     "median_s": 2.2513,
+     "mean_s": 3.5529,
+     "sd_s": 4.3377,
+     "p10_s": 0.6618,
+     "p90_s": 7.6577,
+     "loglik": -1077.0532,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1881,
+     "n_undefined": 3,
+     "n_no_rejection": 628,
+     "n_no_rejection_excluded": 628,
+     "n_inconsistent": 751,
+     "n_inconsistent_excluded": 751,
+     "n_uninformative": 0,
+     "n_censored": 21,
+     "n_used": 499,
+     "n_with_rejection": 499
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.26478,
+    "sigma": 1.1802,
+    "median_s": 1.3031,
+    "mean_s": 2.6149,
+    "sd_s": 4.549,
+    "p10_s": 0.2872,
+    "p90_s": 5.9137,
+    "loglik": -1934.6062,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1881,
+    "n_undefined": 10,
+    "n_no_rejection": 642,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 611,
+    "n_inconsistent_excluded": 611,
+    "n_uninformative": 36,
+    "n_censored": 15,
+    "n_used": 1224,
+    "n_with_rejection": 618,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.02956,
+     "sigma": 0.8675,
+     "median_s": 2.7998,
+     "mean_s": 4.0789,
+     "sd_s": 4.3214,
+     "p10_s": 0.9211,
+     "p90_s": 8.5106,
+     "loglik": -1425.4178,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1881,
+     "n_undefined": 10,
+     "n_no_rejection": 642,
+     "n_no_rejection_excluded": 642,
+     "n_inconsistent": 611,
+     "n_inconsistent_excluded": 611,
+     "n_uninformative": 0,
+     "n_censored": 15,
+     "n_used": 618,
+     "n_with_rejection": 618
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.83547,
+     "sigma": 1.44291,
+     "median_s": 0.4337,
+     "mean_s": 1.2282,
+     "sd_s": 3.2542,
+     "p10_s": 0.0682,
+     "p90_s": 2.7558,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.1228,
+     "sigma": 1.26469,
+     "median_s": 0.8844,
+     "mean_s": 1.9678,
+     "sd_s": 3.911,
+     "p10_s": 0.1749,
+     "p90_s": 4.4726,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -2978.2665,
+    "converged": true,
+    "n_input": 1881,
+    "n_undefined": 12,
+    "n_no_rejection": 607,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 375,
+    "n_inconsistent_excluded": 375,
+    "n_uninformative": 3,
+    "n_censored": 56,
+    "n_used": 1491,
+    "n_with_rejection": 887,
+    "n_points": 2305,
+    "n_steps": 1248,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.9053,
+     "lag_median_s": 1.6178,
+     "n_used": 887
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "v<10",
+   "n_drivers": 731,
+   "v_ms_p50": 7.3865,
+   "lag_v_ms_p50": 6.1924,
+   "lead_closing_ms_p50": -0.0301,
+   "lag_closing_ms_p50": -0.7669,
+   "share_with_rejected": 0.6224,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.26698,
+    "sigma": 1.43499,
+    "median_s": 0.7657,
+    "mean_s": 2.1439,
+    "sd_s": 5.6068,
+    "p10_s": 0.1217,
+    "p90_s": 4.8164,
+    "loglik": -632.3197,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 731,
+    "n_undefined": 3,
+    "n_no_rejection": 275,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 263,
+    "n_inconsistent_excluded": 263,
+    "n_uninformative": 1,
+    "n_censored": 1,
+    "n_used": 464,
+    "n_with_rejection": 190,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.90987,
+     "sigma": 1.03917,
+     "median_s": 2.484,
+     "mean_s": 4.2623,
+     "sd_s": 5.9433,
+     "p10_s": 0.6558,
+     "p90_s": 9.4086,
+     "loglik": -433.943,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 731,
+     "n_undefined": 3,
+     "n_no_rejection": 275,
+     "n_no_rejection_excluded": 275,
+     "n_inconsistent": 263,
+     "n_inconsistent_excluded": 263,
+     "n_uninformative": 0,
+     "n_censored": 1,
+     "n_used": 190,
+     "n_with_rejection": 190
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.26503,
+    "sigma": 1.15644,
+    "median_s": 1.3035,
+    "mean_s": 2.5439,
+    "sd_s": 4.2636,
+    "p10_s": 0.2961,
+    "p90_s": 5.7378,
+    "loglik": -672.8703,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 731,
+    "n_undefined": 9,
+    "n_no_rejection": 270,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 234,
+    "n_inconsistent_excluded": 234,
+    "n_uninformative": 0,
+    "n_censored": 1,
+    "n_used": 488,
+    "n_with_rejection": 218,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.07561,
+     "sigma": 0.90303,
+     "median_s": 2.9318,
+     "mean_s": 4.4077,
+     "sd_s": 4.9481,
+     "p10_s": 0.9216,
+     "p90_s": 9.3268,
+     "loglik": -491.4849,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 731,
+     "n_undefined": 9,
+     "n_no_rejection": 270,
+     "n_no_rejection_excluded": 270,
+     "n_inconsistent": 234,
+     "n_inconsistent_excluded": 234,
+     "n_uninformative": 0,
+     "n_censored": 1,
+     "n_used": 218,
+     "n_with_rejection": 218
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.84108,
+     "sigma": 1.50023,
+     "median_s": 0.4312,
+     "mean_s": 1.3288,
+     "sd_s": 3.8727,
+     "p10_s": 0.0631,
+     "p90_s": 2.9492,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.06168,
+     "sigma": 1.20607,
+     "median_s": 0.9402,
+     "mean_s": 1.9457,
+     "sd_s": 3.5254,
+     "p10_s": 0.2004,
+     "p90_s": 4.4104,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1110.2218,
+    "converged": true,
+    "n_input": 731,
+    "n_undefined": 11,
+    "n_no_rejection": 270,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 125,
+    "n_inconsistent_excluded": 125,
+    "n_uninformative": 0,
+    "n_censored": 3,
+    "n_used": 595,
+    "n_with_rejection": 325,
+    "n_points": 865,
+    "n_steps": 457,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 1.0128,
+     "lag_median_s": 1.7246,
+     "n_used": 325
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "10<=v<20",
+   "n_drivers": 855,
+   "v_ms_p50": 13.7688,
+   "lag_v_ms_p50": 11.754,
+   "lead_closing_ms_p50": 1.2653,
+   "lag_closing_ms_p50": -1.8351,
+   "share_with_rejected": 0.6971,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.26496,
+    "sigma": 1.28817,
+    "median_s": 0.7672,
+    "mean_s": 1.759,
+    "sd_s": 3.6289,
+    "p10_s": 0.1472,
+    "p90_s": 3.9984,
+    "loglik": -722.4877,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 855,
+    "n_undefined": 0,
+    "n_no_rejection": 267,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 356,
+    "n_inconsistent_excluded": 356,
+    "n_uninformative": 5,
+    "n_censored": 2,
+    "n_used": 494,
+    "n_with_rejection": 232,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.71794,
+     "sigma": 0.89871,
+     "median_s": 2.0502,
+     "mean_s": 3.0703,
+     "sd_s": 3.4227,
+     "p10_s": 0.648,
+     "p90_s": 6.4862,
+     "loglik": -497.864,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 855,
+     "n_undefined": 0,
+     "n_no_rejection": 267,
+     "n_no_rejection_excluded": 267,
+     "n_inconsistent": 356,
+     "n_inconsistent_excluded": 356,
+     "n_uninformative": 0,
+     "n_censored": 2,
+     "n_used": 232,
+     "n_with_rejection": 232
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.22016,
+    "sigma": 1.17445,
+    "median_s": 1.2463,
+    "mean_s": 2.4839,
+    "sd_s": 4.2823,
+    "p10_s": 0.2767,
+    "p90_s": 5.6141,
+    "loglik": -895.5957,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 855,
+    "n_undefined": 1,
+    "n_no_rejection": 267,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 295,
+    "n_inconsistent_excluded": 295,
+    "n_uninformative": 6,
+    "n_censored": 7,
+    "n_used": 553,
+    "n_with_rejection": 292,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.94911,
+     "sigma": 0.87645,
+     "median_s": 2.5834,
+     "mean_s": 3.7931,
+     "sd_s": 4.078,
+     "p10_s": 0.8402,
+     "p90_s": 7.9433,
+     "loglik": -666.6151,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 855,
+     "n_undefined": 1,
+     "n_no_rejection": 267,
+     "n_no_rejection_excluded": 267,
+     "n_inconsistent": 295,
+     "n_inconsistent_excluded": 295,
+     "n_uninformative": 0,
+     "n_censored": 7,
+     "n_used": 292,
+     "n_with_rejection": 292
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.85744,
+     "sigma": 1.38283,
+     "median_s": 0.4242,
+     "mean_s": 1.1037,
+     "sd_s": 2.6507,
+     "p10_s": 0.0721,
+     "p90_s": 2.4961,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.21272,
+     "sigma": 1.28211,
+     "median_s": 0.8084,
+     "mean_s": 1.8389,
+     "sd_s": 3.7574,
+     "p10_s": 0.1563,
+     "p90_s": 4.1803,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1344.258,
+    "converged": true,
+    "n_input": 855,
+    "n_undefined": 1,
+    "n_no_rejection": 260,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 184,
+    "n_inconsistent_excluded": 184,
+    "n_uninformative": 0,
+    "n_censored": 15,
+    "n_used": 670,
+    "n_with_rejection": 410,
+    "n_points": 1050,
+    "n_steps": 579,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.8504,
+     "lag_median_s": 1.4623,
+     "n_used": 410
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "entering",
+   "speed_class": "v>=20",
+   "n_drivers": 295,
+   "v_ms_p50": 23.9898,
+   "lag_v_ms_p50": 19.7434,
+   "lead_closing_ms_p50": 3.511,
+   "lag_closing_ms_p50": -3.896,
+   "share_with_rejected": 0.739,
+   "lookback_s_p50": 3.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.11671,
+    "sigma": 1.432,
+    "median_s": 0.8898,
+    "mean_s": 2.4808,
+    "sd_s": 6.4562,
+    "p10_s": 0.142,
+    "p90_s": 5.576,
+    "loglik": -213.2111,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 295,
+    "n_undefined": 0,
+    "n_no_rejection": 86,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 132,
+    "n_inconsistent_excluded": 132,
+    "n_uninformative": 15,
+    "n_censored": 18,
+    "n_used": 148,
+    "n_with_rejection": 77,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.85147,
+     "sigma": 0.85545,
+     "median_s": 2.3431,
+     "mean_s": 3.3783,
+     "sd_s": 3.5088,
+     "p10_s": 0.7828,
+     "p90_s": 7.013,
+     "loglik": -140.7089,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 295,
+     "n_undefined": 0,
+     "n_no_rejection": 86,
+     "n_no_rejection_excluded": 86,
+     "n_inconsistent": 132,
+     "n_inconsistent_excluded": 132,
+     "n_uninformative": 0,
+     "n_censored": 18,
+     "n_used": 77,
+     "n_with_rejection": 77
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.4072,
+    "sigma": 1.23713,
+    "median_s": 1.5026,
+    "mean_s": 3.2299,
+    "sd_s": 6.1455,
+    "p10_s": 0.3078,
+    "p90_s": 7.3349,
+    "loglik": -364.1276,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 295,
+    "n_undefined": 0,
+    "n_no_rejection": 105,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 82,
+    "n_inconsistent_excluded": 82,
+    "n_uninformative": 30,
+    "n_censored": 7,
+    "n_used": 183,
+    "n_with_rejection": 108,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.15372,
+     "sigma": 0.73554,
+     "median_s": 3.17,
+     "mean_s": 4.1546,
+     "sd_s": 3.5198,
+     "p10_s": 1.235,
+     "p90_s": 8.1364,
+     "loglik": -262.2295,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 295,
+     "n_undefined": 0,
+     "n_no_rejection": 105,
+     "n_no_rejection_excluded": 105,
+     "n_inconsistent": 82,
+     "n_inconsistent_excluded": 82,
+     "n_uninformative": 0,
+     "n_censored": 7,
+     "n_used": 108,
+     "n_with_rejection": 108
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.76149,
+     "sigma": 1.48495,
+     "median_s": 0.467,
+     "mean_s": 1.4064,
+     "sd_s": 3.9956,
+     "p10_s": 0.0696,
+     "p90_s": 3.1316,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.03183,
+     "sigma": 1.31324,
+     "median_s": 1.0323,
+     "mean_s": 2.4452,
+     "sd_s": 5.2503,
+     "p10_s": 0.1918,
+     "p90_s": 5.5557,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -519.5571,
+    "converged": true,
+    "n_input": 295,
+    "n_undefined": 0,
+    "n_no_rejection": 77,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 66,
+    "n_inconsistent_excluded": 66,
+    "n_uninformative": 3,
+    "n_censored": 38,
+    "n_used": 226,
+    "n_with_rejection": 152,
+    "n_points": 390,
+    "n_steps": 212,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.8585,
+     "lag_median_s": 1.8645,
+     "n_used": 152
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "all",
+   "n_drivers": 1493,
+   "v_ms_p50": 14.5971,
+   "lag_v_ms_p50": 11.162,
+   "lead_closing_ms_p50": -0.2955,
+   "lag_closing_ms_p50": -0.7674,
+   "share_with_rejected": 0.7214,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.14853,
+    "sigma": 1.78973,
+    "median_s": 3.1536,
+    "mean_s": 15.6442,
+    "sd_s": 76.0146,
+    "p10_s": 0.3182,
+    "p90_s": 31.2545,
+    "loglik": -1134.1337,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1493,
+    "n_undefined": 5,
+    "n_no_rejection": 538,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 439,
+    "n_inconsistent_excluded": 439,
+    "n_uninformative": 287,
+    "n_censored": 242,
+    "n_used": 762,
+    "n_with_rejection": 511,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.94068,
+     "sigma": 1.42124,
+     "median_s": 6.9635,
+     "mean_s": 19.1183,
+     "sd_s": 48.8837,
+     "p10_s": 1.1267,
+     "p90_s": 43.0376,
+     "loglik": -856.8588,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1493,
+     "n_undefined": 5,
+     "n_no_rejection": 538,
+     "n_no_rejection_excluded": 538,
+     "n_inconsistent": 439,
+     "n_inconsistent_excluded": 439,
+     "n_uninformative": 0,
+     "n_censored": 242,
+     "n_used": 511,
+     "n_with_rejection": 511
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.50768,
+    "sigma": 1.58735,
+    "median_s": 1.6614,
+    "mean_s": 5.8563,
+    "sd_s": 19.7944,
+    "p10_s": 0.2173,
+    "p90_s": 12.7044,
+    "loglik": -1104.7746,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1493,
+    "n_undefined": 3,
+    "n_no_rejection": 841,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 242,
+    "n_inconsistent_excluded": 242,
+    "n_uninformative": 538,
+    "n_censored": 114,
+    "n_used": 710,
+    "n_with_rejection": 407,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.43518,
+     "sigma": 1.19801,
+     "median_s": 4.2004,
+     "mean_s": 8.6089,
+     "sd_s": 15.4014,
+     "p10_s": 0.9047,
+     "p90_s": 19.5015,
+     "loglik": -812.3494,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1493,
+     "n_undefined": 3,
+     "n_no_rejection": 841,
+     "n_no_rejection_excluded": 841,
+     "n_inconsistent": 242,
+     "n_inconsistent_excluded": 242,
+     "n_uninformative": 0,
+     "n_censored": 114,
+     "n_used": 407,
+     "n_with_rejection": 407
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.68449,
+     "sigma": 1.78628,
+     "median_s": 1.9828,
+     "mean_s": 9.7755,
+     "sd_s": 47.1944,
+     "p10_s": 0.2009,
+     "p90_s": 19.5641,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.02495,
+     "sigma": 1.77777,
+     "median_s": 1.0253,
+     "mean_s": 4.9788,
+     "sd_s": 23.6596,
+     "p10_s": 0.105,
+     "p90_s": 10.0068,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1814.0045,
+    "converged": true,
+    "n_input": 1493,
+    "n_undefined": 7,
+    "n_no_rejection": 414,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 409,
+    "n_inconsistent_excluded": 409,
+    "n_uninformative": 147,
+    "n_censored": 545,
+    "n_used": 930,
+    "n_with_rejection": 663,
+    "n_points": 1814,
+    "n_steps": 873,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 3.5783,
+     "lag_median_s": 1.6577,
+     "n_used": 663
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "v<10",
+   "n_drivers": 377,
+   "v_ms_p50": 7.2935,
+   "lag_v_ms_p50": 7.2706,
+   "lead_closing_ms_p50": -1.1383,
+   "lag_closing_ms_p50": -0.2016,
+   "share_with_rejected": 0.7905,
+   "lookback_s_p50": 7.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.35708,
+    "sigma": 1.89802,
+    "median_s": 3.8848,
+    "mean_s": 23.5309,
+    "sd_s": 140.5742,
+    "p10_s": 0.3412,
+    "p90_s": 44.2337,
+    "loglik": -328.9816,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 377,
+    "n_undefined": 5,
+    "n_no_rejection": 102,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 128,
+    "n_inconsistent_excluded": 128,
+    "n_uninformative": 41,
+    "n_censored": 48,
+    "n_used": 203,
+    "n_with_rejection": 142,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 2.04973,
+     "sigma": 1.68192,
+     "median_s": 7.7658,
+     "mean_s": 31.9499,
+     "sd_s": 127.505,
+     "p10_s": 0.8997,
+     "p90_s": 67.0345,
+     "loglik": -271.8501,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 377,
+     "n_undefined": 5,
+     "n_no_rejection": 102,
+     "n_no_rejection_excluded": 102,
+     "n_inconsistent": 128,
+     "n_inconsistent_excluded": 128,
+     "n_uninformative": 0,
+     "n_censored": 48,
+     "n_used": 142,
+     "n_with_rejection": 142
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.5587,
+    "sigma": 1.21043,
+    "median_s": 1.7484,
+    "mean_s": 3.6374,
+    "sd_s": 6.6358,
+    "p10_s": 0.3706,
+    "p90_s": 8.2477,
+    "loglik": -300.4876,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 377,
+    "n_undefined": 1,
+    "n_no_rejection": 150,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 94,
+    "n_inconsistent_excluded": 94,
+    "n_uninformative": 60,
+    "n_censored": 26,
+    "n_used": 222,
+    "n_with_rejection": 132,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.19467,
+     "sigma": 0.95749,
+     "median_s": 3.3025,
+     "mean_s": 5.223,
+     "sd_s": 6.3995,
+     "p10_s": 0.9681,
+     "p90_s": 11.2656,
+     "loglik": -220.7309,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 377,
+     "n_undefined": 1,
+     "n_no_rejection": 150,
+     "n_no_rejection_excluded": 150,
+     "n_inconsistent": 94,
+     "n_inconsistent_excluded": 94,
+     "n_uninformative": 0,
+     "n_censored": 26,
+     "n_used": 132,
+     "n_with_rejection": 132
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.72826,
+     "sigma": 1.89608,
+     "median_s": 2.0715,
+     "mean_s": 12.5011,
+     "sd_s": 74.3996,
+     "p10_s": 0.1824,
+     "p90_s": 23.5277,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.03752,
+     "sigma": 1.37808,
+     "median_s": 1.0382,
+     "mean_s": 2.6834,
+     "sd_s": 6.3952,
+     "p10_s": 0.1775,
+     "p90_s": 6.0715,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -498.8899,
+    "converged": true,
+    "n_input": 377,
+    "n_undefined": 5,
+    "n_no_rejection": 78,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 110,
+    "n_inconsistent_excluded": 110,
+    "n_uninformative": 11,
+    "n_censored": 102,
+    "n_used": 251,
+    "n_with_rejection": 184,
+    "n_points": 525,
+    "n_steps": 276,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 3.2918,
+     "lag_median_s": 1.4186,
+     "n_used": 184
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "10<=v<20",
+   "n_drivers": 748,
+   "v_ms_p50": 14.6277,
+   "lag_v_ms_p50": 13.0723,
+   "lead_closing_ms_p50": -0.5985,
+   "lag_closing_ms_p50": -1.2594,
+   "share_with_rejected": 0.7447,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 1.24516,
+    "sigma": 1.65539,
+    "median_s": 3.4735,
+    "mean_s": 13.6716,
+    "sd_s": 52.0458,
+    "p10_s": 0.4163,
+    "p90_s": 28.9807,
+    "loglik": -583.4066,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 748,
+    "n_undefined": 0,
+    "n_no_rejection": 261,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 218,
+    "n_inconsistent_excluded": 218,
+    "n_uninformative": 141,
+    "n_censored": 135,
+    "n_used": 389,
+    "n_with_rejection": 269,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.91876,
+     "sigma": 1.23336,
+     "median_s": 6.8125,
+     "mean_s": 14.5755,
+     "sd_s": 27.5688,
+     "p10_s": 1.4023,
+     "p90_s": 33.0945,
+     "loglik": -435.5262,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 748,
+     "n_undefined": 0,
+     "n_no_rejection": 261,
+     "n_no_rejection_excluded": 261,
+     "n_inconsistent": 218,
+     "n_inconsistent_excluded": 218,
+     "n_uninformative": 0,
+     "n_censored": 135,
+     "n_used": 269,
+     "n_with_rejection": 269
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.55056,
+    "sigma": 1.75455,
+    "median_s": 1.7342,
+    "mean_s": 8.0831,
+    "sd_s": 36.7976,
+    "p10_s": 0.1831,
+    "p90_s": 16.4299,
+    "loglik": -568.8325,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 748,
+    "n_undefined": 2,
+    "n_no_rejection": 430,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 113,
+    "n_inconsistent_excluded": 113,
+    "n_uninformative": 278,
+    "n_censored": 62,
+    "n_used": 355,
+    "n_with_rejection": 203,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.60387,
+     "sigma": 1.28633,
+     "median_s": 4.9722,
+     "mean_s": 11.3724,
+     "sd_s": 23.3932,
+     "p10_s": 0.9563,
+     "p90_s": 25.8515,
+     "loglik": -415.7082,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 748,
+     "n_undefined": 2,
+     "n_no_rejection": 430,
+     "n_no_rejection_excluded": 430,
+     "n_inconsistent": 113,
+     "n_inconsistent_excluded": 113,
+     "n_uninformative": 0,
+     "n_censored": 62,
+     "n_used": 203,
+     "n_with_rejection": 203
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.81285,
+     "sigma": 1.74273,
+     "median_s": 2.2543,
+     "mean_s": 10.2924,
+     "sd_s": 45.8497,
+     "p10_s": 0.2416,
+     "p90_s": 21.0363,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": 0.15384,
+     "sigma": 1.91616,
+     "median_s": 1.1663,
+     "mean_s": 7.3133,
+     "sd_s": 45.2703,
+     "p10_s": 0.1001,
+     "p90_s": 13.5924,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -917.1356,
+    "converged": true,
+    "n_input": 748,
+    "n_undefined": 2,
+    "n_no_rejection": 190,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 216,
+    "n_inconsistent_excluded": 216,
+    "n_uninformative": 65,
+    "n_censored": 296,
+    "n_used": 465,
+    "n_with_rejection": 340,
+    "n_points": 958,
+    "n_steps": 435,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 3.9351,
+     "lag_median_s": 1.8548,
+     "n_used": 340
+    }
+   }
+  },
+  {
+   "zone": "HH_on_BR_off_weave",
+   "zone_kind": "weave",
+   "movement": "exiting",
+   "speed_class": "v>=20",
+   "n_drivers": 368,
+   "v_ms_p50": 23.9851,
+   "lag_v_ms_p50": 22.8901,
+   "lead_closing_ms_p50": 1.407,
+   "lag_closing_ms_p50": -1.5206,
+   "share_with_rejected": 0.6033,
+   "lookback_s_p50": 3.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": 0.62412,
+    "sigma": 1.68115,
+    "median_s": 1.8666,
+    "mean_s": 7.6695,
+    "sd_s": 30.5647,
+    "p10_s": 0.2165,
+    "p90_s": 16.0964,
+    "loglik": -213.6828,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 368,
+    "n_undefined": 0,
+    "n_no_rejection": 175,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 93,
+    "n_inconsistent_excluded": 93,
+    "n_uninformative": 105,
+    "n_censored": 59,
+    "n_used": 170,
+    "n_with_rejection": 100,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.5798,
+     "sigma": 1.23946,
+     "median_s": 4.854,
+     "mean_s": 10.4638,
+     "sd_s": 19.9833,
+     "p10_s": 0.9914,
+     "p90_s": 23.7653,
+     "loglik": -142.7743,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 368,
+     "n_undefined": 0,
+     "n_no_rejection": 175,
+     "n_no_rejection_excluded": 175,
+     "n_inconsistent": 93,
+     "n_inconsistent_excluded": 93,
+     "n_uninformative": 0,
+     "n_censored": 59,
+     "n_used": 100,
+     "n_with_rejection": 100
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": 0.29899,
+    "sigma": 1.80879,
+    "median_s": 1.3485,
+    "mean_s": 6.923,
+    "sd_s": 34.8613,
+    "p10_s": 0.1328,
+    "p90_s": 13.6953,
+    "loglik": -226.2543,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 368,
+    "n_undefined": 0,
+    "n_no_rejection": 261,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 35,
+    "n_inconsistent_excluded": 35,
+    "n_uninformative": 200,
+    "n_censored": 26,
+    "n_used": 133,
+    "n_with_rejection": 72,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.44592,
+     "sigma": 1.32976,
+     "median_s": 4.2457,
+     "mean_s": 10.2784,
+     "sd_s": 22.6608,
+     "p10_s": 0.7724,
+     "p90_s": 23.3378,
+     "loglik": -167.5137,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 368,
+     "n_undefined": 0,
+     "n_no_rejection": 261,
+     "n_no_rejection_excluded": 261,
+     "n_inconsistent": 35,
+     "n_inconsistent_excluded": 35,
+     "n_uninformative": 0,
+     "n_censored": 26,
+     "n_used": 72,
+     "n_with_rejection": 72
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": 0.36212,
+     "sigma": 1.55943,
+     "median_s": 1.4364,
+     "mean_s": 4.8454,
+     "sd_s": 15.6103,
+     "p10_s": 0.1947,
+     "p90_s": 10.5973,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.23751,
+     "sigma": 2.05039,
+     "median_s": 0.7886,
+     "mean_s": 6.453,
+     "sd_s": 52.4087,
+     "p10_s": 0.057,
+     "p90_s": 10.9154,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -386.3036,
+    "converged": true,
+    "n_input": 368,
+    "n_undefined": 0,
+    "n_no_rejection": 146,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 83,
+    "n_inconsistent_excluded": 83,
+    "n_uninformative": 71,
+    "n_censored": 147,
+    "n_used": 214,
+    "n_with_rejection": 139,
+    "n_points": 331,
+    "n_steps": 162,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 2.8359,
+     "lag_median_s": 1.8075,
+     "n_used": 139
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "all",
+   "n_drivers": 3213,
+   "v_ms_p50": 12.6888,
+   "lag_v_ms_p50": 10.6726,
+   "lead_closing_ms_p50": 0.4645,
+   "lag_closing_ms_p50": -0.8285,
+   "share_with_rejected": 0.5571,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.55626,
+    "sigma": 1.37535,
+    "median_s": 0.5734,
+    "mean_s": 1.4763,
+    "sd_s": 3.5029,
+    "p10_s": 0.0984,
+    "p90_s": 3.3412,
+    "loglik": -2476.9127,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 3213,
+    "n_undefined": 24,
+    "n_no_rejection": 1457,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 1069,
+    "n_inconsistent_excluded": 1069,
+    "n_uninformative": 47,
+    "n_censored": 27,
+    "n_used": 2073,
+    "n_with_rejection": 663,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.75524,
+     "sigma": 0.93124,
+     "median_s": 2.1281,
+     "mean_s": 3.2833,
+     "sd_s": 3.8574,
+     "p10_s": 0.6452,
+     "p90_s": 7.0194,
+     "loglik": -1661.4008,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 3213,
+     "n_undefined": 24,
+     "n_no_rejection": 1457,
+     "n_no_rejection_excluded": 1457,
+     "n_inconsistent": 1069,
+     "n_inconsistent_excluded": 1069,
+     "n_uninformative": 0,
+     "n_censored": 27,
+     "n_used": 663,
+     "n_with_rejection": 663
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.25509,
+    "sigma": 1.41094,
+    "median_s": 0.7748,
+    "mean_s": 2.0965,
+    "sd_s": 5.2711,
+    "p10_s": 0.127,
+    "p90_s": 4.7261,
+    "loglik": -2554.7382,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 3213,
+    "n_undefined": 37,
+    "n_no_rejection": 1516,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 915,
+    "n_inconsistent_excluded": 915,
+    "n_uninformative": 119,
+    "n_censored": 40,
+    "n_used": 2142,
+    "n_with_rejection": 745,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.01257,
+     "sigma": 0.97842,
+     "median_s": 2.7527,
+     "mean_s": 4.4425,
+     "sd_s": 5.6276,
+     "p10_s": 0.7856,
+     "p90_s": 9.6452,
+     "loglik": -1705.6291,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 3213,
+     "n_undefined": 37,
+     "n_no_rejection": 1516,
+     "n_no_rejection_excluded": 1516,
+     "n_inconsistent": 915,
+     "n_inconsistent_excluded": 915,
+     "n_uninformative": 0,
+     "n_censored": 40,
+     "n_used": 745,
+     "n_with_rejection": 745
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -1.03709,
+     "sigma": 1.46064,
+     "median_s": 0.3545,
+     "mean_s": 1.0301,
+     "sd_s": 2.8105,
+     "p10_s": 0.0545,
+     "p90_s": 2.3044,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.70828,
+     "sigma": 1.50154,
+     "median_s": 0.4925,
+     "mean_s": 1.5205,
+     "sd_s": 4.4412,
+     "p10_s": 0.0719,
+     "p90_s": 3.3738,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -4072.2659,
+    "converged": true,
+    "n_input": 3213,
+    "n_undefined": 52,
+    "n_no_rejection": 1412,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 647,
+    "n_inconsistent_excluded": 647,
+    "n_uninformative": 14,
+    "n_censored": 138,
+    "n_used": 2500,
+    "n_with_rejection": 1102,
+    "n_points": 2931,
+    "n_steps": 1529,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.9526,
+     "lag_median_s": 1.304,
+     "n_used": 1102
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "v<10",
+   "n_drivers": 1248,
+   "v_ms_p50": 6.2114,
+   "lag_v_ms_p50": 5.1983,
+   "lead_closing_ms_p50": -0.0147,
+   "lag_closing_ms_p50": -0.6332,
+   "share_with_rejected": 0.4824,
+   "lookback_s_p50": 6.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.77624,
+    "sigma": 1.5038,
+    "median_s": 0.4601,
+    "mean_s": 1.4254,
+    "sd_s": 4.1794,
+    "p10_s": 0.067,
+    "p90_s": 3.1612,
+    "loglik": -845.5388,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1248,
+    "n_undefined": 24,
+    "n_no_rejection": 640,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 360,
+    "n_inconsistent_excluded": 360,
+    "n_uninformative": 0,
+    "n_censored": 0,
+    "n_used": 864,
+    "n_with_rejection": 224,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.86269,
+     "sigma": 1.00993,
+     "median_s": 2.3695,
+     "mean_s": 3.9459,
+     "sd_s": 5.2542,
+     "p10_s": 0.6495,
+     "p90_s": 8.6449,
+     "loglik": -529.2898,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1248,
+     "n_undefined": 24,
+     "n_no_rejection": 640,
+     "n_no_rejection_excluded": 640,
+     "n_inconsistent": 360,
+     "n_inconsistent_excluded": 360,
+     "n_uninformative": 0,
+     "n_censored": 0,
+     "n_used": 224,
+     "n_with_rejection": 224
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.48058,
+    "sigma": 1.65484,
+    "median_s": 0.6184,
+    "mean_s": 2.4319,
+    "sd_s": 9.2489,
+    "p10_s": 0.0742,
+    "p90_s": 5.1561,
+    "loglik": -888.0871,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1248,
+    "n_undefined": 35,
+    "n_no_rejection": 638,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 327,
+    "n_inconsistent_excluded": 327,
+    "n_uninformative": 1,
+    "n_censored": 3,
+    "n_used": 885,
+    "n_with_rejection": 248,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 1.26658,
+     "sigma": 1.07169,
+     "median_s": 3.5487,
+     "mean_s": 6.3019,
+     "sd_s": 9.2479,
+     "p10_s": 0.8987,
+     "p90_s": 14.0134,
+     "loglik": -537.984,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1248,
+     "n_undefined": 35,
+     "n_no_rejection": 638,
+     "n_no_rejection_excluded": 638,
+     "n_inconsistent": 327,
+     "n_inconsistent_excluded": 327,
+     "n_uninformative": 0,
+     "n_censored": 3,
+     "n_used": 248,
+     "n_with_rejection": 248
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -1.21822,
+     "sigma": 1.56567,
+     "median_s": 0.2958,
+     "mean_s": 1.0075,
+     "sd_s": 3.2807,
+     "p10_s": 0.0398,
+     "p90_s": 2.1996,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.89072,
+     "sigma": 1.7051,
+     "median_s": 0.4104,
+     "mean_s": 1.7559,
+     "sd_s": 7.305,
+     "p10_s": 0.0461,
+     "p90_s": 3.649,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1420.3246,
+    "converged": true,
+    "n_input": 1248,
+    "n_undefined": 50,
+    "n_no_rejection": 635,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 192,
+    "n_inconsistent_excluded": 192,
+    "n_uninformative": 0,
+    "n_censored": 2,
+    "n_used": 1006,
+    "n_with_rejection": 371,
+    "n_points": 962,
+    "n_steps": 515,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 1.0275,
+     "lag_median_s": 1.6891,
+     "n_used": 371
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "10<=v<20",
+   "n_drivers": 1178,
+   "v_ms_p50": 14.6682,
+   "lag_v_ms_p50": 13.2489,
+   "lead_closing_ms_p50": 1.0114,
+   "lag_closing_ms_p50": -1.002,
+   "share_with_rejected": 0.5951,
+   "lookback_s_p50": 5.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.47832,
+    "sigma": 1.23133,
+    "median_s": 0.6198,
+    "mean_s": 1.3228,
+    "sd_s": 2.4941,
+    "p10_s": 0.1279,
+    "p90_s": 3.0033,
+    "loglik": -971.4111,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1178,
+    "n_undefined": 0,
+    "n_no_rejection": 486,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 424,
+    "n_inconsistent_excluded": 424,
+    "n_uninformative": 11,
+    "n_censored": 4,
+    "n_used": 743,
+    "n_with_rejection": 268,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.62348,
+     "sigma": 0.82972,
+     "median_s": 1.8654,
+     "mean_s": 2.6319,
+     "sd_s": 2.6195,
+     "p10_s": 0.6441,
+     "p90_s": 5.4022,
+     "loglik": -661.4061,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1178,
+     "n_undefined": 0,
+     "n_no_rejection": 486,
+     "n_no_rejection_excluded": 486,
+     "n_inconsistent": 424,
+     "n_inconsistent_excluded": 424,
+     "n_uninformative": 0,
+     "n_censored": 4,
+     "n_used": 268,
+     "n_with_rejection": 268
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.17485,
+    "sigma": 1.30581,
+    "median_s": 0.8396,
+    "mean_s": 1.9694,
+    "sd_s": 4.1787,
+    "p10_s": 0.1575,
+    "p90_s": 4.4755,
+    "loglik": -1036.507,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 1178,
+    "n_undefined": 2,
+    "n_no_rejection": 504,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 363,
+    "n_inconsistent_excluded": 363,
+    "n_uninformative": 25,
+    "n_censored": 13,
+    "n_used": 788,
+    "n_with_rejection": 309,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.91755,
+     "sigma": 0.88308,
+     "median_s": 2.5031,
+     "mean_s": 3.6968,
+     "sd_s": 4.0176,
+     "p10_s": 0.8072,
+     "p90_s": 7.7621,
+     "loglik": -706.2876,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 1178,
+     "n_undefined": 2,
+     "n_no_rejection": 504,
+     "n_no_rejection_excluded": 504,
+     "n_inconsistent": 363,
+     "n_inconsistent_excluded": 363,
+     "n_uninformative": 0,
+     "n_censored": 13,
+     "n_used": 309,
+     "n_with_rejection": 309
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.92572,
+     "sigma": 1.30549,
+     "median_s": 0.3962,
+     "mean_s": 0.9291,
+     "sd_s": 1.9703,
+     "p10_s": 0.0744,
+     "p90_s": 2.1114,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.63217,
+     "sigma": 1.43008,
+     "median_s": 0.5314,
+     "mean_s": 1.4776,
+     "sd_s": 3.8332,
+     "p10_s": 0.085,
+     "p90_s": 3.322,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1623.7224,
+    "converged": true,
+    "n_input": 1178,
+    "n_undefined": 2,
+    "n_no_rejection": 477,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 242,
+    "n_inconsistent_excluded": 242,
+    "n_uninformative": 5,
+    "n_censored": 33,
+    "n_used": 929,
+    "n_with_rejection": 457,
+    "n_points": 1220,
+    "n_steps": 640,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.887,
+     "lag_median_s": 1.2462,
+     "n_used": 457
+    }
+   }
+  },
+  {
+   "zone": "OH_acceleration_lane",
+   "zone_kind": "merge",
+   "movement": "entering",
+   "speed_class": "v>=20",
+   "n_drivers": 787,
+   "v_ms_p50": 23.8023,
+   "lag_v_ms_p50": 22.6261,
+   "lead_closing_ms_p50": 1.0299,
+   "lag_closing_ms_p50": -1.1607,
+   "share_with_rejected": 0.6188,
+   "lookback_s_p50": 4.0,
+   "separate_lead": {
+    "fitted": true,
+    "mu": -0.37019,
+    "sigma": 1.41307,
+    "median_s": 0.6906,
+    "mean_s": 1.8742,
+    "sd_s": 4.7285,
+    "p10_s": 0.1129,
+    "p90_s": 4.2238,
+    "loglik": -650.5155,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 787,
+    "n_undefined": 0,
+    "n_no_rejection": 331,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 285,
+    "n_inconsistent_excluded": 285,
+    "n_uninformative": 36,
+    "n_censored": 23,
+    "n_used": 466,
+    "n_with_rejection": 171,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.82784,
+     "sigma": 0.95544,
+     "median_s": 2.2884,
+     "mean_s": 3.612,
+     "sd_s": 4.4112,
+     "p10_s": 0.6726,
+     "p90_s": 7.7856,
+     "loglik": -461.8802,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 787,
+     "n_undefined": 0,
+     "n_no_rejection": 331,
+     "n_no_rejection_excluded": 331,
+     "n_inconsistent": 285,
+     "n_inconsistent_excluded": 285,
+     "n_uninformative": 0,
+     "n_censored": 23,
+     "n_used": 171,
+     "n_with_rejection": 171
+    }
+   },
+   "separate_lag": {
+    "fitted": true,
+    "mu": -0.11608,
+    "sigma": 1.22291,
+    "median_s": 0.8904,
+    "mean_s": 1.8808,
+    "sd_s": 3.4992,
+    "p10_s": 0.1858,
+    "p90_s": 4.268,
+    "loglik": -619.4996,
+    "converged": true,
+    "degenerate": false,
+    "at_bound": false,
+    "n_input": 787,
+    "n_undefined": 0,
+    "n_no_rejection": 374,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 225,
+    "n_inconsistent_excluded": 225,
+    "n_uninformative": 93,
+    "n_censored": 24,
+    "n_used": 469,
+    "n_with_rejection": 188,
+    "ci95": {
+     "median_s": null,
+     "mean_s": null,
+     "mu": null,
+     "sigma": null
+    },
+    "n_boot": 0,
+    "sensitivity_no_rejection_excluded": {
+     "mu": 0.83334,
+     "sigma": 0.91194,
+     "median_s": 2.301,
+     "mean_s": 3.4874,
+     "sd_s": 3.9718,
+     "p10_s": 0.7151,
+     "p90_s": 7.4041,
+     "loglik": -444.5578,
+     "converged": true,
+     "degenerate": false,
+     "at_bound": false,
+     "n_input": 787,
+     "n_undefined": 0,
+     "n_no_rejection": 374,
+     "n_no_rejection_excluded": 374,
+     "n_inconsistent": 225,
+     "n_inconsistent_excluded": 225,
+     "n_uninformative": 0,
+     "n_censored": 24,
+     "n_used": 188,
+     "n_with_rejection": 188
+    }
+   },
+   "joint": {
+    "fitted": true,
+    "lead": {
+     "mu": -0.9746,
+     "sigma": 1.57283,
+     "median_s": 0.3773,
+     "mean_s": 1.2999,
+     "sd_s": 4.2853,
+     "p10_s": 0.0503,
+     "p90_s": 2.8322,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "lag": {
+     "mu": -0.61253,
+     "sigma": 1.32269,
+     "median_s": 0.542,
+     "mean_s": 1.2998,
+     "sd_s": 2.8334,
+     "p10_s": 0.0995,
+     "p90_s": 2.9522,
+     "degenerate": false,
+     "at_bound": false,
+     "ci95": {
+      "median_s": null,
+      "mean_s": null,
+      "mu": null,
+      "sigma": null
+     },
+     "n_boot": 0
+    },
+    "loglik": -1016.9639,
+    "converged": true,
+    "n_input": 787,
+    "n_undefined": 0,
+    "n_no_rejection": 300,
+    "n_no_rejection_excluded": 0,
+    "n_inconsistent": 213,
+    "n_inconsistent_excluded": 213,
+    "n_uninformative": 9,
+    "n_censored": 103,
+    "n_used": 565,
+    "n_with_rejection": 274,
+    "n_points": 749,
+    "n_steps": 374,
+    "sensitivity_no_rejection_excluded": {
+     "lead_median_s": 0.9796,
+     "lag_median_s": 1.0292,
+     "n_used": 274
+    }
+   }
+  }
+ ],
+ "limitations": [
+  "Coverage: I-24 MOTION tracks about half of the peak vehicle-time (docs/I24_DATA.md s. 4). An untracked vehicle inside a gap makes the observed gap larger (the accepted gap is the true one or larger; a rejected gap may be larger, or lost into the accepted one), so the fitted critical gaps are biased upward and the proposed time gaps are upper bounds: real drivers accept gaps at least this small in expectation.",
+  "Consistency: the estimators assume a driver rejects every gap below its critical gap and takes the first above it; freeway merging studies (Daamen et al. 2010; Marczak et al. 2013) find inconsistent drivers common. Inconsistent drivers are excluded and counted; gaps passed before the driver was trying to change (not separable in trajectories, which carry no intent) inflate the rejected gaps - the 5 s lookback sensitivity bounds that.",
+  "The lookback is sampled every 1 s: a gap that passes the changer in less than a second (short and fast) can be missed; it is small, so it is rarely a driver's largest rejected gap. A change is timed when the vehicle's centre crosses the band edge (mid-manoeuvre) on I-24, while SUMO's changes are instantaneous.",
+  "Movements are read from lanes and zones (no routes); one day, one direction; the mapping reads the acceptance at the fleet's population means and at speed parity (the brake-gap terms vanish), per changer-speed class at the class's median speed."
+ ],
+ "wall_s": 163.3,
+ "peak_rss_mb": 1678.0,
+ "relabelled": "2026-09-25: the run (snapshot 5df3003) wrote this block with the simulated run's labels ('implied', a self-check status) because a loop variable named 'kind' shadowed the run's kind in scripts/i24_critical_gaps.py; the key and status were relabelled to what the fixed script writes (tests/test_scripts/test_i24_critical_gaps_labels.py); no number changed"
+}

@@ -6107,3 +6107,24 @@ with nothing flagged. `calibration.critical_gap` now holds log-sigma at or below
 likelihoods and in the fitted results, flags a fit at a bound `at_bound` (not identified) in its JSON, and the proposal skips such a
 fit as it skips one at the sigma floor. Two regression tests (`TestBoundedParameters`) fail on the previous code and pass now; no
 fitted value of an identified group changes. The stage is re-run on the next VM.
+
+**VM Z (2026-09-25, block 3): real drivers' critical gaps in the I-24 weave** (the `i24_critical_gaps` stage re-run on the bounded fit,
+snapshot 5df3003, n2-standard-8; extraction 26 s at a 1.7 GB peak, fits 137 s; `artifacts/i24_critical_gaps.json`, the per-driver
+tables `data/i24motion/processed/i24_wb_{gap_sequences,critical_gap_drivers}.parquet`, gitignored). The joint lead–lag maximum-likelihood
+fit (WP-78) over the Hickory Hollow–Bell Road weave's confirmed changes, medians of the fitted log-normal critical time gaps with 95 %
+bootstrap intervals (no group at a bound):
+
+| movement | drivers | lead side | lag side | by speed class, lead / lag (v<10, 10–20, ≥20 m/s) |
+|---|---|---|---|---|
+| entering | 1,449 | **0.46 s** (0.40–0.53) | **0.92 s** (0.84–1.03) | 0.45 / 0.99, 0.45 / 0.84, 0.50 / 1.04 s |
+| exiting | 857 | **2.89 s** (2.47–3.38) | **1.11 s** (0.91–1.34) | 3.87 / 1.24, 3.09 / 1.19, 1.87 / 0.84 s |
+
+The model's own drivers on the T.H.52 fixture (WP-78, `artifacts/th52_fixture_critical_gaps.json`): entering 1.18 / 1.21 s, exiting
+0.89 / 0.72 s. Mapped onto the weave's acceptance (`A = t̂ − 2 s0 / v̄`, both sides at speed parity, n-weighted over the speed
+classes), the proposal is `accept_gap_s` **0.089 s** (0.038–0.168) against 0.6 and `exit_accept_gap_s` **1.78 s** (1.52–2.05) against
+0.6 — a proposal only, `WEAVE_DEFAULTS` unchanged. Reading: real entrants accept less than half the gaps the model's entrants do,
+steadily across speed (and I-24 tracking about half the vehicles makes the true gaps smaller still); real exiters keep a longer lead
+gap than the model, falling with speed — whether that is choice or the slower auxiliary-lane traffic they fall in behind, the lead-side
+fit cannot tell. The artifact's proposal block was written with the simulated run's labels by a variable-shadowing bug
+(`scripts/i24_critical_gaps.py`, fixed with `tests/test_scripts/test_i24_critical_gaps_labels.py`); it was relabelled, and the
+artifact records that no number changed. Next: the proposed values on the fixtures and, if they hold, a 20-seed corridor battery.

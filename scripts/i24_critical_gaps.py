@@ -222,8 +222,8 @@ def fits_and_mapping(
     groups: dict[tuple[str, str, str], list[int]] = {}
     for i, r in enumerate(rows):
         groups.setdefault((r["zone"], r["zone_kind"], r["movement"]), []).append(i)
-    for (zone, kind, movement), idx in groups.items():
-        entry: dict[str, Any] = {"zone": zone, "zone_kind": kind, "movement": movement}
+    for (zone, zone_kind, movement), idx in groups.items():
+        entry: dict[str, Any] = {"zone": zone, "zone_kind": zone_kind, "movement": movement}
         for est in ("joint", "separate"):
             entry[est] = acceptance_mapping(
                 [rows[i] for i in idx],
@@ -233,7 +233,7 @@ def fits_and_mapping(
                 estimator=est,
             )
         mapping.append(entry)
-        if kind == "weave":
+        if zone_kind == "weave":
             key = entry["joint"]["parameter"]
             proposal[key] = {
                 "zone": zone,
