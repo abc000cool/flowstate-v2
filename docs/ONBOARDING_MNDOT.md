@@ -1553,3 +1553,28 @@ the end of a lane that does not reach its exit**; the lane-1 vehicles beside it 
 the end of lanes that lead only to the exit**. Each group needs the other's lane and nothing frees either: the crossing-pair lock the
 weave model's exit-side rule and `exiter_yields` addressed at T.H.52 (WP-53/54), here at the T.H.61 → 18207912 two-lane weave the model
 does not cover (WP-66), reached once `exit_prepare`'s T.H.52 queue backs up to it. Not reproduced.
+
+**VM U (2026-09-25, block 3): `exit_prepare` with the lane-end give-up — the corridor's best battery so far** (runner f24ba43; the
+corrected scenarios with `weave_params {exit_prepare: 1.0}` on both weave sections and the network's `lane_end_giveup_m: 7.5`, WP-71;
+pipeline stages `mndot_weave_slice_xlend` / `mndot_weave_xlend`; config hash 7ec8c8ef6e59;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_exit_prepare_lane_end_f24ba43.json`, slice `slice_exit_prepare_lane_end_f24ba43.json`).
+
+| 20 seeds, four hours | VM K, defaults | VM Q, `exit_prepare` | VM U, + lane-end give-up |
+|---|---|---|---|
+| departed, mean (lowest) | 0.855 (0.743) | 0.857 (0.667) | **0.884 (0.867)** |
+| speed RMSPE (95 % interval) | 0.709 (0.699–0.718) | 0.706 (0.692–0.719) | **0.691 (0.688–0.695)** |
+| GEH < 5 on link-hours (95 % interval) | 0.079 (0.059–0.098) | 0.143 (0.109–0.177) | **0.163 (0.138–0.188)** |
+| collisions over 20 seeds | 15 | 15 | 15 |
+| given-up weave exits, Ruth St / T.H.52 | 157 / 692 | 146 / 479 | 160 of 22,082 / 481 of 69,676 |
+
+No seed collapses: every seed departs 0.867–0.914, and VM Q's three collapsed seeds read 0.889 / 0.867 / 0.873 (from 0.749 /
+0.667 / 0.771), S790 holding 3,280–3,380 veh/h in every scored hour. No ramp is starved. Paired by seed against VM Q the departed
+share rises 0.026 (16 of 20 seeds up). RMSPE and the GEH share both move beyond their intervals against VM K. The lane-end give-up
+acts 1,030 times over the 20 four-hour runs — 939 through vehicles took an exit from an exit-only lane and 91 exiters gave theirs
+up — about 13 an hour against about 7,000 vehicles an hour on the corridor. Slice, 4 seeds: departed 0.971 against VM Q's 0.973.
+
+Reading: the late lock is gone and the corridor fits better on every criterion, but it is **not reproduced**: in 06:30–07:30 S790
+carries 3,344 veh/h against 4,911 observed — the T.H.52 weave's capacity (WP-59, VM O, block 3's item 1) is unchanged. The two rules
+stay off in `WEAVE_DEFAULTS` / the network defaults: `exit_prepare` on the fixture grid lowers entrances and breaks the T.H.52
+capacity no-lock pin (WP-62), so it is a corridor configuration, not a default — this battery is the corridor's reference
+configuration from here on (the `_xlend` stages).
