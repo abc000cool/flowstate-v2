@@ -1212,9 +1212,13 @@ class FleetSpec(BaseModel):
     open a gap, SUMO ``lcPushy`` (0 = never, SUMO's default; 1 = full);
     written when set. The lever for merging over a lane's length."""
     lc_impatience: float | None = Field(default=None, ge=-1.0, le=1.0)
-    """Dynamic impatience that lets a vehicle accept smaller gaps the longer
-    it has wanted to change lanes, SUMO ``lcImpatience`` (default 0.0);
-    written when set."""
+    """Sublane model: dynamic impatience that lets a vehicle accept smaller
+    gaps the longer it has wanted to change lanes, SUMO ``lcImpatience``
+    (default 0.0); written when set. SUMO 1.27.1's lane-discrete model
+    (LC2013, used when ``SimSpec.lateral_resolution_m`` is unset) does not
+    read it: its parameter interface rejects the key, and the corridor section
+    fixture writes byte-identical trajectories with it at 1.0
+    (docs/WEAVE_MODEL_PLAN.md, 2026-09-25, WP-82)."""
     lc_accel_lat: float | None = Field(default=None, gt=0.0)
     """Sublane model: maximum lateral acceleration [m/s²], SUMO
     ``lcAccelLat`` (default 1.0); written when set."""

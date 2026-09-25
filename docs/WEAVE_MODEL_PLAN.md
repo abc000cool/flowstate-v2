@@ -6744,3 +6744,278 @@ What would move it next, and whose call it is: (a) **the owner's** — what crit
 — SUMO's LC2013 parameters (`lcAssertive`, `lcCooperative`, `lcSpeedGain`, `lcKeepRight`) make a sixth to two fifths of the crossings
 and have never been calibrated to lane-change data; the new extraction (`calibration.lane_change_gaps`, `calibration.critical_gap`)
 makes that calibration possible against I-24 MOTION; (c) **the ramp queue** that delivers entrants at 5 m/s.
+
+## 2026-09-25 (block 3, WP-82, SUMO's own lane changes): SUMO 1.27.1's LC2013 reads 20 parameters, and the fleet already exposes the four that act here. `lcAssertive`, the only one in LC2013's gap test, divides both of SUMO's secure gaps by one factor, so no value reproduces real entrants' uneven critical gaps: their leader side implies 3.4, their follower side 1.25. WP-77–80's extraction missed the entering crossings SUMO makes as a vehicle reaches the section, a third of them and the fast ones. Over 17 forms (85 runs) the four parameters move SUMO's share of the crossings, but not the model's critical gaps towards the observed ones and no criterion of the corridor section test. Nothing is added and no battery is warranted
+
+**Why.** Item (b) of "where item 1 stands" (above). SUMO's own lane-change model, LC2013, makes a sixth to two fifths of the weave's crossings (WP-65/67/76), and its parameters have never been calibrated to lane-change data. The weave's own acceptance has been calibrated to VM Z's critical gaps, and the calibration did not transfer (WP-79, WP-80). The corridor fleet runs LC2013 at `lcStrategic` 5 (1 for vehicles from a ramp) and `lcKeepRight` 0, with SUMO's defaults for the rest. This package:
+1. lists what LC2013 reads and what the fleet can set;
+2. measures `lcAssertive`, `lcCooperative`, `lcSpeedGain` and `lcKeepRight` one at a time on the corridor section fixture;
+3. runs a grid on the two that act most;
+4. asks whether a calibration of LC2013 to VM Z's critical gaps is feasible.
+
+It is analysis only. No default, scenario, fixture, test or golden changes. The one code edit is a docstring.
+
+**(1) What LC2013 reads, and what the fleet sets.**
+- *Read at run time.* SUMO's route parser accepts any `lc*` attribute on a vType without a warning, even `lcBogus` (`wp82/lcprobe/`), so a file that parses proves nothing. LC2013's own parameter interface does prove it: `vehicle.getParameter(id, "laneChangeModel.<key>")` on a live vehicle (`lcprobe/lc2013_params.py`) answers for 20 keys and rejects the rest.
+  - *The 20, with SUMO 1.27.1's defaults:* `lcStrategic` 1, `lcCooperative` 1, `lcSpeedGain` 1, `lcKeepRight` 1, `lcAssertive` 1, `lcOvertakeRight` 0, `lcCooperativeSpeed` and `lcCooperativeRoundabout` (both default to `lcCooperative`; `MSLCM_LC2013.cpp` lines 118–119), `lcLookaheadLeft` 2, `lcSpeedGainRight` 0.1, `lcSpeedGainLookahead` 0, `lcSpeedGainRemainTime` 20, `lcKeepRightAcceptanceTime` −1, `lcOvertakeDeltaSpeedFactor` 0, `lcOpposite` 1, `lcStrategicLookahead` −1, `lcSigma` 0, `lcMaxSpeedLatStanding` 1, `lcMaxSpeedLatFactor` 1, `lcMaxDistLatStanding` 1.6.
+  - *Rejected:* `lcImpatience`, `lcTimeToImpatience`, `lcPushy`, `lcPushyGap`, `lcSublane`, `lcAccelLat`, `lcLaneDiscipline`, `lcSpeedGainUrgency`, `lcContRight`, `lcTurnAlignmentDistance`, `lcCooperativeHelpSpeed`.
+- *What the fleet sets.* `microsim.vehicles._vtype_xml` writes the following on every vType, ramp-origin ones included, only when the value differs from 1.0:
+  - `FleetSpec.lc_strategic` / `lc_strategic_ramp` → `lcStrategic`;
+  - `lc_cooperative`, `lc_speed_gain`, `lc_keep_right`, `lc_assertive` → `lcCooperative`, `lcSpeedGain`, `lcKeepRight`, `lcAssertive`.
+
+  `lc_overtake_right` → `lcOvertakeRight` is written through `sublane_vtype_attrs` when set.
+  - *On live vehicles* (`wp82/lcreach.py`, the fixture at seed 3, t = 120 s), with `lc_assertive` 2, `lc_cooperative` 0.5, `lc_speed_gain` 2 and `lc_keep_right` 0.5: a mainline vehicle and a T.H.52 ramp vehicle read exactly those values, `lcStrategic` 5 and 1 respectively, and `lcCooperativeSpeed` 0.5. So the `lcCooperative` sweep below moves both LC2013's cooperative changes and its cooperative speed adjustments.
+  - *Already pinned.* `tests/test_microsim/test_microsim_vehicles.py::TestLcStrategic::test_merge_parameters_written_only_when_nondefault` checks that `lcAssertive` reaches every vType.
+- *Nothing is added.* `lcAssertive`, the parameter this package was to add if it were missing, has been a `FleetSpec` field since 2026-09-03. Of the 14 LC2013 keys the fleet does not expose, none enters the gap test of SUMO's own changes (below). `lcCooperativeSpeed` follows `lcCooperative`, which the sweep moves. No field is added and no hash moves.
+- *A correction.* `FleetSpec.lc_impatience` writes `lcImpatience`, and docs/CONTRACTS.md said that it "also acts under the lane-discrete model". It does not:
+  - LC2013 rejects the key.
+  - SUMO 1.27.1's `MSLCM_LC2013.cpp` and `MSLaneChanger.cpp` never read it. The `getImpatience()` in LC2013 (line 751) is the vehicle's junction impatience, multiplied by an experimental parameter that defaults to 0.
+  - With `lc_impatience` 1.0 the corridor section fixture at seed 3 writes trajectories byte-identical to the default's (md5 f12daea7…; config hash 144c6492c983 against 2230b3942fe7).
+
+  CONTRACTS and the field's docstring are corrected. The field and its default are unchanged.
+
+**How `lcAssertive` acts, from SUMO 1.27.1's source** (tag v1_27_1: `src/microsim/MSLaneChanger.cpp`, `lcmodels/MSLCM_LC2013.cpp`, `cfmodels/MSCFModel_EIDM.cpp`).
+- *The gap test.* `MSLaneChanger::checkChange` blocks a change in two cases:
+  - the target lane's follower gap is below `secureBackGap × getSafetyFactor()` (line 879);
+  - its leader gap is below `secureFrontGap × getSafetyFactor()` (line 924).
+
+  `MSLCM_LC2013::getSafetyFactor()` returns `1 / lcAssertive` (line 2057): one factor for both sides.
+- *The secure gap.* The corridor fleet is EIDM. Its `getSecureGap` (line 759) is s / √(1 + b/a) with s = max(0, vT + vΔv / (2√(ab))), compared with the gap net of minGap.
+  - At speed parity and the fleet's means (`artifacts/idm_i24_capacity.json`: T 1.322 s, a 1.055 m/s², b 1.703 m/s², s0 2.533 m) this is 0.818 s × v.
+  - A change SUMO makes itself therefore needs a bumper gap of s0 + 0.818 s × v / `lcAssertive` on each side, the follower's own speed and parameters on its side. As a critical time gap that is s0 / v + 0.818 s / `lcAssertive`.
+- *Where it binds.* The weave executes its accepted and forced changes under lane-change mode 256, which avoids immediate collisions only (`microsim.runner` lines 5301 and 5308). It holds the vehicles it drives under mode 512, which switches LC2013's own changes off. LC2013's gap test therefore binds only on SUMO's own changes:
+  - those made in the step a vehicle reaches the section, before the weave takes it (WP-67);
+  - every change of a vehicle the weave is not driving.
+- *What the observed gaps would need.* VM Z's joint fits (all speeds), mapped at the observed median speeds:
+
+  | movement | side | observed critical gap [s] | at speed [m/s] | `lcAssertive` it implies |
+  |---|---|---|---|---|
+  | entering | leader | 0.46 [0.40, 0.53] | 11.70 | 3.38 [2.62, 4.40] |
+  | entering | follower | 0.92 [0.84, 1.03] | 9.49 (the follower's) | 1.25 [1.07, 1.43] |
+  | exiting | leader | 2.89 [2.47, 3.38] | 14.60 | 0.30 [0.26, 0.36] |
+  | exiting | follower | 1.11 [0.91, 1.34] | 11.16 (the follower's) | 0.93 [0.74, 1.19] |
+
+  - The entering pair's intervals are disjoint in every speed class. Leader / follower: v < 10 m/s 7.66 [3.53, 47.8] / 1.41 [1.12, 1.80]; 10–20 m/s 3.04 [2.28, 4.35] / 1.31 [1.08, 1.61]; ≥ 20 m/s 2.09 [1.45, 3.03] / 0.90 [0.67, 1.26].
+  - One symmetric factor cannot reproduce real drivers' uneven sides: the four sides ask one fleet-wide value for 3.38, 1.25, 0.30 and 0.93. Only the exiting follower side's interval contains the default 1.
+
+**(2) A correction to WP-77–80's model side: the entering crossings SUMO makes on arrival were not in the extraction.**
+- *Why.* `calibration.lane_change_gaps` reads lane changes from the corridor trajectory table, which starts an entrant at its first sample on the corridor.
+  - An entrant that SUMO moves into lane 1 in the step it reaches the section is already in lane 1 at that first sample, so no change is recorded. Seed 3, `v01205`: first sample at x = 833.6 m, 4.5 m into the section, in lane 1.
+  - Exiters are on the corridor both before and after their change, and theirs are recorded.
+- *How many* (the default, seeds 3–7):
+  - The run-time classification (below) counts 963 entering crossings: 343 made by SUMO on arrival (36 %), 590 accepted and 29 forced by the weave, 1 made by SUMO later. The extraction recorded 621.
+  - Exiting: 1,466 crossings at run time, 1,467 recorded.
+- *They are the fast ones.*
+  - Speeds: SUMO's arrival crossings average 12.3 m/s, with 21 % at or above 20 m/s and 26 % below 5 m/s. The weave's crossings average 7.7 m/s, with 1 % at or above 20 m/s.
+  - Accepted time gaps, p10 / p50: SUMO's arrival crossings 1.44 / 3.83 s to the leader and 0.98 / 2.24 s to the follower; the weave's 1.19 / 3.38 and 1.49 / 2.89 s; real entrants 0.60 / 1.69 and 0.82 / 2.46 s.
+- *How they were added.* Each such entrant gets one sample on the auxiliary lane one step before its first corridor sample, the lane SUMO had it in, and the change is marked confirmed from the run-time record. Its lookback lies outside the zone, so it enters the fit as a driver who let no gap go by, as a real driver merging at the gore does.
+- *With them:* the per-run median entering crossing speed is 7.34 [5.55, 9.13] m/s, against 6.70 without. The model's entering critical gaps are 0.98 [0.86, 1.10] s to the leader and 0.66 [0.54, 0.79] s to the follower, against 1.23 / 1.17 s without.
+- *What this changes in earlier readings.*
+  - WP-77–80's entering crossing speeds, gaps and critical gaps describe the weave's crossings, not the model's entrants.
+  - Point 7 of "where item 1 stands" (entrants "arrive from the ramp's queue at about 5 m/s, where real entrants cross at 11.7 m/s") holds for the weave's crossings.
+  - The model's entrants as a whole cross at a per-run median of about 7.3 m/s, with a fast minority made by SUMO. The gap to 11.7 m/s stands.
+  - The exiting figures are unaffected.
+  - Whether the I-24 extraction has the same blind spot for real drivers who merge in the gore's first metres is not checked here.
+
+**How it was measured.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)` with weave defaults. The fleet fields were overridden in the config (`fleet.lc_*`), and the corridor's other fleet fields stayed as they are. Seeds 3–7, one run at a time.
+- *Harness (session, `wp82/`).*
+  - `corr82.py` is WP-80's `corr80.py` without the acceptance hook, plus WP-67's run-time tracker. The tracker records every lane change on the section and who made it: SUMO on arrival, the weave accepted, the weave forced, or SUMO later.
+  - The tracker is read-only: at seed 3 the default's trajectories are byte-identical to WP-80's (md5 f12daea7…).
+  - The default reproduces WP-80's seeds 3–7 (mainline 1,177 / 1,162 / 1,111 / 1,147 / 1,168; T.H.52 381 / 381 / 336 / 318 / 349).
+- *Analysis.* `ana82.py` runs WP-77's extraction and WP-78's joint fits through `scripts/i24_critical_gaps.py`'s own functions (200 bootstrap replicates, its seed). It runs twice: as WP-77–80 read the frame, and with SUMO's arrival crossings added ((2) above). Exiting is read as before.
+- *Cost and code.* 2.0–5.9 s wall per run; the analysis took 29.5–65.9 s per form at 408–505 MB peak RSS. The run directories were deleted after each form's analysis for disk space. `runner.py` md5 fe4ce1da5a64, the same as WP-80's runs; HEAD f0d3893 with this package's tree. macOS records.
+- *Criteria* (the test's): (i) the mainline departs at least 1,137 of 1,196 and T.H.52 at least 387 of 407; (ii) all 16 lane-windows of the section's last 60 m are above 20 m/s; (iii) no collision; (iv) at most 2 % of the exiters that reach the section give up.
+- *Forms.* A = `lcAssertive`, C = `lcCooperative`, SG = `lcSpeedGain`, KR = `lcKeepRight`. One at a time: A ∈ {1, 1.5, 2, 3, 4}, C ∈ {1, 0.5, 0.2}, SG ∈ {1, 0.5, 2}, KR ∈ {0, 0.5, 1}; A 4 was added for the grid. The grid is A ∈ {1, 2, 3, 4} × C ∈ {1, 0.5, 0.2}, 12 points, five of them from the one-at-a-time runs.
+
+**(3) One at a time and (4) the grid, on the corridor section fixture.**
+
+*The test's criteria, seeds 3–7: mean [95 % t-interval]; seeds passing (i) mainline / (i) T.H.52 / (ii) / (iii) / (iv); paired by seed against the base. No run collides.*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s | lane 1 lowest window [m/s] | given up | seeds passing | Δ T.H.52 | Δ given up | Δ lane 0 / lane 1 lowest [m/s] |
+|---|---|---|---|---|---|---|---|---|---|
+| default (A 1, C 1, SG 1, KR 0) | 1,153.0 [1,116.2, 1,189.8] | 353.0 [313.4, 392.6] | 11.8 [10.2, 13.4] | 10.6 [7.7, 13.5] | 0.6 [-0.7, 1.9] | 4 / 0 / 0 / 5 / 5 | — | — | — |
+| A 1.5 | 1,154.0 [1,095.7, 1,212.3] | 334.4 [303.1, 365.7] | 11.6 [9.7, 13.5] | 12.5 [10.9, 14.1] | 1.0 [-0.0, 2.0] | 3 / 0 / 0 / 5 / 5 | -18.6 [-49.3, +12.1] | +0.4 [-1.8, +2.6] | +0.6 [-2.8, +4.0] / +1.9 [-0.7, +4.4] |
+| A 2 | 1,171.8 [1,130.8, 1,212.8] | 352.4 [307.9, 396.9] | 12.4 [11.6, 13.2] | 11.2 [5.4, 16.9] | 1.8 [-1.3, 4.9] | 4 / 1 / 0 / 5 / 5 | -0.6 [-58.3, +57.1] | +1.2 [-2.5, +4.9] | -1.1 [-5.7, +3.4] / +0.6 [-6.9, +8.0] |
+| A 3 | 1,166.6 [1,107.2, 1,226.0] | 354.2 [314.3, 394.1] | 12.6 [11.3, 13.9] | 12.0 [8.6, 15.4] | 0.6 [-0.7, 1.9] | 4 / 0 / 0 / 5 / 5 | +1.2 [-37.9, +40.3] | +0.0 [-2.0, +2.0] | +0.8 [-3.4, +5.1] / +1.4 [-4.1, +6.8] |
+| A 4 | 1,172.8 [1,149.0, 1,196.6] | 355.4 [322.2, 388.6] | 12.4 [10.8, 14.0] | 12.0 [7.3, 16.7] | 0.6 [-0.2, 1.4] | 5 / 1 / 0 / 5 / 5 | +2.4 [-54.9, +59.7] | +0.0 [-1.7, +1.7] | +0.7 [-5.0, +6.5] / +1.4 [-5.1, +8.0] |
+| C 0.5 | 1,146.6 [1,119.8, 1,173.4] | 353.8 [344.7, 362.9] | 11.8 [10.6, 13.0] | 10.7 [7.5, 13.9] | 1.4 [-0.8, 3.6] | 4 / 0 / 0 / 5 / 5 | +0.8 [-33.5, +35.1] | +0.8 [-2.3, +3.9] | -1.4 [-3.9, +1.1] / +0.1 [-2.8, +3.0] |
+| C 0.2 | 1,148.0 [1,102.0, 1,194.0] | 352.8 [331.0, 374.6] | 12.6 [11.8, 13.4] | 10.7 [6.6, 14.8] | 2.2 [0.1, 4.3] | 3 / 0 / 0 / 5 / 5 | -0.2 [-27.7, +27.3] | +1.6 [-1.0, +4.2] | -0.5 [-2.5, +1.5] / +0.1 [-2.3, +2.5] |
+| SG 0.5 | 1,130.6 [1,110.0, 1,151.2] | 350.0 [321.3, 378.7] | 12.2 [11.0, 13.4] | 10.2 [7.1, 13.3] | 1.8 [1.2, 2.4] | 2 / 0 / 0 / 5 / 5 | -3.0 [-28.4, +22.4] | +1.2 [+0.0, +2.4] | -1.2 [-4.7, +2.2] / -0.4 [-3.7, +2.9] |
+| SG 2 | 1,160.4 [1,105.0, 1,215.8] | 350.6 [322.9, 378.3] | 12.0 [10.3, 13.7] | 11.1 [8.3, 13.8] | 1.0 [-0.4, 2.4] | 4 / 0 / 0 / 5 / 5 | -2.4 [-22.1, +17.3] | +0.4 [-1.2, +2.0] | -0.3 [-3.8, +3.1] / +0.5 [-1.0, +1.9] |
+| KR 0.5 | 1,156.0 [1,138.1, 1,173.9] | 342.8 [308.7, 376.9] | 12.2 [11.0, 13.4] | 11.5 [7.7, 15.3] | 1.0 [-1.0, 3.0] | 5 / 0 / 0 / 5 / 5 | -10.2 [-26.6, +6.2] | +0.4 [-1.2, +2.0] | +0.4 [-2.2, +3.0] / +0.9 [-0.7, +2.5] |
+| KR 1 | 1,140.6 [1,107.6, 1,173.6] | 350.2 [321.1, 379.3] | 11.8 [9.9, 13.7] | 9.2 [5.5, 13.0] | 2.0 [0.3, 3.7] | 4 / 0 / 0 / 5 / 5 | -2.8 [-22.9, +17.3] | +1.4 [-0.2, +3.0] | -1.8 [-3.9, +0.3] / -1.4 [-4.0, +1.3] |
+| A 2, C 0.5 | 1,171.0 [1,126.5, 1,215.5] | 337.6 [306.2, 369.0] | 13.0 [13.0, 13.0] | 11.5 [5.6, 17.4] | 1.0 [-0.0, 2.0] | 4 / 0 / 0 / 5 / 5 | -15.4 [-45.0, +14.2] | +0.4 [-1.2, +2.0] | -0.6 [-4.9, +3.6] / +0.9 [-6.0, +7.9] |
+| A 2, C 0.2 | 1,167.4 [1,127.9, 1,206.9] | 343.4 [315.5, 371.3] | 13.2 [11.6, 14.8] | 9.6 [6.8, 12.4] | 1.2 [0.6, 1.8] | 5 / 0 / 0 / 5 / 5 | -9.6 [-51.9, +32.7] | +0.6 [-1.0, +2.2] | -2.0 [-4.3, +0.3] / -1.0 [-4.0, +2.0] |
+| A 3, C 0.5 | 1,171.4 [1,139.4, 1,203.4] | 349.8 [319.7, 379.9] | 13.0 [13.0, 13.0] | 12.8 [9.5, 16.1] | 0.6 [-0.7, 1.9] | 5 / 0 / 0 / 5 / 5 | -3.2 [-27.6, +21.2] | +0.0 [-2.0, +2.0] | +1.0 [-3.1, +5.0] / +2.2 [-3.2, +7.6] |
+| A 3, C 0.2 | 1,164.2 [1,130.3, 1,198.1] | 358.2 [326.1, 390.3] | 13.0 [12.0, 14.0] | 12.4 [10.4, 14.4] | 0.8 [-1.1, 2.7] | 4 / 1 / 0 / 5 / 5 | +5.2 [-59.9, +70.3] | +0.2 [-2.3, +2.7] | +0.1 [-2.1, +2.3] / +1.8 [-1.8, +5.4] |
+| A 4, C 0.5 | 1,173.4 [1,142.2, 1,204.6] | 351.4 [334.8, 368.0] | 12.4 [11.1, 13.7] | 11.7 [8.0, 15.4] | 0.6 [-0.2, 1.4] | 5 / 0 / 0 / 5 / 5 | -1.6 [-41.3, +38.1] | +0.0 [-1.0, +1.0] | -0.2 [-3.8, +3.4] / +1.1 [-1.5, +3.7] |
+| A 4, C 0.2 | 1,172.6 [1,135.3, 1,209.9] | 362.6 [325.7, 399.5] | 12.2 [10.1, 14.3] | 12.7 [9.3, 16.1] | 0.6 [-0.2, 1.4] | 4 / 1 / 0 / 5 / 5 | +9.6 [-41.9, +61.1] | +0.0 [-1.7, +1.7] | +0.4 [-5.7, +6.6] / +2.1 [-3.8, +8.0] |
+
+*Who crosses and how fast, seeds 3–7. Shares and per-run medians: mean [95 % t-interval] over the seeds; entering read with SUMO's arrival crossings. By maker: the speed at the change, pooled (mean; share ≥ 20 m/s). Real drivers (VM X): entering 11.7 m/s, exiting 14.6 m/s (medians).*
+
+| form | entering: SUMO's share | entering: median per run [m/s] | Δ vs base | exiting: SUMO's share | exiting: median per run [m/s] | Δ vs base | SUMO's crossings, entering / exiting | the weave's crossings, entering / exiting |
+|---|---|---|---|---|---|---|---|---|
+| default (A 1, C 1, SG 1, KR 0) | 0.35 [0.28, 0.42] | 7.34 [5.55, 9.13] | — | 0.17 [0.13, 0.21] | 9.06 [7.01, 11.11] | — | 12.3 (21 %) / 12.9 (21 %) | 7.7 (1 %) / 9.6 (3 %) |
+| A 1.5 | 0.34 [0.25, 0.43] | 6.42 [5.02, 7.81] | -0.93 [-2.48, +0.63] | 0.21 [0.14, 0.28] | 8.83 [7.61, 10.06] | -0.23 [-1.96, +1.51] | 11.0 (24 %) / 12.2 (23 %) | 7.4 (1 %) / 9.1 (2 %) |
+| A 2 | 0.42 [0.25, 0.59] | 8.23 [4.08, 12.39] | +0.89 [-4.17, +5.95] | 0.31 [0.15, 0.48] | 9.50 [6.44, 12.56] | +0.44 [-3.98, +4.85] | 12.3 (19 %) / 12.7 (17 %) | 7.6 (1 %) / 9.2 (2 %) |
+| A 3 | 0.45 [0.30, 0.59] | 8.68 [4.13, 13.22] | +1.34 [-4.32, +7.00] | 0.36 [0.23, 0.49] | 10.06 [6.07, 14.04] | +0.99 [-3.86, +5.85] | 12.5 (21 %) / 13.7 (23 %) | 7.8 (0 %) / 9.0 (1 %) |
+| A 4 | 0.49 [0.35, 0.64] | 9.25 [5.19, 13.31] | +1.91 [-2.99, +6.81] | 0.43 [0.31, 0.55] | 9.91 [6.94, 12.89] | +0.85 [-2.98, +4.69] | 12.8 (21 %) / 13.4 (23 %) | 7.9 (1 %) / 9.1 (1 %) |
+| C 0.5 | 0.37 [0.29, 0.45] | 7.85 [6.62, 9.07] | +0.50 [-0.77, +1.78] | 0.19 [0.16, 0.23] | 9.43 [8.27, 10.58] | +0.37 [-0.81, +1.55] | 12.2 (21 %) / 12.7 (19 %) | 8.0 (1 %) / 9.8 (3 %) |
+| C 0.2 | 0.29 [0.20, 0.37] | 7.02 [5.48, 8.56] | -0.32 [-2.25, +1.61] | 0.16 [0.06, 0.26] | 8.72 [7.81, 9.63] | -0.34 [-2.21, +1.53] | 10.4 (17 %) / 11.1 (14 %) | 7.8 (1 %) / 9.2 (2 %) |
+| SG 0.5 | 0.33 [0.26, 0.40] | 6.87 [5.26, 8.47] | -0.47 [-1.74, +0.79] | 0.18 [0.12, 0.24] | 8.63 [7.08, 10.17] | -0.43 [-1.19, +0.32] | 10.8 (21 %) / 11.6 (15 %) | 7.6 (1 %) / 9.2 (3 %) |
+| SG 2 | 0.32 [0.24, 0.39] | 7.37 [5.05, 9.70] | +0.03 [-0.99, +1.05] | 0.15 [0.11, 0.20] | 8.80 [7.17, 10.44] | -0.26 [-1.14, +0.62] | 11.3 (20 %) / 11.6 (18 %) | 7.9 (1 %) / 9.4 (3 %) |
+| KR 0.5 | 0.34 [0.26, 0.42] | 7.32 [5.41, 9.23] | -0.02 [-0.87, +0.82] | 0.16 [0.08, 0.25] | 9.01 [7.71, 10.32] | -0.05 [-1.06, +0.96] | 12.1 (23 %) / 12.4 (19 %) | 7.8 (1 %) / 9.5 (4 %) |
+| KR 1 | 0.34 [0.25, 0.44] | 7.27 [4.68, 9.86] | -0.07 [-1.47, +1.33] | 0.19 [0.11, 0.27] | 8.96 [6.95, 10.96] | -0.10 [-1.15, +0.94] | 11.1 (18 %) / 12.1 (21 %) | 7.9 (1 %) / 9.3 (2 %) |
+| A 2, C 0.5 | 0.36 [0.25, 0.47] | 6.73 [4.56, 8.91] | -0.61 [-2.58, +1.37] | 0.25 [0.16, 0.35] | 8.42 [6.52, 10.31] | -0.65 [-2.44, +1.15] | 10.9 (17 %) / 11.7 (15 %) | 7.3 (0 %) / 8.8 (2 %) |
+| A 2, C 0.2 | 0.41 [0.35, 0.48] | 7.51 [6.03, 8.98] | +0.17 [-1.38, +1.71] | 0.29 [0.25, 0.33] | 8.61 [7.35, 9.87] | -0.45 [-2.06, +1.16] | 11.3 (18 %) / 12.2 (18 %) | 7.4 (1 %) / 9.0 (2 %) |
+| A 3, C 0.5 | 0.42 [0.33, 0.51] | 7.63 [5.77, 9.49] | +0.29 [-1.10, +1.68] | 0.36 [0.26, 0.46] | 9.07 [7.55, 10.58] | +0.01 [-1.92, +1.94] | 11.8 (20 %) / 12.7 (21 %) | 7.6 (0 %) / 9.0 (1 %) |
+| A 3, C 0.2 | 0.42 [0.24, 0.59] | 8.49 [4.28, 12.70] | +1.15 [-4.76, +7.05] | 0.34 [0.17, 0.51] | 9.75 [6.77, 12.73] | +0.69 [-4.15, +5.53] | 12.8 (20 %) / 13.9 (20 %) | 7.6 (0 %) / 9.1 (1 %) |
+| A 4, C 0.5 | 0.43 [0.30, 0.56] | 8.87 [4.54, 13.19] | +1.53 [-2.89, +5.95] | 0.38 [0.28, 0.48] | 9.37 [6.66, 12.07] | +0.31 [-2.82, +3.43] | 12.6 (22 %) / 13.1 (23 %) | 7.7 (1 %) / 9.0 (1 %) |
+| A 4, C 0.2 | 0.50 [0.37, 0.62] | 10.00 [6.56, 13.44] | +2.66 [-2.05, +7.36] | 0.43 [0.32, 0.54] | 10.76 [7.30, 14.22] | +1.70 [-3.29, +6.69] | 13.7 (21 %) / 14.3 (21 %) | 8.2 (1 %) / 9.6 (1 %) |
+
+*The model's own critical gaps, seeds 3–7 pooled (WP-78's joint fit, weave zone, all speeds; median [95 % bootstrap interval], s). Entering with SUMO's arrival crossings (drivers, share that let a gap go by), and as WP-77–80 read it (without them). I-24 (VM Z): entering 0.46 [0.40, 0.53] / 0.92 [0.84, 1.03]; exiting 2.89 [2.47, 3.38] / 1.11 [0.91, 1.34].*
+
+| form | entering: drivers (share) | lead | lag | entering as WP-80: lead / lag | exiting: drivers (share) | lead | lag |
+|---|---|---|---|---|---|---|---|
+| default (A 1, C 1, SG 1, KR 0) | 880 (0.37) | 0.98 [0.86, 1.10] | 0.66 [0.54, 0.79] | 1.23 / 1.17 | 1,465 (0.41) | 0.84 [0.77, 0.90] | 0.61 [0.49, 0.72] |
+| A 1.5 | 829 (0.36) | 1.09 [1.00, 1.21] | 0.64 [0.50, 0.79] | 1.27 / 1.13 | 1,429 (0.38) | 0.79 [0.73, 0.87] | 0.59 [0.46, 0.73] |
+| A 2 | 886 (0.31) | 0.88 [0.76, 1.01] | 0.52 [0.39, 0.63] | 1.20 / 1.27 | 1,443 (0.34) | 0.67 [0.60, 0.75] | 0.72 [0.63, 0.84] |
+| A 3 | 919 (0.33) | 0.94 [0.81, 1.06] | 0.50 [0.38, 0.61] | 1.20 / 1.27 | 1,433 (0.34) | 0.60 [0.54, 0.68] | 0.77 [0.65, 0.88] |
+| A 4 | 916 (0.31) | 0.98 [0.84, 1.10] | 0.40 [0.29, 0.50] | 1.27 / 1.23 | 1,445 (0.27) | 0.48 [0.41, 0.54] | 0.74 [0.61, 0.89] |
+| C 0.5 | 902 (0.38) | 1.04 [0.94, 1.15] | 0.57 [0.41, 0.70] | 1.26 / 1.14 | 1,474 (0.39) | 0.77 [0.71, 0.83] | 0.71 [0.60, 0.81] |
+| C 0.2 | 864 (0.40) | 1.05 [0.95, 1.13] | 0.78 [0.65, 0.93] | 1.17 / 1.11 | 1,462 (0.40) | 0.82 [0.75, 0.89] | 0.61 [0.49, 0.71] |
+| SG 0.5 | 872 (0.35) | 0.93 [0.81, 1.04] | 0.69 [0.58, 0.81] | 1.10 / 1.12 | 1,423 (0.42) | 0.86 [0.78, 0.91] | 0.77 [0.67, 0.86] |
+| SG 2 | 863 (0.38) | 0.89 [0.75, 1.02] | 0.74 [0.62, 0.88] | 1.10 / 1.13 | 1,461 (0.42) | 0.87 [0.80, 0.93] | 0.64 [0.54, 0.73] |
+| KR 0.5 | 867 (0.38) | 0.98 [0.88, 1.11] | 0.57 [0.44, 0.69] | 1.23 / 1.12 | 1,465 (0.42) | 0.81 [0.74, 0.88] | 0.71 [0.61, 0.80] |
+| KR 1 | 878 (0.36) | 1.02 [0.91, 1.13] | 0.63 [0.51, 0.77] | 1.21 / 1.07 | 1,439 (0.41) | 0.76 [0.70, 0.83] | 0.68 [0.55, 0.81] |
+| A 2, C 0.5 | 864 (0.36) | 0.97 [0.84, 1.11] | 0.59 [0.44, 0.74] | 1.23 / 1.16 | 1,451 (0.36) | 0.71 [0.64, 0.77] | 0.56 [0.44, 0.67] |
+| A 2, C 0.2 | 869 (0.33) | 1.01 [0.91, 1.12] | 0.53 [0.41, 0.66] | 1.26 / 1.19 | 1,452 (0.33) | 0.63 [0.57, 0.71] | 0.63 [0.52, 0.76] |
+| A 3, C 0.5 | 900 (0.32) | 0.96 [0.83, 1.07] | 0.62 [0.49, 0.74] | 1.18 / 1.27 | 1,442 (0.32) | 0.62 [0.55, 0.69] | 0.64 [0.50, 0.77] |
+| A 3, C 0.2 | 926 (0.33) | 0.86 [0.76, 0.99] | 0.56 [0.45, 0.67] | 1.21 / 1.32 | 1,459 (0.32) | 0.55 [0.49, 0.61] | 0.63 [0.51, 0.75] |
+| A 4, C 0.5 | 902 (0.32) | 0.84 [0.72, 0.96] | 0.57 [0.45, 0.70] | 1.06 / 1.38 | 1,438 (0.29) | 0.53 [0.45, 0.62] | 0.62 [0.44, 0.79] |
+| A 4, C 0.2 | 960 (0.28) | 0.72 [0.59, 0.82] | 0.45 [0.35, 0.57] | 1.10 / 1.18 | 1,456 (0.31) | 0.51 [0.42, 0.58] | 0.01 (at a bound) |
+
+Reading.
+1. *The test does not move.*
+   - No form passes criterion (ii) at any seed: 0 of 5 in all 17 forms.
+   - Criterion (i) for T.H.52 passes at one seed in four forms: A 2, A 4, A 3 C 0.2 and A 4 C 0.2.
+   - Every paired difference in T.H.52, give-ups and the lanes' lowest windows straddles zero, with one exception, a cost: SG 0.5 adds +1.2 [+0.0, +2.4] given-up exits, an interval that reaches zero only at its lower end. On the mainline A 4 C 0.5 reads +20.4 [+3.1, +37.7], a gain.
+   - No run collides (85 runs).
+2. *`lcAssertive` moves SUMO's share of the crossings, and nothing else does much.*
+   - A 4 raises SUMO's share of the exiting crossings from 0.17 to 0.43 (paired +0.26 [+0.14, +0.38]) and of the entering ones from 0.35 to 0.49 (+0.14 [−0.05, +0.33]).
+   - C, SG and KR move either share by at most 0.07 (C 0.2, entering: −0.07 [−0.14, +0.01]).
+3. *Crossing speeds follow the mix, not the parameters.*
+   - Each maker's speed stays where it is in every form: SUMO's crossings average 10.4–13.7 m/s entering and 11.1–14.3 m/s exiting; the weave's 7.3–8.2 and 8.8–9.8 m/s.
+   - The per-run median moves only as SUMO's share does:
+     - entering 7.34 → 9.25 m/s at A 4 (+1.91 [−2.99, +6.81]) and 10.00 m/s at A 4 C 0.2 (+2.66 [−2.05, +7.36]);
+     - exiting 9.06 → 10.76 m/s at A 4 C 0.2 (+1.70 [−3.29, +6.69]).
+   - All of these are inside the seed noise, and none reaches real drivers' 11.7 / 14.6 m/s.
+4. *The model's critical gaps do not move towards the observed pair.*
+   - *Entering, leader side* (with SUMO's arrivals): 0.98 s at the default. The lowest is 0.72 [0.59, 0.82] s at A 4 C 0.2, still above the observed [0.40, 0.53]; A alone gives 0.88–1.09 s.
+   - *Entering, follower side:* every form with A ≥ 2 lowers it, to 0.40–0.62 s against 0.66 s at the default and 0.92 s observed. The source mapping predicts this direction: one factor, both sides.
+     - The only form whose interval reaches the observed one is C 0.2 at A 1: 0.78 [0.65, 0.93] s. Its leader side stays at 1.05 s, and SUMO's share falls.
+   - *Entering, as WP-77–80 read it* (the weave's crossings only): 1.06–1.27 / 1.07–1.38 s in every form. LC2013 does not move the gaps of the weave's crossings, which are 50–71 % of the entering crossings (form means).
+   - *Exiting:* `lcAssertive` lowers the leader side from 0.84 to 0.48 s (A 4), away from 2.89 s. The follower side stays at 0.56–0.77 s in every form, below the observed [0.91, 1.34]. A 4 C 0.2's exiting follower fit sits at a parameter bound and is not identified.
+   - *Why the leader side hardly moves.* SUMO's own entering crossings take leaders far ahead in every form (p10 1.26–2.02 s). They cross in the step they arrive, into whatever gap is beside them, so the smaller gaps a larger `lcAssertive` allows show on the follower side (p10 0.85–1.10 s).
+5. *Influence, in order.*
+   - `lcAssertive` moves SUMO's share, the crossing mix and the exiting critical gaps.
+   - `lcCooperative` has the only other share effect, and it is the only parameter that moved the entering follower side towards the observed value.
+   - `lcSpeedGain` and `lcKeepRight` move nothing beyond the noise except SG 0.5's give-ups.
+   - The grid was therefore A × C.
+
+**(5) The corridor's reference configuration on the same fixture.** VM U's configuration is `exit_prepare: 1.0` on the weave plus the network's `lane_end_giveup_m: 7.5`. Here it is alone and with A 3 / A 4, seeds 3–7, paired against the reference. The reference reproduces WP-80's `exit_prepare` alone (T.H.52 381 / 383 / 339 / 314 / 352); WP-79 found the lane-end give-up inert on this fixture.
+
+*The test's criteria, seeds 3–7: mean [95 % t-interval]; seeds passing (i) mainline / (i) T.H.52 / (ii) / (iii) / (iv); paired by seed against the base. No run collides.*
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s | lane 1 lowest window [m/s] | given up | seeds passing | Δ T.H.52 | Δ given up | Δ lane 0 / lane 1 lowest [m/s] |
+|---|---|---|---|---|---|---|---|---|---|
+| the reference configuration | 1,117.4 [1,064.1, 1,170.7] | 353.8 [312.3, 395.3] | 11.4 [9.2, 13.6] | 9.8 [7.2, 12.4] | 1.4 [-0.2, 3.0] | 2 / 0 / 0 / 5 / 5 | — | — | — |
+| + A 3 | 1,151.4 [1,069.7, 1,233.1] | 361.6 [327.7, 395.5] | 12.2 [11.0, 13.4] | 11.6 [7.7, 15.5] | 1.4 [-0.2, 3.0] | 4 / 1 / 0 / 5 / 5 | +7.8 [-42.0, +57.6] | +0.0 [-2.7, +2.7] | -0.1 [-3.9, +3.6] / +1.8 [-3.3, +6.9] |
+| + A 4 | 1,130.2 [1,058.0, 1,202.4] | 359.8 [325.9, 393.7] | 12.4 [10.8, 14.0] | 13.0 [8.5, 17.5] | 0.2 [-0.4, 0.8] | 2 / 1 / 0 / 5 / 5 | +6.0 [-51.7, +63.7] | -1.2 [-3.3, +0.9] | +1.2 [-5.0, +7.4] / +3.2 [-3.5, +9.9] |
+
+*Who crosses and how fast, seeds 3–7. Shares and per-run medians: mean [95 % t-interval] over the seeds; entering read with SUMO's arrival crossings. By maker: the speed at the change, pooled (mean; share ≥ 20 m/s). Real drivers (VM X): entering 11.7 m/s, exiting 14.6 m/s (medians).*
+
+| form | entering: SUMO's share | entering: median per run [m/s] | Δ vs base | exiting: SUMO's share | exiting: median per run [m/s] | Δ vs base | SUMO's crossings, entering / exiting | the weave's crossings, entering / exiting |
+|---|---|---|---|---|---|---|---|---|
+| the reference configuration | 0.35 [0.22, 0.48] | 7.08 [5.10, 9.05] | — | 0.18 [0.10, 0.25] | 8.94 [7.41, 10.47] | — | 11.3 (20 %) / 12.0 (17 %) | 7.7 (0 %) / 9.5 (3 %) |
+| + A 3 | 0.46 [0.34, 0.59] | 8.47 [4.94, 12.01] | +1.40 [-2.14, +4.93] | 0.39 [0.28, 0.50] | 9.89 [6.71, 13.07] | +0.95 [-2.19, +4.09] | 12.2 (20 %) / 13.4 (22 %) | 7.9 (0 %) / 9.1 (1 %) |
+| + A 4 | 0.49 [0.36, 0.63] | 8.74 [4.89, 12.59] | +1.66 [-2.98, +6.30] | 0.44 [0.32, 0.57] | 10.06 [6.50, 13.62] | +1.12 [-2.50, +4.74] | 12.6 (20 %) / 13.6 (23 %) | 8.0 (1 %) / 9.3 (1 %) |
+
+*The model's own critical gaps, seeds 3–7 pooled (WP-78's joint fit, weave zone, all speeds; median [95 % bootstrap interval], s). Entering with SUMO's arrival crossings (drivers, share that let a gap go by), and as WP-77–80 read it (without them). I-24 (VM Z): entering 0.46 [0.40, 0.53] / 0.92 [0.84, 1.03]; exiting 2.89 [2.47, 3.38] / 1.11 [0.91, 1.34].*
+
+| form | entering: drivers (share) | lead | lag | entering as WP-80: lead / lag | exiting: drivers (share) | lead | lag |
+|---|---|---|---|---|---|---|---|
+| the reference configuration | 879 (0.37) | 0.98 [0.86, 1.11] | 0.57 [0.48, 0.68] | 1.27 / 1.07 | 1,423 (0.42) | 0.88 [0.82, 0.95] | 0.73 [0.64, 0.84] |
+| + A 3 | 920 (0.32) | 1.04 [0.93, 1.17] | 0.49 [0.39, 0.62] | 1.32 / 1.17 | 1,403 (0.32) | 0.59 [0.52, 0.66] | 0.75 [0.65, 0.85] |
+| + A 4 | 943 (0.29) | 0.92 [0.79, 1.03] | 0.52 [0.41, 0.63] | 1.22 / 1.32 | 1,391 (0.27) | 0.49 [0.43, 0.55] | 0.67 [0.50, 0.86] |
+
+Reading. On the reference configuration, A 3 and A 4 move no criterion beyond its interval:
+- T.H.52 +7.8 [−42.0, +57.6] and +6.0 [−51.7, +63.7];
+- given up +0.0 [−2.7, +2.7] and −1.2 [−3.3, +0.9];
+- lane 1's lowest window +1.8 [−3.3, +6.9] and +3.2 [−3.5, +9.9] m/s.
+
+They raise SUMO's share of the exiting crossings by +0.22 [+0.09, +0.35] and +0.27 [+0.11, +0.42]. No run collides, and no form passes criterion (ii) at any seed.
+
+**(6) Conclusion.**
+1. *A calibration of LC2013 to the observed critical gaps is not feasible on this fixture, by structure and by measurement.*
+   - *Structure.* `lcAssertive` is LC2013's only gap parameter, and it scales both of SUMO's secure gaps by one factor. Real drivers' four sides ask for 3.38, 1.25, 0.30 and 0.93, and the entering pair's intervals are disjoint in every speed class.
+   - *Measurement.* No point of the one-at-a-time runs or the grid puts the model's entering critical gaps inside the observed intervals:
+     - the leader side comes no lower than 0.72 [0.59, 0.82] s;
+     - every value of `lcAssertive` ≥ 2 moves the follower side away from 0.92 s;
+     - no form reaches the exiting leader side.
+   - *Reach.* LC2013 reaches only the crossings SUMO makes itself, 29–50 % of the entering ones and 15–43 % of the exiting ones (form means). The rest are the weave's, executed under mode 256, and their gaps do not move.
+   - No parameter value reproduces the observed critical gaps within their intervals.
+2. *The corridor section test does not improve.*
+   - No form passes criterion (ii) at any seed, and nothing moves beyond the seed noise but SG 0.5's added give-ups (a cost) and A 4 C 0.5's mainline (a gain).
+   - The crossing speeds rise only through SUMO's share and stay below real drivers'.
+   - The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands.
+3. *The VM: no corridor battery is warranted.* No LC2013 value is a calibration, and none moves any criterion on the fixture.
+   - *If the coordinator wants the corridor's reading anyway,* of the one effect LC2013 has (SUMO's share of the crossings, and with it a faster crossing mix), the form is VM U's configuration with one fleet override:
+     - `fleet.lc_assertive: 3.0`;
+     - every other fleet field as the corridor scenario has it: EIDM, `heterogeneity_frac` 0.15, `idm_calibration: artifacts/idm_i24_capacity.json`, `lc_strategic` 5.0, `lc_strategic_ramp` 1.0, `lc_keep_right` 0.0, `lc_cooperative` 1.0, `lc_speed_gain` 1.0;
+     - `weave_params: {exit_prepare: 1.0}` on the weave sections;
+     - the network's `lane_end_giveup_m: 7.5`.
+   - *In the pipeline,* this is stage 10l's recipe with its fleet edit replaced by `-e 's#^  lc_assertive: 1.0$#  lc_assertive: 3.0#'`. The line is present once in `scenarios/mndot_i94_wb_stpaul_weave.yaml` and once in `_slice.yaml`. Use 20 seeds and the `fhwa_tat3_2004` profile.
+   - *Why 3.0.* It lies inside the leader side's source-implied interval [2.62, 4.40], and it is the milder of the two values measured on the reference configuration.
+   - *What the fixture predicts:* no criterion moves beyond the noise (above); SUMO's exiting share +0.22; per-run crossing medians +1.40 [−2.14, +4.93] m/s entering and +0.95 [−2.19, +4.09] m/s exiting.
+   - *Read collisions first.* The value applies to every change SUMO makes on the 8.5 km corridor (its merges, diverges and the T.H.61 lane end), which this fixture does not test. VM W's fleet-wide lane-change override doubled the corridor's collisions.
+4. *No default changes.* `WEAVE_DEFAULTS`, `FleetSpec`'s defaults and the corridor scenario are unchanged. So is every fixture, test and golden.
+5. *What remains open.*
+   - *The I-24 side of (2).* Whether real drivers who merge in the gore's first metres are missing from the I-24 extraction as well.
+   - *One acceptance for all crossings.* Since LC2013's acceptance is symmetric, a per-side calibration can live only in the weave's acceptance (WP-80). That acceptance does not reach SUMO's arrival crossings. WP-67's hand-over (H) takes every crossing vehicle before it can arrive, and it has not been measured with WP-80's calibrated entering pair.
+
+**Limitations.**
+- *Scale.* One fixture of the corridor's section at 5 seeds per form, so the paired intervals are wide. macOS records.
+- *The critical-gap fits* pool the 5 seeds, and the bootstrap resamples drivers, not seeds.
+- *SUMO's arrival crossings* let no gap go by by construction, so they inform the fits through their accepted gaps only.
+- *The augmented extraction* inserts one sample per arrival-changed entrant, the lane SUMO had it in one step earlier.
+- *The source mapping* reads EIDM's secure gap at speed parity and at the fleet's means. The closing-speed term and the drawn parameters are not in it.
+- *The run-time classification* attributes a change to the weave when the weave requested it on the previous step, which is WP-67's rule.
+
+**Bookkeeping.**
+- *Edited:*
+  - `packages/flowstate_core/flowstate_core/config.py`: the `lc_impatience` docstring only. It is hash-neutral: after the edit the default's config hash 2230b3942fe7 and trajectories md5 f12daea7… are unchanged at seed 3.
+  - docs/CONTRACTS.md: the `lc_impatience` sentence corrected;
+  - CHANGELOG.md;
+  - this section.
+- *Not edited:* `microsim.runner`, `microsim.vehicles`, `WEAVE_DEFAULTS`, every scenario, fixture, test and golden, and `scripts/gcp/pipeline_i24.sh`.
+- *Session files (`wp82/`, not committed):*
+  - the harnesses `corr82.py` and `ana82.py`;
+  - the drivers `run82.sh`, `sens82.sh`, `grid82.sh` and `ref82.sh`;
+  - the tables `tab82.py` and `doc82.py`;
+  - `lcreach.py`, and `lcprobe/`, the attribute probe and `lc2013_params.py`;
+  - `src/`, SUMO 1.27.1's `MSLaneChanger.cpp`, `MSLCM_LC2013.{h,cpp}`, `MSCFModel.{h,cpp}` and `MSAbstractLaneChangeModel.cpp`; EIDM's source is WP-73's copy in `wp73/`;
+  - the 20 row files and 20 analysis JSONs, plus the check rows `corr_chk` and `corr_post`. The run directories were deleted after analysis.
+
+Every number above is from those runs, from the committed files named, or from SUMO 1.27.1's source at tag v1_27_1.
+
+**Correction to "where item 1 stands", point 6 (2026-09-25, from WP-82).** The model's own entering critical gaps quoted there
+(1.18 / 1.21 s, from WP-78–80) were fitted from an extraction that missed the entering crossings SUMO makes in the step a vehicle
+reaches the section — the ramp is not in the corridor's trajectory table — 343 of 963 at the default over seeds 3–7 (36 %), and the
+fast ones (12.3 m/s on average, against the weave's 7.7). With them the model's entrants read 0.98 [0.86, 1.10] s ahead and
+0.66 [0.54, 0.79] s behind, and cross at a per-run median 7.34 m/s: the leader side is still about twice the real drivers' 0.46 s, and
+the follower side is shorter than their 0.92 s. The conclusions of points 6–7 stand (the acceptance calibration does not transfer, and
+entrants cross slowly), but "less than half" overstates the entering gap on the follower side. The exiting figures are unaffected.
+SUMO's own lane-change parameters cannot close it either: `lcAssertive` scales both sides by one factor, and the observed sides need
+different factors (WP-82).

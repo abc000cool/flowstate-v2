@@ -320,8 +320,12 @@ Other blocks:
   when set (`microsim.vehicles.sublane_vtype_attrs`), so unset fleets keep
   byte-identical route files. They parametrise the sublane model
   (`SimSpec.lateral_resolution_m`) that gridlocked at SUMO's defaults
-  (docs/I24_VALIDATION.md §0.5 (h)); `lc_impatience` also acts under the
-  lane-discrete model.
+  (docs/I24_VALIDATION.md §0.5 (h)). Corrected 2026-09-25 (WP-82,
+  docs/WEAVE_MODEL_PLAN.md): `lc_impatience` does **not** act under the
+  lane-discrete model. SUMO 1.27.1's LC2013 rejects `lcImpatience` as a
+  parameter (`vehicle.getParameter("laneChangeModel.lcImpatience")`), and
+  the corridor section fixture writes byte-identical trajectories with it
+  at 1.0. The earlier sentence said the opposite.
 - `FleetSpec.lc_overtake_right: float | None = None` (2026-09-07): SUMO
   `lcOvertakeRight`, the probability of passing on the right (SUMO default
   0, the European rule; US freeways allow it). Written when set.
