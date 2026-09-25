@@ -793,6 +793,12 @@ WEAVE_SPREAD_PHI: Final[float] = (math.sqrt(5.0) - 1.0) / 2.0
 #: crossing distributions at the defaults, not fitted to a criterion.
 WEAVE_OUTLET_ENTRANT_M: Final[float] = 51.1
 WEAVE_OUTLET_EXIT_RESERVE_M: Final[float] = 173.8
+#: The slack SUMO's EIDM adds to its desired gap towards a stop (SUMO 1.27.1,
+#: ``src/microsim/cfmodels/MSCFModel_EIDM.cpp``, ``EIDM_POS_ACC_EPS``) [m]; the
+#: stop term's own ``minGapStop_EPS`` stands on both sides of the comparison
+#: and cancels (:func:`_weave_brake_onset_m`). A constant of the model, not a
+#: fitted value.
+SUMO_EIDM_POS_ACC_EPS_M: Final[float] = 0.05
 NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
 NEIGHBOR_LEFT_LEADERS = 2
 NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
@@ -3023,6 +3029,67 @@ def _weave_outlet_length(length_m: float, zone_m: float) -> float:
     return max(min(WEAVE_OUTLET_ENTRANT_M, length_m - zone_m - WEAVE_OUTLET_EXIT_RESERVE_M), 0.0)
 
 
+def _weave_brake_onset_m(v: float, v0: float, p: dict[str, float], model: str) -> float:
+    """How far before a standing obstacle the vehicle's own SUMO model starts braking for it [m].
+
+    The exit priority from where the braking begins (2026-09-25, block 3,
+    WP-73, ``exit_priority_onset``; docs/WEAVE_MODEL_PLAN.md, dated
+    section). An exiter in a lane that does not lead to its exit is braked by
+    SUMO itself for the end of that lane: ``MSVehicle::planMoveInternal``
+    finds no link from the lane towards the route's next edge and asks the
+    car-following model's ``stopSpeed`` for the distance ``seen`` from the
+    front bumper to the lane end — the section's ``remaining``. The model's
+    acceleration towards that stop turns negative at:
+
+    * **EIDM** (``MSCFModel_EIDM::stopSpeed`` → ``_v`` with the leader speed 0
+      and ``respectMinGap = false``): the improved IDM (IIDM) of Treiber &
+      Kesting (2013, ch. 11), whose acceleration is ``a_free · (1 − (s*/s)^(2a/a_free))
+      ≥ 0`` while ``s* < s`` and ``a · (1 − (s*/s)²) ≤ 0`` from ``s* ≥ s`` on,
+      so the onset is ``s = s*`` itself; for a stop the desired gap carries no
+      ``minGap``: ``s* = v·T + v² / (2·√(a·b)) +`` the slack
+      :data:`SUMO_EIDM_POS_ACC_EPS_M` (the model's ``minGapStop_EPS`` is added
+      to both ``s*`` and the gap and cancels). No ``1/√(1 − (v/v0)⁴)`` factor:
+      above its desired speed (``v > v0``) the IIDM's free term brakes at
+      any distance (``inf``).
+    * **IDM** (``MSCFModel_IDM::stopSpeed`` → ``_v``, ``respectMinGap =
+      false``): ``a · (1 − (v/v0)⁴ − (s*/s)²)`` with the same ``s*`` less the
+      slack, so ``s*/√(1 − (v/v0)⁴)`` (``inf`` from ``v0`` on).
+
+    Both read from SUMO 1.27.1's source and checked on the installed binary
+    (``vehicle.getStopSpeed`` scanned over the gap, population means of the
+    corridor fleet: T 1.362 s, a 1.065, b 1.851 m/s², v0 24.59 m/s): the EIDM
+    onset is 50.6 / 102.6 / 135.3 / 172.4 / 205.3 / 241.2 m at 10 / 15 /
+    17.5 / 20 / 22 / 24 m/s against the form's 49.3 / 100.6 / 133.0 / 169.7 /
+    202.4 / 237.9 m — the model's two sub-steps per 0.5-s step put it
+    1.3–3.3 m farther out — and the IDM's 51.3 / 110.3 / 156.4 / 228.9 m
+    against 49.9 / 108.3 / 154.1 / 226.3 m. A lone EIDM vehicle released at
+    speed in a lane that ends brakes from within about ±12 % of the form (its
+    perceived gap carries the model's estimation error, ``sigmagap`` 0.1 on
+    a Wiener process of standard deviation about 0.5). WP-72's closed form
+    (the runner's IDM with ``minGap``, 230 m at 20 m/s) is the IDM's; the
+    EIDM fleet of the corridor starts braking 170 m before the lane end at
+    20 m/s.
+
+    Args:
+        v: The vehicle's speed [m/s].
+        v0: Its desired speed on its lane (``min(maxSpeed, lane limit)``) [m/s].
+        p: Its constants (:func:`_weave_veh`: ``T``, ``a``, ``b``).
+        model: Its car-following model, ``"IDM"`` or ``"EIDM"`` (``FleetSpec.model``).
+
+    Returns:
+        The distance ``≥ 0`` [m], ``inf`` where the model brakes at any distance.
+    """
+    v = max(v, 0.0)
+    if p["a"] <= 0.0 or p["b"] <= 0.0:
+        return math.inf
+    s_star = v * p["T"] + v * v / (2.0 * math.sqrt(p["a"] * p["b"]))
+    if model == "EIDM":
+        return s_star + SUMO_EIDM_POS_ACC_EPS_M if v <= v0 else math.inf
+    if v >= v0:
+        return math.inf
+    return s_star / math.sqrt(1.0 - (v / v0) ** 4)
+
+
 def _weave_spread_fraction(n: int) -> float:
     """The n-th crossing's place in the spread length: ``frac(n · φ)``.
 
@@ -3291,12 +3358,15 @@ def _weave_cooperate(
     for oid in [o for o, until in hs_blocked.items() if until <= t]:
         del hs_blocked[oid]
     blocked: set[str] = set(hs_blocked)
+    st_c = ws["veh"].get(vid)
     if (
         prm["ramp_outlet"] > 0.0
         and target_lane == 0
-        and not priority
+        # the forced zone's priority is exempt (its followers never reach the
+        # outlet); a priority from the braking onset (WP-73) is not
+        and not (priority and (st_c is None or st_c.get("prio_zone", True)))
         and vid in ws["exiting_ids"]
-        and vid in ws["veh"]
+        and st_c is not None
     ):
         # the ramp's outlet (WP-70): an exiter holds no vehicle on the ramp
         # or in the auxiliary lane short of the stretch (_weave_outlet_length);
@@ -4513,6 +4583,22 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     end reads no faster and the capacity fixture's no-lock pin breaks at one
     seed (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **The exit priority from the braking onset** (2026-09-25, block 3, WP-73;
+    :func:`_weave_brake_onset_m`, ``exit_priority_onset``, off by default).
+    An exiter has the exit priority from the step on which its distance to
+    the gore is within the onset of its own model's braking for the end of
+    its lane (the EIDM's ``vT + v²/(2√(ab))``, the IDM's that over
+    ``√(1 − (v/v0)⁴)``, at its own parameters and speed; the model is
+    ``FleetSpec.model``, ``ws["cf_model"]``), latched, as well as once its
+    forced change is due; the forced change itself keeps the zone and its
+    delay, the yields at the lane ends keep the zone's due, and with
+    ``ramp_outlet`` set the onset priority's gap choice passes over the
+    outlet's vehicles (the zone's priority stays exempt). Counted in
+    ``n_onset_priority``. Measured and left off: the crossings of the
+    section's second half are no faster, because the exiters reach it below
+    20 m/s, the capacity fixture's no-lock pin breaks at two seeds and the
+    Ruth St section locks at one (docs/WEAVE_MODEL_PLAN.md, dated section).
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -4563,6 +4649,9 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     rule = ws.get("rule") or _weave_short_section_rule(section_len, prm)
     step_s = float(ws["step_s"])
     veh = ws["veh"]
+    # WP-73: the exit priority from the braking onset, and the model to read it with
+    onset_prio = float(prm["exit_priority_onset"]) > 0.0
+    cf_model = str(ws.get("cf_model", "IDM"))
     pending: dict[str, int] = {}
     # entering vehicles still on the ramp within lookahead_m of the section:
     # gap choice and cooperation only (see the docstring, anticipation)
@@ -4759,6 +4848,19 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             accept = prm["exit_accept_gap_s"]
         if remaining <= rule["zone_m"] and st["zone_s"] is None:
             st["zone_s"] = t
+        # the forced change is due (the forced zone's exit priority)
+        zone_due = st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"]
+        st["prio_zone"] = zone_due
+        # WP-73 (``exit_priority_onset``): an exiter's priority from where its
+        # own model starts braking for the end of its lane, latched
+        onset_due = False
+        if d < 0 and onset_prio:
+            if st.get("onset_s") is None:
+                p_on = _weave_veh(mod, ws, vid)
+                v0_on = min(p_on["vmax"], _weave_lane_vmax(mod, ws, road, lane))
+                if remaining <= _weave_brake_onset_m(v_ego, v0_on, p_on, cf_model):
+                    st["onset_s"] = t
+            onset_due = st.get("onset_s") is not None
         # --- acceptance (read before the give-up below: a halted exiter that
         # can still request its change this step is not given up — review,
         # 2026-09-24 block 3: with the give-up first, one halted 3 m from the
@@ -4932,10 +5034,13 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             st["target"],
             accept,
             remaining,
-            # exit priority once the forced change is due (_weave_choose_gap)
-            d < 0 and st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"],
+            # exit priority once the forced change is due (_weave_choose_gap),
+            # or (WP-73) from the exiter's own braking onset
+            d < 0 and (zone_due or onset_due),
             t,
         )
+        if onset_due and not zone_due:
+            ws["n_onset_priority"] += 1
         if d < 0:
             # the yields at the lane ends (WP-54): the exiter for a halted
             # entrant ahead of it, the entrant beside a due exiter
@@ -4958,7 +5063,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 ),
                 remaining,
                 accept,
-                st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"],
+                zone_due,
                 t,
             )
         # --- execution -----------------------------------------------------
@@ -5127,7 +5232,11 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     ``n_outlet_spared`` (WP-70, the ramp's outlet) the exiter-steps on which
     the gap chosen without the rule has as its follower a vehicle on the
     on-ramp or in the auxiliary lane's first stretch
-    (:func:`_weave_outlet_length`; zero at ``ramp_outlet`` = 0).
+    (:func:`_weave_outlet_length`; zero at ``ramp_outlet`` = 0);
+    ``n_onset_priority`` (WP-73, the exit priority from the braking onset)
+    the exiter-steps on which an exiter had the exit priority from its own
+    lane-end braking onset before its forced change was due
+    (:func:`_weave_brake_onset_m`; zero at ``exit_priority_onset`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -5178,6 +5287,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_swaps": ws["n_swaps"],
         "n_spread_withheld": ws["n_spread_withheld"],
         "n_outlet_spared": ws["n_outlet_spared"],
+        "n_onset_priority": ws["n_onset_priority"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -6365,6 +6475,12 @@ def run_micro(
                     # exiter-steps on which the gap chosen without the rule
                     # has a vehicle in the outlet as its follower (meta)
                     "n_outlet_spared": 0,
+                    # WP-73, the exit priority from the braking onset
+                    # (_weave_brake_onset_m): the fleet's car-following model
+                    # and the exiter-steps with that priority before the
+                    # forced zone's (meta)
+                    "cf_model": cfg.fleet.model,
+                    "n_onset_priority": 0,
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},

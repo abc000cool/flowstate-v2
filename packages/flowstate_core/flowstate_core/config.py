@@ -232,6 +232,12 @@ WEAVE_DEFAULTS: dict[str, float] = {
     # movements' crossing distributions at the defaults
     # (microsim.runner.WEAVE_OUTLET_ENTRANT_M, WEAVE_OUTLET_EXIT_RESERVE_M)
     "ramp_outlet": 0.0,
+    # WP-73 (2026-09-25, block 3): the exit priority from where the exiter's
+    # own lane-end braking begins — a switch, not a fitted value: the onset is
+    # the stop term of the SUMO car-following model driving the vehicle, at its
+    # own drawn parameters and current speed
+    # (microsim.runner._weave_brake_onset_m; EIDM: vT + v^2/(2 sqrt(ab)))
+    "exit_priority_onset": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -654,7 +660,37 @@ of 16 windows against 10 / 11 / 13 (seeds 3–12: the entrance 3,418 → 3,749,
 those windows 123 → 126); on the 29-run fixture grid exits rise 5,988 →
 6,035 and the entrances 5,944 → 6,055, but give-ups read 44 → 45, unfinished
 45 → 70, and the T.H.52 capacity fixture's no-lock pin fails at seed 5 (3
-exits missed); no collision. A switch, not a fitted value."""
+exits missed); no collision. A switch, not a fitted value.
+``exit_priority_onset`` (2026-09-25, block 3, WP-73, the exit priority from
+where the braking begins): ``1`` gives an exiter still owing its change the
+exit priority (``microsim.runner._weave_choose_gap``: the gap behind a vehicle
+beside it is a candidate, the gap's follower holds one ``minGap`` farther
+back, the commitment is kept) from the step on which its distance to the gore
+is within the onset of its own model's braking for the end of its lane, at
+its own drawn parameters and speed, latched — instead of from 4 s
+(``force_after_s``) into the 80 m forced zone. The onset
+(``microsim.runner._weave_brake_onset_m``) is the stop term of SUMO's
+car-following model driving the vehicle (``FleetSpec.model``): for the EIDM
+the IIDM's ``s* = vT + v²/(2√(ab))`` with no ``minGap`` (170 m at 20 m/s at
+the corridor fleet's means), for the IDM that over ``√(1 − (v/v0)⁴)`` (226 m),
+both read from SUMO 1.27.1's source and checked with ``vehicle.getStopSpeed``.
+The forced change keeps its zone, and with ``ramp_outlet`` set the onset
+priority's hold passes over the outlet's vehicles. Exiter-steps with the onset
+priority before the zone's are counted in ``n_onset_priority``. The default is
+**0** (off, hash-neutral unless set): on the corridor section test's fixture
+(seeds 3 / 4 / 5, with ``ramp_outlet``; docs/WEAVE_MODEL_PLAN.md, dated
+section WP-73) the exiters' crossings into the auxiliary lane in [51, 305) m
+in minutes 1–4 are made at a median 17.0 / 16.7 / 12.2 m/s against 15.7 /
+17.0 / 11.9 — the exiters reach the section's second half at a median 18.1 /
+18.4 / 13.3 m/s, and even a priority from the section start leaves those
+crossings at 17.1 / 14.6 / 11.9 m/s — the exit end's lanes read at or below
+20 m/s in 11 / 10 / 13 of 16 windows against 12 / 12 / 13 (lanes 0 and 1:
+79 of 80 over seeds 3–12 against 80), and T.H.52 departs 359 of 407 at seed
+5; on the 29-run fixture grid exits fall 6,035 → 5,965, the T.H.52 capacity
+fixture's no-lock pin fails at seeds 3 and 4 (at seeds 4 and 5 with the key
+alone), and the key locks the Ruth St section at seed 5, where the outlet is
+inert (lane 1 at the gore's end at 0.0 m/s from minute 16); no collision. A
+switch, not a fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

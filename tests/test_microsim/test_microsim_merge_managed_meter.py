@@ -892,6 +892,8 @@ class TestWeaveSchema:
             "spread_crossings": 0.0,
             # WP-70: the ramp's outlet (docs/WEAVE_MODEL_PLAN.md, dated section)
             "ramp_outlet": 0.0,
+            # WP-73: the exit priority from the braking onset (dated section)
+            "exit_priority_onset": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2191,6 +2193,8 @@ def _weave_state(**params) -> dict:
         "spread_released": set(),
         # WP-70: the ramp's outlet (meta)
         "n_outlet_spared": 0,
+        # WP-73: the exit priority from the braking onset (meta)
+        "n_onset_priority": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -5401,6 +5405,195 @@ class TestWeaveOutlet:
         assert meta_on["n_collisions"] == 0
 
 
+#: The corridor fleet's drawn population means (docs/WEAVE_MODEL_PLAN.md, WP-72):
+#: T, a_max, b, s0 and the vType maxSpeed of the fleet's mean driver.
+CORRIDOR_MEANS: dict[str, float] = {"T": 1.362, "a": 1.065, "b": 1.851, "s0": 2.546, "vmax": 32.4}
+
+
+class TestWeaveOnsetPriority:
+    """The exit priority from the braking onset (2026-09-25, block 3, WP-73;
+    ``exit_priority_onset``, ``_weave_brake_onset_m``): an exiter gets the exit
+    priority from where its own SUMO model starts braking for the end of its
+    lane — EIDM ``vT + v²/(2√(ab))`` (+0.05 m), IDM that over
+    ``√(1 − (v/v0)⁴)`` — instead of 4 s into the forced zone; the forced change
+    keeps its zone, and with ``ramp_outlet`` set the onset priority holds
+    nobody in the outlet. Measured and left off (docs/WEAVE_MODEL_PLAN.md,
+    dated section)."""
+
+    def test_the_closed_forms(self):
+        """EIDM (IIDM stop, no minGap): 169.7 m at 20 m/s and independent of
+        v0 below it, ``inf`` above it; IDM: 226.3 m at 20 m/s under a
+        24.59 m/s limit, ``inf`` from v0 on."""
+        from microsim.runner import SUMO_EIDM_POS_ACC_EPS_M, _weave_brake_onset_m
+
+        s_20 = 20.0 * 1.362 + 400.0 / (2.0 * math.sqrt(1.065 * 1.851))
+        eidm = _weave_brake_onset_m(20.0, 24.59, CORRIDOR_MEANS, "EIDM")
+        assert eidm == pytest.approx(s_20 + SUMO_EIDM_POS_ACC_EPS_M)
+        assert eidm == pytest.approx(169.74, abs=0.01)
+        assert _weave_brake_onset_m(20.0, 30.0, CORRIDOR_MEANS, "EIDM") == eidm
+        assert _weave_brake_onset_m(24.59, 24.59, CORRIDOR_MEANS, "EIDM") < 250.0
+        assert _weave_brake_onset_m(24.6, 24.59, CORRIDOR_MEANS, "EIDM") == math.inf
+        idm = _weave_brake_onset_m(20.0, 24.59, CORRIDOR_MEANS, "IDM")
+        assert idm == pytest.approx(s_20 / math.sqrt(1.0 - (20.0 / 24.59) ** 4))
+        assert idm == pytest.approx(226.27, abs=0.01)
+        assert _weave_brake_onset_m(24.59, 24.59, CORRIDOR_MEANS, "IDM") == math.inf
+        assert _weave_brake_onset_m(0.0, 24.59, CORRIDOR_MEANS, "EIDM") == SUMO_EIDM_POS_ACC_EPS_M
+
+    def test_the_onset_is_the_models_own_stop_term(self, tmp_path):
+        """On SUMO itself (``vehicle.getStopSpeed``, the car-following model's
+        stop term, bisected over the gap): an EIDM and an IDM vehicle at the
+        fleet's means start braking for a standstill at the closed form plus
+        at most a quarter step of travel (the model's two sub-steps per step),
+        and the EIDM's onset is not the IDM's."""
+        import libsumo
+
+        from microsim.runner import _weave_brake_onset_m
+        from tests.test_microsim.test_microsim_lane_end_giveup import diverge_net
+
+        net = diverge_net(tmp_path)
+        p = CORRIDOR_MEANS
+        types = "".join(
+            f'<vType id="{m}" carFollowModel="{m}" accel="{p["a"]}" decel="{p["b"]}" '
+            f'tau="{p["T"]}" minGap="{p["s0"]}" maxSpeed="{p["vmax"]}" length="5" '
+            f'speedFactor="1.0" speedDev="0" actionStepLength="0.5"/>'
+            for m in ("EIDM", "IDM")
+        )
+        routes = tmp_path / "r.rou.xml"
+        routes.write_text(
+            f'<routes>{types}<route id="r" edges="A E"/>'
+            '<vehicle id="EIDM" type="EIDM" route="r" depart="0" departLane="1" '
+            'departPos="10" departSpeed="0"/>'
+            '<vehicle id="IDM" type="IDM" route="r" depart="0" departLane="1" '
+            'departPos="60" departSpeed="0"/></routes>'
+        )
+        libsumo.start(
+            [
+                *("sumo", "-n", str(net), "-r", str(routes), "--step-length", "0.5"),
+                *("--no-step-log", "--no-warnings", "--seed", "3"),
+            ]
+        )
+        try:
+            libsumo.simulationStep()
+            v0 = float(libsumo.lane.getMaxSpeed("A_1"))
+            onsets = {}
+            for model in ("EIDM", "IDM"):
+                libsumo.vehicle.setLaneChangeMode(model, 512)
+                for v in (15.0, 20.0):
+                    lo, hi = 1.0, 400.0  # braking at lo, not at hi
+                    for _ in range(50):
+                        mid = 0.5 * (lo + hi)
+                        if libsumo.vehicle.getStopSpeed(model, v, mid) < v - 1e-9:
+                            lo = mid
+                        else:
+                            hi = mid
+                    form = _weave_brake_onset_m(v, v0, p, model)
+                    assert form <= lo <= form + v * 0.5 / 4.0 + 0.5, (model, v, lo, form)
+                    onsets[model, v] = lo
+        finally:
+            libsumo.close()
+        assert onsets["EIDM", 20.0] < 175.0 < onsets["IDM", 20.0]
+
+    @staticmethod
+    def _step(params: dict, pos_b: float, v: float = 10.0) -> tuple[dict, list]:
+        """One step of the fake 200 m section: the exiter ``e`` in lane 1 of
+        ``b`` at ``pos_b`` (``100 − pos_b`` m before the gore), an auxiliary-lane
+        vehicle ``n`` abreast of it (front 2 m behind e's) and ``m`` 25 m
+        behind, all at ``v``, both bound for the exit already (no change of
+        their own); the fleet EIDM."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(**params)
+        ws["cf_model"] = "EIDM"
+        ws["exiting_ids"] = frozenset({"e", "n", "m"})
+        veh = _WeaveVehicle({"e": v, "n": v, "m": v})
+        res = {
+            "e": _res("b", 1, pos_b, v),
+            "n": _res("b", 0, pos_b - 2.0, v),
+            "m": _res("b", 0, pos_b - 25.0, v),
+        }
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        return ws, veh.calls
+
+    def test_off_by_default(self):
+        """50 m before the gore at 10 m/s (inside its EIDM onset, 59 m; its
+        forced change not yet due): without the key the exiter has no gap —
+        the vehicle beside it is not one it drops in behind — and holds
+        nobody."""
+        assert WEAVE_DEFAULTS["exit_priority_onset"] == 0.0
+        ws, calls = self._step({}, 50.0)
+        assert [c for c in calls if c[0] == "slow"] == []
+        assert ws["n_onset_priority"] == 0 and ws["veh"]["e"].get("onset_s") is None
+
+    def test_the_priority_from_the_onset(self):
+        """With the key the same exiter has the exit priority: the gap behind
+        the vehicle beside it is its, and that gap's follower ``m`` holds; the
+        step is counted and the onset latched."""
+        from microsim.runner import _weave_meta
+
+        ws, calls = self._step({"exit_priority_onset": 1.0}, 50.0)
+        assert [c[:2] for c in calls if c[0] == "slow"] == [("slow", "m")]
+        assert ws["n_onset_priority"] == 1 and ws["veh"]["e"]["onset_s"] == 0.0
+        assert _weave_meta(ws, {})["n_onset_priority"] == 1
+
+    def test_not_before_the_onset(self):
+        """70 m before the gore at 10 m/s the exiter is short of its onset
+        (59 m): no priority, the same step as without the key."""
+        ws, calls = self._step({"exit_priority_onset": 1.0}, 30.0)
+        assert [c for c in calls if c[0] == "slow"] == []
+        assert ws["n_onset_priority"] == 0 and ws["veh"]["e"].get("onset_s") is None
+
+    def test_the_forced_change_keeps_its_zone(self):
+        """Inside the onset with the change refused (a leader beside it in the
+        auxiliary lane): no change is forced — the forced zone's 4 s have not
+        passed — and none is deferred."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws = _weave_state(exit_priority_onset=1.0)
+        ws["cf_model"] = "EIDM"
+        ws["exiting_ids"] = frozenset({"e", "l"})
+        veh = _WeaveVehicle({"e": 10.0, "l": 10.0}, {("e", NEIGHBOR_RIGHT_LEADERS): (("l", 0.5),)})
+        res = {"e": _res("b", 1, 50.0, 10.0), "l": _res("b", 0, 55.5, 10.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert ws["veh"]["e"]["onset_s"] == 0.0
+        assert [c for c in veh.calls if c[0] == "change"] == []
+        assert ws["n_forced_deferred"] == 0 and not ws["veh"]["e"]["forced"]
+
+    def test_the_outlet_is_spared_under_the_onset_priority(self):
+        """On the 320 m fake section with ``ramp_outlet`` set, an exiter 40 m
+        in at 23.5 m/s is inside its EIDM onset (283 m): its priority holds
+        nobody in the outlet — the ramp vehicle behind it is spared — while
+        without ``ramp_outlet`` the same priority holds it."""
+        from microsim.runner import _weave_step
+
+        for params, held in (
+            ({"exit_priority_onset": 1.0, "ramp_outlet": 1.0}, False),
+            ({"exit_priority_onset": 1.0}, True),
+        ):
+            ws = TestWeaveOutlet._state(**params)
+            ws["cf_model"] = "EIDM"
+            veh = _WeaveVehicle({"e": 23.5, "n": 23.5})
+            res = {"e": _res("a", 1, 40.0, 23.5), "n": _res("r", 0, 40.0, 23.5)}
+            _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+            assert ws["veh"]["e"]["onset_s"] == 0.0 and ws["n_onset_priority"] == 1, params
+            assert ([c[:2] for c in veh.calls if c[0] == "slow"] == [("slow", "n")]) is held
+            assert ws["n_outlet_spared"] == (0 if held else 1), params
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the onset priority binds with nothing
+        colliding; at the default it is inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"exit_priority_onset": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_onset_priority"] == 0
+        assert meta_on["weave_sections"][0]["n_onset_priority"] > 0
+        assert meta_on["n_collisions"] == 0
+
+
 class TestWeaveVacateGapConditioned:
     """The vacate rule re-derived so that it never asks the target lane to
     brake (2026-09-24, block 3): ``vacate_no_follower_braking = 1`` selects
@@ -5883,6 +6076,7 @@ class TestWeaveReviewDerivations3To6:
             "n_swaps": 0,
             "n_spread_withheld": 0,
             "n_outlet_spared": 0,
+            "n_onset_priority": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,

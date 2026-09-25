@@ -4502,3 +4502,325 @@ Results:
 The weave contract (42 keys), the API schema, the sweep's `WEAVE_FIELDS`, `scripts/gcp/`, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md, `scenarios/`, `data/osm`, `frontend/` and every existing test's assertions are untouched.
 
 Session artifacts are not committed: the scripts above, WP-70's harness reused, and the JSONL records of every run (`wp71_batchA/B/C.jsonl`, `wp71_nearmiss.jsonl`, `wp71_verify.jsonl`, `wp71g_off/on.jsonl`, `wp71_bi_head/new.json`). Every number above is from those runs, from the committed artifacts cited, or from the new test module's constants.
+
+## 2026-09-25 (block 3, WP-73, priority where the braking begins): the corridor fleet's EIDM brakes for a lane end from `vT + v²/(2√(ab))`, not the IDM's `s*/√(1 − (v/v0)⁴)` (170 m at 20 m/s, not 230 m). An exit priority from that onset leaves the second half's crossings as slow as before, because the exiters reach the second half below 20 m/s. Lane 1 still fails, and the Ruth St section locks at one seed. Lane 0 has its own limit: the EIDM slows every vehicle for the gore's partial-right link. Nothing ships (`exit_priority_onset` = 0)
+
+**Why.** The owner's block-3 item 1 is the weaving section at capacity: a failing test, then a re-derivation. The failing test is WP-61's `test_th52_corridor_section_carries_free_flow_demand` (strict `xfail`). With `ramp_outlet` set (WP-70), its entrance and mainline criteria pass at seeds 3 and 5 (386 of the 387 asked at seed 4). Only criterion (ii) fails: every lane of the section's last 60 m above 20 m/s in every 5-min window.
+
+WP-72 (above) attributed that failure. No weave family sets the exit end's rate, and 96–99 % of the exiters' second-half crossings are made below 20 m/s. It read SUMO's own lane-end braking as the cause: the exiters still in lane 1 slow before they find a gap. Its hand-on (a):
+- give each exiter the exit priority from where its own lane-end braking begins, `s_on(v)` at its own parameters, instead of from 4 s into the 80 m forced zone;
+- leave the forced change at 80 m (forcing at speed collided on Ruth St);
+- keep `ramp_outlet`'s sparing intact.
+
+The bar, as handed on:
+1. the exiters' crossings into lane 0 in [51, 305) m at a median of 20 m/s or more in minutes 1–4 (WP-72: 9.5–18.0 m/s by region);
+2. lane 1's last 60 m above 20 m/s in every window;
+3. then criterion (ii) itself.
+
+The guards: T.H.52 ≥ 387 and mainline ≥ 1,137 at seeds 3 / 4 / 5, give-ups ≤ 2 %, no collision, the T.H.52 capacity fixture's no-lock pin, the 29-run grid, and golden `merge_weave` unchanged at the default.
+
+This package:
+- derives the onset from the model that actually drives the corridor fleet (EIDM), from SUMO's source, and checks it on the installed binary;
+- writes the rule behind a new key, off by default;
+- measures it on the corridor section fixture (seeds 3–12), with two bounding harness forms, and on the 29-run grid;
+- traces why the crossings stay slow.
+
+The demand, every scenario, every fixture and every existing assertion are untouched.
+
+**How it was measured.**
+- *SUMO's source.* SUMO 1.27.1's `src/microsim/cfmodels/MSCFModel_EIDM.cpp`, `MSCFModel_IDM.cpp` and `src/microsim/MSVehicle.cpp`, fetched at tag `v1_27_1` (the pinned `eclipse-sumo`). The pip package ships no C++ sources.
+- *Probes (session scripts, not committed).* A minimal network built by netconvert (`--no-internal-links`):
+  - a two-lane 340 m edge `A` at 24.59 m/s, whose lane 0 leads only to an exit `E` (22.22 m/s) and lane 1 only on to `B`;
+  - one vehicle at the corridor fleet's drawn population means (T 1.362 s, a 1.065, b 1.851 m/s², s0 2.546 m, `maxSpeed` 32.4 m/s), step 0.5 s, `actionStepLength` 0.5 s.
+
+  The probes:
+  - `stopspeed_probe.py`: the model's stop term (`vehicle.getStopSpeed`) scanned over the gap;
+  - `release_probe.py`: a vehicle held at speed in lane 1, released at a distance from its lane end;
+  - `gore_probe.py`: a lone vehicle through the diverge in lane 0.
+- *Corridor section fixture.*
+  - `wp73_harness.py` is WP-72's harness on the working tree, not pinned. It adds approach samples (the 300 m before the section) and two bounding forms (`FS_WP73_FORM`).
+  - `wp67_corr.py` is the test's body with the keys set in a copy of its call (no hooks). It reproduces the harness's criteria rows exactly at seeds 3 / 4 / 5.
+  - With the new key off, the working tree reproduces WP-72's `ramp_outlet` rows to the number: mainline 1,187 / 1,181 / 1,171; T.H.52 401 / 386 / 403; 12 / 12 / 13 lane-windows at or below 20 m/s; 2 of 376 / 0 of 411 / 1 of 431 given up; 7 / 3 / 5 unfinished. So do the crossing medians.
+  - At the default the plain body reads as WP-61: T.H.52 368 / 360 / 350, mainline 1,140 / 1,157 / 1,149, 10 / 11 / 13 lane-windows.
+  - Each run is the fixture's 20 simulated minutes, one at a time (3–4 s each).
+- *Grid.* `grid73.sh` / `wp73_grid_harness.py` run WP-70's 29-run grid, with the new counter in each row. Movements come from each run's `vehicles.parquet`, as in WP-70 and WP-72: E entrant, R ramp-to-exit, X mainline exiter, T through. Every run of this package is collision-free.
+
+**(1) The braking onset, derived from the model driving the vehicles.**
+
+- *Where SUMO brakes an exiter for its lane end.* In `MSVehicle::planMoveInternal`, a lane with no link toward the route's next edge ends the look-ahead (`lane->isLinkEnd(link)`). The vehicle's speed is capped by `cfModel.stopSpeed(this, getSpeed(), seen)`. Here `seen` is the distance from the front bumper to the lane end, which is the weave's `remaining`. A committed lane-change speed replaces it when the lane-change model has one.
+- *EIDM* (`MSCFModel_EIDM::stopSpeed` → `_v` with the leader speed 0 and `respectMinGap = false`). Its acceleration is the Improved IDM (IIDM) of Treiber & Kesting (2013, ch. 11).
+  - Below the desired speed it is `a_free · (1 − (s*/s)^(2a/a_free)) ≥ 0` while `s* < s`, and `a · (1 − (s*/s)²) ≤ 0` from `s* ≥ s` on. So the braking begins at `s = s*` itself.
+  - For a stop the desired gap carries no `minGap`: `s* = v·T + v²/(2·√(a·b)) + minGapStop_EPS + EIDM_POS_ACC_EPS`. The perceived gap is `(gap + minGapStop_EPS) · exp(σ_gap · w_gap · min(v/3, 1))`.
+  - Without the perception error, the onset is `s_on = v·T + v²/(2·√(a·b)) + 0.05` m (`EIDM_POS_ACC_EPS`). There is no `1/√(1 − (v/v0)⁴)` factor. Above its desired speed the free term brakes at any distance.
+  - The Enhanced IDM's coolness blends in the CAH term only where the IIDM is below it, so it softens braking but does not move the onset.
+  - `treaction` (0.5 s) equals the step, so every step is an action point. The model integrates two sub-steps per 0.5-s step (`stepping` 0.25 s).
+- *IDM* (`MSCFModel_IDM::stopSpeed` → `_v`, `respectMinGap = false`): `a · (1 − (v/v0)⁴ − (s*/s)²)` with `s* = v·T + v²/(2·√(a·b))`, also without `minGap`. So `s_on = s*/√(1 − (v/v0)⁴)`. WP-72's closed form is this one with `minGap` added.
+- *On the installed binary.* The stop term was scanned over the gap with `vehicle.getStopSpeed`, at 0.05-m resolution; the onset is the largest gap at which the next speed falls.
+
+| v [m/s] | 10 | 15 | 17.5 | 20 | 22 | 24 | 24.5 |
+|---|---|---|---|---|---|---|---|
+| EIDM measured [m] | 50.6 | 102.6 | 135.3 | 172.4 | 205.3 | 241.2 | 251.7 |
+| EIDM form `vT + v²/(2√(ab)) + 0.05` | 49.3 | 100.6 | 133.0 | 169.7 | 202.4 | 237.9 | 247.2 |
+| IDM measured [m] | 51.3 | 110.3 | 156.4 | 228.9 | 340.4 | > 400 | > 400 |
+| IDM form `s*/√(1 − (v/v0)⁴)` | 49.9 | 108.3 | 154.1 | 226.3 | 337.5 | 781.6 | 2,048 |
+| WP-72's form (IDM with `minGap`) | 52.5 | 111.1 | 157.1 | 229.7 | 341.8 | 790.0 | 2,069 |
+
+- *Reading the table.*
+  - Both models brake from their own form plus 1.3–3.3 m (4.5 m at 24.5 m/s): the two sub-steps put the onset about a quarter step's travel farther out.
+  - With and without the EIDM's perception errors (`sigmagap = sigmaerror = sigmaleader = 0`) the scan reads the same, because its Wiener processes are still at 0 on a vehicle inserted at rest.
+- *In motion* (`release_probe.py`). A lone vehicle is held at `v` in lane 1 and released at a distance D from the lane end. D is tried at the form −12 to +18 m; the realised distance is quantised by a step's travel, 7.5–11 m. The table gives the largest release distance at which the next step brakes.
+
+| model, v | form [m] | seeds 1 / 2 / 3 / 4 / 5 [m] |
+|---|---|---|
+| EIDM, 15 m/s | 100.6 | 105.1 / 112.6 / 97.6 / 97.6 / 97.6 |
+| EIDM, 20 m/s | 169.7 | 160.1 / 160.1 / 180.1 / 170.1 / 180.1 |
+| EIDM, 22 m/s | 202.4 | 182.1 / 193.1 / 215.1 / 193.1 / 204.1 |
+| IDM, 15 m/s | 108.3 | 105.1 at every seed |
+| IDM, 20 m/s | 226.3 | 220.1 at every seed |
+
+  The IDM brakes from the step bracket containing its form at every seed. The EIDM brakes within about ±12 % of its form. Moving, its perceived gap carries `sigmagap` 0.1 on a Wiener process whose increments have a standard deviation of 0.5 (persistence 10 s), about ±5 % per standard deviation.
+- *So the corridor fleet's onset is the EIDM's.* It is 133 m at 17.5 m/s, 170 m at 20 m/s and 202 m at 22 m/s at the means. The IDM form reads 154 / 226 / 338 m.
+  - WP-72's "an exiter in lane 1 cannot hold 20 m/s past x ≈ 75 m" was the IDM's reading. The EIDM exiter at 20 m/s starts braking at x ≈ 135 m on the 304.95 m section.
+  - Per vehicle, over the exiters that cross in the second half in minutes 1–4, the onset at 20 m/s ranges from 78 m to beyond the section (median 158–196 m). It is infinite for a driver whose own desired speed is below 20 m/s.
+  - For the IDM fleet of the grid's fleet-defaults fixtures, the onset grows without bound toward `v0`.
+
+**(2) The rule.** `WEAVE_DEFAULTS["exit_priority_onset"]`: `1` = on, default **0**, hash-neutral unless set. A switch, not a fitted value.
+
+- *The onset.* `microsim.runner._weave_brake_onset_m(v, v0, p, model)` gives the two forms above, with `SUMO_EIDM_POS_ACC_EPS_M` = 0.05 m.
+  - `model` is the fleet's `FleetSpec.model`, carried in the section state as `cf_model`. Every fleet vehicle, heavy ones included, is written with that model.
+  - `v0` is `min(maxSpeed, lane limit)`, as the runner reads it everywhere.
+- *When.* On each step a driven exiter's distance to the gore (`remaining`) is compared with its onset at its own parameters and current speed. From the first step it is within, the onset is latched (`onset_s`), and from then on the exiter has the exit priority.
+- *What the priority is.* The existing one (`_weave_choose_gap`'s `priority`):
+  - the gap behind a vehicle beside it is a candidate;
+  - that gap's follower holds one `minGap` farther back;
+  - the commitment is kept while the follower is behind its rear.
+
+  It applies to every driven exiter, in lane 1 or farther out, since each is braked for the end of the lane it is in.
+- *What it leaves.*
+  - The forced change keeps its zone: 80 m, then 4 s.
+  - The yields at the lane ends (WP-54, off) keep the zone's due.
+  - With `ramp_outlet` set, the onset priority's gap choice passes over the outlet's vehicles. The zone's priority stays exempt, because its followers never reach the outlet. So the rule holds nobody in the outlet.
+  - An exiter whose onset lies in the outlet or upstream of the section therefore gets the priority from its first step on the section. With `ramp_outlet` set, it holds nobody on the ramp or in the outlet's 51.1 m.
+- *Counted.* `n_onset_priority` counts the exiter-steps with the onset priority before the zone's. It is the **43rd `weave_sections` key** (docs/CONTRACTS.md §2, `WeaveSectionDiagnosticsOut`, `WEAVE_FIELDS`).
+- *Harness forms, bounds only.*
+  - `idm_s0`: WP-72's form as handed on, the runner's IDM with `minGap` (230 m at 20 m/s).
+  - `all`: every exiter has the priority from its first step on the section. This is an upper bound on how much the priority's timing can do.
+
+**(3) The corridor section test.** Seeds 3 / 4 / 5. Criteria: mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s of 16, given up ≤ 2 % of reached, no collision. ✗ marks a failed criterion.
+
+| form | mainline | T.H.52 | lane-windows ≤ 20 m/s | given up of reached | unfinished | onset-priority exiter-steps | outlet-spared exiter-steps |
+|---|---|---|---|---|---|---|---|
+| default | 1,140 / 1,157 / 1,149 | 368 ✗ / 360 ✗ / 350 ✗ | 10 / 11 / 13 | 2 of 356 ; 1 of 391 ; 2 of 405 | 1 / 6 / 8 | — | — |
+| `ramp_outlet` | 1,187 / 1,181 / 1,171 | 401 / 386 ✗ / 403 | 12 / 12 / 13 | 2 of 376 ; 0 of 411 ; 1 of 431 | 7 / 3 / 5 | 0 | 1,770 / 2,922 / 3,080 |
+| **`ramp_outlet` + the key** | 1,195 / 1,189 / 1,144 | 398 / 391 / 359 ✗ | 11 / 10 / 13 | 1 of 376 ; 2 of 419 ; 6 of 403 | 3 / 19 / 10 | 458 / 458 / 427 | 2,453 / 2,668 / 2,993 |
+| the key alone | 1,192 / 1,154 / 1,116 ✗ | 377 ✗ / 374 ✗ / 346 ✗ | 13 / 10 / 12 | 3 of 364 ; 1 of 404 ; 0 of 398 | 4 / 4 / 2 | 475 / 589 / 635 | — |
+| `ramp_outlet` + `idm_s0` (harness) | 1,192 / 1,193 / 1,174 | 390 / 399 / 373 ✗ | 13 / 11 / 13 | 3 of 377 ; 2 of 426 ; 1 of 422 | 6 / 6 / 3 | 644 / 862 / 833 | 2,239 / 2,637 / 3,318 |
+| `ramp_outlet` + `all` (harness) | 1,192 / 1,165 / 1,181 | 397 / 387 / 362 ✗ | 11 / 12 / 13 | 2 of 364 ; 2 of 423 ; 0 of 417 | 1 / 9 / 0 | 5,357 / 5,926 / 9,181 | 3,041 / 2,349 / 4,320 |
+
+*The bar's readings.* The exiters' crossings into lane 0 are given as n @ median speed [m/s], forced in parentheses; for [51, 305) the count at 20 m/s or more is added. The last two columns are the last 60 m per 5-min window (windows 0 / 1 / 2 / 3, m/s).
+
+| form | seed | minutes 1–4: [0, 51) / [51, 225) / [225, 305) | [51, 305), n ≥ 20 m/s | minutes 1–19: [51, 305) | lane 1, last 60 m | lane 0, last 60 m |
+|---|---|---|---|---|---|---|
+| `ramp_outlet` | 3 | 36 @ 19.5 / 17 @ 18.0 / 10 @ 9.5 (6) | 27 @ 15.7, 4 | 136 @ 11.6 (20) | 16.7 / 9.7 / 15.9 / 17.1 | 13.2 / 7.7 / 14.4 / 15.7 |
+| `ramp_outlet` | 4 | 35 @ 19.4 / 24 @ 17.7 / 10 @ 12.8 (4) | 34 @ 17.0, 3 | 211 @ 8.5 (49) | 20.0 / 15.0 / 13.8 / 7.8 | 16.4 / 11.9 / 12.2 / 5.6 |
+| `ramp_outlet` | 5 | 28 @ 17.2 / 32 @ 12.3 / 12 @ 10.2 (4) | 44 @ 11.9, 3 | 219 @ 9.0 (55) | 15.9 / 8.2 / 13.2 / 9.6 | 14.3 / 7.6 / 11.1 / 7.8 |
+| **+ the key** | 3 | 34 @ 19.7 / 20 @ 18.0 / 8 @ 10.0 (4) | 28 @ 17.0, 5 | 165 @ 11.1 (20) | 17.8 / 16.5 / 11.7 / 15.7 | 13.8 / 13.5 / 9.6 / 13.3 |
+| **+ the key** | 4 | 34 @ 19.2 / 23 @ 17.6 / 10 @ 12.8 (4) | 33 @ 16.7, 1 | 196 @ 9.2 (40) | 20.1 / 13.3 / 11.9 / 7.7 | 15.9 / 11.1 / 10.3 / 6.0 |
+| **+ the key** | 5 | 27 @ 17.2 / 34 @ 12.2 / 8 @ 11.3 (1) | 42 @ 12.2, 3 | 203 @ 8.0 (58) | 15.9 / 9.5 / 8.1 / 7.4 | 15.5 / 8.7 / 4.7 / 6.9 |
+| the key alone | 3 | 40 @ 18.6 / 16 @ 16.9 / 6 @ 10.8 (3) | 22 @ 15.7, 4 | 114 @ 11.3 (17) | 16.3 / 9.1 / 12.3 / 14.8 | 14.9 / 5.3 / 9.5 / 13.4 |
+| the key alone | 4 | 38 @ 18.4 / 24 @ 17.1 / 8 @ 9.8 (4) | 32 @ 15.8, 5 | 142 @ 11.8 (24) | 19.1 / 15.9 / 13.0 / 12.0 | 13.9 / 10.2 / 11.0 / 11.8 |
+| the key alone | 5 | 35 @ 10.9 / 11 @ 18.2 / 7 @ 8.7 (4) | 18 @ 12.7, 3 | 167 @ 9.8 (41) | 16.8 / 11.8 / 13.0 / 13.9 | 16.3 / 11.2 / 11.1 / 11.5 |
+| + `idm_s0` | 3 / 4 / 5 | — | 32 @ 17.6, 7 ; 28 @ 16.3, 3 ; 44 @ 11.9, 3 | — | lowest 6.0 / 11.2 / 11.4 | lowest 5.1 / 7.7 / 8.1 |
+| + `all` | 3 / 4 / 5 | — | 31 @ 17.1, 7 ; 29 @ 14.6, 3 ; 46 @ 11.9, 3 | — | lowest 13.1 / 11.6 / 9.0 | lowest 9.3 / 9.7 / 7.7 |
+
+*Ten seeds (3–12), the plain test body.*
+
+| form | T.H.52 Σ of 4,070 (seeds ≥ 387) | mainline Σ of 11,960 (seeds ≥ 1,137) | lane-windows ≤ 20 m/s, Σ of 160 | lanes 0 / 1 / 2 / 3 (harness) | given up of reached | unfinished | coll. |
+|---|---|---|---|---|---|---|---|
+| `ramp_outlet` | 3,749 (3) | 11,685 (9) | 126 | 40 / 40 / 31 / 15 | 16 of 3,982 | 44 | 0 |
+| **+ the key** | 3,812 (5) | 11,684 (8) | 117 | 40 / 39 / 24 / 14 | 20 of 4,006 | 62 | 0 |
+| the key alone | 3,501 (0) | 11,484 (6) | 120 | — | 15 of 3,837 | 44 | 0 |
+
+- Paired by seed, the key on top of `ramp_outlet` changes the lane-windows at or below 20 m/s by −0.9 a run (95 % t-interval −1.76 to −0.04; per seed −1, −2, 0, −2, +1, −1, 0, 0, −3, −1).
+- Almost all of it is lane 2, a through lane (31 → 24).
+- Lane 0 fails all 40 windows either way, and lane 1 fails 39 of 40 against 40. The one lane-1 window that clears is seed 4's window 0, at 20.1 m/s against 20.0.
+
+**(4) Why the crossings stay slow.**
+
+- *The exiters are below 20 m/s before any priority can act.* For each exiter crossing into lane 0 in [51, 305) in minutes 1–4, its first lane-1 sample from x = 51.1 m on is read (`wp73_mech.py`, the EIDM onset at its own parameters):
+
+| form | seed | n | speed at 51 m, median (n ≥ 20 m/s) | reached its onset before crossing: n; onset x / speed (median) | onset → crossing [s] | crossing x / speed (median) |
+|---|---|---|---|---|---|---|
+| `ramp_outlet` | 3 | 26 | 18.2 (5) | 15; 96 m / 18.8 | 3.5 | 191 m / 15.3 |
+| `ramp_outlet` | 4 | 33 | 18.8 (13) | 21; 143 m / 20.2 | 4.0 | 187 m / 16.9 |
+| `ramp_outlet` | 5 | 44 | 12.7 (7) | 16; 166 m / 16.3 | 4.0 | 139 m / 11.9 |
+| + the key | 3 | 26 | 18.1 (8) | 15; 93 m / 18.8 | 2.5 | 162 m / 16.9 |
+| + the key | 4 | 31 | 18.4 (10) | 16; 141 m / 19.4 | 4.0 | 155 m / 16.7 |
+| + the key | 5 | 42 | 13.3 (7) | 14; 167 m / 18.5 | 4.0 | 158 m / 12.2 |
+
+  The rule moves the crossings upstream (median 191 → 162 m and 187 → 155 m at seeds 3 and 4) and cuts the wait from onset to crossing at seed 3. But the crossing speed is what the exiter arrives with, less what it loses in the 2.5–4 s before it crosses. A third to two thirds of these exiters cross before they reach their onset at all.
+- *No priority timing lifts it.* With the priority from the first step on the section (`all`), the crossings in [51, 305) in minutes 1–4 are made at 17.1 / 14.6 / 11.9 m/s. The exiters reach x = 51 m at 19.6 / 19.3 / 12.4 m/s there, still below 20 m/s at the median.
+- *Where they lose it: the approach.* Median speed [m/s] in minutes 1–4 by movement, with `ramp_outlet` (`wp73_appr.py`), on the approach's lane 0 (the lane that feeds section lane 1) and in section lane 1:
+
+| seed | approach [−300, −200) X / T | [−200, −100) | [−100, −50) | [−50, 0) | section lane 1 [0, 25) X / T / E | [25, 51) | [51, 100) |
+|---|---|---|---|---|---|---|---|
+| 3 | 22.4 / 22.1 | 21.4 / 22.5 | 18.8 / 20.9 | 18.2 / 19.8 | 17.7 / 19.2 / 20.6 | 18.4 / 20.6 / 20.6 | 18.2 / 19.8 / 20.9 |
+| 4 | 22.2 / 22.7 | 21.6 / 22.5 | 19.2 / 20.6 | 18.8 / 20.3 | 18.8 / 20.2 / 20.1 | 18.0 / 20.4 / 20.1 | 18.4 / 21.0 / 20.5 |
+| 5 | 21.5 / 21.6 | 19.9 / 20.9 | 16.3 / 17.9 | 13.4 / 17.7 | 11.0 / 17.6 / 17.3 | 10.0 / 17.0 / 17.4 | 9.1 / 17.0 / 14.7 |
+
+  - The exiters leave 22 m/s from about 200 m before the section start. They arrive 1.5–4.3 m/s below the through vehicles still in their lane.
+  - That lane itself is below 20 m/s at the section start at seed 5, and at 19.8–20.3 m/s at seeds 3 and 4.
+- *What is commanded there* (`wp73_apprcmd.py`). On the approach's lane 0, x in [−240, 0), minutes 1–4, a weave target is set on:
+  - 330 of 1,536 / 394 of 1,606 / 399 of 2,129 of the exiters' vehicle-steps (21 / 25 / 19 %). The ramp anticipation's holds (`ramp_hold`) are 312 / 363 / 358 of them, 17–23 % of the steps; the section entrants' holds are the rest.
+  - 27 of 66 / 36 of 73 / 37 of 84 exiters are held.
+  - The through vehicles in that lane are few, 20 / 16 / 6: the vacate rule has moved them left. So the holds an entrant on the ramp sets on its lane-1 gap follower fall on exiters.
+
+  Being held costs a little: held exiters reach x = 51 m at 17.9 / 17.6 / 11.6 m/s against 18.3 / 19.2 / 14.1 for the others (`wp73_held.py`). Both groups are below 20 m/s.
+
+**(5) Lane 0: the EIDM slows every vehicle for the gore's link.**
+- *The link.* On the fixture the gore link 102_0 → 201 is `dir="R"`, as is 103_0 → 203. `R` is netconvert's partial-right direction (SUMO's `LinkDirection::PARTRIGHT`), from the section's and the ramp's geometry.
+- *What the EIDM does with it.* `MSCFModel_EIDM::internalspeedlimit` previews the links ahead within `oldV · tpreview` or `v0 · tpreview / 2` (`tpreview` 4 s). It caps its internal desired speed at a fixed turn speed per link direction: 4 m/s for a turn, 8 for left, 6 for right, 12 for partial left or right, times the speed factor (1.0 here). The internal desired speed then moves toward that cap by `(v_old − v0) · Δt / tpreview` per step.
+- *A lone vehicle through the diverge* (`gore_probe.py`, speeds [m/s] at distances from the gore):
+
+| network, model | −150 | −100 | −80 | −60 | −40 | −20 | 0 | +20 | +50 | +100 | +150 | +200 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| gore link `R`, EIDM | 24.87 | 24.73 | 24.27 | 23.98 | 23.23 | 22.23 | 21.02 | 19.98 | 19.12 | 20.07 | 21.16 | 21.89 |
+| gore link `s`, EIDM | 24.95 | 24.82 | 24.25 | 23.76 | 23.41 | 22.50 | 22.29 | 22.29 | 22.27 | 22.48 | 22.68 | 22.83 |
+| either link, IDM | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 | 22.22 |
+
+- *So lane 0's margin at the exit end is the EIDM's own.*
+  - Through an `R` gore, a free vehicle brakes from about 90 m out, crosses the gore at 21.0 m/s and falls to 19.1 m/s 50 m onto the ramp before it recovers.
+  - The same geometry classified straight holds 22.3 m/s. The IDM holds the ramp's 22.22 m/s whatever the link.
+  - This is the "speed transition into the 22.22 m/s ramp" WP-72 found at the head of every lane-0 chain.
+  - It is not a weave command. The corridor section test's fixture has the corridor's own geometry, so it carries the same link.
+
+**(6) The fixture grid.** 29 runs. Totals over the 28 fixture runs, the golden apart:
+
+| form | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth + T.H.52, last 60 m) | T.H.52 first 60 m min ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | outlet-spared / onset-priority exiter-steps |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 0 | 44 | 5,988 | 6,131 | 14 | 15 | 529 | 5,439 | 218 | 45 | 5,944 | 1,444 | 0 | 0 / 0 |
+| `ramp_outlet` | 12 | 45 | 6,035 | 6,193 | 11 | 19 | 495 | 4,388 | 182 | 70 | 6,055 | 1,482 | 0 | 17,462 / 0 |
+| the key alone | 25 | 43 | 5,902 | 6,079 | 17 | 17 | 464 | 6,909 | 190 | 69 | 5,935 | 1,460 | 0 | 0 / 9,398 |
+| `ramp_outlet` + the key | 25 | 43 | 5,965 | 6,132 | 20 | 12 | 493 | 7,111 | 171 | 62 | 6,055 | 1,454 | 0 | 17,748 / 10,364 |
+
+- The default equals WP-70's `off` rows in all 29 rows: 1,214 fields compared, 0 differ.
+- `ramp_outlet` equals WP-70's rule rows in all 29.
+
+*Per row.* Each cell: given up / reached; exited; lane 1's last 60 m, lowest minute [m/s] (minutes at or below 5); entrance departed (E1); unfinished; onset-priority exiter-steps.
+
+| fixture | seed | default | `ramp_outlet` | the key alone | `ramp_outlet` + the key |
+|---|---|---|---|---|---|
+| Ruth St, corridor fleet, exit peak | 3 | 9/290; 273; 2.8 (4); 73; 2; 0 | 9/290; 273; 2.8 (4); 73; 2; 0 | 4/290; 284; 3.3 (2); 73; 0; 509 | 4/290; 284; 3.3 (2); 73; 0; 509 |
+| Ruth St, corridor fleet, entrance peak | 3 | 0/45; 45; 6.3 (0); 128; 0; 0 | 0/45; 45; 6.3 (0); 128; 0; 0 | 0/45; 45; 6.3 (0); 128; 0; 49 | 0/45; 45; 6.3 (0); 128; 0; 49 |
+| Ruth St, fleet defaults, exit peak | 3 | 1/281; 276; 10.7 (0); 73; 1; 0 | 1/281; 276; 10.7 (0); 73; 1; 0 | 0/281; 279; 5.4 (0); 73; 0; 430 | 0/281; 279; 5.4 (0); 73; 0; 430 |
+| Ruth St, fleet defaults, entrance peak | 3 | 0/33; 33; 7.9 (0); 128; 0; 0 | 0/33; 33; 7.9 (0); 128; 0; 0 | 0/33; 33; 9.3 (0); 128; 1; 152 | 0/33; 33; 9.3 (0); 128; 1; 152 |
+| Ruth St, corridor fleet, exit peak | 4 | 1/280; 279; 4.2 (1); 73; 0; 0 | 1/280; 279; 4.2 (1); 73; 0; 0 | 5/281; 275; 3.1 (3); 73; 0; 431 | 5/281; 275; 3.1 (3); 73; 0; 431 |
+| Ruth St, corridor fleet, entrance peak | 4 | 1/41; 40; 5.9 (0); 128; 0; 0 | 1/41; 40; 5.9 (0); 128; 0; 0 | 0/41; 41; 12.4 (0); 128; 0; 24 | 0/41; 41; 12.4 (0); 128; 0; 24 |
+| Ruth St, fleet defaults, exit peak | 4 | 1/282; 280; 11.3 (0); 73; 0; 0 | 1/282; 280; 11.3 (0); 73; 0; 0 | 1/282; 280; 11.4 (0); 73; 0; 386 | 1/282; 280; 11.4 (0); 73; 0; 386 |
+| Ruth St, fleet defaults, entrance peak | 4 | 0/44; 43; 12.4 (0); 128; 0; 0 | 0/44; 43; 12.4 (0); 128; 0; 0 | 0/44; 43; 13.1 (0); 128; 0; 61 | 0/44; 43; 13.1 (0); 128; 0; 61 |
+| Ruth St, corridor fleet, exit peak | 5 | 4/274; 267; 6.7 (0); 73; 2; 0 | 4/274; 267; 6.7 (0); 73; 2; 0 | **5/219; 188; 0.0 (6); 73; 13; 295** | **5/219; 188; 0.0 (6); 73; 13; 295** |
+| Ruth St, corridor fleet, entrance peak | 5 | 0/34; 34; 3.6 (1); 128; 0; 0 | 0/34; 34; 3.6 (1); 128; 0; 0 | 0/34; 34; 3.6 (1); 128; 0; 16 | 0/34; 34; 3.6 (1); 128; 0; 16 |
+| Ruth St, fleet defaults, exit peak | 5 | 0/273; 272; 14.6 (0); 73; 0; 0 | 0/273; 272; 14.6 (0); 73; 0; 0 | 0/273; 272; 15.2 (0); 73; 0; 315 | 0/273; 272; 15.2 (0); 73; 0; 315 |
+| Ruth St, fleet defaults, entrance peak | 5 | 0/44; 44; 12.6 (0); 128; 1; 0 | 0/44; 44; 12.6 (0); 128; 1; 0 | 0/44; 44; 12.6 (0); 128; 1; 87 | 0/44; 44; 12.6 (0); 128; 1; 87 |
+| Ruth St, corridor fleet, exit peak, window 271.4 m | 5 | 8/274; 265; 2.1 (3); 73; 0; 0 | 8/274; 265; 2.1 (3); 73; 0; 0 | 5/274; 268; 4.4 (1); 73; 0; 363 | 5/274; 268; 4.4 (1); 73; 0; 363 |
+| T.H.52, corridor demand | 3 | 1/299; 292; 3.8 (1); 403; 2; 0 | 3/312; 302; 2.0 (1); 399; 7; 0 | 4/315; 307; 4.5 (1); 390; 5; 457 | 1/316; 308; 3.6 (1); 418; 12; 496 |
+| T.H.52, capacity | 3 | 1/319; 309; 4.7 (1); 395; 4; 0 | 1/314; 302; 5.1 (0); 390; 7; 0 | 1/312; 304; 4.6 (1); 377; 4; 474 | 2/309; 298; 1.8 (1); 372; 6; 521 |
+| two-entrance, fleet defaults | 3 | 3/301; 294; 3.7 (1); 417, E1 216; 3; 0 | 0/298; 294; 6.8 (0); 399, E1 213; 1; 0 | 0/300; 295; 6.6 (0); 400, E1 223; 2; 965 | 5/304; 290; 4.8 (2); 391, E1 211; 1; 958 |
+| two-entrance, corridor fleet | 3 | 0/314; 309; 7.3 (0); 356, E1 253; 1; 0 | 0/343; 333; 10.9 (0); 384, E1 276; 3; 0 | 3/311; 303; 7.0 (0); 360, E1 262; 4; 373 | 1/330; 322; 3.9 (1); 374, E1 267; 3; 382 |
+| moderate (weave.osm, 300 s) | 3 | 0/34; 33; —; —; 0; 0 | 0/34; 33; —; —; 0; 0 | 0/34; 33; —; —; 0; 81 | 0/34; 33; —; —; 0; 81 |
+| T.H.52, corridor demand | 4 | 0/317; 308; 11.9 (0); 388; 2; 0 | 0/311; 303; 11.4 (0); 405; 2; 0 | 1/323; 307; 5.9 (0); 402; 8; 530 | 3/325; 312; 3.5 (1); 393; 4; 531 |
+| T.H.52, capacity | 4 | 1/379; 373; 10.7 (0); 401; 2; 0 | 1/376; 366; 6.4 (0); 397; 10; 0 | 3/369; 357; 4.5 (2); 380; 3; 451 | 6/387; 375; 3.5 (3); 399; 3; 628 |
+| two-entrance, fleet defaults | 4 | 3/307; 301; 4.4 (1); 399, E1 210; 1; 0 | 4/324; 311; 2.5 (2); 417, E1 215; 11; 0 | 0/310; 302; 12.2 (0); 396, E1 218; 6; 503 | 2/306; 297; 5.6 (0); 425, E1 222; 4; 932 |
+| two-entrance, corridor fleet | 4 | 3/308; 301; 2.9 (2); 351, E1 256; 5; 0 | 0/318; 310; 11.2 (0); 399, E1 271; 4; 0 | 1/306; 298; 9.5 (0); 366, E1 252; 2; 392 | 0/317; 313; 11.8 (0); 388, E1 250; 3; 330 |
+| moderate (weave.osm, 300 s) | 4 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 59 | 0/36; 35; —; —; 0; 59 |
+| T.H.52, corridor demand | 5 | 5/308; 296; 1.7 (2); 401; 6; 0 | 2/322; 310; 6.3 (0); 403; 10; 0 | 0/321; 313; 9.1 (0); 396; 3; 629 | 1/305; 300; 8.1 (0); 413; 3; 589 |
+| T.H.52, capacity | 5 | 1/369; 361; 5.0 (1); 373; 3; 0 | 3/367; 359; 3.4 (1); 393; 3; 0 | 4/370; 351; 5.9 (0); 404; 7; 523 | 0/372; 362; 4.4 (1); 402; 3; 547 |
+| two-entrance, fleet defaults | 5 | 1/308; 299; 5.6 (0); 407, E1 256; 6; 0 | 2/304; 295; 9.2 (0); 394, E1 241; 6; 0 | 2/301; 293; 3.9 (3); 398, E1 247; 4; 559 | 1/308; 301; 4.1 (1); 405, E1 239; 1; 775 |
+| two-entrance, corridor fleet | 5 | 0/301; 291; 8.3 (0); 374, E1 253; 4; 0 | 4/303; 296; 2.0 (2); 396, E1 266; 0; 0 | 4/294; 283; 2.4 (2); 387, E1 258; 6; 251 | 1/306; 298; 8.7 (0); 396, E1 265; 4; 384 |
+| moderate (weave.osm, 300 s) | 5 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 0 | 0/36; 35; —; —; 0; 33 | 0/36; 35; —; —; 0; 33 |
+
+*The Ruth St lock.*
+- At seed 5 of the corridor fleet's exit peak, lane 1's last 60 m reads 13.0 / 20.6 / 17.6 m/s in minutes 11–13, then 2.8 / 0.4 / 0.0 / 0.0 / 0.0 / 0.0 m/s in minutes 14–19. The default reads 8.1–22.9 m/s in minutes 14–19.
+- Deferred forced changes rise 132 → 2,739 and pair releases 0 → 18. 55 fewer exiters reach the section (219 against 274), 13 are unfinished, 5 of 219 are given up (2.3 %), and nothing collides.
+- The outlet rule is inert on this 136 m section, so both forms read the same.
+- The onset spans the whole section for these exiters, so there the rule is the priority from the section start.
+
+*The no-lock pin of the T.H.52 capacity fixture* (`test_th52_weave_at_capacity_does_not_lock`, applied to each grid row). Cells give (entrance departed; lane 1's lowest minute at the section start [m/s]; pair releases).
+
+| form | seed 3 | seed 4 | seed 5 |
+|---|---|---|---|
+| default | pass (395; 3.9; 9) | pass (401; 4.3; 23) | pass (373; 3.3; 18) |
+| `ramp_outlet` | pass (390; 3.9; 10) | pass (397; 2.9; 22) | 3 missed (393; 3.4; 27) |
+| the key alone | pass (377; 4.5; 6) | 3 missed (380; 3.1; 31) | 4 missed (404; 3.9; 11) |
+| `ramp_outlet` + the key | 2 missed, 372 departed (372; 3.9; 36) | 6 missed (399; 5.0; 5) | pass (402; 3.5; 9) |
+
+*Golden `merge_weave`.*
+
+| form | hash | mean TT | p90 TT | σ_v spatial / temporal | VMT | VHT | fuel | throughput | exits | coll. | onset-priority exiter-steps |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 436cd4ec9e5d | 69.500 | 84.126 | 3.940 / 3.449 | 169.649 | 1.7492 | 90.54 | 1680.0 | 33 | 0 | 0 |
+| the key | 0673a8f5bedb | 69.504 | 83.930 | 4.005 / 3.465 | 169.644 | 1.7510 | 90.58 | 1668.9 | 33 | 0 | 122 |
+
+At the default the golden is unchanged and not regenerated. With the key set the rule binds on its short section.
+
+**Reading.**
+
+1. *The onset is the EIDM's, and it is shorter than the IDM's.* The corridor fleet brakes for a lane end from `vT + v²/(2√(ab))`, with no `minGap` and no free-term factor: 170 m at 20 m/s, where the IDM form WP-72 used gives 230 m. SUMO 1.27.1's source says so, and its binary reads the form plus a quarter step's travel. A moving vehicle reads it within its perception noise.
+2. *Given from that onset, the priority does what it was written to do, and the crossings are no faster.*
+   - It binds on 427–458 exiter-steps a run with `ramp_outlet`.
+   - It moves the second half's crossings about 30 m upstream at seeds 3 and 4.
+   - But in minutes 1–4 they are made at a median 17.0 / 16.7 / 12.2 m/s against 15.7 / 17.0 / 11.9, and 1–5 of 28–42 are at 20 m/s or more.
+   - Lane 1's last 60 m still reads at or below 20 m/s in 4 / 3 / 4 windows and lane 0's in all four. Over ten seeds lanes 0 and 1 fail 79 of 80 windows against 80.
+   - The −0.9 windows a run it gains are lane 2's.
+3. *No priority timing can clear bar 1.* The exiters reach the second half at a median 18.1 / 18.4 / 13.3 m/s. With the priority from the section start, the crossings run at 17.1 / 14.6 / 11.9 m/s. The deficit is the approach's: the exiters leave 22 m/s about 200 m before the section and arrive 1.5–4.3 m/s below the through traffic left in their lane. A fifth of their approach steps carry the ramp anticipation's holds, because the vacate rule has left them most of that lane.
+4. *Lane 0 has a limit that is not the weave's.* The gore link is a partial right turn to netconvert, and the EIDM previews it as a 12 m/s turn. A free vehicle crosses the gore at 21.0 m/s and falls to 19.1 m/s on the ramp, where the same geometry classified straight holds 22.3 m/s.
+5. *The guards fail.*
+   - With `ramp_outlet`, T.H.52 departs 359 at seed 5. With the key alone, the entrance fails at all three seeds.
+   - On the grid, exits fall (6,035 → 5,965; 5,988 → 5,902 alone), deferred forced changes rise (4,388 → 7,111; 5,439 → 6,909), and the capacity pin breaks at two seeds in either form.
+   - The key locks the Ruth St section at seed 5.
+   - Nothing collides in any run: 116 grid runs (the default, `ramp_outlet` and the key's two forms), 35 harness runs and 33 plain-body runs.
+
+**Nothing ships.** `WEAVE_DEFAULTS["exit_priority_onset"]` = 0, hash-neutral unless set.
+- At the default, the grid is WP-70's `off` to the number and golden `merge_weave` is unchanged (436cd4ec9e5d).
+- The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stays as WP-61 wrote it: the rule makes it pass at no seed, with or without `ramp_outlet`.
+- The rule stays in the code as a measured option, with its counter (`n_onset_priority`, the 43rd key) and tests. `_weave_brake_onset_m` is the verified reading of both models' lane-end braking, for any later rule.
+- The shipping condition is not met: no bar item clears and three guards fail. A corridor battery is not proposed for it.
+
+**What this hands on.**
+- *(a) Bar 1 cannot be met at the exit side.* The second half's crossings are bounded by the speed the exiters bring to it, below 20 m/s at the median in minutes 1–4 at every seed. That speed is lost on the approach and at the entry, not at the lane end.
+  - The next reading is the approach's lane 0 in its last 240 m. There an entrant still on the ramp holds its lane-1 gap follower, 4 times in 5 an exiter. The exiter will itself leave lane 1 for the lane the entrant leaves: a crossing pair formed before the section.
+  - WP-72 found the ramp's holds as a whole load-bearing for the entrance. The question is whether the holds that fall on exiters are.
+  - Read it the way WP-65 read the entry. Judge it by the exiters' speed at x = 51 m and the lane-1 windows, with `ramp_outlet` set and the capacity pin as the guard.
+- *(b) Lane 0's reading is the EIDM's gore preview.* On this fleet no weave rule can take away the 12 m/s cap. The EIDM applies it to every vehicle within its 4-s preview of a partial-right link, and the corridor's gore links are partial right.
+  - Changing the fixture's geometry to make the link straight would be tuning the fixture to pass, and is not done.
+  - What is open is a decision for the owner: whether criterion (ii)'s lane 0 on an EIDM fleet should be read with this model behaviour documented as a model limit, or the corridor calibrated with a vehicle model whose diverge speeds are not urban turn speeds.
+- *(c) For harnesses.*
+  - `_weave_brake_onset_m(v, v0, p, model)` gives either model's lane-end braking onset without a SUMO hook. WP-72's `a_end` reading was the IDM's.
+  - The rule's binding is `n_onset_priority`.
+  - `wp73_harness.py` runs on the working tree (no pin) and logs the approach's last 300 m.
+
+**Bookkeeping.**
+- `packages/flowstate_core/flowstate_core/config.py`: `exit_priority_onset` = 0, with its provenance comment and docstring paragraph.
+- `packages/microsim/microsim/runner.py`:
+  - new: `SUMO_EIDM_POS_ACC_EPS_M` and `_weave_brake_onset_m`;
+  - `_weave_step`: the onset latch (`onset_s`), the zone's due kept in `prio_zone`, the priority from either, and the count;
+  - `_weave_cooperate`: the outlet sparing covers an onset priority, the zone's still exempt;
+  - the section state's `cf_model` and `n_onset_priority`, `_weave_meta`, and the docstrings of `_weave_step` and `_weave_meta`.
+- `packages/api/api/schemas.py`: `WeaveSectionDiagnosticsOut.n_onset_priority`.
+- `scripts/corridor_sweep.py`: `WEAVE_FIELDS`.
+- `tests/test_microsim/test_microsim_merge_managed_meter.py`:
+  - `TestWeaveOnsetPriority`, 8 tests: the closed forms; the onset against SUMO's own stop term on the minimal diverge (libsumo, both models); off by default; the priority from the onset; not before it; the forced change keeps its zone; the outlet spared under the onset priority (and held without `ramp_outlet`); a binding run on `weave_th52_corridor.osm`;
+  - the `WEAVE_DEFAULTS` pin, the fake state and the counters test.
+- `tests/test_api/test_runs_merge_diagnostics.py`, `tests/test_scripts/test_corridor_sweep.py`: the key lists, 43 keys.
+- docs/CONTRACTS.md §2: the key list, the WP-73 paragraph, the API paragraph.
+- CHANGELOG.md and this section.
+
+`frontend/`, `scenarios/`, the fixtures, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md and `scripts/gcp/` are untouched.
+
+Session artifacts are not committed:
+- the SUMO sources read (`wp73/MSCFModel_EIDM_v1_27_1.cpp`, `MSCFModel_IDM_v1_27_1.cpp`, `MSVehicle_v1_27_1.cpp`);
+- the probes (`wp73/probe/`);
+- the harnesses (`wp73_harness.py`, `wp73_grid_harness.py`, `grid73.sh`) and the analyses (`wp73_bar.py`, `wp73_mech.py`, `wp73_appr.py`, `wp73_apprcmd.py`, `wp73_held.py`, `wp73_gcmp.py`, `wp73_gtables.py`, `wp73_grows.py`);
+- the per-step logs (`wp73/<label>_<seed>/`) and the JSONL records of every run.
+
+Every number above is from those runs, or from the committed test constants.

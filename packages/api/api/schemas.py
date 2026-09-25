@@ -321,7 +321,12 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     outlet) counts the exiter-steps on which the gap chosen without the rule
     has as its follower a vehicle on the on-ramp or in the auxiliary lane's
     first stretch (``ramp_outlet``); zero at the default of 0; ``None`` for a
-    meta written before; not shown by the dashboard. Two keys that are
+    meta written before; not shown by the dashboard. ``n_onset_priority``
+    (WP-73, 2026-09-25 block 3, the exit priority from the braking onset)
+    counts the exiter-steps on which an exiter had the exit priority from its
+    own lane-end braking onset before its forced change was due
+    (``exit_priority_onset``); zero at the default of 0; ``None`` for a meta
+    written before; not shown by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -363,6 +368,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_swaps: int | None = None
     n_spread_withheld: int | None = None
     n_outlet_spared: int | None = None
+    n_onset_priority: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None
