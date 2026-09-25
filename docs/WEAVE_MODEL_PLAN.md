@@ -3482,3 +3482,121 @@ The X-only form is a harness form, not in the code. It breaks the pin at seed 3 
 - CHANGELOG.md and this section.
 
 `frontend/`, `scenarios/`, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md and `scripts/gcp/` are untouched. Session artifacts are not committed: the harnesses and their forms, the lane-end probe, the lane-change outputs, the grids, the corridor-section runs and the table scripts.
+
+## 2026-09-25 (block 3, WP-68, the exit's own capacity): measured with the corridor's fleet, a one-lane road holds above 20 m/s to about 1,700 veh/h at the exit ramp's 22.22 m/s and at the section's 24.59 m/s. The IDM closed form's 1,323 veh/h does not describe this EIDM fleet, whose steady gaps are s0 + vT. With every exiter already in the auxiliary lane, the lane's last 60 m reads above 20 m/s in 80 of 80 windows under the observed exit flows. Criterion (ii) is within the fleet's reach; the test is untouched
+
+**Why.** WP-67 (above, "Nothing ships" item 6, and hand-on (b)) computed from the IDM closed form at the fleet's population means that the one-lane exit ramp (22.22 m/s) carries only 1,323 veh/h at 20 m/s in equilibrium. The constants of `test_th52_corridor_section_carries_free_flow_demand` route 1,431 / 1,440 / 1,484 / 1,267 veh/h to the exit in its four windows (`(S790 + rnd_91040)` × the exit fraction of `TH52_OBSERVED_0530`). The auxiliary lane feeds that exit, so it might be unable to hold criterion (ii)'s 20 m/s whatever the weave does. The closed form leaves out two things: the fleet's heterogeneity, and the fleet's model, which is EIDM, not IDM. This package settles the question by measurement. The runner, the config, every scenario, fixture and test are untouched.
+
+**The fixtures (session artifacts, not committed).** Three straight one-lane OSM chains, compiled with `osm_import` as `run_micro` compiles them. Node spacing was iterated until every compiled length matched its target to 0.1 m. Each chain has an insertion edge (way 1), the road under test (way 2) and a downstream buffer or exit (way 3):
+
+| fixture | way 1 | way 2 | way 3 | stands for |
+|---|---|---|---|---|
+| ramp | 600.0 m, `motorway_link`, untagged → 22.22 m/s | 478.7 m, the same | 300.0 m, the same | the exit ramp. Its limit and length were confirmed on the corridor fixture compiled the same way: `weave_th52_corridor.osm` edge 201 is 478.7 m, 1 lane, 22.22 m/s. Its corridor original 18207598 carries only `maxspeed:advisory` = 40 mph, so the typemap's `highway.motorway_link` default (22.22 m/s) applies; WP-61's table has the corridor's compiled edge at 22.22 m/s |
+| section | 600.0 m, `motorway`, 55 mph → 24.59 m/s | 478.7 m, the same | 300.0 m, the same | a lane at the auxiliary lane's own limit (edge 102's four lanes compile at 24.59 m/s) |
+| aux → exit | 600.0 m, 55 mph | 304.9 m, 55 mph (the section's length) | 478.7 m, `motorway_link`, 22.22 m/s | a lossless weave: every exiter is already in the auxiliary lane, with no crossing and no entrant, and the lane turns into the exit at the section's end |
+
+Configuration (`wp68/sweep.py`):
+- `run_micro` on the corridor's fleet block, read from `scenarios/mndot_i94_wb_stpaul_weave.yaml` exactly as `corridor_fleet_block()` reads it. That is EIDM, `lc_*` as the corridor, and `idm_calibration: artifacts/idm_i24_capacity.json`. The calibration's mean and covariance override the scalar fields and `heterogeneity_frac` (`microsim.vehicles.draw_vehicle_params`), so each vehicle draws from the truncated multivariate normal: v0 32.40 ± 5.50 m/s, T 1.322 ± 0.521 s, a 1.055 ± 0.428 m/s², b 1.703 ± 0.890 m/s², s0 2.533 ± 0.736 m.
+- 20 simulated minutes at step 0.5 s, 2 Hz output, a constant inflow from t = 0 unless stated.
+- One-lane entry edge, so insertion is `departPos="free" departSpeed="max"`.
+- Seeds 3 / 4 / 5, one run at a time, 0.6–1.0 s wall and 246 MB peak RSS per run.
+
+Measured quantities:
+- *Speed*: the mean of the 2 Hz samples in a segment per window. This is Edie's space-mean speed and the test's own aggregation.
+- *Flow*: crossings of the segment's midpoint (on the aux → exit fixture, of the auxiliary stand-in's end).
+- *Where*: the middle third of the 478.7 m road, [159.6, 319.1) m, on the ramp and section fixtures. On the aux → exit fixture, the last 60 m of the 304.9 m edge in 5-min windows 0–3 (criterion (ii)'s cell and aggregation), and the exit's middle third.
+- *Stationary*: minutes 5–20. "Windows ≤ 20" counts the 5-min windows at or below 20 m/s.
+
+Run state: HEAD 85e424d. Another package's uncommitted `runner.py` change (an output file only, `vehicles.parquet`) entered the working tree during the sweeps. A rerun of the ramp at 1,500 veh/h, seed 5, after it reproduced the earlier record exactly.
+
+*Table — the ramp's limit, 22.22 m/s: the one-lane road's middle third, seeds 3 / 4 / 5. Beside it, the IDM closed form at the population means (WP-67's): its free-branch speed at the offered flow.*
+
+| offered [veh/h] | departed of planned | flow at the middle, min 5–20 [veh/h] | speed, min 5–20 [m/s] | lowest 5-min window, min 5–20 [m/s] | windows ≤ 20 of 9 | IDM closed form [m/s] |
+|---|---|---|---|---|---|---|
+| 1,100 | all 366 | 1,096 / 1,100 / 1,096 | 21.96 / 21.82 / 22.11 | 21.82 / 21.45 / 22.03 | 0 | 20.84 |
+| 1,200 | all 400 | 1,200 / 1,200 / 1,216 | 21.87 / 21.91 / 21.68 | 21.33 / 21.61 / 21.26 | 0 | 20.50 |
+| 1,300 | all 433 | 1,300 / 1,300 / 1,300 | 21.81 / 21.77 / 22.05 | 21.52 / 21.60 / 21.98 | 0 | 20.10 |
+| 1,400 | all 466 | 1,404 / 1,404 / 1,400 | 21.80 / 21.95 / 21.63 | 21.73 / 21.81 / 21.23 | 0 | 19.62 |
+| 1,500 | all 500 | 1,496 / 1,500 / 1,500 | 21.70 / 21.55 / 21.15 | 21.02 / 20.83 / 19.69 | 1 | 19.01 |
+| 1,600 | all 533 | 1,600 / 1,600 / 1,604 | 21.56 / 21.62 / 21.93 | 21.04 / 21.07 / 21.67 | 0 | 18.23 |
+| 1,700 | all 566 | 1,704 / 1,704 / 1,700 | 21.32 / 21.08 / 20.80 | 21.13 / 20.79 / 20.17 | 0 | 17.11 |
+| 1,800 | all 600 | 1,784 / 1,796 / 1,792 | 20.35 / 20.85 / 19.80 | 19.71 / 20.31 / 19.16 | 4 | 14.56 |
+| 1,900 | 632 / 549 / 633 of 633 | 1,880 / 1,616 / 1,884 | 20.74 / 20.31 / 20.21 | 20.20 / 19.79 / 18.64 | 2 | above its maximum (1,805 at 13.8 m/s) |
+| 2,000 | 569 / 591 / 587 of 666 | 1,628 / 1,704 / 1,660 | 20.68 / 19.91 / 19.86 | 20.40 / 18.31 / 18.55 | 2 | above its maximum |
+
+*Table — the section's limit, 24.59 m/s: the same road and measurement.*
+
+| offered [veh/h] | departed of planned | flow at the middle, min 5–20 [veh/h] | speed, min 5–20 [m/s] | lowest 5-min window, min 5–20 [m/s] | windows ≤ 20 of 9 | IDM closed form [m/s] |
+|---|---|---|---|---|---|---|
+| 1,100 | all 366 | 1,100 / 1,100 / 1,096 | 23.83 / 23.40 / 24.09 | 23.37 / 22.70 / 23.81 | 0 | 23.11 |
+| 1,200 | all 400 | 1,200 / 1,200 / 1,220 | 23.68 / 23.51 / 23.08 | 22.69 / 22.91 / 22.41 | 0 | 22.76 |
+| 1,300 | all 433 | 1,292 / 1,300 / 1,296 | 23.51 / 23.23 / 23.88 | 23.05 / 23.09 / 23.47 | 0 | 22.35 |
+| 1,400 | all 466 | 1,404 / 1,400 / 1,396 | 23.34 / 23.46 / 22.87 | 23.07 / 23.10 / 22.58 | 0 | 21.85 |
+| 1,500 | all 500 | 1,496 / 1,500 / 1,500 | 22.96 / 22.66 / 22.10 | 21.86 / 21.12 / 19.77 | 1 | 21.24 |
+| 1,600 | all 533 | 1,600 / 1,604 / 1,600 | 22.70 / 22.76 / 23.32 | 22.07 / 21.37 / 22.27 | 0 | 20.47 |
+| 1,700 | all 566 | 1,708 / 1,708 / 1,696 | 21.98 / 21.60 / 20.84 | 21.02 / 21.12 / 19.93 | 1 | 19.44 |
+| 1,800 | all 600 | 1,776 / 1,792 / 1,784 | 20.54 / 21.49 / 19.42 | 19.42 / 20.54 / 17.51 | 4 | 17.79 |
+| 1,900 | 621 / 562 / 633 of 633 | 1,856 / 1,624 / 1,888 | 20.84 / 21.04 / 21.58 | 19.76 / 20.74 / 20.70 | 1 | above its maximum (1,856 at 15.0 m/s) |
+| 2,000 | 572 / 593 / 591 of 666 | 1,644 / 1,740 / 1,668 | 21.77 / 21.68 / 19.52 | 21.05 / 21.15 / 17.03 | 1 | above its maximum |
+
+*Table — a lossless weave (aux → exit): the auxiliary stand-in's last 60 m in all four 5-min windows (criterion (ii)'s reading) and the exit's middle third, seeds 3 / 4 / 5.*
+
+| offered [veh/h] | crossings at the lane's end, min 5–20 [veh/h] | last 60 m, min 5–20 [m/s] | last 60 m, lowest of windows 0–3 [m/s] | last-60 m windows ≤ 20 of 12 | exit's middle third, min 5–20 [m/s] | exit, lowest window, min 5–20 [m/s] |
+|---|---|---|---|---|---|---|
+| 1,100 | 1,096 / 1,104 / 1,092 | 22.39 / 22.15 / 22.64 | 22.03 / 21.68 / 22.53 | 0 | 21.96 / 21.47 / 22.14 | 21.74 / 21.09 / 22.11 |
+| 1,200 | 1,200 / 1,204 / 1,228 | 22.27 / 22.22 / 21.91 | 21.56 / 21.71 / 21.30 | 0 | 21.70 / 21.76 / 21.28 | 20.89 / 21.36 / 20.44 |
+| 1,300 | 1,300 / 1,300 / 1,304 | 22.19 / 22.10 / 22.55 | 21.76 / 21.41 / 22.34 | 0 | 21.64 / 21.42 / 21.96 | 21.25 / 21.34 / 21.66 |
+| 1,400 | 1,400 / 1,412 / 1,400 | 22.20 / 22.33 / 21.89 | 21.41 / 21.79 / 21.63 | 0 | 21.62 / 21.85 / 21.22 | 21.30 / 21.60 / 20.81 |
+| 1,500 | 1,500 / 1,500 / 1,500 | 21.94 / 21.80 / 21.08 | 21.10 / 20.83 / 19.00 | 1 | 21.22 / 21.23 / 20.87 | 19.82 / 20.19 / 19.14 |
+| 1,600 | 1,600 / 1,600 / 1,600 | 21.84 / 21.69 / 22.18 | 21.24 / 20.63 / 21.52 | 0 | 21.24 / 21.21 / 21.64 | 20.65 / 20.62 / 21.02 |
+| 1,700 | 1,712 / 1,704 / 1,700 | 21.24 / 21.02 / 20.55 | 20.64 / 19.63 / 19.90 | 2 | 20.83 / 20.24 / 19.48 | 20.49 / 19.94 / 19.21 |
+| 1,800 | 1,784 / 1,792 / 1,784 | 20.57 / 20.67 / 19.12 | 19.84 / 19.69 / 17.30 | 4 | 20.06 / 20.08 / 18.86 | 19.26 / 18.86 / 17.23 |
+| 1,900 | 1,892 / 1,604 / 1,888 | 20.42 / 21.17 / 21.13 | 18.34 / 20.28 / 20.65 | 2 | 18.51 / 20.99 / 20.85 | 16.13 / 20.92 / 20.42 |
+| 2,000 | 1,712 / 1,780 / 1,688 | 20.88 / 19.96 / 20.35 | 19.08 / 18.21 / 19.23 | 3 | 18.26 / 18.68 / 19.93 | 15.31 / 16.91 / 18.90 |
+
+No collision in any run. All planned vehicles depart through 1,800 veh/h on every fixture. At 1,900–2,000 veh/h the 600 m entry edge stops inserting the whole demand at some seeds, so the top of the sweep is limited by insertion, not by the road.
+
+*The test's own exit flows on the lossless weave.* The inflow is the four windows' exit flows as steps, 1,430.7 / 1,440.0 / 1,484.0 / 1,266.7 veh/h at 0 / 300 / 600 / 900 s.
+
+| seed | crossings at the lane's end, windows 0–3 [veh/h] | last 60 m, windows 0–3 [m/s] | exit's middle third, windows 0–3 [m/s] |
+|---|---|---|---|
+| 3 | 1,248 / 1,428 / 1,452 / 1,308 | 21.40 / 22.15 / 22.00 / 22.28 | 21.01 / 21.66 / 21.63 / 21.35 |
+| 4 | 1,224 / 1,452 / 1,476 / 1,272 | 21.63 / 22.21 / 22.06 / 22.65 | 21.01 / 21.45 / 21.49 / 22.09 |
+| 5 | 1,248 / 1,428 / 1,464 / 1,296 | 22.19 / 21.46 / 21.71 / 22.22 | 21.62 / 20.75 / 20.92 / 21.83 |
+
+Two 20-seed supplements (seeds 1–20) test the strict every-window reading beyond three seeds:
+- *The observed schedule.* The last 60 m reads above 20 m/s in 80 of 80 windows. The lowest window per column over the seeds is 20.12 / 20.24 / 20.48 / 21.69 m/s, and the means are 21.78 / 21.74 / 22.05 / 22.33. The lane's end carries 1,240 / 1,432 / 1,469 / 1,293 veh/h on average, the fill in window 0 included. The exit's own middle third reads at or below 20 m/s in 6 of 80 windows (lowest 19.32).
+- *The peak window's 1,484 veh/h held for all 20 minutes.* The last 60 m reads above 20 m/s in 79 of 80 windows (means 21.89 / 21.80 / 21.62 / 21.51). The exception is seed 2, window 0, at 19.26 m/s.
+
+**Reading.**
+1. *The closed form does not describe the fleet.*
+   - Steady following was selected in the trajectories: |a| < 0.05 m/s², |Δv| < 0.1 m/s, a gap under 80 m and v below 0.97 of the vehicle's effective desired speed, over x ∈ (650, 1,300) m (session script `wp68/gapcheck.py`). Each vehicle's gap was compared with its own parameters.
+   - The EIDM fleet's gap is s0 + vT. Median gap / (s0 + vT) is 1.030 / 0.996 / 0.997 / 1.058 in the 14–17 / 17–19 / 19–20.5 / 20.5–21.6 m/s bins (the ramp at 1,500 veh/h, seed 5, 606 samples), and 1.008 / 1.031 / 1.010 at 17–21.6 m/s (the section at 1,700, seed 3, 1,446 samples).
+   - Against the IDM's equilibrium gap (s0 + vT) / √(1 − (v/v0)⁴), the same samples read 0.864 / 0.770 / 0.609 / 0.453 and 0.834 / 0.784 / 0.698.
+   - s0 + vT is the equilibrium gap of the improved IDM (IIDM; Treiber & Kesting 2013, ch. 11). SUMO's EIDM is described as building on the IIDM (Salles, Kaufmann & Reuss 2020), but neither that description nor SUMO's source was checked in this package. What is established here is the measured behaviour.
+   - At the population means, with 5 m vehicles, the IIDM form carries 2,119 veh/h at 20 m/s on either limit, and 2,167 / 2,211 veh/h at the 22.22 / 24.59 m/s limit itself. The IDM form carries 1,323 veh/h at 20 m/s at 22.22 (WP-67's figure, reproduced here) and 1,650 at 24.59.
+   - The measured stationary speed is above the IDM form's free-branch speed at every offered flow from 1,100 to 1,800 veh/h and every seed: by 0.98–6.29 m/s at 22.22 m/s and by 0.29–3.70 m/s at 24.59 m/s.
+2. *The maximum flow sustained above 20 m/s.*
+   - Read by the stationary mean (minutes 5–20, every seed), it is about 1,700 veh/h at both limits and on the lossless weave: realized 1,700–1,704 at 20.80–21.32 m/s at 22.22, 1,696–1,708 at 20.84–21.98 m/s at 24.59, and 1,700–1,712 at the lane's end at 20.55–21.24 m/s. At 1,800 veh/h seed 5 falls below 20 on all three (19.80 / 19.42 / 19.12).
+   - The strict every-window reading is not monotone between 1,400 and 1,800 veh/h. A window falls below 20 m/s at 1,500 on all three fixtures (the same seed 5 and window 10–15, where the fleet plans coincide) but not at 1,600.
+   - The cause is not capacity. That window's platoons follow three drivers whose drawn desired speeds are 17.45, 17.56 and 16.71 m/s (ramp fixture, 1,500 veh/h, seed 5: 6 of its 500 drivers draw v0 below 20 m/s and 18 below 22.22).
+   - The one sub-20 window of the 1,484 veh/h supplement is the same effect: two drivers with v0 16.62 and 15.95 m/s lead 14 and 30 followers below 20 m/s through window 0.
+   - The calibration's v0 spread is σ = 5.50 m/s, which puts about 1 % of the ±3σ-truncated marginal below 20 m/s. With 760–845 m of one lane and no passing upstream of the measured cells, such a driver sets its platoon's speed at any flow, and the platoon is longer the higher the flow.
+   - This makes the stand-in conservative. On the four-lane section a vehicle can pass a slow driver before it joins the auxiliary lane.
+3. *Against the demanded exit flows.* The observed exit flows are 1,431 / 1,440 / 1,484 veh/h in the first three windows, below the fleet's measured ~1,700 veh/h at every limit.
+   - With the weave lossless (every exiter already in the lane), the auxiliary lane's last 60 m reads 21.40–22.65 m/s in every window at seeds 3 / 4 / 5, and above 20 m/s in 80 of 80 windows over 20 seeds under the observed schedule.
+   - The exit's own middle third dips below 20 m/s in some windows (6 of 80). Criterion (ii) reads the section's lanes, and the lane feeding the exit is above 20 m/s there.
+   - Lanes 1–3 carry the through movement: 2,893 / 3,337 / 3,653 / 3,781 veh/h in the four windows (the same constants), 964–1,260 veh/h per lane on average. At 24.59 m/s one lane with no passing holds every window above 20 m/s at every seed through 1,400 veh/h, and the section's lanes 1–3 also allow passing.
+
+**Conclusion.** Criterion (ii) is within the fleet's reach at the observed exit flows. WP-67's "cannot be met by the fleet in the first three windows" (item 6) rested on the IDM closed form, and the measurement supersedes it. The corridor fleet is EIDM with the IIDM's equilibrium gap. On one lane it carries about 1,700 veh/h above 20 m/s at the ramp's 22.22 m/s and at the section's 24.59 m/s. A lossless weave keeps the auxiliary lane's last 60 m above 20 m/s in every window under the test's own exit flows. So the exit end's sub-20 windows in the test (WP-61, seeds 3–5: lane 0 at 9.2–15.7 m/s, lane 1 at 8.2–18.3 m/s) are the weave's shortfall, not the exit's capacity. The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` and its reason stay as WP-61 wrote them, and the test is untouched.
+
+One caveat for a future pass of the test: the every-window reading is strict. On a lane with no passing, a driver with a drawn v0 of about 16–17.5 m/s can pull one 5-min window to 19.0–19.8 m/s at 1,484–1,500 veh/h (19.00 / 19.26 at the lane's end, 19.69 / 19.77 on the one-lane roads). That happened in 1 of 80 windows at a constant 1,484 veh/h over 20 seeds and in none of 80 under the observed schedule. A single lane-0 window just under 20 m/s, with the others near 21–22, is most likely this effect: check its platoon leader's drawn v0 before reading it as a capacity limit.
+
+**What this hands on.**
+- WP-67's hand-on (b) is settled in the fleet's favour. The corridor question is not the fleet's time gap on exit ramps. The lever stays where WP-67's (a) put it: the auxiliary lane's first stretch, and the rate at which exiters get into the lane (WP-61, WP-64).
+- For derivations that bound a lane's flow at a speed on this fleet, use the measured EIDM relation, whose gap is s0 + vT, or measure. At 22.22 m/s the IDM form puts 20 m/s at 1,323 veh/h, while the fleet holds 20.80–21.32 m/s at 1,700 veh/h.
+
+**Bookkeeping.**
+- This section is the only file change.
+- `tests/test_microsim/test_microsim_merge_managed_meter.py`, including the strict marker's reason, `microsim.runner`, the config, every scenario and fixture are untouched.
+- Session artifacts are not committed: the fixture generator and the three OSM fixtures (`wp68/fixtures.py`), the harness (`wp68/sweep.py`), the gap check (`wp68/gapcheck.py`), the table script, and the JSONL records of the 90 sweep runs, the 3 on the observed schedule, the 40 of the 20-seed supplements and five diagnostic reruns.
