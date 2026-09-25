@@ -1,0 +1,143 @@
+"""WP-59 read-only analysis: committed JSON artifacts only (no trajectories)."""
+import json, math
+import numpy as np
+
+OBS = "data/mndot/mndot_i94_wb_stpaul/observations.json"
+DEM = "artifacts/demand_mndot_i94_wb_stpaul.json"
+BAT = "artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_speed_aware_20f9fcb.json"
+
+obs = json.load(open(OBS))
+dem = json.load(open(DEM))
+bat = json.load(open(BAT))
+
+main = sorted([s for s in obs["stations"] if s["kind"] == "mainline"], key=lambda s: s["x_m"])
+ids = [s["id"] for s in main]
+lanes = {s["id"]: s["lanes"] for s in obs["stations"]}
+F = {k: np.array(v, float) for k, v in obs["flows_veh_h"].items()}
+V = {k: np.array(v, float) for k, v in obs["speeds_ms"].items()}
+
+def lbl(w):
+    t = 5.5 + w / 12
+    h = int(t); m = int(round((t - h) * 60))
+    return f"{h:02d}:{m:02d}"
+
+# scored hours: hourly_link_flows aligns to window 0 and keeps hours whose 12 windows lie in w6..w47
+HOURS = [(12, 24), (24, 36), (36, 48)]
+HL = [f"{lbl(a)}-{lbl(b)}" for a, b in HOURS]
+print("scored hours:", HL)
+
+def hr(series, a, b):
+    return float(np.nanmean(series[a:b]))
+
+print("\n== observed hourly flows (veh/h) at scored hours; lanes; per lane ==")
+for k in ids + ["rnd_91040", "rnd_87221"]:
+    f = F[k]
+    vals = [hr(f, a, b) for a, b in HOURS]
+    print(f"{k:10s} lanes={lanes[k]} " + " ".join(f"{v:7.0f}({v/lanes[k]:5.0f}/ln)" for v in vals)
+          + f" | max rolling-12 {max(np.nanmean(f[i:i+12]) for i in range(6, 37)):.0f} | max 5-min {np.nanmax(f[6:]):.0f} at {lbl(int(np.nanargmax(f[6:]))+6)}")
+
+# ---- demand-implied flows per station (instantaneous propagation, no travel time) ----
+inflow = np.array(dem["inflow_steps"], float)[:, 1] * 3600
+ramps = sorted(dem["ramps"], key=lambda r: r["x_m"])
+st_x = {s["id"]: s["x_m"] for s in main}
+flow = inflow.copy()
+implied = {}
+ri = 0
+events = []
+for r in ramps:
+    events.append((r["x_m"], r))
+for s in main:
+    events.append((s["x_m"], s["id"]))
+events.sort(key=lambda e: e[0])
+ramp_series = {}
+for x, e in events:
+    if isinstance(e, str):
+        implied[e] = flow.copy()
+    else:
+        if e["kind"] == "on":
+            q = np.array(e["inflow_steps"], float)[:, 1] * 3600
+            ramp_series[e["name"]] = q
+            flow = flow + q
+        else:
+            fr = np.array(e["exit_fraction_steps"], float)[:, 1]
+            ramp_series[e["name"]] = flow * fr
+            flow = flow * (1 - fr)
+print("\n== demand-implied mainline flow vs observed, scored hours (veh/h) ==")
+for k in ids:
+    print(f"{k:6s} " + " | ".join(f"{hr(implied[k],a,b):6.0f} vs {hr(F[k],a,b):6.0f} ({hr(implied[k],a,b)-hr(F[k],a,b):+5.0f})" for a, b in HOURS))
+print("\n== ramps near the weave, demand (veh/h) at scored hours ==")
+for n in ["on-ramp 40648744", "on-ramp 769818012", "off-ramp 18207598", "off-ramp 82150350"]:
+    print(f"{n:22s} " + " ".join(f"{hr(ramp_series[n],a,b):6.0f}" for a, b in HOURS) + f"  mean05:30-09:30 {ramp_series[n].mean():.0f}")
+print("rnd_91040 obs (T.H.52 NB on):", [round(hr(F['rnd_91040'],a,b)) for a,b in HOURS])
+print("rnd_87221 obs (Jackson off):", [round(hr(F['rnd_87221'],a,b)) for a,b in HOURS])
+print("entry inflow demand      :", [round(hr(inflow,a,b)) for a,b in HOURS], " S1063 obs:", [round(hr(F['S1063'],a,b)) for a,b in HOURS])
+
+# observed weave entry = S790 + T.H.52 NB on; weave exit side = S97 + Jackson + T.H.52 exit(conservation)
+print("\n== observed weave throughput (S790 + rnd_91040) veh/h ==")
+for (a, b), L in zip(HOURS, HL):
+    w_in = hr(F["S790"], a, b) + hr(F["rnd_91040"], a, b)
+    thx = hr(ramp_series["off-ramp 18207598"], a, b)
+    print(f"{L}: S790 {hr(F['S790'],a,b):.0f} + TH52on {hr(F['rnd_91040'],a,b):.0f} = {w_in:.0f}; TH52 exit (conservation) {thx:.0f}; S97 {hr(F['S97'],a,b):.0f} + Jackson {hr(F['rnd_87221'],a,b):.0f}")
+
+# ---- battery: pooled GEH -> sim flows ----
+g = np.array(bat["geh"]["pooled_values"], float)
+seeds = [p["seed"] for p in bat["per_seed"]]
+G = g.reshape(20, 14, 3)
+ok = all(abs(np.mean(G[i].ravel() < 5) - bat["per_seed"][i]["geh_pass_fraction"]) < 1e-9 for i in range(20))
+print("\nper-seed pass fractions reproduce from reshape(20,14,3):", ok)
+obs_h = np.array([[hr(F[k], a, b) for a, b in HOURS] for k in ids])  # 14x3
+
+def inv(Gv, c):
+    s = math.sqrt(Gv ** 4 + 16 * c * Gv * Gv)
+    return c + (Gv * Gv - s) / 4, c + (Gv * Gv + s) / 4
+
+lo = np.zeros((20, 14, 3)); hi = np.zeros((20, 14, 3))
+for i in range(20):
+    for j in range(14):
+        for h in range(3):
+            lo[i, j, h], hi[i, j, h] = inv(G[i, j, h], obs_h[j, h])
+low_seed = 677105600768189526
+good = [i for i, s in enumerate(seeds) if s != low_seed]
+print("\n== simulated hourly flow recovered from GEH (m<c root), mean of 20 seeds [19 w/o 0.743 seed] (m>c root) ; min-max over seeds of low root; GEH<5 count ==")
+for j, k in enumerate(ids):
+    row = []
+    for h in range(3):
+        row.append(f"{lo[:,j,h].mean():6.0f} [{lo[good,j,h].mean():6.0f}] ({hi[:,j,h].mean():6.0f}) {lo[:,j,h].min():5.0f}-{lo[:,j,h].max():5.0f} n<5={int((G[:,j,h]<5).sum())}")
+    print(f"{k:6s} obs {obs_h[j,0]:5.0f}/{obs_h[j,1]:5.0f}/{obs_h[j,2]:5.0f} | " + " | ".join(row))
+tp = [p["metrics"]["throughput_veh_h"] for p in bat["per_seed"]]
+print("\nthroughput_veh_h (per-seed metric, 06:00-09:30) mean", np.mean(tp), "min", min(tp), "max", max(tp))
+j = ids.index("S1069")
+print("S1069 low-root mean over 3 hours", lo[:, j, :].mean(), " high-root", hi[:, j, :].mean())
+for j in range(14):
+    print(ids[j], "3-h mean low root", round(lo[:, j, :].mean()), "per-seed corr with throughput:", round(float(np.corrcoef(lo[:, j, :].mean(axis=1), tp)[0, 1]), 3))
+
+# ---- per-lane comparisons at S790 / S97 ----
+print("\n== per lane ==")
+for k in ["S790", "S97"]:
+    j = ids.index(k)
+    for h in range(3):
+        print(f"{k} {HL[h]} obs {obs_h[j,h]/lanes[k]:.0f}/ln  sim(low) {lo[:,j,h].mean()/lanes[k]:.0f}/ln  sim(high) {hi[:,j,h].mean()/lanes[k]:.0f}/ln")
+
+# ---- insertion near the weave (4-h totals incl. warm-up) ----
+print("\n== insertion per ramp, mean over 20 seeds ==")
+names = [r["name"] for r in bat["per_seed"][0]["insertion"]["ramps"]]
+for n in names:
+    pl = [ [r for r in p["insertion"]["ramps"] if r["name"] == n][0] for p in bat["per_seed"]]
+    P = np.mean([r["planned"] for r in pl]); D = np.mean([r["departed"] for r in pl])
+    print(f"{n:26s} planned {P:7.0f} departed {D:7.0f} frac {D/P if P else float('nan'):.3f} (min {min((r['fraction'] or 1) for r in pl):.3f})")
+pl = np.mean([p["insertion"]["planned"] for p in bat["per_seed"]]); dp = np.mean([p["insertion"]["departed"] for p in bat["per_seed"]])
+ar = np.mean([p["insertion"]["arrived"] for p in bat["per_seed"]])
+rp = np.mean([sum(r["planned"] for r in p["insertion"]["ramps"]) for p in bat["per_seed"]])
+rd = np.mean([sum(r["departed"] for r in p["insertion"]["ramps"]) for p in bat["per_seed"]])
+print(f"total planned {pl:.0f} departed {dp:.0f} arrived {ar:.0f}; ramps planned {rp:.0f} departed {rd:.0f}; mainline planned {pl-rp:.0f} departed {dp-rd:.0f} ({(dp-rd)/(pl-rp):.3f})")
+print("demand entry total 4h (veh):", round(float((np.array(dem['inflow_steps'],float)[:,1]*300).sum())))
+
+# ---- observed speeds: queue extent ----
+print("\n== observed speed (m/s), 06:00-09:30, 15-min steps ==")
+print("time  " + " ".join(f"{k:>6s}" for k in ids))
+for w in range(6, 48, 3):
+    print(lbl(w) + " " + " ".join(f"{V[k][w]:6.1f}" for k in ids))
+print("\nper station: min 5-min speed (time); windows < 20 m/s; < 13.4 m/s (30 mph) in w6..w47")
+for k in ids:
+    v = V[k][6:48]
+    print(f"{k:6s} min {np.nanmin(v):5.1f} at {lbl(int(np.nanargmin(v))+6)}  n<20={int((v<20).sum()):2d}  n<13.4={int((v<13.4).sum()):2d}  first<20 {next((lbl(i+6) for i,x in enumerate(v) if x<20),'never')}")

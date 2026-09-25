@@ -1364,3 +1364,71 @@ flight) is what could bring it back. The healthy seeds' last hour says where
 the four-hour corridor's remaining gap is: the queue grows from the T.H.52
 weave back to the boundary within the peak, so the upstream half is jammed
 where the observation says free flow. Not reproduced.
+
+**Where the corridor's queue comes from (WP-59, 2026-09-24, block 3, analysis only).**
+No run and no trajectory; inputs `observations.json` (obs), `artifacts/demand_mndot_i94_wb_stpaul.json` (identical to the weave scenario's `inflow`), VM K's
+`artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_speed_aware_20f9fcb.json` (battery), `artifacts/idm_capacity_probe_mnfleet_4l.calibration.json`,
+`artifacts/idm_i24_capacity_equilibrium.json`, `artifacts/fd_mndot_i94_wb_stpaul.json`. The battery writes no simulated flow: its `geh.pooled_values`
+(20 seeds × 14 stations × 3 hours, station-major; every seed's pass fraction reproduces) are inverted per seed for the simulated count, root below the
+observed one — the root that rises with each seed's directly counted `throughput_veh_h` (r 0.63–0.999 at all 14 stations; the other root falls) and the
+only one under the fleet's capacity at S97 06:30–07:30 (the other is 2,110 veh/h/lane). The scored hours are **06:30–07:30, 07:30–08:30, 08:30–09:30**
+(`ObservedCorridor.hourly_link_flows` aligns hours to 05:30 and keeps whole hours after the warm-up); §11a's `vmh_flows.py.txt` paired them with the
+06:00–09:00 hours, so its "flow sim / obs" columns are half an hour off and are superseded here. Geometry (docs/WEAVE_MODEL_PLAN.md): S790 (10.13 km) sits in
+the 40648744 acceleration lane, edge 40648738 has 3 lanes over 229 m from that lane's end (10.198 km) to the T.H.52 gore, the weave edge 51388891 has 3 +
+the auxiliary over 305 m, S97 (11.07 km) is past the T.H.52 and Jackson St exits.
+
+*(1)–(3) The weave's flows, veh/h (per lane).* "Discharge" is 06:30–07:15, while the observed head sits at the weave (S790 13.2–14.9 m/s, S97
+20.3–25.3 m/s; a nine-day mean, day-to-day sd 157–918 veh/h at S790, obs `spread`). Simulated: mean of 20 seeds (range over seeds and hours).
+
+| cross-section | lanes | obs 06:30–07:30 / 07:30–08:30 / 08:30–09:30 | obs discharge | simulated, same hours | GEH < 5 |
+|---|---|---|---|---|---|
+| S790 | 3 | 4,911 (1,637) / 4,065 / 4,119 | 4,989 (1,663) | 3,259 (1,086) / 3,231 / 3,182 (2,664–3,394) | 0 of 60 |
+| S790 + T.H.52 NB entrance (rnd_91040) | 4 | 6,208 (1,552) / 5,420 / 5,319 | 6,265 (1,566) | not in any artifact | — |
+| S97 | 3 | 4,586 (1,529) / 4,120 / 3,886 | 4,621 (1,540) | 3,121 (1,040) / 3,263 / 3,197 (2,957–3,359) | 0 of 60 |
+
+| capacity per lane (artifact) | veh/h/lane |
+|---|---|
+| corridor EIDM block, 4-lane straight road, T 1.285 / 1.360 s; the scenario's T 1.322 s (`idm_i24_capacity.json`) lies between (probe sidecar) | 1,670 / 1,676 |
+| closed-form equilibrium of the scenario's population, heterogeneous / homogeneous (`idm_i24_capacity_equilibrium.json`) | 1,886 / 1,986 |
+| fitted FD q_max 0.536 veh/s, 95 % CI (`fd_mndot_i94_wb_stpaul.json`) | 1,930 (1,907–1,946) |
+
+*(4) Demand against the observed corridor* (the artifact's entry, `inflow_steps` and `exit_fraction_steps` propagated in corridor order, no travel time):
+
+| cross-section | observed, three hours | demand-implied | difference |
+|---|---|---|---|
+| S1063, the boundary (never below 31.4 m/s 06:00–09:30) | 3,732 / 3,596 / 2,853 | identical | 0 |
+| S1064 … S1069 | | | within 24 veh/h |
+| S1070, S1948 (carried residuals −317, −262 until the Mounds exit) | 5,041 / 3,557 / 3,859 at S1070 | 5,485 / 4,056 / 4,069 | +119 to +523 |
+| S791 (the +366 residual moved onto 40648744) | 4,426 / 3,433 / 3,526 | 3,881 / 2,611 / 3,090 | −436 to −822 |
+| S790 / S97 | 4,911 / 4,065 / 4,119 and 4,586 / 4,120 / 3,886 | 4,757 / 3,918 / 4,080 and 4,473 / 4,008 / 3,857 | −39 to −153 / −29 to −113 |
+
+Delivered (battery `per_seed[].insertion`, four hours with warm-up): mainline 9,501 of 12,182 (0.780), 40648744 0.752, T.H.52 769818012 0.837,
+18207436 0.701, every other entrance ≥ 0.98. 40648744 carries 889 veh/h over 05:30–09:30 (876 / 1,307 / 990 in the scored hours) against its passage
+loop's 552 over the same span (§11 review; a cache figure, not in obs): the level at S790 is right, but about 340 veh/h of it arrives as merging traffic
+450 m before the weave instead of through S791.
+
+*(5) The observed queue.* First 5-min window under 20 m/s: S790 and S791 06:30, S792 06:35, S1069/S1070/S1948 06:40, S1947 06:45, S1068 07:15, S1067
+07:25 (lowest 13.6 m/s at 07:35); S1066 never below 23.6, S1065–S1063 never below 29.5. S97 holds ≥ 20.3 m/s to 07:10, then 11.8–19.6 m/s to 09:20 —
+a restriction past S97 joins, so after 07:15 the observed counts bound the weave's capacity from below. The observed queue starts at the weave at 06:30
+and its tail stops between S1067 (4.97 km) and S1066 (4.06 km), 5.4–6.3 km behind the weave's start; the upstream 4 km stay free. At 05:40–05:50, when
+the simulated head forms (minutes 11–18, §11b and VM N), S790 carried 3,752–3,776 veh/h at 25.8–25.9 m/s, above the simulated discharge.
+
+**Answer: capacity-short at the weave, not demand-high.** In 06:30–07:30 the simulated corridor carries 3,259 veh/h at S790 against 4,911 observed
+(−1,652, 34 %) and 3,121 at S97 against 4,586 (−1,465, 32 %); over the three hours −1,141 (26 %) and −1,003 (24 %). The demand implies 1–4 % less than
+observed at S790 and S97 and equals the free-flowing count at the boundary.
+
+Reading. The weave must discharge about 4,990 veh/h through the 3-lane edge 40648738 (1,663 per lane) with about 1,280 T.H.52 entrants on top — 6,270 veh/h
+into the 4-lane section — against 3,180–3,260 now. Two terms, in order: (i) the lane-change dynamics of edge 40648738 and the weave (LC2013's strategic
+and cooperative changes plus the runner's weave rules) cost 35 % of the fleet's own straight-road capacity: 3,259 is 1.95 lanes' worth of 1,670, and the
+hypothesis that lane 0 there carries almost nothing (the head forms in lane 0 first, §11b, VM N) is the next measurement — per-lane 1-min crossing counts
+at 10.15, 10.30, 10.45 and 10.70 km from a good seed's first hour; (ii) the EIDM fleet's straight-road capacity (1,670–1,676) equals the observed
+discharge with no headroom where the closed form gives 1,886 and the FD 1,930, so even a lossless weave would run at capacity — §10's IDM-or-EIDM
+decision bounds the result too. Not determinable from committed artifacts: the simulated flow into the weave and at its exit (no station inside it; the
+battery keeps ramp deliveries as four-hour totals), per-lane flows, and the weave's real capacity above 6,265 veh/h (S97 itself congests
+after 07:15). The battery should write the per-station per-hour simulated and observed counts and per-ramp per-hour deliveries; this note had to invert GEH.
+
+Method (`artifacts/mndot_rounds/weave_2026-09-24/wp59_bottleneck_discharge.py.txt`, committed JSON only, run from the repo root): the battery's
+`geh.pooled_values` are ordered seed, then station by position, then hour (`scripts/corridor_battery.py` pools each seed's list;
+`validation.observed.ObservedCorridor.hourly_link_flows` emits station then time, stations sorted by `x_m`), so they reshape to 20 × 14 × 3;
+each GEH = √(2(m − c)²/(m + c)) is solved for the simulated count m against the observed c, and the root below c is kept — the only one that rises
+with each seed's counted throughput (r 0.63–0.999 at all 14 stations) and stays under the fleet's capacity at S97 in the first hour.
