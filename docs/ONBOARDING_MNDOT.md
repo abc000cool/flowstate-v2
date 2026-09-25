@@ -1291,3 +1291,15 @@ predicted. The one seed at 0.743 is new: on VM J every seed stayed above
 0.844. Not reproduced. The next derivation in flight is the abreast state
 (docs/WEAVE_MODEL_PLAN.md, WP-53): the queue vehicle beside a halted, due
 exiter, which a trace of the fixture give-ups names as 34 of 44.
+
+**VM L (2026-09-24, block 3): the 0.743 seed re-run for its standstill map
+(runner 6e7757e, the same physics as 20f9fcb).** The weave scenario's first
+five replicates (`artifacts/mndot_rounds/weave_2026-09-24/battery_seed5_speed_aware_6e7757e.json`):
+departed 0.862 / 0.858 / 0.856 / 0.870 / **0.743** — seed 677105600768189526
+reproduces VM K's share to the third decimal (the round is deterministic per
+seed), speed RMSPE 0.790 against 0.698–0.714 on the other four. The
+standstill maps were not produced: the battery prunes every replicate's
+trajectory but the first seed's, and the diagnostic stage found no file
+(`--keep-trajectories` added to the stage). The seed's read stands as in VM
+K's record — upstream ramps starved, a queue at the corridor's upstream end,
+a lane at 0.0 m/s not shown — until the stage is re-run.

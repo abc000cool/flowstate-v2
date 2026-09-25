@@ -371,10 +371,12 @@ done
 #     docs/ONBOARDING_MNDOT.md §11): seed index 4 of the weave scenario's spawn (677105600768189526,
 #     0.865 under VM J) — the first five replicates, so that seed runs with its trajectory kept, then
 #     the standstill maps (100 m x 5 min; 50 m x 1 min x lane over the whole corridor and run).
+#     --keep-trajectories: the battery prunes every trajectory but the first seed's (VM L, 2026-09-24,
+#     ran the five replicates — the seed read 0.743 again — and the maps found no file).
 stage mndot_weave_seed5 $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave.yaml \
   --observations data/mndot/$MNDOT/observations.json --replicates 5 --procs "$PROCS" \
   --out runs/${MNDOT}_weave_seed5/baseline --artifact artifacts/validation_${MNDOT}_weave_seed5.json \
-  --report-dir docs/reports/${MNDOT}_weave_seed5 --criteria-profile fhwa_tat3_2004 || say "mndot_weave_seed5 failed; continuing"
+  --report-dir docs/reports/${MNDOT}_weave_seed5 --criteria-profile fhwa_tat3_2004 --keep-trajectories || say "mndot_weave_seed5 failed; continuing"
 stage mndot_weave_seed5_diag bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/baseline/*/677105600768189526 | head -1) && \
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lock.py.txt \$D > logs/diag_seed5_100m_5min.txt && \
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_seed.py.txt \$D > logs/diag_seed5_50m_1min_lanes.txt && \
