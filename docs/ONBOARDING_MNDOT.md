@@ -1462,4 +1462,22 @@ Reading, from the 5-min windows (seed 134183728835869882; the other three agree 
    carries 3,752 at 25.8 m/s.
 
 So the corridor's gap is the T.H.52 weaving section's own capacity — the object of the T.H.52-at-capacity fixture and block 3's
-item 1 — and within it the crossing lane: the fixture target is the right one. Not reproduced.
+item 1 — and within it the crossing lane: the fixture target is the right one (WP-60 then found the old T.H.52 fixtures congest at the section's entry end and run at a 39.4 m/s limit where the corridor's section is 24.6 m/s; WP-61 built the corridor's section as a test, docs/WEAVE_MODEL_PLAN.md). Not reproduced.
+
+**VM P (2026-09-24, block 3): how the corridor's T.H.52 exiters arrive at the gore** (WP-61's check; the same first-hour run as VM O,
+re-run — its per-lane counts reproduce VM O's to the vehicle; `artifacts/mndot_rounds/weave_2026-09-24/first_hour_exiter_arrival_20f9fcb_physics.txt`,
+script `diag_exiters.py.txt`). Trajectories record corridor edges only, so an exiter to 18207598 is a vehicle whose track ends within 40 m
+of the section's end (10,731.6 m) and began upstream of the section: 782–806 per seed in the hour (the last-x histogram's 10.70 km bin holds
+1,050–1,073, the rest T.H.52 entrants who exit); 939–987 T.H.52 entrants are first seen inside the section. Lanes are SUMO indices, 0 the
+rightmost; in the section lane 0 is the auxiliary lane and lane 1 continues the approach's lane 0. The four seeds, both periods of the hour:
+
+| position | where the exiters are |
+|---|---|
+| 10.30 km, the 3-lane approach 130 m before the section | rightmost lane 55–68 %, middle 28–35 %, left 1–15 % |
+| 10.432 km, 5 m into the section | auxiliary lane 9–23 %, lane 1 45–53 %, lane 2 26–39 %, lane 3 1–13 % |
+| 10.717 km, 15 m before the exit | auxiliary lane 94–99 % |
+
+They reach the auxiliary lane a median 231–239 m before the section's end (the section is 305 m); 21–25 % only within its last 67 m and
+8–9 % within its last 30 m. So a third to two fifths of the exiters are one or two lanes left of the rightmost approach lane 130 m before
+the section, and every one of them must cross lane 1 inside it — the lane VM O found carrying the least at the exit end. That is what a
+pre-positioning rule would act on (WP-62, in flight).

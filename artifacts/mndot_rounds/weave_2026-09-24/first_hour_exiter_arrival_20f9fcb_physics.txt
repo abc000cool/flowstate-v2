@@ -1,0 +1,92 @@
+run runs/mndot_i94_wb_stpaul_weave_head60_lanes/baseline/ec9667bc60b4/134183728835869882/: 6243 vehicles; last-x histogram, 50 m bins from 9.5 km (count>20):
+  9.50:383 10.70:1065 10.90:208 10.95:86 11.45:2591
+exiters (last x within 40 m of 10732 m, started upstream of the section): 806; T.H.52 entrants (first seen inside the section): 966
+
+minutes 0-15: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 174  lane 0: 0.54  lane 1: 0.26  lane 2: 0.20
+  10.150 km: n= 196  lane 1: 0.65  lane 2: 0.26  lane 3: 0.09
+  10.300 km: n= 191  lane 0: 0.68  lane 1: 0.30  lane 2: 0.03
+  10.432 km: n= 182  lane 0: 0.23  lane 1: 0.47  lane 2: 0.29  lane 3: 0.02
+  10.547 km: n= 178  lane 0: 0.63  lane 1: 0.20  lane 2: 0.16  lane 3: 0.01
+  10.665 km: n= 177  lane 0: 0.74  lane 1: 0.20  lane 2: 0.05  lane 3: 0.01
+  10.717 km: n= 177  lane 0: 0.96  lane 1: 0.04
+
+minutes 15-60: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 543  lane 0: 0.53  lane 1: 0.33  lane 2: 0.14
+  10.150 km: n= 610  lane 0: 0.07  lane 1: 0.46  lane 2: 0.32  lane 3: 0.15
+  10.300 km: n= 615  lane 0: 0.56  lane 1: 0.28  lane 2: 0.15
+  10.432 km: n= 624  lane 0: 0.12  lane 1: 0.49  lane 2: 0.30  lane 3: 0.09
+  10.547 km: n= 628  lane 0: 0.66  lane 1: 0.24  lane 2: 0.08  lane 3: 0.03
+  10.665 km: n= 629  lane 0: 0.80  lane 1: 0.16  lane 2: 0.03  lane 3: 0.01
+  10.717 km: n= 629  lane 0: 0.99  lane 1: 0.01
+
+exiters reaching section lane 0: 806 of 806; distance before the section's end at first sample in lane 0: median 239 m; share within the last 67 m: 0.22; within the last 30 m: 0.08
+run runs/mndot_i94_wb_stpaul_weave_head60_lanes/baseline/ec9667bc60b4/2378473973028931053/: 6235 vehicles; last-x histogram, 50 m bins from 9.5 km (count>20):
+  9.50:388 10.70:1073 10.90:193 10.95:73 11.45:2636
+exiters (last x within 40 m of 10732 m, started upstream of the section): 804; T.H.52 entrants (first seen inside the section): 957
+
+minutes 0-15: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 169  lane 0: 0.50  lane 1: 0.30  lane 2: 0.20
+  10.150 km: n= 196  lane 0: 0.01  lane 1: 0.62  lane 2: 0.24  lane 3: 0.13
+  10.300 km: n= 188  lane 0: 0.65  lane 1: 0.35  lane 2: 0.01
+  10.432 km: n= 181  lane 0: 0.21  lane 1: 0.48  lane 2: 0.30  lane 3: 0.01
+  10.547 km: n= 174  lane 0: 0.61  lane 1: 0.24  lane 2: 0.14
+  10.665 km: n= 172  lane 0: 0.80  lane 1: 0.17  lane 2: 0.02
+  10.717 km: n= 171  lane 0: 0.99  lane 1: 0.01
+
+minutes 15-60: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 534  lane 0: 0.56  lane 1: 0.33  lane 2: 0.10
+  10.150 km: n= 608  lane 0: 0.08  lane 1: 0.48  lane 2: 0.34  lane 3: 0.11
+  10.300 km: n= 616  lane 0: 0.56  lane 1: 0.33  lane 2: 0.11
+  10.432 km: n= 623  lane 0: 0.12  lane 1: 0.47  lane 2: 0.34  lane 3: 0.07
+  10.547 km: n= 630  lane 0: 0.62  lane 1: 0.24  lane 2: 0.11  lane 3: 0.03
+  10.665 km: n= 632  lane 0: 0.77  lane 1: 0.19  lane 2: 0.04  lane 3: 0.00
+  10.717 km: n= 633  lane 0: 0.98  lane 1: 0.02  lane 2: 0.00
+
+exiters reaching section lane 0: 804 of 804; distance before the section's end at first sample in lane 0: median 236 m; share within the last 67 m: 0.24; within the last 30 m: 0.08
+run runs/mndot_i94_wb_stpaul_weave_head60_lanes/baseline/ec9667bc60b4/3747978530954135749/: 6265 vehicles; last-x histogram, 50 m bins from 9.5 km (count>20):
+  9.50:363 10.70:1065 10.90:202 10.95:70 11.45:2629
+exiters (last x within 40 m of 10732 m, started upstream of the section): 782; T.H.52 entrants (first seen inside the section): 987
+
+minutes 0-15: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 155  lane 0: 0.54  lane 1: 0.29  lane 2: 0.17
+  10.150 km: n= 186  lane 0: 0.02  lane 1: 0.63  lane 2: 0.23  lane 3: 0.13
+  10.300 km: n= 175  lane 0: 0.66  lane 1: 0.29  lane 2: 0.05
+  10.432 km: n= 166  lane 0: 0.20  lane 1: 0.52  lane 2: 0.26  lane 3: 0.02
+  10.547 km: n= 161  lane 0: 0.55  lane 1: 0.34  lane 2: 0.11  lane 3: 0.01
+  10.665 km: n= 157  lane 0: 0.73  lane 1: 0.21  lane 2: 0.06  lane 3: 0.01
+  10.717 km: n= 156  lane 0: 0.95  lane 1: 0.04  lane 2: 0.01
+
+minutes 15-60: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 535  lane 0: 0.63  lane 1: 0.27  lane 2: 0.10
+  10.150 km: n= 596  lane 0: 0.06  lane 1: 0.54  lane 2: 0.29  lane 3: 0.11
+  10.300 km: n= 607  lane 0: 0.60  lane 1: 0.29  lane 2: 0.10
+  10.432 km: n= 616  lane 0: 0.09  lane 1: 0.53  lane 2: 0.33  lane 3: 0.05
+  10.547 km: n= 621  lane 0: 0.65  lane 1: 0.24  lane 2: 0.09  lane 3: 0.02
+  10.665 km: n= 625  lane 0: 0.78  lane 1: 0.17  lane 2: 0.04  lane 3: 0.01
+  10.717 km: n= 626  lane 0: 0.96  lane 1: 0.03  lane 2: 0.00
+
+exiters reaching section lane 0: 782 of 782; distance before the section's end at first sample in lane 0: median 235 m; share within the last 67 m: 0.25; within the last 30 m: 0.09
+run runs/mndot_i94_wb_stpaul_weave_head60_lanes/baseline/ec9667bc60b4/6914975401685141156/: 6217 vehicles; last-x histogram, 50 m bins from 9.5 km (count>20):
+  9.50:384 10.70:1050 10.90:217 10.95:81 11.45:2578
+exiters (last x within 40 m of 10732 m, started upstream of the section): 785; T.H.52 entrants (first seen inside the section): 939
+
+minutes 0-15: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 178  lane 0: 0.57  lane 1: 0.30  lane 2: 0.13
+  10.150 km: n= 204  lane 0: 0.01  lane 1: 0.64  lane 2: 0.25  lane 3: 0.09
+  10.300 km: n= 194  lane 0: 0.64  lane 1: 0.35  lane 2: 0.02
+  10.432 km: n= 185  lane 0: 0.15  lane 1: 0.45  lane 2: 0.39  lane 3: 0.01
+  10.547 km: n= 179  lane 0: 0.63  lane 1: 0.25  lane 2: 0.12
+  10.665 km: n= 177  lane 0: 0.79  lane 1: 0.17  lane 2: 0.05
+  10.717 km: n= 175  lane 0: 0.94  lane 1: 0.03  lane 2: 0.02
+
+minutes 15-60: lane of the exiters as they cross each position (share of crossings)
+  9.900 km: n= 512  lane 0: 0.56  lane 1: 0.34  lane 2: 0.10
+  10.150 km: n= 581  lane 0: 0.07  lane 1: 0.49  lane 2: 0.32  lane 3: 0.12
+  10.300 km: n= 591  lane 0: 0.55  lane 1: 0.34  lane 2: 0.12
+  10.432 km: n= 600  lane 0: 0.12  lane 1: 0.48  lane 2: 0.34  lane 3: 0.07
+  10.547 km: n= 606  lane 0: 0.64  lane 1: 0.21  lane 2: 0.14  lane 3: 0.02
+  10.665 km: n= 608  lane 0: 0.80  lane 1: 0.13  lane 2: 0.07  lane 3: 0.00
+  10.717 km: n= 610  lane 0: 0.97  lane 1: 0.03  lane 2: 0.00
+
+exiters reaching section lane 0: 785 of 785; distance before the section's end at first sample in lane 0: median 231 m; share within the last 67 m: 0.21; within the last 30 m: 0.08
