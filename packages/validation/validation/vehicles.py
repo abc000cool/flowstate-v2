@@ -7,8 +7,10 @@ totals, so this table is where a replicate says which vehicle was going where:
 its planned route, origin (the mainline or an on-ramp) and destination (the
 corridor's end or an off-ramp), when it departed, its first and last
 trajectory row (its corridor entry and where it was last seen), whether it
-arrived, and whether a weaving section gave its exit up and rerouted it
-through — with the planned destination kept beside the one it drove to.
+arrived, and whether it was given up — a weaving section gave its exit up and
+rerouted it through, or the lane-end give-up (WP-71) rerouted it to its lane's
+own continuation — with the planned destination kept beside the one it drove
+to.
 
 Columns (:data:`VEHICLE_COLUMNS`):
 
@@ -34,11 +36,17 @@ Columns (:data:`VEHICLE_COLUMNS`):
   exit or at the corridor's end.
 * ``arrived`` (bool): the vehicle reached the end of its route (final route)
   and left the network before the run ended.
-* ``gave_up`` (bool), ``gave_up_s`` (float, s, null unless given up): a
-  weaving section counted the exiter as given up (``weave_sections[i]
-  .n_missed_exit``) and rerouted it to the corridor's end at that step.
-* ``destination_final`` (str): the destination it drove to —
-  ``destination`` unless it gave up, then :data:`DESTINATION_CORRIDOR_END`.
+* ``gave_up`` (bool), ``gave_up_s`` (float, s, null unless given up): the
+  vehicle was rerouted away from its planned destination at that step (the
+  first, if twice). Either a weaving section counted the exiter as given up
+  (``weave_sections[i].n_missed_exit``) and rerouted it to the corridor's
+  end, or the lane-end give-up (``OSMNetwork.lane_end_giveup_m``, WP-71;
+  ``meta.json["lane_end_giveups"]``) found it halted at the end of a lane its
+  route did not continue on and rerouted it to that lane's own continuation.
+* ``destination_final`` (str): the destination it drove to — ``destination``
+  unless it gave up. For a weave give-up, and for an exiter the lane-end rule
+  sent on from a through lane, :data:`DESTINATION_CORRIDOR_END`. For a
+  vehicle the lane-end rule sent off an exit-only lane, the off-ramp's label.
 
 The four integer columns come back as pandas' nullable ``Int32`` so a lane
 stays an integer when some rows have none.
@@ -59,7 +67,7 @@ VEHICLES_FILE: Final[str] = "vehicles.parquet"
 ORIGIN_MAINLINE: Final[str] = "mainline"
 
 #: ``destination`` of a vehicle routed to the corridor's last edge; also the
-#: ``destination_final`` of a weave give-up.
+#: ``destination_final`` of a weave give-up and of a lane-end give-up of an exit.
 DESTINATION_CORRIDOR_END: Final[str] = "corridor_end"
 
 #: Columns in file order (the writer's ``microsim.runner._VEHICLES_SCHEMA``).

@@ -4250,3 +4250,255 @@ Analysis only: `microsim.runner`, `flowstate_core.config`, every scenario, fixtu
 - the per-step logs of the rule, O and the zone diagnostic (`wp72/<label>_<seed>/`), the generated tables (`wp72/out/`), and every run's JSONL record.
 
 Every number above is from those runs or from the committed test constants.
+
+## 2026-09-25 (block 3, WP-71, trapped at a lane end): VM T's crossing-pair lock does not form at fixture scale under three demand windows (43 seeded runs, no minute at 0.0 m/s). The lane-end give-up is written for every diverge the weave sections do not cover, for both halves of the pair. It is behind `OSMNetwork.lane_end_giveup_m`, off by default and byte-identical there. It frees the hand-built pair in one step, each vehicle in its own lane. On the fixtures it takes the exit for 75 vehicles and gives one exit up in 40 runs, with no lock and no collision, and arrivals move by an amount inside the seed noise
+
+**Why.** VM T read every vehicle's route at the corridor's late lock at 8.5 km (docs/ONBOARDING_MNDOT.md §11, commit f37d6ca; `artifacts/mndot_rounds/weave_2026-09-24/exit_prepare_collapsed_seed_lock_vehicles_with_routes.txt`).
+- The frontmost vehicle, v17090, is an exiter bound for off-ramp 18207912. It stands at 8,524.5 m in lane 2, a through lane, at the end of edge 45608485 (8,524.6 m).
+- 8 exiters bound for 18207912 stand in the through lanes 2 / 3 / 4 (1 / 6 / 1).
+- 10 T.H.61 entrants bound elsewhere stand in the exit-only lanes 0–1. The lane-1 vehicle beside v17090, v23081, stands at 8,519.3 m: 5.3 m from the end and 0.2 m behind v17090's rear.
+- Each group needs the other's lane and nothing frees either.
+
+That is the crossing-pair lock, at the T.H.61 → 18207912 two-lane weave the weave model does not cover (WP-66). On the two weave sections the exit-side give-up in `_weave_step` removes the exiter half of that state. WP-66 declined to generalise it because its fixture showed no failing case. VM T is that case.
+
+This package asks three questions:
+1. Does the lock reproduce at fixture scale once the fixture carries what VM T shows was missing?
+2. What is the general rule, at every diverge?
+3. What does the rule do off and on, and is the default untouched?
+
+**How it was measured.** Session scripts, not committed. They are the demand propagation (`wp71_demand.py`), the fixture driver and its analysis (`wp71_fixture.py`), the probes (`wp71_front_dist.py`, `wp71_probe.py`, `wp71_nearmiss.py`, `wp71_verify.py`), the byte-identity probe (`wp71_byte_identity.py`), the grid harness (`wp71_grid_harness.py` on WP-70's `wp70_grid_harness.py`, driven by `grid71.sh`), the corridor diverge listing (`wp71_corridor_diverges.py`) and the batch scripts. Each run is WP-66's T.H.61 fixture (`tests/fixtures/weave_th61_lane_end.osm`) on the corridor's fleet block, 30 simulated minutes at step 0.5 s, macOS, one run at a time (3–15 s each). The restriction is the left-lane drop (`weave_th61_lane_end_left_drop.con.xml`) and the merge is `lane_change`, unless a row says otherwise.
+
+Definitions:
+- *0.0 minute*: every lane over the 5-lane edge's last 100 m averages below `HALTING_SPEED_MS` in a whole minute (WP-66's reading).
+- *Lock*: at least five consecutive 0.0 minutes, with a vehicle halted at a lane end, in a lane its route (at that time) does not continue on, for all of them.
+- *Lane-end hold*: a vehicle halted within the edge's last 10 m in such a lane. WP-66's reading, with the route read from `vehicles.parquet` at each sample, so a vehicle counts after its reroute under its new destination.
+- *Arrived*: planned minus still in the network or never inserted at the run's end. The run's end is 30 minutes, so a fifth to a third of the planned vehicles are still on their way.
+
+**(1) The lock at fixture scale: not reproduced.**
+
+*Demand.* The movements at the stretch are the corridor's own 5-min steps, derived as WP-66 derived `TH61_DEMAND_0630`:
+- the scenario's upstream `inflow` propagated through the ten ramps before the T.H.61 entrance in corridor order;
+- on-ramp 53062592's `inflow`, from `artifacts/demand_mndot_i94_wb_stpaul.json`, scaled off station rnd_88807;
+- off-ramp 18207912's `exit_fraction`.
+
+The propagation reproduces `TH61_DEMAND_0630` to the digit. VM T's timeline in corridor minutes, where t = 0 is 05:30:
+- the queue reaches the stretch at minutes 55–65 (VM R);
+- the front row's exiters entered the corridor at minutes 116–143 and its T.H.61 entrants were first seen at minutes 146–153;
+- the lock sets at minutes 155–158.
+
+Its window is the exit fraction's peak: 0.417 / **0.501** / 0.372 / 0.426 at 07:30 / 07:35 / 07:40 / 07:45. The through demand past the gore there (2,246–2,876 veh/h over 07:35–08:00) is at or below the fixture drop's discharge (2,666–2,921 veh/h, WP-66). The queue the corridor had over the stretch then was a stock built from 06:10, when the through demand was 3,134–5,243 veh/h.
+
+A fixture from an empty network, within the laptop's 30 simulated minutes, cannot carry that stock. So there are three windows, each fixed before it was run:
+
+| window | steps (corridor clock) | what it carries |
+|---|---|---|
+| `wp66` | 06:30–07:00, WP-66's own | the through peak, the queue from the drop |
+| `lock` | 07:35–08:00 (minutes 125–155) | the 30 minutes before VM T's lock sets: the exit-fraction peak and the entrants bound on |
+| `queued` | 06:30, 06:35, 06:40, then 07:35, 07:40, 07:45 | the through peak that built the corridor's queue, then the exit-fraction peak VM T's front row arrived in. The 50 minutes between are omitted: in the corridor the queue stood over the stretch through them. It is `TH61_DEMAND_QUEUED` in the new test module. |
+
+*Results, rule off.*
+
+| window | seeds | 0.0 minutes | locks | minutes a through lane's last 100 m is below 5 m/s | lane-end holds (exiter on a through lane / bound elsewhere on an exit-only lane), longest | mainline exiters' first lane on the 5-lane edge, 2 / 3 / 4 | collisions |
+|---|---|---|---|---|---|---|---|
+| `wp66` | 3–22 | 0 | 0 | 401 (20.1 a run) | 1 / 56, 57.5 s | 64 / 32 / 5 % | 0 |
+| `lock` | 3–5 | 0 | 0 | 0 | 0 / 0 | 94 / 6 / 0 % | 0 |
+| `queued` | 3–22 | 0 | 0 | 400 (20.0 a run) | 1 / 35, 48.5 s | 70 / 27 / 3 % | 0 |
+
+- **`lock`** runs in free flow (lane means 17–24 m/s in the last minutes). Its through demand is below the drop's discharge, so no queue forms.
+- **`queued`** reproduces VM S's pre-lock state at the gore: the through lanes stop and go, with minute means down to 1.0 m/s, while the exit-only lanes run at 12–17 m/s (seed 3, minute 27: lanes 0–4 at 16.6 / 16.5 / 4.4 / 1.5 / 3.9 m/s). But it does not lock. Through-bound entrants are held at the end of lane 1 for up to 48.5 s, and SUMO lets every one of them in. An exiter held at the end of a through lane, the head of VM T's lock, occurs once in 20 runs (seed 9).
+- *What the fixture still lacks.*
+  - Time: 20 minutes of the queued state a run, about 400 over 20 seeds. On the collapsed seed the corridor sat in that state for 90 minutes, and three of VM Q's 20 seeds collapsed.
+  - Exiters in the far lanes: 27–32 % of the fixture's mainline exiters first appear in lane 3, and 6 of VM T's 8 through-lane exiters stood there.
+- *A seeded standstill does not substitute.* A closure of all three lanes past the gore (`LaneClosureSpec` on edge 103, minutes 15–20) would stand for the downstream queue at 0.0 m/s that VM S reads from minute 156. SUMO refuses it: "Vehicle 'v01129' has no valid route. No connection between edge '102' and edge '103'" (`FatalTraCIError`). Not pursued.
+
+So there is no reproduced lock to pin as a strict `xfail`. The rule is tested instead on a minimal synthetic setup: the crossing pair built by hand (below). It is measured on the fixtures for no harm and on the corridor's evidence for its trigger.
+
+**(2) The rule, derived.** `OSMNetwork.lane_end_giveup_m`: a distance, `0` = off (the default), hash-neutral unless set. Code: `microsim.runner._lane_end_diverges`, `_lane_end_step`, `_lane_end_meta`, `_commanded_by_runner`.
+
+- *The state it removes.* SUMO holds a vehicle that has run out of lane at the lane's end until the lane beside it opens. A vehicle whose route does not continue on its lane has no other way out. At VM T's gore, each lane the pair needs is held by the other half, so neither opens.
+  - The weave's exit-side give-up frees the exiter half on the two weave sections, by a route change. The general form frees either half at any diverge.
+  - A driver trapped at the end of an exit-only lane takes the exit. One trapped at the end of a through lane misses the exit. Both are what drivers do when the other lane will not open, and both leave the vehicle in its lane.
+- *Where.* A **diverge** is a corridor edge whose lanes do not all lead to the same edges. A lane that leads to exactly one edge has a continuation of its own:
+  - the next corridor edge: a through lane, and a vehicle given up there is rerouted to the corridor's last edge (the weave's give-up does the same);
+  - the first edge of one of the scenario's off-ramps: an exit-only lane, and a vehicle given up there is rerouted to that ramp's last edge.
+
+  A lane with no successor (a lane drop, an acceleration lane), or with several, is never acted on.
+- *Not where the weave rules are.* The rule skips:
+  - the edges of the configured weaving sections, which keep their own give-up;
+  - any vehicle a weaving section or scripted merge commands this step (`_commanded_by_runner`): driven, anticipated on the ramp, held by the vacate rule, held by `exit_prepare`, handed over, a scripted changer, or its yielding follower.
+- *When.* On the step's subscription results, before any reroute that step, candidates in `veh_id` order. All of these must hold:
+  - the vehicle is halted, below `HALTING_SPEED_MS` (0.1 m/s, SUMO's halting threshold);
+  - it is the front vehicle of its lane on the edge;
+  - it is within `lane_end_giveup_m` of the lane's end;
+  - its route's next edge is not one its lane leads to, and another lane of the edge leads there;
+  - SUMO's saved lane-change state toward the nearest such lane (`vehicle.getLaneChangeState`) has `LCA_BLOCKED` set. A vehicle with no state yet (`LCA_UNKNOWN`, as in its insertion step) waits a step.
+- *Why the network and not `WEAVE_DEFAULTS`.* The rule acts at every diverge no weaving section covers, including on scenarios with no weave at all (the T.H.61 fixture runs `merge: lane_change`). `WeaveSpec.weave_params` belongs to one weaving section and is read only where one is configured. So the rule is a runner option on `OSMNetwork`, in the same config module, with the `WEAVE_DEFAULTS` conventions: a float, `0` = off, hash-neutral unless set, "not a fitted value".
+- *The distance, derived.* The rule should take a vehicle held **at** the end, not one waiting with road left to use.
+  - SUMO stops a vehicle that has run out of lane at the end itself: v17090 stood 0.1 m from it, as did the fixture's longest off-run hold (`queued`, seed 5, 34 s).
+  - It stops a vehicle one vehicle's room back when the vehicle at the end of the target lane is to come in ahead of it: v23081 at 5.3 m, behind v17090's rear.
+  - One vehicle's room is `microsim.vehicles.VEHICLE_LENGTH_M` (5.0 m) plus the corridor population's mean minimum gap `s0` (2.53 m, `artifacts/idm_i24_capacity.json`): 7.53 m, taken as **7.5 m**. Not a fitted value; the key's docstring gives the derivation.
+- *Measured against the derivation.* The ten `queued` runs at seeds 3–12, rule off, sampled at 2 Hz on the 5-lane edge, have 964 samples of a halted lane-front vehicle owing one change. Their distance from the lane end:
+
+  | distance [m] | 0–2 | 2–7 | 7–10 | beyond 10 |
+  |---|---|---|---|---|
+  | samples | 92 | 36 | 60 | 776 |
+
+  The median is 15.0 m. There are 995 such samples of 95 vehicles in all.
+
+  With the rule on, over the 20 runs at seeds 3–12 of `wp66` and `queued` (`wp71_nearmiss.py`):
+  - it gave 39 vehicles up 0.78–7.39 m from the end;
+  - 20 more halted lane fronts in a wrong lane stood 7.56–9.96 m from the end, change blocked. SUMO let each in within 0.5–35 s.
+  - None was left out for another reason: not the lane front, no state, the change open, or commanded.
+
+  So on this fleet the rule does not act on the whole range SUMO holds lane fronts in, only on the part within one room of the end. SUMO resolved the rest itself in every run; 7.5 m is the derived room, not a cut tuned to that gap.
+- *Safety.* The give-up is a route change (`vehicle.changeTarget`), not a lane change. The vehicle's lane already leads to its new route's next edge, so SUMO drives it on in that lane and asks nothing of any other vehicle. Checked three ways:
+  - step by step on the hand-built pair (test below);
+  - on every give-up of 43 runs (`wp71_verify.py`): the lane at every later step on the edge, and the first edge reached. Over the 40 runs at seeds 3–22 and WP-66's no-restriction runs at seeds 3–5, all 78 vehicles given up (at 0.07–7.39 m from the end) stayed in their lane for every later step on the edge. Each then reached that lane's own successor edge.
+  - by the collision count of every run: 0.
+
+**(3) Off and on.**
+
+*The hand-built pair* (`test_the_crossing_pair_stands_until_given_up_then_drives_on_in_its_lane`, libsumo). The setup:
+- a 2-lane edge `A` whose lane 0 leads only to the exit `E` and lane 1 only on to `B`;
+- an exiter `x` inserted at rest 2 m from the end of lane 1, a vehicle `t` bound on at rest 2 m from the end of lane 0, and a second exiter `q` 10 m back in lane 1.
+
+What happens:
+- *Rule off.* `q` joins lane 0 behind `t`. `x` stands at lane 1's end (0.0 m) and `t` 1.49 m from lane 0's end, each blocked (`LCA_BLOCKED`) toward the other's lane: the lock. The test asserts it over the last 20 of the 30 s before the rule is applied.
+- *One step of the rule.* It gives up `t` (to the exit) and `x` (to the corridor's end) and nothing else.
+- *After.* `x` is on `B` 0.5 s later, `t` on `E` 2 s later, and `q` follows onto `E`. Each stays in the lane it stood in; no collision.
+
+*The fixtures, seeds 3–12, then 3–22 in total.* Off / on at 7.5 m. Planned per run: `wp66` 2,885, `queued` 2,592.
+
+`wp66`:
+
+| seed | departed off / on | arrived off / on | lane-end holds off / on (longest, s) | exits given up / taken, on | 0.0 minutes off / on | collisions off / on |
+|---|---|---|---|---|---|---|
+| 3 | 2,797 / 2,798 | 1,843 / 1,852 | 1 (1) / 0 (0) | 0 / 2 | 0 / 0 | 0 / 0 |
+| 4 | 2,882 / 2,884 | 1,923 / 1,936 | 5 (17.5) / 1 (5) | 0 / 1 | 0 / 0 | 0 / 0 |
+| 5 | 2,822 / 2,822 | 1,858 / 1,858 | 2 (7) / 1 (7) | 0 / 1 | 0 / 0 | 0 / 0 |
+| 6 | 2,845 / 2,807 | 1,877 / 1,781 | 2 (1.5) / 2 (3.5) | 0 / 5 | 0 / 0 | 0 / 0 |
+| 7 | 2,844 / 2,819 | 1,880 / 1,804 | 3 (8) / 1 (3) | 0 / 4 | 0 / 0 | 0 / 0 |
+| 8 | 2,816 / 2,766 | 1,862 / 1,823 | 3 (17.5) / 2 (35) | 0 / 4 | 0 / 0 | 0 / 0 |
+| 9 | 2,883 / 2,883 | 1,928 / 1,928 | 1 (0.5) / 1 (0.5) | 0 / 0 | 0 / 0 | 0 / 0 |
+| 10 | 2,885 / 2,885 | 1,940 / 1,957 | 3 (14.5) / 0 (0) | 0 / 4 | 0 / 0 | 0 / 0 |
+| 11 | 2,812 / 2,826 | 1,843 / 1,866 | 4 (15) / 1 (1.5) | 0 / 3 | 0 / 0 | 0 / 0 |
+| 12 | 2,881 / 2,881 | 1,919 / 1,903 | 1 (2.5) / 0 (0) | 0 / 1 | 0 / 0 | 0 / 0 |
+| **3–22** | 56,900 / 56,784 | 37,732 / 37,577 | 57 (57.5) / 24 (42.5) | 0 / 48 | 0 / 0 | 0 / 0 |
+
+`queued`:
+
+| seed | departed off / on | arrived off / on | lane-end holds off / on (longest, s) | exits given up / taken, on | 0.0 minutes off / on | collisions off / on |
+|---|---|---|---|---|---|---|
+| 3 | 2,592 / 2,592 | 2,088 / 2,069 | 1 (5.5) / 3 (2.5) | 0 / 3 | 0 / 0 | 0 / 0 |
+| 4 | 2,592 / 2,592 | 2,067 / 2,083 | 1 (1) / 1 (16.5) | 0 / 1 | 0 / 0 | 0 / 0 |
+| 5 | 2,592 / 2,592 | 2,086 / 2,082 | 3 (34) / 0 (0) | 0 / 3 | 0 / 0 | 0 / 0 |
+| 6 | 2,592 / 2,592 | 2,074 / 2,053 | 3 (10) / 1 (1) | 0 / 3 | 0 / 0 | 0 / 0 |
+| 7 | 2,592 / 2,592 | 2,127 / 2,081 | 1 (5) / 2 (3) | 0 / 1 | 0 / 0 | 0 / 0 |
+| 8 | 2,592 / 2,592 | 2,139 / 2,104 | 1 (2) / 2 (27.5) | 0 / 1 | 0 / 0 | 0 / 0 |
+| 9 | 2,592 / 2,592 | 2,088 / 2,085 | 3 (20.5) / 0 (0) | 1 / 1 | 0 / 0 | 0 / 0 |
+| 10 | 2,592 / 2,592 | 2,071 / 2,071 | 1 (2) / 1 (2) | 0 / 0 | 0 / 0 | 0 / 0 |
+| 11 | 2,592 / 2,592 | 2,082 / 2,082 | 1 (1) / 1 (1) | 0 / 0 | 0 / 0 | 0 / 0 |
+| 12 | 2,592 / 2,592 | 1,973 / 1,973 | 0 (0) / 0 (0) | 0 / 0 | 0 / 0 | 0 / 0 |
+| **3–22** | 51,840 / 51,840 | 41,397 / 41,272 | 36 (48.5) / 22 (27.5) | 1 / 27 | 0 / 0 | 0 / 0 |
+
+`lock` (seeds 3–5): identical off and on. There is no hold, so the rule never binds.
+
+Paired by seed over 3–22, on minus off:
+
+| window | departed | arrived | lane-end holds a run | longest hold [s] | seeds the rule acted on |
+|---|---|---|---|---|---|
+| `wp66` | −5.8 (−15.6, 4.0) | −7.8 (−23.5, 8.0), of 1,887 | **−1.65 (−2.33, −0.97)** | −3.3 (−9.3, 2.8) | 18 of 20 |
+| `queued` | 0 (every vehicle departs both ways) | −6.3 (−15.3, 2.8), of 2,070 | −0.70 (−1.40, −0.00) | −6.28 (−13.70, 1.15) | 15 of 20 |
+
+(95 % t-intervals.)
+
+WP-66's other restrictions and the weave configuration, `wp66` window, seeds 3–5:
+
+| restriction / merge | off (departed; arrived; holds, longest) | on (the same; exits given up / taken) |
+|---|---|---|
+| right drop / `lane_change` | 8,504; 5,960; 0 | identical; 0 / 0 |
+| none / `lane_change` | 8,655; 7,957; 3, 9 s | 8,655; 7,965; 0; 0 / 2 |
+| left drop / `weave` | 7,748; 5,522; 7, 9.5 s | identical in every counter (the section's edge is the only diverge, skipped) |
+| right drop / `weave` | 7,638; 5,903; 2, 13 s | identical |
+| none / `weave` | 8,097; 6,530; 2, 5 s | identical |
+
+*The default: byte-identical* (`wp71_byte_identity.py`). The runs compared:
+- HEAD 0a3f827's packages (on `PYTHONPATH`; f94a6a1, committed during this package, changes docs only);
+- against the working tree;
+- on every golden case (`ring_sugiyama`, `corridor_10km_smoke`, `corridor_10km_workzone`, `corridor_boundary_schedule`, `corridor_workzone_heavy`, `hov_corridor`, `merge_zipper`, `merge_scripted`, `merge_meter_alinea`, `merge_weave`), the weave determinism config (seed 5), and the T.H.61 fixture: `lane_change` and `weave` at seed 3, `queued` at seed 5.
+
+Results:
+- In all 14 runs the config hash, `trajectories.parquet`, `edges.parquet` and `vehicles.parquet` are byte-identical.
+- `meta.json` differs, apart from wall time, only by:
+  - the new `lane_end_giveups: null`;
+  - the config snapshot's `lane_end_giveup_m: 0.0` on the eight OSM configs;
+  - (`merge_zipper`) the run root inside the patch paths.
+- The 29-run grid of WP-51..70 (`grid71.sh off`) equals WP-70's `off` rows in all 29 rows: 1,272 fields compared, 0 differ, golden `merge_weave` hash 436cd4ec9e5d, no collision.
+- With the key on (`FS_WP71_LANE_END=7.5`) every grid fixture's only diverge is its weaving section's exit edge, which is skipped. So every counter of all 29 rows is unchanged. The golden's hash moves to 2caaa152360a only because the key is set.
+
+*On the corridor* (netconvert only, `wp71_corridor_diverges.py`): the corrected weave scenario has eight splits on its chain.
+- The two weave sections (999007700 Ruth St, 51388891 T.H.52) are skipped.
+- The rule would act at six:
+
+| edge | x at its end [m] | exit-only lanes → exit | through-only lanes |
+|---|---|---|---|
+| 638519815 | 2,043.5 | 0 → off-ramp 18279036 | 1–3 |
+| 1014336806 | 2,541.4 | 0 → off-ramp 18207390 | 1–3 |
+| 998737536 | 6,315.3 | 0 → off-ramp 18207880 | 1–3 |
+| **45608485** | **8,524.6** | **0–1 → off-ramp 18207912** | **2–4** |
+| 45782590-AddedOffRampEdge | 9,547.4 | 3 → off-ramp 42165869 (the 6th St left exit) | 0–2 |
+| 1001426896 | 10,952.6 | none (lane 0 leads to both 82150350 and on) | 1–2 |
+
+**Reading.**
+
+1. *The lock is a corridor-scale event; the fixture reproduces its state but not the event.* Under `queued` the gore shows the pre-lock state VM S read (through lanes stop-and-go, exit lanes flowing, entrants held at lane 1's end for up to 48.5 s). But over 800 queue-minutes in 40 runs no lock forms, and the exiter half of the pair appears twice.
+2. *The rule does what it was derived to do.*
+   - On the hand-built pair it removes the lock in one step, both halves, each vehicle in its own lane.
+   - On the fixtures it binds 76 times in 40 runs: 75 entrants bound on take the exit, 1 exiter gives its exit up. Lane-end holds fall by 1.65 a run under `wp66` (the interval excludes 0) and by 0.70 under `queued`. The longest falls from 57.5 to 42.5 s and from 48.5 to 27.5 s.
+   - It never binds on a weave section's edge, and at the default nothing runs.
+3. *No harm is shown, and none is excluded.* Arrivals read 7.8 and 6.3 vehicles fewer a run with the rule on (0.4 % and 0.3 %). Both intervals include zero. The rule moves 0–6 vehicles a run into the exit early, and the rest is the stop-and-go sequence re-rolled from there. No lock, no 0.0 minute and no collision occurs in the 58 fixture runs with the rule on (`wp66` and `queued` at 20 seeds, `lock` at 3, WP-66's other rows at 15), nor in the 29 grid runs.
+4. *What it cannot see.* VM T's lane fronts in lanes 3 and 4 were exiters too, v16080 at 22.2 m and v18767 at 29.1 m from the end (owing two and three changes). They are beyond 7.5 m and are not acted on. Only the corridor can show whether lane 2's front leaving lets them through, or whether they reach lane 2's end and are given up in turn.
+
+**The rule ships off.** `OSMNetwork.lane_end_giveup_m` = 0, hash-neutral unless set, measured at 7.5 m. It is a measured option with unit, integration and bookkeeping tests, not a default, for three reasons:
+- no fixture reproduces the lock it was derived against;
+- the corridor battery is the only test of its purpose;
+- WP-56's lesson (VM M): the 29-run grid does not catch corridor locks, and every weave rule needs a 20-seed corridor battery before it stays on.
+
+**What this hands on.**
+- *(a) A corridor battery with `exit_prepare` = 1 and `lane_end_giveup_m` = 7.5 is worth a VM.* The rule is the direct remedy for the state VM T read, the default is byte-identical, and the fixtures show no harm at 20 seeds. The comparisons:
+  - against VM Q (a445cfa: 0.857 departed; three seeds collapse late, 4910985839736976611, 6134032994440706937 and 7382187975121682178);
+  - second, the key alone against VM K (20f9fcb: 0.855; exit_prepare off).
+
+  What to read:
+  - whether the three collapsed seeds still collapse;
+  - `meta.json["lane_end_giveups"]` per diverge: which of the six binds, and how often;
+  - `vehicles.parquet` rows with `gave_up` and a `destination_final` differing from `destination`. They change the exit flows the GEH reads, so report them beside the criteria. VM Q's weave give-ups were 0.7 % of the exits reached at each section (146 of 19,742; 479 of 68,093).
+
+  The pipeline needs a way to set the network key. `scripts/gcp/pipeline_i24.sh`'s `--diag-weave-params` edits `weave_params` only; a `lane_end_giveup_m: 7.5` line under `network:` in the diagnostic copy is enough. `scripts/gcp/` is untouched here.
+- *(b)* If the corridor shows lanes 3–4 exiters as the remaining head, the next derivation is the two-lane weave model WP-66 proposed: `exit_only` read per lane, and `test_weave_configuration_carries_the_stretch` as its acceptance test. It is not a larger `lane_end_giveup_m`: beyond one room SUMO's own waits resolve, measured above.
+- *(c) For harnesses.* The rule's bookkeeping:
+  - `meta.json["lane_end_giveups"]`;
+  - `vehicles.parquet`'s `gave_up` / `destination_final`, a took-exit row reading `destination` `corridor_end` and `destination_final` the exit's label;
+  - the rule's binding, which is `n_gave_up_exit + n_took_exit`.
+
+**Bookkeeping.**
+- `packages/flowstate_core/flowstate_core/config.py`: `OSMNetwork.lane_end_giveup_m` (0.0, `ge=0`, `le=50`), with its provenance comment and docstring.
+- `packages/microsim/microsim/runner.py`:
+  - new: `_lane_end_diverges`, `_lane_end_step`, `_commanded_by_runner`, `_lane_end_meta`;
+  - `run_micro`: the setup after the weaving sections, the step after theirs, `meta.json["lane_end_giveups"]`, and the destinations passed to the vehicles table;
+  - `_vehicle_table`: an optional `destination_final` mapping.
+- `packages/validation/validation/vehicles.py`: the `gave_up` / `destination_final` docstrings. The schema is unchanged.
+- docs/CONTRACTS.md: §2 the field, §3 the meta block and the `vehicles.parquet` semantics.
+- `tests/test_microsim/test_microsim_lane_end_giveup.py` (new, 23 tests, about 12 s):
+  - the config: off by default, hash-neutral, bounds;
+  - the diverge map on a minimal net and on the T.H.61 fixture;
+  - the step's trigger and each of its ten negative conditions, on a fake SUMO;
+  - the meta block, and `_commanded_by_runner`;
+  - the hand-built pair in libsumo;
+  - two runs of the T.H.61 fixture: off, and `queued` at seed 5 with the rule on, whose meta and `vehicles.parquet` agree vehicle by vehicle.
+- `tests/test_validation/test_validation_vehicles.py`: one new test, a took-exit row round-tripped.
+- CHANGELOG.md and this section.
+
+The weave contract (42 keys), the API schema, the sweep's `WEAVE_FIELDS`, `scripts/gcp/`, docs/ONBOARDING_MNDOT.md, docs/ROADMAP.md, `scenarios/`, `data/osm`, `frontend/` and every existing test's assertions are untouched.
+
+Session artifacts are not committed: the scripts above, WP-70's harness reused, and the JSONL records of every run (`wp71_batchA/B/C.jsonl`, `wp71_nearmiss.jsonl`, `wp71_verify.jsonl`, `wp71g_off/on.jsonl`, `wp71_bi_head/new.json`). Every number above is from those runs, from the committed artifacts cited, or from the new test module's constants.

@@ -881,6 +881,52 @@ class OSMNetwork(BaseModel):
     zipper merge (``RampSpec.merge``) — are resolved along internal lanes,
     which is where SUMO computes zipper interleaving. Vehicles are not
     recorded while on an internal lane (a few metres per junction)."""
+    # WP-71 (2026-09-25, block 3): a distance, 0 = off; hash-neutral unless
+    # set; not a fitted value (the derivation is in the docstring below)
+    lane_end_giveup_m: float = Field(default=0.0, ge=0.0, le=50.0)
+    """The lane-end give-up at every diverge of the corridor (2026-09-25,
+    block 3, WP-71; ``microsim.runner._lane_end_step``); ``0`` (the default)
+    is off. A positive value is the distance from a lane's end within which a
+    vehicle counts as held there. A diverge is a corridor edge whose lanes do
+    not all lead to the same edges (exit-only lanes beside through lanes).
+    Each step, a vehicle on such an edge is given up to its lane's own
+    continuation when all of these hold:
+
+    * it is halted (below ``microsim.runner.HALTING_SPEED_MS``);
+    * it is the front vehicle of its lane, within this distance of the end;
+    * its route's next edge is not reached from its lane;
+    * SUMO's lane-change model reports the change toward its route blocked
+      this step.
+
+    The give-up is a route change (``vehicle.changeTarget``), never a lane
+    change: the vehicle drives on in the lane it is in.
+
+    * An exiter held at the end of a through lane gives up its exit: it is
+      rerouted to the corridor's last edge, as a weaving section's give-up
+      is (``n_missed_exit``).
+    * A vehicle bound elsewhere held at the end of an exit-only lane takes
+      the exit: it is rerouted to the off-ramp's last edge, as a driver
+      trapped in an exit lane does.
+
+    Both are counted per diverge in ``meta.json["lane_end_giveups"]`` and
+    marked in ``vehicles.parquet`` (``gave_up``, ``gave_up_s``,
+    ``destination_final``). The weaving sections' edges are not acted on
+    (they keep their own rule), nor is a vehicle a weaving section or a
+    scripted merge is commanding. Derived from VM T (docs/ONBOARDING_MNDOT.md
+    §11), the I-94 WB lock at the T.H.61 → 18207912 gore: an exiter held at
+    the end of through lane 2, and T.H.61 entrants bound on held at the end
+    of the exit-only lanes; each needs the other's lane.
+
+    The value measured (docs/WEAVE_MODEL_PLAN.md, WP-71) is 7.5 m, one
+    vehicle's room: ``microsim.vehicles.VEHICLE_LENGTH_M`` (5 m) plus the
+    corridor population's mean minimum gap (2.53 m,
+    ``artifacts/idm_i24_capacity.json``), rounded to 0.5 m. SUMO stops a
+    vehicle that has run out of lane at the end itself. If the vehicle at
+    the end of the target lane must come in ahead of it, SUMO stops it one
+    such room back (VM T's T.H.61 entrant stood 5.3 m from the end, behind
+    the exiter at 0.1 m). Farther back a halted vehicle is waiting for a gap
+    with road still to use (the fixture's halted wrong-lane lane fronts:
+    median 15 m). Not a fitted value; hash-neutral unless set."""
 
     @model_validator(mode="after")
     def _check_source(self) -> Self:

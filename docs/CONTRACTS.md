@@ -249,6 +249,39 @@ Other blocks:
   junction gap `jm_timegap_minor_s` turned out to have no effect on a road
   zipper — four values gave byte-identical runs). Vehicles on an internal
   lane are not recorded (a few metres per junction).
+- `OSMNetwork.lane_end_giveup_m: float = 0.0` (2026-09-25, WP-71; `ge=0`,
+  `le=50`): the lane-end give-up at every diverge of the corridor,
+  `microsim.runner._lane_end_step`, off at `0` (the default, hash-neutral:
+  nothing runs and every output is unchanged). A diverge is a corridor edge
+  whose lanes do not all lead to the same edges; a lane leading to exactly
+  one edge (the next corridor edge, or the first edge of a scenario
+  off-ramp) has a continuation of its own (`_lane_end_diverges`). The rule
+  acts on a vehicle on such a lane when all of these hold:
+  - it is halted (below `HALTING_SPEED_MS`, 0.1 m/s);
+  - it is the front vehicle of its lane, within this distance of the end;
+  - its route's next edge is reached from another lane of the edge, not its own;
+  - SUMO's saved lane-change state toward the nearest such lane has
+    `LCA_BLOCKED` set (`LCA_UNKNOWN` waits a step);
+  - no weaving section or scripted merge commands it
+    (`_commanded_by_runner`).
+
+  The vehicle is then rerouted with `vehicle.changeTarget` to its lane's
+  continuation:
+  - an exiter on a through lane to the corridor's last edge (the exit
+    given up);
+  - a vehicle bound elsewhere on an exit-only lane to the off-ramp's last
+    edge (the exit taken).
+
+  It is a route change, not a lane change: the lane already leads there
+  and SUMO drives the vehicle on in it. The edges of the configured weaving
+  sections are skipped; they keep their own exit-side give-up. It is a
+  runner option on the network, not a `WEAVE_DEFAULTS` key, because it acts
+  at diverges that no weaving section covers, on scenarios with no weave at
+  all. The value measured is 7.5 m: one vehicle's room, the 5 m vehicle
+  length plus the corridor population's mean minimum gap of 2.53 m. Not a
+  fitted value; the derivation is in the field's docstring and
+  docs/WEAVE_MODEL_PLAN.md (WP-71). Outputs: `meta.json["lane_end_giveups"]`
+  and the `gave_up` / `destination_final` columns of `vehicles.parquet` (§3).
 - `RampSpec.merge = "scripted"` and `RampSpec.merge_params: dict[str, float]`
   (2026-09-16): a run-time merge behaviour instead of a netconvert patch.
   Every vehicle on lane 0 of the attach edge (which must dead-end, checked
@@ -1476,7 +1509,12 @@ end); all six null when the vehicle has no trajectory row (an entrant still on i
 `n_vehicles_arrived`); `gave_up: bool` and `gave_up_s: f64 [s]` (null unless given up) — a weaving section
 counted the exiter as given up (`weave_sections[i].n_missed_exit`) and rerouted it to the corridor's last edge
 at that step; `destination_final: str` — `destination`, or `"corridor_end"` for a give-up, so the planned exit
-and the one driven to stand side by side. The first/last rows are taken by the trajectory writer from the rows
+and the one driven to stand side by side. Since WP-71 (2026-09-25) `gave_up` / `gave_up_s` also mark a vehicle
+the lane-end give-up (`OSMNetwork.lane_end_giveup_m`) rerouted to its lane's own continuation (the first
+give-up's step when there were two). Its `destination_final` is `"corridor_end"` for an exiter sent on from
+a through lane, or the off-ramp's label for a vehicle bound elsewhere sent off an exit-only lane. The
+schema is unchanged; `microsim.runner._vehicle_table` takes the lane-end destinations as an optional
+`destination_final` mapping. The first/last rows are taken by the trajectory writer from the rows
 it flushes (the file's own first and last row of each vehicle by construction); the table is written after the
 trajectories are closed and before the completion marker. It is additive and hash-neutral: config hash,
 trajectories, edges, metrics and every golden are unchanged (the probe of 2026-09-25 re-ran the ten golden
@@ -1488,6 +1526,21 @@ the first/last tracking adds 0.06 s per 500,000-row trajectory flush. `scripts/c
 `--keep-trajectories`. Runs written before 2026-09-25 have none (`read_vehicles` raises `FileNotFoundError`);
 ring runs list every vehicle with route `"main"` and none arrived. The integer columns read back as pandas
 `Int32` (nullable).
+
+`meta.json["lane_end_giveups"]` (micro, since 2026-09-25, WP-71) is `null` unless
+`OSMNetwork.lane_end_giveup_m > 0`. When set it holds:
+- `distance_m`;
+- `skipped_edges`, the weaving sections' edges, where the rule never acts;
+- the totals `n_gave_up_exit` (exiters held at the end of a through lane,
+  rerouted to the corridor's end) and `n_took_exit` (vehicles bound
+  elsewhere held at the end of an exit-only lane, rerouted to the exit);
+- `diverges`, one record per diverge in driving order: `edge`, `x_end_m`
+  (trajectory x of the edge's end), `through_lanes`, `exit_lanes`, `exits`
+  (off-ramp labels) and the edge's own two counters.
+
+Each reroute is counted once. So `n_gave_up_exit + n_took_exit` equals the
+number of `vehicles.parquet` rows the rule marked, unless a vehicle was
+rerouted at two diverges: it is counted twice here and has one row.
 
 `edges.parquet` (both tiers): `t_bin: f64 [s]`, `x_bin: f64 [m]`,
 `mean_speed: f64 [m/s]`, `density: f64 [veh/m]`, `flow: f64 [veh/s]`.

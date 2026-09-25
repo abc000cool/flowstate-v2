@@ -128,3 +128,45 @@ def test_battery_pruning_keeps_every_seeds_vehicle_table(tmp_path: Path) -> None
     assert [(d / "trajectories.parquet").is_file() for d in dirs] == [True, False, False]
     assert all(vehicles_path(d).is_file() for d in dirs)
     assert all(len(read_vehicles(d)) == 3 for d in dirs)
+
+
+def test_lane_end_give_ups_record_the_destination_driven_to(tmp_path: Path) -> None:
+    """The lane-end give-up (WP-71, ``OSMNetwork.lane_end_giveup_m``) marks its
+    vehicles as a weaving section's give-up is marked: ``gave_up``, the step in
+    ``gave_up_s``, the planned destination kept. ``destination_final`` is the
+    destination driven to: the exit for a vehicle bound on that took it from
+    the end of an exit-only lane, the corridor's end for an exiter that gave
+    its exit up at the end of a through lane. A weaving section's give-up,
+    absent from the mapping, drives to the corridor's end as before."""
+    table = runner._vehicle_table(
+        depart_s={"v00000": 0.5, "v00001": 1.0, "v00002": 3.0, "v00003": 4.0},
+        route_by_id={
+            "v00000": "on0",
+            "v00001": "main_off1",
+            "v00002": "main_off1",
+            "v00003": "on0",
+        },
+        depart_planned_s={"v00000": 0.4, "v00001": 0.8, "v00002": 2.6, "v00003": 3.9},
+        ramp_labels=["th61", "exit18207912"],
+        first_sample={},
+        last_sample={},
+        running=set(),
+        gave_up_s={"v00000": 120.0, "v00001": 130.5, "v00002": 140.0},
+        destination_final={"v00000": "exit18207912", "v00001": DESTINATION_CORRIDOR_END},
+    )
+    runner._write_parquet(table, tmp_path / VEHICLES_FILE)
+    df = read_vehicles(tmp_path).set_index("veh_id")
+    assert df["gave_up"].tolist() == [True, True, True, False]
+    assert df["destination"].tolist() == [
+        DESTINATION_CORRIDOR_END,
+        "exit18207912",
+        "exit18207912",
+        DESTINATION_CORRIDOR_END,
+    ]
+    assert df["destination_final"].tolist() == [
+        "exit18207912",
+        DESTINATION_CORRIDOR_END,
+        DESTINATION_CORRIDOR_END,
+        DESTINATION_CORRIDOR_END,
+    ]
+    assert df.loc["v00000", "gave_up_s"] == 120.0 and pd.isna(df.loc["v00003", "gave_up_s"])

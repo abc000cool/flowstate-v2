@@ -5201,6 +5201,241 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     }
 
 
+# --- The lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71) ------------
+
+
+def _lane_end_diverges(
+    net: Any,
+    chain: Sequence[str],
+    ramps: Sequence[RampSpec],
+    skip_edges: Collection[str],
+    offsets: Mapping[str, float],
+) -> list[dict[str, Any]]:
+    """Every diverge of the corridor the lane-end give-up acts at (WP-71).
+
+    A diverge is a corridor edge whose lanes do not all lead to the same
+    edges: some lane leads to only part of them (exit-only lanes beside
+    through lanes). A lane whose successors are exactly one edge has a
+    continuation of its own, recorded here:
+
+    * the next corridor edge: ``"through"``, rerouted to the corridor's last
+      edge;
+    * the first edge of one of the scenario's off-ramps: ``"exit"``,
+      rerouted to that ramp's last edge.
+
+    A lane with no successor (a lane drop, an acceleration lane), one leading
+    to several edges, and every edge in ``skip_edges`` (the weaving sections,
+    which keep their own give-up) are never acted on.
+
+    Args:
+        net: The compiled network (``sumolib.net.readNet``).
+        chain: Corridor edge ids in driving order, ramp splits expanded; its
+            last edge is the corridor's end.
+        ramps: The scenario's ramps with attach edges resolved to their
+            compiled pieces (``_resolve_ramp_pieces``), in config order.
+        skip_edges: Corridor edges the rule never acts on.
+        offsets: Trajectory ``x`` of each corridor edge's start [m].
+
+    Returns:
+        Per diverge, in driving order: ``edge``, ``x_end_m``, ``lane_len_m``
+        and ``succ`` (per lane index: its length [m] and its successor
+        edges), ``cont`` (per lane index with a continuation: ``(kind,
+        target edge, destination label)``), and the counters
+        ``n_gave_up_exit`` / ``n_took_exit``.
+    """
+    exit_of = {r.edges[0]: (r.edges[-1], r.name or r.attach_edge) for r in ramps if r.kind == "off"}
+    out: list[dict[str, Any]] = []
+    for i, eid in enumerate(chain[:-1]):
+        if eid in skip_edges:
+            continue
+        nxt = chain[i + 1]
+        lanes = net.getEdge(eid).getLanes()
+        succ = {
+            int(ln.getIndex()): frozenset(c.getTo().getID() for c in ln.getOutgoing())
+            for ln in lanes
+        }
+        every = frozenset().union(*succ.values())
+        if len(every) < 2:
+            continue
+        cont: dict[int, tuple[str, str, str]] = {}
+        for j, s in succ.items():
+            if len(s) != 1 or s == every:
+                continue
+            (to,) = s
+            if to == nxt:
+                cont[j] = ("through", chain[-1], DESTINATION_CORRIDOR_END)
+            elif to in exit_of:
+                cont[j] = ("exit", *exit_of[to])
+        if not cont:
+            continue
+        length = float(net.getEdge(eid).getLength())
+        out.append(
+            {
+                "edge": eid,
+                "x_end_m": float(offsets[eid]) + length if eid in offsets else None,
+                "lane_len_m": {int(ln.getIndex()): float(ln.getLength()) for ln in lanes},
+                "succ": succ,
+                "cont": cont,
+                "n_gave_up_exit": 0,
+                "n_took_exit": 0,
+            }
+        )
+    return out
+
+
+def _lane_end_step(
+    mod: Any,
+    tc: Any,
+    le: dict[str, Any],
+    results: Any,
+    controlled: Callable[[str], bool],
+) -> list[tuple[str, str]]:
+    """One step of the lane-end give-up (``OSMNetwork.lane_end_giveup_m``, WP-71).
+
+    Derived from VM T (docs/ONBOARDING_MNDOT.md §11), the I-94 WB lock at
+    the T.H.61 → 18207912 gore, a two-lane weave the weave model does not
+    cover. The frontmost vehicle of the lock was an exiter held by SUMO at
+    the end of through lane 2. T.H.61 entrants bound on stood at the end of
+    the exit-only lanes beside it. Each needs the other's lane and nothing
+    frees either. At the two weaving sections the exit-side give-up
+    (:func:`_weave_step`) removes the exiter half of that state; this rule is
+    its general form, at every diverge the weaving sections do not cover, for
+    both halves.
+
+    A vehicle on a diverge (:func:`_lane_end_diverges`) is given up when all
+    of these hold this step:
+
+    * it is halted (below ``HALTING_SPEED_MS``);
+    * it is the front vehicle of its lane (none of the vehicles subscribed
+      stands ahead of it there, so it is not queued);
+    * it is within ``le["distance_m"]`` of the lane's end;
+    * its route's next edge is not one its lane leads to, but another lane
+      of the edge does;
+    * SUMO's lane-change model reports the change toward the nearest such
+      lane blocked (``LCA_BLOCKED``) this step; a vehicle SUMO has no state
+      for yet (``LCA_UNKNOWN``, e.g. in its insertion step) is left to the
+      next step;
+    * no weaving section or scripted merge commands it (``controlled``).
+
+    The vehicle is then rerouted (``vehicle.changeTarget``) to its lane's
+    own continuation: an exiter on a through lane to the corridor's last
+    edge (its exit given up, ``n_gave_up_exit``), a vehicle bound elsewhere
+    on an exit-only lane to the off-ramp's last edge (the exit taken,
+    ``n_took_exit``). This is a route change, not a lane change: the
+    vehicle's lane already leads to its new route's next edge, and SUMO
+    moves it on in that lane. Every rule above is read from the state before
+    any reroute this step, and candidates are taken in ``veh_id`` order, so
+    the step is deterministic.
+
+    Args:
+        mod: libsumo / traci module.
+        tc: Its constants.
+        le: The rule's state: ``distance_m``, ``by_edge`` (diverge edge →
+            its record from :func:`_lane_end_diverges`, whose counters are
+            incremented here).
+        results: This step's subscription results.
+        controlled: Whether a weaving section or scripted merge commands a
+            vehicle (such a vehicle is never acted on).
+
+    Returns:
+        ``(veh_id, destination label)`` of every vehicle rerouted this step.
+    """
+    by_edge: dict[str, dict[str, Any]] = le["by_edge"]
+    d_max = float(le["distance_m"])
+    front: dict[tuple[str, int], float] = {}
+    cand: list[tuple[str, str, int, float]] = []
+    for vid, res in results.items():
+        road = res[tc.VAR_ROAD_ID]
+        rec = by_edge.get(road)
+        if rec is None:
+            continue
+        lane = int(res[tc.VAR_LANE_INDEX])
+        pos = float(res[tc.VAR_LANEPOSITION])
+        key = (road, lane)
+        if pos > front.get(key, -math.inf):
+            front[key] = pos
+        if (
+            lane in rec["cont"]
+            and float(res[tc.VAR_SPEED]) < HALTING_SPEED_MS
+            and rec["lane_len_m"][lane] - pos <= d_max
+        ):
+            cand.append((vid, road, lane, pos))
+    out: list[tuple[str, str]] = []
+    for vid, road, lane, pos in sorted(cand):
+        if pos < front[(road, lane)] or controlled(vid):
+            continue
+        rec = by_edge[road]
+        route = mod.vehicle.getRoute(vid)
+        idx = int(mod.vehicle.getRouteIndex(vid))
+        if idx < 0 or idx + 1 >= len(route) or route[idx] != road:
+            continue
+        nxt = route[idx + 1]
+        succ: dict[int, frozenset[str]] = rec["succ"]
+        if nxt in succ[lane]:
+            continue  # its route continues on its lane
+        toward = [j for j in sorted(succ) if nxt in succ[j]]
+        if not toward:
+            continue  # no lane of this edge reaches its route: not a lane-end state
+        nearest = min(toward, key=lambda j: (abs(j - lane), j))
+        state = int(mod.vehicle.getLaneChangeState(vid, 1 if nearest > lane else -1)[0])
+        if state == tc.LCA_UNKNOWN or not state & tc.LCA_BLOCKED:
+            continue  # SUMO may still make the change, or has not read it yet
+        kind, target, label = rec["cont"][lane]
+        mod.vehicle.changeTarget(vid, target)
+        rec["n_gave_up_exit" if kind == "through" else "n_took_exit"] += 1
+        out.append((vid, label))
+    return out
+
+
+def _commanded_by_runner(
+    weave_states: Sequence[dict[str, Any]],
+    scripted_states: Sequence[dict[str, Any]],
+    vid: str,
+) -> bool:
+    """Whether a weaving section or a scripted merge commands ``vid`` now.
+
+    A weaving section commands the vehicles it drives (``veh``), the
+    approaching entrants it anticipates (``pre``), the through vehicles its
+    vacate rule holds (``vacate``), the exiters its early move holds
+    (``prep``) and the vehicles taken before its section (``handover``); a
+    scripted merge its changers (``veh``) and their yielding followers
+    (``yielding``). The lane-end give-up never acts on such a vehicle (WP-71).
+    """
+    return any(
+        vid in ws["veh"]
+        or vid in ws["pre"]
+        or vid in ws["vacate"]
+        or vid in ws["prep"]
+        or vid in ws["handover"]
+        for ws in weave_states
+    ) or any(vid in ss["veh"] or vid in ss["yielding"] for ss in scripted_states)
+
+
+def _lane_end_meta(le: dict[str, Any] | None) -> dict[str, Any] | None:
+    """``meta.json["lane_end_giveups"]``: ``None`` when the rule is off."""
+    if le is None:
+        return None
+    rows = [
+        {
+            "edge": rec["edge"],
+            "x_end_m": rec["x_end_m"],
+            "through_lanes": sorted(j for j, c in rec["cont"].items() if c[0] == "through"),
+            "exit_lanes": sorted(j for j, c in rec["cont"].items() if c[0] == "exit"),
+            "exits": sorted({c[2] for c in rec["cont"].values() if c[0] == "exit"}),
+            "n_gave_up_exit": rec["n_gave_up_exit"],
+            "n_took_exit": rec["n_took_exit"],
+        }
+        for rec in le["diverges"]
+    ]
+    return {
+        "distance_m": float(le["distance_m"]),
+        "skipped_edges": sorted(le["skipped_edges"]),
+        "n_gave_up_exit": sum(r["n_gave_up_exit"] for r in rows),
+        "n_took_exit": sum(r["n_took_exit"] for r in rows),
+        "diverges": rows,
+    }
+
+
 def _leader_obs(lib_mod: Any, veh_id: str, ego_min_gap: float) -> tuple[float, float]:
     """(bumper-to-bumper gap [m], leader speed [m/s]); (inf, nan) if none.
 
@@ -5394,7 +5629,8 @@ VEHICLES_FILE: Final[str] = "vehicles.parquet"
 ORIGIN_MAINLINE: Final[str] = "mainline"
 
 #: ``destination`` of a vehicle whose route ends at the corridor's last edge
-#: (not by an off-ramp); also the rerouted destination of a weave give-up.
+#: (not by an off-ramp); also the rerouted destination of a weave give-up and
+#: of a lane-end give-up of an exit (WP-71).
 DESTINATION_CORRIDOR_END: Final[str] = "corridor_end"
 
 #: Columns of :data:`VEHICLES_FILE` (:func:`_vehicle_table`). ``origin_ramp``
@@ -5402,8 +5638,9 @@ DESTINATION_CORRIDOR_END: Final[str] = "corridor_end"
 #: corridor end); ``entry_*`` / ``last_*`` are the vehicle's first and last
 #: rows of ``trajectories.parquet`` (null when it has none); ``gave_up`` marks
 #: an exiter a weaving section rerouted through (``weave_sections[i]
-#: .n_missed_exit``), ``destination`` keeping its planned exit and
-#: ``destination_final`` the destination it drove to.
+#: .n_missed_exit``) or a vehicle the lane-end give-up rerouted to its lane's
+#: own continuation (``lane_end_giveups``, WP-71), ``destination`` keeping its
+#: planned destination and ``destination_final`` the one it drove to.
 _VEHICLES_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
     ("veh_id", pa.string()),
     ("route", pa.string()),
@@ -5545,6 +5782,7 @@ def _vehicle_table(
     last_sample: Mapping[str, tuple[float, float, int]],
     running: Collection[str],
     gave_up_s: Mapping[str, float],
+    destination_final: Mapping[str, str] | None = None,
 ) -> pa.Table:
     """The :data:`VEHICLES_FILE` table: one row per departed vehicle.
 
@@ -5564,8 +5802,14 @@ def _vehicle_table(
         last_sample: ``(t, x, lane)`` of each vehicle's last trajectory row.
         running: Vehicles still in the network when the run ended (not
             arrived).
-        gave_up_s: Step time [s] at which a weaving section rerouted each
-            given-up exiter through (``ws["gave_up"]``).
+        gave_up_s: Step time [s] at which a vehicle was first given up: a
+            weaving section rerouted an exiter through (``ws["gave_up"]``),
+            or the lane-end give-up (WP-71, :func:`_lane_end_step`) rerouted
+            a vehicle to its lane's own continuation.
+        destination_final: The destination label a lane-end give-up
+            rerouted each vehicle to (its last, when rerouted twice); a
+            given-up vehicle absent from it drove to the corridor's end (a
+            weaving section's give-up). ``None``: none.
 
     Returns:
         The contract-typed table, rows in ``veh_id`` order.
@@ -5596,7 +5840,9 @@ def _vehicle_table(
         cols["gave_up"].append(gave is not None)
         cols["gave_up_s"].append(gave)
         cols["destination_final"].append(
-            DESTINATION_CORRIDOR_END if gave is not None else destination
+            destination
+            if gave is None
+            else (destination_final or {}).get(vid, DESTINATION_CORRIDOR_END)
         )
     schema = pa.schema(_VEHICLES_SCHEMA)
     return pa.Table.from_arrays(
@@ -6141,6 +6387,28 @@ def run_micro(
         # one. meta.json["weave_sections"] lists the sections in this order.
         weave_states.sort(key=lambda ws: float(ws["x_offset"][ws["edges"][0]]))
 
+    # --- The lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71) ---------
+    # At every diverge the weaving sections do not cover, a vehicle held at
+    # the end of a lane its route does not continue on, with the change
+    # toward its route blocked, is rerouted to that lane's own continuation
+    # (_lane_end_step). Off by default: nothing below runs, nothing changes.
+    lane_end: dict[str, Any] | None = None
+    if isinstance(cfg.network, OSMNetwork) and cfg.network.lane_end_giveup_m > 0.0:
+        net_for_lane_end = sumolib.net.readNet(str(bundle.net_path))
+        chain_le = expand_ramp_splits(list(cfg.network.corridor_edges), bundle.edge_ids)
+        skip_le = frozenset(e for ws in weave_states for e in ws["edges"])
+        diverges_le = _lane_end_diverges(
+            net_for_lane_end, chain_le, cfg.network.ramps, skip_le, offsets_by_edge
+        )
+        lane_end = {
+            "distance_m": float(cfg.network.lane_end_giveup_m),
+            "diverges": diverges_le,
+            "by_edge": {d["edge"]: d for d in diverges_le},
+            "skipped_edges": skip_le,
+        }
+    # the destination each lane-end give-up drove to (VEHICLES_FILE)
+    lane_end_dest: dict[str, str] = {}
+
     # --- Managed (HOV) lanes: lane permission windows like closures ---------
     managed_states: list[dict[str, Any]] = []
     if cfg.managed_lanes:
@@ -6369,6 +6637,17 @@ def run_micro(
                     for vid in ws["gave_up"]:
                         gave_up_at.setdefault(vid, t)
                     n_gave_up_seen[n_ws] = len(ws["gave_up"])
+            # The lane-end give-up (WP-71), after the sections' own rules.
+            if lane_end is not None:
+                for vid, dest in _lane_end_step(
+                    mod,
+                    tc,
+                    lane_end,
+                    results,
+                    lambda v: _commanded_by_runner(weave_states, scripted_states, v),
+                ):
+                    gave_up_at.setdefault(vid, t)
+                    lane_end_dest[vid] = dest
 
             # Managed lanes: admit only the hov class for the window, then
             # restore the lanes' original permissions.
@@ -6525,6 +6804,7 @@ def run_micro(
             traj_writer.last_sample,
             running,
             gave_up_at,
+            lane_end_dest,
         ),
         run_dir / VEHICLES_FILE,
     )
@@ -6614,6 +6894,8 @@ def run_micro(
             for ss in scripted_states
         ],
         "weave_sections": [_weave_meta(ws, n_departed_by_route) for ws in weave_states],
+        # the lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71): None when off
+        "lane_end_giveups": _lane_end_meta(lane_end),
         "closures": [
             {
                 "label": cs["spec"].label,
