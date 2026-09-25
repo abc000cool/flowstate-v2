@@ -1480,4 +1480,26 @@ rightmost; in the section lane 0 is the auxiliary lane and lane 1 continues the 
 They reach the auxiliary lane a median 231–239 m before the section's end (the section is 305 m); 21–25 % only within its last 67 m and
 8–9 % within its last 30 m. So a third to two fifths of the exiters are one or two lanes left of the rightmost approach lane 130 m before
 the section, and every one of them must cross lane 1 inside it — the lane VM O found carrying the least at the exit end. That is what a
-pre-positioning rule would act on (WP-62, in flight).
+pre-positioning rule would act on (WP-62: measured off on the fixtures, whose approach puts 76–89 % of the exiters in the rightmost lane).
+
+**VM Q (2026-09-25, block 3): WP-62's `exit_prepare` rule on the corridor** — the corrected scenarios with `weave_params
+{exit_prepare: 1.0}` on both weave sections (runner a445cfa; config hash 05d8ba043b11; its first battery written with WP-63's
+labelled station-hour table), against VM K (20f9fcb; the same physics with the rule off). Slice, 4 seeds
+(`artifacts/mndot_rounds/weave_2026-09-24/slice_exit_prepare_a445cfa.json`): departed 0.973 (lowest 0.972) against 0.968 (0.965),
+RMSPE 0.464 against 0.463, two collisions against one. Battery, 20 seeds (`battery_exit_prepare_a445cfa.json`):
+
+| | VM K, rule off | VM Q, rule on |
+|---|---|---|
+| departed, mean (lowest) | 0.855 (0.743) | 0.857 (0.667) |
+| speed RMSPE (95 % interval) | 0.709 (0.699–0.718) | 0.706 (0.692–0.719) |
+| GEH < 5, share of 840 link-hours (95 % interval) | 0.079 (0.059–0.098) | **0.143 (0.109–0.177)** |
+| collisions over 20 seeds | 15 | 15 |
+| given-up exits Ruth St / T.H.52 | 157 of 18,997 / 692 of 68,872 | 146 of 19,742 / 479 of 68,093 |
+| S790, 06:30–07:30, simulated mean (observed 4,911) | 3,259 (GEH inverted, WP-59) | 3,328 (3,239–3,484, the table) |
+
+Paired by seed, the departed share moves +0.002 (15 of 20 seeds up). The rule nearly doubles the link-hours within GEH 5 on the
+seeds it helps (per-seed shares 0.071–0.262 on 17 seeds against 0.048–0.238 with it off) — and **three seeds collapse late**:
+4910985839736976611 departs 0.667 (0.855 off) with S790 carrying 3,307 / 1,545 / 1,144 veh/h in the three scored hours,
+6134032994440706937 0.749 (0.846) with 3,368 / 2,570 / 1,152, 7382187975121682178 0.771 (0.851) with 3,367 / 3,367 / 495. VM K's
+0.743 seed reads 0.882. So the rule stays off by default: it raises the typical seed and locks the corridor in the later hours on a
+seventh of them. The lock's standstill map is VM R (seed 6134032994440706937, spawn index 9).

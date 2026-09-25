@@ -29,6 +29,7 @@ SELF_DELETE="${PIPELINE_SELF_DELETE:-0}"
 STAGES=""
 DIAG_SEED=677105600768189526   # the seed the mndot_weave_seed5 stage maps (VM L default)
 DIAG_REPS=5                    # its spawn index + 1: the battery runs the first DIAG_REPS replicates
+DIAG_WEAVE_PARAMS=""            # e.g. exit_prepare=1.0[,k=v]: the map runs a copy of the weave scenario with these weave_params
 while [ $# -gt 0 ]; do
   case "$1" in
     --procs) PROCS="$2"; shift 2 ;;
@@ -37,6 +38,7 @@ while [ $# -gt 0 ]; do
     --stages) STAGES="$2"; shift 2 ;;
     --diag-seed) DIAG_SEED="$2"; shift 2 ;;
     --diag-reps) DIAG_REPS="$2"; shift 2 ;;
+    --diag-weave-params) DIAG_WEAVE_PARAMS="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -379,7 +381,17 @@ done
 #     the seed the exiter-yield rule locked, 6904272788004776631, index 12).
 #     --keep-trajectories: the battery prunes every trajectory but the first seed's (VM L, 2026-09-24,
 #     ran the five replicates — the seed read 0.743 again — and the maps found no file).
-stage mndot_weave_seed5 $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave.yaml \
+#     --diag-weave-params k=v[,k2=v2]: the diagnostic runs scenarios/${MNDOT}_weave_diag.yaml, the weave
+#     scenario with those weave_params on every weave section (VM R, 2026-09-25: exit_prepare's collapsed seeds).
+DIAG_SCEN=scenarios/${MNDOT}_weave.yaml
+if [ -n "$DIAG_WEAVE_PARAMS" ]; then
+  DIAG_WEAVE_PARAMS=$(printf '%s' "$DIAG_WEAVE_PARAMS" | sed -e 's/=/: /g' -e 's/,/, /g')   # k=v,k2=v2 -> k: v, k2: v2 (no spaces on the command line)
+  DIAG_SCEN=scenarios/${MNDOT}_weave_diag.yaml
+  sed -e "s#^name: ${MNDOT}_weave\$#name: ${MNDOT}_weave_diag#" -e "s#weave_params: {}#weave_params: {${DIAG_WEAVE_PARAMS}}#" \
+    scenarios/${MNDOT}_weave.yaml > "$DIAG_SCEN"
+  say "diagnostic scenario $DIAG_SCEN: weave_params {${DIAG_WEAVE_PARAMS}} on $(grep -c "weave_params: {${DIAG_WEAVE_PARAMS}}" "$DIAG_SCEN") sections"
+fi
+stage mndot_weave_seed5 $RUN scripts/corridor_battery.py --scenario "$DIAG_SCEN" \
   --observations data/mndot/$MNDOT/observations.json --replicates "$DIAG_REPS" --procs "$PROCS" \
   --out runs/${MNDOT}_weave_seed5/baseline --artifact artifacts/validation_${MNDOT}_weave_seed5.json \
   --report-dir docs/reports/${MNDOT}_weave_seed5 --criteria-profile fhwa_tat3_2004 --keep-trajectories || say "mndot_weave_seed5 failed; continuing"
