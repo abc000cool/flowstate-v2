@@ -1578,3 +1578,12 @@ carries 3,344 veh/h against 4,911 observed — the T.H.52 weave's capacity (WP-5
 stay off in `WEAVE_DEFAULTS` / the network defaults: `exit_prepare` on the fixture grid lowers entrances and breaks the T.H.52
 capacity no-lock pin (WP-62), so it is a corridor configuration, not a default — this battery is the corridor's reference
 configuration from here on (the `_xlend` stages).
+
+**VM V (2026-09-25, block 3): the reference configuration plus WP-70's `ramp_outlet`** (runner 2ba91f0; `weave_params {exit_prepare: 1.0,
+ramp_outlet: 1.0}` + `lane_end_giveup_m: 7.5`; stages `mndot_weave[_slice]_xlout`; config hash 28335a137a99;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_ramp_outlet_2ba91f0.json`). Against VM U: departed 0.878 against 0.884
+(18 of 20 seeds up, paired by seed, but **one seed locks** — seed, departed share and S790 by hour: 6914975401685141156 0.22 [0, 0, 0] — with every on-ramp starved),
+speed RMSPE 0.689 (0.659–0.719) against 0.691, GEH < 5 on 0.226 of link-hours (0.190–0.262) against 0.163, **19 collisions against 15**,
+and S790 lower in every scored hour (3,209–3,229 against 3,311–3,344 veh/h). Given-up T.H.52 exits 433 of 68,354 (VM U 481 of 69,676).
+Slice: departed 0.973 against 0.971. Reading: sparing the T.H.52 ramp's outlet, which lets the fixture's entrance pass (WP-70), lowers the
+weave's throughput on the corridor and locks one seed of twenty; not adopted — VM U stays the reference configuration. Not reproduced.
