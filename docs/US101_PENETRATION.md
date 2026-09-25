@@ -35,6 +35,12 @@ Baseline: σ_v 2.93 [2.84, 3.01] m/s, throughput
 
 ## Paired change vs baseline (per seed, common random numbers)
 
+> **Correction (2026-09-25).** The throughput column below was measured at x = 400 m in trajectory coordinates, which is inside the
+> 640 m insertion buffer, upstream of the replica (and travel time over 100–600 m likewise); σ_v, fuel and waves cover the whole recorded
+> road. The throughput cost is therefore not a measurement of the replica. The re-run described in "Testing the multi-lane hypothesis"
+> below reports throughput and travel time on the replica beside the original definitions.
+
+
 | Penetration | σ_v temporal | Throughput | Fuel | Wave count |
 |---|---|---|---|---|
 | 1% | -8.2% (**resolved**) | -0.3% (**resolved**) | +1.7% (**resolved**) | -3.0% (not resolved) |
@@ -86,6 +92,9 @@ MOTION or highD-calibrated flagship would provide.
 
 ## Honest summary
 
+> The throughput part of this summary rests on the column corrected above (measured upstream of the replica); the fuel and σ_v parts do not.
+
+
 The claim that sparse controlled vehicles measurably smooth traffic **holds on
 real geometry**. The claim that they do so **for free** is corridor-dependent:
 true on the uncongested synthetic corridor, false on this saturated 5-lane site,
@@ -101,3 +110,89 @@ calibration, and cannot be transferred from a synthetic study.
 * 640 m site with a measured downstream boundary: results are dominated by
   boundary conditions in a way a longer corridor would not be.
 * Fuel comes from SUMO's HBEFA4 model, unvalidated against measured consumption.
+
+## Testing the multi-lane hypothesis — method (2026-09-25)
+
+**Status: method and code only. The result will come from the VM run** of the
+opt-in pipeline stage `us101_lane_changes` (`scripts/gcp/pipeline_i24.sh` §14),
+which has not been launched. Nothing in this section is a result.
+
+**What is tested.** The "multi-lane behaviour" explanation above
+(docs/ROADMAP.md §5 D2), one link at a time: do humans change lanes more when
+AVs are present, are the extra changes made behind the AVs, do the humans (and
+not the AVs themselves) burn the extra fuel, and do drivers who change lanes
+burn more than drivers who do not.
+
+**The runs.** The sweep behind this document, re-run unchanged by
+`scripts/us101_penetration_sweep.py`: baseline and FollowerStopper at 1, 2, 5,
+10 and 20 %, 100 % compliance, the same 20 common-random-number seeds
+(`spawn_seeds(42, 20)`), the measured downstream boundary. A cloud VM has no
+`runs/m3_us101` snapshot, so the boundary comes from the committed
+`scenarios/us101_replica_calibrated.yaml`, which carries the same schedule: the
+replica with it has the snapshot's config hash (ab879e240aed, checked
+2026-09-25). The cells' hashes under the current hash policy are ab879e240aed
+(baseline), 1dfb116ac999 (1 %), e0dc898e0fc9 (2 %), 258d7c037638 (5 %),
+7f646d6e4be8 (10 %) and ded8acc47c9e (20 %); the summary artifact quotes the
+policy-v1 hashes of 2026-08-30. The engine has changed since then, so the fuel
+increase has to reproduce on the new runs before the explanation can be
+tested, and the analysis recomputes the original metrics with the original
+definitions for that. Every trajectory is kept on the VM.
+
+**Definitions** (the full text is the docstring of `scripts/us101_lane_changes.py`):
+
+* *Lane changes* are read by the `calibration.lane_change_gaps` detector with
+  its 1 s A-B-A debounce. They are counted per vehicle-km inside the replica's
+  640 m, after the 180 s warm-up; the insertion and exit buffers are excluded.
+  Human changes are per human vehicle-km, AV changes per AV vehicle-km.
+* A *pass-around* is a human change whose origin-lane leader was an AV, at the
+  change or at any of the changer's samples in that lane during the 5 s
+  before. The leader is the nearest vehicle ahead in the changer's lane,
+  within 200 m. The stricter reading, at the change only, is reported too. A
+  *cut-in* is a human change into the gap ahead of an AV: its new follower is
+  an AV.
+* *Counterfactual.* Under common random numbers, the vehicles that are AVs at
+  a penetration are ordinary drivers in the same seed's baseline, because the
+  AV tags are drawn after the drivers. The baseline's changes behind those
+  same vehicles are the pass-arounds that happen without the controller. The
+  *excess* is the level's rate minus that.
+* *Fuel.* The runner records only whole-trip totals per vehicle
+  (`meta.json` `fuel_ml_per_vehicle`, HBEFA4, from the insertion buffer to the
+  exit), so fuel per km is whole-trip. The analysis reports the humans' and the
+  AVs' ratios and the exact split of the change in fuel between them. Humans
+  with a whole journey are binned by 0, 1 and 2+ lane changes; this relation is
+  associational.
+
+**Decision rule, written before any result.** At each penetration a check
+holds when its 95 % interval over seeds lies above zero:
+
+* (a) the fuel increase reproduces: the paired change in `compute_metrics`'
+  fuel per vehicle-km;
+* (b) humans change lanes more: the paired change in human changes per human
+  vehicle-km;
+* (c) the extra changes are behind the AVs: the excess pass-arounds;
+* (d) the humans burn more: the paired change in the humans' fuel per km;
+* (e) within the level's runs, humans who changed lanes burn more per km than
+  humans who did not.
+
+Where (a) fails the level is not applicable. The hypothesis is supported where
+(b) to (e) all hold. It is killed at a level where the fuel increase
+reproduces but the humans do not change lanes more (b), or their fuel does not
+rise (d): the increase is then the AVs' own consumption. A diagnostic reports
+whether humans who never changed lanes also burn more, which would be a part
+of the increase that does not go through lane changes.
+
+**A note on the original metrics.** `scripts/us101_penetration_analyze.py`
+measures throughput at x = 400 m and travel time over 100–600 m. Those are
+trajectory coordinates, in which the first 640 m are the insertion buffer
+(`microsim.networks.corridor`); a 300 m test corridor run on 2026-09-25
+recorded `x_first_edge_m` = 300 m and first samples from 5.1 m. So the
+throughput column above was measured upstream of the replica, while σ_v, fuel
+and waves cover the whole recorded road, as
+[M3_US101_VALIDATION.md](M3_US101_VALIDATION.md) notes for `compute_metrics`.
+The stage reports the original definitions and, beside them, throughput and
+travel time on the replica itself.
+
+**Cost.** 120 runs. The 20-seed with-boundary battery simulated in 12.4 s of
+wall time on a pipeline VM (`artifacts/us101_validation_calibrated.json`,
+committed 2026-09-17, `arms.with_boundary.simulated.wall_s`). The analysis took about 1 s and 0.5 GB
+per run on a synthetic run of the replica's size (588,212 rows).

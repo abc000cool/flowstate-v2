@@ -40,35 +40,40 @@ CONTROLLER = "follower_stopper"
 
 
 BOUNDARY_SCENARIO = REPO / "runs" / "m3_us101" / "us101_replica_with_boundary.yaml"
+CALIBRATED_SCENARIO = REPO / "scenarios" / "us101_replica_calibrated.yaml"
 
 
-def _base_with_boundary() -> dict:
-    """The replica plus its measured downstream boundary.
+def _base_with_boundary() -> tuple[dict, str]:
+    """The replica plus its measured downstream boundary, and where it came from.
 
     ``scripts/m3_us101_validate.py`` writes the boundary-carrying scenario when
-    it runs (the schedule is extracted from the NGSIM chunks and is expensive to
-    re-derive). Reuse it if present; otherwise re-derive from the raw data.
+    it runs (the schedule is extracted from the NGSIM chunks); reuse it if
+    present. Otherwise take the ``network.boundary`` block of the committed
+    ``scenarios/us101_replica_calibrated.yaml``, which carries that measured
+    schedule unchanged (its header: "Exit fractions and any boundary
+    unchanged"): the replica with that block has the same config hash as the
+    snapshot (ab879e240aed under hash policy v2, checked 2026-09-25), and a
+    cloud VM, which receives neither ``runs/`` nor ``data/ngsim``, runs the
+    same configuration. (The earlier fallback re-derived the schedule from the
+    NGSIM chunks but indexed the dict ``us101_data.load_us101`` returns as a
+    frame, so it could not run.)
     """
+    import yaml
+
     from flowstate_core.config import ScenarioConfig
 
     if BOUNDARY_SCENARIO.is_file():
         print(f"using boundary scenario {BOUNDARY_SCENARIO}")
-        return ScenarioConfig.from_yaml(BOUNDARY_SCENARIO).model_dump(mode="json")
+        cfg = ScenarioConfig.from_yaml(BOUNDARY_SCENARIO).model_dump(mode="json")
+        return cfg, str(BOUNDARY_SCENARIO.relative_to(REPO))
 
-    print("boundary scenario absent; re-deriving from NGSIM chunks (slow)")
-    from m3_us101_validate import (  # type: ignore
-        _boundary_schedule_wall,
-        build_boundary_spec,
-    )
-    from us101_data import MAINLINE_LANES, load_us101  # type: ignore
-
-    p1 = load_us101()
-    p1 = p1[(p1["period"] == 1) & (p1["lane_id"].isin(MAINLINE_LANES))]
-    cfg = ScenarioConfig.from_yaml(SCENARIO).model_dump(mode="json")
-    cfg["network"]["boundary"] = build_boundary_spec(_boundary_schedule_wall(p1)).model_dump(
-        mode="json"
-    )
-    return cfg
+    print(f"boundary snapshot absent; boundary block of {CALIBRATED_SCENARIO.name}")
+    raw = yaml.safe_load(SCENARIO.read_text())
+    raw["network"]["boundary"] = yaml.safe_load(CALIBRATED_SCENARIO.read_text())["network"][
+        "boundary"
+    ]
+    cfg = ScenarioConfig.model_validate(raw).model_dump(mode="json")
+    return cfg, f"{CALIBRATED_SCENARIO.relative_to(REPO)} network.boundary"
 
 
 def cell_config(base: dict, pen: float) -> dict:
@@ -112,7 +117,7 @@ def main() -> None:
     from flowstate_core.config import ScenarioConfig, config_hash
     from flowstate_core.rng import spawn_seeds
 
-    base_json = _base_with_boundary()
+    base_json, boundary_source = _base_with_boundary()
     base_cfg = ScenarioConfig.model_validate(base_json)
     seeds = spawn_seeds(base_cfg.seed, args.replicates)
 
@@ -147,6 +152,7 @@ def main() -> None:
                 "controller": CONTROLLER,
                 "compliance": COMPLIANCE,
                 "boundary": "measured downstream (docs/M3_US101_VALIDATION.md)",
+                "boundary_source": boundary_source,
                 "cells": hashes,
                 "seeds": seeds,
                 "n_failed_this_session": n_fail,

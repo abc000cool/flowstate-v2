@@ -2928,3 +2928,34 @@ WP-78 (docs/WEAVE_MODEL_PLAN.md, dated section). These are the gaps each lane ch
   - `runs`: `lane_change_gaps`' `runs` entries plus `sequence_counts`.
 
 **Coverage.** On I-24 MOTION an accepted gap is the true one or larger, and a rejected gap may be larger or merged into the accepted one. The fitted critical gaps are therefore biased upward, and the proposed time gaps are upper bounds.
+
+## US-101 lane changes against penetration (`scripts/us101_lane_changes.py`) — 2026-09-25
+
+WP-81 (docs/US101_PENETRATION.md, dated addendum). It is additive: no config field, no runner output, no hash and no golden changes. `scripts/us101_penetration_sweep.py`'s `MANIFEST.json` gains `boundary_source`.
+
+**Per-run file `lane_changes.json`**, beside `meta.json` in each run directory (`<sweep root>/<cell>/<config hash>/<seed>/`). JSON, `allow_nan=False`, written atomically, `version` 1. It is recomputed when its `version` or `parameters` differ from the call's.
+- *Identity.* `version`, `run_dir`, `config_hash`, `seed`, `penetration`, `compliance`, `controller`, `av_ids`, `n_complied`.
+- `parameters`: `lookback_s`, `leader_range_m`, `min_dwell_s` (null = the detector's default), `n_lanes`.
+- *Where it counts.* `study_span_m` (`[x_first_edge_m, x_first_edge_m + length_m]`, run coordinates), `window_s` (`[warm-up, last sample]`), `dt_s`.
+- `counts`, inside the span and window: `n_changes`, `n_av`, `n_human`, `n_pass_around`, `n_pass_around_at_change`, `n_cut_in`, `n_other_human`, `n_unconfirmed`.
+- `vkt_km` (`all`, `human`, `av`) and `rates`: `lc_per_veh_km_all`, `lc_per_veh_km_human` (per human veh-km), `lc_per_veh_km_av` (per AV veh-km, null without AVs), `pass_arounds_per_human_veh_km`, `pass_arounds_at_change_per_human_veh_km`, `cut_ins_per_human_veh_km`, `pass_around_share_of_human_changes`.
+- `fuel`: `all`, `human`, `av`, each `{ml, km, ml_per_km}`, whole trip (the runner's per-vehicle totals over the trapezoid distance).
+- `fuel_by_changes`: `0`, `1`, `2+`, `changed`, each `{n, mean_ml_per_km, pooled_ml_per_km}`; `changed_minus_unchanged_ml_per_km`; `n_humans`, `n_humans_not_whole_journey`, `n_humans_without_fuel`. Humans with a whole journey only; changes counted over the whole record.
+- `scalars`: every per-seed statistic the aggregation reads, flat (the rates, the class fuel ratios, the bin means, and with the original metrics `orig_*` and `site_throughput_veh_h`, `site_mean_tt_s`).
+- *Checks.* `pass_around_origin_leader_gap_m` (quantiles), `detector_counts` (`lane_change_gaps` counts over the whole record), `arrival_source`, `av` (`n_av_ids`, `n_av_recorded`, `n_vehicles_recorded`, `is_av_checked`), `n_fuel_without_trajectory`, `n_trajectory_without_fuel`.
+- *With the original metrics (the default).* `original_metrics` (`throughput_veh_h`, `sigma_v_temporal_ms`, `fuel_ml_per_veh_km`, `mean_tt_s`, `wave_count`: `compute_metrics` at x_ref 400 m and span 100–600 m, run coordinates, as `scripts/us101_penetration_analyze.py`), `fuel_ratio_matches_compute_metrics`, and `site_metrics` (`x_ref_m` the replica's midpoint, `span_m` the replica, `throughput_veh_h`, `mean_tt_s`).
+- *Only in a run without AVs.* `neighbours`: `changes`, one `[changer, [origin-lane leaders over the lookback], new follower or null]` per human change in the span and window, and `span_m_per_vehicle`. These are the baseline side of the counterfactual.
+
+**Artifact `artifacts/us101_lane_change_penetration.json`** (`schema_version` 1). It is written by the opt-in stage `us101_lane_changes` and has not run yet.
+- *Provenance.* `schema_version`, `experiment`, `work_package`, `hypothesis`, `source_result`, `created_at`, `code`, `scenario`, `controller`, `compliance`, `boundary`, `boundary_source`, `config_hashes`, `seeds`, `n_seeds`.
+- `parameters`: `lookback_s`, `leader_range_m`, `min_dwell_s`, `original_x_ref_m`, `original_span_m`. `method`: the script's definitions.
+- `decision_rule`: `checks` (`a_fuel_increase_reproduces`, `b_humans_change_more`, `c_excess_changes_behind_avs`, `d_humans_burn_more`, `e_changes_cost_fuel`, each `{statistic, meaning}`), `holds_when`, `verdict`, `diagnostic_unchanged_humans_fuel_rises`.
+- `levels`, per cell: `penetration`, `n_runs`, `aggregate` (per scalar `{mean, lo95, hi95, n}`), `fuel_by_changes` (per bin `{mean_ml_per_km, n_vehicles}`), `counts_total`. Every non-baseline cell adds:
+  - `paired_delta_vs_baseline`: per scalar `{mean, lo95, hi95, n, pct_of_baseline, resolved}`, each level's seed paired with the baseline's;
+  - `counterfactual`: `baseline_pass_arounds_per_human_veh_km`, `baseline_cut_ins_per_human_veh_km`, `excess_pass_arounds_per_human_veh_km`, `excess_cut_ins_per_human_veh_km` (intervals; the excess ones carry `resolved`);
+  - `fuel_decomposition_ml_per_veh_km`: `from_humans`, `from_avs`, `total` (intervals);
+  - `hypothesis_checks`, `verdict` (`not_applicable`, `supported` or `not_supported`), `failed_checks`, `diagnostic_unchanged_humans_fuel_rises`.
+- `missing_runs`, `n_runs_analysed`, `n_runs_failed_this_session`, `wall_s`.
+- Intervals are t-based over seeds (n − 1 degrees of freedom), as `scripts/us101_penetration_analyze.py` computes them.
+
+**Pipeline.** Stage `us101_lane_changes` (opt-in, launch with `--data-set none`) runs the sweep, then the analysis. The archive carries `runs/us101_penetration/*/*/*/lane_changes.json` and the sweep's `MANIFEST.json`; `--analyze-only` rebuilds the artifact from them without reading a trajectory.

@@ -73,6 +73,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   for f in data/i24motion/processed/i24_wb_gap_sequences.parquet data/i24motion/processed/i24_wb_critical_gap_drivers.parquet; do
     [ -f "$f" ] && extra="$extra $f"
   done
+  # the US-101 lane-change stage's per-run records and the sweep manifest (WP-81; <cell>/<hash>/<seed>/, three levels;
+  # the artifact rebuilds from them with scripts/us101_lane_changes.py --analyze-only, no trajectory read)
+  extra="$extra $(ls runs/us101_penetration/*/*/*/lane_changes.json runs/us101_penetration/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -547,6 +550,25 @@ fi
 #     driver tables ride along in the archive. One process: ~1 GB peak per 15-min chunk on a 3 M-row synthetic stand-in.
 if echo " $STAGES " | grep -q " i24_critical_gaps "; then
   stage i24_critical_gaps $RUN scripts/i24_critical_gaps.py || say "i24_critical_gaps failed; continuing"
+fi
+
+# 14. The multi-lane hypothesis behind the US-101 fuel result (WP-81, docs/ROADMAP.md §5 D2, 2026-09-25; opt-in; needs no
+#     data set: launch with --data-set none). The penetration sweep of docs/US101_PENETRATION.md re-run as it was
+#     (scripts/us101_penetration_sweep.py: baseline + FollowerStopper at 1/2/5/10/20 %, 100 % compliance, the 20 seeds of
+#     spawn_seeds(42, 20), the measured downstream boundary — the boundary block of the committed
+#     scenarios/us101_replica_calibrated.yaml when the runs/m3_us101 snapshot is absent, the same config hash), every
+#     trajectory kept (13-14 MB a baseline run of the with-boundary replica, so about 2 GB for the 120 runs); then
+#     scripts/us101_lane_changes.py: per run the lane changes per veh-km over the replica's 640 m by class (AV / human;
+#     pass-arounds of an AV directly ahead; cut-ins ahead of one), the counterfactual pass-arounds behind the same vehicles
+#     in the seed's baseline, per-vehicle fuel against lane changes and the original analysis's metrics; per level the
+#     paired-by-seed change against the baseline with 95 % CIs and the pre-registered checks
+#     -> artifacts/us101_lane_change_penetration.json. The committed artifacts/us101_penetration_summary.json is not
+#     rewritten (scripts/us101_penetration_analyze.py does not run). Analysis: about 1 s and 0.5 GB per run measured on
+#     a 588k-row synthetic run of the replica's size; the pool is capped at 16.
+if echo " $STAGES " | grep -q " us101_lane_changes "; then
+  stage us101_lane_changes bash -c "$RUN scripts/us101_penetration_sweep.py --procs $PROCS --replicates $REPS && \
+    $RUN scripts/us101_lane_changes.py --sweep runs/us101_penetration --procs $(( PROCS < 16 ? PROCS : 16 )) \
+      --out artifacts/us101_lane_change_penetration.json" || say "us101_lane_changes failed; continuing"
 fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
