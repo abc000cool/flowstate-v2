@@ -1,0 +1,11 @@
+<!-- tests/fixtures/weave_th61_lane_end.osm: the 3 -> 2 lane drop of way 104 into
+     way 105 with its LEFT lane ending (netconvert ends the right one). The
+     corridor's queue at the T.H.61 stretch comes from the T.H.52 weave, whose
+     right-hand lanes carry least (docs/WEAVE_MODEL_PLAN.md, WP-65), so the
+     right through lane past the Mounds / Kellogg gore is loaded, not emptied
+     by drivers leaving a lane that ends (docs/WEAVE_MODEL_PLAN.md, 2026-09-25
+     block 3, WP-66). -->
+<connections>
+  <connection from="104" to="105" fromLane="0" toLane="0"/>
+  <connection from="104" to="105" fromLane="1" toLane="1"/>
+</connections>

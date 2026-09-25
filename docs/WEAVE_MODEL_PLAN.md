@@ -3024,3 +3024,191 @@ Its three-seed reading was the sequence re-rolled in part: it trades exits and l
 - *(c) For future harnesses: `vehicle.getSpeedWithoutTraCI` does not give the model's own speed under this fleet* (it follows the commanded speed). A command's deficit has to be read against the runner's own IDM reading, as here.
 
 **Bookkeeping.** This section and CHANGELOG.md only. `microsim.runner`, `flowstate_core.config`, the contract, the API schema, the sweep's field list, the scenarios, the fixtures and every test are untouched. Session artifacts are not committed: the harness and its three trace additions (lane changes, arrival-step changes, heads and hold chains), the counterfactual scripts, the 76 fixture runs and the table scripts. Every number above is from those runs or from the committed files named.
+
+## 2026-09-25 (block 3, WP-66, the T.H.61 lane end): the stretch where VM R's lock ends is a two-lane weave, created by the map fix and never re-classified. A queue arriving from downstream does not lock it at fixture scale, and the one-auxiliary-lane weave model reads worse there; nothing ships
+
+**Why.** VM R (docs/ONBOARDING_MNDOT.md §11; `artifacts/mndot_rounds/weave_2026-09-24/exit_prepare_collapsed_seed_standstill_50m_1min_lanes.txt`) mapped seed 6134032994440706937, which WP-62's `exit_prepare` collapses on the four-hour corridor. From minute 155 the standstill's downstream end sits at 8.45–8.50 km in every lane. VM R read that as "the end of lane 4, the lane the T.H.61 entrance adds and off-ramp 18207912 drops", an auxiliary lane outside the weave model. This package asks four things. (1) What does the corrected scenario compile there? (2) Why was the stretch not made a weave section? (3) Does a fixture of the stretch lock when a queue arrives from downstream, with and without the weave configuration? (4) What should change? Session scripts only; `microsim.runner`, `flowstate_core.config`, the scenarios and `data/osm` are untouched.
+
+**(1) The stretch as the corrected scenario compiles it.** A session script ran `microsim.runner._build_network` on `scenarios/mndot_i94_wb_stpaul_weave.yaml`, as `run_micro` does: netconvert only, on `data/osm/mndot_i94_wb_stpaul.osm` with `--ramps.guess --ramps.ramp-length 250 --ramps.unset 1001426896` and the split patch `data/osm/mndot_i94_wb_stpaul.splits.con.xml`. Every mainline edge runs at 24.59 m/s (55 mph).
+
+| edge | x at start [m] | length [m] | lanes | where each lane leads |
+|---|---|---|---|---|
+| 45608474 | 6,943.6 | 445.4 | 3 | lanes 0 / 1 / 2 → 51866108 lanes 2 / 3 / 4 |
+| T.H.61 NB ramp: 53062592 + 59339954 + 59339950 | — | 396.7 + 43.6 + 474.9 = 915.2 | 2 | lanes 0 / 1 → 51866108 lanes 0 / 1 (20.12 m/s) |
+| 51866108 | 7,389.0 | 64.8 | 5 | lane i → 45608490 lane i |
+| 45608490 | 7,453.8 | 45.0 | 5 | lane i → 45608485 lane i |
+| 45608485 | 7,498.8 | 1,025.8 | 5 | lanes 0 / 1 → 18207912 lanes 0 / 1 only; lanes 2 / 3 / 4 → 45782590 lanes 0 / 1 / 2 only |
+| exit 18207912 (+ 1013745890) | — | 556.0 (+ 16.5) | 2 (3) | the Mounds Blvd / Kellogg Blvd exit, 22.22 m/s |
+| 45782590 | 8,524.6 | 770.4 | 3 | → 45782590-AddedOffRampEdge (9,295.0 m, 4 lanes; its lane 3 is the 6th St left exit 42165869) |
+
+- *What it is.* T.H.61 NB is a two-lane entrance that adds two lanes (3 → 5). The two added lanes run 1,135.6 m (64.8 + 45.0 + 1,025.8) and both leave as the two-lane Mounds / Kellogg exit. The three through lanes neither gain nor lose a lane (3 → 5 → 3).
+- *Not a lane add and a separate drop.* The added lanes are an auxiliary connection from the entrance to the exit, and both are exit-only. In HCM ch. 13 terms that is a one-sided weaving segment (entrance and exit on the right, joined by auxiliary lanes).
+  - An entrant bound through must change 1 → 2, or 0 → 1 → 2 from lane 0.
+  - A mainline exiter must change 2 → 1, or two or three lanes from lanes 3–4.
+  - So N_WL, the number of lanes from which a weaving movement can finish with at most one change, is 2 (lanes 1 and 2).
+- *VM R's "lane 4".* SUMO numbers lanes from the right, so on the five-lane edges lanes 0–1 are the two the entrance adds and lanes 2–4 are the through lanes. "Lane 4", present only from 7.35 to 8.45 km, is the leftmost through lane (45608474's lane 2 → 45782590's lane 2), not an added lane. VM R's conclusion stands with that correction: the standstill's downstream end at 8.45–8.50 km is the end of 45608485 (8,524.6 m), where the two added lanes end at the exit.
+- *Before the split fix.* The same compile without the split patch is the map of the 2026-09-23 rounds and of §1 of this note. There, 45608485's lanes 0–2 continue as 45782590's lanes 0–2 and lanes 3–4 feed the exit (docs/ONBOARDING_MNDOT.md §9). The added lanes were through lanes, and the exit took two mainline lanes on the left.
+
+*The scenario's entries.*
+- `on-ramp 53062592`: `attach_edge` 51866108, edges 53062592 / 59339954 / 59339950, `merge: lane_change`, `weave: null`. `inflow` has 48 steps, 953–1,895 veh/h. The demand artifact scales it off the two-lane ramp station rnd_88807 (`detector_scaled`, matched at 78.2 m, x 7,372.4 m).
+- `off-ramp 18207912`: `attach_edge` 45608485, edges 18207912 / 1013745890, `merge: lane_change`. `exit_fraction` has 48 steps, 0.000–0.501, `method: conservation` with no station (x 8,495.6 m). The Mounds Blvd ramp detector rnd_87205 is the artifact's one unmatched ramp detector; its hourly means are 3,939–4,575 veh/h, the size of a mainline count, not an exit's.
+
+*The movements, by hour.* Hourly means of the scenario's 5-min steps. The mainline arriving is the upstream `inflow` propagated through the ten ramps before the entrance in corridor order. The fleet plan draws the exit for mainline vehicles and entrants alike, so the ramp-to-ramp flow is the entrance times the fraction.
+
+| hour | mainline arriving [veh/h] | entering | exit fraction (flow-weighted) | F→F | F→R | R→F | R→R | exiting | through past the gore |
+|---|---|---|---|---|---|---|---|---|---|
+| 05:30–06:30 | 2,863 | 1,225 | 0.059 | 2,693 | 169 | 1,152 | 73 | 242 | 3,846 |
+| 06:30–07:30 | 3,752 | 1,733 | 0.281 | 2,699 | 1,053 | 1,244 | 489 | 1,542 | 3,943 |
+| 07:30–08:30 | 2,360 | 1,696 | 0.356 | 1,516 | 844 | 1,095 | 601 | 1,445 | 2,611 |
+| 08:30–09:30 | 2,731 | 1,338 | 0.241 | 2,082 | 649 | 1,008 | 330 | 979 | 3,090 |
+
+The 5-min peaks are 6,329 veh/h arriving at 06:30 (4,541 mainline + 1,788 entering), 1,895 entering at 07:35, and an exit fraction of 0.501 at 07:35.
+
+The observed stretch (`data/mndot/mndot_i94_wb_stpaul/observations.json`, nine-weekday means, the same four hours) is congested from 06:30 but never stops. The lowest 5-min mean speeds are 10.8 m/s at S1070 and 11.8 m/s at S1948.
+- S1070 (7.67 km, 5 lanes): 3,974 / 5,041 / 3,557 / 3,859 veh/h at 29.5 / 16.2 / 11.3 / 16.5 m/s.
+- S1948 (8.40 km, 5 lanes): 4,050 / 4,962 / 3,686 / 3,950 veh/h at 29.4 / 16.5 / 12.5 / 15.5 m/s.
+- The entrance station rnd_88807: 1,214 / 1,733 / 1,696 / 1,333 veh/h.
+
+**(2) Why the stretch is not a weave section, and whether it meets the criterion.**
+- *No code chooses weave sections.* Nothing in `scripts/onboard_corridor.py`, `microsim.scenarios` or `microsim.split_audit` writes `merge: weave`. The onboarding writes every ramp on `RampSpec`'s default, `lane_change`.
+- *The choice was manual.* `scenarios/mndot_i94_wb_stpaul_weave.yaml` is a hand-edited variant (3b7ee9e, 2026-09-23 23:39). Its two pairs are the ones §1 and "Two findings" of this note named: an on-ramp and an off-ramp sharing an `attach_edge` (999007700, 51388891). T.H.61 NB was excluded twice: as "a lane addition (two-lane entrance, five-lane station downstream)", and in §1 as `accel_lane_end`'s "other branch — a 1,071 m added lane". That was right on the map it was read on, where the added lanes continued.
+- *The map fix changed the geometry and the choice was not revisited.* The split patch (fee67c3, 23:51, twelve minutes later) moved the exit to lanes 0–1 and made the added lanes exit-only. Two things kept the stretch from resurfacing:
+  - (a) the shared-attach-edge reading cannot see a section spanning three edges: T.H.61 attaches to 51866108, the exit to 45608485;
+  - (b) `microsim.networks.accel_lane_end` checks the tail's length before what lane 0 feeds. On the corrected map it still refuses with "lane 0 runs on through ['45608490', '45608485'] for 1071 m past 51866108 (more than 400 m): this is an added through lane". It stops at its 400 m bound before the walk reaches the exit. The new geometry test pins this.
+- *The engine's own detector pairs it.* `microsim.networks.weave_sections` (the lane-0 walk to an exit within `WEAVE_LENGTH_MAX_M` = 1,500 m) runs only to validate configured pairs. On the corrected map it finds five pairs:
+  - the two configured ones, Ruth St at 135.8 m and T.H.52 at 305.0 m;
+  - **T.H.61 → 18207912, 1,135.5 m, over 51866108 / 45608490 / 45608485, lane 0 exit-only on all three**;
+  - the C-D re-entry 745524608 → off-ramp 18207880, 385.4 m;
+  - on-ramp 1077665160 → off-ramp 18279036, 1,086.2 m (an entrance the demand zeroes).
+  
+  The last two also share an `attach_edge` in the current scenario (998737536 and 638519815), so the design note's own reading would call them weaves too. Neither is configured.
+- *The HCM criterion is met at every step.* HCM ch. 13 (6th and 7th editions, the 2010 method; the equation number was not re-checked against the 7th-edition text in this session) treats an entrance–exit pair as a weaving segment when its short length L_S is below
+
+  L_MAX = 5,728 (1 + VR)^1.6 − 1,566 N_WL [ft], with VR = (v_FR + v_RF) / v (a one-sided segment's weaving flows; ramp-to-ramp is non-weaving).
+
+  From the scenario's 48 steps:
+
+  | quantity | hourly (the four hours above) | range over the 48 steps |
+  |---|---|---|
+  | VR | 0.323 / 0.419 / 0.478 / 0.407 | 0.288–0.500 |
+  | L_MAX, N_WL = 2 [m] | 1,778 / 2,101 / 2,307 / 2,062 | 1,664–2,386 |
+  | L_MAX, N_WL = 3 [m] | — | 1,187–1,909 |
+  | VR with ramp-to-ramp counted as weaving | — | 0.295–0.707 |
+  | L_MAX with ramp-to-ramp counted as weaving [m] | — | 1,686–3,151 |
+
+  L_S is 1,135.6 m as compiled, or 1,123.2 m between the demand artifact's ramp positions (7,372.4 → 8,495.6 m). L_S < L_MAX at all 48 steps in every variant, and 1,135.5 m < 1,500 m for the engine's bound. By both criteria the stretch is a weave. The manual criterion excluded it only because it was applied to the map before the split fix.
+
+**(3) The fixture.** `tests/fixtures/weave_th61_lane_end.osm` is the stretch as the corridor compiles it. netconvert's compiled lengths are within 0.1 m of the corridor's (node positions iterated as for `weave_th52_corridor.osm`; `TestTh61Geometry` pins them):
+
+| way | stands for | length [m] | lanes |
+|---|---|---|---|
+| 100 | approach and insertion | 600.3 | 3 |
+| 101 | 45608474 | 445.4 | 3 |
+| 102 | 51866108 + 45608490 + 45608485, as one edge; lanes 0–1 lead only to the exit, 2–4 only on | 1,135.7 | 5 |
+| 103 | 45782590 | 770.4 | 3 |
+| 104 | the approach to the restriction | 730.0 | 3 |
+| 105 | the restriction: a 3 → 2 lane drop | 600.3 | 2 |
+| 200 | the T.H.61 NB ramp (45 mph) | 915.1 | 2 |
+| 201 | the exit | 556.0 | 2 |
+
+*The restriction, derived.*
+- *Where.* The corridor's queue arrives at the stretch from the T.H.52 approach. VM R's head forms at 9.95–10.20 km, 1.43–1.68 km past the gore at 8.52 km, so the drop is placed 1,500 m past the gore.
+- *How much.* The corridor's mainline approach to T.H.52 passes 3,259 veh/h (VM K) and 3,328 veh/h (VM Q) at S790 in 06:30–07:30 (docs/ONBOARDING_MNDOT.md §11, the VM Q table). That count also carries on-ramp 40648744's entrants (876 veh/h asked in that hour), so the stream from the gore gets about 2,400–3,300 veh/h there. The drop discharges 2,666–2,921 veh/h over minutes 5–30 in the lane-change runs below: the same order, and below the fixture's 3,545–4,991 veh/h asked past the gore.
+- *Which lane ends.* netconvert ends the drop's right lane. The corridor's T.H.52 queue is heaviest on the right (WP-65: the weave's lanes 0 and 1 carry one lane's worth), which loads the right through lane past the gore. A lane that ends is instead emptied early by drivers leaving it. So the left-lane drop (`tests/fixtures/weave_th61_lane_end_left_drop.con.xml`) is the primary variant and netconvert's right-lane drop the second. That choice was made before the left variant was run, with the right one already seen not to lock.
+- *No restriction* is the control.
+
+*The demand and the runs.*
+- *Demand* (`TH61_DEMAND_0630` in `tests/test_microsim/test_microsim_th61_lane_end.py`): the corridor's own 06:30–07:00 steps, the window in which VM R's queue reaches the stretch (minutes 55–65), shifted to t = 0 on an empty network.
+  - Mainline 4,541 / 4,556 / 4,470 / 3,733 / 3,771 / 3,403 veh/h.
+  - Entering 1,788 / 1,676 / 1,751 / 1,719 / 1,588 / 1,680 veh/h.
+  - Exit fraction 0.212 / 0.222 / 0.430 / 0.280 / 0.277 / 0.210.
+  - 2,885 vehicles planned, 848 of them on the entrance.
+- *Run settings:* the corridor's fleet block, 30 simulated minutes, macOS, one run at a time at 9–29 s each. Every number below is from `th61_config` and `th61_lane_end_state` of that test module (session script `wp66_grid.py`, not committed).
+- *Column definitions:*
+  - *Queue at the gore*: the first minute in which a through lane's mean speed over the edge's last 100 m falls under 5 m/s, and the number of such minutes.
+  - *0.0 minutes*: minutes in which every lane there averages under 0.1 m/s (VM R's reading).
+  - *Lane-end holds*: vehicles halted within the last 10 m of the five-lane edge in a lane their route does not continue on. The route is shown: `on0` is a T.H.61 entrant bound through, `main_off1` a mainline exiter.
+  - *Exiters' lane changes 1 → 0 / 0 → 1*: changes between the two exit-only lanes, from the 2 Hz trajectories.
+  - *Weave counters*: `n_changed_out` / `n_reached_section_exiting` / `n_missed_exit`.
+
+| restriction | merge | seed | departed of 2,885 | entrance of 848 | exits taken / exiters past the gore | queue at the gore (first minute / minutes) | 0.0 minutes | lane-end holds | exiters' lane changes 1 → 0 / 0 → 1 | weave: out / reached / given up | collisions |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| left drop | lane_change | 3 | 2,797 | 848 | 628 / 0 | 10 / 20 | 0 | 1 (on0), ≤ 1 s | 391 / 204 | — | 0 |
+| left drop | lane_change | 4 | 2,882 | 848 | 689 / 0 | 11 / 19 | 0 | 5 (on0), ≤ 17.5 s | 470 / 237 | — | 0 |
+| left drop | lane_change | 5 | 2,822 | 848 | 654 / 0 | 9 / 21 | 0 | 2 (on0), ≤ 7 s | 446 / 219 | — | 0 |
+| left drop | weave | 3 | 2,566 | 834 | 570 / 3 | 3 / 11 | 0 | 6 (4 main_off1, 2 on0), ≤ 4.5 s | 4,919 / 4,512 | 4,982 / 604 / 3 | 0 |
+| left drop | weave | 4 | 2,576 | 832 | 603 / 2 | 25 / 1 | 0 | 4 (2 main_off1, 2 on0), ≤ 6 s | 5,345 / 4,902 | 5,420 / 641 / 2 | 0 |
+| left drop | weave | 5 | 2,606 | 848 | 614 / 2 | 10 / 7 | 0 | 3 (2 main_off1, 1 on0), ≤ 9.5 s | 5,190 / 4,724 | 5,247 / 638 / 2 | 0 |
+| right drop | lane_change | 3 | 2,773 | 848 | 671 / 0 | 9 / 15 | 0 | 0 | 361 / 228 | — | 0 |
+| right drop | lane_change | 4 | 2,853 | 848 | 735 / 0 | 8 / 15 | 0 | 0 | 357 / 208 | — | 0 |
+| right drop | lane_change | 5 | 2,878 | 848 | 711 / 0 | 11 / 15 | 0 | 0 | 380 / 221 | — | 0 |
+| right drop | weave | 3 | 2,519 | 841 | 569 / 0 | 11 / 6 | 0 | 1 (on0), ≤ 2 s | 4,218 / 3,825 | 4,290 / 598 / 0 | 0 |
+| right drop | weave | 4 | 2,541 | 786 | 609 / 0 | — / 0 | 0 | 0 | 4,303 / 3,881 | 4,390 / 631 / 0 | 0 |
+| right drop | weave | 5 | 2,578 | 848 | 609 / 0 | — / 0 | 0 | 1 (on0), ≤ 13 s | 4,754 / 4,302 | 4,816 / 635 / 0 | 0 |
+| none | lane_change | 3 | 2,885 | 848 | 729 / 0 | — / 0 | 0 | 0 | 320 / 183 | — | 0 |
+| none | lane_change | 4 | 2,885 | 848 | 771 / 0 | — / 0 | 0 | 2 (on0), ≤ 3.5 s | 294 / 155 | — | 0 |
+| none | lane_change | 5 | 2,885 | 848 | 755 / 0 | — / 0 | 0 | 1 (on0), ≤ 9 s | 326 / 168 | — | 0 |
+| none | weave | 3 | 2,737 | 848 | 635 / 0 | — / 0 | 0 | 0 | 4,301 / 3,874 | 4,415 / 663 / 0 | 0 |
+| none | weave | 4 | 2,706 | 848 | 650 / 3 | 22 / 1 | 0 | 4 (3 main_off1, 1 on0), ≤ 2.5 s | 4,353 / 3,883 | 4,449 / 679 / 3 | 0 |
+| none | weave | 5 | 2,654 | 848 | 629 / 2 | 6 / 1 | 0 | 3 (2 main_off1, 1 on0), ≤ 5 s | 4,108 / 3,672 | 4,211 / 656 / 2 | 0 |
+
+The left drop on `lane_change` at seven more seeds (6–12) does not lock either:
+
+| seed | departed | queue at the gore (first minute / minutes) | 0.0 minutes | lane-end holds, all on0 | collisions |
+|---|---|---|---|---|---|
+| 6 | 2,845 | 9 / 21 | 0 | 2, ≤ 1.5 s | 0 |
+| 7 | 2,844 | 9 / 18 | 0 | 3, ≤ 8 s | 0 |
+| 8 | 2,816 | 3 / 24 | 0 | 3, ≤ 17.5 s | 0 |
+| 9 | 2,883 | 9 / 20 | 0 | 1, ≤ 0.5 s | 0 |
+| 10 | 2,885 | 11 / 18 | 0 | 3, ≤ 14.5 s | 0 |
+| 11 | 2,812 | 2 / 21 | 0 | 4, ≤ 15 s | 0 |
+| 12 | 2,881 | 10 / 19 | 0 | 1, ≤ 2.5 s | 0 |
+
+**Reading.**
+
+1. *The lane end does not lock at fixture scale on the corridor's settings.* The queue from the drop reaches the gore at minute 2–11 and holds a through lane there under 5 m/s for 15–24 of the 30 minutes. Its downstream end at the drop discharges 2,666–2,921 veh/h. At none of the 13 `lane_change` runs with a restriction, nor at the 3 controls, does a minute read 0.0 m/s at the gore.
+   - Every lane-end hold on `lane_change` (0–5 per run, 0.5–17.5 s) is a T.H.61 entrant bound through, halted at the end of lane 1 and waiting for lane 2. No mainline exiter is ever held at the end of a through lane.
+   - SUMO's own model lets each of those entrants in within 17.5 s.
+   - So the state VM R's map suggests, an exiter held at the gore, is not what the stretch produces here. The one held vehicle is on the entrance side, the side the weave model's exit-side rule does not touch.
+2. *The weave model does not fit this geometry, and configuring it reads worse at every restriction.* The model drives entrants on lane 0 into lane 1 and exiters on any lane ≥ 1 into lane 0 (docs/CONTRACTS.md §2). Here lanes 0 and 1 both lead only to the exit. What the table shows:
+   - It re-drives every exiter already in lane 1 into lane 0. SUMO's lane-change model moves them back, and the weave takes them up again: 4,108–5,345 changes 1 → 0 and 3,672–4,902 back per run, against 294–470 and 155–237 on `lane_change` at the same restrictions and seeds. That makes 4,211–5,420 `n_changed_out` for 598–679 exiters.
+   - The cooperation this needs builds a queue from the section's start back to the fixture's entry. With no restriction, the weave runs have 152 / 158 / 173 (minute × 100 m) cells under 5 m/s at seeds 3 / 4 / 5, all between x = 0 and 1,100 m (the section starts at 1,045.7 m), from minute 11 / 8 / 8; `lane_change` has none.
+   - It departs 148–312 fewer vehicles than `lane_change` at the same restriction and seed.
+   - Its give-up reroutes 0–3 mainline exiters halted at the end of a through lane, the `main_off1` holds, as designed.
+   - It leaves the entrant held at the end of lane 1 undriven: the `on0` holds, up to 13 s. An entrant in lane 1 is not on lane 0, so the model has no move for it.
+   - No run locks or collides.
+3. *The corridor's lock is not reproduced.* The fixture carries the corridor's peak movements, its fleet and a queue from downstream, and the stretch holds for 30 minutes at 10 seeds. What it does not carry:
+   - the 90 minutes the corridor's queue sat over the stretch before the lock (minute 65 to 155);
+   - a queue arriving from upstream as well (by minute 120 the corridor stands to its boundary);
+   - `exit_prepare`. It acts only within 500 m upstream of the two weave sections (4.68–5.18 km and 9.93–10.43 km, `vacate_ahead_m` from the compiled section starts), yet it is the setting under which three of 20 seeds collapse (VM Q).
+
+   Which vehicle stands first at 8.52 km on that seed, and on which route, is a question for its trajectories (kept on the VM only). The fixture says it would be an entrant bound through in lane 1 if the stretch behaves as it does here.
+
+**(4) Proposal (not applied).**
+
+- *Do not add the stretch to the corridor as a third weave section with the current model.* Evidence: (1) two exit-only lanes against the model's one; reading 2, 148–312 departures lost and 4,108–5,345 lane-1 → 0 re-drives per run, at every restriction including none.
+  - First extend the model to *n* auxiliary lanes, reading `exit_only` per lane rather than for lane 0:
+    - entering: a vehicle bound through on any exit-only lane changes left;
+    - exiting: an exit-bound vehicle on a lane that does not lead to the exit changes right until it is on one, and is left alone there.
+  - `test_weave_configuration_carries_the_stretch` (strict `xfail`) is that extension's acceptance test.
+  - With it passing, the corridor can list T.H.61 → 18207912 as a third section. The C-D re-entry → 18207880 pair (385.4 m, one auxiliary lane) is a candidate on the current model and has not been measured.
+- *Do not extend the exit-side give-up to every auxiliary-lane drop regardless of `merge`, yet.* Evidence: reading 1. At this lane end the only holds are through-bound entrants, which an exit-side rule does not reach. They resolve within 17.5 s, and no run of 25 locks, so the rule would have no failing case to be derived against.
+  - The general form would be a vehicle halted within `exit_giveup_m` of the end of a lane its route does not continue on, with no change possible, taking that lane's own continuation: an exiter rerouted through, as now, and an entrant bound through rerouted to the exit.
+  - It should wait for the corridor seed's per-vehicle evidence: rerun the diagnostic stage (`--diag-seed` 6134032994440706937, `--diag-weave-params exit_prepare=1.0`, trajectories kept). Read, at 8.45–8.52 km in minutes 150–170, the first vehicle halted in a lane its route does not continue on, its lane and route, and whether it halts before or after the downstream standstill clears (minute 155).
+    - If it is an entrant in lane 1, as the fixture's holds are, the fix belongs to the entrance side of a two-lane weave (the first bullet).
+    - If it is an exiter in lane 2, the generalised give-up applies, behind a `WEAVE_DEFAULTS`-style key and with a fixture that reproduces it.
+- *Small engine and report changes, proposed, not applied.* The first changes a refusal outside any default-off key, so it is left to the owner.
+  - (a) `_check_weave_pairs` refuses `merge: weave` where lane 1 of a section edge also leads only to the exit, until the extension exists. Today the runner accepts the configuration and runs it as above.
+  - (b) `accel_lane_end` checks what lane 0 feeds before the tail's length, so the corrected map's refusal names the exit and not "an added through lane".
+  - (c) The onboarding report lists `weave_sections`' pairs, so a map fix resurfaces them.
+- *Corrections for the owner.*
+  - docs/ONBOARDING_MNDOT.md §11 (VM R) and its CHANGELOG bullet call lane 4 "the lane the T.H.61 entrance adds". It is the leftmost through lane. The entrance adds lanes 0–1, which end at the exit.
+  - §1 and the MnDOT-validation decider (2) of this note call T.H.61 NB "the lane-addition case", true before the split fix only.
+
+**Bookkeeping.** Added: this section; CHANGELOG.md; `tests/fixtures/weave_th61_lane_end.osm` and `tests/fixtures/weave_th61_lane_end_left_drop.con.xml`; `tests/test_microsim/test_microsim_th61_lane_end.py`. The test module has four tests, about 60 s in all:
+- the corridor's compiled stretch, its `weave_sections` pairing and the `accel_lane_end` wording;
+- the fixture's geometry;
+- the left-drop `lane_change` run at seed 3, a passing pin of "no lock";
+- the weave configuration at seed 3, a strict `xfail` with its measured values.
+
+`microsim.runner`, `flowstate_core.config`, the contract (40 keys), the API schema, the sweep's field list, the scenarios, `data/osm` and every existing test are untouched. Session scripts (the network compiles, the demand propagation, the HCM computation, the 25-run grid and its exploratory predecessor) are not committed.

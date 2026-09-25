@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <!-- The T.H.61 NB entrance (53062592) to the Mounds / Kellogg exit (18207912)
+       on I-94 WB St. Paul as the corrected corridor scenario compiles it
+       (scenarios/mndot_i94_wb_stpaul_weave.yaml on data/osm/mndot_i94_wb_stpaul.osm
+       with the split patch data/osm/mndot_i94_wb_stpaul.splits.con.xml;
+       docs/WEAVE_MODEL_PLAN.md, 2026-09-25 block 3, WP-66). Compiled lengths,
+       lanes and speeds (netconvert as run_micro calls it; the corridor's edges in
+       brackets):
+         100   600.3 m, 3 lanes, 55 mph   approach, insertion edge
+         101   445.4 m, 3 lanes, 55 mph   [45608474, the 3-lane edge before the entrance]
+         102  1135.7 m, 5 lanes, 55 mph   [51866108 64.8 m + 45608490 45.0 m + 45608485
+                                           1025.8 m, one edge here; the entrance's two
+                                           lanes become lanes 0-1, the mainline lanes 2-4;
+                                           lanes 0-1 lead only to the exit 201, lanes 2-4
+                                           only to 103]
+         103   770.4 m, 3 lanes, 55 mph   [45782590]
+         104   730.0 m, 3 lanes, 55 mph   the downstream restriction's approach: 103 + 104
+                                          put the lane drop 1,500 m past the exit gore,
+                                          where the corridor's queue head forms (the T.H.52
+                                          approach, 9.95-10.20 km, 1.43-1.68 km past the
+                                          gore at 8.52 km; docs/ONBOARDING_MNDOT.md §11, VM R)
+         105   600.3 m, 2 lanes, 55 mph   the restriction, a 3 -> 2 lane drop (netconvert
+                                          ends lane 0 of 104, the right lane;
+                                          weave_th61_lane_end_left_drop.con.xml ends
+                                          lane 2, the left one, instead)
+         200   915.1 m, 2 lanes, 45 mph   [53062592 + 59339954 + 59339950, 915.2 m, 2 lanes,
+                                           the T.H.61 NB entrance onto lanes 0-1 of 102]
+         201   556.0 m, 2 lanes, 22.22 m/s [18207912, 556.0 m, the exit from lanes 0-1 of 102]
+       Node positions were iterated until netconvert's compiled lengths matched
+       the corridor's to 0.1 m (the junction geometry at the shallow ramp angles
+       moves the edge ends by up to 71 m from the nodes). At lat 40 one degree
+       of longitude is about 85.39 km and one of latitude 111.03 km. -->
+  <node id="1" lat="40.000000" lon="-96.000000"/>
+  <node id="2" lat="40.000000" lon="-95.992973"/>
+  <node id="3" lat="40.000000" lon="-95.986913"/>
+  <node id="4" lat="40.000000" lon="-95.974994"/>
+  <node id="5" lat="40.000000" lon="-95.965471"/>
+  <node id="6" lat="40.000000" lon="-95.956926"/>
+  <node id="7" lat="40.000000" lon="-95.949899"/>
+  <node id="11" lat="39.999189" lon="-95.968072"/>
+  <node id="20" lat="39.999189" lon="-95.998437"/>
+  <way id="100">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="101">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="102">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="5"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="103">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="104">
+    <nd ref="5"/><nd ref="6"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="105">
+    <nd ref="6"/><nd ref="7"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="200">
+    <nd ref="20"/><nd ref="3"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+    <tag k="maxspeed" v="45 mph"/>
+  </way>
+  <way id="201">
+    <nd ref="4"/><nd ref="11"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="2"/>
+  </way>
+</osm>

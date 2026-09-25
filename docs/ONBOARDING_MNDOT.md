@@ -1512,13 +1512,15 @@ reproduces VM Q's; seed 6134032994440706937 departs 0.749 again with S790 at 3,3
 
 1. *The head forms at the T.H.52 approach as on every seed:* the first cells under 2 m/s at minutes 16–19, 9.95–10.20 km, lanes 0–2,
    standing there on and off until minute 50.
-2. *The queue grows back through the corridor:* at minute 55–65 it reaches the T.H.61 entrance's added lane (lane 4, present only from
-   7.35 to 8.45 km — the lane on-ramp 53062592 adds at 7.37 km, ending at off-ramp 18207912 at 8.50 km), by minute 120 the boundary.
+2. *The queue grows back through the corridor:* at minute 55–65 it reaches the stretch the T.H.61 entrance widens (on-ramp 53062592
+   at 7.37 km adds two lanes, SUMO indices 0–1, which lead only to off-ramp 18207912 at 8.50 km; lane index 4, which the map shows only
+   from 7.35 to 8.45 km, is the leftmost through lane of that 5-lane stretch — corrected by WP-66, which first recorded it as the added
+   lane), by minute 120 the boundary.
 3. *Then the lock moves downstream of itself, to 8.45–8.50 km:* from minute 155 the stopped extent's downstream end is 8.45–8.50 km
-   in every lane (it had been 10.0–10.3 km), and the cells upstream of it go to 0.0 m/s — lane 4 all 115 cells at 0.0 from minute 165,
-   every lane at 0.0 over 0–8.5 km from minute 190 to the end (715 / 855 / 855 / 415 / 115 cells).
+   in every lane (it had been 10.0–10.3 km), and the cells upstream of it go to 0.0 m/s — the 5-lane stretch's leftmost lane all 115
+   cells at 0.0 from minute 165, every lane at 0.0 over 0–8.5 km from minute 190 to the end (715 / 855 / 855 / 415 / 115 cells).
 
-So this seed's collapse ends at the end of an auxiliary lane the weave model does not cover: the T.H.61 → 18207912 lane (1.1 km,
-entered at 7.37 km, dropped at the exit at 8.50 km) — the lane-end state the exit-side derivation removed from the two weave sections
+So this seed's collapse ends at the gore of a weaving stretch the weave model does not cover: the T.H.61 → 18207912 two-lane
+auxiliary connection (1,135.6 m; an HCM one-sided weave with two weaving lanes, docs/WEAVE_MODEL_PLAN.md WP-66) — the lane-end state the exit-side derivation removed from the two weave sections
 (an exiter held by SUMO at the end of a lane its route does not continue on, stopping the lanes beside it), met here once the T.H.52
 queue has reached it. Not diagnosed per vehicle (the round kept trajectories on the VM only). Not reproduced.
