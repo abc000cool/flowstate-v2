@@ -5890,3 +5890,30 @@ Reading.
   - the stub render of the pipeline.
 
 Every number above is from those runs, from the committed files named, or from the tests.
+
+## 2026-09-25 (block 3, VM X): how real drivers take gaps in a weave — the I-24 MOTION extraction
+
+The WP-77 stage (`i24_lane_change_gaps`, VM X, n2-standard-8, snapshot ba86832) read the 30 Nov 2022 westbound I-24 MOTION
+trajectories (`data/i24motion/processed/i24_wb_20221130`, 39.0 M rows, 06:00–10:00) and recorded 179,157 lane changes after the
+debounce (`artifacts/i24_lane_change_gaps.json`; the per-change records in `data/i24motion/processed/i24_wb_lane_change_gaps.parquet`,
+gitignored like the data they come from). In the Hickory Hollow–Bell Road weave (data x 4,507–5,092 m, 585 m), the confirmed,
+non-suspect changes of the two crossing movements, and whether the weave model's acceptance at the fleet's means (`accept_gap_s` 0.6,
+s0 2.53 m, T 1.322 s, b 1.703 m/s²; `artifacts/idm_i24_capacity.json`) would have taken each:
+
+| movement | n | median speed | lead time gap p10 / p50 | lag time gap p10 / p50 | refused by the model — all / v<10 / 10–20 / ≥20 m/s |
+|---|---|---|---|---|---|
+| entering | 1,881 | 11.7 m/s | 0.60 / 1.69 s | 0.82 / 2.46 s | **48.5 %** / 56.6 / 45.9 / 36.3 % |
+| exiting | 1,493 | 14.6 m/s | 0.79 / 3.12 s | 0.80 / 2.63 s | **22.1 %** / 30.2 / 20.5 / 17.1 % |
+
+The refusals of entering changes fall on every term: the leader-side time gap 31.5 %, the follower-side time gap 20.9 %, the forced
+guard 17.4 %, the brake gap on the leader 13.8 %, the follower's absorbability 12.2 % (a change can fail several). The merge zone
+(Old Hickory acceleration lane) reads the same: 47.3 % of the entering changes refused. On the T.H.52 corridor section fixture
+(`artifacts/th52_fixture_lane_change_gaps.json`, WP-77) the model's own entering changes are made at a median 6.5 m/s with lead / lag
+time gaps of 1.20 / 1.51 s at the 10th percentile — twice the real drivers' 0.60 / 0.82 s.
+
+Reading. Real drivers take gaps the weave's acceptance refuses about half the time on the entering movement and a fifth of the time on
+the exiting one — and because I-24 MOTION tracks about half the vehicles in the peak, the recorded gaps are upper bounds and these
+shares lower bounds. The model's acceptance is too conservative, most on the entering movement, the one WP-65/76 found capping the
+section's crossings. This is a calibration question with data behind it, not a rule to invent: the next step fits the acceptance's
+terms to the observed gaps — which needs the *rejected* gaps too (the standard critical-gap estimators, maximum likelihood or
+Troutbeck's, use accepted and rejected gaps together), so the extraction gains the lags and leads a vehicle passed up before it changed.

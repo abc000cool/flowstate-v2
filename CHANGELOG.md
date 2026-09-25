@@ -8,6 +8,7 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### 2026-09-25
 
+- **How real drivers take gaps in a weave** (VM X; `artifacts/i24_lane_change_gaps.json`; docs/WEAVE_MODEL_PLAN.md dated section): 179,157 lane changes extracted from the I-24 MOTION westbound morning; in the Hickory Hollow–Bell Road weave the weave model's acceptance would refuse 48.5 % of the real entering changes (1,881; lead / lag time gaps 0.60 / 0.82 s at the 10th percentile) and 22.1 % of the exiting ones (1,493) — lower bounds, since about half the vehicles are tracked. The model's acceptance is too conservative, most for the entering movement that caps the section's crossings; next, fit its terms to observed accepted and rejected gaps.
 - **How real drivers take gaps: accepted lane-change gaps, observed or simulated** (WP-77; `calibration.lane_change_gaps`, `scripts/i24_lane_change_gaps.py`, pipeline stage `i24_lane_change_gaps`; docs/CONTRACTS.md "Lane-change gap records", docs/WEAVE_MODEL_PLAN.md dated section; additive, hash-neutral, the runner and the config untouched).
   - *What the extraction does.* It reads every lane change of a trajectory frame off the debounced lane sequence (`calibration.lanechange.held_lanes`: A-B-A stays under 1 s are lane-line flicker), with three guards, each counted:
     - two-lane jumps within one sample are dropped;
