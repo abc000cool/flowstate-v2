@@ -933,3 +933,480 @@ def sample_records(records: pd.DataFrame, n: int, *, seed: int) -> list[dict[str
                 clean[str(col)] = val
         out.append(clean)
     return out
+
+
+# --- WP-78: the gaps a changer passed up before it changed --------------------
+
+DEFAULT_LOOKBACK_S: Final[float] = 10.0
+"""How far before a change its target-lane gaps are sampled [s] (WP-78)."""
+
+DEFAULT_SAMPLE_EVERY_S: Final[float] = 1.0
+"""Sampling interval of the lookback [s]: a whole multiple of both the I-24
+MOTION table's 0.2 s and a microsim run's 0.5 s (``SimSpec.output_hz`` 2), so
+the observed and the simulated sequences are read at one rate."""
+
+DEFAULT_SAME_VEHICLE_TOL_M: Final[float] = 2.0
+"""Neighbours in one role (lead or lag) at two consecutive lookback samples
+are one vehicle when their ids match or when the earlier one's front, carried
+forward at the mean of its two speeds, lands within this distance [m] of the
+later one's: a fragment switch of one tracked vehicle (I-24 MOTION documents
+are fragments, median 9.9 s) is not a new gap, while a different vehicle in
+the same role is at least one vehicle length plus its gap away."""
+
+GAP_STATUSES: Final[tuple[str, ...]] = ("accepted", "rejected", "empty")
+"""Lookback sample statuses (:func:`gap_sequences`)."""
+
+
+@dataclass
+class GapSequences:
+    """Target-lane gaps sampled before each change (WP-78).
+
+    Attributes:
+        samples: One row per (change, sample instant); columns documented on
+            :func:`gap_sequences`.
+        counts: ``n_changes`` (asked for), ``n_unmatched`` (not found in the
+            frame; 0 when ``records`` came from the same frame), ``n_samples``,
+            ``n_accepted_samples``, ``n_rejected_samples``,
+            ``n_empty_samples``, ``n_suspect_samples``,
+            ``n_changes_with_rejected``, ``n_rejected_gaps`` (distinct).
+        parameters: The sampling parameters, for artifacts.
+    """
+
+    samples: pd.DataFrame
+    counts: dict[str, int]
+    parameters: dict[str, Any] = field(default_factory=dict)
+
+
+def _same_vehicle(
+    code_a: NDArray[np.int64],
+    x_a: NDArray[np.float64],
+    v_a: NDArray[np.float64],
+    code_b: NDArray[np.int64],
+    x_b: NDArray[np.float64],
+    v_b: NDArray[np.float64],
+    dt_ab: NDArray[np.float64],
+    tol_m: float,
+) -> NDArray[np.bool_]:
+    """Whether role neighbour ``a`` (earlier) and ``b`` (``dt_ab`` later) are one vehicle.
+
+    Codes are ``-1`` for "none within range"; two empty roles are the same
+    (an open side stays open), one empty and one filled are not.
+    """
+    both_none = (code_a < 0) & (code_b < 0)
+    both = (code_a >= 0) & (code_b >= 0)
+    with np.errstate(invalid="ignore"):
+        carried = x_a + 0.5 * (v_a + v_b) * dt_ab
+        close = np.abs(carried - x_b) <= tol_m
+    return np.asarray(both_none | (both & ((code_a == code_b) | close)), dtype=bool)
+
+
+def gap_sequences(
+    df: pd.DataFrame,
+    records: pd.DataFrame,
+    *,
+    changes: NDArray[np.bool_] | Sequence[bool] | None = None,
+    zones: Sequence[Zone] | None = None,
+    dt_s: float | None = None,
+    max_gap_s: float | None = None,
+    min_dwell_s: float = DEFAULT_MIN_DWELL_S,
+    lookback_s: float = DEFAULT_LOOKBACK_S,
+    sample_every_s: float = DEFAULT_SAMPLE_EVERY_S,
+    max_range_m: float = DEFAULT_MAX_RANGE_M,
+    min_gap_m: float = DEFAULT_MIN_GAP_M,
+    default_length_m: float | None = None,
+    same_vehicle_tol_m: float = DEFAULT_SAME_VEHICLE_TOL_M,
+) -> GapSequences:
+    """The target-lane gaps each change's driver had before it changed, accepted and rejected.
+
+    WP-78 (docs/WEAVE_MODEL_PLAN.md, dated section). :func:`lane_change_gaps`
+    records the gap a driver took; a critical-gap estimator also needs the
+    gaps the driver let go by (Troutbeck 1992; Brilon, Koenig & Troutbeck
+    1999, Transp. Res. A 33:161–186: each driver's accepted gap and largest
+    rejected gap). This function reads, for each change of ``records`` (which
+    must come from :func:`lane_change_gaps` on the same frame with the same
+    ``dt_s``, ``max_gap_s`` and ``min_dwell_s``), the target lane's lead and
+    lag at the change moment and every ``sample_every_s`` before it, back
+    ``lookback_s`` at most, while the driver was still in its origin lane.
+
+    **Samples.** Instant ``k = 0`` is the change moment (the record's own
+    time stamp; its neighbours are the record's). Instant ``k = −m`` is
+    ``m · sample_every_s`` earlier. The lookback ends at the first earlier
+    instant at which the vehicle has no sample in the debounced run of its
+    origin lane that ends at the change — the start of that run (an earlier
+    change or the vehicle's arrival in the lane), the start of its track, or
+    a missing sample slot — and, with ``zones`` given, at the first earlier
+    instant at which the changer's front is outside the zone the change was
+    made in (an auxiliary lane exists only inside its zone: upstream of it
+    there is no gap beside the driver to accept or reject, and a vehicle in
+    the same band farther on is not beside it). At every instant the neighbours are found exactly
+    as :func:`lane_change_gaps` finds them — in the target lane (by debounced
+    lane), the lead the nearest vehicle whose front is strictly ahead of the
+    changer's front, the lag the nearest at or behind it, within
+    ``max_range_m`` — and the gaps, time gaps and closing speeds are defined
+    identically (bumper to bumper; time gaps over the rear vehicle's speed).
+
+    **Gaps, accepted and rejected.** A *gap* is one lag–lead pair of
+    consecutive target-lane vehicles beside the changer. Going back from the
+    change, a new gap begins whenever the lead or the lag is a different
+    vehicle from the one at the next-later instant — a vehicle crossed the
+    changer's position (the changer moved past it or it moved past the
+    changer), or cut into or out of the target lane. A neighbour is the same
+    vehicle when its id matches or its position is continuous within
+    ``same_vehicle_tol_m`` (:data:`DEFAULT_SAME_VEHICLE_TOL_M`: a tracker's
+    fragment switch is not a new gap). Identity reads the neighbours without
+    the range cut, so a neighbour drifting across ``max_range_m`` does not
+    start a new gap. ``gap_index`` numbers the gaps from the change back (0 =
+    the gap the driver entered).
+
+    * ``accepted``: the change moment, and every earlier instant of the gap
+      the driver entered (``gap_index`` 0, or the same lead and lag ids — the
+      gap seen earlier, before the driver's relative position moved and came
+      back): the driver was beside it and had not yet taken it, which is not
+      a rejection.
+    * ``rejected``: every instant of every other gap with a vehicle on at
+      least one side — a distinct lag–lead pair that went by while the
+      driver stayed in its lane. This is the rejected gap of gap-acceptance
+      theory transposed to a lane change: at a minor-road stop line, a
+      major-stream gap the waiting driver lets pass (Brilon et al. 1999;
+      Tian et al. 1999, Transp. Res. A 33:187–197, define the gap events);
+      at a freeway merge, "the net distances between two vehicles on the
+      shoulder lane which are passed by vehicles driving on the acceleration
+      lane, which merge further downstream and thus reject these offered
+      gaps" (Marczak, Daamen & Buisson 2013, Transp. Res. C 36:530–546, §6).
+    * ``empty``: no vehicle on either side within ``max_range_m`` — an empty
+      target lane the driver did not move into, which says the driver was not
+      yet trying to change, not that a gap was too small; never a rejection.
+
+    ``suspect`` marks an instant with a neighbour gap below ``min_gap_m`` (a
+    duplicate fragment of the changer, most often); estimators leave suspect
+    instants out.
+
+    **Coverage.** On I-24 MOTION (about half the peak vehicle-time tracked)
+    an untracked vehicle inside a gap makes the observed gap larger than the
+    true one, and an untracked vehicle between two observed neighbours merges
+    two true gaps into one observed gap: the accepted gap is the true one or
+    larger, a rejected gap may be larger (an untracked vehicle inside it) or
+    lost (merged into the accepted gap). ``calibration.critical_gap`` states
+    how that biases the estimate.
+
+    Args:
+        df: The frame :func:`lane_change_gaps` read (``t, veh_id, x, lane, v``,
+            optional ``length``).
+        records: :attr:`LaneChangeGaps.records` of that frame.
+        changes: Boolean mask over ``records`` rows to sample (all when None).
+        zones: The zones :func:`lane_change_gaps` was given; when set, the
+            lookback stays inside the change's own zone (a change in
+            ``basic`` is not bounded).
+        dt_s: Sampling interval of ``df`` [s]; inferred when None.
+        max_gap_s: Contiguity bound [s]; ``2.5 × dt_s`` when None.
+        min_dwell_s: The debounce of :func:`lane_change_gaps` [s].
+        lookback_s: How far back to sample [s].
+        sample_every_s: Interval between samples [s]; a whole multiple of
+            ``dt_s``.
+        max_range_m: Neighbour search range [m].
+        min_gap_m: A neighbour gap below this marks the instant suspect.
+        default_length_m: Vehicle length [m] when ``df`` has no ``length``.
+        same_vehicle_tol_m: Position-continuity tolerance [m].
+
+    Returns:
+        :class:`GapSequences`. ``samples`` columns: ``change`` (row of
+        ``records``), ``veh_id``, ``t_change``, ``k`` (0 at the change,
+        negative before it), ``t``, ``dt_before_s`` (``t_change − t``), ``x``,
+        ``v``, ``lane`` (the origin lane before the change, the target lane
+        at ``k = 0``), ``target_lane``, ``lead_id, lead_gap_m, lead_v,
+        lead_closing_ms, lead_time_gap_s, lag_id, lag_gap_m, lag_v,
+        lag_closing_ms, lag_time_gap_s`` (as in :func:`lane_change_gaps`),
+        ``suspect``, ``gap_index``, ``status`` (:data:`GAP_STATUSES`); sorted
+        by ``change`` then ``k``.
+
+    Raises:
+        ValueError: On missing columns, a missing length, a ``sample_every_s``
+            that is not a whole multiple of ``dt_s``, or a negative lookback.
+    """
+    missing = {"t", "veh_id", "x", "lane", "v"} - set(df.columns)
+    if missing:
+        raise ValueError(f"df is missing columns: {sorted(missing)}")
+    rmissing = {"t", "veh_id", "from_lane", "to_lane"} - set(records.columns)
+    if rmissing:
+        raise ValueError(f"records is missing columns: {sorted(rmissing)}")
+    has_length = "length" in df.columns
+    if not has_length and default_length_m is None:
+        raise ValueError("df has no 'length' column: give default_length_m")
+    if lookback_s < 0.0:
+        raise ValueError("lookback_s must be >= 0")
+
+    sel = (
+        np.ones(len(records), dtype=bool)
+        if changes is None
+        else np.asarray(changes, dtype=bool).copy()
+    )
+    if sel.shape != (len(records),):
+        raise ValueError("changes must be a mask over the records rows")
+    change_rows = np.flatnonzero(sel).astype(np.int64)
+    params: dict[str, Any] = {
+        "lookback_s": lookback_s,
+        "sample_every_s": sample_every_s,
+        "min_dwell_s": min_dwell_s,
+        "max_range_m": max_range_m,
+        "min_gap_m": min_gap_m,
+        "same_vehicle_tol_m": same_vehicle_tol_m,
+        "default_length_m": default_length_m,
+        "bounded_by_zone": zones is not None,
+    }
+    counts = {
+        "n_changes": int(change_rows.size),
+        "n_unmatched": 0,
+        "n_samples": 0,
+        "n_accepted_samples": 0,
+        "n_rejected_samples": 0,
+        "n_empty_samples": 0,
+        "n_suspect_samples": 0,
+        "n_changes_with_rejected": 0,
+        "n_rejected_gaps": 0,
+    }
+    codes, labels = pd.factorize(df["veh_id"], sort=False)
+    codes = np.asarray(codes, dtype=np.int64)
+    t_all = df["t"].to_numpy(dtype=np.float64)
+    if t_all.size < 2 and dt_s is None:
+        raise ValueError("cannot infer the sampling interval from fewer than two rows")
+    order = np.lexsort((t_all, codes))
+    veh = codes[order]
+    t = t_all[order]
+    if dt_s is None:
+        dt_s = infer_dt(t, veh)
+    if max_gap_s is None:
+        max_gap_s = DEFAULT_MAX_GAP_FACTOR * dt_s
+    step = round(sample_every_s / dt_s)
+    if step < 1 or abs(step * dt_s - sample_every_s) > 1e-6 * max(1.0, sample_every_s):
+        raise ValueError(
+            f"sample_every_s ({sample_every_s}) must be a whole multiple of dt_s ({dt_s})"
+        )
+    n_back = math.floor(lookback_s / sample_every_s + 1e-9)
+    params.update({"dt_s": dt_s, "max_gap_s": max_gap_s, "n_back": n_back})
+    if change_rows.size == 0 or t.size == 0:
+        return GapSequences(_empty_samples(), counts, params)
+
+    x = df["x"].to_numpy(dtype=np.float64)[order]
+    v = df["v"].to_numpy(dtype=np.float64)[order]
+    lane = df["lane"].to_numpy(dtype=np.int64)[order]
+    if has_length:
+        length = df["length"].to_numpy(dtype=np.float64)[order]
+    else:
+        length = np.full(t.size, float(default_length_m or 0.0))
+    lane_held, contig = held_lanes(
+        t, veh, lane, dt_s=dt_s, max_gap_s=max_gap_s, min_dwell_s=min_dwell_s
+    )
+    run_id, _, _, _ = _runs(lane_held, contig, dt_s)
+    first_of_run = np.ones(t.size, dtype=bool)
+    first_of_run[1:] = run_id[1:] != run_id[:-1]
+    run_start = np.flatnonzero(first_of_run)[run_id]
+
+    # --- locate each change: (vehicle, time slot) → row in the (veh, t) order
+    t_idx = np.rint(t / dt_s).astype(np.int64)
+    t_lo_idx = int(t_idx.min())
+    span_idx = int(t_idx.max()) - t_lo_idx + 1 + (n_back + 1) * step
+    vt_key = veh * span_idx + (t_idx - t_lo_idx)
+    rec = records.iloc[change_rows]
+    rec_code = pd.Index(labels).get_indexer(pd.Index(rec["veh_id"]))
+    rec_tidx = np.rint(rec["t"].to_numpy(dtype=np.float64) / dt_s).astype(np.int64)
+    from_c = rec["from_lane"].to_numpy(dtype=np.int64)
+    to_c = rec["to_lane"].to_numpy(dtype=np.int64)
+    zone_lo = np.full(len(rec), -np.inf)
+    zone_hi = np.full(len(rec), np.inf)
+    if zones is not None:
+        if "zone" not in rec.columns:
+            raise ValueError("records has no 'zone' column: cannot bound the lookback by zone")
+        bounds = {z.name: (z.x_lo_m, z.x_hi_m) for z in zones}
+        names = rec["zone"].astype(str).to_numpy()
+        zone_lo = np.array([bounds.get(nm, (-np.inf, np.inf))[0] for nm in names], dtype=float)
+        zone_hi = np.array([bounds.get(nm, (-np.inf, np.inf))[1] for nm in names], dtype=float)
+
+    def _find(code: NDArray[np.int64], tq: NDArray[np.int64]) -> NDArray[np.int64]:
+        """Row of (vehicle code, time slot), −1 when absent."""
+        q = code * span_idx + (tq - t_lo_idx)
+        pos = np.searchsorted(vt_key, q, side="left")
+        pos_c = np.minimum(pos, vt_key.size - 1)
+        ok = (code >= 0) & (tq >= t_lo_idx) & (vt_key[pos_c] == q)
+        return np.where(ok, pos_c, -1)
+
+    j1 = _find(rec_code, rec_tidx)
+    matched = j1 >= 1
+    j1c = np.maximum(j1, 1)
+    matched &= (lane_held[np.maximum(j1, 0)] == to_c) & (lane_held[j1c - 1] == from_c)
+    matched &= contig[j1c - 1]
+    counts["n_unmatched"] = int(np.sum(~matched))
+    change_rows, j1 = change_rows[matched], j1[matched]
+    rec_code, rec_tidx, to_c = rec_code[matched], rec_tidx[matched], to_c[matched]
+    zone_lo, zone_hi = zone_lo[matched], zone_hi[matched]
+    n_c = change_rows.size
+    if n_c == 0:
+        return GapSequences(_empty_samples(), counts, params)
+    j0 = j1 - 1
+    origin_start = run_start[j0]
+
+    # --- the sample grid: (change, m), m = 0 at the change, m ≥ 1 earlier
+    ms = np.arange(n_back + 1, dtype=np.int64)
+    rows = np.full((n_c, n_back + 1), -1, dtype=np.int64)
+    rows[:, 0] = j1
+    alive = np.ones(n_c, dtype=bool)
+    for m in range(1, n_back + 1):
+        r = _find(rec_code, rec_tidx - m * step)
+        ok = alive & (r >= origin_start) & (r <= j0)
+        xr = x[np.maximum(r, 0)]
+        ok &= (xr >= zone_lo) & (xr < zone_hi)
+        rows[:, m] = np.where(ok, r, -1)
+        alive = ok
+    valid = rows >= 0
+
+    # --- neighbours on a (time slot, held lane, x) ordering, as lane_change_gaps
+    lane_lo = int(lane_held.min())
+    n_lane = int(lane_held.max()) - lane_lo + 1
+    key = t_idx * n_lane + (lane_held - lane_lo)
+    x_lo = float(x.min())
+    scale = float(x.max()) - x_lo + 1.0
+    z = key.astype(np.float64) * scale + (x - x_lo)
+    by = np.lexsort((x, key))
+    key_s, z_s = key[by], z[by]
+    rr = rows[valid]
+    tgt = np.broadcast_to(to_c[:, None], rows.shape)[valid]
+    kq = t_idx[rr] * n_lane + (tgt - lane_lo)
+    zq = kq.astype(np.float64) * scale + (x[rr] - x_lo)
+    blo = np.searchsorted(key_s, kq, side="left")
+    bhi = np.searchsorted(key_s, kq, side="right")
+    pos_r = np.searchsorted(z_s, zq, side="right")
+    pos_l = np.searchsorted(z_s, zq, side="left")
+    lead_ok = pos_r < bhi
+    lag_ok = pos_l - 1 >= blo
+    lead_row = np.where(lead_ok, by[np.minimum(pos_r, by.size - 1)], -1)
+    lag_row = np.where(lag_ok, by[np.maximum(pos_l - 1, 0)], -1)
+    xc, lc, vc = x[rr], length[rr], v[rr]
+    lead_gap = np.where(lead_ok, x[lead_row] - length[lead_row] - xc, np.nan)
+    lag_gap = np.where(lag_ok, (xc - lc) - x[lag_row], np.nan)
+
+    def _grid(flat: NDArray[Any], fill: Any, dtype: Any) -> NDArray[Any]:
+        out = np.full(rows.shape, fill, dtype=dtype)
+        out[valid] = flat
+        return out
+
+    # a gap's identity reads the neighbours without the range cut (a lead that
+    # drifts past max_range_m is still the same gap); the reported values honour it
+    lead_code = _grid(np.where(lead_ok, veh[lead_row], -1), -1, np.int64)
+    lag_code = _grid(np.where(lag_ok, veh[lag_row], -1), -1, np.int64)
+    lead_x = _grid(np.where(lead_ok, x[lead_row], np.nan), np.nan, np.float64)
+    lag_x = _grid(np.where(lag_ok, x[lag_row], np.nan), np.nan, np.float64)
+    lead_vg = _grid(np.where(lead_ok, v[lead_row], np.nan), np.nan, np.float64)
+    lag_vg = _grid(np.where(lag_ok, v[lag_row], np.nan), np.nan, np.float64)
+    tg = _grid(t[rr], np.nan, np.float64)
+    lead_ok &= lead_gap <= max_range_m
+    lag_ok &= lag_gap <= max_range_m
+
+    # --- gap identity from the change back: a new gap where a role changes vehicle
+    same = np.ones(rows.shape, dtype=bool)
+    if n_back >= 1:
+        dt_ab = tg[:, :-1] - tg[:, 1:]
+        same_lead = _same_vehicle(
+            lead_code[:, 1:],
+            lead_x[:, 1:],
+            lead_vg[:, 1:],
+            lead_code[:, :-1],
+            lead_x[:, :-1],
+            lead_vg[:, :-1],
+            dt_ab,
+            same_vehicle_tol_m,
+        )
+        same_lag = _same_vehicle(
+            lag_code[:, 1:],
+            lag_x[:, 1:],
+            lag_vg[:, 1:],
+            lag_code[:, :-1],
+            lag_x[:, :-1],
+            lag_vg[:, :-1],
+            dt_ab,
+            same_vehicle_tol_m,
+        )
+        same[:, 1:] = same_lead & same_lag
+    gap_index = np.cumsum(~same & valid, axis=1)
+    same_ids = (lead_code == lead_code[:, :1]) & (lag_code == lag_code[:, :1])
+    accepted = (gap_index == 0) | same_ids
+    empty = _grid(~lead_ok & ~lag_ok, True, bool)
+    status = np.where(accepted, 0, np.where(empty, 2, 1))
+
+    flat_status = status[valid]
+    lead_v = np.where(lead_ok, v[lead_row], np.nan)
+    lag_v = np.where(lag_ok, v[lag_row], np.nan)
+    lead_gap = np.where(lead_ok, lead_gap, np.nan)
+    lag_gap = np.where(lag_ok, lag_gap, np.nan)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lead_tg = np.where(lead_ok & (vc >= MIN_SPEED_FOR_TIME_GAP_MS), lead_gap / vc, np.nan)
+        lag_tg = np.where(lag_ok & (lag_v >= MIN_SPEED_FOR_TIME_GAP_MS), lag_gap / lag_v, np.nan)
+    suspect = (lead_ok & (lead_gap < min_gap_m)) | (lag_ok & (lag_gap < min_gap_m))
+    label_arr = np.asarray(labels, dtype=object)
+    change_of = np.broadcast_to(change_rows[:, None], rows.shape)[valid]
+    t_change = np.broadcast_to(t[j1][:, None], rows.shape)[valid]
+    k = -np.broadcast_to(ms[None, :], rows.shape)[valid]
+    samples = pd.DataFrame(
+        {
+            "change": change_of,
+            "veh_id": label_arr[veh[rr]],
+            "t_change": t_change,
+            "k": k,
+            "t": t[rr],
+            "dt_before_s": t_change - t[rr],
+            "x": xc,
+            "v": vc,
+            "lane": lane_held[rr],
+            "target_lane": tgt,
+            "lead_id": _ids_or_none(label_arr, veh, lead_row, lead_ok),
+            "lead_gap_m": lead_gap,
+            "lead_v": lead_v,
+            "lead_closing_ms": vc - lead_v,
+            "lead_time_gap_s": lead_tg,
+            "lag_id": _ids_or_none(label_arr, veh, lag_row, lag_ok),
+            "lag_gap_m": lag_gap,
+            "lag_v": lag_v,
+            "lag_closing_ms": lag_v - vc,
+            "lag_time_gap_s": lag_tg,
+            "suspect": suspect,
+            "gap_index": gap_index[valid],
+            "status": np.asarray(GAP_STATUSES, dtype=object)[flat_status],
+        }
+    )
+    counts["n_samples"] = len(samples)
+    counts["n_accepted_samples"] = int(np.sum(flat_status == 0))
+    counts["n_rejected_samples"] = int(np.sum(flat_status == 1))
+    counts["n_empty_samples"] = int(np.sum(flat_status == 2))
+    counts["n_suspect_samples"] = int(np.sum(suspect))
+    rej = samples[samples["status"] == "rejected"]
+    counts["n_changes_with_rejected"] = int(rej["change"].nunique())
+    counts["n_rejected_gaps"] = len(rej[["change", "gap_index"]].drop_duplicates())
+    return GapSequences(samples, counts, params)
+
+
+def _empty_samples() -> pd.DataFrame:
+    """A samples frame with the full column set and no rows."""
+    cols = [
+        "change",
+        "veh_id",
+        "t_change",
+        "k",
+        "t",
+        "dt_before_s",
+        "x",
+        "v",
+        "lane",
+        "target_lane",
+        "lead_id",
+        "lead_gap_m",
+        "lead_v",
+        "lead_closing_ms",
+        "lead_time_gap_s",
+        "lag_id",
+        "lag_gap_m",
+        "lag_v",
+        "lag_closing_ms",
+        "lag_time_gap_s",
+        "suspect",
+        "gap_index",
+        "status",
+    ]
+    return pd.DataFrame({c: pd.Series(dtype=object) for c in cols})

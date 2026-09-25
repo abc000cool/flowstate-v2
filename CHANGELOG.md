@@ -8,6 +8,23 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### 2026-09-25
 
+- **Critical gaps: the gaps drivers let go by, and the weave's time gaps they imply** (WP-78; `calibration.lane_change_gaps.gap_sequences`, `calibration.critical_gap`, `scripts/i24_critical_gaps.py`, opt-in pipeline stage `i24_critical_gaps`; docs/CONTRACTS.md "Critical gaps", docs/WEAVE_MODEL_PLAN.md dated section; additive and hash-neutral; `WEAVE_DEFAULTS`, the runner and `lane_change_gaps`' records are untouched, the last pinned by sha256 digests computed at 6510ff2).
+  - *The rejected gap.* For every entering and exiting change in a ramp zone, the target lane's lead and lag are sampled every 1 s over the 10 s before the change, while the changer is in its origin lane and inside the change's zone.
+    - A rejected gap is a distinct lag–lead pair that went by while the driver stayed. This is the rejected gap of Troutbeck (1992) and Brilon, Koenig & Troutbeck (1999), and at a merge that of Marczak, Daamen & Buisson (2013).
+    - A new pair begins when a role changes vehicle, by id or by position continuity within 2 m, so a tracker's fragment switch is not a new gap.
+    - Earlier instants of the entered pair are `accepted`, and an empty target lane is `empty`, never a rejection.
+  - *The estimators.*
+    - Troutbeck's maximum-likelihood critical gap per side (log-normal; no-rejection, censored and inconsistent drivers handled and counted).
+    - A joint lead–lag form, in which a driver accepts only when both sides clear, as the acceptance does. Its likelihood is exact over the union of rejected rectangles.
+    - 95 % bootstrap intervals, and the mapping A = t̂ − 2 s0 / v̄ onto `accept_gap_s` / `exit_accept_gap_s` at speed parity. On the follower side, the IDM absorption floor is reported where no A reaches the median.
+  - *Synthetic checks (26 tests).*
+    - The estimators recover known populations: a median of 1.530 s against 1.5 s. The joint form gives 1.221 / 1.841 s against 1.2 / 1.8, where the separate one reads 1.654 / 2.395 s and invents 627 / 531 inconsistent drivers of 2,000.
+    - Hiding half the vehicles raises a fitted median from 1.53 to 1.91 s, so on I-24 the critical gaps and the proposals are upper bounds.
+  - *The model's own drivers* (T.H.52 corridor section fixture, the strict-`xfail` test's config, seeds 3–5, identical to WP-77's runs of those seeds; `artifacts/th52_fixture_critical_gaps.json`).
+    - The entrants' leader side implies A = 0.553 s [0.354, 0.773] against the 0.6 s the model runs. Below 10 m/s the fitted lead median is 1.43 s [1.18, 1.69] against the acceptance's 1.44 s: the chain returns the rule.
+    - Their lag side implies 0.196 s [0, 0.385].
+    - Every fitted exiting class sits below the absorption floor: the median lag gap would ask the follower for 4.7–6.0 m/s² against b 1.70. The crossings are forced changes, SUMO's own model or drawn parameters, which the records cannot separate.
+  - *The I-24 side* is stage 13, not launched. It writes `artifacts/i24_critical_gaps.json` with the proposal and two gitignored tables that `ingest_pipeline_results.sh` installs. Estimated at a few minutes and below 2 GB: about 1 s and 0.95 GB per 3 M-row stand-in chunk, and 79.5 s of fits at VM X's group sizes on the laptop.
 - **How real drivers take gaps in a weave** (VM X; `artifacts/i24_lane_change_gaps.json`; docs/WEAVE_MODEL_PLAN.md dated section): 179,157 lane changes extracted from the I-24 MOTION westbound morning; in the Hickory Hollow–Bell Road weave the weave model's acceptance would refuse 48.5 % of the real entering changes (1,881; lead / lag time gaps 0.60 / 0.82 s at the 10th percentile) and 22.1 % of the exiting ones (1,493) — lower bounds, since about half the vehicles are tracked. The model's acceptance is too conservative, most for the entering movement that caps the section's crossings; next, fit its terms to observed accepted and rejected gaps.
 - **How real drivers take gaps: accepted lane-change gaps, observed or simulated** (WP-77; `calibration.lane_change_gaps`, `scripts/i24_lane_change_gaps.py`, pipeline stage `i24_lane_change_gaps`; docs/CONTRACTS.md "Lane-change gap records", docs/WEAVE_MODEL_PLAN.md dated section; additive, hash-neutral, the runner and the config untouched).
   - *What the extraction does.* It reads every lane change of a trajectory frame off the debounced lane sequence (`calibration.lanechange.held_lanes`: A-B-A stays under 1 s are lane-line flicker), with three guards, each counted:

@@ -69,6 +69,10 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
   # the per-change table of the lane-change gap stage (WP-77; data/ is gitignored, a few MB)
   [ -f data/i24motion/processed/i24_wb_lane_change_gaps.parquet ] && extra="$extra data/i24motion/processed/i24_wb_lane_change_gaps.parquet"
+  # the critical-gap stage's lookback samples and driver table (WP-78; gitignored; one row per sampled instant / per change)
+  for f in data/i24motion/processed/i24_wb_gap_sequences.parquet data/i24motion/processed/i24_wb_critical_gap_drivers.parquet; do
+    [ -f "$f" ] && extra="$extra $f"
+  done
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -515,6 +519,18 @@ stage sweep_i24_strat $RUN scripts/corridor_sweep.py --scenario scenarios/i24_re
 #     table data/i24motion/processed/i24_wb_lane_change_gaps.parquet rides along in the archive. One process, a few GB.
 if echo " $STAGES " | grep -q " i24_lane_change_gaps "; then
   stage i24_lane_change_gaps $RUN scripts/i24_lane_change_gaps.py || say "i24_lane_change_gaps failed; continuing"
+fi
+
+# 13. Critical gaps of the weave's crossings (WP-78, 2026-09-25, block 3; opt-in, needs --data-set i24): the same chunks,
+#     zones and acceptance as stage 12, and for every entering and exiting change in a ramp zone the target-lane gaps of
+#     the 10 s before it, every 1 s, inside the change's zone (calibration.lane_change_gaps.gap_sequences: the pair it
+#     entered, the pairs it let go by, empty instants); per driver the accepted and largest rejected gaps; Troutbeck's
+#     maximum-likelihood critical gaps per side and the joint lead-lag estimator (log-normal, 200 bootstrap replicates)
+#     per zone x movement x speed class (calibration.critical_gap); the acceptance time gaps that reproduce the fitted
+#     medians at speed parity, proposed, WEAVE_DEFAULTS untouched -> artifacts/i24_critical_gaps.json; the samples and
+#     driver tables ride along in the archive. One process: ~1 GB peak per 15-min chunk on a 3 M-row synthetic stand-in.
+if echo " $STAGES " | grep -q " i24_critical_gaps "; then
+  stage i24_critical_gaps $RUN scripts/i24_critical_gaps.py || say "i24_critical_gaps failed; continuing"
 fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).

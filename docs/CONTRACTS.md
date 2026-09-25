@@ -2790,3 +2790,90 @@ The debounce is `calibration.lanechange.held_lanes`: A-B-A stays under `min_dwel
 **Coverage.** On I-24 MOTION an observed gap is the true gap or larger, because the nearest vehicle may be untracked. Every acceptance term is monotone in the gaps, so `refused_share` there is a lower bound and the gap quantiles are upper bounds.
 
 The package is additive: no config field, no run output, no hash and no golden changes.
+
+## Critical gaps (`calibration.critical_gap`, `lane_change_gaps.gap_sequences`) — 2026-09-25
+
+WP-78 (docs/WEAVE_MODEL_PLAN.md, dated section). These are the gaps each lane changer let go by, the critical-gap distributions estimated from them, and the weave acceptance's time gaps that reproduce the fitted medians. It is additive. `lane_change_gaps` and its records are unchanged: a test pins their sha256 at 6510ff2. It adds no config field, run output, hash or golden.
+
+**`gap_sequences(df, records, *, changes=None, zones=None, dt_s=None, max_gap_s=None, min_dwell_s=1.0, lookback_s=10.0, sample_every_s=1.0, max_range_m=200.0, min_gap_m=0.5, default_length_m=None, same_vehicle_tol_m=2.0) -> GapSequences`.**
+- *Input.* `records` must come from `lane_change_gaps` on the same frame with the same `dt_s`, `max_gap_s` and `min_dwell_s`. `changes` is a boolean mask over the records rows. `sample_every_s` must be a whole multiple of `dt_s`.
+- *The instants.* `k = 0` is the change moment; `k = −m` is `m · sample_every_s` earlier. The lookback ends at the first instant that meets any of these:
+  - the vehicle is outside the debounced run of its origin lane;
+  - its track has not started;
+  - a sample slot is missing;
+  - with `zones` given, the changer's front is outside the change's zone (a change in `basic` is not bounded).
+- *Neighbours and gaps* are defined as in `lane_change_gaps`.
+- *A gap* is one lag–lead pair beside the changer. A new pair begins when the lead or the lag is a different vehicle. The same vehicle is recognised by its id, or by its position carried forward at its mean speed landing within `same_vehicle_tol_m`. Identity ignores the range cut.
+- *`GapSequences.samples` columns.*
+  - Where and when: `change` (the records row), `veh_id`, `t_change`, `k`, `t`, `dt_before_s`, `x`, `v`, `lane`, `target_lane`.
+  - The neighbours: `lead_id`, `lead_gap_m`, `lead_v`, `lead_closing_ms`, `lead_time_gap_s`, and the five `lag_*`.
+  - `suspect`: a gap below `min_gap_m`.
+  - `gap_index`: 0 for the entered gap, counting back.
+  - `status`:
+    - `accepted`: the change instant, and earlier instants of the entered pair (by `gap_index` 0 or the same ids);
+    - `rejected`: an instant of any other pair with a vehicle within range on at least one side;
+    - `empty`: no vehicle within range on either side, never a rejection.
+- *`counts`.* `n_changes`, `n_unmatched`, `n_samples`, `n_accepted_samples`, `n_rejected_samples`, `n_empty_samples`, `n_suspect_samples`, `n_changes_with_rejected`, `n_rejected_gaps` (distinct `(change, gap_index)` pairs).
+- *`parameters`.* The arguments, plus `dt_s`, `max_gap_s`, `n_back` and `bounded_by_zone`.
+- *The definition's sources.* Troutbeck (1992); Brilon, Koenig & Troutbeck (1999, Transp. Res. A 33:161–186); Tian et al. (1999, Transp. Res. A 33:187–197); and, for a freeway merge, Marczak, Daamen & Buisson (2013, Transp. Res. C 36:530–546, §6).
+
+**`calibration.critical_gap`.**
+- *`driver_gaps(records, samples, *, max_lookback_s=None)`* returns one row per sampled change:
+  - `change`, and the record's `t`, `veh_id`, `zone`, `zone_kind`, `movement`, `direction`, `v`, `lag_v`, `confirmed`, `suspect`, `lead_closing_ms`, `lag_closing_ms`, plus `seed` and `group` when present;
+  - `a_lead_s`, `a_lag_s`: the accepted time gaps; `inf` with no vehicle within range, NaN when undefined;
+  - `r_lead_s`, `r_lag_s`: the largest finite time gap each side offered over the non-suspect rejected instants; 0 when none;
+  - `n_rejected_gaps`, `n_rejected_samples`, `lookback_s`.
+- *`rejected_points(samples, *, max_lookback_s=None)`* returns `change`, `lead_s` and `lag_s` for every non-suspect rejected instant; an empty side is `inf`.
+- *`select_drivers(...)`* keeps the entering and exiting changes in merge, diverge and weave zones that are confirmed and not suspect.
+- *`fit_critical_gap(accepted, rejected, *, weights, no_rejection="include"|"exclude", inconsistent="exclude"|"drop_rejected", x0) -> LogNormalFit`.* Troutbeck's maximum likelihood with a log-normal, L = Π [F(a_i) − F(r_i)].
+  - `r = 0` is no rejection and contributes F(a).
+  - `a = inf` is censored and contributes 1 − F(r).
+  - `r ≥ a` is inconsistent.
+- *`LogNormalFit`.* `mu`, `sigma`, `loglik`, `converged`, `counts`, and `median = exp(mu)`, `mean = exp(mu + sigma²/2)`, `sd`, `quantile(q)`.
+  - `counts` holds `n_input`, `n_undefined`, `n_no_rejection`, `n_no_rejection_excluded`, `n_inconsistent`, `n_inconsistent_excluded`, `n_uninformative`, `n_censored`, `n_used` and `n_with_rejection`.
+  - `to_dict()` adds `median_s`, `mean_s`, `sd_s`, `p10_s`, `p90_s` and `degenerate` (`sigma` at its floor).
+- *The joint estimator.* `prepare_joint(a_lead, a_lag, pt_driver, pt_lead, pt_lag, *, no_rejection, inconsistent) -> JointData`, then `fit_joint_critical_gaps(data, *, weights, x0) -> JointFit` (`lead`, `lag`, `loglik`, `converged`, `counts`).
+  - The lead and lag critical gaps are independent log-normals per driver, and the driver accepts only when both sides clear.
+  - The likelihood is the probability that the driver's critical pair lies in the accepted rectangle minus the union of the rejected rectangles, an exact staircase.
+  - A driver with a rejected combination at least as large as the accepted one on both sides is inconsistent.
+  - `counts` adds `n_points` and `n_steps`.
+- *`bootstrap_medians(n, fit, *, n_boot, seed)`* resamples drivers with replacement, seeded by `flowstate_core.rng.make_rng`.
+- *`fit_groups(drivers, points, *, by=("zone", "zone_kind", "movement"), speed_classes, min_drivers=30, n_boot=200, seed=20260925) -> (rows, boots)`.*
+  - There is one row per group, `speed_class` `all` and the three changer-speed classes.
+  - Each row carries `n_drivers`, `v_ms_p50`, `lag_v_ms_p50`, `lead_closing_ms_p50`, `lag_closing_ms_p50`, `share_with_rejected` and `lookback_s_p50`.
+  - Each row also carries `separate_lead`, `separate_lag` and `joint`. Each of these is either `{fitted: false, <counts>}` or a fit with a `ci95` block (`median_s`, `mean_s`, `mu`, `sigma`), `n_boot`, and `sensitivity_no_rejection_excluded`. A joint fit nests its `lead` and `lag`.
+  - A row is fitted only with at least 30 used drivers, 10 of them with a rejected gap (`MIN_REJECTING`).
+  - Each row's bootstrap seed is `spawn_seeds(seed, n_rows)[row]`. `boots` holds the replicate medians and is not serialized.
+- *`model_parity_critical_gaps(v, params, *, rightward, accept_s=None)`* gives the acceptance's critical time gaps at speed parity: `lead_s = A + 2 s0 / v`, and `lag_s`, the larger of `lag_time_s = A + 2 s0 / v` and `lag_absorb_s = (s0 + vT) / √(1 − (v/v0)⁴ + b/a_max) / v`.
+- *`implied_follower_decel(t_lag_s, v_f, params)`* is −a_IDM at a bumper gap of `t_lag_s · v_f` and parity.
+- *`acceptance_mapping(rows, boots, params, *, movement, estimator="joint"|"separate")`.*
+  - It returns `parameter` (`accept_gap_s` for entering, `exit_accept_gap_s` for exiting), `current`, and `classes`. Each class carries:
+    - `n`, `v_ms`, `lag_v_ms`, the fitted lead and lag medians;
+    - `model_lead_s_now`, `model_lag_s_now`, `lag_absorb_floor_s`;
+    - `implied_accept_s_lead`, `implied_accept_s_lag` (null below the absorption floor);
+    - `lag_above_absorb_floor`, `lead_reachable`, `lag_reachable`;
+    - `implied_follower_decel_ms2`;
+    - with a proposal, `model_lead_s_at_proposal` and `model_lag_s_at_proposal`.
+  - It also returns `accept_s_lead`, `accept_s_lag` and `accept_s`, each `{value (floored at 0), unfloored, ci95}` or null. Each is the n-weighted least-squares A over the fitted, non-degenerate speed classes.
+
+**Artifacts** (written by `scripts/i24_critical_gaps.py`; JSON, `allow_nan=False`, `schema_version` 1).
+- *The two files.*
+  - `artifacts/i24_critical_gaps.json` has `kind` `"observed"`. It is written by the opt-in pipeline stage `i24_critical_gaps` (stage 13) and has not run yet.
+  - `artifacts/th52_fixture_critical_gaps.json` has `kind` `"simulated"`: the corridor section fixture, seeds 3–5.
+- *Common keys.*
+  - `schema_version`, `kind`, `created_at`, `source`, `code`, and `code_dirty` (the working tree had uncommitted changes).
+  - `method`: the parameters, the definitions of the rejected and accepted gaps and the empty instant, both estimators, the bootstrap, the mapping, and the citations.
+  - `zones`, `acceptance` (the `AcceptanceParams` the mapping reads).
+  - `counts`, with `extraction` (the `lane_change_gaps` counts) and `sequences` (the `GapSequences` counts).
+  - `fits` (the `fit_groups` rows) and `mapping` (per zone × movement, `joint` and `separate` `acceptance_mapping`s).
+  - `sensitivity_lookback_5s`: point fits with only the rejected instants at most 5 s before the change.
+  - `limitations`, `wall_s`, `peak_rss_mb`.
+- *Only in the observed artifact.*
+  - `proposal`: `accept_gap_s` and `exit_accept_gap_s` from the weave zone's joint mapping. Each entry has `zone`, `movement`, `current`, `proposed`, `lead_side_only`, `lag_side_only`, `separate_estimator` and `provenance`, and the block carries `status`, "proposal only: WEAVE_DEFAULTS is unchanged".
+  - `data_hash`, `data`, `time_origin`, `x_axis`, `span_data_x_m` and `citation`.
+  - `sequences_file` and `drivers_file`: the gitignored `data/i24motion/processed/i24_wb_gap_sequences.parquet` (the samples) and `i24_wb_critical_gap_drivers.parquet` (the driver table). They ride along in the pipeline archive, and `ingest_pipeline_results.sh` installs both with the artifact.
+- *Only in the simulated artifact.*
+  - `self_check`: the same block with `implied` in place of `proposed`, describing the model's own drivers. It is not a proposal.
+  - `runs`: `lane_change_gaps`' `runs` entries plus `sequence_counts`.
+
+**Coverage.** On I-24 MOTION an accepted gap is the true one or larger, and a rejected gap may be larger or merged into the accepted one. The fitted critical gaps are therefore biased upward, and the proposed time gaps are upper bounds.

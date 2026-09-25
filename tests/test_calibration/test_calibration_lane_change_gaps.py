@@ -21,6 +21,7 @@ from calibration.lane_change_gaps import (
     AcceptanceParams,
     Zone,
     classify_movement,
+    gap_sequences,
     lane_change_gaps,
     sample_records,
     sim_band_lanes,
@@ -469,3 +470,214 @@ class TestSummaries:
         assert all(r["lag_gap_m"] is None or isinstance(r["lag_gap_m"], float) for r in a)
         assert len(sample_records(rec.records, 50, seed=7)) == 12
         assert sample_records(rec.records.iloc[:0], 5, seed=7) == []
+
+
+# --- WP-78: the gaps passed up before a change (gap_sequences) -------------------------
+
+#: Digests of :func:`lane_change_gaps` on :func:`_random_traffic` (seed 20260925),
+#: computed at 6510ff2 before WP-78 added :func:`gap_sequences`: the records
+#: frame (``to_json(orient="split", double_precision=15)``) with the counts, and
+#: :func:`summarize_gaps` of it. WP-78 is additive; these pin that it is.
+RECORDS_DIGEST_6510FF2 = "d977d012ca85942ef031f4464d39719983dd458b0f97dbb025084ed115817e43"
+SUMMARY_DIGEST_6510FF2 = "6c785cf7e17b711e4bfb309e4a543cb6d66ee10e4ac9ef95e1a515a02358d3dd"
+
+
+def _random_traffic(seed: int, n_veh: int = 80, n_slots: int = 400) -> pd.DataFrame:
+    """Seeded random tracks on the 0.2 s grid: 1-2 lane changes, flickers, overlaps."""
+    rng = np.random.default_rng(seed)
+    parts = []
+    for i in range(n_veh):
+        k0 = int(rng.integers(0, n_slots // 2))
+        n = int(rng.integers(20, n_slots - k0 + 1))
+        v = float(rng.uniform(3.0, 30.0))
+        lanes = np.full(n, int(rng.integers(1, 6)), dtype=np.int64)
+        for _ in range(int(rng.integers(0, 3))):
+            j = int(rng.integers(1, n))
+            lanes[j:] = np.clip(lanes[j:] + int(rng.choice([-1, 1])), 1, 5)
+        if rng.random() < 0.3 and n > 6:
+            j = int(rng.integers(1, n - 3))
+            lanes[j : j + 2] = np.clip(lanes[j : j + 2] + 1, 1, 5)
+        k = k0 + np.arange(n)
+        parts.append(
+            pd.DataFrame(
+                {
+                    "t": T0 + DT * k,
+                    "veh_id": f"v{i:03d}",
+                    "x": float(rng.uniform(0.0, 2500.0)) + v * DT * np.arange(n),
+                    "lane": lanes,
+                    "v": v,
+                    "length": float(rng.uniform(4.0, 15.0)),
+                }
+            )
+        )
+    return pd.concat(parts, ignore_index=True)
+
+
+def _passing_frame(*, split_lead: bool = False, c_start_slot: int = 0) -> pd.DataFrame:
+    """C (5 m) in auxiliary lane 5 at 20 m/s changes to lane 4 at slot 60 (t = 112 s,
+    x = 1240 m) past a lane-4 platoon at 15 m/s, so it gains 5 m per 1 s sample.
+    Fronts at t = 112 relative to C's front: S −77, R −41, P −13, Q +18, U +60."""
+    tracks = [
+        _track(
+            "C",
+            1000.0 + 20.0 * DT * c_start_slot,
+            20.0,
+            [5] * (60 - c_start_slot) + [4] * 11,
+            k0=c_start_slot,
+        ),
+    ]
+    for name, rel_front in (("S", -77.0), ("R", -41.0), ("P", -13.0), ("U", 60.0)):
+        tracks.append(_track(name, 1240.0 + rel_front - 15.0 * 12.0, 15.0, [4] * 71))
+    q0 = 1240.0 + 18.0 - 15.0 * 12.0
+    if split_lead:  # Q as two tracker fragments: slots 0-54 and 55-70, one continuous path
+        tracks.append(_track("Q_a", q0, 15.0, [4] * 55))
+        tracks.append(_track("Q_b", q0 + 15.0 * DT * 55, 15.0, [4] * 16, k0=55))
+    else:
+        tracks.append(_track("Q", q0, 15.0, [4] * 71))
+    return _frame(*tracks)
+
+
+def _sequences(df: pd.DataFrame, **kw: object) -> tuple[pd.DataFrame, object]:
+    out = lane_change_gaps(df, ZONES, mainline_lanes=MAIN, aux_lanes=AUX)
+    seq = gap_sequences(df, out.records, **kw)  # type: ignore[arg-type]
+    return out.records, seq
+
+
+class TestGapSequences:
+    def test_existing_records_are_byte_identical(self) -> None:
+        """WP-78 is additive: the records and summaries of a seeded random frame
+        hash exactly as they did before it (digests from 6510ff2)."""
+        import hashlib
+        import json
+
+        df = _random_traffic(20260925)
+        out = lane_change_gaps(
+            df,
+            ZONES,
+            mainline_lanes=MAIN,
+            aux_lanes=AUX,
+            acceptance=PARAMS,
+            groups={f"v{i:03d}": f"g{i % 3}" for i in range(80)},
+        )
+        payload = out.records.to_json(orient="split", double_precision=15) + json.dumps(
+            out.counts, sort_keys=True
+        )
+        assert hashlib.sha256(payload.encode()).hexdigest() == RECORDS_DIGEST_6510FF2
+        summary = json.dumps(summarize_gaps(out.records), sort_keys=True)
+        assert hashlib.sha256(summary.encode()).hexdigest() == SUMMARY_DIGEST_6510FF2
+
+    def test_passed_gaps_are_rejected_and_the_entered_one_accepted(self) -> None:
+        rec, seq = _sequences(_passing_frame())
+        assert len(rec) == 1 and rec.iloc[0]["movement"] == "entering"
+        s = seq.samples
+        assert s["k"].to_list() == list(range(0, -11, -1))
+        assert s["dt_before_s"].to_numpy() == pytest.approx(np.arange(11.0))
+        # C's front at −5m relative to the platoon (m = −k); hand-computed gaps
+        exp_lead = [("Q", 13), ("Q", 18), ("Q", 23), ("P", -3), ("P", 2), ("P", 7), ("P", 12),
+                    ("P", 17), ("P", 22), ("R", -1), ("R", 4)]  # fmt: skip
+        exp_lag = [("P", 8), ("P", 3), ("P", -2), ("R", 21), ("R", 16), ("R", 11), ("R", 6),
+                   ("R", 1), ("R", -4), ("S", 27), ("S", 22)]  # fmt: skip
+        assert list(zip(s["lead_id"], s["lead_gap_m"].round(9), strict=True)) == exp_lead
+        assert list(zip(s["lag_id"], s["lag_gap_m"].round(9), strict=True)) == exp_lag
+        assert s["gap_index"].to_list() == [0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2]
+        assert s["status"].to_list() == ["accepted"] * 3 + ["rejected"] * 8
+        assert s["suspect"].to_list() == [
+            False, False, True, True, False, False, False, False, True, True, False,
+        ]  # fmt: skip
+        assert s["lead_time_gap_s"].iloc[4] == pytest.approx(2.0 / 20.0)
+        assert s["lag_time_gap_s"].iloc[10] == pytest.approx(22.0 / 15.0)
+        assert (s["lane"].iloc[1:] == 5).all() and s["lane"].iloc[0] == 4
+        assert (s["target_lane"] == 4).all()
+        c = seq.counts
+        assert (c["n_changes"], c["n_samples"], c["n_accepted_samples"]) == (1, 11, 3)
+        assert (c["n_rejected_samples"], c["n_suspect_samples"], c["n_rejected_gaps"]) == (8, 4, 2)
+        assert c["n_changes_with_rejected"] == 1 and c["n_unmatched"] == 0
+
+    def test_the_change_moment_reproduces_the_records(self) -> None:
+        df = _random_traffic(20260925)
+        out = lane_change_gaps(df, ZONES, mainline_lanes=MAIN, aux_lanes=AUX)
+        seq = gap_sequences(df, out.records)
+        at0 = seq.samples[seq.samples["k"] == 0].set_index("change").sort_index()
+        assert seq.counts["n_unmatched"] == 0 and len(at0) == len(out.records)
+        cols = ["lead_gap_m", "lead_v", "lead_time_gap_s", "lag_gap_m", "lag_v", "lag_time_gap_s"]
+        mine = at0[cols].to_numpy(dtype=float)
+        theirs = out.records[cols].to_numpy(dtype=float)
+        assert np.array_equal(np.isnan(mine), np.isnan(theirs))
+        assert np.allclose(mine[~np.isnan(mine)], theirs[~np.isnan(theirs)])
+        assert at0["lead_id"].to_list() == out.records["lead_id"].to_list()
+        assert at0["suspect"].to_list() == out.records["suspect"].to_list()
+        assert (at0["status"] == "accepted").all()
+
+    def test_a_fragment_switch_is_not_a_new_gap(self) -> None:
+        _, whole = _sequences(_passing_frame())
+        _, split = _sequences(_passing_frame(split_lead=True))
+        a, b = whole.samples, split.samples
+        assert b["lead_id"].iloc[:3].to_list() == ["Q_b", "Q_b", "Q_a"]
+        assert b["gap_index"].to_list() == a["gap_index"].to_list()
+        assert b["status"].to_list() == a["status"].to_list()
+
+    def test_the_lookback_stops_at_the_track_start_and_the_zone(self) -> None:
+        # C's track begins 3 s before the change: instants 0, −1, −2, −3
+        _, seq = _sequences(_passing_frame(c_start_slot=45))
+        assert seq.samples["k"].to_list() == [0, -1, -2, -3]
+        # a zone that starts 60 m before the change point (x 1180): C was inside it for 3 s
+        df = _passing_frame()
+        zone = (Zone("wz", "weave", 1180.0, 1500.0),)
+        out = lane_change_gaps(df, zone, mainline_lanes=MAIN, aux_lanes=AUX)
+        bounded = gap_sequences(df, out.records, zones=zone)
+        assert bounded.samples["k"].to_list() == [0, -1, -2, -3]
+        assert bounded.parameters["bounded_by_zone"] is True
+        # lookback and sampling rate
+        _, short = _sequences(df, lookback_s=4.0, sample_every_s=2.0)
+        assert short.samples["k"].to_list() == [0, -1, -2]
+        assert short.samples["dt_before_s"].to_numpy() == pytest.approx([0.0, 2.0, 4.0])
+
+    def test_a_lead_drifting_out_of_range_is_the_same_gap(self) -> None:
+        # C at 10 m/s; its lead L at 20 m/s is 205 m ahead at the change, 195 m one second earlier
+        df = _frame(
+            _track("C", 1000.0, 10.0, [5] * 60 + [4] * 11),
+            _track("L", 1000.0 + 120.0 + 210.0 - 240.0, 20.0, [4] * 71),
+            _track("F", 1000.0 - 20.0, 10.0, [4] * 71),
+        )
+        _, seq = _sequences(df)
+        s = seq.samples
+        assert pd.isna(s["lead_id"].iloc[0]) and s["lead_id"].iloc[1] == "L"
+        assert s["lead_gap_m"].iloc[1] == pytest.approx(195.0)
+        assert (s["gap_index"] == 0).all() and (s["status"] == "accepted").all()
+
+    def test_an_empty_target_lane_is_not_a_rejection(self) -> None:
+        # Y moves 3 → 4 at slot 55 and is C's lead at the change; before, lane 4 holds only X,
+        # 400 m ahead: no vehicle within range on either side
+        df = _frame(
+            _track("C", 1000.0, 20.0, [5] * 60 + [4] * 11),
+            _track("Y", 1000.0 + 240.0 + 50.0 - 15.0 * 12.0, 15.0, [3] * 55 + [4] * 16),
+            _track("X", 1000.0 + 240.0 + 400.0 - 15.0 * 12.0, 15.0, [4] * 71),
+        )
+        rec, seq = _sequences(df, changes=[False, True])
+        assert rec["veh_id"].to_list() == ["Y", "C"]  # Y's own change is not sampled
+        s = seq.samples
+        assert s["status"].to_list() == ["accepted"] * 2 + ["empty"] * 9
+        assert s["lead_id"].iloc[1] == "Y" and pd.isna(s["lead_id"].iloc[2])
+        assert seq.counts["n_empty_samples"] == 9 and seq.counts["n_rejected_gaps"] == 0
+
+    def test_mask_unmatched_and_bad_inputs(self) -> None:
+        df = _passing_frame()
+        rec, seq = _sequences(df, changes=[False])
+        assert seq.samples.empty and seq.counts["n_changes"] == 0
+        wrong = rec.copy()
+        wrong.loc[0, "veh_id"] = "nobody"
+        assert gap_sequences(df, wrong).counts["n_unmatched"] == 1
+        with pytest.raises(ValueError, match="multiple"):
+            gap_sequences(df, rec, sample_every_s=0.3)
+        with pytest.raises(ValueError, match="lookback"):
+            gap_sequences(df, rec, lookback_s=-1.0)
+        with pytest.raises(ValueError, match="mask"):
+            gap_sequences(df, rec, changes=[True, False])
+        with pytest.raises(ValueError, match="records is missing"):
+            gap_sequences(df, rec.drop(columns="to_lane"))
+        with pytest.raises(ValueError, match="default_length_m"):
+            gap_sequences(df.drop(columns="length"), rec)
+        with pytest.raises(ValueError, match="zone"):
+            gap_sequences(df, rec.drop(columns="zone"), zones=ZONES)
+        no_len = gap_sequences(df.drop(columns="length"), rec, default_length_m=5.0)
+        assert no_len.samples["lead_gap_m"].iloc[0] == pytest.approx(13.0)

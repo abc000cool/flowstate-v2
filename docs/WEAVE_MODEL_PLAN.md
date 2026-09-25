@@ -5917,3 +5917,184 @@ shares lower bounds. The model's acceptance is too conservative, most on the ent
 section's crossings. This is a calibration question with data behind it, not a rule to invent: the next step fits the acceptance's
 terms to the observed gaps — which needs the *rejected* gaps too (the standard critical-gap estimators, maximum likelihood or
 Troutbeck's, use accepted and rejected gaps together), so the extraction gains the lags and leads a vehicle passed up before it changed.
+
+## 2026-09-25 (block 3, WP-78, critical gaps): the gaps each driver let go by, Troutbeck's maximum-likelihood critical gap per side plus a joint lead–lag form, and the mapping onto the weave's time gaps. Checked on the corridor section fixture, the estimator gets the leader-side time gap of the model's own drivers back (0.55 s [0.35, 0.77] against the 0.6 s it runs). Those drivers still take lag gaps below what the acceptance allows. The I-24 fit is a cloud stage that has not run yet. `WEAVE_DEFAULTS` is unchanged
+
+**Why.** VM X found that the weave's acceptance, at the fleet's means, would refuse 48.5 % of the real entering changes and 22.1 % of the exiting ones in the I-24 MOTION Hickory Hollow–Bell Road weave. Coverage makes both figures lower bounds. An accepted gap alone does not say how small a gap the driver needed: a driver who took 3 s may have needed 1 s or 2.9 s. Critical-gap estimators therefore read each driver's accepted gap together with the gaps the same driver let go by. This package (1) extends the extraction to record the gaps each driver let go by, (2) estimates critical-gap distributions from them, and (3) maps the fitted medians onto `accept_gap_s` / `exit_accept_gap_s`. Nothing is adopted.
+
+**The rejected gap, defined.**
+- *At a stop line.* In gap-acceptance theory a waiting minor-stream driver lets major-stream gaps pass until one is at least its critical gap. It rejects the smaller ones and accepts that one. Its critical gap lies between its largest rejected gap and its accepted gap.
+  - Troutbeck (1992), *Estimating the critical acceptance gap from traffic movements*, QUT Physical Infrastructure Centre Report 92-5.
+  - Brilon, Koenig & Troutbeck (1999), *Useful estimation procedures for critical gaps*, Transp. Res. A 33:161–186.
+  - Tian et al. (1999), Transp. Res. A 33:187–197, who define the gap events.
+- *At a freeway merge.* Marczak, Daamen & Buisson (2013, Transp. Res. C 36:530–546, §6) use the same idea: "rejected gaps correspond to the net distances between two vehicles on the shoulder lane which are passed by vehicles driving on the acceleration lane, which merge further downstream and thus reject these offered gaps."
+- *Here.* A **gap** is one lag–lead pair of consecutive target-lane vehicles beside the changer. Lead and lag are defined exactly as for the accepted gap: the nearest front strictly ahead of the changer's front, and the nearest at or behind it.
+  - A **rejected gap** is a distinct pair of this kind that was beside the changer at one or more lookback instants while it stayed in its origin lane. It must not be the pair the changer entered, and it must have a vehicle on at least one side.
+  - A new pair begins when the lead or the lag is a different vehicle. The same vehicle is recognised by its id, or by position continuity within 2 m at its mean speed, so a tracker's fragment switch is not a new gap. Identity ignores the 200 m range, so a lead drifting across 200 m is still the same gap.
+  - Earlier instants of the entered pair are `accepted`, not rejections: the driver was beside the gap and had not yet taken it.
+  - An instant with no vehicle within range on either side is `empty`. An empty target lane the driver did not move into says it was not yet trying to change, so it is never a rejection.
+- *Sampling.* Every 1 s over the 10 s before the change, a whole multiple of both I-24's 0.2 s and a microsim run's 0.5 s. The lookback ends at the first instant at which any of these holds:
+  - the vehicle is no longer in the debounced run of its origin lane;
+  - its track has not started yet;
+  - a sample slot is missing;
+  - it is outside the zone the change was made in, because an auxiliary lane exists only there. Without this bound, a fixture exiter still upstream of the section "saw" band-4 vehicles on the weave edge ahead, and half the exiters read as inconsistent (a first pass, discarded).
+- *Instants with a neighbour closer than 0.5 m* are `suspect` and left out (a vehicle abreast, or a duplicate fragment). Gaps that pass the changer in under a second can be missed; they are short, so they are rarely a driver's largest rejected gap.
+
+**The extraction** (`calibration.lane_change_gaps.gap_sequences(df, records, *, changes, zones, dt_s, max_gap_s, min_dwell_s, lookback_s=10, sample_every_s=1, max_range_m=200, min_gap_m=0.5, default_length_m, same_vehicle_tol_m=2) -> GapSequences`).
+- *Additive.* It is appended to the module and `lane_change_gaps` is untouched (the diff is one hunk after line 935).
+- *Byte-identity test.* The records and the summaries of a seeded random frame (80 tracks, 54 changes) hash to the sha256 digests computed at 6510ff2 before any edit.
+- *What it returns.* One row per (change, instant): the target lane's lead and lag with gaps, time gaps, speeds and closing speeds, `suspect`, `gap_index` (0 = the entered gap) and `status` (`accepted`, `rejected`, `empty`). At the change instant it reproduces every record's neighbours; a test checks this on all 54 random changes.
+- *The driver table.* `calibration.critical_gap.driver_gaps` reduces the rows to one per change:
+  - the accepted time gaps: lead over the changer's speed, lag over the lag's speed; `inf` with no vehicle within range;
+  - the largest finite time gap each side offered over the driver's non-suspect rejected instants (0 when there are none);
+  - the numbers of rejected gaps and instants, and the history sampled.
+- *The joint estimator's input.* `rejected_points` lists every rejected (lead, lag) combination.
+
+**The estimators** (`packages/calibration/calibration/critical_gap.py`, `mypy --strict` clean).
+- *Separate: Troutbeck's maximum likelihood, one side at a time.*
+  - Critical gaps are log-normal, ln t_c ~ N(μ, σ²). μ and σ maximize Σ ln[F(a_i) − F(r_i)] (Weinert 2000, TRB Circular E-C018, Eq. 1).
+  - A driver with no rejected gap has r = 0 and contributes F(a).
+  - An accepted `inf` is right-censored and contributes 1 − F(r). With no rejected gap either, it is uninformative.
+  - An inconsistent driver (r ≥ a) is excluded and counted. `drop_rejected` keeps its accepted gap alone instead.
+  - The artifacts also carry every fit with the no-rejection drivers dropped, as a sensitivity. This is Weinert's choice (2000, §2.2): on German field data the critical gaps were up to 1.7 s smaller with those drivers kept than without them.
+- *Why the separate estimator is biased here.* A gap refused because of its lag still counts as rejected on the lead side. The lead side's "largest rejected" can then exceed the driver's lead critical gap, which biases the separate estimator upward and invents inconsistent drivers.
+- *Joint: this module's extension.* A driver accepts only when both sides clear independent log-normal critical gaps. That is exactly the weave acceptance's own conjunction.
+  - The likelihood is the probability that the driver's (lead, lag) critical pair lies inside the rectangle of the accepted pair and outside the union of the rectangles of every rejected combination.
+  - That union of origin-anchored rectangles is a staircase whose product measure is exact: Σ_k F_L(x_k)(F_G(y_k) − F_G(y_{k−1})) over the maximal corners.
+  - It reduces to the separate estimator when a side never binds; a test checks this to 2·10⁻³ in μ and σ and 10⁻⁴ in log-likelihood.
+  - A driver whose rejected combination is at least as large as the accepted one on both sides is inconsistent.
+- *Settings.* Both estimators use Nelder–Mead on (μ, ln σ) and 200 bootstrap replicates, resampling drivers with replacement. Percentile 95 % intervals are reported, with per-row seeds from `spawn_seeds(20260925, n_rows)`.
+- *When a group is left unfitted.* Fewer than 30 usable drivers, or fewer than 10 with a rejected gap. Without rejections the likelihood Π F(a_i) grows without bound as the distribution slides to zero.
+
+**The coverage caveat.** I-24 MOTION tracks about half of the peak vehicle-time. An untracked vehicle inside a gap makes the observed gap larger than the true one, never smaller, so the accepted gap is the true one or larger. An untracked vehicle between two observed neighbours merges two true gaps, so a rejected gap is either larger than its true value or lost into the accepted one. The accepted gap is the upper edge of every driver's interval and all the information of a driver who rejected nothing, so **the fitted critical gaps are biased upward**. An acceptance calibrated to them is, if anything, still stricter than the real drivers, and the proposed time gaps are upper bounds. A test measures the direction on a toy gap stream (headways 0.3 s + Exp(1.2 s), critical gaps log-normal with a median of 1.5 s). With each vehicle tracked at p = 0.5, the fitted median rises from 1.53 to 1.91 s at the test's seed.
+
+**The mapping onto the acceptance** (`model_parity_critical_gaps`, `acceptance_mapping`).
+- *At speed parity.* The observed weave crossings' median closing speeds are within 1.4 m/s of zero (VM X: lead +0.71 / −0.30, lag −1.38 / −0.77 m/s for entering / exiting). At parity the brake-gap terms vanish and the guard reduces to a bumper gap above 2 s0. `weave_acceptance` then needs:
+  - on the leader side, a bumper gap of 2 s0 + A·v, which is a critical time gap of **A + 2 s0 / v** over the changer's speed;
+  - on the follower side, the larger of 2 s0 + A·v_F (time A + 2 s0 / v_F over the follower's speed) and the absorption gap (s0 + v_F T) / √(1 − (v_F/v0)⁴ + b/a_max). The absorption gap does not involve A.
+- *Implied A.* A fitted median critical time gap t̂ at a speed class's median speed v̄ therefore implies **A = t̂ − 2 s0 / v̄** on either side. On the follower side this holds only if t̂ is above the absorption floor. Below it no A reproduces t̂, and the artifact reports instead the follower deceleration the median gap would impose, −a_IDM(v_F, gap t̂·v_F), which the acceptance caps at b.
+- *The proposal.* The n-weighted least-squares A over the fitted speed classes of the movement, computed per side and for both sides together, since the model has one time gap per movement. It is floored at 0, with the unfloored value kept. The intervals come from the bootstrap replicates, each class resampled independently.
+- *Which rows.* The joint fits, with the separate fits as a sensitivity. Only the weave zone's entering (`accept_gap_s`) and exiting (`exit_accept_gap_s`) rows produce the proposal. Every other group is mapped for corroboration: the Old Hickory merge's entering, and the two diverges' exiting.
+
+**Synthetic tests** (26 new, 2.4 s together):
+- `tests/test_calibration/test_calibration_critical_gap.py`: 18 tests.
+- `test_calibration_lane_change_gaps.py`: 8 new; the file now has 31, all passing.
+
+What they check, all on drivers drawn from known distributions:
+- *Troutbeck's estimator.* It recovers ln t_c ~ N(ln 1.5, 0.3²) from 2,000 drivers offered 0.2 s + Exp(2 s) gaps: median 1.530 s, σ 0.300. Excluding the 1,027 drivers who rejected nothing moves the median to 1.783 s.
+- *The bootstrap interval* covers the truth and is seeded.
+- *Drivers who need both sides* (lead median 1.2 s, σ 0.30; lag 1.8 s, σ 0.35). The joint estimator gets 1.221 / 0.281 and 1.841 / 0.338. The separate one reads 1.654 and 2.395 and calls 627 and 531 of the 2,000 drivers inconsistent.
+- *Edge cases.* No rejection; censored; uninformative; NaN; inconsistent under both options; the joint's (inf, inf) points dropped; too few drivers; bad options.
+- *Hand-computed values:*
+  - the interval probabilities, including the upper-tail branch;
+  - the staircase and the joint likelihood of one driver. This is the passing driver of the `gap_sequences` test: separately inconsistent on both sides (0.85 ≥ 0.65 s, 1.47 ≥ 0.53 s), jointly consistent.
+- *The mapping.* A round trip: rows whose medians are the acceptance's own parity critical gaps at A = 0.45 map back to 0.45. A lag median under the absorption floor is flagged, with the IDM's deceleration by hand.
+- *`gap_sequences`:*
+  - a driver passing a platoon, every gap, status and `gap_index` by hand;
+  - a fragment switch;
+  - the track-start and zone bounds;
+  - the range drift;
+  - empty instants;
+  - the mask, unmatched records and bad inputs.
+
+**The model's own critical gaps** (`artifacts/th52_fixture_critical_gaps.json`, written by `scripts/i24_critical_gaps.py --sim-run-dir`).
+- *The runs.* The strict-`xfail` test's own configuration `_th52_corridor_config(seed)`, seeds 3, 4 and 5, run in the session harness `wp78/run_fixture.py`, 2.2–2.7 s each.
+  - Config hashes 2230b3942fe7 / 671d0460e64f / 7e551a839817 with 1,590 / 1,661 / 1,702 changes. These are identical to WP-77's runs of those seeds in `artifacts/th52_fixture_lane_change_gaps.json`.
+  - No collision. HEAD 6510ff2 with the WP-78 tree uncommitted (`code_dirty`), `runner.py` md5 fe16194895ee.
+- *What was sampled.*
+  - 1,251 entering and exiting changes: 8,095 instants, of which 4,952 were accepted, 3,143 rejected, none empty and 1,936 suspect.
+  - 648 of those changes let at least one gap go by, and there are 917 distinct rejected gaps.
+- *Cost.* 14.1 s wall and 420 MB peak for extraction and fits.
+
+*Critical time gaps of the model's own weave crossings, pooled over the 3 seeds (confirmed, non-suspect changes; median [95 % bootstrap interval], in seconds). Speed classes are on the changer's speed; ≥ 20 m/s is unfitted for both movements, with 2 and 7 rejecting drivers.*
+
+| movement | class | drivers (joint used) | joint lead | joint lag | separate lead | separate lag | inconsistent: joint / separate lead / lag |
+|---|---|---|---|---|---|---|---|
+| entering | all | 320 (311) | 1.18 [1.01, 1.35] | 1.21 [1.07, 1.36] | 1.57 [1.37, 1.81] | 1.65 [1.53, 1.80] | 7 / 40 / 63 |
+| entering | < 10 m/s | 233 (224) | 1.43 [1.18, 1.69] | 1.21 [0.91, 1.47] | 1.80 [1.54, 2.08] | 1.73 [1.53, 1.96] | 7 / 27 / 52 |
+| entering | 10–20 m/s | 84 (84) | 0.84 [0.68, 1.00] | 1.18 [1.05, 1.31] | 1.14 [0.91, 1.45] | 1.50 [1.32, 1.73] | 0 / 13 / 11 |
+| exiting | all | 868 (791) | 0.89 [0.82, 0.98] | 0.72 [0.57, 0.87] | 0.95 [0.85, 1.04] | 1.01 [0.91, 1.11] | 73 / 113 / 55 |
+| exiting | < 10 m/s | 483 (441) | 1.16 [1.04, 1.30] | 0.79 [0.63, 0.94] | 1.28 [1.14, 1.44] | 1.24 [1.11, 1.39] | 42 / 62 / 38 |
+| exiting | 10–20 m/s | 318 (293) | 0.73 [0.62, 0.82] | 0.59 [0.28, 0.97] | 0.75 [0.65, 0.85] | 0.78 [0.56, 0.97] | 25 / 42 / 17 |
+
+*The same fits against the acceptance's current critical gaps at parity (A = 0.6 s, the corridor fleet's means, v0 capped at 24.59 m/s), and the time gap each side implies (joint fits):*
+
+| movement | class | v̄ / v̄_F [m/s] | acceptance lead / lag now [s] | absorption floor [s] | implied A: lead / lag [s] | follower decel. at the lag median [m/s²] |
+|---|---|---|---|---|---|---|
+| entering | < 10 m/s | 6.04 / 4.09 | 1.44 / 1.84 | 1.20 | 0.589 / −0.030 | 1.67 |
+| entering | 10–20 m/s | 13.16 / 13.11 | 0.98 / 0.99 | 0.95 | 0.458 / 0.799 | 0.76 |
+| exiting | < 10 m/s | 6.25 / 4.92 | 1.41 / 1.63 | 1.14 | 0.346 / below the floor | 4.68 |
+| exiting | 10–20 m/s | 14.47 / 12.41 | 0.95 / 1.01 | 0.96 | 0.379 / below the floor | 6.04 |
+
+Reading.
+1. *The estimator and the mapping recover the model's own leader side.*
+   - Below 10 m/s, where most of the model's entrants cross, the fitted median lead critical gap is 1.43 s [1.18, 1.69]. The acceptance at the means asks 1.44 s.
+   - Across the classes the entrants' leader side implies A = **0.553 s [0.354, 0.773]**, and the model runs 0.6 s.
+   - This is the self-check the calibration needed: applied to drivers whose rule is known, the chain returns the rule.
+2. *The model's crossings do not keep the acceptance's follower side.*
+   - The entrants' lag side implies 0.196 s [0, 0.385]. Below 10 m/s the fitted lag median of 1.21 s is below the time term's 1.84 s: at v_F = 4.1 m/s the 2 s0 term alone is 1.24 s.
+   - Every fitted exiting class sits below the absorption floor, so no A reproduces it. The median exiter's lag gap would ask its follower for 4.7–6.0 m/s², against the b of 1.70 m/s² the acceptance allows.
+   - These crossings are made by mechanisms other than the acceptance at the means:
+     - forced changes, which pass only the brake-gap guard (the weave's own counters in WP-77: 700 forced over 20 seeds);
+     - SUMO's own LC2013;
+     - drivers whose drawn parameters differ from the means.
+   - The records cannot tell these apart. The combined self-check reads 0.375 s [0.261, 0.488] for entering and 0.359 s [0.275, 0.442] for exiting; for exiting only the leader side enters.
+3. *The separate estimator overshoots, as the synthetic test predicts.* On the entrants it reads 1.57 / 1.65 s against the joint's 1.18 / 1.21 s, and it calls 40 and 63 drivers inconsistent against the joint's 7.
+4. *The sensitivities move the medians a long way.*
+   - With the no-rejection drivers dropped (Weinert's sample), the entrants read 2.08 / 1.52 s.
+   - With only the last 5 s of history, they read 1.10 / 1.15 s.
+   - The I-24 reading will state the proposal under both.
+
+**The VM stage and its estimate.**
+- *The stage.* Stage 13 of `scripts/gcp/pipeline_i24.sh` is `i24_critical_gaps`. It is opt-in and needs `--data-set i24`. It runs `scripts/i24_critical_gaps.py` with the same chunks, span, zones, lanes and acceptance as stage 12 (VM X), and the load pad widened by the lookback to 18 s.
+- *What it writes.*
+  - `artifacts/i24_critical_gaps.json` (docs/CONTRACTS.md, "Critical gaps").
+  - Two gitignored tables that ride along in the archive: `data/i24motion/processed/i24_wb_gap_sequences.parquet` and `i24_wb_critical_gap_drivers.parquet`. `ingest_pipeline_results.sh` installs the artifact and both tables.
+- *The render.* Rendered with a stub that honours `--stages` (`stage(){ local n="$1"; shift; if [ -n "$STAGES" ] && ! echo " $STAGES " | grep -q " $n "; then return 0; fi; echo "STAGE $n: $*"; }`, substituted for the real definition, the EXIT trap removed, run with `--no-shutdown --stages "i24_critical_gaps"`), the whole script prints only `STAGE i24_critical_gaps: uv run --no-sync python scripts/i24_critical_gaps.py`.
+- *Launch (not launched).* `scripts/gcp/launch_i24_pipeline.sh --data-set i24 --machine n2-standard-8 --cap-min 90 --bucket gs://<bucket>/<prefix> --self-delete --pipeline-args '--stages "i24_critical_gaps"'`. The VM runs `git archive HEAD`, so the WP-78 code must be committed first. Add `--allow-dirty` only if the tree is dirty after that commit.
+- *Estimate.*
+  - *Extraction.* On a synthetic stand-in written with the loader's schema (`wp78/gen_standin.py`: one 15-min chunk, 2,978,091 rows loaded, 44,185 fragments of 4–24 s) the observed mode took about 1 s per chunk and peaked at 924–948 MB RSS. The real table averages 39.0 M / 16 = 2.4 M rows per chunk. VM X's stage 12, the same extraction without the sequences, took 14.9 s in all (`wall_s` of `artifacts/i24_lane_change_gaps.json`).
+  - *Fits.* At the real group sizes, 8,351 synthetic drivers split as VM X's `counts_by_zone` / `summary_by_zone` split them (20 rows, 200 replicates), the fits took 79.5 s on this laptop at 153 MB. The 5 s sensitivity took 1.6 s.
+  - *Expected on the VM.* A few minutes of stage time. Peak memory stays below 2 GB even if the densest chunk is twice the stand-in's.
+  - *Cap.* The 90-min cap covers the boot, the 1.1 GB upload and the setup with margin.
+
+**How the I-24 artifact will be read** (written before the numbers exist).
+- (a) *The proposal.* `proposal.accept_gap_s` and `proposal.exit_accept_gap_s`, taken from the HH–BR weave's joint fits, against the 0.6 s the model runs. Coverage makes both upper bounds.
+  - If the entering value's interval lies below 0.6 s, VM X's refusals are the acceptance's time term, and the candidate is tested on the fixtures as WP-76 laid out (realization B's sweep, the one value changed).
+  - If the follower side sits below the absorption floor, as the fixture's own exiters do, no time gap reproduces it. The follower deceleration the observed median implies is then the quantity to compare with b, and the absorption test is what the data say is too strict.
+- (b) *Corroboration.* The Old Hickory merge's entering and the two diverges' exiting implied time gaps. The mechanism is the same: a merge or diverge gap search.
+- (c) *Robustness.* The spread between the joint and the separate estimators, the no-rejection and 5 s sensitivities, and the inconsistent share. A large inconsistent share, as Daamen et al. (2010) and Marczak et al. (2013) found at merges, means the consistent-driver model itself fits poorly. The proposal is then a central value, not a threshold.
+
+**Limitations.**
+- On I-24 the critical gaps are biased upward by coverage, so the proposals are upper bounds.
+- The estimators assume consistent drivers. Trajectories carry no intent, so gaps passed before a driver was trying to change inflate the rejected gaps; the 5 s lookback bounds that.
+- The mapping reads the acceptance at the fleet's means and at speed parity. The brake-gap terms, which bind at closing speeds, are not fitted.
+- Movements are read from lanes and zones.
+- The data are one day, one direction and one weaving section.
+- The fixture numbers are three seeds at the weave's defaults on macOS, pooled, and describe a mixture of mechanisms.
+
+**Nothing in the model changes.**
+- `microsim.runner`, `flowstate_core.config`, `WEAVE_DEFAULTS`, every scenario, fixture and golden are untouched, and so is `scripts/i24_lane_change_gaps.py` (md5 881b47b3cc72cf2b850fd7070523ae20 before and after). The package is additive and hash-neutral.
+- The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands.
+
+**Bookkeeping.**
+- *New:*
+  - `packages/calibration/calibration/critical_gap.py`;
+  - `scripts/i24_critical_gaps.py`;
+  - `tests/test_calibration/test_calibration_critical_gap.py`;
+  - `artifacts/th52_fixture_critical_gaps.json`.
+- *Edited:*
+  - `packages/calibration/calibration/lane_change_gaps.py` (`gap_sequences` appended);
+  - `tests/test_calibration/test_calibration_lane_change_gaps.py` (8 tests appended);
+  - `scripts/gcp/pipeline_i24.sh` (stage 13 and the two tables in the archive);
+  - `scripts/gcp/ingest_pipeline_results.sh`;
+  - docs/CONTRACTS.md;
+  - CHANGELOG.md;
+  - this section.
+- *Session files (`wp78/`, not committed):*
+  - the fixture harness `run_fixture.py` and the three run directories;
+  - the stand-in generator `gen_standin.py` and its run;
+  - the fit timing `time_fits.py`;
+  - the stub render.
+
+Every number above is from those runs, from the committed files named, or from the tests.
