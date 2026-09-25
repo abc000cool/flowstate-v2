@@ -5690,3 +5690,203 @@ On this fleet and map, the ceiling measurement says (ii) holds only when nothing
   - the SUMO 1.27.1 sources read: `MSLCM_LC2013.cpp` / `.h`, `MSAbstractLaneChangeModel.cpp`, `MSFrame.cpp`, `MSVehicle.cpp`, `MSCFModel_EIDM.cpp`.
 
 Every number above is from those runs, from the committed files named, or from the two HCM documents cited.
+
+## 2026-09-25 (block 3, WP-77, how real drivers take gaps): an extraction that reads every lane change's accepted gaps off a trajectory table and evaluates the weave's acceptance on them, the same way for I-24 MOTION and for a microsim run. On the corridor section fixture the model's own crossings are slow: entrants cross at a median 6.3 m/s and exiters at 8.5 m/s. A fifth of those crossings are made into gaps the weave's acceptance, at the fleet's mean parameters, would refuse. The I-24 side is a cloud stage and has not run yet. Nothing in the model changes
+
+**Why.** WP-76 (c) named the model's crossing capacity at speed as the dominant gap. The weave's acceptance was one of the candidate causes: `s0 + accept · v` on both sides (`accept_gap_s`, `exit_accept_gap_s`), the follower absorbing the changer within its `b`, and the speed-aware brake gaps. WP-76 also wrote down what evidence would be needed first: "the accepted gaps and crossing speeds in I-24 MOTION's weaves, before any value is chosen." None of the acceptance's terms had been compared with how real drivers change lanes. This package builds that measurement and runs it on the model's side. The observed side is a pipeline stage that reads the 993 MB processed I-24 table, which this laptop must not do (the 2026-09-17 memory rule).
+
+**Where the data and the sections are.**
+- *Reading the data.* `calibration.loaders.i24motion` streams the 5.8 GB export and never extracts it. `scripts/i24_extract.py` wrote `data/i24motion/processed/i24_wb_20221130/`:
+  - `trajectories.parquet`: 42,764,894 rows at 5 Hz, 993 MB. Columns `t, veh_id, x, y, lane, v, length, cls`: `x` is the front bumper, 0 at MM 62.7, measured westbound; `lane = floor(y / 12 ft)`, with 1–4 the mainline (1 = HOV), 0 the median shoulder and 5 or more the auxiliary and ramp lanes.
+  - `vehicles.parquet` and `meta.json`.
+- *What sits beside it.* `data/i24motion/processed/` also holds:
+  - the episode pickles and summaries, the episode positions and the FD observations;
+  - three compiled nets, `net_full`, `net_raw` and `net_raw_corrected`.
+- *What the launch ships.* `launch_i24_pipeline.sh --data-set i24` ships the WB table, the episode pickles and summaries, and `auxiliary_information`. It ships neither the nets nor the zip.
+- *Sections.* The ramp landmarks are projected onto the data axis from `artifacts/i24_replica_inputs.json`. The partition is `scripts/i24_lanechange_observed.py`'s, and the extraction reproduces the committed partition in `artifacts/i24_lanechange_observed.json` to the millimetre. Data x [m]:
+  - upstream of Old Hickory, 0–751 (basic);
+  - the Old Hickory acceleration lane, 751–1,899 (merge);
+  - 1,899–3,427 (basic);
+  - the Hickory Hollow deceleration lane, 3,427–3,947 (diverge);
+  - 3,947–4,507 (basic);
+  - **the Hickory Hollow–Bell Road weave, 4,507–5,092 (weave; 585 m, a one-sided ramp weave like T.H.52's 305 m; the replica's five-lane edge 992666043, 565 m)**;
+  - the Bell Road diverge, 5,092–5,492.
+- *Lane 5 in the data.* The observed lane-5 occupancy stands in all three ramp lanes: 0.75–1.95 km and 3.45–3.95 km (docs/I24_VALIDATION.md), and 4.5–5.5 km at shares of 8.1 / 4.6 / 1.5 / 1.5 % in its four 250 m bins (`artifacts/i24_lane_profile.json`, observed rows).
+
+**The extraction** (`packages/calibration/calibration/lane_change_gaps.py`; typed, and `mypy --strict` clean though `calibration` is outside the strict scope).
+- *API.* `lane_change_gaps(df, zones, *, mainline_lanes, aux_lanes, dt_s, max_gap_s, min_dwell_s=1.0, window_s, x_range_m, max_range_m=200, min_gap_m=0.5, default_length_m, acceptance, groups) -> LaneChangeGaps` returns `records` (one row per change) and `counts`. The helpers are:
+  - `Zone(name, kind, x_lo_m, x_hi_m)`, with kind merge, diverge, weave or basic;
+  - `AcceptanceParams` and its `.from_population(mean, v0_cap_ms, weave_params)`;
+  - `weave_acceptance`, `classify_movement` and `sim_band_lanes`;
+  - `summarize_gaps(records, by, speed_classes)`, which gives quantiles 5–90 % in the changer-speed classes < 10, 10–20 and ≥ 20 m/s;
+  - `sample_records`.
+- *Input.* `t, veh_id, x` (front bumper), `lane` (band convention, 1 = leftmost), `v`, and an optional `length`. Every vehicle must be sampled on one shared time grid. The I-24 table snaps to the 0.04 s grid and keeps every fifth slot, and a microsim run records every vehicle at the output cadence.
+- *What each record holds.*
+  - When and where: time, x, zone and zone kind, from and to lane, and direction.
+  - The movement:
+    - *entering*: auxiliary → mainline in a merge or weave zone;
+    - *exiting*: mainline → auxiliary in a diverge or weave zone;
+    - *through*: mainline → mainline;
+    - *unknown*: anything else.
+
+    Trajectories carry no route, so the movement is read from the lanes and the zone.
+  - The changer's speed and length, and the held-run durations before and after the change.
+  - The target lane's lead and lag at the change moment: id, bumper-to-bumper gap [m], time gap [s] over the rear vehicle's speed, speed, and closing speed (positive when the rear vehicle is faster).
+  - Flags: `confirmed` and `suspect`.
+  - With `acceptance` given: `need_lead_m`, `need_lag_m`, the five acceptance terms, and `model_accepts`.
+- *The change moment* is the first sample in the new lane: for a tracked vehicle, the first sample after its centre crossed the band edge; for SUMO, the step in which the instantaneous change ran.
+- *Lead and lag.* The lead is the nearest vehicle in the target lane whose front is strictly ahead of the changer's front; the lag is the nearest whose front is at or behind it. Both are looked up at the change's own time stamp, among vehicles whose *debounced* lane is the target lane, within 200 m. Past 200 m no acceptance term binds unless the closing speed exceeds about 25 m/s.
+- *Lane-assignment noise.* The band index flickers when a vehicle drives near a lane line. Three guards handle it, each counted:
+  1. Changes are read off `calibration.lanechange.held_lanes`, the debounce the committed lane observables use. A stay under 1 s that returns to the lane it came from (A-B-A) is reassigned to that lane. A short stay that does not return (A-B-C) is kept as two changes. On the first 15-min chunk of the I-24 study period this guard removed 0.9 % of the transitions (2.2369 → 2.2166 changes per veh-km, `artifacts/i24_lanechange_observed.json`).
+  2. A transition that skips a lane within one 0.2 s sample is dropped (`n_nonadjacent`).
+  3. A change within 1 s of the start or end of its track is `confirmed = False`: the run on that side is shorter than 1 s and is bounded by the track, not by another change. A tracker's lateral position drifts as a fragment starts or dies, and the A-B-A guard cannot see it. The summaries leave these changes out and report them as a sensitivity (`summary_by_zone_kind_incl_unconfirmed`).
+  - A neighbour closer than 0.5 m marks the change `suspect`. The 0.5 m is `scripts/i24_data.py`'s duplicate-fragment bound, and such a neighbour is most often a duplicate fragment of the changer. Suspect changes are left out of the summaries.
+- *The model's acceptance* (`weave_acceptance`) restates `microsim.runner._weave_change_ok` (the acceptance of `_weave_step` read off given gaps) in bumper-to-bumper terms. SUMO reports the leader-side gap net of the changer's `minGap` and the follower-side gap net of the follower's. The terms are:
+  - `ok_lead_time`: g_L ≥ s0 + A·v;
+  - `ok_lead_brake`: g_L ≥ s0 + (v − v_L)⁺²/2b;
+  - `ok_lag_time`: g_F ≥ s0 + A·v_F;
+  - `ok_lag_absorb`: the follower's IDM acceleration towards the changer is at least −b;
+  - `ok_guard`: `_weave_force_gap_ok` with both brake gaps.
+
+  Here A is `exit_accept_gap_s` for a change to the right and `accept_gap_s` for one to the left. Every term is evaluated at one parameter set: the population means of the fleet's IDM artifact, with v0 capped at the site's lane speed as the runner caps it.
+- *Coverage.* I-24 MOTION tracks about half of the peak vehicle-time (docs/I24_DATA.md §4), so the nearest *tracked* vehicle may not be the nearest vehicle, and an observed gap is the true gap or larger. Every term is monotone in the gaps. **So on I-24 the share of changes the acceptance refuses is a lower bound, and the gap quantiles are upper bounds.**
+
+**Synthetic tests** (`tests/test_calibration/test_calibration_lane_change_gaps.py`; 23 tests, 98 % line coverage of the module, 0.8 s). Hand-built frames on a shared 0.2 s grid, every number hand-computed:
+- *A clean change.* A 4.5 m changer moves 2 → 1 at 20 m/s. A 15 m truck in the target lane is 59.0 m ahead (time gap 2.95 s, closing −2 m/s) and a follower is 9.5 m behind (time gap 0.528 s on its own 18 m/s). Farther vehicles in the target lane and a vehicle beside it in lane 3 are ignored. The dwells read 2.0 s before and 4.0 s after.
+- *A noisy flicker that must be debounced.*
+  - A neighbour whose lane index flickers into the target lane for 0.6 s, 40 m ahead of the changer at the change moment, is not taken as the lead.
+  - A 0.4 s excursion is not a change, while a 1.2 s stay that returns is two changes.
+  - The counts read 4 raw transitions, 2 samples reassigned.
+- *A change with no lag vehicle.* The lag reads None or NaN, every follower-side term passes, and the summary's `share_no_lag` is 1.0.
+- *Bumper-to-bumper gaps with lengths.* Two length sets move only the gaps, by the lengths. Without a `length` column, `default_length_m` is required and used.
+- *The other cases:*
+  - a quick A-B-C double change is two confirmed changes;
+  - changes in the first or last 0.4–0.6 s of a track are unconfirmed;
+  - a two-lane jump and a change onto the median shoulder are dropped and counted;
+  - a duplicate fragment 0.2 s behind the changer marks the change suspect (lag gap −4.8 m);
+  - the 200 m range works;
+  - the window and span select changes and count them;
+  - all eight movement cases, lane 5 against the merge, weave and diverge zones and outside every zone;
+  - the SUMO lane mapping: a through vehicle keeps band 3 across a 3 → 4 → 3 lane edge sequence, and an entrant's index 0 → 1 on the four-lane edge is one entering change, 4 → 3;
+  - the acceptance's thresholds: 17.0 m on the leader side at 20 m/s; 28.5 / √(1 − (20/30)⁴ + 1.7) on the follower side; the brake gap 5 + 15²/3.4 onto a 5 m/s leader;
+  - seeded samples and summary rows.
+- *Against the runner itself.* `weave_acceptance` agrees with `microsim.runner._weave_change_ok` case by case on 2,000 seeded random draws: speeds 0–30 m/s, gaps −2 to 90 m or empty, both directions, `exit_accept_gap_s` ≠ `accept_gap_s`, v0 capped at 24.59. The runner accepts 991 of the 2,000 draws, so the comparison is not vacuous (the test asserts a share between 10 % and 90 %).
+
+**Driver checks (session, synthetic only).**
+- *The observed mode on a synthetic stand-in.* `scripts/i24_lane_change_gaps.py` in observed mode ran on a synthetic table written with the loader's schema: 1,050,683 rows, 15,489 fragments of 4–24 s, flickers, and 5 ↔ 4 changes in the weave zone. It never touched the real data.
+  - Two 900 s chunks with 8 s pads give exactly the records of one pass over the whole table, record for record: neighbours, gaps and flags.
+  - Wall time 0.4 s.
+  - The artifact serializes with `allow_nan=False`.
+- *The stage.* The stage renders with a stub `stage` function (below).
+
+**The fixture's own gap statistics.**
+- *How the runs were made.* The strict-`xfail` test's own configuration, `_th52_corridor_config(seed)`:
+  - `weave_th52_corridor.osm` under the observed 05:30–05:50 movements;
+  - the corridor's EIDM fleet drawn from `artifacts/idm_i24_capacity.json`;
+  - the weave at `WEAVE_DEFAULTS` (so `ramp_outlet` is off, unlike WP-72 and WP-76's harnesses);
+  - 20 simulated minutes at 0.5 s, seeds 3–22.
+- *Runtime.* One run at a time, 2.5–3.2 s wall each; seed 3 peaked at 413 MB RSS. The harness was `wp77/run_fixture.py` (session).
+- *Code.* HEAD b088973, `runner.py` md5 fe16194895ee (WP-76's).
+- *Extraction.* The simulated mode: `scripts/i24_lane_change_gaps.py --sim-run-dir <20 run dirs> --out artifacts/th52_fixture_lane_change_gaps.json`.
+  - SUMO's lane index is mapped to bands through the net's lane counts (3 / 3 / 4 / 3 / 3), which puts the auxiliary lane at band 4.
+  - Zones come from `meta.json["ramps"]`: the weave is x 829.07–1,134.09 and the Jackson diverge is 1,134.09–1,355.04.
+  - The lengths are 5.0 m, `microsim.vehicles.VEHICLE_LENGTH_M`.
+  - The acceptance is evaluated at the means with v0 capped at 24.59 m/s.
+- *What the runs gave.* No collision in any run. 33,585 changes, of which 237 samples were reassigned by the debounce, with none non-adjacent and none suspect. These are macOS records (block-3 lesson: the capacity fixture is platform-sensitive).
+
+*Crossings in the weaving section, pooled over the 20 runs (confirmed changes; bumper-to-bumper gaps; p10 / p50 where two values are given). The refusals are the weave acceptance's at the population means. "By term" reads leader time / leader brake / follower time / follower absorption / guard; the terms overlap.*
+
+| movement | changer speed | n | v p50 [m/s] | lead gap [m] | lead time gap p50 [s] | lag gap [m] | lag time gap p50 [s] | no lag within 200 m | refused | by term |
+|---|---|---|---|---|---|---|---|---|---|---|
+| entering | all | 2,220 | 6.52 | 8.39 / 20.60 | 3.29 | 7.30 / 11.76 | 3.12 | 0.1 % | 20.4 % | 11.4 / 1.5 / 9.4 / 3.5 / 2.6 % |
+| entering | < 10 m/s | 1,772 | 5.65 | 7.89 / 19.13 | 3.57 | 7.02 / 10.12 | 3.16 | 0 % | 22.1 % | 11.8 / 1.9 / 11.0 / 3.8 / 3.3 % |
+| entering | 10–20 m/s | 438 | 12.71 | 12.90 / 24.90 | 2.06 | 13.05 / 36.02 | 2.87 | 0.7 % | 13.7 % | 9.6 / 0 / 3.2 / 2.1 / 0 % |
+| entering | ≥ 20 m/s | 10 | 20.58 | 18.85 / 58.58 | 2.82 | 19.17 / 52.72 | 2.81 | 0 % | 10 % | 10 / 0 / 0 / 0 / 0 % |
+| exiting | all | 5,857 | 8.49 | 8.60 / 17.12 | 2.01 | 7.81 / 14.42 | 2.35 | 25.4 % | 20.8 % | 13.6 / 1.1 / 6.7 / 4.3 / 1.6 % |
+| exiting | < 10 m/s | 3,676 | 6.22 | 7.59 / 14.01 | 2.44 | 7.32 / 10.90 | 2.58 | 23.0 % | 25.3 % | 16.1 / 1.6 / 9.5 / 5.5 / 2.4 % |
+| exiting | 10–20 m/s | 1,931 | 13.60 | 12.49 / 19.46 | 1.43 | 12.66 / 22.28 | 1.92 | 23.5 % | 14.2 % | 10.2 / 0.3 / 2.2 / 2.5 / 0.3 % |
+| exiting | ≥ 20 m/s | 250 | 21.50 | 20.32 / 42.96 | 1.91 | 17.33 / 20.72 | 1.22 | 74.8 % | 4.4 % | 4.4 / 0 / 0 / 0 / 0 % |
+| through (in the section) | all | 4,117 | 13.05 | 7.07 / 34.66 | 2.71 | 5.41 / 25.93 | 2.88 | 2.0 % | 35.2 % | 14.4 / 5.7 / 18.0 / 8.2 / 14.9 % |
+
+*Per run, over the 20 seeds: the seed mean [95 % t-interval] and the range (all changes, including those made within a second of arriving from the ramp).*
+
+| movement | crossings per run | median crossing speed [m/s] | share at ≥ 20 m/s | refused |
+|---|---|---|---|---|
+| entering | 126.0 [121.8, 130.2]; 107–138 | 6.35 [6.08, 6.61]; 5.57–7.55 | 0.66 % [0.31, 1.01]; 0–1.87 % | 20.8 % [19.2, 22.5]; 12.5–26.3 % |
+| exiting | 293.0 [286.3, 299.6]; 269–324 | 8.52 [8.12, 8.92]; 7.31–10.70 | 4.29 % [3.35, 5.23]; 1.64–9.67 % | 20.7 % [18.9, 22.4]; 15.6–28.4 % |
+
+- *Where.* Measured from the section start (all changes), entrants cross at p10 / p50 / p90 = 5.3 / 36.7 / 194.0 m and exiters at 3.1 / 53.8 / 268.2 m.
+- *Unconfirmed changes.* 300 of the 2,520 entering changes (11.9 %) are unconfirmed, every one at its track's start: the change came within a second of the vehicle's arrival from the ramp, which the run does not record. With them included the entrants read v p50 6.33 m/s and 20.8 % refused. Only 2 exiting changes are unconfirmed.
+- *The weave's own counters over the 20 runs:* `n_changed_in` 2,518, `n_changed_out` 4,991, `n_forced` 700. The trajectories hold 2,520 entering and 5,859 exiting crossings. The records cannot tell which mechanism made a change: the weave's acceptance, a forced change, or SUMO's own model.
+- *Outside the section.* On the approach and downstream, only SUMO's LC2013 changes lanes. There were 19,463 confirmed changes, at p10 gaps of 4.06 m ahead and 3.63 m behind. The weave's acceptance at the means would refuse 56.5 % of them.
+
+*The acceptance's needs at speed parity* (`weave_acceptance` on the committed means T 1.322 s, a 1.055 m/s², b 1.703 m/s², s0 2.533 m, both time gaps 0.6 s; bumper gap [m], and in brackets as a time gap [s]):
+
+| v [m/s] | 5 | 10 | 15 | 20 | 25 |
+|---|---|---|---|---|---|
+| leader side | 8.07 (1.61) | 11.07 (1.11) | 14.07 (0.94) | 17.07 (0.85) | 20.07 (0.80) |
+| follower side, v0 capped at 24.59 (the fixture) | 8.07 (1.61) | 11.07 (1.11) | 14.21 (0.95) | 19.64 (0.98) | 28.62 (1.14) |
+| follower side, v0 capped at 31.29 (the I-24 weave edge) | 8.07 (1.61) | 11.07 (1.11) | 14.07 (0.94) | 18.52 (0.93) | 23.96 (0.96) |
+
+Reading.
+1. *The model crosses slowly.* On this fixture at its defaults:
+   - 0.7 % of the entrants' crossings and 4.3 % of the exiters' are made at 20 m/s or more;
+   - the medians are 6.3 and 8.5 m/s.
+
+   This is WP-72's finding (96–99 % of the exiters' second-half crossings below 20 m/s, there with `ramp_outlet` set) read on every crossing of the section.
+2. *Where the model does cross, it mostly takes gaps well above what its acceptance needs.* The median gap-to-need ratio is:
+   - entrants: 2.20 ahead and 1.46 behind;
+   - exiters: 1.55 ahead and 1.41 behind.
+
+   At the crossing speeds the needs are 8–14 m. This is the accepted distribution only: it cannot show the opportunities a driver passed up, which is why the observed side reads the same quantities.
+3. *A fifth of the model's own crossings would be refused at the means.* The refusals come mostly from the leader-side time gap, 2 s0 + 0.6·v in bumper terms, and then from the follower's time gap. They are drivers whose drawn parameters let them accept (heterogeneity 0.15), forced changes, which see only the guard, and SUMO's own changes. The records do not say which.
+4. *SUMO's own model takes tighter gaps than the weave's acceptance allows.* On the approach and downstream its p10 gaps are about 4 m, where the acceptance asks at least 8.07 m even at 5 m/s. The model's two lane-change mechanisms disagree by a factor of two in the tail. A calibration has to decide which one real drivers resemble.
+
+**What the VM stage will produce, and how it will be read.**
+- *The stage.* Stage 12 of `scripts/gcp/pipeline_i24.sh` is `i24_lane_change_gaps`: opt-in, and it needs `--data-set i24`. Rendered with a stub `stage(){ local n="$1"; shift; echo "STAGE $n: $*"; }` and `--stages "i24_lane_change_gaps"`, the whole script prints only `STAGE i24_lane_change_gaps: uv run --no-sync python scripts/i24_lane_change_gaps.py`.
+- *What it reads.* The whole recording, 06:00–10:00 CST, in 16 chunks of 15 minutes with 8 s pads. The span is data x 0–5,492 m, with 250 m loaded on each side. The lanes are 1–4 mainline and 5 auxiliary. The acceptance is at the `idm_i24_capacity` means with v0 capped at 31.29 m/s: the compiled lane speed of the weave edge 992666043 in the replica net, OSM `maxspeed` 70 mph.
+- *What it writes.*
+  - `artifacts/i24_lane_change_gaps.json` (docs/CONTRACTS.md, "Lane-change gap records"): counts; counts and summaries by zone kind × movement and by zone × movement, in the four speed classes, with the refusal shares and the gap-to-need quantiles; the unconfirmed-inclusive sensitivity; a 200-row seeded sample table; the limitations.
+  - The per-change table `data/i24motion/processed/i24_wb_lane_change_gaps.parquet`, which is gitignored. It rides along in the archive, and `ingest_pipeline_results.sh` installs both files.
+- *Cost.* One process. On the synthetic stand-in the extraction ran 1.04 M rows in 0.4 s including the Parquet reads; the real table has 42.8 M. Expect minutes of stage time and a few GB of memory at most, since a 15-min chunk holds roughly 2.7 M rows on average.
+- *Launch.* `scripts/gcp/launch_i24_pipeline.sh --data-set i24 --machine n2-standard-8 --cap-min 90 --bucket gs://<bucket>/<prefix> --self-delete --pipeline-args '--stages "i24_lane_change_gaps"'`, plus `--allow-dirty` while the tree is dirty. The launch uploads the 1.1 GB the `i24` data set lists (`du`, this session).
+- *How it will be read* (written before the numbers exist):
+  - (a) The share of the HH–BR weave's observed entering and exiting crossings made at 20 m/s or more, against the model's 0.7 % and 4.3 %.
+    - The I-24 weave is congested for most of the morning; the speed classes make the comparison like for like, and 06:00–06:20 and 09:30–10:00 are in free flow.
+  - (b) At 10–20 m/s and at 20 m/s or more, the refused share of the observed crossings is a lower bound.
+    - If it is material, real drivers take gaps the acceptance refuses. The observed lower quantiles of gap and time gap by speed class are then what `accept_gap_s`, `exit_accept_gap_s` and the brake terms would be fitted to, one term at a time. Each fit is tested as WP-76 laid out: realization B's sweep with the candidate changed.
+    - If it is small, the acceptance is not what keeps the model's crossings slow, and WP-72's lane-end braking and the gap reach stand.
+  - (c) The through changes' gaps on I-24's basic segments against SUMO's own (p10 about 4 m on the fixture).
+
+**Limitations.**
+- On I-24 the gaps are upper bounds and the refusals lower bounds, because of coverage.
+- Fragments hide changes made while a vehicle was untracked.
+- The movement is inferred from lanes. An auxiliary-to-mainline change in the weave is "entering" even when a through driver made it.
+- A tracked change is timed mid-manoeuvre, while SUMO's is instantaneous.
+- The acceptance is evaluated at the population means, not at each driver's drawn parameters.
+- The data is one day, one direction and one weaving section.
+- The fixture numbers are one configuration, the weave at its defaults, and macOS records.
+
+**Nothing in the model changes.**
+- `microsim.runner`, `flowstate_core.config` and `WEAVE_DEFAULTS` are untouched, as are every scenario, the fixtures, the existing tests and the goldens. The package is hash-neutral.
+- The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands.
+
+**Bookkeeping.**
+- *New:*
+  - `packages/calibration/calibration/lane_change_gaps.py`;
+  - `tests/test_calibration/test_calibration_lane_change_gaps.py`;
+  - `scripts/i24_lane_change_gaps.py`;
+  - `artifacts/th52_fixture_lane_change_gaps.json`.
+- *Edited:*
+  - `scripts/gcp/pipeline_i24.sh` (stage 12, and the per-change table in the archive);
+  - `scripts/gcp/ingest_pipeline_results.sh` (installs the artifact and the table);
+  - docs/CONTRACTS.md;
+  - CHANGELOG.md;
+  - this section.
+- *Session files (`wp77/`, not committed):*
+  - the fixture harness `run_fixture.py` and the 20 run directories;
+  - the per-seed analysis `per_seed.py`;
+  - the synthetic observed-mode check `synth_observed.py`;
+  - the stub render of the pipeline.
+
+Every number above is from those runs, from the committed files named, or from the tests.

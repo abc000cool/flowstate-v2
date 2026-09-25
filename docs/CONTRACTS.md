@@ -2722,3 +2722,71 @@ data roots (the `osm_file` rule; `microsim.runner._user_patch_files`). An
 explicit connection list for an edge replaces every connection netconvert
 computed for it. The field is in the config hash whenever set. First use:
 `data/osm/mndot_i94_wb_stpaul.splits.con.xml`, the Mounds/Kellogg split.
+
+## Lane-change gap records (`calibration.lane_change_gaps`) — 2026-09-25
+
+WP-77 (docs/WEAVE_MODEL_PLAN.md, dated section). `calibration.lane_change_gaps.lane_change_gaps(df, zones, *, mainline_lanes, aux_lanes=(), dt_s=None, max_gap_s=None, min_dwell_s=1.0, window_s=None, x_range_m=None, max_range_m=200.0, min_gap_m=0.5, default_length_m=None, acceptance=None, groups=None) -> LaneChangeGaps` finds every lane change in a trajectory frame and records the gaps it was made into. The same code serves observed I-24 MOTION fragments and simulated microsim runs. A simulated frame goes through `sim_band_lanes(df, edge_offsets_m, edge_lanes)` first, so SUMO's per-edge index (0 = rightmost) becomes the band convention (1 = leftmost, `n_lanes(edge) − index`).
+
+**Input frame.** `t` [s], `veh_id`, `x` [m, front bumper, increasing along travel], `lane` (band), `v` [m/s], and optionally `length` [m]; without `length`, `default_length_m` is required. Samples must share one time grid.
+
+**`LaneChangeGaps`.**
+- `records`: one row per change.
+- `counts`: `n_rows`, `n_transitions_raw`, `n_flicker_samples`, `n_transitions_held`, `n_nonadjacent`, `n_other_lanes`, `n_outside_window`, `n_outside_zones_span`, `n_changes`.
+- `dt_s` and `parameters`.
+
+**`records` columns.**
+- *The change.*
+  - `t`: the first sample in the new debounced lane.
+  - `veh_id`, `x`, `zone` and `zone_kind` (`merge`, `diverge`, `weave` or `basic`).
+  - `from_lane`, `to_lane`, and `direction` (`left` or `right`).
+  - `movement`:
+    - `entering`: auxiliary → mainline in a merge or weave zone;
+    - `exiting`: mainline → auxiliary in a diverge or weave zone;
+    - `through`: mainline → mainline;
+    - `unknown`: anything else.
+  - `v`, `length`.
+- *The runs either side.*
+  - `dwell_before_s`, `dwell_after_s`: the durations of the held runs either side.
+  - `track_start_before`, `track_end_after`: whether that run is bounded by the track rather than by another change.
+  - `confirmed`: False when a run shorter than `min_dwell_s` is bounded by the track.
+- *The neighbours.* `lead_id`, `lead_gap_m`, `lead_v`, `lead_closing_ms` (`v − v_lead`), `lead_time_gap_s` (`gap / v`), and the same five for the lag (`lag_closing_ms = v_lag − v`, `lag_time_gap_s = gap / v_lag`).
+  - Gaps are bumper to bumper.
+  - With no neighbour within `max_range_m`, the id is null and the numbers NaN.
+  - A time gap is NaN below 0.1 m/s.
+- `suspect`: a neighbour gap below `min_gap_m`.
+- *With `acceptance`* (`AcceptanceParams`: `accept_gap_s`, `exit_accept_gap_s`, `s0_m`, `T_s`, `a_max`, `b`, `v0_ms`, `source`):
+  - `need_lead_m`, `need_lag_m`: the bumper gaps each side needs, NaN on an empty side;
+  - the booleans `ok_lead_time`, `ok_lead_brake`, `ok_lag_time`, `ok_lag_absorb`, `ok_guard`;
+  - `model_accepts`: `microsim.runner._weave_change_ok` restated on bumper gaps; the tests check it case by case.
+- *With `groups`:* `group`.
+
+The debounce is `calibration.lanechange.held_lanes`: A-B-A stays under `min_dwell_s` are reassigned.
+
+**Artifacts** (written by `scripts/i24_lane_change_gaps.py`; JSON, `allow_nan=False`, `schema_version` 1).
+- *The two files.*
+  - `artifacts/i24_lane_change_gaps.json` has `kind` `"observed"`. It is written by the opt-in pipeline stage `i24_lane_change_gaps` from `data/i24motion/processed/i24_wb_20221130`.
+  - `artifacts/th52_fixture_lane_change_gaps.json` has `kind` `"simulated"`: `--sim-run-dir` over the corridor section fixture's 20 seeds.
+- *Keys common to both.*
+  - `schema_version`, `kind`, `created_at`, `source`, `code` (`git log -1` of the tree that ran).
+  - `method`: the detection parameters, plus the definitions of the change time, lead, lag, gaps, and what the summaries exclude.
+  - `zones`: a list of `{name, kind, x_lo_m, x_hi_m}`.
+  - `acceptance`: `AcceptanceParams`.
+  - `counts`.
+  - `counts_by_zone_kind` and `counts_by_zone`: per group, `n_all`, `n_confirmed`, `n_suspect`, `n_used`.
+  - `summary_by_zone_kind` (by zone kind × movement) and `summary_by_zone` (by zone × zone kind × movement), which leave out unconfirmed and suspect changes; and `summary_by_zone_kind_incl_unconfirmed`, which keeps the unconfirmed ones.
+  - `sample`: `{n, seed, columns, rows}`, a seeded sample of at most 200 records as a table.
+  - `wall_s`.
+- *A summary row.*
+  - The group keys, and `speed_class`: `all`, `v<10`, `10<=v<20` or `v>=20`, on the changer's speed [m/s].
+  - `n`.
+  - `v_ms`, then for each side `share_no_<side>`, `<side>_gap_m`, `<side>_time_gap_s`, `<side>_closing_ms`. Each distribution is a quantile dict `p05, p10, p25, p50, p75, p90`, with null when empty.
+  - `model`: `refused_share`; `refused_by` with `lead_time`, `lead_brake`, `lag_time`, `lag_absorb`, `guard` (the terms overlap); and `lead_gap_over_need`, `lag_gap_over_need` as quantile dicts.
+- *Only in the observed artifact.* `data_hash` (the zip's sha256 from `meta.json`), `data`, `time_origin`, `x_axis`, `span_data_x_m`, `citation`, `limitations`, and `records_file`. `records_file` points to `data/i24motion/processed/i24_wb_lane_change_gaps.parquet`, the full `records` table. It is gitignored, rides along in the pipeline archive, and `ingest_pipeline_results.sh` installs it.
+- *Only in the simulated artifact.*
+  - `runs`: one entry per run, holding `run_dir`, `config_hash`, `seed`, `scenario`, `fleet_idm_calibration`, `edges`, `edge_offsets_m`, `edge_lanes`, `v0_cap_ms`, `n_collisions`, `weave_sections` (the weave's `n_entered`, `n_changed_in`, `n_changed_out`, `n_forced`, `n_unfinished`, `n_missed_exit`, `n_reached_section_exiting` and `n_exited` counters, plus `edges`), and `counts`.
+  - `counts_by_group` and `summary_by_group`, grouped by `group` (the vehicle's `origin->destination` from `vehicles.parquet`) × zone kind × movement.
+  - Records gain `seed`. Zones come from `meta.json["ramps"]`: an attach edge with an on- and an off-ramp is a `weave`, one with only on-ramps a `merge`, one with only off-ramps a `diverge`.
+
+**Coverage.** On I-24 MOTION an observed gap is the true gap or larger, because the nearest vehicle may be untracked. Every acceptance term is monotone in the gaps, so `refused_share` there is a lower bound and the gap quantiles are upper bounds.
+
+The package is additive: no config field, no run output, no hash and no golden changes.

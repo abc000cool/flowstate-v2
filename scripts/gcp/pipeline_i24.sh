@@ -67,6 +67,8 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # the per-vehicle table (vehicles.parquet, 2026-09-25, WP-69: origin, destination, give-ups; ~2 MB a run) rides along too
   extra="$extra $(ls runs/mndot_*/*/*/*/metrics.json runs/mndot_*/*/*/*/meta.json runs/mndot_*/*/*/*/observed_scores.json runs/mndot_*/*/*/*/vehicles.parquet runs/mndot_*_sweep/MANIFEST.json runs/mndot_*_sweep/analysis.json 2>/dev/null | tr '\n' ' ')"
   [ -f data/i24motion/processed/i24_wb_episode_positions.json ] && extra="$extra data/i24motion/processed/i24_wb_episode_positions.json"
+  # the per-change table of the lane-change gap stage (WP-77; data/ is gitignored, a few MB)
+  [ -f data/i24motion/processed/i24_wb_lane_change_gaps.parquet ] && extra="$extra data/i24motion/processed/i24_wb_lane_change_gaps.parquet"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -504,6 +506,16 @@ stage sweep_i24_strat $RUN scripts/corridor_sweep.py --scenario scenarios/i24_re
   --penetration 0.10 --compliance 1.0 --controllers follower_stopper --strategies none vsl alinea \
   --rho-target-veh-km 29.2 --x-ref 4411.8 --span 2256.2 7637.8 --replicates "$REPS" --procs "$(( PROCS < 12 ? PROCS : 12 ))" \
   --out runs/i24_strat_sweep --summary artifacts/sweep_i24_strategies_summary.json || say "sweep_i24_strat failed; continuing"
+
+# 12. How real drivers take gaps (WP-77, 2026-09-25, block 3; opt-in, needs --data-set i24): every lane change of the
+#     I-24 MOTION westbound day (the processed 5 Hz table the launch ships, 06:00-10:00 CST, in 15-min chunks) with the
+#     bumper-to-bumper gaps and speeds of its new leader and follower, by ramp zone (the Old Hickory merge, the Hickory
+#     Hollow diverge, the Hickory Hollow-Bell Road weave, the Bell Road diverge) and movement, and the share the weave
+#     model's acceptance would refuse (calibration.lane_change_gaps) -> artifacts/i24_lane_change_gaps.json; the per-change
+#     table data/i24motion/processed/i24_wb_lane_change_gaps.parquet rides along in the archive. One process, a few GB.
+if echo " $STAGES " | grep -q " i24_lane_change_gaps "; then
+  stage i24_lane_change_gaps $RUN scripts/i24_lane_change_gaps.py || say "i24_lane_change_gaps failed; continuing"
+fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
