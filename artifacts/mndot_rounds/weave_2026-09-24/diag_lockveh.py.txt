@@ -1,0 +1,76 @@
+# Who stops first at a lock (WP-66's lead, 2026-09-25, block 3). For one run: the vehicles that come to rest
+# (v < V_STOP) inside [X0, X1] during [T0, T1], in time order, with their lane, the nearest vehicle ahead in the
+# same lane and its speed, where the stopped vehicle entered the corridor (first sample: x, lane, minute) and
+# where its track ends (last sample: x, minute) — a track ending inside the corridor before the run's end left
+# by an exit. Then, per minute and lane, the mean speed in 50 m cells over [X0, X1].
+# Usage: diag_lockveh.py.txt RUN_DIR [T0_MIN T1_MIN X0_M X1_M]
+import sys
+import numpy as np
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
+
+run = sys.argv[1]
+T0, T1 = (float(sys.argv[2]) * 60, float(sys.argv[3]) * 60) if len(sys.argv) > 3 else (140 * 60.0, 170 * 60.0)
+X0, X1 = (float(sys.argv[4]), float(sys.argv[5])) if len(sys.argv) > 5 else (8300.0, 8600.0)
+V_STOP, N_FIRST = 0.5, 15
+pf = pq.ParquetFile(f"{run}/trajectories.parquet")
+first, last, win = {}, {}, []
+t_end = 0.0
+for i in range(pf.num_row_groups):
+    tb = pf.read_row_group(i, columns=["t", "veh_id", "x", "lane", "v"])
+    t = tb["t"].to_numpy(); vid = tb["veh_id"].to_numpy(zero_copy_only=False)
+    x = tb["x"].to_numpy(); ln = tb["lane"].to_numpy().astype(int); v = tb["v"].to_numpy()
+    t_end = max(t_end, float(t.max()))
+    _, fidx = np.unique(vid, return_index=True)  # rows are in time order: the first index is the first sample
+    for k in fidx:
+        if vid[k] not in first:
+            first[vid[k]] = (float(t[k]), float(x[k]), int(ln[k]))
+    # last sample per vehicle in this group (later groups overwrite)
+    _, idx = np.unique(vid[::-1], return_index=True)
+    for k in (len(t) - 1 - idx):
+        last[vid[k]] = (float(t[k]), float(x[k]))
+    m = (t >= T0 - 60) & (t <= T1) & (x >= X0 - 300) & (x <= X1 + 100)
+    if m.any():
+        win.append((t[m], vid[m], x[m], ln[m], v[m]))
+t = np.concatenate([w[0] for w in win]); vid = np.concatenate([w[1] for w in win])
+x = np.concatenate([w[2] for w in win]); ln = np.concatenate([w[3] for w in win]); v = np.concatenate([w[4] for w in win])
+print(f"run {run}: window {T0/60:.0f}-{T1/60:.0f} min, x {X0:.0f}-{X1:.0f} m; run ends at {t_end/60:.1f} min")
+stop = (v < V_STOP) & (t >= T0) & (x >= X0) & (x <= X1)
+seen = set(); rows = []
+for k in np.argsort(t[stop], kind="stable"):
+    kk = np.nonzero(stop)[0][k]
+    if vid[kk] in seen:
+        continue
+    seen.add(vid[kk])
+    same = (t == t[kk]) & (ln == ln[kk]) & (x > x[kk])
+    if same.any():
+        j = np.nonzero(same)[0][np.argmin(x[same])]
+        lead = f"leader {vid[j]} {x[j] - x[kk]:5.1f} m ahead at {v[j]:4.1f} m/s"
+    else:
+        lead = "no leader in this lane within the window"
+    f0, l0 = first[vid[kk]], last[vid[kk]]
+    ended = "run end" if l0[0] >= t_end - 1 else f"left at {l0[1]:.0f} m, min {l0[0]/60:.1f}"
+    rows.append(f"  min {t[kk]/60:6.2f}  {vid[kk]}  x {x[kk]:7.1f}  lane {ln[kk]}  | {lead} | entered at {f0[1]:7.1f} m lane {f0[2]} min {f0[0]/60:5.1f} | track ends: {ended}")
+    if len(rows) >= N_FIRST:
+        break
+print(f"first {len(rows)} vehicles to stop (v < {V_STOP} m/s) inside the window:")
+print("\n".join(rows) if rows else "  none")
+print("\nper-minute mean speed [m/s] by lane in 50 m cells (x start: lane:v ...):")
+for mnt in range(int(T0 // 60), int(T1 // 60) + 1, 2):
+    sel = (t >= mnt * 60) & (t < mnt * 60 + 60) & (x >= X0) & (x < X1)
+    cells = []
+    for xb in np.arange(X0, X1, 50.0):
+        c = sel & (x >= xb) & (x < xb + 50)
+        if c.any():
+            cells.append(f"{xb/1000:.2f}[" + " ".join(f"{k}:{v[c & (ln == k)].mean():.1f}" for k in sorted(set(ln[c].tolist()))) + "]")
+    print(f"  min {mnt:3d}: " + "  ".join(cells))
+# The blockers: vehicles inside [X1 - 150, X1] at the window's end (T1) that barely move for the rest of the run —
+# the front row of the lock, with the lane each stands in and where it came from.
+print(f"\nat minute {T1/60:.0f}, vehicles in [{X1 - 150:.0f}, {X1:.0f}] m and how far each moves by the run's end:")
+atT1 = (np.abs(t - T1) < 0.26) & (x >= X1 - 150) & (x <= X1)
+for k in np.argsort(-x[atT1]):
+    kk = np.nonzero(atT1)[0][k]
+    f0, l0 = first[vid[kk]], last[vid[kk]]
+    moved = l0[1] - x[kk]
+    ended = "run end" if l0[0] >= t_end - 1 else f"left at {l0[1]:.0f} m, min {l0[0]/60:.1f}"
+    print(f"  {vid[kk]}  x {x[kk]:7.1f}  lane {ln[kk]}  v {v[kk]:4.1f}  | moves {moved:6.1f} m more, track ends: {ended} | entered at {f0[1]:7.1f} m lane {f0[2]} min {f0[0]/60:5.1f}")

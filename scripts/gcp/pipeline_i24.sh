@@ -435,6 +435,13 @@ for V in slice ""; do
       --report-dir docs/reports/${MNDOT}_weave${SUF}_xprep --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xprep failed; continuing"
 done
 
+# 10i. Who stops first at a lock (WP-66's lead, 2026-09-25, block 3): on the diagnostic stage's run of DIAG_SEED,
+#     the first vehicles at rest inside [LOCK_X0, LOCK_X1] m during [LOCK_T0, LOCK_T1] min — lane, leader, where each
+#     entered and whether its track ends at an exit — and the per-minute lane speeds there (diag_lockveh.py.txt).
+stage mndot_weave_seed5_lockveh bash -c "D=\$(ls -d runs/${MNDOT}_weave_seed5/baseline/*/$DIAG_SEED | head -1) && \
+  $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lockveh.py.txt \$D ${LOCK_T0:-140} ${LOCK_T1:-170} ${LOCK_X0:-8300} ${LOCK_X1:-8600} \
+  > logs/diag_lockveh.txt 2>&1" || say "mndot_weave_seed5_lockveh failed; continuing"
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
