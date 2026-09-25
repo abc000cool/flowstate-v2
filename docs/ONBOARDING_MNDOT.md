@@ -1587,3 +1587,14 @@ speed RMSPE 0.689 (0.659–0.719) against 0.691, GEH < 5 on 0.226 of link-hours 
 and S790 lower in every scored hour (3,209–3,229 against 3,311–3,344 veh/h). Given-up T.H.52 exits 433 of 68,354 (VM U 481 of 69,676).
 Slice: departed 0.973 against 0.971. Reading: sparing the T.H.52 ramp's outlet, which lets the fixture's entrance pass (WP-70), lowers the
 weave's throughput on the corridor and locks one seed of twenty; not adopted — VM U stays the reference configuration. Not reproduced.
+
+**VM W (2026-09-25, block 3): the reference configuration with overtaking on the right allowed** (a diagnostic after WP-76, which found
+that SUMO's default rule against it lets a slow leftmost-lane driver pace every lane on the corridor section fixture; runner a81155c; the
+fleet's `lc_overtake_right` 1.0 on top of VM U's configuration; stages `mndot_weave[_slice]_xlovr`; config hash 9a7140758fbb;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_overtake_right_a81155c.json`). Against VM U: departed 0.880 (lowest
+0.862) against 0.884 (8 of 20 seeds up, paired), speed RMSPE 0.691 (0.688–0.695) — identical — GEH < 5 on 0.154 (0.123–0.184)
+against 0.163, S790 3,309–3,320 veh/h against 3,311–3,344, given-up T.H.52 exits 505 of 69,548 against 481 of 69,676, no ramp
+starved — and **29 collisions against 15**. Slice: departed 0.969 against 0.971, RMSPE 0.444 against 0.463, 6 collisions against 3.
+Reading: on the corridor, right-hand overtaking does not move the fit or the weave's throughput and nearly doubles the collisions; the
+lane-discipline effect WP-76 measured bounds the fixture's exit-end criterion when nothing crosses, not the corridor's capacity gap.
+Not adopted. Not reproduced.
