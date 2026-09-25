@@ -1,0 +1,73 @@
+run runs/mndot_i94_wb_stpaul_weave_seed5/baseline/5267100cb0a3/6134032994440706937: window 140-170 min, x 8300-8600 m; run ends at 240.0 min
+routes: 25393 vehicles in vehicles.parquet
+first 15 vehicles to stop (v < 0.5 m/s) inside the window:
+  min 140.00  v03520  x  8399.9  lane 2  | leader v22535   8.3 m ahead at  0.2 m/s | entered at     5.1 m lane 1 min  85.7 | track ends: left at 10952 m, min 153.6 | mainline -> off-ramp 82150350
+  min 140.00  v03651  x  8375.3  lane 2  | leader v22709   8.0 m ahead at  0.0 m/s | entered at     5.1 m lane 0 min  88.1 | track ends: left at 11473 m, min 149.7 | mainline -> corridor_end
+  min 140.00  v03737  x  8349.4  lane 3  | leader v16002   8.2 m ahead at  0.0 m/s | entered at     5.1 m lane 2 min  89.6 | track ends: left at 11477 m, min 150.4 | mainline -> corridor_end
+  min 140.00  v03856  x  8391.1  lane 2  | leader v03520   8.8 m ahead at  0.3 m/s | entered at     5.1 m lane 1 min  91.7 | track ends: left at 11473 m, min 149.4 | mainline -> corridor_end
+  min 140.00  v03967  x  8416.6  lane 3  | leader v14364   8.9 m ahead at  0.3 m/s | entered at     5.1 m lane 1 min  93.5 | track ends: left at 11474 m, min 148.2 | mainline -> corridor_end
+  min 140.00  v03990  x  8374.0  lane 3  | leader v04163   8.3 m ahead at  0.4 m/s | entered at     5.1 m lane 0 min  93.9 | track ends: left at 11473 m, min 150.7 | mainline -> corridor_end
+  min 140.00  v04040  x  8402.0  lane 3  | leader v12761   7.5 m ahead at  0.0 m/s | entered at     5.1 m lane 2 min  94.8 | track ends: left at 11472 m, min 148.1 | mainline -> corridor_end
+  min 140.00  v04128  x  8306.8  lane 3  | leader v14407   8.4 m ahead at  0.0 m/s | entered at     5.1 m lane 0 min  96.2 | track ends: left at 11472 m, min 153.3 | mainline -> corridor_end
+  min 140.00  v04163  x  8382.3  lane 3  | leader v14339  11.3 m ahead at  1.0 m/s | entered at     5.1 m lane 2 min  96.8 | track ends: left at 10728 m, min 154.6 | mainline -> off-ramp 18207598
+  min 140.00  v04181  x  8332.6  lane 3  | leader v14398   9.1 m ahead at  0.1 m/s | entered at     5.1 m lane 2 min  97.1 | track ends: left at 11472 m, min 151.9 | mainline -> corridor_end
+  min 140.00  v12761  x  8409.6  lane 3  | leader v03967   7.0 m ahead at  0.0 m/s | entered at  3389.6 m lane 0 min  91.7 | track ends: left at 11473 m, min 147.3 | on-ramp 18207436 -> corridor_end
+  min 140.00  v14364  x  8425.5  lane 3  | leader v03844  13.9 m ahead at  0.6 m/s | entered at  3697.5 m lane 0 min  94.9 | track ends: left at 11472 m, min 147.2 | on-ramp 18207653 -> corridor_end
+  min 140.00  v14398  x  8341.7  lane 3  | leader v03737   7.7 m ahead at  0.0 m/s | entered at  3698.5 m lane 0 min  98.9 | track ends: left at 11473 m, min 150.7 | on-ramp 18207653 -> corridor_end
+  min 140.00  v14407  x  8315.2  lane 3  | leader v03983   8.8 m ahead at  0.8 m/s | entered at  3692.7 m lane 0 min  99.9 | track ends: left at 11474 m, min 152.0 | on-ramp 18207653 -> corridor_end
+  min 140.00  v14446  x  8313.1  lane 4  | leader v17074   9.4 m ahead at  0.9 m/s | entered at  3692.4 m lane 0 min 104.6 | track ends: left at 11476 m, min 146.5 | on-ramp 18207653 -> corridor_end
+
+per-minute mean speed [m/s] by lane in 50 m cells (x start: lane:v ...):
+  min 140: 8.30[0:16.7 1:16.3 2:1.1 3:0.3 4:3.3]  8.35[0:15.5 1:13.9 2:1.5 3:1.1 4:4.5]  8.40[0:11.7 1:7.6 2:2.6 3:3.5 4:7.8]  8.45[0:13.7 1:9.9 2:5.3 3:8.0 4:9.9]  8.50[0:9.8 1:9.4 2:9.3 3:9.4 4:12.0]  8.55[0:9.7 1:7.8 2:13.9]
+  min 142: 8.30[0:16.5 1:14.6 2:4.2 3:4.8 4:13.2]  8.35[0:15.9 1:11.2 2:6.1 3:7.1 4:15.1]  8.40[0:16.3 1:10.7 2:9.1 3:9.1 4:17.0]  8.45[0:16.3 1:12.3 2:11.6 3:11.5 4:18.4]  8.50[0:13.7 1:12.6 2:13.9 3:12.9 4:19.3]  8.55[0:14.5 1:13.5 2:20.7]
+  min 144: 8.30[0:12.3 1:6.7 2:0.9 3:2.9 4:7.1]  8.35[0:7.7 1:3.8 2:0.7 3:2.8 4:8.6]  8.40[0:9.7 1:3.4 2:0.9 3:3.8 4:10.3]  8.45[0:12.8 1:5.6 2:5.8 3:6.2 4:14.9]  8.50[0:7.9 1:4.7 2:11.2 3:5.6 4:17.1]  8.55[0:2.7 1:2.9 2:19.8]
+  min 146: 8.30[0:8.2 1:3.3 2:0.7 3:1.0 4:5.3]  8.35[0:10.0 1:1.6 2:0.8 3:1.4 4:8.8]  8.40[0:12.9 1:5.3 2:3.9 3:3.4 4:12.2]  8.45[0:13.6 1:9.5 2:4.3 3:3.2 4:14.0]  8.50[0:3.8 1:2.6 2:5.9 3:1.6 4:15.3]  8.55[0:2.9 1:1.2 2:17.3]
+  min 148: 8.30[0:13.9 1:6.5 2:1.0 3:0.2 4:7.7]  8.35[0:13.4 1:5.2 2:0.9 3:0.2 4:3.9]  8.40[0:8.9 1:3.3 2:0.8 3:0.4 4:3.8]  8.45[0:8.8 1:2.6 2:1.7 3:2.1 4:4.6]  8.50[0:6.1 1:3.4 2:4.7 3:3.7 4:11.6]  8.55[0:2.5 1:1.8 2:14.7]
+  min 150: 8.30[0:10.3 1:9.5 2:1.5 3:1.6 4:5.4]  8.35[0:13.3 1:8.8 2:2.1 3:2.0 4:6.8]  8.40[0:14.8 1:5.6 2:0.9 3:1.7 4:4.7]  8.45[0:15.2 1:5.8 2:0.4 3:1.1 4:5.3]  8.50[0:2.3 1:2.2 2:1.8 3:1.1 4:5.1]  8.55[0:1.7 1:1.1 2:8.1]
+  min 152: 8.30[0:16.9 1:16.3 2:1.2 3:1.7 4:4.4]  8.35[0:16.5 1:12.6 2:0.8 3:2.1 4:5.2]  8.40[0:9.1 1:5.1 2:0.3 3:0.9 4:5.1]  8.45[0:8.6 1:1.4 2:0.3 3:0.4 4:5.0]  8.50[0:12.0 1:2.9 2:2.1 3:1.9 4:7.8]  8.55[0:12.3 1:11.3 2:12.6]
+  min 154: 8.30[0:16.4 1:15.4 2:0.1 3:0.3 4:1.5]  8.35[0:15.7 1:10.8 2:0.1 3:0.2 4:0.7]  8.40[0:7.1 1:2.8 2:0.1 3:0.2 4:1.4]  8.45[0:7.9 1:0.7 2:0.1 3:0.4 4:3.3]  8.50[0:11.9 1:1.5 2:1.2 3:1.5 4:6.7]  8.55[0:12.4 1:12.0 2:10.8]
+  min 156: 8.30[0:5.5 1:0.4 2:0.1 3:0.1 4:1.4]  8.35[0:3.2 1:0.1 2:0.1 3:0.1 4:1.3]  8.40[0:11.2 1:0.3 2:0.0 3:0.0 4:0.4]  8.45[0:11.7 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[0:15.4 1:0.0 2:0.0 3:0.0]
+  min 158: 8.30[0:13.4 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:5.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.2 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+  min 160: 8.30[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+  min 162: 8.30[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+  min 164: 8.30[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+  min 166: 8.30[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+  min 168: 8.30[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+  min 170: 8.30[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.35[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.40[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.45[0:0.0 1:0.0 2:0.0 3:0.0 4:0.0]  8.50[1:0.0 2:0.0 3:0.0]
+
+at minute 170, vehicles in [8450, 8600] m and how far each moves by the run's end:
+  v17090  x  8524.5  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5181.2 m lane 0 min 123.3 | on-ramp 745524613 -> off-ramp 18207912
+  v23081  x  8519.3  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7392.4 m lane 1 min 148.5 | on-ramp 53062592 -> corridor_end
+  v23096  x  8509.9  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7390.3 m lane 1 min 149.2 | on-ramp 53062592 -> corridor_end
+  v23117  x  8507.8  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7395.1 m lane 0 min 149.9 | on-ramp 53062592 -> corridor_end
+  v16080  x  8502.4  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  4298.1 m lane 0 min 121.4 | on-ramp 178547099 -> off-ramp 18207912
+  v23111  x  8499.6  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7392.5 m lane 0 min 150.0 | on-ramp 53062592 -> corridor_end
+  v23123  x  8498.7  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.6 m lane 1 min 150.5 | on-ramp 53062592 -> corridor_end
+  v18767  x  8495.5  lane 4  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5936.7 m lane 0 min 142.6 | C-D re-entry 745524608 -> off-ramp 18207912
+  v23027  x  8494.4  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7390.9 m lane 1 min 146.4 | on-ramp 53062592 -> corridor_end
+  v23116  x  8490.9  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.2 m lane 0 min 150.1 | on-ramp 53062592 -> corridor_end
+  v23152  x  8489.7  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7396.1 m lane 0 min 151.2 | on-ramp 53062592 -> corridor_end
+  v17131  x  8488.1  lane 4  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5182.5 m lane 1 min 132.3 | on-ramp 745524613 -> corridor_end
+  v18754  x  8487.2  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5929.9 m lane 0 min 141.0 | C-D re-entry 745524608 -> off-ramp 18207912
+  v23017  x  8483.3  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7394.7 m lane 1 min 146.1 | on-ramp 53062592 -> corridor_end
+  v23165  x  8481.2  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.5 m lane 1 min 151.7 | on-ramp 53062592 -> corridor_end
+  v23209  x  8481.1  lane 0  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7394.4 m lane 1 min 153.2 | on-ramp 53062592 -> corridor_end
+  v18766  x  8480.0  lane 4  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5936.5 m lane 0 min 142.4 | C-D re-entry 745524608 -> corridor_end
+  v14560  x  8475.8  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  3698.3 m lane 0 min 120.4 | on-ramp 18207653 -> off-ramp 18207912
+  v23121  x  8475.3  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.4 m lane 1 min 150.4 | on-ramp 53062592 -> corridor_end
+  v23175  x  8473.1  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7391.0 m lane 0 min 152.1 | on-ramp 53062592 -> corridor_end
+  v04667  x  8473.0  lane 4  v  0.0  | moves    0.0 m more, track ends: run end | entered at     5.1 m lane 2 min 104.8 | mainline -> corridor_end
+  v23230  x  8472.7  lane 0  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.9 m lane 1 min 153.9 | on-ramp 53062592 -> off-ramp 18207912
+  v23128  x  8468.2  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7392.8 m lane 0 min 150.6 | on-ramp 53062592 -> corridor_end
+  v18756  x  8468.1  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5931.7 m lane 0 min 141.3 | C-D re-entry 745524608 -> off-ramp 18207912
+  v23236  x  8464.8  lane 0  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7395.9 m lane 1 min 154.1 | on-ramp 53062592 -> off-ramp 18207912
+  v22840  x  8464.5  lane 4  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.8 m lane 1 min 139.3 | on-ramp 53062592 -> corridor_end
+  v23166  x  8463.7  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7393.5 m lane 0 min 151.8 | on-ramp 53062592 -> corridor_end
+  v23136  x  8461.0  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7392.0 m lane 0 min 150.8 | on-ramp 53062592 -> off-ramp 18207598
+  v17126  x  8459.0  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5181.3 m lane 0 min 131.6 | on-ramp 745524613 -> off-ramp 18207912
+  v23221  x  8458.0  lane 0  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7396.5 m lane 0 min 153.6 | on-ramp 53062592 -> off-ramp 18207912
+  v18738  x  8456.6  lane 4  v  0.0  | moves    0.0 m more, track ends: run end | entered at  5936.9 m lane 0 min 137.8 | C-D re-entry 745524608 -> corridor_end
+  v23174  x  8455.4  lane 1  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7390.1 m lane 1 min 152.0 | on-ramp 53062592 -> off-ramp 18207598
+  v23120  x  8453.1  lane 2  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7389.6 m lane 0 min 150.2 | on-ramp 53062592 -> corridor_end
+  v14539  x  8450.2  lane 3  v  0.0  | moves    0.0 m more, track ends: run end | entered at  3693.6 m lane 0 min 115.8 | on-ramp 18207653 -> off-ramp 18207912
+  v23212  x  8450.0  lane 0  v  0.0  | moves    0.0 m more, track ends: run end | entered at  7395.9 m lane 1 min 153.3 | on-ramp 53062592 -> corridor_end

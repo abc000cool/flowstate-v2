@@ -1537,3 +1537,19 @@ vehicle's route — the trajectories carry none, so whether the frontmost is an 
 exit (the state the exit-side rule removes at the two weave sections) or a through vehicle blocked by one, and whether the lane-1
 entrants are through vehicles held at the end of an exit-only lane (the state WP-66's fixture showed clearing within 17.5 s), is not yet
 decided. Recording each vehicle's route in the run's outputs is what would decide it. Not reproduced.
+
+**VM T (2026-09-25, block 3): the same lock with every vehicle's route** (runner 79a0eeb, which writes `vehicles.parquet`, WP-69;
+the same seed and rule; `artifacts/mndot_rounds/weave_2026-09-24/exit_prepare_collapsed_seed_lock_vehicles_with_routes.txt`). The
+run reproduces VM S's to the vehicle. The front row at minute 170 — 35 vehicles at 8,450–8,525 m that never move again — by the lane
+each stands in and where it is going:
+
+| standing in | bound for off-ramp 18207912 | bound elsewhere (the corridor's end, or T.H.52's exit) |
+|---|---|---|
+| the exit-only lanes 0–1 | 3 | 10 (T.H.61 entrants) |
+| the through lanes 2–4 | 8 | 14 |
+
+The frontmost, at 8,524.5 m in lane 2 (the lane's end at the edge boundary), is a Ruth St entrant bound for 18207912: **an exiter held at
+the end of a lane that does not reach its exit**; the lane-1 vehicles beside it are T.H.61 entrants bound for the corridor's end, **held at
+the end of lanes that lead only to the exit**. Each group needs the other's lane and nothing frees either: the crossing-pair lock the
+weave model's exit-side rule and `exiter_yields` addressed at T.H.52 (WP-53/54), here at the T.H.61 → 18207912 two-lane weave the model
+does not cover (WP-66), reached once `exit_prepare`'s T.H.52 queue backs up to it. Not reproduced.
