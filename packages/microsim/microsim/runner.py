@@ -2251,6 +2251,43 @@ def _weave_cooperate(
     return f_t
 
 
+def _weave_halting_first(v_a: float, b_a: float, rem_a: float, v_c: float, rem_c: float) -> bool:
+    """Whether a moving entrant will halt at its lane end before the exiter behind it reaches the gore.
+
+    WP-55, the forming pair (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
+    dated section). The exiter's yield of WP-54 waits for the entrant ahead
+    of it to be halted; by then an exiter that entered the forced zone at
+    16–17 m/s has no stop left at its ``b``. This is the yield's trigger
+    brought forward to the entrant's *halt time*: the entrant is taken as
+    halting at its lane end when (1) it is **committed** to that end — its
+    brake distance at its own comfortable deceleration reaches it,
+    ``v_a² / (2·b_a) ≥ rem_a``, so it can no longer stop short of the end at
+    ``b_a`` and either changes lane or halts there (the forming pairs of the
+    WP-54 trace: both vehicles braking for their lane ends at 0.9–2.7 m/s²,
+    above the entrant's ``b`` in every case but one) — and (2) it is there
+    **first**: at its speed it reaches the lane end no later than the exiter
+    at its speed reaches the gore, ``rem_a / v_a ≤ rem_c / v_c`` (an entrant
+    slow and far enough ahead that the exiter passes it before it halts is
+    behind the exiter by then, and the geometry the yield resolves never
+    forms). Speeds are floored at the creep speed.
+
+    Args:
+        v_a: The entrant's speed [m/s].
+        b_a: Its comfortable deceleration [m/s²].
+        rem_a: Its remaining auxiliary lane, front to the lane end [m].
+        v_c: The exiter's speed [m/s].
+        rem_c: Its remaining section, front to the gore [m].
+
+    Returns:
+        Whether the entrant halts at its lane end before the exiter reaches
+        the gore, by the two conditions above.
+    """
+    v_a = max(v_a, SCRIPTED_MERGE_CREEP_MS)
+    v_c = max(v_c, SCRIPTED_MERGE_CREEP_MS)
+    committed = v_a * v_a >= 2.0 * b_a * rem_a
+    return committed and rem_a / v_a <= rem_c / v_c
+
+
 def _weave_yield_at_ends(
     mod: Any,
     tc: Any,
@@ -2314,6 +2351,29 @@ def _weave_yield_at_ends(
     halted at the lane end for 35 s (three give-ups beside it) changes 11 s
     after the first exiter stops behind it, and that exiter changes 5 s
     later.
+
+    **The exiter yields at the entrant's halt time** (``exiter_yields_halting``,
+    default 0 — WP-55, the forming pair; measured and not made the default).
+    The trigger of the exiter's yield brought forward from "the entrant is
+    halted" to "the entrant will halt at its lane end before the exiter
+    reaches the gore" (:func:`_weave_halting_first`: committed to its lane
+    end at its ``b``, and there first at the two speeds), the virtual leader
+    then standing one entrant ``minGap`` behind where the entrant's rear will
+    rest — one length short of the lane end — with the same command and
+    the same feasibility bound. Counted in ``n_exiter_yields`` like the
+    halted case. On the same 29-run grid it read worse (docs/WEAVE_MODEL_PLAN.md,
+    dated section): give-ups 39 → 43, the entrances 5,973 → 5,958, binding
+    on 53 more vehicle-steps in five runs, on entrants that were committed
+    only through a small drawn ``b`` (0.65–1.22 m/s² at 10–15 m/s) and that
+    changed or halted regardless, the exiter having braked for nothing;
+    without the commitment test it binds 365 times and reads 43 with 50
+    fewer exits, from the whole section 43, and the time-order test never
+    decides (the committed form alone reads identically). The give-ups it
+    was written for are honest: of the 39 at the default, 12 are an exiter
+    that entered the zone at 10.8–16.6 m/s with a halted or halting
+    entrant ahead and no stop at its ``b`` on any in-zone step (the stop
+    needed 41–165 m against 60–69 m offered; the closest margins 1.9, 2.8
+    and 2.9 m), and no yield inside the zone has a move for them.
 
     **The entrant yields** (``entrant_yields``, default 0 — measured and
     not made the default; ``n_entrant_yields``; the rule the task named).
@@ -2395,21 +2455,31 @@ def _weave_yield_at_ends(
             sa = veh.get(a)
             if sa is None or sa["dir"] <= 0:
                 continue
+            p_a = _constants(a)
             if v_of[a] < SCRIPTED_MERGE_CREEP_MS:
-                p_a = _constants(a)
+                # halted: its rear is where it rests
                 gap = x_a - p_a["len"] - x_c - p_a["s0"]
-                room = gap - p_c["s0"]
-                if room > 0.0 and v_c * v_c / (2.0 * p_c["b"]) <= room:
-                    a_idm = _idm_accel(
-                        v_c, v0_c, gap, v_c - v_of[a], p_c["T"], p_c["a"], p_c["b"], p_c["s0"]
-                    )
-                    a_stop = -v_c * v_c / (2.0 * room)
-                    before = coop.get(vid)
-                    _weave_command(mod, coop, vid, v_c, v0_c, p_c, min(a_idm, a_stop), step_s)
-                    # counted when it binds (a target below the exiter's own
-                    # model and below any other request on it this step)
-                    if coop.get(vid) is not before:
-                        ws["n_exiter_yields"] += 1
+                dv = v_c - v_of[a]
+            elif prm["exiter_yields_halting"] > 0.0 and _weave_halting_first(
+                v_of[a], p_a["b"], x_end - x_a, v_c, remaining_m
+            ):
+                # still moving but committed to its lane end and there before
+                # the exiter (WP-55, the forming pair): its rear rests one
+                # length short of the lane end
+                gap = remaining_m - p_a["len"] - p_a["s0"]
+                dv = v_c
+            else:
+                break
+            room = gap - p_c["s0"]
+            if room > 0.0 and v_c * v_c / (2.0 * p_c["b"]) <= room:
+                a_idm = _idm_accel(v_c, v0_c, gap, dv, p_c["T"], p_c["a"], p_c["b"], p_c["s0"])
+                a_stop = -v_c * v_c / (2.0 * room)
+                before = coop.get(vid)
+                _weave_command(mod, coop, vid, v_c, v0_c, p_c, min(a_idm, a_stop), step_s)
+                # counted when it binds (a target below the exiter's own
+                # model and below any other request on it this step)
+                if coop.get(vid) is not before:
+                    ws["n_exiter_yields"] += 1
             break
     if prm["entrant_yields"] > 0.0 and due and vid not in coop:
         st = veh[vid]

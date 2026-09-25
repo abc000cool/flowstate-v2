@@ -189,6 +189,7 @@ WEAVE_DEFAULTS: dict[str, float] = {
     "exit_abreast_patience_s": 0.0,
     "exiter_yields": 1.0,
     "entrant_yields": 0.0,
+    "exiter_yields_halting": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -329,7 +330,24 @@ five runs (give-ups 44 → 36 with 5,987 exits; two of the five pairs
 resolve as derived, the rest is the sequence moving), returned nothing on top of the exiter's yield (39 → 39, nine
 fewer exits, 37 fewer entrants) and, asked from the exiter's zone entry,
 locked the Ruth St module at the 271 m window (lane 1 at 0.0 m/s for
-seven minutes). Hash-neutral unless set; a switch, not a fitted value."""
+seven minutes). Hash-neutral unless set; a switch, not a fitted value.
+``exiter_yields_halting`` (2026-09-24, block 3, WP-55, the forming pair):
+``1`` brings the exiter's yield forward from "the entrant ahead is halted"
+to "the entrant ahead will halt at its lane end before the exiter reaches
+the gore" — the entrant committed to its lane end (its brake distance at
+its own ``b`` reaches it) and there first at the two speeds
+(``microsim.runner._weave_halting_first``) — the exiter then stopping one
+entrant ``minGap`` behind where the entrant's rear will rest, one length
+short of the lane end, under the same feasibility bound at its own ``b``.
+The default is **0**: measured on the same 29-run grid as WP-52..54
+(docs/WEAVE_MODEL_PLAN.md, dated section) it read worse — give-ups 39 → 43,
+the entrances 5,973 → 5,958, exits 6,015 → 6,017 of 6,142 → 6,139 reached,
+binding on 53 more vehicle-steps in five runs, on entrants committed only
+through a small drawn ``b`` (0.65–1.22 m/s² at 10–15 m/s) that changed or
+halted regardless — and the give-ups it was written for have no move at
+the exiter's ``b`` inside the zone (12 of the 39: the stop needed 41–165 m
+against 60–69 m offered). Hash-neutral unless set; a switch, not a fitted
+value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

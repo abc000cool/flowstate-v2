@@ -1133,6 +1133,25 @@ shown by the dashboard; aggregated by `WEAVE_FIELDS`) count the
 vehicle-steps on which each bound. Golden `merge_weave` unchanged at the
 default (no yield on `weave.osm`; hash 436cd4ec9e5d).
 
+**The forming pair, 2026-09-24 (block 3, WP-55; measured and off).**
+`WEAVE_DEFAULTS["exiter_yields_halting"]` (default **0**, hash-neutral
+unless set): `1` brings the exiter's yield forward from "the entrant ahead
+is halted" to "the entrant ahead will halt at its lane end before the
+exiter reaches the gore" — committed to its lane end at its own `b` and
+there first at the two speeds (`microsim.runner._weave_halting_first`) —
+the exiter then stopping one entrant `minGap` behind where the entrant's
+rear will rest, one length short of the lane end, under the same
+feasibility bound; counted in `n_exiter_yields` like the halted case, so
+the `weave_sections` contract is unchanged at 35 keys. On the 29-run grid
+it read worse (docs/WEAVE_MODEL_PLAN.md, dated section): give-ups 39 → 43,
+the entrances 5,973 → 5,958, 53 more binding vehicle-steps in five runs on
+entrants committed only through a small drawn `b` that changed or halted
+regardless; without the commitment test 43 with 50 fewer exits, from the
+whole section 43. Of the 39 give-ups at the default, 12 are an exiter that
+entered the zone at 10.8–16.6 m/s with a halted or halting entrant ahead
+and no stop at its `b` on any in-zone step. Golden `merge_weave` unchanged
+(hash 436cd4ec9e5d).
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:

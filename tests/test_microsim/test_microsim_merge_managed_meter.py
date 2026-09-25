@@ -871,6 +871,8 @@ class TestWeaveSchema:
             # WP-54: the crossing pair — the exiter's yield ships, the entrant's is off
             "exiter_yields": 1.0,
             "entrant_yields": 0.0,
+            # WP-55: the forming pair — the exiter's yield at the entrant's halt time
+            "exiter_yields_halting": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -3350,6 +3352,95 @@ class TestWeaveYieldsAtTheLaneEnds:
         res = {"e": _res("b", 1, 50.0, 14.0), "d": _res("b", 0, 67.0, 6.0)}
         _weave_step(mod, _tc, ws, res, 0.0)
         assert ws["n_entrant_yields"] == 0
+
+    def test_halting_first(self):
+        """``_weave_halting_first`` (WP-55): the entrant is committed to its
+        lane end when its brake distance at its ``b`` reaches it, and there
+        first when it reaches it at its speed no later than the exiter
+        reaches the gore at its speed; speeds floored at the creep speed."""
+        from microsim.runner import SCRIPTED_MERGE_CREEP_MS, _weave_halting_first
+
+        # 12 m/s at b = 1.67 needs 43.1 m: committed with 40 m left, not with 45
+        assert _weave_halting_first(12.0, 1.67, 40.0, 10.0, 80.0)
+        assert not _weave_halting_first(12.0, 1.67, 45.0, 10.0, 80.0)
+        # first: 40 / 12 = 3.33 s against the exiter's 80 / v_c
+        assert _weave_halting_first(12.0, 1.67, 40.0, 24.0, 80.0)
+        assert not _weave_halting_first(12.0, 1.67, 40.0, 24.1, 80.0)
+        # a slow entrant far from the end is neither, whatever its b (5 m/s
+        # at b = 0.3 needs 41.7 m: committed with 40 m, but the exiter at
+        # 12 m/s is at the gore in 6.7 s against its 8)
+        assert not _weave_halting_first(5.0, 0.3, 40.0, 12.0, 80.0)
+        assert _weave_halting_first(5.0, 0.3, 40.0, 10.0, 80.0)
+        # the creep floor: a halted entrant reads as 3 m/s on both sides
+        assert _weave_halting_first(0.0, 1.67, 2.0, 0.0, 30.0) == _weave_halting_first(
+            SCRIPTED_MERGE_CREEP_MS, 1.67, 2.0, SCRIPTED_MERGE_CREEP_MS, 30.0
+        )
+
+    def test_the_exiter_yields_to_a_halting_entrant_ahead(self):
+        """``exiter_yields_halting`` = 1 (WP-55): ``e`` at 10 m/s with 80 m
+        left, ``d`` moving at 12 m/s with 40 m of lane left (committed at
+        its ``b``, 43.1 m to stop; there first, 3.3 s against 8 s): ``e`` is
+        driven towards a virtual leader standing one entrant minGap behind
+        where ``d``'s rear will rest, one length short of the lane end —
+        the smaller of IDM and the constant deceleration that stops there;
+        counted in ``n_exiter_yields``."""
+        from microsim.runner import _idm_accel, _weave_meta, _weave_step
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yields_halting=1.0)
+        veh.speeds["d"] = 12.0
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 60.0, 12.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        # gap = 80 - 5 - 2.5 = 72.5 m; room = 70 m; feasible (29.9 m to stop)
+        a_idm = _idm_accel(10.0, 30.0, 72.5, 10.0, 1.4, 0.73, 1.67, 2.5)
+        a_stop = -100.0 / (2.0 * 70.0)
+        a_cmd = max(min(a_idm, a_stop), -1.67)
+        assert a_cmd == pytest.approx(a_stop)
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e"] == [
+            ("slow", "e", pytest.approx(10.0 + a_cmd * 0.5), 0.0)
+        ]
+        assert ws["n_exiter_yields"] == 1 and ws["n_entrant_yields"] == 0
+        assert _weave_meta(ws, {})["n_exiter_yields"] == 1
+
+    def test_the_halting_yield_is_bounded(self):
+        """Not asked with the switch off (the same geometry), for an entrant
+        not committed to its lane end (8 m/s: 19 m to stop against 40),
+        for one the exiter passes before it halts (5 m/s at b = 0.3 with
+        40 m left against the exiter at 12 m/s: 8 s against 6.7), or when
+        the exiter's own stop is infeasible at its ``b`` (30 m/s)."""
+        from microsim.runner import _weave_step
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yields_halting=0.0)
+        veh.speeds["d"] = 12.0
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 60.0, 12.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert [c for c in veh.calls if c[0] == "slow" and c[1] == "e" and c[2] < 10.0] == []
+        assert ws["n_exiter_yields"] == 0
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yields_halting=1.0)
+        veh.speeds["d"] = 8.0
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 60.0, 8.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_exiter_yields"] == 0
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yields_halting=1.0)
+        veh.speeds.update({"e": 12.0, "d": 5.0})
+        veh.getDecel = lambda vid: 0.3 if vid == "d" else 1.67
+        res = {"e": _res("b", 1, 20.0, 12.0), "d": _res("b", 0, 60.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_exiter_yields"] == 0
+        # the same entrant with the exiter at 10 m/s (8 s against 8): asked
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yields_halting=1.0)
+        veh.speeds.update({"e": 10.0, "d": 5.0})
+        veh.getDecel = lambda vid: 0.3 if vid == "d" else 1.67
+        res = {"e": _res("b", 1, 20.0, 10.0), "d": _res("b", 0, 60.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_exiter_yields"] == 1
+
+        ws, veh, mod = self._state(exiter_yields=1.0, exiter_yields_halting=1.0)
+        veh.speeds.update({"e": 30.0, "d": 12.0})
+        res = {"e": _res("b", 1, 20.0, 30.0), "d": _res("b", 0, 60.0, 12.0)}
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert ws["n_exiter_yields"] == 0
 
     def test_defaults(self):
         """The exiter's yield ships on, inside the forced zone; the entrant's
