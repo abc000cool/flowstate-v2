@@ -1331,3 +1331,36 @@ flagship corridor cannot ship on: `exiter_yields` goes back to 0 by default
 against the chain WP-53 named — the halted entrant that is never freed.
 The lock's standstill map is the next round (the seed's spawn index is
 12; the diagnostic stage keeps its trajectory now). Not reproduced.
+
+**VM N (2026-09-24, block 3): the locked seed's standstill map (runner
+0362419 — the physics of 585e588 with `exiter_yields` still on; config hash
+e6106fd41b1b, the label moved with the keys WP-55 added, every per-seed share
+matches VM M).** The weave scenario's first thirteen replicates with their
+trajectories kept
+(`artifacts/mndot_rounds/weave_2026-09-24/battery_thirteen_seeds_exiter_yields_0362419.json`):
+twelve seeds depart 0.843–0.899 and seed 6904272788004776631 **0.356** again,
+speed RMSPE 0.899 against 0.686–0.714. Its maps
+(`locked_seed_exiter_yields_standstill_50m_1min_lanes.txt`, `_100m_5min.txt`):
+the first cells under 2 m/s appear at **minute 18 at 10.20–10.35 km in lane
+0** and at minute 19 at 10.00–10.15 km in lanes 1 and 2 — the T.H.52 weave,
+where every earlier head formed — and never clear: 5–14 cells per lane stand
+there through minute 50, at minute 50–55 the standstill jumps back to 9.05 km
+in lane 1, by minute 60–65 five lanes stand between 4.4 and 10.25 km, at
+minute 70 the 100 m map reads its first window (6.5–10.7 km stopped), and
+from **minute 110 to the end every cell of every lane from 0.0 to 10.7 km
+reads 0.0 m/s** — 930 / 1,055 / 1,005 / 480 / 115 cells at rest in lanes 0–4,
+a total gridlock for the last 130 minutes. That is the chain WP-53 named,
+read on the corridor: an exiter yielding to a halted entrant that is never
+freed, the vehicles behind the exiter yielding in turn. On the twelve seeds
+that do not lock the last hour's 100 m windows show 8–60 stopped bins with
+their minimum-speed bin anywhere from 0.0 to 9 km
+(`thirteen_seeds_exiter_yields_standstill_100m_5min_tails.txt`): stop-and-go
+queues that reach the corridor's upstream boundary in the last hour on every
+seed — the 14–15 % of demand that never departs on the healthy seeds is the
+boundary backlog of a corridor whose queues fill it, not a lock.
+
+Reading: the yield's default is off (51389f5); a bounded hold (WP-58, in
+flight) is what could bring it back. The healthy seeds' last hour says where
+the four-hour corridor's remaining gap is: the queue grows from the T.H.52
+weave back to the boundary within the peak, so the upstream half is jammed
+where the observation says free flow. Not reproduced.

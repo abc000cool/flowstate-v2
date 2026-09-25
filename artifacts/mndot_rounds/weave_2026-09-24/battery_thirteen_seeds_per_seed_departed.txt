@@ -1,0 +1,4 @@
+per-seed departed share, 13 seeds, VM N (thirteen leading replicates, exiter_yields on, runner 0362419, config e6106fd41b1b), spawn order:
+0.852 0.852 0.862 0.867 0.865 0.867 0.899 0.862 0.862 0.852 0.856 0.843 0.356
+speed RMSPE per seed: 0.711 0.714 0.709 0.706 0.704 0.702 0.686 0.702 0.702 0.709 0.712 0.713 0.899
+the 0.356 seed is 6904272788004776631 (index 12); every share equals VM M's for the same seed.
