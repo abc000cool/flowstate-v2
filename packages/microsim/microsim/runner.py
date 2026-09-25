@@ -12,6 +12,9 @@ runs/<config_hash>/<seed>/
   trajectories.parquet   # t, veh_id, x, lane, v, a, is_av, complied
                          # (+ x_unwrapped on ring networks, for wave tracking)
   edges.parquet          # 15 s × 100 m Edie bins: mean_speed, density, flow
+  vehicles.parquet       # one row per departed vehicle: route, origin,
+                         # destination, departure, first/last corridor
+                         # sample, arrival, weave give-up (VEHICLES_FILE)
   meta.json              # config snapshot + hash, versions, tier="micro",
                          # seeded flag, wall time, per-vehicle fuel, AV ids
 ```
@@ -5248,6 +5251,46 @@ _TRAJ_SCHEMA_BASE: Final[list[tuple[str, pa.DataType]]] = [
     ("is_hov", pa.bool_()),
 ]
 
+#: Per-vehicle table written beside the trajectories (docs/CONTRACTS.md §3,
+#: WP-69): one row per vehicle that departed, in ``veh_id`` order. Read with
+#: ``validation.vehicles.read_vehicles``.
+VEHICLES_FILE: Final[str] = "vehicles.parquet"
+
+#: ``origin`` of a vehicle that entered on the mainline (not by an on-ramp).
+ORIGIN_MAINLINE: Final[str] = "mainline"
+
+#: ``destination`` of a vehicle whose route ends at the corridor's last edge
+#: (not by an off-ramp); also the rerouted destination of a weave give-up.
+DESTINATION_CORRIDOR_END: Final[str] = "corridor_end"
+
+#: Columns of :data:`VEHICLES_FILE` (:func:`_vehicle_table`). ``origin_ramp``
+#: / ``destination_ramp`` index ``meta.json["ramps"]`` (``-1`` = mainline /
+#: corridor end); ``entry_*`` / ``last_*`` are the vehicle's first and last
+#: rows of ``trajectories.parquet`` (null when it has none); ``gave_up`` marks
+#: an exiter a weaving section rerouted through (``weave_sections[i]
+#: .n_missed_exit``), ``destination`` keeping its planned exit and
+#: ``destination_final`` the destination it drove to.
+_VEHICLES_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
+    ("veh_id", pa.string()),
+    ("route", pa.string()),
+    ("origin", pa.string()),
+    ("origin_ramp", pa.int32()),
+    ("destination", pa.string()),
+    ("destination_ramp", pa.int32()),
+    ("depart_planned_s", pa.float64()),
+    ("depart_s", pa.float64()),
+    ("entry_t_s", pa.float64()),
+    ("entry_x_m", pa.float64()),
+    ("entry_lane", pa.int32()),
+    ("last_t_s", pa.float64()),
+    ("last_x_m", pa.float64()),
+    ("last_lane", pa.int32()),
+    ("arrived", pa.bool_()),
+    ("gave_up", pa.bool_()),
+    ("gave_up_s", pa.float64()),
+    ("destination_final", pa.string()),
+]
+
 #: Vehicle classes refused by a closed lane (every class this fleet can
 #: carry; SUMO names that exist in every supported version).
 CLOSURE_VCLASSES: Final[tuple[str, ...]] = (
@@ -5289,7 +5332,10 @@ class _TrajectoryWriter:
     Rows are appended column-wise into ``cols``; :meth:`maybe_flush` writes a
     Parquet row group (through an open file object, see :func:`_write_parquet`)
     once :data:`TRAJ_FLUSH_ROWS` are buffered, keeping only a compact numpy
-    copy of ``(t, x, v)`` for the post-run Edie edges frame.
+    copy of ``(t, x, v)`` for the post-run Edie edges frame and each vehicle's
+    first and last row (``first_sample`` / ``last_sample``: ``(t, x, lane)``)
+    for :data:`VEHICLES_FILE` — taken from the rows as they are written, so
+    they are the file's first and last row of the vehicle by construction.
     """
 
     def __init__(self, path: Path, is_ring: bool) -> None:
@@ -5303,11 +5349,30 @@ class _TrajectoryWriter:
         self._writer = pq.ParquetWriter(self._sink, self.schema)
         self._txv: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
         self.n_rows = 0
+        self.first_sample: dict[str, tuple[float, float, int]] = {}
+        self.last_sample: dict[str, tuple[float, float, int]] = {}
+
+    def _track_first_last(self) -> None:
+        """Update ``first_sample`` / ``last_sample`` from the buffered rows.
+
+        The rows are appended in time order, so within the buffer a vehicle's
+        last row is its last occurrence and its first row the last occurrence
+        in reverse; across flushes the earliest buffer holds the first row.
+        """
+        ids, ts, xs, lanes = (self.cols[k] for k in ("veh_id", "t", "x", "lane"))
+        # lazily zipped: only one row per vehicle is ever held, not the buffer
+        self.last_sample.update(zip(ids, zip(ts, xs, lanes, strict=True), strict=True))
+        rows_reversed = zip(reversed(ts), reversed(xs), reversed(lanes), strict=True)
+        first = self.first_sample
+        for vid, row in dict(zip(reversed(ids), rows_reversed, strict=True)).items():
+            if vid not in first:
+                first[vid] = row
 
     def maybe_flush(self, force: bool = False) -> None:
         n = len(self.cols["t"])
         if n == 0 or (n < TRAJ_FLUSH_ROWS and not force):
             return
+        self._track_first_last()
         arrays = [pa.array(self.cols[name], type=dtype) for name, dtype in self._fields]
         self._writer.write_table(pa.Table.from_arrays(arrays, schema=self.schema))
         self._txv.append(
@@ -5335,6 +5400,74 @@ class _TrajectoryWriter:
                 "v": np.concatenate([c[2] for c in self._txv]),
             }
         )
+
+
+def _vehicle_table(
+    depart_s: Mapping[str, float],
+    route_by_id: Mapping[str, str],
+    depart_planned_s: Mapping[str, float],
+    ramp_labels: Sequence[str],
+    first_sample: Mapping[str, tuple[float, float, int]],
+    last_sample: Mapping[str, tuple[float, float, int]],
+    running: Collection[str],
+    gave_up_s: Mapping[str, float],
+) -> pa.Table:
+    """The :data:`VEHICLES_FILE` table: one row per departed vehicle.
+
+    Pure bookkeeping over what the run already holds — nothing here reads or
+    drives the simulation.
+
+    Args:
+        depart_s: Every departed vehicle's SUMO departure time [s]
+            (``vehicle.getDeparture`` when it was reported departed).
+        route_by_id: Planned route id per vehicle (``"main"``, ``"on<k>"``,
+            ``"main_off<j>"``, ``"on<k>_off<j>"``; missing ⇒ ``"main"``).
+        depart_planned_s: Planned departure per vehicle [s] (``FleetPlan``).
+        ramp_labels: Per ramp in config order, the label it is reported by
+            (``RampSpec.name``, else its attach edge as compiled — the label
+            ``meta.json["weave_sections"]`` uses).
+        first_sample: ``(t, x, lane)`` of each vehicle's first trajectory row.
+        last_sample: ``(t, x, lane)`` of each vehicle's last trajectory row.
+        running: Vehicles still in the network when the run ended (not
+            arrived).
+        gave_up_s: Step time [s] at which a weaving section rerouted each
+            given-up exiter through (``ws["gave_up"]``).
+
+    Returns:
+        The contract-typed table, rows in ``veh_id`` order.
+    """
+    cols: dict[str, list[Any]] = {name: [] for name, _ in _VEHICLES_SCHEMA}
+    for vid in sorted(depart_s):
+        rid = route_by_id.get(vid, "main")
+        k, j = _route_origin(rid), _route_exit(rid)
+        destination = DESTINATION_CORRIDOR_END if j < 0 else ramp_labels[j]
+        gave = gave_up_s.get(vid)
+        first = first_sample.get(vid)
+        last = last_sample.get(vid)
+        cols["veh_id"].append(vid)
+        cols["route"].append(rid)
+        cols["origin"].append(ORIGIN_MAINLINE if k < 0 else ramp_labels[k])
+        cols["origin_ramp"].append(k)
+        cols["destination"].append(destination)
+        cols["destination_ramp"].append(j)
+        cols["depart_planned_s"].append(depart_planned_s.get(vid))
+        cols["depart_s"].append(depart_s[vid])
+        cols["entry_t_s"].append(None if first is None else first[0])
+        cols["entry_x_m"].append(None if first is None else first[1])
+        cols["entry_lane"].append(None if first is None else first[2])
+        cols["last_t_s"].append(None if last is None else last[0])
+        cols["last_x_m"].append(None if last is None else last[1])
+        cols["last_lane"].append(None if last is None else last[2])
+        cols["arrived"].append(vid not in running)
+        cols["gave_up"].append(gave is not None)
+        cols["gave_up_s"].append(gave)
+        cols["destination_final"].append(
+            DESTINATION_CORRIDOR_END if gave is not None else destination
+        )
+    schema = pa.schema(_VEHICLES_SCHEMA)
+    return pa.Table.from_arrays(
+        [pa.array(cols[name], type=dtype) for name, dtype in _VEHICLES_SCHEMA], schema=schema
+    )
 
 
 def run_micro(
@@ -5537,6 +5670,11 @@ def run_micro(
     has_ramps = isinstance(cfg.network, OSMNetwork) and bool(cfg.network.ramps)
     n_departed_by_route: dict[str, int] = {}
     route_by_id = {plan.vehicle_id(i): plan.route_of(i) for i in range(plan.n)}
+    # VEHICLES_FILE bookkeeping (reads only): each departed vehicle's SUMO
+    # departure time, and the step at which a weaving section gave up each
+    # rerouted exiter (ws["gave_up"] only grows; its size is checked per step)
+    depart_s_by_id: dict[str, float] = {}
+    gave_up_at: dict[str, float] = {}
 
     # Measured downstream boundary condition (docs/CONTRACTS.md §2): a speed
     # schedule on the exit-buffer edge OUTSIDE the corridor proper, standard
@@ -5939,6 +6077,7 @@ def run_micro(
     traj_path = run_dir / "trajectories.parquet"
     traj_writer = _TrajectoryWriter(traj_path, is_ring)
     cols = traj_writer.cols
+    n_gave_up_seen = [0] * len(weave_states)  # size of each ws["gave_up"] already recorded
 
     try:
         for k in range(n_steps):
@@ -5967,6 +6106,7 @@ def run_micro(
             for vid in mod.simulation.getDepartedIDList():
                 mod.vehicle.subscribe(vid, sub_vars)
                 n_departed += 1
+                depart_s_by_id[vid] = float(mod.vehicle.getDeparture(vid))
                 if has_ramps:
                     rid = route_by_id.get(vid, "main")
                     n_departed_by_route[rid] = n_departed_by_route.get(rid, 0) + 1
@@ -6085,8 +6225,12 @@ def run_micro(
             for ss in scripted_states:
                 _scripted_merge_step(mod, tc, ss, results, t)
             # Weaving sections (see the setup block above).
-            for ws in weave_states:
+            for n_ws, ws in enumerate(weave_states):
                 _weave_step(mod, tc, ws, results, t)
+                if len(ws["gave_up"]) > n_gave_up_seen[n_ws]:
+                    for vid in ws["gave_up"]:
+                        gave_up_at.setdefault(vid, t)
+                    n_gave_up_seen[n_ws] = len(ws["gave_up"])
 
             # Managed lanes: admit only the hov class for the window, then
             # restore the lanes' original permissions.
@@ -6216,7 +6360,8 @@ def run_micro(
                     if is_ring:
                         cols["x_unwrapped"].append(unwrap_x[vid][1])
                 traj_writer.maybe_flush()
-        n_arrived = n_departed - len(mod.vehicle.getIDList())
+        running = frozenset(mod.vehicle.getIDList())
+        n_arrived = n_departed - len(running)
     finally:
         mod.close()
 
@@ -6231,6 +6376,21 @@ def run_micro(
     )
     edges_path = run_dir / "edges.parquet"
     _write_parquet(pa.Table.from_pandas(edges_df, preserve_index=False), edges_path)
+    ramps_cfg = list(cfg.network.ramps) if isinstance(cfg.network, OSMNetwork) else []
+    _write_parquet(
+        _vehicle_table(
+            depart_s_by_id,
+            route_by_id,
+            {plan.vehicle_id(i): plan.depart_s[i] for i in range(plan.n)},
+            [r.name or r.attach_edge for r in ramps_cfg],
+            traj_writer.first_sample,
+            traj_writer.last_sample,
+            running,
+            gave_up_at,
+        ),
+        run_dir / VEHICLES_FILE,
+    )
+    edge_len_by_id = dict(zip(bundle.edge_ids, bundle.edge_lengths, strict=True))
 
     fuel_ml = {vid: fuel_mg_to_ml(mg) for vid, mg in sorted(fuel_mg.items())}
     wall = time.perf_counter() - t_wall0
@@ -6399,6 +6559,19 @@ def run_micro(
                     "name": r.name,
                     "kind": r.kind,
                     "attach_edge": r.attach_edge,
+                    # trajectory x of the attach edge's start and end (as
+                    # compiled): an on-ramp's vehicles join the corridor on
+                    # that edge, an off-ramp's leave it at its end (WP-69)
+                    "attach_x_m": (
+                        float(offsets_by_edge[r.attach_edge])
+                        if r.attach_edge in offsets_by_edge
+                        else None
+                    ),
+                    "attach_end_x_m": (
+                        float(offsets_by_edge[r.attach_edge] + edge_len_by_id[r.attach_edge])
+                        if r.attach_edge in offsets_by_edge
+                        else None
+                    ),
                     "edges": list(r.edges),
                     "n_planned": sum(
                         1 for i in range(plan.n) if _route_origin(plan.route_of(i)) == k

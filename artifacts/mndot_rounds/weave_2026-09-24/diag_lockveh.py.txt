@@ -3,7 +3,11 @@
 # same lane and its speed, where the stopped vehicle entered the corridor (first sample: x, lane, minute) and
 # where its track ends (last sample: x, minute) — a track ending inside the corridor before the run's end left
 # by an exit. Then, per minute and lane, the mean speed in 50 m cells over [X0, X1].
+# When the run directory holds vehicles.parquet (the per-vehicle table run_micro writes since 2026-09-25, WP-69;
+# docs/CONTRACTS.md §3), each listed vehicle also shows its origin -> planned destination and, when a weaving
+# section gave its exit up, the minute and the destination it was rerouted to; without the file the listing is as before.
 # Usage: diag_lockveh.py.txt RUN_DIR [T0_MIN T1_MIN X0_M X1_M]
+import os
 import sys
 import numpy as np
 import pyarrow.compute as pc
@@ -13,6 +17,14 @@ run = sys.argv[1]
 T0, T1 = (float(sys.argv[2]) * 60, float(sys.argv[3]) * 60) if len(sys.argv) > 3 else (140 * 60.0, 170 * 60.0)
 X0, X1 = (float(sys.argv[4]), float(sys.argv[5])) if len(sys.argv) > 5 else (8300.0, 8600.0)
 V_STOP, N_FIRST = 0.5, 15
+routes = {}  # veh_id -> " | origin -> destination[, gave up ...]" from vehicles.parquet, when the run has one
+if os.path.isfile(f"{run}/vehicles.parquet"):
+    vt = pq.read_table(f"{run}/vehicles.parquet", columns=["veh_id", "origin", "destination", "gave_up", "gave_up_s", "destination_final"]).to_pydict()
+    for k, vv in enumerate(vt["veh_id"]):
+        gu = f", gave up at min {vt['gave_up_s'][k] / 60:.1f} -> {vt['destination_final'][k]}" if vt["gave_up"][k] else ""
+        routes[vv] = f" | {vt['origin'][k]} -> {vt['destination'][k]}{gu}"
+def route_of(v):
+    return routes.get(v, " | no vehicles.parquet row") if routes else ""
 pf = pq.ParquetFile(f"{run}/trajectories.parquet")
 first, last, win = {}, {}, []
 t_end = 0.0
@@ -35,6 +47,7 @@ for i in range(pf.num_row_groups):
 t = np.concatenate([w[0] for w in win]); vid = np.concatenate([w[1] for w in win])
 x = np.concatenate([w[2] for w in win]); ln = np.concatenate([w[3] for w in win]); v = np.concatenate([w[4] for w in win])
 print(f"run {run}: window {T0/60:.0f}-{T1/60:.0f} min, x {X0:.0f}-{X1:.0f} m; run ends at {t_end/60:.1f} min")
+print(f"routes: {len(routes)} vehicles in vehicles.parquet" if routes else "routes: no vehicles.parquet beside the trajectories (run written before 2026-09-25); origins and destinations not shown")
 stop = (v < V_STOP) & (t >= T0) & (x >= X0) & (x <= X1)
 seen = set(); rows = []
 for k in np.argsort(t[stop], kind="stable"):
@@ -50,7 +63,7 @@ for k in np.argsort(t[stop], kind="stable"):
         lead = "no leader in this lane within the window"
     f0, l0 = first[vid[kk]], last[vid[kk]]
     ended = "run end" if l0[0] >= t_end - 1 else f"left at {l0[1]:.0f} m, min {l0[0]/60:.1f}"
-    rows.append(f"  min {t[kk]/60:6.2f}  {vid[kk]}  x {x[kk]:7.1f}  lane {ln[kk]}  | {lead} | entered at {f0[1]:7.1f} m lane {f0[2]} min {f0[0]/60:5.1f} | track ends: {ended}")
+    rows.append(f"  min {t[kk]/60:6.2f}  {vid[kk]}  x {x[kk]:7.1f}  lane {ln[kk]}  | {lead} | entered at {f0[1]:7.1f} m lane {f0[2]} min {f0[0]/60:5.1f} | track ends: {ended}{route_of(vid[kk])}")
     if len(rows) >= N_FIRST:
         break
 print(f"first {len(rows)} vehicles to stop (v < {V_STOP} m/s) inside the window:")
@@ -73,4 +86,4 @@ for k in np.argsort(-x[atT1]):
     f0, l0 = first[vid[kk]], last[vid[kk]]
     moved = l0[1] - x[kk]
     ended = "run end" if l0[0] >= t_end - 1 else f"left at {l0[1]:.0f} m, min {l0[0]/60:.1f}"
-    print(f"  {vid[kk]}  x {x[kk]:7.1f}  lane {ln[kk]}  v {v[kk]:4.1f}  | moves {moved:6.1f} m more, track ends: {ended} | entered at {f0[1]:7.1f} m lane {f0[2]} min {f0[0]/60:5.1f}")
+    print(f"  {vid[kk]}  x {x[kk]:7.1f}  lane {ln[kk]}  v {v[kk]:4.1f}  | moves {moved:6.1f} m more, track ends: {ended} | entered at {f0[1]:7.1f} m lane {f0[2]} min {f0[0]/60:5.1f}{route_of(vid[kk])}")

@@ -118,8 +118,14 @@ Pydantic v2 models, YAML round-trip via `ScenarioConfig.from_yaml(path)` /
   linear `x` and are not written to `trajectories.parquet` — a ramp vehicle
   appears once it is on a corridor edge — while its fuel is accounted
   throughout. `meta.json` gains a `ramps` list (`index, name, kind,
-  attach_edge, edges, n_planned, n_departed, n_planned_exiting,
-  acceleration_lane_terminated`). Ramp demand
+  attach_edge, attach_x_m, attach_end_x_m, edges, n_planned, n_departed,
+  n_planned_exiting, acceleration_lane_terminated`); `attach_x_m` /
+  `attach_end_x_m` (2026-09-25, WP-69, additive) are the trajectory `x` of the
+  start and end of the attach edge as compiled (the split piece when
+  netconvert split it; null if it is not a corridor edge): an on-ramp's
+  vehicles first appear on that edge, an off-ramp's leave the corridor at its
+  end. Which vehicle came from or went to which ramp is in `vehicles.parquet`
+  (§3). Ramp demand
   derived from observations is a calibration input: it does NOT set
   `seeded=True`.
 
@@ -1406,6 +1412,7 @@ no collision. Golden `merge_weave` unchanged at the default (hash
 runs/<config_hash>/<seed>/
   trajectories.parquet     # micro tier
   edges.parquet            # binned edge/segment data (both tiers)
+  vehicles.parquet         # micro tier: one row per departed vehicle (2026-09-25)
   meta.json                # config snapshot, config_hash, seed, versions, tier,
                            # seeded flag, wall_time_s, fuel totals
 ```
@@ -1419,6 +1426,37 @@ Sampled at `sim.output_hz`. On corridors, `x` spans entry buffer + corridor
 proper (+ exit buffer when a `BoundarySpec` is configured); micro `meta.json`
 then carries a `boundary` object (`kind`, `exit_edge`, `exit_buffer_m`,
 `n_steps`, `n_steps_applied`, `v_limit_min_ms`, `v_limit_max_ms`).
+
+`vehicles.parquet` (micro, since 2026-09-25, WP-69; `microsim.runner.VEHICLES_FILE`, read with
+`validation.vehicles.read_vehicles`): the trajectories record corridor edges only and carry no route, and
+`meta.json["ramps"]` holds run totals, so this table says which vehicle was going where. One row per vehicle
+that departed (none for a planned vehicle SUMO never inserted), in `veh_id` order:
+`veh_id: str`; `route: str` (the planned route id: `"main"`, `"on<k>"`, `"main_off<j>"`, `"on<k>_off<j>"`);
+`origin: str` (`"mainline"`, or the on-ramp's label: `RampSpec.name`, else its attach edge as compiled — the
+label `weave_sections[i].ramp` / `.exit` use) and `origin_ramp: i32` (its index in `meta.json["ramps"]`, `-1` for
+the mainline); `destination: str` (the PLANNED destination: `"corridor_end"` or the off-ramp's label) and
+`destination_ramp: i32` (`-1` for the corridor's end); `depart_planned_s: f64 [s]` (the fleet plan) and
+`depart_s: f64 [s]` (SUMO's departure, `vehicle.getDeparture`, on the step grid, at or after the planned one);
+`entry_t_s: f64 [s]`, `entry_x_m: f64 [m]`, `entry_lane: i32` — the vehicle's first row of
+`trajectories.parquet`, i.e. its corridor entry at the trajectory cadence (`entry_t_s > depart_s`); `last_t_s`,
+`last_x_m`, `last_lane` — its last row (a track ending before the run's end left by an exit or the corridor's
+end); all six null when the vehicle has no trajectory row (an entrant still on its ramp at the run's end);
+`arrived: bool` (it reached the end of its final route before the run ended; the count equals
+`n_vehicles_arrived`); `gave_up: bool` and `gave_up_s: f64 [s]` (null unless given up) — a weaving section
+counted the exiter as given up (`weave_sections[i].n_missed_exit`) and rerouted it to the corridor's last edge
+at that step; `destination_final: str` — `destination`, or `"corridor_end"` for a give-up, so the planned exit
+and the one driven to stand side by side. The first/last rows are taken by the trajectory writer from the rows
+it flushes (the file's own first and last row of each vehicle by construction); the table is written after the
+trajectories are closed and before the completion marker. It is additive and hash-neutral: config hash,
+trajectories, edges, metrics and every golden are unchanged (the probe of 2026-09-25 re-ran the ten golden
+configs and the weave determinism config: `trajectories.parquet` and `edges.parquet` byte-identical,
+`meta.json` identical but for wall time and the two new ramp keys, with the run root masked). Size, measured on
+a synthetic 40,000-vehicle table: 1.9 MB on disk, under 16 MB of run-time bookkeeping, 0.2 s to build and write;
+the first/last tracking adds 0.06 s per 500,000-row trajectory flush. `scripts/corridor_battery.py` prunes
+`trajectories.parquet` only, so `vehicles.parquet` is kept for every seed with or without
+`--keep-trajectories`. Runs written before 2026-09-25 have none (`read_vehicles` raises `FileNotFoundError`);
+ring runs list every vehicle with route `"main"` and none arrived. The integer columns read back as pandas
+`Int32` (nullable).
 
 `edges.parquet` (both tiers): `t_bin: f64 [s]`, `x_bin: f64 [m]`,
 `mean_speed: f64 [m/s]`, `density: f64 [veh/m]`, `flow: f64 [veh/s]`.
@@ -1900,7 +1938,10 @@ refuses replicates that carry different observed volumes for one station-hour. `
 unchanged, and `pooled_values` equals `per_seed[i].link_hours[*].geh` concatenated in seed order.
 Per-ramp per-hour deliveries are not in the artifact: `meta.json["ramps"]` holds run totals only and
 trajectories carry no vehicle origin, so they need the runner to record each ramp's corridor-entry
-times (and the attach edge's x) in `meta.json`.
+times (and the attach edge's x) in `meta.json`. Since 2026-09-25 (WP-69) the runner records them per
+vehicle instead: `vehicles.parquet` (§3) gives each vehicle's `origin` and corridor entry (`entry_t_s`,
+`entry_x_m`), and `meta.json["ramps"][i]` carries `attach_x_m` / `attach_end_x_m`; the artifact itself
+does not yet pool them.
 
 ## Calibrated screening tier: FD provenance and macro options — 2026-09-23
 

@@ -60,7 +60,9 @@ re-simulating anything. The report takes the per-replicate numbers from
 those results and renders its contour figure from the first seed's trajectory
 only, so it never re-reads the other replicates; trajectories are pruned to
 the first seed afterwards (``--keep-trajectories`` keeps them all), and
-``--criteria-only`` can regenerate the report after pruning.
+``--criteria-only`` can regenerate the report after pruning. Every seed's
+``vehicles.parquet`` (one row per vehicle: route, origin, destination,
+corridor entry; about 2 MB for a four-hour run) is kept either way.
 
 Usage (repo root)::
 
@@ -623,7 +625,11 @@ def prune_trajectories(dirs: Sequence[Path], keep_first: bool = True) -> int:
     A 20-seed battery on a real corridor writes gigabytes of trajectories; the
     metrics, the observed scores and the report figures are already computed
     by the time this runs, and the first seed's file is kept so the run tree
-    stays inspectable.
+    stays inspectable. Only ``trajectories.parquet`` is deleted: the
+    per-vehicle table ``vehicles.parquet`` beside it (docs/CONTRACTS.md §3;
+    one row per vehicle, about 2 MB for a four-hour corridor run against
+    about a GB of trajectories) is kept for every seed, so per-ramp entry
+    times and each vehicle's route stay readable on the pruned seeds.
 
     Args:
         dirs: Replicate directories.
