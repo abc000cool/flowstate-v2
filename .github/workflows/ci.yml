@@ -9,6 +9,12 @@ on:
   # image build can be exercised without cutting a tag.
   workflow_dispatch:
 
+# One run per ref at a time; a newer push waits and replaces any older run still queued, so
+# overlapping pushes no longer run side by side (2026-09-24).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -44,8 +50,15 @@ jobs:
                       packages/controllers/controllers \
                       packages/validation/validation
 
+      # COVERAGE_CORE=sysmon: Python 3.12's sys.monitoring tracer. The default settrace tracer
+      # made the SUMO-driving weave tests ~36x slower (one file 499 s against 14 s, same
+      # coverage; 2026-09-24), which pushed this job to 40-45 min against its 45-min limit: seven
+      # of the ten runs created between 23:41 and 02:49 UTC that day ended "cancelled" by the
+      # timeout. With it the whole suite ran in 133 s locally at the same total (95.66 %).
       - name: Unit + integration tests (coverage gate 85%)
-        run: uv run pytest -m "not slow" --cov --cov-report=term
+        env:
+          COVERAGE_CORE: sysmon
+        run: uv run pytest -m "not slow" --cov --cov-report=term --durations=15
 
   web:
     runs-on: ubuntu-latest
