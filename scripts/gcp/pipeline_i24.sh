@@ -401,6 +401,13 @@ stage mndot_head60_lanes_diag bash -c "for d in runs/${MNDOT}_weave_head60_lanes
   $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_lanes.py.txt \$d; done > logs/diag_head60_lane_crossings.txt 2>&1" \
   || say "mndot_head60_lanes_diag failed; continuing"
 
+# 10g. How the corridor's T.H.52 exiters arrive at the gore (WP-61's "check first", 2026-09-24, block 3):
+#     on the 10f run's trajectories, per seed, the exiters' lane at seven positions through the approach
+#     and the section, and where they first reach the auxiliary lane (diag_exiters.py.txt).
+stage mndot_head60_exiters_diag bash -c "for d in runs/${MNDOT}_weave_head60_lanes/baseline/*/*/; do \
+  $RUN artifacts/mndot_rounds/weave_2026-09-24/diag_exiters.py.txt \$d; done > logs/diag_head60_exiters.txt 2>&1" \
+  || say "mndot_head60_exiters_diag failed; continuing"
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at

@@ -1,0 +1,63 @@
+# How the corridor's T.H.52 exiters arrive at the gore (WP-61's "check first", 2026-09-24, block 3).
+# Trajectories record corridor edges only, so a vehicle's track ends where it leaves the corridor:
+# an exiter to off-ramp 18207598 is a vehicle whose last sample lies within EXIT_WIN of the T.H.52
+# section's end and ends before the run does. For those exiters: the lane they occupy when they cross
+# each reference position, and where they first reach the section's lane 0 (the auxiliary lane).
+# Usage: diag_exiters.py.txt RUN_DIR [SECTION_START_M] [SECTION_END_M]
+import sys
+import numpy as np
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
+
+run = sys.argv[1]
+X0 = float(sys.argv[2]) if len(sys.argv) > 2 else 10426.6   # section 51388891 start (WP-61, compiled)
+X1 = float(sys.argv[3]) if len(sys.argv) > 3 else 10731.6   # its end: the exit to 18207598
+T_END = 3600.0
+REFS = [9900.0, 10150.0, 10300.0, X0 + 5.0, X0 + 120.0, X1 - 67.0, X1 - 15.0]
+pf = pq.ParquetFile(f"{run}/trajectories.parquet")
+parts = []
+for i in range(pf.num_row_groups):
+    tb = pf.read_row_group(i, columns=["t", "veh_id", "x", "lane"])
+    tb = tb.filter(pc.less(tb["t"], T_END))
+    if tb.num_rows:
+        parts.append(tb)
+t = np.concatenate([p["t"].to_numpy() for p in parts])
+vid = np.concatenate([p["veh_id"].to_numpy(zero_copy_only=False) for p in parts])
+x = np.concatenate([p["x"].to_numpy() for p in parts])
+lane = np.concatenate([p["lane"].to_numpy() for p in parts]).astype(int)
+_, code = np.unique(vid, return_inverse=True)
+o = np.lexsort((t, code)); t, code, x, lane = t[o], code[o], x[o], lane[o]
+last = np.r_[np.nonzero(code[1:] != code[:-1])[0], len(code) - 1]
+first = np.r_[0, last[:-1] + 1]
+lx, lt, fx = x[last], t[last], x[first]
+hist, edges = np.histogram(lx, bins=np.arange(9500, 12100, 50))
+print(f"run {run}: {code.max() + 1} vehicles; last-x histogram, 50 m bins from 9.5 km (count>20):")
+print("  " + " ".join(f"{edges[i] / 1000:.2f}:{h}" for i, h in enumerate(hist) if h > 20))
+ex = (lx > X1 - 40.0) & (lx <= X1 + 5.0) & (lt < T_END - 30.0) & (fx < X0 - 50.0)
+ent = (fx >= X0 - 5.0) & (fx < X1)
+print(f"exiters (last x within 40 m of {X1:.0f} m, started upstream of the section): {ex.sum()}; "
+      f"T.H.52 entrants (first seen inside the section): {ent.sum()}")
+ex_codes = set(np.nonzero(ex)[0].tolist())
+is_ex = np.fromiter((c in ex_codes for c in code), bool, len(code))
+same = code[1:] == code[:-1]
+for label, tsel in (("minutes 0-15", (0.0, 900.0)), ("minutes 15-60", (900.0, T_END))):
+    print(f"\n{label}: lane of the exiters as they cross each position (share of crossings)")
+    for xr in REFS:
+        hit = same & is_ex[1:] & (x[:-1] < xr) & (x[1:] >= xr) & (t[1:] >= tsel[0]) & (t[1:] < tsel[1])
+        ln = lane[1:][hit]
+        if len(ln) == 0:
+            continue
+        ks = sorted(set(ln.tolist()))
+        print(f"  {xr / 1000:.3f} km: n={len(ln):4d}  " + "  ".join(f"lane {k}: {np.mean(ln == k):.2f}" for k in ks))
+# where each exiter first reaches section lane 0
+reach = []
+for c in sorted(ex_codes):
+    s, e = first[c], last[c] + 1
+    xs_, ls_ = x[s:e], lane[s:e]
+    m = (xs_ >= X0) & (ls_ == 0)
+    reach.append(X1 - xs_[m][0] if m.any() else -1.0)
+reach = np.array(reach)
+ok = reach >= 0
+print(f"\nexiters reaching section lane 0: {ok.sum()} of {len(reach)}; distance before the section's end "
+      f"at first sample in lane 0: median {np.median(reach[ok]):.0f} m; share within the last 67 m: "
+      f"{np.mean(reach[ok] <= 67.0):.2f}; within the last 30 m: {np.mean(reach[ok] <= 30.0):.2f}")
