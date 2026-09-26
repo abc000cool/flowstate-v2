@@ -5,12 +5,23 @@ run is described here; the numbers are filled from
 `artifacts/sweep_i24_strategies_summary.json` when the round lands (nothing
 below is quoted from anything else).
 
+*Correction 2026-09-25:* the corridor is not validated, and the scenario is
+not the canonical arm. `i24_replica_flow_speedcal_ramps` (config
+`0cddf2002979`, the artifact's `base_config_hash`) is the flow-share
+family's fitted level with fitted ramps. docs/I24_VALIDATION.md §0.10 keeps
+that family out of the published record. The arm passes 5 of 7 criteria
+rows and fails link-flow GEH (21.5% of link-hours under 5) and segment-speed
+RMSPE (41.8%); `artifacts/i24_validation_flow_ramps.json`. Every number
+below describes an unvalidated replica.
+
 ## Setup
 
 - Scenario: `scenarios/i24_replica_flow_speedcal_ramps.yaml` — the canonical
   I-24 westbound arm with the Old Hickory and Hickory Hollow ramps
-  (docs/I24_VALIDATION.md). Nothing in the scenario was changed; every cell is
-  a patch of it recorded by config hash in the summary.
+  (docs/I24_VALIDATION.md). *(Corrected 2026-09-25: the flow-share family's
+  fitted-plus-ramps arm, not the canonical arm; see the note above.)* Nothing
+  in the scenario was changed; every cell is a patch of it recorded by config
+  hash in the summary.
 - Grid (`scripts/corridor_sweep.py`, 20 seeds per cell, the same seed list in
   every cell so deltas are paired): `baseline`; `strategy_vsl` (VSL threshold
   ladder on every 1 km gantry segment, no AVs); `strategy_alinea` (ALINEA on
@@ -168,3 +179,20 @@ capacity metric. The meters under FollowerStopper released 444 (Hickory
 Hollow) and 571 (Old Hickory) vehicles per run with 0.2 % / 0 % unstoppable
 passes. Waves: ALINEA multiplies their count (more, shorter waves) in every
 cell it is in; the FollowerStopper reduces their amplitude in every cell.
+
+*Note 2026-09-25 — two σ_v conventions.* The 2026-09-23 tables use the
+temporal speed spread (per vehicle over time, averaged over vehicles). The
+ALINEA table and this grid use the spatial one (across vehicles at each
+instant, averaged over time); `validation.metrics.Metrics` defines both. The
+artifact carries both for every cell (`vs_baseline_paired`, share of the
+baseline mean):
+
+| cell | σ_v temporal | σ_v spatial |
+|---|---|---|
+| VSL alone | -29.1 % | -19.2 % |
+| ALINEA alone | -27.2 % | -11.7 % |
+| FollowerStopper 10 % alone | -59.5 % | -67.7 % |
+| FollowerStopper 10 % + ALINEA | -52.9 % | -54.8 % |
+| FollowerStopper 10 % + VSL | -68.5 % | -74.1 % |
+
+Baseline means: 4.76 m/s temporal, 5.58 m/s spatial.

@@ -40,9 +40,11 @@ here is a new claim.
 
 - The instrument and the INCEPTION export; streaming ingestion; schema facts
   (docs/I24_DATA.md §1).
-- Fragmentation (median 117 m / 9.9 s) and the coverage finding: ≈ 0.5–0.65 of
-  vehicle-time tracked in the peak, from Edie density against the calibrated
-  equilibrium spacing — speeds and wave speeds are sound, counts are lower
+- Fragmentation (median 117 m / 9.9 s) and the coverage finding: 0.52–0.66 of
+  vehicle-time tracked per 15-min window, 06:30–08:30, from Edie density
+  against the first population's equilibrium spacing (docs/I24_DATA.md §4
+  table; 0.48–0.61 on the capacity-calibrated population, 0.56–0.67 by the
+  recommended gap estimator) — speeds and wave speeds are sound, counts are lower
   bounds (docs/I24_DATA.md §2, §4). This is the paper's central methodological
   point and should be stated as a general caution for camera-derived
   trajectory datasets.
@@ -57,7 +59,8 @@ here is a new claim.
    critical density to ≈ 17 at 80–100 veh/km, for two independently
    calibrated fleets, between the FD's `w` and Newell's `(s0+L)/T`
    (docs/WAVE_SPEED_DIAGNOSIS.md and its follow-up).
-2. **US-101 replica:** 1 PASS / 5 FAIL with causes; the boundary-condition
+2. **US-101 replica:** 1 PASS / 5 FAIL with causes (three measured failures;
+   the two ring rows are not evaluated by its driver); the boundary-condition
    result (docs/M3_US101_VALIDATION.md).
 3. **I-24 replica:** four demand arms, 5 PASS / 2 FAIL on each congested arm
    after FHWA-style capacity, demand and ramp calibration (1 PASS / 5 FAIL
@@ -102,12 +105,15 @@ MOTION registration; NGSIM public), config hashes and seeds per table.
 3. `docs/figures/i24_validation_waves.png` — front-speed histogram.
 4. `docs/figures/m3_sigma_v_vs_penetration.png` — the dose-response.
 5. `docs/figures/fd_scatter_triangle.png` — calibration.
-6. Ring wave-speed vs density (to be drawn from
-   `artifacts/wave_speed_sitelength*.json`).
+6. `docs/figures/wave_speed_vs_density.png` — ring wave speed vs density,
+   drawn by `scripts/make_wave_speed_figure.py` from
+   `artifacts/wave_speed_sitelength*.json` (Figure 3 of docs/PAPER_DRAFT.md).
 
 ## Required citations
 
 Gloudemans et al. (2023) and Ji et al. (2024) for I-24 MOTION data and tools
 (data-use agreement); Stern et al. (2018); Sugiyama et al. (2008); Treiber &
 Kesting (2013); Kesting & Treiber (2008); Delle Monache & Goatin (2014);
-FHWA-HOP-18-036; the CIRCLES MegaVanderTest.
+FHWA-HRT-04-040 (2004, the source of the GEH < 5 on > 85% target) and
+FHWA-HOP-18-036 (2019, which states no GEH target; CLAUDE.md §7.1,
+`validation.criteria`); the CIRCLES MegaVanderTest.

@@ -14,7 +14,9 @@ population fit, real upstream demand, and the measured downstream boundary
 (without which the replica produces no waves to dampen).
 
 **This is a robustness check, not a validated corridor study.** The replica
-fails 5 of 6 FHWA criteria and its limitations are documented in
+fails 5 of 6 FHWA criteria (three measured failures, link-flow GEH,
+segment-speed RMSPE and wave speed, and two ring rows its driver does not
+evaluate, counted as failing; M3_US101_VALIDATION.md §3) and its limitations are documented in
 [M3_US101_VALIDATION.md](M3_US101_VALIDATION.md) §7. What follows tests whether
 the *shape* of the effect survives a change of geometry, fleet and demand — not
 whether these numbers describe real US-101.
@@ -59,7 +61,8 @@ claim of the project and it survives the change.
 
 **The "no cost" part of the finding does not replicate.** On this corridor
 FollowerStopper carries a small but *resolved* throughput cost at every
-penetration (−0.3% to −1.6%), where `corridor_10km` showed none. Fuel is worse:
+penetration (−0.3% to −1.6%; *corrected 2026-09-25:* measured upstream of the
+replica, and −0.7% to −2.7% on it, see the correction note above), where `corridor_10km` showed none. Fuel is worse:
 a resolved **increase** of 1.4–2.7% at 1–10% penetration, against the 2.8–5.7%
 *saving* measured on the synthetic corridor. Only at 20% penetration does the
 fuel penalty disappear into noise.
@@ -93,6 +96,7 @@ MOTION or highD-calibrated flagship would provide.
 ## Honest summary
 
 > The throughput part of this summary rests on the column corrected above (measured upstream of the replica); the fuel and σ_v parts do not.
+> Measured on the replica, the cost is 0.7–2.0% at 1–10% penetration and 2.7% at 20%, every level resolved (`artifacts/us101_lane_change_penetration.json`, result section below), so "roughly 1%" reads "roughly 1–2%" at 1–10%.
 
 
 The claim that sparse controlled vehicles measurably smooth traffic **holds on

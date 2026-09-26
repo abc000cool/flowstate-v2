@@ -114,6 +114,13 @@ that was tracked.
 | 08:00–08:15 | 28.2 | 25.9 | 54.3 | 0.52 |
 | 08:15–08:30 | 23.8 | 34.8 | 45.1 | 0.53 |
 
+*Source note 2026-09-25:* this table uses the population fitted first
+(`artifacts/idm_i24.json`). `artifacts/i24_replica_inputs.json` has since
+been rebuilt on the capacity-calibrated population and now carries
+0.481–0.605 for the same windows. The column above is reproduced as
+`equilibrium_legacy_fleet` in `artifacts/i24_coverage_lane5.json`
+(0.519–0.663).
+
 The I-24 MOTION paper reports position recall of 0.95 on its labeled
 validation clips; on this day's post-processed export, in the peak, roughly
 half of the vehicle-time is tracked (occlusion by tall vehicles in interior
@@ -215,7 +222,10 @@ now exposes the raw-way granularity the scenario must be written in.
    the wrong vehicle when the true leader is untracked within 100 m.
 3. **Coverage ≈ 0.5–0.7 in congestion** (§4): every count, flow and density
    from this data is a lower bound; the coverage-corrected arm rests on the
-   calibrated equilibrium spacing.
+   calibrated equilibrium spacing. Over 06:30–08:30 by estimator: 0.52–0.66
+   by the equilibrium method on the first population (§4 table), 0.48–0.61 on
+   the capacity-calibrated one, 0.56–0.67 by the recommended gap estimator
+   (last section); `artifacts/i24_coverage_lane5.json`.
 4. **One day, one direction.** 30 Nov 2022 westbound; no weather or incident
    metadata was used.
 5. **Vehicle classes.** 10% of westbound fragments are semis/trucks; the
@@ -261,6 +271,12 @@ observed 19.9), throughput at the reference section 5,170 veh/h
 [5,144, 5,196] against 5,710 [5,679, 5,741]. The rows do not move; the
 throughput falls by the share's own capacity, which is the point above. The
 other validation arms still run without heavy vehicles.
+*Note 2026-09-25:* the two throughputs above use the 2026-09-05 metric
+definitions (no warm-up discarded). Both arms were re-run on 2026-09-17
+under the corrected definitions: 5,276 [5,246, 5,305] with the heavy share
+against 5,839 [5,808, 5,870] without (`artifacts/i24_validation_speedcal_heavy.json`,
+`artifacts/i24_validation_speedcal.json`). The share still costs about
+560 veh/h (540 under the old definitions).
 
 ## Fundamental diagram (`artifacts/fd_i24.json`)
 

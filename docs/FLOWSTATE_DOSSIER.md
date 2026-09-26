@@ -37,7 +37,8 @@ What has been shown, with confidence intervals from 20 seeds per cell:
   permanent, CI-gated test.
 - On a synthetic 10 km corridor, 5% FollowerStopper penetration cuts the
   temporal speed spread by 61% and waves by 96% at no throughput cost, over
-  540 runs.
+  540 runs (changes of the means relative to the baseline mean; as the mean
+  of per-seed reductions the speed spread falls 56.8%, docs/M3_RESULTS.md §4.1).
 - On a real corridor, the I-24 MOTION testbed in Nashville (30 November
   2022, 576,511 trajectory fragments, 42.8 million rows), the same
   controller at the same penetration costs 38% of throughput, doubles travel

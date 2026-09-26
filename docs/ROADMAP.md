@@ -17,6 +17,9 @@ runs from one command, 480 tests at 95.5% coverage on the physics.
 
 The single weakness, unchanged since v2.0.0: **every headline result lives on
 either a synthetic corridor or a 640 m site that fails 5 of 6 FHWA criteria.**
+(Of those five, three are measured failures: link-flow GEH, segment-speed
+RMSPE and wave speed. The two ring rows are not evaluated by the US-101
+driver and count as failing; docs/M3_US101_VALIDATION.md §3.)
 Everything below is downstream of fixing that.
 
 The data to fix it is now on disk: `data/i24motion/` holds the 30 Nov 2022
@@ -75,7 +78,12 @@ the recording, but insertion caps the demand at 82–84%, the jams stay
 shallower than the real ones, and the fronts run at 8.7 km/h (standard
 detector) / 12.4 (relative) against 14.2 / 16.4 observed. **The wave-speed
 prediction is not confirmed on the corridor**; the fleet reaches the band on a
-ring only above ~80 veh/km, a density this replica does not reach. What a pass
+ring only above ~80 veh/km, a density this replica does not reach.
+(*Note 2026-09-25:* "reaches the band" here means nearly every front is in
+it. By the relative detector the I-24 fleet's mean front speed is already
+in the band at 60 veh/km, 14.2 km/h with 69% of fronts inside; at 80 veh/km
+it is 16.4 km/h with 95% inside; `artifacts/wave_speed_sitelength_i24.json`.)
+What a pass
 needs is now specific (full corrected demand through the entry; radar counts).
 *Follow-up 2026-09-03 ([I24_CAPACITY.md](I24_CAPACITY.md)):* the insertion cap
 is a **capacity** limit, not an insertion artifact — the population fitted on
@@ -135,14 +143,22 @@ neither failing row: `zip_ramps` RMSPE 34.2% (canonical 34.8%), GEH < 5 on
 the merge admittance stays the open mechanism. The canonical heavy arm
 (`speedcal_heavy`, 20 seeds) sits with the others: 35.5% / 23% / 17.3 km/h,
 throughput 5,170 veh/h against 5,710 without the heavy share; the zipper
-heavy arm 34.1% / 20% / no stack peak. The first VM was cut by its own hard
+heavy arm 34.1% / 20% / no stack peak. (*Note 2026-09-25:* those two
+throughputs use the 2026-09-05 metric definitions. Under the corrected
+definitions of the 2026-09-17 re-run they read 5,276 against 5,839 veh/h;
+`artifacts/i24_validation_speedcal_heavy.json`,
+`artifacts/i24_validation_speedcal.json`.) The first VM was cut by its own hard
 cap during the headway-cap sweep and lost three batteries and the sweep
 (scripts/gcp/README.md post-mortem, LESSONS.md rows 14–16); a second VM the
 same evening reran the batteries (identical numbers) and the sweep, with the
 scripts now archiving after every stage. The headway-cap sweep (2026-09-07, I24_SWEEP.md last section):
 the cap is not the lever — −34% to −38% throughput at every `h_max_s`
 against FollowerStopper's −36%, same smoothing, same fuel penalty — so the
-next controller has to change what it does at short gaps. *Fourth merge round (2026-09-07, I24_VALIDATION.md §0.7):* fourteen
+next controller has to change what it does at short gaps. (*Correction
+2026-09-25:* those are the 2026-09-07 numbers. The cap sweep was re-run on
+2026-09-19 under the corrected metric definitions: −35.6% to −39.8% at every
+`h_max_s` against FollowerStopper's −37.9%;
+`artifacts/i24_cap_sweep_summary.json`. The conclusion stands.) *Fourth merge round (2026-09-07, I24_VALIDATION.md §0.7):* fourteen
 single-seed probes of the levers no earlier round had touched — the
 zipper's interleaving distance, the sublane model's lateral parameters with
 internal links, keep-right, speed-gain, passing on the right. Inert,
@@ -179,6 +195,11 @@ costs throughput at every cell and the cost grows with penetration** — at 5% /
 lane changes rise from 1.25 to 2.32 per vehicle-km at 20% (the D2 statistic).
 The synthetic no-cost result does not survive a real corridor near capacity;
 the next controller must be capacity-aware.
+*Correction 2026-09-25:* the 5% / 100% figures above are the 2026-09-04 run's.
+The sweep was re-run on 2026-09-19 under the corrected metric definitions
+(`artifacts/i24_sweep_summary.json`, cell `fs_p0.05_c1.00`): throughput
+−37.9%, travel time +102%, fuel +111%, σ_v temporal −59%, waves −53%.
+docs/I24_SWEEP.md carries the re-run. The conclusion stands.
 `scripts/i24_penetration_sweep.py --scenario i24_replica_speedcal` (500 runs,
 cells ordered so the baseline and the 100%-compliance ladder land first;
 metrics kept, trajectories discarded) → `scripts/i24_penetration_analyze.py`.
@@ -374,7 +395,9 @@ and survive any slip in the critical path.
   observed 6,630 veh/h), a calibration question rather than a scenario one.
 - The record's artifacts carry the corrected metric definitions and hash-policy-v2
   hashes as of the 2026-09-17 re-run; the 500-run sweep and the cap sweep keep the
-  earlier definitions and are labelled so.
+  earlier definitions and are labelled so. *Correction 2026-09-25:* superseded on
+  2026-09-19, when both were re-run under the corrected definitions (CHANGELOG
+  2026-09-19; `artifacts/i24_sweep_summary.json`, `artifacts/i24_cap_sweep_summary.json`).
 
 ## Addendum 2026-09-17, night
 

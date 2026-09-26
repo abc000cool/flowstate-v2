@@ -137,8 +137,10 @@ compliance, 20 seeds; `docs/CONTROLLER_COMPARISON.md`,
 | JAD, 30 s + 20% noise oracle | 1.33 [1.24, 1.42] | 0.35 | 62.17 | +1.0% (not resolved) |
 | PI-with-saturation (Stern 2018) | 2.38 [2.12, 2.64] | 2.25 | 63.57 | −0.7% (not resolved) |
 
-Paired reductions vs baseline: FollowerStopper −61.2% σ_v, −96.1% waves,
-−5.0% fuel (all resolved). Deferred-commitment JAD with a perfect sensor and
+Paired reductions vs baseline (changes of the means relative to the baseline
+mean): FollowerStopper −61.2% σ_v, −96.1% waves, −5.0% fuel (all resolved).
+As the mean of per-seed reductions the σ_v figure is 56.8% (docs/M3_RESULTS.md
+§4.1); quote the definition with the number. Deferred-commitment JAD with a perfect sensor and
 a 30 s deferral matches the noisy-oracle cell (σ_v 1.331 vs 1.333;
 `docs/JAD_DEFERRAL_RESULTS.md`).
 
@@ -280,7 +282,8 @@ buyers will ask for.
    nothing, travels backwards at 17 km/h, and one vehicle in twenty-two can
    remove it. We measure that, with confidence intervals."
 3. **Four proof points**, each a tile with a live micro-visual and a number
-   from §5: −61% speed variance at 5% penetration; 540-run sweep with paired
+   from §5: −61% speed spread (σ_v, a standard deviation, change of the means)
+   at 5% penetration; 540-run sweep with paired
    CIs; 42.8 million I-24 rows ingested in 309 s; 5 PASS / 2 FAIL on the
    flagship after calibration, shown, with the cause of each failing row.
 4. Ring sandbox (§6.1) in compact form.

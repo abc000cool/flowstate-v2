@@ -8,7 +8,8 @@
 > number carries a bracketed pointer to the committed document section or
 > artifact it comes from, and Appendix A lists the headline numbers with
 > their seeds and sources. Appendix C lists places where the source
-> documents disagree; they are to be resolved before submission.
+> documents disagreed and how each was settled on 2026-09-25 against the
+> artifacts; the items still open are marked there.
 
 **Authors:** [to be completed by the owner]
 **Affiliation and contact:** [to be completed by the owner]
@@ -396,7 +397,10 @@ car-following population holds at the observed Edie speed,
 | 08:00–08:15 | 28.2 | 25.9 | 54.3 | 0.52 |
 | 08:15–08:30 | 23.8 | 34.8 | 45.1 | 0.53 |
 
-*Source: [I24_DATA.md §4; `coverage` in artifacts/i24_replica_inputs.json].*
+*Source: [I24_DATA.md §4; `equilibrium_legacy_fleet` in
+artifacts/i24_coverage_lane5.json]. The table uses the population fitted
+first; `coverage` in artifacts/i24_replica_inputs.json now carries the
+capacity-calibrated population's values, 0.481–0.605 (§4.1).*
 The I-24 MOTION paper reports a position recall of 0.95 on its labelled
 validation clips [I24_DATA.md §4]. On this day's post-processed export, in
 the peak, about half of the vehicle-time is tracked. Occlusion by tall
@@ -737,10 +741,14 @@ spills back into the span as it did on the road [M3_US101_VALIDATION.md §2].
 
 *Source: [M3_US101_VALIDATION.md §3; US101_CALIBRATED.md §4;
 artifacts/run_summaries/m3_us101/; artifacts/us101_validation_calibrated.json].*
-Every arm is 1 PASS / 5 FAIL. Under the corrected metric definitions the
+Every arm is 1 PASS / 5 FAIL. Three of the five are measured failures (link
+flows, speeds, wave speed). The other two are the ring rows, which this
+driver does not evaluate and counts as failing. The one pass is the
+replicate count. Under the corrected metric definitions the
 speed row reads 35.9% with the boundary and 28.4% calibrated, and the wave
 row 6.1 and 5.9 km/h; no verdict changes [M3_US101_VALIDATION.md, re-run of
-2026-09-17].
+2026-09-17]. The re-run's artifact also carries the sensitivity-grid row,
+not evaluated by this driver either [artifacts/us101_validation_calibrated.json].
 
 What each failure says. The site is a third of a typical wave's wavelength,
 so the standard detector's front is the boundary queue pinned at the site
@@ -931,9 +939,12 @@ calibration will move the two failing rows [I24_VALIDATION.md §0.12].
 | Flow-share family, corrected | 17.4% | 33.7% | 15.4 | 5 / 2 | [I24_VALIDATION.md §0.10] |
 | Flow-share family, fitted + ramps | 21.5% | 41.8% | 15.8 | 5 / 2 | [I24_VALIDATION.md §0.10] |
 
-The heavy-vehicle arm's throughput falls by the heavy share's own capacity,
-5,170 [5,144, 5,196] against 5,710 [5,679, 5,741] veh/h under the metric
-definitions of 2026-09-05 [I24_DATA.md, heavy-vehicle section]. The zipper
+The heavy-vehicle arm's throughput falls by the heavy share's own capacity:
+5,276 [5,246, 5,305] against 5,839 [5,808, 5,870] veh/h under the corrected
+definitions of the 2026-09-17 re-run [artifacts/i24_validation_speedcal_heavy.json;
+artifacts/i24_validation_speedcal.json], and 5,170 [5,144, 5,196] against
+5,710 [5,679, 5,741] under those of 2026-09-05 [I24_DATA.md, heavy-vehicle
+section]. The zipper
 heavy arm finds no stack peak and scores 4 / 3 [I24_VALIDATION.md §0.6].
 The canonical family remains the published record [I24_VALIDATION.md §0.10].
 
@@ -1668,8 +1679,8 @@ Single-seed probes are marked; none is a headline result on its own.
 |---|---|---|---|---|
 | 1 | I-24 westbound export size | 576,511 documents → 42,764,894 rows at 5 Hz | — | [I24_DATA.md §1] |
 | 2 | Fragment length | median 9.9 s / 117 m; 10.9% last ≥ 30 s | — | [I24_DATA.md §2] |
-| 3 | Apparent tracking coverage, 06:30–08:30 | 0.52–0.66 per 15 min | — | [I24_DATA.md §4; artifacts/i24_replica_inputs.json] |
-| 4 | Recommended (section gap mixture) coverage | 0.559–0.656 at 06:30–08:15 | — | [I24_DATA.md, coverage revisited; artifacts/i24_coverage.json] |
+| 3 | Apparent tracking coverage, 06:30–08:30 | 0.52–0.66 per 15 min (first population; 0.48–0.61 on the capacity-calibrated population) | — | [I24_DATA.md §4; artifacts/i24_coverage_lane5.json, `equilibrium_legacy_fleet` and `equilibrium_capacity_fleet`] |
+| 4 | Recommended (section gap mixture) coverage | 0.559–0.674 over the eight 15-min windows 06:30–08:15 (0.559–0.656 over the five tabulated in §3.4) | — | [I24_DATA.md, coverage revisited; artifacts/i24_coverage.json] |
 | 5 | Corrected peak inflow under the recommended coverage | 1,786 veh/h/lane (1,935 under the equilibrium method) | — | [I24_DATA.md, coverage revisited] |
 | 6 | I-24 car-following episodes and holdout fit | 17,652 episodes; holdout gap RMSE 5.29 m on 5,296 episodes | — | [artifacts/idm_i24.json; I24_DATA.md §5] |
 | 7 | NGSIM US-101 holdout fit | 2,452 episodes; 6.44 m on 736 | — | [artifacts/idm_us101.json; M2_RESULTS.md §3] |
@@ -1689,7 +1700,7 @@ Single-seed probes are marked; none is a headline result on its own.
 | 21 | Merge-zone population | 4,193 episodes; holdout 4.53 m; mean T 1.580 s; capacity index 1,720 veh/h/lane | — | [artifacts/idm_i24_merge.json; artifacts/idm_i24_capacity_equilibrium.json] |
 | 22 | Ring emergence and dampening | 20 of 20 seeds each | 20 | [artifacts/i24_validation_*.json, ring rows] |
 | 23 | Ring wave speed at 80 veh/km | 17.1 km/h (US-101 fleet), 16.4 km/h (I-24 fleet); no CI | 5 per density | [artifacts/wave_speed_sitelength.json; artifacts/wave_speed_sitelength_i24.json] |
-| 24 | US-101 criteria | 1 PASS / 5 FAIL in every arm; RMSPE 36.6% with boundary, 27.9% calibrated (35.9% / 28.4% under corrected definitions) | 20 per arm | [artifacts/run_summaries/m3_us101/results_with_boundary.json; artifacts/us101_validation_calibrated.json] |
+| 24 | US-101 criteria | 1 PASS / 5 FAIL in every arm (three measured failures; two ring rows not evaluated by the driver, counted as failing); RMSPE 36.6% with boundary, 27.9% calibrated (35.9% / 28.4% under corrected definitions) | 20 per arm | [artifacts/run_summaries/m3_us101/results_with_boundary.json; artifacts/us101_validation_calibrated.json] |
 | 25 | I-24 fitted-arm baseline | throughput 5,839 [5,808, 5,870] veh/h; travel time 590 [582, 598] s | 20 | [artifacts/i24_sweep_summary.json; I24_VALIDATION.md §0.2] |
 | 26 | FollowerStopper 5% / 100% on the unvalidated I-24 replica | throughput −2,212 [−2,577, −1,848] veh/h (−37.9%); travel time +102%; σ_v −59%; fuel +111% | 20 per cell, 500 runs | [artifacts/i24_sweep_summary.json] |
 | 27 | FollowerStopper 1% / 100%, I-24 replica | throughput −298 [−328, −267] veh/h (−5.1%) | 20 | [artifacts/i24_sweep_summary.json] |
@@ -1737,10 +1748,14 @@ validation figures show the first seed of the 2026-09-05 four-arm rerun
 
 ## Appendix C. Source inconsistencies found while drafting
 
-These are places where committed documents disagree with each other or with
-their own artifacts. The draft does not resolve them; it states which source
-it follows. Each should be settled in the source documents before
-submission.
+These are places where committed documents disagreed with each other or with
+their own artifacts. Each was checked on 2026-09-25 against the committed
+artifacts and the code that wrote them, not against another document. Where
+two numbers are both right under different definitions, the fix names the
+definition beside each. Dated records were not rewritten: they carry a dated
+correction note beside the original text. CHANGELOG.md was not edited in this
+pass; the corrections its past entries need were handed to the coordinator.
+Each item below ends with its status.
 
 1. **The I-24 sweep's 5% / 100% cell in ROADMAP.md §1.5** reads throughput
    −36%, travel time +82%, σ_v −56% (fuel +111%). I24_SWEEP.md and
@@ -1749,16 +1764,40 @@ submission.
    addendum of 2026-09-17 also says the sweep and cap sweep "keep the earlier
    definitions", which CHANGELOG 2026-09-19 supersedes. The draft follows the
    artifact.
+   *Resolved.* Cell `fs_p0.05_c1.00`, paired against the baseline:
+   throughput −37.9%, mean travel time +101.8%, σ_v temporal −59.1%
+   (spatial −61.9%), fuel +111.4%, waves −52.7%. The old figures are the
+   2026-09-05 artifact's (git `d7a2d7a`: −36.0%, +81.6%, −56.2%, +111.4%).
+   ROADMAP.md carries dated corrections at §1.5, at the headway-cap sentence
+   of 2026-09-07 (now −35.6% to −39.8% against −37.9%,
+   `artifacts/i24_cap_sweep_summary.json`) and at the 2026-09-17 addendum.
+   The same pass found I24_SWEEP.md's "What it means" still quoting the old
+   σ_v figures (−56% at 5%, −67% at 20%); it now carries a dated correction
+   (−24%, −59%, −74%).
 2. **I24_SWEEP.md's header** gives the scenario's config hash as
    `b072d754492d`; the artifact records `base_config_hash` `43def6306dd6`
    (the arm's hash-policy-v2 hash, per CHANGELOG 2026-09-19), and the cap
    sweep names its baseline `6ab4219ffd92`. The draft cites the artifact.
+   *Resolved.* All three name the same simulation. `config_hash` recomputed
+   on `scenarios/i24_replica_speedcal.yaml` gives `43def6306dd6` (hash
+   policy v2). `b072d754492d` is what the 2026-09-05 artifact recorded under
+   the earlier policy (git `d7a2d7a`). `6ab4219ffd92` is the same config
+   renamed `i24_cap_baseline` by `scripts/i24_cap_sweep.py`; the name enters
+   the hash. I24_SWEEP.md's header and cap-sweep paragraph now say so. The
+   comment in `scenarios/i24_replica_speedcal.yaml` still reads
+   `b072d754492d`; scenario files were outside this pass.
 3. **I24_STRATEGIES.md** opens with "the first strategy sweep on a validated
    corridor" and calls its scenario "the canonical I-24 westbound arm". The
    scenario is the flow family's fitted-plus-ramps arm (config
    `0cddf2002979`), which I24_VALIDATION.md §0.10 keeps out of the canonical
    record and which fails 2 of 7 rows. The draft calls it the unvalidated
    flow-family arm (§6.8).
+   *Resolved.* `artifacts/sweep_i24_strategies_summary.json` has base
+   `0cddf2002979`; `artifacts/i24_validation_flow_ramps.json` passes 5 of 7
+   rows and fails GEH (21.5%) and RMSPE (41.8%). I24_STRATEGIES.md carries a
+   dated correction after its status line and a pointer in its setup.
+   CHANGELOG 2.3.0 repeats "validated corridor"; correction text handed to
+   the coordinator.
 4. **The `corridor_10km` baseline throughput** is 1,246.65 veh/h in
    M3_RESULTS.md, JAD_ORACLE_RESULTS.md, PI_CONTROLLER_FIX.md and
    CONTROLLER_COMPARISON.md, and 1,327 veh/h in JAD_DEFERRAL_RESULTS.md (the
@@ -1766,12 +1805,29 @@ submission.
    baseline reproduces the earlier experiments "to the digit". Its σ_v, wave
    count and fuel do reproduce. The draft quotes only paired percentages for
    JAD throughput.
+   *Resolved.* Same simulations, different cross-section. The M3, PI and JAD
+   oracle analyses measure throughput at x = 7,000 m and travel time over
+   2,000–11,500 m (the `X_REF`/`SPAN` constants of their analysis scripts).
+   `scripts/jad_deferral_experiment.py` passes neither, so it took the
+   `compute_metrics` defaults of 2026-09-02: the midpoint of the observed
+   position range, and the whole range. σ_v, waves and fuel match to every
+   digit (`artifacts/jad_deferral_summary.json`,
+   `artifacts/jad_oracle_summary.json`). JAD_DEFERRAL_RESULTS.md carries a
+   dated correction naming both definitions. QA.md's "baseline numerically
+   identical" now names the metrics it holds for.
 5. **FollowerStopper's σ_v reduction at 5% / 100% on `corridor_10km`** is
    56.8% in M3_RESULTS.md §4.1 (mean of per-seed percentages) and 61.2% in
    CONTROLLER_COMPARISON.md, "61%" in I24_SWEEP.md and the dossier (the
    change of the means relative to the baseline mean: 1 − 1.31/3.39 ≈ 0.61).
    Both are arithmetically right; the convention should be stated wherever
    the number appears. The draft states it (§6.2).
+   *Resolved.* `artifacts/m3_sweep_summary.json`:
+   `sigma_v_temporal_ms_reduction_pct` 56.8 [50.3, 63.4];
+   `sigma_v_temporal_ms_delta` −2.071 m/s against a 3.385 m/s baseline,
+   61.2%. The convention is now stated in CONTROLLER_COMPARISON.md,
+   M3_RESULTS.md §4.1, I24_SWEEP.md, FLOWSTATE_DOSSIER.md, README.md and
+   WEBSITE_BRIEF.md (which also called σ_v a "variance"; it is a standard
+   deviation).
 6. **The US-101 throughput cost** is still quoted as −0.3% to −1.6% in
    LESSONS.md row 5 and as "a small resolved throughput ... cost" in QA.md,
    and the "Honest summary" of US101_PENETRATION.md keeps "roughly 1%
@@ -1779,42 +1835,108 @@ submission.
    same document shows that column was
    measured upstream of the replica; on the replica the cost is 0.7–2.7%. The
    draft uses the corrected figure.
+   *Resolved.* `artifacts/us101_lane_change_penetration.json`,
+   `site_throughput_veh_h`: −0.72% (1%), −1.05% (2%), −1.69% (5%), −1.97%
+   (10%), −2.74% (20%), all resolved. Changed: LESSONS.md row 5 (dated
+   correction), QA.md, US101_PENETRATION.md (the "what replicates" paragraph
+   and the summary's note: 0.7–2.0% at 1–10%) and README.md. CHANGELOG 2.1.0
+   carries 0.3–1.6%; correction text handed to the coordinator.
 7. **The density at which the I-24 fleet's ring waves reach the band**:
    ROADMAP.md §1.4 says "only above ~80 veh/km"; QA.md says "above
    ~60 veh/km". WAVE_SPEED_DIAGNOSIS.md gives 14.2 km/h at 60 veh/km (69% in
    band) and 16.4 km/h at 80 (95%). The draft quotes the table.
+   *Resolved.* Both are right under different definitions. With the relative
+   detector the mean front speed enters the band at 60 veh/km (I-24 fleet
+   14.2 km/h, 69% of fronts inside; US-101 fleet 14.0, 70%); nearly every
+   front is inside at 80 (16.4, 95%; 17.1, 98%)
+   (`artifacts/wave_speed_sitelength_i24.json`,
+   `artifacts/wave_speed_sitelength.json`). ROADMAP.md §1.4 carries a dated
+   note; QA.md names both. CHANGELOG 2.1.0 carries "~80"; correction text
+   handed to the coordinator.
 8. **The coverage range** is 0.52–0.66 in the I24_DATA.md §4 table, "≈
    0.5–0.65" in ROADMAP.md §1.1 and PAPER_OUTLINE.md, "≈ 0.5–0.7" in
    I24_DATA.md §7, and "52–67%" in QA.md. The draft quotes the table.
+   *Resolved.* Three estimators over the eight windows 06:30–08:30
+   (`artifacts/i24_coverage_lane5.json`): the equilibrium method on the
+   first population 0.519–0.663 (the §4 table); on the capacity-calibrated
+   population 0.481–0.605 (what the scenarios divide by,
+   `artifacts/i24_replica_inputs.json`); the recommended gap estimator
+   0.559–0.674. QA.md's 67% was the one wrong value and is corrected. "≈
+   0.5–0.65" and "≈ 0.5–0.7" are roundings; I24_DATA.md §7 and
+   PAPER_OUTLINE.md now name the estimators, and ROADMAP.md §1.1 is left as
+   written. I24_DATA.md §4 gains a source note: its table no longer matches
+   `i24_replica_inputs.json`. This draft's §3.4 source line and ledger rows
+   3–4 are corrected to match; row 4 was 0.559–0.656 over five windows and
+   is 0.559–0.674 over all eight.
 9. **Two metric definitions for the same I-24 arm**: the fitted arm's
    throughput is 5,710 veh/h under the 2026-09-05 definitions
    (I24_CAPACITY.md §7, I24_VALIDATION.md §0.6, I24_DATA.md heavy section)
    and 5,839 veh/h after the 2026-09-17 re-run (I24_VALIDATION.md §0.2). The
    heavy-arm comparison (5,170 vs 5,710) is under the old definitions. The
    draft labels which definition each number uses.
+   *Resolved.* `artifacts/i24_validation_speedcal.json` 5,839 [5,808, 5,870]
+   and `artifacts/i24_validation_speedcal_heavy.json` 5,276 [5,246, 5,305]
+   under the corrected definitions; 5,710 and 5,170 in their 2026-09-05/06
+   versions (git `014a6b2`, `de10089`). Dated notes in I24_DATA.md (heavy
+   section), I24_CAPACITY.md §7, I24_VALIDATION.md §0.3 and §0.6, and
+   ROADMAP.md (the 2026-09-06 round). §5.6 of this draft now gives both
+   pairs.
 10. **The I-24 strategy grid switches σ_v conventions** between its tables:
     temporal in the 2026-09-23 table (VSL −29.1%, FollowerStopper 10%
     −59.5%), spatial in the complete grid (−19.2%, −67.7%). The draft uses
     the complete grid and labels it spatial.
+    *Resolved.* `artifacts/sweep_i24_strategies_summary.json`,
+    `vs_baseline_paired`: temporal −29.1 / −27.2 / −59.5 / −52.9 / −68.5%,
+    spatial −19.2 / −11.7 / −67.7 / −54.8 / −74.1% (VSL, ALINEA,
+    FollowerStopper 10%, with ALINEA, with VSL). I24_STRATEGIES.md carries a
+    dated note with both columns.
 11. **The MnDOT observed wave-speed IQR** is 18.4–24.2 km/h in
     ONBOARDING_MNDOT.md §4a and 18.6–24.2 km/h after the loop exclusion in
     §11; the median is 21.3 km/h in both. The draft uses §11.
+    *Resolved.* `context.detector_wave_speed` in
+    `data/mndot/mndot_i94_wb_stpaul/observations.json`: median 21.26 km/h,
+    IQR 18.59–24.18, leave-one-date-out 18.45–21.58. ONBOARDING_MNDOT.md §4a
+    carries a dated correction. CHANGELOG 2.3.0 carries 18.4–24.2;
+    correction text handed to the coordinator.
 12. **The weave model's entering critical gaps** are 1.18 / 1.21 s in
     WEAVE_MODEL_PLAN.md "where item 1 stands" point 6 and 0.98 / 0.66 s in
     its correction (WP-82). The draft uses the correction.
+    *Resolved; no edit in this pass.* WEAVE_MODEL_PLAN.md carries
+    "Correction to 'where item 1 stands', point 6 (2026-09-25, from WP-82)"
+    with 0.98 [0.86, 1.10] / 0.66 [0.54, 0.79] s. The corrected values live
+    in that dated section and CHANGELOG 2026-09-25 only. The committed
+    artifact `artifacts/th52_fixture_critical_gaps.json` still holds the
+    uncorrected fit (1.18 / 1.21 s, WP-78, without SUMO's arrival crossings).
 13. **"Seeds worse than baseline" for perfect-oracle JAD** is 5 of 20 by wave
     count in JAD_ORACLE_RESULTS.md and 1 of 20 by σ_v in
     JAD_DEFERRAL_RESULTS.md. Both are right for their statistic; the
     statistic should be named wherever the number is quoted. The draft names
     it.
+    *Resolved.* `artifacts/jad_deferral_summary.json`, `jad_perfect`,
+    `n_worse_than_reference`: σ_v 1, wave count 5;
+    `artifacts/jad_oracle_summary.json` `n_seeds_worse` 5 by wave count. The
+    statistic is now named in JAD_DEFERRAL_RESULTS.md,
+    CONTROLLER_COMPARISON.md, QA.md, README.md (twice) and LESSONS.md row 3
+    (dated note). JAD_ORACLE_RESULTS.md and jad_derivation.md already named
+    it. CHANGELOG 2.1.0 says "5/20 seeds end worse"; correction text handed
+    to the coordinator.
 14. **The FHWA citation.** PAPER_OUTLINE.md's required-citation list names
     only FHWA-HOP-18-036 (2019), and M3_US101_VALIDATION.md §2 cites it for
     boundary-condition practice. CLAUDE.md §7.1 records that the GEH target
     comes from the 2004 volume (FHWA-HRT-04-040) and that the 2019 update
     states no GEH target. The draft cites both, with the GEH target on 2004.
+    *Resolved for the GEH target.* `validation.criteria` records the check of
+    both volumes. PAPER_OUTLINE.md now lists both, with the GEH target on
+    2004. M3_US101_VALIDATION.md §2 cites the 2019 volume only for
+    boundary-condition practice, not for GEH, and is unchanged; that
+    attribution was not checked against the 2019 text in this pass.
 15. **PAPER_OUTLINE.md** lists the ring wave-speed figure as "to be drawn";
     `docs/figures/wave_speed_vs_density.png` already exists and is used as
     Figure 3.
+    *Resolved.* The figure was committed on 2026-09-02 (`07a5c4f`), drawn by
+    `scripts/make_wave_speed_figure.py` from
+    `artifacts/wave_speed_sitelength{,_i24}.json`. PAPER_OUTLINE.md now
+    names it.
 16. **The re-run under corrected metrics.** The CHANGELOG 2.2.0 release
     summary says the canonical I-24 arms, US-101 and both sweeps were
     re-simulated and "every criteria row reproduced to the digit". The
@@ -1823,9 +1945,37 @@ submission.
     windowed field, moved within a point (RMSPE 36.6% → 35.9% and 27.9% →
     28.4%; wave 5.8 → 6.1 and 5.8 → 5.9 km/h) with unchanged verdicts. The
     draft states the I-24 and US-101 cases separately (§2.6).
+    *Resolved.* Verified: every I-24 row reproduced
+    (I24_VALIDATION.md §0.1); US-101's rows moved
+    (`artifacts/us101_validation_calibrated.json`: RMSPE 0.359 and 0.284,
+    wave 6.06 and 5.86 km/h). No other document is wrong. The release
+    summary now carries a dated correction note beside it (CHANGELOG.md,
+    2.2.0, 2026-09-25).
 17. **The US-101 row count.** US101_PENETRATION.md says the replica "fails 5
     of 6 FHWA criteria"; M3_US101_VALIDATION.md scores 1 PASS / 5 FAIL of
     which two FAILs are ring rows not evaluated by that driver. Both are
     consistent, but "fails 5 of 6" reads as five measured failures. The
     draft says 1 PASS / 5 FAIL and names the two not-evaluated rows (§5.2).
+    *Resolved.* `artifacts/run_summaries/m3_us101/results_with_boundary.json`
+    has six rows: three measured failures, two ring rows not evaluated, and
+    the replicate count passing. The 2026-09-17 re-run's
+    `artifacts/us101_validation_calibrated.json` adds a seventh,
+    `sensitivity_grid`, also not evaluated. US101_PENETRATION.md, ROADMAP.md
+    §0 and PAPER_OUTLINE.md now name the measured failures; so do §5.2 and
+    ledger row 24 of this draft.
 
+Found while resolving the list:
+
+18. **The US-101 wave row's detector label.** In
+    `artifacts/us101_validation_calibrated.json` the `wave_speed` row reads
+    6.06 and 5.86 km/h, but its detail names the stack detector and adds
+    "caller did not state which detector produced the value". The values
+    come from the standard 40 km/h detector on the driver's own speed field
+    (`scripts/m3_us101_validate.py` calls `detect_waves(field)` at its
+    default threshold), as §5.2 of this draft labels them. The report
+    generated from the with-boundary runs
+    (`docs/reports/us101_replica/report.md`) scores the row with the stack
+    detector, finds no front in any of the 20 replicates and reads NaN. The
+    verdict is FAIL either way.
+    *Open.* The label is written by the validation driver into an artifact;
+    fixing it is a code and artifact change outside this pass.

@@ -25,6 +25,14 @@ three experiments (temporal σ_v 3.3851 m/s, CI lower bound 2.8283 m/s).
 
 ## Paired change vs baseline (per seed, common random numbers)
 
+Convention: the mean of the per-seed paired deltas divided by the baseline
+mean (`pct_of_baseline` in the JAD and PI artifacts; for FollowerStopper,
+`sigma_v_temporal_ms_delta` ÷ the baseline mean in
+`artifacts/m3_sweep_summary.json`: −2.071 ÷ 3.385 m/s). M3_RESULTS.md
+reports the mean of per-seed percentages instead, so the same FollowerStopper
+cell reads 56.8% [50.3, 63.4] there (`sigma_v_temporal_ms_reduction_pct`).
+Both are right; the definition goes with the number.
+
 | Controller | σ_v temporal | Wave count | Throughput | Fuel |
 |---|---|---|---|---|
 | FollowerStopper | -61.2% (**resolved**) | -96.1% (**resolved**) | +0.9% (not resolved) | -5.0% (**resolved**) |
@@ -54,7 +62,7 @@ experiment separates them.
 detection infrastructure at all — only the gap and speed of the vehicle directly
 ahead — whereas JAD needs a 2 km downstream speed field and, as measured, is
 *unreliable when that field is too good*: with a perfect oracle it chatters,
-hurts 5 of 20 seeds, and its wave-count benefit stops being resolved
+hurts 5 of 20 seeds by wave count (1 of 20 by σ_v), and its wave-count benefit stops being resolved
 ([JAD_ORACLE_RESULTS.md](JAD_ORACLE_RESULTS.md)). FollowerStopper is also the
 controller the CI-gated ring benchmark exercises.
 

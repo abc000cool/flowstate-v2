@@ -217,6 +217,13 @@ Nine weekdays, 05:30–09:30, 13 adjacent pairs:
 | S790 ← S791 | 399.7 | 80.7 | 17.8 | 0.504 | yes |
 | S97 ← S790 | 939.9 | 141.9 | 23.8 | 0.315 | yes |
 
+*Correction 2026-09-25:* the table and the IQR below predate the exclusion of
+loop 3240 (§11, 2026-09-24). The committed context
+(`context.detector_wave_speed` in
+`data/mndot/mndot_i94_wb_stpaul/observations.json`) reads S1948→S792
+18.6 km/h, S792→S791 25.7 km/h, median 21.3 km/h, IQR 18.6–24.2 km/h and
+leave-one-date-out 18.4–21.6 km/h.
+
 **Median 21.3 km/h (IQR 18.4–24.2) from 6 of 13 pairs; leaving any one of the
 nine dates out moves that median between 18.4 and 21.6 km/h, and on two of the
 nine subsets only five pairs survive at all.** The median is a median over six

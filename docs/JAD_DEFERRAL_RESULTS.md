@@ -12,7 +12,8 @@
 Driving is *unreliable with a perfect oracle* — it commits to every transient
 jammed bin, finishes its slow-in/hold/fast-out cycle before the front arrives,
 re-triggers, and each abrupt fast-out can seed a secondary wave, so 5 of 20
-seeds ended worse than no control — and that 30–60 s of detection latency
+seeds ended worse than no control by wave count (1 of 20 by σ_v, the table
+below) — and that 30–60 s of detection latency
 removed the failure. ROADMAP B4 asked: if latency helps *because it defers
 commitment*, an explicit deferral rule should capture the benefit with a
 perfect sensor. `commit_delay_s` is that rule: from CRUISE, slow-in starts only
@@ -35,6 +36,18 @@ digit (temporal σ_v 3.385 [2.828, 3.942], 1.781 [1.298, 2.264] and
 1.333 [1.244, 1.422] m/s; [CONTROLLER_COMPARISON.md](CONTROLLER_COMPARISON.md))
 although their config hashes changed with the Phase-6 schema fields — the
 intended evidence that the new defaults are inert.
+
+*Correction 2026-09-25:* the reproduction to the digit holds for σ_v, wave
+count and fuel, not for throughput or travel time. This experiment measured
+throughput at the default cross-section of `compute_metrics` as it stood on
+2026-09-02, the midpoint of the observed position range, and travel time over
+the whole observed range: `scripts/jad_deferral_experiment.py` passes no
+`x_ref` or `span`. M3_RESULTS.md, JAD_ORACLE_RESULTS.md, PI_CONTROLLER_FIX.md
+and CONTROLLER_COMPARISON.md measure throughput at x = 7,000 m and travel
+time over 2,000–11,500 m. Hence the baseline reads 1,327 veh/h here and
+1,246.65 veh/h there, and perfect-oracle JAD 1,233 against 1,162
+(`artifacts/jad_deferral_summary.json`, `artifacts/jad_oracle_summary.json`).
+Throughput and travel time compare within this document only.
 
 ## Absolute results (mean, 95% t CI, n = 20)
 

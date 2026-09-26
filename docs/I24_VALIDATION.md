@@ -186,7 +186,8 @@ Mean segment speed over the study period [km/h], upstream to downstream
   bottleneck and that its lane-change parameters alone do not fix it
   ([I24_CAPACITY.md](I24_CAPACITY.md) §6).
 * **What the calibration bought and did not buy.** Capacity calibration
-  raised throughput from 5,266 to 5,576–5,710 veh/h, lifted insertion to
+  raised throughput from 5,266 to 5,576–5,710 veh/h (2026-09-05 definitions;
+  §0.2 carries the corrected ones), lifted insertion to
   95–97% in the fitted arms, and moved the fronts by 2–3 km/h under every
   detector; it did not move the speed criterion below 33%, because the
   remaining error is where the queue sits, not how much traffic there is.
@@ -564,6 +565,13 @@ arms' schema did not record):
 | `zip_speedcal` | `f2209020a42a` | 43.0% | 11.4% | 22% | 16.2 | 5,518 [5,507, 5,528] | 553 | 4.59 | 93 | 14.1 | 5 / 2 |
 | `zip_ramps` | `b5175be6d854` | 34.2% | 12.8% | 23% | 15.7 | 5,476 [5,461, 5,491] | 593 | 4.69 | 97.7 | 9.4 | 5 / 2 |
 | `zip_speedcal_heavy` | `4d415d407acc` | 34.1% | 15.6% | 20% | none found (standard 11.4) | 5,009 [4,892, 5,125] | 592 | 4.51 | 171 | 10.2 | 4 / 3 |
+
+*Note 2026-09-25:* the metric columns above use the 2026-09-05 definitions
+(no warm-up discarded). The canonical arms were re-run on 2026-09-17 under
+the corrected definitions (§0.1, §0.2): throughput `corrected` 5,687,
+`speedcal` 5,839 [5,808, 5,870], `ramps` 5,699 and `speedcal_heavy`
+5,276 [5,246, 5,305] veh/h (`artifacts/i24_validation_{corrected,speedcal,ramps,speedcal_heavy}.json`).
+The zipper rows were not re-run.
 
 The `zip_tracked`, `zip_speedcal` and `zip_speedcal_heavy` batteries ran on
 the first VM and were lost with it before their artifacts came down (README

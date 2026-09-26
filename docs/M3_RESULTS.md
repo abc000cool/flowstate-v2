@@ -134,7 +134,10 @@ the empty corridor; white bins hold no vehicles.
 
 At 100% compliance, paired temporal σ_v reduction vs baseline climbs
 +24.5% → +36.6% → +56.8% → +68.1% → +73.0% → +76.4% across penetrations
-1 → 20% (every CI well clear of zero; figure e). The marginal benefit per
+1 → 20% (every CI well clear of zero; figure e). These are means of per-seed
+percentages (§1). As the change of the means relative to the baseline mean,
+the 5% cell reads 61.2%, which is how CONTROLLER_COMPARISON.md reports it
+(note of 2026-09-25). The marginal benefit per
 added AV shrinks steadily: the first 1% of the fleet buys ~25%, the last
 5% (15 → 20%) buys ~3 points. Detected stop-and-go waves go from 3.85 per
 baseline run to 0.15 at 5% / 100% and to **zero in all 20 replicates** at

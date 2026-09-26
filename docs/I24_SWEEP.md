@@ -1,7 +1,9 @@
 # The penetration × compliance battery on the I-24 replica (ROADMAP §1.5)
 
 **Date:** 2026-09-04 · **Scenario:** `scenarios/i24_replica_speedcal.yaml` (the fitted
-demand arm on the capacity-calibrated population, config `b072d754492d`) ·
+demand arm on the capacity-calibrated population, config `b072d754492d` under the
+hash policy of 2026-09-04; `43def6306dd6` under hash policy v2, the artifact's
+`base_config_hash` since the 2026-09-19 re-run) ·
 **Controller:** FollowerStopper (Stern et al. 2018 constants, CLAUDE.md §4.1) ·
 **Grid:** penetration {1, 2, 5, 10, 15, 20}% × compliance {25, 50, 80, 100}% plus the
 uncontrolled baseline, **20 common-random-number seeds per cell, 500 runs** on a
@@ -25,7 +27,8 @@ reference cross-section falls 38% (5,839 → 3,626 veh/h), mean travel time
 over the span rises 102% (590 → 1,191 s) and fuel per vehicle-kilometre
 doubles, while the temporal speed spread falls 59% and the wave count halves.
 Even one vehicle in a hundred costs 5% of throughput. The synthetic
-`corridor_10km` result ([M3_RESULTS.md](M3_RESULTS.md): −61% σ_v at no
+`corridor_10km` result ([M3_RESULTS.md](M3_RESULTS.md): −61% temporal σ_v as a
+change of the means, 56.8% as the mean of per-seed reductions, at no
 throughput cost) and the US-101 warning that the no-cost claim is
 corridor-dependent ([US101_PENETRATION.md](US101_PENETRATION.md)) resolve
 here into a clear statement: **on a real multi-lane corridor near capacity,
@@ -93,6 +96,9 @@ hold the gap.
 * The smoothing benefit is real and monotone (σ_v −24% at 1%, −56% at 5%,
   −67% at 20% with full compliance) and so is its price. The dose-response
   the product must show a DOT is the pair, not the first line alone.
+  *Correction 2026-09-25:* those three figures are the 2026-09-04 run's and were
+  missed by the 2026-09-19 re-derivation. The re-run reads temporal σ_v −24% at
+  1%, −59% at 5% and −74% at 20% (the grid above; `artifacts/i24_sweep_summary.json`).
 * The controller, not the concept, is what this battery indicts: the
   constants are the ring field test's, the reference speed is the platoon
   mean, and nothing in FollowerStopper knows about capacity. A
@@ -142,7 +148,9 @@ the battery's do. **This is one seed; the twenty-seed sweep in the next section 
 ### The headway-cap sweep (2026-09-07; re-run 2026-09-19 under the corrected metric definitions, 20 seeds, `artifacts/i24_cap_sweep_summary.json`)
 
 `scripts/i24_cap_sweep.py` on the fitted arm (`i24_replica_speedcal`,
-config `6ab4219ffd92` for the baseline) at 5% penetration and 100%
+config `6ab4219ffd92` for the baseline: the script renames the scenario
+`i24_cap_baseline`, and the name enters the hash; with the arm's own name the
+same config hashes to `43def6306dd6`) at 5% penetration and 100%
 compliance: the uncontrolled baseline, FollowerStopper at the literature
 defaults, and the capacity-aware FollowerStopper at `h_max_s` ∈ {1.3, 1.5,
 1.7, 2.0} s, 20 seeds each with common random numbers, metrics on the

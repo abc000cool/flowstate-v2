@@ -280,6 +280,10 @@ pass fraction from 18.8% to 20.1% on the criterion table (recommended-coverage
 counts, `artifacts/i24_validation_{speedcal,ramps}.json`; 15.3% to 10.4% on
 the apparent-coverage table), and throughput from 5,710 to 5,574 veh/h,
 with 96.5% of demand inserted — the error moves, it does not shrink.
+*Note 2026-09-25:* those throughputs use the 2026-09-05 metric definitions.
+Under the corrected definitions of the 2026-09-17 re-run the two arms read
+5,839 and 5,699 veh/h (docs/I24_VALIDATION.md §0.2;
+`artifacts/i24_validation_{speedcal,ramps}.json`).
 
 ## 8. The lane-change grid as a calibration target (`artifacts/i24_lanechange_fit.json`)
 

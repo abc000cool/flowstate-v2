@@ -49,16 +49,23 @@ Every I-24 MOTION document is a trajectory fragment; fragments break at camera
 boundaries, under overpasses and when tall vehicles occlude interior lanes.
 Speeds, computed as distance travelled over time tracked, are insensitive to
 that; counts and densities are not. The tracked Edie density in the peak is
-52–67% of the density the calibrated car-following spacing implies at the
-observed speed (docs/I24_DATA.md §4). The fix is the testbed's radar detector
+52–66% of the density the first fitted car-following population implies at
+the observed speed, and 48–61% with the capacity-calibrated population the
+scenarios use (06:30–08:30, 15-min windows; docs/I24_DATA.md §4,
+`artifacts/i24_coverage_lane5.json`). A gap-based estimator that needs no
+car-following model reads 56–67% (docs/I24_DATA.md, last section). The fix is the testbed's radar detector
 counts, requested from the data owner.
 
 **What does "1% penetration" mean in practice?**
 One vehicle in a hundred running a gap-based controller such as FollowerStopper.
 On the synthetic corridor that was already enough for a resolved 24.5%
-reduction in temporal speed variance with 20 seeds (docs/M3_RESULTS.md); on
-real 5-lane US-101 geometry the σ_v dose-response replicated (−8.2% at 1%) but
-carried a small resolved throughput and fuel cost (docs/US101_PENETRATION.md).
+reduction in the temporal speed spread σ_v (a standard deviation; mean of
+per-seed reductions) with 20 seeds (docs/M3_RESULTS.md); on real 5-lane
+US-101 geometry the σ_v dose-response replicated (−8.2% at 1%) but carried a
+resolved throughput cost, 0.7% at 1% penetration to 2.7% at 20% measured on
+the replica, and a fuel cost (docs/US101_PENETRATION.md, correction of
+2026-09-25: the throughput first published was measured upstream of the
+replica).
 Practically: the effect is real at penetrations today's adaptive-cruise fleets
 already exceed, and whether it is "free" depends on the corridor.
 
@@ -74,12 +81,15 @@ Every cell of a sweep runs the same scenario with the same list of 20 seeds
 (common random numbers), so per-seed paired differences are reported with
 t-distribution 95% confidence intervals; an effect is called "resolved" only
 when its interval excludes zero (docs/CONTROLLER_COMPARISON.md). The
-uncontrolled baseline is numerically identical across experiments.
+uncontrolled baseline's σ_v, waves and fuel are numerically identical across
+experiments; its throughput depends on the cross-section each experiment
+measures at (docs/JAD_DEFERRAL_RESULTS.md, correction of 2026-09-25).
 
 **Why does JAD need a *worse* sensor to work?**
 With a perfect oracle it fires the instant any bin qualifies, finishes its
 slow-in/hold/fast-out before the front arrives, re-triggers, and each abrupt
-fast-out can seed a secondary wave; 5 of 20 seeds ended worse than no control.
+fast-out can seed a secondary wave; 5 of 20 seeds ended with more waves than
+no control (1 of 20 was worse on σ_v).
 With 30–60 s latency and ±20% noise no seed is worse than baseline
 (docs/JAD_ORACLE_RESULTS.md). Realistic detection defers commitment; making
 that deferral explicit is roadmap item B4.
@@ -90,8 +100,11 @@ on gaps and the macroscopic fundamental diagram fitted on flow–density bins
 give the same congested wave speed on US-101 (14.6 km/h both ways). The I-24
 fit uses 17,652 episodes with a held-out gap RMSE of 5.29 m against 6.44 m on
 NGSIM, and the two populations put emergent ring waves in the empirical
-14–22 km/h band once density is above ~60 veh/km (docs/I24_DATA.md §5,
-docs/WAVE_SPEED_DIAGNOSIS.md).
+14–22 km/h band once density reaches about 60 veh/km. There the mean front
+speed enters the band (14.0–14.6 km/h, about 70% of fronts inside); at
+80 veh/km 95–98% of fronts are inside (docs/I24_DATA.md §5,
+docs/WAVE_SPEED_DIAGNOSIS.md; `artifacts/wave_speed_sitelength.json`,
+`artifacts/wave_speed_sitelength_i24.json`).
 
 **Could a reviewer rerun this?**
 Yes, that is the product: every run takes an explicit seed and records its
