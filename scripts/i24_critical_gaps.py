@@ -135,13 +135,23 @@ LIMITATIONS: tuple[str, ...] = (
 )
 
 
+#: The paths whose uncommitted changes make an artifact's ``code_dirty`` true.
+CODE_PATHS = ("packages", "scripts", "scenarios", "pyproject.toml", "uv.lock")
+
+
 def git_dirty() -> bool | None:
-    """Whether the working tree had uncommitted changes when the artifact was written."""
+    """Whether the code had uncommitted changes when the artifact was written.
+
+    Only the code paths count (``packages``, ``scripts``, ``scenarios``,
+    ``pyproject.toml``, ``uv.lock``): a pipeline VM rewrites tracked artifacts
+    under ``artifacts/`` stage by stage, and an earlier stage's output must not
+    mark a later stage's code as dirty (VM AE, 2026-09-25).
+    """
     import subprocess
 
     try:
         out = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
+            ["git", "status", "--porcelain", "--untracked-files=no", "--", *CODE_PATHS],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,

@@ -8717,3 +8717,63 @@ Every number above was read from the named artifacts with `jq`, or from `git cat
   - The run directories were deleted after the analysis.
 
 Every number above is from those runs, from the committed files named, or from the tests.
+
+## 2026-09-25 (block 3, VM AE, WP-91's cloud stage: coverage thinning on NGSIM US-101, and partner speeds on real traffic): both checks pass, the reference equals stage 16 and every bound holds under both thinning models. Under I-24-like fragment thinning (F = 0.65 and 0.5) the entering crossings' gaps inflate a lot and in the expected direction: the lag time gap's median by +0.78 / +1.53 s on 1.21 s, the acceptance's refusal share by −18.5 / −29.3 points on 71.7 %, the follower side's `ratio_eq` by +0.37 / +0.62 on 0.81 and the leader side's by +0.31 / +0.63 on 0.62. Every such quantity reads *biased as expected*. The fitted critical gaps are *undetermined*, and so is the follower side's `ratio_pop`. The partner speeds are *robust*. Fragmentation alone (F = 1.0) moves nothing beyond its tolerance. Real entrants cross faster than their new leader (US-101 −0.40, I-24 −0.83 m/s: the leader's speed minus the entrant's); the model's entrant crosses 1.37 m/s slower than its new leader. By the rule written before the numbers, the model's crossings differ in the speeds as well as in the gaps. Nothing ships
+
+**The round.** VM AE (`flowstate-thin`, n2-standard-8, us-west1-c, bucket `gs://flowstate-thin-0925/thin`, self-deleting, 75-min server-side cap) ran stages `i24_lane_change_relaxation`, `us101_lane_change_relaxation` and `us101_coverage_thinning` at commit 2946afc. Pipeline 03:25–03:31 UTC; the thinning stage read 1,882,929 rows and measured the reference and 25 thinned tables in 105 s at 1.0 GB. Artifacts: `artifacts/coverage_thinning_us101.json` (new); `artifacts/lane_change_relaxation_{i24,us101}.json` re-run. The re-runs are identical to the committed ones in every pre-existing key, apart from the corrected `limitations` wording. They add the partner speeds.
+- *Provenance.* The two later stages record `code_dirty: true`. That is a false positive: `git_dirty` read every tracked file, and the first stage had rewritten its tracked artifact. The code was the clean snapshot of 2946afc (the first stage records `code_dirty: false`). `git_dirty` now reads the code paths only (`scripts/lane_change_relaxation.py`, `scripts/i24_critical_gaps.py`; `tests/test_scripts/test_code_dirty.py`).
+- *The thinning achieved.* Kept vehicle-time 0.644–0.654 and 0.493–0.505 at F = 0.65 / 0.5 under the fragment model, and 1.0 at F = 1.0. The recorded median of the fragments not cut by a track's end is 8.0 s, against the 9.9 s drawn; the difference is not explained here.
+
+**(1) The two checks.**
+- `reference_check_stage16.all_equal` is true.
+- The bounds hold under both models at F < 1, weave entering and exiting. Space gaps p10 and p50, lead time gaps p10 and p50, and the leader side's space gap and `ratio_eq` at the change do not fall; the `ok_lead_time` refusal share does not rise. No shift's interval crosses to the wrong side.
+
+**(2) The verdicts** (weave entering; the shift is the mean over five thinning seeds minus the reference, with its 95 % t-interval; fragment model; the rule's tolerances).
+
+| quantity | reference (US-101, complete) | fragment F = 0.65 | fragment F = 0.5 | fragment F = 1.0 | verdict | the I-24 number it tests |
+|---|---|---|---|---|---|---|
+| lag time gap p10 [s] | 0.593 | +0.094 [+0.016, +0.171] | +0.156 [+0.039, +0.274] | +0.036 | biased as expected | VM X 0.82 |
+| lag time gap p50 [s] | 1.212 | +0.778 [+0.327, +1.230] | +1.529 [+1.069, +1.990] | +0.008 | biased as expected | VM X 2.46 |
+| lead time gap p50 [s] | 0.911 | +0.604 [+0.321, +0.887] | +1.322 [+1.139, +1.505] | +0.005 | biased as expected (a bound) | VM X |
+| acceptance refusal share | 0.717 | −0.185 [−0.253, −0.117] | −0.293 [−0.324, −0.261] | −0.007 | biased as expected | VM X 48.5 % |
+| refusals of `ok_lead_time` | 0.583 | −0.211 [−0.285, −0.136] | −0.299 [−0.352, −0.246] | −0.005 | biased as expected (a bound) | VM X 31.5 % |
+| critical gap, lead, joint [s] | 0.293 | +0.099 [−0.040, +0.237] | +0.102 [−0.083, +0.288] | −0.042 | undetermined | VM Z 0.46 |
+| critical gap, lag, joint [s] | 0.452 | +0.171 [−0.056, +0.398] | +0.386 [+0.141, +0.631] | −0.014 | undetermined | VM Z 0.92 |
+| follower `ratio_eq` at the change | 0.810 | +0.374 [+0.168, +0.579] | +0.624 [+0.311, +0.936] | +0.010 | biased as expected | VM AC 1.14 |
+| leader `ratio_eq` at the change | 0.616 | +0.313 [+0.097, +0.529] | +0.634 [+0.364, +0.904] | +0.004 | biased as expected (a bound) | VM AC 0.92 |
+| follower `ratio_pop` at the change | 0.764 | +0.140 [−0.010, +0.291] | +0.197 [−0.010, +0.404] | +0.015 | undetermined | VM AC 0.87 |
+| leader `ratio_pop` at the change | 0.570 | +0.139 [−0.019, +0.297] | +0.277 [+0.099, +0.455] | +0.011 | shifted (no expected direction) | VM AC 0.72 |
+| follower partner speed [m/s] | +1.012 | +0.045 [−0.163, +0.253] | +0.112 [−0.252, +0.475] | +0.004 | robust | I-24 +1.18 |
+| leader partner speed [m/s] | −0.396 | −0.040 [−0.186, +0.106] | +0.035 [−0.090, +0.161] | −0.030 | robust | I-24 −0.83 |
+
+- *The vehicle model* moves every gap, refusal and `ratio_eq` row the same way and by about as much (for example the refusal share −0.185 / −0.247, the follower `ratio_eq` +0.342 / +0.502). The recorded neighbour being another vehicle drives those shifts. On the critical gaps it reads −0.019 / +0.046 s (lead) and −0.091 / −0.101 s (lag), none clear of 0, so the two models do not disagree by the rule's test (opposite shifts, both clear of 0) on any row.
+- *Exiting.* The refusal share reads biased as expected (−0.114 / −0.149 on 0.333). Every other exiting row is undetermined, and the exiting critical gaps cannot be fitted at F = 0.5 (no seed converges). US-101 has 180 entering and fewer exiting changes, 80–103 entering after thinning.
+- *Sides read.* The follower sides read at 10 s fall from 85 to 9.4 / 6.8 under the fragment model, and to 34.6 under the vehicle model at F = 0.5. I-24's 89 of 1,488 (6 %) at 10 s is what fragment-level loss produces, not a property of its drivers.
+
+**(3) What the verdicts mean for the I-24 numbers** (transfers from another site, not corrections).
+- *VM X's refusal share, 48.5 % of the entering crossings,* reads low. On US-101 the same thinning lowers it by 18.5–29.3 points. On complete real data the model's acceptance is expected to refuse more of the real crossings than VM X measured. The lead-time term's 31.5 % stays a lower bound, loose by 21–30 points on US-101.
+- *VM Z's critical gaps* (0.46 / 0.92 s) and the proposals from them are *undetermined*: quoted as before, as expected directions.
+- *VM AC's follower `ratio_eq`, 1.14,* reads high. The same thinning raises US-101's by 0.37–0.62, so I-24's new follower plausibly starts below its static gap too (1.14 minus 0.37–0.62 is 0.52–0.77). Its leader `ratio_eq`, 0.92, is a bound, loose by 0.31–0.63 on US-101 (0.29–0.61 transferred).
+- *The follower `ratio_pop`* is undetermined by the rule. Its point shifts (+0.14, +0.20) exceed the +0.11 the rule named for "all of I-24's 0.87 against US-101's 0.76 is coverage", but both intervals reach just below 0. Not resolved.
+- *The partner speeds are robust,* so I-24's are usable as values.
+
+**(4) The partner speeds, real against model** (weave entering, all speeds, medians at the change; front vehicle's speed minus the rear one's).
+
+| side | model, fixture (WP-91) | US-101, complete | I-24 | rule |
+|---|---|---|---|---|
+| entrant minus its new follower | +0.72 (740 sides) | +1.01 (177) | +1.18 (1,488) | within 0.5 m/s of both: match |
+| new leader minus the entrant | +1.37 (594) | −0.40 (176) | −0.83 (1,612) | the other sign on both: real entrants close on their new leader, the model's pull back from it |
+
+- Real entrants cross faster than their new leader and accept a short gap ahead (VM AC). The model's entrant crosses 1.37 m/s slower than its new leader, into 1.3 times the normal gap. By the rule, the model's crossings differ in the speeds as well as in the gaps.
+- This is WP-84's and WP-86's finding seen from the gap: the model's entrants arrive at lane 1's speed through the loop that holds both lanes, so they cross slow, behind a lane-1 leader that is faster.
+
+**(5) What this hands on.**
+- *For item 1.* The crossing speed is what separates the model's entrants from real ones: they cross slower than their new leader, with a long gap ahead. WP-86 and WP-87 found what holds them (the two lanes' cooperation targets, at the vehicles' own equilibrium gaps). No weave rule measured so far lifts the entrants above lane 1's speed. The owner's decisions on item 1 stand.
+- *For the paper* (docs/PAPER_DRAFT.md §3.4). Coverage is the central methodological point, and this is its lane-change test: on a complete dataset thinned to I-24's coverage, every gap and refusal quantity moves by far more than its tolerance, in the expected direction. Partner speeds do not move.
+- *For every I-24 lane-change number:* quote gap and refusal quantities as one-sided (high or low) with US-101's shift as the scale; quote partner speeds as values.
+
+**Limitations.** One complete dataset (NGSIM US-101, raw, 180 entering changes), so the intervals are over thinning seeds on one sample. The untracked spells' shape is assumed; I-24's losses are correlated by camera and lane, which neither model has. The transfers carry US-101's traffic, not I-24's.
+
+**Session files (not committed):** the archive `vm_thin_x/final.tgz` and its extraction; `verdict91.py` and `verdict91.txt` (the rule applied mechanically).
+
+Every number above is from `artifacts/coverage_thinning_us101.json`, `artifacts/lane_change_relaxation_{i24,us101}.json`, WP-91's section, or the round's logs.
