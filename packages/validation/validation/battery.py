@@ -5,9 +5,11 @@ observations) and ``api.jobs.report_job`` (the same comparison on a set of
 finished API runs) need identical answers to the same questions about one
 completed replicate directory: what its measurement window is, how it scores
 against the corridor's observations (:mod:`validation.observed`), what
-backward wave speed a given detector reads on its field, and whether the run
+backward wave speed a given detector reads on its field, whether the run
 actually put its planned demand on the network at all
-(:func:`insertion_stats`). They live here so the two callers cannot drift
+(:func:`insertion_stats`), and whether the model itself misbehaved
+(:func:`collision_summary`, :func:`forced_change_summary`). They live here so
+the two callers cannot drift
 apart — the failure mode CLAUDE.md §0.1 is about, where a number in a report
 and the same number in an artifact were computed by two copies of the code.
 
@@ -46,6 +48,7 @@ from validation.criteria import CriteriaProfile
 from validation.fields import speed_field
 from validation.metrics import (
     Metrics,
+    ci,
     compute_metrics,
     n_window_rows,
     time_window_rows,
@@ -155,6 +158,34 @@ MISSED_EXIT_SHARE_THRESHOLD: Final[float] = 0.02
 
 #: Prefix of the degraded verdict a weave section's given-up exits produce.
 MISSED_EXIT_VERDICT_PREFIX: Final[str] = "exits given up: "
+
+#: Scale of the collision rate the battery artifact and the report print:
+#: collisions per this many vehicles that entered the network. Departed
+#: vehicles, not vehicle-km: the collision counter covers the whole run
+#: (warm-up included) and so does ``n_vehicles_departed``, both in the same
+#: ``meta.json``, whereas every distance the metrics measure is windowed.
+COLLISION_RATE_PER_VEHICLES: Final[int] = 1000
+
+#: Lane label of a logged collision event that names no lane.
+UNKNOWN_LANE: Final[str] = "unknown"
+
+#: What the battery artifact's ``collisions`` block means (docs/CONTRACTS.md,
+#: "Model integrity").
+COLLISION_DEFINITION: Final[str] = (
+    "total is the sum of meta.json n_collisions over the n_runs_recorded replicates "
+    "that record the counter: SUMO collision detections over the whole run, warm-up "
+    "included, a colliding pair counted once when it is first detected "
+    "(docs/CONTRACTS.md). per_run is the two-sided t-interval over those "
+    "per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / "
+    "rate.n_departed over the rate.n_runs replicates that record both n_collisions "
+    "and n_vehicles_departed (null when no vehicle departed). locations groups the "
+    "logged events (meta.json collisions: each run lists its first events only, "
+    "n_logged of total) by SUMO lane; edge is the lane id without its _<index> "
+    "suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the "
+    "replicates in which the lane had one. A replicate without the counter is not "
+    "recorded (per_seed n_collisions null), never zero; the block is null when no "
+    "replicate records it."
+)
 
 
 def load_meta(run_dir: str | Path) -> dict[str, Any]:
@@ -539,6 +570,221 @@ def degraded_verdict(verdict: str, weave_verdict: str) -> str:
     if verdict == OK_VERDICT:
         return weave_verdict
     return f"{verdict}; {weave_verdict}"
+
+
+def collision_count(meta: Mapping[str, Any]) -> int | None:
+    """``meta.json["n_collisions"]`` of one run; None when it is not recorded.
+
+    The runner records the counter since 2026-09-16 (docs/CONTRACTS.md); a
+    run written before then, or a hand-written fixture, carries no key and
+    its collision count is unknown, which is not the same as zero.
+
+    Args:
+        meta: Parsed ``meta.json`` (:func:`load_meta`).
+
+    Returns:
+        The count, or None.
+    """
+    return _count(meta, "n_collisions")
+
+
+def lane_edge(lane: str) -> str:
+    """The edge id of a SUMO lane id: the id without its ``_<index>`` suffix.
+
+    SUMO names lane ``k`` of edge ``e`` ``e_k``, junction-internal lanes
+    included (``:J3_0_0`` is lane 0 of ``:J3_0``). An id without a numeric
+    suffix is returned unchanged.
+
+    Args:
+        lane: SUMO lane id.
+
+    Returns:
+        The edge id.
+    """
+    edge, sep, index = lane.rpartition("_")
+    return edge if sep and edge and index.isdigit() else lane
+
+
+def _run_label(meta: Mapping[str, Any], position: int) -> str | int:
+    """A run's default label: its seed, else its position in the run set."""
+    seed = meta.get("seed")
+    if isinstance(seed, (str, int)) and not isinstance(seed, bool):
+        return seed
+    return position
+
+
+def collision_summary(
+    metas: Sequence[Mapping[str, Any]], *, labels: Sequence[str | int] | None = None
+) -> dict[str, Any] | None:
+    """Collisions of a run set, pooled over its runs' ``meta.json``.
+
+    A collision in a car-following simulation is a model defect, not a
+    traffic outcome. The runner records the exact count (``n_collisions``)
+    and the first events (``collisions``: ``t, collider, victim, type, lane,
+    pos_m``); docs/CONTRACTS.md says what one count is. This is the one
+    reading the corridor battery artifact and the report both print
+    (:data:`COLLISION_DEFINITION` is the artifact's statement of it).
+
+    Args:
+        metas: One parsed ``meta.json`` per run (:func:`load_meta`).
+        labels: One label per run (the battery's seeds, the report's run
+            names); default each meta's ``seed``, else its position.
+
+    Returns:
+        None when no run records ``n_collisions`` (not recorded is not
+        zero); otherwise ``{n_runs, n_runs_recorded, runs_not_recorded,
+        total, n_runs_with_collisions, runs_with_collisions: [{run, n}],
+        per_run: {mean, lo95, hi95, n, underpowered}, rate: {per_vehicles,
+        value, n_collisions, n_departed, n_runs}, n_logged, locations:
+        [{lane, edge, n, pos_m_min, pos_m_max, runs}], definition}``.
+        ``per_run`` is :func:`validation.metrics.ci` over the recorded
+        counts; ``rate.value`` is ``per_vehicles · n_collisions /
+        n_departed`` over the runs that record both counters (NaN when
+        none departed); ``locations`` groups the logged events by lane, most
+        collisions first, then by lane id; ``runs`` lists labels in
+        first-seen order.
+
+    Raises:
+        ValueError: ``labels`` has a different length from ``metas``.
+    """
+    if labels is not None and len(labels) != len(metas):
+        raise ValueError(f"{len(labels)} labels for {len(metas)} runs")
+    names: list[str | int] = (
+        list(labels) if labels is not None else [_run_label(m, i) for i, m in enumerate(metas)]
+    )
+    counts: list[int] = []
+    not_recorded: list[str | int] = []
+    with_collisions: list[dict[str, Any]] = []
+    rate_collisions = rate_departed = rate_runs = 0
+    n_logged = 0
+    locations: dict[str, dict[str, Any]] = {}
+    for name, meta in zip(names, metas, strict=True):
+        n = collision_count(meta)
+        if n is None:
+            not_recorded.append(name)
+            continue
+        counts.append(n)
+        if n > 0:
+            with_collisions.append({"run": name, "n": n})
+        departed = _count(meta, "n_vehicles_departed")
+        if departed is not None:
+            rate_collisions += n
+            rate_departed += departed
+            rate_runs += 1
+        events = meta.get("collisions")
+        if not isinstance(events, list):
+            continue
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            n_logged += 1
+            lane = str(event.get("lane") or "") or UNKNOWN_LANE
+            row = locations.setdefault(
+                lane,
+                {
+                    "lane": lane,
+                    "edge": lane_edge(lane),
+                    "n": 0,
+                    "pos_m_min": None,
+                    "pos_m_max": None,
+                    "runs": [],
+                },
+            )
+            row["n"] += 1
+            pos = event.get("pos_m")
+            if isinstance(pos, (int, float)) and not isinstance(pos, bool) and math.isfinite(pos):
+                p = float(pos)
+                row["pos_m_min"] = p if row["pos_m_min"] is None else min(row["pos_m_min"], p)
+                row["pos_m_max"] = p if row["pos_m_max"] is None else max(row["pos_m_max"], p)
+            if name not in row["runs"]:
+                row["runs"].append(name)
+    if not counts:
+        return None
+    interval = ci([float(c) for c in counts])
+    return {
+        "n_runs": len(metas),
+        "n_runs_recorded": len(counts),
+        "runs_not_recorded": not_recorded,
+        "total": sum(counts),
+        "n_runs_with_collisions": len(with_collisions),
+        "runs_with_collisions": with_collisions,
+        "per_run": {
+            "mean": interval.mean,
+            "lo95": interval.lo95,
+            "hi95": interval.hi95,
+            "n": interval.n,
+            "underpowered": interval.underpowered,
+        },
+        "rate": {
+            "per_vehicles": COLLISION_RATE_PER_VEHICLES,
+            "value": (
+                COLLISION_RATE_PER_VEHICLES * rate_collisions / rate_departed
+                if rate_departed > 0
+                else math.nan
+            ),
+            "n_collisions": rate_collisions,
+            "n_departed": rate_departed,
+            "n_runs": rate_runs,
+        },
+        "n_logged": n_logged,
+        "locations": sorted(locations.values(), key=lambda r: (-r["n"], r["lane"])),
+        "definition": COLLISION_DEFINITION,
+    }
+
+
+#: Run-level model counters :func:`forced_change_summary` reads: the
+#: ``meta.json`` list, the model's name in text, and the counters whose sum is
+#: the model's completed changes.
+_FORCED_CHANGE_SOURCES: Final[tuple[tuple[str, str, tuple[str, ...]], ...]] = (
+    ("scripted_merges", "scripted merge", ("n_changed",)),
+    ("weave_sections", "weave section", ("n_changed_in", "n_changed_out")),
+)
+
+
+def forced_change_summary(metas: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Forced lane changes per scripted merge and weaving section, pooled.
+
+    A scripted merge (``meta.json["scripted_merges"]``) or weaving section
+    (``["weave_sections"]``) completes some of its changes under SUMO's forced
+    lane-change mode, which refuses a change only on an overlap
+    (docs/CONTRACTS.md, ``merge_params["force_guard"]``): the path by which a
+    merge model's changes go around SUMO's own lane-change safety checks,
+    and the one the I-94 WB battery's collisions came through (WP-93).
+
+    Args:
+        metas: One parsed ``meta.json`` per run.
+
+    Returns:
+        One row per model instance, keyed by its on-ramp, in first-seen
+        order: ``{model, ramp, n_runs, n_forced, n_changed}`` with ``n_forced``
+        = Σ ``n_forced`` and ``n_changed`` = Σ completed changes
+        (``n_changed`` of a scripted merge, ``n_changed_in + n_changed_out``
+        of a weave section) over the ``n_runs`` runs that record both. Empty
+        when no run lists either model: it says nothing, it does not claim
+        zero.
+    """
+    rows: dict[tuple[str, str], dict[str, Any]] = {}
+    for meta in metas:
+        for key, model, changed_keys in _FORCED_CHANGE_SOURCES:
+            raw = meta.get(key)
+            if not isinstance(raw, list):
+                continue
+            for position, entry in enumerate(raw):
+                if not isinstance(entry, dict):
+                    continue
+                ramp = str(entry.get("ramp", "") or "") or f"{model} {position}"
+                row = rows.setdefault(
+                    (model, ramp),
+                    {"model": model, "ramp": ramp, "n_runs": 0, "n_forced": 0, "n_changed": 0},
+                )
+                forced = _count(entry, "n_forced")
+                changed = [_count(entry, k) for k in changed_keys]
+                if forced is None or any(c is None for c in changed):
+                    continue
+                row["n_runs"] += 1
+                row["n_forced"] += forced
+                row["n_changed"] += sum(c for c in changed if c is not None)
+    return list(rows.values())
 
 
 def measurement_window(meta: Mapping[str, Any]) -> tuple[float, float]:

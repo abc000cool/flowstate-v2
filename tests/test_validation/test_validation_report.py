@@ -10,6 +10,7 @@ import json
 import math
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -271,7 +272,12 @@ class TestGenerateReport:
         # Every section of the report is inside this one check, including the
         # strategy comparison, whose column headers and cells are numbers-in-
         # context and must therefore all arrive through the render context.
-        for section in ("## Metrics", "### Controller minus baseline", "## Strategy comparison"):
+        for section in (
+            "## Model integrity",
+            "## Metrics",
+            "### Controller minus baseline",
+            "## Strategy comparison",
+        ):
             assert section in template
         # Strip jinja expressions/statements; no digits may remain.
         body = re.sub(r"\{\{.*?\}\}|\{%.*?%\}", "", template, flags=re.S)
@@ -421,6 +427,206 @@ class TestWeaveExitLines:
         out = tmp_path / "report.md"
         generate_report(micro_run_set, out)
         assert "Weave exits at " not in out.read_text()
+
+
+def _section(text: str, heading: str) -> str:
+    """The markdown between ``heading`` and the next level-2 heading."""
+    start = text.index(heading)
+    end = text.find("\n## ", start + len(heading))
+    return text[start : len(text) if end < 0 else end]
+
+
+def _limitations(text: str) -> list[str]:
+    """The Limitations section's bullets, continuation lines joined."""
+    items: list[str] = []
+    for line in _section(text, "## Limitations").splitlines()[1:]:
+        if line.startswith("- "):
+            items.append(line[2:])
+        elif line.startswith("  ") and items:
+            items[-1] += " " + line.strip()
+    return items
+
+
+class TestModelIntegrity:
+    """Collisions and forced lane changes, read from the runs' metadata."""
+
+    @staticmethod
+    def _add(
+        run_dir: Path,
+        n: int | None,
+        events: Sequence[tuple[str, float]] = (),
+        departed: int = 1000,
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        meta = json.loads((run_dir / "meta.json").read_text())
+        meta["n_vehicles_planned"] = 1000
+        meta["n_vehicles_departed"] = departed
+        if n is not None:
+            meta["n_collisions"] = n
+            meta["collisions"] = [
+                {
+                    "t": 100.0,
+                    "collider": "f",
+                    "victim": "l",
+                    "type": "collision",
+                    "lane": lane,
+                    "pos_m": pos,
+                }
+                for lane, pos in events
+            ]
+        meta.update(extra or {})
+        (run_dir / "meta.json").write_text(json.dumps(meta))
+
+    def _report(self, root: Path, tmp_path: Path) -> str:
+        out = tmp_path / "report" / "report.md"
+        generate_report(root, out)
+        return out.read_text()
+
+    def test_counts_rate_runs_and_locations(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        run_set = root / "cafe01234567"
+        self._add(
+            _write_run(run_set / "1", seed=1),
+            3,
+            [("-178547099#2_1", 40.5), ("-178547099#2_1", 10.0), (":J3_0_0", 2.0)],
+        )
+        self._add(_write_run(run_set / "2", seed=2), 0)
+        self._add(_write_run(run_set / "3", seed=3), 1, [("e2_0", 12.0)], departed=500)
+        text = self._report(root, tmp_path)
+        section = _section(text, "## Model integrity")
+        # before the acceptance criteria, so it is read before any verdict
+        assert text.index("## Model integrity") < text.index("## Acceptance criteria")
+        # 4 collisions; counts (3, 0, 1): mean 4/3 with the t-interval over 3 runs
+        half = student_t.ppf(0.975, 2) * math.sqrt(7.0 / 3.0) / math.sqrt(3.0)
+        mean = 4.0 / 3.0
+        assert (
+            f"- Collisions: 4 over 3 run(s) that record the counter; per run {mean:.4g} "
+            f"[{mean - half:.4g}, {mean + half:.4g}] (two-sided 95 % t-interval, n = 3, "
+            "underpowered); 1.6 per 1,000 departed vehicles (4 over 2500 departed in 3 "
+            "run(s), whole runs including warm-up)." in section
+        )
+        assert "- Runs with collisions: cafe01234567/1 (3), cafe01234567/3 (1)" in section
+        table = _table_after(section, "| Lane |")
+        assert table["`-178547099#2_1`"] == [
+            "`-178547099#2_1`",
+            "`-178547099#2`",
+            "2",
+            "10.0–40.5",
+            "cafe01234567/1",
+        ]
+        assert table["`:J3_0_0`"][1:] == ["`:J3_0`", "1", "2.0", "cafe01234567/1"]
+        assert table["`e2_0`"][1:] == ["`e2`", "1", "12.0", "cafe01234567/3"]
+        assert "counted but not located" not in section
+
+    def test_collisions_head_the_limitations_with_where(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        run_set = root / "cafe01234567"
+        self._add(_write_run(run_set / "1", seed=1), 2, [("e1_0", 5.0), ("e1_0", 9.0)])
+        self._add(_write_run(run_set / "2", seed=2), 0)
+        first = _limitations(self._report(root, tmp_path))[0]
+        assert first == (
+            "This run set contains 2 SUMO collision(s) in 1 of 2 run(s) "
+            "(cafe01234567/1 (2)), at lane `e1_0` (edge `e1`, 5.0–9.0 m): 2. A collision is "
+            "a model defect, not a traffic outcome, and every metric of those runs includes "
+            "the vehicles involved; see Model integrity."
+        )
+
+    def test_the_limitations_line_names_the_top_lanes_and_the_rest(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        events = [(f"e{k}_0", float(k)) for k in range(7)]
+        self._add(_write_run(root / "cafe01234567" / "1", seed=1), 60, events)
+        text = self._report(root, tmp_path)
+        first = _limitations(text)[0]
+        assert "in 1 of 1 run(s)" in first
+        assert "lane `e4_0` (edge `e4`, 4.0 m): 1" in first
+        assert "`e5_0`" not in first
+        assert "2 more lane(s) in the Model integrity table; 53 not located." in first
+        section = _section(text, "## Model integrity")
+        assert len(_table_after(section, "| Lane |")) == 7  # every lane, not only the top
+        assert (
+            "The table places the 7 collision(s) the runs' metadata logs; 53 more are "
+            "counted but not located" in section
+        )
+
+    def test_zero_collisions_is_a_recorded_zero_without_a_limitation(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            self._add(_write_run(root / "cafe01234567" / str(seed), seed=seed), 0)
+        text = self._report(root, tmp_path)
+        section = _section(text, "## Model integrity")
+        assert "- Collisions: 0 over 2 run(s) that record the counter; per run 0 [0, 0]" in (
+            section
+        )
+        assert "0 per 1,000 departed vehicles (0 over 2000 departed in 2 run(s)" in section
+        assert "Runs with collisions" not in section
+        assert "| Lane |" not in section
+        assert not any("collision" in item.lower() for item in _limitations(text))
+
+    def test_runs_without_the_counter_are_not_recorded_never_zero(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        text = self._report(micro_run_set, tmp_path)
+        section = _section(text, "## Model integrity")
+        assert "- Collisions: not recorded — no run in this set carries the collision counter" in (
+            section
+        )
+        assert not re.search(r"Collisions: 0\b", text)
+        assert "| Lane |" not in section
+        assert _limitations(text)[0] == (
+            "No run in this set records a collision count, so a collision-free simulation "
+            "is not established."
+        )
+
+    def test_a_run_without_the_counter_is_named(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        self._add(_write_run(root / "cafe01234567" / "1", seed=1), 1, [("e1_0", 3.0)])
+        _write_run(root / "cafe01234567" / "2", seed=2)  # written before the counter
+        text = self._report(root, tmp_path)
+        section = _section(text, "## Model integrity")
+        assert (
+            "- Collisions: 1 over 1 run(s) that record the counter, not recorded for 1 "
+            "run(s) (cafe01234567/2); per run 1 [NaN, NaN]" in section
+        )
+        # the unrecorded run's departures are not in the rate
+        assert "1 per 1,000 departed vehicles (1 over 1000 departed in 1 run(s)" in section
+        items = _limitations(text)
+        assert items[0].startswith("This run set contains 1 SUMO collision(s) in 1 of 1 run(s)")
+        assert items[1] == (
+            "Collisions were not recorded for 1 of 2 run(s) (cafe01234567/2); a "
+            "collision-free simulation is not established for them."
+        )
+
+    def test_forced_lane_changes_are_stated_per_model(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        extra = {
+            "scripted_merges": [{"ramp": "M-ON", "n_changed": 300, "n_forced": 20}],
+            "weave_sections": [
+                {"ramp": "W-ON", "n_changed_in": 100, "n_changed_out": 50, "n_forced": 5}
+            ],
+        }
+        for seed in (1, 2):
+            self._add(_write_run(root / "c" / str(seed), seed=seed), 0, extra=extra)
+        section = _section(self._report(root, tmp_path), "## Model integrity")
+        assert (
+            "- Forced lane changes at M-ON (scripted merge): 40 of 600 completed change(s) "
+            "over 2 run(s) were made under SUMO's forced lane-change mode" in section
+        )
+        assert "- Forced lane changes at W-ON (weave section): 10 of 300 completed" in section
+
+    def test_the_pdf_parser_reads_the_section(self, tmp_path: Path):
+        from validation.report_pdf import parse_markdown
+
+        root = tmp_path / "runs"
+        self._add(_write_run(root / "c" / "1", seed=1), 1, [("e1_0", 3.0)])
+        blocks = parse_markdown(self._report(root, tmp_path))
+        start = next(
+            i for i, b in enumerate(blocks) if b.kind == "heading" and b.text == "Model integrity"
+        )
+        assert blocks[start].level == 2
+        kinds = [b.kind for b in blocks[start + 1 : start + 4]]
+        assert kinds == ["paragraph", "bullets", "table"]
+        assert blocks[start + 2].items[0].startswith("Collisions: 1 over 1 run(s)")
+        assert blocks[start + 3].rows[1] == ["e1_0", "e1", "1", "3.0", "c/1"]
 
 
 class TestWaveSpeedCriterion:

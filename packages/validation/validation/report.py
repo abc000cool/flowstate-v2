@@ -15,6 +15,16 @@ beside the report. Seeded-perturbation runs are labeled prominently
 (CLAUDE.md §0.2). Macro-only run sets are refused (CLAUDE.md §5.6): the
 screening tier cannot support validation claims.
 
+A **Model integrity** section states what the runs' metadata records about
+the simulation misbehaving (:func:`_integrity_context`): SUMO collisions —
+count, per-run interval, rate per departed vehicles, the runs they occurred
+in and a location table by lane (:func:`validation.battery.collision_summary`,
+the reading the corridor battery artifact carries) — and the lane changes
+each scripted merge or weaving section forced past SUMO's lane-change safety
+checks (:func:`validation.battery.forced_change_summary`). A run set with
+collisions also gets a first limitations bullet naming them and where they
+happened; a run without the counter is "not recorded", never zero.
+
 Every metric, figure and criterion describes the same measurement window:
 each run's recorded period minus its configured warm-up
 (:func:`validation.metrics.warmup_from_meta`). The wave-speed criterion is
@@ -69,6 +79,8 @@ from validation.battery import (
     STARVED_RAMP_FRACTION,
     STARVED_RAMP_MIN_PLANNED,
     aggregate_insertion,
+    collision_summary,
+    forced_change_summary,
     insertion_stats,
     records_insertion,
     weave_exit_summary,
@@ -1008,6 +1020,155 @@ def _weave_exit_notes(micro_runs: list[_RunInfo]) -> list[str]:
     return notes
 
 
+#: Collision locations the limitations bullet names before pointing at the
+#: Model integrity table for the rest (the table lists every one).
+LIMITATION_MAX_LOCATIONS = 5
+
+
+def _position_text(row: Mapping[str, Any]) -> str:
+    """``lo–hi`` [m] of one collision location row ('—' when none was logged)."""
+    lo, hi = row.get("pos_m_min"), row.get("pos_m_max")
+    if lo is None or hi is None:
+        return _fmt(None)
+    if lo == hi:
+        return f"{float(lo):.1f}"
+    return f"{float(lo):.1f}–{float(hi):.1f}"
+
+
+def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, Any]:
+    """The Model integrity section and its limitations bullets.
+
+    Collisions are pooled by :func:`validation.battery.collision_summary`
+    over every micro run's ``meta.json`` — the same reading the corridor
+    battery artifact's ``collisions`` block carries — with each run labelled
+    by its directory under the run set, and forced lane changes by
+    :func:`validation.battery.forced_change_summary`. A run set whose
+    metadata carries no collision counter is "not recorded", never zero,
+    and says so in the limitations too; a run set with collisions gets a
+    limitations bullet naming the count, the runs and the lanes.
+
+    Args:
+        micro_runs: The run set's microscopic runs.
+        run_set: The run-set root (run labels are paths relative to it).
+
+    Returns:
+        ``{collision_line, collision_runs, forced_lines, locations,
+        location_note, limitations}`` for the template; every number in them
+        is formatted from the two summaries.
+    """
+    names = [str(r.path.relative_to(run_set)) for r in micro_runs]
+    metas = [r.meta for r in micro_runs]
+    summary = collision_summary(metas, labels=names)
+    forced_lines: list[str] = []
+    for row in forced_change_summary(metas):
+        head = f"Forced lane changes at {row['ramp']} ({row['model']}): "
+        if row["n_runs"] == 0:
+            forced_lines.append(head + "not recorded (no run records the model's counters).")
+            continue
+        forced_lines.append(
+            head + f"{row['n_forced']} of {row['n_changed']} completed change(s) over "
+            f"{row['n_runs']} run(s) were made under SUMO's forced lane-change mode, in which "
+            "SUMO refuses a change only on an overlap — the path around its own lane-change "
+            "safety checks."
+        )
+
+    if summary is None:
+        return {
+            "collision_line": (
+                "not recorded — no run in this set carries the collision counter "
+                "(meta.json n_collisions; runs written before it existed)."
+            ),
+            "collision_runs": "",
+            "forced_lines": forced_lines,
+            "locations": [],
+            "location_note": None,
+            "limitations": [
+                "No run in this set records a collision count, so a collision-free "
+                "simulation is not established."
+            ],
+        }
+
+    total = int(summary["total"])
+    not_recorded = [str(n) for n in summary["runs_not_recorded"]]
+    per = summary["per_run"]
+    line = f"{total} over {summary['n_runs_recorded']} run(s) that record the counter"
+    if not_recorded:
+        line += f", not recorded for {len(not_recorded)} run(s) ({', '.join(not_recorded)})"
+    line += (
+        f"; per run {_fmt(per['mean'])} [{_fmt(per['lo95'])}, {_fmt(per['hi95'])}] "
+        f"(two-sided {_fmt(CI_LEVEL * _PERCENT, 3)} % t-interval, n = {per['n']}"
+        + (", underpowered" if per["underpowered"] else "")
+        + ")"
+    )
+    rate = summary["rate"]
+    if rate["n_runs"] == 0:
+        line += "; no rate: no run that records collisions records its departed vehicles"
+    elif not math.isfinite(float(rate["value"])):
+        line += "; no rate: no vehicle departed"
+    else:
+        line += (
+            f"; {_fmt(float(rate['value']), 3)} per {int(rate['per_vehicles']):,} departed "
+            f"vehicles ({rate['n_collisions']} over {rate['n_departed']} departed in "
+            f"{rate['n_runs']} run(s), whole runs including warm-up)"
+        )
+    line += "."
+    runs_text = ", ".join(f"{w['run']} ({w['n']})" for w in summary["runs_with_collisions"])
+    rows = summary["locations"]
+    unlocated = total - int(summary["n_logged"])
+    location_note = (
+        f"The table places the {summary['n_logged']} collision(s) the runs' metadata logs; "
+        f"{unlocated} more are counted but not located (a run's meta.json lists only its "
+        "first events)."
+        if unlocated > 0
+        else None
+    )
+
+    limitations: list[str] = []
+    if total > 0:
+        shown = rows[:LIMITATION_MAX_LOCATIONS]
+        places = [
+            f"lane `{r['lane']}` (edge `{r['edge']}`"
+            + (f", {_position_text(r)} m" if r.get("pos_m_min") is not None else "")
+            + f"): {r['n']}"
+            for r in shown
+        ]
+        if len(rows) > len(shown):
+            places.append(f"{len(rows) - len(shown)} more lane(s) in the Model integrity table")
+        if unlocated > 0:
+            places.append(f"{unlocated} not located")
+        where = "; ".join(places) if places else "no logged location"
+        limitations.append(
+            f"This run set contains {total} SUMO collision(s) in "
+            f"{summary['n_runs_with_collisions']} of {summary['n_runs_recorded']} run(s) "
+            f"({runs_text}), at {where}. A collision is a model defect, not a traffic "
+            "outcome, and every metric of those runs includes the vehicles involved; see "
+            "Model integrity."
+        )
+    if not_recorded:
+        limitations.append(
+            f"Collisions were not recorded for {len(not_recorded)} of {summary['n_runs']} "
+            f"run(s) ({', '.join(not_recorded)}); a collision-free simulation is not "
+            "established for them."
+        )
+    return {
+        "collision_line": line,
+        "collision_runs": runs_text,
+        "forced_lines": forced_lines,
+        "locations": [
+            {
+                "lane": str(r["lane"]),
+                "edge": str(r["edge"]),
+                "n": str(r["n"]),
+                "pos": _position_text(r),
+                "runs": ", ".join(str(x) for x in r["runs"]),
+            }
+            for r in rows
+        ],
+        "location_note": location_note,
+        "limitations": limitations,
+    }
+
+
 def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for c in results:
@@ -1264,7 +1425,9 @@ def generate_report(
     criteria, renders speed-contour figures beside the report, and writes
     the markdown report. With a baseline group and at least one controlled
     group the report also carries a controller-minus-baseline contrast table
-    (:func:`contrast`) and seed-matched contour pairs. See the module
+    (:func:`contrast`) and seed-matched contour pairs. The Model integrity
+    section (collisions and forced lane changes, :func:`_integrity_context`)
+    is read from the micro runs' ``meta.json`` alone. See the module
     docstring for content guarantees.
 
     The wave-speed criterion is fed by the unseeded replicates of the
@@ -1517,6 +1680,7 @@ def generate_report(
         measurement_note=_measurement_note(micro_runs, measure_span, span is None),
         insertion_note=_insertion_note(micro_runs),
         weave_exit_notes=_weave_exit_notes(micro_runs),
+        integrity=_integrity_context(micro_runs, run_set),
         calibrations=calibrations,
         observed=(
             _observed_rows(observed, p.wave_speed_band_kmh) if observed is not None else None

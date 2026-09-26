@@ -66,6 +66,33 @@ not calibrated claims.
 {% endfor %}
 {% endif %}
 
+## Model integrity
+
+What the runs' metadata records about the simulation itself misbehaving
+(docs/CONTRACTS.md). A collision in a car-following simulation is a model
+defect, not a traffic outcome. A run whose metadata carries no counter is
+reported as not recorded, never as zero.
+
+- Collisions: {{ integrity.collision_line }}
+{% if integrity.collision_runs %}
+- Runs with collisions: {{ integrity.collision_runs }}
+{% endif %}
+{% for line in integrity.forced_lines %}
+- {{ line }}
+{% endfor %}
+{% if integrity.locations %}
+
+| Lane | Edge | Collisions logged | Position along the lane [m] | Runs |
+|---|---|---|---|---|
+{% for loc in integrity.locations %}
+| `{{ loc.lane }}` | `{{ loc.edge }}` | {{ loc.n }} | {{ loc.pos }} | {{ loc.runs }} |
+{% endfor %}
+{% endif %}
+{% if integrity.location_note %}
+
+{{ integrity.location_note }}
+{% endif %}
+
 ## Acceptance criteria
 
 | Criterion | Value | Threshold | Evaluated | Result |
@@ -193,6 +220,9 @@ sections the per-metric detail.
 
 ## Limitations
 
+{% for line in integrity.limitations %}
+- {{ line }}
+{% endfor %}
 - Results cover a single corridor/scenario family; transfer to other
   corridors is not established.
 - Model-form uncertainty (IDM/SUMO car-following assumptions, effective

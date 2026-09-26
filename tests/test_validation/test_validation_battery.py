@@ -15,8 +15,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from scipy.stats import t as student_t
 
 from validation.battery import (
+    COLLISION_DEFINITION,
+    COLLISION_RATE_PER_VEHICLES,
     HEALTHY_DEPARTED_FRACTION,
     MISSED_EXIT_SHARE_THRESHOLD,
     NO_PLAN_VERDICT,
@@ -25,11 +28,17 @@ from validation.battery import (
     SCORE_WORKER_BASE_BYTES,
     SCORE_WORKER_BYTES_PER_ROW,
     STARVED_RAMP_MIN_PLANNED,
+    UNKNOWN_LANE,
     InsertionStats,
     aggregate_insertion,
     available_memory_bytes,
+    collision_count,
+    collision_summary,
     degraded_verdict,
+    forced_change_summary,
     insertion_stats,
+    json_safe,
+    lane_edge,
     records_insertion,
     score_pool_size,
     score_worker_bytes,
@@ -187,6 +196,249 @@ class TestDegradedVerdict:
         assert degraded_verdict("starved ramps: A-ON", "exits given up: 7.5 % at B-ON") == (
             "starved ramps: A-ON; exits given up: 7.5 % at B-ON"
         )
+
+
+def _collision(lane: str, pos_m: float, t: float = 10.0) -> dict[str, Any]:
+    """A ``meta.json["collisions"][i]`` event as the runner logs it."""
+    return {
+        "t": t,
+        "collider": "f",
+        "victim": "l",
+        "type": "collision",
+        "lane": lane,
+        "pos_m": pos_m,
+    }
+
+
+def _collision_meta(
+    n: int | None,
+    events: list[dict[str, Any]] | None = None,
+    departed: int | None = PLANNED,
+    seed: int = 1,
+) -> dict[str, Any]:
+    """A meta.json fragment carrying what the collision summary reads."""
+    meta: dict[str, Any] = {"seed": seed}
+    if departed is not None:
+        meta["n_vehicles_departed"] = departed
+    if n is not None:
+        meta["n_collisions"] = n
+        meta["collisions"] = events if events is not None else []
+    return meta
+
+
+class TestLaneEdge:
+    def test_the_lane_index_is_dropped(self) -> None:
+        assert lane_edge("-178547099#2_1") == "-178547099#2"
+        assert lane_edge("e1_0") == "e1"
+
+    def test_internal_lanes_keep_their_edge(self) -> None:
+        assert lane_edge(":J3_0_0") == ":J3_0"
+
+    def test_an_id_without_an_index_is_unchanged(self) -> None:
+        assert lane_edge("edge") == "edge"
+        assert lane_edge("edge_a") == "edge_a"
+        assert lane_edge("_0") == "_0"
+
+
+def _three_runs() -> list[dict[str, Any]]:
+    """Three runs: 3 collisions (two lanes), none, 1 (a third lane)."""
+    return [
+        _collision_meta(
+            3,
+            [_collision("e1_0", 40.5), _collision("e1_0", 10.0), _collision(":J3_0_0", 2.0)],
+            seed=11,
+        ),
+        _collision_meta(0, seed=12),
+        _collision_meta(1, [_collision("e2_1", 12.0)], departed=500, seed=13),
+    ]
+
+
+class TestCollisionSummary:
+    """Collisions pooled over a run set: counts, interval, rate and places."""
+
+    def test_total_runs_and_hand_computed_interval(self) -> None:
+        out = collision_summary(_three_runs())
+        assert out is not None
+        assert out["n_runs"] == 3 and out["n_runs_recorded"] == 3
+        assert out["runs_not_recorded"] == []
+        assert out["total"] == 4
+        assert out["n_runs_with_collisions"] == 2
+        assert out["runs_with_collisions"] == [{"run": 11, "n": 3}, {"run": 13, "n": 1}]
+        # counts (3, 0, 1): mean 4/3, s = sqrt(7/3), half = t(0.975, 2) * s / sqrt(3)
+        half = student_t.ppf(0.975, 2) * math.sqrt(7.0 / 3.0) / math.sqrt(3.0)
+        per = out["per_run"]
+        assert per["mean"] == pytest.approx(4.0 / 3.0)
+        assert per["lo95"] == pytest.approx(4.0 / 3.0 - half)
+        assert per["hi95"] == pytest.approx(4.0 / 3.0 + half)
+        assert per["n"] == 3 and per["underpowered"] is True
+
+    def test_rate_per_thousand_departed_vehicles(self) -> None:
+        out = collision_summary(_three_runs())
+        assert out is not None
+        rate = out["rate"]
+        assert COLLISION_RATE_PER_VEHICLES == rate["per_vehicles"] == 1000
+        assert (rate["n_collisions"], rate["n_departed"], rate["n_runs"]) == (4, 2500, 3)
+        assert rate["value"] == pytest.approx(1000.0 * 4 / 2500)
+
+    def test_locations_are_grouped_by_lane_most_first(self) -> None:
+        out = collision_summary(_three_runs())
+        assert out is not None
+        assert out["n_logged"] == 4
+        assert out["locations"] == [
+            {
+                "lane": "e1_0",
+                "edge": "e1",
+                "n": 2,
+                "pos_m_min": 10.0,
+                "pos_m_max": 40.5,
+                "runs": [11],
+            },
+            {
+                "lane": ":J3_0_0",
+                "edge": ":J3_0",
+                "n": 1,
+                "pos_m_min": 2.0,
+                "pos_m_max": 2.0,
+                "runs": [11],
+            },
+            {
+                "lane": "e2_1",
+                "edge": "e2",
+                "n": 1,
+                "pos_m_min": 12.0,
+                "pos_m_max": 12.0,
+                "runs": [13],
+            },
+        ]
+
+    def test_labels_name_the_runs(self) -> None:
+        out = collision_summary(_three_runs(), labels=["a/1", "a/2", "a/3"])
+        assert out is not None
+        assert [w["run"] for w in out["runs_with_collisions"]] == ["a/1", "a/3"]
+        assert [loc["runs"] for loc in out["locations"]] == [["a/1"], ["a/1"], ["a/3"]]
+        with pytest.raises(ValueError, match="2 labels for 3 runs"):
+            collision_summary(_three_runs(), labels=["a", "b"])
+
+    def test_one_lane_hit_in_two_runs_lists_both(self) -> None:
+        metas = [
+            _collision_meta(1, [_collision("e1_0", 5.0)], seed=1),
+            _collision_meta(2, [_collision("e1_0", 7.0), _collision("e1_0", 3.0)], seed=2),
+        ]
+        out = collision_summary(metas)
+        assert out is not None
+        (row,) = out["locations"]
+        assert (row["n"], row["pos_m_min"], row["pos_m_max"], row["runs"]) == (3, 3.0, 7.0, [1, 2])
+
+    def test_no_run_recorded_is_none_not_zero(self) -> None:
+        assert collision_summary([_collision_meta(None), _collision_meta(None)]) is None
+        assert collision_summary([]) is None
+
+    def test_a_run_without_the_counter_is_named_and_left_out(self) -> None:
+        metas = [_collision_meta(2, [_collision("e1_0", 1.0)] * 2, seed=1), _meta()]
+        out = collision_summary(metas, labels=["r1", "r2"])
+        assert out is not None
+        assert out["n_runs"] == 2 and out["n_runs_recorded"] == 1
+        assert out["runs_not_recorded"] == ["r2"]
+        assert out["total"] == 2
+        assert out["per_run"]["n"] == 1
+        assert math.isnan(out["per_run"]["lo95"])
+        # the unrecorded run's departures are not in the rate's denominator
+        assert out["rate"]["n_departed"] == PLANNED and out["rate"]["n_runs"] == 1
+
+    def test_zero_collisions_recorded_is_a_zero(self) -> None:
+        out = collision_summary([_collision_meta(0), _collision_meta(0, seed=2)])
+        assert out is not None
+        assert out["total"] == 0 and out["n_runs_with_collisions"] == 0
+        assert out["per_run"]["mean"] == 0.0
+        assert (out["per_run"]["lo95"], out["per_run"]["hi95"]) == (0.0, 0.0)
+        assert out["rate"]["value"] == 0.0
+        assert out["locations"] == [] and out["n_logged"] == 0
+
+    def test_counted_events_beyond_the_log_are_not_located(self) -> None:
+        out = collision_summary([_collision_meta(60, [_collision("e1_0", 1.0)] * 50)])
+        assert out is not None
+        assert out["total"] == 60 and out["n_logged"] == 50
+        assert out["locations"][0]["n"] == 50
+
+    def test_a_rate_needs_departures(self) -> None:
+        no_counter = collision_summary([_collision_meta(1, departed=None)])
+        assert no_counter is not None
+        assert no_counter["rate"]["n_runs"] == 0 and math.isnan(no_counter["rate"]["value"])
+        none_departed = collision_summary([_collision_meta(0, departed=0)])
+        assert none_departed is not None
+        assert none_departed["rate"]["n_runs"] == 1
+        assert math.isnan(none_departed["rate"]["value"])
+
+    def test_malformed_events_are_skipped_and_unnamed_lanes_labelled(self) -> None:
+        events: list[Any] = ["x", {"t": 1.0, "pos_m": None}, {"lane": "e1_0", "pos_m": math.nan}]
+        out = collision_summary([_collision_meta(3, events)])
+        assert out is not None
+        assert out["n_logged"] == 2
+        by_lane = {loc["lane"]: loc for loc in out["locations"]}
+        assert by_lane[UNKNOWN_LANE]["edge"] == UNKNOWN_LANE
+        assert by_lane["e1_0"]["pos_m_min"] is None and by_lane["e1_0"]["pos_m_max"] is None
+
+    def test_collision_count_reads_the_counter_only(self) -> None:
+        assert collision_count(_collision_meta(4)) == 4
+        assert collision_count(_collision_meta(0)) == 0
+        assert collision_count(_meta()) is None
+        assert collision_count({"n_collisions": True}) is None
+
+    def test_the_summary_is_strict_json_after_json_safe(self) -> None:
+        out = collision_summary([_collision_meta(1, [_collision("e1_0", 1.0)], departed=0)])
+        text = json.dumps(json_safe(out), allow_nan=False)
+        back = json.loads(text)
+        assert back["rate"]["value"] is None and back["per_run"]["lo95"] is None
+        assert back["definition"] == COLLISION_DEFINITION
+
+
+def _merge(ramp: str, changed: int | None, forced: int | None) -> dict[str, Any]:
+    entry: dict[str, Any] = {"ramp": ramp, "attach_edge": "e"}
+    if changed is not None:
+        entry["n_changed"] = changed
+    if forced is not None:
+        entry["n_forced"] = forced
+    return entry
+
+
+class TestForcedChangeSummary:
+    def test_merges_and_weaves_are_pooled_per_ramp(self) -> None:
+        weave = {"ramp": "W-ON", "n_changed_in": 100, "n_changed_out": 50, "n_forced": 5}
+        metas = [
+            {"scripted_merges": [_merge("M-ON", 300, 20)], "weave_sections": [weave]},
+            {"scripted_merges": [_merge("M-ON", 310, 25)], "weave_sections": [weave]},
+        ]
+        assert forced_change_summary(metas) == [
+            {
+                "model": "scripted merge",
+                "ramp": "M-ON",
+                "n_runs": 2,
+                "n_forced": 45,
+                "n_changed": 610,
+            },
+            {
+                "model": "weave section",
+                "ramp": "W-ON",
+                "n_runs": 2,
+                "n_forced": 10,
+                "n_changed": 300,
+            },
+        ]
+
+    def test_runs_without_the_models_say_nothing(self) -> None:
+        assert forced_change_summary([_meta(), {"scripted_merges": []}]) == []
+
+    def test_a_run_without_the_counters_contributes_nothing(self) -> None:
+        metas = [
+            {"scripted_merges": [_merge("M-ON", 300, None)]},
+            {"scripted_merges": [_merge("M-ON", 200, 4)]},
+        ]
+        (row,) = forced_change_summary(metas)
+        assert (row["n_runs"], row["n_forced"], row["n_changed"]) == (1, 4, 200)
+
+    def test_an_unnamed_model_is_labelled_by_its_position(self) -> None:
+        (row,) = forced_change_summary([{"scripted_merges": [_merge("", 10, 1)]}])
+        assert row["ramp"] == "scripted merge 0"
 
 
 class TestInsertionStats:

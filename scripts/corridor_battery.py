@@ -44,6 +44,15 @@ verdict ("exits given up: k % at <section>") above
 :data:`validation.battery.MISSED_EXIT_SHARE_THRESHOLD` (2 % of the section's
 reached exiters; the derivation is on the constant).
 
+**Collisions.** A collision is a model defect, and the I-94 WB reference
+battery recorded 15 of them over 20 seeds in its ``meta.json`` files for days
+before anyone looked (docs/ONBOARDING_MNDOT.md §11, WP-93). Each seed's
+``n_collisions`` (null when its ``meta.json`` predates the counter) is in its
+``per_seed`` row, :func:`validation.battery.collision_summary` pools them into
+the artifact's ``collisions`` block (total, per-seed t-interval, rate per 1,000
+departed vehicles, logged locations by lane; null when no seed records the
+counter), and one ``collisions`` line is printed beside the insertion line.
+
 **Phases.** ``simulate`` (the SUMO pool, ``--procs``), ``score`` (per-replicate
 metrics, observed scores and wave speed, :func:`validation.battery.analyse_replicates`
 in a second spawn pool of ``--score-procs`` workers — one trajectory frame per
@@ -80,7 +89,7 @@ import importlib.util
 import json
 import math
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -102,6 +111,8 @@ from validation.battery import (
     aggregate_insertion,
     analyse_replicates,
     available_memory_bytes,
+    collision_count,
+    collision_summary,
     degraded_verdict,
     insertion_stats,
     json_safe,
@@ -435,6 +446,7 @@ def build_artifact(
     ring: dict[str, Any] | None,
     x_offset_m: float,
     wall_s: float,
+    metas: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Assemble the validation artifact for one corridor battery.
 
@@ -442,6 +454,14 @@ def build_artifact(
     replicates' metas) is written beside ``insertion`` when the run set has
     weaving sections and as ``null`` otherwise — a corridor without a weave
     says nothing about given-up exits.
+
+    ``metas`` (one parsed ``meta.json`` per seed, in seed order) adds the
+    model-integrity keys, additively: ``per_seed[i]["n_collisions"]``
+    (:func:`validation.battery.collision_count`; null when that seed's meta
+    predates the counter) and the ``collisions`` block beside ``weave_exits``
+    (:func:`validation.battery.collision_summary` labelled by seed; null when
+    no seed records the counter). Without ``metas`` both are null. Every
+    other key is computed exactly as before.
 
     Every GEH is labelled: ``per_seed[i]["link_hours"]`` is replicate ``i``'s
     :class:`validation.observed.LinkHourRecord` table (station, ``x_ref_m``,
@@ -453,6 +473,9 @@ def build_artifact(
     summary then too); ``geh.pooled_values`` itself is unchanged.
     """
     pooled_geh = [g for s in scores_list for g in s.geh_values]
+    seed_metas: list[Mapping[str, Any] | None] = (
+        [None] * len(seeds) if metas is None else list(metas)
+    )
     per_seed = [
         {
             "seed": seed,
@@ -467,11 +490,20 @@ def build_artifact(
             "metrics": asdict(m),
             "insertion": ins.to_dict(),
             "link_hours": (None if s.link_hours is None else [r.to_dict() for r in s.link_hours]),
+            "n_collisions": None if meta is None else collision_count(meta),
         }
-        for seed, run_dir, s, wave, m, ins in zip(
-            seeds, dirs, scores_list, wave_speeds, metrics_list, insertion_list, strict=True
+        for seed, run_dir, s, wave, m, ins, meta in zip(
+            seeds,
+            dirs,
+            scores_list,
+            wave_speeds,
+            metrics_list,
+            insertion_list,
+            seed_metas,
+            strict=True,
         )
     ]
+    collisions = None if metas is None else collision_summary(metas, labels=list(seeds))
     insertion = aggregate_insertion(list(insertion_list))
     _, _, _, _, provenance = pool_scores(observed, list(scores_list), path=observations_path)
     pooled_hours = pool_link_hours(list(scores_list))
@@ -498,6 +530,9 @@ def build_artifact(
         # `missed_exit.n` and every mainline link downstream carries them, so
         # the GEH rows above are wrong by that count on those links.
         "weave_exits": weave_exits if weave_exits["sections"] else None,
+        # Collisions recorded by the replicates (a model defect, not a traffic
+        # outcome): total, per-seed interval, rate, and where they happened.
+        "collisions": collisions,
         "geh": {
             "pooled_values": [round(g, 4) for g in pooled_geh],
             "n_comparisons": len(pooled_geh),
@@ -617,6 +652,30 @@ def weave_exit_line(section: dict[str, Any], threshold_share: float) -> str:
         f"reached exiters given up ({share_text}, {state} the "
         f"{100.0 * threshold_share:g} % threshold, {section['n_runs']} run(s))"
     )
+
+
+def collision_line(collisions: dict[str, Any] | None) -> str:
+    """The console line for the artifact's ``collisions`` block (beside the insertion line)."""
+    label = f"    {'collisions':<18} "
+    if collisions is None:
+        return label + "not recorded (no replicate's meta.json carries n_collisions)"
+    rate = collisions["rate"]
+    value = rate["value"]
+    rate_text = (
+        f"{value:.3g} per {rate['per_vehicles']:,} departed"
+        if math.isfinite(value)
+        else "rate undefined (no departures recorded)"
+    )
+    text = (
+        f"{collisions['total']} over {collisions['n_runs_recorded']} replicate(s), "
+        f"{collisions['n_runs_with_collisions']} with any, {rate_text}"
+    )
+    if collisions["runs_not_recorded"]:
+        text += f"; not recorded for {len(collisions['runs_not_recorded'])} replicate(s)"
+    top = collisions["locations"][:1]
+    if top:
+        text += f"; most on lane {top[0]['lane']} ({top[0]['n']} logged)"
+    return label + text
 
 
 def prune_trajectories(dirs: Sequence[Path], keep_first: bool = True) -> int:
@@ -791,8 +850,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     insertion_list: list[InsertionStats] = [a.insertion for a in analyses]
     # Every replicate's meta.json is on disk after the runs (it is the
     # completion marker and is never pruned), so --criteria-only reads the
-    # same weave counters as a fresh battery.
-    weave_exits = weave_exit_summary([load_meta(run_dir) for run_dir in dirs])
+    # same weave and collision counters as a fresh battery.
+    metas = [load_meta(run_dir) for run_dir in dirs]
+    weave_exits = weave_exit_summary(metas)
 
     with phase("ring", timings):
         ring = ring_block(args.ring_seeds, out_root / "ring")
@@ -868,6 +928,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ring=ring,
         x_offset_m=x_offset,
         wall_s=time.perf_counter() - t0,
+        metas=metas,
     )
     artifact["report_path"] = None if report_path is None else str(report_path)
     artifact_path = Path(args.artifact)
@@ -892,6 +953,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     for section in weave_exits["sections"]:
         print(weave_exit_line(section, weave_exits["threshold_share"]), flush=True)
+    print(collision_line(artifact["collisions"]), flush=True)
     for row in criteria_rows:
         state = ("PASS" if row.passed else "FAIL") if row.evaluated else "NOT EVALUATED"
         print(f"    {row.name:<18} {state:<14} {row.value}  ({row.threshold})", flush=True)
