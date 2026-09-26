@@ -8965,3 +8965,11 @@ Each traced pair is an exiter's accepted change from lane 2 landing 2.8–5.6 m 
   - run directories deleted after each run.
 
 Every number above is from those runs, from SUMO 1.27.1's source, from `microsim.runner` at HEAD and in this package's tree (md5 prefix 3294bff2de79), or from the committed files named.
+
+## 2026-09-26 (block 3, VM AF, WP-92's guard on the corridor): the opposing-entry guard does not help the corridor, and the corridor's collisions are not the weave's. Paired with the reference at commit 556f737 (the reference reproduces VM U byte for byte), the guard departs 0.855 against 0.884 (paired −0.029 [−0.084, +0.027]) with one seed locked at 0.347, RMSPE 0.705 against 0.691, GEH passes 0.158 against 0.163, and collisions 19 against 15. 11 of the reference's 15 collisions are on the edge carrying on-ramp 178547099's added acceleration lane, 217–238 m along it, 3 on on-ramp 18207436's, and 1 in a weave section. So the corridor's collisions come from plain SUMO merges at the ends of acceleration lanes netconvert added, not from the opposing entries WP-92 guards. The key stays off. Nothing ships
+
+- *Records:* docs/ONBOARDING_MNDOT.md §11 (VM AF); `artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_opposing_guard_556f737.json`; every collision of both batteries, with seed, time, lane and position, in `artifacts/mndot_rounds/weave_2026-09-24/collisions_reference_and_guard_556f737.json`.
+- *What WP-92 established still holds on the fixtures:* the guard removes the fixture conflicts it targets (33 to none) and WP-90's collision and stops. On the corridor those conflicts are not what collides.
+- *Hand-on.* (a) The corridor's collisions: why merges at the end of on-ramp 178547099's added acceleration lane collide (a plain SUMO merge; no weave rule acts there). (b) The guard's locked seed (3944094060050347669) is not mapped. Neither blocks item 1.
+
+Every number above is from the two committed artifacts named and VM AF's logs.

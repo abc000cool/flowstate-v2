@@ -1,0 +1,323 @@
+{
+ "description": "Every collision SUMO recorded in VM AF's two paired 20-seed corridor batteries (commit 556f737): the reference configuration (mndot_weave_xlend: exit_prepare 1.0 + lane_end_giveup_m 7.5, byte-identical to battery_exit_prepare_lane_end_f24ba43.json) and the same with opposing_entry_guard 1.0 (mndot_weave_xlopp). Read from each run's meta.json 'collisions' list; lane ids as SUMO names them. Weave-section edges: 999007700 and 51388891. On-ramp attach edges from meta 'ramps': 178547099 -> 638519829-AddedOnRampEdge (x 4297.84 m), 18207436 -> 43917735#1-AddedOnRampEdge (x 3384.7 m).",
+ "batteries": {
+  "reference": {
+   "n_runs": 20,
+   "n_collisions": 15,
+   "collisions": [
+    {
+     "seed": 134183728835869882,
+     "t_s": 4362.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 218.92,
+     "collider": "v14177",
+     "victim": "v15751",
+     "type": "collision"
+    },
+    {
+     "seed": 165503670820534583,
+     "t_s": 3566.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 234.66,
+     "collider": "v12478",
+     "victim": "v15641",
+     "type": "collision"
+    },
+    {
+     "seed": 3747978530954135749,
+     "t_s": 4158.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 230.56,
+     "collider": "v02343",
+     "victim": "v15720",
+     "type": "collision"
+    },
+    {
+     "seed": 3944094060050347669,
+     "t_s": 2994.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 228.63,
+     "collider": "v01347",
+     "victim": "v15576",
+     "type": "collision"
+    },
+    {
+     "seed": 3944094060050347669,
+     "t_s": 3621.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 221.58,
+     "collider": "v12486",
+     "victim": "v15647",
+     "type": "collision"
+    },
+    {
+     "seed": 4910985839736976611,
+     "t_s": 3225.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 238.83,
+     "collider": "v14032",
+     "victim": "v15603",
+     "type": "collision"
+    },
+    {
+     "seed": 6538422657834023852,
+     "t_s": 2396.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 232.11,
+     "collider": "v00971",
+     "victim": "v15525",
+     "type": "collision"
+    },
+    {
+     "seed": 6538422657834023852,
+     "t_s": 12379.0,
+     "lane": "999007700_1",
+     "pos_m": 7.48,
+     "collider": "v06518",
+     "victim": "v06027",
+     "type": "collision"
+    },
+    {
+     "seed": 661281422688282993,
+     "t_s": 3975.5,
+     "lane": "43917735#1-AddedOnRampEdge_1",
+     "pos_m": 231.24,
+     "collider": "v02208",
+     "victim": "v12541",
+     "type": "collision"
+    },
+    {
+     "seed": 677105600768189526,
+     "t_s": 3257.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 229.14,
+     "collider": "v12446",
+     "victim": "v15607",
+     "type": "collision"
+    },
+    {
+     "seed": 6904272788004776631,
+     "t_s": 2640.0,
+     "lane": "43917735#1-AddedOnRampEdge_1",
+     "pos_m": 237.77,
+     "collider": "v01132",
+     "victim": "v12387",
+     "type": "collision"
+    },
+    {
+     "seed": 6904272788004776631,
+     "t_s": 4524.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 232.18,
+     "collider": "v02733",
+     "victim": "v15777",
+     "type": "collision"
+    },
+    {
+     "seed": 6914975401685141156,
+     "t_s": 3081.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 223.53,
+     "collider": "v01410",
+     "victim": "v15586",
+     "type": "collision"
+    },
+    {
+     "seed": 8557154790156791364,
+     "t_s": 4312.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 217.01,
+     "collider": "v12586",
+     "victim": "v15743",
+     "type": "collision"
+    },
+    {
+     "seed": 887972120279483394,
+     "t_s": 4917.5,
+     "lane": "43917735#1-AddedOnRampEdge_1",
+     "pos_m": 237.5,
+     "collider": "v03162",
+     "victim": "v12675",
+     "type": "collision"
+    }
+   ]
+  },
+  "opposing_entry_guard": {
+   "n_runs": 20,
+   "n_collisions": 19,
+   "collisions": [
+    {
+     "seed": 134183728835869882,
+     "t_s": 4310.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 241.9,
+     "collider": "v02516",
+     "victim": "v15743",
+     "type": "collision"
+    },
+    {
+     "seed": 165503670820534583,
+     "t_s": 3394.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 226.61,
+     "collider": "v01665",
+     "victim": "v15622",
+     "type": "collision"
+    },
+    {
+     "seed": 2378473973028931053,
+     "t_s": 2969.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 231.63,
+     "collider": "v14009",
+     "victim": "v15574",
+     "type": "collision"
+    },
+    {
+     "seed": 3011106312394044631,
+     "t_s": 3225.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 227.92,
+     "collider": "v01513",
+     "victim": "v15603",
+     "type": "collision"
+    },
+    {
+     "seed": 3011106312394044631,
+     "t_s": 3894.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 228.3,
+     "collider": "v14109",
+     "victim": "v15684",
+     "type": "collision"
+    },
+    {
+     "seed": 3747978530954135749,
+     "t_s": 4442.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 229.98,
+     "collider": "v02638",
+     "victim": "v15764",
+     "type": "collision"
+    },
+    {
+     "seed": 4910985839736976611,
+     "t_s": 3467.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 234.82,
+     "collider": "v14054",
+     "victim": "v15630",
+     "type": "collision"
+    },
+    {
+     "seed": 6538422657834023852,
+     "t_s": 4431.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 225.78,
+     "collider": "v02645",
+     "victim": "v15762",
+     "type": "collision"
+    },
+    {
+     "seed": 661281422688282993,
+     "t_s": 2823.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 226.08,
+     "collider": "v13992",
+     "victim": "v15559",
+     "type": "collision"
+    },
+    {
+     "seed": 677105600768189526,
+     "t_s": 3662.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 224.46,
+     "collider": "v14072",
+     "victim": "v15652",
+     "type": "collision"
+    },
+    {
+     "seed": 6904272788004776631,
+     "t_s": 3976.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 227.28,
+     "collider": "v02163",
+     "victim": "v15695",
+     "type": "collision"
+    },
+    {
+     "seed": 6904272788004776631,
+     "t_s": 4282.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 218.26,
+     "collider": "v14165",
+     "victim": "v15738",
+     "type": "collision"
+    },
+    {
+     "seed": 6914975401685141156,
+     "t_s": 3250.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 231.77,
+     "collider": "v01549",
+     "victim": "v15606",
+     "type": "collision"
+    },
+    {
+     "seed": 7382187975121682178,
+     "t_s": 3316.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 236.52,
+     "collider": "v01605",
+     "victim": "v15614",
+     "type": "collision"
+    },
+    {
+     "seed": 8026499204807041784,
+     "t_s": 1220.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 230.7,
+     "collider": "v00438",
+     "victim": "v15437",
+     "type": "collision"
+    },
+    {
+     "seed": 8026499204807041784,
+     "t_s": 3117.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 233.36,
+     "collider": "v01443",
+     "victim": "v15590",
+     "type": "collision"
+    },
+    {
+     "seed": 8026499204807041784,
+     "t_s": 3732.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 218.25,
+     "collider": "v01936",
+     "victim": "v15662",
+     "type": "collision"
+    },
+    {
+     "seed": 8557154790156791364,
+     "t_s": 2980.0,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 234.47,
+     "collider": "v01347",
+     "victim": "v15575",
+     "type": "collision"
+    },
+    {
+     "seed": 8557154790156791364,
+     "t_s": 3096.5,
+     "lane": "638519829-AddedOnRampEdge_1",
+     "pos_m": 188.77,
+     "collider": "v15588",
+     "victim": "v15586",
+     "type": "collision"
+    }
+   ]
+  }
+ }
+}

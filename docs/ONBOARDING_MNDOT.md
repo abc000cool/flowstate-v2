@@ -1616,3 +1616,21 @@ against 15, S790 3,274–3,301 veh/h against 3,311–3,344. Slice: departed 0.96
 Reading: as WP-79 predicted on the fixtures, the fitted exiting value (a least-squares compromise between a 2.58 s leader side and a
 0.72 s follower side) makes exiters wait and miss the exit, and the entering value alone cannot offset it; one time gap per movement
 cannot carry the real drivers' different leader and follower gaps (WP-80 splits them). Not adopted. Not reproduced.
+
+**VM AF (2026-09-26, block 3): the reference configuration with WP-92's opposing-entry guard, paired with the reference at the same commit**
+(`WEAVE_DEFAULTS["opposing_entry_guard"]` 1.0 on both weave sections, on top of VM U's configuration; commit 556f737; stages
+`mndot_weave_xlend` and `mndot_weave_xlopp` on one n2-standard-32, 39 and 46 min; config hashes 7ec8c8ef6e59 and 93f3a97c4ede;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_opposing_guard_556f737.json`,
+`artifacts/mndot_rounds/weave_2026-09-24/collisions_reference_and_guard_556f737.json`).
+- *The reference reproduces VM U byte for byte* (the whole artifact, apart from timestamps and versions): departed 0.884, lowest 0.867,
+  15 collisions.
+- *The guard does not help.* Departed 0.855 against 0.884 (paired −0.029 [−0.084, +0.027]; lower on 11 of 20 seeds), and one seed
+  (3944094060050347669) locks at 0.347 against 0.878, with the guard deferring only 259 changes there against 1,054–1,211 elsewhere.
+  RMSPE 0.705 against 0.691 (paired +0.014 [−0.008, +0.035]), GEH < 5 on 0.158 against 0.163 (paired −0.005 [−0.039, +0.030]).
+  Collisions 19 against 15 (paired +0.20 [−0.29, +0.69] a seed). Not adopted; the key stays off. The lock is not mapped.
+- *Where the corridor's collisions are.* 11 of the reference's 15 are on lane 1 of `638519829-AddedOnRampEdge`, 217–238 m along it,
+  in minutes 30–70. That is the edge netconvert built to carry on-ramp 178547099's added acceleration lane (x 4,297.84 m, a plain
+  SUMO merge); which of its lanes is the added one was not checked here. Three are on
+  `43917735#1-AddedOnRampEdge` (on-ramp 18207436, x 3,384.7 m) and one on the weave section edge 999007700. With the guard all 19
+  are on the first of these. So the collisions come from plain merges at the ends of acceleration lanes that netconvert added, not
+  from the weave's opposing entries, which is why the guard does not remove them.
