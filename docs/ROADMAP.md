@@ -214,6 +214,7 @@ result you can defend under questioning.
   *Outline drafted 2026-09-03:* [PAPER_OUTLINE.md](PAPER_OUTLINE.md) — the
   coverage finding (I24_DATA.md §4) is the paper's central methodological
   point; the I-24 sweep enters as a result on an unvalidated replica.
+  *First draft 2026-09-25:* [PAPER_DRAFT.md](PAPER_DRAFT.md) — unsubmitted full draft on the outline, updated through the MnDOT weave work; every number points to a committed doc or artifact, with a claims ledger and a list of source inconsistencies to resolve; submission (B2) is the owner's decision.
 - **B2.** arXiv preprint (cs.MA or eess.SY), citing I-24 MOTION and Stern et al.
   as their licences require.
 - **B3.** Cold emails, *after* the flagship validates: the I-24 MOTION team at

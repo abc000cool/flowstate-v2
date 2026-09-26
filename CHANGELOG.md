@@ -8,6 +8,14 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### 2026-09-25
 
+- **Paper first draft (roadmap B1)** (docs/PAPER_DRAFT.md; docs only, no runs). An unsubmitted full draft on docs/PAPER_OUTLINE.md, updated through 2026-09-25. It covers:
+  - the I-24 MOTION coverage finding as the central methodological point;
+  - the FHWA calibration sequence on I-24 and US-101;
+  - the I-24 battery at 5 of 7 rows per congested arm, with GEH and RMSPE failing and the Old Hickory merge as the stated model-form limit;
+  - controller results: the synthetic dose-response, the I-24 sweep and cap sweep on the unvalidated replica, JAD latency and deferral, the US-101 lane-change mechanism with its throughput correction, the strategy grid and the flux-cap comparison;
+  - MnDOT I-94 WB as not reproduced.
+
+  Every number points to a committed doc or artifact. A 44-row claims ledger and 17 places where the source documents disagree are appended; they are to be resolved before submission. Submission (B2) is the owner's decision; ROADMAP B1 notes the draft.
 - **What holds lane 1 at the T.H.52 entry on the corridor section fixture** (WP-86; docs/WEAVE_MODEL_PLAN.md dated section; analysis only, hash-neutral). The weave's targets towards crossing partners in lane 0 hold lane 1, and those partners are held by targets towards lane 1: the two lanes hold each other. Of 73,673 lane-1 vehicle-steps below 8 m/s over the approach's last 100 m and the section's first 50 m (seeds 3–7), 88 % trace to a target on a lane-1 vehicle with a lane-0 partner (the ramp anticipation's hold 60 %, the section entrants' holds 19 %, the exiters' easing 9 %), 6 % to a lane-2 exiter's hold and 5 % to a target carried in by a crossing; about 1 % to nothing of the weave.
   - *The loop.* For 90 % of the steps tying the lanes, the partner's origin is a target back towards the first lane. The strict form (a lane-1 vehicle held for a lane-0 vehicle itself held for lane 1 at the same step) is 29 % of lane-1 held steps (27–29 % per seed). 37 % of chains alternate through all eight hops read. `ramp_outlet` gives 93 % and 88 %.
   - *Supply, not demand.* After the breakdown the approach lane feeding lane 1 is offered about 1,300 veh/h, delivers 566 into lane 1 and queues back to the last cell read (−850 m) at every seed. Lane 1 over [0, 50) runs at 4.9 m/s and 0.59 of its own equilibrium density, and faster and thinner beyond 50 m (8.2 m/s, 0.46).
