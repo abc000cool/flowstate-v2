@@ -7500,3 +7500,269 @@ Every number above is from those compiles and runs, or from the committed files 
   - Run directories were temporary and deleted.
 
 Every number above is from those runs, from the committed files named, or from `microsim.runner` at HEAD.
+
+## 2026-09-25 (block 3, WP-86, what holds lane 1 at the entry): lane 1 at the entry is held by the weave's targets towards crossing partners in lane 0, and those partners are held by targets towards lane 1: the two lanes hold each other. Of lane 1's slow vehicle-steps over the approach's last 100 m and the section's first 50 m, 88 % trace to a target on a lane-1 vehicle whose partner is in lane 0: the ramp anticipation's hold 60 %, the section entrants' holds 19 % and the exiters' easing 9 %. A lane-2 exiter's hold gives 6 %, a target in lane 0 carried in by a vehicle that crossed gives 5 %, and about 1 % traces to nothing of the weave. For 90 % of the steps that tie the two lanes, the partner's own speed traces to a target back towards the first lane. At 37 % the alternation runs through all eight hops read. After the breakdown, lane 1 there runs at 4.9 m/s and 0.59 of its own equilibrium density, and faster and thinner beyond 50 m. The lane feeding it queues back over the whole upstream edge. Lane 1 is supply-limited at the entry, and the limit is the targets, not its density. With `ramp_outlet` the shares are 93 % and 88 %. With every target on lane 1 at the entry withheld, lane 1 there becomes a dense car-following queue (0.85 of its equilibrium density), held by the same loop from just past 50 m, and the T.H.52 entrance falls by 71 a run. Nothing ships
+
+**Why.** WP-84 (above) found that the T.H.52 entrants arrive at lane 1's speed, and that lane 1 over the section's first 50 m runs at only 0.60 of its own equilibrium density at that speed. Its hand-on asked what holds lane 1 there. Two readings were named:
+- (A) targets towards crossing partners in lane 0, each lane held to the other's speed in a loop that no single removal lifts;
+- (B) lane 1's own car-following from the approach, in which case the question becomes the approach's delivery into lane 1.
+
+This package runs WP-84's attribution on lane 1's slow vehicles. It records each weave target's partner and follows the partner to its own origin. It also reads lane 1's inflow, lateral moves and discharge per minute. The runner, the config, the scenarios, the fixtures and the tests are untouched.
+
+**How it was measured.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)`, at the weave defaults and with `ramp_outlet` = 1 (WP-70's key, a config change). Seeds 3–7, one run at a time (3.1–4.6 s each; 3.8–5.3 s for the counterfactual), macOS.
+- *Harness (session, `wp86/h86.py`).* WP-84's `h84.py`: its command-family hooks, its reader of the runner's own 0.5-s subscription results, and its cause reading. Extended as follows.
+  - Every binding target is recorded with its *partner*. For a hold (the chosen gap's follower) the partner is the changer, whose projection is the virtual leader. For an easing (the changer) it is the gap's leader, read by a pass-through hook on `_weave_choose_gap` (the last call inside that `_weave_cooperate`).
+  - One more cause class, *below its model* (defined below).
+  - The tracked axis adds the edge after the section (its first 250 m) and the internal junction lanes. The per-minute cells run from 830 m before the section (the upstream edge 100, 600 m, and the approach edge 101, 229 m) to 250 m after it.
+- *Read-only.* At every seed, at the defaults and with `ramp_outlet`, the trajectories are byte-identical to a run with no hook (md5, `plain86.py`; 10 of 10). `microsim.runner` is WP-84's (md5 prefix `fe4ce1da5a64`). Every criterion equals WP-84's default and (c) rows.
+- *Definitions.*
+  - *Lanes.* The *feeder* is the approach's lane 0, the lane that `lane_map` sends into section lane 1. Edges 100 and 101 are three lanes each, and lane 0 of edge 100 is read as the feeder's upstream. *Lane 1* is the feeder, section lane 1 and its continuation. *Lane 0* is the ramp and the auxiliary lane. *Lane 2* is section lanes 2 and 3 and their feeders.
+  - *Slow vehicle-step*: a vehicle below 8 m/s in the feeder over [−100, 0) or in section lane 1 over [0, 50), on the section axis (x = 0 at the section start). The *head* is the downstream-most of them each step (WP-84's hand-on).
+  - *The cause of a step.* Read after the weave's step and finalised with the vehicle's speed one step later, as in WP-84. The first of these that applies:
+    1. *a weave target*: one binds by `_weave_command`'s own test, and the vehicle is at it the next step (within 0.05 m/s);
+    2. *a lane end*: within the EIDM's braking onset (`_weave_brake_onset_m`) of the gore and nearer than its leader. This is an entrant in lane 0 (WP-84's), or an exiter in a section lane ≥ 1 or on the approach (added);
+    3. *its leader*: the improved IDM (SUMO's EIDM core) towards `vehicle.getLeader` is at least 0.1 m/s² below its free term;
+    4. *below its model* (added): none of these, and the vehicle decelerates more than 0.5 m/s² below its free term. SUMO's lane-change speed adaptation would read here, as would any term the reading does not model;
+    5. *free*: none of these.
+  - *The origin of a step*: WP-84's walk-back. It follows "leader" to the leader at the same step, and "free" back to the vehicle's last constrained step, until a weave target, a lane end or "below its model" is reached. Records are kept for 300 s.
+  - *The loop.* From an origin that is a target, the walk-back starts again from that target's partner at the same step, for up to eight hops. For a step whose origin ties lanes 1 and 0, *the loop closes* when the partner's own origin is a target on a vehicle in the partner's lane whose partner is in the first vehicle's lane. The *strict* form, the one this package was asked for: a lane-1 vehicle under a target itself, whose partner is in lane 0 and is itself under a target at that step whose partner is in lane 1.
+  - *Lane 1's balance over [0, 50)*, per minute:
+    - inflow: the feeder's vehicles at their first section sample, by the lane they appear in; the entrants appearing in lane 1 there (SUMO's arrival-step changes); lane changes between section lanes inside [0, 50);
+    - discharge: crossings of x = 50 m in the later sample's lane (WP-65's convention).
+    - Over the run it closes to within 10 and 5 vehicles (five runs each) at the defaults and with `ramp_outlet`.
+  - *k_eq(v)*: WP-84's, the IDM equilibrium at `artifacts/idm_i24_capacity.json`'s means with 5-m vehicles and v0 24.59 m/s. Below 8 m/s it is within 1 % of the EIDM's s0 + vT (WP-68). Density and speed are Edie's, per 50-m cell per minute.
+  - *Breakdown minute*: WP-84's, the first minute in which lanes 0 and 1 over [0, 50) are both below 8 m/s.
+  - *The feeder's queue back*: the most upstream 50-m cell of the feeder, contiguous from the entry, whose Edie speed is below 8 m/s. The last cell read is [−850, −800), which the upstream edge covers from −829 m.
+  - *Families* (WP-65's names): `ramp_hold` the ramp anticipation's hold of a lane-1 vehicle for an entrant still on the ramp; `ramp_ease` that entrant eased; `sece_hold` / `sece_ease` the same for an entrant on the section; `secx_hold` a vehicle held as the follower of an exiter's chosen gap; `secx_ease` the exiter eased. An exiter in lane 2 targets lane 1, so its `secx_hold` holds a lane-1 vehicle with a lane-2 partner.
+
+**(1) What acts on lane 1's slow vehicles** (seeds 3–7 pooled; "(cf)" rows are part (5)'s counterfactual).
+
+| run | slow vehicle-steps: approach lane [-100, 0) / lane 1 [0, 50) | head-steps | a target on it: ramp anticipation's hold / section entrant's hold / exiter's easing / lane-2 exiter's hold | its leader in lane 1 (just changed in) | free | below its model | lane end |
+|---|---|---|---|---|---|---|---|
+| default | 56,251 / 17,422 | 9,298 | 44%: 33% / 7% / 2% / 2% | 48% (1%) | 8% | 0% | 0% |
+| default — head | – | 9,298 | 39%: 3% / 22% / 6% / 8% | 20% (1%) | 41% | 0% | 0% |
+| `ramp_outlet` = 1 | 40,968 / 13,312 | 8,511 | 46%: 32% / 12% / 0% / 1% | 50% (1%) | 5% | 0% | 0% |
+| `ramp_outlet` = 1 — head | – | 8,511 | 52%: 14% / 34% / 0% / 4% | 32% (2%) | 16% | 0% | 0% |
+| (cf) no target on lane 1 at the entry | 58,321 / 33,072 | 9,688 | 0%: 0% / 0% / 0% / 0% | 96% (1%) | 4% | 0% | 0% |
+| (cf) no target on lane 1 at the entry — head | – | 9,688 | 0%: 0% / 0% / 0% / 0% | 89% (0%) | 11% | 0% | 0% |
+| (cf) with `ramp_outlet` = 1 | 80,916 / 43,204 | 9,966 | 0%: 0% / 0% / 0% / 0% | 98% (1%) | 2% | 0% | 0% |
+| (cf) with `ramp_outlet` = 1 — head | – | 9,966 | 0%: 0% / 0% / 0% / 0% | 95% (0%) | 5% | 0% | 0% |
+
+- *At the defaults*, 44 % of the slow vehicle-steps are under a target on the vehicle itself. That is the ramp anticipation's hold 33 %, the section entrants' holds 7 %, the exiters' easing 2 % and a lane-2 exiter's hold 2 %.
+- 48 % follow a leader in lane 1. For 1 % that leader changed lanes the step before.
+- 8 % are free. 39 steps are below their model, and none is at a lane end.
+- Three quarters of the steps (56,251 of 73,673) are on the feeder's last 100 m, where the ramp anticipation holds lane-1 vehicles for entrants still on the ramp.
+- *The head* is free at 41 % of its steps: the front accelerating after a hold has lapsed. It is under a target at 39 %, mostly a section entrant's hold (22 %).
+
+**(2) Where it comes from: the origin.**
+
+| run | a target on a lane-1 vehicle, partner in lane 0: ramp anticipation's hold / section entrant's hold / exiter's easing | a target on a lane-1 vehicle, partner in lane 2 (a lane-2 exiter's hold) | a target on a vehicle in lane 0, reached back in time through a vehicle now in lane 1 | below its model | lane end | untracked, never constrained or other | origin lag: at the step / ≤ 2 s / 2–10 s / > 10 s |
+|---|---|---|---|---|---|---|---|
+| default | 88%: 60% / 19% / 9% | 6% | 5% | 1% | 0% | 0% | 82% / 8% / 8% / 2% |
+| default — head | 64%: 5% / 35% / 24% | 18% | 15% | 2% | 0% | 1% | 48% / 20% / 25% / 7% |
+| `ramp_outlet` = 1 | 93%: 57% / 34% / 2% | 4% | 3% | 1% | 0% | 0% | 87% / 5% / 6% / 2% |
+| `ramp_outlet` = 1 — head | 81%: 18% / 58% / 5% | 10% | 7% | 1% | 0% | 0% | 71% / 9% / 14% / 6% |
+| (cf) no target on lane 1 at the entry | 76%: 0% / 38% / 38% | 6% | 14% | 4% | 0% | 0% | 43% / 23% / 25% / 9% |
+| (cf) no target on lane 1 at the entry — head | 81%: 0% / 38% / 43% | 6% | 11% | 2% | 0% | 0% | 50% / 23% / 21% / 5% |
+| (cf) with `ramp_outlet` = 1 | 75%: 0% / 55% / 20% | 13% | 9% | 2% | 0% | 0% | 53% / 18% / 22% / 6% |
+| (cf) with `ramp_outlet` = 1 — head | 77%: 0% / 56% / 21% | 14% | 8% | 1% | 0% | 0% | 61% / 18% / 17% / 4% |
+
+- *At the defaults the origin is a weave target at 99 % of the slow steps.*
+  - 88 % is a target on a lane-1 vehicle whose partner is in lane 0: the ramp anticipation's hold 60 % (at a median −49 m, p10 −86, p90 −20), the section entrants' holds 19 % (+9 m) and the exiters' easing 9 % (+22 m).
+  - 6 % is a lane-2 exiter's hold (+14 m).
+  - 5 % is a target on a vehicle in lane 0, reached back in time (at 99 % of these steps) through a vehicle now in lane 1. At 61 % it was on an entrant that has since crossed; the rest were on lane-0 vehicles that entrant followed before it crossed. Most are exiters' holds (+17 m). It carries lane 0's speed into lane 1.
+  - 1 % is below its model, and one step is a lane end.
+- *The origin is at the step itself* for 82 %, and more than 10 s back for 2 %.
+- *For the head* the ramp anticipation's hold gives way to the section: the section entrants' holds 35 %, the exiters' easing 24 %, a lane-2 exiter's hold 18 % and a target carried in by a crossing 15 %.
+- *With `ramp_outlet`* the section entrants' holds rise to 34 % (58 % for the head) and the exiters' easing falls to 2 %. Targets with lane-0 partners give 93 %.
+
+**(3) The partner, and the loop.** For the slow steps whose origin ties lanes 1 and 0, the table reads the partner and follows it to its own origin.
+
+| run | slow steps whose origin ties lanes 1 and 0 | the partner: on the ramp / in the auxiliary lane / in lane 1 | the partner at that step: itself under a target / follows a leader whose chain ends at a target / its target lapsed ≤ 300 s ago / neither (a chain end, or a vehicle already in the chain) | the partner's origin is a target whose partner is back in the first vehicle's lane (the loop closes) | the loop's lane-0 side: exiters' holds / ramp anticipation's easing / section entrants' easing / other |
+|---|---|---|---|---|---|
+| default | 68,224 of 73,673 (93%) | 65% / 30% / 5% | 31% / 35% / 33% / 1% | 90% | 57% / 27% / 10% / 6% |
+| default — head | 7,361 of 9,298 (79%) | 6% / 75% / 19% | 32% / 14% / 52% / 2% | 77% | 67% / 1% / 17% / 16% |
+| `ramp_outlet` = 1 | 51,700 of 54,280 (95%) | 60% / 37% / 3% | 26% / 26% / 44% / 4% | 88% | 26% / 36% / 32% / 6% |
+| `ramp_outlet` = 1 — head | 7,508 of 8,511 (88%) | 20% / 71% / 8% | 33% / 19% / 42% / 5% | 85% | 55% / 10% / 28% / 7% |
+| (cf) no target on lane 1 at the entry | 81,904 of 91,393 (90%) | 0% / 85% / 15% | 42% / 15% / 42% / 1% | 87% | 82% / 0% / 8% / 10% |
+| (cf) no target on lane 1 at the entry — head | 8,917 of 9,688 (92%) | 0% / 88% / 12% | 43% / 16% / 40% / 1% | 88% | 82% / 0% / 9% / 9% |
+| (cf) with `ramp_outlet` = 1 | 104,151 of 124,120 (84%) | 0% / 89% / 11% | 48% / 10% / 41% / 1% | 88% | 82% / 0% / 10% / 8% |
+| (cf) with `ramp_outlet` = 1 — head | 8,497 of 9,966 (85%) | 0% / 90% / 10% | 49% / 12% / 39% / 1% | 89% | 83% / 0% / 10% / 7% |
+
+*Table — the strict form: a lane-1 vehicle under a target itself, and its partner.*
+
+| run | lane-1 held steps (a target on the lane-1 vehicle itself) | partner in lane 0 | … itself under a target at that step | … that target's partner in lane 1 (the loop, strict) | … loose: the partner's origin is a target referencing lane 1 | per seed, strict |
+|---|---|---|---|---|---|---|
+| default | 32,378 | 95% | 29% | 29% | 88% | 29% / 29% / 29% / 27% / 28% |
+| `ramp_outlet` = 1 | 24,790 | 97% | 23% | 23% | 85% | 20% / 24% / 24% / 25% / 20% |
+| (cf) no target on lane 1 at the entry | 0 | – | – | – | – | – |
+| (cf) with `ramp_outlet` = 1 | 0 | – | – | – | – | – |
+
+*Table — how far the chain alternates between the two lanes (up to eight hops), and what ends it.*
+
+| run | consecutive hops alternating between lanes 1 and 0: 0 / 1 / 2 / 3–4 / 5–7 / all 8 | the chain ends: still alternating at the 8th hop / below its model / a lane end / back at a vehicle already in it / never constrained / untracked or expired / a pair of other lanes | median x of the last target reached [m] |
+|---|---|---|---|
+| default | 7% / 4% / 15% / 17% / 20% / 37% | 64% / 20% / 8% / 5% / 2% / 1% / 0% | 54 |
+| `ramp_outlet` = 1 | 5% / 5% / 12% / 19% / 22% / 36% | 56% / 17% / 20% / 4% / 0% / 3% / 0% | 100 |
+| (cf) no target on lane 1 at the entry | 10% / 3% / 9% / 17% / 21% / 39% | 55% / 15% / 18% / 7% / 2% / 4% / 0% | 109 |
+| (cf) with `ramp_outlet` = 1 | 16% / 2% / 14% / 14% / 20% / 35% | 62% / 11% / 16% / 7% / 1% / 3% / 0% | 103 |
+
+- *The partner is in lane 0* for 95 % of the defaults' steps that tie the lanes: on the ramp 65 %, in the auxiliary lane 30 %.
+  - At that step it is itself under a target at 31 %. At 35 % it follows a leader whose chain ends at a target, and at 33 % its last target has lapsed.
+  - At 90 % its origin is a target whose partner is back in the first vehicle's lane: *the loop closes*.
+- *The strict loop* is 29 % of the lane-1 held steps (27–29 % per seed). The loose form is 88 %.
+  - The strict pairs, of 9,231 steps: 3,952 hold a lane-1 vehicle for a ramp entrant that is itself eased towards its lane-1 gap leader.
+  - 2,424 hold one for an auxiliary-lane entrant that is itself held for a lane-1 exiter.
+  - 1,566 hold one for a ramp entrant that is itself held for a lane-1 exiter.
+  - The rest are 701 holds of a lane-1 vehicle for an auxiliary-lane entrant that is being eased, and 588 exiters eased towards a lane-0 vehicle that is itself under a target.
+- *The loop's lane-0 side* is the exiters' holds at 57 %, the ramp anticipation's easing at 27 % and the section entrants' easing at 10 %. With `ramp_outlet` the exiters' holds fall to 26 %, and the two easings take 36 % and 32 %.
+- *The chain keeps alternating.* At 37 % of the slow steps it alternates between lanes 1 and 0 for all eight hops read, and 7 % never do.
+  - It stays near the entry: the last target reached is at a median 54 m.
+  - It ends inside eight hops at a vehicle below its model for 20 % of the steps (69 % of those are exiters in lanes 1 and 2, median x 56 m), and at a lane end for 8 %.
+  - It comes back to a vehicle already in the chain for 5 %.
+- *One step of it* (seed 4, t = 293.0 s): lane-1 exiter `v00227` (24.9 m, 7.46 m/s) is held behind auxiliary-lane entrant `v01267` (30.0 m). `v01267` is held behind lane-1 exiter `v00224` (43.4 m). `v00224` is held behind auxiliary-lane entrant `v01265` (89.8 m), which is eased towards its lane-1 gap leader. Four vehicles alternate lanes, each held for the next, at the same step.
+
+*Table — per seed.*
+
+| run, per seed 3 / 4 / 5 / 6 / 7 | slow vehicle-steps | a target on the vehicle itself | origin a target between lanes 1 and 0 | … on a lane-1 vehicle with a lane-0 partner | the loop closes (the partner's origin references lane 1), of those tying lanes 1 and 0 |
+|---|---|---|---|---|---|
+| default | 10,495 / 13,795 / 18,924 / 15,859 / 14,600 | 46% / 44% / 44% / 45% / 41% | 96% / 93% / 90% / 91% / 96% | 90% / 88% / 87% / 88% / 87% | 87% / 91% / 90% / 91% / 88% |
+| `ramp_outlet` = 1 | 8,314 / 10,757 / 11,837 / 12,907 / 10,465 | 53% / 44% / 45% / 43% / 46% | 98% / 95% / 95% / 93% / 97% | 94% / 93% / 92% / 91% / 94% | 83% / 90% / 89% / 92% / 85% |
+| (cf) no target on lane 1 at the entry | 15,489 / 15,607 / 20,368 / 23,105 / 16,824 | 0% / 0% / 0% / 0% / 0% | 90% / 94% / 93% / 83% / 91% | 78% / 75% / 86% / 68% / 75% | 90% / 92% / 86% / 90% / 79% |
+| (cf) with `ramp_outlet` = 1 | 24,351 / 24,254 / 25,126 / 27,674 / 22,715 | 0% / 0% / 0% / 0% / 0% | 94% / 81% / 80% / 77% / 90% | 82% / 73% / 71% / 68% / 81% | 89% / 91% / 88% / 87% / 86% |
+
+**(4) Lane 1's balance at the entry: supply or demand.** After the breakdown minute, pooled over the minutes after it, per hour.
+
+| run | breakdown minute (lanes 0 and 1 over [0, 50) both < 8 m/s), seeds 3–7 | the feeder at x = −800 m in minutes 1–3 [veh/h] | after the breakdown [veh/h]: feeder vehicles reaching x = 0, into lane 1 / into lane 0 | entrants into lane 1, at x = 0 / in [0, 50) | exiters out of lane 1 in [0, 50) | net from lane 2 | lane 1 crossing x = 50 m | lane 1 over [0, 50): m/s, k / k_eq(v) | the feeder over [−100, 0) | lane 1 over [50, 100) | lane 2 over [0, 50) | the feeder's queue back, median minute [m] |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | 7 / 5 / 3 / 4 / 5 | 1,300 | 566 / 99 | 126 / 257 | 315 | +123 | 760 | 4.9, 0.59 | 2.8, 0.70 | 8.2, 0.46 | 10.5, 0.49 | -550 |
+| `ramp_outlet` = 1 | 8 / 8 / 4 / 5 / 5 | 1,304 | 626 / 167 | 206 / 178 | 88 | -2 | 930 | 6.0, 0.64 | 4.2, 0.66 | 7.5, 0.60 | 11.6, 0.50 | -400 |
+| (cf) no target on lane 1 at the entry | 3 / 4 / 3 / 2 / 3 | 1,296 | 946 / 1 | 20 / 43 | 143 | -16 | 827 | 3.8, 0.85 | 4.3, 0.83 | 4.5, 0.59 | 11.6, 0.52 | -275 |
+| (cf) with `ramp_outlet` = 1 | 3 / 4 / 4 / 3 / 3 | 1,292 | 715 / 2 | 6 / 7 | 5 | -13 | 705 | 2.3, 0.91 | 2.5, 0.89 | 3.5, 0.63 | 6.3, 0.56 | -475 |
+
+*Table — per minute, mean of seeds 3–7 (default · `ramp_outlet` = 1). "Feeder" is the approach's lane 0.*
+
+| min | lane 1's feeder at x = −800 [veh/h] | its queue's back [m] (median; runs with one) | feeder vehicles reaching x = 0: into lane 1 / into lane 0 | entrants into lane 1: at x = 0 / in [0, 50) | out of lane 1 in [0, 50): to lane 0 / net to lane 2 | lane 1 crossing x = 50 m | lane 1 over [0, 50): m/s, veh/km, k / k_eq(v) | the feeder over [−100, 0): m/s, k / k_eq(v) | lane 1 over [50, 100): m/s, k / k_eq(v) |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 1,380 · 1,380 | – · – | 156 / 276 · 144 / 288 | 192 / 0 · 192 / 0 | 48 / +0 · 48 / +12 | 252 · 240 | 21.6, 4, 0.20 · 21.8, 4, 0.21 | 21.6, 0.35 · 21.6, 0.36 | 21.5, 0.16 · 21.9, 0.16 |
+| 1 | 1,260 · 1,272 | – · – | 804 / 384 · 744 / 432 | 432 / 84 · 432 / 72 | 240 / +24 · 108 / +24 | 1,032 · 1,080 | 18.8, 16, 0.64 · 19.5, 16, 0.67 | 19.0, 0.68 · 19.2, 0.68 | 19.2, 0.57 · 19.7, 0.63 |
+| 2 | 1,332 · 1,296 | – · – | 780 / 264 · 768 / 336 | 360 / 132 · 432 / 60 | 216 / -12 · 96 / +24 | 1,044 · 1,092 | 12.6, 25, 0.62 · 16.9, 19, 0.63 | 15.1, 0.58 · 17.4, 0.60 | 13.7, 0.51 · 17.1, 0.58 |
+| 3 | 1,308 · 1,344 | -100 (1) · – | 780 / 312 · 864 / 408 | 420 / 72 · 360 / 60 | 252 / -12 · 60 / +12 | 972 · 1,236 | 12.3, 24, 0.60 · 16.4, 21, 0.67 | 10.4, 0.67 · 16.8, 0.72 | 14.9, 0.51 · 15.9, 0.64 |
+| 4 | 1,344 · 1,368 | -50 (3) · -50 (2) | 648 / 252 · 804 / 240 | 276 / 156 · 288 / 84 | 228 / +12 · 156 / +48 | 828 · 924 | 8.2, 29, 0.54 · 9.3, 29, 0.58 | 6.7, 0.65 · 12.1, 0.60 | 12.4, 0.43 · 9.5, 0.53 |
+| 5 | 1,296 · 1,392 | -200 (3) · -100 (3) | 708 / 96 · 636 / 216 | 192 / 168 · 276 / 108 | 228 / +12 · 48 / +12 | 828 · 912 | 6.9, 36, 0.60 · 6.7, 39, 0.64 | 4.6, 0.66 · 5.6, 0.67 | 9.8, 0.46 · 8.1, 0.56 |
+| 6 | 1,236 · 1,332 | -300 (4) · -200 (3) | 708 / 96 · 660 / 204 | 168 / 264 · 276 / 120 | 312 / +48 · 72 / +0 | 804 · 972 | 6.3, 38, 0.61 · 6.8, 40, 0.66 | 4.4, 0.71 · 4.4, 0.70 | 10.4, 0.45 · 9.7, 0.59 |
+| 7 | 1,224 · 1,236 | -350 (5) · -300 (4) | 636 / 72 · 684 / 264 | 132 / 336 · 276 / 120 | 372 / -72 · 72 / +36 | 792 · 948 | 5.6, 38, 0.56 · 8.1, 34, 0.61 | 3.7, 0.68 · 5.8, 0.69 | 9.7, 0.43 · 9.8, 0.55 |
+| 8 | 1,176 · 1,248 | -400 (5) · -350 (5) | 600 / 96 · 528 / 228 | 156 / 336 · 264 / 276 | 396 / -84 · 96 / +12 | 804 · 984 | 5.3, 41, 0.60 · 7.1, 36, 0.61 | 3.1, 0.70 · 4.6, 0.63 | 9.4, 0.47 · 8.4, 0.58 |
+| 9 | 1,188 · 1,164 | -550 (5) · -250 (4) | 624 / 96 · 684 / 276 | 120 / 288 · 264 / 144 | 276 / -48 · 84 / +72 | 828 · 984 | 5.3, 43, 0.62 · 7.3, 37, 0.64 | 3.4, 0.65 · 5.3, 0.66 | 9.3, 0.50 · 8.8, 0.60 |
+| 10 | 1,248 · 1,260 | -500 (5) · -400 (3) | 540 / 96 · 636 / 180 | 120 / 312 · 252 / 252 | 252 / -72 · 156 / -12 | 732 · 984 | 4.8, 43, 0.59 · 8.4, 32, 0.60 | 2.7, 0.74 · 5.7, 0.58 | 7.7, 0.47 · 10.1, 0.56 |
+| 11 | 1,260 · 1,248 | -550 (5) · -450 (5) | 492 / 96 · 828 / 168 | 120 / 204 · 204 / 144 | 276 / -180 · 84 / +12 | 684 · 1,068 | 4.1, 43, 0.56 · 7.6, 39, 0.69 | 2.4, 0.69 · 5.9, 0.70 | 6.5, 0.44 · 8.7, 0.64 |
+| 12 | 1,224 · 1,260 | -650 (5) · -600 (5) | 504 / 48 · 492 / 132 | 96 / 276 · 240 / 84 | 468 / -168 · 132 / +36 | 660 · 684 | 4.5, 41, 0.56 · 4.4, 44, 0.59 | 2.1, 0.71 · 3.7, 0.59 | 9.1, 0.41 · 5.4, 0.56 |
+| 13 | 1,236 · 1,260 | -650 (5) · -550 (5) | 624 / 36 · 648 / 84 | 96 / 168 · 156 / 228 | 336 / -204 · 156 / -48 | 780 · 924 | 4.3, 46, 0.62 · 5.1, 47, 0.66 | 2.3, 0.77 · 3.8, 0.68 | 8.0, 0.49 · 6.5, 0.62 |
+| 14 | 1,176 · 1,248 | -850 (5) · -650 (5) | 600 / 120 · 516 / 192 | 144 / 240 · 192 / 144 | 240 / -168 · 48 / -36 | 912 · 864 | 5.0, 44, 0.62 · 5.2, 44, 0.63 | 3.1, 0.67 · 3.0, 0.65 | 8.9, 0.52 · 7.2, 0.58 |
+| 15 | 1,176 · 1,212 | -850 (5) · -850 (5) | 528 / 192 · 624 / 132 | 156 / 216 · 132 / 252 | 252 / -156 · 84 / -36 | 780 · 936 | 5.0, 40, 0.57 · 5.4, 44, 0.64 | 3.0, 0.73 · 3.7, 0.63 | 6.8, 0.50 · 7.3, 0.61 |
+| 16 | 924 · 1,164 | -850 (5) · -300 (5) | 408 / 156 · 708 / 108 | 144 / 216 · 144 / 144 | 216 / -108 · 60 / +0 | 648 · 936 | 4.0, 45, 0.58 · 5.7, 45, 0.67 | 2.1, 0.66 · 4.1, 0.71 | 5.6, 0.46 · 7.0, 0.60 |
+| 17 | 1,068 · 948 | -450 (5) · -425 (4) | 420 / 132 · 528 / 216 | 144 / 228 · 264 / 192 | 312 / -204 · 72 / +24 | 660 · 936 | 4.3, 42, 0.55 · 6.0, 40, 0.62 | 2.2, 0.69 · 4.0, 0.62 | 8.5, 0.42 · 7.3, 0.63 |
+| 18 | 1,032 · 1,068 | -700 (5) · -550 (5) | 552 / 96 · 528 / 216 | 60 / 288 · 240 / 216 | 384 / -276 · 48 / +0 | 804 · 984 | 5.0, 42, 0.60 · 6.9, 37, 0.62 | 2.6, 0.70 · 4.1, 0.64 | 8.5, 0.48 · 8.0, 0.62 |
+| 19 | 972 · 1,356 | -850 (5) · -550 (4) | 588 / 108 · 672 / 168 | 144 / 264 · 252 / 156 | 348 / -192 · 84 / -12 | 864 · 996 | 5.7, 41, 0.61 · 7.3, 36, 0.62 | 3.1, 0.67 · 4.5, 0.68 | 9.3, 0.50 · 7.6, 0.62 |
+
+- *The feeder's demand is about 1,300 veh/h.* That is its flow at x = −800 m in minutes 1–3, before any queue. At the defaults it reads 1,176–1,344 veh/h in every minute until its queue reaches there.
+- *After the breakdown the entry takes about half of it.*
+  - At the defaults the feeder puts 566 veh/h into lane 1 and 99 into lane 0 (exiters crossing on arrival).
+  - Its queue reaches back to −550 m in the median minute. It reaches the last cell read, [−850, −800), at every seed, in minute 19 / 13 / 11 / 14 / 14 at seeds 3–7.
+  - Lane 1 is not starved: the feeder is queued at 2.8 m/s over its last 100 m.
+- *Lane 1 over [0, 50) carries about 1,070 veh/h through its boundaries.*
+  - In: 566 from the feeder, 383 entrants (126 appearing there, 257 changing in) and a net 123 from lane 2.
+  - Out: 760 across x = 50 m and 315 exiters to lane 0.
+  - Almost half of what it takes in comes from another lane: the entrants and the net inflow from lane 2, 506 of 1,072.
+- *Its density is not its speed's.*
+  - Lane 1 over [0, 50) runs at 4.9 m/s and 0.59 of k_eq(v). In the per-minute table, which pools the seeds, it reads 0.54–0.62 in every minute from minute 4.
+  - The feeder's last 100 m is denser (0.70 at 2.8 m/s).
+  - Lane 1 over [50, 100) is faster and thinner (8.2 m/s, 0.46). Lane 2 over [0, 50) reads 10.5 m/s and 0.49.
+- *So lane 1 is supply-limited at the entry, and the supply limit is not its density.*
+  - The feeder delivers less than it is offered and queues.
+  - Nothing downstream of 50 m holds lane 1: it runs faster there.
+  - Lane 1 over [0, 50) is well short of a car-following queue at its speed. What sets its rate is the holds of part (2), which keep a gap in lane 1 behind vehicles in lane 0.
+- *With `ramp_outlet`* the same holds: 626 + 167 from the feeder, 930 across x = 50 m, 6.0 m/s at 0.64 of k_eq, the queue back at −400 m in the median minute (the last cell at seeds 4–7, in minutes 15–19).
+
+**(5) Counterfactual: no target on lane 1 at the entry** (harness-only; `FS86_OFF=l1entry`). Every binding target on a vehicle in the feeder (the whole approach edge) or in section lane 1 short of x = 50 m is withheld. That is 79,756 targets over the five default runs and 64,314 with `ramp_outlet`. Everything else is untouched. If lane 1 were held by its own car-following (B), withholding the targets on it would leave it as it was. If it is the loop (A), the head should move to the next target.
+
+| run | T.H.52 departed of 407 | mainline of 1,196 | lane-windows ≤ 20 m/s of 16 | given up of reached | unfinished | coll. | lane-1 slow vehicle-steps | weave targets withheld |
+|---|---|---|---|---|---|---|---|---|
+| default | 370 / 329 / 323 / 316 / 352 (Σ 1,690) | 1160 / 1149 / 1139 / 1148 / 1122 | 11 / 10 / 14 / 12 / 12 | 1 of 360 / 1 of 377 / 4 of 380 / 1 of 411 / 0 of 355 | 1 / 2 / 6 / 4 / 5 | 0 | 10,495 / 13,795 / 18,924 / 15,859 / 14,600 | 0 |
+| `ramp_outlet` = 1 | 404 / 375 / 399 / 352 / 390 (Σ 1,920) | 1194 / 1163 / 1176 / 1151 / 1140 | 11 / 13 / 14 / 12 / 13 | 2 of 378 / 2 of 413 / 3 of 421 / 2 of 426 / 2 of 366 | 5 / 9 / 0 / 3 / 5 | 0 | 8,314 / 10,757 / 11,837 / 12,907 / 10,465 | 0 |
+| (cf) no target on lane 1 at the entry | 268 / 280 / 269 / 246 / 272 (Σ 1,335) | 1196 / 1196 / 1196 / 1160 / 1193 | 14 / 13 / 13 / 13 / 12 | 1 of 350 / 2 of 388 / 0 of 397 / 1 of 394 / 1 of 352 | 8 / 8 / 12 / 8 / 2 | 0 | 15,489 / 15,607 / 20,368 / 23,105 / 16,824 | 79,756 |
+| (cf) with `ramp_outlet` = 1 | 279 / 284 / 298 / 263 / 283 (Σ 1,407) | 1187 / 1133 / 1135 / 1078 / 1170 | 12 / 14 / 14 / 14 / 12 | 0 of 327 / 4 of 356 / 1 of 369 / 1 of 357 / 2 of 332 | 15 / 16 / 10 / 14 / 10 | 0 | 24,351 / 24,254 / 25,126 / 27,674 / 22,715 | 64,314 |
+
+*Table — paired by seed (mean a run, 95 % t-interval).*
+
+| run, minus its base | T.H.52 departed | mainline departed | lane-windows ≤ 20 m/s | given up | unfinished | lane-1 slow vehicle-steps |
+|---|---|---|---|---|---|---|
+| no target on lane 1 at the entry, minus the default | −71.0 [−97.5, −44.5] | +44.6 [+16.9, +72.3] | +1.2 [−1.0, +3.4] | −0.4 [−3.0, +2.2] | +4.0 [−1.0, +9.0] | +3,544 [+443, +6,645] |
+| the same with `ramp_outlet`, minus `ramp_outlet` | −102.6 [−120.6, −84.6] | −24.2 [−72.0, +23.6] | +0.6 [−0.8, +2.0] | −0.6 [−2.7, +1.5] | +8.6 [+5.5, +11.7] | +13,968 [+12,153, +15,783] |
+
+- *Lane 1 becomes a car-following queue.*
+  - 96 % of its slow steps follow a leader (98 % with `ramp_outlet`).
+  - Over [0, 50) it runs at 3.8 m/s and 0.85 of k_eq(v) (2.3 m/s, 0.91 with `ramp_outlet`), against 4.9 m/s and 0.59.
+  - The breakdown comes in minute 2–4 at every seed.
+- *The head moves to the next target downstream.*
+  - The origins are targets on lane-1 vehicles at a median 59–60 m (p10 51–52 m), just past the switched-off stretch: the section entrants' holds 38 % and the exiters' easing 38 %, with lane-0 partners.
+  - Targets carried in by a crossing give 14 %. The loop closes at 87 %.
+  - Lane 1 over [50, 100) slows from 8.2 to 4.5 m/s.
+- *The entrants are shut out.* Only 63 veh/h enter lane 1 over [0, 50) (20 appearing there and 43 changing in), against 383. The T.H.52 entrance falls 71.0 [44.5, 97.5] a run (102.6 [84.6, 120.6] with `ramp_outlet`).
+- *The mainline gains 44.6 [16.9, 72.3] a run* at the defaults and meets its ≥ 1,137 at every seed (1,160–1,196). With `ramp_outlet` it moves by −24.2 [−72.0, +23.6]. Criterion (ii) fails at every seed (12–14 windows). No run collides.
+
+**Reading.**
+1. *Lane 1 at the entry is held by the weave's targets, not by its own car-following.* The origin of 99 % of its slow vehicle-steps is a weave target, and 88 % is a target on a lane-1 vehicle whose partner is in lane 0.
+   - Half of its slow steps follow a leader, but that is the queue's body. The body's origin is the same targets, as WP-84 found for the ramp's queue.
+   - About 1 % traces to anything outside the weave.
+2. *The two lanes hold each other: (A), with shares.*
+   - For 90 % of the steps that tie lanes 1 and 0, the partner's own speed traces to a target back towards the first vehicle's lane.
+   - On the lane-0 side, the partner's origin is an exiter's hold on the ramp or in the auxiliary lane (57 %) or an entrant's easing towards its lane-1 gap leader (37 %).
+   - The strict form, a lane-1 vehicle held for a lane-0 vehicle that is itself held for lane 1 at the same step, is 29 % (27–29 % per seed).
+   - The chain alternates between the two lanes through all eight hops at 37 % of the steps. Its last target lies a median 54 m into the section (100 m with `ramp_outlet`).
+   - The ramp anticipation's hold is the largest family on lane 1 (60 %). Its partner is an entrant on the ramp, which WP-84 found held by the exiters' holds and by its own easing towards lane 1.
+3. *Two smaller ties add to it.*
+   - A lane-2 exiter's hold of lane 1 (6 %, and 18 % of the head).
+   - A target in lane 0 carried into lane 1 by a vehicle that crossed (5 %, and 15 % of the head).
+4. *Lane 1 is supply-limited at the entry, and its limit is not its density.*
+   - The feeder is offered about 1,300 veh/h, delivers 566 into lane 1 after the breakdown, and queues back over the whole upstream edge.
+   - Lane 1 over [0, 50) runs at 0.59 of its own equilibrium density at 4.9 m/s, and faster and thinner beyond 50 m.
+   - Almost half of its inflow comes from another lane.
+   - Nothing downstream holds it and its own car-following does not. The holds do, which keep lane-1 vehicles behind vehicles in lane 0.
+5. *No removal on the lane-1 side lifts it.* With every target on lane 1 at the entry withheld, the same loop holds lane 1 from just past 50 m (its origins at a median 59–60 m).
+   - Lane 1 at the entry becomes a dense car-following queue (0.85 of k_eq), slower (3.8 m/s).
+   - The entrants are shut out and the entrance falls 71 a run.
+   - This is the other side of WP-84's finding on the ramp: removing a target hands the head to the next one.
+6. *`ramp_outlet` changes the families, not the structure.* The section entrants' holds and the entrants' easing replace most of the exiters' holds on the loop's lane-0 side. Lane 1 runs at 6.0 m/s and 0.64 of k_eq, and the loop closes at 88 %.
+
+**What this hands on.**
+- *(a) The next step: the cooperation target's form, not a family's removal.* The loop is made of targets that each take the crossing partner's current speed. The partner's speed is itself set by a target towards the first lane.
+  - The largest strict pair (3,952 of 9,231 steps) is a lane-1 vehicle held for a ramp entrant that is itself eased towards that lane's gap leader.
+  - A derivation would give the cooperation a target that does not take the partner's current speed when that speed is itself a target towards the follower's lane. It should be written and measured in a harness first.
+  - Judge it by this package's readings: the loop-closing share (90 %), lane 1's density over [0, 50) against k_eq (0.59) and its speed (4.9 m/s), and the feeder's queue back. Then the T.H.52 entrance and criterion (ii), with the capacity fixture's no-lock pin and the 29-run grid as guards.
+  - The forms measured so far change when or whether a target acts, not the speed it takes: WP-58's bounded hold, WP-60's gated anticipation, WP-64's swap, and here and in WP-65 and WP-84 the removals. The seventh derivation's symmetric resolution changed the form for the abreast pair only and was rejected. The form above is untried.
+- *(b) (B) is answered.* The approach's delivery into lane 1 is not the limit: its demand is about twice what the entry takes after the breakdown.
+- *(c) For harnesses.*
+  - An easing's partner is the gap leader of the last `_weave_choose_gap` call inside that `_weave_cooperate`. A pass-through hook on `_weave_choose_gap` reads it with the run byte-identical.
+  - "Below its model" ends a fifth of the default chains, mostly at exiters in lanes 1 and 2 near the section start (median 56 m). What slows them is not read here.
+
+**Limitations.**
+- *Scale.* Five seeds and one fixture; the paired intervals are over five runs.
+- *Platform.* macOS records. WP-85 (above) found single corridor-fleet runs on these fixtures that land differently on Linux.
+- *The cause reading* is WP-84's: the improved IDM without the EIDM's estimation errors, drive-off and coolness terms, and a 0.1 m/s² threshold. "Below its model" uses 0.5 m/s² and counts only decelerations.
+- *The partner* is the vehicle whose position and speed the target reads. The attribution treats the partner's speed as the cause, and the target's gap term is not separated from its speed term.
+- *The walk-back* traces a free step to the vehicle's last constrained step within 300 s (origins more than 10 s back: 2 % at the defaults). The chain stops at eight hops.
+- *Densities* are Edie's over 50-m cells and whole minutes, pooled over seeds. Lane 1's speed here (4.9 m/s, pooled minutes) and WP-84's (5.1 m/s, median minute) differ by that aggregation.
+- *The queue back* is a contiguity reading over 50-m cells to −850 m. A faster cell inside the queue cuts it short.
+
+**Bookkeeping.**
+- *Edited:* this section only. The CHANGELOG bullet is handed to the coordinator. The runner, `flowstate_core.config`, the scenarios, the fixtures, every test and every golden are untouched, and no config hash changes.
+- *Session files (`wp86/`, not committed):*
+  - the harness `h86.py` and the no-hook check `plain86.py` (its md5 lists `plain_def.txt`, `plain_outlet.txt`);
+  - the readers `ex86.py`, `flow86.py`, `tab86.py` and `extra86.py`;
+  - the rows `rows_def`, `rows_outlet`, `rows_l1free` and `rows_outlet_l1free` (`.jsonl`; 20 runs), plus one smoke run, ten runs of the harness's first form (`v1/`) and ten no-hook runs;
+  - the tables `t_*.md`, and the section's assembly `assemble86.py` from `section_tpl.md`.
+  - Run directories were temporary and deleted.
+
+Every number above is from those runs, from the committed files named, or from `microsim.runner` at HEAD.
