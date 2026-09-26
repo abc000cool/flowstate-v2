@@ -8169,3 +8169,329 @@ Every number above is from those runs, from the committed files named, or from t
 **Session files (not committed):** the round archive `vm_relax/final.tgz` and its extraction; the tables above were read from the two artifacts with `jq`.
 
 Every number above is from the two committed artifacts or from WP-88's section.
+
+## 2026-09-25 (block 3, WP-90, the post-crossing gap allowance): VM AC's proposal, derived from the runner and measured on the corridor section fixture (seeds 3–7, at the defaults and with `ramp_outlet`; 115 runs). The gap at a weave crossing is set before the change by the hold, which keeps the gap's follower at its own s0 + vT behind the entrant, and after it by SUMO's car-following at each vehicle's `tau`. The allowance lets the follower and the entrant follow at f·T in the hold and the easing from the commitment, sets SUMO's `tau` to f·T at the change (`vehicle.setTau`) and returns it to T over τ_r, bounded. f and τ_r are US-101's: 0.76 on the follower side, 0.57 on the entrant's, τ_r 7.5 s. The sensitivity is US-101's starts against s0 + vT (0.81 / 0.62), I-24's leader side (0.72) and τ_r's interval ends; I-24's follower side is not a coverage-robust short start (0.87 of the normal, but 1.14 of s0 + vT). The entrant's new follower then starts at 0.93 [0.89, 0.97] of the normal and 1.16 [1.12, 1.20] of s0 + vT, against 1.05 and 1.31 without it and US-101's 0.76 and 0.81: two fifths of the way on the first reference, under a third on the second. With `ramp_outlet` it starts at 0.87 and 1.08. The entrant behind its new leader stays at 1.29 of the normal (1.59 of s0 + vT) at the defaults and reaches 1.12 (1.42) with `ramp_outlet`, against US-101's 0.57 (0.62) and I-24's 0.72 (0.92). After the crossing the gap still opens, to 1.18 of the normal at 5 s against 0.95 on US-101. Lane 1 at the entry gets denser by 0.02–0.04 of its equilibrium density but not faster, the loop closes 1.5–2.7 points more often, and criterion (ii) does not move; the T.H.52 entrance reads +1 to +17 a run at the defaults (one interval of six clear of zero) and −6 to +1 with `ramp_outlet`. At the floor (f = 0.5) the follower side reaches 0.79 of the normal with `ramp_outlet`, and the entrance falls by 38 a run. Six runs brake at 9 m/s² or harder. Five, one of them into a collision, were traced to the known defect of two opposing changes into lane 1 in one step, which the allowance does not make more frequent; the sixth, under the floor bound, is an exiter under no allowance. Nothing ships
+
+**Why.** VM AC (above) found that real entering crossings start short on both sides, where the model's start at or above the normal gap. It recorded a proposal: a bounded post-crossing gap allowance, "to be derived and measured on the fixture harness before any adoption, with US-101's leader-side τ_r (7.5 s) and the starting ratios above as the observed targets". WP-87 (above) had found that the runner's targets are ceilings: they cannot keep a vehicle closer than its own model. So the lever is the model's own time gap, which SUMO exposes per vehicle (`vehicle.setTau`). This package derives where such an allowance must act, measures it and three alternative forms as a harness, and judges them in order: the gaps at the crossing, safety, lane 1 at the entry, then the test's criteria. The runner, the config, the scenarios, the fixtures and the tests are untouched.
+
+**A correction to the targets, from a code review during this package.** I-24's follower-side start (0.87 of the normal) is not coverage-robust. `ratio_pop`'s reference (`normal_time_gaps`) pairs each vehicle with its nearest *tracked* leader, so it carries the same coverage bias as the gap it divides. A follower's time gap is not an upper bound under partial tracking either: the recorded neighbour can be a different, faster vehicle. Against the coverage-free reference, s0 + vT at each dataset's population means, VM AC's artifacts read:
+- the entrant's new follower: I-24 1.14, US-101 0.81; the model 1.31 at the fleet's means (1.17 at its own s0 and T);
+- the entrant behind its new leader: I-24 0.92, US-101 0.62; the model 1.66 at the fleet's means (1.62 at its own s0 and T, WP-88).
+
+So the observed short starts are US-101's on both sides and I-24's on the leader side. VM AC's reading 3, that I-24's short starts are robust, does not hold on the follower side. f is not set from I-24's follower value here. Two sets measured before the review used it (0.87 / 0.72) and are kept, labelled. Every gap table below reads both references.
+
+**How it was measured.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)`, at the weave defaults and with `ramp_outlet` = 1 (WP-70's key, a config change). Seeds 3–7, one run at a time (3.0–6.6 s each; 490 MB peak RSS at seed 3), macOS. 115 runs in 23 sets of five.
+- *Harness (session, `wp90/h90.py`).* WP-87's `h87.py`, imported unchanged and with no form: its hooks, its reader of the runner's 0.5-s subscription results, its cause reading and its partner walk-back. The allowance is added as monkeypatches on `_weave_choose_gap` and `_weave_step` (environment switch `FS90_FORM`). Run directories were kept for the extraction and deleted after it.
+- *Read-only.* With no form, the trajectories are byte-identical to WP-87's default and `ramp_outlet` runs at every seed (md5; 10 of 10). The read-only counters of part (5) leave form X byte-identical at every seed, with and without `ramp_outlet` (10 of 10). `microsim.runner` md5 prefix `fe4ce1da5a64` (WP-86–88's). Config hashes 2230b3942fe7, 671d0460e64f, 7e551a839817, 0953b606bc5e, 2497b9153124 at the defaults, and 126e99718b91, 516fa2bc0593, 5e2ed5c6bddd, 4a53f3112214, f9be50b935d8 with `ramp_outlet`; a form changes no hash.
+- *Extraction (`wp90/ana90.py`).* WP-88's `scripts/lane_change_relaxation.py --source trajectories`, run in-process on each set's five run directories, with WP-88's filter (the weave zone; confirmed, non-suspect entering changes). At the defaults it gives WP-88's readings: the new follower at 1.05 of the normal pooled and 1.05 [1.01, 1.10] over seeds, 1.31 of s0 + vT; the entrant's side at 1.31 of the normal.
+- *Definitions.*
+  - *The pair.* C is an entrant (not bound for the paired exit) whose weave-axis lane goes from 0 (the ramp or the auxiliary lane) to 1 on a section edge between two steps. That is the weave's accepted or forced change, or SUMO's own, in the step C arrives or later. F is its new follower (`vehicle.getFollower`) and L its new leader (`vehicle.getLeader`). Each is taken only while car-following by WP-88's bound (bumper gap at most 10 m + 5 s · v of the rear vehicle).
+  - *The two references.* `ratio_pop`: the time gap over the population's median car-following time gap at the rear vehicle's speed, over the same five runs (WP-88). The allowance changes that population a little; read against the baseline's own normal instead, every paired difference at the crossing moves by at most 0.01. `ratio_eq`: the space gap over s0 + vT at the rear vehicle's speed, at the fleet's population means (`artifacts/idm_i24_capacity.json`; VM AC's real rows use each dataset's own means). It does not depend on who is tracked or on the runs' own traffic.
+  - *Hard braking.* From the 0.5-s subscription speeds of every vehicle in the network: vehicle-steps decelerating harder than the vehicle's own `decel` (b), than 3 m/s² and than 4.5 m/s², and the largest deceleration. 9.0 m/s² is SUMO's default emergency deceleration for passenger cars; the fleet does not set `emergencyDecel`.
+  - *Opposing entries (`wp90/opp90.py`).* At the same trajectory sample, an entrant's lane goes 0 → 1 and another vehicle's 2 → 1, both inside the section's edge and within 30 m of each other. *Closing* when the rear one is faster.
+  - *Lane 1, the loop and the criteria.* WP-86's and WP-87's, read by `an87.py`: lane 1 over the section's first 50 m after the breakdown minute (Edie's speed and k / k_eq(v), pooled over seeds in the level tables, per seed in the paired ones), the loop-closing share, the feeder's queue back, and the test's criteria.
+  - *Paired intervals.* Per seed, a form minus its base (the default or `ramp_outlet`): the mean over the five seeds and its 95 % t-interval (t = 2.776).
+
+**(1) The derivation** (`microsim.runner` at HEAD, SUMO 1.27.1's source).
+- *What the acceptance would take.* An accepted change executes under mode 256 when the follower side clears s0_C + 0.6 s · v_F, F's IDM towards C at F's own T asks no more than −b_F, and the guard passes. At Δv = 0 that IDM test passes from s*/√(1 + b/a), about 0.62 of s* at the fleet's means (a 1.05, b 1.70 m/s²). So the acceptance does not keep the model's follower at its normal gap.
+- *What sets the gap at the crossing: the hold.* From the commitment (on the ramp for the ramp anticipation, on the section for a section entrant) F is driven towards C's projection with F's own T. The hold is a ceiling that F sits at in equilibrium, at s0 + vT behind C (WP-87: 1.01–1.07). The change is made when the rest of the acceptance clears, with F already there. That is WP-88's 1.05 of the normal.
+- *What keeps it after the change: SUMO's model.* The EIDM follows C with s* = s0 + v·T + v·Δv/(2√(ab)), where T is the vehicle's `tau`. LC2013's back-gap test reads the new follower's secure gap from the follower's own model (`MSLaneChanger`: the neighbour follower's `getSecureGap`; for the EIDM v·T + v·Δv/(2√(ab)), reduced by √(1 + b/a)).
+- *So an allowance that changes the gap at the crossing must act in two places.* Before the change, on the T the hold reads for F: a runner target, not SUMO's `tau`, since F still follows its own leader. After the change, on SUMO's `tau` of F. `vehicle.setTau` sets the model's headway time directly (`MSCFModel::setHeadwayTime`; the EIDM does not override it). SUMO's car-following, its secure gaps and the runner's cached constants (`_weave_veh`, updated with it) then all read the same T. SUMO's safety checks stay on: `speedMode` is untouched.
+- *The entrant's side.* The only target on C towards L is the easing. It binds only when C would brake for L and dropping in is feasible, and it is a ceiling. So f_C in the easing can only let C close further on a leader it is already easing towards. After the change, C's `tau` at f_C lets it close on L faster.
+- *Which numbers set f and τ_r.*
+  - f scales T, the model's time-gap parameter. The observed starting ratios are gaps over a normal gap at the same speed. The first-order map is f = r0. s0 is not scaled, so the equilibrium ratio to s0 + vT is f + (1 − f)·s0/(s0 + vT), which is above r0: by 0.03 at real entrants' 11.7 m/s (VM X) and by 0.06 at the model's 5.7 m/s, at the fleet's means. The map never makes a gap shorter than observed.
+  - The central values are US-101's over the normal, complete in coverage and the dataset where τ_r was fitted: f_F = 0.76 (the entrant's new follower), f_C = 0.57 (the entrant behind its new leader), τ_r = 7.5 s (the leader-side fit, the only supported one).
+  - The sensitivity: US-101's starts over s0 + vT (0.81 / 0.62); I-24's leader side over the normal on the entrant's side (0.76 / 0.72); τ_r at its interval's ends, 5.2 and 15.9 s.
+- *The bounds.* The effective T is T·max(f_floor, 1 − (1 − f)·exp(−τ/τ_r)), τ the time since the change.
+  - f_floor = 0.5, near the lower end of the lowest observed start (US-101's leader side, r0 0.54, 0.48–0.61).
+  - T is floored at the step length (0.5 s); SUMO warns that a `tau` below it may cause collisions.
+  - Restored to the drawn T at t_max = 4 τ_r (98 % relaxed); when either vehicle of the pair (F and C, or C and L) changes lane again; when either leaves the section (an edge other than the section's, the approach's or an internal junction lane) or the network.
+  - A cut-in between the pair does not restore. An entrant cutting in re-grants the follower.
+- *The movement.* Entering only. VM AC's artifacts read I-24's exiting crossings at 0.95 (follower) and 1.02 (leader) of the normal at the change (644 and 670 sides); US-101 has 27 and 40 such sides. Neither shows real exiters starting short.
+- *The forms.*
+  - *X, the derived form:* both sides, in the targets from the commitment (the hold on every candidate follower of an entering changer's gap choice, the easing of the entrant, and so the choice itself) and in SUMO's `tau` from the change.
+  - *XF:* the follower side only. *XL:* the entrant's side only.
+  - *P, after the change only:* both `tau`s at the change, no target reading the allowance. It cannot move the gap at the crossing; it is the relaxation alone.
+  - *The floor bound:* X at f = 0.5 on both sides. A bound, not a value derived from the data.
+
+**(2) The gaps at the crossing and after.**
+
+*Table — over the population's normal time gap at the rear vehicle's speed* (`ratio_pop`; medians; at 0 s pooled over the seeds with the sides read, then the seeds' mean [95 % t-interval]; later offsets pooled). The observed rows are VM AC's; I-24's follower row is not coverage-robust (see the correction).
+
+| run | entrant's new follower at 0 s: pooled (sides) · seeds [95 %] | 2 s | 5 s | 10 s | entrant behind its new leader at 0 s | 2 s | 5 s | 10 s |
+|---|---|---|---|---|---|---|---|---|
+| I-24 MOTION, observed (VM AC) | 0.87 (1,488) | 0.87 | 0.89 | 0.89 | 0.72 (1,612) | 0.61 | 0.67 | 0.76 |
+| NGSIM US-101, observed (VM AC) | 0.76 (177) | 0.88 | 0.95 | 1.03 | 0.57 (176) | 0.61 | 0.72 | 0.88 |
+| default | 1.05 (672) · 1.05 [1.01, 1.10] | 1.21 | 1.33 | 1.23 | 1.31 (585) · 1.29 [1.15, 1.44] | 1.40 | 1.27 | 1.10 |
+| X (0.76 / 0.57, τ_r 7.5 s) | 0.93 (756) · 0.93 [0.89, 0.97] | 1.09 | 1.18 | 1.21 | 1.29 (645) · 1.30 [1.12, 1.47] | 1.32 | 1.18 | 1.12 |
+| XF, the follower side | 0.98 (675) · 0.98 [0.93, 1.04] | 1.11 | 1.23 | 1.18 | 1.25 (576) · 1.28 [1.17, 1.39] | 1.36 | 1.25 | 1.18 |
+| XL, the entrant's side | 1.01 (661) · 1.02 [0.99, 1.06] | 1.23 | 1.28 | 1.18 | 1.26 (588) · 1.25 [1.03, 1.47] | 1.30 | 1.19 | 1.03 |
+| P, after the change only | 1.04 (813) · 1.04 [0.97, 1.11] | 1.15 | 1.19 | 1.11 | 1.19 (690) · 1.20 [1.07, 1.34] | 1.18 | 1.12 | 1.03 |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | 0.95 (751) · 0.94 [0.89, 1.00] | 1.11 | 1.22 | 1.18 | 1.27 (657) · 1.26 [1.08, 1.43] | 1.31 | 1.19 | 1.07 |
+| X with I-24's leader side (0.76 / 0.72) | 0.94 (711) · 0.93 [0.89, 0.98] | 1.09 | 1.29 | 1.21 | 1.30 (637) · 1.32 [1.22, 1.42] | 1.35 | 1.21 | 1.05 |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | 0.97 (711) · 0.98 [0.92, 1.04] | 1.18 | 1.31 | 1.24 | 1.26 (624) · 1.23 [1.04, 1.42] | 1.29 | 1.17 | 1.13 |
+| X, τ_r 5.2 s | 0.95 (737) · 0.96 [0.89, 1.04] | 1.15 | 1.27 | 1.24 | 1.30 (625) · 1.31 [1.11, 1.52] | 1.28 | 1.18 | 1.03 |
+| X, τ_r 15.9 s | 0.95 (687) · 0.95 [0.91, 1.00] | 1.15 | 1.28 | 1.29 | 1.22 (581) · 1.19 [1.04, 1.34] | 1.24 | 1.13 | 1.07 |
+| P at 0.87 / 0.72 | 1.05 (687) · 1.06 [0.98, 1.14] | 1.19 | 1.24 | 1.19 | 1.19 (611) · 1.18 [1.05, 1.32] | 1.32 | 1.16 | 1.04 |
+| P, τ_r 5.2 s | 1.01 (687) · 1.01 [0.93, 1.10] | 1.15 | 1.17 | 1.10 | 1.22 (584) · 1.24 [1.08, 1.41] | 1.22 | 1.10 | 1.05 |
+| P, τ_r 15.9 s | 1.04 (773) · 1.04 [0.95, 1.13] | 1.13 | 1.23 | 1.11 | 1.25 (676) · 1.25 [1.05, 1.45] | 1.27 | 1.19 | 1.03 |
+| bound: X at the floor (0.5 / 0.5) | 0.89 (608) · 0.88 [0.80, 0.96] | 1.09 | 1.20 | 1.20 | 1.35 (535) · 1.35 [1.12, 1.57] | 1.34 | 1.15 | 1.08 |
+| `ramp_outlet` = 1 | 0.97 (923) · 0.97 [0.94, 0.99] | 1.08 | 1.15 | 1.19 | 1.32 (833) · 1.33 [1.18, 1.48] | 1.42 | 1.37 | 1.15 |
+| X, `ramp_outlet` | 0.87 (931) · 0.86 [0.81, 0.91] | 0.98 | 1.10 | 1.09 | 1.12 (814) · 1.11 [0.93, 1.29] | 1.22 | 1.10 | 0.97 |
+| XF, `ramp_outlet` | 0.85 (877) · 0.85 [0.80, 0.91] | 0.95 | 1.06 | 1.09 | 1.24 (761) · 1.24 [1.11, 1.36] | 1.31 | 1.22 | 1.12 |
+| XL, `ramp_outlet` | 0.98 (854) · 0.99 [0.92, 1.06] | 1.12 | 1.20 | 1.14 | 1.21 (772) · 1.20 [1.12, 1.28] | 1.29 | 1.16 | 1.06 |
+| P, `ramp_outlet` | 0.97 (977) · 0.96 [0.92, 1.00] | 1.04 | 1.03 | 1.04 | 1.25 (880) · 1.23 [1.13, 1.33] | 1.25 | 1.13 | 1.03 |
+| X at 0.81 / 0.62, `ramp_outlet` | 0.88 (950) · 0.88 [0.82, 0.95] | 0.98 | 1.07 | 1.14 | 1.18 (831) · 1.15 [1.01, 1.29] | 1.28 | 1.15 | 1.06 |
+| bound: the floor, `ramp_outlet` | 0.80 (774) · 0.79 [0.74, 0.84] | 1.00 | 1.06 | 1.12 | 1.24 (672) · 1.25 [1.14, 1.35] | 1.28 | 1.15 | 1.12 |
+
+*Table — over s0 + vT at the population means* (`ratio_eq`; the coverage-free reference; the same layout).
+
+| run | entrant's new follower at 0 s: pooled (sides) · seeds [95 %] | 2 s | 5 s | 10 s | entrant behind its new leader at 0 s | 2 s | 5 s | 10 s |
+|---|---|---|---|---|---|---|---|---|
+| I-24 MOTION, observed (VM AC) | 1.14 (1,488) | 1.14 | 1.18 | 1.21 | 0.92 (1,612) | 0.80 | 0.87 | 1.05 |
+| NGSIM US-101, observed (VM AC) | 0.81 (177) | 0.91 | 1.00 | 1.09 | 0.62 (176) | 0.64 | 0.77 | 0.95 |
+| default | 1.31 (672) · 1.32 [1.23, 1.41] | 1.49 | 1.68 | 1.59 | 1.66 (585) · 1.62 [1.44, 1.81] | 1.78 | 1.66 | 1.45 |
+| X (0.76 / 0.57, τ_r 7.5 s) | 1.16 (756) · 1.16 [1.12, 1.20] | 1.36 | 1.48 | 1.56 | 1.59 (645) · 1.60 [1.42, 1.78] | 1.68 | 1.53 | 1.44 |
+| XF, the follower side | 1.23 (675) · 1.23 [1.14, 1.32] | 1.36 | 1.54 | 1.49 | 1.57 (576) · 1.59 [1.39, 1.78] | 1.72 | 1.59 | 1.49 |
+| XL, the entrant's side | 1.29 (661) · 1.30 [1.23, 1.37] | 1.54 | 1.64 | 1.53 | 1.64 (588) · 1.60 [1.30, 1.90] | 1.68 | 1.55 | 1.34 |
+| P, after the change only | 1.27 (813) · 1.28 [1.21, 1.34] | 1.41 | 1.51 | 1.42 | 1.51 (690) · 1.48 [1.27, 1.70] | 1.51 | 1.43 | 1.33 |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | 1.19 (751) · 1.19 [1.15, 1.23] | 1.38 | 1.49 | 1.51 | 1.53 (657) · 1.54 [1.30, 1.79] | 1.65 | 1.51 | 1.37 |
+| X with I-24's leader side (0.76 / 0.72) | 1.16 (711) · 1.17 [1.11, 1.22] | 1.35 | 1.57 | 1.56 | 1.66 (637) · 1.66 [1.54, 1.77] | 1.72 | 1.56 | 1.36 |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | 1.22 (711) · 1.21 [1.13, 1.30] | 1.45 | 1.63 | 1.63 | 1.57 (624) · 1.55 [1.31, 1.79] | 1.62 | 1.52 | 1.45 |
+| X, τ_r 5.2 s | 1.18 (737) · 1.18 [1.09, 1.27] | 1.45 | 1.61 | 1.55 | 1.63 (625) · 1.65 [1.37, 1.92] | 1.65 | 1.52 | 1.34 |
+| X, τ_r 15.9 s | 1.20 (687) · 1.21 [1.18, 1.24] | 1.44 | 1.61 | 1.66 | 1.54 (581) · 1.53 [1.37, 1.70] | 1.56 | 1.46 | 1.39 |
+| P at 0.87 / 0.72 | 1.31 (687) · 1.33 [1.21, 1.46] | 1.45 | 1.57 | 1.53 | 1.45 (611) · 1.46 [1.27, 1.64] | 1.65 | 1.47 | 1.37 |
+| P, τ_r 5.2 s | 1.31 (687) · 1.30 [1.20, 1.39] | 1.42 | 1.45 | 1.41 | 1.55 (584) · 1.56 [1.33, 1.79] | 1.56 | 1.39 | 1.37 |
+| P, τ_r 15.9 s | 1.28 (773) · 1.28 [1.20, 1.36] | 1.41 | 1.57 | 1.44 | 1.57 (676) · 1.56 [1.28, 1.84] | 1.61 | 1.54 | 1.35 |
+| bound: X at the floor (0.5 / 0.5) | 1.13 (608) · 1.12 [1.01, 1.24] | 1.37 | 1.49 | 1.48 | 1.70 (535) · 1.71 [1.46, 1.97] | 1.68 | 1.47 | 1.35 |
+| `ramp_outlet` = 1 | 1.21 (923) · 1.22 [1.20, 1.24] | 1.36 | 1.48 | 1.53 | 1.67 (833) · 1.64 [1.46, 1.81] | 1.85 | 1.76 | 1.50 |
+| X, `ramp_outlet` | 1.08 (931) · 1.08 [1.03, 1.14] | 1.24 | 1.39 | 1.40 | 1.42 (814) · 1.39 [1.18, 1.60] | 1.56 | 1.41 | 1.23 |
+| XF, `ramp_outlet` | 1.07 (877) · 1.07 [1.00, 1.14] | 1.19 | 1.35 | 1.38 | 1.58 (761) · 1.59 [1.42, 1.76] | 1.65 | 1.56 | 1.42 |
+| XL, `ramp_outlet` | 1.23 (854) · 1.24 [1.16, 1.32] | 1.42 | 1.53 | 1.45 | 1.50 (772) · 1.50 [1.37, 1.63] | 1.64 | 1.49 | 1.34 |
+| P, `ramp_outlet` | 1.20 (977) · 1.20 [1.15, 1.24] | 1.28 | 1.31 | 1.32 | 1.56 (880) · 1.55 [1.41, 1.69] | 1.59 | 1.43 | 1.32 |
+| X at 0.81 / 0.62, `ramp_outlet` | 1.10 (950) · 1.10 [1.03, 1.18] | 1.23 | 1.37 | 1.47 | 1.51 (831) · 1.49 [1.33, 1.64] | 1.64 | 1.48 | 1.39 |
+| bound: the floor, `ramp_outlet` | 1.00 (774) · 1.00 [0.93, 1.07] | 1.23 | 1.32 | 1.42 | 1.56 (672) · 1.54 [1.39, 1.70] | 1.59 | 1.46 | 1.41 |
+
+*Table — paired, over the normal: the form minus its base* (mean over seeds 3–7 of each seed's median, 95 % t-interval).
+
+| form, minus its base (seeds 3–7) | follower side at 0 s | 2 s | 5 s | 10 s | entrant's side at 0 s | 2 s | 5 s | 10 s |
+|---|---|---|---|---|---|---|---|---|
+| X (0.76 / 0.57, τ_r 7.5 s) | -0.13 [-0.19, -0.07] | -0.12 [-0.26, +0.03] | -0.16 [-0.32, -0.00] | -0.01 [-0.13, +0.11] | +0.00 [-0.21, +0.22] | -0.04 [-0.25, +0.17] | -0.09 [-0.36, +0.18] | +0.01 [-0.22, +0.25] |
+| XF, the follower side | -0.07 [-0.15, +0.01] | -0.10 [-0.24, +0.04] | -0.08 [-0.19, +0.03] | -0.13 [-0.31, +0.04] | -0.01 [-0.23, +0.21] | -0.02 [-0.15, +0.11] | -0.03 [-0.23, +0.17] | +0.05 [-0.18, +0.29] |
+| XL, the entrant's side | -0.03 [-0.11, +0.04] | +0.01 [-0.05, +0.07] | -0.04 [-0.19, +0.11] | -0.04 [-0.18, +0.11] | -0.04 [-0.17, +0.08] | -0.08 [-0.18, +0.03] | -0.10 [-0.18, -0.01] | -0.06 [-0.27, +0.15] |
+| P, after the change only | -0.01 [-0.11, +0.09] | -0.08 [-0.23, +0.08] | -0.13 [-0.21, -0.05] | -0.11 [-0.28, +0.05] | -0.09 [-0.25, +0.07] | -0.21 [-0.34, -0.07] | -0.15 [-0.19, -0.12] | -0.08 [-0.26, +0.10] |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | -0.11 [-0.17, -0.05] | -0.11 [-0.18, -0.03] | -0.11 [-0.26, +0.05] | -0.04 [-0.22, +0.15] | -0.04 [-0.18, +0.11] | -0.11 [-0.25, +0.02] | -0.12 [-0.30, +0.07] | -0.03 [-0.14, +0.08] |
+| X with I-24's leader side (0.76 / 0.72) | -0.12 [-0.18, -0.06] | -0.13 [-0.25, -0.02] | -0.05 [-0.22, +0.12] | +0.02 [-0.16, +0.19] | +0.03 [-0.13, +0.19] | -0.05 [-0.16, +0.06] | -0.05 [-0.20, +0.10] | -0.05 [-0.17, +0.07] |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | -0.08 [-0.18, +0.03] | -0.04 [-0.16, +0.08] | -0.02 [-0.09, +0.05] | -0.02 [-0.09, +0.05] | -0.06 [-0.19, +0.07] | -0.13 [-0.22, -0.05] | -0.13 [-0.37, +0.10] | -0.00 [-0.21, +0.21] |
+| X, τ_r 5.2 s | -0.09 [-0.20, +0.01] | -0.05 [-0.20, +0.11] | -0.07 [-0.21, +0.07] | +0.00 [-0.11, +0.12] | +0.02 [-0.20, +0.25] | -0.10 [-0.31, +0.10] | -0.08 [-0.24, +0.08] | -0.06 [-0.25, +0.12] |
+| X, τ_r 15.9 s | -0.10 [-0.18, -0.03] | -0.07 [-0.18, +0.04] | -0.04 [-0.15, +0.08] | +0.02 [-0.14, +0.17] | -0.10 [-0.29, +0.09] | -0.16 [-0.24, -0.09] | -0.16 [-0.31, -0.01] | -0.04 [-0.27, +0.18] |
+| P at 0.87 / 0.72 | +0.00 [-0.09, +0.09] | -0.01 [-0.14, +0.11] | -0.07 [-0.19, +0.04] | -0.05 [-0.13, +0.03] | -0.11 [-0.26, +0.05] | -0.10 [-0.24, +0.05] | -0.12 [-0.20, -0.04] | -0.05 [-0.19, +0.09] |
+| P, τ_r 5.2 s | -0.04 [-0.10, +0.02] | -0.06 [-0.14, +0.02] | -0.14 [-0.24, -0.04] | -0.14 [-0.21, -0.07] | -0.05 [-0.26, +0.17] | -0.18 [-0.30, -0.05] | -0.19 [-0.31, -0.06] | -0.03 [-0.18, +0.13] |
+| P, τ_r 15.9 s | -0.01 [-0.10, +0.07] | -0.08 [-0.17, +0.02] | -0.10 [-0.20, -0.00] | -0.12 [-0.23, -0.01] | -0.04 [-0.18, +0.09] | -0.13 [-0.28, +0.02] | -0.08 [-0.28, +0.12] | -0.09 [-0.23, +0.06] |
+| bound: X at the floor (0.5 / 0.5) | -0.18 [-0.25, -0.10] | -0.12 [-0.28, +0.04] | -0.11 [-0.43, +0.20] | -0.02 [-0.28, +0.24] | +0.05 [-0.16, +0.27] | -0.08 [-0.21, +0.05] | -0.13 [-0.28, +0.01] | -0.06 [-0.30, +0.18] |
+| X, `ramp_outlet` | -0.11 [-0.17, -0.05] | -0.10 [-0.13, -0.06] | -0.07 [-0.14, +0.00] | -0.08 [-0.30, +0.14] | -0.21 [-0.29, -0.14] | -0.18 [-0.28, -0.08] | -0.28 [-0.36, -0.20] | -0.20 [-0.32, -0.08] |
+| XF, `ramp_outlet` | -0.12 [-0.18, -0.06] | -0.11 [-0.19, -0.04] | -0.11 [-0.15, -0.06] | -0.10 [-0.19, -0.00] | -0.09 [-0.31, +0.13] | -0.11 [-0.19, -0.03] | -0.14 [-0.26, -0.02] | -0.06 [-0.25, +0.12] |
+| XL, `ramp_outlet` | +0.02 [-0.03, +0.07] | +0.05 [-0.05, +0.14] | +0.05 [-0.05, +0.14] | -0.02 [-0.25, +0.21] | -0.13 [-0.26, -0.00] | -0.14 [-0.38, +0.10] | -0.22 [-0.36, -0.08] | -0.11 [-0.29, +0.07] |
+| P, `ramp_outlet` | -0.00 [-0.04, +0.03] | -0.05 [-0.11, +0.02] | -0.14 [-0.24, -0.04] | -0.13 [-0.32, +0.06] | -0.10 [-0.19, -0.00] | -0.21 [-0.32, -0.11] | -0.23 [-0.31, -0.15] | -0.15 [-0.30, -0.01] |
+| X at 0.81 / 0.62, `ramp_outlet` | -0.09 [-0.15, -0.03] | -0.09 [-0.21, +0.03] | -0.09 [-0.17, -0.01] | -0.05 [-0.22, +0.11] | -0.17 [-0.28, -0.07] | -0.13 [-0.19, -0.07] | -0.20 [-0.28, -0.12] | -0.11 [-0.23, +0.00] |
+| bound: the floor, `ramp_outlet` | -0.18 [-0.22, -0.13] | -0.10 [-0.20, +0.00] | -0.08 [-0.24, +0.08] | -0.05 [-0.30, +0.19] | -0.08 [-0.28, +0.12] | -0.13 [-0.22, -0.04] | -0.19 [-0.33, -0.05] | -0.07 [-0.19, +0.06] |
+
+*Table — paired, over s0 + vT.*
+
+| form, minus its base (seeds 3–7) | follower side at 0 s | 2 s | 5 s | 10 s | entrant's side at 0 s | 2 s | 5 s | 10 s |
+|---|---|---|---|---|---|---|---|---|
+| X (0.76 / 0.57, τ_r 7.5 s) | -0.16 [-0.25, -0.07] | -0.12 [-0.31, +0.07] | -0.21 [-0.36, -0.05] | +0.03 [-0.11, +0.17] | -0.02 [-0.22, +0.17] | -0.05 [-0.28, +0.18] | -0.12 [-0.44, +0.20] | -0.00 [-0.33, +0.33] |
+| XF, the follower side | -0.09 [-0.19, +0.00] | -0.13 [-0.30, +0.05] | -0.11 [-0.22, -0.01] | -0.13 [-0.29, +0.03] | -0.04 [-0.37, +0.29] | -0.04 [-0.17, +0.10] | -0.07 [-0.30, +0.15] | +0.02 [-0.31, +0.36] |
+| XL, the entrant's side | -0.02 [-0.17, +0.13] | +0.04 [-0.05, +0.14] | -0.02 [-0.15, +0.12] | -0.02 [-0.16, +0.13] | -0.03 [-0.17, +0.12] | -0.09 [-0.31, +0.12] | -0.11 [-0.20, -0.03] | -0.11 [-0.35, +0.14] |
+| P, after the change only | -0.05 [-0.17, +0.08] | -0.09 [-0.30, +0.12] | -0.14 [-0.30, +0.01] | -0.12 [-0.36, +0.11] | -0.14 [-0.32, +0.05] | -0.22 [-0.40, -0.04] | -0.21 [-0.27, -0.15] | -0.13 [-0.37, +0.11] |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | -0.13 [-0.20, -0.06] | -0.13 [-0.24, -0.02] | -0.11 [-0.28, +0.05] | -0.01 [-0.30, +0.28] | -0.08 [-0.24, +0.08] | -0.14 [-0.31, +0.04] | -0.15 [-0.41, +0.10] | -0.06 [-0.21, +0.09] |
+| X with I-24's leader side (0.76 / 0.72) | -0.16 [-0.22, -0.09] | -0.15 [-0.28, -0.02] | -0.10 [-0.27, +0.08] | +0.08 [-0.28, +0.43] | +0.03 [-0.10, +0.17] | -0.07 [-0.22, +0.08] | -0.10 [-0.32, +0.12] | -0.09 [-0.29, +0.10] |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | -0.11 [-0.22, +0.01] | -0.03 [-0.18, +0.13] | -0.03 [-0.14, +0.08] | +0.05 [-0.06, +0.16] | -0.07 [-0.24, +0.09] | -0.13 [-0.29, +0.03] | -0.16 [-0.44, +0.13] | -0.03 [-0.30, +0.23] |
+| X, τ_r 5.2 s | -0.14 [-0.28, -0.00] | -0.03 [-0.22, +0.15] | -0.08 [-0.23, +0.07] | +0.02 [-0.21, +0.26] | +0.02 [-0.29, +0.34] | -0.08 [-0.33, +0.16] | -0.09 [-0.28, +0.10] | -0.09 [-0.34, +0.15] |
+| X, τ_r 15.9 s | -0.11 [-0.20, -0.02] | -0.05 [-0.20, +0.11] | -0.06 [-0.16, +0.03] | +0.05 [-0.13, +0.23] | -0.09 [-0.27, +0.09] | -0.22 [-0.38, -0.06] | -0.22 [-0.45, +0.01] | -0.06 [-0.39, +0.27] |
+| P at 0.87 / 0.72 | +0.01 [-0.10, +0.13] | -0.02 [-0.16, +0.12] | -0.09 [-0.22, +0.05] | -0.06 [-0.19, +0.06] | -0.16 [-0.34, +0.01] | -0.13 [-0.32, +0.06] | -0.19 [-0.30, -0.08] | -0.07 [-0.29, +0.16] |
+| P, τ_r 5.2 s | -0.03 [-0.08, +0.03] | -0.06 [-0.15, +0.03] | -0.20 [-0.29, -0.12] | -0.17 [-0.25, -0.09] | -0.06 [-0.32, +0.19] | -0.23 [-0.37, -0.08] | -0.26 [-0.42, -0.10] | -0.06 [-0.26, +0.14] |
+| P, τ_r 15.9 s | -0.04 [-0.14, +0.07] | -0.08 [-0.17, +0.01] | -0.12 [-0.25, +0.01] | -0.12 [-0.27, +0.02] | -0.06 [-0.28, +0.15] | -0.15 [-0.36, +0.07] | -0.11 [-0.36, +0.14] | -0.13 [-0.32, +0.06] |
+| bound: X at the floor (0.5 / 0.5) | -0.20 [-0.34, -0.05] | -0.08 [-0.35, +0.19] | -0.13 [-0.48, +0.21] | -0.03 [-0.30, +0.25] | +0.09 [-0.11, +0.29] | -0.10 [-0.25, +0.06] | -0.19 [-0.34, -0.03] | -0.11 [-0.38, +0.17] |
+| X, `ramp_outlet` | -0.13 [-0.18, -0.09] | -0.13 [-0.19, -0.08] | -0.10 [-0.20, -0.00] | -0.12 [-0.37, +0.13] | -0.25 [-0.36, -0.14] | -0.27 [-0.37, -0.18] | -0.34 [-0.44, -0.24] | -0.27 [-0.43, -0.12] |
+| XF, `ramp_outlet` | -0.15 [-0.23, -0.06] | -0.16 [-0.26, -0.06] | -0.13 [-0.25, -0.02] | -0.15 [-0.25, -0.05] | -0.05 [-0.32, +0.22] | -0.18 [-0.32, -0.04] | -0.20 [-0.35, -0.06] | -0.12 [-0.35, +0.10] |
+| XL, `ramp_outlet` | +0.02 [-0.05, +0.10] | +0.05 [-0.04, +0.14] | +0.04 [-0.07, +0.16] | -0.05 [-0.29, +0.18] | -0.13 [-0.26, -0.01] | -0.21 [-0.53, +0.11] | -0.31 [-0.53, -0.08] | -0.18 [-0.35, -0.01] |
+| P, `ramp_outlet` | -0.02 [-0.09, +0.05] | -0.09 [-0.17, -0.01] | -0.21 [-0.35, -0.08] | -0.19 [-0.33, -0.05] | -0.09 [-0.23, +0.05] | -0.27 [-0.47, -0.07] | -0.33 [-0.40, -0.25] | -0.22 [-0.36, -0.07] |
+| X at 0.81 / 0.62, `ramp_outlet` | -0.11 [-0.20, -0.02] | -0.13 [-0.28, +0.03] | -0.13 [-0.22, -0.04] | -0.06 [-0.26, +0.15] | -0.15 [-0.30, +0.00] | -0.18 [-0.27, -0.10] | -0.27 [-0.41, -0.13] | -0.14 [-0.26, -0.02] |
+| bound: the floor, `ramp_outlet` | -0.21 [-0.27, -0.15] | -0.14 [-0.26, -0.03] | -0.15 [-0.32, +0.03] | -0.13 [-0.41, +0.15] | -0.09 [-0.38, +0.19] | -0.21 [-0.32, -0.10] | -0.27 [-0.46, -0.07] | -0.12 [-0.27, +0.03] |
+
+*Table — the fits and the splits, over the normal* (WP-88's fits; the new follower at the change split by who made the crossing, and in WP-88's 10–20 m/s changer class).
+
+| run | new follower: supported, τ_r [s], r0 → r∞ | entrant's side: supported, τ_r [s], r0 → r∞ | new follower, SUMO's arrival-step crossings: 0 / 2 / 5 s (sides) | the others | 10–20 m/s changers at 0 s (sides) |
+|---|---|---|---|---|---|
+| default | no (not exponential), 1.3, 1.04 → 1.26 | no (unstable), 16.2, 1.41 → 0.88 | 0.90 / 1.09 / 1.33 (265) | 1.13 / 1.25 / 1.32 (407) | 1.06 (193) |
+| X (0.76 / 0.57, τ_r 7.5 s) | yes, 2.0, 0.92 → 1.18 | yes, 15.0, 1.34 → 0.88 | 0.82 / 0.98 / 1.22 (228) | 0.99 / 1.17 / 1.16 (528) | 0.94 (181) |
+| P, after the change only | no (not exponential; faster than 1 s; flat), 0.9, 1.03 → 1.14 | yes, 15.5, 1.23 → 0.84 | 0.97 / 1.06 / 1.22 (382) | 1.09 / 1.18 / 1.17 (431) | 0.93 (248) |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | yes, 1.6, 0.95 → 1.19 | yes, 7.9, 1.33 → 1.03 | 0.85 / 1.01 / 1.29 (291) | 1.00 / 1.17 / 1.19 (460) | 0.89 (239) |
+| `ramp_outlet` = 1 | yes, 2.8, 0.97 → 1.19 | no (slower than the window), 32.9, 1.42 → 0.63 | 0.93 / 1.06 / 1.13 (374) | 0.99 / 1.09 / 1.18 (549) | 0.88 (251) |
+| X, `ramp_outlet` | yes, 3.3, 0.86 → 1.13 | yes, 8.4, 1.21 → 0.94 | 0.84 / 0.94 / 1.03 (298) | 0.88 / 0.99 / 1.11 (633) | 0.91 (218) |
+| X at 0.81 / 0.62, `ramp_outlet` | yes, 4.8, 0.88 → 1.18 | yes, 9.3, 1.27 → 1.00 | 0.87 / 0.97 / 1.06 (299) | 0.88 / 0.98 / 1.07 (651) | 0.80 (228) |
+| bound: the floor, `ramp_outlet` | yes, 1.8, 0.80 → 1.10 | yes, 5.4, 1.29 → 1.10 | 0.82 / 0.97 / 1.06 (151) | 0.79 / 1.00 / 1.06 (623) | 1.01 (106) |
+
+- *The follower side moves, and not far enough.* X starts the new follower 0.13 [0.07, 0.19] shorter over the normal and 0.16 [0.07, 0.25] over s0 + vT: at 0.93 and 1.16, against US-101's 0.76 and 0.81. With `ramp_outlet` it starts at 0.87 and 1.08. The weave's own crossings move most (1.13 → 0.99 over the normal), SUMO's arrival-step ones less (0.90 → 0.82). XF moves it about half as far at the defaults and as far with `ramp_outlet`. XL and P do not move it, as derived.
+- *The map from f to the gap is the one derived.* At f_F = 0.76 the model's crossings, at 5.7 m/s, start at 0.93 of the normal and 1.16 of s0 + vT. s0 is not scaled, and the gap the hold settles at is F's own s0 + f·vT, above the population means for most followers (WP-88: 1.17 of its own s0 + vT against 1.31 at the means). No set reaches US-101's start on s0 + vT; the floor bound with `ramp_outlet` comes nearest (1.00 against 0.81).
+- *The entrant's side does not move at the defaults.* X reads 1.29 of the normal and 1.59 of s0 + vT, against 1.31 and 1.66 (−0.02 [−0.22, +0.17] on s0 + vT). With `ramp_outlet` it reads 1.12 and 1.42 (−0.25 [−0.36, −0.14]), still far above US-101's 0.57 / 0.62 and I-24's 0.72 / 0.92.
+- *After the crossing the gap still opens.* Under X the new follower goes 0.93 → 1.09 → 1.18 of the normal at 0 / 2 / 5 s, and 1.16 → 1.36 → 1.48 of s0 + vT. On US-101 it goes 0.76 → 0.88 → 0.95 and 0.81 → 0.91 → 1.00. The supported fits under X are openings past the normal (0.92 → 1.18 over 2.0 s), not WP-88's relaxation towards it. P, the relaxation alone, holds the gap shorter from 2 s on (−0.13 [−0.21, −0.05] of the normal at 5 s) and leaves the start where it was.
+
+**(3) Safety** (seeds 3–7 per row; opposing entries were read for the sets whose trajectories were kept to the end, "–" for the two floor sets).
+
+| run | collisions | largest deceleration [m/s²] (runs at 9.0 or more) | vehicle-steps harder than b / 3 m/s² / 4.5 m/s² (Σ) | opposing entries into lane 1 in one step (the rear one closing) |
+|---|---|---|---|---|
+| default | 0 | 4.9 (0) | 28,665 / 1,193 / 2 | 9 (4) |
+| X (0.76 / 0.57, τ_r 7.5 s) | 0 | 9.0 (1: seed 6) | 29,534 / 1,213 / 3 | 9 (3) |
+| XF, the follower side | 0 | 6.9 (0) | 30,368 / 1,390 / 7 | 3 (0) |
+| XL, the entrant's side | 0 | 6.4 (0) | 28,257 / 1,282 / 4 | 5 (1) |
+| P, after the change only | 0 | 5.4 (0) | 27,585 / 1,134 / 2 | 3 (0) |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | 0 | 7.7 (0) | 27,830 / 1,140 / 3 | 8 (1) |
+| X with I-24's leader side (0.76 / 0.72) | 0 | 9.0 (1: seed 7) | 28,864 / 1,335 / 4 | 6 (3) |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | 0 | 6.3 (0) | 26,911 / 1,155 / 2 | 6 (1) |
+| X, τ_r 5.2 s | **1** (seed 3) | 9.0 (1: seed 3) | 29,626 / 1,227 / 2 | 8 (2) |
+| X, τ_r 15.9 s | 0 | 4.9 (0) | 29,211 / 1,385 / 4 | 7 (2) |
+| P at 0.87 / 0.72 | 0 | 4.8 (0) | 29,576 / 1,363 / 1 | 5 (1) |
+| P, τ_r 5.2 s | 0 | 4.5 (0) | 29,216 / 1,284 / 0 | 3 (1) |
+| P, τ_r 15.9 s | 0 | 6.0 (0) | 29,786 / 1,138 / 1 | 6 (0) |
+| bound: X at the floor (0.5 / 0.5) | 0 | 9.0 (1: seed 7) | 27,198 / 1,313 / 4 | – |
+| `ramp_outlet` = 1 | 0 | 6.6 (0) | 32,960 / 1,246 / 5 | 2 (0) |
+| X, `ramp_outlet` | 0 | 5.6 (0) | 33,296 / 1,216 / 3 | 4 (2) |
+| XF, `ramp_outlet` | 0 | 9.0 (1: seed 7) | 34,606 / 1,359 / 7 | 6 (1) |
+| XL, `ramp_outlet` | 0 | 5.1 (0) | 32,614 / 1,450 / 2 | 10 (2) |
+| P, `ramp_outlet` | 0 | 5.4 (0) | 31,130 / 1,180 / 7 | 7 (2) |
+| X at 0.81 / 0.62, `ramp_outlet` | 0 | 5.7 (0) | 33,066 / 1,117 / 6 | 7 (1) |
+| bound: the floor, `ramp_outlet` | 0 | 17.3 (1: seed 5) | 34,010 / 1,551 / 5 | – |
+
+- *The collision and every stop at 9.0 m/s² are one defect.* Each was traced. In each, an exiter in lane 2 and an entrant in lane 0 entered lane 1 in the same step, the exiter behind and faster:
+  - X at τ_r 5.2 s, seed 3, t = 705.5 s: `v00626` (17.1 m/s) 2.8 m behind `v01369` (9.1 m/s), bumper to bumper; they collide at 707.0 s, 67.7 m into the section;
+  - X, seed 6, t = 462.5 s: `v00321` (13.5 m/s) 5.6 m behind `v01309` (4.7 m/s); two steps at 9.0 m/s², closest 2.8 m;
+  - XF with `ramp_outlet`, seed 7, t = 750.5 s: `v00674` (16.0 m/s) 3.8 m behind `v01401` (6.0 m/s); two steps at 9.0 m/s², closest 1.3 m;
+  - X with I-24's leader side, seed 7, t = 802.5 s: `v00630` (14.4 m/s) 4.5 m behind `v01381` (5.6 m/s); two steps at 9.0 m/s², closest 2.1 m;
+  - the floor bound, seed 7, t = 1,188.5 s: `v00790` (8.6 m/s) 3.4 m behind `v01337` (1.4 m/s); one step at 9.0 m/s², closest 2.3 m.
+
+  This is WP-80's known defect of two opposing changes into lane 1 in one step (WP-67's guard covers it only under `spread_crossings`). The allowance is granted to the exiter as the entrant's new follower in that same step, after the gap is set. Four of the five trace re-runs were compared by md5 and are byte-identical to the sets' runs; the fifth (τ_r 5.2 s, seed 3) reproduces every criterion and the collision.
+- *The allowance does not make the defect more frequent.* Opposing entries occur 2–10 times per five runs with or without it: 11 in the 10 baseline runs (4 closing) and 103 in the 85 form runs read (23 closing). Five form runs hit the severe end (four of them among the 85 read) and no baseline run did; with 23 closing entries against 4, that is within chance.
+- *The floor bound with `ramp_outlet`, seed 5, t = 111.5 s:* an exiter under no allowance stops from 8.6 m/s in one step, in lane 1 with no leader (read from its record, not traced).
+- *Under an allowance.* The paired intervals of the steps harder than b include zero for every form (part (4)). Harder than 3 m/s², two sets read more: X at τ_r 15.9 s (+38 [+2, +74] a run) and XL with `ramp_outlet` (+41 [+19, +63]).
+
+**(4) Lane 1 at the entry, the loop and the test's criteria.**
+
+*Table — levels* (seeds 3–7; lane 1 over [0, 50) after each run's breakdown minute, pooled).
+
+| run | T.H.52 departed of 407 (Σ) | lane-windows ≤ 20 m/s of 16 (Σ) | mainline of 1,196 | given up of reached | unfinished | loop closes | strict | lane 1: m/s, k / k_eq | breakdown minute |
+|---|---|---|---|---|---|---|---|---|---|
+| default | 370 / 329 / 323 / 316 / 352 (1,690) | 11 / 10 / 14 / 12 / 12 (59) | 1160 / 1149 / 1139 / 1148 / 1122 | 1 of 360 / 1 of 377 / 4 of 380 / 1 of 411 / 0 of 355 | 1 / 2 / 6 / 4 / 5 | 90% | 29% | 4.9, 0.59 | 7 / 5 / 3 / 4 / 5 |
+| X (0.76 / 0.57, τ_r 7.5 s) | 336 / 364 / 359 / 324 / 390 (1,773) | 13 / 12 / 13 / 12 / 11 (61) | 1192 / 1180 / 1153 / 1148 / 1174 | 0 of 346 / 0 of 402 / 1 of 413 / 1 of 409 / 1 of 370 | 5 / 0 / 8 / 8 / 4 | 91% | 27% | 5.1, 0.61 | 2 / 8 / 4 / 3 / 9 |
+| XF, the follower side | 347 / 323 / 340 / 320 / 367 (1,697) | 12 / 13 / 13 / 14 / 12 (64) | 1184 / 1114 / 1162 / 1144 / 1139 | 1 of 344 / 2 of 371 / 0 of 399 / 1 of 410 / 0 of 361 | 9 / 5 / 4 / 4 / 5 | 91% | 28% | 5.1, 0.60 | 2 / 4 / 3 / 5 / 4 |
+| XL, the entrant's side | 365 / 349 / 335 / 338 / 326 (1,713) | 10 / 12 / 14 / 12 / 12 (60) | 1186 / 1151 / 1120 / 1137 / 1134 | 1 of 356 / 1 of 384 / 4 of 395 / 1 of 406 / 2 of 342 | 5 / 5 / 2 / 7 / 0 | 91% | 26% | 4.8, 0.58 | 7 / 8 / 3 / 6 / 4 |
+| P, after the change only | 346 / 369 / 362 / 378 / 381 (1,836) | 13 / 10 / 14 / 11 / 10 (58) | 1176 / 1173 / 1164 / 1157 / 1190 | 3 of 351 / 0 of 406 / 1 of 412 / 2 of 426 / 1 of 369 | 0 / 4 / 3 / 12 / 0 | 89% | 27% | 5.9, 0.60 | 5 / 8 / 4 / 7 / 9 |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | 375 / 336 / 339 / 320 / 370 (1,740) | 12 / 11 / 14 / 12 / 11 (60) | 1164 / 1156 / 1135 / 1145 / 1195 | 2 of 367 / 2 of 379 / 2 of 394 / 1 of 418 / 0 of 369 | 6 / 4 / 3 / 5 / 2 | 92% | 27% | 5.1, 0.60 | 8 / 7 / 4 / 4 / 9 |
+| X with I-24's leader side (0.76 / 0.72) | 336 / 362 / 348 / 335 / 346 (1,727) | 13 / 10 / 13 / 14 / 12 (62) | 1170 / 1157 / 1146 / 1158 / 1115 | 3 of 351 / 2 of 393 / 0 of 405 / 0 of 420 / 2 of 345 | 6 / 3 / 4 / 9 / 1 | 90% | 27% | 5.1, 0.60 | 2 / 9 / 4 / 4 / 3 |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | 371 / 363 / 341 / 315 / 356 (1,746) | 10 / 11 / 13 / 13 / 13 (60) | 1188 / 1170 / 1156 / 1120 / 1165 | 0 of 358 / 3 of 399 / 1 of 407 / 1 of 403 / 3 of 360 | 4 / 12 / 7 / 4 / 5 | 91% | 27% | 5.3, 0.59 | 7 / 8 / 3 / 4 / 4 |
+| X, τ_r 5.2 s | 369 / 364 / 332 / 328 / 372 (1,765) | 12 / 11 / 14 / 13 / 10 (60) | 1152 / 1177 / 1157 / 1138 / 1115 | 1 of 359 / 4 of 399 / 2 of 399 / 5 of 407 / 1 of 366 | 3 / 13 / 5 / 10 / 3 | 91% | 28% | 5.3, 0.60 | 2 / 8 / 4 / 4 / 6 |
+| X, τ_r 15.9 s | 339 / 349 / 332 / 333 / 342 (1,695) | 11 / 12 / 13 / 12 / 12 (60) | 1126 / 1157 / 1155 / 1117 / 1196 | 0 of 341 / 1 of 393 / 2 of 397 / 2 of 410 / 3 of 363 | 1 / 6 / 5 / 9 / 3 | 91% | 28% | 4.9, 0.59 | 2 / 5 / 4 / 4 / 6 |
+| P at 0.87 / 0.72 | 375 / 310 / 358 / 320 / 346 (1,709) | 11 / 13 / 14 / 11 / 13 (62) | 1196 / 1116 / 1158 / 1134 / 1149 | 1 of 360 / 4 of 361 / 2 of 401 / 0 of 411 / 2 of 355 | 0 / 3 / 11 / 3 / 1 | 90% | 27% | 5.2, 0.59 | 7 / 4 / 3 / 5 / 4 |
+| P, τ_r 5.2 s | 383 / 330 / 321 / 322 / 356 (1,712) | 12 / 13 / 14 / 13 / 12 (64) | 1187 / 1132 / 1115 / 1088 / 1151 | 2 of 367 / 2 of 377 / 4 of 388 / 6 of 386 / 5 of 358 | 9 / 6 / 4 / 4 / 4 | 90% | 26% | 5.0, 0.60 | 7 / 3 / 4 / 5 / 5 |
+| P, τ_r 15.9 s | 376 / 344 / 352 / 328 / 383 (1,783) | 12 / 12 / 13 / 13 / 11 (61) | 1169 / 1138 / 1182 / 1156 / 1168 | 4 of 363 / 1 of 386 / 1 of 416 / 0 of 423 / 0 of 362 | 3 / 6 / 2 / 2 / 3 | 92% | 28% | 5.9, 0.60 | 7 / 3 / 4 / 4 / 5 |
+| bound: X at the floor (0.5 / 0.5) | 331 / 368 / 341 / 306 / 217 (1,563) | 13 / 11 / 13 / 12 / 14 (63) | 1154 / 1177 / 1136 / 1125 / 899 | 4 of 346 / 1 of 400 / 0 of 405 / 2 of 399 / 10 of 251 | 10 / 17 / 4 / 1 / 7 | 95% | 24% | 3.7, 0.61 | 2 / 8 / 4 / 4 / 4 |
+| `ramp_outlet` = 1 | 404 / 375 / 399 / 352 / 390 (1,920) | 11 / 13 / 14 / 12 / 13 (63) | 1194 / 1163 / 1176 / 1151 / 1140 | 2 of 378 / 2 of 413 / 3 of 421 / 2 of 426 / 2 of 366 | 5 / 9 / 0 / 3 / 5 | 88% | 23% | 6.0, 0.64 | 8 / 8 / 4 / 5 / 5 |
+| X, `ramp_outlet` | 381 / 366 / 395 / 348 / 407 (1,897) | 12 / 12 / 12 / 12 / 13 (61) | 1195 / 1184 / 1195 / 1136 / 1196 | 3 of 376 / 4 of 414 / 1 of 438 / 1 of 421 / 1 of 388 | 8 / 10 / 7 / 14 / 2 | 91% | 23% | 5.5, 0.68 | 3 / 5 / 7 / 4 / 8 |
+| XF, `ramp_outlet` | 389 / 388 / 390 / 332 / 390 (1,889) | 12 / 13 / 13 / 13 / 13 (64) | 1196 / 1194 / 1195 / 1149 / 1188 | 2 of 368 / 6 of 425 / 4 of 435 / 3 of 411 / 2 of 371 | 8 / 10 / 8 / 12 / 1 | 88% | 21% | 5.6, 0.67 | 2 / 4 / 6 / 3 / 4 |
+| XL, `ramp_outlet` | 400 / 351 / 348 / 346 / 393 (1,838) | 12 / 13 / 15 / 14 / 12 (66) | 1196 / 1167 / 1127 / 1146 / 1189 | 3 of 382 / 2 of 393 / 2 of 395 / 3 of 415 / 2 of 371 | 6 / 6 / 6 / 1 / 2 | 91% | 22% | 5.2, 0.65 | 7 / 4 / 3 / 4 / 7 |
+| P, `ramp_outlet` | 398 / 400 / 378 / 363 / 407 (1,946) | 11 / 12 / 14 / 12 / 11 (60) | 1187 / 1194 / 1170 / 1135 / 1175 | 2 of 372 / 1 of 434 / 4 of 422 / 0 of 425 / 0 of 379 | 0 / 4 / 6 / 8 / 1 | 86% | 20% | 6.5, 0.66 | 8 / 9 / 4 / 5 / 11 |
+| X at 0.81 / 0.62, `ramp_outlet` | 405 / 407 / 390 / 347 / 377 (1,926) | 13 / 11 / 12 / 13 / 14 (63) | 1176 / 1192 / 1194 / 1129 / 1174 | 2 of 379 / 4 of 432 / 2 of 434 / 1 of 416 / 4 of 374 | 5 / 8 / 4 / 9 / 5 | 90% | 24% | 5.6, 0.67 | 2 / 11 / 5 / 4 / 4 |
+| bound: the floor, `ramp_outlet` | 353 / 344 / 342 / 322 / 368 (1,729) | 14 / 15 / 14 / 13 / 12 (68) | 1182 / 1133 / 1124 / 1133 / 1171 | 2 of 364 / 2 of 384 / 3 of 394 / 1 of 403 / 2 of 368 | 8 / 9 / 3 / 13 / 7 | 93% | 23% | 4.2, 0.68 | 2 / 4 / 3 / 3 / 6 |
+
+*Table — paired, the form minus its base (mean a run, 95 % t-interval, seeds 3–7).*
+
+| form, minus its base (mean a run, 95 % t-interval) | T.H.52 departed | lane-windows ≤ 20 m/s | mainline | given up | unfinished | loop closes | lane 1 over [0, 50) after the breakdown: m/s | … k / k_eq | … minutes 1–19: k / k_eq | feeder queue back, median minute after the breakdown [m] | breakdown minute | braking harder than b | … than 3 m/s² |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| X (0.76 / 0.57, τ_r 7.5 s) | +16.6 [-21.7, +54.9] | +0.4 [-1.5, +2.3] | +25.8 [+1.3, +50.3] | -0.8 [-2.6, +1.0] | +1.4 [-2.1, +4.9] | +1.5 [+0.3, +2.6] pp | +0.18 [-1.13, +1.49] | +0.022 [+0.005, +0.040] | +0.022 [+0.006, +0.038] | +40 [-102, +182] | +0.4 [-4.0, +4.8] | +174 [-679, +1026] | +4 [-58, +66] |
+| XF, the follower side | +1.4 [-19.1, +21.9] | +1.0 [-1.0, +3.0] | +5.0 [-26.1, +36.1] | -0.6 [-3.0, +1.8] | +1.8 [-3.0, +6.6] | +1.1 [-1.4, +3.6] pp | +0.13 [-1.05, +1.31] | +0.007 [-0.017, +0.030] | +0.008 [-0.014, +0.030] | +20 [-160, +200] | -1.2 [-4.0, +1.6] | +341 [-966, +1647] | +39 [-52, +131] |
+| XL, the entrant's side | +4.6 [-20.4, +29.6] | +0.2 [-1.2, +1.6] | +2.0 [-20.3, +24.3] | +0.4 [-0.7, +1.5] | +0.2 [-5.2, +5.6] | +1.4 [-0.2, +3.0] pp | -0.17 [-0.84, +0.51] | -0.004 [-0.025, +0.016] | -0.005 [-0.020, +0.010] | +10 [-145, +165] | +0.8 [-1.2, +2.8] | -82 [-360, +197] | +18 [-13, +49] |
+| P, after the change only | +29.2 [-10.6, +69.0] | -0.2 [-2.0, +1.6] | +28.4 [-0.2, +57.0] | +0.0 [-2.5, +2.5] | +0.2 [-6.1, +6.5] | -0.3 [-3.0, +2.4] pp | +0.99 [-0.18, +2.15] | +0.010 [-0.003, +0.022] | +0.006 [-0.002, +0.014] | -35 [-139, +69] | +1.8 [-1.2, +4.8] | -216 [-1022, +590] | -12 [-97, +74] |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | +10.0 [+1.9, +18.1] | +0.2 [-0.8, +1.2] | +15.4 [-25.0, +55.8] | +0.0 [-1.5, +1.5] | +0.4 [-3.9, +4.7] | +2.3 [+0.1, +4.4] pp | +0.20 [-0.29, +0.69] | +0.014 [-0.024, +0.053] | +0.015 [-0.013, +0.042] | +55 [-91, +201] | +1.6 [-0.3, +3.5] | -167 [-1029, +695] | -11 [-58, +37] |
+| X with I-24's leader side (0.76 / 0.72) | +7.4 [-26.6, +41.4] | +0.6 [-1.1, +2.3] | +5.6 [-3.3, +14.5] | +0.0 [-3.2, +3.2] | +1.0 [-4.0, +6.0] | +1.0 [-1.7, +3.6] pp | +0.11 [-0.70, +0.92] | +0.005 [-0.025, +0.035] | +0.009 [-0.013, +0.030] | +45 [-96, +186] | -0.4 [-4.6, +3.8] | +40 [-853, +933] | +28 [-32, +89] |
+| X at 0.87 / 0.72 (I-24's follower value, not a target) | +11.2 [-7.1, +29.5] | +0.2 [-1.2, +1.6] | +16.2 [-16.9, +49.3] | +0.2 [-2.8, +3.2] | +2.8 [-2.4, +8.0] | +1.6 [+0.3, +3.0] pp | +0.29 [-0.26, +0.84] | +0.003 [-0.022, +0.029] | +0.000 [-0.023, +0.023] | -30 [-193, +133] | +0.4 [-1.5, +2.3] | -351 [-834, +133] | -8 [-40, +25] |
+| X, τ_r 5.2 s | +15.0 [-1.7, +31.7] | +0.2 [-1.4, +1.8] | +4.2 [-17.6, +26.0] | +1.2 [-1.8, +4.2] | +3.2 [-3.5, +9.9] | +1.0 [-1.7, +3.8] pp | +0.25 [-0.57, +1.07] | +0.015 [-0.011, +0.040] | +0.014 [-0.014, +0.042] | +55 [-85, +195] | +0.0 [-3.7, +3.7] | +192 [-752, +1136] | +7 [-21, +35] |
+| X, τ_r 15.9 s | +1.0 [-25.5, +27.5] | +0.2 [-1.2, +1.6] | +6.6 [-47.9, +61.1] | +0.2 [-2.2, +2.6] | +1.2 [-2.7, +5.1] | +1.8 [-0.8, +4.4] pp | -0.11 [-0.95, +0.74] | +0.006 [-0.012, +0.025] | +0.008 [-0.009, +0.024] | +10 [-109, +129] | -0.6 [-3.7, +2.5] | +109 [-774, +992] | +38 [+2, +74] |
+| P at 0.87 / 0.72 | +3.8 [-21.0, +28.6] | +0.6 [-1.3, +2.5] | +7.0 [-29.3, +43.3] | +0.4 [-2.2, +3.0] | +0.0 [-4.1, +4.1] | +0.4 [-2.0, +2.7] pp | +0.22 [-0.67, +1.12] | -0.000 [-0.006, +0.006] | +0.003 [-0.005, +0.011] | -50 [-172, +72] | -0.2 [-1.2, +0.8] | +182 [-785, +1150] | +34 [-22, +90] |
+| P, τ_r 5.2 s | +4.4 [-2.7, +11.5] | +1.0 [-0.5, +2.5] | -9.0 [-55.6, +37.6] | +2.4 [-0.6, +5.4] | +1.8 [-3.3, +6.9] | +0.5 [-1.9, +2.9] pp | +0.15 [-0.71, +1.01] | +0.013 [-0.021, +0.046] | +0.010 [-0.014, +0.034] | -30 [-206, +146] | +0.0 [-1.5, +1.5] | +110 [-574, +795] | +18 [-16, +53] |
+| P, τ_r 15.9 s | +18.6 [+5.0, +32.2] | +0.4 [-1.3, +2.1] | +19.0 [-11.6, +49.6] | -0.2 [-2.9, +2.5] | -0.4 [-4.5, +3.7] | +1.9 [-0.8, +4.5] pp | +0.93 [-0.08, +1.95] | +0.013 [+0.004, +0.022] | +0.011 [+0.009, +0.014] | +40 [-153, +233] | -0.2 [-1.6, +1.2] | +224 [-576, +1025] | -11 [-39, +17] |
+| bound: X at the floor (0.5 / 0.5) | -25.4 [-109.8, +59.0] | +0.8 [-0.8, +2.4] | -45.4 [-170.8, +80.0] | +2.0 [-4.4, +8.4] | +4.2 [-5.3, +13.7] | +5.2 [+1.4, +9.1] pp | -0.81 [-3.33, +1.71] | +0.020 [-0.045, +0.085] | +0.015 [-0.038, +0.068] | -50 [-357, +257] | -0.4 [-4.1, +3.3] | -293 [-1777, +1190] | +24 [-109, +157] |
+| X, `ramp_outlet` | -4.6 [-22.4, +13.2] | -0.4 [-1.8, +1.0] | +16.4 [-16.6, +49.4] | -0.2 [-2.2, +1.8] | +3.8 [-2.9, +10.5] | +2.7 [+0.0, +5.4] pp | -0.24 [-1.56, +1.09] | +0.043 [+0.003, +0.082] | +0.035 [+0.010, +0.059] | +85 [-36, +206] | -0.6 [-5.0, +3.8] | +67 [-1203, +1337] | -6 [-91, +79] |
+| XF, `ramp_outlet` | -6.2 [-22.4, +10.0] | +0.2 [-0.8, +1.2] | +19.6 [-6.1, +45.3] | +1.2 [-0.8, +3.2] | +3.4 [-3.2, +10.0] | +0.0 [-6.5, +6.6] pp | -0.40 [-1.54, +0.74] | +0.029 [-0.001, +0.058] | +0.035 [+0.024, +0.045] | -30 [-202, +142] | -2.2 [-6.0, +1.6] | +329 [-836, +1494] | +23 [-17, +62] |
+| XL, `ramp_outlet` | -16.4 [-43.4, +10.6] | +0.6 [-0.8, +2.0] | +0.2 [-43.0, +43.4] | +0.2 [-0.8, +1.2] | -0.2 [-5.0, +4.6] | +2.4 [-1.9, +6.6] pp | -0.52 [-1.97, +0.94] | +0.005 [-0.023, +0.034] | +0.008 [-0.004, +0.020] | -95 [-300, +110] | -1.0 [-3.6, +1.6] | -69 [-773, +635] | +41 [+19, +63] |
+| P, `ramp_outlet` | +5.2 [-17.8, +28.2] | -0.6 [-1.7, +0.5] | +7.4 [-22.1, +36.9] | -0.8 [-2.4, +0.8] | -0.6 [-7.5, +6.3] | -3.9 [-9.2, +1.5] pp | +1.07 [-0.77, +2.91] | +0.020 [-0.022, +0.062] | +0.020 [-0.016, +0.056] | -30 [-209, +149] | +1.4 [-1.8, +4.6] | -366 [-733, +1] | -13 [-47, +20] |
+| X at 0.81 / 0.62, `ramp_outlet` | +1.2 [-21.1, +23.5] | +0.0 [-2.3, +2.3] | +8.2 [-24.6, +41.0] | +0.4 [-1.5, +2.3] | +1.8 [-2.0, +5.6] | +2.1 [-2.5, +6.7] pp | -0.41 [-1.54, +0.73] | +0.034 [+0.006, +0.061] | +0.038 [+0.022, +0.054] | +30 [-179, +239] | -0.8 [-5.0, +3.4] | +21 [-1337, +1380] | -26 [-88, +36] |
+| bound: the floor, `ramp_outlet` | -38.2 [-56.8, -19.6] | +1.0 [-1.0, +3.0] | -16.2 [-54.1, +21.7] | -0.2 [-0.8, +0.4] | +3.6 [-1.1, +8.3] | +5.1 [+1.4, +8.8] pp | -1.79 [-2.71, -0.86] | +0.041 [+0.015, +0.066] | +0.038 [+0.016, +0.061] | -55 [-244, +134] | -2.4 [-5.8, +1.0] | +210 [-918, +1338] | +61 [+17, +105] |
+
+- *Lane 1 gets denser, not faster.* Under X its density over [0, 50) after the breakdown rises by 0.022 [0.005, 0.040] of k_eq (0.59 → 0.61), and by 0.043 [0.003, 0.082] with `ramp_outlet` (0.64 → 0.68). Its speed moves inside the noise in every form (+0.18 [−1.13, +1.49] m/s under X).
+- *The loop closes more often, not less.* +1.5 [0.3, 2.6] points under X and +2.3 [0.1, 4.4] at US-101's s0 + vT starts; +2.7 [0.0, 5.4] with `ramp_outlet`. The holds still bind, now at f·T.
+- *The entrance.* At the defaults the X family reads +1.0 to +16.6 entrants a run at the derived values and their sensitivity, and one of the six intervals excludes zero: +10.0 [1.9, 18.1] at US-101's s0 + vT starts. With `ramp_outlet`, X, XF and X at 0.81 / 0.62 read −6.2 to +1.2. P at τ_r 15.9 s reads +18.6 [5.0, 32.2], and its neighbours at 5.2 s and 7.5 s read +4.4 [−2.7, +11.5] and +29.2 [−10.6, +69.0]. X's mainline reads +25.8 [1.3, 50.3].
+- *Criterion (ii) does not move.* No interval excludes zero, it fails in every run (10–15 windows of 16), and the test passes in no run.
+- *Chance.* Outside the floor bound, 17 of the 221 paired intervals of this table exclude zero, where chance gives about 11. Nine are lane 1's density (seven in the X family, two in P at τ_r 15.9 s) and three the X family's loop share, each group agreeing in sign.
+- *The floor bound.* With `ramp_outlet` the follower side reaches 0.79 of the normal, and the entrance falls by 38.2 [19.6, 56.8] a run, lane 1 slows by 1.79 [0.86, 2.71] m/s and the loop closes 5.1 [1.4, 8.8] points more. At the defaults, seed 7 departs 217 of 407 T.H.52 entrants and 899 of 1,196 mainline vehicles and gives up 10 of 251 exits.
+
+**(5) Why the shorter start does not carry: what sets the speed of a vehicle under an allowance** (form X, read-only; WP-86's cause reading of every allowance vehicle-step; seeds 3–7 pooled).
+
+| run | side | vehicle-steps under an allowance | an exiter | its partner is its binding leader | free | a weave target | another leader | below its model | the target's family (share of the steps) |
+|---|---|---|---|---|---|---|---|---|---|
+| X | new follower | 13,092 | 76% | 47% | 27% | 22% | 2% | 2% | section entrants' hold 11%, exiters' hold 5%, exiters' easing 4%, ramp anticipation's hold 2% |
+| X | entrant | 13,342 | 0% | 51% | 33% | 14% | 2% | 0% | exiters' hold 7%, section entrants' hold 7% |
+| X, `ramp_outlet` | new follower | 15,597 | 69% | 57% | 24% | 17% | 1% | 1% | section entrants' hold 8%, exiters' easing 4%, exiters' hold 3%, ramp anticipation's hold 2% |
+| X, `ramp_outlet` | entrant | 16,094 | 0% | 59% | 23% | 16% | 2% | 0% | section entrants' hold 11%, exiters' hold 5% |
+
+*Table — the allowance's own counts* (a run, mean over seeds 3–7).
+
+| run | entering crossings | allowances: follower / entrant | ended by: its own change / the partner's change / leaving the section / t_max / a new crossing | held [s]: p25 / p50 / p75 | f at the end: p10 / p50 / p90 |
+|---|---|---|---|---|---|
+| X (0.76 / 0.57, τ_r 7.5 s) | 195 | 175 / 146 | 143 / 88 / 67 / 3.2 / 16 | 2.5 / 6.0 / 12.0 | 0.67 / 0.87 / 0.97 |
+| XF, the follower side | 182 | 166 / 0 | 100 / 25 / 21 / 2.0 / 16 | 2.5 / 5.5 / 9.5 | 0.79 / 0.89 / 0.97 |
+| XL, the entrant's side | 185 | 0 / 139 | 34 / 62 / 38 / 4.4 / 0 | 2.5 / 7.0 / 12.5 | 0.60 / 0.83 / 0.97 |
+| P, after the change only | 208 | 188 / 161 | 149 / 99 / 67 / 5.2 / 27 | 2.5 / 5.5 / 12.0 | 0.65 / 0.86 / 0.97 |
+| X at US-101's s0 + vT starts (0.81 / 0.62) | 193 | 175 / 148 | 141 / 86 / 69 / 4.4 / 21 | 2.0 / 6.0 / 11.5 | 0.71 / 0.89 / 0.97 |
+| X, `ramp_outlet` | 219 | 202 / 177 | 156 / 107 / 79 / 9.8 / 24 | 2.0 / 5.5 / 12.5 | 0.65 / 0.86 / 0.98 |
+
+- *The new follower is mostly an exiter about to cross itself.* It is one at 76 % of its allowance steps. Its partner sets its speed at under half of them (47 %). A weave target sets it at 22 %, mostly a hold for the next entrant. At 27 % it is free: the gap opens because the entrant pulls away from the queue at its own acceleration.
+- *So the allowance is short-lived.* It lasts a median 6.0 s against τ_r's 7.5 s. Of the 321 allowances a run under X (175 on followers, 146 on entrants), 143 end with the vehicle's own further lane change, 88 with its partner's, 67 on leaving the section and 3 at t_max. The allowance ends at a median f of 0.87.
+- *The entrant's side is not set by a target.* The entrant crosses when its follower side clears, behind a lane-1 leader that runs faster; its partner sets its speed at half of its allowance steps. The easing binds only when the entrant would brake.
+
+**Reading.**
+1. *The allowance is derivable and bounded.* Before the change it must act on the hold the runner computes for the gap's follower, because that hold sets the gap the change is made at. After the change it must act on SUMO's own `tau`, which `vehicle.setTau` sets for the car-following, the secure gaps and, cached, the runner's reading alike. With US-101's ratios and τ_r, the follower allowances end mostly with a further lane change (median 6.0 s).
+2. *It moves the follower side at the crossing part of the way.* Two fifths of the way to US-101 over the normal (0.93 against 1.05 and 0.76), under a third over s0 + vT (1.16 against 1.31 and 0.81). With `ramp_outlet`, 0.87 and 1.08. Only the floor bound comes near, and only with `ramp_outlet`.
+3. *It does not move the entrant's side at the defaults.* No weave target sets the gap ahead of the entrant at the crossing; the entrant crosses behind a faster leader. With `ramp_outlet` that side falls to 1.12 of the normal and 1.42 of s0 + vT, far above US-101's and I-24's starts.
+4. *After the crossing, the model's gap opens with or without it.* The new follower is usually an exiter whose speed its own crossing or another hold sets, and the entrant pulls away. The relaxation alone (P) holds the gap shorter from 2 s on and leaves the start at the normal.
+5. *No form clearly improves the entry.* Lane 1 over the entry gets 0.02–0.04 of k_eq denser under the X family, and no faster. The loop closes 1.5–2.7 points more often. The entrance leans positive at the defaults and not with `ramp_outlet`, with one interval of six clear of zero, and criterion (ii) does not move. The one form stronger than the data (the floor) makes the entry worse.
+6. *Safety.* No collision at the derived values in 10 runs. One collision and five 9 m/s² stops in 115 runs, each the known defect of opposing entries into lane 1 in one step, and one 17.3 m/s² stop under the floor bound, on a vehicle under no allowance. That defect is as frequent with the allowance as without it, and its cure is a guard, not a gap.
+
+**Nothing ships.** No form clearly moves the crossing gaps towards the observed values on both sides and improves the entry measures. `microsim.runner` and `flowstate_core.config` are unchanged, no `WEAVE_DEFAULTS` key is added, the contract stays at 44 `weave_sections` keys, golden `merge_weave` is untouched, and the strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands as written. The implementation guards (the capacity fixture's no-lock pin, the 29-run grid, the weave determinism tests) were not run: they apply to an implementation.
+
+**What this hands on.**
+- *(a) The gap at the crossing is closed as a lever, as the speed a target takes was before it.* WP-87 closed the speed axis. This package shortens the gap at the crossing with a model-form allowance on observed parameters, and lane 1 at the entry is where it was. A shorter gap packs the lane (0.02–0.04 of k_eq) without moving it, and the holds still bind.
+- *(b) The separation left is the crossing's speed and position.* Real entrants cross at a median 11.7 m/s (VM X) with both gaps short on US-101. The model's cross at 5.7–8 m/s, out of the ramp queue, behind a faster leader. The next observation is the partner speeds at the change: the new leader's and the new follower's speed minus the entrant's, real against model. It is a small addition to `calibration.lane_change_relaxation`, which records the gaps and the rear vehicle's speed but not the partner's, and a cloud stage on US-101 and I-24 MOTION, as VM AC was. Its I-24 reading needs a coverage-free reference, per the correction above.
+- *(c) The opposing-entries defect.* One collision and five emergency stops in 115 runs of this package come from two changes into lane 1 in the same step, which WP-67's guard covers only under `spread_crossings`. A default-on guard would be a separate package, measured on the grid.
+- *(d) For harnesses.* `vehicle.setTau` works on this fleet's EIDM (`MSCFModel::setHeadwayTime`). The runner caches each vehicle's constants once (`_weave_veh`), so a harness that changes `tau` must update `ws["veh_params"][id]["T"]` as well, or the runner's reading of the vehicle's model and SUMO's disagree.
+
+**Limitations.**
+- *Scale.* Five seeds and one fixture per set; the paired intervals are over five runs, and 19 sets were read against their bases on 13 measures each.
+- *Platform.* macOS records. WP-85 (above) found single corridor-fleet runs on these fixtures that land differently on Linux.
+- *The map from f to the observed start* is first-order in T. f = r0 scales only the time-gap term. A map that also scaled s0 (`setMinGap`) would also change SUMO's standstill margins, and was not measured.
+- *The observed targets* are VM AC's medians over all weave crossings of two sites, at other speeds and densities than the fixture's. US-101 is raw NGSIM (data/README.md) and small (176–177 sides at the change).
+- *The references are traffic.* The model's normal includes the vehicles under an allowance (read against the baseline's normal, no paired difference at the crossing moves by more than 0.01). s0 + vT is read at the fleet's means, not at each vehicle's own drawn s0 and T, which the allowance changes.
+- *The cause reading* of part (5) is WP-86's, with its limits (the IDM without the EIDM's extra terms, a 0.1 m/s² threshold).
+- *The traces* cover the collision and all five stops at 9.0 m/s². The floor bound's 17.3 m/s² stop was read from its record only. The opposing entries of the two floor sets were not read.
+
+**Bookkeeping.**
+- *Edited:* this section only. The CHANGELOG bullet is handed to the coordinator. The runner, `flowstate_core.config`, docs/CONTRACTS.md, the scenarios, the fixtures, every test and every golden are untouched, and no config hash changes.
+- *Session files (`wp90/`, not committed):*
+  - the harness `h90.py` (on WP-87's `h87.py` and `an87.py`, copied unchanged), the run script `runs90.sh`, the extraction `ana90.py` and the baseline normals `normal_def.pkl` and `normal_outlet.pkl`;
+  - the readers `tab90.py` (on `tab87.py`) and `opp90.py`, and the section's assembly `assemble90.py` from `section_tpl.md`;
+  - the rows `rows_<set>.jsonl` and the extractions `rel_<set>.json` for the 23 sets `def`, `outlet`, `x`, `xf`, `xl`, `p`, `x_eq`, `x_i24l`, `x_i24`, `x_t52`, `x_t159`, `p_i24`, `p_t52`, `p_t159`, `x_floor`, `x_outlet`, `xf_outlet`, `xl_outlet`, `p_outlet`, `x_eq_outlet`, `x_floor_outlet`, `xobs` and `xobs_outlet` (115 runs), and the tables `t_*.md` and `t_opp.txt`;
+  - smoke and trace runs of single seeds, whose rows were deleted.
+  - Run directories were deleted after the extraction.
+
+Every number above is from those runs, from the committed files named, from `microsim.runner` at HEAD or from SUMO 1.27.1's source.
