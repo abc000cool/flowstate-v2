@@ -8777,3 +8777,191 @@ Every number above is from those runs, from the committed files named, or from t
 **Session files (not committed):** the archive `vm_thin_x/final.tgz` and its extraction; `verdict91.py` and `verdict91.txt` (the rule applied mechanically).
 
 Every number above is from `artifacts/coverage_thinning_us101.json`, `artifacts/lane_change_relaxation_{i24,us101}.json`, WP-91's section, or the round's logs.
+
+## 2026-09-25 (block 3, WP-92, opposing entries into one lane in one step): SUMO executes an edge's lane changes front vehicle first, and the weave's accepted and forced changes run under mode 256, which refuses only an overlap, after an acceptance read before the step. So a runner change can land at any gap behind a vehicle ahead that entered the same lane from the other side in the same step. The rear is always a runner change; a rear under SUMO's own model sees the front. At the defaults the front is a runner change in every such conflict on the corridor section fixture and the 29-run grid, and a model-driven change into lane 2 in three 9 m/s² stops on the capacity fixture. The one guard so far (WP-64's, under `swap_pairs` and `spread_crossings` only) reads entrant changes only and is off. A new key, `opposing_entry_guard` (default 0, hash-neutral), decides every vehicle first and then resolves each pair that would land within the forced guard's minimum: a due forced change goes first, then a crossing change, then a model-driven one; between equals the one ahead. The other waits one step: a runner request is withheld, or an undriven vehicle's own lane changes are vetoed for that step (libsumo cannot read them in advance; the veto defers them by exactly one step, probed). In 56 runs with the key, the 33 conflicts with a runner rear of the same runs without it fall to none, and so do the collision and the five 9 m/s² stops of WP-90's traced runs. No criterion of the corridor section test moves. But the T.H.52 capacity fixture's no-lock pin fails at seed 5 on its give-up clause, and golden `merge_weave` moves with the key set. The key ships off
+
+**Why.** WP-60 (its form G) and WP-62 (its form N) recorded a latent defect: an exiter's mode-256 change executed in the same step as another vehicle's entry into the same lane, and landed just behind it. WP-64 probed how SUMO orders a step's changes and derived a guard for its swap; WP-67 reused it under the spread. WP-80 and WP-90 met the defect at the weave defaults' neighbours: one collision in 228 runs, then one collision and five 9 m/s² stops in 115 runs, all an exiter entering lane 1 from lane 2 behind an entrant entering it from lane 0. WP-90's hand-on (c): a default-on guard is a separate package, measured on the grid. This package finds the mechanism in the runner and in SUMO 1.27.1's source, counts it with a read-only reader, derives a guard with its priority and conflict distance, implements it behind a key and measures it. The corridor's reference battery records 15 collisions over 20 seeds (docs/ONBOARDING_MNDOT.md §11, VM U). Its committed artifact keeps no collision records, so how many of those trace to this defect is still not known.
+
+**How it was measured.**
+- *Reader (session, `wp92/opp92.py`).* A wrapper on `microsim.runner._weave_step` and a pass-through recorder on libsumo's `vehicle.changeLane`. Every call it adds is a getter, with its own cache. At each step it compares every vehicle's weave-axis lane (`ws["lane_map"]`: the section, the approach edge's lanes feeding section lanes ≥ 1, the edge after it, the ramp as lane 0) with the step before. A change of one lane is an *entry*. Two entries into the same lane in the same step from opposite sides are an *opposing pair*; the *front* is the one with the larger section-axis position after the step, as SUMO orders them.
+  - *The path of an entry:* `acc` / `force` (the weave's accepted or forced change, requested in the step before; the recorder reads the call site), `acc-lag` / `force-lag` (a request of two steps before, executed one step late), or SUMO's own: in the step the vehicle arrives on the edge, or on its edge.
+  - *Movement:* E an entrant not bound for the paired exit, R a ramp-to-exit vehicle, X a mainline exiter, T through.
+  - *Closing:* the rear is faster after the step. *Conflict:* the rear, behind the front in the target lane, fails the forced guard at the state before the step, the guard's own test below.
+  - *Hard braking:* every vehicle, (v_prev − v)/Δt each step; 9.0 m/s² is SUMO's default emergency deceleration. A stop is attributed to a pair when the vehicle was its rear in the 10 s before.
+- *Read-only.* With the reader and the key off, the corridor section fixture's trajectories are byte-identical to WP-90's default runs at seeds 3–7 (md5 e84ff70e23, cd43b1b4ba, b6861ae460, 9480837501, c7d827db61), with the runner before and after this package. The 29-run grid's rows equal WP-83's `after` rows: 29 rows, 1,272 fields, 0 differ, golden hash 436cd4ec9e5d. WP-90's five traced runs, replayed through its own `h90.py` with the reader, are byte-identical to its rows (470cab492b, edde0900c1, 1a491737f9, 3e9a17f78d, bb9db71658), the collision included. The reader's WP-90-style count (lane 0 → 1 and 2 → 1 in one step, both in the section at both samples, within 30 m) gives WP-90's `opp90.py` numbers exactly: 9 (4 closing) and 2 (0) at the defaults and with `ramp_outlet`.
+- *Runs.* One at a time, 20 simulated minutes at 0.5 s, macOS, 2–4 s each.
+  - The corridor section fixture: the strict-`xfail` test's `_th52_corridor_config(seed)` (`wp92/h92.py`), seeds 3–12 at the defaults and 3–7 with `ramp_outlet`.
+  - The 29-run grid: `grid92.sh` / `wp92_grid_harness.py`, WP-80's harness with the reader added.
+  - The T.H.52 capacity fixture at seeds 3–12 through the same harness.
+  - WP-90's five traced runs (`wp92/h90g.py`).
+  - Each with and without the key; two harness forms of the guard (`wp92/forms92.py`) on the corridor fixture and the grid.
+- *Probe (`wp92/vetoprobe.py`).* WP-64's straight 3-lane edge, IDM, 5 m vehicles, `minGap` 2.5 m, step 0.5 s.
+- *Paired intervals* are per seed, the key minus the default: the mean and its 95 % t-interval.
+
+**(1) The mechanism** (`microsim.runner` at HEAD, SUMO 1.27.1's `MSLaneChanger.cpp`, `MSVehicle.cpp`).
+- *SUMO's order.* A step moves every vehicle, then changes lanes edge by edge. On an edge, `MSLaneChanger::findCandidate` takes the vehicle with the largest position across the edge's lanes, front first; a tie goes to the lower lane. A vehicle that has changed is the target lane's `hoppedVeh` for every vehicle processed after it (`getRealLeader`).
+- *Why only a runner change can be the rear.* A change under SUMO's own model, or under a TraCI request that respects gaps (modes 512 / 768), is checked against that hopped vehicle's secure gap. A request under mode 256 (`LCP_NOOVERLAP`) has the blocked bits cleared unless it overlaps. The runner's acceptance and forced guard read `vehicle.getNeighbors` before the step, where the other change has not happened. So the rear of a dangerous pair is always one of the weave's own mode-256 requests: an accepted change, a forced change or the swap.
+- *The front can be anything that enters from the other side, executed first:* another runner request; a SUMO change of a vehicle the section does not drive (a through vehicle, an entrant handed back after its crossing, an exiter given up); SUMO's arrival-step change of a crossing vehicle not yet taken; or a runner request of the step before that SUMO refused, still open. A refused `changeLane(…, 0.5 s)` executes one step late: 3 entries into lane 1 in 10 corridor runs.
+- *What a corridor run carries into the section's lanes 1 and 2* (means over seeds 3–12, the defaults):
+
+| entry | a run |
+|---|---|
+| entrant lane 0 → 1, the weave's accepted change | 121.3 |
+| entrant lane 0 → 1, SUMO's own in the step it arrives | 60.2 |
+| entrant lane 0 → 1, forced | 4.1 |
+| exiter lane 2 → 1, accepted / forced | 61.7 / 3.1 |
+| through vehicle lane 2 → 1, SUMO's own | 36.3 |
+| entrant handed back, lane 1 → 2, SUMO's own | 72.0 |
+| exiter lane 3 → 2, accepted | 4.5 |
+
+- *Why the existing guard misses them.* WP-64's `_weave_swap_opposing_clear` is called only under `swap_pairs` (for the swap's entrant) and `spread_crossings` (for an entrant's accepted change): at the defaults nothing reads the pair. Where it runs, it reads entrant changes into lane 1 only, and always refuses the entrant. It misses a forced entrant change, an exiter as the rear behind a model-driven front, and every change into lane 2 and above. It also refuses the entrant beside any lane-2 vehicle ahead within the guard, whether that vehicle changes or not: 117–188 refusals a run on this fixture (WP-67).
+- *What libsumo allows.* `vehicle.getLaneChangeState(v, dir)` and `wantsAndCouldChangeLane` report the decision of the step before. A keep-right change on an empty road showed no bit before it executed (WP-64's probe 4; again here). `couldChangeLane` read True at every step, since nothing blocked it. A model-driven change cannot be read before the step it executes in. It can be vetoed: with `laneChangeMode` bits 0–7 cleared for one step and the mode restored on the next, the keep-right change executed at t = 6.5 s instead of 6.0 s, at the same speed and 5 m further on, with the mode back at 1621.
+- *The defect with a model-driven front, probed.* B at 10 m/s in lane 2 keeps right into lane 1 in the step in which A, at 14 m/s in lane 0 with its front 10 m behind B's, is asked into lane 1 under mode 256. A lands 3.0 m behind B and brakes at 9.0 m/s². With B vetoed for that step, A enters lane 1, B stays in lane 2 and A's hardest deceleration over the next 6 s is 0.
+
+*Table — the opposing pairs at the defaults, by the fronts' and the rears' paths: within 30 m (closing) and conflicts (closing).* The capacity fixture's seeds 3–5 are grid runs.
+
+| runs | lane | front | rear | within 30 m (closing) | conflicts (closing) |
+|---|---|---|---|---|---|
+| corridor section fixture, seeds 3–12 | 1 | exiter, accepted | entrant, accepted | 13 (0) | 6 (0) |
+| | 1 | exiter, accepted | entrant, SUMO's own on arrival | 4 (0) | 3 (0) |
+| | 1 | entrant, accepted | exiter, accepted | 5 (3) | 0 |
+| | 1 | through, SUMO's own | entrant, accepted | 4 (1) | 0 |
+| 29-run grid | 1 | exiter, accepted | entrant, accepted | 6 (0) | 6 (0) |
+| | 1 | entrant, accepted | exiter, accepted | 1 (1) | 1 (1) |
+| | 2 | exiter, accepted | entrant handed back / through, SUMO's own | 2 (0) | 2 (0) |
+| | 2 | exiter, SUMO's own | through, SUMO's own | 1 (0) | 1 (0) |
+| capacity fixture, seeds 6–12 | 1 | exiter, accepted | entrant, accepted | 5 (1) | 5 (1) |
+| | 1 | entrant, accepted | exiter, accepted | 1 (1) | 1 (1) |
+| | 1 | exiter, accepted | entrant, SUMO's own on arrival | 2 (0) | 2 (0) |
+| | 2 | entrant handed back, SUMO's own | exiter, accepted | 2 (2) | 2 (2) |
+| | 2 | through, SUMO's own | exiter, accepted | 1 (1) | 1 (1) |
+
+- *Where they hurt.* At the defaults the corridor fixture has no 9 m/s² step in 10 runs. On the grid one of 11 is an opposing pair (the T.H.52 corridor-demand fixture, seed 3, t = 1,004.0 s: an exiter at 13.5 m/s lands 2.0 m behind an entrant at 11.3 m/s). On the capacity fixture 3 of 8 are, all an exiter from lane 3 behind a model-driven entry into lane 2 (seed 8 twice, seed 9). WP-90's six severe runs include five of this family, all an exiter's accepted change from lane 2 behind an entrant's accepted change from lane 0. The grid's other ten are a lane-0 follower braking for an exiter's forced change in front of it (5), an exiter braking after its own accepted change (4) and one with neither (a lane-1 vehicle, its leader 117 m ahead). The capacity fixture's other five are 4 and 1 of the first two kinds. Neither kind is this defect.
+
+**(2) The guard** (`microsim.runner._weave_opposing_guard`, `_weave_exec_change`, `_weave_opposing_restore`, `LC_MODE_MODEL_BITS`; `WEAVE_DEFAULTS["opposing_entry_guard"]`, 0 = off).
+- *Decide first, request after.* Under the key, `_weave_step` decides every driven vehicle as before and records each request (accepted, forced or swap, its lane, target and whether its forced change is due). The requests are resolved and then made in the step's order, through the same `_weave_exec_change` that runs inline at the default. With the key set and no conflict in a run, the trajectories are byte-identical to the key off (the moderate fixture at seed 5, the Ruth St corridor-fleet exit peak at seed 5; md5).
+- *The pairs read.* Each request R into lane k from k − d, front first, against every vehicle P in lane k + d. That is the only lane an opposing entry into k comes from. P's front must be ahead of R's before the step, or level with it in the lower lane: SUMO's order, tie included.
+- *The conflict distance.* R, landing behind P in lane k, fails the forced guard with P as its leader (`_weave_force_gap_ok`, the weave's minimum for any change), at R's movement's leader-side time gap A and R's `b`. The reported gap x_P − len_P − x_R − s0_R must exceed s0_R + max(A·(v_R − v_P)⁺, (v_R − v_P)⁺² / (2·b_R)). At speed parity that is fronts within len_P + 2·s0_R: 10 m for 5 m vehicles with a 2.5 m `minGap`. A rear 2 m/s faster adds max(0.6·2, 4/3.34) = 1.2 m. An overlap is a conflict too. Nothing is tuned; it is WP-64's reading, now for every request into every lane.
+- *The priority, derived.* (0) A change whose forced change is due (the forced zone's delay spent, or a released pair's): its lane end is its deadline. (1) Any other crossing change: the runner drives every crossing vehicle on a section edge from the step it is seen there, so these are the runner's requests. (2) A model-driven change of a vehicle the section does not drive. On a section edge that is a through vehicle, a given-up exiter or an entrant handed back: its change is discretionary and never needed to stay on its route. The lower class goes. Between equals the one ahead goes: SUMO executes it first, and it is nearer the gore, both movements' deadline.
+- *The deferral, one step, by the loser's kind.*
+  - A runner request loses: it is withheld (the step runs as one with no request, mode 512).
+  - A driven P with no request cannot change this step (mode 512 has no model-driven bits). The exception is its request of the step before, still open: R is withheld, since that request cannot be taken back.
+  - An undriven P loses to any runner request: it is vetoed. Its bits 0–7 are cleared for the step and its mode is restored at the top of the next step, before anything reads a mode, unless another rule has set one since. A P with no model-driven bits is under another rule or section and can change only on a request this section cannot read: R is withheld.
+  - The swap's changes are never deferred (its own guard reads them), and they are fronts.
+- *Counted* in `n_opposing_deferred`, the **45th `weave_sections` key** (docs/CONTRACTS.md §2, `WeaveSectionDiagnosticsOut`, `WEAVE_FIELDS`): withheld requests and vetoes, in vehicle-steps. The section's state keeps `opposing_withheld` and `opposing_vetoed` apart for harnesses.
+- *Not covered.* Across the boundary of two edges, SUMO's order is its edge list's, not the vehicles' positions. A model-driven change on the upstream edge can execute before a runner change ahead on the downstream edge and land close behind it. This happened twice on the grid at the defaults (the two-entrance fixture, lane 2), both with the rear slower. A SUMO-own rear is also not the runner's to guard (below).
+
+**(3) WP-90's traced runs, replayed** (h90's forms unchanged, with the reader; the key on is the only change).
+
+| WP-90's run (its trace) | collisions | largest deceleration [m/s²] | vehicle-steps at 9 m/s² | conflicts, runner rear (closing) | T.H.52 departed | windows ≤ 20 m/s | deferred: withheld / vetoed |
+|---|---|---|---|---|---|---|---|
+| X, τ_r 5.2 s, seed 3 (t = 705.5 s, the collision) | 1 → 0 | 9.0 → 4.24 | 1 → 0 | 2 (2) → 0 | 369 → 346 | 12 → 13 | 3 / 52 |
+| X, seed 6 (t = 462.5 s) | 0 → 0 | 9.0 → 4.12 | 1 → 0 | 2 (2) → 0 | 324 → 313 | 12 → 13 | 7 / 71 |
+| XF with `ramp_outlet`, seed 7 (t = 750.5 s) | 0 → 0 | 9.0 → 4.35 | 1 → 0 | 2 (2) → 0 | 390 → 407 | 13 → 12 | 1 / 41 |
+| X with I-24's leader side, seed 7 (t = 802.5 s) | 0 → 0 | 9.0 → 4.92 | 1 → 0 | 3 (3) → 0 | 346 → 340 | 12 → 13 | 3 / 44 |
+| the floor bound, seed 7 (t = 1,188.5 s) | 0 → 0 | 9.0 → 4.71 | 1 → 0 | 1 (1) → 0 | 217 → 227 | 14 → 14 | 4 / 49 |
+
+Each traced pair is an exiter's accepted change from lane 2 landing 2.8–5.6 m behind an entrant's accepted change from lane 0, closing at 7.2–10.1 m/s after the step. The runs' other conflicts are the same family. With the key none forms.
+
+**(4) The corridor section fixture** (seeds 3–12, the defaults; the test's criteria and the reader).
+
+| seed | T.H.52 departed of 407 | mainline of 1,196 | lane-windows ≤ 20 m/s of 16 | given up | unfinished | opposing < 30 m | … closing | conflicts, runner rear | 9 m/s² steps | withheld / vetoed |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 3 | 370 → 360 | 1160 → 1179 | 11 → 11 | 1 → 2 | 1 → 0 | 1 → 1 | 0 → 0 | 0 → 0 | 0 → 0 | 1 / 32 |
+| 4 | 329 → 333 | 1149 → 1162 | 10 → 10 | 1 → 3 | 2 → 6 | 3 → 2 | 1 → 1 | 0 → 0 | 0 → 0 | 3 / 44 |
+| 5 | 323 → 349 | 1139 → 1143 | 14 → 14 | 4 → 2 | 6 → 4 | 2 → 1 | 1 → 0 | 0 → 0 | 0 → 0 | 3 / 56 |
+| 6 | 316 → 323 | 1148 → 1120 | 12 → 12 | 1 → 1 | 4 → 2 | 4 → 2 | 2 → 0 | 0 → 0 | 0 → 0 | 7 / 53 |
+| 7 | 352 → 340 | 1122 → 1171 | 12 → 11 | 0 → 0 | 5 → 5 | 1 → 2 | 0 → 0 | 1 → 0 | 0 → 0 | 0 / 29 |
+| 8 | 340 → 342 | 1155 → 1154 | 13 → 13 | 4 → 3 | 7 → 4 | 3 → 3 | 0 → 0 | 0 → 0 | 0 → 0 | 1 / 68 |
+| 9 | 337 → 325 | 1136 → 1086 | 12 → 13 | 1 → 1 | 4 → 1 | 3 → 0 | 0 → 0 | 2 → 0 | 0 → 0 | 4 / 56 |
+| 10 | 326 → 324 | 1156 → 1148 | 12 → 12 | 2 → 3 | 3 → 3 | 5 → 4 | 0 → 1 | 2 → 0 | 0 → 0 | 4 / 60 |
+| 11 | 344 → 340 | 1156 → 1151 | 12 → 12 | 3 → 3 | 9 → 4 | 3 → 0 | 0 → 0 | 1 → 0 | 0 → 0 | 4 / 50 |
+| 12 | 364 → 369 | 1165 → 1185 | 11 → 11 | 4 → 1 | 3 → 1 | 1 → 0 | 0 → 0 | 0 → 0 | 0 → 0 | 1 / 31 |
+| paired, a run | +0.4 [−7.8, +8.6] | +1.3 [−18.2, +20.8] | +0.0 [−0.3, +0.3] | −0.2 [−1.3, +0.9] | −1.4 [−3.1, +0.3] | −1.1 [−2.0, −0.2] | −0.2 [−0.8, +0.4] | −0.6 [−1.2, +0.0] | 0 | |
+
+- No collision either way. The test passes in no run with or without the key; its criteria pass at the same seeds (mainline 8 of 10, entrance 0, criterion (ii) 0, collisions 10, give-ups 10).
+- WP-90's count (lane 0 → 1 and 2 → 1, in the section, within 30 m) falls 22 (4 closing) → 10 (1).
+- With `ramp_outlet` (seeds 3–7), T.H.52 reads 1,920 → 1,915, the lane-windows 63 → 63 and the runner-rear conflicts 1 → 0, with no collision and no 9 m/s² step either way. The deferrals are 5 withheld and 222 vetoes.
+- Of the 479 vetoes over seeds 3–12, the vetoed vehicle changed lane in the step after the restore 4 times (2 into the contested lane). Of the 28 withheld requests, 1 was made again and executed in the next step. At seeds 4 and 5 the trajectories with the key equal those of form rr, which never vetoes: those runs' vetoes changed nothing.
+
+**(5) The 29-run grid** (WP-70's, `grid92.sh`; the capacity pin read from its rows).
+
+| variant | rows moved | given up | exited | reached | lane-1 min ≤ 5 (Ruth + T.H.52, last 60 m) | T.H.52 first 60 m min ≤ 5 | forced | deferred | releases | unfinished | entrance Σ | E1 Σ | coll. | opposing < 30 m (closing) | conflicts, runner rear (closing) | 9 m/s² steps (at an opposing entry) | withheld / vetoed | capacity pin failing |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | – | 58 | 5,994 | 6,152 | 18 | 15 | 518 | 6,932 | 263 | 42 | 5,940 | 1,504 | 0 | 43 (9) | 7 (1) | 11 (1) | 0 / 0 | none |
+| the guard | 13 | 57 | 6,004 | 6,175 | 22 | 10 | 521 | 6,988 | 243 | 40 | 5,898 | 1,498 | 0 | 36 (7) | 0 (0) | 9 (0) | 52 / 1,221 | seed 5 |
+| form rr (runner pairs only, no veto) | 13 | 61 | 5,968 | 6,142 | 20 | 12 | 485 | 7,249 | 267 | 39 | 5,893 | 1,471 | 0 | 38 (9) | 1 (1) | 6 (0) | 51 / 0 | seed 5 |
+
+- *The rows that move* are the six T.H.52 rows, five of the six two-entrance rows, Ruth St's fleet-default exit peak at seed 4 (1 → 0 given up, lane 1's last 60 m 11.3 → 13.7 m/s) and the golden. The other twelve Ruth St rows and the three moderate rows are unmoved, some with vetoes.
+- *The Ruth St tests.* `assert_exit_side` and `TestExitSideAcceptance`, read off the rows, keep every outcome. Both demand points pass at seeds 3–5 on the fleet defaults. The corridor fleet's strict `xfail`s (the exit peak at seeds 3 and 4) still fail, the non-strict marks read as before, and both traced collisions stay absent.
+- *The capacity fixture's no-lock pin* (`test_th52_weave_at_capacity_does_not_lock`'s assertions) fails at seed 5 on `n_missed ≤ 1`: 4 exits given up against 1. Every other assertion holds there: lane 1's first 60 m never below 4.2 m/s (3.3 without the key), the entrance 405 of 466 (373), 1 unfinished, 6 releases, no collision. None of the four was ever withheld. The first request withheld there is at t = 145.0 s (an entrant 0.4 m into the section, behind an exiter's accepted change); the give-ups come at 367–1,075 s.
+- *Golden `merge_weave`* is byte-identical at the default (hash 436cd4ec9e5d, every metric). With the key set the guard binds there once each way (one request withheld, one vehicle vetoed), and σ_v, VMT and fuel move beyond their fifth significant digit (hash 77da63f49e98 with the key).
+
+**(6) The capacity fixture over ten seeds** (seeds 3–12; the pin's assertions per seed).
+
+| seed | given up | entrance of 466 | lane 1 first 60 m min [m/s] | … minutes ≤ 5 | unfinished | releases | 9 m/s² steps | conflicts, runner rear | pin | withheld / vetoed |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 3 | 1 → 1 | 395 → 391 | 3.9 → 3.9 | 2 → 4 | 4 → 2 | 9 → 16 | 2 → 1 | 0 → 0 | pass → pass | 5 / 103 |
+| 4 | 1 → 1 | 401 → 393 | 4.3 → 4.4 | 5 → 2 | 2 → 0 | 23 → 8 | 2 → 2 | 1 → 0 | pass → pass | 5 / 125 |
+| 5 | 1 → 4 | 373 → 405 | 3.3 → 4.2 | 4 → 1 | 3 → 1 | 18 → 6 | 0 → 2 | 0 → 0 | pass → **fail** (given up) | 3 / 98 |
+| 6 | 7 → 6 | 368 → 386 | 3.7 → 3.1 | 6 → 4 | 3 → 6 | 37 → 51 | 0 → 1 | 2 → 0 | fail (given up, entrance) → fail (given up) | 7 / 113 |
+| 7 | 1 → 1 | 407 → 388 | 5.3 → 4.5 | 0 → 4 | 2 → 3 | 1 → 6 | 0 → 2 | 1 → 0 | pass → pass | 5 / 102 |
+| 8 | 0 → 1 | 395 → 397 | 5.2 → 4.4 | 0 → 2 | 5 → 4 | 5 → 4 | 2 → 2 | 3 → 0 | pass → pass | 5 / 95 |
+| 9 | 1 → 4 | 375 → 404 | 4.0 → 4.2 | 4 → 3 | 3 → 3 | 24 → 11 | 1 → 0 | 2 → 0 | pass → **fail** (given up) | 5 / 134 |
+| 10 | 2 → 4 | 375 → 378 | 4.1 → 4.1 | 4 → 3 | 6 → 2 | 15 → 15 | 0 → 1 | 1 → 0 | fail → fail (given up) | 8 / 115 |
+| 11 | 4 → 4 | 378 → 378 | 4.1 → 4.1 | 3 → 3 | 4 → 4 | 13 → 13 | 0 → 0 | 0 → 0 | fail → fail (given up) | 0 / 85 |
+| 12 | 2 → 2 | 389 → 376 | 3.5 → 3.5 | 3 → 1 | 3 → 1 | 24 → 14 | 1 → 1 | 0 → 0 | fail → fail (given up) | 7 / 112 |
+
+- Paired, a run: given up +0.8 [−0.2, +1.8], the entrance +4.0 [−8.3, +16.3], lane 1's minimum −0.1 [−0.5, +0.3] m/s, 9 m/s² steps +0.4 [−0.4, +1.2]. The pin fails at 6 seeds of 10 against 4, always on its give-up clause. One of the 28 give-ups with the key was withheld in the 60 s before it.
+- *The 9 m/s² steps, 8 → 12.*
+  - The three at opposing entries (a model-driven front, an exiter's accepted rear, lane 2) are gone.
+  - The lane-0 followers of forced exit changes rise 4 → 9, and the exiters braking after their own accepted change 1 → 2. Neither is this defect. They move with the re-rolled sequence, and no attribution ties them to a deferral.
+  - One new step is a SUMO-own arrival-step entrant (seed 8, t = 510.5 s). It entered lane 1 2.2 m behind an exiter's accepted change from lane 2, slower (9.7 against 14.7 m/s), and braked a second later. SUMO's own gap check admitted it; it is not a runner rear.
+
+**(7) The forms** (harness, `forms92.py`; the corridor fixture at seeds 3–7 and the grid).
+
+| form | withheld / vetoed | T.H.52 departed (Σ, seeds 3–7) | lane-windows ≤ 20 m/s | given up | conflicts, runner rear (closing) | same trajectories as the guard |
+|---|---|---|---|---|---|---|
+| default | 0 / 0 | 1,690 | 59 | 7 | 1 (0) | – |
+| the guard | 14 / 214 | 1,705 | 58 | 8 | 0 | 5 of 5 |
+| rr: runner pairs only, no veto | 16 / 0 | 1,728 | 60 | 7 | 0 | 2 of 5 |
+| defer: an undriven front withholds the request, no veto | 1,679 / 0 | 1,722 | 60 | 11 | 0 | 0 of 5 |
+
+- rr leaves the model-driven fronts. On the grid it keeps one closing conflict (the two-entrance fixture with the corridor fleet, seed 5: an exiter from lane 3 lands 6.3 m behind an entrant handed back and moving left into lane 2). The three capacity-fixture stops above are of the same kind.
+- defer, the guard without the veto, is WP-64's price: 133–611 withheld requests a run where the guard vetoes 29–56 undriven vehicles.
+- The veto is the least intrusive cover of the model-driven fronts: most vetoed vehicles were not about to change.
+
+**Reading.**
+1. *The defect is one mechanism.* The rear is a runner mode-256 request whose acceptance read the lane before the step. The front is any entry from the other side that SUMO executes first. At the defaults the fronts are runner changes into lane 1 and model-driven changes into lane 2. No path is rare enough to ignore: 33 such conflicts in the runs measured here without the key.
+2. *The guard is derived, not tuned.* The conflict distance is the forced guard's minimum. The order is SUMO's. The priority is a deadline first, then the vehicle ahead. A model-driven change cannot be read in advance, so it is vetoed for one step.
+3. *It works.* With the key, no conflict with a runner rear forms in 56 runs. The collision and the five 9 m/s² stops of WP-90's runs are gone, and so are the capacity fixture's three model-driven ones. No run collides.
+4. *It costs the section nothing measurable at the entry and does not help it.* The corridor section test's criteria do not move (T.H.52 +0.4 [−7.8, +8.6] a run) and the test passes in no run. The grid's give-ups and exits hold. It withholds 0–7 requests a run on the corridor fixture and vetoes 29–68 undriven vehicles, almost all of which were not about to change.
+5. *It is not yet safe to recommend as the default.* It breaks the capacity fixture's no-lock pin at seed 5 on the give-up clause. Over ten seeds the clause fails at 6 against 4, with give-ups +0.8 [−0.2, +1.8] a run: not clearly the guard, but not clear of it. Golden `merge_weave` moves with the key, so a default change needs a golden update. WP-56's lesson stands: a weave rule needs the 20-seed corridor battery before it goes on. Flipping the default is the coordinator's and the owner's call.
+
+**Nothing ships on by default.** `WEAVE_DEFAULTS["opposing_entry_guard"]` = 0. At that value every hash, golden, trajectory and grid row is byte-identical, and the weave determinism tests pass. The key, its counter (the contract's 45th `weave_sections` key) and its tests ship.
+
+**What this hands on.**
+- *(a) A corridor battery with the key.* VM U's reference configuration plus `opposing_entry_guard: 1`, 20 seeds. It says whether the guard costs the corridor, and how many of VM U's 15 collisions it removes. The run's meta records each collision's collider, victim and lane, but not the step's lane changes. The same stage should run the reader (`opp92.py`, read-only) at the defaults, so that the 15 collisions can be attributed.
+- *(b) The capacity pin's give-up clause over more seeds*, with and without the key, before any default change.
+- *(c) Two residuals, both outside a runner-rear guard.* The first is the cross-edge order (twice on the grid, the rear slower). The second is a lane-0 follower braking at 9 m/s² for an exiter's forced change in front of it (5 of 11 grid stops and 4 of 8 capacity stops at the defaults). The forced guard admits that change at speed parity with one `minGap` on the follower side, and the IDM brakes at its emergency deceleration at that gap.
+
+**Limitations.**
+- *Scale.* Ten corridor seeds, five with `ramp_outlet`, 29 grid runs, ten capacity seeds and five replays. The paired intervals are over five or ten runs.
+- *Platform.* macOS only. WP-85 found runs on these fixtures that land differently on Linux.
+- *The reader* reads lane changes at 0.5-s steps from the subscription results. The path of an entry is the runner's request of the step before, or of two steps before for a late one. The order of a pair is the positions after the step, SUMO's order within an edge.
+- *The conflict test* reads the state before the step, as WP-64's guard does. It is conservative: all 6 corridor conflicts at the defaults had the rear slower, landing 3.8–16.7 m behind, because the front pulled ahead in the step. The closing conflicts are in WP-90's runs, on the grid and on the capacity fixture.
+- *The veto's effect* cannot be observed directly. What happens to a vetoed vehicle in the step after the restore was recorded instead (4 of 479 changed lane).
+- *The corridor's 15 collisions* are not attributed. VM U's artifact keeps no collision records, and the run directories are on the VM.
+
+**Bookkeeping.**
+- *Edited:* `packages/flowstate_core/flowstate_core/config.py` (`opposing_entry_guard` = 0, its provenance comment and docstring paragraph). `packages/microsim/microsim/runner.py` (`LC_MODE_MODEL_BITS`, `_weave_exec_change`, `_weave_opposing_guard` and `_weave_opposing_restore` new; `_weave_step` restores last step's vetoes at its top, collects the requests under the key and resolves them after every vehicle is decided; at the default its execution is `_weave_exec_change` inline, call for call as before; the section's state; `n_opposing_deferred` in `_weave_meta`; the docstrings of `_weave_step` and `_weave_meta`). `packages/api/api/schemas.py` (`WeaveSectionDiagnosticsOut.n_opposing_deferred`). `scripts/corridor_sweep.py` (`WEAVE_FIELDS`). `tests/test_microsim/test_microsim_merge_managed_meter.py` (`TestWeaveOpposingGuard`, ten tests: off by default with both changes requested, the constructed pair with the one ahead going and the rear withheld, pairs clear of the guard, the conflict distance and the tie, a due forced change first, the veto for one step and its restore, a mode set by another rule left alone, a front without model bits, an open request of the step before, a binding run on `weave_th52_corridor.osm`; the `WEAVE_DEFAULTS` pin, the fake state and the counters test). `tests/test_api/test_runs_merge_diagnostics.py` and `tests/test_scripts/test_corridor_sweep.py` (the key lists). docs/CONTRACTS.md §2 (the key list, 45 keys, the WP-92 paragraph, the API paragraph). This section.
+- *Not edited:* CHANGELOG.md (the bullet is handed to the coordinator), `frontend/`, the scenarios, the fixtures, every golden and every existing test criterion.
+- *Tests run:* `test_microsim_merge_managed_meter.py` (209 passed, 5 xfailed, 1 xpassed: the non-strict capacity seed 4 on macOS, as before), `test_microsim_weave_short_section.py` and `test_microsim_determinism.py` (19 passed, 5 xfailed, 1 xpassed: the non-strict Ruth St seed 5, as before), golden `merge_weave`, `tests/test_flowstate_core`, `test_corridor_sweep.py` and `test_runs_merge_diagnostics.py`; `ruff check`, `ruff format --check` and `mypy --strict` on the three strict packages.
+- *Session files (`wp92/`, not committed):*
+  - the reader `opp92.py`, the harnesses `h92.py`, `h90g.py`, `../wp92_grid_harness.py` and `../grid92.sh`, the forms `forms92.py`, the probes `vetoprobe.py` and `netpeek.py`, and `ident92.py`;
+  - the tables `show92.py`, `gshow92.py`, `gtab92.py`, `gcmp92.py`, `ctab92.py`, `captab92.py`, `ruthtab92.py`, `paths92.py` and `doc92.py`;
+  - the edit scripts in `edits/` and this section's draft `section92.md`;
+  - the rows: `rows_def`, `def812`, `def_new`, `def_final`, `outlet`, `g`, `g3`, `g812`, `gt`, `g_outlet`, `g_outlet2`, `rr`, `rr2`, `defer`, `defer2`; `wp92g_off`, `off2`, `g`, `g2`, `g3`, `rr`, `rr2`; `cap_off`, `cap_g`, `cap_g2`; `opp90_*` and `rows_rows90_*`;
+  - run directories deleted after each run.
+
+Every number above is from those runs, from SUMO 1.27.1's source, from `microsim.runner` at HEAD and in this package's tree (md5 prefix 3294bff2de79), or from the committed files named.

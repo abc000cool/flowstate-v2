@@ -190,8 +190,9 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
     ``n_exit_prepared`` (WP-62) and the swap's ``n_swaps`` (WP-64) and the
     crossings spread's ``n_spread_withheld`` (WP-67) and the ramp's outlet's
     ``n_outlet_spared`` (WP-70) and the braking onset's ``n_onset_priority``
-    (WP-73) and the anticipation's ``n_anticipation_exiter_spared`` (WP-75):
-    the twenty-three read as null, the rest as written."""
+    (WP-73) and the anticipation's ``n_anticipation_exiter_spared`` (WP-75)
+    and the opposing-entry guard's ``n_opposing_deferred`` (WP-92): the
+    twenty-four read as null, the rest as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     new_keys = (
@@ -214,6 +215,7 @@ def test_a_weave_written_before_the_cooperation_counters_reads_as_null(client: T
         "n_outlet_spared",
         "n_onset_priority",
         "n_anticipation_exiter_spared",
+        "n_opposing_deferred",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",
@@ -239,8 +241,9 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
     ``n_giveup_waited``, ``n_exiter_yields``, ``n_entrant_yields``,
     ``n_entry_bounded``, ``n_hold_releases``, ``n_anticipation_gated``,
     ``n_exit_prepared``, ``n_swaps``, ``n_spread_withheld``,
-    ``n_outlet_spared``, ``n_onset_priority``, ``n_anticipation_exiter_spared``:
-    those twenty read as null, the cooperation counters as written."""
+    ``n_outlet_spared``, ``n_onset_priority``, ``n_anticipation_exiter_spared``,
+    ``n_opposing_deferred``: those twenty-one read as null, the cooperation
+    counters as written."""
     scenario = post_scenario(client, macro_corridor_config())
     run = post_run(client, scenario["scenario_id"])
     later = (
@@ -260,6 +263,7 @@ def test_a_weave_with_the_cooperation_counters_but_not_the_later_ones(client: Te
         "n_outlet_spared",
         "n_onset_priority",
         "n_anticipation_exiter_spared",
+        "n_opposing_deferred",
         "n_vacate_skipped_no_gap",
         "n_vacate_requests",
         "short_section",

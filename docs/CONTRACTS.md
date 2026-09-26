@@ -499,11 +499,11 @@ vacate_window_edges, n_entered, n_changed_in, n_changed_out, n_forced,
 n_missed, n_missed_exit, n_giveup_waited, n_exiter_yields,
 n_entrant_yields, n_entry_bounded, n_hold_releases, n_anticipation_gated,
 n_exit_prepared, n_swaps, n_spread_withheld, n_outlet_spared, n_onset_priority,
-n_anticipation_exiter_spared, n_forced_deferred,
+n_anticipation_exiter_spared, n_opposing_deferred, n_forced_deferred,
 n_cooperations, mean_follower_decel_ms2, n_changer_eased, n_vacated,
 n_vacate_refused, n_vacate_skipped_no_gap, n_vacate_requests,
 n_pair_releases, n_unfinished, n_exited, n_reached_section_exiting,
-n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 44 keys (`n_giveup_waited` added by
+n_departed_exiting, wait_s_mean, wait_in_s_mean, wait_out_s_mean` — 45 keys (`n_giveup_waited` added by
 WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
 abreast state, counts its waits in the same key and adds none;
 `n_exiter_yields` and `n_entrant_yields` added by WP-54, the crossing
@@ -532,7 +532,11 @@ lane-end braking onset before its forced change was due;
 `n_anticipation_exiter_spared` added by WP-75, the anticipation spares the
 exiters, the vehicle-steps on which an approaching entrant's gap follower was
 bound for the paired exit and was not held, counted where the hold would have
-bound)
+bound; `n_opposing_deferred` added by WP-92, the opposing-entry guard, the
+changes deferred by one step because an opposing entry into the same lane in
+the same step would land within the forced guard's minimum of it — a runner
+request withheld, or an undriven vehicle's model-driven changes suspended for
+the step — in vehicle-steps)
 (`n_entered = n_changed_in + n_changed_out + n_missed + n_unfinished`;
 `n_missed_exit ≤ n_missed`; `n_exited ≤ n_reached_section_exiting ≤
 n_departed_exiting`). `short_section` and `vacate_window_edges` are facts
@@ -1590,6 +1594,52 @@ against 1,680.0 veh/h); one collision in 228 runs, the entering pair at
 seed 11, the two-opposing-changes-in-one-step defect the swap and the
 spread guard against.
 
+**Opposing entries into one lane** (2026-09-25, block 3, WP-92;
+docs/WEAVE_MODEL_PLAN.md, dated section; `WEAVE_DEFAULTS["opposing_entry_guard"]`,
+default 0 = off, hash-neutral unless set; measured, not made the default).
+SUMO executes an edge's lane changes front vehicle first, and a vehicle that
+has changed is seen in its new lane by every vehicle executed after it; a
+change under mode 256 — the section's accepted and forced changes and the
+swap — refuses only an overlap, after an acceptance read before the step. So
+without the key such a change lands at any gap behind a vehicle ahead that
+entered the same lane from the other side in the same step (WP-60's and
+WP-62's latent defect, WP-80's and WP-90's collisions). Under the key every
+driven vehicle of the step is decided first and the requests are made after
+(`microsim.runner._weave_opposing_guard`, `_weave_exec_change`,
+`_weave_opposing_restore`): each request R into lane k from lane k − d is read,
+front first, against every vehicle P in lane k + d ahead of it (level with it
+in the lower lane), and they conflict when R behind P in lane k would fail the
+forced guard (`_weave_force_gap_ok` with R's movement's leader-side time gap
+and R's `b`: at speed parity fronts within `len_P + 2·minGap`, plus the closing
+terms). Priority: a change whose forced change is due, then any crossing
+change, then a model-driven change of a vehicle the section does not drive;
+between equals the one ahead. The loser is deferred by one step: a runner
+request is withheld (mode 512 for the step); a driven P with no request is not
+in the way unless its last request is still open (then R is withheld); an
+undriven P is vetoed — its `laneChangeMode` bits 0–7
+(`microsim.runner.LC_MODE_MODEL_BITS`) cleared for the step and its mode
+restored at the top of the next step, unless another rule has set one since —
+or, with no model-driven bits to clear, R is withheld. The swap's changes are
+never deferred here (its own guard reads them). With the key set and no
+conflict in a run the trajectories are byte-identical to the key off.
+`weave_sections[i].n_opposing_deferred` (the **45th key**;
+`WeaveSectionDiagnosticsOut`, null for an older meta, not shown by the
+dashboard; aggregated by `WEAVE_FIELDS`) counts the deferrals, both kinds; the
+section's state keeps `opposing_withheld` and `opposing_vetoed` apart for
+harnesses. Measured (docs/WEAVE_MODEL_PLAN.md, dated section WP-92): the
+collision and the five 9 m/s² stops of WP-90's traced runs are gone (5 of 5
+runs, largest deceleration 4.1–4.9 m/s²); on the corridor section test's
+fixture (seeds 3–12) the conflicts with a runner change as the rear fall 6 → 0,
+no criterion of the test moves and it passes in no run either way; on the
+29-run grid those conflicts fall 7 → 0 and the 9 m/s² steps at an opposing
+entry 1 → 0, no collision, give-ups 58 → 57, the Ruth St tests' outcomes are
+unchanged, but the T.H.52 capacity fixture's no-lock pin fails at seed 5 (4
+exits given up against at most 1; over seeds 3–12 its give-up clause fails at
+6 seeds against 4). Golden `merge_weave` unchanged at the default (hash
+436cd4ec9e5d; with the key set the guard binds there, 1 request withheld and 1
+vehicle vetoed, and σ_v, VMT and fuel move beyond their fifth significant
+digit).
+
 ## 3. Run outputs
 
 `RunResult` directory layout (one per replicate), written by runners:
@@ -2601,7 +2651,12 @@ of 0), null for a meta written before and not shown by the dashboard, and
 (WP-75, 2026-09-25 block 3) `n_anticipation_exiter_spared` (vehicle-steps on
 which the anticipation, `anticipation_spares_exiters`, withheld an approaching
 entrant's hold on an exit-bound gap follower that would have bound; zero at its
-default of 0), null for a meta written before and not shown by the dashboard; the sweep
+default of 0), null for a meta written before and not shown by the dashboard, and
+(WP-92, 2026-09-25 block 3) `n_opposing_deferred` (changes deferred by one step
+by the opposing-entry guard, `opposing_entry_guard` — a runner request withheld
+or an undriven vehicle's model-driven changes suspended for the step — in
+vehicle-steps; zero at its default of 0), null for a meta written before and
+not shown by the dashboard; the sweep
 summary's `diagnostics` block aggregates all of them the same way (`scripts/corridor_sweep.py`
 `WEAVE_FIELDS`, an older meta contributing nothing to a counter's interval)
 and its console line prints them. Amended 2026-09-24 (block 3, the schema

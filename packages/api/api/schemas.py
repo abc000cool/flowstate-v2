@@ -332,7 +332,14 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     approaching entrant's gap follower was bound for the paired exit and was
     not held, counted only where the hold would have bound
     (``anticipation_spares_exiters``); zero at the default of 0; ``None`` for
-    a meta written before; not shown by the dashboard. Two keys that are
+    a meta written before; not shown by the dashboard.
+    ``n_opposing_deferred`` (WP-92, 2026-09-25 block 3, the opposing-entry
+    guard) counts the changes deferred by one step because an opposing entry
+    into the same lane in the same step would land within the forced guard's
+    minimum of it — a runner request withheld, or an undriven vehicle's
+    model-driven changes suspended for the step (``opposing_entry_guard``);
+    zero at the default of 0; ``None`` for a meta written before; not shown
+    by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;
     ``microsim.runner._weave_short_section_rule``) and
@@ -376,6 +383,7 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     n_outlet_spared: int | None = None
     n_onset_priority: int | None = None
     n_anticipation_exiter_spared: int | None = None
+    n_opposing_deferred: int | None = None
     short_section: bool | None = None
     vacate_window_edges: list[str] | None = None
     wait_s_mean: float | None = None

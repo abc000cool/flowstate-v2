@@ -251,6 +251,12 @@ WEAVE_DEFAULTS: dict[str, float | None] = {
     # ``lag_side_only``), not defaults.
     "accept_lag_gap_s": None,
     "exit_accept_lag_gap_s": None,
+    # WP-92 (2026-09-25, block 3): the opposing-entry guard — of two changes
+    # into one lane from opposite sides in one step, the one with priority
+    # goes and the other is deferred by one step; a switch, not a fitted
+    # value: the conflict distance is the forced guard's minimum from the
+    # vehicles' own lengths, minGaps and b (microsim.runner._weave_opposing_guard)
+    "opposing_entry_guard": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
 (applied to the entering movement, ``courtesy`` to both movements) plus
@@ -754,7 +760,26 @@ with all four (entering 0.0 / 0.778 s, exiting 2.584 / 0.721 s) the 29-run
 fixture grid's give-ups rise 44 → 134 and the T.H.52 capacity fixture's
 no-lock pin fails at all three seeds, driven by the exiting leader side;
 the entering pair alone holds the grid's totals (47 given up) and fails
-the pin at seed 4."""
+the pin at seed 4. ``opposing_entry_guard`` (2026-09-25, block 3, WP-92,
+opposing entries into one lane in one step): ``1`` resolves two changes into
+one lane from opposite sides in the same step before either is requested.
+SUMO executes an edge's lane changes front vehicle first, and the section's
+accepted and forced changes run under mode 256, which refuses only an
+overlap, after an acceptance read before the step; so without the key such a
+change can land at any gap behind a vehicle ahead that entered the same lane
+from the other side in that step (WP-80's and WP-90's collisions and 9 m/s²
+stops). With the key, where the rear change would fail the forced guard
+behind the front (``microsim.runner._weave_force_gap_ok``: fronts within
+``len + 2·minGap`` at speed parity, plus the closing terms), the one with
+priority goes — a change whose forced change is due, then any crossing
+change, then a model-driven change of a vehicle the section does not drive;
+between equals the one ahead — and the other is deferred by one step: a
+runner request withheld, or an undriven vehicle's model-driven changes
+suspended for the step and its mode restored on the next
+(``microsim.runner._weave_opposing_guard``). Deferrals are counted in
+``n_opposing_deferred``. The default is **0** (off, hash-neutral unless set):
+measured in docs/WEAVE_MODEL_PLAN.md (dated section WP-92); a switch, not a
+fitted value."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
 
 

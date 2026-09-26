@@ -899,6 +899,8 @@ class TestWeaveSchema:
             # WP-80: the follower-side time gaps, unset = the leader side's key
             "accept_lag_gap_s": None,
             "exit_accept_lag_gap_s": None,
+            # WP-92: the opposing-entry guard (dated section)
+            "opposing_entry_guard": 0.0,
         }
         # both fields enter the hash when set, and only then
         raw = cfg.model_dump(mode="json")
@@ -2205,6 +2207,11 @@ def _weave_state(**params) -> dict:
         "n_onset_priority": 0,
         # WP-75: the anticipation spares the exiters (meta)
         "n_anticipation_exiter_spared": 0,
+        # WP-92: the opposing-entry guard (its vetoes; meta; state-only kinds)
+        "opp_veto": {},
+        "n_opposing_deferred": 0,
+        "opposing_withheld": 0,
+        "opposing_vetoed": 0,
         # fifth derivation: stopped crossing pairs
         "pair_since": {},
         "pair_released": set(),
@@ -6205,6 +6212,7 @@ class TestWeaveReviewDerivations3To6:
             "n_outlet_spared": 0,
             "n_onset_priority": 0,
             "n_anticipation_exiter_spared": 0,
+            "n_opposing_deferred": 0,
             "n_forced_deferred": 0,
             "n_cooperations": 0,
             "n_changer_eased": 0,
@@ -6480,3 +6488,216 @@ class TestWeaveLeaderFollowerGapsApart:
         assert {k: v for k, v in ws0.items() if k != "params"} == {
             k: v for k, v in ws1.items() if k != "params"
         }
+
+
+class TestWeaveOpposingGuard:
+    """Two changes into one lane from opposite sides in one step (2026-09-25,
+    block 3, WP-92; ``_weave_opposing_guard``, ``opposing_entry_guard``).
+    SUMO executes an edge's changes front vehicle first and a mode-256 change
+    refuses only an overlap, so a runner change lands at any gap behind a
+    vehicle ahead that entered its lane from the other side in the same step.
+    Under the key the one with priority goes and the other is deferred by one
+    step. Measured, off by default (docs/WEAVE_MODEL_PLAN.md, dated section)."""
+
+    # the pair of the tests: entrant "n" in lane 0 at 50 m, exiter "e" in lane
+    # 2 with its front 8 m ahead (bumper 3 m, reported 0.5 m behind e once both
+    # are in lane 1), both at 5 m/s, both with open gaps into lane 1 (no
+    # neighbours), 150 m and 142 m from the gore: neither forced change due
+    @staticmethod
+    def _pair(e_pos: float = 58.0, e_lane: int = 2, e_id: str = "e") -> tuple[dict, dict]:
+        speeds = {"n": 5.0, e_id: 5.0}
+        res = {"n": _res("a", 0, 50.0, 5.0), e_id: _res("a", e_lane, e_pos, 5.0)}
+        return speeds, res
+
+    @staticmethod
+    def _changes(veh: _WeaveVehicle) -> list[tuple]:
+        return [c for c in veh.calls if c[0] == "change"]
+
+    @staticmethod
+    def _guard(x_p: float, v_r: float, v_p: float = 5.0) -> tuple[set[str], dict[str, int]]:
+        """The guard read directly: a request of "n" (lane 0 → 1, at 50 m and
+        ``v_r``) against a driven exiter "e" asking lane 2 → 1, front at ``x_p``."""
+        from microsim.runner import _weave_opposing_guard
+
+        ws = _weave_state()
+        veh = _WeaveVehicle({"n": v_r, "e": v_p})
+        lanes = {0: [(50.0, "n")], 2: [(x_p, "e")]}
+        requests = {
+            "n": {"lane": 0, "target": 1, "due": False, "kind": "acc", "accept": 0.6},
+            "e": {"lane": 2, "target": 1, "due": False, "kind": "acc", "accept": 0.6},
+        }
+        res = {"n": _res("a", 0, 50.0, v_r), "e": _res("a", 2, x_p, v_p)}
+        x_of, v_of = {"n": 50.0, "e": x_p}, {"n": v_r, "e": v_p}
+        return _weave_opposing_guard(_WeaveMod(veh), _tc, ws, res, lanes, x_of, v_of, requests, 0.0)
+
+    def test_off_by_default_both_changes_are_requested(self):
+        """The defect at the default: both accepted changes are requested
+        under mode 256 in the same step, the entrant's landing 0.5 m reported
+        behind the exiter's once SUMO has executed the front one first."""
+        from microsim.runner import LC_MODE_SCRIPTED_FORCE, _weave_meta, _weave_step
+
+        assert WEAVE_DEFAULTS["opposing_entry_guard"] == 0.0
+        ws = _weave_state()
+        speeds, res = self._pair()
+        veh = _WeaveVehicle(speeds)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert self._changes(veh) == [("change", "e", 1, 0.5), ("change", "n", 1, 0.5)]
+        assert veh.lc_modes["n"] == veh.lc_modes["e"] == LC_MODE_SCRIPTED_FORCE
+        assert _weave_meta(ws, {})["n_opposing_deferred"] == 0 and ws["opp_veto"] == {}
+
+    def test_the_opposing_pair_the_one_ahead_goes(self):
+        """Under the key the exiter, ahead, changes; the entrant's request is
+        withheld for the step (mode 512, as a step with no request) and counted."""
+        from microsim.runner import LC_MODE_SCRIPTED_SAFE, _weave_meta, _weave_step
+
+        ws = _weave_state(opposing_entry_guard=1.0)
+        speeds, res = self._pair()
+        veh = _WeaveVehicle(speeds)
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert self._changes(veh) == [("change", "e", 1, 0.5)]
+        assert veh.lc_modes["n"] == LC_MODE_SCRIPTED_SAFE
+        counts = (ws["n_opposing_deferred"], ws["opposing_withheld"], ws["opposing_vetoed"])
+        assert counts == (1, 1, 0)
+        assert _weave_meta(ws, {})["n_opposing_deferred"] == 1
+        # the next step, the exiter in lane 1 now: the entrant is read by the
+        # acceptance against it (no neighbour scripted here: accepted) and goes
+        veh.calls.clear()
+        res2 = {"n": _res("a", 0, 52.5, 5.0), "e": _res("a", 1, 60.5, 5.0)}
+        _weave_step(_WeaveMod(veh), _tc, ws, res2, 0.5)
+        assert ("change", "n", 1, 0.5) in self._changes(veh)
+        assert ws["n_opposing_deferred"] == 1
+
+    def test_pairs_clear_of_the_forced_guard_are_both_requested(self):
+        """Fronts 12 m apart, the exiter ahead or behind (reported 4.5 m >
+        the rear's 2.5 m minGap at speed parity): both changes go."""
+        from microsim.runner import _weave_step
+
+        for e_pos in (62.0, 38.0):
+            ws = _weave_state(opposing_entry_guard=1.0)
+            speeds, res = self._pair(e_pos=e_pos)
+            veh = _WeaveVehicle(speeds)
+            _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+            assert len(self._changes(veh)) == 2 and ws["n_opposing_deferred"] == 0, e_pos
+
+    def test_the_conflict_distance_is_the_forced_guard(self):
+        """At speed parity the rear conflicts while the fronts are within
+        ``len_P + 2 · s0_R`` = 5 + 2 · 2.5 = 10 m; a rear 2 m/s faster adds the
+        larger of its time gap over the closing speed (0.6 · 2 = 1.2 m) and its
+        brake gap at ``b`` (4 / 3.34 = 1.198 m): 11.2 m. Level fronts (an
+        overlap) conflict too: SUMO executes the lower lane's vehicle first,
+        so the entrant goes and the exiter is withheld."""
+        assert self._guard(60.0, 5.0)[0] == {"n"}
+        assert self._guard(60.01, 5.0)[0] == set()
+        assert self._guard(61.19, 7.0)[0] == {"n"}
+        assert self._guard(61.21, 7.0)[0] == set()
+        assert self._guard(50.0, 5.0)[0] == {"e"}
+        # a slower rear needs only the parity distance
+        assert self._guard(60.01, 3.0)[0] == set()
+
+    def test_a_due_forced_change_goes_first(self):
+        """The rear's forced change is due (4 s into the forced zone) and the
+        exiter ahead's is not: the exiter's request is withheld, the entrant
+        changes."""
+        from microsim.runner import NEIGHBOR_LEFT_LEADERS, _weave_step
+
+        ws = _weave_state(opposing_entry_guard=1.0)
+        # the entrant 40 m from the gore, its gap refused by a leader beside it
+        veh = _WeaveVehicle({"n": 5.0, "q": 5.0}, {("n", NEIGHBOR_LEFT_LEADERS): (("q", -1.0),)})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"n": _res("b", 0, 60.0, 5.0)}, 0.0)
+        assert self._changes(veh) == []
+        # 4 s later its forced change is due; the exiter arrives beside it
+        veh.neighbors = {}
+        veh.speeds["e"] = 5.0
+        res = {"n": _res("b", 0, 60.0, 5.0), "e": _res("b", 2, 68.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 4.0)
+        assert self._changes(veh) == [("change", "n", 1, 0.5)]
+        assert ws["veh"]["n"]["forced"] is False  # an accepted change of a due vehicle
+        assert ws["opposing_withheld"] == 1 and ws["veh"]["e"]["requested_s"] == -math.inf
+
+    def test_an_undriven_front_is_vetoed_for_one_step(self):
+        """A through vehicle ahead in lane 2 (its keep-right change cannot be
+        read before the step) has its model-driven bits cleared for the step
+        (1621 → 1536) and its mode back on the next; the entrant changes."""
+        from microsim.runner import LC_MODE_MODEL_BITS, _weave_step
+
+        ws = _weave_state(opposing_entry_guard=1.0)
+        speeds, res = self._pair(e_id="t")
+        veh = _WeaveVehicle(speeds)
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        assert self._changes(veh) == [("change", "n", 1, 0.5)]
+        assert ("lc", "t", 1621 & ~LC_MODE_MODEL_BITS) in veh.calls and veh.lc_modes["t"] == 1536
+        assert ws["opp_veto"] == {"t": 1621}
+        counts = (ws["n_opposing_deferred"], ws["opposing_withheld"], ws["opposing_vetoed"])
+        assert counts == (1, 0, 1)
+        veh.calls.clear()
+        res2 = {"n": _res("a", 1, 52.5, 5.0), "t": _res("a", 2, 60.5, 5.0)}
+        _weave_step(mod, _tc, ws, res2, 0.5)
+        assert veh.lc_modes["t"] == 1621 and ("lc", "t", 1621) in veh.calls and ws["opp_veto"] == {}
+
+    def test_the_restore_leaves_a_mode_set_by_another_rule(self):
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(opposing_entry_guard=1.0)
+        speeds, res = self._pair(e_id="t")
+        veh = _WeaveVehicle(speeds)
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, res, 0.0)
+        veh.lc_modes["t"] = 768  # another rule's request since
+        veh.calls.clear()
+        res2 = {"n": _res("a", 1, 52.5, 5.0), "t": _res("a", 2, 60.5, 5.0)}
+        _weave_step(mod, _tc, ws, res2, 0.5)
+        assert veh.lc_modes["t"] == 768 and not [c for c in veh.calls if c[:2] == ("lc", "t")]
+
+    def test_a_front_without_model_bits_withholds_the_request(self):
+        """A vehicle ahead held at mode 512 by another rule can change only on
+        a request this section cannot read: the entrant's request is withheld."""
+        from microsim.runner import _weave_step
+
+        ws = _weave_state(opposing_entry_guard=1.0)
+        speeds, res = self._pair(e_id="t")
+        veh = _WeaveVehicle(speeds)
+        veh.lc_modes["t"] = 512
+        _weave_step(_WeaveMod(veh), _tc, ws, res, 0.0)
+        assert self._changes(veh) == [] and ws["opposing_withheld"] == 1 and ws["opp_veto"] == {}
+
+    def test_a_driven_front_with_an_open_request_withholds_the_request(self):
+        """The exiter's request of the last step, refused by SUMO, is still
+        open: though the exiter asks nothing this step, the entrant behind it
+        is withheld; a driven vehicle with no open request cannot change and
+        is not in the way."""
+        from microsim.runner import NEIGHBOR_RIGHT_LEADERS, _weave_step
+
+        ws = _weave_state(opposing_entry_guard=1.0)
+        veh = _WeaveVehicle({"e": 5.0, "q": 5.0})
+        mod = _WeaveMod(veh)
+        _weave_step(mod, _tc, ws, {"e": _res("a", 2, 58.0, 5.0)}, 0.0)
+        assert self._changes(veh) == [("change", "e", 1, 0.5)]
+        # not executed; now refused (a leader beside it), and the entrant arrives
+        veh.calls.clear()
+        veh.neighbors = {("e", NEIGHBOR_RIGHT_LEADERS): (("q", -1.0),)}
+        veh.speeds["n"] = 5.0
+        res = {"n": _res("a", 0, 50.5, 5.0), "e": _res("a", 2, 58.5, 5.0)}
+        _weave_step(mod, _tc, ws, res, 0.5)
+        assert self._changes(veh) == [] and ws["opposing_withheld"] == 1
+        # a step later the exiter's request has lapsed: the entrant goes
+        veh.calls.clear()
+        res = {"n": _res("a", 0, 51.0, 5.0), "e": _res("a", 2, 59.0, 5.0)}
+        _weave_step(mod, _tc, ws, res, 1.0)
+        assert self._changes(veh) == [("change", "n", 1, 0.5)]
+
+    def test_binds_on_the_corridor_section_fixture(self, tmp_path):
+        """On ``weave_th52_corridor.osm`` under the observed movements (the
+        first ten minutes, seed 3) the guard defers changes with nothing
+        colliding; at the default it is inert."""
+        raw = _th52_corridor_config(3).model_dump(mode="json")
+        raw["sim"]["duration_s"] = 600.0
+        off = ScenarioConfig.model_validate(raw)
+        raw["network"]["ramps"][0]["weave"]["weave_params"] = {"opposing_entry_guard": 1.0}
+        on = ScenarioConfig.model_validate(raw)
+        meta_off = json.loads(run_micro(off, 3, tmp_path / "off").meta.read_text())
+        meta_on = json.loads(run_micro(on, 3, tmp_path / "on").meta.read_text())
+        assert meta_off["weave_sections"][0]["n_opposing_deferred"] == 0
+        assert meta_on["weave_sections"][0]["n_opposing_deferred"] > 0
+        assert meta_on["n_collisions"] == 0

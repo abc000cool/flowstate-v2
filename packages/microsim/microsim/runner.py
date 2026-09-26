@@ -757,6 +757,13 @@ COLLISION_LOG_MAX = 50  # collision events kept verbatim in meta.json (the count
 LC_MODE_SCRIPTED_SAFE = 512  # respect the speed / brake gaps of others, adapt speed
 LC_MODE_SCRIPTED_FORCE = 256  # avoid immediate collisions only (the follower yields)
 LC_MODE_SCRIPTED_SAFE_NO_ADAPT = 768  # respect the gaps of others, no speed adaptation
+#: The model-driven change bits of ``laneChangeMode`` (bits 0-7: strategic,
+#: cooperative, speed gain, keep right; TraCI docs, "lane change mode"). With
+#: them cleared SUMO's own model changes no lane, and a TraCI request keeps
+#: the treatment of bits 8-9 (WP-92, the opposing-entry guard's one-step veto,
+#: :func:`_weave_opposing_guard`; probed on SUMO 1.27.1). A bit mask of the
+#: API, not a fitted value.
+LC_MODE_MODEL_BITS: Final[int] = 0xFF
 # the vacate rule's bound (_weave_vacate_step): a through vehicle is asked into
 # the target lane only within that lane's spare capacity over the last minute
 VACATE_LANE_CAPACITY_VEH_H = 2050.0  # one IDM lane at the fleet defaults (CLAUDE.md §3.1)
@@ -2725,6 +2732,203 @@ def _weave_swap_opposing_clear(
             if not _weave_force_gap_ok(s0_v, acc_x, v_v, g, v_e, math.inf, math.nan, b_v):
                 return False
     return True
+
+
+def _weave_exec_change(
+    mod: Any, vid: str, st: dict[str, Any], target: int, step_s: float, t: float, kind: str
+) -> None:
+    """Request a weave change for one step under ``LC_MODE_SCRIPTED_FORCE`` (mode 256).
+
+    The execution of :func:`_weave_step`, unchanged: an accepted change (and
+    the swap's, ``kind`` ``"acc"`` / ``"swap"``) is executed under mode 256 for
+    one step — the follower yields, SUMO still refuses an immediate collision;
+    under mode 512 SUMO refused the change while the follower was closing from
+    far back and braked the changer to drop in behind it. A forced change
+    (``kind`` ``"force"``) is requested under the gaps just checked by the
+    forced guard and marks the vehicle forced. A request SUMO refuses (an
+    overlap) stays open into the next step, where the vehicle is back under
+    ``LC_MODE_SCRIPTED_SAFE`` unless asked again, so it then executes only
+    under SUMO's own gap check (WP-92: 2 entries into lane 1 one step late in 5
+    runs of the corridor section fixture).
+    """
+    _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
+    mod.vehicle.changeLane(vid, target, step_s)
+    st["requested_s"] = t
+    if kind == "force":
+        st["forced"] = True
+
+
+def _weave_opposing_guard(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    requests: dict[str, dict[str, Any]],
+    t: float,
+) -> tuple[set[str], dict[str, int]]:
+    """Two changes into one lane from opposite sides in one step: the one with priority goes (WP-92).
+
+    **The defect** (docs/WEAVE_MODEL_PLAN.md: WP-60's G, WP-62's N, probed in
+    WP-64, WP-80's collision, WP-90's collision and five 9 m/s² stops; WP-92
+    has the derivation). SUMO executes the lane changes of an edge front
+    vehicle first, across its lanes (``MSLaneChanger::findCandidate``; probed
+    on 1.27.1, WP-64), and a vehicle that has changed is seen in its new lane
+    by every vehicle executed after it. A change under SUMO's own model, or
+    under a TraCI request that respects the gaps (modes 512 / 768), is then
+    refused if it would land too close behind that vehicle. A change under
+    ``LC_MODE_SCRIPTED_FORCE`` — the section's accepted and forced changes and
+    the swap, mode 256 — is refused only on an overlap (SUMO's
+    ``LCP_NOOVERLAP`` clears the blocked bits unless ``LCA_OVERLAPPING``), and
+    the acceptance and the forced guard that admitted it read the target lane
+    before the step. So a runner change lands at any gap behind a vehicle ahead
+    that entered the same lane from the other side in the same step: an
+    exiter from lane 2 behind an entrant from lane 0, an entrant behind a
+    through vehicle keeping right from lane 2, an exiter from lane 3 behind a
+    vehicle moving left from lane 1. The rear is always a runner change; a
+    rear under SUMO's own model sees the front.
+
+    **The conflict.** Each runner request R into lane k (from lane k − d) is
+    read against every vehicle P in lane k + d — the only lane an opposing
+    entry into k comes from — whose front is ahead of R's before the step,
+    or level with it in the lower lane (SUMO's order: front first, the lower
+    lane first at a tie). They conflict when R, behind P in lane k, would fail
+    the forced guard with P as its leader (:func:`_weave_force_gap_ok`, the
+    weave's minimum for any change, at R's movement's leader-side time gap A
+    and R's ``b``): the reported gap ``x_P − len_P − x_R − s0_R`` at most
+    ``s0_R + max(A·(v_R − v_P)⁺, (v_R − v_P)⁺² / (2·b_R))``. At speed parity
+    that is fronts within ``len_P + 2·s0_R`` — 10 m for 5 m vehicles with a
+    2.5 m ``minGap`` — and longer by the closing terms when R is faster; an
+    overlap is a conflict too. Nothing is tuned: the lengths, the ``minGap``,
+    the time gap and ``b`` are the vehicles' and the movement's own.
+
+    **The priority.** (0) A change whose forced change is due (the forced
+    zone's delay spent, or a released pair's) — its lane end is its deadline;
+    (1) any other crossing change — the section drives every crossing
+    vehicle on its edges from the step it is seen there, so these are the
+    runner's requests; (2) a model-driven change of a vehicle the section does
+    not drive (a through vehicle, an exiter given up, an entrant handed back
+    after its crossing): discretionary, never needed to stay on its route.
+    The lower class goes; between equals the one ahead, P — SUMO's own order,
+    and the nearer to the gore, which is both movements' deadline. The other
+    is deferred by one step:
+
+    * P a runner request: the loser's request is withheld (the step runs as
+      one with no request, under ``LC_MODE_SCRIPTED_SAFE``);
+    * P driven with no request: it cannot change this step (mode 512 has no
+      model-driven bits), unless its request of the last step is still open
+      (:func:`_weave_exec_change`) — then R is withheld, since that request
+      cannot be taken back;
+    * P not driven by the section: whether its model will change it cannot be
+      read before the step (``vehicle.getLaneChangeState`` and
+      ``wantsAndCouldChangeLane`` report the last step's decision, and a
+      keep-right change shows no bit before it executes; probed on 1.27.1,
+      WP-64 and WP-92), so it is vetoed: its model-driven bits
+      (:data:`LC_MODE_MODEL_BITS`) are cleared for this one step and its mode
+      restored on the next (:func:`_weave_opposing_restore`), which defers its
+      change by exactly one step (probed: the change executes 0.5 s later). A
+      P whose mode has no model-driven bits is under another rule or section
+      and can change only on a request this section cannot read: R is
+      withheld.
+
+    Requests are read front first, as SUMO executes them, and a withheld one
+    is no longer a front. The swap's changes are read by its own guard
+    (:func:`_weave_swap_opposing_clear`): never a rear here, and a front that
+    is never withheld. Not covered: across the boundary of two edges SUMO's
+    order is its edge list's, not the vehicles' positions, so a model-driven
+    change on the upstream edge can execute before a runner change on the
+    downstream one and land close behind it (twice on the fixture grid at the
+    defaults, both with the rear slower; docs/WEAVE_MODEL_PLAN.md, WP-92).
+
+    Args:
+        mod: ``traci`` / ``libsumo``.
+        tc: ``traci.constants``.
+        ws: The section's state.
+        results: This step's subscription results.
+        lanes: The target-lane listings on the section axis, sorted.
+        x_of: Section-axis front positions [m].
+        v_of: Speeds [m/s].
+        requests: The runner's requests this step: vehicle id → ``lane``,
+            ``target``, ``due`` (its forced change due), ``kind`` (``"acc"``,
+            ``"force"``, ``"swap"``) and ``accept`` (its movement's
+            leader-side time gap [s]).
+        t: The simulation time [s].
+
+    Returns:
+        The requests withheld this step, and the vehicles vetoed for it with
+        the lane-change mode each had.
+    """
+    veh: dict[str, dict[str, Any]] = ws["veh"]
+    step_s = float(ws["step_s"])
+    withheld: set[str] = set()
+    vetoes: dict[str, int] = {}
+    for r_id in sorted(requests, key=lambda v: (-x_of[v], int(requests[v]["lane"]), v)):
+        rq = requests[r_id]
+        if r_id in withheld or rq["kind"] == "swap":
+            continue
+        target = int(rq["target"])
+        d = target - int(rq["lane"])
+        opp = lanes.get(target + d)
+        if not opp:
+            continue
+        x_r, v_r = x_of[r_id], v_of[r_id]
+        p_r = _weave_veh(mod, ws, r_id)
+        prio_r = 0 if rq["due"] else 1
+        # at a tie SUMO executes the lower lane's vehicle first
+        i0 = (
+            bisect.bisect_left(opp, (x_r, ""))
+            if d < 0
+            else bisect.bisect_right(opp, (x_r, "\uffff"))
+        )
+        for x_p, p_id in opp[i0:]:
+            p_p = _weave_veh(mod, ws, p_id)
+            g = x_p - p_p["len"] - x_r - p_r["s0"]
+            if _weave_force_gap_ok(
+                p_r["s0"], float(rq["accept"]), v_r, g, v_of[p_id], math.inf, math.nan, p_r["b"]
+            ):
+                continue
+            rp = requests.get(p_id)
+            if rp is not None:
+                if int(rp["target"]) != target or p_id in withheld:
+                    continue
+                if rp["kind"] != "swap" and prio_r < (0 if rp["due"] else 1):
+                    withheld.add(p_id)
+                    continue
+                withheld.add(r_id)
+                break
+            st_p = veh.get(p_id)
+            if st_p is not None:
+                lane_p = int(results[p_id][tc.VAR_LANE_INDEX])
+                if lane_p + int(st_p["dir"]) == target and st_p["requested_s"] >= t - step_s - 1e-9:
+                    withheld.add(r_id)
+                    break
+                continue
+            if p_id in vetoes:
+                continue
+            mode = int(mod.vehicle.getLaneChangeMode(p_id))
+            if mode & LC_MODE_MODEL_BITS:
+                vetoes[p_id] = mode
+                continue
+            withheld.add(r_id)
+            break
+    return withheld, vetoes
+
+
+def _weave_opposing_restore(mod: Any, ws: dict[str, Any], results: Any) -> None:
+    """Give the vehicles vetoed last step their lane-change mode back (WP-92).
+
+    :func:`_weave_opposing_guard` clears a vehicle's model-driven bits for one
+    step; before anything of the next step reads a mode, each vetoed vehicle
+    still in the network gets the mode it had — unless another rule has set
+    one since, which is then left as it is.
+    """
+    vetoes: dict[str, int] = ws["opp_veto"]
+    for vid, mode in vetoes.items():
+        if vid in results and int(mod.vehicle.getLaneChangeMode(vid)) == mode & ~LC_MODE_MODEL_BITS:
+            mod.vehicle.setLaneChangeMode(vid, mode)
+    vetoes.clear()
 
 
 def _weave_swap_step(
@@ -4797,6 +5001,20 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     ``ramp_outlet`` the corridor section fixture locks at one seed
     (docs/WEAVE_MODEL_PLAN.md, dated section).
 
+    **Opposing entries into one lane** (2026-09-25, block 3, WP-92;
+    :func:`_weave_opposing_guard`, ``opposing_entry_guard``, off by default).
+    A change requested under mode 256 lands at any gap behind a vehicle ahead
+    that entered the same lane from the other side in the same step (SUMO
+    executes an edge's changes front first; mode 256 refuses only an
+    overlap). Under the key every vehicle is decided first and the requests
+    are made after: where a request would land behind such an entry within
+    the forced guard's minimum, the one with priority goes — a due forced
+    change, then a crossing change, then a model-driven one; between equals
+    the one ahead — and the other is deferred by one step: a request
+    withheld, or an undriven vehicle's model-driven changes suspended for the
+    step (its mode restored on the next). Counted in
+    ``n_opposing_deferred``.
+
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
     clear ``s0 + accept · v`` (``accept_gap_s`` / ``exit_accept_gap_s``) —
@@ -4857,6 +5075,13 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # WP-73: the exit priority from the braking onset, and the model to read it with
     onset_prio = float(prm["exit_priority_onset"]) > 0.0
     cf_model = str(ws.get("cf_model", "IDM"))
+    # WP-92 (``opposing_entry_guard``): the changes are requested after every
+    # vehicle is decided, two opposing entries into one lane resolved first;
+    # the vehicles vetoed last step get their mode back before anything reads it
+    opp_guard = float(prm["opposing_entry_guard"]) > 0.0
+    requests: dict[str, dict[str, Any]] = {}
+    if opp_guard and ws["opp_veto"]:
+        _weave_opposing_restore(mod, ws, results)
     pending: dict[str, int] = {}
     # entering vehicles still on the ramp within lookahead_m of the section:
     # gap choice and cooperation only (see the docstring, anticipation)
@@ -5293,30 +5518,53 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 t,
             )
         # --- execution -----------------------------------------------------
-        if accepted:
+        if accepted or (force and forced_ok):
             # accepted: executed under mode 256 for one step (the follower
-            # yields; SUMO still refuses an immediate collision). Under mode
-            # 512 SUMO refused the change while the follower was closing from
-            # far back and braked the changer to drop in behind it
-            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
-            mod.vehicle.changeLane(vid, lane + d, step_s)
-            st["requested_s"] = t
-        elif force:
-            if forced_ok:
-                # a forced request lives one step only, so it is executed
-                # under the gaps just checked or not at all
-                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_FORCE)
-                mod.vehicle.changeLane(vid, lane + d, step_s)
-                st["requested_s"] = t
-                st["forced"] = True
+            # yields; SUMO still refuses an immediate collision). A forced
+            # request lives one step only, so it is executed under the gaps
+            # just checked or not at all (_weave_exec_change). Under the
+            # opposing-entry guard (WP-92) it is requested after the loop
+            kind = ("swap" if vid in swapping else "acc") if accepted else "force"
+            if opp_guard:
+                requests[vid] = {
+                    "lane": lane,
+                    "target": lane + d,
+                    "due": force,
+                    "kind": kind,
+                    "accept": accept,
+                }
             else:
-                # deferred: back under SUMO's own safety check, so a pending
-                # request cannot execute into the gap that was just refused
-                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-                ws["n_forced_deferred"] += 1
+                _weave_exec_change(mod, vid, st, lane + d, step_s, t, kind)
+        elif force:
+            # deferred: back under SUMO's own safety check, so a pending
+            # request cannot execute into the gap that was just refused
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            ws["n_forced_deferred"] += 1
         else:
             # no request this step: never leave a one-step forced mode standing
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+    if requests:
+        # the opposing-entry guard (WP-92): of two changes into one lane from
+        # opposite sides in this step, the one with priority goes and the
+        # other is deferred by one step — a runner request withheld, a
+        # model-driven change vetoed
+        withheld, vetoes = _weave_opposing_guard(
+            mod, tc, ws, results, lanes, x_of, v_of, requests, t
+        )
+        for vid in sorted(requests):
+            st = veh[vid]
+            if vid in withheld:
+                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+                ws["n_opposing_deferred"] += 1
+                ws["opposing_withheld"] += 1
+            else:
+                rq = requests[vid]
+                _weave_exec_change(mod, vid, st, int(rq["target"]), step_s, t, str(rq["kind"]))
+        for vid, mode in vetoes.items():
+            mod.vehicle.setLaneChangeMode(vid, mode & ~LC_MODE_MODEL_BITS)
+            ws["opp_veto"][vid] = mode
+            ws["n_opposing_deferred"] += 1
+            ws["opposing_vetoed"] += 1
     # entering vehicles still on the ramp: their gap is chosen and its
     # follower cooperates before they appear on lane 0
     pre: dict[str, str | None] = ws["pre"]
@@ -5473,7 +5721,12 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     exiters) the vehicle-steps on which an approaching entrant's gap
     follower was bound for the paired exit and was not held, counted only
     where the hold would have bound (:func:`_weave_cooperate`; zero at
-    ``anticipation_spares_exiters`` = 0).
+    ``anticipation_spares_exiters`` = 0); ``n_opposing_deferred`` (WP-92,
+    the opposing-entry guard) the changes deferred by one step because an
+    opposing entry into the same lane in the same step would land within the
+    forced guard's minimum of it — a runner request withheld, or an undriven
+    vehicle's model-driven changes suspended for the step — in vehicle-steps
+    (:func:`_weave_opposing_guard`; zero at ``opposing_entry_guard`` = 0).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -5526,6 +5779,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_outlet_spared": ws["n_outlet_spared"],
         "n_onset_priority": ws["n_onset_priority"],
         "n_anticipation_exiter_spared": ws["n_anticipation_exiter_spared"],
+        "n_opposing_deferred": ws["n_opposing_deferred"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -6724,6 +6978,15 @@ def run_micro(
                     # exit-bound and whose hold was withheld where it would
                     # have bound (meta)
                     "n_anticipation_exiter_spared": 0,
+                    # WP-92, the opposing-entry guard (_weave_opposing_guard):
+                    # the vehicles whose model-driven changes are suspended
+                    # for the step, with the mode each had; the deferrals
+                    # (meta) and their two kinds, requests withheld and
+                    # vetoes (state-only)
+                    "opp_veto": {},
+                    "n_opposing_deferred": 0,
+                    "opposing_withheld": 0,
+                    "opposing_vetoed": 0,
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},
