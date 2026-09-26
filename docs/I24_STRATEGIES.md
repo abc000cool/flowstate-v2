@@ -401,3 +401,35 @@ How to read them:
   - the fixture's run directories.
 
 Every number above is from those runs and files, from SUMO 1.27.1's source at tag `v1_27_1`, from the 120 local `meta.json` of this sweep, or from the committed files named.
+
+## 2026-09-26 (VM AH) — the re-runs: the handback removes every controller collision, and no controller result moves beyond noise
+
+VM AH (n2-standard-32, us-west1-c, self-deleting; commit a62ed7f, VM snapshot 06b8c25) ran stage 18's cheaper arms: `sweep_i24_strat_hb` (121 min), `us101_penetration_cc` and `_hb`, `controllers_10km_cc` and `_hb` (about 1 min each). Every run pairs by seed with its counterpart.
+
+**Collisions** (the censuses, `artifacts/collisions_*.json`):
+
+| result | configuration as committed | with `emergency_handback` |
+|---|---|---|
+| I-24 strategy sweep, FollowerStopper alone / + ALINEA / + VSL | 150 / 105 / 56 (20, 19, 12 of 20 runs) | 0 / 0 / 0 |
+| I-24 strategy sweep, baseline / ALINEA / VSL | 0 / 0 / 0 | 0 / 0 / 0 |
+| US-101 penetration sweep, FollowerStopper 1–20 % and baseline | 0 in 120 runs | 0 in 120 runs |
+| synthetic 10 km, PI with saturation at 5 % | 16 (5 of 20 runs) | 0 |
+| synthetic 10 km, FollowerStopper and JAD at 5 %, baseline | 0 | 0 |
+
+**The metrics.** The cells without a controller reproduce the committed ones to the digit (strategy sweep: baseline, ALINEA, VSL; 10 km: baseline), and the 10 km FollowerStopper and JAD cells, where the handback never acts, are byte-identical. Where it acts, no change is resolved. Paired by seed, the handback run minus the committed run (95 % t-interval, 20 seeds):
+
+| cell | throughput [veh/h] | σ_v temporal [m/s] | fuel [ml/veh-km] |
+|---|---|---|---|
+| I-24, FollowerStopper alone | −54.9 [−616.3, +506.6] (−1.9 %) | +0.007 [−0.083, +0.097] | +6.8 [−48.7, +62.2] |
+| I-24, FollowerStopper + ALINEA | +63.3 [−481.4, +607.9] (+1.6 %) | +0.021 [−0.092, +0.134] | −4.5 [−39.2, +30.1] |
+| I-24, FollowerStopper + VSL | −188.2 [−497.1, +120.7] (−7.1 %) | +0.006 [−0.013, +0.025] | +24.0 [−19.5, +67.5] |
+| 10 km, PI with saturation at 5 % | +11.0 [−1.2, +23.2] | −0.003 [−0.042, +0.035] | −0.03 [−0.14, +0.07] |
+| US-101, FollowerStopper 1–20 % (five cells) | within ±10 veh/h, every interval containing 0 | within ±0.013 | within ±0.1 |
+
+**Reading.**
+- The committed controller results are not changed by the collisions beyond their own noise: the FollowerStopper cells of this sweep, the US-101 penetration sweep and the synthetic 10 km comparison stand as published. Their collisions were a defect of the command path, now measured and removable.
+- The I-24 strategy sweep's FollowerStopper cells are wide (throughput ±500–600 veh/h a seed pair), so "not resolved" there is weak evidence of no effect; the synthetic and US-101 cells are tight.
+- **Not re-run:** the I-24 penetration × compliance battery (`sweep_i24_cc` / `_hb`, 500 runs an arm, about 7 h each, about $22 for both) and the headway-cap sweep (no stage: its script takes no scenario). Their collision counts are unknown. Given the rows above, re-running them is the owner's call.
+- The two side findings of WP-95 (an AV leaving by an off-ramp keeps its last command; `_leader_obs` reports no leader below the AV's own s0) are on the default path and not addressed here.
+
+Every number above is from `artifacts/collisions_{i24_strat_sweep,i24_strat_sweep_hb,us101_penetration_cc,us101_penetration_hb,controllers_10km_cc,controllers_10km_hb}.json`, `artifacts/sweep_{i24_strategies_hb,us101_penetration_cc,us101_penetration_hb,controllers_10km_cc,controllers_10km_hb}_summary.json`, the committed `artifacts/sweep_i24_strategies_summary.json`, and the per-run `metrics.json` of both arms (paired in the session, `vm_ah/`).

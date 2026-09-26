@@ -84,3 +84,5 @@ apply unchanged. No controller was tuned for this corridor; all use published or
 spec defaults, so this ranks *default configurations*, not the controllers at
 their best. A validated real corridor would be required before presenting any of
 this as a deployment recommendation.
+
+*Note 2026-09-26 (collisions):* re-run with its configuration unchanged (stage `controllers_10km_cc`), the synthetic 10 km comparison's PI-with-saturation cell at 5 % contains 16 SUMO collisions in 5 of 20 runs, from the AV command path's braking bound (docs/I24_STRATEGIES.md, WP-95 and VM AH sections); FollowerStopper, JAD and the baseline contain none. With `AVSpec.emergency_handback` the PI cell has none, and its throughput, σ_v and fuel change by no resolved amount (+11.0 [−1.2, +23.2] veh/h, paired). The results here stand.

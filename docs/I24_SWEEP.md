@@ -188,4 +188,4 @@ back at long ones. The probe's number stands in
 `artifacts/i24_controller_probe.json` as what one seed showed and is not
 quoted as a result.
 
-
+*Note 2026-09-26 (collisions):* this battery's runs predate the archiving of `meta.json`, so their SUMO collisions are not recorded. On the I-24 strategy sweep, whose FollowerStopper cells contained 311 collisions from the AV command path's braking bound, `AVSpec.emergency_handback` removes all of them and changes no metric by a resolved amount (docs/I24_STRATEGIES.md, WP-95 and VM AH sections). Re-running this battery with collisions recorded (`sweep_i24_cc` / `sweep_i24_hb`, about $22) is the owner's call; until then its results stand with that caveat.

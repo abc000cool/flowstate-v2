@@ -1,0 +1,262 @@
+{
+ "schema_version": 1,
+ "kind": "collision_census",
+ "created_at": "2026-09-26T14:06:39Z",
+ "root": "runs/controllers_10km_cc",
+ "cells": {
+  "baseline": {
+   "n_runs": 20,
+   "config_hashes": [
+    "78c3b71cdf5a"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 11475,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 0,
+   "colliders": {
+    "compliant_av": 0,
+    "noncompliant_av": 0,
+    "human": 0
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 0
+   },
+   "n_departed": 11475,
+   "n_departed_av": 0,
+   "per_1000_departed_av": null,
+   "handback": null
+  },
+  "follower_stopper_p0.05_c1.00_none": {
+   "n_runs": 20,
+   "config_hashes": [
+    "352c17462fcc"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 11640,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 0,
+   "colliders": {
+    "compliant_av": 0,
+    "noncompliant_av": 0,
+    "human": 0
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 0
+   },
+   "n_departed": 11640,
+   "n_departed_av": 580,
+   "per_1000_departed_av": 0.0,
+   "handback": null
+  },
+  "jad_p0.05_c1.00_none": {
+   "n_runs": 20,
+   "config_hashes": [
+    "b45ce3962ee7"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 11566,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 0,
+   "colliders": {
+    "compliant_av": 0,
+    "noncompliant_av": 0,
+    "human": 0
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 0
+   },
+   "n_departed": 11566,
+   "n_departed_av": 576,
+   "per_1000_departed_av": 0.0,
+   "handback": null
+  },
+  "pi_saturation_p0.05_c1.00_none": {
+   "n_runs": 20,
+   "config_hashes": [
+    "d4164d2ac1a6"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 16,
+    "n_runs_with_collisions": 5,
+    "runs_with_collisions": [
+     {
+      "run": 134183728835869882,
+      "n": 1
+     },
+     {
+      "run": 3944094060050347669,
+      "n": 4
+     },
+     {
+      "run": 4910985839736976611,
+      "n": 5
+     },
+     {
+      "run": 5690692725577505498,
+      "n": 5
+     },
+     {
+      "run": 6953598295321596746,
+      "n": 1
+     }
+    ],
+    "per_run": {
+     "mean": 0.8,
+     "lo95": 0.0022772823502433814,
+     "hi95": 1.5977227176497566,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 1.3745704467353952,
+     "n_collisions": 16,
+     "n_departed": 11640,
+     "n_runs": 20
+    },
+    "n_logged": 16,
+    "locations": [
+     {
+      "lane": "ce4_0",
+      "edge": "ce4",
+      "n": 8,
+      "pos_m_min": 447.57126292071365,
+      "pos_m_max": 987.8189959868198,
+      "runs": [
+       3944094060050347669,
+       5690692725577505498
+      ]
+     },
+     {
+      "lane": "ce0_0",
+      "edge": "ce0",
+      "n": 4,
+      "pos_m_min": 149.43149402004323,
+      "pos_m_max": 169.34038508955592,
+      "runs": [
+       4910985839736976611
+      ]
+     },
+     {
+      "lane": "entry_0",
+      "edge": "entry",
+      "n": 2,
+      "pos_m_min": 1664.2786794216552,
+      "pos_m_max": 1941.7987993287961,
+      "runs": [
+       4910985839736976611,
+       6953598295321596746
+      ]
+     },
+     {
+      "lane": "ce5_0",
+      "edge": "ce5",
+      "n": 1,
+      "pos_m_min": 0.7653672244844074,
+      "pos_m_max": 0.7653672244844074,
+      "runs": [
+       3944094060050347669
+      ]
+     },
+     {
+      "lane": "ce6_0",
+      "edge": "ce6",
+      "n": 1,
+      "pos_m_min": 628.4304593252905,
+      "pos_m_max": 628.4304593252905,
+      "runs": [
+       134183728835869882
+      ]
+     }
+    ],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 14,
+   "colliders": {
+    "compliant_av": 15,
+    "noncompliant_av": 0,
+    "human": 1
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 15
+   },
+   "n_departed": 11640,
+   "n_departed_av": 580,
+   "per_1000_departed_av": 27.586206896551722,
+   "handback": null
+  }
+ }
+}

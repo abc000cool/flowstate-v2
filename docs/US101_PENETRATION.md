@@ -249,3 +249,5 @@ the published figures, which were measured upstream of it (correction note above
   At the levels it is 5.76–6.29 ml/km. Its paired change against the baseline is +0.30 to +0.82 ml/km, resolved at 1, 5 and 20 %
   only. Check (e) holds in the baseline too, so it does not show that the changes the AVs induce cost fuel. The broad reading
   (multi-lane interaction goes with more fuel) stands as an association.
+
+*Note 2026-09-26 (collisions):* re-run with its configuration unchanged (stage `us101_penetration_cc`), the penetration sweep contains no SUMO collision in its 120 runs, and with `AVSpec.emergency_handback` every metric change is inside its paired interval (docs/I24_STRATEGIES.md, VM AH section). The results here stand.

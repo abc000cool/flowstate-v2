@@ -1,0 +1,901 @@
+{
+  "experiment": "us101_penetration_hb",
+  "scenario": "scenarios/us101_replica_boundary_hb.yaml",
+  "base_config_hash": "8f613f1438d9",
+  "grid_spec": {
+    "penetration": [
+      0.01,
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "compliance": [
+      1.0
+    ],
+    "controllers": [
+      "follower_stopper"
+    ],
+    "strategies": [
+      "none"
+    ]
+  },
+  "rho_target_veh_km": null,
+  "metrics_args": {
+    "x_ref": 960.0,
+    "span": [
+      640.0,
+      1280.0
+    ]
+  },
+  "n_seeds": 20,
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749,
+    677105600768189526,
+    661281422688282993,
+    3011106312394044631,
+    6953598295321596746,
+    165503670820534583,
+    6134032994440706937,
+    8557154790156791364,
+    6538422657834023852,
+    6904272788004776631,
+    6143473282319009404,
+    3944094060050347669,
+    4910985839736976611,
+    7382187975121682178,
+    5690692725577505498,
+    887972120279483394,
+    8026499204807041784
+  ],
+  "incomplete_cells": [],
+  "cells": {
+    "baseline": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 8027.093389296957,
+          "lo95": 8008.065215490457,
+          "hi95": 8046.1215631034565,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.9517713685153426,
+          "lo95": 2.8489230022979783,
+          "hi95": 3.054619734732707,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 3.7479690367307263,
+          "lo95": 3.660231602955034,
+          "hi95": 3.8357064705064188,
+          "n": 20,
+          "underpowered": false
+        },
+        "mean_tt_s": {
+          "mean": 52.32223964405085,
+          "lo95": 51.31863360517039,
+          "hi95": 53.325845682931316,
+          "n": 20,
+          "underpowered": false
+        },
+        "p90_tt_s": {
+          "mean": 75.16877750133611,
+          "lo95": 72.99450832138957,
+          "hi95": 77.34304668128264,
+          "n": 20,
+          "underpowered": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 66.90123128692464,
+          "lo95": 66.47850440812788,
+          "hi95": 67.32395816572141,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_count": {
+          "mean": 2.15,
+          "lo95": 1.618004241838375,
+          "hi95": 2.6819957581616247,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_speed_kmh": {
+          "mean": 7.1321198283141,
+          "lo95": 6.631933868675288,
+          "hi95": 7.632305787952912,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 8.820319423358011,
+          "lo95": 7.83045645419107,
+          "hi95": 9.810182392524952,
+          "n": 20,
+          "underpowered": false
+        }
+      },
+      "grid": {
+        "penetration": 0.0,
+        "compliance": 1.0,
+        "controller": null,
+        "strategy": "none"
+      },
+      "config_hash": "8f613f1438d9",
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
+    },
+    "follower_stopper_p0.01_c1.00_none": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7969.296956977964,
+          "lo95": 7950.610757265352,
+          "hi95": 7987.983156690577,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.6868681916565924,
+          "lo95": 2.6143615515911853,
+          "hi95": 2.7593748317219995,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 3.4396509820933163,
+          "lo95": 3.366771248858577,
+          "hi95": 3.512530715328056,
+          "n": 20,
+          "underpowered": false
+        },
+        "mean_tt_s": {
+          "mean": 53.66057715587699,
+          "lo95": 52.63117526468175,
+          "hi95": 54.689979047072235,
+          "n": 20,
+          "underpowered": false
+        },
+        "p90_tt_s": {
+          "mean": 78.61102704821626,
+          "lo95": 77.17123943033995,
+          "hi95": 80.05081466609256,
+          "n": 20,
+          "underpowered": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 67.76369462497891,
+          "lo95": 67.27084202907524,
+          "hi95": 68.25654722088258,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_count": {
+          "mean": 1.8,
+          "lo95": 1.4099058955005732,
+          "hi95": 2.1900941044994267,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_speed_kmh": {
+          "mean": 7.875819805194804,
+          "lo95": 7.161406196954788,
+          "hi95": 8.59023341343482,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 9.01669078521818,
+          "lo95": 8.000930347555066,
+          "hi95": 10.032451222881296,
+          "n": 20,
+          "underpowered": false
+        }
+      },
+      "grid": {
+        "penetration": 0.01,
+        "compliance": 1.0,
+        "controller": "follower_stopper",
+        "strategy": "none"
+      },
+      "config_hash": "c26231f9faf3",
+      "vs_baseline_paired": {
+        "throughput_veh_h": {
+          "mean": -57.796432318992814,
+          "lo95": -72.8537684060912,
+          "hi95": -42.73909623189442,
+          "n": 20,
+          "pct_of_baseline": -0.7200169415750979,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -0.26490317685875014,
+          "lo95": -0.38332233366160573,
+          "hi95": -0.1464840200558946,
+          "n": 20,
+          "pct_of_baseline": -8.97437991588044,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -0.30831805463741024,
+          "lo95": -0.3962300353045568,
+          "hi95": -0.2204060739702637,
+          "n": 20,
+          "pct_of_baseline": -8.22627005761898,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 1.3383375118261376,
+          "lo95": 0.566622644189005,
+          "hi95": 2.11005237946327,
+          "n": 20,
+          "pct_of_baseline": 2.5578750468842157,
+          "resolved": true
+        },
+        "p90_tt_s": {
+          "mean": 3.4422495468801637,
+          "lo95": 1.30544109424994,
+          "hi95": 5.579057999510388,
+          "n": 20,
+          "pct_of_baseline": 4.579360821478011,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 0.8624633380542626,
+          "lo95": 0.5212516699198466,
+          "hi95": 1.2036750061886785,
+          "n": 20,
+          "pct_of_baseline": 1.2891591402187315,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -0.35,
+          "lo95": -0.8819957581616248,
+          "hi95": 0.18199575816162483,
+          "n": 20,
+          "pct_of_baseline": -16.27906976744186,
+          "resolved": false
+        },
+        "wave_speed_kmh": {
+          "mean": 0.7436999768807043,
+          "lo95": -0.01215793669659504,
+          "hi95": 1.4995578904580036,
+          "n": 20,
+          "pct_of_baseline": 10.427474506643295,
+          "resolved": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 0.19637136186017198,
+          "lo95": -0.9195335775993952,
+          "hi95": 1.3122763013197392,
+          "n": 20,
+          "pct_of_baseline": 2.2263520450307097,
+          "resolved": false
+        }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
+    },
+    "follower_stopper_p0.02_c1.00_none": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7945.309548793285,
+          "lo95": 7930.024501896567,
+          "hi95": 7960.594595690003,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.555651317232598,
+          "lo95": 2.5066474887429524,
+          "hi95": 2.6046551457222438,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 3.2621368525728824,
+          "lo95": 3.2093690979915492,
+          "hi95": 3.3149046071542156,
+          "n": 20,
+          "underpowered": false
+        },
+        "mean_tt_s": {
+          "mean": 54.636258761990234,
+          "lo95": 53.802010242759295,
+          "hi95": 55.470507281221174,
+          "n": 20,
+          "underpowered": false
+        },
+        "p90_tt_s": {
+          "mean": 79.89328939717925,
+          "lo95": 77.77133712052863,
+          "hi95": 82.01524167382986,
+          "n": 20,
+          "underpowered": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 68.17648823078466,
+          "lo95": 67.75504667609621,
+          "hi95": 68.5979297854731,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_count": {
+          "mean": 2.1,
+          "lo95": 1.4575727790852016,
+          "hi95": 2.7424272209147986,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_speed_kmh": {
+          "mean": 8.376036366379614,
+          "lo95": 7.646833558003336,
+          "hi95": 9.10523917475589,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 8.64612584720324,
+          "lo95": 7.568005356647021,
+          "hi95": 9.72424633775946,
+          "n": 20,
+          "underpowered": false
+        }
+      },
+      "grid": {
+        "penetration": 0.02,
+        "compliance": 1.0,
+        "controller": "follower_stopper",
+        "strategy": "none"
+      },
+      "config_hash": "9387abd5fbc9",
+      "vs_baseline_paired": {
+        "throughput_veh_h": {
+          "mean": -81.78384050367285,
+          "lo95": -101.85380063683704,
+          "hi95": -61.713880370508654,
+          "n": 20,
+          "pct_of_baseline": -1.0188475022941745,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -0.3961200512827445,
+          "lo95": -0.49460184191406986,
+          "hi95": -0.2976382606514192,
+          "n": 20,
+          "pct_of_baseline": -13.419740278935686,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -0.4858321841578442,
+          "lo95": -0.5638158733250707,
+          "hi95": -0.40784849499061776,
+          "n": 20,
+          "pct_of_baseline": -12.96254529844316,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 2.314019117939388,
+          "lo95": 1.575476784531999,
+          "hi95": 3.052561451346777,
+          "n": 20,
+          "pct_of_baseline": 4.422630097032738,
+          "resolved": true
+        },
+        "p90_tt_s": {
+          "mean": 4.724511895843155,
+          "lo95": 2.0706961063502622,
+          "hi95": 7.378327685336048,
+          "n": 20,
+          "pct_of_baseline": 6.285205178119569,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 1.2752569438600099,
+          "lo95": 0.9722727184898792,
+          "hi95": 1.5782411692301406,
+          "n": 20,
+          "pct_of_baseline": 1.9061785849511705,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -0.05,
+          "lo95": -0.6847548257460393,
+          "hi95": 0.5847548257460392,
+          "n": 20,
+          "pct_of_baseline": -2.3255813953488373,
+          "resolved": false
+        },
+        "wave_speed_kmh": {
+          "mean": 1.2439165380655148,
+          "lo95": 0.18689964751069765,
+          "hi95": 2.300933428620332,
+          "n": 20,
+          "pct_of_baseline": 17.441049337494846,
+          "resolved": true
+        },
+        "wave_amplitude_ms": {
+          "mean": -0.17419357615477038,
+          "lo95": -1.4254535680429257,
+          "hi95": 1.077066415733385,
+          "n": 20,
+          "pct_of_baseline": -1.9749123335995082,
+          "resolved": false
+        }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
+    },
+    "follower_stopper_p0.05_c1.00_none": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7888.457502623295,
+          "lo95": 7871.472099314559,
+          "hi95": 7905.442905932031,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 2.1794130674171712,
+          "lo95": 2.1468449028566017,
+          "hi95": 2.2119812319777408,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 2.7264885397707728,
+          "lo95": 2.685601262572017,
+          "hi95": 2.7673758169695284,
+          "n": 20,
+          "underpowered": false
+        },
+        "mean_tt_s": {
+          "mean": 54.83152453674753,
+          "lo95": 53.840811853931754,
+          "hi95": 55.822237219563306,
+          "n": 20,
+          "underpowered": false
+        },
+        "p90_tt_s": {
+          "mean": 80.03604713924622,
+          "lo95": 78.0841546791209,
+          "hi95": 81.98793959937154,
+          "n": 20,
+          "underpowered": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 68.39718158413143,
+          "lo95": 67.88756346575592,
+          "hi95": 68.90679970250694,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_count": {
+          "mean": 1.9,
+          "lo95": 1.3338847954169903,
+          "hi95": 2.4661152045830095,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_speed_kmh": {
+          "mean": 10.577986730660644,
+          "lo95": 9.579692942609107,
+          "hi95": 11.576280518712181,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 8.520685591613432,
+          "lo95": 7.374529505334885,
+          "hi95": 9.66684167789198,
+          "n": 20,
+          "underpowered": false
+        }
+      },
+      "grid": {
+        "penetration": 0.05,
+        "compliance": 1.0,
+        "controller": "follower_stopper",
+        "strategy": "none"
+      },
+      "config_hash": "588d19b5eaf9",
+      "vs_baseline_paired": {
+        "throughput_veh_h": {
+          "mean": -138.63588667366201,
+          "lo95": -159.01352747335758,
+          "hi95": -118.25824587396644,
+          "n": 20,
+          "pct_of_baseline": -1.7270994611637907,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -0.7723583010981716,
+          "lo95": -0.872902802059416,
+          "hi95": -0.6718138001369273,
+          "n": 20,
+          "pct_of_baseline": -26.1659256315182,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -1.021480496959954,
+          "lo95": -1.1073758465291055,
+          "hi95": -0.9355851473908025,
+          "n": 20,
+          "pct_of_baseline": -27.25424054866178,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 2.509284892696672,
+          "lo95": 1.58428994505668,
+          "hi95": 3.4342798403366643,
+          "n": 20,
+          "pct_of_baseline": 4.795828522951966,
+          "resolved": true
+        },
+        "p90_tt_s": {
+          "mean": 4.867269637910119,
+          "lo95": 2.308453352599917,
+          "hi95": 7.42608592322032,
+          "n": 20,
+          "pct_of_baseline": 6.475121452951133,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 1.4959502972067937,
+          "lo95": 1.0210852369206003,
+          "hi95": 1.9708153574929872,
+          "n": 20,
+          "pct_of_baseline": 2.2360579445705455,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -0.25,
+          "lo95": -0.9096915165948186,
+          "hi95": 0.4096915165948186,
+          "n": 20,
+          "pct_of_baseline": -11.627906976744187,
+          "resolved": false
+        },
+        "wave_speed_kmh": {
+          "mean": 3.4458669023465434,
+          "lo95": 2.3797670689227006,
+          "hi95": 4.511966735770386,
+          "n": 20,
+          "pct_of_baseline": 48.314764548215415,
+          "resolved": true
+        },
+        "wave_amplitude_ms": {
+          "mean": -0.299633831744578,
+          "lo95": -1.5493839708800694,
+          "hi95": 0.9501163073909135,
+          "n": 20,
+          "pct_of_baseline": -3.3970859485098273,
+          "resolved": false
+        }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
+    },
+    "follower_stopper_p0.10_c1.00_none": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7870.136411332633,
+          "lo95": 7843.711068055053,
+          "hi95": 7896.561754610212,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 1.8082302146684939,
+          "lo95": 1.7726408258257234,
+          "hi95": 1.8438196035112644,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 2.164784082511808,
+          "lo95": 2.1180285687580693,
+          "hi95": 2.211539596265547,
+          "n": 20,
+          "underpowered": false
+        },
+        "mean_tt_s": {
+          "mean": 53.601280393116895,
+          "lo95": 52.660762923132616,
+          "hi95": 54.54179786310117,
+          "n": 20,
+          "underpowered": false
+        },
+        "p90_tt_s": {
+          "mean": 75.86583800206614,
+          "lo95": 74.80059114178168,
+          "hi95": 76.9310848623506,
+          "n": 20,
+          "underpowered": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 67.66298027244048,
+          "lo95": 67.24467886683658,
+          "hi95": 68.08128167804438,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_count": {
+          "mean": 1.4,
+          "lo95": 1.1647644040810383,
+          "hi95": 1.6352355959189615,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_speed_kmh": {
+          "mean": 12.228785593226265,
+          "lo95": 11.522648679558655,
+          "hi95": 12.934922506893875,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 9.097841186954827,
+          "lo95": 8.122744097531793,
+          "hi95": 10.072938276377862,
+          "n": 20,
+          "underpowered": false
+        }
+      },
+      "grid": {
+        "penetration": 0.1,
+        "compliance": 1.0,
+        "controller": "follower_stopper",
+        "strategy": "none"
+      },
+      "config_hash": "c6a8642e0234",
+      "vs_baseline_paired": {
+        "throughput_veh_h": {
+          "mean": -156.9569779643231,
+          "lo95": -179.05703849764893,
+          "hi95": -134.85691743099727,
+          "n": 20,
+          "pct_of_baseline": -1.9553401256500142,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -1.1435411538468487,
+          "lo95": -1.258345880382378,
+          "hi95": -1.0287364273113195,
+          "n": 20,
+          "pct_of_baseline": -38.74084443139028,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -1.5831849542189183,
+          "lo95": -1.6801289418514562,
+          "hi95": -1.4862409665863803,
+          "n": 20,
+          "pct_of_baseline": -42.24114283505119,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": 1.2790407490660414,
+          "lo95": 0.3879977437748676,
+          "hi95": 2.170083754357215,
+          "n": 20,
+          "pct_of_baseline": 2.4445451069514204,
+          "resolved": true
+        },
+        "p90_tt_s": {
+          "mean": 0.6970605007300321,
+          "lo95": -1.7453074932835317,
+          "hi95": 3.139428494743596,
+          "n": 20,
+          "pct_of_baseline": 0.9273271747936063,
+          "resolved": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 0.7617489855158326,
+          "lo95": 0.34709101960542776,
+          "hi95": 1.1764069514262374,
+          "n": 20,
+          "pct_of_baseline": 1.138617288296024,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -0.75,
+          "lo95": -1.227162132942895,
+          "hi95": -0.27283786705710505,
+          "n": 20,
+          "pct_of_baseline": -34.883720930232556,
+          "resolved": true
+        },
+        "wave_speed_kmh": {
+          "mean": 5.0966657649121645,
+          "lo95": 4.268083889379613,
+          "hi95": 5.925247640444716,
+          "n": 20,
+          "pct_of_baseline": 71.46074221409879,
+          "resolved": true
+        },
+        "wave_amplitude_ms": {
+          "mean": 0.2775217635968179,
+          "lo95": -0.6571371557298176,
+          "hi95": 1.2121806829234534,
+          "n": 20,
+          "pct_of_baseline": 3.1463913071207315,
+          "resolved": false
+        }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
+    },
+    "follower_stopper_p0.20_c1.00_none": {
+      "aggregate": {
+        "throughput_veh_h": {
+          "mean": 7807.240293809025,
+          "lo95": 7790.420344583898,
+          "hi95": 7824.060243034152,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_temporal_ms": {
+          "mean": 1.2988695166870659,
+          "lo95": 1.2613503137011637,
+          "hi95": 1.336388719672968,
+          "n": 20,
+          "underpowered": false
+        },
+        "sigma_v_spatial_ms": {
+          "mean": 1.4217324118913832,
+          "lo95": 1.379934795982479,
+          "hi95": 1.4635300278002874,
+          "n": 20,
+          "underpowered": false
+        },
+        "mean_tt_s": {
+          "mean": 51.08593477082768,
+          "lo95": 50.31478276187391,
+          "hi95": 51.85708677978145,
+          "n": 20,
+          "underpowered": false
+        },
+        "p90_tt_s": {
+          "mean": 71.9338592587118,
+          "lo95": 70.8535802353607,
+          "hi95": 73.01413828206292,
+          "n": 20,
+          "underpowered": false
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 67.23036164693036,
+          "lo95": 66.7532887000065,
+          "hi95": 67.70743459385423,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_count": {
+          "mean": 1.0,
+          "lo95": 1.0,
+          "hi95": 1.0,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_speed_kmh": {
+          "mean": 13.625668608279597,
+          "lo95": 13.356678585817772,
+          "hi95": 13.894658630741421,
+          "n": 20,
+          "underpowered": false
+        },
+        "wave_amplitude_ms": {
+          "mean": 10.45403453003249,
+          "lo95": 10.237802769862105,
+          "hi95": 10.670266290202877,
+          "n": 20,
+          "underpowered": false
+        }
+      },
+      "grid": {
+        "penetration": 0.2,
+        "compliance": 1.0,
+        "controller": "follower_stopper",
+        "strategy": "none"
+      },
+      "config_hash": "bbdf9b254cff",
+      "vs_baseline_paired": {
+        "throughput_veh_h": {
+          "mean": -219.85309548793302,
+          "lo95": -245.96657635424785,
+          "hi95": -193.7396146216182,
+          "n": 20,
+          "pct_of_baseline": -2.7388879738346805,
+          "resolved": true
+        },
+        "sigma_v_temporal_ms": {
+          "mean": -1.6529018518282765,
+          "lo95": -1.7705802741731544,
+          "hi95": -1.5352234294833986,
+          "n": 20,
+          "pct_of_baseline": -55.99694710297428,
+          "resolved": true
+        },
+        "sigma_v_spatial_ms": {
+          "mean": -2.3262366248393436,
+          "lo95": -2.4307326065921666,
+          "hi95": -2.2217406430865205,
+          "n": 20,
+          "pct_of_baseline": -62.066591320307985,
+          "resolved": true
+        },
+        "mean_tt_s": {
+          "mean": -1.2363048732231792,
+          "lo95": -2.0417017188840108,
+          "hi95": -0.4309080275623475,
+          "n": 20,
+          "pct_of_baseline": -2.362866883439592,
+          "resolved": true
+        },
+        "p90_tt_s": {
+          "mean": -3.234918242624304,
+          "lo95": -5.400373114429547,
+          "hi95": -1.069463370819061,
+          "n": 20,
+          "pct_of_baseline": -4.303539780950681,
+          "resolved": true
+        },
+        "fuel_ml_per_veh_km": {
+          "mean": 0.3291303600057283,
+          "lo95": 0.0004206902520373368,
+          "hi95": 0.6578400297594194,
+          "n": 20,
+          "pct_of_baseline": 0.4919645777432118,
+          "resolved": true
+        },
+        "wave_count": {
+          "mean": -1.15,
+          "lo95": -1.6819957581616247,
+          "hi95": -0.618004241838375,
+          "n": 20,
+          "pct_of_baseline": -53.48837209302325,
+          "resolved": true
+        },
+        "wave_speed_kmh": {
+          "mean": 6.493548779965492,
+          "lo95": 5.851449911718077,
+          "hi95": 7.135647648212907,
+          "n": 20,
+          "pct_of_baseline": 91.04654627627653,
+          "resolved": true
+        },
+        "wave_amplitude_ms": {
+          "mean": 1.6337151066744817,
+          "lo95": 0.72257810697647,
+          "hi95": 2.5448521063724936,
+          "n": 20,
+          "pct_of_baseline": 18.52217621901617,
+          "resolved": true
+        }
+      },
+      "diagnostics": {
+        "n_runs_with_meta": 20,
+        "ramp_meters": {},
+        "weave_sections": {}
+      }
+    }
+  }
+}

@@ -197,8 +197,10 @@ the I-24 strategy sweep's FollowerStopper cells record 311 collisions in 51 of
 120 runs, 305 with a controlled vehicle behind [I24_STRATEGIES.md, WP-95;
 artifacts/collisions_i24_strat_sweep.json]. An option that hands braking back
 to the model when it needs more removes them on a fixture with the controller's
-effect unchanged; the controller results below were produced without it and are
-being re-run. Compliance is drawn once per
+effect unchanged. Re-run with it, the strategy sweep, the US-101 penetration
+sweep and the synthetic comparison lose every collision and change no metric by
+a resolved amount [I24_STRATEGIES.md, VM AH]; the I-24 penetration battery's
+collisions are not recorded. Compliance is drawn once per
 controlled vehicle per run (Bernoulli), and a non-compliant vehicle ignores
 its command [CLAUDE.md §3.3].
 
