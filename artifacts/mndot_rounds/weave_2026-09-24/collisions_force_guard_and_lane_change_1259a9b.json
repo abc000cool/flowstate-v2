@@ -1,0 +1,107 @@
+{
+ "description": "Every collision SUMO recorded in VM AG's two 20-seed corridor batteries (commit 1259a9b): the reference configuration with merge_params force_guard 1.0 on the two scripted ramps (mndot_weave_xlsfg) and with both ramps on merge: lane_change (mndot_weave_xlmlc). Read from each run's meta.json 'collisions'. Pairs with collisions_reference_and_guard_556f737.json (the reference's 15).",
+ "batteries": {
+  "force_guard": {
+   "n_runs": 20,
+   "n_collisions": 0,
+   "collisions": [],
+   "n_forced_deferred_by_seed": {
+    "6538422657834023852": {
+     "on-ramp 18207436": 33003,
+     "on-ramp 178547099": 22142
+    },
+    "887972120279483394": {
+     "on-ramp 18207436": 32769,
+     "on-ramp 178547099": 24255
+    },
+    "8557154790156791364": {
+     "on-ramp 18207436": 32129,
+     "on-ramp 178547099": 21840
+    },
+    "6953598295321596746": {
+     "on-ramp 18207436": 31544,
+     "on-ramp 178547099": 22446
+    },
+    "4910985839736976611": {
+     "on-ramp 18207436": 36517,
+     "on-ramp 178547099": 25826
+    },
+    "165503670820534583": {
+     "on-ramp 18207436": 33773,
+     "on-ramp 178547099": 24469
+    },
+    "8026499204807041784": {
+     "on-ramp 18207436": 34898,
+     "on-ramp 178547099": 27824
+    },
+    "6134032994440706937": {
+     "on-ramp 18207436": 29618,
+     "on-ramp 178547099": 21225
+    },
+    "661281422688282993": {
+     "on-ramp 18207436": 35575,
+     "on-ramp 178547099": 25854
+    },
+    "3011106312394044631": {
+     "on-ramp 18207436": 30596,
+     "on-ramp 178547099": 20263
+    },
+    "5690692725577505498": {
+     "on-ramp 18207436": 34257,
+     "on-ramp 178547099": 26171
+    },
+    "6904272788004776631": {
+     "on-ramp 18207436": 30075,
+     "on-ramp 178547099": 23859
+    },
+    "7382187975121682178": {
+     "on-ramp 18207436": 34950,
+     "on-ramp 178547099": 26051
+    },
+    "3747978530954135749": {
+     "on-ramp 18207436": 29612,
+     "on-ramp 178547099": 23636
+    },
+    "2378473973028931053": {
+     "on-ramp 18207436": 33647,
+     "on-ramp 178547099": 25033
+    },
+    "6914975401685141156": {
+     "on-ramp 18207436": 33965,
+     "on-ramp 178547099": 27584
+    },
+    "134183728835869882": {
+     "on-ramp 18207436": 34955,
+     "on-ramp 178547099": 23254
+    },
+    "677105600768189526": {
+     "on-ramp 18207436": 33936,
+     "on-ramp 178547099": 25702
+    },
+    "6143473282319009404": {
+     "on-ramp 18207436": 31367,
+     "on-ramp 178547099": 22804
+    },
+    "3944094060050347669": {
+     "on-ramp 18207436": 33299,
+     "on-ramp 178547099": 26490
+    }
+   }
+  },
+  "lane_change_merges": {
+   "n_runs": 20,
+   "n_collisions": 1,
+   "collisions": [
+    {
+     "seed": 6904272788004776631,
+     "t_s": 5913.0,
+     "lane": "999007700_0",
+     "pos_m": 42.72,
+     "collider": "v17015",
+     "victim": "v17014",
+     "type": "collision"
+    }
+   ]
+  }
+ }
+}

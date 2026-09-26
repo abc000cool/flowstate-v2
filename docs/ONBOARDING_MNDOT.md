@@ -1639,3 +1639,25 @@ cannot carry the real drivers' different leader and follower gaps (WP-80 splits 
   scripted merges are listed under `scripted_merges`. The collisions follow the scripted merge's forced change: a ramp vehicle
   slowed for the added lane's end is put into lane 1 under `laneChangeMode` 256, which SUMO refuses only on an overlap, in front of a
   follower 10–16 m/s faster (docs/WEAVE_MODEL_PLAN.md, WP-93).
+
+**VM AG (2026-09-26, block 3): the corridor's collisions removed; the reference configuration now includes WP-93's forced-change guard**
+(commit 1259a9b; stages `mndot_weave_xlsfg` — VM U's configuration with `merge_params {force_guard: 1.0}` on the corridor's two
+scripted ramps, McKnight Rd 178547099 and Hudson Rd 18207436 — and `mndot_weave_xlmlc` — both ramps on `merge: lane_change`; one
+n2-standard-32, 48 min each; config hashes 4ab855f5054a and d77bf15fa6bd;
+`artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_force_guard_1259a9b.json`,
+`.../battery_reference_plus_lane_change_merges_1259a9b.json`, `.../collisions_force_guard_and_lane_change_1259a9b.json`). Paired by
+seed against the reference (VM U, reproduced byte for byte by VM AF):
+
+| configuration | collisions (20 seeds) | departed (lowest) | paired departed | paired RMSPE | paired GEH pass share |
+|---|---|---|---|---|---|
+| reference (VM U / VM AF) | 15 | 0.884 (0.867) | — | — | — |
+| + `force_guard` on the scripted ramps | **0** | 0.881 (0.860) | −0.002 [−0.008, +0.003] | +0.002 [−0.002, +0.005] | −0.007 [−0.040, +0.026] |
+| both ramps on `lane_change` | 1 (in the weave section, edge 999007700) | 0.871 (0.848) | −0.013 [−0.018, −0.008] | +0.004 [+0.000, +0.008] | −0.057 [−0.086, −0.028] |
+
+- The guard removes every collision (paired −0.75 [−1.09, −0.41] a seed) with no resolved cost on any criterion and no lock. It
+  defers the forced mode on 50,843–62,722 vehicle-steps a run. T.H.52 exits given up: 461 of 69,601 against 481 of 69,676.
+- The `lane_change` merges remove the ramp collisions too, but cost departures, RMSPE and GEH, each resolved.
+- **The corridor's reference configuration is now** `weave_params {exit_prepare: 1.0}`, network `lane_end_giveup_m: 7.5`, and
+  `merge_params {force_guard: 1.0}` on the two scripted ramps (stage `mndot_weave[_slice]_xlsfg`; config hash 4ab855f5054a).
+  The code default of `force_guard` stays 0: changing a default would change behaviour without changing any config hash.
+- Not reproduced: the corridor still fails GEH and RMSPE, and the T.H.52 weave stays capacity-short (item 1).
