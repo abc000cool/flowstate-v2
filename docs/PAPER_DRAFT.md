@@ -114,8 +114,9 @@ publish with the code [LESSONS.md].
 2. **A coverage measurement for camera trajectory data.** On the I-24 MOTION
    export, roughly half of the peak vehicle-time is tracked. We measure this
    two ways and show what it does to demand, to flow targets and to the
-   fundamental diagram (§3.4). We think this is the paper's most general
-   point.
+   fundamental diagram (§3.4). Thinning a complete dataset to the same
+   coverage shows which lane-change measures it biases and which it leaves
+   alone (§3.9). We think this is the paper's most general point.
 3. **The calibration sequence on two corridors without retuning**, with its
    costs and failures (§4).
 4. **A full criteria battery on the I-24 replica.** Five of seven rows pass
@@ -442,6 +443,9 @@ overshoot that a demand-level fit on speeds found independently in §4.2
 - Counts, flows and densities are lower bounds at the local coverage. The
   branch slopes of the fundamental diagram, `v_f` and `w`, are invariant to a
   uniform coverage factor; capacity and jam density are not.
+- Lane-change measures split the same way. Thinned to this coverage, a
+  complete dataset's gaps and refusal shares move, and only some of them
+  are bounds; its relative speeds at a crossing do not move (§3.9).
 - Demand is ambiguous, so the replica is run in labelled demand arms: as
   tracked, and divided by the coverage (§4.2).
 - The link-flow criterion needs an observed side, and the tracked counts are
@@ -559,6 +563,146 @@ the fastest observed operation, not a free-flow speed [M2_RESULTS.md §4]
 (Figure 2). The reconstructed (Montanino–Punzo) version of these data was not
 used; its method is published and could be applied to the raw data
 [ROADMAP.md §6].
+
+### 3.9 Coverage and lane-change measures
+
+The weaving-section work of §7.3 reads lane changes from the same data. An
+entering crossing is a change from an auxiliary lane into the mainline
+inside a weaving section. The leader side is the changer behind its new
+leader; the follower side is the new follower behind the changer. Coverage
+acts on these measures too, but not in one direction for all of them.
+
+**What partial tracking bounds.** A missed vehicle can only lengthen a
+recorded space gap. It can also change which vehicle is recorded as the
+neighbour. Behind the changer, that can be a different vehicle at a
+different speed. A quantity is a bound only if it reads no neighbour's
+speed.
+
+| Quantity at the change | Recorded against true | Bound? |
+|---|---|---|
+| Space gap, either side | the same or longer | upper |
+| Lead time gap (gap ahead over the changer's own speed) | the same or longer | upper |
+| Leader side's gap over s0 + vT at the population means (`ratio_eq`) | the same or higher | upper |
+| Share refused by the acceptance's lead-time term alone | the same or lower | lower |
+| Lag time gap (gap behind over the recorded follower's speed); follower side's `ratio_eq` | expected longer (higher) | no |
+| Share refused by the whole acceptance, and by its other terms | expected lower | no |
+| Fitted critical gaps | expected higher | no |
+| Gap over the population's normal time gap at that speed (`ratio_pop`) | no expected direction | no: the normal is measured on the same tracked pairs |
+| Partner speed (the front vehicle's speed minus the rear one's) | no expected direction | no |
+
+*Source: [WEAVE_MODEL_PLAN.md, corrections from the review of 2026-09-25,
+table (a); WP-91, expectations table].* The acceptance is the weave model's
+own gap-acceptance rule, applied to each recorded crossing at the I-24
+population's means and a 0.6 s accepted time gap
+[artifacts/i24_lane_change_gaps.json, `acceptance`].
+
+**A test on complete data.** NGSIM US-101 records every vehicle on its site
+[WEAVE_MODEL_PLAN.md, WP-91]. We thinned it to I-24-like coverage and
+measured every quantity again [WEAVE_MODEL_PLAN.md, WP-91 and VM AE;
+artifacts/coverage_thinning_us101.json]. The fragment model cuts each track
+into tracked spells and gives each spell a new tracker id. The spells are
+log-normal with median 9.9 s and σ 0.900, set from I-24's committed median
+and share of fragments lasting 30 s or more (§3.2). Untracked spells
+between them are sized so that a fraction F of the vehicle-time is kept.
+F = 0.65 and F = 0.5 bracket I-24's peak coverage (§3.4); the kept
+vehicle-time achieved was 0.64–0.65 and 0.49–0.50. Each condition was
+drawn with five thinning seeds. Two controls separate the causes. F = 1.0
+keeps all vehicle-time and only cuts and renames tracks. A vehicle model
+keeps whole tracks of a fraction F of the vehicles, so only the recorded
+neighbour changes.
+
+**The rule was written first.** The reading rule was committed with the
+code (commit `2946afc`) before the stage ran [WEAVE_MODEL_PLAN.md, WP-91,
+"How the thinning will be read"]. The shift is the mean over five seeds
+minus the unthinned reference, with a 95% t-interval over the seeds. The
+tolerances are 0.05 on ratios, 5 points on refusal shares, 0.10 s on time
+gaps and critical gaps, 1.0 m on space gaps and 0.5 m/s on speeds. The
+fragment model decides, at both F = 0.65 and F = 0.5:
+
+- *robust*: the interval lies inside ± the tolerance at both;
+- *biased as expected*: the expected sign, the interval clear of zero, at
+  both;
+- *against expectation*: the opposite sign, the interval clear of zero, at
+  either;
+- *undetermined*: anything else.
+
+Two checks came before any row was read, and both pass. The unthinned
+reference reproduces the committed US-101 medians at the change to the
+digit. No bounded quantity moves the wrong way under either model
+[artifacts/coverage_thinning_us101.json, `reference_check_stage16`;
+WEAVE_MODEL_PLAN.md, VM AE (1)].
+
+| Quantity (weave, entering, at the change) | Reference, US-101 complete | Shift, F = 0.65 | Shift, F = 0.5 | Verdict | I-24 value |
+|---|---|---|---|---|---|
+| Lag time gap, median [s] | 1.21 | +0.78 [+0.33, +1.23] | +1.53 [+1.07, +1.99] | biased as expected | 2.46 |
+| Lead time gap, median [s] | 0.91 | +0.60 [+0.32, +0.89] | +1.32 [+1.14, +1.50] | biased as expected (a bound) | 1.69 |
+| Acceptance refusal share [%] | 71.7 | −18.5 [−25.3, −11.7] | −29.3 [−32.4, −26.1] | biased as expected | 48.5 |
+| Refused by the lead-time term [%] | 58.3 | −21.1 [−28.5, −13.6] | −29.9 [−35.2, −24.6] | biased as expected (a bound) | 31.5 |
+| Critical gap ahead, joint fit [s] | 0.29 | +0.10 [−0.04, +0.24] | +0.10 [−0.08, +0.29] | undetermined | 0.46 |
+| Critical gap behind, joint fit [s] | 0.45 | +0.17 [−0.06, +0.40] | +0.39 [+0.14, +0.63] | undetermined | 0.92 |
+| Follower side `ratio_eq` | 0.81 | +0.37 [+0.17, +0.58] | +0.62 [+0.31, +0.94] | biased as expected | 1.14 |
+| Leader side `ratio_eq` | 0.62 | +0.31 [+0.10, +0.53] | +0.63 [+0.36, +0.90] | biased as expected (a bound) | 0.92 |
+| Follower side `ratio_pop` | 0.76 | +0.14 [−0.01, +0.29] | +0.20 [−0.01, +0.40] | undetermined | 0.87 |
+| Leader side `ratio_pop` | 0.57 | +0.14 [−0.02, +0.30] | +0.28 [+0.10, +0.46] | shifted (no expected direction) | 0.72 |
+| Partner speed, entrant minus new follower [m/s] | +1.01 | +0.05 [−0.16, +0.25] | +0.11 [−0.25, +0.47] | robust | +1.18 |
+| Partner speed, new leader minus entrant [m/s] | −0.40 | −0.04 [−0.19, +0.11] | +0.04 [−0.09, +0.16] | robust | −0.83 |
+
+*Source: [artifacts/coverage_thinning_us101.json; WEAVE_MODEL_PLAN.md, VM AE
+(2)]. Fragment model; 180 entering crossings in the reference, 80–103 after
+thinning (seed means); medians; shifts with 95% t-intervals over five
+thinning seeds. I-24 column: [artifacts/i24_lane_change_gaps.json (time
+gaps, refusals); artifacts/i24_critical_gaps.json;
+artifacts/lane_change_relaxation_i24.json (ratios, partner speeds)].*
+
+- Every time-gap median, `ratio_eq` and refusal share in the table moves by
+  far more than its tolerance, in the expected direction, at both coverage
+  levels. Complete data show shorter gaps and more refusals than thinned
+  data.
+- Fragmentation alone (F = 1.0) moves none of these rows by more than its
+  tolerance. The vehicle model moves the gap, refusal and `ratio_eq` rows
+  the same way and by about as much (the refusal share by −18.5 and −24.7
+  points). The shifts come from the recorded neighbour being another
+  vehicle, not from cut tracks.
+- The fitted critical gaps are undetermined. Their point shifts are
+  positive, but three of the four intervals include zero. The follower
+  side's `ratio_pop` is undetermined too: its point shifts are large, but
+  both intervals reach just below zero.
+- The partner speeds are robust.
+- Fragment thinning also cuts the curves after the crossing short: the
+  follower sides still read 10 s after the change fall from 85 to 9.4 and
+  6.8 (seed means). I-24 reads 89 of its 1,488 follower sides at 10 s. Its
+  short curves
+  are consistent with fragment-level loss, not a property of its drivers
+  [WEAVE_MODEL_PLAN.md, VM AE (2)].
+
+**What this means for the I-24 numbers.** These are transfers from another
+site, not corrections [WEAVE_MODEL_PLAN.md, VM AE (3)].
+
+- I-24's gap and refusal quantities are one-sided, with US-101's shifts as
+  the scale. The weave acceptance refuses 48.5% of I-24's recorded entering
+  crossings; on US-101 the same thinning lowers the refusal share by
+  18.5–29.3 points. I-24's new follower reads 1.14 of s0 + vT; on US-101 the
+  thinning raises that ratio by 0.37–0.62.
+- The bounds stay bounds. The leader side's 0.92 is an upper bound, loose by
+  0.31–0.63 on US-101. The lead-time term's 31.5% is a lower bound, loose by
+  21–30 points.
+- The critical gaps keep their expected upward direction, which this test
+  neither confirms nor rules out (§7.3).
+- The partner speeds are usable as values.
+
+**Limitations of the test.** One complete dataset: the raw NGSIM US-101
+export, 640 m, congested throughout, 180 entering crossings. The intervals
+are over thinning seeds on one sample. They say whether a shift stands out
+from the thinning's own noise, not how US-101 would vary on another day. The
+shape of the untracked spells is assumed; I-24 publishes no statistic of
+it. I-24's losses are correlated by camera and by lane (§3.4), and it has
+duplicate fragments and position noise; neither thinning model has these.
+The fragments achieved have a median of about 8 s against the 9.9 s drawn,
+a difference not explained. On exiting crossings (72 in the reference) only
+the refusal share resolves, and the exiting critical gaps cannot be fitted
+at F = 0.5. The transferred shifts carry US-101's traffic, not I-24's
+[artifacts/coverage_thinning_us101.json, `limitations`; WEAVE_MODEL_PLAN.md,
+VM AE].
 
 ---
 
@@ -1415,7 +1559,10 @@ reproduce the section [WEAVE_MODEL_PLAN.md]. Where that work stands
   into the accepted one. Behind the
   changer, the recorded follower can be a different vehicle at a different
   speed, so a follower time gap can also read short
-  [calibration.critical_gap, module docstring, coverage paragraph]. On the
+  [calibration.critical_gap, module docstring, coverage paragraph].
+  Thinning complete US-101 data to I-24's coverage did not settle the
+  direction: both fitted medians rose, but only one of four shift intervals
+  excluded zero (§3.9). On the
   corridor section fixture the model's own entrants read 0.98 s ahead and
   0.66 s behind [WEAVE_MODEL_PLAN.md, correction to "where item 1 stands"].
   Calibrating the model's acceptance to the real values
@@ -1432,6 +1579,46 @@ reproduce the section [WEAVE_MODEL_PLAN.md]. Where that work stands
   the two lanes the weave connects hold each other through those targets:
   88% of lane 1's slow vehicle-steps trace to a target whose partner is in
   lane 0 [WEAVE_MODEL_PLAN.md, WP-86].
+
+**Real crossings against the model's.** At the moment of the change, real
+entering crossings differ from the model's in gap and in speed. These are
+measurements on a test fixture and on real data. They locate a difference;
+they are not a validated model result.
+
+| At the change (weave, entering, medians) | Model, corridor section fixture | NGSIM US-101 | I-24 MOTION |
+|---|---|---|---|
+| New follower's gap over the normal (`ratio_pop`) | 1.05 [1.01, 1.10] (740) | 0.76 (177) | 0.87 (1,454); not coverage-robust |
+| Entrant's gap to its new leader over the normal (`ratio_pop`) | 1.31 (594) | 0.57 (176) | 0.72 (1,591) |
+| Entrant's speed minus its new follower's [m/s] | +0.72 (740) | +1.01 (177) | +1.18 (1,488) |
+| New leader's speed minus the entrant's [m/s] | +1.37 (594) | −0.40 (176) | −0.83 (1,612) |
+
+*Source: [artifacts/lane_change_relaxation_us101.json;
+artifacts/lane_change_relaxation_i24.json; WEAVE_MODEL_PLAN.md, VM AC and
+VM AE (4)]. Brackets after a value: sides read, except I-24's `ratio_pop`
+rows, which give its finite values (of 1,488 and 1,612 sides read). The
+model's values come from fixture runs at seeds 3–7 recorded in
+[WEAVE_MODEL_PLAN.md, WP-88 and WP-91]; the interval is a 95% t-interval
+over the five seeds' medians. No committed artifact holds the model's
+values.*
+
+- Real entrants cross into a short gap. On US-101, complete in coverage,
+  the entrant sits at 0.57 of the normal gap behind its new leader and its
+  new follower at 0.76. The model's sit at 1.31 and 1.05. On I-24 the
+  leader side is short on both references (0.72 of the normal; 0.92 of
+  s0 + vT, an upper bound). Its follower side is short only on `ratio_pop`,
+  whose reference inflates too (1.14 of s0 + vT; §3.9).
+- Real entrants cross faster than their new leader: −0.40 m/s on US-101 and
+  −0.83 m/s on I-24 (the leader's speed minus the entrant's). The model's
+  entrant crosses 1.37 m/s slower than its new leader. On the follower side
+  the model is within 0.5 m/s of both datasets.
+- By the rule written before these numbers, the model's crossings differ in
+  speed as well as in gap [WEAVE_MODEL_PLAN.md, WP-91, VM AE (4)]. The
+  partner speeds are robust to coverage (§3.9), so I-24's count as values.
+- A bounded post-crossing gap allowance, set from US-101's short starts,
+  moved the model's new follower to 0.93 [0.89, 0.97] of the normal at the
+  weave defaults and left the entrant's side at 1.29. It did not improve
+  the entry and was not adopted
+  [WEAVE_MODEL_PLAN.md, WP-90; CHANGELOG, 2026-09-25].
 
 The fixture results are macOS records; two threshold-sensitive tests land
 differently on Linux [WEAVE_MODEL_PLAN.md, WP-85].
@@ -1472,7 +1659,11 @@ the loss sits in SUMO's lane-change model together with our own weave rules
 (§7.3). The measured gap-acceptance data from I-24 now exist
 [artifacts/i24_critical_gaps.json], and the next step, if merges are to be
 reproduced, is a merge model built on them; that is research outside the
-product's current scope [I24_VALIDATION.md §0.12].
+product's current scope [I24_VALIDATION.md §0.12]. Two cautions carry over
+from §3.9 and §7.3. Under the instrument's coverage, I-24's gaps and refusal
+shares are one-sided and the direction of its critical gaps is
+undetermined; the relative speeds at a crossing are values. And the model's
+crossings differ from real ones in speed as well as in gap.
 
 ### 8.3 Behaviour parameters set on independent observables are not tuning
 
@@ -1541,6 +1732,8 @@ numbers were checked.
    RMSPE; US-101 scores 1 PASS / 5 FAIL; I-94 is not reproduced (§5, §7).
 2. **Coverage.** Every I-24 count, flow and density is a lower bound. The
    corrected demand arms rest on coverage estimates, not on counts (§3.4).
+   I-24's lane-change gaps and refusal shares are one-sided, and the size of
+   their bias is transferred from one thinned dataset, US-101 (§3.9).
 3. **One day, one direction, two hours on I-24.** 30 November 2022,
    westbound, 06:30–08:30; no weather or incident metadata used
    [I24_DATA.md §7; I24_VALIDATION.md §6].
@@ -1583,9 +1776,15 @@ numbers were checked.
 ## 10. Reproducibility statement
 
 **Code.** The analysis in this draft uses the repository tree at commit
-`b41190c`, after release v2.4.0 [CHANGELOG]. A release tag for submission,
-and the public repository URL, are for the owner to set: [repository URL and
-tag to be inserted].
+`b41190c`, after release v2.4.0 [CHANGELOG]. The coverage thinning and the
+gaps and speeds at the change in §3.9 and §7.3 were measured later, at
+commit `2946afc` (artifacts ingested in `55bd1bb`):
+`artifacts/coverage_thinning_us101.json` and
+`artifacts/lane_change_relaxation_{i24,us101}.json`. The two US-101
+artifacts record `code_dirty: true`; that flag is a known false positive,
+and the code was the clean snapshot of `2946afc` [WEAVE_MODEL_PLAN.md,
+VM AE, provenance]. A release tag for submission, and the public repository
+URL, are for the owner to set: [repository URL and tag to be inserted].
 
 **Software.** Eclipse SUMO and libsumo 1.27.1, pinned because goldens are
 per SUMO version [CLAUDE.md §9]; Python 3.12 [M3_RESULTS.md §1]. Commands
@@ -1617,6 +1816,7 @@ every criteria value to the digit [I24_VALIDATION.md §0.1, §0.12].
 | Flux-cap comparison | `scripts/m3_fluxcap_compare.py` | `artifacts/run_summaries/m3_fluxcap/results.json` |
 | Ring wave speed vs density | `scripts/wave_speed_sitelength.py` | `artifacts/wave_speed_sitelength.json`, `artifacts/wave_speed_sitelength_i24.json` |
 | MnDOT onboarding and batteries | `scripts/mndot_fetch.py`, `onboard_corridor.py`, `corridor_demand.py`, `corridor_battery.py` | `artifacts/mndot_rounds/` [ONBOARDING_MNDOT.md §3] |
+| Lane-change measures and coverage thinning | `scripts/i24_lane_change_gaps.py`, `i24_critical_gaps.py`, `lane_change_relaxation.py`, `coverage_thinning.py` | `artifacts/i24_lane_change_gaps.json`, `artifacts/i24_critical_gaps.json`, `artifacts/lane_change_relaxation_{i24,us101}.json`, `artifacts/coverage_thinning_us101.json` |
 
 **Compute.** The large batteries and sweeps ran on self-deleting cloud
 machines (n2-standard-32); for example, the re-run of the 500-run sweep
@@ -1743,7 +1943,14 @@ Single-seed probes are marked; none is a headline result on its own.
 | 41 | I-94 reference configuration | departed 0.884 (lowest 0.867); RMSPE 0.691 [0.688, 0.695]; GEH < 5 on 0.163 [0.138, 0.188] | 20 | [artifacts/mndot_rounds/weave_2026-09-24/battery_exit_prepare_lane_end_f24ba43.json] |
 | 42 | I-94 flow at S790, 06:30–07:30 | 3,344 veh/h simulated vs 4,911 observed | 20 | [ONBOARDING_MNDOT.md §11, VM U] |
 | 43 | I-94 observed wave speed (context) | median 21.3 km/h, IQR 18.6–24.2, 6 of 13 pairs | — (9 dates) | [ONBOARDING_MNDOT.md §4a, §11; data/mndot/mndot_i94_wb_stpaul/observations.json] |
-| 44 | Real I-24 entering critical gaps | 0.46 s ahead, 0.92 s behind (expected high under coverage; not bounds) | — | [artifacts/i24_critical_gaps.json; WEAVE_MODEL_PLAN.md, "where item 1 stands"] |
+| 44 | Real I-24 entering critical gaps | 0.46 s ahead, 0.92 s behind (expected high under coverage; not bounds; direction undetermined by the thinning test, row 48) | — | [artifacts/i24_critical_gaps.json; WEAVE_MODEL_PLAN.md, "where item 1 stands"] |
+| 45 | US-101 thinned to I-24-like coverage (fragment model, F = 0.65 / 0.5), weave entering: lag time gap median | +0.78 [+0.33, +1.23] / +1.53 [+1.07, +1.99] s on 1.21 s; biased as expected (lead time gap +0.60 / +1.32 s on 0.91, a bound) | 5 thinning seeds per F; 180 entering crossings | [artifacts/coverage_thinning_us101.json; WEAVE_MODEL_PLAN.md, WP-91 (rule, written first) and VM AE] |
+| 46 | Same test: the weave acceptance's refusal share | −18.5 [−25.3, −11.7] / −29.3 [−32.4, −26.1] points on 71.7%; biased as expected (the lead-time term −21.1 / −29.9 points on 58.3%, a bound) | same | same |
+| 47 | Same test: gap over s0 + vT at the change (`ratio_eq`) | follower side +0.37 [+0.17, +0.58] / +0.62 [+0.31, +0.94] on 0.81; leader side +0.31 [+0.10, +0.53] / +0.63 [+0.36, +0.90] on 0.62 (a bound); both biased as expected | same | same |
+| 48 | Same test: rows left undetermined | critical gap ahead +0.10 [−0.04, +0.24] / +0.10 [−0.08, +0.29] s on 0.29 s; behind +0.17 [−0.06, +0.40] / +0.39 [+0.14, +0.63] s on 0.45 s; follower `ratio_pop` +0.14 [−0.01, +0.29] / +0.20 [−0.01, +0.40] on 0.76 | same | same |
+| 49 | Same test: partner speeds at the change | entrant minus new follower +0.05 [−0.16, +0.25] / +0.11 [−0.25, +0.47] m/s on +1.01; new leader minus entrant −0.04 [−0.19, +0.11] / +0.04 [−0.09, +0.16] m/s on −0.40; robust | same | same |
+| 50 | Partner speeds at the change, weave entering, medians | new leader minus entrant: US-101 −0.40 m/s (176 sides), I-24 −0.83 (1,612), model +1.37 (594; seed mean 1.45 [1.21, 1.68]); entrant minus new follower: US-101 +1.01 (177), I-24 +1.18 (1,488), model +0.72 (740; seed mean 0.75 [0.56, 0.95]) | — (data); 5 (model, seeds 3–7, fixture) | [artifacts/lane_change_relaxation_us101.json; artifacts/lane_change_relaxation_i24.json; model: WEAVE_MODEL_PLAN.md, WP-91, no committed artifact] |
+| 51 | Gap at the change over the population's normal, weave entering (new follower / entrant behind its new leader) | US-101 0.76 (177) / 0.57 (176); I-24 0.87 (1,454 finite values) / 0.72 (1,591), follower side not coverage-robust; model 1.05 [1.01, 1.10] (740) / 1.31 (594) | — (data); 5 (model, seeds 3–7, fixture) | [artifacts/lane_change_relaxation_us101.json; artifacts/lane_change_relaxation_i24.json; model: WEAVE_MODEL_PLAN.md, WP-88 and VM AC, no committed artifact] |
 
 ---
 
