@@ -247,6 +247,19 @@ duration, step length (default 0.5 s; sub-step actions via SUMO
   via `vehicle.getLeader`), compute `v_cmd` from the controller (pure
   function, no I/O), apply via `vehicle.setSpeed` with SUMO safety checks
   left ON (`speedMode` default) so controllers cannot command collisions.
+  **Corrected 2026-09-26 against the source, per §13.** The default speed
+  mode does not deliver that guarantee in SUMO 1.27.1: a held `setSpeed`
+  never brakes harder than the vehicle's comfortable deceleration, because
+  the influencer's maximum-deceleration clamp is applied after its safe-speed
+  clamp (`MSVehicle.cpp` `Influencer::influenceSpeed`, tag `v1_27_1`), while
+  the vehicle's own model may brake to `emergencyDecel`. The I-24 strategy
+  sweep's FollowerStopper cells recorded 311 collisions this way
+  (docs/I24_STRATEGIES.md, WP-95 and VM AH). The intent stands: controllers
+  must not be able to command collisions. `AVSpec.emergency_handback` meets it
+  (the command is withdrawn in any step where the model must brake harder)
+  and is required for new controller experiments, with
+  `release_off_corridor` and `observe_close_leader` (WP-96). Every run
+  records `n_collisions`; the auto-report shows them (§7.4, WP-94).
 - **Compliance model:** each AV-tagged vehicle draws compliance once per run
   (Bernoulli p = compliance); non-compliant vehicles ignore `v_cmd`. Sweep
   compliance ∈ {0.1 … 1.0}; v1's fixed 80% assumption is retired.
