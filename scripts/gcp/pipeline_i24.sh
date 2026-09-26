@@ -79,6 +79,8 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # the handback and committed-configuration re-runs (WP-95, stage 18): per-run metrics and meta.json (n_collisions,
   # collisions, av_emergency_handback) of runs/<tree>_hb and runs/<tree>_cc, four levels as corridor_sweep.py writes them
   extra="$extra $(ls runs/*_hb/*/*/*/metrics.json runs/*_hb/*/*/*/meta.json runs/*_cc/*/*/*/metrics.json runs/*_cc/*/*/*/meta.json runs/*_hb/MANIFEST.json runs/*_cc/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
+  # the command-path re-runs (WP-96, stage 19): the same files of runs/<tree>_wp96c, _wp96f and _wp96fh
+  extra="$extra $(ls runs/*_wp96*/*/*/*/metrics.json runs/*_wp96*/*/*/*/meta.json runs/*_wp96*/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -773,6 +775,78 @@ if echo " $STAGES " | grep -q " controllers_10km_hb "; then
     $RUN scripts/collision_census.py --root runs/controllers_10km_hb --out artifacts/collisions_controllers_10km_hb.json" \
     || say "controllers_10km_hb failed; continuing"
 fi
+
+# 19. The AV command path's two WP-95 side findings (WP-96, 2026-09-26; opt-in; needs no data set: launch with
+#     --data-set none). (a) An AV that leaves the corridor by an off-ramp keeps its last setSpeed command until it
+#     arrives (AVSpec.release_off_corridor releases it); (b) _leader_obs read a leader closer than the AV's own s0 as
+#     "no leader", so FollowerStopper commanded U at the closest gaps (AVSpec.observe_close_leader reports it). Both
+#     off by default and hash-neutral; the runner now records both counters in every controller run, on or off
+#     (meta.json av_off_corridor, av_close_leader; the census sums them). On two fixtures (20 seeds each,
+#     docs/I24_STRATEGIES.md, WP-96 section) neither fix moves a corridor metric by a resolved amount; under (a) the
+#     AVs drive the off-ramps at 31-36 % of the limit. A "_wp96c" stage re-runs a committed configuration at this tree (it should reproduce the
+#     committed metrics to the digit: a check, where a macOS/Linux difference would also show, WP-85) to count both
+#     defects on the published path; a "_wp96f" stage runs a
+#     copy that differs only in its name and both keys; "_wp96fh" adds av.emergency_handback: true (pairs with stage
+#     18's "_hb"). Every run pairs by seed. Diagnostic batteries, not default changes. Nothing here has run.
+wp96_copy() {  # <committed scenario> <suffix> <av key>...: a copy that differs only in its name and the keys
+  local src="$1" sfx="$2"; shift 2
+  local name; name=$(sed -n 's/^name: //p' "$src" | head -1)
+  local dst="scenarios/${name}_${sfx}.yaml" ins=""
+  for k in "$@"; do ins="$ins print \"  $k: true\";"; done
+  sed -e "s#^name: ${name}\$#name: ${name}_${sfx}#" "$src" | awk "{print} /^av:\$/ && !d {$ins d=1}" > "$dst"
+  [ "$(grep -c -E "^  ($(echo "$@" | tr ' ' '|')): true\$" "$dst")" -eq "$#" ] && echo "$dst"
+}
+export -f wp96_copy  # the stages below call it inside bash -c
+#   19a. The strategy sweep (stage 11's grid, as 18a): committed configuration re-run, both keys, both keys with the
+#        handback. 120 runs an arm, the pool capped at 12 (about 9 GB a run); about 2 h an arm (18a took 121 min).
+STRAT_ARGS="--penetration 0.10 --compliance 1.0 --controllers follower_stopper --strategies none vsl alinea \
+  --rho-target-veh-km 29.2 --x-ref 4411.8 --span 2256.2 7637.8"
+for ARM in wp96c wp96f wp96fh; do
+  if echo " $STAGES " | grep -q " sweep_i24_strat_$ARM "; then
+    stage sweep_i24_strat_$ARM bash -c "set -e; SCN=scenarios/i24_replica_flow_speedcal_ramps.yaml; \
+      case $ARM in wp96f) SCN=\$(wp96_copy \$SCN wp96f release_off_corridor observe_close_leader) ;; \
+        wp96fh) SCN=\$(wp96_copy \$SCN wp96fh release_off_corridor observe_close_leader emergency_handback) ;; esac; \
+      $RUN scripts/corridor_sweep.py --scenario \$SCN $STRAT_ARGS --replicates $REPS --procs $(( PROCS < 12 ? PROCS : 12 )) \
+        --out runs/i24_strat_sweep_$ARM --summary artifacts/sweep_i24_strategies_${ARM}_summary.json; \
+      $RUN scripts/collision_census.py --root runs/i24_strat_sweep_$ARM --out artifacts/collisions_i24_strat_sweep_$ARM.json" \
+      || say "sweep_i24_strat_$ARM failed; continuing"
+  fi
+done
+#   19b. The penetration x compliance battery with both keys (500 runs, about 7 h at 30 processes). Its pair is stage
+#        18b's sweep_i24_cc, which, run at this tree, records both counters on the committed path: launch the two
+#        together (about $22 for both, VM AH's estimate). A first pass can run compliance 1.0 alone (140 runs an arm).
+if echo " $STAGES " | grep -q " sweep_i24_wp96f "; then
+  stage sweep_i24_wp96f bash -c "set -e; SCN=\$(wp96_copy scenarios/i24_replica_speedcal.yaml wp96f release_off_corridor observe_close_leader); \
+    $RUN scripts/corridor_sweep.py --scenario \$SCN $I24_BATTERY_GRID $I24_BATTERY_METRICS --replicates $REPS --procs $PROCS \
+      --out runs/i24_sweep_wp96f --summary artifacts/sweep_i24_penetration_wp96f_summary.json; \
+    $RUN scripts/collision_census.py --root runs/i24_sweep_wp96f --out artifacts/collisions_i24_sweep_wp96f.json" \
+    || say "sweep_i24_wp96f failed; continuing"
+fi
+#   19c. US-101 (as 18c; no off-ramp, so only (b) can act) and the synthetic 10 km corridor (as 18d; one lane, no ramp:
+#        only (b), and only for FollowerStopper and PI with saturation): committed configuration re-run, and both keys.
+#        120 and 80 runs an arm, minutes.
+for ARM in wp96c wp96f; do
+  if echo " $STAGES " | grep -q " us101_penetration_$ARM "; then
+    SCN=scenarios/us101_replica_boundary_$ARM.yaml
+    stage us101_penetration_$ARM bash -c "$RUN -c 'import sys, yaml; sys.path.insert(0, \"scripts\"); \
+import us101_penetration_sweep as s; d, src = s._base_with_boundary(); print(src); fix = \"$ARM\" == \"wp96f\"; \
+d.update(name=d[\"name\"] + \"_wp96f\") if fix else None; \
+d[\"av\"].update(release_off_corridor=True, observe_close_leader=True) if fix else None; \
+open(\"$SCN\", \"w\").write(yaml.safe_dump(d, sort_keys=False))' && \
+      $RUN scripts/corridor_sweep.py --scenario $SCN $US101_GRID --replicates $REPS --procs $PROCS \
+        --out runs/us101_penetration_$ARM --summary artifacts/sweep_us101_penetration_${ARM}_summary.json && \
+      $RUN scripts/collision_census.py --root runs/us101_penetration_$ARM --out artifacts/collisions_us101_penetration_$ARM.json" \
+      || say "us101_penetration_$ARM failed; continuing"
+  fi
+  if echo " $STAGES " | grep -q " controllers_10km_$ARM "; then
+    stage controllers_10km_$ARM bash -c "set -e; SCN=scenarios/corridor_10km.yaml; \
+      [ $ARM = wp96f ] && SCN=\$(wp96_copy \$SCN wp96f release_off_corridor observe_close_leader); \
+      $RUN scripts/corridor_sweep.py --scenario \$SCN $TENKM_GRID --replicates $REPS --procs $PROCS \
+        --out runs/controllers_10km_$ARM --summary artifacts/sweep_controllers_10km_${ARM}_summary.json; \
+      $RUN scripts/collision_census.py --root runs/controllers_10km_$ARM --out artifacts/collisions_controllers_10km_$ARM.json" \
+      || say "controllers_10km_$ARM failed; continuing"
+  fi
+done
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

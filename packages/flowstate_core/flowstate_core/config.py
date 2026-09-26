@@ -1417,6 +1417,38 @@ class AVSpec(BaseModel):
     runner's TraCI writes, and so the run, are those of ``False``.
     Counted in ``meta.json["av_emergency_handback"]``; no effect without a
     ``controller``."""
+    release_off_corridor: bool = False
+    """Release a compliant AV's command (``setSpeed(-1)``) once it has left
+    the controlled corridor (2026-09-26, WP-96; docs/I24_STRATEGIES.md, dated
+    section). Off by default and hash-neutral when off.
+
+    The dispatch commands a compliant AV only on a corridor edge, but a
+    ``setSpeed`` target is held until ``setSpeed(-1)`` (SUMO 1.27.1,
+    ``libsumo/Vehicle.cpp`` 1924–1938). With ``False`` an AV that leaves by
+    an off-ramp drives the ramp at its last command, under the command's
+    deceleration bound (``emergency_handback``), until it arrives; a last
+    command of 0 stops it there for the rest of the run. With ``True``, in
+    every step, each AV holding a controller command that is on an edge
+    outside the corridor (not an internal junction edge, and not held by a
+    scripted merge or weaving section at that moment) is released to its
+    car-following model and not commanded again unless it re-enters the
+    corridor. Counted in ``meta.json["av_off_corridor"]``; no effect without
+    a ``controller``, or on a network whose every edge is a corridor edge (a
+    ring, a generated corridor, an OSM import without off-ramps)."""
+    observe_close_leader: bool = False
+    """Report the leader to the controller when the bumper gap is below the
+    AV's own ``s0`` (2026-09-26, WP-96; docs/I24_STRATEGIES.md, dated
+    section). Off by default and hash-neutral when off.
+
+    ``vehicle.getLeader`` returns the gap net of the ego's ``minGap`` (the
+    drawn ``s0``). With ``False`` a negative value is read as "no leader"
+    (``gap = inf``, ``v_leader = nan``), so at a bumper gap below ``s0`` the
+    controller is told the road is free: FollowerStopper and its capacity
+    variant command ``U``, PI with saturation blends toward ``U + v_catch``,
+    where the true gap commands 0 or the leader's speed. With ``True`` the
+    leader is reported with its bumper-to-bumper gap, floored at 0 m. JAD
+    and the superseded ``pi_meanfrac`` do not read the leader. Counted in
+    ``meta.json["av_close_leader"]``; no effect without a ``controller``."""
 
 
 class SimSpec(BaseModel):

@@ -433,3 +433,197 @@ VM AH (n2-standard-32, us-west1-c, self-deleting; commit a62ed7f, VM snapshot 06
 - The two side findings of WP-95 (an AV leaving by an off-ramp keeps its last command; `_leader_obs` reports no leader below the AV's own s0) are on the default path and not addressed here.
 
 Every number above is from `artifacts/collisions_{i24_strat_sweep,i24_strat_sweep_hb,us101_penetration_cc,us101_penetration_hb,controllers_10km_cc,controllers_10km_hb}.json`, `artifacts/sweep_{i24_strategies_hb,us101_penetration_cc,us101_penetration_hb,controllers_10km_cc,controllers_10km_hb}_summary.json`, the committed `artifacts/sweep_i24_strategies_summary.json`, and the per-run `metrics.json` of both arms (paired in the session, `vm_ah/`).
+
+## 2026-09-26 (WP-96) — the command after the off-ramp and the leader within s0: both confirmed, neither moves a controller metric on the fixtures
+
+**Finding.** Both side findings of WP-95 are real, on the default command path.
+(a) An AV that leaves by an off-ramp keeps its last `setSpeed` command until it arrives. On two small fixtures the AVs then crawl the ramp at 31–36 % of its speed limit, and slow the humans behind them.
+(b) When the leader is closer than the AV's own `s0`, the controller is told the road is free. FollowerStopper then commands `U` where the true gap commands a stop.
+Two new options fix them: `AVSpec.release_off_corridor` and `AVSpec.observe_close_leader`. Both are off by default and hash-neutral. On the fixtures neither moves a corridor metric by a resolved amount, and no collision is attributable to either. The published controller results are mainline metrics, so they are not expected to move; the I-24 check is written as stage 19 and has not run.
+
+### (a) The command outlives the corridor
+
+- *Where.* The dispatch commands a compliant AV only while it is on a corridor edge (`microsim/runner.py` 7669 at this tree, 7558 at HEAD: "controllers act on corridor edges only"). A `setSpeed` target is held until `setSpeed(-1)` (SUMO 1.27.1, `libsumo/Vehicle.cpp` 1924–1938). The runner never sends `setSpeed(-1)` to an AV that leaves: at HEAD its only `setSpeed(-1)` calls are the perturbation's release and the handback's withdrawal.
+- *When.* An OSM scenario with an off-ramp, with any vehicle controller: FollowerStopper, its capacity variant, PI with saturation, the superseded PI and JAD alike. The corridor is the network's linear-x edge list. Ramp edges are not in it. A ring, a generated corridor (`corridor_10km`, the US-101 replica, their entry and exit buffers included) or an OSM import without off-ramps has no edge off the corridor, so (a) cannot occur there. An on-ramp AV is not affected: it holds no command until it reaches the corridor. Internal junction edges do not exist (`--no-internal-links`, the default).
+- *What the AV then does.* SUMO still clamps the held command: down to the safe speed, then up to `v − b′·Δt` (WP-95, mechanism step 4). So on the ramp the AV drives at the lesser of its last command and its safe speed, and brakes no harder than `b′`. It does not speed up to the ramp's limit. A last command of 0 stops it on the ramp for the rest of the run (constructed case below). With `emergency_handback` on, the handback re-applies the held command on the ramp too (it covers ramps).
+
+### (b) A leader within s0 reads as "no leader"
+
+- *Where.* `vehicle.getLeader` returns the leader's back minus the ego's front minus the ego's `minGap` (`MSVehicle.cpp` 6771–6772), and `("", -1)` when there is none (`libsumo/Vehicle.cpp` 331–351). `_leader_obs` read any negative value as no leader: `if lead is None or lead[0] == "" or lead[1] < 0.0: return inf, nan` (runner.py 6138 at HEAD). A negative value is a real leader at a bumper gap below the AV's `s0`, or one the AV already overlaps.
+- *Which controllers.* Those that read the leader. JAD and the superseded `pi_meanfrac` do not.
+
+| controller | true leader, bumper gap below s0 | as the default read it: no leader |
+|---|---|---|
+| FollowerStopper | region 1 (every gap below `Δx_1^0` = 4.5 m): 0 | safe region: `U` |
+| FollowerStopper, capacity variant | the same: 0 | `U` |
+| PI with saturation | gap below its 4 m safety floor: `α` = 0, `β` = 1, the leader's speed | `α` = 1, `β` = ½: half way from the last command to `U + v_catch` |
+| JAD, `pi_meanfrac` | not read | not read |
+
+- *What SUMO does with it.* The command is capped at the safe speed and floored at `v − b′·Δt`. Under the default an AV within `s0` drives at its model's safe speed within that floor. Under a stop command it brakes at the floor. The two differ only when the model's safe speed lies above the floor, as behind a leader that pulls away. The default is never faster than the model's safe speed.
+- *How it arises.* A vehicle entering the lane closer than `s0`, or an AV closing in on its leader because its command cannot brake enough (WP-95), including the overlap after contact, which `--collision.action warn` keeps. (In the harness below, a change requested under `laneChangeMode` 256 waited until the gap net of `minGap` was non-negative; a forced change, mode 0, did not.) Which of these produced the fixtures' close gaps was not traced.
+
+### Constructed cases (real SUMO; `tests/test_microsim/test_microsim_command_path.py`)
+
+(a) One AV on `tests/fixtures/merge.osm`, commanded at 15 m/s on edge 100 and at `c` from 60 m before the diverge, leaves by the 650 m off-ramp 201 (limit 22.2 m/s):
+
+| last command `c` | default: arrival | default: at 300 s | with the release: arrival |
+|---|---|---|---|
+| 0 m/s | never | stopped on 201, 523 steps under the command | 78.5 s |
+| 4 m/s | 201.5 s (the ramp at 4 m/s) | arrived | 78.5 s |
+
+(b) Two-lane road. The AV (`s0` 3 m) is held at 3 m/s. A vehicle at 8 m/s changes in, 2.5 m ahead bumper to bumper, and pulls away. At the first dispatch:
+
+| | observation | FollowerStopper's command | AV's speed one step later |
+|---|---|---|---|
+| default | no leader | `U` = 20 m/s | 2.84 m/s (its model's safe speed) |
+| `observe_close_leader` | gap 2.50 m | 0 | 2.165 m/s (3 − 1.67 × 0.5, the command's bound) |
+
+Behind a leader at the same speed (bumper gap 1.0 m, `s0` 2 m) the commands differ the same way but both AVs brake at the bound.
+
+### On two fixtures
+
+*Merge* is WP-95's fixture exactly (`tests/fixtures/merge.osm`: 2,052 m, the 650 m off-ramp 201 leaving edge 100 with 15 % of the mainline, the on-ramp joining 102, the speed schedule on 103; the I-24 fleet; FollowerStopper at 10 %, 100 % compliance; 1,000 s, 120 s warm-up). *Weave2* is `tests/fixtures/weave_two.osm` with plain ramps: 2,339 m, three lanes, 1.0 veh/s on the mainline, on-ramps 200 → 102 and 202 → 105 at 0.2 veh/s, off-ramps 201 (from 102) and 203 (from 105, each 248 m) at 20 % each, the same schedule on 107 and the same fleet and controller. Arms: default, `emergency_handback` (hb), each option, both, and each of those with hb, plus a baseline without AVs. Seeds 1–20 in every arm, one run at a time (2–3 s each), 360 runs.
+
+**(a), summed over 20 seeds.** "Held" are simulation steps begun off the corridor with the command still in force (the new counter). Ramp speeds are means over every step's samples on the off-ramps; times are the median over runs of each run's median time on a ramp. The ramp limit is 22.2 m/s.
+
+| fixture, arm | AVs leaving with a command | AV-steps held | command at ramp entry, median (below half the limit) | AVs on the ramp: mean speed (share of limit), time | humans on the ramp: mean speed, time | on a ramp at 1,000 s: AVs / humans |
+|---|---|---|---|---|---|---|
+| merge, default | 178 | 31,077 | 6.9 m/s (129) | 6.80 m/s (0.31), 83.6 s | 11.63 m/s, 36.5 s | 30 / 161 |
+| merge, release | 177 (all released) | 0 | 7.2 m/s (128) | 17.26 m/s (0.78), 35.8 s | 17.95 m/s, 34.5 s | 4 / 50 |
+| merge, hb | 178 | 30,962 | 6.7 m/s (129) | 6.79 m/s (0.31), 90.8 s | 11.47 m/s, 36.6 s | 31 / 170 |
+| merge, release + hb | 177 (all released) | 0 | 6.6 m/s (128) | 17.24 m/s (0.78), 35.5 s | 17.88 m/s, 34.6 s | 7 / 58 |
+| weave2, default | 403 | 24,207 | 10.0 m/s (267) | 8.08 m/s (0.36), 27.1 s | 10.93 m/s, 17.8 s | 15 / 115 |
+| weave2, release | 452 (all released) | 0 | 9.8 m/s (305) | 13.41 m/s (0.60), 17.4 s | 14.40 m/s, 16.0 s | 2 / 68 |
+| weave2, hb | 467 | 27,701 | 10.0 m/s (305) | 8.16 m/s (0.37), 24.5 s | 10.94 m/s, 18.8 s | 19 / 135 |
+| weave2, release + hb | 444 (all released) | 0 | 10.3 m/s (278) | 13.52 m/s (0.61), 16.8 s | 14.23 m/s, 16.2 s | 11 / 52 |
+
+- Under the default the held command set the AV's speed on the ramp (within 0.05 m/s of it, below 95 % of the limit) in 29,474 of 31,077 AV-steps (95 %) on merge and 20,090 of 24,207 (83 %) on weave2.
+- Paired by seed, release − default: the humans' mean ramp speed +6.13 [+5.25, +7.00] m/s (merge) and +3.64 [+2.40, +4.89] m/s (weave2); their median time −4.0 [−6.3, −1.7] s and −2.5 [−4.2, −0.9] s. The AVs': +10.28 [+9.67, +10.88] and +5.28 [+4.14, +6.42] m/s; −48.2 [−56.0, −40.3] and −10.4 [−13.3, −7.5] s.
+- No AV entered a ramp under a command of 0 (4,948 entries over all arms). No vehicle stood still on a ramp for 10 s, except in weave2's hb arm and its identical observe + hb arm (1 AV and 6 humans each).
+- No collision on an off-ramp lane in any of the 360 runs. No sample on an off-ramp, AV or human, braked at 4.5 m/s² or harder in any arm. So no collision or hard braking is attributable to (a). The release changes the corridor's collision count (merge 36 → 37, weave2 30 → 25; with hb 0 → 0) through a different trajectory, not on a ramp.
+
+**(b), summed over 20 seeds.** "Within s0" are dispatches at which the AV's leader was closer than the AV's own `s0` (the new counter). An overlap is a negative bumper gap: the AV is in contact with its leader.
+
+| fixture, arm | dispatches within s0 (runs, AVs) | overlaps | close gaps, 0 to s0 (median gap) | command issued | command under the other reading | close gaps at which the AV ended faster than the stop command allows (largest excess) |
+|---|---|---|---|---|---|---|
+| merge, default | 860 (15, 31) | 773 | 87 (1.83 m) | `U`, mean 16.5 m/s | 0, all 860 | 12 of 87 (0.64 m/s; mean 0.30) |
+| merge, observe | 786 (15, 29) | 705 | 81 (1.80 m) | 0, all 786 | `U` | — |
+| merge, hb; observe + hb | 0 | 0 | 0 | — | — | — |
+| weave2, default | 657 (15, 32) | 486 | 171 (1.12 m) | `U`, mean 16.1 m/s | 0, all 657 | 5 of 171 (0.50 m/s; mean 0.29) |
+| weave2, observe | 663 (15, 32) | 494 | 169 (1.10 m) | 0, all 663 | `U` | — |
+| weave2, hb; observe + hb | 0 | 0 | 0 | — | — | — |
+
+- At every overlap (773 and 486) the AV's next speed was what the stop command would have given: it braked at its bound or stood still (557 and 342 of them stopped).
+- Before contact: in the 10 s before a pair's first contact, 23 dispatches (17 pairs) on merge and 29 (20 pairs) on weave2 had the victim within `s0`. At none of them was the AV faster than the stop command allows: it was closing in, and its safe speed was below the floor (WP-95's mechanism). So no collision is attributable to (b). The option changes the collisions 36 → 34 (merge) and 30 → 30 (weave2).
+- The option's stop command brakes at the AV's command bound (1.5–4.35 m/s² in this population), never harder. It adds no hard braking.
+- With the handback on, no AV came within `s0` of its leader on either fixture. The observe + hb arm reproduces the hb arm to the digit in all 40 runs.
+
+**The controller's effect with and without the fixes.** Paired by seed against the baseline, 20 seeds, mean [95 % CI]:
+
+| fixture, arm | throughput [veh/h] | σ_v spatial [m/s] | σ_v temporal [m/s] |
+|---|---|---|---|
+| merge, default | −214 [−254, −174] (−8.2 %) | −2.87 [−3.14, −2.60] (−48.8 %) | −2.23 [−2.38, −2.08] (−45.3 %) |
+| merge, observe | −202 [−239, −165] (−7.7 %) | −2.86 [−3.13, −2.59] (−48.6 %) | −2.22 [−2.37, −2.07] (−45.1 %) |
+| merge, release | −201 [−232, −169] (−7.7 %) | −2.83 [−3.10, −2.56] (−48.1 %) | −2.20 [−2.35, −2.05] (−44.7 %) |
+| merge, both | −208 [−244, −172] (−7.9 %) | −2.84 [−3.11, −2.57] (−48.3 %) | −2.21 [−2.36, −2.05] (−44.8 %) |
+| merge, hb | −211 [−247, −174] (−8.0 %) | −2.90 [−3.16, −2.64] (−49.3 %) | −2.22 [−2.37, −2.07] (−45.0 %) |
+| merge, both + hb | −225 [−270, −180] (−8.6 %) | −2.87 [−3.12, −2.61] (−48.7 %) | −2.20 [−2.35, −2.06] (−44.7 %) |
+| weave2, default | −796 [−1,113, −480] (−25.0 %) | −3.16 [−3.30, −3.02] (−42.7 %) | −2.29 [−2.45, −2.14] (−41.3 %) |
+| weave2, observe | −797 [−1,118, −476] (−25.0 %) | −3.18 [−3.31, −3.04] (−42.9 %) | −2.29 [−2.43, −2.14] (−41.1 %) |
+| weave2, release | −726 [−1,054, −397] (−22.8 %) | −3.19 [−3.33, −3.06] (−43.1 %) | −2.30 [−2.45, −2.16] (−41.5 %) |
+| weave2, both | −716 [−1,048, −384] (−22.4 %) | −3.19 [−3.31, −3.08] (−43.2 %) | −2.30 [−2.44, −2.16] (−41.4 %) |
+| weave2, hb | −695 [−1,044, −346] (−21.8 %) | −3.22 [−3.37, −3.06] (−43.4 %) | −2.27 [−2.43, −2.11] (−40.8 %) |
+| weave2, both + hb | −759 [−1,104, −414] (−23.8 %) | −3.25 [−3.35, −3.15] (−43.9 %) | −2.29 [−2.44, −2.13] (−41.1 %) |
+
+The fixes against the path they change, paired by seed (none resolved; every interval contains 0):
+
+| fixture, pair | throughput [veh/h] | mean travel time [s] | σ_v spatial [m/s] | σ_v temporal [m/s] | fuel [ml/veh-km] | waves |
+|---|---|---|---|---|---|---|
+| merge, observe − default | +12.1 [−0.1, +24.2] (+0.5 %) | +1.0 [−0.8, +2.8] | +0.014 [−0.012, +0.040] | +0.009 [−0.019, +0.038] | −0.3 [−0.9, +0.3] | 0 in every pair |
+| merge, release − default | +13.7 [−14.3, +41.7] (+0.6 %) | +0.3 [−2.4, +2.9] | +0.042 [−0.015, +0.099] | +0.030 [−0.011, +0.072] | −0.5 [−2.4, +1.3] | 0 in every pair |
+| merge, both − default | +6.3 [−17.5, +30.2] (+0.3 %) | +1.7 [−1.2, +4.6] | +0.034 [−0.019, +0.087] | +0.025 [−0.017, +0.066] | −0.4 [−1.9, +1.2] | 0 in every pair |
+| merge, release + hb − hb | −13.9 [−43.6, +15.8] (−0.6 %) | +0.2 [−1.9, +2.3] | +0.033 [−0.028, +0.094] | +0.012 [−0.044, +0.069] | +0.2 [−1.5, +1.9] | 0 in every pair |
+| weave2, observe − default | −0.8 [−33.0, +31.4] (−0.0 %) | +1.3 [−0.6, +3.3] | −0.015 [−0.040, +0.010] | +0.007 [−0.019, +0.033] | +1.3 [−1.8, +4.4] | −0.15 [−0.38, +0.08] |
+| weave2, release − default | +70.6 [−57.2, +198.3] (+2.9 %) | −3.1 [−9.6, +3.5] | −0.032 [−0.120, +0.055] | −0.011 [−0.078, +0.056] | −4.0 [−10.6, +2.6] | −0.10 [−0.58, +0.38] |
+| weave2, both − default | +80.6 [−55.4, +216.5] (+3.4 %) | −3.0 [−9.6, +3.7] | −0.033 [−0.120, +0.054] | −0.008 [−0.078, +0.062] | −4.3 [−11.0, +2.5] | −0.20 [−0.72, +0.32] |
+| weave2, release + hb − hb | −64.2 [−141.9, +13.4] (−2.6 %) | +1.7 [−4.7, +8.0] | −0.034 [−0.129, +0.062] | −0.017 [−0.093, +0.060] | +2.8 [−4.1, +9.8] | +0.20 [−0.38, +0.78] |
+
+With the handback on, observe adds nothing (identical runs), so both + hb equals release + hb to the digit on both fixtures. The corridor metrics exclude the ramps (trajectories cover corridor edges only), so (a) reaches them only through what happens at the diverge.
+
+### The options
+
+- *`AVSpec.release_off_corridor: bool = False`* (`flowstate_core.config`). Every simulation step, after the dispatch and before the handback pass, `microsim.runner._off_corridor_step` visits the AVs the dispatch has commanded. One on an edge that is neither a corridor edge nor an internal junction edge has left the corridor. On: it gets `setSpeed(-1)`, is forgotten (so the handback does not re-apply the command), and is commanded again only if it re-enters the corridor. A vehicle that a scripted merge or weaving section commands at that moment is left to it for that step.
+- *`AVSpec.observe_close_leader: bool = False`.* `_leader_obs(..., close_leader=...)` returns the leader with its bumper gap floored at 0 m, and a third value, whether the leader was within `s0`. Off, it returns "no leader" as before, with no extra TraCI call.
+- *Counters, on or off.* `meta.json["av_off_corridor"]` (`release`, `n_vehicles`, `n_vehicle_steps`, `n_released`) and `meta.json["av_close_leader"]` (`observed`, `n_vehicle_steps`, `n_vehicles`), in every run with a vehicle controller; `null` without one. Counting reads only what the step already fetched. `scripts/collision_census.py` sums both per cell. So a re-run of a committed configuration now measures how often each defect occurs on the published path, without trajectories.
+- *Off.* No hash moves. With both off the runner's TraCI calls are the ones before. The WP-95 fixture's default arm reproduces WP-95's recorded metrics to the digit (all 20 seeds, hash `e7f56a5d87b9`), as do its hb arm (`b094ea8b2b3a`) and its baseline (`2f3fdcb9c951`).
+- *On, with nothing to act on.* On the Sugiyama ring with one FollowerStopper AV (the CI gate's run) no AV leaves the corridor and none comes within `s0`: both keys on, the trajectories are the default's row for row (test).
+- *Contract.* docs/CONTRACTS.md: the `AVSpec` bullet of §2, the meta keys in §3, and a dated section at the end.
+- *Not covered.* The gym backend's ego (`microsim.gym_backend._obs`) reads `getLeader` the same way and has no option. `_weave_command` (runner.py 2469–2471) also reads a leader within `s0` as free road, when it decides whether a weaving section's easing target binds; neither I-24 scenario has a weaving section. Neither was changed. A scripted merge's or weaving section's one-step `slowDown` on a commanded AV replaces its held command (`libsumo/Vehicle.cpp` 1856–1872); the off-corridor counter does not see that, so in such a scenario it can count steps whose command a merge model had already ended. Neither I-24 scenario has either model.
+- *The defaults are not changed.* Turning either key on changes behaviour without changing any config hash (the policy of `force_guard` and `emergency_handback`).
+
+### Which committed results could be affected
+
+| result | controller | (a): an off-ramp? | (b): reads the leader? | what the fixtures suggest |
+|---|---|---|---|---|
+| I-24 strategy sweep (this document; FollowerStopper cells) | FollowerStopper 10 % | yes: Hickory Hollow Pkwy and Bell Road exits | yes; its 311 collisions each leave an overlap, which (b) reads as free road (on the fixtures that made no difference at any overlap) | mainline metrics; no resolved change expected |
+| its handback re-runs (VM AH) | the same, with hb | yes | yes, but with hb no AV came within `s0` on either fixture | as above |
+| I-24 penetration × compliance battery, headway-cap sweep (docs/I24_SWEEP.md), controller probe (`artifacts/i24_controller_probe.json`) | FollowerStopper (1–20 %), capacity variant | yes (`i24_replica_speedcal` has the same two exits) | yes | as above |
+| US-101 penetration and lane-change sweeps | FollowerStopper 1–20 % | no (a generated corridor) | yes; 0 collisions in 120 runs (VM AH), so any occurrence is a true close gap | (b) only |
+| M3 synthetic, controller comparison, PI retune, JAD results (`corridor_10km`) | FollowerStopper, PI with saturation, `pi_meanfrac`, JAD | no | FollowerStopper and PI with saturation only; one lane, so only by closing in (PI with saturation's 16 collisions, VM AH) | (b) only |
+| Ring benchmark (CI gate) | FollowerStopper, 1 of 22 | no | at the gate's seed: never (test) | none |
+
+- (b) made a physical difference at 17 of 1,517 within-s0 dispatches over the two fixtures' default arms, by at most 0.64 m/s in one step, and at none before a contact. It is an observation defect. It is unlikely to move a published number.
+- (a) changes what AVs do on the off-ramps a lot. The published I-24 metrics are mainline metrics (throughput at x = 4,412 m, the span 2,256–7,638 m). They could move only through the diverges. On the fixtures they did not. Whether I-24's diverges behave the same is not measured.
+- **Is a VM re-run needed?** Not to correct a published effect size: on both fixtures no metric moved by a resolved amount under either fix, with or without the handback. A re-run would measure the defects' frequency on I-24 and confirm the mainline metrics. Stage 19 is written for that. The cheapest useful arms are 19a's `wp96c` and `wp96f` (the strategy sweep, about 2 h each at VM AH's 121 min for 18a) and 19c (minutes). The battery arm (19b) belongs with 18b's `sweep_i24_cc` (about $22 for both, VM AH's estimate). The owner's call.
+
+### The re-runs, written and not launched (`scripts/gcp/pipeline_i24.sh`, stage 19)
+
+`wp96_copy` writes a scenario copy that differs from the committed one only in its name and the keys named, and checks that every key landed. Every run pairs by seed with its counterpart.
+
+| stage | what | pairs with | runs |
+|---|---|---|---|
+| 19a `sweep_i24_strat_wp96c` | the committed strategy sweep at this tree: should reproduce the committed metrics to the digit (a check; the committed runs were local macOS runs, and WP-85 found fixture runs that land differently on Linux), and records both counters | the committed runs | 120 |
+| 19a `sweep_i24_strat_wp96f` | both keys | `wp96c` | 120 |
+| 19a `sweep_i24_strat_wp96fh` | both keys and the handback | VM AH's `_hb` | 120 |
+| 19b `sweep_i24_wp96f` | the battery with both keys | 18b's `sweep_i24_cc`, which at this tree records the counters | 500 |
+| 19c `us101_penetration_wp96c`, `_wp96f` | US-101 (the committed hash `ab879e240aed` for `wp96c`) | each other, and VM AH's `_cc` | 120 an arm |
+| 19c `controllers_10km_wp96c`, `_wp96f` | `corridor_10km`, FollowerStopper, PI with saturation and JAD at 5 % | each other, and VM AH's `_cc` | 80 an arm |
+
+The stage copies were built and validated in the session (`1a7f843b58fe`, `3fcead01b874`, `5afbf895ab65`, `8113e96176c0`, `9aca1350e2b4`). The archive carries `metrics.json` and `meta.json` of `runs/*_wp96*`, and `scripts/gcp/ingest_pipeline_results.sh` installs the new summaries, censuses, scenario copies and trees.
+
+### How it was measured
+
+- *The code.* `microsim/runner.py` at HEAD (e563129) and SUMO 1.27.1's sources at tag `v1_27_1` (`MSVehicle.cpp`, `libsumo/Vehicle.cpp`, `MSCFModel_IDM.cpp`; WP-95's session copies).
+- *The fixtures.* `microsim.run_micro` at this tree, one process and one run at a time, with pass-through wrappers in the session process: `libsumo.vehicle.getLeader`, `setSpeed` and `getAllSubscriptionResults`, and the runner's `_leader_obs` and controller. They add no TraCI write. At every within-s0 dispatch they evaluated the controller once more under the other reading, on a copy of its memory, and read the AV's speed in the next step. They recorded every vehicle on an off-ramp every step. The instrumented default arm reproduced WP-95's recorded metrics to the digit. Metrics: `validation.metrics.compute_metrics`, throughput at mid-corridor, travel time over 5–95 % of it, warm-up discarded, as WP-95. `b′` from each vehicle's `decel` in the route file (IDM: `max(decel, 1.5)`).
+- *"Faster than the stop command allows".* The AV's next speed minus `max(0, v − b′·Δt)`, when positive.
+- *Before contact.* Dispatches with the later victim as the leader, in the 10 s before the pair's first logged collision.
+- *The constructed cases.* The tests' own helpers, run once in the session for the numbers above.
+
+### Limitations
+
+- *Two fixtures.* 20 seeds each, one fleet, one controller (FollowerStopper at 10 %). PI with saturation was not run on a fixture; its readings are in the controller table and the unit test.
+- *The ramps.* The fixtures' off-ramps end in the arrival; an I-24 exit ramp may be longer or end at a signal. A ramp queue that reaches the mainline would carry (a) into the metrics; on the fixtures it did not do so measurably.
+- *I-24.* Neither defect's frequency on I-24 is measured. Stage 19 measures it.
+- *Platform.* macOS only.
+
+### Bookkeeping
+
+- *Edited:*
+  - `packages/flowstate_core/flowstate_core/config.py`: `AVSpec.release_off_corridor`, `AVSpec.observe_close_leader`.
+  - `packages/microsim/microsim/runner.py`: `_leader_obs` (the option, and a third return value); `_off_corridor_step` (new); the two counters' state in `run_micro`; the dispatch (the option passed, the count, the commanded set); the pass after the dispatch and in a step with no corridor vehicle; `meta.json["av_off_corridor"]` and `["av_close_leader"]`.
+  - `scripts/collision_census.py`: `off_corridor` and `close_leader` per cell.
+  - `tests/test_scripts/test_collision_census.py`: the two sums.
+  - docs/CONTRACTS.md: §2 `AVSpec`, §3 the meta keys, and a dated section at the end.
+  - `scripts/gcp/pipeline_i24.sh`: stage 19, `wp96_copy` and the archive line.
+  - `scripts/gcp/ingest_pipeline_results.sh`: the new artifacts, scenario copies and trees.
+  - This section.
+- *Created:* `tests/test_microsim/test_microsim_command_path.py`, 13 tests: the fields (off by default, hash-neutral); `_leader_obs` on a fake SUMO (no leader, at or beyond `s0`, within `s0` both ways, the overlap floored at 0); each controller's command from the two readings; `_off_corridor_step` on a fake SUMO (count only when off; release once, forget, skip a merge model's vehicle, clear the handback when on); the constructed off-ramp case (stuck for good under a held 0, crawling under a held 4 m/s, arriving with the release); the constructed cut-in (the default commands `U` and keeps the model's safe speed, the option commands 0 and brakes at the bound); `run_micro` on the 240 s merge fixture (seed 2: 3 AVs leave holding a command, 93 dispatches within `s0`; with both keys 3 released); the ring (both keys, nothing to act on, trajectories identical).
+- *Not edited:* CHANGELOG.md, ROADMAP.md, README.md, docs/PAPER_DRAFT.md, the other documents' results, the scenarios, every existing fixture, golden and committed artifact. No default changed.
+- *Tests run:*
+  - the new module, `test_microsim_emergency_handback.py` and `test_collision_census.py`: 22 passed;
+  - `tests/test_flowstate_core`, `test_microsim_golden.py`, `test_microsim_ring_gate.py`, `test_microsim_runner_smoke.py`, `test_microsim_osm_ramps.py`, `test_microsim_oracle.py` and `tests/test_api/test_scenarios.py`: 131 passed;
+  - `test_microsim_merge_managed_meter.py`, `tests/test_scripts/test_corridor_sweep.py` and `tests/test_controllers`: 359 passed, 5 xfailed, 1 xpassed (the existing markers);
+  - `ruff check` and `ruff format --check` on the edited Python files; `mypy --strict` on the three strict packages.
+- *Session files (`wp96/`, not committed):* `fx.py` (arms, fixtures, wrappers, per-run records), `run_all.sh` and `run_all.log`, `agg.py` with `agg_merge.txt` and `agg_weave2.txt`, the records `records/merge.jsonl` and `records/weave2.jsonl` (180 runs each), the runs' `meta.json` under `runs/`, `dbg_cut.py`, `dbg_cut2.py` and `dbg_cut3.py` (the cut-in harness), `probe_tests.py` (the constructed cases' numbers), `stagecheck/` (the stage copies, built and validated) and `netprobe/` (the fixtures' lengths).
+
+Every number above is from those runs and files, from SUMO 1.27.1's source at tag `v1_27_1`, from WP-95's recorded fixture metrics, or from the committed files named.

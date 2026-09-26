@@ -24,6 +24,12 @@ and writes, per cell:
 * ``handback``: ``meta.json["av_emergency_handback"]`` (``AVSpec.
   emergency_handback``) summed over the runs that carry it; ``None`` when none
   does.
+* ``off_corridor`` and ``close_leader`` (WP-96): ``meta.json["av_off_corridor"]``
+  and ``meta.json["av_close_leader"]`` summed the same way, with the number of
+  runs that had ``AVSpec.release_off_corridor`` (``n_runs_release``) or
+  ``AVSpec.observe_close_leader`` (``n_runs_observed``) on. The runner records
+  both in every run with a vehicle controller, on or off; ``None`` when no run
+  carries them (no controller, or runs written before WP-96).
 
 Per-vehicle distances are not in ``meta.json``, so no rate per vehicle-km is
 given (``validation.battery.COLLISION_DEFINITION`` explains why the WP-94 rate
@@ -65,13 +71,15 @@ def cell_census(metas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     Returns:
         ``{n_runs, config_hashes, summary, n_distinct_pairs, colliders,
         victims_of_compliant_av, n_departed, n_departed_av,
-        per_1000_departed_av, handback}``.
+        per_1000_departed_av, handback, off_corridor, close_leader}``.
     """
     colliders = {"compliant_av": 0, "noncompliant_av": 0, "human": 0}
     victims = {"av": 0, "human": 0}
     n_pairs = 0
     n_departed = n_departed_av = 0
     handback: dict[str, int] | None = None
+    off_corridor: dict[str, int] | None = None
+    close_leader: dict[str, int] | None = None
     for meta in metas:
         av, complied = _roles(meta)
         pairs: set[tuple[str, str]] = set()
@@ -96,6 +104,26 @@ def cell_census(metas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             handback["n_runs"] += 1
             for key in ("n_vehicle_steps", "n_withdrawals", "n_vehicles"):
                 handback[key] += int(hb.get(key) or 0)
+        oc = meta.get("av_off_corridor")
+        if isinstance(oc, dict):
+            if off_corridor is None:
+                off_corridor = dict.fromkeys(
+                    ("n_runs", "n_runs_release", "n_vehicles", "n_vehicle_steps", "n_released"), 0
+                )
+            off_corridor["n_runs"] += 1
+            off_corridor["n_runs_release"] += int(bool(oc.get("release")))
+            for key in ("n_vehicles", "n_vehicle_steps", "n_released"):
+                off_corridor[key] += int(oc.get(key) or 0)
+        cl = meta.get("av_close_leader")
+        if isinstance(cl, dict):
+            if close_leader is None:
+                close_leader = dict.fromkeys(
+                    ("n_runs", "n_runs_observed", "n_vehicle_steps", "n_vehicles"), 0
+                )
+            close_leader["n_runs"] += 1
+            close_leader["n_runs_observed"] += int(bool(cl.get("observed")))
+            for key in ("n_vehicle_steps", "n_vehicles"):
+                close_leader[key] += int(cl.get(key) or 0)
     summary = collision_summary(metas)
     total = summary["total"] if summary is not None else None
     return {
@@ -111,6 +139,8 @@ def cell_census(metas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             PER_AVS * total / n_departed_av if total is not None and n_departed_av else None
         ),
         "handback": handback,
+        "off_corridor": off_corridor,
+        "close_leader": close_leader,
     }
 
 

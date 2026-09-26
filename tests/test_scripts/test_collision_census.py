@@ -4,7 +4,8 @@ No simulation runs here: a sweep tree ``<root>/<cell>/<config hash>/<seed>/``
 is faked on disk with hand-written ``meta.json`` files, and the census is
 checked against hand counts: the colliders' and victims' roles, the distinct
 pairs net of the runner's repeats, the departed AVs, the handback counters,
-and a cell whose runs predate the counter (not recorded, never 0).
+the off-corridor and close-leader counters (WP-96), and a cell whose runs
+predate the counter (not recorded, never 0).
 """
 
 from __future__ import annotations
@@ -85,6 +86,13 @@ def test_census_counts_roles_pairs_and_handback(tmp_path: Path) -> None:
                 _event(12.0, "h3", "a2", lane="e_0"),
             ],
             av_emergency_handback={"n_vehicle_steps": 4, "n_withdrawals": 3, "n_vehicles": 2},
+            av_off_corridor={
+                "release": False,
+                "n_vehicles": 2,
+                "n_vehicle_steps": 70,
+                "n_released": 0,
+            },
+            av_close_leader={"observed": False, "n_vehicle_steps": 5, "n_vehicles": 1},
         ),
     )
     # seed 2: a compliant AV hits another AV; a non-compliant AV hits a human
@@ -95,6 +103,13 @@ def test_census_counts_roles_pairs_and_handback(tmp_path: Path) -> None:
             2,
             [_event(3.0, "a1", "a2"), _event(4.0, "a9", "h1")],
             av_emergency_handback={"n_vehicle_steps": 1, "n_withdrawals": 1, "n_vehicles": 1},
+            av_off_corridor={
+                "release": True,
+                "n_vehicles": 3,
+                "n_vehicle_steps": 0,
+                "n_released": 3,
+            },
+            av_close_leader={"observed": True, "n_vehicle_steps": 2, "n_vehicles": 2},
         ),
     )
     _write(root, "baseline", _meta(1, []))
@@ -117,10 +132,24 @@ def test_census_counts_roles_pairs_and_handback(tmp_path: Path) -> None:
         "n_withdrawals": 4,
         "n_vehicles": 3,
     }
+    assert fs["off_corridor"] == {
+        "n_runs": 2,
+        "n_runs_release": 1,
+        "n_vehicles": 5,
+        "n_vehicle_steps": 70,
+        "n_released": 3,
+    }
+    assert fs["close_leader"] == {
+        "n_runs": 2,
+        "n_runs_observed": 1,
+        "n_vehicle_steps": 7,
+        "n_vehicles": 3,
+    }
 
     base = out["cells"]["baseline"]
     assert base["summary"]["total"] == 0 and base["n_distinct_pairs"] == 0
     assert base["handback"] is None
+    assert base["off_corridor"] is None and base["close_leader"] is None
     # not recorded is not zero
     old = out["cells"]["old"]
     assert old["summary"] is None and old["per_1000_departed_av"] is None

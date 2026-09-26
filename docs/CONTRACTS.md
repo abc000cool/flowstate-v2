@@ -155,7 +155,11 @@ Other blocks:
   `controller: str | None`, `controller_params: dict[str, float]`,
   `oracle: OracleSpec`, `emergency_handback: bool = False` (2026-09-26,
   WP-95; off by default, hash-neutral when off; the dated section "AV command
-  handback" at the end of this file).
+  handback" at the end of this file), `release_off_corridor: bool = False`
+  and `observe_close_leader: bool = False` (2026-09-26, WP-96; off by
+  default, hash-neutral when off; the dated section "AV command path: the
+  command after the corridor, and the leader within s0" at the end of this
+  file).
 - `OracleSpec(kind="perfect"|"noisy", delay_s: float = 0.0,
   amplitude_noise_frac: float = 0.0)` — wave-detection realism for
   downstream-reading controllers (JAD), added in Phase 5 for CLAUDE.md §4.3.
@@ -1760,6 +1764,16 @@ rerouted at two diverges: it is counted twice here and has one row.
 withdrawn while in force; with an action step equal to the step length the dispatch re-issues the
 command every step, so the two are equal) and `n_vehicles` (AVs released at least once).
 
+`meta.json["av_off_corridor"]` and `meta.json["av_close_leader"]` (micro, since 2026-09-26, WP-96)
+are `null` unless the scenario has a vehicle `controller`; then both are recorded whether their
+option is on or off (the counting reads only what the step already fetched, so the default path
+makes no extra TraCI call). `av_off_corridor`: `release` (`AVSpec.release_off_corridor`),
+`n_vehicles` (AVs seen off the corridor while holding a controller command), `n_vehicle_steps`
+(simulation steps begun so, command still held: 0 when `release` is on) and `n_released`
+(commands released). `av_close_leader`: `observed` (`AVSpec.observe_close_leader`),
+`n_vehicle_steps` (dispatches at which the AV's leader was closer than the AV's own `s0`, bumper to
+bumper, overlaps included) and `n_vehicles` (AVs with at least one).
+
 `edges.parquet` (both tiers): `t_bin: f64 [s]`, `x_bin: f64 [m]`,
 `mean_speed: f64 [m/s]`, `density: f64 [veh/m]`, `flow: f64 [veh/s]`.
 When a scenario sets `av.vsl`, both tiers add a `vsl_dispatch` block to
@@ -3188,3 +3202,14 @@ WP-95 (docs/I24_STRATEGIES.md, section of 2026-09-26). Every compliant AV is dri
 - *Output.* `meta.json["av_emergency_handback"]` (§3).
 - *Census* (`scripts/collision_census.py --root <sweep tree> --out <artifact>`). Reads only `meta.json` under `<root>/<cell>/<config hash>/<seed>/`. Artifact (JSON, `allow_nan=False`, non-finite values null): `schema_version` 1, `kind` `"collision_census"`, `created_at`, `root`, `cells`: per cell in name order `{n_runs, config_hashes, summary, n_distinct_pairs, colliders: {compliant_av, noncompliant_av, human}, victims_of_compliant_av: {av, human}, n_departed, n_departed_av, per_1000_departed_av, handback}`. `summary` is `validation.battery.collision_summary` over the cell's metas (null when none records the counter). `n_distinct_pairs` counts distinct (collider, victim) pairs among the logged events, net of the counter's repeats (§2, `meta.json.n_collisions`). The roles count logged events (`complied_ids`, `av_ids`); `n_departed_av` counts `av_ids` with a fuel total; `handback` sums `av_emergency_handback` over the runs that carry it (null when none). Committed: `artifacts/collisions_i24_strat_sweep.json` (the strategy sweep's 120 local metas).
 - *Pipeline.* Opt-in stages 18a–d of `scripts/gcp/pipeline_i24.sh` (`sweep_i24_strat_hb`, `sweep_i24_cc`, `sweep_i24_hb`, `us101_penetration_cc`, `us101_penetration_hb`, `controllers_10km_cc`, `controllers_10km_hb`): `_hb` on a scenario copy that differs only in its name and the key, `_cc` on the committed configuration; each followed by a census. The archive carries `metrics.json` and `meta.json` of `runs/*_hb` and `runs/*_cc`; `scripts/gcp/ingest_pipeline_results.sh` installs `sweep_*_hb_summary.json`, `sweep_*_cc_summary.json`, `collisions_*_hb.json`, `collisions_*_cc.json`, the scenario copies and the trees. Not launched.
+
+## AV command path: the command after the corridor, and the leader within s0 (WP-96) — 2026-09-26
+
+WP-96 (docs/I24_STRATEGIES.md, section of 2026-09-26 "WP-96"). The two side findings of WP-95, each behind an option. Both keys are additive: default off, no hash moves (explicit `false` hashes like the omitted field), and with both off the runner's TraCI calls are call for call the ones before (the WP-95 fixture's default arm reproduces its recorded metrics to the digit).
+
+- *`AVSpec.release_off_corridor: bool = False`.* The dispatch commands a compliant AV only while it is on a corridor edge (the keys of the linear-x offsets), and a `setSpeed` target is held until `setSpeed(-1)`. The runner keeps the set of AVs it has commanded (`commanded`; an AV re-enters it at every dispatch). Every simulation step, after the dispatch and before the handback pass (also in a step with no vehicle on a corridor edge), `microsim.runner._off_corridor_step` visits them in id order: an AV no longer in the network is dropped; one on a corridor edge or an internal junction edge (id starting with `:`) is left alone; one on any other edge has left the corridor. Off: it is counted (no TraCI call). On: it is released (`setSpeed(-1)`), dropped from `commanded` and, with `emergency_handback` on, from the handback's held commands, so nothing re-applies the command; an AV that a scripted merge or weaving section commands at that moment (`_commanded_by_runner`) is left to it and visited again next step. No effect without `av.controller`, or on a network whose every edge is a corridor edge (a ring, a generated corridor, an OSM import without off-ramps).
+- *`AVSpec.observe_close_leader: bool = False`.* `microsim.runner._leader_obs(lib_mod, veh_id, ego_min_gap, *, close_leader=False)` now returns `(gap, v_leader, within_s0)`. `vehicle.getLeader` returns the gap net of the ego's `minGap`; no leader (`None` or an empty id): `(inf, nan, False)`. A non-negative value: `(value + s0, v_leader, False)`, as before. A negative value (the bumper gap is below the AV's own `s0`, or the vehicles overlap): off, `(inf, nan, True)` — "no leader", as before, with no further TraCI call; on, `(max(value + s0, 0), v_leader, True)`. The dispatch passes `close_leader=AVSpec.observe_close_leader`. What the controllers then command: FollowerStopper and `follower_stopper_capacity` read "no leader" as their safe region (`U`) and the true bumper gap (below `Δx_1^0` = 4.5 m) as region 1 (0); `pi_saturation` reads "no leader" as `α = 1`, target `U + v_catch`, and the true gap (below its 4 m safety floor) as `α = 0`, `β = 1`, the leader's speed; JAD and `pi_meanfrac` do not read the leader. SUMO's safe-speed clamp caps whatever is commanded, and the command's deceleration bound floors it (WP-95), so under the default such an AV drives at its model's safe speed within that bound, where a stop command brakes it at the bound; it is never faster than its model's safe speed.
+- *Output.* `meta.json["av_off_corridor"]` and `meta.json["av_close_leader"]` (§3), recorded in every run with a controller, on or off.
+- *Census.* `scripts/collision_census.py` sums both per cell, beside `handback`: `off_corridor` `{n_runs, n_runs_release, n_vehicles, n_vehicle_steps, n_released}` and `close_leader` `{n_runs, n_runs_observed, n_vehicle_steps, n_vehicles}`, over the runs that carry them; `null` when none does (no controller, or runs written before WP-96). Additive: `schema_version` stays 1.
+- *Pipeline.* Opt-in stage 19 of `scripts/gcp/pipeline_i24.sh` (see its comment block and docs/I24_STRATEGIES.md): committed configurations re-run with the counters (`_wp96c`), and with both keys (`_wp96f`; for the strategy sweep also with the handback, `_wp96fh`), each followed by a census. Not launched.
+- *What it does not cover.* The gym backend's ego (`microsim.gym_backend._obs`) reads `getLeader` the same way (a negative value as no leader) and has no option; it is a hook with a random-policy smoke test only (CLAUDE.md §4.5). `_weave_command` also reads a leader within `s0` as free road when it decides whether a weaving section's easing target binds; unchanged. A scripted merge's or weaving section's one-step `slowDown` on a commanded AV replaces its held command (`libsumo/Vehicle.cpp` 1856–1872); `_off_corridor_step` does not see that, so in such a scenario `av_off_corridor.n_vehicle_steps` can count steps whose command a merge model had already ended.

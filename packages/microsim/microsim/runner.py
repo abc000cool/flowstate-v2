@@ -6126,18 +6126,100 @@ def _lane_end_meta(le: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def _leader_obs(lib_mod: Any, veh_id: str, ego_min_gap: float) -> tuple[float, float]:
-    """(bumper-to-bumper gap [m], leader speed [m/s]); (inf, nan) if none.
+def _leader_obs(
+    lib_mod: Any, veh_id: str, ego_min_gap: float, *, close_leader: bool = False
+) -> tuple[float, float, bool]:
+    """(bumper-to-bumper gap [m], leader speed [m/s], leader within ``s0``).
 
     ``vehicle.getLeader`` returns the distance from the ego front bumper
-    **plus minGap** to the leader's back (verified against SUMO 1.27), so the
-    ego's drawn ``s0`` is added back to obtain the bumper-to-bumper gap the
-    controller contract requires.
+    **plus minGap** to the leader's back (verified against SUMO 1.27;
+    ``MSVehicle::getLeader``, ``MSVehicle.cpp`` 6755–6781), so the ego's
+    drawn ``s0`` is added back to obtain the bumper-to-bumper gap the
+    controller contract requires. No leader within ``LEADER_LOOKAHEAD_M``:
+    ``(inf, nan, False)``.
+
+    A leader closer than ``s0`` bumper to bumper makes that value negative.
+    By default (``AVSpec.observe_close_leader`` off, ``close_leader`` False)
+    it is read as "no leader": ``(inf, nan, True)``, with no further TraCI
+    call, as before WP-96. With ``close_leader`` the leader is reported with
+    the bumper gap floored at 0 m: ``(max(gap + s0, 0), v_leader, True)``.
+
+    Args:
+        lib_mod: The ``libsumo`` / ``traci`` module.
+        veh_id: The controlled vehicle.
+        ego_min_gap: Its ``minGap`` [m] (the drawn ``s0``).
+        close_leader: Report a leader within ``s0`` (``AVSpec.observe_close_leader``).
+
+    Returns:
+        ``(gap, v_leader, within_s0)``; ``within_s0`` is True whenever a
+        leader exists at a bumper gap below ``s0``, whichever way it is reported.
     """
     lead = lib_mod.vehicle.getLeader(veh_id, LEADER_LOOKAHEAD_M)
-    if lead is None or lead[0] == "" or lead[1] < 0.0:
-        return math.inf, math.nan
-    return lead[1] + ego_min_gap, float(lib_mod.vehicle.getSpeed(lead[0]))
+    if lead is None or lead[0] == "":
+        return math.inf, math.nan, False
+    if lead[1] < 0.0:
+        if not close_leader:
+            return math.inf, math.nan, True
+        return max(lead[1] + ego_min_gap, 0.0), float(lib_mod.vehicle.getSpeed(lead[0])), True
+    return lead[1] + ego_min_gap, float(lib_mod.vehicle.getSpeed(lead[0])), False
+
+
+def _off_corridor_step(
+    lib_mod: Any,
+    tc: Any,
+    results: Mapping[str, Any],
+    oc: dict[str, Any],
+    corridor: Collection[str],
+    held_by_merge: Callable[[str], bool],
+    hb: dict[str, Any] | None,
+) -> None:
+    """One step of the off-corridor bookkeeping (``AVSpec.release_off_corridor``).
+
+    ``oc["commanded"]`` holds the AVs the dispatch has commanded and not
+    released. For each, in id order: one no longer in the network is dropped;
+    one on a corridor edge or an internal junction edge (id starting with
+    ``":"``) is left alone. One on any other edge has left the corridor
+    holding its last command (a ``setSpeed`` target is held until
+    ``setSpeed(-1)``). With ``oc["release"]`` False (the default) it is only
+    counted: ``oc["left"]`` (AVs) and ``oc["n_vehicle_steps"]`` (steps spent
+    so), with no TraCI call. With ``oc["release"]`` True it is released
+    (``setSpeed(-1)``, ``oc["n_released"]``), dropped from ``commanded`` and,
+    when the handback is on, from its held commands, so that nothing re-applies
+    the command; an AV that a scripted merge or weaving section commands at
+    that moment (``held_by_merge``) is left to it and visited again next step.
+
+    Args:
+        lib_mod: The ``libsumo`` / ``traci`` module.
+        tc: Its ``constants``.
+        results: This step's subscription results (every vehicle in the
+            network, ramps included).
+        oc: The run's off-corridor state (see above).
+        corridor: The corridor's edge ids (the keys of the linear-x offsets).
+        held_by_merge: Whether a scripted merge or weaving section commands
+            a vehicle now.
+        hb: The run's handback state, or None when the handback is off.
+    """
+    commanded: set[str] = oc["commanded"]
+    for vid in sorted(commanded):
+        res = results.get(vid)
+        if res is None:
+            commanded.discard(vid)
+            continue
+        road = res[tc.VAR_ROAD_ID]
+        if road in corridor or road.startswith(":"):
+            continue
+        oc["left"].add(vid)
+        if not oc["release"]:
+            oc["n_vehicle_steps"] += 1
+            continue
+        if held_by_merge(vid):
+            continue
+        lib_mod.vehicle.setSpeed(vid, -1.0)
+        commanded.discard(vid)
+        oc["n_released"] += 1
+        if hb is not None:
+            hb["held"].pop(vid, None)
+            hb["in_force"].discard(vid)
 
 
 #: SUMO 1.27.1's IDM lets ``minNextSpeed`` brake at no less than this
@@ -6800,6 +6882,24 @@ def run_micro(
             "n_withdrawals": 0,
             "vehicles": set(),
         }
+    # AVSpec.release_off_corridor and observe_close_leader (WP-96): with a
+    # controller both are counted whether on or off (the counting reads only
+    # what the step already fetched: no TraCI call when off); None without one.
+    off_corridor: dict[str, Any] | None = None
+    close_obs: dict[str, Any] | None = None
+    if controller_fn is not None:
+        off_corridor = {
+            "release": cfg.av.release_off_corridor,
+            "commanded": set(),
+            "left": set(),
+            "n_vehicle_steps": 0,
+            "n_released": 0,
+        }
+        close_obs = {
+            "observe": cfg.av.observe_close_leader,
+            "n_vehicle_steps": 0,
+            "vehicles": set(),
+        }
 
     # Wave-detection oracle realism (CLAUDE.md §4.3). A perfect oracle keeps an
     # empty history and zero noise, so this costs nothing when unused.
@@ -7382,6 +7482,17 @@ def run_micro(
                 v_ref_hist.append((t, 0.0))
                 while v_ref_hist and v_ref_hist[0][0] < t - V_REF_WINDOW_S:
                     v_ref_hist.popleft()
+                if off_corridor is not None and off_corridor["commanded"]:
+                    # AVs off the corridor (ramps) hold their commands (WP-96)
+                    _off_corridor_step(
+                        mod,
+                        tc,
+                        results,
+                        off_corridor,
+                        offsets_by_edge,
+                        lambda v: _commanded_by_runner(weave_states, scripted_states, v),
+                        handback,
+                    )
                 if handback is not None and handback["held"]:
                     # AVs off the corridor (ramps) still hold their commands
                     _emergency_handback_step(mod, tc, results, handback, step)
@@ -7557,7 +7668,13 @@ def run_micro(
                     # controllers act on corridor edges only.
                     if vid not in x_by_id:
                         continue
-                    gap, v_leader = _leader_obs(mod, vid, min_gap_by_id[vid])
+                    gap, v_leader, within_s0 = _leader_obs(
+                        mod, vid, min_gap_by_id[vid], close_leader=cfg.av.observe_close_leader
+                    )
+                    if within_s0 and close_obs is not None:
+                        # AVSpec.observe_close_leader (WP-96): counted on or off
+                        close_obs["n_vehicle_steps"] += 1
+                        close_obs["vehicles"].add(vid)
                     downstream = _downstream_bins(
                         x_by_id[vid], o_xs, o_speeds, circumference, is_ring
                     )
@@ -7578,6 +7695,23 @@ def run_micro(
                     if handback is not None:
                         handback["held"][vid] = max(v_cmd, 0.0)
                         handback["in_force"].add(vid)
+                    if off_corridor is not None:
+                        off_corridor["commanded"].add(vid)
+
+            # AVSpec.release_off_corridor (WP-96): every step, after the
+            # dispatch, count (off) or release (on) the commands of AVs that
+            # have left the corridor; before the handback, which must not
+            # re-apply a released command.
+            if off_corridor is not None and off_corridor["commanded"]:
+                _off_corridor_step(
+                    mod,
+                    tc,
+                    results,
+                    off_corridor,
+                    offsets_by_edge,
+                    lambda v: _commanded_by_runner(weave_states, scripted_states, v),
+                    handback,
+                )
 
             # AVSpec.emergency_handback (WP-95): every step, after the
             # dispatch, withdraw a command the model must brake through.
@@ -7788,6 +7922,27 @@ def run_micro(
                 "n_vehicles": len(handback["vehicles"]),
             }
             if handback is not None
+            else None
+        ),
+        # AVSpec.release_off_corridor (WP-96): None without a controller
+        "av_off_corridor": (
+            {
+                "release": off_corridor["release"],
+                "n_vehicles": len(off_corridor["left"]),
+                "n_vehicle_steps": off_corridor["n_vehicle_steps"],
+                "n_released": off_corridor["n_released"],
+            }
+            if off_corridor is not None
+            else None
+        ),
+        # AVSpec.observe_close_leader (WP-96): None without a controller
+        "av_close_leader": (
+            {
+                "observed": close_obs["observe"],
+                "n_vehicle_steps": close_obs["n_vehicle_steps"],
+                "n_vehicles": len(close_obs["vehicles"]),
+            }
+            if close_obs is not None
             else None
         ),
         "controller_start_s": controller_start_s,
