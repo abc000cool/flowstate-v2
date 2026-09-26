@@ -7976,3 +7976,151 @@ Every number above is from those runs, from the committed files named, or from `
   - Run directories were temporary and deleted.
 
 Every number above is from those runs, from the committed files named, or from `microsim.runner` at HEAD.
+
+## 2026-09-25 (block 3, WP-88, the gap after the crossing): a measurement of the new follower's and the changer's gaps over the 30 s after each lane change (`calibration.lane_change_relaxation`), the same way for I-24 MOTION, NGSIM US-101 and a microsim run, with two cloud stages that have not run yet. On the corridor section fixture (seeds 3–7, weave defaults), the entrant's new follower does not start short. At the crossing it sits at a median 1.05 [1.01, 1.10] of the population's car-following time gap at its speed and at 1.17 of its own static gap s0 + vT (a quarter of them at 1.02 or less). Over the next 5 s the gap opens further, to 1.34 [1.26, 1.42] of the population's normal, while the entrant pulls away from the queue at 6–10 m/s. There is no short gap to relax from, except in the crossings SUMO makes in the step an entrant arrives (0.90 of the normal at the crossing, 306 of 822 crossings). The real-data side is pending the cloud stage. Nothing in the model changes
+
+**Why.** WP-87 (above, hand-on (b)) found that the loop's holds sit at the follower's own static gap to its partner, at 1.01–1.07 of s0 + vT. The runner's targets are ceilings, so they cannot keep a follower closer than its own model. Real entering drivers accept about 0.92 s behind (VM Z, `artifacts/i24_critical_gaps.json`). The lane-change literature describes a relaxation after a change: the new follower (and the changer) accept a shorter gap and return to their normal gap over some seconds. Laval & Leclercq (2008, Transportation Research Part B 42(6):511–522) model it. Schakel, Knoop & van Arem (2012, Transportation Research Record 2316:47–57) build it into a lane-change model. Zheng, Ahn, Chen & Laval (2013, Transportation Research Part C 26:367–379) measure a pre-insertion transition and a relaxation process in the immediate follower. If real followers relax and the model's do not, the lever is a bounded per-vehicle relaxation (for example TraCI `vehicle.setTau`, relaxed back over a fitted τ). That is a model-form change. This package builds the measurement, runs it on the model, and prepares the real-data side for a VM. The runner, the config, the scenarios, the fixtures and the existing tests are untouched.
+
+**How it was measured.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)` at the weave defaults. Seeds 3–7, one run at a time (2.4–3.2 s each; 440 MB peak RSS at seed 3), macOS.
+- *Harness (session, `wp88/run88.py`).* WP-82's run-time tracker, which records every lane change on the T.H.52 section and who made it, plus each vehicle's drawn `minGap`, `tau` and length read once with libsumo getters. Both are read-only: the trajectories are byte-identical to WP-87's default runs at all five seeds (md5). `microsim.runner` md5 prefix `fe4ce1da5a64`; config hashes 2230b3942fe7, 671d0460e64f, 7e551a839817, 0953b606bc5e, 2497b9153124.
+- *Extraction.* `scripts/lane_change_relaxation.py --source trajectories` on the five run directories, as the VM stages will run it on real data (`wp88/ana88.sh`; 10.9 s, 538 MB peak). It reads the frame as `scripts/i24_lane_change_gaps.py` reads a run and finds the changes with `calibration.lane_change_gaps`.
+- *WP-82's fix, from the trajectories alone.* The ramp is not in the trajectory table, so an entrant SUMO moves off the auxiliary lane in its arrival step starts the table already in lane 1. The script finds such entrants without a tracker: a vehicle from a `merge: weave` on-ramp whose first corridor sample lies on the attach edge off the auxiliary band. It adds one sample on the auxiliary band one step before (x − v·dt, its speed), and marks the change confirmed and `arrival_crossing`. It finds 81 / 58 / 45 / 42 / 80 such crossings at seeds 3–7, seed for seed the run-time tracker's count of SUMO's arrival-step entering crossings, and every one is recorded.
+- *Definitions* (`calibration.lane_change_relaxation`; docs/CONTRACTS.md, "Lane-change relaxation").
+  - *The two sides.* At the change sample (offset 0), the *follower* side pairs the changer with its new follower (the extraction's lag). The *leader* side pairs the changer with its new leader (the lead). Gaps are bumper to bumper, from the rear vehicle to the front one.
+  - *The offsets.* 0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25 and 30 s. Identity and car-following are checked at every whole second in between.
+  - *Car-following.* The gap is at least 0.5 m and at most 10 m + 5 s · v_rear (and 200 m). A side enters only if it is car-following at the change.
+  - *Censoring.* A side is read at an offset only while, at every second up to it: the changer is tracked in the target lane with no further change; the partner is still its immediate follower or leader there; and the pair is car-following. The first failure ends the side, with its reason. A tracker's fragment switch continues when the next fragment lands within 2 m of the carried position (WP-78's rule).
+  - *The measures.* The time gap is the space gap over the rear vehicle's speed, not read below 2 m/s. It is read against three references:
+    - `ratio_pop`: the population's median car-following time gap in the rear vehicle's 2-m/s speed bin, over the same table (every vehicle with a car-following leader, on the 1-s grid);
+    - `ratio_eq`: the space gap over s0 + vT at the rear vehicle's speed, at the fleet's population means (`artifacts/idm_i24_capacity.json`), and, from the harness, at each vehicle's own drawn s0 and T (WP-87's measure);
+    - `ratio_own_eq`: `ratio_eq` over the rear vehicle's own median `ratio_eq` 30 s to 5 s before the change, when car-following. The last 5 s are left out for the follower's anticipation (Zheng et al. 2013).
+
+    `ratio_own` (the time gap over the vehicle's own pre-change time gap) is in the artifact too. It moves with speed, because a time gap at equilibrium is T + s0/v. It is not read here: the model's entrants cross out of a queue.
+  - *Which changes.* Confirmed, non-suspect entering, exiting and through changes. The 90 entering changes made within 1 s of a vehicle's first sample on the auxiliary lane are unconfirmed under the extraction's rule, and are left out as WP-77's summaries leave them out. Seeds pooled.
+  - *The fit.* r(τ) = r∞ + (r0 − r∞)·exp(−τ/τ_r), by weighted least squares on the per-offset medians (weights: the sides read), with 200 bootstrap replicates over sides. It is *supported* only if all of these hold: τ_r lies between 1 s and the last offset used; 80 % of the refits agree; the amplitude's interval excludes 0; and the weighted RMS residual is at most a quarter of the amplitude.
+  - *Seed intervals.* The mean over the five seeds of each seed's median, with its 95 % t-interval (t = 2.776).
+
+**(1) The entrant's new follower** (weave zone, entering, all speeds; 822 crossings, 740 with a car-following follower at the change; medians).
+
+| offset [s] | 0 | 1 | 2 | 3 | 5 | 8 | 10 | 15 | 20 | 30 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| sides read | 740 | 650 | 582 | 507 | 379 | 231 | 181 | 119 | 79 | 37 |
+| follower's speed [m/s] | 5.67 | 5.72 | 5.89 | 6.43 | 7.95 | 10.44 | 11.92 | 14.45 | 16.59 | 20.37 |
+| time gap [s] | 2.28 | 2.52 | 2.61 | 2.70 | 2.75 | 2.75 | 2.47 | 2.25 | 2.07 | 1.95 |
+| over the population's normal at its speed | 1.05 | 1.14 | 1.21 | 1.26 | 1.33 | 1.32 | 1.23 | 1.13 | 1.05 | 1.00 |
+| over s0 + vT at the fleet's means | 1.31 | 1.43 | 1.49 | 1.58 | 1.68 | 1.75 | 1.59 | 1.45 | 1.38 | 1.33 |
+| over s0 + vT at its own s0 and T | 1.17 | 1.26 | 1.33 | 1.38 | 1.49 | 1.54 | 1.50 | 1.41 | 1.31 | 1.23 |
+| over its own pre-change static-gap ratio | 0.75 | 0.80 | 0.84 | 0.86 | 0.90 | 0.94 | 0.89 | 0.80 | 0.71 | 0.75 |
+
+- *Per seed* (mean of the seeds' medians [95 % t-interval]):
+  - over the population's normal: 1.05 [1.01, 1.10] at the change, 1.22 [1.13, 1.30] at 2 s, 1.34 [1.26, 1.42] at 5 s, 1.24 [1.19, 1.30] at 10 s;
+  - over s0 + vT at the means: 1.32 [1.23, 1.41] at the change, 1.68 [1.59, 1.77] at 5 s;
+  - time gap: 2.33 [2.21, 2.45] s at the change, 2.84 [2.61, 3.06] s at 5 s.
+- *Own static gap at the change* (its own s0 and T): p25 / p50 / p75 1.02 / 1.17 / 1.77.
+- *By changer speed* (over the population's normal at the change / 2 s / 5 s / 10 s):
+  - v < 10 m/s: 495 sides, 1.06 / 1.18 / 1.33 / 1.29;
+  - 10–20 m/s: 193 sides, 1.06 / 1.24 / 1.32 / 1.05;
+  - ≥ 20 m/s: 52 sides, 0.86 / 1.51 / 1.38 / 1.14.
+- *How the follower sides end.* The follower changes lane 422 times (most of lane 1's followers are exiters crossing themselves). The gap passes the car-following bound 101 times, a vehicle cuts in 67 times, and the changer changes again 89 times. 37 are read to 30 s.
+
+**(2) Who made the crossing.** The entrant's new follower, split by `arrival_crossing` (medians):
+
+| crossing | sides at the change | over the population's normal: 0 / 2 / 5 / 10 s | over s0 + vT at its own s0, T: 0 / 2 / 5 / 10 s | own static gap at the change p25 / p50 / p75 |
+|---|---|---|---|---|
+| SUMO's, in the arrival step | 282 | 0.90 / 1.09 / 1.33 / 1.33 | 1.04 / 1.18 / 1.48 / 1.49 | 0.93 / 1.04 / 1.23 |
+| the others (the weave's accepted and forced, SUMO's later) | 458 | 1.13 / 1.25 / 1.32 / 1.19 | 1.34 / 1.51 / 1.54 / 1.52 | 1.09 / 1.34 / 2.10 |
+
+**(3) The other sides** (medians; at the change / 2 s / 5 s / 10 s / 30 s):
+
+| side | sides at the change | follower's or changer's speed [m/s] | over the population's normal | over s0 + vT at its own s0, T |
+|---|---|---|---|---|
+| entering: the entrant behind its new leader | 594 | 8.2 / 10.1 / 12.5 / 14.8 / 20.0 | 1.31 / 1.40 / 1.27 / 1.10 / 1.03 | 1.62 / 1.71 / 1.57 / 1.34 / 1.19 |
+| exiting: the exiter's new follower | 973 | 7.3 / 8.5 / 9.7 / 11.6 / 3.9 | 0.97 / 1.08 / 1.13 / 1.06 / 1.00 | 1.16 / 1.23 / 1.29 / 1.27 / 1.14 |
+| exiting: the exiter behind its new leader | 1,214 | 9.0 / 9.5 / 10.7 / 12.0 / 3.8 | 0.83 / 1.01 / 1.12 / 1.09 / 1.01 | 1.09 / 1.22 / 1.30 / 1.24 / 1.13 |
+| SUMO's own changes outside the ramp zones: the new follower | 4,111 | 12.8 / 12.4 / 12.7 / 12.3 / 9.6 | 0.98 / 1.07 / 1.09 / 1.02 / 0.95 | 1.19 / 1.31 / 1.30 / 1.20 / 1.14 |
+
+**(4) The fits** (weighted least squares on the medians, 200 bootstrap replicates over sides).
+
+| side | measure | supported | τ_r [s] (95 %) | r0 → r∞ | why not |
+|---|---|---|---|---|---|
+| entrant's new follower | over the population's normal | no | 1.3 | 1.04 → 1.26 | the curve opens and closes again: residual 0.29 of the amplitude |
+| entrant's new follower | over its own s0 + vT | yes | 2.2 (1.5–3.3) | 1.15 → 1.49 | — |
+| entrant's new follower | over its own pre-change ratio | yes | 1.7 (1.1–3.4) | 0.74 → 0.89 | — |
+| the same, SUMO's arrival crossings | over the population's normal | yes | 4.0 (2.2–9.3) | 0.89 → 1.46 | — |
+| the same, the other crossings | over the population's normal | no | 0.72 | 1.12 → 1.26 | faster than 1 s; flat within noise; not exponential |
+| entrant behind its new leader | over its own s0 + vT | yes | 19 (12–29) | 1.72 → 0.97 | — |
+| exiter's new follower | over the population's normal | no | 0.68 | 0.97 → 1.09 | faster than 1 s; not exponential |
+| exiter behind its new leader | over the population's normal | yes | 1.6 (1.2–2.0) | 0.83 → 1.08 | — |
+| SUMO's changes outside the zones, new follower | over the population's normal | no | 1,000 | 1.06 → −2.67 | slower than the window; flat within noise |
+
+**Reading.**
+1. *At the crossing, the model's new follower is at its normal gap, not below it.* Against the population's car-following time gap at its own speed, the entrant's new follower reads 1.05 [1.01, 1.10]. Against its own static gap s0 + vT it reads a median 1.17, with the lower quartile at 1.02. WP-87's holds sat at 1.01–1.07 of that gap. The crossing does not move the follower below it.
+2. *After the crossing the gap opens; it does not relax up from a short gap.* Over 5 s the follower drops back to 1.34 [1.26, 1.42] of the population's normal and 1.49 of its own static gap. The entrant pulls away from the queue meanwhile: the follower's speed rises from 5.7 to 8.0 m/s at 5 s and 11.9 m/s at 10 s. By 20–30 s the follower is back at 0.99–1.05 of the population's normal. The only supported "relaxations" of the entrant's follower are this opening, from at or above the static gap. The one from 0.74 of its own pre-change ratio starts from a pre-change gap that was itself a median 1.64 times its own static gap (1.71 at the fleet's means; 639 followers with a reference). Neither is the literature's short accepted gap that opens.
+3. *SUMO's arrival-step crossings are the model's only short start.* They are 306 of the 822 entering crossings. Their new follower reads 0.90 of the population's normal at the change (own static gap p25 0.93, median 1.04). It opens with τ_r 4.0 s (2.2–9.3) to 1.46, above the normal. The weave's own crossings start at 1.13.
+4. *The entrant itself takes a long gap ahead and closes it slowly.* It reads 1.31 of the population's normal and 1.62 of its own static gap to its new leader at the change. It closes to about 1.19 of that gap over 30 s (τ_r 19 s, 12–29).
+5. *Where this leaves the lever.* In the model, a relaxation of `tau` after a crossing would act on followers that are not below their normal gap. It could only let them follow closer than their normal from the crossing on. Whether real followers do that is the measurement below. VM X gives the only real number so far, at the crossing and not after it: real entrants' lag time gap p10 / p50 0.82 / 2.46 s at a median changer speed of 11.7 m/s (`artifacts/i24_lane_change_gaps.json`). The model's entrant followers read 2.33 [2.21, 2.45] s at 5.7 m/s. Time gaps at different speeds are not comparable (T + s0/v), which is why the stages read every side against the population's normal at the same speed.
+
+**The real-data side: pending the cloud stage.** No real trajectory was read on this laptop.
+- *Stage 15, `i24_lane_change_relaxation`* (opt-in, needs `--data-set i24`): `scripts/lane_change_relaxation.py --source i24`. The I-24 MOTION westbound day, with stage 12's chunks, span, zones, lanes and debounce, and each 15-min chunk loaded with a 38 s pad. s0 + vT at the `idm_i24_capacity` means. It writes `artifacts/lane_change_relaxation_i24.json`.
+- *Stage 16, `us101_lane_change_relaxation`* (opt-in; reads `data/ngsim`, which the launch ships with `--data-set i24` when it is present): `--source us101`.
+  - *The data.* NGSIM US-101 as the repository holds it, the raw data.transportation.gov export (Socrata `8ect-6jqj`, `scripts/us101_data.py`, docs/M2_RESULTS.md §7). It is not the Montanino–Punzo reconstruction. data/README.md says "reconstructed … Montanino & Punzo"; `scripts/us101_data.py`, docs/M2_RESULTS.md §7, docs/ROADMAP.md and `scripts/fit_idm_us101.py` all say raw.
+  - *The read.* 10 Hz, two recording periods; lanes 1–5 are mainline and 6 is the auxiliary lane between the Ventura on-ramp and the Cahuenga off-ramp. The weaving zone is the 0.5–99.5 % span of lane-6 positions, read off the data. s0 + vT at the `idm_us101` means.
+  - *The output.* `artifacts/lane_change_relaxation_us101.json`.
+- *Stage render.* With a stub `stage(){ local n="$1"; shift; echo "STAGE $n: $*"; }`, the block prints `STAGE i24_lane_change_relaxation: uv run --no-sync python scripts/lane_change_relaxation.py --source i24` and the `--source us101` line, and nothing without `--stages`. `bash -n` passes.
+- *Cost (estimated, not measured on real data).*
+  - The i24 mode on WP-78's synthetic stand-in: a quarter chunk, 778,998 rows, took 2.3 s at 433 MB peak.
+  - A 100,000-side bootstrap fit takes 2.7 s.
+  - A real chunk averages 2.4 M rows, and the day holds 179,157 changes (VM X). Stage 15 should take about 5–10 min at 2–3 GB.
+  - The us101 mode ran on a synthetic stand-in of the loader's schema (494,547 rows) at 325 MB. On the 1.9 M rows of the real dump, stage 16 should take a few minutes at 1–2 GB.
+- *Launch (not launched).* The code must be committed first (the VM runs `git archive HEAD`):
+
+  ```
+  scripts/gcp/launch_i24_pipeline.sh --data-set i24 --machine n2-standard-8 --cap-min 60 --bucket gs://<bucket>/<prefix> --self-delete --pipeline-args '--stages "i24_lane_change_relaxation us101_lane_change_relaxation"'
+  ```
+
+  `scripts/gcp/ingest_pipeline_results.sh` installs artifacts from an allowlist that does not list `lane_change_relaxation_*.json`. It needs that pattern before the ingest, or the files are copied from the archive by hand.
+- *How the real side will be read* (written before the numbers exist):
+  - (a) *The comparison.* The entering crossings' new follower in the I-24 Hickory Hollow–Bell Road weave and the US-101 lane-6 weave: its median over the population's normal at the change, and its fit over the population's normal. The model reads 1.05 [1.01, 1.10] at the change, then opens to 1.34.
+  - (b) *A relaxation in real traffic* is a median below 0.9 at the change, with a supported fit that opens (r0 < r∞) with r∞ near 1, in the 10–20 m/s class as well as over all speeds. The model's followers do not show one (its 10–20 m/s class reads 1.06 at the change). Then the gap after the crossing differs, and a bounded per-vehicle `tau` relaxation over the fitted τ_r is the model-form candidate. It would be measured on this fixture before any adoption.
+  - (c) *No relaxation in real traffic* is a median at 0.9 or above, or no supported opening fit. Then there is no relaxation to add, and the gap after the crossing is not what separates the model from real drivers.
+  - (d) *Coverage.* I-24 MOTION tracks about half the peak vehicle-time, so an observed gap is the true one or larger: an observed median below 0.9 is robust, and one above may hide a shorter true gap. The US-101 data are complete in coverage, but raw.
+
+**Nothing ships.** The package adds a measurement. `microsim.runner`, `flowstate_core.config`, `WEAVE_DEFAULTS`, the scenarios, the fixtures, the existing tests and the goldens are untouched, and no config hash changes. The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands.
+
+**What this hands on.**
+- *(a) The real-data stages.* Stages 15 and 16, read as above. The verdict on the relaxation lever waits for them.
+- *(b) Ratios against a reference at the same speed.* Any comparison of post-crossing gaps between the model and real traffic should read `ratio_pop`, or `ratio_eq` with its population, and not the time gap or `ratio_own`. The model's entrants cross at a third to a half of real entrants' speed.
+- *(c) The entrant's long gap ahead.* The model's entrants cross with 1.6 times their static gap to the new leader and take about 20 s to close it. The real leader side of stage 15 reads the same quantity.
+
+**Limitations.**
+- *Scale.* Five seeds and one fixture, pooled; the seed intervals are over five runs.
+- *Censoring is not independent of the outcome.* Most followers of an entrant change lane themselves within seconds (422 of 740). So the long offsets are read on few sides (37 at 30 s), and the per-offset composition changes. The artifact's complete-case curves read the same shape: to 10 s, on 181 sides, 0.97 → 1.23 of the population's normal.
+- *The references are traffic.* The population's normal and a vehicle's pre-change gap both include vehicles relaxing, queuing or held by the weave at the time.
+- *Speed.* The model's entrants cross at a median 5.7 m/s, and the curves mix the crossing with the queue's discharge. The speed classes separate them only partly: at 10–20 m/s the shape is the same.
+- *Platform.* macOS records.
+
+**Bookkeeping.**
+- *New:*
+  - `packages/calibration/calibration/lane_change_relaxation.py`;
+  - `tests/test_calibration/test_calibration_lane_change_relaxation.py`: 22 tests, 96 % line coverage of the module, 0.9 s;
+  - `scripts/lane_change_relaxation.py`;
+  - `tests/test_scripts/test_lane_change_relaxation_script.py`: 6 tests.
+- *The module's tests* are all on hand-built frames on a 0.2 s grid:
+  - a planted relaxation with a known τ_r (6 s exactly, and 8 s under 3 % noise) recovered by the fit;
+  - offset 0 equal to `lane_change_gaps`' lag and lead gaps;
+  - each censor reason at its known instant, with nothing read after it: a follower's lane change, a cut-in, a lost changer, a fragment switch that continues, a follower falling back past the bound, no follower, the window's end;
+  - the anticipation window;
+  - the own static-gap ratio taking the speed out;
+  - the population normal by speed bin;
+  - a flat curve, a slow curve, a step and a curve that opens and closes, none supported.
+- *Edited:* `scripts/gcp/pipeline_i24.sh` (stages 15 and 16 only), docs/CONTRACTS.md (the new entry) and this section. The CHANGELOG bullet is handed to the coordinator.
+- *Session files (`wp88/`, not committed):*
+  - the harness `run88.py`, its rows `rows.jsonl`, and `params_<seed>.json` and `events_<seed>.json`;
+  - the extraction driver `ana88.sh` and its artifact `relax_fixture.json`;
+  - `own88.py` and `relax_fixture_ownparams.json` (the own s0 and T);
+  - `seeds88.py` (the seed intervals), `ref88.py` (the pre-change static-gap ratio), `unconf88.py` (the 90 unconfirmed entering changes), `tab88.py`, `show88.py` and `tables.md`;
+  - the synthetic cost checks `standin88.py` (reads WP-78's stand-in) and `us101_synth88.py`, with their artifacts `standin_q.json` and `us101_synth.json`.
+  - The run directories were deleted after the analysis.
+
+Every number above is from those runs, from the committed files named, or from the tests.

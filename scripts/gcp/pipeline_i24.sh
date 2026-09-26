@@ -571,6 +571,32 @@ if echo " $STAGES " | grep -q " us101_lane_changes "; then
       --out artifacts/us101_lane_change_penetration.json" || say "us101_lane_changes failed; continuing"
 fi
 
+# 15. The gap after the crossing in real traffic (WP-88, 2026-09-25, block 3; opt-in, needs --data-set i24): for every
+#     confirmed entering, exiting and through lane change of the I-24 MOTION westbound day (stage 12's chunks, span, ramp
+#     zones, lanes and debounce; each 15-min chunk loaded with a 38 s pad), the new follower's and the changer's time and
+#     space gaps at 0-30 s after the change, tracked through tracker fragment switches and censored at the first lane
+#     change, cut-in, lost track or loss of car-following; as ratios to the vehicle's own pre-change gap (30-5 s before),
+#     to the population's car-following time gap at the same speed and to s0 + vT at the idm_i24_capacity means; per zone
+#     kind x movement x changer-speed class, with an exponential relaxation time and its bootstrap interval where the data
+#     support one (calibration.lane_change_relaxation) -> artifacts/lane_change_relaxation_i24.json (summaries and a
+#     100-change sample only). One process; estimated from a quarter-chunk synthetic stand-in (779k rows: 2.3 s, 433 MB)
+#     and a 100k-side bootstrap fit (2.7 s): about 5-10 min and 2-3 GB peak.
+if echo " $STAGES " | grep -q " i24_lane_change_relaxation "; then
+  stage i24_lane_change_relaxation $RUN scripts/lane_change_relaxation.py --source i24 \
+    || say "i24_lane_change_relaxation failed; continuing"
+fi
+
+# 16. The same on NGSIM US-101 (WP-88; opt-in; reads data/ngsim, which the launch ships with --data-set i24 when present):
+#     the raw data.transportation.gov export the repository holds (scripts/us101_data.py; NOT the Montanino-Punzo
+#     reconstruction), de-duplicated and split into its two recording periods, 10 Hz; lanes 1-5 mainline, 6 the auxiliary
+#     lane between the Ventura on-ramp and the Cahuenga off-ramp (the weaving zone: the 0.5-99.5 % span of lane-6
+#     positions, read off the data); s0 + vT at the idm_us101 means -> artifacts/lane_change_relaxation_us101.json.
+#     One process; the 2.4 M-row CSV load dominates: a few minutes and 1-2 GB peak (estimated).
+if echo " $STAGES " | grep -q " us101_lane_change_relaxation "; then
+  stage us101_lane_change_relaxation $RUN scripts/lane_change_relaxation.py --source us101 \
+    || say "us101_lane_change_relaxation failed; continuing"
+fi
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

@@ -2963,3 +2963,59 @@ WP-81 (docs/US101_PENETRATION.md, dated addendum). It is additive: no config fie
 - Intervals are t-based over seeds (n − 1 degrees of freedom), as `scripts/us101_penetration_analyze.py` computes them.
 
 **Pipeline.** Stage `us101_lane_changes` (opt-in, launch with `--data-set none`) runs the sweep, then the analysis. The archive carries `runs/us101_penetration/*/*/*/lane_changes.json` and the sweep's `MANIFEST.json`; `--analyze-only` rebuilds the artifact from them without reading a trajectory.
+
+## Lane-change relaxation (`calibration.lane_change_relaxation`) — 2026-09-25
+
+WP-88 (docs/WEAVE_MODEL_PLAN.md, dated section). The new follower's and the changer's gaps at fixed offsets after each lane change, as time gaps, space gaps and ratios to three references, with an exponential relaxation fit. The same code serves observed tables (I-24 MOTION, NGSIM US-101) and simulated runs. It is additive: `lane_change_gaps` and its records are unchanged, and no config field, run output, hash or golden changes.
+
+**`post_change_gaps(df, records, *, changes=None, offsets_s=(0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30), step_s=1.0, dt_s=None, max_gap_s=None, min_dwell_s=1.0, pre_window_s=(30.0, 5.0), max_range_m=200.0, min_gap_m=0.5, follow_gap_m0=10.0, max_follow_time_gap_s=5.0, min_speed_ms=2.0, min_ref_samples=5, same_vehicle_tol_m=2.0, default_length_m=None, equilibrium=None, t_limits_s=None) -> PostChangeGaps`.**
+- *Input.* The frame `lane_change_gaps` read and its `records`, made with the same `dt_s`, `max_gap_s` and `min_dwell_s`. `changes` is a boolean mask over the records rows. `step_s` must be a whole multiple of `dt_s`, and every offset a non-negative whole multiple of `step_s`. `pre_window_s` is `(from, to)` seconds before the change, `from > to >= 0`. `equilibrium` is `(s0_m, T_s)` for everyone, or `veh_id → (s0_m, T_s)` keyed by the rear vehicle's id at the change. `t_limits_s` is the span whose rows are complete (a chunk's load window).
+- *The sides.* At the change sample (offset 0), the *follower* side pairs the changer C with the record's lag F, and the *leader* side pairs C with the record's lead L. Neighbours are defined as in `lane_change_gaps`.
+- *The walk.* Every `step_s` from the change to the last offset, both sides are checked; values are kept at the offsets. A vehicle continues by its id, or by a fragment whose front, carried at the mean of the two speeds, lands within `same_vehicle_tol_m`.
+- *Car-following.* The bumper gap lies in `[min_gap_m, min(max_range_m, follow_gap_m0 + max_follow_time_gap_s · v_rear)]`. A side enters only if car-following at offset 0.
+- *Censoring.* A side is read at an offset only while, at every walk step up to it: C is tracked in the target lane with no further change (debounced lanes); the partner is still C's immediate lag or lead there; the pair is car-following. The first failure ends the side, and nothing after it is used.
+- *Censor reasons* (`CENSOR_REASONS`): `observed_to_end`, `no_partner`, `not_following`, `suspect`, `window_end`, `changer_lost`, `changer_lane_change`, `partner_lost`, `partner_lane_change`, `cut_in`, `gap_bound`.
+- *Measures* (`MEASURES`), each NaN where the side was not read:
+  - `space_gap_m`: bumper to bumper, rear to front;
+  - `time_gap_s`: the space gap over the rear vehicle's speed; NaN below `min_speed_ms`;
+  - `ratio_own`: the time gap over the rear vehicle's own reference, the median of its time gaps to its own leader (its own lane) at the walk instants inside the pre-change window when car-following and at or above `min_speed_ms`; at least `min_ref_samples` instants;
+  - `ratio_own_eq`: `ratio_eq` over the rear vehicle's own median `ratio_eq` at the same reference instants (the own reference with the speed taken out);
+  - `ratio_pop`: the time gap over the population's median time gap in the rear vehicle's speed bin (filled by `with_population_ratio`);
+  - `ratio_eq`: the space gap over `s0 + v · T` at the rear vehicle's speed.
+- *`PostChangeGaps`.*
+  - `events`: one row per change, with `change` (its records row), the record's `t, veh_id, x, zone, zone_kind, from_lane, to_lane, direction, movement, v, confirmed, suspect, lead_gap_m, lag_gap_m` and, when present, `seed, group, arrival_crossing, period`; per side `<side>_id` (the partner at the change), `<side>_rear_id`, `<side>_ref_own_s`, `<side>_ref_own_eq`, `<side>_ref_n`, `<side>_censor`, `<side>_last_offset_s`.
+  - `offsets_s`; `values[side][name]`, `(n_events, n_offsets)` arrays of the `MEASURES` and of `rear_v_ms`, `front_v_ms`; `to_long()` gives one row per (change, side, offset) read.
+  - `counts`: `n_changes`, `n_unmatched`, `n_duplicate_slots`, and per side `n_<side>_measured` and `n_<side>_<reason>`.
+  - `parameters`.
+
+**`normal_time_gaps(df, *, dt_s=None, max_gap_s=None, min_dwell_s=1.0, step_s=1.0, window_s=None, x_range_m=None, lanes=None, max_range_m=200.0, min_gap_m=0.5, follow_gap_m0=10.0, max_follow_time_gap_s=5.0, min_speed_ms=2.0, speed_edges_ms=(2, 4, …, 40), gap_bin_s=0.02, default_length_m=None) -> NormalTimeGaps`.** Every row on the walk grid with a leader in its own debounced lane that is car-following at or above `min_speed_ms` contributes its time gap, histogrammed by the rear vehicle's speed. Samples are not screened for recent lane changes. `NormalTimeGaps` (`speed_edges_ms`, `gap_bin_s`, `counts`, `parameters`) pools with `+`, and gives `n`, `quantile(q, min_n)`, `lookup(v, min_n)` (the bin's median) and `to_dict(min_n)`. `with_population_ratio(result, normal, *, min_n=100)` returns the result with `ratio_pop` filled. `concat_results(parts)` pools chunk or run results with one set of offsets.
+
+**`fit_relaxation(offsets_s, values, *, min_n=30, min_offsets=5, n_boot=200, seed=20260925) -> dict`.**
+- *The model.* `r(τ) = r_inf + (r0 − r_inf) · exp(−τ / τ_r)`, by weighted least squares on the per-offset medians (weights: the rows read), over the offsets read by at least `min_n` rows. `τ_r` is searched on a log grid of 0.1–1000 s.
+- *The bootstrap* resamples rows (sides) with replacement, seeded by `flowstate_core.rng.make_rng`.
+- *`supported`* only if all of these hold:
+  1. at least `min_offsets` offsets are used;
+  2. `τ_r` lies between the first positive offset used and the last;
+  3. 80 % of the refits satisfy 2 (`MIN_RESOLVED_SHARE`);
+  4. the amplitude's 95 % interval over every refit excludes 0;
+  5. the weighted RMS residual is at most a quarter of `|r_inf − r0|` (`MAX_REL_RMS`).
+- *Keys.* `supported`, `reason` (the failures joined, or `"supported"`), `offsets_used`, `n_used`, `medians`, `tau_s`, `tau_resolved`, `tau_ci95`, `r0`, `r0_ci95`, `r_inf`, `r_inf_ci95` (the intervals from the resolved refits), `amplitude`, `amplitude_ci95`, `amplitude_excludes_zero`, `rms_resid`, `rel_rms_resid`, `n_boot`, `n_boot_resolved`.
+
+**`summarize_relaxation(result, *, by=("zone_kind", "movement"), speed_classes=SPEED_CLASSES_MS, movements=("entering", "exiting", "through"), include_unconfirmed=False, include_suspect=False, measures=MEASURES, fit_measures=("ratio_own", "ratio_own_eq", "ratio_pop", "ratio_eq"), complete_to_s=10.0, min_n_fit=30, min_offsets_fit=5, n_boot=200, seed=20260925) -> list[dict]`.**
+- One row per group, speed class (`all` and every non-empty class, on the changer's speed at the change) and side.
+- Each row: the group keys, `speed_class`, `side`, `offsets_s`, `n_changes`, `n_measured`, `n_ref_own`, `censor` (non-zero reasons), `n` (sides read per offset), `ref_own_s` (`p25, p50, p75`), `measures.<m>` (`n, p25, p50, p75` per offset), `rear_v_ms_p50`, `complete_case` (`horizon_s`, `n`, and `p50.<m>` per offset up to the horizon, over the sides read at every one of them), and `fits.<m>` (`fit_relaxation`).
+- Each row's seeds are `spawn_seeds(seed, n_rows)[row]`, one per fitted measure.
+
+`sample_events(result, n, *, seed, measures=("time_gap_s", "ratio_own"))` gives a seeded table of at most `n` measured changes: `{n, seed, offsets_s, columns, rows}`, each side's measures a list per offset.
+
+**Artifacts** (written by `scripts/lane_change_relaxation.py`; JSON, `allow_nan=False`, `schema_version` 1; one key per line, every list of scalars on one line).
+- *The files.* `artifacts/lane_change_relaxation_i24.json` (`--source i24`, `kind` `"observed"`) and `artifacts/lane_change_relaxation_us101.json` (`--source us101`, `kind` `"observed"`) are written by the opt-in pipeline stages `i24_lane_change_relaxation` (15) and `us101_lane_change_relaxation` (16), which have not run yet. `--source trajectories --sim-run-dir … --out …` writes `kind` `"simulated"`.
+- *Keys common to all.* `schema_version`, `kind`, `data_source`, `created_at`, `source`, `code`, `code_dirty`, `method` (the definitions), `parameters` (`post_change_gaps`' and the summaries'), `zones`, `equilibrium` (`s0_m`, `T_s`, `source`), `counts` (`extraction`: the `lane_change_gaps` counts; `relaxation`: the `PostChangeGaps` counts), `counts_by_zone_kind` (`n_all`, `n_walked` per zone kind × movement), `normal_time_gaps`, `summary_by_zone_kind`, `sample` (100 changes, `time_gap_s` and `ratio_pop` curves), `censor_reasons`, `measures`, `limitations`, `wall_s`, `peak_rss_mb`.
+- *Walked.* Only confirmed, non-suspect changes of the `entering`, `exiting` and `through` movements.
+- *Only in the I-24 artifact.* `data_hash`, `data`, `time_origin`, `x_axis`, `span_data_x_m`, `window_s`, `chunk_s`, `pad_s` (38 s), `citation`. Zones, lanes, span and chunks are `scripts/i24_lane_change_gaps.py`'s; `equilibrium` is the `artifacts/idm_i24_capacity.json` means.
+- *Only in the US-101 artifact.* `data_hash` (`scripts/us101_data.data_hash`), `data`, `data_version` (the raw data.transportation.gov export, not the Montanino–Punzo reconstruction), `time_origin`, `x_axis`, `lanes`, `zone_rule` (the weave zone is the 0.5–99.5 % span of lane-6 positions), `periods` (per period `rows`, `vehicles`, `t_span_s` and both count blocks); `equilibrium` is the `artifacts/idm_us101.json` means.
+- *Only in the simulated artifact.* `runs` (per run `run_dir`, `config_hash`, `seed`, `scenario`, `n_collisions`, `weave_on_ramps`, `n_arrival_crossings_added`, `n_arrival_crossings_recorded`, both count blocks), `arrival_crossings`, and `summary_by_zone_kind_arrival_crossing` (the entering movement, all speeds, split by `arrival_crossing`). An entrant from a weave on-ramp whose first corridor sample lies on the attach edge off the auxiliary band gets one sample on that band one step before (WP-82's fix); its change is marked `confirmed` and `arrival_crossing`. `equilibrium` is the fleet's IDM population means.
+
+**Coverage.** On I-24 MOTION an observed gap is the true gap or larger, and a cut-in by an untracked vehicle is not seen, so the observed ratios are upper bounds and some sides run longer than they should. The references are traffic too: the own pre-change gap and the population's normal include vehicles relaxing from earlier changes.
+
+**Pipeline.** The stages write only `artifacts/*.json`, which every archive carries. `scripts/gcp/ingest_pipeline_results.sh` installs VM artifacts by name from an allowlist, which does not yet list `lane_change_relaxation_*.json`.

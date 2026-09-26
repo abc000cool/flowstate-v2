@@ -10,7 +10,7 @@ are not in the repository (`.gitignore`); only small derived inputs are.
 | `mndot/cache/` (untracked) | raw per-detector 30-s JSON responses | same source; re-fetched by `scripts/mndot_fetch.py` |
 | `fetch/` | fetch scripts for the datasets that stay out of the tree | — |
 | `i24motion/` (untracked) | I-24 MOTION trajectory data | i24motion.org; obtained by the maintainer under the dataset's own terms and never committed. The calibration artifacts under `artifacts/` (IDM population fits, capacity and demand fits, validation records) are derived summary statistics computed from it and cite it |
-| `ngsim/` (untracked) | reconstructed NGSIM US-101 trajectories | Montanino & Punzo reconstruction; obtained by the maintainer and never committed |
+| `ngsim/` (untracked) | raw NGSIM US-101 vehicle trajectories (not the Montanino & Punzo reconstruction; corrected 2026-09-25) | data.transportation.gov, Socrata resource `8ect-6jqj`, `location='us-101'`, exported in 200k-row chunks (`scripts/us101_data.py`); never committed |
 | `processed/` (untracked) | local intermediates | — |
 
 The repository's own code and documents are under the Apache License 2.0
