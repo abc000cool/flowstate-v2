@@ -5,7 +5,7 @@
 # Fleet: artifacts/idm_i24_capacity.json (FHWA step-1 capacity calibration, docs/I24_CAPACITY.md).
 # Exit fractions and the measured boundary are unchanged. See
 # artifacts/demand_scale_i24_corrected.json (rmspe train 0.320, test 0.396,
-# inserted 0.945). Config hash b072d754492d; seeded=False.
+# inserted 0.945). Config hash 43def6306dd6 (hash policy v2; b072d754492d under v1); seeded=False.
 name: i24_replica_speedcal
 tier: micro
 network:

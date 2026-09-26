@@ -27,9 +27,15 @@ Per arm, the comparison tables are:
   replicate-mean simulated vs observed).
 * **Segment speeds** — RMSPE of replicate-mean simulated segment speeds
   (4 × 160 m segments × 5-min windows) against observed.
-* **Waves** — ``validation.waves.detect_waves`` on both the simulated and
-  the observed binned speed fields (15 s × 75 m, clipped to the 640 m site
-  on both sides).
+* **Waves** — the ``wave_speed`` criteria row is measured the way
+  ``scripts/i24_validate.py`` measures it: with the ``fhwa_default``
+  profile's ``wave_detector`` (:data:`CRITERION_DETECTOR`) on its own bins,
+  on each replicate's field clipped to the 640 m site, the arm value being
+  the mean over the replicates with a backward reading; the row names that
+  detector. The observed field gets the same reading. The standard 40 km/h
+  detector (``validation.waves.detect_waves``, 15 s × 75 m) and the 25 km/h
+  stripe variant (10 s × 50 m) run on the same site-clipped support on both
+  sides and are kept as labelled diagnostics, not as the criterion value.
 * **Criteria** — ``validation.criteria.evaluate`` (GEH / RMSPE / wave speed /
   n_seeds; the ring benchmarks are CI-gated elsewhere and reported here as
   not-evaluated rows, honestly failing per CLAUDE.md §0.1).
@@ -92,10 +98,15 @@ from flowstate_core.rng import spawn_seeds  # noqa: E402
 from flowstate_core.units import kmh_to_ms, ms_to_kmh  # noqa: E402
 from microsim.runner import _versions, run_replicates  # noqa: E402
 from microsim.scenarios import load_scenario, resolve_scenario  # noqa: E402
-from validation.criteria import evaluate  # noqa: E402
+from validation.criteria import evaluate, get_profile  # noqa: E402
 from validation.fields import speed_field  # noqa: E402
 from validation.metrics import aggregate, compute_metrics, geh, rmspe  # noqa: E402
-from validation.waves import detect_waves  # noqa: E402
+from validation.waves import (  # noqa: E402
+    WAVE_DETECTORS,
+    WaveDetector,
+    detect_waves,
+    get_detector,
+)
 
 OUT_ROOT = REPO_ROOT / "runs" / "m3_us101"
 
@@ -121,6 +132,14 @@ ENTRY_BUFFER_M = 640.0  # min(CORRIDOR_INSERTION_BUFFER_M, length_m) for 640 m
 WAVE_DT_BIN_S = 15.0
 WAVE_DX_BIN_M = 75.0
 
+PROFILE = get_profile("fhwa_default")
+"""Criteria profile the rows are scored with (the ``scripts/i24_validate.py`` profile)."""
+CRITERION_DETECTOR = PROFILE.wave_detector
+"""The profile's wave detector. The ``wave_speed`` criteria row is its reading
+of each replicate's site-clipped field on its own bins, averaged over the
+replicates with a backward reading (``scripts/i24_validate.py``'s rule); the
+standard 40 km/h and stripe readings are diagnostics only."""
+
 BOUNDARY_WINDOW_S = 30.0
 """Downstream-boundary schedule resolution [s] (task spec)."""
 BOUNDARY_TAIL_M = 100.0
@@ -128,7 +147,7 @@ BOUNDARY_TAIL_M = 100.0
 BOUNDARY_EXIT_BUFFER_M = 200.0
 """Exit-buffer edge length hosting the boundary speed limit [m]."""
 
-OBSERVED_CACHE_VERSION = 3
+OBSERVED_CACHE_VERSION = 4  # v4: + the criterion detector's reading (waves_criterion)
 
 ARMS = ("no_boundary", "with_boundary", "calibrated")
 """Validation arms. ``calibrated`` runs a self-contained scenario YAML."""
@@ -284,6 +303,66 @@ def _stripe_wave_summary(traj: pd.DataFrame) -> dict:
     )
 
 
+def _criterion_wave_summary(
+    traj: pd.DataFrame, detector: WaveDetector = CRITERION_DETECTOR
+) -> dict:
+    """One detector's reading of the site-clipped field, binned by its own recipe.
+
+    The criteria row's input (:data:`CRITERION_DETECTOR` by default): the
+    same 640 m site clip as :func:`_wave_summary`, measured with
+    ``detector.measure`` on ``detector``'s bins, with the keys of
+    ``scripts/i24_validate.py``'s per-detector summaries.
+    """
+    clipped = traj[(traj["x"] >= 0.0) & (traj["x"] < SITE_LENGTH_M)]
+    field = speed_field(clipped, dt_bin=detector.dt_bin_s, dx_bin=detector.dx_bin_m)
+    m = detector.measure(field)
+    bw = list(m.backward_speeds_kmh)
+    amplitudes = (
+        [round(w.amplitude_ms, 2) for w in detector.detect(field).waves]
+        if detector.method != "stack"
+        else []
+    )
+    return {
+        "detector": detector.name,
+        "detector_description": detector.describe(),
+        "count": m.n_components,
+        "n_backward": m.n_backward,
+        "backward_speeds_kmh": [round(v, 2) for v in bw],
+        "amplitudes_ms": amplitudes,
+        "mean_backward_speed_kmh": m.speed_kmh if math.isfinite(m.speed_kmh) else None,
+        "median_backward_speed_kmh": float(np.median(bw)) if bw else None,
+        "frac_backward_in_band": m.in_band_fraction() if bw else None,
+        "threshold_kmh": m.threshold_kmh if math.isfinite(m.threshold_kmh) else None,
+        "stack_contrast": m.contrast if math.isfinite(m.contrast) else None,
+        "note": m.note,
+    }
+
+
+def _aggregate_criterion_waves(
+    summaries: list[dict], detector: WaveDetector = CRITERION_DETECTOR
+) -> dict:
+    """Replicate aggregate of one detector's per-replicate readings.
+
+    ``mean_backward_speed_kmh`` is the mean over the replicates with a
+    backward reading and ``None`` when no replicate has one (the criteria row
+    then reads NaN and fails with "no backward wave detected").
+    """
+    bw = [
+        w["mean_backward_speed_kmh"] for w in summaries if w["mean_backward_speed_kmh"] is not None
+    ]
+    return {
+        "detector": detector.name,
+        "detector_description": detector.describe(),
+        "mean_backward_speed_kmh": float(np.mean(bw)) if bw else None,
+        "median_backward_speed_kmh": float(np.median(bw)) if bw else None,
+        "n_replicates_with_backward_waves": len(bw),
+        "n_replicates": len(summaries),
+        "wave_count_mean": float(np.mean([w["count"] for w in summaries])) if summaries else None,
+        "all_backward_speeds_kmh": [v for w in summaries for v in w["backward_speeds_kmh"]],
+        "per_replicate": summaries,
+    }
+
+
 def _boundary_schedule_wall(p1: pd.DataFrame) -> list[tuple[float, float]]:
     """Observed downstream-boundary speed schedule on the wall clock.
 
@@ -348,6 +427,7 @@ def observed_side(cache_path: Path) -> dict:
     seg_fine = _segment_speeds(p1, window_s=FINE_WINDOW_S, n_windows=N_FINE_WINDOWS)
     waves = _wave_summary(p1[["t", "x", "v"]])
     waves_stripe = _stripe_wave_summary(p1[["t", "x", "v"]])
+    waves_criterion = _criterion_wave_summary(p1[["t", "x", "v"]])
     schedule = _boundary_schedule_wall(p1)
     obs = {
         "cache_version": OBSERVED_CACHE_VERSION,
@@ -372,6 +452,7 @@ def observed_side(cache_path: Path) -> dict:
             "dt_bin_s": STRIPE_DT_BIN_S,
             "dx_bin_m": STRIPE_DX_BIN_M,
         },
+        "waves_criterion": waves_criterion,
         "boundary_schedule_wall": [[t, round(v, 4)] for t, v in schedule],
         "boundary_source": (
             f"mean mainline speed, local_y in [{SITE_LENGTH_M - BOUNDARY_TAIL_M:g}, "
@@ -435,6 +516,7 @@ def micro_arm(cfg: ScenarioConfig, n_replicates: int, out_root: Path, procs: int
     seg_speeds = []
     waves = []
     waves_stripe = []
+    waves_criterion = []
     demand_frac = []
     metrics_list = []
     for p in paths:
@@ -445,6 +527,7 @@ def micro_arm(cfg: ScenarioConfig, n_replicates: int, out_root: Path, procs: int
         seg_speeds.append(_segment_speeds(df))
         waves.append(_wave_summary(df[["t", "x", "v"]]))
         waves_stripe.append(_stripe_wave_summary(df[["t", "x", "v"]]))
+        waves_criterion.append(_criterion_wave_summary(df[["t", "x", "v"]]))
         metrics_list.append(
             compute_metrics(
                 p.run_dir,
@@ -460,6 +543,7 @@ def micro_arm(cfg: ScenarioConfig, n_replicates: int, out_root: Path, procs: int
         for w in waves_stripe
         if w["mean_backward_speed_kmh"] is not None
     ]
+    criterion = _aggregate_criterion_waves(waves_criterion)
     metrics_ci = {
         name: {
             "mean": ci.mean,
@@ -487,6 +571,9 @@ def micro_arm(cfg: ScenarioConfig, n_replicates: int, out_root: Path, procs: int
         "waves_stripe_per_replicate": waves_stripe,
         "stripe_mean_backward_speed_kmh": (float(np.mean(bw_stripe)) if bw_stripe else None),
         "n_replicates_with_stripe_backward_waves": len(bw_stripe),
+        "criterion_detector": CRITERION_DETECTOR.name,
+        "criterion_wave_speed_kmh": criterion["mean_backward_speed_kmh"],
+        "criterion_waves": criterion,
         "metrics_ci": metrics_ci,
     }
 
@@ -517,14 +604,23 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
     both = np.isfinite(obs_seg) & np.isfinite(sim_seg) & (obs_seg != 0.0)
     rmspe_value = rmspe(sim_seg[both], obs_seg[both])
 
+    # The wave row is scored with the detector that produced its value, named
+    # to `evaluate` (scripts/i24_validate.py): the profile's own detector for a
+    # simulated block from micro_arm. A block without the criterion reading
+    # (results before schema 3) carries only the standard 40 km/h reading;
+    # it is passed under that name, so the row reports it as not evaluated.
+    if "criterion_wave_speed_kmh" in sim:
+        wave_detector = get_detector(sim["criterion_detector"])
+        wave_speed = sim["criterion_wave_speed_kmh"]
+    else:
+        wave_detector = get_detector("standard")
+        wave_speed = sim["mean_backward_speed_kmh"]
     criteria_rows = evaluate(
+        PROFILE,
         geh_values=geh_values,
         rmspe_value=rmspe_value,
-        wave_speed_kmh=(
-            sim["mean_backward_speed_kmh"]
-            if sim["mean_backward_speed_kmh"] is not None
-            else math.nan
-        ),
+        wave_speed_kmh=wave_speed if wave_speed is not None else math.nan,
+        wave_detector=wave_detector,
         ring_emergence=None,  # CI-gated benchmark, not re-run here
         ring_dampening=None,
         n_seeds=replicates,
@@ -546,8 +642,10 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
             ),
         }
 
+    criterion_waves = sim.get("criterion_waves") or {}
     return {
-        "schema_version": 2,
+        "schema_version": 3,
+        "criteria_profile": PROFILE.name,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "scenario": cfg.name,
         "arm": arm,
@@ -583,6 +681,28 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
                 "deep stop-and-go stripes inside the congestion, identically on both "
                 "sides"
             ),
+            "criterion_detector": wave_detector.name,
+            "criterion_detector_description": wave_detector.describe(),
+            "criterion_wave_speed_kmh": wave_speed,
+            "n_replicates_with_criterion_backward_waves": criterion_waves.get(
+                "n_replicates_with_backward_waves"
+            ),
+            "criterion_field_bins": (
+                f"{wave_detector.dt_bin_s:g} s x {wave_detector.dx_bin_m:g} m, "
+                f"x < {SITE_LENGTH_M:g} m both sides"
+            ),
+            "observed_criterion": obs.get("waves_criterion"),
+            "diagnostic_detectors": {
+                "standard": WAVE_DETECTORS["standard"].describe(),
+                "stripe": WAVE_DETECTORS["stripe"].describe(),
+            },
+            "diagnostic_note": (
+                "observed, observed_stripe, simulated_mean_backward_speed_kmh, "
+                "simulated_stripe_mean_backward_speed_kmh and the per-replicate waves "
+                "are the standard 40 km/h and stripe detectors' readings, kept as "
+                "diagnostics; the wave_speed criteria row is criterion_wave_speed_kmh, "
+                "measured with criterion_detector"
+            ),
         },
         "criteria": [asdict(r) for r in criteria_rows],
         "metrics_ci": sim["metrics_ci"],
@@ -606,6 +726,17 @@ def build_results(arm: str, cfg: ScenarioConfig, sim: dict, obs: dict, replicate
             "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py "
             "-> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an "
             "identical-variants null).",
+            f"The wave_speed criteria row is measured with the {PROFILE.name!r} profile's "
+            f"wave_detector ({CRITERION_DETECTOR.name}) on its own bins over each "
+            "replicate's field clipped to the 640 m site; the arm value is the mean over "
+            "the replicates with a backward reading, NaN (failing, 'no backward wave "
+            "detected') when none has one. The standard 40 km/h keys and the stripe "
+            "analysis are diagnostics on the same support. Results before schema 3 "
+            "scored the standard reading under the profile detector's label "
+            "(docs/PAPER_DRAFT.md Appendix C item 18).",
+            "docs/reports/us101_replica/report.md (scripts/m3_us101_report.py) measures "
+            "the same detector over each run's whole simulated road after its warm-up, "
+            "not the 640 m site, so its reading need not equal this one.",
         ],
     }
 
@@ -627,6 +758,9 @@ def verify_schema(path: Path) -> None:
     assert (data["boundary"] is not None) == (data["arm"] in BOUNDARY_ARMS)
     for row in data["criteria"]:
         assert {"name", "value", "threshold", "passed", "evaluated"} <= set(row)
+    wave_row = next(r for r in data["criteria"] if r["name"] == "wave_speed")
+    assert "caller did not state" not in (wave_row.get("detail") or "")
+    assert data["waves"]["criterion_detector"] in WAVE_DETECTORS
     for ci in data["metrics_ci"].values():
         assert {"mean", "lo95", "hi95", "n", "underpowered"} <= set(ci)
     print(f"results schema OK: {path}")
@@ -707,9 +841,14 @@ def main() -> None:
         print(
             f"[{arm}] GEH<5 fraction {results['geh']['fraction_under_5']:.0%} | "
             f"RMSPE {results['rmspe']['value']:.1%} | "
-            f"sim backward wave {sim['mean_backward_speed_kmh']} km/h "
-            f"({sim['n_replicates_with_backward_waves']}/{args.replicates} reps) | "
-            f"obs backward wave {obs['waves']['mean_backward_speed_kmh']} km/h"
+            f"sim backward wave [{CRITERION_DETECTOR.name}] "
+            f"{sim['criterion_wave_speed_kmh']} km/h "
+            f"({sim['criterion_waves']['n_replicates_with_backward_waves']}/"
+            f"{args.replicates} reps), [standard, diagnostic] "
+            f"{sim['mean_backward_speed_kmh']} km/h | "
+            f"obs [{CRITERION_DETECTOR.name}] "
+            f"{obs['waves_criterion']['mean_backward_speed_kmh']} km/h, [standard] "
+            f"{obs['waves']['mean_backward_speed_kmh']} km/h"
         )
         verify_schema(out_path)
 
