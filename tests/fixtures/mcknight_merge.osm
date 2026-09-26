@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="hand-written-test-fixture">
+  <!-- The McKnight Rd entrance of I-94 WB St. Paul (on-ramp 178547099, a scripted merge in
+       scenarios/mndot_i94_wb_stpaul_weave.yaml) cut from data/osm/mndot_i94_wb_stpaul.osm
+       (2026-09-26, block 3, WP-93; docs/WEAVE_MODEL_PLAN.md, dated section). Ways 638377595,
+       178547099 and 638519829 keep their own nodes and tags that netconvert reads; way 900 is a
+       straight 600 m approach ending at node 579885144 on 638377595's bearing, way 901 a
+       straight 500 m exit from node 558551373 on the bearing of 638519829's last segment.
+       Compiled with the corridor's netconvert_extra (ramp guessing, ramp length 250 m), the
+       lengths, lanes, speeds and connections equal the corridor's (netconvert as run_micro
+       calls it; the corridor's edge in brackets):
+         900                        601.0 m, 3 lanes, 55 mph   approach, insertion edge
+         638377595                  331.5 m, 3 lanes, 55 mph   [638377595]
+         638519829-AddedOnRampEdge  251.0 m, 4 lanes, 55 mph   [the same; lane 0 is the added
+                                                                acceleration lane, no successor;
+                                                                lanes 1-3 feed lanes 0-2 of 638519829]
+         638519829                  632.0 m, 3 lanes, 55 mph   [638519829]
+         901                        500.8 m, 3 lanes, 55 mph   exit
+         178547099                  290.6 m, 1 lane, 22.22 m/s [178547099, onto lane 0 of the
+                                                                added-lane piece] -->
+  <node id="9001" lat="44.9493792" lon="-92.9977629"/>
+  <node id="579885144" lat="44.9503863" lon="-93.0052486"/>
+  <node id="187853307" lat="44.9509417" lon="-93.0093774"/>
+  <node id="187853322" lat="44.9507565" lon="-93.0057645"/>
+  <node id="187853320" lat="44.9507505" lon="-93.0061152"/>
+  <node id="187853314" lat="44.9508294" lon="-93.0077097"/>
+  <node id="187853313" lat="44.9508481" lon="-93.0079822"/>
+  <node id="759816387" lat="44.9512813" lon="-93.0123086"/>
+  <node id="512017537" lat="44.9515652" lon="-93.0150930"/>
+  <node id="187872238" lat="44.9516375" lon="-93.0164860"/>
+  <node id="512017536" lat="44.9516441" lon="-93.0177552"/>
+  <node id="187872234" lat="44.9516162" lon="-93.0189520"/>
+  <node id="558551373" lat="44.9515019" lon="-93.0204785"/>
+  <node id="9002" lat="44.9510292" lon="-93.0267920"/>
+  <way id="900">
+    <nd ref="9001"/><nd ref="579885144"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="638377595">
+    <nd ref="579885144"/><nd ref="187853307"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="178547099">
+    <nd ref="187853322"/><nd ref="187853320"/><nd ref="187853314"/><nd ref="187853313"/><nd ref="187853307"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+  </way>
+  <way id="638519829">
+    <nd ref="187853307"/><nd ref="759816387"/><nd ref="512017537"/><nd ref="187872238"/><nd ref="512017536"/><nd ref="187872234"/><nd ref="558551373"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+  <way id="901">
+    <nd ref="558551373"/><nd ref="9002"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="maxspeed" v="55 mph"/>
+  </way>
+</osm>

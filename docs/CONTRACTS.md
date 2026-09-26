@@ -299,12 +299,50 @@ Other blocks:
   `lookahead_m` 120, `courtesy` 0); `merge_params` on any other model or on
   an off-ramp is rejected; both fields enter the config hash. `meta.json`
   lists `scripted_merges` (`ramp, attach_edge, params, n_entered, n_changed,
-  n_forced, n_unfinished, wait_s_mean, wait_s_p90`).
+  n_forced, n_forced_deferred, n_unfinished, wait_s_mean, wait_s_p90`).
+- `merge_params["force_guard"]` (2026-09-26, block 3, WP-93;
+  docs/WEAVE_MODEL_PLAN.md, dated section; `SCRIPTED_MERGE_DEFAULTS`, default
+  0 = off, hash-neutral unless set; measured on a fixture, not made the
+  default). Without it a vehicle due to force is under mode 256 from its first
+  forced step until it leaves the lane, and SUMO 1.27.1 refuses such a change
+  only on an overlap — the target-lane follower's front inside its own
+  `minGap` behind the changer (`MSLaneChanger::checkChange`,
+  `MSVehicle::Influencer::influenceChangeDecision`) — whatever its closing
+  speed. On the McKnight Rd fixture every collision (13) is such a change, a
+  ramp vehicle slowed for the lane's end landing 2–8 m in front of a follower
+  10–16 m/s faster, and the 14 collisions of the I-94 WB reference battery on
+  the two scripted merges' lanes have the same signature. Under
+  the key the vehicle is under mode 256 only in a step in which
+  `microsim.runner._scripted_force_gap_ok` passes — each target-lane net gap,
+  less one step of the pair's closing, above the brake gap of the party
+  behind at its own `decel` (`(v_F − v)⁺²/(2·b_F)` behind,
+  `(v − v_L)⁺²/(2·b)` ahead; at equal speeds SUMO's own overlap test) — and
+  under mode 512 otherwise; its requests are made exactly as without the key.
+  `scripted_merges[i].n_forced_deferred` counts the vehicle-steps held under
+  512 (0 with the key off; the field is additive, present on every run from
+  WP-93 on). With the key off the step is call for call the one before it
+  (trajectories byte-identical on the McKnight Rd fixture,
+  `tests/fixtures/mcknight_merge.osm`). `weave_params` shares the scripted
+  keys; there `force_guard` has no effect, the weave's forced changes being
+  always under `_weave_force_gap_ok`.
 - `meta.json.n_collisions` and `meta.json.collisions` (2026-09-16): the exact
   number of SUMO collision detections over the run (a persisting overlap under
   `--collision.action warn` counts every step) and the first 50 events
   (`t, collider, victim, type, lane, pos_m`). Additive; older artifacts lack
-  the keys.
+  the keys. *Correction (2026-09-26, WP-93, read in SUMO 1.27.1's source):* a
+  persisting overlap is not counted every step. The runner reads
+  `simulation.getCollisions()` only in a step where
+  `simulation.getCollidingVehiclesNumber()` is non-zero, and that number
+  counts vehicles SUMO flags on a *new* collision only (`MSLane::
+  handleCollisionBetween` informs the listeners when `MSNet::registerCollision`
+  returns true; a pair already registered is a continuation). So a pair is
+  counted once, in the step it is first detected, plus once more in any later
+  step in which it still persists and another pair is new. What SUMO calls a
+  collision is set by `--collision.mingap-factor` (the runner leaves it at
+  −1: the collider's car-following value, which is 0.1 for EIDM,
+  `MSCFModel_EIDM`, against 1.0 in `MSCFModel`): an EIDM follower collides
+  when its front comes within a tenth of its own `minGap` of the leader's
+  back.
 - `RampSpec.merge_visibility_m: float | None = None` (2026-09-07, zipper
   merges): SUMO connection `visibility` [m] on the ramp lane's and the
   merging mainline lane's connections into the merged lane — how far

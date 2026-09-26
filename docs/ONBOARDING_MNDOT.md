@@ -1634,3 +1634,8 @@ cannot carry the real drivers' different leader and follower gaps (WP-80 splits 
   `43917735#1-AddedOnRampEdge` (on-ramp 18207436, x 3,384.7 m) and one on the weave section edge 999007700. With the guard all 19
   are on the first of these. So the collisions come from plain merges at the ends of acceleration lanes that netconvert added, not
   from the weave's opposing entries, which is why the guard does not remove them.
+- *Correction 2026-09-26 (WP-93):* both ramps are `merge: scripted` in the scenario, the corridor's only two scripted merges, not
+  plain SUMO merges. The "`merge: null`" read above came from the run metadata's ramp records, which carry no merge field; the
+  scripted merges are listed under `scripted_merges`. The collisions follow the scripted merge's forced change: a ramp vehicle
+  slowed for the added lane's end is put into lane 1 under `laneChangeMode` 256, which SUMO refuses only on an overlap, in front of a
+  follower 10–16 m/s faster (docs/WEAVE_MODEL_PLAN.md, WP-93).

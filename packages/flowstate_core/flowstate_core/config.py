@@ -173,6 +173,9 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
     "change_duration_s": 2.0,
     "lookahead_m": 120.0,
     "courtesy": 0.0,
+    # 2026-09-26 (block 3, WP-93): the forced change's brake-gap guard, off —
+    # see merge_params' docstring. A switch, not a fitted value.
+    "force_guard": 0.0,
 }
 """Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
 SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
@@ -900,7 +903,33 @@ class RampSpec(BaseModel):
     120.0 (distance over which the mainline lane's speed is matched),
     ``courtesy`` 0.0 (m/s; when > 0 the mainline follower that blocks an
     otherwise acceptable gap is asked to hold its desired speed this far below
-    the ramp vehicle's until the gap opens — courtesy yielding)."""
+    the ramp vehicle's until the gap opens — courtesy yielding),
+    ``force_guard`` 0.0 (off; see below).
+
+    ``force_guard`` (2026-09-26, block 3, WP-93; docs/WEAVE_MODEL_PLAN.md,
+    dated section). Without it a vehicle due to force is put under
+    ``laneChangeMode`` 256 for the rest of its time on the lane, and every
+    open request then executes at any gap SUMO does not read as an overlap:
+    a follower's front clear of its own ``minGap`` behind the changer,
+    whatever the follower's closing speed (SUMO 1.27.1,
+    ``MSLaneChanger::checkChange`` and ``MSVehicle::Influencer::
+    influenceChangeDecision``). The changer has slowed for the lane's end, so
+    such a change can land 2–8 m in front of a follower 10–16 m/s faster,
+    which then brakes at 9 m/s² and hits it: all 13 collisions on the McKnight
+    Rd fixture, and the signature of the 14 of the I-94 WB reference battery
+    on the two scripted merges' lanes (VM AF: lane 1, 217–238 m, a ramp
+    vehicle hit by one from upstream). With ``force_guard`` > 0 the
+    vehicle due to force is under mode 256 only in a step in which
+    ``microsim.runner._scripted_force_gap_ok`` passes — each target-lane gap,
+    less the distance the pair closes in one step, at least the brake gap of
+    the party behind at its own ``b`` — and under mode 512 (SUMO's own gap
+    check) otherwise; its request stays open as before, so SUMO's cooperation
+    towards it continues. Vehicle-steps refused are counted in
+    ``meta.json["scripted_merges"][i]["n_forced_deferred"]``. Measured on the
+    fixture and left off: the corridor battery has not run with it.
+    In ``WeaveSpec.weave_params``, which shares these keys, it has no effect:
+    the weave's forced changes are always under its own guard
+    (``_weave_force_gap_ok``)."""
     weave: WeaveSpec | None = None
     """The weaving section this on-ramp opens (:class:`WeaveSpec`); required
     by, and only allowed with, ``merge="weave"``. Hash-neutral when unset."""

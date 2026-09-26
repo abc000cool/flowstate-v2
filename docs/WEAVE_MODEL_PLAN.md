@@ -8971,5 +8971,213 @@ Every number above is from those runs, from SUMO 1.27.1's source, from `microsim
 - *Records:* docs/ONBOARDING_MNDOT.md §11 (VM AF); `artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_opposing_guard_556f737.json`; every collision of both batteries, with seed, time, lane and position, in `artifacts/mndot_rounds/weave_2026-09-24/collisions_reference_and_guard_556f737.json`.
 - *What WP-92 established still holds on the fixtures:* the guard removes the fixture conflicts it targets (33 to none) and WP-90's collision and stops. On the corridor those conflicts are not what collides.
 - *Hand-on.* (a) The corridor's collisions: why merges at the end of on-ramp 178547099's added acceleration lane collide (a plain SUMO merge; no weave rule acts there). (b) The guard's locked seed (3944094060050347669) is not mapped. Neither blocks item 1.
+- *Correction 2026-09-26 (WP-93, below):* the two ramps are `merge: scripted`, not plain SUMO merges; "a plain SUMO merge" above read a field the run metadata does not carry. The collisions follow the scripted merge's forced changes.
 
 Every number above is from the two committed artifacts named and VM AF's logs.
+
+## 2026-09-26 (block 3, WP-93, collisions at the corridor's acceleration-lane ends): the corridor's collisions at McKnight Rd and Hudson Rd are not plain SUMO merges. Both entrances run the runner's `scripted` merge, the only two of the corridor that do, and every collision reproduced on a fixture cut from the corridor's map is a change it executes under its forced mode. A ramp vehicle due to force is put under `laneChangeMode` 256 for the rest of its time on the added lane. SUMO 1.27.1 then refuses the change only if the lane-1 follower's front is inside its own `minGap` behind the changer, whatever the follower's closing speed. The changer has slowed for the lane's end, so it lands 0.1–4.5 m (net) in front of a follower 9.8–16.3 m/s faster, and the follower hits it braking at 9 m/s². On `tests/fixtures/mcknight_merge.osm` under the corridor's own demand for minutes 30–75, 13 collisions in 25 runs of five traffic regimes are all this event, at 189–237 m along the 251 m piece (the corridor's: 217–238 m). No other entry into lane 1 (5,821 of them) makes a follower brake harder than 4 m/s². Rebuilt from the scenario and the seeds, every corridor victim on the two pieces is a vehicle of that piece's own ramp, hit 27–31 s after it departed, and every collider arrived in free flow. A new key, `merge_params["force_guard"]` (default 0, hash-neutral), puts the vehicle under mode 256 only in a step in which each target-lane gap, less one step of closing, holds the brake gap of the party behind at its own `decel`, and under mode 512 otherwise. With it no run collides or brakes at 9 m/s² (15 runs), and the merge keeps its throughput in a queue (−0.1 % and +0.2 %), at a cost in free flow (lane 1 over the last 100 m 16.4 against 20.0 m/s). SUMO's own `lane_change` merge, an existing option, does better on the fixture on every measure. Both need the corridor battery, whose stages are written and not launched. Nothing ships on by default
+
+**Why.** VM AF placed 14 of the reference battery's 15 collisions on lane 1 of two edges: `638519829-AddedOnRampEdge` (11, 217–238 m, on-ramp 178547099, McKnight Rd) and `43917735#1-AddedOnRampEdge` (3, on-ramp 18207436, Hudson Rd). It read them as plain SUMO merges and did not check which lane is the added one. This package reads the geometry, reproduces the collisions on a fixture, traces each one, and measures the fixes the mechanism points to.
+
+**How it was measured.**
+- *Geometry.* `microsim.runner._build_network` on the reference scenario (`mndot_weave_xlend`'s sed/awk, run in the session; config hash 7ec8c8ef6e59, VM U's), netconvert only; `sumolib` reads of the compiled edges.
+- *Fixture.* `tests/fixtures/mcknight_merge.osm` (new): ways 638377595, 178547099 and 638519829 with their own nodes from `data/osm/mndot_i94_wb_stpaul.osm`, a straight 600 m approach (way 900) and a 500 m exit (way 901). Compiled with the corridor's ramp guessing, every length, lane count, speed and connection equals the corridor's to 0.01 m.
+- *Demand* (`wp93/fixture_cfg.py`). The scenario's own flows at the merge for corridor minutes 30–75 (t = 1,800–4,500 s), 5-min steps. Mainline: the upstream inflow lagged by the free-flow travel to the merge (4,297.84 m at 25 m/s), thinned by off-ramps 18279036 and 18207390, plus on-ramps 1077665160, 18207436 and 18207653: 1,629 → 3,608 veh/h (S1066's observed counts: 1,715 → 3,763). Ramp: 178547099's inflow, 249 → 576 veh/h. The corridor's fleet block, step 0.5 s, `lane_end_giveup_m` 7.5 (inert: the cut has no diverge), 45 simulated minutes.
+- *Regimes.* The corridor's state at the merge in those minutes is not known locally: VM U's artifacts keep hourly flows, and S1066 carried 2,293 veh/h there in 06:30–07:30 against 3,479 observed, so it was congested for part of it. Five regimes bracket it, through a speed schedule on the exit edge 901: *free* (none); *b10* and *b6* (10 and 6 m/s from t = 300 s; both leave the merge free, a 6 m/s bottleneck carrying more than the demand); *b3* (3 m/s from 300 s: the queue reaches the merge at t ≈ 2,000 s, lane 1 then at 1–3 m/s); *b3late* (3 m/s from 1,200 s).
+- *Recorder* (`wp93/h93.py`, read-only). Wraps `libsumo.simulationStep` and `_scripted_merge_step`: every step, every vehicle on the approach, the piece, the next edge and the ramp (edge, lane, position, speed, acceleration); every scripted decision (the gaps read, the flags, forced, requested); every `changeLane` / `setLaneChangeMode` call with the mode at the time; SUMO's collisions with the speeds it reports. A run with it has the same trajectories as without (md5 0555fc1f3b, free, seed 3).
+- *Entries* (`wp93/ana93.py`). Every entry into lane 1 of the piece, by path: *forced* (the mode last set on the vehicle was 256), *accepted* (512: SUMO's own gap check), *arrival* (SUMO's own change in the step the vehicle arrives from the ramp). For each, the new follower's speed, the gap and the follower's hardest deceleration over the next 6 s.
+- *Runs.* One at a time, macOS, 5–15 s each: 194 traced runs (seeds 3–7 per cell, and four single checks), 10 on the test's configuration, 4 identity runs. Candidate forms were run as a harness copy of the step (`wp93/proto93.py`) before the key was written.
+
+**(1) The geometry** (the reference scenario compiled as the runner compiles it; x along the corridor).
+
+| edge | x0 [m] | length [m] | lanes | what it is |
+|---|---|---|---|---|
+| 638377595 | 3,966.4 | 331.49 | 3 | approach; lanes 0–2 feed lanes 1–3 of the piece |
+| **638519829-AddedOnRampEdge** | 4,297.84 | 251.04 | 4 | lane 0 is the added acceleration lane: fed by 178547099 (290.64 m, 1 lane, 22.22 m/s), **no successor**, ends at x 4,548.88. Lanes 1–3 feed lanes 0–2 of 638519829. 24.59 m/s (55 mph) on every lane |
+| 638519829 | 4,548.88 | 631.99 | 3 | lanes 0–2 feed lanes 1–3 of 999007700, the Ruth St weave section (from x 5,180.9) |
+| 43917735#0 | 2,541.4 | 843.33 | 3 | approach to Hudson Rd |
+| **43917735#1-AddedOnRampEdge** | 3,384.7 | 251.05 | 4 | lane 0 the added lane from 18207436 (368.01 m, 1 lane, 22.22 m/s), no successor, ends at x 3,635.8; lanes 1–3 feed 43917735#1 (55.51 m, 3 lanes) |
+| 43917735#2 | 3,691.3 | 222.41 | 4 | lane 0 is on-ramp 18207653's added lane (a `lane_change` merge) |
+
+- *Lane 1 is the rightmost through lane*, beside the added lane. The collisions at 217–238 m (McKnight) and 231–238 m (Hudson) are 13–34 m before the added lane's end, inside the scripted merge's forced zone (its last 80 m, from 171 m).
+- *Both ramps are `merge: scripted`* in `scenarios/mndot_i94_wb_stpaul_weave.yaml`, with `merge_params: {}`. They are the only scripted merges of the corridor, and 14 of the 15 collisions are on their lanes. VM AF's "plain SUMO merge" misread the scenario.
+- *Both added lanes dead-end on split pieces*, so the runner's termination patch is not applied (`terminated_lanes` empty).
+- *No other runner rule acts there.* The Ruth St section's vacate and `exit_prepare` window (500 m) starts at x 4,680.9. `_weave_vacate_lanes` walks back to 638519829 and stops, so no weave rule reaches the piece. The lane-end give-up never acts on a lane without a successor, nor on a vehicle a scripted merge drives (`_commanded_by_runner`).
+- *SUMO's settings in the runner:* `--collision.action warn` (both vehicles drive on), `--collision.mingap-factor` left at −1, so the collider's model decides: 0.1 for EIDM (`MSCFModel_EIDM.cpp` l. 76, against 1.0 in `MSCFModel.cpp` l. 62). An EIDM follower "collides" when its front comes within a tenth of its own `minGap` of the leader's back (`MSLane::detectCollisionBetween`, l. 1999): a contact, not a short gap.
+
+**(2) The fixture reproduces the collisions** (seeds 3–7 per regime; entries into lane 1 of the piece by path).
+
+| regime | collisions | forced entries | … follower ≤ −4 m/s² | … ≤ −8.9 m/s² | accepted entries (≤ −4) | arrival entries (≤ −4) | lane 1, last 100 m [m/s] |
+|---|---|---|---|---|---|---|---|
+| free | 5 | 144 | 86 | 23 | 444 (0) | 870 (0) | 20.0 |
+| b10 | 4 | 145 | 78 | 20 | 447 (0) | 865 (0) | 19.8 |
+| b6 | 3 | 140 | 74 | 17 | 449 (0) | 866 (0) | 19.8 |
+| b3 | 0 | 450 | 17 | 2 | 301 (0) | 627 (0) | 6.8 |
+| b3late | 1 | 416 | 33 | 6 | 332 (0) | 620 (0) | 7.2 |
+
+- *All 13 collisions follow a forced entry*, and no accepted or arrival entry is followed by braking beyond 4 m/s². Every victim is a ramp vehicle; 12 colliders are mainline vehicles and one a ramp vehicle that had merged earlier. The corridor's signature is the same: its 11 McKnight victims are 178547099's vehicles (ids v155xx–v157xx, the fifth on-ramp's block), its colliders mainline or upstream-ramp vehicles, all on lane 1 of the piece.
+- *The regime sets the rate.* With lane 1 free, one forced change in 29–47 ends in a collision. In the queue the pair's speeds are close and none does (b3); the front's arrival brings one back (b3late).
+- *The 13 collisions* (the landing: the first step in lane 1; net gap = gap less the follower's `minGap`).
+
+| regime, seed | collision t [s] | at [m] | landed at [m] | changer [m/s] | follower [m/s] | net gap at landing [m] | request executed |
+|---|---|---|---|---|---|---|---|
+| free, 4 | 2,573.5 | 237.2 | 233.0 | 8.2 | 21.6 | 3.80 | made under 512 |
+| free, 5 | 2,287.0 | 237.0 | 232.9 | 8.6 | 19.3 | 1.90 | forced |
+| free, 5 | 2,418.0 | 207.7 | 208.2 | 5.5 | 19.9 | 0.80 | forced |
+| free, 7 | 1,875.5 | 188.6 | 190.9 | 1.8 | 16.4 | 3.65 | made under 512 |
+| free, 7 | 1,925.5 | 232.1 | 234.2 | 6.1 | 18.1 | 0.58 | made under 512 |
+| b6, 3 | 1,098.5 | 234.7 | 229.9 | 8.3 | 21.4 | 1.52 | made under 512 |
+| b6, 4 | 2,587.0 | 225.2 | 225.7 | 6.3 | 17.5 | 0.48 | made under 512 |
+| b6, 7 | 2,537.5 | 216.9 | 217.8 | 7.6 | 20.2 | 1.14 | forced |
+| b10, 3 | 2,133.0 | 236.2 | 230.6 | 8.6 | 22.3 | 2.01 | forced |
+| b10, 3 | 2,487.5 | 203.4 | 204.1 | 3.1 | 19.4 | 4.50 | forced |
+| b10, 4 | 1,972.0 | 214.4 | 215.4 | 7.7 | 18.1 | 1.33 | forced |
+| b10, 6 | 2,675.5 | 231.6 | 231.7 | 8.9 | 18.7 | 0.10 | forced |
+| b3late, 6 | 1,575.5 | 209.2 | 211.3 | 3.7 | 16.7 | 0.63 | forced |
+
+The collision follows the landing by 0.5–1.0 s. "Made under 512": the runner's acceptance asked for the change, SUMO refused it, and the 2-s request was still open when the vehicle turned forced and the mode 256.
+
+**(2b) The corridor's collisions, attributed** (`wp93/`: the plan rebuilt with `microsim.vehicles.build_corridor_plan` from the reference scenario and each collision's seed, the runner's own RNG path; departure times and origins are drawn before anything a compiled id could change).
+
+| piece | collisions (reference / with WP-92's guard) | victims | victim hit after its departure [s] | colliders | collider hit after its departure [s] |
+|---|---|---|---|---|---|
+| `638519829-AddedOnRampEdge`, lane 1 | 11 / 19 | all on-ramp 178547099's (route `on5…`) | 27.1–30.2 / 26.6–39.9 | mainline (5 / 12), the two Hudson Rd ramps' (6 / 6), once another McKnight Rd entrant (0 / 1) | 50.5–214.1 / 23.6–220.7 |
+| `43917735#1-AddedOnRampEdge`, lane 1 | 3 / 0 | all on-ramp 18207436's (`on3…`) | 30.5–31.0 | mainline (3) | 164.1–172.1 |
+
+- *The victims did not queue.* 27–31 s is a drive down the ramp (290.6 / 368.0 m at up to 22.2 m/s) and the added lane, braking for its end: forced at the end on the first pass. The one exception, 39.9 s with the guard, was hit by another ramp vehicle 23.6 s after its departure.
+- *The colliders were in free flow.* A mainline collider covered the 3.6–4.5 km from the upstream boundary at 20.5–24.3 m/s on average; a Hudson Rd entrant reached McKnight Rd 47–81 s after departing, 1.1–1.5 km upstream.
+- *So the corridor collides in the fixture's free-lane regime*: at the front of the queue's arrival or between its waves, not in the standing queue.
+- The reference's fifteenth collision (999007700_1 at 7.5 m, t = 12,379 s, two Ruth St exiters) is in the weave section and not part of this package.
+
+**(3) The mechanism** (SUMO 1.27.1's source at tag `v1_27_1`, `microsim.runner` at HEAD).
+- *The lane end slows the changer.* The added lane has no successor, so SUMO brakes the vehicle to stop at its end (`MSVehicle::planMoveInternal`, "check whether the lane … is a dead end", l. 2754: `stopSpeed` to the lane end). A vehicle that has not found a gap reaches the forced zone slowing: 1.8–8.9 m/s at the landings above, against 16.4–22.3 m/s in lane 1.
+- *The forced change.* `_scripted_merge_step` sets mode 256 once a vehicle has spent `force_after_s` (4 s) in the last `force_within_m` (80 m), and keeps it until the vehicle leaves the lane. It requests `changeLane(…, 2.0 s)` every 2 s while the vehicle is forced or its acceptance holds. Nothing reads the follower's closing speed before a forced request.
+- *What mode 256 checks.* `MSVehicle::Influencer::influenceChangeDecision` (l. 764–766) clears every blocked bit of a TraCI request under `LCP_NOOVERLAP` unless `LCA_OVERLAPPING` is set. `MSLaneChanger::checkChange` (l. 822–836) sets it only for a negative follower or leader gap. `getRealFollower`'s gap (l. 760) is net of the follower's `minGap`. So the change executes once the follower's front is behind its own `minGap`, at any closing speed.
+- *What follows.* The follower brakes at up to its emergency deceleration (EIDM's `finalizeSpeed` admits `minNextSpeedEmergency`, l. 347; 9 m/s² for passenger cars). Closing at 13 m/s, it needs about 9 m beyond its `minGap` at 9 m/s², and it has 0.1–4.5 m. SUMO reports the contact at the movement stage (type "collision", `MSNet.cpp` l. 880), not the lane-change stage (l. 887, "side"): the change itself landed clear.
+- *One collision traced step by step* (b6, seed 3; ramp vehicle v02074, `decel` 1.80; follower v00567, `decel` 1.62, `minGap` 3.42).
+
+| t [s] | v02074 | v00567 (lane 1) | runner |
+|---|---|---|---|
+| 1,093.0 | 175.4 m, 16.2 m/s, −1.3 m/s² (braking for the lane end) | – | enters the forced zone |
+| 1,096.0 | 216.0 m, 11.4 m/s | 186.8 m, 22.9 m/s | acceptance holds (leader gap 13.4 ≥ 9.6 m, follower gap 20.9 ≥ 16.6 m): `changeLane(…, 2 s)` under 512; SUMO refuses |
+| 1,097.0 | 225.8 m, 9.3 m/s | 209.3 m, 22.2 m/s; follower gap 8.07 m net | 4 s in the zone: mode 256; the request of 1,096.0 is still open |
+| 1,097.5 | in lane 1 at 229.9 m, 8.3 m/s | 220.0 m, 21.4 m/s: 4.93 m behind its back, 1.52 m net | – |
+| 1,098.0 | 234.3 m, 8.7 m/s | 228.5 m, 16.9 m/s, −8.98 m/s² | – |
+| 1,098.5 | 238.9 m, 9.2 m/s | 234.7 m, 12.4 m/s, −8.98 m/s² | SUMO: collision at 234.66 m |
+
+- *Not the cause:*
+  - SUMO's own changes: 3,848 arrival entries and 1,973 accepted entries in the 25 runs, none followed by braking beyond 4 m/s².
+  - An insertion: vehicles are inserted on way 900, 932 m upstream of the piece.
+  - The lane-end give-up and the weave: neither acts on the piece (section (1)).
+- *A counting note.* The runner counts a collision when `simulation.getCollidingVehiclesNumber()` is non-zero. That number flags vehicles only in the step a pair is first registered (`MSLane::handleCollisionBetween`, l. 2193, after `MSNet::registerCollision`), so a pair persisting for 2–3 steps is counted once. docs/CONTRACTS.md said "counts every step"; corrected there.
+
+**(4) The existing options** (seeds 3–7 per cell; ramp merged = ramp vehicles that reached lane 1 by the end, of those that reached the piece).
+
+| regime | option | collisions | follower ≤ −8.9 m/s² | ramp merged | still on the added lane at the end | mean wait [s] | lane 1, last 100 m [m/s] |
+|---|---|---|---|---|---|---|---|
+| free | `scripted` (reference) | 5 | 23 | 1,458 | 2 | 2.7 | 20.0 |
+| free | `lane_change` | 0 | 0 | 1,456 | 4 | 1.6 | 19.3 |
+| free | `scripted`, `courtesy` 2 | 0 | 16 | 1,456 | 4 | 2.1 | 19.7 |
+| b6 | `scripted` (reference) | 3 | 17 | 1,455 | 5 | 2.6 | 19.8 |
+| b6 | `lane_change` | 0 | 0 | 1,458 | 2 | 1.6 | 19.7 |
+| b6 | `scripted`, `courtesy` 2 | 0 | 34 | 1,457 | 3 | 2.1 | 20.2 |
+| b3 | `scripted` (reference) | 0 | 2 | 1,378 | 77 | 22.5 | 6.8 |
+| b3 | `lane_change` | 0 | 0 | 1,439 | 21 | 8.9 | 6.5 |
+| b3 | `scripted`, `courtesy` 2 | 0 | 10 | 1,370 | 82 | 23.1 | 7.0 |
+| b3late | `scripted` (reference) | 1 | 6 | 1,368 | 80 | 22.3 | 7.2 |
+| b3late | `lane_change` | 0 | 0 | 1,437 | 22 | 8.3 | 7.0 |
+
+- *`lane_change`* (SUMO's own model, which checks the follower's secure gap): no collision, no follower at 9 m/s², more ramp vehicles merged and sooner in every regime. In the queue it merges 4.4–5.0 % more ramp vehicles, and 0.5–0.7 % fewer mainline vehicles depart (every ramp vehicle departs either way).
+- *`courtesy`* removes the 10 runs' collisions but not the emergency stops (16–34).
+- *`zipper` and `acceleration_lane`* cannot be applied to these entrances. Their patches name the split piece (`638519829-AddedOnRampNode`, `…-AddedOnRampEdge`), which exists only after ramp guessing, and the OSM re-import that applies them reads the patch before it: netconvert stops ("Missing position (at node ID='638519829-AddedOnRampNode')" / "The from-node is not given for edge '638519829-AddedOnRampEdge'"). An engine limitation, recorded, not addressed here.
+- *The netconvert added-lane length and the fleet's lane-change urgency* were not varied. The collisions depend on the closing speed at a mode-256 change, which neither sets.
+
+**(5) Guard forms** (seeds 3–7; harness copies of the step; "one-step" = a forced change requested for one step under mode 256 only when the guard passes, otherwise no forced request; "per step" = the requests as before, the mode 256 only in steps where the guard passes, else 512).
+
+| form | free: collisions / ≤ −8.9 / merged / lane 1 [m/s] | b3: merged / still on the lane | b3late: collisions / merged |
+|---|---|---|---|
+| reference | 5 / 23 / 1,458 / 20.0 | 1,378 / 77 | 1 / 1,368 |
+| one-step, the weave's guard (`_weave_force_gap_ok` with both `decel`s) | 0 / 1 / 1,452 / 19.1 | **1,007 / 161** | 0 / 1,029 |
+| … its closing-speed terms alone | 0 / 27 / 1,458 / 20.0 | – | – |
+| one-step, brake terms alone, own `decel` | 0 / 1 / 1,457 / 19.4 | **1,029 / 158** | 0 / 1,037 |
+| one-step, brake terms alone, 4 m/s² (MOBIL's b_safe) | 0 / 3 / 1,455 / 19.8 | **1,064 / 151** | 0 / 1,059 |
+| per step, the weave's guard | 0 / 0 / 1,455 / 16.0 | 1,361 / 83 | 0 / 1,361 |
+| per step, brake terms alone | 0 / 0 / 1,455 / 17.4 | 1,370 / 83 | 0 / 1,366 |
+| per step, never 256 (always 512) | 0 / 0 / 1,450 / 14.8 | 1,364 / 89 | 0 / 1,359 |
+| **per step, brake terms less one step of closing (the key)** | **0 / 0 / 1,450 / 16.4** | **1,376 / 78** | **0 / 1,371** |
+
+- *Why the one-step forms starve the queue.* In the b3 queue lane 1 passes the halted ramp vehicle at 2.5–3.5 m/s with the two net gaps summing to about −1.7 m: there is never a step in which both are non-negative (the one-step brake-terms form, seed 3, t = 2,380–2,440 s, read step by step). Without a standing request no change is ever tried, and SUMO's cooperation towards a blocked changer does not start. The added lane fills (33 vehicles at seed 3) and the ramp backs up. The reference gets in because its request stays open and, under mode 256, SUMO executes it in the first step without an overlap.
+- *Why the step term.* The guard reads the state after a step, and SUMO executes the change after the next step's movement, in which the pair closes by `c·Δt`. With the brake terms alone, 6 of 79 mode-256 entries in free flow were followed by a follower at ≤ −6 m/s² (the hardest −8.3); with the step term 5 of 55 (−7.4).
+
+**(6) The key** (`microsim.runner._scripted_force_gap_ok`, `_scripted_merge_step`; `SCRIPTED_MERGE_DEFAULTS["force_guard"]`, 0 = off).
+- *The rule.* A vehicle due to force is under mode 256 in a step only if `g_F − c_F·Δt > c_F²/(2·b_F)` with `c_F = (v_F − v)⁺` and `g_L − c_L·Δt > c_L²/(2·b)` with `c_L = (v − v_L)⁺`. The gaps are the net gaps `vehicle.getNeighbors` reports, and each `b` is the party behind's own `decel`. Otherwise it is under mode 512 and counted in `n_forced_deferred` (vehicle-steps; `meta.json["scripted_merges"]`, additive). Its requests are made as without the key. At equal speeds the rule is SUMO's own overlap test.
+- *Derived, not tuned.* The brake terms are the speed-aware terms of the weave's forced guard; the step term is SUMO's step order. The weave's floors (`s0`, the time gap) are what starved the queue. No constant is added.
+- *The traced collision under the key:* refused. The follower needed 6.46 + 51.52 = 57.98 m and had 8.07.
+- *The key reproduces the harness form exactly:* every recorded vehicle-state row and counter is equal (free, seed 3: 241,884 rows, 571 refused vehicle-steps; b3late, seed 5: 664,293 rows, 1,098).
+- *Entries under the key* (15 runs): 163 under mode 256, the followers at ≤ −4 m/s² after 22 and ≤ −6 m/s² after 5, none at 9 m/s², the hardest −7.43.
+- *On the test's configuration* (the fixture, corridor minutes 50–70, 20 simulated minutes, no boundary; `tests/test_microsim/test_microsim_scripted_force_guard.py`, seeds 3–7):
+
+| seed | collisions, off → on | at [m] (off) | forced, off → on | deferred (on) | on the added lane at the end, off → on | mean wait [s], off → on |
+|---|---|---|---|---|---|---|
+| 3 | 1 → 0 | 233.8 | 22 → 9 | 352 | 0 → 0 | 8.1 → 8.5 |
+| 4 | 0 → 0 | – | 9 → 3 | 138 | 1 → 0 | 5.2 → 6.9 |
+| 5 | 2 → 0 | 190.5, 208.2 | 15 → 3 | 267 | 2 → 0 | 11.1 → 9.0 |
+| 6 | 0 → 0 | – | 22 → 13 | 449 | 0 → 0 | 8.0 → 12.0 |
+| 7 | 1 → 0 | 234.3 | 12 → 6 | 305 | 1 → 3 | 7.6 → 9.5 |
+
+  Every ramp vehicle departs in all ten runs (150 of 150).
+- *Off, nothing moves.* The runner in this tree gives byte-identical trajectories to the runner at HEAD (md5 0555fc1f3b: free, seed 3; f668fffcf8: b3late, seed 5). The reference scenario's config hash stays 7ec8c8ef6e59. The goldens (`merge_scripted` among them) are unchanged. The only new output is the `n_forced_deferred` field, 0.
+- *The costs, where there are any, are in free flow:* lane 1 over the last 100 m 16.4 against 20.0 m/s, mean wait 3.9 against 2.7 s, 10 against 2 vehicles still on the added lane at the end (of about 290 a run), 1,450 against 1,458 merged. In the queue it merges as many (1,376 against 1,378; 1,371 against 1,368).
+
+**Reading.**
+1. *The corridor's collisions are the scripted merge's, not SUMO's.* Both entrances where they happen are `scripted`, the only two. On a cut of one of them every collision is a mode-256 forced change landing in front of a follower 10–16 m/s faster, with the corridor's signature: lane 1, inside the forced zone, a ramp vehicle hit by one from upstream. On the corridor the victims had driven straight down their ramp and the added lane, and the colliders arrived at free-flow speeds: the fixture's free-lane regime, not its queue.
+2. *The mechanism is one rule's gap.* Mode 256 checks only the overlap, the forced change reads nothing of the follower, and the lane end has slowed the changer. Half the time (5 of 13) the change that lands is not even the forced request but the acceptance's, refused by SUMO under 512 and still open when the mode turned 256.
+3. *The fixture reproduces it at a rate set by lane 1's speed*: none in a settled queue, one in 29–47 forced changes with lane 1 free. The corridor's rate (14 in 20 four-hour runs, with several hundred forced changes a run in older records) fits a merge that sits in the queue most of the time. That is a consistency check, not a measurement: the corridor's scripted counters for VM U are on the VM.
+4. *Two fixes remove it on the fixture.* The key keeps the scripted merge and its throughput in a queue, at a cost in free flow. SUMO's own `lane_change` merge is better on every fixture measure. The scripted merge was put on these two entrances in round 2, when lane-change merges locked the corridor, before the map defects of 2026-09-24 were found (docs/ONBOARDING_MNDOT.md §6 and §9). Whether that reason still holds is a corridor question.
+5. *Neither is adopted on fixture evidence.* WP-56's lesson stands: a merge rule needs the 20-seed corridor battery before it goes on. The stages are written (below).
+
+**Nothing ships on by default.** `SCRIPTED_MERGE_DEFAULTS["force_guard"]` = 0. At that value the step is call for call as before, every hash is unchanged, and so is every trajectory checked and every golden. The key, its counter and its tests ship. The scenario is not changed.
+
+**What this hands on.**
+- *(a) Two corridor batteries*, each beside `mndot_weave_xlend` at the same commit so they pair seed by seed (scripts/gcp/pipeline_i24.sh, not launched):
+  - 10o `mndot_weave[_slice]_xlsfg`: the reference plus `merge_params {force_guard: 1.0}` on on-ramps 18207436 and 178547099 (config hash 4ab855f5054a; slice 0c6e3dda92a3);
+  - 10p `mndot_weave[_slice]_xlmlc`: the reference with both on `merge: lane_change` (d77bf15fa6bd; slice 7506ac34c8f3).
+  
+  Both scenario derivations were run in the session and validated (`ScenarioConfig`, both ramps changed and no other). Read: the collisions on the two pieces, the two ramps' delivered fractions, departures, RMSPE and GEH.
+- *(b) Hudson Rd was not cut.* Its three collisions are attributed by signature: the same design (a 251.05 m piece, scripted, the same parameters), 13–20 m before the lane's end, victims of 18207436's block.
+- *(c) The zipper and acceleration-lane models* cannot patch an entrance whose added lane lives on a split piece.
+
+**Limitations.**
+- *Scale.* Five seeds per cell, 45-minute runs, one entrance.
+- *State.* The corridor's local state is bracketed by five regimes, not measured.
+- *Platform.* macOS only. WP-85 found fixture runs that land differently on Linux, which is why the run test pins the key-on outcome only.
+- *Residual.* Under the key a follower still brakes at 4–7.4 m/s² after 22 of 163 mode-256 entries. The guard reads the state before the step; a third vehicle entering lane 1 behind the changer in the same step is not seen (WP-92's family).
+- *The corridor's counters.* The corridor's scripted-merge counters for VM U were not read (on the VM).
+
+**Bookkeeping.**
+- *Edited:*
+  - `packages/flowstate_core/flowstate_core/config.py`: `SCRIPTED_MERGE_DEFAULTS["force_guard"]` = 0.0 and the `merge_params` docstring.
+  - `packages/microsim/microsim/runner.py`: `_scripted_force_gap_ok` (new); in `_scripted_merge_step` the guarded branch under the key and each vehicle's `mode` in its state; `n_forced_deferred` and `step_s` in the scripted state; `n_forced_deferred` in `meta.json["scripted_merges"]`.
+  - docs/CONTRACTS.md §2: the `force_guard` bullet, `n_forced_deferred` in the `scripted_merges` list, and the correction of how `n_collisions` counts a persisting pair.
+  - `scripts/gcp/pipeline_i24.sh`: stages 10o and 10p.
+  - This section.
+- *Created:*
+  - `tests/fixtures/mcknight_merge.osm`.
+  - `tests/test_microsim/test_microsim_scripted_force_guard.py`, nine tests: off by default and hash-neutral; the guard's bounds with the traced numbers, at equal speeds and each side's own `decel`; the step off (mode 256 for good) and on (held under 512; the mode set each step and written only on a change); the fixture's compiled geometry; one key-on run.
+- *Not edited:* CHANGELOG.md (the bullet is handed to the coordinator), the scenarios, every existing fixture, test and golden.
+- *Tests run:*
+  - `test_microsim_scripted_force_guard.py`: 9 passed.
+  - `test_microsim_merge_managed_meter.py`, `test_microsim_lane_end_giveup.py` and `test_microsim_determinism.py`: 236 passed, 5 xfailed, 1 xpassed (the non-strict capacity seed 4 on macOS, as before).
+  - `test_microsim_golden.py` and `tests/test_flowstate_core`: 68 passed.
+  - `ruff check`, `ruff format --check` and `mypy --strict` on the three strict packages.
+- *Session files (`wp93/`, not committed):*
+  - the recorder and harness `h93.py`, the fixture builder `fixture_cfg.py` and `mcknight.osm`, the forms `proto93.py`;
+  - the readers `ana93.py`, `merge93.py`, `tab93.py` (`tab93_cache.json`), `colltab93.py` and `trace93.py`;
+  - `ident93.py` (with `runner_head.py`, HEAD's runner), `testcfg93.py`, `local_demand.py`, `build_net.py` and `geom.py`;
+  - the batches `batch93.sh`, `batch93b.sh` … `batch93e.sh` and their `logs/`;
+  - the 194 traces `trace_<cell>_<seed>.jsonl.gz`;
+  - the stage scenarios `stage_xlsfg*.yaml` and `stage_xlmlc*.yaml`;
+  - SUMO 1.27.1's sources read, in `src/` (tag `v1_27_1`);
+  - run directories deleted after each run.
+
+Every number above is from those runs, from SUMO 1.27.1's source at tag `v1_27_1`, from `microsim.runner` at HEAD and in this tree (md5 prefix 8fe1f835d4ec), or from the committed files named.

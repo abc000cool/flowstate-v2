@@ -826,6 +826,64 @@ def _neighbor_gap(mod: Any, vid: str, mode: int) -> tuple[float, float, str | No
     return best_gap, best_v, best_id
 
 
+def _scripted_force_gap_ok(
+    v_ego: float,
+    g_lead: float,
+    v_lead: float,
+    g_foll: float,
+    v_foll: float,
+    b_ego: float,
+    b_foll: float | None,
+    step_s: float,
+) -> bool:
+    """Brake-gap guard of a scripted merge's forced change (``force_guard``, WP-93).
+
+    Mode 256 refuses a change only when the target-lane follower's front is
+    inside its own ``minGap`` behind the changer, or the changer's inside
+    its own behind the leader (SUMO 1.27.1, ``MSLaneChanger::checkChange``:
+    ``LCA_OVERLAPPING`` on a negative gap from ``getRealFollower`` /
+    ``getRealLeader``, whose gaps are net of that ``minGap``;
+    ``MSVehicle::Influencer::influenceChangeDecision`` clears every other
+    blocked bit). The gaps given here are those same net gaps
+    (``vehicle.getNeighbors``). The change is allowed only when each side,
+    less the distance its pair closes in one step, still holds the brake gap
+    of the party behind at that party's own comfortable deceleration:
+
+    ``g_foll − c_F·Δt > c_F² / (2·b_foll)`` with ``c_F = (v_foll − v_ego)⁺``,
+    ``g_lead − c_L·Δt > c_L² / (2·b_ego)`` with ``c_L = (v_ego − v_lead)⁺``.
+
+    The ``c·Δt`` term is the step order: the guard reads the state after a
+    step and SUMO executes the change after the next step's movement, in
+    which the pair may close at ``c`` for ``Δt``. The brake terms are the
+    speed-aware terms of the weave's forced guard (:func:`_weave_force_gap_ok`)
+    without its time-gap and minimum-gap floors, which on the McKnight Rd
+    fixture's queue left the acceleration lane full (docs/WEAVE_MODEL_PLAN.md,
+    dated section WP-93). At equal speeds both sides reduce to SUMO's own
+    overlap test (a positive net gap). A side with no vehicle passes.
+
+    Args:
+        v_ego: The changer's speed [m/s].
+        g_lead: Net gap to the target-lane leader [m] (``inf`` when none).
+        v_lead: That leader's speed [m/s] (``nan`` when none).
+        g_foll: Net gap to the target-lane follower [m] (``inf`` when none).
+        v_foll: That follower's speed [m/s] (``nan`` when none).
+        b_ego: The changer's comfortable deceleration [m/s²].
+        b_foll: The follower's comfortable deceleration [m/s²]; ``None`` with
+            no follower.
+        step_s: Simulation step length [s].
+
+    Returns:
+        Whether the vehicle may be under mode 256 this step.
+    """
+    closing_lead = max(v_ego - v_lead, 0.0) if g_lead < math.inf else 0.0
+    if g_lead - closing_lead * step_s <= closing_lead**2 / (2.0 * b_ego):
+        return False
+    if b_foll is None or g_foll == math.inf:
+        return True
+    closing_foll = max(v_foll - v_ego, 0.0)
+    return g_foll - closing_foll * step_s > closing_foll**2 / (2.0 * b_foll)
+
+
 def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t: float) -> None:
     """One step of the scripted merge for one ramp (``RampSpec.merge = "scripted"``).
 
@@ -836,8 +894,16 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
     change (``LC_MODE_SCRIPTED_FORCE``) after ``force_after_s`` inside the last
     ``force_within_m`` of the lane. Control is handed back to SUMO as soon as
     the vehicle leaves the lane. Bookkeeping lands in ``ss`` for ``meta.json``.
+
+    With ``force_guard`` > 0 (WP-93) a vehicle due to force is under mode 256
+    only in the steps in which :func:`_scripted_force_gap_ok` passes and under
+    ``LC_MODE_SCRIPTED_SAFE`` in the others (``n_forced_deferred`` counts
+    them); its requests are made exactly as without the key. Off, the step is
+    call for call the one before the key: mode 256 from the first forced step
+    on.
     """
     prm = ss["params"]
+    guard = float(prm.get("force_guard", 0.0)) > 0.0
     edge = ss["edge"]
     on_lane0 = {
         vid
@@ -871,6 +937,7 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
                 "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
                 "v_max_orig": float(mod.vehicle.getMaxSpeed(vid)),
                 "s0": float(mod.vehicle.getMinGap(vid)),
+                "mode": LC_MODE_SCRIPTED_SAFE,  # the mode last set (read under force_guard)
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ss["n_entered"] += 1
@@ -900,7 +967,28 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
         if remaining <= prm["force_within_m"] and st["zone_s"] is None:
             st["zone_s"] = t
         force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
-        if force and not st["forced"]:
+        if guard:
+            if force:
+                b_foll = float(mod.vehicle.getDecel(f_id)) if f_id is not None else None
+                ok = _scripted_force_gap_ok(
+                    v_ego,
+                    g_lead,
+                    v_lead,
+                    g_foll,
+                    v_foll,
+                    float(mod.vehicle.getDecel(vid)),
+                    b_foll,
+                    float(ss["step_s"]),
+                )
+                mode = LC_MODE_SCRIPTED_FORCE if ok else LC_MODE_SCRIPTED_SAFE
+                if st["mode"] != mode:
+                    mod.vehicle.setLaneChangeMode(vid, mode)
+                    st["mode"] = mode
+                if ok:
+                    st["forced"] = True
+                else:
+                    ss["n_forced_deferred"] += 1
+        elif force and not st["forced"]:
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_FORCE)
             st["forced"] = True
         if (ok_lead and ok_foll) or force:
@@ -6772,6 +6860,8 @@ def run_micro(
                     "n_entered": 0,
                     "n_changed": 0,
                     "n_forced": 0,
+                    "n_forced_deferred": 0,  # force_guard's refused vehicle-steps (WP-93)
+                    "step_s": float(cfg.sim.step_length_s),
                     "waits_s": [],
                 }
             )
@@ -7509,6 +7599,9 @@ def run_micro(
                 "n_entered": ss["n_entered"],
                 "n_changed": ss["n_changed"],
                 "n_forced": ss["n_forced"],
+                # vehicle-steps a due forced change was held under mode 512 by
+                # force_guard (WP-93); 0 with the key off
+                "n_forced_deferred": ss["n_forced_deferred"],
                 "n_unfinished": len(ss["veh"]),
                 "wait_s_mean": float(np.mean(ss["waits_s"])) if ss["waits_s"] else None,
                 "wait_s_p90": float(np.percentile(ss["waits_s"], 90)) if ss["waits_s"] else None,

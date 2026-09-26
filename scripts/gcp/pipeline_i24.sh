@@ -534,6 +534,46 @@ for V in slice ""; do
       --report-dir docs/reports/${MNDOT}_weave${SUF}_xlopp --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlopp failed; continuing"
 done
 
+# 10o. The reference configuration (10j, VM U) with WP-93's forced-change guard on the two scripted merges (2026-09-26,
+#     block 3; merge_params {force_guard: 1.0} on on-ramps 18207436 and 178547099, off by default). VM AF put 14 of the
+#     reference's 15 collisions on those two merges' lanes; on the McKnight Rd fixture every collision is a forced change
+#     under mode 256 landing in front of a follower 10-16 m/s faster, and the guard removes them all without costing the
+#     merge in a queue. Does it on the corridor, without starving the two ramps or costing departures, RMSPE or GEH?
+#     Run beside mndot_weave_xlend at the same commit so the batteries pair seed by seed. Diagnostic, not a default change.
+for V in slice ""; do
+  SUF=${V:+_$V}
+  stage mndot_weave${SUF}_xlsfg bash -c "sed -e 's#^name: ${MNDOT}_weave${SUF}\$#name: ${MNDOT}_weave${SUF}_xlsfg#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' scenarios/${MNDOT}_weave${SUF}.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' \
+      | awk '/^    merge: scripted\$/ {s=1; print; next} s && /^    merge_params: \{\}\$/ {print \"    merge_params: {force_guard: 1.0}\"; s=0; next} {s=0; print}' \
+      > scenarios/${MNDOT}_weave${SUF}_xlsfg.yaml && \
+    [ \$(grep -c '^    merge_params: {force_guard: 1.0}\$' scenarios/${MNDOT}_weave${SUF}_xlsfg.yaml) -eq 2 ] && \
+    grep -c '^  lane_end_giveup_m: 7.5' scenarios/${MNDOT}_weave${SUF}_xlsfg.yaml && \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave${SUF}_xlsfg.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates \$([ -n '$V' ] && echo 4 || echo $REPS) --procs $PROCS \
+      --out runs/${MNDOT}_weave${SUF}_xlsfg/baseline --artifact artifacts/validation_${MNDOT}_weave${SUF}_xlsfg.json \
+      --report-dir docs/reports/${MNDOT}_weave${SUF}_xlsfg --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlsfg failed; continuing"
+done
+
+# 10p. The reference configuration (10j, VM U) with the two scripted merges on SUMO's own lane change (2026-09-26, block 3,
+#     WP-93; merge: lane_change on on-ramps 18207436 and 178547099, an existing option). The scripted merge was put on
+#     them in round 2, before the map defects of 2026-09-24 were found; on the McKnight Rd fixture SUMO's own merge
+#     collides never and merges more ramp vehicles, sooner, in every regime measured. Does it hold on the corridor, where
+#     round 2's lane-change merges locked? Run beside mndot_weave_xlend at the same commit. Diagnostic, not a scenario change.
+for V in slice ""; do
+  SUF=${V:+_$V}
+  stage mndot_weave${SUF}_xlmlc bash -c "sed -e 's#^name: ${MNDOT}_weave${SUF}\$#name: ${MNDOT}_weave${SUF}_xlmlc#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' -e 's#^    merge: scripted\$#    merge: lane_change#' \
+      scenarios/${MNDOT}_weave${SUF}.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' > scenarios/${MNDOT}_weave${SUF}_xlmlc.yaml && \
+    [ \$(grep -c '^    merge: scripted\$' scenarios/${MNDOT}_weave${SUF}_xlmlc.yaml) -eq 0 ] && \
+    grep -c '^  lane_end_giveup_m: 7.5' scenarios/${MNDOT}_weave${SUF}_xlmlc.yaml && \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave${SUF}_xlmlc.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates \$([ -n '$V' ] && echo 4 || echo $REPS) --procs $PROCS \
+      --out runs/${MNDOT}_weave${SUF}_xlmlc/baseline --artifact artifacts/validation_${MNDOT}_weave${SUF}_xlmlc.json \
+      --report-dir docs/reports/${MNDOT}_weave${SUF}_xlmlc --criteria-profile fhwa_tat3_2004" || say "mndot_weave${SUF}_xlmlc failed; continuing"
+done
+
 # 11. Operational strategies on the validated I-24 arm (opt-in, 2026-09-23): six cells × 20 seeds —
 #     baseline, VSL only, ALINEA only, FollowerStopper 10 % under none / vsl / alinea. ALINEA target
 #     29.2 veh/km/lane = the capacity-scaled population's equilibrium capacity 1,985.5 veh/h/lane at
