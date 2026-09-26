@@ -1386,6 +1386,37 @@ class AVSpec(BaseModel):
     vsl_params: dict[str, float] = Field(default_factory=dict)
     oracle: OracleSpec = Field(default_factory=OracleSpec)
     """Wave-detection oracle realism for downstream-reading controllers (JAD)."""
+    emergency_handback: bool = False
+    """Hand a commanded vehicle back to its car-following model for any step
+    in which the model must brake harder than a command can (2026-09-26,
+    WP-95; docs/I24_STRATEGIES.md, dated section). Off by default and
+    hash-neutral when off.
+
+    Every compliant AV is driven by ``vehicle.setSpeed`` under SUMO's default
+    speed mode 31 (CLAUDE.md §3.3). In SUMO 1.27.1 a ``setSpeed`` target is
+    held until ``setSpeed(-1)`` (``libsumo/Vehicle.cpp`` 1924–1938), and in
+    every step ``MSVehicle::processTraCISpeedControl`` (``MSVehicle.cpp``
+    4014–4043) replaces the model's own next speed with it, clamped by
+    ``Influencer::influenceSpeed`` (493–520): first down to the safe speed
+    (bit 0), then *up* to ``minNextSpeed(v)`` (bit 2). The second clamp
+    wins, so a commanded vehicle never brakes harder than
+    ``max(decel, min(emergencyDecel, 1.5))`` for SUMO's IDM
+    (``MSCFModel_IDM.cpp`` 80–89) or ``decel`` for EIDM, while its model
+    alone (``MSCFModel::finalizeSpeed``, ``MSCFModel.cpp`` 199–265) and every
+    human may brake up to ``emergencyDecel`` (9 m/s² for a passenger car).
+    When the leader brakes harder than that, or a vehicle enters the lane
+    close ahead, the AV runs into it.
+
+    With ``True``, in every step and for every AV holding a command, the
+    runner asks the model for its follow speed behind the current leader
+    (``vehicle.getFollowSpeed``); when it lies below the lowest speed the
+    command can reach this step (``v`` less that deceleration times the step
+    length) the command is withdrawn (``setSpeed(-1)``) and the model brakes
+    with its own authority, and the held command is re-applied in the first
+    step in which it can again brake enough. Without such a step the
+    runner's TraCI writes, and so the run, are those of ``False``.
+    Counted in ``meta.json["av_emergency_handback"]``; no effect without a
+    ``controller``."""
 
 
 class SimSpec(BaseModel):

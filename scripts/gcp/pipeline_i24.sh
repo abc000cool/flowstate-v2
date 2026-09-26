@@ -76,6 +76,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # the US-101 lane-change stage's per-run records and the sweep manifest (WP-81; <cell>/<hash>/<seed>/, three levels;
   # the artifact rebuilds from them with scripts/us101_lane_changes.py --analyze-only, no trajectory read)
   extra="$extra $(ls runs/us101_penetration/*/*/*/lane_changes.json runs/us101_penetration/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
+  # the handback and committed-configuration re-runs (WP-95, stage 18): per-run metrics and meta.json (n_collisions,
+  # collisions, av_emergency_handback) of runs/<tree>_hb and runs/<tree>_cc, four levels as corridor_sweep.py writes them
+  extra="$extra $(ls runs/*_hb/*/*/*/metrics.json runs/*_hb/*/*/*/meta.json runs/*_cc/*/*/*/metrics.json runs/*_cc/*/*/*/meta.json runs/*_hb/MANIFEST.json runs/*_cc/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -668,6 +671,107 @@ fi
 if echo " $STAGES " | grep -q " us101_coverage_thinning "; then
   stage us101_coverage_thinning $RUN scripts/coverage_thinning.py \
     || say "us101_coverage_thinning failed; continuing"
+fi
+
+# 18. The AV command handback (WP-95, 2026-09-26; opt-in; needs no data set: launch with --data-set none). Every
+#     controller result so far drove its compliant AVs by vehicle.setSpeed under SUMO's default speed mode, whose
+#     maximum-deceleration clamp overrides its safe-speed clamp: a commanded AV never brakes harder than its b (IDM:
+#     max(b, 1.5)), where its own model and every human may brake at 9 m/s². The strategy sweep (stage 11) recorded 311
+#     collisions, all in its FollowerStopper cells, 305 with a compliant AV behind (docs/I24_STRATEGIES.md, 2026-09-26
+#     section). AVSpec.emergency_handback (off by default, hash-neutral) hands the AV back to its model in the steps that
+#     need more. A "_hb" stage runs a sweep on a copy of its committed scenario that differs only in its name and
+#     av.emergency_handback: true (no effect in the cells without a controller, whose metrics must reproduce the committed
+#     ones to the digit: a check), with the committed grid and seed list, so every run pairs by seed with the committed run.
+#     A "_cc" stage runs the committed configuration unchanged (corridor_sweep.py's cells hash like the committed ones,
+#     checked 2026-09-26) for results whose runs predate the collision counter (2026-09-16): it measures how many
+#     collisions they contained. meta.json (n_collisions, collisions, av_emergency_handback) rides along beside
+#     metrics.json, and each tree gets a census (scripts/collision_census.py -> artifacts/collisions_<tree>.json).
+#     Diagnostic batteries, not default changes. Nothing here has run.
+#   18a. The strategy sweep with the key; its committed runs are the key-off arm (their census is the committed
+#        artifacts/collisions_i24_strat_sweep.json). 120 runs; the pool capped at 12 as in stage 11 (about 9 GB a run).
+if echo " $STAGES " | grep -q " sweep_i24_strat_hb "; then
+  stage sweep_i24_strat_hb bash -c "sed -e 's#^name: i24_replica_flow_speedcal_ramps\$#name: i24_replica_flow_speedcal_ramps_hb#' \
+      scenarios/i24_replica_flow_speedcal_ramps.yaml \
+      | awk '{print} /^av:\$/ && !d {print \"  emergency_handback: true\"; d=1}' > scenarios/i24_replica_flow_speedcal_ramps_hb.yaml && \
+    grep -c '^  emergency_handback: true\$' scenarios/i24_replica_flow_speedcal_ramps_hb.yaml && \
+    $RUN scripts/corridor_sweep.py --scenario scenarios/i24_replica_flow_speedcal_ramps_hb.yaml \
+      --penetration 0.10 --compliance 1.0 --controllers follower_stopper --strategies none vsl alinea \
+      --rho-target-veh-km 29.2 --x-ref 4411.8 --span 2256.2 7637.8 --replicates $REPS --procs $(( PROCS < 12 ? PROCS : 12 )) \
+      --out runs/i24_strat_sweep_hb --summary artifacts/sweep_i24_strategies_hb_summary.json && \
+    $RUN scripts/collision_census.py --root runs/i24_strat_sweep_hb --out artifacts/collisions_i24_strat_sweep_hb.json" \
+    || say "sweep_i24_strat_hb failed; continuing"
+fi
+
+#   18b. The penetration x compliance battery (docs/I24_SWEEP.md, artifacts/i24_sweep_summary.json: FollowerStopper at
+#        1/2/5/10/15/20 % x 25/50/80/100 % compliance plus the baseline, 20 seeds, on i24_replica_speedcal) through
+#        corridor_sweep.py, whose cells (strategy none) are scripts/i24_penetration_sweep.py's: _cc on the committed
+#        scenario (the battery's 25 config hashes), _hb on the copy with the key. Metrics on the summary's own metrics_args.
+#        500 runs an arm: the 2026-09-18 battery took about 7 h at 30 processes on n2-standard-32. A first pass can run
+#        compliance 1.0 alone (140 runs an arm) by editing --compliance here.
+I24_BATTERY_GRID="--penetration 0.01 0.02 0.05 0.10 0.15 0.20 --compliance 0.25 0.50 0.80 1.00 --controllers follower_stopper --strategies none"
+I24_BATTERY_METRICS="--x-ref 4411.802228308958 --span 2256.2172746009055 7637.830000000003"
+if echo " $STAGES " | grep -q " sweep_i24_cc "; then
+  stage sweep_i24_cc bash -c "$RUN scripts/corridor_sweep.py --scenario scenarios/i24_replica_speedcal.yaml $I24_BATTERY_GRID \
+      $I24_BATTERY_METRICS --replicates $REPS --procs $PROCS \
+      --out runs/i24_sweep_cc --summary artifacts/sweep_i24_penetration_cc_summary.json && \
+    $RUN scripts/collision_census.py --root runs/i24_sweep_cc --out artifacts/collisions_i24_sweep_cc.json" \
+    || say "sweep_i24_cc failed; continuing"
+fi
+if echo " $STAGES " | grep -q " sweep_i24_hb "; then
+  stage sweep_i24_hb bash -c "sed -e 's#^name: i24_replica_speedcal\$#name: i24_replica_speedcal_hb#' scenarios/i24_replica_speedcal.yaml \
+      | awk '{print} /^av:\$/ && !d {print \"  emergency_handback: true\"; d=1}' > scenarios/i24_replica_speedcal_hb.yaml && \
+    grep -c '^  emergency_handback: true\$' scenarios/i24_replica_speedcal_hb.yaml && \
+    $RUN scripts/corridor_sweep.py --scenario scenarios/i24_replica_speedcal_hb.yaml $I24_BATTERY_GRID \
+      $I24_BATTERY_METRICS --replicates $REPS --procs $PROCS \
+      --out runs/i24_sweep_hb --summary artifacts/sweep_i24_penetration_hb_summary.json && \
+    $RUN scripts/collision_census.py --root runs/i24_sweep_hb --out artifacts/collisions_i24_sweep_hb.json" \
+    || say "sweep_i24_hb failed; continuing"
+fi
+
+#   18c. The US-101 penetration sweep (docs/US101_PENETRATION.md; stage 14's configuration: scenarios/us101_replica.yaml with
+#        the network.boundary block of scenarios/us101_replica_calibrated.yaml, written out by scripts/us101_penetration_
+#        sweep.py's own _base_with_boundary(), config hash ab879e240aed; baseline and FollowerStopper at 1/2/5/10/20 %,
+#        100 % compliance, 20 seeds): _cc as is (name us101_replica, so the cells hash like the committed sweep's), _hb
+#        with the key. Metrics on the replica itself (x 640-1,280 m, throughput at 960 m, as the lane-change artifact's
+#        site metrics; docs/US101_PENETRATION.md correction note). 120 runs an arm, minutes.
+US101_GRID="--penetration 0.01 0.02 0.05 0.10 0.20 --compliance 1.0 --controllers follower_stopper --strategies none \
+  --x-ref 960 --span 640 1280"
+for ARM in cc hb; do
+  if echo " $STAGES " | grep -q " us101_penetration_$ARM "; then
+    SCN=scenarios/us101_replica_boundary_$ARM.yaml
+    stage us101_penetration_$ARM bash -c "$RUN -c 'import sys, yaml; sys.path.insert(0, \"scripts\"); \
+import us101_penetration_sweep as s; d, src = s._base_with_boundary(); print(src); hb = \"$ARM\" == \"hb\"; \
+d.update(name=d[\"name\"] + \"_hb\") if hb else None; d[\"av\"].update(emergency_handback=True) if hb else None; \
+open(\"$SCN\", \"w\").write(yaml.safe_dump(d, sort_keys=False))' && \
+      $RUN scripts/corridor_sweep.py --scenario $SCN $US101_GRID --replicates $REPS --procs $PROCS \
+        --out runs/us101_penetration_$ARM --summary artifacts/sweep_us101_penetration_${ARM}_summary.json && \
+      $RUN scripts/collision_census.py --root runs/us101_penetration_$ARM --out artifacts/collisions_us101_penetration_$ARM.json" \
+      || say "us101_penetration_$ARM failed; continuing"
+  fi
+done
+
+#   18d. The single-lane synthetic corridor (docs/CONTROLLER_COMPARISON.md, docs/M3_RESULTS.md; scenarios/corridor_10km.yaml,
+#        EIDM, one lane: no cut-ins, but a leader braking harder than the AV's b meets the same clamp) at the comparison
+#        point: FollowerStopper, PI with saturation and JAD (perfect oracle) at 5 %, 100 % compliance, plus the baseline,
+#        20 seeds; _cc as committed, _hb with the key. Metrics where scripts/m3_analyze_sweep.py places them (throughput at
+#        7,000 m, span 2,000-11,500 m) but with the warm-up discarded (the 2026-09-17 definitions), so _cc does not
+#        reproduce the 2026-08-30 tables to the digit: it is _hb's paired reference. 80 runs an arm.
+TENKM_GRID="--penetration 0.05 --compliance 1.0 --controllers follower_stopper pi_saturation jad --strategies none \
+  --x-ref 7000 --span 2000 11500"
+if echo " $STAGES " | grep -q " controllers_10km_cc "; then
+  stage controllers_10km_cc bash -c "$RUN scripts/corridor_sweep.py --scenario scenarios/corridor_10km.yaml $TENKM_GRID \
+      --replicates $REPS --procs $PROCS --out runs/controllers_10km_cc --summary artifacts/sweep_controllers_10km_cc_summary.json && \
+    $RUN scripts/collision_census.py --root runs/controllers_10km_cc --out artifacts/collisions_controllers_10km_cc.json" \
+    || say "controllers_10km_cc failed; continuing"
+fi
+if echo " $STAGES " | grep -q " controllers_10km_hb "; then
+  stage controllers_10km_hb bash -c "sed -e 's#^name: corridor_10km\$#name: corridor_10km_hb#' scenarios/corridor_10km.yaml \
+      | awk '{print} /^av:\$/ && !d {print \"  emergency_handback: true\"; d=1}' > scenarios/corridor_10km_hb.yaml && \
+    grep -c '^  emergency_handback: true\$' scenarios/corridor_10km_hb.yaml && \
+    $RUN scripts/corridor_sweep.py --scenario scenarios/corridor_10km_hb.yaml $TENKM_GRID \
+      --replicates $REPS --procs $PROCS --out runs/controllers_10km_hb --summary artifacts/sweep_controllers_10km_hb_summary.json && \
+    $RUN scripts/collision_census.py --root runs/controllers_10km_hb --out artifacts/collisions_controllers_10km_hb.json" \
+    || say "controllers_10km_hb failed; continuing"
 fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).

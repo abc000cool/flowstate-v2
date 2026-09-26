@@ -6140,6 +6140,132 @@ def _leader_obs(lib_mod: Any, veh_id: str, ego_min_gap: float) -> tuple[float, f
     return lead[1] + ego_min_gap, float(lib_mod.vehicle.getSpeed(lead[0]))
 
 
+#: SUMO 1.27.1's IDM lets ``minNextSpeed`` brake at no less than this
+#: [m/s²] (capped by ``emergencyDecel``), "to permit exceeding decel when
+#: approaching stops" (``MSCFModel_IDM.cpp`` 80–89).
+IDM_MIN_NEXT_SPEED_DECEL: Final[float] = 1.5
+#: Tolerance [m/s] below which a follow speed is not read as under the floor.
+HANDBACK_EPS_MS: Final[float] = 1e-9
+
+
+def _command_decel(model: str, decel: float, emergency_decel: float) -> float:
+    """Strongest deceleration [m/s²] a held ``setSpeed`` command can reach.
+
+    Under the default speed mode, ``MSVehicle::processTraCISpeedControl``
+    (SUMO 1.27.1, ``MSVehicle.cpp`` 4014–4043) hands
+    ``cfModel.minNextSpeed(v)`` to ``Influencer::influenceSpeed``
+    (493–520), whose maximum-deceleration clamp (speed mode bit 2) is
+    applied after, and therefore overrides, the safe-speed clamp (bit 0).
+    ``minNextSpeed`` brakes at ``max(decel, min(emergencyDecel, 1.5))`` for
+    SUMO's IDM (``MSCFModel_IDM.cpp`` 80–89) and at ``decel`` for every
+    other model, EIDM included (``MSCFModel.cpp`` 330–338).
+
+    Args:
+        model: The vType's ``carFollowModel`` (``FleetSpec.model``).
+        decel: The vehicle's ``decel`` [m/s²] (its drawn ``b``).
+        emergency_decel: The vehicle's ``emergencyDecel`` [m/s²].
+
+    Returns:
+        The deceleration bound of a commanded vehicle [m/s²].
+    """
+    if model == "IDM":
+        return max(decel, min(emergency_decel, IDM_MIN_NEXT_SPEED_DECEL))
+    return decel
+
+
+def _handback_needed(
+    lib_mod: Any, veh_id: str, v: float, command_decel: float, step_s: float
+) -> bool:
+    """Whether the car-following model must brake harder than a command can.
+
+    Asks the vehicle's own model for its follow speed behind its current
+    leader (``vehicle.getFollowSpeed``: the model's ``followSpeed`` for this
+    gap, speed and leader, the constraint that dominates ``planMove``'s safe
+    speed in the coming step) and compares it with the lowest speed a held
+    command can reach this step, ``v − command_decel · step_s``
+    (:func:`_command_decel`). No leader within ``LEADER_LOOKAHEAD_M``: False.
+    A negative gap (``getLeader`` subtracts the ego's ``minGap``) is passed on
+    unchanged; the model reads it as a demand to stop.
+
+    Args:
+        lib_mod: The ``libsumo`` / ``traci`` module.
+        veh_id: The commanded vehicle.
+        v: Its current speed [m/s].
+        command_decel: Its :func:`_command_decel` [m/s²].
+        step_s: Simulation step length [s].
+
+    Returns:
+        True when the command must be withdrawn for this step.
+    """
+    lead = lib_mod.vehicle.getLeader(veh_id, LEADER_LOOKAHEAD_M)
+    if lead is None or lead[0] == "":
+        return False
+    leader, gap = lead[0], float(lead[1])
+    v_follow = float(
+        lib_mod.vehicle.getFollowSpeed(
+            veh_id,
+            v,
+            gap,
+            float(lib_mod.vehicle.getSpeed(leader)),
+            float(lib_mod.vehicle.getDecel(leader)),
+            leader,
+        )
+    )
+    return v_follow < v - command_decel * step_s - HANDBACK_EPS_MS
+
+
+def _emergency_handback_step(
+    lib_mod: Any, tc: Any, results: Mapping[str, Any], hb: dict[str, Any], step_s: float
+) -> None:
+    """One step of ``AVSpec.emergency_handback`` over the AVs holding a command.
+
+    ``hb["held"]`` maps each AV the dispatch has commanded to its last
+    command [m/s]; ``hb["in_force"]`` holds those whose command SUMO is
+    applying (the dispatch adds each AV it commands). For each held AV still
+    in the network, in id order: when :func:`_handback_needed`, a command in
+    force is withdrawn (``setSpeed(-1)``); otherwise a withdrawn command is
+    re-applied. An AV that has left the network is dropped. Counts, in
+    ``hb``: ``n_vehicle_steps`` (vehicle-steps without the command),
+    ``n_withdrawals`` (commands withdrawn) and ``vehicles`` (AVs ever
+    released).
+
+    Args:
+        lib_mod: The ``libsumo`` / ``traci`` module.
+        tc: Its ``constants``.
+        results: This step's subscription results (every vehicle in the
+            network, ramps included).
+        hb: The run's handback state (see above; ``model`` and a per-vehicle
+            ``decel`` cache are kept in it too).
+        step_s: Simulation step length [s].
+    """
+    held: dict[str, float] = hb["held"]
+    in_force: set[str] = hb["in_force"]
+    for vid in sorted(held):
+        res = results.get(vid)
+        if res is None:
+            del held[vid]
+            in_force.discard(vid)
+            continue
+        b_cmd = hb["decel"].get(vid)
+        if b_cmd is None:
+            b_cmd = _command_decel(
+                hb["model"],
+                float(lib_mod.vehicle.getDecel(vid)),
+                float(lib_mod.vehicle.getEmergencyDecel(vid)),
+            )
+            hb["decel"][vid] = b_cmd
+        if _handback_needed(lib_mod, vid, float(res[tc.VAR_SPEED]), b_cmd, step_s):
+            if vid in in_force:
+                lib_mod.vehicle.setSpeed(vid, -1.0)
+                in_force.discard(vid)
+                hb["n_withdrawals"] += 1
+            hb["n_vehicle_steps"] += 1
+            hb["vehicles"].add(vid)
+        elif vid not in in_force:
+            lib_mod.vehicle.setSpeed(vid, held[vid])
+            in_force.add(vid)
+
+
 def _downstream_bins(
     ego_x: float,
     xs: np.ndarray,
@@ -6661,6 +6787,19 @@ def run_micro(
 
     compliant_avs = set(plan.complied_ids)
     memories: dict[str, Memory] = {vid: {} for vid in compliant_avs}
+    # AVSpec.emergency_handback (WP-95): None keeps the command path exactly
+    # as before; otherwise the per-step pass in _emergency_handback_step.
+    handback: dict[str, Any] | None = None
+    if cfg.av.emergency_handback and controller_fn is not None:
+        handback = {
+            "model": cfg.fleet.model,
+            "held": {},
+            "in_force": set(),
+            "decel": {},
+            "n_vehicle_steps": 0,
+            "n_withdrawals": 0,
+            "vehicles": set(),
+        }
 
     # Wave-detection oracle realism (CLAUDE.md §4.3). A perfect oracle keeps an
     # empty history and zero noise, so this costs nothing when unused.
@@ -7243,6 +7382,9 @@ def run_micro(
                 v_ref_hist.append((t, 0.0))
                 while v_ref_hist and v_ref_hist[0][0] < t - V_REF_WINDOW_S:
                     v_ref_hist.popleft()
+                if handback is not None and handback["held"]:
+                    # AVs off the corridor (ramps) still hold their commands
+                    _emergency_handback_step(mod, tc, results, handback, step)
                 continue
 
             speeds = np.array([results[v][tc.VAR_SPEED] for v in ids])
@@ -7433,6 +7575,14 @@ def run_micro(
                     v_cmd, memories[vid] = controller_fn(obs, controller_params, memories[vid])
                     # Default speedMode: SUMO safety checks stay ON (§3.3).
                     mod.vehicle.setSpeed(vid, max(v_cmd, 0.0))
+                    if handback is not None:
+                        handback["held"][vid] = max(v_cmd, 0.0)
+                        handback["in_force"].add(vid)
+
+            # AVSpec.emergency_handback (WP-95): every step, after the
+            # dispatch, withdraw a command the model must brake through.
+            if handback is not None and handback["held"]:
+                _emergency_handback_step(mod, tc, results, handback, step)
 
             # VSL dispatch (per gantry segment, every VSL_INTERVAL_S): segment
             # state is the vehicle count over the segment's summed length and
@@ -7630,6 +7780,16 @@ def run_micro(
         ],
         "fleet_calibration": fleet_calibration,
         "controller": cfg.av.controller,
+        # AVSpec.emergency_handback (WP-95): None when off
+        "av_emergency_handback": (
+            {
+                "n_vehicle_steps": handback["n_vehicle_steps"],
+                "n_withdrawals": handback["n_withdrawals"],
+                "n_vehicles": len(handback["vehicles"]),
+            }
+            if handback is not None
+            else None
+        ),
         "controller_start_s": controller_start_s,
         "vsl": cfg.av.vsl,
         "vsl_dispatch": (

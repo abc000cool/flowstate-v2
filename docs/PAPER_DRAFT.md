@@ -189,8 +189,16 @@ row in every I-24 battery.
 
 Controllers are pure functions `(state, params, memory) → (v_cmd, memory)`
 in SI units, shared by both tiers [CLAUDE.md §4]. Commands go through
-`vehicle.setSpeed` with SUMO's safety checks on, so a controller cannot
-command a collision [CLAUDE.md §3.3]. Compliance is drawn once per
+`vehicle.setSpeed` with SUMO's safety checks on [CLAUDE.md §3.3]. *Correction
+2026-09-26:* those checks do not make a controller collision-free. Under SUMO
+1.27.1 a held command never brakes harder than the vehicle's comfortable
+deceleration, while its own model and every human brake at up to 9 m/s², and
+the I-24 strategy sweep's FollowerStopper cells record 311 collisions in 51 of
+120 runs, 305 with a controlled vehicle behind [I24_STRATEGIES.md, WP-95;
+artifacts/collisions_i24_strat_sweep.json]. An option that hands braking back
+to the model when it needs more removes them on a fixture with the controller's
+effect unchanged; the controller results below were produced without it and are
+being re-run. Compliance is drawn once per
 controlled vehicle per run (Bernoulli), and a non-compliant vehicle ignores
 its command [CLAUDE.md §3.3].
 

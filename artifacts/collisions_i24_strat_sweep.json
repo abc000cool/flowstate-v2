@@ -1,0 +1,902 @@
+{
+ "schema_version": 1,
+ "kind": "collision_census",
+ "created_at": "2026-09-26T11:42:10Z",
+ "root": "runs/i24_strat_sweep",
+ "cells": {
+  "baseline": {
+   "n_runs": 20,
+   "config_hashes": [
+    "0cddf2002979"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 287241,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 0,
+   "colliders": {
+    "compliant_av": 0,
+    "noncompliant_av": 0,
+    "human": 0
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 0
+   },
+   "n_departed": 287241,
+   "n_departed_av": 0,
+   "per_1000_departed_av": null,
+   "handback": null
+  },
+  "follower_stopper_p0.10_c1.00_alinea": {
+   "n_runs": 20,
+   "config_hashes": [
+    "ec1b2ec331f0"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 105,
+    "n_runs_with_collisions": 19,
+    "runs_with_collisions": [
+     {
+      "run": 134183728835869882,
+      "n": 6
+     },
+     {
+      "run": 165503670820534583,
+      "n": 6
+     },
+     {
+      "run": 2378473973028931053,
+      "n": 8
+     },
+     {
+      "run": 3011106312394044631,
+      "n": 10
+     },
+     {
+      "run": 3747978530954135749,
+      "n": 4
+     },
+     {
+      "run": 4910985839736976611,
+      "n": 1
+     },
+     {
+      "run": 5690692725577505498,
+      "n": 6
+     },
+     {
+      "run": 6134032994440706937,
+      "n": 8
+     },
+     {
+      "run": 6143473282319009404,
+      "n": 5
+     },
+     {
+      "run": 6538422657834023852,
+      "n": 3
+     },
+     {
+      "run": 661281422688282993,
+      "n": 6
+     },
+     {
+      "run": 677105600768189526,
+      "n": 6
+     },
+     {
+      "run": 6904272788004776631,
+      "n": 3
+     },
+     {
+      "run": 6914975401685141156,
+      "n": 2
+     },
+     {
+      "run": 6953598295321596746,
+      "n": 7
+     },
+     {
+      "run": 7382187975121682178,
+      "n": 5
+     },
+     {
+      "run": 8026499204807041784,
+      "n": 8
+     },
+     {
+      "run": 8557154790156791364,
+      "n": 10
+     },
+     {
+      "run": 887972120279483394,
+      "n": 1
+     }
+    ],
+    "per_run": {
+     "mean": 5.25,
+     "lo95": 3.8929281102023525,
+     "hi95": 6.6070718897976475,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.49690264020936165,
+     "n_collisions": 105,
+     "n_departed": 211309,
+     "n_runs": 20
+    },
+    "n_logged": 105,
+    "locations": [
+     {
+      "lane": "977008892_2",
+      "edge": "977008892",
+      "n": 26,
+      "pos_m_min": 272.7826696614738,
+      "pos_m_max": 454.8977389618607,
+      "runs": [
+       134183728835869882,
+       2378473973028931053,
+       3011106312394044631,
+       3747978530954135749,
+       5690692725577505498,
+       6134032994440706937,
+       6143473282319009404,
+       6538422657834023852,
+       661281422688282993,
+       677105600768189526,
+       6953598295321596746,
+       7382187975121682178,
+       8557154790156791364,
+       887972120279483394
+      ]
+     },
+     {
+      "lane": "977008892_1",
+      "edge": "977008892",
+      "n": 25,
+      "pos_m_min": 185.07669946952143,
+      "pos_m_max": 453.7472086068062,
+      "runs": [
+       134183728835869882,
+       165503670820534583,
+       3011106312394044631,
+       5690692725577505498,
+       6134032994440706937,
+       6143473282319009404,
+       677105600768189526,
+       6904272788004776631,
+       7382187975121682178,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "977008892_3",
+      "edge": "977008892",
+      "n": 11,
+      "pos_m_min": 41.585540090237956,
+      "pos_m_max": 459.9288053436882,
+      "runs": [
+       661281422688282993,
+       6914975401685141156,
+       6953598295321596746,
+       8557154790156791364
+      ]
+     },
+     {
+      "lane": "977008894_1",
+      "edge": "977008894",
+      "n": 10,
+      "pos_m_min": 665.187713768628,
+      "pos_m_max": 954.6658306229526,
+      "runs": [
+       134183728835869882,
+       165503670820534583,
+       3011106312394044631,
+       6134032994440706937,
+       6143473282319009404,
+       677105600768189526,
+       7382187975121682178
+      ]
+     },
+     {
+      "lane": "992666043_2",
+      "edge": "992666043",
+      "n": 10,
+      "pos_m_min": 423.06482654996506,
+      "pos_m_max": 529.5085731625499,
+      "runs": [
+       2378473973028931053,
+       3011106312394044631,
+       3747978530954135749,
+       4910985839736976611,
+       661281422688282993,
+       677105600768189526,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "992666043_1",
+      "edge": "992666043",
+      "n": 7,
+      "pos_m_min": 201.91649452435627,
+      "pos_m_max": 534.5260205277766,
+      "runs": [
+       134183728835869882,
+       2378473973028931053,
+       3747978530954135749,
+       6134032994440706937,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "992666043_3",
+      "edge": "992666043",
+      "n": 6,
+      "pos_m_min": 393.46197389709323,
+      "pos_m_max": 544.7891884497371,
+      "runs": [
+       2378473973028931053,
+       6904272788004776631
+      ]
+     },
+     {
+      "lane": "977008893_3",
+      "edge": "977008893",
+      "n": 3,
+      "pos_m_min": 173.11433989413408,
+      "pos_m_max": 1241.9660110873888,
+      "runs": [
+       8557154790156791364
+      ]
+     },
+     {
+      "lane": "977008892_4",
+      "edge": "977008892",
+      "n": 2,
+      "pos_m_min": 183.48299953474233,
+      "pos_m_max": 423.4782870224237,
+      "runs": [
+       3747978530954135749,
+       8557154790156791364
+      ]
+     },
+     {
+      "lane": "977008891_3",
+      "edge": "977008891",
+      "n": 1,
+      "pos_m_min": 299.3276035898745,
+      "pos_m_max": 299.3276035898745,
+      "runs": [
+       677105600768189526
+      ]
+     },
+     {
+      "lane": "977008893_1",
+      "edge": "977008893",
+      "n": 1,
+      "pos_m_min": 1412.8697745880024,
+      "pos_m_max": 1412.8697745880024,
+      "runs": [
+       6914975401685141156
+      ]
+     },
+     {
+      "lane": "977008893_2",
+      "edge": "977008893",
+      "n": 1,
+      "pos_m_min": 1429.5875401613582,
+      "pos_m_max": 1429.5875401613582,
+      "runs": [
+       3011106312394044631
+      ]
+     },
+     {
+      "lane": "992666043_0",
+      "edge": "992666043",
+      "n": 1,
+      "pos_m_min": 542.6871773461888,
+      "pos_m_max": 542.6871773461888,
+      "runs": [
+       6904272788004776631
+      ]
+     },
+     {
+      "lane": "992666043_4",
+      "edge": "992666043",
+      "n": 1,
+      "pos_m_min": 4.833373650593977,
+      "pos_m_max": 4.833373650593977,
+      "runs": [
+       6538422657834023852
+      ]
+     }
+    ],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 94,
+   "colliders": {
+    "compliant_av": 104,
+    "noncompliant_av": 0,
+    "human": 1
+   },
+   "victims_of_compliant_av": {
+    "av": 18,
+    "human": 86
+   },
+   "n_departed": 211309,
+   "n_departed_av": 21111,
+   "per_1000_departed_av": 4.97371038794941,
+   "handback": null
+  },
+  "follower_stopper_p0.10_c1.00_none": {
+   "n_runs": 20,
+   "config_hashes": [
+    "f254c8c1e55b"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 150,
+    "n_runs_with_collisions": 20,
+    "runs_with_collisions": [
+     {
+      "run": 134183728835869882,
+      "n": 8
+     },
+     {
+      "run": 165503670820534583,
+      "n": 8
+     },
+     {
+      "run": 2378473973028931053,
+      "n": 4
+     },
+     {
+      "run": 3011106312394044631,
+      "n": 8
+     },
+     {
+      "run": 3747978530954135749,
+      "n": 5
+     },
+     {
+      "run": 3944094060050347669,
+      "n": 1
+     },
+     {
+      "run": 4910985839736976611,
+      "n": 1
+     },
+     {
+      "run": 5690692725577505498,
+      "n": 12
+     },
+     {
+      "run": 6134032994440706937,
+      "n": 1
+     },
+     {
+      "run": 6143473282319009404,
+      "n": 1
+     },
+     {
+      "run": 6538422657834023852,
+      "n": 8
+     },
+     {
+      "run": 661281422688282993,
+      "n": 18
+     },
+     {
+      "run": 677105600768189526,
+      "n": 11
+     },
+     {
+      "run": 6904272788004776631,
+      "n": 9
+     },
+     {
+      "run": 6914975401685141156,
+      "n": 7
+     },
+     {
+      "run": 6953598295321596746,
+      "n": 5
+     },
+     {
+      "run": 7382187975121682178,
+      "n": 19
+     },
+     {
+      "run": 8026499204807041784,
+      "n": 14
+     },
+     {
+      "run": 8557154790156791364,
+      "n": 8
+     },
+     {
+      "run": 887972120279483394,
+      "n": 2
+     }
+    ],
+    "per_run": {
+     "mean": 7.5,
+     "lo95": 4.993425181268886,
+     "hi95": 10.006574818731114,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.8065773695898822,
+     "n_collisions": 150,
+     "n_departed": 185971,
+     "n_runs": 20
+    },
+    "n_logged": 150,
+    "locations": [
+     {
+      "lane": "977008894_0",
+      "edge": "977008894",
+      "n": 48,
+      "pos_m_min": 27.803410325380966,
+      "pos_m_max": 126.87175258962986,
+      "runs": [
+       165503670820534583,
+       2378473973028931053,
+       3011106312394044631,
+       3747978530954135749,
+       3944094060050347669,
+       4910985839736976611,
+       5690692725577505498,
+       6134032994440706937,
+       6538422657834023852,
+       661281422688282993,
+       677105600768189526,
+       6914975401685141156,
+       6953598295321596746,
+       7382187975121682178,
+       8026499204807041784,
+       8557154790156791364,
+       887972120279483394
+      ]
+     },
+     {
+      "lane": "992666043_0",
+      "edge": "992666043",
+      "n": 34,
+      "pos_m_min": 25.010544733597158,
+      "pos_m_max": 550.0630961245957,
+      "runs": [
+       134183728835869882,
+       3011106312394044631,
+       5690692725577505498,
+       6538422657834023852,
+       661281422688282993,
+       677105600768189526,
+       6904272788004776631,
+       6914975401685141156,
+       7382187975121682178,
+       8026499204807041784,
+       8557154790156791364
+      ]
+     },
+     {
+      "lane": "977008894_1",
+      "edge": "977008894",
+      "n": 21,
+      "pos_m_min": 35.69323761533402,
+      "pos_m_max": 960.0601062531719,
+      "runs": [
+       134183728835869882,
+       5690692725577505498,
+       6143473282319009404,
+       6538422657834023852,
+       661281422688282993,
+       6914975401685141156,
+       6953598295321596746,
+       7382187975121682178,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "977008892_3",
+      "edge": "977008892",
+      "n": 17,
+      "pos_m_min": 106.56761103281788,
+      "pos_m_max": 427.4725473272407,
+      "runs": [
+       3011106312394044631,
+       5690692725577505498,
+       661281422688282993,
+       677105600768189526,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "992666043_1",
+      "edge": "992666043",
+      "n": 8,
+      "pos_m_min": 96.32181179281362,
+      "pos_m_max": 546.4036520492538,
+      "runs": [
+       3011106312394044631,
+       3747978530954135749,
+       6538422657834023852,
+       661281422688282993,
+       677105600768189526,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "992666043_3",
+      "edge": "992666043",
+      "n": 6,
+      "pos_m_min": 26.348267123732796,
+      "pos_m_max": 503.7045672324615,
+      "runs": [
+       2378473973028931053,
+       3747978530954135749,
+       6904272788004776631
+      ]
+     },
+     {
+      "lane": "977008892_1",
+      "edge": "977008892",
+      "n": 4,
+      "pos_m_min": 87.75055282064852,
+      "pos_m_max": 417.5865502174857,
+      "runs": [
+       134183728835869882,
+       3011106312394044631,
+       6953598295321596746
+      ]
+     },
+     {
+      "lane": "977008892_2",
+      "edge": "977008892",
+      "n": 3,
+      "pos_m_min": 194.31629663003494,
+      "pos_m_max": 386.43447779265466,
+      "runs": [
+       165503670820534583,
+       6538422657834023852
+      ]
+     },
+     {
+      "lane": "992666043_2",
+      "edge": "992666043",
+      "n": 3,
+      "pos_m_min": 45.013622417423676,
+      "pos_m_max": 497.13224971496214,
+      "runs": [
+       3011106312394044631,
+       6904272788004776631,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "977008893_3",
+      "edge": "977008893",
+      "n": 2,
+      "pos_m_min": 875.8262555262822,
+      "pos_m_max": 1010.2703186293296,
+      "runs": [
+       661281422688282993
+      ]
+     },
+     {
+      "lane": "992666043_4",
+      "edge": "992666043",
+      "n": 2,
+      "pos_m_min": 422.6325426044845,
+      "pos_m_max": 422.6325426044845,
+      "runs": [
+       6904272788004776631
+      ]
+     },
+     {
+      "lane": "977008892_0",
+      "edge": "977008892",
+      "n": 1,
+      "pos_m_min": 437.42735066770945,
+      "pos_m_max": 437.42735066770945,
+      "runs": [
+       7382187975121682178
+      ]
+     },
+     {
+      "lane": "977008892_4",
+      "edge": "977008892",
+      "n": 1,
+      "pos_m_min": 42.02825478453136,
+      "pos_m_max": 42.02825478453136,
+      "runs": [
+       661281422688282993
+      ]
+     }
+    ],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 119,
+   "colliders": {
+    "compliant_av": 149,
+    "noncompliant_av": 0,
+    "human": 1
+   },
+   "victims_of_compliant_av": {
+    "av": 13,
+    "human": 136
+   },
+   "n_departed": 185971,
+   "n_departed_av": 18620,
+   "per_1000_departed_av": 8.055853920515574,
+   "handback": null
+  },
+  "follower_stopper_p0.10_c1.00_vsl": {
+   "n_runs": 20,
+   "config_hashes": [
+    "55eaf55b4c00"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 56,
+    "n_runs_with_collisions": 12,
+    "runs_with_collisions": [
+     {
+      "run": 134183728835869882,
+      "n": 1
+     },
+     {
+      "run": 3011106312394044631,
+      "n": 2
+     },
+     {
+      "run": 3747978530954135749,
+      "n": 3
+     },
+     {
+      "run": 3944094060050347669,
+      "n": 5
+     },
+     {
+      "run": 5690692725577505498,
+      "n": 3
+     },
+     {
+      "run": 6134032994440706937,
+      "n": 2
+     },
+     {
+      "run": 6538422657834023852,
+      "n": 8
+     },
+     {
+      "run": 6904272788004776631,
+      "n": 17
+     },
+     {
+      "run": 6914975401685141156,
+      "n": 1
+     },
+     {
+      "run": 6953598295321596746,
+      "n": 4
+     },
+     {
+      "run": 7382187975121682178,
+      "n": 7
+     },
+     {
+      "run": 8026499204807041784,
+      "n": 3
+     }
+    ],
+    "per_run": {
+     "mean": 2.8,
+     "lo95": 0.8697298385420678,
+     "hi95": 4.730270161457932,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.3153224171715579,
+     "n_collisions": 56,
+     "n_departed": 177596,
+     "n_runs": 20
+    },
+    "n_logged": 56,
+    "locations": [
+     {
+      "lane": "992666043_0",
+      "edge": "992666043",
+      "n": 51,
+      "pos_m_min": 37.33662340304977,
+      "pos_m_max": 123.64508337595524,
+      "runs": [
+       134183728835869882,
+       3011106312394044631,
+       3747978530954135749,
+       3944094060050347669,
+       5690692725577505498,
+       6134032994440706937,
+       6538422657834023852,
+       6904272788004776631,
+       6914975401685141156,
+       6953598295321596746,
+       7382187975121682178
+      ]
+     },
+     {
+      "lane": "977008894_1",
+      "edge": "977008894",
+      "n": 3,
+      "pos_m_min": 278.0299666345993,
+      "pos_m_max": 954.1264853019934,
+      "runs": [
+       7382187975121682178,
+       8026499204807041784
+      ]
+     },
+     {
+      "lane": "992666043_1",
+      "edge": "992666043",
+      "n": 1,
+      "pos_m_min": 60.26171076346901,
+      "pos_m_max": 60.26171076346901,
+      "runs": [
+       7382187975121682178
+      ]
+     },
+     {
+      "lane": "992666043_2",
+      "edge": "992666043",
+      "n": 1,
+      "pos_m_min": 518.9305659743791,
+      "pos_m_max": 518.9305659743791,
+      "runs": [
+       8026499204807041784
+      ]
+     }
+    ],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 46,
+   "colliders": {
+    "compliant_av": 52,
+    "noncompliant_av": 0,
+    "human": 4
+   },
+   "victims_of_compliant_av": {
+    "av": 7,
+    "human": 45
+   },
+   "n_departed": 177596,
+   "n_departed_av": 17767,
+   "per_1000_departed_av": 3.1519108459503573,
+   "handback": null
+  },
+  "strategy_alinea": {
+   "n_runs": 20,
+   "config_hashes": [
+    "858ef0bb8639"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 250471,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 0,
+   "colliders": {
+    "compliant_av": 0,
+    "noncompliant_av": 0,
+    "human": 0
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 0
+   },
+   "n_departed": 250471,
+   "n_departed_av": 0,
+   "per_1000_departed_av": null,
+   "handback": null
+  },
+  "strategy_vsl": {
+   "n_runs": 20,
+   "config_hashes": [
+    "a668874b36a2"
+   ],
+   "summary": {
+    "n_runs": 20,
+    "n_runs_recorded": 20,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+     "mean": 0.0,
+     "lo95": 0.0,
+     "hi95": 0.0,
+     "n": 20,
+     "underpowered": false
+    },
+    "rate": {
+     "per_vehicles": 1000,
+     "value": 0.0,
+     "n_collisions": 0,
+     "n_departed": 275717,
+     "n_runs": 20
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+   },
+   "n_distinct_pairs": 0,
+   "colliders": {
+    "compliant_av": 0,
+    "noncompliant_av": 0,
+    "human": 0
+   },
+   "victims_of_compliant_av": {
+    "av": 0,
+    "human": 0
+   },
+   "n_departed": 275717,
+   "n_departed_av": 0,
+   "per_1000_departed_av": null,
+   "handback": null
+  }
+ }
+}
