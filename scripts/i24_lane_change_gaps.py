@@ -155,9 +155,12 @@ SAMPLE_SEED = 20260925
 
 LIMITATIONS: tuple[str, ...] = (
     "I-24 MOTION tracks about half of the peak vehicle-time (docs/I24_DATA.md §4): the "
-    "nearest tracked vehicle is not always the nearest vehicle, so observed gaps are upper "
-    "bounds and the share the model's acceptance refuses is a lower bound (every term is "
-    "monotone in the gaps); changes made while a vehicle was untracked are missing.",
+    "nearest tracked vehicle is not always the nearest vehicle, so space gaps and lead time "
+    "gaps (over the changer's own speed) are upper bounds. A recorded lag can be a different "
+    "vehicle at a different speed, so lag time gaps are expected to read long but are not "
+    "bounds, and the share the model's acceptance refuses is expected to read low but is not "
+    "a lower bound: only the lead time-gap term's refusals are, as every other term reads a "
+    "neighbour's speed. Changes made while a vehicle was untracked are missing.",
     "Documents are fragments (median 117 m, 9.9 s): a change is seen only when one fragment "
     "spans it; a change within 1 s of a fragment's start or end is unconfirmed and left out "
     "of the summaries (counted).",

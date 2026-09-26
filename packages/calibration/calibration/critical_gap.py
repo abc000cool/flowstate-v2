@@ -79,15 +79,23 @@ sensitivity.
 
 **Coverage (I-24 MOTION, about half the peak vehicle-time tracked,
 docs/I24_DATA.md §4).** An untracked vehicle inside an observed gap makes
-the accepted gap larger than the true one (never smaller), and an untracked
-vehicle between two observed neighbours merges two true gaps: a rejected gap
-may be larger than its true value, or lost into the accepted one. The
-accepted gap is the upper edge of every driver's interval and all the
-information of a driver without a rejected gap, so the fitted critical gaps
-are biased upward: the true population accepts gaps at least this small in
-expectation (the synthetic thinning test measures the direction on a known
-population), and an acceptance calibrated to these medians is, if anything,
-still stricter than the real drivers.
+the accepted *space* gap larger than the true one (never smaller). An
+untracked vehicle between two observed neighbours merges two true gaps, so a
+rejected gap may be larger than its true value, or lost into the accepted
+one. A lead time gap is taken over the changer's own speed, so an accepted
+lead time gap is also the true one or longer. A lag time gap is taken over
+the recorded follower's speed. When the true follower is untracked, the
+recorded one is a different vehicle at a different speed, so a lag time gap
+can read shorter than the true one. The accepted gap is the upper edge of
+every driver's interval and all the information of a driver without a
+rejected gap, so the fitted critical gaps are *expected* to be biased
+upward. That is a direction, not a bound, on either side, because the
+rejected gaps move too: one can grow past the driver's critical gap, and one
+lost into the accepted gap leaves a smaller one as the largest. The
+synthetic thinning test measures the direction on a known population of
+time gaps at one speed. It does not model a recorded follower at a different
+speed. An acceptance calibrated to these medians is expected, not
+guaranteed, to be stricter than the real drivers.
 
 **Mapping to the acceptance** (:func:`model_parity_critical_gaps`,
 :func:`acceptance_mapping`). At speed parity (the observed weave crossings'

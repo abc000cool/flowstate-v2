@@ -68,11 +68,21 @@ of the changer itself — and suspect changes are left out of the summaries.
 **Coverage (I-24 MOTION, docs/I24_DATA.md §4).** The instrument tracks about
 half of the vehicle-time in the peak (lane 1 at 0.70–0.76, interior lane 3
 at 0.40–0.54), so the nearest *tracked* vehicle is not always the nearest
-vehicle: an observed gap is the true gap or larger. Every acceptance term is
-monotone in the gaps (a larger gap never turns an acceptance into a
-refusal), so **the share of observed changes the model's acceptance refuses
-is a lower bound** of the share it would refuse on complete data; the gap
-quantiles are upper bounds.
+vehicle. What that bounds, on the changes recorded, and what it does not:
+
+* A recorded space gap is the true gap or larger, and so is a lead time gap
+  (over the changer's own speed). These, and their quantiles, are upper
+  bounds.
+* When the true neighbour is untracked, the recorded one is a *different
+  vehicle* at a different speed. A lag time gap divides by that vehicle's
+  speed, and the closing speeds use it, so a lag time gap can read shorter
+  than the true one. Its expected direction is longer, but it is not a bound.
+* Only ``ok_lead_time`` compares a gap with the changer's own speed. The
+  leader's brake gap, both follower-side terms and the forced guard read a
+  neighbour's speed, so a farther but faster recorded follower can turn an
+  acceptance into a refusal. **The share of observed changes the model's
+  acceptance refuses is expected to be lower than on complete data, but it is
+  not a lower bound.** Only the refusals of ``ok_lead_time`` alone are.
 
 **The model's acceptance** (:func:`weave_acceptance`) restates
 ``microsim.runner._weave_change_ok`` — the acceptance of ``_weave_step`` read
@@ -1125,10 +1135,12 @@ def gap_sequences(
     **Coverage.** On I-24 MOTION (about half the peak vehicle-time tracked)
     an untracked vehicle inside a gap makes the observed gap larger than the
     true one, and an untracked vehicle between two observed neighbours merges
-    two true gaps into one observed gap: the accepted gap is the true one or
-    larger, a rejected gap may be larger (an untracked vehicle inside it) or
-    lost (merged into the accepted gap). ``calibration.critical_gap`` states
-    how that biases the estimate.
+    two true gaps into one observed gap: the accepted space gap (and its lead
+    time gap, over the changer's own speed) is the true one or larger, a
+    rejected gap may be larger (an untracked vehicle inside it) or lost
+    (merged into the accepted gap). A lag time gap is over the recorded
+    follower's speed, which can be a different vehicle's, so it is not
+    bounded. ``calibration.critical_gap`` states how that biases the estimate.
 
     Args:
         df: The frame :func:`lane_change_gaps` read (``t, veh_id, x, lane, v``,

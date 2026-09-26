@@ -8495,3 +8495,79 @@ So the observed short starts are US-101's on both sides and I-24's on the leader
   - Run directories were deleted after the extraction.
 
 Every number above is from those runs, from the committed files named, from `microsim.runner` at HEAD or from SUMO 1.27.1's source.
+
+## 2026-09-25 (block 3, corrections from the review of the day's analysis code)
+
+A review of the day's analysis code (`calibration.lane_change_gaps`, `calibration.critical_gap`, `calibration.lane_change_relaxation` and their three drivers) found no code defect that changes a committed number. It found six statements in this file's dated sections that the committed artifacts do not support. They are corrected here; the dated sections stay as written. The code docstrings and the drivers' `limitations` strings were corrected the same day, with no behaviour change (561 calibration tests pass). Line numbers are this file's at 2d28198.
+
+**(a) What partial tracking bounds, and what it does not.** WP-77 (lines 5752, 5856, 5862), VM X (5915–5916), WP-78 (5923, 5969, 6062, 6069), VM Z (6126), WP-79 (6311), WP-80 (6596), "where item 1 stands" (6736), WP-88's rule (d) (8087) and VM AC's reading 3 (8166) treat every gap, refusal share, critical gap and ratio as bounded by coverage. Under partial tracking the recorded neighbour can be a different vehicle at a different speed.
+
+| quantity, on the changes recorded | recorded against true | a bound? |
+|---|---|---|
+| space gap, either side | the same or longer | yes, upper |
+| lead time gap (over the changer's own speed) | the same or longer | yes, upper |
+| lag time gap (over the recorded follower's speed) | expected longer | no |
+| refusals of `ok_lead_time` alone | the same or fewer | yes, lower |
+| refusals of the leader's brake gap, both follower-side terms, the guard, and the acceptance as a whole | expected fewer | no: each reads a neighbour's speed |
+| fitted critical gaps, both sides, and the time gaps mapped from them | expected higher | no: the rejected gaps move too, larger or lost into the accepted one |
+| `ratio_eq`, leader side (the rear vehicle is the changer; s0, T fixed) | the same or higher | yes, upper |
+| `ratio_eq`, follower side | expected higher | no |
+| `ratio_pop`, `ratio_own`, `ratio_own_eq`, either side | none | no: their references pair each vehicle with its nearest *tracked* leader and are inflated too |
+
+- *A counterexample to "every term is monotone in the gaps".* At VM X's acceptance parameters, a changer at 10 m/s with a true follower 12 m behind at 8 m/s is accepted. If that follower is untracked and the next tracked vehicle is 25 m behind at 16 m/s, the record is refused: `ok_lag_absorb` needs 37.3 m against 9.9 m. The lag time gap reads 1.56 s against 1.50 s; a faster recorded follower would read it shorter. (The review's synthetic check on the `acceptance` block of `artifacts/i24_lane_change_gaps.json`; not an artifact.)
+- *VM X.* The acceptance refuses 48.5 % of the real entering crossings and 22.1 % of the exiting ones. Those are expected to be low, not lower bounds. The leader-side time term alone refuses 31.5 % and 9.9 %, and those are lower bounds. WP-79's point 4 ("at 0.089 s they still refuse at least those shares") does not hold: the leader's brake gap (13.8 %) and the follower's absorbability (12.2 %) read a neighbour's speed.
+- *WP-78, VM Z, WP-79, WP-80.* I-24's 0.46 / 0.92 s and the proposals 0.089 / 1.78 s are expected to read high. They are not upper bounds.
+- *VM AC.* At the change (weave, entering, all speeds; medians):
+
+| side | I-24 `ratio_pop` | I-24 `ratio_eq` | US-101 `ratio_pop` | US-101 `ratio_eq` | model (WP-88, WP-90 text) |
+|---|---|---|---|---|---|
+| the entrant's new follower | 0.87 | 1.14 | 0.76 | 0.81 | 1.05 over the normal; 1.31 of s0 + vT at the fleet's means, 1.17 at its own s0 and T |
+| the entrant behind its new leader | 0.72 | 0.92 | 0.57 | 0.62 | 1.31 over the normal; 1.66 at the fleet's means, 1.62 at its own s0 and T |
+
+  US-101 is complete in coverage, so both its short starts stand. I-24's leader-side `ratio_eq` is an upper bound, so its true value is 0.92 or less. I-24's follower side is short only on `ratio_pop`, whose reference is inflated. On s0 + vT it reads 1.14, and that reading is not a bound either. So the coverage-robust short starts are US-101's two sides and I-24's leader side, as WP-90's correction to the targets states. VM AC's "on both sides and in both datasets", and reading 2's non-overlap on the follower side, hold for US-101. WP-88's rule (d), "an observed median below 0.9 is robust", holds for the leader side's `ratio_eq` only.
+
+**(b) WP-78's self-check.** "The chain returns the rule" (6033) holds for the entering leader side only: 0.553 s [0.354, 0.773] against the 0.6 s the model runs. The entering value over both sides reads 0.375 [0.261, 0.488]. The exiting value, its leader side alone, reads 0.359 [0.275, 0.442], and that interval excludes 0.6 (`artifacts/th52_fixture_critical_gaps.json`, `self_check`). The extraction behind the check also missed the entering crossings SUMO makes in the step a vehicle reaches the section: 343 of 963 at seeds 3–7, 36 % (WP-82's text). WP-82 was committed after the self-check (4c8d998 against bf86a6e), so the self-check describes the extracted crossings only.
+
+**(c) The fixture artifacts' provenance.**
+
+| artifact | `code` names | the module at that commit | dirty flag | committed in |
+|---|---|---|---|---|
+| `th52_fixture_lane_change_gaps.json` | b088973 | `lane_change_gaps.py` absent | none recorded | ba86832, which adds the module |
+| `th52_fixture_critical_gaps.json` | 6510ff2 | `critical_gap.py` absent | `code_dirty` true | bf86a6e, which adds the module |
+
+Both were written from an uncommitted tree before the commit that added their code. The critical-gap artifact's `self_check` uses `proposed` keys. The committed script writes `implied` for a simulated run (`scripts/i24_critical_gaps.py`, present since bf86a6e), so a run of the committed code differs from the artifact in that key. WP-79's statement that its re-run at seeds 3–5 differs only by the `at_bound` keys is not verified: that re-run is not committed.
+
+**(d) The 0.089 s of `accept_gap_s`.** VM Z and WP-79 (6134) describe it as n-weighted least squares over both sides and the speed classes. The follower side enters with one class only. Its other two classes lie below the absorption floor and map to no A.
+
+| class | drivers | leader side A [s] | follower side A [s] |
+|---|---|---|---|
+| v < 10 m/s | 582 | −0.236 | below the floor |
+| 10–20 m/s | 650 | 0.085 | below the floor |
+| ≥ 20 m/s | 217 | 0.285 | 0.778 |
+
+The leader side alone gives −0.014 s, floored to 0. Adding the one follower class gives 0.089 s. So 0.089 s is the leader side, one class of it negative, pulled up by the follower side of the fastest 217 of 1,449 drivers (`artifacts/i24_critical_gaps.json`, `mapping`).
+
+**(e) "1,449 (0.70)"** (WP-79, 6281; WP-80, 6584). The column pairs the joint fit's drivers with `share_with_rejected`, which counts every selected driver, including those the fit excludes.
+
+| row | drivers fitted | share as printed (over all selected) | share among the drivers fitted |
+|---|---|---|---|
+| I-24, entering | 1,449 | 0.70 of 1,881 (417 inconsistent, 12 undefined, 3 uninformative excluded) | 0.61 (883) |
+| I-24, exiting | 857 | 0.74 of 1,493 | 0.72 (618) |
+| fixture default, entering, seeds 3–5 | 311 | 0.60 of 320 | 0.59 (183) |
+| fixture default, exiting, seeds 3–5 | 791 | 0.42 of 868 | 0.37 (294) |
+
+The model rows at seeds 3–12 come from the same script on uncommitted runs; their values are not verified. The comparisons in WP-79 and WP-80 (default 0.61, real 0.70) use one definition. WP-79's "70 % of the real entrants let at least one gap go by" (6285) reads 61 % among the drivers fitted.
+
+**(f) VM AC's tables.** The brackets give the sides read at each offset. The medians of `ratio_pop` are over its finite values, which are fewer (NaN below 2 m/s, or in a speed bin with too few samples).
+
+| VM AC cell | bracket (sides read) | finite `ratio_pop` values |
+|---|---|---|
+| (1) I-24 at 0 / 5 / 10 s | 1,488 / 303 / 89 | 1,454 / 291 / 77 |
+| (1) I-24, 10–20 m/s, at 0 s | 685 | 683 |
+| (1) US-101 at 0 / 5 / 10 s | 177 / 123 / 85 | 177 / 123 / 84 |
+| (2) I-24 at 0 / 5 / 10 s | 1,612 / 383 / 129 | 1,591 / 362 / 109 |
+| (2) US-101 at 0 / 5 / 10 s | 176 / 131 / 97 | 176 / 130 / 93 |
+
+Reading 3's "1,454 follower sides at the change, 77 at 10 s" are finite `ratio_pop` values, not sides. The observed medians in both tables match the artifacts.
+
+Every number above was read from the named artifacts with `jq`, or from `git cat-file -e` and `git log`. Not verified against an artifact: the model's ratios (WP-88's and WP-90's text), WP-82's 343 of 963 (WP-82's text), the counterexample (a synthetic check) and the model rows at seeds 3–12 (uncommitted runs).

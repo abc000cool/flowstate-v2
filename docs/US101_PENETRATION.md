@@ -227,3 +227,25 @@ changes. And at 1–5 % humans who never change lanes also burn more, so lane ch
 hypothesis therefore holds in its broad form (multi-lane interaction costs fuel) but not in its specific one (passing around the AV);
 the measured mechanism is cut-ins into the controller's gap. Measured on the replica, the throughput cost is 0.7–2.7 %, about twice
 the published figures, which were measured upstream of it (correction note above).
+
+*Correction 2026-09-25 (review of the day's analysis code):* three statements in the two paragraphs above say more than
+`artifacts/us101_lane_change_penetration.json` supports. The values below are ratios of 20-seed means, at 1 / 2 / 5 / 10 / 20 %.
+
+- *"Two to four times the baseline rate."* The human rate over the baseline's 0.049 is 1.7 / 2.3 / 3.2 / 4.0 / 3.7, so the range is
+  1.7–4.0×. At 1 % the rate is below twice the baseline (0.083 against 0.049).
+- *"80–95 % of the excess changes."* No definition gives that range at 1–20 %. There are two candidate definitions:
+
+  | share | 1 % | 2 % | 5 % | 10 % | 20 % |
+  |---|---|---|---|---|---|
+  | excess cut-ins over the paired rise in human changes (`counterfactual.excess_cut_ins_per_human_veh_km` / `paired_delta_vs_baseline.lc_per_veh_km_human`) | 0.63 | 0.67 | 0.82 | 0.87 | 0.86 |
+  | excess cut-ins over excess cut-ins plus excess passes | 0.99 | 0.98 | 0.92 | 0.86 | 0.75 |
+
+  Under the first definition, about a third of the extra human changes at 1 and 2 % (0.36 and 0.31) are neither excess cut-ins nor
+  excess passes. Cut-ins are still the largest part of the rise at every level. The reading should quote one of the two rows by
+  name, not a range.
+- *"Changing lanes costs fuel" and "about 6 ml/km more".* The gap between humans who changed lanes and humans who did not is an
+  association, not a cost of the change. The method in the artifact says so: a driver who changes lanes is also more likely to be
+  in the slower traffic that made the change worthwhile. The gap is already 5.47 ml/km [5.04, 5.90] in the baseline, with no AV.
+  At the levels it is 5.76–6.29 ml/km. Its paired change against the baseline is +0.30 to +0.82 ml/km, resolved at 1, 5 and 20 %
+  only. Check (e) holds in the baseline too, so it does not show that the changes the AVs induce cost fuel. The broad reading
+  (multi-lane interaction goes with more fuel) stands as an association.

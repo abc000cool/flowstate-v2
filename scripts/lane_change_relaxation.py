@@ -174,8 +174,13 @@ LIMITATIONS_COMMON: tuple[str, ...] = (
 LIMITATIONS: dict[str, tuple[str, ...]] = {
     "i24": (
         "I-24 MOTION tracks about half of the peak vehicle-time (docs/I24_DATA.md s. 4): the "
-        "nearest tracked vehicle may not be the nearest vehicle, so an observed gap is the true "
-        "gap or larger and a cut-in by an untracked vehicle is not seen.",
+        "nearest tracked vehicle may not be the nearest vehicle, so a space gap is the true gap "
+        "or larger and a cut-in by an untracked vehicle is not seen. On the leader side the rear "
+        "vehicle is the changer, so its time gap and ratio_eq are upper bounds. On the follower "
+        "side the recorded follower can be a different vehicle at a different speed, so its "
+        "time gap and ratio_eq are expected to read long but are not bounds. The references of "
+        "ratio_pop and ratio_own pair each vehicle with its nearest tracked leader and are "
+        "inflated the same way, so those two ratios are not bounded in either direction.",
         "Documents are fragments (median 9.9 s): a side survives a fragment switch only when the "
         "next fragment continues within 2 m; long offsets are read on few sides.",
         "Lanes are lateral bands floor(y / 12 ft); a change is timed when the vehicle's centre "

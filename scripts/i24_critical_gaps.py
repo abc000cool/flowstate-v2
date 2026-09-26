@@ -113,10 +113,12 @@ REJECTED_GAP = (
 
 LIMITATIONS: tuple[str, ...] = (
     "Coverage: I-24 MOTION tracks about half of the peak vehicle-time (docs/I24_DATA.md s. 4). "
-    "An untracked vehicle inside a gap makes the observed gap larger (the accepted gap is the "
-    "true one or larger; a rejected gap may be larger, or lost into the accepted one), so "
-    "the fitted critical gaps are biased upward and the proposed time gaps are upper bounds: "
-    "real drivers accept gaps at least this small in expectation.",
+    "An untracked vehicle inside a gap makes the observed space gap larger (the accepted gap "
+    "is the true one or larger; a rejected gap may be larger, or lost into the accepted one). "
+    "A lag time gap is over the recorded follower's speed, which can be a different vehicle's. "
+    "The fitted critical gaps and the proposed time gaps are therefore expected to be biased "
+    "upward (the direction a synthetic thinning test measures at one speed), but they are not "
+    "upper bounds.",
     "Consistency: the estimators assume a driver rejects every gap below its critical gap "
     "and takes the first above it; freeway merging studies (Daamen et al. 2010; Marczak et "
     "al. 2013) find inconsistent drivers common. Inconsistent drivers are excluded and "

@@ -57,8 +57,10 @@ temporal speed spread 59%. On a synthetic single-lane corridor the same
 controller has no resolved throughput cost. We also report that detection
 latency makes Jam-Absorption Driving reliable and that an explicit deferral
 rule recovers the benefit with a perfect sensor; that on a five-lane replica
-the extra fuel comes mostly from human cut-ins into the controlled vehicle's
-gap; and that the discrete Delle Monache–Goatin flux cap tracks microscopic
+most of the extra fuel is burned by human drivers, who change lanes more
+around the controlled vehicles, mostly by cutting in to their gap, though the
+link from those changes to the fuel is only an association; and that the
+discrete Delle Monache–Goatin flux cap tracks microscopic
 ground truth better than a reduced-capacity variant. A second corridor, I-94
 westbound in St. Paul built from public loop-detector data, was not
 reproduced.
@@ -1137,15 +1139,24 @@ replica [US101_PENETRATION.md, method section]:
 
 *Source: [US101_PENETRATION.md, result section of 2026-09-25;
 artifacts/us101_lane_change_penetration.json].* The baseline human rate is
-0.049 changes per human vehicle-km. Humans change lanes two to four times as
-often around FollowerStopper vehicles, and a driver who changes lanes burns
-about 6 ml/km more (5.8–6.3 ml/km, every interval above zero). The extra fuel
-is almost all the humans' (at 5%: 1.40 of 1.48 ml per vehicle-km). But the
-extra changes are not mainly humans passing the controlled vehicle. They are
-humans cutting in to the larger gap it keeps ahead of itself: 80–95% of the
-excess. At 1–5%, humans who never change lanes also burn more, so lane
-changes are not the whole mechanism [US101_PENETRATION.md, result section].
-The hypothesis holds in its broad form and not in its specific one. These are
+0.049 changes per human vehicle-km. Humans change lanes 1.7–4.0 times as
+often around FollowerStopper vehicles (1.7 at 1%, 4.0 at 10%). Humans who
+changed lanes burn 5.8–6.3 ml/km more than humans who did not, every interval
+above zero. That gap is an association, not a cost of the change: it is
+already 5.47 ml/km [5.04, 5.90] in the baseline, with no AV, and its paired
+change against the baseline is +0.30 to +0.82 ml/km, resolved at 1, 5 and 20%
+only. The extra fuel is almost all the humans' (at 5%: 1.40 of 1.48 ml per
+vehicle-km). But the extra changes are not mainly humans passing the
+controlled vehicle. They are mostly humans cutting in to the larger gap it
+keeps ahead of itself. Excess cut-ins are 0.63 / 0.67 / 0.82 / 0.87 / 0.86 of
+the paired rise in human changes at 1 / 2 / 5 / 10 / 20%, so at 1–2% about a
+third of the rise is neither an excess cut-in nor an excess pass. As a share
+of excess cut-ins plus excess passes, cut-ins are 0.99 / 0.98 / 0.92 / 0.86 /
+0.75 (ratios of the 20-seed means). At 1–5%, humans who never change lanes
+also burn more, so lane changes are not the whole mechanism
+[US101_PENETRATION.md, result section and its correction of 2026-09-25;
+artifacts/us101_lane_change_penetration.json]. The hypothesis holds in its
+broad form, as an association, and not in its specific one. These are
 results on a 640 m replica that scores 1 PASS / 5 FAIL (§5.2), at one
 compliance level.
 
@@ -1397,8 +1408,14 @@ reproduce the section [WEAVE_MODEL_PLAN.md]. Where that work stands
   model's commands that sets the rate at the entry or at the exit end.
 - Real I-24 drivers entering a weave accept critical gaps of 0.46 s ahead and
   0.92 s behind, by Troutbeck's maximum-likelihood estimator on the gaps each
-  driver let go by (upper bounds, given the coverage of §3.4)
-  [WEAVE_MODEL_PLAN.md, WP-78; artifacts/i24_critical_gaps.json]. On the
+  driver let go by [WEAVE_MODEL_PLAN.md, WP-78; artifacts/i24_critical_gaps.json].
+  The coverage of §3.4 is expected to push both estimates up, but they are not
+  bounds. A missed vehicle can only lengthen a recorded space gap. The
+  estimator also reads the rejected gaps, which can lengthen too or be lost
+  into the accepted one. Behind the
+  changer, the recorded follower can be a different vehicle at a different
+  speed, so a follower time gap can also read short
+  [calibration.critical_gap, module docstring, coverage paragraph]. On the
   corridor section fixture the model's own entrants read 0.98 s ahead and
   0.66 s behind [WEAVE_MODEL_PLAN.md, correction to "where item 1 stands"].
   Calibrating the model's acceptance to the real values
@@ -1721,12 +1738,12 @@ Single-seed probes are marked; none is a headline result on its own.
 | 36 | JAD with a 30 s commit deferral, perfect sensor | σ_v 1.331 [1.228, 1.435] m/s vs 1.781 [1.298, 2.264] undeferred; −25.2% paired (resolved) | 20 per cell | [artifacts/jad_deferral_summary.json] |
 | 37 | US-101 σ_v dose-response | −8.2% (1%) to −53.2% (20%), all resolved | 20 per level | [artifacts/us101_penetration_summary.json] |
 | 38 | US-101 throughput cost on the replica | −0.72% (1%) to −2.74% (20%) | 20 per level | [artifacts/us101_lane_change_penetration.json] |
-| 39 | US-101 lane-change mechanism | cut-ins 80–95% of the excess human changes; lane changers +5.8–6.3 ml/km | 20 per level | [artifacts/us101_lane_change_penetration.json; US101_PENETRATION.md, result section] |
+| 39 | US-101 lane-change mechanism | excess cut-ins 0.63–0.87 of the paired rise in human changes (0.75–0.99 of excess cut-ins plus excess passes); human rate 1.7–4.0× baseline; lane changers +5.8–6.3 ml/km over non-changers, an association (+5.47 in the no-AV baseline) | 20 per level | [artifacts/us101_lane_change_penetration.json; US101_PENETRATION.md, result section and its correction of 2026-09-25] |
 | 40 | Flux cap vs reduced capacity, speed RMSE difference | +0.84 m/s [0.36, 1.33] | 20 | [artifacts/run_summaries/m3_fluxcap/results.json] |
 | 41 | I-94 reference configuration | departed 0.884 (lowest 0.867); RMSPE 0.691 [0.688, 0.695]; GEH < 5 on 0.163 [0.138, 0.188] | 20 | [artifacts/mndot_rounds/weave_2026-09-24/battery_exit_prepare_lane_end_f24ba43.json] |
 | 42 | I-94 flow at S790, 06:30–07:30 | 3,344 veh/h simulated vs 4,911 observed | 20 | [ONBOARDING_MNDOT.md §11, VM U] |
 | 43 | I-94 observed wave speed (context) | median 21.3 km/h, IQR 18.6–24.2, 6 of 13 pairs | — (9 dates) | [ONBOARDING_MNDOT.md §4a, §11; data/mndot/mndot_i94_wb_stpaul/observations.json] |
-| 44 | Real I-24 entering critical gaps | 0.46 s ahead, 0.92 s behind (upper bounds) | — | [artifacts/i24_critical_gaps.json; WEAVE_MODEL_PLAN.md, "where item 1 stands"] |
+| 44 | Real I-24 entering critical gaps | 0.46 s ahead, 0.92 s behind (expected high under coverage; not bounds) | — | [artifacts/i24_critical_gaps.json; WEAVE_MODEL_PLAN.md, "where item 1 stands"] |
 
 ---
 
