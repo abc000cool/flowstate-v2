@@ -7766,3 +7766,213 @@ This package runs WP-84's attribution on lane 1's slow vehicles. It records each
   - Run directories were temporary and deleted.
 
 Every number above is from those runs, from the committed files named, or from `microsim.runner` at HEAD.
+
+## 2026-09-25 (block 3, WP-87, the loop-breaking target form): WP-86's candidate, a cooperation target that reads its partner's speed without the weave target that set it whenever that target points back at the vehicle's own lane, derived from `_weave_cooperate` and measured in three speed forms and one gap form on the corridor section fixture (seeds 3–7, at the defaults and with `ramp_outlet`). The speed forms act on 3,500–4,700 holds and 3,300–3,800 easings a run and lift the partner's speed by 0.3–1.4 m/s. The strict loop falls by up to 4.4 points, but the loop still closes for 84–92 % of the steps that tie the lanes, lane 1 at the entry stays at 0.58–0.60 of its equilibrium density (0.63–0.64 with `ramp_outlet`), and no criterion of the test moves outside the seed noise. No run collides. The loop is an equilibrium, not a transient: its holds sit at the follower's own static gap to the partner (a median 1.01–1.07 of s0 + vT) at the partner's speed (median difference within about 0.1 m/s), so 86–93 % of them still bind under any of the speed forms. Nothing ships
+
+**Why.** WP-86 (above) found that lane 1 at the entry is held by the weave's targets towards crossing partners in lane 0, whose own speed is a target back towards lane 1. Its hand-on (a) named the next form: a cooperation target that does not take the partner's current speed when that speed is itself a target towards the follower's lane. The forms measured before it (WP-58, WP-60, WP-64, and the removals of WP-65, WP-84 and WP-86) changed when or whether a target acts, not the speed it takes. This package derives that form from the runner, measures it, a variant on the holds alone and three alternatives in a harness, and reads why it does or does not break the loop. The runner, the config, the scenarios, the fixtures and the tests are untouched.
+
+**How it was measured.**
+- *Configuration.* The strict-`xfail` test's own `_th52_corridor_config(seed)`, at the weave defaults and with `ramp_outlet` = 1 (WP-70's key, a config change). Seeds 3–7, one run at a time (2.9–4.7 s each), macOS.
+- *Harness (session, `wp87/h87.py`).* WP-86's `h86.py`: its command-family hooks, its reader of the runner's 0.5-s subscription results, its cause reading and its partner walk-back. Two changes:
+  - the per-run attribution is computed in the run's own process (`an87.py`, with `tab86.py`'s definitions), so the rows keep only aggregates;
+  - the forms below, as monkeypatches on `_weave_choose_gap` and `_weave_easing_ok` (environment switch `FS87_FORM`).
+- *Read-only.* With no form, the trajectories are byte-identical to WP-86's no-hook runs at every seed, at the defaults and with `ramp_outlet` (md5; 10 of 10, and 10 of 10 again with the decomposition reader of part (5)). `microsim.runner` is WP-86's (md5 prefix `fe4ce1da5a64`). Every baseline reading equals WP-86's.
+- *Definitions.*
+  - *A target and its partner* (WP-86's). A *hold* is the command on the follower F of a changer C's chosen gap; its partner is C. An *easing* is the command on C towards its gap's leader L; its partner is L. Lanes are the weave's lane axis (`lane_map`): lane 0 is the ramp and the auxiliary lane, lane 1 the approach lane feeding section lane 1 and section lane 1.
+  - *The loop condition.* A target on vehicle A with partner P is *in the loop* when both hold:
+    - P's speed at this step is the one a weave target set on it at the previous step: P had an applied target at t − Δt (the lowest one, as `_weave_step` applies them), and P is within 0.05 m/s of it now;
+    - that target's own partner was in A's lane.
+
+    The exit priority's hold is exempt, as in WP-70.
+  - *The forms (speed axis).* In the loop, the target reads P's speed as:
+    - *S1, P's own model's speed:* v_P(t − Δt) + a_own·Δt, with a_own `_weave_command`'s own reading at t − Δt (P's IDM towards its real leader, or the free term). This is the speed P would have now without last step's target;
+    - *S2, P's speed before that target:* v_P(t − Δt);
+    - *G, never below A's own speed:* the relative-speed term towards a slower partner dropped;
+    - *S1 on holds only.*
+
+    Each is floored at P's actual speed, so a form only raises a ceiling. It never lowers one.
+  - *The alternative on the gap axis, A.* In the loop, the target keeps the acceptance's time gap to P instead of A's own T: the follower side's for a hold, the leader side's for an easing (0.6 s each at the defaults). Speeds are the actual ones.
+  - *What a form changes.* Only the chosen gap's a_F and a_c, recomputed after `_weave_choose_gap` has chosen the gap, and the partner speed that `_weave_easing_ok` reads. The gap choice, the acceptance, the forced guard and the pair release read actual speeds. SUMO's safety checks stay on.
+  - *The measures.* WP-86's, per run:
+    - *the loop closes*: of the slow lane-1 steps whose origin is a target tying lanes 1 and 0, those whose partner's own origin is a target back towards the first vehicle's lane;
+    - *strict*: of the lane-1 held steps, those whose lane-0 partner is itself under a target towards lane 1 at that step;
+    - lane 1 over [0, 50): Edie's speed and k / k_eq(v) from the run's own breakdown minute on (pooled over seeds in the level tables, per seed in the paired ones), and over minutes 1–19 beside it, because one run under form A never breaks down;
+    - *the feeder's queue back*: the median minute after the breakdown (0 without a breakdown), and the mean over minutes 1–19 with 0 for a minute without a queue;
+    - the test's criteria.
+  - *The decomposition (part (5); read-only, `FS87_OBS=1`).* For every hold and every easing that the runner asks in the loop, whether `_weave_command`'s test (the target below the vehicle's own model) would bind at the actual speeds and under each form; its gap to P over the static s0 + vT at A's own parameters; and A's speed minus P's. For an easing, "asked" is the runner's condition: a_c < 0, not beside on the ramp, and feasible. Only the last gap choice of each `_weave_cooperate` is counted (with `ramp_outlet` an exiter's first call is the outlet's binding test).
+  - *Paired intervals.* Per seed, a form minus its base (the default or `ramp_outlet`): the mean over the five seeds and its 95 % t-interval (t = 2.776).
+
+**(1) The derivation** (`microsim.runner` at HEAD).
+- *What each target reads.* `_weave_cooperate` asks two targets per changer. Both are IDM accelerations towards a virtual leader in the other lane:
+  - the hold, a_F = IDM_F(v_F, s = x_C − len_C − x_F, Δv = v_F − v_C);
+  - the easing, a_C = IDM_C(v_C, s = x_L − len_L − x_C, Δv = v_C − v_L).
+
+  `_weave_command` applies either only when it is below the vehicle's own model, as a one-step ceiling (`slowDown(v, 0)`) that SUMO reaches on the next step. So at step t, the speed in `v_of` of every vehicle commanded at t − Δt is last step's target.
+- *The loop's speed path.* In WP-86's largest strict pair (3,952 of 9,231 steps), a lane-1 vehicle F is held for a ramp entrant C. C's speed is last step's easing towards its lane-1 gap leader L, and L's own speed can be a hold for another entrant. Each hop's Δv carries a target-set speed from one lane back into the other.
+- *The form.* Break that path and leave the target: when P's current speed is a target towards A's lane, A's target reads P's speed without it. The runner already computes that speed. `_weave_command` compares every target with a_own, P's IDM towards its real leader in its own lane. So v_P(t − Δt) + a_own·Δt is the speed P would have now had the target not been applied, and it carries P's own lane's speed, not A's lane's (S1). SUMO's `vehicle.getSpeedWithoutTraCI` is not an alternative: WP-65 found it follows the commanded speed under this fleet.
+- *Safety.* A form raises the partner speed that a ceiling is computed from, so it can only raise the ceiling. It commands nothing SUMO's own car-following would not do. The acceptance and the forced guard keep reading actual gaps and speeds, and SUMO's safety checks stay on.
+- *The alternatives.*
+  - S2 is the literal "speed before the target". It lifts only last step's decrement, as S1 does.
+  - G is the strongest speed-only form: the relative-speed term is dropped whenever the partner is slower.
+  - A is the IDM's other term. In s* = s0 + v·T + v·Δv / (2·√(a·b)), the forms above act on the third term. A acts on the second: the target keeps the gap the acceptance asks, not a car-following gap.
+- *What a speed form can do, before measuring.* At Δv = 0 the third term vanishes. A target that holds a vehicle at its equilibrium gap to a partner moving at its own speed is unchanged by any speed form. A speed form can unbind a target only where the partner is slower and the Δv term decides the binding. The loop-closing share reads which targets bind, so a form can lower it only by unbinding targets.
+
+**(2) The forms, level by level** (seeds 3–7).
+
+*Table — the loop, lane 1 and the feeder.*
+
+| run | loop closes (of steps tying lanes 1 and 0) | strict (of lane-1 held steps) | lane 1 over [0, 50) after the breakdown: m/s, k / k_eq(v) (pooled) | lanes 0 + 1 there, lanes' worth (pooled) | feeder queue back, median minute after the breakdown [m] (per seed) | breakdown minute |
+|---|---|---|---|---|---|---|
+| default | 90% | 29% | 4.9, 0.59 | 1.16 | -400 / -550 / -700 / -650 / -400 | 7 / 5 / 3 / 4 / 5 |
+| S1 own-model speed | 90% | 24% | 5.1, 0.59 | 1.17 | -450 / -450 / -425 / -525 / -425 | 7 / 5 / 4 / 4 / 4 |
+| S2 pre-target speed | 89% | 27% | 5.0, 0.59 | 1.16 | -475 / -600 / -575 / -850 / -400 | 8 / 5 / 4 / 4 / 5 |
+| G no slower than itself | 89% | 25% | 5.0, 0.58 | 1.13 | -400 / -500 / -600 / -650 / -500 | 7 / 8 / 3 / 2 / 9 |
+| S1 on holds only | 92% | 28% | 4.9, 0.59 | 1.17 | -400 / -625 / -500 / -750 / -400 | 7 / 8 / 3 / 4 / 4 |
+| A the acceptance's time gap | 91% | 25% | 5.2, 0.60 | 1.19 | -450 / -650 / -550 / -700 / -450 | 7 / 5 / 4 / 4 / 4 |
+| `ramp_outlet` = 1 | 88% | 23% | 6.0, 0.64 | 1.27 | -475 / -525 / -400 / -475 / -300 | 8 / 8 / 4 / 5 / 5 |
+| S1, `ramp_outlet` = 1 | 87% | 18% | 6.3, 0.64 | 1.27 | -400 / -500 / -400 / -550 / -525 | 8 / 7 / 5 / 3 / 9 |
+| S2, `ramp_outlet` = 1 | 87% | 22% | 5.6, 0.64 | 1.27 | -400 / -575 / -400 / -600 / -450 | 7 / 5 / 4 / 5 / 6 |
+| G, `ramp_outlet` = 1 | 88% | 19% | 6.0, 0.63 | 1.24 | -400 / -425 / -500 / -700 / -350 | 5 / 8 / 7 / 3 / 8 |
+| S1 holds only, `ramp_outlet` = 1 | 84% | 20% | 7.1, 0.63 | 1.24 | -450 / -250 / -425 / -525 / -400 | 7 / 9 / 4 / 3 / 4 |
+| A, `ramp_outlet` = 1 | 88% | 19% | 5.8, 0.64 | 1.29 | -425 / -450 / -400 / -400 / 0 | 8 / 4 / 4 / 4 / none |
+
+*Table — the test's criteria* (mainline ≥ 1,137 of 1,196, T.H.52 ≥ 387 of 407, no lane-window at or below 20 m/s (ii), no collision, given up ≤ 2 % of reached).
+
+| run | T.H.52 departed of 407 | lane-windows ≤ 20 m/s of 16 | mainline of 1,196 | given up of reached | unfinished | coll. |
+|---|---|---|---|---|---|---|
+| default | 370 / 329 / 323 / 316 / 352 (Σ 1,690) | 11 / 10 / 14 / 12 / 12 (Σ 59) | 1160 / 1149 / 1139 / 1148 / 1122 | 1 of 360 / 1 of 377 / 4 of 380 / 1 of 411 / 0 of 355 | 1 / 2 / 6 / 4 / 5 | 0 |
+| S1 own-model speed | 368 / 357 / 367 / 299 / 341 (Σ 1,732) | 10 / 11 / 13 / 14 / 11 (Σ 59) | 1193 / 1137 / 1181 / 1086 / 1155 | 3 of 366 / 2 of 390 / 4 of 413 / 4 of 384 / 2 of 349 | 2 / 11 / 1 / 6 / 5 | 0 |
+| S2 pre-target speed | 371 / 336 / 343 / 317 / 346 (Σ 1,713) | 11 / 10 / 11 / 11 / 13 (Σ 56) | 1193 / 1150 / 1131 / 1111 / 1157 | 3 of 357 / 2 of 382 / 0 of 396 / 1 of 404 / 2 of 352 | 0 / 2 / 2 / 1 / 4 | 0 |
+| G no slower than itself | 367 / 368 / 316 / 289 / 371 (Σ 1,711) | 11 / 11 / 14 / 14 / 11 (Σ 61) | 1177 / 1175 / 1130 / 1122 / 1186 | 1 of 359 / 3 of 395 / 4 of 392 / 3 of 386 / 1 of 364 | 5 / 5 / 3 / 4 / 4 | 0 |
+| S1 on holds only | 362 / 344 / 333 / 315 / 334 (Σ 1,688) | 12 / 13 / 13 / 13 / 13 (Σ 64) | 1154 / 1167 / 1131 / 1136 / 1187 | 6 of 361 / 2 of 390 / 1 of 395 / 3 of 402 / 0 of 354 | 5 / 5 / 3 / 4 / 6 | 0 |
+| A the acceptance's time gap | 382 / 324 / 353 / 335 / 352 (Σ 1,746) | 11 / 11 / 12 / 13 / 11 (Σ 58) | 1173 / 1152 / 1178 / 1134 / 1157 | 2 of 363 / 2 of 373 / 1 of 411 / 0 of 405 / 1 of 355 | 7 / 3 / 3 / 5 / 1 | 0 |
+| `ramp_outlet` = 1 | 404 / 375 / 399 / 352 / 390 (Σ 1,920) | 11 / 13 / 14 / 12 / 13 (Σ 63) | 1194 / 1163 / 1176 / 1151 / 1140 | 2 of 378 / 2 of 413 / 3 of 421 / 2 of 426 / 2 of 366 | 5 / 9 / 0 / 3 / 5 | 0 |
+| S1, `ramp_outlet` = 1 | 407 / 392 / 387 / 354 / 400 (Σ 1,940) | 12 / 13 / 13 / 13 / 12 (Σ 63) | 1196 / 1187 / 1185 / 1133 / 1189 | 2 of 385 / 3 of 422 / 2 of 427 / 1 of 420 / 2 of 371 | 7 / 10 / 5 / 6 / 3 | 0 |
+| S2, `ramp_outlet` = 1 | 405 / 361 / 364 / 354 / 392 (Σ 1,876) | 11 / 13 / 14 / 12 / 13 (Σ 63) | 1196 / 1177 / 1153 / 1152 / 1179 | 3 of 379 / 1 of 404 / 4 of 392 / 0 of 426 / 2 of 369 | 3 / 9 / 11 / 1 / 1 | 0 |
+| G, `ramp_outlet` = 1 | 388 / 382 / 396 / 337 / 390 (Σ 1,893) | 13 / 11 / 12 / 14 / 12 (Σ 62) | 1180 / 1173 / 1186 / 1149 / 1186 | 2 of 368 / 1 of 422 / 0 of 432 / 3 of 413 / 2 of 369 | 1 / 7 / 1 / 6 / 1 | 0 |
+| S1 holds only, `ramp_outlet` = 1 | 402 / 401 / 403 / 371 / 389 (Σ 1,966) | 13 / 11 / 13 / 13 / 13 (Σ 63) | 1196 / 1185 / 1195 / 1138 / 1172 | 3 of 375 / 1 of 431 / 4 of 434 / 1 of 424 / 2 of 372 | 2 / 4 / 3 / 3 / 3 | 0 |
+| A, `ramp_outlet` = 1 | 393 / 373 / 378 / 353 / 407 (Σ 1,904) | 11 / 13 / 14 / 12 / 10 (Σ 60) | 1195 / 1108 / 1182 / 1138 / 1194 | 1 of 372 / 2 of 399 / 2 of 428 / 0 of 430 / 0 of 378 | 3 / 14 / 4 / 8 / 1 | 0 |
+
+*Table — what the forms act on.* "In the loop" counts the final gap choices whose target met the loop condition (for a hold, every such choice; for an easing, every choice with a gap leader, eased or not).
+
+| run | targets whose partner's speed was a loop target, per run (holds / easings) | mean lift of the partner's speed [m/s] (holds / easings) | applied targets per run: ramp hold / ramp ease / section entrants' holds / easings / exiters' holds / easings |
+|---|---|---|---|
+| default | 0 / 0 | 0.00 / 0.00 | 6,983 / 1,283 / 1,823 / 286 / 4,928 / 1,380 |
+| S1 own-model speed | 4,402 / 3,427 | 0.71 / 0.40 | 7,064 / 995 / 1,925 / 285 / 4,816 / 1,230 |
+| S2 pre-target speed | 4,441 / 3,275 | 0.55 / 0.33 | 7,060 / 1,217 / 1,774 / 224 / 4,579 / 1,175 |
+| G no slower than itself | 4,353 / 3,556 | 1.42 / 1.23 | 6,669 / 1,095 / 1,590 / 266 / 4,571 / 1,430 |
+| S1 on holds only | 4,705 / 0 | 0.69 / 0.00 | 6,846 / 1,278 / 1,791 / 292 / 4,758 / 1,348 |
+| A the acceptance's time gap | 5,166 / 4,189 | 0.00 / 0.00 | 6,788 / 1,127 / 1,952 / 242 / 5,029 / 1,493 |
+| `ramp_outlet` = 1 | 0 / 0 | 0.00 / 0.00 | 5,494 / 1,214 / 2,642 / 558 / 3,399 / 1,198 |
+| S1, `ramp_outlet` = 1 | 3,606 / 3,563 | 0.80 / 0.39 | 5,472 / 1,086 / 2,612 / 477 / 3,202 / 1,026 |
+| S2, `ramp_outlet` = 1 | 3,839 / 3,421 | 0.59 / 0.34 | 5,667 / 1,211 / 2,596 / 538 / 3,389 / 1,211 |
+| G, `ramp_outlet` = 1 | 3,796 / 3,786 | 1.37 / 1.20 | 5,446 / 1,081 / 2,481 / 516 / 3,662 / 1,273 |
+| S1 holds only, `ramp_outlet` = 1 | 3,512 / 0 | 0.82 / 0.00 | 5,340 / 1,129 / 2,382 / 510 / 3,139 / 1,061 |
+| A, `ramp_outlet` = 1 | 4,432 / 4,218 | 0.00 / 0.00 | 5,465 / 1,159 / 2,848 / 586 / 3,668 / 1,311 |
+
+- *Every form acts.* The speed forms act on 3,500–4,700 holds and 3,300–3,800 easings a run. S1 lifts the partner's speed by 0.7–0.8 m/s for a hold and 0.4 m/s for an easing, S2 by 0.3–0.6 and G by 1.2–1.4.
+- *The applied targets hardly change.* At the defaults the ramp anticipation's holds are 6,669–7,064 a run against 6,983 at the defaults, and the exiters' holds 4,571–5,029 against 4,928. The forms change the speed a target takes, but the same targets still bind.
+
+**(3) Paired against the base** (each form minus the default or `ramp_outlet` at the same seed).
+
+*Table — the loop, lane 1 and the feeder.*
+
+| form, minus its base (mean a run, 95 % t-interval, seeds 3–7) | loop closes | strict | lane 1 over [0, 50) after the breakdown: m/s | … k / k_eq(v) | lane 1 over [0, 50), minutes 1–19: m/s | … k / k_eq(v) | feeder queue back, median minute after the breakdown [m] | … mean of minutes 1–19 [m] |
+|---|---|---|---|---|---|---|---|---|
+| S1 own-model speed | +0.0 [-3.4, +3.4] pp | -4.4 [-5.9, -2.9] pp | +0.15 [-1.11, +1.41] | +0.004 [-0.018, +0.026] | +0.18 [-1.24, +1.61] | +0.003 [-0.023, +0.030] | +85 [-77, +247] | +48 [-55, +151] |
+| S2 pre-target speed | -1.0 [-3.2, +1.3] pp | -1.7 [-3.1, -0.4] pp | -0.02 [-0.82, +0.78] | -0.001 [-0.028, +0.026] | +0.08 [-0.81, +0.97] | -0.000 [-0.026, +0.025] | -40 [-187, +107] | +5 [-54, +64] |
+| G no slower than itself | -1.1 [-3.8, +1.6] pp | -3.7 [-5.2, -2.1] pp | +0.13 [-0.49, +0.75] | -0.008 [-0.023, +0.007] | +0.65 [-0.88, +2.19] | -0.007 [-0.023, +0.008] | +10 [-82, +102] | +20 [-55, +95] |
+| S1 on holds only | +2.5 [+0.6, +4.3] pp | -0.6 [-1.7, +0.4] pp | -0.14 [-0.95, +0.67] | +0.001 [-0.020, +0.021] | +0.04 [-0.92, +0.99] | -0.004 [-0.022, +0.013] | +5 [-141, +151] | +18 [-43, +79] |
+| A the acceptance's time gap | +0.7 [-0.8, +2.2] pp | -3.3 [-6.7, +0.2] pp | +0.22 [-0.70, +1.14] | +0.010 [-0.019, +0.039] | +0.20 [-0.93, +1.33] | +0.005 [-0.013, +0.023] | -20 [-141, +101] | +11 [-45, +66] |
+| S1, `ramp_outlet` = 1 | -2.1 [-5.3, +1.1] pp | -4.2 [-7.0, -1.3] pp | +0.49 [-0.45, +1.43] | -0.003 [-0.019, +0.014] | +0.68 [-0.83, +2.19] | +0.005 [-0.004, +0.013] | -40 [-185, +105] | -13 [-136, +109] |
+| S2, `ramp_outlet` = 1 | -2.0 [-5.9, +1.9] pp | -1.2 [-3.9, +1.6] pp | -0.17 [-1.62, +1.28] | -0.002 [-0.051, +0.046] | -0.43 [-1.93, +1.06] | +0.002 [-0.035, +0.038] | -50 [-164, +64] | -60 [-142, +22] |
+| G, `ramp_outlet` = 1 | -0.5 [-3.0, +1.9] pp | -4.1 [-5.7, -2.5] pp | +0.21 [-0.69, +1.11] | -0.012 [-0.055, +0.032] | +0.45 [-1.23, +2.12] | -0.005 [-0.040, +0.030] | -40 [-205, +125] | -32 [-157, +93] |
+| S1 holds only, `ramp_outlet` = 1 | -3.4 [-8.8, +2.1] pp | -3.0 [-6.9, +0.9] pp | +1.02 [+0.03, +2.02] | -0.004 [-0.033, +0.025] | +0.88 [-0.16, +1.92] | -0.002 [-0.028, +0.025] | +25 [-157, +207] | +39 [-91, +170] |
+| A, `ramp_outlet` = 1 | -1.3 [-3.8, +1.2] pp | -4.1 [-6.1, -2.2] pp | -0.04 [-0.67, +0.60] (n = 4) | -0.005 [-0.045, +0.035] (n = 4) | +0.32 [-1.90, +2.53] | +0.009 [-0.019, +0.037] | +100 [-44, +244] | -4 [-88, +81] |
+
+*Table — the breakdown and the test's criteria.*
+
+| form, minus its base (mean a run, 95 % t-interval, seeds 3–7) | breakdown minute (none = 20) | T.H.52 departed | lane-windows ≤ 20 m/s | mainline | given up | unfinished |
+|---|---|---|---|---|---|---|
+| S1 own-model speed | +0.0 [-0.9, +0.9] | +8.4 [-24.3, +41.1] | +0.0 [-1.8, +1.8] | +6.8 [-47.7, +61.3] | +1.6 [+0.2, +3.0] | +1.4 [-4.8, +7.6] |
+| S2 pre-target speed | +0.4 [-0.3, +1.1] | +4.6 [-7.5, +16.7] | -0.6 [-2.5, +1.3] | +4.8 [-32.6, +42.2] | +0.2 [-2.9, +3.3] | -1.8 [-3.8, +0.2] |
+| G no slower than itself | +1.0 [-2.0, +4.0] | +4.2 [-27.3, +35.7] | +0.4 [-1.0, +1.8] | +14.4 [-28.5, +57.3] | +1.0 [-0.2, +2.2] | +0.6 [-3.0, +4.2] |
+| S1 on holds only | +0.4 [-1.5, +2.3] | -0.4 [-17.0, +16.2] | +1.0 [-0.8, +2.8] | +11.4 [-28.6, +51.4] | +1.0 [-2.6, +4.6] | +1.0 [-2.4, +4.4] |
+| A the acceptance's time gap | +0.0 [-0.9, +0.9] | +11.2 [-6.4, +28.8] | -0.2 [-1.8, +1.4] | +15.2 [-12.3, +42.7] | -0.2 [-2.4, +2.0] | +0.2 [-4.7, +5.1] |
+| S1, `ramp_outlet` = 1 | +0.4 [-2.5, +3.3] | +4.0 [-9.4, +17.4] | +0.0 [-1.2, +1.2] | +13.2 [-17.9, +44.3] | -0.2 [-1.2, +0.8] | +1.8 [-1.4, +5.0] |
+| S2, `ramp_outlet` = 1 | -0.6 [-2.5, +1.3] | -8.8 [-28.8, +11.2] | +0.0 [+0.0, +0.0] | +6.6 [-21.4, +34.6] | -0.2 [-1.8, +1.4] | +0.6 [-6.8, +8.0] |
+| G, `ramp_outlet` = 1 | +0.2 [-3.2, +3.6] | -5.4 [-17.7, +6.9] | -0.2 [-2.7, +2.3] | +10.0 [-17.9, +37.9] | -0.6 [-2.5, +1.3] | -1.2 [-5.1, +2.7] |
+| S1 holds only, `ramp_outlet` = 1 | -0.6 [-2.0, +0.8] | +9.2 [-6.4, +24.8] | +0.0 [-2.0, +2.0] | +12.4 [-9.8, +34.6] | +0.0 [-1.2, +1.2] | -1.4 [-5.2, +2.4] |
+| A, `ramp_outlet` = 1 | +2.0 [-7.3, +11.3] | -3.2 [-20.8, +14.4] | -0.6 [-2.3, +1.1] | -1.4 [-50.0, +47.2] | -1.2 [-2.2, -0.2] | +1.6 [-3.7, +6.9] |
+
+- *The loop.* The strict share falls 1.7–4.4 points under S1, S2 and G at the defaults, and under S1, G and A with `ramp_outlet` (intervals clear of zero). A at the defaults, S2 with `ramp_outlet` and S1 on holds only read inside the noise. The loop-closing share does not fall under any form: every interval includes zero, except S1 on holds only at the defaults, which reads 2.5 [0.6, 4.3] points higher.
+- *Lane 1.* Its density ratio over [0, 50) moves by at most ±0.012 (every interval inside ±0.055). Its speed after the breakdown moves inside the noise, except S1 on holds only with `ramp_outlet` (+1.02 [+0.03, +2.02] m/s). Over minutes 1–19 the same form reads +0.88 [−0.16, +1.92].
+- *The feeder's queue back* moves inside the noise under every form.
+- *The criteria.* No interval of the entrance, of criterion (ii) or of the mainline excludes zero. Criterion (ii) fails in every run of every form (10–14 windows of 16). S1 gives up 1.6 [0.2, 3.0] more exits a run, and A with `ramp_outlet` 1.2 [0.2, 2.2] fewer.
+- *Chance.* Outside the strict share, 4 of the 130 paired intervals exclude zero, two in each direction. That is about what chance gives at 95 %.
+- *Collisions.* None in any run of this package.
+
+**(4) Per seed.** Criteria in the order (i) mainline, (i) T.H.52, (ii), (iii), (iv).
+
+| run, seeds 3 / 4 / 5 / 6 / 7 | loop closes | strict | lane 1 over [0, 50) after the breakdown: m/s | … k / k_eq(v) | criteria passed (i main, i ent, ii, iii, iv) |
+|---|---|---|---|---|---|
+| default | 87% / 91% / 90% / 91% / 88% | 29% / 29% / 29% / 27% / 28% | 6.1 / 4.8 / 4.0 / 4.9 / 5.3 | 0.58 / 0.59 / 0.60 / 0.58 / 0.60 | ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✗✗✗✓✓ |
+| S1 own-model speed | 86% / 87% / 91% / 92% / 91% | 26% / 23% / 26% / 22% / 24% | 5.8 / 5.5 / 5.7 / 4.1 / 4.9 | 0.59 / 0.61 / 0.61 / 0.58 / 0.57 | ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✗✗✗✓✓ / ✓✗✗✓✓ |
+| S2 pre-target speed | 87% / 87% / 89% / 92% / 87% | 26% / 28% / 27% / 26% / 27% | 5.3 / 5.1 / 4.8 / 4.7 / 5.1 | 0.60 / 0.55 / 0.62 / 0.58 / 0.59 | ✓✗✗✓✓ / ✓✗✗✓✓ / ✗✗✗✓✓ / ✗✗✗✓✓ / ✓✗✗✓✓ |
+| G no slower than itself | 87% / 87% / 91% / 91% / 87% | 26% / 25% / 27% / 23% / 23% | 5.9 / 5.3 / 4.6 / 4.3 / 5.7 | 0.58 / 0.58 / 0.58 / 0.56 / 0.61 | ✓✗✗✓✓ / ✓✗✗✓✓ / ✗✗✗✓✓ / ✗✗✗✓✓ / ✓✗✗✓✓ |
+| S1 on holds only | 91% / 93% / 93% / 94% / 89% | 29% / 28% / 29% / 28% / 26% | 5.3 / 4.4 / 4.9 / 4.7 / 5.1 | 0.60 / 0.59 / 0.60 / 0.56 / 0.59 | ✓✗✗✓✓ / ✓✗✗✓✓ / ✗✗✗✓✓ / ✗✗✗✓✓ / ✓✗✗✓✓ |
+| A the acceptance's time gap | 86% / 93% / 91% / 93% / 88% | 22% / 29% / 28% / 25% / 23% | 5.8 / 4.5 / 5.3 / 4.8 / 5.9 | 0.63 / 0.59 / 0.58 / 0.58 / 0.61 | ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✗✗✗✓✓ / ✓✗✗✓✓ |
+| `ramp_outlet` = 1 | 83% / 90% / 89% / 92% / 85% | 20% / 24% / 24% / 25% / 20% | 7.0 / 5.3 / 6.2 / 4.9 / 6.9 | 0.64 / 0.68 / 0.65 / 0.62 / 0.61 | ✓✓✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ |
+| S1, `ramp_outlet` = 1 | 84% / 88% / 86% / 92% / 80% | 18% / 19% / 20% / 17% / 18% | 7.8 / 6.8 / 5.8 / 4.9 / 7.6 | 0.65 / 0.66 / 0.65 / 0.63 / 0.60 | ✓✓✗✓✓ / ✓✓✗✓✓ / ✓✓✗✓✓ / ✗✗✗✓✓ / ✓✓✗✓✓ |
+| S2, `ramp_outlet` = 1 | 84% / 85% / 91% / 87% / 82% | 19% / 21% / 25% / 22% / 20% | 7.8 / 5.5 / 4.0 / 5.0 / 7.1 | 0.63 / 0.62 / 0.70 / 0.63 / 0.62 | ✓✓✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ |
+| G, `ramp_outlet` = 1 | 83% / 90% / 91% / 91% / 81% | 17% / 19% / 19% / 19% / 17% | 7.3 / 6.5 / 6.3 / 4.2 / 7.0 | 0.61 / 0.62 / 0.64 / 0.66 / 0.61 | ✓✓✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ |
+| S1 holds only, `ramp_outlet` = 1 | 87% / 84% / 84% / 86% / 82% | 19% / 20% / 18% / 19% / 21% | 7.4 / 7.0 / 7.4 / 6.8 / 6.9 | 0.65 / 0.66 / 0.62 / 0.61 / 0.64 | ✓✓✗✓✓ / ✓✓✗✓✓ / ✓✓✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ |
+| A, `ramp_outlet` = 1 | 84% / 90% / 88% / 91% / 80% | 19% / 18% / 18% / 21% / 16% | 6.4 / 5.7 / 6.1 / 5.1 / – (no breakdown) | 0.64 / 0.64 / 0.63 / 0.66 / – (no breakdown) | ✓✓✗✓✓ / ✗✗✗✓✓ / ✓✗✗✓✓ / ✓✗✗✓✓ / ✓✓✗✓✓ |
+
+**(5) Why the speed does not move it: the loop's targets hold the gap.** The decomposition at the defaults and with `ramp_outlet` (seeds 3–7, read-only). For each hold and easing asked in the loop: the share that binds as it is, and the share that would still bind under each form.
+
+| run | target | loop targets per run | bind at the actual speeds | … with S1 | … S2 | … G | … A (the acceptance's time gap) | … G and A together | partner slower than the vehicle | gap to the partner over s0 + vT: p25 / median / p75 (range over seeds) | vehicle minus partner speed [m/s]: p25 / median / p75 (range over seeds) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| default | hold (the follower of the partner's gap) | 4,706 | 94.8% | 91.4% | 93.2% | 90.4% | 73.2% | 65.9% | 49% | 0.89–0.95 / 1.02–1.07 / 1.31–1.37 | -1.12–-0.82 / -0.10–+0.05 / +0.55–+0.74 |
+| default | easing (towards the partner as gap leader) | 993 | 92.6% | 89.0% | 91.5% | 87.7% | 82.7% | 74.4% | 94% | 0.45–0.61 / 0.76–0.82 / 0.91–0.95 | +0.10–+0.15 / +0.30–+0.39 / +0.78–+1.11 |
+| `ramp_outlet` = 1 | hold (the follower of the partner's gap) | 3,862 | 91.7% | 86.9% | 89.2% | 86.0% | 67.9% | 56.9% | 51% | 0.76–0.92 / 1.01–1.03 / 1.25–1.34 | -1.43–-0.76 / -0.09–+0.11 / +0.70–+0.80 |
+| `ramp_outlet` = 1 | easing (towards the partner as gap leader) | 970 | 92.0% | 88.7% | 91.2% | 86.9% | 84.1% | 73.5% | 95% | 0.41–0.52 / 0.74–0.78 / 0.91–0.94 | +0.13–+0.17 / +0.36–+0.48 / +0.99–+1.75 |
+
+- *The holds are car-following at equilibrium, on a leader in the other lane.* The follower sits at a median 1.01–1.07 of its own static gap s0 + vT to the partner's rear, and its speed is the partner's within about 0.1 m/s at the median (the middle half between −1.4 and +0.8 m/s). The partner is slower at only half of them.
+- *So the speed forms unbind 1.6–5.7 points of the holds.* 91.7–94.8 % bind as they are. 86.0–93.2 % still bind with the partner read at S1, S2 or G.
+- *The easings bind on the gap too.* The changer is at a median 0.74–0.82 of its static gap to its gap leader, and the leader is slower at 94–95 % of them. Yet 86.9–91.5 % still bind under the speed forms, against 92.0–92.6 %.
+- *The gap axis unbinds more, and it is still not enough.* Form A unbinds a fifth to a quarter of the holds (67.9–73.2 % still bind) and a tenth of the easings. In part (3) it moves neither lane 1's density (+0.010 [−0.019, +0.039] at the defaults) nor the entrance (+11.2 [−6.4, +28.8]).
+
+**Reading.**
+1. *The form is derivable and safe.* The runner's own reading of the partner's model (`_weave_command`'s a_own) gives the partner's speed without the target. Floored at the actual speed, a form only raises a ceiling. In 107 runs no run collides.
+2. *It acts, and the loop stays.* The speed forms act on 7,200–7,900 targets a run (holds and easings) and lift the partner's speed by 0.3–1.4 m/s. The strict loop falls by up to 4.4 points, but the loop still closes for 84–92 % of the steps that tie the lanes, against 90 % and 88 %.
+3. *Lane 1 is where it was.* Over the section's first 50 m after the breakdown, lane 1 runs at 0.58–0.60 of its equilibrium density under every form at the defaults, and at 0.63–0.64 with `ramp_outlet`, as without a form. The feeder queues as far back, the entrance and criterion (ii) do not move outside the seed noise, and the test passes in no run.
+4. *Why: the loop is an equilibrium, not a transient.* Each lane-1 vehicle in the loop keeps its own car-following gap to a lane-0 vehicle ahead, at that vehicle's speed. That is where the IDM's speed term is zero, so a form of the speed a target takes releases few of them (1.6–5.7 points of the holds). The loop's speed path is real, but the density it holds lane 1 at is set by the gap term. This is WP-65's arithmetic of one lane's worth for the pair, now read at the level of each target.
+5. *The gap axis is the lever the speed axis is not, and A alone is not enough.* Keeping only the acceptance's 0.6-s gap in the loop unbinds a fifth to a quarter of the holds, but lane 1's density and the entrance do not move. This package does not measure why. What A leaves as it was is the gap the two vehicles keep once the change is made, which is SUMO's car-following: the runner's targets are ceilings and cannot keep a vehicle closer than its own model (`_weave_command`).
+
+**Nothing ships.** No form clearly improves the judged measures. `microsim.runner` and `flowstate_core.config` are unchanged, no `WEAVE_DEFAULTS` key is added, the contract stays at 44 `weave_sections` keys, golden `merge_weave` is untouched, and the strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands as written.
+
+**What this hands on.**
+- *(a) The speed a target takes is closed as a lever.* The loop's holds bind on their gap, at the follower's own s0 + vT to the partner, with the partner at the follower's speed. Speed forms move the strict share and nothing the test reads.
+- *(b) The next question is the gap after the crossing, and it is an observation first.* A shorter gap in the loop's targets (A) does not move the density, and the runner cannot shorten the gap a follower keeps after the change. The measurement: the new follower's time gap to an entrant at the crossing and over the next 20–30 s, on the corridor section fixture and in I-24 MOTION's weaves (a cloud stage). Real drivers accept 0.92 s behind when entering (VM Z). If they then take tens of seconds to relax to their car-following gap while the model's followers return to T at once (the relaxation phenomenon after lane changes; Laval & Leclercq 2008, Transportation Research Part B 42), the pair's cap of one lane is the car-following after the change. The lever would then be a bounded, per-vehicle relaxation of the follower's `tau` (TraCI `vehicle.setTau`), not a weave target. That is a model-form change, to be measured before any rule.
+- *(c) S1 on holds only with `ramp_outlet` is not a candidate on this evidence.* It reads best on the entrance (Σ 1,966 against 1,920) and on lane 1's speed after the breakdown, but only the speed interval clears zero, its fixed-window reading does not, the same form at the defaults reads the loop 2.5 points higher, and (5) gives no mechanism for it.
+- *(d) For harnesses.* `_weave_cooperate` calls `_weave_choose_gap` twice for an exiter when `ramp_outlet` finds vehicles in the outlet (the binding test, then the choice). A hook on `_weave_choose_gap` should count only the last call. This package's first counts of the `ramp_outlet` runs double-counted there. They were re-run with the counts taken from the last call, and the 35 re-runs are byte-identical to the first ones.
+
+**Limitations.**
+- *Scale.* Five seeds and one fixture. The paired intervals are over five runs, and ten forms were read on 14 measures each.
+- *Platform.* macOS records. WP-85 (above) found single corridor-fleet runs on these fixtures that land differently on Linux.
+- *The loop condition* reads the partner's last-step target by the runner's IDM reading (`_weave_command`'s a_own), not the fleet's EIDM. A partner whose EIDM speed lay below the target within 0.05 m/s counts as at its target.
+- *The forms are one-step.* S1 and S2 lift only the last step's decrement. A partner held for many steps keeps the depression of the earlier ones. A form that reconstructs the partner's speed over its whole held spell was not measured: it would need a shadow of the partner's own-lane car-following, and (5) gives no reason to expect it to unbind targets that bind at Δv = 0.
+- *The decomposition* tests binding with the runner's own test at the step, and does not follow what an unbound target changes afterwards.
+- *The attribution* is WP-86's, with its limits: the IDM reading without the EIDM's extra terms, a 0.1 m/s² threshold, a 300-s walk-back and eight hops.
+
+**Bookkeeping.**
+- *Edited:* this section only. The CHANGELOG bullet is handed to the coordinator. The runner, `flowstate_core.config`, docs/CONTRACTS.md, the scenarios, the fixtures, every test and every golden are untouched, and no config hash changes.
+- *Session files (`wp87/`, not committed):*
+  - the harness `h87.py`, its per-run aggregation `an87.py` and the run script `runs87.sh`;
+  - the readers `tab87.py` and `obs87.py`;
+  - the rows `rows_def`, `rows_outlet`, `rows_s1`, `rows_s1_outlet`, `rows_s2`, `rows_s2_outlet`, `rows_g`, `rows_g_outlet`, `rows_s1h`, `rows_s1h_outlet`, `rows_a`, `rows_a_outlet`, `rows_obs_def` and `rows_obs_outlet` (`.jsonl`; 70 runs, of which the 25 `ramp_outlet` form runs and the 10 decomposition runs were run twice, byte-identical), two smoke runs, the logs `log_*.txt` and the first runs' md5 list `md5_first.json`;
+  - the tables `t_*.md`, and the section's assembly `assemble87.py` from `section_tpl.md`.
+  - Run directories were temporary and deleted.
+
+Every number above is from those runs, from the committed files named, or from `microsim.runner` at HEAD.

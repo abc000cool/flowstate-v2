@@ -8,6 +8,10 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ### 2026-09-25
 
+- **The loop-breaking target form on the corridor section fixture** (WP-87; docs/WEAVE_MODEL_PLAN.md dated section; analysis only, hash-neutral). WP-86's candidate was measured as a harness, seeds 3–7, at the defaults and with `ramp_outlet`: a cooperation target that reads its partner's speed without the weave target that set it, whenever that target points back at the vehicle's own lane. Three speed forms (the partner's own-model speed, its speed before the target, never below the vehicle's own), the first on holds only, and one gap form (the acceptance's 0.6-s gap in the loop).
+  - *It acts, and the loop stays.* The speed forms act on 7,200–7,900 targets a run and lift the partner's speed by 0.3–1.4 m/s. The strict loop falls by up to 4.4 points. The loop still closes for 84–92 % of the steps tying the lanes (90 % / 88 % before). Lane 1 over the section's first 50 m stays at 0.58–0.60 of its equilibrium density (0.63–0.64 with `ramp_outlet`). No paired interval of the entrance, criterion (ii) or the mainline excludes zero, and no run of 107 collides.
+  - *Why.* The loop's holds are car-following at equilibrium on a leader in the other lane: the follower sits at a median 1.01–1.07 of s0 + vT behind the partner, at the partner's speed within about 0.1 m/s. 86–93 % still bind under any speed form. The gap form releases a fifth to a quarter of the holds and moves neither the density nor the entrance.
+  - Nothing ships. The runner, config, contract (44 keys), goldens and tests are unchanged. Next: the gap after the crossing, observed first on the fixture and in I-24 MOTION's weaves.
 - **Paper first draft (roadmap B1)** (docs/PAPER_DRAFT.md; docs only, no runs). An unsubmitted full draft on docs/PAPER_OUTLINE.md, updated through 2026-09-25. It covers:
   - the I-24 MOTION coverage finding as the central methodological point;
   - the FHWA calibration sequence on I-24 and US-101;
