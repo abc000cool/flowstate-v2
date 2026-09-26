@@ -9,7 +9,7 @@
 > artifact it comes from, and Appendix A lists the headline numbers with
 > their seeds and sources. Appendix C lists places where the source
 > documents disagreed and how each was settled on 2026-09-25 against the
-> artifacts; the items still open are marked there.
+> artifacts; none remains open.
 
 **Authors:** [to be completed by the owner]
 **Affiliation and contact:** [to be completed by the owner]
@@ -745,9 +745,15 @@ Every arm is 1 PASS / 5 FAIL. Three of the five are measured failures (link
 flows, speeds, wave speed). The other two are the ring rows, which this
 driver does not evaluate and counts as failing. The one pass is the
 replicate count. Under the corrected metric definitions the
-speed row reads 35.9% with the boundary and 28.4% calibrated, and the wave
-row 6.1 and 5.9 km/h; no verdict changes [M3_US101_VALIDATION.md, re-run of
-2026-09-17]. The re-run's artifact also carries the sensitivity-grid row,
+speed row reads 35.9% with the boundary and 28.4% calibrated, and the
+standard detector's wave reading 6.1 and 5.9 km/h; no verdict changes
+[M3_US101_VALIDATION.md, re-run of 2026-09-17]. Scored with the profile's
+stack detector, as the criterion requires, the wave row reads NaN on both
+arms: no backward front in any of the 20 replicates, and none in the
+observed field either. On this 640 m site the row therefore cannot tell the
+model from the data; it fails because the detector finds no front
+[M3_US101_VALIDATION.md, note of 2026-09-25;
+artifacts/us101_validation_calibrated.json]. The re-run's artifact also carries the sensitivity-grid row,
 not evaluated by this driver either [artifacts/us101_validation_calibrated.json].
 
 What each failure says. The site is a third of a typical wave's wavelength,
@@ -1425,7 +1431,7 @@ was run on it** [ONBOARDING_MNDOT.md §6, §11].
 | Setting | Reproduced | Not reproduced |
 |---|---|---|
 | Ring, 22 vehicles on 230 m | emergence and single-vehicle dampening, 20 of 20 seeds | — |
-| US-101, 640 m, with measured boundary | congestion propagating from an imposed downstream state; backward waves in 20 of 20 replicates | flows, speeds, wave speed (1 PASS / 5 FAIL) |
+| US-101, 640 m, with measured boundary | congestion propagating from an imposed downstream state; backward waves in 20 of 20 replicates (standard detector; none with the criterion's stack detector) | flows, speeds, wave speed (1 PASS / 5 FAIL) |
 | I-24, 3.4 miles, four demand arms | the stop-and-go pattern from 2.2 km on; wave speed in band under the criterion's detector | link flows (17–20% of link-hours under GEH 5); segment speeds (34–36% RMSPE) |
 | I-94 WB, St. Paul | — | the corridor (departed 0.884, RMSPE 0.691, GEH 16%, reference configuration) |
 
@@ -1977,5 +1983,9 @@ Found while resolving the list:
     (`docs/reports/us101_replica/report.md`) scores the row with the stack
     detector, finds no front in any of the 20 replicates and reads NaN. The
     verdict is FAIL either way.
-    *Open.* The label is written by the validation driver into an artifact;
-    fixing it is a code and artifact change outside this pass.
+    *Resolved 2026-09-25.* `scripts/m3_us101_validate.py` now scores the
+    row with the profile's stack detector and names it (commit 9fef785), and
+    the artifact was regenerated on a cloud VM: the row reads NaN on both
+    arms (no backward front in 0 of 20 replicates, nor in the observed
+    field), FAIL as before; GEH and RMSPE reproduce to the digit
+    [M3_US101_VALIDATION.md, note of 2026-09-25].

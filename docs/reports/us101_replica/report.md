@@ -1,6 +1,6 @@
 # FlowState v2 — us101_replica validation report (NGSIM US-101 p1, measured downstream boundary)
 
-Generated: 2026-09-17T23:14:46Z
+Generated: 2026-09-26T01:44:23Z
 
 ## Provenance
 
@@ -8,28 +8,30 @@ Profile: `fhwa_default`. Seeds: 134183728835869882, 165503670820534583, 23784739
 
 Measurement window: each run's configured warm-up is discarded from every metric (warm-up per run, in seconds: 180). Travel times keep whole journeys that begin inside the window and are measured over [640, 1280] m. Fuel per vehicle-km remains a whole-run ratio unless the run records a post-warm-up fuel total.
 
+Insertion: 51840 vehicles planned over 20 run(s), 51833 departed (1 of plan on average, lowest 1), 2312.3 arrived per run (over 20 of 20); verdict: ok.
+
 | Run | Config hash | Seed | Tier | seeded | Wall time [s] |
 |---|---|---|---|---|---|
-| 134183728835869882 | `ab879e240aed` | 134183728835869882 | micro | seeded=False | 6.788 |
-| 165503670820534583 | `ab879e240aed` | 165503670820534583 | micro | seeded=False | 6.62 |
-| 2378473973028931053 | `ab879e240aed` | 2378473973028931053 | micro | seeded=False | 9.034 |
-| 3011106312394044631 | `ab879e240aed` | 3011106312394044631 | micro | seeded=False | 6.594 |
-| 3747978530954135749 | `ab879e240aed` | 3747978530954135749 | micro | seeded=False | 8.968 |
-| 3944094060050347669 | `ab879e240aed` | 3944094060050347669 | micro | seeded=False | 8.874 |
-| 4910985839736976611 | `ab879e240aed` | 4910985839736976611 | micro | seeded=False | 6.257 |
-| 5690692725577505498 | `ab879e240aed` | 5690692725577505498 | micro | seeded=False | 8.523 |
-| 6134032994440706937 | `ab879e240aed` | 6134032994440706937 | micro | seeded=False | 6.156 |
-| 6143473282319009404 | `ab879e240aed` | 6143473282319009404 | micro | seeded=False | 6.241 |
-| 6538422657834023852 | `ab879e240aed` | 6538422657834023852 | micro | seeded=False | 8.716 |
-| 661281422688282993 | `ab879e240aed` | 661281422688282993 | micro | seeded=False | 6.416 |
-| 677105600768189526 | `ab879e240aed` | 677105600768189526 | micro | seeded=False | 6.52 |
-| 6904272788004776631 | `ab879e240aed` | 6904272788004776631 | micro | seeded=False | 8.02 |
-| 6914975401685141156 | `ab879e240aed` | 6914975401685141156 | micro | seeded=False | 6.257 |
-| 6953598295321596746 | `ab879e240aed` | 6953598295321596746 | micro | seeded=False | 6.293 |
-| 7382187975121682178 | `ab879e240aed` | 7382187975121682178 | micro | seeded=False | 6.265 |
-| 8026499204807041784 | `ab879e240aed` | 8026499204807041784 | micro | seeded=False | 8.387 |
-| 8557154790156791364 | `ab879e240aed` | 8557154790156791364 | micro | seeded=False | 8.712 |
-| 887972120279483394 | `ab879e240aed` | 887972120279483394 | micro | seeded=False | 6.356 |
+| 134183728835869882 | `ab879e240aed` | 134183728835869882 | micro | seeded=False | 14.98 |
+| 165503670820534583 | `ab879e240aed` | 165503670820534583 | micro | seeded=False | 17.45 |
+| 2378473973028931053 | `ab879e240aed` | 2378473973028931053 | micro | seeded=False | 9.762 |
+| 3011106312394044631 | `ab879e240aed` | 3011106312394044631 | micro | seeded=False | 12.04 |
+| 3747978530954135749 | `ab879e240aed` | 3747978530954135749 | micro | seeded=False | 15.19 |
+| 3944094060050347669 | `ab879e240aed` | 3944094060050347669 | micro | seeded=False | 10.59 |
+| 4910985839736976611 | `ab879e240aed` | 4910985839736976611 | micro | seeded=False | 9.376 |
+| 5690692725577505498 | `ab879e240aed` | 5690692725577505498 | micro | seeded=False | 10.69 |
+| 6134032994440706937 | `ab879e240aed` | 6134032994440706937 | micro | seeded=False | 9.234 |
+| 6143473282319009404 | `ab879e240aed` | 6143473282319009404 | micro | seeded=False | 14.15 |
+| 6538422657834023852 | `ab879e240aed` | 6538422657834023852 | micro | seeded=False | 14.9 |
+| 661281422688282993 | `ab879e240aed` | 661281422688282993 | micro | seeded=False | 14.71 |
+| 677105600768189526 | `ab879e240aed` | 677105600768189526 | micro | seeded=False | 9.101 |
+| 6904272788004776631 | `ab879e240aed` | 6904272788004776631 | micro | seeded=False | 13.85 |
+| 6914975401685141156 | `ab879e240aed` | 6914975401685141156 | micro | seeded=False | 15.14 |
+| 6953598295321596746 | `ab879e240aed` | 6953598295321596746 | micro | seeded=False | 12.88 |
+| 7382187975121682178 | `ab879e240aed` | 7382187975121682178 | micro | seeded=False | 10.82 |
+| 8026499204807041784 | `ab879e240aed` | 8026499204807041784 | micro | seeded=False | 9.47 |
+| 8557154790156791364 | `ab879e240aed` | 8557154790156791364 | micro | seeded=False | 9.413 |
+| 887972120279483394 | `ab879e240aed` | 887972120279483394 | micro | seeded=False | 9.765 |
 
 ### Package versions (from run metadata)
 
@@ -96,6 +98,7 @@ criterion (n_seeds >= 20): PASS.
 | wave_speed_kmh | 7.132 | 6.632 | 7.632 | 20 | no |
 | wave_amplitude_ms | 8.82 | 7.83 | 9.81 | 20 | no |
 | n_travel_time_veh | 1919 | 1915 | 1923 | 20 | no |
+
 
 ## Speed contours
 

@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "created_at": "2026-09-17T20:00:51Z",
+ "created_at": "2026-09-26T01:46:01Z",
  "versions": {
   "python": "3.12.14",
   "numpy": "2.5.2",
@@ -14,8 +14,9 @@
  "observed_cache": "/home/anshpathak/flowstate/runs/m3_us101/observed_us101.json",
  "arms": {
   "with_boundary": {
-   "schema_version": 2,
-   "created_at": "2026-09-17T19:59:53Z",
+   "schema_version": 3,
+   "criteria_profile": "fhwa_default",
+   "created_at": "2026-09-26T01:44:23Z",
    "scenario": "us101_replica",
    "arm": "with_boundary",
    "replicates": 20,
@@ -190,7 +191,7 @@
     "framing": "measured downstream boundary condition per FHWA Traffic Analysis Toolbox Vol. III (FHWA-HOP-18-036, 2019) calibration practice; data-derived (seeded=False)"
    },
    "observed": {
-    "cache_version": 3,
+    "cache_version": 4,
     "data_hash": "8578f4754b267ad09eed5b0b8b3e18c83b7d9036b7afdcec295d5d3f19195e22",
     "period": "p1",
     "lanes": [
@@ -352,6 +353,20 @@
      "dt_bin_s": 10.0,
      "dx_bin_m": 50.0
     },
+    "waves_criterion": {
+     "detector": "stack",
+     "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+     "count": 0,
+     "n_backward": 0,
+     "backward_speeds_kmh": [],
+     "amplitudes_ms": [],
+     "mean_backward_speed_kmh": null,
+     "median_backward_speed_kmh": null,
+     "frac_backward_in_band": null,
+     "threshold_kmh": null,
+     "stack_contrast": 1.5003562487633855,
+     "note": "contrast below floor"
+    },
     "boundary_schedule_wall": [
      [
       0.0,
@@ -483,7 +498,7 @@
      ]
     ],
     "boundary_source": "mean mainline speed, local_y in [540, 640) m, 30 s windows, NGSIM US-101 p1",
-    "wall_s": 4.4
+    "wall_s": 6.2
    },
    "simulated": {
     "config_hash": "ab879e240aed",
@@ -531,7 +546,7 @@
      "/home/anshpathak/flowstate/runs/m3_us101/micro_with_boundary/ab879e240aed/887972120279483394",
      "/home/anshpathak/flowstate/runs/m3_us101/micro_with_boundary/ab879e240aed/8026499204807041784"
     ],
-    "wall_s": 12.4,
+    "wall_s": 47.2,
     "demand_realized_fraction": [
      1.0,
      0.9996,
@@ -1553,6 +1568,300 @@
     ],
     "stripe_mean_backward_speed_kmh": 11.14204939797045,
     "n_replicates_with_stripe_backward_waves": 20,
+    "criterion_detector": "stack",
+    "criterion_wave_speed_kmh": null,
+    "criterion_waves": {
+     "detector": "stack",
+     "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+     "mean_backward_speed_kmh": null,
+     "median_backward_speed_kmh": null,
+     "n_replicates_with_backward_waves": 0,
+     "n_replicates": 20,
+     "wave_count_mean": 0.0,
+     "all_backward_speeds_kmh": [],
+     "per_replicate": [
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.5674904712389448,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.801750580671981,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.876824099884368,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.5752767357391388,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.8574929709549837,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.771615901067866,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.6284167689327644,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.8694127911039318,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.9764889431828143,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.549702971761477,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.4953073598906683,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.4597803077403773,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.7780710401235997,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.5947325949788846,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.5873699088768516,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.5420620317951736,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.592333684706136,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.7294327389467055,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.565011132170377,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.63246338707808,
+       "note": "contrast below floor"
+      }
+     ]
+    },
     "metrics_ci": {
      "throughput_veh_h": {
       "mean": 8027.093389296957,
@@ -1718,7 +2027,31 @@
     },
     "simulated_stripe_mean_backward_speed_kmh": 11.14204939797045,
     "n_replicates_with_stripe_backward_waves": 20,
-    "stripe_note": "the 40 km/h default threshold merges this fully congested 640 m site into components whose upstream front pins at the site boundary (slope 0); the stripe analysis lowers the threshold to isolate the deep stop-and-go stripes inside the congestion, identically on both sides"
+    "stripe_note": "the 40 km/h default threshold merges this fully congested 640 m site into components whose upstream front pins at the site boundary (slope 0); the stripe analysis lowers the threshold to isolate the deep stop-and-go stripes inside the congestion, identically on both sides",
+    "criterion_detector": "stack",
+    "criterion_detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+    "criterion_wave_speed_kmh": null,
+    "n_replicates_with_criterion_backward_waves": 0,
+    "criterion_field_bins": "15 s x 75 m, x < 640 m both sides",
+    "observed_criterion": {
+     "detector": "stack",
+     "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+     "count": 0,
+     "n_backward": 0,
+     "backward_speeds_kmh": [],
+     "amplitudes_ms": [],
+     "mean_backward_speed_kmh": null,
+     "median_backward_speed_kmh": null,
+     "frac_backward_in_band": null,
+     "threshold_kmh": null,
+     "stack_contrast": 1.5003562487633855,
+     "note": "contrast below floor"
+    },
+    "diagnostic_detectors": {
+     "standard": "standard: jam = v < 40 km/h on 15 s x 75 m bins, 8-connected components >= 4 bins, mean magnitude of backward Theil-Sen front speeds",
+     "stripe": "stripe: jam = v < 25 km/h on 10 s x 50 m bins, 8-connected components >= 4 bins, mean magnitude of backward Theil-Sen front speeds"
+    },
+    "diagnostic_note": "observed, observed_stripe, simulated_mean_backward_speed_kmh, simulated_stripe_mean_backward_speed_kmh and the per-replicate waves are the standard 40 km/h and stripe detectors' readings, kept as diagnostics; the wave_speed criteria row is criterion_wave_speed_kmh, measured with criterion_detector"
    },
    "criteria": [
     {
@@ -1739,11 +2072,11 @@
     },
     {
      "name": "wave_speed",
-     "value": 6.062820394809121,
+     "value": null,
      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
      "passed": false,
      "evaluated": true,
-     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; caller did not state which detector produced the value"
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
     },
     {
      "name": "ring_emergence",
@@ -1870,12 +2203,15 @@
     "with_boundary arm: measured downstream speed schedule (last 100 m, 30 s windows) applied on a 200 m exit-buffer edge OUTSIDE the measured span (FHWA measured-boundary calibration practice). The replica still lacks the auxiliary lane and on/off ramps (internal merge bottleneck at ~150-165 m), so remaining in-span disagreement is expected and reported.",
     "Comparisons use the 3 full 5-min windows (0-900 s) inside the 952.8 s period-1 span; the trailing partial window is excluded.",
     "Crossing counts censor vehicles first observed at/past a section on both sides (recording start vs warmup end).",
-    "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py -> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an identical-variants null)."
+    "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py -> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an identical-variants null).",
+    "The wave_speed criteria row is measured with the 'fhwa_default' profile's wave_detector (stack) on its own bins over each replicate's field clipped to the 640 m site; the arm value is the mean over the replicates with a backward reading, NaN (failing, 'no backward wave detected') when none has one. The standard 40 km/h keys and the stripe analysis are diagnostics on the same support. Results before schema 3 scored the standard reading under the profile detector's label (docs/PAPER_DRAFT.md Appendix C item 18).",
+    "docs/reports/us101_replica/report.md (scripts/m3_us101_report.py) measures the same detector over each run's whole simulated road after its warm-up, not the 640 m site, so its reading need not equal this one."
    ]
   },
   "calibrated": {
-   "schema_version": 2,
-   "created_at": "2026-09-17T20:00:51Z",
+   "schema_version": 3,
+   "criteria_profile": "fhwa_default",
+   "created_at": "2026-09-26T01:46:01Z",
    "scenario": "us101_replica_calibrated",
    "arm": "calibrated",
    "replicates": 20,
@@ -2050,7 +2386,7 @@
     "framing": "measured downstream boundary condition per FHWA Traffic Analysis Toolbox Vol. III (FHWA-HOP-18-036, 2019) calibration practice; data-derived (seeded=False)"
    },
    "observed": {
-    "cache_version": 3,
+    "cache_version": 4,
     "data_hash": "8578f4754b267ad09eed5b0b8b3e18c83b7d9036b7afdcec295d5d3f19195e22",
     "period": "p1",
     "lanes": [
@@ -2212,6 +2548,20 @@
      "dt_bin_s": 10.0,
      "dx_bin_m": 50.0
     },
+    "waves_criterion": {
+     "detector": "stack",
+     "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+     "count": 0,
+     "n_backward": 0,
+     "backward_speeds_kmh": [],
+     "amplitudes_ms": [],
+     "mean_backward_speed_kmh": null,
+     "median_backward_speed_kmh": null,
+     "frac_backward_in_band": null,
+     "threshold_kmh": null,
+     "stack_contrast": 1.5003562487633855,
+     "note": "contrast below floor"
+    },
     "boundary_schedule_wall": [
      [
       0.0,
@@ -2343,7 +2693,7 @@
      ]
     ],
     "boundary_source": "mean mainline speed, local_y in [540, 640) m, 30 s windows, NGSIM US-101 p1",
-    "wall_s": 4.4
+    "wall_s": 6.2
    },
    "simulated": {
     "config_hash": "032bd2e886fa",
@@ -2391,7 +2741,7 @@
      "/home/anshpathak/flowstate/runs/m3_us101/micro_calibrated/032bd2e886fa/887972120279483394",
      "/home/anshpathak/flowstate/runs/m3_us101/micro_calibrated/032bd2e886fa/8026499204807041784"
     ],
-    "wall_s": 18.0,
+    "wall_s": 72.8,
     "demand_realized_fraction": [
      0.9691,
      0.9661,
@@ -3527,6 +3877,300 @@
     ],
     "stripe_mean_backward_speed_kmh": 12.807564613211866,
     "n_replicates_with_stripe_backward_waves": 20,
+    "criterion_detector": "stack",
+    "criterion_wave_speed_kmh": null,
+    "criterion_waves": {
+     "detector": "stack",
+     "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+     "mean_backward_speed_kmh": null,
+     "median_backward_speed_kmh": null,
+     "n_replicates_with_backward_waves": 0,
+     "n_replicates": 20,
+     "wave_count_mean": 0.0,
+     "all_backward_speeds_kmh": [],
+     "per_replicate": [
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.7877781573757014,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.793104209496036,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.8514161611964157,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.7764711810477,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.63231520674914,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.791121187613713,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.7260024765477264,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.6666421388427937,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.716633649938029,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.6861163917608715,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.9567812567101983,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.8422483421596267,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.9347878452770793,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.893989352763248,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.6005026801077846,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.7193446896251234,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.993081050751929,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.5468224387845952,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.9031894251876145,
+       "note": "contrast below floor"
+      },
+      {
+       "detector": "stack",
+       "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+       "count": 0,
+       "n_backward": 0,
+       "backward_speeds_kmh": [],
+       "amplitudes_ms": [],
+       "mean_backward_speed_kmh": null,
+       "median_backward_speed_kmh": null,
+       "frac_backward_in_band": null,
+       "threshold_kmh": null,
+       "stack_contrast": 1.564882757010783,
+       "note": "contrast below floor"
+      }
+     ]
+    },
     "metrics_ci": {
      "throughput_veh_h": {
       "mean": 9265.750262329486,
@@ -3692,7 +4336,31 @@
     },
     "simulated_stripe_mean_backward_speed_kmh": 12.807564613211866,
     "n_replicates_with_stripe_backward_waves": 20,
-    "stripe_note": "the 40 km/h default threshold merges this fully congested 640 m site into components whose upstream front pins at the site boundary (slope 0); the stripe analysis lowers the threshold to isolate the deep stop-and-go stripes inside the congestion, identically on both sides"
+    "stripe_note": "the 40 km/h default threshold merges this fully congested 640 m site into components whose upstream front pins at the site boundary (slope 0); the stripe analysis lowers the threshold to isolate the deep stop-and-go stripes inside the congestion, identically on both sides",
+    "criterion_detector": "stack",
+    "criterion_detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+    "criterion_wave_speed_kmh": null,
+    "n_replicates_with_criterion_backward_waves": 0,
+    "criterion_field_bins": "15 s x 75 m, x < 640 m both sides",
+    "observed_criterion": {
+     "detector": "stack",
+     "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+     "count": 0,
+     "n_backward": 0,
+     "backward_speeds_kmh": [],
+     "amplitudes_ms": [],
+     "mean_backward_speed_kmh": null,
+     "median_backward_speed_kmh": null,
+     "frac_backward_in_band": null,
+     "threshold_kmh": null,
+     "stack_contrast": 1.5003562487633855,
+     "note": "contrast below floor"
+    },
+    "diagnostic_detectors": {
+     "standard": "standard: jam = v < 40 km/h on 15 s x 75 m bins, 8-connected components >= 4 bins, mean magnitude of backward Theil-Sen front speeds",
+     "stripe": "stripe: jam = v < 25 km/h on 10 s x 50 m bins, 8-connected components >= 4 bins, mean magnitude of backward Theil-Sen front speeds"
+    },
+    "diagnostic_note": "observed, observed_stripe, simulated_mean_backward_speed_kmh, simulated_stripe_mean_backward_speed_kmh and the per-replicate waves are the standard 40 km/h and stripe detectors' readings, kept as diagnostics; the wave_speed criteria row is criterion_wave_speed_kmh, measured with criterion_detector"
    },
    "criteria": [
     {
@@ -3713,11 +4381,11 @@
     },
     {
      "name": "wave_speed",
-     "value": 5.857956288609259,
+     "value": null,
      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
      "passed": false,
      "evaluated": true,
-     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; caller did not state which detector produced the value"
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
     },
     {
      "name": "ring_emergence",
@@ -3844,7 +4512,9 @@
     "with_boundary arm: measured downstream speed schedule (last 100 m, 30 s windows) applied on a 200 m exit-buffer edge OUTSIDE the measured span (FHWA measured-boundary calibration practice). The replica still lacks the auxiliary lane and on/off ramps (internal merge bottleneck at ~150-165 m), so remaining in-span disagreement is expected and reported.",
     "Comparisons use the 3 full 5-min windows (0-900 s) inside the 952.8 s period-1 span; the trailing partial window is excluded.",
     "Crossing counts censor vehicles first observed at/past a section on both sides (recording start vs warmup end).",
-    "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py -> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an identical-variants null)."
+    "Macro-vs-micro flux-cap variant comparison: scripts/m3_fluxcap_compare.py -> runs/m3_fluxcap/results.json (JAD arm; the follower_stopper arm was an identical-variants null).",
+    "The wave_speed criteria row is measured with the 'fhwa_default' profile's wave_detector (stack) on its own bins over each replicate's field clipped to the 640 m site; the arm value is the mean over the replicates with a backward reading, NaN (failing, 'no backward wave detected') when none has one. The standard 40 km/h keys and the stripe analysis are diagnostics on the same support. Results before schema 3 scored the standard reading under the profile detector's label (docs/PAPER_DRAFT.md Appendix C item 18).",
+    "docs/reports/us101_replica/report.md (scripts/m3_us101_report.py) measures the same detector over each run's whole simulated road after its warm-up, not the 640 m site, so its reading need not equal this one."
    ]
   }
  }

@@ -8124,3 +8124,48 @@ Every number above is from those runs, from the committed files named, or from `
   - The run directories were deleted after the analysis.
 
 Every number above is from those runs, from the committed files named, or from the tests.
+
+## 2026-09-25 (block 3, VM AC, WP-88's real-data side: the gap after the crossing on I-24 MOTION and NGSIM US-101): real entering crossings start short on both sides, where the model's start at or above the normal gap. The entrant's new follower reads a median 0.87 of the population's normal at the change on I-24 and 0.76 on US-101, against the model's 1.05 [1.01, 1.10]. The entrant behind its new leader reads 0.72 and 0.57, against the model's 1.31. On US-101 both sides return towards the normal over the next 10–20 s: the leader side with a supported fit (τ_r 7.5 s, 5.2–15.9), the follower side with a fit that fails only the bootstrap-stability test (145 of 200 refits resolve, 160 needed). On I-24 the short gaps persist over the 10–12 s its fragmented tracks allow. By the rule written before the numbers, a relaxation of the entrant's new follower is **not established** (verdict (c)). But the rule's second clause, that the gap after the crossing is then not what separates the model from real drivers, does not hold: the gap at the crossing separates them, on both sides and in both datasets. Nothing ships
+
+**The round.** VM AC (`flowstate-relax`, n2-standard-8, us-west1-c, bucket `gs://flowstate-relax-0925/relax`, self-deleting, 90-min server-side cap) ran stages `i24_lane_change_relaxation` and `us101_lane_change_relaxation` at commit 52207f3 (VM snapshot 87cf576, `code_dirty` false). Pipeline 01:43–01:46 UTC; the I-24 stage walked 129,272 changes in 114 s at 1.9 GB peak, the US-101 stage took 12 s at 1.0 GB. Artifacts: `artifacts/lane_change_relaxation_i24.json`, `artifacts/lane_change_relaxation_us101.json`. The US-101 validation re-run went on a separate VM the same minute (docs/M3_US101_VALIDATION.md, dated note).
+
+**(1) The entrant's new follower** (weave zone, entering, all speeds; median over the population's car-following time gap at the follower's speed, in each dataset; sides read in brackets).
+
+| offset [s] | 0 | 2 | 5 | 10 | 20 |
+|---|---|---|---|---|---|
+| model, corridor section fixture (WP-88, seeds 3–7) | 1.05 (740) | 1.21 (582) | 1.33 (379) | 1.23 (181) | 1.05 (79) |
+| I-24 MOTION, Hickory Hollow–Bell Road weave | 0.87 (1,488) | 0.87 | 0.89 (303) | 0.89 (89) | 0.95 |
+| NGSIM US-101, lane-6 weave | 0.76 (177) | 0.88 | 0.95 (123) | 1.03 (85) | 1.10 |
+
+- *At 10–20 m/s* (the class the rule names): the model 1.06 at the change (193 sides); I-24 0.83 (685); US-101 0.76 (159), then 0.87 / 0.93 / 1.02 / 1.10 at 2 / 5 / 10 / 20 s.
+- *Against the follower's static gap s0 + vT* at each dataset's population means: I-24 1.14 at the change, US-101 0.81; the model's median is 1.17 at its own s0 and T (1.31 at the fleet's means).
+- *The fits* (over the population's normal; weighted least squares on the medians, 200 bootstrap refits over sides; WP-88's four conditions):
+
+| dataset, speeds | supported | τ_r [s] (95 %) | r0 (95 %) → r∞ (95 %) | why not |
+|---|---|---|---|---|
+| I-24, all | no | 26.1 (not resolved) | 0.87 (0.82–0.92) → 1.02 | τ_r slower than the 12-s window; the amplitude's interval contains 0 |
+| I-24, 10–20 m/s | no | 0.54 | 0.83 (0.76–0.87) → 0.87 | faster than the first offset; amplitude contains 0; not exponential (residual 0.33 of the amplitude) |
+| US-101, all | no | 5.3 (1.9–16.9) | 0.77 (0.70–0.85) → 1.08 (0.96–1.45) | 145 of 200 refits resolve τ_r (160 needed) |
+| US-101, 10–20 m/s | no | 6.9 (2.2–18.5) | 0.77 (0.71–0.84) → 1.09 (0.91–1.46) | 155 of 200 refits resolve τ_r (160 needed) |
+
+**(2) The entrant behind its new leader** (the same zones and measure).
+
+| offset [s] | 0 | 2 | 5 | 10 | 20 |
+|---|---|---|---|---|---|
+| model (WP-88) | 1.31 (594) | 1.40 | 1.27 | 1.10 | — (1.03 at 30 s) |
+| I-24 | 0.72 (1,612) | 0.61 | 0.67 (383) | 0.76 (129) | 0.75 |
+| US-101 | 0.57 (176) | 0.61 | 0.72 (131) | 0.88 (97) | 0.87 |
+
+- *US-101's fit is supported*: τ_r 7.5 s (5.2–15.9), r0 0.54 (0.48–0.61) → r∞ 0.92 (0.86–1.20), 198 of 200 refits; at 10–20 m/s τ_r 8.9 s (5.8–17.3), 0.54 → 0.95, 179 of 200.
+- *I-24's is not* (τ_r 0.28 s, r∞ 0.65): the gap ahead stays at 0.6–0.76 of the normal over the window.
+- The model's entrant does the opposite: 1.62 of its own static gap at the change, closing over about 20 s (WP-88, τ_r 19 s on its own s0 + vT).
+
+**Reading.**
+1. *The rule's verdict: (c).* Its test for a relaxation in real traffic is a median below 0.9 at the change and a supported opening fit, over all speeds and at 10–20 m/s. Both datasets pass the first part (0.87 / 0.76 over all speeds, 0.83 / 0.76 at 10–20 m/s). No fit of the follower side is supported: US-101's fails only the stability test, I-24's has no opening within the window. So a relaxation of the entrant's new follower is not established, and a `tau` relaxation over a fitted τ_r is not the candidate the rule would hand on.
+2. *What the rule did not anticipate.* Clause (c) reads "no relaxation" as "the gap after the crossing is not what separates the model from real drivers". The numbers say otherwise at the crossing itself. Real entrants and their new followers both start at 0.57–0.87 of the normal gap; the model's start at 1.05 (follower) and 1.31 (leader). The intervals do not overlap on the follower side (I-24 r0 0.82–0.92, US-101 0.70–0.85, against the model's seed interval 1.01–1.10), though they are different kinds of interval (bootstrap over sides on real data, t over five seeds in the model).
+3. *Coverage.* I-24 MOTION tracks about half the peak vehicle-time, so an observed gap is the true one or longer (WP-88 (d)): its short starts are robust, and its true gaps may be shorter still. Its fragments limit the curve: 1,454 follower sides at the change, 77 at 10 s. US-101 is complete in coverage but raw and small (177 sides).
+4. *What this hands on.* The model's crossings are made at the follower's and the entrant's own equilibrium gap or above it (WP-87, WP-88), because the runner's targets are ceilings and SUMO's car-following keeps each vehicle at its own s0 + vT. Real drivers cross into 0.6–0.9 of the normal gap and, on US-101, return to it over 5–9 s. The candidate is therefore a bounded post-crossing gap allowance: for a set time after a crossing, the entrant and its new follower may follow at a fraction of their own time gap, returning to it over a few seconds. It is a model-form change (per-vehicle `tau` via TraCI, SUMO's safety checks on). It is not what the pre-written rule named, so it is recorded here as a proposal, to be derived and measured on the fixture harness before any adoption, with US-101's leader-side τ_r (7.5 s) and the starting ratios above as the observed targets.
+
+**Session files (not committed):** the round archive `vm_relax/final.tgz` and its extraction; the tables above were read from the two artifacts with `jq`.
+
+Every number above is from the two committed artifacts or from WP-88's section.
