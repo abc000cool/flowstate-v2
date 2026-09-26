@@ -1527,6 +1527,20 @@ and EIDM costs about 11% of straight-road capacity at every headway
 [ONBOARDING_MNDOT.md §10, "Why the plateau"]. The car-following model of an
 onboarded corridor is therefore a calibration decision to make deliberately.
 
+The corridor's reference battery recorded 15 collisions over 20 seeds, although
+SUMO's safety checks are on. Fourteen came from the two on-ramps modelled with
+the scripted merge. Its forced lane change, made under a SUMO mode that refuses
+a change only on an overlap, put a ramp vehicle that had slowed for the end of
+its acceleration lane in front of a follower 10–16 m/s faster
+[WEAVE_MODEL_PLAN.md, WP-93]. Allowing the forced change only when the gap
+exceeds the follower's braking distance removes all 15 collisions over the same
+20 seeds, with no resolved change in departures, speed error or link-flow fit
+(collisions −0.75 [−1.09, −0.41] a seed, paired) [ONBOARDING_MNDOT.md §11,
+VM AG; artifacts/mndot_rounds/weave_2026-09-24/battery_reference_plus_force_guard_1259a9b.json].
+The corridor's reference configuration now includes that guard. A merge model
+is a path by which a simulator's safety checks can be bypassed, and each one
+needs its own collision test.
+
 ### 7.3 The weaving sections
 
 The best configuration still carries 3,344 veh/h at station S790 in
@@ -1951,6 +1965,7 @@ Single-seed probes are marked; none is a headline result on its own.
 | 49 | Same test: partner speeds at the change | entrant minus new follower +0.05 [−0.16, +0.25] / +0.11 [−0.25, +0.47] m/s on +1.01; new leader minus entrant −0.04 [−0.19, +0.11] / +0.04 [−0.09, +0.16] m/s on −0.40; robust | same | same |
 | 50 | Partner speeds at the change, weave entering, medians | new leader minus entrant: US-101 −0.40 m/s (176 sides), I-24 −0.83 (1,612), model +1.37 (594; seed mean 1.45 [1.21, 1.68]); entrant minus new follower: US-101 +1.01 (177), I-24 +1.18 (1,488), model +0.72 (740; seed mean 0.75 [0.56, 0.95]) | — (data); 5 (model, seeds 3–7, fixture) | [artifacts/lane_change_relaxation_us101.json; artifacts/lane_change_relaxation_i24.json; model: WEAVE_MODEL_PLAN.md, WP-91, no committed artifact] |
 | 51 | Gap at the change over the population's normal, weave entering (new follower / entrant behind its new leader) | US-101 0.76 (177) / 0.57 (176); I-24 0.87 (1,454 finite values) / 0.72 (1,591), follower side not coverage-robust; model 1.05 [1.01, 1.10] (740) / 1.31 (594) | — (data); 5 (model, seeds 3–7, fixture) | [artifacts/lane_change_relaxation_us101.json; artifacts/lane_change_relaxation_i24.json; model: WEAVE_MODEL_PLAN.md, WP-88 and VM AC, no committed artifact] |
+| 52 | Collisions on the MnDOT corridor's reference battery, without and with the scripted-merge guard | 15 and 0 over 20 seeds each; paired −0.75 [−1.09, −0.41] a seed; departed −0.002 [−0.008, +0.003] | 20 seeds, paired | [artifacts/mndot_rounds/weave_2026-09-24/collisions_reference_and_guard_556f737.json; battery_reference_plus_force_guard_1259a9b.json; collisions_force_guard_and_lane_change_1259a9b.json] |
 
 ---
 
