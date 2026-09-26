@@ -59,6 +59,14 @@ kept at the requested offsets:
   crossing out of a queue); ``ratio_own_eq`` is the vehicle's own normal with
   that speed dependence taken out by the static gap.
 
+Beside the measures, each side keeps the two speeds (``rear_v_ms``,
+``front_v_ms``) and, since WP-91, the *partner speed* ``rel_speed_ms``
+(:data:`PARTNER_SPEEDS`): the front vehicle's speed minus the rear one's. On
+the leader side that is the new leader's speed minus the changer's, on the
+follower side the changer's speed minus the new follower's; it is positive
+while the side's gap opens. At offset 0 it is minus the record's
+``lead_closing_ms`` (leader side) or ``lag_closing_ms`` (follower side).
+
 **Car-following.** A pair is car-following at an instant when its bumper gap
 is at least ``min_gap_m`` (0.5 m; below it the sample is ``suspect``, on
 I-24 MOTION most often a duplicate fragment) and at most
@@ -205,6 +213,11 @@ MEASURES: Final[tuple[str, ...]] = (
 
 SPEEDS: Final[tuple[str, ...]] = ("rear_v_ms", "front_v_ms")
 """Speeds kept beside the measures."""
+
+PARTNER_SPEEDS: Final[tuple[str, ...]] = ("rel_speed_ms",)
+"""The partner speed (WP-91): ``front_v_ms − rear_v_ms`` [m/s], the new leader's speed
+minus the changer's (leader side) or the changer's minus the new follower's (follower
+side); positive while the gap opens (module docstring)."""
 
 RATIOS: Final[tuple[str, ...]] = ("ratio_own", "ratio_own_eq", "ratio_pop", "ratio_eq")
 """The measures a relaxation is fitted to by default."""
@@ -702,8 +715,9 @@ class PostChangeGaps:
             read; NaN when none).
         offsets_s: The offsets [s].
         values: ``values[side][name]``: ``(n_events, n_offsets)`` arrays of
-            each :data:`MEASURES` and :data:`SPEEDS` entry, NaN where the side
-            was not read (censored, or a time gap below ``min_speed_ms``).
+            each :data:`MEASURES`, :data:`SPEEDS` and :data:`PARTNER_SPEEDS`
+            entry, NaN where the side was not read (censored, or a time gap
+            below ``min_speed_ms``).
         counts: ``n_changes`` (asked for), ``n_unmatched`` (not found in the
             frame), ``n_duplicate_slots`` (rows dropped: a second sample of one
             vehicle in one slot), and per side ``n_<side>_measured`` and
@@ -733,11 +747,12 @@ class PostChangeGaps:
                     "offset_s": self.offsets_s[off],
                 }
             )
-            for name in (*MEASURES, *SPEEDS):
-                part[name] = vals[name][ev, off]
+            for name in (*MEASURES, *SPEEDS, *PARTNER_SPEEDS):
+                if name in vals:
+                    part[name] = vals[name][ev, off]
             parts.append(part)
         if not parts:
-            cols = ["change", "side", "offset_s", *MEASURES, *SPEEDS]
+            cols = ["change", "side", "offset_s", *MEASURES, *SPEEDS, *PARTNER_SPEEDS]
             return pd.DataFrame({c: pd.Series(dtype=float) for c in cols})
         return pd.concat(parts, ignore_index=True)
 
@@ -922,7 +937,9 @@ def post_change_gaps(
 
     n_off = offs.size
     values: dict[str, dict[str, NDArray[np.float64]]] = {
-        side: {name: np.full((n_c, n_off), np.nan) for name in (*MEASURES, *SPEEDS)}
+        side: {
+            name: np.full((n_c, n_off), np.nan) for name in (*MEASURES, *SPEEDS, *PARTNER_SPEEDS)
+        }
         for side in SIDES
     }
     reason = {side: np.full(n_c, "observed_to_end", dtype=object) for side in SIDES}
@@ -1006,6 +1023,8 @@ def post_change_gaps(
             eq = _equilibrium_gap(equilibrium, rear_ids, vals["rear_v_ms"])
             vals["ratio_eq"] = vals["space_gap_m"] / eq
             vals["ratio_own_eq"] = vals["ratio_eq"] / ref_eq[:, None]
+        # the partner speed (WP-91): front minus rear, read where both speeds were
+        vals["rel_speed_ms"] = vals["front_v_ms"] - vals["rear_v_ms"]
         for name in ("ratio_own", "ratio_eq", "ratio_own_eq"):
             vals[name][~np.isfinite(vals[name])] = np.nan
         tally = Counter(reason[side].tolist())
@@ -1494,6 +1513,10 @@ def _side_summary(
 ) -> dict[str, Any]:
     ev = result.events.iloc[rows]
     vals = {m: result.values[side][m][rows] for m in (*measures, *SPEEDS)}
+    side_vals = result.values[side]
+    # the partner speed (WP-91); a result built before it existed carries both speeds
+    rel_all = side_vals.get("rel_speed_ms", side_vals["front_v_ms"] - side_vals["rear_v_ms"])
+    rel = rel_all[rows]
     read = np.isfinite(result.values[side]["space_gap_m"][rows])
     censor = Counter(ev[f"{side}_censor"].astype(str).tolist())
     measured = rows.size - censor["no_partner"] - censor["not_following"]
@@ -1507,6 +1530,13 @@ def _side_summary(
         "ref_own_s": {f"p{round(q * 100)}": _q(refs, q)[0] for q in (0.25, 0.5, 0.75)},
         "measures": {},
         "rear_v_ms_p50": _q(vals["rear_v_ms"], 0.5),
+        "front_v_ms_p50": _q(vals["front_v_ms"], 0.5),
+        "rel_speed_ms": {
+            "n": [int(v) for v in np.isfinite(rel).sum(axis=0)],
+            "p25": _q(rel, 0.25),
+            "p50": _q(rel, 0.5),
+            "p75": _q(rel, 0.75),
+        },
     }
     for m in measures:
         a = vals[m]
@@ -1564,6 +1594,8 @@ def summarize_relaxation(
     and :func:`_side_summary`'s block (``n_changes``, ``n_measured``,
     ``n_ref_own``, ``censor``, ``n`` per offset, ``ref_own_s`` quantiles,
     ``measures.<m>.{n, p25, p50, p75}`` per offset, ``rear_v_ms_p50``,
+    ``front_v_ms_p50`` and ``rel_speed_ms.{n, p25, p50, p75}`` per offset (the
+    partner speed, WP-91; added beside the existing keys, which are unchanged),
     ``complete_case`` and ``fits.<m>`` from :func:`fit_relaxation`). Each
     row's bootstrap seeds come from ``flowstate_core.rng.spawn_seeds(seed,
     n_rows)``, one per fitted measure.

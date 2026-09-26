@@ -8571,3 +8571,149 @@ The model rows at seeds 3–12 come from the same script on uncommitted runs; th
 Reading 3's "1,454 follower sides at the change, 77 at 10 s" are finite `ratio_pop` values, not sides. The observed medians in both tables match the artifacts.
 
 Every number above was read from the named artifacts with `jq`, or from `git cat-file -e` and `git log`. Not verified against an artifact: the model's ratios (WP-88's and WP-90's text), WP-82's 343 of 963 (WP-82's text), the counterexample (a synthetic check) and the model rows at seeds 3–12 (uncommitted runs).
+
+## 2026-09-25 (block 3, WP-91, coverage thinning and partner speeds): a seeded thinning of NGSIM US-101 to I-24-like coverage (`calibration.thinning`: whole vehicles kept, or every track cut into I-24-like fragments with new tracker ids) and a cloud stage that measures WP-77's, WP-78's and WP-88's lane-change quantities again at kept fractions 1.0, 0.65 and 0.5, five seeds each. The reading rule below was written before any number exists. The relaxation measurement also reads the partner speeds now: the new leader's speed minus the changer's, and the changer's minus the new follower's. On the corridor section fixture (seeds 3–7, weave defaults), the model's entrant crosses a median 0.72 m/s faster than its new follower and 1.37 m/s slower than its new leader, so both gaps open from the change on. The only committed real reading is I-24's (VM X's closing speeds at the change). It has the entrant 1.38 m/s faster than its new follower, but also 0.71 m/s faster than its new leader, so the leader side's sign differs. Those records are a different set of changes, and coverage can move them. The real-data side of both is pending the cloud stage. Nothing in the model changes
+
+**Why.** I-24 MOTION tracks about 0.5–0.65 of the peak vehicle-time, as fragments (median 117 m, 9.9 s; docs/I24_DATA.md §2, §4). Today's review of the analysis code (the section above, table (a)) found that only some lane-change quantities are bounds under partial tracking: space gaps, lead time gaps, the leader side's `ratio_eq` and the refusals of `ok_lead_time`. The others have only expected directions, with a counterexample: lag time gaps, the acceptance's overall refusal share and its other terms, the fitted critical gaps and `ratio_pop`. NGSIM US-101 is complete in coverage. Thinning it to I-24-like coverage and measuring again says, from data, how far and which way I-24's coverage moves each quantity. This is the paper's point about coverage (docs/PAPER_DRAFT.md §3.4) applied to lane changes. It decides how far the I-24 numbers of WP-77, WP-78, WP-88 and VM AC can be trusted. WP-90 also asked for the partner speeds at the change, real against model. The runner, the config, the scenarios, the fixtures and the existing tests are untouched.
+
+**How it was built and measured.**
+- *The thinning* (`calibration.thinning`, new; pure functions of the frame, the fraction F and the seed; vehicles visited in sorted-id order, so the input's row order does not matter).
+  - *Vehicle-level* (`thin_vehicles`): keep round(F·n) of the n vehicle ids, drawn without replacement, with whole tracks and their own ids. Only the neighbour a tracked vehicle sees changes.
+  - *Fragment-level* (`thin_fragments`): per vehicle, an alternating renewal process of tracked spells (fragments) and untracked spells. A row is kept when its time lies in a tracked spell. Each fragment gets a new tracker id from a seeded permutation, so following a vehicle across a fragment switch needs the extraction's position stitching (WP-78's 2 m rule), as on I-24.
+  - *The fragment durations* are log-normal with I-24's committed median (9.9 s). The scale comes from I-24's committed share of fragments lasting 30 s or more (62,784 of 576,511): σ = ln(30 / 9.9) / Φ⁻¹(1 − 0.1089) = 0.900. Only committed summary numbers are used (docs/I24_DATA.md §2); no I-24 data were read. The fit to the committed histogram is in table (1).
+  - *The untracked spells* are log-normal with the same σ and the mean that makes the tracked share F: E[off] = E[on]·(1 − F)/F. That shape is an assumption; I-24 publishes no statistic of it. At F = 1 they have zero length and the tracks are only cut.
+  - *The start.* The process starts 300 s, or 20 mean cycles if longer, before each vehicle's first sample, so the expected kept share is F.
+  - *What neither model has.* I-24's losses are correlated in space (camera boundaries, overpasses) and by lane (lane 1 0.70–0.76, interior lane 3 0.40–0.54). It also has duplicate fragments and position noise. Both models lose tracking independently of position, lane and neighbours.
+- *The partner speed* (`calibration.lane_change_relaxation`, additive). `rel_speed_ms` is the front vehicle's speed minus the rear one's, at every offset a side is read. On the leader side that is the new leader's speed minus the changer's. On the follower side it is the changer's speed minus the new follower's. It is positive while the gap opens, and at the change it is minus the record's closing speed. Each summary row gains `front_v_ms_p50` and `rel_speed_ms` (n, p25, p50, p75 per offset); every existing key is unchanged.
+- *The driver* (`scripts/coverage_thinning.py`, new) and stage 17, `us101_coverage_thinning`. It loads US-101 as stage 16 does and measures the reference (no thinning). Then it thins each period at each model and F on the same five seeds (`spawn_seeds(20260926, 5)`). The vehicle model at F = 1.0 is the identity and is not run again. On every thinned table it measures:
+  - (a) `post_change_gaps` exactly as stage 16 runs it, with `ratio_pop` against the thinned table's own population normal (I-24's is against its own). It reads the sides read, `ratio_pop`, `ratio_eq`, the time and space gaps and the partner speed at 0, 5 and 10 s. The groups are weave entering, exiting and through, and basic through, all speeds, plus 10–20 m/s for weave entering.
+  - (b) `lane_change_gaps` records with the weave acceptance at VM X's parameters (read from the `acceptance` block of `artifacts/i24_lane_change_gaps.json`), and `summarize_gaps`' gaps, time gaps, closing speeds and refusal shares, overall and per term.
+  - (c) The critical gaps of the weaving zone's entering and exiting crossings, as stage 13 reads I-24: the joint and separate fitted medians per side and speed class. The reference's fits carry 200 bootstrap refits. The thinned ones are point fits, and the spread over seeds is their interval.
+  - *The zone.* Every condition uses the reference's weaving zone.
+  - *The output.* `artifacts/coverage_thinning_us101.json`: per measure the reference and, per model and F, the five seeds' values, mean, min, max, 95 % t-interval and shift (mean − reference); plus the kept vehicle-time fraction achieved, per period and pooled. A self-check compares the reference's medians at the change with stage 16's committed artifact. docs/CONTRACTS.md, "Coverage thinning".
+- *The fixture runs.* The strict-`xfail` test's own `_th52_corridor_config(seed)` at the weave defaults. Seeds 3–7, one run at a time (2.3–3.2 s each; 397–414 MB peak RSS), macOS, with no hooks. `microsim.runner` md5 prefix `fe4ce1da5a64`; config hashes 2230b3942fe7, 671d0460e64f, 7e551a839817, 0953b606bc5e, 2497b9153124. The trajectories are byte-identical to WP-88's at all five seeds (md5).
+- *The extraction.* `scripts/lane_change_relaxation.py --source trajectories`, unchanged, with the updated module: once on the five run directories (10.9 s, 525 MB peak) and once per directory for the seed intervals. Every key the artifact had under WP-88 reads the same, compared key by key with the run metadata set aside.
+- *Seed intervals.* The mean over the five seeds of each seed's median, with its 95 % t-interval (t = 2.776).
+
+**(1) The fragment model against I-24's committed fragment durations** (docs/I24_DATA.md §2; share of fragments per duration bin).
+
+| duration [s] | 0–5 | 5–10 | 10–20 | 20–30 | 30–60 | 60–120 | 120–300 | ≥ 300 |
+|---|---|---|---|---|---|---|---|---|
+| I-24 MOTION (576,511 fragments) | 0.238 | 0.263 | 0.280 | 0.110 | 0.086 | 0.021 | 0.0027 | 0.00002 |
+| log-normal, median 9.9 s, σ 0.900 | 0.224 | 0.281 | 0.278 | 0.108 | 0.086 | 0.020 | 0.0027 | 0.0001 |
+
+- The model's p90 is 31.36 s against the committed 31.4 s; no bin differs by more than 0.018.
+- *On synthetic frames* (the tests): the kept vehicle-time lands within 0.03 of F = 0.5 and 0.65; the untruncated fragments' median sampled span is 9.8 s at 10 Hz. At F = 1.0 every row is kept, and the population normal's counts equal the unthinned table's.
+
+**(2) The model's partner speeds at the change** (weave zone, entering, all speeds; seeds 3–7 pooled; m/s).
+
+| side | sides at the change | p25 / p50 / p75 at the change | per seed at the change (mean [95 % t]) | p50 at 2 / 5 / 10 s | per seed at 5 s |
+|---|---|---|---|---|---|
+| the entrant's speed minus its new follower's | 740 | −0.08 / 0.72 / 1.79 | 0.75 [0.56, 0.95] | 1.32 / 1.59 / 0.98 | 1.62 [1.23, 2.01] |
+| the new leader's speed minus the entrant's | 594 | 0.37 / 1.37 / 2.83 | 1.45 [1.21, 1.68] | 1.31 / 0.77 / 0.32 | 0.81 [0.58, 1.05] |
+
+- *The speeds at the change* (medians): follower side, the follower at 5.67 m/s and the entrant at 7.02; leader side, the entrant at 8.16 and the leader at 10.52. The two sides are different sets of changes.
+- *By the entrant's speed* (p50 follower side / leader side; sides): v < 10 m/s, 0.70 / 1.70 (495 / 346); 10–20 m/s, 0.55 / 1.31 (193 / 201); ≥ 20 m/s, 1.33 / −0.47 (52 / 47).
+- *By who made the crossing*: SUMO's arrival-step crossings 0.49 / 1.11 (282 / 224 sides); the others 0.93 / 1.61 (458 / 370).
+- *The other movements* (p50 at the change, follower side / leader side): exiting 0.95 / 1.42 (973 / 1,214); through in the weave 1.58 / 1.11 (757 / 749); SUMO's changes outside the zones −0.06 / 1.64 (4,111 / 4,318).
+- *The one committed real reading* (VM X, `artifacts/i24_lane_change_gaps.json`; I-24 weave, entering, confirmed non-suspect records, the partner speed as minus the closing speed, p25 / p50 / p75):
+
+| | all speeds (1,881) | 10–20 m/s (855) |
+|---|---|---|
+| the entrant's speed minus its new follower's | −0.21 / 1.38 / 3.58 | 0.03 / 1.84 / 4.17 |
+| the new leader's speed minus the entrant's | −2.96 / −0.71 / 0.93 | −3.41 / −1.27 / 0.66 |
+
+**Reading.**
+1. *In the model both gaps open from the crossing on.* The entrant is faster than its new follower (0.72 m/s) and slower than its new leader (1.37 m/s). Five seconds later the follower side's difference has grown to 1.59 m/s. This is WP-88's opening follower gap (1.05 → 1.34 of the normal over 5 s) seen in speeds.
+2. *The real side is not measured yet with the same definition.* VM X's records agree on the follower side's sign (1.38 m/s) and differ on the leader side: the real entrant is 0.71 m/s faster than its new leader (1.27 m/s at 10–20 m/s), where the model's is 1.37 slower. That is not yet a finding. VM X's records include every confirmed change with a neighbour within 200 m, not only car-following sides, and a partner speed reads a neighbour's speed, which coverage can move. Stage 17's reference (and stage 16's next run) gives US-101's side-level partner speeds with the model's definition. Stage 17's thinning rows say whether I-24's are coverage-robust.
+
+**The real-data side: pending the cloud stage.** No real trajectory was read on this laptop.
+- *Stage 17, `us101_coverage_thinning`* (opt-in; reads `data/ngsim`, which the launch ships with `--data-set i24` when present): `scripts/coverage_thinning.py`. It writes `artifacts/coverage_thinning_us101.json`. `scripts/gcp/ingest_pipeline_results.sh` now installs `coverage_thinning_*`.
+- *Stage 16, `us101_lane_change_relaxation`*, unchanged, runs the same module: its next run writes the partner speeds into `artifacts/lane_change_relaxation_us101.json`, every existing value unchanged. So does stage 15 (I-24) if it is re-run.
+- *Stage render.* With a stub `stage(){ local n="$1"; shift; echo "STAGE $n: $*"; }`, the block prints `STAGE us101_coverage_thinning: uv run --no-sync python scripts/coverage_thinning.py`, and nothing without `--stages`. `bash -n` passes on both scripts.
+- *Cost (estimated, not measured on real data).* On a synthetic stand-in of the loader's schema with 521,998 rows (a quarter of the dump's 1,882,929), every condition plus the reference's 200-refit bootstrap took 12.8 s at 432 MB peak (macOS). The work scales with rows; stage 16's own run, load included, took 12 s at 1.0 GB on the VM (VM AC). Stage 17 should take about 1–3 min at 1.5–2 GB.
+- *Launch (not launched).* The code must be committed first (the VM runs `git archive HEAD`):
+
+  ```
+  scripts/gcp/launch_i24_pipeline.sh --data-set i24 --machine n2-standard-8 --cap-min 60 --bucket gs://<bucket>/<prefix> --self-delete --pipeline-args '--stages "us101_lane_change_relaxation us101_coverage_thinning"'
+  ```
+
+  Adding `i24_lane_change_relaxation` to the stages (VM AC: 114 s at 1.9 GB) gives I-24's side-level partner speeds with the same definition.
+
+**How the thinning will be read** (written before the numbers exist).
+- *The shift.* For each measure and condition: the mean over the five thinning seeds minus the reference, with its 95 % t-interval over the seeds. The interval is conditional on this one dataset. It says whether a shift stands out from the thinning's own noise, not how US-101 would vary on another day.
+- *Which condition decides.* The fragment model at F = 0.65 and at F = 0.5. Together they bracket I-24's peak coverage: 0.48–0.66 by the equilibrium estimate, 0.56–0.66 by the gap mixture (docs/I24_DATA.md). The vehicle model isolates the recorded neighbour being a different vehicle. The fragment model at F = 1.0 isolates fragmentation: all vehicle-time is kept, and the tracks are only cut and renamed.
+- *Tolerances* (a shift inside them is small):
+  - 0.05 on `ratio_pop` and `ratio_eq`;
+  - 5 points on refusal shares;
+  - 0.10 s on time gaps and fitted critical-gap medians;
+  - 1.0 m on space gaps;
+  - 0.5 m/s on partner and closing speeds.
+- *The verdicts* (fragment model, at both F = 0.65 and F = 0.5):
+  - *robust*: the interval lies inside ± the tolerance at both;
+  - *biased as expected*: the shift has the expected sign, its interval clear of 0, at both;
+  - *against expectation*: the shift has the opposite sign, its interval clear of 0, at either;
+  - *undetermined*: anything else.
+- *Two checks before any row is read.*
+  - `reference_check_stage16.all_equal` is true: the reference is the table and the code that stage 16 read.
+  - The bounds hold under both models at F < 1. Space gaps and lead time gaps at the change (the records' p10 and p50, the relaxation's space gap at 0) and the leader side's `ratio_eq` at 0 do not fall, and the `ok_lead_time` refusal share does not rise, beyond their intervals. The bounds hold change by change, so a failure would mean that the changes surviving the thinning favour shorter gaps. That would be explained first.
+- *What each quantity is expected to do.*
+
+| quantity (artifact key) | the I-24 number it tests | bound under partial tracking | vehicle model | fragment model, F < 1 | fragment model, F = 1.0 |
+|---|---|---|---|---|---|
+| space gaps at the change, both sides (`gaps.*.<side>_gap_m.*`, `relax.*.space_gap_m.p50@0`) | VM X's gap quantiles | upper | up | up | none: neighbours are unchanged; only changes at fragment ends are lost |
+| lead time gap at the change (`gaps.*.lead_time_gap_s.*`) | VM X | upper | up | up | none |
+| lag time gap at the change (`gaps.*.lag_time_gap_s.*`) | VM X, entering p10 / p50 0.82 / 2.46 s | no | up | up | none |
+| refusals of `ok_lead_time` (`gaps.weave.*.refused_by.lead_time`) | VM X, 31.5 % entering, 9.9 % exiting | lower | down | down | none |
+| the acceptance's refusal share and its other terms (`refused_share`, `refused_by.*`) | VM X, 48.5 % and 22.1 % | no | down | down | none |
+| fitted critical gaps (`cg.*.median_s`) | VM Z's 0.46 / 0.92 s (entering, lead / lag); the 0.089 / 1.78 s proposal | no | up | up, and more: a neighbour that drops out and returns under a new id reads as a new gap, rejected | down: the changer's lookback ends where its fragment starts, so fewer rejected gaps are seen |
+| `ratio_eq`, leader side, at the change | VM AC, 0.92 | upper | up | up | none |
+| `ratio_eq`, follower side | VM AC, 1.14 | no | up | up | none |
+| `ratio_pop`, both sides | VM AC, 0.87 / 0.72 | no | none expected: the reference inflates with the gap | none expected | none |
+| partner speeds at the change (`rel_speed_ms`) | VM X's closing speeds; stage 15 if re-run | no | none expected in the median; the quartiles spread | the same | none |
+| sides read at 5 and 10 s (`n_read@5`, `n_read@10`) | VM AC's short I-24 curves (1,488 follower sides at the change, 89 at 10 s) | — | down, about in proportion to F | down much more than F: a side ends when either vehicle goes untracked | small: a contiguous fragment switch is stitched |
+
+- *What each verdict means for the I-24 numbers.*
+  - *A bound* (space gaps, lead time gaps, `ok_lead_time` refusals, the leader side's `ratio_eq`) stands as a bound whatever the verdict. The fragment model's shift at F = 0.5–0.65 estimates how loose it is. For example, if the leader side's `ratio_eq` at the change rises by Δ, I-24's 0.92 is read as about 0.92 − Δ. That is a transfer from another site, not a correction.
+  - *A quantity with an expected direction* (lag time gaps, the refusal share and its other terms, the critical gaps, the follower side's `ratio_eq`):
+    - *robust*: the I-24 number is usable as a value, within the tolerance;
+    - *biased as expected*: it is read as high (or low) by about Δ, and stays usable as a one-sided target in that direction;
+    - *against expectation*: the direction argued so far does not hold on real traffic. The I-24 number carries an error of unknown sign of at least |Δ| and is not used as a target. For the critical gaps this covers VM Z's medians and the 0.089 / 1.78 s proposal;
+    - *undetermined*: the number is quoted as before.
+  - *`ratio_pop` and the partner speeds* (no expected direction): if robust, the I-24 numbers are usable as values; otherwise they carry the measured shift. For the follower side's `ratio_pop`, I-24 reads 0.87 and US-101 0.76 (VM AC). If the fragment model moves US-101's by +0.06 or more at both F, at least half of that difference is coverage. By +0.11 or more, all of it is, and I-24's follower side is no evidence of different drivers. If it is robust, the difference belongs to the sites.
+  - *Fragmentation alone.* If the fragment model at F = 1.0 moves a quantity by more than its tolerance, that part comes from fragmentation (changes and lookbacks cut at fragment ends), not from coverage. The remedy on I-24 would then be to stitch its fragments, not to correct for coverage.
+  - *The two models disagree.* If they shift a quantity in opposite directions, both intervals clear of 0, the answer depends on how tracking is lost. I-24's losses are correlated by camera and lane, which neither model has, so no transfer is made for that quantity.
+- *The partner speeds, real against model* (stage 17's reference: US-101, complete coverage, the model's definition). The model's medians at the change are 0.72 m/s on the follower side and 1.37 m/s on the leader side.
+  - A real median within 0.5 m/s of the model's on a side: the model's crossing speeds match on that side. The gap difference at the crossing (VM AC) is then a gap difference, not a speed difference.
+  - A real median of the other sign on the leader side, as VM X's I-24 records read (−0.71): real entrants close on their new leader where the model's pull back from it. The model's crossings then differ in the speeds as well as in the gaps.
+
+**Nothing ships.** The package adds a measurement and a thinning. `microsim.runner`, `flowstate_core.config`, `WEAVE_DEFAULTS`, the scenarios, the fixtures, the existing tests and the goldens are untouched, and no config hash changes. The strict `xfail` of `test_th52_corridor_section_carries_free_flow_demand` stands.
+
+**Limitations.**
+- *One dataset.* US-101 as held is the raw export, congested throughout, 640 m, two periods. Its shifts transfer to I-24 as estimates: the sites differ in length, lanes, speeds and weave geometry.
+- *The loss structure.* Neither model has I-24's correlated losses (camera, lane), duplicate fragments or position noise. The untracked spells' shape is assumed.
+- *Short tracks.* A US-101 track lasts about a minute, so its fragments are also cut by the track's ends. The stage reports the fragment durations achieved.
+- *The model side.* Five seeds and one fixture, pooled; the seed intervals are over five runs. macOS records.
+
+**Bookkeeping.**
+- *New:*
+  - `packages/calibration/calibration/thinning.py`;
+  - `tests/test_calibration/test_calibration_thinning.py`: 21 tests, 99 % line coverage of the module;
+  - `tests/test_calibration/test_calibration_lane_change_partner_speeds.py`: 5 tests;
+  - `scripts/coverage_thinning.py`;
+  - `tests/test_scripts/test_coverage_thinning_script.py`: 7 tests, one of them an end-to-end run on a synthetic stand-in.
+- *The thinning tests* are on hand-built frames: the kept fraction within tolerance; determinism by seed and independence from row order; distinct fragment ids, each one contiguous piece of one vehicle; no row invented or altered except `veh_id`; F = 1.0 keeps every row in contiguous fragments; the fragment model against the committed histogram and p90.
+- *The partner-speed tests*: both sides at every offset against known speeds; minus the records' closing speeds at the change; the quartiles in the summaries; every existing summary key unchanged; a result without the array summarized from its two speeds.
+- *Edited:*
+  - `packages/calibration/calibration/lane_change_relaxation.py` (additive; 96 % line coverage with its tests);
+  - `scripts/gcp/pipeline_i24.sh` (stage 17 only) and `scripts/gcp/ingest_pipeline_results.sh` (the allowlist pattern only);
+  - docs/CONTRACTS.md (two entries) and this section.
+- `scripts/lane_change_relaxation.py` is untouched. Its artifact keeps `schema_version` 1 while its summaries gain two keys. The CHANGELOG bullet is handed to the coordinator.
+- *Session files (`wp91/`, not committed):*
+  - the harness `run91.py` and its rows `rows.jsonl`;
+  - the extraction driver `ana91.sh` and its artifacts `relax_fixture.json` and `relax_seed_<3–7>.json`;
+  - `tab91.py` (the tables above, and the key-by-key check against WP-88's artifact);
+  - the synthetic stand-ins `standin_small.py` and `standin_quarter.py` (the cost check), with their artifacts `standin_small.json` and `standin_quarter.json`.
+  - The run directories were deleted after the analysis.
+
+Every number above is from those runs, from the committed files named, or from the tests.

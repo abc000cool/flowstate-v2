@@ -597,6 +597,22 @@ if echo " $STAGES " | grep -q " us101_lane_change_relaxation "; then
     || say "us101_lane_change_relaxation failed; continuing"
 fi
 
+# 17. Coverage thinning on NGSIM US-101 (WP-91, 2026-09-25, block 3; opt-in; reads data/ngsim, which the launch ships
+#     with --data-set i24 when present): the raw export stage 16 reads, thinned to I-24-like coverage
+#     (calibration.thinning: vehicle-level, a fraction F of the vehicle ids with whole tracks; fragment-level, every
+#     track cut into I-24-like fragments, log-normal median 9.9 s, with untracked spells between them and a new tracker
+#     id per fragment) at F = 1.0 / 0.65 / 0.5, five thinning seeds each, and every lane-change measure of stages 12, 13
+#     and 16 read again on each thinned table: the gaps after the crossing at 0 / 5 / 10 s (ratio_pop, ratio_eq, time
+#     and space gaps, the partner speeds), the gap records with VM X's acceptance and its refusal shares per term, and the
+#     critical gaps of the weaving zone's entering and exiting crossings -> artifacts/coverage_thinning_us101.json (per
+#     measure the reference and, per model and F, the seeds' values, mean, min-max, t-interval and shift). One process;
+#     on a 522k-row synthetic stand-in 12.8 s at 432 MB peak, so about 1-3 min and 1.5-2 GB on the 1.9 M-row dump
+#     (estimated; stage 16's load alone peaked at 1.0 GB).
+if echo " $STAGES " | grep -q " us101_coverage_thinning "; then
+  stage us101_coverage_thinning $RUN scripts/coverage_thinning.py \
+    || say "us101_coverage_thinning failed; continuing"
+fi
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"
