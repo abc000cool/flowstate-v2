@@ -3426,3 +3426,32 @@ Stage 1 items 9, 12 and 13 of the Frisco plan (docs/FRISCO_PROTOCOL.md §§3–6
   estimate)`; JSON field names unchanged). Recommendation lines are stated on
   mean travel time under its own name until a delay metric with waiting time
   exists (item 10).
+
+## Uncertainty runs (`validation.uncertainty`, WP-106) — 2026-10-04
+
+Stage 1 item 11 of the Frisco plan (docs/FRISCO_PROTOCOL.md §8.5); CLI
+`scripts/uncertainty_runs.py` (runs through `scripts/corridor_sweep.py`'s
+worker; resumable; `--plan-only`, `--analyze-only`).
+
+- **Parameters:** `UncertainParameter(name, kind, low, high, source, assumed,
+  nominal)`, kind ∈ {`demand_scale` (one factor on every boundary and on-ramp
+  inflow; exit fractions untouched; a ring refused), `t_scale` / `v0_scale`
+  (the passenger population's mean T / v0 through a derived `IDMCalibration`
+  written once to `<out>/populations/idm_<key>.json`, covariance unchanged;
+  a scalar fleet's `fleet.T` / `fleet.v0`), `heavy_fraction`}; a parameter
+  without a source is refused. `default_space(config, centre=…)` derives
+  ranges (demand 1 ± 5 %; driver knobs per protocol §8.5; truck share ± 3
+  points labelled assumed unless a measured interval is given).
+- **Design:** seeded numpy Latin hypercube (`latin_hypercube(n, d, seed)`),
+  sample ids `s00…`, seeds nested per sample (`SeedSequence(seed).spawn(n)[i]
+  .spawn(k)[j]`); `DESIGN.json` (`flowstate.uncertainty_design/1`) pins the
+  design, and a tree with another design key is refused.
+- **`flowstate.uncertainty/1`:** per arm and metric the mean of per-sample
+  means with the interval `± t(0.975, M−1)·S_B/√M` (S_B the standard deviation
+  of the sample means; derivation in the module docstring), the 5th–95th
+  percentile of sample means, between- and within-sample standard deviations;
+  paired effects against the baseline by sample and seed; robustness
+  `share_same_sign` over ALL samples of the design (a missing sample counts
+  against), `verdict ∈ {robust (≥ 0.90), uncertain, not_estimable}`,
+  `protocol_verdict = rehearsal` below 10 samples × 5 seeds; collisions per
+  arm and `zero_collisions`. Non-finite values are null.
