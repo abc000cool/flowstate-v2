@@ -3,6 +3,9 @@
 {% if seeded_any %}
 > **{{ seeded_banner }}**
 {% endif %}
+{% if integrity.banner %}
+> **{{ integrity.banner }}**
+{% endif %}
 {% if created_at %}
 Generated: {{ created_at }}
 {% endif %}
@@ -103,7 +106,12 @@ reported as not recorded, never as zero.
 
 A row marked not evaluated is never a pass: either no input was supplied,
 or the value was measured with a recipe this profile does not accept (the
-row's result says which). An unevaluated criterion counts as failing.
+row's result says which). An unevaluated criterion counts as failing. A row
+marked not recorded is never a pass either: some run in the set carries no
+record of what the row checks, and a missing record is not a zero. The
+no_collisions row is a FlowState model-integrity requirement, not an FHWA
+criterion: every run must record its SUMO collision counter, and the total
+must be zero.
 {% if criteria_note %}
 
 {{ criteria_note }}

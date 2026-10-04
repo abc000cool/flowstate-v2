@@ -675,6 +675,12 @@ if echo " $STAGES " | grep -q " us101_coverage_thinning "; then
     || say "us101_coverage_thinning failed; continuing"
 fi
 
+# NOTE (2026-10-04, WP-98; config-hash policy v3, docs/CONTRACTS.md §2). AVSpec.emergency_handback,
+#     release_off_corridor and observe_close_leader are now ON by default (and the scripted merge's force_guard), and
+#     every config hash moved. Stages 18 and 19 below were written for the old defaults and are not changed here: their
+#     "_cc" / "_wp96c" arms ("the committed configuration unchanged") would now run with all three keys on, would not
+#     hash like the committed runs and would not reproduce them; the "_hb" / "_wp96f" / "_wp96fh" copies would differ from
+#     those arms only in their names. Reproducing the old command path needs a copy that sets the three keys false.
 # 18. The AV command handback (WP-95, 2026-09-26; opt-in; needs no data set: launch with --data-set none). Every
 #     controller result so far drove its compliant AVs by vehicle.setSpeed under SUMO's default speed mode, whose
 #     maximum-deceleration clamp overrides its safe-speed clamp: a commanded AV never brakes harder than its b (IDM:

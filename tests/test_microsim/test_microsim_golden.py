@@ -507,6 +507,14 @@ def regenerate(case: str, work_root: Path) -> Path:
     spec = CASES[case]
     cfg = case_config(case)
     paths = run_micro(cfg, cfg.seed, work_root)
+    out = GOLDEN_DIR / f"{case}.json"
+    tolerance: dict[str, Any] = {"relative": REL_TOL, "exact": sorted(EXACT_KEYS)}
+    previous = json.loads(out.read_text()).get("tolerance", {}) if out.is_file() else {}
+    if previous.get("relative", REL_TOL) != REL_TOL and previous.get("note"):
+        # A widened tolerance is a cross-platform measurement (a CI run on
+        # another SUMO build), not an output of this run: carry it and its
+        # note forward (it was lost on 2026-10-04 before this was added).
+        tolerance.update(relative=previous["relative"], note=previous["note"])
     payload: dict[str, Any] = {
         "schema_version": GOLDEN_SCHEMA_VERSION,
         "case": case,
@@ -519,10 +527,9 @@ def regenerate(case: str, work_root: Path) -> Path:
             f"--regenerate {case}"
         ),
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "tolerance": {"relative": REL_TOL, "exact": sorted(EXACT_KEYS)},
+        "tolerance": tolerance,
         **summarize(paths),
     }
-    out = GOLDEN_DIR / f"{case}.json"
     out.write_text(json.dumps(payload, indent=2) + "\n")
     return out
 

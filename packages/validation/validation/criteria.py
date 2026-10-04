@@ -49,6 +49,20 @@ ring benchmarks, the ≥ 20-seed rule and the penetration × compliance grid are
 FlowState requirements from CLAUDE.md §7.1/§0.6, present in every profile and
 labeled as such in ``source``; no DOT document above prescribes them.
 
+**Model integrity: no SUMO collisions** (2026-10-04, owner decision, WP-98).
+Every profile's results end with a ``no_collisions`` row, evaluated from the
+per-run collision counts (``meta.json["n_collisions"]``, read by
+``validation.battery.collision_count``): PASS only when every run records the
+counter and the total is zero; FAIL when any run records a collision; NOT
+RECORDED — never a pass, never a zero — when no failure is recorded but some
+run lacks the counter or no counts were supplied (:func:`zero_collisions`).
+A collision in a car-following simulation is a model defect, not a traffic
+outcome (CLAUDE.md §3.3: controllers must not be able to command
+collisions). It is a FlowState internal standard, not an FHWA or DOT
+criterion, and its row says so. A NOT RECORDED row has ``evaluated=False``
+and a ``detail`` starting with :data:`NOT_RECORDED`; :attr:`CriteriaResult.
+status` names the four outcomes.
+
 The wave-speed row's number depends on the detector that produced it, so
 every profile names its detector (``wave_detector``, a
 :class:`validation.waves.WaveDetector`) and the evaluated row records that
@@ -69,6 +83,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Final, Literal
 
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
 from validation.waves import STACK_DETECTOR, WaveDetector
@@ -78,6 +93,21 @@ REQUIRED_PENETRATIONS: tuple[float, ...] = (0.01, 0.02, 0.05, 0.10, 0.15, 0.20)
 #: Compliances of the CLAUDE.md §7.1 sensitivity grid (fractions).
 REQUIRED_COMPLIANCES: tuple[float, ...] = (0.25, 0.5, 0.8, 1.0)
 
+#: Name of the model-integrity row every profile's results carry.
+NO_COLLISIONS: Final[str] = "no_collisions"
+#: ``detail`` prefix of a row whose input some run did not record: the row is
+#: neither a pass nor a zero (``CriteriaResult.status`` reads "NOT RECORDED").
+NOT_RECORDED: Final[str] = "not recorded"
+#: Provenance of the ``no_collisions`` row, written into its ``detail``.
+NO_COLLISIONS_STANDARD: Final[str] = (
+    "FlowState internal standard (CLAUDE.md §3.3; owner decision 2026-10-04), "
+    "not an FHWA or DOT criterion"
+)
+
+#: The outcome of one row: PASS / FAIL when evaluated; NOT RECORDED when an
+#: input some run should have recorded is missing; NOT EVALUATED otherwise.
+CriterionStatus = Literal["PASS", "FAIL", "NOT EVALUATED", "NOT RECORDED"]
+
 _FLOWSTATE_ROWS = (
     "The segment-speed RMSPE <= 15% bound is FlowState's own convention "
     "(CLAUDE.md §7.1, 'common microsim practice'); the 14-22 km/h emergent "
@@ -85,7 +115,10 @@ _FLOWSTATE_ROWS = (
     "(flowstate_core.constants.WAVE_SPEED_BAND_KMH); the ring emergence/dampening "
     "rows reproduce Sugiyama et al. (2008) and Stern et al. (2018) per CLAUDE.md "
     "§3.2.1; min_seeds = 20 and the penetration {1,2,5,10,15,20}% x compliance "
-    "{25,50,80,100}% grid are CLAUDE.md §0.6/§7.1 internal standards. None of "
+    "{25,50,80,100}% grid are CLAUDE.md §0.6/§7.1 internal standards; so is the "
+    "no_collisions model-integrity row (zero SUMO collisions in every run, each run "
+    "recording the counter; CLAUDE.md §3.3 and the owner decision of 2026-10-04), "
+    "present in every profile. None of "
     "these is prescribed by the cited DOT/FHWA documents. The wave-speed row is "
     "measured with the profile's wave_detector (validation.waves.WAVE_DETECTORS; "
     "default 'stack', chosen on the planted-stripe benchmark in validation.waves), "
@@ -309,7 +342,8 @@ class CriteriaResult:
             wave speed measured with a detector other than the profile's
             is present but not usable).
         detail: Optional explanatory note; for ``wave_speed`` it names the
-            detector recipe behind the value.
+            detector recipe behind the value. A row whose input some run did
+            not record starts it with :data:`NOT_RECORDED`.
     """
 
     name: str
@@ -318,6 +352,96 @@ class CriteriaResult:
     passed: bool
     evaluated: bool
     detail: str = ""
+
+    @property
+    def status(self) -> CriterionStatus:
+        """``PASS`` / ``FAIL`` when evaluated, else ``NOT RECORDED`` (the
+        ``detail`` starts with :data:`NOT_RECORDED`) or ``NOT EVALUATED``.
+        Neither of the last two is a pass."""
+        if self.evaluated:
+            return "PASS" if self.passed else "FAIL"
+        return "NOT RECORDED" if self.detail.startswith(NOT_RECORDED) else "NOT EVALUATED"
+
+
+def zero_collisions(counts: Sequence[int | None]) -> bool | None:
+    """Whether a run set is collision-free, from its per-run collision counts.
+
+    Args:
+        counts: One entry per run: its ``meta.json["n_collisions"]``, or None
+            when the run does not record the counter
+            (``validation.battery.collision_count``).
+
+    Returns:
+        False when any run records a collision (whatever the others record);
+        otherwise None when the set is empty or any run lacks the counter (not
+        recorded is not zero); True only when every run records zero.
+    """
+    recorded = [c for c in counts if c is not None]
+    if any(c > 0 for c in recorded):
+        return False
+    if not counts or len(recorded) < len(counts):
+        return None
+    return True
+
+
+def _collision_row(counts: Sequence[int | None] | None) -> CriteriaResult:
+    """The ``no_collisions`` row (module docstring, "Model integrity").
+
+    Args:
+        counts: Per-run collision counts (None for a run without the
+            counter), or None when the caller supplied none.
+
+    Returns:
+        The row: FAIL (``value`` the total over the runs that record it),
+        PASS (``value`` 0) or NOT RECORDED (``value`` None).
+    """
+    text = "zero SUMO collisions in every run, each run recording the counter"
+    if counts is None:
+        return CriteriaResult(
+            name=NO_COLLISIONS,
+            value=None,
+            threshold=text,
+            passed=False,
+            evaluated=False,
+            detail=f"{NOT_RECORDED}: no per-run collision counts supplied; "
+            + NO_COLLISIONS_STANDARD,
+        )
+    recorded = [c for c in counts if c is not None]
+    n_missing = len(counts) - len(recorded)
+    total = sum(recorded)
+    flag = zero_collisions(counts)
+    if flag is None:
+        why = (
+            "no runs supplied"
+            if not counts
+            else f"{n_missing} of {len(counts)} run(s) carry no collision counter "
+            "(meta.json n_collisions)"
+        )
+        return CriteriaResult(
+            name=NO_COLLISIONS,
+            value=None,
+            threshold=text,
+            passed=False,
+            evaluated=False,
+            detail=f"{NOT_RECORDED}: {why}; {NO_COLLISIONS_STANDARD}",
+        )
+    if flag:
+        detail = f"no collision in {len(counts)} run(s); {NO_COLLISIONS_STANDARD}"
+    else:
+        n_with = sum(1 for c in recorded if c > 0)
+        detail = (
+            f"{total} collision(s) in {n_with} of {len(recorded)} run(s) that record the counter"
+            + (f"; {n_missing} run(s) not recorded" if n_missing else "")
+            + f"; {NO_COLLISIONS_STANDARD}"
+        )
+    return CriteriaResult(
+        name=NO_COLLISIONS,
+        value=float(total),
+        threshold=text,
+        passed=flag,
+        evaluated=True,
+        detail=detail,
+    )
 
 
 def _not_evaluated(
@@ -374,6 +498,7 @@ def evaluate(
     n_seeds: int | None = None,
     sweep_grid: Sequence[tuple[float, float]] | None = None,
     observations_supplied: bool = False,
+    collision_counts: Sequence[int | None] | None = None,
 ) -> list[CriteriaResult]:
     """Evaluate acceptance criteria against measured values.
 
@@ -408,6 +533,12 @@ def evaluate(
             ``speeds_rmspe``). With ``geh_values`` / ``rmspe_value`` still
             ``None`` the rows stay unevaluated, but say that the artifact
             yielded no comparable window rather than that no input was given.
+        collision_counts: One entry per run of the set: its
+            ``meta.json["n_collisions"]``, or None when the run does not
+            record it (``validation.battery.collision_count``). Feeds the
+            ``no_collisions`` row every profile carries (last): PASS only
+            when every run records zero, FAIL on any collision, otherwise
+            NOT RECORDED (also when ``None`` is passed: no counts supplied).
 
     Returns:
         One :class:`CriteriaResult` per profile check, in table order.
@@ -581,4 +712,7 @@ def evaluate(
                     detail=detail,
                 )
             )
+
+    # Model integrity, in every profile (2026-10-04, WP-98).
+    rows.append(_collision_row(collision_counts))
     return rows

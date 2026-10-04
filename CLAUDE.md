@@ -256,10 +256,13 @@ duration, step length (default 0.5 s; sub-step actions via SUMO
   sweep's FollowerStopper cells recorded 311 collisions this way
   (docs/I24_STRATEGIES.md, WP-95 and VM AH). The intent stands: controllers
   must not be able to command collisions. `AVSpec.emergency_handback` meets it
-  (the command is withdrawn in any step where the model must brake harder)
-  and is required for new controller experiments, with
-  `release_off_corridor` and `observe_close_leader` (WP-96). Every run
-  records `n_collisions`; the auto-report shows them (§7.4, WP-94).
+  (the command is withdrawn in any step where the model must brake harder),
+  with `release_off_corridor` and `observe_close_leader` (WP-96); all three
+  are **on by default since 2026-10-04** (WP-98, owner decision; config-hash
+  policy v3). Setting them false reproduces the pre-2.6 command path and is
+  allowed only to reproduce a result published under it. Every run records
+  `n_collisions`, and zero collisions is a pass/fail acceptance criterion of
+  every run set (`validation.criteria` row `no_collisions`; §7.4, WP-94).
 - **Compliance model:** each AV-tagged vehicle draws compliance once per run
   (Bernoulli p = compliance); non-compliant vehicles ignore `v_cmd`. Sweep
   compliance ∈ {0.1 … 1.0}; v1's fixed 80% assumption is retired.

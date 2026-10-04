@@ -173,15 +173,24 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
     "change_duration_s": 2.0,
     "lookahead_m": 120.0,
     "courtesy": 0.0,
-    # 2026-09-26 (block 3, WP-93): the forced change's brake-gap guard, off —
-    # see merge_params' docstring. A switch, not a fitted value.
-    "force_guard": 0.0,
+    # The forced change's brake-gap guard (2026-09-26, block 3, WP-93), on by
+    # default since 2026-10-04 (owner decision, WP-98; config-hash policy
+    # version 3); 0 reproduces the unguarded forced change of every scripted
+    # merge before release 2.6 — see merge_params' docstring. A switch, not a
+    # fitted value.
+    "force_guard": 1.0,
 }
 """Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
 SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 
 WEAVE_DEFAULTS: dict[str, float | None] = {
     **SCRIPTED_MERGE_DEFAULTS,
+    # Pinned off (2026-10-04, WP-98): the weave shares the scripted merge's
+    # keys but never reads this one — its forced changes are always under its
+    # own guard (microsim.runner._weave_force_gap_ok). The pin keeps the
+    # weave's recorded parameters (meta.json weave_sections[i].params) as they
+    # were when the scripted default became 1.0; setting it changes nothing.
+    "force_guard": 0.0,
     "exit_accept_gap_s": 0.6,
     "vacate_ahead_m": 500.0,
     "vacate_max_veh_h": 0.0,
@@ -262,7 +271,10 @@ WEAVE_DEFAULTS: dict[str, float | None] = {
     "opposing_entry_guard": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
-(applied to the entering movement, ``courtesy`` to both movements) plus
+(applied to the entering movement, ``courtesy`` to both movements; the weave
+does not read ``force_guard``, whose default here stays **0** while the
+scripted merge's became 1 on 2026-10-04 — the weave's forced changes are
+always under its own guard, ``microsim.runner._weave_force_gap_ok``) plus
 ``exit_accept_gap_s``, the time gap the exiting movement accepts,
 ``vacate_ahead_m`` (2026-09-24, block 3, third derivation): how far upstream
 of the section start a through vehicle in the weave lane is asked, once, to
@@ -904,10 +916,15 @@ class RampSpec(BaseModel):
     ``courtesy`` 0.0 (m/s; when > 0 the mainline follower that blocks an
     otherwise acceptable gap is asked to hold its desired speed this far below
     the ramp vehicle's until the gap opens — courtesy yielding),
-    ``force_guard`` 0.0 (off; see below).
+    ``force_guard`` 1.0 (on since 2026-10-04; see below).
 
     ``force_guard`` (2026-09-26, block 3, WP-93; docs/WEAVE_MODEL_PLAN.md,
-    dated section). Without it a vehicle due to force is put under
+    dated section). Added off (0) on 2026-09-26; **on (1) by default since
+    2026-10-04** by owner decision (WP-98: zero collisions is a pass/fail
+    requirement of every run set), which bumped the config-hash policy to
+    version 3 (docs/CONTRACTS.md §2). ``0`` reproduces the unguarded forced
+    change, the path of every scripted-merge run before release 2.6.
+    Without it a vehicle due to force is put under
     ``laneChangeMode`` 256 for the rest of its time on the lane, and every
     open request then executes at any gap SUMO does not read as an overlap:
     a follower's front clear of its own ``minGap`` behind the changer,
@@ -926,10 +943,13 @@ class RampSpec(BaseModel):
     check) otherwise; its request stays open as before, so SUMO's cooperation
     towards it continues. Vehicle-steps refused are counted in
     ``meta.json["scripted_merges"][i]["n_forced_deferred"]``. Measured on the
-    fixture and left off: the corridor battery has not run with it.
-    In ``WeaveSpec.weave_params``, which shares these keys, it has no effect:
+    fixture (WP-93: no collision in 15 runs) and on the I-94 WB corridor
+    battery with the key set on its two scripted ramps (VM AG, 2026-09-26:
+    collisions 15 → 0 over 20 paired seeds, no resolved change in departures,
+    RMSPE or GEH; docs/ONBOARDING_MNDOT.md §11). In
+    ``WeaveSpec.weave_params``, which shares these keys, it is never read:
     the weave's forced changes are always under its own guard
-    (``_weave_force_gap_ok``)."""
+    (``_weave_force_gap_ok``), and :data:`WEAVE_DEFAULTS` pins it at 0."""
     weave: WeaveSpec | None = None
     """The weaving section this on-ramp opens (:class:`WeaveSpec`); required
     by, and only allowed with, ``merge="weave"``. Hash-neutral when unset."""
@@ -1386,11 +1406,16 @@ class AVSpec(BaseModel):
     vsl_params: dict[str, float] = Field(default_factory=dict)
     oracle: OracleSpec = Field(default_factory=OracleSpec)
     """Wave-detection oracle realism for downstream-reading controllers (JAD)."""
-    emergency_handback: bool = False
+    emergency_handback: bool = True
     """Hand a commanded vehicle back to its car-following model for any step
     in which the model must brake harder than a command can (2026-09-26,
-    WP-95; docs/I24_STRATEGIES.md, dated section). Off by default and
-    hash-neutral when off.
+    WP-95; docs/I24_STRATEGIES.md, dated section). Added off by default
+    (hash-neutral when off) on 2026-09-26; **on by default since 2026-10-04**
+    by owner decision (WP-98; config-hash policy version 3, docs/CONTRACTS.md
+    §2). ``False`` reproduces the pre-2.6 command path, the one every
+    vehicle-controller result through release 2.5.0 ran under (WP-95: under
+    it the I-24 strategy sweep's FollowerStopper cells recorded 311
+    collisions, none with the handback).
 
     Every compliant AV is driven by ``vehicle.setSpeed`` under SUMO's default
     speed mode 31 (CLAUDE.md §3.3). In SUMO 1.27.1 a ``setSpeed`` target is
@@ -1417,10 +1442,12 @@ class AVSpec(BaseModel):
     runner's TraCI writes, and so the run, are those of ``False``.
     Counted in ``meta.json["av_emergency_handback"]``; no effect without a
     ``controller``."""
-    release_off_corridor: bool = False
+    release_off_corridor: bool = True
     """Release a compliant AV's command (``setSpeed(-1)``) once it has left
     the controlled corridor (2026-09-26, WP-96; docs/I24_STRATEGIES.md, dated
-    section). Off by default and hash-neutral when off.
+    section). Added off by default (hash-neutral when off) on 2026-09-26;
+    **on by default since 2026-10-04** by owner decision (WP-98; config-hash
+    policy version 3). ``False`` reproduces the pre-2.6 behaviour.
 
     The dispatch commands a compliant AV only on a corridor edge, but a
     ``setSpeed`` target is held until ``setSpeed(-1)`` (SUMO 1.27.1,
@@ -1435,10 +1462,12 @@ class AVSpec(BaseModel):
     corridor. Counted in ``meta.json["av_off_corridor"]``; no effect without
     a ``controller``, or on a network whose every edge is a corridor edge (a
     ring, a generated corridor, an OSM import without off-ramps)."""
-    observe_close_leader: bool = False
+    observe_close_leader: bool = True
     """Report the leader to the controller when the bumper gap is below the
     AV's own ``s0`` (2026-09-26, WP-96; docs/I24_STRATEGIES.md, dated
-    section). Off by default and hash-neutral when off.
+    section). Added off by default (hash-neutral when off) on 2026-09-26;
+    **on by default since 2026-10-04** by owner decision (WP-98; config-hash
+    policy version 3). ``False`` reproduces the pre-2.6 behaviour.
 
     ``vehicle.getLeader`` returns the gap net of the ego's ``minGap`` (the
     drawn ``s0``). With ``False`` a negative value is read as "no leader"
@@ -1665,11 +1694,17 @@ class ScenarioConfig(BaseModel):
         )
 
 
-CONFIG_HASH_VERSION: Final[int] = 2
+CONFIG_HASH_VERSION: Final[int] = 3
 """Version of the hashing policy (docs/CONTRACTS.md §2). Bump it whenever a
 field DEFAULT changes (a default change is a physics change and must move
 every hash) — `tests/test_flowstate_core/test_config_hash.py` pins the
-defaults snapshot and fails when one drifts without a bump."""
+defaults snapshot and fails when one drifts without a bump.
+
+History: 1 — sha256 of the full dump (before 2026-09-06); 2 — defaults
+excluded (2026-09-06); 3 — the same payload rule, bumped on 2026-10-04 for
+the default changes of WP-98 (``AVSpec.emergency_handback``,
+``release_off_corridor``, ``observe_close_leader`` and the scripted merge's
+``force_guard`` turned on)."""
 
 
 def config_hash_payload(cfg: ScenarioConfig) -> dict[str, Any]:
@@ -1688,8 +1723,65 @@ def config_hash_payload(cfg: ScenarioConfig) -> dict[str, Any]:
     return {"hash_version": CONFIG_HASH_VERSION, "config": dumped}
 
 
+def _digest(payload: Mapping[str, Any]) -> str:
+    """12 hex chars of the sha256 of ``payload``'s canonical JSON form."""
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:12]
+
+
 def config_hash(cfg: ScenarioConfig) -> str:
     """12-hex-char sha256 of the canonical JSON form of
     :func:`config_hash_payload` (sorted keys, no whitespace)."""
-    canonical = json.dumps(config_hash_payload(cfg), sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode()).hexdigest()[:12]
+    return _digest(config_hash_payload(cfg))
+
+
+#: The ``AVSpec`` fields whose default policy v3 changed (2026-10-04, WP-98),
+#: with their policy-v2 default. ``SCRIPTED_MERGE_DEFAULTS["force_guard"]``
+#: changed too, but it lives outside the model: a ``merge_params`` block is
+#: hashed as written under both policies.
+V2_AV_DEFAULTS: Final[Mapping[str, bool]] = {
+    "emergency_handback": False,
+    "release_off_corridor": False,
+    "observe_close_leader": False,
+}
+
+
+def config_hash_v2(document: Mapping[str, Any]) -> str:
+    """The policy-v2 hash (2026-09-06 to 2026-10-03) of a scenario document.
+
+    For provenance checks against a record written before 2026-10-04 — a fit
+    artifact's ``base_config_hash``, a battery's ``config_hash``, a scenario
+    header — which quotes a version-2 hash (docs/CONTRACTS.md §2). The
+    document (a parsed scenario YAML or the dict a script builds) is read as
+    v2 read it: an ``av`` key of :data:`V2_AV_DEFAULTS` it does not set takes
+    its v2 default (False), and the payload omits the keys at that default.
+    Every other field is hashed exactly as :func:`config_hash` hashes it
+    (policy v3 kept v2's payload rule). A document produced by a full
+    ``model_dump`` of a v3 configuration states the keys explicitly (True by
+    default) and so does not reproduce its v2 hash. Never write this hash
+    into a new record.
+
+    Args:
+        document: The scenario as a mapping (``ScenarioConfig`` input).
+
+    Returns:
+        The 12-hex-char version-2 hash.
+    """
+    doc = dict(document)
+    av = dict(doc.get("av") or {})
+    for key, v2_default in V2_AV_DEFAULTS.items():
+        av.setdefault(key, v2_default)
+    doc["av"] = av
+    cfg = ScenarioConfig.model_validate(doc)
+    payload = config_hash_payload(cfg)
+    av_dump = dict(payload["config"].get("av") or {})
+    for key, v2_default in V2_AV_DEFAULTS.items():
+        av_dump.pop(key, None)
+        value = getattr(cfg.av, key)
+        if value != v2_default:
+            av_dump[key] = value
+    if av_dump:
+        payload["config"]["av"] = av_dump
+    else:
+        payload["config"].pop("av", None)
+    return _digest({"hash_version": 2, "config": payload["config"]})

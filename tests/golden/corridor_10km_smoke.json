@@ -8,7 +8,7 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_smoke",
-  "generated_at": "2026-09-17T07:07:10+00:00",
+  "generated_at": "2026-10-04T20:46:23+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -20,10 +20,14 @@
       "n_scripted_merged",
       "n_vehicles_departed",
       "n_vehicles_planned",
+      "n_weave_changed_in",
+      "n_weave_changed_out",
+      "n_weave_exited",
+      "n_weave_forced",
       "wave_count"
     ]
   },
-  "config_hash": "4a474775ebd3",
+  "config_hash": "b1cc2fa808a5",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",
@@ -102,7 +106,10 @@
         "kind": "perfect",
         "delay_s": 0.0,
         "amplitude_noise_frac": 0.0
-      }
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
     },
     "sim": {
       "duration_s": 120.0,
@@ -112,6 +119,8 @@
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
+    "fd_calibration": null,
+    "macro": null,
     "perturbation": null,
     "closures": [],
     "managed_lanes": [],

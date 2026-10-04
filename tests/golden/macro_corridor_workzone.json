@@ -5,7 +5,7 @@
   "scenario": "workzone_config() in tests/test_macrosim/test_macrosim_golden.py",
   "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
   "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate macro_corridor_workzone",
-  "generated_at": "2026-09-17T06:01:29+00:00",
+  "generated_at": "2026-10-04T20:46:33+00:00",
   "tolerance": {
     "relative": 1e-09,
     "exact": [
@@ -15,7 +15,7 @@
       "wave_count"
     ]
   },
-  "config_hash": "c3f4dacb29ba",
+  "config_hash": "3a6fda885a38",
   "seed": 11,
   "tier": "screening",
   "seeded": true,
@@ -69,7 +69,8 @@
         "a_max": 0.5,
         "b": 1.5,
         "s0": 3.0,
-        "heterogeneity_frac": 0.12
+        "heterogeneity_frac": 0.12,
+        "lane_shares": null
       },
       "jm_timegap_minor_s": null,
       "jm_ignore_foe_prob": null,
@@ -94,7 +95,10 @@
         "kind": "perfect",
         "delay_s": 0.0,
         "amplitude_noise_frac": 0.0
-      }
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
     },
     "sim": {
       "duration_s": 300.0,
@@ -104,6 +108,8 @@
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
+    "fd_calibration": null,
+    "macro": null,
     "perturbation": null,
     "closures": [
       {

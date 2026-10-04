@@ -1,18 +1,21 @@
 {
   "schema_version": 1,
   "case": "macro_corridor",
+  "description": "10 km single-lane corridor, corridor_10km demand steps, seeded 120 s capacity drop at 7 km (v1_legacy FD), 1200 sim-s, seed 42",
   "scenario": "golden_config() in tests/test_macrosim/test_macrosim_golden.py",
   "producer": "macrosim.run_macro (v1_legacy FD) + api.results.macro_metrics",
-  "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate",
-  "generated_at": "2026-09-06T08:13:09+00:00",
+  "regenerate": "uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate macro_corridor",
+  "generated_at": "2026-10-04T20:46:33+00:00",
   "tolerance": {
     "relative": 1e-09,
     "exact": [
       "n_cells",
+      "n_closure_cells",
+      "n_closures",
       "wave_count"
     ]
   },
-  "config_hash": "54a3487c1b24",
+  "config_hash": "526d9a09f988",
   "seed": 42,
   "tier": "screening",
   "seeded": true,
@@ -63,7 +66,18 @@
       "lc_cooperative": 1.0,
       "lc_assertive": 1.0,
       "lc_speed_gain": 1.0,
-      "heavy": null
+      "heavy": null,
+      "jm_timegap_minor_s": null,
+      "jm_ignore_foe_prob": null,
+      "lc_sublane": null,
+      "lc_pushy": null,
+      "lc_impatience": null,
+      "lc_accel_lat": null,
+      "max_speed_lat": null,
+      "min_gap_lat": null,
+      "lat_alignment": null,
+      "lc_overtake_right": null,
+      "hov_fraction": 0.0
     },
     "av": {
       "penetration": 0.0,
@@ -76,7 +90,10 @@
         "kind": "perfect",
         "delay_s": 0.0,
         "amplitude_noise_frac": 0.0
-      }
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
     },
     "sim": {
       "duration_s": 1200.0,
@@ -86,6 +103,8 @@
       "output_hz": 0.2,
       "lateral_resolution_m": null
     },
+    "fd_calibration": null,
+    "macro": null,
     "perturbation": {
       "t_s": 600.0,
       "position_m": 7000.0,
@@ -93,6 +112,7 @@
       "v_drop_ms": 25.0
     },
     "closures": [],
+    "managed_lanes": [],
     "seed": 42,
     "replicates": 1
   },

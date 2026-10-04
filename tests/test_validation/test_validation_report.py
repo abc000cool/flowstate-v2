@@ -628,6 +628,63 @@ class TestModelIntegrity:
         assert blocks[start + 2].items[0].startswith("Collisions: 1 over 1 run(s)")
         assert blocks[start + 3].rows[1] == ["e1_0", "e1", "1", "3.0", "c/1"]
 
+    # --- the no_collisions acceptance criterion (2026-10-04, WP-98) -------------
+
+    @staticmethod
+    def _criterion(text: str) -> list[str]:
+        return _table_after(text, "| Criterion |")["no_collisions"]
+
+    def test_criterion_passes_when_every_run_records_zero(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            self._add(_write_run(root / "cafe01234567" / str(seed), seed=seed), 0)
+        text = self._report(root, tmp_path)
+        row = self._criterion(text)
+        assert row[1] == "0" and row[3] == "yes"
+        assert row[4].startswith("PASS — no collision in 2 run(s); FlowState internal standard")
+        assert "MODEL INTEGRITY FAILURE" not in text
+
+    def test_criterion_fails_and_the_report_opens_with_it(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        self._add(_write_run(root / "cafe01234567" / "1", seed=1), 2, [("e1_0", 5.0)])
+        self._add(_write_run(root / "cafe01234567" / "2", seed=2), 0)
+        text = self._report(root, tmp_path)
+        row = self._criterion(text)
+        assert row[1] == "2" and row[3] == "yes"
+        assert row[4].startswith(
+            "FAIL — 2 collision(s) in 1 of 2 run(s) that record the counter; FlowState "
+            "internal standard"
+        )
+        banner = (
+            "> **MODEL INTEGRITY FAILURE — 2 SUMO collision(s) in 1 of 2 run(s); the "
+            "no_collisions acceptance criterion fails."
+        )
+        assert banner in text
+        # under the title, before any section
+        assert text.index(banner) < text.index("## Provenance")
+        assert _limitations(text)[0].startswith("This run set contains 2 SUMO collision(s)")
+
+    def test_criterion_is_not_recorded_without_the_counter(
+        self, micro_run_set: Path, tmp_path: Path
+    ):
+        text = self._report(micro_run_set, tmp_path)
+        row = self._criterion(text)
+        assert row[3] == "no"
+        assert row[4].startswith(
+            "NOT RECORDED — not recorded: 2 of 2 run(s) carry no collision counter"
+        )
+        assert "PASS" not in row[4] and row[1] != "0"
+        assert "MODEL INTEGRITY FAILURE" not in text
+
+    def test_one_run_without_the_counter_keeps_it_not_recorded(self, tmp_path: Path):
+        root = tmp_path / "runs"
+        self._add(_write_run(root / "cafe01234567" / "1", seed=1), 0)
+        _write_run(root / "cafe01234567" / "2", seed=2)  # written before the counter
+        row = self._criterion(self._report(root, tmp_path))
+        assert row[4].startswith(
+            "NOT RECORDED — not recorded: 1 of 2 run(s) carry no collision counter"
+        )
+
 
 class TestWaveSpeedCriterion:
     """The criterion must be scoreable: measured with the profile's detector."""

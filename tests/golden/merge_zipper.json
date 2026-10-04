@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_zipper",
-  "generated_at": "2026-09-17T06:51:32+00:00",
+  "generated_at": "2026-10-04T20:46:30+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -18,10 +18,14 @@
       "n_scripted_merged",
       "n_vehicles_departed",
       "n_vehicles_planned",
+      "n_weave_changed_in",
+      "n_weave_changed_out",
+      "n_weave_exited",
+      "n_weave_forced",
       "wave_count"
     ]
   },
-  "config_hash": "93c5722707a5",
+  "config_hash": "f21a4f04d5bb",
   "seed": 3,
   "sumo_seed": 3,
   "tier": "micro",
@@ -74,11 +78,17 @@
           "meter": null,
           "merge_visibility_m": null,
           "merge": "zipper",
-          "merge_params": {}
+          "merge_params": {},
+          "weave": null,
+          "cd_road": false,
+          "cd_pair": ""
         }
       ],
       "entry_lane_shares": null,
-      "internal_links": false
+      "netconvert_extra": [],
+      "patch_files": [],
+      "internal_links": false,
+      "lane_end_giveup_m": 0.0
     },
     "fleet": {
       "model": "IDM",
@@ -120,7 +130,10 @@
         "kind": "perfect",
         "delay_s": 0.0,
         "amplitude_noise_frac": 0.0
-      }
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
     },
     "sim": {
       "duration_s": 200.0,
@@ -130,6 +143,8 @@
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
+    "fd_calibration": null,
+    "macro": null,
     "perturbation": null,
     "closures": [],
     "managed_lanes": [],

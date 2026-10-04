@@ -1,12 +1,19 @@
-"""Config-hash policy v2 (docs/CONTRACTS.md §2): defaults excluded, versioned.
+"""Config-hash policy (docs/CONTRACTS.md §2): defaults excluded, versioned.
 
 * A new optional field leaves the hash of every scenario that does not use
   it unchanged (explicit defaults hash like omitted ones).
 * ``tests/golden/config_defaults.json`` pins the full default dump of a
-  canonical config: a field default that drifts changes the physics of
-  every scenario relying on it, so the snapshot must be regenerated
-  together with a bump of ``CONFIG_HASH_VERSION`` and a CHANGELOG note.
+  canonical config, and the module-level defaults of the two dict-valued
+  merge parameter blocks (``SCRIPTED_MERGE_DEFAULTS``, ``WEAVE_DEFAULTS``),
+  which a model dump does not show (``merge_params`` defaults to ``{}``): a
+  default that drifts changes the physics of every scenario relying on it,
+  so the snapshot must be regenerated together with a bump of
+  ``CONFIG_HASH_VERSION`` and a CHANGELOG note.
 * One hash is pinned outright so a policy change is visible.
+
+Version 3 (2026-10-04, WP-98): ``AVSpec.emergency_handback``,
+``release_off_corridor``, ``observe_close_leader`` and
+``SCRIPTED_MERGE_DEFAULTS["force_guard"]`` turned on.
 
 Regenerate the snapshot (after bumping the version) with::
 
@@ -22,18 +29,24 @@ from pathlib import Path
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
     FLEET_SETTINGS_FIELDS,
+    SCRIPTED_MERGE_DEFAULTS,
+    WEAVE_DEFAULTS,
     FleetSpec,
     HeavyVehicleSpec,
     MacroOptions,
     ScenarioConfig,
     config_hash,
     config_hash_payload,
+    config_hash_v2,
     fleet_non_defaults,
     fleet_settings,
 )
 
 GOLDEN = Path(__file__).resolve().parents[1] / "golden" / "config_defaults.json"
-PINNED_RING_HASH = "a226444c0145"  # scenarios/ring_sugiyama.yaml under policy v2
+# scenarios/ring_sugiyama.yaml under policy v3 (2026-10-04)
+PINNED_RING_HASH = "d5472987265c"
+# the same file under policy v2 (2026-09-06 to 2026-10-03), as records of then quote it
+PINNED_RING_HASH_V2 = "a226444c0145"
 
 
 def _canonical() -> ScenarioConfig:
@@ -50,6 +63,13 @@ def _snapshot() -> dict:
     return {
         "hash_version": CONFIG_HASH_VERSION,
         "full_dump": _canonical().model_dump(mode="json"),
+        # dict-valued parameter blocks whose defaults live in module constants
+        # (since policy v3): a model dump shows ``merge_params: {}`` whatever
+        # SCRIPTED_MERGE_DEFAULTS holds
+        "merge_defaults": {
+            "scripted": dict(SCRIPTED_MERGE_DEFAULTS),
+            "weave": dict(WEAVE_DEFAULTS),
+        },
     }
 
 
@@ -149,6 +169,32 @@ def test_pinned_ring_hash():
     )
 
 
+def test_v2_hash_of_a_document_reproduces_records_before_v3():
+    """``config_hash_v2`` reads a document as policy v2 did (the AV
+    command-path keys it does not set are false) for provenance checks
+    against records dated before 2026-10-04."""
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    raw = yaml.safe_load((root / "scenarios" / "ring_sugiyama.yaml").read_text())
+    assert config_hash_v2(raw) == PINNED_RING_HASH_V2
+    assert config_hash(ScenarioConfig.model_validate(raw)) == PINNED_RING_HASH
+    # under v2 an explicit false was the default and an explicit true moved the hash
+    for key in ("emergency_handback", "release_off_corridor", "observe_close_leader"):
+        off = json.loads(json.dumps(raw))
+        off["av"][key] = False
+        assert config_hash_v2(off) == PINNED_RING_HASH_V2, key
+        on = json.loads(json.dumps(raw))
+        on["av"][key] = True
+        assert config_hash_v2(on) != PINNED_RING_HASH_V2, key
+        # ... and under v3 the other way round
+        assert config_hash(ScenarioConfig.model_validate(on)) == PINNED_RING_HASH, key
+        assert config_hash(ScenarioConfig.model_validate(off)) != PINNED_RING_HASH, key
+    # a document without an av block at all
+    no_av = {k: v for k, v in raw.items() if k != "av"}
+    assert config_hash_v2(no_av) == PINNED_RING_HASH_V2
+
+
 def _existing_defaults_unchanged(golden: object, current: object, path: str = "") -> list[str]:
     """Key paths present in the golden whose current value differs (new keys
     are allowed: a new optional field is not a default change)."""
@@ -169,6 +215,9 @@ def test_defaults_snapshot_is_pinned():
     golden = json.loads(GOLDEN.read_text())
     current = _snapshot()
     diffs = _existing_defaults_unchanged(golden["full_dump"], current["full_dump"])
+    diffs += _existing_defaults_unchanged(
+        golden["merge_defaults"], current["merge_defaults"], "/merge_defaults"
+    )
     assert not diffs, (
         "a field default changed: every scenario relying on it now runs different physics under "
         "an unchanged hash — bump CONFIG_HASH_VERSION, regenerate tests/golden/config_defaults.json "

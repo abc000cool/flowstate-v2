@@ -895,15 +895,15 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
     ``force_within_m`` of the lane. Control is handed back to SUMO as soon as
     the vehicle leaves the lane. Bookkeeping lands in ``ss`` for ``meta.json``.
 
-    With ``force_guard`` > 0 (WP-93) a vehicle due to force is under mode 256
-    only in the steps in which :func:`_scripted_force_gap_ok` passes and under
-    ``LC_MODE_SCRIPTED_SAFE`` in the others (``n_forced_deferred`` counts
-    them); its requests are made exactly as without the key. Off, the step is
-    call for call the one before the key: mode 256 from the first forced step
-    on.
+    With ``force_guard`` > 0 (WP-93; the default since 2026-10-04) a vehicle
+    due to force is under mode 256 only in the steps in which
+    :func:`_scripted_force_gap_ok` passes and under ``LC_MODE_SCRIPTED_SAFE``
+    in the others (``n_forced_deferred`` counts them); its requests are made
+    exactly as without the key. At 0, the step is call for call the one
+    before the key: mode 256 from the first forced step on.
     """
     prm = ss["params"]
-    guard = float(prm.get("force_guard", 0.0)) > 0.0
+    guard = float(prm.get("force_guard", SCRIPTED_MERGE_DEFAULTS["force_guard"])) > 0.0
     edge = ss["edge"]
     on_lane0 = {
         vid
@@ -6139,9 +6139,9 @@ def _leader_obs(
     ``(inf, nan, False)``.
 
     A leader closer than ``s0`` bumper to bumper makes that value negative.
-    By default (``AVSpec.observe_close_leader`` off, ``close_leader`` False)
-    it is read as "no leader": ``(inf, nan, True)``, with no further TraCI
-    call, as before WP-96. With ``close_leader`` the leader is reported with
+    With ``close_leader`` False (``AVSpec.observe_close_leader`` false, its
+    default until 2026-10-04) it is read as "no leader": ``(inf, nan, True)``,
+    with no further TraCI call, as before WP-96. With ``close_leader`` the leader is reported with
     the bumper gap floored at 0 m: ``(max(gap + s0, 0), v_leader, True)``.
 
     Args:
@@ -6180,8 +6180,9 @@ def _off_corridor_step(
     one on a corridor edge or an internal junction edge (id starting with
     ``":"``) is left alone. One on any other edge has left the corridor
     holding its last command (a ``setSpeed`` target is held until
-    ``setSpeed(-1)``). With ``oc["release"]`` False (the default) it is only
-    counted: ``oc["left"]`` (AVs) and ``oc["n_vehicle_steps"]`` (steps spent
+    ``setSpeed(-1)``). With ``oc["release"]`` False
+    (``AVSpec.release_off_corridor`` false, its default until 2026-10-04) it
+    is only counted: ``oc["left"]`` (AVs) and ``oc["n_vehicle_steps"]`` (steps spent
     so), with no TraCI call. With ``oc["release"]`` True it is released
     (``setSpeed(-1)``, ``oc["n_released"]``), dropped from ``commanded`` and,
     when the handback is on, from its held commands, so that nothing re-applies
@@ -6869,8 +6870,9 @@ def run_micro(
 
     compliant_avs = set(plan.complied_ids)
     memories: dict[str, Memory] = {vid: {} for vid in compliant_avs}
-    # AVSpec.emergency_handback (WP-95): None keeps the command path exactly
-    # as before; otherwise the per-step pass in _emergency_handback_step.
+    # AVSpec.emergency_handback (WP-95; on by default since 2026-10-04): None
+    # (the key false, or no controller) keeps the command path exactly as
+    # before WP-95; otherwise the per-step pass in _emergency_handback_step.
     handback: dict[str, Any] | None = None
     if cfg.av.emergency_handback and controller_fn is not None:
         handback = {
@@ -7884,7 +7886,8 @@ def run_micro(
                 "n_changed": ss["n_changed"],
                 "n_forced": ss["n_forced"],
                 # vehicle-steps a due forced change was held under mode 512 by
-                # force_guard (WP-93); 0 with the key off
+                # force_guard (WP-93; on by default since 2026-10-04); 0 with
+                # the key at 0
                 "n_forced_deferred": ss["n_forced_deferred"],
                 "n_unfinished": len(ss["veh"]),
                 "wait_s_mean": float(np.mean(ss["waits_s"])) if ss["waits_s"] else None,

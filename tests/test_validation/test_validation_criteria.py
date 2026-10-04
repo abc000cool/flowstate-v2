@@ -8,11 +8,15 @@ import pytest
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
 from validation.criteria import (
     CRITERIA_PROFILES,
+    NO_COLLISIONS,
+    NOT_RECORDED,
     REQUIRED_COMPLIANCES,
     REQUIRED_PENETRATIONS,
     CriteriaProfile,
+    CriteriaResult,
     evaluate,
     get_profile,
+    zero_collisions,
 )
 
 
@@ -42,6 +46,7 @@ class TestDefaults:
             "ring_dampening",
             "n_seeds",
             "sensitivity_grid",
+            "no_collisions",
         }
         for r in rows:
             assert not r.evaluated
@@ -266,3 +271,72 @@ class TestWaveDetectorSetting:
             evaluate(p, wave_speed_kmh=18.0, wave_detector=get_detector("stripe")), "wave_speed"
         )
         assert not stripe.evaluated
+
+
+class TestNoCollisions:
+    """The model-integrity row (2026-10-04, owner decision, WP-98): zero SUMO
+    collisions in every run, each run recording the counter."""
+
+    def test_flag_branches(self):
+        assert zero_collisions([0, 0, 0]) is True
+        assert zero_collisions([0, 2, 0]) is False
+        # a collision fails the set whatever the other runs record
+        assert zero_collisions([None, 1]) is False
+        # not recorded is never a pass and never a zero
+        assert zero_collisions([0, None]) is None
+        assert zero_collisions([None, None]) is None
+        assert zero_collisions([]) is None
+
+    def test_pass_only_when_every_run_records_zero(self):
+        row = _row(evaluate(collision_counts=[0, 0, 0]), NO_COLLISIONS)
+        assert row.evaluated and row.passed and row.status == "PASS"
+        assert row.value == 0.0
+        assert "no collision in 3 run(s)" in row.detail
+        assert "internal standard" in row.detail and "not an FHWA" in row.detail
+
+    def test_any_collision_fails(self):
+        row = _row(evaluate(collision_counts=[0, 3, 1]), NO_COLLISIONS)
+        assert row.evaluated and not row.passed and row.status == "FAIL"
+        assert row.value == 4.0
+        assert row.detail.startswith("4 collision(s) in 2 of 3 run(s) that record the counter")
+
+    def test_a_collision_fails_even_beside_an_unrecorded_run(self):
+        row = _row(evaluate(collision_counts=[2, None]), NO_COLLISIONS)
+        assert row.status == "FAIL" and row.value == 2.0
+        assert "1 run(s) not recorded" in row.detail
+
+    def test_a_run_without_the_counter_is_not_recorded(self):
+        row = _row(evaluate(collision_counts=[0, None, 0]), NO_COLLISIONS)
+        assert not row.evaluated and not row.passed and row.value is None
+        assert row.status == "NOT RECORDED"
+        assert row.detail.startswith(f"{NOT_RECORDED}: 1 of 3 run(s) carry no collision counter")
+
+    def test_no_counts_and_no_runs_are_not_recorded(self):
+        for counts in (None, []):
+            row = _row(evaluate(collision_counts=counts), NO_COLLISIONS)
+            assert row.status == "NOT RECORDED" and row.value is None and not row.passed
+        assert "no per-run collision counts supplied" in _row(evaluate(), NO_COLLISIONS).detail
+
+    def test_every_profile_carries_the_row_last_and_says_so(self):
+        for p in CRITERIA_PROFILES.values():
+            rows = evaluate(p, collision_counts=[0])
+            assert rows[-1].name == NO_COLLISIONS and rows[-1].passed
+            assert "no_collisions" in p.source
+        # a profile that drops every optional row still carries it
+        bare = CriteriaProfile(
+            name="bare",
+            rmspe_max=None,
+            require_ring_emergence=False,
+            require_ring_dampening=False,
+            require_sensitivity_grid=False,
+        )
+        assert [r.name for r in evaluate(bare)][-1] == NO_COLLISIONS
+
+    def test_status_names_the_four_outcomes(self):
+        def row(evaluated: bool, passed: bool, detail: str = "") -> CriteriaResult:
+            return CriteriaResult("x", None, "t", passed, evaluated, detail)
+
+        assert row(True, True).status == "PASS"
+        assert row(True, False).status == "FAIL"
+        assert row(False, False, "not evaluated: input not supplied").status == "NOT EVALUATED"
+        assert row(False, False, f"{NOT_RECORDED}: no runs supplied").status == "NOT RECORDED"

@@ -378,13 +378,20 @@ def test_tree_without_meta_reports_zero_and_keeps_existing_keys(tmp_path: Path) 
         expected_keys = ["aggregate", "grid", "config_hash"]
         if cell != "baseline":
             expected_keys.append("vs_baseline_paired")
-        expected_keys.append("diagnostics")
+        expected_keys += ["diagnostics", "collisions", "zero_collisions"]
         assert list(entry) == expected_keys, cell
+        # no meta: not recorded, never zero (WP-98)
+        assert entry["collisions"]["total"] is None and entry["zero_collisions"] is None
+        assert entry["collisions"]["runs_not_recorded"] == SEEDS
+    assert s_without["zero_collisions"] is None
 
-    # Everything but ``diagnostics`` is independent of whether a meta exists.
+    # Everything but ``diagnostics`` and the collision keys (both read the
+    # metas) is independent of whether a meta exists.
     for s in (s_with, s_without):
         for entry in s["cells"].values():
-            del entry["diagnostics"]
+            for key in ("diagnostics", "collisions", "zero_collisions"):
+                del entry[key]
+        del s["zero_collisions"]
     s_with["experiment"] = s_without["experiment"]
     assert s_with == s_without
     assert list(s_without) == [
@@ -432,3 +439,65 @@ def test_a_run_with_metrics_but_no_meta_counts_as_done(tmp_path: Path) -> None:
     assert not sweep._done(tmp_path, "cell", "abc123", 7)
     (d / "metrics.json").write_text("{}")
     assert sweep._done(tmp_path, "cell", "abc123", 7)
+
+
+def _with_collisions(root: Path, counts: dict[tuple[str, int], int | None]) -> None:
+    """Write ``n_collisions`` into the tree's metas; None removes the counter."""
+    for (cell, seed), n in counts.items():
+        p = root / cell / CELLS[cell] / str(seed) / "meta.json"
+        meta = json.loads(p.read_text())
+        if n is None:
+            meta.pop("n_collisions", None)
+        else:
+            meta["n_collisions"] = n
+        p.write_text(json.dumps(meta))
+
+
+def test_collision_flag_pass_fail_not_recorded(tmp_path: Path) -> None:
+    """Each cell and the sweep carry ``zero_collisions`` (WP-98): true only
+    when every run records zero, false on any collision, null otherwise."""
+    root = tmp_path / "sweep"
+    _build_tree(root, with_meta=True)
+    zero = {(cell, seed): 0 for cell in CELLS for seed in SEEDS}
+
+    _with_collisions(root, zero)
+    s = sweep.analyze(root, tmp_path / "pass.json", allow_partial=False)
+    assert s["zero_collisions"] is True
+    for entry in s["cells"].values():
+        assert entry["zero_collisions"] is True
+        assert entry["collisions"] == {
+            "n_runs": 3,
+            "n_runs_recorded": 3,
+            "total": 0,
+            "runs_with_collisions": [],
+            "runs_not_recorded": [],
+        }
+    assert sweep.collision_line(s) == "collisions: PASS — zero in all 6 run(s)"
+
+    _with_collisions(root, {("strategy_alinea", 22): 2, ("strategy_alinea", 33): 1})
+    s = sweep.analyze(root, tmp_path / "fail.json", allow_partial=False)
+    assert s["zero_collisions"] is False
+    assert s["cells"]["baseline"]["zero_collisions"] is True
+    cell = s["cells"]["strategy_alinea"]
+    assert cell["zero_collisions"] is False
+    assert cell["collisions"]["total"] == 3
+    assert cell["collisions"]["runs_with_collisions"] == [
+        {"seed": 22, "n": 2},
+        {"seed": 33, "n": 1},
+    ]
+    assert sweep.collision_line(s) == "collisions: FAIL — collisions in strategy_alinea (3)"
+
+    _with_collisions(root, {**zero, ("baseline", 11): None})
+    s = sweep.analyze(root, tmp_path / "missing.json", allow_partial=False)
+    assert s["zero_collisions"] is None
+    base = s["cells"]["baseline"]
+    assert base["zero_collisions"] is None
+    assert base["collisions"]["n_runs_recorded"] == 2 and base["collisions"]["total"] == 0
+    assert base["collisions"]["runs_not_recorded"] == [11]
+    assert s["cells"]["strategy_alinea"]["zero_collisions"] is True
+    assert sweep.collision_line(s) == "collisions: NOT RECORDED — not recorded for 1 of 6 run(s)"
+
+    # the summary file carries the same keys
+    stored = json.loads((tmp_path / "missing.json").read_text())
+    assert stored["zero_collisions"] is None
+    assert stored["cells"]["baseline"]["collisions"]["runs_not_recorded"] == [11]

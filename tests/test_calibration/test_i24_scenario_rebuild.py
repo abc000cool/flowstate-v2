@@ -5,6 +5,12 @@
 from a saved fit without simulating. The rebuilt files must hash to what the
 batteries that used them recorded (the zip family of 2026-09-06, whose
 scenario files were lost with the VM and rebuilt this way).
+
+Those records are dated before 2026-10-04 and quote config-hash policy v2
+(docs/CONTRACTS.md §2), so the rebuilt documents are compared under v2
+(``config_hash_v2``); the header line a rebuild writes states the current
+(v3) hash, the committed file's the v2 one, and the files are otherwise
+byte-identical.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -19,7 +26,7 @@ from types import ModuleType
 import pytest
 import yaml
 
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v2
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "scripts"
@@ -38,7 +45,22 @@ def _load(name: str) -> ModuleType:
 
 
 def _hash_of(path: Path) -> str:
-    return config_hash(ScenarioConfig.model_validate(yaml.safe_load(path.read_text())))
+    """The policy-v2 hash of a scenario file: the policy its records quote."""
+    return config_hash_v2(yaml.safe_load(path.read_text()))
+
+
+_HASH_LINE = re.compile(r"^# config hash ([0-9a-f]{12}); ", re.M)
+
+
+def _assert_same_file(rebuilt: Path, committed: Path) -> None:
+    """Byte-identical but for the header's hash: the rebuild states the
+    current (v3) hash of the document, the committed file its v2 hash."""
+    new, old = rebuilt.read_text(), committed.read_text()
+    (new_hash,) = _HASH_LINE.findall(new)
+    (old_hash,) = _HASH_LINE.findall(old)
+    assert new_hash == config_hash(ScenarioConfig.model_validate(yaml.safe_load(new)))
+    assert old_hash == _hash_of(committed)
+    assert _HASH_LINE.sub("# config hash <h>; ", new) == _HASH_LINE.sub("# config hash <h>; ", old)
 
 
 @pytest.mark.skipif(not DEMAND_ARTIFACT.is_file(), reason="zip family artifacts absent")
@@ -56,8 +78,7 @@ def test_demand_scenario_rebuilds_to_recorded_hash(tmp_path: Path) -> None:
     # the ramp fit of the same family was run on exactly this scenario
     prov = json.loads(RAMPS_ARTIFACT.read_text())["provenance"]
     assert _hash_of(out) == prov["base_config_hash"]
-    committed = REPO / "scenarios" / "i24_replica_zip_speedcal.yaml"
-    assert out.read_text() == committed.read_text()
+    _assert_same_file(out, REPO / "scenarios" / "i24_replica_zip_speedcal.yaml")
 
 
 @pytest.mark.skipif(not RAMPS_ARTIFACT.is_file(), reason="zip family artifacts absent")
@@ -69,8 +90,7 @@ def test_ramps_scenario_rebuilds_to_battery_hash(tmp_path: Path) -> None:
     mod.write_from_artifact(RAMPS_ARTIFACT)
     battery = json.loads(RAMPS_BATTERY.read_text())
     assert _hash_of(out) == battery["config_hash"]
-    committed = REPO / "scenarios" / "i24_replica_zip_speedcal_ramps.yaml"
-    assert out.read_text() == committed.read_text()
+    _assert_same_file(out, REPO / "scenarios" / "i24_replica_zip_speedcal_ramps.yaml")
 
 
 @pytest.mark.skipif(not RAMPS_ARTIFACT.is_file(), reason="zip family artifacts absent")

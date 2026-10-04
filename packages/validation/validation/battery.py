@@ -8,7 +8,8 @@ against the corridor's observations (:mod:`validation.observed`), what
 backward wave speed a given detector reads on its field, whether the run
 actually put its planned demand on the network at all
 (:func:`insertion_stats`), and whether the model itself misbehaved
-(:func:`collision_summary`, :func:`forced_change_summary`). They live here so
+(:func:`collision_summary`, :func:`forced_change_summary`, and the pass /
+fail / not-recorded flag :func:`collision_free`). They live here so
 the two callers cannot drift
 apart — the failure mode CLAUDE.md §0.1 is about, where a number in a report
 and the same number in an artifact were computed by two copies of the code.
@@ -44,7 +45,7 @@ from typing import Any, Final
 import numpy as np
 import pandas as pd
 
-from validation.criteria import CriteriaProfile
+from validation.criteria import CriteriaProfile, zero_collisions
 from validation.fields import speed_field
 from validation.metrics import (
     Metrics,
@@ -586,6 +587,39 @@ def collision_count(meta: Mapping[str, Any]) -> int | None:
         The count, or None.
     """
     return _count(meta, "n_collisions")
+
+
+def collision_counts(metas: Sequence[Mapping[str, Any]]) -> list[int | None]:
+    """:func:`collision_count` of every run, in order (None: not recorded).
+
+    The input of the ``no_collisions`` acceptance criterion
+    (``validation.criteria.evaluate(..., collision_counts=...)``).
+
+    Args:
+        metas: One parsed ``meta.json`` per run.
+
+    Returns:
+        One count or None per run.
+    """
+    return [collision_count(meta) for meta in metas]
+
+
+def collision_free(metas: Sequence[Mapping[str, Any]]) -> bool | None:
+    """Whether a run set is collision-free (2026-10-04, WP-98).
+
+    :func:`validation.criteria.zero_collisions` over :func:`collision_counts`:
+    False when any run records a collision, True only when every run records
+    zero, None (not recorded, never True and never 0) otherwise — a run
+    without the counter, or no run at all. The corridor battery artifact's
+    and the sweep summary's ``zero_collisions`` flag.
+
+    Args:
+        metas: One parsed ``meta.json`` per run.
+
+    Returns:
+        True, False or None.
+    """
+    return zero_collisions(collision_counts(metas))
 
 
 def lane_edge(lane: str) -> str:

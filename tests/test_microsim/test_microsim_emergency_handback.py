@@ -9,19 +9,22 @@ vehicle never brakes harder than ``minNextSpeed`` allows (``b`` for EIDM,
 ``max(b, min(emergencyDecel, 1.5))`` for IDM), while its car-following model
 alone may brake up to ``emergencyDecel`` (9 m/s²). With the key on, the
 command is withdrawn for any step in which the model must brake harder than
-that. These tests pin:
+that. The key is on by default since 2026-10-04 (WP-98); ``False``
+reproduces the old command path. These tests pin:
 
 * the command's deceleration bound per model (``_command_decel``);
 * the per-step pass on a fake SUMO (``_handback_needed``,
   ``_emergency_handback_step``): withdraw, count, re-apply, drop;
-* the config field: off by default, hash-neutral when off;
+* the config field: on by default, hash-neutral when on (``False`` moves
+  the hash);
 * a cut-in built by hand in front of a commanded vehicle on real SUMO: the
   held command collides braking at exactly ``b``, the model alone and the
   handback do not;
 * ``run_micro`` on the interchange fixture ``tests/fixtures/merge.osm`` with
-  the I-24 fleet and FollowerStopper at 10 %: the default collides, the key
-  does not; and on the Sugiyama ring, where the model never needs more than
-  the command allows, the key changes nothing.
+  the I-24 fleet and FollowerStopper at 10 %: the old command path (the
+  three AV command-path keys false) collides, the defaults do not; and on
+  the Sugiyama ring, where the model never needs more than the command
+  allows, the key changes nothing.
 """
 
 from __future__ import annotations
@@ -179,13 +182,15 @@ def test_step_withdraws_counts_reapplies_and_drops() -> None:
 # --- the config field -----------------------------------------------------------
 
 
-def test_field_is_off_by_default_and_hash_neutral() -> None:
-    assert AVSpec().emergency_handback is False
+def test_field_is_on_by_default_and_hash_neutral() -> None:
+    """On since 2026-10-04 (WP-98, config-hash policy v3): an explicit
+    ``True`` hashes like the omitted field, ``False`` (the old path) moves it."""
+    assert AVSpec().emergency_handback is True
     base = load_scenario("ring_sugiyama")
     d = base.model_dump(mode="json")
-    d["av"]["emergency_handback"] = False
-    assert config_hash(ScenarioConfig.model_validate(d)) == config_hash(base)
     d["av"]["emergency_handback"] = True
+    assert config_hash(ScenarioConfig.model_validate(d)) == config_hash(base)
+    d["av"]["emergency_handback"] = False
     assert config_hash(ScenarioConfig.model_validate(d)) != config_hash(base)
 
 
@@ -290,15 +295,18 @@ def test_cut_in_collides_under_a_held_command_and_not_with_the_handback(tmp_path
 # --- run_micro ------------------------------------------------------------------
 
 
-def _merge_fixture(emergency_handback: bool) -> ScenarioConfig:
+def _merge_fixture(old_path: bool) -> ScenarioConfig:
     """``MERGE_OSM`` with the I-24 fleet and FollowerStopper at 10 %, 240 s.
 
     Mainline 0.8 veh/s on edges 100–103, an on-ramp at 0.2 veh/s joining the
     added lane of 102 (which ends at 103), an off-ramp taking 15 % from 100.
+    ``old_path`` sets the three AV command-path keys false (the defaults
+    before 2026-10-04, under which the case was measured); otherwise the
+    defaults apply (all three on).
     """
     av: dict[str, Any] = {"penetration": 0.1, "compliance": 1.0, "controller": "follower_stopper"}
-    if emergency_handback:
-        av["emergency_handback"] = True
+    if old_path:
+        av.update(emergency_handback=False, release_off_corridor=False, observe_close_leader=False)
     return ScenarioConfig.model_validate(
         {
             "name": "wp95_merge_fixture",
@@ -333,14 +341,14 @@ def _merge_fixture(emergency_handback: bool) -> ScenarioConfig:
 
 
 @pytest.mark.integration
-def test_fixture_default_collides_and_the_handback_does_not(tmp_path: Path) -> None:
+def test_fixture_old_path_collides_and_the_default_does_not(tmp_path: Path) -> None:
     seed = 2  # measured 2026-09-26: three collisions, every collider a compliant AV
-    default = json.loads(run_micro(_merge_fixture(False), seed, tmp_path / "d").meta.read_text())
-    on = json.loads(run_micro(_merge_fixture(True), seed, tmp_path / "h").meta.read_text())
-    complied = set(default["complied_ids"])
-    assert default["n_collisions"] >= 1
-    assert all(c["collider"] in complied for c in default["collisions"])
-    assert default["av_emergency_handback"] is None
+    old = json.loads(run_micro(_merge_fixture(True), seed, tmp_path / "d").meta.read_text())
+    on = json.loads(run_micro(_merge_fixture(False), seed, tmp_path / "h").meta.read_text())
+    complied = set(old["complied_ids"])
+    assert old["n_collisions"] >= 1
+    assert all(c["collider"] in complied for c in old["collisions"])
+    assert old["av_emergency_handback"] is None
     assert on["n_collisions"] == 0
     assert on["av_emergency_handback"]["n_withdrawals"] >= 1
     assert on["av_emergency_handback"]["n_vehicles"] >= 1

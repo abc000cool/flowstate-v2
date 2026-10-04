@@ -82,7 +82,7 @@ from calibration.demand import (
     MultiplierSpec,
     fit_multipliers,
 )
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v2
 from flowstate_core.rng import spawn_seeds
 from flowstate_core.units import ms_to_kmh
 from microsim.runner import _versions, run_micro
@@ -474,7 +474,9 @@ def write_from_artifact(path: Path) -> None:
         BASE_YAML = (REPO / prov["base_scenario"]).resolve()
     base_raw = base_scenario()
     base_hash = config_hash(ScenarioConfig.model_validate(base_raw))
-    if base_hash != prov["base_config_hash"]:
+    # an artifact written before 2026-10-04 records the policy-v2 hash of its
+    # base (docs/CONTRACTS.md §2); the same document still matches it
+    if prov["base_config_hash"] not in (base_hash, config_hash_v2(base_raw)):
         raise SystemExit(
             f"base {BASE_YAML} hashes to {base_hash}, the artifact was fitted on {prov['base_config_hash']}"
         )

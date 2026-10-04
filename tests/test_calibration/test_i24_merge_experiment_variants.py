@@ -31,7 +31,7 @@ from types import ModuleType
 import pytest
 import yaml
 
-from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.config import ScenarioConfig, config_hash, config_hash_v2
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO / "scripts"
@@ -95,8 +95,10 @@ def test_published_variant_hashes_reproduce(mod: ModuleType) -> None:
     rows = {r["variant"]: r["config_hash"] for r in recorded["variants"]}
     assert "geometry_corrected_ramplc1_entrylanes" in rows
     assert "geometry_corrected_ramplc1_entryflow" in rows
+    # The artifact quotes config-hash policy v2 (written before 2026-10-04,
+    # docs/CONTRACTS.md §2): the variants rebuild to it under v2.
     for variant, recorded_hash in rows.items():
-        assert _hash(mod.variant_config(variant)) == recorded_hash, variant
+        assert config_hash_v2(mod.variant_config(variant)) == recorded_hash, variant
     # the artifact's arm is this script's default base
     assert recorded["arm"] == str(mod.ARM_YAML.relative_to(REPO))
 

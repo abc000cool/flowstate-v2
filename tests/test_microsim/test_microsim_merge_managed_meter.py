@@ -859,6 +859,9 @@ class TestWeaveSchema:
         assert spec is not None and spec.length_m is None and spec.weave_params == {}
         assert WEAVE_DEFAULTS == {
             **SCRIPTED_MERGE_DEFAULTS,
+            # WP-98 (2026-10-04): the scripted merge's force_guard went on; the
+            # weave never reads it and pins it off
+            "force_guard": 0.0,
             "exit_accept_gap_s": 0.6,
             "vacate_ahead_m": 500.0,
             "vacate_max_veh_h": 0.0,

@@ -6,7 +6,7 @@
   "overrides": {},
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_scripted",
-  "generated_at": "2026-09-17T06:51:32+00:00",
+  "generated_at": "2026-10-04T20:46:29+00:00",
   "tolerance": {
     "relative": 1e-06,
     "exact": [
@@ -18,10 +18,14 @@
       "n_scripted_merged",
       "n_vehicles_departed",
       "n_vehicles_planned",
+      "n_weave_changed_in",
+      "n_weave_changed_out",
+      "n_weave_exited",
+      "n_weave_forced",
       "wave_count"
     ]
   },
-  "config_hash": "8719db59db20",
+  "config_hash": "f262517cb222",
   "seed": 3,
   "sumo_seed": 3,
   "tier": "micro",
@@ -74,11 +78,17 @@
           "meter": null,
           "merge_visibility_m": null,
           "merge": "scripted",
-          "merge_params": {}
+          "merge_params": {},
+          "weave": null,
+          "cd_road": false,
+          "cd_pair": ""
         }
       ],
       "entry_lane_shares": null,
-      "internal_links": false
+      "netconvert_extra": [],
+      "patch_files": [],
+      "internal_links": false,
+      "lane_end_giveup_m": 0.0
     },
     "fleet": {
       "model": "IDM",
@@ -120,7 +130,10 @@
         "kind": "perfect",
         "delay_s": 0.0,
         "amplitude_noise_frac": 0.0
-      }
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
     },
     "sim": {
       "duration_s": 300.0,
@@ -130,6 +143,8 @@
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
+    "fd_calibration": null,
+    "macro": null,
     "perturbation": null,
     "closures": [],
     "managed_lanes": [],
@@ -144,21 +159,21 @@
     "n_hov": 0,
     "n_meter_releases": 0,
     "n_scripted_merged": 35,
-    "n_scripted_forced": 11,
-    "fuel_total_ml": 31719.5423764132
+    "n_scripted_forced": 6,
+    "fuel_total_ml": 31602.379197428138
   },
   "metrics": {
     "throughput_veh_h": 2432.1070234113713,
-    "mean_tt_s": 87.19108020729381,
-    "p90_tt_s": 138.50026437839884,
-    "sigma_v_spatial_ms": 8.937541196370644,
-    "sigma_v_temporal_ms": 3.716799793522247,
-    "vmt_veh_km": 349.20434227517063,
-    "vht_veh_h": 4.786111111111108,
-    "fuel_ml_per_veh_km": 90.8337570196032,
+    "mean_tt_s": 85.93671659616581,
+    "p90_tt_s": 131.35818096601412,
+    "sigma_v_spatial_ms": 9.039395551544839,
+    "sigma_v_temporal_ms": 3.765500526697815,
+    "vmt_veh_km": 346.65727775752816,
+    "vht_veh_h": 4.797499999999998,
+    "fuel_ml_per_veh_km": 91.16317823141922,
     "wave_count": 3,
-    "wave_speed_kmh": 18.0,
-    "wave_amplitude_ms": 21.331346510525915,
+    "wave_speed_kmh": 9.0,
+    "wave_amplitude_ms": 21.39950596504382,
     "n_travel_time_veh": 114
   }
 }

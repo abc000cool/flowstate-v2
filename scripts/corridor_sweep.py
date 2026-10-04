@@ -17,6 +17,14 @@ n_passed_unstoppable)``; per weaving section (keyed by on-ramp) the same for
 its counters and mean wait. Runs without ``meta.json`` contribute nothing and
 ``n_runs_with_meta`` says how many did.
 
+Zero collisions is a pass/fail requirement of every run set (2026-10-04,
+owner decision, WP-98). Each cell carries ``collisions`` (:func:`collision_block`:
+the total over the runs whose ``meta.json`` records ``n_collisions``, which
+runs had any, which do not record it) and ``zero_collisions`` (true only when
+every run of the cell records zero, false on any collision, null when not
+recorded — a run without ``meta.json`` or without the counter); the summary
+carries the same flag over every run of every complete cell.
+
 Strategies:
   ``none``    the scenario as calibrated;
   ``vsl``     ``av.vsl = "vsl_threshold"`` (threshold ladder, per-edge gantries);
@@ -243,6 +251,52 @@ def diagnostics_block(metas: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def collision_block(counts: dict[int, int | None]) -> dict[str, Any]:
+    """The ``collisions`` entry of one cell from its runs' collision counts.
+
+    Args:
+        counts: Per seed with a ``metrics.json``: its ``meta.json``
+            ``n_collisions`` (``validation.battery.collision_count``), or None
+            when the run has no ``meta.json`` or the meta no counter.
+
+    Returns:
+        ``{"n_runs", "n_runs_recorded", "total", "runs_with_collisions":
+        [{"seed", "n"}], "runs_not_recorded": [seed]}``; ``total`` is the sum
+        over the recorded runs and null when none records the counter (not
+        recorded is not zero).
+    """
+    recorded = {s: c for s, c in counts.items() if c is not None}
+    return {
+        "n_runs": len(counts),
+        "n_runs_recorded": len(recorded),
+        "total": sum(recorded.values()) if recorded else None,
+        "runs_with_collisions": [{"seed": s, "n": c} for s, c in recorded.items() if c > 0],
+        "runs_not_recorded": [s for s, c in counts.items() if c is None],
+    }
+
+
+def collision_line(summary: dict[str, Any]) -> str:
+    """One console line for the sweep's ``zero_collisions`` requirement."""
+    flag = summary.get("zero_collisions")
+    cells = summary["cells"]
+    n_runs = sum(e["collisions"]["n_runs"] for e in cells.values())
+    if flag is True:
+        return f"collisions: PASS — zero in all {n_runs} run(s)"
+    failing = [
+        f"{cell} ({e['collisions']['total']})"
+        for cell, e in cells.items()
+        if e["zero_collisions"] is False
+    ]
+    missing = sum(len(e["collisions"]["runs_not_recorded"]) for e in cells.values())
+    parts = []
+    if failing:
+        parts.append("collisions in " + ", ".join(failing))
+    if missing:
+        parts.append(f"not recorded for {missing} of {n_runs} run(s)")
+    status = "FAIL" if flag is False else "NOT RECORDED"
+    return f"collisions: {status} — " + "; ".join(parts or ["no run"])
+
+
 def _fmt_ci(c: dict[str, Any], digits: int = 1, scale: float = 1.0) -> str:
     """``mean [lo, hi] (n)`` of one :func:`_ci` entry for the console; ``—`` when empty."""
     if c["n"] == 0:
@@ -290,14 +344,19 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
     import numpy as np
     from scipy import stats
 
+    from validation.battery import collision_count
+    from validation.criteria import zero_collisions
+
     manifest = json.loads((root / "MANIFEST.json").read_text())
     seeds = [int(s) for s in manifest["seeds"]]
     per_cell: dict[str, dict[int, dict[str, float]]] = {}
     metas: dict[str, list[dict[str, Any]]] = {}
+    collisions: dict[str, dict[int, int | None]] = {}
     missing: list[tuple[str, int]] = []
     for cell, chash in manifest["cells"].items():
         per_cell[cell] = {}
         metas[cell] = []
+        collisions[cell] = {}
         for seed in seeds:
             p = root / cell / chash / str(seed) / "metrics.json"
             if not p.is_file():
@@ -306,8 +365,11 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
             m = json.loads(p.read_text())
             per_cell[cell][seed] = {f: float(m[f]) for f in FIELDS if f in m and m[f] is not None}
             meta_path = p.with_name("meta.json")
+            collisions[cell][seed] = None
             if meta_path.is_file():
-                metas[cell].append(json.loads(meta_path.read_text()))
+                meta = json.loads(meta_path.read_text())
+                metas[cell].append(meta)
+                collisions[cell][seed] = collision_count(meta)
     incomplete = sorted({c for c, _ in missing})
     if missing and not allow_partial:
         raise SystemExit(
@@ -359,6 +421,9 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
                 }
             entry["vs_baseline_paired"] = deltas
         entry["diagnostics"] = diagnostics_block(metas[cell])
+        # Model integrity (WP-98): the cell's collisions and its pass/fail flag.
+        entry["collisions"] = collision_block(collisions[cell])
+        entry["zero_collisions"] = zero_collisions(list(collisions[cell].values()))
         cells_out[cell] = entry
     summary = {
         "experiment": manifest["experiment"],
@@ -371,6 +436,10 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
         "seeds": seeds,
         "incomplete_cells": incomplete,
         "cells": cells_out,
+        # over every run of every complete cell: true / false / null
+        "zero_collisions": zero_collisions(
+            [c for cell in cells_out for c in collisions[cell].values()]
+        ),
     }
     (root / "analysis.json").write_text(json.dumps(summary, indent=2))
     summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -410,6 +479,7 @@ def main() -> None:
     if args.analyze_only:
         s = analyze(root, args.summary, allow_partial=args.allow_partial)
         print(f"analysed {len(s['cells'])} cells; incomplete {s['incomplete_cells']}")
+        print(collision_line(s))
         print_diagnostics(s)
         return
 
@@ -509,6 +579,7 @@ def main() -> None:
     print(f"runs done in {time.perf_counter() - t0:.0f} s; {n_fail} failed", flush=True)
     s = analyze(root, args.summary, allow_partial=True)
     print(f"summary → {args.summary}; incomplete cells: {s['incomplete_cells']}")
+    print(collision_line(s))
     print_diagnostics(s)
 
 

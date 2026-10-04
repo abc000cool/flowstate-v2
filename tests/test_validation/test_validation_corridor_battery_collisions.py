@@ -232,14 +232,14 @@ def test_the_keys_are_additive_and_every_existing_value_is_unchanged(tmp_path: P
     The same replicates built without metas (the pre-WP-94 call), with metas
     that carry no counter (runs written before 2026-09-16) and with metas
     that carry collisions give the same JSON for every key the artifact had,
-    key by key; the only new keys are ``collisions`` and each seed's
-    ``n_collisions``.
+    key by key; the only new keys are ``collisions``, ``zero_collisions``
+    (WP-98) and each seed's ``n_collisions``.
     """
     without = _strict(_build(tmp_path / "none", None))
     unrecorded = _strict(_build(tmp_path / "old", _metas(with_counter=False)))
     recorded = _strict(_build(tmp_path / "new", _metas()))
     for artifact in (without, unrecorded, recorded):
-        assert set(artifact) == (PRE_WP94_KEYS - {"created_at"}) | {"collisions"}
+        assert set(artifact) == (PRE_WP94_KEYS - {"created_at"}) | {"collisions", "zero_collisions"}
         for row in artifact["per_seed"]:
             assert set(row) == PRE_WP94_SEED_KEYS | {"n_collisions"}
     for key in PRE_WP94_KEYS - {"created_at", "per_seed"}:
@@ -261,7 +261,26 @@ def test_runs_without_the_counter_are_null_never_zero(tmp_path: Path) -> None:
     for metas in (None, _metas(with_counter=False)):
         artifact = _strict(_build(tmp_path / str(metas is None), metas))
         assert artifact["collisions"] is None
+        assert artifact["zero_collisions"] is None
         assert [row["n_collisions"] for row in artifact["per_seed"]] == [None, None, None]
+
+
+def test_zero_collisions_flag_pass_fail_not_recorded(tmp_path: Path) -> None:
+    """WP-98: true only when every seed records zero; false on any collision
+    (here 3 and 1); null when a seed lacks the counter and none collided."""
+    keys = list(_strict(_build(tmp_path / "fail", _metas())))
+    assert keys.index("zero_collisions") == keys.index("collisions") + 1
+    assert _strict(_build(tmp_path / "fail", _metas()))["zero_collisions"] is False
+    clean = _metas()
+    for meta in clean:
+        meta["n_collisions"], meta["collisions"] = 0, []
+    assert _strict(_build(tmp_path / "pass", clean))["zero_collisions"] is True
+    clean[1].pop("n_collisions")
+    assert _strict(_build(tmp_path / "missing", clean))["zero_collisions"] is None
+    # a collision fails the set even beside an unrecorded seed
+    partial = _metas()
+    partial[1].pop("n_collisions")
+    assert _strict(_build(tmp_path / "partial", partial))["zero_collisions"] is False
 
 
 def test_a_seed_without_the_counter_is_named_in_the_block(tmp_path: Path) -> None:
@@ -349,6 +368,10 @@ def test_criteria_only_reads_collisions_from_the_stored_metas(
     console = capsys.readouterr().out
     artifact = json.loads((tmp_path / "new" / "artifacts" / "validation.json").read_text())
     assert [row["n_collisions"] for row in artifact["per_seed"]] == [2, 0]
+    assert artifact["zero_collisions"] is False
+    (row,) = [r for r in artifact["criteria"] if r["name"] == "no_collisions"]
+    assert row["evaluated"] is True and row["passed"] is False and row["value"] == 2.0
+    assert "no_collisions      FAIL" in console
     block = artifact["collisions"]
     assert block["total"] == 2
     seeds = artifact["seeds"]
@@ -366,11 +389,21 @@ def test_criteria_only_reads_collisions_from_the_stored_metas(
     console_old = capsys.readouterr().out
     old = json.loads((tmp_path / "old" / "artifacts" / "validation.json").read_text())
     assert old["collisions"] is None
+    assert old["zero_collisions"] is None
     assert [row["n_collisions"] for row in old["per_seed"]] == [None, None]
     assert "not recorded (no replicate's meta.json carries n_collisions)" in console_old
-    assert set(artifact) == PRE_WP94_KEYS | {"collisions", "report_path"}
-    for key in (PRE_WP94_KEYS | {"report_path"}) - {"created_at", "wall_s", "per_seed"}:
+    assert "no_collisions      NOT RECORDED" in console_old
+    assert set(artifact) == PRE_WP94_KEYS | {"collisions", "zero_collisions", "report_path"}
+    for key in (PRE_WP94_KEYS | {"report_path"}) - {"created_at", "wall_s", "per_seed", "criteria"}:
         assert json.dumps(old[key]) == json.dumps(artifact[key]), key
+    # The criteria differ only by the model-integrity row, which reads the
+    # counters (WP-98): every other row is the same with and without them.
+    assert [r for r in old["criteria"] if r["name"] != "no_collisions"] == [
+        r for r in artifact["criteria"] if r["name"] != "no_collisions"
+    ]
+    (old_row,) = [r for r in old["criteria"] if r["name"] == "no_collisions"]
+    assert old_row["evaluated"] is False and old_row["value"] is None
+    assert old_row["detail"].startswith("not recorded: 2 of 2 run(s)")
     for a, b in zip(old["per_seed"], artifact["per_seed"], strict=True):
         for key in PRE_WP94_SEED_KEYS - {"run_dir"}:
             assert json.dumps(a[key]) == json.dumps(b[key]), key

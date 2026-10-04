@@ -52,6 +52,12 @@ before anyone looked (docs/ONBOARDING_MNDOT.md §11, WP-93). Each seed's
 the artifact's ``collisions`` block (total, per-seed t-interval, rate per 1,000
 departed vehicles, logged locations by lane; null when no seed records the
 counter), and one ``collisions`` line is printed beside the insertion line.
+Since 2026-10-04 (WP-98) zero collisions is a pass/fail requirement: the
+criteria carry the ``no_collisions`` row (``validation.criteria``; PASS only
+when every seed records zero, FAIL on any collision, otherwise NOT RECORDED)
+and the artifact a top-level ``zero_collisions`` beside ``collisions``
+(:func:`validation.battery.collision_free`: true, false, or null when not
+recorded).
 
 **Phases.** ``simulate`` (the SUMO pool, ``--procs``), ``score`` (per-replicate
 metrics, observed scores and wave speed, :func:`validation.battery.analyse_replicates`
@@ -112,6 +118,8 @@ from validation.battery import (
     analyse_replicates,
     available_memory_bytes,
     collision_count,
+    collision_counts,
+    collision_free,
     collision_summary,
     degraded_verdict,
     insertion_stats,
@@ -460,8 +468,11 @@ def build_artifact(
     (:func:`validation.battery.collision_count`; null when that seed's meta
     predates the counter) and the ``collisions`` block beside ``weave_exits``
     (:func:`validation.battery.collision_summary` labelled by seed; null when
-    no seed records the counter). Without ``metas`` both are null. Every
-    other key is computed exactly as before.
+    no seed records the counter), followed by ``zero_collisions``
+    (2026-10-04, WP-98; :func:`validation.battery.collision_free`: true only
+    when every seed records zero, false on any collision, null when not
+    recorded). Without ``metas`` all three are null. Every other key is
+    computed exactly as before.
 
     Every GEH is labelled: ``per_seed[i]["link_hours"]`` is replicate ``i``'s
     :class:`validation.observed.LinkHourRecord` table (station, ``x_ref_m``,
@@ -533,6 +544,8 @@ def build_artifact(
         # Collisions recorded by the replicates (a model defect, not a traffic
         # outcome): total, per-seed interval, rate, and where they happened.
         "collisions": collisions,
+        # The pass/fail requirement (WP-98): true / false / null (not recorded).
+        "zero_collisions": None if metas is None else collision_free(metas),
         "geh": {
             "pooled_values": [round(g, 4) for g in pooled_geh],
             "n_comparisons": len(pooled_geh),
@@ -868,6 +881,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ring_emergence=None if ring is None else bool(ring["emergence"]["passed"]),
         ring_dampening=None if ring is None else bool(ring["dampening"]["passed"]),
         n_seeds=len(seeds),
+        collision_counts=collision_counts(metas),
     )
 
     report_dir = Path(args.report_dir)
@@ -955,8 +969,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(weave_exit_line(section, weave_exits["threshold_share"]), flush=True)
     print(collision_line(artifact["collisions"]), flush=True)
     for row in criteria_rows:
-        state = ("PASS" if row.passed else "FAIL") if row.evaluated else "NOT EVALUATED"
-        print(f"    {row.name:<18} {state:<14} {row.value}  ({row.threshold})", flush=True)
+        print(f"    {row.name:<18} {row.status:<14} {row.value}  ({row.threshold})", flush=True)
     print(phase_summary(timings), flush=True)
     print(
         f"done in {time.perf_counter() - t0:.0f} s -> {artifact_path}"

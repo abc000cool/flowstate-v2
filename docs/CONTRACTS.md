@@ -153,13 +153,17 @@ Other blocks:
   right, all lanes at similar speed) is the calibration target for it.
 - `AVSpec`: `penetration: float ∈ [0, 0.3]`, `compliance: float ∈ [0.1, 1.0]`,
   `controller: str | None`, `controller_params: dict[str, float]`,
-  `oracle: OracleSpec`, `emergency_handback: bool = False` (2026-09-26,
-  WP-95; off by default, hash-neutral when off; the dated section "AV command
-  handback" at the end of this file), `release_off_corridor: bool = False`
-  and `observe_close_leader: bool = False` (2026-09-26, WP-96; off by
-  default, hash-neutral when off; the dated section "AV command path: the
-  command after the corridor, and the leader within s0" at the end of this
-  file).
+  `oracle: OracleSpec`, `emergency_handback: bool = True` (2026-09-26,
+  WP-95; the dated section "AV command handback" at the end of this file),
+  `release_off_corridor: bool = True` and `observe_close_leader: bool = True`
+  (2026-09-26, WP-96; the dated section "AV command path: the command after
+  the corridor, and the leader within s0" at the end of this file). The three
+  were added off by default (hash-neutral when off) and are **on by default
+  since 2026-10-04** (owner decision, WP-98; config-hash policy v3, below and
+  the dated section "Zero collisions as a pass/fail requirement"): an explicit
+  `true` now hashes like the omitted field and `false`, which reproduces the
+  command path of every vehicle-controller result through release 2.5.0,
+  enters the hash.
 - `OracleSpec(kind="perfect"|"noisy", delay_s: float = 0.0,
   amplitude_noise_frac: float = 0.0)` — wave-detection realism for
   downstream-reading controllers (JAD), added in Phase 5 for CLAUDE.md §4.3.
@@ -302,14 +306,19 @@ Other blocks:
   held `courtesy` m/s below the ramp vehicle's until the gap opens. Keys are
   validated against `SCRIPTED_MERGE_DEFAULTS` (`accept_gap_s` 0.6,
   `force_after_s` 4, `force_within_m` 80, `change_duration_s` 2,
-  `lookahead_m` 120, `courtesy` 0); `merge_params` on any other model or on
+  `lookahead_m` 120, `courtesy` 0, `force_guard` 1 since 2026-10-04, below);
+  `merge_params` on any other model or on
   an off-ramp is rejected; both fields enter the config hash. `meta.json`
   lists `scripted_merges` (`ramp, attach_edge, params, n_entered, n_changed,
   n_forced, n_forced_deferred, n_unfinished, wait_s_mean, wait_s_p90`).
 - `merge_params["force_guard"]` (2026-09-26, block 3, WP-93;
-  docs/WEAVE_MODEL_PLAN.md, dated section; `SCRIPTED_MERGE_DEFAULTS`, default
-  0 = off, hash-neutral unless set; measured on a fixture, not made the
-  default). Without it a vehicle due to force is under mode 256 from its first
+  docs/WEAVE_MODEL_PLAN.md, dated section; `SCRIPTED_MERGE_DEFAULTS`). Added
+  with default 0 = off (measured on a fixture, then on the I-94 WB battery,
+  VM AG: collisions 15 → 0 over 20 paired seeds); **default 1 = on since
+  2026-10-04** (owner decision, WP-98; config-hash policy v3). `0` reproduces
+  the unguarded forced change of every scripted-merge run before release
+  2.6; a `merge_params` block is hashed as written, so `{force_guard: 1.0}`
+  and `{}` run alike but hash differently. Without it a vehicle due to force is under mode 256 from its first
   forced step until it leaves the lane, and SUMO 1.27.1 refuses such a change
   only on an overlap — the target-lane follower's front inside its own
   `minGap` behind the changer (`MSLaneChanger::checkChange`,
@@ -329,8 +338,9 @@ Other blocks:
   WP-93 on). With the key off the step is call for call the one before it
   (trajectories byte-identical on the McKnight Rd fixture,
   `tests/fixtures/mcknight_merge.osm`). `weave_params` shares the scripted
-  keys; there `force_guard` has no effect, the weave's forced changes being
-  always under `_weave_force_gap_ok`.
+  keys; the weave never reads `force_guard`, its forced changes being always
+  under `_weave_force_gap_ok`, and `WEAVE_DEFAULTS` pins it at 0 so a weaving
+  section's recorded `params` did not change when the scripted default did.
 - `meta.json.n_collisions` and `meta.json.collisions` (2026-09-16): the exact
   number of SUMO collision detections over the run (a persisting overlap under
   `--collision.action warn` counts every step) and the first 50 events
@@ -465,6 +475,22 @@ change is invisible to the hash, so it must be paid for explicitly: bump
 Policy v1 (sha256 of the full dump) produced every hash quoted in documents
 dated before 2026-09-06; those artifacts keep their v1 hashes and their
 config snapshots, which is enough to rerun them.
+**Policy v3 (2026-10-04, WP-98):** the payload rule of v2, with
+`CONFIG_HASH_VERSION` = 3, bumped for the default changes of the dated
+section "Zero collisions as a pass/fail requirement" (`AVSpec.
+emergency_handback`, `release_off_corridor`, `observe_close_leader` and
+`SCRIPTED_MERGE_DEFAULTS["force_guard"]` turned on). Every hash moved once
+(`scenarios/ring_sugiyama.yaml`: `a226444c0145` → `d5472987265c`).
+Documents, artifacts, scenario headers and run trees dated from 2026-09-06
+to 2026-10-03 quote version-2 hashes; those dated before 2026-09-06,
+version-1 hashes. `flowstate_core.config.config_hash_v2(document)` gives a
+scenario document's version-2 hash for provenance checks against such
+records (it reads the document as v2 did: an AV command-path key the
+document does not set is false); it is never written into a new record.
+`tests/golden/config_defaults.json` now also pins the module-level defaults
+of the two dict-valued merge blocks (`merge_defaults`:
+`SCRIPTED_MERGE_DEFAULTS`, `WEAVE_DEFAULTS`), which a model dump does not
+show (`merge_params` defaults to `{}`).
 
 **Ramp-meter stop placement (2026-09-23, docs/LESSONS.md row 31).** The
 meter used to set its stop only once a vehicle was on the ramp's last edge;
@@ -1759,7 +1785,8 @@ number of `vehicles.parquet` rows the rule marked, unless a vehicle was
 rerouted at two diverges: it is counted twice here and has one row.
 
 `meta.json["av_emergency_handback"]` (micro, since 2026-09-26, WP-95) is `null` unless
-`AVSpec.emergency_handback` is true and the scenario has a vehicle `controller`. When set it holds
+`AVSpec.emergency_handback` is true (its default since 2026-10-04) and the scenario has a vehicle
+`controller`. When set it holds
 `n_vehicle_steps` (AV-steps in which the AV's command was withdrawn), `n_withdrawals` (commands
 withdrawn while in force; with an action step equal to the step length the dispatch re-issues the
 command every step, so the two are equal) and `n_vehicles` (AVs released at least once).
@@ -3196,7 +3223,7 @@ WP-94 (roadmap C3, "harden the auto-report"). The I-94 WB reference battery reco
 
 WP-95 (docs/I24_STRATEGIES.md, section of 2026-09-26). Every compliant AV is driven by `vehicle.setSpeed(v_cmd)` under SUMO's default speed mode 31 (CLAUDE.md §3.3). In SUMO 1.27.1 a held command caps the vehicle's deceleration at `minNextSpeed`'s (`b` for EIDM, `max(b, min(emergencyDecel, 1.5))` for IDM), because the influencer's maximum-deceleration clamp is applied after its safe-speed clamp; the vehicle's own model, and every human, may brake up to `emergencyDecel`. The key is additive: default off, no hash moves (explicit `false` hashes like the omitted field), and with it off the runner's step is call for call the one before it (the default path's fixture runs and the goldens unchanged).
 
-- *Field.* `AVSpec.emergency_handback: bool = False`. No effect without `av.controller` (the runner builds no state).
+- *Field.* `AVSpec.emergency_handback: bool = False`. No effect without `av.controller` (the runner builds no state). **Default `True` since 2026-10-04** (WP-98, config-hash policy v3; the dated section "Zero collisions as a pass/fail requirement"); `false` is this section's default path.
 - *Runner* (`microsim.runner`). The dispatch is unchanged: every action step each compliant AV on a corridor edge gets `setSpeed(max(v_cmd, 0))`. With the key on it also records the command (`held[vid]`, `in_force`). Then, every simulation step (also in a step with no vehicle on a corridor edge), `_emergency_handback_step` visits every AV holding a command, in id order, ramps included: an AV no longer in the network is dropped; otherwise `_handback_needed` asks the AV's model for its follow speed behind its current leader (`vehicle.getLeader(vid, LEADER_LOOKAHEAD_M)`, then `vehicle.getFollowSpeed(vid, v, gap, v_leader, decel_leader, leader)`, the gap as `getLeader` returns it, net of the ego's `minGap` as `followSpeed` takes it) and compares it with `v − b_cmd · step_length_s − 1e-9`, where `b_cmd = _command_decel(fleet.model, decel, emergencyDecel)` read once per vehicle from SUMO. Below it, a command in force is withdrawn (`setSpeed(-1)`); otherwise a withdrawn command is re-applied (`setSpeed(held[vid])`). Without a leader within the lookahead nothing is withdrawn. Constants: `IDM_MIN_NEXT_SPEED_DECEL` = 1.5, `HANDBACK_EPS_MS` = 1e-9.
 - *What it does not cover.* Only the leader constraint is predicted; the model's other constraints (a lane end, a junction foe, a stop) keep the command's bound. The gym backend's ego (`microsim.gym_backend`) has its own `setSpeed` path and no handback.
 - *Output.* `meta.json["av_emergency_handback"]` (§3).
@@ -3207,9 +3234,25 @@ WP-95 (docs/I24_STRATEGIES.md, section of 2026-09-26). Every compliant AV is dri
 
 WP-96 (docs/I24_STRATEGIES.md, section of 2026-09-26 "WP-96"). The two side findings of WP-95, each behind an option. Both keys are additive: default off, no hash moves (explicit `false` hashes like the omitted field), and with both off the runner's TraCI calls are call for call the ones before (the WP-95 fixture's default arm reproduces its recorded metrics to the digit).
 
+- *Defaults changed 2026-10-04.* Both keys are `True` by default since then (WP-98, config-hash policy v3; the dated section "Zero collisions as a pass/fail requirement"); `false` is the path this section calls the default.
 - *`AVSpec.release_off_corridor: bool = False`.* The dispatch commands a compliant AV only while it is on a corridor edge (the keys of the linear-x offsets), and a `setSpeed` target is held until `setSpeed(-1)`. The runner keeps the set of AVs it has commanded (`commanded`; an AV re-enters it at every dispatch). Every simulation step, after the dispatch and before the handback pass (also in a step with no vehicle on a corridor edge), `microsim.runner._off_corridor_step` visits them in id order: an AV no longer in the network is dropped; one on a corridor edge or an internal junction edge (id starting with `:`) is left alone; one on any other edge has left the corridor. Off: it is counted (no TraCI call). On: it is released (`setSpeed(-1)`), dropped from `commanded` and, with `emergency_handback` on, from the handback's held commands, so nothing re-applies the command; an AV that a scripted merge or weaving section commands at that moment (`_commanded_by_runner`) is left to it and visited again next step. No effect without `av.controller`, or on a network whose every edge is a corridor edge (a ring, a generated corridor, an OSM import without off-ramps).
 - *`AVSpec.observe_close_leader: bool = False`.* `microsim.runner._leader_obs(lib_mod, veh_id, ego_min_gap, *, close_leader=False)` now returns `(gap, v_leader, within_s0)`. `vehicle.getLeader` returns the gap net of the ego's `minGap`; no leader (`None` or an empty id): `(inf, nan, False)`. A non-negative value: `(value + s0, v_leader, False)`, as before. A negative value (the bumper gap is below the AV's own `s0`, or the vehicles overlap): off, `(inf, nan, True)` — "no leader", as before, with no further TraCI call; on, `(max(value + s0, 0), v_leader, True)`. The dispatch passes `close_leader=AVSpec.observe_close_leader`. What the controllers then command: FollowerStopper and `follower_stopper_capacity` read "no leader" as their safe region (`U`) and the true bumper gap (below `Δx_1^0` = 4.5 m) as region 1 (0); `pi_saturation` reads "no leader" as `α = 1`, target `U + v_catch`, and the true gap (below its 4 m safety floor) as `α = 0`, `β = 1`, the leader's speed; JAD and `pi_meanfrac` do not read the leader. SUMO's safe-speed clamp caps whatever is commanded, and the command's deceleration bound floors it (WP-95), so under the default such an AV drives at its model's safe speed within that bound, where a stop command brakes it at the bound; it is never faster than its model's safe speed.
 - *Output.* `meta.json["av_off_corridor"]` and `meta.json["av_close_leader"]` (§3), recorded in every run with a controller, on or off.
 - *Census.* `scripts/collision_census.py` sums both per cell, beside `handback`: `off_corridor` `{n_runs, n_runs_release, n_vehicles, n_vehicle_steps, n_released}` and `close_leader` `{n_runs, n_runs_observed, n_vehicle_steps, n_vehicles}`, over the runs that carry them; `null` when none does (no controller, or runs written before WP-96). Additive: `schema_version` stays 1.
 - *Pipeline.* Opt-in stage 19 of `scripts/gcp/pipeline_i24.sh` (see its comment block and docs/I24_STRATEGIES.md): committed configurations re-run with the counters (`_wp96c`), and with both keys (`_wp96f`; for the strategy sweep also with the handback, `_wp96fh`), each followed by a census. Not launched.
 - *What it does not cover.* The gym backend's ego (`microsim.gym_backend._obs`) reads `getLeader` the same way (a negative value as no leader) and has no option; it is a hook with a random-policy smoke test only (CLAUDE.md §4.5). `_weave_command` also reads a leader within `s0` as free road when it decides whether a weaving section's easing target binds; unchanged. A scripted merge's or weaving section's one-step `slowDown` on a commanded AV replaces its held command (`libsumo/Vehicle.cpp` 1856–1872); `_off_corridor_step` does not see that, so in such a scenario `av_off_corridor.n_vehicle_steps` can count steps whose command a merge model had already ended.
+
+## Zero collisions as a pass/fail requirement; the crash fixes on by default (WP-98) — 2026-10-04
+
+Owner decision of 2026-10-04 (roadmap item 6). A SUMO collision is a model defect, not a traffic outcome (CLAUDE.md §3.3: controllers must not be able to command collisions), so a run set with one fails, and the fixes that removed the recorded collisions run by default.
+
+- *Defaults (old → new).* `AVSpec.emergency_handback` false → **true**; `AVSpec.release_off_corridor` false → **true**; `AVSpec.observe_close_leader` false → **true**; `SCRIPTED_MERGE_DEFAULTS["force_guard"]` 0 → **1**. Every one stays a field or key: `false` / `0` reproduces the behaviour before release 2.6 (the path of every vehicle-controller and scripted-merge result through 2.5.0). `WEAVE_DEFAULTS["force_guard"]` is pinned at 0: the weave never reads the key (its forced changes are always under `_weave_force_gap_ok`), and the pin keeps a weaving section's recorded `params` unchanged. `microsim.runner._scripted_merge_step` falls back on `SCRIPTED_MERGE_DEFAULTS["force_guard"]`, not a literal, when a state carries no key.
+- *Hash.* `CONFIG_HASH_VERSION` 2 → 3 (§2, "Policy v3"); `config_hash_v2(document)` for checks against records dated before 2026-10-04 (`scripts/i24_fit_boundary_ramps.py --from-artifact` accepts a base matching the artifact's recorded hash under either policy). `tests/golden/config_defaults.json` regenerated, with the merge-default dicts added. The snapshot it replaced predated the three AV keys (it lists only the keys present when it was written), so it would not have caught their change on its own; only the version check would have.
+- *Goldens.* Every golden's `config_hash` and config snapshot moved. Run counters and metrics are unchanged in every case but `merge_scripted` (no golden runs a vehicle controller; the weave does not read the key). `merge_scripted` (the guard now on): `n_scripted_forced` 11 → 6, `n_scripted_merged` 35 and `n_collisions` 0 unchanged, throughput 2432.107 veh/h unchanged, `mean_tt_s` 87.191 → 85.937, `p90_tt_s` 138.500 → 131.358, `sigma_v_spatial_ms` 8.938 → 9.039, `sigma_v_temporal_ms` 3.717 → 3.766, `vmt_veh_km` 349.204 → 346.657, `vht_veh_h` 4.786 → 4.797, `fuel_ml_per_veh_km` 90.834 → 91.163, `fuel_total_ml` 31719.5 → 31602.4, `wave_count` 3 unchanged, `wave_speed_kmh` 18.0 → 9.0 (the `standard` detector's diagnostic on a 300 s fixture), `wave_amplitude_ms` 21.331 → 21.400. `tests/test_microsim/test_microsim_golden.py --regenerate` now carries a widened `tolerance.relative` and its `note` forward (the first regeneration dropped `corridor_10km_workzone`'s 1e-4 Linux/macOS tolerance; it was restored and the case regenerated again).
+- *Criterion* (`validation.criteria`). `evaluate(..., collision_counts=None)`: one entry per run of the set, its `meta.json["n_collisions"]` or None when the run does not record it (`validation.battery.collision_counts(metas)`). Every profile's results end with the row `no_collisions` (`NO_COLLISIONS`), threshold "zero SUMO collisions in every run, each run recording the counter": **PASS** (`evaluated`, `passed`, `value` 0) only when every run records zero; **FAIL** (`evaluated`, not `passed`, `value` the total over the runs that record it) when any run records a collision, whatever the others record; otherwise **NOT RECORDED** (`evaluated` false, `passed` false, `value` null, `detail` starting with `NOT_RECORDED` = `"not recorded"`): a run without the counter, no runs, or no counts supplied. The `detail` names it a FlowState internal standard (CLAUDE.md §3.3; owner decision 2026-10-04), not an FHWA or DOT criterion (`NO_COLLISIONS_STANDARD`), and every profile's `source` says the same. `CriteriaResult.status` (a property, so `asdict` rows are unchanged in shape) reads `PASS` / `FAIL` / `NOT EVALUATED` / `NOT RECORDED`. `zero_collisions(counts) -> bool | None` is the flag: False on any collision, None when empty or any run lacks the counter, True only when every run records zero. `validation.battery.collision_free(metas)` is that flag over the metas.
+- *Report.* The criteria table carries the row, scored over every micro run of the set (every group); the Result column is `status` plus the detail. A run set with a collision opens, under the title, with `MODEL INTEGRITY FAILURE — N SUMO collision(s) in k of n run(s); the no_collisions acceptance criterion fails. …` (`_integrity_context(...)["banner"]`), and its first Limitations bullet is the WP-94 collision bullet, as before. The template adds that a not-recorded row is never a pass and that `no_collisions` is a FlowState requirement, not an FHWA criterion (numeral-free). `api.jobs.report_job` reports carry the row through `generate_report`.
+- *Battery artifact* (`scripts/corridor_battery.py`). Top-level `zero_collisions` right after `collisions`: `collision_free` over the seeds' metas (true / false / null; null without metas). The criteria list carries the row; the console prints each row's `status`. Additive: `schema` stays `flowstate.corridor_validation/1` and every other key is unchanged.
+- *Sweep summary* (`scripts/corridor_sweep.py`). Per cell, after `diagnostics`: `collisions` = `{n_runs, n_runs_recorded, total, runs_with_collisions: [{seed, n}], runs_not_recorded: [seed]}` over the seeds with a `metrics.json` (a run without `meta.json` or without the counter is not recorded; `total` null when none records it) and `zero_collisions` (the flag). Top level, after `cells`: `zero_collisions` over every run of every complete cell. One console line, `collisions: PASS — zero in all N run(s)` / `FAIL — collisions in <cell> (n), …` / `NOT RECORDED — not recorded for j of N run(s)`. Additive.
+- *API.* `GET /runs/{id}/metrics` does not expose `n_collisions`, so nothing is added there.
+- *Not wired.* `scripts/i24_validate.py` and `scripts/m3_us101_validate.py` call `evaluate` without counts: their `no_collisions` row reads NOT RECORDED until they pass their runs' counts.
+- *Pipeline.* Stages 18 and 19 of `scripts/gcp/pipeline_i24.sh` were written for the old defaults and are unchanged; a dated note above them says what their arms would now run.

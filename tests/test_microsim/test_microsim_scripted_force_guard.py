@@ -19,14 +19,18 @@ and hits it.
 Under ``force_guard`` the vehicle is under mode 256 only in a step in which
 each target-lane gap, less one step of closing, holds the brake gap of the
 party behind at its own ``b`` (``microsim.runner._scripted_force_gap_ok``),
-and under mode 512 otherwise. The key is off by default. These tests pin:
+and under mode 512 otherwise. The key was added off; it is on by default
+since 2026-10-04 (WP-98, config-hash policy v3), and ``0`` reproduces the
+unguarded forced change. The weave shares the key but never reads it (its
+forced changes are always guarded); ``WEAVE_DEFAULTS`` pins it at 0. These
+tests pin:
 
 * the guard's bounds, including the traced collision's numbers;
-* ``_scripted_merge_step`` on a fake SUMO, with the key off (mode 256 for
-  good from the first forced step, as before) and on (the mode follows the
-  guard each step, the requests unchanged);
+* ``_scripted_merge_step`` on a fake SUMO, with the key at 0 (mode 256 for
+  good from the first forced step, the old path) and at its default (the
+  mode follows the guard each step, the requests unchanged);
 * the fixture's compiled geometry against the corridor's;
-* one fixture run with the key on: no collision, and the guard binds.
+* one fixture run at the defaults: no collision, and the guard binds.
 """
 
 from __future__ import annotations
@@ -226,16 +230,17 @@ def _due(mod: _Mod, ss: dict[str, Any]) -> None:
 
 
 class TestSchema:
-    def test_off_by_default_and_hash_neutral(self) -> None:
-        assert SCRIPTED_MERGE_DEFAULTS["force_guard"] == 0.0
-        # the weave shares the keys; its forced changes are always guarded
+    def test_on_by_default_and_hash_neutral(self) -> None:
+        assert SCRIPTED_MERGE_DEFAULTS["force_guard"] == 1.0
+        # the weave shares the keys but never reads this one (its forced
+        # changes are always guarded): pinned off so its record is unchanged
         assert WEAVE_DEFAULTS["force_guard"] == 0.0
         cfg = mcknight_config(3)
         assert cfg.network.ramps[0].merge_params == {}
-        on = mcknight_config(3, {"force_guard": 1.0})
-        assert on.network.ramps[0].merge_params == {"force_guard": 1.0}
-        assert config_hash(on) != config_hash(cfg)
-        # unset, the key is not part of what is hashed (policy v2)
+        off = mcknight_config(3, {"force_guard": 0.0})
+        assert off.network.ramps[0].merge_params == {"force_guard": 0.0}
+        assert config_hash(off) != config_hash(cfg)
+        # unset, the key is not part of what is hashed (policy v2 and v3)
         assert "force_guard" not in json.dumps(cfg.model_dump(mode="json", exclude_defaults=True))
         RampSpec.model_validate(
             {
@@ -290,11 +295,11 @@ class TestGuardBounds:
 
 class TestStep:
     def test_off_forces_under_256_for_good(self) -> None:
-        """The key off: the traced state gets mode 256 at its first forced
-        step and keeps it (call for call the step before WP-93)."""
+        """The key at 0 (the old path): the traced state gets mode 256 at its
+        first forced step and keeps it (call for call the step before WP-93)."""
         veh = _trace_vehicle()
         mod = _Mod(veh)
-        ss = _state()
+        ss = _state(force_guard=0.0)
         _due(mod, ss)
         assert veh.lc_modes["r"] == LC_MODE_SCRIPTED_FORCE
         assert ss["veh"]["r"]["forced"] and ss["n_forced_deferred"] == 0
@@ -304,11 +309,12 @@ class TestStep:
         assert not [c for c in veh.calls if c[0] == "mode"]
 
     def test_guard_holds_the_traced_state_under_512(self) -> None:
-        """The key on: the same state stays under mode 512 (SUMO's own gap
-        check), its request is made as before, the step is counted."""
+        """The key on (the default): the same state stays under mode 512
+        (SUMO's own gap check), its request is made as before, the step is
+        counted."""
         veh = _trace_vehicle()
         mod = _Mod(veh)
-        ss = _state(force_guard=1.0)
+        ss = _state()
         _due(mod, ss)
         assert veh.lc_modes["r"] == LC_MODE_SCRIPTED_SAFE
         assert ("mode", "r", LC_MODE_SCRIPTED_FORCE) not in veh.calls
@@ -322,7 +328,7 @@ class TestStep:
         veh = _trace_vehicle()
         veh.neighbors[("r", NEIGHBOR_LEFT_FOLLOWERS)] = (("f", 60.0),)
         mod = _Mod(veh)
-        ss = _state(force_guard=1.0)
+        ss = _state()
         _due(mod, ss)
         assert veh.lc_modes["r"] == LC_MODE_SCRIPTED_FORCE
         assert ss["veh"]["r"]["forced"] and ss["n_forced_deferred"] == 0
@@ -373,9 +379,10 @@ class TestFixture:
         assert (conn.getTo().getID(), conn.getToLane().getIndex()) == (ATTACH, 0)
 
     def test_run_with_the_guard(self, tmp_path: Path) -> None:
-        """Seed 3 with the key on: no collision, the guard binds, and the
-        merge keeps up with the ramp (docs/WEAVE_MODEL_PLAN.md, WP-93)."""
-        cfg = mcknight_config(3, {"force_guard": 1.0})
+        """Seed 3 at the defaults (the key on): no collision, the guard binds,
+        and the merge keeps up with the ramp (docs/WEAVE_MODEL_PLAN.md,
+        WP-93)."""
+        cfg = mcknight_config(3)
         meta = json.loads(run_micro(cfg, 3, tmp_path).meta.read_text())
         (sm,) = meta["scripted_merges"]
         assert sm["params"]["force_guard"] == 1.0

@@ -8,7 +8,7 @@
   },
   "producer": "microsim.run_micro + validation.metrics.compute_metrics",
   "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate corridor_10km_workzone",
-  "generated_at": "2026-09-17T06:51:31+00:00",
+  "generated_at": "2026-10-04T20:47:16+00:00",
   "tolerance": {
     "relative": 0.0001,
     "exact": [
@@ -20,11 +20,15 @@
       "n_scripted_merged",
       "n_vehicles_departed",
       "n_vehicles_planned",
+      "n_weave_changed_in",
+      "n_weave_changed_out",
+      "n_weave_exited",
+      "n_weave_forced",
       "wave_count"
     ],
     "note": "1e-4, not the default 1e-6: SUMO's Linux (CI) and macOS builds differ at 2e-6 relative in sigma_v_temporal for this closure case (CI run 35137040295, 2026-09-16); the exact-compared counts are unaffected"
   },
-  "config_hash": "8986b6480138",
+  "config_hash": "51a5320eaf83",
   "seed": 42,
   "sumo_seed": 42,
   "tier": "micro",
@@ -103,7 +107,10 @@
         "kind": "perfect",
         "delay_s": 0.0,
         "amplitude_noise_frac": 0.0
-      }
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
     },
     "sim": {
       "duration_s": 600.0,
@@ -113,6 +120,8 @@
       "output_hz": 2.0,
       "lateral_resolution_m": null
     },
+    "fd_calibration": null,
+    "macro": null,
     "perturbation": null,
     "closures": [
       {

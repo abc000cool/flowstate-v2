@@ -6,6 +6,14 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
+### 2026-10-04 — Stage 1 of the Frisco plan (phase 1: no Frisco data, no merge fix)
+
+- **Zero collisions is a pass/fail requirement of every run set; the crash fixes are on by default** (WP-98, owner decision 2026-09-27 applied 2026-10-04; docs/CONTRACTS.md §2 and the WP-98 section; CLAUDE.md §3.3). `AVSpec.emergency_handback`, `release_off_corridor` and `observe_close_leader` and the scripted merge's `merge_params["force_guard"]` are on by default; setting them false (or 0) reproduces the command path of every vehicle-controller and scripted-merge result through 2.5.0. The weave never reads `force_guard` and `WEAVE_DEFAULTS` pins it at 0, so the weave's behaviour and recorded parameters are unchanged.
+  - *Config hashes moved once.* The default changes bump the config-hash policy to version 3 (ring `a226444c0145` → `d5472987265c`). Records dated before 2026-10-04 quote version-2 hashes; `flowstate_core.config.config_hash_v2` reproduces them, and the provenance checks that compare against recorded hashes (`scripts/i24_fit_boundary_ramps.py`, the I-24 rebuild and merge-variant tests) now use it. `tests/golden/config_defaults.json` also records the two merge-default tables, which a config dump does not show (the old snapshot predated the AV keys and would not have caught this change).
+  - *Criteria.* Every acceptance profile ends with a `no_collisions` row, an internal standard (not FHWA): PASS only when every run records zero, FAIL on any collision, NOT RECORDED when a run lacks the counter (never a pass, never 0). The report opens with a model-integrity banner when it fails; the corridor battery artifact (`zero_collisions`, additively) and the sweep summaries (per cell and top level) carry the flag. `scripts/i24_validate.py` and `scripts/m3_us101_validate.py` do not pass collision counts, so their row reads NOT RECORDED. The API's metrics endpoint does not expose collisions; reports generated through the API carry the row.
+  - *Goldens.* All regenerated (every hash moved); only `merge_scripted`'s numbers moved: forced changes 11 → 6, mean travel time 87.19 → 85.94 s, p90 138.5 → 131.4 s, σ_v (spatial) 8.94 → 9.04 m/s, fuel 90.83 → 91.16 ml/veh-km; merged 35, departed 255, throughput and collisions (0) unchanged. No golden case runs a vehicle controller. `regenerate()` now keeps a hand-widened tolerance and its note (the `corridor_10km_workzone` 1e-4 Linux/macOS tolerance had been reset by a regeneration and was restored).
+  - *Not yet re-run:* no corridor battery or sweep has run under the new defaults; pipeline stages 18 and 19's "committed configuration" arms now run with the fixes on (dated note in `scripts/gcp/pipeline_i24.sh`).
+
 ## [2.5.0] — 2026-10-04
 
 **Release summary.** A model-integrity release. Two paths around SUMO's own

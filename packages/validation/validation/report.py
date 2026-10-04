@@ -25,6 +25,12 @@ checks (:func:`validation.battery.forced_change_summary`). A run set with
 collisions also gets a first limitations bullet naming them and where they
 happened; a run without the counter is "not recorded", never zero.
 
+Zero collisions is also an acceptance criterion (2026-10-04, owner decision,
+WP-98): the criteria table carries the ``no_collisions`` row of
+:func:`validation.criteria.evaluate`, scored from every micro run's
+``meta.json`` (PASS / FAIL / NOT RECORDED), and a run set that fails it opens
+with a model-integrity banner under the title.
+
 Every metric, figure and criterion describes the same measurement window:
 each run's recorded period minus its configured warm-up
 (:func:`validation.metrics.warmup_from_meta`). The wave-speed criterion is
@@ -79,6 +85,7 @@ from validation.battery import (
     STARVED_RAMP_FRACTION,
     STARVED_RAMP_MIN_PLANNED,
     aggregate_insertion,
+    collision_counts,
     collision_summary,
     forced_change_summary,
     insertion_stats,
@@ -1053,8 +1060,10 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
 
     Returns:
         ``{collision_line, collision_runs, forced_lines, locations,
-        location_note, limitations}`` for the template; every number in them
-        is formatted from the two summaries.
+        location_note, limitations, banner}`` for the template; every number
+        in them is formatted from the two summaries. ``banner`` is the
+        model-integrity failure line under the title when any run records a
+        collision (the ``no_collisions`` criterion fails), else None.
     """
     names = [str(r.path.relative_to(run_set)) for r in micro_runs]
     metas = [r.meta for r in micro_runs]
@@ -1086,6 +1095,7 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
                 "No run in this set records a collision count, so a collision-free "
                 "simulation is not established."
             ],
+            "banner": None,
         }
 
     total = int(summary["total"])
@@ -1124,7 +1134,14 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
     )
 
     limitations: list[str] = []
+    banner: str | None = None
     if total > 0:
+        banner = (
+            f"MODEL INTEGRITY FAILURE — {total} SUMO collision(s) in "
+            f"{summary['n_runs_with_collisions']} of {summary['n_runs_recorded']} run(s); "
+            "the no_collisions acceptance criterion fails. A collision is a model "
+            "defect, not a traffic outcome: see Model integrity and Limitations."
+        )
         shown = rows[:LIMITATION_MAX_LOCATIONS]
         places = [
             f"lane `{r['lane']}` (edge `{r['edge']}`"
@@ -1166,6 +1183,7 @@ def _integrity_context(micro_runs: list[_RunInfo], run_set: Path) -> dict[str, A
         ],
         "location_note": location_note,
         "limitations": limitations,
+        "banner": banner,
     }
 
 
@@ -1178,10 +1196,10 @@ def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
                 "value": _fmt(c.value),
                 "threshold": c.threshold,
                 "evaluated": "yes" if c.evaluated else "no",
-                # A row the run set could not evaluate is neither a pass nor a
-                # fail; naming it FAIL would let a reader count it as evidence.
-                "result": (("PASS" if c.passed else "FAIL") if c.evaluated else "NOT EVALUATED")
-                + (f" — {c.detail}" if c.detail else ""),
+                # A row the run set could not evaluate (or whose input some run
+                # did not record) is neither a pass nor a fail; naming it FAIL
+                # would let a reader count it as evidence.
+                "result": c.status + (f" — {c.detail}" if c.detail else ""),
             }
         )
     return rows
@@ -1579,6 +1597,8 @@ def generate_report(
         # the two rows stay unevaluated, but they may not report the operator's
         # upload as missing (the observed-data block holds the reason).
         observations_supplied=observed is not None,
+        # Model integrity (WP-98): every micro run of the set, every group.
+        collision_counts=collision_counts([r.meta for r in micro_runs]),
     )
     criteria_note = _wave_criterion_note(
         reference=reference,

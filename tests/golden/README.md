@@ -87,7 +87,10 @@ uv run --no-sync python tests/test_macrosim/test_macrosim_golden.py --regenerate
 Each command re-runs the case in a temporary run tree and rewrites the JSON
 in place, recording the versions it ran on (run them from the repository
 root; the micro CLI changes into it itself). Re-run the golden tests
-afterwards; they must pass on the same machine.
+afterwards; they must pass on the same machine. A micro case whose golden
+carries a widened `tolerance.relative` with a `tolerance.note` (a measured
+cross-platform difference, e.g. `corridor_10km_workzone`) keeps both on
+regeneration (since 2026-10-04; before, regeneration reset them).
 
 ## Update rule
 

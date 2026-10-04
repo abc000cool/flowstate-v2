@@ -11,11 +11,13 @@ driven by ``vehicle.setSpeed`` on corridor edges only (CLAUDE.md §3.3), and a
   a bumper gap below the AV's own ``s0`` FollowerStopper was told the road was
   free and commanded ``U``. ``AVSpec.observe_close_leader`` reports the leader.
 
-Both are off by default and hash-neutral when off; the runner counts both
-defects either way (``meta.json["av_off_corridor"]``,
-``meta.json["av_close_leader"]``) without a TraCI call. These tests pin:
+Both were added off by default (hash-neutral when off) and are on by default
+since 2026-10-04 (WP-98, config-hash policy v3; ``False`` reproduces the old
+path); the runner counts both defects either way
+(``meta.json["av_off_corridor"]``, ``meta.json["av_close_leader"]``)
+without a TraCI call. These tests pin:
 
-* the config fields: off by default, hash-neutral when off;
+* the config fields: on by default, hash-neutral when on;
 * ``_leader_obs`` on a fake SUMO, and what each controller commands from the
   two readings;
 * ``_off_corridor_step`` on a fake SUMO: count (off), release (on), drop,
@@ -27,8 +29,9 @@ defects either way (``meta.json["av_off_corridor"]``,
   the default reads no leader, FollowerStopper commands ``U`` and the AV
   keeps its model's safe speed; the option reads the leader, commands 0 and
   the AV brakes at the command's bound;
-* ``run_micro`` on the interchange fixture (both counted, both acted on) and
-  on the Sugiyama ring (nothing to act on: the run is the default's).
+* ``run_micro`` on the interchange fixture (both counted on the old path,
+  both acted on under the defaults) and on the Sugiyama ring (nothing to act
+  on: the run is the same either way).
 """
 
 from __future__ import annotations
@@ -73,13 +76,15 @@ I24_FLEET: dict[str, Any] = {
 
 
 @pytest.mark.parametrize("field", ["release_off_corridor", "observe_close_leader"])
-def test_fields_are_off_by_default_and_hash_neutral(field: str) -> None:
-    assert getattr(AVSpec(), field) is False
+def test_fields_are_on_by_default_and_hash_neutral(field: str) -> None:
+    """On since 2026-10-04 (WP-98, config-hash policy v3): an explicit
+    ``True`` hashes like the omitted field, ``False`` (the old path) moves it."""
+    assert getattr(AVSpec(), field) is True
     base = load_scenario("ring_sugiyama")
     d = base.model_dump(mode="json")
-    d["av"][field] = False
-    assert config_hash(ScenarioConfig.model_validate(d)) == config_hash(base)
     d["av"][field] = True
+    assert config_hash(ScenarioConfig.model_validate(d)) == config_hash(base)
+    d["av"][field] = False
     assert config_hash(ScenarioConfig.model_validate(d)) != config_hash(base)
 
 
@@ -468,17 +473,19 @@ def _merge_fixture(**av_extra: bool) -> ScenarioConfig:
 
 
 @pytest.mark.integration
-def test_fixture_counts_both_by_default_and_acts_with_the_options(tmp_path: Path) -> None:
-    seed = 2  # measured 2026-09-26: see the dated section
-    default = json.loads(run_micro(_merge_fixture(), seed, tmp_path / "d").meta.read_text())
-    both = json.loads(
+def test_fixture_counts_both_on_the_old_path_and_acts_by_default(tmp_path: Path) -> None:
+    seed = 2  # measured 2026-09-26 on the old path: see the dated section
+    old = json.loads(
         run_micro(
-            _merge_fixture(release_off_corridor=True, observe_close_leader=True),
+            _merge_fixture(
+                emergency_handback=False, release_off_corridor=False, observe_close_leader=False
+            ),
             seed,
-            tmp_path / "b",
+            tmp_path / "d",
         ).meta.read_text()
     )
-    off, close = default["av_off_corridor"], default["av_close_leader"]
+    both = json.loads(run_micro(_merge_fixture(), seed, tmp_path / "b").meta.read_text())
+    off, close = old["av_off_corridor"], old["av_close_leader"]
     assert off["release"] is False and off["n_released"] == 0
     assert off["n_vehicles"] >= 1 and off["n_vehicle_steps"] >= 1
     assert close["observed"] is False and close["n_vehicle_steps"] >= 1
