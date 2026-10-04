@@ -29,6 +29,15 @@ else passes ``column_map`` from the canonical field names
 (``timestamp, station, flow, occupancy, speed, lanes, kind, x_m``) to its own
 column names.
 
+**Per-lane exports** (opt-in, ``lane_column=``): when a file carries one row
+per lane rather than one per station, the caller names the lane column and
+the frame gains a trailing ``lane`` column (string) after
+:data:`DETECTOR_COLUMNS`; each row is then that lane's own flow, occupancy
+and speed. Nothing downstream of this loader sums lanes on its own — a
+per-lane frame goes through ``calibration.conservation.station_grid`` (or an
+equivalent aggregation) before it is used as station totals. Without
+``lane_column`` the loader's output is exactly what it was.
+
 Honesty rules this module enforces: missing is NaN and is never filled in; the
 timestamps must live on one regular grid (:func:`detector_interval_s` — gaps
 are fine, a second interval is not, because every downstream window index
@@ -234,6 +243,7 @@ def load_detector_csv(
     speed_unit: SpeedUnit = "ms",
     occupancy_unit: OccupancyUnit = "pct",
     kind_default: DetectorKind = "mainline",
+    lane_column: str | None = None,
 ) -> pd.DataFrame:
     """Load a detector CSV into the tidy observation frame (module docstring).
 
@@ -248,18 +258,24 @@ def load_detector_csv(
         occupancy_unit: ``"pct"``/``"percent"`` (0–100, the tidy convention)
             or ``"fraction"`` (0–1, multiplied by 100 on load).
         kind_default: ``kind`` for rows whose file has no ``kind`` column.
+        lane_column: Name of the file's lane column for a per-lane export
+            (matched case-insensitively); its values are kept, as strings,
+            in a trailing ``lane`` column (module docstring). ``None`` (the
+            default) reads the file as station rows, exactly as before.
 
     Returns:
-        DataFrame with the columns and units of :data:`DETECTOR_COLUMNS`,
-        sorted by timestamp then station, with a fresh index. Missing values
-        are NaN and are never filled in. The regular interval is validated on
-        load and recorded in ``df.attrs["interval_s"]``.
+        DataFrame with the columns and units of :data:`DETECTOR_COLUMNS`
+        (plus ``lane`` when ``lane_column`` is given), sorted by timestamp
+        then station, with a fresh index. Missing values are NaN and are
+        never filled in. The regular interval is validated on load and
+        recorded in ``df.attrs["interval_s"]``.
 
     Raises:
         ValueError: A required column is missing (the message names it), a
             numeric column holds a non-numeric cell, a timestamp is not
             ISO-8601, ``kind`` holds a value outside
-            :data:`DETECTOR_KINDS`, or the interval is irregular.
+            :data:`DETECTOR_KINDS`, ``lane_column`` names no column or has
+            an empty cell, or the interval is irregular.
     """
     if kind_default not in DETECTOR_KINDS:
         raise ValueError(
@@ -358,7 +374,22 @@ def load_detector_csv(
         _numeric(raw[x_col], column=wanted["x_m"], path=path) if x_col is not None else float("nan")
     )
 
-    out = out[list(DETECTOR_COLUMNS)]
+    columns = list(DETECTOR_COLUMNS)
+    if lane_column is not None:
+        lane_col = lookup.get(lane_column.strip().lower())
+        if lane_col is None:
+            raise ValueError(f"{path}: lane_column {lane_column!r} names no column of the file")
+        lanes_text = raw[lane_col].astype(str).str.strip()
+        empty = raw[lane_col].isna() | (lanes_text == "")
+        if empty.any():
+            raise ValueError(
+                f"{path}: lane column {lane_column!r} is empty in {int(empty.sum())} row(s), "
+                f"first at file row {int(empty.to_numpy().nonzero()[0][0]) + 2}"
+            )
+        out["lane"] = lanes_text
+        columns.append("lane")
+
+    out = out[columns]
     order = pd.DataFrame({"t": timestamps_utc(out), "s": out["station"]}).sort_values(
         ["t", "s"], kind="stable"
     )

@@ -3256,3 +3256,46 @@ Owner decision of 2026-10-04 (roadmap item 6). A SUMO collision is a model defec
 - *API.* `GET /runs/{id}/metrics` does not expose `n_collisions`, so nothing is added there.
 - *Not wired.* `scripts/i24_validate.py` and `scripts/m3_us101_validate.py` call `evaluate` without counts: their `no_collisions` row reads NOT RECORDED until they pass their runs' counts.
 - *Pipeline.* Stages 18 and 19 of `scripts/gcp/pipeline_i24.sh` were written for the old defaults and are unchanged; a dated note above them says what their arms would now run.
+
+## Detector data quality and ramp estimates (WP-101) — 2026-10-04
+
+Stage 1 items 2–3 of the Frisco plan (docs/FRISCO_PROTOCOL.md §2).
+`calibration.data_quality`, `calibration.ramp_estimation`, with the shared
+lag-aligned conservation core `calibration.conservation`, the input layer
+`calibration.detector_inputs` and the per-lane MnDOT reader
+`calibration.loaders.mndot_lanes`; CLIs `scripts/data_quality_report.py`,
+`scripts/ramp_estimate.py`.
+
+- **Input:** the tidy detector frame (Detector observations, above) plus an
+  optional `lane` column (`load_detector_csv(..., lane_column=...)`, opt-in;
+  without it the loader's output is unchanged). Sensors are stations or
+  `station:lane`. Per-lane frames are summed to station totals only where
+  every installed lane reported; lanes that never report anywhere in the
+  data are not installed lanes. Nothing is scaled up and nothing is imputed.
+- **`flowstate.data_quality/1`:** keys `grid`, `parameters` (every threshold
+  with its source or reason, `count_error`, `combination`, `period_s`,
+  `exempt_lanes`), `method`, `summary`, `sensors`, `sensor_days[]` (`sensor,
+  station, lane, kind, date, verdict ∈ {ok, suspect, exclude}, n_expected,
+  n_valid, n_usable, stats{…}, findings[{check, verdict, reason, statistic,
+  n_windows}], masked{flow, occupancy, speed}`), `corridor_day_factors`,
+  `mass_balance{layout, segments, segment_days, attributions}`, `notes`,
+  `provenance`. `exclude` drops the sensor-day; `suspect` masks only the
+  listed windows and quantities (`mask_grid` applies the verdicts). The
+  day-level statistics that follow the PeMS daily statistics algorithm (Chen,
+  Kwon, Rice, Skabardonis & Varaiya 2003, TRR 1855) cite it; its numeric
+  thresholds are not used (the source calls them empirical for 30-s data).
+- **`flowstate.ramp_estimates/1`:** `method`, `parameters`, `assumptions[]`
+  (plain sentences, every split with its `source`), `splits`, `dates`,
+  `period_start_local`, `layout`, `estimates[]` (`status ∈ {estimated,
+  unidentified}`, `reason`, `summary`, `by_date{estimate, lower, upper, raw,
+  congested}`, `profile`). Estimates are clipped at 0 with `raw` kept; the
+  interval covers the stated count error (default ±5 %, linear) only, not
+  storage; congested periods (40 km/h) are flagged. More than one unmeasured
+  ramp in a segment is `unidentified` unless a split assumption with a source
+  is supplied.
+- **`flowstate.ramp_leave_one_out/1`:** `ramps[]` (`tested` / `not_testable`;
+  `overall` / `free_flow` / `congested` = n, bias, MAE, RMSE, relative error,
+  relative bias, interval coverage, n_clipped) and `pooled`.
+- Both scripts write JSON and markdown with the git commit, `code_dirty`
+  (their own code paths: the script, `packages/calibration`,
+  `packages/flowstate_core`, `pyproject.toml`, `uv.lock`) and input hashes.
