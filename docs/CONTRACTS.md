@@ -3335,3 +3335,43 @@ inspection tool: it changes no network.
   and sha256 of the extract and patches. CSV and markdown end with empty
   `checked_by`, `imagery_date`, `result` columns (`matches`, `differs: …`,
   `cannot tell: …`). Exit codes: 0; 2 usage; 4 with `--fail-on-defect`.
+
+## Driver-settings transfer check (`calibration.transfer_check`, WP-103) — 2026-10-04
+
+Stage 1 item 8 of the Frisco plan (docs/FRISCO_PROTOCOL.md §7.2); CLI
+`scripts/transfer_check.py` (same input options as
+`scripts/data_quality_report.py`).
+
+- **Input:** the detector inputs of `calibration.detector_inputs`, masked by
+  `calibration.data_quality` (mass balance not run: it masks nothing); a
+  population from `population_from_scenario` (the `fleet` block; `network.kind`
+  read) or `population_from_artifact` plus a model; optional classification
+  counts (`heavy_count` + `total_count`, or `heavy_share`); an optional
+  posted limit, else the stations table's `speed_limit_ms` (most common
+  value); capacity sidecars discovered from `artifacts/*.calibration.json`.
+- **`flowstate.transfer_check/1`:** `schema, rules, rule_sources, observed,
+  model, comparisons, recommendations, implied_headway, provenance, notes`.
+  `observed.free_flow` (median and 15/85th percentiles of 5-min speeds in
+  light traffic: occupancy ≤ 10 %, ≤ 1,000 veh/h/lane, ≥ 10 vehicles per
+  lane), `observed.capacity{basis ∈ {bottleneck_discharge, congested,
+  lower_bound, none}, value_veh_h_lane, interval, …}` (95th-percentile 5-min
+  per-lane flow, downstream of active bottlenecks per protocol §5, else at
+  congested stations, else a lower bound), `observed.heavy{available, share,
+  …}` (classification counts only; never inferred). `model.free_flow_speed_ms`
+  is analytical (mean IDM steady-state speed of the drawn drivers at the
+  observed light-traffic flow, desired speed capped at the limit);
+  `model.capacity_basis ∈ {simulated, analytical, none}` prefers a simulated
+  straight-road sidecar of the same population and car-following model,
+  carried to the corridor's limit and truck share by an analytical ratio;
+  EIDM without a sidecar gets none. `comparisons[]`: `quantity ∈
+  {truck_share, free_flow_speed, capacity_per_lane}`, observed with a 95 %
+  day-bootstrap interval (none below three days), model, difference,
+  tolerance (±5 %, ±5 %, ±3 points), `verdict ∈ {ok, mismatch, inconclusive,
+  not_available}`. `recommendations[]`: knobs `heavy_fraction, v0_scale,
+  speed_factor (needs an engine change), t_scale` with their measured range
+  (mean ± 1 sd of the measured population inside CLAUDE.md §3.1's range),
+  the value needed and whether it fits, else "The population cannot match
+  this corridor inside its measured ranges." Applied in the order truck
+  share → free-flow speed → capacity, corridor-wide, never automatically.
+- **Provenance:** commit; `code_dirty` over the script, `packages/calibration`,
+  `packages/flowstate_core`, `pyproject.toml`, `uv.lock`; input hashes; argv.

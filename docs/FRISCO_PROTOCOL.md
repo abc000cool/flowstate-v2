@@ -151,7 +151,11 @@ pass on the validation days, with C4 passing or "not applicable".
    NGSIM US-101, and any later one), with a single corridor-wide adjustment
    inside the measured ranges if the driver-settings check (item 8,
    `calibration.transfer_check`) flags a mismatch in free-flow speed,
-   capacity per lane or truck share. No location-specific driver settings.
+   capacity per lane or truck share. A knob's measured range is the mean
+   ± 1 standard deviation of the measured source population, inside
+   CLAUDE.md §3.1's calibration range; a mismatch that no value in that
+   range removes is reported as such, not forced. No location-specific
+   driver settings.
 3. **Map:** corrections only for verified layout errors found by the layout
    checklist (item 4, docs/LAYOUT_CHECKLIST.md), each with the imagery or
    plan it rests on.
