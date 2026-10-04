@@ -25,6 +25,18 @@ every run of the cell records zero, false on any collision, null when not
 recorded — a run without ``meta.json`` or without the counter); the summary
 carries the same flag over every run of every complete cell.
 
+Waiting counts (WP-105, docs/FRISCO_PROTOCOL.md §8.2): each run's
+``metrics.json`` also carries ``validation.metrics.WaitingMetrics`` — travel
+time and total delay from each vehicle's PLANNED departure, so time in the
+insertion backlog and behind ramp meters counts — computed from the run's
+``journeys.parquet`` (kept beside ``meta.json``), and :data:`FIELDS` carries
+them into every cell's intervals and paired deltas. ``--comparison PATH``
+writes the protocol §8.3 strategy comparison table
+(``validation.strategy_compare``: the fixed measure set, paired by seed against
+the baseline cell); it refuses — the sweep exits non-zero with the reason —
+when any run of any cell lacks any measure of the set (a tree written before
+WP-105, a run without a collision count).
+
 Strategies:
   ``none``    the scenario as calibrated;
   ``vsl``     ``av.vsl = "vsl_threshold"`` (threshold ladder, per-edge gantries);
@@ -66,6 +78,13 @@ FIELDS = (
     "wave_count",
     "wave_speed_kmh",
     "wave_amplitude_ms",
+    # WP-105: travel time and delay including waiting (validation.metrics.WaitingMetrics)
+    "mean_tt_incl_waiting_s",
+    "p90_tt_incl_waiting_s",
+    "total_delay_incl_waiting_veh_h",
+    "insertion_delay_veh_h",
+    "meter_wait_veh_h",
+    "n_censored",
 )
 
 
@@ -93,11 +112,15 @@ def _worker(
     try:
         from flowstate_core.config import ScenarioConfig
         from microsim.runner import run_micro
-        from validation.metrics import compute_metrics
+        from validation.metrics import compute_metrics, compute_waiting_metrics
 
         paths = run_micro(ScenarioConfig.model_validate(cfg_json), seed, Path(root) / cell_name)
         m = compute_metrics(paths.run_dir, **metrics_args)
-        (paths.run_dir / "metrics.json").write_text(json.dumps(asdict(m), indent=2))
+        # the waiting measures (WP-105) beside the standard ones, same window
+        w = compute_waiting_metrics(paths.run_dir)
+        (paths.run_dir / "metrics.json").write_text(
+            json.dumps({**asdict(m), **asdict(w)}, indent=2)
+        )
         if not keep:
             paths.trajectories.unlink(missing_ok=True)
             paths.edges.unlink(missing_ok=True)
@@ -340,6 +363,69 @@ def print_diagnostics(summary: dict[str, Any]) -> None:
             )
 
 
+def run_records(
+    root: Path, cells: dict[str, str], seeds: list[int]
+) -> dict[str, dict[int, dict[str, Any]]]:
+    """Per cell and seed, the stored run's record for the comparison table.
+
+    The record is the run's ``metrics.json`` (every field) plus
+    ``n_collisions`` from its ``meta.json`` (``validation.battery.collision_count``;
+    None when the run has no meta or the meta no counter). A run without
+    ``metrics.json`` contributes nothing.
+
+    Args:
+        root: Run tree root (``<root>/<cell>/<config hash>/<seed>/``).
+        cells: Cell name → config hash.
+        seeds: The seeds to read.
+
+    Returns:
+        Cell → seed → record.
+    """
+    from validation.battery import collision_count
+
+    out: dict[str, dict[int, dict[str, Any]]] = {}
+    for cell, chash in cells.items():
+        out[cell] = {}
+        for seed in seeds:
+            p = root / cell / chash / str(seed) / "metrics.json"
+            if not p.is_file():
+                continue
+            record: dict[str, Any] = json.loads(p.read_text())
+            meta_path = p.with_name("meta.json")
+            record["n_collisions"] = (
+                collision_count(json.loads(meta_path.read_text())) if meta_path.is_file() else None
+            )
+            out[cell][int(seed)] = record
+    return out
+
+
+def write_comparison(
+    records: dict[str, dict[int, dict[str, Any]]], out: Path, *, baseline: str = "baseline"
+) -> dict[str, Any]:
+    """Build the protocol §8.3 comparison table and write it as JSON and Markdown.
+
+    Args:
+        records: :func:`run_records` of the cells to compare (baseline among them).
+        out: JSON path; the Markdown goes beside it (``.md``).
+        baseline: The do-nothing cell.
+
+    Returns:
+        The table as a dict.
+
+    Raises:
+        validation.strategy_compare.ComparisonRefusedError: A cell lacks a
+            measure of the fixed set, or the seed sets differ.
+    """
+    from validation.strategy_compare import build_comparison_table, render_markdown
+
+    table = build_comparison_table(records, baseline=baseline)
+    payload = table.to_dict()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(payload, indent=2))
+    out.with_suffix(".md").write_text(render_markdown(table))
+    return payload
+
+
 def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str, Any]:
     import numpy as np
     from scipy import stats
@@ -470,6 +556,13 @@ def main() -> None:
     ap.add_argument("--keep-trajectories", action="store_true")
     ap.add_argument("--analyze-only", action="store_true")
     ap.add_argument("--allow-partial", action="store_true")
+    ap.add_argument(
+        "--comparison",
+        type=Path,
+        default=None,
+        help="also write the protocol §8.3 strategy comparison table (JSON, .md beside it); "
+        "refuses when a run lacks a measure of the fixed set",
+    )
     args = ap.parse_args()
 
     from flowstate_core.config import ScenarioConfig, config_hash
@@ -481,6 +574,7 @@ def main() -> None:
         print(f"analysed {len(s['cells'])} cells; incomplete {s['incomplete_cells']}")
         print(collision_line(s))
         print_diagnostics(s)
+        _comparison_or_exit(args.comparison, root, s)
         return
 
     if any(needs_target(s) for s in args.strategies) and args.rho_target_veh_km is None:
@@ -581,6 +675,22 @@ def main() -> None:
     print(f"summary → {args.summary}; incomplete cells: {s['incomplete_cells']}")
     print(collision_line(s))
     print_diagnostics(s)
+    _comparison_or_exit(args.comparison, root, s)
+
+
+def _comparison_or_exit(path: Path | None, root: Path, summary: dict[str, Any]) -> None:
+    """``--comparison``: write the table over the complete cells, or exit with the refusal."""
+    if path is None:
+        return
+    from validation.strategy_compare import ComparisonRefusedError
+
+    manifest = json.loads((root / "MANIFEST.json").read_text())
+    cells = {c: h for c, h in manifest["cells"].items() if c in summary["cells"]}
+    try:
+        write_comparison(run_records(root, cells, [int(s) for s in manifest["seeds"]]), path)
+    except ComparisonRefusedError as exc:
+        raise SystemExit(str(exc)) from None
+    print(f"comparison → {path} (+ {path.with_suffix('.md').name})")
 
 
 if __name__ == "__main__":

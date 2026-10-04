@@ -179,7 +179,19 @@ many calibration iterations were made.
    same demand, the same seeds and the same scoring window.
 2. **Waiting counts:** travel time and delay include time spent waiting on
    ramps (meters) and waiting to enter the simulation (insertion backlog);
-   a strategy cannot look good by holding cars off the road.
+   a strategy cannot look good by holding cars off the road. Definitions
+   (`validation.metrics.WaitingMetrics`, written before any result): every
+   vehicle of the demand planned to depart in the scoring window is
+   measured from its planned departure; time in system = arrival (or the
+   run's end) − planned departure; delay = time in system − the free-flow
+   time of the route stretch it covered at min(its desired speed, the base
+   speed limit). A vehicle not arrived by the run's end is censored there,
+   by the same rule in every arm, and the censored count is reported per
+   arm. Runs end with a cool-down after the last scored departure of at
+   least the stretch's free-flow travel time, so that censoring is rare.
+   Mean and 90th-percentile travel times are taken over the vehicles that
+   could have finished on an empty road before the end (a rule on the
+   demand alone) and are stated as lower bounds when any is censored.
 3. **Same measures:** throughput at the reference section, mean and 90th
    percentile travel time, total delay including waiting, σ_v, wave count
    and amplitude, collisions, and fuel (labelled a model estimate).
@@ -193,7 +205,12 @@ many calibration iterations were made.
    the first tuning run. A setting with any collision is disqualified; a
    setting whose throughput at the reference section is lower than the
    baseline's (the paired difference's 95 % interval entirely below zero)
-   is reported but cannot be selected as the strategy's best.
+   is reported but cannot be selected as the strategy's best. The N
+   candidates of each strategy are its textbook setting and the first N − 1
+   points of the unscrambled Halton sequence on a parameter box declared in
+   `scripts/strategy_tune.py` before tuning; tuning seeds come from a seed
+   stream separate from the evaluation seeds and the two lists are checked
+   to be disjoint; a tie goes to the lower candidate index.
 5. **Uncertainty:** the best setting of each strategy and the baseline are
    re-run with the driver settings and demand varied within their plausible
    ranges (item 11): at least 10 parameter samples (Latin hypercube) of

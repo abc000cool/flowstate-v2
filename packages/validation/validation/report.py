@@ -90,6 +90,7 @@ markdown text, never a second source of numbers.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -125,10 +126,14 @@ from validation.fields import SpeedField, speed_field
 from validation.metrics import (
     CI,
     CI_LEVEL,
+    JOURNEYS_FILE,
     MIN_REPLICATES,
+    WAITING_FIELDS,
     Metrics,
+    WaitingMetrics,
     aggregate,
     compute_metrics,
+    compute_waiting_metrics,
     default_travel_span,
     warmup_from_meta,
 )
@@ -176,12 +181,22 @@ FUEL_LIMITATION = (
     "measured fuel; differences in fuel between configurations are model predictions."
 )
 
-#: The measure a client-summary recommendation line is stated on, and its name.
-#: The protocol's tuning objective is total delay including waiting time
-#: (docs/FRISCO_PROTOCOL.md §8.4); the metric set has no delay measure yet, so
-#: the line is stated on mean travel time — under its own name, never called
-#: delay.
+#: The measure a client-summary recommendation line is stated on, and its name,
+#: when the run set does not carry the delay measure below (runs written before
+#: the demand ledger, WP-105): mean travel time — under its own name, never
+#: called delay.
 RECOMMENDATION_METRIC = ("mean_tt_s", "mean travel time")
+
+#: The recommendation measure when every run of the baseline and of the
+#: strategy carries it (``validation.metrics.WaitingMetrics``, computed from the
+#: run's ``journeys.parquet``): the protocol's tuning objective, total delay
+#: including waiting time (docs/FRISCO_PROTOCOL.md §8.2, §8.4), so a strategy
+#: that holds cars on ramps or off the road cannot be recommended for a
+#: shorter trip of the cars it let through.
+DELAY_RECOMMENDATION_METRIC = (
+    "total_delay_incl_waiting_veh_h",
+    "total delay including waiting time",
+)
 
 #: Throughput field a strategy may not lose (§8.4: a setting whose throughput
 #: interval lies entirely below the baseline's cannot be selected).
@@ -346,6 +361,9 @@ class _Group:
     runs: list[_RunInfo]
     metrics: dict[str, Metrics]  # seed label → metrics, discovery order
     agg: dict[str, CI]
+    #: seed label → waiting metrics, for the runs that carry a demand ledger
+    #: (``journeys.parquet``, WP-105); empty for runs written before it
+    waiting: dict[str, WaitingMetrics] = dataclasses.field(default_factory=dict)
 
     @property
     def is_baseline(self) -> bool:
@@ -360,7 +378,14 @@ class _Group:
         return any(r.seeded for r in self.runs)
 
     def values(self, name: str) -> dict[str, float]:
+        if name in WAITING_FIELDS:
+            return {seed: float(getattr(m, name)) for seed, m in self.waiting.items()}
         return {seed: float(getattr(m, name)) for seed, m in self.metrics.items()}
+
+    @property
+    def carries_waiting(self) -> bool:
+        """Every run of the group carries the waiting metrics (WP-105)."""
+        return bool(self.runs) and all(r.seed in self.waiting for r in self.runs)
 
 
 def group_label(meta: Mapping[str, Any]) -> str:
@@ -556,6 +581,11 @@ def _fill_metrics(
                 known if known is not None else compute_metrics(r.path, x_ref=x_ref, span=span)
             )
         g.agg = aggregate(list(g.metrics.values()))
+        g.waiting = {
+            r.seed: compute_waiting_metrics(r.path)
+            for r in g.runs
+            if (r.path / JOURNEYS_FILE).is_file() and isinstance(r.meta.get("journeys"), dict)
+        }
 
 
 def _fmt(value: float | None, digits: int = 4) -> str:
@@ -1504,6 +1534,17 @@ def _signed(value: float) -> str:
     return f"{value:+.1f}" if math.isfinite(value) else _fmt(None)
 
 
+def recommendation_metric(baseline: _Group, group: _Group) -> tuple[str, str]:
+    """The ``(field, name)`` a strategy's recommendation line is stated on.
+
+    :data:`DELAY_RECOMMENDATION_METRIC` when every run of both groups carries
+    the waiting metrics, else :data:`RECOMMENDATION_METRIC` (and its wording).
+    """
+    if baseline.carries_waiting and group.carries_waiting:
+        return DELAY_RECOMMENDATION_METRIC
+    return RECOMMENDATION_METRIC
+
+
 def _recommendation(baseline: _Group, group: _Group, ci_pct: str) -> str:
     """The client summary's line for one strategy (module docstring)."""
     flag = zero_collisions(collision_counts([r.meta for r in group.runs]))
@@ -1523,7 +1564,7 @@ def _recommendation(baseline: _Group, group: _Group, ci_pct: str) -> str:
             f"No recommendation for {group.label}: its throughput interval lies entirely "
             f"below the baseline's ({PROTOCOL_DOC} section 8.4)."
         )
-    field_name, measure = RECOMMENDATION_METRIC
+    field_name, measure = recommendation_metric(baseline, group)
     d, lo_pct, hi_pct = _pct_interval(baseline, group, field_name)
     if d.resolved and d.hi95 < 0.0 and math.isfinite(lo_pct) and math.isfinite(hi_pct):
         return (

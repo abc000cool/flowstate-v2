@@ -37,17 +37,21 @@ from validation.metrics import (
     CI,
     LinkHourGEH,
     Metrics,
+    WaitingMetrics,
     aggregate,
     ci,
     compute_metrics,
+    compute_waiting_metrics,
     count_crossings,
     crossings_per_window,
     default_travel_span,
     geh,
     geh_pass_fraction,
     link_hour_geh,
+    read_journeys,
     rmspe,
     travel_times,
+    waiting_metrics,
     warmup_from_meta,
 )
 from validation.observed import (
@@ -66,6 +70,12 @@ from validation.observed import (
 )
 from validation.report import ReportRefusedError, generate_report
 from validation.ring_benchmark import evaluate_ring_benchmark
+from validation.strategy_compare import (
+    COMPARISON_MEASURES,
+    ComparisonRefusedError,
+    ComparisonTable,
+    build_comparison_table,
+)
 from validation.string_stability import (
     IDMPartials,
     equilibrium_gap,
@@ -89,11 +99,14 @@ from validation.waves import (
 
 __all__ = [
     "CI",
+    "COMPARISON_MEASURES",
     "CRITERIA_PROFILES",
     "WAVE_DETECTORS",
     "Bottleneck",
     "BottleneckComparison",
     "CheckResult",
+    "ComparisonRefusedError",
+    "ComparisonTable",
     "CriteriaProfile",
     "CriteriaResult",
     "DaySetScore",
@@ -112,15 +125,18 @@ __all__ = [
     "PooledLinkHour",
     "ReportRefusedError",
     "SpeedField",
+    "WaitingMetrics",
     "Wave",
     "WaveDetector",
     "WaveMeasurement",
     "WaveSet",
     "aggregate",
+    "build_comparison_table",
     "ci",
     "clock_label",
     "compare_bottlenecks",
     "compute_metrics",
+    "compute_waiting_metrics",
     "count_crossings",
     "crossings_per_window",
     "default_travel_span",
@@ -146,6 +162,7 @@ __all__ = [
     "planted_stripe_field",
     "pool_link_hours",
     "pool_scores",
+    "read_journeys",
     "rescore",
     "rmspe",
     "score_day_set",
@@ -155,5 +172,6 @@ __all__ = [
     "stack_wave_speed",
     "travel_times",
     "unstable_band",
+    "waiting_metrics",
     "warmup_from_meta",
 ]

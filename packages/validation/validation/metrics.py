@@ -6,6 +6,11 @@ RMSPE implement the FHWA-style calibration comparison statistics (FHWA
 Traffic Analysis Toolbox Vol. III, FHWA-HOP-18-036, 2019). Replicate
 aggregation reports t-distribution confidence intervals and flags
 underpowered sample sizes (< 20 replicates, CLAUDE.md §0.6).
+
+Travel time and delay *including waiting* (:class:`WaitingMetrics`, WP-105;
+docs/FRISCO_PROTOCOL.md §8.2) are measured apart, from the run's demand
+ledger ``journeys.parquet`` (:data:`JOURNEYS_FILE`), so that the standard set
+:class:`Metrics` — and every golden that pins its key set — is unchanged.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -922,6 +927,271 @@ def compute_metrics(
         wave_amplitude_ms=wave_amp,
         n_travel_time_veh=n_tt,
     )
+
+
+#: The run's demand ledger (``microsim.runner.JOURNEYS_FILE``, WP-105): one
+#: row per vehicle of the fleet plan, whether or not it entered the network.
+JOURNEYS_FILE: Final[str] = "journeys.parquet"
+
+#: Columns of :data:`JOURNEYS_FILE` in file order (the writer's
+#: ``microsim.runner._JOURNEYS_SCHEMA``). Times are simulation seconds,
+#: distances metres along the vehicle's PLANNED route (front bumper):
+#:
+#: * ``veh_id``, ``route`` (the plan's route id), ``origin_ramp`` (index in
+#:   ``meta.json["ramps"]``, ``-1`` for the mainline).
+#: * ``depart_planned_s`` — the fleet plan's departure time (the demand).
+#: * ``route_length_m`` — the route's length (sum of its edges' lane-0
+#:   lengths, junction-internal lanes not counted); null when SUMO does not
+#:   know the route id (the ring's embedded routes).
+#: * ``free_flow_s`` — the route's free-flow time for this vehicle,
+#:   ``Σ_e L_e / min(v0, v_limit,e)`` with ``v0`` its desired speed and
+#:   ``v_limit,e`` the compiled network's base limit, read before any VSL or
+#:   boundary schedule acted; null with ``route_length_m``.
+#: * ``inserted``, ``depart_s`` — whether SUMO put it on the road and when
+#:   (``vehicle.getDeparture``: on the step grid, at or after the planned
+#:   time); ``depart_s`` null when never inserted.
+#: * ``insert_offset_m`` — where along the route it was put on the road.
+#: * ``arrived``, ``arrival_s`` — whether it reached its route's end before
+#:   the run ended, and the step at which SUMO reported it.
+#: * ``distance_end_m`` — odometer at the run's end of a vehicle still in the
+#:   network (null otherwise).
+#: * ``free_flow_covered_s`` — the free-flow time of the stretch it covered
+#:   (insertion offset to the route's end when arrived, to its position at
+#:   the run's end otherwise, 0 when never inserted), edge by edge at
+#:   ``min(v0, v_limit,e)``.
+#: * ``meter_ramp`` (``-1``: no meter held it), ``meter_hold_start_s``,
+#:   ``meter_released``, ``meter_release_s`` — a ramp meter's stop on it.
+#: * ``meter_wait_s`` — the meter's delay: time from the stop to the release
+#:   (or to arrival, or to the run's end — censored) minus the free-flow time
+#:   of the route stretch covered meanwhile; 0 when never held.
+JOURNEY_COLUMNS: Final[tuple[str, ...]] = (
+    "veh_id",
+    "route",
+    "origin_ramp",
+    "depart_planned_s",
+    "route_length_m",
+    "free_flow_s",
+    "inserted",
+    "depart_s",
+    "insert_offset_m",
+    "arrived",
+    "arrival_s",
+    "distance_end_m",
+    "free_flow_covered_s",
+    "meter_ramp",
+    "meter_hold_start_s",
+    "meter_released",
+    "meter_release_s",
+    "meter_wait_s",
+)
+
+
+def read_journeys(run_dir: str | Path) -> pd.DataFrame:
+    """Read one run's :data:`JOURNEYS_FILE`.
+
+    Args:
+        run_dir: Replicate directory.
+
+    Returns:
+        The table, rows in ``veh_id`` order.
+
+    Raises:
+        FileNotFoundError: The run predates the ledger (written by the runner
+            since 2026-10-04, WP-105) or the file was removed.
+        ValueError: A column of :data:`JOURNEY_COLUMNS` is missing.
+    """
+    path = Path(run_dir) / JOURNEYS_FILE
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"missing {path}: the run predates the demand ledger (WP-105) or it was "
+            "deleted; waiting time cannot be measured without it"
+        )
+    with open(path, "rb") as f:  # a file object: see microsim.runner._write_parquet
+        df = pd.read_parquet(f)
+    missing = [c for c in JOURNEY_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"{path} lacks column(s) {missing}")
+    return df
+
+
+@dataclass(frozen=True)
+class WaitingMetrics:
+    """Travel time and delay including waiting (docs/FRISCO_PROTOCOL.md §8.2, WP-105).
+
+    Written down before any strategy result existed (2026-10-04) and applied
+    identically to every arm. Measured over the demand of the measurement
+    window from the run's :data:`JOURNEYS_FILE`; see
+    :func:`waiting_metrics` for the rules.
+
+    **The demand.** ``D`` = every vehicle of the fleet plan whose PLANNED
+    departure lies in ``[t_lo, t_end)`` — ``t_lo`` the end of the configured
+    warm-up, ``t_end`` the run's end — whether or not it ever entered the
+    network. Arms of one scenario and seed share the plan, so ``D`` is the
+    same set of vehicles in every arm (strategies never change the demand).
+
+    **Censoring at the run's end, one rule for every arm.** A vehicle of
+    ``D`` that has not arrived by ``t_end`` is *censored*: its clock stops at
+    ``t_end``. Its time in system, insertion wait and meter wait are counted
+    up to ``t_end`` and nothing beyond (its remaining delay is unobserved);
+    its delay is the time it spent minus the free-flow time of the distance
+    it covered by ``t_end``. ``n_censored`` reports how many; a run set with
+    many censored vehicles should be lengthened (a cool-down after the last
+    scored departure) rather than read as if complete.
+
+    Attributes:
+        insertion_delay_veh_h: ``Σ_D (min(depart_s, t_end) − depart_planned_s)``
+            [veh·h] — time spent waiting to enter the network (the insertion
+            backlog), a vehicle never inserted counting until ``t_end``.
+            Includes up to one simulation step per vehicle of step
+            quantization (SUMO inserts on the step grid), the same in every
+            arm.
+        meter_wait_veh_h: ``Σ_D meter_wait_s`` [veh·h] — the delay ramp meters
+            caused while holding vehicles (column definition on
+            :data:`JOURNEY_COLUMNS`), censored at ``t_end``. A breakdown, not
+            an addition: it is already part of the total delay.
+        total_delay_incl_waiting_veh_h: ``Σ_D (T_i − F_i)`` [veh·h] with
+            ``T_i = min(arrival_s, t_end) − depart_planned_s`` (the time from
+            the planned departure, so insertion and meter waits count) and
+            ``F_i = free_flow_covered_s`` (the free-flow time of the route
+            stretch it covered by then). This is VHT − VMT / free-flow speed,
+            the standard delay, extended to every vehicle of the demand and
+            to the time before entry. The tuning objective of protocol §8.4.
+            NaN when any vehicle of ``D`` lacks its route geometry.
+        mean_tt_incl_waiting_s: Mean of ``T_i`` over the *completable* demand
+            ``C ⊆ D``: vehicles with ``depart_planned_s + free_flow_s <=
+            t_end`` (those that would have arrived by the end on an empty
+            road — a rule on the plan and the network only, so ``C`` is the
+            same in every arm). A censored vehicle of ``C`` enters at its
+            censored time, so with ``n_tt_censored > 0`` the value is a lower
+            bound. NaN when ``C`` has fewer than two vehicles or any vehicle
+            of ``D`` lacks its geometry.
+        p90_tt_incl_waiting_s: 90th percentile (linear interpolation) of the
+            same values; a lower bound under the same condition.
+        n_censored: Vehicles of ``D`` not arrived by ``t_end`` (never
+            inserted included).
+        n_demand_veh: ``|D|``.
+        n_not_inserted: Vehicles of ``D`` never inserted.
+        n_tt_incl_waiting_veh: ``|C|``.
+        n_tt_censored: Censored vehicles of ``C``.
+    """
+
+    insertion_delay_veh_h: float
+    meter_wait_veh_h: float
+    total_delay_incl_waiting_veh_h: float
+    mean_tt_incl_waiting_s: float
+    p90_tt_incl_waiting_s: float
+    n_censored: int
+    n_demand_veh: int
+    n_not_inserted: int
+    n_tt_incl_waiting_veh: int
+    n_tt_censored: int
+
+
+#: Field names of :class:`WaitingMetrics`, in declaration order.
+WAITING_FIELDS: Final[tuple[str, ...]] = tuple(f.name for f in dataclasses.fields(WaitingMetrics))
+
+
+def waiting_metrics(journeys: pd.DataFrame, *, t_lo: float, t_end: float) -> WaitingMetrics:
+    """:class:`WaitingMetrics` of one run's journeys table (definitions there).
+
+    Deterministic: sums run over the vehicles in ``veh_id`` order.
+
+    Args:
+        journeys: The run's :data:`JOURNEYS_FILE` (:func:`read_journeys`).
+        t_lo: Start of the measurement window [s] (the warm-up's end).
+        t_end: The run's end [s] (``meta.json["journeys"]["end_s"]``).
+
+    Returns:
+        The metrics.
+
+    Raises:
+        ValueError: ``t_end <= t_lo``, a missing column, or an arrival or
+            departure after ``t_end`` (an inconsistent ledger).
+    """
+    if not (math.isfinite(t_lo) and math.isfinite(t_end)) or t_end <= t_lo:
+        raise ValueError(f"need t_lo < t_end, got [{t_lo}, {t_end}]")
+    missing = [c for c in JOURNEY_COLUMNS if c not in journeys.columns]
+    if missing:
+        raise ValueError(f"journeys lack column(s) {missing}")
+    df = journeys.sort_values("veh_id", kind="stable")
+    planned = df["depart_planned_s"].to_numpy(dtype=np.float64)
+    in_d = (planned >= t_lo) & (planned < t_end)
+    d = df.loc[in_d]
+    planned = planned[in_d]
+    inserted = d["inserted"].to_numpy(dtype=np.bool_)
+    arrived = d["arrived"].to_numpy(dtype=np.bool_)
+    depart = d["depart_s"].to_numpy(dtype=np.float64, na_value=np.nan)
+    arrival = d["arrival_s"].to_numpy(dtype=np.float64, na_value=np.nan)
+    if bool(np.any(depart[inserted] > t_end)) or bool(np.any(arrival[arrived] > t_end)):
+        raise ValueError(f"a departure or arrival lies after the run's end {t_end} s")
+    t_in = np.where(inserted, depart, t_end)
+    t_out = np.where(arrived, arrival, t_end)
+    tis = t_out - planned
+    ins_wait = t_in - planned
+    meter = d["meter_wait_s"].to_numpy(dtype=np.float64, na_value=0.0)
+    covered = d["free_flow_covered_s"].to_numpy(dtype=np.float64, na_value=np.nan)
+    free_flow = d["free_flow_s"].to_numpy(dtype=np.float64, na_value=np.nan)
+    geometry_known = bool(np.all(np.isfinite(covered)) and np.all(np.isfinite(free_flow)))
+    censored = ~arrived
+
+    total_delay = s_to_h(float(np.sum(tis - covered))) if geometry_known else math.nan
+    if geometry_known:
+        completable = planned + free_flow <= t_end
+        tt = tis[completable]
+        n_c = int(tt.size)
+        n_c_censored = int(np.count_nonzero(censored[completable]))
+    else:
+        tt = np.empty(0, dtype=np.float64)
+        n_c = 0
+        n_c_censored = 0
+    mean_tt = float(tt.mean()) if tt.size >= 2 else math.nan
+    p90_tt = float(np.percentile(tt, 90)) if tt.size >= 2 else math.nan
+    return WaitingMetrics(
+        insertion_delay_veh_h=s_to_h(float(np.sum(ins_wait))),
+        meter_wait_veh_h=s_to_h(float(np.sum(meter))),
+        total_delay_incl_waiting_veh_h=total_delay,
+        mean_tt_incl_waiting_s=mean_tt,
+        p90_tt_incl_waiting_s=p90_tt,
+        n_censored=int(np.count_nonzero(censored)),
+        n_demand_veh=int(planned.size),
+        n_not_inserted=int(np.count_nonzero(~inserted)),
+        n_tt_incl_waiting_veh=n_c,
+        n_tt_censored=n_c_censored,
+    )
+
+
+def compute_waiting_metrics(run_dir: str | Path, warmup_s: float | None = None) -> WaitingMetrics:
+    """:class:`WaitingMetrics` of one run directory (its journeys table and meta).
+
+    The measurement window is :func:`compute_metrics`'s: the configured
+    warm-up (:func:`warmup_from_meta`) is discarded, and the window runs to
+    the run's end ``meta.json["journeys"]["end_s"]``.
+
+    Args:
+        run_dir: Directory holding :data:`JOURNEYS_FILE` and ``meta.json``.
+        warmup_s: Warm-up to discard [s]; ``None`` takes the run's own.
+
+    Returns:
+        The metrics.
+
+    Raises:
+        FileNotFoundError: Either file is missing (a run before WP-105).
+        ValueError: The meta lacks ``journeys.end_s``, a negative warm-up, or
+            a warm-up that leaves no window.
+    """
+    run_path = Path(run_dir)
+    meta_path = run_path / "meta.json"
+    if not meta_path.is_file():
+        raise FileNotFoundError(f"missing {meta_path}")
+    meta = json.loads(meta_path.read_text())
+    block = meta.get("journeys")
+    end = block.get("end_s") if isinstance(block, dict) else None
+    if not isinstance(end, (int, float)) or isinstance(end, bool):
+        raise ValueError(f"{meta_path} records no journeys.end_s (a run before WP-105)")
+    warm = warmup_from_meta(meta) if warmup_s is None else float(warmup_s)
+    if not math.isfinite(warm) or warm < 0.0:
+        raise ValueError(f"warmup_s must be finite and >= 0, got {warmup_s!r}")
+    return waiting_metrics(read_journeys(run_path), t_lo=warm, t_end=float(end))
 
 
 def aggregate(metrics_list: list[Metrics]) -> dict[str, CI]:

@@ -15,6 +15,9 @@ runs/<config_hash>/<seed>/
   vehicles.parquet       # one row per departed vehicle: route, origin,
                          # destination, departure, first/last corridor
                          # sample, arrival, weave give-up (VEHICLES_FILE)
+  journeys.parquet       # one row per PLANNED vehicle: planned/actual
+                         # departure, arrival, meter hold, route free-flow
+                         # time (JOURNEYS_FILE, WP-105)
   meta.json              # config snapshot + hash, versions, tier="micro",
                          # seeded flag, wall time, per-vehicle fuel, AV ids
 ```
@@ -6561,6 +6564,325 @@ _VEHICLES_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
     ("destination_final", pa.string()),
 ]
 
+#: The run's demand ledger (WP-105, docs/FRISCO_PROTOCOL.md §8.2): one row
+#: per vehicle of the fleet plan — whether or not it ever entered the network —
+#: in ``veh_id`` order, written beside :data:`VEHICLES_FILE` (whose bytes and
+#: schema stay as they were). It carries what a fair strategy comparison needs
+#: and the trajectories cannot give: the planned and actual departure (the
+#: insertion backlog), the arrival, the time a ramp meter held the vehicle, and
+#: its route's free-flow time. Read with ``validation.metrics.read_journeys``;
+#: the windowed measures are ``validation.metrics.compute_waiting_metrics``.
+JOURNEYS_FILE: Final[str] = "journeys.parquet"
+
+#: Columns of :data:`JOURNEYS_FILE` (:func:`_journey_table`; the exact
+#: definitions are on ``validation.metrics.JOURNEY_COLUMNS``). Every source is
+#: bookkeeping the run already does or a read-only TraCI query; nothing here
+#: drives the simulation.
+_JOURNEYS_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
+    ("veh_id", pa.string()),
+    ("route", pa.string()),
+    ("origin_ramp", pa.int32()),
+    ("depart_planned_s", pa.float64()),
+    ("route_length_m", pa.float64()),
+    ("free_flow_s", pa.float64()),
+    ("inserted", pa.bool_()),
+    ("depart_s", pa.float64()),
+    ("insert_offset_m", pa.float64()),
+    ("arrived", pa.bool_()),
+    ("arrival_s", pa.float64()),
+    ("distance_end_m", pa.float64()),
+    ("free_flow_covered_s", pa.float64()),
+    ("meter_ramp", pa.int32()),
+    ("meter_hold_start_s", pa.float64()),
+    ("meter_released", pa.bool_()),
+    ("meter_release_s", pa.float64()),
+    ("meter_wait_s", pa.float64()),
+]
+
+
+@dataclass(frozen=True)
+class RouteGeometry:
+    """One named route's edges with their lengths and base speed limits.
+
+    Read once, right after SUMO starts and before the boundary schedule or a
+    VSL posts any limit (:func:`_route_geometry`), so the limits are the
+    compiled network's own: every strategy arm of one scenario sees the same
+    geometry, and a vehicle's free-flow time does not depend on the strategy.
+
+    Attributes:
+        edges: Edge ids in route order.
+        lengths_m: Length of each edge [m] (lane 0; internal junction lanes
+            between edges are not counted, so the route length errs short).
+        limits_ms: Base speed limit of each edge [m/s], the largest over its
+            lanes.
+    """
+
+    edges: tuple[str, ...]
+    lengths_m: tuple[float, ...]
+    limits_ms: tuple[float, ...]
+
+    @property
+    def length_m(self) -> float:
+        """Route length [m]: the sum of :attr:`lengths_m`."""
+        return float(sum(self.lengths_m))
+
+    def offset_m(self, edge: str, lane_pos_m: float) -> float | None:
+        """Distance along the route to a position on one of its edges [m].
+
+        Args:
+            edge: Edge the vehicle is on (its first occurrence in the route).
+            lane_pos_m: Position on that edge [m].
+
+        Returns:
+            The cumulative length of the route's edges before ``edge`` plus
+            ``lane_pos_m``; None when ``edge`` is not on the route.
+        """
+        if edge not in self.edges:
+            return None
+        k = self.edges.index(edge)
+        return float(sum(self.lengths_m[:k])) + float(lane_pos_m)
+
+    def free_flow_s(self, v0_ms: float) -> float:
+        """Free-flow travel time of the whole route for one vehicle [s].
+
+        ``Σ_e L_e / min(v0, v_limit,e)``: each edge at the smaller of the
+        vehicle's desired speed (its vType ``maxSpeed``; the fleet writes
+        ``speedFactor = 1``) and the edge's base limit — the fastest the
+        vehicle drives there on an empty road, acceleration aside.
+
+        Args:
+            v0_ms: The vehicle's desired speed [m/s], > 0.
+
+        Returns:
+            The free-flow time [s].
+        """
+        lengths = np.asarray(self.lengths_m, dtype=np.float64)
+        limits = np.asarray(self.limits_ms, dtype=np.float64)
+        return float(np.sum(lengths / np.minimum(float(v0_ms), limits)))
+
+    def free_flow_between_s(self, a_m: float, b_m: float, v0_ms: float) -> float:
+        """Free-flow time from route offset ``a_m`` to ``b_m`` for one vehicle [s].
+
+        Edge by edge, each overlap of ``[a_m, b_m]`` with an edge at
+        ``min(v0, v_limit,e)`` (:meth:`free_flow_s` restricted to the
+        stretch). Offsets are clipped to ``[0, length_m]``; ``b_m <= a_m``
+        gives 0.
+
+        Args:
+            a_m: Start offset along the route [m].
+            b_m: End offset along the route [m].
+            v0_ms: The vehicle's desired speed [m/s], > 0.
+
+        Returns:
+            The free-flow time [s].
+        """
+        lengths = np.asarray(self.lengths_m, dtype=np.float64)
+        limits = np.asarray(self.limits_ms, dtype=np.float64)
+        starts = np.concatenate([np.zeros(1), np.cumsum(lengths)[:-1]])
+        lo = np.clip(float(a_m), starts, starts + lengths)
+        hi = np.clip(float(b_m), starts, starts + lengths)
+        covered = np.maximum(hi - lo, 0.0)
+        return float(np.sum(covered / np.minimum(float(v0_ms), limits)))
+
+
+def _route_geometry(mod: Any, route_ids: Iterable[str]) -> dict[str, RouteGeometry]:
+    """:class:`RouteGeometry` of every named route SUMO loaded (read-only TraCI).
+
+    Called right after ``start``, before any limit is changed. A route id SUMO
+    does not know (the ring's per-vehicle embedded routes: the plan names them
+    all ``"main"``) is skipped; its vehicles get no free-flow time.
+
+    Args:
+        mod: The libsumo or traci module.
+        route_ids: The plan's route ids.
+
+    Returns:
+        Route id → geometry.
+    """
+    known = set(mod.route.getIDList())
+    out: dict[str, RouteGeometry] = {}
+    for rid in sorted(set(route_ids)):
+        if rid not in known:
+            continue
+        edges = tuple(str(e) for e in mod.route.getEdges(rid))
+        lengths: list[float] = []
+        limits: list[float] = []
+        for e in edges:
+            n_lanes = int(mod.edge.getLaneNumber(e))
+            lengths.append(float(mod.lane.getLength(f"{e}_0")))
+            limits.append(max(float(mod.lane.getMaxSpeed(f"{e}_{i}")) for i in range(n_lanes)))
+        out[rid] = RouteGeometry(edges, tuple(lengths), tuple(limits))
+    return out
+
+
+def _journey_table(
+    veh_ids: Sequence[str],
+    route_by_id: Mapping[str, str],
+    depart_planned_s: Mapping[str, float],
+    v0_by_id: Mapping[str, float],
+    geometry: Mapping[str, RouteGeometry],
+    depart_s: Mapping[str, float],
+    insert_offset_m: Mapping[str, float | None],
+    arrival_s: Mapping[str, float],
+    distance_end_m: Mapping[str, float],
+    meter_ramp: Mapping[str, int],
+    meter_hold: Mapping[str, tuple[float, float | None]],
+    meter_release: Mapping[str, tuple[float, float | None]],
+    end_s: float,
+) -> pa.Table:
+    """The :data:`JOURNEYS_FILE` table: one row per planned vehicle.
+
+    Pure bookkeeping over what the run already holds — nothing here reads or
+    drives the simulation. Two columns are derived here, with the vehicle's
+    route geometry (:meth:`RouteGeometry.free_flow_between_s`, edge by edge at
+    ``min(v0, base limit)``):
+
+    * ``free_flow_covered_s`` — the free-flow time of the stretch of route the
+      vehicle covered: from its insertion offset to the route's end when it
+      arrived, to ``insert_offset_m + distance_end_m`` when it was still in
+      the network at the end, and 0 when it was never inserted. A vehicle a
+      give-up rerouted (``vehicles.parquet`` ``gave_up``) is measured on its
+      PLANNED route.
+    * ``meter_wait_s`` — the delay a ramp meter caused while it held the
+      vehicle: the time from the step the meter gave it its stop to the step
+      it was released (to its arrival, or to the run's end when neither
+      happened — censored), minus the free-flow time of the route stretch it
+      covered in that time (its offset then is ``insert_offset_m`` plus its
+      odometer, ``vehicle.getDistance``). 0 for a vehicle never held. Queueing
+      behind the stop line counts, creeping included; the approach to the
+      queue at free-flow speed does not.
+
+    A held vehicle's offsets are None when its insertion offset is unknown;
+    its ``meter_wait_s`` then falls back to the hold time alone (no
+    free-flow part subtracted, which errs high).
+
+    Args:
+        veh_ids: Every vehicle of the fleet plan.
+        route_by_id: Planned route id per vehicle (missing ⇒ ``"main"``).
+        depart_planned_s: Planned departure per vehicle [s] (``FleetPlan``).
+        v0_by_id: Desired speed per vehicle [m/s] (``FleetPlan.params``).
+        geometry: Route id → :class:`RouteGeometry` (:func:`_route_geometry`).
+        depart_s: SUMO departure time of every inserted vehicle [s].
+        insert_offset_m: Distance along its route at which each inserted
+            vehicle was put on the road [m] (front bumper; None when its first
+            edge is not on the route).
+        arrival_s: Step time at which SUMO reported each arrival [s].
+        distance_end_m: Odometer [m] of every vehicle still in the network
+            when the run ended (``vehicle.getDistance``).
+        meter_ramp: Ramp index (``meta.json["ramps"]``) of the meter that gave
+            each vehicle its stop.
+        meter_hold: ``(step time, route offset)`` at which the meter gave each
+            held vehicle its stop.
+        meter_release: ``(step time, route offset)`` at which the meter
+            released each vehicle.
+        end_s: Simulation time when the run ended [s].
+
+    Returns:
+        The contract-typed table, rows in ``veh_id`` order.
+    """
+    cols: dict[str, list[Any]] = {name: [] for name, _ in _JOURNEYS_SCHEMA}
+    for vid in sorted(veh_ids):
+        rid = route_by_id.get(vid, "main")
+        geom = geometry.get(rid)
+        v0 = float(v0_by_id[vid])
+        offset = insert_offset_m.get(vid)
+        arrived = vid in arrival_s
+        # the route offset the vehicle reached: its end (arrived), its
+        # odometer past the insertion offset (still running), unknown
+        reached: float | None = None
+        if geom is not None and offset is not None:
+            reached = geom.length_m if arrived else offset + distance_end_m.get(vid, 0.0)
+        covered: float | None
+        if vid not in depart_s:
+            covered = 0.0
+        elif geom is None or offset is None or reached is None:
+            covered = None
+        else:
+            covered = geom.free_flow_between_s(offset, reached, v0)
+        wait = 0.0
+        if vid in meter_hold:
+            t_hold, off_hold = meter_hold[vid]
+            if vid in meter_release:
+                t_out, off_out = meter_release[vid]
+            elif arrived:
+                t_out, off_out = arrival_s[vid], reached
+            else:
+                t_out, off_out = end_s, reached
+            wait = t_out - t_hold
+            if geom is not None and off_hold is not None and off_out is not None:
+                wait -= geom.free_flow_between_s(off_hold, off_out, v0)
+        cols["veh_id"].append(vid)
+        cols["route"].append(rid)
+        cols["origin_ramp"].append(_route_origin(rid))
+        cols["depart_planned_s"].append(float(depart_planned_s[vid]))
+        cols["route_length_m"].append(None if geom is None else geom.length_m)
+        cols["free_flow_s"].append(None if geom is None else geom.free_flow_s(v0))
+        cols["inserted"].append(vid in depart_s)
+        cols["depart_s"].append(depart_s.get(vid))
+        cols["insert_offset_m"].append(offset)
+        cols["arrived"].append(arrived)
+        cols["arrival_s"].append(arrival_s.get(vid))
+        cols["distance_end_m"].append(distance_end_m.get(vid))
+        cols["free_flow_covered_s"].append(covered)
+        cols["meter_ramp"].append(meter_ramp.get(vid, -1))
+        cols["meter_hold_start_s"].append(meter_hold[vid][0] if vid in meter_hold else None)
+        cols["meter_released"].append(vid in meter_release)
+        cols["meter_release_s"].append(meter_release[vid][0] if vid in meter_release else None)
+        cols["meter_wait_s"].append(float(wait))
+    schema = pa.schema(_JOURNEYS_SCHEMA)
+    return pa.Table.from_arrays(
+        [pa.array(cols[name], type=dtype) for name, dtype in _JOURNEYS_SCHEMA], schema=schema
+    )
+
+
+def _journeys_meta(table: pa.Table, end_s: float, n_routes_unknown: int) -> dict[str, Any]:
+    """``meta.json["journeys"]``: whole-run totals of the :data:`JOURNEYS_FILE` table.
+
+    Whole-run and unwindowed (the warm-up is not discarded here; the scored
+    measures are ``validation.metrics.compute_waiting_metrics``). A vehicle
+    never inserted counts ``end_s − depart_planned_s`` of insertion delay
+    (censored at the run's end).
+
+    Args:
+        table: The journeys table.
+        end_s: Simulation time when the run ended [s].
+        n_routes_unknown: Plan route ids SUMO did not know (no geometry).
+
+    Returns:
+        The block.
+    """
+    planned = np.asarray(table.column("depart_planned_s").to_pylist(), dtype=np.float64)
+    depart = table.column("depart_s").to_pylist()
+    inserted = np.asarray(table.column("inserted").to_pylist(), dtype=np.bool_)
+    out_t = np.asarray([end_s if d is None else float(d) for d in depart], dtype=np.float64)
+    held = np.asarray(table.column("meter_ramp").to_pylist(), dtype=np.int64) >= 0
+    released = np.asarray(table.column("meter_released").to_pylist(), dtype=np.bool_)
+    return {
+        "file": JOURNEYS_FILE,
+        "end_s": float(end_s),
+        "n_planned": int(table.num_rows),
+        "n_inserted": int(inserted.sum()),
+        "n_not_inserted": int((~inserted).sum()),
+        "n_arrived": int(np.sum(table.column("arrived").to_pylist())),
+        "insertion_delay_s_total": float(np.sum(out_t - planned)),
+        "meter_wait_s_total": float(np.sum(table.column("meter_wait_s").to_pylist())),
+        "n_meter_held": int(held.sum()),
+        "n_meter_unreleased": int((held & ~released).sum()),
+        "n_route_ids_without_geometry": int(n_routes_unknown),
+    }
+
+
+def _meter_wait_totals(table: pa.Table) -> dict[int, float]:
+    """Summed ``meter_wait_s`` of the :data:`JOURNEYS_FILE` table per meter ramp index."""
+    totals: dict[int, float] = {}
+    ramps = table.column("meter_ramp").to_pylist()
+    waits = table.column("meter_wait_s").to_pylist()
+    for ramp, wait in zip(ramps, waits, strict=True):
+        if ramp is not None and ramp >= 0:
+            totals[int(ramp)] = totals.get(int(ramp), 0.0) + float(wait)
+    return totals
+
+
 #: Vehicle classes refused by a closed lane (every class this fleet can
 #: carry; SUMO names that exist in every supported version).
 CLOSURE_VCLASSES: Final[tuple[str, ...]] = (
@@ -6986,6 +7308,27 @@ def run_micro(
     # rerouted exiter (ws["gave_up"] only grows; its size is checked per step)
     depart_s_by_id: dict[str, float] = {}
     gave_up_at: dict[str, float] = {}
+    # JOURNEYS_FILE bookkeeping (reads only, WP-105): the named routes' edge
+    # lengths and base limits, read here — before the boundary schedule below
+    # or a VSL changes any limit; then per vehicle its insertion offset along
+    # the route, its arrival step, the step and route offset (insertion offset
+    # plus odometer) at which a ramp meter gave it its stop and released it,
+    # and its odometer when the run ended. Nothing here drives the simulation.
+    route_geom = _route_geometry(mod, route_by_id.values())
+    insert_pending: list[str] = []
+    insert_offset_by_id: dict[str, float | None] = {}
+    arrival_s_by_id: dict[str, float] = {}
+    meter_ramp_by_id: dict[str, int] = {}
+    meter_hold_by_id: dict[str, tuple[float, float | None]] = {}
+    meter_release_by_id: dict[str, tuple[float, float | None]] = {}
+    distance_end_by_id: dict[str, float] = {}
+
+    def _route_offset_now(vid: str) -> float | None:
+        # insertion offset plus odometer (a read-only TraCI query)
+        offset = insert_offset_by_id.get(vid)
+        return None if offset is None else offset + float(mod.vehicle.getDistance(vid))
+
+    end_s = 0.0
 
     # Measured downstream boundary condition (docs/CONTRACTS.md §2): a speed
     # schedule on the exit-buffer edge OUTSIDE the corridor proper, standard
@@ -7023,7 +7366,7 @@ def run_micro(
 
         net_for_meters = sumolib.net.readNet(str(bundle.net_path))
         chain_m = list(cfg.network.corridor_edges)
-        for ramp_m in cfg.network.ramps:
+        for k_ramp_m, ramp_m in enumerate(cfg.network.ramps):
             if ramp_m.kind != "on" or ramp_m.meter is None:
                 continue
             spec_r = ramp_m.meter
@@ -7040,6 +7383,8 @@ def run_micro(
             meter_states.append(
                 {
                     "ramp": ramp_m.name or last_edge,
+                    # index in meta.json["ramps"] (JOURNEYS_FILE meter_ramp)
+                    "ramp_index": k_ramp_m,
                     "spec": spec_r,
                     "fn": get_ramp_meter(spec_r.controller),
                     "params": {
@@ -7466,10 +7811,27 @@ def run_micro(
                 mod.vehicle.subscribe(vid, sub_vars)
                 n_departed += 1
                 depart_s_by_id[vid] = float(mod.vehicle.getDeparture(vid))
+                insert_pending.append(vid)
                 if has_ramps:
                     rid = route_by_id.get(vid, "main")
                     n_departed_by_route[rid] = n_departed_by_route.get(rid, 0) + 1
+            for vid in mod.simulation.getArrivedIDList():
+                arrival_s_by_id[vid] = t
             results = mod.vehicle.getAllSubscriptionResults()
+            # JOURNEYS_FILE (reads only): where along its route each vehicle
+            # inserted this step was put on the road, from its first
+            # subscription row.
+            for vid in insert_pending:
+                res_i = results.get(vid)
+                geom_i = route_geom.get(route_by_id.get(vid, "main"))
+                insert_offset_by_id[vid] = (
+                    None
+                    if res_i is None or geom_i is None
+                    else geom_i.offset_m(
+                        str(res_i[tc.VAR_ROAD_ID]), float(res_i[tc.VAR_LANEPOSITION])
+                    )
+                )
+            insert_pending.clear()
             # Fuel is accounted for every vehicle; the linear-x state (and
             # therefore controllers, VSL, trajectories) covers vehicles on
             # corridor edges only — ramp edges have no linear x.
@@ -7578,6 +7940,8 @@ def run_micro(
                         ms_r["seen_set"].add(vid)
                         if _meter_assign_stop(mod, ms_r, vid, e_r, step):
                             ms_r["stopped_set"].add(vid)
+                            meter_ramp_by_id[vid] = ms_r["ramp_index"]
+                            meter_hold_by_id[vid] = (t, _route_offset_now(vid))
                         else:
                             ms_r["n_passed_unstoppable"] += 1
                 on_edge = list(mod.edge.getLastStepVehicleIDs(ms_r["edge"]))
@@ -7591,6 +7955,7 @@ def run_micro(
                         front = max(waiting, key=lambda v: mod.vehicle.getLanePosition(v))
                         mod.vehicle.resume(front)
                         ms_r["stopped_set"].discard(front)
+                        meter_release_by_id[front] = (t, _route_offset_now(front))
                         ms_r["released"].append(t)
                         ms_r["last_release_s"] = t
 
@@ -7777,6 +8142,10 @@ def run_micro(
                 traj_writer.maybe_flush()
         running = frozenset(mod.vehicle.getIDList())
         n_arrived = n_departed - len(running)
+        # JOURNEYS_FILE (reads only): the end of the run and the odometer of
+        # every vehicle still in the network then (censored journeys).
+        end_s = float(mod.simulation.getTime())
+        distance_end_by_id = {vid: float(mod.vehicle.getDistance(vid)) for vid in sorted(running)}
     finally:
         mod.close()
 
@@ -7806,6 +8175,26 @@ def run_micro(
         ),
         run_dir / VEHICLES_FILE,
     )
+    journeys = _journey_table(
+        [plan.vehicle_id(i) for i in range(plan.n)],
+        route_by_id,
+        {plan.vehicle_id(i): plan.depart_s[i] for i in range(plan.n)},
+        {plan.vehicle_id(i): float(plan.params[i]["v0"]) for i in range(plan.n)},
+        route_geom,
+        depart_s_by_id,
+        insert_offset_by_id,
+        arrival_s_by_id,
+        distance_end_by_id,
+        meter_ramp_by_id,
+        meter_hold_by_id,
+        meter_release_by_id,
+        end_s,
+    )
+    _write_parquet(journeys, run_dir / JOURNEYS_FILE)
+    meter_wait_total = _meter_wait_totals(journeys)
+    journeys_meta = _journeys_meta(
+        journeys, end_s, len(set(route_by_id.values()) - set(route_geom))
+    )
     edge_len_by_id = dict(zip(bundle.edge_ids, bundle.edge_lengths, strict=True))
 
     fuel_ml = {vid: fuel_mg_to_ml(mg) for vid, mg in sorted(fuel_mg.items())}
@@ -7830,6 +8219,8 @@ def run_micro(
         "n_collisions": n_collisions,
         "collisions": collision_log,
         "n_vehicles_arrived": max(n_arrived, 0),
+        # the demand ledger's whole-run totals (JOURNEYS_FILE, WP-105)
+        "journeys": journeys_meta,
         "av_ids": list(plan.av_ids),
         "complied_ids": list(plan.complied_ids),
         "n_heavy": int(sum(plan.is_heavy)) if plan.is_heavy else 0,
@@ -7866,6 +8257,13 @@ def run_micro(
                 "interval_s": ms_r["spec"].interval_s,
                 "n_released": len(ms_r["released"]),
                 "n_passed_unstoppable": ms_r["n_passed_unstoppable"],
+                # WP-105 (JOURNEYS_FILE): vehicles given the meter's stop, those
+                # still held when the run ended, and their summed meter_wait_s
+                # (hold time minus the free-flow time of the stretch covered
+                # meanwhile, censored at the run's end) [s]
+                "n_held": sum(1 for r in meter_ramp_by_id.values() if r == ms_r["ramp_index"]),
+                "n_unreleased": len(ms_r["stopped_set"]),
+                "wait_s_total": meter_wait_total.get(ms_r["ramp_index"], 0.0),
                 "releases_s": ms_r["released"],
                 "rates": [[tt, rr, dd] for tt, rr, dd in ms_r["rates"]],
             }

@@ -3455,3 +3455,43 @@ worker; resumable; `--plan-only`, `--analyze-only`).
   against), `verdict ∈ {robust (≥ 0.90), uncertain, not_estimable}`,
   `protocol_verdict = rehearsal` below 10 samples × 5 seeds; collisions per
   arm and `zero_collisions`. Non-finite values are null.
+
+## Waiting time, strategy comparison and tuning (WP-105) — 2026-10-04
+
+Stage 1 item 10 of the Frisco plan (docs/FRISCO_PROTOCOL.md §8.2–8.4).
+
+- **Run outputs (§3):** `journeys.parquet` beside `vehicles.parquet` (whose
+  schema and bytes are unchanged): one row per planned vehicle, inserted or
+  not; columns and definitions on `validation.metrics.JOURNEY_COLUMNS`, which
+  must match `microsim.runner._JOURNEYS_SCHEMA` (tested); read with
+  `validation.metrics.read_journeys`. `meta.json["journeys"]`: `file, end_s,
+  n_planned, n_inserted, n_not_inserted, n_arrived, insertion_delay_s_total,
+  meter_wait_s_total, n_meter_held, n_meter_unreleased,
+  n_route_ids_without_geometry` (whole run). `meta.json["ramp_meters"][i]`
+  adds `n_held, n_unreleased, wait_s_total`. Meter wait = hold to release (or
+  arrival, or end) minus the free-flow time of the stretch covered meanwhile.
+- **Metrics (§7):** `WaitingMetrics` / `compute_waiting_metrics(run_dir,
+  warmup_s=None)` over the same window as `compute_metrics`; the demand is
+  every planned vehicle departing in [warm-up end, run end), the same set in
+  every arm; censoring at the run's end defined in the class docstring.
+  `Metrics` is unchanged. A run before WP-105 raises `FileNotFoundError`.
+- **Sweep:** `metrics.json` = `Metrics` ∪ `WaitingMetrics`; `FIELDS` appended
+  with `mean_tt_incl_waiting_s, p90_tt_incl_waiting_s,
+  total_delay_incl_waiting_veh_h, insertion_delay_veh_h, meter_wait_veh_h,
+  n_censored`; `run_records(root, cells, seeds)`; `--comparison PATH`.
+- **Comparison table (`validation.strategy_compare`):** fixed measures
+  `REQUIRED_KEYS` (throughput at x_ref, mean and p90 travel time including
+  waiting, total delay including waiting, σ_v temporal and spatial, wave
+  count and amplitude, collisions, fuel labelled a model estimate); 95 %
+  t-intervals per arm and paired differences by seed; raises
+  `ComparisonRefusedError` on a missing value, an unrecorded collision count,
+  differing seed sets or no baseline.
+- **Tuning (`scripts/strategy_tune.py`, `flowstate.strategy_tune/1`):** tree
+  `<out>/tuning/<cell>/<hash>/<seed>` and `<out>/evaluation/…` with
+  sweep-compatible manifests; candidate 0 is the textbook setting (corridor
+  sweep's own cell, same hash), candidates 1…N−1 unscrambled Halton points on
+  the declared box; tuning seeds are children (`0x74756E65`, i) of
+  `SeedSequence(scenario.seed)`, evaluation seeds `spawn_seeds(scenario.seed,
+  n)`, checked disjoint.
+- **Report:** `DELAY_RECOMMENDATION_METRIC` when every run of both groups
+  carries the ledger, else `RECOMMENDATION_METRIC`.
