@@ -1170,18 +1170,65 @@ def _th52_corridor_config(seed: int) -> ScenarioConfig:
     )
 
 
+#: Fill time excluded from the station-level flow check of
+#: ``test_th52_corridor_section_carries_free_flow_demand`` [s]: the 120-s
+#: warm-up the other T.H.52 lane tests use (:func:`_lane_speed_windows`).
+#: The observed inflow is compared without a travel-time lag; at the
+#: fixture's free-flow travel time to the section end (about 15-25 s) and its
+#: largest 5-min demand step (+285 veh/h) the lag moves the 18-minute mean by
+#: well under 1 %.
+TH52_FLOW_WARMUP_S = 120.0
+
+#: GEH bound of the station-level flow check (criterion (ii-a), revised
+#: 2026-10-04): the FHWA link-flow bound, applied to the hourly rate through
+#: the section's exit end (docs/FRISCO_PROTOCOL.md §9).
+TH52_FLOW_GEH = 5.0
+
+
+def _th52_observed_inflow_vph(t0: float, t1: float) -> float:
+    """Time-mean of the observed inflow into the section (S790 + rnd_91040,
+    the 5-min steps of :data:`TH52_OBSERVED_0530`) over ``[t0, t1)`` [veh/h]:
+    every vehicle of the section's demand passes its exit end, since nothing
+    leaves before the gore."""
+    d = TH52_OBSERVED_0530
+    steps = [
+        (t, q_main + q_on)
+        for (t, q_main), (_, q_on) in zip(d["mainline_vph"], d["entrance_vph"], strict=True)
+    ]
+    total = 0.0
+    for k, (t, q) in enumerate(steps):
+        end = steps[k + 1][0] if k + 1 < len(steps) else 1200.0
+        lo, hi = max(t, t0), min(end, t1)
+        if hi > lo:
+            total += q * (hi - lo)
+    return total / (t1 - t0)
+
+
 def _th52_corridor_state(paths) -> tuple[dict, pd.Series]:
     """The criteria of ``test_th52_corridor_section_carries_free_flow_demand``
-    read off a run: departures per entrance, the exit movement, and the mean
-    speed of every lane over the section's last 60 m per 5-min window."""
+    read off a run: departures per entrance, the exit movement, and the
+    station-level reading of the section's last 60 m (criterion (ii) as
+    revised on 2026-10-04): the vehicles crossing it, all lanes, as an
+    hourly rate against the observed inflow (GEH), and its vehicle-weighted
+    mean speed per 5-min window (each vehicle's mean speed over the 60 m,
+    averaged over the vehicles first seen there in the window: the
+    flow-weighted reading of a detector station across its lanes). The
+    former per-lane reading (every lane's sample mean speed per window) is
+    kept in the state as a diagnostic."""
     meta = json.loads(paths.meta.read_text())
     (ws,) = meta["weave_sections"]
     on = next(r for r in meta["ramps"] if r["name"] == "th52")
     net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
     x_end = sum(net.getEdge(e).getLength() for e in ("100", "101", "102"))
-    df = pd.read_parquet(paths.trajectories, columns=["t", "x", "lane", "v"])
+    df = pd.read_parquet(paths.trajectories, columns=["t", "veh_id", "x", "lane", "v"])
     end = df[(df.x >= x_end - 60.0) & (df.x < x_end) & (df.t < 1200.0)]
-    windows = end.groupby(["lane", (end.t // 300.0).astype(int)]).v.mean()
+    lane_windows = end.groupby(["lane", (end.t // 300.0).astype(int)]).v.mean()
+    per_vehicle = end.groupby("veh_id").agg(t_first=("t", "min"), v=("v", "mean"))
+    station = per_vehicle.groupby((per_vehicle.t_first // 300.0).astype(int)).v.mean()
+    crossing = per_vehicle[per_vehicle.t_first >= TH52_FLOW_WARMUP_S]
+    q_sim = len(crossing) * 3600.0 / (1200.0 - TH52_FLOW_WARMUP_S)
+    q_obs = _th52_observed_inflow_vph(TH52_FLOW_WARMUP_S, 1200.0)
+    geh = math.sqrt(2.0 * (q_sim - q_obs) ** 2 / (q_sim + q_obs))
     state = {
         "length_m": ws["length_m"],
         "mainline_departed": (
@@ -1191,12 +1238,15 @@ def _th52_corridor_state(paths) -> tuple[dict, pd.Series]:
         "entrance_departed": (on["n_departed"], on["n_planned"]),
         "n_collisions": meta["n_collisions"],
         "exits_given_up": (ws["n_missed_exit"], ws["n_reached_section_exiting"]),
-        "exit_end_lane_speed_by_5min": {
-            f"{lane}/{w}": round(float(v), 1) for (lane, w), v in windows.items()
+        "exit_end_flow_vph": (round(q_sim, 1), round(q_obs, 1)),
+        "exit_end_flow_geh": round(geh, 2),
+        "exit_end_station_speed_by_5min": {int(w): round(float(v), 1) for w, v in station.items()},
+        "diagnostic_exit_end_lane_speed_by_5min": {
+            f"{lane}/{w}": round(float(v), 1) for (lane, w), v in lane_windows.items()
         },
         "weave": {k: v for k, v in ws.items() if k.startswith(("n_", "wait"))},
     }
-    return state, windows
+    return state, station
 
 
 def _lane_speed_windows(df: pd.DataFrame, x0: float, lane: int) -> pd.Series:
@@ -1847,13 +1897,15 @@ class TestWeaveRun:
         reason="The T.H.52 section as the corridor compiles it, under the observed 05:30-05:50 "
         "movements on the corridor's fleet (docs/WEAVE_MODEL_PLAN.md, 2026-09-24 block 3, "
         "WP-61; the gore link's class corrected to the corridor's, 2026-09-25 block 3, WP-74, "
-        "and the 12th St / Jackson exit's, WP-83): "
-        "the T.H.52 entrance departs 370 / 329 / 323 of 407 at seeds 3 / 4 / 5 "
-        "(387 required), and the section's last 60 m read below 20 m/s in 11 / 10 / 14 of "
-        "the 16 lane-windows — the auxiliary lane at 8.6 / 9.4 / 3.7 m/s at its lowest, "
-        "lane 1 at 11.5 / 14.0 / 4.5; the mainline departs 1,160 / 1,149 / 1,139 of 1,196 "
-        "(1,137 required), 1 / 1 / 4 exits are given up of 360 / 377 / 380 reaching the "
-        "section, no collision",
+        "and the 12th St / Jackson exit's, WP-83), scored with criterion (ii) at station "
+        "level as revised on 2026-10-04 (docs/FRISCO_PROTOCOL.md §9): the T.H.52 entrance "
+        "departs 370 / 329 / 323 of 407 at seeds 3 / 4 / 5 (387 required); the section's "
+        "exit end carries 4,100 / 3,813 / 3,697 veh/h after the fill against 4,877 observed "
+        "(GEH 11.6 / 16.1 / 18.0, under 5 required) at a station speed of 17.8 / 17.1 / 12.0 "
+        "m/s at its lowest 5-min window (above 20 required); the mainline departs 1,160 / "
+        "1,149 / 1,139 of 1,196 (1,137 required), 1 / 1 / 4 exits are given up of 360 / "
+        "377 / 380 reaching the section, no collision. The former per-lane reading (kept as "
+        "a diagnostic) is unchanged: 11 / 10 / 14 of 16 lane-windows below 20 m/s",
     )
     def test_th52_corridor_section_carries_free_flow_demand(self, tmp_path):
         """The corridor's T.H.52 weaving section carries its observed demand in
@@ -1872,10 +1924,18 @@ class TestWeaveRun:
         observation: (i) the section takes its demand — at least 95 % of the
         planned vehicles depart on the mainline and on the T.H.52 entrance;
         (ii) free flow at the exit end, where the corridor restricts first
-        (VM O, docs/ONBOARDING_MNDOT.md §11) — every lane's mean speed over
-        the section's last 60 m above :data:`TH52_FREE_FLOW_MS` in every
-        5-min window (the observation's aggregation), the boundary the
-        corridor's record dates its queue with; (iii) no collision; (iv) at
+        (VM O, docs/ONBOARDING_MNDOT.md §11), read as a detector station
+        reads it (revised 2026-10-04, docs/FRISCO_PROTOCOL.md §9; the
+        owner delegated the choice): (ii-a) the vehicles crossing the
+        section's last 60 m, all lanes, after a :data:`TH52_FLOW_WARMUP_S`
+        fill, as an hourly rate within GEH < :data:`TH52_FLOW_GEH` of the
+        observed inflow (S790 + rnd_91040), and (ii-b) their vehicle-weighted
+        mean speed above :data:`TH52_FREE_FLOW_MS` in every 5-min window (the
+        observation's aggregation), the boundary the corridor's record dates
+        its queue with. Until 2026-10-04 (ii) required every lane's mean
+        speed above that bound in every window — a reading no loop station
+        makes (stations report the cross-section); that per-lane reading is
+        kept in the state as a diagnostic; (iii) no collision; (iv) at
         most 2 % of the exit-bound vehicles that reach the section given up
         at the gore's end (``n_missed_exit``), since the exit fraction is the
         conservation closure of counts that every exiter left by.
@@ -1899,7 +1959,8 @@ class TestWeaveRun:
         assert state["n_collisions"] == 0, state
         assert main_departed >= 0.95 * main_planned, state
         assert on_departed >= 0.95 * on_planned, state
-        assert len(windows) == 16 and (windows > TH52_FREE_FLOW_MS).all(), state
+        assert state["exit_end_flow_geh"] < TH52_FLOW_GEH, state
+        assert len(windows) == 4 and (windows > TH52_FREE_FLOW_MS).all(), state
         assert reached > 0 and given_up <= 0.02 * reached, state
 
     def test_two_sections_are_stepped_and_listed_upstream_first(self, tmp_path):
