@@ -173,7 +173,15 @@ many calibration iterations were made.
    and amplitude, collisions, and fuel (labelled a model estimate).
 4. **Tuning:** every strategy gets the same tuning budget (the same number
    of candidate settings), tuned on **tuning seeds** and evaluated on
-   separate **evaluation seeds** (at least 20) never used in tuning.
+   separate **evaluation seeds** (at least 20) never used in tuning. The
+   tuning objective is fixed before tuning starts: total delay including
+   waiting time (vehicle-hours over the study period, all vehicles of the
+   demand, §8.2), unless the agency's question (§1) names another measure,
+   in which case that measure is written here as a dated amendment before
+   the first tuning run. A setting with any collision is disqualified; a
+   setting whose throughput at the reference section is lower than the
+   baseline's (the paired difference's 95 % interval entirely below zero)
+   is reported but cannot be selected as the strategy's best.
 5. **Uncertainty:** the best setting of each strategy and the baseline are
    re-run with the driver settings and demand varied within their plausible
    ranges (item 11): at least 10 parameter samples (Latin hypercube) of

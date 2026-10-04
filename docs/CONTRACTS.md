@@ -3299,3 +3299,39 @@ lag-aligned conservation core `calibration.conservation`, the input layer
 - Both scripts write JSON and markdown with the git commit, `code_dirty`
   (their own code paths: the script, `packages/calibration`,
   `packages/flowstate_core`, `pyproject.toml`, `uv.lock`) and input hashes.
+
+## Layout audit (`microsim.layout_audit`, WP-102) — 2026-10-04
+
+Stage 1 item 4 of the Frisco plan (docs/FRISCO_PROTOCOL.md §7.3; the human
+procedure is docs/LAYOUT_CHECKLIST.md). `audit_layout(net_path, osm_path,
+corridor_edges, *, ramps=None, corridor, netconvert_extra, patch_files,
+terminated_lanes) -> LayoutAudit`; CLI `scripts/layout_audit.py`. An
+inspection tool: it changes no network.
+
+- **`flowstate.layout_audit/1`:** `corridor, net_path, osm_path,
+  corridor_edges, chain, length_m, ramp_guessing, netconvert_extra,
+  patch_files, terminated_lanes, counts, checks[] (id, letter, title, rule,
+  constant, reason), cannot_see[], segments[], events[], provenance`.
+  `segments[]`: `index, edge, osm_way, x_start_m, x_end_m, length_m, lanes,
+  osm_lanes, osm_lanes_tag, speed_ms, speed_kmh, speed_mph, osm_maxspeed,
+  osm_maxspeed_ms, guessed_piece, lat, lon, links{satellite, satellite_alt,
+  street_view}, flags[]`. `events[]`: `index, kind ∈ {off_ramp, cd_road,
+  lane_drop, lane_gain, speed_change, on_ramp, weave}, x_m, segment, edge,
+  description, look_for, lat, lon, links, flags[], detail`. `flags[]`:
+  `check, severity ∈ {defect, warning, info}, message, look_for`.
+- **Checks:** (a) `on_ramp_side` (the merge counterpart of the split audit),
+  (b) `no_accel_lane` (no added lane, or one shorter than 100 m), (c)
+  `lanes_vs_osm`, (d) `lane_change_not_in_osm`, (e) `speed_limit` (missing
+  `maxspeed`, or compiled speed off it by more than 0.5 m/s), (f)
+  `short_segment` (< 20 m), (g) `split_side` (the split audit's verdict).
+- **Positions:** x along the compiled chain (§3); WGS84 from
+  `microsim.geo.net_xy_to_lonlat` (new `utm_inverse`, Snyder 1987; sumolib's
+  own conversion needs pyproj, not a dependency). Lanes SUMO-indexed (0 =
+  rightmost).
+- **Network:** the CLI audits the runner's own network
+  (`microsim.runner._build_network`, merge-model patches included);
+  provenance holds the commit, `code_dirty` (the script, `packages/microsim`,
+  `packages/flowstate_core`, `pyproject.toml`, `uv.lock`), the config hash
+  and sha256 of the extract and patches. CSV and markdown end with empty
+  `checked_by`, `imagery_date`, `result` columns (`matches`, `differs: …`,
+  `cannot tell: …`). Exit codes: 0; 2 usage; 4 with `--fail-on-defect`.

@@ -156,6 +156,63 @@ def utm_forward(lon_deg: float, lat_deg: float, zone: int) -> tuple[float, float
     return x + _FALSE_EASTING_M, y
 
 
+def utm_inverse(easting: float, northing: float, zone: int) -> tuple[float, float]:
+    """UTM easting/northing [m] → WGS84 lon/lat (northern hemisphere).
+
+    The inverse of :func:`utm_forward`: Snyder (1987), USGS PP 1395,
+    Transverse Mercator, inverse formulas for the ellipsoid (footpoint
+    latitude from the rectifying latitude μ, then the series in
+    ``D = x / (N₁ k₀)``). Added 2026-10-04 for the layout audit
+    (:mod:`microsim.layout_audit`), which needs the lat/lon of points on a
+    compiled network: ``sumolib``'s ``Net.convertXY2LonLat`` needs ``pyproj``,
+    which is not a dependency. A round trip through :func:`utm_forward` agrees
+    to under a millimetre across a UTM zone
+    (``tests/test_microsim/test_microsim_layout_audit.py``).
+
+    Args:
+        easting: UTM easting [m], including the 500 km false easting.
+        northing: UTM northing [m] from the equator.
+        zone: UTM zone number (1–60).
+
+    Returns:
+        ``(lon_deg, lat_deg)``.
+    """
+    lam0 = math.radians((zone - 1) * 6 - 180 + 3)
+    x = easting - _FALSE_EASTING_M
+    e4, e6 = _E2**2, _E2**3
+    m = northing / _K0
+    mu = m / (_A * (1 - _E2 / 4 - 3 * e4 / 64 - 5 * e6 / 256))
+    e1 = (1 - math.sqrt(1 - _E2)) / (1 + math.sqrt(1 - _E2))
+    phi1 = (
+        mu
+        + (3 * e1 / 2 - 27 * e1**3 / 32) * math.sin(2 * mu)
+        + (21 * e1**2 / 16 - 55 * e1**4 / 32) * math.sin(4 * mu)
+        + (151 * e1**3 / 96) * math.sin(6 * mu)
+        + (1097 * e1**4 / 512) * math.sin(8 * mu)
+    )
+    sin1, cos1, tan1 = math.sin(phi1), math.cos(phi1), math.tan(phi1)
+    c1 = _EP2 * cos1**2
+    t1 = tan1**2
+    n1 = _A / math.sqrt(1 - _E2 * sin1**2)
+    r1 = _A * (1 - _E2) / (1 - _E2 * sin1**2) ** 1.5
+    d = x / (n1 * _K0)
+    phi = phi1 - (n1 * tan1 / r1) * (
+        d**2 / 2
+        - (5 + 3 * t1 + 10 * c1 - 4 * c1**2 - 9 * _EP2) * d**4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1**2 - 252 * _EP2 - 3 * c1**2) * d**6 / 720
+    )
+    lam = (
+        lam0
+        + (
+            d
+            - (1 + 2 * t1 + c1) * d**3 / 6
+            + (5 - 2 * c1 + 28 * t1 - 3 * c1**2 + 8 * _EP2 + 24 * t1**2) * d**5 / 120
+        )
+        / cos1
+    )
+    return math.degrees(lam), math.degrees(phi)
+
+
 @dataclass(frozen=True)
 class NetProjection:
     """A compiled network's projection: UTM zone plus ``netOffset``.
@@ -174,6 +231,10 @@ class NetProjection:
         """WGS84 lon/lat → network coordinates [m]."""
         x, y = utm_forward(lon, lat, self.zone)
         return x + self.offset_x, y + self.offset_y
+
+    def to_lonlat(self, x: float, y: float) -> tuple[float, float]:
+        """Network coordinates [m] → WGS84 ``(lon, lat)`` (:func:`utm_inverse`)."""
+        return utm_inverse(x - self.offset_x, y - self.offset_y, self.zone)
 
 
 def _projection_from_strings(proj_parameter: str, net_offset: str, where: str) -> NetProjection:
@@ -244,6 +305,26 @@ def lonlat_to_net_xy(net: Any, lon: float, lat: float) -> tuple[float, float]:
         ``(x, y)`` in network coordinates [m].
     """
     return net_projection(net).to_xy(lon, lat)
+
+
+def net_xy_to_lonlat(net: Any, x: float, y: float) -> tuple[float, float]:
+    """The network's projected coordinates [m] → WGS84 ``(lon, lat)``.
+
+    The inverse of :func:`lonlat_to_net_xy`, in place of ``sumolib``'s
+    ``Net.convertXY2LonLat`` (which needs ``pyproj``).
+
+    Args:
+        net: A ``sumolib.net.Net`` with a UTM projection.
+        x: Network x [m].
+        y: Network y [m].
+
+    Returns:
+        ``(lon, lat)`` in degrees.
+
+    Raises:
+        ValueError: The network carries no UTM projection.
+    """
+    return net_projection(net).to_lonlat(x, y)
 
 
 # --- chain geometry -----------------------------------------------------------
