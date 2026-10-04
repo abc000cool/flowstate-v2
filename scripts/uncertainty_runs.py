@@ -29,6 +29,15 @@ Run tree (``--out``)::
     <sample>/<arm>/<config hash>/<seed>/metrics.json (+ meta.json)
     uncertainty.json, uncertainty.md    the aggregate (validation.uncertainty)
 
+Driver ranges: give ``--transfer-check`` the corridor's ``transfer_check.json``
+(``scripts/transfer_check.py``, run on this scenario's population or on one it
+derives from by mean T / v0 alone) and each driver knob varies over the
+values whose model value stays inside the observed 95 % interval of the
+quantity it controls (WP-106b; ``validation.uncertainty.default_space``);
+without it the ranges are the wide protocol §7.2 measured range, flagged
+assumed. The file's path and sha256 enter the design (and so its key) only
+when it is given.
+
 Resumable: a run whose ``metrics.json`` exists is skipped; a ``DESIGN.json``
 from different inputs is refused. ``--plan-only`` prints the run count and
 the simulated time it costs and writes nothing; ``--analyze-only``
@@ -68,6 +77,7 @@ from corridor_sweep import FIELDS, _done, _worker, cell_config
 from flowstate_core.config import ScenarioConfig, config_hash
 from flowstate_core.strategies import STRATEGIES, needs_target
 from validation.uncertainty import (
+    BASIS_WORDS,
     DEFAULT_BASELINE,
     METRIC_LABELS,
     PARAMETER_KINDS,
@@ -312,10 +322,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace a kind's range; SOURCE (required) says where it comes from",
     )
     ap.add_argument(
+        "--transfer-check",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="the corridor's transfer_check.json (scripts/transfer_check.py): driver ranges "
+        "from its observed 95 %% intervals (protocol §8.5); without it the wide §7.2 "
+        "measured range is used, flagged assumed",
+    )
+    ap.add_argument(
         "--centre",
         choices=("measured", "configured"),
         default="measured",
-        help="driver ranges: the protocol §7.2 measured range (default), or that range "
+        help="the measured range (the driver range without --transfer-check, the cut and "
+        "fallback with it): the protocol §7.2 measured range (default), or that range "
         "narrowed to the configured mean ± 1 sd",
     )
     ap.add_argument("--x-ref", type=float, help="throughput cross-section [m]")
@@ -330,15 +350,33 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+def transfer_record(args: argparse.Namespace) -> dict[str, str] | None:
+    """``--transfer-check``'s path and sha256, None when not given."""
+    path: Path | None = getattr(args, "transfer_check", None)
+    if path is None:
+        return None
+    return {"path": str(path), "sha256": file_sha256(path)}
+
+
 def build_space(args: argparse.Namespace, base: ScenarioConfig) -> ParameterSpace:
     """The parameter space from the scenario and the range options."""
     heavy = (float(args.heavy_range[0]), float(args.heavy_range[1])) if args.heavy_range else None
+    record = transfer_record(args)
+    transfer = None
+    if record is not None:
+        transfer = json.loads(Path(record["path"]).read_text())
+        if not isinstance(transfer, dict):
+            raise ValueError(f"{record['path']}: not a transfer-check report")
     space = default_space(
         base,
         heavy_range=heavy,
         heavy_source=args.heavy_source,
         kinds=args.parameters,
         centre=args.centre,
+        transfer=transfer,
+        transfer_label=(
+            None if record is None else f"{record['path']} (sha256 {record['sha256'][:12]})"
+        ),
     )
     for kind, lo, hi, source in args.set_range:
         space = space.with_range(kind, float(lo), float(hi), source)
@@ -348,8 +386,12 @@ def build_space(args: argparse.Namespace, base: ScenarioConfig) -> ParameterSpac
 def design_inputs(
     args: argparse.Namespace, base: ScenarioConfig, space: ParameterSpace, arms: list[Arm]
 ) -> dict[str, Any]:
-    """Everything the design is a function of (its key covers exactly this)."""
-    return {
+    """Everything the design is a function of (its key covers exactly this).
+
+    The transfer check's path and sha256 are included only when it is given,
+    so a design without one keeps the key it had before the option existed.
+    """
+    inputs: dict[str, Any] = {
         "scenario": str(args.scenario),
         "scenario_sha256": file_sha256(args.scenario),
         "base_config_hash": config_hash(base),
@@ -360,6 +402,10 @@ def design_inputs(
         "arms": [a.to_dict() for a in arms],
         "metrics_args": {"x_ref": float(args.x_ref), "span": [float(v) for v in args.span]},
     }
+    record = transfer_record(args)
+    if record is not None:
+        inputs["transfer_check"] = record
+    return inputs
 
 
 def plan_lines(
@@ -380,8 +426,15 @@ def plan_lines(
             f"{PROTOCOL_MIN_SEEDS} seeds): a rehearsal, labelled as one in the outputs"
         )
     for p in space.parameters:
+        basis = "basis not stated" if p.basis is None else BASIS_WORDS[p.basis]
         lines.append(
-            f"  {p.name}: {p.low:.4g} – {p.high:.4g}{' (assumed)' if p.assumed else ''}; {p.source}"
+            f"  {p.name}: {p.low:.4g} – {p.high:.4g} [{basis}]"
+            f"{' (assumed)' if p.assumed else ''}; {p.source}"
+        )
+    if any(p.basis == "measured_range" for p in space.parameters):
+        lines.append(
+            "driver ranges: the wide §7.2 measured range, flagged assumed — give --transfer-check "
+            "<corridor>/transfer_check.json for ranges from the observed intervals"
         )
     return lines
 
@@ -545,6 +598,7 @@ def analyze(root: Path, summary: Path | None, headline: str | None) -> Uncertain
         "arms": design["arms"],
         "metrics_args": design["metrics_args"],
         "metrics_source": "scripts/corridor_sweep.py _worker (validation.metrics.compute_metrics)",
+        **({"transfer_check": design["transfer_check"]} if "transfer_check" in design else {}),
         "design_provenance": design["provenance"],
         "analysed_at": _now(),
         "code": git_head(),
@@ -632,6 +686,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             ScenarioConfig.model_validate(arm.config(base_doc))
         except ValueError as exc:
             raise SystemExit(f"arm {arm.name}: {exc}") from exc
+    if args.transfer_check is not None and not args.transfer_check.is_file():
+        raise SystemExit(f"--transfer-check {args.transfer_check}: not found")
     try:
         space = build_space(args, base)
     except ValueError as exc:

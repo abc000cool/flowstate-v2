@@ -198,9 +198,21 @@ many calibration iterations were made.
    re-run with the driver settings and demand varied within their plausible
    ranges (item 11): at least 10 parameter samples (Latin hypercube) of
    driver population and demand scaling within their measured
-   uncertainty, each with at least 5 seeds. A strategy's effect is called
-   robust only if its sign holds in at least 90 % of the samples; otherwise
-   the report says the effect is uncertain.
+   uncertainty, each with at least 5 seeds. The ranges are fixed before any
+   run: demand, one corridor-wide factor within ± the data-quality
+   artifact's count error; the population's mean time headway and mean
+   desired speed, the values whose model capacity per lane and free-flow
+   speed stay inside the observed 95 % intervals of the driver-settings
+   check (item 8), clipped to the §7.2 measured range — where the check
+   gives no interval, the §7.2 range itself, labelled assumed; truck share,
+   the classification-count interval, else ± 3 points labelled assumed.
+   (The §7.2 range is the spread of individual drivers, the range
+   calibration may choose from; it is not the uncertainty of a calibrated
+   corridor and is used here only as a labelled fallback.) A strategy's
+   effect is called robust only if its sign holds in at least 90 % of the
+   samples, a sample without an estimate counting against it; otherwise
+   the report says the effect is uncertain. Designs below 10 samples × 5
+   seeds are rehearsals and state no verdict.
 6. **Fuel:** model estimates (SUMO's HBEFA emission classes), never measured
    fuel; reported as estimates until Stage 2 item 20 is done.
 

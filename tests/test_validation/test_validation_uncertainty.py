@@ -5,8 +5,11 @@ refusal of a source-less range, the default space of a scenario (every range
 sourced, assumed ones flagged), ``apply`` (valid configs, distinct and
 reproducible hashes, derived populations written once), the two-level
 variance combination against a hand computation, the §8.5 robustness verdict
-at its boundary, and the aggregate's JSON/markdown. No simulation runs; the
-only files read are the small population artifacts written to ``tmp_path``.
+at its boundary, and the aggregate's JSON/markdown. Driver ranges from a
+transfer-check report (WP-106b): observed intervals, fallbacks flagged
+assumed, the cut to the measured range, a derived population, the refusals,
+the truck share, every range's basis. No simulation runs; the only files read
+are the small population artifacts written to ``tmp_path``.
 """
 
 from __future__ import annotations
@@ -109,7 +112,9 @@ def test_constants_agree_with_the_calibration_package() -> None:
     assert unc.MEASURED_RANGE_SIGMAS == transfer_check.MEASURED_RANGE_SIGMAS
     assert unc.HEAVY_SHARE_ASSUMED_HALF_WIDTH == transfer_check.HEAVY_SHARE_TOLERANCE
     assert unc.HEAVY_FRACTION_BOUNDS == transfer_check.HEAVY_SHARE_RANGE
+    assert unc.TRANSFER_SCHEMA == transfer_check.TRANSFER_SCHEMA
     assert set(unc.KIND_MAPS_TO) == set(PARAMETER_KINDS)
+    assert set(unc.BASIS_WORDS) == set(unc.RANGE_BASES)
     assert unc.ROBUST_SIGN_SHARE == 0.90
     assert (unc.PROTOCOL_MIN_SAMPLES, unc.PROTOCOL_MIN_SEEDS) == (10, 5)
 
@@ -209,12 +214,17 @@ def test_default_space_of_an_artifact_population(population: Path) -> None:
     space = default_space(_cfg(population))
     assert [p.kind for p in space.parameters] == ["demand_scale", "t_scale", "v0_scale"]
     d, t, v = space.parameters
-    assert (d.low, d.high, d.assumed) == (0.95, 1.05, False)
+    assert (d.low, d.high, d.assumed, d.basis) == (0.95, 1.05, False, "count_error")
     assert "DEFAULT_COUNT_ERROR" in d.source
     # T 1.3 ± 0.5 within 0.8–2.2 → 0.8–1.8; v0 32 ± 5 within 25–38 → 27–37
     assert t.low == pytest.approx(0.8 / 1.3) and t.high == pytest.approx(1.8 / 1.3)
     assert v.low == pytest.approx(27.0 / 32.0) and v.high == pytest.approx(37.0 / 32.0)
-    assert not t.assumed and "sha256" in t.source and "MEASURED_RANGE_SIGMAS" in t.source
+    assert "sha256" in t.source and "MEASURED_RANGE_SIGMAS" in t.source
+    # without a transfer check the wide §7.2 range is used, and said to be assumed (WP-106b)
+    for p in (t, v):
+        assert p.assumed and p.basis == "measured_range"
+        assert p.source.startswith("assumed — the wide transfer range")
+        assert "not a calibration uncertainty" in p.source and "no transfer check" in p.source
     assert all(p.nominal == 1.0 for p in space.parameters)
 
 
@@ -262,7 +272,7 @@ def test_a_scalar_fleet_is_flagged_assumed_and_a_ring_has_no_demand() -> None:
     )
     space = default_space(ring)
     assert [p.kind for p in space.parameters] == ["t_scale", "v0_scale"]
-    assert all(p.assumed for p in space.parameters)
+    assert all(p.assumed and p.basis == "configured_spread" for p in space.parameters)
     with pytest.raises(ValueError, match="no inflow"):
         default_space(ring, kinds=["demand_scale"])
 
@@ -597,3 +607,217 @@ def test_a_configured_mean_outside_the_measured_range_is_said(
     t = default_space(_cfg(derived), kinds=["t_scale"]).parameters[0]
     assert "the configured mean lies outside this range" in t.source
     assert t.high < 1.0
+
+
+# --- driver ranges from the corridor's transfer check (WP-106b) -------------------------------
+
+
+def _entry(knob: str, parameter: str, ref: float, spec: tuple[str, float, float]) -> dict[str, Any]:
+    basis, lo, hi = spec
+    if basis == "observed_interval":
+        return {
+            "knob": knob,
+            "parameter": parameter,
+            "reference_mean": ref,
+            "low": lo / ref,
+            "high": hi / ref,
+            "parameter_low": lo,
+            "parameter_high": hi,
+            "basis": basis,
+            "reason": f"synthetic interval reading for {knob}",
+            "clipped": False,
+            "measured_range": [0.5, 1.5],
+            "observed_interval": [1.0, 2.0],
+            "curve": "analytical",
+        }
+    return {
+        "knob": knob,
+        "parameter": parameter,
+        "reference_mean": ref,
+        "low": 0.5,
+        "high": 1.5,
+        "parameter_low": 0.5 * ref,
+        "parameter_high": 1.5 * ref,
+        "basis": "measured_range_fallback",
+        "reason": "only a lower bound of the capacity was observed",
+        "clipped": False,
+        "measured_range": [0.5, 1.5],
+        "observed_interval": None,
+        "curve": None,
+    }
+
+
+def _transfer(
+    checked: Path,
+    *,
+    t: tuple[str, float, float] = ("observed_interval", 1.1, 1.5),
+    v0: tuple[str, float, float] = ("observed_interval", 30.0, 34.0),
+    model: str = "IDM",
+    heavy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A transfer-check report (schema flowstate.transfer_check/1) run on ``checked``."""
+    cal = IDMCalibration.load(checked)
+    return {
+        "schema": "flowstate.transfer_check/1",
+        "model": {
+            "model": model,
+            "population_sources": {
+                "idm_calibration": str(checked),
+                "idm_calibration_sha256": unc.file_sha256(checked),
+            },
+        },
+        "observed": {"heavy": heavy or {"available": False}},
+        "comparisons": [
+            {"quantity": "truck_share"},
+            {
+                "quantity": "free_flow_speed",
+                "uncertainty_range": _entry("v0_scale", "v0", cal.mean["v0"], v0),
+            },
+            {
+                "quantity": "capacity_per_lane",
+                "uncertainty_range": _entry("t_scale", "T", cal.mean["T"], t),
+            },
+        ],
+    }
+
+
+LABEL = "runs/x/transfer_check.json (sha256 0123456789ab)"
+
+
+def test_transfer_ranges_are_the_observed_intervals(population: Path) -> None:
+    space = default_space(_cfg(population), transfer=_transfer(population), transfer_label=LABEL)
+    d, t, v = space.parameters
+    assert d.basis == "count_error"
+    # mean T 1.1–1.5 s and v0 30–34 m/s, inside the measured 0.8–1.8 / 27–37, as factors
+    assert (t.low, t.high) == (pytest.approx(1.1 / 1.3), pytest.approx(1.5 / 1.3))
+    assert (v.low, v.high) == (pytest.approx(30.0 / 32.0), pytest.approx(34.0 / 32.0))
+    for p in (t, v):
+        assert not p.assumed and p.basis == "observed_interval"
+        assert p.source.startswith(f"observed — {LABEL}, run on this population")
+        assert f"synthetic interval reading for {p.kind}" in p.source
+        assert "cut to" not in p.source
+
+
+def test_a_transfer_fallback_is_the_measured_range_flagged_assumed(population: Path) -> None:
+    transfer = _transfer(population, t=("measured_range_fallback", 0.0, 0.0))
+    t, v = default_space(
+        _cfg(population), kinds=["t_scale", "v0_scale"], transfer=transfer, transfer_label=LABEL
+    ).parameters
+    assert t.assumed and t.basis == "measured_range_fallback"
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.8 / 1.3))
+    assert "gave no observed-interval range: only a lower bound of the capacity" in t.source
+    assert "not a calibration uncertainty" in t.source and "MEASURED_RANGE_SIGMAS" in t.source
+    assert not v.assumed and v.basis == "observed_interval"
+
+
+def test_a_transfer_range_is_cut_to_the_measured_range(population: Path) -> None:
+    partly = _transfer(population, t=("observed_interval", 0.6, 1.0))
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=partly).parameters[0]
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.0 / 1.3))
+    assert not t.assumed and "cut to this population's measured range" in t.source
+    assert "the configured mean lies outside this range" in t.source
+    outside = _transfer(population, t=("observed_interval", 0.5, 0.7))
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=outside).parameters[0]
+    assert t.assumed and t.basis == "measured_range_fallback"
+    assert "lies outside this population's measured range" in t.source
+
+
+def test_a_derived_population_carries_the_range_over_in_absolute_units(
+    population: Path, tmp_path: Path
+) -> None:
+    derived = _derive(population, tmp_path / "idm_adjusted.json", t=0.8)  # mean T 1.04 s
+    transfer = _transfer(population, t=("observed_interval", 1.0, 1.2))
+    t = default_space(_cfg(derived), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert (t.low, t.high) == (pytest.approx(1.0 / 1.04), pytest.approx(1.2 / 1.04))
+    assert not t.assumed and "differs from in mean T / v0 alone" in t.source
+
+
+def test_a_transfer_check_of_another_population_is_refused(
+    population: Path, tmp_path: Path
+) -> None:
+    other = _derive(population, tmp_path / "idm_other.json", t=1.0, s0=3.0)
+    with pytest.raises(ValueError, match="another driver population"):
+        default_space(_cfg(other), transfer=_transfer(population))
+    gone = _transfer(population)
+    gone["model"]["population_sources"]["idm_calibration_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="missing or changed"):
+        default_space(_cfg(other), transfer=gone)
+    with pytest.raises(ValueError, match="EIDM"):
+        default_space(_cfg(population), transfer=_transfer(population, model="EIDM"))
+    scalar = ScenarioConfig.model_validate(_osm_doc({"T": 1.4, "v0": 30.0}))
+    with pytest.raises(ValueError, match="artifact population"):
+        default_space(scalar, transfer=_transfer(population))
+    # a space without driver knobs does not need the population
+    only_demand = default_space(_cfg(other), kinds=["demand_scale"], transfer=_transfer(population))
+    assert [p.kind for p in only_demand.parameters] == ["demand_scale"]
+
+
+def test_only_a_transfer_check_with_ranges_is_read(population: Path) -> None:
+    with pytest.raises(ValueError, match="not a transfer-check report"):
+        default_space(_cfg(population), transfer={"schema": "flowstate.uncertainty/1"})
+    old = _transfer(population)
+    del old["comparisons"][2]["uncertainty_range"]
+    with pytest.raises(ValueError, match="predates WP-106b"):
+        default_space(_cfg(population), transfer=old)
+    wrong = _transfer(population)
+    wrong["comparisons"][1]["uncertainty_range"]["knob"] = "t_scale"
+    with pytest.raises(ValueError, match="not a v0_scale range"):
+        default_space(_cfg(population), transfer=wrong)
+
+
+def test_the_truck_share_interval_comes_from_the_transfer_check(population: Path) -> None:
+    heavy = {
+        "available": True,
+        "share": 0.094,
+        "interval": {"lo": 0.08, "hi": 0.11, "level": 0.95, "unit": "day", "n_units": 5},
+        "definition": "FHWA classes 5-13",
+    }
+    cfg = _cfg(population, heavy=True)
+    h = default_space(cfg, transfer=_transfer(population, heavy=heavy)).by_kind("heavy_fraction")
+    assert h is not None and not h.assumed and h.basis == "classification_interval"
+    assert (h.low, h.high) == (0.08, 0.11)
+    assert "classification counts of the transfer check" in h.source
+    assert "FHWA classes 5-13" in h.source
+    stated = default_space(
+        cfg,
+        heavy_range=(0.05, 0.07),
+        heavy_source="agency counts",
+        transfer=_transfer(population, heavy=heavy),
+    ).by_kind("heavy_fraction")
+    assert stated is not None and (stated.low, stated.high) == (0.05, 0.07)  # stated wins
+    flat = dict(heavy, interval={"lo": 0.12, "hi": 0.12, "level": 0.95, "unit": "day"})
+    h = default_space(cfg, transfer=_transfer(population, heavy=flat)).by_kind("heavy_fraction")
+    assert h is not None and h.assumed and h.basis == "assumed_tolerance"
+    assert "single value" in h.source
+    h = default_space(cfg, transfer=_transfer(population)).by_kind("heavy_fraction")
+    assert h is not None and h.assumed and "had no classification counts" in h.source
+
+
+def test_a_basis_is_validated_and_round_trips() -> None:
+    with pytest.raises(ValueError, match="unknown basis"):
+        UncertainParameter("d", "demand_scale", 0.9, 1.1, "x", basis="guess")  # type: ignore[arg-type]
+    p = UncertainParameter("d", "demand_scale", 0.9, 1.1, "x", basis="count_error")
+    assert UncertainParameter.from_dict(p.to_dict()) == p
+    legacy = {k: v for k, v in p.to_dict().items() if k != "basis"}
+    assert UncertainParameter.from_dict(legacy).basis is None
+    space = ParameterSpace((p,)).with_range("demand_scale", 0.8, 1.2, "agency's count accuracy")
+    assert space.parameters[0].basis == "stated"
+
+
+def test_the_report_says_which_basis_each_range_has(population: Path) -> None:
+    transfer = _transfer(population, t=("measured_range_fallback", 0.0, 0.0))
+    space = default_space(_cfg(population), transfer=transfer, transfer_label=LABEL)
+    samples = sample_space(space, 3, 1)
+    records = _records({s.sample_id: -5.0 for s in samples})
+    md = aggregate(records, space=space, samples=samples).to_markdown()
+    assert "| Parameter | Range | Base value | Basis | Assumed? | Source |" in md
+    assert "| observed 95 % interval (transfer check) | no |" in md
+    assert "| §7.2 measured range; the transfer check gave no interval | assumed |" in md
+    assert "| assumed detector count error | no |" in md
+    assert "- Driver ranges from the observed 95 % intervals (v0_scale)" in md
+    assert "- Driver ranges flagged assumed (t_scale)" in md
+    wide = default_space(_cfg(population))
+    md = aggregate(records, space=wide, samples=sample_space(wide, 3, 1)).to_markdown()
+    assert "§7.2 measured range; no transfer check given" in md
+    assert "- Driver ranges flagged assumed (t_scale, v0_scale)" in md
+    assert "Driver ranges from the observed" not in md

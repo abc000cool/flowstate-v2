@@ -104,6 +104,12 @@ class TestTransferCheckScript:
         assert payload["model"]["sidecars"] == []
         text = (out / "transfer_check.md").read_text()
         assert "## Recommendations" in text and "Driver population" in text
+        # each driver knob's range for the uncertainty runs (WP-106b)
+        ranges = {c["quantity"]: c.get("uncertainty_range") for c in payload["comparisons"]}
+        assert ranges["truck_share"] is None
+        assert ranges["free_flow_speed"]["knob"] == "v0_scale"
+        assert ranges["capacity_per_lane"]["knob"] == "t_scale"
+        assert "## Ranges for the uncertainty runs" in text
 
     def test_generic_per_lane_export_with_classification_counts(
         self, population: Path, tmp_path: Path

@@ -76,6 +76,22 @@ CLAUDE.md §3.1 calibration range), the value it would need and whether that
 fits. When nothing fits the report says so in so many words: the population
 cannot match this corridor inside its measured ranges.
 
+**Ranges for the uncertainty runs** (WP-106b, docs/FRISCO_PROTOCOL.md §8.5).
+For each knob with a model curve — the mean time headway (``t_scale``) for
+capacity per lane, the mean desired speed (``v0_scale``) for free-flow speed —
+:func:`uncertainty_range` gives the knob values whose model value stays inside
+the quantity's *observed* 95 % interval: the crossings of the interval's ends
+read off the same curve, and under the same earlier adjustments, as the
+recommendation (:func:`range_on_curve`), clipped to the knob's measured range.
+That is what is not known about *this* corridor's population; the measured
+range itself (the spread of individual drivers) is the range calibration may
+choose from. When there is no interval to read (not observed, no model value,
+only a lower bound, fewer than :data:`MIN_DAYS_FOR_INTERVAL` days, an
+``inconclusive`` verdict, or a curve that never enters the interval) the range
+falls back to the measured range, with the reason, and
+``validation.uncertainty`` labels it assumed. Recorded on the comparison as
+``uncertainty_range``.
+
 **Not done here.** No simulation is run; no per-location setting is ever
 proposed; nothing is fitted to the corridor (a needed value is read off a
 curve, and a person decides whether to apply it); no truck share is inferred
@@ -2545,6 +2561,67 @@ def model_side(
 # ---------------------------------------------------------------------------
 
 
+UncertaintyBasis = Literal["observed_interval", "measured_range_fallback"]
+"""Where a knob's uncertainty range comes from (:class:`UncertaintyRange`)."""
+
+
+@dataclass(frozen=True)
+class UncertaintyRange:
+    """A knob's range for the uncertainty runs (module docstring, WP-106b).
+
+    Attributes:
+        knob: ``t_scale`` or ``v0_scale``.
+        parameter: The passenger mean it multiplies (``T``, ``v0``).
+        reference_mean: That mean at knob 1.0 (the checked population's).
+        low: Lower end, as a factor on ``reference_mean``.
+        high: Upper end.
+        basis: ``observed_interval`` (the knob values whose model value stays
+            inside the observed interval) or ``measured_range_fallback`` (the
+            knob's measured range, because there was no interval to read).
+        reason: Why, in words.
+        clipped: An end was set by the span the curve may be read over (the
+            measured range, or that ∩ a simulated grid) rather than by a
+            crossing: the observed interval reaches beyond it.
+        measured_range: The knob's measured range (factors) — the clip and
+            the fallback.
+        observed_interval: The interval read (the point estimate included,
+            as :func:`judge_relative` widens it), when one was.
+        curve: ``analytical``/``simulated`` when read off a curve.
+    """
+
+    knob: str
+    parameter: str
+    reference_mean: float
+    low: float
+    high: float
+    basis: UncertaintyBasis
+    reason: str
+    clipped: bool
+    measured_range: tuple[float, float]
+    observed_interval: tuple[float, float] | None = None
+    curve: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form (factors and the parameter's own values)."""
+        return {
+            "knob": self.knob,
+            "parameter": self.parameter,
+            "reference_mean": _num(self.reference_mean),
+            "low": _num(self.low),
+            "high": _num(self.high),
+            "parameter_low": _num(self.low * self.reference_mean),
+            "parameter_high": _num(self.high * self.reference_mean),
+            "basis": self.basis,
+            "reason": self.reason,
+            "clipped": self.clipped,
+            "measured_range": [_num(self.measured_range[0]), _num(self.measured_range[1])],
+            "observed_interval": None
+            if self.observed_interval is None
+            else [_num(self.observed_interval[0]), _num(self.observed_interval[1])],
+            "curve": self.curve,
+        }
+
+
 @dataclass(frozen=True)
 class Comparison:
     """One quantity, observed against model.
@@ -2564,6 +2641,8 @@ class Comparison:
         rule: The rule, in words.
         verdict: ``ok``/``mismatch``/``inconclusive``/``not_available``.
         explanation: Why, in words.
+        uncertainty_range: The controlling knob's range for the uncertainty
+            runs (free-flow speed and capacity; None for the truck share).
     """
 
     quantity: str
@@ -2577,10 +2656,11 @@ class Comparison:
     rule: str
     verdict: Verdict
     explanation: str
+    uncertainty_range: UncertaintyRange | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON form."""
-        return {
+        """JSON form (``uncertainty_range`` only where there is one)."""
+        out: dict[str, Any] = {
             "quantity": self.quantity,
             "unit": self.unit,
             "observed": _num(self.observed),
@@ -2595,6 +2675,9 @@ class Comparison:
             "verdict": self.verdict,
             "explanation": self.explanation,
         }
+        if self.uncertainty_range is not None:
+            out["uncertainty_range"] = self.uncertainty_range.to_dict()
+        return out
 
 
 def judge_relative(
@@ -2810,6 +2893,187 @@ def _knob_curve(
         y = evaluate(x)
         ys.append(float("nan") if y is None else float(y))
     return xs, ys
+
+
+def range_on_curve(
+    xs: Sequence[float], ys: Sequence[float], lo: float, hi: float
+) -> tuple[float, float] | None:
+    """The smallest and largest ``x`` at which the piecewise-linear ``y(x)``
+    lies in ``[lo, hi]``, None when it never does.
+
+    The crossings of ``lo`` and ``hi`` are interpolated exactly as
+    :func:`solve_on_curve` interpolates (for a monotone curve each is the
+    one :func:`solve_on_curve` finds); points with a non-finite ``y`` break
+    the curve there. For a curve that leaves and re-enters the band the
+    result is the hull of the parts inside it.
+    """
+    x = np.asarray(xs, dtype=float)
+    y = np.asarray(ys, dtype=float)
+    order = np.argsort(x)
+    x, y = x[order], y[order]
+    lo, hi = min(lo, hi), max(lo, hi)
+
+    def on_edge(v: float, edge: float) -> bool:
+        return math.isclose(v, edge, rel_tol=1e-12, abs_tol=1e-12)
+
+    found: list[float] = []
+    for i in range(len(x)):
+        yi = float(y[i])
+        if math.isfinite(yi) and (lo <= yi <= hi or on_edge(yi, lo) or on_edge(yi, hi)):
+            found.append(float(x[i]))
+    for i in range(len(x) - 1):
+        y1, y2 = float(y[i]), float(y[i + 1])
+        if not (math.isfinite(y1) and math.isfinite(y2)):
+            continue
+        for edge in (lo, hi):
+            if (y1 - edge) * (y2 - edge) < 0.0:
+                found.append(float(x[i] + (edge - y1) * (x[i + 1] - x[i]) / (y2 - y1)))
+    return (min(found), max(found)) if found else None
+
+
+_KNOB_WORDS: Final[dict[str, str]] = {
+    "t_scale": "mean time headway (T)",
+    "v0_scale": "mean desired speed (v0)",
+}
+
+_QUANTITY_WORDS: Final[dict[str, str]] = {
+    "free_flow_speed": "free-flow speed",
+    "capacity_per_lane": "capacity per lane",
+}
+
+
+def uncertainty_range(
+    *,
+    knob: str,
+    parameter: str,
+    reference_mean: float,
+    comparison: Comparison,
+    measured: tuple[float, float],
+    curve: Callable[[], tuple[Sequence[float], Sequence[float]]] | None,
+    curve_kind: str | None,
+    span: tuple[float, float] | None = None,
+    span_text: str = "the measured range",
+    lower_bound: bool = False,
+    min_days: int = MIN_DAYS_FOR_INTERVAL,
+) -> UncertaintyRange:
+    """A knob's range for the uncertainty runs (module docstring, WP-106b).
+
+    Args:
+        knob: ``t_scale`` / ``v0_scale``.
+        parameter: The mean it multiplies (``T`` / ``v0``).
+        reference_mean: That mean at knob 1.0.
+        comparison: The comparison of the quantity the knob controls.
+        measured: The knob's measured range (factors): the clip, and the
+            range used when there is nothing to read.
+        curve: Returns the model curve ``(knob values, model values)`` —
+            the one the recommendation reads; called only when an interval
+            can be read. None when there is no model curve.
+        curve_kind: ``analytical``/``simulated``.
+        span: Where the curve may be read (default ``measured``; with a
+            simulated grid, ``measured`` ∩ the grid — never extrapolated).
+        span_text: ``span`` in words.
+        lower_bound: Only a lower bound of the quantity was observed.
+        min_days: Fewest days of an interval (the rules' value).
+
+    Returns:
+        The range: ``observed_interval`` when the curve could be read,
+        else ``measured_range_fallback`` with the reason.
+    """
+    c = comparison
+    what = _KNOB_WORDS.get(knob, knob)
+    quantity = _QUANTITY_WORDS.get(c.quantity, c.quantity.replace("_", " "))
+
+    def fallback(reason: str) -> UncertaintyRange:
+        return UncertaintyRange(
+            knob=knob,
+            parameter=parameter,
+            reference_mean=reference_mean,
+            low=measured[0],
+            high=measured[1],
+            basis="measured_range_fallback",
+            reason=reason,
+            clipped=False,
+            measured_range=measured,
+        )
+
+    if c.observed is None:
+        return fallback(f"{quantity} was not observed ({c.explanation})")
+    if lower_bound:
+        return fallback(
+            "only a lower bound of the capacity was observed (no station reached congestion), "
+            "so its interval bounds what the road carried, not what it can carry"
+        )
+    if c.model is None or curve is None:
+        return fallback(f"the model has no {quantity} value here ({c.explanation})")
+    if c.observed_interval is None:
+        return fallback(f"the {quantity} has no 95 % interval (fewer than {min_days} days of data)")
+    if c.verdict == "inconclusive":
+        return fallback(
+            f"the check is inconclusive for {quantity} ({c.explanation}): the data do not "
+            "settle where this population sits, so its interval is not used as the "
+            "population's uncertainty"
+        )
+    s_lo, s_hi = span if span is not None else measured
+    if not s_lo < s_hi:
+        return fallback(f"the span the curve may be read over ({span_text}) is empty")
+    iv_lo = min(c.observed_interval.lo, c.observed)
+    iv_hi = max(c.observed_interval.hi, c.observed)
+    xs, ys = curve()
+    pts = sorted(
+        (float(x), float(y)) for x, y in zip(xs, ys, strict=True) if math.isfinite(float(y))
+    )
+    hull = range_on_curve(xs, ys, iv_lo, iv_hi)
+    low, high = (max(hull[0], s_lo), min(hull[1], s_hi)) if hull is not None else (1.0, 0.0)
+    if hull is None or not low < high or not pts:
+        inside = [y for x, y in pts if s_lo - 1e-12 <= x <= s_hi + 1e-12]
+        spans = (
+            f"; over it the model's {quantity} spans {min(inside):.4g}–{max(inside):.4g} {c.unit}"
+            if inside
+            else ""
+        )
+        return fallback(
+            f"no value of the {what} in {span_text} keeps the model's {quantity} inside the "
+            f"observed interval {iv_lo:.4g}–{iv_hi:.4g} {c.unit}{spans}"
+        )
+
+    def strictly_inside(v: float) -> bool:
+        return (
+            iv_lo < v < iv_hi
+            and not math.isclose(v, iv_lo, rel_tol=1e-9)
+            and not math.isclose(v, iv_hi, rel_tol=1e-9)
+        )
+
+    (x_first, y_first), (x_last, y_last) = pts[0], pts[-1]
+    clip_low = hull[0] < s_lo - 1e-12 or (
+        math.isclose(hull[0], x_first, rel_tol=0.0, abs_tol=1e-12) and strictly_inside(y_first)
+    )
+    clip_high = hull[1] > s_hi + 1e-12 or (
+        math.isclose(hull[1], x_last, rel_tol=0.0, abs_tol=1e-12) and strictly_inside(y_last)
+    )
+    ends = [e for e, flag in (("low", clip_low), ("high", clip_high)) if flag]
+    reason = (
+        f"the {what} values whose model {quantity} stays inside the observed "
+        f"{c.observed_interval.level * 100:g} % interval {iv_lo:.4g}–{iv_hi:.4g} {c.unit}, read off "
+        f"the {curve_kind} curve over {span_text} ({s_lo:.4g}–{s_hi:.4g})"
+    )
+    if ends:
+        reason += (
+            f"; clipped at the {' and '.join(ends)} end{'s' if len(ends) > 1 else ''} to "
+            f"{span_text}, which the interval reaches beyond"
+        )
+    return UncertaintyRange(
+        knob=knob,
+        parameter=parameter,
+        reference_mean=reference_mean,
+        low=low,
+        high=high,
+        basis="observed_interval",
+        reason=reason,
+        clipped=bool(ends),
+        measured_range=measured,
+        observed_interval=(iv_lo, iv_hi),
+        curve=curve_kind,
+    )
 
 
 def _choose(quantity: str, knobs: list[Knob], *, unit_text: str) -> Recommendation:
@@ -3135,17 +3399,32 @@ def check_transfer(
         )
 
     # free-flow speed
+    ranges: dict[str, UncertaintyRange] = {}
     c = by_q["free_flow_speed"]
+    v_lo, v_hi, v_src = measured_range(population, "v0", sigmas, reference)
+    mean_v0 = population.passenger_means()["v0"]
+    g_lo, g_hi = v_lo / mean_v0, v_hi / mean_v0
+    ff_state = state
+
+    def ff_at_g(g: float) -> float | None:
+        return ev.ff_speed(replace(ff_state, v0_scale=g))[0]
+
+    def ff_curve() -> tuple[list[float], list[float]]:
+        return _knob_curve(g_lo, g_hi, 1.0, ff_at_g)
+
+    ranges["free_flow_speed"] = uncertainty_range(
+        knob="v0_scale",
+        parameter="v0",
+        reference_mean=mean_v0,
+        comparison=c,
+        measured=(g_lo, g_hi),
+        curve=ff_curve,
+        curve_kind="analytical",
+        min_days=th.min_days_for_interval,
+    )
     if c.verdict == "mismatch" and c.observed is not None:
         knobs: list[Knob] = []
-        v_lo, v_hi, v_src = measured_range(population, "v0", sigmas, reference)
-        mean_v0 = population.passenger_means()["v0"]
-        g_lo, g_hi = v_lo / mean_v0, v_hi / mean_v0
-
-        def ff_at_g(g: float) -> float | None:
-            return ev.ff_speed(replace(state, v0_scale=g))[0]
-
-        xs, ys = _knob_curve(g_lo, g_hi, 1.0, ff_at_g)
+        xs, ys = ff_curve()
         needed = solve_on_curve(xs, ys, c.observed, 1.0) if g_lo <= g_hi else None
         knobs.append(
             Knob(
@@ -3213,15 +3492,54 @@ def check_transfer(
 
     # capacity
     c = by_q["capacity_per_lane"]
+    t_lo, t_hi, t_src = measured_range(population, "T", sigmas, reference)
+    mean_t = population.passenger_means()["T"]
+    k_lo, k_hi = t_lo / mean_t, t_hi / mean_t
+    cap_state = state
+    cap_curve: Callable[[], tuple[list[float], list[float]]] | None = None
+    cap_span: tuple[float, float] | None = None
+    cap_span_text = "the measured range"
+    if model.capacity_basis == "simulated" and sidecar is not None:
+        sim_sidecar = sidecar
+        f_cur_sim = sidecar.candidate.t_scale_current or 1.0
+
+        def simulated_curve() -> tuple[list[float], list[float]]:
+            xs_s = [float(f / f_cur_sim) for f in sim_sidecar.scales]
+            ys_s = [
+                _simulated_at(ev, sim_sidecar, cap_state, float(f))[2] for f in sim_sidecar.scales
+            ]
+            return xs_s, ys_s
+
+        cap_curve = simulated_curve
+        grid = [float(f / f_cur_sim) for f in sidecar.scales]
+        cap_span = (max(k_lo, min(grid)), min(k_hi, max(grid)))
+        cap_span_text = "the measured range ∩ the simulated grid (not extrapolated)"
+    elif model.capacity_basis == "analytical":
+
+        def cap_at(k: float) -> float | None:
+            return ev.capacity(replace(cap_state, t_scale=k))[0]
+
+        def analytical_curve() -> tuple[list[float], list[float]]:
+            return _knob_curve(k_lo, k_hi, 1.0, cap_at)
+
+        cap_curve = analytical_curve
+    ranges["capacity_per_lane"] = uncertainty_range(
+        knob="t_scale",
+        parameter="T",
+        reference_mean=mean_t,
+        comparison=c,
+        measured=(k_lo, k_hi),
+        curve=cap_curve,
+        curve_kind=model.capacity_basis if cap_curve is not None else None,
+        span=cap_span,
+        span_text=cap_span_text,
+        lower_bound=lower,
+        min_days=th.min_days_for_interval,
+    )
     if c.verdict == "mismatch" and c.observed is not None:
-        t_lo, t_hi, t_src = measured_range(population, "T", sigmas, reference)
-        mean_t = population.passenger_means()["T"]
-        k_lo, k_hi = t_lo / mean_t, t_hi / mean_t
         target = c.observed_interval.lo if lower and c.observed_interval else c.observed
-        if model.capacity_basis == "simulated" and sidecar is not None:
-            f_cur = sidecar.candidate.t_scale_current or 1.0
-            xs = [float(f / f_cur) for f in sidecar.scales]
-            ys = [_simulated_at(ev, sidecar, state, float(f))[2] for f in sidecar.scales]
+        if model.capacity_basis == "simulated" and sidecar is not None and cap_curve is not None:
+            xs, ys = cap_curve()
             needed = solve_on_curve(xs, ys, target, 1.0)
             grid_lo, grid_hi = min(xs), max(xs)
             fits = (
@@ -3241,12 +3559,8 @@ def check_transfer(
             range_lo, range_hi = max(k_lo, grid_lo), min(k_hi, grid_hi)
             range_src = f"{t_src}; and the sidecar's simulated grid"
             available = True
-        elif model.capacity_basis == "analytical":
-
-            def cap_at(k: float) -> float | None:
-                return ev.capacity(replace(state, t_scale=k))[0]
-
-            xs, ys = _knob_curve(k_lo, k_hi, 1.0, cap_at)
+        elif model.capacity_basis == "analytical" and cap_curve is not None:
+            xs, ys = cap_curve()
             needed = solve_on_curve(xs, ys, target, 1.0)
             fits = needed is not None and k_lo - 1e-9 <= needed <= k_hi + 1e-9
             note = (
@@ -3319,6 +3633,7 @@ def check_transfer(
         "population_mean_T_s": population.passenger_means()["T"],
         "jam_spacing_m": jam,
     }
+    comparisons = [replace(c, uncertainty_range=ranges.get(c.quantity)) for c in comparisons]
     return TransferCheckReport(
         observed=observed,
         model=model,
@@ -3443,6 +3758,33 @@ def _heavy_sentence(report: TransferCheckReport) -> str:
     )
 
 
+def _range_sentence(u: UncertaintyRange) -> str:
+    """One plain sentence on a knob's uncertainty range."""
+    lo, hi = u.low * u.reference_mean, u.high * u.reference_mean
+    if u.parameter == "v0":
+        values = f"mean desired speed {ms_to_kmh(lo):.1f}–{ms_to_kmh(hi):.1f} km/h"
+    else:
+        values = f"mean time headway {lo:.2f}–{hi:.2f} s"
+    words = _KNOB_WORDS.get(u.knob, u.knob)
+    head = f"**{words[:1].upper()}{words[1:]}:** × {u.low:.3g}–{u.high:.3g} ({values})"
+    if u.basis == "observed_interval":
+        edge = "measured range or simulated grid" if u.curve == "simulated" else "measured range"
+        return (
+            f"{head}, the values that keep the model inside the observed 95 % interval"
+            + (
+                f" (cut at the edge of the {edge}, which the interval reaches beyond)"
+                if u.clipped
+                else ""
+            )
+            + "."
+        )
+    return (
+        f"{head}: the whole measured range, the spread of individual drivers rather than what is "
+        f"unknown about this corridor's population, so the uncertainty runs label it assumed; "
+        f"the reason: {u.reason}."
+    )
+
+
 def render_markdown(
     report: TransferCheckReport,
     *,
@@ -3529,6 +3871,17 @@ def render_markdown(
                 if k.note:
                     lines.append(f"- *{k.name}*: {k.note}.")
             lines.append("")
+    ranges = [c.uncertainty_range for c in report.comparisons if c.uncertainty_range is not None]
+    if ranges:
+        lines += [
+            "## Ranges for the uncertainty runs",
+            "",
+            "How far each driver setting is varied when results are tested for robustness "
+            "(docs/FRISCO_PROTOCOL.md §8.5):",
+            "",
+        ]
+        lines += [f"- {_range_sentence(u)}" for u in ranges]
+        lines.append("")
     lines += ["## Free-flow speed by station", ""]
     lines += [
         "| Station | Lanes | Limit | Windows | Days | Median | 15th–85th pct | Flow (veh/h/lane) |",

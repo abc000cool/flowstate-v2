@@ -32,31 +32,58 @@ each changes in a :class:`~flowstate_core.config.ScenarioConfig`
     of ``scripts/calibrate_capacity.py`` and of ``calibration.transfer_check``'s
     knobs; for a scalar fleet ``fleet.T`` / ``fleet.v0`` is multiplied. The
     heavy population is untouched (the transfer check's knobs act on the
-    passenger population only). Default range: the *measured range* of
+    passenger population only).
+
+    **With the corridor's transfer check** (``transfer``: the parsed
+    ``transfer_check.json``, schema :data:`TRANSFER_SCHEMA`; WP-106b) the
+    range is what is not known about *this corridor's* population: the knob
+    values whose model value stays inside the observed 95 % interval of the
+    quantity the knob controls — mean T ↔ capacity per lane, mean v0 ↔
+    free-flow speed — as ``calibration.transfer_check.uncertainty_range``
+    read them off its curves (basis ``observed_interval``, not assumed),
+    carried over in the parameter's own units (mean T in s, mean v0 in m/s)
+    and cut to this population's measured range below. Where the check could
+    not read an interval (not observed, only a lower bound, too few days, an
+    inconclusive verdict, no curve inside the interval) the measured range is
+    used, flagged ``assumed``, with the check's reason in the source (basis
+    ``measured_range_fallback``). The check must have been run on this
+    population or on one it derives from by mean T / v0 alone
+    (:func:`_transfer_population`); any other is refused.
+
+    **Without it** the range is the *measured range* of
     docs/FRISCO_PROTOCOL.md §7.2 — the measured source population's mean ±
     :data:`MEASURED_RANGE_SIGMAS` standard deviations of its drivers
     (``calibration.transfer_check.measured_range``; a corridor-wide mean may
     move inside the central ~68 % of what the trajectories measured across
     drivers), within the CLAUDE.md §3.1 calibration range — expressed as a
-    factor on the configured mean. The source of a derived population (a
-    capacity-calibrated T scaling) is the one its ``*.calibration.json``
-    sidecar names, used only when the two differ in nothing but mean T / v0
+    factor on the configured mean, and flagged ``assumed`` (basis
+    ``measured_range``): it is the spread of individual drivers, the range
+    calibration may choose a population from, not a calibration uncertainty,
+    and it makes nearly every result uncertain for reasons unrelated to what
+    is not known. The source of a derived population (a capacity-calibrated
+    T scaling) is the one its ``*.calibration.json`` sidecar names, used
+    only when the two differ in nothing but mean T / v0
     (:func:`source_population`); otherwise the configured artifact is its own
-    source. So every sample is a population calibration could have chosen,
-    and the configured one need not sit in the middle (I-24's capacity
-    population has mean T 1.32 s in a measured range of 0.99–2.03 s).
-    ``centre="configured"`` narrows the range to the configured mean ± the
-    same spread, recorded in the source. ``IDMCalibration`` carries no
-    interval for its mean, so the measured-range convention is always the
-    one used; a scalar fleet's spread is its configured ``heterogeneity_frac``,
-    not a measurement, and the parameter is then flagged ``assumed``.
+    source, and the configured mean need not sit in the middle (I-24's
+    capacity population has mean T 1.32 s in a measured range of
+    0.99–2.03 s). ``centre="configured"`` narrows the measured range to the
+    configured mean ± the same spread, recorded in the source (it is also
+    the cut and the fallback of a transfer-check range). A scalar fleet's
+    spread is its configured ``heterogeneity_frac``, not a measurement
+    (basis ``configured_spread``, assumed); a transfer check needs an
+    artifact population.
 ``heavy_fraction``
     ``fleet.heavy.fraction`` set to the value; only for a scenario with a
-    heavy population. Default range: the configured share ±
-    :data:`HEAVY_SHARE_ASSUMED_HALF_WIDTH`, flagged ``assumed`` — the
-    transfer check's truck-share tolerance (3 points), the smallest difference
-    it calls a mismatch — unless the caller supplies a measured interval
-    with its source.
+    heavy population. Range: a measured interval with its source
+    (``heavy_range``/``heavy_source``), else the transfer check's
+    classification-count interval (basis ``classification_interval``), else
+    the configured share ± :data:`HEAVY_SHARE_ASSUMED_HALF_WIDTH`, flagged
+    ``assumed`` (basis ``assumed_tolerance``) — the transfer check's
+    truck-share tolerance (3 points), the smallest difference it calls a
+    mismatch.
+
+Every parameter records its ``basis`` (:data:`BASIS_WORDS`), shown beside its
+range in the plan and the report.
 
 **Sampling** (:func:`latin_hypercube`, :func:`sample_space`). A Latin
 hypercube on ``[0, 1)^d`` from one seeded PCG64 stream (McKay, Beckman &
@@ -195,6 +222,48 @@ capacity tolerance)."""
 HEAVY_FRACTION_BOUNDS: Final[tuple[float, float]] = (0.0, 0.5)
 """Settable truck share (``HeavyVehicleSpec.fraction`` bounds)."""
 
+TRANSFER_SCHEMA: Final[str] = "flowstate.transfer_check/1"
+"""Schema of the driver-settings check's JSON
+(``calibration.transfer_check.TRANSFER_SCHEMA``; a test checks they agree)."""
+
+TRANSFER_QUANTITY: Final[Mapping[str, str]] = {
+    "t_scale": "capacity_per_lane",
+    "v0_scale": "free_flow_speed",
+}
+"""The transfer-check comparison whose ``uncertainty_range`` sets a driver knob."""
+
+RangeBasis = Literal[
+    "count_error",
+    "observed_interval",
+    "measured_range_fallback",
+    "measured_range",
+    "configured_spread",
+    "classification_interval",
+    "assumed_tolerance",
+    "stated",
+]
+"""Where a parameter's range comes from (module docstring)."""
+
+RANGE_BASES: Final[tuple[RangeBasis, ...]] = get_args(RangeBasis)
+"""Every basis."""
+
+BASIS_WORDS: Final[Mapping[str, str]] = {
+    "count_error": "assumed detector count error",
+    "observed_interval": "observed 95 % interval (transfer check)",
+    "measured_range_fallback": "§7.2 measured range; the transfer check gave no interval",
+    "measured_range": "§7.2 measured range; no transfer check given",
+    "configured_spread": "configured spread of a scalar fleet",
+    "classification_interval": "measured truck-share interval",
+    "assumed_tolerance": "± 3 points, assumed",
+    "stated": "stated with the run",
+}
+"""Each basis in words (the plan and the report)."""
+
+DRIVER_ASSUMED_BASES: Final[frozenset[str]] = frozenset(
+    {"measured_range", "measured_range_fallback", "configured_spread"}
+)
+"""Driver-knob bases that are the wide transfer range, not a calibration uncertainty."""
+
 ROBUST_SIGN_SHARE: Final[float] = 0.90
 """Share of the samples in which an effect's sign must hold for it to be
 called robust (docs/FRISCO_PROTOCOL.md §8.5)."""
@@ -298,6 +367,8 @@ class UncertainParameter:
             assumption. Required: a parameter without one is refused.
         assumed: The range is an assumption, not a measurement (reports say so).
         nominal: The base scenario's value (1.0 for a factor).
+        basis: Where the range comes from (:data:`BASIS_WORDS`); None when
+            not stated (a hand-built parameter).
     """
 
     name: str
@@ -307,10 +378,15 @@ class UncertainParameter:
     source: str
     assumed: bool = False
     nominal: float | None = None
+    basis: RangeBasis | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip():
             raise ValueError("an uncertain parameter needs a name")
+        if self.basis is not None and self.basis not in RANGE_BASES:
+            raise ValueError(
+                f"{self.name}: unknown basis {self.basis!r}; choose from {', '.join(RANGE_BASES)}"
+            )
         if self.kind not in PARAMETER_KINDS:
             raise ValueError(
                 f"{self.name}: unknown kind {self.kind!r}; choose from {', '.join(PARAMETER_KINDS)}"
@@ -342,13 +418,14 @@ class UncertainParameter:
             "high": self.high,
             "nominal": _json_num(self.nominal),
             "assumed": self.assumed,
+            "basis": self.basis,
             "source": self.source,
             "maps_to": KIND_MAPS_TO[self.kind],
         }
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> UncertainParameter:
-        """Inverse of :meth:`to_dict`."""
+        """Inverse of :meth:`to_dict` (a record without ``basis`` reads as None)."""
         nominal = raw.get("nominal")
         return cls(
             name=str(raw["name"]),
@@ -358,6 +435,7 @@ class UncertainParameter:
             source=str(raw["source"]),
             assumed=bool(raw.get("assumed", False)),
             nominal=None if nominal is None else float(nominal),
+            basis=raw.get("basis"),
         )
 
 
@@ -382,7 +460,14 @@ class ParameterSpace:
         return next((p for p in self.parameters if p.kind == kind), None)
 
     def with_range(
-        self, kind: str, low: float, high: float, source: str, *, assumed: bool = False
+        self,
+        kind: str,
+        low: float,
+        high: float,
+        source: str,
+        *,
+        assumed: bool = False,
+        basis: RangeBasis | None = "stated",
     ) -> ParameterSpace:
         """This space with ``kind``'s range replaced (or the kind added).
 
@@ -399,6 +484,7 @@ class ParameterSpace:
             source=source,
             assumed=assumed,
             nominal=current.nominal if current is not None else None,
+            basis=basis,
         )
         if current is None:
             return ParameterSpace((*self.parameters, new))
@@ -520,13 +606,21 @@ def source_population(path_text: str) -> tuple[PopulationStats, str] | None:
     return None
 
 
-def _driver_parameter(
-    kind: ParameterKind,
-    idm_key: str,
-    config: ScenarioConfig,
-    sigmas: float,
-    centre: CentreRule,
-) -> UncertainParameter:
+@dataclass(frozen=True)
+class _MeasuredRange:
+    """A driver mean's measured range for this scenario, in its own units."""
+
+    lo: float
+    hi: float
+    mean: float
+    text: str
+    scalar: bool
+
+
+def _measured_range(
+    idm_key: str, config: ScenarioConfig, sigmas: float, centre: CentreRule
+) -> _MeasuredRange:
+    """The protocol §7.2 measured range of ``idm_key``'s mean (module docstring)."""
     fleet = config.fleet
     cal_lo, cal_hi = IDM_RANGES[idm_key]
     if fleet.idm_calibration is None:
@@ -534,46 +628,264 @@ def _driver_parameter(
         mean = means[idm_key]
         sd = fleet.heterogeneity_frac * mean
         lo, hi = max(mean - sigmas * sd, cal_lo), min(mean + sigmas * sd, cal_hi)
-        source = (
+        text = (
             f"configured scalar fleet: mean {idm_key} {mean:.4g} ± {sigmas:g} x its configured "
             f"spread (heterogeneity_frac {fleet.heterogeneity_frac:g} x mean = {sd:.4g}) within "
-            f"CLAUDE.md §3.1's {cal_lo:g}–{cal_hi:g}: {idm_key} {lo:.4g}–{hi:.4g}. Assumed: a "
-            "scalar fleet's spread is not a measurement"
+            f"CLAUDE.md §3.1's {cal_lo:g}–{cal_hi:g}: {idm_key} {lo:.4g}–{hi:.4g}. A scalar "
+            "fleet's spread is not a measurement"
         )
-        assumed = True
-    else:
-        resolved = resolve_repo_path(fleet.idm_calibration)
-        configured = _artifact_stats(fleet.idm_calibration, resolved, IDMCalibration.load(resolved))
-        found = source_population(fleet.idm_calibration)
-        ref, via = found if found is not None else (configured, None)
-        mean = configured.means[idm_key]
-        r_mean, r_sd = ref.means[idm_key], ref.sds[idm_key]
-        m_lo, m_hi = max(r_mean - sigmas * r_sd, cal_lo), min(r_mean + sigmas * r_sd, cal_hi)
-        lineage = (
-            f"the measured population {ref.label}, source of the configured "
-            f"{configured.label} (sidecar {via}; covariance shared, mean T / v0 scaled)"
-            if via is not None
-            else f"the measured population {configured.label} (no sidecar names another source)"
+        return _MeasuredRange(lo, hi, mean, text, scalar=True)
+    resolved = resolve_repo_path(fleet.idm_calibration)
+    configured = _artifact_stats(fleet.idm_calibration, resolved, IDMCalibration.load(resolved))
+    found = source_population(fleet.idm_calibration)
+    ref, via = found if found is not None else (configured, None)
+    mean = configured.means[idm_key]
+    r_mean, r_sd = ref.means[idm_key], ref.sds[idm_key]
+    lo, hi = max(r_mean - sigmas * r_sd, cal_lo), min(r_mean + sigmas * r_sd, cal_hi)
+    lineage = (
+        f"the measured population {ref.label}, source of the configured "
+        f"{configured.label} (sidecar {via}; covariance shared, mean T / v0 scaled)"
+        if via is not None
+        else f"the measured population {configured.label} (no sidecar names another source)"
+    )
+    text = (
+        f"{lineage}: mean {idm_key} {r_mean:.4g} ± {sigmas:g} sd of its drivers ({r_sd:.4g}, "
+        f"the covariance diagonal) within CLAUDE.md §3.1's {cal_lo:g}–{cal_hi:g} — the "
+        f"measured range of docs/FRISCO_PROTOCOL.md §7.2 (calibration.transfer_check."
+        f"measured_range, MEASURED_RANGE_SIGMAS): {idm_key} {lo:.4g}–{hi:.4g}"
+    )
+    if centre == "configured":
+        sd = configured.sds[idm_key]
+        lo, hi = max(lo, mean - sigmas * sd), min(hi, mean + sigmas * sd)
+        text += (
+            f"; narrowed to the configured mean {mean:.4g} ± {sigmas:g} sd ({sd:.4g}) by "
+            f"request (centre='configured'): {idm_key} {lo:.4g}–{hi:.4g}"
         )
-        source = (
-            f"{lineage}: mean {idm_key} {r_mean:.4g} ± {sigmas:g} sd of its drivers ({r_sd:.4g}, "
-            f"the covariance diagonal) within CLAUDE.md §3.1's {cal_lo:g}–{cal_hi:g} — the "
-            f"measured range of docs/FRISCO_PROTOCOL.md §7.2 (calibration.transfer_check."
-            f"measured_range, MEASURED_RANGE_SIGMAS): {idm_key} {m_lo:.4g}–{m_hi:.4g}"
+    return _MeasuredRange(lo, hi, mean, text, scalar=False)
+
+
+def _factor_text(mean: float, lo: float, hi: float) -> str:
+    text = f"; as a factor on the configured mean {mean:.4g}"
+    if not lo <= mean <= hi:
+        text += " (the configured mean lies outside this range)"
+    return text
+
+
+def _transfer_comparisons(transfer: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The comparisons of a transfer-check JSON, its schema checked."""
+    if transfer.get("schema") != TRANSFER_SCHEMA:
+        raise ValueError(
+            f"not a transfer-check report: schema {transfer.get('schema')!r}, expected "
+            f"{TRANSFER_SCHEMA!r} (scripts/transfer_check.py's transfer_check.json)"
         )
-        lo, hi = m_lo, m_hi
-        if centre == "configured":
-            sd = configured.sds[idm_key]
-            lo, hi = max(lo, mean - sigmas * sd), min(hi, mean + sigmas * sd)
-            source += (
-                f"; narrowed to the configured mean {mean:.4g} ± {sigmas:g} sd ({sd:.4g}) by "
-                f"request (centre='configured'): {idm_key} {lo:.4g}–{hi:.4g}"
+    comparisons = transfer.get("comparisons")
+    if not isinstance(comparisons, list):
+        raise ValueError("the transfer-check report has no comparisons")
+    return [c for c in comparisons if isinstance(c, Mapping)]
+
+
+def _transfer_entry(transfer: Mapping[str, Any], kind: str) -> Mapping[str, Any]:
+    """The ``uncertainty_range`` of the comparison that sets ``kind``.
+
+    Raises:
+        ValueError: No such comparison, or a report from before the ranges
+            existed (WP-106b), or a malformed range.
+    """
+    quantity = TRANSFER_QUANTITY[kind]
+    for c in _transfer_comparisons(transfer):
+        if c.get("quantity") != quantity:
+            continue
+        entry = c.get("uncertainty_range")
+        if not isinstance(entry, Mapping):
+            raise ValueError(
+                f"the transfer-check report's {quantity} comparison has no uncertainty_range: "
+                "it predates WP-106b; rerun scripts/transfer_check.py"
             )
-        source += f"; as a factor on the configured mean {mean:.4g}"
-        if not lo <= mean <= hi:
-            source += " (the configured mean lies outside this range)"
-        source += ". The artifact carries no interval for its mean"
-        assumed = False
+        if entry.get("knob") != kind or entry.get("basis") not in (
+            "observed_interval",
+            "measured_range_fallback",
+        ):
+            raise ValueError(
+                f"the transfer-check report's {quantity} uncertainty_range is not a {kind} range "
+                f"with a known basis: {dict(entry)}"
+            )
+        if entry["basis"] == "observed_interval" and (
+            entry.get("parameter_low") is None or entry.get("parameter_high") is None
+        ):
+            raise ValueError(f"the transfer-check report's {quantity} range has no values")
+        return entry
+    raise ValueError(f"the transfer-check report has no {quantity} comparison")
+
+
+def _transfer_population(transfer: Mapping[str, Any], config: ScenarioConfig) -> str:
+    """How this scenario's driver population relates to the one the check ran on.
+
+    The ranges are model curves of that population, carried over in absolute
+    units (mean T in s, mean v0 in m/s): valid for the same population and
+    for one that differs from it only in mean T and/or v0 (a calibration's
+    corridor-wide adjustment, :func:`_differs_only_in_means`) under the same
+    car-following model.
+
+    Returns:
+        The relation in words.
+
+    Raises:
+        ValueError: A scalar fleet on either side, another car-following
+            model, another population, or a checked artifact that is gone or
+            changed (nothing to compare with).
+    """
+    model = transfer.get("model")
+    model = model if isinstance(model, Mapping) else {}
+    checked_model = model.get("model")
+    if checked_model != config.fleet.model:
+        raise ValueError(
+            f"the transfer check ran the population under {checked_model}, the scenario runs "
+            f"{config.fleet.model}: its curves do not apply; rerun scripts/transfer_check.py on "
+            "this scenario"
+        )
+    if config.fleet.idm_calibration is None:
+        raise ValueError(
+            "a transfer-check range needs an artifact population (fleet.idm_calibration; "
+            "docs/FRISCO_PROTOCOL.md §7.2 uses the measured populations); this fleet is scalar"
+        )
+    sources = model.get("population_sources")
+    sources = sources if isinstance(sources, Mapping) else {}
+    checked_text, checked_sha = (
+        sources.get("idm_calibration"),
+        sources.get("idm_calibration_sha256"),
+    )
+    if not checked_text or not checked_sha:
+        raise ValueError(
+            "the transfer check was not run on an artifact population (no idm_calibration in "
+            "its model.population_sources)"
+        )
+    own_path = resolve_repo_path(config.fleet.idm_calibration)
+    own_sha = file_sha256(own_path)
+    if own_sha == checked_sha:
+        return f"this population, {checked_text} (sha256 {str(checked_sha)[:12]})"
+    try:
+        checked_path: Path | None = resolve_repo_path(str(checked_text))
+    except FileNotFoundError:
+        checked_path = None
+    if checked_path is None or file_sha256(checked_path) != checked_sha:
+        raise ValueError(
+            f"the transfer check ran on {checked_text} (sha256 {str(checked_sha)[:12]}), not on "
+            f"this scenario's population {config.fleet.idm_calibration} (sha256 {own_sha[:12]}), "
+            "and that file is missing or changed, so the two cannot be compared: rerun "
+            "scripts/transfer_check.py on this scenario"
+        )
+    if _differs_only_in_means(
+        IDMCalibration.load(own_path), IDMCalibration.load(checked_path), ("T", "v0")
+    ):
+        return (
+            f"{checked_text} (sha256 {str(checked_sha)[:12]}), which this scenario's population "
+            f"{config.fleet.idm_calibration} differs from in mean T / v0 alone"
+        )
+    raise ValueError(
+        f"the transfer check ran on another driver population ({checked_text}) than this "
+        f"scenario's ({config.fleet.idm_calibration}), and they differ in more than mean T / v0: "
+        "rerun scripts/transfer_check.py on this scenario"
+    )
+
+
+def _transfer_heavy(
+    transfer: Mapping[str, Any], label: str
+) -> tuple[tuple[float, float] | None, str]:
+    """The transfer check's classification-count interval of the truck share.
+
+    Returns:
+        ``(range or None, its source or why there is none)``.
+    """
+    observed = transfer.get("observed")
+    heavy = observed.get("heavy") if isinstance(observed, Mapping) else None
+    if not isinstance(heavy, Mapping) or not heavy.get("available"):
+        return None, f"{label} had no classification counts"
+    iv = heavy.get("interval")
+    if not isinstance(iv, Mapping) or iv.get("lo") is None or iv.get("hi") is None:
+        return None, f"{label}'s classification counts gave no interval (too few days)"
+    b_lo, b_hi = HEAVY_FRACTION_BOUNDS
+    lo, hi = max(float(iv["lo"]), b_lo), min(float(iv["hi"]), b_hi)
+    if not lo < hi:
+        return None, f"{label}'s classification interval is a single value ({lo:.4g})"
+    definition = f" ({heavy['definition']})" if heavy.get("definition") else ""
+    share = heavy.get("share")
+    share_text = f"{float(share):.4g}" if share is not None else "—"
+    return (lo, hi), (
+        f"classification counts of {label}: truck share {share_text}{definition}, "
+        f"{float(iv.get('level', 0.95)) * 100:g} % interval over {iv.get('n_units')} "
+        f"{iv.get('unit')}(s) {lo:.4g}–{hi:.4g}"
+    )
+
+
+PARAMETER_UNITS: Final[Mapping[str, str]] = {"T": "s", "v0": "m/s"}
+"""Units of the driver means a transfer-check range is carried over in."""
+
+WIDE_RANGE_WORDS: Final[str] = (
+    "the wide transfer range of docs/FRISCO_PROTOCOL.md §7.2 — the spread of individual "
+    "drivers, which calibration may choose a population from — not a calibration uncertainty "
+    "of this corridor's population"
+)
+"""How a driver range on the measured range is described (assumed)."""
+
+
+def _driver_parameter(
+    kind: ParameterKind,
+    idm_key: str,
+    config: ScenarioConfig,
+    sigmas: float,
+    centre: CentreRule,
+    transfer: Mapping[str, Any] | None = None,
+    transfer_label: str = "the transfer check",
+    lineage: str = "",
+) -> UncertainParameter:
+    m = _measured_range(idm_key, config, sigmas, centre)
+    basis: RangeBasis
+    lo, hi = m.lo, m.hi
+    if transfer is None:
+        assumed = True
+        if m.scalar:
+            basis = "configured_spread"
+            source = f"assumed — {m.text}; used as a wide range, not a calibration uncertainty"
+        else:
+            basis = "measured_range"
+            source = (
+                f"assumed — {WIDE_RANGE_WORDS}; no transfer check was given (pass the corridor's "
+                f"transfer_check.json for ranges from its observed intervals): {m.text}"
+                f"{_factor_text(m.mean, lo, hi)}. The artifact carries no interval for its mean"
+            )
+    else:
+        entry = _transfer_entry(transfer, kind)
+        why: str | None = None
+        if entry["basis"] == "observed_interval":
+            p_lo, p_hi = float(entry["parameter_low"]), float(entry["parameter_high"])
+            c_lo, c_hi = max(p_lo, m.lo), min(p_hi, m.hi)
+            if c_lo < c_hi:
+                lo, hi = c_lo, c_hi
+                basis, assumed = "observed_interval", False
+                unit = PARAMETER_UNITS.get(idm_key, "")
+                source = (
+                    f"observed — {transfer_label}, run on {lineage}: {entry['reason']}: mean "
+                    f"{idm_key} {p_lo:.4g}–{p_hi:.4g} {unit}"
+                )
+                if c_lo > p_lo or c_hi < p_hi:
+                    source += (
+                        f"; cut to this population's measured range ({m.text}): {idm_key} "
+                        f"{lo:.4g}–{hi:.4g} {unit}"
+                    )
+                source += _factor_text(m.mean, lo, hi)
+            else:
+                why = (
+                    f"its range of mean {idm_key} {p_lo:.4g}–{p_hi:.4g} lies outside this "
+                    f"population's measured range {m.lo:.4g}–{m.hi:.4g}"
+                )
+        else:
+            why = str(entry.get("reason") or "no reason recorded")
+        if why is not None:
+            basis, assumed = "measured_range_fallback", True
+            source = (
+                f"assumed — {transfer_label} (run on {lineage}) gave no observed-interval range: "
+                f"{why}; so {WIDE_RANGE_WORDS}, is used: {m.text}{_factor_text(m.mean, lo, hi)}"
+            )
     if not lo < hi:
         raise ValueError(
             f"{kind}: the {idm_key} range {lo:.4g}–{hi:.4g} is empty; state a range with its source"
@@ -581,11 +893,12 @@ def _driver_parameter(
     return UncertainParameter(
         name=kind,
         kind=kind,
-        low=lo / mean,
-        high=hi / mean,
+        low=lo / m.mean,
+        high=hi / m.mean,
         source=source,
         assumed=assumed,
         nominal=1.0,
+        basis=basis,
     )
 
 
@@ -598,6 +911,8 @@ def default_space(
     heavy_source: str | None = None,
     kinds: Sequence[str] | None = None,
     centre: CentreRule = "measured",
+    transfer: Mapping[str, Any] | None = None,
+    transfer_label: str | None = None,
 ) -> ParameterSpace:
     """The default space of a scenario (module docstring, every range sourced).
 
@@ -606,19 +921,28 @@ def default_space(
         count_error: Relative count error behind ``demand_scale``.
         sigmas: Driver-knob half-width in driver standard deviations.
         heavy_range: A measured truck-share interval; ``heavy_source`` is then
-            required. Without it the assumed range is used and flagged.
+            required. Without it the transfer check's classification interval
+            is used when there is one, else the assumed range, flagged.
         heavy_source: Where ``heavy_range`` comes from.
         kinds: Restrict to these kinds (each must be derivable for this
             scenario); default: every derivable kind.
-        centre: ``measured`` (default): a driver knob spans the measured
-            range of protocol §7.2, the source population's mean ± ``sigmas``
-            sd; ``configured``: that range narrowed to the configured mean ±
-            ``sigmas`` sd (recorded in the source).
+        centre: ``measured`` (default): the measured range of protocol §7.2,
+            the source population's mean ± ``sigmas`` sd; ``configured``:
+            that range narrowed to the configured mean ± ``sigmas`` sd
+            (recorded in the source). It is the driver range without a
+            transfer check, and the cut and fallback with one.
+        transfer: The corridor's parsed ``transfer_check.json`` (schema
+            :data:`TRANSFER_SCHEMA`): driver ranges from its
+            ``uncertainty_range`` entries (WP-106b). Without it every driver
+            range is the measured range, flagged assumed.
+        transfer_label: How ``transfer`` is cited in the sources (its path
+            and sha256); default ``the transfer check``.
 
     Raises:
         ValueError: A requested kind cannot apply to this scenario (demand on a
-            ring, a truck share without a heavy population), or
-            ``heavy_range`` comes without a source.
+            ring, a truck share without a heavy population), ``heavy_range``
+            comes without a source, or ``transfer`` is not a transfer-check
+            report of this scenario's population (:func:`_transfer_population`).
     """
     if heavy_range is not None and not (heavy_source or "").strip():
         raise ValueError("heavy_range needs heavy_source: where the measured interval comes from")
@@ -628,6 +952,12 @@ def default_space(
         raise ValueError(f"unknown kinds {unknown}; choose from {', '.join(PARAMETER_KINDS)}")
     if centre not in ("measured", "configured"):
         raise ValueError(f"centre must be 'measured' or 'configured', got {centre!r}")
+    label = (transfer_label or "").strip() or "the transfer check"
+    lineage = ""
+    if transfer is not None:
+        _transfer_comparisons(transfer)  # the schema, before anything is derived
+        if "t_scale" in wanted or "v0_scale" in wanted:
+            lineage = _transfer_population(transfer, config)
     explicit = kinds is not None
     params: list[UncertainParameter] = []
     for kind in PARAMETER_KINDS:
@@ -652,12 +982,22 @@ def default_space(
                     ),
                     assumed=False,
                     nominal=1.0,
+                    basis="count_error",
                 )
             )
-        elif kind == "t_scale":
-            params.append(_driver_parameter(kind, "T", config, sigmas, centre))
-        elif kind == "v0_scale":
-            params.append(_driver_parameter(kind, "v0", config, sigmas, centre))
+        elif kind in ("t_scale", "v0_scale"):
+            params.append(
+                _driver_parameter(
+                    kind,
+                    "T" if kind == "t_scale" else "v0",
+                    config,
+                    sigmas,
+                    centre,
+                    transfer,
+                    label,
+                    lineage,
+                )
+            )
         else:  # heavy_fraction
             heavy = config.fleet.heavy
             if heavy is None:
@@ -665,9 +1005,16 @@ def default_space(
                     raise ValueError("heavy_fraction: this scenario has no heavy population")
                 continue
             b_lo, b_hi = HEAVY_FRACTION_BOUNDS
+            measured_heavy, why_not = (
+                _transfer_heavy(transfer, label) if transfer is not None else (None, "")
+            )
+            basis: RangeBasis
             if heavy_range is not None:
                 lo, hi = max(heavy_range[0], b_lo), min(heavy_range[1], b_hi)
-                source, assumed = str(heavy_source), False
+                source, assumed, basis = str(heavy_source), False, "classification_interval"
+            elif measured_heavy is not None:
+                lo, hi = measured_heavy
+                source, assumed, basis = why_not, False, "classification_interval"
             else:
                 lo = max(heavy.fraction - HEAVY_SHARE_ASSUMED_HALF_WIDTH, b_lo)
                 hi = min(heavy.fraction + HEAVY_SHARE_ASSUMED_HALF_WIDTH, b_hi)
@@ -676,8 +1023,9 @@ def default_space(
                     f"{HEAVY_SHARE_ASSUMED_HALF_WIDTH:.2f} (calibration.transfer_check."
                     "HEAVY_SHARE_TOLERANCE, the smallest difference that check calls a "
                     "mismatch); no measured truck-share interval was supplied"
+                    + (f" ({why_not})" if why_not else "")
                 )
-                assumed = True
+                assumed, basis = True, "assumed_tolerance"
             params.append(
                 UncertainParameter(
                     name=kind,
@@ -687,6 +1035,7 @@ def default_space(
                     source=source,
                     assumed=assumed,
                     nominal=heavy.fraction,
+                    basis=basis,
                 )
             )
     return ParameterSpace(tuple(params))
@@ -1303,6 +1652,34 @@ class UncertaintyResult:
             )
         return text + f". The direction held in {e.n_same_sign} of {m} samples: {word}{tail}."
 
+    def _driver_limitations(self) -> list[str]:
+        """The limitation lines on the driver ranges, by their basis."""
+        if self.space is None:
+            return []
+        drivers = [p for p in self.space.parameters if p.kind in ("t_scale", "v0_scale")]
+        observed = [p.name for p in drivers if p.basis == "observed_interval"]
+        wide = [p.name for p in drivers if p.basis in DRIVER_ASSUMED_BASES]
+        lines: list[str] = []
+        if observed:
+            lines.append(
+                f"- Driver ranges from the observed 95 % intervals ({', '.join(observed)}): the "
+                "values of one corridor-wide mean whose model value stays inside the observed "
+                "interval of the quantity it controls (mean T ↔ capacity per lane, mean v0 ↔ "
+                "free-flow speed; calibration.transfer_check), read off analytical or simulated "
+                "curves and cut to the §7.2 measured range; the spread of drivers around the "
+                "mean is not varied, and the two knobs are varied independently."
+            )
+        if wide:
+            lines.append(
+                f"- Driver ranges flagged assumed ({', '.join(wide)}): the measured range of "
+                "docs/FRISCO_PROTOCOL.md §7.2, the spread of the measured population's "
+                "individual drivers (± 1 sd) — the range calibration may choose a population "
+                "from, much wider than what is not known about this corridor's population. "
+                "An effect called uncertain over it may be uncertain for reasons unrelated to "
+                "that; the configured population need not sit at its centre."
+            )
+        return lines
+
     def to_markdown(self) -> str:
         """The plain-language summary (every number from :meth:`to_dict`)."""
         prov = self.provenance
@@ -1337,13 +1714,14 @@ class UncertaintyResult:
             lines += [
                 "## What was varied",
                 "",
-                "| Parameter | Range | Base value | Assumed? | Source |",
-                "|---|---|---|---|---|",
+                "| Parameter | Range | Base value | Basis | Assumed? | Source |",
+                "|---|---|---|---|---|---|",
             ]
             for p in self.space.parameters:
+                basis = "not stated" if p.basis is None else BASIS_WORDS[p.basis]
                 lines.append(
                     f"| {p.name} | {p.low:.4g} – {p.high:.4g} | "
-                    f"{'—' if p.nominal is None else f'{p.nominal:.4g}'} | "
+                    f"{'—' if p.nominal is None else f'{p.nominal:.4g}'} | {basis} | "
                     f"{'assumed' if p.assumed else 'no'} | {p.source} |"
                 )
             lines.append("")
@@ -1417,10 +1795,7 @@ class UncertaintyResult:
             "",
             "## Limitations",
             "",
-            "- The driver ranges are the measured range of docs/FRISCO_PROTOCOL.md §7.2: the "
-            "spread of the measured population's individual drivers (± 1 sd), a transfer "
-            "range much wider than the statistical uncertainty of the population mean; the "
-            "configured population need not sit at its centre.",
+            *self._driver_limitations(),
             "- The demand range is the assumed detector count error, applied as one "
             "corridor-wide factor; boundary speeds, off-ramp shares, lane-change and merge "
             "settings and the map are not varied.",
@@ -1599,6 +1974,7 @@ def aggregate(
 
 
 __all__ = [
+    "BASIS_WORDS",
     "COUNT_ERROR",
     "DEFAULT_BASELINE",
     "HEAVY_SHARE_ASSUMED_HALF_WIDTH",
@@ -1607,8 +1983,11 @@ __all__ = [
     "PARAMETER_KINDS",
     "PROTOCOL_MIN_SAMPLES",
     "PROTOCOL_MIN_SEEDS",
+    "RANGE_BASES",
     "ROBUST_SIGN_SHARE",
     "SCHEMA",
+    "TRANSFER_QUANTITY",
+    "TRANSFER_SCHEMA",
     "EffectSummary",
     "NestedSummary",
     "ParameterSpace",

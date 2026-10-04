@@ -35,6 +35,7 @@ from calibration.transfer_check import (
     PASSENGER_LENGTH_M,
     TRANSFER_SCHEMA,
     Adjustments,
+    Comparison,
     Interval,
     ObservedSide,
     Population,
@@ -56,7 +57,9 @@ from calibration.transfer_check import (
     population_from_artifact,
     population_from_fleet,
     population_from_scenario,
+    range_on_curve,
     solve_on_curve,
+    uncertainty_range,
 )
 from flowstate_core.artifacts import IDMCalibration
 from flowstate_core.config import FleetSpec, HeavyVehicleSpec
@@ -735,3 +738,268 @@ class TestOutputs:
         assert not any(
             math.isnan(x) for x in [report.comparison("capacity_per_lane").observed or 0.0]
         )
+
+
+# ---------------------------------------------------------------------------
+# Ranges for the uncertainty runs (WP-106b)
+# ---------------------------------------------------------------------------
+
+#: A synthetic monotone curve: capacity falls by 50 veh/h/lane per 0.05 of the T factor.
+CURVE_XS = [float(x) for x in np.linspace(0.8, 1.2, 9)]
+CURVE_YS = [3000.0 - 1000.0 * x for x in CURVE_XS]
+
+
+def _cap_comparison(
+    interval: tuple[float, float] | None = (1930.0, 1960.0),
+    *,
+    observed: float | None = 1945.0,
+    model: float | None = 2000.0,
+    verdict: str = "mismatch",
+) -> Comparison:
+    return Comparison(
+        quantity="capacity_per_lane",
+        unit="veh/h/lane",
+        observed=observed,
+        observed_interval=None if interval is None else _interval(*interval),
+        model=model,
+        model_basis="synthetic",
+        difference=None,
+        tolerance=0.05,
+        rule="synthetic",
+        verdict=verdict,  # type: ignore[arg-type]
+        explanation="synthetic explanation",
+    )
+
+
+def _range(c: Comparison, **kw: Any):
+    def curve() -> tuple[list[float], list[float]]:
+        return CURVE_XS, CURVE_YS
+
+    args: dict[str, Any] = {
+        "knob": "t_scale",
+        "parameter": "T",
+        "reference_mean": 1.4,
+        "comparison": c,
+        "measured": (0.8, 1.2),
+        "curve": curve,
+        "curve_kind": "analytical",
+    }
+    args.update(kw)
+    return uncertainty_range(**args)
+
+
+def _never_called() -> tuple[list[float], list[float]]:
+    raise AssertionError("the curve is read only when there is an interval to read")
+
+
+class TestUncertaintyRange:
+    def test_crossings_on_a_monotone_curve_are_solve_on_curves(self) -> None:
+        lo, hi = range_on_curve(CURVE_XS, CURVE_YS, 1930.0, 1960.0) or (0.0, 0.0)
+        assert (lo, hi) == (pytest.approx(1.04), pytest.approx(1.07))
+        assert lo == pytest.approx(solve_on_curve(CURVE_XS, CURVE_YS, 1960.0, 1.0))
+        assert hi == pytest.approx(solve_on_curve(CURVE_XS, CURVE_YS, 1930.0, 1.0))
+        rising = [20.0 + 10.0 * x for x in CURVE_XS]  # free-flow speed rises with v0
+        assert range_on_curve(CURVE_XS, rising, 30.5, 29.5) == (
+            pytest.approx(0.95),
+            pytest.approx(1.05),
+        )
+        assert range_on_curve(CURVE_XS, CURVE_YS, 1000.0, 3000.0) == (0.8, 1.2)
+        assert range_on_curve(CURVE_XS, CURVE_YS, 2300.0, 2400.0) is None
+
+    def test_a_curve_that_leaves_the_band_gives_the_hull_and_nan_breaks_it(self) -> None:
+        assert range_on_curve([0, 1, 2, 3, 4], [0.0, 2.0, 0.0, 2.0, 0.0], 1.5, 2.5) == (
+            pytest.approx(0.75),
+            pytest.approx(3.25),
+        )
+        holed = [0.0, 2.0, float("nan"), 2.0, 0.0]
+        assert range_on_curve([0, 1, 2, 3, 4], holed, 1.5, 2.5) == (
+            pytest.approx(0.75),
+            pytest.approx(3.25),
+        )
+        assert range_on_curve([0, 1, 2], [0.0, float("nan"), 4.0], 1.0, 3.0) is None
+
+    def test_the_range_is_read_off_the_curve_at_the_intervals_ends(self) -> None:
+        u = _range(_cap_comparison())
+        assert u.basis == "observed_interval" and not u.clipped
+        assert (u.low, u.high) == (pytest.approx(1.04), pytest.approx(1.07))
+        assert u.observed_interval == (1930.0, 1960.0) and u.curve == "analytical"
+        assert "1930–1960 veh/h/lane" in u.reason and "analytical curve" in u.reason
+        d = u.to_dict()
+        assert d["parameter_low"] == pytest.approx(1.04 * 1.4, abs=1e-4)
+        assert d["parameter_high"] == pytest.approx(1.07 * 1.4, abs=1e-4)
+        assert d["measured_range"] == [0.8, 1.2] and d["clipped"] is False
+        # the point estimate is inside what is read, as the verdict rule widens it
+        u2 = _range(_cap_comparison(observed=1925.0))
+        assert u2.observed_interval == (1925.0, 1960.0)
+        assert u2.high == pytest.approx(1.075)
+
+    def test_an_interval_beyond_the_measured_range_is_clipped(self) -> None:
+        # capacity 2050–2400 needs T x 0.6–0.95; the measured range stops at 0.8
+        u = _range(_cap_comparison((2050.0, 2400.0), observed=2100.0))
+        assert u.basis == "observed_interval" and u.clipped
+        assert (u.low, u.high) == (pytest.approx(0.8), pytest.approx(0.95))
+        assert "clipped at the low end" in u.reason
+        # a crossing exactly at the range's end is not a clip
+        exact = _range(_cap_comparison((2000.0, 2200.0), observed=2100.0))
+        assert (exact.low, exact.high) == (pytest.approx(0.8), pytest.approx(1.0))
+        assert not exact.clipped
+        # a simulated grid is never extrapolated: the span cuts the range at both ends
+        grid = _range(
+            _cap_comparison((1850.0, 2150.0), observed=2000.0),
+            span=(0.9, 1.1),
+            span_text="the measured range ∩ the simulated grid",
+            curve_kind="simulated",
+        )
+        assert (grid.low, grid.high) == (pytest.approx(0.9), pytest.approx(1.1))
+        assert grid.clipped and "low and high ends" in grid.reason and grid.curve == "simulated"
+
+    @pytest.mark.parametrize(
+        ("comparison", "kw", "words"),
+        [
+            (
+                _cap_comparison(None, observed=None, verdict="not_available"),
+                {},
+                "was not observed",
+            ),
+            (_cap_comparison(), {"lower_bound": True}, "only a lower bound"),
+            (_cap_comparison(model=None, verdict="not_available"), {}, "no capacity per lane"),
+            (_cap_comparison(), {"curve": None}, "no capacity per lane value"),
+            (_cap_comparison(None), {}, "no 95 % interval (fewer than 3 days"),
+            (_cap_comparison(verdict="inconclusive"), {}, "the check is inconclusive"),
+        ],
+    )
+    def test_without_an_interval_to_read_the_measured_range_is_used(
+        self, comparison: Comparison, kw: dict[str, Any], words: str
+    ) -> None:
+        args = {"curve": _never_called, **kw}
+        u = _range(comparison, **args)
+        assert u.basis == "measured_range_fallback" and words in u.reason
+        assert (u.low, u.high) == (0.8, 1.2) and not u.clipped
+        assert u.observed_interval is None and u.curve is None
+
+    def test_a_curve_that_never_enters_the_interval_falls_back(self) -> None:
+        u = _range(_cap_comparison((1000.0, 1100.0), observed=1050.0))
+        assert u.basis == "measured_range_fallback"
+        assert "no value of the mean time headway (T)" in u.reason
+        assert "spans 1800–2200 veh/h/lane" in u.reason
+
+    def test_the_check_reads_its_own_curves(self, population) -> None:
+        report = check_transfer(
+            observed_side(ff_speed=32.2, capacity=1900.0), population, sidecars=[], n_draws=N_DRAWS
+        )
+        assert report.comparison("truck_share").uncertainty_range is None
+        ff = report.comparison("free_flow_speed")
+        u = ff.uncertainty_range
+        assert u is not None and u.basis == "observed_interval" and u.knob == "v0_scale"
+        assert u.reference_mean == pytest.approx(33.0)
+        assert u.measured_range == (pytest.approx(30.0 / 33.0), pytest.approx(36.0 / 33.0))
+        # the model's free-flow speed at the ends is the interval's (it rises with v0)
+        q_ff = (report.model.free_flow_flow_veh_h_lane or 0.0) / 3600.0
+        for factor, edge in ((u.low, u.observed_interval[0]), (u.high, u.observed_interval[1])):
+            d = draw_drivers(population, Adjustments(v0_scale=factor), n=N_DRAWS)
+            speeds, _ = free_flow_speeds("IDM", d, desired_speeds(d, None, 1.0), q_ff)
+            assert float(speeds.mean()) == pytest.approx(edge, abs=0.01)
+        cap = report.comparison("capacity_per_lane").uncertainty_range
+        assert cap is not None and cap.basis == "observed_interval" and cap.knob == "t_scale"
+        # capacity falls with T: the low end meets the interval's high end
+        for factor, edge in (
+            (cap.low, cap.observed_interval[1]),
+            (cap.high, cap.observed_interval[0]),
+        ):
+            d = draw_drivers(population, Adjustments(t_scale=factor), n=N_DRAWS)
+            q = population_capacity("IDM", d, desired_speeds(d, None, 1.0))[0]
+            assert q == pytest.approx(edge, abs=1.0)
+
+    def test_a_mismatch_range_holds_the_recommended_value(self, population) -> None:
+        report = check_transfer(
+            observed_side(ff_speed=30.0, capacity=1700.0), population, sidecars=[], n_draws=N_DRAWS
+        )
+        for quantity in ("free_flow_speed", "capacity_per_lane"):
+            u = report.comparison(quantity).uncertainty_range
+            (knob,) = report.recommendation(quantity).knobs
+            assert u is not None and u.basis == "observed_interval" and u.knob == knob.name
+            assert u.low <= (knob.needed or 0.0) <= u.high  # the same curve, the point inside
+
+    def test_what_the_check_cannot_read_falls_back_with_its_reason(self, population) -> None:
+        far = check_transfer(
+            observed_side(ff_speed=24.0, capacity=1300.0), population, sidecars=[], n_draws=N_DRAWS
+        )
+        for quantity in ("free_flow_speed", "capacity_per_lane"):
+            u = far.comparison(quantity).uncertainty_range
+            assert u is not None and u.basis == "measured_range_fallback"
+            assert "no value of the" in u.reason
+        bound = check_transfer(
+            observed_side(ff_speed=30.0, capacity=1800.0, bottleneck=False),
+            population,
+            sidecars=[],
+            n_draws=N_DRAWS,
+        )
+        u = bound.comparison("capacity_per_lane").uncertainty_range
+        assert u is not None and u.basis == "measured_range_fallback"
+        assert "only a lower bound" in u.reason
+        assert (u.low, u.high) == (pytest.approx(1.1 / 1.4), pytest.approx(1.7 / 1.4))
+        short = check_transfer(
+            observed_side(ff_speed=30.0, capacity=1700.0, dates=syn.DATES[:2]),
+            population,
+            sidecars=[],
+            n_draws=N_DRAWS,
+        )
+        for quantity in ("free_flow_speed", "capacity_per_lane"):
+            u = short.comparison(quantity).uncertainty_range
+            assert u is not None and "no 95 % interval" in u.reason
+
+    def test_a_simulated_capacity_range_is_read_off_the_grid(
+        self, tmp_path, pop_path, population
+    ) -> None:
+        sc = _sidecar(tmp_path, pop_path)
+        report = check_transfer(
+            observed_side(ff_speed=32.2, capacity=1780.0),
+            population,
+            sidecars=[sc],
+            n_draws=N_DRAWS,
+        )
+        c = report.comparison("capacity_per_lane")
+        u = c.uncertainty_range
+        assert u is not None and u.basis == "observed_interval" and u.curve == "simulated"
+        lo, hi = u.observed_interval
+        # the grid is linear, 1650 at T x 1.0 rising 50 per 0.05 down to 0.8
+        assert u.low == pytest.approx(1.0 - (hi - 1650.0) / 1000.0, abs=1e-6)
+        assert u.high == pytest.approx(1.0 - (lo - 1650.0) / 1000.0, abs=1e-6)
+        assert "simulated grid" in u.reason
+
+    def test_outputs_carry_the_ranges(self, population) -> None:
+        report = check_transfer(
+            observed_side(ff_speed=30.0, capacity=1800.0, bottleneck=False),
+            population,
+            sidecars=[],
+            n_draws=N_DRAWS,
+        )
+        payload = json.loads(report.to_json())
+        by_q = {c["quantity"]: c for c in payload["comparisons"]}
+        assert "uncertainty_range" not in by_q["truck_share"]
+        ff = by_q["free_flow_speed"]["uncertainty_range"]
+        assert set(ff) == {
+            "knob",
+            "parameter",
+            "reference_mean",
+            "low",
+            "high",
+            "parameter_low",
+            "parameter_high",
+            "basis",
+            "reason",
+            "clipped",
+            "measured_range",
+            "observed_interval",
+            "curve",
+        }
+        assert ff["knob"] == "v0_scale" and ff["basis"] == "observed_interval"
+        assert ff["parameter_low"] == pytest.approx(ff["low"] * 33.0, abs=1e-3)
+        cap = by_q["capacity_per_lane"]["uncertainty_range"]
+        assert cap["basis"] == "measured_range_fallback" and cap["observed_interval"] is None
+        text = report.to_markdown()
+        assert "## Ranges for the uncertainty runs" in text
+        assert "**Mean desired speed (v0):** ×" in text
+        assert "the values that keep the model inside the observed 95 % interval" in text
+        assert "**Mean time headway (T):** × 0.786–1.21 (mean time headway 1.10–1.70 s)" in text
+        assert "only a lower bound" in text

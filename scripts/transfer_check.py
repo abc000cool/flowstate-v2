@@ -7,7 +7,10 @@ free-flow speed, capacity per lane and truck share — with
 inside the measured ranges where they disagree. Writes
 ``transfer_check.json`` (schema ``flowstate.transfer_check/1``, with the
 inputs' hashes, the commit and ``code_dirty``) and ``transfer_check.md``
-(the plain-language summary for a client) to ``--out``.
+(the plain-language summary for a client) to ``--out``. The JSON's
+free-flow and capacity comparisons carry each driver knob's
+``uncertainty_range`` (WP-106b), which ``scripts/uncertainty_runs.py
+--transfer-check`` reads for the protocol §8.5 uncertainty runs.
 
 Inputs are found as the onboarding path finds them
 (:mod:`calibration.detector_inputs`): a corridor directory, a generic
@@ -293,6 +296,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{c.quantity}: {c.verdict} — {c.explanation}")
     for r in report.recommendations:
         print(f"{r.quantity}: {r.action}")
+    for c in report.comparisons:
+        u = c.uncertainty_range
+        if u is not None:
+            print(
+                f"uncertainty range {u.knob}: {u.low:.4g}–{u.high:.4g} ({u.basis}"
+                f"{', clipped' if u.clipped else ''})"
+            )
     print(f"wrote {args.out / JSON_NAME} and {args.out / MARKDOWN_NAME}")
     return 0
 

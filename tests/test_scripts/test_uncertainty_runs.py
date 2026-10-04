@@ -6,7 +6,10 @@ refused when the inputs change, the analysis of a faked run tree (the layout
 ``<out>/<sample>/<arm>/<config hash>/<seed>/metrics.json`` the sweep worker
 writes), the ``code_dirty`` scope, and one real smoke run (2 samples × 1 seed ×
 2 arms of a 60-s, 600-m corridor; ``integration``) that is then re-analysed
-and resumed with nothing pending.
+and resumed with nothing pending. ``--transfer-check`` (WP-106b) on a report
+that ``calibration.transfer_check`` writes for synthetic detector data: the
+plan's driver ranges and their basis, the design recording the file only when
+given, and clean refusals.
 """
 
 from __future__ import annotations
@@ -297,3 +300,106 @@ def test_smoke_run_then_analyze_then_resume(
     assert ur.main(["--analyze-only", "--out", str(out)]) == 0
     assert ur.main([*common, "--procs", "1"]) == 0
     assert "4 runs; 0 pending" in capsys.readouterr().out
+
+
+# --- driver ranges from the corridor's transfer check (WP-106b) ------------------------------------
+
+
+def _syn() -> ModuleType:
+    path = REPO_ROOT / "tests" / "test_calibration" / "synthetic_transfer.py"
+    spec = importlib.util.spec_from_file_location("flowstate_wp106b_syn", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def transfer_json(scenario: Path, tmp_path: Path) -> Path:
+    """The transfer check of the scenario's own population on a synthetic corridor (drivers
+    slower and capacity lower than the population: both knobs read an observed interval)."""
+    from calibration.transfer_check import check_transfer, observe, population_from_scenario
+
+    syn = _syn()
+    observed = observe(
+        syn.corridor_frame(ff_speed=27.0, capacity=1650.0, dates=syn.DATES[:3]),
+        stations=syn.stations_table(),
+        n_bootstrap=100,
+    )
+    report = check_transfer(observed, population_from_scenario(scenario), sidecars=[], n_draws=1000)
+    path = tmp_path / "transfer_check.json"
+    path.write_text(report.to_json() + "\n")
+    return path
+
+
+def test_plan_only_with_a_transfer_check(
+    scenario: Path, transfer_json: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "plan"
+    rc = ur.main(
+        [
+            *("--scenario", str(scenario), "--samples", "4", "--seeds", "2", "--plan-only"),
+            *("--transfer-check", str(transfer_json), "--out", str(out)),
+        ]
+    )
+    text = capsys.readouterr().out
+    assert rc == 0 and not out.exists()
+    doc = json.loads(transfer_json.read_text())
+    ranges = {c["quantity"]: c.get("uncertainty_range") for c in doc["comparisons"]}
+    for kind, quantity in (("t_scale", "capacity_per_lane"), ("v0_scale", "free_flow_speed")):
+        entry = ranges[quantity]
+        assert entry["basis"] == "observed_interval"
+        line = next(ln for ln in text.splitlines() if ln.startswith(f"  {kind}: "))
+        # the same population: the factors carry over unchanged (to the JSON's 4 decimals)
+        assert line.startswith(f"  {kind}: {entry['low']:.4g} – {entry['high']:.4g} ")
+        assert "[observed 95 % interval (transfer check)]" in line and "(assumed)" not in line
+        assert f"{transfer_json} (sha256 " in line
+    assert "driver ranges: the wide §7.2 measured range" not in text
+    assert "s03: demand_scale=" in text
+    # without it the wide range is said, and flagged
+    ur.main(["--scenario", str(scenario), "--plan-only", "--out", str(out)])
+    text = capsys.readouterr().out
+    assert "[§7.2 measured range; no transfer check given] (assumed)" in text
+    assert "driver ranges: the wide §7.2 measured range, flagged assumed" in text
+
+
+def test_the_design_records_the_transfer_check_only_when_given(
+    scenario: Path, transfer_json: Path, tmp_path: Path
+) -> None:
+    plain, _ = _design(scenario, tmp_path / "plain")
+    assert "transfer_check" not in plain
+    design, _ = _design(scenario, tmp_path / "tc", "--transfer-check", str(transfer_json))
+    record = {"path": str(transfer_json), "sha256": ur.file_sha256(transfer_json)}
+    assert design["transfer_check"] == record
+    assert design["design_key"] != plain["design_key"]
+    stored = json.loads((tmp_path / "tc" / "DESIGN.json").read_text())
+    assert stored["transfer_check"] == record
+    space = {p["kind"]: p for p in stored["space"]["parameters"]}
+    assert space["t_scale"]["basis"] == "observed_interval" and not space["t_scale"]["assumed"]
+    # the analysis carries the record into its provenance
+    row = design["samples"][0]
+    run = tmp_path / "tc" / row["sample_id"] / "baseline" / row["arms"]["baseline"]
+    (run / str(row["seeds"][0])).mkdir(parents=True)
+    (run / str(row["seeds"][0]) / "metrics.json").write_text(json.dumps({"mean_tt_s": 100.0}))
+    ur.analyze(tmp_path / "tc", None, None)
+    doc = json.loads((tmp_path / "tc" / "uncertainty.json").read_text())
+    assert doc["provenance"]["transfer_check"] == record
+    assert (
+        "observed 95 % interval (transfer check)"
+        in (tmp_path / "tc" / "uncertainty.md").read_text()
+    )
+
+
+def test_a_wrong_transfer_check_is_a_clean_refusal(
+    scenario: Path, transfer_json: Path, tmp_path: Path
+) -> None:
+    common = ["--scenario", str(scenario), "--plan-only", "--out", str(tmp_path / "x")]
+    with pytest.raises(SystemExit, match="not found"):
+        ur.main([*common, "--transfer-check", str(tmp_path / "none.json")])
+    doc = json.loads(transfer_json.read_text())
+    doc["model"]["model"] = "EIDM"
+    other = tmp_path / "eidm_transfer_check.json"
+    other.write_text(json.dumps(doc))
+    with pytest.raises(SystemExit, match="EIDM"):
+        ur.main([*common, "--transfer-check", str(other)])
