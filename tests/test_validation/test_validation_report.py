@@ -939,8 +939,10 @@ class TestBaselineVersusController:
         # Identical throughput in both groups: zero delta, not resolved.
         thr = delta["throughput_veh_h"]
         assert float(thr[1]) == 0.0 and thr[6] == "no"
-        # Metrics undefined in both groups stay undefined and unresolved.
-        assert delta["fuel_ml_per_veh_km"][1] == "NaN" and delta["fuel_ml_per_veh_km"][6] == "no"
+        # Metrics undefined in both groups stay undefined and unresolved; fuel
+        # is labelled a model estimate in its row name (Stage 1 item 13).
+        fuel = delta["fuel_ml_per_veh_km (model estimate)"]
+        assert fuel[1] == "NaN" and fuel[6] == "no"
 
         # The criteria note names the inputs' provenance, including how many
         # of the unseeded replicates actually produced a reading.

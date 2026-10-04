@@ -60,6 +60,27 @@ per-group sections answer it one configuration at a time; it introduces no
 new statistic (:func:`_comparison_rows` re-reads the group aggregates and the
 same contrasts) and is omitted for a single-configuration run set.
 
+A **client summary** opens the report (docs/FRISCO_PROTOCOL.md §10): the
+baseline gate's result first (:mod:`validation.baseline_gate`, an optional
+``gate`` input — without one the summary says the gate was not evaluated and
+that no strategy recommendation is made), each check in words with its
+computed numbers, a "what we are confident about and what we are not" table
+generated from the checks' statuses, the strategy results — only when the
+gate passed, only as intervals, and a recommendation line only of the form
+"on this model, strategy X reduced <measure> by A–B % (95 % interval)
+relative to doing nothing; this is a model prediction" — the excluded
+detectors, the calibration/validation day split, and the study's limits.
+When the gate failed the report says it contains no strategy
+recommendations, and the strategy tables (per-configuration metrics of the
+strategy arms, the contrasts and the strategy comparison) are replaced by a
+"not delivered" statement.
+
+**Fuel is a model estimate everywhere it appears** (Frisco plan Stage 1
+item 13; protocol §8.6): SUMO computes it from its HBEFA emission classes and
+nothing in this repository has validated it against measured fuel, so every
+metric row, column header, note and summary line that carries a fuel figure
+says so (:data:`FUEL_ESTIMATE_TEXT`, :func:`metric_label`).
+
 Every number in the rendered report is a computed value passed into the
 Jinja2 template (packaged at ``validation/templates/report.md.j2``); the
 template body contains no free-text numerals (CLAUDE.md §7.4). The optional
@@ -81,6 +102,13 @@ import numpy as np
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from scipy.stats import t as student_t
 
+from validation.baseline_gate import (
+    PROTOCOL_DOC,
+    SPEED_AGGREGATION_S,
+    CheckResult,
+    GateResult,
+    status_text,
+)
 from validation.battery import (
     STARVED_RAMP_FRACTION,
     STARVED_RAMP_MIN_PLANNED,
@@ -92,7 +120,7 @@ from validation.battery import (
     records_insertion,
     weave_exit_summary,
 )
-from validation.criteria import CriteriaProfile, CriteriaResult, evaluate
+from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, zero_collisions
 from validation.fields import SpeedField, speed_field
 from validation.metrics import (
     CI,
@@ -119,6 +147,59 @@ BASELINE_LABEL = "baseline"
 #: Dimensionless fraction → percent (not an SI unit conversion; kept in one
 #: place so no bare ``* 100`` appears in the rendering code).
 _PERCENT = 100.0
+
+#: Seconds per minute (labels only).
+_SECONDS_PER_MINUTE = 60.0
+
+#: Metric fields that carry a fuel figure (labelled a model estimate wherever
+#: they appear; Frisco plan Stage 1 item 13, docs/FRISCO_PROTOCOL.md §8.6).
+FUEL_METRICS: frozenset[str] = frozenset({"fuel_ml_per_veh_km"})
+
+#: The label every fuel figure carries.
+FUEL_LABEL = "model estimate"
+
+#: How fuel is described wherever the report names it in prose.
+FUEL_ESTIMATE_TEXT = (
+    "fuel (model estimate, SUMO HBEFA emission class; not validated against measured fuel)"
+)
+
+#: The note under the Metrics heading.
+FUEL_NOTE = (
+    f"Rows marked ({FUEL_LABEL}) carry {FUEL_ESTIMATE_TEXT}. SUMO computes fuel from its "
+    "HBEFA emission classes; this study has measured no fuel to check it against "
+    f"({PROTOCOL_DOC} section 8.6)."
+)
+
+#: The limitations bullet on fuel.
+FUEL_LIMITATION = (
+    f"Every fuel figure is a {FUEL_LABEL} (SUMO HBEFA emission class), not validated against "
+    "measured fuel; differences in fuel between configurations are model predictions."
+)
+
+#: The measure a client-summary recommendation line is stated on, and its name.
+#: The protocol's tuning objective is total delay including waiting time
+#: (docs/FRISCO_PROTOCOL.md §8.4); the metric set has no delay measure yet, so
+#: the line is stated on mean travel time — under its own name, never called
+#: delay.
+RECOMMENDATION_METRIC = ("mean_tt_s", "mean travel time")
+
+#: Throughput field a strategy may not lose (§8.4: a setting whose throughput
+#: interval lies entirely below the baseline's cannot be selected).
+THROUGHPUT_METRIC = "throughput_veh_h"
+
+#: Columns of the client summary's strategy table: metric field → plain name.
+CLIENT_STRATEGY_METRICS: tuple[tuple[str, str], ...] = (
+    ("throughput_veh_h", "Throughput"),
+    ("mean_tt_s", "Mean travel time"),
+    ("sigma_v_temporal_ms", "Speed variation σ_v (temporal)"),
+    ("fuel_ml_per_veh_km", f"Fuel ({FUEL_LABEL})"),
+    ("wave_count", "Wave count"),
+)
+
+
+def metric_label(name: str) -> str:
+    """A metric's row label: fuel fields carry ``(model estimate)``."""
+    return f"{name} ({FUEL_LABEL})" if name in FUEL_METRICS else name
 
 
 class ReportRefusedError(RuntimeError):
@@ -936,7 +1017,8 @@ def _measurement_note(
         f"Measurement window: each run's configured warm-up is discarded from every "
         f"metric (warm-up per run, in seconds: {warm_text}). Travel times keep whole "
         f"journeys that begin inside the window and are measured over {span_text}. "
-        "Fuel per vehicle-km remains a whole-run ratio unless the run records a "
+        f"Fuel per vehicle-km, a {FUEL_LABEL} (SUMO HBEFA emission class; not validated "
+        "against measured fuel), remains a whole-run ratio unless the run records a "
         "post-warm-up fuel total."
     )
 
@@ -1208,7 +1290,7 @@ def _criteria_rows(results: list[CriteriaResult]) -> list[dict[str, str]]:
 def _metric_rows(agg: Mapping[str, CI]) -> list[dict[str, str]]:
     return [
         {
-            "name": name,
+            "name": metric_label(name),
             "mean": _fmt(ci.mean),
             "lo": _fmt(ci.lo95),
             "hi": _fmt(ci.hi95),
@@ -1235,6 +1317,7 @@ def _group_context(groups: list[_Group], profile: CriteriaProfile) -> list[dict[
             {
                 "label": g.label,
                 "config_hash": g.config_hash,
+                "is_baseline": g.is_baseline,
                 "n_seeds": str(len(set(g.seeds))),
                 "seeds_joined": ", ".join(g.seeds),
                 "replicate_threshold": rep.threshold,
@@ -1258,7 +1341,7 @@ def _delta_context(groups: list[_Group], baseline: _Group) -> list[dict[str, Any
             methods.add(d.method)
             rows.append(
                 {
-                    "name": name,
+                    "name": metric_label(name),
                     "mean": _fmt(d.mean),
                     "lo": _fmt(d.lo95),
                     "hi": _fmt(d.hi95),
@@ -1286,7 +1369,7 @@ COMPARISON_METRICS: tuple[tuple[str, str], ...] = (
     ("throughput_veh_h", "Throughput [veh/h]"),
     ("mean_tt_s", "Mean travel time [s]"),
     ("sigma_v_temporal_ms", "σ_v temporal [m/s]"),
-    ("fuel_ml_per_veh_km", "Fuel [ml/veh·km]"),
+    ("fuel_ml_per_veh_km", f"Fuel, {FUEL_LABEL} [ml/veh·km]"),
     ("wave_count", "Wave count"),
 )
 
@@ -1357,6 +1440,317 @@ def _comparison_rows(groups: list[_Group], baseline: _Group | None) -> list[dict
     return rows
 
 
+#: What the strategy sections say instead of their tables when the gate failed.
+STRATEGY_WITHHELD = (
+    "Not delivered: the model did not reproduce the corridor (the baseline gate failed, "
+    f"{PROTOCOL_DOC} section 6). Strategy runs are kept for internal learning only; their "
+    "numbers are not findings and are not shown."
+)
+
+#: The speed-contour section's line when strategy results are withheld.
+CONTOURS_WITHHELD = (
+    "Contours of the strategy configurations are not shown: the model did not reproduce the "
+    "corridor (the baseline gate failed), so they are not findings. The baseline's contours "
+    "follow."
+)
+
+#: Confidence-table answers.
+CONFIDENT_YES = "yes"
+CONFIDENT_NO = "no"
+CONFIDENT_NA = "not applicable"
+CONFIDENT_UNKNOWN = "not established"
+CONFIDENT_RANGES = "only as ranges"
+
+
+def _gate_checks(gate: GateResult, name: str) -> list[CheckResult]:
+    """Every result of one check (both day sets, in gate order)."""
+    return [c for c in gate.checks if c.check == name]
+
+
+def _confidence_row(
+    statement: str, gate: GateResult | None, name: str, *, allow_na: bool = False
+) -> dict[str, str]:
+    """One confidence row from one check's statuses (all day sets must pass)."""
+    if gate is None:
+        return {
+            "statement": statement,
+            "confident": CONFIDENT_UNKNOWN,
+            "basis": "the baseline gate was not evaluated for this run set",
+        }
+    found = _gate_checks(gate, name)
+    basis = " ".join(c.plain for c in found) or "the gate result carries no such check"
+    if not found:
+        answer = CONFIDENT_UNKNOWN
+    elif all(c.status == "pass" for c in found):
+        answer = CONFIDENT_YES
+    elif allow_na and all(c.status == "not_applicable" for c in found):
+        answer = CONFIDENT_NA
+    else:
+        answer = CONFIDENT_NO
+    return {"statement": statement, "confident": answer, "basis": basis}
+
+
+def _pct_interval(baseline: _Group, group: _Group, name: str) -> tuple[DeltaCI, float, float]:
+    """The contrast of one metric and its interval as percent of the baseline mean."""
+    d = contrast(baseline.values(name), group.values(name))
+    finite = [v for v in baseline.values(name).values() if math.isfinite(v)]
+    base_mean = float(np.mean(finite)) if finite else math.nan
+    if not math.isfinite(base_mean) or base_mean == 0.0:
+        return d, math.nan, math.nan
+    return d, _PERCENT * d.lo95 / base_mean, _PERCENT * d.hi95 / base_mean
+
+
+def _signed(value: float) -> str:
+    return f"{value:+.1f}" if math.isfinite(value) else _fmt(None)
+
+
+def _recommendation(baseline: _Group, group: _Group, ci_pct: str) -> str:
+    """The client summary's line for one strategy (module docstring)."""
+    flag = zero_collisions(collision_counts([r.meta for r in group.runs]))
+    if flag is False:
+        return (
+            f"No recommendation for {group.label}: its runs recorded SUMO collisions, which "
+            f"disqualify a setting ({PROTOCOL_DOC} section 8.4)."
+        )
+    if flag is None:
+        return (
+            f"No recommendation for {group.label}: its runs do not all record the collision "
+            "counter, so a collision-free setting is not established."
+        )
+    thr, _, _ = _pct_interval(baseline, group, THROUGHPUT_METRIC)
+    if thr.resolved and thr.hi95 < 0.0:
+        return (
+            f"No recommendation for {group.label}: its throughput interval lies entirely "
+            f"below the baseline's ({PROTOCOL_DOC} section 8.4)."
+        )
+    field_name, measure = RECOMMENDATION_METRIC
+    d, lo_pct, hi_pct = _pct_interval(baseline, group, field_name)
+    if d.resolved and d.hi95 < 0.0 and math.isfinite(lo_pct) and math.isfinite(hi_pct):
+        return (
+            f"On this model, strategy {group.label} reduced {measure} by {-hi_pct:.1f}–"
+            f"{-lo_pct:.1f} % ({ci_pct} % interval) relative to doing nothing; this is a "
+            "model prediction."
+        )
+    return (
+        f"No recommendation for {group.label}: its {measure} changed by {_signed(lo_pct)} to "
+        f"{_signed(hi_pct)} % ({ci_pct} % interval) relative to doing nothing, which does not "
+        "show a reduction."
+    )
+
+
+def _client_summary(
+    gate: GateResult | None,
+    groups: list[_Group],
+    baseline: _Group | None,
+    observed: ObservedProvenance | None,
+) -> dict[str, Any]:
+    """The client summary section's context (module docstring).
+
+    Every sentence is assembled from the gate's computed checks and the run
+    set's computed contrasts; nothing here is typed by a caller.
+
+    Args:
+        gate: The baseline gate, or None when it was not evaluated.
+        groups: Every configuration group, baseline first.
+        baseline: The single baseline group, or None.
+        observed: The observed-data provenance, if any.
+
+    Returns:
+        ``{gate_line, check_lines, confidence, strategy_statement,
+        strategy_headers, strategy_rows, recommendations, data_lines, limits,
+        withheld}`` for the template; ``withheld`` is the "not delivered"
+        sentence when the gate failed, else None.
+    """
+    ci_pct = _fmt(CI_LEVEL * _PERCENT, 3)
+    arms = [g for g in groups if g is not baseline and not g.is_baseline]
+    mismatch = ""
+    if gate is not None and gate.config_hash and baseline is not None:
+        if gate.config_hash != baseline.config_hash:
+            mismatch = (
+                f"The baseline gate was evaluated on configuration `{gate.config_hash}`; this "
+                f"report's baseline is `{baseline.config_hash}`, so the gate does not apply to "
+                "it and no strategy recommendation is made."
+            )
+    allowed = gate is not None and gate.passed and not mismatch and baseline is not None
+    withheld = STRATEGY_WITHHELD if gate is not None and not gate.passed else None
+
+    if gate is None:
+        gate_line = (
+            "Baseline gate: NOT EVALUATED. No baseline gate result was supplied with this run "
+            "set, so the model has not been shown to reproduce the corridor under the study "
+            f"protocol ({PROTOCOL_DOC} section 6), and this report makes no strategy "
+            "recommendation."
+        )
+        check_lines: list[str] = []
+    else:
+        gate_line = gate.headline()
+        check_lines = [
+            f"{c.check} {status_text(c.status)}"
+            + ("" if c.gating else " (reported, not part of the gate)")
+            + f": {c.plain} Source: {c.label}."
+            for c in gate.checks
+        ]
+    if mismatch:
+        check_lines.append(mismatch)
+
+    minutes = f"{SPEED_AGGREGATION_S / _SECONDS_PER_MINUTE:g}"
+    confidence = [
+        _confidence_row("Traffic counts at the detectors (link flows, C1)", gate, "C1"),
+        _confidence_row(f"Speeds at the detectors, {minutes}-minute averages (C3)", gate, "C3"),
+        _confidence_row("Where and when the slowdowns form (bottlenecks, C6)", gate, "C6"),
+        _confidence_row("Stop-and-go wave speed (C4)", gate, "C4", allow_na=True),
+        _confidence_row("No simulated collisions (C5)", gate, "C5"),
+        {
+            "statement": FUEL_ESTIMATE_TEXT[:1].upper() + FUEL_ESTIMATE_TEXT[1:],
+            "confident": CONFIDENT_NO,
+            "basis": "fuel is not validated: no measured fuel was compared, so every fuel "
+            f"figure is a {FUEL_LABEL} ({PROTOCOL_DOC} section 8.6)",
+        },
+    ]
+    if gate is None:
+        effect = (
+            CONFIDENT_NO,
+            "the baseline gate was not evaluated, so no strategy result is a finding",
+        )
+    elif not gate.passed:
+        effect = (CONFIDENT_NO, "not delivered: the model did not reproduce the corridor")
+    elif mismatch:
+        effect = (CONFIDENT_NO, "the gate was evaluated on another configuration")
+    elif arms and baseline is None:
+        effect = (CONFIDENT_NO, "no single baseline group to compare against")
+    elif not arms:
+        effect = (CONFIDENT_NA, "this run set has no strategy arm")
+    else:
+        effect = (
+            CONFIDENT_RANGES,
+            f"model predictions with {ci_pct} % intervals over the replicates, relative to "
+            "doing nothing; not measurements",
+        )
+    confidence.append(
+        {"statement": "Effects of the strategies", "confident": effect[0], "basis": effect[1]}
+    )
+    confidence.append(
+        {
+            "statement": "Robustness of strategy effects to driver and demand uncertainty",
+            "confident": CONFIDENT_NO,
+            "basis": f"not evaluated in this report ({PROTOCOL_DOC} section 8.5)",
+        }
+    )
+    if arms:
+        confidence.append(
+            {
+                "statement": "Waiting time on ramps and before entering the network",
+                "confident": CONFIDENT_NO,
+                "basis": f"not included in the travel-time measure ({PROTOCOL_DOC} section 8.2)",
+            }
+        )
+
+    headers = [f"{name}, change [%]" for _, name in CLIENT_STRATEGY_METRICS]
+    strategy_rows: list[dict[str, Any]] = []
+    recommendations: list[str] = []
+    if gate is not None and not gate.passed:
+        statement = (
+            "This report contains no strategy recommendations: the model did not reproduce "
+            "the corridor (the baseline gate failed), so strategy results are not delivered "
+            "as findings."
+        )
+    elif gate is None:
+        statement = (
+            "This report contains no strategy recommendations: the baseline gate was not "
+            "evaluated. Any strategy table below is model output, not a finding."
+        )
+    elif mismatch:
+        statement = "This report contains no strategy recommendations: " + mismatch
+    elif arms and baseline is None:
+        statement = (
+            "This report contains no strategy recommendations: the run set has no single "
+            "baseline group to state the strategies' effects against."
+        )
+    elif not arms:
+        statement = "The baseline gate passed; this run set has no strategy arm to compare."
+    else:
+        statement = (
+            "The baseline gate passed. The strategy effects below are model predictions on "
+            f"this corridor model, each the {ci_pct} % interval of the change relative to doing "
+            "nothing, as a percentage of the baseline mean; they are not measurements."
+        )
+    if allowed and baseline is not None:
+        for g in arms:
+            cells = []
+            for name, _ in CLIENT_STRATEGY_METRICS:
+                _, lo_pct, hi_pct = _pct_interval(baseline, g, name)
+                finite = math.isfinite(lo_pct) and math.isfinite(hi_pct)
+                cells.append(f"{_signed(lo_pct)} to {_signed(hi_pct)}" if finite else _fmt(None))
+            strategy_rows.append({"label": g.label, "cells": cells})
+            recommendations.append(_recommendation(baseline, g, ci_pct))
+
+    data_lines: list[str] = []
+    split = gate.split if gate is not None else None
+    if split:
+        cal = ", ".join(str(d) for d in split.get("calibration_dates") or []) or "none"
+        val = ", ".join(str(d) for d in split.get("validation_dates") or []) or "none"
+        line = (
+            f"Calibration days: {cal}. Validation days: {val}. Drawn by the protocol's seeded "
+            f"split (seed {split.get('seed')}, {PROTOCOL_DOC} section 3)."
+        )
+        if split.get("underpowered"):
+            line += f" The validation is underpowered: {split.get('underpowered_reason')}."
+        data_lines.append(line)
+    else:
+        data_lines.append(
+            "Calibration and validation days: not stated (no day split accompanies this report)."
+        )
+    if gate is not None:
+        if gate.excluded_detectors:
+            data_lines.extend(
+                f"Excluded detector {name}: {why}"
+                for name, why in sorted(gate.excluded_detectors.items())
+            )
+        else:
+            data_lines.append("Excluded detectors: none recorded in the observations.")
+    else:
+        data_lines.append("Excluded detectors: not stated (no baseline gate result).")
+    if observed is not None:
+        data_lines.append(
+            f"Observed data: {observed.path or observed.corridor}"
+            + (f", dates {observed.dates}" if observed.dates else "")
+            + f"; {observed.aggregation}."
+        )
+    data_lines.append(
+        "Ramp volumes estimated from mainline differences, and every split assumption behind "
+        "them, are listed in the study's ramp-estimation artifact, not in this run set "
+        f"({PROTOCOL_DOC} section 2.3)."
+    )
+    if arms:
+        data_lines.append(
+            "Strategy assumptions: each strategy arm's penetration, compliance and settings "
+            "are as its label states; they are assumptions, not measured behaviour."
+        )
+
+    limits = [
+        "Single corridor: the results describe this corridor, period and day set; transfer "
+        "to other corridors is not established.",
+        "Model-form uncertainty: the car-following and lane-change models' own assumptions are "
+        "not captured by the seed-to-seed intervals.",
+        FUEL_LIMITATION,
+        "Compliance and strategy assumptions: strategy results hold only for the settings "
+        "simulated, under the configured driver population and demand.",
+        "Results are reported as they came out, including failures.",
+    ]
+    return {
+        "gate_line": gate_line,
+        "check_lines": check_lines,
+        "confidence": confidence,
+        "strategy_statement": statement,
+        "strategy_headers": headers,
+        "strategy_rows": strategy_rows,
+        "recommendations": recommendations,
+        "data_lines": data_lines,
+        "limits": limits,
+        "withheld": withheld,
+    }
+
+
 def _render_pdf(markdown_path: Path) -> Path:
     from validation.report_pdf import render_pdf
 
@@ -1385,6 +1779,7 @@ def generate_report(
     metrics_by_run: Mapping[str | Path, Metrics] | None = ...,
     wave_readings_by_run: Mapping[str | Path, float] | None = ...,
     figure_runs: Sequence[str | Path] | None = ...,
+    gate: GateResult | None = ...,
 ) -> Path: ...
 
 
@@ -1410,6 +1805,7 @@ def generate_report(
     metrics_by_run: Mapping[str | Path, Metrics] | None = ...,
     wave_readings_by_run: Mapping[str | Path, float] | None = ...,
     figure_runs: Sequence[str | Path] | None = ...,
+    gate: GateResult | None = ...,
 ) -> tuple[Path, Path]: ...
 
 
@@ -1434,6 +1830,7 @@ def generate_report(
     metrics_by_run: Mapping[str | Path, Metrics] | None = None,
     wave_readings_by_run: Mapping[str | Path, float] | None = None,
     figure_runs: Sequence[str | Path] | None = None,
+    gate: GateResult | None = None,
 ) -> Path | tuple[Path, Path]:
     """Generate a markdown (optionally PDF) validation report for a run set.
 
@@ -1518,6 +1915,12 @@ def generate_report(
             covering every run, the report then reads only the listed runs'
             trajectories — the corridor battery lists its first seed, the
             one it keeps after pruning.
+        gate: The no-strategy configuration's baseline gate
+            (:func:`validation.baseline_gate.evaluate_gate`), which opens the
+            report's client summary. ``None`` (the default) makes the summary
+            say the gate was not evaluated and that no strategy
+            recommendation is made; a failed gate also replaces the strategy
+            tables with a "not delivered" statement.
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -1625,8 +2028,12 @@ def generate_report(
         and np.size(segment_speeds_sim) > 0
         else None
     )
+    client = _client_summary(gate, groups, baseline, observed)
+    # A failed gate withholds the strategy configurations' results, their
+    # contour panels included: only the baseline's contours are rendered.
+    withheld = client["withheld"] is not None and baseline is not None
     figures = _render_figures(
-        groups,
+        [baseline] if withheld and baseline is not None else groups,
         baseline,
         out.parent,
         None if figure_runs is None else frozenset(_run_key(p) for p in figure_runs),
@@ -1685,6 +2092,11 @@ def generate_report(
     )
     rendered = env.get_template(_TEMPLATE_NAME).render(
         title=title,
+        client=client,
+        strategy_withheld=client["withheld"],
+        contours_withheld=CONTOURS_WITHHELD if withheld and len(groups) > 1 else None,
+        fuel_note=FUEL_NOTE,
+        fuel_limitation=FUEL_LIMITATION,
         created_at=created_at,
         seeded_any=seeded_any,
         seeded_banner=(

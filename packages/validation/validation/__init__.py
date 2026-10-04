@@ -1,7 +1,23 @@
 """FlowState v2 validation: metrics, wave detection, string stability,
-FHWA-style acceptance criteria, and the auto-generated validation report
-(CLAUDE.md §7; docs/CONTRACTS.md §§3, 4, 7)."""
+FHWA-style acceptance criteria, the corridor study protocol's bottleneck check
+and baseline gate (docs/FRISCO_PROTOCOL.md §§5-6), and the auto-generated
+validation report (CLAUDE.md §7; docs/CONTRACTS.md §§3, 4, 7)."""
 
+from validation.baseline_gate import (
+    CheckResult,
+    DaySetScore,
+    GateResult,
+    evaluate_gate,
+    gate_from_replicates,
+    rescore,
+    score_day_set,
+)
+from validation.bottlenecks import (
+    Bottleneck,
+    BottleneckComparison,
+    compare_bottlenecks,
+    identify_bottlenecks,
+)
 from validation.criteria import (
     CRITERIA_PROFILES,
     CriteriaProfile,
@@ -75,10 +91,15 @@ __all__ = [
     "CI",
     "CRITERIA_PROFILES",
     "WAVE_DETECTORS",
+    "Bottleneck",
+    "BottleneckComparison",
+    "CheckResult",
     "CriteriaProfile",
     "CriteriaResult",
+    "DaySetScore",
     "DensityField",
     "FlowField",
+    "GateResult",
     "IDMPartials",
     "LinkHourGEH",
     "LinkHourRecord",
@@ -98,6 +119,7 @@ __all__ = [
     "aggregate",
     "ci",
     "clock_label",
+    "compare_bottlenecks",
     "compute_metrics",
     "count_crossings",
     "crossings_per_window",
@@ -107,13 +129,16 @@ __all__ = [
     "equilibrium_gap",
     "equilibrium_speed",
     "evaluate",
+    "evaluate_gate",
     "evaluate_ring_benchmark",
     "flow_field",
+    "gate_from_replicates",
     "geh",
     "geh_pass_fraction",
     "generate_report",
     "get_detector",
     "get_profile",
+    "identify_bottlenecks",
     "idm_partials",
     "is_string_stable",
     "link_hour_geh",
@@ -121,7 +146,9 @@ __all__ = [
     "planted_stripe_field",
     "pool_link_hours",
     "pool_scores",
+    "rescore",
     "rmspe",
+    "score_day_set",
     "score_run_against_observed",
     "speed_field",
     "stability_criterion",

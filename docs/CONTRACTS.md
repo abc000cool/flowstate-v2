@@ -3375,3 +3375,54 @@ Stage 1 item 8 of the Frisco plan (docs/FRISCO_PROTOCOL.md §7.2); CLI
   share → free-flow speed → capacity, corridor-wide, never automatically.
 - **Provenance:** commit; `code_dirty` over the script, `packages/calibration`,
   `packages/flowstate_core`, `pyproject.toml`, `uv.lock`; input hashes; argv.
+
+## Baseline gate, bottleneck check, day split and the client summary (WP-104) — 2026-10-04
+
+Stage 1 items 9, 12 and 13 of the Frisco plan (docs/FRISCO_PROTOCOL.md §§3–6,
+8.6, 10). Modules `calibration.day_split`, `validation.bottlenecks`,
+`validation.baseline_gate`; CLIs `scripts/day_split.py`,
+`scripts/observations_for_dates.py`, `scripts/baseline_gate.py`;
+`scripts/corridor_battery.py --baseline-gate`.
+
+- **Day split (`flowstate.day_split/1`):** `study_period, seed, rules,
+  selected_stations, usability_source, exclusions, days[], candidate_dates,
+  strata[] (label, dates, volume bounds, n_calibration, drawn_positions,
+  calibration_dates, validation_dates), calibration_dates, validation_dates,
+  underpowered, underpowered_reason, notes, provenance`. Rules recorded in
+  every split (`split_rules()`): Tue–Thu, federal holidays screened, caller
+  exclusions, ≥ 80 % of selected stations usable, station-mean volume
+  terciles, `floor(0.6 × n_candidates)` calibration days allocated by largest
+  remainder (ties in a seeded permutation), seed 20261004.
+- **Observations for a subset of dates:** `Observations.from_frame(...,
+  dates=)` (additive); a subset artifact records `source.subset` (`of`,
+  `of_sha256`, `set`, `split`, detectors hash, `context_from` when the wave
+  context was copied from a fetch of the same dates).
+- **Bottlenecks (C6):** after Chen, Skabardonis & Varaiya (2004): upstream
+  < 40 mph, downstream ≥ 20 mph faster, active in ≥ 5 of 7 consecutive
+  5-min windows (persistence flagged "verify against the original paper");
+  the four comparison rules of §5. Simulated station speeds are the battery's
+  stored segment means (`segment_speeds_sim`, midpoint to midpoint), not point
+  detectors; every result says so.
+- **Gate (`flowstate.baseline_gate/1`):** `passed, verdict,
+  strategy_results_allowed, headline, reasons[], n_replicates, config_hash,
+  scenario, split, excluded_detectors, thresholds, notes, checks[]` (one row
+  per check and day set: `check ∈ {replicates, C1…C6}, name, day_set, status
+  ∈ {pass, fail, not_applicable, not_recorded, not_evaluated}, gating,
+  satisfied, value, target, shortfall, plain, label`) and `day_sets.{calibration,
+  validation}` (`observations_path, dates, n_replicates, geh{…}, rmspe{"300",
+  "900", "3600"}, replicate_mean_field, bottlenecks, detector_wave_speed, …`).
+  Gating: C1, C3 (RMSPE at 900 s, replicate mean), C5, C6 on calibration days;
+  C1, C3, C6 on validation days; C4 pass or not applicable; fewer than 20
+  replicates fails. C2 (TxDOT GEH < 3) is reported, not gating. The battery
+  artifact gains an optional `baseline_gate` key (only with
+  `--baseline-gate`; every other key byte-identical).
+- **Report:** a client summary opens every report (the gate first; a
+  confident / not-confident table from computed statuses; strategy rows only
+  when the gate passed, as intervals with one fixed recommendation form; the
+  split, exclusions and limitations). A failed gate replaces the strategy
+  tables, contrasts and contour panels with a "not delivered" statement; no
+  gate keeps them, labelled model output, not findings. Fuel is labelled a
+  model estimate everywhere (markdown row `fuel_ml_per_veh_km (model
+  estimate)`; JSON field names unchanged). Recommendation lines are stated on
+  mean travel time under its own name until a delay metric with waiting time
+  exists (item 10).

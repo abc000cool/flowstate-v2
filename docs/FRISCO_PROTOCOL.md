@@ -65,14 +65,22 @@ internal rule of this protocol, stated as such in every report.
    not days with an incident or weather event affecting the stretch during
    the study period (agency logs), and not days where fewer than 80 % of
    the selected stations are usable in the study period [FlowState].
-2. **The split:** candidate days are stratified by their total mainline
-   volume in the study period into terciles; within each tercile, a seeded
-   random draw (seed **20261004**, `numpy.random.default_rng`) assigns 60 %
-   of the days (rounded down, at least one per tercile where possible) to
-   **calibration** and the rest to **validation** [FlowState]. The split is
-   computed by script, committed with the selection, and never redrawn.
-3. **Minimum:** 5 calibration days and 3 validation days. With fewer, the
-   study proceeds but states that its validation is underpowered.
+2. **The split:** candidate days are stratified by their mainline volume
+   in the study period (station-mean volume, so a missing station does not
+   push a day down) into terciles. 60 % of all candidate days, rounded
+   down, go to **calibration**, allocated across the terciles in proportion
+   to their size by largest remainder, at least one per tercile whenever
+   the total allows, ties broken in a seeded order; within each tercile a
+   seeded random draw (seed **20261004**, `numpy.random.default_rng`)
+   picks which days; the rest go to **validation** [FlowState]. The split
+   is computed by script (`calibration.day_split`, `scripts/day_split.py`),
+   committed with the selection, and never redrawn. *(Corrected
+   2026-10-04, before any data: the first wording rounded 60 % down inside
+   each tercile, which with three-day terciles sends one day in three to
+   calibration; found while implementing it.)*
+3. **Minimum:** 5 calibration days and 3 validation days. With fewer on
+   either side, the study proceeds but states that it is underpowered and
+   on which side.
 4. **Hours:** the study period agreed in §1 (for example 15:00–19:00), the
    same on calibration and validation days. The simulation starts earlier by
    a warm-up of at least 30 minutes, or twice the free-flow travel time of

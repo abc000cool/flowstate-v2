@@ -79,6 +79,20 @@ the first seed afterwards (``--keep-trajectories`` keeps them all), and
 ``vehicles.parquet`` (one row per vehicle: route, origin, destination,
 corridor entry; about 2 MB for a four-hour run) is kept either way.
 
+**Baseline gate.** ``--baseline-gate`` (or ``--gate-validation-observations``)
+evaluates the corridor study protocol's gate on this no-strategy battery
+(docs/FRISCO_PROTOCOL.md §6, :mod:`validation.baseline_gate`): C1 and C3 on
+the calibration-day and the validation-day observations, C4, C5 and C6
+(:mod:`validation.bottlenecks`). Every replicate's stored simulated side is
+paired with each day set (:func:`validation.baseline_gate.rescore`; the two
+artifacts must share ``--observations``' station table and window grid), so
+no trajectory is re-read. The result is written into the artifact as a
+``baseline_gate`` block (additively: every other key is computed exactly as
+without the option), beside the report as ``baseline_gate.json`` and
+``baseline_gate.md``, and into the report's client summary. Without the
+option the artifact carries no such key and the report's summary says the
+gate was not evaluated.
+
 Usage (repo root)::
 
     uv run --no-sync python scripts/corridor_battery.py \\
@@ -86,6 +100,14 @@ Usage (repo root)::
         --replicates 20 --procs 30 --score-procs 6 --out runs/X/baseline \\
         --artifact artifacts/validation_X.json --report-dir docs/reports/X \\
         --criteria-profile fhwa_default
+
+With the gate (calibration-day and validation-day artifacts on the same grid
+as ``--observations``; ``scripts/observations_for_dates.py`` builds them)::
+
+    uv run --no-sync python scripts/corridor_battery.py ... \\
+        --baseline-gate --gate-calibration-observations artifacts/obs_cal_X.json \\
+        --gate-validation-observations artifacts/obs_val_X.json \\
+        --gate-day-split artifacts/day_split_X.json
 """
 
 from __future__ import annotations
@@ -108,6 +130,8 @@ from flowstate_core.units import h_to_s
 from microsim.demand_adapter import corridor_x_offset_m
 from microsim.runner import ReplicatesAborted, RunPaths, _versions, run_replicates
 from microsim.scenarios import load_scenario
+from validation.baseline_gate import GateResult, gate_from_replicates
+from validation.baseline_gate import render_markdown as render_gate_markdown
 from validation.battery import (
     DEFAULT_SCORE_PROCS,
     METRICS_FILE,
@@ -721,6 +745,68 @@ def prune_trajectories(dirs: Sequence[Path], keep_first: bool = True) -> int:
     return deleted
 
 
+def battery_gate(
+    args: argparse.Namespace,
+    *,
+    observed: ObservedCorridor,
+    scores_list: Sequence[ObservedScores],
+    wave_speeds: Sequence[float],
+    wave_detector: str,
+    metas: Sequence[Mapping[str, Any]],
+    cfg: ScenarioConfig,
+) -> GateResult:
+    """The protocol's baseline gate on this battery (module docstring).
+
+    Args:
+        args: The parsed command line (``--gate-*`` options).
+        observed: The battery's own observations (the scores' reference).
+        scores_list: Every replicate's scores against ``observed``.
+        wave_speeds: Every replicate's criterion wave speed [km/h].
+        wave_detector: The detector that read them.
+        metas: Every replicate's ``meta.json``.
+        cfg: The scenario configuration.
+
+    Returns:
+        The :class:`validation.baseline_gate.GateResult`.
+    """
+    cal_path = str(args.gate_calibration_observations or args.observations)
+    calibration = (
+        observed
+        if args.gate_calibration_observations is None
+        else ObservedCorridor.from_json(args.gate_calibration_observations)
+    )
+    validation = (
+        None
+        if args.gate_validation_observations is None
+        else ObservedCorridor.from_json(args.gate_validation_observations)
+    )
+    split = None
+    if args.gate_day_split is not None:
+        raw = json.loads(Path(args.gate_day_split).read_text())
+        split = {
+            "path": str(args.gate_day_split),
+            "seed": raw.get("seed"),
+            "calibration_dates": raw.get("calibration_dates", []),
+            "validation_dates": raw.get("validation_dates", []),
+            "underpowered": raw.get("underpowered"),
+            "underpowered_reason": raw.get("underpowered_reason", ""),
+        }
+    return gate_from_replicates(
+        list(scores_list),
+        scored_against=observed,
+        calibration=calibration,
+        validation=validation,
+        wave_speeds_kmh=list(wave_speeds),
+        wave_detector=wave_detector,
+        collision_counts=collision_counts(metas),
+        calibration_path=cal_path,
+        validation_path=str(args.gate_validation_observations or ""),
+        config_hash=config_hash(cfg),
+        scenario=str(args.scenario),
+        split=split,
+    )
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Command-line interface (see the module docstring for the usage line)."""
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0] if __doc__ else None)
@@ -777,6 +863,30 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "insertion buffer (0 for ring/OSM networks)",
     )
     ap.add_argument("--title", default="FlowState calibration & validation report")
+    ap.add_argument(
+        "--baseline-gate",
+        action="store_true",
+        help="evaluate the corridor study protocol's baseline gate (docs/FRISCO_PROTOCOL.md "
+        "section 6) and write it into the artifact, beside the report and into its client "
+        "summary; implied by --gate-validation-observations",
+    )
+    ap.add_argument(
+        "--gate-calibration-observations",
+        default=None,
+        help="calibration-day observations artifact (default: --observations); same station "
+        "table and window grid as --observations",
+    )
+    ap.add_argument(
+        "--gate-validation-observations",
+        default=None,
+        help="validation-day observations artifact (same grid); without it the gate's "
+        "validation-day checks are not evaluated and the gate fails",
+    )
+    ap.add_argument(
+        "--gate-day-split",
+        default=None,
+        help="the study's flowstate.day_split/1 JSON (its dates are recorded in the gate)",
+    )
     return ap.parse_args(argv)
 
 
@@ -872,6 +982,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     pooled_geh, mean_rmspe, sim_speeds, obs_speeds, provenance = pool_scores(
         observed, scores_list, path=str(args.observations)
     )
+    gate: GateResult | None = None
+    if args.baseline_gate or args.gate_validation_observations is not None:
+        gate = battery_gate(
+            args,
+            observed=observed,
+            scores_list=scores_list,
+            wave_speeds=wave_speeds,
+            wave_detector=profile.wave_detector.name,
+            metas=metas,
+            cfg=cfg,
+        )
     criteria_rows = evaluate(
         profile,
         geh_values=pooled_geh or None,
@@ -915,6 +1036,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 metrics_by_run=dict(zip(dirs, metrics_list, strict=True)),
                 wave_readings_by_run=dict(zip(dirs, wave_speeds, strict=True)),
                 figure_runs=[dirs[0]],
+                gate=gate,
             )
             report_path = result[0] if isinstance(result, tuple) else result
         else:
@@ -945,6 +1067,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         metas=metas,
     )
     artifact["report_path"] = None if report_path is None else str(report_path)
+    if gate is not None:
+        # Additive: present only when the gate was evaluated (module docstring).
+        artifact["baseline_gate"] = gate.to_dict()
+        gate.to_json(report_dir / "baseline_gate.json")
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "baseline_gate.md").write_text(render_gate_markdown(gate))
     artifact_path = Path(args.artifact)
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(json.dumps(json_safe(artifact), indent=2, allow_nan=False))
@@ -970,6 +1098,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(collision_line(artifact["collisions"]), flush=True)
     for row in criteria_rows:
         print(f"    {row.name:<18} {row.status:<14} {row.value}  ({row.threshold})", flush=True)
+    if gate is not None:
+        print(f"    {gate.headline()}", flush=True)
+        for check in gate.checks:
+            mark = "" if check.gating else " (not gating)"
+            print(f"      {check.check:<10} {check.status:<14}{mark} {check.plain}", flush=True)
     print(phase_summary(timings), flush=True)
     print(
         f"done in {time.perf_counter() - t0:.0f} s -> {artifact_path}"

@@ -10,6 +10,54 @@
 Generated: {{ created_at }}
 {% endif %}
 
+## Client summary
+
+{{ client.gate_line }}
+{% if client.check_lines %}
+
+{% for line in client.check_lines %}
+- {{ line }}
+{% endfor %}
+{% endif %}
+
+### What we are confident about, and what we are not
+
+| Statement | Confident | Basis |
+|---|---|---|
+{% for r in client.confidence %}
+| {{ r.statement }} | {{ r.confident }} | {{ r.basis }} |
+{% endfor %}
+
+### Strategy results
+
+{{ client.strategy_statement }}
+{% if client.strategy_rows %}
+
+| Strategy | {{ client.strategy_headers | join(' | ') }} |
+|---|{{ '---|' * (client.strategy_headers | length) }}
+{% for r in client.strategy_rows %}
+| {{ r.label }} | {{ r.cells | join(' | ') }} |
+{% endfor %}
+{% endif %}
+{% if client.recommendations %}
+
+{% for line in client.recommendations %}
+- {{ line }}
+{% endfor %}
+{% endif %}
+
+### Data, days and assumptions
+
+{% for line in client.data_lines %}
+- {{ line }}
+{% endfor %}
+
+### Limits of this study
+
+{% for line in client.limits %}
+- {{ line }}
+{% endfor %}
+
 ## Provenance
 
 Profile: `{{ profile_name }}`. Seeds: {{ seeds_joined }}.
@@ -144,6 +192,8 @@ measurement window and completed the span.
 
 {{ wave_row_note }}
 
+{{ fuel_note }}
+
 {% for g in groups %}
 ### {{ g.label }} (`{{ g.config_hash }}`)
 
@@ -153,11 +203,15 @@ criterion ({{ g.replicate_threshold }}): {{ g.replicate_result }}.
 This configuration carries a seeded perturbation ({{ seeded_flag_text }}).
 {% endif %}
 
+{% if strategy_withheld and not g.is_baseline %}
+{{ strategy_withheld }}
+{% else %}
 | Metric | Mean | Lower | Upper | n | Underpowered |
 |---|---|---|---|---|---|
 {% for m in g.metric_rows %}
 | {{ m.name }} | {{ m.mean }} | {{ m.lo }} | {{ m.hi }} | {{ m.n }} | {{ m.underpowered }} |
 {% endfor %}
+{% endif %}
 {% if not loop.last %}
 
 {% endif %}
@@ -166,6 +220,9 @@ This configuration carries a seeded perturbation ({{ seeded_flag_text }}).
 
 ### Controller minus baseline
 
+{% if strategy_withheld %}
+{{ strategy_withheld }}
+{% else %}
 Each row is the difference of the group's metric from the baseline's
 (group minus baseline; negative means lower than baseline), with a
 two-sided t-distribution interval at the {{ ci_level_pct }} percent level.
@@ -191,6 +248,7 @@ contrast is not evidence of an effect in either direction.
 
 {% endif %}
 {% endfor %}
+{% endif %}
 {% elif delta_note %}
 
 {{ delta_note }}
@@ -199,6 +257,9 @@ contrast is not evidence of an effect in either direction.
 {% if comparison %}
 ## Strategy comparison
 
+{% if strategy_withheld %}
+{{ strategy_withheld }}
+{% else %}
 One row per configuration, the baseline first. Each cell is that group's mean
 with its {{ ci_level_pct }} percent replicate interval in brackets and, off
 the baseline row, the group-minus-baseline difference with its own interval
@@ -219,9 +280,14 @@ sections the per-metric detail.
 | {{ r.label }}{% if r.is_baseline %} (reference){% elif r.method_text %} (Δ {{ r.method_text }}){% endif %} | {{ r.cells | join(' | ') }} |
 {% endfor %}
 {% endif %}
+{% endif %}
 
 ## Speed contours
 
+{% if contours_withheld %}
+{{ contours_withheld }}
+
+{% endif %}
 {% for f in figures %}
 ![{{ f.caption }}]({{ f.path }})
 {% endfor %}
@@ -240,6 +306,7 @@ sections the per-metric detail.
   behavior; conclusions hold only within the swept grid.
 - Metrics from fewer than {{ min_replicates }} replicates are flagged
   underpowered and are diagnostics, not claims.
+- {{ fuel_limitation }}
 - {{ measurement_note }}
 {% if deltas %}
 - Controller-minus-baseline contrasts compare configurations that differ

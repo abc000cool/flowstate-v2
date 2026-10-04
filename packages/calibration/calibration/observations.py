@@ -222,6 +222,7 @@ class Observations:
         corridor: str,
         source: Mapping[str, Any] | str,
         aggregation: str = DEFAULT_AGGREGATION,
+        dates: Sequence[str] | None = None,
     ) -> Observations:
         """Aggregate a tidy detector frame into an observations artifact.
 
@@ -253,6 +254,13 @@ class Observations:
             source: Provenance mapping (or a plain string, stored as
                 ``{"provider": ...}``).
             aggregation: Override the aggregation description.
+            dates: Local dates (``YYYYMMDD`` or ``YYYY-MM-DD``) to aggregate;
+                rows of every other date are ignored. ``None`` (the default)
+                aggregates every date of the frame, exactly as before. This
+                is how a calibration-day and a validation-day artifact are
+                built from one fetch (docs/FRISCO_PROTOCOL.md §3.5,
+                :mod:`calibration.day_split`); the caller records the dates
+                in ``source``.
 
         Returns:
             The artifact.
@@ -260,7 +268,8 @@ class Observations:
         Raises:
             ValueError: ``duration_s`` is not a multiple of ``window_s``,
                 ``t0_local`` is unparseable, the frame's interval disagrees
-                with ``window_s``, or the frame lacks a required column.
+                with ``window_s``, the frame lacks a required column, or a
+                requested date has no row in the frame.
         """
         required = ("timestamp", "station", "flow_veh_h")
         missing = [c for c in required if c not in df.columns]
@@ -281,6 +290,12 @@ class Observations:
         work = df.copy()
         work["_secs"] = local_seconds(work)
         work["_date"] = local_dates(work)
+        if dates is not None:
+            wanted = {_iso_date(d) for d in dates}
+            absent = sorted(wanted - set(work["_date"]))
+            if absent:
+                raise ValueError(f"from_frame: requested date(s) {absent} have no row in the frame")
+            work = work[work["_date"].isin(wanted)]
         offset = (work["_secs"] - t0_s) / window_s
         work["_window"] = offset.round().astype("int64")
         on_grid = (offset - work["_window"]).abs() < 1e-6
@@ -308,10 +323,12 @@ class Observations:
             speeds[spec.id], speeds_sd[spec.id] = _mean_sd(rows, "speed_ms", n_windows)
             occupancy[spec.id], _ = _mean_sd(rows, "occupancy_pct", n_windows)
             observed = sum(1 for v in flows[spec.id] if not math.isnan(v))
-            dates = rows.loc[rows["flow_veh_h"].notna(), "_date"] if not rows.empty else []
+            seen: Iterable[str] = (
+                rows.loc[rows["flow_veh_h"].notna(), "_date"] if not rows.empty else []
+            )
             quality[spec.id] = {
                 "fraction_valid": observed / n_windows if n_windows else 0.0,
-                "n_dates": float(len(set(dates))),
+                "n_dates": float(len(set(seen))),
             }
         provenance = dict(source) if isinstance(source, Mapping) else {"provider": str(source)}
         return cls(
@@ -410,6 +427,21 @@ class Observations:
     def from_json(cls, path: str | Path) -> Observations:
         """Read an artifact written by :meth:`to_json`."""
         return cls.from_dict(json.loads(Path(path).read_text()))
+
+
+def _iso_date(value: str) -> str:
+    """``YYYYMMDD`` or ``YYYY-MM-DD`` → ``YYYY-MM-DD`` (the frame's local-date spelling).
+
+    Raises:
+        ValueError: Neither form.
+    """
+    text = str(value).strip()
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    parts = text.split("-")
+    if len(parts) == 3 and [len(p) for p in parts] == [4, 2, 2] and all(p.isdigit() for p in parts):
+        return text
+    raise ValueError(f"date must be YYYYMMDD or YYYY-MM-DD, got {value!r}")
 
 
 def parse_clock(value: str) -> float:
