@@ -6,6 +6,28 @@ is quoted that cannot be reproduced from the referenced runs.
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-04
+
+**Release summary.** A model-integrity release. Two paths around SUMO's own
+safety checks were found and closed behind switches: controlled AVs driven by
+`setSpeed` could not brake harder than their comfortable deceleration under
+SUMO 1.27.1 (`AVSpec.emergency_handback`; the I-24 strategy sweep's 311
+collisions and the synthetic PI-with-saturation cell's 16 fall to 0 with no
+controller metric moving by a resolved amount, so the published controller
+results stand), and the scripted merge's forced lane changes caused the I-94
+WB corridor's collisions (`merge_params["force_guard"]`; 15 → 0 over 20
+seeds). Every run now records its collisions and the auto-report shows them
+in a "Model integrity" section. The I-94 WB St. Paul corridor is still NOT
+reproduced: the weave model's work this cycle lifted its 20-seed four-hour
+battery to about 0.88 of demand departed with speed RMSPE about 0.69, but the
+T.H.52 weave stays capacity-short and no criterion passes (docs/ONBOARDING_MNDOT.md
+§11). Also: coverage thinning of complete trajectories to I-24-like
+coverage, real drivers' accepted and critical lane-change gaps measured on
+I-24 MOTION and NGSIM US-101, and an unsubmitted first paper draft
+(docs/PAPER_DRAFT.md) with its authors named. The switches named above are
+off by default in this release; turning the AV ones on by default is the
+next change.
+
 ### 2026-09-26
 
 - **CLAUDE.md §3.3 corrected against the source** (docs only). The spec said the default speed mode means controllers cannot command collisions; SUMO 1.27.1's source shows a held `setSpeed` never brakes harder than the comfortable deceleration (WP-95). The dated correction keeps the intent, cites the source line, and makes `emergency_handback`, `release_off_corridor` and `observe_close_leader` required for new controller experiments. Code defaults are unchanged.

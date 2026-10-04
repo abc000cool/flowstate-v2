@@ -11,8 +11,9 @@
 > documents disagreed and how each was settled on 2026-09-25 against the
 > artifacts; none remains open.
 
-**Authors:** [to be completed by the owner]
-**Affiliation and contact:** [to be completed by the owner]
+**Authors:** Ansh Pathak, Sujan Sannidhi, Venkata Shashish Vasireddi
+**Affiliation:** FlowState
+**Contact:** [to be completed by the owner]
 **Target:** arXiv, eess.SY with a cs.MA cross-list [PAPER_OUTLINE.md]
 
 ---
