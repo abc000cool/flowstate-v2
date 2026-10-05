@@ -233,15 +233,23 @@ def test_the_keys_are_additive_and_every_existing_value_is_unchanged(tmp_path: P
     that carry no counter (runs written before 2026-09-16) and with metas
     that carry collisions give the same JSON for every key the artifact had,
     key by key; the only new keys are ``collisions``, ``zero_collisions``
-    (WP-98) and each seed's ``n_collisions``.
+    (WP-98) and each seed's ``n_collisions``, besides the waiting keys of
+    WP-109 (top-level and per-seed ``waiting``, null here: no waiting list
+    is passed; tests/test_validation/test_validation_battery_waiting.py).
     """
     without = _strict(_build(tmp_path / "none", None))
     unrecorded = _strict(_build(tmp_path / "old", _metas(with_counter=False)))
     recorded = _strict(_build(tmp_path / "new", _metas()))
     for artifact in (without, unrecorded, recorded):
-        assert set(artifact) == (PRE_WP94_KEYS - {"created_at"}) | {"collisions", "zero_collisions"}
+        assert set(artifact) == (PRE_WP94_KEYS - {"created_at"}) | {
+            "collisions",
+            "zero_collisions",
+            "waiting",
+        }
+        assert artifact["waiting"] is None
         for row in artifact["per_seed"]:
-            assert set(row) == PRE_WP94_SEED_KEYS | {"n_collisions"}
+            assert set(row) == PRE_WP94_SEED_KEYS | {"n_collisions", "waiting"}
+            assert row["waiting"] is None
     for key in PRE_WP94_KEYS - {"created_at", "per_seed"}:
         reference = json.dumps(without[key], indent=2, allow_nan=False)
         assert json.dumps(unrecorded[key], indent=2, allow_nan=False) == reference, key
@@ -393,7 +401,15 @@ def test_criteria_only_reads_collisions_from_the_stored_metas(
     assert [row["n_collisions"] for row in old["per_seed"]] == [None, None]
     assert "not recorded (no replicate's meta.json carries n_collisions)" in console_old
     assert "no_collisions      NOT RECORDED" in console_old
-    assert set(artifact) == PRE_WP94_KEYS | {"collisions", "zero_collisions", "report_path"}
+    assert set(artifact) == PRE_WP94_KEYS | {
+        "collisions",
+        "zero_collisions",
+        "report_path",
+        "waiting",
+    }
+    # the stored replicates carry no demand ledger: waiting absent, never 0 (WP-109)
+    assert artifact["waiting"] is None and old["waiting"] is None
+    assert [row["waiting"] for row in artifact["per_seed"]] == [None, None]
     for key in (PRE_WP94_KEYS | {"report_path"}) - {"created_at", "wall_s", "per_seed", "criteria"}:
         assert json.dumps(old[key]) == json.dumps(artifact[key]), key
     # The criteria differ only by the model-integrity row, which reads the

@@ -1,0 +1,338 @@
+{
+  "schema": "flowstate.day_split/1",
+  "study_period": {
+    "start": "05:30",
+    "end": "09:30"
+  },
+  "seed": 20261004,
+  "rules": {
+    "protocol": "docs/FRISCO_PROTOCOL.md section 3",
+    "seed": 20261004,
+    "rng": "numpy.random.default_rng(seed); one generator: first rng.permutation(n_strata) orders tied remainders, then terciles drawn low to high, within a tercile rng.choice(n_days, size=n_calibration, replace=False) over the tercile's days in date order",
+    "candidate_weekdays": [
+      "Tuesday",
+      "Wednesday",
+      "Thursday"
+    ],
+    "min_usable_station_share": 0.8,
+    "n_strata": 3,
+    "strata": "candidates ranked by (volume_veh, date) and cut by numpy.array_split into terciles, the lower terciles taking any remainder",
+    "calibration_share": 0.6,
+    "min_calibration_per_stratum": 1,
+    "n_calibration_rule": "total = floor(calibration_share x n_candidates); quota of a tercile = n_days x total / n_candidates; each tercile gets floor(quota), raised to min_calibration_per_stratum for a non-empty tercile when the total is at least the number of non-empty terciles; the remaining days go one each to the largest fractional remainders, ties in the seeded permutation's order",
+    "min_calibration_days": 5,
+    "min_validation_days": 3,
+    "volume": "station-mean study-period volume: per usable selected station, mean finite flow over the study period's windows [veh/h] x period length [h]; mean over those stations",
+    "usable_without_quality_report": "share of the study period's windows with a finite flow >= 0.5 (1 - calibration.data_quality.MISSING_EXCLUDE_SHARE)",
+    "usable_with_quality_report": "no mainline sensor of the station (station or lane; lanes that reported nothing on any date of the report are not installed lanes) judged 'exclude' that date; a station with no judged sensor that date is not usable; a date the report does not cover is refused, or with allow_uncovered_dates left out as 'not covered by the data-quality report'",
+    "holidays": "United States federal holidays screened automatically (calibration.day_split.us_federal_holidays); state and local holidays, incidents and weather events from the caller's exclusion list"
+  },
+  "selected_stations": [
+    "S1063",
+    "S1064",
+    "S1065",
+    "S1066",
+    "S1067",
+    "S1068",
+    "S1947",
+    "S1069",
+    "S1070",
+    "S1948",
+    "S792",
+    "S791",
+    "S790",
+    "S97"
+  ],
+  "usability_source": "data_quality",
+  "exclusions": {},
+  "days": [
+    {
+      "date": "2026-09-01",
+      "weekday": "Tuesday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13817.6,
+      "n_station_windows": 666
+    },
+    {
+      "date": "2026-09-02",
+      "weekday": "Wednesday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13834.8,
+      "n_station_windows": 660
+    },
+    {
+      "date": "2026-09-03",
+      "weekday": "Thursday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13944.0,
+      "n_station_windows": 672
+    },
+    {
+      "date": "2026-09-08",
+      "weekday": "Tuesday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13539.1,
+      "n_station_windows": 672
+    },
+    {
+      "date": "2026-09-09",
+      "weekday": "Wednesday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13349.9,
+      "n_station_windows": 672
+    },
+    {
+      "date": "2026-09-10",
+      "weekday": "Thursday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13802.6,
+      "n_station_windows": 660
+    },
+    {
+      "date": "2026-09-15",
+      "weekday": "Tuesday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 11716.9,
+      "n_station_windows": 672
+    },
+    {
+      "date": "2026-09-16",
+      "weekday": "Wednesday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 13556.4,
+      "n_station_windows": 661
+    },
+    {
+      "date": "2026-09-17",
+      "weekday": "Thursday",
+      "candidate": true,
+      "reasons": [],
+      "n_selected": 14,
+      "n_usable": 14,
+      "usable_share": 1.0,
+      "unusable_stations": [],
+      "volume_veh": 12997.5,
+      "n_station_windows": 659
+    }
+  ],
+  "candidate_dates": [
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17"
+  ],
+  "strata": [
+    {
+      "label": "low",
+      "dates": [
+        "2026-09-09",
+        "2026-09-15",
+        "2026-09-17"
+      ],
+      "volume_min_veh": 11716.9,
+      "volume_max_veh": 13349.9,
+      "n_days": 3,
+      "n_calibration": 1,
+      "drawn_positions": [
+        1
+      ],
+      "calibration_dates": [
+        "2026-09-15"
+      ],
+      "validation_dates": [
+        "2026-09-09",
+        "2026-09-17"
+      ]
+    },
+    {
+      "label": "middle",
+      "dates": [
+        "2026-09-08",
+        "2026-09-10",
+        "2026-09-16"
+      ],
+      "volume_min_veh": 13539.1,
+      "volume_max_veh": 13802.6,
+      "n_days": 3,
+      "n_calibration": 2,
+      "drawn_positions": [
+        0,
+        2
+      ],
+      "calibration_dates": [
+        "2026-09-08",
+        "2026-09-16"
+      ],
+      "validation_dates": [
+        "2026-09-10"
+      ]
+    },
+    {
+      "label": "high",
+      "dates": [
+        "2026-09-01",
+        "2026-09-02",
+        "2026-09-03"
+      ],
+      "volume_min_veh": 13817.6,
+      "volume_max_veh": 13944.0,
+      "n_days": 3,
+      "n_calibration": 2,
+      "drawn_positions": [
+        1,
+        2
+      ],
+      "calibration_dates": [
+        "2026-09-02",
+        "2026-09-03"
+      ],
+      "validation_dates": [
+        "2026-09-01"
+      ]
+    }
+  ],
+  "calibration_dates": [
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-08",
+    "2026-09-15",
+    "2026-09-16"
+  ],
+  "validation_dates": [
+    "2026-09-01",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-17"
+  ],
+  "n_calibration": 5,
+  "n_validation": 4,
+  "underpowered": false,
+  "underpowered_reason": "",
+  "notes": [
+    "no exclusion list was supplied: state and local holidays, incidents and weather events were not screened (federal holidays were)"
+  ],
+  "provenance": {
+    "script": "scripts/day_split.py",
+    "created_at": "2026-10-05T03:17:11Z",
+    "argv": [
+      "--corridor-dir",
+      "data/mndot/mndot_i94_wb_stpaul",
+      "--start",
+      "05:30",
+      "--end",
+      "09:30",
+      "--quality",
+      "runs/p1_rehearsal/dq/data_quality.json",
+      "--selection",
+      "runs/p1_rehearsal/selection.json",
+      "--out",
+      "runs/p1_rehearsal/day_split.json"
+    ],
+    "inputs": {
+      "corridor_dir": "data/mndot/mndot_i94_wb_stpaul",
+      "selection": "data/mndot/mndot_i94_wb_stpaul/selection.json",
+      "selection_sha256": "f4d3ed3763004b96380939ab47e779686821e09cb0e137020946b07e6b731d0e",
+      "stations": "data/mndot/mndot_i94_wb_stpaul/stations.csv",
+      "stations_sha256": "f838bede3439d59ac8b31e3fce15f8eec075078eb5291d9db5b3e2eaf14adf9e",
+      "mode": "detector_csv",
+      "detectors": "data/mndot/mndot_i94_wb_stpaul/detectors.csv",
+      "detectors_sha256": "249dde20506785d352016f3187be060882d2f4f07f162cea9317bee034278f63",
+      "loader": {
+        "column_map": {},
+        "speed_unit": "ms",
+        "occupancy_unit": "pct",
+        "kind_default": "mainline",
+        "lane_column": null
+      },
+      "n_rows": 69984,
+      "frame_sha256": "ce44356d7a26cd244df82cd6292d2eebde3689462f6141745ef7e919a6d56ad0"
+    },
+    "quality": "runs/p1_rehearsal/dq/data_quality.json",
+    "selection": {
+      "path": "runs/p1_rehearsal/selection.json",
+      "sha256": "a6390e52eee848e35993b7342001eb381a50ebbd969af83627890b3b8e19a351",
+      "stations": [
+        "S1063",
+        "S1064",
+        "S1065",
+        "S1066",
+        "S1067",
+        "S1068",
+        "S1947",
+        "S1069",
+        "S1070",
+        "S1948",
+        "S792",
+        "S791",
+        "S790",
+        "S97"
+      ],
+      "quality_sha256": "8cae907dec40646229a19e26f9b5cc9e04d7c4a0af24d87f80cc4742ccbfba53",
+      "same_quality_report": true
+    },
+    "data_quality": {
+      "schema": "flowstate.data_quality/1",
+      "start_local": "05:30",
+      "end_local": "09:30",
+      "dates": [
+        "2026-09-01",
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-08",
+        "2026-09-09",
+        "2026-09-10",
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17"
+      ],
+      "path": "runs/p1_rehearsal/dq/data_quality.json",
+      "sha256": "8cae907dec40646229a19e26f9b5cc9e04d7c4a0af24d87f80cc4742ccbfba53"
+    },
+    "interval_s": 300.0
+  }
+}

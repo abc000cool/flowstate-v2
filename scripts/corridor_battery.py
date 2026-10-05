@@ -68,6 +68,16 @@ ends and summarised at the end: the 2026-09-24 cloud round scored 20 seeds of
 a 4-hour corridor (1.15 GB of trajectory each) one after another in the
 parent, about 5 min each, while 31 CPUs idled.
 
+**Waiting.** Each replicate's travel time and total delay including the time
+spent waiting on ramps and to enter the network
+(:func:`validation.battery.replicate_waiting`, docs/FRISCO_PROTOCOL.md §8.2,
+from the run's demand ledger ``journeys.parquet``) is stored in its
+``metrics.json`` (``waiting``), in its ``per_seed`` row and pooled into the
+artifact's ``waiting`` block (t-intervals over the seeds that record it), with
+one ``waiting`` console line. A seed without the ledger records ``null`` and
+is listed as not recorded, never as zero; the block is null when no seed
+records it. Added 2026-10-04 (WP-109), after every existing key.
+
 Per-seed results are written into each replicate directory (``metrics.json``,
 ``observed_scores.json``) so ``--criteria-only`` can re-score a finished
 battery — a threshold profile change, a fresh ring benchmark — without
@@ -157,10 +167,11 @@ from validation.battery import (
     mean_finite,
     score_pool_size,
     trajectory_rows,
+    waiting_summary,
     weave_exit_summary,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
-from validation.metrics import Metrics, aggregate, ci, geh_pass_fraction
+from validation.metrics import Metrics, WaitingMetrics, aggregate, ci, geh_pass_fraction
 from validation.observed import ObservedCorridor, ObservedScores, pool_link_hours, pool_scores
 from validation.report import generate_report
 
@@ -483,6 +494,7 @@ def build_artifact(
     x_offset_m: float,
     wall_s: float,
     metas: Sequence[Mapping[str, Any]] | None = None,
+    waiting_list: Sequence[WaitingMetrics | None] | None = None,
 ) -> dict[str, Any]:
     """Assemble the validation artifact for one corridor battery.
 
@@ -502,6 +514,13 @@ def build_artifact(
     recorded). Without ``metas`` all three are null. Every other key is
     computed exactly as before.
 
+    ``waiting_list`` (one :func:`validation.battery.replicate_waiting` result
+    per seed, in seed order; WP-109) adds, additively, ``per_seed[i]["waiting"]``
+    (the seed's :class:`validation.metrics.WaitingMetrics`, null without a
+    demand ledger) and the top-level ``waiting`` block after ``metrics_ci``
+    (:func:`validation.battery.waiting_summary` labelled by seed; null when no
+    seed records the ledger). Without ``waiting_list`` both are null.
+
     Every GEH is labelled: ``per_seed[i]["link_hours"]`` is replicate ``i``'s
     :class:`validation.observed.LinkHourRecord` table (station, ``x_ref_m``,
     hour start and local clock, observed and simulated volume, GEH), row for
@@ -514,6 +533,9 @@ def build_artifact(
     pooled_geh = [g for s in scores_list for g in s.geh_values]
     seed_metas: list[Mapping[str, Any] | None] = (
         [None] * len(seeds) if metas is None else list(metas)
+    )
+    seed_waiting: list[WaitingMetrics | None] = (
+        [None] * len(seeds) if waiting_list is None else list(waiting_list)
     )
     per_seed = [
         {
@@ -530,8 +552,9 @@ def build_artifact(
             "insertion": ins.to_dict(),
             "link_hours": (None if s.link_hours is None else [r.to_dict() for r in s.link_hours]),
             "n_collisions": None if meta is None else collision_count(meta),
+            "waiting": None if wait is None else asdict(wait),
         }
-        for seed, run_dir, s, wave, m, ins, meta in zip(
+        for seed, run_dir, s, wave, m, ins, meta, wait in zip(
             seeds,
             dirs,
             scores_list,
@@ -539,6 +562,7 @@ def build_artifact(
             metrics_list,
             insertion_list,
             seed_metas,
+            seed_waiting,
             strict=True,
         )
     ]
@@ -638,6 +662,11 @@ def build_artifact(
             }
             for name, interval in aggregate(list(metrics_list)).items()
         },
+        # Travel time and delay including waiting (WP-109): t-intervals over
+        # the seeds whose runs carry a demand ledger; null when none does.
+        "waiting": (
+            None if waiting_list is None else waiting_summary(seed_waiting, labels=list(seeds))
+        ),
         "per_seed": per_seed,
         "ring": ring,
         "notes": [
@@ -680,6 +709,23 @@ def build_artifact(
             ),
         ],
     }
+
+
+def waiting_line(waiting: dict[str, Any] | None) -> str:
+    """The console line for the artifact's ``waiting`` block (beside the insertion line)."""
+    label = f"    {'waiting':<18} "
+    if waiting is None:
+        return label + "not recorded (no replicate carries a demand ledger, journeys.parquet)"
+    delay = waiting["ci"]["total_delay_incl_waiting_veh_h"]
+    entry = waiting["ci"]["insertion_delay_veh_h"]
+    text = (
+        f"total delay incl. waiting {delay['mean']:.1f} veh-h (95 % CI {delay['lo95']:.1f} to "
+        f"{delay['hi95']:.1f}), of which waiting to enter {entry['mean']:.1f} veh-h, over "
+        f"{waiting['n_runs_recorded']} of {waiting['n_runs']} replicate(s)"
+    )
+    if waiting["runs_not_recorded"]:
+        text += f"; not recorded for {len(waiting['runs_not_recorded'])}"
+    return label + text
 
 
 def weave_exit_line(section: dict[str, Any], threshold_share: float) -> str:
@@ -1000,6 +1046,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     scores_list: list[ObservedScores] = [a.scores for a in analyses]
     wave_speeds: list[float] = [a.wave_speed_kmh for a in analyses]
     insertion_list: list[InsertionStats] = [a.insertion for a in analyses]
+    waiting_list: list[WaitingMetrics | None] = [a.waiting for a in analyses]
     # Every replicate's meta.json is on disk after the runs (it is the
     # completion marker and is never pruned), so --criteria-only reads the
     # same weave and collision counters as a fresh battery.
@@ -1094,6 +1141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         x_offset_m=x_offset,
         wall_s=time.perf_counter() - t0,
         metas=metas,
+        waiting_list=waiting_list,
     )
     artifact["report_path"] = None if report_path is None else str(report_path)
     if gate is not None:
@@ -1125,6 +1173,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for section in weave_exits["sections"]:
         print(weave_exit_line(section, weave_exits["threshold_share"]), flush=True)
     print(collision_line(artifact["collisions"]), flush=True)
+    print(waiting_line(artifact["waiting"]), flush=True)
     for row in criteria_rows:
         print(f"    {row.name:<18} {row.status:<14} {row.value}  ({row.threshold})", flush=True)
     if gate is not None:

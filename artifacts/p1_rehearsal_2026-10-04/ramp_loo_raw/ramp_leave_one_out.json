@@ -1,0 +1,629 @@
+{
+  "dates": [
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03",
+    "2026-09-08",
+    "2026-09-09",
+    "2026-09-10",
+    "2026-09-15",
+    "2026-09-16",
+    "2026-09-17"
+  ],
+  "method": "Between two neighbouring mainline stations every vehicle is conserved: the flow counted downstream (one travel time later) equals the flow counted upstream plus the entrances minus the exits in between. Travel time comes from the station spacing and the speeds the two stations measure; all counts are read at the unmeasured ramp's position by shifting them by their travel time, then averaged over each period. With one ramp without a count in a segment, its flow is what the counts leave over; with more, the counts fix only their net flow, and a stated split assumption per extra ramp is needed. Negative results are set to zero and reported. The interval propagates a stated per-detector count error; it does not include the change in the number of vehicles queued between the stations, so periods in congestion are flagged. Leave-one-out: each measured ramp in turn is treated as unmeasured, estimated from the other counts and compared with its own detector, whose own count error is not part of the interval.",
+  "notes": [],
+  "parameters": {
+    "combination": "linear",
+    "congested_speed_ms": 11.1111,
+    "count_error": 0.05,
+    "default_speed_ms": 25.0,
+    "interval_s": 300.0,
+    "max_lag_s": 900.0,
+    "period_s": 900.0
+  },
+  "pooled": {
+    "congested": {
+      "bias_veh_h": -592.5,
+      "coverage": 0.3612,
+      "mae_veh_h": 1055.1,
+      "mean_measured_veh_h": 1342.3,
+      "n": 551,
+      "n_clipped": 59,
+      "relative_bias": -0.4414,
+      "relative_error": 0.7861,
+      "rmse_veh_h": 1738.8
+    },
+    "free_flow": {
+      "bias_veh_h": -103.8,
+      "coverage": 0.3871,
+      "mae_veh_h": 485.2,
+      "mean_measured_veh_h": 447.5,
+      "n": 9029,
+      "n_clipped": 1395,
+      "relative_bias": -0.2319,
+      "relative_error": 1.0843,
+      "rmse_veh_h": 1006.0
+    },
+    "median_ramp_relative_error": 0.9346,
+    "n_not_testable": 0,
+    "n_tested": 12,
+    "overall": {
+      "bias_veh_h": -131.9,
+      "coverage": 0.3856,
+      "mae_veh_h": 518.0,
+      "mean_measured_veh_h": 499.0,
+      "n": 9580,
+      "n_clipped": 1454,
+      "relative_bias": -0.2643,
+      "relative_error": 1.0382,
+      "rmse_veh_h": 1061.9
+    }
+  },
+  "provenance": {
+    "argv": [
+      "--corridor-dir",
+      "data/mndot/mndot_i94_wb_stpaul",
+      "--leave-one-out",
+      "--out",
+      "runs/p1_rehearsal/ramp_loo_raw"
+    ],
+    "code": "75a54b7ca45abdcdc2056907b8501d451a5ea6a3 snapshot 62e0c9e008e069c5f1de05b6fea28de4e843cf7d",
+    "code_dirty": false,
+    "created_at": "2026-10-05T03:16:11Z",
+    "inputs": {
+      "corridor_dir": "data/mndot/mndot_i94_wb_stpaul",
+      "detectors": "data/mndot/mndot_i94_wb_stpaul/detectors.csv",
+      "detectors_sha256": "249dde20506785d352016f3187be060882d2f4f07f162cea9317bee034278f63",
+      "frame_sha256": "ce44356d7a26cd244df82cd6292d2eebde3689462f6141745ef7e919a6d56ad0",
+      "loader": {
+        "column_map": {},
+        "kind_default": "mainline",
+        "lane_column": null,
+        "occupancy_unit": "pct",
+        "speed_unit": "ms"
+      },
+      "mode": "detector_csv",
+      "n_rows": 69984,
+      "selection": "data/mndot/mndot_i94_wb_stpaul/selection.json",
+      "selection_sha256": "f4d3ed3763004b96380939ab47e779686821e09cb0e137020946b07e6b731d0e",
+      "stations": "data/mndot/mndot_i94_wb_stpaul/stations.csv",
+      "stations_sha256": "f838bede3439d59ac8b31e3fce15f8eec075078eb5291d9db5b3e2eaf14adf9e"
+    },
+    "quality": {
+      "applied": false
+    },
+    "script": "scripts/ramp_estimate.py"
+  },
+  "ramps": [
+    {
+      "congested": {
+        "bias_veh_h": null,
+        "coverage": null,
+        "mae_veh_h": null,
+        "mean_measured_veh_h": null,
+        "n": 0,
+        "n_clipped": 0,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": null
+      },
+      "free_flow": {
+        "bias_veh_h": 239.0,
+        "coverage": 0.5448,
+        "mae_veh_h": 239.0,
+        "mean_measured_veh_h": 0.0,
+        "n": 558,
+        "n_clipped": 2,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": 282.1
+      },
+      "kind": "off_ramp",
+      "overall": {
+        "bias_veh_h": 239.0,
+        "coverage": 0.5448,
+        "mae_veh_h": 239.0,
+        "mean_measured_veh_h": 0.0,
+        "n": 558,
+        "n_clipped": 2,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": 282.1
+      },
+      "ramp": "rnd_88835",
+      "reason": "estimated from the other counts of S1063\u2192S1064, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1064",
+        "upstream": "S1063"
+      },
+      "status": "tested",
+      "x_m": 1108.9
+    },
+    {
+      "congested": {
+        "bias_veh_h": null,
+        "coverage": null,
+        "mae_veh_h": null,
+        "mean_measured_veh_h": null,
+        "n": 0,
+        "n_clipped": 0,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": null
+      },
+      "free_flow": {
+        "bias_veh_h": 302.8,
+        "coverage": 0.0623,
+        "mae_veh_h": 303.0,
+        "mean_measured_veh_h": 192.4,
+        "n": 787,
+        "n_clipped": 0,
+        "relative_bias": 1.5739,
+        "relative_error": 1.575,
+        "rmse_veh_h": 352.9
+      },
+      "kind": "off_ramp",
+      "overall": {
+        "bias_veh_h": 302.8,
+        "coverage": 0.0623,
+        "mae_veh_h": 303.0,
+        "mean_measured_veh_h": 192.4,
+        "n": 787,
+        "n_clipped": 0,
+        "relative_bias": 1.5739,
+        "relative_error": 1.575,
+        "rmse_veh_h": 352.9
+      },
+      "ramp": "rnd_88833",
+      "reason": "estimated from the other counts of S1064\u2192S1065, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1065",
+        "upstream": "S1064"
+      },
+      "status": "tested",
+      "x_m": 1551.2
+    },
+    {
+      "congested": {
+        "bias_veh_h": null,
+        "coverage": null,
+        "mae_veh_h": null,
+        "mean_measured_veh_h": null,
+        "n": 0,
+        "n_clipped": 0,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": null
+      },
+      "free_flow": {
+        "bias_veh_h": -279.9,
+        "coverage": 0.0673,
+        "mae_veh_h": 280.1,
+        "mean_measured_veh_h": 286.3,
+        "n": 787,
+        "n_clipped": 545,
+        "relative_bias": -0.9778,
+        "relative_error": 0.9785,
+        "rmse_veh_h": 325.6
+      },
+      "kind": "on_ramp",
+      "overall": {
+        "bias_veh_h": -279.9,
+        "coverage": 0.0673,
+        "mae_veh_h": 280.1,
+        "mean_measured_veh_h": 286.3,
+        "n": 787,
+        "n_clipped": 545,
+        "relative_bias": -0.9778,
+        "relative_error": 0.9785,
+        "rmse_veh_h": 325.6
+      },
+      "ramp": "rnd_88831",
+      "reason": "estimated from the other counts of S1064\u2192S1065, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1065",
+        "upstream": "S1064"
+      },
+      "status": "tested",
+      "x_m": 2146.4
+    },
+    {
+      "congested": {
+        "bias_veh_h": 157.0,
+        "coverage": 0.5,
+        "mae_veh_h": 157.0,
+        "mean_measured_veh_h": 1.0,
+        "n": 4,
+        "n_clipped": 1,
+        "relative_bias": 156.9571,
+        "relative_error": 156.9571,
+        "rmse_veh_h": 217.9
+      },
+      "free_flow": {
+        "bias_veh_h": 298.0,
+        "coverage": 0.0448,
+        "mae_veh_h": 298.1,
+        "mean_measured_veh_h": 1.4,
+        "n": 803,
+        "n_clipped": 14,
+        "relative_bias": 214.4248,
+        "relative_error": 214.4852,
+        "rmse_veh_h": 347.3
+      },
+      "kind": "on_ramp",
+      "overall": {
+        "bias_veh_h": 297.3,
+        "coverage": 0.0471,
+        "mae_veh_h": 297.4,
+        "mean_measured_veh_h": 1.4,
+        "n": 807,
+        "n_clipped": 15,
+        "relative_bias": 214.2195,
+        "relative_error": 214.2798,
+        "rmse_veh_h": 346.8
+      },
+      "ramp": "rnd_88827",
+      "reason": "estimated from the other counts of S1065\u2192S1066, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1066",
+        "upstream": "S1065"
+      },
+      "status": "tested",
+      "x_m": 2499.7
+    },
+    {
+      "congested": {
+        "bias_veh_h": 133.3,
+        "coverage": 0.9048,
+        "mae_veh_h": 133.3,
+        "mean_measured_veh_h": 0.0,
+        "n": 21,
+        "n_clipped": 8,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": 192.1
+      },
+      "free_flow": {
+        "bias_veh_h": 284.6,
+        "coverage": 0.201,
+        "mae_veh_h": 284.6,
+        "mean_measured_veh_h": 0.0,
+        "n": 806,
+        "n_clipped": 49,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": 353.8
+      },
+      "kind": "on_ramp",
+      "overall": {
+        "bias_veh_h": 280.7,
+        "coverage": 0.2189,
+        "mae_veh_h": 280.7,
+        "mean_measured_veh_h": 0.0,
+        "n": 827,
+        "n_clipped": 57,
+        "relative_bias": null,
+        "relative_error": null,
+        "rmse_veh_h": 350.6
+      },
+      "ramp": "rnd_88823",
+      "reason": "estimated from the other counts of S1066\u2192S1067, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1067",
+        "upstream": "S1066"
+      },
+      "status": "tested",
+      "x_m": 3150.1
+    },
+    {
+      "congested": {
+        "bias_veh_h": 10.9,
+        "coverage": 0.8235,
+        "mae_veh_h": 166.2,
+        "mean_measured_veh_h": 206.4,
+        "n": 51,
+        "n_clipped": 13,
+        "relative_bias": 0.053,
+        "relative_error": 0.8049,
+        "rmse_veh_h": 201.7
+      },
+      "free_flow": {
+        "bias_veh_h": -8.4,
+        "coverage": 0.8714,
+        "mae_veh_h": 70.6,
+        "mean_measured_veh_h": 246.2,
+        "n": 770,
+        "n_clipped": 4,
+        "relative_bias": -0.0342,
+        "relative_error": 0.2869,
+        "rmse_veh_h": 96.0
+      },
+      "kind": "on_ramp",
+      "overall": {
+        "bias_veh_h": -7.2,
+        "coverage": 0.8685,
+        "mae_veh_h": 76.6,
+        "mean_measured_veh_h": 243.7,
+        "n": 821,
+        "n_clipped": 17,
+        "relative_bias": -0.0296,
+        "relative_error": 0.3142,
+        "rmse_veh_h": 105.7
+      },
+      "ramp": "rnd_88819",
+      "reason": "estimated from the other counts of S1067\u2192S1068, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1068",
+        "upstream": "S1067"
+      },
+      "status": "tested",
+      "x_m": 3983.6
+    },
+    {
+      "congested": {
+        "bias_veh_h": 21.6,
+        "coverage": 0.8039,
+        "mae_veh_h": 186.6,
+        "mean_measured_veh_h": 696.5,
+        "n": 51,
+        "n_clipped": 0,
+        "relative_bias": 0.0311,
+        "relative_error": 0.2679,
+        "rmse_veh_h": 231.8
+      },
+      "free_flow": {
+        "bias_veh_h": 17.7,
+        "coverage": 0.874,
+        "mae_veh_h": 61.1,
+        "mean_measured_veh_h": 199.3,
+        "n": 770,
+        "n_clipped": 118,
+        "relative_bias": 0.0886,
+        "relative_error": 0.3064,
+        "rmse_veh_h": 85.1
+      },
+      "kind": "off_ramp",
+      "overall": {
+        "bias_veh_h": 17.9,
+        "coverage": 0.8697,
+        "mae_veh_h": 68.9,
+        "mean_measured_veh_h": 230.2,
+        "n": 821,
+        "n_clipped": 118,
+        "relative_bias": 0.0778,
+        "relative_error": 0.2991,
+        "rmse_veh_h": 100.7
+      },
+      "ramp": "rnd_88817",
+      "reason": "estimated from the other counts of S1067\u2192S1068, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1068",
+        "upstream": "S1067"
+      },
+      "status": "tested",
+      "x_m": 4246.9
+    },
+    {
+      "congested": {
+        "bias_veh_h": 98.0,
+        "coverage": 0.8026,
+        "mae_veh_h": 189.2,
+        "mean_measured_veh_h": 438.3,
+        "n": 76,
+        "n_clipped": 0,
+        "relative_bias": 0.2235,
+        "relative_error": 0.4318,
+        "rmse_veh_h": 224.5
+      },
+      "free_flow": {
+        "bias_veh_h": 106.3,
+        "coverage": 0.9346,
+        "mae_veh_h": 106.5,
+        "mean_measured_veh_h": 188.0,
+        "n": 765,
+        "n_clipped": 0,
+        "relative_bias": 0.5654,
+        "relative_error": 0.5667,
+        "rmse_veh_h": 133.9
+      },
+      "kind": "off_ramp",
+      "overall": {
+        "bias_veh_h": 105.5,
+        "coverage": 0.9227,
+        "mae_veh_h": 114.0,
+        "mean_measured_veh_h": 210.6,
+        "n": 841,
+        "n_clipped": 0,
+        "relative_bias": 0.5011,
+        "relative_error": 0.5413,
+        "rmse_veh_h": 144.5
+      },
+      "ramp": "rnd_88811",
+      "reason": "estimated from the other counts of S1947\u2192S1069, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1069",
+        "upstream": "S1947"
+      },
+      "status": "tested",
+      "x_m": 5249.0
+    },
+    {
+      "congested": {
+        "bias_veh_h": -449.5,
+        "coverage": 0.2973,
+        "mae_veh_h": 464.6,
+        "mean_measured_veh_h": 1642.0,
+        "n": 74,
+        "n_clipped": 0,
+        "relative_bias": -0.2738,
+        "relative_error": 0.283,
+        "rmse_veh_h": 523.9
+      },
+      "free_flow": {
+        "bias_veh_h": -55.4,
+        "coverage": 0.9231,
+        "mae_veh_h": 72.0,
+        "mean_measured_veh_h": 721.3,
+        "n": 754,
+        "n_clipped": 0,
+        "relative_bias": -0.0767,
+        "relative_error": 0.0999,
+        "rmse_veh_h": 116.5
+      },
+      "kind": "on_ramp",
+      "overall": {
+        "bias_veh_h": -90.6,
+        "coverage": 0.8671,
+        "mae_veh_h": 107.1,
+        "mean_measured_veh_h": 803.6,
+        "n": 828,
+        "n_clipped": 0,
+        "relative_bias": -0.1127,
+        "relative_error": 0.1333,
+        "rmse_veh_h": 192.0
+      },
+      "ramp": "rnd_88807",
+      "reason": "estimated from the other counts of S1069\u2192S1070, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S1070",
+        "upstream": "S1069"
+      },
+      "status": "tested",
+      "x_m": 6166.4
+    },
+    {
+      "congested": {
+        "bias_veh_h": -3340.1,
+        "coverage": 0.0745,
+        "mae_veh_h": 3444.0,
+        "mean_measured_veh_h": 4269.6,
+        "n": 94,
+        "n_clipped": 0,
+        "relative_bias": -0.7823,
+        "relative_error": 0.8066,
+        "rmse_veh_h": 3898.5
+      },
+      "free_flow": {
+        "bias_veh_h": -2313.7,
+        "coverage": 0.1855,
+        "mae_veh_h": 2329.3,
+        "mean_measured_veh_h": 2499.4,
+        "n": 733,
+        "n_clipped": 33,
+        "relative_bias": -0.9257,
+        "relative_error": 0.932,
+        "rmse_veh_h": 3111.2
+      },
+      "kind": "off_ramp",
+      "overall": {
+        "bias_veh_h": -2430.3,
+        "coverage": 0.1729,
+        "mae_veh_h": 2456.0,
+        "mean_measured_veh_h": 2700.6,
+        "n": 827,
+        "n_clipped": 33,
+        "relative_bias": -0.8999,
+        "relative_error": 0.9095,
+        "rmse_veh_h": 3210.4
+      },
+      "ramp": "rnd_87205",
+      "reason": "estimated from the other counts of S1948\u2192S792, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S792",
+        "upstream": "S1948"
+      },
+      "status": "tested",
+      "x_m": 7773.2
+    },
+    {
+      "congested": {
+        "bias_veh_h": -992.2,
+        "coverage": 0.0222,
+        "mae_veh_h": 999.3,
+        "mean_measured_veh_h": 1200.1,
+        "n": 90,
+        "n_clipped": 37,
+        "relative_bias": -0.8267,
+        "relative_error": 0.8327,
+        "rmse_veh_h": 1026.9
+      },
+      "free_flow": {
+        "bias_veh_h": -857.9,
+        "coverage": 0.0,
+        "mae_veh_h": 857.9,
+        "mean_measured_veh_h": 874.8,
+        "n": 748,
+        "n_clipped": 630,
+        "relative_bias": -0.9807,
+        "relative_error": 0.9807,
+        "rmse_veh_h": 961.9
+      },
+      "kind": "on_ramp",
+      "overall": {
+        "bias_veh_h": -872.3,
+        "coverage": 0.0024,
+        "mae_veh_h": 873.0,
+        "mean_measured_veh_h": 909.7,
+        "n": 838,
+        "n_clipped": 667,
+        "relative_bias": -0.9588,
+        "relative_error": 0.9597,
+        "rmse_veh_h": 969.1
+      },
+      "ramp": "rnd_91040",
+      "reason": "estimated from the other counts of S790\u2192S97, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S97",
+        "upstream": "S790"
+      },
+      "status": "tested",
+      "x_m": 9086.8
+    },
+    {
+      "congested": {
+        "bias_veh_h": 1083.5,
+        "coverage": 0.0333,
+        "mae_veh_h": 1083.5,
+        "mean_measured_veh_h": 326.2,
+        "n": 90,
+        "n_clipped": 0,
+        "relative_bias": 3.3215,
+        "relative_error": 3.3215,
+        "rmse_veh_h": 1117.7
+      },
+      "free_flow": {
+        "bias_veh_h": 981.2,
+        "coverage": 0.0,
+        "mae_veh_h": 981.2,
+        "mean_measured_veh_h": 194.7,
+        "n": 748,
+        "n_clipped": 0,
+        "relative_bias": 5.0388,
+        "relative_error": 5.0388,
+        "rmse_veh_h": 1090.9
+      },
+      "kind": "off_ramp",
+      "overall": {
+        "bias_veh_h": 992.2,
+        "coverage": 0.0036,
+        "mae_veh_h": 992.2,
+        "mean_measured_veh_h": 208.9,
+        "n": 838,
+        "n_clipped": 0,
+        "relative_bias": 4.7507,
+        "relative_error": 4.7507,
+        "rmse_veh_h": 1093.8
+      },
+      "ramp": "rnd_87221",
+      "reason": "estimated from the other counts of S790\u2192S97, aligned to its own position, compared with its detector",
+      "segment": {
+        "downstream": "S97",
+        "upstream": "S790"
+      },
+      "status": "tested",
+      "x_m": 9845.5
+    }
+  ],
+  "schema": "flowstate.ramp_leave_one_out/1",
+  "splits": []
+}

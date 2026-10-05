@@ -3535,3 +3535,24 @@ Supersedes the WP-104 lines "simulated station speeds are segment means" and
   the fewest seeds paired with the baseline over every arm and sample; basis
   `data_quality_count_error`; `DESIGN.json` gains `data_quality{path, sha256,
   count_error}` when given; default headline `total_delay_incl_waiting_veh_h`.
+
+## Speed factor and battery waiting (WP-109); the meter on a guessed net — 2026-10-04
+
+- **§2 `FleetSpec`:** `speed_factor: float = 1.0` (0.2–2) and `speed_dev:
+  float = 0.0` (≤ 0.5): SUMO `speedFactor` of passenger vehicles (heavy 1.0),
+  drawn per vehicle by `microsim.vehicles.draw_speed_factors` (spawn key
+  `0x53504446`, no draw from the run generator), written at four decimals with
+  `speedDev="0"`; hash-neutral at defaults. A `BoundarySpec` step is posted as
+  `v / speed_factor`.
+- **§3 `meta.json`:** `speed_factor` (only when set): `{mean, dev, applies_to,
+  n_vehicles, realized_mean, realized_min, realized_max,
+  boundary_posted_divided_by}`. `journeys.parquet`: `free_flow_s` /
+  `free_flow_covered_s` at `min(v0, speedFactor × v_limit,e)`.
+- **Driver check:** the `speed_factor` knob is available (`fleet.speed_factor`;
+  current value the fleet's; range clipped to 0.2–2).
+- **Battery artifact:** `metrics.json` and `per_seed[i]` gain `waiting`
+  (`WaitingMetrics` or null); top level `waiting = {n_runs, n_runs_recorded,
+  runs_not_recorded, ci, definition}` or null; schema stays `/1`.
+- **Ramp meters:** the setup resolves the attach edge on the compiled chain
+  (`expand_ramp_splits`), so a ramp re-attached to an `-AddedOnRampEdge` piece
+  is metered.

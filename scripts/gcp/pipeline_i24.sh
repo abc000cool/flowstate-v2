@@ -87,6 +87,7 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   [ -d runs/p1_rehearsal ] && extra="$extra runs/p1_rehearsal"
   # 20d's trees: per-run metrics/meta (five levels), the design and the tuning manifests, comparison tables
   extra="$extra $(ls runs/p1_unc/DESIGN.json runs/p1_unc/*/*/*/*/metrics.json runs/p1_unc/*/*/*/*/meta.json runs/p1_tune/*.json runs/p1_tune/*.md runs/p1_tune/*/MANIFEST.json runs/p1_tune/*/*/*/*/metrics.json runs/p1_tune/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
+  extra="$extra $(ls runs/p1b_unc/DESIGN.json runs/p1b_unc/*/*/*/*/metrics.json runs/p1b_unc/*/*/*/*/meta.json runs/p1b_tune/*.json runs/p1b_tune/*.md runs/p1b_tune/*/MANIFEST.json runs/p1b_tune/*/*/*/*/metrics.json runs/p1b_tune/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -983,6 +984,32 @@ stage p1_tune bash -c "set -e; sed -e 's#^name: ${MNDOT}_weave_slice\$#name: ${M
     --budget 2 --tuning-seeds 2 --eval-seeds 4 --rho-target-veh-km 19.9 --x-ref 11027 --span 1110 11027 \
     --procs 16 --out runs/p1_tune --summary artifacts/tune_${MNDOT}_weave_slice_xlsfg_p1_rehearsal.json" \
   || say "p1_tune failed; continuing"
+
+#   20e. The ALINEA halves of 20d again after the meter-setup fix (2026-10-04: every metered run of the
+#        ramp-guessed I-94 corridor had failed with "'43917735#1-AddedOnRampEdge' is not in list"). Self-contained
+#        (launch with --data-set none): writes the reference scenario and the slice variant, re-runs the station
+#        data-quality check and the driver check the uncertainty ranges come from, then the same designs as 20d
+#        under new names.
+stage p1b_strategies bash -c "set -e; mkdir -p $P1R; \
+  for V in '' _slice; do \
+    sed -e \"s#^name: ${MNDOT}_weave\${V}\\\$#name: ${MNDOT}_weave\${V}_xlsfg#\" -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' \
+        scenarios/${MNDOT}_weave\${V}.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' \
+      | awk '/^    merge: scripted\$/ {s=1; print; next} s && /^    merge_params: \{\}\$/ {print \"    merge_params: {force_guard: 1.0}\"; s=0; next} {s=0; print}' \
+      > scenarios/${MNDOT}_weave\${V}_xlsfg.yaml; \
+    [ \$(grep -c '^    merge_params: {force_guard: 1.0}\$' scenarios/${MNDOT}_weave\${V}_xlsfg.yaml) -eq 2 ]; \
+  done; \
+  $RUN scripts/data_quality_report.py --corridor-dir data/mndot/$MNDOT --start 05:30 --end 09:30 --out $P1R/dq; \
+  $RUN scripts/transfer_check.py --corridor-dir data/mndot/$MNDOT --scenario scenarios/${MNDOT}_weave.yaml --out $P1R/transfer; \
+  $RUN scripts/uncertainty_runs.py --scenario scenarios/${MNDOT}_weave_xlsfg.yaml \
+    --arm alinea strategy=alinea rho_target_veh_km=19.9 --samples 4 --seeds 2 \
+    --transfer-check $P1R/transfer/transfer_check.json --data-quality $P1R/dq/data_quality.json \
+    --headline total_delay_incl_waiting_veh_h --x-ref 11027 --span 1110 11027 --procs 8 --out runs/p1b_unc \
+    --summary artifacts/uncertainty_${MNDOT}_p1b_rehearsal.json; \
+  $RUN scripts/strategy_tune.py --scenario scenarios/${MNDOT}_weave_slice_xlsfg.yaml --strategies alinea vsl \
+    --budget 2 --tuning-seeds 2 --eval-seeds 4 --rho-target-veh-km 19.9 --x-ref 11027 --span 1110 11027 \
+    --procs 16 --out runs/p1b_tune --summary artifacts/tune_${MNDOT}_weave_slice_xlsfg_p1b_rehearsal.json" \
+  || say "p1b_strategies failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

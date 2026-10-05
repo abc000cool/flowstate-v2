@@ -34,6 +34,23 @@ IDM_RANGES: Final[dict[str, tuple[float, float]]] = {
 # Default per-vehicle heterogeneity: σ as a fraction of the mean (§3.1).
 HETEROGENEITY_FRAC_DEFAULT: Final[float] = 0.12
 
+# SUMO ``speedFactor`` of a passenger vehicle when the fleet sets none
+# (``FleetSpec.speed_factor``, WP-109): desired speed capped at the posted
+# limit, what every run before 2026-10-04 used.
+SPEED_FACTOR_DEFAULT: Final[float] = 1.0
+
+# SUMO's default cut-offs for an individual speed factor: the passenger
+# default distribution is ``normc(1, 0.1, 0.2, 2)`` (SUMO documentation,
+# "Definition of Vehicles, Vehicle Types, and Routes", section "Speed
+# Distributions"); a single float ``speedFactor`` with ``speedDev`` keeps them
+# (measured on SUMO 1.27.1: mean 1.9, deviation 0.5, largest of 367 draws
+# 1.9994).
+SPEED_FACTOR_BOUNDS: Final[tuple[float, float]] = (0.2, 2.0)
+
+# Decimals SUMO keeps of a vehicle's speed factor (SUMO 1.27.1, measured:
+# ``speedFactor="1.123456" speedDev="0"`` reads back as 1.1235).
+SPEED_FACTOR_DECIMALS: Final[int] = 4
+
 # --- v1 legacy fundamental diagram preset (documented default, uncalibrated) ---
 # v1 used V_f = 100 km/h, ρ_jam = 160 veh/km, w = −20 km/h.
 V1_LEGACY_FD: Final[TriangularFD] = TriangularFD(

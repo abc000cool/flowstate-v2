@@ -1,0 +1,167 @@
+{
+  "experiment": "p1_tune/tuning",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_slice_xlsfg.yaml",
+  "base_config_hash": "1dc4729644dd",
+  "grid_spec": {
+    "phase": "tuning",
+    "strategies": [
+      "alinea",
+      "vsl"
+    ],
+    "budget": 2,
+    "penetration": [
+      0.05
+    ],
+    "compliance": [
+      1.0
+    ]
+  },
+  "rho_target_veh_km": 19.9,
+  "metrics_args": {
+    "x_ref": 11027.0,
+    "span": [
+      1110.0,
+      11027.0
+    ]
+  },
+  "grid": {
+    "baseline": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "none"
+    },
+    "alinea_c00": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "alinea",
+      "tuned_strategy": "alinea",
+      "candidate": 0,
+      "textbook": true,
+      "values": {
+        "rho_target_factor": 1.0,
+        "k_r_veh_h_per_veh_km": 50.0
+      }
+    },
+    "alinea_c01": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "alinea",
+      "tuned_strategy": "alinea",
+      "candidate": 1,
+      "textbook": false,
+      "values": {
+        "rho_target_factor": 0.95,
+        "k_r_veh_h_per_veh_km": 50.0
+      }
+    },
+    "vsl_c00": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "vsl",
+      "tuned_strategy": "vsl",
+      "candidate": 0,
+      "textbook": true,
+      "values": {
+        "v_on_kmh": 60.0,
+        "rho_on_veh_km": 40.0
+      }
+    },
+    "vsl_c01": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "vsl",
+      "tuned_strategy": "vsl",
+      "candidate": 1,
+      "textbook": false,
+      "values": {
+        "v_on_kmh": 65.0,
+        "rho_on_veh_km": 50.0
+      }
+    }
+  },
+  "cells": {
+    "baseline": "1dc4729644dd",
+    "alinea_c00": "1a931a170e50",
+    "alinea_c01": "9a71e37029ad",
+    "vsl_c00": "38824024c888",
+    "vsl_c01": "d8064c8b3a35"
+  },
+  "seeds": [
+    9092669267214800715,
+    6403005124421068728
+  ],
+  "tuning": {
+    "objective": "total_delay_incl_waiting_veh_h",
+    "objective_direction": "minimize",
+    "throughput_measure": "throughput_veh_h",
+    "budget": 2,
+    "spaces": {
+      "alinea": {
+        "strategy": "alinea",
+        "description": "every on-ramp metered by ALINEA",
+        "vehicle_controller": null,
+        "infra": "alinea",
+        "dims": [
+          {
+            "name": "rho_target_factor",
+            "lo": 0.8,
+            "hi": 1.1,
+            "default": 1.0,
+            "unit": "\u00d7 rho_c",
+            "source": "ALINEA's target density as a multiple of the corridor's critical density per lane (--rho-target-veh-km, the FD artifact's rho_c); ALINEA practice sets the target at or slightly below critical (Papageorgiou, Hadj-Salem & Blosseville 1991)"
+          },
+          {
+            "name": "k_r_veh_h_per_veh_km",
+            "lo": 25.0,
+            "hi": 100.0,
+            "default": 50.0,
+            "unit": "veh/h per veh/km",
+            "source": "ALINEA gain, half to double controllers.ramp_meter.ALINEA_DEFAULTS (50, the density form of the classic K_R \u2248 70 veh/h per % occupancy)"
+          }
+        ]
+      },
+      "vsl": {
+        "strategy": "vsl",
+        "description": "threshold VSL on every gantry segment",
+        "vehicle_controller": null,
+        "infra": "vsl",
+        "dims": [
+          {
+            "name": "v_on_kmh",
+            "lo": 50.0,
+            "hi": 80.0,
+            "default": 60.0,
+            "unit": "km/h",
+            "source": "speed below which a gantry escalates (controllers.vsl.VSL_THRESHOLD_DEFAULTS v_on, a Phase-1 placeholder; v_off kept 10 km/h above, the defaults' hysteresis), across the ladder's 50-80 km/h rungs"
+          },
+          {
+            "name": "rho_on_veh_km",
+            "lo": 30.0,
+            "hi": 90.0,
+            "default": 40.0,
+            "unit": "veh/km (segment, all lanes)",
+            "source": "segment density above which a gantry escalates (VSL_THRESHOLD_DEFAULTS rho_on, a Phase-1 placeholder; rho_off kept 10 veh/km below); the segment density counts every lane, so the box spans about 10-30 veh/km per lane on a three-lane road"
+          }
+        ]
+      }
+    },
+    "candidate_rule": "candidate 0 = textbook; 1..N-1 = unscrambled Halton points 1..N-1 on the box, rounded to 4 decimals",
+    "seed_streams": {
+      "tuning": "children (TUNING_SPAWN_KEY=1953853029, i) of SeedSequence(scenario.seed)",
+      "evaluation": "flowstate_core.rng.spawn_seeds(scenario.seed, n): children (i,)",
+      "evaluation_seeds": [
+        6914975401685141156,
+        134183728835869882,
+        2378473973028931053,
+        3747978530954135749
+      ]
+    },
+    "av_penetration": 0.05,
+    "av_compliance": 1.0
+  }
+}

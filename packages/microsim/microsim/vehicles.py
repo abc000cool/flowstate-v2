@@ -18,7 +18,11 @@ SUMO vType support notes (SUMO 1.27, verified against the installed binary):
   points, CLAUDE.md §3.1) accepts the same core attributes.
 * ``speedFactor="1.0" speedDev="0"`` disables SUMO's own desired-speed
   randomization — heterogeneity comes exclusively from our seeded per-vehicle
-  parameter draws (RNG discipline, CLAUDE.md §0.5).
+  parameter draws (RNG discipline, CLAUDE.md §0.5). A fleet that sets
+  ``FleetSpec.speed_factor`` / ``speed_dev`` (WP-109) writes each passenger
+  vehicle's own factor (:func:`draw_speed_factors`, our RNG) with
+  ``speedDev="0"`` still: SUMO's desired free-flow speed is
+  ``min(maxSpeed, speedFactor × lane limit)``.
 * ``emissionClass="HBEFA4/PC_petrol_Euro-4"`` selects the HBEFA4 petrol
   passenger-car energy model used for fuel accounting (CLAUDE.md §3.3).
 
@@ -39,6 +43,11 @@ import numpy as np
 
 from flowstate_core.artifacts import IDMCalibration
 from flowstate_core.config import AVSpec, FleetSpec, HeavyVehicleSpec, RampSpec, RingNetwork
+from flowstate_core.constants import (
+    SPEED_FACTOR_BOUNDS,
+    SPEED_FACTOR_DECIMALS,
+    SPEED_FACTOR_DEFAULT,
+)
 from flowstate_core.rng import truncated_normal
 from microsim.paths import effective_roots, outside_roots_error, within_roots
 
@@ -114,6 +123,10 @@ class FleetPlan:
     is_hov: tuple[bool, ...] = ()
     """Managed-lane eligibility per vehicle (``FleetSpec.hov_fraction``,
     SUMO ``vClass="hov"``); empty ⇒ none."""
+    speed_factor: tuple[float, ...] = ()
+    """SUMO ``speedFactor`` per vehicle (``FleetSpec.speed_factor`` /
+    ``speed_dev``, :func:`draw_speed_factors`; heavy vehicles 1.0); empty ⇒
+    1.0 for every vehicle (the default fleet)."""
 
     def heavy(self, i: int) -> bool:
         """Whether vehicle ``i`` is a heavy vehicle."""
@@ -122,6 +135,10 @@ class FleetPlan:
     def hov(self, i: int) -> bool:
         """Whether vehicle ``i`` is eligible for managed (HOV) lanes."""
         return bool(self.is_hov[i]) if self.is_hov else False
+
+    def speed_factor_of(self, i: int) -> float:
+        """SUMO ``speedFactor`` of vehicle ``i`` (1.0 when the plan sets none)."""
+        return float(self.speed_factor[i]) if self.speed_factor else SPEED_FACTOR_DEFAULT
 
     @property
     def n(self) -> int:
@@ -349,6 +366,21 @@ def _apply_heavy(
 HEAVY_LANE_SPAWN_KEY: Final[int] = 0x48454156  # "HEAV"
 
 
+def _child_stream(rng: np.random.Generator, key: int) -> np.random.Generator:
+    """A generator derived from ``rng``'s seed sequence with spawn key ``key``,
+    without consuming or advancing ``rng``."""
+    seq = getattr(rng.bit_generator, "seed_seq", None)
+    if isinstance(seq, np.random.SeedSequence):
+        child = np.random.SeedSequence(
+            entropy=seq.entropy,
+            spawn_key=(*seq.spawn_key, key),
+            pool_size=seq.pool_size,
+        )
+    else:  # pragma: no cover — generators restored from a raw bit-generator state
+        child = np.random.SeedSequence(key)
+    return np.random.Generator(np.random.PCG64(child))
+
+
 def heavy_lane_stream(rng: np.random.Generator) -> np.random.Generator:
     """An independent generator for the heavy departure-lane draw.
 
@@ -356,16 +388,70 @@ def heavy_lane_stream(rng: np.random.Generator) -> np.random.Generator:
     consuming or advancing ``rng``: the same run seed gives the same heavy
     lanes, and every other per-vehicle draw is untouched.
     """
-    seq = getattr(rng.bit_generator, "seed_seq", None)
-    if isinstance(seq, np.random.SeedSequence):
-        child = np.random.SeedSequence(
-            entropy=seq.entropy,
-            spawn_key=(*seq.spawn_key, HEAVY_LANE_SPAWN_KEY),
-            pool_size=seq.pool_size,
-        )
-    else:  # pragma: no cover — generators restored from a raw bit-generator state
-        child = np.random.SeedSequence(HEAVY_LANE_SPAWN_KEY)
-    return np.random.Generator(np.random.PCG64(child))
+    return _child_stream(rng, HEAVY_LANE_SPAWN_KEY)
+
+
+#: Spawn key of the speed-factor stream (``FleetSpec.speed_dev``, WP-109): a
+#: child of the run's seed sequence, like :data:`HEAVY_LANE_SPAWN_KEY`, so that
+#: setting a speed-factor spread leaves every other draw bit-identical.
+SPEED_FACTOR_SPAWN_KEY: Final[int] = 0x53504446  # "SPDF"
+
+
+def speed_factor_stream(rng: np.random.Generator) -> np.random.Generator:
+    """An independent generator for the per-vehicle speed-factor draw.
+
+    Derived from ``rng``'s seed sequence (:data:`SPEED_FACTOR_SPAWN_KEY`)
+    without consuming or advancing ``rng``.
+    """
+    return _child_stream(rng, SPEED_FACTOR_SPAWN_KEY)
+
+
+def draw_speed_factors(
+    fleet: FleetSpec, heavy_flags: Sequence[bool], n: int, rng: np.random.Generator
+) -> tuple[float, ...]:
+    """Per-vehicle SUMO ``speedFactor`` (``FleetSpec.speed_factor`` / ``speed_dev``).
+
+    SUMO's desired free-flow speed of a vehicle is ``min(maxSpeed,
+    speedFactor × lane limit)``. For a vType with ``speedFactor="<mean>"
+    speedDev="<dev>"`` SUMO draws each vehicle's factor from the normal
+    distribution of that mean and deviation cut at 0.2 and 2 (its documented
+    default ``normc(1, 0.1, 0.2, 2)`` with the mean and deviation replaced;
+    :data:`flowstate_core.constants.SPEED_FACTOR_BOUNDS`). The same
+    distribution is drawn here, by rejection, from
+    :func:`speed_factor_stream` — so the draw neither consumes nor reorders
+    ``rng`` — for every vehicle in index order (heavy ones included, so the
+    passengers' factors do not depend on the heavy flags), and each value is
+    rounded to the four decimals SUMO keeps. Heavy vehicles then get 1.0:
+    the setting is the passenger fleet's (``FleetSpec.speed_factor``).
+
+    Args:
+        fleet: Fleet spec.
+        heavy_flags: Heavy flag per vehicle (empty ⇒ none).
+        n: Number of vehicles.
+        rng: The run generator (used only to derive the stream).
+
+    Returns:
+        One factor per vehicle; empty for the default fleet (factor 1.0, no
+        spread), whose plan and route files are then exactly as before.
+    """
+    mean = float(fleet.speed_factor)
+    dev = float(fleet.speed_dev)
+    if n == 0 or (mean == SPEED_FACTOR_DEFAULT and dev == 0.0):
+        return ()
+    lo, hi = SPEED_FACTOR_BOUNDS
+    if dev == 0.0:
+        values = [mean] * n
+    else:
+        stream = speed_factor_stream(rng)
+        values = [
+            truncated_normal(stream, mean, dev, n_sigma=math.inf, low=lo, high=hi) for _ in range(n)
+        ]
+    return tuple(
+        SPEED_FACTOR_DEFAULT
+        if (heavy_flags[i] if heavy_flags else False)
+        else round(v, SPEED_FACTOR_DECIMALS)
+        for i, v in enumerate(values)
+    )
 
 
 def normalized_lane_shares(shares: Sequence[float], name: str) -> np.ndarray:
@@ -540,6 +626,8 @@ def build_ring_plan(
 
     RNG order: (1) per-vehicle params, (2) AV tags + compliance,
     (3) per-vehicle position jitter ``U(−RING_JITTER_M, +RING_JITTER_M)``.
+    Speed factors (:func:`draw_speed_factors`) come from an independent
+    stream of the same seed and consume nothing from ``rng``.
     """
     n = network.n_vehicles
     params = draw_vehicle_params(fleet, n, rng)
@@ -560,6 +648,7 @@ def build_ring_plan(
         depart_pos_m=tuple(positions),
         is_heavy=tuple(heavy_flags),
         is_hov=tuple(hov_flags),
+        speed_factor=draw_speed_factors(fleet, heavy_flags, n, rng),
     )
 
 
@@ -642,7 +731,8 @@ def build_corridor_plan(
     heavy vehicles' departure lanes from an independent stream of the same
     seed (:func:`draw_heavy_lanes`), which consumes nothing from ``rng``: the
     light vehicles' lanes and every other draw are identical with and without
-    it.
+    it. ``FleetSpec.speed_factor`` / ``speed_dev`` set the per-vehicle speed
+    factors (:func:`draw_speed_factors`) likewise without touching ``rng``.
 
     Args:
         inflow: Mainline ``(t_start [s], veh/s)`` steps.
@@ -728,6 +818,7 @@ def build_corridor_plan(
         is_heavy=tuple(heavy_flags),
         heavy_lane_shares=heavy_lane_shares,
         is_hov=tuple(hov_flags),
+        speed_factor=draw_speed_factors(fleet, heavy_flags, n, rng),
     )
 
 
@@ -803,8 +894,14 @@ def _vtype_xml(
     jm_timegap_minor_s: float | None = None,
     jm_ignore_foe_prob: float | None = None,
     extra_attrs: dict[str, str] | None = None,
+    speed_factor: float = SPEED_FACTOR_DEFAULT,
 ) -> str:
     """One ``<vType>`` element (see module docstring for attribute notes).
+
+    ``speed_factor`` is the vehicle's SUMO ``speedFactor`` (``FleetPlan.
+    speed_factor``): written as ``"1.0"`` at the default, so route files of a
+    default fleet are byte-identical, else with SUMO's four decimals;
+    ``speedDev`` is always ``"0"`` (the factor is drawn by FlowState).
 
     ``length_m``, ``emission_class`` and ``vclass`` carry a heavy vehicle's
     attributes (``FleetSpec.heavy``); passenger vTypes keep the module
@@ -832,10 +929,15 @@ def _vtype_xml(
         cls += f' jmIgnoreFoeProb="{jm_ignore_foe_prob:g}" jmIgnoreFoeSpeed="100"'
     for k, v in (extra_attrs or {}).items():
         cls += f' {k}="{v}"'
+    factor = (
+        "1.0"
+        if speed_factor == SPEED_FACTOR_DEFAULT
+        else f"{speed_factor:.{SPEED_FACTOR_DECIMALS}f}"
+    )
     return (
         f'  <vType id="{type_id}" carFollowModel="{model}" accel="{p["a_max"]:.6f}" '
         f'decel="{p["b"]:.6f}" tau="{p["T"]:.6f}" minGap="{p["s0"]:.6f}" '
-        f'maxSpeed="{p["v0"]:.6f}" length="{length_m}" speedFactor="1.0" '
+        f'maxSpeed="{p["v0"]:.6f}" length="{length_m}" speedFactor="{factor}" '
         f'speedDev="0" emissionClass="{emission_class}" '
         f'actionStepLength="{action_step_s}"{lc}{cls}/>'
     )
@@ -905,6 +1007,7 @@ def write_ring_routes(
                 jm_timegap_minor_s=jm_timegap_minor_s,
                 jm_ignore_foe_prob=jm_ignore_foe_prob,
                 extra_attrs=extra_attrs,
+                speed_factor=plan.speed_factor_of(i),
                 **_heavy_kwargs(plan, i, heavy),
             )
         )
@@ -1044,6 +1147,7 @@ def write_corridor_routes(
                 jm_timegap_minor_s=jm_timegap_minor_s,
                 jm_ignore_foe_prob=jm_ignore_foe_prob,
                 extra_attrs=extra_attrs,
+                speed_factor=plan.speed_factor_of(i),
                 **_heavy_kwargs(plan, i, heavy),
             )
         )

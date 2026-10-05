@@ -76,12 +76,14 @@ from flowstate_core.config import (
     SCRIPTED_MERGE_DEFAULTS,
     WEAVE_DEFAULTS,
     CorridorNetwork,
+    FleetSpec,
     OSMNetwork,
     RampSpec,
     RingNetwork,
     ScenarioConfig,
     config_hash,
 )
+from flowstate_core.constants import SPEED_FACTOR_DEFAULT
 from flowstate_core.controller_types import (
     ControllerObs,
     Memory,
@@ -6642,29 +6644,34 @@ class RouteGeometry:
         k = self.edges.index(edge)
         return float(sum(self.lengths_m[:k])) + float(lane_pos_m)
 
-    def free_flow_s(self, v0_ms: float) -> float:
+    def free_flow_s(self, v0_ms: float, speed_factor: float = 1.0) -> float:
         """Free-flow travel time of the whole route for one vehicle [s].
 
-        ``Σ_e L_e / min(v0, v_limit,e)``: each edge at the smaller of the
-        vehicle's desired speed (its vType ``maxSpeed``; the fleet writes
-        ``speedFactor = 1``) and the edge's base limit — the fastest the
-        vehicle drives there on an empty road, acceleration aside.
+        ``Σ_e L_e / min(v0, f · v_limit,e)``: each edge at the vehicle's
+        desired speed there — the smaller of its vType ``maxSpeed`` and its
+        SUMO ``speedFactor`` ``f`` times the edge's base limit (SUMO's desired
+        free-flow speed; ``f`` is 1 unless ``FleetSpec.speed_factor`` sets
+        it, WP-109) — the fastest the vehicle drives there on an empty road,
+        acceleration aside.
 
         Args:
             v0_ms: The vehicle's desired speed [m/s], > 0.
+            speed_factor: The vehicle's ``speedFactor`` (``FleetPlan``).
 
         Returns:
             The free-flow time [s].
         """
         lengths = np.asarray(self.lengths_m, dtype=np.float64)
         limits = np.asarray(self.limits_ms, dtype=np.float64)
-        return float(np.sum(lengths / np.minimum(float(v0_ms), limits)))
+        return float(np.sum(lengths / np.minimum(float(v0_ms), float(speed_factor) * limits)))
 
-    def free_flow_between_s(self, a_m: float, b_m: float, v0_ms: float) -> float:
+    def free_flow_between_s(
+        self, a_m: float, b_m: float, v0_ms: float, speed_factor: float = 1.0
+    ) -> float:
         """Free-flow time from route offset ``a_m`` to ``b_m`` for one vehicle [s].
 
         Edge by edge, each overlap of ``[a_m, b_m]`` with an edge at
-        ``min(v0, v_limit,e)`` (:meth:`free_flow_s` restricted to the
+        ``min(v0, f · v_limit,e)`` (:meth:`free_flow_s` restricted to the
         stretch). Offsets are clipped to ``[0, length_m]``; ``b_m <= a_m``
         gives 0.
 
@@ -6672,6 +6679,7 @@ class RouteGeometry:
             a_m: Start offset along the route [m].
             b_m: End offset along the route [m].
             v0_ms: The vehicle's desired speed [m/s], > 0.
+            speed_factor: The vehicle's ``speedFactor`` (``FleetPlan``).
 
         Returns:
             The free-flow time [s].
@@ -6682,7 +6690,7 @@ class RouteGeometry:
         lo = np.clip(float(a_m), starts, starts + lengths)
         hi = np.clip(float(b_m), starts, starts + lengths)
         covered = np.maximum(hi - lo, 0.0)
-        return float(np.sum(covered / np.minimum(float(v0_ms), limits)))
+        return float(np.sum(covered / np.minimum(float(v0_ms), float(speed_factor) * limits)))
 
 
 def _route_geometry(mod: Any, route_ids: Iterable[str]) -> dict[str, RouteGeometry]:
@@ -6729,13 +6737,15 @@ def _journey_table(
     meter_hold: Mapping[str, tuple[float, float | None]],
     meter_release: Mapping[str, tuple[float, float | None]],
     end_s: float,
+    speed_factor_by_id: Mapping[str, float] | None = None,
 ) -> pa.Table:
     """The :data:`JOURNEYS_FILE` table: one row per planned vehicle.
 
     Pure bookkeeping over what the run already holds — nothing here reads or
     drives the simulation. Two columns are derived here, with the vehicle's
     route geometry (:meth:`RouteGeometry.free_flow_between_s`, edge by edge at
-    ``min(v0, base limit)``):
+    ``min(v0, speedFactor × base limit)``; the factor is 1 unless the fleet
+    sets one, WP-109):
 
     * ``free_flow_covered_s`` — the free-flow time of the stretch of route the
       vehicle covered: from its insertion offset to the route's end when it
@@ -6776,6 +6786,8 @@ def _journey_table(
         meter_release: ``(step time, route offset)`` at which the meter
             released each vehicle.
         end_s: Simulation time when the run ended [s].
+        speed_factor_by_id: SUMO ``speedFactor`` per vehicle
+            (``FleetPlan.speed_factor``); None or a missing id ⇒ 1.0.
 
     Returns:
         The contract-typed table, rows in ``veh_id`` order.
@@ -6785,6 +6797,7 @@ def _journey_table(
         rid = route_by_id.get(vid, "main")
         geom = geometry.get(rid)
         v0 = float(v0_by_id[vid])
+        sf = float(speed_factor_by_id.get(vid, 1.0)) if speed_factor_by_id else 1.0
         offset = insert_offset_m.get(vid)
         arrived = vid in arrival_s
         # the route offset the vehicle reached: its end (arrived), its
@@ -6798,7 +6811,7 @@ def _journey_table(
         elif geom is None or offset is None or reached is None:
             covered = None
         else:
-            covered = geom.free_flow_between_s(offset, reached, v0)
+            covered = geom.free_flow_between_s(offset, reached, v0, sf)
         wait = 0.0
         if vid in meter_hold:
             t_hold, off_hold = meter_hold[vid]
@@ -6810,13 +6823,13 @@ def _journey_table(
                 t_out, off_out = end_s, reached
             wait = t_out - t_hold
             if geom is not None and off_hold is not None and off_out is not None:
-                wait -= geom.free_flow_between_s(off_hold, off_out, v0)
+                wait -= geom.free_flow_between_s(off_hold, off_out, v0, sf)
         cols["veh_id"].append(vid)
         cols["route"].append(rid)
         cols["origin_ramp"].append(_route_origin(rid))
         cols["depart_planned_s"].append(float(depart_planned_s[vid]))
         cols["route_length_m"].append(None if geom is None else geom.length_m)
-        cols["free_flow_s"].append(None if geom is None else geom.free_flow_s(v0))
+        cols["free_flow_s"].append(None if geom is None else geom.free_flow_s(v0, sf))
         cols["inserted"].append(vid in depart_s)
         cols["depart_s"].append(depart_s.get(vid))
         cols["insert_offset_m"].append(offset)
@@ -7137,6 +7150,9 @@ def run_micro(
             f"fleet.delta={cfg.fleet.delta} requested but SUMO's IDM fixes the "
             "acceleration exponent at 4 (not a vType attribute); ran with delta=4"
         )
+    speed_factor_note = _speed_factor_merge_note(cfg)
+    if speed_factor_note is not None:
+        notes.append(speed_factor_note)
 
     # Macro-tier-only config blocks reaching a micro run: recorded, never
     # silently dropped (docs/CONTRACTS.md §2). The micro tier has no
@@ -7338,10 +7354,20 @@ def run_micro(
     boundary_spec = getattr(cfg.network, "boundary", None)
     if boundary_spec is not None and bundle.exit_edge is not None:
         boundary_steps = [(float(ts), float(vs)) for ts, vs in boundary_spec.steps]
+    # The schedule's speeds are measured speeds; SUMO drives a passenger at
+    # speedFactor × the posted limit, so with FleetSpec.speed_factor set
+    # (WP-109) each step is posted divided by it: the fleet's mean driver
+    # then drives the measured speed. A default fleet posts the schedule as
+    # written (no division, so its runs are unchanged).
+    boundary_divisor = float(cfg.fleet.speed_factor)
+    boundary_posted = [
+        (ts, vs if boundary_divisor == SPEED_FACTOR_DEFAULT else vs / boundary_divisor)
+        for ts, vs in boundary_steps
+    ]
     boundary_idx = 0
     # Apply every step scheduled at or before t = 0 up front.
     while boundary_idx < len(boundary_steps) and boundary_steps[boundary_idx][0] <= 0.0:
-        mod.edge.setMaxSpeed(bundle.exit_edge, boundary_steps[boundary_idx][1])
+        mod.edge.setMaxSpeed(bundle.exit_edge, boundary_posted[boundary_idx][1])
         boundary_idx += 1
 
     fuel_mg: dict[str, float] = {}
@@ -7365,7 +7391,12 @@ def run_micro(
         from controllers.registry import get_ramp_meter
 
         net_for_meters = sumolib.net.readNet(str(bundle.net_path))
-        chain_m = list(cfg.network.corridor_edges)
+        # the compiled chain, ramp-guessing pieces in place (2026-10-04): a ramp
+        # discovered on a guessed net attaches to its ``-AddedOnRampEdge`` piece,
+        # which the scenario's load-time corridor ids do not list (the phase-1
+        # rehearsal's ALINEA runs on the I-94 WB corridor all failed with
+        # "'43917735#1-AddedOnRampEdge' is not in list")
+        chain_m = expand_ramp_splits(list(cfg.network.corridor_edges), bundle.edge_ids)
         for k_ramp_m, ramp_m in enumerate(cfg.network.ramps):
             if ramp_m.kind != "on" or ramp_m.meter is None:
                 continue
@@ -7804,7 +7835,7 @@ def run_micro(
 
             # Downstream boundary schedule (piecewise-constant, exit edge).
             while boundary_idx < len(boundary_steps) and t >= boundary_steps[boundary_idx][0]:
-                mod.edge.setMaxSpeed(bundle.exit_edge, boundary_steps[boundary_idx][1])
+                mod.edge.setMaxSpeed(bundle.exit_edge, boundary_posted[boundary_idx][1])
                 boundary_idx += 1
 
             for vid in mod.simulation.getDepartedIDList():
@@ -8189,6 +8220,11 @@ def run_micro(
         meter_hold_by_id,
         meter_release_by_id,
         end_s,
+        speed_factor_by_id=(
+            {plan.vehicle_id(i): plan.speed_factor_of(i) for i in range(plan.n)}
+            if plan.speed_factor
+            else None
+        ),
     )
     _write_parquet(journeys, run_dir / JOURNEYS_FILE)
     meter_wait_total = _meter_wait_totals(journeys)
@@ -8314,6 +8350,8 @@ def run_micro(
             for cs in closure_states
         ],
         "fleet_calibration": fleet_calibration,
+        # FleetSpec.speed_factor / speed_dev (WP-109): present only when set
+        **_speed_factor_meta(cfg.fleet, plan, bool(boundary_steps)),
         "controller": cfg.av.controller,
         # AVSpec.emergency_handback (WP-95): None when off
         "av_emergency_handback": (
@@ -8455,6 +8493,70 @@ def run_micro(
     tmp_meta.write_text(json.dumps(meta, indent=2))
     os.replace(tmp_meta, meta_path)
     return RunPaths(run_dir=run_dir, trajectories=traj_path, edges=edges_path, meta=meta_path)
+
+
+def _speed_factor_meta(fleet: FleetSpec, plan: FleetPlan, has_boundary: bool) -> dict[str, Any]:
+    """``meta.json["speed_factor"]`` when the fleet sets one (WP-109).
+
+    Empty for a default fleet (factor 1.0, no spread), so its ``meta.json``
+    keeps exactly its keys. Otherwise one block: the configured ``mean`` and
+    ``dev``, who carries it (passenger vehicles; heavy vehicles keep 1.0),
+    the realized passenger factors (count, mean, min, max — the values
+    written into the route file), and the divisor the downstream boundary
+    schedule was posted with (None without a schedule).
+
+    Args:
+        fleet: The fleet block.
+        plan: The run's fleet plan (``FleetPlan.speed_factor``).
+        has_boundary: A boundary schedule was applied.
+
+    Returns:
+        ``{"speed_factor": {...}}`` or ``{}``.
+    """
+    if not plan.speed_factor:
+        return {}
+    passenger = [plan.speed_factor[i] for i in range(plan.n) if not plan.heavy(i)]
+    return {
+        "speed_factor": {
+            "mean": float(fleet.speed_factor),
+            "dev": float(fleet.speed_dev),
+            "applies_to": "passenger vehicles; heavy vehicles keep 1.0",
+            "n_vehicles": len(passenger),
+            "realized_mean": float(np.mean(passenger)) if passenger else None,
+            "realized_min": float(min(passenger)) if passenger else None,
+            "realized_max": float(max(passenger)) if passenger else None,
+            "boundary_posted_divided_by": float(fleet.speed_factor) if has_boundary else None,
+        }
+    }
+
+
+def _speed_factor_merge_note(cfg: ScenarioConfig) -> str | None:
+    """A ``meta.json`` note when a speed factor meets a scripted or weave merge.
+
+    The scripted merge and the weave model their vehicles' car-following
+    with the desired speed ``min(maxSpeed, lane limit)`` — speed factor 1 —
+    and were left as they are when ``FleetSpec.speed_factor`` was added
+    (WP-109), so with a factor other than 1 their gap predictions and the
+    scripted merge's speed matching use the posted limit where SUMO's own
+    vehicles use the factor times it. Said in the run's notes rather than
+    silently.
+    """
+    if cfg.fleet.speed_factor == SPEED_FACTOR_DEFAULT and cfg.fleet.speed_dev == 0.0:
+        return None
+    net = cfg.network
+    merges = sorted(
+        {r.merge for r in net.ramps if r.merge in ("scripted", "weave")}
+        if isinstance(net, OSMNetwork)
+        else set()
+    )
+    if not merges:
+        return None
+    return (
+        f"fleet.speed_factor={cfg.fleet.speed_factor:g} (speed_dev={cfg.fleet.speed_dev:g}) "
+        f"with {' and '.join(merges)} merge(s): their gap and speed logic takes a vehicle's "
+        "desired speed as min(maxSpeed, lane limit), i.e. speed factor 1, while SUMO drives "
+        "every passenger vehicle at its factor times the limit (WP-109; not changed)"
+    )
 
 
 def _route_origin(route_id: str) -> int:

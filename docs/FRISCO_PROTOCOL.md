@@ -182,7 +182,10 @@ pass on the validation days, with C4 passing or "not applicable".
    NGSIM US-101, and any later one), with a single corridor-wide adjustment
    inside the measured ranges if the driver-settings check (item 8,
    `calibration.transfer_check`) flags a mismatch in free-flow speed,
-   capacity per lane or truck share. A knob's measured range is the mean
+   capacity per lane or truck share — the population's mean time headway or
+   mean desired speed, or the passenger speed factor on the posted limit
+   (`fleet.speed_factor`, for drivers who exceed the limit). A knob's
+   measured range is the mean
    ± 1 standard deviation of the measured source population, inside
    CLAUDE.md §3.1's calibration range; a mismatch that no value in that
    range removes is reported as such, not forced. No location-specific
@@ -207,8 +210,8 @@ many calibration iterations were made.
    vehicle of the demand planned to depart in the scoring window is
    measured from its planned departure; time in system = arrival (or the
    run's end) − planned departure; delay = time in system − the free-flow
-   time of the route stretch it covered at min(its desired speed, the base
-   speed limit). A vehicle not arrived by the run's end is censored there,
+   time of the route stretch it covered at its desired speed there,
+   min(v0, its speed factor × the base speed limit). A vehicle not arrived by the run's end is censored there,
    by the same rule in every arm, and the censored count is reported per
    arm. Runs end with a cool-down after the last scored departure of at
    least the stretch's free-flow travel time, so that censoring is rare.

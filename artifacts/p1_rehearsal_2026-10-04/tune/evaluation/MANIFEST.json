@@ -1,0 +1,66 @@
+{
+  "experiment": "p1_tune/evaluation",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_slice_xlsfg.yaml",
+  "base_config_hash": "1dc4729644dd",
+  "grid_spec": {
+    "phase": "evaluation",
+    "strategies": [
+      "alinea",
+      "vsl"
+    ],
+    "budget": 2,
+    "penetration": [
+      0.05
+    ],
+    "compliance": [
+      1.0
+    ]
+  },
+  "rho_target_veh_km": 19.9,
+  "metrics_args": {
+    "x_ref": 11027.0,
+    "span": [
+      1110.0,
+      11027.0
+    ]
+  },
+  "grid": {
+    "baseline": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "none"
+    },
+    "vsl_best": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "strategy": "vsl",
+      "tuned_strategy": "vsl",
+      "candidate": 1,
+      "textbook": false,
+      "values": {
+        "v_on_kmh": 65.0,
+        "rho_on_veh_km": 50.0
+      },
+      "selected_from": "vsl_c01"
+    }
+  },
+  "cells": {
+    "baseline": "1dc4729644dd",
+    "vsl_best": "d8064c8b3a35"
+  },
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749
+  ],
+  "selection": {
+    "vsl": {
+      "cell": "vsl_c01",
+      "candidate": 1,
+      "config_hash": "d8064c8b3a35"
+    }
+  }
+}

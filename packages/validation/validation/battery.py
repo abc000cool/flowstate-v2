@@ -19,8 +19,9 @@ Everything in this module reads a replicate directory as written by
 ``trajectories.parquet``.
 
 :func:`analyse_replicate` is the whole per-replicate measurement (metrics,
-observed scores, the profile detector's wave speed, insertion) and writes the
-two per-seed files the battery re-scores from; :func:`analyse_replicates`
+observed scores, the profile detector's wave speed, insertion, and the
+waiting measures of the demand ledger, :func:`replicate_waiting`) and writes
+the two per-seed files the battery re-scores from; :func:`analyse_replicates`
 runs it over a run set in a spawn process pool. It lives here rather than in
 the script because a spawn worker must be importable in the child, and the
 script is loaded by path. Each replicate's trajectory is read by three
@@ -48,9 +49,13 @@ import pandas as pd
 from validation.criteria import CriteriaProfile, zero_collisions
 from validation.fields import speed_field
 from validation.metrics import (
+    JOURNEYS_FILE,
+    WAITING_FIELDS,
     Metrics,
+    WaitingMetrics,
     ci,
     compute_metrics,
+    compute_waiting_metrics,
     n_window_rows,
     time_window_rows,
     vehicle_codes,
@@ -1048,12 +1053,106 @@ class ReplicateAnalysis:
         wave_speed_kmh: The criteria profile detector's backward wave speed
             [km/h] (:func:`replicate_wave_speed_kmh`); NaN = no front.
         insertion: Planned vs departed vehicles (:func:`insertion_stats`).
+        waiting: Travel time and delay including waiting
+            (:func:`replicate_waiting`); None when the replicate carries no
+            demand ledger — absent, never zero.
     """
 
     metrics: Metrics
     scores: ObservedScores
     wave_speed_kmh: float
     insertion: InsertionStats
+    waiting: WaitingMetrics | None = None
+
+
+def replicate_waiting(run_dir: str | Path) -> WaitingMetrics | None:
+    """One replicate's waiting measures, or None without a demand ledger.
+
+    :func:`validation.metrics.compute_waiting_metrics` (travel time and total
+    delay including the time spent waiting on ramps and to enter the network,
+    docs/FRISCO_PROTOCOL.md §8.2) over the run's own measurement window, when
+    the replicate carries the ledger: ``journeys.parquet`` on disk and the
+    ``journeys`` block in its ``meta.json`` (every run since WP-105,
+    2026-10-04) — the condition ``validation.report`` applies, so the
+    battery and the report count the same runs. A replicate without it was
+    not measured for waiting: None, never 0.
+
+    Args:
+        run_dir: Replicate directory.
+
+    Returns:
+        The measures, or None.
+    """
+    path = Path(run_dir)
+    if not (path / JOURNEYS_FILE).is_file():
+        return None
+    if not isinstance(load_meta(path).get("journeys"), dict):
+        return None
+    return compute_waiting_metrics(path)
+
+
+def waiting_from_json(raw: Mapping[str, Any] | None) -> WaitingMetrics | None:
+    """A stored ``waiting`` block back to :class:`WaitingMetrics` (``null`` → NaN).
+
+    Args:
+        raw: The block as :func:`analyse_replicate` stored it, or None.
+
+    Returns:
+        The measures, or None for an absent block.
+    """
+    if raw is None:
+        return None
+    values: dict[str, Any] = {
+        k: (math.nan if raw.get(k) is None else raw[k]) for k in WAITING_FIELDS
+    }
+    return WaitingMetrics(**values)
+
+
+def waiting_summary(
+    waitings: Sequence[WaitingMetrics | None], labels: Sequence[Any] | None = None
+) -> dict[str, Any] | None:
+    """The waiting measures over a run set: per-field t-intervals and coverage.
+
+    Args:
+        waitings: One entry per replicate (None: no demand ledger).
+        labels: Replicate labels (seeds) for ``runs_not_recorded``; default
+            the positions.
+
+    Returns:
+        ``{n_runs, n_runs_recorded, runs_not_recorded, ci, definition}`` —
+        ``ci`` maps each :data:`validation.metrics.WAITING_FIELDS` name to
+        ``{mean, lo95, hi95, n, underpowered}`` over the replicates that
+        record it (NaN values dropped, as :func:`validation.metrics.ci`
+        does) — or None when no replicate records the ledger.
+    """
+    names = list(range(len(waitings))) if labels is None else list(labels)
+    recorded = [w for w in waitings if w is not None]
+    if not recorded:
+        return None
+    intervals = {name: ci([float(getattr(w, name)) for w in recorded]) for name in WAITING_FIELDS}
+    return {
+        "n_runs": len(waitings),
+        "n_runs_recorded": len(recorded),
+        "runs_not_recorded": [lab for lab, w in zip(names, waitings, strict=True) if w is None],
+        "ci": {
+            name: {
+                "mean": iv.mean,
+                "lo95": iv.lo95,
+                "hi95": iv.hi95,
+                "n": iv.n,
+                "underpowered": iv.underpowered,
+            }
+            for name, iv in intervals.items()
+        },
+        "definition": (
+            "validation.metrics.WaitingMetrics per replicate over its measurement window "
+            "(docs/FRISCO_PROTOCOL.md section 8.2): travel time and total delay counted from "
+            "each vehicle's planned departure, so time waiting on ramps and to enter the "
+            "network is included; t-intervals over the replicates that carry a demand ledger "
+            "(journeys.parquet); a replicate without one is listed in runs_not_recorded, "
+            "never counted as zero"
+        ),
+    }
 
 
 def analyse_replicate(
@@ -1068,7 +1167,9 @@ def analyse_replicate(
     """Measure one replicate and write its per-seed files.
 
     Writes :data:`METRICS_FILE` (metrics, the criterion wave speed and its
-    detector, ``x_ref``/``span``, insertion) and :data:`SCORES_FILE` (the
+    detector, ``x_ref``/``span``, insertion, and ``waiting`` — the
+    :func:`replicate_waiting` measures, ``null`` without a demand ledger,
+    added 2026-10-04 after every other key) and :data:`SCORES_FILE` (the
     :class:`validation.observed.ObservedScores`) into ``run_dir``, so a
     finished battery can be re-scored (:func:`load_replicate_analysis`)
     without re-simulating. The trajectory is read once
@@ -1096,6 +1197,7 @@ def analyse_replicate(
     wave_speed = replicate_wave_speed_kmh(path, profile.wave_detector, trajectories=frame)
     del frame
     insertion = insertion_stats(load_meta(path))
+    waiting = replicate_waiting(path)
     (path / METRICS_FILE).write_text(
         json.dumps(
             json_safe(
@@ -1106,6 +1208,7 @@ def analyse_replicate(
                     "x_ref_m": x_ref,
                     "span_m": list(span),
                     "insertion": insertion.to_dict(),
+                    "waiting": None if waiting is None else asdict(waiting),
                 }
             ),
             indent=2,
@@ -1116,7 +1219,11 @@ def analyse_replicate(
         json.dumps(json_safe(scores.to_dict()), indent=2, allow_nan=False)
     )
     return ReplicateAnalysis(
-        metrics=metrics, scores=scores, wave_speed_kmh=wave_speed, insertion=insertion
+        metrics=metrics,
+        scores=scores,
+        wave_speed_kmh=wave_speed,
+        insertion=insertion,
+        waiting=waiting,
     )
 
 
@@ -1126,7 +1233,11 @@ def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
     The insertion stats are re-read from ``meta.json`` rather than from the
     stored ``metrics.json`` block: ``meta.json`` is the completion marker and
     is never pruned, so there is one source for these counters and no way for
-    the stored copy to be the one a reader sees.
+    the stored copy to be the one a reader sees. The waiting measures come
+    from the stored ``waiting`` block; a ``metrics.json`` written before it
+    existed has no such key, and the measures are then computed from the
+    replicate's demand ledger (:func:`replicate_waiting`; ``journeys.parquet``
+    is never pruned), None without one.
 
     Args:
         run_dir: Replicate directory holding the files
@@ -1151,11 +1262,15 @@ def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
             raw[key] = math.nan
     wave = stored.get("criterion_wave_speed_kmh")
     scores = ObservedScores.from_dict(json.loads((path / SCORES_FILE).read_text()))
+    waiting = (
+        waiting_from_json(stored["waiting"]) if "waiting" in stored else replicate_waiting(path)
+    )
     return ReplicateAnalysis(
         metrics=Metrics(**raw),
         scores=scores,
         wave_speed_kmh=math.nan if wave is None else float(wave),
         insertion=insertion_stats(load_meta(path)),
+        waiting=waiting,
     )
 
 

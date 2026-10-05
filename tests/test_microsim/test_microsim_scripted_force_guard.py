@@ -392,3 +392,31 @@ class TestFixture:
         assert sm["n_unfinished"] <= 0.1 * sm["n_entered"], sm
         (ramp,) = meta["ramps"]
         assert ramp["n_departed"] == ramp["n_planned"], ramp
+
+
+def test_meter_on_a_scripted_ramp_of_a_guessed_net(tmp_path):
+    """ALINEA on a scripted merge of a ramp-guessed net (2026-10-04). The
+    runner re-attaches a scripted ramp to netconvert's ``-AddedOnRampEdge``
+    piece, and the meter's setup then looked that piece up in the scenario's
+    load-time corridor ids, which never list it: every metered run of the
+    ramp-guessed I-94 WB corridor failed with "'43917735#1-AddedOnRampEdge' is
+    not in list" (phase-1 cloud rehearsal; reproduced on the 35-min slice at
+    120 s). The setup now uses the compiled chain, as every other corridor
+    lookup does; the edge downstream of the piece is the rest of the split
+    edge."""
+    d = mcknight_config(3).model_dump()
+    d["network"]["ramps"][0]["meter"] = {
+        "controller": "alinea",
+        "params": {"rho_target_veh_km": 25.0},
+        "interval_s": 30.0,
+        "stop_line_m": 30.0,
+        "rate_min_veh_h": 240.0,
+        "rate_max_veh_h": 900.0,
+    }
+    d["sim"]["duration_s"] = 240.0
+    paths = run_micro(ScenarioConfig.model_validate(d), 3, tmp_path / "metered")
+    meta = json.loads(paths.meta.read_text())
+    (m,) = meta["ramp_meters"]
+    assert m["downstream_edge"] == "638519829"
+    assert m["n_released"] > 0
+    assert meta["n_collisions"] == 0

@@ -24,9 +24,11 @@ over the mainline stations: median and 15th / 85th percentiles of the
 window means (not of individual vehicles' speeds). Model: each drawn driver
 wants ``min(v0, speed factor × posted limit)`` — SUMO caps the IDM's desired
 speed at the lane's limit times the vehicle's ``speedFactor``, which FlowState
-writes as 1.0 (``microsim.vehicles``) — and in steady traffic at the observed
-free-flow flow holds its IDM equilibrium speed, which is below its desired
-speed by the ``(v/v0)^4`` term. The model value is the mean over drivers of
+writes as the fleet's ``speed_factor`` on passenger vehicles (1.0 unless the
+scenario sets it, WP-109; spread by ``speed_dev`` when set) and as 1.0 on
+heavy vehicles (``microsim.vehicles``) — and in steady traffic at the
+observed free-flow flow holds its IDM equilibrium speed, which is below its
+desired speed by the ``(v/v0)^4`` term. The model value is the mean over drivers of
 that equilibrium speed: what a detector's window mean would read.
 
 **Capacity per lane.** Observed, per mainline station: the 95th percentile
@@ -135,7 +137,7 @@ from calibration.loaders.pems import MPH_TO_MS
 from calibration.observations import parse_clock
 from flowstate_core.artifacts import IDMCalibration
 from flowstate_core.config import FleetSpec
-from flowstate_core.constants import IDM_RANGES
+from flowstate_core.constants import IDM_RANGES, SPEED_FACTOR_BOUNDS, SPEED_FACTOR_DEFAULT
 from flowstate_core.rng import make_rng
 from flowstate_core.units import ms_to_kmh, veh_s_to_veh_h
 
@@ -286,9 +288,15 @@ IDM_PARAM_ORDER: Final[tuple[str, ...]] = ("v0", "T", "a_max", "b", "s0")
 SUMO_IDM_DELTA: Final[float] = 4.0
 """SUMO 1.27.1 fixes the IDM exponent δ at 4 (``microsim.vehicles``)."""
 
-ENGINE_SPEED_FACTOR: Final[float] = 1.0
-"""The ``speedFactor`` FlowState writes on every vType (``microsim.vehicles``):
-no driver exceeds the lane's speed limit. ``FleetSpec`` has no field for it."""
+ENGINE_SPEED_FACTOR: Final[float] = SPEED_FACTOR_DEFAULT
+"""The ``speedFactor`` FlowState writes on a vType when the fleet sets none
+(``FleetSpec.speed_factor``'s default) and on every heavy vehicle's
+(``microsim.vehicles``): desired speed capped at the lane's speed limit."""
+
+ENGINE_HAS_SPEED_FACTOR: Final[bool] = "speed_factor" in FleetSpec.model_fields
+"""The engine exposes the passenger speed factor as a scenario setting
+(``FleetSpec.speed_factor``, WP-109), so the ``speed_factor`` knob is
+available: a recommendation to set it needs no code change."""
 
 GENERATED_EDGE_SPEED_MS: Final[float] = 50.0
 """Speed limit of a generated straight corridor's edges [m/s]
@@ -1641,6 +1649,16 @@ class Population:
         """Configured truck share."""
         return float(self.fleet.heavy.fraction) if self.fleet.heavy is not None else 0.0
 
+    @property
+    def speed_factor(self) -> float:
+        """Configured passenger speed factor (``FleetSpec.speed_factor``)."""
+        return float(self.fleet.speed_factor)
+
+    @property
+    def speed_dev(self) -> float:
+        """Configured spread of the passenger speed factors (``FleetSpec.speed_dev``)."""
+        return float(self.fleet.speed_dev)
+
     def passenger_means(self) -> dict[str, float]:
         """Population means (artifact or scalar fleet)."""
         if self.calibration is not None:
@@ -1727,26 +1745,33 @@ class Adjustments:
         t_scale: Factor on its mean time headway (relative to the
             configured population, as ``scripts/calibrate_capacity.py``
             scales it).
-        speed_factor: SUMO ``speedFactor`` (desired speed cap = factor ×
-            posted limit).
+        speed_factor: The passenger vehicles' SUMO ``speedFactor`` (desired
+            speed cap = factor × posted limit; heavy vehicles keep 1.0);
+            None = as configured (``FleetSpec.speed_factor``).
         heavy_fraction: Truck share; None = as configured.
     """
 
     v0_scale: float = 1.0
     t_scale: float = 1.0
-    speed_factor: float = ENGINE_SPEED_FACTOR
+    speed_factor: float | None = None
     heavy_fraction: float | None = None
 
 
 @dataclass(frozen=True)
 class Drivers:
-    """A drawn fleet: one entry per driver."""
+    """A drawn fleet: one entry per driver.
+
+    ``speed_z`` (only when the fleet sets ``speed_dev``) holds one standard
+    normal deviate per driver: a passenger's speed factor is ``speed_factor +
+    speed_dev × speed_z`` inside SUMO's cut-offs (:func:`desired_speeds`).
+    """
 
     v0: np.ndarray
     T: np.ndarray
     s0: np.ndarray
     length: np.ndarray
     heavy: np.ndarray
+    speed_z: np.ndarray | None = None
 
 
 def _draw_calibrated(
@@ -1835,6 +1860,9 @@ def draw_drivers(
     the fleet has a heavy block, from ``make_rng(seed + 1)``: a Bernoulli
     share, then the heavy population. ``v0_scale``/``t_scale`` act on the
     passenger population only, as the capacity calibration's T-scaling does.
+    When the fleet spreads its speed factors (``speed_dev``), one standard
+    normal deviate per driver comes from ``make_rng(seed + 2)``
+    (:attr:`Drivers.speed_z`).
     """
     adj = adjustments or Adjustments()
     fleet = population.fleet
@@ -1871,16 +1899,33 @@ def draw_drivers(
             t_h[heavy] = h_rows[:, 1]
             s0[heavy] = h_rows[:, 4]
             length[heavy] = spec.length_m
-    return Drivers(v0=v0, T=t_h, s0=s0, length=length, heavy=heavy)
+    speed_z = make_rng(seed + 2).standard_normal(n) if population.speed_dev > 0.0 else None
+    return Drivers(v0=v0, T=t_h, s0=s0, length=length, heavy=heavy, speed_z=speed_z)
 
 
 def desired_speeds(
-    drivers: Drivers, speed_limit_ms: float | None, speed_factor: float
+    drivers: Drivers,
+    speed_limit_ms: float | None,
+    speed_factor: float,
+    speed_dev: float = 0.0,
 ) -> np.ndarray:
-    """``min(v0, speed_factor × limit)`` per driver (SUMO's desired speed)."""
+    """``min(v0, f × limit)`` per driver (SUMO's desired speed).
+
+    ``f`` is the driver's SUMO ``speedFactor`` as ``microsim.vehicles``
+    writes it: ``speed_factor`` for a passenger — spread to ``speed_factor +
+    speed_dev × z`` (:attr:`Drivers.speed_z`) clipped to SUMO's cut-offs 0.2
+    and 2 when ``speed_dev`` is set (the engine redraws outside the cut-offs
+    rather than clipping; the two differ only there) — and 1.0 for a heavy
+    vehicle.
+    """
     if speed_limit_ms is None:
         return np.array(drivers.v0, dtype=float)
-    return np.asarray(np.minimum(drivers.v0, speed_factor * speed_limit_ms), dtype=float)
+    factor = np.full(drivers.v0.shape, float(speed_factor))
+    if speed_dev > 0.0 and drivers.speed_z is not None:
+        lo, hi = SPEED_FACTOR_BOUNDS
+        factor = np.clip(float(speed_factor) + float(speed_dev) * drivers.speed_z, lo, hi)
+    factor = np.where(drivers.heavy, ENGINE_SPEED_FACTOR, factor)
+    return np.asarray(np.minimum(drivers.v0, factor * speed_limit_ms), dtype=float)
 
 
 def idm_equilibrium_gap(
@@ -2266,7 +2311,8 @@ class ModelSide:
         n_draws: Drivers drawn.
         draw_seed: Seed.
         speed_limit_ms: The cap applied (None: uncapped).
-        speed_factor: SUMO speed factor (engine: 1.0).
+        speed_factor: The passenger SUMO speed factor
+            (``FleetSpec.speed_factor``; 1.0 unless the scenario sets it).
         heavy_fraction: Truck share.
         passenger_means: Population means (v0, T, a_max, b, s0).
         desired_speed: ``mean``, ``p15``, ``p50``, ``p85`` of the drivers'
@@ -2367,6 +2413,11 @@ class _Evaluator:
     def drivers(self, adj: Adjustments, pop: Population | None = None) -> Drivers:
         return draw_drivers(pop or self.pop, adj, n=self.n, seed=self.seed)
 
+    def speed_factor(self, adj: Adjustments, pop: Population | None = None) -> float:
+        """The passenger speed factor under ``adj`` (None = as configured)."""
+        target = pop or self.pop
+        return target.speed_factor if adj.speed_factor is None else float(adj.speed_factor)
+
     def ff_speed(self, adj: Adjustments) -> tuple[float | None, int]:
         key = ("ff", adj)
         if key not in self._cache:
@@ -2374,7 +2425,7 @@ class _Evaluator:
                 self._cache[key] = (None, 0)
             else:
                 d = self.drivers(adj)
-                v_des = desired_speeds(d, self.limit, adj.speed_factor)
+                v_des = desired_speeds(d, self.limit, self.speed_factor(adj), self.pop.speed_dev)
                 speeds, beyond = free_flow_speeds(self.pop.model, d, v_des, self.q_ff / 3600.0)
                 self._cache[key] = (float(speeds.mean()), beyond)
         return self._cache[key]  # type: ignore[no-any-return]
@@ -2390,7 +2441,7 @@ class _Evaluator:
         key = ("cap", adj, id(target), limit)
         if key not in self._cache:
             d = self.drivers(adj, target)
-            v_des = desired_speeds(d, limit, adj.speed_factor)
+            v_des = desired_speeds(d, limit, self.speed_factor(adj, target), target.speed_dev)
             self._cache[key] = population_capacity(target.model, d, v_des)
         return self._cache[key]  # type: ignore[no-any-return]
 
@@ -2406,7 +2457,7 @@ def _simulated_at(
     neutral = (
         ev.limit is None
         and adj.v0_scale == 1.0
-        and adj.speed_factor == ENGINE_SPEED_FACTOR
+        and ev.speed_factor(adj) == sc.source.speed_factor
         and (adj.heavy_fraction is None or adj.heavy_fraction == ev.pop.heavy_fraction)
         and ev.pop.heavy_fraction == sc.source.heavy_fraction
         and ev.pop.fleet.heavy == sc.source.fleet.heavy
@@ -2455,7 +2506,7 @@ def model_side(
     )
     adj = Adjustments()
     d = ev.drivers(adj)
-    v_des = desired_speeds(d, speed_limit_ms, ENGINE_SPEED_FACTOR)
+    v_des = desired_speeds(d, speed_limit_ms, population.speed_factor, population.speed_dev)
     desired = {
         "mean": float(v_des.mean()),
         "p15": float(np.percentile(v_des, 15.0)),
@@ -2469,7 +2520,20 @@ def model_side(
             "state and are counted at their own capacity speed"
         )
     means = population.passenger_means()
-    mean_cap = mean_driver_capacity(population.model, means, speed_limit_ms)
+    mean_cap = mean_driver_capacity(
+        population.model, means, speed_limit_ms, population.speed_factor
+    )
+    if population.speed_factor != ENGINE_SPEED_FACTOR or population.speed_dev > 0.0:
+        notes.append(
+            f"the fleet sets a speed factor of {population.speed_factor:g}"
+            + (
+                f" spread by {population.speed_dev:g} (SUMO speedDev)"
+                if population.speed_dev > 0.0
+                else ""
+            )
+            + ": passenger drivers want min(v0, factor × limit), heavy vehicles min(v0, limit) "
+            "(microsim.vehicles)"
+        )
     pop_cap = ev.capacity(adj)
     if population.calibration is None:
         notes.append(
@@ -2546,7 +2610,7 @@ def model_side(
         n_draws=n_draws,
         draw_seed=seed,
         speed_limit_ms=speed_limit_ms,
-        speed_factor=ENGINE_SPEED_FACTOR,
+        speed_factor=population.speed_factor,
         heavy_fraction=population.heavy_fraction,
         passenger_means=means,
         desired_speed=desired,
@@ -3352,7 +3416,7 @@ def check_transfer(
             model_basis=(
                 f"analytical: mean {population.model} steady-state speed of {n_draws} drawn "
                 f"drivers at the observed free-flow flow, desired speed min(v0, "
-                f"{ENGINE_SPEED_FACTOR:g} × limit)"
+                f"{population.speed_factor:g} × limit)"
             ),
             difference=(ff_obs.median_ms / model.free_flow_speed_ms - 1.0)
             if ff_obs.median_ms and model.free_flow_speed_ms
@@ -3527,33 +3591,46 @@ def check_transfer(
         )
         if model_limit is not None:
             limit = model_limit
-            s_lo, s_hi = v_lo / limit, v_hi / limit
+            sf_now = population.speed_factor
+            # the factor × limit inside the measured desired-speed range, and
+            # inside the factor's own bounds (SUMO's cut-offs, FleetSpec)
+            s_lo = max(v_lo / limit, SPEED_FACTOR_BOUNDS[0])
+            s_hi = min(v_hi / limit, SPEED_FACTOR_BOUNDS[1])
 
             def ff_at_s(s: float) -> float | None:
                 return ev.ff_speed(replace(state, speed_factor=s))[0]
 
-            xs, ys = _knob_curve(min(s_lo, 1.0), s_hi, 1.0, ff_at_s)
-            needed_s = solve_on_curve(xs, ys, c.observed, 1.0)
+            xs, ys = _knob_curve(min(s_lo, sf_now), max(s_hi, s_lo, sf_now), sf_now, ff_at_s)
+            needed_s = solve_on_curve(xs, ys, c.observed, sf_now)
             knobs.append(
                 Knob(
                     name="speed_factor",
                     label="the speed factor on the posted limit (SUMO speedFactor)",
-                    current=ENGINE_SPEED_FACTOR,
+                    current=sf_now,
                     needed=needed_s,
                     range_lo=s_lo,
                     range_hi=s_hi,
                     range_source=(
                         f"factor × posted limit ({limit / MPH_TO_MS:.0f} mph) inside the measured "
-                        f"desired-speed range {v_lo:.1f}–{v_hi:.1f} m/s"
+                        f"desired-speed range {v_lo:.1f}–{v_hi:.1f} m/s, and inside SUMO's "
+                        f"speed-factor cut-offs {SPEED_FACTOR_BOUNDS[0]:g}–"
+                        f"{SPEED_FACTOR_BOUNDS[1]:g}"
                     ),
                     fits=needed_s is not None and s_lo - 1e-9 <= needed_s <= s_hi + 1e-9,
-                    available=False,
+                    available=ENGINE_HAS_SPEED_FACTOR,
                     how=(
-                        "microsim.vehicles writes speedFactor=1.0 on every vType and FleetSpec "
-                        "has no field for it — a code change, reviewed like any other"
+                        "fleet.speed_factor in the scenario (FleetSpec.speed_factor, WP-109): "
+                        "written as SUMO's speedFactor on every passenger vehicle, whose desired "
+                        "speed becomes min(v0, factor × the posted limit); heavy vehicles keep "
+                        "1.0, fleet.speed_dev stays as configured, and a downstream boundary "
+                        "schedule is posted divided by the factor so its measured speeds are "
+                        "still the speeds driven"
+                        if ENGINE_HAS_SPEED_FACTOR
+                        else "microsim.vehicles writes speedFactor=1.0 on every vType and "
+                        "FleetSpec has no field for it — a code change, reviewed like any other"
                     ),
                     note="drivers here exceed the posted limit, which caps every model driver"
-                    if c.observed > limit
+                    if c.observed > limit and sf_now <= ENGINE_SPEED_FACTOR
                     else "",
                 )
             )
@@ -3562,6 +3639,10 @@ def check_transfer(
         if rec.action == "adjust" and rec.chosen == "v0_scale":
             chosen = next(k for k in knobs if k.name == "v0_scale")
             state = replace(state, v0_scale=float(chosen.needed or 1.0))
+        elif rec.action == "adjust" and rec.chosen == "speed_factor":
+            chosen = next(k for k in knobs if k.name == "speed_factor")
+            if chosen.needed is not None:
+                state = replace(state, speed_factor=float(chosen.needed))
     else:
         recs.append(_no_change("free_flow_speed", c))
 
@@ -3760,6 +3841,15 @@ def _fmt_value(unit: str, x: float | None) -> str:
     return f"{x:,.0f}"
 
 
+def _cap_words(mod: ModelSide) -> str:
+    """What caps the model drivers' desired speeds, in words."""
+    if not mod.speed_limit_ms:
+        return "nothing (no limit given)"
+    if mod.speed_factor == ENGINE_SPEED_FACTOR:
+        return "the posted limit"
+    return f"{mod.speed_factor:g} × the posted limit (heavy vehicles at the limit)"
+
+
 def _sec(x: float | None) -> str:
     return "—" if x is None else f"{x:.2f} s"
 
@@ -3784,10 +3874,16 @@ def _ff_sentence(report: TransferCheckReport) -> str:
         )
     text += f"), {_kmh(c.model)} for the model at the same traffic level."
     if limit is not None:
+        sf = report.model.speed_factor
         text += (
             f" The posted limit is {limit / MPH_TO_MS:.0f} mph; observed drivers are "
-            f"{c.observed / limit - 1.0:+.0%} relative to it, and the model's drivers never "
-            "exceed it."
+            f"{c.observed / limit - 1.0:+.0%} relative to it, and "
+            + (
+                "the model's drivers never exceed it."
+                if sf <= ENGINE_SPEED_FACTOR
+                else f"the model's passenger drivers want at most {sf:g} times it "
+                "(fleet.speed_factor)."
+            )
         )
     return text + f" Verdict: **{_VERDICT_WORDS[c.verdict]}** ({c.explanation})."
 
@@ -4044,8 +4140,8 @@ def render_markdown(
         f"- Free-flow speed: {mod.model} steady state of {mod.n_draws:,} drivers drawn as the "
         f"simulator draws them (seed {mod.draw_seed}), at the observed light-traffic flow of "
         f"{(mod.free_flow_flow_veh_h_lane or 0):,.0f} veh/h/lane, each driver's desired speed "
-        f"capped at {'the posted limit' if mod.speed_limit_ms else 'nothing (no limit given)'} "
-        f"(SUMO speedFactor {mod.speed_factor:g}). Analytical, no simulation.",
+        f"capped at {_cap_words(mod)} (SUMO speedFactor {mod.speed_factor:g}). Analytical, "
+        "no simulation.",
         f"- Capacity, mean driver (closed form): {mod.capacity_mean_driver[0]:,.0f} veh/h/lane "
         f"at {_kmh(mod.capacity_mean_driver[1])}.",
         f"- Capacity, drawn population (one lane, common speed): "

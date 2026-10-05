@@ -1,0 +1,3161 @@
+{
+  "schema": "flowstate.layout_audit/1",
+  "corridor": "mndot_i94_wb_stpaul_weave",
+  "net_path": "runs/p1_rehearsal/layout/net/osm.net.xml",
+  "osm_path": "data/osm/mndot_i94_wb_stpaul.osm",
+  "corridor_edges": [
+    "78288791",
+    "638519815",
+    "996266724",
+    "43917738",
+    "1014336806",
+    "43917735#0",
+    "43917735#1",
+    "43917735#2",
+    "95085315",
+    "188344235",
+    "638377595",
+    "638519829",
+    "999007700",
+    "95085307",
+    "998737536",
+    "998737535",
+    "45608473",
+    "45608474",
+    "51866108",
+    "45608490",
+    "45608485",
+    "45782590",
+    "1000805867",
+    "40648793#0",
+    "40648793#1",
+    "40648738",
+    "51388891",
+    "1001426896",
+    "82578022"
+  ],
+  "chain": [
+    "78288791",
+    "638519815",
+    "996266724",
+    "996266724-AddedOffRampEdge",
+    "43917738",
+    "1014336806",
+    "43917735#0",
+    "43917735#1-AddedOnRampEdge",
+    "43917735#1",
+    "43917735#2",
+    "95085315",
+    "188344235-AddedOnRampEdge",
+    "188344235",
+    "638377595",
+    "638519829-AddedOnRampEdge",
+    "638519829",
+    "999007700",
+    "95085307",
+    "998737536-AddedOnRampEdge",
+    "998737536",
+    "998737535",
+    "45608473",
+    "45608474",
+    "51866108",
+    "45608490",
+    "45608485",
+    "45782590",
+    "45782590-AddedOffRampEdge",
+    "1000805867",
+    "40648793#0",
+    "40648793#1",
+    "40648738-AddedOnRampEdge",
+    "40648738",
+    "51388891",
+    "1001426896",
+    "82578022"
+  ],
+  "length_m": 11477.4,
+  "ramp_guessing": true,
+  "netconvert_extra": [
+    "--ramps.guess",
+    "--ramps.ramp-length",
+    "250",
+    "--ramps.unset",
+    "1001426896"
+  ],
+  "patch_files": [
+    "data/osm/mndot_i94_wb_stpaul.splits.con.xml"
+  ],
+  "terminated_lanes": [],
+  "counts": {
+    "segments": 36,
+    "events": 45,
+    "events_by_kind": {
+      "lane_gain": 11,
+      "on_ramp": 9,
+      "weave": 5,
+      "off_ramp": 8,
+      "lane_drop": 11,
+      "cd_road": 1
+    },
+    "flags_by_severity": {
+      "defect": 0,
+      "warning": 8,
+      "info": 18
+    },
+    "flags_by_check": {
+      "lanes_vs_osm": 13,
+      "lane_change_not_in_osm": 4,
+      "guessed_aux_lane": 6,
+      "short_segment": 2,
+      "lane_change_left": 1
+    }
+  },
+  "checks": [
+    {
+      "id": "on_ramp_side",
+      "letter": "a",
+      "title": "On-ramp joins on the side OSM draws it",
+      "rule": "The side the ramp's last nodes lie on, relative to the mainline arriving at the merge (signed lateral offset of the link nodes within the first LINK_SAMPLE_M of the merge; negative = right of travel), must match the compiled lanes the ramp joins (SUMO lane 0 is the rightmost): a right-hand ramp joining the leftmost lane is a defect. When the lane it joins is one ramp guessing added (more compiled lanes than the OSM tag) the remedy is --ramps.unset; otherwise a connection patch.",
+      "constant": "LINK_SAMPLE_M = 300 m; MIN_SIDE_OFFSET_M = 1 m (microsim.split_audit)",
+      "reason": "The merge counterpart of the split audit: on I-94 WB St. Paul netconvert compiled two right-hand exits from the leftmost lanes and the corridor locked (docs/ONBOARDING_MNDOT.md \u00a79); an entrance compiled on the wrong side puts entering traffic into the fast lane."
+    },
+    {
+      "id": "no_accel_lane",
+      "letter": "b",
+      "title": "On-ramp without an acceleration lane",
+      "rule": "Flagged when every lane the ramp joins is also fed by the mainline edge upstream (the ramp merges straight into a through lane at a junction, so no lane is added and none drops downstream), or when the added lane runs less than SHORT_AUX_LANE_M before it drops or merges.",
+      "constant": "SHORT_AUX_LANE_M = 100 m",
+      "reason": "SUMO makes a ramp vehicle yield at a junction merge with no lane of its own; the Minnesota on-ramps delivered 4-6 % of their demand for this reason (docs/ONBOARDING_MNDOT.md \u00a76). OSM rarely draws acceleration lanes."
+    },
+    {
+      "id": "lanes_vs_osm",
+      "letter": "c",
+      "title": "Compiled lane count differs from the OSM lanes tag",
+      "rule": "Each segment's compiled lane count is compared with its OSM way's lanes tag (lanes:forward / lanes:backward on a two-way way). Flagged when they differ, with both values, or when the tag is missing (netconvert then uses its typemap default). A lane that ramp guessing added on a split-off piece is a note, not a warning.",
+      "constant": "",
+      "reason": "netconvert's ramp guessing (--ramps.guess) adds lanes the map does not draw, and a missing tag silently becomes a default; either way the model's lane count is not the map's."
+    },
+    {
+      "id": "lane_change_not_in_osm",
+      "letter": "d",
+      "title": "Lane drop or gain without a matching change in OSM",
+      "rule": "At every junction where the compiled lane count changes (or a lane ends or begins), the OSM lanes tags of the ways on either side must change by the same amount. Lane changes netconvert made at a ramp-guessing piece, and lanes the runner's merge models terminated, are recorded as notes instead.",
+      "constant": "",
+      "reason": "A lane drop the road does not have is a bottleneck the model invents; one it misses removes a real one."
+    },
+    {
+      "id": "speed_limit",
+      "letter": "e",
+      "title": "Speed limit missing, different from OSM, or changing",
+      "rule": "Flagged when the OSM way has no readable maxspeed (netconvert then uses its typemap default), when the compiled speed differs from the tag by more than SPEED_TOLERANCE_MS, and (as a note) wherever the compiled speed changes between two segments.",
+      "constant": "SPEED_TOLERANCE_MS = 0.5 m/s",
+      "reason": "netconvert's default for highway=motorway is 39.44 m/s (142 km/h, 88 mph), above every US limit; the road's speed limit caps every driver's desired speed."
+    },
+    {
+      "id": "short_segment",
+      "letter": "f",
+      "title": "Very short segment",
+      "rule": "A compiled corridor edge shorter than SHORT_SEGMENT_M.",
+      "constant": "SHORT_SEGMENT_M = 20 m",
+      "reason": "Usually a mapping artifact (a way split at a node that serves nothing); a gore or lane change drawn onto it sits at the wrong place."
+    },
+    {
+      "id": "split_side",
+      "letter": "g",
+      "title": "Off-ramp split on the wrong side (split audit)",
+      "rule": "microsim.split_audit's verdict for every exit: wrong_side or added_lane_wrong_side is a defect, unknown (the extract cannot place the exit) a warning.",
+      "constant": "LINK_SAMPLE_M, MIN_SIDE_OFFSET_M (microsim.split_audit)",
+      "reason": "The I-94 WB St. Paul lock (docs/ONBOARDING_MNDOT.md \u00a79)."
+    },
+    {
+      "id": "guessed_aux_lane",
+      "letter": "",
+      "title": "Lane guessed by netconvert (note)",
+      "rule": "An acceleration or deceleration lane that exists only because of --ramps.guess (an -AddedOnRampEdge / -AddedOffRampEdge piece, or a lane the attach edge has beyond its OSM tag while guessing is on).",
+      "constant": "",
+      "reason": "Its length is --ramps.ramp-length, not the road's; the imagery says whether the lane exists and how long it really is."
+    },
+    {
+      "id": "lane_change_left",
+      "letter": "",
+      "title": "Lane ends or begins on the left (note)",
+      "rule": "A lane drop or gain whose ending or starting lanes are the leftmost.",
+      "constant": "",
+      "reason": "Left-side lane drops and adds are uncommon on US freeways and netconvert chooses the side itself; it chose wrongly at two Minnesota exits."
+    },
+    {
+      "id": "merge_model_lane_end",
+      "letter": "",
+      "title": "Lane terminated by a merge model (note)",
+      "rule": "A lane drop the runner's merge models made (RampSpec.merge terminates a guessed acceleration lane that spills past its attach edge).",
+      "constant": "",
+      "reason": "Not a map feature: the model ends the lane there by construction."
+    }
+  ],
+  "cannot_see": [
+    "Lane markings: solid or dashed lines, exit-only arrows, painted gores, HOV or managed-lane restrictions. The audit sees lane counts and lane-to-lane connections only.",
+    "Real lengths of acceleration, deceleration and auxiliary lanes when OSM does not draw them: a compiled length is netconvert's guess (--ramps.ramp-length) or the length of the OSM way that happens to carry the extra lane, which ends wherever the mapper split the way.",
+    "Exact positions: gores, taper ends and lane-drop points sit at OSM nodes, which mappers place within tens of metres; offsets are measured along SUMO edges.",
+    "Which side the map puts a lane drop or gain on: the OSM lanes tag is a count. Only turn:lanes (when present) and ramp geometry give a side; the side reported for a lane change is the compiled one.",
+    "Lane widths, shoulders, grades, curvature and sight distance (none are in the model).",
+    "Ramp meters, signals, signs other than the maxspeed tag, advisory and variable speed limits, and work zones.",
+    "Ramps outside the extract or not kept in the scenario, and ramps that join or leave a collector-distributor road (inventory only in the scenario).",
+    "Imagery age: a satellite image can be years old. Record its date; construction since then is invisible to the map and to the image."
+  ],
+  "segments": [
+    {
+      "index": 0,
+      "edge": "78288791",
+      "osm_way": "78288791",
+      "x_start_m": 0.0,
+      "x_end_m": 957.4,
+      "length_m": 957.4,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.94871,
+      "lon": -92.955423,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948710,-92.955423&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948710~-92.955423&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948710,-92.955423"
+      },
+      "flags": []
+    },
+    {
+      "index": 1,
+      "edge": "638519815",
+      "osm_way": "638519815",
+      "x_start_m": 957.4,
+      "x_end_m": 2043.5,
+      "length_m": 1086.2,
+      "lanes": 4,
+      "osm_lanes": 4,
+      "osm_lanes_tag": "4",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.948722,
+      "lon": -92.967559,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948722,-92.967559&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948722~-92.967559&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948722,-92.967559"
+      },
+      "flags": []
+    },
+    {
+      "index": 2,
+      "edge": "996266724",
+      "osm_way": "996266724",
+      "x_start_m": 2043.5,
+      "x_end_m": 2284.5,
+      "length_m": 240.9,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.948521,
+      "lon": -92.981304,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948521,-92.981304&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948521~-92.981304&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948521,-92.981304"
+      },
+      "flags": []
+    },
+    {
+      "index": 3,
+      "edge": "996266724-AddedOffRampEdge",
+      "osm_way": "996266724",
+      "x_start_m": 2284.5,
+      "x_end_m": 2377.3,
+      "length_m": 92.8,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.948505,
+      "lon": -92.984358,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948505,-92.984358&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948505~-92.984358&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948505,-92.984358"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 93 m?"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "edge": "43917738",
+      "osm_way": "43917738",
+      "x_start_m": 2377.3,
+      "x_end_m": 2444.3,
+      "length_m": 67.0,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.948498,
+      "lon": -92.985512,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948498,-92.985512&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948498~-92.985512&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948498,-92.985512"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "warning",
+          "message": "compiled 4 lanes, map 3: probably the acceleration lane ramp guessing added over the whole edge (an attach edge shorter than --ramps.ramp-length is widened, and the lane may spill onward)",
+          "look_for": "Count the lanes on the imagery: 4 (model) or 3 (map)?"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "edge": "1014336806",
+      "osm_way": "1014336806",
+      "x_start_m": 2444.3,
+      "x_end_m": 2541.4,
+      "length_m": 97.1,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.948495,
+      "lon": -92.986325,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948495,-92.986325&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948495~-92.986325&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948495,-92.986325"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "warning",
+          "message": "compiled 4 lanes, map 3: probably the acceleration lane ramp guessing added over the whole edge (an attach edge shorter than --ramps.ramp-length is widened, and the lane may spill onward)",
+          "look_for": "Count the lanes on the imagery: 4 (model) or 3 (map)?"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "edge": "43917735#0",
+      "osm_way": "43917735",
+      "x_start_m": 2541.4,
+      "x_end_m": 3384.7,
+      "length_m": 843.3,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.94849,
+      "lon": -92.987527,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948490,-92.987527&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948490~-92.987527&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948490,-92.987527"
+      },
+      "flags": []
+    },
+    {
+      "index": 7,
+      "edge": "43917735#1-AddedOnRampEdge",
+      "osm_way": "43917735",
+      "x_start_m": 3384.7,
+      "x_end_m": 3635.8,
+      "length_m": 251.1,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.949571,
+      "lon": -92.998066,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.949571,-92.998066&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.949571~-92.998066&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.949571,-92.998066"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 251 m?"
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "edge": "43917735#1",
+      "osm_way": "43917735",
+      "x_start_m": 3635.8,
+      "x_end_m": 3691.3,
+      "length_m": 55.5,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.94994,
+      "lon": -93.001193,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.949940,-93.001193&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.949940~-93.001193&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.949940,-93.001193"
+      },
+      "flags": []
+    },
+    {
+      "index": 9,
+      "edge": "43917735#2",
+      "osm_way": "43917735",
+      "x_start_m": 3691.3,
+      "x_end_m": 3913.7,
+      "length_m": 222.4,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.950017,
+      "lon": -93.001888,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950017,-93.001888&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950017~-93.001888&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950017,-93.001888"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "warning",
+          "message": "compiled 4 lanes, map 3: probably the acceleration lane ramp guessing added over the whole edge (an attach edge shorter than --ramps.ramp-length is widened, and the lane may spill onward)",
+          "look_for": "Count the lanes on the imagery: 4 (model) or 3 (map)?"
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "edge": "95085315",
+      "osm_way": "95085315",
+      "x_start_m": 3913.7,
+      "x_end_m": 3941.2,
+      "length_m": 27.6,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.95031,
+      "lon": -93.004649,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950310,-93.004649&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950310~-93.004649&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950310,-93.004649"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "warning",
+          "message": "compiled 4 lanes, map 3: probably the acceleration lane ramp guessing added over the whole edge (an attach edge shorter than --ramps.ramp-length is widened, and the lane may spill onward)",
+          "look_for": "Count the lanes on the imagery: 4 (model) or 3 (map)?"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "edge": "188344235-AddedOnRampEdge",
+      "osm_way": "188344235",
+      "x_start_m": 3941.2,
+      "x_end_m": 3948.1,
+      "length_m": 6.8,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.950349,
+      "lon": -93.004957,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950349,-93.004957&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950349~-93.004957&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950349,-93.004957"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 7 m?"
+        },
+        {
+          "check": "short_segment",
+          "severity": "warning",
+          "message": "segment only 6.8 m long (below 20 m)",
+          "look_for": "Is anything really here (a gore, a lane line ending, a bridge joint), or is it a map artifact? If a gore or lane change was drawn on it, note where it really is."
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "edge": "188344235",
+      "osm_way": "188344235",
+      "x_start_m": 3948.1,
+      "x_end_m": 3966.4,
+      "length_m": 18.3,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.950357,
+      "lon": -93.005021,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950357,-93.005021&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950357~-93.005021&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950357,-93.005021"
+      },
+      "flags": [
+        {
+          "check": "short_segment",
+          "severity": "warning",
+          "message": "segment only 18.3 m long (below 20 m)",
+          "look_for": "Is anything really here (a gore, a lane line ending, a bridge joint), or is it a map artifact? If a gore or lane change was drawn on it, note where it really is."
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "edge": "638377595",
+      "osm_way": "638377595",
+      "x_start_m": 3966.4,
+      "x_end_m": 4297.8,
+      "length_m": 331.5,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.950386,
+      "lon": -93.005249,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950386,-93.005249&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950386~-93.005249&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950386,-93.005249"
+      },
+      "flags": []
+    },
+    {
+      "index": 14,
+      "edge": "638519829-AddedOnRampEdge",
+      "osm_way": "638519829",
+      "x_start_m": 4297.8,
+      "x_end_m": 4548.9,
+      "length_m": 251.0,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.950942,
+      "lon": -93.009377,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950942,-93.009377&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950942~-93.009377&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950942,-93.009377"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 251 m?"
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "edge": "638519829",
+      "osm_way": "638519829",
+      "x_start_m": 4548.9,
+      "x_end_m": 5180.9,
+      "length_m": 632.0,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.951301,
+      "lon": -93.012506,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951301,-93.012506&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951301~-93.012506&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951301,-93.012506"
+      },
+      "flags": []
+    },
+    {
+      "index": 16,
+      "edge": "999007700",
+      "osm_way": "999007700",
+      "x_start_m": 5180.9,
+      "x_end_m": 5316.6,
+      "length_m": 135.8,
+      "lanes": 4,
+      "osm_lanes": 4,
+      "osm_lanes_tag": "4",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.951502,
+      "lon": -93.020478,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951502,-93.020478&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951502~-93.020478&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951502,-93.020478"
+      },
+      "flags": []
+    },
+    {
+      "index": 17,
+      "edge": "95085307",
+      "osm_way": "95085307",
+      "x_start_m": 5316.6,
+      "x_end_m": 5929.9,
+      "length_m": 613.2,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.951436,
+      "lon": -93.02218,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951436,-93.022180&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951436~-93.022180&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951436,-93.022180"
+      },
+      "flags": []
+    },
+    {
+      "index": 18,
+      "edge": "998737536-AddedOnRampEdge",
+      "osm_way": "998737536",
+      "x_start_m": 5929.9,
+      "x_end_m": 6182.2,
+      "length_m": 252.3,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.951661,
+      "lon": -93.029928,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951661,-93.029928&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951661~-93.029928&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951661,-93.029928"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 252 m?"
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "edge": "998737536",
+      "osm_way": "998737536",
+      "x_start_m": 6182.2,
+      "x_end_m": 6315.3,
+      "length_m": 133.1,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952099,
+      "lon": -93.033036,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952099,-93.033036&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952099~-93.033036&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952099,-93.033036"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "warning",
+          "message": "compiled 4 lanes, map 3: probably the acceleration lane ramp guessing added over the whole edge (an attach edge shorter than --ramps.ramp-length is widened, and the lane may spill onward)",
+          "look_for": "Count the lanes on the imagery: 4 (model) or 3 (map)?"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "edge": "998737535",
+      "osm_way": "998737535",
+      "x_start_m": 6315.3,
+      "x_end_m": 6743.8,
+      "length_m": 428.5,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952328,
+      "lon": -93.034663,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952328,-93.034663&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952328~-93.034663&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952328,-93.034663"
+      },
+      "flags": []
+    },
+    {
+      "index": 21,
+      "edge": "45608473",
+      "osm_way": "45608473",
+      "x_start_m": 6743.8,
+      "x_end_m": 6943.6,
+      "length_m": 199.8,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.95279,
+      "lon": -93.040051,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952790,-93.040051&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952790~-93.040051&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952790,-93.040051"
+      },
+      "flags": []
+    },
+    {
+      "index": 22,
+      "edge": "45608474",
+      "osm_way": "45608474",
+      "x_start_m": 6943.6,
+      "x_end_m": 7389.0,
+      "length_m": 445.4,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952784,
+      "lon": -93.042583,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952784,-93.042583&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952784~-93.042583&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952784,-93.042583"
+      },
+      "flags": []
+    },
+    {
+      "index": 23,
+      "edge": "51866108",
+      "osm_way": "51866108",
+      "x_start_m": 7389.0,
+      "x_end_m": 7453.8,
+      "length_m": 64.8,
+      "lanes": 5,
+      "osm_lanes": 5,
+      "osm_lanes_tag": "5",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952357,
+      "lon": -93.048196,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952357,-93.048196&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952357~-93.048196&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952357,-93.048196"
+      },
+      "flags": []
+    },
+    {
+      "index": 24,
+      "edge": "45608490",
+      "osm_way": "45608490",
+      "x_start_m": 7453.8,
+      "x_end_m": 7498.8,
+      "length_m": 45.0,
+      "lanes": 5,
+      "osm_lanes": 5,
+      "osm_lanes_tag": "5",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.95229,
+      "lon": -93.048946,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952290,-93.048946&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952290~-93.048946&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952290,-93.048946"
+      },
+      "flags": []
+    },
+    {
+      "index": 25,
+      "edge": "45608485",
+      "osm_way": "45608485",
+      "x_start_m": 7498.8,
+      "x_end_m": 8524.6,
+      "length_m": 1025.8,
+      "lanes": 5,
+      "osm_lanes": 5,
+      "osm_lanes_tag": "5",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952234,
+      "lon": -93.049511,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952234,-93.049511&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952234~-93.049511&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952234,-93.049511"
+      },
+      "flags": []
+    },
+    {
+      "index": 26,
+      "edge": "45782590",
+      "osm_way": "45782590",
+      "x_start_m": 8524.6,
+      "x_end_m": 9295.0,
+      "length_m": 770.4,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.951964,
+      "lon": -93.062394,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951964,-93.062394&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951964~-93.062394&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951964,-93.062394"
+      },
+      "flags": []
+    },
+    {
+      "index": 27,
+      "edge": "45782590-AddedOffRampEdge",
+      "osm_way": "45782590",
+      "x_start_m": 9295.0,
+      "x_end_m": 9547.4,
+      "length_m": 252.4,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.953312,
+      "lon": -93.071586,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.953312,-93.071586&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.953312~-93.071586&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.953312,-93.071586"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 252 m?"
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "edge": "1000805867",
+      "osm_way": "1000805867",
+      "x_start_m": 9547.4,
+      "x_end_m": 9867.5,
+      "length_m": 320.1,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.954894,
+      "lon": -93.073808,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954894,-93.073808&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954894~-93.073808&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954894,-93.073808"
+      },
+      "flags": []
+    },
+    {
+      "index": 29,
+      "edge": "40648793#0",
+      "osm_way": "40648793",
+      "x_start_m": 9867.5,
+      "x_end_m": 9943.9,
+      "length_m": 76.4,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.955042,
+      "lon": -93.077719,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.955042,-93.077719&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.955042~-93.077719&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.955042,-93.077719"
+      },
+      "flags": []
+    },
+    {
+      "index": 30,
+      "edge": "40648793#1",
+      "osm_way": "40648793",
+      "x_start_m": 9943.9,
+      "x_end_m": 10095.2,
+      "length_m": 151.4,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.954715,
+      "lon": -93.078569,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954715,-93.078569&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954715~-93.078569&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954715,-93.078569"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "warning",
+          "message": "compiled 4 lanes, map 3: probably the acceleration lane ramp guessing added over the whole edge (an attach edge shorter than --ramps.ramp-length is widened, and the lane may spill onward)",
+          "look_for": "Count the lanes on the imagery: 4 (model) or 3 (map)?"
+        }
+      ]
+    },
+    {
+      "index": 31,
+      "edge": "40648738-AddedOnRampEdge",
+      "osm_way": "40648738",
+      "x_start_m": 10095.2,
+      "x_end_m": 10197.7,
+      "length_m": 102.4,
+      "lanes": 4,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": true,
+      "lat": 44.953973,
+      "lon": -93.080146,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.953973,-93.080146&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.953973~-93.080146&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.953973,-93.080146"
+      },
+      "flags": [
+        {
+          "check": "lanes_vs_osm",
+          "severity": "info",
+          "message": "compiled 4 lanes, map 3: the extra lane is the acceleration/deceleration lane netconvert's ramp guessing added (--ramps.guess)",
+          "look_for": "Is there a lane beside the mainline here (4 lanes in all), and over how much of these 102 m?"
+        }
+      ]
+    },
+    {
+      "index": 32,
+      "edge": "40648738",
+      "osm_way": "40648738",
+      "x_start_m": 10197.7,
+      "x_end_m": 10426.6,
+      "length_m": 229.0,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.953478,
+      "lon": -93.081216,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.953478,-93.081216&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.953478~-93.081216&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.953478,-93.081216"
+      },
+      "flags": []
+    },
+    {
+      "index": 33,
+      "edge": "51388891",
+      "osm_way": "51388891",
+      "x_start_m": 10426.6,
+      "x_end_m": 10731.6,
+      "length_m": 305.0,
+      "lanes": 4,
+      "osm_lanes": 4,
+      "osm_lanes_tag": "4",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952673,
+      "lon": -93.083884,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952673,-93.083884&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952673~-93.083884&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952673,-93.083884"
+      },
+      "flags": []
+    },
+    {
+      "index": 34,
+      "edge": "1001426896",
+      "osm_way": "1001426896",
+      "x_start_m": 10731.6,
+      "x_end_m": 10952.6,
+      "length_m": 220.9,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.952707,
+      "lon": -93.087583,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952707,-93.087583&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952707~-93.087583&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952707,-93.087583"
+      },
+      "flags": []
+    },
+    {
+      "index": 35,
+      "edge": "82578022",
+      "osm_way": "82578022",
+      "x_start_m": 10952.6,
+      "x_end_m": 11477.4,
+      "length_m": 524.8,
+      "lanes": 3,
+      "osm_lanes": 3,
+      "osm_lanes_tag": "3",
+      "speed_ms": 24.59,
+      "speed_kmh": 88.5,
+      "speed_mph": 55.0,
+      "osm_maxspeed": "55 mph",
+      "osm_maxspeed_ms": 24.59,
+      "guessed_piece": false,
+      "lat": 44.954043,
+      "lon": -93.089649,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954043,-93.089649&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954043~-93.089649&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954043,-93.089649"
+      },
+      "flags": []
+    }
+  ],
+  "events": [
+    {
+      "index": 1,
+      "kind": "lane_gain",
+      "x_m": 957.4,
+      "segment": 0,
+      "edge": "78288791",
+      "description": "Lane gain 3 -> 4 on the right between 78288791 and 638519815: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 4 (agrees); source: osm",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.948722,
+      "lon": -92.967559,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948722,-92.967559&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948722~-92.967559&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948722,-92.967559"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "78288791",
+        "to_edge": "638519815",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 4,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 2,
+      "kind": "on_ramp",
+      "x_m": 957.4,
+      "segment": 1,
+      "edge": "638519815",
+      "description": "On-ramp on-ramp 1077665160 (1081157134) joins 638519815 lane(s) 0 of 4 (right; map: right); added lane 1086 m, runs to the exit 18279036 (weave)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.948722,
+      "lon": -92.967559,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948722,-92.967559&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948722~-92.967559&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948722,-92.967559"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "on-ramp 1077665160",
+        "ramp_edge": "1081157134",
+        "attach_edge": "638519815",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -10.9,
+          -11.9,
+          -10.2,
+          -9.2
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "78288791",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 1086.2,
+        "aux_end": "exit",
+        "aux_exit_edge": "18279036",
+        "aux_edges": [
+          "638519815"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": false,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 4,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 3,
+      "kind": "weave",
+      "x_m": 957.4,
+      "segment": 1,
+      "edge": "638519815",
+      "description": "Weaving section: on-ramp 1077665160 -> off-ramp 18279036, auxiliary lane 1086 m along 638519815",
+      "look_for": "Is the auxiliary lane continuous from the entrance gore to the exit gore (a dashed line, no solid line across it)? Measure its length gore to gore.",
+      "lat": 44.948722,
+      "lon": -92.967559,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948722,-92.967559&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948722~-92.967559&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948722,-92.967559"
+      },
+      "flags": [],
+      "detail": {
+        "on_ramp": "on-ramp 1077665160",
+        "off_ramp": "off-ramp 18279036",
+        "on_edge": "1081157134",
+        "exit_edge": "18279036",
+        "edges": [
+          "638519815"
+        ],
+        "length_m": 1086.2,
+        "lane": 0,
+        "lane_continues": false
+      }
+    },
+    {
+      "index": 4,
+      "kind": "off_ramp",
+      "x_m": 2043.5,
+      "segment": 1,
+      "edge": "638519815",
+      "description": "Off-ramp off-ramp 18279036 (18279036) leaves 638519815 from lane(s) 0 of 4 (right; map: right); turn:lanes |||slight_right; split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.948521,
+      "lon": -92.981304,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948521,-92.981304&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948521~-92.981304&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948521,-92.981304"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "off-ramp 18279036",
+        "from_edge": "638519815",
+        "exit_edge": "18279036",
+        "continuing_edge": "996266724",
+        "x_m": 2043.5,
+        "osm_way": "638519815",
+        "osm_lanes": 4,
+        "turn_lanes": "|||slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -7.2,
+          -10.9,
+          -14.6,
+          -19.7,
+          -26.3,
+          -34.2,
+          -41.1
+        ],
+        "compiled_lanes": 4,
+        "exit_from_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [],
+        "added_lane": false,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 5,
+      "kind": "lane_drop",
+      "x_m": 2043.5,
+      "segment": 1,
+      "edge": "638519815",
+      "description": "Lane drop 4 -> 3 on the right between 638519815 and 996266724: lane(s) 0 of 4 leave at the exit; map 4 -> 3 (agrees); source: osm",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.948521,
+      "lon": -92.981304,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948521,-92.981304&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948521~-92.981304&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948521,-92.981304"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "638519815",
+        "to_edge": "996266724",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 leave at the exit",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 4,
+        "osm_lanes_after": 3,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 6,
+      "kind": "lane_gain",
+      "x_m": 2284.5,
+      "segment": 2,
+      "edge": "996266724",
+      "description": "Lane gain 3 -> 4 on the right between 996266724 and 996266724-AddedOffRampEdge: lane(s) 0 of 3 split in two; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.948505,
+      "lon": -92.984358,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948505,-92.984358&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948505~-92.984358&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948505,-92.984358"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "996266724",
+        "to_edge": "996266724-AddedOffRampEdge",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 3 split in two",
+        "ending_lanes": [],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 7,
+      "kind": "off_ramp",
+      "x_m": 2541.4,
+      "segment": 5,
+      "edge": "1014336806",
+      "description": "Off-ramp off-ramp 18207390 (18207390) leaves 1014336806 from lane(s) 0 of 4 (right; map: right); turn:lanes ||through;slight_right; split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.94849,
+      "lon": -92.987527,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948490,-92.987527&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948490~-92.987527&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948490,-92.987527"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "off-ramp 18207390",
+        "from_edge": "1014336806",
+        "exit_edge": "18207390",
+        "continuing_edge": "43917735#0",
+        "x_m": 2541.4,
+        "osm_way": "1014336806",
+        "osm_lanes": 3,
+        "turn_lanes": "||through;slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -8.4,
+          -12.6,
+          -13.8,
+          -15.4,
+          -18.3,
+          -21.4,
+          -27.2,
+          -31.5
+        ],
+        "compiled_lanes": 4,
+        "exit_from_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [],
+        "added_lane": true,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 8,
+      "kind": "lane_drop",
+      "x_m": 2541.4,
+      "segment": 5,
+      "edge": "1014336806",
+      "description": "Lane drop 4 -> 3 on the right between 1014336806 and 43917735#0: lane(s) 0 of 4 leave at the exit; map 3 -> 3 (does not agree); source: ramp guessing likely",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.94849,
+      "lon": -92.987527,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.948490,-92.987527&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.948490~-92.987527&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.948490,-92.987527"
+      },
+      "flags": [
+        {
+          "check": "lane_change_not_in_osm",
+          "severity": "info",
+          "message": "compiled lane drop 4 -> 3, the map has 3 -> 3: probably the end of a lane ramp guessing added",
+          "look_for": "Does a lane really end here, on the right? Count the lanes before and after: model 4 -> 3."
+        }
+      ],
+      "detail": {
+        "from_edge": "1014336806",
+        "to_edge": "43917735#0",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 leave at the exit",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing_likely"
+      }
+    },
+    {
+      "index": 9,
+      "kind": "lane_gain",
+      "x_m": 3384.7,
+      "segment": 6,
+      "edge": "43917735#0",
+      "description": "Lane gain 3 -> 4 on the right between 43917735#0 and 43917735#1-AddedOnRampEdge: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.949571,
+      "lon": -92.998066,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.949571,-92.998066&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.949571~-92.998066&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.949571,-92.998066"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "43917735#0",
+        "to_edge": "43917735#1-AddedOnRampEdge",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 10,
+      "kind": "on_ramp",
+      "x_m": 3384.7,
+      "segment": 7,
+      "edge": "43917735#1-AddedOnRampEdge",
+      "description": "On-ramp on-ramp 18207436 (18207436) joins 43917735#1-AddedOnRampEdge lane(s) 0 of 4 (right; map: right); added lane 251 m, ends in a lane drop (guessed by netconvert)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.949571,
+      "lon": -92.998066,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.949571,-92.998066&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.949571~-92.998066&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.949571,-92.998066"
+      },
+      "flags": [
+        {
+          "check": "guessed_aux_lane",
+          "severity": "info",
+          "message": "the lane the ramp joins (251 m in the compiled net) exists because of ramp guessing (--ramps.guess); the map draws 3 -> 3 lanes here",
+          "look_for": "Does an acceleration lane exist here, and how long is it (gore to taper end)?"
+        }
+      ],
+      "detail": {
+        "ramp": "on-ramp 18207436",
+        "ramp_edge": "18207436",
+        "attach_edge": "43917735#1-AddedOnRampEdge",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -7.9,
+          -10.4,
+          -11.9,
+          -13.7,
+          -24.7,
+          -34.6
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "43917735#0",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 251.1,
+        "aux_end": "drop",
+        "aux_exit_edge": null,
+        "aux_edges": [
+          "43917735#1-AddedOnRampEdge"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": true,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 3,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 11,
+      "kind": "lane_drop",
+      "x_m": 3635.8,
+      "segment": 7,
+      "edge": "43917735#1-AddedOnRampEdge",
+      "description": "Lane drop 4 -> 3 on the right between 43917735#1-AddedOnRampEdge and 43917735#1: lane(s) 0 of 4 end; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.94994,
+      "lon": -93.001193,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.949940,-93.001193&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.949940~-93.001193&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.949940,-93.001193"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "43917735#1-AddedOnRampEdge",
+        "to_edge": "43917735#1",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 end",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 12,
+      "kind": "lane_gain",
+      "x_m": 3691.3,
+      "segment": 8,
+      "edge": "43917735#1",
+      "description": "Lane gain 3 -> 4 on the right between 43917735#1 and 43917735#2: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 3 (does not agree); source: ramp guessing likely",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.950017,
+      "lon": -93.001888,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950017,-93.001888&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950017~-93.001888&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950017,-93.001888"
+      },
+      "flags": [
+        {
+          "check": "lane_change_not_in_osm",
+          "severity": "info",
+          "message": "compiled lane gain 3 -> 4, the map has 3 -> 3: probably a lane ramp guessing added",
+          "look_for": "Does a lane really begin here, on the right? Count the lanes before and after: model 3 -> 4."
+        }
+      ],
+      "detail": {
+        "from_edge": "43917735#1",
+        "to_edge": "43917735#2",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing_likely"
+      }
+    },
+    {
+      "index": 13,
+      "kind": "on_ramp",
+      "x_m": 3691.3,
+      "segment": 9,
+      "edge": "43917735#2",
+      "description": "On-ramp on-ramp 18207653 (18207653) joins 43917735#2 lane(s) 0 of 4 (right; map: right); added lane 257 m, ends in a lane drop (guessed by netconvert)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.950017,
+      "lon": -93.001888,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950017,-93.001888&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950017~-93.001888&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950017,-93.001888"
+      },
+      "flags": [
+        {
+          "check": "guessed_aux_lane",
+          "severity": "info",
+          "message": "the lane the ramp joins (257 m in the compiled net) exists because of ramp guessing (--ramps.guess); the map draws 3 -> 3 lanes here",
+          "look_for": "Does an acceleration lane exist here, and how long is it (gore to taper end)?"
+        }
+      ],
+      "detail": {
+        "ramp": "on-ramp 18207653",
+        "ramp_edge": "18207653",
+        "attach_edge": "43917735#2",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -7.6,
+          -9.2,
+          -10.5,
+          -12.7,
+          -15.4,
+          -18.2,
+          -23.0,
+          -30.6,
+          -37.3
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "43917735#1",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 256.8,
+        "aux_end": "drop",
+        "aux_exit_edge": null,
+        "aux_edges": [
+          "43917735#2",
+          "95085315",
+          "188344235-AddedOnRampEdge"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": true,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 3,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 14,
+      "kind": "lane_drop",
+      "x_m": 3948.1,
+      "segment": 11,
+      "edge": "188344235-AddedOnRampEdge",
+      "description": "Lane drop 4 -> 3 on the right between 188344235-AddedOnRampEdge and 188344235: lane(s) 0 of 4 end; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.950357,
+      "lon": -93.005021,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950357,-93.005021&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950357~-93.005021&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950357,-93.005021"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "188344235-AddedOnRampEdge",
+        "to_edge": "188344235",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 end",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 15,
+      "kind": "lane_gain",
+      "x_m": 4297.8,
+      "segment": 13,
+      "edge": "638377595",
+      "description": "Lane gain 3 -> 4 on the right between 638377595 and 638519829-AddedOnRampEdge: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.950942,
+      "lon": -93.009377,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950942,-93.009377&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950942~-93.009377&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950942,-93.009377"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "638377595",
+        "to_edge": "638519829-AddedOnRampEdge",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 16,
+      "kind": "on_ramp",
+      "x_m": 4297.8,
+      "segment": 14,
+      "edge": "638519829-AddedOnRampEdge",
+      "description": "On-ramp on-ramp 178547099 (178547099) joins 638519829-AddedOnRampEdge lane(s) 0 of 4 (right; map: right); added lane 251 m, ends in a lane drop (guessed by netconvert)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.950942,
+      "lon": -93.009377,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.950942,-93.009377&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.950942~-93.009377&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.950942,-93.009377"
+      },
+      "flags": [
+        {
+          "check": "guessed_aux_lane",
+          "severity": "info",
+          "message": "the lane the ramp joins (251 m in the compiled net) exists because of ramp guessing (--ramps.guess); the map draws 3 -> 3 lanes here",
+          "look_for": "Does an acceleration lane exist here, and how long is it (gore to taper end)?"
+        }
+      ],
+      "detail": {
+        "ramp": "on-ramp 178547099",
+        "ramp_edge": "178547099",
+        "attach_edge": "638519829-AddedOnRampEdge",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -10.2,
+          -12.2,
+          -26.9,
+          -32.7
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "638377595",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 251.0,
+        "aux_end": "drop",
+        "aux_exit_edge": null,
+        "aux_edges": [
+          "638519829-AddedOnRampEdge"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": true,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 3,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 17,
+      "kind": "lane_drop",
+      "x_m": 4548.9,
+      "segment": 14,
+      "edge": "638519829-AddedOnRampEdge",
+      "description": "Lane drop 4 -> 3 on the right between 638519829-AddedOnRampEdge and 638519829: lane(s) 0 of 4 end; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.951301,
+      "lon": -93.012506,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951301,-93.012506&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951301~-93.012506&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951301,-93.012506"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "638519829-AddedOnRampEdge",
+        "to_edge": "638519829",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 end",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 18,
+      "kind": "lane_gain",
+      "x_m": 5180.9,
+      "segment": 15,
+      "edge": "638519829",
+      "description": "Lane gain 3 -> 4 on the right between 638519829 and 999007700: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 4 (agrees); source: osm",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.951502,
+      "lon": -93.020478,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951502,-93.020478&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951502~-93.020478&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951502,-93.020478"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "638519829",
+        "to_edge": "999007700",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 4,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 19,
+      "kind": "on_ramp",
+      "x_m": 5180.9,
+      "segment": 16,
+      "edge": "999007700",
+      "description": "On-ramp on-ramp 745524613 (745524613) joins 999007700 lane(s) 0 of 4 (right; map: right); added lane 136 m, runs to the exit 18208090 (weave)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.951502,
+      "lon": -93.020478,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951502,-93.020478&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951502~-93.020478&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951502,-93.020478"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "on-ramp 745524613",
+        "ramp_edge": "745524613",
+        "attach_edge": "999007700",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -9.0,
+          -17.6,
+          -21.5,
+          -24.2,
+          -27.3,
+          -31.0
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "638519829",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 135.8,
+        "aux_end": "exit",
+        "aux_exit_edge": "18208090",
+        "aux_edges": [
+          "999007700"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": false,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 4,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 20,
+      "kind": "weave",
+      "x_m": 5180.9,
+      "segment": 16,
+      "edge": "999007700",
+      "description": "Weaving section: on-ramp 745524613 -> C-D split 18208090, auxiliary lane 136 m along 999007700",
+      "look_for": "Is the auxiliary lane continuous from the entrance gore to the exit gore (a dashed line, no solid line across it)? Measure its length gore to gore.",
+      "lat": 44.951502,
+      "lon": -93.020478,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951502,-93.020478&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951502~-93.020478&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951502,-93.020478"
+      },
+      "flags": [],
+      "detail": {
+        "on_ramp": "on-ramp 745524613",
+        "off_ramp": "C-D split 18208090",
+        "on_edge": "745524613",
+        "exit_edge": "18208090",
+        "edges": [
+          "999007700"
+        ],
+        "length_m": 135.8,
+        "lane": 0,
+        "lane_continues": false
+      }
+    },
+    {
+      "index": 21,
+      "kind": "off_ramp",
+      "x_m": 5316.6,
+      "segment": 16,
+      "edge": "999007700",
+      "description": "Off-ramp C-D split 18208090 (18208090) leaves 999007700 from lane(s) 0 of 4 (right; map: right); turn:lanes none|none|none|slight_right; split audit: ok; split of C-D road 18208090",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.951436,
+      "lon": -93.02218,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951436,-93.022180&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951436~-93.022180&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951436,-93.022180"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "C-D split 18208090",
+        "from_edge": "999007700",
+        "exit_edge": "18208090",
+        "continuing_edge": "95085307",
+        "x_m": 5316.6,
+        "osm_way": "999007700",
+        "osm_lanes": 4,
+        "turn_lanes": "none|none|none|slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -6.1,
+          -8.9,
+          -11.7,
+          -17.7,
+          -27.3,
+          -34.4
+        ],
+        "compiled_lanes": 4,
+        "exit_from_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [],
+        "added_lane": false,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": "18208090"
+      }
+    },
+    {
+      "index": 22,
+      "kind": "cd_road",
+      "x_m": 5316.6,
+      "segment": 16,
+      "edge": "999007700",
+      "description": "Collector-distributor road 18208090: leaves at x=5.317 km (C-D split 18208090), rejoins at x=5.930 km (C-D re-entry 745524608), 613 m downstream",
+      "look_for": "Is this a collector-distributor road (a separate roadway beside the mainline, leaving and rejoining it), and do the interchange ramps use it rather than the mainline?",
+      "lat": 44.951436,
+      "lon": -93.02218,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951436,-93.022180&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951436~-93.022180&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951436,-93.022180"
+      },
+      "flags": [],
+      "detail": {
+        "pair": "18208090",
+        "split_ramp": "C-D split 18208090",
+        "reentry_ramp": "C-D re-entry 745524608",
+        "split_x_m": 5316.6,
+        "rejoin_x_m": 5929.9,
+        "length_m": 613.3
+      }
+    },
+    {
+      "index": 23,
+      "kind": "lane_drop",
+      "x_m": 5316.6,
+      "segment": 16,
+      "edge": "999007700",
+      "description": "Lane drop 4 -> 3 on the right between 999007700 and 95085307: lane(s) 0 of 4 leave at the exit; map 4 -> 3 (agrees); source: osm",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.951436,
+      "lon": -93.02218,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951436,-93.022180&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951436~-93.022180&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951436,-93.022180"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "999007700",
+        "to_edge": "95085307",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 leave at the exit",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 4,
+        "osm_lanes_after": 3,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 24,
+      "kind": "lane_gain",
+      "x_m": 5929.9,
+      "segment": 17,
+      "edge": "95085307",
+      "description": "Lane gain 3 -> 4 on the right between 95085307 and 998737536-AddedOnRampEdge: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.951661,
+      "lon": -93.029928,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951661,-93.029928&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951661~-93.029928&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951661,-93.029928"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "95085307",
+        "to_edge": "998737536-AddedOnRampEdge",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 25,
+      "kind": "on_ramp",
+      "x_m": 5929.9,
+      "segment": 18,
+      "edge": "998737536-AddedOnRampEdge",
+      "description": "On-ramp C-D re-entry 745524608 (745524608) joins 998737536-AddedOnRampEdge lane(s) 0 of 4 (right; map: right); added lane 385 m, runs to the exit 18207880 (weave) (guessed by netconvert); re-entry of C-D road 18208090",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.951661,
+      "lon": -93.029928,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951661,-93.029928&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951661~-93.029928&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951661,-93.029928"
+      },
+      "flags": [
+        {
+          "check": "guessed_aux_lane",
+          "severity": "info",
+          "message": "the lane the ramp joins (385 m in the compiled net) exists because of ramp guessing (--ramps.guess); the map draws 3 -> 3 lanes here",
+          "look_for": "Does an acceleration lane exist here, and how long is it (gore to taper end)?"
+        }
+      ],
+      "detail": {
+        "ramp": "C-D re-entry 745524608",
+        "ramp_edge": "745524608",
+        "attach_edge": "998737536-AddedOnRampEdge",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -5.9,
+          -10.6,
+          -13.4,
+          -18.3,
+          -24.0,
+          -34.6
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "95085307",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 385.4,
+        "aux_end": "exit",
+        "aux_exit_edge": "18207880",
+        "aux_edges": [
+          "998737536-AddedOnRampEdge",
+          "998737536"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": true,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 3,
+        "cd_pair": "18208090"
+      }
+    },
+    {
+      "index": 26,
+      "kind": "weave",
+      "x_m": 5929.9,
+      "segment": 18,
+      "edge": "998737536-AddedOnRampEdge",
+      "description": "Weaving section: C-D re-entry 745524608 -> off-ramp 18207880, auxiliary lane 385 m along 998737536-AddedOnRampEdge, 998737536",
+      "look_for": "Is the auxiliary lane continuous from the entrance gore to the exit gore (a dashed line, no solid line across it)? Measure its length gore to gore.",
+      "lat": 44.951661,
+      "lon": -93.029928,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951661,-93.029928&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951661~-93.029928&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951661,-93.029928"
+      },
+      "flags": [],
+      "detail": {
+        "on_ramp": "C-D re-entry 745524608",
+        "off_ramp": "off-ramp 18207880",
+        "on_edge": "745524608",
+        "exit_edge": "18207880",
+        "edges": [
+          "998737536-AddedOnRampEdge",
+          "998737536"
+        ],
+        "length_m": 385.4,
+        "lane": 0,
+        "lane_continues": false
+      }
+    },
+    {
+      "index": 27,
+      "kind": "off_ramp",
+      "x_m": 6315.3,
+      "segment": 19,
+      "edge": "998737536",
+      "description": "Off-ramp off-ramp 18207880 (18207880) leaves 998737536 from lane(s) 0 of 4 (right; map: right); turn:lanes none|none|through;slight_right; split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.952328,
+      "lon": -93.034663,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952328,-93.034663&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952328~-93.034663&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952328,-93.034663"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "off-ramp 18207880",
+        "from_edge": "998737536",
+        "exit_edge": "18207880",
+        "continuing_edge": "998737535",
+        "x_m": 6315.3,
+        "osm_way": "998737536",
+        "osm_lanes": 3,
+        "turn_lanes": "none|none|through;slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -9.0,
+          -12.7,
+          -14.9,
+          -24.0,
+          -30.5,
+          -39.7
+        ],
+        "compiled_lanes": 4,
+        "exit_from_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [],
+        "added_lane": true,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 28,
+      "kind": "lane_drop",
+      "x_m": 6315.3,
+      "segment": 19,
+      "edge": "998737536",
+      "description": "Lane drop 4 -> 3 on the right between 998737536 and 998737535: lane(s) 0 of 4 leave at the exit; map 3 -> 3 (does not agree); source: ramp guessing likely",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.952328,
+      "lon": -93.034663,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952328,-93.034663&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952328~-93.034663&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952328,-93.034663"
+      },
+      "flags": [
+        {
+          "check": "lane_change_not_in_osm",
+          "severity": "info",
+          "message": "compiled lane drop 4 -> 3, the map has 3 -> 3: probably the end of a lane ramp guessing added",
+          "look_for": "Does a lane really end here, on the right? Count the lanes before and after: model 4 -> 3."
+        }
+      ],
+      "detail": {
+        "from_edge": "998737536",
+        "to_edge": "998737535",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 leave at the exit",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing_likely"
+      }
+    },
+    {
+      "index": 29,
+      "kind": "lane_gain",
+      "x_m": 7389.0,
+      "segment": 22,
+      "edge": "45608474",
+      "description": "Lane gain 3 -> 5 on the right between 45608474 and 51866108: lane(s) 0,1 of 5 begin, fed by an on-ramp; map 3 -> 5 (agrees); source: osm",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.952357,
+      "lon": -93.048196,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952357,-93.048196&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952357~-93.048196&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952357,-93.048196"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "45608474",
+        "to_edge": "51866108",
+        "lanes_before": 3,
+        "lanes_after": 5,
+        "side": "right",
+        "how": "lane(s) 0,1 of 5 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0,
+          1
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 5,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 30,
+      "kind": "on_ramp",
+      "x_m": 7389.0,
+      "segment": 23,
+      "edge": "51866108",
+      "description": "On-ramp on-ramp 53062592 (59339950) joins 51866108 lane(s) 0,1 of 5 (right; map: right); added lane 1136 m, runs to the exit 18207912 (weave)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.952357,
+      "lon": -93.048196,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952357,-93.048196&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952357~-93.048196&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952357,-93.048196"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "on-ramp 53062592",
+        "ramp_edge": "59339950",
+        "attach_edge": "51866108",
+        "attach_lanes": 5,
+        "joined_lanes": [
+          0,
+          1
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -7.3,
+          -7.3,
+          -8.1,
+          -8.5,
+          -9.7,
+          -15.1,
+          -24.4,
+          -46.8
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "45608474",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0,
+          1
+        ],
+        "aux_length_m": 1135.5,
+        "aux_end": "exit",
+        "aux_exit_edge": "18207912",
+        "aux_edges": [
+          "51866108",
+          "45608490",
+          "45608485"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": false,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 5,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 31,
+      "kind": "weave",
+      "x_m": 7389.0,
+      "segment": 23,
+      "edge": "51866108",
+      "description": "Weaving section: on-ramp 53062592 -> off-ramp 18207912, auxiliary lane 1136 m along 51866108, 45608490, 45608485",
+      "look_for": "Is the auxiliary lane continuous from the entrance gore to the exit gore (a dashed line, no solid line across it)? Measure its length gore to gore.",
+      "lat": 44.952357,
+      "lon": -93.048196,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952357,-93.048196&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952357~-93.048196&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952357,-93.048196"
+      },
+      "flags": [],
+      "detail": {
+        "on_ramp": "on-ramp 53062592",
+        "off_ramp": "off-ramp 18207912",
+        "on_edge": "59339950",
+        "exit_edge": "18207912",
+        "edges": [
+          "51866108",
+          "45608490",
+          "45608485"
+        ],
+        "length_m": 1135.5,
+        "lane": 0,
+        "lane_continues": false
+      }
+    },
+    {
+      "index": 32,
+      "kind": "off_ramp",
+      "x_m": 8524.6,
+      "segment": 25,
+      "edge": "45608485",
+      "description": "Off-ramp off-ramp 18207912 (18207912) leaves 45608485 from lane(s) 0,1 of 5 (right; map: right); turn:lanes |||slight_right|slight_right; split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.951964,
+      "lon": -93.062394,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951964,-93.062394&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951964~-93.062394&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951964,-93.062394"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "off-ramp 18207912",
+        "from_edge": "45608485",
+        "exit_edge": "18207912",
+        "continuing_edge": "45782590",
+        "x_m": 8524.6,
+        "osm_way": "45608485",
+        "osm_lanes": 5,
+        "turn_lanes": "|||slight_right|slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -8.9,
+          -8.3
+        ],
+        "compiled_lanes": 5,
+        "exit_from_lanes": [
+          0,
+          1
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [],
+        "added_lane": false,
+        "exit_lanes": 2,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 33,
+      "kind": "lane_drop",
+      "x_m": 8524.6,
+      "segment": 25,
+      "edge": "45608485",
+      "description": "Lane drop 5 -> 3 on the right between 45608485 and 45782590: lane(s) 0,1 of 5 leave at the exit; map 5 -> 3 (agrees); source: osm",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.951964,
+      "lon": -93.062394,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.951964,-93.062394&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.951964~-93.062394&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.951964,-93.062394"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "45608485",
+        "to_edge": "45782590",
+        "lanes_before": 5,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0,1 of 5 leave at the exit",
+        "ending_lanes": [
+          0,
+          1
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 5,
+        "osm_lanes_after": 3,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 34,
+      "kind": "lane_gain",
+      "x_m": 9295.0,
+      "segment": 26,
+      "edge": "45782590",
+      "description": "Lane gain 3 -> 4 on the right between 45782590 and 45782590-AddedOffRampEdge: lane(s) 0 of 3 split in two; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.953312,
+      "lon": -93.071586,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.953312,-93.071586&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.953312~-93.071586&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.953312,-93.071586"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "45782590",
+        "to_edge": "45782590-AddedOffRampEdge",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 3 split in two",
+        "ending_lanes": [],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 35,
+      "kind": "off_ramp",
+      "x_m": 9547.4,
+      "segment": 27,
+      "edge": "45782590-AddedOffRampEdge",
+      "description": "Off-ramp off-ramp 42165869 (42165869) leaves 45782590-AddedOffRampEdge from lane(s) 3 of 4 (left; map: left); turn:lanes slight_left;through|none|none; deceleration lane 252 m (guessed by netconvert); split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.954894,
+      "lon": -93.073808,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954894,-93.073808&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954894~-93.073808&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954894,-93.073808"
+      },
+      "flags": [
+        {
+          "check": "guessed_aux_lane",
+          "severity": "info",
+          "message": "the 252 m deceleration lane exists because of ramp guessing (--ramps.guess)",
+          "look_for": "Does a deceleration lane exist before the gore, and how long is it?"
+        }
+      ],
+      "detail": {
+        "ramp": "off-ramp 42165869",
+        "from_edge": "45782590-AddedOffRampEdge",
+        "exit_edge": "42165869",
+        "continuing_edge": "1000805867",
+        "x_m": 9547.4,
+        "osm_way": "45782590",
+        "osm_lanes": 3,
+        "turn_lanes": "slight_left;through|none|none",
+        "turn_lanes_side": "left",
+        "osm_side": "left",
+        "osm_offsets_m": [
+          5.4,
+          7.9,
+          8.8,
+          9.7,
+          10.8,
+          11.8,
+          12.7,
+          14.4,
+          15.3,
+          16.3,
+          17.3,
+          18.0,
+          18.5,
+          18.8,
+          18.9,
+          18.7,
+          18.6,
+          18.6
+        ],
+        "compiled_lanes": 4,
+        "exit_from_lanes": [
+          3
+        ],
+        "compiled_side": "leftmost",
+        "option_lanes": [],
+        "added_lane": true,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": true,
+        "decel_length_m": 252.4,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 36,
+      "kind": "lane_drop",
+      "x_m": 9547.4,
+      "segment": 27,
+      "edge": "45782590-AddedOffRampEdge",
+      "description": "Lane drop 4 -> 3 on the left between 45782590-AddedOffRampEdge and 1000805867: lane(s) 3 of 4 leave at the exit; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.954894,
+      "lon": -93.073808,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954894,-93.073808&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954894~-93.073808&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954894,-93.073808"
+      },
+      "flags": [
+        {
+          "check": "lane_change_left",
+          "severity": "info",
+          "message": "the lane ends on the LEFT (lane(s) 3 of 4 leave at the exit)",
+          "look_for": "Which side does the lane really end or begin on? netconvert chooses the side; it chose wrongly at two Minnesota exits."
+        }
+      ],
+      "detail": {
+        "from_edge": "45782590-AddedOffRampEdge",
+        "to_edge": "1000805867",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "left",
+        "how": "lane(s) 3 of 4 leave at the exit",
+        "ending_lanes": [
+          3
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 37,
+      "kind": "lane_gain",
+      "x_m": 9943.9,
+      "segment": 29,
+      "edge": "40648793#0",
+      "description": "Lane gain 3 -> 4 on the right between 40648793#0 and 40648793#1: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 3 (does not agree); source: ramp guessing likely",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.954715,
+      "lon": -93.078569,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954715,-93.078569&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954715~-93.078569&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954715,-93.078569"
+      },
+      "flags": [
+        {
+          "check": "lane_change_not_in_osm",
+          "severity": "info",
+          "message": "compiled lane gain 3 -> 4, the map has 3 -> 3: probably a lane ramp guessing added",
+          "look_for": "Does a lane really begin here, on the right? Count the lanes before and after: model 3 -> 4."
+        }
+      ],
+      "detail": {
+        "from_edge": "40648793#0",
+        "to_edge": "40648793#1",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing_likely"
+      }
+    },
+    {
+      "index": 38,
+      "kind": "on_ramp",
+      "x_m": 9943.9,
+      "segment": 30,
+      "edge": "40648793#1",
+      "description": "On-ramp on-ramp 40648744 (18207681) joins 40648793#1 lane(s) 0 of 4 (right; map: right); added lane 254 m, ends in a lane drop (guessed by netconvert)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.954715,
+      "lon": -93.078569,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954715,-93.078569&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954715~-93.078569&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954715,-93.078569"
+      },
+      "flags": [
+        {
+          "check": "guessed_aux_lane",
+          "severity": "info",
+          "message": "the lane the ramp joins (254 m in the compiled net) exists because of ramp guessing (--ramps.guess); the map draws 3 -> 3 lanes here",
+          "look_for": "Does an acceleration lane exist here, and how long is it (gore to taper end)?"
+        }
+      ],
+      "detail": {
+        "ramp": "on-ramp 40648744",
+        "ramp_edge": "18207681",
+        "attach_edge": "40648793#1",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -9.4,
+          -10.3,
+          -11.4,
+          -17.1,
+          -21.0,
+          -24.8,
+          -28.3,
+          -29.0,
+          -31.7,
+          -45.4,
+          -50.2,
+          -55.4,
+          -61.7,
+          -71.8
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "40648793#0",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 253.8,
+        "aux_end": "drop",
+        "aux_exit_edge": null,
+        "aux_edges": [
+          "40648793#1",
+          "40648738-AddedOnRampEdge"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": true,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 3,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 39,
+      "kind": "lane_drop",
+      "x_m": 10197.7,
+      "segment": 31,
+      "edge": "40648738-AddedOnRampEdge",
+      "description": "Lane drop 4 -> 3 on the right between 40648738-AddedOnRampEdge and 40648738: lane(s) 0 of 4 end; map 3 -> 3 (does not agree); source: ramp guessing",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.953478,
+      "lon": -93.081216,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.953478,-93.081216&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.953478~-93.081216&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.953478,-93.081216"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "40648738-AddedOnRampEdge",
+        "to_edge": "40648738",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 end",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 3,
+        "osm_agrees": false,
+        "source": "ramp_guessing"
+      }
+    },
+    {
+      "index": 40,
+      "kind": "lane_gain",
+      "x_m": 10426.6,
+      "segment": 32,
+      "edge": "40648738",
+      "description": "Lane gain 3 -> 4 on the right between 40648738 and 51388891: lane(s) 0 of 4 begin, fed by an on-ramp; map 3 -> 4 (agrees); source: osm",
+      "look_for": "Which lane begins, on which side, and is it fed by a ramp?",
+      "lat": 44.952673,
+      "lon": -93.083884,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952673,-93.083884&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952673~-93.083884&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952673,-93.083884"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "40648738",
+        "to_edge": "51388891",
+        "lanes_before": 3,
+        "lanes_after": 4,
+        "side": "right",
+        "how": "lane(s) 0 of 4 begin, fed by an on-ramp",
+        "ending_lanes": [],
+        "starting_lanes": [
+          0
+        ],
+        "osm_lanes_before": 3,
+        "osm_lanes_after": 4,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 41,
+      "kind": "on_ramp",
+      "x_m": 10426.6,
+      "segment": 33,
+      "edge": "51388891",
+      "description": "On-ramp on-ramp 769818012 (194037903) joins 51388891 lane(s) 0 of 4 (right; map: right); added lane 305 m, runs to the exit 18207598 (weave)",
+      "look_for": "Where does the ramp meet the mainline, and on which side? Is there an acceleration lane beside the mainline, and where does it end (measure from the gore to the end of the taper)?",
+      "lat": 44.952673,
+      "lon": -93.083884,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952673,-93.083884&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952673~-93.083884&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952673,-93.083884"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "on-ramp 769818012",
+        "ramp_edge": "194037903",
+        "attach_edge": "51388891",
+        "attach_lanes": 4,
+        "joined_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -5.5,
+          -7.6,
+          -8.4,
+          -11.1,
+          -12.2,
+          -19.7
+        ],
+        "verdict": "ok",
+        "remedy": "",
+        "upstream_edge": "40648738",
+        "mainline_fed": false,
+        "aux_lanes": [
+          0
+        ],
+        "aux_length_m": 305.0,
+        "aux_end": "exit",
+        "aux_exit_edge": "18207598",
+        "aux_edges": [
+          "51388891"
+        ],
+        "aux_exit_option": false,
+        "aux_guessed": false,
+        "osm_lanes_upstream": 3,
+        "osm_lanes_attach": 4,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 42,
+      "kind": "weave",
+      "x_m": 10426.6,
+      "segment": 33,
+      "edge": "51388891",
+      "description": "Weaving section: on-ramp 769818012 -> off-ramp 18207598, auxiliary lane 305 m along 51388891",
+      "look_for": "Is the auxiliary lane continuous from the entrance gore to the exit gore (a dashed line, no solid line across it)? Measure its length gore to gore.",
+      "lat": 44.952673,
+      "lon": -93.083884,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952673,-93.083884&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952673~-93.083884&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952673,-93.083884"
+      },
+      "flags": [],
+      "detail": {
+        "on_ramp": "on-ramp 769818012",
+        "off_ramp": "off-ramp 18207598",
+        "on_edge": "194037903",
+        "exit_edge": "18207598",
+        "edges": [
+          "51388891"
+        ],
+        "length_m": 305.0,
+        "lane": 0,
+        "lane_continues": false
+      }
+    },
+    {
+      "index": 43,
+      "kind": "off_ramp",
+      "x_m": 10731.6,
+      "segment": 33,
+      "edge": "51388891",
+      "description": "Off-ramp off-ramp 18207598 (18207598) leaves 51388891 from lane(s) 0 of 4 (right; map: right); turn:lanes none|none|none|slight_right; split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.952707,
+      "lon": -93.087583,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952707,-93.087583&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952707~-93.087583&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952707,-93.087583"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "off-ramp 18207598",
+        "from_edge": "51388891",
+        "exit_edge": "18207598",
+        "continuing_edge": "1001426896",
+        "x_m": 10731.6,
+        "osm_way": "51388891",
+        "osm_lanes": 4,
+        "turn_lanes": "none|none|none|slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -4.3,
+          -6.4,
+          -7.0,
+          -7.3,
+          -7.9,
+          -8.6,
+          -9.5,
+          -15.4,
+          -17.2,
+          -18.2,
+          -19.5,
+          -22.3,
+          -24.6,
+          -27.3,
+          -30.8,
+          -36.3,
+          -41.2
+        ],
+        "compiled_lanes": 4,
+        "exit_from_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [],
+        "added_lane": false,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": ""
+      }
+    },
+    {
+      "index": 44,
+      "kind": "lane_drop",
+      "x_m": 10731.6,
+      "segment": 33,
+      "edge": "51388891",
+      "description": "Lane drop 4 -> 3 on the right between 51388891 and 1001426896: lane(s) 0 of 4 leave at the exit; map 4 -> 3 (agrees); source: osm",
+      "look_for": "Which lane ends, on which side, and where does its taper end?",
+      "lat": 44.952707,
+      "lon": -93.087583,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.952707,-93.087583&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.952707~-93.087583&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.952707,-93.087583"
+      },
+      "flags": [],
+      "detail": {
+        "from_edge": "51388891",
+        "to_edge": "1001426896",
+        "lanes_before": 4,
+        "lanes_after": 3,
+        "side": "right",
+        "how": "lane(s) 0 of 4 leave at the exit",
+        "ending_lanes": [
+          0
+        ],
+        "starting_lanes": [],
+        "osm_lanes_before": 4,
+        "osm_lanes_after": 3,
+        "osm_agrees": true,
+        "source": "osm"
+      }
+    },
+    {
+      "index": 45,
+      "kind": "off_ramp",
+      "x_m": 10952.6,
+      "segment": 34,
+      "edge": "1001426896",
+      "description": "Off-ramp off-ramp 82150350 (82150350) leaves 1001426896 from lane(s) 0 of 3 (right; map: right); option lane(s) 0; turn:lanes none|none|through;slight_right; split audit: ok",
+      "look_for": "Which side does the exit leave from, and from which lanes (an exit-only lane, an option lane)? Is there a deceleration lane before the gore, and how long is it?",
+      "lat": 44.954043,
+      "lon": -93.089649,
+      "links": {
+        "satellite": "https://www.google.com/maps/@?api=1&map_action=map&center=44.954043,-93.089649&zoom=18&basemap=satellite",
+        "satellite_alt": "https://www.bing.com/maps?cp=44.954043~-93.089649&lvl=18&style=a",
+        "street_view": "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=44.954043,-93.089649"
+      },
+      "flags": [],
+      "detail": {
+        "ramp": "off-ramp 82150350",
+        "from_edge": "1001426896",
+        "exit_edge": "82150350",
+        "continuing_edge": "82578022",
+        "x_m": 10952.6,
+        "osm_way": "1001426896",
+        "osm_lanes": 3,
+        "turn_lanes": "none|none|through;slight_right",
+        "turn_lanes_side": "right",
+        "osm_side": "right",
+        "osm_offsets_m": [
+          -1.1,
+          -4.4,
+          -7.0,
+          -7.9,
+          -12.2,
+          -17.4,
+          -24.8,
+          -29.0,
+          -32.3,
+          -35.3,
+          -37.4,
+          -39.4,
+          -40.7,
+          -42.4,
+          -43.9,
+          -44.5,
+          -45.0,
+          -45.1,
+          -44.7,
+          -43.9,
+          -43.0,
+          -42.0
+        ],
+        "compiled_lanes": 3,
+        "exit_from_lanes": [
+          0
+        ],
+        "compiled_side": "rightmost",
+        "option_lanes": [
+          0
+        ],
+        "added_lane": false,
+        "exit_lanes": 1,
+        "continuing_lanes": 3,
+        "verdict": "ok",
+        "remedy": "",
+        "decel_lane_guessed": false,
+        "decel_length_m": null,
+        "cd_pair": ""
+      }
+    }
+  ],
+  "provenance": {
+    "script": "scripts/layout_audit.py",
+    "created_at": "2026-10-05T03:16:27Z",
+    "code": "75a54b7ca45abdcdc2056907b8501d451a5ea6a3 snapshot 62e0c9e008e069c5f1de05b6fea28de4e843cf7d",
+    "code_dirty": false,
+    "argv": [
+      "--scenario",
+      "scenarios/mndot_i94_wb_stpaul_weave.yaml",
+      "--out",
+      "runs/p1_rehearsal/layout"
+    ],
+    "scenario": "scenarios/mndot_i94_wb_stpaul_weave.yaml",
+    "config_hash": "da8cb6f07030",
+    "osm_file": "data/osm/mndot_i94_wb_stpaul.osm",
+    "osm_sha256": "2f601c76610357f8e18ad89069aedbafaa5a853e51b587d1a229889c8385a424",
+    "patch_sha256": {
+      "data/osm/mndot_i94_wb_stpaul.splits.con.xml": "ee12ffbf7174909ba357b7fcf6989e2575ec4973a8e063ecb8187f33579c40f9"
+    },
+    "versions": {
+      "eclipse-sumo": "1.27.1",
+      "sumolib": "1.27.1"
+    }
+  }
+}

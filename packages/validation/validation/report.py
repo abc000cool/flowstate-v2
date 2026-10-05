@@ -1737,18 +1737,38 @@ def _client_summary(
     waiting_everywhere = (
         baseline is not None and baseline.carries_waiting and all(g.carries_waiting for g in arms)
     )
+    # Every run of every group carries the ledger, but the run set has no
+    # single baseline group (e.g. a do-nothing battery whose merge models give
+    # its configuration a non-baseline label): the waiting time IS counted, and
+    # the missing recommendation is the baseline's absence, not the ledger's.
+    waiting_without_baseline = (
+        baseline is None and bool(groups) and all(g.carries_waiting for g in groups)
+    )
     if arms:
+        if waiting_everywhere:
+            waiting_row = (
+                CONFIDENT_YES,
+                "counted: every run records total delay and travel time including waiting "
+                f"({PROTOCOL_DOC} section 8.2), the only measure a recommendation is stated on",
+            )
+        elif waiting_without_baseline:
+            waiting_row = (
+                CONFIDENT_YES,
+                "counted: every run records total delay and travel time including waiting "
+                f"({PROTOCOL_DOC} section 8.2); no strategy recommendation is made because the "
+                "run set has no single baseline (do-nothing) group to compare against",
+            )
+        else:
+            waiting_row = (
+                CONFIDENT_NO,
+                "not recorded on every run (no demand ledger), so no strategy "
+                f"recommendation is made ({PROTOCOL_DOC} section 8.2)",
+            )
         confidence.append(
             {
                 "statement": "Waiting time on ramps and before entering the network",
-                "confident": CONFIDENT_YES if waiting_everywhere else CONFIDENT_NO,
-                "basis": (
-                    "counted: every run records total delay and travel time including waiting "
-                    f"({PROTOCOL_DOC} section 8.2), the only measure a recommendation is stated on"
-                    if waiting_everywhere
-                    else "not recorded on every run (no demand ledger), so no strategy "
-                    f"recommendation is made ({PROTOCOL_DOC} section 8.2)"
-                ),
+                "confident": waiting_row[0],
+                "basis": waiting_row[1],
             }
         )
 

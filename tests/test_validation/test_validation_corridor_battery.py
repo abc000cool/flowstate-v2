@@ -26,7 +26,8 @@ from typing import Any
 import pytest
 import yaml
 
-from validation.battery import MISSED_EXIT_SHARE_THRESHOLD
+from validation.battery import MISSED_EXIT_SHARE_THRESHOLD, json_safe
+from validation.metrics import compute_waiting_metrics
 
 pytestmark = pytest.mark.integration
 
@@ -176,6 +177,18 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     assert (run_dir / battery.SCORES_FILE).is_file()
     assert (run_dir / "trajectories.parquet").is_file()  # the first seed is kept
 
+    # Waiting (WP-109): the run's demand ledger is measured per replicate,
+    # stored in its metrics.json and its per_seed row, and pooled.
+    expected = json.loads(
+        json.dumps(json_safe(dataclasses.asdict(compute_waiting_metrics(run_dir))))
+    )
+    stored = json.loads((run_dir / battery.METRICS_FILE).read_text())
+    assert stored["waiting"] == expected == seed_row["waiting"]
+    assert expected["n_demand_veh"] > 0
+    assert artifact["waiting"]["n_runs_recorded"] == 1
+    assert artifact["waiting"]["runs_not_recorded"] == []
+    assert artifact["waiting"]["ci"]["n_demand_veh"]["mean"] == expected["n_demand_veh"]
+
     report = (report_dir / "report.md").read_text()
     assert "### Observed data" in report
     assert "synthetic" in report
@@ -195,6 +208,7 @@ def test_corridor_battery_end_to_end(tmp_path: Path) -> None:
     assert rescored["metrics_ci"]["throughput_veh_h"]["mean"] == pytest.approx(
         artifact["metrics_ci"]["throughput_veh_h"]["mean"], rel=1e-9
     )
+    assert rescored["per_seed"][0]["waiting"] == seed_row["waiting"]
 
 
 def _weave_section(ramp: str, exit_name: str, missed: int, reached: int) -> dict[str, Any]:

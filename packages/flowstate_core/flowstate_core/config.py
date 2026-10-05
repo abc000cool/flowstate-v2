@@ -17,7 +17,12 @@ from typing import Annotated, Any, Final, Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from flowstate_core.constants import HETEROGENEITY_FRAC_DEFAULT, IDM_DEFAULTS
+from flowstate_core.constants import (
+    HETEROGENEITY_FRAC_DEFAULT,
+    IDM_DEFAULTS,
+    SPEED_FACTOR_BOUNDS,
+    SPEED_FACTOR_DEFAULT,
+)
 
 #: Ceiling on ``ScenarioConfig.replicates``. Generous next to the ≥ 20 seeds a
 #: headline claim needs (CLAUDE.md §0.6) and next to every scenario shipped
@@ -1315,6 +1320,44 @@ class FleetSpec(BaseModel):
     fleets without managed lanes reproduce their draws exactly); eligible
     vehicles carry SUMO ``vClass="hov"``. A measured or assumed occupancy
     share — record its source in the scenario header."""
+    speed_factor: float = Field(
+        default=SPEED_FACTOR_DEFAULT, ge=SPEED_FACTOR_BOUNDS[0], le=SPEED_FACTOR_BOUNDS[1]
+    )
+    """SUMO ``speedFactor`` of every passenger vehicle (2026-10-04, WP-109):
+    its desired free-flow speed on a lane is ``min(maxSpeed, speedFactor ×
+    lane limit)`` — "the product of road speed limit and the individual
+    speed factor gives the desired free flow driving speed" (SUMO
+    documentation, *Definition of Vehicles, Vehicle Types, and Routes*,
+    section "Speed Distributions"; measured on SUMO 1.27.1: a vType with
+    ``speedFactor="1.2"`` cruises at 24.0 m/s on a 20 m/s lane). The default
+    1.0 caps every driver at the posted limit, as every run before WP-109
+    did; a larger value is the corridor-wide setting the driver-settings
+    check (``calibration.transfer_check``) recommends when drivers in light
+    traffic drive faster than the limit. Heavy vehicles (``heavy``) keep
+    1.0: their speeds are not what a loop's light-traffic mean measures, and
+    trucks are often governed. The bounds are SUMO's default cut-offs for an
+    individual factor (``normc(1, 0.1, 0.2, 2)``). SUMO keeps four decimals
+    of a vehicle's factor (``speedFactor="1.123456"`` runs as 1.1235,
+    measured), so FlowState rounds to four as well. Written on the vTypes
+    only when it differs from 1.0 or ``speed_dev`` is set, so route files of
+    a default fleet are byte-identical. The downstream boundary schedule
+    (:class:`BoundarySpec`) is posted divided by this factor so that its
+    measured speeds stay the speeds driven; a VSL posting, like any posted
+    limit, is exceeded by the factor."""
+    speed_dev: float = Field(default=0.0, ge=0.0, le=0.5)
+    """Spread of the passenger vehicles' individual speed factors, SUMO
+    ``speedDev`` (WP-109): each passenger vehicle's factor is drawn from the
+    normal distribution of mean ``speed_factor`` and this deviation, cut at
+    SUMO's default bounds 0.2 and 2 — the distribution SUMO documents for
+    ``speedFactor="<mean>" speedDev="<dev>"`` — but drawn by FlowState's
+    seeded generator (a stream of the run's seed independent of every other
+    draw, ``microsim.vehicles.draw_speed_factors``), rounded to SUMO's four
+    decimals and written as that vehicle's own ``speedFactor`` with
+    ``speedDev="0"``: per-vehicle heterogeneity comes from our RNG
+    (CLAUDE.md §0.5), and each vehicle's factor is known before SUMO starts
+    (the demand ledger's free-flow times use it). 0 (default) gives every
+    passenger vehicle exactly ``speed_factor``. Loop data do not identify
+    it: five-minute means average many vehicles."""
 
 
 FLEET_SETTINGS_FIELDS: Final[tuple[str, ...]] = (

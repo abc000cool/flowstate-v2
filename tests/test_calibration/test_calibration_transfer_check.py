@@ -363,6 +363,39 @@ class TestModelSide:
         capped = population_capacity("IDM", d, v_des)[0]
         assert capped < free
 
+    def test_speed_factor_applies_to_passengers_not_trucks(self) -> None:
+        heavy = HeavyVehicleSpec(
+            fraction=0.3,
+            length_m=18.0,
+            emission_class="HBEFA4/TT_AT_gt34-40t_Euro-VI_A-C",
+            v0=40.0,
+            T=2.0,
+            a_max=0.6,
+            b=1.5,
+            s0=3.0,
+            heterogeneity_frac=0.0,
+        )
+        mixed = population_from_fleet(
+            FleetSpec(v0=40.0, T=1.5, s0=2.0, heterogeneity_frac=0.0, heavy=heavy), label="m"
+        )
+        d = draw_drivers(mixed, n=2000)
+        v_des = desired_speeds(d, 20.0, 1.2)
+        # microsim.vehicles writes the fleet's factor on passengers, 1.0 on trucks
+        assert np.allclose(v_des[~d.heavy], 24.0) and np.allclose(v_des[d.heavy], 20.0)
+        assert d.speed_z is None
+
+    def test_speed_dev_spreads_the_passenger_factors(self) -> None:
+        fleet = FleetSpec(v0=60.0, T=1.5, s0=2.0, heterogeneity_frac=0.0, speed_dev=0.1)
+        pop = population_from_fleet(fleet, label="spread")
+        d = draw_drivers(pop, n=4000)
+        assert d.speed_z is not None
+        v_des = desired_speeds(d, 20.0, pop.speed_factor, pop.speed_dev)
+        assert float(v_des.mean()) == pytest.approx(20.0, rel=0.01)
+        assert float((v_des / 20.0).std()) == pytest.approx(0.1, rel=0.1)
+        assert float(v_des.min()) >= 0.2 * 20.0 and float(v_des.max()) <= 2.0 * 20.0
+        # the same drivers without the spread all want exactly the limit
+        assert np.allclose(desired_speeds(d, 20.0, 1.0), 20.0)
+
     def test_trucks_lower_capacity(self) -> None:
         heavy = HeavyVehicleSpec(
             fraction=0.2,
@@ -517,9 +550,36 @@ class TestRecommendations:
         knobs = {k.name: k for k in rec.knobs}
         assert not knobs["v0_scale"].fits
         sf = knobs["speed_factor"]
-        assert sf.fits and not sf.available and 1.1 < (sf.needed or 0.0) < 1.3
-        assert rec.action == "needs_engine_change" and rec.chosen == "speed_factor"
-        assert "speedFactor" in sf.how
+        # the engine exposes the factor since WP-109 (FleetSpec.speed_factor)
+        assert sf.fits and sf.available and 1.1 < (sf.needed or 0.0) < 1.3
+        assert sf.current == 1.0
+        assert rec.action == "adjust" and rec.chosen == "speed_factor"
+        assert "fleet.speed_factor" in sf.how and "speedFactor" in sf.how
+        assert "fleet.speed_factor" in rec.text
+
+    def test_a_fleet_set_to_the_recommended_speed_factor_fits(self, pop_path) -> None:
+        # the recommendation, applied as the scenario setting it names, closes
+        # the gap: the check reads the configured factor as the model's
+        obs = observed_side(26.8224, ff_speed=30.0, capacity=1700.0)
+        base = population_from_artifact(pop_path)
+        needed = next(
+            k
+            for k in check_transfer(obs, base, sidecars=[], n_draws=N_DRAWS)
+            .recommendation("free_flow_speed")
+            .knobs
+            if k.name == "speed_factor"
+        ).needed
+        assert needed is not None
+        fleet = FleetSpec(idm_calibration=str(pop_path), speed_factor=round(needed, 4))
+        report = check_transfer(
+            obs, population_from_fleet(fleet, label="adjusted"), sidecars=[], n_draws=N_DRAWS
+        )
+        assert report.model.speed_factor == pytest.approx(needed, abs=1e-4)
+        ff = report.comparison("free_flow_speed")
+        assert ff.verdict == "ok" and ff.model == pytest.approx(30.0, rel=0.01)
+        assert report.recommendation("free_flow_speed").action == "none"
+        assert any("speed factor of" in n for n in report.model.notes)
+        assert "times it (fleet.speed_factor)" in report.to_markdown()
 
     def test_missing_truck_data_is_reported_not_guessed(self, population) -> None:
         report = check_transfer(

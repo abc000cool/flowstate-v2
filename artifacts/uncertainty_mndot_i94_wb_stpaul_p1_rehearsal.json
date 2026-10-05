@@ -1,0 +1,960 @@
+{
+  "schema": "flowstate.uncertainty/1",
+  "provenance": {
+    "experiment": "p1_unc",
+    "scenario": "scenarios/mndot_i94_wb_stpaul_weave_xlsfg.yaml",
+    "scenario_sha256": "8b2d67b269cf051c58c46e31808277b39f8d47625fd964d73cb89fdcfe949b7e",
+    "base_config_hash": "b550b46fe751",
+    "design_key": "27666322ed01",
+    "design_seed": 42,
+    "seeds_per_sample": 2,
+    "seeds": {
+      "s00": [
+        7993770517160411898,
+        5128615122007998373
+      ],
+      "s01": [
+        7379222748821439672,
+        5621854806459792366
+      ],
+      "s02": [
+        303958152840581829,
+        7390130605661587845
+      ],
+      "s03": [
+        2356351251642873759,
+        3377289597530949096
+      ]
+    },
+    "sample_config_hashes": {
+      "s00": "9ff673b10e4d",
+      "s01": "53bf6caed76e",
+      "s02": "451ba89256bd",
+      "s03": "392d1874f743"
+    },
+    "arm_config_hashes": {
+      "s00": {
+        "baseline": "9ff673b10e4d",
+        "alinea": "1b36ffcdab4a"
+      },
+      "s01": {
+        "baseline": "53bf6caed76e",
+        "alinea": "0079529d4bf5"
+      },
+      "s02": {
+        "baseline": "451ba89256bd",
+        "alinea": "a006a1fa33e0"
+      },
+      "s03": {
+        "baseline": "392d1874f743",
+        "alinea": "8ad3572fd516"
+      }
+    },
+    "arms": [
+      {
+        "name": "alinea",
+        "strategy": "alinea",
+        "controller": null,
+        "penetration": 0.0,
+        "compliance": 1.0,
+        "rho_target_veh_km": 19.9,
+        "override": null,
+        "override_sha256": null,
+        "override_av": {}
+      }
+    ],
+    "metrics_args": {
+      "x_ref": 11027.0,
+      "span": [
+        1110.0,
+        11027.0
+      ]
+    },
+    "metrics_source": "scripts/corridor_sweep.py _worker (validation.metrics.compute_metrics)",
+    "transfer_check": {
+      "path": "runs/p1_rehearsal/transfer/transfer_check.json",
+      "sha256": "9477f552b78946f9ad72cf9321f00e26e6410f3b2346cf00c48813764429f641"
+    },
+    "data_quality": {
+      "path": "runs/p1_rehearsal/dq/data_quality.json",
+      "sha256": "8cae907dec40646229a19e26f9b5cc9e04d7c4a0af24d87f80cc4742ccbfba53",
+      "count_error": 0.05
+    },
+    "design_provenance": {
+      "created_at": "2026-10-05T03:18:01Z",
+      "code": "75a54b7ca45abdcdc2056907b8501d451a5ea6a3 snapshot 62e0c9e008e069c5f1de05b6fea28de4e843cf7d",
+      "code_dirty": false
+    },
+    "analysed_at": "2026-10-05T03:49:34Z",
+    "code": "75a54b7ca45abdcdc2056907b8501d451a5ea6a3 snapshot 62e0c9e008e069c5f1de05b6fea28de4e843cf7d",
+    "code_dirty": false
+  },
+  "protocol": {
+    "section": "docs/FRISCO_PROTOCOL.md \u00a78.5",
+    "min_samples": 10,
+    "min_seeds_per_sample": 5,
+    "robust_sign_share": 0.9,
+    "interval_level": 0.95,
+    "spread_percentiles": [
+      5.0,
+      95.0
+    ],
+    "meets_protocol_minimum": false
+  },
+  "space": {
+    "parameters": [
+      {
+        "name": "demand_scale",
+        "kind": "demand_scale",
+        "low": 0.95,
+        "high": 1.05,
+        "nominal": 1.0,
+        "assumed": false,
+        "basis": "data_quality_count_error",
+        "source": "detector count error \u00b10.05 as recorded in the study's data-quality artifact runs/p1_rehearsal/dq/data_quality.json (sha256 8cae907dec40) (parameters.count_error; docs/FRISCO_PROTOCOL.md \u00a78.5), applied as one corridor-wide factor on every inflow",
+        "maps_to": "factor on every network.inflow step and every on-ramp's inflow step (off-ramp exit fractions unchanged)"
+      },
+      {
+        "name": "t_scale",
+        "kind": "t_scale",
+        "low": 0.7487645314551113,
+        "high": 1.537176812316871,
+        "nominal": 1.0,
+        "assumed": true,
+        "basis": "measured_range_fallback",
+        "source": "assumed \u2014 runs/p1_rehearsal/transfer/transfer_check.json (sha256 9477f552b789) (run on this population, artifacts/idm_i24_capacity.json (sha256 80a7579b7251)) gave no observed-interval range: no value of the mean time headway (T) in the measured range \u2229 the simulated grid (not extrapolated) keeps the model's capacity per lane inside the observed interval 1418\u20131540 veh/h/lane; over it the model's capacity per lane spans 1591\u20131709 veh/h/lane (its range basis is measured_range_fallback, not an observed interval); so the wide transfer range of docs/FRISCO_PROTOCOL.md \u00a77.2 \u2014 the spread of individual drivers, which calibration may choose a population from \u2014 not a calibration uncertainty of this corridor's population, is used: the measured population artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes), source of the configured artifacts/idm_i24_capacity.json (sha256 80a7579b7251; 12356 fitted episodes) (sidecar artifacts/idm_i24_capacity.calibration.json; covariance shared, mean T / v0 scaled): mean T 1.511 \u00b1 1 sd of its drivers (0.5212, the covariance diagonal) within CLAUDE.md \u00a73.1's 0.8\u20132.2 \u2014 the measured range of docs/FRISCO_PROTOCOL.md \u00a77.2 (calibration.transfer_check.measured_range, MEASURED_RANGE_SIGMAS): T 0.99\u20132.032; as a factor on the configured mean 1.322",
+        "maps_to": "factor on the passenger population's mean desired time headway T: a derived IDMCalibration (mean T x factor, covariance unchanged) as fleet.idm_calibration, or fleet.T for a scalar fleet; the heavy population unchanged"
+      },
+      {
+        "name": "v0_scale",
+        "kind": "v0_scale",
+        "low": 0.8301788604113762,
+        "high": 1.1698211395886238,
+        "nominal": 1.0,
+        "assumed": true,
+        "basis": "measured_range_fallback",
+        "source": "assumed \u2014 runs/p1_rehearsal/transfer/transfer_check.json (sha256 9477f552b789) (run on this population, artifacts/idm_i24_capacity.json (sha256 80a7579b7251)) gave no observed-interval range: no value of the mean desired speed (v0) in the measured range keeps the model's free-flow speed inside the observed interval 29.16\u201329.27 m/s; over it the model's free-flow speed spans 23.38\u201324.58 m/s (its range basis is measured_range_fallback, not an observed interval); so the wide transfer range of docs/FRISCO_PROTOCOL.md \u00a77.2 \u2014 the spread of individual drivers, which calibration may choose a population from \u2014 not a calibration uncertainty of this corridor's population, is used: the measured population artifacts/idm_i24.json (sha256 224a53dc6702; 12356 fitted episodes), source of the configured artifacts/idm_i24_capacity.json (sha256 80a7579b7251; 12356 fitted episodes) (sidecar artifacts/idm_i24_capacity.calibration.json; covariance shared, mean T / v0 scaled): mean v0 32.4 \u00b1 1 sd of its drivers (5.502, the covariance diagonal) within CLAUDE.md \u00a73.1's 25\u201338 \u2014 the measured range of docs/FRISCO_PROTOCOL.md \u00a77.2 (calibration.transfer_check.measured_range, MEASURED_RANGE_SIGMAS): v0 26.9\u201337.9; as a factor on the configured mean 32.4",
+        "maps_to": "factor on the passenger population's mean desired speed v0: a derived IDMCalibration (mean v0 x factor, covariance unchanged) as fleet.idm_calibration, or fleet.v0 for a scalar fleet; the heavy population unchanged"
+      }
+    ]
+  },
+  "samples": [
+    {
+      "sample_id": "s00",
+      "index": 0,
+      "values": {
+        "demand_scale": 1.0464649479977846,
+        "t_scale": 0.9037002194119658,
+        "v0_scale": 0.9849505875934016
+      },
+      "kinds": {
+        "demand_scale": "demand_scale",
+        "t_scale": "t_scale",
+        "v0_scale": "v0_scale"
+      }
+    },
+    {
+      "sample_id": "s01",
+      "index": 1,
+      "values": {
+        "demand_scale": 1.017434200726484,
+        "t_scale": 1.1682222622227942,
+        "v0_scale": 0.8678294126886932
+      },
+      "kinds": {
+        "demand_scale": "demand_scale",
+        "t_scale": "t_scale",
+        "v0_scale": "v0_scale"
+      }
+    },
+    {
+      "sample_id": "s02",
+      "index": 2,
+      "values": {
+        "demand_scale": 0.9773544336971912,
+        "t_scale": 1.4288461932425078,
+        "v0_scale": 1.0192949693460764
+      },
+      "kinds": {
+        "demand_scale": "demand_scale",
+        "t_scale": "t_scale",
+        "v0_scale": "v0_scale"
+      }
+    },
+    {
+      "sample_id": "s03",
+      "index": 3,
+      "values": {
+        "demand_scale": 0.9743905587909188,
+        "t_scale": 1.0189530306766121,
+        "v0_scale": 1.1320006800590836
+      },
+      "kinds": {
+        "demand_scale": "demand_scale",
+        "t_scale": "t_scale",
+        "v0_scale": "v0_scale"
+      }
+    }
+  ],
+  "baseline": "baseline",
+  "arms": [
+    "baseline"
+  ],
+  "metrics": [
+    "throughput_veh_h",
+    "sigma_v_temporal_ms",
+    "sigma_v_spatial_ms",
+    "mean_tt_s",
+    "p90_tt_s",
+    "fuel_ml_per_veh_km",
+    "wave_count",
+    "wave_speed_kmh",
+    "wave_amplitude_ms",
+    "mean_tt_incl_waiting_s",
+    "p90_tt_incl_waiting_s",
+    "total_delay_incl_waiting_veh_h",
+    "insertion_delay_veh_h",
+    "meter_wait_veh_h",
+    "n_censored",
+    "vht_veh_h",
+    "vmt_veh_km",
+    "n_travel_time_veh",
+    "n_demand_veh",
+    "n_not_inserted",
+    "n_tt_incl_waiting_veh",
+    "n_tt_censored"
+  ],
+  "headline": "total_delay_incl_waiting_veh_h",
+  "headline_note": "",
+  "n_samples_design": 4,
+  "min_seeds_per_sample": 2,
+  "n_runs": 8,
+  "missing_runs": [
+    {
+      "sample_id": "s00",
+      "arm": "alinea",
+      "seed": 7993770517160411898
+    },
+    {
+      "sample_id": "s00",
+      "arm": "alinea",
+      "seed": 5128615122007998373
+    },
+    {
+      "sample_id": "s01",
+      "arm": "alinea",
+      "seed": 7379222748821439672
+    },
+    {
+      "sample_id": "s01",
+      "arm": "alinea",
+      "seed": 5621854806459792366
+    },
+    {
+      "sample_id": "s02",
+      "arm": "alinea",
+      "seed": 303958152840581829
+    },
+    {
+      "sample_id": "s02",
+      "arm": "alinea",
+      "seed": 7390130605661587845
+    },
+    {
+      "sample_id": "s03",
+      "arm": "alinea",
+      "seed": 2356351251642873759
+    },
+    {
+      "sample_id": "s03",
+      "arm": "alinea",
+      "seed": 3377289597530949096
+    }
+  ],
+  "zero_collisions": false,
+  "collisions": {
+    "baseline": {
+      "n_runs": 8,
+      "n_runs_recorded": 8,
+      "total": 2,
+      "runs_with_collisions": [
+        {
+          "sample_id": "s00",
+          "seed": 5128615122007998373,
+          "n": 1
+        },
+        {
+          "sample_id": "s02",
+          "seed": 303958152840581829,
+          "n": 1
+        }
+      ],
+      "zero_collisions": false
+    }
+  },
+  "summaries": {
+    "baseline": {
+      "throughput_veh_h": {
+        "mean": 3039.214285714286,
+        "lo95": 2649.4160006417796,
+        "hi95": 3429.012570786792,
+        "p05": 2758.335714285714,
+        "p95": 3255.292857142857,
+        "sd_between_samples": 242.9756083612168,
+        "sd_within_samples": 44.091509664444445,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 3267.142857142857,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 2982.857142857143,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 2718.7142857142853,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 3188.142857142857,
+            "n_seeds": 2
+          }
+        }
+      },
+      "sigma_v_temporal_ms": {
+        "mean": 4.295193002587999,
+        "lo95": 3.657716002728286,
+        "hi95": 4.932670002447713,
+        "p05": 3.9211439070548564,
+        "p95": 4.6904510602304725,
+        "sd_between_samples": 0.39920310901692463,
+        "sd_within_samples": 0.047620511366066806,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 4.713727331988555,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 4.001535300942281,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 3.9069571904864873,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 4.558552186934673,
+            "n_seeds": 2
+          }
+        }
+      },
+      "sigma_v_spatial_ms": {
+        "mean": 5.0315386713669055,
+        "lo95": 4.124281488261603,
+        "hi95": 5.938795854472208,
+        "p05": 4.52308792961482,
+        "p95": 5.582833221588361,
+        "sd_between_samples": 0.5651222641249982,
+        "sd_within_samples": 0.10698705647350737,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 5.4325862370409315,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 4.569285665022351,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 4.514935388072315,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 5.6093473953320245,
+            "n_seeds": 2
+          }
+        }
+      },
+      "mean_tt_s": {
+        "mean": 1034.1529273443737,
+        "lo95": 844.9683952432142,
+        "hi95": 1223.337459445533,
+        "p05": 903.7242691429683,
+        "p95": 1150.2020198713244,
+        "sd_between_samples": 118.34251348202022,
+        "sd_within_samples": 16.15432165012827,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 995.3719773613329,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 1093.4761140052065,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 1160.2124738476982,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 887.5511441632569,
+            "n_seeds": 2
+          }
+        }
+      },
+      "p90_tt_s": {
+        "mean": 2950.902914515357,
+        "lo95": 2449.1644535361224,
+        "hi95": 3452.641375494592,
+        "p05": 2627.6823857970526,
+        "p95": 3270.6081161922166,
+        "sd_between_samples": 311.3630239619945,
+        "sd_within_samples": 70.39009107820189,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 2788.190539063787,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 3118.6371857404206,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 3297.42651568371,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 2599.357417573511,
+            "n_seeds": 2
+          }
+        }
+      },
+      "fuel_ml_per_veh_km": {
+        "mean": 223.67134620944998,
+        "lo95": 155.3529432051911,
+        "hi95": 291.9897492137088,
+        "p05": 181.0367674953044,
+        "p95": 270.54409354893437,
+        "sd_between_samples": 42.526711577941256,
+        "sd_within_samples": 8.348874120051113,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 204.11482528328833,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 237.1733405279849,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 276.43304996439605,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 176.96416906213074,
+            "n_seeds": 2
+          }
+        }
+      },
+      "wave_count": {
+        "mean": 14.25,
+        "lo95": 8.795561836663111,
+        "hi95": 19.70443816333689,
+        "p05": 10.45,
+        "p95": 17.35,
+        "sd_between_samples": 2.207940216581962,
+        "sd_within_samples": 3.7080992435478315,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 17.5,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 13.0,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 10.0,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 16.5,
+            "n_seeds": 2
+          }
+        }
+      },
+      "wave_speed_kmh": {
+        "mean": 4.421543207068661,
+        "lo95": 2.4467049567389774,
+        "hi95": 6.396381457398344,
+        "p05": 2.981095676767931,
+        "p95": 5.445941600182918,
+        "sd_between_samples": 0.9417569299330859,
+        "sd_within_samples": 1.1431344298216413,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 5.476907034680581,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 2.771823469190352,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 4.166971519707545,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 5.2704708046961635,
+            "n_seeds": 2
+          }
+        }
+      },
+      "wave_amplitude_ms": {
+        "mean": 13.462472405922169,
+        "lo95": 11.510136896718402,
+        "hi95": 15.414807915125936,
+        "p05": 12.046433519308165,
+        "p95": 14.500219155692308,
+        "sd_between_samples": 1.1932328403689882,
+        "sd_within_samples": 0.40392430246548194,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 13.187677125467268,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 11.8450375888095,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 14.277685024725447,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 14.53948988468646,
+            "n_seeds": 2
+          }
+        }
+      },
+      "mean_tt_incl_waiting_s": {
+        "mean": 2173.7590358936286,
+        "lo95": 1308.251261793867,
+        "hi95": 3039.2668099933903,
+        "p05": 1565.8346643942514,
+        "p95": 2693.168840339783,
+        "sd_between_samples": 541.932679053263,
+        "sd_within_samples": 65.79594874636132,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 2028.4324304432198,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 2445.5350228486404,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 2736.8689257793967,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 1484.199764503257,
+            "n_seeds": 2
+          }
+        }
+      },
+      "p90_tt_incl_waiting_s": {
+        "mean": 4708.172378295971,
+        "lo95": 2932.4192372747293,
+        "hi95": 6483.925519317212,
+        "p05": 3409.782989687743,
+        "p95": 5684.478585920674,
+        "sd_between_samples": 1107.5100674134628,
+        "sd_within_samples": 193.9312019513524,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 4550.755881339812,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 5325.707705228593,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 5747.7910942781,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 3208.434832337378,
+            "n_seeds": 2
+          }
+        }
+      },
+      "total_delay_incl_waiting_veh_h": {
+        "mean": 17248.246970422017,
+        "lo95": 9702.394402758326,
+        "hi95": 24794.099538085706,
+        "p05": 11714.877993075275,
+        "p95": 21366.39621745846,
+        "sd_between_samples": 4724.90755987984,
+        "sd_within_samples": 571.7272161791647,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 16642.049639462013,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 19876.186773253874,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 21629.374354671036,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 10845.377114301145,
+            "n_seeds": 2
+          }
+        }
+      },
+      "insertion_delay_veh_h": {
+        "mean": 9402.81466736581,
+        "lo95": 3673.1999867438853,
+        "hi95": 15132.429347987734,
+        "p05": 5147.277966617872,
+        "p95": 12429.584343897866,
+        "sd_between_samples": 3588.9385416359946,
+        "sd_within_samples": 412.3148805742811,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 9218.446160557476,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 11342.564637339685,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 12621.411350937546,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 4428.836520628531,
+            "n_seeds": 2
+          }
+        }
+      },
+      "meter_wait_veh_h": {
+        "mean": 0.0,
+        "lo95": 0.0,
+        "hi95": 0.0,
+        "p05": 0.0,
+        "p95": 0.0,
+        "sd_between_samples": 0.0,
+        "sd_within_samples": 0.0,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 0.0,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 0.0,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 0.0,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 0.0,
+            "n_seeds": 2
+          }
+        }
+      },
+      "n_censored": {
+        "mean": 9148.875,
+        "lo95": 4928.117250711628,
+        "hi95": 13369.632749288372,
+        "p05": 6124.2,
+        "p95": 11581.175,
+        "sd_between_samples": 2637.1905031680967,
+        "sd_within_samples": 402.76621630916367,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 8579.0,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 10565.0,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 11760.5,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 5691.0,
+            "n_seeds": 2
+          }
+        }
+      },
+      "vht_veh_h": {
+        "mean": 8300.622690972195,
+        "lo95": 7061.037522701299,
+        "hi95": 9540.207859243092,
+        "p05": 7390.2342361110705,
+        "p95": 8935.392878472188,
+        "sd_between_samples": 772.8283554030849,
+        "sd_within_samples": 138.55828641666906,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 8166.88395833331,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 8828.101805555558,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 8954.326597222182,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 7253.178402777734,
+            "n_seeds": 2
+          }
+        }
+      },
+      "vmt_veh_km": {
+        "mean": 96007.59299676468,
+        "lo95": 75280.3201516302,
+        "hi95": 116734.86584189915,
+        "p05": 81831.60254812296,
+        "p95": 108100.35096846106,
+        "sd_between_samples": 12922.392039269498,
+        "sd_within_samples": 2318.819072921063,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 104378.94172638077,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 90612.29066278477,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 80282.06935141793,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 108757.07024647524,
+            "n_seeds": 2
+          }
+        }
+      },
+      "n_travel_time_veh": {
+        "mean": 10353.125,
+        "lo95": 8931.437923714526,
+        "hi95": 11774.812076285474,
+        "p05": 9328.15,
+        "p95": 11112.275,
+        "sd_between_samples": 887.5153050323507,
+        "sd_within_samples": 145.46004606076542,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 11139.5,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 10128.0,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 9187.0,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 10958.0,
+            "n_seeds": 2
+          }
+        }
+      },
+      "n_demand_veh": {
+        "mean": 31103.25,
+        "lo95": 29387.280099376752,
+        "hi95": 32819.21990062325,
+        "p05": 30190.7,
+        "p95": 32294.05,
+        "sd_between_samples": 1078.3967652646836,
+        "sd_within_samples": 0.0,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 32428.0,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 31535.0,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 30274.0,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 30176.0,
+            "n_seeds": 2
+          }
+        }
+      },
+      "n_not_inserted": {
+        "mean": 6024.125,
+        "lo95": 2071.2966506687535,
+        "hi95": 9976.953349331246,
+        "p05": 3126.25,
+        "p95": 8203.275,
+        "sd_between_samples": 2475.2092419968594,
+        "sd_within_samples": 297.7026620640131,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 5748.5,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 7326.5,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 8358.0,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 2663.5,
+            "n_seeds": 2
+          }
+        }
+      },
+      "n_tt_incl_waiting_veh": {
+        "mean": 30662.875,
+        "lo95": 28962.076229169023,
+        "hi95": 32363.673770830977,
+        "p05": 29761.4,
+        "p95": 31847.675,
+        "sd_between_samples": 1068.8415457868393,
+        "sd_within_samples": 9.467048114380743,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 31983.5,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 31078.0,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 29843.0,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 29747.0,
+            "n_seeds": 2
+          }
+        }
+      },
+      "n_tt_censored": {
+        "mean": 8708.875,
+        "lo95": 4495.541772761331,
+        "hi95": 12922.208227238669,
+        "p05": 5693.375,
+        "p95": 11146.35,
+        "sd_between_samples": 2632.5838938832194,
+        "sd_within_samples": 401.6340062793488,
+        "n_samples": 4,
+        "n_runs": 8,
+        "df": 3,
+        "per_sample": {
+          "s00": {
+            "mean": 8135.0,
+            "n_seeds": 2
+          },
+          "s01": {
+            "mean": 10108.5,
+            "n_seeds": 2
+          },
+          "s02": {
+            "mean": 11329.5,
+            "n_seeds": 2
+          },
+          "s03": {
+            "mean": 5262.5,
+            "n_seeds": 2
+          }
+        }
+      }
+    }
+  },
+  "effects": {}
+}
