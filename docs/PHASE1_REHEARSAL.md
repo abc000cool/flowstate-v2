@@ -110,5 +110,24 @@ the scenario's load-time corridor ids. Fixed the same day (the setup uses the
 compiled chain, as every other corridor lookup does), reproduced on a
 120-second slice before and after, and pinned by
 `tests/test_microsim/test_microsim_scripted_force_guard.py::test_meter_on_a_scripted_ramp_of_a_guessed_net`.
-The ALINEA halves of the uncertainty and tuning rehearsals are re-run in a
-follow-up stage.
+The ALINEA halves of the uncertainty and tuning rehearsals were re-run after
+the fix (stage 20e, `flowstate-p1b`, 04:27–05:28 UTC, about one hour, about
+$1.6, self-deleted; `artifacts/uncertainty_mndot_i94_wb_stpaul_p1b_rehearsal.json`,
+`artifacts/tune_mndot_i94_wb_stpaul_weave_slice_xlsfg_p1b_rehearsal.json`).
+No run failed. On this corridor model — which does not reproduce the corridor —
+metering every on-ramp (the weave and scripted entrances included) is worse
+for travellers in all four samples: throughput −1,193 veh/h (−39 %; sample
+spread −1,277 to −1,074), total delay including waiting +9,727 veh·h (+56 %;
++7,708 to +12,432), of which waiting to enter the road +14,442 veh·h and at the
+meters +1,237 veh·h (mainline delay falls). Zero collisions in the eight ALINEA
+runs; the baseline's two collisions recur (same seeds). A rehearsal: four
+samples × two seeds, driver ranges on the labelled fallback. On the slice,
+both ALINEA candidates lowered throughput against doing nothing, so the
+tuning rule made neither selectable and ALINEA was not evaluated — the rule
+working as written.
+
+## 4. Cost
+
+About $7 of compute in total (two n2-standard-32 machines, about 4 h 20 min
+together), against the owner's $50 limit; the bucket was deleted after
+ingest.
