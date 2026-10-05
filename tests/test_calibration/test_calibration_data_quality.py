@@ -26,6 +26,7 @@ from calibration.data_quality import (
     QualityThresholds,
     assess_quality,
     mask_grid,
+    neighbours,
     render_markdown,
 )
 from calibration.loaders.detector_csv import load_detector_csv
@@ -53,6 +54,33 @@ def clean() -> pd.DataFrame:
 @pytest.fixture(scope="module")
 def clean_lanes() -> pd.DataFrame:
     return syn.daily_frame(seed=2, per_lane=True)
+
+
+@pytest.fixture(scope="module")
+def lanes_30s() -> pd.DataFrame:
+    """Per-lane 30-second data (MnDOT's own resolution)."""
+    return syn.daily_frame(seed=2, per_lane=True, interval_s=30.0)
+
+
+def _queue_upstream(
+    frame: pd.DataFrame, *, date: str, start_h: float, end_h: float
+) -> pd.DataFrame:
+    """Station A congested (the queue's upstream part): 1,800 veh/h at 3 m/s, 36 % occupancy.
+
+    Consistent with the 6.5 m effective length (v·o/q = 3 × 0.36 / 0.5 = 6.5 m).
+    """
+    return syn.set_values(
+        frame, station="A", date=date, start_h=start_h, end_h=end_h,
+        flow_veh_h=1800.0, occupancy_pct=36.0, speed_ms=3.0,
+    )  # fmt: skip
+
+
+def _lane_day(report, station: str, lane: str, date: str):
+    return next(
+        sd
+        for sd in report.sensor_days
+        if sd.station == station and sd.lane == lane and sd.date == date
+    )
 
 
 def _checks(report, sensor: str, date: str) -> dict[str, str]:
@@ -201,13 +229,39 @@ class TestInconsistent:
         assert _checks(report, "A", D3)["zero_flow_occupied"] == "suspect"
         assert sd.stats["zero_flow_occupied_windows"] == 6
 
-    def test_a_standing_queue_is_not_flagged(self, clean: pd.DataFrame) -> None:
+    @pytest.mark.parametrize("speed", [np.nan, 1.0, 25.0])
+    def test_a_standing_queue_is_not_flagged(self, clean: pd.DataFrame, speed: float) -> None:
+        # 20 min with nothing crossing B, the loop covered, while the queue
+        # reaches A upstream; the speed field of a zero-count window is not
+        # read, whatever it holds (MnDOT reports none)
+        frame = syn.set_values(
+            clean, station="B", date=D3, start_h=17.0, end_h=17.0 + 20.0 / 60.0,
+            flow_veh_h=0.0, occupancy_pct=95.0, speed_ms=speed,
+        )  # fmt: skip
+        frame = _queue_upstream(frame, date=D3, start_h=17.0, end_h=17.0 + 20.0 / 60.0)
+        report = assess_quality(frame, stations=syn.stations_table())
+        sd = report.sensor_day("B", D3)
+        assert sd.findings == () and sd.verdict == "ok"
+        assert sd.stats["standstill_windows"] == 4
+        assert sd.stats["zero_flow_occupied_windows"] == 0
+        assert sd.stats["zero_run_windows"] == 0
+        assert report.sensor_day("A", D3).findings == ()
+
+    def test_occupancy_held_with_no_count_while_neighbours_flow_is_flagged(
+        self, clean: pd.DataFrame
+    ) -> None:
+        # 30 min of 60 % occupancy and no count at A while B downstream keeps
+        # counting A's traffic: a hanging-on loop, not a queue (and not a dead
+        # loop: the loop is occupied); the 1 m/s in the speed field is no evidence
         frame = syn.set_values(
             clean, station="A", date=D3, start_h=14.0, end_h=14.5,
             flow_veh_h=0.0, occupancy_pct=60.0, speed_ms=1.0,
         )  # fmt: skip
         report = assess_quality(frame, stations=syn.stations_table())
-        assert "zero_flow_occupied" not in _checks(report, "A", D3)
+        assert _checks(report, "A", D3) == {"zero_flow_occupied": "suspect"}
+        sd = report.sensor_day("A", D3)
+        assert sd.stats["standstill_windows"] == 0
+        assert "neighbouring lane or station" in sd.findings[0].reason
 
     def test_zero_occupancy_under_heavy_flow_masks_occupancy_only(
         self, clean: pd.DataFrame
@@ -233,7 +287,97 @@ class TestInconsistent:
         )
 
 
+class TestStandstills:
+    """Standing queues on 30-second per-lane data (docs: module "Standing queues")."""
+
+    def test_neighbours_are_the_station_lanes_and_the_adjacent_stations(
+        self, clean_lanes: pd.DataFrame
+    ) -> None:
+        near = neighbours(detector_grid(clean_lanes))
+        assert near["A:1"] == ("A:2", "A:3", "B:1", "B:2", "B:3")
+        assert set(near["B:2"]) == {"B:1", "B:3", "A:1", "A:2", "A:3", "C:1", "C:2", "C:3"}
+        assert near["R1:1"] == ()  # a ramp is no neighbour of the mainline, nor it of a ramp
+
+    def test_stop_and_go_standstills_are_not_flagged(self, lanes_30s: pd.DataFrame) -> None:
+        # one 60-s standstill every 6 min over lane 3 of B, 16:00-18:00, speed
+        # not reported (MnDOT reports none when nothing crosses the loop)
+        frame = lanes_30s
+        for i in range(20):
+            a = 16.0 + i * 0.1
+            frame = syn.set_values(
+                frame, station="B", date=D2, start_h=a, end_h=a + 1.0 / 60.0, lane="3",
+                flow_veh_h=0.0, occupancy_pct=100.0, speed_ms=np.nan,
+            )  # fmt: skip
+        report = assess_quality(frame, stations=syn.stations_table(), mass_balance=False)
+        sd = _lane_day(report, "B", "3", D2)
+        assert sd.findings == () and sd.verdict == "ok"
+        assert sd.stats["standstill_windows"] == 40
+
+    def test_a_long_standstill_seen_by_the_other_lanes_is_not_flagged(
+        self, lanes_30s: pd.DataFrame
+    ) -> None:
+        # 15 min (beyond the 5-min standstill bound) with every lane of B
+        # stopped: each lane's neighbours read the queue
+        frame = lanes_30s
+        for lane in ("1", "2", "3"):
+            frame = syn.set_values(
+                frame, station="B", date=D2, start_h=17.0, end_h=17.25, lane=lane,
+                flow_veh_h=0.0, occupancy_pct=100.0, speed_ms=np.nan,
+            )  # fmt: skip
+        report = assess_quality(frame, stations=syn.stations_table(), mass_balance=False)
+        for lane in ("1", "2", "3"):
+            sd = _lane_day(report, "B", lane, D2)
+            assert sd.findings == (), (lane, [f.reason for f in sd.findings])
+            assert sd.stats["standstill_windows"] == 30
+
+    def test_a_hanging_on_loop_is_still_caught(self, lanes_30s: pd.DataFrame) -> None:
+        # occupancy held at 100 % with no count for an hour while the other
+        # lanes and the neighbouring stations flow freely
+        frame = syn.set_values(
+            lanes_30s, station="B", date=D2, start_h=16.0, end_h=17.0, lane="3",
+            flow_veh_h=0.0, occupancy_pct=100.0, speed_ms=np.nan,
+        )  # fmt: skip
+        report = assess_quality(frame, stations=syn.stations_table(), mass_balance=False)
+        sd = _lane_day(report, "B", "3", D2)
+        assert {f.check: f.verdict for f in sd.findings} == {"zero_flow_occupied": "suspect"}
+        assert len(sd.masked["flow"]) == 120 and sd.stats["standstill_windows"] == 0
+        assert "longest 1 h from 16:00" in sd.findings[0].reason
+
+    def test_a_dead_lane_is_still_caught(self, lanes_30s: pd.DataFrame) -> None:
+        # zero count AND zero occupancy for two hours of the morning peak
+        frame = syn.set_values(
+            lanes_30s, station="B", date=D2, start_h=7.0, end_h=9.0, lane="2",
+            flow_veh_h=0.0, occupancy_pct=0.0, speed_ms=np.nan,
+        )  # fmt: skip
+        report = assess_quality(frame, stations=syn.stations_table(), mass_balance=False)
+        sd = _lane_day(report, "B", "2", D2)
+        assert {f.check: f.verdict for f in sd.findings} == {"zero_run": "suspect"}
+        assert sd.stats["zero_run_windows"] == 240
+        assert "the loop empty" in sd.findings[0].reason
+
+
 class TestZeroCounts:
+    def test_a_count_only_source_is_judged_by_its_neighbours(self, clean: pd.DataFrame) -> None:
+        # no occupancy reported: a zero-count run is a dead loop unless a
+        # neighbour reads congestion at the time
+        frame = clean.assign(occupancy_pct=np.nan)
+        frame.attrs = dict(clean.attrs)
+        frame = syn.set_values(
+            frame, station="B", date=D2, start_h=17.0, end_h=17.5,
+            flow_veh_h=0.0, speed_ms=np.nan,
+        )  # fmt: skip
+        report = assess_quality(frame, stations=syn.stations_table(), mass_balance=False)
+        sd = report.sensor_day("B", D2)
+        assert _checks(report, "B", D2) == {"zero_run": "suspect"}
+        assert "occupancy not reported" in sd.findings[0].reason
+        assert sd.stats["zero_run_windows"] == 6
+        queued = syn.set_values(
+            frame, station="A", date=D2, start_h=17.0, end_h=17.5,
+            flow_veh_h=1800.0, speed_ms=3.0,
+        )  # fmt: skip
+        report = assess_quality(queued, stations=syn.stations_table(), mass_balance=False)
+        assert "zero_run" not in _checks(report, "B", D2)
+
     def test_a_daytime_zero_run_is_flagged_and_a_night_one_is_not(
         self, clean: pd.DataFrame
     ) -> None:
@@ -415,6 +559,9 @@ class TestOutput:
         assert set(payload["method"]["checks"]) == set(CHECKS)
         assert set(payload["parameters"]["thresholds"]) == set(THRESHOLD_SOURCES)
         assert payload["method"]["imputation"].startswith("none")
+        # the count error the report assumed, at the key the uncertainty runner reads
+        assert payload["parameters"]["count_error"] == 0.05
+        assert payload["parameters"]["combination"] == "linear"
 
     def test_every_threshold_has_a_source(self) -> None:
         assert set(QualityThresholds().to_dict()) == set(THRESHOLD_SOURCES)

@@ -174,6 +174,32 @@ class TestScreening:
         )
         assert any("judged over 06:00-08:00" in n for n in mismatch.notes)
 
+    def test_a_date_the_quality_report_does_not_cover_is_refused_not_unusable(self) -> None:
+        dates = NOVEMBER[:6]
+        quality = {
+            "schema": "flowstate.data_quality/1",
+            "grid": {"start_local": START, "end_local": END, "dates": dates[:4]},
+            "sensor_days": [
+                {"station": sid, "kind": "mainline", "date": d, "verdict": "ok"}
+                for d in dates[:4]
+                for sid in STATIONS
+            ],
+        }
+        frame = _frame(dates)
+        with pytest.raises(ValueError, match=r"not covered by the data-quality report"):
+            build_day_split(frame, start=START, end=END, quality=quality)
+        split = build_day_split(
+            frame, start=START, end=END, quality=quality, allow_uncovered_dates=True
+        )
+        by = {d.date: d for d in split.days}
+        for day in dates[4:]:  # 2026-11-06 (Friday) and 2026-11-09 (Monday)
+            assert "not covered by the data-quality report" in by[day].reasons
+            assert not any("stations usable" in r for r in by[day].reasons)
+            assert math.isnan(by[day].usable_share)
+        assert by["2026-11-03"].candidate
+        assert any("2 date(s) left out" in n for n in split.notes)
+        assert "allow_uncovered_dates" in split.rules["usable_with_quality_report"]
+
     def test_volume_is_the_station_mean_study_period_volume(self) -> None:
         frame = _frame(["2026-11-03"], volume={"2026-11-03": 1200.0})
         split = build_day_split(frame, start=START, end=END)
@@ -417,6 +443,54 @@ class TestScripts:
             first = np.mean([volume[d] for d in split[f"{which}_dates"]])
             assert built["flows_veh_h"]["S1"][0] == pytest.approx(first)
             assert "context" not in built
+
+    def test_observations_for_dates_masks_with_the_quality_report(self, tmp_path: Path) -> None:
+        dates = NOVEMBER[:4]
+        volume = {d: 1000.0 * (i + 1) for i, d in enumerate(dates)}
+        corridor = _corridor_dir(tmp_path / "c", dates, volume)
+        like = Observations.from_frame(
+            _frame(dates, volume=volume), None, window_s=300.0, t0_local="06:00",
+            duration_s=3600.0, corridor="s", source={"provider": "t", "dates": dates},
+        )  # fmt: skip
+        like_path = like.to_json(tmp_path / "like.json")
+
+        def report(judged: list[str]) -> Path:
+            payload = {
+                "schema": "flowstate.data_quality/1",
+                "grid": {"interval_s": 300.0, "start_local": "05:00", "end_local": "09:00",
+                         "n_windows": 48, "dates": judged, "per_lane": False},
+                "sensor_days": [
+                    {"sensor": sid, "station": sid, "lane": None, "kind": "mainline", "date": d,
+                     "verdict": "exclude" if (sid, d) == ("S1", dates[1]) else "ok",
+                     "findings": [{"check": "stuck_flow", "verdict": "exclude"}]
+                     if (sid, d) == ("S1", dates[1]) else [],
+                     "masked": {"flow": [], "occupancy": [], "speed": []}}
+                    for d in judged for sid in STATIONS
+                ],
+            }  # fmt: skip
+            path = tmp_path / f"dq_{len(judged)}.json"
+            path.write_text(json.dumps(payload))
+            return path
+
+        subset = _load("observations_for_dates")
+        out = tmp_path / "o.json"
+        argv = ["--corridor-dir", str(corridor), "--like", str(like_path), "--out", str(out),
+                "--dates", ",".join(dates[:3])]  # fmt: skip
+        assert subset.main([*argv, "--quality", str(report(dates))]) == 0
+        built = json.loads(out.read_text())
+        record = built["source"]["quality"]
+        assert record["masked_sensor_days"] == [
+            {"sensor": "S1", "date": dates[1], "verdict": "exclude", "checks": ["stuck_flow"]}
+        ]
+        assert record["n_masked_sensor_days"] == 1 and record["n_masked_windows"] == 12
+        assert record["path"].endswith("dq_4.json") and len(record["sha256"]) == 64
+        # S1 averages the two kept dates; S2 all three
+        assert built["flows_veh_h"]["S1"][0] == pytest.approx((1000.0 + 3000.0) / 2)
+        assert built["flows_veh_h"]["S2"][0] == pytest.approx(2000.0)
+        assert subset.main(argv) == 0
+        assert json.loads(out.read_text())["source"]["quality"] is None
+        # a report that never judged a date of the subset is refused
+        assert subset.main([*argv, "--quality", str(report(dates[:2]))]) == 2
 
     def test_context_must_describe_the_same_dates(self, tmp_path: Path) -> None:
         dates = NOVEMBER[:5]

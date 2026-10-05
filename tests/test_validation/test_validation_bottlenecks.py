@@ -4,7 +4,8 @@ Station × five-minute speed matrices with a bottleneck planted by hand: the
 identification (thresholds in mph, the 5-of-7 persistence rule at its edge,
 missing windows, episodes, queue reach) and the four comparison rules
 (location with the adjacent-pair tolerance, timing, queue reach, phantom
-bottlenecks at the 30-minute / 50 % edges).
+bottlenecks at the 30-minute / 50 % edges), the one-to-one matching of
+observed and simulated bottlenecks, and phantoms counted per replicate.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from validation.bottlenecks import (
     compare_bottlenecks,
     episodes_of,
     identify_bottlenecks,
+    match_replicate,
 )
 
 FREE = 27.0  # m/s, about 60 mph
@@ -218,3 +220,61 @@ class TestCompare:
         c = compare_bottlenecks([_bn(5, 70, 60)], [], station_ids=IDS)
         assert not c.passed
         assert math.isnan(c.matches[0].share)
+
+
+class TestOneToOne:
+    """§5.4: observed and simulated bottlenecks are matched one to one."""
+
+    def test_one_simulated_bottleneck_cannot_reproduce_two_observed(self) -> None:
+        obs = [_bn(4, 70, 60), _bn(5, 70, 60)]
+        sims = [[_bn(5, 70, 60)] for _ in range(20)]
+        c = compare_bottlenecks(obs, sims, station_ids=IDS)
+        by_pair = {m.observed.pair_index: m for m in c.matches}
+        assert by_pair[5].n_reproduced == 20 and by_pair[5].n_same_pair == 20
+        assert by_pair[4].n_reproduced == 0  # the one at pair 5 is taken
+        assert not c.rule("location").passed
+
+    def test_the_matching_reproduces_as_many_as_it_can(self) -> None:
+        # exact-pair-first would give obs 1 -> sim 1 and leave obs 2 unmatched
+        obs, rep = [_bn(1, 70, 60), _bn(2, 70, 60)], [_bn(0, 70, 60), _bn(1, 70, 60)]
+        matched = match_replicate(obs, rep)
+        assert {i: b.pair_index for i, b in matched.items()} == {0: 0, 1: 1}
+        c = compare_bottlenecks(obs, [rep] * 20, station_ids=IDS)
+        assert c.rule("location").passed
+        assert [m.n_same_pair for m in c.matches] == [0, 0]
+
+    def test_same_pair_wins_over_a_longer_adjacent_one(self) -> None:
+        matched = match_replicate([_bn(3, 70, 60)], [_bn(2, 70, 90), _bn(3, 70, 40)])
+        assert matched[0].pair_index == 3
+
+
+class TestPhantomsPerReplicate:
+    """§5.4: a replicate with any phantom counts once, wherever it sits."""
+
+    def test_review_r3_a_wandering_phantom_fails(self) -> None:
+        obs = [_bn(5, 70, 60)]
+        sims = [
+            [_bn(5, 70, 60), *([_bn(0, 20, 50)] if i < 7 else [_bn(1, 20, 50)] if i < 14 else [])]
+            for i in range(20)
+        ]
+        c = compare_bottlenecks(obs, sims, station_ids=IDS)
+        assert [(p.pair_index, p.n_replicates_long) for p in c.phantoms] == [(0, 7), (1, 7)]
+        assert all(p.share_long <= PHANTOM_MAX_REPLICATE_SHARE for p in c.phantoms)
+        assert c.n_replicates_with_phantom == 14 and c.phantom_share == pytest.approx(0.7)
+        rule = c.rule("no_phantom")
+        assert not rule.passed and "14 of 20 replicates (70%; limit 50%)" in rule.detail
+        assert c.to_dict()["n_replicates_with_phantom"] == 14
+
+    def test_two_phantoms_in_one_replicate_count_once(self) -> None:
+        obs = [_bn(5, 70, 60)]
+        sims = [
+            [_bn(5, 70, 60), _bn(0, 20, 50), _bn(1, 20, 50)] if i < 10 else [] for i in range(20)
+        ]
+        c = compare_bottlenecks(obs, sims, station_ids=IDS)
+        assert c.n_replicates_with_phantom == 10 and c.rule("no_phantom").passed
+
+    def test_next_to_an_observed_bottleneck_is_no_phantom(self) -> None:
+        obs = [_bn(5, 70, 60)]
+        sims = [[_bn(5, 70, 60), _bn(4, 20, 50), _bn(6, 20, 50)] for _ in range(20)]
+        c = compare_bottlenecks(obs, sims, station_ids=IDS)
+        assert c.n_replicates_with_phantom == 0 and c.passed

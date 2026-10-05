@@ -819,8 +819,10 @@ class TestUncertaintyRange:
         assert range_on_curve([0, 1, 2], [0.0, float("nan"), 4.0], 1.0, 3.0) is None
 
     def test_the_range_is_read_off_the_curve_at_the_intervals_ends(self) -> None:
-        u = _range(_cap_comparison())
+        # a configured value inside what is read: nothing to widen
+        u = _range(_cap_comparison(), configured=1.05)
         assert u.basis == "observed_interval" and not u.clipped
+        assert not u.widened_to_configured and not u.assumed
         assert (u.low, u.high) == (pytest.approx(1.04), pytest.approx(1.07))
         assert u.observed_interval == (1930.0, 1960.0) and u.curve == "analytical"
         assert "1930–1960 veh/h/lane" in u.reason and "analytical curve" in u.reason
@@ -828,14 +830,64 @@ class TestUncertaintyRange:
         assert d["parameter_low"] == pytest.approx(1.04 * 1.4, abs=1e-4)
         assert d["parameter_high"] == pytest.approx(1.07 * 1.4, abs=1e-4)
         assert d["measured_range"] == [0.8, 1.2] and d["clipped"] is False
+        assert d["configured"] == 1.05 and d["widened_to_configured"] is False
+        assert d["assumed"] is False
         # the point estimate is inside what is read, as the verdict rule widens it
-        u2 = _range(_cap_comparison(observed=1925.0))
+        u2 = _range(_cap_comparison(observed=1925.0), configured=1.05)
         assert u2.observed_interval == (1925.0, 1960.0)
         assert u2.high == pytest.approx(1.075)
 
+    def test_the_range_is_widened_to_the_configured_value_then_clipped(self) -> None:
+        # protocol 8.5: the configured (calibrated) value x 1.0 lies below the
+        # 1.04-1.07 read off the curve; the range is widened to include it
+        u = _range(_cap_comparison())
+        assert u.configured == 1.0 and u.widened_to_configured
+        assert (u.low, u.high) == (pytest.approx(1.0), pytest.approx(1.07))
+        assert u.basis == "observed_interval" and not u.assumed
+        assert "widened to include the configured value × 1 (T 1.4)" in u.reason
+        # a configured value beyond the measured range: widened up to the clip only
+        beyond = _range(_cap_comparison(), configured=1.3)
+        assert (beyond.low, beyond.high) == (pytest.approx(1.04), pytest.approx(1.2))
+        assert beyond.widened_to_configured
+        assert "lies outside the measured range" in beyond.reason
+
+    def test_an_inconclusive_verdict_still_reads_its_interval(self) -> None:
+        # 2000 veh/h/lane is 5.3 % above 1900 but within 5 % of the interval's
+        # top (1960): inconclusive, and the interval is there to be read
+        iv = _interval(1880.0, 1960.0)
+        verdict, _ = judge_relative(1900.0, iv, 2000.0, 0.05)
+        assert verdict == "inconclusive"
+        c = _cap_comparison((1880.0, 1960.0), observed=1900.0, verdict=verdict)
+        xs = [0.70, 0.85, 1.0, 1.15, 1.30]
+        ys = [2300.0, 2150.0, 2000.0, 1860.0, 1730.0]
+        u = _range(
+            c, curve=lambda: (xs, ys), measured=(0.7, 1.3), curve_kind="simulated", configured=1.1
+        )
+        ok = _range(
+            replace(c, verdict="ok"),
+            curve=lambda: (xs, ys),
+            measured=(0.7, 1.3),
+            curve_kind="simulated",
+            configured=1.1,
+        )
+        assert u.basis == ok.basis == "observed_interval"
+        assert (u.low, u.high) == (pytest.approx(ok.low), pytest.approx(ok.high))
+        assert (u.low, u.high) == (pytest.approx(1.0428571), pytest.approx(1.1285714))
+        assert "inconclusive" in u.reason and "read all the same" in u.reason
+
+    def test_a_capacity_read_off_the_analytical_index_is_assumed(self) -> None:
+        u = _range(_cap_comparison(), curve=_never_called, analytical_index=True)
+        assert u.basis == "analytical_index_fallback" and u.assumed
+        assert (u.low, u.high) == (0.8, 1.2) and u.observed_interval is None
+        assert "analytical equilibrium index" in u.reason
+        assert u.to_dict()["assumed"] is True
+        # no interval at all: the plain fallback, whatever the curve
+        none = _range(_cap_comparison(None), curve=_never_called, analytical_index=True)
+        assert none.basis == "measured_range_fallback"
+
     def test_an_interval_beyond_the_measured_range_is_clipped(self) -> None:
         # capacity 2050–2400 needs T x 0.6–0.95; the measured range stops at 0.8
-        u = _range(_cap_comparison((2050.0, 2400.0), observed=2100.0))
+        u = _range(_cap_comparison((2050.0, 2400.0), observed=2100.0), configured=0.9)
         assert u.basis == "observed_interval" and u.clipped
         assert (u.low, u.high) == (pytest.approx(0.8), pytest.approx(0.95))
         assert "clipped at the low end" in u.reason
@@ -865,7 +917,6 @@ class TestUncertaintyRange:
             (_cap_comparison(model=None, verdict="not_available"), {}, "no capacity per lane"),
             (_cap_comparison(), {"curve": None}, "no capacity per lane value"),
             (_cap_comparison(None), {}, "no 95 % interval (fewer than 3 days"),
-            (_cap_comparison(verdict="inconclusive"), {}, "the check is inconclusive"),
         ],
     )
     def test_without_an_interval_to_read_the_measured_range_is_used(
@@ -893,41 +944,45 @@ class TestUncertaintyRange:
         assert u is not None and u.basis == "observed_interval" and u.knob == "v0_scale"
         assert u.reference_mean == pytest.approx(33.0)
         assert u.measured_range == (pytest.approx(30.0 / 33.0), pytest.approx(36.0 / 33.0))
-        # the model's free-flow speed at the ends is the interval's (it rises with v0)
+        # the model's free-flow speed at the ends is the interval's (it rises
+        # with v0), except an end widened to the configured value x 1.0
         q_ff = (report.model.free_flow_flow_veh_h_lane or 0.0) / 3600.0
         for factor, edge in ((u.low, u.observed_interval[0]), (u.high, u.observed_interval[1])):
+            if u.widened_to_configured and factor == pytest.approx(1.0):
+                continue
             d = draw_drivers(population, Adjustments(v0_scale=factor), n=N_DRAWS)
             speeds, _ = free_flow_speeds("IDM", d, desired_speeds(d, None, 1.0), q_ff)
             assert float(speeds.mean()) == pytest.approx(edge, abs=0.01)
+        assert u.low <= 1.0 <= u.high  # the configured value is inside
+        # capacity has only the analytical index here (no sidecar): assumed
         cap = report.comparison("capacity_per_lane").uncertainty_range
-        assert cap is not None and cap.basis == "observed_interval" and cap.knob == "t_scale"
-        # capacity falls with T: the low end meets the interval's high end
-        for factor, edge in (
-            (cap.low, cap.observed_interval[1]),
-            (cap.high, cap.observed_interval[0]),
-        ):
-            d = draw_drivers(population, Adjustments(t_scale=factor), n=N_DRAWS)
-            q = population_capacity("IDM", d, desired_speeds(d, None, 1.0))[0]
-            assert q == pytest.approx(edge, abs=1.0)
+        assert cap is not None and cap.knob == "t_scale"
+        assert cap.basis == "analytical_index_fallback" and cap.assumed
+        assert (cap.low, cap.high) == cap.measured_range
 
     def test_a_mismatch_range_holds_the_recommended_value(self, population) -> None:
         report = check_transfer(
             observed_side(ff_speed=30.0, capacity=1700.0), population, sidecars=[], n_draws=N_DRAWS
         )
-        for quantity in ("free_flow_speed", "capacity_per_lane"):
+        bases = {
+            "free_flow_speed": "observed_interval",
+            "capacity_per_lane": "analytical_index_fallback",
+        }
+        for quantity, basis in bases.items():
             u = report.comparison(quantity).uncertainty_range
             (knob,) = report.recommendation(quantity).knobs
-            assert u is not None and u.basis == "observed_interval" and u.knob == knob.name
+            assert u is not None and u.basis == basis and u.knob == knob.name
             assert u.low <= (knob.needed or 0.0) <= u.high  # the same curve, the point inside
 
     def test_what_the_check_cannot_read_falls_back_with_its_reason(self, population) -> None:
         far = check_transfer(
             observed_side(ff_speed=24.0, capacity=1300.0), population, sidecars=[], n_draws=N_DRAWS
         )
-        for quantity in ("free_flow_speed", "capacity_per_lane"):
-            u = far.comparison(quantity).uncertainty_range
-            assert u is not None and u.basis == "measured_range_fallback"
-            assert "no value of the" in u.reason
+        u = far.comparison("free_flow_speed").uncertainty_range
+        assert u is not None and u.basis == "measured_range_fallback"
+        assert "no value of the" in u.reason
+        u = far.comparison("capacity_per_lane").uncertainty_range
+        assert u is not None and u.basis == "analytical_index_fallback"
         bound = check_transfer(
             observed_side(ff_speed=30.0, capacity=1800.0, bottleneck=False),
             population,
@@ -962,10 +1017,13 @@ class TestUncertaintyRange:
         u = c.uncertainty_range
         assert u is not None and u.basis == "observed_interval" and u.curve == "simulated"
         lo, hi = u.observed_interval
-        # the grid is linear, 1650 at T x 1.0 rising 50 per 0.05 down to 0.8
+        # the grid is linear, 1650 at T x 1.0 rising 50 per 0.05 down to 0.8;
+        # the read range lies below the configured x 1.0, so it is widened to it
         assert u.low == pytest.approx(1.0 - (hi - 1650.0) / 1000.0, abs=1e-6)
-        assert u.high == pytest.approx(1.0 - (lo - 1650.0) / 1000.0, abs=1e-6)
-        assert "simulated grid" in u.reason
+        read_high = 1.0 - (lo - 1650.0) / 1000.0
+        assert read_high < 1.0 and u.widened_to_configured
+        assert u.high == pytest.approx(1.0, abs=1e-9)
+        assert "simulated grid" in u.reason and "widened to include" in u.reason
 
     def test_outputs_carry_the_ranges(self, population) -> None:
         report = check_transfer(
@@ -992,6 +1050,9 @@ class TestUncertaintyRange:
             "measured_range",
             "observed_interval",
             "curve",
+            "configured",
+            "widened_to_configured",
+            "assumed",
         }
         assert ff["knob"] == "v0_scale" and ff["basis"] == "observed_interval"
         assert ff["parameter_low"] == pytest.approx(ff["low"] * 33.0, abs=1e-3)

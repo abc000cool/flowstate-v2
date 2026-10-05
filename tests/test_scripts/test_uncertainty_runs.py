@@ -318,7 +318,10 @@ def _syn() -> ModuleType:
 @pytest.fixture
 def transfer_json(scenario: Path, tmp_path: Path) -> Path:
     """The transfer check of the scenario's own population on a synthetic corridor (drivers
-    slower and capacity lower than the population: both knobs read an observed interval)."""
+    slower and capacity lower than the population). Free-flow speed reads an observed
+    interval; capacity, without a simulated capacity sidecar, may come off the analytical
+    index, a basis protocol §8.5 replaces by the measured range, labelled assumed — the
+    tests follow whichever basis the check wrote."""
     from calibration.transfer_check import check_transfer, observe, population_from_scenario
 
     syn = _syn()
@@ -347,14 +350,19 @@ def test_plan_only_with_a_transfer_check(
     assert rc == 0 and not out.exists()
     doc = json.loads(transfer_json.read_text())
     ranges = {c["quantity"]: c.get("uncertainty_range") for c in doc["comparisons"]}
+    assert ranges["free_flow_speed"]["basis"] == "observed_interval"
     for kind, quantity in (("t_scale", "capacity_per_lane"), ("v0_scale", "free_flow_speed")):
         entry = ranges[quantity]
-        assert entry["basis"] == "observed_interval"
         line = next(ln for ln in text.splitlines() if ln.startswith(f"  {kind}: "))
-        # the same population: the factors carry over unchanged (to the JSON's 4 decimals)
-        assert line.startswith(f"  {kind}: {entry['low']:.4g} – {entry['high']:.4g} ")
-        assert "[observed 95 % interval (transfer check)]" in line and "(assumed)" not in line
         assert f"{transfer_json} (sha256 " in line
+        if entry["basis"] == "observed_interval":
+            # the same population: the factors carry over unchanged (JSON's 4 decimals)
+            assert line.startswith(f"  {kind}: {entry['low']:.4g} – {entry['high']:.4g} ")
+            assert "[observed 95 % interval (transfer check)]" in line and "(assumed)" not in line
+        else:
+            # any other basis (a fallback, the analytical index) is the measured range, assumed
+            assert "[§7.2 measured range; the transfer check gave no interval] (assumed)" in line
+            assert f"its range basis is {entry['basis']}" in line
     assert "driver ranges: the wide §7.2 measured range" not in text
     assert "s03: demand_scale=" in text
     # without it the wide range is said, and flagged
@@ -376,7 +384,13 @@ def test_the_design_records_the_transfer_check_only_when_given(
     stored = json.loads((tmp_path / "tc" / "DESIGN.json").read_text())
     assert stored["transfer_check"] == record
     space = {p["kind"]: p for p in stored["space"]["parameters"]}
-    assert space["t_scale"]["basis"] == "observed_interval" and not space["t_scale"]["assumed"]
+    assert space["v0_scale"]["basis"] == "observed_interval" and not space["v0_scale"]["assumed"]
+    capacity = next(c for c in json.loads(transfer_json.read_text())["comparisons"]
+                    if c["quantity"] == "capacity_per_lane")["uncertainty_range"]  # fmt: skip
+    if capacity["basis"] != "observed_interval":
+        assert (
+            space["t_scale"]["basis"] == "measured_range_fallback" and space["t_scale"]["assumed"]
+        )
     # the analysis carries the record into its provenance
     row = design["samples"][0]
     run = tmp_path / "tc" / row["sample_id"] / "baseline" / row["arms"]["baseline"]
@@ -403,3 +417,60 @@ def test_a_wrong_transfer_check_is_a_clean_refusal(
     other.write_text(json.dumps(doc))
     with pytest.raises(SystemExit, match="EIDM"):
         ur.main([*common, "--transfer-check", str(other)])
+
+
+# --- the demand range from the study's data-quality artifact (protocol §8.5) ----------------
+
+
+def _data_quality(path: Path, count_error: float = 0.08) -> Path:
+    path.write_text(
+        json.dumps(
+            {"schema": "flowstate.data_quality/1", "parameters": {"count_error": count_error}}
+        )
+    )
+    return path
+
+
+def test_the_demand_range_reads_the_data_quality_count_error(
+    scenario: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dq = _data_quality(tmp_path / "data_quality.json")
+    common = ["--scenario", str(scenario), "--plan-only", "--out", str(tmp_path / "p")]
+    assert ur.main([*common, "--data-quality", str(dq)]) == 0
+    text = capsys.readouterr().out
+    line = next(ln for ln in text.splitlines() if ln.startswith("  demand_scale: "))
+    assert line.startswith("  demand_scale: 0.92 – 1.08 [count error recorded in the data-quality")
+    assert "(assumed)" not in line and f"{dq} (sha256 " in line
+    assert "demand range: the ±5 % default" not in text
+    assert ur.main(common) == 0
+    text = capsys.readouterr().out
+    line = next(ln for ln in text.splitlines() if ln.startswith("  demand_scale: "))
+    assert "0.95 – 1.05 [assumed detector count error (no data-quality artifact given)]" in line
+    assert "(assumed)" in line and "demand range: the ±5 % default count error" in text
+
+
+def test_the_design_records_the_data_quality_artifact_only_when_given(
+    scenario: Path, tmp_path: Path
+) -> None:
+    plain, _ = _design(scenario, tmp_path / "plain")
+    assert "data_quality" not in plain
+    dq = _data_quality(tmp_path / "data_quality.json")
+    design, _ = _design(scenario, tmp_path / "dq", "--data-quality", str(dq))
+    assert design["data_quality"] == {
+        "path": str(dq),
+        "sha256": ur.file_sha256(dq),
+        "count_error": 0.08,
+    }
+    assert design["design_key"] != plain["design_key"]
+    demand = next(p for p in design["space"]["parameters"] if p["kind"] == "demand_scale")
+    assert demand["basis"] == "data_quality_count_error" and not demand["assumed"]
+
+
+def test_a_wrong_data_quality_file_is_a_clean_refusal(scenario: Path, tmp_path: Path) -> None:
+    common = ["--scenario", str(scenario), "--plan-only", "--out", str(tmp_path / "x")]
+    with pytest.raises(SystemExit, match="not found"):
+        ur.main([*common, "--data-quality", str(tmp_path / "none.json")])
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"schema": "flowstate.observations/1"}))
+    with pytest.raises(SystemExit, match="not a data-quality artifact"):
+        ur.main([*common, "--data-quality", str(bad)])

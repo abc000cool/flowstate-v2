@@ -3,11 +3,13 @@
 Synthetic run sets (the report tests' constant-speed trajectories): a
 baseline and a controlled group whose seed-paired mean travel time is shorter
 than the baseline's. The summary must open the report with the gate result;
-say "not evaluated" and recommend nothing without a gate; recommend nothing
-and withhold the strategy tables when the gate failed; and, only when it
-passed, state each strategy's effect as an interval and a recommendation line
-of the one allowed form. Every line that mentions fuel calls it a model
-estimate.
+say "not evaluated" and recommend nothing without a gate (or with a gate that
+names no configuration); recommend nothing and withhold the strategy tables
+when the gate failed; and, only when it passed, state each strategy's effect
+as an interval — the recommendation line itself needs total delay including
+waiting on every run (these run sets carry no demand ledger, so it says why
+there is none; tests/test_validation/test_validation_report_delay_recommendation.py
+has the ledgers). Every line that mentions fuel calls it a model estimate.
 """
 
 from __future__ import annotations
@@ -25,7 +27,6 @@ from validation.report import (
     CLIENT_STRATEGY_METRICS,
     CONTOURS_WITHHELD,
     FUEL_ESTIMATE_TEXT,
-    RECOMMENDATION_METRIC,
     STRATEGY_WITHHELD,
     _pct_interval,
     generate_report,
@@ -189,7 +190,7 @@ class TestClientSummary:
         for word in ("Single corridor", "Model-form uncertainty", "model estimate", "Compliance"):
             assert word in limits
 
-    def test_a_passed_gate_states_ranges_and_one_form_of_recommendation(
+    def test_a_passed_gate_states_ranges_and_without_delay_recommends_nothing(
         self, tmp_path: Path
     ) -> None:
         text = _report(tmp_path, _gate(True))
@@ -201,24 +202,28 @@ class TestClientSummary:
             + " | ".join(f"{name}, change [%]" for _, name in CLIENT_STRATEGY_METRICS)
             in summary
         )
-        lines = [ln for ln in summary.splitlines() if ln.startswith("- On this model")]
-        assert len(lines) == 1
-        match = re.fullmatch(
-            r"- On this model, strategy (.+) reduced mean travel time by (\d+\.\d)–(\d+\.\d) % "
-            r"\(95 % interval\) relative to doing nothing; this is a model prediction\.",
-            lines[0],
-        )
-        assert match is not None and match.group(1) == "follower_stopper @ 5% / 100%"
-        lo, hi = float(match.group(2)), float(match.group(3))
-        assert 0.0 < lo < hi
-        # the numbers are the seed-paired contrast as a share of the baseline mean
+        # the table states the seed-paired contrast as a share of the baseline mean
         from validation.report import _discover_runs, _fill_metrics, _group_runs
 
         groups = _group_runs(_discover_runs(tmp_path / "runs"))
         _fill_metrics(groups, None, None)
-        d, lo_pct, hi_pct = _pct_interval(groups[0], groups[1], RECOMMENDATION_METRIC[0])
+        d, lo_pct, hi_pct = _pct_interval(groups[0], groups[1], "mean_tt_s")
         assert d.method == "paired" and d.resolved and d.hi95 < 0.0
-        assert (lo, hi) == (round(-hi_pct, 1), round(-lo_pct, 1))
+        row = next(ln for ln in summary.splitlines() if ln.startswith("| follower_stopper"))
+        assert f"| {lo_pct:+.1f} to {hi_pct:+.1f} |" in row
+        # review: the arm "wins" on the travel time of the vehicles that finished, but
+        # no run carries total delay including waiting, so no recommendation is made
+        assert "On this model, strategy" not in text
+        lines = [ln for ln in summary.splitlines() if ln.startswith("- No recommendation")]
+        assert lines == [
+            "- No recommendation for follower_stopper @ 5% / 100%: 3 of 3 run(s) of the "
+            "baseline and 3 of 3 run(s) of follower_stopper @ 5% / 100% record no total delay "
+            "including waiting time (no demand ledger, journeys.parquet), so it is not shown "
+            "that the strategy does not simply hold vehicles on ramps or off the road; a "
+            "recommendation rests on that measure only (docs/FRISCO_PROTOCOL.md sections 8.2 "
+            "and 8.4)."
+        ]
+        assert "| Waiting time on ramps and before entering the network | no |" in summary
         # the strategy tables are reported as usual
         assert STRATEGY_WITHHELD not in text and "| Configuration |" in text
         assert CONTOURS_WITHHELD not in text and "speed_contour_pair" in text
@@ -233,6 +238,22 @@ class TestClientSummary:
         text = _report(tmp_path, _gate(True, config_hash="0123456789ab"))
         assert "On this model, strategy" not in text
         assert "the gate does not apply to it and no strategy recommendation is made" in text
+
+    @pytest.mark.parametrize("passed", [True, False])
+    def test_a_gate_without_a_configuration_hash_is_not_evaluated(
+        self, tmp_path: Path, passed: bool
+    ) -> None:
+        text = _report(tmp_path, _gate(passed, config_hash=""))
+        summary = _section(text, "## Client summary")
+        assert summary.split("\n")[2].startswith(
+            "Baseline gate: NOT EVALUATED. The supplied gate result names no configuration"
+        )
+        assert "Baseline gate PASSED" not in text and "Baseline gate FAILED" not in text
+        assert "This report contains no strategy recommendations: the baseline gate was not" in (
+            summary
+        )
+        assert "On this model, strategy" not in text
+        assert STRATEGY_WITHHELD not in text  # not evaluated: tables stay, as model output
 
 
 def test_template_has_the_section_and_no_numerals() -> None:

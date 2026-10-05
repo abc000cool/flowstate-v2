@@ -76,20 +76,29 @@ CLAUDE.md §3.1 calibration range), the value it would need and whether that
 fits. When nothing fits the report says so in so many words: the population
 cannot match this corridor inside its measured ranges.
 
-**Ranges for the uncertainty runs** (WP-106b, docs/FRISCO_PROTOCOL.md §8.5).
-For each knob with a model curve — the mean time headway (``t_scale``) for
-capacity per lane, the mean desired speed (``v0_scale``) for free-flow speed —
-:func:`uncertainty_range` gives the knob values whose model value stays inside
-the quantity's *observed* 95 % interval: the crossings of the interval's ends
-read off the same curve, and under the same earlier adjustments, as the
-recommendation (:func:`range_on_curve`), clipped to the knob's measured range.
-That is what is not known about *this* corridor's population; the measured
-range itself (the spread of individual drivers) is the range calibration may
-choose from. When there is no interval to read (not observed, no model value,
-only a lower bound, fewer than :data:`MIN_DAYS_FOR_INTERVAL` days, an
-``inconclusive`` verdict, or a curve that never enters the interval) the range
-falls back to the measured range, with the reason, and
-``validation.uncertainty`` labels it assumed. Recorded on the comparison as
+**Ranges for the uncertainty runs** (WP-106b, docs/FRISCO_PROTOCOL.md §8.5
+as clarified 2026-10-04). For each knob with a model curve — the mean time
+headway (``t_scale``) for capacity per lane, the mean desired speed
+(``v0_scale``) for free-flow speed — :func:`uncertainty_range` gives the knob
+values whose model value stays inside the quantity's *observed* 95 % interval:
+the crossings of the interval's ends read off the same curve, and under the
+same earlier adjustments, as the recommendation (:func:`range_on_curve`),
+**widened to include the configured (calibrated) value** — the model the
+study runs must lie inside its own uncertainty range — and then clipped to the
+knob's measured range (``widened_to_configured`` records the widening). That
+is what is not known about *this* corridor's population; the measured range
+itself (the spread of individual drivers) is the range calibration may choose
+from. An ``inconclusive`` verdict still carries an interval and it is read.
+The range falls back to the measured range, with the reason, where there is
+no interval to read (not observed, no model value, only a lower bound, fewer
+than :data:`MIN_DAYS_FOR_INTERVAL` days, or a curve that never enters the
+interval) — basis ``measured_range_fallback`` — and where capacity is read off
+the **analytical** index rather than a simulated capacity (no accepted
+sidecar): the index sits several per cent above SUMO's capacity for the same
+population, so reading the observed interval off it would place the range in
+the wrong part of the knob — basis ``analytical_index_fallback``. Every basis
+other than ``observed_interval`` is labelled assumed by
+``validation.uncertainty``. Recorded on the comparison as
 ``uncertainty_range``.
 
 **Not done here.** No simulation is run; no per-location setting is ever
@@ -2561,8 +2570,16 @@ def model_side(
 # ---------------------------------------------------------------------------
 
 
-UncertaintyBasis = Literal["observed_interval", "measured_range_fallback"]
-"""Where a knob's uncertainty range comes from (:class:`UncertaintyRange`)."""
+UncertaintyBasis = Literal[
+    "observed_interval", "measured_range_fallback", "analytical_index_fallback"
+]
+"""Where a knob's uncertainty range comes from (:class:`UncertaintyRange`);
+anything but ``observed_interval`` is the measured range, labelled assumed."""
+
+CONFIGURED_KNOB: Final[float] = 1.0
+"""The configured (calibrated) value of every knob: the factor 1.0 on the
+checked population's own mean (a calibration's adjustment is a derived
+population, checked again at its own 1.0)."""
 
 
 @dataclass(frozen=True)
@@ -2576,8 +2593,11 @@ class UncertaintyRange:
         low: Lower end, as a factor on ``reference_mean``.
         high: Upper end.
         basis: ``observed_interval`` (the knob values whose model value stays
-            inside the observed interval) or ``measured_range_fallback`` (the
-            knob's measured range, because there was no interval to read).
+            inside the observed interval, widened to the configured value),
+            ``measured_range_fallback`` (the knob's measured range, because
+            there was no interval to read) or ``analytical_index_fallback``
+            (the measured range, because capacity came from the analytical
+            index, not a simulated capacity).
         reason: Why, in words.
         clipped: An end was set by the span the curve may be read over (the
             measured range, or that ∩ a simulated grid) rather than by a
@@ -2587,6 +2607,11 @@ class UncertaintyRange:
         observed_interval: The interval read (the point estimate included,
             as :func:`judge_relative` widens it), when one was.
         curve: ``analytical``/``simulated`` when read off a curve.
+        configured: The configured (calibrated) knob value
+            (:data:`CONFIGURED_KNOB`).
+        widened_to_configured: An end was moved to include ``configured``
+            (protocol §8.5: widened to the configured value, then clipped to
+            the measured range).
     """
 
     knob: str
@@ -2600,6 +2625,13 @@ class UncertaintyRange:
     measured_range: tuple[float, float]
     observed_interval: tuple[float, float] | None = None
     curve: str | None = None
+    configured: float = CONFIGURED_KNOB
+    widened_to_configured: bool = False
+
+    @property
+    def assumed(self) -> bool:
+        """The range is the measured range, not read off an observed interval."""
+        return self.basis != "observed_interval"
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (factors and the parameter's own values)."""
@@ -2619,6 +2651,9 @@ class UncertaintyRange:
             if self.observed_interval is None
             else [_num(self.observed_interval[0]), _num(self.observed_interval[1])],
             "curve": self.curve,
+            "configured": _num(self.configured),
+            "widened_to_configured": self.widened_to_configured,
+            "assumed": self.assumed,
         }
 
 
@@ -2955,6 +2990,8 @@ def uncertainty_range(
     span_text: str = "the measured range",
     lower_bound: bool = False,
     min_days: int = MIN_DAYS_FOR_INTERVAL,
+    configured: float = CONFIGURED_KNOB,
+    analytical_index: bool = False,
 ) -> UncertaintyRange:
     """A knob's range for the uncertainty runs (module docstring, WP-106b).
 
@@ -2974,26 +3011,36 @@ def uncertainty_range(
         span_text: ``span`` in words.
         lower_bound: Only a lower bound of the quantity was observed.
         min_days: Fewest days of an interval (the rules' value).
+        configured: The configured (calibrated) knob value; the range read
+            off the curve is widened to include it, then clipped to
+            ``measured``.
+        analytical_index: The curve is the analytical capacity index, not a
+            simulated capacity: the measured range is used, basis
+            ``analytical_index_fallback`` (module docstring).
 
     Returns:
         The range: ``observed_interval`` when the curve could be read,
-        else ``measured_range_fallback`` with the reason.
+        else ``measured_range_fallback`` / ``analytical_index_fallback`` with
+        the reason.
     """
     c = comparison
     what = _KNOB_WORDS.get(knob, knob)
     quantity = _QUANTITY_WORDS.get(c.quantity, c.quantity.replace("_", " "))
 
-    def fallback(reason: str) -> UncertaintyRange:
+    def fallback(
+        reason: str, basis: UncertaintyBasis = "measured_range_fallback"
+    ) -> UncertaintyRange:
         return UncertaintyRange(
             knob=knob,
             parameter=parameter,
             reference_mean=reference_mean,
             low=measured[0],
             high=measured[1],
-            basis="measured_range_fallback",
+            basis=basis,
             reason=reason,
             clipped=False,
             measured_range=measured,
+            configured=configured,
         )
 
     if c.observed is None:
@@ -3007,11 +3054,15 @@ def uncertainty_range(
         return fallback(f"the model has no {quantity} value here ({c.explanation})")
     if c.observed_interval is None:
         return fallback(f"the {quantity} has no 95 % interval (fewer than {min_days} days of data)")
-    if c.verdict == "inconclusive":
+    if analytical_index:
         return fallback(
-            f"the check is inconclusive for {quantity} ({c.explanation}): the data do not "
-            "settle where this population sits, so its interval is not used as the "
-            "population's uncertainty"
+            f"the model's {quantity} comes from the analytical equilibrium index, not a "
+            "simulated capacity (no accepted capacity sidecar for this population): the index "
+            "is not the fleet's capacity, so the observed interval read off it would not say "
+            "which values of the "
+            f"{what} keep the simulated model inside it; run scripts/calibrate_capacity.py for "
+            "this population",
+            "analytical_index_fallback",
         )
     s_lo, s_hi = span if span is not None else measured
     if not s_lo < s_hi:
@@ -3061,18 +3112,42 @@ def uncertainty_range(
             f"; clipped at the {' and '.join(ends)} end{'s' if len(ends) > 1 else ''} to "
             f"{span_text}, which the interval reaches beyond"
         )
+    if c.verdict == "inconclusive":
+        reason += (
+            "; the verdict is inconclusive (the data cannot resolve the difference), and the "
+            "interval is read all the same"
+        )
+    # protocol §8.5: widened to include the configured value, then clipped to
+    # the measured range
+    m_lo, m_hi = measured
+    w_lo = max(min(low, configured), m_lo)
+    w_hi = min(max(high, configured), m_hi)
+    widened = w_lo < low - 1e-12 or w_hi > high + 1e-12
+    if widened:
+        reason += (
+            f"; widened to include the configured value × {configured:.4g} "
+            f"({parameter} {configured * reference_mean:.4g}), clipped to the measured range "
+            f"({m_lo:.4g}–{m_hi:.4g})"
+        )
+    if not m_lo - 1e-12 <= configured <= m_hi + 1e-12:
+        reason += (
+            f"; the configured value × {configured:.4g} lies outside the measured range "
+            f"{m_lo:.4g}–{m_hi:.4g}, so the range cannot include it"
+        )
     return UncertaintyRange(
         knob=knob,
         parameter=parameter,
         reference_mean=reference_mean,
-        low=low,
-        high=high,
+        low=w_lo,
+        high=w_hi,
         basis="observed_interval",
         reason=reason,
         clipped=bool(ends),
         measured_range=measured,
         observed_interval=(iv_lo, iv_hi),
         curve=curve_kind,
+        configured=configured,
+        widened_to_configured=widened,
     )
 
 
@@ -3535,6 +3610,7 @@ def check_transfer(
         span_text=cap_span_text,
         lower_bound=lower,
         min_days=th.min_days_for_interval,
+        analytical_index=model.capacity_basis == "analytical",
     )
     if c.verdict == "mismatch" and c.observed is not None:
         target = c.observed_interval.lo if lower and c.observed_interval else c.observed
@@ -3776,7 +3852,18 @@ def _range_sentence(u: UncertaintyRange) -> str:
                 if u.clipped
                 else ""
             )
+            + (
+                f", widened to include the configured value (× {u.configured:.3g})"
+                if u.widened_to_configured
+                else ""
+            )
             + "."
+        )
+    if u.basis == "analytical_index_fallback":
+        return (
+            f"{head}: the whole measured range, labelled assumed — capacity here comes from the "
+            "analytical index, not a simulated capacity, so the observed interval cannot be "
+            "read as values of the knob (run scripts/calibrate_capacity.py for this population)."
         )
     return (
         f"{head}: the whole measured range, the spread of individual drivers rather than what is "

@@ -48,7 +48,14 @@ import pandas as pd
 from numpy.typing import NDArray
 
 from flowstate_core.units import s_to_h
-from validation.metrics import link_hour_geh, n_window_rows, rmspe, time_ordered, time_window_rows
+from validation.metrics import (
+    crossing_speeds,
+    link_hour_geh,
+    n_window_rows,
+    rmspe,
+    time_ordered,
+    time_window_rows,
+)
 
 FloatArray = NDArray[np.float64]
 
@@ -313,11 +320,31 @@ class ObservedScores:
             in the same order (station by position, then hour). ``None`` only
             for scores read back from an ``observed_scores.json`` written
             before the table existed; a replicate scored now carries it, empty
-            when no station-hour was compared.
+            when no station-hour was compared. Its hours are aligned to
+            ``t0_local`` (the run's start, warm-up included) and kept only
+            when they lie wholly after the warm-up.
+        link_hours_anchored: The same comparison on hours anchored at the
+            study period's start — the first analysed window, the warm-up's
+            end (docs/FRISCO_PROTOCOL.md §4, C1) — so the whole study period
+            is scored (``hour_anchor_s`` is that start). Additive: it changes
+            neither ``geh_values`` nor ``link_hours``. ``None`` for scores
+            stored before it existed.
+        hour_anchor_s: Start of the first anchored hour [s] (simulation
+            time); ``None`` with ``link_hours_anchored``.
+        station_point_speeds_sim: The speed a loop detector at each scored
+            station would read, ``[window][station]`` [m/s] over ``windows``:
+            the mean speed of the vehicles crossing the station's position in
+            the window, each crossing interpolated between consecutive
+            trajectory samples (:func:`validation.metrics.crossing_speeds`;
+            a time-mean over every lane's vehicles). NaN where no vehicle
+            crossed. Docs/FRISCO_PROTOCOL.md §5's virtual detector, beside
+            the segment means; ``None`` for scores stored before it existed.
+        station_point_counts_sim: The crossings behind each point speed.
 
     Raises:
         ValueError: ``link_hours`` is given and holds a different number of
-            rows than ``geh_values`` holds values.
+            rows than ``geh_values`` holds values, or the point-speed
+            matrices disagree in shape with each other.
     """
 
     geh_values: tuple[float, ...]
@@ -330,6 +357,10 @@ class ObservedScores:
     n_stations_outside_span: int = 0
     stations_outside_span: tuple[str, ...] = ()
     link_hours: tuple[LinkHourRecord, ...] | None = None
+    link_hours_anchored: tuple[LinkHourRecord, ...] | None = None
+    hour_anchor_s: float | None = None
+    station_point_speeds_sim: tuple[tuple[float, ...], ...] | None = None
+    station_point_counts_sim: tuple[tuple[int, ...], ...] | None = None
 
     def __post_init__(self) -> None:
         if self.link_hours is not None and len(self.link_hours) != len(self.geh_values):
@@ -337,14 +368,26 @@ class ObservedScores:
                 f"link_hours holds {len(self.link_hours)} rows for "
                 f"{len(self.geh_values)} GEH values; the table labels geh_values row by row"
             )
+        speeds, counts = self.station_point_speeds_sim, self.station_point_counts_sim
+        if (speeds is None) != (counts is None) or (
+            speeds is not None
+            and counts is not None
+            and [len(r) for r in speeds] != [len(r) for r in counts]
+        ):
+            raise ValueError("station_point_speeds_sim and station_point_counts_sim disagree")
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON form (NaN written as ``null``) for a per-seed artifact."""
+        """JSON form (NaN written as ``null``) for a per-seed artifact.
+
+        The keys of the anchored hours and of the point speeds are written
+        only when the scores carry them, so scores read back from an older
+        file write the same keys they were read with.
+        """
 
         def safe(value: float) -> float | None:
             return None if not math.isfinite(value) else float(value)
 
-        return {
+        out: dict[str, Any] = {
             "geh_values": [round(g, GEH_DECIMALS) for g in self.geh_values],
             "n_link_hours": self.n_link_hours,
             "rmspe": safe(self.rmspe),
@@ -358,13 +401,26 @@ class ObservedScores:
                 None if self.link_hours is None else [r.to_dict() for r in self.link_hours]
             ),
         }
+        if self.link_hours_anchored is not None:
+            out["hour_anchor_s"] = self.hour_anchor_s
+            out["link_hours_anchored"] = [r.to_dict() for r in self.link_hours_anchored]
+        if self.station_point_speeds_sim is not None and self.station_point_counts_sim is not None:
+            out["station_point_speeds_sim"] = [
+                [safe(v) for v in row] for row in self.station_point_speeds_sim
+            ]
+            out["station_point_counts_sim"] = [
+                [int(n) for n in row] for row in self.station_point_counts_sim
+            ]
+        return out
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> ObservedScores:
         """Rebuild from :meth:`to_dict` (``--criteria-only`` rescoring).
 
         A file written before the link-hour table existed has no
-        ``link_hours`` key; it loads with ``link_hours = None``.
+        ``link_hours`` key; it loads with ``link_hours = None``. Likewise a
+        file without the anchored hours or the point speeds loads with
+        those fields ``None``.
         """
 
         def rows(key: str) -> tuple[tuple[float, ...], ...]:
@@ -374,6 +430,10 @@ class ObservedScores:
 
         value = raw.get("rmspe")
         table = raw.get("link_hours")
+        anchored = raw.get("link_hours_anchored")
+        anchor = raw.get("hour_anchor_s")
+        points = raw.get("station_point_speeds_sim")
+        counts = raw.get("station_point_counts_sim")
         return cls(
             geh_values=tuple(float(g) for g in raw.get("geh_values", ())),
             n_link_hours=int(raw["n_link_hours"]),
@@ -386,6 +446,18 @@ class ObservedScores:
             stations_outside_span=tuple(str(s) for s in raw.get("stations_outside_span", ())),
             link_hours=(
                 None if table is None else tuple(LinkHourRecord.from_dict(r) for r in table)
+            ),
+            link_hours_anchored=(
+                None if anchored is None else tuple(LinkHourRecord.from_dict(r) for r in anchored)
+            ),
+            hour_anchor_s=None if anchored is None or anchor is None else float(anchor),
+            station_point_speeds_sim=(
+                None if points is None or counts is None else rows("station_point_speeds_sim")
+            ),
+            station_point_counts_sim=(
+                None
+                if points is None or counts is None
+                else tuple(tuple(int(n) for n in row) for row in counts)
             ),
         )
 
@@ -790,16 +862,23 @@ class ObservedCorridor:
             if k * self.window_s >= warmup_s - _TOL and (k + 1) * self.window_s <= duration_s + _TOL
         ]
 
-    def hourly_link_flows(self) -> pd.DataFrame:
+    def hourly_link_flows(self, anchor_window: int = 0) -> pd.DataFrame:
         """Hour-aligned observed volumes per station, ready for GEH.
 
         GEH is only meaningful on hourly volumes, so the sub-hourly windows
         are aggregated: the vehicles counted in the ``3600 / window_s``
         windows of one hour are summed, which is the mean of those windows'
-        ``veh/h`` values. Hours are aligned to window 0 (i.e. to
-        ``t0_local``) and are reported **only when every window in the hour
-        is valid at that station** — a partly observed hour would be a
-        lower-bound volume compared as if it were a count.
+        ``veh/h`` values. Hours are aligned to window ``anchor_window`` —
+        by default window 0, i.e. ``t0_local``; the study protocol's C1
+        anchors them at the study period's start, the warm-up's end
+        (docs/FRISCO_PROTOCOL.md §4, C1; :func:`score_run_against_observed`)
+        — and are reported **only when every window in the hour is valid at
+        that station** — a partly observed hour would be a lower-bound volume
+        compared as if it were a count.
+
+        Args:
+            anchor_window: Index of the window the first hour starts at
+                (``0 <= anchor_window < n_windows``).
 
         Returns:
             Rows ``(x_ref_m, window_start_s, flow_veh_h, station)``, one per
@@ -807,7 +886,8 @@ class ObservedCorridor:
             ``window_start_s`` is simulation time.
 
         Raises:
-            ValueError: ``window_s`` does not divide one hour.
+            ValueError: ``window_s`` does not divide one hour, or the anchor
+                lies outside the grid.
         """
         per_hour = round(_S_PER_HOUR / self.window_s)
         if per_hour < 1 or abs(per_hour * self.window_s - _S_PER_HOUR) > _TOL:
@@ -815,13 +895,17 @@ class ObservedCorridor:
                 f"window_s = {self.window_s} s does not divide one hour; hourly volumes "
                 "cannot be formed"
             )
+        if not 0 <= anchor_window < max(self.n_windows, 1):
+            raise ValueError(
+                f"anchor_window {anchor_window} lies outside the {self.n_windows}-window grid"
+            )
         x_ref: list[float] = []
         starts: list[float] = []
         flows: list[float] = []
         names: list[str] = []
         for station in self.mainline_stations():
             series = self.flows_veh_h[station.id]
-            for k0 in range(0, self.n_windows - per_hour + 1, per_hour):
+            for k0 in range(anchor_window, self.n_windows - per_hour + 1, per_hour):
                 block = series[k0 : k0 + per_hour]
                 if not bool(np.all(np.isfinite(block))):
                     continue
@@ -911,6 +995,107 @@ def _simulated_speed_matrix(
     return out
 
 
+def _point_speed_matrix(
+    trajectories: pd.DataFrame,
+    *,
+    x_refs: Sequence[float],
+    windows: Sequence[int],
+    window_s: float,
+) -> tuple[FloatArray, NDArray[np.int64]]:
+    """What a loop at each cross-section reads in each window (``ObservedScores``).
+
+    The crossings of each ``x_refs`` entry (trajectory coordinates) by
+    :func:`validation.metrics.crossing_speeds`, binned by their interpolated
+    time into ``[k·window_s, (k+1)·window_s)``: the speed is the arithmetic
+    mean of the crossing speeds (the time-mean speed a loop reports, every
+    lane's vehicles together), the count the number of crossings with a
+    finite speed. NaN and zero where no vehicle crossed.
+
+    Returns:
+        ``(speeds, counts)``, each ``[window][station]`` over ``windows``.
+    """
+    speeds = np.full((len(windows), len(x_refs)), np.nan, dtype=np.float64)
+    counts = np.zeros((len(windows), len(x_refs)), dtype=np.int64)
+    if not windows or not x_refs:
+        return speeds, counts
+    first, last = int(min(windows)), int(max(windows))
+    row_of = np.full(last - first + 1, -1, dtype=np.int64)
+    for i, k_win in enumerate(windows):
+        row_of[int(k_win) - first] = i
+    for j, (times, vs) in enumerate(crossing_speeds(trajectories, x_refs)):
+        ok = np.isfinite(times) & np.isfinite(vs)
+        k = np.floor(times[ok] / window_s).astype(np.int64)
+        v = vs[ok]
+        inside = (k >= first) & (k <= last)
+        k, v = k[inside], v[inside]
+        rows = row_of[k - first]
+        keep = rows >= 0
+        rows, v = rows[keep], v[keep]
+        n = np.bincount(rows, minlength=len(windows))
+        total = np.bincount(rows, weights=v, minlength=len(windows))
+        counts[:, j] = n
+        with np.errstate(invalid="ignore", divide="ignore"):
+            speeds[:, j] = np.where(n > 0, total / np.maximum(n, 1), np.nan)
+    return speeds, counts
+
+
+def _link_hour_records(
+    trajectories: pd.DataFrame,
+    hourly: pd.DataFrame,
+    *,
+    stations: Sequence[ObservedStation],
+    inside: Sequence[int],
+    x_refs: Sequence[float],
+    x_offset_m: float,
+    duration_s: float,
+    t0_local: str,
+) -> tuple[LinkHourRecord, ...]:
+    """The labelled GEH comparison of the station-hours in ``hourly``."""
+    if hourly.empty:
+        return ()
+    shifted = hourly.assign(x_ref_m=hourly["x_ref_m"].to_numpy(dtype=np.float64) + x_offset_m)
+    compared = link_hour_geh(
+        trajectories,
+        shifted,
+        x_refs_m=x_refs,
+        window_s=_S_PER_HOUR,
+        sim_span=(0.0, duration_s),
+    )
+    # link_hour_geh reports each row's cross-section as the x_refs entry
+    # it matched, so the station is looked up by that exact value rather
+    # than by assuming its rows line up with ``hourly``'s.
+    station_at = {x_refs[j]: stations[i] for j, i in enumerate(inside)}
+    return tuple(
+        LinkHourRecord(
+            station=station_at[x].id,
+            x_ref_m=station_at[x].x_m,
+            window_start_s=float(w),
+            clock=clock_label(t0_local, float(w)),
+            obs_veh_h=float(q_obs),
+            sim_veh_h=float(q_sim),
+            geh=float(g),
+        )
+        for x, w, q_obs, q_sim, g in zip(
+            compared.x_ref_m,
+            compared.window_start_s,
+            compared.obs_veh_h,
+            compared.sim_veh_h,
+            compared.geh,
+            strict=True,
+        )
+    )
+
+
+def _hours_inside(hourly: pd.DataFrame, allowed: set[int], window_s: float) -> pd.DataFrame:
+    """The rows of ``hourly`` whose every window is among ``allowed``."""
+    if hourly.empty:
+        return hourly
+    per_hour = round(_S_PER_HOUR / window_s)
+    first = (hourly["window_start_s"].to_numpy(dtype=np.float64) / window_s).round()
+    keep = [all((int(k0) + i) in allowed for i in range(per_hour)) for k0 in first.astype(np.int64)]
+    return hourly.loc[np.asarray(keep, dtype=bool)]
+
+
 def score_run_against_observed(
     trajectories: pd.DataFrame,
     observed: ObservedCorridor,
@@ -935,6 +1120,21 @@ def score_run_against_observed(
       compared with the observed cell by
       :func:`validation.metrics.rmspe`; cells with no observation, no
       simulated sample, or a zero observed speed are skipped and counted.
+
+    Two further readings are stored beside them for the study protocol's
+    baseline gate (:mod:`validation.baseline_gate`), additively — neither
+    changes ``geh_values``, ``link_hours``, ``rmspe`` or the segment
+    matrices:
+
+    * **Anchored hours** (``link_hours_anchored``, ``hour_anchor_s``) — the
+      link-flow comparison on hours that start at the first analysed window
+      (the warm-up's end, the study period's start; docs/FRISCO_PROTOCOL.md
+      §4, C1), so a warm-up that is not a whole number of hours does not
+      leave the first part of the study period unscored.
+    * **Point speeds** (``station_point_speeds_sim`` /
+      ``station_point_counts_sim``) — per window and scored station, the mean
+      speed of the vehicles crossing the station's cross-section, as a loop
+      reads it (§5's virtual detector), and how many crossed.
 
     **Stations the run does not reach are excluded, not failed.** A station
     whose cross-section ``x_m + x_offset_m`` falls outside
@@ -989,52 +1189,44 @@ def score_run_against_observed(
     bins = [all_bins[i] for i in inside]
     x_refs = [stations[i].x_m + x_offset_m for i in inside]
 
-    per_hour = round(_S_PER_HOUR / observed.window_s)
     allowed = set(windows)
     hourly = observed.hourly_link_flows()
     if not hourly.empty:
         hourly = hourly.loc[hourly["station"].isin(kept)]
-    if not hourly.empty:
-        first = (hourly["window_start_s"].to_numpy(dtype=np.float64) / observed.window_s).round()
-        keep = [
-            all((int(k0) + i) in allowed for i in range(per_hour)) for k0 in first.astype(np.int64)
-        ]
-        hourly = hourly.loc[np.asarray(keep, dtype=bool)]
-    geh_values: tuple[float, ...] = ()
-    link_hours: tuple[LinkHourRecord, ...] = ()
-    if not hourly.empty:
-        shifted = hourly.assign(x_ref_m=hourly["x_ref_m"].to_numpy(dtype=np.float64) + x_offset_m)
-        compared = link_hour_geh(
-            trajectories,
-            shifted,
-            x_refs_m=x_refs,
-            window_s=_S_PER_HOUR,
-            sim_span=(0.0, duration_s),
+    hourly = _hours_inside(hourly, allowed, observed.window_s)
+    record_args: dict[str, Any] = {
+        "stations": stations,
+        "inside": inside,
+        "x_refs": x_refs,
+        "x_offset_m": x_offset_m,
+        "duration_s": duration_s,
+        "t0_local": observed.t0_local,
+    }
+    link_hours = _link_hour_records(trajectories, hourly, **record_args)
+    geh_values = tuple(r.geh for r in link_hours)
+
+    # The same comparison on hours anchored at the study period's start
+    # (docs/FRISCO_PROTOCOL.md §4, C1), additively: when the anchored hours
+    # are the t0-aligned ones (a warm-up that is a whole number of hours)
+    # the records are reused, else formed by the same function.
+    anchored: tuple[LinkHourRecord, ...] = ()
+    anchor_s: float | None = None
+    if windows:
+        anchor_s = windows[0] * observed.window_s
+        hourly_a = observed.hourly_link_flows(anchor_window=windows[0])
+        if not hourly_a.empty:
+            hourly_a = hourly_a.loc[hourly_a["station"].isin(kept)]
+        hourly_a = _hours_inside(hourly_a, allowed, observed.window_s)
+        same_hours = list(zip(hourly["station"], hourly["window_start_s"], strict=True)) == list(
+            zip(hourly_a["station"], hourly_a["window_start_s"], strict=True)
         )
-        geh_values = compared.geh
-        # link_hour_geh reports each row's cross-section as the x_refs entry
-        # it matched, so the station is looked up by that exact value rather
-        # than by assuming its rows line up with ``hourly``'s.
-        station_at = {x_refs[j]: stations[i] for j, i in enumerate(inside)}
-        link_hours = tuple(
-            LinkHourRecord(
-                station=station_at[x].id,
-                x_ref_m=station_at[x].x_m,
-                window_start_s=float(w),
-                clock=clock_label(observed.t0_local, float(w)),
-                obs_veh_h=float(q_obs),
-                sim_veh_h=float(q_sim),
-                geh=float(g),
-            )
-            for x, w, q_obs, q_sim, g in zip(
-                compared.x_ref_m,
-                compared.window_start_s,
-                compared.obs_veh_h,
-                compared.sim_veh_h,
-                compared.geh,
-                strict=True,
-            )
+        anchored = (
+            link_hours if same_hours else _link_hour_records(trajectories, hourly_a, **record_args)
         )
+
+    point_speeds, point_counts = _point_speed_matrix(
+        trajectories, x_refs=x_refs, windows=windows, window_s=observed.window_s
+    )
 
     sim_speeds = _simulated_speed_matrix(
         trajectories,
@@ -1064,6 +1256,10 @@ def score_run_against_observed(
         n_stations_outside_span=len(outside_ids),
         stations_outside_span=outside_ids,
         link_hours=link_hours,
+        link_hours_anchored=anchored,
+        hour_anchor_s=anchor_s,
+        station_point_speeds_sim=tuple(tuple(float(v) for v in row) for row in point_speeds),
+        station_point_counts_sim=tuple(tuple(int(n) for n in row) for row in point_counts),
     )
 
 

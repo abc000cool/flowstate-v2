@@ -301,7 +301,9 @@ def main(argv: list[str] | None = None) -> int:
         if u is not None:
             print(
                 f"uncertainty range {u.knob}: {u.low:.4g}–{u.high:.4g} ({u.basis}"
-                f"{', clipped' if u.clipped else ''})"
+                f"{', clipped' if u.clipped else ''}"
+                f"{', widened to the configured value' if u.widened_to_configured else ''}"
+                f"{', assumed' if u.assumed else ''})"
             )
     print(f"wrote {args.out / JSON_NAME} and {args.out / MARKDOWN_NAME}")
     return 0

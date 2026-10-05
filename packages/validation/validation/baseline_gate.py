@@ -7,30 +7,53 @@ is "not applicable" (§6). C2 is reported beside C1 and is not part of the
 gate. Every check is scored over at least :data:`MIN_GATE_REPLICATES` seeded
 replicates (§4), so a run set with fewer cannot pass.
 
+Three preconditions gate beside the checks:
+
+* **Replicates** — at least :data:`MIN_GATE_REPLICATES` (§4).
+* **Day sets** — the study's day split (§3.2) is supplied, its two sides are
+  disjoint and non-empty, and each day set's artifact holds exactly its side's
+  dates (``source.dates``, else ``source.subset.dates``), so the calibration
+  side can never be scored on an all-dates artifact and the validation side
+  can never be the calibration days again (:func:`artifact_dates`).
+* **Targets quality-masked** — each day set's artifact records the
+  data-quality masking of its targets (``source.quality``: every "exclude"
+  detector-day of ``calibration.data_quality`` masked out before the dates are
+  averaged, §2.2). An artifact without the record (null, or written before it
+  existed) fails: detector-days the data-quality check excludes may have
+  entered its means.
+
 What each check reads (protocol §4):
 
 * **C1 link flows** — GEH on hourly station volumes, pooled over the
   replicates, under the ``fhwa_default`` profile (:data:`LINK_FLOW_PROFILE`).
+  The hours are anchored at the study period's start, the warm-up's end
+  (``observed_scores.json`` ``link_hours_anchored``), so the whole study period
+  is scored; stored scores written before the anchored hours existed are
+  scored on their ``t0_local``-aligned hours and the result says so.
 * **C2 link flows, Texas** — the same comparisons under ``txdot_tsap_ch13``
   (:data:`TEXAS_PROFILE`); reported, never gating.
 * **C3 speeds** — RMSPE of station mean speeds at **15-minute** aggregation
   (:data:`SPEED_AGGREGATION_S`): per replicate, the five-minute simulated and
-  observed station-segment speeds are averaged over the same windows of each
-  quarter hour of the observation grid (a window enters only where both sides
-  are measured, so both block means cover the same windows), and the RMSPE is
+  observed station speeds are averaged over the same windows of each quarter
+  hour of the observation grid (a window enters only where both sides are
+  measured, so both block means cover the same windows), and the RMSPE is
   formed over the blocks; the gating value is the mean over the replicates,
   reported with its 95 % interval. 5- and 60-minute values are diagnostics,
   as is the replicate-mean field by aggregation
   (:func:`validation.report.speed_aggregation_rows`).
 * **C4 wave speed** — the simulated backward wave speed read by the profile
-  detector (``stack``, :data:`GATE_WAVE_DETECTOR`) inside the profile's band;
-  the corridor's observed speed from detector cross-correlation
-  (``calibration.waves_observed``, read from the calibration-day artifact's
-  ``context`` by :class:`validation.observed.DetectorWaveSpeed`) is printed
-  beside it. Fewer than :data:`WAVE_MIN_VALID_PAIRS` station pairs with a
-  valid cross-correlation on the calibration days make C4 "not applicable",
-  decided from the observed data alone; an artifact carrying no estimate
-  leaves the applicability undetermined and C4 must then pass.
+  detector (``stack``, :data:`GATE_WAVE_DETECTOR`) inside the profile's band,
+  with a backward front found in at least
+  :data:`WAVE_MIN_FRONT_REPLICATE_SHARE` of the replicates (a replicate
+  without one counts as a miss) and the 95 % interval of the replicates'
+  speeds reported; the corridor's observed speed from detector
+  cross-correlation (``calibration.waves_observed``, read from the
+  calibration-day artifact's ``context`` by
+  :class:`validation.observed.DetectorWaveSpeed`) is printed beside it. Fewer
+  than :data:`WAVE_MIN_VALID_PAIRS` station pairs with a valid
+  cross-correlation on the calibration days make C4 "not applicable", decided
+  from the observed data alone; an artifact carrying no estimate leaves the
+  applicability undetermined and C4 must then pass.
 * **C5 collisions** — zero SUMO collisions in every run, a run without the
   counter "not recorded" (:func:`validation.criteria.zero_collisions`).
 * **C6 bottlenecks** — :mod:`validation.bottlenecks` on the day set's
@@ -39,22 +62,30 @@ What each check reads (protocol §4):
 **Scoring a battery against another day set.** A battery scores its
 replicates against one observations artifact and stores each replicate's
 simulated side in ``observed_scores.json``: the simulated hourly volume of
-every compared station-hour (``link_hours[*].sim_veh_h``) and the simulated
-mean speed of every (window, station segment) cell (``segment_speeds_sim``).
-Those depend on the station positions and the window grid only, so
-:func:`rescore` pairs them with a second artifact on the same stations and
-grid — the calibration-day or the validation-day mean — without reading a
+every compared station-hour (``link_hours[*].sim_veh_h`` and
+``link_hours_anchored[*].sim_veh_h``), the simulated point speed of every
+(window, station) (``station_point_speeds_sim``) and the simulated mean speed
+of every (window, station segment) (``segment_speeds_sim``). Those depend on
+the station positions and the window grid only, so :func:`rescore` pairs them
+with a second artifact on the same stations and grid — the calibration-day or
+the validation-day mean, or one validation day — without reading a
 trajectory. A station-hour the second artifact observes but the first did not
 has no stored simulated volume; it is counted (``n_link_hours_unmatched``),
 never filled in.
 
-**Simulated station speeds.** The bottleneck rule and the speed criterion read
-the simulated speed of a station as the mean of the sampled vehicle speeds in
-that station's segment (the span to the midpoints with its neighbours,
-:meth:`validation.observed.ObservedCorridor.segment_bins`) during the window —
-the battery's ``segment_speeds_sim``. It is a segment-mean stand-in for a
-point loop detector, not a virtual detector at the loop's position; the
-result's notes say so.
+**Simulated station speeds.** C3 and C6 read the simulated speed of a station
+as a loop at its position reads it: the mean speed of the vehicles crossing
+the station's position in the window (``station_point_speeds_sim``,
+:func:`validation.observed.score_run_against_observed`; §5's virtual
+detector). Stored scores written before the point speeds existed carry only
+the segment mean (the sampled vehicle speeds in the span to the midpoints with
+the station's neighbours, ``segment_speeds_sim``); the gate then scores on the
+segment means and states the substitution (:data:`SEGMENT_SPEED_NOTE`).
+
+**Day by day.** §3.5 also asks for the validation days one by one, so the
+spread across days is visible: :func:`score_validation_days` scores C1, C3 and
+C6 against single-day validation artifacts; the rows are reported in the
+gate's ``per_day`` block and never gate.
 """
 
 from __future__ import annotations
@@ -120,6 +151,10 @@ SPEED_DIAGNOSTIC_AGGREGATIONS_S: Final[tuple[float, ...]] = (5.0 * _S_PER_MIN, h
 #: this many station pairs with a valid cross-correlation (§4, C4).
 WAVE_MIN_VALID_PAIRS: Final[int] = 3
 
+#: C4 needs a backward front in at least this share of the replicates; a
+#: replicate without one counts as a miss (§4, C4).
+WAVE_MIN_FRONT_REPLICATE_SHARE: Final[float] = 0.80
+
 #: The detector C4's simulated wave speed must be read with (§4, C4).
 GATE_WAVE_DETECTOR: Final[str] = STACK_DETECTOR.name
 
@@ -130,14 +165,28 @@ MIN_GATE_REPLICATES: Final[int] = MIN_REPLICATES
 CALIBRATION: Final[str] = "calibration"
 VALIDATION: Final[str] = "validation"
 
+#: Day-set label of the preconditions that look at both day sets.
+BOTH_DAY_SETS: Final[str] = "both day sets"
+
+#: Key of an observations artifact's ``source`` block that records the
+#: data-quality masking of its targets (§2.2; ``calibration.observations``).
+QUALITY_SOURCE_KEY: Final[str] = "quality"
+
 #: Checks that gate on the calibration days, on the validation days, and on
-#: the run set as a whole (§6; "replicates" is §4's precondition).
+#: the run set as a whole (§6; "replicates", "days" and "quality" are §4's,
+#: §3's and §2.2's preconditions).
 GATING_CALIBRATION: Final[tuple[str, ...]] = ("C1", "C3", "C5", "C6")
 GATING_VALIDATION: Final[tuple[str, ...]] = ("C1", "C3", "C6")
+GATING_PRECONDITIONS: Final[tuple[str, ...]] = ("replicates", "days", "quality")
+
+#: Checks scored on each single validation day (§3.5; reported, not gating).
+PER_DAY_CHECKS: Final[tuple[str, ...]] = ("C1", "C3", "C6")
 
 #: Plain names of the checks.
 CHECK_NAMES: Final[dict[str, str]] = {
     "replicates": "Replicates",
+    "days": "Day sets",
+    "quality": "Targets quality-masked",
     "C1": "Link flows",
     "C2": "Link flows, Texas criterion",
     "C3": "Speeds",
@@ -149,6 +198,8 @@ CHECK_NAMES: Final[dict[str, str]] = {
 #: How each check is labelled in every report (§0 of the protocol).
 CHECK_LABELS: Final[dict[str, str]] = {
     "replicates": "[FlowState] CLAUDE.md section 0.6; protocol section 4",
+    "days": "[FlowState] protocol section 3.2",
+    "quality": "[FlowState] protocol section 2.2",
     "C1": "[federal] FHWA TAT Vol. III 2004 (profile fhwa_default)",
     "C2": "[federal] TxDOT TSAP ch. 13 (profile txdot_tsap_ch13); reported, not gating",
     "C3": "common microsimulation practice (CLAUDE.md section 7.1), cited in the report",
@@ -168,11 +219,42 @@ _PERCENT: Final[float] = 100.0
 #: Position/time comparison tolerance.
 _TOL: Final[float] = 1e-6
 
-SIMULATED_SPEED_NOTE: Final[str] = (
-    "simulated station speed = mean of the sampled vehicle speeds in the station's "
-    "segment (to the midpoints with its neighbours) during the window "
-    "(observed_scores.json segment_speeds_sim); a segment-mean stand-in for a point loop "
-    "detector, not a virtual detector at the loop's position"
+#: Characters of a sha256 shown in a sentence.
+_SHA_SHOWN: Final[int] = 12
+
+#: Where the simulated station speed comes from (module docstring).
+SpeedSource = Literal["point", "segment"]
+
+#: Where the hours of C1 start (module docstring).
+HourAnchor = Literal["study_period_start", "t0_local"]
+
+POINT_SPEED_NOTE: Final[str] = (
+    "simulated station speed = mean speed of the vehicles crossing the station's position "
+    "in the window, each crossing interpolated between consecutive trajectory samples "
+    "(observed_scores.json station_point_speeds_sim), as a loop detector there reads it "
+    "(protocol section 5)"
+)
+
+SEGMENT_SPEED_NOTE: Final[str] = (
+    "point speeds not recorded: the stored scores predate them, so the simulated station "
+    "speed is the mean of the sampled vehicle speeds in the station's segment (to the "
+    "midpoints with its neighbours) during the window (observed_scores.json "
+    "segment_speeds_sim) — a segment-mean stand-in for the point loop detector protocol "
+    "section 5 asks for, substituted and stated"
+)
+
+#: The note of the old name (kept for importers); the segment substitution.
+SIMULATED_SPEED_NOTE: Final[str] = SEGMENT_SPEED_NOTE
+
+ANCHORED_HOURS_NOTE: Final[str] = (
+    "C1 hours anchored at the study period's start (the warm-up's end), so the whole study "
+    "period is scored (observed_scores.json link_hours_anchored; protocol section 4, C1)"
+)
+
+T0_HOURS_NOTE: Final[str] = (
+    "C1 hours aligned to t0_local (the run's start, warm-up included): the stored scores "
+    "predate hours anchored at the study period's start, so any part of the study period "
+    "before the first whole t0-aligned hour after the warm-up is not scored"
 )
 
 
@@ -193,6 +275,59 @@ def _ci_dict(values: Sequence[float]) -> dict[str, Any]:
         "n": interval.n,
         "underpowered": interval.underpowered,
     }
+
+
+def _days_text(day_set: str) -> str:
+    """``calibration days`` / ``validation days``, or a single day's label as is."""
+    return f"{day_set} days" if day_set in (CALIBRATION, VALIDATION) else day_set
+
+
+# ---------------------------------------------------------------------------
+# Dates and data-quality records of an artifact
+# ---------------------------------------------------------------------------
+
+
+def date_key(text: object) -> str | None:
+    """A date as ``YYYYMMDD`` (from ``YYYYMMDD`` or ``YYYY-MM-DD``), else None."""
+    value = str(text).strip()
+    if len(value) == 8 and value.isdigit():
+        return value
+    parts = value.split("-")
+    if len(parts) == 3 and [len(p) for p in parts] == [4, 2, 2] and all(p.isdigit() for p in parts):
+        return "".join(parts)
+    return None
+
+
+def artifact_dates(observed: ObservedCorridor) -> tuple[str, ...] | None:
+    """The dates an artifact's means were formed over, as recorded.
+
+    ``source.dates``; else ``source.subset.dates`` (the subset record
+    ``scripts/observations_for_dates.py`` writes); None when neither is a list.
+    """
+    dates = observed.source.get("dates")
+    if not isinstance(dates, list):
+        subset = observed.source.get("subset")
+        dates = subset.get("dates") if isinstance(subset, Mapping) else None
+    if not isinstance(dates, list):
+        return None
+    return tuple(str(d) for d in dates)
+
+
+def quality_record(observed: ObservedCorridor) -> dict[str, Any] | None:
+    """The artifact's data-quality masking record (``source.quality``), if usable.
+
+    Returns:
+        The record when it is a mapping naming the data-quality artifact by
+        a non-empty ``sha256``; None when the key is absent, null (targets
+        built without masking) or malformed.
+    """
+    raw = observed.source.get(QUALITY_SOURCE_KEY)
+    if not isinstance(raw, Mapping):
+        return None
+    sha = raw.get("sha256")
+    if not isinstance(sha, str) or not sha.strip():
+        return None
+    return {str(k): v for k, v in raw.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -261,15 +396,58 @@ class Rescored:
     Attributes:
         scores: The replicate scored against the day set (same layout as
             :class:`validation.observed.ObservedScores`).
-        n_unmatched: Observed station-hours with no stored simulated volume.
+        n_unmatched: Observed ``t0_local``-aligned station-hours with no
+            stored simulated volume.
         geh_available: False when the stored scores carry no link-hour table
             and the day set differs from the artifact they were scored
             against (the GEH cannot be re-formed).
+        n_unmatched_anchored: The same count for the anchored hours.
     """
 
     scores: ObservedScores
     n_unmatched: int = 0
     geh_available: bool = True
+    n_unmatched_anchored: int = 0
+
+
+def _pair_link_hours(
+    stored: Sequence[LinkHourRecord],
+    target: ObservedCorridor,
+    *,
+    anchor_window: int,
+    position: Mapping[str, float],
+    allowed: set[int],
+) -> tuple[list[LinkHourRecord], int]:
+    """Stored simulated hourly volumes paired with ``target``'s observed hours."""
+    per_hour = round(h_to_s(1.0) / target.window_s)
+    sim_by_key = {(r.station, round(r.window_start_s, 3)): r.sim_veh_h for r in stored}
+    hourly = target.hourly_link_flows(anchor_window=anchor_window)
+    records: list[LinkHourRecord] = []
+    unmatched = 0
+    for station, start, flow in zip(
+        hourly["station"], hourly["window_start_s"], hourly["flow_veh_h"], strict=True
+    ):
+        if station not in position:
+            continue
+        k0 = round(float(start) / target.window_s)
+        if not all((k0 + i) in allowed for i in range(per_hour)):
+            continue
+        sim_q = sim_by_key.get((str(station), round(float(start), 3)))
+        if sim_q is None:
+            unmatched += 1
+            continue
+        records.append(
+            LinkHourRecord(
+                station=str(station),
+                x_ref_m=float(position[station]),
+                window_start_s=float(start),
+                clock=clock_label(target.t0_local, float(start)),
+                obs_veh_h=float(flow),
+                sim_veh_h=float(sim_q),
+                geh=float(geh(float(sim_q), float(flow))),
+            )
+        )
+    return records, unmatched
 
 
 def rescore(
@@ -288,7 +466,8 @@ def rescore(
     Returns:
         The :class:`Rescored` replicate. When ``target`` carries the same
         series as ``scored_against`` the stored scores are returned as they
-        are.
+        are. The simulated point speeds and the anchored hours travel with
+        the replicate, paired with ``target`` like the rest.
 
     Raises:
         ValueError: The two artifacts are not on one station table and grid.
@@ -302,39 +481,31 @@ def rescore(
     stations = scored_stations(scored_against, scores)
     kept = [s.id for s in stations]
     allowed = set(scores.windows)
-    per_hour = round(h_to_s(1.0) / target.window_s)
+    position = {s.id: s.x_m for s in stations}
 
     records: list[LinkHourRecord] = []
     unmatched = 0
     geh_available = scores.link_hours is not None
     if scores.link_hours is not None:
-        sim_by_key = {
-            (r.station, round(r.window_start_s, 3)): r.sim_veh_h for r in scores.link_hours
-        }
-        hourly = target.hourly_link_flows()
-        position = {s.id: s.x_m for s in stations}
-        for station, start, flow in zip(
-            hourly["station"], hourly["window_start_s"], hourly["flow_veh_h"], strict=True
-        ):
-            if station not in position:
-                continue
-            k0 = round(float(start) / target.window_s)
-            if not all((k0 + i) in allowed for i in range(per_hour)):
-                continue
-            sim_q = sim_by_key.get((str(station), round(float(start), 3)))
-            if sim_q is None:
-                unmatched += 1
-                continue
-            records.append(
-                LinkHourRecord(
-                    station=str(station),
-                    x_ref_m=float(position[station]),
-                    window_start_s=float(start),
-                    clock=clock_label(target.t0_local, float(start)),
-                    obs_veh_h=float(flow),
-                    sim_veh_h=float(sim_q),
-                    geh=float(geh(float(sim_q), float(flow))),
-                )
+        records, unmatched = _pair_link_hours(
+            scores.link_hours, target, anchor_window=0, position=position, allowed=allowed
+        )
+    anchored: list[LinkHourRecord] | None = None
+    unmatched_anchored = 0
+    if scores.link_hours_anchored is not None:
+        anchored = []
+        if scores.windows:
+            anchor_s = (
+                scores.hour_anchor_s
+                if scores.hour_anchor_s is not None
+                else scores.windows[0] * target.window_s
+            )
+            anchored, unmatched_anchored = _pair_link_hours(
+                scores.link_hours_anchored,
+                target,
+                anchor_window=round(anchor_s / target.window_s),
+                position=position,
+                allowed=allowed,
             )
 
     sim = np.asarray(scores.segment_speeds_sim, dtype=np.float64)
@@ -362,12 +533,34 @@ def rescore(
         n_stations_outside_span=scores.n_stations_outside_span,
         stations_outside_span=scores.stations_outside_span,
         link_hours=tuple(records) if geh_available else None,
+        link_hours_anchored=None if anchored is None else tuple(anchored),
+        hour_anchor_s=scores.hour_anchor_s,
+        station_point_speeds_sim=scores.station_point_speeds_sim,
+        station_point_counts_sim=scores.station_point_counts_sim,
     )
-    return Rescored(scores=rescored, n_unmatched=unmatched, geh_available=geh_available)
+    return Rescored(
+        scores=rescored,
+        n_unmatched=unmatched,
+        geh_available=geh_available,
+        n_unmatched_anchored=unmatched_anchored,
+    )
+
+
+def simulated_station_speeds(scores: ObservedScores, source: SpeedSource) -> FloatArray:
+    """The replicate's simulated ``[window][station]`` speeds of one source [m/s]."""
+    if source == "point":
+        if scores.station_point_speeds_sim is None:
+            raise ValueError("these scores carry no point speeds")
+        return np.asarray(scores.station_point_speeds_sim, dtype=np.float64)
+    return np.asarray(scores.segment_speeds_sim, dtype=np.float64)
 
 
 def aggregated_rmspe(
-    scores: ObservedScores, *, window_s: float, aggregation_s: float
+    scores: ObservedScores,
+    *,
+    window_s: float,
+    aggregation_s: float,
+    source: SpeedSource = "segment",
 ) -> tuple[float, int]:
     """One replicate's speed RMSPE at a coarser aggregation (module docstring, C3).
 
@@ -376,19 +569,24 @@ def aggregated_rmspe(
     among the replicate's analysed windows are used. Within a block a cell's
     simulated and observed means are taken over the windows where both are
     measured (and the observation is not zero), so the two means cover the
-    same windows. At ``aggregation_s == window_s`` this is the stored
-    five-minute RMSPE.
+    same windows. At ``aggregation_s == window_s`` on segment speeds this is
+    the stored five-minute RMSPE.
 
     Args:
-        scores: One replicate's scores (``segment_speeds_sim`` / ``_obs``).
+        scores: One replicate's scores.
         window_s: The observations' window [s].
         aggregation_s: Block length [s]; a whole multiple of ``window_s``.
+        source: ``point`` (the loop-detector reading,
+            ``station_point_speeds_sim``) or ``segment``
+            (``segment_speeds_sim``) for the simulated side; the observed
+            side is the artifact's station speeds either way.
 
     Returns:
         ``(rmspe, n_cells)`` — NaN and zero when no block cell compares.
 
     Raises:
-        ValueError: ``aggregation_s`` is not a whole multiple of ``window_s``.
+        ValueError: ``aggregation_s`` is not a whole multiple of ``window_s``,
+            or point speeds are asked of scores without them.
     """
     ratio = aggregation_s / window_s
     k = round(ratio)
@@ -396,7 +594,7 @@ def aggregated_rmspe(
         raise ValueError(
             f"aggregation {aggregation_s:g} s is not a whole multiple of the {window_s:g} s window"
         )
-    sim = np.asarray(scores.segment_speeds_sim, dtype=np.float64)
+    sim = simulated_station_speeds(scores, source)
     obs = np.asarray(scores.segment_speeds_obs, dtype=np.float64)
     if sim.size == 0 or obs.size == 0 or sim.shape != obs.shape:
         return math.nan, 0
@@ -444,9 +642,10 @@ class DaySetScore:
     """The no-strategy run set scored against one day set's observations.
 
     Attributes:
-        day_set: ``calibration`` or ``validation``.
+        day_set: ``calibration`` or ``validation`` (or one validation day's
+            label, :func:`score_validation_days`).
         observations_path: The day set's artifact.
-        dates: Its dates (``source.dates``).
+        dates: Its dates (:func:`artifact_dates`; empty when it records none).
         n_replicates: Replicates scored.
         geh_values: Pooled GEH over the replicates; None when the GEH could
             not be formed (stored scores without a link-hour table).
@@ -463,6 +662,16 @@ class DaySetScore:
         wave_context: The artifact's detector wave-speed estimate, if any.
         excluded_detectors: ``source.excluded_detectors`` of the artifact.
         notes: Plain statements.
+        speed_source: ``point`` (loop readings at the stations) or ``segment``
+            (the substituted segment means) — what C3 and C6 read.
+        hour_anchor: ``study_period_start`` (anchored hours) or ``t0_local``
+            (the stored scores predate them) — what C1 read.
+        hour_anchor_s: Start of the first anchored hour [s], when anchored.
+        quality: The artifact's data-quality record (:func:`quality_record`),
+            None when it carries none.
+        dates_recorded: Whether the artifact records its dates at all.
+        subset_set: ``source.subset.set`` (the side the artifact was built
+            for), empty when not recorded.
     """
 
     day_set: str
@@ -480,6 +689,12 @@ class DaySetScore:
     wave_context: DetectorWaveSpeed | None
     excluded_detectors: dict[str, str] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
+    speed_source: SpeedSource = "segment"
+    hour_anchor: HourAnchor = "t0_local"
+    hour_anchor_s: float | None = None
+    quality: dict[str, Any] | None = None
+    dates_recorded: bool = True
+    subset_set: str = ""
 
     def rmspe_mean(self, aggregation_s: float = SPEED_AGGREGATION_S) -> float:
         """Mean over the replicates of the RMSPE at ``aggregation_s`` (NaN dropped)."""
@@ -495,7 +710,13 @@ class DaySetScore:
             "day_set": self.day_set,
             "observations_path": self.observations_path,
             "dates": list(self.dates),
+            "dates_recorded": self.dates_recorded,
+            "subset_set": self.subset_set,
             "n_replicates": self.n_replicates,
+            "quality": None if self.quality is None else dict(self.quality),
+            "speed_source": self.speed_source,
+            "hour_anchor": self.hour_anchor,
+            "hour_anchor_s": self.hour_anchor_s,
             "geh": {
                 "n_comparisons": None if pooled is None else len(pooled),
                 "n_unmatched_station_hours": self.n_link_hours_unmatched,
@@ -535,10 +756,27 @@ def _contiguous(windows: Sequence[int]) -> bool:
     return all(b == a + 1 for a, b in itertools.pairwise(windows))
 
 
+def _speed_source(replicates: Sequence[ObservedScores]) -> SpeedSource:
+    """``point`` when every replicate carries point speeds on its segment grid."""
+    if not replicates:
+        return "segment"
+    for r in replicates:
+        points = r.station_point_speeds_sim
+        if points is None:
+            return "segment"
+        if (
+            np.asarray(points, dtype=np.float64).shape
+            != np.asarray(r.segment_speeds_obs, dtype=np.float64).shape
+        ):
+            return "segment"
+    return "point"
+
+
 def _bottleneck_inputs(
     target: ObservedCorridor,
     scored_against: ObservedCorridor,
     replicates: Sequence[ObservedScores],
+    source: SpeedSource,
 ) -> tuple[FloatArray, list[FloatArray], list[ObservedStation], list[int]] | str:
     """Observed and per-replicate station × window speeds for C6, or why not."""
     if not replicates:
@@ -561,7 +799,7 @@ def _bottleneck_inputs(
     ids = {s.id for s in stations}
     columns = [i for i, s in enumerate(target.mainline_stations()) if s.id in ids]
     obs = target.speed_matrix()[np.ix_(windows, columns)]
-    sims = [np.asarray(r.segment_speeds_sim, dtype=np.float64) for r in replicates]
+    sims = [simulated_station_speeds(r, source) for r in replicates]
     for sim in sims:
         if sim.shape != obs.shape:
             return f"a replicate's speed matrix has shape {sim.shape}, expected {obs.shape}"
@@ -579,7 +817,7 @@ def score_day_set(
     """Score the stored replicates against one day set (C1, C2, C3, C6 inputs).
 
     Args:
-        day_set: ``calibration`` or ``validation``.
+        day_set: ``calibration`` or ``validation`` (or a day's label).
         target: The day set's observations.
         replicates: One stored :class:`ObservedScores` per replicate.
         scored_against: The artifact those scores were computed against.
@@ -597,28 +835,44 @@ def score_day_set(
     link = get_profile(LINK_FLOW_PROFILE)
     rescored = [rescore(r, scored_against=scored_against, target=target) for r in replicates]
     notes: list[str] = []
-    geh_ok = all(r.geh_available for r in rescored)
+
+    anchored = bool(rescored) and all(r.scores.link_hours_anchored is not None for r in rescored)
+    hour_anchor: HourAnchor = "study_period_start" if anchored else "t0_local"
+    anchors = {r.scores.hour_anchor_s for r in rescored if r.scores.hour_anchor_s is not None}
+    hour_anchor_s = anchors.pop() if anchored and len(anchors) == 1 else None
     pooled: tuple[float, ...] | None
-    if geh_ok:
-        pooled = tuple(g for r in rescored for g in r.scores.geh_values)
+    per_rep_values: list[tuple[float, ...]]
+    if anchored:
+        tables = [r.scores.link_hours_anchored or () for r in rescored]
+        per_rep_values = [tuple(rec.geh for rec in t) for t in tables]
+        pooled = tuple(g for values in per_rep_values for g in values)
+        unmatched = sum(r.n_unmatched_anchored for r in rescored)
+        notes.append(ANCHORED_HOURS_NOTE)
+    elif all(r.geh_available for r in rescored):
+        per_rep_values = [r.scores.geh_values for r in rescored]
+        pooled = tuple(g for values in per_rep_values for g in values)
+        unmatched = sum(r.n_unmatched for r in rescored)
+        notes.append(T0_HOURS_NOTE)
     else:
+        per_rep_values = [r.scores.geh_values for r in rescored]
         pooled = None
+        unmatched = sum(r.n_unmatched for r in rescored)
         notes.append(
             "the stored scores carry no link-hour table, so the GEH could not be re-formed "
             "against this day set"
         )
     per_rep = tuple(
-        geh_pass_fraction(r.scores.geh_values, link.geh_threshold)
-        if r.scores.geh_values
-        else math.nan
-        for r in rescored
+        geh_pass_fraction(values, link.geh_threshold) if values else math.nan
+        for values in per_rep_values
     )
-    unmatched = sum(r.n_unmatched for r in rescored)
     if unmatched:
         notes.append(
             f"{unmatched} observed station-hour(s) carry no stored simulated volume (the "
             "battery's own observations did not observe them); they are not compared"
         )
+
+    source = _speed_source([r.scores for r in rescored])
+    notes.append(POINT_SPEED_NOTE if source == "point" else SEGMENT_SPEED_NOTE)
     aggregations = sorted({SPEED_AGGREGATION_S, *SPEED_DIAGNOSTIC_AGGREGATIONS_S})
     rmspe_by: dict[float, tuple[float, ...]] = {}
     cells_by: dict[float, int] = {}
@@ -627,7 +881,9 @@ def score_day_set(
         cells = 0
         for r in rescored:
             try:
-                value, n = aggregated_rmspe(r.scores, window_s=target.window_s, aggregation_s=agg)
+                value, n = aggregated_rmspe(
+                    r.scores, window_s=target.window_s, aggregation_s=agg, source=source
+                )
             except ValueError:
                 value, n = math.nan, 0
             values.append(value)
@@ -636,7 +892,7 @@ def score_day_set(
         cells_by[agg] = cells
 
     mean_rows: tuple[dict[str, str], ...] = ()
-    sims = [np.asarray(r.scores.segment_speeds_sim, dtype=np.float64) for r in rescored]
+    sims = [simulated_station_speeds(r.scores, source) for r in rescored]
     if sims and all(s.size for s in sims) and len({s.shape for s in sims}) == 1:
         stacked = np.asarray(sims)
         counts = np.count_nonzero(np.isfinite(stacked), axis=0)
@@ -649,7 +905,7 @@ def score_day_set(
                 speed_aggregation_rows(obs.tolist(), mean_sim.tolist(), target.window_s)
             )
 
-    inputs = _bottleneck_inputs(target, scored_against, [r.scores for r in rescored])
+    inputs = _bottleneck_inputs(target, scored_against, [r.scores for r in rescored], source)
     comparison: BottleneckComparison | None = None
     note = ""
     if isinstance(inputs, str):
@@ -673,14 +929,19 @@ def score_day_set(
             for m in sim_ms
         ]
         comparison = compare_bottlenecks(
-            observed, simulated, station_ids=ids, notes=(SIMULATED_SPEED_NOTE,)
+            observed,
+            simulated,
+            station_ids=ids,
+            notes=(POINT_SPEED_NOTE if source == "point" else SEGMENT_SPEED_NOTE,),
         )
     excluded = target.source.get("excluded_detectors")
-    dates = target.source.get("dates")
+    dates = artifact_dates(target)
+    subset = target.source.get("subset")
+    subset_set = str(subset.get("set") or "") if isinstance(subset, Mapping) else ""
     return DaySetScore(
         day_set=day_set,
         observations_path=path or target.path,
-        dates=tuple(str(d) for d in dates) if isinstance(dates, list) else (),
+        dates=() if dates is None else dates,
         n_replicates=len(replicates),
         geh_values=pooled,
         geh_fraction_per_replicate=per_rep,
@@ -695,6 +956,12 @@ def score_day_set(
             {str(k): str(v) for k, v in excluded.items()} if isinstance(excluded, dict) else {}
         ),
         notes=tuple(notes),
+        speed_source=source,
+        hour_anchor=hour_anchor,
+        hour_anchor_s=hour_anchor_s,
+        quality=quality_record(target),
+        dates_recorded=dates is not None,
+        subset_set=subset_set,
     )
 
 
@@ -708,8 +975,9 @@ class CheckResult:
     """One check on one day set.
 
     Attributes:
-        check: ``C1`` … ``C6`` or ``replicates``.
-        day_set: ``calibration``, ``validation`` or ``all runs``.
+        check: ``C1`` … ``C6``, ``replicates``, ``days`` or ``quality``.
+        day_set: ``calibration``, ``validation``, ``all runs``,
+            ``both day sets`` or one validation day's label.
         status: ``pass``, ``fail``, ``not_applicable``, ``not_recorded`` or
             ``not_evaluated``.
         gating: Whether the gate depends on it.
@@ -783,6 +1051,10 @@ def _pct(fraction: float) -> str:
     return f"{_PERCENT * fraction:.1f} %"
 
 
+def _kmh(value: float) -> str:
+    return f"{value:.1f}" if math.isfinite(value) else "n/a"
+
+
 def _link_check(
     check: str, score: DaySetScore | None, day_set: str, *, gating: bool
 ) -> CheckResult:
@@ -791,13 +1063,14 @@ def _link_check(
     cmp = ">=" if profile.geh_pass_inclusive else ">"
     target = (
         f"GEH < {profile.geh_threshold:g} on {cmp} {_pct(profile.geh_pass_fraction)} of "
-        "station-hour comparisons"
+        "station-hour comparisons, hours anchored at the study period's start"
     )
     label = CHECK_LABELS[check]
+    days = _days_text(day_set)
     if score is None:
         return CheckResult(
             check, day_set, "not_evaluated", gating, None, target, None,
-            f"{CHECK_NAMES[check]}, {day_set} days: not evaluated — no {day_set}-day "
+            f"{CHECK_NAMES[check]}, {days}: not evaluated — no {day_set}-day "
             "observations were supplied.",
             label,
         )  # fmt: skip
@@ -809,7 +1082,7 @@ def _link_check(
         )
         return CheckResult(
             check, day_set, "not_evaluated", gating, None, target, None,
-            f"{CHECK_NAMES[check]}, {day_set} days: not evaluated — {why}.", label,
+            f"{CHECK_NAMES[check]}, {days}: not evaluated — {why}.", label,
         )  # fmt: skip
     values = score.geh_values
     frac = geh_pass_fraction(values, profile.geh_threshold)
@@ -820,7 +1093,7 @@ def _link_check(
     )
     interval = ci(score.geh_fraction_per_replicate)
     text = (
-        f"{CHECK_NAMES[check]}, {day_set} days: GEH < {profile.geh_threshold:g} on "
+        f"{CHECK_NAMES[check]}, {days}: GEH < {profile.geh_threshold:g} on "
         f"{_pct(frac)} of {len(values)} station-hour comparisons pooled over "
         f"{score.n_replicates} replicate(s) (per-replicate mean {_pct(interval.mean)}, "
         f"{_PERCENT * CI_LEVEL:g} % interval {_pct(interval.lo95)} to {_pct(interval.hi95)}); "
@@ -834,31 +1107,47 @@ def _link_check(
             f"; {score.n_link_hours_unmatched} observed station-hour(s) had no simulated "
             "volume to compare"
         )
+    if score.hour_anchor == "study_period_start":
+        start = "" if score.hour_anchor_s is None else f" ({score.hour_anchor_s:g} s)"
+        text += f"; hours anchored at the study period's start{start}"
+    else:
+        text += (
+            "; hours aligned to t0_local because the stored scores predate anchored hours, so "
+            "the study period before the first whole t0-aligned hour is not scored"
+        )
     return CheckResult(
         check, day_set, "pass" if passed else "fail", gating, frac, target, short, text + ".", label
     )
 
 
-def _speed_check(score: DaySetScore | None, day_set: str) -> CheckResult:
+def _speed_words(score: DaySetScore) -> str:
+    return (
+        "point speeds at the stations, as a loop reads them"
+        if score.speed_source == "point"
+        else "segment means substituted for point speeds, which the stored scores do not carry"
+    )
+
+
+def _speed_check(score: DaySetScore | None, day_set: str, *, gating: bool = True) -> CheckResult:
     """C3 on one day set."""
     rmspe_max = get_profile(LINK_FLOW_PROFILE).rmspe_max
     assert rmspe_max is not None  # fhwa_default carries the bound
     minutes = SPEED_AGGREGATION_S / _S_PER_MIN
     target = f"RMSPE <= {_pct(rmspe_max)} on station mean speeds at {minutes:g}-minute aggregation"
     label = CHECK_LABELS["C3"]
+    days = _days_text(day_set)
     if score is None:
         return CheckResult(
-            "C3", day_set, "not_evaluated", True, None, target, None,
-            f"Speeds, {day_set} days: not evaluated — no {day_set}-day observations were "
-            "supplied.",
+            "C3", day_set, "not_evaluated", gating, None, target, None,
+            f"Speeds, {days}: not evaluated — no {day_set}-day observations were supplied.",
             label,
         )  # fmt: skip
     values = score.rmspe_per_replicate.get(SPEED_AGGREGATION_S, ())
     interval = ci(values)
     if interval.n == 0:
         return CheckResult(
-            "C3", day_set, "not_evaluated", True, None, target, None,
-            f"Speeds, {day_set} days: not evaluated — no speed cell could be compared at "
+            "C3", day_set, "not_evaluated", gating, None, target, None,
+            f"Speeds, {days}: not evaluated — no speed cell could be compared at "
             f"{minutes:g}-minute aggregation.",
             label,
         )  # fmt: skip
@@ -870,10 +1159,10 @@ def _speed_check(score: DaySetScore | None, day_set: str) -> CheckResult:
         if math.isfinite(score.rmspe_mean(agg))
     )
     text = (
-        f"Speeds, {day_set} days: RMSPE of {minutes:g}-minute station mean speeds "
+        f"Speeds, {days}: RMSPE of {minutes:g}-minute station mean speeds "
         f"{_pct(value)} (mean over {interval.n} replicate(s), {_PERCENT * CI_LEVEL:g} % "
-        f"interval {_pct(interval.lo95)} to {_pct(interval.hi95)}); the target is at most "
-        f"{_pct(rmspe_max)}"
+        f"interval {_pct(interval.lo95)} to {_pct(interval.hi95)}; {_speed_words(score)}); "
+        f"the target is at most {_pct(rmspe_max)}"
     )
     short = None if passed else value - rmspe_max
     if short is not None:
@@ -881,20 +1170,29 @@ def _speed_check(score: DaySetScore | None, day_set: str) -> CheckResult:
     if diag:
         text += f" (diagnostics: {diag})"
     return CheckResult(
-        "C3", day_set, "pass" if passed else "fail", True, value, target, short, text + ".", label
+        "C3", day_set, "pass" if passed else "fail", gating, value, target, short, text + ".", label
     )
 
 
 def _wave_check(
-    calibration: DaySetScore, wave_speeds_kmh: Sequence[float], wave_detector: str
+    calibration: DaySetScore,
+    wave_speeds_kmh: Sequence[float],
+    wave_detector: str,
+    n_replicates: int = 0,
 ) -> CheckResult:
-    """C4 (calibration-day applicability; one simulated value)."""
+    """C4 (calibration-day applicability; the replicates' wave speeds).
+
+    Every replicate counts in the share of replicates with a backward front:
+    one whose reading is NaN, or that has no reading at all
+    (``n_replicates`` above ``len(wave_speeds_kmh)``), is a miss (§4, C4).
+    """
     profile = get_profile(LINK_FLOW_PROFILE)
     lo, hi = profile.wave_speed_band_kmh
     target = (
-        f"simulated backward wave speed ({GATE_WAVE_DETECTOR} detector) in {lo:g}-{hi:g} km/h, "
-        f"or not applicable when fewer than {WAVE_MIN_VALID_PAIRS} station pairs show a valid "
-        "cross-correlation on the calibration days"
+        f"simulated backward wave speed ({GATE_WAVE_DETECTOR} detector) in {lo:g}-{hi:g} km/h "
+        f"with a backward front in at least {_pct(WAVE_MIN_FRONT_REPLICATE_SHARE)} of the "
+        f"replicates, or not applicable when fewer than {WAVE_MIN_VALID_PAIRS} station pairs "
+        "show a valid cross-correlation on the calibration days"
     )
     label = CHECK_LABELS["C4"]
     context = calibration.wave_context
@@ -929,7 +1227,7 @@ def _wave_check(
             label,
         )  # fmt: skip
     finite = [float(v) for v in wave_speeds_kmh if math.isfinite(float(v))]
-    n_total = len(wave_speeds_kmh)
+    n_total = max(len(wave_speeds_kmh), n_replicates)
     if not finite:
         return CheckResult(
             "C4", "calibration", "fail", True, None, target, None,
@@ -937,13 +1235,25 @@ def _wave_check(
             f"replicate(s); the band is {lo:g}-{hi:g} km/h{observed_text}.",
             label,
         )  # fmt: skip
-    value = float(np.mean(finite))
-    passed = lo <= value <= hi
-    short = None if passed else (lo - value if value < lo else value - hi)
+    share = len(finite) / n_total
+    share_ok = share >= WAVE_MIN_FRONT_REPLICATE_SHARE - 1e-12
+    interval = ci(finite)
+    value = interval.mean
+    in_band = lo <= value <= hi
+    passed = share_ok and in_band
+    short = None if in_band else (lo - value if value < lo else value - hi)
     text = (
-        f"Wave speed: simulated backward wave speed {value:.1f} km/h (mean over the "
-        f"{len(finite)} of {n_total} replicate(s) with a backward front, "
-        f"{GATE_WAVE_DETECTOR} detector); the band is {lo:g}-{hi:g} km/h"
+        f"Wave speed: a backward front in {len(finite)} of {n_total} replicate(s) "
+        f"({_pct(share)}; at least {_pct(WAVE_MIN_FRONT_REPLICATE_SHARE)} needed, a replicate "
+        f"without a front counting as a miss)"
+    )
+    if not share_ok:
+        needed = math.ceil(WAVE_MIN_FRONT_REPLICATE_SHARE * n_total - 1e-9)
+        text += f", short by {needed - len(finite)} replicate(s)"
+    text += (
+        f"; simulated backward wave speed {value:.1f} km/h, {_PERCENT * CI_LEVEL:g} % interval "
+        f"{_kmh(interval.lo95)} to {_kmh(interval.hi95)} km/h over those replicates "
+        f"({GATE_WAVE_DETECTOR} detector); the band is {lo:g}-{hi:g} km/h"
     )
     if short is not None:
         text += f", outside it by {short:.1f} km/h"
@@ -989,46 +1299,50 @@ def _collision_check(counts: Sequence[int | None] | None) -> CheckResult:
     )  # fmt: skip
 
 
-def _bottleneck_check(score: DaySetScore | None, day_set: str) -> CheckResult:
+def _bottleneck_check(
+    score: DaySetScore | None, day_set: str, *, gating: bool = True
+) -> CheckResult:
     """C6 on one day set."""
     target = (
         f"every observed bottleneck active for {MIN_OBSERVED_ACTIVE_S / _S_PER_MIN:g} min or "
         f"more reproduced at the same or an adjacent station pair in at least "
-        f"{_pct(LOCATION_MIN_REPLICATE_SHARE)} of replicates, median activation within "
-        f"{ACTIVATION_TOLERANCE_S / _S_PER_MIN:g} min, duration and queue reach within "
-        "tolerance, and no phantom bottleneck (protocol section 5)"
+        f"{_pct(LOCATION_MIN_REPLICATE_SHARE)} of replicates (matched one to one), median "
+        f"activation within {ACTIVATION_TOLERANCE_S / _S_PER_MIN:g} min, duration and queue "
+        "reach within tolerance, and phantom bottlenecks in at most half the replicates "
+        "(protocol section 5)"
     )
     label = CHECK_LABELS["C6"]
+    days = _days_text(day_set)
     if score is None:
         return CheckResult(
-            "C6", day_set, "not_evaluated", True, None, target, None,
-            f"Bottlenecks, {day_set} days: not evaluated — no {day_set}-day observations were "
+            "C6", day_set, "not_evaluated", gating, None, target, None,
+            f"Bottlenecks, {days}: not evaluated — no {day_set}-day observations were "
             "supplied.",
             label,
         )  # fmt: skip
     comparison = score.bottlenecks
     if comparison is None:
         return CheckResult(
-            "C6", day_set, "not_evaluated", True, None, target, None,
-            f"Bottlenecks, {day_set} days: not evaluated — {score.bottleneck_note}.", label,
+            "C6", day_set, "not_evaluated", gating, None, target, None,
+            f"Bottlenecks, {days}: not evaluated — {score.bottleneck_note}.", label,
         )  # fmt: skip
     n_observed = len(comparison.observed)
     n_sig = len(comparison.matches)
     head = (
-        f"Bottlenecks, {day_set} days: {n_observed} observed bottleneck(s), {n_sig} active "
+        f"Bottlenecks, {days}: {n_observed} observed bottleneck(s), {n_sig} active "
         f"for {MIN_OBSERVED_ACTIVE_S / _S_PER_MIN:g} min or more, compared with "
-        f"{comparison.n_replicates} replicate(s)"
+        f"{comparison.n_replicates} replicate(s) ({_speed_words(score)})"
     )
     failed = comparison.failed_rules()
     n_failed = float(len(failed))
     if not failed:
         return CheckResult(
-            "C6", day_set, "pass", True, 0.0, target, None,
+            "C6", day_set, "pass", gating, 0.0, target, None,
             head + "; all four rules hold.", label,
         )  # fmt: skip
     detail = "; ".join(f"rule {r.rule} fails — {r.detail}" for r in failed)
     return CheckResult(
-        "C6", day_set, "fail", True, n_failed, target, n_failed, f"{head}; {detail}.", label
+        "C6", day_set, "fail", gating, n_failed, target, n_failed, f"{head}; {detail}.", label
     )
 
 
@@ -1049,6 +1363,153 @@ def _replicate_check(n_replicates: int) -> CheckResult:
     )  # fmt: skip
 
 
+def _date_list(dates: Sequence[str]) -> str:
+    return ", ".join(dates) if dates else "none"
+
+
+def _days_check(
+    calibration: DaySetScore, validation: DaySetScore | None, split: Mapping[str, Any] | None
+) -> CheckResult:
+    """§3.2's precondition: each day set's artifact holds exactly its side of the split."""
+    target = (
+        "a day split is supplied, its calibration and validation sides are disjoint and "
+        "non-empty, and each day set's artifact holds exactly its side's dates"
+    )
+    label = CHECK_LABELS["days"]
+
+    def fail(reason: str) -> CheckResult:
+        return CheckResult(
+            "days", BOTH_DAY_SETS, "fail", True, None, target, None,
+            f"Day sets: {reason}.", label,
+        )  # fmt: skip
+
+    if split is None:
+        return fail(
+            "no day split was supplied, so which days each artifact must hold is not known "
+            f"({PROTOCOL_DOC} section 3.2); the gate needs the study's split"
+        )
+    sides: dict[str, set[str]] = {}
+    for name in (CALIBRATION, VALIDATION):
+        raw = split.get(f"{name}_dates")
+        if not isinstance(raw, list | tuple):
+            return fail(f"the day split carries no {name}_dates list")
+        keys = [date_key(d) for d in raw]
+        bad = [str(d) for d, k in zip(raw, keys, strict=True) if k is None]
+        if bad:
+            return fail(f"the day split's {name} side holds dates that are not dates: {bad}")
+        sides[name] = {k for k in keys if k is not None}
+        if not sides[name]:
+            return fail(f"the day split lists no {name} days")
+    shared = sorted(sides[CALIBRATION] & sides[VALIDATION])
+    if shared:
+        return fail(
+            f"the day split's calibration and validation sides share {_date_list(shared)}; "
+            "a day may test the model or tune it, not both"
+        )
+    problems: list[str] = []
+    for name, score in ((CALIBRATION, calibration), (VALIDATION, validation)):
+        if score is None:
+            continue
+        if score.subset_set and score.subset_set != name:
+            problems.append(
+                f"the {name}-day artifact was built for the {score.subset_set} side "
+                "(source.subset.set)"
+            )
+        if not score.dates_recorded:
+            problems.append(f"the {name}-day artifact records no dates (source.dates)")
+            continue
+        held_keys = {date_key(d) for d in score.dates}
+        if None in held_keys:
+            problems.append(f"the {name}-day artifact records an unreadable date in {score.dates}")
+            continue
+        held = {k for k in held_keys if k is not None}
+        if held != sides[name]:
+            extra = sorted(held - sides[name])
+            missing = sorted(sides[name] - held)
+            parts = []
+            if extra:
+                parts.append(f"holds {_date_list(extra)}, not on the split's {name} side")
+            if missing:
+                parts.append(f"lacks {_date_list(missing)} of that side")
+            problems.append(f"the {name}-day artifact " + " and ".join(parts))
+    if problems:
+        return fail("; ".join(problems))
+    if validation is None:
+        return CheckResult(
+            "days", BOTH_DAY_SETS, "not_evaluated", True, None, target, None,
+            f"Day sets: the calibration-day artifact holds the split's "
+            f"{len(sides[CALIBRATION])} calibration day(s); no validation-day artifact was "
+            "supplied, so its days were not checked.",
+            label,
+        )  # fmt: skip
+    return CheckResult(
+        "days", BOTH_DAY_SETS, "pass", True, None, target, None,
+        f"Day sets: the calibration-day artifact holds exactly the split's "
+        f"{len(sides[CALIBRATION])} calibration day(s) and the validation-day artifact its "
+        f"{len(sides[VALIDATION])} validation day(s), none shared.",
+        label,
+    )  # fmt: skip
+
+
+def _quality_text(record: Mapping[str, Any]) -> str:
+    path = str(record.get("path") or "an unnamed artifact")
+    sha = str(record.get("sha256") or "")[:_SHA_SHOWN]
+    n_days = record.get("n_masked_sensor_days")
+    n_windows = record.get("n_masked_windows")
+    masked = record.get("masked_sensor_days")
+    n_excluded = (
+        sum(1 for d in masked if isinstance(d, Mapping) and d.get("verdict") == "exclude")
+        if isinstance(masked, list)
+        else None
+    )
+    # n_masked_sensor_days counts suspect days that set windows aside as well as excluded days
+    days_text = f"{n_days} masked detector-day(s)" if n_days is not None else "detector-days"
+    if n_excluded is not None:
+        days_text += f" ({n_excluded} excluded whole)"
+    windows_text = f", {n_windows} reading(s) set aside" if n_windows is not None else ""
+    return f"{path} (sha256 {sha}): {days_text}{windows_text}"
+
+
+def _quality_check(calibration: DaySetScore, validation: DaySetScore | None) -> CheckResult:
+    """§2.2's precondition: each day set's targets record their data-quality masking."""
+    target = (
+        "each day set's observed targets were built with the data-quality check's verdicts "
+        "masked out (source.quality recorded)"
+    )
+    label = CHECK_LABELS["quality"]
+    unmasked = [
+        name
+        for name, score in ((CALIBRATION, calibration), (VALIDATION, validation))
+        if score is not None and score.quality is None
+    ]
+    if unmasked:
+        which = " and ".join(f"{n}-day" for n in unmasked)
+        return CheckResult(
+            "quality", BOTH_DAY_SETS, "fail", True, None, target, None,
+            f"Targets quality-masked: the {which} targets carry no data-quality record "
+            "(source.quality is absent or null), so detector-days the data-quality check "
+            f"excludes may have been averaged into them ({PROTOCOL_DOC} section 2.2); rebuild "
+            "them with the study's data-quality artifact.",
+            label,
+        )  # fmt: skip
+    assert calibration.quality is not None
+    parts = [f"calibration days: {_quality_text(calibration.quality)}"]
+    if validation is None:
+        return CheckResult(
+            "quality", BOTH_DAY_SETS, "not_evaluated", True, None, target, None,
+            f"Targets quality-masked: {parts[0]}; no validation-day artifact was supplied.",
+            label,
+        )  # fmt: skip
+    assert validation.quality is not None
+    parts.append(f"validation days: {_quality_text(validation.quality)}")
+    text = "Targets quality-masked: " + "; ".join(parts)
+    if calibration.quality.get("sha256") != validation.quality.get("sha256"):
+        text += "; the two day sets were masked with different data-quality artifacts"
+    return CheckResult(
+        "quality", BOTH_DAY_SETS, "pass", True, None, target, None, text + ".", label
+    )
+
+
 @dataclass(frozen=True)
 class GateResult:
     """The baseline gate (module docstring).
@@ -1067,6 +1528,8 @@ class GateResult:
         excluded_detectors: Detector → reason, from the observations.
         notes: Plain statements.
         schema: :data:`GATE_SCHEMA`.
+        per_day: The validation days one by one (:func:`score_validation_days`;
+            reported, never gating), None when not scored.
     """
 
     passed: bool
@@ -1080,6 +1543,7 @@ class GateResult:
     excluded_detectors: dict[str, str] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
     schema: str = GATE_SCHEMA
+    per_day: dict[str, Any] | None = None
 
     @property
     def strategy_results_allowed(self) -> bool:
@@ -1117,7 +1581,11 @@ class GateResult:
                 "Baseline gate PASSED: the no-strategy model reproduced the corridor on every "
                 f"gating check ({PROTOCOL_DOC} section 6); strategy results may be reported."
             )
-        failing = ", ".join(f"{c.check} {c.name.lower()} ({c.day_set})" for c in self.unsatisfied())
+        failing = ", ".join(
+            (f"{c.check} {c.name.lower()}" if c.check.startswith("C") else c.name)
+            + f" ({c.day_set})"
+            for c in self.unsatisfied()
+        )
         return (
             f"Baseline gate FAILED ({PROTOCOL_DOC} section 6): {failing}. No strategy "
             "recommendation may be made from this model."
@@ -1140,6 +1608,7 @@ class GateResult:
             "split": None if self.split is None else dict(self.split),
             "excluded_detectors": dict(self.excluded_detectors),
             "day_sets": {k: v for k, v in self.day_sets.items()},
+            "per_day": None if self.per_day is None else dict(self.per_day),
             "thresholds": gate_thresholds(),
             "notes": list(self.notes),
         }
@@ -1155,13 +1624,14 @@ class GateResult:
         if schema != GATE_SCHEMA:
             raise ValueError(f"expected schema {GATE_SCHEMA!r}, got {schema!r}")
         split = raw.get("split")
+        per_day = raw.get("per_day")
         return cls(
             passed=bool(raw["passed"]),
             checks=tuple(CheckResult.from_dict(c) for c in raw.get("checks", ())),
             reasons=tuple(str(r) for r in raw.get("reasons", ())),
             day_sets=dict(raw.get("day_sets") or {}),
             n_replicates=int(raw.get("n_replicates", 0)),
-            config_hash=str(raw.get("config_hash", "")),
+            config_hash=str(raw.get("config_hash") or ""),
             scenario=str(raw.get("scenario", "")),
             split=None if split is None else dict(split),
             excluded_detectors={
@@ -1169,6 +1639,7 @@ class GateResult:
             },
             notes=tuple(str(n) for n in raw.get("notes", ())),
             schema=schema,
+            per_day=dict(per_day) if isinstance(per_day, Mapping) else None,
         )
 
     def to_json(self, path: str | Path) -> Path:
@@ -1201,18 +1672,25 @@ def gate_thresholds() -> dict[str, Any]:
     texas = get_profile(TEXAS_PROFILE)
     return {
         "link_flow_profile": f"{LINK_FLOW_PROFILE} (section 4, C1): GEH < "
-        f"{link.geh_threshold:g} on >= {link.geh_pass_fraction:g} of station-hours",
+        f"{link.geh_threshold:g} on >= {link.geh_pass_fraction:g} of station-hours, hours "
+        "anchored at the study period's start",
         "texas_profile": f"{TEXAS_PROFILE} (section 4, C2, not gating): GEH < "
         f"{texas.geh_threshold:g} on every station-hour",
         "speed_aggregation_s": SPEED_AGGREGATION_S,
         "speed_rmspe_max": link.rmspe_max,
         "speed_diagnostic_aggregations_s": list(SPEED_DIAGNOSTIC_AGGREGATIONS_S),
+        "simulated_station_speed": "point speeds (section 5), segment means only when the "
+        "stored scores carry no point speeds, stated",
         "wave_band_kmh": list(link.wave_speed_band_kmh),
         "wave_detector": GATE_WAVE_DETECTOR,
         "wave_min_valid_pairs": WAVE_MIN_VALID_PAIRS,
+        "wave_min_front_replicate_share": WAVE_MIN_FRONT_REPLICATE_SHARE,
         "min_replicates": MIN_GATE_REPLICATES,
+        "gating_preconditions": list(GATING_PRECONDITIONS),
         "gating_calibration": list(GATING_CALIBRATION),
         "gating_validation": list(GATING_VALIDATION),
+        "per_day_checks": list(PER_DAY_CHECKS),
+        "per_day": "validation days one by one (section 3.5); reported, not gating",
         "c4": "passes or is not applicable (section 6)",
     }
 
@@ -1227,6 +1705,7 @@ def evaluate_gate(
     config_hash: str = "",
     scenario: str = "",
     split: Mapping[str, Any] | None = None,
+    per_day: Mapping[str, Any] | None = None,
 ) -> GateResult:
     """Evaluate the baseline gate from the two day sets' scores.
 
@@ -1241,19 +1720,25 @@ def evaluate_gate(
             or None when none were supplied.
         config_hash: The configuration's hash (provenance).
         scenario: Its scenario (provenance).
-        split: The day split's summary (:meth:`calibration.day_split.DaySplit.summary`).
+        split: The day split's summary (:meth:`calibration.day_split.DaySplit.summary`);
+            without one the day-set precondition fails.
+        per_day: The validation days one by one (:func:`score_validation_days`).
 
     Returns:
         The :class:`GateResult`.
     """
     n_rep = calibration.n_replicates
-    checks: list[CheckResult] = [_replicate_check(n_rep)]
+    checks: list[CheckResult] = [
+        _replicate_check(n_rep),
+        _days_check(calibration, validation, split),
+        _quality_check(calibration, validation),
+    ]
     for day_set, score in ((CALIBRATION, calibration), (VALIDATION, validation)):
         checks.append(_link_check("C1", score, day_set, gating=True))
         checks.append(_link_check("C2", score, day_set, gating=False))
         checks.append(_speed_check(score, day_set))
         checks.append(_bottleneck_check(score, day_set))
-    checks.append(_wave_check(calibration, wave_speeds_kmh, wave_detector))
+    checks.append(_wave_check(calibration, wave_speeds_kmh, wave_detector, n_rep))
     checks.append(_collision_check(collision_counts))
     reasons = tuple(c.plain for c in checks if c.gating and not c.satisfied)
     passed = not reasons
@@ -1261,7 +1746,10 @@ def evaluate_gate(
     if validation is not None:
         for k, v in validation.excluded_detectors.items():
             excluded.setdefault(k, v)
-    notes = [SIMULATED_SPEED_NOTE]
+    notes = [
+        POINT_SPEED_NOTE if calibration.speed_source == "point" else SEGMENT_SPEED_NOTE,
+        ANCHORED_HOURS_NOTE if calibration.hour_anchor == "study_period_start" else T0_HOURS_NOTE,
+    ]
     if validation is None:
         notes.append("no validation-day observations were supplied; the gate cannot pass")
     split_dict = None if split is None else dict(split)
@@ -1284,7 +1772,92 @@ def evaluate_gate(
         split=split_dict,
         excluded_detectors=excluded,
         notes=tuple(notes),
+        per_day=None if per_day is None else dict(per_day),
     )
+
+
+def score_validation_days(
+    replicates: Sequence[ObservedScores],
+    *,
+    scored_against: ObservedCorridor,
+    days: Sequence[tuple[str, ObservedCorridor]],
+    split: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The validation days one by one (§3.5; reported, never gating).
+
+    Each artifact must hold exactly one date, on the split's validation side;
+    one that does not is listed with the reason and not scored. C1, C3 and
+    C6 are scored against each day as against a day set
+    (:func:`score_day_set`) and kept as non-gating :class:`CheckResult` rows.
+
+    Args:
+        replicates: One stored :class:`ObservedScores` per replicate.
+        scored_against: The artifact those scores were computed against.
+        days: ``(path, artifact)`` of each single-day validation artifact.
+        split: The study's day split (its validation side).
+
+    Returns:
+        ``{"note", "checks", "rows", "refused", "missing_dates"}``: one row
+        per scored day in date order (``date``, ``path``, ``checks``), the
+        refused artifacts with their reason, and the validation dates of the
+        split without an artifact.
+    """
+    side_raw = (split or {}).get("validation_dates") or []
+    side = {k for k in (date_key(d) for d in side_raw) if k is not None}
+    rows: list[dict[str, Any]] = []
+    refused: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for path, artifact in days:
+        dates = artifact_dates(artifact)
+        key = date_key(dates[0]) if dates is not None and len(dates) == 1 else None
+        if dates is None or key is None:
+            refused.append(
+                {"path": path, "reason": f"holds {list(dates or [])}, not exactly one date"}
+            )
+            continue
+        if split is not None and key not in side:
+            refused.append(
+                {"path": path, "reason": f"{dates[0]} is not on the split's validation side"}
+            )
+            continue
+        if key in seen:
+            refused.append({"path": path, "reason": f"{dates[0]} is given twice"})
+            continue
+        label = f"validation day {dates[0]}"
+        try:
+            score = score_day_set(
+                label, artifact, replicates, scored_against=scored_against, path=path
+            )
+        except ValueError as exc:
+            refused.append({"path": path, "reason": str(exc)})
+            continue
+        seen.add(key)
+        checks = [
+            _link_check("C1", score, label, gating=False),
+            _speed_check(score, label, gating=False),
+            _bottleneck_check(score, label, gating=False),
+        ]
+        quality = score.quality
+        rows.append(
+            {
+                "date": dates[0],
+                "date_key": key,
+                "path": path,
+                "quality_masked": quality is not None,
+                "checks": [c.to_dict() for c in checks],
+            }
+        )
+    rows.sort(key=lambda r: str(r["date_key"]))
+    return {
+        "note": (
+            f"validation days one by one ({PROTOCOL_DOC} section 3.5): reported so the spread "
+            "across days is visible; not part of the gate"
+        ),
+        "checks": list(PER_DAY_CHECKS),
+        "rows": rows,
+        "refused": refused,
+        "missing_dates": sorted(side - seen),
+    }
 
 
 def gate_from_replicates(
@@ -1301,6 +1874,7 @@ def gate_from_replicates(
     config_hash: str = "",
     scenario: str = "",
     split: Mapping[str, Any] | None = None,
+    validation_days: Sequence[tuple[str, ObservedCorridor]] | None = None,
 ) -> GateResult:
     """Score both day sets from the stored replicates and evaluate the gate.
 
@@ -1316,7 +1890,10 @@ def gate_from_replicates(
         validation_path: Provenance.
         config_hash: Provenance.
         scenario: Provenance.
-        split: Day split summary.
+        split: Day split summary (required for the gate to pass).
+        validation_days: Single-day validation artifacts ``(path, artifact)``
+            for the per-day table (:func:`score_validation_days`); None
+            scores none.
 
     Returns:
         The :class:`GateResult`.
@@ -1331,6 +1908,13 @@ def gate_from_replicates(
             VALIDATION, validation, replicates, scored_against=scored_against, path=validation_path
         )
     )
+    per_day = (
+        None
+        if validation_days is None
+        else score_validation_days(
+            replicates, scored_against=scored_against, days=validation_days, split=split
+        )
+    )
     return evaluate_gate(
         cal,
         val,
@@ -1340,6 +1924,7 @@ def gate_from_replicates(
         config_hash=config_hash,
         scenario=scenario,
         split=split,
+        per_day=per_day,
     )
 
 
@@ -1359,6 +1944,42 @@ _STATUS_TEXT: Final[dict[str, str]] = {
 def status_text(status: str) -> str:
     """Upper-case status for tables."""
     return _STATUS_TEXT.get(status, status.upper())
+
+
+def _per_day_lines(per_day: Mapping[str, Any]) -> list[str]:
+    """The per-day section of the markdown page."""
+    lines = ["", "## Validation days one by one (reported, not gating)", ""]
+    lines.append(str(per_day.get("note", "")) + ".")
+    rows = per_day.get("rows") or []
+    if rows:
+        names = [CHECK_NAMES.get(c, c) for c in per_day.get("checks", PER_DAY_CHECKS)]
+        lines += [
+            "",
+            "| Day | " + " | ".join(names) + " | Targets quality-masked |",
+            "|---|" + "---|" * (len(names) + 1),
+        ]
+        for row in rows:
+            cells = []
+            for c in row.get("checks", ()):
+                value = c.get("value")
+                shown = "" if value is None else f" ({value:.4g})"
+                cells.append(f"{status_text(str(c.get('status')))}{shown}")
+            lines.append(
+                f"| {row.get('date')} | "
+                + " | ".join(cells)
+                + f" | {'yes' if row.get('quality_masked') else 'no'} |"
+            )
+        lines.append("")
+        for row in rows:
+            lines += [f"- {c.get('plain')}" for c in row.get("checks", ())]
+    else:
+        lines += ["", "No single validation day was scored."]
+    for item in per_day.get("refused") or []:
+        lines.append(f"- Not scored: {item.get('path')} — {item.get('reason')}.")
+    missing = per_day.get("missing_dates") or []
+    if missing:
+        lines.append(f"- Validation days without a single-day artifact: {', '.join(missing)}.")
+    return lines
 
 
 def render_markdown(gate: GateResult, *, title: str = "Baseline gate") -> str:
@@ -1424,6 +2045,8 @@ def render_markdown(gate: GateResult, *, title: str = "Baseline gate") -> str:
             f"- rule {r['rule']}: {'holds' if r['passed'] else 'FAILS'} — {r['detail']}"
             for r in bn.get("rules", ())
         ]
+    if gate.per_day is not None:
+        lines += _per_day_lines(gate.per_day)
     if gate.split:
         s = gate.split
         lines += [

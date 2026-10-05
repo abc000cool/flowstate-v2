@@ -107,8 +107,10 @@ def _cfg(population: Path, *, heavy: bool = False) -> ScenarioConfig:
 def test_constants_agree_with_the_calibration_package() -> None:
     from calibration import transfer_check
     from calibration.conservation import DEFAULT_COUNT_ERROR
+    from calibration.data_quality import QUALITY_SCHEMA
 
     assert unc.COUNT_ERROR == DEFAULT_COUNT_ERROR
+    assert unc.DATA_QUALITY_SCHEMA == QUALITY_SCHEMA
     assert unc.MEASURED_RANGE_SIGMAS == transfer_check.MEASURED_RANGE_SIGMAS
     assert unc.HEAVY_SHARE_ASSUMED_HALF_WIDTH == transfer_check.HEAVY_SHARE_TOLERANCE
     assert unc.HEAVY_FRACTION_BOUNDS == transfer_check.HEAVY_SHARE_RANGE
@@ -214,8 +216,9 @@ def test_default_space_of_an_artifact_population(population: Path) -> None:
     space = default_space(_cfg(population))
     assert [p.kind for p in space.parameters] == ["demand_scale", "t_scale", "v0_scale"]
     d, t, v = space.parameters
-    assert (d.low, d.high, d.assumed, d.basis) == (0.95, 1.05, False, "count_error")
-    assert "DEFAULT_COUNT_ERROR" in d.source
+    # no data-quality artifact: the ±5 % default, labelled assumed (protocol §8.5)
+    assert (d.low, d.high, d.assumed, d.basis) == (0.95, 1.05, True, "count_error")
+    assert "DEFAULT_COUNT_ERROR" in d.source and d.source.startswith("assumed")
     # T 1.3 ± 0.5 within 0.8–2.2 → 0.8–1.8; v0 32 ± 5 within 25–38 → 27–37
     assert t.low == pytest.approx(0.8 / 1.3) and t.high == pytest.approx(1.8 / 1.3)
     assert v.low == pytest.approx(27.0 / 32.0) and v.high == pytest.approx(37.0 / 32.0)
@@ -711,15 +714,55 @@ def test_a_transfer_fallback_is_the_measured_range_flagged_assumed(population: P
 
 
 def test_a_transfer_range_is_cut_to_the_measured_range(population: Path) -> None:
-    partly = _transfer(population, t=("observed_interval", 0.6, 1.0))
-    t = default_space(_cfg(population), kinds=["t_scale"], transfer=partly).parameters[0]
-    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.0 / 1.3))
+    partly = _transfer(population, t=("observed_interval", 0.9, 1.6))
+    wide = dict(partly)
+    wide["comparisons"][2]["uncertainty_range"].update(parameter_low=0.6, parameter_high=1.6)
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=wide).parameters[0]
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.6 / 1.3))
     assert not t.assumed and "cut to this population's measured range" in t.source
-    assert "the configured mean lies outside this range" in t.source
+    assert "widened" not in t.source  # the configured 1.3 lies inside 0.6-1.6
+
+
+def test_a_transfer_range_is_widened_to_include_the_configured_mean(population: Path) -> None:
+    # §8.5: the observed-interval range, widened to the configured (calibrated) mean 1.3 s,
+    # then clipped to the measured 0.8-1.8 s
+    below = _transfer(population, t=("observed_interval", 0.6, 1.0))
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=below).parameters[0]
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.0))
+    assert not t.assumed and t.basis == "observed_interval"
+    assert "widened to include the configured mean 1.3 s" in t.source
+    assert "cut to this population's measured range" in t.source
+    assert "the configured mean lies outside this range" not in t.source
+    above = _transfer(population, t=("observed_interval", 1.5, 1.7))
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=above).parameters[0]
+    assert (t.low, t.high) == (pytest.approx(1.0), pytest.approx(1.7 / 1.3))
+    assert "cut to" not in t.source
+
+
+def test_any_basis_but_an_observed_interval_is_the_measured_range_assumed(
+    population: Path,
+) -> None:
+    transfer = _transfer(population)
+    entry = transfer["comparisons"][2]["uncertainty_range"]
+    entry.update(
+        basis="analytical_index_fallback",
+        reason="the model's capacity per lane comes from the analytical equilibrium index",
+    )
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert t.assumed and t.basis == "measured_range_fallback"
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.8 / 1.3))
+    assert "its range basis is analytical_index_fallback, not an observed interval" in t.source
+    entry["basis"] = ""
+    with pytest.raises(ValueError, match="with a stated basis"):
+        default_space(_cfg(population), kinds=["t_scale"], transfer=transfer)
+
+
+def test_an_interval_below_the_measured_range_is_widened_into_it(population: Path) -> None:
+    # before §8.5's widening this range (0.5-0.7 s, all below the measured 0.8 s) was empty
     outside = _transfer(population, t=("observed_interval", 0.5, 0.7))
     t = default_space(_cfg(population), kinds=["t_scale"], transfer=outside).parameters[0]
-    assert t.assumed and t.basis == "measured_range_fallback"
-    assert "lies outside this population's measured range" in t.source
+    assert not t.assumed and t.basis == "observed_interval"
+    assert (t.low, t.high) == (pytest.approx(0.8 / 1.3), pytest.approx(1.0))
 
 
 def test_a_derived_population_carries_the_range_over_in_absolute_units(
@@ -813,7 +856,7 @@ def test_the_report_says_which_basis_each_range_has(population: Path) -> None:
     assert "| Parameter | Range | Base value | Basis | Assumed? | Source |" in md
     assert "| observed 95 % interval (transfer check) | no |" in md
     assert "| §7.2 measured range; the transfer check gave no interval | assumed |" in md
-    assert "| assumed detector count error | no |" in md
+    assert "| assumed detector count error (no data-quality artifact given) | assumed |" in md
     assert "- Driver ranges from the observed 95 % intervals (v0_scale)" in md
     assert "- Driver ranges flagged assumed (t_scale)" in md
     wide = default_space(_cfg(population))
@@ -821,3 +864,99 @@ def test_the_report_says_which_basis_each_range_has(population: Path) -> None:
     assert "§7.2 measured range; no transfer check given" in md
     assert "- Driver ranges flagged assumed (t_scale, v0_scale)" in md
     assert "Driver ranges from the observed" not in md
+
+
+# --- review round B: paired seeds, the denominator, the count error, the headline -------------
+
+
+def test_review_min_seeds_counts_the_seeds_paired_with_the_baseline() -> None:
+    """A strategy arm run on one seed per sample is a rehearsal, whatever the baseline ran."""
+    recs: list[RunRecord] = []
+    sids = [f"s{i:02d}" for i in range(10)]
+    for i, sid in enumerate(sids):
+        for seed in range(5):
+            recs.append(RunRecord("baseline", sid, 100 * i + seed, {"mean_tt_s": 300.0 + seed}, 0))
+        recs.append(RunRecord("fs", sid, 100 * i, {"mean_tt_s": 290.0}, 0))  # one seed only
+    res = aggregate(recs, sample_ids=sids)
+    assert res.min_seeds_per_sample == 1 and not res.meets_protocol_minimum
+    assert res.protocol_verdict(res.effects["fs"]["mean_tt_s"]) == "rehearsal"
+    # an arm's seed without a baseline run on it is not paired either
+    unpaired = [r for r in recs if not (r.arm == "baseline" and r.seed % 100 == 0)]
+    for i, sid in enumerate(sids):
+        unpaired += [RunRecord("fs", sid, 100 * i + k, {"mean_tt_s": 290.0}, 0) for k in (1, 2, 3)]
+    res = aggregate(unpaired, sample_ids=sids)
+    assert res.min_seeds_per_sample == 3  # fs ran 4 seeds a sample, 3 of them paired
+    full = list(recs) + [
+        RunRecord("fs", sid, 100 * i + k, {"mean_tt_s": 290.0}, 0)
+        for i, sid in enumerate(sids)
+        for k in (1, 2, 3, 4)
+    ]
+    assert aggregate(full, sample_ids=sids).meets_protocol_minimum
+
+
+def test_the_robustness_denominator_is_every_sample_of_the_design() -> None:
+    """Fails if the denominator becomes the samples that have an estimate (§8.5)."""
+    sids = [f"s{i:02d}" for i in range(10)]
+    recs: list[RunRecord] = []
+    for i, sid in enumerate(sids):
+        for seed in range(5):
+            recs.append(RunRecord("baseline", sid, 100 * i + seed, {"mean_tt_s": 300.0}, 0))
+            if i < 8:  # the arm has no estimate in s08 and s09
+                recs.append(RunRecord("vsl", sid, 100 * i + seed, {"mean_tt_s": 290.0}, 0))
+    e = aggregate(recs, sample_ids=sids).effects["vsl"]["mean_tt_s"]
+    assert e.effect.n_samples == 8  # an estimate in 8 samples, all of one sign
+    assert (e.n_same_sign, e.n_samples_design) == (8, 10)
+    assert e.share_same_sign == pytest.approx(0.8) and e.verdict == "uncertain"
+
+
+def test_the_count_error_is_read_from_the_data_quality_artifact(population: Path) -> None:
+    raw = {"schema": unc.DATA_QUALITY_SCHEMA, "parameters": {"count_error": 0.08}}
+    assert unc.data_quality_count_error(raw) == 0.08
+    for bad, match in (
+        ({"schema": "flowstate.observations/1"}, "not a data-quality artifact"),
+        ({"schema": unc.DATA_QUALITY_SCHEMA, "parameters": {}}, "no parameters.count_error"),
+        (
+            {"schema": unc.DATA_QUALITY_SCHEMA, "parameters": {"count_error": 1.5}},
+            r"not in \(0, 1\)",
+        ),
+    ):
+        with pytest.raises(ValueError, match=match):
+            unc.data_quality_count_error(bad)
+    space = default_space(
+        _cfg(population),
+        kinds=["demand_scale"],
+        count_error=0.08,
+        count_error_source="runs/dq.json (sha256 0123456789ab)",
+    )
+    (d,) = space.parameters
+    assert (d.low, d.high) == (pytest.approx(0.92), pytest.approx(1.08))
+    assert not d.assumed and d.basis == "data_quality_count_error"
+    assert "runs/dq.json (sha256 0123456789ab)" in d.source
+    md = aggregate(_records({"s00": -1.0}), space=space).to_markdown()
+    assert "| count error recorded in the data-quality artifact | no |" in md
+    assert "the count error recorded in the study's data-quality artifact" in md
+
+
+def test_the_headline_is_total_delay_including_waiting_when_recorded() -> None:
+    from validation.metrics import WAITING_FIELDS
+
+    assert unc.DEFAULT_HEADLINE == "total_delay_incl_waiting_veh_h"
+    assert set(WAITING_FIELDS) <= set(unc.METRIC_LABELS)
+    recs = [
+        RunRecord(arm, "s00", seed, {"mean_tt_s": 100.0, "total_delay_incl_waiting_veh_h": d})
+        for seed in range(2)
+        for arm, d in (("baseline", 50.0 + seed), ("vsl", 40.0 + seed))
+    ]
+    res = aggregate(recs)
+    assert res.headline == "total_delay_incl_waiting_veh_h" and res.headline_note == ""
+    assert "changed total delay including waiting on ramps and to enter" in (
+        res.headline_sentence("vsl")
+    )
+    md = res.to_markdown()
+    assert "Total delay and travel time including time spent waiting" in md
+    old = aggregate(_records({"s00": -1.0}))  # runs from before the demand ledger
+    assert old.headline == "mean_tt_s"
+    assert old.headline_note.startswith("These runs record no total delay including waiting")
+    assert old.headline_note in old.to_markdown()
+    assert json.loads(old.to_json())["headline_note"] == old.headline_note
+    assert "These runs record no total delay including time spent waiting" in old.to_markdown()

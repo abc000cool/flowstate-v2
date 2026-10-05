@@ -35,19 +35,27 @@ The comparison (protocol §5.1–5.4; every threshold a FlowState rule):
 1. **Location** — each observed bottleneck active for at least
    :data:`MIN_OBSERVED_ACTIVE_S` is reproduced at the same station pair or an
    adjacent one (pair indices within :data:`ADJACENT_PAIRS`) in at least
-   :data:`LOCATION_MIN_REPLICATE_SHARE` of the replicates. When a replicate has
-   bottlenecks at more than one such pair, the same pair is taken, else the
-   adjacent one active longest.
+   :data:`LOCATION_MIN_REPLICATE_SHARE` of the replicates. Observed and
+   simulated bottlenecks are matched **one to one** within each replicate
+   (§5.4's last sentence): one simulated bottleneck reproduces at most one
+   observed one. The matching (:func:`match_replicate`) is the assignment that
+   reproduces the most observed bottlenecks, then the most at their own pair,
+   then the longest-active simulated ones.
 2. **Timing** — over the replicates that reproduced it, the median simulated
    activation is within :data:`ACTIVATION_TOLERANCE_S` of the observed one and
    the median active duration within :data:`DURATION_TOLERANCE_SHARE` of it.
 3. **Queue reach** — the median simulated queue-reach station index (same
    replicates) is within :data:`QUEUE_REACH_TOLERANCE_STATIONS` of the observed
    queue's.
-4. **No phantom** — no station pair that has no observed bottleneck at it or
-   at an adjacent pair carries a simulated bottleneck active for more than
-   :data:`PHANTOM_ACTIVE_S` in more than :data:`PHANTOM_MAX_REPLICATE_SHARE` of
-   the replicates.
+4. **No phantom** — at most :data:`PHANTOM_MAX_REPLICATE_SHARE` of the
+   replicates contain *any* simulated bottleneck active for more than
+   :data:`PHANTOM_ACTIVE_S` whose pair is neither an observed bottleneck's pair
+   nor adjacent to one. It is counted **per replicate**, so a phantom that
+   moves between neighbouring station pairs from seed to seed counts once in
+   each replicate it appears in, not once per pair. A simulated bottleneck at
+   or next to an observed one is not a phantom, whether or not the matching of
+   rule 1 used it (the protocol's "not at, or adjacent to, an observed one").
+   The per-pair breakdown is kept as a diagnostic (:class:`Phantom`).
 
 An observed set with no bottleneck active for :data:`MIN_OBSERVED_ACTIVE_S`
 leaves rules 1–3 with nothing to reproduce (they hold, and the result says
@@ -68,6 +76,7 @@ from typing import Any, Final
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.optimize import linear_sum_assignment
 
 from flowstate_core.units import s_to_h
 from validation.observed import clock_label
@@ -130,8 +139,19 @@ QUEUE_REACH_TOLERANCE_STATIONS: Final[int] = 1
 #: A phantom bottleneck counts when active for more than this (§5.4).
 PHANTOM_ACTIVE_S: Final[float] = 30.0 * _S_PER_MIN
 
-#: ... in more than this share of the replicates (§5.4).
+#: Rule 4 fails when more than this share of the replicates contain a phantom
+#: (§5.4: "at most 50 % of the replicates", counted per replicate).
 PHANTOM_MAX_REPLICATE_SHARE: Final[float] = 0.50
+
+#: Weights of the one-to-one matching of rule 1 (§5.4's last sentence;
+#: :func:`match_replicate`): every allowed pair (same or adjacent station pair)
+#: is worth :data:`_MATCH_WEIGHT`, a same-pair match :data:`_SAME_PAIR_WEIGHT`
+#: more, and the simulated bottleneck's active time a share of one below that.
+#: The steps are far enough apart (a corridor has far fewer than 1,000 station
+#: pairs) that the assignment maximises the count of reproduced bottlenecks
+#: first, then the count at their own pair, then the active time.
+_MATCH_WEIGHT: Final[float] = 1.0e6
+_SAME_PAIR_WEIGHT: Final[float] = 1.0e3
 
 #: Rule names, in protocol order (§5.1–5.4).
 RULES: Final[tuple[str, ...]] = ("location", "timing", "queue_reach", "no_phantom")
@@ -458,6 +478,10 @@ class ObservedMatch:
 class Phantom:
     """A station pair with simulated bottlenecks the observations do not show.
 
+    A per-pair diagnostic: rule 4 itself is counted per replicate
+    (:attr:`BottleneckComparison.n_replicates_with_phantom`), so these rows
+    do not decide it.
+
     Attributes:
         pair_index: The pair.
         upstream: Upstream station id.
@@ -466,7 +490,6 @@ class Phantom:
             :data:`PHANTOM_ACTIVE_S`.
         n_replicates_any: Replicates where it activated at all.
         share_long: ``n_replicates_long`` over the replicates compared.
-        fails: ``share_long`` above :data:`PHANTOM_MAX_REPLICATE_SHARE`.
     """
 
     pair_index: int
@@ -475,7 +498,6 @@ class Phantom:
     n_replicates_long: int
     n_replicates_any: int
     share_long: float
-    fails: bool
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form."""
@@ -486,7 +508,6 @@ class Phantom:
             "n_replicates_long": self.n_replicates_long,
             "n_replicates_any": self.n_replicates_any,
             "share_long": _num(self.share_long),
-            "fails": self.fails,
         }
 
 
@@ -502,9 +523,11 @@ class BottleneckComparison:
         matches: One :class:`ObservedMatch` per observed bottleneck active at
             least :data:`MIN_OBSERVED_ACTIVE_S`.
         phantoms: Pairs carrying simulated bottlenecks with no observed one
-            at or next to them.
+            at or next to them (diagnostic, per pair).
         rules: The four rules, protocol order.
         notes: Plain statements (e.g. what the simulated speeds are).
+        phantom_replicates: Indices of the replicates containing a phantom
+            active for more than :data:`PHANTOM_ACTIVE_S` (rule 4's count).
     """
 
     n_replicates: int
@@ -515,6 +538,17 @@ class BottleneckComparison:
     phantoms: tuple[Phantom, ...]
     rules: tuple[RuleOutcome, ...]
     notes: tuple[str, ...] = field(default=())
+    phantom_replicates: tuple[int, ...] = field(default=())
+
+    @property
+    def n_replicates_with_phantom(self) -> int:
+        """Replicates containing at least one phantom (rule 4, §5.4)."""
+        return len(self.phantom_replicates)
+
+    @property
+    def phantom_share(self) -> float:
+        """``n_replicates_with_phantom / n_replicates`` (NaN without replicates)."""
+        return self.n_replicates_with_phantom / self.n_replicates if self.n_replicates else math.nan
 
     @property
     def passed(self) -> bool:
@@ -546,6 +580,9 @@ class BottleneckComparison:
             "observed": [b.to_dict() for b in self.observed],
             "matches": [m.to_dict() for m in self.matches],
             "phantoms": [p.to_dict() for p in self.phantoms],
+            "n_replicates_with_phantom": self.n_replicates_with_phantom,
+            "phantom_share": _num(self.phantom_share),
+            "phantom_replicates": list(self.phantom_replicates),
             "simulated": [
                 [
                     {
@@ -582,6 +619,9 @@ def thresholds() -> dict[str, Any]:
         "queue_reach_tolerance_stations": QUEUE_REACH_TOLERANCE_STATIONS,
         "phantom_active_s": PHANTOM_ACTIVE_S,
         "phantom_max_replicate_share": PHANTOM_MAX_REPLICATE_SHARE,
+        "phantom_counted": "per replicate: a replicate with any phantom counts once (section 5.4)",
+        "matching": "observed and simulated bottlenecks matched one to one per replicate "
+        "(section 5.4): most reproduced, then most at their own pair, then longest active",
         "label": "FlowState rules (docs/FRISCO_PROTOCOL.md section 5)",
     }
 
@@ -596,6 +636,52 @@ def _minutes(seconds: float) -> str:
 
 def _pair_name(b: Bottleneck) -> str:
     return f"{b.upstream}→{b.downstream}"
+
+
+def match_replicate(
+    significant: Sequence[Bottleneck], replicate: Sequence[Bottleneck]
+) -> dict[int, Bottleneck]:
+    """One replicate's one-to-one matching of rule 1 (module docstring).
+
+    An observed bottleneck may be matched with a simulated one at the same
+    pair or an adjacent one (pair indices within :data:`ADJACENT_PAIRS`);
+    each simulated bottleneck serves at most one observed one, so one
+    simulated bottleneck cannot reproduce two observed bottlenecks (§5.4).
+    Among the assignments, the one with the most matches is taken, then the
+    most same-pair matches, then the longest-active simulated bottlenecks
+    (:data:`_MATCH_WEIGHT`), by :func:`scipy.optimize.linear_sum_assignment`.
+
+    Args:
+        significant: The observed bottlenecks to reproduce.
+        replicate: One replicate's simulated bottlenecks.
+
+    Returns:
+        Index into ``significant`` → its matched simulated bottleneck.
+    """
+    if not significant or not replicate:
+        return {}
+    longest = max(s.active_s for s in replicate) + 1.0
+    weight = np.zeros((len(significant), len(replicate)), dtype=np.float64)
+    for i, obs in enumerate(significant):
+        for j, sim in enumerate(replicate):
+            distance = abs(sim.pair_index - obs.pair_index)
+            if distance <= ADJACENT_PAIRS:
+                weight[i, j] = (
+                    _MATCH_WEIGHT
+                    + (_SAME_PAIR_WEIGHT if distance == 0 else 0.0)
+                    + sim.active_s / longest
+                )
+    rows, cols = linear_sum_assignment(weight, maximize=True)
+    return {
+        int(i): replicate[int(j)] for i, j in zip(rows, cols, strict=True) if weight[i, j] > 0.0
+    }
+
+
+def _is_phantom(sim: Bottleneck, observed_pairs: set[int]) -> bool:
+    """Rule 4: active for more than :data:`PHANTOM_ACTIVE_S`, away from every observed pair."""
+    return sim.active_s > PHANTOM_ACTIVE_S + _TOL and all(
+        abs(sim.pair_index - p) > ADJACENT_PAIRS for p in observed_pairs
+    )
 
 
 def compare_bottlenecks(
@@ -619,29 +705,22 @@ def compare_bottlenecks(
     """
     n_rep = len(simulated)
     significant = [b for b in observed if b.active_s >= MIN_OBSERVED_ACTIVE_S - _TOL]
+    chosen: list[list[Bottleneck]] = [[] for _ in significant]
+    for rep in simulated:
+        for i, sim in match_replicate(significant, rep).items():
+            chosen[i].append(sim)
     matches: list[ObservedMatch] = []
-    for obs in significant:
-        chosen: list[Bottleneck] = []
-        same = 0
-        for rep in simulated:
-            near = [s for s in rep if abs(s.pair_index - obs.pair_index) <= ADJACENT_PAIRS]
-            if not near:
-                continue
-            exact = [s for s in near if s.pair_index == obs.pair_index]
-            if exact:
-                same += 1
-                chosen.append(exact[0])
-            else:
-                chosen.append(sorted(near, key=lambda s: (-s.active_s, s.pair_index))[0])
-        share = len(chosen) / n_rep if n_rep else math.nan
-        med_act = _median([s.activation_s for s in chosen])
-        med_dur = _median([s.active_s for s in chosen])
-        med_q = _median([float(s.queue_reach_index) for s in chosen])
+    for obs, picked in zip(significant, chosen, strict=True):
+        same = sum(1 for s in picked if s.pair_index == obs.pair_index)
+        share = len(picked) / n_rep if n_rep else math.nan
+        med_act = _median([s.activation_s for s in picked])
+        med_dur = _median([s.active_s for s in picked])
+        med_q = _median([float(s.queue_reach_index) for s in picked])
         matches.append(
             ObservedMatch(
                 observed=obs,
                 n_replicates=n_rep,
-                n_reproduced=len(chosen),
+                n_reproduced=len(picked),
                 n_same_pair=same,
                 share=share,
                 median_activation_s=med_act,
@@ -649,15 +728,15 @@ def compare_bottlenecks(
                 median_queue_reach_index=med_q,
                 location_ok=bool(n_rep and share >= LOCATION_MIN_REPLICATE_SHARE - _TOL),
                 timing_ok=bool(
-                    chosen and abs(med_act - obs.activation_s) <= ACTIVATION_TOLERANCE_S + _TOL
+                    picked and abs(med_act - obs.activation_s) <= ACTIVATION_TOLERANCE_S + _TOL
                 ),
                 duration_ok=bool(
-                    chosen
+                    picked
                     and abs(med_dur - obs.active_s)
                     <= DURATION_TOLERANCE_SHARE * obs.active_s + _TOL
                 ),
                 queue_ok=bool(
-                    chosen
+                    picked
                     and abs(med_q - obs.queue_reach_index) <= QUEUE_REACH_TOLERANCE_STATIONS + _TOL
                 ),
             )
@@ -665,7 +744,10 @@ def compare_bottlenecks(
 
     observed_pairs = {b.pair_index for b in observed}
     by_pair: dict[int, list[Bottleneck]] = {}
-    for rep in simulated:
+    phantom_replicates: list[int] = []
+    for r, rep in enumerate(simulated):
+        if any(_is_phantom(s, observed_pairs) for s in rep):
+            phantom_replicates.append(r)
         for s in rep:
             if all(abs(s.pair_index - p) > ADJACENT_PAIRS for p in observed_pairs):
                 by_pair.setdefault(s.pair_index, []).append(s)
@@ -673,7 +755,6 @@ def compare_bottlenecks(
     for pair in sorted(by_pair):
         found = by_pair[pair]
         n_long = sum(1 for s in found if s.active_s > PHANTOM_ACTIVE_S + _TOL)
-        share_long = n_long / n_rep if n_rep else math.nan
         phantoms.append(
             Phantom(
                 pair_index=pair,
@@ -681,12 +762,11 @@ def compare_bottlenecks(
                 downstream=found[0].downstream,
                 n_replicates_long=n_long,
                 n_replicates_any=len(found),
-                share_long=share_long,
-                fails=bool(n_rep and share_long > PHANTOM_MAX_REPLICATE_SHARE + _TOL),
+                share_long=n_long / n_rep if n_rep else math.nan,
             )
         )
 
-    rules = _rule_outcomes(matches, phantoms, n_rep, len(observed))
+    rules = _rule_outcomes(matches, phantoms, n_rep, len(observed), len(phantom_replicates))
     return BottleneckComparison(
         n_replicates=n_rep,
         station_ids=tuple(str(s) for s in station_ids),
@@ -696,6 +776,7 @@ def compare_bottlenecks(
         phantoms=tuple(phantoms),
         rules=rules,
         notes=tuple(notes),
+        phantom_replicates=tuple(phantom_replicates),
     )
 
 
@@ -704,6 +785,7 @@ def _rule_outcomes(
     phantoms: Sequence[Phantom],
     n_rep: int,
     n_observed: int,
+    n_with_phantom: int,
 ) -> tuple[RuleOutcome, ...]:
     """The four rules from the per-bottleneck matches and the phantom pairs."""
     if n_rep == 0:
@@ -757,15 +839,19 @@ def _rule_outcomes(
         queue = RuleOutcome(
             "queue_reach", all(m.queue_ok for m in matches), True, "; ".join(que_parts)
         )
-    failing = [p for p in phantoms if p.fails]
-    if not phantoms:
-        phantom_text = "no simulated bottleneck away from the observed ones"
-    else:
-        phantom_text = "; ".join(
-            f"{p.upstream}→{p.downstream}: active for more than {_minutes(PHANTOM_ACTIVE_S)} in "
-            f"{p.n_replicates_long} of {n_rep} replicates ({p.share_long:.0%}; limit "
-            f"{PHANTOM_MAX_REPLICATE_SHARE:.0%})"
-            for p in phantoms
+    share = n_with_phantom / n_rep
+    holds = share <= PHANTOM_MAX_REPLICATE_SHARE + _TOL
+    phantom_text = (
+        f"{n_with_phantom} of {n_rep} replicates ({share:.0%}; limit "
+        f"{PHANTOM_MAX_REPLICATE_SHARE:.0%}) contain a bottleneck active for more than "
+        f"{_minutes(PHANTOM_ACTIVE_S)} away from every observed one (counted once per replicate)"
+    )
+    long_pairs = [p for p in phantoms if p.n_replicates_long]
+    if long_pairs:
+        phantom_text += "; by station pair: " + ", ".join(
+            f"{p.upstream}→{p.downstream} in {p.n_replicates_long}" for p in long_pairs
         )
-    no_phantom = RuleOutcome("no_phantom", not failing, True, phantom_text)
+    elif not phantoms:
+        phantom_text += "; no simulated bottleneck away from the observed ones"
+    no_phantom = RuleOutcome("no_phantom", holds, True, phantom_text)
     return (location, timing, queue, no_phantom)

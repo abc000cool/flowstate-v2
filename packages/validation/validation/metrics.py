@@ -352,6 +352,31 @@ class _ByVehicle:
         hit = self.same & (x[:-1] < x_ref) & (x[1:] >= x_ref)
         return np.asarray(self.t[1:][hit], dtype=np.float64)
 
+    def crossing_points(self, x_ref: float, v_sorted: FloatArray) -> tuple[FloatArray, FloatArray]:
+        """Interpolated time and speed of every upward crossing of ``x_ref``.
+
+        The pairs are those of :meth:`crossing_times` (``x_prev < x_ref <=
+        x_cur``); each crossing is placed by linear interpolation between the
+        pair's two samples (:func:`crossing_speeds`).
+
+        Args:
+            x_ref: Cross-section [m].
+            v_sorted: Speeds [m/s] in this object's sorted row order.
+
+        Returns:
+            ``(times, speeds)`` of the crossings, in sorted-row order.
+        """
+        if self.order.size < 2:
+            empty = np.empty(0, dtype=np.float64)
+            return empty, empty.copy()
+        x, t = self.x, self.t
+        hit = np.flatnonzero(self.same & (x[:-1] < x_ref) & (x[1:] >= x_ref))
+        x0, x1 = x[hit], x[hit + 1]
+        frac = (x_ref - x0) / (x1 - x0)  # x0 < x_ref <= x1, so x1 > x0 and frac in (0, 1]
+        times = t[hit] + frac * (t[hit + 1] - t[hit])
+        speeds = v_sorted[hit] + frac * (v_sorted[hit + 1] - v_sorted[hit])
+        return np.asarray(times, dtype=np.float64), np.asarray(speeds, dtype=np.float64)
+
 
 def _gather(
     rows: slice | NDArray[np.intp], sorted_values: FloatArray, frame_values: FloatArray
@@ -449,6 +474,41 @@ def _crossing_times(trajectories: pd.DataFrame, x_ref: float) -> FloatArray:
     if len(trajectories) < 2:
         return np.empty(0, dtype=np.float64)
     return _ByVehicle.from_frame(trajectories).crossing_times(x_ref)
+
+
+def crossing_speeds(
+    trajectories: pd.DataFrame, x_refs: Sequence[float]
+) -> list[tuple[FloatArray, FloatArray]]:
+    """Time and speed at which each vehicle crosses each cross-section.
+
+    The crossings are the pairs of :func:`count_crossings` (consecutive,
+    time-ordered samples of one vehicle with ``x_prev < x_ref <= x_cur``), so
+    a vehicle that crosses once is counted once and a ring's downward wrap is
+    never a crossing. Each crossing is placed by linear interpolation between
+    the pair's two samples: with ``f = (x_ref − x_prev) / (x_cur − x_prev)``
+    (in ``(0, 1]``), the crossing time is ``t_prev + f·(t_cur − t_prev)`` and
+    the speed ``v_prev + f·(v_cur − v_prev)`` — what a point detector at
+    ``x_ref`` would read as the vehicle passes. (:func:`count_crossings`
+    stamps a crossing at ``t_cur`` instead; the two differ by less than one
+    sampling interval.) The rows are sorted once for every cross-section.
+
+    Args:
+        trajectories: Rows with ``t`` [s], ``veh_id``, ``x`` [m] and ``v``
+            [m/s] columns.
+        x_refs: Cross-sections [m], trajectory coordinates.
+
+    Returns:
+        One ``(times, speeds)`` pair of arrays per entry of ``x_refs``.
+
+    Raises:
+        ValueError: A missing column.
+    """
+    for col in ("t", "veh_id", "x", "v"):
+        if col not in trajectories.columns:
+            raise ValueError(f"trajectories missing column {col!r}")
+    by = _ByVehicle.from_frame(trajectories)
+    v_sorted = np.asarray(trajectories["v"].to_numpy(dtype=np.float64)[by.order])
+    return [by.crossing_points(float(x), v_sorted) for x in x_refs]
 
 
 def count_crossings(

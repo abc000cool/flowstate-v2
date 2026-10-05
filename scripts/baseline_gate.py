@@ -14,7 +14,16 @@ validation-day observations (:func:`validation.baseline_gate.rescore`). The
 two artifacts must share the station table and window grid of the artifact
 the battery was scored against (``--scored-against``; by default the battery
 artifact's ``observations.path``); ``scripts/observations_for_dates.py``
-builds them from the corridor's detector frame.
+builds them from the corridor's detector frame, quality-masked.
+
+The calibration-day artifact (``--calibration-observations``) and the study's
+day split (``--day-split``) are required: the gate checks that each day set's
+artifact holds exactly its side of the split and that the two sides are
+disjoint, so the battery's all-dates artifact is never scored as the
+calibration days (protocol §3.2). ``--per-day DIR`` scores C1, C3 and C6
+against each single-day validation artifact in ``DIR`` (``*.json``, one date
+each, on the split's validation side) and adds the per-day table to the gate
+(protocol §3.5; reported, not gating).
 
 Writes the gate as JSON (``flowstate.baseline_gate/1``) and markdown, prints
 the verdict and every check, and with ``--write-into-artifact`` adds the
@@ -29,6 +38,7 @@ Run (a cloud VM, the Minnesota rehearsal; paths as the pipeline writes them):
         --calibration-observations runs/rehearsal/observations_calibration.json \\
         --validation-observations runs/rehearsal/observations_validation.json \\
         --day-split runs/rehearsal/day_split.json \\
+        --per-day runs/rehearsal/validation_days \\
         --out-json artifacts/baseline_gate_mndot_rehearsal.json \\
         --out-md docs/reports/mndot_rehearsal/baseline_gate.md
 """
@@ -80,6 +90,40 @@ def stored_detector(run_dir: Path) -> str:
     return str(stored.get("criterion_detector") or "")
 
 
+def split_summary(path: Path) -> dict[str, Any]:
+    """The day split's summary as the gate records it (dates, seed, underpowered)."""
+    raw = json.loads(path.read_text())
+    return {
+        "path": str(path),
+        "seed": raw.get("seed"),
+        "calibration_dates": raw.get("calibration_dates", []),
+        "validation_dates": raw.get("validation_dates", []),
+        "underpowered": raw.get("underpowered"),
+        "underpowered_reason": raw.get("underpowered_reason", ""),
+    }
+
+
+def per_day_artifacts(directory: Path) -> list[tuple[str, ObservedCorridor]]:
+    """``(path, artifact)`` of every ``*.json`` in ``directory``, name order.
+
+    Raises:
+        ValueError: Not a directory, no ``*.json`` in it, or a file that is not
+            an observations artifact.
+    """
+    if not directory.is_dir():
+        raise ValueError(f"--per-day {directory}: not a directory")
+    paths = sorted(directory.glob("*.json"))
+    if not paths:
+        raise ValueError(f"--per-day {directory}: no *.json single-day artifacts in it")
+    out: list[tuple[str, ObservedCorridor]] = []
+    for path in paths:
+        try:
+            out.append((str(path), ObservedCorridor.from_json(path)))
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            raise ValueError(f"--per-day {path}: not an observations artifact ({exc})") from exc
+    return out
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The command line (module docstring)."""
     parser = argparse.ArgumentParser(
@@ -106,14 +150,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--calibration-observations",
         type=Path,
-        help="calibration-day observations (default: --scored-against)",
+        required=True,
+        help="calibration-day observations (its dates must be the split's calibration side)",
     )
     parser.add_argument(
         "--validation-observations",
         type=Path,
         help="validation-day observations; without them the gate fails",
     )
-    parser.add_argument("--day-split", type=Path, help="flowstate.day_split/1 JSON")
+    parser.add_argument(
+        "--day-split", type=Path, required=True, help="the study's flowstate.day_split/1 JSON"
+    )
+    parser.add_argument(
+        "--per-day",
+        type=Path,
+        metavar="DIR",
+        help="directory of single-day validation artifacts (*.json): C1, C3 and C6 per "
+        "validation day, reported beside the gate (protocol section 3.5), not gating",
+    )
     parser.add_argument("--out-json", required=True, type=Path, help="gate JSON path")
     parser.add_argument("--out-md", type=Path, help="gate markdown path")
     parser.add_argument(
@@ -153,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 2
     scored_against = ObservedCorridor.from_json(scored_path)
-    cal_path = args.calibration_observations or scored_path
+    cal_path = args.calibration_observations
     calibration = ObservedCorridor.from_json(cal_path)
     validation = (
         None
@@ -169,17 +223,14 @@ def main(argv: list[str] | None = None) -> int:
     if not config_hash:
         print("the replicates carry more than one config_hash; one configuration per gate")
         return 2
-    split = None
-    if args.day_split is not None:
-        raw = json.loads(args.day_split.read_text())
-        split = {
-            "path": str(args.day_split),
-            "seed": raw.get("seed"),
-            "calibration_dates": raw.get("calibration_dates", []),
-            "validation_dates": raw.get("validation_dates", []),
-            "underpowered": raw.get("underpowered"),
-            "underpowered_reason": raw.get("underpowered_reason", ""),
-        }
+    split = split_summary(args.day_split)
+    validation_days = None
+    if args.per_day is not None:
+        try:
+            validation_days = per_day_artifacts(args.per_day)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
     scenario = str((artifact or {}).get("scenario") or "")
     gate: GateResult = gate_from_replicates(
         [a.scores for a in analyses],
@@ -194,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         config_hash=config_hash,
         scenario=scenario,
         split=split,
+        validation_days=validation_days,
     )
     gate.to_json(args.out_json)
     if args.out_md is not None:
@@ -209,6 +261,15 @@ def main(argv: list[str] | None = None) -> int:
     for check in gate.checks:
         mark = "" if check.gating else " (not gating)"
         print(f"  {check.check:<10} {check.day_set:<12} {check.status:<14}{mark} {check.plain}")
+    if gate.per_day is not None:
+        print("validation days one by one (reported, not gating):")
+        for row in gate.per_day["rows"]:
+            statuses = ", ".join(f"{c['check']} {c['status']}" for c in row["checks"])
+            print(f"  {row['date']}: {statuses}")
+        for item in gate.per_day["refused"]:
+            print(f"  not scored: {item['path']} ({item['reason']})")
+        if gate.per_day["missing_dates"]:
+            print(f"  no single-day artifact for {', '.join(gate.per_day['missing_dates'])}")
     finite = [a.wave_speed_kmh for a in analyses if math.isfinite(a.wave_speed_kmh)]
     print(
         f"{len(dirs)} replicate(s) of {config_hash}; {len(finite)} with a backward front; "

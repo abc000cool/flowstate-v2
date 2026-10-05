@@ -38,6 +38,13 @@ without it the ranges are the wide protocol §7.2 measured range, flagged
 assumed. The file's path and sha256 enter the design (and so its key) only
 when it is given.
 
+Demand range: give ``--data-quality`` the study's data-quality JSON
+(``scripts/data_quality_report.py``, schema ``flowstate.data_quality/1``) and
+the demand factor varies within ± the count error it records
+(``parameters.count_error``; protocol §8.5); without it the ±5 % default is
+used, flagged assumed. Its path, sha256 and count error enter the design only
+when it is given.
+
 Resumable: a run whose ``metrics.json`` exists is skipped; a ``DESIGN.json``
 from different inputs is refused. ``--plan-only`` prints the run count and
 the simulated time it costs and writes nothing; ``--analyze-only``
@@ -89,6 +96,7 @@ from validation.uncertainty import (
     UncertaintyResult,
     aggregate,
     apply,
+    data_quality_count_error,
     default_space,
     file_sha256,
     run_seeds,
@@ -331,6 +339,15 @@ def build_parser() -> argparse.ArgumentParser:
         "measured range is used, flagged assumed",
     )
     ap.add_argument(
+        "--data-quality",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="the study's data-quality JSON (scripts/data_quality_report.py): the demand range "
+        "is ± its recorded count error (protocol §8.5); without it the ±5 %% default is used, "
+        "flagged assumed",
+    )
+    ap.add_argument(
         "--centre",
         choices=("measured", "configured"),
         default="measured",
@@ -358,17 +375,46 @@ def transfer_record(args: argparse.Namespace) -> dict[str, str] | None:
     return {"path": str(path), "sha256": file_sha256(path)}
 
 
+def data_quality_record(args: argparse.Namespace) -> dict[str, Any] | None:
+    """``--data-quality``'s path, sha256 and recorded count error; None when not given.
+
+    Raises:
+        ValueError: The file is not a data-quality artifact with a count error.
+    """
+    path: Path | None = getattr(args, "data_quality", None)
+    if path is None:
+        return None
+    raw = json.loads(Path(path).read_text())
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path}: not a data-quality artifact")
+    try:
+        error = data_quality_count_error(raw)
+    except ValueError as exc:
+        raise ValueError(f"--data-quality {path}: {exc}") from exc
+    return {"path": str(path), "sha256": file_sha256(path), "count_error": error}
+
+
 def build_space(args: argparse.Namespace, base: ScenarioConfig) -> ParameterSpace:
     """The parameter space from the scenario and the range options."""
     heavy = (float(args.heavy_range[0]), float(args.heavy_range[1])) if args.heavy_range else None
+    quality = data_quality_record(args)
     record = transfer_record(args)
     transfer = None
     if record is not None:
         transfer = json.loads(Path(record["path"]).read_text())
         if not isinstance(transfer, dict):
             raise ValueError(f"{record['path']}: not a transfer-check report")
+    count_error: dict[str, Any] = (
+        {}
+        if quality is None
+        else {
+            "count_error": float(quality["count_error"]),
+            "count_error_source": f"{quality['path']} (sha256 {str(quality['sha256'])[:12]})",
+        }
+    )
     space = default_space(
         base,
+        **count_error,
         heavy_range=heavy,
         heavy_source=args.heavy_source,
         kinds=args.parameters,
@@ -389,7 +435,9 @@ def design_inputs(
     """Everything the design is a function of (its key covers exactly this).
 
     The transfer check's path and sha256 are included only when it is given,
-    so a design without one keeps the key it had before the option existed.
+    and so are the data-quality artifact's path, sha256 and count error, so a
+    design without them keeps the key it had before the options existed
+    (its demand range is then flagged assumed, which the space records).
     """
     inputs: dict[str, Any] = {
         "scenario": str(args.scenario),
@@ -405,6 +453,9 @@ def design_inputs(
     record = transfer_record(args)
     if record is not None:
         inputs["transfer_check"] = record
+    quality = data_quality_record(args)
+    if quality is not None:
+        inputs["data_quality"] = quality
     return inputs
 
 
@@ -435,6 +486,11 @@ def plan_lines(
         lines.append(
             "driver ranges: the wide §7.2 measured range, flagged assumed — give --transfer-check "
             "<corridor>/transfer_check.json for ranges from the observed intervals"
+        )
+    if any(p.basis == "count_error" for p in space.parameters):
+        lines.append(
+            "demand range: the ±5 % default count error, flagged assumed — give --data-quality "
+            "<study>/data_quality.json for the count error it records"
         )
     return lines
 
@@ -599,6 +655,7 @@ def analyze(root: Path, summary: Path | None, headline: str | None) -> Uncertain
         "metrics_args": design["metrics_args"],
         "metrics_source": "scripts/corridor_sweep.py _worker (validation.metrics.compute_metrics)",
         **({"transfer_check": design["transfer_check"]} if "transfer_check" in design else {}),
+        **({"data_quality": design["data_quality"]} if "data_quality" in design else {}),
         "design_provenance": design["provenance"],
         "analysed_at": _now(),
         "code": git_head(),
@@ -688,6 +745,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise SystemExit(f"arm {arm.name}: {exc}") from exc
     if args.transfer_check is not None and not args.transfer_check.is_file():
         raise SystemExit(f"--transfer-check {args.transfer_check}: not found")
+    if args.data_quality is not None and not args.data_quality.is_file():
+        raise SystemExit(f"--data-quality {args.data_quality}: not found")
     try:
         space = build_space(args, base)
     except ValueError as exc:

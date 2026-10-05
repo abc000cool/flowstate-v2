@@ -30,13 +30,21 @@ by hand.
 **Usable station-day.** With a data-quality report
 (:mod:`calibration.data_quality`, the ``flowstate.data_quality/1`` JSON
 computed over the study period) a station is usable on a date when no
-mainline sensor of that station (the station itself, or any of its lanes) is
-judged ``exclude`` that day, and a station with no judged sensor that day is
-not usable. Without one, a station-day is usable when the share of the study
-period's windows with a finite flow is at least
+mainline sensor of that station (the station itself, or any of its lanes;
+a lane that reported nothing on any date of the report is not an installed
+lane and is left out) is judged ``exclude`` that day, and a station with no
+judged sensor that day is not usable. A date the report does not cover at all
+is not judged "0 stations usable": the split refuses it, or — with
+``allow_uncovered_dates`` — records it as "not covered by the data-quality
+report" and leaves it out. Without a report, a station-day is usable when the
+share of the study period's windows with a finite flow is at least
 ``1 − MISSING_EXCLUDE_SHARE`` — the data-quality module's own exclusion rule
 for missing data, applied to the study period. Which rule was used is
 recorded (``usability_source``).
+
+**Selected stations** are the protocol's §2.2 list, computed from the
+data-quality report by :mod:`calibration.station_selection` and stored in the
+corridor's ``selection.json`` (``scripts/day_split.py --selection``).
 
 **Volume.** A day's volume is the **station-mean study-period volume**: for
 each selected station usable that day, its mean observed flow over the study
@@ -70,7 +78,7 @@ import numpy as np
 import pandas as pd
 
 from calibration.conservation import normalize_date
-from calibration.data_quality import MISSING_EXCLUDE_SHARE
+from calibration.data_quality import MISSING_EXCLUDE_SHARE, QualityVerdicts
 from calibration.loaders.detector_csv import detector_interval_s, local_dates, local_seconds
 
 DAY_SPLIT_SCHEMA: Final[str] = "flowstate.day_split/1"
@@ -123,7 +131,10 @@ WEEKDAY_NAMES: Final[tuple[str, ...]] = (
     "Sunday",
 )
 
-_EXCLUDE: Final[str] = "exclude"
+NOT_COVERED_REASON: Final[str] = "not covered by the data-quality report"
+"""The reason a date the data-quality report never judged is left out (only
+with ``allow_uncovered_dates``; otherwise the split is refused)."""
+
 _MAINLINE: Final[str] = "mainline"
 _S_PER_DAY: Final[float] = 86400.0
 _S_PER_H: Final[float] = 3600.0
@@ -356,8 +367,11 @@ def split_rules() -> dict[str, Any]:
         "usable_without_quality_report": "share of the study period's windows with a finite "
         f"flow >= {MIN_USABLE_WINDOW_SHARE:g} (1 - calibration.data_quality."
         "MISSING_EXCLUDE_SHARE)",
-        "usable_with_quality_report": "no mainline sensor of the station (station or lane) "
-        "judged 'exclude' that date; a station with no judged sensor that date is not usable",
+        "usable_with_quality_report": "no mainline sensor of the station (station or lane; lanes "
+        "that reported nothing on any date of the report are not installed lanes) judged "
+        "'exclude' that date; a station with no judged sensor that date is not usable; a date "
+        "the report does not cover is refused, or with allow_uncovered_dates left out as "
+        f"'{NOT_COVERED_REASON}'",
         "holidays": "United States federal holidays screened automatically "
         "(calibration.day_split.us_federal_holidays); state and local holidays, incidents "
         "and weather events from the caller's exclusion list",
@@ -560,28 +574,77 @@ def station_totals(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def _quality_usable(
-    quality: Mapping[str, Any], stations: Sequence[str]
-) -> tuple[dict[tuple[str, str], bool], dict[str, Any]]:
-    """Usable station-days from a ``flowstate.data_quality/1`` payload."""
-    judged: dict[tuple[str, str], bool] = {}
-    wanted = set(stations)
-    for sd in quality.get("sensor_days", ()):
-        station = str(sd.get("station", ""))
-        if station not in wanted:
-            continue
-        if str(sd.get("kind", _MAINLINE)) != _MAINLINE:
-            continue
-        key = (station, normalize_date(str(sd["date"])))
-        excluded = str(sd.get("verdict", "")) == _EXCLUDE
-        judged[key] = judged.get(key, True) and not excluded
-    grid = quality.get("grid") or {}
-    meta = {
-        "schema": quality.get("schema"),
-        "start_local": grid.get("start_local"),
-        "end_local": grid.get("end_local"),
-        "dates": list(grid.get("dates") or []),
+    quality: Mapping[str, Any] | QualityVerdicts, stations: Sequence[str]
+) -> tuple[dict[tuple[str, str], bool], set[str], dict[str, Any]]:
+    """Usable station-days, the dates covered, and the report's identity.
+
+    Args:
+        quality: A ``flowstate.data_quality/1`` payload or its verdicts.
+        stations: The selected stations.
+
+    Returns:
+        ``(usable, covered_dates, meta)``: ``(station, date)`` → usable for
+        every station-day the report judged; the dates it judged; and its
+        schema, span and dates as recorded on the split.
+    """
+    verdicts = (
+        quality if isinstance(quality, QualityVerdicts) else QualityVerdicts.from_dict(quality)
+    )
+    judged = {
+        key: not day.excluded
+        for key, day in verdicts.station_days(kind=_MAINLINE, stations=set(stations)).items()
     }
-    return judged, meta
+    grid = {} if isinstance(quality, QualityVerdicts) else dict(quality.get("grid") or {})
+    start, end = verdicts.span_local
+    meta = {
+        "schema": "flowstate.data_quality/1"
+        if isinstance(quality, QualityVerdicts)
+        else quality.get("schema"),
+        "start_local": grid.get("start_local", start),
+        "end_local": grid.get("end_local", end),
+        "dates": list(grid.get("dates") or verdicts.dates),
+    }
+    if verdicts.path is not None:
+        meta["path"] = verdicts.path
+    if verdicts.sha256 is not None:
+        meta["sha256"] = verdicts.sha256
+    return judged, set(verdicts.dates), meta
+
+
+def calendar_reasons(
+    day: str, holidays: Mapping[str, str], exclusions: Mapping[str, str]
+) -> list[str]:
+    """Why a date is not a candidate on the calendar alone (§3.1, first three rules).
+
+    Weekday (Tuesday–Thursday), United States federal holidays and the
+    caller's exclusion list; the usable-station rule is applied separately
+    (it depends on the selected stations).
+
+    Args:
+        day: ``YYYY-MM-DD``.
+        holidays: Date → holiday name (:func:`us_federal_holidays`).
+        exclusions: Date → reason (agency logs).
+
+    Returns:
+        The reasons, empty for a calendar candidate.
+    """
+    weekday = date.fromisoformat(day).weekday()
+    reasons: list[str] = []
+    if weekday not in CANDIDATE_WEEKDAYS:
+        reasons.append(f"weekday {WEEKDAY_NAMES[weekday]} is not a candidate weekday")
+    if day in holidays:
+        reasons.append(f"federal holiday: {holidays[day]}")
+    if day in exclusions:
+        reasons.append(f"excluded by the caller: {exclusions[day]}")
+    return reasons
+
+
+def holidays_for(days: Iterable[str]) -> dict[str, str]:
+    """Federal holidays of every year the dates touch."""
+    out: dict[str, str] = {}
+    for year in sorted({int(d[:4]) for d in days}):
+        out.update(us_federal_holidays(year))
+    return out
 
 
 def _allocate_calibration(
@@ -638,10 +701,11 @@ def build_day_split(
     end: str,
     stations: Sequence[str] | None = None,
     dates: Sequence[str] | None = None,
-    quality: Mapping[str, Any] | None = None,
+    quality: Mapping[str, Any] | QualityVerdicts | None = None,
     exclusions: Mapping[str, str] | None = None,
     seed: int = SPLIT_SEED,
     provenance: Mapping[str, Any] | None = None,
+    allow_uncovered_dates: bool = False,
 ) -> DaySplit:
     """Screen the dates and draw the calibration / validation split.
 
@@ -655,19 +719,25 @@ def build_day_split(
             every local date of the frame.
         quality: A ``flowstate.data_quality/1`` payload (the JSON of
             ``scripts/data_quality_report.py``, judged over the study
-            period) or None (module docstring, "Usable station-day").
+            period), its :class:`calibration.data_quality.QualityVerdicts`,
+            or None (module docstring, "Usable station-day").
         exclusions: Date → reason for state/local holidays, incidents and
             weather events (agency logs).
         seed: Seed of the draw. The protocol fixes :data:`SPLIT_SEED`; the
             parameter exists for tests.
         provenance: Recorded verbatim on the split.
+        allow_uncovered_dates: With ``quality``, leave a date the report does
+            not cover out of the split with the reason
+            :data:`NOT_COVERED_REASON` instead of refusing.
 
     Returns:
         The :class:`DaySplit`.
 
     Raises:
         ValueError: The frame lacks a column, a requested station or date is
-            absent, or the study period is malformed.
+            absent, the study period is malformed, or (without
+            ``allow_uncovered_dates``) an examined date is not covered by
+            ``quality``.
     """
     for col in ("timestamp", "station", "flow_veh_h"):
         if col not in frame.columns:
@@ -718,10 +788,11 @@ def build_day_split(
         )
 
     usable_judged: dict[tuple[str, str], bool] | None = None
+    covered: set[str] = set()
     usability_source = "completeness"
     quality_meta: dict[str, Any] = {}
     if quality is not None:
-        usable_judged, quality_meta = _quality_usable(quality, selected)
+        usable_judged, covered, quality_meta = _quality_usable(quality, selected)
         usability_source = "data_quality"
         span = (quality_meta.get("start_local"), quality_meta.get("end_local"))
         if span != (start, end):
@@ -729,22 +800,43 @@ def build_day_split(
                 f"the data-quality report was judged over {span[0]}-{span[1]}, not the study "
                 f"period {start}-{end}"
             )
+        uncovered = [d for d in examined if d not in covered]
+        if uncovered and not allow_uncovered_dates:
+            raise ValueError(
+                f"date(s) {uncovered} are not covered by the data-quality report (it judged "
+                f"{len(covered)} date(s)); run the check over them, or pass "
+                f"allow_uncovered_dates to leave them out as '{NOT_COVERED_REASON}'"
+            )
+        if uncovered:
+            notes.append(
+                f"{len(uncovered)} date(s) left out as {NOT_COVERED_REASON}: "
+                + ", ".join(uncovered)
+            )
 
-    holidays: dict[str, str] = {}
-    for year in sorted({int(d[:4]) for d in examined}):
-        holidays.update(us_federal_holidays(year))
+    holidays = holidays_for(examined)
 
     by_station_day = {key: rows for key, rows in work.groupby(["station", "_date"], sort=False)}
     records: list[DayRecord] = []
     for day in examined:
         weekday = date.fromisoformat(day).weekday()
-        reasons: list[str] = []
-        if weekday not in CANDIDATE_WEEKDAYS:
-            reasons.append(f"weekday {WEEKDAY_NAMES[weekday]} is not a candidate weekday")
-        if day in holidays:
-            reasons.append(f"federal holiday: {holidays[day]}")
-        if day in excluded_days:
-            reasons.append(f"excluded by the caller: {excluded_days[day]}")
+        reasons = calendar_reasons(day, holidays, excluded_days)
+        if usable_judged is not None and day not in covered:
+            reasons.append(NOT_COVERED_REASON)
+            records.append(
+                DayRecord(
+                    date=day,
+                    weekday=WEEKDAY_NAMES[weekday],
+                    candidate=False,
+                    reasons=tuple(reasons),
+                    n_selected=len(selected),
+                    n_usable=0,
+                    usable_share=math.nan,
+                    unusable_stations=(),
+                    volume_veh=None,
+                    n_station_windows=0,
+                )
+            )
+            continue
         usable: list[str] = []
         unusable: list[str] = []
         station_volumes: list[float] = []

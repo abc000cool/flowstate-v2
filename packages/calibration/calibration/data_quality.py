@@ -19,22 +19,52 @@ Kwon, Rice, Skabardonis & Varaiya (2003), "Detecting errors and imputing
 missing data for single-loop surveillance systems", Transportation Research
 Record 1855:160–167, as described by Bickel et al. (2007), "Measuring
 traffic", Statistical Science 22(4):581–597, §3: per detector and day it
-counts samples with occupancy = 0 (S1), samples with occupancy > 0 and
-flow = 0 (S2), samples with occupancy above k* = 0.35 (S3), and the entropy of
-the occupancy samples (S4, low for a constant series), and declares the
-detector bad for the day when any count exceeds an empirically chosen
-threshold. Those thresholds were set for 30-second samples and are not used
+counts samples with occupancy = 0 (S1 — the loop detects nothing), samples
+with occupancy > 0 and flow = 0 (S2), samples with occupancy above k* = 0.35
+(S3), and the entropy of the occupancy samples (S4, low for a constant
+series), and declares the detector bad for the day when any count exceeds an
+empirically chosen threshold. Those thresholds were set for 30-second samples and are not used
 here; where a check below follows one of S1–S4 its docstring says which, and
 every threshold states its own reason. Checks the DSA does not cover (flow
 ceilings, implied vehicle length, day outliers, lane imbalance, mass balance)
 cite no source for their numbers and state a reason instead.
+
+**Standing queues are traffic, not faults.** A window with no vehicle
+counted is judged by its occupancy, never by its speed: with nothing crossing
+the loop a window mean speed is undefined (MnDOT reports none; other sources
+carry a stale or default value), so the speed field of a zero-count window is
+not read. Such a window is
+
+* **empty** — occupancy at most :data:`EMPTY_LOOP_OCCUPANCY_PCT`: nothing over
+  the loop. Where this detector usually counts traffic, a run of empty windows
+  is a dead loop or a closure (``zero_run``, the failure Chen et al.'s S1
+  counts: occupancy = 0);
+* **occupied** — the loop covered :data:`ZERO_FLOW_MIN_OCCUPIED_S` or more
+  (S2's occupancy > 0 with flow = 0). It is a **standstill** — a vehicle
+  standing on the loop, not flagged — when either (a) its stretch of
+  consecutive occupied zero-count windows lasts at most
+  :data:`STANDSTILL_MAX_S` with a mean occupancy of at least
+  :data:`STANDSTILL_MIN_OCCUPANCY_PCT` (a stop-and-go jam passing the loop),
+  or (b) a neighbouring sensor reads congestion within
+  :data:`QUEUE_CONTEXT_S` of the window: another lane of the same station or,
+  for a mainline sensor, the nearest mainline station upstream or downstream,
+  with occupancy at least :data:`CONGESTED_OCCUPANCY_PCT` or a vehicle counted
+  below :data:`calibration.conservation.CONGESTED_SPEED_MS`. An occupied
+  window that is neither is a hanging-on loop or missed counts
+  (``zero_flow_occupied``): occupancy held high with no count while the
+  neighbours flow freely;
+* **unreported** — no occupancy (a count-only source): judged as empty unless
+  a neighbour reads congestion at the time (b).
 
 **Verdicts.** ``exclude`` drops the whole sensor-day (the DSA's day-level
 logic: once a detector is shown to malfunction on a day its plausible-looking
 readings that day are not trusted either). ``suspect`` keeps the day but
 masks the windows the finding names (only those, and only the quantity it
 names — a frozen occupancy does not cost the counts). A sensor-day's verdict
-is the worst of its findings. :func:`mask_grid` applies the verdicts.
+is the worst of its findings. :func:`mask_grid` applies the verdicts to a
+grid, :func:`mask_frame` to a tidy frame (the observed targets are masked this
+way before they are averaged over dates, docs/FRISCO_PROTOCOL.md §2.2);
+:class:`QualityVerdicts` reads them from a report or from its JSON.
 
 **Mass balance.** After masking, consecutive mainline stations are compared
 with the ramps between them (:mod:`calibration.conservation`): per period the
@@ -53,17 +83,20 @@ cannot tell them apart and says so in every such finding.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import warnings
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
+from pathlib import Path
 from typing import Any, Final, Literal
 
 import numpy as np
 import pandas as pd
 
 from calibration.conservation import (
+    CONGESTED_SPEED_MS,
     DEFAULT_COUNT_ERROR,
     DEFAULT_PERIOD_S,
     Combination,
@@ -76,9 +109,13 @@ from calibration.conservation import (
     corridor_layout,
     count_tolerance,
     detector_grid,
+    normalize_date,
+    sensor_id,
     silent_lane_note,
     station_grid,
 )
+from calibration.loaders.detector_csv import detector_interval_s, local_dates, local_seconds
+from calibration.observations import parse_clock
 from flowstate_core.units import kmh_to_ms
 
 QUALITY_SCHEMA: Final[str] = "flowstate.data_quality/1"
@@ -168,14 +205,67 @@ STUCK_MIN_OCCUPANCY_PCT: Final[float] = 2.0
 Reason: 0 and 1 % are the integer-rounding floor of light traffic."""
 
 ZERO_RUN_MIN_EXPECTED_VEH: Final[float] = 20.0
-"""Expected vehicles over a run of zero counts at which the run is flagged.
+"""Expected vehicles over a run of empty zero-count windows at which the run
+is flagged.
 
 Reason: the expectation is this detector's own median count at the same
 time of day over the dates (:data:`MIN_PROFILE_DAYS`), so a quiet night is
 expected to read zero and is left alone; under a Poisson count the
-probability of no vehicle where 20 are expected is e⁻²⁰ ≈ 2·10⁻⁹. This is the
-failure Chen et al.'s S1 (occupancy = 0 too often, "card off") targets; a full
-road closure produces the same reading."""
+probability of no vehicle where 20 are expected is e⁻²⁰ ≈ 2·10⁻⁹. Only windows
+whose loop is empty (:data:`EMPTY_LOOP_OCCUPANCY_PCT`) or whose occupancy is
+unreported with no congestion next to it enter a run: the failure Chen et
+al.'s S1 counts is samples with occupancy = 0, a loop that detects nothing —
+not a loop with a vehicle standing on it. A full road closure reads the same
+as a dead loop."""
+
+EMPTY_LOOP_OCCUPANCY_PCT: Final[float] = 1.0
+"""Highest occupancy of a zero-count window whose loop is empty [percent].
+
+Reason: a loop with nothing over it reads 0 % (Chen et al. 2003, S1:
+occupancy = 0). 1 % leaves room for a published percentage rounded up from a
+trace and for the presence of a vehicle counted just before the window that
+spills across its boundary (a 7 m effective length at 5 m/s covers the loop
+1.4 s: under 1 % of a 5-minute window; in 30-second data the one spilled
+window only shortens the run)."""
+
+STANDSTILL_MIN_OCCUPANCY_PCT: Final[float] = 50.0
+"""Least mean occupancy of a stretch of zero-count windows for it to be a
+vehicle standing on the loop [percent].
+
+Reason: moving traffic that covers the loop half the time cannot cross it
+without a count: at occupancy o and speed v a lane carries q = o·v/L, which at
+o = 50 %, v = 1 m/s and L = 7 m is still one vehicle every 14 s. A stretch
+covered more than half the time with nothing counted is a vehicle stopped on
+the loop."""
+
+STANDSTILL_MAX_S: Final[float] = 300.0
+"""Longest stretch of occupied zero-count windows accepted as a standstill
+without a neighbour's confirmation [s] (5 min).
+
+Reason: a vehicle stands on a loop for as long as the stopped part of a jam
+takes to pass it, the jam's width over its speed; at the empirical
+stop-and-go wave speed of about 20 km/h (CLAUDE.md §7.1: 14–22 km/h) five
+minutes is a standing jam 1.7 km wide. A longer stop is a full stoppage whose
+queue reaches the neighbouring lanes and stations, and is accepted only when
+one of them reads congestion (:data:`QUEUE_CONTEXT_S`)."""
+
+CONGESTED_OCCUPANCY_PCT: Final[float] = 20.0
+"""Occupancy at or above which a neighbouring sensor reads congestion
+[percent].
+
+Reason: past the capacity point. Occupancy is q·L/v; at a lane capacity of
+2,200 veh/h, 25 m/s (90 km/h) and a 6.5 m effective length it is 16 %, so a
+window above 20 % carries more vehicles per metre than any free-flowing lane
+— queued traffic."""
+
+QUEUE_CONTEXT_S: Final[float] = 300.0
+"""How far before and after a zero-count window a neighbour's congestion
+counts for it [s].
+
+Reason: a jam front moves about 20 km/h (5.6 m/s, CLAUDE.md §7.1), so a queue
+standing on one loop reaches or leaves a station 1.7 km away within 5
+minutes — wider than the station spacing of an instrumented freeway; in
+5-minute data it is the adjacent window."""
 
 MIN_PROFILE_DAYS: Final[int] = 3
 """Dates that must observe a window for its time-of-day median to exist.
@@ -193,21 +283,19 @@ reason as ``calibration.onboarding.DEFAULT_ALIVE_VEH_H``: a lane or ramp in
 service carrying 20 veh/h all day is a broken loop more often than a road."""
 
 ZERO_FLOW_MIN_OCCUPIED_S: Final[float] = 5.0
-"""Occupied time in a window with no vehicle counted that is inconsistent [s].
+"""Occupied time in a window with no vehicle counted that needs explaining [s].
 
 Reason: a vehicle detected just before a window boundary spills its
 occupancy into the next window, but a 7 m effective length at 5 m/s occupies
-the loop 1.4 s in all; 5 s of occupancy with no count is a hanging-on loop or
-a missed count (Chen et al.'s S2: occupancy > 0 with flow = 0)."""
-
-STANDSTILL_SPEED_MS: Final[float] = 5.0
-"""Below this reported speed a zero-count, occupied window is a queue standing
-on the loop and is not flagged [m/s]."""
+the loop 1.4 s in all; 5 s of occupancy with no count is a vehicle standing
+on the loop (a standstill, module docstring), a hanging-on loop or a missed
+count (Chen et al.'s S2: occupancy > 0 with flow = 0)."""
 
 ZERO_FLOW_OCCUPIED_SUSPECT_SHARE: Final[float] = 0.01
-"""Share of a day's windows with occupancy but no count at which the day is
-suspect. Reason (convention): a few standing-queue windows on an incident
-day are legitimate; more than one window in a hundred is not."""
+"""Share of a day's windows occupied with no count that neither a standstill
+nor a neighbour's congestion explains at which the day is suspect. Reason
+(convention): one or two unexplained windows are a boundary effect or a
+standstill no neighbour saw; more than one window in a hundred is a fault."""
 
 OCCUPANCY_FLOOR_FLOW_VEH_H_LANE: Final[float] = 600.0
 """Per-lane flow at which a zero occupancy is impossible [veh/h/lane].
@@ -323,8 +411,13 @@ class QualityThresholds:
     min_profile_days: int = MIN_PROFILE_DAYS
     day_judged_min_valid_s: float = DAY_JUDGED_MIN_VALID_S
     low_flow_veh_h: float = LOW_FLOW_VEH_H
+    empty_loop_occupancy_pct: float = EMPTY_LOOP_OCCUPANCY_PCT
     zero_flow_min_occupied_s: float = ZERO_FLOW_MIN_OCCUPIED_S
-    standstill_speed_ms: float = STANDSTILL_SPEED_MS
+    standstill_min_occupancy_pct: float = STANDSTILL_MIN_OCCUPANCY_PCT
+    standstill_max_s: float = STANDSTILL_MAX_S
+    congested_occupancy_pct: float = CONGESTED_OCCUPANCY_PCT
+    congested_speed_ms: float = CONGESTED_SPEED_MS
+    queue_context_s: float = QUEUE_CONTEXT_S
     zero_flow_occupied_suspect_share: float = ZERO_FLOW_OCCUPIED_SUSPECT_SHARE
     occupancy_floor_flow_veh_h_lane: float = OCCUPANCY_FLOOR_FLOW_VEH_H_LANE
     implied_length_band_m: tuple[float, float] = IMPLIED_LENGTH_BAND_M
@@ -365,13 +458,23 @@ THRESHOLD_SOURCES: Final[dict[str, str]] = {
     "stuck_min_count_veh": "Poisson: consecutive agreement <= 0.09 at mean >= 10",
     "stuck_single_run_s": "beyond integer rounding of occupancy/speed (cf. Chen et al. 2003 S4)",
     "stuck_min_occupancy_pct": "integer-rounding floor of light traffic",
-    "zero_run_min_expected_veh": "Poisson e^-20 against the detector's own profile (cf. S1)",
+    "zero_run_min_expected_veh": "Poisson e^-20 against the detector's own profile",
     "min_profile_days": "a median of < 3 values is not robust",
     "day_judged_min_valid_s": "3 h of all-zero readings is a dead detector or a closure",
     "low_flow_veh_h": "same as calibration.onboarding.DEFAULT_ALIVE_VEH_H",
+    "empty_loop_occupancy_pct": (
+        "an empty loop reads 0 % (Chen et al. 2003 S1: occupancy = 0); 1 % for rounding "
+        "and a boundary spill"
+    ),
     "zero_flow_min_occupied_s": "beyond a boundary spill of one vehicle (cf. S2)",
-    "standstill_speed_ms": "a standing queue on the loop is legitimate",
-    "zero_flow_occupied_suspect_share": "convention: one window in a hundred",
+    "standstill_min_occupancy_pct": (
+        "moving traffic covering the loop half the time is counted (q = o v / L)"
+    ),
+    "standstill_max_s": "a 1.7 km standing jam passing at about 20 km/h (CLAUDE.md 7.1)",
+    "congested_occupancy_pct": "past capacity: 16 % at 2,200 veh/h/lane, 25 m/s, 6.5 m",
+    "congested_speed_ms": "40 km/h: CLAUDE.md 7.2 jam threshold (calibration.conservation)",
+    "queue_context_s": "a jam front moves about 20 km/h: 1.7 km in 5 min (CLAUDE.md 7.1)",
+    "zero_flow_occupied_suspect_share": "convention: one unexplained window in a hundred",
     "occupancy_floor_flow_veh_h_lane": "occupancy >= 1.5 % at 600 veh/h/lane, 45 m/s, 4 m",
     "implied_length_band_m": "shorter than any vehicle / longer than a tractor-trailer",
     "implied_length_min_count_veh": "below 10 vehicles the mean length is chance",
@@ -404,14 +507,16 @@ CHECK_DESCRIPTIONS: Final[dict[str, str]] = {
     "stuck_occupancy": "occupancy repeats one value (2 % or more) for 2 h or more",
     "stuck_speed": "speed repeats one value for 2 h or more",
     "zero_run": (
-        "no vehicle counted for a stretch in which this detector usually counts 20 or more "
-        "(cf. Chen et al. 2003, S1)"
+        "no vehicle counted and the loop empty (occupancy at most 1 %, or unreported with no "
+        "congestion next to it) for a stretch in which this detector usually counts 20 or more "
+        "(cf. Chen et al. 2003, S1: occupancy = 0)"
     ),
     "zero_day": "no vehicle counted in three or more hours of readings",
     "low_flow": "mean flow below 30 veh/h over three or more hours of readings",
     "zero_flow_occupied": (
-        "the loop is occupied 5 s or more in a window with no vehicle counted "
-        "(cf. Chen et al. 2003, S2)"
+        "the loop is occupied 5 s or more in a window with no vehicle counted, and neither a "
+        "standstill (at least 50 % occupancy for at most 5 min) nor congestion at a "
+        "neighbouring lane or station within 5 min explains it (cf. Chen et al. 2003, S2)"
     ),
     "flow_without_occupancy": "occupancy reads 0 while 600+ veh/h per lane pass",
     "implied_length": "flow, occupancy and speed imply a mean vehicle length outside 2.5-25 m",
@@ -891,6 +996,7 @@ _STAT_KEYS: Final[tuple[str, ...]] = (
     "zero_run_windows",
     "mean_flow_veh_h",
     "zero_flow_occupied_windows",
+    "standstill_windows",
     "flow_without_occupancy_windows",
     "implied_length_median_m",
     "implied_length_outside_share",
@@ -916,8 +1022,14 @@ def _evaluate_day(
     grid: DetectorGrid,
     reference: np.ndarray,
     th: QualityThresholds,
+    queue_nearby: np.ndarray | None = None,
 ) -> _DayEval:
-    """Window- and day-level checks of one sensor-day (module docstring)."""
+    """Window- and day-level checks of one sensor-day (module docstring).
+
+    ``queue_nearby`` marks the windows in which a neighbouring sensor reads
+    congestion within :data:`QUEUE_CONTEXT_S` (:func:`neighbour_congestion`);
+    None means no neighbour is known.
+    """
     n = f.size
     dt = grid.interval_s
     ev = _DayEval(n)
@@ -1033,25 +1145,41 @@ def _evaluate_day(
             vc = np.where(mask, np.nan, vc)
 
     # -- occupied with no count (before the zero runs: the more specific finding) --
+    # The speed of a zero-count window is never read: with no vehicle crossing
+    # the loop it is undefined (module docstring, "Standing queues").
+    nearby = np.zeros(n, dtype=bool) if queue_nearby is None else np.asarray(queue_nearby, bool)
     occupied_s = oc / 100.0 * dt
-    standstill = np.isfinite(vc) & (vc < th.standstill_speed_ms)
-    zfo = (
+    occupied_zero = (
         np.isfinite(fc)
         & (fc == 0.0)
         & np.isfinite(oc)
         & (occupied_s >= th.zero_flow_min_occupied_s)
-        & ~standstill
     )
+    standstill = occupied_zero & nearby
+    max_stand = max(1, math.floor(th.standstill_max_s / dt + 1e-9))
+    starts, lengths, _ = _value_runs(np.where(occupied_zero, 1.0, np.nan))
+    for s, length in zip(starts, lengths, strict=True):
+        stretch = slice(int(s), int(s) + int(length))
+        if length <= max_stand and float(np.mean(oc[stretch])) >= (th.standstill_min_occupancy_pct):
+            standstill[stretch] = True
+    zfo = occupied_zero & ~standstill
     n_zfo = int(zfo.sum())
     ev.stats["zero_flow_occupied_windows"] = n_zfo
+    ev.stats["standstill_windows"] = int(standstill.sum())
     share = n_zfo / max(ev.n_valid, 1)
     if n_zfo and share >= th.zero_flow_occupied_suspect_share:
+        z_starts, z_lengths, _ = _value_runs(np.where(zfo, 1.0, np.nan))
+        k = int(np.argmax(z_lengths))
         ev.add(
             "zero_flow_occupied",
             "exclude" if share >= th.window_flag_exclude_share else "suspect",
             f"the loop is occupied {th.zero_flow_min_occupied_s:g} s or more with no vehicle "
-            f"counted in {n_zfo} window(s) ({share:.1%} of the day) — a hanging-on loop or "
-            f"missed counts",
+            f"counted in {n_zfo} window(s) ({share:.1%} of the day; longest "
+            f"{_duration(z_lengths[k] * dt)} from {grid.window_label(int(z_starts[k]))}) that "
+            f"neither a standstill (at least {th.standstill_min_occupancy_pct:g} % occupancy for "
+            f"at most {_duration(th.standstill_max_s)}) nor congestion at a neighbouring lane or "
+            f"station within {_duration(th.queue_context_s)} explains — a hanging-on loop or "
+            f"missed counts (or a stoppage no neighbouring detector saw)",
             statistic=share,
             n_windows=n_zfo,
             mask={"flow": zfo, "occupancy": zfo, "speed": zfo},
@@ -1077,7 +1205,12 @@ def _evaluate_day(
             statistic=float(n_left * dt),
         )
     else:
-        zero = np.where(finite_c & (fc == 0.0), 1.0, np.nan)
+        # only an empty loop is dead (S1: occupancy = 0); an unreported
+        # occupancy counts as empty unless a neighbour reads congestion
+        empty = np.isfinite(oc) & (oc <= th.empty_loop_occupancy_pct)
+        unreported = ~np.isfinite(oc) & ~nearby
+        dead = finite_c & (fc == 0.0) & (empty | unreported)
+        zero = np.where(dead, 1.0, np.nan)
         starts, lengths, _ = _value_runs(zero)
         expected_flow = np.where(np.isfinite(reference), reference, mean_flow or 0.0)
         flagged_starts: list[int] = []
@@ -1094,10 +1227,18 @@ def _evaluate_day(
             ev.stats["zero_run_windows"] = int(mask.sum())
             k = int(np.argmax(flagged_lengths))
             share = int(mask.sum()) / max(ev.n_valid, 1)
+            unreported_run = bool(
+                (~np.isfinite(oc[flagged_starts[k] : flagged_starts[k] + flagged_lengths[k]])).all()
+            )
+            loop = (
+                "occupancy not reported and no neighbouring lane or station congested"
+                if unreported_run
+                else f"the loop empty (occupancy at most {th.empty_loop_occupancy_pct:g} %)"
+            )
             ev.add(
                 "zero_run",
                 "exclude" if share >= th.window_flag_exclude_share else "suspect",
-                f"no vehicle counted for {_duration(flagged_lengths[k] * dt)} from "
+                f"no vehicle counted, {loop}, for {_duration(flagged_lengths[k] * dt)} from "
                 f"{grid.window_label(flagged_starts[k])} where this detector usually counts "
                 f"{expected_runs[k]:,.0f} ({len(flagged_starts)} run(s), {int(mask.sum())} "
                 f"windows) — a dead loop, or a closure",
@@ -1181,6 +1322,96 @@ def _evaluate_day(
 # ---------------------------------------------------------------------------
 # Cross-day and cross-sensor checks
 # ---------------------------------------------------------------------------
+
+
+def neighbours(grid: DetectorGrid) -> dict[str, tuple[str, ...]]:
+    """Each sensor's neighbours for the standstill rule (module docstring).
+
+    The other lanes of its station and, for a mainline sensor with a known
+    position, every sensor of the nearest mainline station upstream and
+    downstream (by ``x_m``; ramps are not neighbours of the mainline).
+
+    Args:
+        grid: The detector grid.
+
+    Returns:
+        Sensor id → neighbouring sensor ids.
+    """
+    members = grid.stations()
+    position: dict[str, float] = {}
+    for station, sids in members.items():
+        info = grid.sensors[sids[0]]
+        if info.kind == "mainline" and info.x_m is not None:
+            position[station] = float(info.x_m)
+    ordered = sorted(position, key=lambda st: (position[st], st))
+    adjacent: dict[str, list[str]] = {}
+    for i, station in enumerate(ordered):
+        adjacent[station] = [ordered[j] for j in (i - 1, i + 1) if 0 <= j < len(ordered)]
+    out: dict[str, tuple[str, ...]] = {}
+    for sid, info in grid.sensors.items():
+        same = [m for m in members[info.station] if m != sid]
+        near = [m for st in adjacent.get(info.station, []) for m in members[st]]
+        out[sid] = tuple(same + near)
+    return out
+
+
+def _dilate(mask: np.ndarray, k: int) -> np.ndarray:
+    """``mask`` (dates × windows) widened by ``k`` windows either side, per date."""
+    if k <= 0 or not mask.any():
+        return mask.copy()
+    n = mask.shape[1]
+    cum = np.concatenate(
+        [np.zeros((mask.shape[0], 1), dtype=np.int64), np.cumsum(mask, axis=1, dtype=np.int64)],
+        axis=1,
+    )
+    idx = np.arange(n)
+    lo = np.clip(idx - k, 0, n)
+    hi = np.clip(idx + k + 1, 0, n)
+    widened: np.ndarray = (cum[:, hi] - cum[:, lo]) > 0
+    return widened
+
+
+def neighbour_congestion(
+    grid: DetectorGrid, thresholds: QualityThresholds | None = None
+) -> dict[str, np.ndarray]:
+    """Windows in which a neighbour of each sensor reads congestion.
+
+    A sensor reads congestion in a window when its occupancy is at least
+    ``congested_occupancy_pct`` or a vehicle was counted at a speed below
+    ``congested_speed_ms`` (readings outside the physical ranges are
+    ignored). A sensor's mask is the union of its :func:`neighbours`' readings,
+    widened by ``queue_context_s`` either side.
+
+    Args:
+        grid: The detector grid, as delivered.
+        thresholds: The rules (default :class:`QualityThresholds`).
+
+    Returns:
+        Sensor id → boolean array ``(dates, windows)``.
+    """
+    th = thresholds or QualityThresholds()
+    lo_o, hi_o = th.occupancy_range_pct
+    reads: dict[str, np.ndarray] = {}
+    for sid in grid.sensors:
+        q = grid.flow_veh_h[sid]
+        o = grid.occupancy_pct[sid]
+        v = grid.speed_ms[sid]
+        o_ok = np.isfinite(o) & (o >= lo_o) & (o <= hi_o)
+        v_ok = np.isfinite(v) & (v >= 0.0) & (v <= th.speed_ceiling_ms)
+        counted = np.isfinite(q) & (q > 0.0)
+        with np.errstate(invalid="ignore"):
+            reads[sid] = (o_ok & (o >= th.congested_occupancy_pct)) | (
+                counted & v_ok & (v < th.congested_speed_ms)
+            )
+    k = math.floor(th.queue_context_s / grid.interval_s + 1e-9)
+    shape = (len(grid.dates), grid.n_windows)
+    out: dict[str, np.ndarray] = {}
+    for sid, near in neighbours(grid).items():
+        union = np.zeros(shape, dtype=bool)
+        for m in near:
+            union |= reads[m]
+        out[sid] = _dilate(union, k)
+    return out
 
 
 def _masked_values(
@@ -1606,6 +1837,7 @@ def assess_quality(
             "test did not run for them"
         )
     evals: dict[tuple[str, int], _DayEval] = {}
+    nearby = neighbour_congestion(grid, th)
     for sid, info in grid.sensors.items():
         f_all = grid.flow_veh_h[sid]
         lanes = info.lanes
@@ -1623,6 +1855,7 @@ def assess_quality(
                 grid=grid,
                 reference=reference,
                 th=th,
+                queue_nearby=nearby[sid][d],
             )
     flows, _, _ = _masked_values(grid, evals)
     factors = _day_outliers(grid, flows, evals, th)
@@ -1762,6 +1995,499 @@ def mask_grid(grid: DetectorGrid, report: DataQualityReport) -> DetectorGrid:
                 if idx:
                     target[d, idx] = np.nan
     return grid.replace_values(arrays["flow"], arrays["occupancy"], arrays["speed"])
+
+
+# ---------------------------------------------------------------------------
+# Verdicts as data: masking a frame, station-days
+# ---------------------------------------------------------------------------
+
+QUALITY_MASK_RULE: Final[str] = (
+    "exclude drops the sensor-day; suspect sets aside only the windows and quantities its "
+    "findings name; a station reading is set aside when any lane sensor of the station "
+    "(lanes that never reported anywhere in the report excepted) sets it aside; a reading "
+    "whose window overlaps a set-aside window of the report is set aside; applied before "
+    "the dates are averaged"
+)
+"""How :func:`mask_frame` applies the verdicts (recorded with every masking)."""
+
+_QUANTITY_COLUMNS: Final[dict[str, str]] = {
+    "flow": "flow_veh_h",
+    "occupancy": "occupancy_pct",
+    "speed": "speed_ms",
+}
+_GRID_TOLERANCE_S: Final[float] = 1e-6
+
+
+@dataclass(frozen=True)
+class SensorDayVerdict:
+    """One sensor-day's verdict, as masking needs it.
+
+    Attributes:
+        sensor: Sensor id (station, or ``station:lane``).
+        station: Station id.
+        lane: Lane id, or ``None`` for a station sensor.
+        kind: ``mainline``, ``on_ramp`` or ``off_ramp``.
+        date: Local date ``YYYY-MM-DD``.
+        verdict: ``ok``, ``suspect`` or ``exclude``.
+        checks: The checks behind the verdict, in finding order.
+        masked: Quantity → the report-grid window indices a ``suspect``
+            verdict sets aside.
+        n_valid: Windows the sensor delivered that day (``None`` when the
+            source does not say).
+    """
+
+    sensor: str
+    station: str
+    lane: str | None
+    kind: str
+    date: str
+    verdict: str
+    checks: tuple[str, ...] = ()
+    masked: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    n_valid: int | None = None
+
+    def set_aside(self, quantity: str, n_windows: int) -> np.ndarray:
+        """Windows of ``quantity`` the verdict sets aside (every one for ``exclude``)."""
+        out = np.zeros(n_windows, dtype=bool)
+        if self.verdict == "exclude":
+            out[:] = True
+        elif self.verdict == "suspect":
+            idx = [int(i) for i in self.masked.get(quantity, ()) if 0 <= int(i) < n_windows]
+            out[idx] = True
+        return out
+
+    def record(self) -> dict[str, Any]:
+        """``{"sensor", "date", "verdict", "checks"}`` (what a masked artifact lists)."""
+        return {
+            "sensor": self.sensor,
+            "date": self.date,
+            "verdict": self.verdict,
+            "checks": list(self.checks),
+        }
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> SensorDayVerdict:
+        """From a ``sensor_days`` entry of the report's JSON.
+
+        Raises:
+            ValueError: No station or date, or an unknown verdict.
+        """
+        station = raw.get("station")
+        if station in (None, "") or raw.get("date") in (None, ""):
+            raise ValueError(f"data-quality sensor-day without station or date: {dict(raw)}")
+        lane = raw.get("lane")
+        verdict = str(raw.get("verdict", ""))
+        if verdict not in _RANK:
+            raise ValueError(f"data-quality sensor-day with unknown verdict {verdict!r}")
+        checks: list[str] = []
+        for finding in raw.get("findings") or ():
+            check = str(finding.get("check", ""))
+            if check and check not in checks:
+                checks.append(check)
+        masked = raw.get("masked") or {}
+        n_valid = raw.get("n_valid")
+        return cls(
+            sensor=str(
+                raw.get("sensor") or sensor_id(str(station), None if lane is None else str(lane))
+            ),
+            station=str(station),
+            lane=None if lane is None else str(lane),
+            kind=str(raw.get("kind") or "mainline"),
+            date=normalize_date(str(raw["date"])),
+            verdict=verdict,
+            checks=tuple(checks),
+            masked={q: tuple(int(i) for i in masked.get(q) or ()) for q in QUANTITIES},
+            n_valid=None if n_valid is None else int(n_valid),
+        )
+
+
+@dataclass(frozen=True)
+class StationDay:
+    """A station's verdict on one date, from its sensors' verdicts.
+
+    Attributes:
+        station: Station id.
+        date: Local date.
+        sensors: The verdicts of its sensors that day (lanes that never
+            reported anywhere in the report left out, unless every lane is
+            such a lane).
+        excluded: Some sensor is judged ``exclude``.
+    """
+
+    station: str
+    date: str
+    sensors: tuple[SensorDayVerdict, ...]
+
+    @property
+    def excluded(self) -> bool:
+        """A sensor of the station is excluded that day."""
+        return any(sd.verdict == "exclude" for sd in self.sensors)
+
+    @property
+    def judged(self) -> bool:
+        """At least one sensor of the station was judged that day."""
+        return bool(self.sensors)
+
+    def exclusions(self) -> list[dict[str, Any]]:
+        """The excluding sensor-days as records."""
+        return [sd.record() for sd in self.sensors if sd.verdict == "exclude"]
+
+
+@dataclass(frozen=True)
+class QualityVerdicts:
+    """A data-quality report's verdicts, read from the report or its JSON.
+
+    Attributes:
+        interval_s: The report's window [s] (``None`` when its JSON omits it).
+        start_s: Local clock start of the report's span [s].
+        n_windows: Windows per day of the span.
+        dates: The dates the report judged.
+        per_lane: The sensors are lanes.
+        sensor_days: One verdict per sensor and date.
+        path: Where the JSON was read from (``None`` for an in-memory report).
+        sha256: SHA-256 of the JSON file's bytes, or of the report's
+            :meth:`DataQualityReport.to_json` text for an in-memory report.
+        positions: Station → corridor position [m] from the report's
+            ``sensors`` (``None`` when not stated).
+    """
+
+    interval_s: float | None
+    start_s: float | None
+    n_windows: int | None
+    dates: tuple[str, ...]
+    per_lane: bool
+    sensor_days: tuple[SensorDayVerdict, ...]
+    path: str | None = None
+    sha256: str | None = None
+    positions: dict[str, float | None] = field(default_factory=dict)
+
+    @property
+    def span_local(self) -> tuple[str | None, str | None]:
+        """``(start, end)`` of the judged span as ``"HH:MM"`` (``None`` when unknown)."""
+        if self.start_s is None:
+            return None, None
+        if self.interval_s is None or self.n_windows is None:
+            return clock_text(self.start_s), None
+        return clock_text(self.start_s), clock_text(self.start_s + self.n_windows * self.interval_s)
+
+    @classmethod
+    def from_report(cls, report: DataQualityReport, *, path: str | None = None) -> QualityVerdicts:
+        """From an in-memory :class:`DataQualityReport`."""
+        return cls.from_dict(
+            report.to_dict(),
+            path=path,
+            sha256=hashlib.sha256(report.to_json().encode()).hexdigest(),
+        )
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any], *, path: str | None = None, sha256: str | None = None
+    ) -> QualityVerdicts:
+        """From a ``flowstate.data_quality/1`` payload.
+
+        Raises:
+            ValueError: Another schema, or a malformed sensor-day.
+        """
+        schema = payload.get("schema", QUALITY_SCHEMA)
+        if schema != QUALITY_SCHEMA:
+            raise ValueError(f"expected a {QUALITY_SCHEMA} report, got schema {schema!r}")
+        grid = payload.get("grid") or {}
+        days = tuple(SensorDayVerdict.from_mapping(sd) for sd in payload.get("sensor_days", ()))
+        interval = grid.get("interval_s")
+        start = grid.get("start_local")
+        start_s = None if start in (None, "") else parse_clock(str(start))
+        n_windows = grid.get("n_windows")
+        if n_windows is None and interval and start_s is not None and grid.get("end_local"):
+            end = str(grid["end_local"])
+            end_s = 86400.0 if end in ("24:00", "24:00:00") else parse_clock(end)
+            n_windows = round((end_s - start_s) / float(interval))
+        dates = {normalize_date(str(d)) for d in grid.get("dates") or ()}
+        dates |= {sd.date for sd in days}
+        per_lane = bool(grid.get("per_lane", any(sd.lane is not None for sd in days)))
+        positions: dict[str, float | None] = {}
+        for sensor in payload.get("sensors") or ():
+            station = str(sensor.get("station") or sensor.get("sensor") or "")
+            x = sensor.get("x_m")
+            if station and positions.get(station) is None:
+                positions[station] = None if x is None else float(x)
+        return cls(
+            interval_s=None if interval is None else float(interval),
+            start_s=start_s,
+            n_windows=None if n_windows is None else int(n_windows),
+            dates=tuple(sorted(dates)),
+            per_lane=per_lane,
+            sensor_days=days,
+            path=path,
+            sha256=sha256,
+            positions=positions,
+        )
+
+    @classmethod
+    def from_json(cls, path: str | Path) -> QualityVerdicts:
+        """Read ``data_quality.json`` (path and file hash recorded)."""
+        raw = Path(path).read_bytes()
+        return cls.from_dict(
+            json.loads(raw), path=str(path), sha256=hashlib.sha256(raw).hexdigest()
+        )
+
+    def silent_lanes(self) -> frozenset[str]:
+        """Lane sensors that delivered nothing on any date of the report.
+
+        A detector that never reports is not an installed lane
+        (:func:`calibration.conservation.silent_lane_note`): it neither
+        excludes its station nor masks the station's readings.
+        """
+        seen: dict[str, bool] = {}
+        for sd in self.sensor_days:
+            if sd.lane is None or sd.n_valid is None:
+                seen[sd.sensor] = False
+                continue
+            seen[sd.sensor] = seen.get(sd.sensor, True) and sd.n_valid == 0
+        return frozenset(s for s, silent in seen.items() if silent)
+
+    def station_sensors(self) -> dict[str, tuple[str, ...]]:
+        """Station → its sensors (silent lanes left out unless every lane is silent)."""
+        silent = self.silent_lanes()
+        every: dict[str, list[str]] = {}
+        for sd in self.sensor_days:
+            members = every.setdefault(sd.station, [])
+            if sd.sensor not in members:
+                members.append(sd.sensor)
+        return {
+            st: tuple(sorted([m for m in members if m not in silent] or members))
+            for st, members in every.items()
+        }
+
+    def station_days(
+        self, *, kind: str | None = "mainline", stations: Collection[str] | None = None
+    ) -> dict[tuple[str, str], StationDay]:
+        """Every (station, date) the report judged, from its sensors' verdicts.
+
+        Args:
+            kind: Keep only sensors of this kind (``None``: every kind).
+            stations: Keep only these stations (default: all).
+
+        Returns:
+            ``(station, date)`` → :class:`StationDay`.
+        """
+        sensors = self.station_sensors()
+        out: dict[tuple[str, str], list[SensorDayVerdict]] = {}
+        for sd in self.sensor_days:
+            if kind is not None and sd.kind != kind:
+                continue
+            if stations is not None and sd.station not in stations:
+                continue
+            if sd.sensor not in sensors.get(sd.station, ()):
+                continue
+            out.setdefault((sd.station, sd.date), []).append(sd)
+        return {key: StationDay(key[0], key[1], tuple(v)) for key, v in out.items()}
+
+
+QualityInput = DataQualityReport | QualityVerdicts | Mapping[str, Any]
+"""What :func:`mask_frame` accepts: a report, its verdicts, or its JSON payload."""
+
+
+def as_verdicts(quality: QualityInput) -> QualityVerdicts:
+    """:class:`QualityVerdicts` from a report, its JSON payload, or verdicts."""
+    if isinstance(quality, QualityVerdicts):
+        return quality
+    if isinstance(quality, DataQualityReport):
+        return QualityVerdicts.from_report(quality)
+    return QualityVerdicts.from_dict(quality)
+
+
+@dataclass(frozen=True)
+class FrameMask:
+    """A frame with the verdicts applied (:func:`mask_frame`).
+
+    Attributes:
+        frame: The masked copy (set-aside readings are NaN; nothing else
+            changed).
+        masked_sensor_days: The non-``ok`` sensor-days that apply to the
+            readings considered — every ``exclude`` of a considered
+            station-date, and every ``suspect`` that sets aside a considered
+            window — sorted by date and sensor.
+        n_masked_windows: Considered readings (one row: a sensor, date and
+            window) in which at least one finite value was set aside.
+        path: The report's JSON path (``None`` in memory).
+        sha256: The report's hash.
+    """
+
+    frame: pd.DataFrame
+    masked_sensor_days: tuple[SensorDayVerdict, ...]
+    n_masked_windows: int
+    path: str | None
+    sha256: str | None
+
+    def record(self) -> dict[str, Any]:
+        """The ``source["quality"]`` block of a masked observations artifact."""
+        return {
+            "path": self.path,
+            "sha256": self.sha256,
+            "n_masked_sensor_days": len(self.masked_sensor_days),
+            "masked_sensor_days": [sd.record() for sd in self.masked_sensor_days],
+            "n_masked_windows": int(self.n_masked_windows),
+            "rule": QUALITY_MASK_RULE,
+        }
+
+
+def mask_frame(
+    frame: pd.DataFrame,
+    quality: QualityInput,
+    *,
+    dates: Iterable[str] | None = None,
+    start_s: float | None = None,
+    end_s: float | None = None,
+    stations: Collection[str] | None = None,
+    interval_s: float | None = None,
+) -> FrameMask:
+    """Apply a report's verdicts to a tidy detector frame (:func:`mask_grid`'s rule).
+
+    The readings considered are the frame's rows of ``dates`` (default every
+    date), of ``stations`` (default every station) whose window overlaps
+    ``[start_s, end_s)`` (default the whole day). Each must be covered by the
+    report — its date judged, its window inside the report's span, its station
+    (or lane) among the report's sensors — or nothing is masked and the call
+    fails: a reading the report never judged is not a reading it passed. A
+    considered reading loses each quantity a verdict sets aside
+    (:data:`QUALITY_MASK_RULE`); per-lane verdicts apply to a station row
+    through every installed lane of the station, a station verdict to every
+    lane row of the station. Rows not considered are returned unchanged.
+
+    Args:
+        frame: Tidy detector frame (station or per-lane rows).
+        quality: The report, its JSON payload or its :class:`QualityVerdicts`.
+        dates: Dates to consider (``YYYYMMDD`` or ``YYYY-MM-DD``).
+        start_s: Local clock start of the considered span [s].
+        end_s: Local clock end of the considered span [s].
+        stations: Stations to consider.
+        interval_s: The frame's window [s] (default: ``attrs`` or inferred).
+
+    Returns:
+        The :class:`FrameMask`.
+
+    Raises:
+        ValueError: The report has no window grid, or a considered reading is
+            not covered by it (date, span or sensor).
+    """
+    v = as_verdicts(quality)
+    if v.interval_s is None or v.start_s is None or v.n_windows is None:
+        raise ValueError(
+            "mask_frame: the data-quality report records no window grid (grid.interval_s, "
+            "start_local, n_windows)"
+        )
+    name = v.path or "the data-quality report"
+    interval = float(interval_s or frame.attrs.get("interval_s") or detector_interval_s(frame))
+    secs = local_seconds(frame).to_numpy(dtype=float)
+    days = local_dates(frame).to_numpy(dtype=object)
+    consider = np.ones(len(frame), dtype=bool)
+    if dates is not None:
+        consider &= np.isin(days, sorted({normalize_date(d) for d in dates}))
+    if stations is not None:
+        consider &= frame["station"].astype(str).isin({str(s) for s in stations}).to_numpy()
+    if start_s is not None:
+        consider &= secs + interval > float(start_s) + _GRID_TOLERANCE_S
+    if end_s is not None:
+        consider &= secs < float(end_s) - _GRID_TOLERANCE_S
+    uncovered = sorted(set(days[consider]) - set(v.dates))
+    if uncovered:
+        raise ValueError(
+            f"mask_frame: date(s) {uncovered} are not covered by {name} (it judged "
+            f"{', '.join(v.dates) or 'no date'}); run the data-quality check over them"
+        )
+    lo = v.start_s
+    hi = v.start_s + v.n_windows * v.interval_s
+    outside = consider & (
+        (secs < lo - _GRID_TOLERANCE_S) | (secs + interval > hi + _GRID_TOLERANCE_S)
+    )
+    if outside.any():
+        first = int(np.flatnonzero(outside)[0])
+        raise ValueError(
+            f"mask_frame: the reading at local {clock_text(secs[first])} lies outside the span "
+            f"{name} judged ({clock_text(lo)}-{clock_text(hi)})"
+        )
+
+    by_key = {(sd.sensor, sd.date): sd for sd in v.sensor_days}
+    members = v.station_sensors()
+    report_sensors = {sd.sensor for sd in v.sensor_days}
+    has_lane = "lane" in frame.columns and bool(frame["lane"].notna().any())
+    lanes = (
+        frame["lane"].to_numpy(dtype=object)
+        if has_lane
+        else np.full(len(frame), None, dtype=object)
+    )
+    station_ids = frame["station"].astype(str).to_numpy(dtype=object)
+
+    def resolve(station: str, lane: Any) -> tuple[str, ...]:
+        if lane is not None and not (isinstance(lane, float) and math.isnan(lane)):
+            own = sensor_id(station, str(lane))
+            if own in report_sensors:
+                return (own,)
+        if station in report_sensors:
+            return (station,)
+        if lane is None or (isinstance(lane, float) and math.isnan(lane)):
+            return members.get(station, ())
+        return ()
+
+    out = frame.copy()
+    out.attrs = dict(frame.attrs)
+    present = {q: c for q, c in _QUANTITY_COLUMNS.items() if c in out.columns}
+    values = {q: out[c].to_numpy(dtype=float, copy=True) for q, c in present.items()}
+    before = {q: np.isfinite(a) for q, a in values.items()}
+    set_aside = {q: np.zeros(len(frame), dtype=bool) for q in present}
+    applied: dict[tuple[str, str], SensorDayVerdict] = {}
+    rows = np.flatnonzero(consider)
+    j0 = np.floor((secs - lo) / v.interval_s + _GRID_TOLERANCE_S).astype(np.int64)
+    j1 = np.ceil((secs + interval - lo) / v.interval_s - _GRID_TOLERANCE_S).astype(np.int64) - 1
+    groups: dict[tuple[str, Any, str], list[int]] = {}
+    for r in rows:
+        lane = lanes[r]
+        key_lane = (
+            None if lane is None or (isinstance(lane, float) and math.isnan(lane)) else str(lane)
+        )
+        groups.setdefault((str(station_ids[r]), key_lane, str(days[r])), []).append(int(r))
+    for (station, lane, day), idx_list in groups.items():
+        sensors = resolve(station, lane)
+        if not sensors:
+            raise ValueError(
+                f"mask_frame: station {station!r}"
+                + (f" lane {lane!r}" if lane is not None else "")
+                + f" is not among the sensors {name} judged"
+            )
+        idx = np.asarray(idx_list, dtype=np.int64)
+        for sid in sensors:
+            sd = by_key.get((sid, day))
+            if sd is None:
+                raise ValueError(f"mask_frame: {name} holds no verdict for {sid!r} on {day}")
+            if sd.verdict == "ok":
+                continue
+            hit = sd.verdict == "exclude"
+            for q in present:
+                windows = sd.set_aside(q, v.n_windows)
+                if not windows.any():
+                    continue
+                cum = np.concatenate([[0], np.cumsum(windows, dtype=np.int64)])
+                a = np.clip(j0[idx], 0, v.n_windows)
+                b = np.clip(j1[idx] + 1, 0, v.n_windows)
+                rows_hit = (cum[b] - cum[a]) > 0
+                if rows_hit.any():
+                    set_aside[q][idx[rows_hit]] = True
+                    hit = True
+            if hit:
+                applied[(sid, day)] = sd
+    changed = np.zeros(len(frame), dtype=bool)
+    for q, column in present.items():
+        values[q][set_aside[q]] = np.nan
+        out[column] = values[q]
+        changed |= set_aside[q] & before[q]
+    ordered = tuple(applied[k] for k in sorted(applied, key=lambda k: (k[1], k[0])))
+    return FrameMask(
+        frame=out,
+        masked_sensor_days=ordered,
+        n_masked_windows=int(changed.sum()),
+        path=v.path,
+        sha256=v.sha256,
+    )
 
 
 # ---------------------------------------------------------------------------

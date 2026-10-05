@@ -67,13 +67,17 @@ that no strategy recommendation is made), each check in words with its
 computed numbers, a "what we are confident about and what we are not" table
 generated from the checks' statuses, the strategy results — only when the
 gate passed, only as intervals, and a recommendation line only of the form
-"on this model, strategy X reduced <measure> by A–B % (95 % interval)
-relative to doing nothing; this is a model prediction" — the excluded
-detectors, the calibration/validation day split, and the study's limits.
-When the gate failed the report says it contains no strategy
-recommendations, and the strategy tables (per-configuration metrics of the
-strategy arms, the contrasts and the strategy comparison) are replaced by a
-"not delivered" statement.
+"on this model, strategy X reduced total delay including waiting time by A–B
+% (95 % interval) relative to doing nothing; this is a model prediction",
+made only when every run of the baseline and of the strategy carries that
+measure (protocol §8.2, §8.4; otherwise the line says, in plain words, why no
+recommendation is made) — the excluded detectors, the calibration/validation
+day split, and the study's limits. When the gate failed the report says it
+contains no strategy recommendations, and the strategy tables
+(per-configuration metrics of the strategy arms, the contrasts and the
+strategy comparison) are replaced by a "not delivered" statement. A gate
+result that names no configuration (an empty ``config_hash``) cannot be tied
+to the report's baseline and is treated as not evaluated.
 
 **Fuel is a model estimate everywhere it appears** (Frisco plan Stage 1
 item 13; protocol §8.6): SUMO computes it from its HBEFA emission classes and
@@ -181,18 +185,15 @@ FUEL_LIMITATION = (
     "measured fuel; differences in fuel between configurations are model predictions."
 )
 
-#: The measure a client-summary recommendation line is stated on, and its name,
-#: when the run set does not carry the delay measure below (runs written before
-#: the demand ledger, WP-105): mean travel time — under its own name, never
-#: called delay.
-RECOMMENDATION_METRIC = ("mean_tt_s", "mean travel time")
-
-#: The recommendation measure when every run of the baseline and of the
-#: strategy carries it (``validation.metrics.WaitingMetrics``, computed from the
-#: run's ``journeys.parquet``): the protocol's tuning objective, total delay
+#: The only measure a client-summary recommendation line is stated on
+#: (``validation.metrics.WaitingMetrics``, computed from the run's
+#: ``journeys.parquet``): the protocol's tuning objective, total delay
 #: including waiting time (docs/FRISCO_PROTOCOL.md §8.2, §8.4), so a strategy
 #: that holds cars on ramps or off the road cannot be recommended for a
-#: shorter trip of the cars it let through.
+#: shorter trip of the cars it let through. A run set in which any run of the
+#: baseline or of the strategy lacks it (runs written before the demand
+#: ledger, WP-105) gets no recommendation line for that strategy — never one
+#: on the travel time of the vehicles that happened to finish.
 DELAY_RECOMMENDATION_METRIC = (
     "total_delay_incl_waiting_veh_h",
     "total delay including waiting time",
@@ -209,6 +210,15 @@ CLIENT_STRATEGY_METRICS: tuple[tuple[str, str], ...] = (
     ("sigma_v_temporal_ms", "Speed variation σ_v (temporal)"),
     ("fuel_ml_per_veh_km", f"Fuel ({FUEL_LABEL})"),
     ("wave_count", "Wave count"),
+)
+
+#: Columns placed first in the client strategy table when the baseline carries
+#: the waiting metrics (protocol §8.2, §8.3): the recommendation measure and
+#: the travel time that counts ramp and entry waiting. A strategy without them
+#: shows "—" there.
+CLIENT_WAITING_METRICS: tuple[tuple[str, str], ...] = (
+    ("total_delay_incl_waiting_veh_h", "Total delay including waiting"),
+    ("mean_tt_incl_waiting_s", "Mean travel time including waiting"),
 )
 
 
@@ -1534,15 +1544,27 @@ def _signed(value: float) -> str:
     return f"{value:+.1f}" if math.isfinite(value) else _fmt(None)
 
 
-def recommendation_metric(baseline: _Group, group: _Group) -> tuple[str, str]:
+def recommendation_metric(baseline: _Group, group: _Group) -> tuple[str, str] | None:
     """The ``(field, name)`` a strategy's recommendation line is stated on.
 
     :data:`DELAY_RECOMMENDATION_METRIC` when every run of both groups carries
-    the waiting metrics, else :data:`RECOMMENDATION_METRIC` (and its wording).
+    the waiting metrics, else None: no recommendation is made (module
+    docstring).
     """
     if baseline.carries_waiting and group.carries_waiting:
         return DELAY_RECOMMENDATION_METRIC
-    return RECOMMENDATION_METRIC
+    return None
+
+
+def _waiting_missing(baseline: _Group, group: _Group) -> str:
+    """Which side lacks the delay measure, in plain words (empty when neither)."""
+    lacking = [
+        f"{len([r for r in g.runs if r.seed not in g.waiting])} of {len(g.runs)} run(s) of "
+        f"{'the baseline' if g is baseline else group.label}"
+        for g in (baseline, group)
+        if not g.carries_waiting
+    ]
+    return " and ".join(lacking)
 
 
 def _recommendation(baseline: _Group, group: _Group, ci_pct: str) -> str:
@@ -1558,13 +1580,33 @@ def _recommendation(baseline: _Group, group: _Group, ci_pct: str) -> str:
             f"No recommendation for {group.label}: its runs do not all record the collision "
             "counter, so a collision-free setting is not established."
         )
+    chosen = recommendation_metric(baseline, group)
+    if chosen is None:
+        return (
+            f"No recommendation for {group.label}: {_waiting_missing(baseline, group)} record "
+            "no total delay including waiting time (no demand ledger, journeys.parquet), so "
+            "it is not shown that the strategy does not simply hold vehicles on ramps or off "
+            "the road; a recommendation rests on that measure only "
+            f"({PROTOCOL_DOC} sections 8.2 and 8.4)."
+        )
+    field_name, measure = chosen
+    unmeasured = [
+        g.label
+        for g in (baseline, group)
+        if not all(math.isfinite(v) for v in g.values(field_name).values())
+    ]
+    if unmeasured:
+        return (
+            f"No recommendation for {group.label}: {measure} could not be computed for every "
+            f"run of {' and '.join(unmeasured)} (a vehicle without its route geometry), so the "
+            "effect on it is not established."
+        )
     thr, _, _ = _pct_interval(baseline, group, THROUGHPUT_METRIC)
     if thr.resolved and thr.hi95 < 0.0:
         return (
             f"No recommendation for {group.label}: its throughput interval lies entirely "
             f"below the baseline's ({PROTOCOL_DOC} section 8.4)."
         )
-    field_name, measure = recommendation_metric(baseline, group)
     d, lo_pct, hi_pct = _pct_interval(baseline, group, field_name)
     if d.resolved and d.hi95 < 0.0 and math.isfinite(lo_pct) and math.isfinite(hi_pct):
         return (
@@ -1604,6 +1646,11 @@ def _client_summary(
     """
     ci_pct = _fmt(CI_LEVEL * _PERCENT, 3)
     arms = [g for g in groups if g is not baseline and not g.is_baseline]
+    unattributed = gate is not None and not str(gate.config_hash or "").strip()
+    if unattributed:
+        # A gate that names no configuration cannot be checked against this
+        # report's baseline (module docstring): it is not evaluated here.
+        gate = None
     mismatch = ""
     if gate is not None and gate.config_hash and baseline is not None:
         if gate.config_hash != baseline.config_hash:
@@ -1617,10 +1664,20 @@ def _client_summary(
 
     if gate is None:
         gate_line = (
-            "Baseline gate: NOT EVALUATED. No baseline gate result was supplied with this run "
-            "set, so the model has not been shown to reproduce the corridor under the study "
-            f"protocol ({PROTOCOL_DOC} section 6), and this report makes no strategy "
-            "recommendation."
+            (
+                "Baseline gate: NOT EVALUATED. The supplied gate result names no configuration "
+                "(its config_hash is empty), so it cannot be tied to this report's baseline "
+                "and is treated as not evaluated: the model has not been shown to reproduce "
+                f"the corridor under the study protocol ({PROTOCOL_DOC} section 6), and this "
+                "report makes no strategy recommendation."
+            )
+            if unattributed
+            else (
+                "Baseline gate: NOT EVALUATED. No baseline gate result was supplied with this "
+                "run set, so the model has not been shown to reproduce the corridor under the "
+                f"study protocol ({PROTOCOL_DOC} section 6), and this report makes no strategy "
+                "recommendation."
+            )
         )
         check_lines: list[str] = []
     else:
@@ -1677,16 +1734,32 @@ def _client_summary(
             "basis": f"not evaluated in this report ({PROTOCOL_DOC} section 8.5)",
         }
     )
+    waiting_everywhere = (
+        baseline is not None and baseline.carries_waiting and all(g.carries_waiting for g in arms)
+    )
     if arms:
         confidence.append(
             {
                 "statement": "Waiting time on ramps and before entering the network",
-                "confident": CONFIDENT_NO,
-                "basis": f"not included in the travel-time measure ({PROTOCOL_DOC} section 8.2)",
+                "confident": CONFIDENT_YES if waiting_everywhere else CONFIDENT_NO,
+                "basis": (
+                    "counted: every run records total delay and travel time including waiting "
+                    f"({PROTOCOL_DOC} section 8.2), the only measure a recommendation is stated on"
+                    if waiting_everywhere
+                    else "not recorded on every run (no demand ledger), so no strategy "
+                    f"recommendation is made ({PROTOCOL_DOC} section 8.2)"
+                ),
             }
         )
 
-    headers = [f"{name}, change [%]" for _, name in CLIENT_STRATEGY_METRICS]
+    table_metrics = (
+        (*CLIENT_WAITING_METRICS, *CLIENT_STRATEGY_METRICS)
+        if baseline is not None
+        and baseline.carries_waiting
+        and any(g.carries_waiting for g in arms)
+        else CLIENT_STRATEGY_METRICS
+    )
+    headers = [f"{name}, change [%]" for _, name in table_metrics]
     strategy_rows: list[dict[str, Any]] = []
     recommendations: list[str] = []
     if gate is not None and not gate.passed:
@@ -1718,7 +1791,7 @@ def _client_summary(
     if allowed and baseline is not None:
         for g in arms:
             cells = []
-            for name, _ in CLIENT_STRATEGY_METRICS:
+            for name, _ in table_metrics:
                 _, lo_pct, hi_pct = _pct_interval(baseline, g, name)
                 finite = math.isfinite(lo_pct) and math.isfinite(hi_pct)
                 cells.append(f"{_signed(lo_pct)} to {_signed(hi_pct)}" if finite else _fmt(None))

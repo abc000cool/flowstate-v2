@@ -3495,3 +3495,43 @@ Stage 1 item 10 of the Frisco plan (docs/FRISCO_PROTOCOL.md §8.2–8.4).
   n)`, checked disjoint.
 - **Report:** `DELAY_RECOMMENDATION_METRIC` when every run of both groups
   carries the ledger, else `RECOMMENDATION_METRIC`.
+
+## Review fixes to the Stage 1 tools — 2026-10-04
+
+Supersedes the WP-104 lines "simulated station speeds are segment means" and
+"recommendation lines are stated on mean travel time".
+
+- **`flowstate.observations/1`:** `from_frame(quality=)` (additive);
+  `source.quality = {path, sha256, n_masked_sensor_days,
+  masked_sensor_days[{sensor, date, verdict, checks}], n_masked_windows, rule}`,
+  `null` when built without a data-quality artifact.
+- **`flowstate.data_quality/1`:** thresholds `empty_loop_occupancy_pct` 1.0,
+  `standstill_min_occupancy_pct` 50, `standstill_max_s` 300,
+  `congested_occupancy_pct` 20, `congested_speed_ms` (40 km/h),
+  `queue_context_s` 300 (`standstill_speed_ms` removed); `stats` gains
+  `standstill_windows`; `parameters.count_error` is the stable key of the
+  assumed count error; `QualityVerdicts`, `mask_frame`.
+- **Day split:** `build_day_split(allow_uncovered_dates=)`, `--selection`,
+  `--allow-uncovered-dates`; lanes that never reported do not exclude their
+  station; provenance `selection{…}`, `data_quality{path, sha256}`.
+- **`flowstate.station_selection/1`** under `selection.json` →
+  `scoring_stations` (`per_station[{station, share, selected, reason,
+  excluded_days}]`, the report's path and sha256; `--replace` to overwrite).
+- **Transfer check `uncertainty_range`:** basis ∈ {`observed_interval`,
+  `measured_range_fallback`, `analytical_index_fallback`}; keys `configured`,
+  `widened_to_configured`, `assumed`.
+- **`observed_scores.json` (additive):** `hour_anchor_s`, `link_hours_anchored`,
+  `station_point_speeds_sim` (`[window][station]` m/s, null where nobody
+  crossed), `station_point_counts_sim`; `validation.metrics.crossing_speeds`.
+- **`flowstate.baseline_gate/1` (additive):** gating checks `days` and
+  `quality`; `day_sets.*` gains `dates_recorded, subset_set, quality,
+  speed_source (point | segment), hour_anchor, hour_anchor_s`; `per_day`;
+  `thresholds.wave_min_front_replicate_share` (0.80); `bottlenecks` gains
+  `n_replicates_with_phantom, phantom_share, phantom_replicates`.
+  `scripts/baseline_gate.py` requires `--calibration-observations` and
+  `--day-split`; `corridor_battery.py --baseline-gate` requires
+  `--gate-calibration-observations` and `--gate-day-split`.
+- **`flowstate.uncertainty/1`:** `headline_note`; `min_seeds_per_sample` is
+  the fewest seeds paired with the baseline over every arm and sample; basis
+  `data_quality_count_error`; `DESIGN.json` gains `data_quality{path, sha256,
+  count_error}` when given; default headline `total_delay_incl_waiting_veh_h`.

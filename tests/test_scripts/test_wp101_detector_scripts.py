@@ -80,6 +80,17 @@ class TestDataQualityScript:
         ]
         assert dead[0]["verdict"] == "exclude"
         assert payload["summary"]["n_exclude"] == 1
+        # the count error the report assumed, at the stable key the uncertainty runner reads
+        assert payload["parameters"]["count_error"] == 0.05
+        assert (
+            dq.main(
+                ["--corridor-dir", str(corridor_dir), "--count-error", "0.08", "--out", str(out)]
+            )
+            == 0
+        )
+        assert (
+            json.loads((out / "data_quality.json").read_text())["parameters"]["count_error"] == 0.08
+        )
         text = (out / "data_quality.md").read_text()
         assert "| R2 | off_ramp | 1 of 4 |" in text
 

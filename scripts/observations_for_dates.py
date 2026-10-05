@@ -14,6 +14,17 @@ corridor name and the ``source`` block. ``source.dates`` becomes the subset,
 ``source.scaled_station_days`` keeps the subset's entries, and
 ``source.subset`` records what the artifact was cut from.
 
+``--quality`` takes the corridor's ``data_quality.json``
+(``scripts/data_quality_report.py``, judged over a span and dates that cover
+this artifact's): every excluded detector-day is dropped and every window a
+``suspect`` verdict names is set aside **before** the dates are averaged
+(docs/FRISCO_PROTOCOL.md §2.2, :func:`calibration.data_quality.mask_frame`),
+and ``source.quality`` records the report's path and hash, the masked
+detector-days with their checks, and the number of readings set aside. A date,
+station or window the report does not cover is refused. Without
+``--quality`` nothing is masked and ``source.quality`` is ``null`` — targets
+the baseline gate does not accept.
+
 The corridor's observed wave speed (``context.detector_wave_speed``) is
 estimated from the raw 30-second series, not from this frame, so it is not
 recomputed here. ``--context-from`` copies the ``context`` of an artifact
@@ -28,6 +39,7 @@ Run:
         --corridor-dir data/mndot/mndot_i94_wb_stpaul \\
         --like data/mndot/mndot_i94_wb_stpaul/observations.json \\
         --split runs/rehearsal/day_split.json --set calibration \\
+        --quality runs/rehearsal/dq/data_quality.json \\
         --out runs/rehearsal/observations_calibration.json
 """
 
@@ -42,6 +54,7 @@ from pathlib import Path
 from typing import Any
 
 from calibration.conservation import normalize_date
+from calibration.data_quality import QualityVerdicts
 from calibration.day_split import DaySplit
 from calibration.detector_inputs import file_sha256, load_corridor_inputs, split_list
 from calibration.observations import Observations, ObservedStation
@@ -70,6 +83,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--split", type=Path, help="flowstate.day_split/1 JSON")
     parser.add_argument(
         "--set", choices=["calibration", "validation"], help="which day set of --split"
+    )
+    parser.add_argument(
+        "--quality",
+        type=Path,
+        help="data_quality.json: mask excluded detector-days and suspect windows before "
+        "averaging (without it nothing is masked and source.quality is null)",
     )
     parser.add_argument(
         "--context-from",
@@ -121,17 +140,24 @@ def main(argv: list[str] | None = None) -> int:
         "detectors_sha256": inputs.provenance.get("detectors_sha256"),
         "script": "scripts/observations_for_dates.py",
     }
-    built = Observations.from_frame(
-        inputs.frame,
-        stations,
-        window_s=like.window_s,
-        t0_local=like.t0_local,
-        duration_s=like.duration_s,
-        corridor=like.corridor,
-        source=source,
-        aggregation=like.aggregation,
-        dates=dates,
-    )
+    source["quality"] = None  # replaced by the masking record when --quality is given
+    quality = None if args.quality is None else QualityVerdicts.from_json(args.quality)
+    try:
+        built = Observations.from_frame(
+            inputs.frame,
+            stations,
+            window_s=like.window_s,
+            t0_local=like.t0_local,
+            duration_s=like.duration_s,
+            corridor=like.corridor,
+            source=source,
+            aggregation=like.aggregation,
+            dates=dates,
+            quality=quality,
+        )
+    except ValueError as exc:  # a date, station or window the quality report does not cover
+        print(f"observations_for_dates: {exc}", file=sys.stderr)
+        return 2
     if args.context_from is not None:
         other = json.loads(args.context_from.read_text())
         other_dates = _compact(list((other.get("source") or {}).get("dates") or []), ref_dates)
@@ -144,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         context = dict(other.get("context") or {})
         built = dataclasses.replace(built, context=context)
-        source["subset"]["context_from"] = str(args.context_from)
+        built.source["subset"]["context_from"] = str(args.context_from)
     built.to_json(args.out)
     n_obs = sum(1 for series in built.flows_veh_h.values() for v in series if math.isfinite(v))
     print(
@@ -152,6 +178,15 @@ def main(argv: list[str] | None = None) -> int:
         f"({len(built.stations)} stations, {built.n_windows} windows, {n_obs} observed "
         f"station-window flows; context: {', '.join(built.context) or 'none'})"
     )
+    record = built.source.get("quality")
+    if record is None:
+        print("data quality: not applied (no --quality): source.quality is null")
+    else:
+        print(
+            f"data quality: {record['n_masked_sensor_days']} detector-day(s) masked "
+            f"({sum(1 for d in record['masked_sensor_days'] if d['verdict'] == 'exclude')} "
+            f"excluded), {record['n_masked_windows']} reading(s) set aside, from {record['path']}"
+        )
     return 0
 
 

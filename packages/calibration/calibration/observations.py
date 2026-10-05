@@ -19,6 +19,14 @@ Two rules the whole module exists to keep:
   enough is NaN in the series and is counted against the station's
   ``fraction_valid``; it is skipped by every consumer, never imputed, never
   interpolated. On disk NaN is JSON ``null``.
+
+**Data-quality masking.** Given the corridor's data-quality verdicts
+(:mod:`calibration.data_quality`), :meth:`Observations.from_frame` sets aside
+every excluded detector-day and every window a ``suspect`` verdict names
+*before* the dates are averaged (docs/FRISCO_PROTOCOL.md §2.2), and records
+what it set aside in ``source["quality"]`` (``path``, ``sha256``,
+``n_masked_sensor_days``, ``masked_sensor_days[{sensor, date, verdict,
+checks}]``, ``n_masked_windows``, ``rule``).
 """
 
 from __future__ import annotations
@@ -28,7 +36,7 @@ import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 import pandas as pd
@@ -39,6 +47,9 @@ from calibration.loaders.detector_csv import (
     local_dates,
     local_seconds,
 )
+
+if TYPE_CHECKING:  # data_quality imports this module (parse_clock): no runtime import here
+    from calibration.data_quality import QualityInput
 
 OBSERVATIONS_SCHEMA: Final[str] = "flowstate.observations/1"
 """Schema tag written into every artifact."""
@@ -223,6 +234,7 @@ class Observations:
         source: Mapping[str, Any] | str,
         aggregation: str = DEFAULT_AGGREGATION,
         dates: Sequence[str] | None = None,
+        quality: QualityInput | None = None,
     ) -> Observations:
         """Aggregate a tidy detector frame into an observations artifact.
 
@@ -261,6 +273,16 @@ class Observations:
                 built from one fetch (docs/FRISCO_PROTOCOL.md §3.5,
                 :mod:`calibration.day_split`); the caller records the dates
                 in ``source``.
+            quality: The corridor's data-quality verdicts (a
+                :class:`calibration.data_quality.DataQualityReport`, its JSON
+                payload, or :class:`calibration.data_quality.QualityVerdicts`
+                read with ``from_json`` so the file's path and hash are
+                recorded). The readings of the artifact's stations, dates and
+                span are masked with
+                :func:`calibration.data_quality.mask_frame` before the dates
+                are averaged, and ``source["quality"]`` records what was set
+                aside. ``None`` (the default) masks nothing and leaves
+                ``source`` as given.
 
         Returns:
             The artifact.
@@ -268,8 +290,9 @@ class Observations:
         Raises:
             ValueError: ``duration_s`` is not a multiple of ``window_s``,
                 ``t0_local`` is unparseable, the frame's interval disagrees
-                with ``window_s``, the frame lacks a required column, or a
-                requested date has no row in the frame.
+                with ``window_s``, the frame lacks a required column, a
+                requested date has no row in the frame, or a reading to be
+                aggregated is not covered by ``quality``.
         """
         required = ("timestamp", "station", "flow_veh_h")
         missing = [c for c in required if c not in df.columns]
@@ -285,7 +308,7 @@ class Observations:
             )
         n_windows = round(n_windows)
         t0_s = parse_clock(t0_local)
-        detector_interval_s(df)  # refuse a frame that is not on one grid at all
+        frame_interval_s = detector_interval_s(df)  # refuse a frame not on one grid at all
 
         work = df.copy()
         work["_secs"] = local_seconds(work)
@@ -296,6 +319,21 @@ class Observations:
             if absent:
                 raise ValueError(f"from_frame: requested date(s) {absent} have no row in the frame")
             work = work[work["_date"].isin(wanted)]
+        quality_record: dict[str, Any] | None = None
+        if quality is not None:
+            from calibration.data_quality import mask_frame
+
+            wanted_ids = [s.id for s in _station_specs(stations, work)]
+            masked = mask_frame(
+                work,
+                quality,
+                start_s=t0_s,
+                end_s=t0_s + duration_s,
+                stations=wanted_ids,
+                interval_s=frame_interval_s,
+            )
+            work = masked.frame
+            quality_record = masked.record()
         offset = (work["_secs"] - t0_s) / window_s
         work["_window"] = offset.round().astype("int64")
         on_grid = (offset - work["_window"]).abs() < 1e-6
@@ -316,7 +354,7 @@ class Observations:
         occupancy: dict[str, list[float]] = {}
         flows_sd: dict[str, list[float]] = {}
         speeds_sd: dict[str, list[float]] = {}
-        quality: dict[str, dict[str, float]] = {}
+        coverage: dict[str, dict[str, float]] = {}
         for spec in specs:
             rows = work[work["station"] == spec.id]
             flows[spec.id], flows_sd[spec.id] = _mean_sd(rows, "flow_veh_h", n_windows)
@@ -326,11 +364,15 @@ class Observations:
             seen: Iterable[str] = (
                 rows.loc[rows["flow_veh_h"].notna(), "_date"] if not rows.empty else []
             )
-            quality[spec.id] = {
+            coverage[spec.id] = {
                 "fraction_valid": observed / n_windows if n_windows else 0.0,
                 "n_dates": float(len(set(seen))),
             }
-        provenance = dict(source) if isinstance(source, Mapping) else {"provider": str(source)}
+        provenance: dict[str, Any] = (
+            dict(source) if isinstance(source, Mapping) else {"provider": str(source)}
+        )
+        if quality_record is not None:
+            provenance["quality"] = quality_record
         return cls(
             corridor=corridor,
             source=provenance,
@@ -342,7 +384,7 @@ class Observations:
             speeds_ms=speeds,
             occupancy_pct=occupancy,
             spread={"flows_veh_h_sd": flows_sd, "speeds_ms_sd": speeds_sd},
-            quality=quality,
+            quality=coverage,
             aggregation=aggregation,
         )
 

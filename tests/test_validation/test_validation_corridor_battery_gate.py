@@ -5,7 +5,9 @@ as a finished battery leaves them) are re-scored with ``--criteria-only``,
 once without and once with the gate. The gate block must be additive — every
 other key of the artifact identical — and must reach the report's client
 summary and the files beside it. Two replicates are fewer than the protocol's
-twenty, so the gate fails on that alone, whatever else holds.
+twenty, so the gate fails on that alone, whatever else holds. The gate needs
+the calibration-day artifact and the day split, and refuses to start without
+them before anything is simulated.
 """
 
 from __future__ import annotations
@@ -34,6 +36,15 @@ WINDOW_S = 300.0
 N_WINDOWS = 12
 FLOW = 1200.0
 
+#: The data-quality record the observations carry (source.quality).
+QUALITY: dict[str, Any] = {
+    "path": "runs/battery_gate/data_quality.json",
+    "sha256": "cd" * 32,
+    "n_masked_sensor_days": 0,
+    "masked_sensor_days": [],
+    "n_masked_windows": 0,
+}
+
 
 def load_battery() -> ModuleType:
     """The battery script under a module name of its own."""
@@ -59,7 +70,13 @@ def write_scenario(path: Path) -> Path:
     return path
 
 
-def write_observations(path: Path, *, flow: float = FLOW, dates: list[str] | None = None) -> Path:
+def write_observations(
+    path: Path,
+    *,
+    flow: float = FLOW,
+    dates: list[str] | None = None,
+    quality: dict[str, Any] | None = QUALITY,
+) -> Path:
     speeds = [25.0] * N_WINDOWS
     payload = {
         "schema": "flowstate.observations/1",
@@ -68,6 +85,7 @@ def write_observations(path: Path, *, flow: float = FLOW, dates: list[str] | Non
             "provider": "synthetic",
             "dates": dates or ["20260901"],
             "excluded_detectors": {"D9": "stuck"},
+            "quality": quality,
         },
         "window_s": WINDOW_S,
         "t0_local": "06:00",
@@ -217,6 +235,8 @@ def test_the_gate_block_is_additive_and_reaches_the_report(tmp_path: Path) -> No
             [
                 *_argv(tree, gated_path, gated_report),
                 "--baseline-gate",
+                "--gate-calibration-observations",
+                str(tree["observations"]),
                 "--gate-validation-observations",
                 str(validation),
                 "--gate-day-split",
@@ -238,6 +258,8 @@ def test_the_gate_block_is_additive_and_reaches_the_report(tmp_path: Path) -> No
     assert block["passed"] is False and block["strategy_results_allowed"] is False
     statuses = {(c["check"], c["day_set"]): c["status"] for c in block["checks"]}
     assert statuses[("replicates", "all runs")] == "fail"  # 2 < 20
+    assert statuses[("days", "both day sets")] == "pass"
+    assert statuses[("quality", "both day sets")] == "pass"
     assert statuses[("C1", "calibration")] == "pass"
     assert statuses[("C1", "validation")] == "pass"
     assert statuses[("C3", "calibration")] == "pass"
@@ -256,3 +278,22 @@ def test_the_gate_block_is_additive_and_reaches_the_report(tmp_path: Path) -> No
     assert "# Baseline gate" in (gated_report / "baseline_gate.md").read_text()
     plain_report = (tmp_path / "report_plain" / "report.md").read_text()
     assert "Baseline gate: NOT EVALUATED" in plain_report
+
+
+def test_the_gate_refuses_to_start_without_its_day_sets(tmp_path: Path) -> None:
+    battery = load_battery()
+
+    def _refuse(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("a refused gate must not simulate")
+
+    battery.run_replicates = _refuse
+    tree = write_tree(battery, tmp_path)
+    split = tmp_path / "split.json"
+    split.write_text(json.dumps({"calibration_dates": ["20260901"], "validation_dates": []}))
+    artifact = tmp_path / "artifacts" / "refused.json"
+    argv = [a for a in _argv(tree, artifact, tmp_path / "r") if a != "--criteria-only"]
+    # the calibration days are never taken from --observations
+    assert battery.main([*argv, "--baseline-gate", "--gate-day-split", str(split)]) == 2
+    no_split = ["--gate-calibration-observations", str(tree["observations"])]
+    assert battery.main([*argv, "--baseline-gate", *no_split]) == 2
+    assert not artifact.exists()

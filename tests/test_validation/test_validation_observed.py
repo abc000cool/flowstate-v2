@@ -900,3 +900,163 @@ class TestPoolLinkHours:
 
         with pytest.raises(ValueError, match="at least one"):
             pool_link_hours([])
+
+
+# -- point speeds and anchored hours (docs/FRISCO_PROTOCOL.md §5, §4 C1) --------
+
+#: A queue between 300 m and a bottleneck at 1150 m (5 m/s inside, 30 m/s
+#: outside), one vehicle every 3 s, stations every 400 m: the review's
+#: segment-versus-point case, on real per-vehicle trajectories.
+QUEUE_STATIONS = (0.0, 400.0, 800.0, 1200.0, 1600.0)
+QUEUE_LO, QUEUE_HI, QUEUE_V, FREE_V = 300.0, 1150.0, 5.0, 30.0
+QUEUE_HEADWAY_S = 3.0
+
+
+def _queue_position(tau: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Exact position and speed ``tau`` seconds after entering at x = -200 m."""
+    t1 = (QUEUE_LO + 200.0) / FREE_V
+    t2 = t1 + (QUEUE_HI - QUEUE_LO) / QUEUE_V
+    x = np.where(
+        tau < t1,
+        -200.0 + FREE_V * tau,
+        np.where(tau < t2, QUEUE_LO + QUEUE_V * (tau - t1), QUEUE_HI + FREE_V * (tau - t2)),
+    )
+    v = np.where((tau >= t1) & (tau < t2), QUEUE_V, FREE_V)
+    return x, v
+
+
+def queue_frame() -> pd.DataFrame:
+    rows = []
+    t = np.arange(0.0, 601.0, 1.0)  # a sample at 600 s closes the last window's crossings
+    for k in range(-100, 200):
+        tau = t - QUEUE_HEADWAY_S * k
+        x, v = _queue_position(tau)
+        keep = (tau >= 0.0) & (x <= 1800.0)
+        rows.append(
+            pd.DataFrame({"t": t[keep], "veh_id": f"q{k + 100:03d}", "x": x[keep], "v": v[keep]})
+        )
+    return pd.concat(rows, ignore_index=True).sort_values(["t", "veh_id"], ignore_index=True)
+
+
+def queue_observed() -> ObservedCorridor:
+    ids = [f"Q{i}" for i in range(len(QUEUE_STATIONS))]
+    return ObservedCorridor.from_dict(
+        {
+            "schema": OBSERVATIONS_SCHEMA,
+            "corridor": "queue",
+            "source": {"dates": ["20260915"]},
+            "window_s": 300.0,
+            "t0_local": "06:00",
+            "duration_s": 600.0,
+            "n_windows": 2,
+            "stations": [
+                {"id": sid, "x_m": x, "lanes": 2, "kind": "mainline"}
+                for sid, x in zip(ids, QUEUE_STATIONS, strict=True)
+            ],
+            "flows_veh_h": {sid: [1200.0, 1200.0] for sid in ids},
+            "speeds_ms": {sid: [25.0, 25.0] for sid in ids},
+        }
+    )
+
+
+class TestPointSpeeds:
+    def test_crossings_are_interpolated_between_samples(self) -> None:
+        from validation.metrics import crossing_speeds
+
+        frame = pd.DataFrame(
+            {
+                "t": [0.0, 2.0, 4.0, 0.0, 1.0],
+                "veh_id": ["a", "a", "a", "b", "b"],
+                "x": [0.0, 20.0, 40.0, 3.0, 9.0],
+                "v": [10.0, 14.0, 6.0, 4.0, 8.0],
+            }
+        )
+        ((times, speeds),) = crossing_speeds(frame, [5.0])
+        # a: f = 0.25 between (0 s, 0 m, 10) and (2 s, 20 m, 14); b: f = 1/3
+        assert times.tolist() == pytest.approx([0.5, 1.0 / 3.0])
+        assert speeds.tolist() == pytest.approx([11.0, 4.0 + 4.0 / 3.0])
+        ((t_end, _),) = crossing_speeds(frame, [40.0])  # x_prev < x_ref <= x_cur
+        assert t_end.tolist() == [4.0]
+
+    def test_review_segment_vs_point_the_loop_reads_free_flow_past_the_head(self) -> None:
+        from validation.bottlenecks import UPSTREAM_SPEED_MAX_MS, active_condition
+
+        scores = score_run_against_observed(
+            queue_frame(), queue_observed(), warmup_s=300.0, duration_s=600.0
+        )
+        assert scores.windows == (1,)
+        assert scores.station_point_speeds_sim is not None
+        assert scores.station_point_counts_sim is not None
+        point = np.asarray(scores.station_point_speeds_sim)[0]
+        segment = np.asarray(scores.segment_speeds_sim)[0]
+        assert point.tolist() == pytest.approx([FREE_V, QUEUE_V, QUEUE_V, FREE_V, FREE_V])
+        assert segment[3] < UPSTREAM_SPEED_MAX_MS  # the segment mean is dragged into the queue
+        assert np.flatnonzero(active_condition(point[None, :])[0]).tolist() == [2]
+        assert np.flatnonzero(active_condition(segment[None, :])[0]).tolist() == [3]
+        # one vehicle every 3 s crosses every station: 100 in the window
+        assert list(scores.station_point_counts_sim[0]) == [100] * 5
+
+    def test_point_speeds_are_nan_where_nobody_crossed(self, observed: ObservedCorridor) -> None:
+        frame = trajectory_frame()
+        early = frame.loc[frame["t"] < 1500.0].reset_index(drop=True)
+        scores = score_run_against_observed(
+            early, observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        assert scores.station_point_speeds_sim is not None
+        assert scores.station_point_counts_sim is not None
+        points = np.asarray(scores.station_point_speeds_sim)
+        counts = np.asarray(scores.station_point_counts_sim)
+        assert np.all(np.isnan(points[counts == 0])) and np.all(points[counts > 0] == SPEED_MS)
+        assert counts[0].tolist() == [25, 25, 25]  # window 2: 300 s / 12 s headway
+
+
+class TestAnchoredHours:
+    def test_hours_start_at_the_warm_up_end(self, observed: ObservedCorridor) -> None:
+        scores = score_run_against_observed(
+            trajectory_frame(), observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        assert scores.link_hours is not None and scores.link_hours_anchored is not None
+        # t0-aligned: only 07:00-08:00 lies after the warm-up, and S1 lacks a window in it
+        assert [(r.station, r.window_start_s) for r in scores.link_hours] == [
+            ("S0", 3600.0),
+            ("S2", 3600.0),
+        ]
+        # anchored at 06:10, the study period's start: every station is scored
+        assert scores.hour_anchor_s == WARMUP_S
+        assert [(r.station, r.window_start_s, r.clock) for r in scores.link_hours_anchored] == [
+            ("S0", 600.0, "06:10"),
+            ("S1", 600.0, "06:10"),
+            ("S2", 600.0, "06:10"),
+        ]
+        for r in scores.link_hours_anchored:
+            assert (r.obs_veh_h, r.sim_veh_h) == (OBS_VEH_H, pytest.approx(SIM_VEH_H))
+        # additive: the existing comparison is unchanged
+        before = score_run_against_observed(
+            trajectory_frame(), observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        assert scores.geh_values == before.geh_values and scores.rmspe == before.rmspe
+
+    def test_an_hour_aligned_warm_up_reuses_the_t0_hours(self) -> None:
+        scores = table_scores()  # no warm-up
+        assert scores.link_hours_anchored == scores.link_hours
+        assert scores.hour_anchor_s == 0.0
+
+    def test_the_new_keys_round_trip_and_old_files_write_none_of_them(
+        self, observed: ObservedCorridor
+    ) -> None:
+        from validation.observed import ObservedScores
+
+        scores = score_run_against_observed(
+            trajectory_frame(), observed, warmup_s=WARMUP_S, duration_s=DURATION_S
+        )
+        raw = json.loads(json.dumps(scores.to_dict()))
+        assert list(raw)[:10] == [*OLD_SCORES_FILE, "link_hours"]
+        again = ObservedScores.from_dict(raw)
+        assert again.hour_anchor_s == WARMUP_S
+        assert again.link_hours_anchored is not None and len(again.link_hours_anchored) == 3
+        assert again.station_point_counts_sim == scores.station_point_counts_sim
+        old = ObservedScores.from_dict(json.loads(json.dumps(OLD_SCORES_FILE)))
+        assert old.station_point_speeds_sim is None and old.link_hours_anchored is None
+        written = old.to_dict()
+        for key in ("link_hours_anchored", "hour_anchor_s", "station_point_speeds_sim"):
+            assert key not in written

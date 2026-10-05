@@ -81,6 +81,12 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   extra="$extra $(ls runs/*_hb/*/*/*/metrics.json runs/*_hb/*/*/*/meta.json runs/*_cc/*/*/*/metrics.json runs/*_cc/*/*/*/meta.json runs/*_hb/MANIFEST.json runs/*_cc/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # the command-path re-runs (WP-96, stage 19): the same files of runs/<tree>_wp96c, _wp96f and _wp96fh
   extra="$extra $(ls runs/*_wp96*/*/*/*/metrics.json runs/*_wp96*/*/*/*/meta.json runs/*_wp96*/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
+  # the phase-1 re-runs at the new defaults (stage 20a) and the tool rehearsal's outputs (stage 20c: JSON, markdown and
+  # CSV reports, day split, day-set observations; the 30-s cache under data/ stays behind)
+  extra="$extra $(ls runs/*_p1def/*/*/*/metrics.json runs/*_p1def/*/*/*/meta.json runs/*_p1def/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
+  [ -d runs/p1_rehearsal ] && extra="$extra runs/p1_rehearsal"
+  # 20d's trees: per-run metrics/meta (five levels), the design and the tuning manifests, comparison tables
+  extra="$extra $(ls runs/p1_unc/DESIGN.json runs/p1_unc/*/*/*/*/metrics.json runs/p1_unc/*/*/*/*/meta.json runs/p1_tune/*.json runs/p1_tune/*.md runs/p1_tune/*/MANIFEST.json runs/p1_tune/*/*/*/*/metrics.json runs/p1_tune/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -853,6 +859,130 @@ open(\"$SCN\", \"w\").write(yaml.safe_dump(d, sort_keys=False))' && \
       || say "controllers_10km_$ARM failed; continuing"
   fi
 done
+
+# 20. Stage 1 of the Frisco plan, phase 1 (2026-10-04; docs/FRISCO_PROTOCOL.md): the crash fixes on by default (WP-98)
+#     checked on the controller results they protect, and every new phase-1 tool rehearsed on the Minnesota corridor's
+#     real data. Diagnostic: nothing here changes a default or a committed result; every artifact is written under a
+#     new "_p1" name beside the committed one it pairs with.
+#   20a. The committed controller sweeps re-run at this tree, whose defaults turn on emergency_handback,
+#        release_off_corridor and observe_close_leader (config-hash policy v3): pair with the committed "_hb" arms
+#        (handback alone) seed by seed; the cells without a controller must reproduce them to the digit (a check).
+#        Each copy differs from its committed scenario only in its name.
+P1_RENAME() {  # <src scenario> <dst scenario>: a copy that differs only in its name (suffix _p1def)
+  local name; name=$(sed -n 's/^name: //p' "$1" | head -1)
+  sed -e "s#^name: ${name}\$#name: ${name}_p1def#" "$1" > "$2" && grep -q "^name: ${name}_p1def\$" "$2"
+}
+export -f P1_RENAME
+stage p1_controllers_10km_def bash -c "set -e; P1_RENAME scenarios/corridor_10km.yaml scenarios/corridor_10km_p1def.yaml; \
+  $RUN scripts/corridor_sweep.py --scenario scenarios/corridor_10km_p1def.yaml $TENKM_GRID --replicates $REPS --procs $PROCS \
+    --out runs/controllers_10km_p1def --summary artifacts/sweep_controllers_10km_p1def_summary.json; \
+  $RUN scripts/collision_census.py --root runs/controllers_10km_p1def --out artifacts/collisions_controllers_10km_p1def.json" \
+  || say "p1_controllers_10km_def failed; continuing"
+stage p1_us101_def bash -c "set -e; $RUN -c 'import sys, yaml; sys.path.insert(0, \"scripts\"); \
+import us101_penetration_sweep as s; d, src = s._base_with_boundary(); print(src); d.update(name=d[\"name\"] + \"_p1def\"); \
+open(\"scenarios/us101_replica_boundary_p1def.yaml\", \"w\").write(yaml.safe_dump(d, sort_keys=False))'; \
+  $RUN scripts/corridor_sweep.py --scenario scenarios/us101_replica_boundary_p1def.yaml $US101_GRID --replicates $REPS --procs $PROCS \
+    --out runs/us101_penetration_p1def --summary artifacts/sweep_us101_penetration_p1def_summary.json; \
+  $RUN scripts/collision_census.py --root runs/us101_penetration_p1def --out artifacts/collisions_us101_penetration_p1def.json" \
+  || say "p1_us101_def failed; continuing"
+stage p1_i24_strat_def bash -c "set -e; P1_RENAME scenarios/i24_replica_flow_speedcal_ramps.yaml scenarios/i24_replica_flow_speedcal_ramps_p1def.yaml; \
+  $RUN scripts/corridor_sweep.py --scenario scenarios/i24_replica_flow_speedcal_ramps_p1def.yaml $STRAT_ARGS --replicates $REPS \
+    --procs $(( PROCS < 12 ? PROCS : 12 )) --out runs/i24_strat_sweep_p1def --summary artifacts/sweep_i24_strategies_p1def_summary.json; \
+  $RUN scripts/collision_census.py --root runs/i24_strat_sweep_p1def --out artifacts/collisions_i24_strat_sweep_p1def.json" \
+  || say "p1_i24_strat_def failed; continuing"
+#   20b. The Minnesota corridor's reference battery (stage 10o's _xlsfg recipe, VM AG) at this tree: the scripted
+#        merges' force_guard is now the default, so the scenario is the same configuration and its seeds the same
+#        (spawn_seeds of the master seed): the battery must reproduce VM AG's artifact to the digit (a check of WP-98),
+#        written to a "_p1" artifact. Its run tree is the rehearsal's baseline below.
+P1R=runs/p1_rehearsal
+stage p1_mndot_ref bash -c "set -e; sed -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' scenarios/${MNDOT}_weave.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' \
+      | awk '/^    merge: scripted\$/ {s=1; print; next} s && /^    merge_params: \{\}\$/ {print \"    merge_params: {force_guard: 1.0}\"; s=0; next} {s=0; print}' \
+      | sed -e 's#^name: ${MNDOT}_weave\$#name: ${MNDOT}_weave_xlsfg#' > scenarios/${MNDOT}_weave_xlsfg.yaml; \
+    [ \$(grep -c '^    merge_params: {force_guard: 1.0}\$' scenarios/${MNDOT}_weave_xlsfg.yaml) -eq 2 ]; \
+    $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave_xlsfg.yaml \
+      --observations data/mndot/$MNDOT/observations.json --replicates $REPS --procs $PROCS \
+      --out runs/${MNDOT}_weave_xlsfg_p1/baseline --artifact artifacts/validation_${MNDOT}_weave_xlsfg_p1.json \
+      --report-dir docs/reports/${MNDOT}_weave_xlsfg_p1 --criteria-profile fhwa_tat3_2004" || say "p1_mndot_ref failed; continuing"
+#   20c. The phase-1 tools on the corridor's real data (WP-101..WP-104), in the order a study runs them: the 30-s
+#        archive fetched for all nine dates (fills the per-lane cache), data quality (stations, then lanes blind:
+#        loop 3240 left in, so the rules are tested on the known faults), ramp estimation with leave-one-out against
+#        the measured ramps, the layout audit, the driver-settings check, the day split, the day-set observations with
+#        their wave context, the baseline gate on 20b's battery, and the report regenerated with its client summary.
+MN_DATES="20260901,20260902,20260903,20260908,20260909,20260910,20260915,20260916,20260917"
+MN_FETCH="--corridor 'I-94 WB' --from-station S1063 --to-station S97 --window-s 300 --t0 05:30 --duration-s 14400 \
+  --exclude-detectors 3240 --exclude-reason 'S792 lane-3 loop chatters (docs/ONBOARDING_MNDOT.md section 7 item 2)' --wave-context"
+stage p1_fetch_all bash -c "set -e; mkdir -p $P1R; $RUN scripts/mndot_fetch.py $MN_FETCH --dates $MN_DATES --out $P1R/fetch_all" \
+  || say "p1_fetch_all failed; continuing"
+stage p1_data_quality bash -c "set -e; \
+  $RUN scripts/data_quality_report.py --corridor-dir data/mndot/$MNDOT --start 05:30 --end 09:30 --out $P1R/dq; \
+  $RUN scripts/data_quality_report.py --corridor-dir data/mndot/$MNDOT --lanes-from-cache data/mndot/cache \
+    --metro-config data/mndot/config/metro_config.xml.gz --allow-fetch --start 05:30 --end 09:30 --out $P1R/dq_lanes_blind" \
+  || say "p1_data_quality failed; continuing"
+stage p1_ramp_estimate bash -c "set -e; \
+  $RUN scripts/ramp_estimate.py --corridor-dir data/mndot/$MNDOT --leave-one-out --out $P1R/ramp_loo_raw; \
+  $RUN scripts/ramp_estimate.py --corridor-dir data/mndot/$MNDOT --apply-quality --leave-one-out --out $P1R/ramp_loo_quality" \
+  || say "p1_ramp_estimate failed; continuing"
+stage p1_layout bash -c "$RUN scripts/layout_audit.py --scenario scenarios/${MNDOT}_weave.yaml --out $P1R/layout" \
+  || say "p1_layout failed; continuing"
+stage p1_transfer bash -c "set -e; \
+  $RUN scripts/transfer_check.py --corridor-dir data/mndot/$MNDOT --scenario scenarios/${MNDOT}_weave.yaml --out $P1R/transfer; \
+  $RUN scripts/transfer_check.py --corridor-dir data/mndot/$MNDOT --lanes-from-cache data/mndot/cache \
+    --metro-config data/mndot/config/metro_config.xml.gz --exclude-detectors 3240 \
+    --scenario scenarios/${MNDOT}_weave.yaml --out $P1R/transfer_lanes" \
+  || say "p1_transfer failed; continuing"
+stage p1_gate bash -c "set -e; \
+  $RUN scripts/station_selection.py --quality $P1R/dq/data_quality.json --base data/mndot/$MNDOT/selection.json \
+    --out $P1R/selection.json; \
+  $RUN scripts/day_split.py --corridor-dir data/mndot/$MNDOT --start 05:30 --end 09:30 --quality $P1R/dq/data_quality.json \
+    --selection $P1R/selection.json --out $P1R/day_split.json; \
+  for SET in calibration validation; do \
+    D=\$($RUN -c \"import json; print(','.join(d.replace('-', '') for d in json.load(open('$P1R/day_split.json'))['\${SET}_dates']))\"); \
+    $RUN scripts/mndot_fetch.py $MN_FETCH --dates \$D --out $P1R/fetch_\$SET; \
+    $RUN scripts/observations_for_dates.py --corridor-dir data/mndot/$MNDOT --like data/mndot/$MNDOT/observations.json \
+      --split $P1R/day_split.json --set \$SET --context-from $P1R/fetch_\$SET/observations.json \
+      --quality $P1R/dq/data_quality.json --out $P1R/observations_\$SET.json; \
+  done; \
+  mkdir -p $P1R/per_day; \
+  for D in \$($RUN -c \"import json; print(' '.join(json.load(open('$P1R/day_split.json'))['validation_dates']))\"); do \
+    $RUN scripts/observations_for_dates.py --corridor-dir data/mndot/$MNDOT --like data/mndot/$MNDOT/observations.json \
+      --dates \$D --quality $P1R/dq/data_quality.json --out $P1R/per_day/observations_\$D.json; \
+  done; \
+  $RUN scripts/baseline_gate.py --battery-artifact artifacts/validation_${MNDOT}_weave_xlsfg_p1.json \
+    --calibration-observations $P1R/observations_calibration.json --validation-observations $P1R/observations_validation.json \
+    --day-split $P1R/day_split.json --per-day $P1R/per_day --out-json artifacts/baseline_gate_${MNDOT}_p1.json \
+    --out-md docs/reports/${MNDOT}_weave_xlsfg_p1/baseline_gate.md; \
+  $RUN scripts/corridor_battery.py --scenario scenarios/${MNDOT}_weave_xlsfg.yaml \
+    --observations data/mndot/$MNDOT/observations.json --replicates $REPS \
+    --out runs/${MNDOT}_weave_xlsfg_p1/baseline --artifact $P1R/validation_${MNDOT}_weave_xlsfg_p1_gated.json \
+    --report-dir docs/reports/${MNDOT}_weave_xlsfg_p1 --criteria-profile fhwa_tat3_2004 --criteria-only --baseline-gate \
+    --gate-calibration-observations $P1R/observations_calibration.json \
+    --gate-validation-observations $P1R/observations_validation.json --gate-day-split $P1R/day_split.json" \
+  || say "p1_gate failed; continuing"
+
+#   20d. The strategy tools rehearsed (WP-105, WP-106; not results: designs far below the protocol's minimums are
+#        labelled rehearsals by the tools themselves). Uncertainty: the reference battery's scenario, baseline and
+#        ALINEA, 4 samples x 2 seeds, driver ranges from 20c's transfer check (16 runs of 4 h). Tuning: the 35-min
+#        slice under the reference configuration, ALINEA and VSL, budget 2, 2 tuning and 4 evaluation seeds (22 runs;
+#        the slice has no cool-down, so censoring is expected and reported).
+stage p1_uncertainty bash -c "set -e; [ -f scenarios/${MNDOT}_weave_xlsfg.yaml ]; \
+  $RUN scripts/uncertainty_runs.py --scenario scenarios/${MNDOT}_weave_xlsfg.yaml \
+    --arm alinea strategy=alinea rho_target_veh_km=19.9 --samples 4 --seeds 2 \
+    --transfer-check $P1R/transfer/transfer_check.json --data-quality $P1R/dq/data_quality.json \
+    --headline total_delay_incl_waiting_veh_h \
+    --x-ref 11027 --span 1110 11027 --procs 8 --out runs/p1_unc \
+    --summary artifacts/uncertainty_${MNDOT}_p1_rehearsal.json" \
+  || say "p1_uncertainty failed; continuing"
+stage p1_tune bash -c "set -e; sed -e 's#^name: ${MNDOT}_weave_slice\$#name: ${MNDOT}_weave_slice_xlsfg#' \
+      -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' scenarios/${MNDOT}_weave_slice.yaml \
+      | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' \
+      | awk '/^    merge: scripted\$/ {s=1; print; next} s && /^    merge_params: \{\}\$/ {print \"    merge_params: {force_guard: 1.0}\"; s=0; next} {s=0; print}' \
+      > scenarios/${MNDOT}_weave_slice_xlsfg.yaml; \
+    [ \$(grep -c '^    merge_params: {force_guard: 1.0}\$' scenarios/${MNDOT}_weave_slice_xlsfg.yaml) -eq 2 ]; \
+  $RUN scripts/strategy_tune.py --scenario scenarios/${MNDOT}_weave_slice_xlsfg.yaml --strategies alinea vsl \
+    --budget 2 --tuning-seeds 2 --eval-seeds 4 --rho-target-veh-km 19.9 --x-ref 11027 --span 1110 11027 \
+    --procs 16 --out runs/p1_tune --summary artifacts/tune_${MNDOT}_weave_slice_xlsfg_p1_rehearsal.json" \
+  || say "p1_tune failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

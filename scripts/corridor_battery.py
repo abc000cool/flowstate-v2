@@ -86,7 +86,11 @@ the calibration-day and the validation-day observations, C4, C5 and C6
 (:mod:`validation.bottlenecks`). Every replicate's stored simulated side is
 paired with each day set (:func:`validation.baseline_gate.rescore`; the two
 artifacts must share ``--observations``' station table and window grid), so
-no trajectory is re-read. The result is written into the artifact as a
+no trajectory is re-read. The gate needs the calibration-day artifact
+(``--gate-calibration-observations``) and the study's day split
+(``--gate-day-split``) — the battery's own ``--observations`` is never taken
+for the calibration days — and refuses to start without them (exit 2), before
+anything is simulated. The result is written into the artifact as a
 ``baseline_gate`` block (additively: every other key is computed exactly as
 without the option), beside the report as ``baseline_gate.json`` and
 ``baseline_gate.md``, and into the report's client summary. Without the
@@ -769,28 +773,22 @@ def battery_gate(
     Returns:
         The :class:`validation.baseline_gate.GateResult`.
     """
-    cal_path = str(args.gate_calibration_observations or args.observations)
-    calibration = (
-        observed
-        if args.gate_calibration_observations is None
-        else ObservedCorridor.from_json(args.gate_calibration_observations)
-    )
+    cal_path = str(args.gate_calibration_observations)
+    calibration = ObservedCorridor.from_json(args.gate_calibration_observations)
     validation = (
         None
         if args.gate_validation_observations is None
         else ObservedCorridor.from_json(args.gate_validation_observations)
     )
-    split = None
-    if args.gate_day_split is not None:
-        raw = json.loads(Path(args.gate_day_split).read_text())
-        split = {
-            "path": str(args.gate_day_split),
-            "seed": raw.get("seed"),
-            "calibration_dates": raw.get("calibration_dates", []),
-            "validation_dates": raw.get("validation_dates", []),
-            "underpowered": raw.get("underpowered"),
-            "underpowered_reason": raw.get("underpowered_reason", ""),
-        }
+    raw = json.loads(Path(args.gate_day_split).read_text())
+    split = {
+        "path": str(args.gate_day_split),
+        "seed": raw.get("seed"),
+        "calibration_dates": raw.get("calibration_dates", []),
+        "validation_dates": raw.get("validation_dates", []),
+        "underpowered": raw.get("underpowered"),
+        "underpowered_reason": raw.get("underpowered_reason", ""),
+    }
     return gate_from_replicates(
         list(scores_list),
         scored_against=observed,
@@ -873,8 +871,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap.add_argument(
         "--gate-calibration-observations",
         default=None,
-        help="calibration-day observations artifact (default: --observations); same station "
-        "table and window grid as --observations",
+        help="calibration-day observations artifact, required with the gate (never defaulted "
+        "to --observations); same station table and window grid as --observations",
     )
     ap.add_argument(
         "--gate-validation-observations",
@@ -885,14 +883,45 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap.add_argument(
         "--gate-day-split",
         default=None,
-        help="the study's flowstate.day_split/1 JSON (its dates are recorded in the gate)",
+        help="the study's flowstate.day_split/1 JSON, required with the gate (each day set's "
+        "artifact must hold exactly its side's dates)",
     )
     return ap.parse_args(argv)
+
+
+def gate_requested(args: argparse.Namespace) -> bool:
+    """Whether the command line asks for the baseline gate."""
+    return bool(args.baseline_gate or args.gate_validation_observations is not None)
+
+
+def gate_usage_error(args: argparse.Namespace) -> str | None:
+    """Why the gate options cannot be evaluated (checked before simulating), else None."""
+    if not gate_requested(args):
+        return None
+    missing = [
+        flag
+        for flag, value in (
+            ("--gate-calibration-observations", args.gate_calibration_observations),
+            ("--gate-day-split", args.gate_day_split),
+        )
+        if value is None
+    ]
+    if missing:
+        return (
+            f"the baseline gate needs {' and '.join(missing)}: the calibration days are never "
+            "taken from --observations, and each day set's artifact is checked against the "
+            "study's day split (docs/FRISCO_PROTOCOL.md section 3.2)"
+        )
+    return None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run (or re-score) one corridor battery; returns a process exit code."""
     args = parse_args(argv)
+    usage = gate_usage_error(args)
+    if usage is not None:
+        print(usage, flush=True)
+        return 2
     t0 = time.perf_counter()
     profile = get_profile(args.criteria_profile)
     observed = ObservedCorridor.from_json(args.observations)
@@ -983,7 +1012,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         observed, scores_list, path=str(args.observations)
     )
     gate: GateResult | None = None
-    if args.baseline_gate or args.gate_validation_observations is not None:
+    if gate_requested(args):
         gate = battery_gate(
             args,
             observed=observed,

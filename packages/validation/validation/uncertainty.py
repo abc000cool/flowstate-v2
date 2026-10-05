@@ -18,12 +18,16 @@ each changes in a :class:`~flowstate_core.config.ScenarioConfig`
 
 ``demand_scale``
     One factor on every boundary inflow step and every on-ramp inflow step
-    (off-ramp exit fractions are shares, not counts, and stay). Default range
-    ``1 ± COUNT_ERROR`` — the ±5 % count error the data-quality check assumes
-    for every detector (``calibration.conservation.DEFAULT_COUNT_ERROR``, a
-    stated working assumption, not a measurement). One common factor treats
-    the count error as a corridor-wide bias, the case that moves total demand
-    most; independent per-detector errors would partly cancel.
+    (off-ramp exit fractions are shares, not counts, and stay). Range ``1 ±``
+    the count error the study's data-quality artifact records
+    (``parameters.count_error`` of ``calibration.data_quality``'s JSON, read
+    by :func:`data_quality_count_error`; basis ``data_quality_count_error``),
+    docs/FRISCO_PROTOCOL.md §8.5's rule. Without that artifact the range is
+    ``1 ± COUNT_ERROR`` — the ±5 % default of
+    ``calibration.conservation.DEFAULT_COUNT_ERROR`` — flagged ``assumed``
+    (basis ``count_error``). One common factor treats the count error as a
+    corridor-wide bias, the case that moves total demand most; independent
+    per-detector errors would partly cancel.
 ``t_scale`` / ``v0_scale``
     A factor on the passenger population's mean desired time headway ``T``
     / mean desired speed ``v0``. For an artifact population
@@ -46,8 +50,13 @@ each changes in a :class:`~flowstate_core.config.ScenarioConfig`
     not read an interval (not observed, only a lower bound, too few days, an
     inconclusive verdict, no curve inside the interval) the measured range is
     used, flagged ``assumed``, with the check's reason in the source (basis
-    ``measured_range_fallback``). The check must have been run on this
-    population or on one it derives from by mean T / v0 alone
+    ``measured_range_fallback``); so is a range of any basis other than
+    ``observed_interval`` (e.g. the check's ``analytical_index_fallback``,
+    capacity read off its analytical index rather than a simulated capacity —
+    §8.5 then asks for the measured range, labelled assumed). An observed
+    interval range is widened to include the configured (calibrated) mean
+    before it is cut to the measured range (§8.5). The check must have been
+    run on this population or on one it derives from by mean T / v0 alone
     (:func:`_transfer_population`); any other is refused.
 
     **Without it** the range is the *measured range* of
@@ -200,10 +209,16 @@ KIND_MAPS_TO: Final[Mapping[str, str]] = {
 """How each kind maps to the configuration (recorded in every output)."""
 
 COUNT_ERROR: Final[float] = 0.05
-"""Relative count error of every detector (±5 %), the default half-width of
-``demand_scale``. Reason: ``calibration.conservation.DEFAULT_COUNT_ERROR``,
-the data-quality check's stated working assumption (a test checks they
-agree; ``validation`` does not depend on ``calibration``)."""
+"""Relative count error of every detector (±5 %), the half-width of
+``demand_scale`` when no data-quality artifact is given, then flagged
+assumed. Reason: ``calibration.conservation.DEFAULT_COUNT_ERROR``, the
+data-quality check's stated working assumption (a test checks they agree;
+``validation`` does not depend on ``calibration``)."""
+
+DATA_QUALITY_SCHEMA: Final[str] = "flowstate.data_quality/1"
+"""Schema of the data-quality artifact whose ``parameters.count_error`` sets
+the demand range (``calibration.data_quality.QUALITY_SCHEMA``; a test checks
+they agree)."""
 
 MEASURED_RANGE_SIGMAS: Final[float] = 1.0
 """Half-width of a driver knob's range in standard deviations of the
@@ -234,6 +249,7 @@ TRANSFER_QUANTITY: Final[Mapping[str, str]] = {
 
 RangeBasis = Literal[
     "count_error",
+    "data_quality_count_error",
     "observed_interval",
     "measured_range_fallback",
     "measured_range",
@@ -248,7 +264,8 @@ RANGE_BASES: Final[tuple[RangeBasis, ...]] = get_args(RangeBasis)
 """Every basis."""
 
 BASIS_WORDS: Final[Mapping[str, str]] = {
-    "count_error": "assumed detector count error",
+    "count_error": "assumed detector count error (no data-quality artifact given)",
+    "data_quality_count_error": "count error recorded in the data-quality artifact",
     "observed_interval": "observed 95 % interval (transfer check)",
     "measured_range_fallback": "§7.2 measured range; the transfer check gave no interval",
     "measured_range": "§7.2 measured range; no transfer check given",
@@ -286,8 +303,14 @@ DEFAULT_BASELINE: Final[str] = "baseline"
 
 METRIC_LABELS: Final[Mapping[str, tuple[str, str]]] = {
     "throughput_veh_h": ("throughput at the reference section", "veh/h"),
-    "mean_tt_s": ("mean travel time", "s"),
-    "p90_tt_s": ("90th-percentile travel time", "s"),
+    "total_delay_incl_waiting_veh_h": (
+        "total delay including waiting on ramps and to enter",
+        "veh-h",
+    ),
+    "mean_tt_incl_waiting_s": ("mean travel time including waiting", "s"),
+    "p90_tt_incl_waiting_s": ("90th-percentile travel time including waiting", "s"),
+    "mean_tt_s": ("mean travel time of the vehicles that completed the span", "s"),
+    "p90_tt_s": ("90th-percentile travel time of the vehicles that completed the span", "s"),
     "sigma_v_temporal_ms": ("speed variation over time (temporal σ_v)", "m/s"),
     "sigma_v_spatial_ms": ("speed variation across vehicles (spatial σ_v)", "m/s"),
     "fuel_ml_per_veh_km": ("fuel per vehicle-km (a model estimate)", "ml/veh-km"),
@@ -297,14 +320,27 @@ METRIC_LABELS: Final[Mapping[str, tuple[str, str]]] = {
     "vht_veh_h": ("vehicle-hours travelled", "veh-h"),
     "vmt_veh_km": ("vehicle-kilometres travelled", "veh-km"),
     "n_travel_time_veh": ("vehicles that completed the span", "veh"),
+    "insertion_delay_veh_h": ("time spent waiting to enter the road", "veh-h"),
+    "meter_wait_veh_h": ("time held at ramp meters", "veh-h"),
+    "n_censored": ("vehicles still on their way at the run's end (censored)", "veh"),
+    "n_demand_veh": ("vehicles planned to depart in the scoring window", "veh"),
+    "n_not_inserted": ("planned vehicles that never entered the road", "veh"),
+    "n_tt_incl_waiting_veh": ("vehicles behind the travel time including waiting", "veh"),
+    "n_tt_censored": ("of those, still on their way at the run's end", "veh"),
 }
-"""Plain-language names and units of ``validation.metrics.Metrics`` fields; a
-metric without an entry is named by its key."""
+"""Plain-language names and units of ``validation.metrics.Metrics`` fields and
+of ``validation.metrics.WaitingMetrics`` (WP-105: what the sweep records
+beside them); a metric without an entry is named by its key."""
 
-DEFAULT_HEADLINE: Final[str] = "mean_tt_s"
-"""Metric of the plain-language headline when the caller names none. Total
-delay including waiting (protocol §8.2, §8.4) is not among the sweep's
-recorded metrics today; name it with ``headline`` once it is."""
+DEFAULT_HEADLINE: Final[str] = "total_delay_incl_waiting_veh_h"
+"""Metric of the plain-language headline when the caller names none: total
+delay including waiting time, the protocol's tuning objective (§8.2, §8.4),
+which ``scripts/corridor_sweep.py``'s worker records (WP-105)."""
+
+FALLBACK_HEADLINE: Final[str] = "mean_tt_s"
+"""The headline when the runs carry no :data:`DEFAULT_HEADLINE` (runs written
+before the demand ledger); the result states the substitution
+(:attr:`UncertaintyResult.headline_note`)."""
 
 Verdict = Literal["robust", "uncertain", "not_estimable"]
 Direction = Literal["increase", "decrease", "none", "not_estimable"]
@@ -701,13 +737,11 @@ def _transfer_entry(transfer: Mapping[str, Any], kind: str) -> Mapping[str, Any]
                 f"the transfer-check report's {quantity} comparison has no uncertainty_range: "
                 "it predates WP-106b; rerun scripts/transfer_check.py"
             )
-        if entry.get("knob") != kind or entry.get("basis") not in (
-            "observed_interval",
-            "measured_range_fallback",
-        ):
+        basis = entry.get("basis")
+        if entry.get("knob") != kind or not isinstance(basis, str) or not basis.strip():
             raise ValueError(
                 f"the transfer-check report's {quantity} uncertainty_range is not a {kind} range "
-                f"with a known basis: {dict(entry)}"
+                f"with a stated basis: {dict(entry)}"
             )
         if entry["basis"] == "observed_interval" and (
             entry.get("parameter_low") is None or entry.get("parameter_high") is None
@@ -858,7 +892,10 @@ def _driver_parameter(
         why: str | None = None
         if entry["basis"] == "observed_interval":
             p_lo, p_hi = float(entry["parameter_low"]), float(entry["parameter_high"])
-            c_lo, c_hi = max(p_lo, m.lo), min(p_hi, m.hi)
+            # §8.5: widened to include the configured (calibrated) mean, then
+            # clipped to the measured range.
+            w_lo, w_hi = min(p_lo, m.mean), max(p_hi, m.mean)
+            c_lo, c_hi = max(w_lo, m.lo), min(w_hi, m.hi)
             if c_lo < c_hi:
                 lo, hi = c_lo, c_hi
                 basis, assumed = "observed_interval", False
@@ -867,7 +904,12 @@ def _driver_parameter(
                     f"observed — {transfer_label}, run on {lineage}: {entry['reason']}: mean "
                     f"{idm_key} {p_lo:.4g}–{p_hi:.4g} {unit}"
                 )
-                if c_lo > p_lo or c_hi < p_hi:
+                if w_lo < p_lo or w_hi > p_hi:
+                    source += (
+                        f"; widened to include the configured mean {m.mean:.4g} {unit} "
+                        f"(docs/FRISCO_PROTOCOL.md §8.5): {idm_key} {w_lo:.4g}–{w_hi:.4g} {unit}"
+                    )
+                if c_lo > w_lo or c_hi < w_hi:
                     source += (
                         f"; cut to this population's measured range ({m.text}): {idm_key} "
                         f"{lo:.4g}–{hi:.4g} {unit}"
@@ -879,7 +921,13 @@ def _driver_parameter(
                     f"population's measured range {m.lo:.4g}–{m.hi:.4g}"
                 )
         else:
-            why = str(entry.get("reason") or "no reason recorded")
+            # Any basis other than an observed interval (a fallback, or capacity
+            # read off the check's analytical index) is the measured range,
+            # labelled assumed (§8.5).
+            why = (
+                f"{entry.get('reason') or 'no reason recorded'} (its range basis is "
+                f"{entry['basis']}, not an observed interval)"
+            )
         if why is not None:
             basis, assumed = "measured_range_fallback", True
             source = (
@@ -902,10 +950,39 @@ def _driver_parameter(
     )
 
 
+def data_quality_count_error(raw: Mapping[str, Any]) -> float:
+    """The count error a data-quality artifact records (``parameters.count_error``).
+
+    Args:
+        raw: The parsed JSON of ``calibration.data_quality``'s report (schema
+            :data:`DATA_QUALITY_SCHEMA`).
+
+    Returns:
+        The relative count error, a fraction in ``(0, 1)``.
+
+    Raises:
+        ValueError: Another schema, or no usable ``parameters.count_error``.
+    """
+    if raw.get("schema") != DATA_QUALITY_SCHEMA:
+        raise ValueError(
+            f"not a data-quality artifact: schema {raw.get('schema')!r}, expected "
+            f"{DATA_QUALITY_SCHEMA!r} (scripts/data_quality_report.py's JSON)"
+        )
+    params = raw.get("parameters")
+    value = params.get("count_error") if isinstance(params, Mapping) else None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("the data-quality artifact records no parameters.count_error")
+    error = float(value)
+    if not (math.isfinite(error) and 0.0 < error < 1.0):
+        raise ValueError(f"the data-quality artifact's count_error {error!r} is not in (0, 1)")
+    return error
+
+
 def default_space(
     config: ScenarioConfig,
     *,
     count_error: float = COUNT_ERROR,
+    count_error_source: str | None = None,
     sigmas: float = MEASURED_RANGE_SIGMAS,
     heavy_range: tuple[float, float] | None = None,
     heavy_source: str | None = None,
@@ -919,6 +996,9 @@ def default_space(
     Args:
         config: The base scenario.
         count_error: Relative count error behind ``demand_scale``.
+        count_error_source: Where ``count_error`` was read (the data-quality
+            artifact's path and sha256, :func:`data_quality_count_error`);
+            None: the default :data:`COUNT_ERROR`, flagged assumed.
         sigmas: Driver-knob half-width in driver standard deviations.
         heavy_range: A measured truck-share interval; ``heavy_source`` is then
             required. Without it the transfer check's classification interval
@@ -968,6 +1048,7 @@ def default_space(
                 if explicit:
                     raise ValueError("demand_scale: this scenario has no inflow to scale")
                 continue
+            recorded = bool((count_error_source or "").strip())
             params.append(
                 UncertainParameter(
                     name=kind,
@@ -975,14 +1056,21 @@ def default_space(
                     low=1.0 - count_error,
                     high=1.0 + count_error,
                     source=(
-                        f"detector count error ±{count_error:.0%} "
+                        f"detector count error ±{count_error:.3g} as recorded in the study's "
+                        f"data-quality artifact {count_error_source} (parameters.count_error; "
+                        "docs/FRISCO_PROTOCOL.md §8.5), applied as one corridor-wide factor on "
+                        "every inflow"
+                        if recorded
+                        else f"assumed — detector count error ±{count_error:.0%} "
                         "(calibration.conservation.DEFAULT_COUNT_ERROR, the data-quality "
-                        "check's stated working assumption, not a measurement of these "
-                        "detectors), applied as one corridor-wide factor on every inflow"
+                        "check's default working assumption, not a measurement of these "
+                        "detectors); no data-quality artifact was given (pass the study's "
+                        "data-quality JSON for its recorded count error), applied as one "
+                        "corridor-wide factor on every inflow"
                     ),
-                    assumed=False,
+                    assumed=not recorded,
                     nominal=1.0,
-                    basis="count_error",
+                    basis="data_quality_count_error" if recorded else "count_error",
                 )
             )
         elif kind in ("t_scale", "v0_scale"):
@@ -1536,12 +1624,17 @@ class UncertaintyResult:
         collisions: arm → collision block.
         zero_collisions: Over every run (``validation.criteria.zero_collisions``).
         n_runs: Run records aggregated.
-        min_seeds_per_sample: Fewest distinct seeds any sample has.
+        min_seeds_per_sample: Fewest seeds, over every arm and every sample,
+            on which the arm's run is paired with the baseline's (the
+            baseline's own runs for the baseline): what a §8.5 effect rests
+            on, so one arm short of seeds makes the design a rehearsal.
         headline: The metric of the plain-language headline.
         space: The parameter space (None when not supplied).
         samples: The samples (empty when not supplied).
         provenance: Caller-supplied provenance (scenario, hashes, commit, …).
         missing: Expected runs without a record (caller-supplied).
+        headline_note: Why the headline is not :data:`DEFAULT_HEADLINE`, when
+            it is a substitute; empty otherwise.
     """
 
     baseline: str
@@ -1559,10 +1652,12 @@ class UncertaintyResult:
     samples: tuple[Sample, ...] = ()
     provenance: dict[str, Any] = field(default_factory=dict)
     missing: tuple[dict[str, Any], ...] = ()
+    headline_note: str = ""
 
     @property
     def meets_protocol_minimum(self) -> bool:
-        """At least :data:`PROTOCOL_MIN_SAMPLES` samples × :data:`PROTOCOL_MIN_SEEDS` seeds."""
+        """At least :data:`PROTOCOL_MIN_SAMPLES` samples × :data:`PROTOCOL_MIN_SEEDS`
+        paired seeds in every arm and sample (:attr:`min_seeds_per_sample`)."""
         return (
             len(self.sample_ids) >= PROTOCOL_MIN_SAMPLES
             and self.min_seeds_per_sample >= PROTOCOL_MIN_SEEDS
@@ -1588,6 +1683,7 @@ class UncertaintyResult:
             "arms": list(self.arms),
             "metrics": list(self.metrics),
             "headline": self.headline,
+            "headline_note": self.headline_note,
             "n_samples_design": len(self.sample_ids),
             "min_seeds_per_sample": self.min_seeds_per_sample,
             "n_runs": self.n_runs,
@@ -1680,6 +1776,38 @@ class UncertaintyResult:
             )
         return lines
 
+    def _demand_limitation(self) -> str:
+        """The limitation line on the demand range, by its basis."""
+        demand = None if self.space is None else self.space.by_kind("demand_scale")
+        tail = (
+            ", applied as one corridor-wide factor; boundary speeds, off-ramp shares, "
+            "lane-change and merge settings and the map are not varied."
+        )
+        if demand is not None and demand.basis == "data_quality_count_error":
+            return (
+                "- The demand range is the count error recorded in the study's data-quality "
+                "artifact (itself the detectors' stated accuracy, not a measurement of them)" + tail
+            )
+        return "- The demand range is the assumed detector count error" + tail
+
+    def _waiting_limitation(self) -> str:
+        """The limitation line on waiting time, by whether the runs record it."""
+        if DEFAULT_HEADLINE in self.metrics:
+            return (
+                "- The measures are those the corridor sweep records. Total delay and travel "
+                "time including time spent waiting on ramps and to enter "
+                "(docs/FRISCO_PROTOCOL.md §8.2) are measured over the vehicles planned to "
+                "depart in the scoring window; the mean travel time without waiting covers "
+                "only the vehicles that completed the analysed span."
+            )
+        return (
+            "- The measures are those the corridor sweep records. These runs record no total "
+            "delay including time spent waiting on ramps and to enter "
+            "(docs/FRISCO_PROTOCOL.md §8.2); travel time covers only the vehicles that "
+            "completed the analysed span, so a strategy that holds vehicles back can look "
+            "better on it than it is."
+        )
+
     def to_markdown(self) -> str:
         """The plain-language summary (every number from :meth:`to_dict`)."""
         prov = self.provenance
@@ -1728,6 +1856,8 @@ class UncertaintyResult:
         strategy_arms = [a for a in self.arms if a != self.baseline]
         if strategy_arms:
             lines += ["## Strategies against the do-nothing baseline", ""]
+            if self.headline_note:
+                lines += [self.headline_note, ""]
             for arm in strategy_arms:
                 lines += [self.headline_sentence(arm), ""]
             lines += [
@@ -1796,15 +1926,10 @@ class UncertaintyResult:
             "## Limitations",
             "",
             *self._driver_limitations(),
-            "- The demand range is the assumed detector count error, applied as one "
-            "corridor-wide factor; boundary speeds, off-ramp shares, lane-change and merge "
-            "settings and the map are not varied.",
+            self._demand_limitation(),
             "- The Latin-hypercube samples are treated as independent in the interval, which "
             "errs wide when the outcome moves monotonically with each parameter.",
-            "- The measures are those the corridor sweep records. Total delay including time "
-            "spent waiting on ramps and to enter (docs/FRISCO_PROTOCOL.md §8.2) is aggregated "
-            "only once the sweep records it; travel time covers the vehicles that completed "
-            "the analysed span.",
+            self._waiting_limitation(),
             "- Fuel is a model estimate (SUMO HBEFA emission classes), not measured fuel.",
             "- One corridor; model-form uncertainty is not represented by varying parameters.",
             "",
@@ -1869,7 +1994,19 @@ def aggregate(
         else tuple(sorted({r.sample_id for r in records}))
     )
     metric_list = list(metrics) if metrics is not None else _metric_order(records, preferred_order)
-    head = headline or (DEFAULT_HEADLINE if DEFAULT_HEADLINE in metric_list else metric_list[0])
+    headline_note = ""
+    if headline:
+        head = headline
+    elif DEFAULT_HEADLINE in metric_list:
+        head = DEFAULT_HEADLINE
+    else:
+        head = FALLBACK_HEADLINE if FALLBACK_HEADLINE in metric_list else metric_list[0]
+        headline_note = (
+            f"These runs record no {_label(DEFAULT_HEADLINE)[0]} (docs/FRISCO_PROTOCOL.md "
+            f"§8.2, the measure the headline is stated on); the headline uses "
+            f"{_label(head)[0]} instead, which does not count vehicles held back on ramps or "
+            "before entering the road."
+        )
     if head not in metric_list:
         raise ValueError(f"headline metric {head!r} is not among the metrics aggregated")
 
@@ -1950,10 +2087,20 @@ def aggregate(
             ],
             "zero_collisions": zero_collisions(counts),
         }
-    seeds_by_sample: dict[str, set[int]] = {sid: set() for sid in sids}
-    for _a, sid, seed in by_key:
-        seeds_by_sample.setdefault(sid, set()).add(seed)
-    min_seeds = min((len(v) for v in seeds_by_sample.values()), default=0)
+    # §8.5's seeds per sample, per arm, over the seeds an arm's run is paired
+    # with the baseline's run (the baseline: its own runs) — the seeds an
+    # effect rests on; the fewest over every arm and sample.
+    paired: list[int] = []
+    for arm in arms:
+        for sid in sids:
+            paired.append(
+                sum(
+                    1
+                    for a, s, seed in by_key
+                    if a == arm and s == sid and (baseline, sid, seed) in by_key
+                )
+            )
+    min_seeds = min(paired, default=0)
     return UncertaintyResult(
         baseline=baseline,
         arms=arms,
@@ -1970,13 +2117,17 @@ def aggregate(
         samples=tuple(samples),
         provenance=dict(provenance or {}),
         missing=tuple(dict(m) for m in missing),
+        headline_note=headline_note,
     )
 
 
 __all__ = [
     "BASIS_WORDS",
     "COUNT_ERROR",
+    "DATA_QUALITY_SCHEMA",
     "DEFAULT_BASELINE",
+    "DEFAULT_HEADLINE",
+    "FALLBACK_HEADLINE",
     "HEAVY_SHARE_ASSUMED_HALF_WIDTH",
     "KIND_MAPS_TO",
     "MEASURED_RANGE_SIGMAS",
@@ -1998,6 +2149,7 @@ __all__ = [
     "UncertaintyResult",
     "aggregate",
     "apply",
+    "data_quality_count_error",
     "default_space",
     "derived_population",
     "latin_hypercube",

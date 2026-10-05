@@ -39,10 +39,24 @@ internal rule of this protocol, stated as such in every report.
    stuck readings, impossible values, inconsistent flow/occupancy/speed,
    outlier days, station-to-station mass balance). Its verdict per
    detector-day (ok / suspect / exclude) and every reason are written to the
-   study's data-quality artifact.
+   study's data-quality artifact. A window with no vehicle counted is judged
+   by its occupancy, never its speed field: an empty loop (occupancy ≤ 1 %)
+   where traffic is expected is a dead loop or a closure; an occupied loop
+   is a standstill (traffic, not a fault) when the stop lasts at most 5
+   minutes at ≥ 50 % occupancy or a neighbouring lane or station reads
+   congestion within 5 minutes; otherwise it is a hanging-on loop.
 2. **Mainline stations used for scoring:** every station inside the stretch
-   whose verdict is not "exclude" on at least 80 % of the calibration days
-   within the study period [FlowState]. The list is written to the
+   whose verdict is not "exclude" on at least 80 % of the candidate days
+   (§3.1, before the split) within the study period [FlowState]. *(Clarified
+   2026-10-04, before any data: the first wording used the calibration
+   days, which are drawn from days judged on the selected stations — a
+   circle; the candidate days break it.)* Every "exclude" detector-day, and
+   every window and quantity a "suspect" verdict sets aside, is masked out
+   of the observed targets before they are averaged; the targets record
+   which (`source.quality`: the data-quality artifact's path and sha256,
+   each masked detector-day with its checks, the readings set aside), and a
+   target the artifact does not cover is not built (tools:
+   `calibration.station_selection`, `scripts/station_selection.py`). The list is written to the
    corridor's `selection.json` and committed **before the first simulation
    of the corridor**. A station may not be dropped later unless a data
    defect is found; the drop is then a dated amendment and results are
@@ -64,7 +78,9 @@ internal rule of this protocol, stated as such in every report.
 1. **Candidate days:** Tuesday, Wednesday and Thursday, not public holidays,
    not days with an incident or weather event affecting the stretch during
    the study period (agency logs), and not days where fewer than 80 % of
-   the selected stations are usable in the study period [FlowState].
+   the selected stations are usable in the study period [FlowState]. A date
+   the data-quality artifact does not cover is not a candidate; the split
+   refuses it unless it is explicitly left out.
 2. **The split:** candidate days are stratified by their mainline volume
    in the study period (station-mean volume, so a missing station does not
    push a day down) into terciles. 60 % of all candidate days, rounded
@@ -98,10 +114,10 @@ with 95 % confidence intervals (CLAUDE.md §0.6).
 
 | # | Check | Pass rule | Label |
 |---|---|---|---|
-| C1 | Link flows | GEH < 5 on at least 85 % of station-hour comparisons (`validation.criteria` profile `fhwa_default`) | [federal] FHWA TAT Vol. III 2004 |
+| C1 | Link flows | GEH < 5 on at least 85 % of station-hour comparisons (`validation.criteria` profile `fhwa_default`); hours are anchored at the study period's start (the warm-up's end), so the whole study period is scored | [federal] FHWA TAT Vol. III 2004 |
 | C2 | Link flows, Texas | GEH < 3 on every station-hour (profile `txdot_tsap_ch13`); reported beside C1, not part of the gate | [federal] TxDOT TSAP ch. 13 |
 | C3 | Speeds | RMSPE ≤ 15 % on station mean speeds at **15-minute** aggregation; 5- and 60-minute values reported as diagnostics (`speed_aggregation_rows`) | common practice, cited in the report |
-| C4 | Wave speed | the simulated backward wave speed (profile detector `STACK_DETECTOR`) within 14–22 km/h; the observed speed from detector cross-correlation (`calibration.waves_observed`) reported beside it. If the observed data show no recurrent waves (fewer than three station pairs with a valid cross-correlation on calibration days), C4 is "not applicable", decided from the observed data before any simulation | empirical literature |
+| C4 | Wave speed | the simulated backward wave speed (profile detector `STACK_DETECTOR`) within 14–22 km/h, with a backward front found in at least 80 % of the replicates (a replicate without one counts as a miss) and the 95 % interval reported; the observed speed from detector cross-correlation (`calibration.waves_observed`) reported beside it. If the observed data show no recurrent waves (fewer than three station pairs with a valid cross-correlation on calibration days), C4 is "not applicable", decided from the observed data before any simulation | empirical literature |
 | C5 | Collisions | zero SUMO collisions in every run; a run set without the counter is "not recorded", never a pass | [FlowState] CLAUDE.md §3.3, owner decision 2026-10-04 |
 | C6 | Bottlenecks | see §5 | [FlowState] |
 
@@ -123,7 +139,11 @@ secondary summary and must be checked against the original paper before the
 first Frisco run. Until then it is a FlowState rule.)*
 
 Applied identically to the observed calibration-day mean and to each
-simulated replicate (virtual detectors at the selected stations' positions):
+simulated replicate (virtual detectors at the selected stations' positions:
+the mean speed of the vehicles crossing the station's position in the
+5-minute window, as a loop reads it — not a segment average; a run set
+without these point readings is scored on segment means only with the
+substitution stated):
 
 1. **Location:** each observed bottleneck active for at least 30 minutes is
    reproduced at the same station pair or an adjacent one in at least 80 %
@@ -132,8 +152,11 @@ simulated replicate (virtual detectors at the selected stations' positions):
    the observed one, and the median active duration within 30 % of it.
 3. **Queue reach:** the furthest upstream station that is below 40 mph at
    the observed queue's longest extent is reproduced within one station.
-4. **No phantom bottleneck:** no bottleneck absent from the observations is
-   active for more than 30 minutes in more than 50 % of the replicates.
+4. **No phantom bottleneck:** at most 50 % of the replicates contain any
+   bottleneck active for more than 30 minutes that is not at, or adjacent
+   to, an observed one (counted per replicate, so a phantom that moves
+   between neighbouring station pairs is counted once per replicate).
+   Observed and simulated bottlenecks are matched one to one.
 
 All four hold → C6 passes. These thresholds are FlowState rules and the
 report says so.
@@ -217,11 +240,13 @@ many calibration iterations were made.
    driver population and demand scaling within their measured
    uncertainty, each with at least 5 seeds. The ranges are fixed before any
    run: demand, one corridor-wide factor within ± the data-quality
-   artifact's count error; the population's mean time headway and mean
+   artifact's recorded count error; the population's mean time headway and mean
    desired speed, the values whose model capacity per lane and free-flow
    speed stay inside the observed 95 % intervals of the driver-settings
-   check (item 8), clipped to the §7.2 measured range — where the check
-   gives no interval, the §7.2 range itself, labelled assumed; truck share,
+   check (item 8), widened to include the configured (calibrated) value and
+   clipped to the §7.2 measured range — where the check gives no interval
+   or reads capacity off its analytical index rather than a simulated
+   capacity, the §7.2 range itself, labelled assumed; truck share,
    the classification-count interval, else ± 3 points labelled assumed.
    (The §7.2 range is the spread of individual drivers, the range
    calibration may choose from; it is not the uncertainty of a calibrated
