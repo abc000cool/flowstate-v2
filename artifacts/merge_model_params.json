@@ -1,9 +1,9 @@
 {
  "schema_version": 1,
  "kind": "merge_model_params",
- "created_at": "2026-10-06T05:18:35Z",
+ "created_at": "2026-10-06T06:35:16Z",
  "source": "scripts/merge_model_params.py",
- "code": "55db74a56f5836ae7a2eee69aab0cfacdcaa5308",
+ "code": "053a0d0359eab1681fa425bea47f9a785cc7f67c",
  "spec": "docs/MERGE_MODEL.md \u00a72 (decisions fixed 2026-10-05 before any run)",
  "inputs": [
   {
@@ -24,6 +24,9 @@
   }
  ],
  "units": "critical gaps: log-normal of the bumper-to-bumper time gap [s] (lead over the changer's speed, lag over the follower's, calibration.lane_change_gaps); delta [m/s]; tau_r [s]",
+ "amendments": [
+  "A1.1 (2026-10-06) added speed_condition_ms to every set; A2.1 (2026-10-06) withdrew it from the model and from this artifact"
+ ],
  "sets": {
   "central": {
    "note": "docs/MERGE_MODEL.md \u00a72: the central values",

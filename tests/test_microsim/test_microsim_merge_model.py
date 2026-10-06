@@ -196,6 +196,37 @@ class TestAcceptance:
         model = mm.Acceptance(True, True, True, True, lag_model=False)
         assert not model.accepted and model.refusal() == "lag_model" and model.guards_ok
 
+    def test_lead_model_a1_2_and_the_order_of_refusals(self):
+        """Amendment A1.2: the changer's own model on the lead side, read before the follower's."""
+        both = mm.Acceptance(True, True, True, True, lead_model=False, lag_model=False)
+        assert not both.accepted and both.refusal() == "lead_model" and both.guards_ok
+        lead_only = mm.Acceptance(True, True, True, True, lead_model=False)
+        assert not lead_only.accepted and lead_only.refusal() == "lead_model"
+        ok = mm.Acceptance(True, True, True, True, lead_model=True, lag_model=True)
+        assert ok.accepted and ok.refusal() is None
+        # the static conditions are read before either model
+        lag = mm.Acceptance(True, True, False, True, lead_model=False)
+        assert lag.refusal() == "lag_time" and not lag.static_ok
+
+    def test_no_speed_condition_after_a2_1(self):
+        """Amendment A2.1 withdrew A1.1: a slow entrant is judged on the gaps and guards alone."""
+        a = mm.acceptance(
+            v_c=10.0,
+            s0_c=2.0,
+            b_c=1.5,
+            t_c_lead=0.1,
+            t_c_lag=0.1,
+            g_lead=50.0,
+            v_lead=10.0,
+            g_foll=60.0,
+            v_foll=13.0,
+            s0_f=2.0,
+            b_f=1.5,
+            step_s=0.5,
+        )
+        assert a.accepted and not hasattr(a, "speed")
+        assert not hasattr(mm, "speed_ok")
+
     def test_follow_speed_check_is_the_followers_b(self):
         assert mm.follow_speed_ok(19.25, 20.0, 1.5, 0.5)
         assert not mm.follow_speed_ok(19.24, 20.0, 1.5, 0.5)
@@ -222,10 +253,10 @@ class TestSpeed:
         assert mm.speed_ceiling(10.0, 1.0, 1.5, -5.0, 30.0) == pytest.approx(11.0)
 
     def test_gap_reference_speed(self):
-        assert mm.gap_reference_speed(12.0, [5.0], 30.0, True) == 12.0
-        assert mm.gap_reference_speed(None, [5.0], 30.0, True) is None  # open road ahead
-        assert mm.gap_reference_speed(None, [5.0, 7.0], 30.0, False) == 6.0
-        assert mm.gap_reference_speed(None, [], 30.0, False) == 30.0
+        """Amendment A3: only a chosen gap's leader sets the reference; else no ceiling."""
+        assert mm.gap_reference_speed(12.0) == 12.0
+        assert mm.gap_reference_speed(None) is None  # open road ahead, or no gap chosen
+        assert not hasattr(mm, "GAP_REFERENCE_WINDOW_M")  # the ±50 m fallback is withdrawn
 
 
 class TestRelaxation:
@@ -414,6 +445,8 @@ class TestParameterArtifact:
             assert mm.file_sha256(path) == entry["sha256"], entry["artifact"]
         lead = art["sets"]["central"]["critical_gaps"]["entering_merge"]["lead"]
         assert lead["provenance"]["json_path"].startswith("fits[")
+        # A2.1 withdrew A1.1's speed condition: no set carries it
+        assert all("speed_condition_ms" not in v for v in art["sets"].values())
         assert mm.params_artifact_path() == ARTIFACT
 
 

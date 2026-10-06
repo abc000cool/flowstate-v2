@@ -10,11 +10,14 @@ sections, both movements — on three measured principles that ship together
    one lag critical time gap per movement, drawn once from the measured
    log-normal fits (B§1.1), compared with bumper-to-bumper gaps as
    ``calibration.lane_change_gaps`` defines them, plus brake guards on both
-   sides (:func:`acceptance`);
+   sides (:func:`acceptance`); amended (A1.2, 2026-10-06): the changer's own
+   model on the lead side (A1.1's speed condition was withdrawn by A2.1);
 2. **matching the target lane's speed** — a speed *ceiling* at the chosen
    gap's speed plus the measured offset δ, approached kinematically, the
    desired speed ``speedFactor × lane limit`` capped by ``maxSpeed``
-   (:func:`speed_ceiling`, :func:`desired_speed`);
+   (:func:`speed_ceiling`, :func:`desired_speed`); amended (A3, 2026-10-06):
+   only towards a chosen gap with a leader — with no gap chosen no ceiling is
+   set (:func:`gap_reference_speed`);
 3. **relaxation after the crossing** — the entrant and its new follower get a
    temporary time headway equal to the accepted gap (floored), recovering to
    their own ``T`` with the measured time constant (:func:`relaxation_start`,
@@ -112,9 +115,6 @@ RELAX_RESTORE_TAU_R: Final[float] = 4.0
 #: extraction walks with; WEAVE_MODEL_PLAN WP-90 "the pair").
 CAR_FOLLOWING_GAP_M: Final[float] = 10.0
 CAR_FOLLOWING_TIME_S: Final[float] = 5.0
-#: With no gap chosen, the ceiling's reference speed is the mean of the
-#: target-lane vehicles within this distance of the changer (B§5.4).
-GAP_REFERENCE_WINDOW_M: Final[float] = 50.0
 #: Truncation of every critical-gap draw: [p2.5, p97.5] of its log-normal
 #: (B§5.3, so the 0.07 s tail does not leave all the safety to the guard).
 TRUNCATION_QUANTILE: Final[float] = 0.975
@@ -393,14 +393,16 @@ def brake_guard_ok(
 class Acceptance:
     """The acceptance of one change, side by side (:func:`acceptance`).
 
-    ``lag_model`` is ``None`` until the follower's own model has been asked
-    (the runner asks SUMO only when every other condition passes).
+    ``lead_model`` / ``lag_model`` are ``None`` until the changer's / the
+    follower's own model has been asked (the runner asks SUMO only when every
+    other condition passes, the changer first).
     """
 
     lead_time: bool
     lead_guard: bool
     lag_time: bool
     lag_guard: bool
+    lead_model: bool | None = None
     lag_model: bool | None = None
 
     @property
@@ -410,12 +412,12 @@ class Acceptance:
 
     @property
     def accepted(self) -> bool:
-        """The change is accepted (the follower's model check included)."""
-        return self.static_ok and self.lag_model is not False
+        """The change is accepted (both models' checks included)."""
+        return self.static_ok and self.lead_model is not False and self.lag_model is not False
 
     @property
     def guards_ok(self) -> bool:
-        """Both brake guards: what a forced change needs (B§5.6)."""
+        """Both brake guards: what a forced change needs (B§5.6; exempt from A1.2)."""
         return self.lead_guard and self.lag_guard
 
     def refusal(self) -> str | None:
@@ -423,6 +425,8 @@ class Acceptance:
         for name in ("lead_time", "lead_guard", "lag_time", "lag_guard"):
             if not getattr(self, name):
                 return name
+        if self.lead_model is False:
+            return "lead_model"
         if self.lag_model is False:
             return "lag_model"
         return None
@@ -451,10 +455,13 @@ def acceptance(
     * lag: ``g_F ≥ t_cG · v_F`` and the brake guard of the follower on the
       changer at ``b_F``.
 
-    The fifth condition — the follower's own model at its relaxed ``T`` does
-    not brake harder than ``b_F`` behind the changer — is SUMO's to answer
-    (``vehicle.getFollowSpeed``) and is added by the caller with
-    :func:`follow_speed_ok`.
+    The two model conditions — the changer's own model at its relaxed ``T``
+    (its own when exiting) does not brake harder than ``b_C`` behind the new
+    leader (amendment A1.2), and the follower's own model at its relaxed
+    ``T`` does not brake harder than ``b_F`` behind the changer — are SUMO's
+    to answer (``vehicle.getFollowSpeed``) and are added by the caller with
+    :func:`follow_speed_ok`. A forced change reads the brake guards alone
+    (:attr:`Acceptance.guards_ok`).
 
     Args:
         v_c: The changer's speed [m/s].
@@ -480,11 +487,13 @@ def acceptance(
 def follow_speed_ok(
     v_follow: float, v_f: float, b_f: float, step_s: float, eps: float = FOLLOW_SPEED_EPS_MS
 ) -> bool:
-    """The follower's model asks no harder a brake than ``b_F`` behind the changer.
+    """A vehicle's own model asks no harder a brake than its ``b`` behind a leader.
 
-    ``v_follow`` is SUMO's ``vehicle.getFollowSpeed`` for the follower at its
-    relaxed ``T`` with the changer as leader (B§5.5: read from SUMO itself, so
-    the IDM / EIDM closed forms cannot disagree, WP-68).
+    ``v_follow`` is SUMO's ``vehicle.getFollowSpeed`` for the vehicle — the
+    follower at its relaxed ``T`` with the changer as leader (B§5.5), or the
+    changer at its relaxed ``T`` (entering) / its own (exiting) behind its
+    new leader (amendment A1.2) — read from SUMO itself, so the IDM / EIDM
+    closed forms cannot disagree (WP-68).
     """
     return v_follow >= v_f - b_f * step_s - eps
 
@@ -555,27 +564,18 @@ def speed_ceiling(
     return ceiling
 
 
-def gap_reference_speed(
-    v_leader: float | None,
-    nearby_speeds: Sequence[float],
-    v0: float,
-    has_gap: bool,
-) -> float | None:
-    """The speed the ceiling matches (B§5.4).
+def gap_reference_speed(v_leader: float | None) -> float | None:
+    """The speed the ceiling matches (B§5.4 as amended by A3, 2026-10-06).
 
-    The chosen gap's leader's speed; with a gap chosen that has no leader
-    (open road ahead) nothing to match (``None``: no ceiling below ``v0``);
-    with no gap chosen the mean speed of the target-lane vehicles within
-    :data:`GAP_REFERENCE_WINDOW_M` (``nearby_speeds``), and with an empty
-    target lane ``v0``.
+    The chosen gap's leader's speed; with no leader to match — a gap with open
+    road ahead, or no gap chosen — ``None``: no ceiling is set and the
+    vehicle keeps its own desired speed. Stage 1 also matched, with no gap
+    chosen, the mean speed of the target-lane vehicles within 50 m; at a
+    weaving section's start that is the slow auxiliary lane's, which capped
+    exiters still in the through lane and slowed it (docs/MERGE_MODEL.md,
+    amendment A3), so A3 withdrew it.
     """
-    if v_leader is not None:
-        return v_leader
-    if has_gap:
-        return None
-    if nearby_speeds:
-        return float(sum(nearby_speeds) / len(nearby_speeds))
-    return v0
+    return v_leader
 
 
 # --- Relaxation (B§5.7) ---------------------------------------------------------

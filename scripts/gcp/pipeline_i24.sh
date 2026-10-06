@@ -1011,6 +1011,35 @@ stage p1b_strategies bash -c "set -e; mkdir -p $P1R; \
     --procs 16 --out runs/p1b_tune --summary artifacts/tune_${MNDOT}_weave_slice_xlsfg_p1b_rehearsal.json" \
   || say "p1b_strategies failed; continuing"
 
+
+# 21. Stage 1 phase 2, the measured merge model's cheap gates (docs/MERGE_MODEL.md §4, 2026-10-06; owner: no 20-seed
+#     battery in this phase). Diagnostic probes, not acceptance. A: I-24 Old Hickory single seed, measured (central and
+#     US-101 gap sets; the Hickory Hollow weave too) against lane_change. B: the I-94 35-min slice, 4 seeds, measured
+#     against the weave reference (xlsfg). C: the two phase-1 colliding (sample, seed) pairs as 4-h runs on measured.
+stage p2_gate_a bash -c "$RUN scripts/i24_merge_experiment.py --base scenarios/i24_replica_flow_speedcal.yaml \
+    --variants flow_speedcal flow_speedcal_measured flow_speedcal_mmus101_gaps_measured flow_speedcal_hhweave_measured \
+    --procs 4 --out artifacts/i24_merge_experiment_measured.json" || say "p2_gate_a failed; continuing"
+P2B=runs/p2_gate_b
+stage p2_gate_b bash -c "set -e; mkdir -p $P2B; \
+  sed -e 's#^name: ${MNDOT}_weave_slice\$#name: ${MNDOT}_weave_slice_xlsfg#' -e 's#weave_params: {}#weave_params: {exit_prepare: 1.0}#' \
+      scenarios/${MNDOT}_weave_slice.yaml \
+    | awk '{print} /^  kind: osm\$/ && !d {print \"  lane_end_giveup_m: 7.5\"; d=1}' \
+    | awk '/^    merge: scripted\$/ {s=1; print; next} s && /^    merge_params: \{\}\$/ {print \"    merge_params: {force_guard: 1.0}\"; s=0; next} {s=0; print}' \
+    > scenarios/${MNDOT}_weave_slice_xlsfg.yaml; \
+  for SCN in ${MNDOT}_weave_slice_measured ${MNDOT}_weave_slice_xlsfg; do \
+    $RUN scripts/corridor_battery.py --scenario scenarios/\$SCN.yaml --observations data/mndot/$MNDOT/observations.json \
+      --replicates 4 --procs 4 --out runs/\$SCN/p2b --artifact artifacts/validation_\${SCN}_p2b.json \
+      --report-dir docs/reports/\${SCN}_p2b --criteria-profile fhwa_tat3_2004 --keep-trajectories; \
+    $RUN scripts/merge_model_selfcheck.py station-flows --station S790 --clock-offset-s 5400 \
+      --observations data/mndot/$MNDOT/observations.json \
+      --run-dirs \$(dirname runs/\$SCN/p2b/*/*/meta.json) --out artifacts/merge_model_gate_b_s790_\$SCN.json; \
+  done" || say "p2_gate_b failed; continuing"
+stage p2_gate_c bash -c "$RUN scripts/merge_model_selfcheck.py colliding-pairs \
+    --scenario scenarios/${MNDOT}_weave_measured.yaml \
+    --uncertainty-artifact artifacts/uncertainty_mndot_i94_wb_stpaul_p1_rehearsal.json \
+    --out-root runs/merge_model_gate_c --population-dir runs/merge_model_gate_c/populations \
+    --out artifacts/merge_model_gate_c.json" || say "p2_gate_c failed; continuing"
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

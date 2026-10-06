@@ -47,6 +47,21 @@ Subcommands:
   speed factor (docs/MERGE_MODEL.md §2: 1.245 is a sensitivity, not the
   acceptance).
 
+* ``ceiling`` — the T.H.52 section's ceiling with no crossing needed
+  (docs/MERGE_MODEL.md amendment A2.3; WP-76's realization B at p = 1,
+  docs/WEAVE_MODEL_PLAN.md, whose session harness was not kept and is
+  re-implemented here from its description): every crossing vehicle is
+  relocated to the leg next to its target — an entrant not bound for the
+  paired exit is inserted on the mainline with its route's end, a mainline
+  exiter is inserted on the ramp with its exit — by rewriting the runner's
+  routes file between its writing and SUMO's start (``departLane="free"``,
+  the leg's ``lcStrategic``); departure times, destinations and drawn
+  parameters stay the plan's, and the plan's routes are rewritten alike so
+  the runner's bookkeeping matches the file SUMO reads. ``meta.json``'s
+  ``config_hash`` is the scenario's as written: the relocation is the
+  harness's, not a config field. Then the section test's criteria at each
+  seed, with the former per-lane reading as a diagnostic.
+
 Cloud gates (docs/MERGE_MODEL.md §4; never run locally — corridor runs):
 
 * ``station-flows`` — gate B's readout. A 35-minute slice holds no complete
@@ -66,11 +81,13 @@ Run (from the repository root)::
     uv run --no-sync python scripts/merge_model_selfcheck.py check --out /tmp/selfcheck.json
     uv run --no-sync python scripts/merge_model_selfcheck.py grid --model measured --out /tmp/grid.json
     uv run --no-sync python scripts/merge_model_selfcheck.py th52 --model measured --seeds 3-22
+    uv run --no-sync python scripts/merge_model_selfcheck.py ceiling --seeds 3-12 --speed-factor 1.245
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import importlib.util
 import json
 import math
@@ -288,6 +305,10 @@ def run_summary(paths: Any, wall_s: float) -> dict[str, Any]:
                     "n_pair_releases",
                     "n_opposing_deferred",
                     "n_collisions_attributable",
+                    "n_arrival_changes_kept",
+                    "n_early_crossings",
+                    "n_handovers",
+                    "refused_vehicle_steps",
                 )
                 if k in z
             }
@@ -554,6 +575,7 @@ def th52_criteria(paths: Any) -> dict[str, Any]:
         "observed_inflow_vph": round(q_obs, 1),
         "exit_end_flow_geh": round(geh, 2),
         "station_speed_by_5min": [round(float(v), 1) for v in station.values],
+        "station_speed_min_ms": round(float(station.min()), 3) if len(station) else None,
         "n_collisions": meta["n_collisions"],
         "exits_given_up": [given_up, reached],
         "hard_brake_vehicle_steps": int((df.a <= -EMERGENCY_DECEL_MS2 + 1e-6).sum()),
@@ -662,6 +684,157 @@ def colliding_pairs(
     return {"scenario": str(scenario), "artifact": str(artifact), "rows": rows}
 
 
+def _crossing_pair(cfg: Any, on_name: str, exit_name: str) -> tuple[int, int]:
+    """Indices ``(k, j)`` of the on-ramp ``on_name`` and the off-ramp ``exit_name`` in the route ids."""
+    ramps = list(cfg.network.ramps)
+    k = next(i for i, r in enumerate(ramps) if r.kind == "on" and r.name == on_name)
+    j = next(i for i, r in enumerate(ramps) if r.kind == "off" and r.name == exit_name)
+    return k, j
+
+
+def relocated_route(rid: str, k: int, j: int) -> str | None:
+    """WP-76 B at p = 1: the route a vehicle of route ``rid`` takes so it crosses nothing, or None."""
+    if rid == f"on{k}":
+        return "main"
+    if rid.startswith(f"on{k}_off") and rid != f"on{k}_off{j}":
+        return "main" + rid[len(f"on{k}") :]
+    if rid == f"main_off{j}":
+        return f"on{k}_off{j}"
+    return None
+
+
+def relocate_crossings(routes_path: Path, cfg: Any, on_name: str, exit_name: str) -> dict[str, int]:
+    """Rewrite a routes file so no vehicle has a lane to cross at the paired section (WP-76 B, p = 1).
+
+    The on-ramp ``on_name`` (index ``k``) and its paired exit ``exit_name``
+    (index ``j``): routes ``on<k>`` / ``on<k>_off<m>`` (``m != j``) become
+    ``main`` / ``main_off<m>`` and ``main_off<j>`` becomes ``on<k>_off<j>``;
+    the relocated vehicles get ``departLane="free"`` and their new leg's
+    ``lcStrategic`` (``FleetSpec.lc_strategic`` on the mainline,
+    ``lc_strategic_ramp`` on the ramp, written as the runner writes it).
+    Returns the counts relocated each way.
+    """
+    import re
+
+    k, j = _crossing_pair(cfg, on_name, exit_name)
+    main_lcs = float(cfg.fleet.lc_strategic)
+    ramp_lcs = cfg.fleet.lc_strategic_ramp
+    ramp_lcs = main_lcs if ramp_lcs is None else float(ramp_lcs)
+
+    def new_route(rid: str) -> str | None:
+        return relocated_route(rid, k, j)
+
+    text = routes_path.read_text()
+    lcs_of: dict[str, float] = {}
+    counts = {"entrants_to_mainline": 0, "exiters_to_ramp": 0}
+
+    def veh(m: re.Match[str]) -> str:
+        line = m.group(0)
+        rid = re.search(r'route="([^"]+)"', line)
+        assert rid is not None
+        to = new_route(rid.group(1))
+        if to is None:
+            return line
+        vtype = re.search(r'type="([^"]+)"', line)
+        assert vtype is not None
+        if to.startswith("main"):
+            counts["entrants_to_mainline"] += 1
+            lcs_of[vtype.group(1)] = main_lcs
+        else:
+            counts["exiters_to_ramp"] += 1
+            lcs_of[vtype.group(1)] = ramp_lcs
+        line = line.replace(f'route="{rid.group(1)}"', f'route="{to}"')
+        return re.sub(r'departLane="[^"]*"', 'departLane="free"', line)
+
+    text = re.sub(r"<vehicle [^>]*/>", veh, text)
+
+    def vt(m: re.Match[str]) -> str:
+        line = m.group(0)
+        tid = re.search(r'id="([^"]+)"', line)
+        assert tid is not None
+        if tid.group(1) not in lcs_of:
+            return line
+        line = re.sub(r' lcStrategic="[^"]*"', "", line)
+        lcs = lcs_of[tid.group(1)]
+        if lcs != 1.0:  # SUMO's default is written only when it differs
+            line = line.replace("/>", f' lcStrategic="{lcs:g}"/>')
+        return line
+
+    text = re.sub(r"<vType [^>]*/>", vt, text)
+    routes_path.write_text(text)
+    return counts
+
+
+def th52_ceiling(
+    seeds: Sequence[int], work: Path, model: str, speed_factor: float | None, keep: bool
+) -> dict[str, Any]:
+    """Amendment A2.3: the T.H.52 section test's criteria with no crossing needed."""
+    from flowstate_core.config import ScenarioConfig
+    from microsim import run_micro
+    from microsim import runner as R
+
+    mmt = _load_test_module("test_microsim_merge_managed_meter")
+    orig = R._build_plan_and_routes
+    relocated: dict[str, int] = {}
+
+    def build(cfg: Any, bundle: Any, rng: Any, routes_path: Path, **kw: Any) -> Any:
+        # the build-time (compiled) ramp list numbers the route ids; the plan's
+        # routes are rewritten too, so the runner's bookkeeping (exiters,
+        # entrants, journeys) matches the file SUMO reads
+        plan = orig(cfg, bundle, rng, routes_path, **kw)
+        relocated.update(relocate_crossings(routes_path, cfg, "th52", "th52 exit"))
+        k, j = _crossing_pair(cfg, "th52", "th52 exit")
+        route = tuple(relocated_route(r, k, j) or r for r in plan.route)
+        return dataclasses.replace(plan, route=route)
+
+    rows = []
+    R._build_plan_and_routes = build
+    try:
+        for seed in seeds:
+            cfg = mmt._th52_corridor_config(seed)
+            if speed_factor is not None:
+                raw = cfg.model_dump(mode="json")
+                raw["fleet"]["speed_factor"] = speed_factor
+                cfg = ScenarioConfig.model_validate(raw)
+            cfg = to_model(cfg, model)
+            t0 = time.perf_counter()
+            paths = run_micro(cfg, seed, work / f"ceiling_{model}")
+            row = {**th52_criteria(paths), "wall_s": round(time.perf_counter() - t0, 2)}
+            row["relocated"] = dict(relocated)
+            row["lane_windows_le_20"] = _lane_windows_le(paths, mmt)
+            rows.append(row)
+            if not keep:
+                shutil.rmtree(paths.run_dir, ignore_errors=True)
+            print(json.dumps(row), flush=True)
+    finally:
+        R._build_plan_and_routes = orig
+    return {
+        "method": "WP-76 realization B at p = 1 (docs/WEAVE_MODEL_PLAN.md), re-implemented",
+        "model": model,
+        "speed_factor": speed_factor,
+        "rows": rows,
+    }
+
+
+def _lane_windows_le(paths: Any, mmt: ModuleType) -> dict[str, Any]:
+    """The former per-lane reading of criterion (ii): lane-windows of the last 60 m at or below 20 m/s."""
+    import sumolib
+
+    net = sumolib.net.readNet(str(next(paths.run_dir.glob("**/*.net.xml"))))
+    x_end = sum(net.getEdge(e).getLength() for e in ("100", "101", "102"))
+    df = pd.read_parquet(paths.trajectories, columns=["t", "x", "lane", "v"])
+    end = df[(df.x >= x_end - 60.0) & (df.x < x_end) & (df.t < 1200.0)]
+    win = end.groupby(["lane", (end.t // 300.0).astype(int)]).v.mean()
+    low = win[win <= mmt.TH52_FREE_FLOW_MS]
+    return {
+        "n": len(low),
+        "by_lane": {
+            int(lane): int((low.index.get_level_values(0) == lane).sum()) for lane in range(4)
+        },
+        "lowest_ms": round(float(win.min()), 2) if len(win) else None,
+    }
+
+
 def _seeds(text: str) -> list[int]:
     out: list[int] = []
     for part in text.split(","):
@@ -688,19 +861,23 @@ def main(argv: list[str] | None = None) -> None:
     cp.add_argument("--out-root", type=Path, required=True)
     cp.add_argument("--population-dir", type=Path, required=True)
     cp.add_argument("--out", type=Path, default=None)
-    for name in ("check", "grid", "th52"):
+    for name in ("check", "grid", "th52", "ceiling"):
         p = sub.add_parser(name)
         p.add_argument("--out", type=Path, default=None, help="JSON report (default: print only)")
         p.add_argument("--work-dir", type=Path, default=None, help="run trees (default: temp)")
         p.add_argument("--keep", action="store_true", help="keep the run trees")
         if name != "check":
-            p.add_argument("--model", default="measured", choices=("measured", "weave"))
+            p.add_argument(
+                "--model",
+                default="weave" if name == "ceiling" else "measured",
+                choices=("measured", "weave"),
+            )
         if name == "check":
             p.add_argument("--seeds", default="3-7")
             p.add_argument("--n-boot", type=int, default=200)
             p.add_argument("--kinds", default="", help="merge,weave (default both)")
-        if name == "th52":
-            p.add_argument("--seeds", default="3-22")
+        if name in ("th52", "ceiling"):
+            p.add_argument("--seeds", default="3-22" if name == "th52" else "3-12")
             p.add_argument("--speed-factor", type=float, default=None)
         if name == "grid":
             p.add_argument("--only", default="", help="comma-separated fixture names")
@@ -738,6 +915,10 @@ def main(argv: list[str] | None = None) -> None:
                     f"{kind}: (a) {z['a_critical_gaps']['pass']} (b) {z['b_partner_speeds']['pass']} "
                     f"(c) {z['c_gap_at_change']['pass']} (d) {z['d_arrival_crossings']['pass']}"
                 )
+        elif args.cmd == "ceiling":
+            result = th52_ceiling(
+                _seeds(args.seeds), work, args.model, args.speed_factor, args.keep
+            )
         elif args.cmd == "grid":
             only = {s for s in args.only.split(",") if s}
             rows = []

@@ -6399,14 +6399,26 @@ def _measured_zone_state(
             "n_requests": 0,
             "n_requests_cancelled": 0,
             "n_model_checks": 0,
+            "n_lead_model_checks": 0,
             "refused": {
-                k: 0 for k in ("lead_time", "lead_guard", "lag_time", "lag_guard", "lag_model")
+                k: 0
+                for k in (
+                    "lead_time",
+                    "lead_guard",
+                    "lag_time",
+                    "lag_guard",
+                    "lead_model",
+                    "lag_model",
+                )
             },
             "n_relax_entrant": 0,
             "n_relax_follower": 0,
             "n_ceiling_steps": 0,
             "n_early_crossings": 0,
             "n_av_released": 0,
+            # A2.2: exiters' arrival-step changes kept, and the approach lanes
+            "n_arrival_changes_kept": 0,
+            "approach_k": {},
             "n_collisions": 0,
             "cross_x_in": [],
             "cross_x_out": [],
@@ -6451,6 +6463,35 @@ def _mm_target(ws: dict[str, Any], vid: str) -> str | None:
     return target
 
 
+def _mm_follow_speed(
+    mod: Any,
+    vid: str,
+    v: float,
+    gap_net: float,
+    v_leader: float,
+    b_leader: float,
+    leader: str,
+    tau_eval: float,
+    tau_now: float,
+) -> float:
+    """SUMO's own follow speed of ``vid`` behind ``leader`` at headway ``tau_eval``, read in one step.
+
+    ``vehicle.getFollowSpeed`` (the model's ``followSpeed``, B§5.5); when
+    ``tau_eval`` differs from the vehicle's headway now, ``setTau`` before
+    and back to ``tau_now`` after, within the same step, so nothing of the
+    simulation sees the trial value. Used for the follower behind the
+    changer and (amendment A1.2) the changer behind its new leader.
+    """
+    changed = abs(tau_eval - tau_now) > 1e-12
+    if changed:
+        mod.vehicle.setTau(vid, tau_eval)
+    try:
+        return float(mod.vehicle.getFollowSpeed(vid, v, gap_net, v_leader, b_leader, leader))
+    finally:
+        if changed:
+            mod.vehicle.setTau(vid, tau_now)
+
+
 def _mm_cancel(mod: Any, vid: str, st: dict[str, Any], lane: int, step_s: float) -> None:
     """No request left open across steps (B§5.6): a refused one-step request is ended by a stay."""
     if st.get("open"):
@@ -6468,19 +6509,29 @@ def _measured_handover_step(
     v_of: dict[str, float],
     pending: dict[str, int],
 ) -> None:
-    """Take every vehicle that will owe a change in the zone one step before it can reach it (B§5.9).
+    """Take every entrant one step before it can reach the zone (B§5.9, amended by A2.2).
 
     SUMO moves a vehicle and then runs its lane changes in one step, so
     LC2013 makes a sixth to two fifths of a zone's crossings in the step a
-    vehicle arrives, unread by the runner (WP-67). A vehicle on the ramp or on
-    the corridor edge before the zone whose arrival lane does not reach its
-    route (:func:`merge_model.mandatory_direction` on the zone's first edge)
-    is set to ``LC_MODE_SCRIPTED_SAFE`` when its distance to the zone start is
-    within two steps' travel at the speed it can reach in one,
-    ``2·Δt·(v + a·Δt)`` (the weave's ``_weave_handover_step`` bound, here
-    for every such vehicle). Its own mode is kept in ``ws["handover"]`` and
-    restored at hand-back; one that leaves the window without being driven
-    gets it back at once; one under another scripted hold is left to it.
+    vehicle arrives, unread by the runner (WP-67). An entrant on the ramp
+    whose arrival lane does not reach its route
+    (:func:`merge_model.mandatory_direction` on the zone's first edge) is set
+    to ``LC_MODE_SCRIPTED_SAFE`` when its distance to the zone start is
+    within two steps' travel at the speed it can reach in one, ``2·Δt·(v +
+    a·Δt)`` (the weave's ``_weave_handover_step`` bound). Its own mode is kept
+    in ``ws["handover"]`` and restored at hand-back; one that leaves the
+    window without being driven gets it back at once; one under another
+    scripted hold is left to it.
+
+    Amendment A2.2 (2026-10-06): the take-over applies to the entering
+    movement only. A mainline vehicle — an exiter — reaches the zone under
+    its own lane-change model, and a change LC2013 makes in the step it
+    arrives is kept, as the weave kept it (stage 1 took exiters over too and
+    removed those fast crossings: 78 of 327 exiters reached the T.H.52
+    section already in the auxiliary lane against the weave's 157 of 336);
+    the model drives only the exiters still in the wrong lane inside the
+    zone. The kept changes are counted by :func:`_measured_step`
+    (``n_arrival_changes_kept``).
     """
     mm = ws["mm"]
     run = mm["run"]
@@ -6496,8 +6547,8 @@ def _measured_handover_step(
             continue
         res = results[vid]
         road = res[tc.VAR_ROAD_ID]
-        if road in edges:
-            continue
+        if road in edges or road not in ws["ramp_edges"] or vid in ws["exiting_ids"]:
+            continue  # A2.2: entrants on the ramp only
         v = v_of[vid]
         # the bound needs the vehicle's acceleration: a cheap pre-test first
         if x_start - x > 2.0 * step_s * (v + 5.0 * step_s):
@@ -6616,8 +6667,6 @@ def _measured_ceiling(
     v_now: float,
     v0_target: float,
     l_t: str | None,
-    f_t: str | None,
-    lane_list: Sequence[tuple[float, str]],
     x_of: dict[str, float],
     v_of: dict[str, float],
     p_of: dict[str, dict[str, float]],
@@ -6626,9 +6675,10 @@ def _measured_ceiling(
 
     The chosen gap's leader's speed plus δ, approached kinematically from the
     bumper distance to that leader's rear (:func:`merge_model.speed_ceiling`);
-    a gap with open road ahead sets no ceiling; with no gap chosen, the mean
-    speed of the target-lane vehicles within 50 m, else none
-    (:func:`merge_model.gap_reference_speed`); never below ``v_now − b·Δt``
+    a gap with open road ahead, or no gap chosen, sets no ceiling (amendment
+    A3, 2026-10-06: the stage-1 fallback to the target lane's mean speed
+    within 50 m is withdrawn; :func:`merge_model.gap_reference_speed`);
+    never below ``v_now − b·Δt``
     (SUMO caps the next speed at ``maxSpeed`` outright). A ceiling at or
     above the desired speed on the target lane is no ceiling: ``maxSpeed``
     stays (or returns to) its own value. Restored when the vehicle is handed
@@ -6643,12 +6693,7 @@ def _measured_ceiling(
     if l_t is not None:
         v_leader = v_of[l_t]
         d_gap = x_of[l_t] - p_of[l_t]["len"] - x_c
-    nearby = (
-        [v_of[o] for x, o in lane_list if abs(x - x_c) <= merge_model.GAP_REFERENCE_WINDOW_M]
-        if l_t is None and f_t is None
-        else []
-    )
-    v_gap = merge_model.gap_reference_speed(v_leader, nearby, v0_target, f_t is not None)
+    v_gap = merge_model.gap_reference_speed(v_leader)
     params: merge_model.MergeModelParams = run["params"]
     ceiling = (
         None
@@ -6772,8 +6817,10 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
     lane connections against the route (:func:`merge_model.lane_reach`,
     :func:`merge_model.mandatory_direction`), so an acceleration lane's
     entrants, a weave's entrants and exiters and a zone with two auxiliary
-    lanes are one rule — taken one step before it can reach the zone
-    (:func:`_measured_handover_step`). LC2013 keeps every other change.
+    lanes are one rule. Entrants are taken one step before they can reach the
+    zone (:func:`_measured_handover_step`); exiters are driven from the zone
+    only, an arrival-step change LC2013 made for them kept (amendment A2.2,
+    ``n_arrival_changes_kept``). LC2013 keeps every other change.
 
     **Each step, for each driven vehicle**, in ``veh_id`` order:
 
@@ -6781,12 +6828,15 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
        target-lane gaps (``vehicle.getNeighbors``): the driver's own lead
        and lag critical gaps for its movement on bumper-to-bumper gaps
        (``minGap`` added back), no lead time gate for an exiter, both brake
-       guards, and — when all of these pass — the follower's own SUMO model
-       at its relaxed headway (``setTau`` → ``getFollowSpeed`` → ``setTau``
-       back, one step) braking no harder than ``b_F``
-       (:func:`merge_model.follow_speed_ok`);
+       guards, and — when all of these pass — the changer's own SUMO model
+       behind its new leader
+       (amendment A1.2; at its relaxed headway when entering, its own when
+       exiting) braking no harder than ``b_C``, then the follower's own model
+       at its relaxed headway braking no harder than ``b_F``
+       (:func:`_mm_follow_speed`: ``setTau`` → ``getFollowSpeed`` →
+       ``setTau`` back, one step; :func:`merge_model.follow_speed_ok`);
     2. the forced change (the last 80 m after 4 s, or a released pair's at
-       once) through the two brake guards only;
+       once) through the two brake guards only (exempt from A1.2);
     3. an exiter halted within 5 m of the gore's end with no change to make
        this step is rerouted through (the exit give-up);
     4. the gap choice and cooperation (:func:`_measured_cooperate`), the
@@ -6847,6 +6897,11 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
     pending: dict[str, int] = {}
     approaching: set[str] = set()
     in_transit: set[str] = set()
+    # A2.2: each exiter's section lane on the approach last step and this
+    # step, to read the change LC2013 makes in the step it arrives
+    approach_prev: dict[str, int] = mm["approach_k"]
+    approach_now: dict[str, int] = {}
+    reach0: Mapping[int, frozenset[str]] = reach[ws["edges"][0]]
     for vid, res in results.items():
         road = res[tc.VAR_ROAD_ID]
         if road in exit_edges:
@@ -6856,6 +6911,8 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
             continue
         lane = int(res[tc.VAR_LANE_INDEX])
         k = lane_map.get((road, lane))
+        if k is not None and vid in exiting and road not in edges and road not in ramp_edges:
+            approach_now[vid] = k
         if k is not None:
             x = x_offset[road] + float(res[tc.VAR_LANEPOSITION])
             x_of[vid] = x
@@ -6874,6 +6931,20 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
         if vid in exiting and vid not in ws["exited"] and vid not in ws["reached"]:
             ws["reached"].add(vid)
             awaiting_exit.add(vid)
+            # A2.2: an exiter LC2013 moved towards the exit in its arrival step
+            # (its lane last step on the approach owed the change, its lane
+            # now is one or more lanes nearer) keeps that change
+            k_prev = approach_prev.get(vid)
+            k_now = lane_map.get((road, lane))
+            if (
+                k_prev is not None
+                and k_now is not None
+                and k_now != k_prev
+                and ws["exit_edge"] is not None
+                and merge_model.mandatory_direction(reach0, k_prev, ws["exit_edge"])
+                == (1 if k_now > k_prev else -1)
+            ):
+                mm["n_arrival_changes_kept"] += 1
         target = _mm_target(ws, vid)
         if target is None:
             continue
@@ -6882,6 +6953,7 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
             pending[vid] = d
     for lst in lanes.values():
         lst.sort()
+    mm["approach_k"] = approach_now
     # --- the weave's rules upstream of a weaving section (inert otherwise) --
     _weave_vacate_step(mod, tc, ws, results, lanes, t)
     _weave_exit_prepare_step(mod, tc, ws, results, lanes, t)
@@ -6969,7 +7041,7 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
             if d > 0
             else (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
         )
-        g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
+        g_lead, v_lead, l_id = _neighbor_gap(mod, vid, modes[0])
         g_foll, v_foll, f_id = _neighbor_gap(mod, vid, modes[1])
         p_f = _mm_veh(mod, run, f_id) if f_id is not None else None
         acc = merge_model.acceptance(
@@ -6986,20 +7058,35 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
             b_f=p_f["b"] if p_f is not None else 1.0,
             step_s=step_s,
         )
-        if acc.static_ok and f_id is not None and p_f is not None:
+        if acc.static_ok and l_id is not None and g_lead < math.inf:
+            # amendment A1.2: the changer's own model behind its new leader, at
+            # its relaxed T when entering (its own when exiting), not braking
+            # harder than its b — the lag side's check mirrored
+            t_rel_c = p_c["T"] if exiter else _mm_relaxed_fn(run)(g_lead + p_c["s0"], v_ego, p_c)
+            v_follow_c = _mm_follow_speed(
+                mod,
+                vid,
+                v_ego,
+                g_lead,
+                v_lead,
+                _mm_veh(mod, run, l_id)["b"],
+                l_id,
+                t_rel_c,
+                p_c["T"],
+            )
+            acc = dataclasses.replace(
+                acc,
+                lead_model=merge_model.follow_speed_ok(v_follow_c, v_ego, p_c["b"], step_s),
+            )
+            mm["n_lead_model_checks"] += 1
+        if acc.static_ok and acc.lead_model is not False and f_id is not None and p_f is not None:
             # the follower's own model at its relaxed T (entering movement;
             # an exiter's follower at its own), read from SUMO in one step
             t_cur = p_f["T"]
             t_rel = _mm_relaxed_fn(run)(g_foll + p_f["s0"], v_foll, p_f) if not exiter else t_cur
-            if abs(t_rel - t_cur) > 1e-12:
-                mod.vehicle.setTau(f_id, t_rel)
-            try:
-                v_follow = float(
-                    mod.vehicle.getFollowSpeed(f_id, v_foll, g_foll, v_ego, p_c["b"], vid)
-                )
-            finally:
-                if abs(t_rel - t_cur) > 1e-12:
-                    mod.vehicle.setTau(f_id, t_cur)
+            v_follow = _mm_follow_speed(
+                mod, f_id, v_foll, g_foll, v_ego, p_c["b"], vid, t_rel, t_cur
+            )
             acc = dataclasses.replace(
                 acc,
                 lag_model=merge_model.follow_speed_ok(v_follow, v_foll, p_f["b"], step_s),
@@ -7060,9 +7147,7 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
             lead_need,
         )
         st["target"] = f_t
-        _measured_ceiling(
-            mod, ws, vid, v_ego, v0_t, l_t, f_t, lanes.get(k + d, []), x_of, v_of, p_of
-        )
+        _measured_ceiling(mod, ws, vid, v_ego, v0_t, l_t, x_of, v_of, p_of)
         if acc.accepted or forced_ok:
             requests[vid] = merge_model.ChangeRequest(
                 vid=vid,
@@ -7151,9 +7236,7 @@ def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float
             lead_need_a,
         )
         pre[vid] = f_a
-        _measured_ceiling(
-            mod, ws, vid, v_of[vid], v0_a, l_a, f_a, lanes.get(target_a, []), x_of, v_of, p_of
-        )
+        _measured_ceiling(mod, ws, vid, v_of[vid], v0_a, l_a, x_of, v_of, p_of)
     # ceilings of vehicles no longer driven nor anticipated
     for vid in [v for v in mm["ceiling"] if v not in veh and v not in approaching]:
         _mm_restore_ceiling(mod, ws, vid, vid in results)
@@ -7212,11 +7295,14 @@ def _measured_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> d
     + n_changed_out + n_missed + n_unfinished``), the crossings executed by
     movement and by kind (an accepted or a forced request; ``n_crossings_in
     + n_crossings_out = n_exec_accepted + n_exec_forced``), the requests made
-    and cancelled, the refusals by first failed condition (vehicle-steps),
+    and cancelled, the refusals by first failed condition (vehicle-steps;
+    ``lead_model`` added by amendment A1.2, 2026-10-06),
     the deferrals (a due forced change refused by the brake guards; an
     opposing entry), the give-ups, the relaxations granted (entrant and
     follower), the cooperation, the ceiling's binding vehicle-steps, the
     crossings made within two steps of the vehicle's arrival (B§5.13 (d)),
+    the exiters' arrival-step changes LC2013 made and the model kept
+    (amendment A2.2),
     the crossing positions from the zone start, and the collisions
     attributable to the zone.
     """
@@ -7270,6 +7356,8 @@ def _measured_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> d
         "n_opposing_deferred": ws["n_opposing_deferred"],
         "refused_vehicle_steps": dict(mm["refused"]),
         "n_follower_model_checks": mm["n_model_checks"],
+        # amendment A1.2: the changer's own model on the lead side (2026-10-06)
+        "n_changer_model_checks": mm["n_lead_model_checks"],
         "n_relax_granted_entrant": mm["n_relax_entrant"],
         "n_relax_granted_follower": mm["n_relax_follower"],
         "n_cooperations": ws["n_cooperations"],
@@ -7279,6 +7367,9 @@ def _measured_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> d
         "n_changer_eased": ws["n_changer_eased"],
         "n_ceiling_vehicle_steps": mm["n_ceiling_steps"],
         "n_handovers": ws["n_handovers"],
+        # amendment A2.2 (2026-10-06): exiters LC2013 moved towards the exit in
+        # the step they reached the zone, the change kept
+        "n_arrival_changes_kept": mm["n_arrival_changes_kept"],
         "n_early_crossings": mm["n_early_crossings"],
         "crossing_x_in_m_p10_p50_p90": _q(mm["cross_x_in"]),
         "crossing_x_out_m_p10_p50_p90": _q(mm["cross_x_out"]),

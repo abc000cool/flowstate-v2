@@ -31,6 +31,10 @@ Sets (docs/MERGE_MODEL.md §2, "Pre-registered sensitivity arms"; B§5.11):
 * ``delta_zero`` — δ = 0 for both zone kinds;
 * ``tau_r_low`` / ``tau_r_high`` — τ_r at the ends of its 95 % interval.
 
+Amendment A1.1 (2026-10-06) added an entering speed condition to every set;
+amendment A2.1 (the same day, docs/MERGE_MODEL.md "Amendments") withdrew it
+from the model, and it is no longer written here.
+
 Run (from the repository root; reads only committed artifacts)::
 
     uv run --no-sync python scripts/merge_model_params.py
@@ -354,6 +358,10 @@ def build() -> dict[str, Any]:
         "units": "critical gaps: log-normal of the bumper-to-bumper time gap [s] (lead over "
         "the changer's speed, lag over the follower's, calibration.lane_change_gaps); delta "
         "[m/s]; tau_r [s]",
+        "amendments": [
+            "A1.1 (2026-10-06) added speed_condition_ms to every set; A2.1 (2026-10-06) "
+            "withdrew it from the model and from this artifact"
+        ],
         "sets": sets,
         "spec_checks": checks,
         "limitations": [

@@ -114,3 +114,57 @@ follower). Measured as a session diagnostic in stage 1 on the capacity
 fixture: −9 m/s² vehicle-steps 9 / 12 / 6 → 1 / 0 / 0 at seeds 3–5.
 
 Both are reported against stage 1's numbers above.
+
+### A2 — 2026-10-06, after A1's fixture runs (before any cloud probe)
+
+**What A1 showed.** A1.2 (the changer's own model on the lead side) did what
+it was meant to: −9 m/s² vehicle-steps in the 37-run grid 87 → 11 (the
+replaced models: 20), collisions 0. A1.1 (the speed condition) made the model
+worse: SUMO's own lane-end braking slows entrants down a short acceleration
+lane (McKnight: entrant median 21.7 → 9.9 m/s from 0 to 200 m), the runner
+cannot raise a speed, so entrants refused for being too slow rode into the
+forced zone, where A1.1 does not apply (forced crossings 24 → 69 at seed 3;
+entrant − new follower −2.44 → −3.18 m/s); the self-check now fails every
+item. On the T.H.52 section the model's take-over of the arrival step removed
+LC2013's fast crossings (exiters reaching the section already in the auxiliary
+lane: 78 of 327 against the weave's 157 of 336; median crossing speed exiters
+6.6 against 11.0 m/s). T.H.52 section flow, seeds 3–22: 3,652 veh/h (stage 1
+3,769; weave 3,873).
+
+**A2.1** A1.1 is withdrawn; A1.2 stays.
+**A2.2** The take-over one step before the zone applies to the entering movement
+only; an exiter that LC2013 changes in the arrival step keeps that change (as
+the weave did), and the model drives only exiters still in the wrong lane
+inside the zone.
+**A2.3** Before judging any merge model on the T.H.52 section test, its ceiling
+is measured: the section's exit-end flow and station speed with no crossing
+needed (vehicles placed in their target lanes, WP-76's pre-placement), seeds
+3–12. If that ceiling fails criterion (ii), no merge model can pass the test
+on this fixture and the test measures something other than merging; that is
+reported, and the test is not changed.
+
+### A3 — 2026-10-06, after A2's fixture runs (before any cloud probe)
+
+**What A2 showed.** (1) *The T.H.52 section test's ceiling* (A2.3; WP-76's
+pre-placement rebuilt in `scripts/merge_model_selfcheck.py ceiling`, which
+reproduces WP-76's departures exactly): with nothing to cross, the section
+carries 4,770–4,863 veh/h (criterion (ii-a) passes at 10 of 10 seeds) but its
+station speed falls below 20 m/s in one window at 3 of 10 seeds — **including
+seed 3, the locked test's seed** (19.97 m/s) — under speed factor 1 and 1.245
+alike. A scratch check with `lcOvertakeRight` 1 passes all three: slow drivers
+(18–26 per seed below 20 m/s desired) hold the left lanes with `lcKeepRight` 0
+and cannot be passed on the right (no right-passing, owner 2026-09-27). **No
+merge model can pass the locked test at seed 3 on this fixture**; the test is
+not changed (A2.3), and what it measures beyond merging is reported. (2) A2.1
+and A2.2 did not raise the section's flow (seeds 3–22: 3,653 veh/h; A1 3,652;
+the weave 3,873); −9 m/s² steps in the grid 11 → 2, collisions 0. (3) The
+measured model's loss against the weave traces to the speed ceiling's
+fallback: with no gap chosen, a changer was capped at the mean speed of
+target-lane vehicles within ±50 m, which at the section start is the slow
+auxiliary lane's (median about 4 m/s in the first 50 m), so exiters still in
+the through lane 1 dragged it down (lane-1 median 4.2 against the weave's 6.4
+m/s). Without the fallback: +180 ± 44 veh/h over seeds 3–22, level with the
+weave; grid 0 collisions, 2 −9 m/s² steps, 0 locks.
+
+**A3** The speed ceiling applies only towards a chosen gap (its leader's speed
+plus δ, approached kinematically); with no gap chosen, no ceiling is set.
