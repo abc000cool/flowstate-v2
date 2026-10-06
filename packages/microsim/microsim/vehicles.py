@@ -127,6 +127,14 @@ class FleetPlan:
     """SUMO ``speedFactor`` per vehicle (``FleetSpec.speed_factor`` /
     ``speed_dev``, :func:`draw_speed_factors`; heavy vehicles 1.0); empty ⇒
     1.0 for every vehicle (the default fleet)."""
+    merge_z_lead: tuple[float, ...] = ()
+    """The measured merge model's per-driver lead quantile (2026-10-05,
+    docs/MERGE_MODEL.md; ``microsim.merge_model.driver_quantiles`` from
+    :func:`merge_gap_stream`): a truncated standard-normal draw mapped through
+    each movement's lead critical-gap distribution. Empty ⇒ no ``measured``
+    ramp in the scenario (nothing drawn)."""
+    merge_z_lag: tuple[float, ...] = ()
+    """The same for the lag (follower-side) critical gap."""
 
     def heavy(self, i: int) -> bool:
         """Whether vehicle ``i`` is a heavy vehicle."""
@@ -404,6 +412,22 @@ def speed_factor_stream(rng: np.random.Generator) -> np.random.Generator:
     without consuming or advancing ``rng``.
     """
     return _child_stream(rng, SPEED_FACTOR_SPAWN_KEY)
+
+
+#: Spawn key of the measured merge model's critical-gap stream (2026-10-05,
+#: docs/MERGE_MODEL.md, B§5.3): a child of the run's seed sequence, like
+#: :data:`SPEED_FACTOR_SPAWN_KEY`, so drawing the drivers' critical gaps leaves
+#: every other draw — and every golden — bit-identical.
+MERGE_GAP_SPAWN_KEY: Final[int] = 0x4D524746  # "MRGF"
+
+
+def merge_gap_stream(rng: np.random.Generator) -> np.random.Generator:
+    """An independent generator for the measured merge model's driver draws.
+
+    Derived from ``rng``'s seed sequence (:data:`MERGE_GAP_SPAWN_KEY`) without
+    consuming or advancing ``rng``.
+    """
+    return _child_stream(rng, MERGE_GAP_SPAWN_KEY)
 
 
 def draw_speed_factors(

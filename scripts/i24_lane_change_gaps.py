@@ -397,9 +397,21 @@ def _sim_run_frame(
     """One microsim run: band-lane trajectories with lengths, zones, lanes and provenance."""
     import sumolib
 
+    from microsim.networks import expand_ramp_splits
+
     meta = json.loads((run_dir / "meta.json").read_text())
     net = sumolib.net.readNet(str(next(run_dir.glob("**/*.net.xml"))))
-    edges = [str(e) for e in meta["config"]["network"]["corridor_edges"]]
+    # the compiled chain, as the runner lays out x (2026-10-05): netconvert's
+    # ramp guessing splits an attach edge into ``<id>-AddedOnRampEdge`` + ``<id>``,
+    # and only the compiled pieces carry the added lane — read from the
+    # scenario's load-time ids, an acceleration lane on a guessed network
+    # (tests/fixtures/mcknight_merge.osm) had no auxiliary band and every
+    # entering change was read as a through change. Identical lists without
+    # guessed ramps.
+    edges = expand_ramp_splits(
+        [str(e) for e in meta["config"]["network"]["corridor_edges"]],
+        [e.getID() for e in net.getEdges()],
+    )
     lengths = [float(net.getEdge(e).getLength()) for e in edges]
     lanes = [len(net.getEdge(e).getLanes()) for e in edges]
     offsets = [
@@ -442,6 +454,12 @@ def _sim_run_frame(
         float(net.getEdge(e).getSpeed())
         for ws in meta.get("weave_sections") or []
         for e in ws["edges"]
+    ] + [
+        # the measured merge model's weaving sections (2026-10-05) read alike
+        float(net.getEdge(e).getSpeed())
+        for ms in meta.get("measured_merges") or []
+        if ms.get("kind") == "weave"
+        for e in ms["edges"]
     ]
     v_cap = (
         min(weave_speed) if weave_speed else max(float(net.getEdge(e).getSpeed()) for e in edges)
@@ -461,6 +479,18 @@ def _sim_run_frame(
             {k: ws.get(k) for k in WEAVE_COUNTERS} | {"edges": ws.get("edges")}
             for ws in meta.get("weave_sections") or []
         ],
+        # the measured merge model's zones (2026-10-05; absent from older runs)
+        **(
+            {
+                "measured_merges": [
+                    {k: ms.get(k) for k in WEAVE_COUNTERS}
+                    | {"edges": ms.get("edges"), "kind": ms.get("kind")}
+                    for ms in meta["measured_merges"]
+                ]
+            }
+            if meta.get("measured_merges")
+            else {}
+        ),
     }
     return df, sorted(zones, key=lambda z: z.x_lo_m), mainline, aux, prov
 

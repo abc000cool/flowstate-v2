@@ -882,9 +882,9 @@ class RampSpec(BaseModel):
     100 m). ``None`` keeps the default. Set to the acceleration lane's length
     to let the ramp feed the mainline over the lane instead of at its end
     (docs/I24_VALIDATION.md §0.7)."""
-    merge: Literal["lane_change", "acceleration_lane", "zipper", "scripted", "weave"] = (
-        "lane_change"
-    )
+    merge: Literal[
+        "lane_change", "acceleration_lane", "zipper", "scripted", "weave", "measured"
+    ] = "lane_change"
     """How an on-ramp's acceleration lane hands its traffic to the mainline
     (micro tier, 2026-09-06). ``lane_change`` (default): the lane dead-ends
     and ramp vehicles change lanes under the lane-change model — on the I-24
@@ -911,7 +911,20 @@ class RampSpec(BaseModel):
     to the exit and the runner drives both crossing movements (entering
     vehicles change left, exiting vehicles change right) with two-sided gap
     acceptance (:class:`WeaveSpec`). Recorded per section in
-    ``meta.json["weave_sections"]``."""
+    ``meta.json["weave_sections"]``. ``measured`` (2026-10-05,
+    docs/MERGE_MODEL.md): the measured merge model — the runner drives every
+    mandatory lane change inside the zone on per-driver critical gaps drawn
+    from the measured fits, a speed ceiling matched to the chosen gap and a
+    post-crossing headway relaxation (``microsim.merge_model``,
+    ``microsim.runner._measured_step``). Without a :attr:`weave` block the
+    zone is the acceleration lane (terminated as for ``scripted``); with one
+    it is the weaving section to the named exit (paired and validated as for
+    ``weave``; ``weave_params`` must stay empty: the model's constants are
+    fixed, never tuned per corridor). Its parameters come from
+    ``artifacts/merge_model_params.json`` (:attr:`OSMNetwork.merge_model_set`
+    names the set). Recorded per zone in ``meta.json["measured_merges"]``
+    and per run in ``meta.json["measured_merge_model"]``. Hash-neutral: the
+    value exists only where a scenario sets it."""
     merge_params: dict[str, float] = Field(default_factory=dict)
     """Tuning of the ``scripted`` merge (ignored by the other models).
     Keys and defaults: ``accept_gap_s`` 0.6 (time gap accepted to the mainline
@@ -970,8 +983,16 @@ class RampSpec(BaseModel):
             raise ValueError("a weave is opened by an on-ramp; an off-ramp cannot carry weave")
         if self.kind == "on" and self.merge == "weave" and self.weave is None:
             raise ValueError("merge='weave' needs a weave block naming its exit_ramp")
-        if self.weave is not None and self.merge != "weave":
-            raise ValueError("a weave block applies to merge='weave' only")
+        if self.weave is not None and self.merge not in ("weave", "measured"):
+            raise ValueError(
+                "a weave block applies to merge='weave' only (or to merge='measured', "
+                "where it names the weaving section's exit)"
+            )
+        if self.merge == "measured" and self.weave is not None and self.weave.weave_params:
+            raise ValueError(
+                "weave_params apply to merge='weave' only: the measured model's constants "
+                "are fixed (docs/MERGE_MODEL.md §2)"
+            )
         if self.kind == "on":
             if not self.inflow:
                 raise ValueError("an on-ramp needs a non-empty inflow")
@@ -1060,6 +1081,20 @@ class OSMNetwork(BaseModel):
     zipper merge (``RampSpec.merge``) — are resolved along internal lanes,
     which is where SUMO computes zipper interleaving. Vehicles are not
     recorded while on an internal lane (a few metres per junction)."""
+    # 2026-10-05 (docs/MERGE_MODEL.md §2): the measured merge model's
+    # pre-registered parameter sets; hash-neutral at its default
+    merge_model_set: Literal["central", "us101_gaps", "delta_zero", "tau_r_low", "tau_r_high"] = (
+        "central"
+    )
+    """Parameter set of the measured merge model (``RampSpec.merge =
+    "measured"``; 2026-10-05, docs/MERGE_MODEL.md §2): ``central`` (the
+    default) or one of the pre-registered sensitivity arms — ``us101_gaps``
+    (US-101's complete-coverage critical gaps), ``delta_zero`` (no speed
+    offset), ``tau_r_low`` / ``tau_r_high`` (the relaxation time constant at
+    its interval's ends). The sets are read from
+    ``artifacts/merge_model_params.json`` (``scripts/merge_model_params.py``).
+    A set other than ``central`` needs a ``measured`` ramp. Hash-neutral at
+    its default."""
     # WP-71 (2026-09-25, block 3): a distance, 0 = off; hash-neutral unless
     # set; not a fitted value (the derivation is in the docstring below)
     lane_end_giveup_m: float = Field(default=0.0, ge=0.0, le=50.0)
@@ -1118,6 +1153,13 @@ class OSMNetwork(BaseModel):
                 "(the last one hosts the boundary, outside the measured span)"
             )
         corridor = set(self.corridor_edges)
+        if self.merge_model_set != "central" and not any(
+            r.kind == "on" and r.merge == "measured" for r in self.ramps
+        ):
+            raise ValueError(
+                f"merge_model_set {self.merge_model_set!r} applies to merge='measured' only: "
+                "no ramp of this network uses it"
+            )
         for ramp in self.ramps:
             if ramp.attach_edge not in corridor:
                 raise ValueError(f"ramp attach_edge {ramp.attach_edge!r} is not in corridor_edges")

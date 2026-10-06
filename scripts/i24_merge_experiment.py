@@ -22,6 +22,15 @@ variants and reports the same segment-speed table:
 * ``speedgain_0`` — tactical lane changes (``lcSpeedGain``) off;
 * ``coop_0.5_assertive_2`` — both merge levers together.
 
+The measured merge model (2026-10-05, docs/MERGE_MODEL.md §4 gate A):
+``_measured`` puts the Old Hickory on-ramp on ``merge: measured`` (its
+acceleration lane), ``_hhweave`` also puts the Hickory Hollow on-ramp on it
+as the weaving section to the Bell Road exit (both attach to 992666043), and
+``_mm<set>`` selects a pre-registered parameter set
+(``network.merge_model_set``: ``us101_gaps``, ``delta_zero``, ``tau_r_low``,
+``tau_r_high``; ``central`` without it). Every variant row records the run's
+``n_collisions`` and, for a measured run, its zones' counters.
+
 Variant names also carry composable suffixes; ``_entrylanes`` and
 ``_entryflow`` set ``network.entry_lane_shares`` from the recording's entry
 bin in vehicle-time and in flow units respectively (mutually exclusive;
@@ -76,6 +85,8 @@ TRACKED_YAML = REPO / "scenarios" / "i24_replica.yaml"
 OBSERVED = REPO / "artifacts" / "i24_validation_observed.json"
 OUT = REPO / "artifacts" / "i24_merge_experiment.json"
 OH = "Old Hickory Blvd on-ramp"
+HH_ON = "Hickory Hollow Pkwy on-ramp"
+BR_OFF = "Bell Road off-ramp (collector road)"
 CORRECTED_OSM = "data/osm/i24_motion_corrected.osm"  # scripts/i24_correct_osm.py
 # "the base yaml unchanged". The second spelling names the fitted arm of the
 # "flow" family (scenarios/i24_replica_flow_speedcal.yaml) so a probe on that
@@ -175,6 +186,16 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
     raw = yaml.safe_load(Path(base).read_text())
     merge_model = None
     meter_on = False
+    # the measured merge model's parameter set and the Hickory Hollow weave
+    # (2026-10-05, docs/MERGE_MODEL.md §4 gate A), anywhere in the name
+    mm_set = None
+    m_set = re.search(r"_mm(us101_gaps|delta_zero|tau_r_low|tau_r_high|central)", name)
+    if m_set:
+        mm_set = m_set.group(1)
+        name = name[: m_set.start()] + name[m_set.end() :]
+    hh_weave = "_hhweave" in name
+    if hh_weave:
+        name = name.replace("_hhweave", "")
     jm_gap = None
     ilinks = False
     foe = None
@@ -254,12 +275,15 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
         ("_zipper", "zipper"),
         ("_accel", "acceleration_lane"),
         ("_scripted", "scripted"),
+        ("_measured", "measured"),
     ):
         if name.endswith(suffix):
             merge_model = model
             name = name[: -len(suffix)]
     if merge_params and merge_model != "scripted":
         raise ValueError(f"merge tuning suffixes need _scripted: {name}")
+    if (mm_set is not None or hh_weave) and merge_model != "measured":
+        raise ValueError(f"_mm<set> / _hhweave need _measured: {name}")
     # the calibrated population itself: `_fleetmerge` = the merge-zone sub-corridor fit
     # (artifacts/idm_i24_merge.json), `_fleetmergecap` = that fit with its time headway
     # scaled to the calibrated straight-road capacity (artifacts/idm_i24_merge_capacity.json)
@@ -416,6 +440,19 @@ def variant_config(name: str, base: Path = ARM_YAML) -> dict[str, Any]:
                         "stop_line_m": 30.0,
                     }
         raw["name"] += (f"_{merge_model}" if merge_model else "") + ("_meter" if meter_on else "")
+    if merge_model == "measured":
+        if hh_weave:
+            # the Hickory Hollow entrance as the weaving section to the Bell Road
+            # exit: lane 0 of 992666043 feeds 19442635 in the corrected map
+            # (checked 2026-10-05, network build only)
+            for ramp in raw["network"]["ramps"]:
+                if ramp["name"] == HH_ON:
+                    ramp["merge"] = "measured"
+                    ramp["weave"] = {"exit_ramp": BR_OFF, "length_m": None, "weave_params": {}}
+            raw["name"] += "_hhweave"
+        if mm_set is not None:
+            raw["network"]["merge_model_set"] = mm_set
+            raw["name"] += f"_mm{mm_set}"
     if vis is not None:
         raw["name"] += f"_vis{vis:g}"
     for field_name, key in (
@@ -496,6 +533,12 @@ def _job(args: tuple[str, int, str | None, str]) -> dict[str, Any]:
         "seed": seed,
         "config_hash": meta["config_hash"],
         "inserted_fraction": round(meta["n_vehicles_departed"] / meta["n_vehicles_planned"], 4),
+        # collisions (2026-10-05, docs/MERGE_MODEL.md §4 gate A: zero required)
+        "n_collisions": meta.get("n_collisions"),
+        "collisions": meta.get("collisions"),
+        # the measured merge model's zones and run block (absent otherwise)
+        "measured_merges": meta.get("measured_merges"),
+        "measured_merge_model": meta.get("measured_merge_model"),
         "ramps": meta.get("ramps"),
         "rmspe_all": round(float(rmspe(seg[ok], obs[ok])), 4),
         "rmspe_15min": round(float(rmspe(s15[ok15], o15[ok15])), 4),
@@ -562,6 +605,9 @@ def main() -> None:
             f"{r['rmspe_all']:.3f}/{r['rmspe_train']:.3f}/{r['rmspe_test']:.3f} 15min={r['rmspe_15min']:.3f} "
             f"GEH<5={r['geh_under_5_vs_recommended']:.2f} "
             f"OH {oh['n_departed'] if oh else '-'}/{oh['n_planned'] if oh else '-'} "
+            f"collisions={r['n_collisions']} "
+            f"peak 2200/3200 m={r['hourly_flow_mean_by_section'][2]}/"
+            f"{r['hourly_flow_mean_by_section'][3]} "
             f"seg km/h: {' '.join(f'{v:.0f}' for v in r['segment_mean_kmh'])}"
         )
     print(f"-> {a.out}")

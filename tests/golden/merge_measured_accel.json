@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "case": "merge_measured_accel",
+  "description": "tests/fixtures/merge.osm interchange, mainline 0.6 veh/s + on-ramp 0.25 veh/s, measured merge model on the acceleration lane (docs/MERGE_MODEL.md), 300 sim-s, seed 3",
+  "scenario": null,
+  "overrides": {},
+  "producer": "microsim.run_micro + validation.metrics.compute_metrics",
+  "regenerate": "uv run --no-sync python tests/test_microsim/test_microsim_golden.py --regenerate merge_measured_accel",
+  "generated_at": "2026-10-06T05:49:46+00:00",
+  "tolerance": {
+    "relative": 1e-06,
+    "exact": [
+      "n_collisions",
+      "n_heavy",
+      "n_hov",
+      "n_measured_changed_in",
+      "n_measured_changed_out",
+      "n_measured_exited",
+      "n_measured_forced",
+      "n_measured_missed_exit",
+      "n_measured_relax_granted",
+      "n_meter_releases",
+      "n_scripted_forced",
+      "n_scripted_merged",
+      "n_vehicles_departed",
+      "n_vehicles_planned",
+      "n_weave_changed_in",
+      "n_weave_changed_out",
+      "n_weave_exited",
+      "n_weave_forced",
+      "wave_count"
+    ]
+  },
+  "config_hash": "2a475c64d120",
+  "seed": 3,
+  "sumo_seed": 3,
+  "tier": "micro",
+  "seeded": false,
+  "versions": {
+    "python": "3.12.13",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "config": {
+    "name": "merge_measured_accel",
+    "tier": "micro",
+    "network": {
+      "kind": "osm",
+      "osm_file": "tests/fixtures/merge.osm",
+      "bbox": null,
+      "corridor_edges": [
+        "100",
+        "101",
+        "102",
+        "103"
+      ],
+      "inflow": [
+        [
+          0.0,
+          0.6
+        ]
+      ],
+      "boundary": null,
+      "ramps": [
+        {
+          "kind": "on",
+          "edges": [
+            "200"
+          ],
+          "attach_edge": "102",
+          "inflow": [
+            [
+              0.0,
+              0.25
+            ]
+          ],
+          "exit_fraction": [],
+          "name": "test on-ramp",
+          "meter": null,
+          "merge_visibility_m": null,
+          "merge": "measured",
+          "merge_params": {},
+          "weave": null,
+          "cd_road": false,
+          "cd_pair": ""
+        }
+      ],
+      "entry_lane_shares": null,
+      "netconvert_extra": [],
+      "patch_files": [],
+      "internal_links": false,
+      "merge_model_set": "central",
+      "lane_end_giveup_m": 0.0
+    },
+    "fleet": {
+      "model": "IDM",
+      "v0": 33.3,
+      "T": 1.4,
+      "a_max": 0.73,
+      "b": 1.67,
+      "s0": 2.0,
+      "delta": 4.0,
+      "heterogeneity_frac": 0.12,
+      "idm_calibration": null,
+      "lc_strategic": 1.0,
+      "lc_strategic_ramp": null,
+      "lc_keep_right": 1.0,
+      "lc_cooperative": 1.0,
+      "lc_assertive": 1.0,
+      "lc_speed_gain": 1.0,
+      "heavy": null,
+      "jm_timegap_minor_s": null,
+      "jm_ignore_foe_prob": null,
+      "lc_sublane": null,
+      "lc_pushy": null,
+      "lc_impatience": null,
+      "lc_accel_lat": null,
+      "max_speed_lat": null,
+      "min_gap_lat": null,
+      "lat_alignment": null,
+      "lc_overtake_right": null,
+      "hov_fraction": 0.0,
+      "speed_factor": 1.0,
+      "speed_dev": 0.0
+    },
+    "av": {
+      "penetration": 0.0,
+      "compliance": 1.0,
+      "controller": null,
+      "controller_params": {},
+      "vsl": null,
+      "vsl_params": {},
+      "oracle": {
+        "kind": "perfect",
+        "delay_s": 0.0,
+        "amplitude_noise_frac": 0.0
+      },
+      "emergency_handback": true,
+      "release_off_corridor": true,
+      "observe_close_leader": true
+    },
+    "sim": {
+      "duration_s": 300.0,
+      "step_length_s": 0.5,
+      "action_step_s": 0.5,
+      "warmup_s": 0.0,
+      "output_hz": 2.0,
+      "lateral_resolution_m": null
+    },
+    "fd_calibration": null,
+    "macro": null,
+    "perturbation": null,
+    "closures": [],
+    "managed_lanes": [],
+    "seed": 3,
+    "replicates": 20
+  },
+  "run": {
+    "n_vehicles_planned": 255,
+    "n_vehicles_departed": 255,
+    "n_collisions": 0,
+    "n_heavy": 0,
+    "n_hov": 0,
+    "n_meter_releases": 0,
+    "n_scripted_merged": 0,
+    "n_scripted_forced": 0,
+    "fuel_total_ml": 30646.13109369877,
+    "n_measured_changed_in": 64,
+    "n_measured_changed_out": 0,
+    "n_measured_forced": 17,
+    "n_measured_exited": 0,
+    "n_measured_missed_exit": 0,
+    "n_measured_relax_granted": 55
+  },
+  "metrics": {
+    "throughput_veh_h": 2721.0702341137126,
+    "mean_tt_s": 73.0006774604854,
+    "p90_tt_s": 101.0479026907824,
+    "sigma_v_spatial_ms": 5.2612435756871045,
+    "sigma_v_temporal_ms": 2.6269421689597756,
+    "vmt_veh_km": 380.8559783240735,
+    "vht_veh_h": 4.349305555555554,
+    "fuel_ml_per_veh_km": 80.46645671299329,
+    "wave_count": 0,
+    "wave_speed_kmh": null,
+    "wave_amplitude_ms": null,
+    "n_travel_time_veh": 124
+  }
+}

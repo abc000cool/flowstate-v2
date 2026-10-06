@@ -1,0 +1,723 @@
+# mndot_i94_wb_stpaul_weave_slice_measured — the 35-minute slice of
+# scenarios/mndot_i94_wb_stpaul_weave_slice.yaml with the measured merge model
+# (RampSpec.merge = measured, docs/MERGE_MODEL.md; 2026-10-05) on every merge
+# the reference drives: the two weaving sections (Ruth St 745524613 paired
+# with C-D split 18208090, T.H.52 769818012 paired with off-ramp 18207598;
+# weave blocks kept, weave_params empty), the two scripted merges (Hudson Rd
+# 18207436, McKnight Rd 178547099) and on-ramp 40648744, whose acceleration
+# lane holds S790 (docs/MERGE_MODEL.md §4 gate B). network.lane_end_giveup_m
+# 7.5 as the xlsfg reference (the model's fixed value; it is also the default
+# with a measured ramp). Parameters: artifacts/merge_model_params.json, set
+# central (network.merge_model_set). Everything else is the base file's.
+# A cloud probe input; not run locally (the laptop rule). seeded=False.
+name: mndot_i94_wb_stpaul_weave_slice_measured
+tier: micro
+network:
+  kind: osm
+  osm_file: data/osm/mndot_i94_wb_stpaul.osm
+  bbox:
+  - 44.9425
+  - -93.099
+  - 44.9613
+  - -92.9612
+  corridor_edges:
+  - '78288791'
+  - '638519815'
+  - '996266724'
+  - '43917738'
+  - '1014336806'
+  - 43917735#0
+  - 43917735#1
+  - 43917735#2
+  - '95085315'
+  - '188344235'
+  - '638377595'
+  - '638519829'
+  - '999007700'
+  - '95085307'
+  - '998737536'
+  - '998737535'
+  - '45608473'
+  - '45608474'
+  - '51866108'
+  - '45608490'
+  - '45608485'
+  - '45782590'
+  - '1000805867'
+  - 40648793#0
+  - 40648793#1
+  - '40648738'
+  - '51388891'
+  - '1001426896'
+  - '82578022'
+  inflow:
+  - - 0.0
+    - 0.9974074074074074
+  - - 300.0
+    - 0.9844444444444445
+  - - 600.0
+    - 1.0955555555555556
+  - - 900.0
+    - 1.1848148148148148
+  - - 1200.0
+    - 1.1874074074074075
+  - - 1500.0
+    - 1.1750205761316874
+  - - 1800.0
+    - 1.1448559670781895
+  - - 2100.0
+    - 1.1455555555555557
+  - - 2400.0
+    - 1.0874074074074074
+  boundary:
+    kind: speed_schedule
+    steps:
+    - - 0.0
+      - 22.075497481481484
+    - - 300.0
+      - 21.075452444444444
+    - - 600.0
+      - 20.25919051851852
+    - - 900.0
+      - 18.875022222222224
+    - - 1200.0
+      - 17.661391407407407
+    - - 1500.0
+      - 17.301630645502645
+    - - 1800.0
+      - 15.76277231746032
+    - - 2100.0
+      - 13.98407348148148
+    - - 2400.0
+      - 11.901198222222222
+    exit_buffer_m: 350.3
+  ramps:
+  - kind: 'on'
+    edges:
+    - '1077665160'
+    - '638519816'
+    - '1081157134'
+    attach_edge: '638519815'
+    inflow:
+    - - 0.0
+      - 0.0
+    - - 300.0
+      - 0.0
+    - - 600.0
+      - 0.0
+    - - 900.0
+      - 0.0
+    - - 1200.0
+      - 0.0
+    - - 1500.0
+      - 0.0
+    - - 1800.0
+      - 0.0
+    - - 2100.0
+      - 0.0
+    - - 2400.0
+      - 0.0
+    exit_fraction: []
+    name: on-ramp 1077665160
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '18279036'
+    - '998736135'
+    attach_edge: '638519815'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.1444485703676197
+    - - 300.0
+      - 0.1064710308502634
+    - - 600.0
+      - 0.11122379986477346
+    - - 900.0
+      - 0.14254454517036563
+    - - 1200.0
+      - 0.1316281971303806
+    - - 1500.0
+      - 0.1539943263404898
+    - - 1800.0
+      - 0.14820273184759175
+    - - 2100.0
+      - 0.16844487552537984
+    - - 2400.0
+      - 0.15258855585831055
+    name: off-ramp 18279036
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '18207390'
+    attach_edge: '1014336806'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.25130208333333337
+    - - 300.0
+      - 0.24968421052631581
+    - - 600.0
+      - 0.2784328642069228
+    - - 900.0
+      - 0.23915421071819185
+    - - 1200.0
+      - 0.24461206896551718
+    - - 1500.0
+      - 0.23323397913561839
+    - - 1800.0
+      - 0.25788074439802505
+    - - 2100.0
+      - 0.2989891135303267
+    - - 2400.0
+      - 0.31953376205787787
+    name: off-ramp 18207390
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '18207436'
+    attach_edge: 43917735#1
+    inflow:
+    - - 0.0
+      - 0.13407407407407407
+    - - 300.0
+      - 0.14074074074074075
+    - - 600.0
+      - 0.17074074074074072
+    - - 900.0
+      - 0.14592592592592593
+    - - 1200.0
+      - 0.12925925925925924
+    - - 1500.0
+      - 0.13148148148148148
+    - - 1800.0
+      - 0.11851851851851852
+    - - 2100.0
+      - 0.12296296296296297
+    - - 2400.0
+      - 0.10962962962962963
+    exit_fraction: []
+    name: on-ramp 18207436
+    meter: null
+    merge_visibility_m: null
+    merge: measured
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '18207653'
+    attach_edge: 43917735#2
+    inflow:
+    - - 0.0
+      - 0.14666666666666667
+    - - 300.0
+      - 0.1411111111111111
+    - - 600.0
+      - 0.1507407407407407
+    - - 900.0
+      - 0.16148148148148153
+    - - 1200.0
+      - 0.11703703703703695
+    - - 1500.0
+      - 0.07629629629629625
+    - - 1800.0
+      - 0.10407407407407403
+    - - 2100.0
+      - 0.12185185185185193
+    - - 2400.0
+      - 0.08666666666666667
+    exit_fraction: []
+    name: on-ramp 18207653
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '178547099'
+    attach_edge: '638519829'
+    inflow:
+    - - 0.0
+      - 0.10555555555555556
+    - - 300.0
+      - 0.13777777777777778
+    - - 600.0
+      - 0.13288065843621413
+    - - 900.0
+      - 0.05851851851851848
+    - - 1200.0
+      - 0.06440329218106992
+    - - 1500.0
+      - 0.10870370370370375
+    - - 1800.0
+      - 0.009341563786008339
+    - - 2100.0
+      - 0.0
+    - - 2400.0
+      - 0.029711934156378624
+    exit_fraction: []
+    name: on-ramp 178547099
+    meter: null
+    merge_visibility_m: null
+    merge: measured
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '745524613'
+    attach_edge: '999007700'
+    inflow:
+    - - 0.0
+      - 0.052592592592592594
+    - - 300.0
+      - 0.05555555555555555
+    - - 600.0
+      - 0.0437037037037037
+    - - 900.0
+      - 0.05148148148148148
+    - - 1200.0
+      - 0.05037037037037037
+    - - 1500.0
+      - 0.04703703703703704
+    - - 1800.0
+      - 0.06769547325102875
+    - - 2100.0
+      - 0.10629629629629624
+    - - 2400.0
+      - 0.08547325102880661
+    exit_fraction: []
+    name: on-ramp 745524613
+    meter: null
+    merge_visibility_m: null
+    merge: measured
+    merge_params: {}
+    weave:
+      exit_ramp: C-D split 18208090
+      length_m: null
+      weave_params: {}
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '18208090'
+    - '991112953'
+    attach_edge: '999007700'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.06254295532646041
+    - - 300.0
+      - 0.06369403661410193
+    - - 600.0
+      - 0.09141074856046068
+    - - 900.0
+      - 0.09427504667081515
+    - - 1200.0
+      - 0.1876105555756109
+    - - 1500.0
+      - 0.17223227504523778
+    - - 1800.0
+      - 0.18783930510314875
+    - - 2100.0
+      - 0.21512052593133676
+    - - 2400.0
+      - 0.23480662983425413
+    name: C-D split 18208090
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: true
+    cd_pair: '18208090'
+  - kind: 'on'
+    edges:
+    - '745524608'
+    attach_edge: '998737536'
+    inflow:
+    - - 0.0
+      - 0.14481481481481487
+    - - 300.0
+      - 0.1283950617283953
+    - - 600.0
+      - 0.0983539094650204
+    - - 900.0
+      - 0.039259259259259174
+    - - 1200.0
+      - 0.09576131687242789
+    - - 1500.0
+      - 0.09057613168724275
+    - - 1800.0
+      - 0.10111111111111111
+    - - 2100.0
+      - 0.0953086419753087
+    - - 2400.0
+      - 0.06888888888888889
+    exit_fraction: []
+    name: C-D re-entry 745524608
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: true
+    cd_pair: '18208090'
+  - kind: 'off'
+    edges:
+    - '18207880'
+    - '1002654894'
+    - '1002654893'
+    attach_edge: '998737536'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.1304905418403335
+    - - 300.0
+      - 0.14781677490672943
+    - - 600.0
+      - 0.14917471192774834
+    - - 900.0
+      - 0.16506463374212796
+    - - 1200.0
+      - 0.11018484958318231
+    - - 1500.0
+      - 0.18277319380156967
+    - - 1800.0
+      - 0.14947247605173705
+    - - 2100.0
+      - 0.1605125378892257
+    - - 2400.0
+      - 0.18588235294117655
+    name: off-ramp 18207880
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '53062592'
+    - '59339954'
+    - '59339950'
+    attach_edge: '51866108'
+    inflow:
+    - - 0.0
+      - 0.47888888888888886
+    - - 300.0
+      - 0.4825925925925926
+    - - 600.0
+      - 0.47851851851851857
+    - - 900.0
+      - 0.4974074074074074
+    - - 1200.0
+      - 0.48777777777777775
+    - - 1500.0
+      - 0.5162962962962964
+    - - 1800.0
+      - 0.5044444444444445
+    - - 2100.0
+      - 0.5262962962962963
+    - - 2400.0
+      - 0.43925925925925924
+    exit_fraction: []
+    name: on-ramp 53062592
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '18207912'
+    - '1013745890'
+    attach_edge: '45608485'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.2682496607869742
+    - - 300.0
+      - 0.22906005925127923
+    - - 600.0
+      - 0.29307968017645436
+    - - 900.0
+      - 0.28087435101888086
+    - - 1200.0
+      - 0.32022526774960125
+    - - 1500.0
+      - 0.35604876523913725
+    - - 1800.0
+      - 0.41713839901299077
+    - - 2100.0
+      - 0.5009262689885143
+    - - 2400.0
+      - 0.3718186310847541
+    name: off-ramp 18207912
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '42165869'
+    - '42165874'
+    - '46279228'
+    - '40645192'
+    attach_edge: '45782590'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.0
+    - - 300.0
+      - 0.0
+    - - 600.0
+      - 0.0
+    - - 900.0
+      - 0.0
+    - - 1200.0
+      - 0.0
+    - - 1500.0
+      - 0.0
+    - - 1800.0
+      - 0.0
+    - - 2100.0
+      - 0.0
+    - - 2400.0
+      - 0.0
+    name: off-ramp 42165869
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '40648744'
+    - '998735811'
+    - '18207681'
+    attach_edge: 40648793#1
+    inflow:
+    - - 0.0
+      - 0.23574074074074083
+    - - 300.0
+      - 0.15674897119341544
+    - - 600.0
+      - 0.3
+    - - 900.0
+      - 0.2829012345679012
+    - - 1200.0
+      - 0.31777777777777777
+    - - 1500.0
+      - 0.31407407407407417
+    - - 1800.0
+      - 0.32092592592592595
+    - - 2100.0
+      - 0.3507407407407407
+    - - 2400.0
+      - 0.3985802469135803
+    exit_fraction: []
+    name: on-ramp 40648744
+    meter: null
+    merge_visibility_m: null
+    merge: measured
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'on'
+    edges:
+    - '769818012'
+    - '194037903'
+    attach_edge: '51388891'
+    inflow:
+    - - 0.0
+      - 0.3522222222222222
+    - - 300.0
+      - 0.3585185185185185
+    - - 600.0
+      - 0.39222222222222225
+    - - 900.0
+      - 0.372962962962963
+    - - 1200.0
+      - 0.3844444444444444
+    - - 1500.0
+      - 0.37666666666666665
+    - - 1800.0
+      - 0.37666666666666665
+    - - 2100.0
+      - 0.377037037037037
+    - - 2400.0
+      - 0.3877777777777778
+    exit_fraction: []
+    name: on-ramp 769818012
+    meter: null
+    merge_visibility_m: null
+    merge: measured
+    merge_params: {}
+    weave:
+      exit_ramp: off-ramp 18207598
+      length_m: null
+      weave_params: {}
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '18207598'
+    attach_edge: '51388891'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.17593397046046927
+    - - 300.0
+      - 0.1696576794910632
+    - - 600.0
+      - 0.2122153209109731
+    - - 900.0
+      - 0.18861542890040303
+    - - 1200.0
+      - 0.20306010928961743
+    - - 1500.0
+      - 0.18761425959780623
+    - - 1800.0
+      - 0.1676807009004625
+    - - 2100.0
+      - 0.17105371053710533
+    - - 2400.0
+      - 0.17195242814667994
+    name: off-ramp 18207598
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  - kind: 'off'
+    edges:
+    - '82150350'
+    attach_edge: '1001426896'
+    inflow: []
+    exit_fraction:
+    - - 0.0
+      - 0.08961518186610438
+    - - 300.0
+      - 0.09036250072967135
+    - - 600.0
+      - 0.0759526938239159
+    - - 900.0
+      - 0.08008869179600886
+    - - 1200.0
+      - 0.07460230389467909
+    - - 1500.0
+      - 0.08551336146272855
+    - - 1800.0
+      - 0.08128654970760234
+    - - 2100.0
+      - 0.08932634286279553
+    - - 2400.0
+      - 0.09186116098144823
+    name: off-ramp 82150350
+    meter: null
+    merge_visibility_m: null
+    merge: lane_change
+    merge_params: {}
+    weave: null
+    cd_road: false
+    cd_pair: ''
+  entry_lane_shares: null
+  netconvert_extra:
+  - --ramps.guess
+  - --ramps.ramp-length
+  - '250'
+  - --ramps.unset
+  - '1001426896'
+  patch_files:
+  - data/osm/mndot_i94_wb_stpaul.splits.con.xml
+  internal_links: false
+  lane_end_giveup_m: 7.5
+fleet:
+  model: EIDM
+  v0: 33.3
+  T: 1.4
+  a_max: 0.73
+  b: 1.67
+  s0: 2.0
+  delta: 4.0
+  heterogeneity_frac: 0.15
+  idm_calibration: artifacts/idm_i24_capacity.json
+  lc_strategic: 5.0
+  lc_strategic_ramp: 1.0
+  lc_keep_right: 0.0
+  lc_cooperative: 1.0
+  lc_assertive: 1.0
+  lc_speed_gain: 1.0
+  heavy: null
+  jm_timegap_minor_s: null
+  jm_ignore_foe_prob: null
+  lc_sublane: null
+  lc_pushy: null
+  lc_impatience: null
+  lc_accel_lat: null
+  max_speed_lat: null
+  min_gap_lat: null
+  lat_alignment: null
+  lc_overtake_right: null
+  hov_fraction: 0.0
+av:
+  penetration: 0.0
+  compliance: 1.0
+  controller: null
+  controller_params: {}
+  vsl: null
+  vsl_params: {}
+  oracle:
+    kind: perfect
+    delay_s: 0.0
+    amplitude_noise_frac: 0.0
+sim:
+  duration_s: 2100.0
+  step_length_s: 0.5
+  action_step_s: 0.5
+  warmup_s: 300.0
+  output_hz: 2.0
+  lateral_resolution_m: null
+fd_calibration: null
+macro: null
+perturbation: null
+closures: []
+managed_lanes: []
+seed: 42
+replicates: 1

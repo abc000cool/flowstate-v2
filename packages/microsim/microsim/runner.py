@@ -93,6 +93,7 @@ from flowstate_core.controller_types import (
     VehicleControllerFn,
 )
 from flowstate_core.rng import make_rng, spawn_seeds, sumo_seed
+from microsim import merge_model
 from microsim.networks import (
     RAMP_SPLIT_OFF,
     RAMP_SPLIT_ON,
@@ -114,6 +115,7 @@ from microsim.vehicles import (
     build_corridor_plan,
     build_ring_plan,
     load_idm_calibration,
+    merge_gap_stream,
     ramp_routes,
     sublane_vtype_attrs,
     write_corridor_routes,
@@ -279,9 +281,11 @@ def _apply_merge_models(
             connection).
     """
     merge_ramps = [
-        r for r in net.ramps if r.kind == "on" and r.merge not in ("lane_change", "weave")
+        r
+        for r in net.ramps
+        if r.kind == "on" and r.merge not in ("lane_change", "weave") and not _is_section_ramp(r)
     ]
-    has_weave = any(r.kind == "on" and r.merge == "weave" for r in net.ramps)
+    has_weave = any(_is_section_ramp(r) for r in net.ramps)
     if not merge_ramps and not has_weave:
         return bundle
     compiled = sumolib.net.readNet(str(bundle.net_path))
@@ -326,10 +330,16 @@ def _apply_merge_models(
             )
         verdict = accel_lane_end(compiled, chain, ramp.attach_edge)
         if not verdict.ok:
+            hint = (
+                " (or, if the lane feeds an exit, give the ramp a weave block naming it)"
+                if ramp.merge == "measured"
+                else ""
+            )
             raise ValueError(
                 f"ramp {label}: merge model {ramp.merge!r} needs the acceleration lane (lane 0 of "
                 f"the attach edge) to dead-end at the edge's end, and it cannot be terminated "
-                f"there: {verdict.reason} — {geometry}. Use merge: 'lane_change' on this ramp."
+                f"there: {verdict.reason} — {geometry}. Use merge: 'lane_change' on this "
+                f"ramp{hint}."
             )
         term_patches.append(
             lane_end_patch_file(
@@ -358,7 +368,7 @@ def _apply_merge_models(
                 "acceleration lane (lane 0 of the attach edge) to dead-end at the edge's end; the "
                 f"termination patch did not take (lane 0 of {ramp.attach_edge} still connects)"
             )
-        if ramp.merge == "scripted":
+        if ramp.merge in ("scripted", "measured"):
             continue  # no patch: the runner drives the acceleration lane
         model_patches += merge_patch_files(
             patch_dir,
@@ -391,8 +401,23 @@ def _apply_merge_models(
     return dataclasses.replace(bundle, patch_files=tuple(str(p) for p in model_patches))
 
 
+def _is_section_ramp(ramp: RampSpec) -> bool:
+    """An on-ramp that opens a weaving section: ``merge="weave"``, or ``"measured"`` with a weave block.
+
+    The measured merge model (2026-10-05, docs/MERGE_MODEL.md) runs on the
+    weave's geometry where the ramp names its paired exit and on the
+    acceleration lane (terminated as the scripted merge's) where it does not.
+    """
+    return ramp.kind == "on" and (
+        ramp.merge == "weave" or (ramp.merge == "measured" and ramp.weave is not None)
+    )
+
+
 def _check_weave_pairs(net: OSMNetwork, compiled: Any, chain: Sequence[str]) -> list[WeaveSection]:
     """The weaving section of every ``merge="weave"`` on-ramp, validated.
+
+    Also of every ``merge="measured"`` on-ramp with a weave block (2026-10-05):
+    the measured model's weaving sections are paired and validated alike.
 
     The schema already requires the paired off-ramp (``WeaveSpec.exit_ramp``)
     to name the same attach edge; here the compiled network must agree: lane
@@ -416,7 +441,7 @@ def _check_weave_pairs(net: OSMNetwork, compiled: Any, chain: Sequence[str]) -> 
     found = {s.on_ramp: s for s in weave_sections(compiled, chain, ramps)}
     out: list[WeaveSection] = []
     for k, ramp in enumerate(ramps):
-        if ramp.kind != "on" or ramp.merge != "weave" or ramp.weave is None:
+        if not _is_section_ramp(ramp) or ramp.weave is None:
             continue
         label = ramp.name or ramp.attach_edge
         j = next(
@@ -436,7 +461,7 @@ def _check_weave_pairs(net: OSMNetwork, compiled: Any, chain: Sequence[str]) -> 
                 else "lane 0 reaches no exit"
             )
             raise ValueError(
-                f"ramp {label}: merge model 'weave' pairs it with the exit {off.name!r} "
+                f"ramp {label}: merge model {ramp.merge!r} pairs it with the exit {off.name!r} "
                 f"(leaving {off.attach_edge} for {off.edges[0]}), but lane 0 of "
                 f"{ramp.attach_edge} does not carry the entering traffic there: it connects to "
                 f"{lane0} and {reached}. Use merge: 'lane_change' on this ramp, or name the "
@@ -2312,6 +2337,7 @@ def _weave_choose_gap(
     committed: str | None,
     priority: bool = False,
     blocked: Collection[str] = (),
+    relaxed_T: Callable[[float, float, dict[str, float]], float] | None = None,
 ) -> tuple[str | None, str | None, float, float]:
     """The target-lane gap a changer works towards: ``(leader, follower, a_F, a_c)``.
 
@@ -2377,6 +2403,11 @@ def _weave_choose_gap(
             hold) and not asked again for this changer within the bound;
             the gap *behind* such a vehicle stays a candidate, so the
             changer drops in behind it once it has passed.
+        relaxed_T: The measured merge model's relaxed headway (2026-10-05,
+            docs/MERGE_MODEL.md §2, "gap choice evaluated at the relaxed
+            T"): ``(bumper gap, speed, constants) → T`` for F's IDM towards
+            the changer and the changer's towards L; ``None`` (every weave
+            call) reads each vehicle's own ``T``.
 
     Returns:
         ``(leader, follower, a_F, a_c)``; ``None`` where the gap has no such
@@ -2396,13 +2427,14 @@ def _weave_choose_gap(
             dist = x_c - x_of[f_id]
             if s_f <= 0.0 or dist > lookahead_m:
                 continue
+            s_ff = s_f - p_c["s0"] if priority else s_f
             a_f = _idm_accel(
                 v_of[f_id],
                 v0_of[f_id],
                 # exit priority: F holds one changer minGap farther back
-                s_f - p_c["s0"] if priority else s_f,
+                s_ff,
                 v_of[f_id] - v_c,
-                p_f["T"],
+                p_f["T"] if relaxed_T is None else relaxed_T(s_ff, v_of[f_id], p_f),
                 p_f["a"],
                 p_f["b"],
                 p_f["s0"],
@@ -2424,7 +2456,14 @@ def _weave_choose_gap(
             else:
                 s_l = x_of[l_id] - p_of[l_id]["len"] - x_c
                 a_c = _idm_accel(
-                    v_c, v0_c, s_l, v_c - v_of[l_id], p_c["T"], p_c["a"], p_c["b"], p_c["s0"]
+                    v_c,
+                    v0_c,
+                    s_l,
+                    v_c - v_of[l_id],
+                    p_c["T"] if relaxed_T is None else relaxed_T(s_l, v_c, p_c),
+                    p_c["a"],
+                    p_c["b"],
+                    p_c["s0"],
                 )
         else:
             a_c = math.inf
@@ -5896,6 +5935,1398 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     }
 
 
+# --- The measured merge model (RampSpec.merge = "measured", 2026-10-05) -------
+#
+# docs/MERGE_MODEL.md (the specification) and microsim.merge_model (its pure
+# functions). A measured zone is a section state of the weave's layout
+# (``_measured_zone_state``) carrying ``ws["mm"]``; it is stepped by
+# ``_measured_step`` in the same upstream-first order as the weaving sections
+# and reuses the weave's load-bearing core — the gap choice, the one-step
+# cooperation of the chosen follower, the easing, the ramp anticipation, the
+# pair release, the exit priority and give-up, the vacate request and the
+# exiters' early move — with the three measured substitutions: the
+# acceptance, the speed ceiling and the relaxation. The run-level state
+# (``_measured_run_state``) holds the parameters, the driver draws, the shared
+# per-vehicle constants and the relaxations.
+
+#: Seconds after a vehicle was last commanded by a measured zone within which
+#: a collision it is party to is attributed to that zone (meta.json
+#: ``measured_merges[i].n_collisions_attributable``; a bookkeeping window, not
+#: a model value).
+MEASURED_ATTRIBUTION_S: Final[float] = 10.0
+
+
+def _measured_run_state(
+    params: merge_model.MergeModelParams,
+    plan: FleetPlan,
+    av_ids: Collection[str],
+    succ: Mapping[tuple[str, int], frozenset[tuple[str, int]]],
+    step_s: float,
+) -> dict[str, Any]:
+    """The run-level state of the measured merge model (one per run)."""
+    return {
+        "params": params,
+        "z_lead": plan.merge_z_lead,
+        "z_lag": plan.merge_z_lag,
+        "gaps": {},
+        "veh_params": {},
+        "av_ids": frozenset(av_ids),
+        "succ": succ,
+        "step_s": float(step_s),
+        "relax": {},
+        "relax_where": {},
+        "relax_leader": {},
+        "where": {},
+        "n_relax_granted_entrant": 0,
+        "n_relax_granted_follower": 0,
+        "n_relax_regranted": 0,
+        "n_relax_restored_expired": 0,
+        "n_relax_restored_lane_change": 0,
+        "n_relax_restored_left": 0,
+        "n_relaxed_cut_ins": 0,
+        "min_tau_set_s": None,
+        "n_tau_writes": 0,
+        # AVs whose command was withdrawn while a zone owns their change
+        "av_released": set(),
+        "n_av_released": 0,
+    }
+
+
+def _mm_veh(mod: Any, run: dict[str, Any], vid: str) -> dict[str, float]:
+    """A vehicle's constants for the measured model, read once per run (shared by every zone).
+
+    The weave's :func:`_weave_veh` fields — ``len``, ``T`` (the **current**
+    headway: the relaxation writes it with every ``setTau``), ``a``, ``b``,
+    ``s0``, ``vmax`` (``maxSpeed`` at first sight, before any ceiling) — plus
+    ``sf`` (``vehicle.getSpeedFactor``: B§5.4, the desired speed is
+    ``min(maxSpeed, sf × lane limit)``), ``T0`` (the driver's own ``T_i``) and
+    ``av`` (1.0 for an AV-tagged vehicle, exempt from relaxation). A
+    measured zone's ``veh_params`` is this same dict, so the weave helpers it
+    reuses read the same constants.
+    """
+    cache: dict[str, dict[str, float]] = run["veh_params"]
+    p = cache.get(vid)
+    if p is None:
+        p = cache[vid] = {
+            "len": float(mod.vehicle.getLength(vid)),
+            "T": float(mod.vehicle.getTau(vid)),
+            "a": float(mod.vehicle.getAccel(vid)),
+            "b": float(mod.vehicle.getDecel(vid)),
+            "s0": float(mod.vehicle.getMinGap(vid)),
+            "vmax": float(mod.vehicle.getMaxSpeed(vid)),
+        }
+    if "sf" not in p:
+        p["sf"] = float(mod.vehicle.getSpeedFactor(vid))
+        p["T0"] = p["T"]
+        p["av"] = 1.0 if vid in run["av_ids"] else 0.0
+    return p
+
+
+def _mm_v0(p: Mapping[str, float], lane_vmax: float) -> float:
+    """Desired speed on a lane, speed factor honoured (:func:`merge_model.desired_speed`)."""
+    return merge_model.desired_speed(p["sf"], lane_vmax, p["vmax"])
+
+
+def _mm_driver(run: dict[str, Any], vid: str) -> merge_model.DriverGaps:
+    """A driver's critical gaps (``FleetPlan.merge_z_lead`` / ``merge_z_lag`` through the set)."""
+    gaps: dict[str, merge_model.DriverGaps] = run["gaps"]
+    g = gaps.get(vid)
+    if g is None:
+        i = int(vid[1:])
+        g = gaps[vid] = merge_model.driver_gaps(
+            run["params"], float(run["z_lead"][i]), float(run["z_lag"][i])
+        )
+    return g
+
+
+def _mm_relaxed_fn(run: dict[str, Any]) -> Callable[[float, float, dict[str, float]], float]:
+    """The relaxed headway the gap choice reads (docs/MERGE_MODEL.md §2): ``T`` at the relaxation start.
+
+    For a bumper gap ``s`` at speed ``v``: ``min(T_now, clamp((s − s0)/v,
+    floor, T_i))`` — the headway the vehicle would get if the change were
+    made now (B§5.5: F evaluated at its relaxed T; the hold reads F's T at
+    the relaxation start, WP-90's form X), its current one if already
+    shorter; an AV's own ``T``.
+    """
+    params: merge_model.MergeModelParams = run["params"]
+    step_s = float(run["step_s"])
+
+    def relaxed(s_bb: float, v: float, p: dict[str, float]) -> float:
+        if p.get("av", 0.0) > 0.0 or "T0" not in p:
+            return p["T"]
+        t0 = merge_model.relaxation_start(
+            s_bb - p["s0"], v, p["T0"], step_s, params.relax_floor_fraction
+        )
+        return min(p["T"], t0)
+
+    return relaxed
+
+
+def _mm_set_tau(mod: Any, run: dict[str, Any], vid: str, tau: float) -> None:
+    """Write a headway to SUMO and to the shared constants; record the lowest written."""
+    mod.vehicle.setTau(vid, tau)
+    p = run["veh_params"].get(vid)
+    if p is not None:
+        p["T"] = tau
+    run["n_tau_writes"] += 1
+    if run["min_tau_set_s"] is None or tau < run["min_tau_set_s"]:
+        run["min_tau_set_s"] = tau
+
+
+def _measured_grant(
+    mod: Any,
+    run: dict[str, Any],
+    vid: str,
+    gap_net: float,
+    v: float,
+    t: float,
+    role: str,
+    zone: int,
+    where: tuple[str, int],
+) -> float | None:
+    """Grant (or re-grant) a vehicle the post-crossing relaxation (B§5.7). Returns ``T_eff,0`` or ``None``.
+
+    ``T_eff,0 = clamp(gap_net / v, max(step, 0.5·T_i), T_i)``
+    (:func:`merge_model.relaxation_start`): the vehicle's equilibrium gap
+    equals the gap it has. Nothing is granted to an AV (B§5.6), nor when the
+    gap is a normal one (``T_eff,0 = T_i``); a vehicle already relaxed is
+    re-granted only when the new start is the smaller ``T``
+    (:func:`merge_model.regrant`).
+    """
+    params: merge_model.MergeModelParams = run["params"]
+    p = _mm_veh(mod, run, vid)
+    if p["av"] > 0.0:
+        return None
+    t_own = p["T0"]
+    t0 = merge_model.relaxation_start(
+        gap_net, v, t_own, float(run["step_s"]), params.relax_floor_fraction
+    )
+    if t0 >= t_own - 1e-12:
+        return None
+    relax: dict[str, merge_model.RelaxationState] = run["relax"]
+    rx = relax.get(vid)
+    if rx is not None:
+        if not merge_model.regrant(rx.tau_set, t0):
+            return None
+        run["n_relax_regranted"] += 1
+    relax[vid] = merge_model.RelaxationState(
+        t_own=t_own, t_start=t0, granted_s=t, tau_set=t0, role=role, zone=zone
+    )
+    run["relax_where"][vid] = where
+    run["relax_leader"].pop(vid, None)
+    _mm_set_tau(mod, run, vid, t0)
+    run["n_relax_granted_entrant" if role == "entrant" else "n_relax_granted_follower"] += 1
+    return t0
+
+
+def _measured_relax_step(mod: Any, tc: Any, run: dict[str, Any], results: Any, t: float) -> None:
+    """One step of every relaxation of the run (B§5.7), before any zone acts.
+
+    Each relaxed vehicle: gone from the network → dropped; its lane changed
+    since the last step (a ``(road, lane)`` that is not a connection
+    successor of the last one; internal junction lanes skipped) → its own
+    ``T`` restored; ``τ ≥ 4 τ_r`` → restored; otherwise ``T_eff(τ) = T_i −
+    (T_i − T_eff,0)·exp(−τ/τ_r)`` written with ``vehicle.setTau``, never below
+    ``max(step, 0.5·T_i)``. LC2013's secure gaps read ``tau``, so a relaxed
+    vehicle also lets SUMO's own changes in at shorter gaps (B§5.7): a new
+    leader that came from another lane in front of a relaxed vehicle is
+    counted (``n_relaxed_cut_ins``).
+    """
+    relax: dict[str, merge_model.RelaxationState] = run["relax"]
+    prev_where: dict[str, tuple[str, int]] = run["where"]
+    if relax or prev_where:
+        # where every vehicle was this step (for the cut-in reading next step)
+        run["where"] = (
+            {
+                vid: (str(res[tc.VAR_ROAD_ID]), int(res[tc.VAR_LANE_INDEX]))
+                for vid, res in results.items()
+            }
+            if relax
+            else {}
+        )
+    if not relax:
+        return
+    params: merge_model.MergeModelParams = run["params"]
+    step_s = float(run["step_s"])
+    succ: Mapping[tuple[str, int], frozenset[tuple[str, int]]] = run["succ"]
+    where_of: dict[str, tuple[str, int]] = run["relax_where"]
+    leaders: dict[str, str] = run["relax_leader"]
+    for vid in sorted(relax):
+        rx = relax[vid]
+        res = results.get(vid)
+        if res is None:
+            del relax[vid]
+            where_of.pop(vid, None)
+            leaders.pop(vid, None)
+            run["n_relax_restored_left"] += 1
+            continue
+        road = str(res[tc.VAR_ROAD_ID])
+        now = (road, int(res[tc.VAR_LANE_INDEX]))
+        if not road.startswith(":"):
+            last = where_of.get(vid)
+            if last is not None and now != last and now not in succ.get(last, frozenset()):
+                _mm_set_tau(mod, run, vid, rx.t_own)
+                del relax[vid]
+                where_of.pop(vid, None)
+                leaders.pop(vid, None)
+                run["n_relax_restored_lane_change"] += 1
+                continue
+            where_of[vid] = now
+        elapsed = t - rx.granted_s
+        if merge_model.relaxation_expired(elapsed, params.tau_r_s, params.relax_restore_tau_r):
+            _mm_set_tau(mod, run, vid, rx.t_own)
+            del relax[vid]
+            where_of.pop(vid, None)
+            leaders.pop(vid, None)
+            run["n_relax_restored_expired"] += 1
+            continue
+        tau = rx.tau_at(t, params, step_s)
+        if abs(tau - rx.tau_set) > 1e-12:
+            _mm_set_tau(mod, run, vid, tau)
+            rx.tau_set = tau
+        lead = mod.vehicle.getLeader(vid, LEADER_LOOKAHEAD_M)
+        lid = lead[0] if lead is not None and lead[0] else ""
+        before = leaders.get(vid)
+        if lid and before is not None and lid != before:
+            l_was = prev_where.get(lid)
+            if l_was is not None and l_was[0] == now[0] and l_was[1] != now[1]:
+                run["n_relaxed_cut_ins"] += 1
+        leaders[vid] = lid
+
+
+def _measured_reach(net: Any, zone_edges: Sequence[str]) -> dict[str, dict[int, frozenset[str]]]:
+    """:func:`merge_model.lane_reach` over the compiled network's lane connections."""
+
+    def outgoing(e: str, j: int) -> list[tuple[str, int]]:
+        lane = net.getEdge(e).getLanes()[j]
+        return [(c.getTo().getID(), int(c.getToLane().getIndex())) for c in lane.getOutgoing()]
+
+    return merge_model.lane_reach(
+        zone_edges, outgoing, lambda e: int(net.getEdge(e).getLaneNumber())
+    )
+
+
+def _lane_successors(net: Any) -> dict[tuple[str, int], frozenset[tuple[str, int]]]:
+    """``(edge, lane) → {(edge, lane) it connects to}`` over the compiled network."""
+    out: dict[tuple[str, int], frozenset[tuple[str, int]]] = {}
+    for e in net.getEdges():
+        for lane in e.getLanes():
+            out[(e.getID(), int(lane.getIndex()))] = frozenset(
+                (c.getTo().getID(), int(c.getToLane().getIndex())) for c in lane.getOutgoing()
+            )
+    return out
+
+
+def _measured_zone_state(
+    *,
+    index: int,
+    run: dict[str, Any],
+    net: Any,
+    chain: Sequence[str],
+    ramps: Sequence[RampSpec],
+    on_index: int,
+    section: WeaveSection | None,
+    offsets_by_edge: Mapping[str, float],
+    route_by_id: Mapping[str, str],
+    routes: Mapping[str, Sequence[str]],
+    cf_model: str,
+    step_s: float,
+) -> dict[str, Any]:
+    """One measured zone's state, in the weave's section layout plus ``mm``.
+
+    ``section`` is the paired weaving section (a ramp with a weave block,
+    validated by :func:`_check_weave_pairs`), or ``None`` for an
+    acceleration lane: the zone is then the attach edge alone, whose lane 0
+    the termination of :func:`_apply_merge_models` made dead-end, with no
+    exit, no vacate window and no exiting movement. The weave's helpers read
+    the layout's keys; the section constants are
+    :func:`_measured_constants`.
+    """
+    ramp_w = ramps[on_index]
+    weave = section is not None
+    if section is not None:
+        exit_w: RampSpec | None = ramps[section.off_ramp]
+        edges = list(section.edges)
+        exit_edge: str | None = section.exit_edge
+        exit_only = list(section.exit_only)
+        off_index = section.off_ramp
+        length_measured = float(section.length_m)
+    else:
+        exit_w = None
+        edges = [ramp_w.attach_edge]
+        exit_edge = None
+        exit_only = [True]
+        off_index = -1
+        length_measured = float(net.getEdge(ramp_w.attach_edge).getLength())
+    lens = {e: float(net.getEdge(e).getLength()) for e in edges}
+    params = _measured_constants()
+    vacate_lanes = (
+        _weave_vacate_lanes(net, chain, edges, offsets_by_edge, float(params["vacate_ahead_m"]))
+        if weave
+        else {}
+    )
+    lane_map: dict[tuple[str, int], int] = {
+        k: v for k, v in _weave_lane_map(net, chain, edges).items() if k[0] in offsets_by_edge
+    }
+    # the ramp's lanes continue the section's lanes they connect into, at
+    # negative positions (the weave maps lane 0 only; a two-lane ramp's lane
+    # 1 is mapped too, so a two-auxiliary-lane zone sees both, B§5.2)
+    last_ramp = ramp_w.edges[-1]
+    ramp_to: dict[int, int] = {}
+    for lane in net.getEdge(last_ramp).getLanes():
+        for c in lane.getOutgoing():
+            if c.getTo().getID() == edges[0]:
+                ramp_to.setdefault(int(lane.getIndex()), int(c.getToLane().getIndex()))
+    for e in ramp_w.edges:
+        for lane in net.getEdge(e).getLanes():
+            j = int(lane.getIndex())
+            lane_map[(e, j)] = ramp_to.get(j, j) if ramp_to else j
+    if (last_ramp, 0) not in lane_map or not ramp_to:
+        for e in ramp_w.edges:
+            lane_map[(e, 0)] = 0
+    i_last = chain.index(edges[-1])
+    through_edge = chain[i_last + 1] if i_last + 1 < len(chain) else edges[-1]
+    target_of_route: dict[str, str | None] = {}
+    for rid, r_edges in routes.items():
+        r_list = list(r_edges)
+        if edges[-1] in r_list:
+            j = r_list.index(edges[-1])
+            target_of_route[rid] = r_list[j + 1] if j + 1 < len(r_list) else None
+    exiting_ids = frozenset(
+        vid for vid, rid in route_by_id.items() if off_index >= 0 and _route_exit(rid) == off_index
+    )
+    ws: dict[str, Any] = {
+        "ramp": ramp_w.name or ramp_w.attach_edge,
+        "exit": (exit_w.name or exit_w.attach_edge) if exit_w is not None else None,
+        "off_index": off_index,
+        "edges": edges,
+        "edge_index": {e: n for n, e in enumerate(edges)},
+        "exit_edge": exit_edge,
+        "exit_edges": frozenset(exit_w.edges) if exit_w is not None else frozenset(),
+        "exit_only": dict(zip(edges, exit_only, strict=True)),
+        "lane_len_m": lens,
+        "beyond_m": {e: sum(lens[x] for x in edges[n + 1 :]) for n, e in enumerate(edges)},
+        "length_m_measured": length_measured,
+        "length_m": ramp_w.weave.length_m if ramp_w.weave is not None else None,
+        "params": params,
+        "rule": _weave_short_section_rule(float(sum(lens.values())), params),
+        "exiting_ids": exiting_ids,
+        "exited": set(),
+        "reached": set(),
+        "awaiting_exit": set(),
+        "veh": {},
+        "lane_map": lane_map,
+        "vacate_lanes": vacate_lanes,
+        "vacate_exempt_ids": (
+            _weave_vacate_exempt_ids(net, ramps, section, vacate_lanes, route_by_id)
+            if section is not None
+            else frozenset()
+        ),
+        "vacate": {},
+        "vacate_seen": set(),
+        "vacate_pending": set(),
+        "vacate_asks_s": deque(),
+        "vacate_flow_ids": set(),
+        "vacate_flow_s": deque(),
+        "prep": {},
+        "prep_seen": set(),
+        "prep_pending": set(),
+        "prep_asks_s": deque(),
+        "prep_flow_ids": set(),
+        "prep_flow_s": deque(),
+        "x_offset": {
+            **offsets_by_edge,
+            **{
+                e: offsets_by_edge[edges[0]]
+                - sum(float(net.getEdge(x).getLength()) for x in ramp_w.edges[n:])
+                for n, e in enumerate(ramp_w.edges)
+            },
+        },
+        "ramp_edges": frozenset(ramp_w.edges),
+        "pre": {},
+        # one constants cache for the run: every zone and the relaxation share it
+        "veh_params": run["veh_params"],
+        "lane_vmax": {},
+        "n_entered": 0,
+        "n_changed_in": 0,
+        "n_changed_out": 0,
+        "n_forced": 0,
+        "n_missed": 0,
+        "n_missed_exit": 0,
+        "gave_up": set(),
+        "through_target": chain[-1],
+        "n_forced_deferred": 0,
+        "n_cooperations": 0,
+        "coop_decel_sum": 0.0,
+        "n_changer_eased": 0,
+        "n_vacated": 0,
+        "n_vacate_refused": 0,
+        "n_vacate_skipped_no_gap": 0,
+        "n_vacate_requests": 0,
+        "n_exit_prepared": 0,
+        "n_exit_prepare_refused": 0,
+        "n_exit_prepare_requests": 0,
+        "n_exit_prepare_skipped": 0,
+        "n_exit_prepare_yielded": 0,
+        "n_exit_prepare_held": 0,
+        "handover": {},
+        "n_handovers": 0,
+        "cf_model": cf_model,
+        "opp_veto": {},
+        "n_opposing_deferred": 0,
+        "pair_since": {},
+        "pair_released": set(),
+        "n_pair_releases": 0,
+        "step_s": float(step_s),
+        "waits_in_s": [],
+        "waits_out_s": [],
+        "hold": {},
+        "mm": {
+            "index": index,
+            "run": run,
+            "weave": weave,
+            "kind": "weave" if weave else "acceleration_lane",
+            "reach": _measured_reach(net, edges),
+            "target_of_route": target_of_route,
+            "route_by_id": route_by_id,
+            "through_edge": through_edge,
+            "ceiling": {},
+            "touched": {},
+            "n_crossings_in": 0,
+            "n_crossings_out": 0,
+            "n_exec_accepted": 0,
+            "n_exec_forced": 0,
+            "n_requests": 0,
+            "n_requests_cancelled": 0,
+            "n_model_checks": 0,
+            "refused": {
+                k: 0 for k in ("lead_time", "lead_guard", "lag_time", "lag_guard", "lag_model")
+            },
+            "n_relax_entrant": 0,
+            "n_relax_follower": 0,
+            "n_ceiling_steps": 0,
+            "n_early_crossings": 0,
+            "n_av_released": 0,
+            "n_collisions": 0,
+            "cross_x_in": [],
+            "cross_x_out": [],
+        },
+    }
+    return ws
+
+
+def _measured_constants() -> dict[str, float | None]:
+    """The section constants a measured zone runs on, in the weave's key layout.
+
+    :data:`flowstate_core.config.WEAVE_DEFAULTS` with the measured model's
+    fixed constants (docs/MERGE_MODEL.md §2, ``microsim.merge_model``): the
+    forced zone 80 m / 4 s, the pair release 2 s, the exit give-up 5 m, the
+    vacate window 500 m under the 2,050 veh/h spare bound, ``exit_prepare``
+    on, the lookahead 120 m, every off-by-default rule off. The time-gap keys
+    (``accept_gap_s`` …) are read only by the vacate and early-move rules'
+    own gap checks, as in the weave; the measured acceptance never reads
+    them.
+    """
+    return {
+        **WEAVE_DEFAULTS,
+        "force_within_m": merge_model.FORCE_WITHIN_M,
+        "force_after_s": merge_model.FORCE_AFTER_S,
+        "change_duration_s": merge_model.REQUEST_REISSUE_S,
+        "lookahead_m": merge_model.LOOKAHEAD_M,
+        "vacate_ahead_m": merge_model.VACATE_AHEAD_M,
+        "vacate_max_veh_h": 0.0,
+        "pair_release_s": merge_model.PAIR_RELEASE_S,
+        "exit_giveup_m": merge_model.EXIT_GIVEUP_M,
+        "exit_prepare": 1.0 if merge_model.EXIT_PREPARE else 0.0,
+    }
+
+
+def _mm_target(ws: dict[str, Any], vid: str) -> str | None:
+    """The edge a vehicle must leave the zone onto: its route's edge after the zone's last."""
+    mm = ws["mm"]
+    if vid in ws["gave_up"]:
+        return str(mm["through_edge"])
+    rid = mm["route_by_id"].get(vid, "main")
+    target: str | None = mm["target_of_route"].get(rid)
+    return target
+
+
+def _mm_cancel(mod: Any, vid: str, st: dict[str, Any], lane: int, step_s: float) -> None:
+    """No request left open across steps (B§5.6): a refused one-step request is ended by a stay."""
+    if st.get("open"):
+        mod.vehicle.changeLane(vid, lane, step_s)
+        st["open"] = False
+        st["mm"]["n_requests_cancelled"] += 1
+
+
+def _measured_handover_step(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    pending: dict[str, int],
+) -> None:
+    """Take every vehicle that will owe a change in the zone one step before it can reach it (B§5.9).
+
+    SUMO moves a vehicle and then runs its lane changes in one step, so
+    LC2013 makes a sixth to two fifths of a zone's crossings in the step a
+    vehicle arrives, unread by the runner (WP-67). A vehicle on the ramp or on
+    the corridor edge before the zone whose arrival lane does not reach its
+    route (:func:`merge_model.mandatory_direction` on the zone's first edge)
+    is set to ``LC_MODE_SCRIPTED_SAFE`` when its distance to the zone start is
+    within two steps' travel at the speed it can reach in one,
+    ``2·Δt·(v + a·Δt)`` (the weave's ``_weave_handover_step`` bound, here
+    for every such vehicle). Its own mode is kept in ``ws["handover"]`` and
+    restored at hand-back; one that leaves the window without being driven
+    gets it back at once; one under another scripted hold is left to it.
+    """
+    mm = ws["mm"]
+    run = mm["run"]
+    x_start = float(ws["x_offset"][ws["edges"][0]])
+    step_s = float(ws["step_s"])
+    edges: dict[str, int] = ws["edge_index"]
+    handover: dict[str, int] = ws["handover"]
+    lane_map: dict[tuple[str, int], int] = ws["lane_map"]
+    reach0: Mapping[int, frozenset[str]] = mm["reach"][ws["edges"][0]]
+    now: set[str] = set()
+    for vid, x in x_of.items():
+        if vid in ws["veh"] or vid in ws["gave_up"] or x >= x_start:
+            continue
+        res = results[vid]
+        road = res[tc.VAR_ROAD_ID]
+        if road in edges:
+            continue
+        v = v_of[vid]
+        # the bound needs the vehicle's acceleration: a cheap pre-test first
+        if x_start - x > 2.0 * step_s * (v + 5.0 * step_s):
+            continue
+        p = _mm_veh(mod, run, vid)
+        if x_start - x > 2.0 * step_s * (v + p["a"] * step_s):
+            continue
+        k = lane_map.get((road, int(res[tc.VAR_LANE_INDEX])))
+        target = _mm_target(ws, vid)
+        if k is None or target is None or merge_model.mandatory_direction(reach0, k, target) == 0:
+            continue
+        if vid not in handover:
+            mode = int(mod.vehicle.getLaneChangeMode(vid))
+            if mode in (
+                LC_MODE_SCRIPTED_SAFE,
+                LC_MODE_SCRIPTED_FORCE,
+                LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
+            ):
+                continue  # under another scripted hold, whose owner restores it
+            handover[vid] = mode
+            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+            ws["n_handovers"] += 1
+        now.add(vid)
+    for vid in [v for v in handover if v not in now and v not in pending]:
+        mode = handover.pop(vid)
+        if vid in results:
+            mod.vehicle.setLaneChangeMode(vid, mode)
+
+
+def _measured_cooperate(
+    mod: Any,
+    tc: Any,
+    ws: dict[str, Any],
+    results: Any,
+    lanes: dict[int, list[tuple[float, str]]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    p_of: dict[str, dict[str, float]],
+    v0_of: dict[str, float],
+    coop: dict[str, tuple[float, float, bool]],
+    vid: str,
+    target_lane: int,
+    committed: str | None,
+    remaining_m: float,
+    priority: bool,
+    entering: bool,
+    lead_need: Callable[[float, float], float],
+) -> tuple[str | None, str | None, float]:
+    """Gap choice and the two one-step targets of a measured changer (B§5.5).
+
+    The weave's core unchanged in form (:func:`_weave_cooperate` at its
+    defaults: no hold release, no gate, no outlet): :func:`_weave_choose_gap`
+    — the nearest gap whose follower F opens it within ``b_F`` — with, for
+    the entering movement, F's and the changer's IDM read at their relaxed
+    headway (:func:`_mm_relaxed_fn`); F held by a one-step
+    :func:`_weave_command` towards the changer (the chosen follower only);
+    the changer eased towards the gap's leader when it would brake for it and
+    dropping in behind it by the zone's end needs no more than its ``b``
+    (:func:`_weave_easing_ok`, the gap it needs being ``lead_need``), never
+    towards a leader beside it on the ramp. Desired speeds honour the speed
+    factor (:func:`_mm_v0`).
+
+    Returns:
+        ``(follower, leader, v0 on the target lane)`` of the chosen gap.
+    """
+    run = ws["mm"]["run"]
+    res = results[vid]
+    road = res[tc.VAR_ROAD_ID]
+    v_c = float(res[tc.VAR_SPEED])
+    p_c = _mm_veh(mod, run, vid)
+    v_road = road if road in ws["edge_index"] else ws["edges"][0]
+    v0_c = _mm_v0(p_c, _weave_lane_vmax(mod, ws, v_road, target_lane))
+    lane_list = lanes.get(target_lane, [])
+    for _x, oid in lane_list:
+        if oid not in p_of:
+            p_of[oid] = _mm_veh(mod, run, oid)
+            r_o = results[oid]
+            v0_of[oid] = _mm_v0(
+                p_of[oid],
+                _weave_lane_vmax(mod, ws, r_o[tc.VAR_ROAD_ID], int(r_o[tc.VAR_LANE_INDEX])),
+            )
+    l_t, f_t, a_f, a_c = _weave_choose_gap(
+        vid,
+        x_of[vid],
+        v_c,
+        p_c,
+        v0_c,
+        lane_list,
+        x_of,
+        v_of,
+        p_of,
+        v0_of,
+        float(ws["params"]["lookahead_m"]),
+        committed,
+        priority,
+        (),
+        relaxed_T=_mm_relaxed_fn(run) if entering else None,
+    )
+    step_s = float(ws["step_s"])
+    if f_t is not None:
+        _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
+    if l_t is not None and a_c < 0.0:
+        s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
+        beside = road in ws["ramp_edges"] and s_l < 0.0
+        if not beside and _weave_easing_ok(
+            v_c, v_of[l_t], s_l, lead_need(v_c, v_of[l_t]), remaining_m, p_c["b"]
+        ):
+            _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
+    return f_t, l_t, v0_c
+
+
+def _measured_ceiling(
+    mod: Any,
+    ws: dict[str, Any],
+    vid: str,
+    v_now: float,
+    v0_target: float,
+    l_t: str | None,
+    f_t: str | None,
+    lane_list: Sequence[tuple[float, str]],
+    x_of: dict[str, float],
+    v_of: dict[str, float],
+    p_of: dict[str, dict[str, float]],
+) -> None:
+    """Principle (ii): the changer's desired-speed ceiling (B§5.4), through ``setMaxSpeed`` only.
+
+    The chosen gap's leader's speed plus δ, approached kinematically from the
+    bumper distance to that leader's rear (:func:`merge_model.speed_ceiling`);
+    a gap with open road ahead sets no ceiling; with no gap chosen, the mean
+    speed of the target-lane vehicles within 50 m, else none
+    (:func:`merge_model.gap_reference_speed`); never below ``v_now − b·Δt``
+    (SUMO caps the next speed at ``maxSpeed`` outright). A ceiling at or
+    above the desired speed on the target lane is no ceiling: ``maxSpeed``
+    stays (or returns to) its own value. Restored when the vehicle is handed
+    back.
+    """
+    mm = ws["mm"]
+    run = mm["run"]
+    p_c = _mm_veh(mod, run, vid)
+    x_c = x_of[vid]
+    d_gap = 0.0
+    v_leader: float | None = None
+    if l_t is not None:
+        v_leader = v_of[l_t]
+        d_gap = x_of[l_t] - p_of[l_t]["len"] - x_c
+    nearby = (
+        [v_of[o] for x, o in lane_list if abs(x - x_c) <= merge_model.GAP_REFERENCE_WINDOW_M]
+        if l_t is None and f_t is None
+        else []
+    )
+    v_gap = merge_model.gap_reference_speed(v_leader, nearby, v0_target, f_t is not None)
+    params: merge_model.MergeModelParams = run["params"]
+    ceiling = (
+        None
+        if v_gap is None
+        else merge_model.speed_ceiling(
+            v_gap,
+            params.delta(bool(mm["weave"])),
+            p_c["b"],
+            d_gap,
+            v0_target,
+            v_now=v_now,
+            step_s=float(ws["step_s"]),
+        )
+    )
+    if ceiling is not None and ceiling >= v0_target - 1e-9:
+        ceiling = None
+    last = mm["ceiling"].get(vid)
+    if ceiling is None:
+        if last is not None:
+            mod.vehicle.setMaxSpeed(vid, p_c["vmax"])
+            mm["ceiling"][vid] = None
+        return
+    mm["n_ceiling_steps"] += 1
+    if last is None or abs(ceiling - last) > 1e-9:
+        mod.vehicle.setMaxSpeed(vid, ceiling)
+        mm["ceiling"][vid] = ceiling
+
+
+def _mm_restore_ceiling(mod: Any, ws: dict[str, Any], vid: str, in_network: bool) -> None:
+    """Hand a vehicle's ``maxSpeed`` back (its own value, read before any ceiling)."""
+    mm = ws["mm"]
+    if vid not in mm["ceiling"]:
+        return
+    last = mm["ceiling"].pop(vid)
+    if last is not None and in_network:
+        mod.vehicle.setMaxSpeed(vid, _mm_veh(mod, mm["run"], vid)["vmax"])
+
+
+def _measured_crossings(
+    mod: Any, tc: Any, ws: dict[str, Any], results: Any, x_of: dict[str, float], t: float
+) -> None:
+    """Read the driven vehicles' crossings since the last step; grant the relaxation (B§5.7).
+
+    A crossing is a driven vehicle's section lane moving one lane in its
+    direction (the zone's lane map, so a lane added or dropped at an edge
+    boundary is not one). It is attributed to the request it executed
+    (``acc`` / ``force``). For the entering movement the entrant C and its
+    new follower F — when within WP-88's car-following range — are granted
+    :func:`_measured_grant`: C on its gap to its new leader, F on its gap
+    to C (both net of the rear vehicle's ``minGap``, SUMO's ``getLeader`` /
+    ``getFollower``).
+    """
+    mm = ws["mm"]
+    run = mm["run"]
+    lane_map: dict[tuple[str, int], int] = ws["lane_map"]
+    x_start = float(ws["x_offset"][ws["edges"][0]])
+    step_s = float(ws["step_s"])
+    for vid, st in ws["veh"].items():
+        res = results.get(vid)
+        if res is None:
+            continue
+        road = res[tc.VAR_ROAD_ID]
+        lane = int(res[tc.VAR_LANE_INDEX])
+        k_now = lane_map.get((road, lane))
+        if k_now is None:
+            continue
+        k_prev = st["k"]
+        st["k"] = k_now
+        if k_prev is None or k_now == k_prev:
+            continue
+        if k_now - k_prev != st["dir"]:
+            continue
+        st["open"] = False
+        if st["last_kind"] == "force":
+            mm["n_exec_forced"] += 1
+            st["forced"] = True
+        else:
+            mm["n_exec_accepted"] += 1
+        if t - st["entered_s"] <= 2.0 * step_s + 1e-9:
+            mm["n_early_crossings"] += 1
+        x_in = x_of.get(vid, math.nan) - x_start
+        if st["exiter"]:
+            mm["n_crossings_out"] += 1
+            mm["cross_x_out"].append(x_in)
+            continue
+        mm["n_crossings_in"] += 1
+        mm["cross_x_in"].append(x_in)
+        v_c = float(res[tc.VAR_SPEED])
+        here = (str(road), lane)
+        lead = mod.vehicle.getLeader(vid, LEADER_LOOKAHEAD_M)
+        if lead is not None and lead[0]:
+            gap_net = float(lead[1])
+            p_c = _mm_veh(mod, run, vid)
+            if merge_model.in_car_following_range(gap_net + p_c["s0"], v_c) and (
+                _measured_grant(mod, run, vid, gap_net, v_c, t, "entrant", mm["index"], here)
+                is not None
+            ):
+                mm["n_relax_entrant"] += 1
+                mm["touched"][vid] = t
+        fol = mod.vehicle.getFollower(vid, LEADER_LOOKAHEAD_M)
+        if fol is not None and fol[0]:
+            fid, gap_f = str(fol[0]), float(fol[1])
+            r_f = results.get(fid)
+            if r_f is not None:
+                v_f = float(r_f[tc.VAR_SPEED])
+                p_f = _mm_veh(mod, run, fid)
+                where_f = (str(r_f[tc.VAR_ROAD_ID]), int(r_f[tc.VAR_LANE_INDEX]))
+                if merge_model.in_car_following_range(gap_f + p_f["s0"], v_f) and (
+                    _measured_grant(mod, run, fid, gap_f, v_f, t, "follower", mm["index"], where_f)
+                    is not None
+                ):
+                    mm["n_relax_follower"] += 1
+                    mm["touched"][fid] = t
+
+
+def _measured_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -> None:
+    """One step of a measured merge zone (``RampSpec.merge = "measured"``; docs/MERGE_MODEL.md).
+
+    **Who is driven** (B§5.2): every vehicle on a zone edge whose lane does
+    not lead to its route's edge after the zone — computed from the compiled
+    lane connections against the route (:func:`merge_model.lane_reach`,
+    :func:`merge_model.mandatory_direction`), so an acceleration lane's
+    entrants, a weave's entrants and exiters and a zone with two auxiliary
+    lanes are one rule — taken one step before it can reach the zone
+    (:func:`_measured_handover_step`). LC2013 keeps every other change.
+
+    **Each step, for each driven vehicle**, in ``veh_id`` order:
+
+    1. the acceptance (:func:`merge_model.acceptance`) of the immediate
+       target-lane gaps (``vehicle.getNeighbors``): the driver's own lead
+       and lag critical gaps for its movement on bumper-to-bumper gaps
+       (``minGap`` added back), no lead time gate for an exiter, both brake
+       guards, and — when all of these pass — the follower's own SUMO model
+       at its relaxed headway (``setTau`` → ``getFollowSpeed`` → ``setTau``
+       back, one step) braking no harder than ``b_F``
+       (:func:`merge_model.follow_speed_ok`);
+    2. the forced change (the last 80 m after 4 s, or a released pair's at
+       once) through the two brake guards only;
+    3. an exiter halted within 5 m of the gore's end with no change to make
+       this step is rerouted through (the exit give-up);
+    4. the gap choice and cooperation (:func:`_measured_cooperate`), the
+       exit priority once its forced change is due;
+    5. the speed ceiling (:func:`_measured_ceiling`);
+    6. execution (B§5.6): an accepted or forced change is requested for one
+       step under ``LC_MODE_SCRIPTED_FORCE`` (256) after the opposing-entry
+       resolution of the step's requests
+       (:func:`merge_model.resolve_opposing`, always on); a vehicle with no
+       request is held under ``LC_MODE_SCRIPTED_SAFE`` (512) with no
+       request left open (:func:`_mm_cancel`).
+
+    Entrants still on the ramp within ``lookahead_m`` of the zone choose
+    their gap and their follower cooperates before they appear (the ramp
+    anticipation); they get the ceiling too. Crossings are read at the
+    start of the next step (:func:`_measured_crossings`), which grants the
+    relaxation; the relaxations themselves are stepped run-wide
+    (:func:`_measured_relax_step`). The vacate request and the exiters' early
+    move (weaving sections) are the weave's rules, unchanged. Bookkeeping
+    lands in ``ws`` / ``ws["mm"]`` for ``meta.json["measured_merges"]``.
+    """
+    mm = ws["mm"]
+    run = mm["run"]
+    prm = ws["params"]
+    edges: dict[str, int] = ws["edge_index"]
+    exiting: frozenset[str] = ws["exiting_ids"]
+    exit_edges: frozenset[str] = ws["exit_edges"]
+    lane_map: dict[tuple[str, int], int] = ws["lane_map"]
+    x_offset: dict[str, float] = ws["x_offset"]
+    ramp_edges: frozenset[str] = ws["ramp_edges"]
+    reach: dict[str, dict[int, frozenset[str]]] = mm["reach"]
+    x_start = float(x_offset[ws["edges"][0]])
+    section_len = float(sum(ws["lane_len_m"].values()))
+    rule = ws["rule"]
+    step_s = float(ws["step_s"])
+    veh: dict[str, dict[str, Any]] = ws["veh"]
+    touched: dict[str, float] = mm["touched"]
+    if ws["opp_veto"]:
+        _weave_opposing_restore(mod, ws, results)
+    # --- exit bookkeeping (weaving sections; the weave's rule) ---------------
+    awaiting_exit: set[str] = ws["awaiting_exit"]
+    for vid in list(awaiting_exit):
+        res_a = results.get(vid)
+        if res_a is None:
+            ws["exited"].add(vid)
+            awaiting_exit.discard(vid)
+            continue
+        road_a = res_a[tc.VAR_ROAD_ID]
+        if road_a in exit_edges:
+            ws["exited"].add(vid)
+            awaiting_exit.discard(vid)
+        elif road_a not in edges and not road_a.startswith(":"):
+            awaiting_exit.discard(vid)
+    # --- listings on the zone's axis and the vehicles owing a change --------
+    lanes: dict[int, list[tuple[float, str]]] = {}
+    x_of: dict[str, float] = {}
+    v_of: dict[str, float] = {}
+    pending: dict[str, int] = {}
+    approaching: set[str] = set()
+    in_transit: set[str] = set()
+    for vid, res in results.items():
+        road = res[tc.VAR_ROAD_ID]
+        if road in exit_edges:
+            if vid in exiting and vid not in ws["exited"]:
+                ws["reached"].add(vid)
+                ws["exited"].add(vid)
+            continue
+        lane = int(res[tc.VAR_LANE_INDEX])
+        k = lane_map.get((road, lane))
+        if k is not None:
+            x = x_offset[road] + float(res[tc.VAR_LANEPOSITION])
+            x_of[vid] = x
+            v_of[vid] = float(res[tc.VAR_SPEED])
+            lanes.setdefault(k, []).append((x, vid))
+            if (
+                road in ramp_edges
+                and vid not in exiting
+                and x >= x_start - float(prm["lookahead_m"])
+            ):
+                approaching.add(vid)
+        if road not in edges:
+            if vid in veh and road.startswith(":"):
+                in_transit.add(vid)
+            continue
+        if vid in exiting and vid not in ws["exited"] and vid not in ws["reached"]:
+            ws["reached"].add(vid)
+            awaiting_exit.add(vid)
+        target = _mm_target(ws, vid)
+        if target is None:
+            continue
+        d = merge_model.mandatory_direction(reach[road], lane, target)
+        if d != 0:
+            pending[vid] = d
+    for lst in lanes.values():
+        lst.sort()
+    # --- the weave's rules upstream of a weaving section (inert otherwise) --
+    _weave_vacate_step(mod, tc, ws, results, lanes, t)
+    _weave_exit_prepare_step(mod, tc, ws, results, lanes, t)
+    _measured_handover_step(mod, tc, ws, results, x_of, v_of, pending)
+    # --- the crossings made since the last step (relaxation granted) --------
+    _measured_crossings(mod, tc, ws, results, x_of, t)
+    # --- hand back the vehicles with no change left to make -----------------
+    for vid in [v for v in veh if v not in pending and v not in in_transit]:
+        st = veh.pop(vid)
+        if vid not in results:
+            mm["ceiling"].pop(vid, None)
+            ws["n_missed"] += 1
+            continue
+        res_h = results[vid]
+        road = res_h[tc.VAR_ROAD_ID]
+        _mm_cancel(mod, vid, st, int(res_h[tc.VAR_LANE_INDEX]), step_s)
+        mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+        _mm_restore_ceiling(mod, ws, vid, True)
+        if st["exiter"]:
+            done = road in exit_edges or road in edges
+        else:
+            done = road not in exit_edges
+        if not done:
+            ws["n_missed"] += 1
+            continue
+        ws["n_changed_out" if st["exiter"] else "n_changed_in"] += 1
+        ws["n_forced"] += int(st["forced"])
+        ws["waits_out_s" if st["exiter"] else "waits_in_s"].append(t - st["entered_s"])
+    # --- stopped crossing pairs (the weave's pair release) ------------------
+    yielders, released = _weave_pair_release(mod, ws, pending, x_of, v_of, t)
+    coop: dict[str, tuple[float, float, bool]] = {}
+    p_of: dict[str, dict[str, float]] = {}
+    v0_of: dict[str, float] = {}
+    requests: dict[str, merge_model.ChangeRequest] = {}
+    req_lanes: dict[str, tuple[int, int, str]] = {}
+    for vid in sorted(pending):
+        d = pending[vid]
+        res = results[vid]
+        road = res[tc.VAR_ROAD_ID]
+        lane = int(res[tc.VAR_LANE_INDEX])
+        k = lane_map.get((road, lane))
+        st = veh.get(vid)
+        p_c = _mm_veh(mod, run, vid)
+        if st is None:
+            st = veh[vid] = {
+                "dir": d,
+                "entered_s": t,
+                "zone_s": None,
+                "requested_s": -math.inf,
+                "forced": False,
+                "lc_mode_orig": (
+                    ws["handover"].pop(vid)
+                    if vid in ws["handover"]
+                    else int(mod.vehicle.getLaneChangeMode(vid))
+                ),
+                "s0": p_c["s0"],
+                "mode": LC_MODE_SCRIPTED_SAFE,
+                "target": ws["pre"].pop(vid, None),
+                "k": k,
+                "open": False,
+                "last_kind": None,
+                "exiter": vid in exiting and vid not in ws["gave_up"],
+                "mm": mm,
+            }
+            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+            ws["n_entered"] += 1
+        st["dir"] = d
+        touched[vid] = t
+        if k is None:
+            continue  # off the zone's lane map (cannot happen on a zone edge)
+        exiter = bool(st["exiter"])
+        movement = (
+            "exiting_weave" if exiter else ("entering_weave" if mm["weave"] else "entering_merge")
+        )
+        gaps = _mm_driver(run, vid)
+        t_lead = gaps.lead[movement]
+        t_lag = gaps.lag[movement]
+        v_ego = float(res[tc.VAR_SPEED])
+        remaining = ws["lane_len_m"][road] - float(res[tc.VAR_LANEPOSITION]) + ws["beyond_m"][road]
+        if remaining <= float(rule["zone_m"]) and st["zone_s"] is None:
+            st["zone_s"] = t
+        zone_due = st["zone_s"] is not None and t - st["zone_s"] >= float(rule["force_after_s"])
+        modes = (
+            (NEIGHBOR_LEFT_LEADERS, NEIGHBOR_LEFT_FOLLOWERS)
+            if d > 0
+            else (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
+        )
+        g_lead, v_lead, _l_id = _neighbor_gap(mod, vid, modes[0])
+        g_foll, v_foll, f_id = _neighbor_gap(mod, vid, modes[1])
+        p_f = _mm_veh(mod, run, f_id) if f_id is not None else None
+        acc = merge_model.acceptance(
+            v_c=v_ego,
+            s0_c=p_c["s0"],
+            b_c=p_c["b"],
+            t_c_lead=t_lead,
+            t_c_lag=t_lag,
+            g_lead=g_lead,
+            v_lead=v_lead,
+            g_foll=g_foll,
+            v_foll=v_foll,
+            s0_f=p_f["s0"] if p_f is not None else 0.0,
+            b_f=p_f["b"] if p_f is not None else 1.0,
+            step_s=step_s,
+        )
+        if acc.static_ok and f_id is not None and p_f is not None:
+            # the follower's own model at its relaxed T (entering movement;
+            # an exiter's follower at its own), read from SUMO in one step
+            t_cur = p_f["T"]
+            t_rel = _mm_relaxed_fn(run)(g_foll + p_f["s0"], v_foll, p_f) if not exiter else t_cur
+            if abs(t_rel - t_cur) > 1e-12:
+                mod.vehicle.setTau(f_id, t_rel)
+            try:
+                v_follow = float(
+                    mod.vehicle.getFollowSpeed(f_id, v_foll, g_foll, v_ego, p_c["b"], vid)
+                )
+            finally:
+                if abs(t_rel - t_cur) > 1e-12:
+                    mod.vehicle.setTau(f_id, t_cur)
+            acc = dataclasses.replace(
+                acc,
+                lag_model=merge_model.follow_speed_ok(v_follow, v_foll, p_f["b"], step_s),
+            )
+            mm["n_model_checks"] += 1
+        force = st["zone_s"] is not None and (zone_due or vid in released)
+        forced_ok = force and acc.guards_ok
+        refusal = acc.refusal()
+        if refusal is not None:
+            mm["refused"][refusal] += 1
+        if (
+            exiter
+            and remaining <= float(prm["exit_giveup_m"])
+            and v_ego < HALTING_SPEED_MS
+            and not (acc.accepted or forced_ok)
+        ):
+            # the exit given up (the weave's exit-side rule): rerouted through
+            _mm_cancel(mod, vid, st, lane, step_s)
+            mod.vehicle.changeTarget(vid, ws["through_target"])
+            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            _mm_restore_ceiling(mod, ws, vid, True)
+            del veh[vid]
+            ws["gave_up"].add(vid)
+            awaiting_exit.discard(vid)
+            ws["n_missed"] += 1
+            ws["n_missed_exit"] += 1
+            continue
+        if vid in yielders:
+            st["target"] = None
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            _mm_cancel(mod, vid, st, lane, step_s)
+            continue
+
+        def lead_need(v_c: float, v_l: float, _t: float | None = t_lead, _p=p_c) -> float:
+            # the bumper gap the changer needs behind the gap's leader: its
+            # lead critical gap (none for an exiter) and its brake guard
+            c = max(v_c - v_l, 0.0)
+            guard = _p["s0"] + c * step_s + c * c / (2.0 * _p["b"])
+            return guard if _t is None else max(_t * v_c, guard)
+
+        f_t, l_t, v0_t = _measured_cooperate(
+            mod,
+            tc,
+            ws,
+            results,
+            lanes,
+            x_of,
+            v_of,
+            p_of,
+            v0_of,
+            coop,
+            vid,
+            k + d,
+            st["target"],
+            remaining,
+            exiter and zone_due,
+            not exiter,
+            lead_need,
+        )
+        st["target"] = f_t
+        _measured_ceiling(
+            mod, ws, vid, v_ego, v0_t, l_t, f_t, lanes.get(k + d, []), x_of, v_of, p_of
+        )
+        if acc.accepted or forced_ok:
+            requests[vid] = merge_model.ChangeRequest(
+                vid=vid,
+                x=x_of[vid],
+                lane=k,
+                target=k + d,
+                due=force,
+                accept_s=t_lead if t_lead is not None else 0.0,
+                v=v_ego,
+                s0=p_c["s0"],
+                b=p_c["b"],
+            )
+            req_lanes[vid] = (lane, lane + d, "acc" if acc.accepted else "force")
+        else:
+            if force:
+                ws["n_forced_deferred"] += 1
+            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+            _mm_cancel(mod, vid, st, lane, step_s)
+    if requests:
+
+        def state_of(pid: str) -> merge_model.OpponentState:
+            st_p = veh.get(pid)
+            if st_p is not None:
+                return "open" if st_p.get("open") else "driven"
+            mode = int(mod.vehicle.getLaneChangeMode(pid))
+            return "model" if mode & LC_MODE_MODEL_BITS else "held"
+
+        opp = {
+            kk: [
+                merge_model.LaneVehicle(o, x, _weave_veh(mod, ws, o)["len"], v_of[o])
+                for x, o in lst
+            ]
+            for kk, lst in lanes.items()
+        }
+        withheld, vetoed = merge_model.resolve_opposing(list(requests.values()), opp, state_of)
+        for vid in sorted(requests):
+            st = veh[vid]
+            lane, target, kind = req_lanes[vid]
+            if vid in withheld:
+                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
+                _mm_cancel(mod, vid, st, lane, step_s)
+                ws["n_opposing_deferred"] += 1
+                continue
+            _weave_exec_change(mod, vid, st, target, step_s, t, "acc")
+            st["open"] = True
+            st["last_kind"] = kind
+            mm["n_requests"] += 1
+        for pid in sorted(vetoed):
+            mode = int(mod.vehicle.getLaneChangeMode(pid))
+            mod.vehicle.setLaneChangeMode(pid, mode & ~LC_MODE_MODEL_BITS)
+            ws["opp_veto"][pid] = mode
+            ws["n_opposing_deferred"] += 1
+    # --- entrants still on the ramp: anticipated before they appear ---------
+    pre: dict[str, str | None] = ws["pre"]
+    for vid in [v for v in pre if v not in approaching]:
+        del pre[vid]
+    for vid in sorted(approaching):
+        touched[vid] = t
+        p_a = _mm_veh(mod, run, vid)
+        k_a = lane_map.get((results[vid][tc.VAR_ROAD_ID], int(results[vid][tc.VAR_LANE_INDEX])))
+        t_lead_a = _mm_driver(run, vid).lead["entering_weave" if mm["weave"] else "entering_merge"]
+
+        def lead_need_a(v_c: float, v_l: float, _t: float | None = t_lead_a, _p=p_a) -> float:
+            c = max(v_c - v_l, 0.0)
+            guard = _p["s0"] + c * step_s + c * c / (2.0 * _p["b"])
+            return guard if _t is None else max(_t * v_c, guard)
+
+        target_a = (k_a if k_a is not None else 0) + 1
+        f_a, l_a, v0_a = _measured_cooperate(
+            mod,
+            tc,
+            ws,
+            results,
+            lanes,
+            x_of,
+            v_of,
+            p_of,
+            v0_of,
+            coop,
+            vid,
+            target_a,
+            pre.get(vid),
+            x_start - x_of[vid] + section_len,
+            False,
+            True,
+            lead_need_a,
+        )
+        pre[vid] = f_a
+        _measured_ceiling(
+            mod, ws, vid, v_of[vid], v0_a, l_a, f_a, lanes.get(target_a, []), x_of, v_of, p_of
+        )
+    # ceilings of vehicles no longer driven nor anticipated
+    for vid in [v for v in mm["ceiling"] if v not in veh and v not in approaching]:
+        _mm_restore_ceiling(mod, ws, vid, vid in results)
+    for vid in yielders:
+        coop.pop(vid, None)
+    for fid in sorted(coop):
+        v_new, a_cmd, follower = coop[fid]
+        mod.vehicle.slowDown(fid, v_new, 0.0)
+        touched[fid] = t
+        if follower:
+            ws["n_cooperations"] += 1
+            ws["coop_decel_sum"] += -a_cmd
+        else:
+            ws["n_changer_eased"] += 1
+    if len(touched) > 4096:
+        for vid in [v for v, ts in touched.items() if t - ts > MEASURED_ATTRIBUTION_S]:
+            del touched[vid]
+
+
+def _measured_owns(states: Sequence[dict[str, Any]], vid: str) -> bool:
+    """Whether a measured zone drives ``vid`` now (its lane change, B§5.6: then the AV command waits)."""
+    return any(vid in ws["veh"] or vid in ws["pre"] for ws in states if ws.get("mm"))
+
+
+def _measured_attribute(
+    states: Sequence[dict[str, Any]], collider: str, victim: str, lane_id: str, t: float
+) -> None:
+    """Count a collision against every measured zone it touches (``n_collisions_attributable``).
+
+    A collision is a zone's when its lane is on one of the zone's edges or
+    ramp edges, or when either party was commanded by the zone within
+    :data:`MEASURED_ATTRIBUTION_S` (driven, anticipated, cooperating or
+    relaxed).
+    """
+    edge = lane_id.rsplit("_", 1)[0] if "_" in lane_id else lane_id
+    for ws in states:
+        mm = ws.get("mm")
+        if not mm:
+            continue
+        touched: dict[str, float] = mm["touched"]
+        if (
+            edge in ws["edge_index"]
+            or edge in ws["ramp_edges"]
+            or any(
+                v in touched and t - touched[v] <= MEASURED_ATTRIBUTION_S
+                for v in (collider, victim)
+            )
+        ):
+            mm["n_collisions"] += 1
+
+
+def _measured_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict[str, Any]:
+    """``meta.json["measured_merges"]`` entry of one measured zone.
+
+    Movement completions as the weave counts them (``n_entered = n_changed_in
+    + n_changed_out + n_missed + n_unfinished``), the crossings executed by
+    movement and by kind (an accepted or a forced request; ``n_crossings_in
+    + n_crossings_out = n_exec_accepted + n_exec_forced``), the requests made
+    and cancelled, the refusals by first failed condition (vehicle-steps),
+    the deferrals (a due forced change refused by the brake guards; an
+    opposing entry), the give-ups, the relaxations granted (entrant and
+    follower), the cooperation, the ceiling's binding vehicle-steps, the
+    crossings made within two steps of the vehicle's arrival (B§5.13 (d)),
+    the crossing positions from the zone start, and the collisions
+    attributable to the zone.
+    """
+    mm = ws["mm"]
+    waits = ws["waits_in_s"] + ws["waits_out_s"]
+
+    def _mean(xs: list[float]) -> float | None:
+        return float(np.mean(xs)) if xs else None
+
+    def _q(xs: list[float]) -> list[float] | None:
+        vals = [x for x in xs if math.isfinite(x)]
+        return [float(v) for v in np.percentile(vals, [10, 50, 90])] if vals else None
+
+    prm = ws["params"]
+    return {
+        "ramp": ws["ramp"],
+        "exit": ws["exit"],
+        "kind": mm["kind"],
+        "edges": ws["edges"],
+        "exit_edge": ws["exit_edge"],
+        "exit_edges": sorted(ws["exit_edges"]),
+        "length_m": ws["length_m"] if ws["length_m"] is not None else ws["length_m_measured"],
+        "length_m_measured": ws["length_m_measured"],
+        "constants": {
+            "force_within_m": prm["force_within_m"],
+            "force_after_s": prm["force_after_s"],
+            "pair_release_s": prm["pair_release_s"],
+            "exit_giveup_m": prm["exit_giveup_m"],
+            "vacate_ahead_m": prm["vacate_ahead_m"] if mm["weave"] else None,
+            "vacate_bound_veh_h": merge_model.VACATE_LANE_CAPACITY_VEH_H if mm["weave"] else None,
+            "exit_prepare": bool(prm["exit_prepare"]) if mm["weave"] else None,
+            "lookahead_m": prm["lookahead_m"],
+            "creep_ms": merge_model.CREEP_MS,
+            "request_reissue_s": merge_model.REQUEST_REISSUE_S,
+        },
+        "vacate_window_edges": list(ws["vacate_lanes"]),
+        "n_entered": ws["n_entered"],
+        "n_changed_in": ws["n_changed_in"],
+        "n_changed_out": ws["n_changed_out"],
+        "n_forced": ws["n_forced"],
+        "n_missed": ws["n_missed"],
+        "n_missed_exit": ws["n_missed_exit"],
+        "n_unfinished": len(ws["veh"]),
+        "n_crossings_in": mm["n_crossings_in"],
+        "n_crossings_out": mm["n_crossings_out"],
+        "n_exec_accepted": mm["n_exec_accepted"],
+        "n_exec_forced": mm["n_exec_forced"],
+        "n_requests": mm["n_requests"],
+        "n_requests_cancelled": mm["n_requests_cancelled"],
+        "n_forced_deferred": ws["n_forced_deferred"],
+        "n_opposing_deferred": ws["n_opposing_deferred"],
+        "refused_vehicle_steps": dict(mm["refused"]),
+        "n_follower_model_checks": mm["n_model_checks"],
+        "n_relax_granted_entrant": mm["n_relax_entrant"],
+        "n_relax_granted_follower": mm["n_relax_follower"],
+        "n_cooperations": ws["n_cooperations"],
+        "mean_follower_decel_ms2": (
+            ws["coop_decel_sum"] / ws["n_cooperations"] if ws["n_cooperations"] else None
+        ),
+        "n_changer_eased": ws["n_changer_eased"],
+        "n_ceiling_vehicle_steps": mm["n_ceiling_steps"],
+        "n_handovers": ws["n_handovers"],
+        "n_early_crossings": mm["n_early_crossings"],
+        "crossing_x_in_m_p10_p50_p90": _q(mm["cross_x_in"]),
+        "crossing_x_out_m_p10_p50_p90": _q(mm["cross_x_out"]),
+        "n_pair_releases": ws["n_pair_releases"],
+        "n_vacated": ws["n_vacated"],
+        "n_vacate_refused": ws["n_vacate_refused"],
+        "n_vacate_skipped_no_gap": ws["n_vacate_skipped_no_gap"],
+        "n_vacate_requests": ws["n_vacate_requests"],
+        "n_exit_prepared": ws["n_exit_prepared"],
+        "n_exited": len(ws["exited"]),
+        "n_reached_section_exiting": len(ws["reached"]),
+        "n_departed_exiting": (
+            sum(n for rid, n in n_departed_by_route.items() if _route_exit(rid) == ws["off_index"])
+            if ws["off_index"] >= 0
+            else 0
+        ),
+        "n_collisions_attributable": mm["n_collisions"],
+        "wait_s_mean": _mean(waits),
+        "wait_in_s_mean": _mean(ws["waits_in_s"]),
+        "wait_out_s_mean": _mean(ws["waits_out_s"]),
+    }
+
+
+def _measured_run_meta(run: dict[str, Any]) -> dict[str, Any]:
+    """``meta.json["measured_merge_model"]``: the parameter artifact, the set and the relaxations."""
+    params: merge_model.MergeModelParams = run["params"]
+    return {
+        "params_artifact": params.artifact,
+        "params_sha256": params.artifact_sha256,
+        "parameter_set": params.name,
+        "values": params.summary(),
+        "lane_end_giveup_m": run.get("lane_end_giveup_m"),
+        "relaxation": {
+            "n_granted_entrant": run["n_relax_granted_entrant"],
+            "n_granted_follower": run["n_relax_granted_follower"],
+            "n_regranted": run["n_relax_regranted"],
+            "n_restored_expired": run["n_relax_restored_expired"],
+            "n_restored_lane_change": run["n_relax_restored_lane_change"],
+            "n_restored_left": run["n_relax_restored_left"],
+            "n_active_at_end": len(run["relax"]),
+            "n_cut_ins_ahead_of_relaxed": run["n_relaxed_cut_ins"],
+            "min_tau_set_s": run["min_tau_set_s"],
+            "n_tau_writes": run["n_tau_writes"],
+        },
+        "n_av_commands_withdrawn": run["n_av_released"],
+    }
+
+
 # --- The lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71) ------------
 
 
@@ -6566,6 +7997,18 @@ _VEHICLES_SCHEMA: Final[list[tuple[str, pa.DataType]]] = [
     ("destination_final", pa.string()),
 ]
 
+#: The measured merge model's per-driver critical gaps [s] (2026-10-05,
+#: docs/MERGE_MODEL.md, B§5.3), appended to :data:`VEHICLES_FILE` only in a
+#: run with a ``measured`` ramp: column → (side, movement). The exiting
+#: movement has no lead time gate, so it has no lead column.
+DRIVER_GAP_COLUMNS: Final[dict[str, tuple[str, str]]] = {
+    "tc_lead_merge_s": ("lead", "entering_merge"),
+    "tc_lag_merge_s": ("lag", "entering_merge"),
+    "tc_lead_weave_s": ("lead", "entering_weave"),
+    "tc_lag_weave_s": ("lag", "entering_weave"),
+    "tc_lag_exit_s": ("lag", "exiting_weave"),
+}
+
 #: The run's demand ledger (WP-105, docs/FRISCO_PROTOCOL.md §8.2): one row
 #: per vehicle of the fleet plan — whether or not it ever entered the network —
 #: in ``veh_id`` order, written beside :data:`VEHICLES_FILE` (whose bytes and
@@ -7017,6 +8460,7 @@ def _vehicle_table(
     running: Collection[str],
     gave_up_s: Mapping[str, float],
     destination_final: Mapping[str, str] | None = None,
+    driver_gaps: Mapping[str, merge_model.DriverGaps] | None = None,
 ) -> pa.Table:
     """The :data:`VEHICLES_FILE` table: one row per departed vehicle.
 
@@ -7044,6 +8488,10 @@ def _vehicle_table(
             rerouted each vehicle to (its last, when rerouted twice); a
             given-up vehicle absent from it drove to the corridor's end (a
             weaving section's give-up). ``None``: none.
+        driver_gaps: The measured merge model's critical gaps per vehicle
+            (2026-10-05, B§5.3: recorded in ``vehicles.parquet``); when given,
+            the columns of :data:`DRIVER_GAP_COLUMNS` follow the contract's,
+            and without it the table is exactly as before.
 
     Returns:
         The contract-typed table, rows in ``veh_id`` order.
@@ -7078,9 +8526,19 @@ def _vehicle_table(
             if gave is None
             else (destination_final or {}).get(vid, DESTINATION_CORRIDOR_END)
         )
-    schema = pa.schema(_VEHICLES_SCHEMA)
+    fields = list(_VEHICLES_SCHEMA)
+    if driver_gaps is not None:
+        for name, (side, movement) in DRIVER_GAP_COLUMNS.items():
+            col: list[float | None] = []
+            for vid in cols["veh_id"]:
+                g = driver_gaps.get(vid)
+                val = None if g is None else (g.lead if side == "lead" else g.lag)[movement]
+                col.append(None if val is None else float(val))
+            cols[name] = col
+            fields.append((name, pa.float64()))
+    schema = pa.schema(fields)
     return pa.Table.from_arrays(
-        [pa.array(cols[name], type=dtype) for name, dtype in _VEHICLES_SCHEMA], schema=schema
+        [pa.array(cols[name], type=dtype) for name, dtype in fields], schema=schema
     )
 
 
@@ -7144,6 +8602,27 @@ def run_micro(
     plan = _build_plan_and_routes(
         cfg, bundle, rng, routes_path, depart_edge_spread=depart_edge_spread
     )
+    # The measured merge model (RampSpec.merge = "measured", 2026-10-05,
+    # docs/MERGE_MODEL.md): its parameter set, and per driver one lead and one
+    # lag critical-gap quantile from a child stream of the run's seed (B§5.3),
+    # so every other draw — and every golden — is unchanged. None without a
+    # measured ramp: nothing is read or drawn.
+    measured_params: merge_model.MergeModelParams | None = None
+    if isinstance(cfg.network, OSMNetwork) and any(
+        r.kind == "on" and r.merge == "measured" for r in cfg.network.ramps
+    ):
+        measured_params = dataclasses.replace(
+            merge_model.load_params(
+                merge_model.params_artifact_path(), cfg.network.merge_model_set
+            ),
+            artifact=merge_model.PARAMS_ARTIFACT,
+        )
+        z_lead, z_lag = merge_model.driver_quantiles(merge_gap_stream(rng), plan.n)
+        plan = dataclasses.replace(
+            plan,
+            merge_z_lead=tuple(float(z) for z in z_lead),
+            merge_z_lag=tuple(float(z) for z in z_lag),
+        )
 
     if cfg.fleet.delta != 4.0:
         notes.append(
@@ -7501,6 +8980,8 @@ def run_micro(
         chain_w = expand_ramp_splits(list(cfg.network.corridor_edges), bundle.edge_ids)
         for section in _check_weave_pairs(cfg.network, net_for_weaves, chain_w):
             ramp_w = cfg.network.ramps[section.on_ramp]
+            if ramp_w.merge != "weave":
+                continue  # a measured zone (below)
             exit_w = cfg.network.ramps[section.off_ramp]
             assert ramp_w.weave is not None  # guaranteed by _check_weave_pairs
             lens_w = {e: float(net_for_weaves.getEdge(e).getLength()) for e in section.edges}
@@ -7716,13 +9197,74 @@ def run_micro(
         # one. meta.json["weave_sections"] lists the sections in this order.
         weave_states.sort(key=lambda ws: float(ws["x_offset"][ws["edges"][0]]))
 
+    # --- Measured merge zones (RampSpec.merge == "measured", 2026-10-05) ---
+    # Acceleration lanes (no weave block; the lane terminated as for the
+    # scripted merge) and weaving sections (a weave block; paired as for the
+    # weave). Each zone is a section state stepped by _measured_step in the
+    # same upstream-first order as the weaving sections, so it joins
+    # weave_states; meta.json lists it under "measured_merges", not
+    # "weave_sections". The run-level state holds the parameters, the driver
+    # draws and the relaxations.
+    measured_run: dict[str, Any] | None = None
+    if measured_params is not None:
+        assert isinstance(cfg.network, OSMNetwork)
+        net_for_mm = sumolib.net.readNet(str(bundle.net_path))
+        chain_mm = expand_ramp_splits(list(cfg.network.corridor_edges), bundle.edge_ids)
+        measured_run = _measured_run_state(
+            measured_params,
+            plan,
+            plan.av_ids,
+            _lane_successors(net_for_mm),
+            float(cfg.sim.step_length_s),
+        )
+        sections_mm = {
+            sec.on_ramp: sec
+            for sec in _check_weave_pairs(cfg.network, net_for_mm, chain_mm)
+            if cfg.network.ramps[sec.on_ramp].merge == "measured"
+        }
+        routes_mm = ramp_routes(bundle.edge_ids, cfg.network.ramps)
+        n_mm = 0
+        for k_mm, ramp_mm in enumerate(cfg.network.ramps):
+            if ramp_mm.kind != "on" or ramp_mm.merge != "measured":
+                continue
+            weave_states.append(
+                _measured_zone_state(
+                    index=n_mm,
+                    run=measured_run,
+                    net=net_for_mm,
+                    chain=chain_mm,
+                    ramps=cfg.network.ramps,
+                    on_index=k_mm,
+                    section=sections_mm.get(k_mm),
+                    offsets_by_edge=offsets_by_edge,
+                    route_by_id=route_by_id,
+                    routes=routes_mm,
+                    cf_model=cfg.fleet.model,
+                    step_s=float(cfg.sim.step_length_s),
+                )
+            )
+            n_mm += 1
+        weave_states.sort(key=lambda ws: float(ws["x_offset"][ws["edges"][0]]))
+        for n_z, ws_z in enumerate(ws for ws in weave_states if ws.get("mm")):
+            ws_z["mm"]["index"] = n_z
+    measured_states = [ws for ws in weave_states if ws.get("mm")]
+
     # --- The lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71) ---------
     # At every diverge the weaving sections do not cover, a vehicle held at
     # the end of a lane its route does not continue on, with the change
     # toward its route blocked, is rerouted to that lane's own continuation
     # (_lane_end_step). Off by default: nothing below runs, nothing changes.
     lane_end: dict[str, Any] | None = None
-    if isinstance(cfg.network, OSMNetwork) and cfg.network.lane_end_giveup_m > 0.0:
+    # with the measured merge model the give-up is always on, at its fixed
+    # 7.5 m unless the scenario sets a distance (docs/MERGE_MODEL.md §2, B§5.2)
+    lane_end_m = (
+        float(cfg.network.lane_end_giveup_m) if isinstance(cfg.network, OSMNetwork) else 0.0
+    )
+    if measured_run is not None and lane_end_m <= 0.0:
+        lane_end_m = merge_model.LANE_END_GIVEUP_M
+    if measured_run is not None:
+        measured_run["lane_end_giveup_m"] = lane_end_m
+    if isinstance(cfg.network, OSMNetwork) and lane_end_m > 0.0:
         net_for_lane_end = sumolib.net.readNet(str(bundle.net_path))
         chain_le = expand_ramp_splits(list(cfg.network.corridor_edges), bundle.edge_ids)
         skip_le = frozenset(e for ws in weave_states for e in ws["edges"])
@@ -7730,7 +9272,7 @@ def run_micro(
             net_for_lane_end, chain_le, cfg.network.ramps, skip_le, offsets_by_edge
         )
         lane_end = {
-            "distance_m": float(cfg.network.lane_end_giveup_m),
+            "distance_m": lane_end_m,
             "diverges": diverges_le,
             "by_edge": {d["edge"]: d for d in diverges_le},
             "skipped_edges": skip_le,
@@ -7821,6 +9363,11 @@ def run_micro(
             if mod.simulation.getCollidingVehiclesNumber():
                 for c in mod.simulation.getCollisions():
                     n_collisions += 1
+                    if measured_states:
+                        # meta.json measured_merges[i].n_collisions_attributable
+                        _measured_attribute(
+                            measured_states, str(c.collider), str(c.victim), str(c.lane), t
+                        )
                     if len(collision_log) < COLLISION_LOG_MAX:
                         collision_log.append(
                             {
@@ -7993,9 +9540,17 @@ def run_micro(
             # Scripted on-ramp merges (see the setup block above).
             for ss in scripted_states:
                 _scripted_merge_step(mod, tc, ss, results, t)
-            # Weaving sections (see the setup block above).
+            # The measured merge model's relaxations, run-wide, before any zone
+            # reads a headway (docs/MERGE_MODEL.md; None without the model).
+            if measured_run is not None:
+                _measured_relax_step(mod, tc, measured_run, results, t)
+            # Weaving sections and measured merge zones (see the setup blocks
+            # above), upstream first.
             for n_ws, ws in enumerate(weave_states):
-                _weave_step(mod, tc, ws, results, t)
+                if ws.get("mm"):
+                    _measured_step(mod, tc, ws, results, t)
+                else:
+                    _weave_step(mod, tc, ws, results, t)
                 if len(ws["gave_up"]) > n_gave_up_seen[n_ws]:
                     for vid in ws["gave_up"]:
                         gave_up_at.setdefault(vid, t)
@@ -8066,6 +9621,24 @@ def run_micro(
                     # controllers act on corridor edges only.
                     if vid not in x_by_id:
                         continue
+                    if measured_run is not None:
+                        released_mm: set[str] = measured_run["av_released"]
+                        if _measured_owns(measured_states, vid):
+                            # the measured merge model owns the AV's lane
+                            # change (B§5.6); its command takes over after the
+                            # change. A command held from before is withdrawn
+                            # once, meanwhile
+                            if vid not in released_mm:
+                                mod.vehicle.setSpeed(vid, -1.0)
+                                released_mm.add(vid)
+                                measured_run["n_av_released"] += 1
+                                if handback is not None:
+                                    handback["held"].pop(vid, None)
+                                    handback["in_force"].discard(vid)
+                                if off_corridor is not None:
+                                    off_corridor["commanded"].discard(vid)
+                            continue
+                        released_mm.discard(vid)
                     gap, v_leader, within_s0 = _leader_obs(
                         mod, vid, min_gap_by_id[vid], close_leader=cfg.av.observe_close_leader
                     )
@@ -8203,6 +9776,11 @@ def run_micro(
             running,
             gave_up_at,
             lane_end_dest,
+            driver_gaps=(
+                None
+                if measured_run is None
+                else {vid: _mm_driver(measured_run, vid) for vid in depart_s_by_id}
+            ),
         ),
         run_dir / VEHICLES_FILE,
     )
@@ -8329,7 +9907,22 @@ def run_micro(
             }
             for ss in scripted_states
         ],
-        "weave_sections": [_weave_meta(ws, n_departed_by_route) for ws in weave_states],
+        "weave_sections": [
+            _weave_meta(ws, n_departed_by_route) for ws in weave_states if not ws.get("mm")
+        ],
+        # the measured merge model (RampSpec.merge = "measured", 2026-10-05):
+        # present only when a ramp uses it, so every other run's meta.json
+        # keeps exactly its keys
+        **(
+            {
+                "measured_merges": [
+                    _measured_meta(ws, n_departed_by_route) for ws in measured_states
+                ],
+                "measured_merge_model": _measured_run_meta(measured_run),
+            }
+            if measured_run is not None
+            else {}
+        ),
         # the lane-end give-up (OSMNetwork.lane_end_giveup_m, WP-71): None when off
         "lane_end_giveups": _lane_end_meta(lane_end),
         "closures": [

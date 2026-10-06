@@ -678,7 +678,13 @@ def _weave_on_ramps(meta: dict[str, Any], prov: dict[str, Any]) -> list[dict[str
     out = []
     for r in meta.get("ramps") or []:
         cfg = cfg_ramps[int(r["index"])] if int(r["index"]) < len(cfg_ramps) else {}
-        if r["kind"] != "on" or cfg.get("merge") != "weave" or r.get("attach_x_m") is None:
+        # a weave section of either model (the measured model's, 2026-10-05,
+        # has a weave block; its vehicles are taken before they arrive, so
+        # none crosses in its arrival step and nothing is added for it)
+        is_weave = cfg.get("merge") == "weave" or (
+            cfg.get("merge") == "measured" and cfg.get("weave") is not None
+        )
+        if r["kind"] != "on" or not is_weave or r.get("attach_x_m") is None:
             continue
         edges = [str(e) for e in prov["edges"]]
         n_lanes = int(prov["edge_lanes"][edges.index(str(r["attach_edge"]))])

@@ -77,4 +77,40 @@ re-sequence with its battery (acceptance (1)) are **not run in phase 2**
 
 ## Amendments
 
-None.
+### A1 — 2026-10-06, after stage 1's fixture runs (before any cloud probe)
+
+**What stage 1 showed** (the model as specified above, built alongside the
+existing models; fixtures only): zero collisions and no lock in 37 grid runs
+and 20 T.H.52 seeds, but the self-check of §3 fails — (b) partner speeds
+(McKnight Rd: entrant − new follower −2.44 m/s, new leader − entrant +3.09;
+T.H.52 weave: +0.09 / +1.87) and (c) the gap at the change (follower 0.93 /
+1.23 of normal, leader 1.21 / 1.18), and (a) on the weave zone (fitted lead /
+lag 0.99 / 1.27 s against inputs 0.46 / 0.92). The T.H.52 section test fails as
+the weave's does: exit-end flow at seeds 3–22 mean 3,769 veh/h (weave 3,873),
+GEH 16.9 (15.2). Cause: in free flow the short measured gaps accept entrants on
+their first steps in the lane, still at ramp speed; a speed ceiling can only
+cap, so nothing brought the entrant to the target lane's speed before it
+changed. The vehicle-steps at −9 m/s² (87 against the replaced models' 20 in
+the grid) trace to exiters admitted by the lead brake guard alone about 0 m
+behind an equal-speed auxiliary-lane vehicle.
+
+**A1.1 Speed condition on acceptance.** The critical gaps were estimated from
+crossings at the measured partner speeds (the joint estimator works at speed
+parity, `calibration.critical_gap`), so applying them to an entrant far slower
+than its follower misapplies the measurement. Acceptance now also requires the
+entrant's speed not below the new follower's by more than the measured lower
+quartile of (entrant − new follower) at the change: 0.80 m/s at acceleration
+lanes, 0.32 m/s in weaves (I-24, `lane_change_relaxation_i24.json`,
+`summary_by_zone_kind`, entering, follower side, `rel_speed_ms` p25 at offset
+0; robust under thinning, B§1.3). A forced change (80 m / 4 s) is exempt, as
+before, guarded by the brake guards. The exiting movement keeps no speed
+condition (exiters do not start short, B§1.4).
+
+**A1.2 The changer's own model on the lead side.** Acceptance also requires the
+changer's own SUMO model (at its relaxed T when entering, its own T when
+exiting) not to brake harder than its comfortable deceleration behind the new
+leader (`vehicle.getFollowSpeed`, mirroring the lag side's check of the
+follower). Measured as a session diagnostic in stage 1 on the capacity
+fixture: −9 m/s² vehicle-steps 9 / 12 / 6 → 1 / 0 / 0 at seeds 3–5.
+
+Both are reported against stage 1's numbers above.

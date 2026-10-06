@@ -1,0 +1,964 @@
+{
+ "schema_version": 1,
+ "kind": "merge_model_params",
+ "created_at": "2026-10-06T05:18:35Z",
+ "source": "scripts/merge_model_params.py",
+ "code": "55db74a56f5836ae7a2eee69aab0cfacdcaa5308",
+ "spec": "docs/MERGE_MODEL.md \u00a72 (decisions fixed 2026-10-05 before any run)",
+ "inputs": [
+  {
+   "artifact": "artifacts/i24_critical_gaps.json",
+   "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3"
+  },
+  {
+   "artifact": "artifacts/lane_change_relaxation_i24.json",
+   "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696"
+  },
+  {
+   "artifact": "artifacts/lane_change_relaxation_us101.json",
+   "sha256": "6017a0b6e583e75c3d897c6cbde013d5cc225e70806a742cf1068fe24bef3c9c"
+  },
+  {
+   "artifact": "artifacts/coverage_thinning_us101.json",
+   "sha256": "7219b177d7743306a69fe24536983c3ba07b43ae8432aea7ebce34974fa55166"
+  }
+ ],
+ "units": "critical gaps: log-normal of the bumper-to-bumper time gap [s] (lead over the changer's speed, lag over the follower's, calibration.lane_change_gaps); delta [m/s]; tau_r [s]",
+ "sets": {
+  "central": {
+   "note": "docs/MERGE_MODEL.md \u00a72: the central values",
+   "critical_gaps": {
+    "entering_merge": {
+     "lead": {
+      "mu": -0.87379,
+      "sigma": 1.41666,
+      "median_s": 0.41736672800928093,
+      "median_ci95_s": [
+       0.3747,
+       0.4679
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.53043,
+      "sigma": 1.45526,
+      "median_s": 0.5883519239501241,
+      "median_ci95_s": [
+       0.5145,
+       0.6595
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lag"
+      }
+     }
+    },
+    "entering_weave": {
+     "lead": {
+      "mu": -0.77952,
+      "sigma": 1.44422,
+      "median_s": 0.4586260990074729,
+      "median_ci95_s": [
+       0.4022,
+       0.529
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.08327,
+      "sigma": 1.27749,
+      "median_s": 0.9201026859541556,
+      "median_ci95_s": [
+       0.8388,
+       1.0348
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lag"
+      }
+     }
+    },
+    "exiting_weave": {
+     "lead": null,
+     "lag": {
+      "mu": 0.10501,
+      "sigma": 1.89999,
+      "median_s": 1.1107217175173445,
+      "median_ci95_s": [
+       0.9118,
+       1.3351
+      ],
+      "n_drivers": 1493,
+      "n_inconsistent": 489,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[12].joint.lag"
+      }
+     }
+    }
+   },
+   "delta_ms": {
+    "merge": {
+     "value": 0.62215,
+     "entrant_minus_follower_ms": 0.6833,
+     "entrant_minus_leader_ms": 0.561,
+     "n": [
+      2534,
+      2781
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[24].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[25].rel_speed_ms.p50[0]"
+      }
+     ]
+    },
+    "weave": {
+     "value": 1.00305,
+     "entrant_minus_follower_ms": 1.1782,
+     "entrant_minus_leader_ms": 0.8279,
+     "n": [
+      1488,
+      1612
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[40].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[41].rel_speed_ms.p50[0]"
+      }
+     ]
+    }
+   },
+   "relaxation": {
+    "tau_r_s": {
+     "value": 7.4989,
+     "ci95": [
+      5.2005,
+      15.9194
+     ],
+     "r0": 0.5416,
+     "r0_ci95": [
+      0.4764,
+      0.6112
+     ],
+     "provenance": {
+      "artifact": "artifacts/lane_change_relaxation_us101.json",
+      "sha256": "6017a0b6e583e75c3d897c6cbde013d5cc225e70806a742cf1068fe24bef3c9c",
+      "json_path": "summary_by_zone_kind[9].fits.ratio_pop.tau_s"
+     }
+    },
+    "floor_fraction": {
+     "value": 0.5,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): T_eff >= max(step, 0.5 T_i); US-101 leader-side r0 0.54 [0.48, 0.61]"
+    },
+    "restore_after_tau_r": {
+     "value": 4.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): restored at 4 tau_r (98 %)"
+    },
+    "movement": "entering only (real exiters do not start short, B\u00a71.4)"
+   },
+   "truncation": {
+    "lower_quantile": 0.025,
+    "upper_quantile": 0.975,
+    "provenance": "B\u00a75.3 (decision): [p2.5, p97.5] of each log-normal"
+   }
+  },
+  "us101_gaps": {
+   "note": "docs/MERGE_MODEL.md \u00a72 sensitivity arm: US-101 critical gaps (complete coverage, raw NGSIM lane-6 weave). The artifact records medians only; each distribution keeps the central set's sigma for its movement and side",
+   "critical_gaps": {
+    "entering_merge": {
+     "lead": {
+      "mu": -1.2282654968949804,
+      "sigma": 1.41666,
+      "median_s": 0.2928,
+      "median_ci95_s": null,
+      "provenance": {
+       "artifact": "artifacts/coverage_thinning_us101.json",
+       "sha256": "7219b177d7743306a69fe24536983c3ba07b43ae8432aea7ebce34974fa55166",
+       "json_path": "results['cg.entering.all.joint.lead.median_s'].reference"
+      },
+      "sigma_provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.7947370363215785,
+      "sigma": 1.45526,
+      "median_s": 0.4517,
+      "median_ci95_s": null,
+      "provenance": {
+       "artifact": "artifacts/coverage_thinning_us101.json",
+       "sha256": "7219b177d7743306a69fe24536983c3ba07b43ae8432aea7ebce34974fa55166",
+       "json_path": "results['cg.entering.all.joint.lag.median_s'].reference"
+      },
+      "sigma_provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lag"
+      }
+     }
+    },
+    "entering_weave": {
+     "lead": {
+      "mu": -1.2282654968949804,
+      "sigma": 1.44422,
+      "median_s": 0.2928,
+      "median_ci95_s": null,
+      "provenance": {
+       "artifact": "artifacts/coverage_thinning_us101.json",
+       "sha256": "7219b177d7743306a69fe24536983c3ba07b43ae8432aea7ebce34974fa55166",
+       "json_path": "results['cg.entering.all.joint.lead.median_s'].reference"
+      },
+      "sigma_provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.7947370363215785,
+      "sigma": 1.27749,
+      "median_s": 0.4517,
+      "median_ci95_s": null,
+      "provenance": {
+       "artifact": "artifacts/coverage_thinning_us101.json",
+       "sha256": "7219b177d7743306a69fe24536983c3ba07b43ae8432aea7ebce34974fa55166",
+       "json_path": "results['cg.entering.all.joint.lag.median_s'].reference"
+      },
+      "sigma_provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lag"
+      }
+     }
+    },
+    "exiting_weave": {
+     "lead": null,
+     "lag": {
+      "mu": -0.6193392534152254,
+      "sigma": 1.89999,
+      "median_s": 0.5383,
+      "median_ci95_s": null,
+      "provenance": {
+       "artifact": "artifacts/coverage_thinning_us101.json",
+       "sha256": "7219b177d7743306a69fe24536983c3ba07b43ae8432aea7ebce34974fa55166",
+       "json_path": "results['cg.exiting.all.joint.lag.median_s'].reference"
+      },
+      "sigma_provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[12].joint.lag"
+      }
+     }
+    }
+   },
+   "delta_ms": {
+    "merge": {
+     "value": 0.62215,
+     "entrant_minus_follower_ms": 0.6833,
+     "entrant_minus_leader_ms": 0.561,
+     "n": [
+      2534,
+      2781
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[24].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[25].rel_speed_ms.p50[0]"
+      }
+     ]
+    },
+    "weave": {
+     "value": 1.00305,
+     "entrant_minus_follower_ms": 1.1782,
+     "entrant_minus_leader_ms": 0.8279,
+     "n": [
+      1488,
+      1612
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[40].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[41].rel_speed_ms.p50[0]"
+      }
+     ]
+    }
+   },
+   "relaxation": {
+    "tau_r_s": {
+     "value": 7.4989,
+     "ci95": [
+      5.2005,
+      15.9194
+     ],
+     "r0": 0.5416,
+     "r0_ci95": [
+      0.4764,
+      0.6112
+     ],
+     "provenance": {
+      "artifact": "artifacts/lane_change_relaxation_us101.json",
+      "sha256": "6017a0b6e583e75c3d897c6cbde013d5cc225e70806a742cf1068fe24bef3c9c",
+      "json_path": "summary_by_zone_kind[9].fits.ratio_pop.tau_s"
+     }
+    },
+    "floor_fraction": {
+     "value": 0.5,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): T_eff >= max(step, 0.5 T_i); US-101 leader-side r0 0.54 [0.48, 0.61]"
+    },
+    "restore_after_tau_r": {
+     "value": 4.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): restored at 4 tau_r (98 %)"
+    },
+    "movement": "entering only (real exiters do not start short, B\u00a71.4)"
+   },
+   "truncation": {
+    "lower_quantile": 0.025,
+    "upper_quantile": 0.975,
+    "provenance": "B\u00a75.3 (decision): [p2.5, p97.5] of each log-normal"
+   }
+  },
+  "delta_zero": {
+   "note": "docs/MERGE_MODEL.md \u00a72 sensitivity arm: delta = 0 (no speed offset)",
+   "critical_gaps": {
+    "entering_merge": {
+     "lead": {
+      "mu": -0.87379,
+      "sigma": 1.41666,
+      "median_s": 0.41736672800928093,
+      "median_ci95_s": [
+       0.3747,
+       0.4679
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.53043,
+      "sigma": 1.45526,
+      "median_s": 0.5883519239501241,
+      "median_ci95_s": [
+       0.5145,
+       0.6595
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lag"
+      }
+     }
+    },
+    "entering_weave": {
+     "lead": {
+      "mu": -0.77952,
+      "sigma": 1.44422,
+      "median_s": 0.4586260990074729,
+      "median_ci95_s": [
+       0.4022,
+       0.529
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.08327,
+      "sigma": 1.27749,
+      "median_s": 0.9201026859541556,
+      "median_ci95_s": [
+       0.8388,
+       1.0348
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lag"
+      }
+     }
+    },
+    "exiting_weave": {
+     "lead": null,
+     "lag": {
+      "mu": 0.10501,
+      "sigma": 1.89999,
+      "median_s": 1.1107217175173445,
+      "median_ci95_s": [
+       0.9118,
+       1.3351
+      ],
+      "n_drivers": 1493,
+      "n_inconsistent": 489,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[12].joint.lag"
+      }
+     }
+    }
+   },
+   "delta_ms": {
+    "merge": {
+     "value": 0.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (pre-registered arm)"
+    },
+    "weave": {
+     "value": 0.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (pre-registered arm)"
+    }
+   },
+   "relaxation": {
+    "tau_r_s": {
+     "value": 7.4989,
+     "ci95": [
+      5.2005,
+      15.9194
+     ],
+     "r0": 0.5416,
+     "r0_ci95": [
+      0.4764,
+      0.6112
+     ],
+     "provenance": {
+      "artifact": "artifacts/lane_change_relaxation_us101.json",
+      "sha256": "6017a0b6e583e75c3d897c6cbde013d5cc225e70806a742cf1068fe24bef3c9c",
+      "json_path": "summary_by_zone_kind[9].fits.ratio_pop.tau_s"
+     }
+    },
+    "floor_fraction": {
+     "value": 0.5,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): T_eff >= max(step, 0.5 T_i); US-101 leader-side r0 0.54 [0.48, 0.61]"
+    },
+    "restore_after_tau_r": {
+     "value": 4.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): restored at 4 tau_r (98 %)"
+    },
+    "movement": "entering only (real exiters do not start short, B\u00a71.4)"
+   },
+   "truncation": {
+    "lower_quantile": 0.025,
+    "upper_quantile": 0.975,
+    "provenance": "B\u00a75.3 (decision): [p2.5, p97.5] of each log-normal"
+   }
+  },
+  "tau_r_low": {
+   "note": "docs/MERGE_MODEL.md \u00a72 sensitivity arm: tau_r at its interval's low end",
+   "critical_gaps": {
+    "entering_merge": {
+     "lead": {
+      "mu": -0.87379,
+      "sigma": 1.41666,
+      "median_s": 0.41736672800928093,
+      "median_ci95_s": [
+       0.3747,
+       0.4679
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.53043,
+      "sigma": 1.45526,
+      "median_s": 0.5883519239501241,
+      "median_ci95_s": [
+       0.5145,
+       0.6595
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lag"
+      }
+     }
+    },
+    "entering_weave": {
+     "lead": {
+      "mu": -0.77952,
+      "sigma": 1.44422,
+      "median_s": 0.4586260990074729,
+      "median_ci95_s": [
+       0.4022,
+       0.529
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.08327,
+      "sigma": 1.27749,
+      "median_s": 0.9201026859541556,
+      "median_ci95_s": [
+       0.8388,
+       1.0348
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lag"
+      }
+     }
+    },
+    "exiting_weave": {
+     "lead": null,
+     "lag": {
+      "mu": 0.10501,
+      "sigma": 1.89999,
+      "median_s": 1.1107217175173445,
+      "median_ci95_s": [
+       0.9118,
+       1.3351
+      ],
+      "n_drivers": 1493,
+      "n_inconsistent": 489,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[12].joint.lag"
+      }
+     }
+    }
+   },
+   "delta_ms": {
+    "merge": {
+     "value": 0.62215,
+     "entrant_minus_follower_ms": 0.6833,
+     "entrant_minus_leader_ms": 0.561,
+     "n": [
+      2534,
+      2781
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[24].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[25].rel_speed_ms.p50[0]"
+      }
+     ]
+    },
+    "weave": {
+     "value": 1.00305,
+     "entrant_minus_follower_ms": 1.1782,
+     "entrant_minus_leader_ms": 0.8279,
+     "n": [
+      1488,
+      1612
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[40].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[41].rel_speed_ms.p50[0]"
+      }
+     ]
+    }
+   },
+   "relaxation": {
+    "tau_r_s": {
+     "value": 5.2005,
+     "provenance": {
+      "artifact": "artifacts/lane_change_relaxation_us101.json",
+      "sha256": "6017a0b6e583e75c3d897c6cbde013d5cc225e70806a742cf1068fe24bef3c9c",
+      "json_path": "summary_by_zone_kind[9].fits.ratio_pop.tau_ci95[0]"
+     }
+    },
+    "floor_fraction": {
+     "value": 0.5,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): T_eff >= max(step, 0.5 T_i); US-101 leader-side r0 0.54 [0.48, 0.61]"
+    },
+    "restore_after_tau_r": {
+     "value": 4.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): restored at 4 tau_r (98 %)"
+    },
+    "movement": "entering only (real exiters do not start short, B\u00a71.4)"
+   },
+   "truncation": {
+    "lower_quantile": 0.025,
+    "upper_quantile": 0.975,
+    "provenance": "B\u00a75.3 (decision): [p2.5, p97.5] of each log-normal"
+   }
+  },
+  "tau_r_high": {
+   "note": "docs/MERGE_MODEL.md \u00a72 sensitivity arm: tau_r at its interval's high end",
+   "critical_gaps": {
+    "entering_merge": {
+     "lead": {
+      "mu": -0.87379,
+      "sigma": 1.41666,
+      "median_s": 0.41736672800928093,
+      "median_ci95_s": [
+       0.3747,
+       0.4679
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.53043,
+      "sigma": 1.45526,
+      "median_s": 0.5883519239501241,
+      "median_ci95_s": [
+       0.5145,
+       0.6595
+      ],
+      "n_drivers": 3213,
+      "n_inconsistent": 814,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[16].joint.lag"
+      }
+     }
+    },
+    "entering_weave": {
+     "lead": {
+      "mu": -0.77952,
+      "sigma": 1.44422,
+      "median_s": 0.4586260990074729,
+      "median_ci95_s": [
+       0.4022,
+       0.529
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lead"
+      }
+     },
+     "lag": {
+      "mu": -0.08327,
+      "sigma": 1.27749,
+      "median_s": 0.9201026859541556,
+      "median_ci95_s": [
+       0.8388,
+       1.0348
+      ],
+      "n_drivers": 1881,
+      "n_inconsistent": 417,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[8].joint.lag"
+      }
+     }
+    },
+    "exiting_weave": {
+     "lead": null,
+     "lag": {
+      "mu": 0.10501,
+      "sigma": 1.89999,
+      "median_s": 1.1107217175173445,
+      "median_ci95_s": [
+       0.9118,
+       1.3351
+      ],
+      "n_drivers": 1493,
+      "n_inconsistent": 489,
+      "provenance": {
+       "artifact": "artifacts/i24_critical_gaps.json",
+       "sha256": "c50d3f51eab29639af7711f288cba92be81b4f1f7741c7629e6cc19d596410f3",
+       "json_path": "fits[12].joint.lag"
+      }
+     }
+    }
+   },
+   "delta_ms": {
+    "merge": {
+     "value": 0.62215,
+     "entrant_minus_follower_ms": 0.6833,
+     "entrant_minus_leader_ms": 0.561,
+     "n": [
+      2534,
+      2781
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[24].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[25].rel_speed_ms.p50[0]"
+      }
+     ]
+    },
+    "weave": {
+     "value": 1.00305,
+     "entrant_minus_follower_ms": 1.1782,
+     "entrant_minus_leader_ms": 0.8279,
+     "n": [
+      1488,
+      1612
+     ],
+     "rule": "mean of the entrant's median speed over its new follower and over its new leader at the change (B\u00a71.3; robust under coverage thinning, VM AE)",
+     "provenance": [
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[40].rel_speed_ms.p50[0]"
+      },
+      {
+       "artifact": "artifacts/lane_change_relaxation_i24.json",
+       "sha256": "4ad9061ef39976ccc6a128d38c45d04809650f09aff104431c2bf06ed90e3696",
+       "json_path": "summary_by_zone_kind[41].rel_speed_ms.p50[0]"
+      }
+     ]
+    }
+   },
+   "relaxation": {
+    "tau_r_s": {
+     "value": 15.9194,
+     "provenance": {
+      "artifact": "artifacts/lane_change_relaxation_us101.json",
+      "sha256": "6017a0b6e583e75c3d897c6cbde013d5cc225e70806a742cf1068fe24bef3c9c",
+      "json_path": "summary_by_zone_kind[9].fits.ratio_pop.tau_ci95[1]"
+     }
+    },
+    "floor_fraction": {
+     "value": 0.5,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): T_eff >= max(step, 0.5 T_i); US-101 leader-side r0 0.54 [0.48, 0.61]"
+    },
+    "restore_after_tau_r": {
+     "value": 4.0,
+     "provenance": "docs/MERGE_MODEL.md \u00a72 (decision): restored at 4 tau_r (98 %)"
+    },
+    "movement": "entering only (real exiters do not start short, B\u00a71.4)"
+   },
+   "truncation": {
+    "lower_quantile": 0.025,
+    "upper_quantile": 0.975,
+    "provenance": "B\u00a75.3 (decision): [p2.5, p97.5] of each log-normal"
+   }
+  }
+ },
+ "spec_checks": [
+  {
+   "value": "central.entering_merge.lead.median_s",
+   "spec": 0.42,
+   "artifact": 0.41736672800928093,
+   "rounded": 0.42,
+   "ok": true
+  },
+  {
+   "value": "central.entering_merge.lead.sigma",
+   "spec": 1.42,
+   "artifact": 1.41666,
+   "rounded": 1.42,
+   "ok": true
+  },
+  {
+   "value": "central.entering_merge.lag.median_s",
+   "spec": 0.59,
+   "artifact": 0.5883519239501241,
+   "rounded": 0.59,
+   "ok": true
+  },
+  {
+   "value": "central.entering_merge.lag.sigma",
+   "spec": 1.46,
+   "artifact": 1.45526,
+   "rounded": 1.46,
+   "ok": true
+  },
+  {
+   "value": "central.entering_weave.lead.median_s",
+   "spec": 0.46,
+   "artifact": 0.4586260990074729,
+   "rounded": 0.46,
+   "ok": true
+  },
+  {
+   "value": "central.entering_weave.lead.sigma",
+   "spec": 1.44,
+   "artifact": 1.44422,
+   "rounded": 1.44,
+   "ok": true
+  },
+  {
+   "value": "central.entering_weave.lag.median_s",
+   "spec": 0.92,
+   "artifact": 0.9201026859541556,
+   "rounded": 0.92,
+   "ok": true
+  },
+  {
+   "value": "central.entering_weave.lag.sigma",
+   "spec": 1.28,
+   "artifact": 1.27749,
+   "rounded": 1.28,
+   "ok": true
+  },
+  {
+   "value": "central.exiting_weave.lag.median_s",
+   "spec": 1.11,
+   "artifact": 1.1107217175173445,
+   "rounded": 1.11,
+   "ok": true
+  },
+  {
+   "value": "central.exiting_weave.lag.sigma",
+   "spec": 1.9,
+   "artifact": 1.89999,
+   "rounded": 1.9,
+   "ok": true
+  },
+  {
+   "value": "central.delta.merge",
+   "spec": 0.6,
+   "artifact": 0.62215,
+   "rounded": 0.6,
+   "ok": true
+  },
+  {
+   "value": "central.delta.weave",
+   "spec": 1.0,
+   "artifact": 1.00305,
+   "rounded": 1.0,
+   "ok": true
+  },
+  {
+   "value": "central.tau_r_s",
+   "spec": 7.5,
+   "artifact": 7.4989,
+   "rounded": 7.5,
+   "ok": true
+  },
+  {
+   "value": "tau_r_low.tau_r_s",
+   "spec": 5.2,
+   "artifact": 5.2005,
+   "rounded": 5.2,
+   "ok": true
+  },
+  {
+   "value": "tau_r_high.tau_r_s",
+   "spec": 15.9,
+   "artifact": 15.9194,
+   "rounded": 15.9,
+   "ok": true
+  },
+  {
+   "value": "us101_gaps.entering_merge.lead.median_s",
+   "spec": 0.29,
+   "artifact": 0.2928,
+   "rounded": 0.29,
+   "ok": true
+  },
+  {
+   "value": "us101_gaps.entering_merge.lag.median_s",
+   "spec": 0.45,
+   "artifact": 0.4517,
+   "rounded": 0.45,
+   "ok": true
+  },
+  {
+   "value": "us101_gaps.exiting_weave.lag.median_s",
+   "spec": 0.54,
+   "artifact": 0.5383,
+   "rounded": 0.54,
+   "ok": true
+  }
+ ],
+ "limitations": [
+  "I-24 critical gaps come from partial tracking (about 0.5-0.65 of peak vehicle-time); under coverage thinning of complete US-101 the critical gaps are undetermined (lead +0.10 s, lag +0.17 / +0.39 s at F = 0.65 / 0.5; B\u00a71 coverage rules). The us101_gaps arm is the complete-coverage check.",
+  "25-35 % of I-24 drivers are inconsistent with the one-threshold driver model the joint estimator assumes (WP-78); the fits are central values, not thresholds.",
+  "tau_r is the only supported relaxation fit (176 US-101 leader sides); no follower side fit is supported in either dataset (B\u00a71.4).",
+  "delta rests on the entering partner speeds; the exiting movement uses the weave's delta (docs/MERGE_MODEL.md \u00a72 gives one delta per zone kind)."
+ ]
+}

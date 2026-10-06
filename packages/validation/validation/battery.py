@@ -496,7 +496,9 @@ def weave_exit_summary(
 
     Returns:
         ``{"threshold_share", "n_runs", "sections", "verdict"}``: ``n_runs``
-        is the number of metas that list ``weave_sections`` at all;
+        is the number of metas that list ``weave_sections`` (or, since
+        2026-10-05, ``measured_merges``, whose weaving sections count alike)
+        at all;
         ``sections`` has one entry per section, keyed by its on-ramp in
         first-seen order, ``{"ramp", "exit", "n_runs", "reached",
         "missed_exit": {"n", "share"}, "flagged"}`` with ``n`` and
@@ -514,9 +516,18 @@ def weave_exit_summary(
     sections: dict[str, dict[str, Any]] = {}
     n_runs = 0
     for meta in metas:
-        raw = meta.get("weave_sections")
-        if not isinstance(raw, list):
+        weaves = meta.get("weave_sections")
+        # the measured merge model's weaving sections give exits up by the
+        # same rule (2026-10-05, docs/MERGE_MODEL.md; its acceleration-lane
+        # zones have no exit and report none)
+        measured = meta.get("measured_merges")
+        if not isinstance(weaves, list) and not isinstance(measured, list):
             continue
+        raw = [*(weaves if isinstance(weaves, list) else [])] + [
+            e
+            for e in (measured if isinstance(measured, list) else [])
+            if isinstance(e, dict) and e.get("kind") == "weave"
+        ]
         n_runs += 1
         for position, entry in enumerate(raw):
             if not isinstance(entry, dict):
@@ -777,6 +788,9 @@ def collision_summary(
 _FORCED_CHANGE_SOURCES: Final[tuple[tuple[str, str, tuple[str, ...]], ...]] = (
     ("scripted_merges", "scripted merge", ("n_changed",)),
     ("weave_sections", "weave section", ("n_changed_in", "n_changed_out")),
+    # the measured merge model's zones (2026-10-05, docs/MERGE_MODEL.md;
+    # absent from every older meta.json, so their rows are unchanged)
+    ("measured_merges", "measured merge", ("n_changed_in", "n_changed_out")),
 )
 
 
