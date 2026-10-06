@@ -1,0 +1,1047 @@
+{
+ "schema_version": 1,
+ "versions": {
+  "python": "3.12.15",
+  "numpy": "2.5.2",
+  "pandas": "3.0.5",
+  "pyarrow": "25.0.1",
+  "eclipse-sumo": "1.27.1",
+  "libsumo": "1.27.1",
+  "flowstate_core": "2.0.0",
+  "microsim": "2.0.0"
+ },
+ "arm": "scenarios/i24_replica_flow_speedcal.yaml",
+ "arm_config_hash": "339f15dd3164",
+ "base_config_hash": "ae5861a4d906",
+ "seed": 6914975401685141156,
+ "observed_segment_mean_kmh": [
+  36.34,
+  32.5,
+  29.76,
+  31.34,
+  37.61,
+  36.91,
+  37.72,
+  29.03,
+  30.4,
+  33.66
+ ],
+ "variants": [
+  {
+   "variant": "flow_speedcal",
+   "seed": 6914975401685141156,
+   "config_hash": "339f15dd3164",
+   "inserted_fraction": 0.9835,
+   "n_collisions": 0,
+   "collisions": [],
+   "measured_merges": null,
+   "measured_merge_model": null,
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "attach_x_m": 3070.0699999999997,
+     "attach_end_x_m": 4044.97,
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2109,
+     "n_departed": 2109,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "attach_x_m": 5541.29,
+     "attach_end_x_m": 6014.25,
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1143,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1395,
+     "n_departed": 1395,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 690,
+     "acceleration_lane_terminated": false
+    }
+   ],
+   "rmspe_all": 0.3987,
+   "rmspe_15min": 0.2315,
+   "geh_under_5_vs_recommended": 0.1597,
+   "rmspe_train": 0.3266,
+   "rmspe_test": 0.4595,
+   "segment_mean_kmh": [
+    32.19,
+    26.3,
+    27.57,
+    36.98,
+    39.42,
+    38.25,
+    35.79,
+    28.81,
+    26.38,
+    31.73
+   ],
+   "segment_rel_error": [
+    0.0057,
+    -0.0885,
+    0.042,
+    0.3382,
+    0.1388,
+    0.112,
+    0.0453,
+    0.0493,
+    -0.1115,
+    -0.0492
+   ],
+   "hourly_flow_mean_by_section": [
+    4934,
+    5885,
+    5836,
+    5810,
+    5826,
+    5534
+   ],
+   "wall_s": 383.7
+  },
+  {
+   "variant": "flow_speedcal_measured",
+   "seed": 6914975401685141156,
+   "config_hash": "b3dcde8ea324",
+   "inserted_fraction": 0.9828,
+   "n_collisions": 0,
+   "collisions": [],
+   "measured_merges": [
+    {
+     "ramp": "Old Hickory Blvd on-ramp",
+     "exit": null,
+     "kind": "acceleration_lane",
+     "edges": [
+      "977008894"
+     ],
+     "exit_edge": null,
+     "exit_edges": [],
+     "length_m": 974.9,
+     "length_m_measured": 974.9,
+     "constants": {
+      "force_within_m": 80.0,
+      "force_after_s": 4.0,
+      "pair_release_s": 2.0,
+      "exit_giveup_m": 5.0,
+      "vacate_ahead_m": null,
+      "vacate_bound_veh_h": null,
+      "exit_prepare": null,
+      "lookahead_m": 120.0,
+      "creep_ms": 3.0,
+      "request_reissue_s": 2.0
+     },
+     "vacate_window_edges": [],
+     "n_entered": 2104,
+     "n_changed_in": 2096,
+     "n_changed_out": 0,
+     "n_forced": 405,
+     "n_missed": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 8,
+     "n_crossings_in": 2096,
+     "n_crossings_out": 0,
+     "n_exec_accepted": 1691,
+     "n_exec_forced": 405,
+     "n_requests": 2105,
+     "n_requests_cancelled": 9,
+     "n_forced_deferred": 881,
+     "n_opposing_deferred": 515,
+     "refused_vehicle_steps": {
+      "lead_time": 68596,
+      "lead_guard": 2667,
+      "lag_time": 29500,
+      "lag_guard": 146,
+      "lead_model": 4433,
+      "lag_model": 43
+     },
+     "n_follower_model_checks": 1730,
+     "n_changer_model_checks": 6175,
+     "n_relax_granted_entrant": 1002,
+     "n_relax_granted_follower": 726,
+     "n_cooperations": 126566,
+     "mean_follower_decel_ms2": 0.024503151858934376,
+     "n_changer_eased": 50837,
+     "n_ceiling_vehicle_steps": 155755,
+     "n_handovers": 2108,
+     "n_arrival_changes_kept": 0,
+     "n_early_crossings": 1154,
+     "crossing_x_in_m_p10_p50_p90": [
+      5.526335520838529,
+      15.70846440001992,
+      939.325530714365
+     ],
+     "crossing_x_out_m_p10_p50_p90": null,
+     "n_pair_releases": 502,
+     "n_vacated": 0,
+     "n_vacate_refused": 0,
+     "n_vacate_skipped_no_gap": 0,
+     "n_vacate_requests": 0,
+     "n_exit_prepared": 0,
+     "n_exited": 0,
+     "n_reached_section_exiting": 0,
+     "n_departed_exiting": 0,
+     "n_collisions_attributable": 0,
+     "wait_s_mean": 25.425333969465647,
+     "wait_in_s_mean": 25.425333969465647,
+     "wait_out_s_mean": null
+    }
+   ],
+   "measured_merge_model": {
+    "params_artifact": "artifacts/merge_model_params.json",
+    "params_sha256": "e89b4916b9d254daffbd60917c03fc1297ee8977e7339974b45b8508760b903c",
+    "parameter_set": "central",
+    "values": {
+     "set": "central",
+     "critical_gaps": {
+      "entering_merge": {
+       "lead": {
+        "mu": -0.87379,
+        "sigma": 1.41666,
+        "median_s": 0.41736672800928093,
+        "truncated_to_s": [
+         0.025980927227188425,
+         6.704725513679208
+        ]
+       },
+       "lag": {
+        "mu": -0.53043,
+        "sigma": 1.45526,
+        "median_s": 0.5883519239501241,
+        "truncated_to_s": [
+         0.03395608563593989,
+         10.194284174187356
+        ]
+       }
+      },
+      "entering_weave": {
+       "lead": {
+        "mu": -0.77952,
+        "sigma": 1.44422,
+        "median_s": 0.4586260990074729,
+        "truncated_to_s": [
+         0.02704808189671066,
+         7.776444166874237
+        ]
+       },
+       "lag": {
+        "mu": -0.08327,
+        "sigma": 1.27749,
+        "median_s": 0.9201026859541556,
+        "truncated_to_s": [
+         0.07523758362639038,
+         11.252208163728174
+        ]
+       }
+      },
+      "exiting_weave": {
+       "lead": null,
+       "lag": {
+        "mu": 0.10501,
+        "sigma": 1.89999,
+        "median_s": 1.1107217175173445,
+        "truncated_to_s": [
+         0.02681210079990802,
+         46.012908237645895
+        ]
+       }
+      }
+     },
+     "delta_ms": {
+      "merge": 0.62215,
+      "weave": 1.00305
+     },
+     "tau_r_s": 7.4989,
+     "relax_floor_fraction": 0.5,
+     "relax_restore_tau_r": 4.0,
+     "truncation_z": 1.9599639845400536
+    },
+    "lane_end_giveup_m": 7.5,
+    "relaxation": {
+     "n_granted_entrant": 1002,
+     "n_granted_follower": 726,
+     "n_regranted": 12,
+     "n_restored_expired": 1577,
+     "n_restored_lane_change": 129,
+     "n_restored_left": 0,
+     "n_active_at_end": 10,
+     "n_cut_ins_ahead_of_relaxed": 42,
+     "min_tau_set_s": 0.5,
+     "n_tau_writes": 100462
+    },
+    "n_av_commands_withdrawn": 0
+   },
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "attach_x_m": 3070.0699999999997,
+     "attach_end_x_m": 4044.97,
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2109,
+     "n_departed": 2109,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "attach_x_m": 5541.29,
+     "attach_end_x_m": 6014.25,
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1143,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1395,
+     "n_departed": 1395,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 690,
+     "acceleration_lane_terminated": false
+    }
+   ],
+   "rmspe_all": 0.5061,
+   "rmspe_15min": 0.3092,
+   "geh_under_5_vs_recommended": 0.2222,
+   "rmspe_train": 0.3521,
+   "rmspe_test": 0.6232,
+   "segment_mean_kmh": [
+    43.18,
+    40.4,
+    41.79,
+    38.73,
+    38.62,
+    36.74,
+    35.74,
+    30.86,
+    28.11,
+    31.77
+   ],
+   "segment_rel_error": [
+    0.3601,
+    0.3874,
+    0.5592,
+    0.396,
+    0.1245,
+    0.0955,
+    0.0864,
+    0.1352,
+    -0.051,
+    -0.0473
+   ],
+   "hourly_flow_mean_by_section": [
+    4917,
+    5906,
+    5882,
+    5864,
+    5900,
+    5599
+   ],
+   "wall_s": 388.9
+  },
+  {
+   "variant": "flow_speedcal_mmus101_gaps_measured",
+   "seed": 6914975401685141156,
+   "config_hash": "6bbb5edec238",
+   "inserted_fraction": 0.9802,
+   "n_collisions": 0,
+   "collisions": [],
+   "measured_merges": [
+    {
+     "ramp": "Old Hickory Blvd on-ramp",
+     "exit": null,
+     "kind": "acceleration_lane",
+     "edges": [
+      "977008894"
+     ],
+     "exit_edge": null,
+     "exit_edges": [],
+     "length_m": 974.9,
+     "length_m_measured": 974.9,
+     "constants": {
+      "force_within_m": 80.0,
+      "force_after_s": 4.0,
+      "pair_release_s": 2.0,
+      "exit_giveup_m": 5.0,
+      "vacate_ahead_m": null,
+      "vacate_bound_veh_h": null,
+      "exit_prepare": null,
+      "lookahead_m": 120.0,
+      "creep_ms": 3.0,
+      "request_reissue_s": 2.0
+     },
+     "vacate_window_edges": [],
+     "n_entered": 2062,
+     "n_changed_in": 2052,
+     "n_changed_out": 0,
+     "n_forced": 251,
+     "n_missed": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 10,
+     "n_crossings_in": 2052,
+     "n_crossings_out": 0,
+     "n_exec_accepted": 1801,
+     "n_exec_forced": 251,
+     "n_requests": 2065,
+     "n_requests_cancelled": 13,
+     "n_forced_deferred": 888,
+     "n_opposing_deferred": 524,
+     "refused_vehicle_steps": {
+      "lead_time": 54159,
+      "lead_guard": 4890,
+      "lag_time": 21351,
+      "lag_guard": 249,
+      "lead_model": 5562,
+      "lag_model": 32
+     },
+     "n_follower_model_checks": 1833,
+     "n_changer_model_checks": 7407,
+     "n_relax_granted_entrant": 1117,
+     "n_relax_granted_follower": 618,
+     "n_cooperations": 118451,
+     "mean_follower_decel_ms2": 0.01634368221662569,
+     "n_changer_eased": 40949,
+     "n_ceiling_vehicle_steps": 151293,
+     "n_handovers": 2066,
+     "n_arrival_changes_kept": 0,
+     "n_early_crossings": 1198,
+     "crossing_x_in_m_p10_p50_p90": [
+      4.626200491987766,
+      11.545324495344857,
+      934.6923400593112
+     ],
+     "crossing_x_out_m_p10_p50_p90": null,
+     "n_pair_releases": 548,
+     "n_vacated": 0,
+     "n_vacate_refused": 0,
+     "n_vacate_skipped_no_gap": 0,
+     "n_vacate_requests": 0,
+     "n_exit_prepared": 0,
+     "n_exited": 0,
+     "n_reached_section_exiting": 0,
+     "n_departed_exiting": 0,
+     "n_collisions_attributable": 0,
+     "wait_s_mean": 21.296539961013647,
+     "wait_in_s_mean": 21.296539961013647,
+     "wait_out_s_mean": null
+    }
+   ],
+   "measured_merge_model": {
+    "params_artifact": "artifacts/merge_model_params.json",
+    "params_sha256": "e89b4916b9d254daffbd60917c03fc1297ee8977e7339974b45b8508760b903c",
+    "parameter_set": "us101_gaps",
+    "values": {
+     "set": "us101_gaps",
+     "critical_gaps": {
+      "entering_merge": {
+       "lead": {
+        "mu": -1.2282654968949804,
+        "sigma": 1.41666,
+        "median_s": 0.29280000000000006,
+        "truncated_to_s": [
+         0.01822669365237857,
+         4.703641902096275
+        ]
+       },
+       "lag": {
+        "mu": -0.7947370363215785,
+        "sigma": 1.45526,
+        "median_s": 0.4517,
+        "truncated_to_s": [
+         0.026069369806385266,
+         7.826537101408007
+        ]
+       }
+      },
+      "entering_weave": {
+       "lead": {
+        "mu": -1.2282654968949804,
+        "sigma": 1.44422,
+        "median_s": 0.29280000000000006,
+        "truncated_to_s": [
+         0.017268267977980558,
+         4.964704051924609
+        ]
+       },
+       "lag": {
+        "mu": -0.7947370363215785,
+        "sigma": 1.27749,
+        "median_s": 0.4517,
+        "truncated_to_s": [
+         0.03693589535476462,
+         5.523973035993572
+        ]
+       }
+      },
+      "exiting_weave": {
+       "lead": null,
+       "lag": {
+        "mu": -0.6193392534152254,
+        "sigma": 1.89999,
+        "median_s": 0.5383,
+        "truncated_to_s": [
+         0.012994212351272506,
+         22.299688674213762
+        ]
+       }
+      }
+     },
+     "delta_ms": {
+      "merge": 0.62215,
+      "weave": 1.00305
+     },
+     "tau_r_s": 7.4989,
+     "relax_floor_fraction": 0.5,
+     "relax_restore_tau_r": 4.0,
+     "truncation_z": 1.9599639845400536
+    },
+    "lane_end_giveup_m": 7.5,
+    "relaxation": {
+     "n_granted_entrant": 1117,
+     "n_granted_follower": 618,
+     "n_regranted": 18,
+     "n_restored_expired": 1601,
+     "n_restored_lane_change": 102,
+     "n_restored_left": 0,
+     "n_active_at_end": 14,
+     "n_cut_ins_ahead_of_relaxed": 41,
+     "min_tau_set_s": 0.5,
+     "n_tau_writes": 101117
+    },
+    "n_av_commands_withdrawn": 0
+   },
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "attach_x_m": 3070.0699999999997,
+     "attach_end_x_m": 4044.97,
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2109,
+     "n_departed": 2094,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "attach_x_m": 5541.29,
+     "attach_end_x_m": 6014.25,
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1143,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1395,
+     "n_departed": 1395,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 690,
+     "acceleration_lane_terminated": false
+    }
+   ],
+   "rmspe_all": 0.4342,
+   "rmspe_15min": 0.2835,
+   "geh_under_5_vs_recommended": 0.1806,
+   "rmspe_train": 0.3382,
+   "rmspe_test": 0.5125,
+   "segment_mean_kmh": [
+    40.13,
+    35.54,
+    37.7,
+    35.66,
+    35.44,
+    33.88,
+    32.68,
+    28.6,
+    25.97,
+    32.67
+   ],
+   "segment_rel_error": [
+    0.2576,
+    0.2248,
+    0.3904,
+    0.2677,
+    0.0275,
+    -0.0143,
+    -0.0165,
+    0.0682,
+    -0.1155,
+    -0.0139
+   ],
+   "hourly_flow_mean_by_section": [
+    4898,
+    5864,
+    5828,
+    5768,
+    5758,
+    5468
+   ],
+   "wall_s": 413.8
+  },
+  {
+   "variant": "flow_speedcal_hhweave_measured",
+   "seed": 6914975401685141156,
+   "config_hash": "406e69ed5f52",
+   "inserted_fraction": 0.9577,
+   "n_collisions": 0,
+   "collisions": [],
+   "measured_merges": [
+    {
+     "ramp": "Old Hickory Blvd on-ramp",
+     "exit": null,
+     "kind": "acceleration_lane",
+     "edges": [
+      "977008894"
+     ],
+     "exit_edge": null,
+     "exit_edges": [],
+     "length_m": 974.9,
+     "length_m_measured": 974.9,
+     "constants": {
+      "force_within_m": 80.0,
+      "force_after_s": 4.0,
+      "pair_release_s": 2.0,
+      "exit_giveup_m": 5.0,
+      "vacate_ahead_m": null,
+      "vacate_bound_veh_h": null,
+      "exit_prepare": null,
+      "lookahead_m": 120.0,
+      "creep_ms": 3.0,
+      "request_reissue_s": 2.0
+     },
+     "vacate_window_edges": [],
+     "n_entered": 1731,
+     "n_changed_in": 1718,
+     "n_changed_out": 0,
+     "n_forced": 323,
+     "n_missed": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 13,
+     "n_crossings_in": 1718,
+     "n_crossings_out": 0,
+     "n_exec_accepted": 1395,
+     "n_exec_forced": 323,
+     "n_requests": 1766,
+     "n_requests_cancelled": 48,
+     "n_forced_deferred": 776,
+     "n_opposing_deferred": 794,
+     "refused_vehicle_steps": {
+      "lead_time": 85651,
+      "lead_guard": 7871,
+      "lag_time": 27303,
+      "lag_guard": 347,
+      "lead_model": 4738,
+      "lag_model": 26
+     },
+     "n_follower_model_checks": 1453,
+     "n_changer_model_checks": 6203,
+     "n_relax_granted_entrant": 1079,
+     "n_relax_granted_follower": 678,
+     "n_cooperations": 151399,
+     "mean_follower_decel_ms2": 0.03787341640402611,
+     "n_changer_eased": 61335,
+     "n_ceiling_vehicle_steps": 188937,
+     "n_handovers": 1736,
+     "n_arrival_changes_kept": 0,
+     "n_early_crossings": 763,
+     "crossing_x_in_m_p10_p50_p90": [
+      4.136682735521072,
+      23.532064547599703,
+      938.7083298851365
+     ],
+     "crossing_x_out_m_p10_p50_p90": null,
+     "n_pair_releases": 1463,
+     "n_vacated": 0,
+     "n_vacate_refused": 0,
+     "n_vacate_skipped_no_gap": 0,
+     "n_vacate_requests": 0,
+     "n_exit_prepared": 0,
+     "n_exited": 0,
+     "n_reached_section_exiting": 0,
+     "n_departed_exiting": 0,
+     "n_collisions_attributable": 0,
+     "wait_s_mean": 36.767171129220024,
+     "wait_in_s_mean": 36.767171129220024,
+     "wait_out_s_mean": null
+    },
+    {
+     "ramp": "Hickory Hollow Pkwy on-ramp",
+     "exit": "Bell Road off-ramp (collector road)",
+     "kind": "weave",
+     "edges": [
+      "992666043"
+     ],
+     "exit_edge": "19442635",
+     "exit_edges": [
+      "19442635"
+     ],
+     "length_m": 564.9,
+     "length_m_measured": 564.9,
+     "constants": {
+      "force_within_m": 80.0,
+      "force_after_s": 4.0,
+      "pair_release_s": 2.0,
+      "exit_giveup_m": 5.0,
+      "vacate_ahead_m": 500.0,
+      "vacate_bound_veh_h": 2050.0,
+      "exit_prepare": true,
+      "lookahead_m": 120.0,
+      "creep_ms": 3.0,
+      "request_reissue_s": 2.0
+     },
+     "vacate_window_edges": [
+      "977008891"
+     ],
+     "n_entered": 1686,
+     "n_changed_in": 1316,
+     "n_changed_out": 363,
+     "n_forced": 312,
+     "n_missed": 1,
+     "n_missed_exit": 1,
+     "n_unfinished": 6,
+     "n_crossings_in": 1316,
+     "n_crossings_out": 414,
+     "n_exec_accepted": 1410,
+     "n_exec_forced": 320,
+     "n_requests": 1730,
+     "n_requests_cancelled": 0,
+     "n_forced_deferred": 400,
+     "n_opposing_deferred": 516,
+     "refused_vehicle_steps": {
+      "lead_time": 14709,
+      "lead_guard": 708,
+      "lag_time": 19372,
+      "lag_guard": 113,
+      "lead_model": 1690,
+      "lag_model": 195
+     },
+     "n_follower_model_checks": 1583,
+     "n_changer_model_checks": 3274,
+     "n_relax_granted_entrant": 382,
+     "n_relax_granted_follower": 463,
+     "n_cooperations": 45449,
+     "mean_follower_decel_ms2": -0.04811550329371612,
+     "n_changer_eased": 13808,
+     "n_ceiling_vehicle_steps": 53160,
+     "n_handovers": 1321,
+     "n_arrival_changes_kept": 122,
+     "n_early_crossings": 781,
+     "crossing_x_in_m_p10_p50_p90": [
+      6.33770527458455,
+      20.02125484192493,
+      536.1977458755409
+     ],
+     "crossing_x_out_m_p10_p50_p90": [
+      7.2024730425390775,
+      37.55647060820684,
+      535.46298101139
+     ],
+     "n_pair_releases": 11,
+     "n_vacated": 660,
+     "n_vacate_refused": 672,
+     "n_vacate_skipped_no_gap": 548,
+     "n_vacate_requests": 1332,
+     "n_exit_prepared": 234,
+     "n_exited": 552,
+     "n_reached_section_exiting": 559,
+     "n_departed_exiting": 642,
+     "n_collisions_attributable": 0,
+     "wait_s_mean": 11.254913639070876,
+     "wait_in_s_mean": 11.532294832826748,
+     "wait_out_s_mean": 10.24931129476584
+    }
+   ],
+   "measured_merge_model": {
+    "params_artifact": "artifacts/merge_model_params.json",
+    "params_sha256": "e89b4916b9d254daffbd60917c03fc1297ee8977e7339974b45b8508760b903c",
+    "parameter_set": "central",
+    "values": {
+     "set": "central",
+     "critical_gaps": {
+      "entering_merge": {
+       "lead": {
+        "mu": -0.87379,
+        "sigma": 1.41666,
+        "median_s": 0.41736672800928093,
+        "truncated_to_s": [
+         0.025980927227188425,
+         6.704725513679208
+        ]
+       },
+       "lag": {
+        "mu": -0.53043,
+        "sigma": 1.45526,
+        "median_s": 0.5883519239501241,
+        "truncated_to_s": [
+         0.03395608563593989,
+         10.194284174187356
+        ]
+       }
+      },
+      "entering_weave": {
+       "lead": {
+        "mu": -0.77952,
+        "sigma": 1.44422,
+        "median_s": 0.4586260990074729,
+        "truncated_to_s": [
+         0.02704808189671066,
+         7.776444166874237
+        ]
+       },
+       "lag": {
+        "mu": -0.08327,
+        "sigma": 1.27749,
+        "median_s": 0.9201026859541556,
+        "truncated_to_s": [
+         0.07523758362639038,
+         11.252208163728174
+        ]
+       }
+      },
+      "exiting_weave": {
+       "lead": null,
+       "lag": {
+        "mu": 0.10501,
+        "sigma": 1.89999,
+        "median_s": 1.1107217175173445,
+        "truncated_to_s": [
+         0.02681210079990802,
+         46.012908237645895
+        ]
+       }
+      }
+     },
+     "delta_ms": {
+      "merge": 0.62215,
+      "weave": 1.00305
+     },
+     "tau_r_s": 7.4989,
+     "relax_floor_fraction": 0.5,
+     "relax_restore_tau_r": 4.0,
+     "truncation_z": 1.9599639845400536
+    },
+    "lane_end_giveup_m": 7.5,
+    "relaxation": {
+     "n_granted_entrant": 1461,
+     "n_granted_follower": 1141,
+     "n_regranted": 11,
+     "n_restored_expired": 2372,
+     "n_restored_lane_change": 212,
+     "n_restored_left": 0,
+     "n_active_at_end": 7,
+     "n_cut_ins_ahead_of_relaxed": 73,
+     "min_tau_set_s": 0.5,
+     "n_tau_writes": 149453
+    },
+    "n_av_commands_withdrawn": 0
+   },
+   "ramps": [
+    {
+     "index": 0,
+     "name": "Old Hickory Blvd on-ramp",
+     "kind": "on",
+     "attach_edge": "977008894",
+     "attach_x_m": 3070.0699999999997,
+     "attach_end_x_m": 4044.97,
+     "edges": [
+      "1070403831#1"
+     ],
+     "n_planned": 2109,
+     "n_departed": 1766,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 1,
+     "name": "Hickory Hollow Pkwy off-ramp",
+     "kind": "off",
+     "attach_edge": "977008892",
+     "attach_x_m": 5541.29,
+     "attach_end_x_m": 6014.25,
+     "edges": [
+      "1138588478"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 1143,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 2,
+     "name": "Hickory Hollow Pkwy on-ramp",
+     "kind": "on",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19441652#0",
+      "19441652#1"
+     ],
+     "n_planned": 1395,
+     "n_departed": 1395,
+     "n_planned_exiting": 0,
+     "acceleration_lane_terminated": false
+    },
+    {
+     "index": 3,
+     "name": "Bell Road off-ramp (collector road)",
+     "kind": "off",
+     "attach_edge": "992666043",
+     "attach_x_m": 6603.83,
+     "attach_end_x_m": 7168.73,
+     "edges": [
+      "19442635"
+     ],
+     "n_planned": 0,
+     "n_departed": 0,
+     "n_planned_exiting": 690,
+     "acceleration_lane_terminated": false
+    }
+   ],
+   "rmspe_all": 0.3997,
+   "rmspe_15min": 0.2613,
+   "geh_under_5_vs_recommended": 0.1736,
+   "rmspe_train": 0.3493,
+   "rmspe_test": 0.4444,
+   "segment_mean_kmh": [
+    32.85,
+    29.97,
+    32.93,
+    31.78,
+    31.6,
+    30.41,
+    30.34,
+    26.98,
+    38.85,
+    34.97
+   ],
+   "segment_rel_error": [
+    -0.0069,
+    -0.0003,
+    0.184,
+    0.1208,
+    -0.087,
+    -0.0999,
+    -0.0831,
+    -0.0014,
+    0.308,
+    0.0593
+   ],
+   "hourly_flow_mean_by_section": [
+    4900,
+    5705,
+    5654,
+    5581,
+    5598,
+    5337
+   ],
+   "wall_s": 471.2
+  }
+ ]
+}

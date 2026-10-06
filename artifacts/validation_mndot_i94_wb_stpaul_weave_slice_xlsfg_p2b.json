@@ -1,0 +1,850 @@
+{
+  "schema": "flowstate.corridor_validation/1",
+  "created_at": "2026-10-06T08:36:45Z",
+  "scenario": "scenarios/mndot_i94_wb_stpaul_weave_slice_xlsfg.yaml",
+  "corridor": "I-94 WB",
+  "config_hash": "b8edc55681b3",
+  "seeds": [
+    6914975401685141156,
+    134183728835869882,
+    2378473973028931053,
+    3747978530954135749
+  ],
+  "replicates": 4,
+  "wall_s": 76.9,
+  "versions": {
+    "python": "3.12.15",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "pyarrow": "25.0.1",
+    "eclipse-sumo": "1.27.1",
+    "libsumo": "1.27.1",
+    "flowstate_core": "2.0.0",
+    "microsim": "2.0.0"
+  },
+  "criteria_profile": {
+    "name": "fhwa_tat3_2004",
+    "source": "FHWA Traffic Analysis Toolbox Vol. III (2004, FHWA-HRT-04-040), \u00a75.6 'Calibration Targets', Wisconsin DOT freeway model calibration criteria (captioned 'Table 4' on the HTML edition at https://ops.fhwa.dot.gov/trafficanalysistools/tat_vol3/sect5.htm, verified 2026-09-03; attributed there to WisDOT District 2, Paramics Calibration and Validation Guidelines, Technical Report I-33, June 2002). Transcribed row: 'GEH Statistic < 5 for Individual Link Flows: > 85% of cases' \u2014 strict '> 85%' (geh_pass_inclusive=False). Rows of that table NOT evaluated by FlowState: individual link flows within 15% / 100 veh/h / 400 veh/h by flow band for > 85% of cases; sum of all link flows within 5%; GEH < 4 for the sum of all link flows; journey times within 15% (or 1 min, if higher) for > 85% of cases; visual audits of speed-flow relationships and bottleneck queuing 'to analyst's satisfaction'. The table defines no RMSPE speed bound, so this profile produces no speeds_rmspe row (rmspe_max=None). The 2004 volume gives no fixed minimum run count (its \u00a75 example uses ten replications to estimate a parameter within 5%), so min_seeds keeps FlowState's 20 (CLAUDE.md \u00a70.6). The segment-speed RMSPE <= 15% bound is FlowState's own convention (CLAUDE.md \u00a77.1, 'common microsim practice'); the 14-22 km/h emergent backward wave-speed band is the empirical stop-and-go literature value (flowstate_core.constants.WAVE_SPEED_BAND_KMH); the ring emergence/dampening rows reproduce Sugiyama et al. (2008) and Stern et al. (2018) per CLAUDE.md \u00a73.2.1; min_seeds = 20 and the penetration {1,2,5,10,15,20}% x compliance {25,50,80,100}% grid are CLAUDE.md \u00a70.6/\u00a77.1 internal standards; so is the no_collisions model-integrity row (zero SUMO collisions in every run, each run recording the counter; CLAUDE.md \u00a73.3 and the owner decision of 2026-10-04), present in every profile. None of these is prescribed by the cited DOT/FHWA documents. The wave-speed row is measured with the profile's wave_detector (validation.waves.WAVE_DETECTORS; default 'stack', chosen on the planted-stripe benchmark in validation.waves), and the evaluated row names that detector and its parameters."
+  },
+  "criteria": [
+    {
+      "name": "link_flows_geh",
+      "value": null,
+      "threshold": "GEH < 5 for > 85% of link-hour comparisons",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "wave_speed",
+      "value": null,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)",
+      "passed": false,
+      "evaluated": true,
+      "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    {
+      "name": "ring_emergence",
+      "value": null,
+      "threshold": "Sugiyama ring emergence benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "ring_dampening",
+      "value": null,
+      "threshold": "Stern single-AV dampening benchmark reproduced",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "n_seeds",
+      "value": 4.0,
+      "threshold": "n_seeds >= 20",
+      "passed": false,
+      "evaluated": true,
+      "detail": ""
+    },
+    {
+      "name": "sensitivity_grid",
+      "value": null,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs",
+      "passed": false,
+      "evaluated": false,
+      "detail": "not evaluated: input not supplied"
+    },
+    {
+      "name": "no_collisions",
+      "value": 0.0,
+      "threshold": "zero SUMO collisions in every run, each run recording the counter",
+      "passed": true,
+      "evaluated": true,
+      "detail": "no collision in 4 run(s); FlowState internal standard (CLAUDE.md \u00a73.3; owner decision 2026-10-04), not an FHWA or DOT criterion"
+    }
+  ],
+  "observations": {
+    "path": "data/mndot/mndot_i94_wb_stpaul/observations.json",
+    "corridor": "I-94 WB",
+    "provider": "MnDOT RTMC Mayfly API",
+    "dates": "20260901, 20260902, 20260903, 20260908, 20260909, 20260910, 20260915, 20260916, 20260917",
+    "url": "https://data.dot.state.mn.us/mayfly",
+    "aggregation": "mean over dates per window (weekday typical profile)",
+    "t0_local": "05:30",
+    "window_s": 300.0,
+    "n_stations": 14,
+    "n_windows": 48,
+    "n_windows_compared": 6,
+    "flow_fraction": 1.0,
+    "speed_fraction": 1.0,
+    "n_link_hours": 0,
+    "n_speed_cells": 336,
+    "n_replicates": 4,
+    "n_stations_outside_span": 0,
+    "stations_outside_span": "",
+    "note": "",
+    "detector_wave_speed": {
+      "median_kmh": 21.26495534474855,
+      "iqr_kmh": [
+        18.58513742016639,
+        24.17925039834189
+      ],
+      "n_pairs": 13,
+      "n_used": 6,
+      "rejections": "2 fewer than min_events congested episodes downstream, 4 peak correlation below the acceptance floor, 1 peak lag is not positive (no backward propagation)",
+      "loo_n_dates": 9,
+      "loo_median_min_kmh": 18.449720849605693,
+      "loo_median_max_kmh": 21.57559690402194,
+      "loo_pairs_min": 5
+    }
+  },
+  "x_offset_m": 0.0,
+  "insertion": {
+    "n_runs": 4,
+    "planned": 23060,
+    "departed": 22367,
+    "mean_arrived": 4392.0,
+    "n_with_arrived": 4,
+    "mean_departed_fraction": 0.9699479618386817,
+    "min_departed_fraction": 0.9660017346053773,
+    "starved_ramps": [],
+    "verdict": "backlog: 3 % of planned vehicles never departed"
+  },
+  "weave_exits": {
+    "threshold_share": 0.02,
+    "n_runs": 4,
+    "sections": [
+      {
+        "ramp": "on-ramp 745524613",
+        "exit": "C-D split 18208090",
+        "n_runs": 4,
+        "reached": 991,
+        "missed_exit": {
+          "n": 18,
+          "share": 0.018163471241170535
+        },
+        "flagged": false
+      },
+      {
+        "ramp": "on-ramp 769818012",
+        "exit": "off-ramp 18207598",
+        "n_runs": 4,
+        "reached": 1865,
+        "missed_exit": {
+          "n": 5,
+          "share": 0.002680965147453083
+        },
+        "flagged": false
+      }
+    ],
+    "verdict": "ok"
+  },
+  "collisions": {
+    "n_runs": 4,
+    "n_runs_recorded": 4,
+    "runs_not_recorded": [],
+    "total": 0,
+    "n_runs_with_collisions": 0,
+    "runs_with_collisions": [],
+    "per_run": {
+      "mean": 0.0,
+      "lo95": 0.0,
+      "hi95": 0.0,
+      "n": 4,
+      "underpowered": true
+    },
+    "rate": {
+      "per_vehicles": 1000,
+      "value": 0.0,
+      "n_collisions": 0,
+      "n_departed": 22367,
+      "n_runs": 4
+    },
+    "n_logged": 0,
+    "locations": [],
+    "definition": "total is the sum of meta.json n_collisions over the n_runs_recorded replicates that record the counter: SUMO collision detections over the whole run, warm-up included, a colliding pair counted once when it is first detected (docs/CONTRACTS.md). per_run is the two-sided t-interval over those per-replicate counts. rate.value = rate.per_vehicles * rate.n_collisions / rate.n_departed over the rate.n_runs replicates that record both n_collisions and n_vehicles_departed (null when no vehicle departed). locations groups the logged events (meta.json collisions: each run lists its first events only, n_logged of total) by SUMO lane; edge is the lane id without its _<index> suffix, pos_m_min / pos_m_max the positions along the lane [m], runs the replicates in which the lane had one. A replicate without the counter is not recorded (per_seed n_collisions null), never zero; the block is null when no replicate records it."
+  },
+  "zero_collisions": true,
+  "geh": {
+    "pooled_values": [],
+    "n_comparisons": 0,
+    "threshold": 5.0,
+    "pass_fraction_pooled": null,
+    "pass_fraction_ci": {
+      "mean": null,
+      "lo95": null,
+      "hi95": null,
+      "n": 0,
+      "underpowered": true
+    },
+    "definition": "hourly volumes at every mainline station, per replicate, pooled across replicates for the criterion row; the CI is over the per-replicate pass fractions",
+    "link_hours": {
+      "t0_local": "05:30",
+      "window_s": 3600.0,
+      "n_seeds": 4,
+      "rows": [],
+      "definition": "one row per compared station-hour: station id, x_ref_m in the observations' coordinates (simulation x = x_ref_m + x_offset_m), window_start_s from t0_local and its local clock label, the observed hourly volume, and over the n_seeds seeds that compared it the mean, min and max simulated hourly volume and GEH; pooled_values is per_seed[i].link_hours[*].geh concatenated in seed order"
+    }
+  },
+  "rmspe": {
+    "mean": 0.4607400403509002,
+    "ci": {
+      "mean": 0.4607400403509002,
+      "lo95": 0.43738515426928914,
+      "hi95": 0.4840949264325113,
+      "n": 4,
+      "underpowered": true
+    },
+    "n_speed_cells_pooled": 336
+  },
+  "wave_speed": {
+    "detector": "stack",
+    "detector_description": "stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected",
+    "mean_kmh": null,
+    "ci": {
+      "mean": null,
+      "lo95": null,
+      "hi95": null,
+      "n": 0,
+      "underpowered": true
+    },
+    "n_replicates_with_backward_front": 0
+  },
+  "metrics_ci": {
+    "throughput_veh_h": {
+      "mean": 3328.5,
+      "lo95": 3238.435270187178,
+      "hi95": 3418.564729812822,
+      "n": 4,
+      "underpowered": true
+    },
+    "mean_tt_s": {
+      "mean": 316.69260047587824,
+      "lo95": 285.0431499465167,
+      "hi95": 348.3420510052398,
+      "n": 4,
+      "underpowered": true
+    },
+    "p90_tt_s": {
+      "mean": 698.8568304772317,
+      "lo95": 631.3627762489855,
+      "hi95": 766.3508847054779,
+      "n": 4,
+      "underpowered": true
+    },
+    "sigma_v_spatial_ms": {
+      "mean": 7.4362739404531135,
+      "lo95": 7.389841862850742,
+      "hi95": 7.482706018055485,
+      "n": 4,
+      "underpowered": true
+    },
+    "sigma_v_temporal_ms": {
+      "mean": 4.270573031352554,
+      "lo95": 4.028895301691695,
+      "hi95": 4.512250761013413,
+      "n": 4,
+      "underpowered": true
+    },
+    "vmt_veh_km": {
+      "mean": 20908.23978683407,
+      "lo95": 20662.691146569814,
+      "hi95": 21153.788427098327,
+      "n": 4,
+      "underpowered": true
+    },
+    "vht_veh_h": {
+      "mean": 404.9148958333326,
+      "lo95": 375.6553043896163,
+      "hi95": 434.1744872770489,
+      "n": 4,
+      "underpowered": true
+    },
+    "fuel_ml_per_veh_km": {
+      "mean": 85.18484084438771,
+      "lo95": 83.3471651313439,
+      "hi95": 87.02251655743152,
+      "n": 4,
+      "underpowered": true
+    },
+    "wave_count": {
+      "mean": 13.75,
+      "lo95": 8.492538342848995,
+      "hi95": 19.007461657151005,
+      "n": 4,
+      "underpowered": true
+    },
+    "wave_speed_kmh": {
+      "mean": 7.431021465204197,
+      "lo95": 4.997993598115849,
+      "hi95": 9.864049332292545,
+      "n": 4,
+      "underpowered": true
+    },
+    "wave_amplitude_ms": {
+      "mean": 15.266301522829206,
+      "lo95": 14.676694484282812,
+      "hi95": 15.8559085613756,
+      "n": 4,
+      "underpowered": true
+    },
+    "n_travel_time_veh": {
+      "mean": 1448.25,
+      "lo95": 1341.3939053601523,
+      "hi95": 1555.1060946398477,
+      "n": 4,
+      "underpowered": true
+    }
+  },
+  "waiting": {
+    "n_runs": 4,
+    "n_runs_recorded": 4,
+    "runs_not_recorded": [],
+    "ci": {
+      "insertion_delay_veh_h": {
+        "mean": 25.03735602223939,
+        "lo95": 18.84536907189117,
+        "hi95": 31.22934297258761,
+        "n": 4,
+        "underpowered": true
+      },
+      "meter_wait_veh_h": {
+        "mean": 0.0,
+        "lo95": 0.0,
+        "hi95": 0.0,
+        "n": 4,
+        "underpowered": true
+      },
+      "total_delay_incl_waiting_veh_h": {
+        "mean": 215.10866257534423,
+        "lo95": 180.1096500021259,
+        "hi95": 250.10767514856255,
+        "n": 4,
+        "underpowered": true
+      },
+      "mean_tt_incl_waiting_s": {
+        "mean": 360.61105556196514,
+        "lo95": 332.06835482135494,
+        "hi95": 389.15375630257535,
+        "n": 4,
+        "underpowered": true
+      },
+      "p90_tt_incl_waiting_s": {
+        "mean": 711.39840016629,
+        "lo95": 658.2182925307258,
+        "hi95": 764.5785078018542,
+        "n": 4,
+        "underpowered": true
+      },
+      "n_censored": {
+        "mean": 1373.0,
+        "lo95": 1244.961730272959,
+        "hi95": 1501.038269727041,
+        "n": 4,
+        "underpowered": true
+      },
+      "n_demand_veh": {
+        "mean": 4975.0,
+        "lo95": 4975.0,
+        "hi95": 4975.0,
+        "n": 4,
+        "underpowered": true
+      },
+      "n_not_inserted": {
+        "mean": 173.25,
+        "lo95": 145.6777252619335,
+        "hi95": 200.8222747380665,
+        "n": 4,
+        "underpowered": true
+      },
+      "n_tt_incl_waiting_veh": {
+        "mean": 4419.0,
+        "lo95": 4410.092939777507,
+        "hi95": 4427.907060222493,
+        "n": 4,
+        "underpowered": true
+      },
+      "n_tt_censored": {
+        "mean": 817.0,
+        "lo95": 682.1866762142852,
+        "hi95": 951.8133237857148,
+        "n": 4,
+        "underpowered": true
+      }
+    },
+    "definition": "validation.metrics.WaitingMetrics per replicate over its measurement window (docs/FRISCO_PROTOCOL.md section 8.2): travel time and total delay counted from each vehicle's planned departure, so time waiting on ramps and to enter the network is included; t-intervals over the replicates that carry a demand ledger (journeys.parquet); a replicate without one is listed in runs_not_recorded, never counted as zero"
+  },
+  "per_seed": [
+    {
+      "seed": 6914975401685141156,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_slice_xlsfg/p2b/b8edc55681b3/6914975401685141156",
+      "geh_pass_fraction": null,
+      "n_link_hours": 0,
+      "rmspe": 0.4557703389676322,
+      "n_speed_cells": 84,
+      "criterion_wave_speed_kmh": null,
+      "metrics": {
+        "throughput_veh_h": 3306.0,
+        "mean_tt_s": 306.1524648734824,
+        "p90_tt_s": 703.9989527232343,
+        "sigma_v_spatial_ms": 7.411338093865602,
+        "sigma_v_temporal_ms": 4.255536816111598,
+        "vmt_veh_km": 20997.537246186672,
+        "vht_veh_h": 396.6215277777777,
+        "fuel_ml_per_veh_km": 84.48084508772939,
+        "wave_count": 17,
+        "wave_speed_kmh": 6.086651555991179,
+        "wave_amplitude_ms": 15.366548650357672,
+        "n_travel_time_veh": 1468
+      },
+      "insertion": {
+        "planned": 5765,
+        "departed": 5602,
+        "arrived": 4440,
+        "departed_fraction": 0.9717259323503903,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 288,
+            "departed": 288,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 267,
+            "departed": 267,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 181,
+            "departed": 181,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 108,
+            "departed": 108,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 206,
+            "departed": 206,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 1030,
+            "departed": 1030,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 576,
+            "departed": 488,
+            "fraction": 0.8472222222222222,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 781,
+            "departed": 706,
+            "fraction": 0.9039692701664532,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 3 % of planned vehicles never departed"
+      },
+      "link_hours": [],
+      "n_collisions": 0,
+      "waiting": {
+        "insertion_delay_veh_h": 22.995972502335444,
+        "meter_wait_veh_h": 0.0,
+        "total_delay_incl_waiting_veh_h": 203.95991739210055,
+        "mean_tt_incl_waiting_s": 352.4786734347433,
+        "p90_tt_incl_waiting_s": 701.1020783824914,
+        "n_censored": 1325,
+        "n_demand_veh": 4975,
+        "n_not_inserted": 163,
+        "n_tt_incl_waiting_veh": 4420,
+        "n_tt_censored": 770
+      }
+    },
+    {
+      "seed": 134183728835869882,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_slice_xlsfg/p2b/b8edc55681b3/134183728835869882",
+      "geh_pass_fraction": null,
+      "n_link_hours": 0,
+      "rmspe": 0.45203599598503275,
+      "n_speed_cells": 84,
+      "criterion_wave_speed_kmh": null,
+      "metrics": {
+        "throughput_veh_h": 3280.0,
+        "mean_tt_s": 301.5167985973027,
+        "p90_tt_s": 658.4914970472302,
+        "sigma_v_spatial_ms": 7.471785043417466,
+        "sigma_v_temporal_ms": 4.308874344500515,
+        "vmt_veh_km": 20678.019540997895,
+        "vht_veh_h": 396.31444444444423,
+        "fuel_ml_per_veh_km": 85.45126580557691,
+        "wave_count": 10,
+        "wave_speed_kmh": 9.55,
+        "wave_amplitude_ms": 15.723916564140415,
+        "n_travel_time_veh": 1406
+      },
+      "insertion": {
+        "planned": 5765,
+        "departed": 5588,
+        "arrived": 4352,
+        "departed_fraction": 0.9692974848222029,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 288,
+            "departed": 288,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 267,
+            "departed": 267,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 181,
+            "departed": 181,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 108,
+            "departed": 108,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 206,
+            "departed": 206,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 1030,
+            "departed": 1030,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 576,
+            "departed": 488,
+            "fraction": 0.8472222222222222,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 781,
+            "departed": 692,
+            "fraction": 0.8860435339308579,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 3 % of planned vehicles never departed"
+      },
+      "link_hours": [],
+      "n_collisions": 0,
+      "waiting": {
+        "insertion_delay_veh_h": 26.65536846462811,
+        "meter_wait_veh_h": 0.0,
+        "total_delay_incl_waiting_veh_h": 212.2580444982971,
+        "mean_tt_incl_waiting_s": 356.1371705591123,
+        "p90_tt_incl_waiting_s": 704.8591753211815,
+        "n_censored": 1413,
+        "n_demand_veh": 4975,
+        "n_not_inserted": 177,
+        "n_tt_incl_waiting_veh": 4424,
+        "n_tt_censored": 862
+      }
+    },
+    {
+      "seed": 2378473973028931053,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_slice_xlsfg/p2b/b8edc55681b3/2378473973028931053",
+      "geh_pass_fraction": null,
+      "n_link_hours": 0,
+      "rmspe": 0.4826156447392901,
+      "n_speed_cells": 84,
+      "criterion_wave_speed_kmh": null,
+      "metrics": {
+        "throughput_veh_h": 3410.0,
+        "mean_tt_s": 345.5940072875488,
+        "p90_tt_s": 755.9736859309294,
+        "sigma_v_spatial_ms": 7.448531749901962,
+        "sigma_v_temporal_ms": 4.442298699432889,
+        "vmt_veh_km": 20995.03802572225,
+        "vht_veh_h": 432.4526388888868,
+        "fuel_ml_per_veh_km": 86.69570482357376,
+        "wave_count": 12,
+        "wave_speed_kmh": 7.5,
+        "wave_amplitude_ms": 15.12306655507406,
+        "n_travel_time_veh": 1385
+      },
+      "insertion": {
+        "planned": 5765,
+        "departed": 5569,
+        "arrived": 4300,
+        "departed_fraction": 0.9660017346053773,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 288,
+            "departed": 288,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 267,
+            "departed": 267,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 181,
+            "departed": 181,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 108,
+            "departed": 108,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 206,
+            "departed": 206,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 1030,
+            "departed": 1030,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 576,
+            "departed": 492,
+            "fraction": 0.8541666666666666,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 781,
+            "departed": 669,
+            "fraction": 0.8565941101152369,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 3 % of planned vehicles never departed"
+      },
+      "link_hours": [],
+      "n_collisions": 0,
+      "waiting": {
+        "insertion_delay_veh_h": 29.639525550406503,
+        "meter_wait_veh_h": 0.0,
+        "total_delay_incl_waiting_veh_h": 246.81596820347218,
+        "mean_tt_incl_waiting_s": 386.90994627603993,
+        "p90_tt_incl_waiting_s": 758.9337901696583,
+        "n_censored": 1465,
+        "n_demand_veh": 4975,
+        "n_not_inserted": 196,
+        "n_tt_incl_waiting_veh": 4421,
+        "n_tt_censored": 911
+      }
+    },
+    {
+      "seed": 3747978530954135749,
+      "run_dir": "runs/mndot_i94_wb_stpaul_weave_slice_xlsfg/p2b/b8edc55681b3/3747978530954135749",
+      "geh_pass_fraction": null,
+      "n_link_hours": 0,
+      "rmspe": 0.45253818171164595,
+      "n_speed_cells": 84,
+      "criterion_wave_speed_kmh": null,
+      "metrics": {
+        "throughput_veh_h": 3318.0,
+        "mean_tt_s": 313.5071311451791,
+        "p90_tt_s": 676.963186207533,
+        "sigma_v_spatial_ms": 7.413440874627422,
+        "sigma_v_temporal_ms": 4.075582265365213,
+        "vmt_veh_km": 20962.36433442947,
+        "vht_veh_h": 394.27097222222164,
+        "fuel_ml_per_veh_km": 84.1115476606708,
+        "wave_count": 16,
+        "wave_speed_kmh": 6.587434304825609,
+        "wave_amplitude_ms": 14.851674321744675,
+        "n_travel_time_veh": 1534
+      },
+      "insertion": {
+        "planned": 5765,
+        "departed": 5608,
+        "arrived": 4476,
+        "departed_fraction": 0.9727666955767563,
+        "ramps": [
+          {
+            "name": "on-ramp 1077665160",
+            "planned": 0,
+            "departed": 0,
+            "fraction": null,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207436",
+            "planned": 288,
+            "departed": 288,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 18207653",
+            "planned": 267,
+            "departed": 267,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 178547099",
+            "planned": 181,
+            "departed": 181,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 745524613",
+            "planned": 108,
+            "departed": 108,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "C-D re-entry 745524608",
+            "planned": 206,
+            "departed": 206,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 53062592",
+            "planned": 1030,
+            "departed": 1030,
+            "fraction": 1.0,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 40648744",
+            "planned": 576,
+            "departed": 486,
+            "fraction": 0.84375,
+            "starved": false
+          },
+          {
+            "name": "on-ramp 769818012",
+            "planned": 781,
+            "departed": 714,
+            "fraction": 0.9142125480153649,
+            "starved": false
+          }
+        ],
+        "starved_ramps": [],
+        "verdict": "backlog: 3 % of planned vehicles never departed"
+      },
+      "link_hours": [],
+      "n_collisions": 0,
+      "waiting": {
+        "insertion_delay_veh_h": 20.858557571587497,
+        "meter_wait_veh_h": 0.0,
+        "total_delay_incl_waiting_veh_h": 197.4007202075071,
+        "mean_tt_incl_waiting_s": 346.91843197796504,
+        "p90_tt_incl_waiting_s": 680.698556791829,
+        "n_censored": 1289,
+        "n_demand_veh": 4975,
+        "n_not_inserted": 157,
+        "n_tt_incl_waiting_veh": 4411,
+        "n_tt_censored": 725
+      }
+    }
+  ],
+  "ring": null,
+  "notes": [
+    "Observed comparisons cover only the artifact's stations and windows; a station-window the detector did not measure is skipped, never imputed.",
+    "The run's configured warm-up is discarded from every metric and from every observed comparison.",
+    "The wave_speed row is measured with the profile's own detector on its own bins; validation.metrics.wave_speed_kmh in metrics_ci is the standard detector's separate diagnostic.",
+    "The insertion block counts the vehicles the runs actually put on the network against their demand plan; a mean departed fraction well under 1 means the metrics above describe less demand than was configured.",
+    "The weave_exits block counts, per weaving section, the exit-bound vehicles given up at the gore's end and rerouted through; the exit's link flow is short by missed_exit.n and every mainline link downstream carries them, so the geh rows are wrong by that count on those links (flagged above threshold_share of reached exiters).",
+    "Ring rows not evaluated (--ring-seeds 0); reported as failing per CLAUDE.md \u00a70.1."
+  ],
+  "report_path": "docs/reports/mndot_i94_wb_stpaul_weave_slice_xlsfg_p2b/report.md"
+}

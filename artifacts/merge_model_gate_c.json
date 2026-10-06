@@ -1,0 +1,122 @@
+{
+ "scenario": "scenarios/mndot_i94_wb_stpaul_weave_measured.yaml",
+ "artifact": "artifacts/uncertainty_mndot_i94_wb_stpaul_p1_rehearsal.json",
+ "rows": [
+  {
+   "sample_id": "s00",
+   "seed": 5128615122007998373,
+   "collisions_recorded_before": 1,
+   "config_hash": "505fbe010b1b",
+   "n_collisions": 0,
+   "collisions": [],
+   "departed_fraction": 0.9052076578227648,
+   "zones": [
+    {
+     "ramp": "on-ramp 18207436",
+     "kind": "acceleration_lane",
+     "n_changed_in": 1439,
+     "n_changed_out": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 3,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 178547099",
+     "kind": "acceleration_lane",
+     "n_changed_in": 1338,
+     "n_changed_out": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 3,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 745524613",
+     "kind": "weave",
+     "n_changed_in": 924,
+     "n_changed_out": 509,
+     "n_missed_exit": 12,
+     "n_unfinished": 3,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 40648744",
+     "kind": "acceleration_lane",
+     "n_changed_in": 2016,
+     "n_changed_out": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 0,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 769818012",
+     "kind": "weave",
+     "n_changed_in": 3178,
+     "n_changed_out": 2610,
+     "n_missed_exit": 36,
+     "n_unfinished": 4,
+     "n_collisions_attributable": 0
+    }
+   ],
+   "wall_s": 1302.4,
+   "run_dir": "runs/merge_model_gate_c/505fbe010b1b/5128615122007998373"
+  },
+  {
+   "sample_id": "s02",
+   "seed": 303958152840581829,
+   "collisions_recorded_before": 1,
+   "config_hash": "63b06425aa15",
+   "n_collisions": 0,
+   "collisions": [],
+   "departed_fraction": 0.7727808148841705,
+   "zones": [
+    {
+     "ramp": "on-ramp 18207436",
+     "kind": "acceleration_lane",
+     "n_changed_in": 563,
+     "n_changed_out": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 28,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 178547099",
+     "kind": "acceleration_lane",
+     "n_changed_in": 1224,
+     "n_changed_out": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 4,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 745524613",
+     "kind": "weave",
+     "n_changed_in": 846,
+     "n_changed_out": 481,
+     "n_missed_exit": 6,
+     "n_unfinished": 5,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 40648744",
+     "kind": "acceleration_lane",
+     "n_changed_in": 1701,
+     "n_changed_out": 0,
+     "n_missed_exit": 0,
+     "n_unfinished": 3,
+     "n_collisions_attributable": 0
+    },
+    {
+     "ramp": "on-ramp 769818012",
+     "kind": "weave",
+     "n_changed_in": 2778,
+     "n_changed_out": 2245,
+     "n_missed_exit": 15,
+     "n_unfinished": 5,
+     "n_collisions_attributable": 0
+    }
+   ],
+   "wall_s": 1629.5,
+   "run_dir": "runs/merge_model_gate_c/63b06425aa15/303958152840581829"
+  }
+ ]
+}

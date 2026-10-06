@@ -204,3 +204,30 @@ CHANGELOG; results made with them are reproduced from release 2.5.0. Keys
 that are on by default or used by the reference (`exit_prepare`, the vacate
 window, pair release, give-ups, forcing, `force_guard` of the scripted merge)
 stay.
+
+### Gate C and where the model stands — 2026-10-06
+
+**Gate C (`artifacts/merge_model_gate_c.json`)** — passes: the two phase-1
+(sample, seed) pairs that collided under the weave reference (s00 headway
+×0.90, s02 ×1.43) run for four hours on `measured` with zero collisions
+(departed 0.905 and 0.773; the low share at ×1.43 is the long-headway
+population's own capacity).
+
+**Where it stands.** `measured` is safer than the models it was meant to
+replace (no collision anywhere, far fewer hard stops, no lock on the
+fixtures, the phase-1 collisions gone) and level with them on throughput, but
+it does not lift merge capacity: I-24's acceptance (1) is not approached
+(gate A), and the self-check against the real-driver measurements still fails
+(entrants cross slower than their new partners). The T.H.52 section test
+cannot be passed at its locked seed by any merge model on its fixture
+(A3). Acceptance (2), (4), (5) need the 20-seed corridor battery, not run in
+this phase. Not accepted; not a default.
+
+**What the evidence now says about the shortfall.** In SUMO a ramp vehicle
+brakes for the end of its lane and the runner can only lower speeds, so an
+entrant cannot be brought to the target lane's speed before it changes; and on
+I-24 the measured model's merge admits every ramp vehicle yet the downstream
+sections still discharge about 5,880 veh/h — the shortfall sits downstream of
+the merge, in how the queue discharges, at least as much as in the merge's
+gap acceptance. The next research question is the discharge (the population's
+queue-discharge rate and SUMO's lane-end behaviour), not more acceptance rules.
