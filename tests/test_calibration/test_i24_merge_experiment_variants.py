@@ -184,11 +184,12 @@ def test_oh_suffix_composes_with_the_other_suffixes(mod: ModuleType) -> None:
     assert lanes["network"]["entry_lane_shares"] == mod.observed_entry_lane_shares()
     assert flow["name"].endswith("_entryflow_oh0.55")
     assert lanes["name"].endswith("_entrylanes_oh0.55")
-    scripted = mod.variant_config("geometry_corrected_ramplc1_entrylanes_scripted_court2_oh1.6")
+    scripted = mod.variant_config("geometry_corrected_ramplc1_entrylanes_scripted_accept0.3_oh1.6")
     assert _oh(scripted, mod)["merge"] == "scripted"
-    assert _oh(scripted, mod)["merge_params"] == {"courtesy": 2.0}
+    assert _oh(scripted, mod)["merge_params"] == {"accept_gap_s": 0.3}
     assert (
-        scripted["name"] == "i24_merge_geometry_corrected_ramplc1_entrylanes_oh1.6_scripted_court2"
+        scripted["name"]
+        == "i24_merge_geometry_corrected_ramplc1_entrylanes_oh1.6_scripted_accept0.3"
     )
     with pytest.raises(ValueError, match="mutually exclusive"):
         mod.variant_config("as_is_entrylanes_entryflow_oh0.55")

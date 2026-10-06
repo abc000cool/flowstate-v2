@@ -395,10 +395,12 @@ class TestStep:
             ws = {**empty, key: {"v": object()}}
             assert _commanded_by_runner([ws], [], "v"), key
             assert not _commanded_by_runner([ws], [], "w"), key
-        for key in ("veh", "yielding"):
-            ss: dict[str, Any] = {"veh": {}, "yielding": {}, key: {"v": 1.0}}
-            assert _commanded_by_runner([], [ss], "v"), key
-        assert not _commanded_by_runner([empty], [{"veh": {}, "yielding": {}}], "v")
+        ss: dict[str, Any] = {"veh": {"v": 1.0}}
+        assert _commanded_by_runner([], [ss], "v")
+        assert not _commanded_by_runner([empty], [{"veh": {}}], "v")
+        # a weaving section has no hand-over state (the measured zone has)
+        no_handover = {k: v for k, v in empty.items() if k != "handover"}
+        assert not _commanded_by_runner([no_handover], [], "v")
 
 
 # --- the crossing pair in SUMO ----------------------------------------------

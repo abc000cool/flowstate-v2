@@ -481,6 +481,8 @@ for V in slice ""; do
 done
 
 # 10k. The reference configuration (10j, VM U) plus WP-70's ramp_outlet (2026-09-25, block 3): on the corridor section fixture
+#      (2026-10-06: the key this stage sets was removed as a dead switch, docs/MERGE_MODEL.md A4; the stage now
+#      fails at validation by design; reproduce its result with release 2.5.0.)
 #     ramp_outlet lets the T.H.52 entrance pass; on the corridor the question is whether it lifts the weave's throughput
 #     (S790 ~3,340 veh/h against 4,911 observed). weave_params {exit_prepare: 1.0, ramp_outlet: 1.0} + lane_end_giveup_m: 7.5
 #     (ramp_outlet is inert on sections shorter than 253.8 m, so Ruth St is unchanged).
@@ -530,6 +532,8 @@ for V in slice ""; do
 done
 
 # 10n. The reference configuration (10j, VM U) with WP-92's guard against opposing entries into one lane in one step
+#      (2026-10-06: the key this stage sets was removed as a dead switch, docs/MERGE_MODEL.md A4; the stage now
+#      fails at validation by design; reproduce its result with release 2.5.0.)
 #     (2026-09-25, block 3; WEAVE_DEFAULTS["opposing_entry_guard"], off by default). Run beside mndot_weave_xlend at the
 #     same commit and seeds, so the two batteries pair seed by seed: does the guard remove the corridor's collisions
 #     (15 over 20 seeds on VM U) without costing departures, RMSPE or GEH? A diagnostic battery, not a default change.

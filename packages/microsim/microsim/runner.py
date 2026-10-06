@@ -46,7 +46,6 @@ child), which is also the CLAUDE.md §3.4 performance path.
 
 from __future__ import annotations
 
-import bisect
 import dataclasses
 import json
 import math
@@ -235,7 +234,7 @@ def _apply_merge_models(
 
     The merge models (``RampSpec.merge``, docs/CONTRACTS.md §2) all need the
     acceleration lane — lane 0 of the attach edge — to dead-end at that edge's
-    end: ``zipper``/``acceleration_lane`` patch the lane drop there, and the
+    end: ``zipper`` patches the lane drop there, and the
     runner's ``scripted`` merge drives the vehicles standing on it. Whether
     netconvert's ramp guessing leaves it that way depends on the attach edge's
     length: for an edge longer than ``--ramps.ramp-length`` the lane lives on a
@@ -790,8 +789,9 @@ LC_MODE_SCRIPTED_SAFE_NO_ADAPT = 768  # respect the gaps of others, no speed ada
 #: The model-driven change bits of ``laneChangeMode`` (bits 0-7: strategic,
 #: cooperative, speed gain, keep right; TraCI docs, "lane change mode"). With
 #: them cleared SUMO's own model changes no lane, and a TraCI request keeps
-#: the treatment of bits 8-9 (WP-92, the opposing-entry guard's one-step veto,
-#: :func:`_weave_opposing_guard`; probed on SUMO 1.27.1). A bit mask of the
+#: the treatment of bits 8-9 (WP-92, the one-step veto of an opposing entry,
+#: the measured model's :func:`merge_model.resolve_opposing` and
+#: :func:`_weave_opposing_restore`; probed on SUMO 1.27.1). A bit mask of the
 #: API, not a fitted value.
 LC_MODE_MODEL_BITS: Final[int] = 0xFF
 # the vacate rule's bound (_weave_vacate_step): a through vehicle is asked into
@@ -800,42 +800,6 @@ VACATE_LANE_CAPACITY_VEH_H = 2050.0  # one IDM lane at the fleet defaults (CLAUD
 VACATE_FLOW_WINDOW_S = 60.0  # the window of the target lane's flow and of the asks
 SCRIPTED_MERGE_CREEP_MS = 3.0  # desired-speed floor on the acceleration lane [m/s]
 HALTING_SPEED_MS = 0.1  # SUMO's own halting threshold (waiting time accrues below it) [m/s]
-#: The give-up patience (2026-09-24, block 3, WP-52) reads a follower as still
-#: braking towards the gap while its speed falls by more than this
-#: deceleration times the step per step; below it the follower is at its
-#: speed (SUMO's speeds settle at an equilibrium within a few hundredths of a
-#: m/s per step). One tenth of the fleet's smallest comfortable deceleration
-#: of interest, not a fitted value.
-WEAVE_GIVEUP_DECEL_TOL_MS2 = 0.1
-#: The crossings spread along the section (2026-09-25, block 3, WP-67;
-#: ``spread_crossings``): the n-th crossing taken under control starts at the
-#: fraction ``frac(n · WEAVE_SPREAD_PHI)`` of the spread length — the golden
-#: ratio's conjugate, the Weyl sequence whose first n points split the unit
-#: interval into gaps of at most three lengths, each new point falling in a
-#: largest gap (the three-gap theorem). A mathematical constant, not a fitted
-#: value.
-WEAVE_SPREAD_PHI: Final[float] = (math.sqrt(5.0) - 1.0) / 2.0
-#: The ramp's outlet (2026-09-25, block 3, WP-70; ``ramp_outlet``;
-#: :func:`_weave_outlet_length`): the distance from the section start within
-#: which a share q* of the entrants have left the auxiliary lane [m], and
-#: :data:`WEAVE_OUTLET_EXIT_RESERVE_M` the distance within which the same
-#: share of the exiters have entered it, both at the defaults on the
-#: corridor section test's fixture (``tests/fixtures/weave_th52_corridor.osm``
-#: under the observed 05:30–05:50 movements, seeds 3 / 4 / 5 pooled: 590
-#: entrant and 862 exiter crossings, SUMO's own changes on arrival included).
-#: q* = 0.773 is the largest share for which the two distances fit the
-#: section's unforced length (304.9 − 80 = 224.9 m) end to end — the minimax
-#: split of that length between the two movements' needs
-#: (docs/WEAVE_MODEL_PLAN.md, dated section WP-70). Derived from the
-#: crossing distributions at the defaults, not fitted to a criterion.
-WEAVE_OUTLET_ENTRANT_M: Final[float] = 51.1
-WEAVE_OUTLET_EXIT_RESERVE_M: Final[float] = 173.8
-#: The slack SUMO's EIDM adds to its desired gap towards a stop (SUMO 1.27.1,
-#: ``src/microsim/cfmodels/MSCFModel_EIDM.cpp``, ``EIDM_POS_ACC_EPS``) [m]; the
-#: stop term's own ``minGapStop_EPS`` stands on both sides of the comparison
-#: and cancels (:func:`_weave_brake_onset_m`). A constant of the model, not a
-#: fitted value.
-SUMO_EIDM_POS_ACC_EPS_M: Final[float] = 0.05
 NEIGHBOR_LEFT_FOLLOWERS = 0  # vehicle.getNeighbors mode bits: bit0 right, bit1 leaders
 NEIGHBOR_LEFT_LEADERS = 2
 NEIGHBOR_RIGHT_FOLLOWERS = 1  # weaving sections: the exiting movement looks right
@@ -951,11 +915,6 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
             ss["n_forced"] += int(st["forced"])
             ss["waits_s"].append(t - st["entered_s"])
     v_limit = float(mod.lane.getMaxSpeed(ss["target_lane"]))
-    # courtesy yielding: restore every follower asked to hold back last step
-    for fid, v_orig in ss["yielding"].items():
-        if fid in results:
-            mod.vehicle.setMaxSpeed(fid, v_orig)
-    ss["yielding"] = {}
     for vid in sorted(on_lane0):
         st = veh.get(vid)
         if st is None:
@@ -986,14 +945,6 @@ def _scripted_merge_step(mod: Any, tc: Any, ss: dict[str, Any], results: Any, t:
         mod.vehicle.setMaxSpeed(vid, v_des)
         ok_lead = g_lead >= st["s0"] + prm["accept_gap_s"] * v_ego
         ok_foll = g_foll >= st["s0"] + prm["accept_gap_s"] * (v_foll if g_foll < math.inf else 0.0)
-        if prm["courtesy"] > 0.0 and ok_lead and not ok_foll and f_id is not None:
-            # the mainline follower blocking an otherwise acceptable gap eases
-            # off (desired speed below the ramp vehicle's) so the gap opens;
-            # its car-following model still decides how, and it is restored
-            # next step unless it is still the blocker
-            if f_id not in ss["yielding"]:
-                ss["yielding"][f_id] = float(mod.vehicle.getMaxSpeed(f_id))
-            mod.vehicle.setMaxSpeed(f_id, max(v_ego - prm["courtesy"], SCRIPTED_MERGE_CREEP_MS))
         if remaining <= prm["force_within_m"] and st["zone_s"] is None:
             st["zone_s"] = t
         force = st["zone_s"] is not None and t - st["zone_s"] >= prm["force_after_s"]
@@ -1039,47 +990,6 @@ def _weave_set_mode(mod: Any, vid: str, st: dict[str, Any], mode: int) -> None:
         st["mode"] = mode
 
 
-def _weave_lag_gap_s(prm: Mapping[str, Any], exiting: bool) -> float:
-    """The follower-side accepted time gap of a crossing movement [s] (WP-80).
-
-    The leader and follower gaps apart (2026-09-25, block 3;
-    docs/WEAVE_MODEL_PLAN.md, dated section WP-80). Each movement's time gap
-    is two values: the leader side keeps the existing key, ``accept_gap_s``
-    (entering) / ``exit_accept_gap_s`` (exiting), and the follower side
-    reads ``accept_lag_gap_s`` / ``exit_accept_lag_gap_s``. Unset — ``None``,
-    the ``WEAVE_DEFAULTS`` value, or absent from ``prm`` — the follower side
-    is the leader side's key, exactly the value every run before WP-80 used
-    on both sides (so a run that sets neither key is byte-identical to one
-    before the split). Every follower-side use of a movement's time gap
-    reads this function: the acceptance's ``s0 + A · v_F``
-    (:func:`_weave_step`, :func:`_weave_change_ok`), the forced guard's
-    follower-side closing bound (:func:`_weave_force_gap_ok`), the
-    cooperation's and the gated anticipation's follower targets
-    (:func:`_weave_cooperate`, :func:`_weave_coop_gate`), the swap's
-    follower-side checks (:func:`_weave_swap_step`,
-    :func:`_weave_swap_offset_ok`), the spread's gap opening
-    (:func:`_weave_spread_length`) and the follower side of the vacate and
-    early-move gap check (:func:`_weave_vacate_gap_ok`), which borrows the
-    entering movement's key. Not a fitted value; the calibrated per-side
-    values are a proposal in ``artifacts/i24_critical_gaps.json``.
-
-    Args:
-        prm: The section's ``weave_params`` with the defaults applied.
-        exiting: The exiting movement (``exit_accept_*``) instead of the
-            entering one.
-
-    Returns:
-        The follower side's time gap [s].
-    """
-    lead_key, lag_key = (
-        ("exit_accept_gap_s", "exit_accept_lag_gap_s")
-        if exiting
-        else ("accept_gap_s", "accept_lag_gap_s")
-    )
-    lag = prm.get(lag_key)
-    return float(prm[lead_key] if lag is None else lag)
-
-
 def _weave_brake_gap(s0: float, v_ego: float, v_lead: float, b: float) -> float:
     """The gap a vehicle closing on a slower leader needs to match its speed at ``b`` [m].
 
@@ -1095,8 +1005,8 @@ def _weave_brake_gap(s0: float, v_ego: float, v_lead: float, b: float) -> float:
 
     Two IDM forms were measured and rejected on the fixtures (the plan's
     dated section has the table): the changer's desired gap ``s*(v, v −
-    v_L)`` itself (:func:`_idm_desired_gap`, the *no-braking* gap, ``s0 +
-    v·T`` at equal speeds — 263 m for the trace) removed the collisions and
+    v_L)`` itself (the IDM's *no-braking* gap, ``s0 + v·T`` at equal
+    speeds — 263 m for the trace) removed the collisions and
     locked every T.H.52 fixture (entrance 398 → 294 of 466 at seed 3, 102 →
     5,232 deferred); the gap at which the changer's IDM towards the leader
     asks exactly ``−b``, ``s*/√(1 + b/a_max − (v/v0)^4)`` (153 m for the
@@ -1204,20 +1114,12 @@ def _weave_force_gap_ok(
     release keeps its regime (both below the creep speed, both brake gaps
     near zero) and loses the fast follower.
 
-    The leader and follower gaps apart (2026-09-25, block 3, WP-80): each
-    side's closing-speed bound reads that side's time gap — ``accept_s``
-    on the leader side, ``accept_lag_s`` on the follower side
-    (:func:`_weave_lag_gap_s`; ``None`` = ``accept_s``, the form before
-    WP-80). The guard is part of every *accepted* change as well
-    (:func:`_weave_step`), so a guard on one value would put the leader
-    side's time gap back on the follower side of every change whenever
-    the follower closes: with the exiting movement's calibrated sides
-    (2.58 s / 0.72 s) the guard's follower bound ``s0 + 2.58 · (v_F −
-    v)⁺`` exceeds the acceptance's own ``s0 + 0.72 · v_F`` once the
-    follower closes at more than 28 % of its speed. Per side, the guard
-    stays laxer than the acceptance on each side (``(v − v_L)⁺ ≤ v`` for a
-    leader at or above rest, ``(v_F − v)⁺ ≤ v_F``), which is what forcing
-    means.
+    The leader and follower gaps apart (WP-80): ``accept_lag_s``, when
+    given, is the follower side's time gap (``None`` = ``accept_s``). The
+    runner always passes one value since the weave's follower-side keys were
+    removed on 2026-10-06 (docs/WEAVE_MODEL_PLAN.md; release 2.5.0); the
+    split serves :func:`_weave_change_ok`, the oracle of the offline
+    restatement in ``calibration.lane_change_gaps``.
 
     Args:
         s0: The changing vehicle's minimum gap [m].
@@ -1233,8 +1135,8 @@ def _weave_force_gap_ok(
         b_foll: The follower's comfortable deceleration [m/s²] for the
             speed-aware follower side; ``None`` keeps the closing-speed
             bound alone.
-        accept_lag_s: The movement's follower-side time gap [s]
-            (:func:`_weave_lag_gap_s`); ``None`` uses ``accept_s``.
+        accept_lag_s: The movement's follower-side time gap [s]; ``None``
+            uses ``accept_s``.
 
     Returns:
         Whether the forced change may be requested this step.
@@ -1249,211 +1151,6 @@ def _weave_force_gap_ok(
     if b_foll is not None:
         foll_min = max(foll_min, closing_foll**2 / (2.0 * b_foll))
     return g_lead > lead_min and g_foll > foll_min
-
-
-def _weave_giveup_patient(
-    st: dict[str, Any],
-    t: float,
-    patience_s: float,
-    f_id: str | None,
-    g_foll: float,
-    v_foll: float,
-    b_foll: float | None,
-    step_s: float,
-) -> bool:
-    """Whether a halted exiter whose request is refused waits this step (WP-52).
-
-    Bounded give-up patience (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
-    dated section). Under the speed-aware guard (:func:`_weave_force_gap_ok`)
-    the first step on which a halted exiter at the gore's end can request no
-    change often comes while its auxiliary-lane follower is still braking
-    towards the gap the priority hold opened for it — the follower's brake
-    gap ``(v_F − v_c)⁺²/(2·b_F)`` is above the gap it is closing for two or
-    three seconds and then is not. Giving up on that step (the exit-side
-    derivation) reroutes an exiter whose change would have been accepted a
-    few steps later; the unbounded patient form (a halted exiter is never
-    given up while its follower is held) locks the short section, because
-    a held follower at rest behind a halted exiter is the abreast-pair state
-    the pair release exists for (WP-51, variant E).
-
-    The exiter waits only while the refusal is that transient: the follower
-    reported this step, ``f_id``, is the one recorded on the previous step in
-    ``st["foll_prev"]`` (so its speed history is one vehicle's), its speed
-    fell since by more than ``WEAVE_GIVEUP_DECEL_TOL_MS2 · step_s``, it has
-    not come to rest (``HALTING_SPEED_MS``), and the wait since the first
-    refused step (``st["giveup_since"]``, set here or by
-    :func:`_weave_giveup_abreast`, the budget being one) is shorter than the
-    bound — ``patience_s`` or the follower's braking time to rest at its own
-    ``b`` from its speed on the first step this rule read it
-    (``st["giveup_v_foll"]``), ``v_F / b_F``, whichever is shorter, so a
-    follower already crawling earns no patience. Any other
-    state gives up at once, as before: no follower, a different follower, a
-    follower at its speed or at rest, or the bound reached. The budget runs
-    from the first refused step and is not reset, so an exiter that rolls
-    again and halts again cannot renew it; ``patience_s`` of ``0`` never
-    waits.
-
-    Args:
-        st: The exiter's per-vehicle state (``foll_prev``, ``giveup_since``,
-            ``giveup_v_foll`` read and written here).
-        t: Simulation time [s].
-        patience_s: ``exit_giveup_patience_s``.
-        f_id: The auxiliary-lane follower reported this step (``None`` = none).
-        v_foll: Its speed [m/s] (``nan`` with none).
-        b_foll: Its comfortable deceleration [m/s²] (``None`` with none).
-        step_s: The step length [s].
-
-    Returns:
-        ``True`` to keep the exiter this step (the refusal is deferred as a
-        forced change is, ``n_giveup_waited`` counted by the caller); ``False``
-        to give the exit up now.
-    """
-    if patience_s <= 0.0 or f_id is None or b_foll is None or math.isnan(v_foll):
-        return False
-    if g_foll <= 0.0:
-        return False
-    prev = st.get("foll_prev")
-    if prev is None or prev[0] != f_id:
-        return False
-    if st.get("giveup_since") is None:
-        st["giveup_since"] = t
-    if st.get("giveup_v_foll") is None:
-        # the budget may have been opened by the abreast patience (WP-53,
-        # :func:`_weave_giveup_abreast`) with no follower behind: the
-        # braking time is then from the follower's speed on the first
-        # step this rule reads it
-        st["giveup_v_foll"] = v_foll
-    bound = min(patience_s, st["giveup_v_foll"] / b_foll if b_foll > 0.0 else 0.0)
-    if t - st["giveup_since"] >= bound:
-        return False
-    if v_foll < HALTING_SPEED_MS:
-        return False
-    return v_foll < prev[1] - WEAVE_GIVEUP_DECEL_TOL_MS2 * step_s
-
-
-def _weave_abreast_clear_m(
-    g_lead: float,
-    g_foll: float,
-    lead_need: float,
-    len_c: float,
-    s0_c: float,
-    len_a: float,
-    s0_a: float,
-) -> float:
-    """How far the auxiliary-lane vehicle beside a halted exiter must still advance [m].
-
-    The abreast state (2026-09-24, block 3, WP-53; docs/WEAVE_MODEL_PLAN.md,
-    dated section): a vehicle reported by ``getNeighbors`` with a negative
-    gap overlaps the exiter longitudinally. SUMO reports a leader's gap as
-    ``rear_A − front_c − s0_c`` (the ego's ``minGap`` taken off) and a
-    follower's as ``rear_c − front_A − s0_A`` (the follower's). The exiter's
-    leader side accepts the vehicle once the reported gap reaches
-    ``lead_need`` — the acceptance's floor ``s0_c + accept · v_c``, which at
-    a halted changer is ``s0_c`` (:func:`_weave_lead_gap_min`; the brake
-    term is zero against a vehicle pulling away) — so from the leader side
-    the distance is ``lead_need − g_lead`` whenever ``g_lead`` is under the
-    floor (a vehicle just clear of the overlap but inside the floor is still
-    clearing); from a follower-side overlap the vehicle's rear is
-    ``len_c + g_foll + s0_A + len_A`` behind the exiter's front, so
-    ``len_c + s0_c + lead_need + g_foll + s0_A + len_A``. Zero otherwise.
-
-    Args:
-        g_lead: Reported gap to the target-lane leader [m] (``inf`` = none).
-        g_foll: Reported gap to the target-lane follower [m] (``inf`` = none).
-        lead_need: The reported leader gap the acceptance needs [m].
-        len_c: The exiter's length [m].
-        s0_c: The exiter's ``minGap`` [m].
-        len_a: The overlapping vehicle's length [m].
-        s0_a: The overlapping vehicle's ``minGap`` [m].
-
-    Returns:
-        The distance [m], ``0`` when no vehicle is in the way on either side.
-    """
-    if g_lead < lead_need:
-        return lead_need - g_lead
-    if g_foll < 0.0:
-        return max(len_c + s0_c + lead_need + g_foll + s0_a + len_a, 0.0)
-    return 0.0
-
-
-def _weave_giveup_abreast(
-    st: dict[str, Any],
-    t: float,
-    patience_s: float,
-    a_id: str | None,
-    v_a: float,
-    clear_m: float,
-    a_is_entrant: bool,
-) -> bool:
-    """Whether a halted exiter waits for the vehicle beside it to clear (WP-53).
-
-    The abreast state (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md, dated
-    section): of the 44 give-ups on the fixture grid at 6497b2d, 34 had an
-    auxiliary-lane vehicle overlapping the halted exiter. A per-give-up
-    trace of their geometry splits them: **24** are a *driven entrant*
-    halted at the end of the auxiliary lane beside the exiter — the crossing
-    pair at the lane ends, each owing the change into the other's lane,
-    which no local rule resolves (neither can move on, neither can change
-    across the other; the exiter's reroute is what frees both) — and **10**
-    are an exit-bound queue vehicle sliding past the exiter's rear at
-    0.7–7 m/s, most often its own held follower caught inside its brake
-    distance (WP-52), whose leader ahead is moving: it clears the exiter's
-    front within ``clear_m / v_a`` = 1.7–8 s at its speed, after which the
-    gap behind it is the exiter's (its follower is held by the exit priority,
-    :func:`_weave_choose_gap`).
-
-    The exiter waits this step when the overlapping vehicle is not a driven
-    entrant (its lane ends at the gore for its route: it never clears), is
-    moving (``v_a`` at or above ``HALTING_SPEED_MS``), and would clear the
-    exiter's leader side at its current speed within the budget left —
-    ``patience_s`` less the time since the first refused step
-    (``st["giveup_since"]``, set here or by :func:`_weave_giveup_patient`,
-    never renewed). A halted or slower vehicle, one that needs longer than
-    the budget, or an exhausted budget gives up at once, so the wait is
-    bounded by ``patience_s`` per exiter and a stopped queue beside a halted
-    exiter is given up on the first step as before; ``patience_s`` of ``0``
-    never waits. Holding the abreast vehicle instead (commanding it to stop
-    beside the exiter) was derived inert — a vehicle beside the exiter opens
-    nothing by stopping, it makes the crossing pair — and measured as such
-    (one vehicle-step held over the grid, the runs otherwise this rule's).
-
-    Measured on the same grid and **shipped off** (``exit_abreast_patience_s``
-    defaults to 0): at 10 s the rule rescues the sliding vehicle's exiter
-    where it was written (the creeping-past give-ups 10 → 1, Ruth St
-    corridor fleet at the exit peak seed 3: 273 → 280 of 290 exited) but
-    the give-ups read 46 against 44, because the waited exiter then meets
-    the next follower inside its brake distance (the brake-distance class
-    9 → 18), and the wait holds lane 1: T.H.52 at capacity seed 4 departs
-    386 of 466 against 401 with lane 1 at the gore at 2.7 m/s for three
-    minutes against 10.7 in none, the two-entrance defaults at seed 3
-    394 of 470 against 417. With WP-52's braking patience beside it the
-    give-ups are 44 again, with 16 fewer exits, six more lane-1 minutes at
-    or below 5 m/s and the T.H.52 capacity entrance at seed 5 at 372 of
-    466, under the no-lock pin. The 5 s and 20 s bounds are the 10 s runs
-    within one give-up (the clearing condition ends the wait, the bound
-    binds nowhere above 10 s).
-
-    Args:
-        st: The exiter's per-vehicle state (``giveup_since`` read and written).
-        t: Simulation time [s].
-        patience_s: ``exit_abreast_patience_s``.
-        a_id: The overlapping auxiliary-lane vehicle (``None`` = none).
-        v_a: Its speed [m/s].
-        clear_m: :func:`_weave_abreast_clear_m` for it.
-        a_is_entrant: Whether it is a driven entrant of this section.
-
-    Returns:
-        ``True`` to keep the exiter this step (deferred as a forced change
-        is, ``n_giveup_waited`` counted by the caller); ``False`` to give up.
-    """
-    if patience_s <= 0.0 or a_id is None or a_is_entrant:
-        return False
-    if st.get("giveup_since") is None:
-        st["giveup_since"] = t
-    budget = patience_s - (t - st["giveup_since"])
-    if budget <= 0.0 or v_a < HALTING_SPEED_MS:
-        return False
-    return clear_m / v_a <= budget
 
 
 def _idm_accel(
@@ -1638,88 +1335,6 @@ def _weave_vacate_exempt_ids(
     return frozenset(vid for vid, rid in route_by_id.items() if _route_exit(rid) in exits)
 
 
-def _idm_desired_gap(v: float, dv: float, T: float, a_max: float, b: float, s0: float) -> float:
-    """IDM desired (safe) gap ``s*(v, Δv) = s0 + max(0, v·T + v·Δv / (2·√(a_max·b)))`` [m].
-
-    The gap at which the model's interaction term equals its free term: with
-    a leader exactly ``s*`` ahead the vehicle holds its speed (its
-    acceleration is ``−a_max·(v/v0)^4``, the free-road deficit it has
-    anyway), any smaller gap makes it brake (CLAUDE.md §3.1; Treiber,
-    Hennecke & Helbing 2000).
-    """
-    return s0 + max(0.0, v * T + v * dv / (2.0 * math.sqrt(a_max * b)))
-
-
-def _weave_vacate_gap_ok(
-    x_c: float,
-    v_c: float,
-    p_c: dict[str, float],
-    target: Sequence[tuple[float, str]],
-    v_of: dict[str, float],
-    p_of: dict[str, dict[str, float]],
-    accept_s: float,
-    brake_lead: bool = False,
-    accept_lag_s: float | None = None,
-) -> bool:
-    """Whether the target-lane gap a through vehicle is in accepts it without follower braking.
-
-    The vacate rule's acceptance (2026-09-24, block 3, re-derived): the
-    leader L is the first target-lane vehicle whose front is ahead of the
-    changer's front, the follower F the last one whose front is not; the
-    gap accepts when ``g_lead ≥ s0_c + accept_s · v_c`` and
-    ``g_foll ≥ s0_c + accept_s · v_F`` (the weave's own time-gap
-    acceptance, ``_weave_step``) **and** ``g_foll ≥ s*_F(v_F, v_F − v_c)``,
-    F's IDM desired gap towards the changer at its current speed
-    (:func:`_idm_desired_gap`) — so F, with the changer in front of it,
-    needs no braking beyond its own free-road term. A vehicle beside the
-    changer (front ahead, rear behind the changer's front) is a leader with
-    a negative gap; one whose front is level with or behind the changer's
-    but ahead of its rear is a follower with a negative gap; both refuse.
-
-    Args:
-        x_c: The changer's front-bumper position on the section axis [m].
-        v_c: Its speed [m/s].
-        p_c: Its constants (:func:`_weave_veh`).
-        target: Target-lane vehicles as ``(x, id)``, ascending ``x``.
-        v_of: Their speeds [m/s].
-        p_of: Their constants (every id in ``target`` present).
-        accept_s: The accepted time gap [s] (``accept_gap_s``) — the
-            leader side's.
-        brake_lead: Also ask of the leader side the changer's brake gap
-            on the leader at its own ``b``, ``s0_c + (v_c − v_L)⁺²/(2·b_c)``
-            (:func:`_weave_brake_gap`, the speed-aware acceptance's leader
-            side) — for a move into a *slower* lane, the exiters' early
-            move (:func:`_weave_exit_prepare_step`); the vacate rule's
-            target lane is the faster one and leaves it off.
-        accept_lag_s: The follower side's time gap [s] (WP-80,
-            ``accept_lag_gap_s`` through :func:`_weave_lag_gap_s`);
-            ``None`` uses ``accept_s``.
-
-    Returns:
-        Whether the vehicle may be asked to change this step.
-    """
-    xs = [x for x, _ in target]
-    i = bisect.bisect_right(xs, x_c)
-    if i < len(target):
-        x_l, l_id = target[i]
-        g_lead = x_l - p_of[l_id]["len"] - x_c
-        if g_lead < p_c["s0"] + accept_s * v_c:
-            return False
-        if brake_lead and g_lead < _weave_brake_gap(p_c["s0"], v_c, v_of[l_id], p_c["b"]):
-            return False
-    if i > 0:
-        x_f, f_id = target[i - 1]
-        p_f = p_of[f_id]
-        v_f = v_of[f_id]
-        g_foll = x_c - p_c["len"] - x_f
-        lag_s = accept_s if accept_lag_s is None else accept_lag_s
-        if g_foll < p_c["s0"] + lag_s * v_f:
-            return False
-        if g_foll < _idm_desired_gap(v_f, v_f - v_c, p_f["T"], p_f["a"], p_f["b"], p_f["s0"]):
-            return False
-    return True
-
-
 def _weave_vacate_bound_veh_h(
     ws: dict[str, Any], t: float, flow_key: str = "vacate_flow_s"
 ) -> float:
@@ -1763,13 +1378,11 @@ def _weave_vacate_step(
     movements exchange over the auxiliary lane and the weave lane alone.
     SUMO's LC2013 does not do this on its own once the lane crawls (a
     speed-gain change needs a speed advantage a uniform crawl does not
-    offer). Two forms, chosen by ``vacate_no_follower_braking``
-    (``WEAVE_DEFAULTS``), both under the bound below.
+    offer).
 
-    **The default form (0).** Each through vehicle (not bound for the
-    paired exit, nor for an off-ramp leaving from a window edge —
-    ``vacate_exempt_ids``, :func:`_weave_vacate_exempt_ids`; review,
-    2026-09-24 block 3) in the lane feeding section lane 1 of a corridor edge
+    Each through vehicle (not bound for the paired exit, nor for an off-ramp
+    leaving from a window edge — ``vacate_exempt_ids``,
+    :func:`_weave_vacate_exempt_ids`; review, 2026-09-24 block 3) in the lane feeding section lane 1 of a corridor edge
     within ``vacate_ahead_m`` of the section start (``vacate_lanes``,
     :func:`_weave_vacate_lanes`: the window measured along the corridor
     chain across as many upstream edges as it reaches, the feeding lane's
@@ -1798,40 +1411,19 @@ def _weave_vacate_step(
     the section's edge (one lane more, the ramp's) the index is the weave
     lane itself. A vehicle that cannot change stays and behaves as before.
 
-    **The gap-conditioned form (1; block 3, the rule re-derived so that it
-    never asks the target lane to brake).** On the corridor's last 850 m
-    (``tests/fixtures/weave_th52_upstream.osm``) the default form put
-    ≈ 780 veh/h of requests into a lane carrying ≈ 560 veh/h and the lane
-    asked into crawled at 1.3–1.4 m/s, the head of the I-94 WB queue
-    (docs/WEAVE_MODEL_PLAN.md, the upstream-entrance fixture). In this form
-    a through vehicle in the window is evaluated every step, nearest the
-    section first, against the target-lane gap it is in
-    (:func:`_weave_vacate_gap_ok`: the weave's own time gaps to the leader
-    and the follower, ``accept_gap_s``, plus the follower's IDM desired gap
-    at its current speed, so the follower needs no braking), and asked only
-    on a step when the gap accepts: ``changeLane(vid, lane_to, step_s)`` —
-    one request per accepting step — under ``LC_MODE_SCRIPTED_SAFE_NO_ADAPT``
-    (mode 768: SUMO's safety check, **no speed adaptation**). The hold is
-    set at the first request and restored as in the default form (no stay
-    is needed: a request lives one step). A vehicle never asked keeps its
-    own mode. **Measured and not made the default** (docs/WEAVE_MODEL_PLAN.md,
-    dated section): at the corridor's demand the candidates reach the
-    window at 2–6 m/s behind the entrance's merge while the target lane
-    runs at 10–25 m/s, no gap accepts that approach rate, vacating
-    collapses (2–34 per 20 min against 159–201) and the section's own
-    end-lock of the third derivation's "without the rule" case returns.
+    A gap-conditioned form (``vacate_no_follower_braking``) was removed on
+    2026-10-06 (docs/WEAVE_MODEL_PLAN.md; reproduce with release 2.5.0).
 
-    **The bound (both forms).** Vehicles first asked in the last
+    **The bound.** Vehicles first asked in the last
     ``VACATE_FLOW_WINDOW_S`` are limited to ``vacate_max_veh_h``: a positive
     value is the bound, ``0`` (the default) the target lane's spare
     capacity ``VACATE_LANE_CAPACITY_VEH_H − flow``, the flow being the
     vehicles the target lane carried into the window over the same 60 s
     (:func:`_weave_vacate_bound_veh_h`), so the rule cannot ask more into
     the target lane than it has room for. ``n_vacate_skipped_no_gap`` counts
-    through vehicles that crossed the window never asked — for want of an
-    accepting gap or of the bound — each once (one that moves left by its
-    own model is not counted); ``n_vacate_requests`` the requests made, in
-    vehicle-steps.
+    through vehicles that crossed the window never asked — for want of the
+    bound — each once (one that moves left by its own model is not
+    counted); ``n_vacate_requests`` the requests made, in vehicle-steps.
 
     The window's lanes are listed here from ``results`` (the section's own
     ``lane_map`` lists only the edge before it); the target lane continues
@@ -1852,8 +1444,6 @@ def _weave_vacate_step(
     ahead = float(ws["params"]["vacate_ahead_m"])
     if not spec or ahead <= 0.0:
         return
-    prm = ws["params"]
-    gap_conditioned = float(prm["vacate_no_follower_braking"]) > 0.0
     step_s = float(ws["step_s"])
     x_offset: dict[str, float] = ws["x_offset"]
     x_start = float(x_offset[ws["edges"][0]])
@@ -1908,18 +1498,18 @@ def _weave_vacate_step(
             # 2 (``lanes[2]``) when the change and the crossing fell in one
             # step — under mode 512 the request is the only change it can make
             ws["n_vacated"] += 1
-        elif in_lane(vid, 0) and (gap_conditioned or t < st["until_s"]):
+        elif in_lane(vid, 0) and t < st["until_s"]:
             lane_to_here = spec[road][1]
-            if not gap_conditioned and lane_to_here != st["lane_to"]:
+            if lane_to_here != st["lane_to"]:
                 # crossed onto a window edge where the target lane has
                 # another index (a lane added or dropped): the open request
                 # re-addressed there for the rest of its life
                 st["lane_to"] = lane_to_here
                 mod.vehicle.changeLane(vid, lane_to_here, max(st["until_s"] - t, step_s))
-            continue  # still in the weave lane with the request open (or re-evaluated below)
+            continue  # still in the weave lane with the request open
         else:
             ws["n_vacate_refused"] += 1
-        if not gap_conditioned and t < st["until_s"]:
+        if t < st["until_s"]:
             # the request is by lane *index* and outlives the hand-back: on
             # the section's edge (one lane more, the ramp's) the same index
             # is the weave lane, so a live request would pull a vacated
@@ -1951,59 +1541,38 @@ def _weave_vacate_step(
     while asks_s and asks_s[0] <= t - VACATE_FLOW_WINDOW_S:
         asks_s.popleft()
     budget = int(bound * VACATE_FLOW_WINDOW_S / 3600.0) - len(asks_s)
-    # --- evaluate, nearest the section first ------------------------------
-    v_of = {vid: float(results[vid][tc.VAR_SPEED]) for _, vid in target} if now else {}
-    p_of = {vid: _weave_veh(mod, ws, vid) for _, vid in target} if now else {}
-    accept = float(prm["accept_gap_s"])
-    accept_lag = _weave_lag_gap_s(prm, exiting=False)
+    # --- ask, nearest the section first ------------------------------------
     for vid, x in sorted(now.items(), key=lambda kv: -kv[1]):
-        if vid in active:
-            if not gap_conditioned:
-                continue  # the default form's request is open: nothing more is sent
-        elif vid in seen:
-            continue  # asked before (the default form asks once)
-        v = float(results[vid][tc.VAR_SPEED])
-        if gap_conditioned and not _weave_vacate_gap_ok(
-            x, v, _weave_veh(mod, ws, vid), target, v_of, p_of, accept, accept_lag_s=accept_lag
-        ):
-            if vid not in active:
-                pending.add(vid)
+        if vid in active or vid in seen:
+            continue  # the request is open, or was made before (asked once)
+        if budget <= 0:
+            pending.add(vid)
             continue
-        if vid not in active:
-            if budget <= 0:
-                pending.add(vid)
-                continue
-            mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
-            if mode_orig in (
-                LC_MODE_SCRIPTED_SAFE,
-                LC_MODE_SCRIPTED_FORCE,
-                LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
-            ):
-                # already under a scripted hold (a driven vehicle of a
-                # section whose last edge is this edge, a scripted merge's,
-                # or another section's vacate hold): its real mode is not
-                # readable here and two holds would restore each other's.
-                # Not asked while the hold lasts (review, 2026-09-24)
-                continue
-            seen.add(vid)
-            asks_s.append(t)
-            budget -= 1
-            lane_to = spec[where[vid][0]][1]
-            if gap_conditioned:
-                active[vid] = {"lc_mode_orig": mode_orig, "until_s": math.inf, "lane_to": lane_to}
-                mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE_NO_ADAPT)
-            else:
-                duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
-                active[vid] = {
-                    "lc_mode_orig": mode_orig,
-                    "until_s": t + duration,
-                    "lane_to": lane_to,
-                }
-                mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
-                mod.vehicle.changeLane(vid, lane_to, duration)
-                ws["n_vacate_requests"] += 1
-                continue
-        mod.vehicle.changeLane(vid, spec[where[vid][0]][1], step_s)
+        mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
+        if mode_orig in (
+            LC_MODE_SCRIPTED_SAFE,
+            LC_MODE_SCRIPTED_FORCE,
+            LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
+        ):
+            # already under a scripted hold (a driven vehicle of a
+            # section whose last edge is this edge, a scripted merge's,
+            # or another section's vacate hold): its real mode is not
+            # readable here and two holds would restore each other's.
+            # Not asked while the hold lasts (review, 2026-09-24)
+            continue
+        seen.add(vid)
+        asks_s.append(t)
+        budget -= 1
+        lane_to = spec[where[vid][0]][1]
+        v = float(results[vid][tc.VAR_SPEED])
+        duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
+        active[vid] = {
+            "lc_mode_orig": mode_orig,
+            "until_s": t + duration,
+            "lane_to": lane_to,
+        }
+        mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+        mod.vehicle.changeLane(vid, lane_to, duration)
         ws["n_vacate_requests"] += 1
 
 
@@ -2044,25 +1613,18 @@ def _weave_exit_prepare_step(
     ``vacate_ahead_m`` of the section start in a lane *left* of ``k_from``
     to move into ``k_from`` there — the direction of its own route, from
     which one change reaches the auxiliary lane — under the vacate rule's
-    own terms, chosen by ``vacate_no_follower_braking``:
+    own terms: asked **once**, ``vehicle.changeLane(vid, k_from, duration)``
+    under ``LC_MODE_SCRIPTED_SAFE`` (mode 512: SUMO's safety check on both
+    target-lane gaps, the vehicle adapting its speed, every model-driven
+    change off), the request living for the travel time to the section
+    start at the vehicle's speed (floored at ``SCRIPTED_MERGE_CREEP_MS``); a
+    vehicle two lanes out is moved one lane at a time by SUMO under the one
+    request. Re-addressed when the vehicle crosses onto a window edge where
+    ``k_from`` has another index. The gap-conditioned form
+    (``vacate_no_follower_braking``) was removed on 2026-10-06
+    (docs/WEAVE_MODEL_PLAN.md; reproduce with release 2.5.0).
 
-    * **the default form (0):** asked **once**, ``vehicle.changeLane(vid,
-      k_from, duration)`` under ``LC_MODE_SCRIPTED_SAFE`` (mode 512: SUMO's
-      safety check on both target-lane gaps, the vehicle adapting its
-      speed, every model-driven change off), the request living for the
-      travel time to the section start at the vehicle's speed (floored at
-      ``SCRIPTED_MERGE_CREEP_MS``); a vehicle two lanes out is moved one
-      lane at a time by SUMO under the one request. Re-addressed when the
-      vehicle crosses onto a window edge where ``k_from`` has another index;
-    * **the gap-conditioned form (1):** evaluated every step, the vehicle
-      asked one lane right for one step under mode 768 (no speed
-      adaptation) only when the gap it is in on the lane to its right
-      accepts it — :func:`_weave_vacate_gap_ok`, the weave's time gaps and
-      the follower's IDM desired gap, plus the changer's brake gap on the
-      leader at its own ``b`` (``brake_lead``: the target lane is the
-      slower one here).
-
-    Both forms ask no more per ``VACATE_FLOW_WINDOW_S`` than
+    The rule asks no more per ``VACATE_FLOW_WINDOW_S`` than
     ``vacate_max_veh_h`` or, at its default of 0, the target lane's spare
     capacity (:func:`_weave_vacate_bound_veh_h` over the sightings of
     vehicles first seen in ``k_from`` inside the window, ``prep_flow_s``).
@@ -2079,7 +1641,7 @@ def _weave_exit_prepare_step(
 
     **Bounded, no chain.** Nobody but the exiter is commanded: no
     target-lane vehicle is asked to brake or move, each exiter is asked
-    once (the default form) and never while another scripted hold is on it
+    once and never while another scripted hold is on it
     (the vacate rule's guard: modes 512 / 256 / 768), and no request
     outlives the window. **The ordering against the vacate rule.** Their
     vehicles are disjoint — the vacate rule never asks a vehicle bound for
@@ -2097,9 +1659,8 @@ def _weave_exit_prepare_step(
     and re-issued for the rest of its life once clear (vehicle-steps
     yielded in ``n_exit_prepare_yielded``, state only). The through
     vehicle then meets a vehicle keeping its lane, which SUMO's own gap
-    logic resolves; the vacate rule's behaviour is unchanged. The
-    gap-conditioned form needs no such step — a vehicle beside the changer
-    refuses its gap. ``vacate_ahead_m = 0`` disables both rules.
+    logic resolves; the vacate rule's behaviour is unchanged.
+    ``vacate_ahead_m = 0`` disables both rules.
     Vehicle-steps held under a request are kept in ``n_exit_prepare_held``
     (state only).
 
@@ -2125,7 +1686,6 @@ def _weave_exit_prepare_step(
     ahead = float(prm["vacate_ahead_m"])
     if not spec or ahead <= 0.0:
         return
-    gap_conditioned = float(prm["vacate_no_follower_braking"]) > 0.0
     step_s = float(ws["step_s"])
     x_offset: dict[str, float] = ws["x_offset"]
     x_start = float(x_offset[ws["edges"][0]])
@@ -2197,28 +1757,27 @@ def _weave_exit_prepare_step(
             # in k_from on a window edge, or in section lane 1 when the
             # change and the crossing onto the section fell in one step
             ws["n_exit_prepared"] += 1
-        elif off_v is not None and off_v > 0 and (gap_conditioned or t < st["until_s"]):
+        elif off_v is not None and off_v > 0 and t < st["until_s"]:
             lane_to_here = spec[road][0]
-            if not gap_conditioned:
-                x_v = x_offset[road] + float(res[tc.VAR_LANEPOSITION])
-                if beside_vacating(vid, x_v):
-                    # the vacate request goes first: the open request is
-                    # ended by a one-step stay while the pair is abreast
-                    if not st.get("suspended"):
-                        st["suspended"] = True
-                        mod.vehicle.changeLane(vid, lane, step_s)
-                    ws["n_exit_prepare_yielded"] += 1
-                elif st.get("suspended") or lane_to_here != st["lane_to"]:
-                    # clear of the pair again, or crossed onto a window edge
-                    # where k_from has another index: re-issued for the rest
-                    # of its life
-                    st["suspended"] = False
-                    st["lane_to"] = lane_to_here
-                    mod.vehicle.changeLane(vid, lane_to_here, max(st["until_s"] - t, step_s))
+            x_v = x_offset[road] + float(res[tc.VAR_LANEPOSITION])
+            if beside_vacating(vid, x_v):
+                # the vacate request goes first: the open request is
+                # ended by a one-step stay while the pair is abreast
+                if not st.get("suspended"):
+                    st["suspended"] = True
+                    mod.vehicle.changeLane(vid, lane, step_s)
+                ws["n_exit_prepare_yielded"] += 1
+            elif st.get("suspended") or lane_to_here != st["lane_to"]:
+                # clear of the pair again, or crossed onto a window edge
+                # where k_from has another index: re-issued for the rest
+                # of its life
+                st["suspended"] = False
+                st["lane_to"] = lane_to_here
+                mod.vehicle.changeLane(vid, lane_to_here, max(st["until_s"] - t, step_s))
             continue
         else:
             ws["n_exit_prepare_refused"] += 1
-        if not gap_conditioned and t < st["until_s"]:
+        if t < st["until_s"]:
             # on the section's edge the index k_from is the auxiliary lane:
             # the open request is ended by a one-step stay, so that the
             # section's own acceptance decides that change
@@ -2256,68 +1815,35 @@ def _weave_exit_prepare_step(
     while asks_s and asks_s[0] <= t - VACATE_FLOW_WINDOW_S:
         asks_s.popleft()
     budget = int(bound * VACATE_FLOW_WINDOW_S / 3600.0) - len(asks_s)
-    accept = float(prm["accept_gap_s"])
-    accept_lag = _weave_lag_gap_s(prm, exiting=False)
-    for x, vid, off in sorted(now, key=lambda row: -row[0]):
-        if vid in active:
-            if not gap_conditioned:
-                continue  # the default form's request is open: nothing more is sent
-        elif vid in seen:
-            continue  # asked before (the default form asks once)
+    for x, vid, _off in sorted(now, key=lambda row: -row[0]):
+        if vid in active or vid in seen:
+            continue  # the request is open, or was made before (asked once)
+        if budget <= 0:
+            pending.add(vid)
+            continue
+        if beside_vacating(vid, x):
+            pending.add(vid)  # asked once clear of the vacating vehicle
+            continue
+        mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
+        if mode_orig in (
+            LC_MODE_SCRIPTED_SAFE,
+            LC_MODE_SCRIPTED_FORCE,
+            LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
+        ):
+            continue  # under another scripted hold: not asked while it lasts
+        seen.add(vid)
+        asks_s.append(t)
+        budget -= 1
+        lane_to = spec[where[vid][0]][0]
         v = float(results[vid][tc.VAR_SPEED])
-        if gap_conditioned:
-            # the gap on the lane to its right, one lane per request
-            right = by_off.get(off - 1, [])
-            v_of = {k: float(results[k][tc.VAR_SPEED]) for _, k in right if k in results}
-            p_of = {k: _weave_veh(mod, ws, k) for _, k in right if k in results}
-            right = [(xk, k) for xk, k in right if k in v_of]
-            if not _weave_vacate_gap_ok(
-                x,
-                v,
-                _weave_veh(mod, ws, vid),
-                right,
-                v_of,
-                p_of,
-                accept,
-                brake_lead=True,
-                accept_lag_s=accept_lag,
-            ):
-                if vid not in active:
-                    pending.add(vid)
-                continue
-        if vid not in active:
-            if budget <= 0:
-                pending.add(vid)
-                continue
-            if beside_vacating(vid, x):
-                pending.add(vid)  # asked once clear of the vacating vehicle
-                continue
-            mode_orig = int(mod.vehicle.getLaneChangeMode(vid))
-            if mode_orig in (
-                LC_MODE_SCRIPTED_SAFE,
-                LC_MODE_SCRIPTED_FORCE,
-                LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
-            ):
-                continue  # under another scripted hold: not asked while it lasts
-            seen.add(vid)
-            asks_s.append(t)
-            budget -= 1
-            lane_to = spec[where[vid][0]][0]
-            if gap_conditioned:
-                active[vid] = {"lc_mode_orig": mode_orig, "until_s": math.inf, "lane_to": lane_to}
-                mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE_NO_ADAPT)
-            else:
-                duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
-                active[vid] = {
-                    "lc_mode_orig": mode_orig,
-                    "until_s": t + duration,
-                    "lane_to": lane_to,
-                }
-                mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
-                mod.vehicle.changeLane(vid, lane_to, duration)
-                ws["n_exit_prepare_requests"] += 1
-                continue
-        mod.vehicle.changeLane(vid, where[vid][1] - 1, step_s)
+        duration = max((x_start - x) / max(v, SCRIPTED_MERGE_CREEP_MS), step_s)
+        active[vid] = {
+            "lc_mode_orig": mode_orig,
+            "until_s": t + duration,
+            "lane_to": lane_to,
+        }
+        mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
+        mod.vehicle.changeLane(vid, lane_to, duration)
         ws["n_exit_prepare_requests"] += 1
     ws["n_exit_prepare_held"] += len(active)
 
@@ -2336,7 +1862,6 @@ def _weave_choose_gap(
     lookahead_m: float,
     committed: str | None,
     priority: bool = False,
-    blocked: Collection[str] = (),
     relaxed_T: Callable[[float, float, dict[str, float]], float] | None = None,
 ) -> tuple[str | None, str | None, float, float]:
     """The target-lane gap a changer works towards: ``(leader, follower, a_F, a_c)``.
@@ -2398,11 +1923,6 @@ def _weave_choose_gap(
         committed: The follower of the gap chosen on an earlier step, if any.
         priority: The exit priority of an exit-bound changer whose forced
             change is due (above).
-        blocked: Followers whose gap is not a candidate — released from a
-            stalled hold by :func:`_weave_hold_release` (WP-58, the bounded
-            hold) and not asked again for this changer within the bound;
-            the gap *behind* such a vehicle stays a candidate, so the
-            changer drops in behind it once it has passed.
         relaxed_T: The measured merge model's relaxed headway (2026-10-05,
             docs/MERGE_MODEL.md §2, "gap choice evaluated at the relaxed
             T"): ``(bumper gap, speed, constants) → T`` for F's IDM towards
@@ -2420,8 +1940,6 @@ def _weave_choose_gap(
         l_id = lane_list[i][1] if i < n else None
         f_id = lane_list[i - 1][1] if i > 0 else None
         if f_id is not None:
-            if f_id in blocked:
-                continue
             p_f = p_of[f_id]
             s_f = x_c - p_c["len"] - x_of[f_id]
             dist = x_c - x_of[f_id]
@@ -2707,10 +2225,11 @@ def _weave_change_ok(
     and :func:`_weave_force_gap_ok` with both brake gaps. Gaps are SUMO's
     reported ones — the changer's ``minGap`` excluded on the leader side,
     the follower's on the follower side; ``inf`` / ``nan`` without a
-    vehicle there. Used by the swap (:func:`_weave_swap_step`), which reads
-    each change with its partner removed from the target lane. The
-    follower side, and the guard's follower side, read ``accept_lag_s``
-    (WP-80, :func:`_weave_lag_gap_s`).
+    vehicle there. The oracle of the offline restatement in
+    ``calibration.lane_change_gaps`` (its tests read every case against
+    it). The follower side, and the guard's follower side, read
+    ``accept_lag_s`` when given (WP-80; the runner's follower-side keys were
+    removed on 2026-10-06, the restatement keeps the split).
 
     Args:
         s0_c: The changer's ``minGap`` [m].
@@ -2756,124 +2275,14 @@ def _weave_change_ok(
     )
 
 
-def _weave_swap_offset_ok(
-    d_m: float,
-    s0_r: float,
-    acc_r: float,
-    v_r: float,
-    b_r: float,
-    s0_p: float,
-    acc_p: float,
-    v_p: float,
-    b_p: float,
-    lag_p: float | None = None,
-) -> bool:
-    """Whether a swap pair may exchange lanes in one step: the forced guard between the two.
-
-    WP-64 (2026-09-25, block 3; docs/WEAVE_MODEL_PLAN.md, dated section).
-    The rear vehicle R (front bumper behind the front vehicle P's) and P,
-    ``d_m`` the bumper offset from R's front to P's rear (negative while
-    they overlap). In the exchange R lands behind P's old place in P's lane
-    and P ahead of R's old place in R's lane; SUMO executes the two in one
-    step front vehicle first (probed on 1.27.1, docs/WEAVE_MODEL_PLAN.md),
-    so if either is refused by SUMO the pair is left in one lane at this
-    offset, R behind P. Against each other the two changes are therefore
-    read by the forced guard (:func:`_weave_force_gap_ok`, the weave's own
-    minimum for any change): R onto P as its leader, P in front of R as its
-    follower, the reported gap between them ``d − s0_R`` on either side.
-    Both reduce to ``d − s0_R > max(s0_R, s0_P)`` plus the closing terms of
-    a faster R — its accepted time gap over the closing speed and its brake
-    gap at ``b_R`` — so the rear must not be faster by more than the offset
-    covers, and a pair at speed parity needs one ``minGap`` of each between
-    bumpers: from fronts level, one length of P plus the two ``minGap``s.
-
-    Args:
-        d_m: Bumper offset, R's front to P's rear [m].
-        s0_r: R's ``minGap`` [m].
-        acc_r: R's movement's accepted time gap [s].
-        v_r: R's speed [m/s].
-        b_r: R's comfortable deceleration [m/s²].
-        s0_p: P's ``minGap`` [m].
-        acc_p: P's movement's accepted time gap [s].
-        v_p: P's speed [m/s].
-        b_p: P's comfortable deceleration [m/s²].
-        lag_p: P's movement's follower-side time gap [s] (WP-80: R is P's
-            follower, so P's follower side decides; ``None`` uses
-            ``acc_p``). R's side is its leader side, ``acc_r``.
-
-    Returns:
-        Whether both changes pass the forced guard against each other.
-    """
-    g = d_m - s0_r
-    return _weave_force_gap_ok(
-        s0_r, acc_r, v_r, g, v_p, math.inf, math.nan, b_r
-    ) and _weave_force_gap_ok(
-        s0_p, acc_p, v_p, math.inf, math.nan, g, v_r, b_p, b_r, accept_lag_s=lag_p
-    )
-
-
-def _weave_swap_opposing_clear(
-    x_e: float,
-    len_e: float,
-    s0_e: float,
-    acc_e: float,
-    v_e: float,
-    b_e: float,
-    acc_x: float,
-    beyond: Sequence[tuple[float, float, float, float, float, bool]],
-) -> bool:
-    """Whether no vehicle can enter section lane 1 from lane 2 beside a swapping entrant this step.
-
-    The guard against two opposing changes into one lane in one step
-    (WP-64; the latent defect WP-60 and WP-62 recorded). SUMO executes the
-    changes of a step front vehicle first (probed on 1.27.1), and a change
-    under ``LC_MODE_SCRIPTED_FORCE`` (mode 256) refuses only an overlap —
-    so a mode-256 change is unsafe exactly when a vehicle processed before
-    it has entered its target lane from the other side this step, which
-    its acceptance (read before the step) could not see. The swap's
-    entrant E enters lane 1 from lane 0; the only opposing entries into
-    lane 1 come from lane 2 (``beyond``: front, length, ``minGap``, speed,
-    ``b`` and whether it is a driven exiter the weave may command into lane
-    1 this step). The swap is not commanded while
-
-    * a lane-2 vehicle *ahead* of E (front at or ahead of E's) would, in
-      lane 1, fail the forced guard as E's leader — processed before E, it
-      could enter first and E would land behind it at any non-overlapping
-      gap. Whether an undriven vehicle will change cannot be read in
-      advance (SUMO decides and executes a model change in the same step;
-      the saved lane-change state read before it showed nothing, probed),
-      so every vehicle there counts;
-    * a driven exiter in lane 2 *behind* E would, in lane 1, fail the
-      forced guard with E as its leader — its own mode-256 change is
-      processed after E's. An undriven vehicle behind E is processed after
-      it by its own model, whose safety check sees E.
-
-    The partner X enters lane 0, which only lane 1 feeds: no opposing
-    entry. Same-side entries keep the gap the two had in their own lane.
-
-    Returns:
-        Whether E's entry into lane 1 has no opposing entry to meet.
-    """
-    for x_v, len_v, s0_v, v_v, b_v, driven in beyond:
-        if x_v >= x_e:
-            g = x_v - len_v - x_e - s0_e
-            if not _weave_force_gap_ok(s0_e, acc_e, v_e, g, v_v, math.inf, math.nan, b_e):
-                return False
-        elif driven:
-            g = x_e - len_e - x_v - s0_v
-            if not _weave_force_gap_ok(s0_v, acc_x, v_v, g, v_e, math.inf, math.nan, b_v):
-                return False
-    return True
-
-
 def _weave_exec_change(
     mod: Any, vid: str, st: dict[str, Any], target: int, step_s: float, t: float, kind: str
 ) -> None:
     """Request a weave change for one step under ``LC_MODE_SCRIPTED_FORCE`` (mode 256).
 
-    The execution of :func:`_weave_step`, unchanged: an accepted change (and
-    the swap's, ``kind`` ``"acc"`` / ``"swap"``) is executed under mode 256 for
-    one step — the follower yields, SUMO still refuses an immediate collision;
+    The execution of :func:`_weave_step`, unchanged: an accepted change
+    (``kind`` ``"acc"``) is executed under mode 256 for one step — the
+    follower yields, SUMO still refuses an immediate collision;
     under mode 512 SUMO refused the change while the follower was closing from
     far back and braked the changer to drop in behind it. A forced change
     (``kind`` ``"force"``) is requested under the gaps just checked by the
@@ -2890,169 +2299,13 @@ def _weave_exec_change(
         st["forced"] = True
 
 
-def _weave_opposing_guard(
-    mod: Any,
-    tc: Any,
-    ws: dict[str, Any],
-    results: Any,
-    lanes: dict[int, list[tuple[float, str]]],
-    x_of: dict[str, float],
-    v_of: dict[str, float],
-    requests: dict[str, dict[str, Any]],
-    t: float,
-) -> tuple[set[str], dict[str, int]]:
-    """Two changes into one lane from opposite sides in one step: the one with priority goes (WP-92).
-
-    **The defect** (docs/WEAVE_MODEL_PLAN.md: WP-60's G, WP-62's N, probed in
-    WP-64, WP-80's collision, WP-90's collision and five 9 m/s² stops; WP-92
-    has the derivation). SUMO executes the lane changes of an edge front
-    vehicle first, across its lanes (``MSLaneChanger::findCandidate``; probed
-    on 1.27.1, WP-64), and a vehicle that has changed is seen in its new lane
-    by every vehicle executed after it. A change under SUMO's own model, or
-    under a TraCI request that respects the gaps (modes 512 / 768), is then
-    refused if it would land too close behind that vehicle. A change under
-    ``LC_MODE_SCRIPTED_FORCE`` — the section's accepted and forced changes and
-    the swap, mode 256 — is refused only on an overlap (SUMO's
-    ``LCP_NOOVERLAP`` clears the blocked bits unless ``LCA_OVERLAPPING``), and
-    the acceptance and the forced guard that admitted it read the target lane
-    before the step. So a runner change lands at any gap behind a vehicle ahead
-    that entered the same lane from the other side in the same step: an
-    exiter from lane 2 behind an entrant from lane 0, an entrant behind a
-    through vehicle keeping right from lane 2, an exiter from lane 3 behind a
-    vehicle moving left from lane 1. The rear is always a runner change; a
-    rear under SUMO's own model sees the front.
-
-    **The conflict.** Each runner request R into lane k (from lane k − d) is
-    read against every vehicle P in lane k + d — the only lane an opposing
-    entry into k comes from — whose front is ahead of R's before the step,
-    or level with it in the lower lane (SUMO's order: front first, the lower
-    lane first at a tie). They conflict when R, behind P in lane k, would fail
-    the forced guard with P as its leader (:func:`_weave_force_gap_ok`, the
-    weave's minimum for any change, at R's movement's leader-side time gap A
-    and R's ``b``): the reported gap ``x_P − len_P − x_R − s0_R`` at most
-    ``s0_R + max(A·(v_R − v_P)⁺, (v_R − v_P)⁺² / (2·b_R))``. At speed parity
-    that is fronts within ``len_P + 2·s0_R`` — 10 m for 5 m vehicles with a
-    2.5 m ``minGap`` — and longer by the closing terms when R is faster; an
-    overlap is a conflict too. Nothing is tuned: the lengths, the ``minGap``,
-    the time gap and ``b`` are the vehicles' and the movement's own.
-
-    **The priority.** (0) A change whose forced change is due (the forced
-    zone's delay spent, or a released pair's) — its lane end is its deadline;
-    (1) any other crossing change — the section drives every crossing
-    vehicle on its edges from the step it is seen there, so these are the
-    runner's requests; (2) a model-driven change of a vehicle the section does
-    not drive (a through vehicle, an exiter given up, an entrant handed back
-    after its crossing): discretionary, never needed to stay on its route.
-    The lower class goes; between equals the one ahead, P — SUMO's own order,
-    and the nearer to the gore, which is both movements' deadline. The other
-    is deferred by one step:
-
-    * P a runner request: the loser's request is withheld (the step runs as
-      one with no request, under ``LC_MODE_SCRIPTED_SAFE``);
-    * P driven with no request: it cannot change this step (mode 512 has no
-      model-driven bits), unless its request of the last step is still open
-      (:func:`_weave_exec_change`) — then R is withheld, since that request
-      cannot be taken back;
-    * P not driven by the section: whether its model will change it cannot be
-      read before the step (``vehicle.getLaneChangeState`` and
-      ``wantsAndCouldChangeLane`` report the last step's decision, and a
-      keep-right change shows no bit before it executes; probed on 1.27.1,
-      WP-64 and WP-92), so it is vetoed: its model-driven bits
-      (:data:`LC_MODE_MODEL_BITS`) are cleared for this one step and its mode
-      restored on the next (:func:`_weave_opposing_restore`), which defers its
-      change by exactly one step (probed: the change executes 0.5 s later). A
-      P whose mode has no model-driven bits is under another rule or section
-      and can change only on a request this section cannot read: R is
-      withheld.
-
-    Requests are read front first, as SUMO executes them, and a withheld one
-    is no longer a front. The swap's changes are read by its own guard
-    (:func:`_weave_swap_opposing_clear`): never a rear here, and a front that
-    is never withheld. Not covered: across the boundary of two edges SUMO's
-    order is its edge list's, not the vehicles' positions, so a model-driven
-    change on the upstream edge can execute before a runner change on the
-    downstream one and land close behind it (twice on the fixture grid at the
-    defaults, both with the rear slower; docs/WEAVE_MODEL_PLAN.md, WP-92).
-
-    Args:
-        mod: ``traci`` / ``libsumo``.
-        tc: ``traci.constants``.
-        ws: The section's state.
-        results: This step's subscription results.
-        lanes: The target-lane listings on the section axis, sorted.
-        x_of: Section-axis front positions [m].
-        v_of: Speeds [m/s].
-        requests: The runner's requests this step: vehicle id → ``lane``,
-            ``target``, ``due`` (its forced change due), ``kind`` (``"acc"``,
-            ``"force"``, ``"swap"``) and ``accept`` (its movement's
-            leader-side time gap [s]).
-        t: The simulation time [s].
-
-    Returns:
-        The requests withheld this step, and the vehicles vetoed for it with
-        the lane-change mode each had.
-    """
-    veh: dict[str, dict[str, Any]] = ws["veh"]
-    step_s = float(ws["step_s"])
-    withheld: set[str] = set()
-    vetoes: dict[str, int] = {}
-    for r_id in sorted(requests, key=lambda v: (-x_of[v], int(requests[v]["lane"]), v)):
-        rq = requests[r_id]
-        if r_id in withheld or rq["kind"] == "swap":
-            continue
-        target = int(rq["target"])
-        d = target - int(rq["lane"])
-        opp = lanes.get(target + d)
-        if not opp:
-            continue
-        x_r, v_r = x_of[r_id], v_of[r_id]
-        p_r = _weave_veh(mod, ws, r_id)
-        prio_r = 0 if rq["due"] else 1
-        # at a tie SUMO executes the lower lane's vehicle first
-        i0 = (
-            bisect.bisect_left(opp, (x_r, ""))
-            if d < 0
-            else bisect.bisect_right(opp, (x_r, "\uffff"))
-        )
-        for x_p, p_id in opp[i0:]:
-            p_p = _weave_veh(mod, ws, p_id)
-            g = x_p - p_p["len"] - x_r - p_r["s0"]
-            if _weave_force_gap_ok(
-                p_r["s0"], float(rq["accept"]), v_r, g, v_of[p_id], math.inf, math.nan, p_r["b"]
-            ):
-                continue
-            rp = requests.get(p_id)
-            if rp is not None:
-                if int(rp["target"]) != target or p_id in withheld:
-                    continue
-                if rp["kind"] != "swap" and prio_r < (0 if rp["due"] else 1):
-                    withheld.add(p_id)
-                    continue
-                withheld.add(r_id)
-                break
-            st_p = veh.get(p_id)
-            if st_p is not None:
-                lane_p = int(results[p_id][tc.VAR_LANE_INDEX])
-                if lane_p + int(st_p["dir"]) == target and st_p["requested_s"] >= t - step_s - 1e-9:
-                    withheld.add(r_id)
-                    break
-                continue
-            if p_id in vetoes:
-                continue
-            mode = int(mod.vehicle.getLaneChangeMode(p_id))
-            if mode & LC_MODE_MODEL_BITS:
-                vetoes[p_id] = mode
-                continue
-            withheld.add(r_id)
-            break
-    return withheld, vetoes
-
-
 def _weave_opposing_restore(mod: Any, ws: dict[str, Any], results: Any) -> None:
     """Give the vehicles vetoed last step their lane-change mode back (WP-92).
 
-    :func:`_weave_opposing_guard` clears a vehicle's model-driven bits for one
-    step; before anything of the next step reads a mode, each vetoed vehicle
+    The measured model's opposing-entry resolution
+    (:func:`merge_model.resolve_opposing`, :func:`_measured_step`) clears a
+    vehicle's model-driven bits for one step; before anything of the next
+    step reads a mode, each vetoed vehicle
     still in the network gets the mode it had — unless another rule has set
     one since, which is then left as it is.
     """
@@ -3061,631 +2314,6 @@ def _weave_opposing_restore(mod: Any, ws: dict[str, Any], results: Any) -> None:
         if vid in results and int(mod.vehicle.getLaneChangeMode(vid)) == mode & ~LC_MODE_MODEL_BITS:
             mod.vehicle.setLaneChangeMode(vid, mode)
     vetoes.clear()
-
-
-def _weave_swap_step(
-    mod: Any,
-    tc: Any,
-    ws: dict[str, Any],
-    results: Any,
-    lanes: dict[int, list[tuple[float, str]]],
-    x_of: dict[str, float],
-    v_of: dict[str, float],
-    pending: dict[str, int],
-    excluded: Collection[str],
-    t: float,
-) -> set[str]:
-    """The swap (2026-09-25, block 3, WP-64): the pairs that exchange lanes this step.
-
-    ``swap_pairs`` (``WEAVE_DEFAULTS``; 0 = off). A driven entrant E in
-    section lane 0 (the auxiliary lane) and a driven exiter X in section
-    lane 1 beside it are each other's natural gap: E's move out of lane 0
-    vacates the place X needs, X's move out of lane 1 the place E needs.
-    The section's acceptance reads the two changes separately, each with
-    the other still in its target lane, so a near-abreast pair refuses
-    both; the entrants then leave lane 0 in the section's first metres and
-    the exiters enter it tens of metres later, both through lane 1 (the
-    corridor section test's crossing order, WP-62).
-
-    **The pair.** R is the one of E and X whose front is behind (ties by
-    id), P the other; ``d`` the bumper offset from R's front to P's rear.
-    E and X form a pair when they are each other's nearest vehicle across —
-    nobody in P's lane between P and R's front, nobody in R's lane between
-    R and P's front — and at least one of the two changes is refused by the
-    acceptance because of the other (R with P as its leader, or P with R
-    as its follower): overlapping, or nearer than the acceptance's gaps.
-
-    **The exchange** is commanded — both changes under mode 256 for one
-    step, as an accepted change is — when (i) the two clear the forced
-    guard against each other (:func:`_weave_swap_offset_ok`: a pair at
-    speed parity one ``minGap`` of each apart between bumpers); (ii) R's
-    change is accepted in P's lane with P removed — the leader P's own
-    leader, the follower the vehicle behind P; (iii) P's change is accepted
-    in R's lane with R removed — the leader R's leader, the follower the
-    vehicle behind R; (iv) no opposing entry into lane 1 beside E can
-    meet E's change (:func:`_weave_swap_opposing_clear`). Each change is
-    thus read by the full acceptance against everyone but the partner, and
-    against the partner by the forced guard, so a pair of which SUMO
-    executes only one change is left at a forced-guard gap, the faster in
-    front. Nobody else is commanded; nothing is held; each vehicle is in
-    one pair at most, entrants nearest the section end first; a pair is
-    re-read every step and exists only while the geometry does.
-
-    The pairs commanded are counted in ``n_swaps`` (meta); the blocked
-    pair-steps, the refusals by condition and the outcome of each exchange
-    on the next step (both changed, one, none) are kept in the section's
-    state for a harness.
-
-    **Measured and left off** (docs/WEAVE_MODEL_PLAN.md, dated section
-    WP-64). On ``tests/fixtures/weave_th52_corridor.osm`` under the observed
-    05:30–05:50 movements (seeds 3 / 4 / 5) it exchanges 44 / 45 / 44 pairs,
-    every one completed in the step, no collision; the exiters' median first
-    lane-0 position moves 40.1 → 31.2 m at seed 3 and not at the others, and
-    no criterion of the corridor section test improves (the T.H.52 entrance
-    360 / 365 / 339 of 407 against 368 / 360 / 350, the exit end's lanes at or
-    below 20 m/s in 11 / 12 / 13 of 16 windows against 10 / 11 / 13). 72–82 %
-    of the blocked pair-steps are refused on the offset, the two a median
-    15–22 m into the section at 5–6 m/s within about 1 m/s of each other,
-    and the rear's drop-back towards the offset (harness) reads worse. On
-    the 29-run fixture grid the entrances fall 5,944 → 5,903 and the T.H.52
-    capacity fixture's no-lock pin fails at seeds 3 and 5.
-
-    The leader and follower gaps apart (2026-09-25, block 3, WP-80): each
-    check reads the leader side's time gap of the changer's movement on
-    its leader side and the follower side's (:func:`_weave_lag_gap_s`) on
-    its follower side — in (i) R's side against P is R's leader side and
-    P's against R its follower side.
-
-    Args:
-        mod: The libsumo / traci module.
-        tc: Its constants module.
-        ws: The section's state.
-        results: This step's subscription results.
-        lanes: Target-lane listings on the section axis (:func:`_weave_step`).
-        x_of: Front-bumper positions on the section axis [m].
-        v_of: Speeds [m/s].
-        pending: The vehicles driven this step and their direction.
-        excluded: Vehicles not paired this step (the pair release's
-            yielders and released partners).
-        t: Simulation time [s].
-
-    Returns:
-        The vehicles whose change is commanded as a swap this step.
-    """
-    prm = ws["params"]
-    # the outcome of last step's exchanges: E off lane 0, X on lane 0 or off
-    # the section onto the exit
-    for e_id, x_id in ws.pop("swap_open", []):
-        re_, rx = results.get(e_id), results.get(x_id)
-        e_done = re_ is not None and not (
-            re_[tc.VAR_ROAD_ID] in ws["edge_index"] and int(re_[tc.VAR_LANE_INDEX]) == 0
-        )
-        x_done = rx is None or (
-            rx[tc.VAR_ROAD_ID] in ws["exit_edges"]
-            or (rx[tc.VAR_ROAD_ID] in ws["edge_index"] and int(rx[tc.VAR_LANE_INDEX]) == 0)
-        )
-        key = (
-            "swap_full" if e_done and x_done else ("swap_half" if e_done or x_done else "swap_none")
-        )
-        ws[key] += 1
-    if float(prm["swap_pairs"]) <= 0.0:
-        return set()
-    edges: dict[str, int] = ws["edge_index"]
-    lane_of: dict[str, int] = {}
-    for vid in pending:
-        if results[vid][tc.VAR_ROAD_ID] in edges:
-            lane_of[vid] = int(results[vid][tc.VAR_LANE_INDEX])
-    entrants = sorted(
-        (
-            (x_of[v], v)
-            for v, d in pending.items()
-            if d > 0 and lane_of.get(v) == 0 and v not in excluded
-        ),
-        reverse=True,
-    )
-    lane0 = lanes.get(0, [])
-    lane1 = lanes.get(1, [])
-    lane2 = lanes.get(2, [])
-    acc_e = float(prm["accept_gap_s"])
-    acc_x = float(prm["exit_accept_gap_s"])
-    # the follower sides (WP-80; the leader sides' values when unset)
-    lag_e = _weave_lag_gap_s(prm, exiting=False)
-    lag_x = _weave_lag_gap_s(prm, exiting=True)
-    p_of: dict[str, dict[str, float]] = {}
-
-    def p(vid: str) -> dict[str, float]:
-        if vid not in p_of:
-            p_of[vid] = _weave_veh(mod, ws, vid)
-        return p_of[vid]
-
-    def v0(vid: str) -> float:
-        r = results[vid]
-        return min(
-            p(vid)["vmax"],
-            _weave_lane_vmax(mod, ws, r[tc.VAR_ROAD_ID], int(r[tc.VAR_LANE_INDEX])),
-        )
-
-    def around(lst: list[tuple[float, str]], vid: str) -> tuple[str | None, str | None]:
-        """The vehicles directly behind and ahead of ``vid`` in its listing."""
-        i = bisect.bisect_left(lst, (x_of[vid], vid))
-        return (lst[i - 1][1] if i > 0 else None), (lst[i + 1][1] if i + 1 < len(lst) else None)
-
-    def lead_gap(c: str, lead: str | None) -> tuple[float, float]:
-        if lead is None:
-            return math.inf, math.nan
-        return x_of[lead] - p(lead)["len"] - x_of[c] - p(c)["s0"], v_of[lead]
-
-    def foll_gap(c: str, foll: str | None) -> tuple[float, float]:
-        if foll is None:
-            return math.inf, math.nan
-        return x_of[c] - p(c)["len"] - x_of[foll] - p(foll)["s0"], v_of[foll]
-
-    def decide(
-        e_id: str,
-        r_id: str,
-        p_id: str,
-        d: float,
-        acc_r: float,
-        acc_p: float,
-        near: tuple[str | None, str | None, str | None, str | None],
-        lag_r: float,
-        lag_p: float,
-    ) -> str:
-        """``"go"``, or the first condition that refuses the exchange."""
-        behind_p, ahead_p, behind_r, ahead_r = near
-        p_r, p_p = p(r_id), p(p_id)
-        v_r, v_p = v_of[r_id], v_of[p_id]
-        # (i) the forced guard between the two
-        if not _weave_swap_offset_ok(
-            d, p_r["s0"], acc_r, v_r, p_r["b"], p_p["s0"], acc_p, v_p, p_p["b"], lag_p=lag_p
-        ):
-            return "offset"
-        # (ii) R into P's lane with P removed: P's leader, the vehicle behind P
-        gl, vl = lead_gap(r_id, ahead_p)
-        gf, vf = foll_gap(r_id, behind_p)
-        pf = p(behind_p) if behind_p is not None else None
-        v0f = v0(behind_p) if behind_p is not None else 0.0
-        if not _weave_change_ok(
-            p_r["s0"], acc_r, v_r, p_r["b"], gl, vl, gf, vf, pf, v0f, accept_lag_s=lag_r
-        ):
-            return "rear"
-        # (iii) P into R's lane with R removed: R's leader, the vehicle behind R
-        gl, vl = lead_gap(p_id, ahead_r)
-        gf, vf = foll_gap(p_id, behind_r)
-        pf = p(behind_r) if behind_r is not None else None
-        v0f = v0(behind_r) if behind_r is not None else 0.0
-        if not _weave_change_ok(
-            p_p["s0"], acc_p, v_p, p_p["b"], gl, vl, gf, vf, pf, v0f, accept_lag_s=lag_p
-        ):
-            return "front"
-        # (iv) no opposing entry into lane 1 beside the entrant
-        p_e = p(e_id)
-        beyond = [
-            (
-                xv,
-                p(vv)["len"],
-                p(vv)["s0"],
-                v_of[vv],
-                p(vv)["b"],
-                pending.get(vv, 0) < 0 and lane_of.get(vv) == 2,
-            )
-            for xv, vv in lane2
-        ]
-        if not _weave_swap_opposing_clear(
-            x_of[e_id], p_e["len"], p_e["s0"], acc_e, v_of[e_id], p_e["b"], acc_x, beyond
-        ):
-            return "opposing"
-        return "go"
-
-    paired: set[str] = set()
-    go: set[str] = set()
-    for x_e, e_id in entrants:
-        if e_id in paired:
-            continue
-        i = bisect.bisect_left(lane1, (x_e, e_id))
-        cands = [lane1[k][1] for k in (i, i - 1) if 0 <= k < len(lane1)]
-        cands.sort(key=lambda c: abs(x_of[c] - x_e))
-        for x_id in cands:
-            if (
-                pending.get(x_id, 0) >= 0
-                or lane_of.get(x_id) != 1
-                or x_id in excluded
-                or x_id in paired
-            ):
-                continue
-            e_front = (x_e, e_id) > (x_of[x_id], x_id)
-            r_id, p_id = (x_id, e_id) if e_front else (e_id, x_id)
-            lane_r, lane_p = (lane1, lane0) if e_front else (lane0, lane1)
-            behind_p, ahead_p = around(lane_p, p_id)
-            behind_r, ahead_r = around(lane_r, r_id)
-            # each other's nearest across: nobody between them in either lane
-            if behind_p is not None and x_of[behind_p] > x_of[r_id]:
-                continue
-            if ahead_r is not None and x_of[ahead_r] < x_of[p_id]:
-                continue
-            p_r, p_p = p(r_id), p(p_id)
-            acc_r, acc_p = (acc_x, acc_e) if e_front else (acc_e, acc_x)
-            lag_r, lag_p = (lag_x, lag_e) if e_front else (lag_e, lag_x)
-            v_r, v_p = v_of[r_id], v_of[p_id]
-            d = x_of[p_id] - p_p["len"] - x_of[r_id]
-            g = d - p_r["s0"]
-            # blocked: the acceptance refuses R with P as its leader, or P with
-            # R as its follower — else the section's own acceptance decides
-            r_ok = _weave_change_ok(
-                p_r["s0"],
-                acc_r,
-                v_r,
-                p_r["b"],
-                g,
-                v_p,
-                math.inf,
-                math.nan,
-                None,
-                0.0,
-                accept_lag_s=lag_r,
-            )
-            p_ok = _weave_change_ok(
-                p_p["s0"],
-                acc_p,
-                v_p,
-                p_p["b"],
-                math.inf,
-                math.nan,
-                g,
-                v_r,
-                p_r,
-                v0(r_id),
-                accept_lag_s=lag_p,
-            )
-            if r_ok and p_ok:
-                continue
-            paired.update((e_id, x_id))
-            ws["swap_candidates"] += 1
-            reason = decide(
-                e_id,
-                r_id,
-                p_id,
-                d,
-                acc_r,
-                acc_p,
-                (behind_p, ahead_p, behind_r, ahead_r),
-                lag_r,
-                lag_p,
-            )
-            if reason == "go":
-                go.update((e_id, x_id))
-                ws["n_swaps"] += 1
-                ws.setdefault("swap_open", []).append((e_id, x_id))
-            else:
-                ws["swap_refused_" + reason] += 1
-            # a harness may install a list here: every blocked pair-step
-            log: list[tuple[Any, ...]] | None = ws.get("swap_log")
-            if log is not None:
-                log.append(
-                    (t, e_id, x_id, x_e, x_of[x_id], v_of[e_id], v_of[x_id], d, e_front, reason)
-                )
-            break
-    return go
-
-
-def _weave_spread_length(
-    length_m: float,
-    zone_m: float,
-    v: float,
-    v0: float,
-    p: dict[str, float],
-    accept_s: float,
-) -> float:
-    """How far into the section a crossing may be withheld at the changer's speed [m].
-
-    The crossings spread along the section (2026-09-25, block 3, WP-67,
-    ``spread_crossings``; docs/WEAVE_MODEL_PLAN.md, dated section). A
-    crossing — an entrant leaving the auxiliary lane, an exiter entering
-    it — ties the two lanes it spans from its gap choice to its change:
-    the changer eases towards the target lane's gap leader and the gap's
-    follower is held behind the changer's projection, so both keep a
-    car-following gap in both lanes. Where every vehicle of lanes 0 and 1
-    is so tied, the pair holds one lane's density at its speed (WP-65:
-    1.14 lanes' worth at the entry after its breakdown, where 75 % of the
-    entrants' crossings stood); where a share θ of them is, the pair
-    carries at most ``2 C / (1 + θ)`` for a lane capacity ``C``. With the
-    crossings' onsets spread uniformly over a length ``D`` and each tie
-    ``w`` long, θ at any cross-section is about the crossers' share times
-    ``w / D``: the longest ``D`` the geometry allows minimises the largest
-    θ. Three lengths bound it, each at the changer's speed ``v``:
-
-    * a crossing withheld costs the waiting vehicle nothing only until its
-      own model brakes for the end of its lane (the lane it waits in does
-      not continue on its route): the IDM's interaction with a standing
-      obstacle outweighs its free term from ``s_b = s*(v, v) / sqrt(1 −
-      (v/v0)^4)`` before it, ``s*(v, v) = s0 + v·T + v² / (2·sqrt(a·b))``
-      (Treiber & Kesting 2013, ch. 11; at the vehicle's own ``T``, ``a``,
-      ``b``, ``s0``, ``v0`` its desired speed on that lane; ``inf`` from
-      ``v0`` on). A lone entrant held in the auxiliary lane of the corridor
-      section fixture at 22.9 m/s decelerates from 99 m in, a lone exiter
-      held in lane 1 at 24.5 m/s from 81 m in (EIDM at the fleet's
-      population means, SUMO 1.27.1, probed); the first measured form,
-      which spread the onsets over the unforced length alone, had the
-      section's last 55 m of the auxiliary lane at 3.5 m/s in minute 1
-      (seed 3);
-    * the forced zone ``zone_m`` (:func:`_weave_short_section_rule`);
-    * one cooperative gap opening must remain before either: from abreast,
-      a follower opens one accepted gap ``s0 + accept · v`` at its ``b`` in
-      ``sqrt(2 · (s0 + accept · v) / b)``, travelled at ``v`` (the stretch
-      the short-section rule derives).
-
-    Hence ``D = max(min(length − s_b, length − zone) − w, 0)``: on the
-    304.9 m T.H.52 section at the fleet's population means, 0 from about
-    19.5 m/s — in free flow the section is too short to withhold a
-    crossing, and the rule leaves it where it is — 59 m at 18 m/s, 135 m
-    at 15 m/s, 193 m at 10 m/s and 212 m at 5 m/s, where the queue stands.
-
-    Args:
-        length_m: The section's driven length [m].
-        zone_m: Its forced zone [m].
-        v: The changer's speed [m/s].
-        v0: Its desired speed on the lane it waits in [m/s].
-        p: Its constants (:func:`_weave_veh`: ``T``, ``a``, ``b``, ``s0``).
-        accept_s: Its movement's accepted time gap on the follower side
-            [s] — the gap the follower opens (WP-80,
-            :func:`_weave_lag_gap_s`; the movement's single time gap
-            before).
-
-    Returns:
-        ``D ≥ 0`` [m].
-    """
-    v = max(v, 0.0)
-    if v >= v0 or p["b"] <= 0.0 or p["a"] <= 0.0:
-        return 0.0
-    s_star = p["s0"] + v * p["T"] + v * v / (2.0 * math.sqrt(p["a"] * p["b"]))
-    s_b = s_star / math.sqrt(1.0 - (v / v0) ** 4)
-    w = v * math.sqrt(2.0 * (p["s0"] + accept_s * v) / p["b"])
-    return max(min(length_m - s_b, length_m - zone_m) - w, 0.0)
-
-
-def _weave_outlet_length(length_m: float, zone_m: float) -> float:
-    """The ramp's outlet: how far into the auxiliary lane no vehicle is held for an exiter [m].
-
-    2026-09-25, block 3, WP-70 (``ramp_outlet``, off by default;
-    docs/WEAVE_MODEL_PLAN.md, dated section). The auxiliary lane at the
-    section start is the on-ramp's only outlet. At the defaults on the
-    corridor section test's fixture 29–36 % of the vehicle-steps in its first
-    50 m are set by a speed target holding the vehicle as an exiter's gap
-    follower (seeds 3 / 4 / 5, the whole run; WP-65 read 28–38 % under any
-    binding target before the entry's breakdown, almost all such holds), and
-    every one of them is a brake on the ramp's discharge behind it. With the
-    rule an exit-bound changer's gap choice (:func:`_weave_cooperate`) passes
-    over every vehicle on the ramp or in the auxiliary lane short of this
-    stretch: the exiter still changes into a gap the acceptance finds open
-    there, and SUMO's own change on arrival is untouched, but it holds nobody
-    in the outlet. The exit priority's hold is exempt, and never meets the
-    outlet: its followers are within ``lookahead_m`` behind a changer inside
-    the forced zone, so more than ``length − zone − lookahead_m`` > 53.8 m
-    into any section the rule applies to (the reserve less the 120 m
-    lookahead), beyond the stretch. Nothing is added: the rule only
-    withholds commands, so it cannot chain and holds nobody at any speed.
-
-    The stretch is where the ramp's vehicles still need the lane and no
-    more: ``WEAVE_OUTLET_ENTRANT_M`` (51.1 m), within which the share q* =
-    0.773 of the entrants have left the auxiliary lane at the defaults, and
-    ``WEAVE_OUTLET_EXIT_RESERVE_M`` (173.8 m), within which the same share of
-    the exiters have entered it — the minimax split of the unforced length
-    they were measured on (:data:`WEAVE_OUTLET_ENTRANT_M` has the
-    provenance). Beyond the stretch an exiter keeps at least the reserve
-    before the forced zone with its cooperation as without the rule; a
-    section shorter than the stretch plus the reserve plus the zone gets a
-    shorter stretch, and none (the rule inert) from ``zone + reserve``
-    (253.8 m with the 80 m zone) down. At that share the entrants' distance
-    does not grow with the ramp's queue (seeds 3 / 4 / 5 at the defaults: its
-    75th percentile is 44.8 m for entrants arriving below 8 m/s and 47.2 m
-    above, 33–45 / 38–57 m with none / one entrant still owing its change
-    ahead within 100 m), so the stretch is fixed, not adapted to the ramp's
-    flow.
-
-    Measured on the corridor section fixture and the 29-run fixture grid and
-    left off (the dated section has the tables): the T.H.52 entrance rises
-    at 9 of seeds 3–12 (3,418 → 3,749 of 4,070) and the entry breaks down
-    later, but the exit end reads no faster (lane-windows at or below 20 m/s
-    123 → 126 of 160) and on the grid the T.H.52 capacity fixture's no-lock
-    pin fails at seed 5 (3 exits missed). The first form derived, exiters
-    kept out of the auxiliary lane over the same stretch, fills lane 1 at the
-    entry, the entrants leave later and the exit end breaks down; it is not
-    in the code.
-
-    Args:
-        length_m: The section's driven length [m].
-        zone_m: Its forced zone [m].
-
-    Returns:
-        The stretch ``≥ 0`` [m] from the section start.
-    """
-    return max(min(WEAVE_OUTLET_ENTRANT_M, length_m - zone_m - WEAVE_OUTLET_EXIT_RESERVE_M), 0.0)
-
-
-def _weave_brake_onset_m(v: float, v0: float, p: dict[str, float], model: str) -> float:
-    """How far before a standing obstacle the vehicle's own SUMO model starts braking for it [m].
-
-    The exit priority from where the braking begins (2026-09-25, block 3,
-    WP-73, ``exit_priority_onset``; docs/WEAVE_MODEL_PLAN.md, dated
-    section). An exiter in a lane that does not lead to its exit is braked by
-    SUMO itself for the end of that lane: ``MSVehicle::planMoveInternal``
-    finds no link from the lane towards the route's next edge and asks the
-    car-following model's ``stopSpeed`` for the distance ``seen`` from the
-    front bumper to the lane end — the section's ``remaining``. The model's
-    acceleration towards that stop turns negative at:
-
-    * **EIDM** (``MSCFModel_EIDM::stopSpeed`` → ``_v`` with the leader speed 0
-      and ``respectMinGap = false``): the improved IDM (IIDM) of Treiber &
-      Kesting (2013, ch. 11), whose acceleration is ``a_free · (1 − (s*/s)^(2a/a_free))
-      ≥ 0`` while ``s* < s`` and ``a · (1 − (s*/s)²) ≤ 0`` from ``s* ≥ s`` on,
-      so the onset is ``s = s*`` itself; for a stop the desired gap carries no
-      ``minGap``: ``s* = v·T + v² / (2·√(a·b)) +`` the slack
-      :data:`SUMO_EIDM_POS_ACC_EPS_M` (the model's ``minGapStop_EPS`` is added
-      to both ``s*`` and the gap and cancels). No ``1/√(1 − (v/v0)⁴)`` factor:
-      above its desired speed (``v > v0``) the IIDM's free term brakes at
-      any distance (``inf``).
-    * **IDM** (``MSCFModel_IDM::stopSpeed`` → ``_v``, ``respectMinGap =
-      false``): ``a · (1 − (v/v0)⁴ − (s*/s)²)`` with the same ``s*`` less the
-      slack, so ``s*/√(1 − (v/v0)⁴)`` (``inf`` from ``v0`` on).
-
-    Both read from SUMO 1.27.1's source and checked on the installed binary
-    (``vehicle.getStopSpeed`` scanned over the gap, population means of the
-    corridor fleet: T 1.362 s, a 1.065, b 1.851 m/s², v0 24.59 m/s): the EIDM
-    onset is 50.6 / 102.6 / 135.3 / 172.4 / 205.3 / 241.2 m at 10 / 15 /
-    17.5 / 20 / 22 / 24 m/s against the form's 49.3 / 100.6 / 133.0 / 169.7 /
-    202.4 / 237.9 m — the model's two sub-steps per 0.5-s step put it
-    1.3–3.3 m farther out — and the IDM's 51.3 / 110.3 / 156.4 / 228.9 m
-    against 49.9 / 108.3 / 154.1 / 226.3 m. A lone EIDM vehicle released at
-    speed in a lane that ends brakes from within about ±12 % of the form (its
-    perceived gap carries the model's estimation error, ``sigmagap`` 0.1 on
-    a Wiener process of standard deviation about 0.5). WP-72's closed form
-    (the runner's IDM with ``minGap``, 230 m at 20 m/s) is the IDM's; the
-    EIDM fleet of the corridor starts braking 170 m before the lane end at
-    20 m/s.
-
-    Args:
-        v: The vehicle's speed [m/s].
-        v0: Its desired speed on its lane (``min(maxSpeed, lane limit)``) [m/s].
-        p: Its constants (:func:`_weave_veh`: ``T``, ``a``, ``b``).
-        model: Its car-following model, ``"IDM"`` or ``"EIDM"`` (``FleetSpec.model``).
-
-    Returns:
-        The distance ``≥ 0`` [m], ``inf`` where the model brakes at any distance.
-    """
-    v = max(v, 0.0)
-    if p["a"] <= 0.0 or p["b"] <= 0.0:
-        return math.inf
-    s_star = v * p["T"] + v * v / (2.0 * math.sqrt(p["a"] * p["b"]))
-    if model == "EIDM":
-        return s_star + SUMO_EIDM_POS_ACC_EPS_M if v <= v0 else math.inf
-    if v >= v0:
-        return math.inf
-    return s_star / math.sqrt(1.0 - (v / v0) ** 4)
-
-
-def _weave_spread_fraction(n: int) -> float:
-    """The n-th crossing's place in the spread length: ``frac(n · φ)``.
-
-    A zipper by order of arrival (WP-67, ``spread_crossings``): the Weyl
-    sequence of :data:`WEAVE_SPREAD_PHI` puts each new crossing in a largest
-    stretch the recent ones left, so any run of consecutive arrivals covers
-    the spread length nearly uniformly without a count of the crossers in
-    the section. The crossing is withheld while the vehicle is short of
-    ``frac(n · φ) · D`` (:func:`_weave_spread_length`, re-read each step
-    at its current speed).
-    """
-    return math.fmod(n * WEAVE_SPREAD_PHI, 1.0)
-
-
-def _weave_handover_step(
-    mod: Any,
-    tc: Any,
-    ws: dict[str, Any],
-    results: Any,
-    x_of: dict[str, float],
-    v_of: dict[str, float],
-    pending: dict[str, int],
-) -> None:
-    """Take a vehicle whose crossing will be withheld under the weave's mode before it arrives.
-
-    The crossings spread along the section (2026-09-25, block 3, WP-67,
-    ``spread_crossings``). SUMO moves a vehicle and then runs its lane
-    changes within one simulation step, and the weave reads the step's
-    results after it: a vehicle that owes a change on the section is set
-    to ``LC_MODE_SCRIPTED_SAFE`` on the first step the weave sees it
-    there — after SUMO's own lane-change model has had the step it
-    arrived in. Its strategic change (the lane it arrives in does not
-    continue on its route; ``strategic`` or ``strategic|urgent`` in SUMO's
-    lane-change output) then executes in that step whenever its own secure
-    gaps pass, a few metres into the section and unread by the section's
-    acceptance (WP-65: 1,076 of the crossings on the corridor section
-    fixture, ten seeds). Here a vehicle that will arrive in its crossing
-    lane — an entrant not bound for the paired exit on the ramp, an
-    exit-bound vehicle on the corridor lane that feeds section lane 1 —
-    with its crossing withheld (its place in the spread times the spread
-    length at its speed positive, :func:`_weave_spread_length`) is set to
-    that mode on the step before it can reach the section: when its
-    distance to the section start is within two steps' travel at the speed
-    it can reach in one, ``2 · Δt · (v + a · Δt)``. One whose crossing is
-    not withheld keeps its own mode, and SUMO's change in the step it
-    arrives stays as without the rule: taking every crossing vehicle is not
-    neutral, the section's acceptance refusing 19–48 % of the changes
-    SUMO's model makes on arrival (docs/WEAVE_MODEL_PLAN.md, dated section
-    WP-67). Its original mode is kept in
-    ``ws["handover"]`` and restored at hand-back, as for any driven vehicle
-    (:func:`_weave_step`); one that leaves the window without being driven
-    gets it back at once. A vehicle under another scripted hold (the
-    vacate rule's, the exiters' early move, another section's) is left to
-    that hold, whose owner restores its mode. Its place in the spread
-    (:func:`_weave_spread_fraction`) is assigned on that step, in the order
-    the vehicles are taken, unless it had one already (an entrant gets it
-    on its first step within ``lookahead_m`` of the section).
-    """
-    prm = ws["params"]
-    x_start = float(ws["x_offset"][ws["edges"][0]])
-    step_s = float(ws["step_s"])
-    edges: dict[str, int] = ws["edge_index"]
-    exiting: frozenset[str] = ws["exiting_ids"]
-    ramp_edges: frozenset[str] = ws["ramp_edges"]
-    handover: dict[str, int] = ws["handover"]
-    section_len = float(sum(ws["lane_len_m"].values()))
-    zone_m = float((ws.get("rule") or _weave_short_section_rule(section_len, prm))["zone_m"])
-    now: set[str] = set()
-    for vid, x in x_of.items():
-        if vid in ws["veh"] or vid in ws["gave_up"]:
-            continue
-        road = results[vid][tc.VAR_ROAD_ID]
-        if road in edges:
-            continue
-        if vid in exiting:
-            if road in ramp_edges or vid in ws["exited"]:
-                continue
-        elif road not in ramp_edges:
-            continue
-        if x >= x_start:
-            continue  # past the section (the lane map's edge after it)
-        p = _weave_veh(mod, ws, vid)
-        v = v_of[vid]
-        if x_start - x > 2.0 * step_s * (v + p["a"] * step_s):
-            continue
-        if vid not in ws["onset"]:
-            ws["onset"][vid] = _weave_spread_fraction(ws["n_onsets"])
-            ws["n_onsets"] += 1
-        # the section lane it arrives in: the auxiliary lane from the ramp
-        k = (
-            0
-            if road in ramp_edges
-            else ws["lane_map"][(road, int(results[vid][tc.VAR_LANE_INDEX]))]
-        )
-        if vid not in handover:
-            if k != (0 if vid not in exiting else 1):
-                continue  # not arriving in its crossing lane: nothing withheld
-            v0 = min(p["vmax"], _weave_lane_vmax(mod, ws, ws["edges"][0], k))
-            # the gap the follower opens: the follower side's time gap (WP-80)
-            accept = _weave_lag_gap_s(prm, exiting=vid in exiting)
-            if (
-                ws["onset"][vid] * _weave_spread_length(section_len, zone_m, v, v0, p, accept)
-                <= 0.0
-            ):
-                # its crossing is not withheld at this speed: SUMO's own model
-                # keeps the step it arrives in, as without the rule
-                continue
-            mode = int(mod.vehicle.getLaneChangeMode(vid))
-            if mode in (
-                LC_MODE_SCRIPTED_SAFE,
-                LC_MODE_SCRIPTED_FORCE,
-                LC_MODE_SCRIPTED_SAFE_NO_ADAPT,
-            ):
-                continue  # under another scripted hold, whose owner restores it
-            handover[vid] = mode
-            mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
-            ws["n_handovers"] += 1
-        now.add(vid)
-    for vid in [v for v in handover if v not in now and v not in pending]:
-        # left the window without being driven: its own mode back at once
-        mode = handover.pop(vid)
-        if vid in results:
-            mod.vehicle.setLaneChangeMode(vid, mode)
 
 
 def _weave_cooperate(
@@ -3705,9 +2333,6 @@ def _weave_cooperate(
     accept_s: float,
     remaining_m: float,
     priority: bool = False,
-    t: float = 0.0,
-    arrival_s: float | None = None,
-    accept_lag_s: float | None = None,
 ) -> str | None:
     """Choose a changer's gap on ``target_lane`` and record the two speed targets.
 
@@ -3784,63 +2409,16 @@ def _weave_cooperate(
     hold while it drops in, and a vehicle beside it is waited for, not eased
     towards.
 
-    The bounded hold (2026-09-24, block 3, WP-58; ``hold_release_s``, off
-    by default): the follower's hold is dropped, and the gap re-chosen
-    with that follower blocked, when the changer has stopped closing on
-    the gap for longer than the bound while the follower's side of it is
-    open and the changer is outside the follower's brake distance
-    (:func:`_weave_hold_release`, which has the derivation). ``t`` is the
-    simulation time the bound's clock reads.
-
-    The gated anticipation (2026-09-24, block 3, WP-60; ``anticipation_gate``,
-    off by default): ``arrival_s`` is given for an entrant still on the ramp
-    (the ``approaching`` loop of :func:`_weave_step`) — its time to the
-    section start. With the key set, the gap's follower is first commanded
-    on the step on which :func:`_weave_coop_gate` finds the entrant
-    arriving no later than the time F needs to open the gap at its own
-    ``b``, and from then on while it stays the chosen follower (latched in
-    the hold state's ``gate_f``); the gap choice, the commitment and the
-    entrant's easing are untouched. A withheld command that would have
-    bound (below F's own model) is counted in ``n_anticipation_gated``.
-    Measured on the fixture grid and left off (:func:`_weave_coop_gate`
-    has the numbers).
-
-    The anticipation spares the exiters (2026-09-25, block 3, WP-75;
-    ``anticipation_spares_exiters``, off by default): for an entrant still
-    on the ramp (``arrival_s`` given), a gap follower that is itself bound
-    for the paired exit is not commanded; the gap choice, the commitment and
-    the entrant's easing are untouched, and a withheld hold that would have
-    bound is counted in ``n_anticipation_exiter_spared``. The derivation:
-    an exiter held so that an entrant can enter lane 1 in front of it must
-    itself cross into the lane the entrant leaves, so the hold trades one
-    crossing for a slower one. The gap behind the exiter is no alternative:
-    the entrant is in exactly one gap (its follower behind its rear, its
-    leader's front ahead of its own), and the gap behind a vehicle whose
-    front is behind the entrant's is not a candidate. On the corridor
-    section fixture the exiters behind an approaching entrant are slower
-    than it and pass it before the section start on 0–6 % of the steps, so
-    passing them over in the gap choice leaves the entrant no gap on every
-    such step (measured as a harness form: no hold and no easing). The rule
-    therefore withholds only the hold. Measured and left off: the hold
-    moves into the section as the section entrants' own cooperation, the
-    entrants cross later and slower, the T.H.52 entrance falls, and the
-    exit end's lanes 0 and 1 still fail every window
-    (docs/WEAVE_MODEL_PLAN.md, dated section WP-75).
-
-    The leader and follower gaps apart (2026-09-25, block 3, WP-80):
-    ``accept_s`` is the movement's leader-side time gap — the changer's
-    deficit to the gap's leader and its easing towards it — and
-    ``accept_lag_s`` its follower-side one (:func:`_weave_lag_gap_s`;
-    ``None`` uses ``accept_s``): whether the follower's side of the gap is
-    open (the bounded hold) and the gated anticipation's opening time, so
-    the cooperation opens the gap the acceptance asks on each side.
+    The bounded hold (WP-58), the gated anticipation (WP-60), the ramp's
+    outlet (WP-70) and the anticipation sparing the exiters (WP-75), all off
+    by default, were removed on 2026-10-06 (docs/WEAVE_MODEL_PLAN.md;
+    reproduce with release 2.5.0).
 
     Returns:
         The chosen gap's follower id (the commitment carried to the next
         step), or ``None``.
     """
     prm = ws["params"]
-    lag_s = accept_s if accept_lag_s is None else accept_lag_s
     res = results[vid]
     road = res[tc.VAR_ROAD_ID]
     v_c = float(res[tc.VAR_SPEED])
@@ -3857,58 +2435,6 @@ def _weave_cooperate(
                 p_of[oid]["vmax"],
                 _weave_lane_vmax(mod, ws, r_o[tc.VAR_ROAD_ID], int(r_o[tc.VAR_LANE_INDEX])),
             )
-    # the bounded hold's state of this changer (WP-58): the followers it
-    # released and may not ask again within the bound
-    hs: dict[str, Any] = ws["hold"].setdefault(vid, _weave_hold_state())
-    hs_blocked: dict[str, float] = hs["blocked"]
-    for oid in [o for o, until in hs_blocked.items() if until <= t]:
-        del hs_blocked[oid]
-    blocked: set[str] = set(hs_blocked)
-    st_c = ws["veh"].get(vid)
-    if (
-        prm["ramp_outlet"] > 0.0
-        and target_lane == 0
-        # the forced zone's priority is exempt (its followers never reach the
-        # outlet); a priority from the braking onset (WP-73) is not
-        and not (priority and (st_c is None or st_c.get("prio_zone", True)))
-        and vid in ws["exiting_ids"]
-        and st_c is not None
-    ):
-        # the ramp's outlet (WP-70): an exiter holds no vehicle on the ramp
-        # or in the auxiliary lane short of the stretch (_weave_outlet_length);
-        # the exit priority's hold is untouched
-        section_m = float(sum(ws["lane_len_m"].values()))
-        rule_o = ws.get("rule") or _weave_short_section_rule(section_m, prm)
-        x_0 = float(ws["x_offset"][ws["edges"][0]])
-        x_end = x_0 + _weave_outlet_length(section_m, float(rule_o["zone_m"]))
-        outlet: set[str] = set()
-        if x_end > x_0:
-            for x_o, oid in lane_list:
-                if x_o >= x_end:
-                    break
-                outlet.add(oid)
-        if outlet:
-            # binding: the gap chosen without the rule has one of them as
-            # its follower
-            _l0, f_0, _af0, _ac0 = _weave_choose_gap(
-                vid,
-                x_of[vid],
-                v_c,
-                p_c,
-                v0_c,
-                lane_list,
-                x_of,
-                v_of,
-                p_of,
-                v0_of,
-                prm["lookahead_m"],
-                committed,
-                priority,
-                blocked,
-            )
-            if f_0 in outlet:
-                ws["n_outlet_spared"] += 1
-            blocked |= outlet
     l_t, f_t, a_f, a_c = _weave_choose_gap(
         vid,
         x_of[vid],
@@ -3923,104 +2449,9 @@ def _weave_cooperate(
         prm["lookahead_m"],
         committed,
         priority,
-        blocked,
     )
     step_s = float(ws["step_s"])
     if f_t is not None:
-        # the hold's progress this step: the follower's side of the gap by
-        # the acceptance's terms, the guard's brake gap, and the changer's
-        # deficit to the leader-side gap the acceptance asks
-        p_f = p_of[f_t]
-        s_f = x_of[vid] - p_c["len"] - x_of[f_t]
-        brake_f = _weave_brake_gap(0.0, v_of[f_t], v_c, p_f["b"])
-        inside_brake = s_f <= brake_f
-        follower_open = (
-            s_f >= p_c["s0"] + lag_s * v_of[f_t] and a_f >= -p_f["b"] and not inside_brake
-        )
-        if l_t is None:
-            deficit = 0.0
-        else:
-            s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
-            deficit = max(
-                _weave_lead_gap_min(p_c["s0"], accept_s, v_c, s_l, v_of[l_t], p_c["b"]) - s_l,
-                0.0,
-            )
-        if _weave_hold_release(
-            hs,
-            t,
-            step_s,
-            f_t,
-            v_c,
-            v_of[f_t],
-            deficit,
-            follower_open,
-            inside_brake,
-            priority,
-            float(prm["hold_release_s"]),
-        ):
-            ws["n_hold_releases"] += 1
-            blocked.add(f_t)
-            l_t, f_t, a_f, a_c = _weave_choose_gap(
-                vid,
-                x_of[vid],
-                v_c,
-                p_c,
-                v0_c,
-                lane_list,
-                x_of,
-                v_of,
-                p_of,
-                v0_of,
-                prm["lookahead_m"],
-                None,
-                priority,
-                blocked,
-            )
-    else:
-        _weave_hold_release(hs, t, step_s, None, v_c, 0.0, 0.0, False, False, priority, 0.0)
-    gated = False
-    if (
-        f_t is not None
-        and arrival_s is not None
-        and prm["anticipation_gate"] > 0.0
-        and hs["gate_f"] != f_t
-    ):
-        # the gated anticipation (WP-60): an approaching entrant's follower
-        # is held only once the entrant arrives no later than the follower
-        # can open the gap at its own b; once started, the hold on that
-        # follower is kept as the anticipation had it
-        if _weave_coop_gate(
-            x_of[vid] - p_c["len"] - x_of[f_t],
-            v_of[f_t],
-            v_c,
-            p_c["s0"],
-            lag_s,
-            p_of[f_t]["b"],
-            arrival_s,
-        ):
-            hs["gate_f"] = f_t
-        else:
-            gated = True
-            would: dict[str, tuple[float, float, bool]] = {}
-            _weave_command(mod, would, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
-            if would:
-                ws["n_anticipation_gated"] += 1
-    if (
-        f_t is not None
-        and not gated
-        and arrival_s is not None
-        and prm["anticipation_spares_exiters"] > 0.0
-        and f_t in ws["exiting_ids"]
-    ):
-        # the anticipation spares the exiters (WP-75): an approaching
-        # entrant's gap follower that is itself bound for the paired exit is
-        # not held; the gap, its commitment and the entrant's easing are kept
-        gated = True
-        spare: dict[str, tuple[float, float, bool]] = {}
-        _weave_command(mod, spare, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
-        if spare:
-            ws["n_anticipation_exiter_spared"] += 1
-    if f_t is not None and not gated:
         _weave_command(mod, coop, f_t, v_of[f_t], v0_of[f_t], p_of[f_t], a_f, step_s)
     if l_t is not None and a_c < 0.0:
         s_l = x_of[l_t] - p_of[l_t]["len"] - x_of[vid]
@@ -4032,809 +2463,6 @@ def _weave_cooperate(
         ):
             _weave_command(mod, coop, vid, v_c, v0_c, p_c, a_c, step_s, follower=False)
     return f_t
-
-
-def _weave_coop_gate(
-    s_f: float,
-    v_f: float,
-    v_c: float,
-    s0_c: float,
-    accept_s: float,
-    b_f: float,
-    arrival_s: float,
-) -> bool:
-    """Whether the follower of an approaching entrant's chosen gap cooperates yet (WP-60).
-
-    The gated anticipation (2026-09-24, block 3, WP-60; docs/WEAVE_MODEL_PLAN.md,
-    dated section; ``anticipation_gate``). The ramp anticipation of the second
-    attempt (:func:`_weave_step`) has an entrant still on the on-ramp within
-    ``lookahead_m`` of the section choose its lane-1 gap and hold that gap's
-    follower F at IDM towards it (:func:`_weave_cooperate`) from the moment it
-    enters the zone. WP-58's hold trace read 53 % of all held steps on the
-    fixture grid as such entrants, at a median 5.7 m/s, and 36 of the 40
-    longest stalls (22.5–43 s) as ramp-queue entrants holding F at their own
-    speed — a lane-1 throttle at the ramp queue's speed, started 120 m and up
-    to 20 s before the entrant can use the gap. This gate starts the hold
-    only when it is needed: when the entrant's time to the section start is
-    no longer than the time F needs to open the gap at its own ``b``.
-
-    **The closed form.** Take the entrant's projection onto lane 1 (its front
-    at ``x_c``, speed ``v_c``, held constant) and F behind it with the gap
-    ``s_f = x_c − len_c − x_F`` and the closing speed ``Δv = v_F − v_c``.
-    The gap the acceptance asks of the follower side is the time gap at F's
-    speed, ``s_need = s0_c + accept · v_F`` (:func:`_weave_step`, the
-    acceptance; F's current speed, the largest it has over the manoeuvre),
-    so the deficit now is ``D = s_need − s_f`` (negative when open). F
-    braking at ``b_F`` from now holds the gap ``s(τ) = s_f − Δv·τ +
-    b_F·τ²/2`` after ``τ`` seconds: it closes at the closing speed, and
-    braking for ``τ`` opens ``b_F·τ²/2`` against holding the speed. The time
-    F needs to open the gap is when ``s(τ)`` is back at ``s_need`` — the
-    positive root of ``b_F·τ²/2 − Δv·τ − D = 0``::
-
-        t_open = (Δv + √(Δv² + 2·b_F·D)) / b_F
-
-    With ``Δv² + 2·b_F·D < 0`` (``s_f − Δv²/(2·b_F) > s_need``: F can shed
-    its closing speed at ``b_F`` and still keep the accepted gap) braking at
-    ``b_F`` never lets the gap fall short, and nothing is needed yet; with
-    ``D ≤ 0`` and ``Δv ≤ 0`` the root is ``≤ 0`` (open and opening). F
-    cooperates on a step iff the root is real and the entrant's time to the
-    section start ``arrival_s`` (its distance over ``max(v_c, creep)``) is
-    no longer than it: ``arrival_s ≤ t_open``. Otherwise F keeps its own
-    car-following this step. Read every step, the gate opens on the step at
-    which waiting any longer would leave the gap short at the entrant's
-    arrival even with F braking at ``b_F`` from there — or never, when F
-    passes the projection first (a follower that would be ahead of the
-    entrant by the time it arrives is not held behind it). Once it has
-    opened for a follower the hold on that follower is kept as the
-    anticipation had it (:func:`_weave_cooperate`, ``gate_f`` in the
-    changer's hold state): the gate decides when the hold starts, not
-    whether it continues — re-read on every step it let F go again as soon
-    as F had slowed enough and held it again a step later. The brake gap
-    of the speed-aware guard, ``Δv⁺²/(2·b_F)``, is inside the root: under
-    braking at ``b_F`` the gap left after the closing speed is shed,
-    ``s(τ) − (Δv − b_F·τ)²/(2·b_F) = s_f − Δv²/(2·b_F)``, is invariant, so
-    the discriminant's sign is that term's test. The IDM absorption term of
-    the acceptance is F's own model and has no closed form; the section's
-    cooperation (ungated) finishes what the gate starts late.
-
-    Worked at constant speeds and 0.5-s steps (``b_F`` 1.67 m/s², ``s0``
-    2 m, ``accept`` 0.6 s): the queued entrant 100 m out at 5 m/s (20 s)
-    with a lane-1 follower at 10 m/s 20 m behind its projected rear reads
-    ``D`` = −12 m and a discriminant of −15, no hold; F reaches the
-    projected rear 4 s later, when its root is 7.3 s against the entrant's
-    16 s — it is never held. For the arrival the anticipation was built for
-    (a through vehicle at 28.7 m/s meeting an entrant appearing at 19 m/s
-    7 m ahead of it; second attempt, docs/WEAVE_MODEL_PLAN.md) the gate
-    opens with F 44 m behind, 3.8 s before the arrival (6.3 s at the zone's
-    entry ungated); braking at ``b_F`` F arrives at 22.3 m/s 19.2 m behind
-    and settles 15.8 m behind at the entrant's speed (13.4 m asked there),
-    2.0 s into the section.
-
-    **Measured and left off** (``anticipation_gate`` = 0;
-    docs/WEAVE_MODEL_PLAN.md, WP-60). On the 29-run fixture grid the gate
-    does what it was derived to do — the held steps on ramp entrants fall
-    from 109,904 to 13,142 (53 % → 10 % of the held steps), the 40 longest
-    stalls are no longer ramp holds (36 → 11), it opens for 13 % of the
-    (entrant, follower) readings, 3.1 s before the arrival at the median —
-    and reads worse on every criterion: 62 % of the entrants reach the
-    section with no follower held, the lane-1 follower meets the
-    acceptance's time gap at the arrival for 53 % of them against 78 %, the
-    hold moves onto the section (entrants' held steps 31,444 → 48,223),
-    give-ups 44 → 58, exits 5,988 → 5,782, lane-1 minutes at or below 5 m/s
-    14 → 31, forced changes deferred 5,439 → 10,549, pair releases 218 →
-    680, the entrances 5,944 → 5,415, and T.H.52 at capacity departs 379 /
-    315 / 343 of 466 (395 / 401 / 373 at the default) with lane 1 at the
-    section start at or below 5 m/s in 6 / 14 / 9 minutes (2 / 5 / 4),
-    breaking the no-lock pin at seeds 4 and 5. The early hold is the
-    positioning the entrant arrives with, not only a throttle. The form
-    re-read every step collided twice; the deficit at the fleet's 1.4-s
-    headway instead of the acceptance's 0.6 s locked the Ruth St corridor
-    fleet's exit peak at seed 3. No collision in the latched form.
-
-    Args:
-        s_f: F's gap to the entrant's projected rear [m].
-        v_f: F's speed [m/s].
-        v_c: The entrant's speed [m/s].
-        s0_c: The entrant's ``minGap`` [m].
-        accept_s: The entering movement's accepted time gap on the
-            follower side [s] (WP-80, :func:`_weave_lag_gap_s`; the
-            movement's single time gap before).
-        b_f: F's comfortable deceleration [m/s²].
-        arrival_s: The entrant's time to the section start [s].
-
-    Returns:
-        Whether F is to be commanded this step.
-    """
-    dv = v_f - v_c
-    deficit = s0_c + accept_s * v_f - s_f
-    disc = dv * dv + 2.0 * b_f * deficit
-    if disc < 0.0:
-        return False
-    t_open = (dv + math.sqrt(disc)) / b_f
-    return arrival_s <= t_open
-
-
-def _weave_hold_state() -> dict[str, Any]:
-    """A changer's bounded-hold state (WP-58): the follower under the clock,
-    the first stalled step, last step's deficit and projected arrival, the
-    last readings (for traces), and the released followers with the time
-    until which each is blocked; and (WP-60, the gated anticipation) the
-    follower whose hold the gate has started."""
-    return {
-        "f": None,
-        "since": None,
-        "d": math.inf,
-        "t_arr": math.inf,
-        "open": False,
-        "brake": False,
-        "blocked": {},
-        # WP-60, the gated anticipation: the follower whose hold has started
-        "gate_f": None,
-    }
-
-
-def _weave_hold_release(
-    hs: dict[str, Any],
-    t: float,
-    step_s: float,
-    f_id: str | None,
-    v_c: float,
-    v_f: float,
-    deficit_m: float,
-    follower_open: bool,
-    inside_brake: bool,
-    priority: bool,
-    bound_s: float,
-) -> bool:
-    """Whether a changer's hold on its gap's follower is dropped this step (WP-58).
-
-    The bounded hold (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md, dated
-    section). The cooperation of :func:`_weave_cooperate` holds the
-    follower F of the changer's chosen gap at IDM towards the changer,
-    clipped at ``−b_F``, on every step the changer keeps the gap — for as
-    long as the changer takes. The hold has two parts. Its *productive*
-    part is F opening its side of the gap: braking from its speed to the
-    changer's and falling back to the gap the acceptance asks — the time
-    gap ``s0_c + accept · v_F``, F's IDM absorbing the changer within
-    ``b_F``, and, the guard's follower side, the changer outside F's brake
-    gap ``(v_F − v_c)⁺² / (2·b_F)`` (:func:`_weave_force_gap_ok`). That
-    part is bounded by F's own kinematics: ``(v_F − v_c)/b_F`` seconds to
-    match speed and a few headway times to fall back. Once F's side is
-    open, every further step of the hold is *for the leader side* — the
-    changer positioning itself behind the gap's leader L by the gap the
-    acceptance asks there (:func:`_weave_lead_gap_min`, the time gap or
-    the changer's brake gap on L) — and F can do nothing for that side: it
-    follows the changer at the changer's speed, and the through lane
-    behind it follows F. That is the cost WP-57 read as the mechanism of
-    its worsening rows (an entrant slowed to 18 m/s beside a 20–22 m/s
-    through lane held its follower at ``−b`` for the section's length —
-    cooperations 1,086 → 1,919, the exiters' wait 7.7 → 14.0 s) and the
-    cost VM M read as the four-hour corridor's lock (18,259 hold
-    vehicle-steps on the locked seed, docs/ONBOARDING_MNDOT.md §11).
-
-    **The rule.** With F's side open and the changer outside F's brake
-    distance, the changer's *projected arrival* at the gap is read each
-    step: its remaining deficit to the leader-side gap, ``d``, over the
-    rate at which it closed that deficit during the last step,
-    ``t_arr = d · Δt / (d_prev − d)`` — infinite when the deficit grew or
-    stayed (the changer is not closing on the gap: L is not pulling ahead
-    of it and it is not dropping back), zero when the deficit is zero. The
-    arrival *advances* when ``t_arr`` falls step over step (a constant
-    closing rate takes ``Δt`` off it every step; the changer being eased at
-    ``−b`` towards L, or L pulling away, both read so). When it does not
-    advance — ``t_arr ≥ t_arr_prev``, the arrival receding or as far as
-    before — a clock runs from that step; on the first step it has run for
-    longer than ``bound_s`` the hold is *dropped*: F is not commanded this
-    step, it is blocked for this changer for ``bound_s`` (not asked again
-    for the same changer within the bound — no chain, the released
-    follower is let go for good), and the changer re-chooses its gap with
-    F excluded (:func:`_weave_choose_gap`): the next gap behind, into which
-    it drops once F has passed, its new follower under a fresh clock. Any
-    step on which the arrival advances, or F's side is not open, or the
-    changer is inside F's brake distance, resets the clock — the last is
-    the safety term: a hold is never dropped while F is still closing on
-    the changer faster than it can shed at ``b_F`` (the speed-aware
-    guard's follower side), because that braking is the hold's productive
-    part whatever the leader side does. A hold is also never dropped while
-    both stand below the creep speed (``SCRIPTED_MERGE_CREEP_MS``): that
-    pair is :func:`_weave_pair_release`'s, released after ``pair_release_s``
-    with the partner forcing its change, and the two rules do not overlap.
-    A new follower, or none, starts the state afresh.
-
-    **Why a time bound.** The hold's cost to the through lane is F's speed
-    deficit integrated over the hold's duration, ``∫ (v_F,own − v_c) dt``;
-    the driver's patience for a merging vehicle that is not making
-    progress is a matter of seconds, not metres; and at low speed — where
-    the hold locks (VM M's seed at a standstill) — a distance bound on the
-    changer's travel never fires, while a time bound fires the same. The
-    distance form (the changer's travel during the stall,
-    ``Σ v_c · Δt ≥ X``) was measured beside this one on the fixture grid
-    (docs/WEAVE_MODEL_PLAN.md, WP-58); it is the time bound scaled by the
-    changer's speed and blind exactly where the hold is longest.
-
-    **Measured and left off** (``hold_release_s`` = 0; docs/WEAVE_MODEL_PLAN.md,
-    WP-58). The hold trace at the default on the 29-run fixture grid reads
-    17,810 changer–follower episodes over 28 runs, 5,248 of them stalled
-    for more than 2 s and carrying 133,011 of the 206,358 held
-    changer-steps with a target on the follower; 53 % of those steps are
-    an entrant still on the ramp (median 5.7 m/s), and 36 of the 40
-    longest stalls (22.5–43 s) are such entrants holding a lane-1
-    follower at their speed. Every form of the release reads worse than
-    the default: at 2 s 8,330 holds dropped, give-ups 44 → 74, exits
-    5,988 → 5,897, the entrances 5,944 → 5,830, and T.H.52 at capacity,
-    seed 5, standing at 0.4 m/s at the section start for two minutes (288
-    of 466 departed against 373); at 1 s and 4 s, on the section only,
-    without the exit priority, as a 40 m distance bound and with the
-    strict stall reading 59–80 given up; with the exiter's yield on 66 and
-    63 against 39; every form fails the T.H.52 no-lock pin at seed 4 or 5.
-    A changer released from a gap at speed parity meets the next follower
-    at the same speed and stalls again (1,118 changers released three
-    times or more at 2 s), and the entrants reach the section with a gap
-    79 % → 62 % of the time. No collision; the default is byte-identical
-    to the grid before the key.
-
-    Args:
-        hs: The changer's hold state (:func:`_weave_hold_state`; updated).
-        t: Simulation time [s].
-        step_s: The step length [s].
-        f_id: The chosen gap's follower, ``None`` for no gap (resets).
-        v_c: The changer's speed [m/s].
-        v_f: The follower's speed [m/s].
-        deficit_m: The changer's remaining deficit to the leader-side gap
-            the acceptance asks [m]; ``0`` once positioned or without a
-            leader.
-        follower_open: Whether F's side of the gap is open by the
-            acceptance's terms (time gap, absorption within ``b_F``, and
-            outside F's brake gap).
-        inside_brake: Whether the changer is inside F's brake gap towards
-            it (the guard's follower side): never dropped then.
-        priority: Whether the changer holds under the exit priority
-            (recorded for the trace; the rule applies alike).
-        bound_s: ``hold_release_s``; ``0`` keeps the state and never
-            drops.
-
-    Returns:
-        Whether the hold on ``f_id`` is dropped this step.
-    """
-    if f_id is None or f_id != hs["f"]:
-        hs["f"] = f_id
-        hs["since"] = None
-        hs["d"] = math.inf
-        hs["t_arr"] = math.inf
-        hs["open"] = follower_open
-        hs["brake"] = inside_brake
-        if f_id is None:
-            return False
-        # the first step under a follower: the closing rate is unread, and
-        # the hold has not stalled yet
-        hs["d"] = deficit_m
-        return False
-    closed = hs["d"] - deficit_m
-    if deficit_m <= 0.0:
-        t_arr = 0.0
-    elif closed > 0.0:
-        t_arr = deficit_m * step_s / closed
-    else:
-        t_arr = math.inf
-    stalled = t_arr >= hs["t_arr"]
-    hs["d"] = deficit_m
-    hs["t_arr"] = t_arr
-    hs["open"] = follower_open
-    hs["brake"] = inside_brake
-    standing = v_c < SCRIPTED_MERGE_CREEP_MS and v_f < SCRIPTED_MERGE_CREEP_MS
-    if not stalled or not follower_open or inside_brake or standing:
-        hs["since"] = None
-        return False
-    if hs["since"] is None:
-        hs["since"] = t
-        return False
-    if bound_s <= 0.0 or t - hs["since"] <= bound_s:
-        return False
-    hs["blocked"][f_id] = t + bound_s
-    hs["f"] = None
-    hs["since"] = None
-    hs["d"] = math.inf
-    hs["t_arr"] = math.inf
-    return True
-
-
-def _weave_halting_first(v_a: float, b_a: float, rem_a: float, v_c: float, rem_c: float) -> bool:
-    """Whether a moving entrant will halt at its lane end before the exiter behind it reaches the gore.
-
-    WP-55, the forming pair (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
-    dated section). The exiter's yield of WP-54 waits for the entrant ahead
-    of it to be halted; by then an exiter that entered the forced zone at
-    16–17 m/s has no stop left at its ``b``. This is the yield's trigger
-    brought forward to the entrant's *halt time*: the entrant is taken as
-    halting at its lane end when (1) it is **committed** to that end — its
-    brake distance at its own comfortable deceleration reaches it,
-    ``v_a² / (2·b_a) ≥ rem_a``, so it can no longer stop short of the end at
-    ``b_a`` and either changes lane or halts there (the forming pairs of the
-    WP-54 trace: both vehicles braking for their lane ends at 0.9–2.7 m/s²,
-    above the entrant's ``b`` in every case but one) — and (2) it is there
-    **first**: at its speed it reaches the lane end no later than the exiter
-    at its speed reaches the gore, ``rem_a / v_a ≤ rem_c / v_c`` (an entrant
-    slow and far enough ahead that the exiter passes it before it halts is
-    behind the exiter by then, and the geometry the yield resolves never
-    forms). Speeds are floored at the creep speed.
-
-    Args:
-        v_a: The entrant's speed [m/s].
-        b_a: Its comfortable deceleration [m/s²].
-        rem_a: Its remaining auxiliary lane, front to the lane end [m].
-        v_c: The exiter's speed [m/s].
-        rem_c: Its remaining section, front to the gore [m].
-
-    Returns:
-        Whether the entrant halts at its lane end before the exiter reaches
-        the gore, by the two conditions above.
-    """
-    v_a = max(v_a, SCRIPTED_MERGE_CREEP_MS)
-    v_c = max(v_c, SCRIPTED_MERGE_CREEP_MS)
-    committed = v_a * v_a >= 2.0 * b_a * rem_a
-    return committed and rem_a / v_a <= rem_c / v_c
-
-
-def _weave_yield_early(
-    st: dict[str, Any],
-    t: float,
-    v_c: float,
-    room: float,
-    need: float,
-    rem_a: float,
-    lead_s: float,
-    bound_s: float,
-    zone_m: float,
-) -> bool:
-    """Whether an exiter outside its forced zone may yield to the halted entrant ahead this step.
-
-    WP-56, the brake-scaled zone (2026-09-24, block 3; docs/WEAVE_MODEL_PLAN.md,
-    dated section). The exiter's yield of WP-54 is asked inside the fixed
-    forced zone (``force_within_m``, 80 m), which is blind to the exiter's
-    own brake distance: WP-55 counted 12 of the 39 fixture give-ups as an
-    exiter that entered the zone at 10.8–16.6 m/s needing 41–165 m to stop
-    at its own ``b`` against the 60–69 m the zone offers. Here the yield's
-    zone is scaled to that brake distance — the exiter may yield from the
-    step at which it is within ``lead_s`` seconds of travel of the last
-    point at which the stop is still feasible at ``b``,
-    ``room − need ≤ v_c · lead_s`` with ``need = v_c² / (2·b_c)``, which for
-    an entrant halted at the lane end is ``max(force_within_m, v² / (2·b) +
-    v · lead_s + len_E + s0_E + s0_X)`` upstream of the gore — while the
-    forced change, the exit priority and the give-up keep the fixed zone.
-    The speed in the slack term is floored at the creep speed, so an exiter
-    the rule has brought to rest at the rest point (``room`` ≈ 0, ``need``
-    = 0) is still asked and held there, as inside the zone, instead of
-    being let go by its own model on the next step.
-
-    The premise is the entrant halted **at its lane end** (or in the queue
-    at the gore): the early yield is asked only for an entrant within the
-    fixed zone of the end of its lane, ``rem_a ≤ zone_m``. Without that
-    condition the rule also bound, one to three steps at a time, on
-    exiters crawling in a standing lane-1 queue at the *section start*
-    beside a queued entrant halted 300 m from its lane end (T.H.52,
-    0.3–2.8 m/s, ``room`` ≈ 0) — the queue of the sixth derivation, not
-    the crossing pair — and those single steps re-rolled the T.H.52 rows
-    (the plan's WP-56 section has both forms measured).
-    Against the whole-section yield (XY, WP-54: an exiter braking gently
-    to a stop 100–300 m out held lane 1 for an entrant freed before it
-    arrived) this holds lane 1 for the shortest time a stop at ``b``
-    allows; against the just-in-time form (J, WP-55, harness only:
-    ``lead_s`` ≈ 0.7 s of one step's travel and acceleration) it starts
-    one reaction time earlier and brakes below ``b``.
-
-    Bounded, so it cannot lock: outside the fixed zone an exiter that the
-    rule has held below the creep speed (``SCRIPTED_MERGE_CREEP_MS``) for
-    longer than ``bound_s`` on consecutive asked steps (``pair_release_s``,
-    the fifth derivation's two reaction times: a pair standing longer than
-    that is not resolving by itself) *lapses* — ``st["yield_lapsed"]`` —
-    and is not asked again while a halted entrant stands ahead of it; the
-    caller clears the lapse once none does (the geometry is gone). The
-    clock resets on any step the rule does not ask. Nobody else is
-    commanded through the rule (no chain) and it is re-evaluated every
-    step.
-
-    Args:
-        st: The exiter's state (``yield_rest_s``, ``yield_lapsed``).
-        t: Simulation time [s].
-        v_c: The exiter's speed [m/s].
-        room: The room it has to come to rest behind the entrant's rest
-            point [m] (:func:`_weave_yield_at_ends`).
-        need: Its stopping distance at its own ``b`` [m].
-        rem_a: The halted entrant's remaining lane, front to its lane end
-            [m].
-        lead_s: ``exiter_yield_lead_s``; ``0`` disables the early yield.
-        bound_s: The longest standstill outside the fixed zone [s].
-        zone_m: The fixed forced zone (``force_within_m``) [m]: the entrant
-            must be within it of its lane end.
-
-    Returns:
-        Whether the early yield may be asked this step (its feasibility at
-        ``b`` is the caller's check, as inside the zone).
-    """
-    if lead_s <= 0.0 or st["yield_lapsed"]:
-        return False
-    if rem_a > zone_m or room - need > max(v_c, SCRIPTED_MERGE_CREEP_MS) * lead_s:
-        # not asked this step: the standstill clock runs only while the
-        # rule holds the exiter
-        st["yield_rest_s"] = None
-        return False
-    if v_c < SCRIPTED_MERGE_CREEP_MS:
-        since = st["yield_rest_s"]
-        if since is None:
-            st["yield_rest_s"] = t
-        elif t - since > bound_s:
-            st["yield_lapsed"] = True
-            return False
-    else:
-        st["yield_rest_s"] = None
-    return True
-
-
-def _weave_yield_at_ends(
-    mod: Any,
-    tc: Any,
-    ws: dict[str, Any],
-    results: Any,
-    lanes: dict[int, list[tuple[float, str]]],
-    x_of: dict[str, float],
-    v_of: dict[str, float],
-    p_of: dict[str, dict[str, float]],
-    v0_of: dict[str, float],
-    coop: dict[str, tuple[float, float, bool]],
-    vid: str,
-    target_lane: int,
-    v0_c: float,
-    remaining_m: float,
-    accept_s: float,
-    due: bool,
-    t: float = 0.0,
-) -> None:
-    """The two yields at the lane ends of a weaving section (WP-54).
-
-    The crossing pair (2026-09-24, block 3, WP-54; docs/WEAVE_MODEL_PLAN.md,
-    dated section): the give-ups at the gore's end are, 24 times in 44 on
-    the fixture grid, an exit-bound changer halted at the end of lane 1
-    beside a driven entrant halted at the end of the auxiliary lane, each
-    owing the change into the other's lane. Two rules, each behind its own
-    ``WEAVE_DEFAULTS`` switch, both commanded through :func:`_weave_command`
-    (one-step car-following targets, clipped at the vehicle's own ``b``,
-    SUMO's safety check on) and counted in ``n_cooperations``:
-
-    **The exiter yields** (``exiter_yields``, default 1 — ships, inside the
-    forced zone; ``n_exiter_yields``). The per-pair trace showed that a driven entrant halted at the end of the
-    auxiliary lane is not freed by the give-up of the exiter beside it: it
-    stays, refused into lane 1 by the speed-aware guard on every lane-1
-    vehicle arriving inside its brake distance, and each next exiter drives
-    down lane 1 beside the standing auxiliary-lane queue it heads, halts at
-    the end beside it and is given up in turn (three give-ups on one halted
-    entrant on ``weave_th52.osm`` at the corridor's demand, seed 5, and on
-    the Ruth St corridor fleet at seed 3). Here the halted entrant has
-    nothing left to give, and the exiter's alternative is its reroute, so the
-    exiter pays: an exit-bound changer on the section is driven towards a
-    virtual leader one entrant ``minGap`` behind the rear of the nearest
-    driven entrant ahead of it in the target lane that is below the creep
-    speed (``SCRIPTED_MERGE_CREEP_MS``) — the exit priority's hold with the
-    roles exchanged — so it comes to rest ``s0_c + s0_E`` behind, a follower
-    gap the entrant's forced guard accepts, and the entrant changes ahead of
-    it; the command is the smaller of IDM towards that leader and the
-    constant deceleration that stops at the point (IDM brakes hardest last
-    and would be clipped at ``b`` into an overrun), and it is asked only
-    while feasible at the exiter's ``b``: ``v_c² / (2·b_c) ≤ gap − s0_c``.
-    Re-evaluated every step; nothing to release — the entrant that changes
-    or moves on is no longer ahead and halted. Asked only while the exiter
-    is inside its forced zone (``zone_s`` set): from the whole section it
-    read worse on the grid (46 given up against 44; the T.H.52 capacity
-    fixture 4 / 5 given up at seeds 3 / 4 against 1 / 1, lane 1 at the gore
-    3.9 m/s in two minutes at seed 4 against 10.7 in none) — an exiter
-    braking to a stop 100–300 m out holds lane 1 for an entrant that is
-    often freed before it arrives. Inside the zone: give-ups 44 → 39,
-    exits 5,988 → 6,015, the entrances 5,944 → 5,973, pair releases 218 →
-    169, no lock, no collision, the T.H.52 rows and the golden unchanged;
-    on ``weave_th52.osm`` at the corridor's demand, seed 5, the entrant
-    halted at the lane end for 35 s (three give-ups beside it) changes 11 s
-    after the first exiter stops behind it, and that exiter changes 5 s
-    later.
-
-    **The exiter yields at the entrant's halt time** (``exiter_yields_halting``,
-    default 0 — WP-55, the forming pair; measured and not made the default).
-    The trigger of the exiter's yield brought forward from "the entrant is
-    halted" to "the entrant will halt at its lane end before the exiter
-    reaches the gore" (:func:`_weave_halting_first`: committed to its lane
-    end at its ``b``, and there first at the two speeds), the virtual leader
-    then standing one entrant ``minGap`` behind where the entrant's rear will
-    rest — one length short of the lane end — with the same command and
-    the same feasibility bound. Counted in ``n_exiter_yields`` like the
-    halted case. On the same 29-run grid it read worse (docs/WEAVE_MODEL_PLAN.md,
-    dated section): give-ups 39 → 43, the entrances 5,973 → 5,958, binding
-    on 53 more vehicle-steps in five runs, on entrants that were committed
-    only through a small drawn ``b`` (0.65–1.22 m/s² at 10–15 m/s) and that
-    changed or halted regardless, the exiter having braked for nothing;
-    without the commitment test it binds 365 times and reads 43 with 50
-    fewer exits, from the whole section 43, and the time-order test never
-    decides (the committed form alone reads identically). The give-ups it
-    was written for are honest: of the 39 at the default, 12 are an exiter
-    that entered the zone at 10.8–16.6 m/s with a halted or halting
-    entrant ahead and no stop at its ``b`` on any in-zone step (the stop
-    needed 41–165 m against 60–69 m offered; the closest margins 1.9, 2.8
-    and 2.9 m), and no yield inside the zone has a move for them.
-
-    **The entrant yields** (``entrant_yields``, default 0 — measured and
-    not made the default; ``n_entrant_yields``; the rule the task named).
-    While an
-    exiter's forced change is ``due`` (its priority active), a driven,
-    moving entrant beside it — its front ahead of the exiter's rear and its
-    rear not yet clear of the exiter's front by the exiter's accepted gap
-    ``s0_c + accept · v_c`` — that is not the follower of the exiter's gap
-    (that one holds already), is not commanded this step by anyone else (no
-    chain) and can come to rest at its own ``b`` behind where the exiter's
-    rear will be at the latest, the lane end
-    (``v_E² / (2·b_E) ≤ rem_E − len_c − s0_c − s0_E``, else it would be
-    halted at its own lane end by yielding), is driven towards a virtual
-    leader one exiter ``minGap`` behind the exiter's rear: at ``−b_E`` while
-    it overlaps, then IDM. Once behind the rear it is the ordinary
-    exit-priority geometry and :func:`_weave_choose_gap` takes it as the
-    gap's follower. Not asked when the exiter is eased towards it this step
-    (the seventh derivation: mutual easing stops both). The trace says why
-    it does not bind: at the due moment the entrant beside the exiter is
-    either halted at its lane end already, abreast at speed parity with both
-    braking for their lane ends at more than its ``b``, or closing from
-    behind already held at ``−b_E`` and sliding past — the feasibility bound
-    holds in 2 of 24 pairs, by 1.4 m. On the grid it binds on 21
-    vehicle-steps, five pairs in five runs (give-ups 44 → 36 with one fewer
-    exit — the sequence moving as much as the mechanism; two of the five do
-    what is derived, the exiter changing 1–2.5 s after the entrant dropped
-    back), returns nothing on top of the exiter's yield (39 → 39, nine
-    fewer exits, 37 fewer entrants) and, asked from the exiter's zone entry
-    instead of the due moment, locks the Ruth St module at the 271 m window
-    (lane 1 at 0.0 m/s for seven minutes, 186 of 218 exited).
-
-    Args:
-        mod: The libsumo / traci module.
-        tc: Its constants module.
-        ws: The section's state.
-        results: This step's subscription results.
-        lanes: Target-lane listings on the section axis (:func:`_weave_step`).
-        x_of: Front-bumper positions on the section axis [m].
-        v_of: Speeds [m/s].
-        p_of: Car-following constants of the listed vehicles (filled here).
-        v0_of: Their desired speeds (filled here).
-        coop: This step's speed targets (:func:`_weave_command`).
-        vid: The exit-bound changer.
-        target_lane: Its target lane (one below its own).
-        v0_c: Its desired speed on the target lane [m/s].
-        remaining_m: Section length ahead of its front [m].
-        accept_s: The exiting movement's accepted time gap [s].
-        due: Whether its forced change is due (the exit priority active).
-        t: Simulation time [s] (the early yield's standstill bound).
-    """
-    prm = ws["params"]
-    veh: dict[str, dict[str, Any]] = ws["veh"]
-    lane_list = lanes.get(target_lane, [])
-    if not lane_list:
-        # nobody in the target lane: the early yield's lapse clears (WP-56)
-        veh[vid]["yield_rest_s"] = None
-        veh[vid]["yield_lapsed"] = False
-        return
-    x_c = x_of[vid]
-    v_c = v_of[vid]
-    p_c = _weave_veh(mod, ws, vid)
-    step_s = float(ws["step_s"])
-    x_end = x_c + remaining_m
-
-    def _constants(oid: str) -> dict[str, float]:
-        # as _weave_cooperate fills them: the vehicle's own lane's limit
-        if oid not in p_of:
-            p_of[oid] = _weave_veh(mod, ws, oid)
-            r_o = results[oid]
-            v0_of[oid] = min(
-                p_of[oid]["vmax"],
-                _weave_lane_vmax(mod, ws, r_o[tc.VAR_ROAD_ID], int(r_o[tc.VAR_LANE_INDEX])),
-            )
-        return p_of[oid]
-
-    in_zone = veh[vid]["zone_s"] is not None
-    lead_s = float(prm["exiter_yield_lead_s"])
-    if prm["exiter_yields"] > 0.0 and (in_zone or lead_s > 0.0):
-        # inside the forced zone (from the whole section it read worse,
-        # docs/WEAVE_MODEL_PLAN.md WP-54), or outside it within the
-        # brake-scaled yield zone (WP-56, _weave_yield_early): the nearest
-        # driven entrant ahead of the exiter's front
-        st_c = veh[vid]
-        found = False
-        for x_a, a in lane_list:
-            if x_a <= x_c:
-                continue
-            sa = veh.get(a)
-            if sa is None or sa["dir"] <= 0:
-                continue
-            p_a = _constants(a)
-            if v_of[a] < SCRIPTED_MERGE_CREEP_MS:
-                # halted: its rear is where it rests
-                gap = x_a - p_a["len"] - x_c - p_a["s0"]
-                dv = v_c - v_of[a]
-            elif prm["exiter_yields_halting"] > 0.0 and _weave_halting_first(
-                v_of[a], p_a["b"], x_end - x_a, v_c, remaining_m
-            ):
-                # still moving but committed to its lane end and there before
-                # the exiter (WP-55, the forming pair): its rear rests one
-                # length short of the lane end
-                gap = remaining_m - p_a["len"] - p_a["s0"]
-                dv = v_c
-            else:
-                break
-            found = True
-            room = gap - p_c["s0"]
-            need = v_c * v_c / (2.0 * p_c["b"])
-            if not in_zone and not _weave_yield_early(
-                st_c,
-                t,
-                v_c,
-                room,
-                need,
-                x_end - x_a,
-                lead_s,
-                float(prm["pair_release_s"]),
-                float(prm["force_within_m"]),
-            ):
-                break
-            if room > 0.0 and need <= room:
-                a_idm = _idm_accel(v_c, v0_c, gap, dv, p_c["T"], p_c["a"], p_c["b"], p_c["s0"])
-                a_stop = -v_c * v_c / (2.0 * room)
-                before = coop.get(vid)
-                _weave_command(mod, coop, vid, v_c, v0_c, p_c, min(a_idm, a_stop), step_s)
-                # counted when it binds (a target below the exiter's own
-                # model and below any other request on it this step)
-                if coop.get(vid) is not before:
-                    ws["n_exiter_yields"] += 1
-            break
-        if not found:
-            # the geometry is gone: the early yield's lapse clears
-            st_c["yield_rest_s"] = None
-            st_c["yield_lapsed"] = False
-    if prm["entrant_yields"] > 0.0 and due and vid not in coop:
-        st = veh[vid]
-        clear_m = p_c["s0"] + accept_s * v_c
-        for x_a, a in lane_list:
-            if x_a <= x_c - p_c["len"]:
-                continue
-            if x_a - _constants(a)["len"] - x_c >= clear_m:
-                break
-            sa = veh.get(a)
-            if sa is None or sa["dir"] <= 0 or a == st["target"] or a in coop:
-                continue
-            if v_of[a] < HALTING_SPEED_MS:
-                continue
-            p_a = p_of[a]
-            rem_a = x_end - x_a
-            if v_of[a] ** 2 / (2.0 * p_a["b"]) > rem_a - p_c["len"] - p_c["s0"] - p_a["s0"]:
-                continue
-            gap = x_c - p_c["len"] - x_a - p_c["s0"]
-            a_e = _idm_accel(
-                v_of[a], v0_of[a], gap, v_of[a] - v_c, p_a["T"], p_a["a"], p_a["b"], p_a["s0"]
-            )
-            _weave_command(mod, coop, a, v_of[a], v0_of[a], p_a, a_e, step_s)
-            if a in coop:
-                ws["n_entrant_yields"] += 1
-
-
-def _weave_entry_speed_bound(b: float, dist_m: float, margin_m: float) -> float:
-    """The speed from which a vehicle can still halt at ``b`` within ``dist_m`` less ``margin_m`` [m/s].
-
-    WP-57, the entrant's entry speed (2026-09-24, block 3;
-    docs/WEAVE_MODEL_PLAN.md, dated section). Constant deceleration ``b``
-    from ``v`` to rest covers ``v² / (2·b)``; a vehicle whose front is
-    ``dist_m`` from the end of its lane can come to rest with its front
-    ``margin_m`` short of it iff ``v² / (2·b) ≤ dist_m − margin_m``, so the
-    ceiling is ``√(2·b·(dist_m − margin_m))`` — the constant-``b`` braking
-    curve that ends ``margin_m`` before the lane end, zero at and beyond
-    that point. Read along the ramp with ``dist_m`` the ramp to the gore
-    plus the section, it is the speed at which the entrant may still
-    arrive at any point and halt short of the auxiliary lane's end at its
-    own ``b``: at the section start ``√(2·b·(L_S − s0))``, 21.1 m/s at the
-    fleet defaults (``b`` 1.67 m/s², ``s0`` 2.5 m) on the 136 m Ruth St
-    lane and 11.9 m/s at the corridor fleet's smallest draw (0.53 m/s²);
-    31.8 and 17.9 m/s on the 305 m T.H.52 lane.
-
-    Args:
-        b: The vehicle's comfortable deceleration [m/s²].
-        dist_m: From its front to the end of its lane [m].
-        margin_m: How far short of that end its front comes to rest [m]
-            (its ``minGap``).
-
-    Returns:
-        The ceiling [m/s]; ``0`` when ``dist_m ≤ margin_m``.
-    """
-    return math.sqrt(2.0 * b * max(dist_m - margin_m, 0.0))
-
-
-def _weave_entry_bound(
-    mod: Any,
-    tc: Any,
-    ws: dict[str, Any],
-    results: Any,
-    coop: dict[str, tuple[float, float, bool]],
-    vid: str,
-    v: float,
-    dist_m: float,
-    step_s: float,
-) -> bool:
-    """Ask an entrant on the ramp to enter no faster than its own stop at ``b`` allows (WP-57).
-
-    The entrant's entry speed (2026-09-24, block 3, WP-57;
-    docs/WEAVE_MODEL_PLAN.md, dated section). WP-55 read the forming half
-    of the crossing pair at the lane ends off the entrant's *arrival*: the
-    12 entrants heading a pair entered the section at 16.6 m/s on average
-    against 9.6 for all 3,122 (the fast mode of a bimodal entry-speed
-    distribution — the ramp queue's discharge at 4–10 m/s and, when the
-    ramp queue is empty, the sixth derivation's throttle admitting 16–21
-    m/s), and 5 of the 12 could not stop within the 136 m Ruth St lane at
-    their own ``b`` (15.7–19.4 m/s at 0.59–0.99 m/s²: 163–225 m to stop
-    against 134 m of lane). Such an entrant has about seven seconds to
-    find a gap and, failing, is halted at the lane end by SUMO's model at
-    more than ``b`` — the pair no yield at the lane ends reaches (WP-54..56).
-    This is the first ramp-side brake since the sixth derivation, and it
-    is the driver's own anticipation of a short auxiliary lane: on the
-    ramp within ``lookahead_m`` of the section (the ``approaching`` set of
-    :func:`_weave_step`) the entrant's speed on the next step is kept at
-    or under :func:`_weave_entry_speed_bound` at its next position —
-    ``√(2·b·(D − v·Δt − s0))``, ``D`` from its front to the gore — as a
-    one-step car-following target through :func:`_weave_command`: only a
-    target *below* the entrant's own model is recorded, it is clipped at
-    ``−b`` (an entrant already over the curve is asked its comfortable
-    brake, which holds its deficit where it is rather than letting the
-    free term grow it; it cannot get back under the curve at ``b``), and
-    SUMO's safety check stays on. Nothing else is asked: not the ramp
-    throttle's demand, not the follower's cooperation, not the easing
-    towards the gap leader (the lowest target on the entrant this step
-    wins, as for every request in ``coop``), and nobody else is commanded
-    through the rule (no chain). Released by construction — the rule is
-    not evaluated once the entrant is on the section, and on the ramp the
-    ceiling is never below ``√(2·b·(L_S − s0))`` (11.9 m/s at the corridor
-    fleet's smallest ``b`` on Ruth St), so it can neither hold an entrant
-    below the creep speed nor stand it on the ramp. Counted in
-    ``n_entry_bounded`` (vehicle-steps on which the target bound) and, as
-    every target, in ``n_cooperations``.
-
-    Measured on the 29-run fixture grid and left off (``entry_speed_bound``
-    = 0; docs/WEAVE_MODEL_PLAN.md, dated section): it binds on 1,383
-    vehicle-steps on 187 entrants, all in the Ruth St corridor-fleet runs
-    (the fleet defaults' ``b`` never falls under the curve, so the T.H.52
-    rows and the golden are byte-identical), takes the bound entrants from
-    21.5 to 18.0 m/s at the section start and the Ruth St entrants that
-    cannot stop within their lane from 40 to 27, and reads worse — give-ups
-    44 → 54, crossing pairs 24 → 31, forced changes deferred 5,439 → 6,644,
-    the entrances 5,944 → 5,967 — because the entrant slowed below lane 1's
-    speed is held by the cooperation, and the give-up chains form behind
-    entrants that can stop within the lane at their ``b``; the bound from
-    the ramp's start (harness only) removes the fast arrivals almost
-    entirely and leaves the crossing pairs where they were. The pair does
-    not form by momentum.
-
-    Args:
-        mod: The libsumo / traci module.
-        tc: Its constants module.
-        ws: The section's state.
-        results: This step's subscription results.
-        coop: This step's speed targets (:func:`_weave_command`).
-        vid: The entrant on the ramp.
-        v: Its speed [m/s].
-        dist_m: From its front to the gore [m] (the ramp to the section
-            start plus the section).
-        step_s: The step length [s].
-
-    Returns:
-        Whether the target bound this step.
-    """
-    p = _weave_veh(mod, ws, vid)
-    v_bound = _weave_entry_speed_bound(p["b"], dist_m - v * step_s, p["s0"])
-    r = results[vid]
-    v0 = min(p["vmax"], _weave_lane_vmax(mod, ws, r[tc.VAR_ROAD_ID], int(r[tc.VAR_LANE_INDEX])))
-    before = coop.get(vid)
-    _weave_command(mod, coop, vid, v, v0, p, (v_bound - v) / step_s, step_s)
-    if coop.get(vid) is before:
-        return False
-    ws["n_entry_bounded"] += 1
-    return True
 
 
 def _weave_short_section_rule(length_m: float, prm: dict[str, float]) -> dict[str, float | bool]:
@@ -4923,8 +2551,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     attempt are gone — a max-speed cap below the current speed is an
     emergency brake to IDM's free term and, applied through ``getNeighbors``
     with no floor, stopped a through lane (docs/WEAVE_MODEL_PLAN.md, block 3
-    trace). ``courtesy`` is accepted for config-hash stability but inert.
-    Every speed request below is a one-step car-following target
+    trace). Every speed request below is a one-step car-following target
     (:func:`_weave_command`).
 
     **Gap choice** (:func:`_weave_choose_gap`): each step, until committed,
@@ -4984,17 +2611,15 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     19 m/s 7 m ahead of it and could not open the gap in time (fixture
     trace, t = 20–45 s).
 
-    **Vacating the weave lane** (2026-09-24, block 3, third derivation,
-    re-derived; :func:`_weave_vacate_step`). A through vehicle in the lane
-    feeding section lane 1, within ``vacate_ahead_m`` of the section start
-    on the corridor edge before it, is asked to move one lane left — the
-    signage / anticipation that empties the weave lane for the exchange —
-    only on a step when the target-lane gap it is in accepts it without
-    the follower braking (:func:`_weave_vacate_gap_ok`), under mode 768
-    (SUMO's safety check, no speed adaptation), within the target lane's
-    spare capacity (``vacate_max_veh_h``); a vehicle never offered such a
-    gap stays. Counted in ``n_vacated``, ``n_vacate_refused``,
-    ``n_vacate_skipped_no_gap`` and ``n_vacate_requests``.
+    **Vacating the weave lane** (2026-09-24, block 3, third derivation;
+    :func:`_weave_vacate_step`). A through vehicle in the lane feeding
+    section lane 1, within ``vacate_ahead_m`` of the section start along the
+    corridor, is asked once to move one lane left — the signage /
+    anticipation that empties the weave lane for the exchange — under mode
+    512 (SUMO's safety check, the vehicle adapting its speed), within the
+    target lane's spare capacity (``vacate_max_veh_h``). Counted in
+    ``n_vacated``, ``n_vacate_refused``, ``n_vacate_skipped_no_gap`` and
+    ``n_vacate_requests``.
 
     **The exit side** (2026-09-24, block 3, exit-side derivation; derived
     from the I-94 WB standstill at the T.H.52 gore's end, docs/WEAVE_MODEL_PLAN.md
@@ -5012,43 +2637,6 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     back at once and counted in ``n_missed`` and ``n_missed_exit`` — never
     held by SUMO at the end of a lane its route does not continue on, where
     it stopped the through lane behind it and the auxiliary lane beside it.
-    An exit-bound vehicle inside its forced zone with a driven entrant
-    halted at the auxiliary lane's end ahead of it stops behind that
-    entrant's rear so the entrant can change ahead of it (WP-54, the
-    crossing pair; :func:`_weave_yield_at_ends`, ``exiter_yields``): a
-    halted entrant is not freed by the give-up of the exiter beside it, and
-    the next exiters halt beside it and are given up in turn.
-
-    **The entrant's entry speed** (2026-09-24, block 3, WP-57;
-    :func:`_weave_entry_bound`, ``entry_speed_bound``, off by default). An
-    entering vehicle on the ramp within ``lookahead_m`` of the section is
-    asked, on top of the anticipation above, to enter no faster than the
-    speed from which it can still halt at its own ``b`` one ``minGap``
-    short of the auxiliary lane's end (:func:`_weave_entry_speed_bound`),
-    so that it cannot form the crossing pair at the lane ends by momentum;
-    the ramp throttle and the demand are untouched. Measured and left off
-    (docs/WEAVE_MODEL_PLAN.md, dated section).
-
-    **The bounded hold** (2026-09-24, block 3, WP-58;
-    :func:`_weave_hold_release`, ``hold_release_s``, off by default). The
-    cooperation's hold on a chosen gap's follower is dropped, the follower
-    blocked for the changer for one bound and the gap re-chosen behind it,
-    once the changer's projected arrival at the gap has not advanced for
-    longer than the bound with the follower's side already open — never
-    inside the follower's brake distance, never for a standing pair (the
-    pair release's regime). Counted in ``n_hold_releases``. Measured on
-    the fixture grid in seven forms and left off: every one reads worse
-    than the unbounded hold (docs/WEAVE_MODEL_PLAN.md, dated section).
-
-    **The gated anticipation** (2026-09-24, block 3, WP-60;
-    :func:`_weave_coop_gate`, ``anticipation_gate``, off by default). The
-    anticipation's follower is held only from the step on which the
-    entrant's time to the section start is no longer than the time the
-    follower needs to open the gap at its own ``b``, then kept; counted in
-    ``n_anticipation_gated``. Measured on the fixture grid and left off:
-    the ramp holds it removes are the positioning the entrant arrives with,
-    and every criterion reads worse (docs/WEAVE_MODEL_PLAN.md, dated
-    section).
 
     **The exiters' early move** (2026-09-24, block 3, WP-62;
     :func:`_weave_exit_prepare_step`, ``exit_prepare``, off by default).
@@ -5060,92 +2648,15 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     reads no better and the fixture grid's entrances fall
     (docs/WEAVE_MODEL_PLAN.md, dated section).
 
-    **The swap** (2026-09-25, block 3, WP-64; :func:`_weave_swap_step`,
-    ``swap_pairs``, off by default). A driven entrant in the auxiliary lane
-    and a driven exiter beside it in lane 1 that block each other change in
-    one step, each into the lane the other leaves: each change read by the
-    acceptance against everyone but the partner and by the forced guard
-    against the partner, never beside an opposing entry into lane 1; both
-    changes then execute as accepted ones, with no speed target on either
-    that step. Counted in ``n_swaps``. Measured and left off: the pairs
-    that block each other mostly overlap near speed parity, the exchanges
-    that clear the guard do not raise the exit end's delivery, and the
-    capacity fixture's no-lock pin breaks (docs/WEAVE_MODEL_PLAN.md, dated
-    section).
-
-    **The crossings spread** (2026-09-25, block 3, WP-67;
-    :func:`_weave_handover_step`, :func:`_weave_spread_length`,
-    :func:`_weave_spread_fraction`, ``spread_crossings``, off by default).
-    Each crossing vehicle takes a place ``frac(n · φ)`` in the order it is
-    taken, and its crossing — an entrant's out of the auxiliary lane, an
-    exiter's into it — is withheld while it is short of that fraction of the
-    stretch in which waiting costs it nothing (its own lane-end braking,
-    the forced zone and one cooperative gap opening bound it, re-read at its
-    speed each step; zero in free flow on a 305 m section); released once,
-    it is driven as above. A vehicle whose crossing would be withheld is
-    taken under ``LC_MODE_SCRIPTED_SAFE`` on the step before it can reach
-    the section, so SUMO's own model cannot change it in the step it
-    arrives; an entrant whose crossing is withheld is not anticipated on the
-    ramp; under the rule an entrant's accepted change is never commanded
-    beside an opposing entry into lane 1 (:func:`_weave_swap_opposing_clear`).
-    Counted in ``n_spread_withheld``. Measured and left off: the entry's two
-    lanes carry more, but the crossings move to the section's second half,
-    the exit end reads slower and the capacity fixture's no-lock pin breaks
-    (docs/WEAVE_MODEL_PLAN.md, dated section).
-
-    **The ramp's outlet** (2026-09-25, block 3, WP-70;
-    :func:`_weave_outlet_length`, ``ramp_outlet``, off by default). An
-    exit-bound changer's gap choice (:func:`_weave_cooperate`) passes over
-    every vehicle on the on-ramp or in the auxiliary lane short of the
-    stretch the ramp's vehicles need to leave it (51.1 m on the T.H.52
-    section; none on a section shorter than 253.8 m), the exit priority's
-    hold exempt: the exiter still takes an open gap there, but holds nobody
-    in the ramp's only outlet. Counted in ``n_outlet_spared`` where the gap
-    chosen without the rule has one of them as its follower. Measured and left
-    off: the entrance rises and the entry breaks down later, but the exit
-    end reads no faster and the capacity fixture's no-lock pin breaks at one
-    seed (docs/WEAVE_MODEL_PLAN.md, dated section).
-
-    **The exit priority from the braking onset** (2026-09-25, block 3, WP-73;
-    :func:`_weave_brake_onset_m`, ``exit_priority_onset``, off by default).
-    An exiter has the exit priority from the step on which its distance to
-    the gore is within the onset of its own model's braking for the end of
-    its lane (the EIDM's ``vT + v²/(2√(ab))``, the IDM's that over
-    ``√(1 − (v/v0)⁴)``, at its own parameters and speed; the model is
-    ``FleetSpec.model``, ``ws["cf_model"]``), latched, as well as once its
-    forced change is due; the forced change itself keeps the zone and its
-    delay, the yields at the lane ends keep the zone's due, and with
-    ``ramp_outlet`` set the onset priority's gap choice passes over the
-    outlet's vehicles (the zone's priority stays exempt). Counted in
-    ``n_onset_priority``. Measured and left off: the crossings of the
-    section's second half are no faster, because the exiters reach it below
-    20 m/s, the capacity fixture's no-lock pin breaks at two seeds and the
-    Ruth St section locks at one (docs/WEAVE_MODEL_PLAN.md, dated section).
-
-    **The anticipation spares the exiters** (2026-09-25, block 3, WP-75;
-    ``anticipation_spares_exiters``, off by default; :func:`_weave_cooperate`
-    has the derivation). An entrant still on the ramp does not hold a gap
-    follower that is itself bound for the paired exit; its gap, commitment
-    and easing are kept. Counted in ``n_anticipation_exiter_spared``.
-    Measured and left off: the exiters reach the section start faster, but
-    the entrants cross later, the hold reappears in the section as the
-    section entrants' cooperation, the T.H.52 entrance falls, and with
-    ``ramp_outlet`` the corridor section fixture locks at one seed
-    (docs/WEAVE_MODEL_PLAN.md, dated section).
-
-    **Opposing entries into one lane** (2026-09-25, block 3, WP-92;
-    :func:`_weave_opposing_guard`, ``opposing_entry_guard``, off by default).
-    A change requested under mode 256 lands at any gap behind a vehicle ahead
-    that entered the same lane from the other side in the same step (SUMO
-    executes an edge's changes front first; mode 256 refuses only an
-    overlap). Under the key every vehicle is decided first and the requests
-    are made after: where a request would land behind such an entry within
-    the forced guard's minimum, the one with priority goes — a due forced
-    change, then a crossing change, then a model-driven one; between equals
-    the one ahead — and the other is deferred by one step: a request
-    withheld, or an undriven vehicle's model-driven changes suspended for the
-    step (its mode restored on the next). Counted in
-    ``n_opposing_deferred``.
+    The section's other switches — the bounded give-up patiences (WP-52,
+    WP-53), the yields at the lane ends (WP-54..56), the entrant's entry
+    speed (WP-57), the bounded hold (WP-58), the gated anticipation (WP-60),
+    the swap (WP-64), the crossings spread (WP-67), the ramp's outlet
+    (WP-70), the exit priority from the braking onset (WP-73), the
+    anticipation sparing the exiters (WP-75), the follower-side time gaps
+    (WP-80) and the opposing-entry guard (WP-92), all off or unset by
+    default — were removed on 2026-10-06 (docs/WEAVE_MODEL_PLAN.md;
+    reproduce with release 2.5.0).
 
     **Acceptance and execution.** The change is executed under mode 256 for
     one step as soon as the immediate target-lane gaps (``getNeighbors``)
@@ -5159,14 +2670,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     acceleration towards the changer, gap = reported gap + its ``minGap``)
     and :func:`_weave_force_gap_ok` passes; a forced change uses the guard
     alone, whose two sides carry the brake gaps of the changer and of the
-    follower. The leader and follower gaps apart (2026-09-25, block 3,
-    WP-80): the leader-side terms read the movement's key (``accept_gap_s``
-    / ``exit_accept_gap_s``), the follower-side ones — the time gap at
-    ``v_F`` and the guard's follower-side closing bound, in the acceptance
-    and in the forced guard alike — ``accept_lag_gap_s`` /
-    ``exit_accept_lag_gap_s``, which default to unset, the leader side's
-    value (:func:`_weave_lag_gap_s`). A step with no request leaves the
-    vehicle on mode 512. Control is handed back (mode restored) when the
+    follower. A step with no request leaves the vehicle on mode 512. Control is handed back (mode restored) when the
     vehicle has no change left to make;
     a driven vehicle on an internal junction lane between two section pieces
     (``OSMNetwork.internal_links``) is neither driven nor handed back that
@@ -5204,16 +2708,6 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     rule = ws.get("rule") or _weave_short_section_rule(section_len, prm)
     step_s = float(ws["step_s"])
     veh = ws["veh"]
-    # WP-73: the exit priority from the braking onset, and the model to read it with
-    onset_prio = float(prm["exit_priority_onset"]) > 0.0
-    cf_model = str(ws.get("cf_model", "IDM"))
-    # WP-92 (``opposing_entry_guard``): the changes are requested after every
-    # vehicle is decided, two opposing entries into one lane resolved first;
-    # the vehicles vetoed last step get their mode back before anything reads it
-    opp_guard = float(prm["opposing_entry_guard"]) > 0.0
-    requests: dict[str, dict[str, Any]] = {}
-    if opp_guard and ws["opp_veto"]:
-        _weave_opposing_restore(mod, ws, results)
     pending: dict[str, int] = {}
     # entering vehicles still on the ramp within lookahead_m of the section:
     # gap choice and cooperation only (see the docstring, anticipation)
@@ -5284,45 +2778,8 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # asked into the lane feeding section lane 1 before the section, after
     # the vacate rule and before the section takes any vehicle under control
     _weave_exit_prepare_step(mod, tc, ws, results, lanes, t)
-    # the crossings spread along the section (WP-67, ``spread_crossings``):
-    # every crossing vehicle under the weave's lane-change mode on the step
-    # before it can reach the section, and each crossing withheld until the
-    # vehicle reaches its onset (empty at the default)
-    spread = float(prm["spread_crossings"]) > 0.0
-    waiting: set[str] = set()
-    if spread:
-        _weave_handover_step(mod, tc, ws, results, x_of, v_of, pending)
-        frac_of: dict[str, float] = ws["onset"]
-        released_w: set[str] = ws["spread_released"]
-        for vid, d in pending.items():
-            if vid not in frac_of:
-                frac_of[vid] = _weave_spread_fraction(ws["n_onsets"])
-                ws["n_onsets"] += 1
-            res_w = results[vid]
-            lane_w = int(res_w[tc.VAR_LANE_INDEX])
-            if vid in released_w or not ((d > 0 and lane_w == 0) or (d < 0 and lane_w == 1)):
-                # released once, or not at its crossing yet (an exiter still
-                # right of lane 1 moves on and is read when it reaches it)
-                continue
-            p_w = _weave_veh(mod, ws, vid)
-            v0_w = min(p_w["vmax"], _weave_lane_vmax(mod, ws, res_w[tc.VAR_ROAD_ID], lane_w))
-            d_w = _weave_spread_length(
-                section_len,
-                float(rule["zone_m"]),
-                v_of[vid],
-                v0_w,
-                p_w,
-                _weave_lag_gap_s(prm, exiting=d < 0),
-            )
-            if x_of[vid] - x_start < frac_of[vid] * d_w:
-                waiting.add(vid)
-            else:
-                released_w.add(vid)
     for vid in [v for v in veh if v not in pending and v not in in_transit]:
         st = veh.pop(vid)
-        if spread:
-            ws["onset"].pop(vid, None)
-            ws["spread_released"].discard(vid)
         if vid not in results:
             ws["n_missed"] += 1  # left the network while still owing a change
             continue
@@ -5342,18 +2799,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
     # a stopped crossing pair is released (fifth derivation, 2026-09-24 block
     # 3): the one farther from the section end yields this step, the other
     # may force its change at once
-    # (a vehicle waiting for its onset is making no change: never one of a pair)
-    driving = {k: d for k, d in pending.items() if k not in waiting} if waiting else pending
-    yielders, released = _weave_pair_release(mod, ws, driving, x_of, v_of, t)
-    # the swap (WP-64, ``swap_pairs``): an entrant and an exiter beside it that
-    # block each other exchange lanes in one step; decided before any vehicle
-    # of the step is driven (empty at the default)
-    swapping = _weave_swap_step(
-        mod, tc, ws, results, lanes, x_of, v_of, driving, yielders | released, t
-    )
-    # lane 2 as the guard against an opposing entry reads it (WP-67), built
-    # on the first entrant change it guards
-    beyond_l2: list[tuple[float, float, float, float, float, bool]] | None = None
+    yielders, released = _weave_pair_release(mod, ws, pending, x_of, v_of, t)
     # vehicle id -> (speed target, commanded acceleration, is a follower) this step
     coop: dict[str, tuple[float, float, bool]] = {}
     p_of: dict[str, dict[str, float]] = {}
@@ -5368,34 +2814,14 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
                 "zone_s": None,
                 "requested_s": -math.inf,
                 "forced": False,
-                # taken before it reached the section (WP-67): the mode it had
-                "lc_mode_orig": (
-                    ws["handover"].pop(vid)
-                    if vid in ws["handover"]
-                    else int(mod.vehicle.getLaneChangeMode(vid))
-                ),
+                "lc_mode_orig": int(mod.vehicle.getLaneChangeMode(vid)),
                 "s0": float(mod.vehicle.getMinGap(vid)),
                 "mode": LC_MODE_SCRIPTED_SAFE,
                 # the gap chosen on the ramp, if any, carries over
                 "target": ws["pre"].pop(vid, None),
-                # the give-up patience (WP-52): last step's target-lane
-                # follower and its speed, the first refused step
-                "foll_prev": None,
-                "giveup_since": None,
-                # the brake-scaled yield zone (WP-56): the first step of a
-                # standstill outside the fixed zone, and its lapse
-                "yield_rest_s": None,
-                "yield_lapsed": False,
             }
             mod.vehicle.setLaneChangeMode(vid, LC_MODE_SCRIPTED_SAFE)
             ws["n_entered"] += 1
-        if vid in waiting:
-            # before its onset (WP-67): it follows its own lane, chooses no
-            # gap, holds and eases nobody and requests no change
-            st["target"] = None
-            _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-            ws["n_spread_withheld"] += 1
-            continue
         res = results[vid]
         road = res[tc.VAR_ROAD_ID]
         lane = int(res[tc.VAR_LANE_INDEX])
@@ -5408,23 +2834,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         else:
             modes = (NEIGHBOR_RIGHT_LEADERS, NEIGHBOR_RIGHT_FOLLOWERS)
             accept = prm["exit_accept_gap_s"]
-        # the follower side's time gap (WP-80; the leader side's when unset)
-        accept_lag = _weave_lag_gap_s(prm, exiting=d < 0)
         if remaining <= rule["zone_m"] and st["zone_s"] is None:
             st["zone_s"] = t
         # the forced change is due (the forced zone's exit priority)
         zone_due = st["zone_s"] is not None and t - st["zone_s"] >= rule["force_after_s"]
-        st["prio_zone"] = zone_due
-        # WP-73 (``exit_priority_onset``): an exiter's priority from where its
-        # own model starts braking for the end of its lane, latched
-        onset_due = False
-        if d < 0 and onset_prio:
-            if st.get("onset_s") is None:
-                p_on = _weave_veh(mod, ws, vid)
-                v0_on = min(p_on["vmax"], _weave_lane_vmax(mod, ws, road, lane))
-                if remaining <= _weave_brake_onset_m(v_ego, v0_on, p_on, cf_model):
-                    st["onset_s"] = t
-            onset_due = st.get("onset_s") is not None
         # --- acceptance (read before the give-up below: a halted exiter that
         # can still request its change this step is not given up — review,
         # 2026-09-24 block 3: with the give-up first, one halted 3 m from the
@@ -5437,7 +2850,7 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         # at its own b, floored by the movement's time gap
         b_c = _weave_veh(mod, ws, vid)["b"]
         ok_lead = g_lead >= _weave_lead_gap_min(st["s0"], accept, v_ego, g_lead, v_lead, b_c)
-        ok_foll = g_foll >= st["s0"] + accept_lag * (v_foll if g_foll < math.inf else 0.0)
+        ok_foll = g_foll >= st["s0"] + accept * (v_foll if g_foll < math.inf else 0.0)
         b_f = _weave_veh(mod, ws, f_id)["b"] if f_id is not None else None
         if ok_foll and f_id is not None:
             # the immediate follower must absorb the changer within its own b
@@ -5473,62 +2886,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             ok_lead
             and ok_foll
             and _weave_force_gap_ok(
-                st["s0"],
-                accept,
-                v_ego,
-                g_lead,
-                v_lead,
-                g_foll,
-                v_foll,
-                b_c,
-                b_f,
-                accept_lag_s=accept_lag,
+                st["s0"], accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
             )
-        ) or vid in swapping
-        if spread and accepted and d > 0 and vid not in swapping:
-            # never two opposing changes into lane 1 in one step (WP-67; the
-            # derived guard of the swap, WP-64): with the crossings spread,
-            # entrants change beside lane 2 along the whole section
-            if beyond_l2 is None:
-                beyond_l2 = []
-                for x_2, v_2 in lanes.get(2, []):
-                    p_2 = _weave_veh(mod, ws, v_2)
-                    r_2 = results[v_2]
-                    driven_2 = (
-                        pending.get(v_2, 0) < 0
-                        and r_2[tc.VAR_ROAD_ID] in edges
-                        and int(r_2[tc.VAR_LANE_INDEX]) == 2
-                    )
-                    beyond_l2.append((x_2, p_2["len"], p_2["s0"], v_of[v_2], p_2["b"], driven_2))
-            p_e = _weave_veh(mod, ws, vid)
-            if not _weave_swap_opposing_clear(
-                x_of[vid],
-                p_e["len"],
-                st["s0"],
-                accept,
-                v_ego,
-                b_c,
-                float(prm["exit_accept_gap_s"]),
-                beyond_l2,
-            ):
-                accepted = False
-                ws["n_spread_opposing"] += 1
+        )
         # a released partner is guarded against closing only: both of the
         # pair are below the creep speed, the s0 floor is a comfort margin
         # at speed, and mode 256 still refuses an overlap — and, since the
         # speed-aware guard, against a follower that cannot brake for it at b
         s0_guard = 0.0 if vid in released else st["s0"]
         forced_ok = force and _weave_force_gap_ok(
-            s0_guard,
-            accept,
-            v_ego,
-            g_lead,
-            v_lead,
-            g_foll,
-            v_foll,
-            b_c,
-            b_f,
-            accept_lag_s=accept_lag,
+            s0_guard, accept, v_ego, g_lead, v_lead, g_foll, v_foll, b_c, b_f
         )
         if (
             d < 0
@@ -5536,63 +2903,23 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             and v_ego < HALTING_SPEED_MS
             and not (accepted or forced_ok)
         ):
-            # the vehicle beside the exiter (WP-53): the leader side's while
-            # it is under the acceptance's floor, else an overlapping follower
-            lead_need = st["s0"] + accept * v_ego
-            if g_lead < lead_need:
-                a_id, v_a = _l_id, v_lead
-            elif g_foll < 0.0:
-                a_id, v_a = f_id, v_foll
-            else:
-                a_id, v_a = None, math.nan
-            if a_id is not None:
-                p_a = _weave_veh(mod, ws, a_id)
-                p_c = _weave_veh(mod, ws, vid)
-                clear_m = _weave_abreast_clear_m(
-                    g_lead, g_foll, lead_need, p_c["len"], st["s0"], p_a["len"], p_a["s0"]
-                )
-            else:
-                clear_m = 0.0
-            if _weave_giveup_patient(
-                st, t, prm["exit_giveup_patience_s"], f_id, g_foll, v_foll, b_f, step_s
-            ) or _weave_giveup_abreast(
-                st,
-                t,
-                prm["exit_abreast_patience_s"],
-                a_id,
-                v_a,
-                clear_m,
-                a_id in veh and veh[a_id]["dir"] > 0,
-            ):
-                # the refusal is a transient — the follower still braking
-                # towards the gap (bounded give-up patience, WP-52) or the
-                # vehicle beside the exiter clearing it within the budget
-                # (the abreast state, WP-53): kept this step, the request
-                # deferred below as a forced change is
-                ws["n_giveup_waited"] += 1
-            else:
-                # the exit is missed: a vehicle halted within exit_giveup_m
-                # of the gore's end with no change to request this step
-                # continues on the mainline (rerouted to the corridor's end)
-                # instead of being held by SUMO at the end of a lane its
-                # route does not continue on, where it stopped the through
-                # lane behind it and the auxiliary lane beside it (exit-side
-                # derivation, 2026-09-24 block 3). One still rolling there
-                # may yet drop in: v00010 of the moderate fixture forced its
-                # change in the last 3 m at 2-3 m/s (session record)
-                mod.vehicle.changeTarget(vid, ws["through_target"])
-                mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
-                del veh[vid]
-                if spread:
-                    ws["onset"].pop(vid, None)
-                    ws["spread_released"].discard(vid)
-                ws["gave_up"].add(vid)
-                awaiting_exit.discard(vid)
-                ws["n_missed"] += 1
-                ws["n_missed_exit"] += 1
-                continue
-        # the follower reported this step, for the patience's speed history
-        st["foll_prev"] = (f_id, v_foll)
+            # the exit is missed: a vehicle halted within exit_giveup_m of
+            # the gore's end with no change to request this step continues
+            # on the mainline (rerouted to the corridor's end) instead of
+            # being held by SUMO at the end of a lane its route does not
+            # continue on, where it stopped the through lane behind it and
+            # the auxiliary lane beside it (exit-side derivation, 2026-09-24
+            # block 3). One still rolling there may yet drop in: v00010 of
+            # the moderate fixture forced its change in the last 3 m at 2-3
+            # m/s (session record)
+            mod.vehicle.changeTarget(vid, ws["through_target"])
+            mod.vehicle.setLaneChangeMode(vid, st["lc_mode_orig"])
+            del veh[vid]
+            ws["gave_up"].add(vid)
+            awaiting_exit.discard(vid)
+            ws["n_missed"] += 1
+            ws["n_missed_exit"] += 1
+            continue
         if vid in yielders:
             # yields to its released partner: no target, no request, the
             # gap commitment dropped (re-chosen next step)
@@ -5616,57 +2943,16 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             st["target"],
             accept,
             remaining,
-            # exit priority once the forced change is due (_weave_choose_gap),
-            # or (WP-73) from the exiter's own braking onset
-            d < 0 and (zone_due or onset_due),
-            t,
-            accept_lag_s=accept_lag,
+            # exit priority once the forced change is due (_weave_choose_gap)
+            d < 0 and zone_due,
         )
-        if onset_due and not zone_due:
-            ws["n_onset_priority"] += 1
-        if d < 0:
-            # the yields at the lane ends (WP-54): the exiter for a halted
-            # entrant ahead of it, the entrant beside a due exiter
-            _weave_yield_at_ends(
-                mod,
-                tc,
-                ws,
-                results,
-                lanes,
-                x_of,
-                v_of,
-                p_of,
-                v0_of,
-                coop,
-                vid,
-                lane + d,
-                min(
-                    _weave_veh(mod, ws, vid)["vmax"],
-                    _weave_lane_vmax(mod, ws, road, lane + d),
-                ),
-                remaining,
-                accept,
-                zone_due,
-                t,
-            )
         # --- execution -----------------------------------------------------
         if accepted or (force and forced_ok):
             # accepted: executed under mode 256 for one step (the follower
             # yields; SUMO still refuses an immediate collision). A forced
             # request lives one step only, so it is executed under the gaps
-            # just checked or not at all (_weave_exec_change). Under the
-            # opposing-entry guard (WP-92) it is requested after the loop
-            kind = ("swap" if vid in swapping else "acc") if accepted else "force"
-            if opp_guard:
-                requests[vid] = {
-                    "lane": lane,
-                    "target": lane + d,
-                    "due": force,
-                    "kind": kind,
-                    "accept": accept,
-                }
-            else:
-                _weave_exec_change(mod, vid, st, lane + d, step_s, t, kind)
+            # just checked or not at all (_weave_exec_change)
+            _weave_exec_change(mod, vid, st, lane + d, step_s, t, "acc" if accepted else "force")
         elif force:
             # deferred: back under SUMO's own safety check, so a pending
             # request cannot execute into the gap that was just refused
@@ -5675,60 +2961,12 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
         else:
             # no request this step: never leave a one-step forced mode standing
             _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-    if requests:
-        # the opposing-entry guard (WP-92): of two changes into one lane from
-        # opposite sides in this step, the one with priority goes and the
-        # other is deferred by one step — a runner request withheld, a
-        # model-driven change vetoed
-        withheld, vetoes = _weave_opposing_guard(
-            mod, tc, ws, results, lanes, x_of, v_of, requests, t
-        )
-        for vid in sorted(requests):
-            st = veh[vid]
-            if vid in withheld:
-                _weave_set_mode(mod, vid, st, LC_MODE_SCRIPTED_SAFE)
-                ws["n_opposing_deferred"] += 1
-                ws["opposing_withheld"] += 1
-            else:
-                rq = requests[vid]
-                _weave_exec_change(mod, vid, st, int(rq["target"]), step_s, t, str(rq["kind"]))
-        for vid, mode in vetoes.items():
-            mod.vehicle.setLaneChangeMode(vid, mode & ~LC_MODE_MODEL_BITS)
-            ws["opp_veto"][vid] = mode
-            ws["n_opposing_deferred"] += 1
-            ws["opposing_vetoed"] += 1
     # entering vehicles still on the ramp: their gap is chosen and its
     # follower cooperates before they appear on lane 0
     pre: dict[str, str | None] = ws["pre"]
     for vid in [v for v in pre if v not in approaching]:
         del pre[vid]
     for vid in sorted(approaching):
-        if spread:
-            # WP-67: the anticipation is the entrant's tie before the section,
-            # for a crossing at its start; one whose crossing is withheld into
-            # the section (its place in the spread times the spread length at
-            # its speed) is not positioned on the ramp — the ramp feeds the
-            # auxiliary lane, which is its own lane until then
-            if vid not in ws["onset"]:
-                ws["onset"][vid] = _weave_spread_fraction(ws["n_onsets"])
-                ws["n_onsets"] += 1
-            p_a = _weave_veh(mod, ws, vid)
-            v0_a = min(p_a["vmax"], _weave_lane_vmax(mod, ws, ws["edges"][0], 0))
-            if (
-                ws["onset"][vid]
-                * _weave_spread_length(
-                    section_len,
-                    float(rule["zone_m"]),
-                    v_of[vid],
-                    v0_a,
-                    p_a,
-                    _weave_lag_gap_s(prm, exiting=False),
-                )
-                > 0.0
-            ):
-                pre.pop(vid, None)
-                ws["n_spread_unanticipated"] += 1
-                continue
         # the ramp to the gore, then the whole section
         dist_m = x_start - x_of[vid] + section_len
         pre[vid] = _weave_cooperate(
@@ -5747,25 +2985,10 @@ def _weave_step(mod: Any, tc: Any, ws: dict[str, Any], results: Any, t: float) -
             pre.get(vid),
             prm["accept_gap_s"],
             dist_m,
-            t=t,
-            # the gated anticipation (WP-60): the entrant's time to the
-            # section start at its speed, floored at the creep speed
-            arrival_s=(x_start - x_of[vid]) / max(v_of[vid], SCRIPTED_MERGE_CREEP_MS),
-            accept_lag_s=_weave_lag_gap_s(prm, exiting=False),
         )
-        if prm["entry_speed_bound"] > 0.0:
-            # the entrant's entry speed (WP-57): no faster onto the
-            # auxiliary lane than its own stop at b within it allows
-            _weave_entry_bound(mod, tc, ws, results, coop, vid, v_of[vid], dist_m, step_s)
-    # the bounded hold's state (WP-58) lives as long as the changer is
-    # driven or approaching
-    hold: dict[str, dict[str, Any]] = ws["hold"]
-    for vid in [v for v in hold if v not in veh and v not in approaching]:
-        del hold[vid]
-    for vid in yielders | swapping:
+    for vid in yielders:
         # no target in either role this step: a yielder moves on under its own
-        # car-following; a swapping pair leaves the two lanes the targets
-        # were for (WP-64)
+        # car-following
         coop.pop(vid, None)
     for fid in sorted(coop):
         v_new, a_cmd, follower = coop[fid]
@@ -5796,69 +3019,26 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
     gap's leader; ``n_vacated`` / ``n_vacate_refused`` count through
     vehicles asked to vacate the weave lane upstream of the section
     (:func:`_weave_vacate_step`) that did / did not change before it, each
-    once, ``n_vacate_skipped_no_gap`` (block 3, the rule re-derived) the
-    through vehicles that crossed the window never asked — no step on
-    which the target-lane gap accepted them within the bound — each once,
-    and ``n_vacate_requests`` the requests made, in vehicle-steps;
+    once, ``n_vacate_skipped_no_gap`` the through vehicles that crossed the
+    window never asked — for want of the bound — each once, and
+    ``n_vacate_requests`` the requests made, in vehicle-steps;
     ``n_pair_releases`` counts stopped crossing pairs released
     (:func:`_weave_pair_release`), each pair once per release;
     ``n_missed_exit`` (exit-side derivation) the exit-bound vehicles the
     runner itself rerouted through at the gore's end, halted (below
     ``HALTING_SPEED_MS``) still owing their change with no more than
     ``exit_giveup_m`` of section ahead — a subset of ``n_missed``, so the
-    identity above holds; ``n_giveup_waited`` (WP-52, the bounded give-up
-    patience) the vehicle-steps on which such a give-up was deferred because
-    the exiter's auxiliary-lane follower was still braking towards the gap
-    (:func:`_weave_giveup_patient`; zero at ``exit_giveup_patience_s`` = 0);
-    ``n_exiter_yields`` / ``n_entrant_yields`` (WP-54, the crossing pair)
-    the vehicle-steps on which an exiter was driven to stop behind a halted
-    entrant ahead of it / a moving entrant beside a due exiter was driven
-    to fall behind its rear (:func:`_weave_yield_at_ends`; zero at a
-    switch's default of 0, counted only when the target bound);
-    ``n_entry_bounded`` (WP-57, the entrant's entry speed) the vehicle-steps
-    on which an entrant on the ramp was asked to enter no faster than its
-    own stop at ``b`` within the auxiliary lane allows
-    (:func:`_weave_entry_bound`; zero at ``entry_speed_bound`` = 0);
-    ``n_hold_releases`` (WP-58, the bounded hold) the holds dropped — a
-    changer's cooperating follower released after the changer stopped
-    closing on the gap for longer than ``hold_release_s``, each once
-    (:func:`_weave_hold_release`; zero at the default of 0);
-    ``n_anticipation_gated`` (WP-60, the gated anticipation) the
-    vehicle-steps on which an approaching entrant's gap follower was not
-    commanded because the entrant arrives later than the follower needs to
-    open the gap at its ``b``, counted only where the command would have
-    bound (:func:`_weave_coop_gate`; zero at ``anticipation_gate`` = 0);
-    ``n_exit_prepared`` (WP-62, the exiters' early move) the vehicles bound
-    for the paired exit that the rule asked, inside the vacate window, into
-    the lane feeding section lane 1 and that were seen there before the
-    section, each once (:func:`_weave_exit_prepare_step`; zero at
-    ``exit_prepare`` = 0); ``n_swaps`` (WP-64, the swap) the pairs of a
-    driven entrant in the auxiliary lane and a driven exiter beside it in
-    lane 1, blocking each other, commanded to exchange lanes in one step
-    (:func:`_weave_swap_step`; zero at ``swap_pairs`` = 0);
-    ``n_spread_withheld`` (WP-67, the crossings spread) the vehicle-steps
-    on which a driven vehicle's crossing — an entrant's out of the
-    auxiliary lane, an exiter's into it — was withheld because the vehicle
-    was short of its place in the spread (:func:`_weave_spread_length`,
-    :func:`_weave_spread_fraction`; zero at ``spread_crossings`` = 0);
-    ``n_outlet_spared`` (WP-70, the ramp's outlet) the exiter-steps on which
-    the gap chosen without the rule has as its follower a vehicle on the
-    on-ramp or in the auxiliary lane's first stretch
-    (:func:`_weave_outlet_length`; zero at ``ramp_outlet`` = 0);
-    ``n_onset_priority`` (WP-73, the exit priority from the braking onset)
-    the exiter-steps on which an exiter had the exit priority from its own
-    lane-end braking onset before its forced change was due
-    (:func:`_weave_brake_onset_m`; zero at ``exit_priority_onset`` = 0);
-    ``n_anticipation_exiter_spared`` (WP-75, the anticipation spares the
-    exiters) the vehicle-steps on which an approaching entrant's gap
-    follower was bound for the paired exit and was not held, counted only
-    where the hold would have bound (:func:`_weave_cooperate`; zero at
-    ``anticipation_spares_exiters`` = 0); ``n_opposing_deferred`` (WP-92,
-    the opposing-entry guard) the changes deferred by one step because an
-    opposing entry into the same lane in the same step would land within the
-    forced guard's minimum of it — a runner request withheld, or an undriven
-    vehicle's model-driven changes suspended for the step — in vehicle-steps
-    (:func:`_weave_opposing_guard`; zero at ``opposing_entry_guard`` = 0).
+    identity above holds; ``n_exit_prepared`` (WP-62, the exiters' early
+    move) the vehicles bound for the paired exit that the rule asked, inside
+    the vacate window, into the lane feeding section lane 1 and that were
+    seen there before the section, each once (:func:`_weave_exit_prepare_step`;
+    zero at ``exit_prepare`` = 0). The counters of the switches removed on
+    2026-10-06 (``n_giveup_waited``, ``n_exiter_yields``,
+    ``n_entrant_yields``, ``n_entry_bounded``, ``n_hold_releases``,
+    ``n_anticipation_gated``, ``n_swaps``, ``n_spread_withheld``,
+    ``n_outlet_spared``, ``n_onset_priority``,
+    ``n_anticipation_exiter_spared``, ``n_opposing_deferred``) are no longer
+    written (docs/WEAVE_MODEL_PLAN.md; release 2.5.0 wrote them).
     ``n_exited``
     is the number of exit-bound
     vehicles that took the paired exit (seen on any of its edges, or gone from
@@ -5899,19 +3079,7 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
         "n_forced": ws["n_forced"],
         "n_missed": ws["n_missed"],
         "n_missed_exit": ws["n_missed_exit"],
-        "n_giveup_waited": ws["n_giveup_waited"],
-        "n_exiter_yields": ws["n_exiter_yields"],
-        "n_entrant_yields": ws["n_entrant_yields"],
-        "n_entry_bounded": ws["n_entry_bounded"],
-        "n_hold_releases": ws["n_hold_releases"],
-        "n_anticipation_gated": ws["n_anticipation_gated"],
         "n_exit_prepared": ws["n_exit_prepared"],
-        "n_swaps": ws["n_swaps"],
-        "n_spread_withheld": ws["n_spread_withheld"],
-        "n_outlet_spared": ws["n_outlet_spared"],
-        "n_onset_priority": ws["n_onset_priority"],
-        "n_anticipation_exiter_spared": ws["n_anticipation_exiter_spared"],
-        "n_opposing_deferred": ws["n_opposing_deferred"],
         "n_forced_deferred": ws["n_forced_deferred"],
         "n_cooperations": ws["n_cooperations"],
         "mean_follower_decel_ms2": (
@@ -6229,7 +3397,6 @@ def _measured_zone_state(
     offsets_by_edge: Mapping[str, float],
     route_by_id: Mapping[str, str],
     routes: Mapping[str, Sequence[str]],
-    cf_model: str,
     step_s: float,
 ) -> dict[str, Any]:
     """One measured zone's state, in the weave's section layout plus ``mm``.
@@ -6371,7 +3538,6 @@ def _measured_zone_state(
         "n_exit_prepare_held": 0,
         "handover": {},
         "n_handovers": 0,
-        "cf_model": cf_model,
         "opp_veto": {},
         "n_opposing_deferred": 0,
         "pair_since": {},
@@ -6380,7 +3546,6 @@ def _measured_zone_state(
         "step_s": float(step_s),
         "waits_in_s": [],
         "waits_out_s": [],
-        "hold": {},
         "mm": {
             "index": index,
             "run": run,
@@ -6427,17 +3592,17 @@ def _measured_zone_state(
     return ws
 
 
-def _measured_constants() -> dict[str, float | None]:
+def _measured_constants() -> dict[str, float]:
     """The section constants a measured zone runs on, in the weave's key layout.
 
     :data:`flowstate_core.config.WEAVE_DEFAULTS` with the measured model's
     fixed constants (docs/MERGE_MODEL.md §2, ``microsim.merge_model``): the
     forced zone 80 m / 4 s, the pair release 2 s, the exit give-up 5 m, the
     vacate window 500 m under the 2,050 veh/h spare bound, ``exit_prepare``
-    on, the lookahead 120 m, every off-by-default rule off. The time-gap keys
-    (``accept_gap_s`` …) are read only by the vacate and early-move rules'
-    own gap checks, as in the weave; the measured acceptance never reads
-    them.
+    on, the lookahead 120 m. The time-gap keys (``accept_gap_s`` …) are not
+    read: the measured acceptance replaces them (they were read by the
+    vacate and early-move rules' gap-conditioned form, removed on
+    2026-10-06).
     """
     return {
         **WEAVE_DEFAULTS,
@@ -6518,7 +3683,7 @@ def _measured_handover_step(
     (:func:`merge_model.mandatory_direction` on the zone's first edge) is set
     to ``LC_MODE_SCRIPTED_SAFE`` when its distance to the zone start is
     within two steps' travel at the speed it can reach in one, ``2·Δt·(v +
-    a·Δt)`` (the weave's ``_weave_handover_step`` bound). Its own mode is kept
+    a·Δt)`` (the bound of the weave's crossings spread, WP-67). Its own mode is kept
     in ``ws["handover"]`` and restored at hand-back; one that leaves the
     window without being driven gets it back at once; one under another
     scripted hold is left to it.
@@ -6599,8 +3764,8 @@ def _measured_cooperate(
 ) -> tuple[str | None, str | None, float]:
     """Gap choice and the two one-step targets of a measured changer (B§5.5).
 
-    The weave's core unchanged in form (:func:`_weave_cooperate` at its
-    defaults: no hold release, no gate, no outlet): :func:`_weave_choose_gap`
+    The weave's core unchanged in form (:func:`_weave_cooperate`):
+    :func:`_weave_choose_gap`
     — the nearest gap whose follower F opens it within ``b_F`` — with, for
     the entering movement, F's and the changer's IDM read at their relaxed
     headway (:func:`_mm_relaxed_fn`); F held by a one-step
@@ -6644,7 +3809,6 @@ def _measured_cooperate(
         float(ws["params"]["lookahead_m"]),
         committed,
         priority,
-        (),
         relaxed_T=_mm_relaxed_fn(run) if entering else None,
     )
     step_s = float(ws["step_s"])
@@ -7613,19 +4777,19 @@ def _commanded_by_runner(
 
     A weaving section commands the vehicles it drives (``veh``), the
     approaching entrants it anticipates (``pre``), the through vehicles its
-    vacate rule holds (``vacate``), the exiters its early move holds
-    (``prep``) and the vehicles taken before its section (``handover``); a
-    scripted merge its changers (``veh``) and their yielding followers
-    (``yielding``). The lane-end give-up never acts on such a vehicle (WP-71).
+    vacate rule holds (``vacate``) and the exiters its early move holds
+    (``prep``); a measured zone also the entrants taken before it
+    (``handover``); a scripted merge its changers (``veh``). The lane-end
+    give-up never acts on such a vehicle (WP-71).
     """
     return any(
         vid in ws["veh"]
         or vid in ws["pre"]
         or vid in ws["vacate"]
         or vid in ws["prep"]
-        or vid in ws["handover"]
+        or vid in ws.get("handover", ())
         for ws in weave_states
-    ) or any(vid in ss["veh"] or vid in ss["yielding"] for ss in scripted_states)
+    ) or any(vid in ss["veh"] for ss in scripted_states)
 
 
 def _lane_end_meta(le: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -9043,7 +6207,6 @@ def run_micro(
                     "target_lane": f"{ramp_s.attach_edge}_1",
                     "params": {**SCRIPTED_MERGE_DEFAULTS, **dict(ramp_s.merge_params)},
                     "veh": {},
-                    "yielding": {},
                     "n_entered": 0,
                     "n_changed": 0,
                     "n_forced": 0,
@@ -9177,22 +6340,6 @@ def run_micro(
                     "n_forced": 0,
                     "n_missed": 0,
                     "n_missed_exit": 0,
-                    # vehicle-steps a halted exiter's give-up was deferred
-                    # by the bounded patience (WP-52)
-                    "n_giveup_waited": 0,
-                    # vehicle-steps of the two yields at the lane ends (WP-54)
-                    "n_exiter_yields": 0,
-                    "n_entrant_yields": 0,
-                    # WP-57: the entrant's entry speed bounded on the ramp
-                    # (vehicle-steps)
-                    "n_entry_bounded": 0,
-                    # WP-58: the bounded hold — per-changer state and the
-                    # holds dropped (each once)
-                    "hold": {},
-                    "n_hold_releases": 0,
-                    # WP-60: the gated anticipation — the approaching
-                    # entrants' follower commands withheld (vehicle-steps)
-                    "n_anticipation_gated": 0,
                     # exit-bound vehicles rerouted through at the gore's end
                     # (exit-side derivation): no longer driven; their new
                     # destination is the corridor's last edge
@@ -9214,58 +6361,6 @@ def run_micro(
                     "n_exit_prepare_skipped": 0,
                     "n_exit_prepare_yielded": 0,
                     "n_exit_prepare_held": 0,
-                    # WP-64, the swap (_weave_swap_step): the pairs commanded
-                    # (meta), and the state-only counts — blocked pair-steps,
-                    # refusals by condition, the outcome of each exchange
-                    "n_swaps": 0,
-                    "swap_candidates": 0,
-                    "swap_refused_offset": 0,
-                    "swap_refused_rear": 0,
-                    "swap_refused_front": 0,
-                    "swap_refused_opposing": 0,
-                    "swap_full": 0,
-                    "swap_half": 0,
-                    "swap_none": 0,
-                    # WP-67, the crossings spread (_weave_handover_step,
-                    # _weave_spread_length, _weave_spread_fraction): the
-                    # original modes of vehicles taken before the section,
-                    # each crossing's place in the spread, the places
-                    # assigned, the crossings released, and the state-only
-                    # counts — vehicles taken, vehicle-steps withheld before
-                    # the onset, entrant changes refused by the opposing-entry
-                    # guard, approaching entrant-steps not anticipated
-                    "handover": {},
-                    "onset": {},
-                    "n_onsets": 0,
-                    "n_handovers": 0,
-                    "n_spread_withheld": 0,
-                    "n_spread_opposing": 0,
-                    "n_spread_unanticipated": 0,
-                    "spread_released": set(),
-                    # WP-70, the ramp's outlet (_weave_outlet_length): the
-                    # exiter-steps on which the gap chosen without the rule
-                    # has a vehicle in the outlet as its follower (meta)
-                    "n_outlet_spared": 0,
-                    # WP-73, the exit priority from the braking onset
-                    # (_weave_brake_onset_m): the fleet's car-following model
-                    # and the exiter-steps with that priority before the
-                    # forced zone's (meta)
-                    "cf_model": cfg.fleet.model,
-                    "n_onset_priority": 0,
-                    # WP-75, the anticipation spares the exiters: the
-                    # approaching entrant-steps whose gap follower is
-                    # exit-bound and whose hold was withheld where it would
-                    # have bound (meta)
-                    "n_anticipation_exiter_spared": 0,
-                    # WP-92, the opposing-entry guard (_weave_opposing_guard):
-                    # the vehicles whose model-driven changes are suspended
-                    # for the step, with the mode each had; the deferrals
-                    # (meta) and their two kinds, requests withheld and
-                    # vetoes (state-only)
-                    "opp_veto": {},
-                    "n_opposing_deferred": 0,
-                    "opposing_withheld": 0,
-                    "opposing_vetoed": 0,
                     # stopped crossing pairs (_weave_pair_release): first
                     # step each pair stood, the pairs already released
                     "pair_since": {},
@@ -9330,7 +6425,6 @@ def run_micro(
                     offsets_by_edge=offsets_by_edge,
                     route_by_id=route_by_id,
                     routes=routes_mm,
-                    cf_model=cfg.fleet.model,
                     step_s=float(cfg.sim.step_length_s),
                 )
             )

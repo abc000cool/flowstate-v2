@@ -3556,3 +3556,31 @@ Supersedes the WP-104 lines "simulated station speeds are segment means" and
 - **Ramp meters:** the setup resolves the attach edge on the compiled chain
   (`expand_ramp_splits`), so a ramp re-attached to an `-AddedOnRampEdge` piece
   is metered.
+
+## The measured merge model and the dead merge switches removed — 2026-10-06
+
+- **`RampSpec.merge = "measured"`** (docs/MERGE_MODEL.md and its amendments
+  A1–A4): a `weave` block makes the zone a weaving section paired as for
+  `weave` (its `weave_params` must be empty), otherwise the zone is the
+  acceleration lane terminated as for `scripted`. `OSMNetwork.merge_model_set`
+  ∈ {`central`, `us101_gaps`, `delta_zero`, `tau_r_low`, `tau_r_high`}
+  (default `central`, hash-neutral). Parameters from
+  `artifacts/merge_model_params.json` (path and sha256 in `meta.json`).
+  `meta.json["measured_merges"][i]` per-zone counters and
+  `meta.json["measured_merge_model"]` (parameters, relaxation counters);
+  `vehicles.parquet` gains `tc_*` critical-gap columns in such runs only. Not
+  a default; not accepted (gate A failed).
+- **Dead switches removed (A4):** `SCRIPTED_MERGE_DEFAULTS` loses `courtesy`;
+  `WEAVE_DEFAULTS` is now the scripted keys minus `force_guard`, plus
+  `exit_accept_gap_s`, `vacate_ahead_m`, `vacate_max_veh_h`, `pair_release_s`,
+  `exit_giveup_m`, `exit_prepare`; `RampSpec.merge` loses `acceleration_lane`.
+  A removed key or value is a validation error naming it
+  (`REMOVED_WEAVE_KEYS`, `REMOVED_SCRIPTED_MERGE_KEYS`,
+  `REMOVED_MERGE_MODELS`); reproduce with release 2.5.0. Earlier statements in
+  §2 about `courtesy`, the weave's pinned `force_guard` and
+  `acceleration_lane` no longer hold. `meta.json["weave_sections"]` no longer
+  writes `n_giveup_waited`, `n_exiter_yields`, `n_entrant_yields`,
+  `n_entry_bounded`, `n_hold_releases`, `n_anticipation_gated`, `n_swaps`,
+  `n_spread_withheld`, `n_outlet_spared`, `n_onset_priority`,
+  `n_anticipation_exiter_spared`, `n_opposing_deferred`; readers treat them as
+  absent.

@@ -123,7 +123,7 @@ class TestSchema:
         assert spec.weave is not None and spec.weave.weave_params == {}
         with pytest.raises(ValueError, match="constants are fixed"):
             RampSpec.model_validate(
-                {**on, "weave": {"exit_ramp": "x", "weave_params": {"courtesy": 1.0}}}
+                {**on, "weave": {"exit_ramp": "x", "weave_params": {"lookahead_m": 100.0}}}
             )
         with pytest.raises(ValueError, match="merge='scripted' only"):
             RampSpec.model_validate({**on, "merge_params": {"accept_gap_s": 0.3}})

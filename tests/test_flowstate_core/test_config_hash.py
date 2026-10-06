@@ -15,6 +15,13 @@ Version 3 (2026-10-04, WP-98): ``AVSpec.emergency_handback``,
 ``release_off_corridor``, ``observe_close_leader`` and
 ``SCRIPTED_MERGE_DEFAULTS["force_guard"]`` turned on.
 
+2026-10-06, regenerated without a bump: the dead merge switches were removed
+(docs/MERGE_MODEL.md, amendment A4) — keys left the two merge tables, no
+remaining default changed value, and a config that sets a removed key is
+refused (``flowstate_core.config.REMOVED_WEAVE_KEYS``), so no hash can name
+two physics. The regeneration also pinned ``fleet.speed_factor`` 1.0 and
+``fleet.speed_dev`` 0.0 (WP-109), which the previous snapshot predated.
+
 Regenerate the snapshot (after bumping the version) with::
 
     uv run --no-sync python tests/test_flowstate_core/test_config_hash.py --regenerate

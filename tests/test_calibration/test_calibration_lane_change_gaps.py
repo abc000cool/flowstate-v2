@@ -699,8 +699,8 @@ class TestGapSequences:
 class TestAcceptanceLeaderFollowerApart:
     """The follower-side time gaps (WP-80, ``accept_lag_gap_s`` /
     ``exit_accept_lag_gap_s``) in the offline restatement of the acceptance:
-    unset they are the leader side's value, as in the runner
-    (``microsim.runner._weave_lag_gap_s``)."""
+    unset they are the leader side's value, as in the runner (whose
+    follower-side keys were removed on 2026-10-06)."""
 
     def test_unset_is_the_leader_side_and_is_not_written(self) -> None:
         assert PARAMS.accept_lag_gap_s is None and PARAMS.exit_accept_lag_gap_s is None

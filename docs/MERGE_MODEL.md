@@ -168,3 +168,39 @@ weave; grid 0 collisions, 2 −9 m/s² steps, 0 locks.
 
 **A3** The speed ceiling applies only towards a chosen gap (its leader's speed
 plus δ, approached kinematically); with no gap chosen, no ceiling is set.
+
+### A4 — 2026-10-06, after cloud gates A and B
+
+**Gate A (I-24 Old Hickory, seed 6914975401685141156, `artifacts/i24_merge_experiment_measured.json`)** — fails:
+the measured model's peak sections read 5,882 / 5,864 veh/h against the
+reference `lane_change`'s 5,836 / 5,810 (the kill gate asks for about 6,000;
+the recording 6,626 / 6,639), Old Hickory admitting 2,109 of 2,109 in both,
+zero collisions; the entry segments run too fast (43 / 40 against observed
+36 / 32 km/h; 15-min RMSPE 0.309 against 0.232); the US-101 gap set reads
+5,828 / 5,768; the Hickory Hollow weave on `measured` reads 5,654 / 5,581 and
+admits 1,766 of 2,109. **Gate B (I-94 35-min slice, 4 seeds)**: S790 in windows
+2–7 carries 4,566 veh/h under `measured` and 4,574 under the weave reference
+(observed 4,667); departed 0.948 against 0.970; missed exits 0.9 % against
+1.8 %; RMSPE 0.431 against 0.461; zero collisions in both.
+
+**Consequence.** The measured model is safer and level, but it does not lift
+merge capacity: the coupled-principles hypothesis (§1, B§5.1) is not
+confirmed at I-24's acceptance (1). Under §2's deletion rule, `scripted` and
+`weave` are **not** deleted; `measured` stays as an option, not a default.
+
+**A4.** The dead switches are deleted now, independently of the measured
+model's outcome: every `WEAVE_DEFAULTS` / `SCRIPTED_MERGE_DEFAULTS` key that is
+off or unset by default, set by no committed scenario or pipeline stage, and
+recorded as a negative result (`accept_lag_gap_s`, `exit_accept_lag_gap_s`,
+`vacate_no_follower_braking`, `exit_giveup_patience_s`,
+`exit_abreast_patience_s`, `exiter_yields`, `entrant_yields`,
+`exiter_yields_halting`, `exiter_yield_lead_s`, `entry_speed_bound`,
+`hold_release_s`, `anticipation_gate`, `swap_pairs`, `spread_crossings`,
+`ramp_outlet`, `exit_priority_onset`, `anticipation_spares_exiters`,
+`opposing_entry_guard`, the scripted merge's `courtesy`), the weave's pinned,
+never-read `force_guard`, and the unused, inert `merge: "acceleration_lane"`.
+Their derivations and measurements stay in docs/WEAVE_MODEL_PLAN.md and
+CHANGELOG; results made with them are reproduced from release 2.5.0. Keys
+that are on by default or used by the reference (`exit_prepare`, the vacate
+window, pair release, give-ups, forcing, `force_guard` of the scripted merge)
+stay.

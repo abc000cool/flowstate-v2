@@ -205,9 +205,9 @@ class AcceptanceParams:
             ``min(maxSpeed, lane limit)``, so pass the capped value.
         source: Where the numbers come from (recorded in artifacts).
         accept_lag_gap_s: Follower-side time gap of a change to the left
-            [s] (``WEAVE_DEFAULTS["accept_lag_gap_s"]``, WP-80); ``None``
-            (the default, unset) uses ``accept_gap_s`` on both sides, as
-            the runner does (``microsim.runner._weave_lag_gap_s``).
+            [s] (WP-80; the runner's weave key of that name was removed on
+            2026-10-06, the offline split stays); ``None`` (the default,
+            unset) uses ``accept_gap_s`` on both sides, as the runner does.
         exit_accept_lag_gap_s: The same for a change to the right
             (``exit_accept_lag_gap_s``); ``None`` uses ``exit_accept_gap_s``.
     """
@@ -253,7 +253,8 @@ class AcceptanceParams:
             v0_cap_ms: Lane speed limit the follower's desired speed is capped
                 at (the runner's ``min(maxSpeed, lane limit)``); None = no cap.
             weave_params: Overrides of ``WEAVE_DEFAULTS`` (the time gaps: the
-                two leader-side keys and, WP-80, the two follower-side ones).
+                two leader-side keys and, WP-80, the two follower-side ones,
+                which the runner no longer has since 2026-10-06).
             source: Provenance string.
         """
         prm: dict[str, float | None] = {**WEAVE_DEFAULTS, **dict(weave_params or {})}
@@ -358,7 +359,9 @@ def weave_acceptance(
     follower's on the follower side). With ``A`` the movement's time gap
     (``exit_accept_gap_s`` for a change to the right, ``accept_gap_s`` to the
     left) and ``A_F`` its follower-side one (WP-80: ``exit_accept_lag_gap_s``
-    / ``accept_lag_gap_s``, ``A`` when unset), ``g_L = lead_gap − s0`` and
+    / ``accept_lag_gap_s`` of :class:`AcceptanceParams`, ``A`` when unset;
+    the runner reads ``A`` on both sides since 2026-10-06), ``g_L = lead_gap
+    − s0`` and
     ``g_F = lag_gap − s0``:
 
     * ``ok_lead_time``: ``g_L ≥ s0 + A · v``;

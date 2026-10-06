@@ -229,14 +229,14 @@ class TestLaneEndPatchFile:
         second = networks.lane_end_patch_file(tmp_path / "patches", "e.1", "n")
         assert first != second
         assert 'from="e#1"' in first.read_text() and 'from="e.1"' in second.read_text()
-        (hash_edg,) = networks.merge_patch_files(
-            tmp_path / "patches", "e#1", "b", "n", 3, 2, "acceleration_lane"
+        (_, hash_con) = networks.merge_patch_files(
+            tmp_path / "patches", "e#1", "b", "n", 3, 2, "zipper"
         )
-        (dot_edg,) = networks.merge_patch_files(
-            tmp_path / "patches", "e.1", "b", "n", 3, 2, "acceleration_lane"
+        (_, dot_con) = networks.merge_patch_files(
+            tmp_path / "patches", "e.1", "b", "n", 3, 2, "zipper"
         )
-        assert hash_edg != dot_edg
-        assert 'id="e#1"' in hash_edg.read_text() and 'id="e.1"' in dot_edg.read_text()
+        assert hash_con != dot_con
+        assert 'from="e#1"' in hash_con.read_text() and 'from="e.1"' in dot_con.read_text()
 
     def test_the_kind_comes_from_the_last_two_suffixes(self, tmp_path):
         nod = tmp_path / "a.b.nod.xml"

@@ -427,7 +427,7 @@ def main() -> None:
     )
     ap.add_argument(
         "--merge",
-        choices=("lane_change", "acceleration_lane", "zipper"),
+        choices=("lane_change", "zipper"),
         default="lane_change",
         help="RampSpec.merge for the on-ramps named by --merge-ramps",
     )

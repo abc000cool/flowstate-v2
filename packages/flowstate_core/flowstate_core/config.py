@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from flowstate_core.constants import (
     HETEROGENEITY_FRAC_DEFAULT,
@@ -177,7 +177,6 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
     "force_within_m": 80.0,
     "change_duration_s": 2.0,
     "lookahead_m": 120.0,
-    "courtesy": 0.0,
     # The forced change's brake-gap guard (2026-09-26, block 3, WP-93), on by
     # default since 2026-10-04 (owner decision, WP-98; config-hash policy
     # version 3); 0 reproduces the unguarded forced change of every scripted
@@ -188,99 +187,25 @@ SCRIPTED_MERGE_DEFAULTS: dict[str, float] = {
 """Defaults of :attr:`RampSpec.merge_params` for the ``scripted`` merge."""
 SCRIPTED_MERGE_KEYS = frozenset(SCRIPTED_MERGE_DEFAULTS)
 
-WEAVE_DEFAULTS: dict[str, float | None] = {
-    **SCRIPTED_MERGE_DEFAULTS,
-    # Pinned off (2026-10-04, WP-98): the weave shares the scripted merge's
-    # keys but never reads this one — its forced changes are always under its
-    # own guard (microsim.runner._weave_force_gap_ok). The pin keeps the
-    # weave's recorded parameters (meta.json weave_sections[i].params) as they
-    # were when the scripted default became 1.0; setting it changes nothing.
-    "force_guard": 0.0,
+WEAVE_DEFAULTS: dict[str, float] = {
+    # the scripted merge's keys but its forced-change guard: the weave's
+    # forced changes are always under its own (microsim.runner._weave_force_gap_ok)
+    **{k: v for k, v in SCRIPTED_MERGE_DEFAULTS.items() if k != "force_guard"},
     "exit_accept_gap_s": 0.6,
     "vacate_ahead_m": 500.0,
     "vacate_max_veh_h": 0.0,
-    "vacate_no_follower_braking": 0.0,
     "pair_release_s": 2.0,
     "exit_giveup_m": 5.0,
-    "exit_giveup_patience_s": 0.0,
-    "exit_abreast_patience_s": 0.0,
-    # 0 since 2026-09-24 (block 3, WP-56): VM M, the four-hour I-94 battery
-    # under this rule (runner 585e588), locks one of its 20 seeds — see the
-    # key's paragraph in the docstring below. Not a fitted value.
-    "exiter_yields": 0.0,
-    "entrant_yields": 0.0,
-    "exiter_yields_halting": 0.0,
-    "exiter_yield_lead_s": 0.0,
-    # 2026-09-24 (block 3, WP-57): the entrant's entry-speed anticipation on
-    # the ramp's last metres, measured on the fixture grid and left off —
-    # see the key's paragraph in the docstring below. A switch, not a fitted
-    # value.
-    "entry_speed_bound": 0.0,
-    # 2026-09-24 (block 3, WP-58): the bounded hold — how long a chosen
-    # gap's follower may be held for a changer that has stopped closing on
-    # the gap, measured on the fixture grid and left off — see the key's
-    # paragraph in the docstring below. A positive value is a time in
-    # seconds (2 s, ``pair_release_s``'s two reaction times, is the measured
-    # form); not a fitted value.
-    "hold_release_s": 0.0,
-    # 2026-09-24 (block 3, WP-60): the gated anticipation — an approaching
-    # entrant's gap follower held only once the entrant arrives no later than
-    # the follower can open the gap at its own b; see the key's paragraph in
-    # the docstring below. A switch, not a fitted value.
-    "anticipation_gate": 0.0,
     # 2026-09-24 (block 3, WP-62): exiters asked, inside the vacate window,
     # into the lane that feeds section lane 1 — the vacate rule's mirror for
     # the exit movement; see the key's paragraph in the docstring below. A
     # switch, not a fitted value.
     "exit_prepare": 0.0,
-    # 2026-09-25 (block 3, WP-64): the swap — an entrant in the auxiliary lane
-    # and an exiter beside it in section lane 1 that block each other change
-    # in one step, each into the lane the other leaves; see the key's
-    # paragraph in the docstring below. A switch, not a fitted value.
-    "swap_pairs": 0.0,
-    # WP-67 (2026-09-25, block 3): the crossings spread along the section —
-    # a switch; the onset positions are derived from the section's geometry
-    # (its unforced length less one cooperative gap opening), not fitted
-    "spread_crossings": 0.0,
-    # WP-70 (2026-09-25, block 3): the ramp's outlet — an exiter holds no
-    # entrant that still owes its change out of the auxiliary lane while that
-    # entrant is on the ramp or within the stretch the entrants need to leave
-    # it; a switch, not a fitted value: the stretch is derived from the two
-    # movements' crossing distributions at the defaults
-    # (microsim.runner.WEAVE_OUTLET_ENTRANT_M, WEAVE_OUTLET_EXIT_RESERVE_M)
-    "ramp_outlet": 0.0,
-    # WP-73 (2026-09-25, block 3): the exit priority from where the exiter's
-    # own lane-end braking begins — a switch, not a fitted value: the onset is
-    # the stop term of the SUMO car-following model driving the vehicle, at its
-    # own drawn parameters and current speed
-    # (microsim.runner._weave_brake_onset_m; EIDM: vT + v^2/(2 sqrt(ab)))
-    "exit_priority_onset": 0.0,
-    # WP-75 (2026-09-25, block 3): the ramp anticipation spares the exiters —
-    # an approaching entrant's gap follower that is itself bound for the
-    # paired exit is not held; a switch, not a fitted value
-    "anticipation_spares_exiters": 0.0,
-    # WP-80 (2026-09-25, block 3): the follower-side time gap of each
-    # movement, apart from the leader side's (``accept_gap_s`` /
-    # ``exit_accept_gap_s``). None = unset: the follower side reads the
-    # leader side's key, as every run before WP-80 did — not a fitted value.
-    # The calibrated per-side values are a proposal in
-    # artifacts/i24_critical_gaps.json (``proposal``, ``lead_side_only`` /
-    # ``lag_side_only``), not defaults.
-    "accept_lag_gap_s": None,
-    "exit_accept_lag_gap_s": None,
-    # WP-92 (2026-09-25, block 3): the opposing-entry guard — of two changes
-    # into one lane from opposite sides in one step, the one with priority
-    # goes and the other is deferred by one step; a switch, not a fitted
-    # value: the conflict distance is the forced guard's minimum from the
-    # vehicles' own lengths, minGaps and b (microsim.runner._weave_opposing_guard)
-    "opposing_entry_guard": 0.0,
 }
 """Defaults of :attr:`WeaveSpec.weave_params`: the ``scripted`` merge's keys
-(applied to the entering movement, ``courtesy`` to both movements; the weave
-does not read ``force_guard``, whose default here stays **0** while the
-scripted merge's became 1 on 2026-10-04 — the weave's forced changes are
-always under its own guard, ``microsim.runner._weave_force_gap_ok``) plus
-``exit_accept_gap_s``, the time gap the exiting movement accepts,
+but ``force_guard`` (applied to the entering movement; the weave's forced
+changes are always under its own guard, ``microsim.runner._weave_force_gap_ok``)
+plus ``exit_accept_gap_s``, the time gap the exiting movement accepts,
 ``vacate_ahead_m`` (2026-09-24, block 3, third derivation): how far upstream
 of the section start a through vehicle in the weave lane is asked, once, to
 move one lane left — the "through traffic keep left" signage and driver
@@ -306,20 +231,10 @@ lane per hour, counted over the last 60 s; a positive value is the bound,
 capacity at the fleet defaults, ``microsim.runner.VACATE_LANE_CAPACITY_VEH_H``
 = 2,050 veh/h, less the flow that lane carried into the vacate window over
 the same 60 s — so the rule cannot push more into the lane than it has room
-for. Not a fitted value. ``vacate_no_follower_braking`` (same date): ``1``
-selects the re-derived form of the rule — a vehicle is asked only on a step
-when the target-lane gap it is in accepts it without the follower braking
-(the weave's time gaps plus the follower's IDM desired gap at its current
-speed), under mode 768 (no speed adaptation), re-evaluated every step; ``0``
-(the default) keeps the third derivation's form (asked once, mode 512, SUMO
-adapting the vehicle's speed and informing the follower). The re-derived
-form was measured and not made the default: at the corridor's demand the
-candidates reach the window far slower than the target lane, no gap accepts
-them, and the section's own lock returns (docs/WEAVE_MODEL_PLAN.md, dated
-section). Both keys are hash-neutral unless set. ``pair_release_s`` (2026-09-24, block 3, fifth
-derivation): how long an entering and an exiting vehicle may stand within one
-vehicle length of each other in section lanes 0 and 1, both below the creep
-speed (``microsim.runner.SCRIPTED_MERGE_CREEP_MS``), before the pair is
+for. Not a fitted value; hash-neutral unless set. ``pair_release_s``
+(2026-09-24, block 3, fifth derivation): how long an entering and an exiting
+vehicle may stand within one vehicle length of each other in section lanes 0
+and 1, both below the creep speed (``microsim.runner.SCRIPTED_MERGE_CREEP_MS``), before the pair is
 released — the one farther from the section end yields for a step
 (``microsim.runner._weave_pair_release``). The default, 2 s, is two human
 reaction times of about 1 s (Treiber & Kesting 2013, ch. 12, the human driver
@@ -338,260 +253,7 @@ WB standstill at the T.H.52 gore's end, ``microsim.runner._weave_step``). One
 still rolling there may yet drop in and is left to. The default, 5 m, is one
 vehicle length: a driver halted within its own length of the gore's nose is
 not going to cross the taper; not a fitted value. ``0`` gives up only at the
-lane end. ``exit_giveup_patience_s`` (2026-09-24, block 3, WP-52, the
-bounded give-up patience): the longest a halted exiter within ``exit_giveup_m``
-whose request is refused waits before it is given up, while the refusal is a
-transient of its auxiliary-lane follower still braking towards the gap — the
-follower reported this step is the one reported last step, its speed is
-still falling by more than ``microsim.runner.WEAVE_GIVEUP_DECEL_TOL_MS2`` per
-step and it has not come to rest (``microsim.runner._weave_giveup_patient``).
-The wait ends, and the exit is given up, the first step the follower's speed
-is no longer falling, it is at rest, no follower is reported, or the bound
-is reached — the bound being this value or the follower's own braking time
-to rest at its ``b`` from its speed on the first refused step, ``v_F / b_F``,
-whichever is shorter. The wait is counted in ``n_giveup_waited``
-(vehicle-steps). The default is **0** — give up on the first refused step,
-the exit-side derivation's behaviour — because the rule was measured and
-found not to help (docs/WEAVE_MODEL_PLAN.md, dated section): on the 30
-fixture runs of the speed-aware acceptance's grid the give-ups read 44 at 0
-against 48 at 10 s, because the give-up at the gore's end is not the braking
-transient the rule waits for — of the 44, 34 are a lane-0 vehicle overlapping
-the halted exiter and the 6 followers that were braking towards the gap were
-caught by the cooperation's hold inside their own brake distance at ``b``, so
-they slid alongside whatever the wait. A positive value is a measured option,
-never a lock (the bound and the deceleration condition end every wait; 1–16
-vehicle-steps per run at 10 s). Not a fitted value. ``exit_abreast_patience_s``
-(2026-09-24, block 3, WP-53, the abreast state): the longest a halted exiter
-within ``exit_giveup_m`` whose request is refused waits for the
-auxiliary-lane vehicle *beside* it (a negative reported gap on either side)
-to clear its front — while that vehicle is not a driven entrant of the
-section (halted at the end of its lane beside the exiter, the crossing pair
-at the lane ends: nothing local resolves it and the exiter's reroute is
-what frees both), is moving, and would clear the exiter's leader side at its
-current speed within the budget left of this value since the first refused
-step (``microsim.runner._weave_giveup_abreast``, the distance from
-``_weave_abreast_clear_m``); the budget is shared with
-``exit_giveup_patience_s`` and never renewed, and the wait is counted in
-``n_giveup_waited`` like the other. The default is **0** — give up on the
-first refused step — because the rule was measured on the same 29-run
-fixture grid as WP-52 and found not to help (docs/WEAVE_MODEL_PLAN.md, dated
-section): at 10 s it rescues the exiters it was written for (the vehicle
-sliding past, 10 → 1 of the give-ups) and the give-ups still read 46 against
-44, the waited exiter meeting the next follower inside its brake distance,
-while the wait holds lane 1 at the gore (T.H.52 at capacity, seed 4: the
-entrance 386 of 466 against 401); of the 44 give-ups, 24 are a driven
-entrant halted beside the exiter, which no wait moves. 5 and 20 s read as
-10 s. A positive value is a measured option, never a lock (the clearing
-condition and the bound end every wait; at most 15 vehicle-steps per run
-at 10 s). Not a fitted value. ``exiter_yields`` (2026-09-24, block 3,
-WP-54, the crossing pair): ``1`` has an exit-bound changer
-inside its forced zone stop behind a driven entrant halted at the end of
-the auxiliary lane ahead of it — driven towards a virtual leader one
-entrant ``minGap`` behind the entrant's rear, the exit priority's hold with
-the roles exchanged, only while the stop is feasible at its own ``b``
-(``microsim.runner._weave_yield_at_ends``) — so the entrant changes ahead
-of it and the auxiliary lane it blocked moves again. The per-pair trace of
-the 24 crossing-pair give-ups on the fixture grid showed that such an
-entrant is not freed by the give-up of the exiter beside it: it stays,
-refused into lane 1 by every lane-1 vehicle arriving inside its brake
-distance, and the next exiters halt beside it and are given up in turn
-(one entrant, three give-ups, on ``weave_th52.osm`` at the corridor's
-demand, seed 5). Measured on the same 29-run grid as WP-52 and WP-53
-(docs/WEAVE_MODEL_PLAN.md, dated section): give-ups 44 → 39, exits 5,988
-→ 6,015 of 6,131 → 6,142 reached, the entrances 5,944 → 5,973, pair
-releases 218 → 169, no lock, no collision, the T.H.52 rows and the golden
-unchanged; from the whole section instead of the zone it read worse (46
-given up, the T.H.52 capacity fixture 4 / 5 given up at seeds 3 / 4
-against 1 / 1). **The default is 0 since 2026-09-24 (block 3, WP-56)**:
-on the four-hour I-94 corridor (VM M, the 20-seed battery under runner
-585e588, ``artifacts/mndot_rounds/weave_2026-09-24/battery_corrected_inputs_exiter_yields_585e588.json``)
-the rule locks one seed — 6904272788004776631 departs 0.356 of its
-demand against 0.852 without the rule (VM K), with 18,259 exiter-yield
-vehicle-steps against 770–3,500 on the other seeds and every on-ramp
-starved — while the other 19 seeds read 0.843–0.899 (battery 0.836
-departed, speed RMSPE 0.716, GEH 0.077, 19 collisions against VM K's 15,
-given-up exits 0.6 / 0.9 % against 0.8 / 1.0 %, VM K's 0.743 seed at
-0.865). A rule that locks a seed of the flagship corridor cannot ship on
-until it is bounded; ``1`` switches it on. Hash-neutral unless set; a
-switch, not a fitted value. ``entrant_yields`` (same package): ``1`` has a moving
-driven entrant beside an exiter whose forced change is due fall behind the
-exiter's rear at its own ``b`` (the same virtual leader, the roles as the
-priority has them) while it can still come to rest behind where the
-exiter's rear will be at the latest, the lane end. The default is **0**:
-the per-pair trace found the bound met in 2 of the 24 pairs (by 1.4 m) —
-at the due moment the entrant beside the exiter is halted at its lane
-end already, abreast at speed parity with both braking for their lane
-ends at more than its ``b``, or closing from behind already held at
-``-b`` — and on the grid it bound on 21 vehicle-steps, five pairs in
-five runs (give-ups 44 → 36 with 5,987 exits; two of the five pairs
-resolve as derived, the rest is the sequence moving), returned nothing on top of the exiter's yield (39 → 39, nine
-fewer exits, 37 fewer entrants) and, asked from the exiter's zone entry,
-locked the Ruth St module at the 271 m window (lane 1 at 0.0 m/s for
-seven minutes). Hash-neutral unless set; a switch, not a fitted value.
-``exiter_yields_halting`` (2026-09-24, block 3, WP-55, the forming pair):
-``1`` brings the exiter's yield forward from "the entrant ahead is halted"
-to "the entrant ahead will halt at its lane end before the exiter reaches
-the gore" — the entrant committed to its lane end (its brake distance at
-its own ``b`` reaches it) and there first at the two speeds
-(``microsim.runner._weave_halting_first``) — the exiter then stopping one
-entrant ``minGap`` behind where the entrant's rear will rest, one length
-short of the lane end, under the same feasibility bound at its own ``b``.
-The default is **0**: measured on the same 29-run grid as WP-52..54
-(docs/WEAVE_MODEL_PLAN.md, dated section) it read worse — give-ups 39 → 43,
-the entrances 5,973 → 5,958, exits 6,015 → 6,017 of 6,142 → 6,139 reached,
-binding on 53 more vehicle-steps in five runs, on entrants committed only
-through a small drawn ``b`` (0.65–1.22 m/s² at 10–15 m/s) that changed or
-halted regardless — and the give-ups it was written for have no move at
-the exiter's ``b`` inside the zone (12 of the 39: the stop needed 41–165 m
-against 60–69 m offered). Hash-neutral unless set; a switch, not a fitted
-value. ``exiter_yield_lead_s`` (2026-09-24, block 3, WP-56, the
-brake-scaled zone): a positive value has the exiter's yield
-(``exiter_yields``) asked *outside* the fixed forced zone as well — from
-the step at which the exiter is within this many seconds of travel of the
-last point at which it can still stop at its own ``b`` behind the halted
-entrant's rest point, ``room − v²/(2·b) ≤ v · lead_s``
-(``microsim.runner._weave_yield_early``); for an entrant halted at the
-lane end that is a yield zone of ``max(force_within_m, v²/(2·b) + v ·
-lead_s + len_E + s0_E + s0_X)`` upstream of the gore, scaled to the
-exiter's own brake distance where the fixed 80 m is blind to it (the
-corridor fleet draws ``b`` down to 0.53 m/s²; WP-55 counted 12 give-ups
-that needed 41–165 m against the 60–69 m the zone offers); the entrant
-must be halted within the fixed zone of its own lane end (the crossing
-pair, not the queue at the section start). The forced change, the exit
-priority and the give-up keep the fixed zone. Bounded: outside the fixed
-zone an exiter the rule has held below the creep speed for longer than
-``pair_release_s`` lapses and is not asked again while that entrant
-stands ahead of it; nobody else is commanded through the rule; it is
-re-evaluated every step and the lapse clears once no halted entrant is
-ahead. Inert unless ``exiter_yields`` is set. The default is **0** (off,
-hash-neutral unless set): measured at 0.5–3 s on the same 29-run grid as
-WP-52..55 with the exiter's yield on (docs/WEAVE_MODEL_PLAN.md, dated
-section) it binds outside the zone on 16 vehicle-steps at 1 s, six
-exiters in four runs, where the cooperation already brakes the exiter at
-``−b`` towards the halted entrant as the follower of its gap — give-ups
-39 → 39, exits 6,015 → 6,019, the entrances equal — and its one
-mechanism row swings from the grid's best to its worst reading as the
-lead goes 0.5 → 3 s on the same two vehicles; the 12 give-ups it was
-written for have no feasible stop on any section step. Without the
-lane-end condition it re-rolled the T.H.52 rows from single steps
-(35–42 given up, 17–53 fewer entrants). A positive value is one human
-reaction time or a few (Treiber & Kesting 2013, ch. 12, the figure
-``pair_release_s`` doubles); not a fitted value. ``entry_speed_bound``
-(2026-09-24, block 3, WP-57, the entrant's entry speed): ``1`` asks an
-entering vehicle on the on-ramp within ``lookahead_m`` of the section to
-enter no faster than the speed from which it can still halt at its own
-comfortable deceleration with its front one ``minGap`` short of the
-auxiliary lane's end — ``v ≤ √(2·b·(D − s0))`` with ``D`` the distance
-from its front to the gore, the constant-``b`` braking curve that ends at
-the lane end (``microsim.runner._weave_entry_speed_bound``,
-``_weave_entry_bound``) — as a one-step speed ceiling below its own
-car-following (:func:`microsim.runner._weave_command`, clipped at ``−b``,
-SUMO's safety check on), re-evaluated every step on the ramp only and
-never on the section, so that it does not arrive on a short auxiliary
-lane at a speed from which no stop at ``b`` exists and form the crossing
-pair at the lane ends by momentum (WP-55 counted 5 of the 12 entrants
-heading such a pair as unable to stop within the 136 m Ruth St lane at
-their ``b``, having entered at 15.7–19.4 m/s with ``b`` 0.59–0.99 m/s²).
-Bounded by construction: the ceiling on the ramp is never below
-``√(2·b·(L_S − s0))`` (11.9 m/s at the corridor fleet's smallest ``b`` on
-Ruth St, 17.9 m/s on T.H.52), nobody else is commanded through the rule,
-and the ramp throttle and the entrance demand are untouched. The
-vehicle-steps on which it binds are counted in ``n_entry_bounded``. The
-default is **0** (off, hash-neutral unless set): measured on the same
-29-run fixture grid as WP-52..56 (docs/WEAVE_MODEL_PLAN.md, dated section
-WP-57) it binds on 1,383 vehicle-steps, 187 entrants in the seven Ruth St
-corridor-fleet runs (the fleet defaults' ``b`` never falls under the curve
-on either fixture, so the T.H.52 rows and the golden are byte-identical),
-takes the bound entrants from 21.5 to 18.0 m/s at the section start and
-the Ruth St entrants that cannot stop within their lane from 40 to 27 of
-≈ 590 — and reads worse: give-ups 44 → 54 (crossing pairs 24 → 31 on 16 →
-17 halted entrants), 5,988 → 5,995 exits, the entrances 5,944 → 5,967,
-forced changes deferred 5,439 → 6,644, no lock, no collision; the one row
-it helps (Ruth St corridor fleet at the exit peak, seed 3: 9 → 5 given up,
-lane 1 at the gore 2.8 → 6.1 m/s) is paid for on seeds 4 and 5 (1 → 12, 4
-→ 8), where the entrant it slows below lane 1's speed is held by the
-cooperation and the chains form behind entrants that *can* stop within
-the lane at their ``b``. The form that removes the fast arrivals almost
-entirely (the bound from the ramp's start, harness only: 40 → 5 of the
-Ruth St entrants unable to stop) leaves 27 crossing pairs on 16 entrants
-— the pair does not form by momentum. A switch, not a fitted value.
-``hold_release_s`` (2026-09-24, block 3, WP-58, the bounded hold): a
-positive value is the longest a chosen gap's follower may be held at IDM
-towards the changer (``microsim.runner._weave_cooperate``) once the
-changer has stopped closing on the gap — its projected arrival at the
-gap, the remaining deficit to the leader-side gap the acceptance asks
-over the rate it closed that deficit at during the last step, no longer
-advancing step over step — while the follower's side of the gap is
-already open by the acceptance's terms (the time gap, the follower
-absorbing the changer within its ``b``, the changer outside the
-follower's brake gap). On the first step the stall has lasted longer
-than the bound the hold is dropped: the follower is not commanded, it is
-blocked for that changer for one bound (no chain: a released follower is
-not asked again for the same changer within the bound) and the changer
-re-chooses its gap with the follower excluded — the next gap behind, into
-which it drops once the follower has passed
-(``microsim.runner._weave_hold_release``). Never dropped while the
-changer is inside the follower's brake gap towards it (the speed-aware
-guard's follower side: that braking is the hold's productive part), and
-never for a pair standing below the creep speed — that pair is
-``pair_release_s``'s, released after two reaction times with the partner
-forcing its change. A time and not a distance bound because the hold's
-cost is the follower's speed deficit integrated over time, a driver's
-patience is in seconds, and at low speed — where the hold locks (VM M's
-seed at a standstill) — a bound on the changer's travel never fires
-(the distance form was measured beside it). Each drop is counted in
-``n_hold_releases``. The default is **0** (off, hash-neutral unless set):
-the hold trace at the default on the 29-run fixture grid
-(docs/WEAVE_MODEL_PLAN.md, dated section WP-58) reads 5,248 of 17,810
-changer–follower episodes stalled for more than 2 s, carrying 133,011 of
-the 206,358 held changer-steps with a target on the follower (53,085 of
-them past the 2 s mark), and 36 of the 40 longest stalls (22.5–43 s) are
-entrants still on the ramp, within ``lookahead_m`` of the section at 3–10
-m/s, holding a lane-1 follower at their speed — but every form of the
-release reads worse than the default: at 2 s (``pair_release_s``'s figure) 8,330 holds
-dropped, give-ups 44 → 74, exits 5,988 → 5,897 of 6,131 → 6,084 reached,
-the entrances 5,944 → 5,830, lane-1 minutes at or below 5 m/s 14 → 31,
-forced changes deferred 5,439 → 9,407, pair releases 218 → 458, and
-T.H.52 at capacity, seed 5, near a lock (288 of 466 departed against 373,
-lane 1 at the section start 0.4 m/s in nine minutes, 257 pair releases);
-at 1 s 70 given up, at 4 s 59, on the section only 59 (74 unfinished),
-without the exit priority 80, as a 40 m distance bound 66, with the
-strict stall reading (the deficit not shrinking at all) 64 — and every
-form fails the no-lock pin of the T.H.52 capacity fixture
-(``test_th52_weave_at_capacity_does_not_lock``) at seed 4 or 5 or both,
-which the default passes at seeds 3–5; with the exiter's yield on 66 and
-63 given up against the yield's own 39, the pin failing at seed 5 and 4. The mechanism: a changer
-released from a gap at speed parity is passed by the through platoon one
-held follower at a time and reaches the section, or the lane end, with no
-gap, so the forced changes, the deferrals and the pairs at the lane ends
-grow. No collision in any form; the default is byte-identical to the
-grid before the key. A positive value is two human reaction times
-(Treiber & Kesting 2013, ch. 12) at 2 s; not a fitted value.
-``anticipation_gate`` (2026-09-24, block 3, WP-60, the gated anticipation):
-``1`` holds the follower of an approaching entrant's chosen gap (the ramp
-anticipation of ``microsim.runner._weave_cooperate``) only from the step on
-which the entrant's time to the section start, its distance over its speed
-floored at the creep speed, is no longer than the time the follower needs to
-open the gap at its own ``b`` — the positive root ``t_open = (Δv + √(Δv² +
-2·b·D))/b`` of ``b·τ²/2 − Δv·τ − D = 0``, with ``Δv`` the follower's closing
-speed on the entrant's projection and ``D = s0 + accept_gap_s · v_F − s_F``
-the deficit to the acceptance's time gap; no hold while the discriminant is
-negative, the follower able to shed its closing speed at ``b`` and keep the
-gap (``microsim.runner._weave_coop_gate``) — and from then on while it stays
-the chosen follower. The gap choice and the entrant's easing are untouched;
-the withheld commands that would have bound are counted in
-``n_anticipation_gated``. The default is **0** (off, hash-neutral unless
-set): on the same 29-run fixture grid as WP-52..58 (docs/WEAVE_MODEL_PLAN.md,
-dated section WP-60) it removes 88 % of the held steps on ramp entrants
-(109,904 → 13,142) and reads worse on every criterion — give-ups 44 → 58,
-exits 5,988 → 5,782, the entrances 5,944 → 5,415, lane-1 minutes at or below
-5 m/s 14 → 31, forced changes deferred 5,439 → 10,549, pair releases 218 →
-680, the T.H.52 capacity fixture 379 / 315 / 343 of 466 departed (395 / 401
-/ 373 at the default) with lane 1 at the section start at or below 5 m/s in
-6 / 14 / 9 minutes (2 / 5 / 4) and its no-lock pin broken at seeds 4 and 5;
-no collision. The entrants reach the section without their gap: the early
-hold is the positioning they arrive with. A switch, not a fitted value.
-``exit_prepare`` (2026-09-24, block 3, WP-62, the exiters' early move): ``1``
+lane end. ``exit_prepare`` (2026-09-24, block 3, WP-62, the exiters' early move): ``1``
 asks each vehicle bound for the paired exit that is inside the vacate window
 (``vacate_ahead_m``, measured along the chain as for the vacate rule) in a
 lane *left* of the one feeding section lane 1 to move into that lane — the
@@ -602,9 +264,7 @@ from which a single change reaches it, and an exiter arriving in section lane
 other way (the HCM 7th ed. ch. 13 ramp weave counts one change per exiter,
 from the lane next to the auxiliary lane). Under the vacate rule's own terms
 (``microsim.runner._weave_exit_prepare_step``): asked once under mode 512 with
-the request living to the section start, or, with
-``vacate_no_follower_braking``, one lane per accepting step under mode 768
-with the changer's brake gap on the (slower) target lane's leader; bounded by
+the request living to the section start; bounded by
 ``vacate_max_veh_h`` or the target lane's spare capacity; nobody else
 commanded; never against the vehicle's route. Where an exiter and a through
 vehicle held by the vacate rule stand abreast, each asking into the other's
@@ -624,183 +284,61 @@ queues the move finds no gap (16 / 50 / 54 of the asked reach the section
 still left of it) or joins the queue; on the 29-run fixture grid of WP-52..60
 the entrances fall 5,944 → 5,847, the give-ups read 44 → 45, and the T.H.52
 capacity fixture's no-lock pin fails at seed 5 (3 exits missed against at most
-1); no collision. A switch, not a fitted value. ``swap_pairs`` (2026-09-25,
-block 3, WP-64, the swap): ``1`` has a driven entrant in the auxiliary lane and
-a driven exiter beside it in section lane 1 that block each other — each the
-other's nearest vehicle across, and at least one of the two changes refused by
-the acceptance because of the other — exchange lanes in one step, both changes
-under mode 256 as an accepted change is, when the two clear the forced guard
-against each other (at speed parity one ``minGap`` of each between bumpers),
-each change is accepted against every other target-lane neighbour with the
-partner removed, and no lane-2 vehicle could enter lane 1 beside the entrant in
-the same step (``microsim.runner._weave_swap_step``; SUMO 1.27.1 executes the
-two changes of such a pair in one step, front vehicle first, probed). Nobody
-else is commanded, nothing is held; the pairs commanded are counted in
-``n_swaps``. The default is **0** (off, hash-neutral unless set): on the
-corridor section test's fixture (``tests/fixtures/weave_th52_corridor.osm``,
-seeds 3 / 4 / 5; docs/WEAVE_MODEL_PLAN.md, dated section WP-64) it exchanges 44
-/ 45 / 44 pairs, every one completed in the step, no collision, and no
-criterion improves — the T.H.52 entrance 360 / 365 / 339 of 407 against 368 /
-360 / 350, the exit end's lanes at or below 20 m/s in 11 / 12 / 13 of 16
-windows against 10 / 11 / 13 — because 72–82 % of the blocked pair-steps are
-refused on the offset (overlapping or nearer than the forced guard, a median
-15–22 m into the section at 5–6 m/s, the two within about 1 m/s of each other),
-where no exchange is possible until one of them drops back, and the form that
-commands that drop reads worse; on the 29-run fixture grid the entrances fall 5,944 → 5,903 and the T.H.52
-capacity fixture's no-lock pin fails at seeds 3 and 5 (3 and 6 exits missed).
-A switch, not a fitted value. ``spread_crossings`` (2026-09-25, block 3,
-WP-67, the crossings spread): ``1`` withholds each crossing — an entrant's
-out of the auxiliary lane, an exiter's into it — until the vehicle reaches
-its place in the spread, ``frac(n · φ)`` (the golden ratio's conjugate, by
-the order the vehicles are taken) of the stretch in which waiting costs it
-nothing: the section less the larger of the forced zone and the distance
-from which its own IDM brakes for the end of its lane, less one cooperative
-gap opening, all at its current speed (``microsim.runner._weave_spread_length``;
-0 in free flow on the 305 m T.H.52 section, 212 m at 5 m/s). A vehicle whose
-crossing is withheld is taken under the weave's lane-change mode on the step
-before it can reach the section, so SUMO's own model cannot make the change
-in the step it arrives (``_weave_handover_step``); an entrant whose crossing
-is withheld is not anticipated on the ramp; and under the rule an entrant's
-accepted change is never commanded beside an opposing entry into lane 1
-(WP-64's guard). Withheld vehicle-steps are counted in ``n_spread_withheld``.
-The default is **0** (off, hash-neutral unless set): on the corridor section
-test's fixture (``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5;
-docs/WEAVE_MODEL_PLAN.md, dated section WP-67) it moves the crossings out of
-the section's first 50 m (entrants 8 / 23 / 8 % there against 75 / 77 / 78 %,
-exiters 7 / 16 / 7 % against 55 / 50 / 49 %) and the entry's lanes 0 and 1
-hold 1.64 / 1.69 / 1.75 lanes' worth against 1.13 / 1.14 / 1.18, but the
-section breaks down in its second half instead, the exit end's lanes read at
-or below 20 m/s in 12 / 12 / 13 of 16 windows against 10 / 11 / 13, and
-11 / 21 / 14 driven vehicles are unfinished against 1 / 6 / 8; on the
-29-run fixture grid the entrances rise 5,944 → 6,060 but exits fall
-5,988 → 5,860, unfinished rise 45 → 208 and the T.H.52 capacity fixture's
-no-lock pin fails at seed 4 (lane 1 at the section start 2.0 m/s). A switch,
-not a fitted value. ``ramp_outlet`` (2026-09-25, block 3, WP-70, the ramp's
-outlet): ``1`` has an exit-bound changer's gap choice pass over every vehicle
-on the on-ramp or in the auxiliary lane short of the stretch the ramp's
-vehicles need to leave it, so that no exiter holds a vehicle in the ramp's
-only outlet; the exiter still takes a gap the acceptance finds open there,
-SUMO's own changes are untouched and the exit priority's hold is exempt. The
-stretch (``microsim.runner._weave_outlet_length``) is 51.1 m, within which a
-share q* = 0.773 of the entrants have left the auxiliary lane at the defaults,
-capped so that an exiter keeps 173.8 m before the forced zone, within which
-the same share of the exiters have entered it — the minimax split of the
-section's unforced length between the two movements' needs on the corridor
-section test's fixture; none on a section shorter than 253.8 m. The
-exiter-steps on which the gap chosen without the rule has such a vehicle as
-its follower are counted in ``n_outlet_spared``. The default is **0** (off,
-hash-neutral unless set): on the corridor section test's fixture
-(``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5;
-docs/WEAVE_MODEL_PLAN.md, dated section WP-70) the T.H.52 entrance departs
-401 / 386 / 403 of 407 against 368 / 360 / 350 and the mainline 1,187 /
-1,181 / 1,171 of 1,196 against 1,140 / 1,157 / 1,149, and the entry breaks
-down later, but the exit end's lanes read at or below 20 m/s in 12 / 12 / 13
-of 16 windows against 10 / 11 / 13 (seeds 3–12: the entrance 3,418 → 3,749,
-those windows 123 → 126); on the 29-run fixture grid exits rise 5,988 →
-6,035 and the entrances 5,944 → 6,055, but give-ups read 44 → 45, unfinished
-45 → 70, and the T.H.52 capacity fixture's no-lock pin fails at seed 5 (3
-exits missed); no collision. A switch, not a fitted value.
-``exit_priority_onset`` (2026-09-25, block 3, WP-73, the exit priority from
-where the braking begins): ``1`` gives an exiter still owing its change the
-exit priority (``microsim.runner._weave_choose_gap``: the gap behind a vehicle
-beside it is a candidate, the gap's follower holds one ``minGap`` farther
-back, the commitment is kept) from the step on which its distance to the gore
-is within the onset of its own model's braking for the end of its lane, at
-its own drawn parameters and speed, latched — instead of from 4 s
-(``force_after_s``) into the 80 m forced zone. The onset
-(``microsim.runner._weave_brake_onset_m``) is the stop term of SUMO's
-car-following model driving the vehicle (``FleetSpec.model``): for the EIDM
-the IIDM's ``s* = vT + v²/(2√(ab))`` with no ``minGap`` (170 m at 20 m/s at
-the corridor fleet's means), for the IDM that over ``√(1 − (v/v0)⁴)`` (226 m),
-both read from SUMO 1.27.1's source and checked with ``vehicle.getStopSpeed``.
-The forced change keeps its zone, and with ``ramp_outlet`` set the onset
-priority's hold passes over the outlet's vehicles. Exiter-steps with the onset
-priority before the zone's are counted in ``n_onset_priority``. The default is
-**0** (off, hash-neutral unless set): on the corridor section test's fixture
-(seeds 3 / 4 / 5, with ``ramp_outlet``; docs/WEAVE_MODEL_PLAN.md, dated
-section WP-73) the exiters' crossings into the auxiliary lane in [51, 305) m
-in minutes 1–4 are made at a median 17.0 / 16.7 / 12.2 m/s against 15.7 /
-17.0 / 11.9 — the exiters reach the section's second half at a median 18.1 /
-18.4 / 13.3 m/s, and even a priority from the section start leaves those
-crossings at 17.1 / 14.6 / 11.9 m/s — the exit end's lanes read at or below
-20 m/s in 11 / 10 / 13 of 16 windows against 12 / 12 / 13 (lanes 0 and 1:
-79 of 80 over seeds 3–12 against 80), and T.H.52 departs 359 of 407 at seed
-5; on the 29-run fixture grid exits fall 6,035 → 5,965, the T.H.52 capacity
-fixture's no-lock pin fails at seeds 3 and 4 (at seeds 4 and 5 with the key
-alone), and the key locks the Ruth St section at seed 5, where the outlet is
-inert (lane 1 at the gore's end at 0.0 m/s from minute 16); no collision. A
-switch, not a fitted value. ``anticipation_spares_exiters`` (2026-09-25,
-block 3, WP-75, the exiters on the approach): ``1`` withholds the ramp
-anticipation's hold (``microsim.runner._weave_cooperate``, an entrant still on
-the ramp) on a gap follower that is itself bound for the paired exit — an
-exiter held so that an entrant can enter lane 1 in front of it must itself
-cross into the lane the entrant leaves; the gap choice, the commitment and the
-entrant's easing are kept, and the section's own cooperation is untouched. The
-gap behind the exiter is no alternative (the entrant is in one gap only, and
-on the corridor section test's fixture the exiters behind an approaching
-entrant are slower than it: passed over in the gap choice they leave it no gap
-at all). Withheld holds that would have bound are counted in
-``n_anticipation_exiter_spared``. The default is **0** (off, hash-neutral
-unless set): on the corridor section test's fixture
-(``tests/fixtures/weave_th52_corridor.osm``, seeds 3 / 4 / 5, with
-``ramp_outlet``; docs/WEAVE_MODEL_PLAN.md, dated section WP-75) the exiters
-reach the section start at a median 20.3 / 21.4 / 16.3 m/s against 18.5 /
-18.0 / 16.2 in minutes 1–4, but the hold reappears in the section as the
-section entrants' own, the entrants cross later, T.H.52 departs 377 / 345 /
-319 of 407 against 407 / 391 / 382, lanes 0 and 1 of the last 60 m still read
-at or below 20 m/s in every window, and the section locks at seed 5 (lanes 0
-and 1 at 0.0–0.2 m/s from minute 13); seeds 3–12: T.H.52 3,750 → 3,464 (3,374 →
-2,963 with the key alone). On the 29-run fixture grid give-ups rise 44 → 64
-(45 → 59 with ``ramp_outlet``), the entrances fall 5,944 → 5,544 (6,055 →
-5,897), and the T.H.52 capacity fixture's no-lock pin fails at seeds 4 and 5
-(at all three with ``ramp_outlet``); no collision. A switch, not a fitted
-value. ``accept_lag_gap_s`` and ``exit_accept_lag_gap_s`` (2026-09-25,
-block 3, WP-80, the leader and follower gaps apart): the follower-side
-time gap of the entering and of the exiting movement. Until WP-80 each
-movement had one time gap, ``accept_gap_s`` / ``exit_accept_gap_s``,
-applied to both sides of every test; the I-24 MOTION critical gaps (VM Z,
-``artifacts/i24_critical_gaps.json``) read the two sides differently for
-both movements, and WP-79 measured the one-value compromise failing on the
-exit side. Now the existing key governs the leader side and the new key
-the follower side, everywhere the movement's time gap enters: the
-acceptance's ``s0 + A · v_F``, the forced guard's closing-speed bound on
-the follower side (the guard is part of every accepted change, so a guard
-on one value would re-impose the leader side on the follower side), the
-cooperation's and the anticipation's gap targets for the gap's follower,
-the swap's follower-side checks, the spread length's gap opening, and the
-follower side of the vacate / early-move gap check that borrows the
-entering key (``microsim.runner._weave_lag_gap_s``). **``None``, the
-default, is unset: the follower side reads the leader side's key**, so a
-run that sets neither key is byte-identical to one before WP-80 and the
-config hash moves only when a key is set. Not fitted values: the
-calibrated per-side values are a proposal in the artifact's ``proposal``
-block (``lead_side_only`` / ``lag_side_only``), measured on the fixtures
-in docs/WEAVE_MODEL_PLAN.md (dated section WP-80) and not made defaults:
-with all four (entering 0.0 / 0.778 s, exiting 2.584 / 0.721 s) the 29-run
-fixture grid's give-ups rise 44 → 134 and the T.H.52 capacity fixture's
-no-lock pin fails at all three seeds, driven by the exiting leader side;
-the entering pair alone holds the grid's totals (47 given up) and fails
-the pin at seed 4. ``opposing_entry_guard`` (2026-09-25, block 3, WP-92,
-opposing entries into one lane in one step): ``1`` resolves two changes into
-one lane from opposite sides in the same step before either is requested.
-SUMO executes an edge's lane changes front vehicle first, and the section's
-accepted and forced changes run under mode 256, which refuses only an
-overlap, after an acceptance read before the step; so without the key such a
-change can land at any gap behind a vehicle ahead that entered the same lane
-from the other side in that step (WP-80's and WP-90's collisions and 9 m/s²
-stops). With the key, where the rear change would fail the forced guard
-behind the front (``microsim.runner._weave_force_gap_ok``: fronts within
-``len + 2·minGap`` at speed parity, plus the closing terms), the one with
-priority goes — a change whose forced change is due, then any crossing
-change, then a model-driven change of a vehicle the section does not drive;
-between equals the one ahead — and the other is deferred by one step: a
-runner request withheld, or an undriven vehicle's model-driven changes
-suspended for the step and its mode restored on the next
-(``microsim.runner._weave_opposing_guard``). Deferrals are counted in
-``n_opposing_deferred``. The default is **0** (off, hash-neutral unless set):
-measured in docs/WEAVE_MODEL_PLAN.md (dated section WP-92); a switch, not a
-fitted value."""
+1); no collision. A switch, not a fitted value.
+The weave's other switches, all off or unset by default, were deleted on
+2026-10-06 (:data:`REMOVED_WEAVE_KEYS`; docs/WEAVE_MODEL_PLAN.md has their
+derivations and measurements; reproduce results made with them with release
+2.5.0)."""
 WEAVE_KEYS = frozenset(WEAVE_DEFAULTS)
+
+#: The merge switches deleted on 2026-10-06 (docs/MERGE_MODEL.md, amendment
+#: A4): each was off or unset by default, set by no committed scenario or
+#: reference pipeline stage, and recorded as a negative result. Their
+#: derivations and measurements stay in docs/WEAVE_MODEL_PLAN.md and the
+#: CHANGELOG; results made with them are reproduced with release 2.5.0. A
+#: config that still sets one is refused with a message naming it
+#: (:func:`_removed_message`) rather than run under other physics.
+#: ``courtesy`` came to the weave with the scripted merge's keys, and
+#: ``force_guard`` here is the weave's pinned, never-read copy (the scripted
+#: merge's stays).
+REMOVED_WEAVE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "accept_lag_gap_s",
+        "exit_accept_lag_gap_s",
+        "vacate_no_follower_braking",
+        "exit_giveup_patience_s",
+        "exit_abreast_patience_s",
+        "exiter_yields",
+        "entrant_yields",
+        "exiter_yields_halting",
+        "exiter_yield_lead_s",
+        "entry_speed_bound",
+        "hold_release_s",
+        "anticipation_gate",
+        "swap_pairs",
+        "spread_crossings",
+        "ramp_outlet",
+        "exit_priority_onset",
+        "anticipation_spares_exiters",
+        "opposing_entry_guard",
+        "courtesy",
+        "force_guard",
+    }
+)
+#: The scripted merge's key deleted on 2026-10-06 (:data:`REMOVED_WEAVE_KEYS`).
+REMOVED_SCRIPTED_MERGE_KEYS: Final[frozenset[str]] = frozenset({"courtesy"})
+#: ``RampSpec.merge`` values deleted on 2026-10-06: ``acceleration_lane``
+#: (SUMO's lane attribute on the attach edge's lane 0), unused and inert.
+REMOVED_MERGE_MODELS: Final[frozenset[str]] = frozenset({"acceleration_lane"})
+
+
+def _removed_message(what: str, names: Iterable[str]) -> str:
+    """The refusal of a setting deleted on 2026-10-06, naming it."""
+    return (
+        f"{what} {sorted(names)} removed on 2026-10-06 (dead merge switches, "
+        "docs/MERGE_MODEL.md amendment A4; derivations in docs/WEAVE_MODEL_PLAN.md); "
+        "reproduce results made with them with release 2.5.0"
+    )
 
 
 class WeaveSpec(BaseModel):
@@ -824,10 +362,14 @@ class WeaveSpec(BaseModel):
     ``None`` = measured from the compiled network. Recorded in
     ``meta.json["weave_sections"]`` beside the measured length."""
     weave_params: dict[str, float] = Field(default_factory=dict)
-    """Overrides of :data:`WEAVE_DEFAULTS`; unknown keys are rejected."""
+    """Overrides of :data:`WEAVE_DEFAULTS`; unknown keys are rejected, and a
+    key of :data:`REMOVED_WEAVE_KEYS` is refused by name."""
 
     @model_validator(mode="after")
     def _check_params(self) -> Self:
+        removed = set(self.weave_params) & REMOVED_WEAVE_KEYS
+        if removed:
+            raise ValueError(_removed_message("weave_params keys", removed))
         unknown = set(self.weave_params) - WEAVE_KEYS
         if unknown:
             raise ValueError(f"unknown weave_params keys: {sorted(unknown)}")
@@ -882,22 +424,21 @@ class RampSpec(BaseModel):
     100 m). ``None`` keeps the default. Set to the acceleration lane's length
     to let the ramp feed the mainline over the lane instead of at its end
     (docs/I24_VALIDATION.md §0.7)."""
-    merge: Literal[
-        "lane_change", "acceleration_lane", "zipper", "scripted", "weave", "measured"
-    ] = "lane_change"
+    merge: Literal["lane_change", "zipper", "scripted", "weave", "measured"] = "lane_change"
     """How an on-ramp's acceleration lane hands its traffic to the mainline
     (micro tier, 2026-09-06). ``lane_change`` (default): the lane dead-ends
     and ramp vehicles change lanes under the lane-change model — on the I-24
     replica this locked the merge into a right-lane crawl under every
-    parameter tried (docs/I24_VALIDATION.md §0.5). ``acceleration_lane``:
-    SUMO's lane attribute of that name on the attach edge's rightmost lane
-    (vehicles do not brake for the lane end). ``zipper``: the attach edge's
-    rightmost lane is connected into the next corridor edge's rightmost lane
-    alongside the mainline lane and the junction becomes a zipper, so ramp
-    and mainline traffic interleave at the lane end instead of negotiating
-    lane changes. Both need the acceleration lane to dead-end at the attach
-    edge's end node (checked at run time) and are applied as netconvert
-    patches recorded in ``meta.json``. ``scripted`` (2026-09-16): the network
+    parameter tried (docs/I24_VALIDATION.md §0.5). ``zipper``: the attach
+    edge's rightmost lane is connected into the next corridor edge's
+    rightmost lane alongside the mainline lane and the junction becomes a
+    zipper, so ramp and mainline traffic interleave at the lane end instead
+    of negotiating lane changes; it needs the acceleration lane to dead-end
+    at the attach edge's end node (checked at run time) and is applied as
+    netconvert patches recorded in ``meta.json``. ``acceleration_lane``
+    (SUMO's lane attribute, unused and inert) was removed on 2026-10-06
+    (:data:`REMOVED_MERGE_MODELS`; reproduce with release 2.5.0).
+    ``scripted`` (2026-09-16): the network
     is the ``lane_change`` one, but every vehicle on the acceleration lane is
     driven by the runner's gap-acceptance merge instead of SUMO's lane-change
     model — it matches the speed of the mainline lane it is entering, takes
@@ -931,10 +472,9 @@ class RampSpec(BaseModel):
     leader and follower, on top of the vehicle's ``s0``), ``force_after_s``
     4.0, ``force_within_m`` 80.0, ``change_duration_s`` 2.0, ``lookahead_m``
     120.0 (distance over which the mainline lane's speed is matched),
-    ``courtesy`` 0.0 (m/s; when > 0 the mainline follower that blocks an
-    otherwise acceptable gap is asked to hold its desired speed this far below
-    the ramp vehicle's until the gap opens — courtesy yielding),
-    ``force_guard`` 1.0 (on since 2026-10-04; see below).
+    ``force_guard`` 1.0 (on since 2026-10-04; see below). ``courtesy`` was
+    removed on 2026-10-06 (:data:`REMOVED_SCRIPTED_MERGE_KEYS`; reproduce with
+    release 2.5.0).
 
     ``force_guard`` (2026-09-26, block 3, WP-93; docs/WEAVE_MODEL_PLAN.md,
     dated section). Added off (0) on 2026-09-26; **on (1) by default since
@@ -964,16 +504,25 @@ class RampSpec(BaseModel):
     fixture (WP-93: no collision in 15 runs) and on the I-94 WB corridor
     battery with the key set on its two scripted ramps (VM AG, 2026-09-26:
     collisions 15 → 0 over 20 paired seeds, no resolved change in departures,
-    RMSPE or GEH; docs/ONBOARDING_MNDOT.md §11). In
-    ``WeaveSpec.weave_params``, which shares these keys, it is never read:
-    the weave's forced changes are always under its own guard
-    (``_weave_force_gap_ok``), and :data:`WEAVE_DEFAULTS` pins it at 0."""
+    RMSPE or GEH; docs/ONBOARDING_MNDOT.md §11). The weave has no such key
+    (:data:`WEAVE_DEFAULTS`): its forced changes are always under its own
+    guard (``_weave_force_gap_ok``)."""
     weave: WeaveSpec | None = None
     """The weaving section this on-ramp opens (:class:`WeaveSpec`); required
     by, and only allowed with, ``merge="weave"``. Hash-neutral when unset."""
 
+    @field_validator("merge", mode="before")
+    @classmethod
+    def _check_removed_merge(cls, value: Any) -> Any:
+        if isinstance(value, str) and value in REMOVED_MERGE_MODELS:
+            raise ValueError(_removed_message("merge models", [value]))
+        return value
+
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
+        removed = set(self.merge_params) & REMOVED_SCRIPTED_MERGE_KEYS
+        if removed:
+            raise ValueError(_removed_message("merge_params keys", removed))
         unknown = set(self.merge_params) - SCRIPTED_MERGE_KEYS
         if unknown:
             raise ValueError(f"unknown merge_params keys: {sorted(unknown)}")

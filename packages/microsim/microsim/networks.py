@@ -538,14 +538,15 @@ def merge_patch_files(
     ``end_node`` by :func:`lane_end_patch_file` — then ``next_edge`` keeps its
     width and its lane 0 is the unfed remnant of the spill.
 
-    * ``acceleration_lane`` — an edge patch marking lane 0 of the attach
-      edge with SUMO's ``acceleration="true"`` (vehicles do not brake for
-      the lane end).
     * ``zipper`` — a connection patch adding lane 0 → ``next_edge`` lane
       ``1 - shift`` beside the mainline lane 1 → the same lane (all other
       connections restated, since explicit connections replace the guessed
       ones for the edge) and a node patch making ``end_node`` a ``zipper``
       junction, so the two incoming lanes interleave.
+
+    The ``acceleration_lane`` edge patch (SUMO's ``acceleration="true"`` on
+    lane 0) was removed with that merge model on 2026-10-06 (release 2.5.0
+    has it).
 
     Args:
         workdir: Directory the patch files are written into.
@@ -554,7 +555,7 @@ def merge_patch_files(
         end_node: Id of the node where ``attach_edge`` ends.
         n_attach_lanes: Lane count of ``attach_edge``.
         n_next_lanes: Lane count of ``next_edge``.
-        merge: ``"acceleration_lane"`` or ``"zipper"``.
+        merge: ``"zipper"``.
         visibility_m: Zipper only: SUMO connection ``visibility`` [m] on the two
             merging connections (``RampSpec.merge_visibility_m``); ``None``
             leaves SUMO's default.
@@ -577,16 +578,6 @@ def merge_patch_files(
         )
     workdir.mkdir(parents=True, exist_ok=True)
     tag = f"merge_{_safe_file_stem(attach_edge)}"
-    if merge == "acceleration_lane":
-        edg = workdir / f"{tag}.edg.xml"
-        edg.write_text(
-            "<edges>\n"
-            f'  <edge id="{attach_edge}">\n'
-            '    <lane index="0" acceleration="true"/>\n'
-            "  </edge>\n"
-            "</edges>\n"
-        )
-        return [edg]
     if merge == "zipper":
         con = workdir / f"{tag}.con.xml"
         # the ramp lane and the mainline lane it merges with interleave from this distance

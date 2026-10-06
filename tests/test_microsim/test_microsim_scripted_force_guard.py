@@ -187,7 +187,6 @@ def _state(**params: float) -> dict[str, Any]:
         "target_lane": f"{ATTACH}_1",
         "params": {**SCRIPTED_MERGE_DEFAULTS, **params},
         "veh": {},
-        "yielding": {},
         "n_entered": 0,
         "n_changed": 0,
         "n_forced": 0,
@@ -232,9 +231,10 @@ def _due(mod: _Mod, ss: dict[str, Any]) -> None:
 class TestSchema:
     def test_on_by_default_and_hash_neutral(self) -> None:
         assert SCRIPTED_MERGE_DEFAULTS["force_guard"] == 1.0
-        # the weave shares the keys but never reads this one (its forced
-        # changes are always guarded): pinned off so its record is unchanged
-        assert WEAVE_DEFAULTS["force_guard"] == 0.0
+        # the weave shares the other keys but has no such key (its forced
+        # changes are always guarded); its pinned, never-read copy was
+        # removed on 2026-10-06
+        assert "force_guard" not in WEAVE_DEFAULTS
         cfg = mcknight_config(3)
         assert cfg.network.ramps[0].merge_params == {}
         off = mcknight_config(3, {"force_guard": 0.0})

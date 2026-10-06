@@ -265,80 +265,25 @@ class WeaveSectionDiagnosticsOut(BaseModel):
     ``n_pair_releases`` (fifth derivation) counts stopped changer–follower
     pairs released, each once per release. All three are ``None`` for a meta
     written before their rule existed. ``n_vacate_skipped_no_gap`` and
-    ``n_vacate_requests`` (block 3, the vacate rule re-derived: a through
-    vehicle is asked only on a step when the target-lane gap accepts it
-    without the follower braking) count the through vehicles that crossed
-    the window never asked, each once, and the requests made in
-    vehicle-steps; ``None`` for a meta written before. ``n_missed_exit`` (exit-side
+    ``n_vacate_requests`` (block 3) count the through vehicles that crossed
+    the window never asked (for want of the rule's bound), each once, and
+    the requests made in vehicle-steps; ``None`` for a meta written before. ``n_missed_exit`` (exit-side
     derivation, 2026-09-24 block 3) counts exit-bound vehicles the runner
     rerouted through at the gore's end, halted still owing their change with
     no more than ``exit_giveup_m`` of section ahead — a subset of ``n_missed``;
-    ``None`` for a meta written before the rule existed. ``n_giveup_waited``
-    (WP-52, 2026-09-24 block 3, the bounded give-up patience; WP-53, the
-    abreast state) counts the vehicle-steps on which such a give-up was
-    deferred while the exiter's auxiliary-lane follower was still braking
-    towards the gap (``exit_giveup_patience_s``) or the vehicle beside the
-    exiter was clearing it within the budget (``exit_abreast_patience_s``);
-    zero at both keys' default of 0; ``None`` for a meta written before.
-    ``n_exiter_yields`` and ``n_entrant_yields`` (WP-54, 2026-09-24 block 3,
-    the crossing pair) count the vehicle-steps on which an exit-bound
-    changer was driven to stop behind a driven entrant halted ahead of it
-    in the auxiliary lane (``exiter_yields``) and on which a moving entrant
-    beside a due exiter was driven to fall behind its rear
-    (``entrant_yields``); zero at a switch's default of 0; ``None`` for a
-    meta written before; not shown by the dashboard. ``n_entry_bounded``
-    (WP-57, 2026-09-24 block 3, the entrant's entry speed) counts the
-    vehicle-steps on which an entrant on the ramp was asked to enter no
-    faster than its own stop at ``b`` within the auxiliary lane allows
-    (``entry_speed_bound``); zero at the default of 0; ``None`` for a meta
-    written before; not shown by the dashboard. ``n_hold_releases`` (WP-58,
-    2026-09-24 block 3, the bounded hold) counts the holds dropped — a
-    changer's cooperating follower released after the changer stopped
-    closing on its gap for longer than ``hold_release_s``, each once; zero
-    at the default of 0; ``None`` for a meta written before; not shown by
-    the dashboard. ``n_anticipation_gated`` (WP-60, 2026-09-24 block 3, the
-    gated anticipation) counts the vehicle-steps on which an approaching
-    entrant's gap follower was not commanded because the entrant arrives
-    later than the follower needs to open the gap at its own ``b``
-    (``anticipation_gate``), counted only where the command would have
-    bound; zero at the default of 0; ``None`` for a meta written before;
-    not shown by the dashboard. ``n_exit_prepared`` (WP-62, 2026-09-24 block
-    3, the exiters' early move) counts the vehicles bound for the paired exit
-    that the rule asked, inside the vacate window, into the lane feeding
-    section lane 1 and that were seen there before the section, each once
-    (``exit_prepare``); zero at the default of 0; ``None`` for a meta written
-    before; not shown by the dashboard. ``n_swaps`` (WP-64, 2026-09-25 block
-    3, the swap) counts the pairs — an entrant in the auxiliary lane and an
-    exiter beside it in section lane 1 that block each other — commanded to
-    exchange lanes in one step (``swap_pairs``); zero at the default of 0;
-    ``None`` for a meta written before; not shown by the dashboard.
-    ``n_spread_withheld`` (WP-67, 2026-09-25 block 3, the crossings spread)
-    counts the vehicle-steps on which a driven vehicle's crossing — an
-    entrant's out of the auxiliary lane, an exiter's into it — was withheld
-    short of its place in the spread (``spread_crossings``); zero at the
-    default of 0; ``None`` for a meta written before; not shown by the
-    dashboard. ``n_outlet_spared`` (WP-70, 2026-09-25 block 3, the ramp's
-    outlet) counts the exiter-steps on which the gap chosen without the rule
-    has as its follower a vehicle on the on-ramp or in the auxiliary lane's
-    first stretch (``ramp_outlet``); zero at the default of 0; ``None`` for a
-    meta written before; not shown by the dashboard. ``n_onset_priority``
-    (WP-73, 2026-09-25 block 3, the exit priority from the braking onset)
-    counts the exiter-steps on which an exiter had the exit priority from its
-    own lane-end braking onset before its forced change was due
-    (``exit_priority_onset``); zero at the default of 0; ``None`` for a meta
-    written before; not shown by the dashboard.
-    ``n_anticipation_exiter_spared`` (WP-75, 2026-09-25 block 3, the
-    anticipation spares the exiters) counts the vehicle-steps on which an
-    approaching entrant's gap follower was bound for the paired exit and was
-    not held, counted only where the hold would have bound
-    (``anticipation_spares_exiters``); zero at the default of 0; ``None`` for
-    a meta written before; not shown by the dashboard.
-    ``n_opposing_deferred`` (WP-92, 2026-09-25 block 3, the opposing-entry
-    guard) counts the changes deferred by one step because an opposing entry
-    into the same lane in the same step would land within the forced guard's
-    minimum of it — a runner request withheld, or an undriven vehicle's
-    model-driven changes suspended for the step (``opposing_entry_guard``);
-    zero at the default of 0; ``None`` for a meta written before; not shown
+    ``None`` for a meta written before the rule existed. ``n_exit_prepared``
+    (WP-62, 2026-09-24 block 3, the exiters' early move) counts the vehicles
+    bound for the paired exit that the rule asked, inside the vacate window,
+    into the lane feeding section lane 1 and that were seen there before the
+    section, each once (``exit_prepare``); zero at the default of 0; ``None``
+    for a meta written before; not shown by the dashboard. ``n_giveup_waited``,
+    ``n_exiter_yields``, ``n_entrant_yields``, ``n_entry_bounded``,
+    ``n_hold_releases``, ``n_anticipation_gated``, ``n_swaps``,
+    ``n_spread_withheld``, ``n_outlet_spared``, ``n_onset_priority``,
+    ``n_anticipation_exiter_spared`` and ``n_opposing_deferred`` are the
+    counters of weave switches removed on 2026-10-06
+    (docs/WEAVE_MODEL_PLAN.md): read from a meta written by release 2.5.0 or
+    earlier, ``None`` otherwise; not shown
     by the dashboard. Two keys that are
     not counters (2026-09-24, block 3): ``short_section`` is true for a
     section shorter than twice ``force_within_m`` (flagged, not scaled;

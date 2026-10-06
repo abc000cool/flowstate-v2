@@ -121,7 +121,6 @@ VARIANTS = (
     "as_is_sublane",
     "as_is_heavy",
     "geometry_corrected_ramplc1_entrylanes_zipper",
-    "geometry_corrected_ramplc1_entrylanes_accel",
     "geometry_corrected_ramplc1_entrylanes_zipper_meter",
     "geometry_corrected_ramplc1_entryflow",
 )
