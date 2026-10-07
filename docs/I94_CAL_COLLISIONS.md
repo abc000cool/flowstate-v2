@@ -1332,3 +1332,25 @@ uv run --no-sync python $A/harness/recorder.py xr1 9 v02816 v02815 1256.5 $A/xr1
 
 **Identity runs.** As §8.7 of docs/WEAVE_LOSS_DIAGNOSIS.md: W1's `harness/py.sh TREE harness/cmp.py HEAD_TREE OUT
 WORK`, once per tree, and `harness/hashes.py`.
+
+## 15. Confirmation run results — 2026-10-07 (stage p8c on one n2d-standard-16 in us-central1-a, 22 min of stage time, about $0.40, self-deleted)
+
+`artifacts/i94_cal_collisions_trace.json`. **Every collision reproduced exactly** (collider, victim, lane, position,
+step), on an AMD n2d machine where p8 ran on Intel n2 — and the control stayed clean.
+
+| event | arm | seed | lane | reader's verdict | rear max decel / its b |
+|---|---|---|---|---|---|
+| R1 | `_dc_cal` | 134183728835869882 | 999007700_0 (Ruth St) | braked beyond b in the last steps — not a cap at b | 2.29 / 0.94 m/s² |
+| R2 | `_dc_cal` | 6134032994440706937 | 999007700_0 | braked beyond b in the last steps — not a cap at b | 3.04 / 0.52 |
+| R3 | `_dc_cal_netfix` | 134183728835869882 | 999007700_0 | **pinned at b while the gap closed** (command-cap signature) | 2.04 / 0.57 |
+| T1 | `_dc_cal_netfix` | 165503670820534583 | 51388891_1 (T.H.52) | **opposing entries** in the same step | 8.97 / 1.88 |
+| T2 | `_dc_cal_netfix` | 677105600768189526 | 51388891_2 | **opposing entries** in the same step | 9.0 / 1.50 |
+| T3 | `_dc_cal_netfix` | 6953598295321596746 | 51388891_2 | not opposing: a cut-in from the right, rear not yet in the lane | 8.98 / 1.75 |
+
+**Reading.** The T.H.52 mechanism is confirmed for two of three collisions (the third is a late cut-in), and
+the Ruth St braking cap for one of three; the other two Ruth St rear cars did brake beyond b, but late, which
+fits the second defect (a leader closer than minGap read as no leader until contact) rather than the cap alone.
+Both are what W2's three switches address (§13–§14); W2 reproduced and removed both mechanisms on fixtures but
+failed its no-new-lock criterion alone, and the corridor round of W1b + W2 (stage `p10_i94_cal_w1b_w2`) is the
+next test. The weave commands were not logged (no recorder in the runner), so which rule issued each command is
+inferred, not read.
