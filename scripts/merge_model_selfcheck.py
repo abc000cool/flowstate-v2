@@ -56,8 +56,11 @@ then differ from the committed fixtures'; nothing committed is changed.
 
 ``grid`` also takes ``--fleet-from`` (every fixture's fleet replaced by a
 scenario's, as ``th52 --fleet-from``; a fixture and its ``_fleet`` twin then
-run the same config, which is run once and listed in ``skipped_same_config``)
-and ``--seeds`` (these seeds for every selected fixture instead of the grid's).
+run the same config, which is run once per seed and listed in
+``skipped_same_config``) and ``--seeds`` (these seeds for every selected
+fixture instead of the grid's; a fixture whose config fixes its own seed, as the
+golden fixtures do, still runs every seed: the runner draws from the seed it is
+given).
 
 ``th52`` takes ``--ramp-to-ramp-share S`` (either model): ``WeaveSpec.
 ramp_to_ramp_share`` set to ``S`` on every weave block — the share of the
@@ -1042,7 +1045,7 @@ def main(argv: list[str] | None = None) -> None:
                 default=None,
                 help=(
                     "replace every fixture's fleet block with this scenario's; a config "
-                    "that then hashes as an earlier one is run once"
+                    "that then hashes as an earlier one is run once per seed"
                 ),
             )
     args = ap.parse_args(argv)
@@ -1099,21 +1102,27 @@ def main(argv: list[str] | None = None) -> None:
             seeds_override = _seeds(args.seeds) if args.seeds else None
             rows = []
             # with --fleet-from a fixture and its ``_fleet`` twin can become the
-            # same config: each config hash is run once
-            seen: dict[str, str] = {}
+            # same config: each (config hash, seed) is run once. The seed is part
+            # of the key: run_micro draws from its seed argument, not from
+            # cfg.seed, and the golden fixtures hard-code ``seed: 3``, so one
+            # hash at seeds 3, 4, 5 is three different runs
+            seen: dict[tuple[str, int], str] = {}
             skipped: list[dict[str, Any]] = []
             for name, grid_seeds in GRID:
                 if only and name not in only:
                     continue
                 for seed in seeds_override or grid_seeds:
                     if args.fleet_from is not None:
-                        h = config_hash(
-                            fixture_config(name, seed, args.model, weave_set, args.fleet_from)
+                        key = (
+                            config_hash(
+                                fixture_config(name, seed, args.model, weave_set, args.fleet_from)
+                            ),
+                            seed,
                         )
-                        if h in seen:
-                            skipped.append({"fixture": name, "seed": seed, "same_as": seen[h]})
+                        if key in seen:
+                            skipped.append({"fixture": name, "seed": seed, "same_as": seen[key]})
                             continue
-                        seen[h] = f"{name}:{seed}"
+                        seen[key] = f"{name}:{seed}"
                     paths, row = run_one(name, seed, args.model, work, weave_set, args.fleet_from)
                     rows.append(row)
                     if not args.keep:

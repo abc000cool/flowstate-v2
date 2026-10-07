@@ -208,6 +208,55 @@ def test_ramp_to_ramp_share_is_hash_neutral_until_it_is_set():
             with_share(bad)
 
 
+def test_unset_fields_are_dropped_without_pydantic_2_12_features():
+    """The packages declare ``pydantic>=2.10``; ``Field(exclude_if=...)`` exists
+    from 2.12 only (on 2.10/2.11 it is a deprecated extra: nothing is excluded
+    and the JSON schema cannot be generated). No field of the schema may rely
+    on it (review 2026-10-07, finding 2): ``WeaveSpec`` drops an unset
+    ``ramp_to_ramp_share`` with a wrap serializer instead, in every dump form,
+    and its serialization schema is still the model's own."""
+    import pydantic
+
+    import flowstate_core.config as config_module
+    from flowstate_core.config import WeaveSpec
+
+    for name in dir(config_module):
+        model = getattr(config_module, name)
+        if isinstance(model, type) and issubclass(model, pydantic.BaseModel):
+            for field_name, info in model.model_fields.items():
+                assert getattr(info, "exclude_if", None) is None, (name, field_name)
+    unset = WeaveSpec(exit_ramp="B", weave_params={"entrant_giveup_m": 5.0})
+    assert unset.model_dump() == {
+        "exit_ramp": "B",
+        "length_m": None,
+        "weave_params": {"entrant_giveup_m": 5.0},
+    }
+    assert unset.model_dump_json() == (
+        '{"exit_ramp":"B","length_m":null,"weave_params":{"entrant_giveup_m":5.0}}'
+    )
+    assert WeaveSpec(exit_ramp="B", ramp_to_ramp_share=None).model_dump(mode="json") == (
+        WeaveSpec(exit_ramp="B").model_dump(mode="json")
+    )
+    set_ = WeaveSpec(exit_ramp="B", ramp_to_ramp_share=0.3)
+    assert set_.model_dump(mode="json")["ramp_to_ramp_share"] == 0.3
+    assert '"ramp_to_ramp_share":0.3' in set_.model_dump_json()
+    assert WeaveSpec.model_validate(set_.model_dump()) == set_
+    # nested: a ramp's weave block dumps the same way
+    ramp = {"kind": "on", "edges": ["r"], "attach_edge": "e", "inflow": [[0.0, 0.1]]}
+    ramp["merge"] = "weave"
+    ramp["weave"] = {"exit_ramp": "B"}
+    raw = config_module.RampSpec.model_validate(ramp).model_dump(mode="json")
+    assert "ramp_to_ramp_share" not in raw["weave"]
+    schema = WeaveSpec.model_json_schema(mode="serialization")
+    assert set(schema["properties"]) == {
+        "exit_ramp",
+        "length_m",
+        "weave_params",
+        "ramp_to_ramp_share",
+    }
+    assert schema == WeaveSpec.model_json_schema(mode="validation")
+
+
 def test_pinned_ring_hash():
     root = Path(__file__).resolve().parents[2]
     cfg = ScenarioConfig.from_yaml(root / "scenarios" / "ring_sugiyama.yaml")

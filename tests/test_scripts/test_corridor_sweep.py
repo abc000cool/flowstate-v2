@@ -507,9 +507,15 @@ def test_collision_flag_pass_fail_not_recorded(tmp_path: Path) -> None:
     assert stored["cells"]["baseline"]["collisions"]["runs_not_recorded"] == [11]
 
 
-def _with_locks(root: Path, locked: dict[tuple[str, int], bool | None]) -> None:
-    """Store a lock record in runs' ``metrics.json``; None removes it (and the meta)."""
-    from validation.locks import SOURCE_VEHICLES, RunLocks
+def _with_locks(
+    root: Path, locked: dict[tuple[str, int], bool | None], *, partial: bool = False
+) -> None:
+    """Store a lock record in runs' ``metrics.json``; None removes it (and the meta).
+
+    Records are read by both readers, as the scoring stores them, or with
+    ``partial`` by the run-end reader alone (vehicles.parquet, no edges.parquet).
+    """
+    from validation.locks import SOURCE_EDGES, SOURCE_VEHICLES, RunLocks
     from validation.locks import Lock as _Lock
 
     lock = _Lock(
@@ -535,7 +541,8 @@ def _with_locks(root: Path, locked: dict[tuple[str, int], bool | None]) -> None:
             m.pop(sweep.RUN_LOCKS_KEY, None)
             (d / "meta.json").unlink(missing_ok=True)
         else:
-            record = RunLocks((SOURCE_VEHICLES,), 14400.0, (lock,) if is_locked else ())
+            sources = (SOURCE_VEHICLES,) if partial else (SOURCE_EDGES, SOURCE_VEHICLES)
+            record = RunLocks(sources, 14400.0, (lock,) if is_locked else ())
             m[sweep.RUN_LOCKS_KEY] = record.to_dict()
         (d / "metrics.json").write_text(json.dumps(m))
 
@@ -574,3 +581,20 @@ def test_lock_flag_pass_fail_not_recorded(tmp_path: Path) -> None:
     assert sweep.lock_line(s) == "locks: NOT RECORDED — not recorded for 1 of 6 run(s)"
     stored = json.loads((tmp_path / "missing.json").read_text())
     assert stored["zero_locks"] is None
+
+    # review 2026-10-07, finding 4: a run read at its end only (vehicles.parquet, no
+    # edges.parquet) with no lock found is not "no lock" -- never a PASS
+    root = tmp_path / "sweep_partial"
+    _build_tree(root, with_meta=True)
+    _with_locks(root, clean)
+    _with_locks(root, {("baseline", 22): False}, partial=True)
+    s = sweep.analyze(root, tmp_path / "partial.json", allow_partial=False)
+    assert s["zero_locks"] is None and s["cells"]["baseline"]["zero_locks"] is None
+    assert s["cells"]["baseline"]["locks"]["runs_partially_recorded"] == [22]
+    assert sweep.lock_line(s) == (
+        "locks: NOT RECORDED — partially recorded (run-end reader only) for 1 of 6 run(s)"
+    )
+    # ... while a lock it finds still fails the set
+    _with_locks(root, {("baseline", 22): True}, partial=True)
+    s = sweep.analyze(root, tmp_path / "partial_locked.json", allow_partial=False)
+    assert s["zero_locks"] is False

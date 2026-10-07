@@ -203,7 +203,7 @@ from validation.battery import (
     weave_exit_summary,
 )
 from validation.criteria import CriteriaProfile, CriteriaResult, evaluate, get_profile
-from validation.locks import RunLocks, detect_run_locks, lock_flags, lock_summary
+from validation.locks import RunLocks, detect_run_locks, lock_summary
 from validation.metrics import Metrics, WaitingMetrics, aggregate, ci, geh_pass_fraction
 from validation.observed import ObservedCorridor, ObservedScores, pool_link_hours, pool_scores
 from validation.report import generate_report
@@ -866,6 +866,16 @@ def lock_line(locks: dict[str, Any] | None) -> str:
     )
     if locks["runs_not_recorded"]:
         text += f"; not recorded for {len(locks['runs_not_recorded'])} replicate(s)"
+    locked_runs = {row["run"] for row in locks["runs_locked"]}
+    partial = [r for r in locks.get("runs_partially_recorded") or [] if r not in locked_runs]
+    if partial:
+        text += (
+            f"; no lock established for {len(partial)} replicate(s) read at the run's end only "
+            "(no edges.parquet)"
+        )
+    seeded = locks.get("seeded_standstills") or []
+    if seeded:
+        text += f"; {len(seeded)} seeded standstill(s) not counted"
     places = [
         f"{row['section']} ({row['n_runs']}, onset {row['onset_s_min']:.0f}"
         + (f"–{row['onset_s_max']:.0f}" if row["onset_s_max"] != row["onset_s_min"] else "")
@@ -1229,7 +1239,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ring_dampening=None if ring is None else bool(ring["dampening"]["passed"]),
         n_seeds=len(seeds),
         collision_counts=collision_counts(metas),
-        lock_flags=lock_flags(lock_records),
+        lock_records=lock_records,
     )
 
     report_dir = Path(args.report_dir)

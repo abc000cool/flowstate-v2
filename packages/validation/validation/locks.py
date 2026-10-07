@@ -23,13 +23,20 @@ standstill that clears within the duration is a stop, not a lock.
   a cell *stands* when the cell holds vehicles (density ≥
   :data:`STANDING_MIN_DENSITY_VEH_M`) and carries no flow (Edie flow ≤
   :data:`STANDING_MAX_FLOW_VEH_S`). A cell standing in every bin of an
-  interval at least the lock duration long is *locked* over it. A locked
-  interval is a *head* when the cell just downstream is not locked at its
-  start (the standing queue does not continue past it); heads in one
-  space-time component of locked cells and within
-  :data:`HEAD_MERGE_DISTANCE_M` of each other are one lock, placed at the most
-  downstream of them. Onset is the head's first standing bin and release its
-  last (none when it stands to the run's end). This is the standstill map of
+  interval at least the lock duration long is *locked* over it. In each time
+  bin the locked cells form *standing queues*: runs of locked cells, a gap
+  shorter than :data:`HEAD_MERGE_DISTANCE_M` bridged. A queue is followed
+  from bin to bin by overlap: one that overlaps no queue of the bin before is
+  a new lock; one that joins several continues the most downstream one's lock,
+  and a lock it absorbs before that lock stood the lock duration on its own is
+  a piece of it (a queue that freezes in pieces is one lock); a queue that
+  splits keeps its lock. A lock's head is the most downstream cell its front
+  reached; onset is its first locked bin and release the last locked bin of
+  the cells of its last queue (none when they stand to the run's end: a head
+  cell that clears while the queue behind it stands on is not a release).
+  Until 2026-10-07 (review finding 3) heads were read only at the start of
+  each cell's locked interval and merged pairwise, which split one queue
+  freezing in pieces into several locks. This is the standstill map of
   the diagnosis reader ``diag_lock`` (mean speed on 100 m × 5 min bins of the
   trajectories, artifacts/mndot_rounds/weave_2026-09-24/) on the run's own
   Edie field, with "no flow" in place of "slow", so that a slow queue that
@@ -52,10 +59,25 @@ standstill that clears within the duration is a stop, not a lock.
   few minutes on a corridor of a few kilometres).
 
 A run is *locked* when either reader finds a lock. A run-end lock within
-:data:`HEAD_MERGE_DISTANCE_M` of the head cell of a space-time lock that
-persists to the run's end is the same lock: onset and duration from the
-space-time reader, head position and trapped vehicles from the run-end
-reader. A run with neither file is *not recorded* — never "no lock".
+:data:`HEAD_MERGE_DISTANCE_M` of the head cell (or of the front at the end) of
+a space-time lock that persists to the run's end is the same lock: onset and
+duration from the space-time reader, head position and trapped vehicles from
+the run-end reader. A run with neither file is *not recorded* — never "no
+lock". A run with ``vehicles.parquet`` alone is *partially recorded*
+(2026-10-07, review finding 4; the record of every battery archived before
+then and re-scored from its vehicle tables): a lock found there counts, but
+with none found the run is not "unlocked" (``locked`` None), because the
+run-end reader cannot see a lock released before the end, nor one whose last
+crossing vehicles are still in the network near it.
+
+**Seeded disturbances** (2026-10-07, review finding 5). A standstill at an
+imposed disturbance — a lane closure (``LaneClosureSpec``) or the seeded
+perturbation, which make a run ``seeded=True`` (CLAUDE.md §0.2) — is not a
+model defect. A standstill whose head the disturbance's window reaches and
+that stands less than the lock duration outside its time window is a
+*seeded standstill* (:func:`seeded_by`): it is listed apart, with the
+disturbance named, and does not lock the run. One standing on for the lock
+duration after the closure is lifted is still a lock.
 
 **Where.** Every lock is placed on the corridor axis (``x``) and, when one is
 close, at a section of the run's own ``meta.json``: a weaving section, an
@@ -78,6 +100,7 @@ of those origins).
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -88,7 +111,6 @@ from typing import Any, Final
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
-from scipy import ndimage
 from scipy.stats import beta
 
 from flowstate_core.units import veh_h_to_veh_s, veh_km_to_veh_m
@@ -179,9 +201,12 @@ LOCK_DEFINITION: Final[str] = (
     "zero discharge past a point for at least params.min_duration_s while vehicles are "
     "queued upstream of it. Space-time reader (edges.parquet): a 15 s x 100 m cell stands "
     "when its Edie density is at least params.min_density_veh_m and its flow at most "
-    "params.max_flow_veh_s; a cell standing for min_duration_s is locked; a lock's head is "
-    "a locked cell whose downstream neighbour is not locked when it starts; onset_s is the "
-    "head's first standing bin, release_s its last (null: to the run's end). Run-end reader "
+    "params.max_flow_veh_s; a cell standing for min_duration_s is locked; in each bin the "
+    "locked cells form standing queues (gaps under params.head_merge_distance_m bridged), "
+    "followed from bin to bin by overlap; a queue joining one downstream before standing "
+    "min_duration_s on its own is part of that lock; a lock's head is the most downstream "
+    "cell its front reached; onset_s is its first locked bin, release_s the last locked bin "
+    "of its last queue's cells (null: to the run's end). Run-end reader "
     "(vehicles.parquet): a vehicle in the network at the end with none within "
     "params.end_empty_downstream_m ahead and at least params.end_queue_min_vehicles within "
     "params.end_queue_span_m behind, past which no vehicle from upstream was last seen "
@@ -192,8 +217,14 @@ LOCK_DEFINITION: Final[str] = (
     "bound past it; "
     "n_never_departed_upstream: vehicles of origins at or upstream of the head that never "
     "entered the network (any ordinary backlog of those origins included). A run with "
-    "neither file is not recorded (locked null), never unlocked. share_locked is the "
-    "locked share of the recorded runs with its two-sided Clopper-Pearson interval."
+    "neither file is not recorded (locked null), never unlocked; a run with vehicles.parquet "
+    "alone is partially recorded (runs_partially_recorded): a lock found there counts, but "
+    "with none found locked is null, not false, since the run-end reader cannot see a lock "
+    "released before the end. A standstill explained by a seeded disturbance (a lane closure "
+    "or the seeded perturbation reaching the head, with less than min_duration_s of the "
+    "standstill outside its time window) is listed in seeded_standstills, not as a lock. "
+    "share_locked is the locked share of the recorded runs with its two-sided "
+    "Clopper-Pearson interval (a lower bound when runs are partially recorded)."
 )
 
 
@@ -315,6 +346,10 @@ class Lock:
             released or the run records no insertion counters.
         detected_by: The readers that found it (:data:`SOURCE_EDGES`,
             :data:`SOURCE_VEHICLES`).
+        seeded_by: The imposed disturbance it stands at (:func:`seeded_windows`:
+            ``"closure <label or index>"`` or ``"perturbation"``) when it is a
+            seeded standstill (:attr:`RunLocks.seeded_standstills`), not a
+            lock; None for a lock.
     """
 
     x_m: float
@@ -331,6 +366,7 @@ class Lock:
     n_trapped_in_network: int | None
     n_never_departed_upstream: int | None
     detected_by: tuple[str, ...]
+    seeded_by: str | None = None
 
     @property
     def persists_to_end(self) -> bool:
@@ -338,7 +374,7 @@ class Lock:
         return self.release_s is None
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON form (a run record's ``locks[i]``)."""
+        """JSON form (a run record's ``locks[i]``; ``seeded_by`` only on a seeded standstill)."""
         return {
             "x_m": self.x_m,
             "x_lo_m": self.x_lo_m,
@@ -355,6 +391,7 @@ class Lock:
             "n_trapped_in_network": self.n_trapped_in_network,
             "n_never_departed_upstream": self.n_never_departed_upstream,
             "detected_by": list(self.detected_by),
+            **({} if self.seeded_by is None else {"seeded_by": self.seeded_by}),
         }
 
     @classmethod
@@ -376,6 +413,7 @@ class Lock:
             n_trapped_in_network=_opt_int(raw.get("n_trapped_in_network")),
             n_never_departed_upstream=_opt_int(raw.get("n_never_departed_upstream")),
             detected_by=tuple(str(s) for s in raw.get("detected_by") or ()),
+            seeded_by=None if raw.get("seeded_by") is None else str(raw["seeded_by"]),
         )
 
 
@@ -389,12 +427,18 @@ class RunLocks:
             run is then not recorded.
         end_s: The run's end [s] the readers measured against; None when not
             recorded.
-        locks: Every lock found, downstream first.
+        locks: Every lock found, downstream first (model defects; seeded
+            standstills are not among them).
+        seeded_standstills: Standstills of the lock duration found at an
+            imposed disturbance of the run — a lane closure or the seeded
+            perturbation (:func:`seeded_windows`) — and explained by it: not
+            locks, each with its ``seeded_by``.
     """
 
     sources: tuple[str, ...]
     end_s: float | None
     locks: tuple[Lock, ...] = field(default_factory=tuple)
+    seeded_standstills: tuple[Lock, ...] = field(default_factory=tuple)
 
     @property
     def recorded(self) -> bool:
@@ -402,15 +446,38 @@ class RunLocks:
         return bool(self.sources)
 
     @property
+    def complete(self) -> bool:
+        """Whether the space-time reader had its file (``edges.parquet``).
+
+        Only it sees every lock: a released one, and one whose last crossing
+        vehicles are still in the network near the run's end. A run read by
+        the run-end reader alone is *partially recorded*.
+        """
+        return SOURCE_EDGES in self.sources
+
+    @property
+    def partially_recorded(self) -> bool:
+        """Recorded by the run-end reader alone (``vehicles.parquet``, no ``edges.parquet``)."""
+        return self.recorded and not self.complete
+
+    @property
     def locked(self) -> bool | None:
-        """True / False when recorded; None (not recorded, never False) otherwise."""
-        return bool(self.locks) if self.recorded else None
+        """Whether the run locked: True when a lock was found (by either reader);
+        False only when the run is completely recorded and none was; None
+        otherwise — not recorded, or partially recorded with no lock found (that
+        reader cannot see every lock, so "no lock" is not established; review
+        2026-10-07, finding 4). Never False on run-end evidence alone."""
+        if self.locks:
+            return True
+        return False if self.complete else None
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (per-seed ``locks``, ``metrics.json`` ``locks``).
 
         A run not recorded reads ``locked`` and ``n_locks`` null, never false
-        and zero.
+        and zero; a partially recorded run without a lock reads ``locked``
+        null and ``n_locks`` 0 (its ``sources`` say which reader ran).
+        ``seeded_standstills`` is written only when there is one.
         """
         return {
             "locked": self.locked,
@@ -418,6 +485,11 @@ class RunLocks:
             "end_s": self.end_s,
             "n_locks": len(self.locks) if self.recorded else None,
             "locks": [lock.to_dict() for lock in self.locks],
+            **(
+                {"seeded_standstills": [s.to_dict() for s in self.seeded_standstills]}
+                if self.seeded_standstills
+                else {}
+            ),
         }
 
     @classmethod
@@ -428,6 +500,9 @@ class RunLocks:
             sources=tuple(str(s) for s in raw.get("sources") or ()),
             end_s=None if end is None else float(end),
             locks=tuple(Lock.from_dict(lock) for lock in raw.get("locks") or ()),
+            seeded_standstills=tuple(
+                Lock.from_dict(s) for s in raw.get("seeded_standstills") or ()
+            ),
         )
 
 
@@ -446,6 +521,106 @@ def _finite(value: object) -> float | None:
         return None
     out = float(value)
     return out if math.isfinite(out) else None
+
+
+# --- seeded disturbances ----------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SeededWindow:
+    """The space-time window of a disturbance a scenario imposes (``seeded=True``).
+
+    Attributes:
+        label: ``"closure <label>"`` (``"closure <index>"`` without a label)
+            or ``"perturbation"``.
+        x_lo_m: Upstream end on the corridor axis [m] (-inf: anywhere).
+        x_hi_m: Downstream end [m] (inf: anywhere).
+        t_start_s: Start [s, simulation time].
+        t_end_s: End [s].
+    """
+
+    label: str
+    x_lo_m: float
+    x_hi_m: float
+    t_start_s: float
+    t_end_s: float
+
+
+def seeded_windows(meta: Mapping[str, Any]) -> list[SeededWindow]:
+    """The run's imposed disturbances (CLAUDE.md §0.2), from its ``meta.json``.
+
+    * Every lane closure (``LaneClosureSpec``): ``meta.json["closures"]``
+      (its ``x_lo_m`` / ``x_hi_m`` on the run's corridor axis), else
+      ``config.closures`` (``start_m`` / ``end_m``), over ``[t_start_s,
+      t_end_s]``. A closure of some lanes counts as well as one of every
+      lane: a standstill there is imposed either way.
+    * The seeded perturbation (``config.perturbation``): one vehicle slowed
+      from ``t_s`` for ``duration_s`` wherever it drives, so its window spans
+      the whole corridor.
+
+    Args:
+        meta: Parsed ``meta.json``.
+
+    Returns:
+        The windows; empty for an unseeded run.
+    """
+    out: list[SeededWindow] = []
+    config = meta.get("config")
+    cfg = config if isinstance(config, dict) else {}
+    recorded = meta.get("closures")
+    closures = recorded if isinstance(recorded, list) and recorded else cfg.get("closures")
+    for n, c in enumerate(closures if isinstance(closures, list) else []):
+        if not isinstance(c, dict):
+            continue
+        x0 = _finite(c.get("x_lo_m"))
+        x1 = _finite(c.get("x_hi_m"))
+        if x0 is None or x1 is None:
+            x0, x1 = _finite(c.get("start_m")), _finite(c.get("end_m"))
+        t0, t1 = _finite(c.get("t_start_s")), _finite(c.get("t_end_s"))
+        if x0 is None or x1 is None or t0 is None or t1 is None:
+            continue
+        label = str(c.get("label") or "") or str(n)
+        out.append(SeededWindow(f"closure {label}", x0, x1, t0, t1))
+    pert = cfg.get("perturbation")
+    if isinstance(pert, dict):
+        t0, dur = _finite(pert.get("t_s")), _finite(pert.get("duration_s"))
+        if t0 is not None and dur is not None:
+            out.append(SeededWindow("perturbation", -math.inf, math.inf, t0, t0 + dur))
+    return out
+
+
+def seeded_by(
+    lock: Lock,
+    windows: Sequence[SeededWindow],
+    end_s: float,
+    params: LockParams = DEFAULT_PARAMS,
+) -> str | None:
+    """The imposed disturbance that explains a standstill, if one does.
+
+    A window explains it when it reaches the head — the window's span meets
+    ``[x_lo_m − section_tolerance_m, x_hi_m + section_distance_m]``, as a
+    section's gore does (a queue stands just upstream of a closure) — and
+    overlaps the standstill in time, with less than the lock duration of the
+    standstill outside it on either side: a queue standing on for the lock
+    duration after the closure is lifted (or before it is set) is a lock in
+    its own right.
+
+    Returns:
+        The first explaining window's label, or None.
+    """
+    stop = end_s if lock.release_s is None else lock.release_s
+    lo = lock.x_lo_m - params.section_tolerance_m
+    hi = lock.x_hi_m + params.section_distance_m
+    for w in windows:
+        if w.x_hi_m < lo or w.x_lo_m > hi:
+            continue
+        if stop <= w.t_start_s or lock.onset_s >= w.t_end_s:
+            continue
+        before = max(0.0, w.t_start_s - lock.onset_s)
+        after = max(0.0, stop - w.t_end_s)
+        if before < params.min_duration_s - 1e-9 and after < params.min_duration_s - 1e-9:
+            return w.label
+    return None
 
 
 # --- sections -----------------------------------------------------------------
@@ -654,12 +829,23 @@ def _standing_field(edges: pd.DataFrame, params: LockParams) -> _Field:
 
 @dataclass
 class _Head:
-    """One space-time lock while it is assembled."""
+    """One space-time lock: a standing queue tracked through time (:func:`_edges_locks`).
+
+    Attributes:
+        cell: Its head: the most downstream cell its queue's front reached.
+        k_start: First bin of the queue (its birth).
+        k_end: Last locked bin of the cells of its last queue (the release
+            bin; the run's last bin when they stood to the end).
+        queue_m: Longest extent of its queue, front to tail [m].
+        end_fronts: Front cells of its queue in its last bin; empty when the
+            queue ended absorbed into a lock downstream (it stood on behind it).
+    """
 
     cell: int
     k_start: int
     k_end: int
-    component: int
+    queue_m: float
+    end_fronts: tuple[int, ...]
 
 
 def _runs(column: NDArray[np.bool_]) -> list[tuple[int, int]]:
@@ -669,56 +855,134 @@ def _runs(column: NDArray[np.bool_]) -> list[tuple[int, int]]:
     return [(int(a), int(b) - 1) for a, b in zip(edges[::2], edges[1::2], strict=True)]
 
 
+def _queues(row: NDArray[np.bool_], fld: _Field, bridge_m: float) -> list[tuple[int, int]]:
+    """The standing queues of one time bin: runs of locked cells, a gap shorter than ``bridge_m`` bridged.
+
+    Returns ``(tail cell, front cell)`` per queue, upstream first; both ends
+    are locked cells.
+    """
+    out: list[tuple[int, int]] = []
+    for lo, hi in _runs(row):
+        if out and float(fld.x_lo[lo] - fld.x_hi[out[-1][1]]) < bridge_m - 1e-9:
+            out[-1] = (out[-1][0], hi)
+        else:
+            out.append((lo, hi))
+    return out
+
+
 def _edges_locks(
     edges: pd.DataFrame, params: LockParams
 ) -> tuple[list[_Head], _Field, NDArray[np.bool_]]:
-    """The space-time reader's heads, its field and its locked mask."""
+    """The space-time reader's locks, its field and its locked mask.
+
+    A cell standing for at least the lock duration is locked over that
+    interval. In each time bin the locked cells form standing queues (runs of
+    locked cells; a gap shorter than ``head_merge_distance_m`` is bridged, so
+    a queue that freezes in pieces, or whose last cell near a gore is lightly
+    occupied, is one queue). Queues are tracked from bin to bin by overlap: a
+    queue overlapping none of the previous bin's is a new lock (its birth is
+    the onset); one overlapping several continues the most downstream one's
+    lock, and the others end there, absorbed (each stays a lock of its own,
+    standing on behind it); a queue that splits keeps its lock in every piece.
+    A lock absorbed before it stood on its own for the lock duration (its
+    birth to the bin it joined) is a piece of the queue it joined, not a lock
+    of its own: it is merged into that one (earliest onset, longest queue). A
+    lock's head is the most downstream cell its front reached, its release
+    the last locked bin of the cells of its last queue (none when they stood
+    to the run's end).
+
+    Review 2026-10-07 (finding 3): heads used to be read only at the start of
+    each cell's locked interval and merged pairwise, so one queue that froze in
+    pieces (its front moving downstream) was reported as several locks, and a
+    head cell that cleared while the queue behind it stood on read as a
+    released lock.
+    """
     fld = _standing_field(edges, params)
     nt, nx = fld.standing.shape
     locked = np.zeros((nt, nx), dtype=bool)
-    intervals: list[tuple[int, int, int]] = []
+    interval_end = np.full((nt, nx), -1, dtype=np.int64)
     for i in range(nx):
         for k0, k1 in _runs(fld.standing[:, i]):
             if float(fld.t_hi[k1] - fld.t_lo[k0]) >= params.min_duration_s - 1e-9:
                 locked[k0 : k1 + 1, i] = True
-                intervals.append((i, k0, k1))
-    if not intervals:
+                interval_end[k0 : k1 + 1, i] = k1
+    if not locked.any():
         return [], fld, locked
-    labels, _ = ndimage.label(locked)
-    heads: list[_Head] = []
-    for i, k0, k1 in intervals:
-        if i + 1 < nx and locked[k0, i + 1]:
-            continue  # the standing queue continues past this cell when it starts
-        heads.append(_Head(cell=i, k_start=k0, k_end=k1, component=int(labels[k0, i])))
-    # one lock per cluster of heads: same component, within the merge distance
-    heads.sort(key=lambda h: (-h.cell, h.k_start))
-    kept: list[_Head] = []
-    for head in heads:
-        x_head = float(fld.x_hi[head.cell])
-        for other in kept:
-            if (
-                other.component == head.component
-                and float(fld.x_hi[other.cell]) - x_head <= params.head_merge_distance_m
-            ):
-                other.k_start = min(other.k_start, head.k_start)
-                other.k_end = max(other.k_end, head.k_end)
-                break
-        else:
-            kept.append(_Head(head.cell, head.k_start, head.k_end, head.component))
-    return kept, fld, locked
+    bridge = params.head_merge_distance_m
+    births: list[int] = []  # per lock: birth bin
+    heads: list[int] = []  # per lock: most downstream front cell
+    extents: list[float] = []  # per lock: longest queue [m]
+    last: list[tuple[int, list[tuple[int, int]]]] = []  # per lock: (last bin, its queues then)
+    absorbed: list[bool] = []
+    joined: list[tuple[int, int, int]] = []  # (absorbed lock, lock it joined, bin)
+    prev: list[tuple[int, int, int]] = []  # (tail, front, lock) of the previous bin
+    for k in range(nt):
+        current: list[tuple[int, int, int]] = []
+        for lo, hi in _queues(locked[k], fld, bridge):
+            preds = [p for p in prev if p[0] <= hi and lo <= p[1]]
+            if preds:
+                lock = max(preds, key=lambda p: (p[1], -p[2]))[2]
+                for other in sorted({p[2] for p in preds} - {lock}):
+                    if not absorbed[other]:
+                        absorbed[other] = True
+                        joined.append((other, lock, k))
+            else:
+                lock = len(births)
+                births.append(k)
+                heads.append(hi)
+                extents.append(0.0)
+                last.append((k, []))
+                absorbed.append(False)
+            heads[lock] = max(heads[lock], hi)
+            extents[lock] = max(extents[lock], float(fld.x_hi[hi] - fld.x_lo[lo]))
+            if last[lock][0] != k:
+                last[lock] = (k, [])
+            last[lock][1].append((lo, hi))
+            current.append((lo, hi, lock))
+        prev = current
+    # a piece that joined a queue before standing the lock duration on its own
+    # belongs to that queue's lock (union-find, in the order the joins happened)
+    root = list(range(len(births)))
 
+    def find(lock: int) -> int:
+        while root[lock] != lock:
+            root[lock] = root[root[lock]]
+            lock = root[lock]
+        return lock
 
-def _queue_m(head: _Head, fld: _Field, locked: NDArray[np.bool_]) -> float:
-    """Longest extent of locked cells from the head upstream over the head's life [m]."""
-    best = 0.0
-    for k in range(head.k_start, head.k_end + 1):
-        if not locked[k, head.cell]:
+    for piece, into, k in joined:
+        if float(fld.t_lo[k] - fld.t_lo[births[piece]]) < params.min_duration_s - 1e-9:
+            a, b = find(piece), find(into)
+            if a != b:
+                root[a] = b
+                births[b] = min(births[b], births[a])
+                heads[b] = max(heads[b], heads[a])
+                extents[b] = max(extents[b], extents[a])
+    out: list[_Head] = []
+    for lock, k_start in enumerate(births):
+        if find(lock) != lock:
             continue
-        j = head.cell
-        while j - 1 >= 0 and locked[k, j - 1]:
-            j -= 1
-        best = max(best, float(fld.x_hi[head.cell] - fld.x_lo[j]))
-    return best
+        k_last, queues = last[lock]
+        k_end = max(
+            int(interval_end[k_last, c])
+            for lo, hi in queues
+            for c in range(lo, hi + 1)
+            if locked[k_last, c]
+        )
+        # a lock absorbed downstream ended in a bin before the run's last: its
+        # last queue's fronts are not its own any more
+        fronts = () if absorbed[lock] and k_last < nt - 1 else tuple(hi for _, hi in queues)
+        out.append(
+            _Head(
+                cell=heads[lock],
+                k_start=k_start,
+                k_end=k_end,
+                queue_m=extents[lock],
+                end_fronts=fronts,
+            )
+        )
+    out.sort(key=lambda h: (-h.cell, h.k_start))
+    return out, fld, locked
 
 
 # --- the run-end reader -----------------------------------------------------------
@@ -911,17 +1175,17 @@ def detect_locks(
         end_s = max(candidates) if candidates else 0.0
     sections = corridor_sections(meta)
 
-    space_time: list[tuple[_Head, _Field, NDArray[np.bool_]]] = []
+    space_time: list[tuple[_Head, _Field]] = []
     if edges is not None and len(edges):
-        heads, fld, locked = _edges_locks(edges, params)
-        space_time = [(h, fld, locked) for h in heads]
+        heads, fld, _ = _edges_locks(edges, params)
+        space_time = [(h, fld) for h in heads]
     run_end: list[_EndLock] = []
     if vehicles is not None and len(vehicles):
         run_end = _vehicle_locks(vehicles, end_s, _sample_dt(meta), params)
 
     locks: list[Lock] = []
     matched: set[int] = set()
-    for head, fld, locked in space_time:
+    for head, fld in space_time:
         x_lo, x_hi = float(fld.x_lo[head.cell]), float(fld.x_hi[head.cell])
         x_m = 0.5 * (x_lo + x_hi)
         onset = float(fld.t_lo[head.k_start])
@@ -930,12 +1194,14 @@ def detect_locks(
         n_trapped: int | None = None
         detected = [SOURCE_EDGES]
         if release is None:
+            # the front at the end may stand upstream of the head (cells near it cleared)
+            reach_lo = min([x_lo, *(float(fld.x_lo[c]) for c in head.end_fronts)])
             same = next(
                 (
                     j
                     for j, end_lock in enumerate(run_end)
                     if j not in matched
-                    and x_lo - params.head_merge_distance_m
+                    and reach_lo - params.head_merge_distance_m
                     <= end_lock.x_m
                     <= x_hi + params.head_merge_distance_m
                 ),
@@ -960,7 +1226,7 @@ def detect_locks(
                 release_s=release,
                 duration_s=(end_s if release is None else release) - onset,
                 duration_is_lower_bound=release is None,
-                queue_m=_queue_m(head, fld, locked),
+                queue_m=head.queue_m,
                 n_trapped_in_network=n_trapped,
                 n_never_departed_upstream=(
                     None if release is not None else never_departed_upstream(meta, x_m)
@@ -993,7 +1259,36 @@ def detect_locks(
             )
         )
     locks.sort(key=lambda lock: (-lock.x_m, lock.onset_s))
-    return RunLocks(sources=sources, end_s=end_s, locks=tuple(locks))
+    return split_seeded(RunLocks(sources=sources, end_s=end_s, locks=tuple(locks)), meta, params)
+
+
+def split_seeded(
+    record: RunLocks, meta: Mapping[str, Any], params: LockParams = DEFAULT_PARAMS
+) -> RunLocks:
+    """A run's record with the standstills its seeded disturbances explain moved out of its locks.
+
+    Each lock :func:`seeded_by` attributes to a window of
+    :func:`seeded_windows` (the run's ``meta.json``) goes to
+    :attr:`RunLocks.seeded_standstills` with that label; :func:`detect_locks`
+    applies it, and readers of a record stored before 2026-10-07 apply it with
+    the run's meta. A record without such a lock is returned unchanged.
+    """
+    windows = seeded_windows(meta)
+    if not windows or not record.locks or record.end_s is None:
+        return record
+    end_s = record.end_s
+    labelled = [
+        dataclasses.replace(lk, seeded_by=seeded_by(lk, windows, end_s, params))
+        for lk in record.locks
+    ]
+    moved = tuple(lk for lk in labelled if lk.seeded_by is not None)
+    if not moved:
+        return record
+    return dataclasses.replace(
+        record,
+        locks=tuple(lk for lk in labelled if lk.seeded_by is None),
+        seeded_standstills=record.seeded_standstills + moved,
+    )
 
 
 def read_edges(run_dir: str | Path) -> pd.DataFrame | None:
@@ -1079,10 +1374,13 @@ def detect_run_locks(
 
 
 def lock_flags(records: Sequence[RunLocks | None]) -> list[bool | None]:
-    """Each run's :attr:`RunLocks.locked` (None: not recorded), in order.
+    """Each run's :attr:`RunLocks.locked` (None: not recorded, or partially
+    recorded without a lock), in order.
 
     The input of the ``no_locks`` acceptance criterion
-    (``validation.criteria.evaluate(..., lock_flags=...)``).
+    (``validation.criteria.evaluate(..., lock_flags=...)``; ``lock_records=``
+    passes the records themselves, so the row can say which runs were only
+    partially recorded and which standstills were seeded).
     """
     return [None if r is None else r.locked for r in records]
 
@@ -1126,8 +1424,16 @@ def lock_summary(
         duration_s, persists_to_end, n_trapped_in_network,
         n_never_departed_upstream}]}], by_section: [{section, kind, x_end_m,
         n_runs, runs, onset_s_min, onset_s_max}], sources: {edges, vehicles},
-        params, definition}``. ``by_section`` groups locks by the section they
-        stand at (a lock at no section by its rounded ``x``), most runs first.
+        runs_partially_recorded, seeded_standstills: [{run, seeded_by,
+        section, x_m, onset_s, duration_s, persists_to_end}], params,
+        definition}``. ``by_section`` groups locks by the section they stand
+        at (a lock at no section by its rounded ``x``), most runs first.
+        ``runs_partially_recorded`` lists the recorded runs read by the
+        run-end reader alone (no ``edges.parquet``; :attr:`RunLocks.complete`):
+        a lock found there counts, but no lock found there is not "no lock",
+        so ``share_locked`` is then a lower bound. ``seeded_standstills``
+        lists the standstills explained by an imposed disturbance
+        (:attr:`RunLocks.seeded_standstills`), which are not locks.
 
     Raises:
         ValueError: ``labels`` has a different length from ``records``.
@@ -1201,6 +1507,20 @@ def lock_summary(
             SOURCE_EDGES: sum(1 for _, r in recorded if SOURCE_EDGES in r.sources),
             SOURCE_VEHICLES: sum(1 for _, r in recorded if SOURCE_VEHICLES in r.sources),
         },
+        "runs_partially_recorded": [n for n, r in recorded if r.partially_recorded],
+        "seeded_standstills": [
+            {
+                "run": name,
+                "seeded_by": s.seeded_by,
+                "section": _section_label(s),
+                "x_m": s.x_m,
+                "onset_s": s.onset_s,
+                "duration_s": s.duration_s,
+                "persists_to_end": s.persists_to_end,
+            }
+            for name, record in recorded
+            for s in record.seeded_standstills
+        ],
         "params": params.to_dict(),
         "definition": LOCK_DEFINITION,
     }

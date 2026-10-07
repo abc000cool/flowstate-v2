@@ -23,23 +23,39 @@ done
 cp -R "$TMP"/logs/. logs/pipeline_vm/ 2>/dev/null || true
 # artifacts and scenarios written by the VM (new families only; the canonical ones are untouched
 # except the heavy arm's artifact and the cap sweep)
-for f in "$TMP"/artifacts/*.json; do b=$(basename "$f"); case "$b" in
+for f in "$TMP"/artifacts/*.json; do [ -f "$f" ] || continue; b=$(basename "$f"); case "$b" in
   i24_validation_zip_*|i24_validation_flow_*|i24_validation_tracked.json|i24_validation_corrected.json|i24_validation_speedcal.json|i24_validation_ramps.json|i24_validation_speedcal_heavy.json|us101_validation_calibrated.json|i24_merge_experiment_zipper_jm.json|i24_merge_experiment_scripted.json|i24_merge_experiment_entryflow.json|i24_merge_experiment_ohlevel.json|i24_merge_experiment_heavylanes.json|demand_scale_i24_zip.json|demand_scale_i24_flow.json|i24_boundary_ramps_fit_zip.json|i24_boundary_ramps_fit_flow.json|i24_replica_inputs_zip.json|i24_replica_inputs_flow.json|demand_i24_zip.json|demand_i24_flow.json|i24_cap_sweep_summary.json|i24_sweep_summary.json|i24_merge_experiment_mergefleet.json|idm_i24_merge.json|idm_i24_capacity_equilibrium.json|validation_mndot_*|sweep_mndot_*|i24_lane_change_gaps.json|i24_critical_gaps.json|lane_change_relaxation_*|coverage_thinning_*|sweep_*_hb_summary.json|sweep_*_cc_summary.json|collisions_*_hb.json|collisions_*_cc.json|sweep_*_wp96*_summary.json|collisions_*_wp96*.json|i24_validation_dc*.json|validation_*_dc*.json|baseline_gate_*_dc.json|baseline_gate_*_dc_cal*.json|demand_scale_*_dc.json|i94_netfix_probe.json|merge_anticipation_i24.json|weave_w1b_corridor.json)
     cp "$f" artifacts/"$b"; echo "artifact $b" ;;
   *)  # not on the list: say so when it is new or differs from the repository's copy (2026-10-07 review: stage 23's
       # calibrated batteries and gate were dropped without a word)
     if [ ! -f "artifacts/$b" ] || ! cmp -s "$f" "artifacts/$b"; then echo "artifact $b NOT ingested (new or changed, not on the list; copy by hand if wanted)"; fi ;;
 esac; done
-for f in "$TMP"/scenarios/i24_replica_zip*.yaml "$TMP"/scenarios/i24_replica_flow*.yaml; do [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"; done
-# the handback re-runs' scenario copies (WP-95, stage 18: *_hb.yaml, and the US-101 boundary copies)
-for f in "$TMP"/scenarios/*_hb.yaml "$TMP"/scenarios/us101_replica_boundary_*.yaml; do [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"; done
-# the command-path re-runs' scenario copies (WP-96, stage 19: *_wp96f.yaml, *_wp96fh.yaml)
-for f in "$TMP"/scenarios/*_wp96f.yaml "$TMP"/scenarios/*_wp96fh.yaml; do [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"; done
-# stage 23's calibrated-driver scenarios (*_dc.yaml) and the I-24 demand refit (*_dc_refit.yaml; the I-24 ones also match
-# i24_replica_flow* above)
-for f in "$TMP"/scenarios/*_dc.yaml "$TMP"/scenarios/*_dc_refit.yaml; do
-  case "$(basename "$f")" in i24_replica_flow*) continue ;; esac
-  [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"
+# scenarios written by the VM: the I-24 zip/flow families; the handback re-runs' copies (WP-95, stage 18: *_hb.yaml, and
+# the US-101 boundary copies); the command-path re-runs' (WP-96, stage 19: *_wp96f.yaml, *_wp96fh.yaml); stage 23's
+# calibrated-driver scenarios (*_dc.yaml) and every variant of them (*_dc_*.yaml: the I-24 demand refit *_dc_refit,
+# p8's *_dc_cal*, p9's W1b copy *_dc_w1b; 2026-10-07 review: the W1b copy its battery names was dropped). Any other
+# scenario that is new or differs from the repository's copy is named, as the artifacts are.
+ingested_scenario() {
+  case "$1" in
+    i24_replica_zip*.yaml|i24_replica_flow*.yaml|*_hb.yaml|us101_replica_boundary_*.yaml|*_wp96f.yaml|*_wp96fh.yaml) return 0 ;;
+    *_dc.yaml|*_dc_*.yaml) return 0 ;;
+  esac
+  return 1
+}
+for f in "$TMP"/scenarios/*.yaml; do
+  [ -f "$f" ] || continue
+  b=$(basename "$f")
+  if ingested_scenario "$b"; then
+    cp "$f" scenarios/"$b"; echo "scenario $b"
+    # a copy made by sed keeps its source's header, which names the source and its config hash
+    head_name=$(head -1 "$f" | sed -n 's/^# \([A-Za-z0-9_.-]*\): .*/\1/p')
+    own_name=$(awk '/^name: /{sub(/^name: /, ""); print; exit}' "$f")
+    if [ -n "$head_name" ] && [ -n "$own_name" ] && [ "$head_name" != "$own_name" ]; then
+      echo "scenario $b: WARNING its header describes $head_name, not its own name $own_name (a copy of another scenario?): the header's provenance and config hash are not this file's; correct the header before committing"
+    fi
+  elif [ ! -f "scenarios/$b" ] || ! cmp -s "$f" "scenarios/$b"; then
+    echo "scenario $b NOT ingested (new or changed, not on the list; copy by hand if wanted)"
+  fi
 done
 # first-seed replicates (figures / lane profiles)
 [ -d "$TMP/runs/i24_validation_zip" ] && rsync -a "$TMP/runs/i24_validation_zip/" runs/i24_validation_zip/ && echo "runs: i24_validation_zip"

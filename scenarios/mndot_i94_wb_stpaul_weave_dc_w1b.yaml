@@ -1,15 +1,10 @@
-# mndot_i94_wb_stpaul_weave_xlsfg_dc: scenarios/mndot_i94_wb_stpaul_weave.yaml with the Amendment-1 driver calibration applied
-#   (docs/FRISCO_PROTOCOL.md Amendment 1, docs/DISCHARGE_CALIBRATION.md section 3).
-# Written 2026-10-07 by scripts/apply_driver_calibration.py; do not edit by hand.
-# Choice: artifacts/driver_calibration_i94.json (sha256 247a410d110c952983b0d3f665ae8d02f14777453486223bcb8adf3340868487)
-#   selection.chosen k = 1, lc_keep_right = 0.1 (outcome rule_chose_other).
-# Population: artifacts/idm_i24_capacity_amax_k1.0.json (sha256 c381e35787cedce6c2195684303e45002fae8a20726db88288a9715776a87218)
-#   mean a_max 1.4833 m/s^2 = measured mean 1.0549 + 1 x sd 0.4284.
-# Source: scenarios/mndot_i94_wb_stpaul_weave.yaml (sha256 b6aa31f4034ebf86b13527de82443bf17ea7fddd22db64975ffe1e6b22bb57fa)
-#   changed, nothing else: name, fleet.idm_calibration, fleet.lc_keep_right, and the reference
-#   configuration xlsfg (pipeline stage p1_mndot_ref): weave_params {exit_prepare: 1.0}
-#   on 2 weaving section(s), network lane_end_giveup_m 7.5, merge_params {force_guard: 1.0} on the 2 scripted merges.
-# config hash db9fbab5fc6e (policy v3).
+# mndot_i94_wb_stpaul_weave_xlsfg_dc_w1b: scenarios/mndot_i94_wb_stpaul_weave_dc.yaml (Amendment-1 drivers,
+#   reference configuration xlsfg; config hash db9fbab5fc6e) with weave amendment W1b on both weaving sections:
+#   weave_params {exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}
+#   (docs/WEAVE_LOSS_DIAGNOSIS.md section 10; corridor round section 11, pipeline stage p9_i94_w1b).
+# Written 2026-10-07 by stage p9_i94_w1b (a sed of the _dc scenario: name and the two weave_params lines only);
+#   header corrected 2026-10-07 (the stage's first version copied the _dc header unchanged).
+# config hash 159e318f17d4 (policy v3).
 name: mndot_i94_wb_stpaul_weave_xlsfg_dc_w1b
 tier: micro
 network:

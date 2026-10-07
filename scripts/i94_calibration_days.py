@@ -236,11 +236,16 @@ def derive(
     source_doc: Mapping[str, Any],
     net_path: Path,
     *,
-    carry_residuals: bool = CARRY_RESIDUALS,
+    carry_residuals: bool | None = None,
     skip_stations: Mapping[str, str] | None = None,
     ignore_ramp_detectors: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
-    """Run the demand method on the calibration days; returns (filled doc, demand, summary)."""
+    """Run the demand method on the calibration days; returns (filled doc, demand, summary).
+
+    ``carry_residuals`` None is :data:`CARRY_RESIDUALS`, read at call time.
+    """
+    if carry_residuals is None:
+        carry_residuals = CARRY_RESIDUALS
     res = calibrate_scenario(
         copy.deepcopy(dict(source_doc)),
         observations=Observations.from_json(_path(OBSERVATIONS)),
@@ -442,7 +447,51 @@ def _r(span: tuple[float, float]) -> str:
     return f"{span[0]:,.0f}-{span[1]:,.0f}"
 
 
-def _common_header(name: str, date: str, demand_sha: str, facts: Facts) -> list[str]:
+def _balance_lines(carry: bool, facts: Facts) -> tuple[list[str], list[str]]:
+    """The header's method lines and its T.H.61 NB residual lines under the balance rule used.
+
+    ``carry`` False is the protocol's §2.3 reading (the committed files);
+    True the pre-protocol carry rule docs/I94_CALIBRATION_DAYS.md §7 item 3
+    leaves to the owner (``CARRY_RESIDUALS``).
+    """
+    if not carry:
+        method = [
+            "#   = S1063, ramps close each station bracket, live ramp detectors used) with carry_residuals=False",
+            "#   (protocol section 2.3: a ramp without a usable detector takes its own segment's mainline",
+            "#   difference, as calibration.ramp_estimation does; nothing is carried into another segment).",
+        ]
+        th61 = [
+            f"#   keeps the detector; its excess over the mainline gain ({facts.th61_residual:+,.0f} veh/h, "
+            "4-h mean) stays",
+            f"#   on the mainline: the plan runs {_r(facts.plan_excess)} veh/h above the counts at "
+            "S1070-S792 (scored hours).",
+        ]
+        return method, th61
+    method = [
+        "#   = S1063, ramps close each station bracket, live ramp detectors used) with carry_residuals=True",
+        "#   (the pre-protocol carry rule, docs/I94_CALIBRATION_DAYS.md section 7 item 3: a bracket's",
+        "#   unexplained change is carried into the next bracket's closing ramp).",
+    ]
+    th61 = [
+        f"#   keeps the detector; its excess over the mainline gain ({facts.th61_residual:+,.0f} veh/h, "
+        "4-h mean, the residual",
+        "#   recorded for S1069-S1070) is carried into the next bracket's closing ramp: the plan minus",
+        f"#   the counts at S1070-S792 is {_r(facts.plan_excess)} veh/h (scored hours).",
+    ]
+    return method, th61
+
+
+def _common_header(
+    name: str, date: str, demand_sha: str, facts: Facts, carry_residuals: bool | None = None
+) -> list[str]:
+    """The provenance lines every written scenario shares.
+
+    ``carry_residuals`` is the balance rule the series were built with; None
+    reads :data:`CARRY_RESIDUALS` at call time, as :func:`derive` does, so the
+    header states the method actually used (review 2026-10-07, finding 6).
+    """
+    carry = CARRY_RESIDUALS if carry_residuals is None else carry_residuals
+    method, th61 = _balance_lines(carry, facts)
     src_hash = scenario_hash(yaml.safe_load(split_header(_path(SOURCE).read_text())[1]))
     return [
         f"# {name}: the calibrated 4-h weave scenario (Amendment-1 drivers, reference configuration",
@@ -460,17 +509,12 @@ def _common_header(name: str, date: str, demand_sha: str, facts: Facts) -> list[
         f"# Targets: {OBSERVATIONS} (sha256 {sha256_of(OBSERVATIONS)}):",
         f"#   2026-09-02, 09-03, 09-08, 09-15, 09-16 of {DAY_SPLIT} (seed 20261004), quality-masked.",
         "# Method: calibration.onboarding.calibrate_scenario (the corridor's own demand method: entry inflow",
-        "#   = S1063, ramps close each station bracket, live ramp detectors used) with carry_residuals=False",
-        "#   (protocol section 2.3: a ramp without a usable detector takes its own segment's mainline",
-        "#   difference, as calibration.ramp_estimation does; nothing is carried into another segment).",
+        *method,
         f"#   Record: {DEMAND_OUT} (sha256 {demand_sha}).",
         "# NOT applied (each needs a protocol amendment; docs/I94_CALIBRATION_DAYS.md section 3):",
         "#   T.H.61 NB entrance 53062592 from the mainline difference instead of rnd_88807. Its bracket",
         "#   closes inside calibration.data_quality's band on 4 of 5 calibration days, so section 2.3",
-        f"#   keeps the detector; its excess over the mainline gain ({facts.th61_residual:+,.0f} veh/h, "
-        "4-h mean) stays",
-        f"#   on the mainline: the plan runs {_r(facts.plan_excess)} veh/h above the counts at "
-        "S1070-S792 (scored hours).",
+        *th61,
         "#   S792 out of the demand balance (judged ok on every calibration day).",
         "# UNCERTAIN INPUTS (protocol sections 2.3 and 8.5; the sensitivity runs are not made yet):",
         "#   Mounds Blvd exit 18207912 = S1948 - S792 by window: S792 counts two of its three lanes x1.5",

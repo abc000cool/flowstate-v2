@@ -551,6 +551,86 @@ class TestRampToRampShare:
     def test_deterministic(self):
         assert self._plan(self._ramps(0.5)) == self._plan(self._ramps(0.5))
 
+    def _upstream_ramps(self, share=None, exit_b=0.4):
+        """An on-ramp U upstream of the weave entrance A (paired with exit B): U's
+        vehicles reach the weave on the mainline, as the corridor entry's do."""
+        from flowstate_core.config import RampSpec, WeaveSpec
+
+        return [
+            RampSpec(kind="on", edges=["on_u"], attach_edge="e0", name="U", inflow=[(0.0, 0.4)]),
+            RampSpec(
+                kind="on",
+                edges=["on_a"],
+                attach_edge="e1",
+                name="A",
+                inflow=[(0.0, 0.3)],
+                merge="weave",
+                weave=WeaveSpec(exit_ramp="B", ramp_to_ramp_share=share),
+            ),
+            RampSpec(
+                kind="off",
+                edges=["off_b"],
+                attach_edge="e1",
+                name="B",
+                exit_fraction=[(0.0, exit_b)],
+            ),
+            RampSpec(
+                kind="off", edges=["off_c"], attach_edge="e2", name="C", exit_fraction=[(0.0, 0.1)]
+            ),
+        ]
+
+    def _upstream_plan(self, ramps, seed=SEED):
+        return build_corridor_plan(
+            [(0.0, 0.2)],
+            self.DURATION_S,
+            FleetSpec(),
+            AVSpec(),
+            make_rng(seed),
+            ramps=ramps,
+            corridor_edges=self.CORRIDOR,
+        )
+
+    @pytest.mark.parametrize("share", [0.0, 0.9, 1.0])
+    def test_an_upstream_entrances_vehicles_are_swap_partners(self, share, tmp_path):
+        """Review 2026-10-07, finding 1: the pool held only the corridor entry's
+        vehicles, so a share the exit's volume covers was refused when part of
+        that volume came from an entrance upstream (here every window: the
+        entrance's and the corridor entry's vehicles bound for B cover about
+        0.67 of the entrants, U's add about 0.53). Now an upstream entrance's
+        vehicles are partners like the corridor entry's: each keeps its origin,
+        every leg and exit keeps its volume per window, no draw changes."""
+        from microsim.vehicles import ramp_routes
+
+        base = self._upstream_plan(self._upstream_ramps(None))
+        plan = self._upstream_plan(self._upstream_ramps(share))
+        k, j = 1, 2
+        entrants = [r for r in plan.route if r.startswith(f"on{k}")]
+        n_rr = sum(r == f"on{k}_off{j}" for r in entrants)
+        assert abs(n_rr - share * len(entrants)) <= 0.5
+        (rec,) = plan.ramp_to_ramp
+        assert rec["n_ramp_to_ramp"] == n_rr
+        assert rec["n_exit"] == sum(r.endswith(f"_off{j}") for r in base.route)
+        assert self._legs(plan) == self._legs(base)
+        for field in ("params", "is_av", "complied", "depart_s", "depart_lane", "speed_factor"):
+            assert getattr(plan, field) == getattr(base, field), field
+        # U's vehicles took part in the swap, and kept their origin
+        moved = [i for i, (a, b) in enumerate(zip(base.route, plan.route, strict=True)) if a != b]
+        assert any(base.route[i].startswith("on0") for i in moved)
+        assert all(
+            a.split("_")[0] == b.split("_")[0] for a, b in zip(base.route, plan.route, strict=True)
+        )
+        names = ramp_routes(self.CORRIDOR, self._upstream_ramps(share))
+        assert set(plan.route) <= set(names)
+        write_corridor_routes(
+            self.CORRIDOR, plan, "IDM", 0.5, tmp_path / "r.rou.xml", lanes=3, routes=names
+        )
+
+    def test_the_refusal_names_the_swap_pool(self):
+        with pytest.raises(ValueError, match="the swap pool holds only") as info:
+            self._upstream_plan(self._upstream_ramps(1.0, exit_b=0.05))
+        assert "on-ramps upstream of it" in str(info.value)
+        assert "largest feasible share" in str(info.value)
+
 
 class TestLcStrategic:
     """FleetSpec.lc_strategic → vType lcStrategic (docs/CONTRACTS.md §2)."""

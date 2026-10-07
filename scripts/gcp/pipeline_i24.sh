@@ -26,7 +26,10 @@
 #   * when an archive's file list fails (a read error, or a stop's SIGTERM killing
 #     tar in the exit trap) the fallback (artifacts, scenarios, logs only) never
 #     replaces a complete archive: beside one, locally or in the bucket, it is
-#     final_partial.tgz.
+#     final_partial.tgz. The complete archive it sits beside is an earlier
+#     stage's and is never re-uploaded as this run's final one (the exit trap's
+#     light-copy retry uses only an archive it just wrote); the watcher fetches
+#     final_partial.tgz beside final.tgz.
 #
 # Usage on the VM (from the repo root, under systemd-run so it survives logout):
 #   scripts/gcp/pipeline_i24.sh [--procs N] [--no-shutdown] [--quick] [--stages "name name ..."]
@@ -67,6 +70,8 @@ md() { curl -sf -m 10 -H Metadata-Flavor:Google "http://metadata.google.internal
 # trusts $BUCKET/final.tgz (a prefix reused while an earlier launch's archive is still there)
 if md instance/id > logs/INSTANCE_ID.part && [ -s logs/INSTANCE_ID.part ]; then mv -f logs/INSTANCE_ID.part logs/INSTANCE_ID; else rm -f logs/INSTANCE_ID.part; fi
 UPLOADED=0       # 1 when the last make_archive's bucket copy landed
+ARCHIVE_FRESH=0  # 1 when the last make_archive wrote $ARCHIVE itself (not a fallback beside an older complete one)
+PARTIAL_IN_BUCKET=0   # 1 once a fallback archive of this run reached $BUCKET/final_partial.tgz
 TERMINATING=0    # 1 once a SIGTERM (a system stop) arrived
 ARCHIVE_LIGHT="$HOME/final_light.tgz"   # the exit-time light archive, kept for the upload retry after a failed full copy
 ARCHIVE_PARTIAL="$HOME/final_partial.tgz"   # a fallback archive (artifacts, scenarios, logs) beside a complete one
@@ -82,7 +87,7 @@ upload_archive() {  # upload_archive <file> [tries] [object]: copy <file> to $BU
 }
 make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHIVE, then the optional bucket copy
   local mode="${1:-light}" tries="${2:-1}" extra=""
-  UPLOADED=0
+  UPLOADED=0; ARCHIVE_FRESH=0
   if [ "$mode" = full ]; then
     extra=$(for d in runs/i24_validation_zip/*/*/ runs/i24_validation/speedcal_heavy/*/ runs/i24_validation/dc*/*/; do ls -d "$d"*/ 2>/dev/null | sort | head -1; done)
     [ -f runs/i24_validation_zip/ring/ring_benchmark.json ] && extra="runs/i24_validation_zip/ring/ring_benchmark.json $extra"
@@ -134,7 +139,7 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   extra="$extra $(ls runs/p5/i94_netfix_probe/*/LANES.json runs/p5/i94_netfix_probe/*/*/*/*/readings.json runs/p5/i94_netfix_probe/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   if tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null; then
-    mv -f "$ARCHIVE.part" "$ARCHIVE"
+    mv -f "$ARCHIVE.part" "$ARCHIVE"; ARCHIVE_FRESH=1
     ls -la "$ARCHIVE" | awk -v m="$mode" '{print "archive (" m "):", $5, "bytes"}' | tee -a "$LOG"
     if [ -n "$BUCKET" ] && upload_archive "$ARCHIVE" "$tries"; then UPLOADED=1; fi
     return 0
@@ -148,9 +153,12 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   [ -f "$ARCHIVE" ] && dest="$ARCHIVE_PARTIAL"
   if [ -n "$BUCKET" ] && gcloud storage ls "$BUCKET/final.tgz" >/dev/null 2>&1; then object=final_partial.tgz; fi
   mv -f "$ARCHIVE.part" "$dest"
+  [ "$dest" = "$ARCHIVE" ] && ARCHIVE_FRESH=1
   ls -la "$dest" | awk -v m="$mode" '{print "archive (" m ", FALLBACK: artifacts, scenarios and logs only):", $5, "bytes"}' | tee -a "$LOG"
   [ "$dest" = "$ARCHIVE" ] || say "the complete archive $ARCHIVE is kept; the fallback is $dest"
-  if [ -n "$BUCKET" ] && upload_archive "$dest" "$tries" "$object" && [ "$object" = final.tgz ]; then UPLOADED=1; fi
+  if [ -n "$BUCKET" ] && upload_archive "$dest" "$tries" "$object"; then
+    if [ "$object" = final.tgz ]; then UPLOADED=1; else PARTIAL_IN_BUCKET=1; fi
+  fi
   return 0
 }
 self_delete() {  # self_delete [tries]: delete this instance (the compute-rw scope and the instanceAdmin grant of --self-delete)
@@ -174,10 +182,18 @@ finish() {
   # guest-side evidence of WHY the machine is going down rides along (2026-09-24: an instance
   # was deleted mid-sweep and nothing on the laptop side could say by whom)
   { sudo tail -n 50 /var/log/idle-guard.log 2>/dev/null; echo "--- journal"; sudo journalctl -n 120 --no-pager 2>/dev/null; echo "--- uptime $(uptime)"; } > logs/guest_exit.log 2>&1 || true
-  # light first (seconds: survives a systemd stop window); its copy serves the retry below
+  # light first (seconds: survives a systemd stop window); its copy serves the retry below. Only an archive this
+  # call wrote is copied: after a fallback beside an earlier stage's complete archive, $ARCHIVE is that earlier
+  # archive, which the retry would re-upload as this run's final.tgz (2026-10-07 review)
   rm -f "$ARCHIVE_LIGHT"
   tries=2; [ "$TERMINATING" -eq 1 ] && tries=1
-  make_archive light "$tries" && cp -f "$ARCHIVE" "$ARCHIVE_LIGHT" 2>/dev/null
+  if make_archive light "$tries"; then
+    if [ "$ARCHIVE_FRESH" = 1 ]; then
+      cp -f "$ARCHIVE" "$ARCHIVE_LIGHT" 2>/dev/null
+    else
+      say "the light archive fell back beside an earlier complete archive: $ARCHIVE is not this run's final archive and is not uploaded again"
+    fi
+  fi
   [ "$UPLOADED" = 1 ] && in_bucket=1
   if [ "$TERMINATING" -eq 1 ]; then
     say "system stop: light archive only"
@@ -199,6 +215,8 @@ finish() {
     # would ever delete the stopped instance; its 120 GB disk would bill until a human noticed (2026-10-07 review)
     if [ "$in_bucket" = 1 ]; then
       say "this run's archive is in $BUCKET; deleting the instance"
+    elif [ "$PARTIAL_IN_BUCKET" = 1 ]; then
+      say "NO complete archive of this run reached $BUCKET: its exit marker and newest artifacts, scenarios and logs are in $BUCKET/final_partial.tgz only, and $BUCKET/final.tgz is an earlier stage's archive (the run trees since then are lost); deleting the instance anyway: powered off it would bill its disk with nothing left to delete it"
     else
       say "NO archive of this run reached $BUCKET (the copies made after earlier stages stand); deleting the instance anyway: powered off it would bill its disk with nothing left to delete it"
     fi
@@ -1455,11 +1473,20 @@ fi
 #         --self-delete --via-bucket --data-set none --cap-min 150 --pipeline-args '--stages "p9_i94_w1b"'
 P9_W1B=scenarios/${MNDOT}_weave_dc_w1b.yaml
 if echo " $STAGES " | grep -q " p9_i94_w1b "; then
+  # the copy gets its own header: the source's names the source and its config hash (2026-10-07 review, finding 13)
   stage p9_i94_w1b bash -c "set -e; \
-    sed -e 's#^name: ${MNDOT}_weave_xlsfg_dc\$#name: ${MNDOT}_weave_xlsfg_dc_w1b#' \
-        -e 's#weave_params: {exit_prepare: 1.0}#weave_params: {exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}#' \
-        scenarios/${MNDOT}_weave_dc.yaml > $P9_W1B; \
+    { echo '# ${MNDOT}_weave_xlsfg_dc_w1b: scenarios/${MNDOT}_weave_dc.yaml with amendment W1b'; \
+      echo '#   (docs/WEAVE_LOSS_DIAGNOSIS.md section 10): entrant_giveup_m 5.0 and entrant_giveup_dwell_s 60.0 added'; \
+      echo '#   to the weave_params of both weaving sections. Written by scripts/gcp/pipeline_i24.sh stage p9_i94_w1b;'; \
+      echo '#   changed, nothing else: name and those two keys. The source header (drivers, population, reference'; \
+      echo '#   configuration) applies otherwise; the config hash of this file is recorded in its battery artifact'; \
+      echo '#   (artifacts/validation_${MNDOT}_weave_xlsfg_dc_w1b_p9.json, config_hash).'; \
+      sed -e '/^#/d' \
+          -e 's#^name: ${MNDOT}_weave_xlsfg_dc\$#name: ${MNDOT}_weave_xlsfg_dc_w1b#' \
+          -e 's#weave_params: {exit_prepare: 1.0}#weave_params: {exit_prepare: 1.0, entrant_giveup_m: 5.0, entrant_giveup_dwell_s: 60.0}#' \
+          scenarios/${MNDOT}_weave_dc.yaml; } > $P9_W1B; \
     [ \$(grep -c 'entrant_giveup_dwell_s: 60.0' $P9_W1B) -eq 2 ]; \
+    grep -qx 'name: ${MNDOT}_weave_xlsfg_dc_w1b' $P9_W1B; \
     for S in ${MNDOT}_weave_dc ${MNDOT}_weave_dc_w1b; do \
       N=\$(sed -n 's/^name: //p' scenarios/\$S.yaml | head -1); \
       $RUN scripts/corridor_battery.py --scenario scenarios/\$S.yaml --observations data/mndot/$MNDOT/observations.json \

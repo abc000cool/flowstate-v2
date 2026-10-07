@@ -10,6 +10,8 @@
 #     loses at most the stage in flight — never the completed stages. The pipeline's home is
 #     the SSH user's for an SSH launch and /root for a --via-bucket one (it runs as root
 #     there): found on the VM, or given with --remote-home;
+#   * a fallback archive the pipeline left beside a complete one (final_partial.tgz: artifacts, scenarios and logs
+#     of a stage whose complete archive failed) is fetched too, as $DEST/final_partial.tgz, never in final.tgz's place;
 #   * an archive is taken as this run's only when its logs/INSTANCE_ID is this instance's id
 #     (--instance-id, else read from the instance): a bucket prefix reused while an earlier
 #     launch's final.tgz is still there must not stand in for this run's. Archives written
@@ -47,18 +49,33 @@ done
 PROJECT=$(gcloud config get-value project 2>/dev/null)
 T0=$(date +%s); DEADLINE=$((T0 + DEADLINE_MIN * 60))
 ARCHIVE="$DEST/final.tgz"; LAST_STAMP=""
+PARTIAL="$DEST/final_partial.tgz"   # pipeline_i24.sh's fallback archive beside a complete one; kept beside it, never as it
 say() { echo "$(date -u +%FT%TZ) $*"; }
 bounded() { perl -e 'alarm shift; exec @ARGV' "$1" "${@:2}"; }   # macOS ships no `timeout`
 status() { bounded 90 gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(status)' 2>/dev/null; }
 instance_id() { bounded 90 gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(id)' 2>/dev/null; }
 ssh_cmd() { bounded 150 gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1" 2>/dev/null; }
+vm_listed() {  # vm_listed [timeout_s]: 0 the instance is listed, 1 the list call SUCCEEDED and it is absent, 2 the list call failed
+  local names
+  # the list's own status, not grep's: a failed call (auth expiry, network drop, the alarm) lists nothing, and an
+  # empty listing must not read as "deleted" (review 2026-10-07: a failed delete was reported as VM_GONE)
+  names=$(bounded "${1:-60}" gcloud compute instances list --project "$PROJECT" --format='value(name)' 2>/dev/null) || return 2
+  printf '%s\n' "$names" | grep -qx "$VM" && return 0
+  return 1
+}
 delete_vm() {
+  local listed
   if bounded 300 gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1; then
     say "VM_DELETED $VM"
-  elif ! bounded 60 gcloud compute instances list --project "$PROJECT" --format='value(name)' 2>/dev/null | grep -qx "$VM"; then
-    say "VM_GONE $VM (already deleted, e.g. by its own self-delete)"   # 2026-10-07: was reported as a failed delete
   else
-    say "VM_DELETE_FAILED (retry manually: gcloud compute instances delete $VM --zone $ZONE)"
+    vm_listed 60; listed=$?
+    if [ "$listed" -eq 1 ]; then
+      say "VM_GONE $VM (already deleted, e.g. by its own self-delete)"   # 2026-10-07: was reported as a failed delete
+    elif [ "$listed" -eq 2 ]; then
+      say "VM_DELETE_FAILED (the delete failed and the instance list could not be read either; retry manually: gcloud compute instances delete $VM --zone $ZONE)"
+    else
+      say "VM_DELETE_FAILED (retry manually: gcloud compute instances delete $VM --zone $ZONE)"
+    fi
   fi
   say "post-delete instances: $(bounded 60 gcloud compute instances list --project "$PROJECT" --format='value(name,status)' 2>/dev/null | tr '\n' ' ')"
 }
@@ -76,8 +93,31 @@ archive_complete() {  # the local archive holds the pipeline's exit marker and i
   [ -f "$ARCHIVE" ] && tar tzf "$ARCHIVE" 2>/dev/null | grep -q "logs/PIPELINE_EXIT\|logs/PIPELINE_DONE" && owner_ok "$ARCHIVE" >/dev/null
 }
 archive_stages() { [ -f "$ARCHIVE" ] && tar tzf "$ARCHIVE" 2>/dev/null | grep -o "logs/[a-z_]*\.done" | sed 's#logs/##; s#\.done##' | tr '\n' ' '; }
+take_partial() {  # take_partial <file.part> <from>: install a verified fallback archive as $PARTIAL, saying what it is
+  tar tzf "$1" >/dev/null 2>&1 && owner_ok "$1" || { rm -f "$1"; return 1; }
+  mv -f "$1" "$PARTIAL"
+  say "FETCHED_PARTIAL $(stat -f %z "$PARTIAL" 2>/dev/null || stat -c %s "$PARTIAL") bytes -> $PARTIAL from $2: a fallback archive (artifacts, scenarios and logs only) of a stage whose complete archive failed; final.tgz may be an earlier stage's [its stages: $(tar tzf "$PARTIAL" 2>/dev/null | grep -o "logs/[a-z_0-9]*\.done" | sed 's#logs/##; s#\.done##' | tr '\n' ' ')]"
+}
+fetch_partial_bucket() {  # -> 0 when $BUCKET/final_partial.tgz was pulled beside the archive
+  [ -n "$BUCKET" ] || return 1
+  bounded 600 gcloud storage cp "$BUCKET/final_partial.tgz" "$PARTIAL.part" >/dev/null 2>&1 || { rm -f "$PARTIAL.part"; return 1; }
+  take_partial "$PARTIAL.part" "$BUCKET"
+}
+fetch_partial_vm() {  # -> 0 when the VM's final_partial.tgz was pulled beside the archive (it dies with the VM otherwise)
+  local src
+  remote_home || return 1
+  ssh_cmd "sudo test -f $RHOME/final_partial.tgz" >/dev/null || return 1
+  src="$RHOME/final_partial.tgz"
+  if [ "$RHOME" = /root ]; then
+    src=/tmp/flowstate_fetch_partial.tgz
+    ssh_cmd "sudo cp /root/final_partial.tgz $src.part && sudo chmod 0644 $src.part && sudo mv -f $src.part $src" >/dev/null || return 1
+  fi
+  bounded 900 gcloud compute scp "$VM:$src" "$PARTIAL.part" --project "$PROJECT" --zone "$ZONE" --quiet 2>/dev/null || { rm -f "$PARTIAL.part"; return 1; }
+  take_partial "$PARTIAL.part" "the VM"
+}
 fetch_bucket() {  # -> 0 when the bucket copy was pulled, verified, and is not another instance's
   [ -n "$BUCKET" ] || return 1
+  fetch_partial_bucket || true
   bounded 1800 gcloud storage cp "$BUCKET/final.tgz" "$ARCHIVE.part" >/dev/null 2>&1 || { rm -f "$ARCHIVE.part"; return 1; }
   tar tzf "$ARCHIVE.part" >/dev/null 2>&1 || { rm -f "$ARCHIVE.part"; return 1; }
   owner_ok "$ARCHIVE.part" || { say "BUCKET_ARCHIVE_FOREIGN: $BUCKET/final.tgz is not this run's (a reused prefix?); not used"; rm -f "$ARCHIVE.part"; return 1; }
@@ -108,6 +148,7 @@ fetch_vm() {  # -> 0 when a newer archive was pulled over ssh (size+mtime stamp 
 }
 fetch_final() {  # after the exit marker: pull until the archive stops changing (light, then full)
   local i
+  fetch_partial_vm || true
   for i in 1 2 3 4; do fetch_vm; archive_complete && { sleep 90; fetch_vm; } ; archive_complete && return 0; sleep 60; done
   fetch_bucket && archive_complete
 }
@@ -120,9 +161,15 @@ while true; do
   now=$(date +%s)
   st=$(status)
   if [ -z "$st" ]; then
-    # an empty answer is a timeout as often as a deleted instance: confirm on the list before believing it
-    if bounded 90 gcloud compute instances list --project "$PROJECT" --format='value(name)' 2>/dev/null | grep -qx "$VM"; then say "status unknown (describe timed out)"; sleep "$POLL"; continue; fi
-    say "VM_GONE (deleted)"; fetch_bucket; exit 0
+    # an empty answer is a timeout as often as a deleted instance: confirm on the list before believing it, and
+    # only a list call that succeeded without the instance means deleted (a failed one is no answer either)
+    vm_listed 90; listed=$?
+    if [ "$listed" -eq 1 ]; then say "VM_GONE (deleted)"; fetch_bucket; exit 0; fi
+    if [ "$now" -lt "$DEADLINE" ]; then
+      if [ "$listed" -eq 0 ]; then say "status unknown (describe timed out)"; else say "status unknown (describe and list both failed)"; fi
+      sleep "$POLL"; continue
+    fi
+    # past the deadline with no answer: the deadline branch below deletes it all the same
   fi
   [ -n "$INSTANCE_ID" ] || INSTANCE_ID=$(instance_id)
   if [ "$now" -ge "$DEADLINE" ]; then
@@ -160,6 +207,7 @@ while true; do
       bounded 300 gcloud compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1
       for i in $(seq 1 20); do sleep 15; ssh_cmd "true" && break; done
       LAST_STAMP=""; fetch_vm || { sleep 60; fetch_vm; } || say "fetch after restart failed"
+      fetch_partial_vm || true
     fi
     delete_vm; exit 0
   else

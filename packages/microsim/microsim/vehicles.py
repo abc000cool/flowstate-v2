@@ -758,28 +758,39 @@ def _apply_ramp_to_ramp_shares(
     by the end of ``w`` and ``R(x) = floor(x + 1/2)`` (cumulative rounding, so
     the run's realized share is within half a vehicle of ``s · N``).
 
+    The swap partners are the vehicles that reach the weave on the mainline:
+    those of the corridor entry (``main…``) and of every on-ramp attached
+    upstream of the entrance's attach edge (``on<u>…``, 2026-10-07: before,
+    only the corridor entry's, so an upstream entrance's vehicles bound for the
+    exit were left out of the pool and of its check).
+
     * Short of ``t_w`` (the share is above the drawn split): entrants bound
-      elsewhere (``on<k>`` or ``on<k>_off<m>``) and mainline vehicles bound for
-      the exit (``main_off<j>``) of the same window are picked, spread evenly
-      over each list in departure order, and paired in order; the entrant
-      takes ``on<k>_off<j>`` and the mainline vehicle the entrant's former
-      suffix (``main`` or ``main_off<m>``).
-    * Above ``t_w``: the mirror, with mainline vehicles that pass the weave
-      bound elsewhere (``main``, or ``main_off<m>`` with ``m`` at or after the
-      entrance's attach edge).
+      elsewhere (``on<k>`` or ``on<k>_off<m>``) and partners bound for the exit
+      (``main_off<j>``, ``on<u>_off<j>``) of the same window are picked, spread
+      evenly over each list in departure order, and paired in order; the
+      entrant takes ``on<k>_off<j>`` and the partner the entrant's former
+      suffix (its own origin with ``""`` or ``_off<m>``).
+    * Above ``t_w``: the mirror, with partners that pass the weave bound
+      elsewhere (no exit, or ``_off<m>`` with ``m`` at or after the entrance's
+      attach edge).
 
     Origins, departure times and lanes, parameters and every other draw are
     untouched, and so is the window's count on every route suffix: each leg
     and each exit carries the plan's volume, and only who crosses changes
-    (docs/TH52_CROSSING_SHARE.md §7). Mainline vehicles are windowed by their
-    departure at the corridor entry, the time at which their exit fraction is
-    read (:func:`build_corridor_plan`), not by their arrival at the weave.
+    (docs/TH52_CROSSING_SHARE.md §7). Every partner keeps its origin and
+    takes an exit at or after the entrance's attach edge, which it reaches.
+    Partners are windowed by their departure (at the corridor entry or their
+    on-ramp), the time at which their exit fraction is read
+    (:func:`build_corridor_plan`), not by their arrival at the weave. No
+    random number is drawn.
 
     Raises:
-        ValueError: In some window the exit volume (entrants and mainline
-            vehicles of the window bound for the paired exit) is smaller than
-            the ramp-to-ramp volume the share asks for, or (below the drawn
-            split) too few mainline vehicles pass the weave bound elsewhere.
+        ValueError: In some window the swap pool's exit volume (the window's
+            entrants and partners bound for the paired exit — every vehicle
+            of the window bound for it, but those of an entrance attached at
+            or after the weave entrance's edge) is smaller than the
+            ramp-to-ramp volume the share asks for, or (below the drawn
+            split) too few partners pass the weave bound elsewhere.
 
     Returns:
         One record per such entrance, in ramp order (``FleetPlan.ramp_to_ramp``).
@@ -802,41 +813,58 @@ def _apply_ramp_to_ramp_shares(
         j = exits[0]
         exit_label = ramps[j].name
         entry = pos[ramp.attach_edge]
-        on_base, rr, fr = f"on{k}", f"on{k}_off{j}", f"main_off{j}"
-        passes_bound_elsewhere = {"main"} | {
-            f"main_off{m}"
+        on_base, rr, to_j = f"on{k}", f"on{k}_off{j}", f"_off{j}"
+        # the partners' origins: the corridor entry (-1) and every on-ramp
+        # attached upstream of the entrance
+        partner_origins = {-1} | {
+            u for u, r in enumerate(ramps) if r.kind == "on" and pos[r.attach_edge] < entry
+        }
+        passes_elsewhere = {""} | {
+            f"_off{m}"
             for m, r in enumerate(ramps)
             if r.kind == "off" and m != j and pos[r.attach_edge] >= entry
         }
+
+        def base_of(i: int) -> str:
+            return "main" if origin_idx[i] < 0 else f"on{origin_idx[i]}"
+
+        def suffix_of(i: int) -> str:
+            return route_list[i][len(base_of(i)) :]
+
         entrants: dict[int, list[int]] = {}
-        mainline: dict[int, list[int]] = {}
+        partners: dict[int, list[int]] = {}
         for i, t in enumerate(departs):
             w = int(t // window)
             if origin_idx[i] == k:
                 entrants.setdefault(w, []).append(i)
-            elif origin_idx[i] < 0:
-                mainline.setdefault(w, []).append(i)
+            elif origin_idx[i] in partner_origins:
+                partners.setdefault(w, []).append(i)
+        for ws in partners.values():
+            # departure order across origins (the corridor entry's alone is
+            # already in it: its ids follow its sorted departures)
+            ws.sort(key=lambda i: (departs[i], i))
         n_before = sum(route_list[i] == rr for ws in entrants.values() for i in ws)
-        n_exit = sum(
-            route_list[i] in (rr, fr) for ws in (*entrants.values(), *mainline.values()) for i in ws
+        n_exit = sum(route_list[i] == rr for ws in entrants.values() for i in ws) + sum(
+            suffix_of(i) == to_j for ws in partners.values() for i in ws
         )
         n_cum, target_cum, to_exit, from_exit = 0, 0, 0, 0
         for w in sorted(entrants):
-            ent, main = entrants[w], mainline.get(w, [])
+            ent, main = entrants[w], partners.get(w, [])
             n_cum += len(ent)
             target_prev, target_cum = target_cum, math.floor(share * n_cum + 0.5)
             target = target_cum - target_prev
             have = [i for i in ent if route_list[i] == rr]
-            to_exit_main = [i for i in main if route_list[i] == fr]
+            to_exit_main = [i for i in main if suffix_of(i) == to_j]
             t0, t1 = w * window, (w + 1) * window
             exit_volume = len(have) + len(to_exit_main)
             if target > exit_volume:
                 raise ValueError(
                     f"ramp {label}: ramp_to_ramp_share {share:g} asks {target} of the "
                     f"{len(ent)} entrants departing in [{t0:g}, {t1:g}) s to take "
-                    f"{exit_label!r}, but only {exit_volume} vehicles departing then are "
-                    "bound for it: the exit's volume must be at least the ramp-to-ramp "
-                    f"volume (largest feasible share in this window "
+                    f"{exit_label!r}, but the swap pool holds only {exit_volume} vehicles "
+                    "departing then bound for it (this entrance's, the corridor entry's and "
+                    "those of on-ramps upstream of it): the pool's exit volume must be at "
+                    "least the ramp-to-ramp volume (largest feasible share in this window "
                     f"{exit_volume / len(ent):.3f})"
                 )
             need = target - len(have)
@@ -846,21 +874,22 @@ def _apply_ramp_to_ramp_shares(
                     _spread_pick(elsewhere, need), _spread_pick(to_exit_main, need), strict=True
                 )
                 for e, m in pairs:
-                    route_list[m] = "main" + route_list[e][len(on_base) :]
+                    route_list[m] = base_of(m) + route_list[e][len(on_base) :]
                     route_list[e] = rr
                 to_exit += need
             elif need < 0:
-                through = [i for i in main if route_list[i] in passes_bound_elsewhere]
+                through = [i for i in main if suffix_of(i) in passes_elsewhere]
                 if len(through) < -need:
                     raise ValueError(
-                        f"ramp {label}: ramp_to_ramp_share {share:g} needs {-need} mainline "
-                        f"vehicles departing in [{t0:g}, {t1:g}) s that pass the weave bound "
-                        f"elsewhere to take {exit_label!r}, but only {len(through)} depart then"
+                        f"ramp {label}: ramp_to_ramp_share {share:g} needs {-need} vehicles "
+                        f"departing in [{t0:g}, {t1:g}) s from the corridor entry or an "
+                        f"on-ramp upstream of it that pass the weave bound elsewhere to take "
+                        f"{exit_label!r}, but only {len(through)} depart then"
                     )
                 pairs = zip(_spread_pick(have, -need), _spread_pick(through, -need), strict=True)
                 for e, m in pairs:
-                    route_list[e] = on_base + route_list[m][len("main") :]
-                    route_list[m] = fr
+                    route_list[e] = on_base + suffix_of(m)
+                    route_list[m] = base_of(m) + to_j
                 from_exit -= need
         n_entrants = n_cum
         n_after = sum(route_list[i] == rr for ws in entrants.values() for i in ws)

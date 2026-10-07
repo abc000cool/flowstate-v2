@@ -480,11 +480,23 @@ def lock_line(summary: dict[str, Any]) -> str:
         len(summary["seeds"]) if e["locks"] is None else len(e["locks"]["runs_not_recorded"])
         for e in cells.values()
     )
+    # read at the run's end only (vehicles.parquet, no edges.parquet): "no lock" not established
+    partial = sum(
+        0
+        if e["locks"] is None
+        else len(
+            set(e["locks"].get("runs_partially_recorded") or [])
+            - {row["run"] for row in e["locks"]["runs_locked"]}
+        )
+        for e in cells.values()
+    )
     parts = []
     if failing:
         parts.append("locked runs in " + ", ".join(failing))
     if missing:
         parts.append(f"not recorded for {missing} of {n_runs} run(s)")
+    if partial:
+        parts.append(f"partially recorded (run-end reader only) for {partial} of {n_runs} run(s)")
     status = "FAIL" if flag is False else "NOT RECORDED"
     return f"locks: {status} — " + "; ".join(parts or ["no run"])
 
@@ -601,7 +613,13 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
 
     from validation.battery import collision_count
     from validation.criteria import zero_collisions, zero_locks
-    from validation.locks import RunLocks, detect_run_locks, lock_flags, lock_summary
+    from validation.locks import (
+        RunLocks,
+        detect_run_locks,
+        lock_flags,
+        lock_summary,
+        split_seeded,
+    )
 
     manifest = json.loads((root / "MANIFEST.json").read_text())
     seeds = [int(s) for s in manifest["seeds"]]
@@ -632,8 +650,13 @@ def analyze(root: Path, summary_path: Path, *, allow_partial: bool) -> dict[str,
                 meta = json.loads(meta_path.read_text())
                 metas[cell].append(meta)
                 collisions[cell][seed] = collision_count(meta)
-                if locks[cell][seed] is None:
-                    locks[cell][seed] = detect_run_locks(p.parent, meta=meta)
+                stored_record = locks[cell][seed]
+                locks[cell][seed] = (
+                    detect_run_locks(p.parent, meta=meta)
+                    if stored_record is None
+                    # a record stored before 2026-10-07 never set its seeded standstills apart
+                    else split_seeded(stored_record, meta)
+                )
     incomplete = sorted({c for c, _ in missing})
     if missing and not allow_partial:
         raise SystemExit(

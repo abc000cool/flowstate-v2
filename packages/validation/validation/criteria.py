@@ -71,8 +71,14 @@ no discharge past a point for at least
 :data:`validation.locks.LOCK_MIN_DURATION_S` with a queue behind it):
 PASS only when every run is recorded and none locked; FAIL when any run
 locked; NOT RECORDED when no run locked but some run carries neither file the
-detector reads (``edges.parquet``, ``vehicles.parquet``) or no records were
-supplied (:func:`zero_locks`). A permanent standstill in a simulation without
+detector reads (``edges.parquet``, ``vehicles.parquet``), or only
+``vehicles.parquet`` (partially recorded: the run-end reader alone cannot see
+a lock released before the end, so its "no lock" is not established; review
+2026-10-07, finding 4), or no records were supplied (:func:`zero_locks`).
+Standstills at a seeded disturbance (a lane closure, the seeded
+perturbation; :func:`validation.locks.seeded_by`) are not locks; with
+``evaluate(..., lock_records=...)`` the row says how many it left out and
+which runs were partially recorded. A permanent standstill in a simulation without
 teleporting is a model defect (no release rule reaches the vehicle at its
 front), not a traffic outcome; every metric of a locked run includes the
 vehicles trapped behind it. It is a FlowState internal standard, not an FHWA
@@ -101,7 +107,7 @@ from dataclasses import dataclass, field
 from typing import Final, Literal
 
 from flowstate_core.constants import WAVE_SPEED_BAND_KMH
-from validation.locks import LOCK_MIN_DURATION_S
+from validation.locks import LOCK_MIN_DURATION_S, RunLocks
 from validation.waves import STACK_DETECTOR, WaveDetector
 
 #: Penetrations of the CLAUDE.md §7.1 sensitivity grid (fractions).
@@ -477,7 +483,8 @@ def zero_locks(flags: Sequence[bool | None]) -> bool | None:
     Args:
         flags: One entry per run: whether it locked
             (``validation.locks.RunLocks.locked``), or None when the run
-            carries neither file the detector reads.
+            carries neither file the detector reads or only a partial record
+            (``vehicles.parquet`` alone, no lock found: not established).
 
     Returns:
         False when any run locked (whatever the others record); otherwise
@@ -492,12 +499,22 @@ def zero_locks(flags: Sequence[bool | None]) -> bool | None:
     return True
 
 
-def _lock_row(flags: Sequence[bool | None] | None) -> CriteriaResult:
+def _lock_row(
+    flags: Sequence[bool | None] | None,
+    *,
+    partial: Sequence[bool] | None = None,
+    n_seeded: int = 0,
+) -> CriteriaResult:
     """The ``no_locks`` row (module docstring, "Model integrity: no locks").
 
     Args:
-        flags: Per-run lock flags (None for a run not recorded), or None
-            when the caller supplied none.
+        flags: Per-run lock flags (None for a run not recorded or only
+            partially recorded without a lock), or None when the caller
+            supplied none.
+        partial: Per run, whether it was partially recorded (the run-end
+            reader alone); None when unknown (flags given without records).
+        n_seeded: Standstills left out as seeded (a closure or the seeded
+            perturbation explains them); named in the detail when nonzero.
 
     Returns:
         The row: FAIL (``value`` the number of locked runs), PASS (``value``
@@ -519,28 +536,68 @@ def _lock_row(flags: Sequence[bool | None] | None) -> CriteriaResult:
     recorded = [f for f in flags if f is not None]
     n_missing = len(flags) - len(recorded)
     n_locked = sum(1 for f in recorded if f)
+    n_partial = 0 if partial is None else sum(1 for f, p in zip(flags, partial, strict=True) if p)
+    n_partial_open = (
+        0
+        if partial is None
+        else sum(1 for f, p in zip(flags, partial, strict=True) if p and f is None)
+    )
+    seeded = (
+        f"; {n_seeded} standstill(s) at a seeded disturbance (lane closure or seeded "
+        "perturbation) left out: imposed, not a model defect"
+        if n_seeded
+        else ""
+    )
     flag = zero_locks(flags)
     if flag is None:
-        why = (
-            "no runs supplied"
-            if not flags
-            else f"{n_missing} of {len(flags)} run(s) carry no lock record "
-            "(neither edges.parquet nor vehicles.parquet)"
-        )
+        if not flags:
+            why = "no runs supplied"
+        elif partial is None:
+            why = (
+                f"{n_missing} of {len(flags)} run(s) carry no lock record, or only a partial one "
+                "(neither edges.parquet nor vehicles.parquet; or vehicles.parquet alone, whose "
+                "run-end reader cannot establish that no lock occurred)"
+            )
+        else:
+            parts = []
+            if n_partial_open:
+                parts.append(
+                    f"{n_partial_open} of {len(flags)} run(s) partially recorded (vehicles.parquet "
+                    "without edges.parquet: the run-end reader alone, which cannot see a lock "
+                    "released before the run's end nor one whose last crossing vehicles are still "
+                    "in the network near it; it found no lock in them)"
+                )
+            if n_missing - n_partial_open:
+                parts.append(
+                    f"{n_missing - n_partial_open} of {len(flags)} run(s) carry no lock record "
+                    "(neither edges.parquet nor vehicles.parquet)"
+                )
+            why = "; ".join(parts)
         return CriteriaResult(
             name=NO_LOCKS,
             value=None,
             threshold=text,
             passed=False,
             evaluated=False,
-            detail=f"{NOT_RECORDED}: {why}; {NO_LOCKS_STANDARD}",
+            detail=f"{NOT_RECORDED}: {why}{seeded}; {NO_LOCKS_STANDARD}",
         )
     if flag:
-        detail = f"no lock in {len(flags)} run(s); {NO_LOCKS_STANDARD}"
+        detail = f"no lock in {len(flags)} run(s){seeded}; {NO_LOCKS_STANDARD}"
     else:
         detail = (
             f"{n_locked} of {len(recorded)} recorded run(s) locked"
             + (f"; {n_missing} run(s) not recorded" if n_missing else "")
+            + (
+                f" ({n_partial_open} of them partially recorded, no lock found)"
+                if n_partial_open
+                else ""
+            )
+            + (
+                f"; {n_partial - n_partial_open} locked run(s) read at the run's end only"
+                if n_partial - n_partial_open
+                else ""
+            )
+            + seeded
             + f"; {NO_LOCKS_STANDARD}"
         )
     return CriteriaResult(
@@ -609,6 +666,7 @@ def evaluate(
     observations_supplied: bool = False,
     collision_counts: Sequence[int | None] | None = None,
     lock_flags: Sequence[bool | None] | None = None,
+    lock_records: Sequence[RunLocks | None] | None = None,
 ) -> list[CriteriaResult]:
     """Evaluate acceptance criteria against measured values.
 
@@ -656,10 +714,22 @@ def evaluate(
             last): PASS only when every run is recorded and none locked,
             FAIL when any run locked, otherwise NOT RECORDED (also when
             ``None`` is passed: no records supplied).
+        lock_records: The runs' lock records themselves
+            (``validation.locks.RunLocks``, None for a run without one), in
+            place of ``lock_flags`` (their :attr:`~validation.locks.RunLocks.
+            locked`): the row then also says how many runs were only partially
+            recorded (the run-end reader alone, whose "no lock" is not
+            established) and how many standstills at a seeded disturbance it
+            left out.
+
+    Raises:
+        ValueError: Both ``lock_flags`` and ``lock_records`` are given.
 
     Returns:
         One :class:`CriteriaResult` per profile check, in table order.
     """
+    if lock_flags is not None and lock_records is not None:
+        raise ValueError("pass lock_flags or lock_records, not both")
     p = profile if profile is not None else CriteriaProfile()
     rows: list[CriteriaResult] = []
 
@@ -832,5 +902,14 @@ def evaluate(
 
     # Model integrity, in every profile (2026-10-04, WP-98; locks 2026-10-07).
     rows.append(_collision_row(collision_counts))
-    rows.append(_lock_row(lock_flags))
+    if lock_records is not None:
+        rows.append(
+            _lock_row(
+                [None if r is None else r.locked for r in lock_records],
+                partial=[r is not None and r.partially_recorded for r in lock_records],
+                n_seeded=sum(len(r.seeded_standstills) for r in lock_records if r is not None),
+            )
+        )
+    else:
+        rows.append(_lock_row(lock_flags))
     return rows

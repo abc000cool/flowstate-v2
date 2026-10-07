@@ -15,7 +15,15 @@ from pathlib import Path
 from typing import Annotated, Any, Final, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from flowstate_core.constants import (
     HETEROGENEITY_FRAC_DEFAULT,
@@ -401,28 +409,51 @@ class WeaveSpec(BaseModel):
     """Overrides of :data:`WEAVE_DEFAULTS`, plus the keys of
     :data:`WEAVE_OPTIONAL_KEYS` (no default; unset is off); unknown keys are
     rejected, and a key of :data:`REMOVED_WEAVE_KEYS` is refused by name."""
-    ramp_to_ramp_share: float | None = Field(
-        default=None, ge=0.0, le=1.0, exclude_if=lambda v: v is None
-    )
+    ramp_to_ramp_share: float | None = Field(default=None, ge=0.0, le=1.0)
     """Share of this entrance's vehicles that leave at the paired exit
     (``v_RR / v_ON``, the ramp-to-ramp movement; 2026-10-07,
     docs/TH52_CROSSING_SHARE.md). ``None`` (the default) keeps the plan's
     proportional split: every vehicle reaching the exit draws its
     ``exit_fraction`` alike (HCM 7th ed. ch. 13's simple weaving-volume
     estimate). When set, ``microsim.vehicles.build_corridor_plan`` swaps
-    destinations, in each 300-s window of departure, between entrants and
-    mainline vehicles bound for the paired exit (or, below the drawn share,
-    the other way), so the entrance's realized share is this value while the
-    volume of every leg and every exit is the plan's; no random number is
-    drawn, so every other draw of the run is unchanged. A window whose exit
-    volume is smaller than the ramp-to-ramp volume the share asks for is
-    refused. An unmeasured demand input carried for sensitivity and
+    destinations, in each 300-s window of departure, between entrants and the
+    vehicles that reach the weave on the mainline (those of the corridor entry
+    and of every on-ramp attached upstream of the entrance) bound for the
+    paired exit (or, below the drawn share, the other way), so the entrance's
+    realized share is this value while the volume of every leg and every exit
+    is the plan's; no random number is drawn, so every other draw of the run
+    is unchanged. A window is refused when its swap pool's exit volume (the
+    window's entrants and those mainline vehicles bound for the exit: every
+    vehicle of the window bound for it but those of an entrance attached at or
+    after this one's edge) is smaller than the ramp-to-ramp volume the share
+    asks for. An unmeasured demand input carried for sensitivity and
     uncertainty (docs/FRISCO_PROTOCOL.md Amendment 3, proposed), never a
     merge-model parameter, so it is allowed with ``merge="measured"`` too.
     Not set by any committed scenario. Hash-neutral and absent from
-    ``model_dump`` (so from ``meta.json["config"]`` and YAML) when unset;
-    the realized share is recorded in ``meta.json["ramp_to_ramp_shares"]``
-    when set."""
+    ``model_dump`` (so from ``meta.json["config"]`` and YAML) when unset
+    (:meth:`_serialize`); the realized share is recorded in
+    ``meta.json["ramp_to_ramp_shares"]`` when set."""
+
+    # No return annotation on purpose: pydantic builds a model's serialization
+    # JSON schema from its serializer's return annotation and keeps the model's
+    # own schema without one.
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        """Drop ``ramp_to_ramp_share`` from every dump while it is unset (None).
+
+        So a weave block dumps (``model_dump``, ``meta.json["config"]``, YAML)
+        exactly as before the field existed (2026-10-07). Written as a wrap
+        serializer, not ``Field(exclude_if=...)``, because ``exclude_if``
+        needs pydantic >= 2.12 while the packages declare ``pydantic>=2.10``:
+        on 2.10 and 2.11 that keyword is a deprecated extra (it lands in the
+        JSON schema, which then cannot be generated) and nothing is excluded.
+        The optional ``weave_params`` keys (:data:`WEAVE_OPTIONAL_KEYS`) need
+        no rule: they are dict keys, present only when set.
+        """
+        data = handler(self)
+        if self.ramp_to_ramp_share is None and isinstance(data, dict):
+            data.pop("ramp_to_ramp_share", None)
+        return data
 
     @model_validator(mode="after")
     def _check_params(self) -> Self:

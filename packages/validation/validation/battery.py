@@ -59,7 +59,7 @@ import pandas as pd
 
 from validation.criteria import CriteriaProfile, zero_collisions, zero_locks
 from validation.fields import speed_field
-from validation.locks import RunLocks, detect_run_locks, lock_flags
+from validation.locks import RunLocks, detect_run_locks, lock_flags, split_seeded
 from validation.metrics import (
     JOURNEYS_FILE,
     WAITING_FIELDS,
@@ -1378,7 +1378,8 @@ def load_replicate_analysis(
     meta = load_meta(path)
     stored_locks = stored.get("locks")
     locks = (
-        RunLocks.from_dict(stored_locks)
+        # a record stored before 2026-10-07 never set its seeded standstills apart
+        split_seeded(RunLocks.from_dict(stored_locks), meta)
         if isinstance(stored_locks, dict)
         else detect_run_locks(path, meta=meta)
     )

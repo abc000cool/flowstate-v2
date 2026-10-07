@@ -146,7 +146,6 @@ from validation.locks import (
     SHARE_CI_LEVEL,
     RunLocks,
     detect_run_locks,
-    lock_flags,
     lock_summary,
 )
 from validation.metrics import (
@@ -1322,6 +1321,28 @@ def _lock_context(locks: Mapping[str, Any] | None) -> dict[str, Any]:
     )
     if not_recorded:
         line += f"; not recorded for {len(not_recorded)} run(s) ({', '.join(not_recorded)})"
+    locked_runs = {str(run["run"]) for run in locks["runs_locked"]}
+    partial = [
+        str(n) for n in locks.get("runs_partially_recorded") or [] if str(n) not in locked_runs
+    ]
+    if partial:
+        line += (
+            f"; no lock established for {len(partial)} run(s) ({', '.join(partial)}): read at "
+            "the run's end only (vehicles.parquet, no edges.parquet), which cannot see a lock "
+            "released before the end, so the count is a lower bound"
+        )
+    seeded_rows = list(locks.get("seeded_standstills") or [])
+    if seeded_rows:
+        line += (
+            f". {len(seeded_rows)} standstill(s) of {minutes} min or more at a seeded disturbance "
+            "are not counted as locks: they are imposed (seeded=True), not a model defect ("
+            + "; ".join(
+                f"{row['run']} at {row['seeded_by']}, x {float(row['x_m']):.0f} m from "
+                f"{float(row['onset_s']):.0f} s"
+                for row in seeded_rows
+            )
+            + ")"
+        )
     line += "."
     rows: list[dict[str, str]] = []
     for run in locks["runs_locked"]:
@@ -1381,6 +1402,14 @@ def _lock_context(locks: Mapping[str, Any] | None) -> dict[str, Any]:
             f"Locks were not recorded for {len(not_recorded)} of {locks['n_runs']} run(s) "
             f"({', '.join(not_recorded)}); a simulation free of permanent standstills is not "
             "established for them."
+        )
+    if partial:
+        limitations.append(
+            f"Locks were read at the run's end only for {len(partial)} of {locks['n_runs']} "
+            f"run(s) ({', '.join(partial)}; vehicles.parquet without edges.parquet). That reader "
+            "cannot see a lock released before the end, nor one whose last crossing vehicles were "
+            "still in the network near the end, so where it found none a simulation free of "
+            "permanent standstills is not established."
         )
     return {
         "lock_line": line,
@@ -1888,6 +1917,15 @@ def _lock_confidence(locks: Mapping[str, Any] | None) -> dict[str, str]:
             "confident": CONFIDENT_UNKNOWN,
             "basis": f"no lock in {n_recorded} recorded run(s), but "
             f"{len(locks['runs_not_recorded'])} run(s) carry no lock record",
+        }
+    partial = list(locks.get("runs_partially_recorded") or [])  # none locked: n_locked is 0 here
+    if partial:
+        # the run-end reader alone never establishes "no lock" (review 2026-10-07, finding 4)
+        return {
+            "statement": statement,
+            "confident": CONFIDENT_UNKNOWN,
+            "basis": f"no lock found in {n_recorded} run(s), but {len(partial)} of them were "
+            "read at the run's end only, which cannot see a lock released before the end",
         }
     return {
         "statement": statement,
@@ -2449,7 +2487,7 @@ def generate_report(
         observations_supplied=observed is not None,
         # Model integrity (WP-98): every micro run of the set, every group.
         collision_counts=collision_counts([r.meta for r in micro_runs]),
-        lock_flags=lock_flags(lock_records),
+        lock_records=lock_records,
     )
     criteria_note = _wave_criterion_note(
         reference=reference,

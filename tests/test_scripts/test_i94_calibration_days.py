@@ -215,6 +215,40 @@ def test_transplant_refuses_ramps_that_do_not_line_up() -> None:
         cd.transplant(source, filled, "x")
 
 
+def _committed_header_inputs() -> tuple[list[str], str, str, Any]:
+    """The committed ``_dc_cal`` header, its date, the record's sha256 and the header facts."""
+    head = cd.split_header(_text(cd.OUT_CAL))[0]
+    date = re.search(r"# Written (\S+) by", "\n".join(head))
+    assert date is not None
+    demand = json.loads(_text(cd.DEMAND_OUT))
+    return head, date.group(1), cd.sha256_of(cd.DEMAND_OUT), cd.facts_of(demand)
+
+
+def test_the_header_states_the_balance_rule_the_constant_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review 2026-10-07, finding 6: the shared header said ``carry_residuals=False``
+    and that the T.H.61 NB excess "stays on the mainline" whatever
+    ``CARRY_RESIDUALS`` held, while docs/I94_CALIBRATION_DAYS.md §7 item 3 tells
+    the owner to flip it and rewrite. The header now reads the constant; under
+    the committed rule (False) it is the committed files' text byte for byte."""
+    head, date, demand_sha, facts = _committed_header_inputs()
+    name = str(_doc(cd.OUT_CAL)["name"])
+    assert cd.CARRY_RESIDUALS is False
+    written = cd._common_header(name, date, demand_sha, facts)
+    assert written == head[:-1]  # all but the file's own config-hash line
+    assert any("with carry_residuals=False" in line for line in written)
+
+    monkeypatch.setattr(cd, "CARRY_RESIDUALS", True)
+    carried = cd._common_header(name, date, demand_sha, facts)
+    text = "\n".join(carried)
+    assert "carry_residuals=True" in text and "carry_residuals=False" not in text
+    assert "stays" not in text and "on the mainline:" not in text
+    assert "carried into the next bracket's closing ramp" in text
+    # an explicit rule wins over the constant
+    assert cd._common_header(name, date, demand_sha, facts, carry_residuals=False) == written
+
+
 @pytest.mark.slow
 def test_the_committed_files_are_what_the_recipe_gives() -> None:
     """Two netconvert compiles (about a second each), no simulation."""

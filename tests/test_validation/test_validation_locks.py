@@ -43,7 +43,7 @@ from validation.battery import (
     lock_free,
     weave_exit_summary,
 )
-from validation.criteria import NO_LOCKS
+from validation.criteria import NO_LOCKS, evaluate
 from validation.locks import (
     LOCK_MIN_DURATION_S,
     NOT_RECORDED,
@@ -390,17 +390,17 @@ class TestRunEndReader:
 
     def test_recent_discharge_past_the_head_is_not_a_lock(self) -> None:
         # the last vehicle passed 5 minutes before the end: under the duration
-        assert detect_locks(_meta(), vehicles=_vehicles(last_crossing_s=END - 300.0)).locked is (
-            False
-        )
+        recent = detect_locks(_meta(), vehicles=_vehicles(last_crossing_s=END - 300.0))
+        # no lock found; read at the run's end only, "no lock" is not established
+        assert recent.locks == () and recent.locked is None and recent.partially_recorded
         # a vehicle from upstream is past the head at the end: it is discharging
-        assert detect_locks(_meta(), vehicles=_vehicles(discharging=True)).locked is False
+        assert detect_locks(_meta(), vehicles=_vehicles(discharging=True)).locks == ()
 
     def test_a_short_queue_is_not_a_candidate(self) -> None:
         table = _vehicles()
         queue = table.index[(~table["arrived"]) & (table["last_x_m"] < 3100.0)]
         table = table.drop(queue[9:])  # 9 vehicles left within 200 m: under 10
-        assert detect_locks(_meta(), vehicles=table).locked is False
+        assert detect_locks(_meta(), vehicles=table).locks == ()
 
 
 class TestBothReaders:
@@ -430,6 +430,247 @@ class TestBothReaders:
         on_disk = detect_run_locks(run_dir)
         assert on_disk == detect_locks(_meta(), edges=_locked_edges(), vehicles=_vehicles())
         assert RunLocks.from_dict(json.loads(json.dumps(on_disk.to_dict()))) == on_disk
+
+
+def _jam(density: np.ndarray, flow: np.ndarray, k0: int, cells: Any, k1: int = NT) -> None:
+    """Cells ``cells`` stand (jam density, no flow) over bins ``[k0, k1)``."""
+    density[k0:k1, cells] = JAM_DENSITY
+    flow[k0:k1, cells] = 0.0
+
+
+def _free(density: np.ndarray, flow: np.ndarray, cells: Any, k0: int = 0) -> None:
+    """Cells ``cells`` at free flow from bin ``k0``."""
+    density[k0:, cells] = FREE_DENSITY
+    flow[k0:, cells] = FREE_DENSITY * FREE_SPEED
+
+
+class TestOneQueueIsOneLock:
+    """Review 2026-10-07, finding 3: heads were read only at the start of each cell's
+    locked interval and merged pairwise, so one standing queue that froze in pieces
+    was several locks (the I-24 sublane probes: 4 and 6 locks for one and two standing
+    blocks), and a head cell that cleared while the queue behind it stood on read as a
+    released lock, with the run-end reader's lock at the same place added again."""
+
+    def test_a_queue_whose_standstill_runs_downstream_is_one_lock(self) -> None:
+        # the queue's upstream part stands from 900 s; the standstill then runs
+        # downstream a cell every two bins, each cell's downstream neighbour
+        # starting to stand 30 s after it (the pushy0.5 probe: 1,400 m in 105 s)
+        density, flow = _grid()
+        _jam(density, flow, 60, slice(0, 20))
+        for j in range(16):
+            _jam(density, flow, 80 + 2 * j, 20 + j)
+        density[120:, 36:] = flow[120:, 36:] = 0.0
+        (lock,) = detect_locks(_meta(), edges=_frame(density, flow)).locks
+        assert (lock.x_lo_m, lock.x_hi_m) == (3500.0, 3600.0)  # where the front ended
+        assert lock.onset_s == 60 * DT and lock.persists_to_end
+        assert lock.queue_m == 3600.0
+
+    def test_a_piece_freezing_upstream_of_the_queue_tail_is_part_of_it(self) -> None:
+        # a piece 400 m upstream of the growing queue's tail stands first and is
+        # reached by the tail two minutes later (the sublane0.8 probe's 1,750 m piece)
+        density, flow = _grid()
+        _plant_lock(density, flow)
+        _jam(density, flow, 105, slice(11, 13))
+        (lock,) = detect_locks(_meta(), edges=_frame(density, flow)).locks
+        assert (lock.x_lo_m, lock.x_hi_m, lock.onset_s) == (3000.0, 3100.0, 1200.0)
+        assert lock.persists_to_end and lock.queue_m == 3100.0
+
+    def test_a_head_cell_that_clears_while_the_queue_stands_on_is_not_a_release(self) -> None:
+        density, flow = _grid()
+        _plant_lock(density, flow)
+        density[161:, HEAD] = flow[161:, HEAD] = 0.0  # the head cell empties at 2,415 s
+        (lock,) = detect_locks(_meta(), edges=_frame(density, flow)).locks
+        assert lock.release_s is None and lock.persists_to_end
+        assert (lock.x_lo_m, lock.x_hi_m, lock.onset_s) == (3000.0, 3100.0, 1200.0)
+        assert lock.n_never_departed_upstream == 100
+        # ... and the run-end reader's lock there is the same lock, not a second one
+        both = detect_locks(_meta(), edges=_frame(density, flow), vehicles=_vehicles())
+        (lock,) = both.locks
+        assert lock.detected_by == (SOURCE_EDGES, SOURCE_VEHICLES) and lock.x_m == FRONT_X
+
+    def test_two_queues_apart_are_two_locks(self) -> None:
+        density, flow = _grid()
+        _plant_lock(density, flow, head=45)
+        _free(density, flow, slice(0, 40))  # its queue stays 600 m long
+        for j in range(11):  # a second queue behind a head at 3,100 m from 1,350 s
+            _jam(density, flow, 90 + math.ceil(j * DX / QUEUE_GROWTH_MS / DT), HEAD - j)
+        run = detect_locks(_meta(), edges=_frame(density, flow))
+        assert [(lk.x_hi_m, lk.onset_s, lk.persists_to_end) for lk in run.locks] == [
+            (4600.0, 1200.0, True),
+            (3100.0, 1350.0, True),
+        ]
+
+    def test_a_lock_that_stood_on_its_own_before_a_queue_reached_it_stays_a_lock(
+        self,
+    ) -> None:
+        # a head at 3,100 m stands from 900 s; the queue of a lock at 4,600 m
+        # (from 1,200 s) reaches it 705 s later, more than the lock duration
+        density, flow = _grid()
+        _plant_lock(density, flow, head=45)
+        for j in range(HEAD + 1):
+            _jam(density, flow, 60 + math.ceil(j * DX / QUEUE_GROWTH_MS / DT), HEAD - j)
+        run = detect_locks(_meta(), edges=_frame(density, flow))
+        assert [(lk.x_hi_m, lk.onset_s, lk.persists_to_end) for lk in run.locks] == [
+            (4600.0, 1200.0, True),
+            (3100.0, 900.0, True),  # it stands on, behind the other's queue
+        ]
+
+
+class TestPartiallyRecorded:
+    """Review 2026-10-07, finding 4: a run with vehicles.parquet alone counted as
+    recorded, so no_locks could PASS (and the report say 'confident: yes') on the
+    run-end reader, which cannot see a released lock or one whose last crossing
+    vehicles are still in the network near the end. Such a run is partially
+    recorded: a lock it finds counts, but its "no lock" is not established."""
+
+    def test_the_record_says_partially_recorded_and_never_unlocked(self) -> None:
+        run = detect_locks(_meta(), vehicles=_vehicles(last_crossing_s=END - 300.0))
+        assert run.recorded and not run.complete and run.partially_recorded
+        assert run.locks == () and run.locked is None
+        assert run.to_dict()["locked"] is None and run.to_dict()["n_locks"] == 0
+        assert lock_flags([run]) == [None] and lock_free([run]) is None
+        # a lock it does find counts
+        assert detect_locks(_meta(), vehicles=_vehicles()).locked is True
+        # with the space-time table the run is completely recorded
+        full = detect_locks(_meta(), edges=_frame(*_grid()), vehicles=_vehicles(discharging=True))
+        assert full.complete and full.locked is False
+        block = lock_summary([run, full], labels=["a", "b"])
+        assert block is not None and block["runs_partially_recorded"] == ["a"]
+
+    def test_the_criterion_row_is_not_recorded_and_says_why(self) -> None:
+        run = detect_locks(_meta(), vehicles=_vehicles(last_crossing_s=END - 300.0))
+        full = detect_locks(_meta(), edges=_frame(*_grid()))
+        row = next(r for r in evaluate(lock_records=[run, full]) if r.name == NO_LOCKS)
+        assert row.status == "NOT RECORDED" and not row.passed
+        assert "1 of 2 run(s) partially recorded (vehicles.parquet without edges.parquet" in (
+            row.detail
+        )
+        assert "carry no lock record" not in row.detail
+        # a lock found by the run-end reader alone still fails the set
+        locked = detect_locks(_meta(), vehicles=_vehicles())
+        row = next(r for r in evaluate(lock_records=[locked, run]) if r.name == NO_LOCKS)
+        assert row.status == "FAIL" and "1 of 1 recorded run(s) locked" in row.detail
+        assert "partially recorded, no lock found" in row.detail
+        with pytest.raises(ValueError, match="not both"):
+            evaluate(lock_flags=[False], lock_records=[full])
+
+    def test_the_report_is_not_confident_on_run_end_evidence(self, tmp_path: Path) -> None:
+        root = tmp_path / "runs"
+        for seed in (1, 2):
+            run_dir = _write_run(root / "cafe01234567" / str(seed), seed=seed)
+            meta = json.loads((run_dir / "meta.json").read_text())
+            meta.update({k: v for k, v in _meta().items() if k != "config"})
+            meta["n_collisions"], meta["collisions"] = 0, []
+            (run_dir / "meta.json").write_text(json.dumps(meta))
+            _vehicles(last_crossing_s=END - 300.0).to_parquet(run_dir / "vehicles.parquet")
+        out = tmp_path / "report" / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        criteria = next(ln for ln in text.splitlines() if ln.startswith(f"| {NO_LOCKS} |"))
+        assert "NOT RECORDED" in criteria and "partially recorded" in criteria
+        assert "PASS" not in criteria
+        assert "| No permanent standstill (gridlock) in any run | not established |" in text
+        assert "| No permanent standstill (gridlock) in any run | yes |" not in text
+        assert "no lock established for 2 run(s)" in _section(text, "## Model integrity")
+        assert any(
+            item.startswith("Locks were read at the run's end only") for item in _limitations(text)
+        )
+
+
+#: A full closure on the head's cell for 20 min (a work zone or incident, seeded=True).
+CLOSURE = {
+    "label": "incident",
+    "start_m": 3100.0,
+    "end_m": 3300.0,
+    "lanes": [0, 1, 2, 3],
+    "t_start_s": 1200.0,
+    "t_end_s": 2400.0,
+}
+
+
+class TestSeededDisturbances:
+    """Review 2026-10-07, finding 5: a supported LaneClosureSpec closing every lane (or
+    a long seeded stop) for 10 min or more was scored a lock, a model defect. A
+    standstill an imposed disturbance explains is a seeded standstill, not a lock;
+    one standing on for the lock duration after the closure is lifted still is."""
+
+    @staticmethod
+    def _closure_meta(where: str = "meta") -> dict[str, Any]:
+        meta = _meta(seeded=True)
+        if where == "meta":  # the runner's record, on the run's own axis
+            meta["closures"] = [{**CLOSURE, "x_lo_m": 3100.0, "x_hi_m": 3300.0}]
+        else:  # an older meta: the config's block only
+            meta["config"] = {**meta["config"], "closures": [CLOSURE]}
+        return meta
+
+    @staticmethod
+    def _cleared_after_the_closure() -> pd.DataFrame:
+        density, flow = _grid()
+        _plant_lock(density, flow, k1=ONSET_K + 81)  # stands 1,200-2,415 s, then discharges
+        return _frame(density, flow)
+
+    @pytest.mark.parametrize("where", ["meta", "config"])
+    def test_a_closure_standstill_is_seeded_not_a_lock(self, where: str) -> None:
+        run = detect_locks(self._closure_meta(where), edges=self._cleared_after_the_closure())
+        assert run.locks == () and run.locked is False
+        (standstill,) = run.seeded_standstills
+        assert standstill.seeded_by == "closure incident"
+        assert (standstill.x_hi_m, standstill.onset_s, standstill.release_s) == (
+            3100.0,
+            1200.0,
+            2415.0,
+        )
+        assert RunLocks.from_dict(json.loads(json.dumps(run.to_dict()))) == run
+        row = next(r for r in evaluate(lock_records=[run]) if r.name == NO_LOCKS)
+        assert row.status == "PASS"
+        assert "1 standstill(s) at a seeded disturbance" in row.detail
+        block = lock_summary([run], labels=["r"])
+        assert block is not None and block["n_runs_locked"] == 0
+        assert block["seeded_standstills"][0]["seeded_by"] == "closure incident"
+        # without the closure the same field is a lock
+        assert detect_locks(_meta(), edges=self._cleared_after_the_closure()).locked is True
+
+    def test_standing_on_after_the_closure_is_lifted_is_a_lock(self) -> None:
+        # the queue never discharges: 20 min of standstill after the closure's end
+        run = detect_locks(self._closure_meta(), edges=_locked_edges())
+        assert run.locked is True and run.seeded_standstills == ()
+
+    def test_a_long_seeded_stop_is_seeded(self) -> None:
+        meta = _meta(seeded=True)
+        meta["config"] = {
+            **meta["config"],
+            "perturbation": {"t_s": 1150.0, "position_m": 100.0, "duration_s": 1300.0},
+        }
+        run = detect_locks(meta, edges=self._cleared_after_the_closure())
+        assert run.locks == () and run.seeded_standstills[0].seeded_by == "perturbation"
+
+    def test_a_stored_record_is_split_with_the_runs_meta(self, tmp_path: Path) -> None:
+        old = detect_locks(_meta(), edges=self._cleared_after_the_closure())
+        assert old.locked is True  # as a record stored before the split reads
+        run = _stored_replicate(tmp_path / "r", stored=old.to_dict())
+        (run / "meta.json").write_text(json.dumps(self._closure_meta()))
+        locks = load_replicate_analysis(run).locks
+        assert locks is not None and locks.locked is False
+        assert locks.seeded_standstills[0].seeded_by == "closure incident"
+
+    def test_the_report_names_it_and_raises_no_failure(self, tmp_path: Path) -> None:
+        root = tmp_path / "runs"
+        run_dir = _write_run(root / "cafe01234567" / "1", seed=1)
+        meta = json.loads((run_dir / "meta.json").read_text())
+        meta.update({k: v for k, v in self._closure_meta().items() if k != "config"})
+        meta["n_collisions"], meta["collisions"] = 0, []
+        (run_dir / "meta.json").write_text(json.dumps(meta))
+        self._cleared_after_the_closure().to_parquet(run_dir / "edges.parquet")
+        out = tmp_path / "report" / "report.md"
+        generate_report(root, out)
+        text = out.read_text()
+        assert "MODEL INTEGRITY FAILURE" not in text
+        section = _section(text, "## Model integrity")
+        assert "- Locks: 0 of 1 run(s) locked" in section
+        assert "1 standstill(s) of 10 min or more at a seeded disturbance" in section
+        assert "cafe01234567/1 at closure incident" in section
+        criteria = next(ln for ln in text.splitlines() if ln.startswith(f"| {NO_LOCKS} |"))
+        assert "PASS" in criteria and "seeded disturbance" in criteria
 
 
 class TestSectionsAndCounts:
