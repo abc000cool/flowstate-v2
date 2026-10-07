@@ -27,6 +27,23 @@ the split (rightmost lanes to a right exit, the rest continuing;
 :func:`connection_patch_lines`) or ``--ramps.unset <edge>`` when the wrong
 lane was added by ramp guessing (:func:`ramps_unset_edges`).
 
+**The side alone is not enough** (docs/I94_LANE_SHARES.md §4, 2026-10-07). At
+the I-94 WB 6th Street LEFT exit OSM tags the way ``slight_left;through|none|none``
+(three lanes, the left one an option lane) and the mainline keeps its three
+lanes past the exit; ``--ramps.guess`` added a deceleration lane on the RIGHT
+and left the old left lane leading only to the exit. The exit was compiled on
+the correct side, so the side check passed it, but every through lane moved
+one place left and through traffic in the left lane was trapped. A split whose
+side is right is therefore also checked lane by lane
+(:func:`trapped_through_lanes`): every lane OSM draws as continuing (by its
+``turn:lanes`` entry, or — with no tag and a lane the guessing added on the
+side opposite the exit — because the mainline keeps its OSM lane count past
+the exit) must still reach the continuing edge. One that leads only to the
+exit is ``through_lane_exit_only``; when ramp guessing added the lane
+(``added_lane``) the remedy is ``--ramps.unset <edge>``, else a connection
+patch. Where the guessed lane went is read from the connections into the
+edge from the corridor edge upstream (:func:`added_lane_side`).
+
 Importable without SUMO running: ``sumolib`` reads the compiled net, the OSM
 extract is a light XML parse.
 """
@@ -48,10 +65,12 @@ from microsim.networks import expand_ramp_splits
 
 Side = Literal["left", "right", "unknown"]
 CompiledSide = Literal["rightmost", "leftmost", "middle", "all"]
-Verdict = Literal["ok", "wrong_side", "added_lane_wrong_side", "unknown"]
+Verdict = Literal["ok", "wrong_side", "added_lane_wrong_side", "through_lane_exit_only", "unknown"]
 
 #: The verdicts that mean the compiled split traps through traffic.
-DEFECT_VERDICTS: frozenset[str] = frozenset({"wrong_side", "added_lane_wrong_side"})
+DEFECT_VERDICTS: frozenset[str] = frozenset(
+    {"wrong_side", "added_lane_wrong_side", "through_lane_exit_only"}
+)
 
 #: How far along the link (from the split node) its nodes are sampled for
 #: the lateral offset [m]. A link is drawn parallel to the mainline for its
@@ -477,6 +496,130 @@ def compiled_side(from_lanes: Iterable[int], n_lanes: int) -> CompiledSide:
     return "middle"
 
 
+def added_lane_side(fan: dict[int, set[int]], n_upstream: int, n_lanes: int) -> Side:
+    """The side on which an edge gained lanes over the corridor edge feeding it.
+
+    Args:
+        fan: Upstream lane → the edge's lanes it connects to (SUMO lane 0 =
+            rightmost on both).
+        n_upstream: Lane count of the upstream edge.
+        n_lanes: Lane count of the edge.
+
+    Returns:
+        ``right`` when every upstream lane keeps its place counted from the
+        left (the new lanes are on the right: ``--ramps.guess`` in SUMO
+        1.27.1 fans upstream lane 0 out into lanes 0 and 1, for a left exit
+        too), ``left`` when every upstream lane keeps its place counted from
+        the right, ``unknown`` when the edge gained no lane, the upstream edge
+        does not connect to every lane position, or neither reading holds.
+    """
+    gained = n_lanes - n_upstream
+    if gained <= 0 or not fan or set(fan) != set(range(n_upstream)):
+        return "unknown"
+    if any(not targets for targets in fan.values()):
+        return "unknown"
+    left_aligned = all(max(fan[lane]) == lane + gained for lane in fan)
+    right_aligned = all(min(fan[lane]) == lane for lane in fan)
+    if left_aligned and not right_aligned:
+        return "right"
+    if right_aligned and not left_aligned:
+        return "left"
+    return "unknown"
+
+
+def _osm_lane_index(n_compiled: int, n_osm: int, added: Side) -> list[int] | None:
+    """Compiled lane index of each OSM lane, OSM lanes listed left to right.
+
+    Equal counts map one to one; with lanes added on the right the OSM lanes
+    are the leftmost ``n_osm`` compiled lanes, with lanes added on the left the
+    rightmost. ``None`` when the mapping is not known (more compiled lanes on
+    an unknown side, or fewer compiled lanes than OSM draws).
+    """
+    if n_osm < 1:
+        return None
+    if n_compiled == n_osm or (n_compiled > n_osm and added == "left"):
+        offset = 0
+    elif n_compiled > n_osm and added == "right":
+        offset = n_compiled - n_osm
+    else:
+        return None
+    return [offset + n_osm - 1 - p for p in range(n_osm)]
+
+
+def _tag_continues(lane_tag: str) -> bool | None:
+    """Whether one ``turn:lanes`` entry draws its lane as continuing straight on.
+
+    A lane continues when its entry has ``through`` or no turn at all
+    (``none``, empty); an entry that only turns (``slight_right``,
+    ``left``, ...) is an exit or turn lane, and one that ends the lane
+    (``merge_to_left`` / ``merge_to_right``) says nothing here (``None``).
+    """
+    parts = {p.strip() for p in lane_tag.split(";")}
+    if any(p.startswith("merge_to") for p in parts):
+        return None
+    turns = any("left" in p or "right" in p or p == "reverse" for p in parts)
+    return "through" in parts or not turns
+
+
+def trapped_through_lanes(
+    *,
+    exit_side: Side,
+    turn_lanes: str | None,
+    osm_lanes: int | None,
+    osm_continuing_lanes: int | None,
+    compiled_lanes: int,
+    added_side: Side,
+    continuing_from_lanes: Iterable[int],
+) -> tuple[tuple[int, ...], str]:
+    """Compiled lanes OSM draws as continuing that do not reach the continuing edge.
+
+    Which OSM lanes continue: the way's ``turn:lanes`` entries when the tag
+    lists ``osm_lanes`` lanes (:func:`_tag_continues`); without such a tag,
+    every lane when a lane was added on the side opposite the exit and the
+    continuing way has at least as many lanes as this one (no lane of the
+    road ends at the exit, so none may lead only to it); otherwise nothing is
+    judged. The OSM lanes are placed on the compiled edge by
+    :func:`_osm_lane_index` (ramp guessing's added lane on ``added_side``).
+
+    Args:
+        exit_side: The side the exit leaves on (``left`` / ``right``).
+        turn_lanes: The way's raw ``turn:lanes`` tag.
+        osm_lanes: The way's ``lanes`` tag.
+        osm_continuing_lanes: The ``lanes`` tag of the way past the split.
+        compiled_lanes: Lane count of the compiled edge.
+        added_side: :func:`added_lane_side` of the compiled edge.
+        continuing_from_lanes: The compiled edge's lanes that connect to the
+            continuing corridor edge.
+
+    Returns:
+        ``(trapped compiled lanes, sorted; the evidence used)`` — the
+        evidence is ``"turn:lanes"``, ``"lane count"`` or ``""`` when nothing
+        was judged.
+    """
+    if exit_side not in ("left", "right") or osm_lanes is None:
+        return (), ""
+    index = _osm_lane_index(compiled_lanes, osm_lanes, added_side)
+    if index is None:
+        return (), ""
+    entries = turn_lanes.split("|") if turn_lanes else []
+    continues: list[bool | None]
+    if len(entries) == osm_lanes:
+        continues = [_tag_continues(entry) for entry in entries]
+        evidence = "turn:lanes"
+    elif (
+        added_side not in ("unknown", exit_side)
+        and osm_continuing_lanes is not None
+        and osm_continuing_lanes >= osm_lanes
+    ):
+        continues = [True] * osm_lanes
+        evidence = "lane count"
+    else:
+        return (), ""
+    reach = set(continuing_from_lanes)
+    trapped = sorted(index[p] for p, flag in enumerate(continues) if flag and index[p] not in reach)
+    return tuple(trapped), evidence if trapped else ""
+
+
 @dataclass(frozen=True)
 class SplitFinding:
     """One diverge from a corridor edge, audited (module docstring).
@@ -503,6 +646,14 @@ class SplitFinding:
         continuing_lanes: Lane count of the continuing edge, when there is one.
         verdict: :data:`Verdict`.
         remedy: What fixes it, in the engine's terms; empty when ``ok``.
+        added_lane_side: Side on which the compiled edge gained lanes over
+            the corridor edge feeding it (:func:`added_lane_side`);
+            ``unknown`` when it gained none or the connections do not say.
+        trapped_lanes: Compiled lanes OSM draws as continuing that lead only
+            to the exit (:func:`trapped_through_lanes`); non-empty exactly
+            when the verdict is ``through_lane_exit_only``.
+        trapped_evidence: What said those lanes continue: ``turn:lanes`` or
+            ``lane count`` (empty when none is trapped).
     """
 
     from_edge: str
@@ -529,6 +680,9 @@ class SplitFinding:
     Internal (not in :meth:`as_dict`): a connection patch restating another
     exit of the same edge repeats these, since netconvert drops every
     computed connection of an edge that a patch names."""
+    added_lane_side: Side = "unknown"
+    trapped_lanes: tuple[int, ...] = ()
+    trapped_evidence: str = ""
 
     @property
     def is_defect(self) -> bool:
@@ -577,15 +731,51 @@ class SplitFinding:
             "continuing_lanes": self.continuing_lanes,
             "verdict": self.verdict,
             "remedy": self.remedy,
+            "added_lane_side": self.added_lane_side,
+            "trapped_lanes": list(self.trapped_lanes),
+            "trapped_evidence": self.trapped_evidence,
         }
 
 
-def _verdict(expected: Side, side: CompiledSide, added_lane: bool) -> tuple[Verdict, str]:
-    """Verdict and its remedy from the expected side and the compiled side."""
+def _verdict(
+    expected: Side,
+    side: CompiledSide,
+    added_lane: bool,
+    trapped: Sequence[int] = (),
+    evidence: str = "",
+    edge: str = "<edge>",
+    guessed: bool = False,
+) -> tuple[Verdict, str]:
+    """Verdict and its remedy from the expected side, the compiled side and trapped lanes.
+
+    The side is judged first; a split on the right side whose lanes OSM draws
+    as continuing lead only to the exit (``trapped``) is
+    ``through_lane_exit_only``, remedied by ``--ramps.unset <edge>`` when
+    ramp guessing made the edge (``guessed``: a lane over the OSM tag, or a
+    ramp-split piece), else by a connection patch.
+    """
     if expected == "unknown":
         return "unknown", "no continuing mainline way found in the extract; check by hand"
     if side == "all" or side == expected + "most":
-        return "ok", ""
+        if not trapped:
+            return "ok", ""
+        lanes = ",".join(str(i) for i in trapped)
+        what = (
+            f"lane(s) {lanes} lead only to the exit although OSM draws them continuing "
+            f"(by {evidence or 'the map'})"
+        )
+        if guessed:
+            return (
+                "through_lane_exit_only",
+                f"{what}: ramp guessing added a lane and shifted the through lanes; add "
+                f"`--ramps.unset {edge}` to netconvert_extra (scripts/onboard_corridor.py "
+                "applies it), then re-audit",
+            )
+        return (
+            "through_lane_exit_only",
+            f"{what}: restate the split with an OSMNetwork.patch_files connection patch "
+            "(scripts/onboard_corridor.py --write-split-patch writes it)",
+        )
     if added_lane:
         return (
             "added_lane_wrong_side",
@@ -636,6 +826,16 @@ def audit_splits(
             {c.getFromLane().getIndex() for c in outgoing[cont_edge]} if cont_edge else set()
         )
         from_way = graph.ways.get(osm_way_id(edge_id))
+        # Where the edge gained lanes over the corridor edge feeding it (ramp
+        # guessing's deceleration lane, or an auxiliary lane from upstream).
+        gained: Side = "unknown"
+        if i > 0:
+            upstream = net.getEdge(chain[i - 1])
+            fan: dict[int, set[int]] = {}
+            for c in upstream.getOutgoing().get(edge, []):
+                fan.setdefault(c.getFromLane().getIndex(), set()).add(c.getToLane().getIndex())
+            gained = added_lane_side(fan, int(upstream.getLaneNumber()), n_lanes)
+        cont_way = graph.ways.get(osm_way_id(continuing)) if continuing else None
         for to_edge, conns in outgoing.items():
             if to_edge.getID() in chain_set:
                 continue
@@ -661,7 +861,27 @@ def audit_splits(
             added = osm_lanes is not None and n_lanes > osm_lanes
             where = compiled_side(exit_lanes, n_lanes)
             expected: Side = side if side != "unknown" else (reading.side if reading else "unknown")
-            verdict, remedy = _verdict(expected, where, added)
+            trapped: tuple[int, ...] = ()
+            evidence = ""
+            if cont_edge is not None:
+                trapped, evidence = trapped_through_lanes(
+                    exit_side=expected,
+                    turn_lanes=tag,
+                    osm_lanes=osm_lanes,
+                    osm_continuing_lanes=cont_way.lanes if cont_way is not None else None,
+                    compiled_lanes=n_lanes,
+                    added_side=gained,
+                    continuing_from_lanes=cont_lanes,
+                )
+            verdict, remedy = _verdict(
+                expected,
+                where,
+                added,
+                trapped,
+                evidence,
+                load_time_edge_id(edge_id),
+                guessed=added or edge_id != load_time_edge_id(edge_id),
+            )
             findings.append(
                 SplitFinding(
                     from_edge=edge_id,
@@ -688,6 +908,9 @@ def audit_splits(
                             (c.getFromLane().getIndex(), c.getToLane().getIndex()) for c in conns
                         )
                     ),
+                    added_lane_side=gained,
+                    trapped_lanes=trapped if verdict == "through_lane_exit_only" else (),
+                    trapped_evidence=evidence if verdict == "through_lane_exit_only" else "",
                 )
             )
     return findings
@@ -698,19 +921,31 @@ def split_defects(findings: Iterable[SplitFinding]) -> list[SplitFinding]:
     return [f for f in findings if f.is_defect]
 
 
+def _unset_remedy(finding: SplitFinding) -> bool:
+    """A ``through_lane_exit_only`` finding whose lane ramp guessing added."""
+    return finding.verdict == "through_lane_exit_only" and (
+        finding.added_lane or finding.is_ramp_split_piece
+    )
+
+
 def ramps_unset_edges(findings: Iterable[SplitFinding]) -> list[str]:
     """Load-time edge ids ``--ramps.unset`` must name.
 
-    The ``added_lane_wrong_side`` findings, and every ``wrong_side`` finding
-    on a ramp-split piece: its patch names the load-time edge with the
-    load-time lane count (:attr:`SplitFinding.load_time_lanes`), and ramp
-    guessing would otherwise rebuild the piece over the patched connections
-    and move the exit again.
+    The ``added_lane_wrong_side`` findings, every ``through_lane_exit_only``
+    finding on an edge that gained a lane over its OSM tag (the guessed lane
+    shifted the through lanes; unset, netconvert maps the lanes as drawn —
+    docs/I94_LANE_SHARES.md §4), and every ``wrong_side`` finding on a
+    ramp-split piece: its patch names the load-time edge with the load-time
+    lane count (:attr:`SplitFinding.load_time_lanes`), and ramp guessing would
+    otherwise rebuild the piece over the patched connections and move the exit
+    again.
     """
     out: list[str] = []
     for f in findings:
-        if f.verdict == "added_lane_wrong_side" or (
-            f.verdict == "wrong_side" and f.is_ramp_split_piece
+        if (
+            f.verdict == "added_lane_wrong_side"
+            or _unset_remedy(f)
+            or (f.verdict == "wrong_side" and f.is_ramp_split_piece)
         ):
             edge = load_time_edge_id(f.from_edge)
             if edge not in out:
@@ -793,9 +1028,12 @@ def split_patch_xml(findings: Iterable[SplitFinding], *, note: str = "") -> str:
     ``note`` are collapsed.
 
     Args:
-        findings: Audit findings; only ``wrong_side`` ones are restated
-            (``added_lane_wrong_side`` is fixed by ``--ramps.unset``, see
-            :func:`ramps_unset_edges`).
+        findings: Audit findings; ``wrong_side`` ones are restated, and
+            ``through_lane_exit_only`` ones on an edge with no added lane
+            (:func:`connection_patch_lines` keeps the option lanes the tag
+            draws). ``added_lane_wrong_side`` and the
+            ``through_lane_exit_only`` findings ramp guessing caused are fixed
+            by ``--ramps.unset``, see :func:`ramps_unset_edges`.
         note: Optional provenance line for the file's comment.
 
     Returns:
@@ -804,7 +1042,10 @@ def split_patch_xml(findings: Iterable[SplitFinding], *, note: str = "") -> str:
     all_findings = list(findings)
     lines: list[str] = []
     for f in all_findings:
-        if f.verdict != "wrong_side":
+        if not (
+            f.verdict == "wrong_side"
+            or (f.verdict == "through_lane_exit_only" and not _unset_remedy(f))
+        ):
             continue
         lines += connection_patch_lines(f)
         # A piece's added lane is its lane 0 (netconvert 1.27.1 puts the

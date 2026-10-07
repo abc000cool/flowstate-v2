@@ -1053,10 +1053,12 @@ class CorridorLaneMismatchOut(BaseModel):
 class CorridorSplitFindingOut(BaseModel):
     """One exit leaving the corridor, audited: the side OSM draws it on versus
     the lanes the compiled network feeds it from (``microsim.split_audit``,
-    docs/ONBOARDING_MNDOT.md §9). A ``wrong_side`` or ``added_lane_wrong_side``
-    verdict means through traffic is trapped in a lane that leads only to the
-    exit; the ``remedy`` names the fix in the engine's terms. Reported, never
-    enforced, like the lane check."""
+    docs/ONBOARDING_MNDOT.md §9). A ``wrong_side``, ``added_lane_wrong_side`` or
+    ``through_lane_exit_only`` verdict means through traffic is trapped in a lane
+    that leads only to the exit (the last: a lane OSM draws as continuing,
+    ``trapped_lanes``, compiled exit-only — docs/I94_LANE_SHARES.md §4); the
+    ``remedy`` names the fix in the engine's terms. Reported, never enforced,
+    like the lane check."""
 
     from_edge: str
     exit_edge: str
@@ -1077,8 +1079,18 @@ class CorridorSplitFindingOut(BaseModel):
     added_lane: bool
     exit_lanes: int
     continuing_lanes: int | None = None
-    verdict: Literal["ok", "wrong_side", "added_lane_wrong_side", "unknown"]
+    verdict: Literal[
+        "ok", "wrong_side", "added_lane_wrong_side", "through_lane_exit_only", "unknown"
+    ]
     remedy: str = ""
+    added_lane_side: Literal["left", "right", "unknown"] = "unknown"
+    """Side on which the compiled edge gained lanes over the corridor edge
+    feeding it (additive, 2026-10-07)."""
+    trapped_lanes: list[int] = Field(default_factory=list)
+    """Compiled lanes the map draws as continuing that lead only to the exit
+    (``through_lane_exit_only``; additive, 2026-10-07)."""
+    trapped_evidence: str = ""
+    """``turn:lanes`` or ``lane count``: what says those lanes continue."""
 
 
 class CorridorSummaryOut(BaseModel):

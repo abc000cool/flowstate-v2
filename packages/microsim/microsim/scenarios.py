@@ -646,7 +646,8 @@ class CorridorBuild:
         split_audit_before_fixes: The audit the fixes were derived from;
             ``None`` when no fix was applied (the two audits are then one).
         split_fixes_applied: Defects the fixes addressed (``wrong_side`` by
-            the connection patch, ``added_lane_wrong_side`` by
+            the connection patch, ``added_lane_wrong_side`` and a
+            ``through_lane_exit_only`` that ramp guessing caused by
             ``--ramps.unset``); 0 when none were needed or fixes were off.
         split_fixes: Whether fixes were asked for (``corridor_from_bbox``'s
             ``split_fixes``); the summary says ``off`` when not.
@@ -680,7 +681,7 @@ class CorridorBuild:
         self.config.to_yaml(path)
 
     def split_defects(self) -> list[SplitFinding]:
-        """The audited splits compiled on the wrong side (``wrong_side`` / ``added_lane_wrong_side``)."""
+        """The audited splits that trap through traffic (:data:`microsim.split_audit.DEFECT_VERDICTS`)."""
         return split_defects(self.split_audit)
 
     @property
@@ -1029,7 +1030,8 @@ def corridor_from_bbox(
     7. **Split audit and fixes** — every exit leaving the chain is audited
        for the side it was compiled on (:func:`microsim.split_audit.audit_splits`);
        with ``split_fixes`` (the default) a ``wrong_side`` /
-       ``added_lane_wrong_side`` finding is fixed by :func:`apply_split_fixes`
+       ``added_lane_wrong_side`` / ``through_lane_exit_only`` finding is
+       fixed by :func:`apply_split_fixes`
        — the connection patch written beside the extract
        (:func:`default_split_patch_path`, or ``split_patch_path``) and
        ``--ramps.unset`` added — the network re-imported and audited again.
@@ -1241,10 +1243,13 @@ def apply_split_fixes(
 ) -> CorridorBuild:
     """Write the remedies the split audit named into the scenario and re-audit.
 
-    ``wrong_side`` findings become a connection patch
+    ``wrong_side`` findings (and ``through_lane_exit_only`` ones on an edge
+    ramp guessing did not widen) become a connection patch
     (:func:`microsim.split_audit.split_patch_xml`) written at ``patch_path``
     and added to ``OSMNetwork.patch_files``; ``added_lane_wrong_side``
-    findings add ``--ramps.unset <edge>`` to ``netconvert_extra``. The
+    findings and ``through_lane_exit_only`` findings ramp guessing caused add
+    ``--ramps.unset <edge>`` to ``netconvert_extra``
+    (:func:`microsim.split_audit.ramps_unset_edges`). The
     network is then re-imported with the fixes into the build's own net
     directory (the one the runner rebuilds from the scenario anyway) and
     audited again, so the returned build states what the scenario will

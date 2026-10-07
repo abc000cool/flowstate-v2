@@ -837,6 +837,8 @@ def build_observed_lanes(
     exclude_detectors: list[str],
     allow_fetch: bool,
     mndot_corridor: str | None = None,
+    reverse_lane_order: list[str] | None = None,
+    remap_reversed: bool = False,
 ) -> dict[str, Any]:
     """Observed per-lane shares at the selected mainline stations, calibration days.
 
@@ -850,6 +852,21 @@ def build_observed_lanes(
     lane's flow is the mean of its detectors with a reading, and the
     cross-section counts only when every lane has one. Shares are of the summed
     flows over the counted date-windows.
+
+    Lane order (docs/I94_LANE_SHARES.md §3): the IRIS labels are used as they
+    are unless a station is named in ``reverse_lane_order`` (a reviewer's
+    correction, as the 3240 exclusion is) or ``remap_reversed`` is set and the
+    data-quality report found the station's labels reversed with strong
+    evidence (``lane_order`` verdict ``reversed``); such a station's IRIS lane k
+    is read as lane ``lanes + 1 - k``. Both are opt-in: the grid's targets were
+    fixed in advance, so a remap is a recorded correction, never a silent one.
+    Every station records the report's lane-order verdict and whether its
+    labels were remapped, and the artifact lists stations the report flagged
+    that were not remapped.
+
+    Raises:
+        ValueError: ``remap_reversed`` without a quality report, or a station
+            in ``reverse_lane_order`` that is not in the selection.
     """
     from calibration.conservation import normalize_date
     from calibration.data_quality import QualityVerdicts, mask_frame
@@ -870,6 +887,15 @@ def build_observed_lanes(
     for node in corr.nodes:
         for d in node.detectors:
             lane_of[d.name] = int(d.lane)
+    reviewer = sorted({str(x) for x in (reverse_lane_order or [])})
+    if unknown := [x for x in reviewer if x not in station_ids]:
+        raise ValueError(f"reverse_lane_order names {unknown}, not stations of the selection")
+    if remap_reversed and quality is None:
+        raise ValueError("remap_reversed needs the data-quality report (quality)")
+    verdicts = QualityVerdicts.from_json(quality) if quality is not None else None
+    from_report = (
+        set(verdicts.lanes_reversed) if (verdicts is not None and remap_reversed) else set()
+    )
     frame = lane_frame(
         config,
         corr.name,
@@ -882,10 +908,10 @@ def build_observed_lanes(
         exclude_detectors=exclude_detectors,
     )
     quality_rec: dict[str, Any] | None = None
-    if quality is not None:
+    if verdicts is not None:
         fm = mask_frame(
             frame,
-            QualityVerdicts.from_json(quality),
+            verdicts,
             dates=dates,
             start_s=win["local_start_s"],
             end_s=win["local_end_s"],
@@ -899,20 +925,42 @@ def build_observed_lanes(
     frame = frame[inside].copy()
     excluded = set(exclude_detectors)
     stations_out = []
+    not_remapped: list[str] = []
     for sid in station_ids:
         st = corr.station(sid)
         dets = [d for d in st.detectors if d not in excluded]
         numbers = sorted({lane_of[d] for d in dets})
+        expected = list(range(1, int(st.lanes) + 1))
+        check = (verdicts.lane_order.get(sid) or {}) if verdicts is not None else {}
+        flip = (sid in reviewer or sid in from_report) and numbers == expected
+        n_lanes = int(st.lanes)
+
+        def lane_no(det: str, flip: bool = flip, n_lanes: int = n_lanes) -> int:
+            return n_lanes + 1 - lane_of[det] if flip else lane_of[det]
+
+        if check.get("verdict") in ("reversed", "uncertain") and not flip:
+            not_remapped.append(f"{sid} ({check.get('verdict')})")
         rec: dict[str, Any] = {
             "id": sid,
             "x_m": x_of.get(sid),
-            "lanes": int(st.lanes),
+            "lanes": n_lanes,
             "detectors_by_lane": {
-                str(n): sorted(d for d in dets if lane_of[d] == n) for n in numbers
+                str(n): sorted(d for d in dets if lane_no(d) == n)
+                for n in sorted({lane_no(d) for d in dets})
             },
             "excluded_detectors": sorted(d for d in st.detectors if d in excluded),
+            "lane_order": {
+                "iris_labels_reversed": flip,
+                "by": (
+                    "reviewer (--reverse-lane-order)"
+                    if flip and sid in reviewer
+                    else "data-quality report (lane_order: reversed; --remap-reversed-lanes)"
+                    if flip
+                    else None
+                ),
+                "quality_check": check.get("verdict"),
+            },
         }
-        expected = list(range(1, int(st.lanes) + 1))
         reason = None
         if sid not in x_of:
             reason = "no position on the simulated chain in the observations"
@@ -922,7 +970,7 @@ def build_observed_lanes(
         totals: dict[str, float] = {}
         if reason is None:
             sub = frame[frame["station"] == sid].copy()
-            sub["lane_no"] = sub["lane"].map(lane_of)
+            sub["lane_no"] = sub["lane"].map(lane_no)
             per = sub.groupby(["timestamp", "lane_no"])["flow_veh_h"].mean().unstack("lane_no")
             per = per.reindex(columns=expected)
             ok = per.notna().all(axis=1)
@@ -948,6 +996,15 @@ def build_observed_lanes(
         "schema": OBSERVED_LANES_SCHEMA,
         "corridor": corr.name,
         "lane_numbering": "IRIS: 1 = rightmost lane; SUMO lane = IRIS lane - 1",
+        "lane_order": {
+            "reversed_by_reviewer": reviewer,
+            "remap_reversed": bool(remap_reversed),
+            "reversed_by_report": sorted(from_report),
+            "flagged_not_remapped": not_remapped,
+            "rule": "a station whose labels are reversed is read as lane k -> lanes + 1 - k; "
+            "only stations named by the reviewer, or found reversed by the data-quality report "
+            "when remap_reversed is set (docs/I94_LANE_SHARES.md section 3)",
+        },
         "window": {
             "local": win["local"],
             "local_start_s": win["local_start_s"],
@@ -971,6 +1028,8 @@ def build_observed_lanes(
             "day_split_sha256": file_sha256(day_split),
             "observations": _rel(str(spec.observations)),
             "exclude_detectors": sorted(excluded),
+            "reverse_lane_order": reviewer,
+            "remap_reversed_lanes": bool(remap_reversed),
             "n_rows": len(frame),
             "frame_sha256": frame_sha256(frame),
         },
@@ -1553,6 +1612,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-fetch", action="store_true", help="download detector-days missing from the cache"
     )
     obs.add_argument("--mndot-corridor", default=None, help="default: the observations' corridor")
+    obs.add_argument(
+        "--reverse-lane-order",
+        default="",
+        help="comma-separated stations whose IRIS lane labels are read reversed (a reviewer's "
+        "correction, e.g. S791: docs/I94_LANE_SHARES.md section 3)",
+    )
+    obs.add_argument(
+        "--remap-reversed-lanes",
+        action="store_true",
+        help="also read reversed every station the --quality report's lane-order check found "
+        "reversed with strong evidence (off by default: the grid's targets were fixed in advance)",
+    )
     return ap
 
 
@@ -1581,6 +1652,8 @@ def main(argv: list[str] | None = None) -> int:
             exclude_detectors=[d.strip() for d in args.exclude_detectors.split(",") if d.strip()],
             allow_fetch=bool(args.allow_fetch),
             mndot_corridor=args.mndot_corridor,
+            reverse_lane_order=[x.strip() for x in args.reverse_lane_order.split(",") if x.strip()],
+            remap_reversed=bool(args.remap_reversed_lanes),
         )
         _write_json(args.build_observed_lanes, payload)
         for st in payload["stations"]:
@@ -1588,6 +1661,11 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"  {st['id']:<6} lanes {st['lanes']} usable {st['usable']} shares (lane 1 = right) {sh}"
                 + (f"  ({st['reason']})" if st["reason"] else "")
+            )
+        for flagged in payload["lane_order"]["flagged_not_remapped"]:
+            print(
+                f"  NOTE: the data-quality report flags the lane order of {flagged}; its labels "
+                "were used as IRIS gives them (--reverse-lane-order / --remap-reversed-lanes)"
             )
         print(f"-> {args.build_observed_lanes}")
         return 0

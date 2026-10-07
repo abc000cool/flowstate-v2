@@ -2572,6 +2572,46 @@ link the extract does not carry is `unknown`; a lane guessing added under
 `--ramps.no-split` (no piece) on a way without a `lanes` tag cannot be told
 from a mapped lane.
 
+**Split audit, lane by lane — 2026-10-07** (docs/I94_LANE_SHARES.md §4). A
+split on the right side is also checked lane by lane: every lane OSM draws as
+continuing (its `turn:lanes` entry has `through` or no turn; with no tag,
+every lane when the mainline keeps its OSM lane count and a lane was added on
+the side opposite the exit) must reach the continuing edge. OSM lanes are
+placed on the compiled edge one to one, or — on an edge that gained lanes —
+on the side away from the added ones (`added_lane_side`, read from the
+upstream corridor edge's connections: ramp guessing fans upstream lane 0 out
+into lanes 0 and 1, for a left exit too). A trapped lane is verdict
+`through_lane_exit_only` (a defect): remedy `--ramps.unset <edge>` when ramp
+guessing widened the edge (`ramps_unset_edges`), else the connection patch
+(`split_patch_xml` restates it with the tag's option lanes). New
+`SplitFinding` / `CorridorSplitFindingOut` fields, additive with defaults:
+`added_lane_side`, `trapped_lanes`, `trapped_evidence` (`turn:lanes` / `lane
+count`). On the committed I-94 WB extract without fixes the audit now
+reports three defects (the 6th Street exit `45782590-AddedOffRampEdge →
+42165869`, lane 3 of 4, besides the two above), and the onboarding fixes add
+`--ramps.unset 45782590,1001426896`. The dashboard's `SplitVerdict` type and
+defect badge (`frontend/src/api/types.ts`, `SplitAuditTable.tsx`) predate the
+verdict.
+
+**Detector data quality: lane order — 2026-10-07.** Check `lane_order`
+(`calibration.data_quality.lane_order_check`, run by `assess_quality` on
+per-lane data): each station's 5-minute lane-share series correlated with the
+same-numbered and the mirrored lanes of the nearest station on either side
+with the same lane count; `reversed` (strong: mirrored against every read
+neighbour, those anchored, both supporting signatures — free-flow occupancy
+per vehicle and light-traffic share, lane 1 against the last lane —
+opposite) makes the station's sensor-days `suspect` with nothing masked and
+lists it in the report's `lane_order.lanes_reversed`; `uncertain` is flagged,
+never listed; `not_checkable` (no comparable neighbour, incomplete numbering)
+is no finding. New report key `lane_order` (`method`, `stations`,
+`lanes_reversed`); `QualityVerdicts.lane_order` / `.lanes_reversed` read it
+(empty for older reports). Lane numbers: `assess_quality(lane_numbers=)`;
+`CorridorInputs.lane_numbers` gives the IRIS lanes in MnDOT per-lane mode
+(`calibration.loaders.mndot_lanes.iris_lane_numbers`). Nothing remaps
+automatically: `scripts/calibrate_driver_grid.py --build-observed-lanes`
+reads a station reversed only with `--reverse-lane-order S…` or
+`--remap-reversed-lanes` (the report's `lanes_reversed`), and records it.
+
 **Onboarding defaults: ramp guessing and split fixes — 2026-09-24.** Every
 onboarding (`microsim.scenarios.corridor_from_bbox`, so
 `scripts/onboard_corridor.py` and `POST /corridors`) compiles with

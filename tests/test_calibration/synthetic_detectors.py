@@ -307,3 +307,144 @@ def drop_rows(frame: pd.DataFrame, *, station: str, date: str) -> pd.DataFrame:
     out = frame.loc[keep].reset_index(drop=True)
     out.attrs = dict(frame.attrs)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Lane order (data_quality.lane_order_check)
+# ---------------------------------------------------------------------------
+
+LANE_ORDER_STATIONS: tuple[tuple[str, float, int], ...] = (
+    ("S1", 0.0, 3),
+    ("S2", 800.0, 3),
+    ("S3", 1600.0, 3),
+    ("W", 2000.0, 4),
+    ("S4", 2400.0, 3),
+    ("S5", 3200.0, 3),
+)
+"""``(station, x_m, lanes)``: five three-lane stations and one four-lane
+station (``W``) that no other station matches."""
+
+#: Free-flow speed [m/s] and effective vehicle length [m] by lane, lane 1 the
+#: rightmost: the right lane slower and carrying the trucks, so its occupancy
+#: per vehicle is the highest (docs/I94_LANE_SHARES.md §3).
+_LANE_SPEED_MS: tuple[float, ...] = (26.0, 28.0, 30.0, 31.0)
+_LANE_LENGTH_M: tuple[float, ...] = (8.0, 6.5, 6.0, 6.0)
+
+
+def lane_shares_at(u: np.ndarray, lanes: int, offset: float = 0.0) -> np.ndarray:
+    """Lane shares (lane 1 = rightmost first) at per-lane flow ``u`` (fraction of 2,000 veh/h).
+
+    Light traffic keeps right; as the flow rises it spreads to the inner lanes —
+    the shared lane-use pattern the lane-order check reads.
+    """
+    right = (1.86 - 1.35 * u) / lanes + offset
+    left = (0.30 + 1.20 * u) / lanes - offset / 2.0
+    if lanes == 2:
+        out = np.stack([right + 0.15, 1.0 - right - 0.15])
+    else:
+        middle = (1.0 - right - left) / (lanes - 2)
+        out = np.stack([right, *([middle] * (lanes - 2)), left])
+    clipped: np.ndarray = np.clip(out, 0.02, None)
+    return clipped / clipped.sum(axis=0)
+
+
+def lane_order_frame(
+    *,
+    seed: int = 0,
+    dates: Sequence[str] = DATES[:3],
+    interval_s: float = 30.0,
+    start_h: float = 5.0,
+    end_h: float = 11.0,
+    reversed_stations: Sequence[str] = (),
+    stations: Sequence[tuple[str, float, int]] = LANE_ORDER_STATIONS,
+    lane_ids: str = "number",
+) -> pd.DataFrame:
+    """A per-lane frame (30-s by default) whose lane use follows :func:`lane_shares_at`.
+
+    Args:
+        seed: RNG seed.
+        dates: Local dates.
+        interval_s: Window [s].
+        start_h: First local hour.
+        end_h: Local hour the span ends before.
+        reversed_stations: Stations whose lane labels are reversed (lane k
+            reported as lane n + 1 − k: counts, occupancy and speed move
+            together, as with a mislabelled loop).
+        stations: ``(station, x_m, lanes)`` rows.
+        lane_ids: ``"number"`` (lane ids 1..n, a generic per-lane CSV) or
+            ``"detector"`` (detector names ``<station>d<k>``, MnDOT-style;
+            :func:`lane_order_numbers` gives the true numbering).
+
+    Returns:
+        The frame, ``attrs["interval_s"]`` set.
+    """
+    rng = np.random.default_rng(seed)
+    n = round((end_h - start_h) * 3600.0 / interval_s)
+    t = start_h * 3600.0 + (np.arange(n) + 0.5) * interval_s
+    to_veh = interval_s / 3600.0
+    frames: list[pd.DataFrame] = []
+    for date in dates:
+        midnight = datetime.fromisoformat(date).replace(tzinfo=TZ)
+        stamps = [midnight + timedelta(seconds=start_h * 3600.0 + k * interval_s) for k in range(n)]
+        day = float(rng.uniform(0.92, 1.08))
+        base = mainline_profile(t) * day
+        for station, x_m, lanes in stations:
+            q = base * (1.0 + 0.15 * (lanes - 3))
+            u = np.clip(q / lanes / 2000.0, 0.0, 1.0)
+            shares = lane_shares_at(u, lanes, offset=float(rng.uniform(-0.03, 0.03)))
+            total = rng.poisson(q * to_veh)
+            counts = np.zeros((lanes, n), dtype=np.int64)
+            remaining = total.copy()
+            left_share = np.ones(n)
+            for k in range(lanes - 1):
+                p = np.clip(shares[k] / left_share, 0.0, 1.0)
+                counts[k] = rng.binomial(remaining, p)
+                remaining = remaining - counts[k]
+                left_share = left_share - shares[k]
+            counts[lanes - 1] = remaining
+            slow = 1.0 - 0.35 * u
+            for k in range(lanes):
+                v = _LANE_SPEED_MS[k] * slow + rng.normal(0.0, 0.5, n)
+                flow = counts[k] / to_veh
+                occ = flow / 3600.0 * _LANE_LENGTH_M[k] / v * 100.0
+                label = lanes - k if station in reversed_stations else k + 1
+                lane = str(label) if lane_ids == "number" else f"{station}d{label}"
+                frames.append(
+                    pd.DataFrame(
+                        {
+                            "timestamp": stamps,
+                            "station": station,
+                            "flow_veh_h": flow.astype(float),
+                            "occupancy_pct": occ,
+                            "speed_ms": np.where(counts[k] > 0, v, np.nan),
+                            "lanes": 1,
+                            "kind": "mainline",
+                            "x_m": x_m,
+                            "lane": lane,
+                        }
+                    )
+                )
+    frame = pd.concat(frames, ignore_index=True)
+    frame.attrs["interval_s"] = float(interval_s)
+    return frame
+
+
+def lane_order_numbers(
+    stations: Sequence[tuple[str, float, int]] = LANE_ORDER_STATIONS,
+) -> dict[str, int]:
+    """Sensor id → lane number for :func:`lane_order_frame`'s ``lane_ids="detector"``."""
+    return {
+        f"{station}:{station}d{k}": k for station, _, lanes in stations for k in range(1, lanes + 1)
+    }
+
+
+def lane_order_stations_table(
+    stations: Sequence[tuple[str, float, int]] = LANE_ORDER_STATIONS,
+) -> pd.DataFrame:
+    """The stations table of :func:`lane_order_frame` (positions, kinds, lane counts)."""
+    return pd.DataFrame(
+        [
+            {"station": s, "label": s, "x_m": x, "lanes": lanes, "kind": "mainline"}
+            for s, x, lanes in stations
+        ]
+    )

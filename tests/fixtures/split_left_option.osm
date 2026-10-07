@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A three-lane mainline heading east with a RIGHT exit at node 2 and a LEFT
+     exit at node 3, both tagged as option lanes, for the split audit's lane
+     check (microsim.split_audit.trapped_through_lanes; docs/I94_LANE_SHARES.md
+     section 4). Way 501 carries the I-94 WB 6th Street tag
+     slight_left;through|none|none: the left lane both exits and continues, and
+     the mainline keeps three lanes past the exit. netconvert's ramp guessing
+     adds the deceleration lane of a left exit on the RIGHT and makes the old
+     left lane exit-only; way 500's right exit (none|none|through;slight_right)
+     gets its guessed lane on its own side and keeps every through lane.
+     Travelling east, right is south (lower latitude) and left is north. Nodes
+     0.006 deg apart ~ 510 m. -->
+<osm version="0.6" generator="hand-written-test-fixture">
+  <node id="1" lat="40.0000" lon="-96.0000"/>
+  <node id="2" lat="40.0000" lon="-95.9940"/>
+  <node id="3" lat="40.0000" lon="-95.9880"/>
+  <node id="4" lat="40.0000" lon="-95.9820"/>
+  <node id="20" lat="39.9994" lon="-95.9900"/>
+  <node id="21" lat="39.9985" lon="-95.9860"/>
+  <node id="30" lat="40.0006" lon="-95.9840"/>
+  <node id="31" lat="40.0015" lon="-95.9800"/>
+  <way id="500">
+    <nd ref="1"/><nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="turn:lanes" v="none|none|through;slight_right"/>
+  </way>
+  <way id="501">
+    <nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+    <tag k="turn:lanes" v="slight_left;through|none|none"/>
+  </way>
+  <way id="502">
+    <nd ref="3"/><nd ref="4"/>
+    <tag k="highway" v="motorway"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="3"/>
+  </way>
+  <way id="600">
+    <nd ref="2"/><nd ref="20"/><nd ref="21"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+  <way id="601">
+    <nd ref="3"/><nd ref="30"/><nd ref="31"/>
+    <tag k="highway" v="motorway_link"/>
+    <tag k="oneway" v="yes"/>
+    <tag k="lanes" v="1"/>
+  </way>
+</osm>

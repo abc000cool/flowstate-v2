@@ -66,6 +66,29 @@ grid, :func:`mask_frame` to a tidy frame (the observed targets are masked this
 way before they are averaged over dates, docs/FRISCO_PROTOCOL.md §2.2);
 :class:`QualityVerdicts` reads them from a report or from its JSON.
 
+**Lane order.** A station whose detector lane labels are out of order passes
+every check above: its counts are good, only filed under the wrong lane (the
+I-94 WB station S791, whose loop labelled lane 1 reads the leftmost lane —
+docs/I94_LANE_SHARES.md §3). Lane use is not independent from one station to
+the next: as the flow rises traffic spreads from the outer lanes to the inner
+ones and back, so a station's per-lane share series rises and falls with the
+same-numbered lanes of its neighbours and against the mirrored ones. The
+check (``lane_order``, :func:`lane_order_check`) correlates every per-lane
+station's share series with those of the nearest station on either side that
+has the same lane count (5-minute windows, pooled over the dates): a station
+that reads *mirrored* against every neighbour it can be read against, where
+those neighbours are themselves anchored (two of them, or one that agrees
+with a third station), and whose two supporting signatures — occupancy per
+vehicle and the share of light traffic, lane 1 against the last lane — both
+point the other way from the neighbours', is ``reversed``. Its sensor-days
+are ``suspect`` with nothing masked (the counts are good) and the report
+records ``lanes_reversed`` so a consumer may remap lane k to lane n + 1 − k;
+nothing here remaps. A mirrored reading short of that is ``uncertain`` —
+flagged, never remapped. A station with no comparable neighbour is ``not
+checkable``, which is not a pass. Lane numbers come from the source
+(``lane_numbers``: the IRIS lane of each MnDOT detector, 1 = rightmost) or, for
+a generic per-lane CSV, from lane ids that are the numbers 1..n.
+
 **Mass balance.** After masking, consecutive mainline stations are compared
 with the ramps between them (:mod:`calibration.conservation`): per period the
 residual ``q_down − q_up − Σ q_on + Σ q_off`` and its share of the upstream
@@ -90,7 +113,7 @@ import warnings
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -138,6 +161,7 @@ CHECKS: Final[tuple[str, ...]] = (
     "implied_length",
     "day_outlier",
     "lane_imbalance",
+    "lane_order",
     "mass_balance_pattern",
 )
 """Every check, in the order it runs."""
@@ -374,6 +398,36 @@ Reason: in light traffic lane use is uneven by choice, not by fault."""
 LANE_MIN_TESTED_S: Final[float] = 3600.0
 """Tested windows a station-day needs before the lane check judges it [s]."""
 
+LANE_ORDER_WINDOW_S: Final[float] = 300.0
+"""Window over which the lane-order check forms lane shares [s]; finer data
+are summed to it. Reason: a 30-s window carries a handful of vehicles per lane,
+whose shares are noise; five minutes is the standard reporting window."""
+
+LANE_ORDER_MIN_VEH: Final[float] = 60.0
+"""Vehicles a station must count in a window for its lane shares to enter the
+lane-order correlation. Reason: a lane share's binomial standard deviation is
+then at most √(0.25/60) ≈ 6.5 percentage points, below the 10–30 point swing
+of lane use between light and heavy traffic the check reads."""
+
+LANE_ORDER_MIN_WINDOWS: Final[int] = 48
+"""Windows (pooled over dates) a pair of stations must share, and windows a
+supporting signature needs, before either is read. Reason: four hours of
+5-minute windows; a correlation of 0 over 48 windows has a standard error of
+1/√48 ≈ 0.14."""
+
+LANE_ORDER_MIN_CORRELATION: Final[float] = 0.3
+"""Mean correlation a pair's reading (same-numbered or mirrored lanes) must
+reach, and the margin by which it must exceed the other reading. Reason: two
+standard errors of a zero correlation over 48 windows; the shared lane-use
+pattern of a freeway corridor reads 0.6-0.9 (docs/I94_LANE_SHARES.md §3)."""
+
+LANE_ORDER_MIN_CONTRAST: Final[float] = 0.10
+"""Relative difference between lane 1 and the last lane below which a
+supporting signature (occupancy per vehicle, light-traffic share) gives no
+direction. Reason (convention): loop sensitivities differ by about this much
+(the IRIS field lengths of one station's loops differ by up to 15 %), which is
+why these signatures only support the correlation and never decide alone."""
+
 MASS_BALANCE_MIN_EVALUATED_SHARE: Final[float] = 0.5
 """Share of a day's periods that must be complete for a segment's balance to
 be judged that day."""
@@ -434,6 +488,11 @@ class QualityThresholds:
     lane_ratio_exclude_band: tuple[float, float] = LANE_RATIO_EXCLUDE_BAND
     lane_min_flow_veh_h_lane: float = LANE_MIN_FLOW_VEH_H_LANE
     lane_min_tested_s: float = LANE_MIN_TESTED_S
+    lane_order_window_s: float = LANE_ORDER_WINDOW_S
+    lane_order_min_veh: float = LANE_ORDER_MIN_VEH
+    lane_order_min_windows: int = LANE_ORDER_MIN_WINDOWS
+    lane_order_min_correlation: float = LANE_ORDER_MIN_CORRELATION
+    lane_order_min_contrast: float = LANE_ORDER_MIN_CONTRAST
     mass_balance_min_evaluated_share: float = MASS_BALANCE_MIN_EVALUATED_SHARE
     mass_balance_persistent_share: float = MASS_BALANCE_PERSISTENT_SHARE
     attribution_ratio_band: tuple[float, float] = ATTRIBUTION_RATIO_BAND
@@ -490,6 +549,11 @@ THRESHOLD_SOURCES: Final[dict[str, str]] = {
     "lane_ratio_exclude_band": "convention: a factor 3",
     "lane_min_flow_veh_h_lane": "light traffic uses lanes unevenly by choice",
     "lane_min_tested_s": "one hour of tested windows",
+    "lane_order_window_s": "5-min shares: a 30-s window holds a handful of vehicles per lane",
+    "lane_order_min_veh": "binomial sd of a share <= 6.5 pp at 60 vehicles",
+    "lane_order_min_windows": "4 h of 5-min windows: sd of a zero correlation 0.14",
+    "lane_order_min_correlation": "two standard errors of a zero correlation over 48 windows",
+    "lane_order_min_contrast": "convention: loop sensitivities differ by about 10-15 %",
     "mass_balance_min_evaluated_share": "half the day's periods complete",
     "mass_balance_persistent_share": "half the evaluated days",
     "attribution_ratio_band": "a miscount shifts both neighbours by the same amount",
@@ -525,6 +589,12 @@ CHECK_DESCRIPTIONS: Final[dict[str, str]] = {
         "factor divided out"
     ),
     "lane_imbalance": "a lane's flow against the mean of the station's other lanes",
+    "lane_order": (
+        "the station's lane labels against its neighbours': per-lane shares correlate with the "
+        "same-numbered lanes of the nearest stations with the same lane count, or with the "
+        "mirrored ones (labels reversed), supported by occupancy per vehicle and light-traffic "
+        "share; flagged, never remapped here"
+    ),
     "mass_balance_pattern": (
         "the segments either side of this station have opposite, similar residuals"
     ),
@@ -730,6 +800,114 @@ class SegmentSummary:
         }
 
 
+LaneOrderReading = Literal["consistent", "mirrored", "inconclusive"]
+LaneOrderVerdict = Literal["ok", "reversed", "uncertain", "inconclusive", "not_checkable"]
+
+
+@dataclass(frozen=True)
+class LaneOrderPair:
+    """One neighbour a station's lane order was read against (:func:`lane_order_check`).
+
+    Attributes:
+        neighbour: The neighbouring station.
+        distance_m: Distance between the two [m].
+        n_windows: Windows both stations count with every lane reporting and
+            at least ``lane_order_min_veh`` vehicles.
+        direct: Mean correlation of the same-numbered lanes' share series
+            (``None`` when not computable).
+        mirrored: Mean correlation of lane k against the neighbour's lane
+            n + 1 − k.
+        reading: ``consistent``, ``mirrored`` or ``inconclusive``.
+    """
+
+    neighbour: str
+    distance_m: float
+    n_windows: int
+    direct: float | None
+    mirrored: float | None
+    reading: LaneOrderReading
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form."""
+        return {
+            "neighbour": self.neighbour,
+            "distance_m": _num(self.distance_m, 1),
+            "n_windows": self.n_windows,
+            "direct": _num(self.direct, 3),
+            "mirrored": _num(self.mirrored, 3),
+            "reading": self.reading,
+        }
+
+
+@dataclass(frozen=True)
+class LaneOrderStation:
+    """A per-lane station's lane-order verdict (module docstring, "Lane order").
+
+    Attributes:
+        station: Station id.
+        x_m: Its position [m] (``None`` when unknown).
+        lanes: Lane count (from the stations table, else the numbered sensors).
+        sensors_by_lane: Lane number (as labelled; 1 = the source's lane 1)
+            → sensor id; empty when the station is not checkable.
+        verdict: ``ok``, ``reversed``, ``uncertain``, ``inconclusive`` or
+            ``not_checkable``.
+        lanes_reversed: The evidence is strong enough for a consumer to remap
+            lane k to lane ``lanes + 1 − k`` (only with ``reversed``).
+        reason: Plain-language statement of the verdict.
+        pairs: The comparable neighbours and their readings.
+        occupancy_per_vehicle_s: Free-flow occupancy per vehicle by lane [s].
+        light_share: Share of the light-traffic vehicles by lane.
+        support: Signature → ``reversed`` (lane 1 against the last lane
+            points the other way from every read neighbour), ``as_labelled``,
+            ``mixed`` or ``unavailable``.
+    """
+
+    station: str
+    x_m: float | None
+    lanes: int
+    sensors_by_lane: dict[int, str]
+    verdict: LaneOrderVerdict
+    lanes_reversed: bool
+    reason: str
+    pairs: tuple[LaneOrderPair, ...] = ()
+    occupancy_per_vehicle_s: dict[int, float] = field(default_factory=dict)
+    light_share: dict[int, float] = field(default_factory=dict)
+    support: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON form (lane keys as strings)."""
+        return {
+            "station": self.station,
+            "x_m": _num(self.x_m, 1),
+            "lanes": self.lanes,
+            "sensors_by_lane": {str(k): v for k, v in sorted(self.sensors_by_lane.items())},
+            "verdict": self.verdict,
+            "lanes_reversed": self.lanes_reversed,
+            "reason": self.reason,
+            "pairs": [p.to_dict() for p in self.pairs],
+            "occupancy_per_vehicle_s": {
+                str(k): _num(v) for k, v in sorted(self.occupancy_per_vehicle_s.items())
+            },
+            "light_share": {str(k): _num(v) for k, v in sorted(self.light_share.items())},
+            "support": dict(sorted(self.support.items())),
+        }
+
+
+LANE_ORDER_METHOD: Final[str] = (
+    "per-lane shares over lane_order_window_s windows with at least lane_order_min_veh vehicles, "
+    "pooled over the dates, correlated with the nearest station on either side with the same "
+    "lane count; a pair reads consistent (same-numbered lanes) or mirrored (lane k against "
+    "n + 1 - k) when that mean correlation reaches lane_order_min_correlation and beats the other "
+    "by as much. reversed: mirrored against every read neighbour, those neighbours anchored (two "
+    "of them, or one consistent with a third station), and both available supporting signatures "
+    "(free-flow occupancy per vehicle, light-traffic share: lane 1 against the last lane) "
+    "opposite to the neighbours'; its sensor-days are suspect with nothing masked and "
+    "lanes_reversed is recorded for consumers to remap. uncertain: any other unexplained "
+    "mirrored reading (flagged, never remapped). not_checkable: no comparable neighbour"
+)
+"""How :func:`lane_order_check` decides (recorded in the report)."""
+
+
 @dataclass(frozen=True)
 class DataQualityReport:
     """Everything :func:`assess_quality` found (module docstring).
@@ -754,6 +932,8 @@ class DataQualityReport:
         segments: One summary per segment.
         attributions: Station-days named by the mass-balance pattern.
         notes: Plain statements about what could not be checked.
+        lane_order: The lane-order verdict of every per-lane mainline station
+            (empty for station totals).
         schema: :data:`QUALITY_SCHEMA`.
     """
 
@@ -775,7 +955,12 @@ class DataQualityReport:
     segments: tuple[SegmentSummary, ...]
     attributions: tuple[dict[str, Any], ...]
     notes: tuple[str, ...]
+    lane_order: tuple[LaneOrderStation, ...] = ()
     schema: str = QUALITY_SCHEMA
+
+    def lanes_reversed(self) -> list[str]:
+        """Stations whose lane labels the lane-order check found reversed (strong evidence)."""
+        return [st.station for st in self.lane_order if st.lanes_reversed]
 
     def sensor_day(self, sensor: str, date: str) -> SensorDayQuality:
         """The verdict on one sensor-day.
@@ -881,6 +1066,11 @@ class DataQualityReport:
                 "segments": [s.to_dict() for s in self.segments],
                 "segment_days": [m.to_dict() for m in self.mass_balance],
                 "attributions": [dict(a) for a in self.attributions],
+            },
+            "lane_order": {
+                "method": LANE_ORDER_METHOD,
+                "stations": [st.to_dict() for st in self.lane_order],
+                "lanes_reversed": self.lanes_reversed(),
             },
             "notes": list(self.notes),
         }
@@ -1552,6 +1742,507 @@ def _lane_imbalance(
                     )
 
 
+# --- lane order ------------------------------------------------------------------
+
+
+def _station_table_values(
+    stations: pd.DataFrame | Sequence[Mapping[str, Any]] | None,
+) -> tuple[dict[str, int], dict[str, float]]:
+    """``(lane count, position)`` by station from a stations table (missing values left out)."""
+    if stations is None:
+        return {}, {}
+    records: Iterable[Mapping[str, Any]] = (
+        cast(list[dict[str, Any]], stations.to_dict("records"))
+        if isinstance(stations, pd.DataFrame)
+        else stations
+    )
+    lanes: dict[str, int] = {}
+    position: dict[str, float] = {}
+    for raw in records:
+        ident = raw.get("station", raw.get("id"))
+        if ident is None or (isinstance(ident, float) and math.isnan(ident)):
+            continue
+        n = raw.get("lanes")
+        if n is not None and not (isinstance(n, float) and math.isnan(n)):
+            try:
+                lanes[str(ident)] = int(n)
+            except (TypeError, ValueError):
+                pass
+        x = raw.get("x_m")
+        if x is not None and not (isinstance(x, float) and math.isnan(x)):
+            position[str(ident)] = float(x)
+    return lanes, position
+
+
+def _lane_numbers_of(grid: DetectorGrid, lane_numbers: Mapping[str, int] | None) -> dict[str, int]:
+    """Mainline lane sensor → its lane number (module docstring, "Lane order").
+
+    With ``lane_numbers`` only the sensors it names are numbered (an auxiliary
+    or merge loop it leaves out is not a lane of the cross-section); without
+    it a lane id that is an integer is the number. Silent sensors (no flow
+    anywhere: not installed) are left out.
+    """
+    out: dict[str, int] = {}
+    for sid, info in grid.sensors.items():
+        if info.lane is None or info.kind != "mainline" or sid in grid.silent:
+            continue
+        if lane_numbers is not None:
+            if sid in lane_numbers:
+                out[sid] = int(lane_numbers[sid])
+            continue
+        try:
+            out[sid] = int(str(info.lane))
+        except ValueError:
+            continue
+    return out
+
+
+def _blocks(values: np.ndarray, k: int) -> np.ndarray:
+    """Sum of every ``k`` consecutive windows per date, flattened; NaN when any is missing."""
+    n_blocks = values.shape[1] // k
+    if n_blocks == 0:
+        return np.zeros(0)
+    trimmed = values[:, : n_blocks * k].reshape(values.shape[0], n_blocks, k)
+    out: np.ndarray = trimmed.sum(axis=2).reshape(-1)
+    return out
+
+
+def _corr(x: np.ndarray, y: np.ndarray) -> float:
+    """Pearson correlation, NaN when either series is constant."""
+    if x.size < 2 or float(np.std(x)) == 0.0 or float(np.std(y)) == 0.0:
+        return math.nan
+    return float(np.corrcoef(x, y)[0, 1])
+
+
+def _contrast_direction(first: float, last: float, min_contrast: float) -> int:
+    """+1 / −1 when lane 1 reads above / below the last lane by the relative contrast, else 0."""
+    mean = (first + last) / 2.0
+    if not (math.isfinite(first) and math.isfinite(last)) or mean <= 0.0:
+        return 0
+    contrast = (first - last) / mean
+    if abs(contrast) < min_contrast:
+        return 0
+    return 1 if contrast > 0.0 else -1
+
+
+@dataclass
+class _LaneOrderData:
+    """Working record of one checkable station."""
+
+    station: str
+    x_m: float
+    lanes: int
+    sensors_by_lane: dict[int, str]
+    shares: dict[int, np.ndarray]
+    valid: np.ndarray
+    occupancy_per_vehicle_s: dict[int, float]
+    light_share: dict[int, float]
+    directions: dict[str, int]
+
+
+def _lane_order_data(
+    station: str,
+    x_m: float,
+    by_lane: dict[int, str],
+    flows: Mapping[str, np.ndarray],
+    occupancy: Mapping[str, np.ndarray],
+    grid: DetectorGrid,
+    th: QualityThresholds,
+) -> _LaneOrderData:
+    """Block counts, shares and the two supporting signatures of one station."""
+    dt = grid.interval_s
+    k = max(1, round(th.lane_order_window_s / dt))
+    block_s = k * dt
+    n = len(by_lane)
+    lanes = range(1, n + 1)
+    veh = {ln: _blocks(flows[by_lane[ln]] * dt / 3600.0, k) for ln in lanes}
+    occ_s = {ln: _blocks(occupancy[by_lane[ln]] / 100.0 * dt, k) for ln in lanes}
+    stack = np.stack([veh[ln] for ln in lanes])
+    complete = np.isfinite(stack).all(axis=0)
+    total = np.where(complete, np.nansum(stack, axis=0), 0.0)
+    valid = complete & (total >= th.lane_order_min_veh)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        shares = {
+            ln: np.where(valid, veh[ln] / np.where(total > 0.0, total, 1.0), np.nan) for ln in lanes
+        }
+    directions: dict[str, int] = {}
+    # free-flow occupancy per vehicle (slower lanes and longer vehicles read higher)
+    occ_stack = np.stack([occ_s[ln] for ln in lanes])
+    occ_complete = complete & np.isfinite(occ_stack).all(axis=0) & (stack > 0.0).all(axis=0)
+    with np.errstate(invalid="ignore"):
+        mean_occ_pct = np.where(occ_complete, occ_stack.sum(axis=0) / (n * block_s) * 100.0, np.inf)
+    free = occ_complete & (mean_occ_pct < th.congested_occupancy_pct)
+    opv: dict[int, float] = {}
+    if int(free.sum()) >= th.lane_order_min_windows:
+        opv = {ln: float(occ_s[ln][free].sum() / veh[ln][free].sum()) for ln in lanes}
+        directions["occupancy_per_vehicle"] = _contrast_direction(
+            opv[1], opv[n], th.lane_order_min_contrast
+        )
+    # light traffic: lane use by choice, the outer lane carrying most
+    per_lane_h = total / (n * block_s / 3600.0)
+    light = complete & (total > 0.0) & (per_lane_h < th.lane_min_flow_veh_h_lane)
+    light_share: dict[int, float] = {}
+    if int(light.sum()) >= th.lane_order_min_windows and float(total[light].sum()) > 0.0:
+        grand = float(total[light].sum())
+        light_share = {ln: float(veh[ln][light].sum()) / grand for ln in lanes}
+        directions["light_traffic_share"] = _contrast_direction(
+            light_share[1], light_share[n], th.lane_order_min_contrast
+        )
+    return _LaneOrderData(
+        station=station,
+        x_m=x_m,
+        lanes=n,
+        sensors_by_lane=dict(by_lane),
+        shares=shares,
+        valid=valid,
+        occupancy_per_vehicle_s=opv,
+        light_share=light_share,
+        directions=directions,
+    )
+
+
+def _read_pair(a: _LaneOrderData, b: _LaneOrderData, th: QualityThresholds) -> LaneOrderPair:
+    """Correlate two stations' share series, same-numbered against mirrored lanes."""
+    common = a.valid & b.valid
+    n_common = int(common.sum())
+    distance = abs(b.x_m - a.x_m)
+    if n_common < th.lane_order_min_windows:
+        return LaneOrderPair(b.station, distance, n_common, None, None, "inconclusive")
+    n = a.lanes
+    outer = [ln for ln in range(1, n + 1) if ln != n + 1 - ln]
+    direct = [_corr(a.shares[ln][common], b.shares[ln][common]) for ln in outer]
+    mirror = [_corr(a.shares[ln][common], b.shares[n + 1 - ln][common]) for ln in outer]
+    d_ok = [v for v in direct if math.isfinite(v)]
+    m_ok = [v for v in mirror if math.isfinite(v)]
+    d = float(np.mean(d_ok)) if d_ok else None
+    m = float(np.mean(m_ok)) if m_ok else None
+    c = th.lane_order_min_correlation
+    reading: LaneOrderReading = "inconclusive"
+    if d is not None and m is not None:
+        if d >= c and d - m >= c:
+            reading = "consistent"
+        elif m >= c and m - d >= c:
+            reading = "mirrored"
+    return LaneOrderPair(b.station, distance, n_common, d, m, reading)
+
+
+def _pairs_text(pairs: Sequence[LaneOrderPair]) -> str:
+    parts = []
+    for p in pairs:
+        if p.direct is None or p.mirrored is None:
+            parts.append(f"{p.neighbour} ({p.n_windows} common windows: too few)")
+        else:
+            parts.append(
+                f"{p.neighbour} {p.reading} (same-numbered lanes {p.direct:+.2f}, mirrored "
+                f"{p.mirrored:+.2f}, {p.n_windows} windows)"
+            )
+    return "; ".join(parts)
+
+
+def lane_order_check(
+    grid: DetectorGrid,
+    *,
+    lane_numbers: Mapping[str, int] | None = None,
+    stations: pd.DataFrame | Sequence[Mapping[str, Any]] | None = None,
+    thresholds: QualityThresholds | None = None,
+    flows: Mapping[str, np.ndarray] | None = None,
+    occupancy: Mapping[str, np.ndarray] | None = None,
+) -> list[LaneOrderStation]:
+    """Judge every per-lane mainline station's lane order (module docstring, "Lane order").
+
+    Args:
+        grid: A per-lane detector grid (a station grid yields nothing).
+        lane_numbers: Lane sensor id → its lane number in the source's
+            numbering (MnDOT/IRIS: 1 = the rightmost lane). Default: lane ids
+            that are integers are the numbers.
+        stations: Optional stations table: ``lanes`` gives each station's
+            lane count (a station whose numbered sensors do not cover 1..lanes
+            is not checkable), ``x_m`` its position when the data have none.
+        thresholds: The rules (default :class:`QualityThresholds`).
+        flows: Flow arrays to use (default the grid's; the report passes its
+            masked flows, so excluded sensor-days do not enter).
+        occupancy: Occupancy arrays likewise.
+
+    Returns:
+        One :class:`LaneOrderStation` per mainline station with lane sensors,
+        in position order (stations without a position last).
+    """
+    th = thresholds or QualityThresholds()
+    if not grid.per_lane:
+        return []
+    flows = grid.flow_veh_h if flows is None else flows
+    occupancy = grid.occupancy_pct if occupancy is None else occupancy
+    table_lanes, table_x = _station_table_values(stations)
+    numbers = _lane_numbers_of(grid, lane_numbers)
+    members: dict[str, list[str]] = {}
+    position: dict[str, float] = {}
+    for sid, info in grid.sensors.items():
+        if info.kind != "mainline" or info.lane is None:
+            continue
+        members.setdefault(info.station, []).append(sid)
+        if info.x_m is not None:
+            position.setdefault(info.station, float(info.x_m))
+    for station in members:
+        if station not in position and station in table_x:
+            position[station] = table_x[station]
+
+    data: dict[str, _LaneOrderData] = {}
+    unchecked: dict[str, tuple[int, str]] = {}
+    for station, sids in members.items():
+        numbered = {sid: numbers[sid] for sid in sids if sid in numbers}
+        n = table_lanes.get(station, len(numbered))
+        values = sorted(numbered.values())
+        if n < 2:
+            unchecked[station] = (n, "fewer than two lanes: there is no order to check")
+        elif values != list(range(1, n + 1)):
+            have = ", ".join(str(v) for v in values) or "none"
+            unchecked[station] = (
+                n,
+                f"its lane sensors are numbered {have}, not exactly 1..{n} (an excluded or "
+                f"silent loop, or lane ids that are not lane numbers): not checkable",
+            )
+        elif station not in position:
+            unchecked[station] = (n, "no position: its neighbours are unknown")
+        else:
+            by_lane = {ln: sid for sid, ln in numbered.items()}
+            data[station] = _lane_order_data(
+                station, position[station], by_lane, flows, occupancy, grid, th
+            )
+
+    # the nearest checkable station with the same lane count on either side
+    nb: dict[str, list[str]] = {}
+    for station, d in data.items():
+        same = [o for o in data.values() if o.station != station and o.lanes == d.lanes]
+        up = [o for o in same if o.x_m < d.x_m]
+        down = [o for o in same if o.x_m > d.x_m]
+        chosen = []
+        if up:
+            chosen.append(max(up, key=lambda o: (o.x_m, o.station)).station)
+        if down:
+            chosen.append(min(down, key=lambda o: (o.x_m, o.station)).station)
+        nb[station] = chosen
+    pairs: dict[tuple[str, str], LaneOrderPair] = {}
+    for station, near in nb.items():
+        for other in near:
+            pairs[(station, other)] = _read_pair(data[station], data[other], th)
+
+    read = {s: [o for o in nb[s] if pairs[(s, o)].reading != "inconclusive"] for s in data}
+    candidates = {
+        s for s in data if read[s] and all(pairs[(s, o)].reading == "mirrored" for o in read[s])
+    }
+
+    def anchored(b: str, excluding: str) -> bool:
+        """``b`` agrees with some neighbour other than ``excluding``."""
+        return any(pairs[(b, c)].reading == "consistent" for c in nb[b] if c != excluding)
+
+    def support(s: str) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for sig in ("occupancy_per_vehicle", "light_traffic_share"):
+            own = data[s].directions.get(sig, 0)
+            others = [data[o].directions.get(sig, 0) for o in read[s]]
+            others = [v for v in others if v != 0]
+            if own == 0 or not others:
+                out[sig] = "unavailable"
+            elif all(v == -own for v in others):
+                out[sig] = "reversed"
+            elif all(v == own for v in others):
+                out[sig] = "as_labelled"
+            else:
+                out[sig] = "mixed"
+        return out
+
+    verdicts: dict[str, tuple[LaneOrderVerdict, str]] = {}
+    supports = {s: support(s) for s in data}
+    reversed_set: set[str] = set()
+
+    def majority_support(s: str, exclude: set[str]) -> dict[str, str]:
+        """``s``'s signatures against the corridor's other stations with as many lanes.
+
+        Used only to break the tie of a mirrored pair that no third station
+        anchors: ``reversed`` when ``s`` points against a strict majority (of
+        at least two stations with a direction), ``as_labelled`` with it.
+        """
+        out: dict[str, str] = {}
+        for sig in ("occupancy_per_vehicle", "light_traffic_share"):
+            own = data[s].directions.get(sig, 0)
+            others = [
+                data[o].directions.get(sig, 0)
+                for o in data
+                if o not in exclude and data[o].lanes == data[s].lanes
+            ]
+            others = [v for v in others if v != 0]
+            balance = sum(others)
+            if own == 0 or len(others) < 2 or 2 * abs(balance) <= len(others):
+                out[sig] = "unavailable"
+            else:
+                out[sig] = "reversed" if own * balance < 0 else "as_labelled"
+        return out
+
+    def singled_out(own: dict[str, str], other: dict[str, str]) -> bool:
+        a = [v for v in own.values() if v != "unavailable"]
+        b = [v for v in other.values() if v != "unavailable"]
+        return (
+            bool(a)
+            and all(v == "reversed" for v in a)
+            and bool(b)
+            and all(v == "as_labelled" for v in b)
+        )
+
+    def support_text(sup: dict[str, str]) -> str:
+        return ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in sup.items())
+
+    for s in sorted(candidates):
+        if s in verdicts:
+            continue
+        corroborated = len(read[s]) >= 2 or anchored(read[s][0], s)
+        sup = supports[s]
+        available = [v for v in sup.values() if v != "unavailable"]
+        confirmed = bool(available) and all(v == "reversed" for v in available)
+        n = data[s].lanes
+        pair_text = _pairs_text([pairs[(s, o)] for o in read[s]])
+        if corroborated and confirmed:
+            reversed_set.add(s)
+            shown = ", ".join(f"{k.replace('_', ' ')}" for k, v in sup.items() if v == "reversed")
+            verdicts[s] = (
+                "reversed",
+                f"lane labels reversed: its lane shares follow the MIRRORED lanes of "
+                f"{pair_text}, and lane 1 against lane {n} runs opposite to the neighbours' in "
+                f"{shown}; the counts are good and nothing is masked; lanes_reversed: a consumer "
+                f"may read lane k as lane {n + 1} - k",
+            )
+            continue
+        b = read[s][0]
+        if not corroborated and b in candidates and b not in verdicts and len(read[b]) == 1:
+            # a mirrored pair no third station anchors: the corridor's other
+            # stations may single out one of the two (never enough to remap)
+            ms = majority_support(s, {s, b})
+            mb = majority_support(b, {s, b})
+            for odd, fine, m_odd, m_fine in ((s, b, ms, mb), (b, s, mb, ms)):
+                if singled_out(m_odd, m_fine):
+                    supports[odd], supports[fine] = m_odd, m_fine
+                    verdicts[odd] = (
+                        "uncertain",
+                        f"lane labels probably reversed: its lane shares follow the mirrored lanes "
+                        f"of {_pairs_text([pairs[(odd, fine)]])}, its only clear neighbour, and "
+                        f"against the corridor's other {data[odd].lanes}-lane stations its "
+                        f"signatures point the other way ({support_text(m_odd)}) while "
+                        f"{fine}'s agree; not remapped: no third station anchors the pair",
+                    )
+                    verdicts[fine] = (
+                        "ok",
+                        f"its mirrored reading against {odd} is laid on {odd}: {odd}'s "
+                        f"signatures point against the corridor's other stations, {fine}'s "
+                        f"with them ({support_text(m_fine)})",
+                    )
+                    break
+            if s in verdicts:
+                continue
+        why = []
+        if not corroborated:
+            why.append(
+                f"its only clear neighbour {b} is not anchored by a third station, so the pair "
+                "cannot say which of the two is reversed"
+            )
+        if not available:
+            why.append("no supporting signature could be read")
+        elif not confirmed:
+            why.append(f"the supporting signatures do not confirm it ({support_text(sup)})")
+        verdicts[s] = (
+            "uncertain",
+            f"lane labels may be out of order: {pair_text}; not confirmed ({'; '.join(why)}); "
+            "flagged, not remapped",
+        )
+    for s in data:
+        if s in verdicts:
+            continue
+        if not nb[s]:
+            verdicts[s] = (
+                "not_checkable",
+                f"no station with {data[s].lanes} lanes on either side to compare with",
+            )
+            continue
+        flips = []
+        for o in read[s]:
+            r = pairs[(s, o)].reading
+            if o in reversed_set:
+                r = "consistent" if r == "mirrored" else "mirrored"
+            flips.append((o, r))
+        if any(r == "mirrored" for _, r in flips):
+            unexplained = [o for o, r in flips if r == "mirrored"]
+            verdicts[s] = (
+                "uncertain",
+                f"its lane shares follow the mirrored lanes of {', '.join(unexplained)}, which no "
+                f"reversed station explains ({_pairs_text([pairs[(s, o)] for o in read[s]])}); "
+                "flagged, not remapped",
+            )
+        elif flips:
+            note = (
+                f" (read through the reversed labels of {', '.join(o for o in read[s] if o in reversed_set)})"
+                if any(o in reversed_set for o in read[s])
+                else ""
+            )
+            verdicts[s] = (
+                "ok",
+                f"lane order agrees with {_pairs_text([pairs[(s, o)] for o in read[s]])}{note}",
+            )
+        else:
+            verdicts[s] = (
+                "inconclusive",
+                f"no neighbour reading is clear enough: {_pairs_text([pairs[(s, o)] for o in nb[s]])}",
+            )
+
+    out: list[LaneOrderStation] = []
+    for s, d in data.items():
+        verdict, reason = verdicts[s]
+        out.append(
+            LaneOrderStation(
+                station=s,
+                x_m=d.x_m,
+                lanes=d.lanes,
+                sensors_by_lane=dict(d.sensors_by_lane),
+                verdict=verdict,
+                lanes_reversed=s in reversed_set,
+                reason=reason,
+                pairs=tuple(pairs[(s, o)] for o in nb[s]),
+                occupancy_per_vehicle_s=dict(d.occupancy_per_vehicle_s),
+                light_share=dict(d.light_share),
+                support=supports[s],
+            )
+        )
+    for s, (n, reason) in unchecked.items():
+        out.append(
+            LaneOrderStation(
+                station=s,
+                x_m=position.get(s),
+                lanes=n,
+                sensors_by_lane={},
+                verdict="not_checkable",
+                lanes_reversed=False,
+                reason=reason,
+            )
+        )
+    out.sort(key=lambda st: (st.x_m is None, st.x_m if st.x_m is not None else 0.0, st.station))
+    return out
+
+
+def _lane_order_findings(
+    lane_order: Sequence[LaneOrderStation],
+    evals: dict[tuple[str, int], _DayEval],
+    n_dates: int,
+) -> None:
+    """``lane_order`` findings on every date of a reversed or uncertain station's lanes."""
+    for st in lane_order:
+        if st.verdict not in ("reversed", "uncertain"):
+            continue
+        mirrored = [
+            p.mirrored for p in st.pairs if p.reading != "inconclusive" and p.mirrored is not None
+        ]
+        statistic = float(np.mean(mirrored)) if mirrored else None
+        for sid in st.sensors_by_lane.values():
+            for d in range(n_dates):
+                evals[(sid, d)].add("lane_order", "suspect", st.reason, statistic=statistic)
+
+
 @dataclass(frozen=True)
 class _BalanceKeys:
     """The fields of a :class:`SegmentDayBalance` known before it is judged."""
@@ -1796,6 +2487,7 @@ def assess_quality(
     dates: Sequence[str] | None = None,
     start_local: str | None = None,
     end_local: str | None = None,
+    lane_numbers: Mapping[str, int] | None = None,
 ) -> DataQualityReport:
     """Judge every detector-day and check the station-to-station balance.
 
@@ -1814,6 +2506,11 @@ def assess_quality(
         dates: Dates to keep (frame input only).
         start_local: Span start (frame input only).
         end_local: Span end (frame input only).
+        lane_numbers: Lane sensor id (``station:lane``) → its lane number in
+            the source's numbering, for the lane-order check
+            (:func:`lane_order_check`; MnDOT: the IRIS lane, 1 = rightmost —
+            :class:`calibration.detector_inputs.CorridorInputs` carries it).
+            Default: lane ids that are integers are the numbers.
 
     Returns:
         The :class:`DataQualityReport`.
@@ -1866,8 +2563,28 @@ def assess_quality(
         )
     flows, _, _ = _masked_values(grid, evals)
     _lane_imbalance(grid, flows, evals, th, exempt)
+    lane_order: list[LaneOrderStation] = []
     if not grid.per_lane:
-        notes.append("station totals only: the lane-imbalance check needs per-lane data")
+        notes.append(
+            "station totals only: the lane-imbalance and lane-order checks need per-lane data"
+        )
+    else:
+        flows, occs, _ = _masked_values(grid, evals)
+        lane_order = lane_order_check(
+            grid,
+            lane_numbers=lane_numbers,
+            stations=stations,
+            thresholds=th,
+            flows=flows,
+            occupancy=occs,
+        )
+        _lane_order_findings(lane_order, evals, len(grid.dates))
+        if lane_order and all(st.verdict == "not_checkable" for st in lane_order):
+            notes.append(
+                "lane order not checked at any station (no station has a neighbour with the same "
+                "lane count and lane numbers 1..n; a per-lane MnDOT frame needs the IRIS lane "
+                "numbers, lane_numbers)"
+            )
     if (silent := silent_lane_note(grid)) is not None:
         notes.append(silent)
 
@@ -1949,6 +2666,7 @@ def assess_quality(
         segments=tuple(summaries),
         attributions=tuple(attributions),
         notes=tuple(notes),
+        lane_order=tuple(lane_order),
     )
 
 
@@ -2149,6 +2867,9 @@ class QualityVerdicts:
             :meth:`DataQualityReport.to_json` text for an in-memory report.
         positions: Station → corridor position [m] from the report's
             ``sensors`` (``None`` when not stated).
+        lane_order: Station → its lane-order record (the report's
+            ``lane_order.stations`` entries; empty for a report written before
+            the check existed, 2026-10-07).
     """
 
     interval_s: float | None
@@ -2160,6 +2881,20 @@ class QualityVerdicts:
     path: str | None = None
     sha256: str | None = None
     positions: dict[str, float | None] = field(default_factory=dict)
+    lane_order: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    @property
+    def lanes_reversed(self) -> frozenset[str]:
+        """Stations whose lane labels the report found reversed (strong evidence).
+
+        Only ``verdict == "reversed"`` with ``lanes_reversed`` true; an
+        ``uncertain`` station is flagged in the report but never listed here.
+        """
+        return frozenset(
+            st
+            for st, rec in self.lane_order.items()
+            if rec.get("lanes_reversed") and rec.get("verdict") == "reversed"
+        )
 
     @property
     def span_local(self) -> tuple[str | None, str | None]:
@@ -2210,6 +2945,11 @@ class QualityVerdicts:
             x = sensor.get("x_m")
             if station and positions.get(station) is None:
                 positions[station] = None if x is None else float(x)
+        lane_order = {
+            str(rec["station"]): dict(rec)
+            for rec in (payload.get("lane_order") or {}).get("stations") or ()
+            if rec.get("station") not in (None, "")
+        }
         return cls(
             interval_s=None if interval is None else float(interval),
             start_s=start_s,
@@ -2220,6 +2960,7 @@ class QualityVerdicts:
             path=path,
             sha256=sha256,
             positions=positions,
+            lane_order=lane_order,
         )
 
     @classmethod
@@ -2581,6 +3322,25 @@ def render_markdown(
             )
     else:
         lines.append("None.")
+    flagged = [st for st in report.lane_order if st.verdict in ("reversed", "uncertain")]
+    if report.per_lane:
+        lines += ["", "## Lane order", ""]
+        n_checked = sum(1 for st in report.lane_order if st.verdict != "not_checkable")
+        lines.append(
+            f"Each station's lane labels were compared with its neighbours' "
+            f"({n_checked} of {len(report.lane_order)} stations could be compared; a station "
+            "with no neighbour of the same lane count cannot be)."
+        )
+        lines.append("")
+        if flagged:
+            lines += ["| Station | Verdict | Remap advised | Why |", "|---|---|---|---|"]
+            for st in flagged:
+                lines.append(
+                    f"| {st.station} | {st.verdict} | {'yes' if st.lanes_reversed else 'no'} | "
+                    f"{st.reason} |"
+                )
+        else:
+            lines.append("No station's lane labels disagree with its neighbours'.")
     lines += ["", "## Station-to-station balance", ""]
     if report.layout is None:
         lines.append(next((n for n in report.notes if n.startswith("mass balance")), "Not run."))

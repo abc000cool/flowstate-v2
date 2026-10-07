@@ -13,6 +13,15 @@ on, the fixes applied and the network re-audited; ``--no-ramp-guessing`` /
 ``--no-split-fixes`` opt out, ``--fail-on-split-defect`` judges the final
 audit, ``--write-split-patch`` chooses where the patch goes).
 
+Since 2026-10-07 the audit also checks a split on the right side lane by lane
+(docs/I94_LANE_SHARES.md §4): the 6th Street LEFT exit ``45782590 → 42165869``,
+tagged ``slight_left;through|none|none`` in OSM, compiles under ramp guessing
+with a guessed lane on the right and the old left lane leading only to the
+exit — ``through_lane_exit_only``, remedied by ``--ramps.unset 45782590``. The
+committed scenarios predate the check and keep their hashes; the
+``*_netfix`` variants carry the remedy. ``tests/fixtures/split_left_option.osm``
+reproduces the pattern on three ways.
+
 The MnDOT extract is copied into ``tmp_path`` before every build whose
 defaults would write the patch beside it: the committed
 ``data/osm/mndot_i94_wb_stpaul.splits.con.xml`` is never rewritten by a test.
@@ -49,6 +58,8 @@ from microsim.split_audit import (
     OSMGraph,
     OSMWay,
     SplitFinding,
+    _verdict,
+    added_lane_side,
     audit_splits,
     compiled_side,
     connection_patch_lines,
@@ -60,18 +71,24 @@ from microsim.split_audit import (
     side_of_offsets,
     split_defects,
     split_patch_xml,
+    trapped_through_lanes,
 )
 
 SCENARIO = Path("scenarios/mndot_i94_wb_stpaul_weave.yaml")
 OSM = Path("data/osm/mndot_i94_wb_stpaul.osm")
 COMMITTED_PATCH = Path("data/osm/mndot_i94_wb_stpaul.splits.con.xml")
 FIXTURE = Path("tests/fixtures/splits.osm")
+LEFT_OPTION = Path("tests/fixtures/split_left_option.osm")
+NETFIX = Path("scenarios/mndot_i94_wb_stpaul_weave_slice_netfix.yaml")
 
 #: The onboarding command of docs/ONBOARDING_MNDOT.md §3, minus the fixes.
 MNDOT_BBOX = (44.9425, -93.099, 44.9613, -92.9612)
 MNDOT_BEARING = 265.0
 MNDOT_EXTRA = ("--ramps.guess", "--ramps.ramp-length", "250")
 MNDOT_CHAIN_CAP_M = 11400.0
+#: What the fixes add to ``--ramps.unset`` on the committed extract, in chain order:
+#: the 6th Street lane (through_lane_exit_only), then the 12th Street lane.
+UNSET = "45782590,1001426896"
 
 mndot_files = pytest.mark.skipif(
     not (SCENARIO.is_file() and OSM.is_file() and COMMITTED_PATCH.is_file()),
@@ -86,7 +103,7 @@ def _mndot_network() -> OSMNetwork:
 
 
 def _compile(net: OSMNetwork, workdir: Path, *, fixed: bool) -> Path:
-    """The committed corridor compiled with or without its two split fixes."""
+    """The corridor compiled with or without its split fixes (its patch and ``--ramps.unset``)."""
     extra = list(net.netconvert_extra)
     patches = [Path(p) for p in net.patch_files]
     if not fixed:
@@ -152,13 +169,14 @@ class TestRampGuessingOptions:
 
 @mndot_files
 class TestOnTheCommittedExtract:
-    def test_without_the_fixes_exactly_the_two_known_defects(self, tmp_path: Path) -> None:
+    def test_without_the_fixes_exactly_the_three_known_defects(self, tmp_path: Path) -> None:
         net = _mndot_network()
         findings = audit_splits(_compile(net, tmp_path, fixed=False), OSM, net.corridor_edges)
         assert len(findings) == 8
         defects = split_defects(findings)
         assert [(d.from_edge, d.exit_edge, d.verdict) for d in defects] == [
             ("45608485", "18207912", "wrong_side"),
+            ("45782590-AddedOffRampEdge", "42165869", "through_lane_exit_only"),
             ("1001426896", "82150350", "added_lane_wrong_side"),
         ]
         by_exit = _by_exit(findings)
@@ -182,30 +200,82 @@ class TestOnTheCommittedExtract:
         assert twelfth.osm_side == "right" and twelfth.turn_lanes_side == "right"
         assert (twelfth.osm_lanes, twelfth.compiled_lanes, twelfth.exit_from_lanes) == (3, 4, (3,))
         assert twelfth.added_lane and twelfth.compiled_side == "leftmost"
-        assert ramps_unset_edges(findings) == ["1001426896"]
-        # 6th Street really is a left exit and is compiled on the left: fine.
+        assert ramps_unset_edges(findings) == ["45782590", "1001426896"]
+        # 6th Street really is a left exit compiled on the left, but ramp guessing
+        # put its lane on the RIGHT and left the OSM option lane exit-only
         sixth = by_exit["42165869"]
         assert sixth.from_edge == "45782590-AddedOffRampEdge"
         assert sixth.osm_side == "left" and all(o > 0.0 for o in sixth.osm_offsets_m)
         assert sixth.turn_lanes == "slight_left;through|none|none"
         assert sixth.compiled_side == "leftmost" and sixth.added_lane
-        assert sixth.verdict == "ok" and sixth.remedy == ""
+        assert (sixth.exit_from_lanes, sixth.option_lanes) == ((3,), ())
+        assert sixth.added_lane_side == "right"
+        assert (sixth.trapped_lanes, sixth.trapped_evidence) == ((3,), "turn:lanes")
+        assert sixth.verdict == "through_lane_exit_only"
+        assert "`--ramps.unset 45782590`" in sixth.remedy
         # every other exit is a right exit compiled from lane 0
         others = [f for f in findings if f.exit_edge not in {"18207912", "82150350", "42165869"}]
         assert len(others) == 5
         assert all(f.verdict == "ok" and f.exit_from_lanes == (0,) for f in others)
         assert all(f.osm_side == "right" == f.turn_lanes_side for f in others)
+        # two of them are option lanes in OSM whose exit is fed from an auxiliary
+        # lane the compiled net carries in from upstream: no OSM lane is trapped
+        weave_exits = {f.exit_edge: f for f in others if f.exit_edge in {"18207390", "18207880"}}
+        assert all(f.added_lane and f.added_lane_side == "unknown" for f in weave_exits.values())
+        assert all(f.trapped_lanes == () for f in others)
 
-    def test_with_the_committed_fixes_no_defect(self, tmp_path: Path) -> None:
+    def test_with_the_committed_fixes_only_the_6th_street_exit_remains(
+        self, tmp_path: Path
+    ) -> None:
+        """The committed scenarios predate the lane check (their hashes stand):
+        the Mounds/Kellogg and 12th Street fixes hold, the 6th Street lane does not."""
         net = _mndot_network()
         findings = audit_splits(_compile(net, tmp_path, fixed=True), OSM, net.corridor_edges)
         assert len(findings) == 8
-        assert split_defects(findings) == []
+        assert [(d.exit_edge, d.verdict) for d in split_defects(findings)] == [
+            ("42165869", "through_lane_exit_only")
+        ]
         by_exit = _by_exit(findings)
         assert by_exit["18207912"].exit_from_lanes == (0, 1)
         assert by_exit["82150350"].exit_from_lanes == (0,)
         assert by_exit["82150350"].option_lanes == (0,)  # exit and through
         assert by_exit["82150350"].compiled_lanes == 3 and not by_exit["82150350"].added_lane
+
+    @pytest.mark.skipif(not NETFIX.is_file(), reason="netfix scenario absent")
+    def test_the_netfix_variant_compiles_the_osm_layout(self, tmp_path: Path) -> None:
+        """``--ramps.unset 1001426896,45782590``: 45782590 keeps its three OSM lanes,
+        all continue and the left one also feeds the exit (an option lane)."""
+        cfg = ScenarioConfig.model_validate(yaml.safe_load(NETFIX.read_text()))
+        assert isinstance(cfg.network, OSMNetwork)
+        net = cfg.network
+        at = net.netconvert_extra.index("--ramps.unset")
+        assert net.netconvert_extra[at + 1] == "1001426896,45782590"
+        path = _compile(net, tmp_path, fixed=True)
+        findings = audit_splits(path, OSM, net.corridor_edges)
+        assert len(findings) == 8 and split_defects(findings) == []
+        sixth = _by_exit(findings)["42165869"]
+        assert (sixth.from_edge, sixth.compiled_lanes, sixth.added_lane) == ("45782590", 3, False)
+        assert (sixth.exit_from_lanes, sixth.option_lanes) == ((2,), (2,))
+        assert _connections(path, "45782590") == {
+            "1000805867": [(0, 0), (1, 1), (2, 2)],
+            "42165869": [(2, 0)],
+        }
+        # 1001426896 must stay unset: without it the guessed fourth lane is back on
+        # the left of the 12th Street exit
+        alone = list(net.netconvert_extra)
+        alone[at + 1] = "45782590"
+        bundle = osm_import(
+            osm_file=net.osm_file,
+            corridor_edges=tuple(net.corridor_edges),
+            workdir=tmp_path / "alone",
+            keep_edges=tuple(e for r in net.ramps for e in r.edges),
+            patch_files=[Path(p) for p in net.patch_files],
+            netconvert_extra=tuple(alone),
+        )
+        assert [
+            (d.exit_edge, d.verdict)
+            for d in split_defects(audit_splits(bundle.net_path, OSM, net.corridor_edges))
+        ] == [("82150350", "added_lane_wrong_side")]
 
     def test_the_generated_patch_is_the_committed_one(self, tmp_path: Path) -> None:
         net = _mndot_network()
@@ -228,7 +298,7 @@ class TestOnTheCommittedExtract:
         net = _mndot_network()
         findings = audit_splits(_compile(net, tmp_path, fixed=False), OSM, net.corridor_edges)
         text = "\n".join(format_split_table(findings))
-        assert text.startswith("  splits (8 exits audited against the extract; 2 defects)")
+        assert text.startswith("  splits (8 exits audited against the extract; 3 defects)")
         assert (
             "45608485 -> 18207912  OSM right (8-9 m; turn:lanes |||slight_right|slight_right)"
             in text
@@ -238,7 +308,9 @@ class TestOnTheCommittedExtract:
         assert "lane(s) 3 of 4 (OSM lanes=3: a lane was added)  ADDED_LANE_WRONG_SIDE" in text
         assert "fix: restate the split with an OSMNetwork.patch_files connection patch" in text
         assert "fix: the lane feeding the exit was added by ramp guessing" in text
-        assert "42165869  OSM left (" in text and text.count("OK") == 6
+        assert "42165869  OSM left (" in text and text.count("OK") == 5
+        assert "lane(s) 3 of 4 (OSM lanes=3: a lane was added)  THROUGH_LANE_EXIT_ONLY" in text
+        assert "add `--ramps.unset 45782590` to netconvert_extra" in text
 
 
 class TestSideComputationOnTheFixture:
@@ -272,11 +344,17 @@ class TestSideComputationOnTheFixture:
             netconvert_extra=extra,
         )
         findings = audit_splits(bundle.net_path, FIXTURE, chain)
+        # with ramp guessing the left exit's lane goes on the right and the
+        # untagged left lane, which the unchanged lane count says continues, is
+        # left exit-only: the 6th Street pattern (docs/I94_LANE_SHARES.md §4)
         assert [(f.exit_edge, f.osm_side, f.compiled_side, f.verdict) for f in findings] == [
             ("400", "right", "rightmost", "ok"),
-            ("401", "left", "leftmost", "ok"),
+            ("401", "left", "leftmost", "through_lane_exit_only" if extra else "ok"),
         ]
         right, left = findings
+        if extra:
+            assert (left.added_lane_side, left.trapped_lanes) == ("right", (3,))
+            assert left.trapped_evidence == "lane count" and ramps_unset_edges(findings) == ["302"]
         assert right.turn_lanes_side == "right" and left.turn_lanes is None
         assert all(f.added_lane == bool(extra) for f in findings)
         # a left exit's patch puts the exit on the LEFTMOST lane of the
@@ -350,11 +428,12 @@ class TestOnboardingPath:
         assert build.config.network.netconvert_extra == list(MNDOT_EXTRA)
         assert [(d.from_edge, d.verdict) for d in build.split_defects()] == [
             ("45608485", "wrong_side"),
+            ("45782590-AddedOffRampEdge", "through_lane_exit_only"),
             ("1001426896", "added_lane_wrong_side"),
         ]
         assert build.split_audit_before_fixes is None and build.split_fixes_applied == 0
-        assert build.applied_line() == "ramp guessing on; split fixes: off, 2 remaining"
-        assert "  splits (8 exits audited against the extract; 2 defects)" in build.summary()
+        assert build.applied_line() == "ramp guessing on; split fixes: off, 3 remaining"
+        assert "  splits (8 exits audited against the extract; 3 defects)" in build.summary()
         assert "splits before fixes" not in build.summary()
         with pytest.raises(ValueError, match="connection patch"):
             apply_split_fixes(build, None)
@@ -363,15 +442,15 @@ class TestOnboardingPath:
         fixed = apply_split_fixes(build, patch)
         assert fixed.split_defects() == [] and len(fixed.split_audit) == 8
         assert fixed.split_audit_before_fixes == build.split_audit
-        assert fixed.split_fixes_applied == 2 and fixed.split_patch_file == patch
-        assert fixed.applied_line() == "ramp guessing on; split fixes: 2 applied, 0 remaining"
-        assert "  splits before fixes (8 exits audited against the extract; 2 defects)" in (
+        assert fixed.split_fixes_applied == 3 and fixed.split_patch_file == patch
+        assert fixed.applied_line() == "ramp guessing on; split fixes: 3 applied, 0 remaining"
+        assert "  splits before fixes (8 exits audited against the extract; 3 defects)" in (
             fixed.summary()
         )
         network = fixed.config.network
         assert isinstance(network, OSMNetwork)
         assert network.patch_files == [str(patch)]  # outside the repository: absolute
-        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset", UNSET]
         committed = [
             line for line in COMMITTED_PATCH.read_text().splitlines() if "<connection " in line
         ]
@@ -401,19 +480,20 @@ class TestOnboardingPath:
         )
         patch = tmp_path / "osm" / "mndot_i94_wb_stpaul.splits.con.xml"
         assert build.ramp_guessing and build.split_fixes
-        assert build.split_fixes_applied == 2 and build.split_defects() == []
+        assert build.split_fixes_applied == 3 and build.split_defects() == []
         assert build.split_patch_file == patch and patch.is_file()
         assert build.split_audit_before_fixes is not None
         assert [
             (d.from_edge, d.verdict) for d in split_defects(build.split_audit_before_fixes)
         ] == [
             ("45608485", "wrong_side"),
+            ("45782590-AddedOffRampEdge", "through_lane_exit_only"),
             ("1001426896", "added_lane_wrong_side"),
         ]
         assert len(build.split_audit) == 8
         network = build.config.network
         assert isinstance(network, OSMNetwork)
-        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset", UNSET]
         assert network.patch_files == [str(patch)]
         committed = [
             line for line in COMMITTED_PATCH.read_text().splitlines() if "<connection " in line
@@ -423,15 +503,15 @@ class TestOnboardingPath:
         ] == committed
         assert COMMITTED_PATCH.read_text().count("<connection ") == len(committed)  # untouched
         text = build.summary()
-        assert "  splits before fixes (8 exits audited against the extract; 2 defects)" in text
+        assert "  splits before fixes (8 exits audited against the extract; 3 defects)" in text
         assert "  splits (8 exits audited against the extract; 0 defects)" in text
-        assert "  applied   ramp guessing on; split fixes: 2 applied, 0 remaining" in text
-        assert f"patch {patch}" in text and "--ramps.unset 1001426896" in text
+        assert "  applied   ramp guessing on; split fixes: 3 applied, 0 remaining" in text
+        assert f"patch {patch}" in text and f"--ramps.unset {UNSET}" in text
         out_yaml = tmp_path / "split_default.yaml"
         build.to_yaml(out_yaml)
         dumped = yaml.safe_load(out_yaml.read_text())["network"]
         assert dumped["patch_files"] == [str(patch)]
-        assert dumped["netconvert_extra"] == [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        assert dumped["netconvert_extra"] == [*MNDOT_EXTRA, "--ramps.unset", UNSET]
         # the recorded scenario reloads and compiles the fixed network
         assert ScenarioConfig.from_yaml(out_yaml) == build.config
 
@@ -486,15 +566,16 @@ class TestOnboardingPath:
             f"{MNDOT_CHAIN_CAP_M:g}",
         ]
         default_patch = tmp_path / "osm" / "mndot_i94_wb_stpaul.splits.con.xml"
-        fixed_extra = [*MNDOT_EXTRA, "--ramps.unset", "1001426896"]
+        fixed_extra = [*MNDOT_EXTRA, "--ramps.unset", UNSET]
 
         # the defaults: guessing on, fixes applied, the failure flag has nothing left
         assert cli.main([*argv, "--fail-on-split-defect"]) == 0
         out = capsys.readouterr().out
-        assert "splits before fixes (8 exits audited against the extract; 2 defects)" in out
+        assert "splits before fixes (8 exits audited against the extract; 3 defects)" in out
         assert "WRONG_SIDE" in out and "ADDED_LANE_WRONG_SIDE" in out
+        assert "THROUGH_LANE_EXIT_ONLY" in out
         assert "splits (8 exits audited against the extract; 0 defects)" in out
-        assert "applied   ramp guessing on; split fixes: 2 applied, 0 remaining" in out
+        assert "applied   ramp guessing on; split fixes: 3 applied, 0 remaining" in out
         assert "network re-imported and audited again" in out and "FAIL" not in out
         assert default_patch.is_file()
         network = yaml.safe_load(out_yaml.read_text())["network"]
@@ -518,7 +599,7 @@ class TestOnboardingPath:
         # --no-split-fixes: reported, not fixed; the failure flag then fires
         assert cli.main([*argv, "--no-split-fixes"]) == 0
         out = capsys.readouterr().out
-        assert "applied   ramp guessing on; split fixes: off, 2 remaining" in out
+        assert "applied   ramp guessing on; split fixes: off, 3 remaining" in out
         assert "splits before fixes" not in out
         network = yaml.safe_load(out_yaml.read_text())["network"]
         assert network["netconvert_extra"] == list(MNDOT_EXTRA)
@@ -527,8 +608,9 @@ class TestOnboardingPath:
             cli.SPLIT_DEFECT_EXIT
         )
         out = capsys.readouterr().out
-        assert "FAIL: 2 exit(s) compiled on the wrong side of the mainline" in out
+        assert "FAIL: 3 exit(s) compiled against the map" in out
         assert "45608485 -> 18207912 (wrong_side, OSM right, compiled leftmost)" in out
+        assert "45782590-AddedOffRampEdge -> 42165869 (through_lane_exit_only" in out
 
         # --no-ramp-guessing: the map as drawn; the one defect that is not
         # guessing's is still fixed
@@ -846,8 +928,11 @@ class TestReviewFindingsOnTheCommittedExtract:
         )
         network = build.config.network
         assert isinstance(network, OSMNetwork)
-        assert network.netconvert_extra == [*MNDOT_EXTRA, "--ramps.unset=45608485,1001426896"]
-        assert build.split_fixes_applied == 2 and build.split_defects() == []
+        assert network.netconvert_extra == [
+            *MNDOT_EXTRA,
+            "--ramps.unset=45608485,45782590,1001426896",
+        ]
+        assert build.split_fixes_applied == 3 and build.split_defects() == []
 
     def test_two_corridors_from_one_extract_do_not_overwrite_each_others_patch(
         self, tmp_path: Path
@@ -894,3 +979,189 @@ class TestReviewFindingsOnTheCommittedExtract:
         assert build_c.split_patch_file == default
         assert build_c.config.network.patch_files == [str(default)]
         assert not (tmp_path / "osm" / "mndot_i94_wb_stpaul.split_c.splits.con.xml").exists()
+
+
+class TestThroughLaneMadeExitOnly:
+    """The lane check of a split on the right side (docs/I94_LANE_SHARES.md §4).
+
+    ``split_left_option.osm`` carries the I-94 WB 6th Street tag on its left
+    exit (``slight_left;through|none|none``) and an option-lane right exit
+    (``none|none|through;slight_right``); netconvert runs on the 2-km fixture
+    only (well under a second).
+    """
+
+    CHAIN = ("500", "501", "502")
+    LINKS = ("600", "601")
+
+    def _audit(self, tmp_path: Path, *extra: str) -> list[SplitFinding]:
+        bundle = osm_import(
+            osm_file=LEFT_OPTION,
+            corridor_edges=self.CHAIN,
+            workdir=tmp_path,
+            keep_edges=self.LINKS,
+            netconvert_extra=extra,
+        )
+        return audit_splits(bundle.net_path, LEFT_OPTION, self.CHAIN)
+
+    def test_ramp_guessing_traps_the_left_option_lane(self, tmp_path: Path) -> None:
+        right, left = self._audit(tmp_path, "--ramps.guess")
+        # the right exit gets its guessed lane on its own side: every OSM lane continues
+        assert (right.from_edge, right.verdict, right.added_lane_side) == (
+            "500-AddedOffRampEdge",
+            "ok",
+            "right",
+        )
+        assert right.trapped_lanes == ()
+        # the left exit: side right, lanes not — the guessed lane went on the right
+        assert (left.from_edge, left.compiled_side, left.exit_from_lanes) == (
+            "501-AddedOffRampEdge",
+            "leftmost",
+            (3,),
+        )
+        assert left.option_lanes == () and left.added_lane and left.added_lane_side == "right"
+        assert left.verdict == "through_lane_exit_only" and left.is_defect
+        assert (left.trapped_lanes, left.trapped_evidence) == ((3,), "turn:lanes")
+        assert "`--ramps.unset 501`" in left.remedy
+        assert ramps_unset_edges([right, left]) == ["501"]
+        # fixed by --ramps.unset alone: nothing for a connection patch to restate
+        assert split_patch_xml([right, left]) == ""
+        record = left.as_dict()
+        assert record["trapped_lanes"] == [3] and record["added_lane_side"] == "right"
+        text = "\n".join(format_split_table([right, left]))
+        assert "1 defect)" in text and "THROUGH_LANE_EXIT_ONLY" in text
+
+    def test_the_remedy_compiles_the_option_lane(self, tmp_path: Path) -> None:
+        right, left = self._audit(tmp_path, "--ramps.guess", "--ramps.unset", "501")
+        assert right.verdict == "ok" and left.verdict == "ok"
+        assert (left.from_edge, left.compiled_lanes, left.exit_from_lanes) == ("501", 3, (2,))
+        assert left.option_lanes == (2,) and not left.added_lane
+
+    def test_without_ramp_guessing_the_split_is_as_drawn(self, tmp_path: Path) -> None:
+        right, left = self._audit(tmp_path)
+        assert [(f.verdict, f.added_lane) for f in (right, left)] == [("ok", False)] * 2
+        assert left.option_lanes == (2,)
+
+    def test_the_layout_audit_flags_it_with_the_remedy(self, tmp_path: Path) -> None:
+        from microsim.layout_audit import audit_layout
+
+        bundle = osm_import(
+            osm_file=LEFT_OPTION,
+            corridor_edges=self.CHAIN,
+            workdir=tmp_path,
+            keep_edges=self.LINKS,
+            netconvert_extra=("--ramps.guess",),
+        )
+        audit = audit_layout(bundle.net_path, LEFT_OPTION, self.CHAIN)
+        defects = [f for _, _, f in audit.defects()]
+        assert [f.check for f in defects] == ["split_side"]
+        assert "lane(s) 3 of 4 as continuing" in defects[0].message
+        assert "--ramps.unset 501" in defects[0].message
+
+
+class TestLaneCheckUnits:
+    def test_added_lane_side(self) -> None:
+        # ramp guessing's fan-out: upstream lane 0 into lanes 0 and 1
+        assert added_lane_side({0: {0, 1}, 1: {2}, 2: {3}}, 3, 4) == "right"
+        assert added_lane_side({0: {0}, 1: {1}, 2: {2, 3}}, 3, 4) == "left"
+        # a lane continuing from upstream (no fan-out, same count) is no added lane
+        assert added_lane_side({0: {0}, 1: {1}, 2: {2}, 3: {3}}, 4, 4) == "unknown"
+        # an upstream lane that does not connect: not read
+        assert added_lane_side({0: {0, 1}, 2: {3}}, 3, 4) == "unknown"
+        assert added_lane_side({}, 3, 4) == "unknown"
+
+    def test_trapped_lanes_by_tag_and_by_lane_count(self) -> None:
+        kw = {
+            "osm_lanes": 3,
+            "osm_continuing_lanes": 3,
+            "compiled_lanes": 4,
+            "added_side": "right",
+        }
+        # 6th Street: the OSM left lane is compiled lane 3, which reaches only the exit
+        assert trapped_through_lanes(
+            exit_side="left",
+            turn_lanes="slight_left;through|none|none",
+            continuing_from_lanes=(0, 1, 2),
+            **kw,
+        ) == ((3,), "turn:lanes")
+        # the same, untagged: the unchanged lane count says every lane continues
+        assert trapped_through_lanes(
+            exit_side="left", turn_lanes=None, continuing_from_lanes=(0, 1, 2), **kw
+        ) == ((3,), "lane count")
+        # an exit-only lane in the tag is not trapped
+        assert trapped_through_lanes(
+            exit_side="left",
+            turn_lanes="slight_left|none|none",
+            continuing_from_lanes=(0, 1, 2),
+            **kw,
+        ) == ((), "")
+        # a guessed lane on the exit's own side never triggers the lane-count reading
+        assert trapped_through_lanes(
+            exit_side="right", turn_lanes=None, continuing_from_lanes=(1, 2, 3), **kw
+        ) == ((), "")
+        # a lane added on an unknown side cannot be placed: nothing is judged
+        assert trapped_through_lanes(
+            exit_side="left",
+            turn_lanes="slight_left;through|none|none",
+            continuing_from_lanes=(0, 1, 2),
+            **{**kw, "added_side": "unknown"},
+        ) == ((), "")
+        # a lane the tag ends (merge_to_left) says nothing; the exit-only lane neither
+        assert trapped_through_lanes(
+            exit_side="right",
+            turn_lanes="none|merge_to_left|slight_right",
+            osm_lanes=3,
+            osm_continuing_lanes=2,
+            compiled_lanes=3,
+            added_side="unknown",
+            continuing_from_lanes=(2,),
+        ) == ((), "")
+        # ... but a `none` lane that does not reach the continuing edge is trapped
+        assert trapped_through_lanes(
+            exit_side="right",
+            turn_lanes="none|merge_to_left|slight_right",
+            osm_lanes=3,
+            osm_continuing_lanes=2,
+            compiled_lanes=3,
+            added_side="unknown",
+            continuing_from_lanes=(1,),
+        ) == ((2,), "turn:lanes")
+
+    def test_a_trapped_lane_without_ramp_guessing_is_patched(self) -> None:
+        """Equal lane counts, the tag's option lane compiled exit-only: a
+        connection patch restates the split keeping the option lane."""
+        verdict, remedy = _verdict("right", "rightmost", False, (0,), "turn:lanes", "e")
+        assert verdict == "through_lane_exit_only" and "patch_files" in remedy
+        finding = SplitFinding(
+            from_edge="a",
+            exit_edge="x",
+            continuing_edge="b",
+            x_m=0.0,
+            osm_way="a",
+            osm_lanes=3,
+            turn_lanes="none|none|through;slight_right",
+            turn_lanes_side="right",
+            osm_side="right",
+            osm_offsets_m=(-5.0,),
+            compiled_lanes=3,
+            exit_from_lanes=(0,),
+            compiled_side="rightmost",
+            option_lanes=(),
+            added_lane=False,
+            exit_lanes=1,
+            continuing_lanes=3,
+            verdict=verdict,
+            remedy=remedy,
+            trapped_lanes=(0,),
+            trapped_evidence="turn:lanes",
+        )
+        assert ramps_unset_edges([finding]) == []
+        assert [
+            line for line in split_patch_xml([finding]).splitlines() if "<connection " in line
+        ] == [
+            '  <connection from="a" to="x" fromLane="0" toLane="0"/>',
+            '  <connection from="a" to="b" fromLane="0" toLane="0"/>',
+            '  <connection from="a" to="b" fromLane="1" toLane="1"/>',
+            '  <connection from="a" to="b" fromLane="2" toLane="2"/>',
+        ]
+        guessed = _verdict("left", "leftmost", True, (3,), "turn:lanes", "e", guessed=True)
+        assert guessed[0] == "through_lane_exit_only" and "`--ramps.unset e`" in guessed[1]

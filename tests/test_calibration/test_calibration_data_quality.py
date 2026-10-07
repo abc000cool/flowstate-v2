@@ -24,7 +24,10 @@ from calibration.data_quality import (
     QUALITY_SCHEMA,
     THRESHOLD_SOURCES,
     QualityThresholds,
+    QualityVerdicts,
     assess_quality,
+    lane_order_check,
+    mask_frame,
     mask_grid,
     neighbours,
     render_markdown,
@@ -540,6 +543,7 @@ class TestOutput:
         assert set(payload) == {
             "corridor_day_factors",
             "grid",
+            "lane_order",
             "mass_balance",
             "method",
             "notes",
@@ -601,3 +605,171 @@ class TestLaneColumnLoader:
         out.to_csv(path, index=False)
         with pytest.raises(ValueError, match="lane_column 'Lane'"):
             load_detector_csv(path, lane_column="Lane")
+
+
+class TestLaneOrder:
+    """The lane-order check (module docstring, "Lane order"; docs/I94_LANE_SHARES.md §3).
+
+    ``synthetic_detectors.lane_order_frame``: 30-second per-lane data for five
+    three-lane stations and one four-lane station (``W``) whose lane use
+    follows the flow (light traffic keeps right), with optional stations whose
+    labels are reversed.
+    """
+
+    @staticmethod
+    def _report(frame: pd.DataFrame, **kw: object):
+        return assess_quality(
+            frame, stations=syn.lane_order_stations_table(), mass_balance=False, **kw
+        )
+
+    @staticmethod
+    def _verdicts(report) -> dict[str, str]:
+        return {st.station: st.verdict for st in report.lane_order}
+
+    @staticmethod
+    def _lane_order_findings(report) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for sd in report.sensor_days:
+            for f in sd.findings:
+                if f.check == "lane_order":
+                    out.setdefault(sd.station, []).append(f.verdict)
+        return out
+
+    def test_a_normal_corridor_is_not_flagged(self) -> None:
+        report = self._report(syn.lane_order_frame(seed=0))
+        assert self._verdicts(report) == {
+            "S1": "ok", "S2": "ok", "S3": "ok", "W": "not_checkable", "S4": "ok", "S5": "ok",
+        }  # fmt: skip
+        assert self._lane_order_findings(report) == {}
+        assert report.lanes_reversed() == []
+        s3 = next(st for st in report.lane_order if st.station == "S3")
+        assert [p.neighbour for p in s3.pairs] == ["S2", "S4"]
+        assert all(
+            p.reading == "consistent" and (p.direct or 0) > 0.4 and (p.mirrored or 0) < -0.4
+            for p in s3.pairs
+        )
+        # the supporting signatures: the right lane is slower and heavier and
+        # carries the light traffic
+        assert s3.occupancy_per_vehicle_s[1] > s3.occupancy_per_vehicle_s[3]
+        assert s3.light_share[1] > s3.light_share[3]
+        assert s3.support == {
+            "occupancy_per_vehicle": "as_labelled",
+            "light_traffic_share": "as_labelled",
+        }
+
+    def test_a_reversed_station_is_flagged_and_marked_for_remapping(self) -> None:
+        report = self._report(syn.lane_order_frame(seed=0, reversed_stations=("S3",)))
+        verdicts = self._verdicts(report)
+        assert verdicts["S3"] == "reversed"
+        # its neighbours read mirrored against it, explained by its reversal
+        assert verdicts["S2"] == verdicts["S4"] == "ok"
+        assert report.lanes_reversed() == ["S3"]
+        s3 = next(st for st in report.lane_order if st.station == "S3")
+        assert all(p.reading == "mirrored" for p in s3.pairs) and len(s3.pairs) == 2
+        assert set(s3.support.values()) == {"reversed"}
+        assert s3.sensors_by_lane == {1: "S3:1", 2: "S3:2", 3: "S3:3"}
+        assert "lanes_reversed" in s3.reason and "lane 4 - k" in s3.reason
+        # every lane of S3 on every date: suspect, with nothing masked (the counts are good)
+        findings = self._lane_order_findings(report)
+        assert list(findings) == ["S3"] and findings["S3"] == ["suspect"] * 9
+        for sd in report.sensor_days:
+            if sd.station == "S3":
+                assert sd.verdict == "suspect" and sd.masked == {
+                    q: () for q in ("flow", "occupancy", "speed")
+                }
+                assert sd.n_usable == sd.n_valid
+        # JSON and the verdicts a consumer reads
+        payload = json.loads(report.to_json())
+        assert payload["lane_order"]["lanes_reversed"] == ["S3"]
+        rec = next(r for r in payload["lane_order"]["stations"] if r["station"] == "S3")
+        assert rec["verdict"] == "reversed" and rec["sensors_by_lane"] == {
+            "1": "S3:1",
+            "2": "S3:2",
+            "3": "S3:3",
+        }
+        verdicts_ = QualityVerdicts.from_dict(payload)
+        assert verdicts_.lanes_reversed == frozenset({"S3"})
+        assert verdicts_.lane_order["S2"]["verdict"] == "ok"
+        # masking a frame with the report sets nothing aside for it
+        frame = syn.lane_order_frame(seed=0, reversed_stations=("S3",))
+        masked = mask_frame(frame, report)
+        assert not any(sd.station == "S3" for sd in masked.masked_sensor_days)
+        text = render_markdown(report)
+        assert "## Lane order" in text and "| S3 | reversed | yes |" in text
+
+    def test_an_end_station_with_one_anchored_neighbour_is_reversed(self) -> None:
+        report = self._report(syn.lane_order_frame(seed=0, reversed_stations=("S1",)))
+        assert self._verdicts(report)["S1"] == "reversed"
+        assert report.lanes_reversed() == ["S1"]
+        assert self._verdicts(report)["S2"] == "ok"
+
+    def test_a_pair_no_third_station_anchors_is_never_remapped(self) -> None:
+        """Two comparable stations that disagree: the pair alone cannot say
+        which is reversed. The corridor's other stations of that lane count
+        could single one out; with none, both are flagged and neither remapped."""
+        stations = (("S1", 0.0, 3), ("S2", 800.0, 3), ("W", 2000.0, 4))
+        frame = syn.lane_order_frame(seed=0, reversed_stations=("S2",), stations=stations)
+        report = assess_quality(
+            frame, stations=syn.lane_order_stations_table(stations), mass_balance=False
+        )
+        assert self._verdicts(report) == {
+            "S1": "uncertain",
+            "S2": "uncertain",
+            "W": "not_checkable",
+        }
+        assert report.lanes_reversed() == []
+        assert set(self._lane_order_findings(report)) == {"S1", "S2"}
+        s2 = next(st for st in report.lane_order if st.station == "S2")
+        assert "not anchored by a third station" in s2.reason and not s2.lanes_reversed
+
+    def test_without_supporting_signatures_a_mirrored_station_is_only_uncertain(self) -> None:
+        rules = QualityThresholds(lane_order_min_contrast=10.0)  # no signature reads a direction
+        report = self._report(
+            syn.lane_order_frame(seed=0, reversed_stations=("S3",)), thresholds=rules
+        )
+        assert self._verdicts(report)["S3"] == "uncertain"
+        assert report.lanes_reversed() == []
+        s3 = next(st for st in report.lane_order if st.station == "S3")
+        assert "no supporting signature" in s3.reason
+        # S2 and S4 read mirrored against an unremapped S3: flagged too, never remapped
+        assert self._verdicts(report)["S2"] == self._verdicts(report)["S4"] == "uncertain"
+
+    def test_a_station_without_comparable_neighbours_is_not_checkable(self) -> None:
+        # W is reversed too, and the only four-lane station: not checkable, not flagged
+        report = self._report(syn.lane_order_frame(seed=0, reversed_stations=("W",)))
+        w = next(st for st in report.lane_order if st.station == "W")
+        assert (w.verdict, w.lanes_reversed, w.pairs) == ("not_checkable", False, ())
+        assert "no station with 4 lanes" in w.reason
+        assert "W" not in self._lane_order_findings(report)
+
+    def test_detector_named_lanes_need_their_lane_numbers(self) -> None:
+        """MnDOT-style lane ids (detector names) are not lane numbers: without
+        ``lane_numbers`` nothing is checkable (and the report says so); with
+        them the check runs as on numbered lanes."""
+        frame = syn.lane_order_frame(seed=0, reversed_stations=("S3",), lane_ids="detector")
+        bare = self._report(frame)
+        assert set(self._verdicts(bare).values()) == {"not_checkable"}
+        assert any("lane order not checked" in n for n in bare.notes)
+        numbered = self._report(frame, lane_numbers=syn.lane_order_numbers())
+        assert self._verdicts(numbered)["S3"] == "reversed"
+        assert numbered.lanes_reversed() == ["S3"]
+        s3 = next(st for st in numbered.lane_order if st.station == "S3")
+        assert s3.sensors_by_lane[1] == "S3:S3d1"
+
+    def test_an_incomplete_station_is_not_checkable(self) -> None:
+        frame = syn.lane_order_frame(seed=0)
+        frame = frame[~((frame["station"] == "S4") & (frame["lane"] == "2"))].reset_index(drop=True)
+        frame.attrs["interval_s"] = 30.0
+        report = self._report(frame)
+        s4 = next(st for st in report.lane_order if st.station == "S4")
+        assert s4.verdict == "not_checkable" and "numbered 1, 3, not exactly 1..3" in s4.reason
+        # its neighbours skip it and pair across it
+        s3 = next(st for st in report.lane_order if st.station == "S3")
+        assert [p.neighbour for p in s3.pairs] == ["S2", "S5"]
+
+    def test_station_totals_skip_the_check(self, clean: pd.DataFrame) -> None:
+        report = assess_quality(clean, stations=syn.stations_table())
+        assert report.lane_order == ()
+        assert any("lane-order checks need per-lane data" in n for n in report.notes)
+        grid = detector_grid(syn.lane_order_frame(seed=0))
+        assert lane_order_check(grid)  # the public function on a per-lane grid

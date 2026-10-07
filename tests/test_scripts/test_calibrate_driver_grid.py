@@ -522,6 +522,91 @@ def test_observed_lane_shares_from_a_per_lane_cache(tmp_path: Path) -> None:
     assert res3["quality"]["n_masked_sensor_days"] >= 1
 
 
+def test_observed_lane_shares_read_a_station_reversed_only_when_asked(tmp_path: Path) -> None:
+    """A station's IRIS labels are read reversed (lane k as n + 1 - k) when a reviewer
+    names it, or when the data-quality report's lane-order check found it reversed and
+    the remap is asked for; otherwise the labels stand and the flag is recorded
+    (docs/I94_LANE_SHARES.md section 3)."""
+    rates = {
+        "9066": 2.0,
+        "9067": 4.0,
+        "9068": 6.0,
+        "9069": 3.0,
+        "9070": 3.0,
+        "9071": 6.0,
+        "5100": 0.5,
+    }
+    _write_iris_cache(tmp_path / "cache", "20260915", rates)
+    pop = _synthetic_population(tmp_path / "pop.json")
+    scenario = _synthetic_scenario(tmp_path, pop, lanes=3, duration=2100.0, warmup=300.0)
+    obs = _synthetic_observations(
+        tmp_path, [{"id": "S2105", "x_m": 100.0}, {"id": "S2106", "x_m": 800.0}], "05:30"
+    )
+    spec = _detector_spec(tmp_path, scenario, pop, obs, None, clock_offset_s=5400.0)
+    split = tmp_path / "split.json"
+    split.write_text(
+        json.dumps({"calibration_dates": ["2026-09-15"], "selected_stations": ["S2105", "S2106"]})
+    )
+    cfg = ScenarioConfig.from_yaml(scenario)
+    kw: dict[str, Any] = {
+        "cache_dir": tmp_path / "cache",
+        "metro_config": MNDOT_FIXTURE,
+        "day_split": split,
+        "allow_fetch": False,
+        "exclude_detectors": [],
+    }
+    base = g.build_observed_lanes(spec, cfg, quality=None, **kw)
+    by_id = {s["id"]: s for s in base["stations"]}
+    assert by_id["S2106"]["lane_order"] == {
+        "iris_labels_reversed": False, "by": None, "quality_check": None,
+    }  # fmt: skip
+    assert base["lane_order"]["flagged_not_remapped"] == []
+
+    rev = g.build_observed_lanes(spec, cfg, quality=None, reverse_lane_order=["S2106"], **kw)
+    r_by = {s["id"]: s for s in rev["stations"]}
+    flipped = {k: by_id["S2106"]["shares"][str(4 - int(k))] for k in ("1", "2", "3")}
+    assert r_by["S2106"]["shares"] == pytest.approx(flipped)
+    assert r_by["S2105"]["shares"] == by_id["S2105"]["shares"]
+    assert r_by["S2106"]["detectors_by_lane"] == {"1": ["9071"], "2": ["9070"], "3": ["9069"]}
+    assert r_by["S2106"]["lane_order"]["iris_labels_reversed"] is True
+    assert r_by["S2106"]["lane_order"]["by"].startswith("reviewer")
+    assert rev["lane_order"]["reversed_by_reviewer"] == ["S2106"]
+    assert rev["provenance"]["reverse_lane_order"] == ["S2106"]
+    with pytest.raises(ValueError, match="not stations of the selection"):
+        g.build_observed_lanes(spec, cfg, quality=None, reverse_lane_order=["S9"], **kw)
+    with pytest.raises(ValueError, match="needs the data-quality report"):
+        g.build_observed_lanes(spec, cfg, quality=None, remap_reversed=True, **kw)
+
+    # a report whose lane-order check found S2106 reversed (written into a real report)
+    dq = _load("data_quality_report")
+    corridor = tmp_path / "corridor"
+    corridor.mkdir()
+    (corridor / "selection.json").write_text(
+        json.dumps({"route": "I-94", "dir": "WB", "from_station": "S2105", "to_station": "S2106", "dates": ["20260915"], "window_s": 300})
+    )  # fmt: skip
+    assert dq.main(
+        ["--corridor-dir", str(corridor), "--lanes-from-cache", str(tmp_path / "cache"),
+         "--metro-config", str(MNDOT_FIXTURE), "--start", "05:30", "--end", "09:30", "--out", str(tmp_path / "dq")]
+    ) == 0  # fmt: skip
+    qpath = tmp_path / "dq" / "data_quality.json"
+    report = json.loads(qpath.read_text())
+    for rec in report["lane_order"]["stations"]:
+        if rec["station"] == "S2106":
+            rec.update(verdict="reversed", lanes_reversed=True)
+    qpath.write_text(json.dumps(report))
+    kept = g.build_observed_lanes(spec, cfg, quality=qpath, **kw)
+    k_by = {s["id"]: s for s in kept["stations"]}
+    assert k_by["S2106"]["shares"] == pytest.approx(by_id["S2106"]["shares"])
+    assert k_by["S2106"]["lane_order"]["quality_check"] == "reversed"
+    assert kept["lane_order"]["flagged_not_remapped"] == ["S2106 (reversed)"]
+    remapped = g.build_observed_lanes(spec, cfg, quality=qpath, remap_reversed=True, **kw)
+    m_by = {s["id"]: s for s in remapped["stations"]}
+    assert m_by["S2106"]["shares"] == pytest.approx(flipped)
+    assert m_by["S2106"]["lane_order"]["by"].startswith("data-quality report")
+    assert remapped["lane_order"]["reversed_by_report"] == ["S2106"]
+    assert remapped["lane_order"]["flagged_not_remapped"] == []
+
+
 # --- analysis on a faked I-24 tree -----------------------------------------------------------
 
 

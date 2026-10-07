@@ -57,15 +57,19 @@ feeds it from (:func:`microsim.split_audit.audit_splits`,
 docs/ONBOARDING_MNDOT.md §9). A right-hand exit compiled from the leftmost
 lane traps through traffic in a lane that leads only to the exit — the map
 fault behind the I-94 WB lock — and the lane check cannot see it because the
-lane *count* is right. A ``wrong_side`` / ``added_lane_wrong_side`` finding
-is fixed before the YAML is written (:func:`microsim.scenarios.apply_split_fixes`):
+lane *count* is right; so does a lane the map draws as continuing that the
+compiled network sends only to the exit (``through_lane_exit_only``: the
+I-94 WB 6th Street left exit, where ramp guessing added a lane on the far
+side, docs/I94_LANE_SHARES.md §4). A ``wrong_side`` / ``added_lane_wrong_side``
+/ ``through_lane_exit_only`` finding is fixed before the YAML is written
+(:func:`microsim.scenarios.apply_split_fixes`):
 a connection patch restating the ``wrong_side`` splits is written beside the
 extract as ``<extract stem>.splits.con.xml`` (``--write-split-patch PATH``
 chooses another place; added to the scenario's ``patch_files``),
 ``--ramps.unset`` is added for the lanes ramp guessing put on the wrong side
-(``netconvert_extra``), the network is re-imported with the fixes and audited
-again; both audits are printed, then the line ``applied ramp guessing on;
-split fixes: 2 applied, 0 remaining``. ``--no-split-fixes`` reports the
+or that shifted the through lanes (``netconvert_extra``), the network is
+re-imported with the fixes and audited again; both audits are printed, then
+the line ``applied ramp guessing on; split fixes: 3 applied, 0 remaining``. ``--no-split-fixes`` reports the
 defects and leaves the network as compiled. ``--fail-on-split-defect`` exits
 4 on any defect the *final* audit still carries.
 
@@ -445,7 +449,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-split-fixes",
         action="store_true",
         help="report the split audit's defects but do not apply their fixes (default: a "
-        "wrong_side / added_lane_wrong_side finding is fixed and the network re-audited)",
+        "wrong_side / added_lane_wrong_side / through_lane_exit_only finding is fixed and the "
+        "network re-audited)",
     )
     parser.add_argument(
         "--max-chain-m",
@@ -479,8 +484,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fail-on-split-defect",
         action="store_true",
         help="exit 4 when the final split audit (after the fixes, unless --no-split-fixes) "
-        "still has an exit compiled on the wrong side of the mainline "
-        "(wrong_side / added_lane_wrong_side)",
+        "still has an exit that traps through traffic: compiled on the wrong side of the "
+        "mainline (wrong_side / added_lane_wrong_side) or from a lane the map draws as "
+        "continuing (through_lane_exit_only)",
     )
     parser.add_argument(
         "--write-split-patch",
@@ -585,7 +591,8 @@ def main(argv: list[str] | None = None) -> int:
     defects = build.split_defects()
     if defects and args.fail_on_split_defect:
         print(
-            f"  FAIL: {len(defects)} exit(s) compiled on the wrong side of the mainline: "
+            f"  FAIL: {len(defects)} exit(s) compiled against the map (wrong side, or a "
+            f"through lane made exit-only): "
             + ", ".join(
                 f"{d.from_edge} -> {d.exit_edge} ({d.verdict}, OSM {d.expected_side}, "
                 f"compiled {d.compiled_side})"

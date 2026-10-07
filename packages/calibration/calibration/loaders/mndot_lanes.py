@@ -29,6 +29,7 @@ from calibration.loaders.detector_csv import DETECTOR_COLUMNS, DetectorKind
 from calibration.loaders.mndot import (
     DEFAULT_CACHE_DIR,
     DEFAULT_TIMEZONE,
+    MAINLINE_CATEGORY,
     MAYFLY_DISTRICT,
     MAYFLY_ENDPOINTS,
     FetchFn,
@@ -53,6 +54,44 @@ def offline_fetch(url: str) -> bytes | None:
         f"not in the local cache, and fetching is off (pass allow_fetch / --allow-fetch "
         f"to download it): {url}"
     )
+
+
+def iris_lane_numbers(
+    config: MetroConfig,
+    corridor: str,
+    stations: Sequence[str] | None = None,
+    *,
+    separator: str = ":",
+) -> dict[str, int]:
+    """The IRIS lane number of every mainline lane detector, keyed as :func:`lane_frame`'s sensors.
+
+    ``lane_frame`` rows carry the detector name in ``lane``, so a per-lane
+    grid's sensor is ``"<station><separator><detector>"``; the name is not the
+    lane. This maps each such sensor of a measured station to its IRIS lane
+    (1 = the rightmost mainline lane) for the data-quality lane-order check
+    (:func:`calibration.data_quality.lane_order_check`). Only detectors of the
+    mainline category with a lane are listed (auxiliary, merge and other loops
+    are not lanes of the station's cross-section); abandoned ones are left out.
+
+    Args:
+        config: Parsed IRIS configuration.
+        corridor: Corridor name (``"I-94 WB"``).
+        stations: Station ids to include (default: every station).
+        separator: Sensor id separator (``calibration.conservation.LANE_SEPARATOR``).
+
+    Returns:
+        Sensor id → IRIS lane number.
+    """
+    wanted = None if stations is None else {str(s) for s in stations}
+    out: dict[str, int] = {}
+    for node in config.corridor(corridor).nodes:
+        station = node.station_id
+        if station is None or (wanted is not None and station not in wanted):
+            continue
+        for d in node.detectors:
+            if d.category == MAINLINE_CATEGORY and d.lane >= 1 and not d.abandoned:
+                out[f"{station}{separator}{d.name}"] = int(d.lane)
+    return out
 
 
 def _zone(name: str) -> object | None:

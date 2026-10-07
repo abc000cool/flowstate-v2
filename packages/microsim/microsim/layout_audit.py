@@ -274,11 +274,14 @@ CHECKS: Final[tuple[CheckRule, ...]] = (
     CheckRule(
         "split_side",
         "g",
-        "Off-ramp split on the wrong side (split audit)",
-        "microsim.split_audit's verdict for every exit: wrong_side or added_lane_wrong_side is "
+        "Off-ramp split on the wrong side, or a through lane made exit-only (split audit)",
+        "microsim.split_audit's verdict for every exit: wrong_side, added_lane_wrong_side or "
+        "through_lane_exit_only (a lane OSM draws as continuing — by turn:lanes, or by an "
+        "unchanged lane count with a lane guessed on the far side — leads only to the exit) is "
         "a defect, unknown (the extract cannot place the exit) a warning.",
         "LINK_SAMPLE_M, MIN_SIDE_OFFSET_M (microsim.split_audit)",
-        "The I-94 WB St. Paul lock (docs/ONBOARDING_MNDOT.md §9).",
+        "The I-94 WB St. Paul lock (docs/ONBOARDING_MNDOT.md §9); the 6th Street left exit's "
+        "shifted through lanes (docs/I94_LANE_SHARES.md §4).",
     ),
     CheckRule(
         "guessed_aux_lane",
@@ -2260,7 +2263,26 @@ def _split_text(s: RampSplit) -> str:
 def _split_flags(s: RampSplit) -> list[Flag]:
     f = s.finding
     flags: list[Flag] = []
-    if f.is_defect:
+    if f.verdict == "through_lane_exit_only":
+        flags.append(
+            Flag(
+                "split_side",
+                "defect",
+                f"the map draws lane(s) {_lanes_text(f.trapped_lanes)} of {f.compiled_lanes} as "
+                f"continuing past the {f.expected_side} exit (by {f.trapped_evidence}); the "
+                f"compiled net sends them only to the exit"
+                + (
+                    f" (a lane was added on the {f.added_lane_side})"
+                    if f.added_lane_side != "unknown"
+                    else ""
+                )
+                + f" [{f.verdict}]. Fix: {f.remedy}",
+                "Does the exit-side lane also continue past the exit (an option lane), and does "
+                "the road gain a lane before it? If it continues, the compiled net traps through "
+                "traffic here.",
+            )
+        )
+    elif f.is_defect:
         flags.append(
             Flag(
                 "split_side",

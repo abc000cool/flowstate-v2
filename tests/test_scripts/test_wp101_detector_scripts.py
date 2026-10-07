@@ -247,6 +247,30 @@ class TestMndotCache:
         assert prov["allow_fetch"] is False
         assert payload["mass_balance"]["segments"][0]["n_days_evaluated"] == 1
         assert payload["mass_balance"]["segment_days"][0]["verdict"] == "ok"
+        # the lane-order check reads the IRIS lane numbers, not the detector names
+        lane_order = {r["station"]: r for r in payload["lane_order"]["stations"]}
+        assert set(lane_order) == {"S2105", "S2106"}
+        assert lane_order["S2106"]["sensors_by_lane"] == {
+            "1": "S2106:9069", "2": "S2106:9070", "3": "S2106:9071",
+        }  # fmt: skip
+        # both stations labelled alike: nothing flagged
+        assert {r["verdict"] for r in lane_order.values()} <= {"ok", "inconclusive"}
+        assert payload["lane_order"]["lanes_reversed"] == []
+
+    def test_iris_lane_numbers_are_the_mainline_detectors_lanes(self) -> None:
+        from calibration.loaders.mndot import MetroConfig
+        from calibration.loaders.mndot_lanes import iris_lane_numbers
+
+        config = MetroConfig.load(MNDOT_FIXTURE)
+        numbers = iris_lane_numbers(config, "I-94 WB", ["S2105", "S2106", "S1058"])
+        assert numbers == {
+            "S2105:9066": 1, "S2105:9067": 2, "S2105:9068": 3,
+            "S2106:9069": 1, "S2106:9070": 2, "S2106:9071": 3,
+        }  # fmt: skip
+        # every station by default; abandoned loops (S1058) and ramp loops never
+        everything = iris_lane_numbers(config, "I-94 WB")
+        assert "S2104:9063" in everything and not any(k.startswith("S1058:") for k in everything)
+        assert not any(k.startswith("rnd_") for k in everything)
 
     def test_a_missing_cache_entry_is_not_fetched(self, tmp_path: Path) -> None:
         cache = tmp_path / "cache"

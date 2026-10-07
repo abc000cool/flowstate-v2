@@ -136,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
         dates=split_list(args.dates) or None,
         start_local=args.start,
         end_local=args.end,
+        lane_numbers=inputs.lane_numbers or None,
     )
     provenance: dict[str, Any] = {
         "script": "scripts/data_quality_report.py",
@@ -166,6 +167,9 @@ def main(argv: list[str] | None = None) -> int:
         f"{s['n_sensor_days']} sensor-days: {s['n_ok']} ok, {s['n_suspect']} suspect, "
         f"{s['n_exclude']} excluded; usable {s['usable_share']:.1%} of expected readings"
     )
+    for st in report.lane_order:
+        if st.verdict in ("reversed", "uncertain"):
+            print(f"lane order {st.station}: {st.verdict} - {st.reason}")
     print(f"wrote {args.out / JSON_NAME} and {args.out / MARKDOWN_NAME}")
     return 0
 

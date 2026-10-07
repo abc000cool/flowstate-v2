@@ -608,6 +608,21 @@ as `ok`; the patch it generates for the Mounds/Kellogg split is the committed
 file's five connection lines, and with the fixes it reports none
 (`tests/test_microsim/test_microsim_split_audit.py`).
 
+**Correction (2026-10-07, docs/I94_LANE_SHARES.md §4).** The 6th Street exit
+is a left exit compiled on the left, but it is not fine: `--ramps.guess` put
+its deceleration lane on the RIGHT of `45782590` and left the old left lane —
+an option lane in OSM (`slight_left;through|none|none`, three lanes on and
+past the exit) — leading only to the exit, so every through lane moves one
+place left at 9.30–9.55 km. The audit checked only the side. It now also
+checks a correctly-sided split lane by lane and reports this exit as
+`through_lane_exit_only` with the remedy `--ramps.unset 45782590`; compiled
+without fixes the extract has three defects, and with the committed fixes
+this one remains. The committed scenarios keep their hashes; the variants
+`scenarios/mndot_i94_wb_stpaul_weave_slice_netfix.yaml` and
+`scenarios/mndot_i94_wb_stpaul_weave_dc_netfix.yaml` carry
+`--ramps.unset 1001426896,45782590` (netconvert-verified: 0 defects). Whether
+it moves the corridor's lane shares is cloud stage `p5_i94_netfix_probe`.
+
 ## 10. Weave batteries on the corrected map (2026-09-24) — still locked, now at the T.H.52 weave
 
 Second VM of the night (`flowstate-weave-b`, n2-standard-32, us-west1-c),

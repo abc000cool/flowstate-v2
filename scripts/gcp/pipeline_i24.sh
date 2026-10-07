@@ -94,6 +94,8 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # stage 23's I-24 batteries (runs/i24_validation/dc*/<config hash>/<seed>/): every replicate's meta.json (collision
   # counters); the I-94 battery's per-seed files ride with the runs/mndot_* line above, its reports with docs/reports
   extra="$extra $(ls runs/i24_validation/dc*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
+  # stage 24's probe (<root>/<network>/<pair>/<config hash>/<seed>/: readings and meta of every run, each network's lanes)
+  extra="$extra $(ls runs/p5/i94_netfix_probe/*/LANES.json runs/p5/i94_netfix_probe/*/*/*/*/readings.json runs/p5/i94_netfix_probe/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null \
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
@@ -1202,6 +1204,27 @@ stage p4_i24_ref bash -c "$RUN scripts/i24_validate.py --scenario scenarios/i24_
 if echo " $STAGES " | grep -q " p4_i24_refit "; then
   stage p4_i24_refit p4_i24_refit_steps || say "p4_i24_refit failed; continuing"
 fi
+
+# 24. The I-94 6th Street left-exit probe (docs/I94_LANE_SHARES.md sections 4 and 6.3; written 2026-10-07 before any
+#     run). netconvert's ramp guessing compiles the 6th Street LEFT exit (45782590) with a guessed lane on the right and
+#     the left lane exit-only, where OSM draws an option lane (microsim.split_audit: through_lane_exit_only). The 35-min
+#     slice under the reference configuration (xlsfg), as built (scenarios/${MNDOT}_weave_slice.yaml, the grid's own
+#     config hashes 1dc4729644dd / faa4ab5b219c) and fixed (scenarios/${MNDOT}_weave_slice_netfix.yaml, --ramps.unset
+#     1001426896,45782590; 892939b1c2fe / e0a582ceaa29) x the grid's reference drivers (k 0, keep-right 0) and the chosen
+#     pair (k 1, keep-right 0.1) x 4 seeds (spawn_seeds(42, 4), the first two the grid's) = 16 runs of about 4 GB, read
+#     and scored with the grid's own reader and scorer (scripts/i94_netfix_probe.py) -> artifacts/i94_netfix_probe.json:
+#     lane RMSE on each network's compared stations and on the common ones, as committed and with S791's labels reversed
+#     (the data-quality lane_order check), S97 discharge, shares at every station, collisions, the note's expectations,
+#     and whether the as-built runs reproduce the committed grid readings at its two seeds. Needs no data set (launch
+#     with --data-set none): every input is tracked. Cost: one wave of 16 runs at --procs 16 (the grid's slice runs took
+#     75-95 s each at 16 processes) plus two netconvert compiles, about 3 min on n2-standard-32; with boot and setup
+#     through the bucket about 15-20 min billed. Example:
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p5 --bucket gs://<bucket> --self-delete --via-bucket \
+#         --data-set none --cap-min 45 --pipeline-args '--stages "p5_i94_netfix_probe"'
+stage p5_i94_netfix_probe bash -c "set -e; \
+  $RUN scripts/i94_netfix_probe.py --plan-only; \
+  $RUN scripts/i94_netfix_probe.py --procs $(( PROCS < 16 ? PROCS : 16 )) \
+    --out runs/p5/i94_netfix_probe --artifact artifacts/i94_netfix_probe.json" || say "p5_i94_netfix_probe failed; continuing"
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

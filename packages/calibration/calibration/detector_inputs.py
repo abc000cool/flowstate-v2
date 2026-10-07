@@ -53,12 +53,18 @@ class CorridorInputs:
         per_lane: True for per-lane rows.
         provenance: Paths, file hashes, loader options and the frame's own
             hash — enough to say which data a report describes.
+        lane_numbers: Lane sensor id → its lane number in the source's
+            numbering, when the lane ids are not the numbers (MnDOT per-lane
+            mode: the IRIS lane of each detector, 1 = rightmost); empty
+            otherwise (``calibration.data_quality.assess_quality``'s
+            ``lane_numbers``).
     """
 
     frame: pd.DataFrame
     stations: pd.DataFrame | None
     per_lane: bool
     provenance: dict[str, Any] = field(default_factory=dict)
+    lane_numbers: dict[str, int] = field(default_factory=dict)
 
 
 def file_sha256(path: str | Path) -> str:
@@ -149,9 +155,11 @@ def load_corridor_inputs(
         provenance["stations"] = str(stations_path)
         provenance["stations_sha256"] = file_sha256(stations_path)
 
+    lane_numbers: dict[str, int] = {}
     if lanes_from_cache is not None:
+        from calibration.conservation import LANE_SEPARATOR
         from calibration.loaders.mndot import MetroConfig
-        from calibration.loaders.mndot_lanes import lane_frame, offline_fetch
+        from calibration.loaders.mndot_lanes import iris_lane_numbers, lane_frame, offline_fetch
 
         if metro_config is None:
             raise ValueError("per-lane MnDOT mode needs the IRIS configuration (metro_config)")
@@ -181,6 +189,7 @@ def load_corridor_inputs(
             session=None if allow_fetch else offline_fetch,
             exclude_detectors=exclude_detectors,
         )
+        lane_numbers = iris_lane_numbers(config, corridor, span, separator=LANE_SEPARATOR)
         provenance.update(
             {
                 "mode": "mndot_lanes_from_cache",
@@ -229,7 +238,13 @@ def load_corridor_inputs(
         per_lane = lane_column is not None
     provenance["n_rows"] = len(frame)
     provenance["frame_sha256"] = frame_sha256(frame)
-    return CorridorInputs(frame=frame, stations=table, per_lane=per_lane, provenance=provenance)
+    return CorridorInputs(
+        frame=frame,
+        stations=table,
+        per_lane=per_lane,
+        provenance=provenance,
+        lane_numbers=lane_numbers,
+    )
 
 
 def add_input_arguments(parser: argparse.ArgumentParser) -> None:
