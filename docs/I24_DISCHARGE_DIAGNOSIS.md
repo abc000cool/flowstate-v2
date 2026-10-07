@@ -1029,6 +1029,45 @@ stand at); R5's wave part binds only if the same-code reference's `wave_speed` r
 fails it). The `_dc_refit` + B1 + B2 arm waits for stage `p12_i24_b1`. Cost: about $1.0–1.3 on n2d-standard-16
 [estimate].
 
+#### 8.4.4 Corridor round, run — 2026-10-07 (stage p13 on one n2d-standard-16 in us-east1-b, about 55 min of stage time, about $1.3 after three refused launches of about $0.75, self-deleted)
+
+`artifacts/boundary_b2_corridor.json`; batteries `artifacts/i24_validation_dc_refit_p13ref.json` (the same-code
+reference, hash ada3f406504b) and `artifacts/i24_validation_dc_refit_rc.json` (the B2 arm
+`i24_replica_flow_rc_speedcal_dc_refit`, hash 909b89f298c5, as pre-registered); the ramp-flow reductions
+`artifacts/i24_b2_ramp_flows_dc_refit_{p13ref,rc}.json`; the `_rc` family's inputs and demand
+(`artifacts/i24_replica_inputs_flow_rc.json`, `artifacts/demand_i24_flow_rc.json`) and its four scenarios under
+`scenarios/i24_replica_flow_rc*.yaml`; log `artifacts/i24_discharge_2026-10-07/p13_i24_b2.log.txt`. Step 3's 20
+seeds, paired. The reference reproduces the committed `_dc_refit` battery exactly (hash, per-replicate counts and
+realised fraction equal), and the arm differs from it only in its name and the four ramps' values.
+
+| # | criterion (§8.4.3) | reference | B2 | verdict |
+|---|---|---|---|---|
+| R1 | 0 collisions in every run | 0 in 20 | 0 in 20 | **pass** |
+| R2 | realised demand ≥ the reference's | 0.921 | **0.967** (+4.5 pp [4.2, 4.9]) | **pass** |
+| R3 | each ramp's modelled 2-h flow within GEH 5 of its corrected count | 1.1 / 1.5 / **12.0** / 0.9 (reported: the reference inserts the inflated Hickory Hollow on-ramp count) | **1.8 / 1.2 / 1.3 / 2.0** (Old Hickory on, Hickory Hollow off, Hickory Hollow on, Bell Rd off) | **pass** |
+| R4 | 2-h GEH at 2,200 and 3,200 m not above the reference's (targets 6,626 / 6,639) | 7.28 / 8.25 | **3.86 / 4.63** (+269 [248, 290] and +284 [266, 302] veh/h) | **pass** |
+| R5 | wave verdict unchanged where it passes; 15-min segment-speed RMSPE ≤ reference + 0.02 | wave row fails (half n/a); 0.273 | wave row fails; **0.254** (bound 0.293) | **pass** |
+
+**Reading, by the rule fixed in §8.4.3.** R1–R5 hold. Removing the through traffic the count check flagged from
+the ramp counts — a correction of the inputs, not a change to the model — brings the calibrated arm's peak
+sections within GEH 5 of their targets on 2-h flows (3.9 and 4.6), keeps 4.5 points more of the demand on the
+road, and leaves the modelled ramp flows within GEH 2 of their corrected counts, where the reference's Hickory
+Hollow on-ramp flow sat at GEH 12 from the corrected count because the reference inserts the inflated one. The
+rule says adopt only if R1–R5 hold; they do, so B2 is **adoptable by its own rule**; adoption itself (the `_rc`
+family becoming the calibrated family's inputs) is the owner's call, as §8.4.3 states. The battery's own gate does
+not pass: the hourly link-flow GEH share is 25.7 % → 30.6 % against ≥ 85 %, the 5-min segment-speed RMSPE
+0.333 → 0.343, the wave row fails on both arms, and `no_locks` is not recorded on the I-24 batteries (the criteria
+table marks it so). R4 is a 2-h peak-section criterion and says nothing about the hourly profile or the far-end
+sections; §8.4.2's rule for the model's shortfall is answered on the peak sections only.
+
+**Not run.** The `_dc_refit` + B1 + B2 arm (§8.4.3's second arm) was not part of this stage; given §8.3.1 (B1 fails
+A5 on the canonical arm) and this round, it is the natural next run, with the FHWA demand re-sequence on the
+`_rc` family, both pre-registered before launch.
+
+**Limits.** One recording, one day; the correction removes at least the flagged through traffic, not all of it
+(the flags are lower bounds, §8.4.3); the wave row fails on both arms, so R5's wave half does not bind; the
+reference's R3 reading is reported, not gating.
+
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =
