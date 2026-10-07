@@ -40,7 +40,8 @@ for f in "$TMP"/scenarios/*_dc.yaml "$TMP"/scenarios/*_dc_refit.yaml; do
   [ -f "$f" ] && cp "$f" scenarios/ && echo "scenario $(basename "$f")"
 done
 # first-seed replicates (figures / lane profiles)
-mkdir -p runs
+mkdir -p runs runs/i24_validation   # GNU rsync (Linux) does not create missing parents
+mkdir -p runs runs/i24_validation   # GNU rsync (Linux) does not create missing parents
 [ -d "$TMP/runs/i24_validation_zip" ] && rsync -a "$TMP/runs/i24_validation_zip/" runs/i24_validation_zip/ && echo "runs: i24_validation_zip"
 [ -d "$TMP/runs/i24_validation/speedcal_heavy" ] && rsync -a "$TMP/runs/i24_validation/speedcal_heavy/" runs/i24_validation/speedcal_heavy/ && echo "runs: speedcal_heavy"
 [ -d "$TMP/runs/i24_validation_flow" ] && rsync -a "$TMP/runs/i24_validation_flow/" runs/i24_validation_flow/ && echo "runs: i24_validation_flow"
@@ -50,6 +51,8 @@ for d in "$TMP"/runs/*_hb "$TMP"/runs/*_cc; do [ -d "$d" ] && rsync -a "$d/" "ru
 # stage 19's run trees (WP-96: _wp96c, _wp96f, _wp96fh)
 for d in "$TMP"/runs/*_wp96*; do [ -d "$d" ] && rsync -a "$d/" "runs/$(basename "$d")/" && echo "runs: $(basename "$d")"; done
 # stage 23's I-24 batteries (runs/i24_validation/dc, dc_refit: per-replicate meta.json, first-seed trajectories)
+# GNU rsync (Linux) does not create a missing parent directory, unlike macOS's: make them first (2026-10-07, CI)
+mkdir -p runs/i24_validation
 for d in "$TMP"/runs/i24_validation/dc*; do [ -d "$d" ] && rsync -a "$d/" "runs/i24_validation/$(basename "$d")/" && echo "runs: i24_validation/$(basename "$d")"; done
 # stage 24's probe (readings, meta and lane geometry of every run; the artifact rebuilds from them)
 [ -d "$TMP/runs/p5/i94_netfix_probe" ] && mkdir -p runs/p5 && rsync -a "$TMP/runs/p5/i94_netfix_probe/" runs/p5/i94_netfix_probe/ && echo "runs: p5/i94_netfix_probe"
