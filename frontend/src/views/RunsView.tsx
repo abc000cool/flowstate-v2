@@ -13,6 +13,10 @@
  * one it opens on the cheap `ring_sugiyama` preset, or the cheapest preset
  * when the service has no ring (`lib/library.defaultPreset`), never on
  * whatever sorts first (`corridor_10km`: 20 × 20 min ≈ 6.7 sim-hours).
+ * The list can answer after the user has started typing (a cold server parses
+ * every preset YAML first): a late answer still chooses that opening scenario
+ * and fills the fields nobody has touched, but never replaces a typed value
+ * and never moves a scenario the user picked.
  *
  * Two honesty rules, the same ones the Scenarios cards follow: a failed run
  * shows the service's own reason rather than a bare status chip, and a row
@@ -48,7 +52,13 @@ import {
   listScenarios,
   OFFLINE_WRITE_MESSAGE,
 } from '../api/client';
-import type { CreateRunRequest, PresetSummary, RunStatus, RunSummary } from '../api/types';
+import type {
+  CreateRunRequest,
+  PresetSummary,
+  RunStatus,
+  RunSummary,
+  ScenarioConfig,
+} from '../api/types';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/icons';
@@ -100,6 +110,9 @@ const RUN_COLUMNS = 7;
 const SCENARIOS_POLL_MS = 3000;
 /** Once the library is loaded, refresh it slowly (new scenarios, names). */
 const SCENARIOS_IDLE_POLL_MS = 30000;
+
+/** The launcher's fields that a scenario's own values fill. */
+type LaunchField = 'reps' | 'duration' | 'seed';
 
 /** Parse an optional numeric field: '' means "use the scenario's own value". */
 function numOr(raw: string, fallback: number | null): number | null {
@@ -310,10 +323,31 @@ export function RunsView(): JSX.Element {
     setLaunchKey(itemKey(same ?? cheap ?? library[0]));
   }, [library, presets, launchKey]);
 
-  // Show the scenario's own values as the starting point, once per selected
-  // config: the scenario poll hands back fresh objects every tick, so keying
-  // this on the config identity would wipe whatever the user typed. Keyed on
-  // the hash, so a preset turning into its stored copy keeps the typed values.
+  // The fields the user has typed into since the launcher last showed a
+  // scenario's values at the user's own request (a pick in the select, or the
+  // palette's "Launch a ring run…"). Values that arrive by themselves — the
+  // library answering after the first keystroke, a refresh carrying an edited
+  // preset — fill only the other fields, so they never replace what was
+  // typed. An emptied box counts as typed: it means "the scenario's own
+  // value" and stays empty.
+  const edited = useRef(new Set<LaunchField>());
+  /** Show `cfg`'s own values in every field the user has not typed into. */
+  const fillUntouched = useCallback((cfg: ScenarioConfig | undefined): void => {
+    if (!edited.current.has('reps')) setRepsRaw(cfg ? String(cfg.replicates) : '');
+    if (!edited.current.has('duration')) setDurationRaw(cfg ? String(cfg.sim.duration_s) : '');
+    if (!edited.current.has('seed')) setSeedRaw(cfg ? String(cfg.seed) : '');
+  }, []);
+  const typeInto = (field: LaunchField, set: (raw: string) => void, raw: string): void => {
+    edited.current.add(field);
+    set(raw);
+  };
+
+  // Show the scenario's own values as the starting point, once per config the
+  // launcher lands on by itself (the opening default, a preset followed to
+  // its stored copy, a preset edited on the server): the scenario poll hands
+  // back fresh objects every tick, so keying this on the config identity
+  // would refill on every tick. Keyed on the hash, so a preset turning into
+  // its stored copy is not a new config.
   const prefilledFor = useRef<string | null>(null);
   const selectedKey = selected ? selected.config_hash : '';
   useEffect(() => {
@@ -321,15 +355,27 @@ export function RunsView(): JSX.Element {
     // old and new key) is not a new config: keep what the user typed
     if (selectedKey === '' || prefilledFor.current === selectedKey) return;
     prefilledFor.current = selectedKey;
-    setRepsRaw(base ? String(base.replicates) : '');
-    setDurationRaw(base ? String(base.sim.duration_s) : '');
-    setSeedRaw(base ? String(base.seed) : '');
-  }, [selectedKey, base]);
+    fillUntouched(base);
+  }, [selectedKey, base, fillUntouched]);
+
+  /** A scenario picked in the select is a new starting point: every field
+   * shows its values, whatever was typed for the one before. */
+  const pickScenario = (key: string): void => {
+    setLaunchKey(key);
+    const item = library.find((s) => itemKey(s) === key);
+    if (!item) return;
+    edited.current.clear();
+    prefilledFor.current = item.config_hash;
+    fillUntouched(item.config);
+  };
 
   // "Launch a ring run…" from the command palette arrives as router state
   // (lib/hooks launchPresetState). Taken once and cleared from the history
   // entry, so a reload or a Back to it does not re-apply it; applied once the
-  // library has loaded. It only prefills and focuses the launcher.
+  // library has loaded. It only prefills and focuses the launcher. It is the
+  // user's newest word on every field when it is taken: what was typed
+  // before it gives way to the scenario's values, what is typed while the
+  // library is still loading does not.
   const [launchRequest, setLaunchRequest] = useState<string | null>(null);
   const [focusLauncher, setFocusLauncher] = useState(false);
   const scenarioSelectRef = useRef<HTMLSelectElement>(null);
@@ -337,6 +383,8 @@ export function RunsView(): JSX.Element {
     const wanted = wantedLaunchPreset(location.state);
     if (wanted === null) return;
     setLaunchRequest(wanted);
+    setLaunchTier('micro');
+    edited.current.clear();
     navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
   }, [location, navigate]);
 
@@ -356,18 +404,15 @@ export function RunsView(): JSX.Element {
       setFocusLauncher(true);
       return;
     }
-    const cfg = item.config;
     setLaunchKey(itemKey(item));
-    setLaunchTier('micro');
     // the scenario's own values, even if this scenario was already selected
-    // and its fields had been edited
+    // and its fields had been edited before the request (cleared when it was
+    // taken), but not over a field typed into since
     prefilledFor.current = item.config_hash;
     lastHash.current = item.config_hash;
-    setRepsRaw(cfg ? String(cfg.replicates) : '');
-    setDurationRaw(cfg ? String(cfg.sim.duration_s) : '');
-    setSeedRaw(cfg ? String(cfg.seed) : '');
+    fillUntouched(item.config);
     setFocusLauncher(true);
-  }, [launchRequest, library, presets]);
+  }, [launchRequest, library, presets, fillUntouched]);
 
   // focus the launcher's first field, unless the user has moved focus on
   // since the request (the shell parks it on the page content meanwhile)
@@ -695,7 +740,7 @@ export function RunsView(): JSX.Element {
                 ref={scenarioSelectRef}
                 className="input"
                 value={launchKey}
-                onChange={(e) => setLaunchKey(e.target.value)}
+                onChange={(e) => pickScenario(e.target.value)}
               >
                 {library.map((s) => (
                   <option key={itemKey(s)} value={itemKey(s)}>
@@ -730,7 +775,11 @@ export function RunsView(): JSX.Element {
                 aria-invalid={warmupBlock !== null || undefined}
                 aria-describedby={warmupBlock ? 'l-dur-hint l-launch-reason' : undefined}
                 onChange={(e) =>
-                  setDurationRaw(clampRaw(e.target.value, MIN_DURATION_S, MAX_DURATION_S))
+                  typeInto(
+                    'duration',
+                    setDurationRaw,
+                    clampRaw(e.target.value, MIN_DURATION_S, MAX_DURATION_S),
+                  )
                 }
               />
               {warmupBlock !== null && (
@@ -749,7 +798,9 @@ export function RunsView(): JSX.Element {
                 max={MAX_SEED}
                 placeholder="scenario"
                 value={seedRaw}
-                onChange={(e) => setSeedRaw(clampRaw(e.target.value, MIN_SEED, MAX_SEED))}
+                onChange={(e) =>
+                  typeInto('seed', setSeedRaw, clampRaw(e.target.value, MIN_SEED, MAX_SEED))
+                }
               />
             </div>
             <div className="field">
@@ -764,7 +815,9 @@ export function RunsView(): JSX.Element {
                 value={repsRaw}
                 aria-describedby={replicatesLow ? 'l-reps-hint' : undefined}
                 onChange={(e) =>
-                  setRepsRaw(
+                  typeInto(
+                    'reps',
+                    setRepsRaw,
                     e.target.value === ''
                       ? ''
                       : String(clampInt(Number(e.target.value), 1, MAX_REPLICATES, 1)),

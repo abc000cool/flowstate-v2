@@ -20,6 +20,7 @@ import {
   setOfflineFallback,
 } from '../api/client';
 import { Toasts } from '../components/toast';
+import { launchPresetState } from '../lib/hooks';
 import { mockListRuns } from '../mocks/mockApi';
 import { RunsView } from '../views/RunsView';
 
@@ -171,6 +172,11 @@ describe('RunsView launcher', () => {
     );
     const duration = await screen.findByLabelText('Duration (s)', {}, { timeout: 4000 });
     const seed = screen.getByLabelText('Seed');
+    // type once the launcher is ready, as a user would: the scenario chosen,
+    // its own values shown and Launch enabled. (Typing earlier is covered by
+    // "when the scenario list answers late" below, with the order fixed.)
+    await waitFor(() => expect(duration).toHaveValue(7800), { timeout: 4000 });
+    expect(screen.getByRole('button', { name: 'Launch run' })).toBeEnabled();
 
     fireEvent.change(duration, { target: { value: '-600' } });
     expect(duration).toHaveValue(1);
@@ -199,12 +205,252 @@ describe('RunsView launcher', () => {
       </MemoryRouter>,
     );
     const reps = await screen.findByLabelText('Replicates', {}, { timeout: 4000 });
-    // the launcher prefills this field from the scenario list once that fetch resolves;
-    // typing before then would be overwritten by the prefill (a flaky failure on CI)
-    await waitFor(() => expect(reps).not.toHaveValue(null), { timeout: 4000 });
+    // type once the launcher has shown the scenario's own values, as a user would
+    await waitFor(() => expect(reps).toHaveValue(20), { timeout: 4000 });
     fireEvent.change(reps, { target: { value: '500' } });
     await waitFor(() => expect(reps).toHaveValue(200));
   });
+});
+
+/** The launcher fills its fields from the scenario list, and that list can
+ * answer after the user has started typing: a cold server parses every preset
+ * YAML to answer `GET /scenarios/preset`, and a slow CI runner stretches the
+ * same window (it failed "clamps Duration and Seed" above this way: the list
+ * landed with the first keystroke and its prefill replaced the typed value).
+ * A list that lands late may still choose the scenario the launcher opens on
+ * and fill the fields nobody has touched; it never replaces what the user
+ * typed and never moves a scenario the user picked. The library reads are
+ * held here until the test answers them, so the order is fixed, not timed. */
+describe('RunsView launcher when the scenario list answers late', () => {
+  const calls: Call[] = [];
+  function ringPreset(hash: string, duration_s: number, replicates: number): unknown {
+    return {
+      name: 'ring_sugiyama',
+      filename: 'ring_sugiyama.yaml',
+      config_hash: hash,
+      preset: true,
+      config: {
+        name: 'ring_sugiyama',
+        tier: 'micro',
+        network: { kind: 'ring', circumference_m: 230, n_vehicles: 22 },
+        fleet: { model: 'IDM' },
+        av: { penetration: 0, compliance: 1, controller: null },
+        sim: { duration_s },
+        seed: 42,
+        replicates,
+      },
+    };
+  }
+  /** What `GET /scenarios/preset` serves; a test may edit it between reads. */
+  let presets: unknown[] = [];
+  /** Library reads (`GET /scenarios/preset`, `GET /scenarios`) not yet answered. */
+  let held: (() => void)[] = [];
+  let holding = true;
+
+  /** A JSON answer whose body is read in one microtask. How many ticks the
+   * runtime's own body parsing takes differs between Node versions, and here
+   * it would decide where the answer lands relative to a keystroke. */
+  function promptJson(body: unknown): Response {
+    const res = json(body);
+    res.json = () => Promise.resolve(body);
+    return res;
+  }
+
+  /** Answer every held library read, and every later one at once. */
+  function openGate(): void {
+    holding = false;
+    for (const answer of held.splice(0)) answer();
+  }
+
+  beforeEach(() => {
+    setOfflineFallback(false);
+    clearAuthFailure();
+    calls.length = 0;
+    presets = [ringPreset('ringhash0001', 600, 3)];
+    held = [];
+    holding = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined;
+        calls.push({ url, method, body });
+        // the payload is taken when the answer is sent, so an edit made while
+        // a read is held is what that read answers
+        const libraryRead = (payload: () => unknown): Promise<Response> =>
+          holding
+            ? new Promise((resolve) => held.push(() => resolve(promptJson(payload()))))
+            : Promise.resolve(promptJson(payload()));
+        if (url.endsWith('/scenarios/preset')) return libraryRead(() => presets);
+        if (url.endsWith('/scenarios') && method === 'GET') return libraryRead(() => [scenario]);
+        if (url.endsWith('/scenarios') && method === 'POST') {
+          return Promise.resolve(json({ scenario_id: 'scn_ring', config_hash: 'ringhash0001' }, 201));
+        }
+        if (url.endsWith('/runs') && method === 'POST') {
+          return Promise.resolve(json({ run_id: 'run-new' }, 202));
+        }
+        if (url.endsWith('/runs')) return Promise.resolve(json([run]));
+        return Promise.resolve(json({ detail: `unexpected ${method} ${url}` }, 404));
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearAuthFailure();
+  });
+
+  it('keeps what was typed before the list arrived and fills only the untouched field', async () => {
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = screen.getByLabelText('Scenario');
+    const duration = screen.getByLabelText('Duration (s)');
+    const seed = screen.getByLabelText('Seed');
+    const reps = screen.getByLabelText('Replicates');
+    // the library reads are out and unanswered: nothing to choose yet
+    expect(held.length).toBeGreaterThan(0);
+    expect(within(select).queryAllByRole('option')).toHaveLength(0);
+
+    fireEvent.change(duration, { target: { value: '-600' } });
+    fireEvent.change(seed, { target: { value: '7' } });
+    expect(duration).toHaveValue(1);
+
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // the list opens the launcher on the ring, as documented ...
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    // ... and fills the field nobody touched, but not the two that were typed
+    await waitFor(() => expect(reps).toHaveValue(3));
+    expect(duration).toHaveValue(1);
+    expect(seed).toHaveValue(7);
+
+    // and the launch sends what the user typed
+    fireEvent.click(screen.getByRole('button', { name: 'Launch run' }));
+    await waitFor(() => {
+      expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/runs'))).toBe(true);
+    });
+    const posted = calls.find((c) => c.method === 'POST' && c.url.endsWith('/runs'));
+    expect(posted?.body).toMatchObject({
+      scenario_id: 'scn_ring',
+      replicates: 3,
+      overrides: { sim: { duration_s: 1 }, seed: 7 },
+    });
+  });
+
+  it('keeps a keystroke that the list lands with, in the same flush', async () => {
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = screen.getByLabelText('Scenario');
+    const duration = screen.getByLabelText('Duration (s)');
+    // the interleaving that failed "clamps Duration and Seed" on CI: the list
+    // has been read and set when the user types, but not rendered yet, so it
+    // is applied together with the keystroke. Inside this act React holds the
+    // list's update until the keystroke flushes it or the act ends.
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(within(select).queryAllByRole('option')).toHaveLength(0);
+      fireEvent.change(duration, { target: { value: '-600' } });
+      expect(duration).toHaveValue(1);
+    });
+    // the list landed (the launcher opened on the ring) and the value stands
+    expect(select).toHaveDisplayValue('ring_sugiyama (preset)');
+    expect(duration).toHaveValue(1);
+    expect(screen.getByLabelText('Replicates')).toHaveValue(3);
+  });
+
+  it("applies the palette's ring request when the list lands, around what was typed meanwhile", async () => {
+    // "Launch a ring run…" from another page: the request is taken at once,
+    // the library it needs is still loading
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: '/runs', state: launchPresetState('ring_sugiyama') }]}
+      >
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = screen.getByLabelText('Scenario');
+    expect(screen.getByLabelText('Tier')).toHaveValue('micro');
+    fireEvent.change(screen.getByLabelText('Tier'), { target: { value: 'macro' } });
+    fireEvent.change(screen.getByLabelText('Duration (s)'), { target: { value: '300' } });
+
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    // the ring's values where nothing was typed; the typed ones stand
+    await waitFor(() => expect(screen.getByLabelText('Replicates')).toHaveValue(3));
+    expect(screen.getByLabelText('Seed')).toHaveValue(42);
+    expect(screen.getByLabelText('Duration (s)')).toHaveValue(300);
+    expect(screen.getByLabelText('Tier')).toHaveValue('macro');
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('never moves a picked scenario, nor its typed fields, when a later list edits it', async () => {
+    openGate();
+    presets = [
+      ringPreset('ringhash0001', 600, 3),
+      {
+        ...(ringPreset('corrhash0001', 1200, 20) as object),
+        name: 'corridor_10km',
+        filename: 'corridor_10km.yaml',
+      },
+    ];
+    render(
+      <MemoryRouter>
+        <RunsView />
+      </MemoryRouter>,
+    );
+    const select = await screen.findByLabelText('Scenario');
+    await waitFor(() => expect(select).toHaveDisplayValue('ring_sugiyama (preset)'), {
+      timeout: 4000,
+    });
+    fireEvent.change(select, { target: { value: 'preset:corridor_10km.yaml' } });
+    const duration = screen.getByLabelText('Duration (s)');
+    await waitFor(() => expect(duration).toHaveValue(1200));
+    fireEvent.change(duration, { target: { value: '300' } });
+
+    // the corridor preset is edited on the server (new hash, same file), and
+    // the next read is answered only after the user has typed
+    presets = [
+      ringPreset('ringhash0001', 600, 3),
+      {
+        ...(ringPreset('corrhash0002', 1500, 10) as object),
+        name: 'corridor_10km',
+        filename: 'corridor_10km.yaml',
+      },
+    ];
+    holding = true;
+    act(() => setOfflineFallback(true));
+    act(() => setOfflineFallback(false));
+    await waitFor(() => expect(held.length).toBeGreaterThan(0), { timeout: 4000 });
+    await act(async () => {
+      openGate();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // the untouched field shows the edited preset's own value; the typed one
+    // and the pick stand
+    await waitFor(() => expect(screen.getByLabelText('Replicates')).toHaveValue(10), {
+      timeout: 4000,
+    });
+    expect(select).toHaveDisplayValue('corridor_10km (preset)');
+    expect(duration).toHaveValue(300);
+  }, 10000);
 });
 
 describe('RunsView with a rejected API key', () => {
