@@ -16,9 +16,27 @@ controller, strategy), so the metrics are exactly the ones a sweep records,
 over the same window. An arm is ``NAME key=value ...`` with the keys
 ``strategy`` (default ``none``), ``controller``, ``penetration``,
 ``compliance`` (default 1.0), ``rho_target_veh_km`` (ALINEA strategies) and
-``override`` — a YAML/JSON file with an ``av`` mapping merged into the arm
-(e.g. a tuned controller's ``controller_params``). Overrides may touch ``av``
-only: anything else would change what the arms share (protocol §8.1). The
+``override`` — a YAML/JSON file holding the arm's own tuned settings, the
+ones ``scripts/strategy_tune.py`` selects as a strategy's best (protocol §8.5
+re-runs "the best setting of each strategy"):
+
+``av``
+    A mapping merged into the arm's ``av`` block: a tuned controller's
+    ``controller_params``, a tuned VSL's ``vsl_params``.
+``meter_params``
+    ALINEA strategies only: written into the ``params`` of every on-ramp
+    meter the strategy places, exactly as ``strategy_tune.candidate_config``
+    writes a candidate's; only the keys in :data:`METER_OVERRIDE_PARAMS` (the
+    tuned gain), each a positive finite number. The target density is the
+    arm's ``rho_target_veh_km`` (the tuned ``rho_target_factor`` × rho_c,
+    rounded as the tuning rounds it), never a meter parameter.
+
+So the tuned best of ``alinea`` with factor 0.95 and gain 75 on rho_c 19.9 is
+``--arm alinea strategy=alinea rho_target_veh_km=18.905 override=alinea_best.yaml``
+with ``meter_params: {k_r_veh_h_per_veh_km: 75.0}``. An override may hold
+nothing else: anything else would change what the arms share (protocol
+§8.1). Without one an ALINEA arm runs the textbook gain
+(``controllers.ramp_meter.ALINEA_DEFAULTS``), which the plan states. The
 ``baseline`` arm (no vehicles controlled, strategy ``none``) is always run.
 
 Run tree (``--out``)::
@@ -45,8 +63,17 @@ the demand factor varies within ± the count error it records
 used, flagged assumed. Its path, sha256 and count error enter the design only
 when it is given.
 
+Hand-stated ranges: ``--set-range KIND LO HI SOURCE`` replaces a kind's
+range; it is recorded as an assumption (basis ``stated_assumption``, flagged
+assumed in the plan and the report) unless ``--range-basis KIND measured``
+says SOURCE names a measurement (basis ``stated_measurement``).
+
 Resumable: a run whose ``metrics.json`` exists is skipped; a ``DESIGN.json``
-from different inputs is refused. ``--plan-only`` prints the run count and
+from different inputs is refused. The derived populations' paths enter the
+config hashes in one canonical spelling
+(``validation.uncertainty.canonical_path_text``), so a design resumed with
+``--out`` spelled differently (relative, absolute) finds its runs.
+``--plan-only`` prints the run count and
 the simulated time it costs and writes nothing; ``--analyze-only``
 re-aggregates an existing tree. Seeds nest in samples
 (``validation.uncertainty.run_seeds``), never the sweep's evaluation seeds.
@@ -64,6 +91,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import multiprocessing as mp
 import re
 import subprocess
@@ -81,8 +109,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from corridor_sweep import FIELDS, _done, _worker, cell_config
 
+from controllers.ramp_meter import ALINEA_DEFAULTS
 from flowstate_core.config import ScenarioConfig, config_hash
-from flowstate_core.strategies import STRATEGIES, needs_target
+from flowstate_core.strategies import STRATEGIES, needs_target, on_ramps
 from validation.uncertainty import (
     BASIS_WORDS,
     DEFAULT_BASELINE,
@@ -90,6 +119,7 @@ from validation.uncertainty import (
     PARAMETER_KINDS,
     PROTOCOL_MIN_SAMPLES,
     PROTOCOL_MIN_SEEDS,
+    STATED_BASES,
     ParameterSpace,
     RunRecord,
     Sample,
@@ -128,6 +158,14 @@ POPULATION_DIR = "populations"
 
 ARM_KEYS = ("strategy", "controller", "penetration", "compliance", "rho_target_veh_km", "override")
 ARM_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]*$")
+
+#: The top-level keys an override file may hold (module docstring).
+OVERRIDE_KEYS = ("av", "meter_params")
+
+#: The ramp-meter parameters an override may set: the ALINEA dimensions that
+#: ``scripts/strategy_tune.py`` tunes besides the target (``_ALINEA_DIMS``;
+#: the target is the arm's ``rho_target_veh_km``). A test checks they agree.
+METER_OVERRIDE_PARAMS = ("k_r_veh_h_per_veh_km",)
 
 #: The metrics in report order: the sweep's own FIELDS first, then the other
 #: fields validation.metrics records; any further numeric field follows sorted.
@@ -195,6 +233,7 @@ class Arm:
     override: str | None = None
     override_sha256: str | None = None
     override_av: dict[str, Any] = field(default_factory=dict)
+    override_meter: dict[str, float] = field(default_factory=dict)
 
     def config(self, doc: dict[str, Any]) -> dict[str, Any]:
         """The arm's configuration from a serialized scenario (not modified)."""
@@ -208,11 +247,24 @@ class Arm:
         )
         if self.override_av:
             _merge(cfg.setdefault("av", {}), self.override_av)
+        if self.override_meter:
+            # every meter the strategy placed, as strategy_tune.candidate_config writes them
+            for ramp in on_ramps(cfg):
+                ramp["meter"]["params"].update(self.override_meter)
         return cfg
 
+    def meter_gain(self) -> float | None:
+        """The ALINEA gain the arm runs (None for an arm without meters)."""
+        if not needs_target(self.strategy):
+            return None
+        return float(
+            self.override_meter.get("k_r_veh_h_per_veh_km", ALINEA_DEFAULTS["k_r_veh_h_per_veh_km"])
+        )
+
     def to_dict(self) -> dict[str, Any]:
-        """JSON form (the design records it)."""
-        return {
+        """JSON form (the design records it). ``override_meter`` only when set, so a
+        design without one keeps the key it had before the field existed."""
+        out: dict[str, Any] = {
             "name": self.name,
             "strategy": self.strategy,
             "controller": self.controller,
@@ -223,6 +275,40 @@ class Arm:
             "override_sha256": self.override_sha256,
             "override_av": self.override_av,
         }
+        if self.override_meter:
+            out["override_meter"] = dict(self.override_meter)
+        return out
+
+
+def _meter_params(name: str, strategy: str, raw: Any) -> dict[str, float]:
+    """An override's ``meter_params``, validated (module docstring)."""
+    if not needs_target(strategy):
+        raise ValueError(
+            f"arm {name}: meter_params set the ALINEA meters, and strategy {strategy} places "
+            "none (use strategy=alinea or vsl+alinea)"
+        )
+    if not isinstance(raw, dict) or not raw:
+        raise ValueError(f"arm {name}: meter_params must be a non-empty mapping")
+    if "rho_target_veh_km" in raw:
+        raise ValueError(
+            f"arm {name}: the ALINEA target is the arm's rho_target_veh_km=..., not a meter "
+            "parameter of the override"
+        )
+    unknown = sorted(set(raw) - set(METER_OVERRIDE_PARAMS))
+    if unknown:
+        raise ValueError(
+            f"arm {name}: meter_params {unknown} not allowed; only "
+            f"{', '.join(METER_OVERRIDE_PARAMS)} (the tuned ALINEA gain)"
+        )
+    out: dict[str, float] = {}
+    for key, value in raw.items():
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"arm {name}: meter_params.{key} must be a number, got {value!r}")
+        number = float(value)
+        if not (math.isfinite(number) and number > 0.0):
+            raise ValueError(f"arm {name}: meter_params.{key} must be positive and finite")
+        out[str(key)] = number
+    return out
 
 
 def parse_arm(tokens: Sequence[str]) -> Arm:
@@ -262,16 +348,22 @@ def parse_arm(tokens: Sequence[str]) -> Arm:
         )
     override = kv.get("override")
     override_av: dict[str, Any] = {}
+    override_meter: dict[str, float] = {}
     override_sha: str | None = None
     if override is not None:
         path = Path(override)
         raw = yaml.safe_load(path.read_text())
-        if not isinstance(raw, dict) or set(raw) != {"av"} or not isinstance(raw["av"], dict):
+        if not isinstance(raw, dict) or not raw or not set(raw) <= set(OVERRIDE_KEYS):
             raise ValueError(
-                f"arm {name}: override {override} must be a mapping with the single key 'av' "
-                "(anything else would change what the arms share, protocol §8.1)"
+                f"arm {name}: override {override} must be a mapping of {' and/or '.join(OVERRIDE_KEYS)} "
+                "only (anything else would change what the arms share, protocol §8.1)"
             )
-        override_av = raw["av"]
+        if "av" in raw:
+            if not isinstance(raw["av"], dict):
+                raise ValueError(f"arm {name}: override {override}: 'av' must be a mapping")
+            override_av = raw["av"]
+        if "meter_params" in raw:
+            override_meter = _meter_params(name, strategy, raw["meter_params"])
         override_sha = file_sha256(path)
     arm = Arm(
         name=name,
@@ -283,6 +375,7 @@ def parse_arm(tokens: Sequence[str]) -> Arm:
         override=override,
         override_sha256=override_sha,
         override_av=override_av,
+        override_meter=override_meter,
     )
     if strategy == "none" and controller is None and not override_av:
         raise ValueError(f"arm {name}: identical to the baseline")
@@ -327,7 +420,17 @@ def build_parser() -> argparse.ArgumentParser:
         nargs=4,
         default=[],
         metavar=("KIND", "LO", "HI", "SOURCE"),
-        help="replace a kind's range; SOURCE (required) says where it comes from",
+        help="replace a kind's range; SOURCE (required) says where it comes from. Recorded "
+        "as an assumption (flagged assumed) unless --range-basis KIND measured",
+    )
+    ap.add_argument(
+        "--range-basis",
+        action="append",
+        nargs=2,
+        default=[],
+        metavar=("KIND", "BASIS"),
+        help="what a --set-range range rests on: 'assumed' (the default) or 'measured' "
+        "(SOURCE names the measurement); repeatable, one per --set-range kind",
     )
     ap.add_argument(
         "--transfer-check",
@@ -424,9 +527,35 @@ def build_space(args: argparse.Namespace, base: ScenarioConfig) -> ParameterSpac
             None if record is None else f"{record['path']} (sha256 {record['sha256'][:12]})"
         ),
     )
+    stated = stated_bases(args)
     for kind, lo, hi, source in args.set_range:
-        space = space.with_range(kind, float(lo), float(hi), source)
+        basis = STATED_BASES[stated.get(kind, "assumed")]
+        space = space.with_range(
+            kind, float(lo), float(hi), source, assumed=basis == "stated_assumption", basis=basis
+        )
     return space
+
+
+def stated_bases(args: argparse.Namespace) -> dict[str, str]:
+    """``--range-basis`` by kind, checked against the ``--set-range`` kinds.
+
+    Raises:
+        ValueError: A basis other than :data:`validation.uncertainty.STATED_BASES`'
+            keys, one for a kind no ``--set-range`` states, or two for a kind.
+    """
+    ranged = {kind for kind, *_ in getattr(args, "set_range", [])}
+    out: dict[str, str] = {}
+    for kind, basis in getattr(args, "range_basis", []):
+        if basis not in STATED_BASES:
+            raise ValueError(
+                f"--range-basis {kind} {basis}: the basis is one of {', '.join(STATED_BASES)}"
+            )
+        if kind not in ranged:
+            raise ValueError(f"--range-basis {kind}: no --set-range states a {kind} range")
+        if kind in out:
+            raise ValueError(f"--range-basis {kind}: given twice")
+        out[kind] = basis
+    return out
 
 
 def design_inputs(
@@ -491,6 +620,20 @@ def plan_lines(
         lines.append(
             "demand range: the ±5 % default count error, flagged assumed — give --data-quality "
             "<study>/data_quality.json for the count error it records"
+        )
+    for arm in arms:
+        gain = arm.meter_gain()
+        if gain is None:
+            continue
+        lines.append(
+            f"arm {arm.name}: ALINEA target {arm.rho_target_veh_km:g} veh/km, gain {gain:g} "
+            "veh/h per veh/km "
+            + (
+                f"(meter_params of {arm.override})"
+                if arm.override_meter
+                else "(the textbook gain, controllers.ramp_meter.ALINEA_DEFAULTS; a tuned "
+                "best's gain goes in an override's meter_params)"
+            )
         )
     return lines
 

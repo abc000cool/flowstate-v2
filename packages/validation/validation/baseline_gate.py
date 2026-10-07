@@ -35,12 +35,17 @@ What each check reads (protocol §4):
 * **C3 speeds** — RMSPE of station mean speeds at **15-minute** aggregation
   (:data:`SPEED_AGGREGATION_S`): per replicate, the five-minute simulated and
   observed station speeds are averaged over the same windows of each quarter
-  hour of the observation grid (a window enters only where both sides are
-  measured, so both block means cover the same windows), and the RMSPE is
-  formed over the blocks; the gating value is the mean over the replicates,
-  reported with its 95 % interval. 5- and 60-minute values are diagnostics,
-  as is the replicate-mean field by aggregation
-  (:func:`validation.report.speed_aggregation_rows`).
+  hour (a window enters only where both sides are measured, so both block
+  means cover the same windows), and the RMSPE is formed over the blocks; the
+  gating value is the mean over the replicates, reported with its 95 %
+  interval. The quarter hours are anchored at the study period's start (the
+  first analysed window, the warm-up's end), as C1's hours are, so the whole
+  study period is scored whatever the warm-up; analysed windows at the
+  study period's end that fill no whole block are left out and counted in
+  the day set's notes (:func:`aggregation_blocks`). 5- and 60-minute values
+  are diagnostics on the same anchoring, as is the replicate-mean field by
+  aggregation (:func:`validation.report.speed_aggregation_rows`, its 15-minute
+  row marked as the criterion's).
 * **C4 wave speed** — the simulated backward wave speed read by the profile
   detector (``stack``, :data:`GATE_WAVE_DETECTOR`) inside the profile's band,
   with a backward front found in at least
@@ -77,10 +82,15 @@ never filled in.
 as a loop at its position reads it: the mean speed of the vehicles crossing
 the station's position in the window (``station_point_speeds_sim``,
 :func:`validation.observed.score_run_against_observed`; §5's virtual
-detector). Stored scores written before the point speeds existed carry only
-the segment mean (the sampled vehicle speeds in the span to the midpoints with
-the station's neighbours, ``segment_speeds_sim``); the gate then scores on the
-segment means and states the substitution (:data:`SEGMENT_SPEED_NOTE`).
+detector); in a window no vehicle crosses, the mean speed of the vehicles
+standing over the loop — about zero in a stopped queue — and NaN only when
+the loop is empty (:data:`STANDSTILL_NOTE`; scores stored before that rule
+read a stopped queue as not measured, and the gate says so,
+:data:`STANDSTILL_MISSING_NOTE`). Stored scores written before the point
+speeds existed carry only the segment mean (the sampled vehicle speeds in the
+span to the midpoints with the station's neighbours, ``segment_speeds_sim``);
+the gate then scores on the segment means and states the substitution
+(:data:`SEGMENT_SPEED_NOTE`).
 
 **Day by day.** §3.5 also asks for the validation days one by one, so the
 spread across days is visible: :func:`score_validation_days` scores C1, C3 and
@@ -245,6 +255,26 @@ SEGMENT_SPEED_NOTE: Final[str] = (
 
 #: The note of the old name (kept for importers); the segment substitution.
 SIMULATED_SPEED_NOTE: Final[str] = SEGMENT_SPEED_NOTE
+
+STANDSTILL_NOTE: Final[str] = (
+    "a station window no vehicle crosses reads the mean speed of the vehicles standing over "
+    "the loop (front bumper within one vehicle length past the station; about zero in a "
+    "stopped queue, as an occupied loop that counts nothing reads), and is not measured only "
+    "when the loop is empty (observed_scores.json station_point_standstill)"
+)
+
+#: Start of the note naming analysed windows no whole speed block holds
+#: (:func:`aggregation_blocks`; written only when there are any).
+SPEED_BLOCKS_NOTE: Final[str] = (
+    "speed blocks are anchored at the study period's start (the first analysed window); "
+    "analysed windows at its end that fill no whole block are not scored"
+)
+
+STANDSTILL_MISSING_NOTE: Final[str] = (
+    "the stored point speeds predate the standstill reading: a station window no vehicle "
+    "crossed is not measured even when vehicles stood over the loop, so a stopped queue at a "
+    "station is left out of C3 and C6 rather than read as about zero"
+)
 
 ANCHORED_HOURS_NOTE: Final[str] = (
     "C1 hours anchored at the study period's start (the warm-up's end), so the whole study "
@@ -537,6 +567,7 @@ def rescore(
         hour_anchor_s=scores.hour_anchor_s,
         station_point_speeds_sim=scores.station_point_speeds_sim,
         station_point_counts_sim=scores.station_point_counts_sim,
+        station_point_standstill=scores.station_point_standstill,
     )
     return Rescored(
         scores=rescored,
@@ -555,6 +586,56 @@ def simulated_station_speeds(scores: ObservedScores, source: SpeedSource) -> Flo
     return np.asarray(scores.segment_speeds_sim, dtype=np.float64)
 
 
+def aggregation_blocks(windows: Sequence[int], k: int) -> tuple[list[list[int]], int]:
+    """The analysed windows in whole blocks of ``k``, anchored at the study period's start.
+
+    Block ``b`` holds windows ``w0 + b·k … w0 + b·k + k − 1``, ``w0`` the first
+    analysed window (the warm-up's end, where C1's anchored hours start too),
+    so a warm-up that is not a whole number of blocks leaves no part of the
+    study period's start out. A block is used only when every one of its
+    windows was analysed; the analysed windows in no whole block — a study
+    period that is not a whole number of blocks leaves them at its end — are
+    counted, never dropped silently.
+
+    Args:
+        windows: The replicate's analysed window indices (``ObservedScores.windows``).
+        k: Windows per block, at least 1.
+
+    Returns:
+        ``(blocks, n_left_out)`` — each block as the row indices into
+        ``windows`` of its members, in time order, and the number of analysed
+        windows in no whole block.
+    """
+    if k < 1:
+        raise ValueError(f"a block holds at least one window, got {k}")
+    if not windows:
+        return [], 0
+    start = min(windows)
+    present = set(windows)
+    members: dict[int, list[int]] = {}
+    for row, window in enumerate(windows):
+        members.setdefault((window - start) // k, []).append(row)
+    blocks: list[list[int]] = []
+    left_out = 0
+    for block, rows in sorted(members.items()):
+        if all((start + block * k + i) in present for i in range(k)):
+            blocks.append(rows)
+        else:
+            left_out += len(rows)
+    return blocks, left_out
+
+
+def _windows_per_block(aggregation_s: float, window_s: float) -> int:
+    """``aggregation_s / window_s`` as a whole number of windows, else ValueError."""
+    ratio = aggregation_s / window_s
+    k = round(ratio)
+    if k < 1 or abs(ratio - k) > 1e-9:
+        raise ValueError(
+            f"aggregation {aggregation_s:g} s is not a whole multiple of the {window_s:g} s window"
+        )
+    return int(k)
+
+
 def aggregated_rmspe(
     scores: ObservedScores,
     *,
@@ -564,8 +645,8 @@ def aggregated_rmspe(
 ) -> tuple[float, int]:
     """One replicate's speed RMSPE at a coarser aggregation (module docstring, C3).
 
-    Blocks are aligned to the observation grid (window ``k`` belongs to block
-    ``k // (aggregation_s / window_s)``) and only blocks whose every window is
+    Blocks are anchored at the study period's start, the first analysed
+    window (:func:`aggregation_blocks`), and only blocks whose every window is
     among the replicate's analysed windows are used. Within a block a cell's
     simulated and observed means are taken over the windows where both are
     measured (and the observation is not zero), so the two means cover the
@@ -588,12 +669,7 @@ def aggregated_rmspe(
         ValueError: ``aggregation_s`` is not a whole multiple of ``window_s``,
             or point speeds are asked of scores without them.
     """
-    ratio = aggregation_s / window_s
-    k = round(ratio)
-    if k < 1 or abs(ratio - k) > 1e-9:
-        raise ValueError(
-            f"aggregation {aggregation_s:g} s is not a whole multiple of the {window_s:g} s window"
-        )
+    k = _windows_per_block(aggregation_s, window_s)
     sim = simulated_station_speeds(scores, source)
     obs = np.asarray(scores.segment_speeds_obs, dtype=np.float64)
     if sim.size == 0 or obs.size == 0 or sim.shape != obs.shape:
@@ -601,15 +677,10 @@ def aggregated_rmspe(
     joint = np.isfinite(sim) & np.isfinite(obs) & (obs != 0.0)
     sim_j = np.where(joint, sim, np.nan)
     obs_j = np.where(joint, obs, np.nan)
-    present = set(scores.windows)
-    blocks: dict[int, list[int]] = {}
-    for row, window in enumerate(scores.windows):
-        blocks.setdefault(window // k, []).append(row)
+    blocks, _ = aggregation_blocks(scores.windows, k)
     s_rows: list[FloatArray] = []
     o_rows: list[FloatArray] = []
-    for block, members in sorted(blocks.items()):
-        if not all((block * k + i) in present for i in range(k)):
-            continue
+    for members in blocks:
         counts = np.count_nonzero(joint[members], axis=0)
         with np.errstate(invalid="ignore", divide="ignore"):
             s_mean = np.nansum(sim_j[members], axis=0) / counts
@@ -806,6 +877,28 @@ def _bottleneck_inputs(
     return obs, sims, stations, windows
 
 
+def _left_out_note(
+    rescored: Sequence[Rescored], aggregations: Sequence[float], window_s: float
+) -> str:
+    """The notes line on analysed windows that no whole speed block holds, or ``""``."""
+    windows = sorted({w for r in rescored for w in r.scores.windows})
+    parts: list[str] = []
+    for agg in aggregations:
+        try:
+            k = _windows_per_block(agg, window_s)
+        except ValueError:
+            continue
+        _, n = aggregation_blocks(windows, k)
+        if n:
+            parts.append(f"{n} at {agg / _S_PER_MIN:g} min")
+    if not parts:
+        return ""
+    return (
+        f"{SPEED_BLOCKS_NOTE}: {', '.join(parts)} (C3 is the "
+        f"{SPEED_AGGREGATION_S / _S_PER_MIN:g}-minute value)"
+    )
+
+
 def score_day_set(
     day_set: str,
     target: ObservedCorridor,
@@ -873,7 +966,13 @@ def score_day_set(
 
     source = _speed_source([r.scores for r in rescored])
     notes.append(POINT_SPEED_NOTE if source == "point" else SEGMENT_SPEED_NOTE)
+    if source == "point":
+        standstill = all(r.scores.station_point_standstill for r in rescored)
+        notes.append(STANDSTILL_NOTE if standstill else STANDSTILL_MISSING_NOTE)
     aggregations = sorted({SPEED_AGGREGATION_S, *SPEED_DIAGNOSTIC_AGGREGATIONS_S})
+    left_out = _left_out_note(rescored, aggregations, target.window_s)
+    if left_out:
+        notes.append(left_out)
     rmspe_by: dict[float, tuple[float, ...]] = {}
     cells_by: dict[float, int] = {}
     for agg in aggregations:
@@ -902,7 +1001,12 @@ def score_day_set(
         obs = np.asarray(rescored[0].scores.segment_speeds_obs, dtype=np.float64)
         if obs.shape == mean_sim.shape:
             mean_rows = tuple(
-                speed_aggregation_rows(obs.tolist(), mean_sim.tolist(), target.window_s)
+                speed_aggregation_rows(
+                    obs.tolist(),
+                    mean_sim.tolist(),
+                    target.window_s,
+                    criterion_aggregation_s=SPEED_AGGREGATION_S,
+                )
             )
 
     inputs = _bottleneck_inputs(target, scored_against, [r.scores for r in rescored], source)
@@ -1748,7 +1852,9 @@ def evaluate_gate(
             excluded.setdefault(k, v)
     notes = [
         POINT_SPEED_NOTE if calibration.speed_source == "point" else SEGMENT_SPEED_NOTE,
+        *(n for n in calibration.notes if n in (STANDSTILL_NOTE, STANDSTILL_MISSING_NOTE)),
         ANCHORED_HOURS_NOTE if calibration.hour_anchor == "study_period_start" else T0_HOURS_NOTE,
+        *(n for n in calibration.notes if n.startswith(SPEED_BLOCKS_NOTE)),
     ]
     if validation is None:
         notes.append("no validation-day observations were supplied; the gate cannot pass")

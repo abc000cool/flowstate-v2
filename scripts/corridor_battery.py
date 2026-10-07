@@ -78,6 +78,17 @@ one ``waiting`` console line. A seed without the ledger records ``null`` and
 is listed as not recorded, never as zero; the block is null when no seed
 records it. Added 2026-10-04 (WP-109), after every existing key.
 
+**Cool-down.** ``--scored-end-s T`` scores a scenario whose run continues past
+its study period (docs/FRISCO_PROTOCOL.md §8.2: "Runs end with a cool-down
+after the last scored departure"): every measurement — metrics, observed
+comparisons, wave speed, the waiting measures' scored departures, the report —
+stops at simulation time ``T``, the study period's end, while the waiting
+clocks run on to the run's end so the study period's vehicles can finish.
+Each replicate's ``metrics.json`` and the artifact record ``scored_end_s``
+(only when given), and ``--criteria-only`` refuses stored files scored with
+another value. Without the option everything scores to the run's end, as
+before.
+
 Per-seed results are written into each replicate directory (``metrics.json``,
 ``observed_scores.json``) so ``--criteria-only`` can re-score a finished
 battery — a threshold profile change, a fresh ring benchmark — without
@@ -355,6 +366,7 @@ def score_seeds(
     span: tuple[float, float],
     x_offset_m: float,
     n_procs: int,
+    scored_end_s: float | None = None,
 ) -> list[ReplicateAnalysis]:
     """Score every replicate (:func:`validation.battery.analyse_replicates`).
 
@@ -370,6 +382,8 @@ def score_seeds(
         span: Travel-time span [m].
         x_offset_m: Simulation ``x`` of the observed origin [m].
         n_procs: Scoring-pool size (``--score-procs``).
+        scored_end_s: The study period's end before a cool-down
+            (``--scored-end-s``); ``None`` scores to each run's end.
 
     Returns:
         One :class:`validation.battery.ReplicateAnalysis` per directory, in
@@ -393,6 +407,7 @@ def score_seeds(
         x_offset_m=x_offset_m,
         n_procs=n_procs,
         on_complete=_report,
+        scored_end_s=scored_end_s,
     )
 
 
@@ -495,6 +510,7 @@ def build_artifact(
     wall_s: float,
     metas: Sequence[Mapping[str, Any]] | None = None,
     waiting_list: Sequence[WaitingMetrics | None] | None = None,
+    scored_end_s: float | None = None,
 ) -> dict[str, Any]:
     """Assemble the validation artifact for one corridor battery.
 
@@ -520,6 +536,10 @@ def build_artifact(
     demand ledger) and the top-level ``waiting`` block after ``metrics_ci``
     (:func:`validation.battery.waiting_summary` labelled by seed; null when no
     seed records the ledger). Without ``waiting_list`` both are null.
+
+    ``scored_end_s`` (``--scored-end-s``) adds, additively, a top-level
+    ``scored_end_s`` after ``x_offset_m`` and a note saying the cool-down after
+    it was simulated but not scored; without it neither is written.
 
     Every GEH is labelled: ``per_seed[i]["link_hours"]`` is replicate ``i``'s
     :class:`validation.observed.LinkHourRecord` table (station, ``x_ref_m``,
@@ -570,7 +590,7 @@ def build_artifact(
     insertion = aggregate_insertion(list(insertion_list))
     _, _, _, _, provenance = pool_scores(observed, list(scores_list), path=observations_path)
     pooled_hours = pool_link_hours(list(scores_list))
-    return {
+    artifact: dict[str, Any] = {
         "schema": ARTIFACT_SCHEMA,
         "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "scenario": scenario,
@@ -709,6 +729,23 @@ def build_artifact(
             ),
         ],
     }
+    if scored_end_s is None:
+        return artifact
+    # Additive (module docstring): keys in the order the artifact had them,
+    # with the scored end after x_offset_m.
+    with_end: dict[str, Any] = {}
+    for key, value in artifact.items():
+        with_end[key] = value
+        if key == "x_offset_m":
+            with_end["scored_end_s"] = float(scored_end_s)
+    with_end["notes"] = [
+        *artifact["notes"],
+        f"Scored period ends at {float(scored_end_s):g} s (--scored-end-s): the cool-down "
+        "after it was simulated so the study period's vehicles could finish, and is not "
+        "scored — metrics, observed comparisons, wave speed and the waiting measures' "
+        "departures stop there; waiting clocks run to each run's end.",
+    ]
+    return with_end
 
 
 def waiting_line(waiting: dict[str, Any] | None) -> str:
@@ -908,6 +945,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     ap.add_argument("--title", default="FlowState calibration & validation report")
     ap.add_argument(
+        "--scored-end-s",
+        type=float,
+        default=None,
+        metavar="T",
+        help="end of the scored period [s, simulation time]: the study period's end when the "
+        "scenario runs on with a cool-down (docs/FRISCO_PROTOCOL.md section 8.2); every "
+        "measurement stops at T and only departures planned before T enter the waiting "
+        "measures, whose clocks run on to the run's end. Default: score to the run's end",
+    )
+    ap.add_argument(
         "--baseline-gate",
         action="store_true",
         help="evaluate the corridor study protocol's baseline gate (docs/FRISCO_PROTOCOL.md "
@@ -1025,7 +1072,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with phase("score", timings):
         if args.criteria_only:
-            analyses = [load_replicate_analysis(run_dir) for run_dir in dirs]
+            analyses = [load_replicate_analysis(run_dir, args.scored_end_s) for run_dir in dirs]
             # Outside --criteria-only the guard already printed this line the
             # moment the replicate finished, which is the point of it.
             for seed, analysis in zip(seeds, analyses, strict=True):
@@ -1041,6 +1088,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 span=span,
                 x_offset_m=x_offset,
                 n_procs=score_procs,
+                scored_end_s=args.scored_end_s,
             )
     metrics_list: list[Metrics] = [a.metrics for a in analyses]
     scores_list: list[ObservedScores] = [a.scores for a in analyses]
@@ -1113,6 +1161,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 wave_readings_by_run=dict(zip(dirs, wave_speeds, strict=True)),
                 figure_runs=[dirs[0]],
                 gate=gate,
+                scored_end_s=args.scored_end_s,
             )
             report_path = result[0] if isinstance(result, tuple) else result
         else:
@@ -1142,6 +1191,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         wall_s=time.perf_counter() - t0,
         metas=metas,
         waiting_list=waiting_list,
+        scored_end_s=args.scored_end_s,
     )
     artifact["report_path"] = None if report_path is None else str(report_path)
     if gate is not None:

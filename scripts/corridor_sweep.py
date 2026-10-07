@@ -44,6 +44,13 @@ Strategies:
               (per-lane critical density, e.g. from the corridor's FD artifact);
   ``vsl+alinea`` both.
 
+Cool-down (docs/FRISCO_PROTOCOL.md §8.2): ``--scored-end-s T`` scores a
+scenario that runs on past its study period. Both measure sets stop at
+simulation time ``T`` (throughput, σ_v, VMT/VHT and waves over the study
+period; the waiting measures over the departures planned before ``T``, their
+clocks running on to the run's end), and ``metrics_args`` in the manifest
+records it. Without the option every run is scored to its end, as before.
+
 Resumable: a run whose ``metrics.json`` exists under its cell/config-hash/seed
 directory is skipped. ``--analyze-only`` rebuilds the summary from stored files.
 
@@ -117,7 +124,7 @@ def _worker(
         paths = run_micro(ScenarioConfig.model_validate(cfg_json), seed, Path(root) / cell_name)
         m = compute_metrics(paths.run_dir, **metrics_args)
         # the waiting measures (WP-105) beside the standard ones, same window
-        w = compute_waiting_metrics(paths.run_dir)
+        w = compute_waiting_metrics(paths.run_dir, scored_end_s=metrics_args.get("scored_end_s"))
         (paths.run_dir / "metrics.json").write_text(
             json.dumps({**asdict(m), **asdict(w)}, indent=2)
         )
@@ -549,6 +556,14 @@ def main() -> None:
     ap.add_argument(
         "--span", type=float, nargs=2, required=True, metavar=("LO", "HI"), help="analysed span [m]"
     )
+    ap.add_argument(
+        "--scored-end-s",
+        type=float,
+        default=None,
+        metavar="T",
+        help="end of the scored period [s, simulation time], the study period's end before a "
+        "cool-down (docs/FRISCO_PROTOCOL.md section 8.2); default: score to the run's end",
+    )
     ap.add_argument("--replicates", type=int, default=20)
     ap.add_argument("--procs", type=int, default=8)
     ap.add_argument("--out", required=True, type=Path, help="run tree root")
@@ -585,7 +600,12 @@ def main() -> None:
     base_cfg = ScenarioConfig.from_yaml(args.scenario)
     base_json = json.loads(base_cfg.model_dump_json())
     seeds = spawn_seeds(base_cfg.seed, args.replicates)
-    metrics_args = {"x_ref": float(args.x_ref), "span": (float(args.span[0]), float(args.span[1]))}
+    metrics_args: dict[str, Any] = {
+        "x_ref": float(args.x_ref),
+        "span": (float(args.span[0]), float(args.span[1])),
+    }
+    if args.scored_end_s is not None:
+        metrics_args["scored_end_s"] = float(args.scored_end_s)
 
     grid: dict[str, dict[str, Any]] = {
         "baseline": {"penetration": 0.0, "compliance": 1.0, "controller": None, "strategy": "none"}

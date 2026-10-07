@@ -28,7 +28,9 @@ import pytest
 import yaml
 
 from flowstate_core.artifacts import IDMCalibration
-from flowstate_core.config import ScenarioConfig
+from flowstate_core.config import ScenarioConfig, config_hash
+from flowstate_core.strategies import on_ramps
+from validation import uncertainty as unc
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
@@ -120,17 +122,208 @@ def test_parse_arm_refusals(tokens: list[str], match: str) -> None:
         ur.parse_arm(tokens)
 
 
-def test_an_override_may_touch_av_only(tmp_path: Path) -> None:
+def test_an_override_may_touch_av_and_the_tuned_meter_gain_only(tmp_path: Path) -> None:
     good = tmp_path / "fs_best.yaml"
     good.write_text(yaml.safe_dump({"av": {"controller_params": {"U": 25.0}}}))
     arm = ur.parse_arm(["fs", "controller=follower_stopper", "penetration=0.1", f"override={good}"])
     cfg = arm.config({"av": {"penetration": 0.0}, "network": {}})
     assert cfg["av"]["controller_params"] == {"U": 25.0}
     assert arm.override_sha256 is not None
-    bad = tmp_path / "bad.yaml"
-    bad.write_text(yaml.safe_dump({"av": {}, "fleet": {"T": 1.0}}))
-    with pytest.raises(ValueError, match="single key 'av'"):
-        ur.parse_arm(["fs", "controller=follower_stopper", "penetration=0.1", f"override={bad}"])
+    assert "override_meter" not in arm.to_dict()  # a design without one keeps its key
+    fs = ["fs", "controller=follower_stopper", "penetration=0.1"]
+    alinea = ["m", "strategy=alinea", "rho_target_veh_km=19.9"]
+    cases: list[tuple[list[str], Any, str]] = [
+        (fs, {"av": {}, "fleet": {"T": 1.0}}, "av and/or meter_params only"),
+        (fs, {}, "av and/or meter_params only"),
+        (fs, {"av": [1, 2]}, "'av' must be a mapping"),
+        (fs, {"meter_params": {"k_r_veh_h_per_veh_km": 75.0}}, "places none"),
+        (alinea, {"meter_params": {}}, "non-empty mapping"),
+        (alinea, {"meter_params": {"rate_min_veh_h": 100.0}}, "not allowed"),
+        (alinea, {"meter_params": {"rho_target_veh_km": 18.0}}, "arm's rho_target_veh_km"),
+        (alinea, {"meter_params": {"k_r_veh_h_per_veh_km": "75"}}, "must be a number"),
+        (alinea, {"meter_params": {"k_r_veh_h_per_veh_km": True}}, "must be a number"),
+        (alinea, {"meter_params": {"k_r_veh_h_per_veh_km": -5.0}}, "positive and finite"),
+        (alinea, {"meter_params": {"k_r_veh_h_per_veh_km": float("inf")}}, "positive and finite"),
+    ]
+    for i, (tokens, raw, match) in enumerate(cases):
+        bad = tmp_path / f"bad{i}.yaml"
+        bad.write_text(yaml.safe_dump(raw))
+        with pytest.raises(ValueError, match=match):
+            ur.parse_arm([*tokens, f"override={bad}"])
+
+
+def _strategy_tune() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "flowstate_wp105_strategy_tune_for_unc", SCRIPTS / "strategy_tune.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_meter_whitelist_is_what_strategy_tune_tunes() -> None:
+    st = _strategy_tune()
+    tuned = {d.name for d in st._ALINEA_DIMS} - {"rho_target_factor"}  # the target: an arm key
+    assert set(ur.METER_OVERRIDE_PARAMS) == tuned
+
+
+RHO_C = 19.9
+
+
+@pytest.fixture
+def ramp_scenario(scenario: Path, tmp_path: Path) -> Path:
+    """The tiny scenario's population on a map corridor with two on-ramps (meters need
+    ramps; the map file is never read: nothing is simulated)."""
+    raw = yaml.safe_load(scenario.read_text())
+    raw["name"] = "tiny_ramps"
+    raw["network"] = {
+        "kind": "osm",
+        "osm_file": "x.osm",
+        "corridor_edges": ["a", "b", "c"],
+        "inflow": [[0.0, 0.5]],
+        "ramps": [
+            {"kind": "on", "edges": ["r1"], "attach_edge": "a", "inflow": [[0.0, 0.1]]},
+            {"kind": "on", "edges": ["r2"], "attach_edge": "b", "inflow": [[0.0, 0.1]]},
+            {"kind": "off", "edges": ["r3"], "attach_edge": "c", "exit_fraction": [[0.0, 0.2]]},
+        ],
+    }
+    path = tmp_path / "tiny_ramps.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def _best_override(st: ModuleType, strategy: str, values: dict[str, float], path: Path) -> Path:
+    """The override file of a tuned candidate (module docstring of uncertainty_runs.py)."""
+    space = st.SPACES[strategy]
+    raw: dict[str, Any] = {}
+    if "vsl" in space.infra:
+        raw["av"] = {"vsl_params": st._vsl_params(values)}
+    if space.vehicle_controller == "follower_stopper":
+        raw["av"] = {
+            "controller_params": {
+                **{k: v * float(values["dx0_scale"]) for k, v in st._FS_DX0.items()},
+                **{k: v * float(values["d_scale"]) for k, v in st._FS_D.items()},
+            }
+        }
+    if "alinea" in space.infra:
+        raw["meter_params"] = {"k_r_veh_h_per_veh_km": float(values["k_r_veh_h_per_veh_km"])}
+    path.write_text(yaml.safe_dump(raw))
+    return path
+
+
+def _best_tokens(st: ModuleType, strategy: str, values: dict[str, float], override: Path):
+    space = st.SPACES[strategy]
+    tokens = [strategy, f"strategy={space.infra}", f"override={override}"]
+    if "alinea" in space.infra:
+        tokens.append(f"rho_target_veh_km={round(values['rho_target_factor'] * RHO_C, 4)!r}")
+    if space.vehicle_controller:
+        tokens += [f"controller={space.vehicle_controller}", "penetration=0.1"]
+    return tokens
+
+
+def test_a_tuned_best_is_the_tuning_candidate_config_hash_and_all(
+    ramp_scenario: Path, tmp_path: Path
+) -> None:
+    """Review 2026-10-07 (major): the tuned ALINEA gain could not be passed, so §8.5 re-ran
+    'alinea' at the textbook gain. Every tuned setting of every strategy now reproduces
+    strategy_tune.candidate_config exactly."""
+    st = _strategy_tune()
+    base = json.loads(ScenarioConfig.from_yaml(ramp_scenario).model_dump_json())
+    for strategy in ("alinea", "vsl", "vsl+alinea", "follower_stopper"):
+        values = st.candidate_values(st.SPACES[strategy], 6)[3]  # not the textbook candidate
+        cand = st.candidate_config(
+            base,
+            st.SPACES[strategy],
+            values,
+            textbook=False,
+            rho_c_veh_km=RHO_C,
+            penetration=0.1,
+            compliance=1.0,
+        )
+        override = _best_override(st, strategy, values, tmp_path / f"{strategy}_best.yaml")
+        arm = ur.parse_arm(_best_tokens(st, strategy, values, override))
+        got = arm.config(base)
+        assert config_hash(ScenarioConfig.model_validate(got)) == config_hash(
+            ScenarioConfig.model_validate(cand)
+        ), strategy
+        if "alinea" in strategy:
+            gains = {r["meter"]["params"]["k_r_veh_h_per_veh_km"] for r in on_ramps(got)}
+            assert gains == {values["k_r_veh_h_per_veh_km"]} != {50.0}
+            assert arm.meter_gain() == values["k_r_veh_h_per_veh_km"]
+            assert arm.to_dict()["override_meter"] == {
+                "k_r_veh_h_per_veh_km": values["k_r_veh_h_per_veh_km"]
+            }
+
+
+def test_the_uncertainty_run_executes_the_tuned_meter_setting(
+    ramp_scenario: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The design, the payloads handed to the sweep worker and the analysis, with the
+    worker faked (nothing is simulated): every ALINEA run of every sample carries the
+    tuned gain and target on every metered ramp; the baseline carries no meter."""
+    best = tmp_path / "alinea_best.yaml"
+    best.write_text(yaml.safe_dump({"meter_params": {"k_r_veh_h_per_veh_km": 75.0}}))
+    seen: list[tuple[str, dict[str, Any]]] = []
+
+    def worker(payload: tuple[Any, ...]) -> tuple[str, int, bool, str]:
+        cell, cfg_json, seed, _metrics, root, _keep = payload
+        seen.append((cell, cfg_json))
+        chash = config_hash(ScenarioConfig.model_validate(cfg_json))
+        run = Path(root) / cell / chash / str(seed)
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "metrics.json").write_text(json.dumps({"mean_tt_s": 100.0}))
+        (run / "meta.json").write_text(json.dumps({"n_collisions": 0}))
+        return cell, seed, True, ""
+
+    monkeypatch.setattr(ur, "_worker", worker)
+    out = tmp_path / "run"
+    rc = ur.main(
+        [
+            *("--scenario", str(ramp_scenario), "--samples", "2", "--seeds", "2", "--procs", "1"),
+            *("--arm", "alinea", "strategy=alinea", "rho_target_veh_km=18.905"),
+            f"override={best}",
+            *("--arm", "alinea_textbook", "strategy=alinea", f"rho_target_veh_km={RHO_C}"),
+            *ARGS,
+            *("--out", str(out)),
+        ]
+    )
+    text = capsys.readouterr().out
+    assert rc == 0 and "12 runs; 12 pending" in text
+    assert (
+        f"arm alinea: ALINEA target 18.905 veh/km, gain 75 veh/h per veh/km (meter_params of {best})"
+        in text
+    )
+    assert (
+        "arm alinea_textbook: ALINEA target 19.9 veh/km, gain 50 veh/h per veh/km (the textbook"
+        in text
+    )
+    by_arm: dict[str, list[dict[str, Any]]] = {}
+    for cell, cfg in seen:
+        by_arm.setdefault(cell.split("/")[1], []).append(cfg)
+    assert {k: len(v) for k, v in by_arm.items()} == {
+        "baseline": 4,
+        "alinea": 4,
+        "alinea_textbook": 4,
+    }
+    for cfg in by_arm["alinea"]:
+        assert [r["meter"]["params"] for r in on_ramps(cfg)] == [
+            {"rho_target_veh_km": 18.905, "k_r_veh_h_per_veh_km": 75.0}
+        ] * 2
+    for cfg in by_arm["alinea_textbook"]:
+        assert [r["meter"]["params"] for r in on_ramps(cfg)] == [{"rho_target_veh_km": RHO_C}] * 2
+    assert all(r["meter"] is None for cfg in by_arm["baseline"] for r in on_ramps(cfg))
+    design = json.loads((out / "DESIGN.json").read_text())
+    arms = {a["name"]: a for a in design["arms"]}
+    assert arms["alinea"]["override_meter"] == {"k_r_veh_h_per_veh_km": 75.0}
+    assert "override_meter" not in arms["alinea_textbook"]
+    doc = json.loads((out / "uncertainty.json").read_text())
+    assert doc["n_runs"] == 12 and doc["arms"] == ["baseline", "alinea", "alinea_textbook"]
+    assert doc["provenance"]["arms"][0]["override_meter"] == {"k_r_veh_h_per_veh_km": 75.0}
 
 
 # --- plan, design ----------------------------------------------------------------------------------
@@ -474,3 +667,91 @@ def test_a_wrong_data_quality_file_is_a_clean_refusal(scenario: Path, tmp_path: 
     bad.write_text(json.dumps({"schema": "flowstate.observations/1"}))
     with pytest.raises(SystemExit, match="not a data-quality artifact"):
         ur.main([*common, "--data-quality", str(bad)])
+
+
+# --- review 2026-10-07 ---------------------------------------------------------------------------
+
+
+def test_a_stated_range_is_an_assumption_unless_said_measured(
+    scenario: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Minor: --set-range was recorded as not assumed (basis 'stated') whatever it was."""
+    common = ["--scenario", str(scenario), "--plan-only", "--out", str(tmp_path / "p")]
+    judged = ["--set-range", "t_scale", "0.9", "1.1", "engineering judgement"]
+    assert ur.main([*common, *judged]) == 0
+    line = next(ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("  t_scale: "))
+    assert line == (
+        "  t_scale: 0.9 – 1.1 [stated with the run, an assumption] (assumed); engineering judgement"
+    )
+    measured = ["--set-range", "t_scale", "0.9", "1.1", "the 2025 headway survey, report X"]
+    assert ur.main([*common, *measured, "--range-basis", "t_scale", "measured"]) == 0
+    line = next(ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("  t_scale: "))
+    assert "[stated with the run, from the measurement its source names]" in line
+    assert "(assumed)" not in line
+    assert ur.main([*common, *judged, "--range-basis", "t_scale", "assumed"]) == 0
+    assert "an assumption] (assumed)" in capsys.readouterr().out
+    for extra, match in (
+        (["--range-basis", "v0_scale", "measured"], "no --set-range states a v0_scale range"),
+        (["--range-basis", "t_scale", "guess"], "one of assumed, measured"),
+        (["--range-basis", "t_scale", "measured"] * 2, "given twice"),
+    ):
+        with pytest.raises(SystemExit, match=match):
+            ur.main([*common, *judged, *extra])
+    design, _ = _design(scenario, tmp_path / "unc", *judged)
+    t = next(p for p in design["space"]["parameters"] if p["kind"] == "t_scale")
+    assert t["assumed"] is True and t["basis"] == "stated_assumption"
+
+
+def test_a_design_resumed_with_out_spelled_otherwise_finds_its_runs(
+    scenario: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Minor: the derived populations' paths were built from the --out spelling and enter
+    every sample's config hash, so a resume under another spelling redid every run."""
+    monkeypatch.chdir(tmp_path)
+    design, arms = _design(scenario, Path("unc"))
+    row = design["samples"][0]
+    done = tmp_path / "unc" / row["sample_id"] / "baseline" / row["arms"]["baseline"]
+    (done / str(row["seeds"][0])).mkdir(parents=True)
+    (done / str(row["seeds"][0]) / "metrics.json").write_text(json.dumps({"mean_tt_s": 1.0}))
+    again, _ = _design(scenario, tmp_path / "unc")
+    assert again["samples"] == design["samples"]
+    assert Path(row["idm_calibration"]).is_absolute()  # outside the repository: resolved
+    total, pending = ur.pending_runs(tmp_path / "unc", again, arms, False)
+    assert (total, len(pending)) == (12, 11)
+
+
+def test_a_derived_population_widens_the_checks_reading_to_its_own_mean(
+    scenario: Path, transfer_json: Path, tmp_path: Path
+) -> None:
+    """Review 2026-10-07 (major), end to end: the check ran on the scenario's population
+    (mean v0 30 m/s), read a free-flow range below it and widened it to 30 m/s. A population
+    derived by mean v0 x 0.95 (28.5 m/s) is widened to 28.5 m/s, not to 30."""
+    doc = json.loads(transfer_json.read_text())
+    ff = next(c for c in doc["comparisons"] if c["quantity"] == "free_flow_speed")
+    entry = ff["uncertainty_range"]
+    # the case under test: the check widened its reading to its own population's mean
+    assert entry["basis"] == "observed_interval" and entry["widened_to_configured"] is True
+    read_lo, read_hi = entry["parameter_read_low"], entry["parameter_read_high"]
+    assert read_hi < 28.5 < 30.0 == pytest.approx(entry["parameter_high"])
+    raw = yaml.safe_load(scenario.read_text())
+    cal = IDMCalibration.load(raw["fleet"]["idm_calibration"])
+    derived = tmp_path / "idm_v0_scaled.json"
+    cal.model_copy(update={"mean": {**cal.mean, "v0": cal.mean["v0"] * 0.95}}).save(derived)
+    raw["fleet"]["idm_calibration"] = str(derived)
+    dscen = tmp_path / "derived.yaml"
+    dscen.write_text(yaml.safe_dump(raw))
+    args = ur.build_parser().parse_args(
+        [
+            *("--scenario", str(dscen), "--out", str(tmp_path / "o")),
+            *("--transfer-check", str(transfer_json), "--parameters", "v0_scale"),
+        ]
+    )
+    base = ScenarioConfig.from_yaml(dscen)
+    (v,) = ur.build_space(args, base).parameters
+    mean = 30.0 * 0.95
+    m = unc._measured_range("v0", base, 1.0, "measured")
+    expected = (max(min(read_lo, mean), m.lo), min(max(read_hi, mean), m.hi))
+    assert (v.low * mean, v.high * mean) == (pytest.approx(expected[0]), pytest.approx(expected[1]))
+    assert v.high * mean == pytest.approx(mean)  # widened to 28.5 m/s, not 30
+    assert v.basis == "observed_interval" and not v.assumed
+    assert "is not carried over" in v.source

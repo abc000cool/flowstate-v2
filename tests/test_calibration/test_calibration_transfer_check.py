@@ -50,6 +50,7 @@ from calibration.transfer_check import (
     judge_absolute,
     judge_relative,
     mean_driver_capacity,
+    measured_range,
     measured_source,
     model_side,
     model_speed_limit,
@@ -760,7 +761,6 @@ class TestSidecars:
         ref = measured_source(shifted, [sc])
         assert ref is not None and ref.sources["idm_calibration"] == str(pop_path)
         assert "mean a_max shifted from" in ref.label and "cap.json" in ref.label
-        assert measured_source(shifted, []) is None
         assert measured_source(population_from_artifact(pop_path), [sc]) is None
         obs = observed_side(ff_speed=30.0, capacity=1700.0)
         report = check_transfer(obs, shifted, sidecars=[sc], n_draws=N_DRAWS)
@@ -772,12 +772,53 @@ class TestSidecars:
             pytest.approx(1.1 / mean_t),
             pytest.approx(1.7 / mean_t),
         )
-        own = check_transfer(obs, shifted, sidecars=[], n_draws=N_DRAWS)
-        cap = own.comparison("capacity_per_lane").uncertainty_range
-        assert cap is not None and cap.measured_range == (
-            pytest.approx(0.96 / mean_t),
-            pytest.approx(1.56 / mean_t),
-        )
+
+    def test_the_capacity_sidecars_given_never_hide_the_measured_source(
+        self, tmp_path, pop_path
+    ) -> None:
+        """Review 2026-10-07 (minor): --no-sidecar-discovery (sidecars=[]) or a
+        --capacity-sidecar list without the base's sidecar centred the §7.2 measured
+        range on the derived population and called it measured. The lineage is read
+        from the sidecars beside the population as well, as
+        validation.uncertainty.population_lineage reads it."""
+        from validation import uncertainty as unc
+
+        _sidecar(tmp_path, pop_path)  # beside the populations, naming the measured source
+        base = IDMCalibration.load(_derived(tmp_path, pop_path, 0.9, "cap.json"))
+        shifted_path = tmp_path / "cap_amax.json"
+        mean = {**base.mean, "a_max": base.mean["a_max"] + 0.15}
+        base.model_copy(update={"mean": mean}).save(shifted_path)
+        shifted = population_from_artifact(shifted_path)
+        # an explicit list naming only a sidecar elsewhere, of another population
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        other = _write_population(elsewhere / "idm_other.json", mean={**POP_MEAN, "s0": 3.0})
+        probe = _sidecar(elsewhere, other, name="probe")
+        for given in ([], [probe]):
+            ref = measured_source(shifted, given)
+            assert ref is not None and ref.sources["idm_calibration"] == str(pop_path), given
+            assert "mean a_max shifted from" in ref.label
+        lineage = unc.population_lineage(str(shifted_path))
+        assert lineage is not None and lineage.source.label.startswith(str(pop_path))
+        obs = observed_side(ff_speed=30.0, capacity=1700.0)
+        mean_t = 1.4 * 0.9
+        for given in ([], [probe]):
+            own = check_transfer(obs, shifted, sidecars=given, n_draws=N_DRAWS)
+            cap = own.comparison("capacity_per_lane").uncertainty_range
+            # the measured T 1.4 ± 0.3 = 1.1-1.7 s, not the configured 1.26 ± 0.3
+            assert cap is not None and cap.measured_range == (
+                pytest.approx(1.1 / mean_t),
+                pytest.approx(1.7 / mean_t),
+            ), given
+            # the text a t_scale knob cites names the measured source, not the derived population
+            lo, hi, text = measured_range(shifted, "T", 1.0, measured_source(shifted, given))
+            assert (lo, hi) == (pytest.approx(1.1), pytest.approx(1.7))
+            assert text.startswith(f"measured population {pop_path} (source of ")
+        # a population with no sidecar beside it, none given: its own measured population
+        alone = tmp_path / "alone"
+        alone.mkdir()
+        lonely = population_from_artifact(_write_population(alone / "idm_lonely.json"))
+        assert measured_source(lonely, []) is None
 
 
 # ---------------------------------------------------------------------------
@@ -812,6 +853,8 @@ class TestOutputs:
             "capacity_per_lane",
         ]
         assert payload["model"]["draw_seed"] == MODEL_DRAW_SEED
+        # the desired-speed cap every curve is drawn at (validation.uncertainty compares it)
+        assert (payload["model"]["speed_factor"], payload["model"]["speed_dev"]) == (1.0, 0.0)
         assert len(payload["model"]["population_sources"]["idm_calibration_sha256"]) == 64
         assert payload["provenance"] == {"k": "v"}
         hw = payload["implied_headway"]
@@ -939,6 +982,16 @@ class TestUncertaintyRange:
         assert (u.low, u.high) == (pytest.approx(1.0), pytest.approx(1.07))
         assert u.basis == "observed_interval" and not u.assumed
         assert "widened to include the configured value × 1 (T 1.4)" in u.reason
+        # review 2026-10-07: the range before the widening is recorded, so a population
+        # derived from this one widens to its own mean, not to this one's
+        assert u.read == (pytest.approx(1.04), pytest.approx(1.07))
+        d = u.to_dict()
+        assert (d["read_low"], d["read_high"]) == (pytest.approx(1.04), pytest.approx(1.07))
+        assert (d["parameter_read_low"], d["parameter_read_high"]) == (
+            pytest.approx(1.04 * 1.4, abs=1e-4),
+            pytest.approx(1.07 * 1.4, abs=1e-4),
+        )
+        assert d["parameter_low"] == pytest.approx(1.4, abs=1e-4)  # the widened end
         # a configured value beyond the measured range: widened up to the clip only
         beyond = _range(_cap_comparison(), configured=1.3)
         assert (beyond.low, beyond.high) == (pytest.approx(1.04), pytest.approx(1.2))
@@ -1138,6 +1191,10 @@ class TestUncertaintyRange:
             "high",
             "parameter_low",
             "parameter_high",
+            "read_low",
+            "read_high",
+            "parameter_read_low",
+            "parameter_read_high",
             "basis",
             "reason",
             "clipped",
@@ -1150,8 +1207,11 @@ class TestUncertaintyRange:
         }
         assert ff["knob"] == "v0_scale" and ff["basis"] == "observed_interval"
         assert ff["parameter_low"] == pytest.approx(ff["low"] * 33.0, abs=1e-3)
+        assert ff["parameter_read_low"] == pytest.approx(ff["read_low"] * 33.0, abs=1e-3)
+        assert ff["read_low"] >= ff["low"] and ff["read_high"] <= ff["high"]
         cap = by_q["capacity_per_lane"]["uncertainty_range"]
         assert cap["basis"] == "measured_range_fallback" and cap["observed_interval"] is None
+        assert cap["read_low"] is None and cap["parameter_read_high"] is None
         text = report.to_markdown()
         assert "## Ranges for the uncertainty runs" in text
         assert "**Mean desired speed (v0):** ×" in text

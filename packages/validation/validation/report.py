@@ -33,7 +33,9 @@ with a model-integrity banner under the title.
 
 Every metric, figure and criterion describes the same measurement window:
 each run's recorded period minus its configured warm-up
-(:func:`validation.metrics.warmup_from_meta`). The wave-speed criterion is
+(:func:`validation.metrics.warmup_from_meta`) and, when the caller passes
+``scored_end_s``, minus the cool-down after the study period's end
+(docs/FRISCO_PROTOCOL.md §8.2). The wave-speed criterion is
 measured with the active profile's own detector on fields binned at that
 detector's bins — reusing the metrics module's ``standard``-detector reading
 would make the row unscoreable, since :func:`validation.criteria.evaluate`
@@ -238,10 +240,16 @@ class ReportRefusedError(RuntimeError):
 
 @dataclass(frozen=True)
 class _RunInfo:
-    """One discovered run directory plus its parsed metadata."""
+    """One discovered run directory plus its parsed metadata.
+
+    ``scored_end_s`` is the end of the scored period [s] the caller of
+    :func:`generate_report` set (the study period's end before a cool-down,
+    docs/FRISCO_PROTOCOL.md §8.2); ``None`` scores to the run's end.
+    """
 
     path: Path
     meta: dict[str, Any]
+    scored_end_s: float | None = None
 
     @property
     def is_macro(self) -> bool:
@@ -551,11 +559,7 @@ def _shared_span(reference: _Group) -> tuple[float, float] | None:
         traj = pd.read_parquet(path, columns=["t", "veh_id", "x"])
         if traj.empty:
             continue
-        warm = r.warmup_s
-        if warm > 0.0:
-            windowed = traj.loc[traj["t"] >= warm]
-            if not windowed.empty:
-                traj = windowed
+        traj = _scored_rows(traj, r)
         lo, hi = default_travel_span(traj)
         if hi > lo:
             los.append(lo)
@@ -563,6 +567,25 @@ def _shared_span(reference: _Group) -> tuple[float, float] | None:
     if not los:
         return None
     return min(los), float(np.median(np.asarray(his, dtype=np.float64)))
+
+
+def _scored_rows(traj: Any, run: _RunInfo) -> Any:
+    """The rows of ``traj`` in the run's scored window (warm-up and cool-down dropped).
+
+    The window :func:`validation.metrics.compute_metrics` measures: ``t``
+    from the run's warm-up to its scored end (``run.scored_end_s``, else the
+    run's end). An empty selection keeps the whole frame, as the warm-up-only
+    rule always did.
+    """
+    warm = run.warmup_s
+    end = run.scored_end_s
+    if warm <= 0.0 and end is None:
+        return traj
+    keep = traj["t"] >= warm
+    if end is not None:
+        keep &= traj["t"] < end
+    windowed = traj.loc[keep]
+    return traj if windowed.empty else windowed
 
 
 def _run_key(path: str | Path) -> Path:
@@ -588,11 +611,13 @@ def _fill_metrics(
         for r in g.runs:
             known = stored.get(_run_key(r.path))
             g.metrics[r.seed] = (
-                known if known is not None else compute_metrics(r.path, x_ref=x_ref, span=span)
+                known
+                if known is not None
+                else compute_metrics(r.path, x_ref=x_ref, span=span, scored_end_s=r.scored_end_s)
             )
         g.agg = aggregate(list(g.metrics.values()))
         g.waiting = {
-            r.seed: compute_waiting_metrics(r.path)
+            r.seed: compute_waiting_metrics(r.path, scored_end_s=r.scored_end_s)
             for r in g.runs
             if (r.path / JOURNEYS_FILE).is_file() and isinstance(r.meta.get("journeys"), dict)
         }
@@ -610,21 +635,17 @@ def _fmt(value: float | None, digits: int = 4) -> str:
 def _load_field(run: _RunInfo, dt_bin: float = 15.0, dx_bin: float = 75.0) -> SpeedField:
     """Speed field of one run's measurement window, binned as asked.
 
-    The run's configured warm-up is dropped (the same window
-    :func:`validation.metrics.compute_metrics` measures), so the archived
-    contours and the criterion reading describe the scored period. The bins
-    are explicit because a :class:`validation.waves.WaveDetector` refuses a
-    field binned differently from its own recipe.
+    The run's configured warm-up — and a cool-down after its scored end — is
+    dropped (the same window :func:`validation.metrics.compute_metrics`
+    measures, :func:`_scored_rows`), so the archived contours and the
+    criterion reading describe the scored period. The bins are explicit
+    because a :class:`validation.waves.WaveDetector` refuses a field binned
+    differently from its own recipe.
     """
     import pandas as pd
 
     traj = pd.read_parquet(run.path / "trajectories.parquet", columns=["t", "x", "v"])
-    warm = run.warmup_s
-    if warm > 0.0:
-        windowed = traj.loc[traj["t"] >= warm]
-        if not windowed.empty:
-            traj = windowed
-    return speed_field(traj, dt_bin=dt_bin, dx_bin=dx_bin)
+    return speed_field(_scored_rows(traj, run), dt_bin=dt_bin, dx_bin=dx_bin)
 
 
 def _render_contour(
@@ -758,6 +779,8 @@ def speed_aggregation_rows(
     obs: Sequence[Sequence[float]],
     sim: Sequence[Sequence[float]],
     window_s: float | None,
+    *,
+    criterion_aggregation_s: float | None = None,
 ) -> list[dict[str, str]]:
     """The speed criterion at coarser time aggregation, with the floor.
 
@@ -768,14 +791,34 @@ def speed_aggregation_rows(
     resolution below which one recorded day does not repeat itself, i.e. the
     floor an ensemble mean can reach (docs/I24_VALIDATION.md §0.5).
 
+    Blocks start at the matrices' first row — the first analysed window, the
+    study period's start — and a trailing partial block is left out. Within
+    a block both sides are averaged over the same windows: those where both
+    are measured and the observation is not zero (the cells the RMSPE can
+    compare), so a window missing on one side never weights the other side's
+    mean; the whole-period row likewise. The observed floor is a property of
+    the observed field alone and averages every observed window.
+
     Args:
         obs: Observed segment speeds ``[window][segment]`` [m/s]; NaN = empty.
         sim: Simulated matrix on the same bins.
         window_s: Window length [s] for the row labels (``None`` = "window").
+        criterion_aggregation_s: The aggregation [s] the criterion is scored
+            at, whose row is labelled ``(criterion)`` (added when it is not
+            among the standard rows); ``None`` (the default) labels the native
+            window, the criteria profile's RMSPE row. The baseline gate passes
+            C3's 15 minutes (``validation.baseline_gate.SPEED_AGGREGATION_S``).
 
     Returns:
         Table rows (``aggregation``, ``rmspe``, ``floor``) as strings.
+
+    Raises:
+        ValueError: The matrices differ in shape or are not 2-D, or the
+            criterion aggregation is not a whole number of windows (or is
+            given without ``window_s``).
     """
+    import warnings
+
     import numpy as np
 
     from validation.metrics import rmspe
@@ -786,12 +829,29 @@ def speed_aggregation_rows(
         raise ValueError(
             f"segment-speed matrices must share a 2-D shape, got {o.shape} vs {s.shape}"
         )
+    criterion_k = 1
+    if criterion_aggregation_s is not None:
+        if not window_s:
+            raise ValueError("criterion_aggregation_s needs the window length window_s")
+        ratio = criterion_aggregation_s / window_s
+        criterion_k = round(ratio)
+        if criterion_k < 1 or abs(ratio - criterion_k) > 1e-9:
+            raise ValueError(
+                f"criterion aggregation {criterion_aggregation_s:g} s is not a whole number "
+                f"of {window_s:g} s windows"
+            )
+    # Both sides on the cells the RMSPE compares (joint mask), as C3 does.
+    joint = np.isfinite(s) & np.isfinite(o) & (o != 0.0)
+    s_j = np.where(joint, s, np.nan)
+    o_j = np.where(joint, o, np.nan)
 
     def agg(f: np.ndarray, k: int) -> np.ndarray:
         n = f.shape[0] // k * k
         if n == 0:
             return f
-        return np.nanmean(f[:n].reshape(-1, k, f.shape[1]), axis=1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # an all-NaN block is NaN
+            return np.asarray(np.nanmean(f[:n].reshape(-1, k, f.shape[1]), axis=1))
 
     def err(a: np.ndarray, b: np.ndarray) -> float:
         ok = np.isfinite(a) & np.isfinite(b) & (b != 0.0)
@@ -811,20 +871,21 @@ def speed_aggregation_rows(
         return f"{k * window_s / 60.0:g} min" if window_s else f"{k} windows"
 
     rows: list[dict[str, str]] = []
-    for k in (1, 3, 6, 12):
+    for k in sorted({1, 3, 6, 12, criterion_k}):
         if k > n_win:
             continue
         rows.append(
             {
-                "aggregation": label(k) + (" (criterion)" if k == 1 else ""),
-                "rmspe": _fmt(err(agg(s, k), agg(o, k))),
+                "aggregation": label(k) + (" (criterion)" if k == criterion_k else ""),
+                "rmspe": _fmt(err(agg(s_j, k), agg(o_j, k))),
                 "floor": _fmt(floor(k)) if k <= 3 else "",
             }
         )
+    whole = max(n_win, 1)
     rows.append(
         {
             "aggregation": "whole period",
-            "rmspe": _fmt(err(np.nanmean(s, axis=0)[None, :], np.nanmean(o, axis=0)[None, :])),
+            "rmspe": _fmt(err(agg(s_j, whole), agg(o_j, whole))),
             "floor": "",
         }
     )
@@ -1044,6 +1105,7 @@ def _measurement_note(
     """One sentence stating the window and span every metric was measured on."""
     warmups = sorted({r.warmup_s for r in micro_runs})
     warm_text = ", ".join(f"{w:g}" for w in warmups)
+    ends = sorted({r.scored_end_s for r in micro_runs if r.scored_end_s is not None})
     if span is None:
         span_text = (
             "each replicate's own default span (smallest observed position to the "
@@ -1053,7 +1115,7 @@ def _measurement_note(
         span_text = f"[{span[0]:g}, {span[1]:g}] m"
         if span_is_shared:
             span_text += " — one span for every group, derived from the reference group"
-    return (
+    note = (
         f"Measurement window: each run's configured warm-up is discarded from every "
         f"metric (warm-up per run, in seconds: {warm_text}). Travel times keep whole "
         f"journeys that begin inside the window and are measured over {span_text}. "
@@ -1061,6 +1123,18 @@ def _measurement_note(
         "against measured fuel), remains a whole-run ratio unless the run records a "
         "post-warm-up fuel total."
     )
+    if ends:
+        end_text = ", ".join(f"{e:g}" for e in ends)
+        note += (
+            f" Scored period: the window ends at the study period's end ({end_text} s); the "
+            "cool-down simulated after it lets the study period's vehicles finish and is not "
+            "scored — throughput, speed variation, VMT/VHT, the wave field and the contours "
+            "stop at that end, only departures planned before it enter the measures including "
+            "waiting, and the travel times of journeys begun before it are followed into the "
+            "cool-down; a post-warm-up fuel total cannot be cut there and stays a ratio over "
+            f"the post-warm-up run ({PROTOCOL_DOC} section 8.2)."
+        )
+    return note
 
 
 def _insertion_note(micro_runs: list[_RunInfo]) -> str | None:
@@ -1914,6 +1988,7 @@ def generate_report(
     wave_readings_by_run: Mapping[str | Path, float] | None = ...,
     figure_runs: Sequence[str | Path] | None = ...,
     gate: GateResult | None = ...,
+    scored_end_s: float | None = ...,
 ) -> Path: ...
 
 
@@ -1940,6 +2015,7 @@ def generate_report(
     wave_readings_by_run: Mapping[str | Path, float] | None = ...,
     figure_runs: Sequence[str | Path] | None = ...,
     gate: GateResult | None = ...,
+    scored_end_s: float | None = ...,
 ) -> tuple[Path, Path]: ...
 
 
@@ -1965,6 +2041,7 @@ def generate_report(
     wave_readings_by_run: Mapping[str | Path, float] | None = None,
     figure_runs: Sequence[str | Path] | None = None,
     gate: GateResult | None = None,
+    scored_end_s: float | None = None,
 ) -> Path | tuple[Path, Path]:
     """Generate a markdown (optionally PDF) validation report for a run set.
 
@@ -2055,6 +2132,17 @@ def generate_report(
             say the gate was not evaluated and that no strategy
             recommendation is made; a failed gate also replaces the strategy
             tables with a "not delivered" statement.
+        scored_end_s: End of the scored period [s] (simulation time) — the
+            study period's end when the runs continue past it with a
+            cool-down (docs/FRISCO_PROTOCOL.md §8.2). Every measured run is
+            then scored on ``[warm-up, scored_end_s)``: its metrics
+            (:func:`validation.metrics.compute_metrics`), its measures
+            including waiting (only departures planned before it;
+            :func:`validation.metrics.compute_waiting_metrics`), its wave
+            field and its contours, and the measurement note says so.
+            ``None`` (the default) scores to each run's end. The caller
+            vouches that ``metrics_by_run`` and ``wave_readings_by_run`` were
+            measured on the same window.
 
     Returns:
         Path to the written markdown report; with ``pdf=True`` the tuple
@@ -2072,6 +2160,8 @@ def generate_report(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     runs = _discover_runs(run_set)
+    if scored_end_s is not None:
+        runs = [dataclasses.replace(r, scored_end_s=float(scored_end_s)) for r in runs]
     micro_runs = [r for r in runs if not r.is_macro]
     if not micro_runs:
         raise ReportRefusedError(

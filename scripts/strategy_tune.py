@@ -51,6 +51,13 @@ Outputs: ``<out>/tuning/MANIFEST.json`` and ``<out>/evaluation/MANIFEST.json``
 ``flowstate.strategy_tune/1``, with the commit and ``code_dirty`` over
 :data:`CODE_PATHS`) and a Markdown summary beside it.
 
+``--scored-end-s T`` scores a scenario that runs on past its study period
+with a cool-down (docs/FRISCO_PROTOCOL.md §8.2): it is carried in
+``metrics_args`` to every run, so the objective counts only the departures
+planned before ``T`` (their clocks running on to the run's end) and the
+throughput guard is measured over the study period. Without it every run is
+scored to its end, as before.
+
 ``--plan-only`` prints the candidates and the run counts and writes nothing;
 ``--analyze-only`` re-analyses an existing tree (and refuses when the
 evaluation tree was run for a different selection than the tuning tree now
@@ -803,7 +810,12 @@ def pending_payloads(
     keep: bool,
 ) -> list[Payload]:
     """``corridor_sweep._worker`` payloads of the runs not yet done."""
-    margs = {"x_ref": float(metrics_args["x_ref"]), "span": tuple(metrics_args["span"])}
+    margs: dict[str, Any] = {
+        "x_ref": float(metrics_args["x_ref"]),
+        "span": tuple(metrics_args["span"]),
+    }
+    if metrics_args.get("scored_end_s") is not None:
+        margs["scored_end_s"] = float(metrics_args["scored_end_s"])
     return [
         (cell, configs[cell], int(seed), margs, str(root), keep)
         for cell, chash in cells.items()
@@ -1091,6 +1103,14 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--av-compliance", type=float, default=1.0)
     ap.add_argument("--x-ref", type=float, help="throughput cross-section [m]")
     ap.add_argument("--span", type=float, nargs=2, metavar=("LO", "HI"), help="analysed span [m]")
+    ap.add_argument(
+        "--scored-end-s",
+        type=float,
+        default=None,
+        metavar="T",
+        help="end of the scored period [s, simulation time], the study period's end before a "
+        "cool-down (docs/FRISCO_PROTOCOL.md section 8.2); default: score to the run's end",
+    )
     ap.add_argument("--procs", type=int, default=8)
     ap.add_argument("--out", required=True, type=Path, help="study root")
     ap.add_argument("--summary", type=Path, default=None, help="default <out>/strategy_tune.json")
@@ -1120,7 +1140,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         budget=args.budget,
         n_tune=args.tuning_seeds,
         n_eval=args.eval_seeds,
-        metrics_args={"x_ref": float(args.x_ref), "span": [float(v) for v in args.span]},
+        metrics_args={
+            "x_ref": float(args.x_ref),
+            "span": [float(v) for v in args.span],
+            **({} if args.scored_end_s is None else {"scored_end_s": float(args.scored_end_s)}),
+        },
         rho_c_veh_km=args.rho_target_veh_km,
         penetration=args.av_penetration,
         compliance=args.av_compliance,

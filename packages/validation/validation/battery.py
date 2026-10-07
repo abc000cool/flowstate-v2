@@ -29,6 +29,15 @@ functions in one process, so the post-run phase of a 20-seed corridor battery
 (1.15 GB per trajectory, about 5 min per replicate) is bounded by the pool
 size, not by the replicate count: the 2026-09-24 cloud round spent 100 min
 scoring in one process while 31 CPUs idled.
+
+**Scored end (cool-down).** Every measurement here takes an optional
+``scored_end_s``: the study period's end in a run that continues past it with
+a cool-down (docs/FRISCO_PROTOCOL.md §8.2), so the vehicles of the study
+period can finish. Given, the scored window is ``[warm-up, scored_end_s)``
+for the metrics, the observed comparison, the wave field and the scored
+departures of the waiting measures, while the waiting clocks still run to
+the run's end; ``None`` (the default) scores to the run's end exactly as
+before.
 """
 
 from __future__ import annotations
@@ -840,30 +849,45 @@ def forced_change_summary(metas: Sequence[Mapping[str, Any]]) -> list[dict[str, 
     return list(rows.values())
 
 
-def measurement_window(meta: Mapping[str, Any]) -> tuple[float, float]:
-    """The replicate's ``(warmup_s, duration_s)`` [s] from its metadata.
+def measurement_window(
+    meta: Mapping[str, Any], scored_end_s: float | None = None
+) -> tuple[float, float]:
+    """The replicate's scored window ``(warmup_s, end_s)`` [s] from its metadata.
 
     ``warmup_s`` is resolved by :func:`validation.metrics.warmup_from_meta`
-    (the single place the warm-up convention lives) and ``duration_s`` is the
-    run's configured simulated length — the *nominal* recorded span, not the
-    last output sample, so the final analysis window is compared rather than
-    dropped for want of one sampling interval.
+    (the single place the warm-up convention lives) and ``end_s`` is the
+    run's configured simulated length ``duration_s`` — the *nominal* recorded
+    span, not the last output sample, so the final analysis window is
+    compared rather than dropped for want of one sampling interval — unless
+    a scored end is given (module docstring), which then ends the window.
 
     Args:
         meta: Parsed ``meta.json``.
+        scored_end_s: The study period's end [s] before a cool-down; ``None``
+            scores to ``duration_s``.
 
     Returns:
-        ``(warmup_s, duration_s)``.
+        ``(warmup_s, end_s)``.
 
     Raises:
-        ValueError: The metadata carries no ``config.sim.duration_s``.
+        ValueError: The metadata carries no ``config.sim.duration_s``, or the
+            scored end lies outside ``(warmup_s, duration_s]``.
     """
     config = meta.get("config")
     sim = config.get("sim") if isinstance(config, dict) else None
     value = sim.get("duration_s") if isinstance(sim, dict) else None
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise ValueError("meta.json carries no config.sim.duration_s")
-    return warmup_from_meta(meta), float(value)
+    warm, duration = warmup_from_meta(meta), float(value)
+    if scored_end_s is None:
+        return warm, duration
+    end = float(scored_end_s)
+    if not math.isfinite(end) or not warm < end <= duration:
+        raise ValueError(
+            f"scored_end_s {scored_end_s!r} must lie after the warm-up ({warm:g} s) and no "
+            f"later than the run's end ({duration:g} s)"
+        )
+    return warm, end
 
 
 def read_trajectories(
@@ -954,6 +978,7 @@ def score_replicate(
     *,
     x_offset_m: float = 0.0,
     trajectories: pd.DataFrame | None = None,
+    scored_end_s: float | None = None,
 ) -> ObservedScores:
     """Score one completed replicate against a corridor's observations.
 
@@ -964,12 +989,15 @@ def score_replicate(
             :func:`validation.observed.score_run_against_observed`.
         trajectories: The replicate's rows (:data:`TRAJECTORY_COLUMNS`) when
             the caller already holds them; ``None`` reads them.
+        scored_end_s: The study period's end [s] before a cool-down (module
+            docstring): only windows ending by then are compared. ``None``
+            compares every window to the run's end.
 
     Returns:
         The replicate's :class:`validation.observed.ObservedScores`.
     """
     meta = load_meta(run_dir)
-    warmup_s, duration_s = measurement_window(meta)
+    warmup_s, duration_s = measurement_window(meta, scored_end_s)
     if trajectories is None:
         trajectories = read_trajectories(run_dir)
     return score_run_against_observed(
@@ -986,6 +1014,7 @@ def replicate_wave_speed_kmh(
     detector: WaveDetector,
     *,
     trajectories: pd.DataFrame | None = None,
+    scored_end_s: float | None = None,
 ) -> float:
     """Backward wave-front speed [km/h] one detector reads on a replicate.
 
@@ -1000,19 +1029,23 @@ def replicate_wave_speed_kmh(
         detector: Detector recipe, normally the criteria profile's.
         trajectories: The replicate's rows (``t``, ``x``, ``v`` at least)
             when the caller already holds them; ``None`` reads them.
+        scored_end_s: The study period's end [s] before a cool-down (module
+            docstring): the field stops there. ``None`` keeps the rows to the
+            run's end.
 
     Returns:
         Mean backward-front speed magnitude [km/h]; NaN when the detector
         found no backward front.
     """
     meta = load_meta(run_dir)
-    warmup_s, _ = measurement_window(meta)
+    warmup_s, end_s = measurement_window(meta, scored_end_s)
+    t_hi = None if scored_end_s is None else end_s
     if trajectories is None:
         trajectories = read_trajectories(run_dir, columns=("t", "x", "v"))
     t = trajectories["t"].to_numpy(dtype=np.float64)
     rows: slice | np.ndarray = slice(0, t.size)
-    if warmup_s > 0.0:
-        windowed = time_window_rows(t, warmup_s)
+    if warmup_s > 0.0 or t_hi is not None:
+        windowed = time_window_rows(t, warmup_s, t_hi)
         if n_window_rows(windowed) > 0:
             rows = windowed
     # The window's three columns, views when the rows are time-ordered.
@@ -1079,7 +1112,9 @@ class ReplicateAnalysis:
     waiting: WaitingMetrics | None = None
 
 
-def replicate_waiting(run_dir: str | Path) -> WaitingMetrics | None:
+def replicate_waiting(
+    run_dir: str | Path, scored_end_s: float | None = None
+) -> WaitingMetrics | None:
     """One replicate's waiting measures, or None without a demand ledger.
 
     :func:`validation.metrics.compute_waiting_metrics` (travel time and total
@@ -1093,6 +1128,8 @@ def replicate_waiting(run_dir: str | Path) -> WaitingMetrics | None:
 
     Args:
         run_dir: Replicate directory.
+        scored_end_s: End of the scored departures [s] — the study period's
+            end before a cool-down (module docstring); ``None`` the run's end.
 
     Returns:
         The measures, or None.
@@ -1102,7 +1139,7 @@ def replicate_waiting(run_dir: str | Path) -> WaitingMetrics | None:
         return None
     if not isinstance(load_meta(path).get("journeys"), dict):
         return None
-    return compute_waiting_metrics(path)
+    return compute_waiting_metrics(path, scored_end_s=scored_end_s)
 
 
 def waiting_from_json(raw: Mapping[str, Any] | None) -> WaitingMetrics | None:
@@ -1177,13 +1214,15 @@ def analyse_replicate(
     x_ref: float,
     span: tuple[float, float],
     x_offset_m: float,
+    scored_end_s: float | None = None,
 ) -> ReplicateAnalysis:
     """Measure one replicate and write its per-seed files.
 
     Writes :data:`METRICS_FILE` (metrics, the criterion wave speed and its
     detector, ``x_ref``/``span``, insertion, and ``waiting`` — the
     :func:`replicate_waiting` measures, ``null`` without a demand ledger,
-    added 2026-10-04 after every other key) and :data:`SCORES_FILE` (the
+    added 2026-10-04 after every other key — and, only when given, the
+    ``scored_end_s`` every measurement was cut at) and :data:`SCORES_FILE` (the
     :class:`validation.observed.ObservedScores`) into ``run_dir``, so a
     finished battery can be re-scored (:func:`load_replicate_analysis`)
     without re-simulating. The trajectory is read once
@@ -1200,35 +1239,38 @@ def analyse_replicate(
         x_ref: Throughput cross-section [m], trajectory coordinates.
         span: Travel-time span [m], trajectory coordinates.
         x_offset_m: Simulation ``x`` of the observed origin [m].
+        scored_end_s: The study period's end [s] before a cool-down (module
+            docstring); ``None`` scores to the run's end.
 
     Returns:
         The replicate's :class:`ReplicateAnalysis`.
     """
     path = Path(run_dir)
     frame = read_scoring_frame(path)
-    metrics = compute_metrics(path, x_ref=x_ref, span=span, trajectories=frame)
-    scores = score_replicate(path, observed, x_offset_m=x_offset_m, trajectories=frame)
-    wave_speed = replicate_wave_speed_kmh(path, profile.wave_detector, trajectories=frame)
+    metrics = compute_metrics(
+        path, x_ref=x_ref, span=span, trajectories=frame, scored_end_s=scored_end_s
+    )
+    scores = score_replicate(
+        path, observed, x_offset_m=x_offset_m, trajectories=frame, scored_end_s=scored_end_s
+    )
+    wave_speed = replicate_wave_speed_kmh(
+        path, profile.wave_detector, trajectories=frame, scored_end_s=scored_end_s
+    )
     del frame
     insertion = insertion_stats(load_meta(path))
-    waiting = replicate_waiting(path)
-    (path / METRICS_FILE).write_text(
-        json.dumps(
-            json_safe(
-                {
-                    "metrics": asdict(metrics),
-                    "criterion_wave_speed_kmh": wave_speed,
-                    "criterion_detector": profile.wave_detector.name,
-                    "x_ref_m": x_ref,
-                    "span_m": list(span),
-                    "insertion": insertion.to_dict(),
-                    "waiting": None if waiting is None else asdict(waiting),
-                }
-            ),
-            indent=2,
-            allow_nan=False,
-        )
-    )
+    waiting = replicate_waiting(path, scored_end_s)
+    record: dict[str, Any] = {
+        "metrics": asdict(metrics),
+        "criterion_wave_speed_kmh": wave_speed,
+        "criterion_detector": profile.wave_detector.name,
+        "x_ref_m": x_ref,
+        "span_m": list(span),
+        "insertion": insertion.to_dict(),
+        "waiting": None if waiting is None else asdict(waiting),
+    }
+    if scored_end_s is not None:
+        record["scored_end_s"] = float(scored_end_s)
+    (path / METRICS_FILE).write_text(json.dumps(json_safe(record), indent=2, allow_nan=False))
     (path / SCORES_FILE).write_text(
         json.dumps(json_safe(scores.to_dict()), indent=2, allow_nan=False)
     )
@@ -1241,7 +1283,9 @@ def analyse_replicate(
     )
 
 
-def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
+def load_replicate_analysis(
+    run_dir: str | Path, scored_end_s: float | None = None
+) -> ReplicateAnalysis:
     """Re-read one replicate's stored per-seed files (``--criteria-only``).
 
     The insertion stats are re-read from ``meta.json`` rather than from the
@@ -1253,15 +1297,21 @@ def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
     replicate's demand ledger (:func:`replicate_waiting`; ``journeys.parquet``
     is never pruned), None without one.
 
+    The stored files describe one scored window: a ``scored_end_s`` other
+    than the one they were written with (absent = ``None``) is refused, since
+    the stored metrics and scores cannot be re-cut without the trajectory.
+
     Args:
         run_dir: Replicate directory holding the files
             :func:`analyse_replicate` wrote.
+        scored_end_s: The scored end the caller expects (module docstring).
 
     Returns:
         The stored :class:`ReplicateAnalysis` (NaN restored from ``null``).
 
     Raises:
         FileNotFoundError: The replicate was never analysed.
+        ValueError: The files were scored with another ``scored_end_s``.
     """
     path = Path(run_dir)
     for name in (METRICS_FILE, SCORES_FILE):
@@ -1270,6 +1320,13 @@ def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
                 f"{path / name} is missing; run the battery without --criteria-only first"
             )
     stored = json.loads((path / METRICS_FILE).read_text())
+    recorded = stored.get("scored_end_s")
+    wanted = None if scored_end_s is None else float(scored_end_s)
+    if (None if recorded is None else float(recorded)) != wanted:
+        raise ValueError(
+            f"{path / METRICS_FILE} was scored with scored_end_s={recorded!r}, not {wanted!r}; "
+            "re-score the battery without --criteria-only"
+        )
     raw = dict(stored["metrics"])
     for key, value in raw.items():
         if value is None:
@@ -1277,7 +1334,9 @@ def load_replicate_analysis(run_dir: str | Path) -> ReplicateAnalysis:
     wave = stored.get("criterion_wave_speed_kmh")
     scores = ObservedScores.from_dict(json.loads((path / SCORES_FILE).read_text()))
     waiting = (
-        waiting_from_json(stored["waiting"]) if "waiting" in stored else replicate_waiting(path)
+        waiting_from_json(stored["waiting"])
+        if "waiting" in stored
+        else replicate_waiting(path, scored_end_s)
     )
     return ReplicateAnalysis(
         metrics=Metrics(**raw),
@@ -1368,8 +1427,11 @@ def score_pool_size(
     return max(1, min(n_procs, fits)), per_worker
 
 
-#: One scoring-pool payload: ``(run_dir, observed, profile, x_ref, span, x_offset_m)``.
-_AnalysePayload = tuple[str, ObservedCorridor, CriteriaProfile, float, tuple[float, float], float]
+#: One scoring-pool payload:
+#: ``(run_dir, observed, profile, x_ref, span, x_offset_m, scored_end_s)``.
+_AnalysePayload = tuple[
+    str, ObservedCorridor, CriteriaProfile, float, tuple[float, float], float, float | None
+]
 
 
 def _score_worker_init() -> None:
@@ -1395,9 +1457,15 @@ def _score_worker_init() -> None:
 
 def _analyse_worker(payload: _AnalysePayload) -> ReplicateAnalysis:
     """Spawn-pool worker: :func:`analyse_replicate` on one payload."""
-    run_dir, observed, profile, x_ref, span, x_offset_m = payload
+    run_dir, observed, profile, x_ref, span, x_offset_m, scored_end_s = payload
     return analyse_replicate(
-        run_dir, observed, profile=profile, x_ref=x_ref, span=span, x_offset_m=x_offset_m
+        run_dir,
+        observed,
+        profile=profile,
+        x_ref=x_ref,
+        span=span,
+        x_offset_m=x_offset_m,
+        scored_end_s=scored_end_s,
     )
 
 
@@ -1411,6 +1479,7 @@ def analyse_replicates(
     x_offset_m: float,
     n_procs: int = 1,
     on_complete: Callable[[Path, ReplicateAnalysis, float], None] | None = None,
+    scored_end_s: float | None = None,
 ) -> list[ReplicateAnalysis]:
     """:func:`analyse_replicate` over a run set, in a spawn process pool.
 
@@ -1435,6 +1504,8 @@ def analyse_replicates(
             the moment a replicate is scored, in completion order, with the
             seconds that replicate took (in-process) or the seconds since the
             pool started (pool).
+        scored_end_s: The study period's end [s] before a cool-down (module
+            docstring); ``None`` scores to each run's end.
 
     Returns:
         One :class:`ReplicateAnalysis` per directory, in ``dirs`` order.
@@ -1444,7 +1515,7 @@ def analyse_replicates(
             names the directory.
     """
     payloads: list[_AnalysePayload] = [
-        (str(d), observed, profile, x_ref, span, x_offset_m) for d in dirs
+        (str(d), observed, profile, x_ref, span, x_offset_m, scored_end_s) for d in dirs
     ]
     t0 = time.perf_counter()
     if n_procs <= 1 or len(dirs) <= 1:

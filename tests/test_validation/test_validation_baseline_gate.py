@@ -33,10 +33,14 @@ from validation.baseline_gate import (
     MIN_GATE_REPLICATES,
     SEGMENT_SPEED_NOTE,
     SPEED_AGGREGATION_S,
+    SPEED_BLOCKS_NOTE,
+    STANDSTILL_MISSING_NOTE,
+    STANDSTILL_NOTE,
     WAVE_MIN_FRONT_REPLICATE_SHARE,
     WAVE_MIN_VALID_PAIRS,
     GateResult,
     aggregated_rmspe,
+    aggregation_blocks,
     artifact_dates,
     date_key,
     gate_from_replicates,
@@ -316,14 +320,75 @@ class TestAggregatedRmspe:
         value, _ = aggregated_rmspe(s, window_s=WINDOW, aggregation_s=SPEED_AGGREGATION_S)
         assert value == pytest.approx(0.0)
 
-    def test_incomplete_blocks_are_dropped_and_odd_aggregations_refused(self) -> None:
+    def test_blocks_are_anchored_at_the_study_periods_start(self) -> None:
+        # A 5-minute warm-up: windows 1..24. The quarter hours start at window 1
+        # (as C1's hours do), so all eight are whole; aligned to the observation
+        # grid, the first (windows 0-2) lacked window 0 and was dropped.
         obs = _artifact()
         s = _scores(obs)
-        partial = ObservedScores(**{**s.__dict__, "windows": tuple(range(1, N_WIN + 1))})
-        _, n = aggregated_rmspe(partial, window_s=WINDOW, aggregation_s=SPEED_AGGREGATION_S)
-        assert n == (N_WIN // 3 - 1) * N_ST  # block 0 lacks window 0
+        shifted = ObservedScores(**{**s.__dict__, "windows": tuple(range(1, N_WIN + 1))})
+        _, n = aggregated_rmspe(shifted, window_s=WINDOW, aggregation_s=SPEED_AGGREGATION_S)
+        assert n == (N_WIN // 3) * N_ST
+
+    def test_the_edges_of_the_study_period_are_scored(self) -> None:
+        # Review 2026-10-07: a 35-minute warm-up (windows 7..30) and a model 50 %
+        # off in the study period's first two windows and its last one. On the
+        # grid-aligned blocks those three windows fell in partial blocks and the
+        # 15-minute RMSPE read 0.
+        obs = _artifact(speeds=np.full((N_WIN, N_ST), 20.0))
+        sim = np.full((N_WIN, N_ST), 20.0)
+        sim[[0, 1, -1], :] = 10.0
+        s = _scores(obs, sim_speeds=sim)
+        late = ObservedScores(**{**s.__dict__, "windows": tuple(range(7, 7 + N_WIN))})
+        value, n = aggregated_rmspe(late, window_s=WINDOW, aggregation_s=SPEED_AGGREGATION_S)
+        assert n == (N_WIN // 3) * N_ST
+        # first block: mean 40/3 against 20 (-1/3); last block 50/3 (-1/6); six exact
+        assert value == pytest.approx(math.sqrt(((1 / 3) ** 2 + (1 / 6) ** 2) / 8))
+
+    def test_a_trailing_partial_block_is_left_out_and_counted(self) -> None:
+        blocks, left = aggregation_blocks(tuple(range(7, 30)), 3)  # 23 windows
+        assert len(blocks) == 7 and left == 2
+        assert blocks[0] == [0, 1, 2] and blocks[-1] == [18, 19, 20]
+        assert aggregation_blocks((), 3) == ([], 0)
+        assert aggregation_blocks(tuple(range(6, 24)), 12) == ([list(range(12))], 6)
+
+    def test_odd_aggregations_are_refused(self) -> None:
         with pytest.raises(ValueError, match="whole multiple"):
-            aggregated_rmspe(s, window_s=WINDOW, aggregation_s=400.0)
+            aggregated_rmspe(_scores(_artifact()), window_s=WINDOW, aggregation_s=400.0)
+
+
+class TestSpeedNotes:
+    """What the gate says about its speed blocks, its 15-minute row and standstills."""
+
+    def test_windows_no_whole_block_holds_are_named(self) -> None:
+        # windows 6..23: whole quarter hours, but only one whole hour from 06:30
+        obs = _artifact()
+        gate = _gate(reps=[_warm_scores(obs, t0_scale=1.0, anchored_scale=1.0)] * 20)
+        notes = gate.day_sets["calibration"]["notes"]  # type: ignore[index]
+        assert any("fill no whole block are not scored: 6 at 60 min" in n for n in notes)
+        assert not any("at 15 min" in n for n in notes)
+        assert any(n.startswith(SPEED_BLOCKS_NOTE) for n in gate.notes)  # rendered too
+        assert SPEED_BLOCKS_NOTE in render_markdown(gate)
+        assert not any(SPEED_BLOCKS_NOTE in n for n in _gate().notes)
+
+    def test_the_replicate_mean_field_marks_the_15_minute_row(self) -> None:
+        rows = _gate().day_sets["calibration"]["replicate_mean_field"]  # type: ignore[index]
+        labels = [r["aggregation"] for r in rows]
+        assert labels == ["5 min", "15 min (criterion)", "30 min", "60 min", "whole period"]
+
+    def test_point_speeds_without_the_standstill_rule_are_named(self) -> None:
+        obs = _artifact()
+        old = _gate()
+        assert STANDSTILL_MISSING_NOTE in old.notes and STANDSTILL_NOTE not in old.notes
+        new = [dataclasses.replace(_scores(obs), station_point_standstill=True)] * 20
+        gate = _gate(reps=new)
+        assert STANDSTILL_NOTE in gate.notes and STANDSTILL_MISSING_NOTE not in gate.notes
+        segment = _gate(reps=[_scores(obs, point_speeds=None)] * 20)
+        assert STANDSTILL_NOTE not in segment.notes
+        assert STANDSTILL_MISSING_NOTE not in segment.notes
+        # the flag travels with a replicate re-scored against another day set
+        target = _artifact(flow=2000.0)
+        assert rescore(new[0], scored_against=obs, target=target).scores.station_point_standstill
 
 
 class TestVerdicts:

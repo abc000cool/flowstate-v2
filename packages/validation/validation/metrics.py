@@ -755,6 +755,7 @@ def compute_metrics(
     warmup_s: float | None = None,
     *,
     trajectories: pd.DataFrame | None = None,
+    scored_end_s: float | None = None,
 ) -> Metrics:
     """Compute the standard metric set for one run directory.
 
@@ -777,6 +778,19 @@ def compute_metrics(
     ``t = 0``, so a nonzero warm-up leaves no whole journey and the travel
     times are undefined (``n_travel_time_veh == 0``) — the ring's headline
     metrics are σ_v and the wave set, not travel time.
+
+    **Scored end (cool-down).** By default the window runs to the run's last
+    sample ``t_end``. A run that continues past its study period with a
+    cool-down (docs/FRISCO_PROTOCOL.md §8.2: simulated so that the vehicles
+    of the study period can finish, never scored) passes the study period's
+    end as ``scored_end_s = t_s``: throughput then counts the crossings in
+    ``[t_lo, t_s)`` over ``t_s − t_lo``, σ_v, VMT/VHT and the wave field use
+    only the rows in ``[t_lo, t_s)``, and travel times keep the whole
+    journeys that *begin* in ``[t_lo, t_s)``, followed to their end in the
+    cool-down. A windowed fuel total (``fuel_total_ml_post_warmup``) cannot
+    be cut at ``t_s``, so fuel per vehicle-km then stays the ratio over the
+    post-warm-up run, cool-down included, with that run's VMT as its
+    denominator. ``scored_end_s`` at or after ``t_end`` changes nothing.
 
     **Memory.** The frame is reduced to arrays once — vehicle codes
     (:func:`vehicle_codes`) and one ``(veh_id, t)`` sort
@@ -810,6 +824,9 @@ def compute_metrics(
             ``v``), for a caller that already holds them
             (``validation.battery.analyse_replicate`` reads them once for
             three measurements); ``None`` reads ``trajectories.parquet``.
+        scored_end_s: End of the scored period [s] (simulation time) — the
+            study period's end in a run with a cool-down (see above);
+            ``None`` (the default) scores to the run's end.
 
     Returns:
         A :class:`Metrics` instance.
@@ -817,7 +834,8 @@ def compute_metrics(
     Raises:
         FileNotFoundError: If either input file is missing.
         ValueError: If the trajectory frame is empty, ``warmup_s`` is
-            negative, or the warm-up leaves no measurement window.
+            negative, the warm-up leaves no measurement window, or
+            ``scored_end_s`` is not finite or not after the warm-up's end.
     """
     run_path = Path(run_dir)
     traj_path = run_path / "trajectories.parquet"
@@ -858,7 +876,19 @@ def compute_metrics(
             "pass warmup_s=0.0 to measure the whole record deliberately."
         )
     windowed = warm > t_start
-    win = time_window_rows(t_all, t_lo) if windowed else slice(0, t_all.size)
+    # The scored period's end: before the last sample only with a cool-down.
+    t_hi: float | None = None
+    if scored_end_s is not None:
+        scored_end = float(scored_end_s)
+        if not math.isfinite(scored_end) or scored_end <= t_lo:
+            raise ValueError(
+                f"scored_end_s must be finite and after the measurement window's start "
+                f"{t_lo:g} s, got {scored_end_s!r}"
+            )
+        if scored_end < t_end:
+            t_hi = scored_end
+            windowed = True
+    win = time_window_rows(t_all, t_lo, t_hi) if windowed else slice(0, t_all.size)
 
     x_win = x_all[win]
     x_min, x_max = float(x_win.min()), float(x_win.max())
@@ -875,9 +905,12 @@ def compute_metrics(
     by = _ByVehicle.build(codes, t_all, x_all)
 
     # Throughput at the reference cross-section, over the measurement window.
-    t_span_s = t_end - t_lo
+    t_span_s = (t_end if t_hi is None else t_hi) - t_lo
     times = by.crossing_times(x_ref)
-    crossings = int(np.count_nonzero(times >= t_lo))
+    if t_hi is None:
+        crossings = int(np.count_nonzero(times >= t_lo))
+    else:
+        crossings = int(np.count_nonzero((times >= t_lo) & (times < t_hi)))
     del times
     throughput = veh_s_to_veh_h(crossings / t_span_s) if t_span_s > 0 else math.nan
 
@@ -885,7 +918,10 @@ def compute_metrics(
     # already in flight at t_lo would otherwise be credited an entry time of
     # t_lo and report a truncated travel time.
     if windowed:
-        whole = by.t[by.starts] >= t_lo
+        first_t = by.t[by.starts]
+        whole = first_t >= t_lo
+        if t_hi is not None:
+            whole &= first_t < t_hi  # journeys begun in the cool-down are not scored
         vehicles = by.by_first_row[whole[by.by_first_row]]
     else:
         vehicles = by.by_first_row
@@ -908,6 +944,9 @@ def compute_metrics(
     vmt_km = 0.0
     vht_h = 0.0
     vmt_km_whole = 0.0
+    # Post-warm-up VMT to the run's end: the denominator of a windowed fuel
+    # total when a scored end cuts the window short of it (cool-down).
+    vmt_km_tail = 0.0
     for code in by.by_first_row:
         rows = by.rows(int(code))
         t = _gather(rows, by.t, by.t_frame)
@@ -924,10 +963,19 @@ def compute_metrics(
             continue
         # Segments of the window are exactly those whose earlier sample is
         # in it (times increase), i.e. the trapezoid sum over window rows.
-        vmt_km += _KM_PER_M * float(np.sum(segments[t[:-1] >= t_lo]))
         first = int(np.searchsorted(t, t_lo, side="left"))
-        if len(t) - first >= 2:
-            vht_h += s_to_h(float(t[-1] - t[first]))
+        if t_hi is None:
+            vmt_km += _KM_PER_M * float(np.sum(segments[t[:-1] >= t_lo]))
+            if len(t) - first >= 2:
+                vht_h += s_to_h(float(t[-1] - t[first]))
+            continue
+        # With a scored end, the window's segments also end before it.
+        after = t[:-1] >= t_lo
+        vmt_km_tail += _KM_PER_M * float(np.sum(segments[after]))
+        vmt_km += _KM_PER_M * float(np.sum(segments[after & (t[1:] < t_hi)]))
+        stop = int(np.searchsorted(t, t_hi, side="left"))
+        if stop - first >= 2:
+            vht_h += s_to_h(float(t[stop - 1] - t[first]))
     del by
 
     # σ_v spatial: std across vehicles at each shared output timestamp.
@@ -954,8 +1002,9 @@ def compute_metrics(
     # keeps a whole-run denominator; a windowed total gets the window's VMT.
     fuel_windowed = meta.get("fuel_total_ml_post_warmup")
     fuel_total = meta.get("fuel_total_ml")
-    if fuel_windowed is not None and vmt_km > 0:
-        fuel_per_km = float(fuel_windowed) / vmt_km
+    vmt_km_fuel = vmt_km if t_hi is None else vmt_km_tail
+    if fuel_windowed is not None and vmt_km_fuel > 0:
+        fuel_per_km = float(fuel_windowed) / vmt_km_fuel
     elif fuel_total is not None and vmt_km_whole > 0:
         fuel_per_km = float(fuel_total) / vmt_km_whole
     else:
@@ -1088,10 +1137,13 @@ class WaitingMetrics:
     :func:`waiting_metrics` for the rules.
 
     **The demand.** ``D`` = every vehicle of the fleet plan whose PLANNED
-    departure lies in ``[t_lo, t_end)`` — ``t_lo`` the end of the configured
-    warm-up, ``t_end`` the run's end — whether or not it ever entered the
-    network. Arms of one scenario and seed share the plan, so ``D`` is the
-    same set of vehicles in every arm (strategies never change the demand).
+    departure lies in ``[t_lo, t_s)`` — ``t_lo`` the end of the configured
+    warm-up, ``t_s`` the end of the scored departures — whether or not it
+    ever entered the network. ``t_s`` is the study period's end
+    (``scored_end_s``) when the run continues past it with a cool-down, and
+    the run's end ``t_end`` otherwise (the default). Arms of one scenario and
+    seed share the plan, so ``D`` is the same set of vehicles in every arm
+    (strategies never change the demand).
 
     **Censoring at the run's end, one rule for every arm.** A vehicle of
     ``D`` that has not arrived by ``t_end`` is *censored*: its clock stops at
@@ -1099,8 +1151,13 @@ class WaitingMetrics:
     up to ``t_end`` and nothing beyond (its remaining delay is unobserved);
     its delay is the time it spent minus the free-flow time of the distance
     it covered by ``t_end``. ``n_censored`` reports how many; a run set with
-    many censored vehicles should be lengthened (a cool-down after the last
-    scored departure) rather than read as if complete.
+    many censored vehicles should be lengthened by a cool-down after the last
+    scored departure (docs/FRISCO_PROTOCOL.md §8.2: at least the stretch's
+    free-flow travel time) and scored with ``scored_end_s`` at the study
+    period's end, rather than read as if complete. The cool-down's own
+    departures are simulated — they load the network as the demand does —
+    but are not in ``D``, so lengthening the run follows the scored vehicles
+    further without adding vehicles to the measure.
 
     Attributes:
         insertion_delay_veh_h: ``Σ_D (min(depart_s, t_end) − depart_planned_s)``
@@ -1133,7 +1190,8 @@ class WaitingMetrics:
             same values; a lower bound under the same condition.
         n_censored: Vehicles of ``D`` not arrived by ``t_end`` (never
             inserted included).
-        n_demand_veh: ``|D|``.
+        n_demand_veh: ``|D|`` — the scored departures only, never the
+            cool-down's.
         n_not_inserted: Vehicles of ``D`` never inserted.
         n_tt_incl_waiting_veh: ``|C|``.
         n_tt_censored: Censored vehicles of ``C``.
@@ -1155,7 +1213,9 @@ class WaitingMetrics:
 WAITING_FIELDS: Final[tuple[str, ...]] = tuple(f.name for f in dataclasses.fields(WaitingMetrics))
 
 
-def waiting_metrics(journeys: pd.DataFrame, *, t_lo: float, t_end: float) -> WaitingMetrics:
+def waiting_metrics(
+    journeys: pd.DataFrame, *, t_lo: float, t_end: float, scored_end_s: float | None = None
+) -> WaitingMetrics:
     """:class:`WaitingMetrics` of one run's journeys table (definitions there).
 
     Deterministic: sums run over the vehicles in ``veh_id`` order.
@@ -1163,23 +1223,34 @@ def waiting_metrics(journeys: pd.DataFrame, *, t_lo: float, t_end: float) -> Wai
     Args:
         journeys: The run's :data:`JOURNEYS_FILE` (:func:`read_journeys`).
         t_lo: Start of the measurement window [s] (the warm-up's end).
-        t_end: The run's end [s] (``meta.json["journeys"]["end_s"]``).
+        t_end: The run's end [s] (``meta.json["journeys"]["end_s"]``); every
+            clock is censored here.
+        scored_end_s: End of the scored departures ``t_s`` [s] — the study
+            period's end in a run with a cool-down; ``None`` (the default)
+            is ``t_end``, the rule before the cool-down existed.
 
     Returns:
         The metrics.
 
     Raises:
-        ValueError: ``t_end <= t_lo``, a missing column, or an arrival or
-            departure after ``t_end`` (an inconsistent ledger).
+        ValueError: ``t_end <= t_lo``, ``scored_end_s`` outside
+            ``(t_lo, t_end]``, a missing column, or an arrival or departure
+            after ``t_end`` (an inconsistent ledger).
     """
     if not (math.isfinite(t_lo) and math.isfinite(t_end)) or t_end <= t_lo:
         raise ValueError(f"need t_lo < t_end, got [{t_lo}, {t_end}]")
+    t_s = t_end if scored_end_s is None else float(scored_end_s)
+    if not math.isfinite(t_s) or not t_lo < t_s <= t_end:
+        raise ValueError(
+            f"need t_lo < scored_end_s <= t_end, got scored_end_s={scored_end_s!r} for "
+            f"[{t_lo}, {t_end}]"
+        )
     missing = [c for c in JOURNEY_COLUMNS if c not in journeys.columns]
     if missing:
         raise ValueError(f"journeys lack column(s) {missing}")
     df = journeys.sort_values("veh_id", kind="stable")
     planned = df["depart_planned_s"].to_numpy(dtype=np.float64)
-    in_d = (planned >= t_lo) & (planned < t_end)
+    in_d = (planned >= t_lo) & (planned < t_s)
     d = df.loc[in_d]
     planned = planned[in_d]
     inserted = d["inserted"].to_numpy(dtype=np.bool_)
@@ -1224,24 +1295,31 @@ def waiting_metrics(journeys: pd.DataFrame, *, t_lo: float, t_end: float) -> Wai
     )
 
 
-def compute_waiting_metrics(run_dir: str | Path, warmup_s: float | None = None) -> WaitingMetrics:
+def compute_waiting_metrics(
+    run_dir: str | Path, warmup_s: float | None = None, scored_end_s: float | None = None
+) -> WaitingMetrics:
     """:class:`WaitingMetrics` of one run directory (its journeys table and meta).
 
     The measurement window is :func:`compute_metrics`'s: the configured
-    warm-up (:func:`warmup_from_meta`) is discarded, and the window runs to
-    the run's end ``meta.json["journeys"]["end_s"]``.
+    warm-up (:func:`warmup_from_meta`) is discarded, the scored departures
+    end at ``scored_end_s`` (the study period's end, before a cool-down) or,
+    by default, at the run's end ``meta.json["journeys"]["end_s"]``, and
+    every clock is censored at the run's end.
 
     Args:
         run_dir: Directory holding :data:`JOURNEYS_FILE` and ``meta.json``.
         warmup_s: Warm-up to discard [s]; ``None`` takes the run's own.
+        scored_end_s: End of the scored departures [s] (simulation time);
+            ``None`` takes the run's end.
 
     Returns:
         The metrics.
 
     Raises:
         FileNotFoundError: Either file is missing (a run before WP-105).
-        ValueError: The meta lacks ``journeys.end_s``, a negative warm-up, or
-            a warm-up that leaves no window.
+        ValueError: The meta lacks ``journeys.end_s``, a negative warm-up, a
+            warm-up that leaves no window, or a scored end outside
+            ``(warm-up, run's end]``.
     """
     run_path = Path(run_dir)
     meta_path = run_path / "meta.json"
@@ -1255,7 +1333,9 @@ def compute_waiting_metrics(run_dir: str | Path, warmup_s: float | None = None) 
     warm = warmup_from_meta(meta) if warmup_s is None else float(warmup_s)
     if not math.isfinite(warm) or warm < 0.0:
         raise ValueError(f"warmup_s must be finite and >= 0, got {warmup_s!r}")
-    return waiting_metrics(read_journeys(run_path), t_lo=warm, t_end=float(end))
+    return waiting_metrics(
+        read_journeys(run_path), t_lo=warm, t_end=float(end), scored_end_s=scored_end_s
+    )
 
 
 def aggregate(metrics_list: list[Metrics]) -> dict[str, CI]:

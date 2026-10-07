@@ -177,13 +177,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         type=Path,
-        help="a scripts/calibrate_capacity.py sidecar to consider (repeatable; replaces "
-        "discovery in artifacts/)",
+        help="a scripts/calibrate_capacity.py sidecar to consider for the simulated capacity "
+        "(repeatable; replaces discovery in artifacts/). The measured source of a derived "
+        "population (the protocol §7.2 measured range) is still read from the sidecars beside "
+        "it as well",
     )
     cap.add_argument(
         "--no-sidecar-discovery",
         action="store_true",
-        help="consider no simulated capacity unless named with --capacity-sidecar",
+        help="consider no simulated capacity unless named with --capacity-sidecar; the "
+        "measured source of a derived population is still read from the sidecars beside it",
     )
     stat = parser.add_argument_group("statistics")
     stat.add_argument("--n-bootstrap", type=int, default=DEFAULT_N_BOOTSTRAP)

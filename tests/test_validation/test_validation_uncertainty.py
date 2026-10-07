@@ -1008,7 +1008,24 @@ def test_a_basis_is_validated_and_round_trips() -> None:
     legacy = {k: v for k, v in p.to_dict().items() if k != "basis"}
     assert UncertainParameter.from_dict(legacy).basis is None
     space = ParameterSpace((p,)).with_range("demand_scale", 0.8, 1.2, "agency's count accuracy")
-    assert space.parameters[0].basis == "stated"
+    # review 2026-10-07: a hand-stated range is an assumption unless said measured
+    assert space.parameters[0].basis == "stated_assumption" and space.parameters[0].assumed
+    measured = ParameterSpace((p,)).with_range(
+        "demand_scale", 0.8, 1.2, "agency's count audit 2025", assumed=False
+    )
+    assert measured.parameters[0].basis == "stated_measurement"
+    assert not measured.parameters[0].assumed
+    with pytest.raises(ValueError, match="always flagged assumed"):
+        UncertainParameter(
+            "d", "demand_scale", 0.9, 1.1, "x", assumed=False, basis="stated_assumption"
+        )
+    with pytest.raises(ValueError, match="never flagged assumed"):
+        UncertainParameter(
+            "d", "demand_scale", 0.9, 1.1, "x", assumed=True, basis="stated_measurement"
+        )
+    # a design written before 2026-10-07 still reads
+    legacy_stated = UncertainParameter("d", "demand_scale", 0.9, 1.1, "x", basis="stated")
+    assert UncertainParameter.from_dict(legacy_stated.to_dict()) == legacy_stated
 
 
 def test_the_report_says_which_basis_each_range_has(population: Path) -> None:
@@ -1124,3 +1141,176 @@ def test_the_headline_is_total_delay_including_waiting_when_recorded() -> None:
     assert old.headline_note in old.to_markdown()
     assert json.loads(old.to_json())["headline_note"] == old.headline_note
     assert "These runs record no total delay including time spent waiting" in old.to_markdown()
+
+
+# --- review 2026-10-07: ranges carried over from another population's check -------------------
+
+
+def _observed_entry(
+    ref: float, read: tuple[float, float], *, widened_to: float | None, record_read: bool
+) -> dict[str, Any]:
+    """An observed-interval range as calibration.transfer_check writes it: read off the
+    curve, then widened by the check to ``widened_to`` (its own population's mean)."""
+    lo, hi = read
+    if widened_to is not None:
+        lo, hi = min(lo, widened_to), max(hi, widened_to)
+    entry = _entry("t_scale", "T", ref, ("observed_interval", lo, hi))
+    entry["widened_to_configured"] = widened_to is not None and (lo, hi) != read
+    if record_read:
+        entry.update(
+            read_low=read[0] / ref,
+            read_high=read[1] / ref,
+            parameter_read_low=read[0],
+            parameter_read_high=read[1],
+        )
+    return entry
+
+
+def test_a_derived_population_widens_the_read_range_to_its_own_mean(
+    population: Path, tmp_path: Path
+) -> None:
+    """Major: a check run on the measured population (mean T 1.3 s) read T 0.9-1.0 s and
+    widened it to its own 1.3 s. A population derived from it (mean T 1.04 s) was given
+    0.9-1.3 s, an "observed" range whose top is a T the check found outside the observed
+    interval. §8.5 widens to the configured (calibrated) value only: 0.9-1.04 s."""
+    derived = _derive(population, tmp_path / "idm_capacity.json", t=0.8)  # mean T 1.04 s
+    transfer = _transfer(population)
+    transfer["comparisons"][2]["uncertainty_range"] = _observed_entry(
+        1.3, (0.9, 1.0), widened_to=1.3, record_read=True
+    )
+    t = default_space(_cfg(derived), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert (t.low * 1.04, t.high * 1.04) == (pytest.approx(0.9), pytest.approx(1.04))
+    assert not t.assumed and t.basis == "observed_interval"
+    assert "as read off the curve, before any widening: mean T 0.9–1 s" in t.source
+    assert "the check's widening to the mean of the population it ran on is not" in t.source
+    assert "widened to include the configured mean 1.04 s" in t.source
+    # the check's own population: the same range as the check's widening
+    own = default_space(_cfg(population), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert (own.low * 1.3, own.high * 1.3) == (pytest.approx(0.9), pytest.approx(1.3))
+    assert "is not carried over" not in own.source
+
+
+def test_an_old_report_widened_to_another_populations_mean_is_refused(
+    population: Path, tmp_path: Path
+) -> None:
+    """A report from before parameter_read_low/high cannot be undone once widened."""
+    derived = _derive(population, tmp_path / "idm_capacity.json", t=0.8)
+    transfer = _transfer(population)
+    transfer["comparisons"][2]["uncertainty_range"] = _observed_entry(
+        1.3, (0.9, 1.0), widened_to=1.3, record_read=False
+    )
+    with pytest.raises(ValueError, match="cannot be recovered"):
+        default_space(_cfg(derived), kinds=["t_scale"], transfer=transfer)
+    # the check's own population: its widening was to this very mean, so it stands
+    t = default_space(_cfg(population), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert (t.low * 1.3, t.high * 1.3) == (pytest.approx(0.9), pytest.approx(1.3))
+    # not widened (or a report from before the widening existed): the range as read
+    entry = transfer["comparisons"][2]["uncertainty_range"]
+    entry.update(parameter_high=1.0, widened_to_configured=False)
+    t = default_space(_cfg(derived), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert (t.low * 1.04, t.high * 1.04) == (pytest.approx(0.9), pytest.approx(1.04))
+    del entry["widened_to_configured"]
+    t = default_space(_cfg(derived), kinds=["t_scale"], transfer=transfer).parameters[0]
+    assert (t.low * 1.04, t.high * 1.04) == (pytest.approx(0.9), pytest.approx(1.04))
+    # half a record is malformed
+    entry["parameter_read_low"] = 0.9
+    with pytest.raises(ValueError, match="one end of its range before widening"):
+        default_space(_cfg(derived), kinds=["t_scale"], transfer=transfer)
+
+
+def test_a_check_drawn_at_another_speed_factor_is_refused(population: Path) -> None:
+    """The check's curves are drawn at its fleet's speed factor (§7.2's third knob): a
+    population calibrated to another one is not derived by mean T / v0 alone."""
+    transfer = _transfer(population)
+    transfer["model"]["speed_factor"] = 1.1
+    with pytest.raises(ValueError, match=r"speed factor 1\.1"):
+        default_space(_cfg(population), kinds=["v0_scale"], transfer=transfer)
+    doc = _osm_doc({"idm_calibration": str(population), "speed_factor": 1.1})
+    faster = ScenarioConfig.model_validate(doc)
+    v = default_space(faster, kinds=["v0_scale"], transfer=transfer).parameters[0]
+    assert v.basis == "observed_interval"
+    # a report without the key predates the speed factor: every passenger at 1.0
+    del transfer["model"]["speed_factor"]
+    with pytest.raises(ValueError, match="speed factor 1, the scenario runs"):
+        default_space(faster, kinds=["v0_scale"], transfer=transfer)
+    assert default_space(_cfg(population), kinds=["v0_scale"], transfer=transfer).parameters
+    # the spread is compared when the report records it
+    transfer["model"]["speed_dev"] = 0.1
+    with pytest.raises(ValueError, match=r"spread its speed factors by 0\.1"):
+        default_space(_cfg(population), kinds=["t_scale"], transfer=transfer)
+
+
+# --- review 2026-10-07: the derived population's path does not depend on its spelling ---------
+
+
+def test_a_derived_populations_path_is_spelled_one_way(
+    population: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Minor: the path enters every sample's config hash; --out spelled relative or
+    absolute gave different hashes, so a resumed design redid every run."""
+    repo = tmp_path / "repo"
+    (repo / "runs").mkdir(parents=True)
+    monkeypatch.setattr(unc, "REPO_ROOT", repo)
+    monkeypatch.chdir(repo)
+    space = ParameterSpace(
+        (UncertainParameter("t_scale", "t_scale", 0.8, 1.2, "stated for the test", nominal=1.0),)
+    )
+    samples = sample_space(space, 2, 1)
+    cfg = _cfg(population)
+    spellings = [
+        "runs/x/populations",
+        repo / "runs" / "x" / "populations",
+        "./runs/y/../x/populations",
+    ]
+    hashes = [unc.sample_hashes(samples, cfg, population_dir=d) for d in spellings]
+    assert hashes[0] == hashes[1] == hashes[2]
+    applied = apply(samples[0], cfg, population_dir=spellings[1])
+    assert applied.fleet.idm_calibration is not None
+    assert applied.fleet.idm_calibration.startswith("runs/x/populations/idm_")
+    # outside the repository: the absolute resolved path, through a link too
+    outside = tmp_path / "elsewhere" / "populations"
+    link = tmp_path / "link"
+    link.symlink_to(tmp_path / "elsewhere")
+    a = apply(samples[0], cfg, population_dir=outside).fleet.idm_calibration
+    b = apply(samples[0], cfg, population_dir=link / "populations").fleet.idm_calibration
+    assert a == b and a is not None and Path(a).is_absolute()
+    assert Path(a).parent == outside.resolve()
+
+
+def test_canonical_path_text_inside_the_repository_is_repo_relative() -> None:
+    assert unc.canonical_path_text(unc.REPO_ROOT / "runs" / "p1_unc" / "populations") == (
+        "runs/p1_unc/populations"
+    )
+
+
+# --- review 2026-10-07: hand-stated ranges say whether they are assumptions ---------------------
+
+
+def test_the_report_says_a_stated_range_is_an_assumption(population: Path) -> None:
+    """Minor: --set-range was always recorded as not assumed, so the report's 'Assumed?'
+    column said 'no' for a hand-stated range and the limitation line left it out."""
+    space = default_space(_cfg(population))
+    space = space.with_range("t_scale", 0.9, 1.1, "engineering judgement")
+    space = space.with_range("demand_scale", 0.9, 1.1, "agency count audit", assumed=False)
+    samples = sample_space(space, 3, 1)
+    md = aggregate(_records({s.sample_id: -5.0 for s in samples}), space=space).to_markdown()
+    assert "| stated with the run, an assumption | assumed | engineering judgement |" in md
+    assert (
+        "| stated with the run, from the measurement its source names | no | agency count audit |"
+        in md
+    )
+    assert "- Ranges stated with the run and flagged assumed (t_scale): assumptions" in md
+    assert "- Ranges stated with the run as measurements (demand_scale)" in md
+    assert "- The demand range was stated with the run (stated with the run, from the" in md
+    assert "- The demand range is the assumed detector count error" not in md
+    # a design written before 2026-10-07 says that it did not say
+    legacy = ParameterSpace(
+        tuple(
+            UncertainParameter.from_dict({**p.to_dict(), "basis": "stated", "assumed": False})
+            if p.kind == "t_scale"
+            else p
+            for p in space.parameters
+        )
+    )
+    md = aggregate(_records({s.sample_id: -5.0 for s in samples}), space=legacy).to_markdown()
+    assert "without saying whether they were measured or assumed (t_scale" in md

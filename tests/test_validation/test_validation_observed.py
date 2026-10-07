@@ -1010,6 +1010,79 @@ class TestPointSpeeds:
         assert counts[0].tolist() == [25, 25, 25]  # window 2: 300 s / 12 s headway
 
 
+def standstill_frame() -> pd.DataFrame:
+    """A queue locked over Q1 (400 m) and Q2 (800 m) and one earlier vehicle.
+
+    61 vehicles stand still for the whole run, front bumpers every 7 m from
+    803 m back to 383 m (a 5 m car and a 2 m gap); one free vehicle drives
+    the whole stretch at 30 m/s in the first window (in another lane). In the
+    second window nothing crosses any station: Q1 and Q2 are occupied by the
+    standing queue, Q0 (upstream of its tail) and Q3, Q4 (downstream of its
+    head) are empty.
+    """
+    t = np.arange(0.0, 601.0, 1.0)
+    rows = [
+        pd.DataFrame({"t": t, "veh_id": f"s{k:02d}", "x": 803.0 - 7.0 * k, "v": 0.0})
+        for k in range(61)
+    ]
+    tau = t[t <= 70.0]
+    rows.append(pd.DataFrame({"t": tau, "veh_id": "free", "x": -200.0 + 30.0 * tau, "v": 30.0}))
+    return pd.concat(rows, ignore_index=True).sort_values(["t", "veh_id"], ignore_index=True)
+
+
+class TestStandstill:
+    """Review 2026-10-07: a full standstill over a loop is a reading, not a gap."""
+
+    def test_a_stopped_queue_over_the_loop_reads_zero_and_an_empty_loop_nothing(self) -> None:
+        scores = score_run_against_observed(
+            standstill_frame(), queue_observed(), warmup_s=0.0, duration_s=600.0
+        )
+        assert scores.windows == (0, 1)
+        assert scores.station_point_speeds_sim is not None
+        assert scores.station_point_counts_sim is not None
+        points = np.asarray(scores.station_point_speeds_sim)
+        counts = np.asarray(scores.station_point_counts_sim)
+        assert counts[0].tolist() == [1, 1, 1, 1, 1]  # the free vehicle, once each
+        assert points[0].tolist() == pytest.approx([30.0] * 5)
+        # second window: nothing crosses; the loops under the queue read 0 m/s
+        # (formerly NaN — "not measured"), the empty ones still nothing
+        assert counts[1].tolist() == [0, 0, 0, 0, 0]
+        assert points[1, 1] == 0.0 and points[1, 2] == 0.0
+        assert np.isnan(points[1, [0, 3, 4]]).all()
+        assert scores.station_point_standstill
+
+    def test_the_standstill_reaches_the_speed_criterion(self) -> None:
+        from validation.baseline_gate import aggregated_rmspe
+
+        scores = score_run_against_observed(
+            standstill_frame(), queue_observed(), warmup_s=0.0, duration_s=600.0
+        )
+        value, n = aggregated_rmspe(scores, window_s=300.0, aggregation_s=300.0, source="point")
+        # every station reads 30 against 25 in window 0; Q1, Q2 read 0 against 25
+        assert n == 7
+        assert value == pytest.approx(math.sqrt((5 * 0.2**2 + 2 * 1.0) / 7))
+
+    def test_the_zone_is_the_fleets_car_length(self) -> None:
+        from microsim.vehicles import VEHICLE_LENGTH_M
+        from validation.observed import LOOP_OCCUPANCY_ZONE_M
+
+        assert LOOP_OCCUPANCY_ZONE_M == VEHICLE_LENGTH_M
+
+    def test_the_flag_round_trips_and_old_files_load_without_it(self) -> None:
+        from validation.observed import ObservedScores
+
+        scores = score_run_against_observed(
+            standstill_frame(), queue_observed(), warmup_s=0.0, duration_s=600.0
+        )
+        raw = json.loads(json.dumps(scores.to_dict()))
+        assert raw["station_point_standstill"] is True
+        assert ObservedScores.from_dict(raw).station_point_standstill
+        del raw["station_point_standstill"]
+        old = ObservedScores.from_dict(raw)
+        assert not old.station_point_standstill
+        assert "station_point_standstill" not in old.to_dict()
+
+
 class TestAnchoredHours:
     def test_hours_start_at_the_warm_up_end(self, observed: ObservedCorridor) -> None:
         scores = score_run_against_observed(

@@ -87,7 +87,10 @@ the crossings of the interval's ends read off the same curve, and under the
 same earlier adjustments, as the recommendation (:func:`range_on_curve`),
 **widened to include the configured (calibrated) value** — the model the
 study runs must lie inside its own uncertainty range — and then clipped to the
-knob's measured range (``widened_to_configured`` records the widening). That
+knob's measured range (``widened_to_configured`` records the widening, and
+``read_low``/``read_high`` the range before it: a population derived from the
+checked one by mean T / v0 alone is widened to its own calibrated mean by
+``validation.uncertainty``, not to the checked population's). That
 is what is not known about *this* corridor's population; the measured range
 itself (the spread of individual drivers) is the range calibration may choose
 from. An ``inconclusive`` verdict still carries an interval and it is read.
@@ -2300,10 +2303,16 @@ def _shifted_mean(pop: IDMCalibration, base: IDMCalibration) -> str | None:
 def _sidecar_sources(
     resolved: Path, paths: Sequence[Path]
 ) -> list[tuple[Path, Path, IDMCalibration]]:
-    """``(sidecar, its source's path, the source)`` of each readable sidecar,
-    ``resolved``'s own (``<stem>.calibration.json`` beside it) first."""
+    """``(sidecar, its source's path, the source)`` of each readable sidecar —
+    every ``*.calibration.json`` beside ``resolved`` (the directory
+    ``validation.uncertainty.population_lineage`` reads) and every one of
+    ``paths``, each once — ``resolved``'s own (``<stem>.calibration.json``)
+    first, then the rest by name."""
     own = (resolved.parent / f"{resolved.stem}{SIDECAR_SUFFIX}").resolve()
-    ordered = sorted(paths, key=lambda p: (Path(p).resolve() != own, str(p)))
+    unique: dict[Path, Path] = {}
+    for p in [*discover_sidecars(resolved.parent), *(Path(q) for q in paths)]:
+        unique.setdefault(p.resolve(), p)
+    ordered = sorted(unique.values(), key=lambda p: (p.resolve() != own, str(p)))
     found: list[tuple[Path, Path, IDMCalibration]] = []
     for sidecar in ordered:
         try:
@@ -2360,14 +2369,24 @@ def measured_source(
 ) -> Population | None:
     """The measured population ``population`` derives from, for its §7.2 range.
 
-    The rules of ``validation.uncertainty.population_lineage``, over
-    ``sidecars`` (default: discovered in ``artifacts/``): the source a sidecar
-    names when the population is it with only mean T / v0 scaled; else, for a
-    population with no sidecar of its own (``<stem>.calibration.json`` beside
-    it) that no sidecar names as a source, a copy of a base with one mean
-    shifted (``scripts/derive_population.py``, which writes no sidecar) — the
-    base one of the sidecars' populations or sources, resolved in turn. Used
-    when no capacity sidecar is accepted (an accepted one names the source).
+    The rules of ``validation.uncertainty.population_lineage``: the source a
+    sidecar names when the population is it with only mean T / v0 scaled;
+    else, for a population with no sidecar of its own
+    (``<stem>.calibration.json`` beside it) that no sidecar names as a source,
+    a copy of a base with one mean shifted (``scripts/derive_population.py``,
+    which writes no sidecar) — the base one of the sidecars' populations or
+    sources, resolved in turn. Used when no capacity sidecar is accepted (an
+    accepted one names the source).
+
+    The sidecars read are every ``*.calibration.json`` beside the population
+    (and beside each base on the way) — the ones
+    ``validation.uncertainty.population_lineage`` reads — and ``sidecars``
+    (default: discovered in ``artifacts/``). The capacity sidecars a check
+    considers therefore never hide a lineage: docs/FRISCO_PROTOCOL.md §7.2's
+    measured range is the measured source's whatever simulated capacity is
+    used (``--no-sidecar-discovery``, or a ``--capacity-sidecar`` list that
+    omits the base's sidecar, centred it on the derived population before
+    2026-10-07).
 
     Returns:
         The source (labelled with the derivation), or None when the population
@@ -2459,6 +2478,11 @@ class ModelSide:
         capacity_speed_ms: The speed at it.
         sidecars: Every sidecar considered, with the decision.
         notes: Plain statements.
+        speed_dev: The spread of the passenger speed factors
+            (``FleetSpec.speed_dev``; 0 unless the scenario sets it). With
+            ``speed_factor`` it fixes the desired speeds every curve of the
+            check is drawn at (``validation.uncertainty`` compares both with
+            the scenario a range is carried over to).
     """
 
     population: str
@@ -2482,6 +2506,7 @@ class ModelSide:
     capacity_speed_ms: float | None
     sidecars: tuple[SidecarCandidate, ...]
     notes: tuple[str, ...]
+    speed_dev: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form."""
@@ -2493,6 +2518,7 @@ class ModelSide:
             "draw_seed": self.draw_seed,
             "speed_limit_ms": _num(self.speed_limit_ms),
             "speed_factor": self.speed_factor,
+            "speed_dev": self.speed_dev,
             "heavy_fraction": _num(self.heavy_fraction),
             "passenger_means": {k: _num(v) for k, v in self.passenger_means.items()},
             "desired_speed": {k: _num(v) for k, v in self.desired_speed.items()},
@@ -2739,6 +2765,7 @@ def model_side(
         draw_seed=seed,
         speed_limit_ms=speed_limit_ms,
         speed_factor=population.speed_factor,
+        speed_dev=population.speed_dev,
         heavy_fraction=population.heavy_fraction,
         passenger_means=means,
         desired_speed=desired,
@@ -2804,6 +2831,13 @@ class UncertaintyRange:
         widened_to_configured: An end was moved to include ``configured``
             (protocol §8.5: widened to the configured value, then clipped to
             the measured range).
+        read: The range read off the curve (cut to the span the curve may
+            be read over) **before** the widening to ``configured`` — what
+            the observed interval alone says. None for a fallback. A
+            population that differs from the checked one in mean T / v0
+            (``validation.uncertainty``) widens this to its own configured
+            mean: the checked population's mean, which ``low``/``high`` are
+            widened to include, is not its calibrated value.
     """
 
     knob: str
@@ -2819,6 +2853,7 @@ class UncertaintyRange:
     curve: str | None = None
     configured: float = CONFIGURED_KNOB
     widened_to_configured: bool = False
+    read: tuple[float, float] | None = None
 
     @property
     def assumed(self) -> bool:
@@ -2827,6 +2862,7 @@ class UncertaintyRange:
 
     def to_dict(self) -> dict[str, Any]:
         """JSON form (factors and the parameter's own values)."""
+        read = self.read
         return {
             "knob": self.knob,
             "parameter": self.parameter,
@@ -2835,6 +2871,10 @@ class UncertaintyRange:
             "high": _num(self.high),
             "parameter_low": _num(self.low * self.reference_mean),
             "parameter_high": _num(self.high * self.reference_mean),
+            "read_low": None if read is None else _num(read[0]),
+            "read_high": None if read is None else _num(read[1]),
+            "parameter_read_low": None if read is None else _num(read[0] * self.reference_mean),
+            "parameter_read_high": None if read is None else _num(read[1] * self.reference_mean),
             "basis": self.basis,
             "reason": self.reason,
             "clipped": self.clipped,
@@ -3342,6 +3382,7 @@ def uncertainty_range(
         curve=curve_kind,
         configured=configured,
         widened_to_configured=widened,
+        read=(low, high),
     )
 
 

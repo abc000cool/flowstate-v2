@@ -1079,6 +1079,38 @@ class TestAggregationAndLabels:
         with pytest.raises(ValueError, match="share a 2-D shape"):
             speed_aggregation_rows(obs, sim[:, :5], 300.0)
 
+    def test_the_criterion_row_is_the_criterions_aggregation(self):
+        """Review 2026-10-07: the gate's C3 is 15 minutes, not the native window."""
+        import numpy as np
+
+        from validation.report import speed_aggregation_rows
+
+        obs = np.full((24, 4), 20.0)
+        rows = speed_aggregation_rows(obs, obs, 300.0, criterion_aggregation_s=900.0)
+        labels = [r["aggregation"] for r in rows]
+        assert labels == ["5 min", "15 min (criterion)", "30 min", "60 min", "whole period"]
+        ten = speed_aggregation_rows(obs, obs, 300.0, criterion_aggregation_s=600.0)
+        assert [r["aggregation"] for r in ten][:3] == ["5 min", "10 min (criterion)", "15 min"]
+        with pytest.raises(ValueError, match="whole number"):
+            speed_aggregation_rows(obs, obs, 300.0, criterion_aggregation_s=400.0)
+        with pytest.raises(ValueError, match="window_s"):
+            speed_aggregation_rows(obs, obs, None, criterion_aggregation_s=900.0)
+
+    def test_both_sides_of_a_block_cover_the_same_windows(self):
+        """A window missing on the observed side is left out of the simulated mean too."""
+        import numpy as np
+
+        from validation.report import speed_aggregation_rows
+
+        obs = np.full((24, 4), 20.0)
+        obs[1, 0] = np.nan
+        sim = np.full((24, 4), 20.0)
+        sim[1, 0] = 40.0  # unmatched: biased the per-side 15-minute mean to 26.7
+        rows = {r["aggregation"]: r["rmspe"] for r in speed_aggregation_rows(obs, sim, 300.0)}
+        assert rows["5 min (criterion)"] == "0"
+        assert rows["15 min"] == "0" and rows["60 min"] == "0"
+        assert rows["whole period"] == "0"
+
     def test_group_labels_for_closures_heavy_managed_and_meters(self):
         from validation.report import BASELINE_LABEL, group_label
 

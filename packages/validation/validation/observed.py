@@ -74,6 +74,16 @@ _S_PER_HOUR: Final[float] = 1.0 / s_to_h(1.0)
 #: Position/float comparison tolerance [m] / [s].
 _TOL: Final[float] = 1e-6
 
+#: Extent [m] of a station's loop in the trajectories' front-bumper
+#: coordinates: a vehicle stands over the loop at ``x_ref`` while its front
+#: bumper lies in ``[x_ref, x_ref + LOOP_OCCUPANCY_ZONE_M)`` — it has crossed
+#: the loop and its body still covers it. The fleet's passenger-car length
+#: (``microsim.vehicles.VEHICLE_LENGTH_M``, 5 m; a test pins the two
+#: together); the loop's own length is left out, so a longer vehicle (a
+#: truck) is counted over a shorter stretch than its body covers — the rule
+#: can miss an occupied loop, never invent one.
+LOOP_OCCUPANCY_ZONE_M: Final[float] = 5.0
+
 
 def _series(raw: Mapping[str, Any] | None, station_id: str, n_windows: int) -> FloatArray:
     """One station's per-window series as floats, JSON ``null`` → NaN.
@@ -336,10 +346,20 @@ class ObservedScores:
             the mean speed of the vehicles crossing the station's position in
             the window, each crossing interpolated between consecutive
             trajectory samples (:func:`validation.metrics.crossing_speeds`;
-            a time-mean over every lane's vehicles). NaN where no vehicle
-            crossed. Docs/FRISCO_PROTOCOL.md §5's virtual detector, beside
-            the segment means; ``None`` for scores stored before it existed.
-        station_point_counts_sim: The crossings behind each point speed.
+            a time-mean over every lane's vehicles). In a window no vehicle
+            crosses, the mean sampled speed of the vehicles standing over the
+            loop (:data:`LOOP_OCCUPANCY_ZONE_M`) — about zero in a stopped
+            queue, where an occupied loop counts nothing and its
+            count-over-occupancy speed is zero — and NaN only where the loop
+            is empty (``station_point_standstill``). Docs/FRISCO_PROTOCOL.md
+            §5's virtual detector, beside the segment means; ``None`` for
+            scores stored before it existed.
+        station_point_counts_sim: The crossings behind each point speed (zero
+            in a window read from the vehicles standing over the loop).
+        station_point_standstill: True when the point speeds follow the
+            standstill rule above (every replicate scored since 2026-10-07);
+            False for scores stored before it, whose window without a
+            crossing is NaN even where vehicles stood over the loop.
 
     Raises:
         ValueError: ``link_hours`` is given and holds a different number of
@@ -361,6 +381,7 @@ class ObservedScores:
     hour_anchor_s: float | None = None
     station_point_speeds_sim: tuple[tuple[float, ...], ...] | None = None
     station_point_counts_sim: tuple[tuple[int, ...], ...] | None = None
+    station_point_standstill: bool = False
 
     def __post_init__(self) -> None:
         if self.link_hours is not None and len(self.link_hours) != len(self.geh_values):
@@ -411,6 +432,8 @@ class ObservedScores:
             out["station_point_counts_sim"] = [
                 [int(n) for n in row] for row in self.station_point_counts_sim
             ]
+            if self.station_point_standstill:
+                out["station_point_standstill"] = True
         return out
 
     @classmethod
@@ -420,7 +443,8 @@ class ObservedScores:
         A file written before the link-hour table existed has no
         ``link_hours`` key; it loads with ``link_hours = None``. Likewise a
         file without the anchored hours or the point speeds loads with
-        those fields ``None``.
+        those fields ``None``, and one without ``station_point_standstill``
+        with that flag False.
         """
 
         def rows(key: str) -> tuple[tuple[float, ...], ...]:
@@ -458,6 +482,11 @@ class ObservedScores:
                 None
                 if points is None or counts is None
                 else tuple(tuple(int(n) for n in row) for row in counts)
+            ),
+            station_point_standstill=(
+                points is not None
+                and counts is not None
+                and bool(raw.get("station_point_standstill", False))
             ),
         )
 
@@ -1009,7 +1038,18 @@ def _point_speed_matrix(
     time into ``[k·window_s, (k+1)·window_s)``: the speed is the arithmetic
     mean of the crossing speeds (the time-mean speed a loop reports, every
     lane's vehicles together), the count the number of crossings with a
-    finite speed. NaN and zero where no vehicle crossed.
+    finite speed.
+
+    **Standstill.** A window in which no vehicle crosses is not necessarily
+    an unmeasured one: a stopped queue standing over the loop occupies it
+    and counts nothing, and a loop that estimates speed from its count and
+    occupancy then reads zero. Such a window reads the mean sampled speed
+    of the vehicles standing over the loop in it (front bumper in
+    ``[x_ref, x_ref + LOOP_OCCUPANCY_ZONE_M)``, samples in the window) — about
+    zero in a stopped queue, and still the vehicle's own speed where one
+    merely lingers across a window boundary on a near-empty road — with its
+    count left at zero. Only a window whose loop is empty throughout stays
+    NaN: a loop over an empty road reads nothing.
 
     Returns:
         ``(speeds, counts)``, each ``[window][station]`` over ``windows``.
@@ -1036,7 +1076,50 @@ def _point_speed_matrix(
         counts[:, j] = n
         with np.errstate(invalid="ignore", divide="ignore"):
             speeds[:, j] = np.where(n > 0, total / np.maximum(n, 1), np.nan)
+    idle = counts == 0
+    if bool(idle.any()):
+        _standstill_speeds(
+            trajectories, speeds, idle, x_refs=x_refs, windows=windows, window_s=window_s
+        )
     return speeds, counts
+
+
+def _standstill_speeds(
+    trajectories: pd.DataFrame,
+    speeds: FloatArray,
+    idle: NDArray[np.bool_],
+    *,
+    x_refs: Sequence[float],
+    windows: Sequence[int],
+    window_s: float,
+) -> None:
+    """Fill ``speeds`` in place where no vehicle crossed (:func:`_point_speed_matrix`).
+
+    Cell ``(i, j)`` flagged in ``idle`` gets the mean finite speed of the
+    window's samples with ``x`` in ``[x_refs[j], x_refs[j] + LOOP_OCCUPANCY_ZONE_M)``;
+    it stays NaN when there are none. The window's rows are a view when the
+    rows are time-ordered (:func:`validation.metrics.time_window_rows`).
+    """
+    t = np.asarray(trajectories["t"].to_numpy(), dtype=np.float64)
+    x = np.asarray(trajectories["x"].to_numpy(), dtype=np.float64)
+    v = np.asarray(trajectories["v"].to_numpy(), dtype=np.float64)
+    ordered = time_ordered(t)
+    for i, k_win in enumerate(windows):
+        columns = np.flatnonzero(idle[i])
+        if columns.size == 0:
+            continue
+        lo = int(k_win) * window_s
+        rows = time_window_rows(t, lo, lo + window_s, ordered=ordered)
+        if n_window_rows(rows) == 0:
+            continue
+        xs = x[rows]
+        vs = v[rows]
+        finite = np.isfinite(vs)
+        for j in columns:
+            x_ref = float(x_refs[int(j)])
+            over = finite & (xs >= x_ref) & (xs < x_ref + LOOP_OCCUPANCY_ZONE_M)
+            if bool(over.any()):
+                speeds[i, j] = float(vs[over].mean())
 
 
 def _link_hour_records(
@@ -1134,7 +1217,10 @@ def score_run_against_observed(
     * **Point speeds** (``station_point_speeds_sim`` /
       ``station_point_counts_sim``) — per window and scored station, the mean
       speed of the vehicles crossing the station's cross-section, as a loop
-      reads it (§5's virtual detector), and how many crossed.
+      reads it (§5's virtual detector), and how many crossed; where none
+      crossed, the speed of the vehicles standing over the loop (about zero
+      in a stopped queue), NaN only over an empty road
+      (:func:`_point_speed_matrix`).
 
     **Stations the run does not reach are excluded, not failed.** A station
     whose cross-section ``x_m + x_offset_m`` falls outside
@@ -1260,6 +1346,7 @@ def score_run_against_observed(
         hour_anchor_s=anchor_s,
         station_point_speeds_sim=tuple(tuple(float(v) for v in row) for row in point_speeds),
         station_point_counts_sim=tuple(tuple(int(n) for n in row) for row in point_counts),
+        station_point_standstill=True,
     )
 
 
