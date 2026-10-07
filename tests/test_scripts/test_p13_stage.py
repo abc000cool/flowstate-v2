@@ -126,6 +126,13 @@ def test_the_arm_guard_ignores_default_valued_keys_the_committed_file_omits() ->
         key = "inflow" if ramp["kind"] == "on" else "exit_fraction"
         ramp[key] = [[t, v * 0.9] for t, v in ramp[key]]  # the ramp values may differ
     assert mod.same_configuration(doc, ref)
+    for ramp in doc["network"][
+        "ramps"
+    ]:  # ramp keys at their defaults, as the VM's builder writes them
+        ramp.setdefault("cd_road", False)
+        ramp.setdefault("weave", None)
+        ramp.setdefault("cd_pair", "")
+    assert mod.same_configuration(doc, ref)
     changed = json.loads(json.dumps(doc))
     changed["fleet"]["speed_factor"] = 1.05
     assert not mod.same_configuration(changed, ref)

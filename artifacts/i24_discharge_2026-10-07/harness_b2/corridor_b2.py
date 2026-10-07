@@ -181,7 +181,20 @@ def same_configuration(doc: dict, ref_doc: dict) -> bool:
     """
     from flowstate_core.config import ScenarioConfig, config_hash_payload
 
-    if masked(doc)["network"]["ramps"] != masked(ref_doc)["network"]["ramps"]:
+    def grids(d: dict) -> list[tuple[str, str, list]]:
+        # kind and time grid only: the rebuilt file also carries ramp keys at their defaults
+        # (cd_road, weave, cd_pair) that the committed file omits; the payload below covers
+        # every ramp field that is not at its default (stage p13's third launch, 2026-10-07)
+        return [
+            (
+                str(r.get("name")),
+                str(r["kind"]),
+                [t for t, _ in r["inflow" if r["kind"] == "on" else "exit_fraction"]],
+            )
+            for r in d["network"]["ramps"]
+        ]
+
+    if grids(doc) != grids(ref_doc):
         return False  # a different ramp count, kind or time grid is a different configuration
     cmp = json.loads(json.dumps(doc))
     cmp["name"] = ref_doc.get("name", cmp.get("name"))
