@@ -14,7 +14,15 @@
  * configurations returning the same realisation is a result about the
  * pipeline, not about compliance, and must not read as a finding. */
 
-import { useCallback, useMemo, useRef, useState, type FocusEvent, type MouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type MouseEvent,
+} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createSweep, getSweep, listScenarios, OFFLINE_WRITE_MESSAGE } from '../api/client';
 import type {
@@ -96,6 +104,9 @@ interface Tip {
   cell: SweepCell;
   anchor: 'pointer' | 'cell';
 }
+
+/** `1 cell`, `2 cells`: a count with its noun in the right number. */
+const nOf = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 /** Rows × columns of the placeholder matrix shown before the first cells. */
 const SKELETON_ROWS = 4;
@@ -269,12 +280,23 @@ export function SweepsView(): JSX.Element {
       const s = await listScenarios();
       setScenarios(s);
       const corridor = s.find((x) => x.config?.network.kind === 'corridor') ?? s[0];
-      if (corridor) setScenarioId((cur) => cur || corridor.scenario_id);
+      // keep the pick while it still exists; a demo id read while offline does
+      // not exist on the server, and a sweep must never be posted against it
+      if (corridor) {
+        setScenarioId((cur) =>
+          cur && s.some((x) => x.scenario_id === cur) ? cur : corridor.scenario_id,
+        );
+      }
     } catch {
       /* retried by usePoll */
     }
   }, []);
   usePoll(loadScenarios, authFailed || scenariosLoaded ? null : 3000);
+  // the list read while the API was offline is the demo one: re-read it the
+  // moment the link is back (the launcher must name a server scenario)
+  useEffect(() => {
+    if (!offline && !authFailed) void loadScenarios();
+  }, [offline, authFailed, loadScenarios]);
 
   // `sweep.status` is the fan-out job's own status (`done` = every child run
   // exists; cells still finish on their own), so polling stops on the cells —
@@ -363,7 +385,7 @@ export function SweepsView(): JSX.Element {
       setConfirming(false);
       toast(
         'ok',
-        `sweep ${res.sweep_id} launched · ${cellCount} cells${infra ? ` + ${infra} infrastructure` : ''}${includeBaseline ? ' + baseline' : ''} × ${replicates} reps = ${totalRuns} runs`,
+        `sweep ${res.sweep_id} launched · ${nOf(cellCount, 'cell')}${infra ? ` + ${infra} infrastructure` : ''}${includeBaseline ? ' + baseline' : ''} × ${replicates} reps = ${totalRuns} runs`,
       );
     } catch (err) {
       toastError(err, 'sweep');
@@ -760,9 +782,9 @@ export function SweepsView(): JSX.Element {
         </div>
         <div className="panel-foot form-actions">
           <span className="form-actions-summary mono">
-            {cellCount} cells{infra ? ` + ${infra} infrastructure` : ''}
-            {includeBaseline ? ' + baseline' : ''} = {totalCells} cells × {replicates} reps ={' '}
-            {totalRuns} runs
+            {nOf(cellCount, 'cell')}{infra ? ` + ${infra} infrastructure` : ''}
+            {includeBaseline ? ' + baseline' : ''} = {nOf(totalCells, 'cell')} ×{' '}
+            {nOf(replicates, 'rep')} = {nOf(totalRuns, 'run')}
           </span>
           <div className="form-actions-buttons">
             <button
@@ -772,7 +794,7 @@ export function SweepsView(): JSX.Element {
               disabled={offline}
               title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
             >
-              Launch {cellCount} cells{infra ? ` + ${infra} infrastructure` : ''}
+              Launch {nOf(cellCount, 'cell')}{infra ? ` + ${infra} infrastructure` : ''}
               {includeBaseline ? ' + baseline' : ''}…
             </button>
           </div>
@@ -970,7 +992,7 @@ export function SweepsView(): JSX.Element {
             ['Scenario', scenarioName],
             ['Tier', tier === 'macro' ? 'macro (CTM screening)' : 'micro (SUMO)'],
             ['Controller', controller],
-            ['Grid', `${pens.length} penetrations × ${coms.length} compliances`],
+            ['Grid', `${nOf(pens.length, 'penetration')} × ${nOf(coms.length, 'compliance')}`],
             [
               'Strategies',
               `${strategies.join(', ')}${
@@ -991,9 +1013,9 @@ export function SweepsView(): JSX.Element {
         >
           {tier === 'macro' && <MacroBanner />}
           <p className="small muted">
-            Every run is a full-length simulation of the scenario. {replicates} replicates per cell
-            is {replicates < MIN_REPLICATES ? 'exploratory' : 'at'} the reporting standard of n ≥{' '}
-            {MIN_REPLICATES}, which headline numbers require.
+            Every run is a full-length simulation of the scenario. {nOf(replicates, 'replicate')} per
+            cell {replicates < MIN_REPLICATES ? 'is exploratory, below' : 'meets'} the reporting
+            standard of n ≥ {MIN_REPLICATES}, which headline numbers require.
           </p>
         </ConfirmDialog>
       )}

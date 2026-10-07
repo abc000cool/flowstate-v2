@@ -14,6 +14,7 @@ import {
   getReportArchive,
   getReportMarkdown,
   getReportPdf,
+  getSweep,
   isAuthFailed,
   isAuthRetryScheduled,
   listCorridors,
@@ -478,6 +479,14 @@ describe('api client writes during the offline fallback', () => {
     fetchMock.mockClear();
     expect((await listRuns()).length).toBeGreaterThan(0);
     expect((await listScenarios()).length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a matrix for a server sweep it cannot read', async () => {
+    fetchMock.mockClear();
+    const p = getSweep('swp_3fd24c962ab1');
+    await expect(p).rejects.toThrow(/API offline — sweep swp_3fd24c962ab1/);
+    await expect(p).rejects.toBeInstanceOf(ApiError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

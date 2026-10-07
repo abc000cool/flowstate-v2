@@ -57,7 +57,7 @@
  * their first answer, an error callout if that first read fails, an empty
  * state, then rows. */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   ApiError,
@@ -84,6 +84,7 @@ import { Callout } from '../components/ui/Callout';
 import { HashValue } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SkeletonRows } from '../components/ui/Skeleton';
+import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { saveBlob, saveText } from '../lib/download';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 
@@ -111,6 +112,8 @@ const CORRIDOR_RETRY_MS = 60_000;
 /** The observations select's two non-corridor options: score against nothing
  * (the API's own default — the GEH and speed rows then read "not evaluated"),
  * and a path typed by hand for an artifact this dashboard cannot list. */
+/** A profile source longer than this shows three lines and a toggle. */
+const SOURCE_CLAMP_CHARS = 240;
 const OBSERVATIONS_NONE = '';
 const OBSERVATIONS_CUSTOM = '__server_path__';
 
@@ -308,6 +311,9 @@ const MACRO_TOOLTIP =
 
 export function ReportsView(): JSX.Element {
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  /** True when the picker's rows came from the in-browser demo backend: they
+   * carry the DEMO tag and no config hash, like the Runs table (lib/demo). */
+  const [runsDemo, setRunsDemo] = useState(false);
   /** False until `GET /runs` has answered once: the picker shows skeleton
    * rows until then, not "no finished runs". */
   const [runsLoaded, setRunsLoaded] = useState(false);
@@ -350,6 +356,18 @@ export function ReportsView(): JSX.Element {
    * user has to act on, and a toast that has already faded is not it. */
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  /** Where keyboard focus goes once a generate started from its button ends:
+   * the list on success, back to the button on a refusal. */
+  const refocus = useRef<'list' | 'button' | null>(null);
+  const listTitleRef = useRef<HTMLHeadingElement>(null);
+  const generateRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (busy || refocus.current === null) return;
+    const target = refocus.current === 'list' ? listTitleRef.current : generateRef.current;
+    refocus.current = null;
+    if (document.activeElement === document.body) target?.focus();
+  }, [busy]);
   const authFailed = useAuthFailed();
   const offline = useOfflineFallback();
   // latest list for the (referentially stable) poll callback
@@ -375,9 +393,13 @@ export function ReportsView(): JSX.Element {
   // continuous quiet poll — newly finished runs appear without a reload, and
   // the offline-fallback race resolves on the next tick
   const refresh = useCallback(async () => {
+    // captured at fetch time, as the Runs view does: the client decides demo
+    // vs live per call
+    const fromDemo = isMockActive();
     try {
       const all = await listRuns();
       setRuns(all.filter((r) => r.status === 'done'));
+      setRunsDemo(fromDemo);
       setRunsLoaded(true);
       setRunsError(null);
     } catch (err) {
@@ -426,6 +448,11 @@ export function ReportsView(): JSX.Element {
     }
   }, []);
   usePoll(loadScenarios, authFailed || scenarios.length > 0 ? null : SCENARIOS_POLL_MS);
+  // the list read while the API was offline is the demo one: re-read it the
+  // moment the link is back, or real runs print raw scenario ids for good
+  useEffect(() => {
+    if (!offline && !authFailed) void loadScenarios();
+  }, [offline, authFailed, loadScenarios]);
 
   // the selectable acceptance-criteria profiles, read once: the registry is
   // fixed for a service, and the profile the API applies by default is the one
@@ -591,6 +618,10 @@ export function ReportsView(): JSX.Element {
     const chosen =
       observations === OBSERVATIONS_CUSTOM ? customObservations.trim() : observations;
     const observationsPath = chosen === '' ? undefined : chosen;
+    // the button disables while busy (and stays disabled once the selection
+    // clears), which drops keyboard focus to <body>: hand it to the list the
+    // new report lands in instead
+    const fromButton = document.activeElement === generateRef.current;
     setBusy(true);
     setLaunchError(null);
     try {
@@ -600,6 +631,7 @@ export function ReportsView(): JSX.Element {
       if (demo) show(next);
       else commit(next);
       setSelected(new Set());
+      if (fromButton) refocus.current = 'list';
       if (rec.status === 'done') toast('ok', `report ${rec.report_id} generated`);
       else if (rec.status === 'failed')
         toast('error', `report ${rec.report_id} failed: ${rec.error ?? 'unknown error'}`);
@@ -612,6 +644,7 @@ export function ReportsView(): JSX.Element {
       const text = err instanceof Error ? err.message : String(err);
       setLaunchError(status ? `HTTP ${status} — ${text}` : text);
       toastError(err, 'report');
+      if (fromButton) refocus.current = 'button';
     } finally {
       setBusy(false);
     }
@@ -671,6 +704,7 @@ export function ReportsView(): JSX.Element {
       : criteriaListed
         ? profileSources.get(profile)
         : FALLBACK_PROFILE_OPTIONS[0].source;
+  const longSource = (profileSource?.length ?? 0) > SOURCE_CLAMP_CHARS;
 
   let pickerBody: JSX.Element;
   if (!runsLoaded) {
@@ -756,10 +790,17 @@ export function ReportsView(): JSX.Element {
                 <StatusChip status={r.status} />
               </td>
               <td className="hash">
-                <HashValue value={r.config_hash} />
+                <HashValue value={runsDemo ? DEMO_HASH_LABEL : r.config_hash} />
               </td>
               <td>
-                <SeededBadge seeded={r.seeded} />
+                <span className="tag-row">
+                  <SeededBadge seeded={r.seeded} />
+                  {runsDemo && (
+                    <span className="tag demo" title={DEMO_ROW_TITLE}>
+                      DEMO
+                    </span>
+                  )}
+                </span>
               </td>
             </tr>
           );
@@ -920,15 +961,25 @@ export function ReportsView(): JSX.Element {
     reportsBody = (
       <tr>
         <td colSpan={REPORT_COLUMNS} className="reports-wrap-cell">
-          <EmptyState
-            compact
-            title={
-              serverListed
-                ? 'No reports on this server yet.'
-                : 'No reports requested in this browser yet.'
-            }
-            description="Generate one above from finished micro runs."
-          />
+          {serverDemo ? (
+            // the empty list came from the demo backend: it says nothing
+            // about what the server holds
+            <EmptyState
+              compact
+              title="The server's reports are not listed: this page is showing demo data."
+              description="Its history appears here once the API answers."
+            />
+          ) : (
+            <EmptyState
+              compact
+              title={
+                serverListed
+                  ? 'No reports on this server yet.'
+                  : 'No reports requested in this browser yet.'
+              }
+              description="Generate one above from finished micro runs."
+            />
+          )}
         </td>
       </tr>
     );
@@ -1030,11 +1081,28 @@ export function ReportsView(): JSX.Element {
                 </select>
                 {/* provenance of the profile, in the server's words — never
                     its thresholds restated from this dashboard's copy */}
-                <p className="field-help" id="r-profile-source">
+                <p
+                  className={`field-help${longSource && !sourceOpen ? ' reports-source-clamp' : ''}`}
+                  id="r-profile-source"
+                >
                   {profileOptions !== null && criteriaListed && profileSource
                     ? `Source: ${profileSource}`
                     : profileSource}
                 </p>
+                {/* a profile's provenance can run to a page: three lines by
+                    default, all of it on request (the clamp is visual only, so
+                    a screen reader reads the whole text either way) */}
+                {longSource && (
+                  <button
+                    type="button"
+                    className="btn link sm reports-source-toggle"
+                    aria-expanded={sourceOpen}
+                    aria-controls="r-profile-source"
+                    onClick={() => setSourceOpen((o) => !o)}
+                  >
+                    {sourceOpen ? 'Show less' : 'Show full source'}
+                  </button>
+                )}
               </div>
               <div className="field">
                 <label htmlFor="r-observations">Score against observations</label>
@@ -1097,6 +1165,7 @@ export function ReportsView(): JSX.Element {
             </div>
             <div className="form-actions-buttons">
               <button
+                ref={generateRef}
                 type="button"
                 className="btn primary"
                 disabled={generateBlocked}
@@ -1120,7 +1189,7 @@ export function ReportsView(): JSX.Element {
 
       <section className="panel reports-table-panel" aria-labelledby="reports-list-title">
         <div className="panel-head">
-          <h2 className="panel-title" id="reports-list-title">
+          <h2 className="panel-title" id="reports-list-title" tabIndex={-1} ref={listTitleRef}>
             Generated reports
           </h2>
           <span className="spacer" />
@@ -1129,18 +1198,22 @@ export function ReportsView(): JSX.Element {
             title={
               demoRows > 0
                 ? 'The API is unreachable, so these rows come from the built-in demo backend. Nothing here was generated by a server, and no status shown for a DEMO row is evidence about a real report.'
-                : serverListed
-                  ? 'GET /reports, newest first. Rows badged LOCAL exist only in this browser: they were requested against another API, or before the list endpoint existed, so this server may not hold them.'
-                  : 'This service answered 404 to GET /reports, so only this browser’s own records can be listed.'
+                : serverDemo
+                  ? 'The report list was read from the built-in demo backend, which holds none: it says nothing about the reports the server holds.'
+                  : serverListed
+                    ? 'GET /reports, newest first. Rows badged LOCAL exist only in this browser: they were requested against another API, or before the list endpoint existed, so this server may not hold them.'
+                    : 'This service answered 404 to GET /reports, so only this browser’s own records can be listed.'
             }
           >
             {demoRows > 0
               ? `built-in demo data — ${demoRows} row${demoRows === 1 ? '' : 's'} from no server`
-              : serverListed
-                ? localOnly > 0
-                  ? `server history (GET /reports) + ${localOnly} local-only record${localOnly === 1 ? '' : 's'}`
-                  : 'server history (GET /reports), newest first'
-                : "this service has no GET /reports — this browser's records only"}
+              : serverDemo
+                ? 'demo data — server history not listed'
+                : serverListed
+                  ? localOnly > 0
+                    ? `server history (GET /reports) + ${localOnly} local-only record${localOnly === 1 ? '' : 's'}`
+                    : 'server history (GET /reports), newest first'
+                  : "this service has no GET /reports — this browser's records only"}
           </span>
         </div>
         <div className="table-wrap scroll-y" aria-busy={reportsLoading && !authFailed && listError === null}>

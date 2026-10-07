@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
-/** Where the dev server proxies `/api` and `/healthz`.
+/** Where the dev server proxies `/api` and the health probe.
  *
  * Defaults to the local stack's port; `FLOWSTATE_API_ORIGIN=http://127.0.0.1:8010
  * npm run dev` points the dashboard at another instance without a hand-written
@@ -16,7 +16,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': { target: apiOrigin, changeOrigin: true },
-      '/healthz': { target: apiOrigin, changeOrigin: true },
+      // the client probes `/health` (api/client.ts `healthUrl`); the prefix
+      // also covers the server's `/healthz` alias
+      '/health': { target: apiOrigin, changeOrigin: true },
     },
   },
   test: {

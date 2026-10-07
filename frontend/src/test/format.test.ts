@@ -7,6 +7,7 @@ import {
   formatDistAdaptive,
   formatDistKm,
   formatFetchError,
+  formatNumber,
   formatSpeedKmh,
   formatSpeedKmhMph,
   formatTickDist,
@@ -91,6 +92,10 @@ describe('fetch failures', () => {
   it('does not repeat a status the message already starts with', () => {
     expect(formatFetchError(Object.assign(new Error('404 Not Found'), { status: 404 }))).toBe('404 Not Found');
   });
+  it('prints no "HTTP 0" for a request the client never sent', () => {
+    const err = Object.assign(new Error('API offline — reconnect first'), { status: 0 });
+    expect(formatFetchError(err)).toBe('API offline — reconnect first');
+  });
   it('passes a network error through unchanged', () => {
     expect(formatFetchError(new TypeError('Failed to fetch'))).toBe('Failed to fetch');
     expect(formatFetchError('')).toBe('no detail');
@@ -111,5 +116,15 @@ describe('tick generators', () => {
     expect(ticks).toContain(0);
     expect(ticks).toContain(4000);
     for (const x of ticks) expect(x % 1000).toBe(0);
+  });
+});
+
+describe('fixed-digit numbers', () => {
+  it('prints a tiny negative that rounds to zero as zero, not -0.00', () => {
+    expect(formatNumber(-0.0001, 2)).toBe('0.00');
+    expect(formatNumber(-0.04, 1)).toBe('0.0');
+    expect(formatNumber(-0.4, 0)).toBe('0');
+    expect(formatNumber(-0.05, 2)).toBe('-0.05');
+    expect(formatNumber(null)).toBe('—');
   });
 });

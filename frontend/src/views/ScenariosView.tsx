@@ -518,10 +518,20 @@ export function ScenariosView(): JSX.Element {
       <section
         className="card-grid"
         aria-label="scenario library"
-        aria-busy={!loaded && loadError === null ? true : undefined}
+        aria-busy={!loaded && loadError === null && !authFailed ? true : undefined}
       >
+        {/* a rejected key pauses the poll: say so here rather than leave
+            placeholders that will never fill (the shell banner has Retry) */}
+        {!loaded && authFailed && (
+          <EmptyState
+            compact
+            title="Scenarios are not loading."
+            description="The API key was rejected. Save a new key in Settings to resume."
+          />
+        )}
         {!loaded &&
           loadError === null &&
+          !authFailed &&
           [0, 1, 2].map((i) => <ScenarioCardSkeleton key={i} />)}
         {items.map((s) => (
           <article key={itemKey(s)} className={`panel scen-card${showingDemo ? ' demo' : ''}`}>

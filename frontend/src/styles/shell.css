@@ -366,26 +366,6 @@
   gap: var(--space-6);
 }
 
-/* legacy title row, kept for views not yet on PageHeader */
-.view-title {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-2);
-  font-size: var(--text-20);
-  line-height: var(--leading-20);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
-  color: var(--text-primary);
-}
-
-.view-title .count {
-  font-size: var(--text-12);
-  line-height: var(--leading-12);
-  font-weight: var(--weight-regular);
-  color: var(--text-secondary);
-}
-
 /* ============================== page header (§6.2) ================== */
 
 .page-header {

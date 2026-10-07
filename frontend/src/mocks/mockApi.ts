@@ -954,7 +954,7 @@ export async function mockListRuns(): Promise<RunSummary[]> {
 export async function mockGetRun(runId: string): Promise<RunDetail> {
   await latency();
   const r = runs.find((x) => x.run_id === runId);
-  if (!r) throw new Error(`run ${runId} not found`);
+  if (!r) throw new Error(`run ${runId} not found in the demo backend`);
   return { ...toSummary(r), seeds: Array.from({ length: r.n }, (_, i) => r.seedBase + i) };
 }
 
@@ -990,7 +990,7 @@ export async function mockCreateRun(req: CreateRunRequest): Promise<{ run_id: st
 export async function mockGetRunMetrics(runId: string): Promise<RunMetrics> {
   await latency();
   const r = runs.find((x) => x.run_id === runId);
-  if (!r) throw new Error(`run ${runId} not found`);
+  if (!r) throw new Error(`run ${runId} not found in the demo backend`);
   if (runStatus(r).status !== 'done') throw new Error(`run ${runId} has no metrics yet`);
   return buildMetrics(r);
 }
@@ -998,7 +998,7 @@ export async function mockGetRunMetrics(runId: string): Promise<RunMetrics> {
 export async function mockGetRunHeatmap(runId: string, field: HeatField): Promise<Heatmap> {
   await sleep(160);
   const r = runs.find((x) => x.run_id === runId);
-  if (!r) throw new Error(`run ${runId} not found`);
+  if (!r) throw new Error(`run ${runId} not found in the demo backend`);
   return buildHeatmap(r, field);
 }
 

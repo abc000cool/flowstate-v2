@@ -126,21 +126,26 @@ describe('stylesheets', () => {
   });
 });
 
-/** Stylesheets already migrated to Paper & Signal. They read colors from
- * tokens only, so both themes follow; step 5 (§12.2) widens this list to
- * every stylesheet once the legacy aliases are deleted. */
-const MIGRATED = ['base.css', 'shell.css', 'views/runs.css', 'views/reports.css'];
+/** The legacy alias names that tokens.css carried during the migration and
+ * step 5 (§12.2) deleted. */
+const LEGACY_ALIAS_NAMES =
+  'bg|panel|panel-edge|panel-raised|panel-inset|text|muted|faint|accent|accent-dim|amber|amber-dim|danger|danger-dim|ok|ok-dim|s[1-6]|r[1-3]|font-ui|card-shadow|ring';
+const LEGACY_ALIAS = new RegExp(`var\\(--(${LEGACY_ALIAS_NAMES})\\)`);
 
-/** The legacy alias names of tokens.css (§5, "DELETE in step 5"). */
-const LEGACY_ALIAS =
-  /var\(--(bg|panel|panel-edge|panel-raised|panel-inset|text|muted|faint|accent|accent-dim|amber|amber-dim|danger|danger-dim|ok|ok-dim|s[1-6]|r[1-3]|font-ui|card-shadow|ring)\)/;
+/** Every stylesheet but tokens.css reads colors from tokens only, so light
+ * and dark both follow. tokens.css is where the literal values live. */
+async function migrated(): Promise<Map<string, string>> {
+  const styles = await readStyles();
+  styles.delete('tokens.css');
+  expect(styles.size).toBeGreaterThan(10);
+  return styles;
+}
 
 describe('migrated stylesheets', () => {
   it('use no literal colors, so light and dark both follow the tokens', async () => {
-    const styles = await readStyles();
     const literal: string[] = [];
-    for (const file of MIGRATED) {
-      const css = stripComments(styles.get(file) ?? '');
+    for (const [file, raw] of await migrated()) {
+      const css = stripComments(raw);
       expect(css.length, file).toBeGreaterThan(0);
       for (const m of css.matchAll(/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/g)) {
         literal.push(`${file}: ${m[0]}`);
@@ -150,13 +155,21 @@ describe('migrated stylesheets', () => {
   });
 
   it('use no legacy aliases and no uppercase transforms (§5.2)', async () => {
-    const styles = await readStyles();
     const found: string[] = [];
-    for (const file of MIGRATED) {
-      const css = stripComments(styles.get(file) ?? '');
+    for (const [file, raw] of await readStyles()) {
+      const css = stripComments(raw);
       const alias = css.match(LEGACY_ALIAS);
       if (alias) found.push(`${file}: ${alias[0]}`);
       if (/text-transform:\s*uppercase/.test(css)) found.push(`${file}: text-transform`);
+    }
+    expect(found).toEqual([]);
+  });
+
+  it('no longer declare the legacy aliases (step 5)', async () => {
+    const declared = new RegExp(`(?:^|[;{\\s])--(${LEGACY_ALIAS_NAMES})\\s*:`, 'g');
+    const found: string[] = [];
+    for (const [file, raw] of await readStyles()) {
+      for (const m of stripComments(raw).matchAll(declared)) found.push(`${file}: --${m[1]}`);
     }
     expect(found).toEqual([]);
   });

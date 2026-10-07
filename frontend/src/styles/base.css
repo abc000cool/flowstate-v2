@@ -200,13 +200,17 @@ select.input:focus-visible {
   }
 
   .progress > i,
-  .progress > span,
-  .progress-fill {
+  .progress > span {
     forced-color-adjust: none;
     background: Highlight;
   }
 
+  /* as specific as the .dot.ok / .down / .demo state rules, which would
+     otherwise keep their author colour; the status text carries the state */
   .dot,
+  .dot.ok,
+  .dot.down,
+  .dot.demo,
   .meta-live-dot {
     forced-color-adjust: none;
     background: CanvasText;

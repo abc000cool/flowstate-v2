@@ -240,6 +240,9 @@
   font-size: var(--text-12);
   line-height: var(--leading-12);
   color: var(--text-secondary);
+  /* help text quotes URLs and server paths: break them rather than widen
+     the form past a narrow viewport */
+  overflow-wrap: anywhere;
 }
 
 .input,
@@ -451,8 +454,7 @@ input[type='radio'] {
 :not(.grid-12) > .form-section + .form-section {
   margin-top: var(--space-6);
 }
-.form-section > h3,
-.form-section-title {
+.form-section > h3 {
   margin: 0;
   font-size: var(--text-14);
   line-height: var(--leading-14);
@@ -494,16 +496,14 @@ input[type='radio'] {
 }
 
 /* the field problem line: a 14 px triangle before the text */
-.field > span.hint-amber,
-.field-problem.hint-amber {
+.field > span.hint-amber {
   display: flex;
   align-items: flex-start;
   gap: var(--space-1);
   font-size: var(--text-12);
   line-height: var(--leading-12);
 }
-.field > span.hint-amber::before,
-.field-problem.hint-amber::before {
+.field > span.hint-amber::before {
   content: '';
   flex: none;
   width: 14px;
@@ -891,6 +891,10 @@ td .fail-reason::before {
 /* ============================== tables (§9.3) ======================= */
 
 .table-wrap {
+  /* the containing block of abspos descendants (visually-hidden labels), so
+     the wrapper's own overflow clips them instead of the page scrolling
+     sideways at narrow widths */
+  position: relative;
   overflow-x: auto;
   max-width: 100%;
 }
@@ -1112,29 +1116,6 @@ table.data td.row-action {
 
 .spacer {
   flex: 1;
-}
-
-/* legacy one-line empty text (views not yet on EmptyState) */
-.empty {
-  padding: var(--space-8);
-  text-align: center;
-  color: var(--text-secondary);
-  font-family: var(--font-sans);
-  font-size: var(--text-13);
-  line-height: var(--leading-13);
-  white-space: normal;
-}
-
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-6);
-  align-items: start;
-}
-@media (max-width: 1000px) {
-  .two-col {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* 12-column grid (§6.3) */
@@ -1426,8 +1407,7 @@ details.disclosure > summary:hover {
   margin-top: var(--space-2);
 }
 /* an empty state filling a grid (card libraries) spans every column */
-.card-grid > .empty-state,
-.card-grid > .empty {
+.card-grid > .empty-state {
   grid-column: 1 / -1;
 }
 table.data td > .empty-state {

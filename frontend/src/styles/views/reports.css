@@ -125,3 +125,17 @@ table.data td.reports-wrap-cell {
   height: auto;
   white-space: normal;
 }
+
+/* ---- criteria profile provenance: three lines until expanded ---- */
+
+.reports-source-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.reports-source-toggle {
+  align-self: flex-start;
+}

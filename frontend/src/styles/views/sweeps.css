@@ -305,8 +305,11 @@
 }
 
 @media (forced-colors: active) {
+  /* the bins are data, not decoration: keep their colours (and the ink
+     chosen for them) so "blue = better, red = worse" still reads */
   .cell-btn,
   .dl-swatch {
+    forced-color-adjust: none;
     border: 1px solid CanvasText;
   }
 }

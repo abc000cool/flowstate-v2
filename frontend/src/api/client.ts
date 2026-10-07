@@ -426,7 +426,17 @@ export async function createSweep(req: CreateSweepRequest): Promise<SweepDetail>
 }
 
 export function getSweep(sweepId: string): Promise<SweepDetail> {
-  if (isMockActive()) return mock.mockGetSweep(sweepId);
+  // The demo store synthesizes a full matrix for an id it has never seen, so a
+  // VITE_MOCK demo survives a reload. Under the offline auto-fallback the id
+  // in the URL is a real server's sweep: a made-up matrix under its name would
+  // read as that sweep's results, so the read fails until the API is back
+  // (the view says so and keeps polling), as `GET /runs/{id}` does.
+  if (isMockEnv()) return mock.mockGetSweep(sweepId);
+  if (offlineFallback) {
+    return Promise.reject(
+      new ApiError(0, `API offline — sweep ${sweepId} is read from the server once it reconnects`),
+    );
+  }
   return request<SweepDetail>(`/sweeps/${encodeURIComponent(sweepId)}`);
 }
 

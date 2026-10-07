@@ -73,7 +73,9 @@ export function formatNumber(v: number | null, digits = 1): string {
   if (abs >= 10000 && digits === 0) {
     return v.toLocaleString('en-US', { maximumFractionDigits: 0 });
   }
-  return v.toFixed(digits);
+  const s = v.toFixed(digits);
+  // a tiny negative rounds to "-0.00": print the zero it rounds to
+  return /^-0(\.0+)?$/.test(s) ? s.slice(1) : s;
 }
 
 /** Signed percentage, e.g. -0.231 -> "-23.1%". */
@@ -147,6 +149,7 @@ export function formatFetchError(err: unknown): string {
     err !== null && typeof err === 'object' && typeof (err as { status?: unknown }).status === 'number'
       ? (err as { status: number }).status
       : null;
-  if (status === null || msg.startsWith(String(status))) return msg;
+  // status 0 is the client's "never sent" (offline refusals): no HTTP status
+  if (status === null || status === 0 || msg.startsWith(String(status))) return msg;
   return `HTTP ${status} — ${msg}`;
 }

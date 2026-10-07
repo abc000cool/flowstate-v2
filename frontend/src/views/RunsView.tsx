@@ -112,6 +112,13 @@ export function RunsView(): JSX.Element {
   // and puts demo rows back on screen as if they were the server's.
   const runsSeq = useRef(0);
   const librarySeq = useRef(0);
+  /** The library is compared against the newest response *applied*, not the
+   * newest request sent: `GET /scenarios/preset` takes about a second, and the
+   * retry poll, the reconnect effect and the mount each start another load, so
+   * "drop unless newest sent" discarded every answer until the requests
+   * stopped overlapping (the launcher sat empty for ~6 s). An older answer
+   * still never replaces a newer one. */
+  const libraryApplied = useRef(0);
 
   const poll = useCallback(async () => {
     const seq = ++runsSeq.current;
@@ -146,7 +153,8 @@ export function RunsView(): JSX.Element {
         listPresetScenarios().catch(() => [] as PresetSummary[]),
         listScenarios(),
       ]);
-      if (seq !== librarySeq.current) return;
+      if (seq < libraryApplied.current) return;
+      libraryApplied.current = seq;
       setLibrary(mergeLibrary(presets, stored));
     } catch {
       /* retried by usePoll; connectivity is surfaced by the status dot */
@@ -164,20 +172,33 @@ export function RunsView(): JSX.Element {
     if (!offline && !authFailed) void loadLibrary();
   }, [offline, authFailed, loadLibrary]);
 
-  useEffect(() => {
-    if (!launchKey && library.length > 0) setLaunchKey(itemKey(library[0]));
-  }, [library, launchKey]);
-
   const selected = library.find((s) => itemKey(s) === launchKey);
   const base = selected?.config;
 
+  // The config the launcher last showed. Launching a preset stores it, and the
+  // merged library then lists it as the stored scenario under a new key: follow
+  // the config there instead of leaving the select on an option that no longer
+  // exists (the select would show its first option while Launch stayed off).
+  const lastHash = useRef<string | null>(null);
+  useEffect(() => {
+    if (selected) lastHash.current = selected.config_hash;
+  }, [selected]);
+  useEffect(() => {
+    if (library.length === 0 || library.some((s) => itemKey(s) === launchKey)) return;
+    const same = library.find((s) => s.config_hash === lastHash.current);
+    setLaunchKey(itemKey(same ?? library[0]));
+  }, [library, launchKey]);
+
   // Show the scenario's own values as the starting point, once per selected
   // config: the scenario poll hands back fresh objects every tick, so keying
-  // this on the config identity would wipe whatever the user typed.
+  // this on the config identity would wipe whatever the user typed. Keyed on
+  // the hash, so a preset turning into its stored copy keeps the typed values.
   const prefilledFor = useRef<string | null>(null);
-  const selectedKey = selected ? `${itemKey(selected)}:${selected.config_hash}` : '';
+  const selectedKey = selected ? selected.config_hash : '';
   useEffect(() => {
-    if (prefilledFor.current === selectedKey) return;
+    // nothing selected (the library loading, or a stored preset between its
+    // old and new key) is not a new config: keep what the user typed
+    if (selectedKey === '' || prefilledFor.current === selectedKey) return;
     prefilledFor.current = selectedKey;
     setRepsRaw(base ? String(base.replicates) : '');
     setDurationRaw(base ? String(base.sim.duration_s) : '');
@@ -216,8 +237,14 @@ export function RunsView(): JSX.Element {
     return req;
   };
 
+  const launchRef = useRef<HTMLButtonElement>(null);
+  const refocusLaunch = useRef(false);
+
   const doLaunch = async (): Promise<void> => {
     if (!selected || warmupBlock) return;
+    // the button is disabled while busy, which drops keyboard focus to <body>;
+    // put it back afterwards when the launch started from the button
+    const fromButton = document.activeElement === launchRef.current;
     setBusy(true);
     try {
       // a preset is a repo YAML: it has to be stored before a run can name it
@@ -232,6 +259,7 @@ export function RunsView(): JSX.Element {
       toastError(err, 'launch');
     } finally {
       setBusy(false);
+      if (fromButton) refocusLaunch.current = true;
     }
   };
 
@@ -252,6 +280,16 @@ export function RunsView(): JSX.Element {
   };
 
   const launchBlocked = !selected || busy || offline || warmupBlock !== null;
+
+  // once the button is enabled again (a disabled button cannot take focus; a
+  // stored preset briefly leaves the select between keys), unless focus has
+  // moved on since
+  useEffect(() => {
+    if (!refocusLaunch.current || launchBlocked) return;
+    refocusLaunch.current = false;
+    if (document.activeElement === document.body) launchRef.current?.focus();
+  }, [launchBlocked]);
+
   const replicatesLow = plannedReps !== null && plannedReps < MIN_REPLICATES;
 
   let tableBody: JSX.Element;
@@ -517,6 +555,7 @@ export function RunsView(): JSX.Element {
           </div>
           <div className="form-actions-buttons">
             <button
+              ref={launchRef}
               type="button"
               className="btn primary"
               onClick={launch}
