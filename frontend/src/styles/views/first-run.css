@@ -1,11 +1,28 @@
-/* Guided first run (GuidedFirstRun.tsx, route /first-run).
-   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
-   Owner: B (step 4, §10.7). */
+/* Guided first run (GuidedFirstRun.tsx, route /first-run; also the top of
+   Scenarios on an empty server). Spec: docs/design/DASHBOARD_DESIGN.md §10.7.
+   Owner: B. Tokens only.
 
-/* =================== guided first run (QUICKSTART) ================== */
-/* A checklist, not a wizard: every step states done / current / blocked and,
+   A checklist, not a wizard: every step states done / current / blocked and,
    when blocked, one line of why. Nothing here is styled to look finished
    before the API has said it is. */
+
+.guided-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  letter-spacing: var(--tracking-none);
+  color: var(--text-secondary);
+}
+
+.guided-intro {
+  margin: 0 0 var(--space-4);
+  max-width: var(--prose-max);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  color: var(--text-secondary);
+}
+
+/* ---- vertical stepper ---- */
 
 .guided-steps {
   list-style: none;
@@ -13,51 +30,76 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
+  gap: var(--space-1);
 }
 
 .guided-step {
+  --g-pad: var(--space-3);
+  position: relative;
   display: grid;
-  grid-template-columns: 26px 1fr;
-  gap: var(--s2);
-  padding-bottom: var(--s2);
-  border-bottom: 1px solid var(--panel-edge);
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--g-pad);
+  border-radius: var(--radius-md);
 }
 
-.guided-step:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
+/* the connector: from 4 px under this step's circle to 4 px above the next
+   one (the next circle sits one list gap plus one padding below this box) */
+.guided-step::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--g-pad) + 12px - 0.5px);
+  top: calc(var(--g-pad) + 24px + var(--space-1));
+  bottom: calc(-1 * var(--g-pad));
+  width: 1px;
+  background: var(--border-default);
+}
+.guided-step:last-child::before {
+  content: none;
 }
 
-.guided-step.blocked {
-  opacity: 0.72;
+/* the eye lands on the step to take next */
+.guided-step.current {
+  background: var(--accent-subtle);
 }
 
+/* the number circle */
 .guided-step .g-num {
-  font-size: 11px;
-  line-height: 20px;
-  text-align: center;
-  color: var(--faint);
-  border: 1px solid var(--panel-edge);
-  border-radius: 999px;
-  height: 20px;
-  background: var(--panel-inset);
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  line-height: 1;
+  letter-spacing: var(--tracking-none);
 }
-
 .guided-step.done .g-num {
-  color: var(--ok);
-  border-color: rgba(88, 214, 163, 0.35);
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+  color: var(--success-text);
 }
-
+.guided-step.done .g-num svg {
+  margin-left: -1px;
+}
 .guided-step.current .g-num {
-  color: var(--accent);
-  border-color: rgba(79, 209, 224, 0.35);
+  border-color: var(--accent-solid);
+  background: var(--accent-solid);
+  color: var(--text-on-accent);
 }
 
 .guided-step .g-main {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1-5);
   align-items: flex-start;
   min-width: 0;
 }
@@ -65,24 +107,78 @@
 .guided-step .g-head {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--space-2);
   flex-wrap: wrap;
+  min-height: 24px;
 }
 
 .guided-step .g-title {
-  font-size: 13px;
-  color: var(--text);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+.guided-step.blocked .g-title {
+  color: var(--text-secondary);
 }
 
 .guided-step .g-what {
-  line-height: 1.55;
+  max-width: var(--prose-max);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  color: var(--text-secondary);
 }
 
+/* why a step is blocked: compact warning text with an icon */
 .guided-step .g-why {
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--amber);
-  border-left: 2px solid rgba(245, 184, 92, 0.45);
-  padding-left: 8px;
-  word-break: break-word;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  max-width: var(--prose-max);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  font-weight: var(--weight-medium);
+  color: var(--warning-text);
+  overflow-wrap: anywhere;
+}
+.guided-step .g-why::before {
+  content: '';
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  background: currentColor;
+  -webkit-mask: var(--mask-triangle-alert) center / contain no-repeat;
+  mask: var(--mask-triangle-alert) center / contain no-repeat;
+}
+
+/* ids the server answered with: secondary text, mono values */
+.guided-step .g-extra {
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+.guided-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(100%, 360px);
+}
+.guided-progress .progress-row {
+  flex: 1;
+}
+
+.guided-step .fail-reason {
+  align-self: stretch;
+  max-width: var(--prose-max);
+}
+
+@media (forced-colors: active) {
+  .guided-step .g-why::before {
+    background: CanvasText;
+  }
+  .guided-step.current {
+    outline: 1px solid CanvasText;
+  }
 }

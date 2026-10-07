@@ -1,8 +1,15 @@
 /** Scenario schematic thumbnails (ring, corridor, OSM import) for the
- * scenario cards. Moved verbatim from bits.tsx
- * (docs/design/DASHBOARD_DESIGN.md §12.2, step 0). */
+ * scenario cards (docs/design/DASHBOARD_DESIGN.md §9.4). Strokes and fills
+ * are theme tokens only — `--border-strong` for road, `--text-secondary` for
+ * vehicles and markings, `--accent-solid` for the controlled vehicle — so the
+ * thumbnails follow the light and dark themes. */
 
 import type { Network } from '../api/types';
+
+const ROAD = 'var(--border-strong)';
+const MARK = 'var(--text-secondary)';
+const AV = 'var(--accent-solid)';
+const WELL = 'var(--bg-surface)';
 
 /** Ring: circle of vehicle dots (one accent = controlled vehicle). */
 function RingThumb({ n }: { n: number }): JSX.Element {
@@ -15,17 +22,19 @@ function RingThumb({ n }: { n: number }): JSX.Element {
     return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), av: i === 0 };
   });
   return (
-    <svg width="120" height="96" viewBox="0 0 120 96" aria-hidden>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--panel-edge)" strokeWidth={6} />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#232b3d" strokeWidth={1} strokeDasharray="2 4" />
+    <svg width="120" height="96" viewBox="0 0 120 96" aria-hidden="true" focusable="false">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={ROAD} strokeWidth={8} />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke={WELL}
+        strokeWidth={1}
+        strokeDasharray="2 4"
+      />
       {dots.map((d, i) => (
-        <circle
-          key={i}
-          cx={d.x}
-          cy={d.y}
-          r={d.av ? 3.4 : 2.4}
-          fill={d.av ? 'var(--accent)' : 'var(--muted)'}
-        />
+        <circle key={i} cx={d.x} cy={d.y} r={d.av ? 3.6 : 2.4} fill={d.av ? AV : MARK} />
       ))}
     </svg>
   );
@@ -44,20 +53,32 @@ function CorridorThumb({ lanes }: { lanes: number }): JSX.Element {
     { x: 130, lane: 0, av: false },
   ];
   return (
-    <svg width="170" height="96" viewBox="0 0 170 96" aria-hidden>
-      <rect x={6} y={top - 3} width={158} height={laneN * laneH + 6} rx={3} fill="#0d1119" stroke="var(--panel-edge)" />
-      {Array.from({ length: laneN + 1 }, (_, i) => (
-        <line
-          key={i}
-          x1={10}
-          x2={160}
-          y1={top + i * laneH}
-          y2={top + i * laneH}
-          stroke={i === 0 || i === laneN ? '#2a3348' : '#232b3d'}
-          strokeWidth={i === 0 || i === laneN ? 1.5 : 1}
-          strokeDasharray={i === 0 || i === laneN ? undefined : '5 5'}
-        />
-      ))}
+    <svg width="170" height="96" viewBox="0 0 170 96" aria-hidden="true" focusable="false">
+      <rect
+        x={6}
+        y={top - 3}
+        width={158}
+        height={laneN * laneH + 6}
+        rx={3}
+        fill={WELL}
+        stroke={ROAD}
+      />
+      {Array.from({ length: laneN + 1 }, (_, i) => {
+        const edge = i === 0 || i === laneN;
+        return (
+          <line
+            key={i}
+            x1={10}
+            x2={160}
+            y1={top + i * laneH}
+            y2={top + i * laneH}
+            stroke={edge ? ROAD : MARK}
+            strokeOpacity={edge ? 1 : 0.5}
+            strokeWidth={edge ? 1.5 : 1}
+            strokeDasharray={edge ? undefined : '5 5'}
+          />
+        );
+      })}
       {cars.map((c, i) => (
         <rect
           key={i}
@@ -66,21 +87,39 @@ function CorridorThumb({ lanes }: { lanes: number }): JSX.Element {
           width={9}
           height={5}
           rx={1.5}
-          fill={c.av ? 'var(--accent)' : 'var(--muted)'}
+          fill={c.av ? AV : MARK}
         />
       ))}
-      <path d="M158 42 l6 6 -6 6" fill="none" stroke="var(--faint)" strokeWidth={1.5} />
+      <path d="M158 42 l6 6 -6 6" fill="none" stroke={MARK} strokeWidth={1.5} />
     </svg>
   );
 }
 
 function OsmThumb(): JSX.Element {
   return (
-    <svg width="120" height="96" viewBox="0 0 120 96" aria-hidden>
-      <path d="M10 70 C 40 60, 50 30, 110 26" fill="none" stroke="var(--panel-edge)" strokeWidth={7} strokeLinecap="round" />
-      <path d="M10 70 C 40 60, 50 30, 110 26" fill="none" stroke="#232b3d" strokeWidth={1} strokeDasharray="3 5" />
-      <path d="M30 90 C 45 70, 42 50, 58 40" fill="none" stroke="var(--panel-edge)" strokeWidth={4} strokeLinecap="round" />
-      <circle cx={78} cy={33} r={3} fill="var(--accent)" />
+    <svg width="120" height="96" viewBox="0 0 120 96" aria-hidden="true" focusable="false">
+      <path
+        d="M10 70 C 40 60, 50 30, 110 26"
+        fill="none"
+        stroke={ROAD}
+        strokeWidth={8}
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 70 C 40 60, 50 30, 110 26"
+        fill="none"
+        stroke={WELL}
+        strokeWidth={1}
+        strokeDasharray="3 5"
+      />
+      <path
+        d="M30 90 C 45 70, 42 50, 58 40"
+        fill="none"
+        stroke={ROAD}
+        strokeWidth={5}
+        strokeLinecap="round"
+      />
+      <circle cx={78} cy={33} r={3.4} fill={AV} />
     </svg>
   );
 }

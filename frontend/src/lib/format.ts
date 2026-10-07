@@ -5,6 +5,10 @@
 export const MS_TO_KMH = 3.6;
 export const S_PER_MIN = 60;
 export const M_PER_KM = 1000;
+/** m/s -> mph (exact: 3600 / 1609.344). */
+export const MS_TO_MPH = 2.2369362920544;
+/** Kilometres per international mile (exact); also km/h per mph. */
+export const KM_PER_MI = 1.609344;
 
 /** Trim a fixed-decimal string: 5.0 -> "5", 1.50 -> "1.5", 150 -> "150". */
 function trim(v: number, maxDigits: number): string {
@@ -31,6 +35,34 @@ export function formatSpeedKmh(ms: number): string {
 /** veh/m -> veh/km readout, e.g. 0.038 -> "38 veh/km". */
 export function formatDensityVehKm(vehPerM: number): string {
   return `${Math.round(vehPerM * M_PER_KM)} veh/km`;
+}
+
+/** m/s -> both units, e.g. 13.06 -> "47 km/h (29 mph)" (the heatmap readout;
+ * the dashboard reads in km/h with mph alongside, like the report). */
+export function formatSpeedKmhMph(ms: number): string {
+  return `${formatSpeedKmh(ms)} (${Math.round(ms * MS_TO_MPH)} mph)`;
+}
+
+/** veh/m -> both units, e.g. 0.038 -> "38 veh/km (61 veh/mi)". */
+export function formatDensityVehKmMi(vehPerM: number): string {
+  return `${formatDensityVehKm(vehPerM)} (${Math.round(vehPerM * M_PER_KM * KM_PER_MI)} veh/mi)`;
+}
+
+/** Seconds -> a bare minutes tick label, e.g. 300 -> "5", 90 -> "1.5" (the
+ * axis title carries the unit). */
+export function formatTickMin(seconds: number): string {
+  return trim(seconds / S_PER_MIN, 1);
+}
+
+/** Metres -> a bare tick label in the unit `distUnit(span)` names: km for a
+ * corridor, m for a ring under 1 km. */
+export function formatTickDist(metres: number, span: number): string {
+  return span < M_PER_KM ? trim(metres, 0) : trim(metres / M_PER_KM, 1);
+}
+
+/** The distance unit an axis of this span is labelled in. */
+export function distUnit(span: number): 'm' | 'km' {
+  return span < M_PER_KM ? 'm' : 'km';
 }
 
 /** Fixed-digit numeric formatting with thousands grouping for big values. */
@@ -103,4 +135,18 @@ export function failureReason(error?: string | null, kind?: string | null): stri
 export function formatDistAdaptive(metres: number, span: number): string {
   if (span < M_PER_KM) return `${trim(metres, 0)} m`;
   return formatDistKm(metres);
+}
+
+/** A failed fetch in the server's own words, with the HTTP status prefixed
+ * when there is one: `HTTP 422 — observations_path is outside …` (§9.10). The
+ * status is read off the error (`api/client.ApiError.status`) without
+ * importing the client, so this stays a pure formatter. */
+export function formatFetchError(err: unknown): string {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).trim() || 'no detail';
+  const status =
+    err !== null && typeof err === 'object' && typeof (err as { status?: unknown }).status === 'number'
+      ? (err as { status: number }).status
+      : null;
+  if (status === null || msg.startsWith(String(status))) return msg;
+  return `HTTP ${status} — ${msg}`;
 }

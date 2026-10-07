@@ -49,10 +49,10 @@ export function VerdictTag({ verdict, label }: { verdict: string; label: string 
 function InsertionLine({ insertion }: { insertion: InsertionSummary }): JSX.Element {
   const worst = insertion.min_departed_fraction;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-      <span className="panel-title">Insertion</span>
+    <div className="diag-head">
+      <h4>Insertion</h4>
       <VerdictTag verdict={insertion.verdict} label="insertion" />
-      <span className="small muted mono" data-testid="insertion-summary">
+      <span className="diag-summary mono" data-testid="insertion-summary">
         departed {pct(insertion.mean_departed_fraction)} of {insertion.planned} planned
         {worst != null && ` (worst seed ${pct(worst)})`}
         {insertion.mean_arrived != null &&
@@ -72,25 +72,33 @@ function WeaveExitTable({ weaveExits }: { weaveExits: WeaveExits }): JSX.Element
   const threshold = pct(weaveExits.threshold_share, 0);
   return (
     <div className="table-wrap">
-      <table className="data" aria-label="weave exits">
+      <table className="data compact" aria-label="weave exits">
         <thead>
           <tr>
             <th>Section</th>
-            <th title={REACHED_TITLE}>Reached</th>
-            <th title={GIVEN_UP_TITLE}>Given up</th>
-            <th title={GIVEN_UP_TITLE}>Share</th>
-            <th title={RUNS_TITLE}>Replicates</th>
+            <th className="num" title={REACHED_TITLE}>
+              Reached
+            </th>
+            <th className="num" title={GIVEN_UP_TITLE}>
+              Given up
+            </th>
+            <th className="num" title={GIVEN_UP_TITLE}>
+              Share
+            </th>
+            <th className="num" title={RUNS_TITLE}>
+              Replicates
+            </th>
           </tr>
         </thead>
         <tbody>
           {weaveExits.sections.map((s) => (
             <tr key={`${s.ramp}-${s.exit ?? ''}`}>
               <td>{s.exit ? `${s.ramp} → ${s.exit}` : s.ramp}</td>
-              <td className="mono">{s.reached}</td>
-              <td className={`mono${s.missed_exit.n > 0 ? ' hint-amber' : ''}`}>
+              <td className="num">{s.reached}</td>
+              <td className={`num${s.missed_exit.n > 0 ? ' hint-amber' : ''}`}>
                 {s.missed_exit.n}
               </td>
-              <td className="mono">
+              <td className="num">
                 {pct(s.missed_exit.share)}
                 {s.flagged && (
                   <>
@@ -101,7 +109,7 @@ function WeaveExitTable({ weaveExits }: { weaveExits: WeaveExits }): JSX.Element
                   </>
                 )}
               </td>
-              <td className="mono">
+              <td className="num">
                 {s.n_runs} / {weaveExits.n_runs}
               </td>
             </tr>
@@ -122,35 +130,27 @@ export function InsertionPanel({
   if (!insertion && !weaveExits) return null;
   const nRuns = insertion?.n_runs ?? weaveExits?.n_runs ?? 0;
   return (
-    <div className="panel" data-testid="insertion-panel">
+    <section className="panel diag-panel" data-testid="insertion-panel">
       <div className="panel-head">
-        <span className="panel-title">Demand integrity · {nRuns} replicates</span>
+        <h2 className="panel-title">Demand integrity · {nRuns} replicates</h2>
       </div>
-      <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <p className="small muted" style={{ margin: 0 }}>
+      <div className="panel-body stack">
+        <p className="diag-lead">
           Whether the run put its demand on the network, pooled over the replicates that recorded
           it — the corridor battery&apos;s own verdicts. A backlog or a given-up exit means the
           metrics above describe demand that was never applied, not a slow corridor.
         </p>
         {insertion && <InsertionLine insertion={insertion} />}
         {weaveExits && (
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: 10,
-                marginBottom: 8,
-              }}
-            >
-              <span className="panel-title">Weave exits</span>
+          <div className="diag-block">
+            <div className="diag-head">
+              <h4>Weave exits</h4>
               <VerdictTag verdict={weaveExits.verdict} label="weave exits" />
             </div>
             <WeaveExitTable weaveExits={weaveExits} />
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

@@ -11,7 +11,7 @@
  * scenario than the one named. */
 
 import yaml from 'js-yaml';
-import { useCallback, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   createRun,
@@ -41,8 +41,15 @@ import type { CreateRunRequest, Network, OSMNetwork, ScenarioConfig } from '../a
 import { useAppState } from '../components/AppContext';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { GuidedFirstRun } from '../components/GuidedFirstRun';
+import { Icon } from '../components/icons';
+import { PageHeader } from '../components/PageHeader';
 import { SchematicThumb } from '../components/schematics';
 import { toast, toastError } from '../components/toast';
+import { Callout } from '../components/ui/Callout';
+import { HashValue } from '../components/ui/CopyButton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorCallout, isShellError } from '../components/ui/ErrorCallout';
+import { Skeleton } from '../components/ui/Skeleton';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import {
   clampField,
@@ -199,49 +206,69 @@ function passthroughFields(
   return { carried: [...new Set(carried)].sort(), dropped };
 }
 
+/** One label/value pair of a card's fact list. */
+function Fact({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  return (
+    <div className="scen-fact">
+      <dt>{label}</dt>
+      <dd className="mono">{children}</dd>
+    </div>
+  );
+}
+
+/** A card's facts as a two-column definition list, then its hash row. */
 function scenarioMeta(s: LibraryItem, demo: boolean): JSX.Element {
   const net = s.config?.network;
   return (
-    <div className="scen-meta">
-      {net?.kind === 'ring' && (
-        <>
-          <span>
-            circ <b>{net.circumference_m} m</b>
-          </span>
-          <span>
-            vehicles <b>{net.n_vehicles}</b>
-          </span>
-        </>
-      )}
-      {net?.kind === 'corridor' && (
-        <>
-          <span>
-            length <b>{(net.length_m / 1000).toFixed(1)} km</b>
-          </span>
-          <span>
-            lanes <b>{net.lanes}</b>
-          </span>
-        </>
-      )}
-      {s.config && (
-        <>
-          <span>
-            duration <b>{Math.round(s.config.sim.duration_s / 60)} min</b>
-          </span>
-          <span>
-            reps <b>{s.config.replicates}</b>
-          </span>
-        </>
-      )}
-      <span>
-        hash{' '}
+    <>
+      <dl className="scen-meta">
+        {net?.kind === 'ring' && (
+          <>
+            <Fact label="Circumference">{net.circumference_m} m</Fact>
+            <Fact label="Vehicles">{net.n_vehicles}</Fact>
+          </>
+        )}
+        {net?.kind === 'corridor' && (
+          <>
+            <Fact label="Length">{(net.length_m / 1000).toFixed(1)} km</Fact>
+            <Fact label="Lanes">{net.lanes}</Fact>
+          </>
+        )}
+        {net?.kind === 'osm' && (
+          <>
+            <Fact label="Network">OSM import</Fact>
+            <Fact label="Chain">{net.corridor_edges?.length ?? 0} edges</Fact>
+          </>
+        )}
+        {s.config && (
+          <>
+            <Fact label="Duration">{Math.round(s.config.sim.duration_s / 60)} min</Fact>
+            <Fact label="Replicates">{s.config.replicates}</Fact>
+          </>
+        )}
+      </dl>
+      <div className="scen-hash">
+        <span className="scen-hash-label">Hash</span>
         {demo ? (
           // a demo hash exists on no server — printing one would fabricate provenance
-          <b className="hash muted">— demo, no server hash —</b>
+          <span className="hash">— demo, no server hash —</span>
         ) : (
-          <b className="hash">{s.config_hash}</b>
+          <HashValue value={s.config_hash} label={`config hash of ${s.name}`} />
         )}
-      </span>
+      </div>
+    </>
+  );
+}
+
+/** Placeholder card for the library's first load (§9.11: 3 card skeletons). */
+function ScenarioCardSkeleton(): JSX.Element {
+  return (
+    <div className="panel scen-card" aria-hidden="true">
+      <div className="thumb" />
+      <Skeleton width="55%" height={14} />
+      <Skeleton width="80%" height={12} />
+      <Skeleton width="70%" height={12} />
+      <Skeleton width="40%" height={12} />
     </div>
   );
 }
@@ -285,6 +312,9 @@ export function ScenariosView(): JSX.Element {
   const offline = useOfflineFallback();
 
   const [loaded, setLoaded] = useState(false);
+  /** The last library load failure the shell does not already report (an
+   * HTTP refusal, not a dead network or a rejected key). */
+  const [loadError, setLoadError] = useState<unknown>(null);
   const refresh = useCallback(async () => {
     // capture the source before the call: it decides mock vs live at call time
     const source: DemoSource = isMockEnv() ? 'env' : isOfflineFallback() ? 'offline' : 'none';
@@ -293,6 +323,7 @@ export function ScenariosView(): JSX.Element {
     setItems(mergeLibrary(presets, all));
     setDemoSource(source);
     setLoaded(true);
+    setLoadError(null);
   }, []);
 
   // quiet retry until the library loads — and, while the demo fallback is
@@ -301,8 +332,9 @@ export function ScenariosView(): JSX.Element {
   const tryRefresh = useCallback(async () => {
     try {
       await refresh();
-    } catch {
-      /* retried by usePoll; connectivity surfaced by the status dot */
+    } catch (err) {
+      // retried by usePoll; connectivity and auth are the shell's banners
+      setLoadError(isShellError(err) ? null : err);
     }
   }, [refresh]);
   const showingDemo = demoSource !== 'none';
@@ -437,43 +469,74 @@ export function ScenariosView(): JSX.Element {
   const osmNet: OSMNetwork | null =
     compose.kind === 'osm' && baseConfig?.network.kind === 'osm' ? baseConfig.network : null;
 
+  const openFilePicker = (): void => fileRef.current?.click();
+
   return (
     <div className="view">
+      <PageHeader
+        title="Scenarios"
+        documentTitle="Scenarios"
+        meta={
+          <>
+            {loaded && <span className="mono">{items.length} configs</span>}
+            {showingDemo && (
+              <span className="tag demo" title="Not from the API — built-in demo data">
+                DEMO DATA
+              </span>
+            )}
+          </>
+        }
+        description="Presets and stored scenarios. Run one, or load it into the composer to make a variant."
+        actions={
+          <button type="button" className="btn" onClick={openFilePicker}>
+            <Icon name="upload" />
+            Upload YAML
+          </button>
+        }
+      />
+
       {/* the guided QUICKSTART path, shown only once this server has itself
           reported that it holds no runs; the rail's "First run" always has it */}
       <GuidedFirstRun onlyWhenEmpty />
 
-      <div className="view-title">
-        Scenario Library <span className="count mono">{items.length} configs</span>
-        {showingDemo && (
-          <span className="tag demo" title="Not from the API — built-in demo data">
-            DEMO DATA
-          </span>
-        )}
-      </div>
-
       {staleDemo && (
-        <p className="hint-amber">
+        <Callout tone="warning" role="note">
           The API is unreachable, so these are built-in demo scenarios: their hashes exist on no
           server and they cannot be run. The library keeps retrying and replaces them as soon as the
           API answers.
-        </p>
+        </Callout>
       )}
 
-      <div className="card-grid">
+      {!loaded && loadError !== null && (
+        <ErrorCallout
+          error={loadError}
+          title="Could not load the scenario library."
+          onRetry={() => void tryRefresh()}
+        />
+      )}
+
+      <section
+        className="card-grid"
+        aria-label="scenario library"
+        aria-busy={!loaded && loadError === null ? true : undefined}
+      >
+        {!loaded &&
+          loadError === null &&
+          [0, 1, 2].map((i) => <ScenarioCardSkeleton key={i} />)}
         {items.map((s) => (
-          <div key={itemKey(s)} className={`panel scen-card${showingDemo ? ' demo' : ''}`}>
+          <article key={itemKey(s)} className={`panel scen-card${showingDemo ? ' demo' : ''}`}>
             <div className="thumb">
               <SchematicThumb network={s.config?.network} name={s.name} />
             </div>
-            <div className="name mono">
-              {s.name}
+            <div className="name">
+              <span className="scen-name mono">{s.name}</span>
               {showsPresetBadge(s) && <span className="tag preset">PRESET</span>}
               {showingDemo && <span className="tag demo">DEMO</span>}
             </div>
             {scenarioMeta(s, showingDemo)}
             <div className="scen-actions">
               <button
+                type="button"
                 className="btn sm primary"
                 disabled={isMockEnv() ? false : offline || staleDemo}
                 title={
@@ -487,14 +550,20 @@ export function ScenariosView(): JSX.Element {
               >
                 Run…
               </button>
-              <button className="btn sm" onClick={() => loadIntoComposer(s)}>
+              <button type="button" className="btn sm" onClick={() => loadIntoComposer(s)}>
                 Load in composer
               </button>
             </div>
-          </div>
+          </article>
         ))}
-        {items.length === 0 && <div className="empty">no scenarios yet</div>}
-      </div>
+        {loaded && items.length === 0 && (
+          <EmptyState
+            title="No scenarios yet."
+            description="Upload a scenario YAML or compose one below."
+            icon={<Icon name="layers" size={20} />}
+          />
+        )}
+      </section>
 
       <div
         className={`dropzone${dragOver ? ' over' : ''}`}
@@ -504,19 +573,23 @@ export function ScenariosView(): JSX.Element {
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
+        onClick={openFilePicker}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') fileRef.current?.click();
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openFilePicker();
+          }
         }}
       >
+        <Icon name="upload" />
         Drop a scenario YAML here — or click to browse
         <input
           ref={fileRef}
           type="file"
           accept=".yaml,.yml"
-          style={{ display: 'none' }}
+          hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void f.text().then((t) => handleYamlText(t, f.name));
@@ -525,246 +598,275 @@ export function ScenariosView(): JSX.Element {
         />
       </div>
 
-      <div className="panel">
+      <section className="panel" aria-labelledby="compose-title">
         <div className="panel-head">
-          <span className="panel-title">Compose scenario</span>
+          <h2 className="panel-title" id="compose-title">
+            Compose scenario
+          </h2>
           {baseName && (
             <>
               <span className="spacer" />
-              <span className="small muted mono">based on {baseName}</span>
-              <button className="btn sm" onClick={clearBase}>
+              <span className="panel-sub">
+                based on <span className="mono">{baseName}</span>
+              </span>
+              <button type="button" className="btn sm" onClick={clearBase}>
                 Start blank
               </button>
             </>
           )}
         </div>
-        <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div className="compose-grid">
-            <div className="field">
-              <label htmlFor="c-name">Name</label>
-              <input
-                id="c-name"
-                className="input"
-                value={compose.name}
-                onChange={(e) => set('name', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="c-kind">Network kind</label>
-              <select
-                id="c-kind"
-                className="input"
-                value={compose.kind}
-                // an imported corridor cannot be turned into a ring or a
-                // synthetic corridor: the chain, ramps and boundary have no
-                // counterpart there, and the coercion used to drop them
-                disabled={compose.kind === 'osm'}
-                title={
-                  compose.kind === 'osm'
-                    ? 'Imported (OSM) network — read-only here. Start blank to compose a ' +
-                      'synthetic network instead.'
-                    : undefined
-                }
-                onChange={(e) => set('kind', e.target.value as ComposeState['kind'])}
-              >
-                {compose.kind === 'osm' ? (
-                  <option value="osm">osm (imported, read-only)</option>
-                ) : (
-                  <>
-                    <option value="corridor">corridor</option>
-                    <option value="ring">ring</option>
-                  </>
-                )}
-              </select>
-            </div>
-            {osmNet ? (
-              <div className="field" style={{ gridColumn: 'span 2' }}>
-                <label>Imported network</label>
-                <dl className="fact-list osm-facts" aria-label="imported network">
-                  <div className="fact">
-                    <dt>OSM extract</dt>
-                    <dd className="mono">
-                      {osmNet.osm_file ??
-                        (osmNet.bbox ? `bbox ${osmNet.bbox.join(', ')}` : 'not named')}
-                    </dd>
-                  </div>
-                  <div className="fact">
-                    <dt>Corridor chain</dt>
-                    <dd className="mono">{osmNet.corridor_edges?.length ?? 0} edges</dd>
-                  </div>
-                  <div className="fact">
-                    <dt>Ramps</dt>
-                    <dd className="mono">{osmNet.ramps?.length ?? 0}</dd>
-                  </div>
-                  <div className="fact">
-                    <dt>Downstream boundary</dt>
-                    <dd className="mono">
-                      {osmNet.boundary
-                        ? `measured (${osmNet.boundary.kind ?? 'set'})`
-                        : 'none — free outflow'}
-                    </dd>
-                  </div>
-                </dl>
-                <span className="small muted">
-                  Read-only: the network block of {baseName} is sent back unchanged.
-                </span>
-              </div>
-            ) : compose.kind === 'corridor' ? (
-              <>
+        <div className="panel-body stack">
+          <div className="grid-12 compose-sections">
+            <div className="form-section col-span-4">
+              <h3>Network</h3>
+              <div className="form-grid">
                 <div className="field">
-                  <label htmlFor="c-len">Length (m)</label>
+                  <label htmlFor="c-name">Name</label>
                   <input
-                    id="c-len"
-                    className="input"
-                    type="number"
-                    min={500}
-                    step={500}
-                    value={compose.length_m}
-                    onChange={(e) => set('length_m', Number(e.target.value))}
+                    id="c-name"
+                    className="input mono"
+                    value={compose.name}
+                    onChange={(e) => set('name', e.target.value)}
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor="c-lanes">Lanes</label>
+                  <label htmlFor="c-kind">Network kind</label>
+                  <select
+                    id="c-kind"
+                    className="input"
+                    value={compose.kind}
+                    // an imported corridor cannot be turned into a ring or a
+                    // synthetic corridor: the chain, ramps and boundary have no
+                    // counterpart there, and the coercion used to drop them
+                    disabled={compose.kind === 'osm'}
+                    title={
+                      compose.kind === 'osm'
+                        ? 'Imported (OSM) network — read-only here. Start blank to compose a ' +
+                          'synthetic network instead.'
+                        : undefined
+                    }
+                    onChange={(e) => set('kind', e.target.value as ComposeState['kind'])}
+                  >
+                    {compose.kind === 'osm' ? (
+                      <option value="osm">osm (imported, read-only)</option>
+                    ) : (
+                      <>
+                        <option value="corridor">corridor</option>
+                        <option value="ring">ring</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                {osmNet ? (
+                  <div className="field span-2">
+                    <span className="field-label">Imported network</span>
+                    <dl className="fact-list osm-facts" aria-label="imported network">
+                      <div className="fact">
+                        <dt>OSM extract</dt>
+                        <dd className="mono">
+                          {osmNet.osm_file ??
+                            (osmNet.bbox ? `bbox ${osmNet.bbox.join(', ')}` : 'not named')}
+                        </dd>
+                      </div>
+                      <div className="fact">
+                        <dt>Corridor chain</dt>
+                        <dd className="mono">{osmNet.corridor_edges?.length ?? 0} edges</dd>
+                      </div>
+                      <div className="fact">
+                        <dt>Ramps</dt>
+                        <dd className="mono">{osmNet.ramps?.length ?? 0}</dd>
+                      </div>
+                      <div className="fact">
+                        <dt>Downstream boundary</dt>
+                        <dd className="mono">
+                          {osmNet.boundary
+                            ? `measured (${osmNet.boundary.kind ?? 'set'})`
+                            : 'none — free outflow'}
+                        </dd>
+                      </div>
+                    </dl>
+                    <span className="field-help">
+                      Read-only: the network block of {baseName} is sent back unchanged.
+                    </span>
+                  </div>
+                ) : compose.kind === 'corridor' ? (
+                  <>
+                    <div className="field">
+                      <label htmlFor="c-len">Length (m)</label>
+                      <input
+                        id="c-len"
+                        className="input"
+                        type="number"
+                        min={500}
+                        step={500}
+                        value={compose.length_m}
+                        onChange={(e) => set('length_m', Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="c-lanes">Lanes</label>
+                      <input
+                        id="c-lanes"
+                        className="input"
+                        type="number"
+                        min={1}
+                        max={MAX_LANES}
+                        value={compose.lanes}
+                        onChange={(e) =>
+                          set('lanes', clampInt(Number(e.target.value), 1, MAX_LANES))
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="field">
+                      <label htmlFor="c-circ">Circumference (m)</label>
+                      <input
+                        id="c-circ"
+                        className="input"
+                        type="number"
+                        min={50}
+                        value={compose.circumference_m}
+                        onChange={(e) => set('circumference_m', Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="c-nveh">Vehicles</label>
+                      <input
+                        id="c-nveh"
+                        className="input"
+                        type="number"
+                        min={2}
+                        value={compose.n_vehicles}
+                        onChange={(e) => set('n_vehicles', Number(e.target.value))}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="form-section col-span-4">
+              <h3>Fleet &amp; control</h3>
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="c-model">Fleet model</label>
+                  <select
+                    id="c-model"
+                    className="input"
+                    value={compose.model}
+                    onChange={(e) => set('model', e.target.value as ComposeState['model'])}
+                  >
+                    <option value="IDM">IDM</option>
+                    <option value="EIDM">EIDM</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="c-ctrl">Controller</label>
+                  <select
+                    id="c-ctrl"
+                    className="input mono"
+                    value={compose.controller}
+                    onChange={(e) =>
+                      set('controller', e.target.value as ComposeState['controller'])
+                    }
+                  >
+                    {CONTROLLERS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="c-pen">AV penetration</label>
+                  <div className="slider-row">
+                    <input
+                      id="c-pen"
+                      type="range"
+                      min={0}
+                      max={30}
+                      step={1}
+                      value={compose.penetration}
+                      onChange={(e) => set('penetration', Number(e.target.value))}
+                    />
+                    <span className="slider-val">{compose.penetration}%</span>
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="c-com">Compliance</label>
+                  <div className="slider-row">
+                    <input
+                      id="c-com"
+                      type="range"
+                      min={10}
+                      max={100}
+                      step={5}
+                      value={compose.compliance}
+                      onChange={(e) => set('compliance', Number(e.target.value))}
+                    />
+                    <span className="slider-val">{compose.compliance}%</span>
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="c-vsl">Variable speed limit</label>
+                  <label className="check" htmlFor="c-vsl">
+                    <input
+                      id="c-vsl"
+                      type="checkbox"
+                      checked={compose.vsl}
+                      onChange={(e) => set('vsl', e.target.checked)}
+                    />
+                    gantry VSL segments
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="form-section col-span-4">
+              <h3>Simulation</h3>
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="c-dur">Duration (s)</label>
                   <input
-                    id="c-lanes"
+                    id="c-dur"
+                    className="input"
+                    type="number"
+                    min={60}
+                    step={60}
+                    value={compose.duration_s}
+                    onChange={(e) => set('duration_s', Number(e.target.value))}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="c-reps">Replicates</label>
+                  <input
+                    id="c-reps"
                     className="input"
                     type="number"
                     min={1}
-                    max={MAX_LANES}
-                    value={compose.lanes}
-                    onChange={(e) => set('lanes', clampInt(Number(e.target.value), 1, MAX_LANES))}
+                    max={MAX_REPLICATES}
+                    value={compose.replicates}
+                    aria-invalid={underpowered || undefined}
+                    aria-describedby={underpowered ? 'c-reps-hint' : undefined}
+                    onChange={(e) =>
+                      set('replicates', clampInt(Number(e.target.value), 1, MAX_REPLICATES))
+                    }
                   />
+                  {underpowered && (
+                    <span className="hint-amber" id="c-reps-hint">
+                      below reporting standard n ≥ {MIN_REPLICATES}
+                    </span>
+                  )}
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="field">
-                  <label htmlFor="c-circ">Circumference (m)</label>
-                  <input
-                    id="c-circ"
-                    className="input"
-                    type="number"
-                    min={50}
-                    value={compose.circumference_m}
-                    onChange={(e) => set('circumference_m', Number(e.target.value))}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="c-nveh">Vehicles</label>
-                  <input
-                    id="c-nveh"
-                    className="input"
-                    type="number"
-                    min={2}
-                    value={compose.n_vehicles}
-                    onChange={(e) => set('n_vehicles', Number(e.target.value))}
-                  />
-                </div>
-              </>
-            )}
-            <div className="field">
-              <label htmlFor="c-model">Fleet model</label>
-              <select
-                id="c-model"
-                className="input"
-                value={compose.model}
-                onChange={(e) => set('model', e.target.value as ComposeState['model'])}
-              >
-                <option value="IDM">IDM</option>
-                <option value="EIDM">EIDM</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="c-ctrl">Controller</label>
-              <select
-                id="c-ctrl"
-                className="input"
-                value={compose.controller}
-                onChange={(e) => set('controller', e.target.value as ComposeState['controller'])}
-              >
-                {CONTROLLERS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="c-pen">AV penetration</label>
-              <div className="slider-row">
-                <input
-                  id="c-pen"
-                  type="range"
-                  min={0}
-                  max={30}
-                  step={1}
-                  value={compose.penetration}
-                  onChange={(e) => set('penetration', Number(e.target.value))}
-                />
-                <span className="slider-val">{compose.penetration}%</span>
               </div>
-            </div>
-            <div className="field">
-              <label htmlFor="c-com">Compliance</label>
-              <div className="slider-row">
-                <input
-                  id="c-com"
-                  type="range"
-                  min={10}
-                  max={100}
-                  step={5}
-                  value={compose.compliance}
-                  onChange={(e) => set('compliance', Number(e.target.value))}
-                />
-                <span className="slider-val">{compose.compliance}%</span>
-              </div>
-            </div>
-            <div className="field">
-              <label htmlFor="c-dur">Duration (s)</label>
-              <input
-                id="c-dur"
-                className="input"
-                type="number"
-                min={60}
-                step={60}
-                value={compose.duration_s}
-                onChange={(e) => set('duration_s', Number(e.target.value))}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="c-reps">Replicates</label>
-              <input
-                id="c-reps"
-                className="input"
-                type="number"
-                min={1}
-                max={MAX_REPLICATES}
-                value={compose.replicates}
-                onChange={(e) =>
-                  set('replicates', clampInt(Number(e.target.value), 1, MAX_REPLICATES))
-                }
-              />
-              {underpowered && (
-                <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
-              )}
-            </div>
-            <div className="field">
-              <label htmlFor="c-vsl">Variable speed limit</label>
-              <label className="check" htmlFor="c-vsl">
-                <input
-                  id="c-vsl"
-                  type="checkbox"
-                  checked={compose.vsl}
-                  onChange={(e) => set('vsl', e.target.checked)}
-                />
-                gantry VSL segments
-              </label>
             </div>
           </div>
 
           {baseConfig && (
             <div className="passthrough">
-              <div className="small muted">
+              <Callout tone="neutral" role="note">
                 {passthrough.carried.length > 0 ? (
                   <>
                     Not editable here — carried through from <b>{baseName}</b> unchanged:{' '}
@@ -775,27 +877,35 @@ export function ScenariosView(): JSX.Element {
                     This form models every field of <b>{baseName}</b>.
                   </>
                 )}
-              </div>
+              </Callout>
               {passthrough.dropped.length > 0 && (
-                <div className="hint-amber">
+                <Callout tone="warning" role="note">
                   Dropped by the network-kind change:{' '}
                   <span className="mono">{passthrough.dropped.join(', ')}</span>
-                </div>
+                </Callout>
               )}
             </div>
           )}
-
-          <div className="row">
-            <button className="btn primary" disabled={busy} onClick={() => void submitCompose()}>
-              Create scenario
-            </button>
-            <span className="small muted mono">
-              POST /scenarios · validated server-side ·{' '}
+        </div>
+        <div className="panel-foot form-actions">
+          <span className="form-actions-summary">
+            POST /scenarios · validated server-side ·{' '}
+            <span className="mono">
               {describeSimMinutes(simMinutes(compose.replicates, compose.duration_s))}
             </span>
+          </span>
+          <div className="form-actions-buttons">
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy}
+              onClick={() => void submitCompose()}
+            >
+              Create scenario
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
       {launchTarget && (
         <ConfirmDialog
@@ -807,71 +917,90 @@ export function ScenariosView(): JSX.Element {
           onCancel={() => setLaunchTarget(null)}
           facts={[['Total compute', describeSimMinutes(launchTotal)]]}
         >
-          <div className="field">
-            <label htmlFor="lr-reps">Replicates</label>
-            <input
-              id="lr-reps"
-              className="input"
-              type="number"
-              min={1}
-              max={MAX_REPLICATES}
-              value={launchForm.replicates}
-              onChange={(e) =>
-                setLaunchForm((f) => ({
-                  ...f,
-                  replicates: clampField(e.target.value, 1, MAX_REPLICATES, launchBase.replicates),
-                }))
-              }
-            />
-            {launchForm.replicates < MIN_REPLICATES && (
-              <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
-            )}
+          <div className="launch-fields">
+            <div className="field">
+              <label htmlFor="lr-reps">Replicates</label>
+              <input
+                id="lr-reps"
+                className="input"
+                type="number"
+                min={1}
+                max={MAX_REPLICATES}
+                value={launchForm.replicates}
+                aria-invalid={launchForm.replicates < MIN_REPLICATES || undefined}
+                aria-describedby={
+                  launchForm.replicates < MIN_REPLICATES ? 'lr-reps-hint' : undefined
+                }
+                onChange={(e) =>
+                  setLaunchForm((f) => ({
+                    ...f,
+                    replicates: clampField(
+                      e.target.value,
+                      1,
+                      MAX_REPLICATES,
+                      launchBase.replicates,
+                    ),
+                  }))
+                }
+              />
+              {launchForm.replicates < MIN_REPLICATES && (
+                <span className="hint-amber" id="lr-reps-hint">
+                  below reporting standard n ≥ {MIN_REPLICATES}
+                </span>
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor="lr-dur">Duration (s)</label>
+              {/* clamped like every other numeric field: an emptied box reads as
+                  Number('') === 0, and `sim.duration_s: 0` is both rejected by
+                  the API and meaningless as a launch */}
+              <input
+                id="lr-dur"
+                className="input"
+                type="number"
+                min={MIN_DURATION_S}
+                max={MAX_DURATION_S}
+                step={60}
+                value={launchForm.duration_s}
+                aria-invalid={launchWarmupBlock !== null || undefined}
+                aria-describedby={launchWarmupBlock ? 'lr-dur-hint' : undefined}
+                onChange={(e) =>
+                  setLaunchForm((f) => ({
+                    ...f,
+                    duration_s: clampField(
+                      e.target.value,
+                      MIN_DURATION_S,
+                      MAX_DURATION_S,
+                      launchBase.duration_s,
+                    ),
+                  }))
+                }
+              />
+              {launchWarmupBlock && (
+                <span className="hint-amber" id="lr-dur-hint">
+                  {launchWarmupBlock}
+                </span>
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor="lr-seed">Seed</label>
+              <input
+                id="lr-seed"
+                className="input"
+                type="number"
+                min={MIN_SEED}
+                max={MAX_SEED}
+                value={launchForm.seed}
+                onChange={(e) =>
+                  setLaunchForm((f) => ({
+                    ...f,
+                    seed: clampField(e.target.value, MIN_SEED, MAX_SEED, launchBase.seed),
+                  }))
+                }
+              />
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="lr-dur">Duration (s)</label>
-            {/* clamped like every other numeric field: an emptied box reads as
-                Number('') === 0, and `sim.duration_s: 0` is both rejected by
-                the API and meaningless as a launch */}
-            <input
-              id="lr-dur"
-              className="input"
-              type="number"
-              min={MIN_DURATION_S}
-              max={MAX_DURATION_S}
-              step={60}
-              value={launchForm.duration_s}
-              onChange={(e) =>
-                setLaunchForm((f) => ({
-                  ...f,
-                  duration_s: clampField(
-                    e.target.value,
-                    MIN_DURATION_S,
-                    MAX_DURATION_S,
-                    launchBase.duration_s,
-                  ),
-                }))
-              }
-            />
-            {launchWarmupBlock && <span className="hint-amber">{launchWarmupBlock}</span>}
-          </div>
-          <div className="field">
-            <label htmlFor="lr-seed">Seed</label>
-            <input
-              id="lr-seed"
-              className="input"
-              type="number"
-              min={MIN_SEED}
-              max={MAX_SEED}
-              value={launchForm.seed}
-              onChange={(e) =>
-                setLaunchForm((f) => ({
-                  ...f,
-                  seed: clampField(e.target.value, MIN_SEED, MAX_SEED, launchBase.seed),
-                }))
-              }
-            />
-          </div>
-          <p className="small muted">
+          <p className="field-help">
             Replicates and duration multiply: every replicate runs the full duration. Changed values
             are sent as an overrides patch, so the run gets its own config hash.
           </p>

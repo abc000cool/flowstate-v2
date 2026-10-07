@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  distUnit,
   formatDeltaPct,
   formatDensityVehKm,
+  formatDensityVehKmMi,
   formatDistAdaptive,
   formatDistKm,
+  formatFetchError,
   formatSpeedKmh,
+  formatSpeedKmhMph,
+  formatTickDist,
+  formatTickMin,
   formatTimeMin,
+  KM_PER_MI,
+  MS_TO_KMH,
+  MS_TO_MPH,
   spaceTicks,
   timeTicks,
 } from '../lib/format';
@@ -41,9 +50,50 @@ describe('speed and density readouts', () => {
   it('converts veh/m to veh/km', () => {
     expect(formatDensityVehKm(0.038)).toBe('38 veh/km');
   });
+  it('converts m/s to km/h with mph alongside', () => {
+    expect(MS_TO_MPH).toBe(2.2369362920544);
+    // 47 km/h = 13.056 m/s = 29.2 mph
+    expect(formatSpeedKmhMph(47 / MS_TO_KMH)).toBe('47 km/h (29 mph)');
+    expect(formatSpeedKmhMph(0)).toBe('0 km/h (0 mph)');
+    // 33.3 m/s is the 120 km/h display maximum, 74.5 mph
+    expect(formatSpeedKmhMph(33.3)).toBe('120 km/h (74 mph)');
+  });
+  it('converts veh/m to veh/km with veh/mi alongside', () => {
+    expect(KM_PER_MI).toBe(1.609344);
+    expect(formatDensityVehKmMi(0.038)).toBe('38 veh/km (61 veh/mi)');
+    expect(formatDensityVehKmMi(0.16)).toBe('160 veh/km (257 veh/mi)');
+    expect(formatDensityVehKmMi(0)).toBe('0 veh/km (0 veh/mi)');
+  });
   it('signs percentage deltas', () => {
     expect(formatDeltaPct(-0.231)).toBe('-23.1%');
     expect(formatDeltaPct(0.05)).toBe('+5.0%');
+  });
+});
+
+describe('bare tick labels (the axis title carries the unit)', () => {
+  it('labels time ticks in minutes', () => {
+    expect(formatTickMin(300)).toBe('5');
+    expect(formatTickMin(90)).toBe('1.5');
+  });
+  it('labels distance ticks in km, or m on a ring under 1 km', () => {
+    expect(formatTickDist(2500, 10000)).toBe('2.5');
+    expect(formatTickDist(150, 230)).toBe('150');
+    expect(distUnit(10000)).toBe('km');
+    expect(distUnit(230)).toBe('m');
+  });
+});
+
+describe('fetch failures', () => {
+  it('prefixes the HTTP status and keeps the server’s words', () => {
+    const err = Object.assign(new Error('observations_path is outside the allowed data roots'), { status: 422 });
+    expect(formatFetchError(err)).toBe('HTTP 422 — observations_path is outside the allowed data roots');
+  });
+  it('does not repeat a status the message already starts with', () => {
+    expect(formatFetchError(Object.assign(new Error('404 Not Found'), { status: 404 }))).toBe('404 Not Found');
+  });
+  it('passes a network error through unchanged', () => {
+    expect(formatFetchError(new TypeError('Failed to fetch'))).toBe('Failed to fetch');
+    expect(formatFetchError('')).toBe('no detail');
   });
 });
 

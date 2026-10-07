@@ -10,6 +10,11 @@
 
 import type { AggregateStat } from '../api/types';
 
+/** The Run detail section a metric is read in (§9.12): traffic flow,
+ * stability (the dampening story), energy, and exposure and sample. `other`
+ * holds only the generic fallback def of a key the dashboard does not know. */
+export type MetricGroup = 'flow' | 'stability' | 'energy' | 'exposure' | 'other';
+
 export interface MetricDef {
   key: string;
   label: string;
@@ -17,25 +22,37 @@ export interface MetricDef {
   digits: number;
   /** Which direction is an improvement (drives sweep delta colouring). */
   good: 'up' | 'down' | 'neutral';
+  group: MetricGroup;
 }
 
 /** Labels carry their final display case — the UI must NOT css-uppercase
- * them, or the Greek σ becomes Σ. */
+ * them, or the Greek σ becomes Σ. Listed in reading order: by group, then
+ * within each group as Run detail shows it. */
 export const METRIC_DEFS: MetricDef[] = [
-  { key: 'throughput_veh_h', label: 'THROUGHPUT', unit: 'veh/h', digits: 0, good: 'up' },
-  { key: 'mean_tt_s', label: 'MEAN TRAVEL TIME', unit: 's', digits: 1, good: 'down' },
-  { key: 'p90_tt_s', label: 'P90 TRAVEL TIME', unit: 's', digits: 1, good: 'down' },
-  { key: 'sigma_v_spatial_ms', label: 'σ_v SPATIAL', unit: 'm/s', digits: 2, good: 'down' },
-  { key: 'sigma_v_temporal_ms', label: 'σ_v TEMPORAL', unit: 'm/s', digits: 2, good: 'down' },
-  { key: 'fuel_ml_per_veh_km', label: 'FUEL', unit: 'ml/veh·km', digits: 1, good: 'down' },
-  { key: 'vmt_veh_km', label: 'VMT', unit: 'veh·km', digits: 0, good: 'neutral' },
-  { key: 'vht_veh_h', label: 'VHT', unit: 'veh·h', digits: 1, good: 'neutral' },
-  { key: 'wave_count', label: 'WAVE COUNT', unit: 'waves', digits: 1, good: 'down' },
-  { key: 'wave_speed_kmh', label: 'WAVE SPEED', unit: 'km/h', digits: 1, good: 'neutral' },
-  { key: 'wave_amplitude_ms', label: 'WAVE AMPLITUDE', unit: 'm/s', digits: 1, good: 'down' },
+  { key: 'throughput_veh_h', label: 'THROUGHPUT', unit: 'veh/h', digits: 0, good: 'up', group: 'flow' },
+  { key: 'mean_tt_s', label: 'MEAN TRAVEL TIME', unit: 's', digits: 1, good: 'down', group: 'flow' },
+  { key: 'p90_tt_s', label: 'P90 TRAVEL TIME', unit: 's', digits: 1, good: 'down', group: 'flow' },
+  { key: 'sigma_v_spatial_ms', label: 'σ_v SPATIAL', unit: 'm/s', digits: 2, good: 'down', group: 'stability' },
+  { key: 'sigma_v_temporal_ms', label: 'σ_v TEMPORAL', unit: 'm/s', digits: 2, good: 'down', group: 'stability' },
+  { key: 'wave_count', label: 'WAVE COUNT', unit: 'waves', digits: 1, good: 'down', group: 'stability' },
+  { key: 'wave_amplitude_ms', label: 'WAVE AMPLITUDE', unit: 'm/s', digits: 1, good: 'down', group: 'stability' },
+  { key: 'wave_speed_kmh', label: 'WAVE SPEED', unit: 'km/h', digits: 1, good: 'neutral', group: 'stability' },
+  { key: 'fuel_ml_per_veh_km', label: 'FUEL', unit: 'ml/veh·km', digits: 1, good: 'down', group: 'energy' },
+  { key: 'vmt_veh_km', label: 'VMT', unit: 'veh·km', digits: 0, good: 'neutral', group: 'exposure' },
+  { key: 'vht_veh_h', label: 'VHT', unit: 'veh·h', digits: 1, good: 'neutral', group: 'exposure' },
   // sample size behind mean_tt_s / p90_tt_s, not a performance metric: more
   // vehicles is neither better nor worse, so it never colours a sweep cell
-  { key: 'n_travel_time_veh', label: 'TRAVEL-TIME SAMPLE', unit: 'veh', digits: 0, good: 'neutral' },
+  { key: 'n_travel_time_veh', label: 'TRAVEL-TIME SAMPLE', unit: 'veh', digits: 0, good: 'neutral', group: 'exposure' },
+];
+
+/** Section headings, in the order Run detail renders them. */
+export const METRIC_GROUPS: { group: MetricGroup; title: string }[] = [
+  { group: 'flow', title: 'Traffic flow' },
+  { group: 'stability', title: 'Stability' },
+  { group: 'energy', title: 'Energy' },
+  { group: 'exposure', title: 'Exposure and sample' },
+  // keys the dashboard has no definition for (a field added to the API first)
+  { group: 'other', title: 'Other' },
 ];
 
 /** Default metric of the sweep matrix: spatial σ_v is the dampening headline. */
@@ -44,7 +61,7 @@ export const DEFAULT_SWEEP_METRIC = 'sigma_v_spatial_ms';
 export function metricDef(key: string): MetricDef {
   const found = METRIC_DEFS.find((d) => d.key === key);
   if (found) return found;
-  return { key, label: key.replace(/_/g, ' '), unit: '', digits: 2, good: 'neutral' };
+  return { key, label: key.replace(/_/g, ' '), unit: '', digits: 2, good: 'neutral', group: 'other' };
 }
 
 /** Order metric keys: known defs first (in canonical order), then the rest. */
@@ -52,6 +69,20 @@ export function orderedMetricKeys(keys: string[]): string[] {
   const known = METRIC_DEFS.map((d) => d.key).filter((k) => keys.includes(k));
   const rest = keys.filter((k) => !known.includes(k)).sort();
   return [...known, ...rest];
+}
+
+/** Metric keys split into the Run detail sections (§9.12), in order: the four
+ * groups, then any unknown keys under "Other"; each section in
+ * `orderedMetricKeys` order. Empty sections are dropped. */
+export function groupedMetricKeys(
+  keys: string[],
+): { group: MetricGroup; title: string; keys: string[] }[] {
+  const ordered = orderedMetricKeys(keys);
+  return METRIC_GROUPS.map(({ group, title }) => ({
+    group,
+    title,
+    keys: ordered.filter((k) => metricDef(k).group === group),
+  })).filter((s) => s.keys.length > 0);
 }
 
 /** Reporting standard: results below 20 replicates are underpowered

@@ -1,10 +1,23 @@
-/* Data viz: heatmap box, hover readout, ramp legend, metric cards, CI bars,
-   per-replicate strip charts.
-   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
-   Owner: C (step 3, §7). */
+/* Data viz (DASHBOARD_DESIGN.md §7): the space-time heatmap and its legend,
+   readout and states; metric tiles and their replicate dot strips (§9.12);
+   the shared viz tooltip; CI and series styling for SVG charts (§7.5–7.6).
+   Data colours come from lib/colormap (theme-invariant ramps) or the
+   --viz-* tokens; nothing here hard-codes a colour.
+   Owner: C. */
+
+/* ============================== heatmap ============================== */
+
+.heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
 
 .heatmap-box {
   position: relative;
+  width: 100%;
+  cursor: crosshair;
 }
 
 .heatmap-box canvas {
@@ -18,143 +31,423 @@
   pointer-events: none;
 }
 
-.hover-readout {
+/* The focus ring goes around the plot frame, not the axes: a real outline
+   (forced-colors safe) on a box positioned over the plot. */
+.heatmap-box:focus-visible {
+  outline: none;
+}
+
+.heatmap-focus {
   position: absolute;
-  top: 10px;
-  right: 12px;
-  background: rgba(11, 14, 20, 0.88);
-  border: 1px solid var(--panel-edge);
-  border-radius: var(--r2);
-  padding: 5px 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text);
   pointer-events: none;
+  border-radius: var(--radius-xs);
+}
+
+.heatmap-box:focus-visible .heatmap-focus {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* readout row: fixed height, mono, under the legend */
+.heatmap-readout {
+  min-height: 20px;
+  font: 400 var(--text-12) / 20px var(--font-mono);
+  letter-spacing: var(--tracking-none);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.legend {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+.heatmap-readout.idle {
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
 }
 
-.legend .bar {
-  width: 120px;
-  height: 8px;
-  border-radius: 4px;
-  border: 1px solid var(--panel-edge);
+.heatmap-caption {
+  margin: 0;
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
 }
 
-/* metric cards */
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-  gap: var(--s2);
-}
-
-.metric-card {
-  padding: 14px;
+/* loading / error / empty: the plot's final height, so nothing jumps */
+.heatmap-state {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: var(--panel-raised);
-  border: 1px solid var(--panel-edge);
-  border-radius: var(--r2);
+  gap: var(--space-3);
+  min-height: calc(clamp(300px, 42cqw, 460px) + 104px);
 }
 
-.metric-card .m-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--muted);
+.heatmap-state > .skeleton-frame {
+  position: relative;
+  flex: 1;
+  min-height: clamp(240px, 42cqw, 460px);
+  border: 1px solid var(--viz-frame);
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.heatmap-state > .skeleton-frame > .skeleton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.heatmap-state .skeleton-label {
+  position: relative;
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------ legend ------------------------------ */
+
+.ramp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-8);
+}
+
+.rl-scale {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 320px);
+  column-gap: var(--space-2);
+  row-gap: var(--space-0-5);
+  align-items: center;
+  /* room for the last tick label, centered on the bar's end */
+  padding-right: var(--space-3);
+}
+
+.rl-unit {
+  font: 400 var(--text-11) / var(--leading-11) var(--font-mono);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.rl-ticks {
+  position: relative;
+  height: 16px;
+}
+
+.rl-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font: 400 var(--text-11) / var(--leading-11) var(--font-mono);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rl-bar {
+  position: relative;
+  box-sizing: border-box;
+  height: 10px;
+  border: 1px solid var(--viz-frame);
+  border-radius: 2px;
+}
+
+/* the default wave threshold, 40 km/h */
+.rl-notch {
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 14px;
+  margin-left: -0.5px;
+  background: var(--text-primary);
+}
+
+.rl-keys {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rl-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+/* the "no data" key: the same hatch the plot paints over null bins */
+.rl-swatch-null {
+  flex: none;
+  width: 14px;
+  height: 10px;
+  border: 1px solid var(--viz-frame);
+  border-radius: 2px;
+  background-color: var(--viz-null-bg);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--viz-null-hatch) 0 1px,
+    transparent 1px 4.24px
+  );
+}
+
+.rl-swatch-notch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(var(--text-primary), var(--text-primary)) center / 1px 100% no-repeat;
+}
+
+/* ============================ metric tiles =========================== */
+
+.metric-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.metric-group > h4 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-normal);
+  color: var(--text-primary);
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.mt-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
+  min-height: 20px;
 }
 
-.metric-card .m-value {
-  font-family: var(--font-mono);
-  font-size: 22px;
-  font-weight: 700;
+.mt-label {
+  font: var(--weight-medium) var(--text-11) / var(--leading-11) var(--font-sans);
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.mt-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-1-5);
+  min-height: var(--leading-24);
+}
+
+/* a standalone large number: Inter, proportional figures */
+.mt-mean {
+  font: var(--weight-semibold) var(--text-24) / var(--leading-24) var(--font-sans);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: proportional-nums;
+  color: var(--text-primary);
+}
+
+.mt-hw {
+  font: var(--weight-medium) var(--text-16) / var(--leading-16) var(--font-sans);
+  letter-spacing: var(--tracking-snug);
+  color: var(--text-secondary);
+}
+
+.mt-unit {
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  color: var(--text-secondary);
+}
+
+/* a metric no replicate produced is said in words, never a dash or a zero */
+.mt-value.mt-noobs {
+  font: var(--weight-medium) var(--text-14) / var(--leading-24) var(--font-sans);
+  color: var(--text-secondary);
+}
+
+.mt-ci {
+  font: 400 var(--text-12) / var(--leading-12) var(--font-mono);
+  letter-spacing: var(--tracking-none);
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
 }
 
-.metric-card .m-unit {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--muted);
-  margin-left: 5px;
+.metric-tile-skeleton {
+  min-height: 150px;
 }
 
-.ci-track {
+/* --------------------------- replicate strip ------------------------- */
+
+.dot-strip {
   position: relative;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--panel-inset);
-  border: 1px solid var(--panel-edge);
+  height: 28px;
+  margin-top: var(--space-1);
 }
 
-.ci-fill {
+.dot-strip svg {
+  display: block;
+  width: 100%;
+  height: 28px;
+  overflow: visible;
+}
+
+.dot-strip .ci-band {
+  fill: var(--viz-series-1);
+  fill-opacity: var(--viz-ci-opacity);
+}
+
+.dot-strip .mean-tick {
+  fill: var(--text-primary);
+}
+
+.dot-strip .dot {
+  cursor: default;
+}
+
+.dot-strip .dot-hit {
+  fill: transparent;
+}
+
+.dot-strip .dot-mark {
+  fill: var(--viz-series-1);
+  fill-opacity: 0.75;
+  stroke: var(--viz-surface);
+  stroke-width: 1.5;
+}
+
+.dot-strip .dot.active .dot-mark {
+  fill-opacity: 1;
+}
+
+.dot-strip .dot-focus {
+  fill: none;
+  stroke: none;
+}
+
+/* the dot's own ring replaces the outline (SVG outlines are unreliable) */
+.dot-strip .dot:focus {
+  outline: none;
+}
+
+.dot-strip .dot:focus-visible .dot-focus {
+  stroke: var(--focus-ring);
+  stroke-width: var(--focus-width);
+}
+
+.dot-tip {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  background: rgba(79, 209, 224, 0.35);
-  border-radius: 2px;
+  bottom: calc(100% + var(--space-1));
+  transform: translateX(-50%);
 }
 
-.ci-mean {
-  position: absolute;
-  top: -3px;
-  width: 2px;
-  height: 10px;
-  background: var(--accent);
-  border-radius: 1px;
-}
+/* ============================ viz tooltip ============================ */
+/* One look for every chart tooltip (dot strips, sweep cells): raised
+   surface, hairline, floating shadow, mono numbers. */
 
-.ci-text {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--faint);
+.viz-tip {
+  z-index: var(--z-tooltip);
+  padding: var(--space-1-5) 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font: 400 var(--text-12) / var(--leading-12) var(--font-mono);
+  letter-spacing: var(--tracking-none);
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: viz-tip-in var(--duration-3) var(--ease-enter);
 }
 
-/* strip charts (per-replicate tiny multiples) */
-.strip-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-  gap: var(--s2);
+.viz-tip .t-muted {
+  color: var(--text-secondary);
 }
 
-.strip {
-  padding: 10px 12px;
-  background: var(--panel-inset);
-  border: 1px solid var(--panel-edge);
-  border-radius: var(--r2);
+@keyframes viz-tip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.strip .s-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: var(--faint);
-  margin-bottom: 4px;
+/* ===================== SVG charts: series and CI ===================== */
+/* §7.5–7.6, for line/point charts (σ_v vs penetration and similar). Series
+   colours come from lib/colormap.seriesVar / ordinalVar; set the series on
+   the element with style="--series: var(--viz-series-1)". */
+
+.viz-grid line {
+  stroke: var(--viz-grid);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
 }
 
-/* ============ no-observation metrics (CIOut n=0, reason set) ========= */
-/* A metric no replicate produced is said in words, never as a dash or a zero:
-   the API distinguishes "no estimate" from "an underpowered estimate". */
-.metric-card .m-value.m-noobs {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  line-height: 1.6;
+.viz-axis line,
+.viz-axis path {
+  stroke: var(--viz-axis);
+  stroke-width: 1;
+}
+
+.viz-axis text {
+  font: 400 var(--text-11) / var(--leading-11) var(--font-mono);
+  fill: var(--viz-tick-text);
+}
+
+/* CI band: the series colour at --viz-ci-opacity, no stroke */
+.viz-ci-band {
+  fill: var(--series, var(--viz-series-1));
+  fill-opacity: var(--viz-ci-opacity);
+  stroke: none;
+}
+
+/* mean line: 2 px, round caps and joins */
+.viz-mean-line {
+  fill: none;
+  stroke: var(--series, var(--viz-series-1));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* point markers: 8 px with a 2 px surface ring; n < 20 is hollow */
+.viz-point {
+  fill: var(--series, var(--viz-series-1));
+  stroke: var(--viz-surface);
+  stroke-width: 2;
+}
+
+.viz-point.hollow {
+  fill: var(--viz-surface);
+  stroke: var(--series, var(--viz-series-1));
+}
+
+/* a legend key that mirrors the mark */
+.viz-key-line {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--series, var(--viz-series-1));
+  vertical-align: middle;
 }

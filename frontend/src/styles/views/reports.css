@@ -1,3 +1,127 @@
-/* Reports view. Nothing view-specific yet: it uses the shared table.data,
-   .tag and .field in components.css.
-   Owner: A (step 4, §10.6). */
+/* Reports view (docs/design/DASHBOARD_DESIGN.md §10.6). Tables, tags, chips,
+   fields, .form-grid and .panel-foot / .form-actions are the shared ones in
+   components.css; only the view-specific pieces live here.
+   Owner: A. */
+
+/* ---- New report: two numbered steps ---- */
+
+.reports-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.reports-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.reports-step-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.reports-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--text-12);
+  line-height: 1;
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+/* the run picker: a bounded, hairline-framed scroller with a sticky header */
+.reports-picker.scroll-y {
+  max-height: 360px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.reports-check-cell {
+  width: 40px;
+}
+table.data .reports-check-cell input {
+  display: block;
+  margin: 0;
+}
+
+table.data tbody tr.selectable {
+  cursor: pointer;
+}
+
+/* run and report ids: mono 12/500 primary */
+table.data td.reports-id {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.form-grid.reports-score-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  max-width: var(--content-max-narrow);
+}
+
+/* ---- action bar: summary + button, then a persistent refusal ---- */
+
+.panel-foot.reports-foot {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+.reports-foot > .reports-actions {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* ---- generated reports ---- */
+
+.reports-table-panel {
+  overflow: hidden;
+}
+
+.reports-table-panel .panel-sub {
+  min-width: 0;
+  text-align: right;
+}
+
+/* the observed-comparison line wraps rather than widening the table */
+table.data td.reports-criteria-cell {
+  min-width: 160px;
+  max-width: 320px;
+  white-space: normal;
+}
+
+.reports-observed {
+  margin-top: var(--space-0-5);
+  color: var(--text-secondary);
+}
+
+.reports-downloads-cell {
+  text-align: right;
+}
+
+.reports-downloads {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* empty, error and paused rows span the table and wrap like prose */
+table.data td.reports-wrap-cell {
+  height: auto;
+  white-space: normal;
+}

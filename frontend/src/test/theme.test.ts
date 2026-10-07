@@ -6,12 +6,15 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getThemePref,
+  nextThemePref,
   readToken,
   resolvedTheme,
   setThemePref,
   THEME_EVENT,
+  THEME_PREF_LABELS,
   THEME_STORAGE_KEY,
   useResolvedTheme,
+  useThemePref,
 } from '../lib/theme';
 
 /** A controllable `(prefers-color-scheme: dark)` media query. jsdom has no
@@ -123,6 +126,42 @@ describe('useResolvedTheme', () => {
     expect(os.listeners.size).toBe(1);
     unmount();
     expect(os.listeners.size).toBe(0);
+  });
+});
+
+describe('useThemePref', () => {
+  it('reports the stored preference and follows setThemePref', () => {
+    const { result } = renderHook(() => useThemePref());
+    expect(result.current).toBe('system');
+    act(() => setThemePref('light'));
+    expect(result.current).toBe('light');
+    act(() => setThemePref('dark'));
+    expect(result.current).toBe('dark');
+  });
+
+  it('applies a preference another tab stored', () => {
+    const { result } = renderHook(() => useThemePref());
+    act(() => {
+      window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+      window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY }));
+    });
+    expect(result.current).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    act(() => {
+      window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
+      window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY }));
+    });
+    expect(result.current).toBe('system');
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+});
+
+describe('nextThemePref', () => {
+  it('cycles System, Light, Dark and back, with a label for each', () => {
+    expect(nextThemePref('system')).toBe('light');
+    expect(nextThemePref('light')).toBe('dark');
+    expect(nextThemePref('dark')).toBe('system');
+    expect(Object.values(THEME_PREF_LABELS)).toEqual(['System', 'Light', 'Dark']);
   });
 });
 

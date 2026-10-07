@@ -1,9 +1,22 @@
-/** App shell: left rail nav (Onboard/Scenarios/Runs/Sweeps/Reports) with a live
- * status dot from /health polling, top bar with the FLOWSTATE wordmark and
- * active corridor name, offline-fallback banner, settings drawer. */
+/** App shell (docs/design/DASHBOARD_DESIGN.md §6.1, §6.4, §11.3).
+ *
+ * A grouped sidebar (Set up / Simulate / Report; First run, the live
+ * connection status and Settings in its footer), a top bar with the
+ * breadcrumb, the active corridor and the theme toggle, the auth and offline
+ * banners, and the scrolling content column.
+ *
+ * Responsive: the sidebar is 232 px from 1024 px up, a 56 px icon rail from
+ * 768 to 1023 px (labels clipped, not removed, so accessible names are
+ * unchanged), and below 768 px a drawer opened from the top bar's menu button
+ * (focus trapped, Escape closes, focus returns to the button).
+ *
+ * The status line polls `/health` every 5 s. `/health` needs no key, so a
+ * rejected key would leave it green while every real call 401s: the line and
+ * the auth banner report the connection the app actually has. */
 
-import { useCallback, useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import { Link, NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
 import {
   AUTH_RETRY_DELAY_MS,
   checkHealth,
@@ -13,94 +26,185 @@ import {
   setOfflineFallback,
 } from '../api/client';
 import { useAuthFailed, usePoll } from '../lib/hooks';
+import { nextThemePref, setThemePref, THEME_PREF_LABELS, useThemePref } from '../lib/theme';
 import { useAppState } from './AppContext';
-import { SettingsDrawer } from './SettingsDrawer';
+import { Icon, type IconName } from './icons';
+import { FOCUSABLE, SettingsDrawer, trapTabKey } from './SettingsDrawer';
 import { Toasts } from './toast';
 
-const NAV = [
+interface NavEntry {
+  to: string;
+  label: string;
+  icon: IconName;
+}
+
+const NAV_GROUPS: { id: string; label: string; items: NavEntry[] }[] = [
   {
-    // first for a first-time tester: the guided QUICKSTART path
-    to: '/first-run',
-    label: 'First run',
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <circle cx="7" cy="7" r="5.2" />
-        <path d="M5.6 4.6 L9.6 7 L5.6 9.4 Z" fill="currentColor" stroke="none" />
-      </svg>
-    ),
+    id: 'setup',
+    label: 'Set up',
+    items: [
+      { to: '/onboard', label: 'Onboard corridor', icon: 'map-pin' },
+      { to: '/scenarios', label: 'Scenarios', icon: 'layers' },
+    ],
   },
   {
-    to: '/onboard',
-    label: 'Onboard corridor',
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <path d="M7 1.5 C4.8 1.5 3.2 3.1 3.2 5.2 C3.2 8 7 12.5 7 12.5 S10.8 8 10.8 5.2 C10.8 3.1 9.2 1.5 7 1.5 Z" />
-        <circle cx="7" cy="5.2" r="1.3" />
-      </svg>
-    ),
+    id: 'simulate',
+    label: 'Simulate',
+    items: [
+      { to: '/runs', label: 'Runs', icon: 'activity' },
+      { to: '/sweeps', label: 'Sweeps', icon: 'grid-3x3' },
+    ],
   },
   {
-    to: '/scenarios',
-    label: 'Scenarios',
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <circle cx="7" cy="7" r="5" />
-        <circle cx="7" cy="2.4" r="1" fill="currentColor" stroke="none" />
-        <circle cx="11" cy="9" r="1" fill="currentColor" stroke="none" />
-        <circle cx="3" cy="9" r="1" fill="currentColor" stroke="none" />
-      </svg>
-    ),
-  },
-  {
-    to: '/runs',
-    label: 'Runs',
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <path d="M2 11 L5 6 L8 9 L12 3" />
-        <path d="M9.5 3 H12 V5.5" />
-      </svg>
-    ),
-  },
-  {
-    to: '/sweeps',
-    label: 'Sweeps',
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <rect x="1.5" y="1.5" width="4.6" height="4.6" rx="1" />
-        <rect x="7.9" y="1.5" width="4.6" height="4.6" rx="1" />
-        <rect x="1.5" y="7.9" width="4.6" height="4.6" rx="1" />
-        <rect x="7.9" y="7.9" width="4.6" height="4.6" rx="1" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    to: '/reports',
-    label: 'Reports',
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <path d="M3.5 1.5 h5 l2.5 2.5 v8.5 h-7.5 z" />
-        <path d="M5.5 7 h3 M5.5 9.5 h3" />
-      </svg>
-    ),
+    id: 'report',
+    label: 'Report',
+    items: [{ to: '/reports', label: 'Reports', icon: 'file-text' }],
   },
 ];
 
-function useUtcClock(): string {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  return `${now.toISOString().slice(11, 19)} UTC`;
+/** The guided QUICKSTART path, kept in the sidebar footer. */
+const FIRST_RUN: NavEntry = { to: '/first-run', label: 'First run', icon: 'circle-play' };
+
+/** Breadcrumb section names, by first path segment. */
+const SECTION_LABELS = new Map<string, string>(
+  [...NAV_GROUPS.flatMap((g) => g.items), FIRST_RUN].map((n) => [n.to, n.label]),
+);
+
+/** Width bands of §6.4 (CSS can't read custom properties in media queries,
+ * so these mirror the constants in shell.css). */
+const RAIL_QUERY = '(min-width: 768px) and (max-width: 1023px)';
+const DRAWER_QUERY = '(max-width: 767px)';
+
+/** A media query as React state; false where matchMedia is missing (jsdom). */
+function useMediaQuery(query: string): boolean {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      if (typeof window.matchMedia !== 'function') return () => undefined;
+      const mq = window.matchMedia(query);
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    },
+    [query],
+  );
+  const read = (): boolean =>
+    typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
+  return useSyncExternalStore(subscribe, read, () => false);
+}
+
+/** The FlowState mark: three wave bands sloping down-right, as stop-and-go
+ * waves do in a space-time plot. Decorative; the wordmark carries the name. */
+function BrandMark(): JSX.Element {
+  return (
+    <svg
+      className="brand-mark"
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect width="20" height="20" rx="5" fill="currentColor" />
+      <path
+        d="M4 8 L9 13 M7 5 L14 12 M11 4 L16 9"
+        fill="none"
+        stroke="var(--bg-surface)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function NavItem({ entry, railed }: { entry: NavEntry; railed: boolean }): JSX.Element {
+  return (
+    <NavLink to={entry.to} className="nav-item" title={railed ? entry.label : undefined}>
+      <Icon name={entry.icon} />
+      <span className="nav-label">{entry.label}</span>
+    </NavLink>
+  );
+}
+
+function Breadcrumb(): JSX.Element | null {
+  const { pathname } = useLocation();
+  const run = useMatch('/runs/:runId');
+  const section = SECTION_LABELS.get(`/${pathname.split('/')[1] ?? ''}`);
+  if (!section) return null;
+  return (
+    <nav className="breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        {run?.params.runId ? (
+          <>
+            <li>
+              <Link to="/runs">{section}</Link>
+            </li>
+            <li>
+              <span className="breadcrumb-sep" aria-hidden="true">
+                /
+              </span>
+              <span className="breadcrumb-current mono" aria-current="page">
+                {run.params.runId}
+              </span>
+            </li>
+          </>
+        ) : (
+          <li>
+            <span className="breadcrumb-current" aria-current="page">
+              {section}
+            </span>
+          </li>
+        )}
+      </ol>
+    </nav>
+  );
+}
+
+function CorridorChip({ corridor }: { corridor: string | null }): JSX.Element {
+  return corridor ? (
+    <span className="corridor-chip" title={`Active corridor: ${corridor}`}>
+      <Icon name="map-pin" size={14} />
+      <span className="visually-hidden">Active corridor: </span>
+      <span className="corridor-chip-name mono">{corridor}</span>
+    </span>
+  ) : (
+    <span className="corridor-chip is-empty">
+      <Icon name="map-pin" size={14} />
+      <span className="corridor-chip-name">No active corridor</span>
+    </span>
+  );
+}
+
+const THEME_ICON: Record<string, IconName> = { system: 'monitor', light: 'sun', dark: 'moon' };
+
+function ThemeToggle(): JSX.Element {
+  const pref = useThemePref();
+  const next = nextThemePref(pref);
+  const label = `Theme: ${THEME_PREF_LABELS[pref]}`;
+  return (
+    <button
+      type="button"
+      className="btn ghost icon-only topbar-btn"
+      aria-label={label}
+      title={`${label} (switch to ${THEME_PREF_LABELS[next]})`}
+      onClick={() => setThemePref(next)}
+    >
+      <Icon name={THEME_ICON[pref]} />
+    </button>
+  );
 }
 
 export function Layout(): JSX.Element {
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const { corridor } = useAppState();
-  const clock = useUtcClock();
   const mockEnv = isMockEnv();
   const authFailed = useAuthFailed();
+  const railed = useMediaQuery(RAIL_QUERY);
+  const drawerMode = useMediaQuery(DRAWER_QUERY);
+  const { pathname } = useLocation();
+  const sidebarRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
 
   const poll = useCallback(async () => {
     const ok = await checkHealth();
@@ -109,14 +213,54 @@ export function Layout(): JSX.Element {
   }, [mockEnv]);
   usePoll(poll, 5000);
 
+  // the drawer closes on navigation and when the window grows out of it
+  useEffect(() => setNavOpen(false), [pathname]);
+  useEffect(() => {
+    if (!drawerMode) setNavOpen(false);
+  }, [drawerMode]);
+
+  // while the drawer is open: the page behind is inert, focus starts on the
+  // first nav item, Tab stays inside, Escape closes, and focus returns to the
+  // menu button
+  useEffect(() => {
+    if (!navOpen) return;
+    const sidebar = sidebarRef.current;
+    const main = mainRef.current;
+    const menu = menuRef.current;
+    main?.setAttribute('inert', '');
+    sidebar?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setNavOpen(false);
+      else if (e.key === 'Tab' && sidebar) trapTabKey(e, sidebar);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      main?.removeAttribute('inert');
+      menu?.focus();
+    };
+  }, [navOpen]);
+
+  const openSettings = (): void => {
+    setNavOpen(false);
+    setSettingsOpen(true);
+  };
+
+  const skipToContent = (e: ReactMouseEvent<HTMLAnchorElement>): void => {
+    // focus the content without putting #content in the router's URL
+    e.preventDefault();
+    document.getElementById('content')?.focus();
+  };
+
   const offline = !mockEnv && healthy === false;
 
-  let dotCls = 'dot demo pulse';
+  // pulse only when the link is down (§6.1); demo and probing hold still
+  let dotCls = 'dot demo';
   let statusText = 'DEMO DATA';
   if (!mockEnv) {
     if (authFailed) {
       // /health needs no key, so it is green while every real call 401s —
-      // the rail must report the connection the app actually has.
+      // the status line must report the connection the app actually has.
       dotCls = 'dot down pulse';
       statusText = 'KEY REJECTED';
     } else if (healthy === true) {
@@ -130,84 +274,134 @@ export function Layout(): JSX.Element {
       statusText = 'PROBING…';
     }
   }
+  const probeTitle = 'Live /health probe, every 5 s';
 
   return (
-    <div className="app">
-      <aside className="rail">
-        <nav className="rail-nav" aria-label="Primary">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              className={({ isActive }) => `rail-link${isActive ? ' active' : ''}`}
-            >
-              {n.icon}
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="rail-foot">
-          <div className="statusline" title="Live /health probe, every 5 s">
-            <span className={dotCls} />
-            {statusText}
+    <>
+      <div className={`app${navOpen ? ' nav-open' : ''}`}>
+        <a className="skip-link" href="#content" onClick={skipToContent}>
+          Skip to content
+        </a>
+
+        <aside
+          className="sidebar"
+          id="app-sidebar"
+          ref={sidebarRef}
+          {...(navOpen
+            ? { role: 'dialog', 'aria-modal': true, 'aria-label': 'Navigation' }
+            : {})}
+        >
+          <div className="brand">
+            <BrandMark />
+            <span className="brand-name">FlowState</span>
           </div>
-          <button className="btn sm" onClick={() => setSettingsOpen(true)}>
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
-              <circle cx="6" cy="6" r="2" />
-              <path d="M6 0.8 v1.8 M6 9.4 v1.8 M0.8 6 h1.8 M9.4 6 h1.8 M2.3 2.3 l1.3 1.3 M8.4 8.4 l1.3 1.3 M9.7 2.3 L8.4 3.6 M3.6 8.4 L2.3 9.7" />
-            </svg>
-            Settings
-          </button>
-        </div>
-      </aside>
 
-      <div className="main">
-        <header className="topbar">
-          <span className="wordmark">
-            FLOW<b>STATE</b>
-          </span>
-          <span className="topbar-sep" />
-          <span className="corridor-name">
-            CORRIDOR <b>{corridor ?? '— none active —'}</b>
-          </span>
-          <span className="topbar-spacer" />
-          <span className="utc-clock">{clock}</span>
-        </header>
+          <nav className="sidebar-nav" aria-label="Primary">
+            {NAV_GROUPS.map((g) => (
+              <div
+                key={g.id}
+                className="nav-group"
+                role="group"
+                aria-labelledby={`nav-group-${g.id}`}
+              >
+                <div className="nav-group-label" id={`nav-group-${g.id}`}>
+                  {g.label}
+                </div>
+                {g.items.map((n) => (
+                  <NavItem key={n.to} entry={n} railed={railed} />
+                ))}
+              </div>
+            ))}
+          </nav>
 
-        {authFailed && (
-          <div className="auth-banner" role="alert">
-            API key rejected (401) — data is not loading and polling is stopped.{' '}
-            {isAuthRetryScheduled()
-              ? `Retrying once in ${Math.round(AUTH_RETRY_DELAY_MS / 1000)} s.`
-              : 'The automatic retry was already spent.'}{' '}
-            {/* a 401 is not always a wrong key: a restarting API or a rotated
-                key is transient, and the latch must not need a page reload */}
+          <div className="sidebar-foot">
+            <NavItem entry={FIRST_RUN} railed={railed} />
+            <div
+              className="statusline"
+              title={railed ? `${statusText} · ${probeTitle}` : probeTitle}
+            >
+              <span className={dotCls} />
+              <span className="nav-label">{statusText}</span>
+            </div>
             <button
-              className="btn sm"
-              onClick={() => clearAuthFailure()}
-              title="Resume polling with the current key"
+              type="button"
+              className="nav-item"
+              onClick={openSettings}
+              title={railed ? 'Settings' : undefined}
             >
-              Retry now
-            </button>
-            <button className="btn sm" onClick={() => setSettingsOpen(true)}>
-              Open Settings
+              <Icon name="settings" />
+              <span className="nav-label">Settings</span>
             </button>
           </div>
-        )}
+        </aside>
 
-        {offline && !authFailed && (
-          <div className="offline-banner">
-            API offline — showing DEMO DATA, not results from this server
+        <div className="main" ref={mainRef}>
+          <header className="topbar">
+            <button
+              ref={menuRef}
+              type="button"
+              className="btn ghost icon-only topbar-btn topbar-menu"
+              aria-label="Open navigation"
+              aria-controls="app-sidebar"
+              aria-expanded={navOpen}
+              onClick={() => setNavOpen(true)}
+            >
+              <Icon name="menu" />
+            </button>
+            <Breadcrumb />
+            <span className="topbar-spacer" />
+            <CorridorChip corridor={corridor} />
+            <ThemeToggle />
+          </header>
+
+          <div className="banners">
+            {authFailed && (
+              <div className="banner auth-banner" role="alert">
+                <Icon name="circle-alert" className="banner-icon" />
+                <span className="banner-text">
+                  API key rejected (401) — data is not loading and polling is stopped.{' '}
+                  {isAuthRetryScheduled()
+                    ? `Retrying once in ${Math.round(AUTH_RETRY_DELAY_MS / 1000)} s.`
+                    : 'The automatic retry was already spent.'}
+                </span>
+                {/* a 401 is not always a wrong key: a restarting API or a rotated
+                    key is transient, and the latch must not need a page reload */}
+                <span className="banner-actions">
+                  <button
+                    type="button"
+                    className="btn sm"
+                    onClick={() => clearAuthFailure()}
+                    title="Resume polling with the current key"
+                  >
+                    Retry now
+                  </button>
+                  <button type="button" className="btn sm" onClick={openSettings}>
+                    Open Settings
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {offline && !authFailed && (
+              <div className="banner offline-banner">
+                <Icon name="triangle-alert" className="banner-icon" />
+                <span className="banner-text">
+                  API offline — showing DEMO DATA, not results from this server
+                </span>
+              </div>
+            )}
           </div>
-        )}
 
-        <main className="content">
-          <Outlet />
-        </main>
+          <main className="content" id="content" tabIndex={-1}>
+            <Outlet />
+          </main>
+        </div>
+
+        {navOpen && <div className="nav-scrim" onClick={() => setNavOpen(false)} />}
       </div>
 
       <Toasts />
       {settingsOpen && <SettingsDrawer onClose={() => setSettingsOpen(false)} />}
-    </div>
+    </>
   );
 }

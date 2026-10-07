@@ -14,10 +14,17 @@
  * Two honesty rules, the same ones the Scenarios cards follow: a failed run
  * shows the service's own reason rather than a bare status chip, and a row
  * served by the in-browser demo backend is badged DEMO, carries no config hash
- * and does not animate a progress bar for replicates no worker is computing. */
+ * and does not animate a progress bar for replicates no worker is computing.
+ *
+ * Layout per docs/design/DASHBOARD_DESIGN.md §10.3: page header (count, Live
+ * pill), the launcher as a form grid with a cost/reason action bar, then the
+ * runs table, whose run id is a real link. The table renders skeleton rows on
+ * first load, an error callout if that first read fails, an empty state, then
+ * rows; later poll errors stay silent and keep the last render. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import type { MouseEvent as ReactMouseEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   createRun,
   isMockActive,
@@ -29,7 +36,13 @@ import {
 import type { CreateRunRequest, PresetSummary, RunSummary } from '../api/types';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Icon } from '../components/icons';
+import { PageHeader } from '../components/PageHeader';
 import { toast, toastError } from '../components/toast';
+import { Callout } from '../components/ui/Callout';
+import { HashValue } from '../components/ui/CopyButton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { SkeletonRows } from '../components/ui/Skeleton';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
 import { failureReason } from '../lib/format';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
@@ -49,6 +62,8 @@ import {
 import { MIN_REPLICATES } from '../lib/metrics';
 
 const RUNS_POLL_MS = 2000;
+/** Columns of the runs table (skeleton rows and the empty row span them). */
+const RUN_COLUMNS = 7;
 const SCENARIOS_POLL_MS = 3000;
 /** Once the library is loaded, refresh it slowly (new scenarios, names). */
 const SCENARIOS_IDLE_POLL_MS = 30000;
@@ -81,6 +96,10 @@ export function RunsView(): JSX.Element {
   const [seedRaw, setSeedRaw] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Why the first read of the runs list failed, while nothing is on screen
+   * yet. Cleared by the next successful poll; errors after a first answer
+   * stay silent and keep the last render. */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const navigate = useNavigate();
   const authFailed = useAuthFailed();
   // POST /runs never falls back to the demo backend, so the launcher says so
@@ -102,11 +121,14 @@ export function RunsView(): JSX.Element {
       if (seq !== runsSeq.current) return;
       setRuns(rows);
       setRunsDemo(fromDemo);
+      setLoadError(null);
     } catch (err) {
       // toast once per failure burst would spam at 2 s cadence; stay quiet,
-      // the rail status dot + banner already surface connectivity (and a
-      // rejected key pauses this poll entirely).
-      void err;
+      // the status line + banner already surface connectivity (and a
+      // rejected key pauses this poll entirely). Only a first load that has
+      // nothing to show says why, in the table, instead of a skeleton forever.
+      if (seq !== runsSeq.current) return;
+      setLoadError(err instanceof Error ? err.message : String(err));
     }
   }, []);
   usePoll(poll, authFailed ? null : RUNS_POLL_MS);
@@ -222,217 +244,314 @@ export function RunsView(): JSX.Element {
     void doLaunch();
   };
 
-  return (
-    <div className="view">
-      <div className="view-title">
-        Run Operations{' '}
-        <span className="count mono">
-          {authFailed
-            ? 'paused — API key rejected'
-            : runs
-              ? `${runs.length} runs · 2 s poll`
-              : 'loading…'}
-        </span>
-        {runsDemo && (
+  // a click anywhere on a row opens the run, except on its own controls (the
+  // id link navigates by itself; the copy button must not navigate)
+  const openRow = (e: ReactMouseEvent<HTMLTableRowElement>, runId: string): void => {
+    if ((e.target as Element).closest('a, button, input, select, label')) return;
+    navigate(`/runs/${runId}`);
+  };
+
+  const launchBlocked = !selected || busy || offline || warmupBlock !== null;
+  const replicatesLow = plannedReps !== null && plannedReps < MIN_REPLICATES;
+
+  let tableBody: JSX.Element;
+  if (runs === null) {
+    if (authFailed) {
+      tableBody = (
+        <tr>
+          <td colSpan={RUN_COLUMNS}>
+            <EmptyState
+              compact
+              title="Runs are not loading."
+              description="The API key was rejected. Save a new key in Settings to resume."
+            />
+          </td>
+        </tr>
+      );
+    } else if (loadError !== null) {
+      tableBody = (
+        <tr>
+          <td colSpan={RUN_COLUMNS} className="runs-error-cell">
+            <Callout
+              tone="danger"
+              title="The runs list could not be read."
+              action={
+                <button type="button" className="btn sm" onClick={() => void poll()}>
+                  <Icon name="refresh-cw" size={14} />
+                  Retry
+                </button>
+              }
+            >
+              <span className="mono">{loadError}</span>
+            </Callout>
+          </td>
+        </tr>
+      );
+    } else {
+      tableBody = <SkeletonRows rows={5} columns={RUN_COLUMNS} />;
+    }
+  } else if (runs.length === 0) {
+    tableBody = (
+      <tr>
+        <td colSpan={RUN_COLUMNS}>
+          <EmptyState
+            compact
+            title="No runs yet."
+            description="Runs appear here after you launch one above."
+          />
+        </td>
+      </tr>
+    );
+  } else {
+    tableBody = (
+      <>
+        {runs.map((r) => (
+          <tr key={r.run_id} className="rowlink" onClick={(e) => openRow(e, r.run_id)}>
+            <td className="run-id-cell">
+              <Link to={`/runs/${r.run_id}`} className="run-id mono">
+                {r.run_id}
+              </Link>
+            </td>
+            <td className="secondary" title={r.scenario_id}>
+              {r.scenario_name ?? scenarioNames.get(r.scenario_id) ?? r.scenario_id}
+            </td>
+            <td>
+              <TierBadge tier={r.tier} />
+            </td>
+            <td>
+              <StatusChip status={r.status} />
+              {r.status === 'failed' && (
+                // the reason the API already sent, not a status chip the
+                // user has to take to the server logs
+                <div className="fail-reason small" title={failureReason(r.error, r.error_kind)}>
+                  {failureReason(r.error, r.error_kind)}
+                </div>
+              )}
+            </td>
+            <td className="runs-progress-cell">
+              {runsDemo ? (
+                // an animated bar would show a worker computing replicates
+                // that no server has ever been asked for
+                <span className="mono small muted">
+                  {r.progress.completed_replicates}/{r.progress.total_replicates} — demo
+                </span>
+              ) : (
+                <ProgressBar
+                  done={r.progress.completed_replicates}
+                  total={r.progress.total_replicates}
+                  status={r.status}
+                />
+              )}
+            </td>
+            <td className="hash">
+              <HashValue value={runsDemo ? DEMO_HASH_LABEL : r.config_hash} />
+            </td>
+            <td>
+              <span className="tag-row">
+                <SeededBadge seeded={r.seeded} />
+                {runsDemo && (
+                  <span className="tag demo" title={DEMO_ROW_TITLE}>
+                    DEMO
+                  </span>
+                )}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </>
+    );
+  }
+
+  let meta: JSX.Element;
+  if (authFailed) {
+    meta = <span className="meta-warning">paused — API key rejected</span>;
+  } else {
+    meta = (
+      <>
+        {runs !== null && (
+          <span className="mono">{`${runs.length} run${runs.length === 1 ? '' : 's'}`}</span>
+        )}
+        {runsDemo ? (
           <span className="tag demo" title={DEMO_ROW_TITLE}>
             DEMO DATA
           </span>
+        ) : (
+          runs !== null && (
+            <span className="meta-live" title="Polling every 2 s">
+              <span className="meta-live-dot" aria-hidden="true" />
+              Live
+            </span>
+          )
         )}
-      </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="view">
+      <PageHeader
+        title="Runs"
+        documentTitle="Runs"
+        meta={meta}
+        description="Launch a scenario and follow its replicates. Every run records its seeds and config hash."
+      />
 
       {runsDemo && (
-        <p className="hint-amber">
-          The API is unreachable, so these are built-in demo runs: no server has queued or
-          computed them, their hashes exist nowhere, and their replicate counts are not progress.
-        </p>
+        <Callout tone="warning">
+          The API is unreachable, so these are built-in demo runs: no server has queued or computed
+          them, their hashes exist nowhere, and their replicate counts are not progress.
+        </Callout>
       )}
 
-      <div className="panel">
-        <div className="panel-body row wrap">
-          <div className="field">
-            <label htmlFor="l-scn">Scenario</label>
-            <select
-              id="l-scn"
-              className="input"
-              value={launchKey}
-              onChange={(e) => setLaunchKey(e.target.value)}
-              style={{ minWidth: 220 }}
-            >
-              {library.map((s) => (
-                <option key={itemKey(s)} value={itemKey(s)}>
-                  {isPreset(s) ? `${s.name} (preset)` : s.name}
-                </option>
-              ))}
-            </select>
+      <section className="panel" aria-labelledby="runs-launch-title">
+        <div className="panel-head">
+          <h2 className="panel-title" id="runs-launch-title">
+            Launch a run
+          </h2>
+        </div>
+        <div className="panel-body">
+          <div className="form-grid runs-launch-grid">
+            <div className="field runs-field-scenario">
+              <label htmlFor="l-scn">Scenario</label>
+              <select
+                id="l-scn"
+                className="input"
+                value={launchKey}
+                onChange={(e) => setLaunchKey(e.target.value)}
+              >
+                {library.map((s) => (
+                  <option key={itemKey(s)} value={itemKey(s)}>
+                    {isPreset(s) ? `${s.name} (preset)` : s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="l-tier">Tier</label>
+              <select
+                id="l-tier"
+                className="input"
+                value={launchTier}
+                onChange={(e) => setLaunchTier(e.target.value as 'micro' | 'macro')}
+              >
+                <option value="micro">micro (SUMO)</option>
+                <option value="macro">macro (CTM screening)</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="l-dur">Duration (s)</label>
+              <input
+                id="l-dur"
+                className="input"
+                type="number"
+                min={MIN_DURATION_S}
+                max={MAX_DURATION_S}
+                step={60}
+                placeholder="scenario"
+                value={durationRaw}
+                aria-invalid={warmupBlock !== null || undefined}
+                aria-describedby={warmupBlock ? 'l-dur-hint l-launch-reason' : undefined}
+                onChange={(e) =>
+                  setDurationRaw(clampRaw(e.target.value, MIN_DURATION_S, MAX_DURATION_S))
+                }
+              />
+              {warmupBlock !== null && (
+                <span className="hint-amber" id="l-dur-hint">
+                  inside the {base?.sim.warmup_s} s warm-up
+                </span>
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor="l-seed">Seed</label>
+              <input
+                id="l-seed"
+                className="input"
+                type="number"
+                min={MIN_SEED}
+                max={MAX_SEED}
+                placeholder="scenario"
+                value={seedRaw}
+                onChange={(e) => setSeedRaw(clampRaw(e.target.value, MIN_SEED, MAX_SEED))}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="l-reps">Replicates</label>
+              <input
+                id="l-reps"
+                className="input"
+                type="number"
+                min={1}
+                max={MAX_REPLICATES}
+                placeholder="scenario"
+                value={repsRaw}
+                aria-describedby={replicatesLow ? 'l-reps-hint' : undefined}
+                onChange={(e) =>
+                  setRepsRaw(
+                    e.target.value === ''
+                      ? ''
+                      : String(clampInt(Number(e.target.value), 1, MAX_REPLICATES, 1)),
+                  )
+                }
+              />
+              {replicatesLow && (
+                <span className="hint-amber" id="l-reps-hint">
+                  below reporting standard n ≥ {MIN_REPLICATES}
+                </span>
+              )}
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="l-tier">Tier</label>
-            <select
-              id="l-tier"
-              className="input"
-              value={launchTier}
-              onChange={(e) => setLaunchTier(e.target.value as 'micro' | 'macro')}
-            >
-              <option value="micro">micro (SUMO)</option>
-              <option value="macro">macro (CTM screening)</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="l-dur">Duration (s)</label>
-            <input
-              id="l-dur"
-              className="input"
-              type="number"
-              min={MIN_DURATION_S}
-              max={MAX_DURATION_S}
-              step={60}
-              style={{ width: 110 }}
-              placeholder="scenario"
-              value={durationRaw}
-              onChange={(e) =>
-                setDurationRaw(clampRaw(e.target.value, MIN_DURATION_S, MAX_DURATION_S))
-              }
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="l-seed">Seed</label>
-            <input
-              id="l-seed"
-              className="input"
-              type="number"
-              min={MIN_SEED}
-              max={MAX_SEED}
-              style={{ width: 110 }}
-              placeholder="scenario"
-              value={seedRaw}
-              onChange={(e) => setSeedRaw(clampRaw(e.target.value, MIN_SEED, MAX_SEED))}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="l-reps">Replicates</label>
-            <input
-              id="l-reps"
-              className="input"
-              type="number"
-              min={1}
-              max={MAX_REPLICATES}
-              style={{ width: 90 }}
-              placeholder="scenario"
-              value={repsRaw}
-              onChange={(e) =>
-                setRepsRaw(
-                  e.target.value === ''
-                    ? ''
-                    : String(clampInt(Number(e.target.value), 1, MAX_REPLICATES, 1)),
-                )
-              }
-            />
-            {plannedReps !== null && plannedReps < MIN_REPLICATES && (
-              <span className="hint-amber">below reporting standard n ≥ {MIN_REPLICATES}</span>
-            )}
-          </div>
-          <div className="field">
-            <label>&nbsp;</label>
-            <button
-              className="btn primary"
-              onClick={launch}
-              disabled={!selected || busy || offline || warmupBlock !== null}
-              title={offline ? OFFLINE_WRITE_MESSAGE : (warmupBlock ?? undefined)}
-            >
-              Launch run
-            </button>
-          </div>
-          <div className="field">
-            <label>&nbsp;</label>
+        </div>
+        <div className="panel-foot form-actions">
+          <div className="form-actions-summary" id="l-launch-reason">
             {warmupBlock ? (
               <span className="hint-amber">{warmupBlock}</span>
+            ) : offline ? (
+              <span>Reconnect before launching: nothing is sent while the server is unreachable.</span>
+            ) : total === null ? (
+              <span>Scenario defaults</span>
             ) : (
-              <span className="small muted mono">
-                {total === null
-                  ? 'scenario defaults'
-                  : `${plannedReps} × ${(plannedDuration ?? 0) / 60} min = ${describeSimMinutes(total)}`}
+              <span className="mono">
+                {`${plannedReps} × ${(plannedDuration ?? 0) / 60} min = ${describeSimMinutes(total)}`}
               </span>
             )}
           </div>
+          <div className="form-actions-buttons">
+            <button
+              type="button"
+              className="btn primary"
+              onClick={launch}
+              disabled={launchBlocked}
+              aria-busy={busy || undefined}
+              aria-describedby={warmupBlock || offline ? 'l-launch-reason' : undefined}
+              title={offline ? OFFLINE_WRITE_MESSAGE : (warmupBlock ?? undefined)}
+            >
+              {busy && <Icon name="loader-circle" size={16} className="spin" />}
+              Launch run
+            </button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="panel">
-        <div className="table-wrap">
+      <section className="panel runs-table-panel">
+        <div className="table-wrap scroll-y" aria-busy={runs === null && !authFailed && loadError === null}>
           <table className="data" aria-label="runs">
             <thead>
               <tr>
-                <th>Run</th>
-                <th>Scenario</th>
-                <th>Tier</th>
-                <th>Status</th>
-                <th style={{ width: 220 }}>Progress</th>
-                <th>Config hash</th>
-                <th>Labels</th>
+                <th scope="col">Run</th>
+                <th scope="col">Scenario</th>
+                <th scope="col">Tier</th>
+                <th scope="col">Status</th>
+                <th scope="col" className="runs-progress-col">
+                  Progress
+                </th>
+                <th scope="col">Config</th>
+                <th scope="col">Labels</th>
               </tr>
             </thead>
-            <tbody>
-              {(runs ?? []).map((r) => (
-                <tr
-                  key={r.run_id}
-                  className="rowlink"
-                  onClick={() => navigate(`/runs/${r.run_id}`)}
-                >
-                  <td style={{ fontWeight: 700 }}>{r.run_id}</td>
-                  <td className="muted" title={r.scenario_id}>
-                    {r.scenario_name ?? scenarioNames.get(r.scenario_id) ?? r.scenario_id}
-                  </td>
-                  <td>
-                    <TierBadge tier={r.tier} />
-                  </td>
-                  <td>
-                    <StatusChip status={r.status} />
-                    {r.status === 'failed' && (
-                      // the reason the API already sent, not a status chip the
-                      // user has to take to the server logs
-                      <div
-                        className="fail-reason small"
-                        title={failureReason(r.error, r.error_kind)}
-                      >
-                        {failureReason(r.error, r.error_kind)}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {runsDemo ? (
-                      // an animated bar would show a worker computing replicates
-                      // that no server has ever been asked for
-                      <span className="mono small muted">
-                        {r.progress.completed_replicates}/{r.progress.total_replicates} — demo
-                      </span>
-                    ) : (
-                      <ProgressBar done={r.progress.completed_replicates} total={r.progress.total_replicates} status={r.status} />
-                    )}
-                  </td>
-                  <td className={runsDemo ? 'hash muted' : 'hash'}>
-                    {runsDemo ? DEMO_HASH_LABEL : r.config_hash}
-                  </td>
-                  <td>
-                    <SeededBadge seeded={r.seeded} />
-                    {runsDemo && (
-                      <span className="tag demo" title={DEMO_ROW_TITLE}>
-                        DEMO
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {runs !== null && runs.length === 0 && (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty">no runs yet — launch one above</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
+            <tbody>{tableBody}</tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {confirming && (
         <ConfirmDialog

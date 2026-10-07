@@ -1,6 +1,9 @@
-/** Minimal toast bus + renderer. Restrained: top-right, mono, auto-dismiss. */
+/** Minimal toast bus + renderer (docs/design/DASHBOARD_DESIGN.md §9.14):
+ * bottom-right, stacked upward, at most four, auto-dismissed. Toasts echo;
+ * anything the operator must act on also stays on the screen (§9.10). */
 
 import { useEffect, useState } from 'react';
+import { Icon, type IconName } from './icons';
 
 export type ToastKind = 'info' | 'ok' | 'error';
 
@@ -48,6 +51,12 @@ export function toastError(err: unknown, prefix = ''): void {
   toast('error', prefix ? `${prefix}: ${msg}` : msg);
 }
 
+const TOAST_ICON: Record<ToastKind, IconName> = {
+  info: 'info',
+  ok: 'check',
+  error: 'circle-alert',
+};
+
 export function Toasts(): JSX.Element {
   const [list, setList] = useState<ToastItem[]>([]);
   useEffect(() => {
@@ -61,13 +70,17 @@ export function Toasts(): JSX.Element {
     <div className="toasts" role="status" aria-live="polite">
       {list.map((t) => (
         <div key={t.id} className={`toast ${t.kind}`}>
-          {t.msg}
+          <span className="toast-icon">
+            <Icon name={TOAST_ICON[t.kind]} size={16} />
+          </span>
+          <span className="toast-msg">{t.msg}</span>
           <button
-            className="toast-x"
+            type="button"
+            className="btn ghost icon-only toast-x"
             aria-label={`dismiss: ${t.msg}`}
             onClick={() => dismissToast(t.id)}
           >
-            ×
+            <Icon name="x" size={14} />
           </button>
         </div>
       ))}

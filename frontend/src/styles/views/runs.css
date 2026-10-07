@@ -1,3 +1,58 @@
-/* Runs view. Nothing view-specific yet: the runs table uses the shared
-   table.data, .chip and .progress in components.css.
-   Owner: A (step 4, §10.3). */
+/* Runs view (docs/design/DASHBOARD_DESIGN.md §10.3). The launcher uses the
+   shared .form-grid / .panel-foot.form-actions and the table the shared
+   table.data, .chip, .progress and .hash (components.css); only the
+   view-specific pieces live here.
+   Owner: A. */
+
+/* the launcher: one row of five fields, capped at the narrow form width
+   (§6.3); two columns when the panel is narrow (tablet, §6.4). The panel is
+   the container (components.css), so this follows sidebar collapse. */
+.form-grid.runs-launch-grid {
+  grid-template-columns: minmax(200px, 2fr) minmax(170px, 1.5fr) repeat(3, minmax(100px, 1fr));
+  max-width: var(--content-max-narrow);
+}
+@container (max-width: 840px) {
+  .form-grid.runs-launch-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .runs-field-scenario {
+    grid-column: 1 / -1;
+  }
+}
+
+/* the table panel clips its scroller to the panel's radius */
+.runs-table-panel {
+  overflow: hidden;
+}
+
+/* run id: a real link in the first cell, mono 12/500 primary */
+.run-id {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+.run-id:hover {
+  text-decoration: underline;
+}
+
+.runs-progress-col {
+  width: 220px;
+}
+.runs-progress-cell {
+  min-width: 180px;
+}
+
+/* labels column: badges side by side */
+.tag-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* a first-load failure sits in the table, wrapping like prose */
+.runs-error-cell {
+  white-space: normal;
+}
+table.data td.runs-error-cell {
+  height: auto;
+  padding: var(--space-3);
+}

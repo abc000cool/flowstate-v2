@@ -80,6 +80,45 @@ export function useResolvedTheme(): Theme {
   return useSyncExternalStore(subscribe, resolvedTheme, () => 'light');
 }
 
+function subscribePref(onChange: () => void): () => void {
+  // another tab changing the stored preference also changes this one: the
+  // pre-paint script would apply it on the next load anyway
+  const onStorage = (e: StorageEvent): void => {
+    if (e.key !== THEME_STORAGE_KEY) return;
+    const p = getThemePref();
+    const root = document.documentElement;
+    if (p === 'system') delete root.dataset.theme;
+    else root.dataset.theme = p;
+    onChange();
+  };
+  window.addEventListener(THEME_EVENT, onChange);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(THEME_EVENT, onChange);
+    window.removeEventListener('storage', onStorage);
+  };
+}
+
+/** The stored preference (System/Light/Dark) as React state, for the
+ * controls that set it: the topbar toggle and Settings → Appearance. */
+export function useThemePref(): ThemePref {
+  return useSyncExternalStore(subscribePref, getThemePref, () => 'system');
+}
+
+/** Display names, in the order the topbar toggle cycles through them. */
+export const THEME_PREF_LABELS: Record<ThemePref, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+};
+
+const CYCLE: ThemePref[] = ['system', 'light', 'dark'];
+
+/** The preference after `p` in the System → Light → Dark cycle. */
+export function nextThemePref(p: ThemePref): ThemePref {
+  return CYCLE[(CYCLE.indexOf(p) + 1) % CYCLE.length];
+}
+
 /** A CSS custom property's computed value, trimmed (e.g.
  * `readToken('--viz-frame')`). Read at paint time so it follows the theme;
  * returns '' when the property is not defined. */

@@ -54,7 +54,7 @@ export function SplitAuditTable({
   const defects = findings.filter((f) => isSplitDefect(f.verdict)).length;
   return (
     <div className="split-audit">
-      <p className="small">
+      <p className="split-audit-summary">
         split audit: {findings.length} exit{findings.length === 1 ? '' : 's'} checked,{' '}
         {defects === 0 ? (
           'none compiled on the wrong side'
@@ -65,14 +65,14 @@ export function SplitAuditTable({
         )}
       </p>
       <div className="table-wrap">
-        <table className="data" aria-label="split audit">
+        <table className="data compact" aria-label="split audit">
           <thead>
             <tr>
-              <th>x</th>
-              <th>split → exit</th>
+              <th className="num">Position</th>
+              <th>Split → exit</th>
               <th>OSM side</th>
-              <th>compiled lanes</th>
-              <th>verdict</th>
+              <th>Compiled lanes</th>
+              <th>Verdict</th>
             </tr>
           </thead>
           <tbody>
@@ -81,7 +81,7 @@ export function SplitAuditTable({
               const defect = isSplitDefect(f.verdict);
               return [
                 <tr key={key} data-verdict={f.verdict}>
-                  <td className="mono">{formatDistKm(f.x_m)}</td>
+                  <td className="num">{formatDistKm(f.x_m)}</td>
                   <td className="mono">
                     {f.from_edge} → {f.exit_edge}
                   </td>
@@ -100,8 +100,8 @@ export function SplitAuditTable({
                 </tr>,
                 defect && f.remedy ? (
                   <tr key={`${key}-remedy`} className="remedy-row">
-                    <td colSpan={5} className="remedy small hint-amber">
-                      remedy: {f.remedy}
+                    <td colSpan={5} className="remedy hint-amber">
+                      remedy: <code className="mono">{f.remedy}</code>
                     </td>
                   </tr>
                 ) : null,

@@ -59,15 +59,17 @@ const EXITED_TITLE =
 function RampMeterTable({ rows }: { rows: RampMeterDiagnostics[] }): JSX.Element {
   return (
     <div className="table-wrap">
-      <table className="data" aria-label="ramp meters">
+      <table className="data compact" aria-label="ramp meters">
         <thead>
           <tr>
             <th>Ramp</th>
             <th>Controller</th>
-            <th>Interval [s]</th>
-            <th>Released</th>
-            <th title={PASSED_TITLE}>Passed unstoppable</th>
-            <th>Rate updates</th>
+            <th className="num">Interval [s]</th>
+            <th className="num">Released</th>
+            <th className="num" title={PASSED_TITLE}>
+              Passed unstoppable
+            </th>
+            <th className="num">Rate updates</th>
           </tr>
         </thead>
         <tbody>
@@ -75,12 +77,12 @@ function RampMeterTable({ rows }: { rows: RampMeterDiagnostics[] }): JSX.Element
             <tr key={`${m.ramp}-${m.edge}`}>
               <td>{m.ramp}</td>
               <td className="mono">{m.controller}</td>
-              <td className="mono">{formatNumber(m.interval_s, 0)}</td>
-              <td className="mono">{m.n_released}</td>
-              <td className={`mono${m.n_passed_unstoppable > 0 ? ' hint-amber' : ''}`}>
+              <td className="num">{formatNumber(m.interval_s, 0)}</td>
+              <td className="num">{m.n_released}</td>
+              <td className={`num${m.n_passed_unstoppable > 0 ? ' hint-amber' : ''}`}>
                 {m.n_passed_unstoppable}
               </td>
-              <td className="mono">{m.n_rate_updates}</td>
+              <td className="num">{m.n_rate_updates}</td>
             </tr>
           ))}
         </tbody>
@@ -92,25 +94,45 @@ function RampMeterTable({ rows }: { rows: RampMeterDiagnostics[] }): JSX.Element
 function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element {
   return (
     <div className="table-wrap">
-      <table className="data" aria-label="weaving sections">
+      <table className="data compact zebra wide weave-table" aria-label="weaving sections">
         <thead>
           <tr>
             <th>Section</th>
-            <th>Entered</th>
-            <th>Changed in</th>
-            <th>Changed out</th>
-            <th title={EXITED_TITLE}>Exited / reached</th>
-            <th>Forced</th>
-            <th title={DEFERRED_TITLE}>Deferred (vehicle-steps)</th>
-            <th title={MISSED_TITLE}>Missed</th>
-            <th title={UNFINISHED_TITLE}>Unfinished</th>
-            <th>Mean wait [s]</th>
-            <th title={COOPERATIONS_TITLE}>Follower cooperations (vehicle-steps)</th>
-            <th title={FOLLOWER_DECEL_TITLE}>Mean follower decel [m/s²]</th>
-            <th title={EASINGS_TITLE}>Changer easings</th>
-            <th title={VACATED_TITLE}>Through vacated</th>
-            <th title={VACATE_REFUSED_TITLE}>Vacate refused</th>
-            <th title={PAIR_RELEASES_TITLE}>Pair releases</th>
+            <th className="num">Entered</th>
+            <th className="num">Changed in</th>
+            <th className="num">Changed out</th>
+            <th className="num" title={EXITED_TITLE}>
+              Exited / reached
+            </th>
+            <th className="num">Forced</th>
+            <th className="num" title={DEFERRED_TITLE}>
+              Deferred (vehicle-steps)
+            </th>
+            <th className="num" title={MISSED_TITLE}>
+              Missed
+            </th>
+            <th className="num" title={UNFINISHED_TITLE}>
+              Unfinished
+            </th>
+            <th className="num">Mean wait [s]</th>
+            <th className="num" title={COOPERATIONS_TITLE}>
+              Follower cooperations (vehicle-steps)
+            </th>
+            <th className="num" title={FOLLOWER_DECEL_TITLE}>
+              Mean follower decel [m/s²]
+            </th>
+            <th className="num" title={EASINGS_TITLE}>
+              Changer easings
+            </th>
+            <th className="num" title={VACATED_TITLE}>
+              Through vacated
+            </th>
+            <th className="num" title={VACATE_REFUSED_TITLE}>
+              Vacate refused
+            </th>
+            <th className="num" title={PAIR_RELEASES_TITLE}>
+              Pair releases
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -119,23 +141,23 @@ function WeaveTable({ rows }: { rows: WeaveSectionDiagnostics[] }): JSX.Element 
               <td>
                 {w.ramp} → {w.exit}
               </td>
-              <td className="mono">{w.n_entered}</td>
-              <td className="mono">{w.n_changed_in}</td>
-              <td className="mono">{w.n_changed_out}</td>
-              <td className="mono">
+              <td className="num">{w.n_entered}</td>
+              <td className="num">{w.n_changed_in}</td>
+              <td className="num">{w.n_changed_out}</td>
+              <td className="num">
                 {w.n_exited} / {w.n_reached_section_exiting ?? w.n_departed_exiting}
               </td>
-              <td className="mono">{w.n_forced}</td>
-              <td className="mono">{w.n_forced_deferred}</td>
-              <td className={`mono${w.n_missed > 0 ? ' hint-amber' : ''}`}>{w.n_missed}</td>
-              <td className={`mono${w.n_unfinished > 0 ? ' hint-amber' : ''}`}>{w.n_unfinished}</td>
-              <td className="mono">{formatNumber(w.wait_s_mean ?? null, 1)}</td>
-              <td className="mono">{w.n_cooperations ?? '—'}</td>
-              <td className="mono">{formatNumber(w.mean_follower_decel_ms2 ?? null, 2)}</td>
-              <td className="mono">{w.n_changer_eased ?? '—'}</td>
-              <td className="mono">{w.n_vacated ?? '—'}</td>
-              <td className="mono">{w.n_vacate_refused ?? '—'}</td>
-              <td className="mono">{w.n_pair_releases ?? '—'}</td>
+              <td className="num">{w.n_forced}</td>
+              <td className="num">{w.n_forced_deferred}</td>
+              <td className={`num${w.n_missed > 0 ? ' hint-amber' : ''}`}>{w.n_missed}</td>
+              <td className={`num${w.n_unfinished > 0 ? ' hint-amber' : ''}`}>{w.n_unfinished}</td>
+              <td className="num">{formatNumber(w.wait_s_mean ?? null, 1)}</td>
+              <td className="num">{w.n_cooperations ?? '—'}</td>
+              <td className="num">{formatNumber(w.mean_follower_decel_ms2 ?? null, 2)}</td>
+              <td className="num">{w.n_changer_eased ?? '—'}</td>
+              <td className="num">{w.n_vacated ?? '—'}</td>
+              <td className="num">{w.n_vacate_refused ?? '—'}</td>
+              <td className="num">{w.n_pair_releases ?? '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -154,32 +176,28 @@ export function MergeDiagnosticsPanel({
   const weaves = diagnostics.weave_sections ?? [];
   if (meters.length === 0 && weaves.length === 0) return null;
   return (
-    <div className="panel" data-testid="merge-diagnostics">
+    <section className="panel diag-panel" data-testid="merge-diagnostics">
       <div className="panel-head">
-        <span className="panel-title">Merge diagnostics · seed {diagnostics.seed}</span>
+        <h2 className="panel-title">Merge diagnostics · seed {diagnostics.seed}</h2>
       </div>
-      <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <p className="small muted" style={{ margin: 0 }}>
+      <div className="panel-body stack">
+        <p className="diag-lead">
           Counters of one replicate&apos;s merge models, read from its meta — how the ramp
           meters and weaving sections behaved, not a corridor result and not a replicate mean.
         </p>
         {meters.length > 0 && (
-          <div>
-            <div className="panel-title" style={{ marginBottom: 8 }}>
-              Ramp meters
-            </div>
+          <div className="diag-block">
+            <h4>Ramp meters</h4>
             <RampMeterTable rows={meters} />
           </div>
         )}
         {weaves.length > 0 && (
-          <div>
-            <div className="panel-title" style={{ marginBottom: 8 }}>
-              Weaving sections
-            </div>
+          <div className="diag-block">
+            <h4>Weaving sections</h4>
             <WeaveTable rows={weaves} />
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

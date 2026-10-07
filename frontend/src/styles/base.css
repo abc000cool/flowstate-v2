@@ -1,6 +1,6 @@
-/* Base: reset, global focus, scrollbars, text utilities.
-   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
-   Owner: A (step 1 restyles: §5.2 body type, §11.2 focus, §11.4 motion). */
+/* Base: reset, body type, focus, skip link, text utilities, reduced motion,
+   forced colors (docs/design/DASHBOARD_DESIGN.md §5.2, §11.2–11.5).
+   Owner: A. Colors come from tokens.css only. */
 
 /* ============================== reset =============================== */
 
@@ -17,20 +17,59 @@ body,
   margin: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.5;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font: var(--weight-regular) var(--text-14) / var(--leading-14) var(--font-sans);
+  letter-spacing: var(--tracking-normal);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 h1,
 h2,
 h3,
-p {
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
   margin: 0;
+}
+
+/* heading defaults (§5.2); components restyle by class */
+h1 {
+  font-size: var(--text-20);
+  line-height: var(--leading-20);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+h2 {
+  font-size: var(--text-16);
+  line-height: var(--leading-16);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-snug);
+}
+h3 {
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-semibold);
+}
+h4,
+h5,
+h6 {
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-semibold);
 }
 
 button,
@@ -39,46 +78,137 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+  letter-spacing: inherit;
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-text);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+a:hover {
+  text-decoration: underline;
+}
+a.btn:hover {
   text-decoration: none;
 }
 
 ::selection {
-  background: rgba(79, 209, 224, 0.25);
+  background: var(--accent-border);
+  color: var(--text-primary);
 }
+
+/* ============================== focus (§11.2) ======================= */
+/* An outline, never a box-shadow: outlines survive forced colors. */
 
 :focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.input:focus-visible,
+select.input:focus-visible {
+  outline-offset: 1px;
+}
+
+:focus:not(:focus-visible) {
   outline: none;
-  box-shadow: var(--ring);
-  border-radius: var(--r1);
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+/* ============================== skip link (§11.3) =================== */
+/* First focusable element on the page; visible only while focused. */
+
+.skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: var(--z-tooltip);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
+  font-weight: var(--weight-medium);
+  transform: translateY(calc(-100% - 16px));
 }
-::-webkit-scrollbar-thumb {
-  background: #232a3b;
-  border-radius: 5px;
-  border: 2px solid var(--bg);
-}
-::-webkit-scrollbar-track {
-  background: transparent;
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: none;
+  text-decoration: none;
 }
 
-/* numerals: every data figure is mono + tabular */
+/* ============================== text utilities ====================== */
+
+/* machine values: IDs, hashes, seeds, paths, numbers that align (§5.2) */
 .mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-none);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--text-secondary);
 }
 
 .small {
-  font-size: 12px;
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+}
+
+/* ============================== reduced motion (§11.4) ============== */
+/* The duration tokens already go to 0 in tokens.css; this also stops
+   keyframe pulses (status dot, running pill, skeleton). */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================== forced colors (§11.5) =============== */
+/* Windows high contrast replaces author colors: give every tinted shape a
+   border, mark selection with Highlight, keep status dots and progress
+   fills visible. Icons use currentColor and follow on their own. */
+
+@media (forced-colors: active) {
+  .tag,
+  .chip,
+  .callout,
+  .banner,
+  .corridor-chip,
+  .meta-live,
+  .empty-state {
+    border: 1px solid CanvasText;
+  }
+
+  .seg button.active,
+  .seg [role='tab'][aria-selected='true'],
+  .chip-toggle:has(input:checked),
+  .theme-seg-option:has(input:checked),
+  .nav-item[aria-current='page'],
+  table.data tr.selected {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .progress > i,
+  .progress > span,
+  .progress-fill {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .dot,
+  .meta-live-dot {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
 }

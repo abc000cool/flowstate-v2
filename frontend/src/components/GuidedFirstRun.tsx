@@ -61,7 +61,9 @@ import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 import { ensureStored } from '../lib/library';
 import { warmupProblem } from '../lib/limits';
 import { MIN_REPLICATES } from '../lib/metrics';
-import { ProgressBar, StatusChip } from './bits';
+import { ProgressBar, StatusChip, StatusGlyph } from './bits';
+import { Icon } from './icons';
+import { PageHeader } from './PageHeader';
 import { toast, toastError } from './toast';
 
 /** The preset the walkthrough runs: the canonical emergence benchmark, and
@@ -597,7 +599,7 @@ export function GuidedFirstRun({
         ) : null,
       extra:
         scenarioId !== null ? (
-          <div className="small muted">
+          <div className="g-extra">
             scenario <span className="mono">{scenarioId}</span>
             {preset && (
               <>
@@ -630,7 +632,7 @@ export function GuidedFirstRun({
         ) : null,
       extra:
         runId !== null ? (
-          <div className="small muted">
+          <div className="g-extra">
             run <span className="mono">{runId}</span>
           </div>
         ) : null,
@@ -657,7 +659,7 @@ export function GuidedFirstRun({
       ),
       extra:
         run !== null ? (
-          <div className="row" style={{ gap: 12 }}>
+          <div className="guided-progress">
             <StatusChip status={run.status} />
             <ProgressBar
               done={run.progress.completed_replicates}
@@ -705,7 +707,7 @@ export function GuidedFirstRun({
         ) : null,
       extra:
         metrics !== null ? (
-          <div className="small muted">
+          <div className="g-extra">
             metrics read · {metrics.replicates.length} replicate
             {metrics.replicates.length === 1 ? '' : 's'}
             {metrics.underpowered ? ' · underpowered' : ''}
@@ -739,7 +741,7 @@ export function GuidedFirstRun({
         </>
       ),
       action: (
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row tight">
           {report === null || reportFailed ? (
             <button
               className="btn sm primary"
@@ -763,7 +765,7 @@ export function GuidedFirstRun({
       ),
       extra:
         report !== null ? (
-          <div className="small muted">
+          <div className="g-extra">
             report <span className="mono">{report.report_id}</span> ·{' '}
             <span className="mono">{report.status}</span>
             {downloaded && ' · downloaded'}
@@ -783,16 +785,18 @@ export function GuidedFirstRun({
   if (onlyWhenEmpty && !engaged && (serverRuns !== 0 || demo)) return null;
 
   const panel = (
-    <div className="panel guided">
+    <section className="panel guided" aria-labelledby="guided-title">
       <div className="panel-head">
-        <span className="panel-title">Guided first run</span>
+        <h2 className="panel-title" id="guided-title">
+          Guided first run
+        </h2>
         <span className="spacer" />
-        <span className="small muted mono">
+        <span className="guided-count">
           {doneCount}/{steps.length} done
         </span>
       </div>
       <div className="panel-body">
-        <p className="small muted" style={{ margin: '0 0 16px' }}>
+        <p className="guided-intro">
           The ten-minute path of <span className="mono">docs/QUICKSTART.md</span>, in a few
           clicks: the ring benchmark, a {SMOKE_REPLICATES}-replicate smoke run, its metrics and a
           report bundle. Every step below is ticked by an answer from the API — never by demo
@@ -802,41 +806,47 @@ export function GuidedFirstRun({
           {steps.map((s, i) => {
             const state = stateOf(s);
             return (
-            <li key={s.key} className={`guided-step ${state}`}>
-              <span className="g-num mono">{i + 1}</span>
-              <div className="g-main">
-                <div className="g-head">
-                  <span className="g-title">{s.title}</span>
-                  <span className={`chip ${chipClass(state)}`} aria-label={`${s.title}: ${state}`}>
-                    <span className="dot" />
-                    {state}
-                  </span>
+              <li key={s.key} className={`guided-step ${state}`}>
+                <span className="g-num mono">
+                  {state === 'done' && <Icon name="check" size={12} strokeWidth={2.5} />}
+                  {i + 1}
+                </span>
+                <div className="g-main">
+                  <div className="g-head">
+                    <span className="g-title">{s.title}</span>
+                    <span className={`chip ${chipClass(state)}`}>
+                      <StatusGlyph state={state} />
+                      {state}
+                    </span>
+                  </div>
+                  <div className="g-what">{s.what}</div>
+                  {!s.done && s.why !== null && <div className="g-why">{s.why}</div>}
+                  {!s.done && stale[s.key] === true && (
+                    <div className="g-why">{STALE_ID_MESSAGE}</div>
+                  )}
+                  {s.extra}
+                  {s.action}
+                  {error !== null && error.step === s.key && (
+                    <p className="fail-reason">{error.msg}</p>
+                  )}
                 </div>
-                <div className="small muted g-what">{s.what}</div>
-                {!s.done && s.why !== null && <div className="g-why">{s.why}</div>}
-                {!s.done && stale[s.key] === true && (
-                  <div className="g-why">{STALE_ID_MESSAGE}</div>
-                )}
-                {s.extra}
-                {s.action}
-                {error !== null && error.step === s.key && (
-                  <p className="fail-reason">{error.msg}</p>
-                )}
-              </div>
-            </li>
+              </li>
             );
           })}
         </ol>
       </div>
-    </div>
+    </section>
   );
 
   if (!standalone) return panel;
   return (
     <div className="view">
-      <div className="view-title">
-        First run <span className="count mono">docs/QUICKSTART.md</span>
-      </div>
+      <PageHeader
+        title="First run"
+        documentTitle="First run"
+        meta={<span className="mono">docs/QUICKSTART.md</span>}
+        description="Walk the quickstart against this server: store the ring preset, run a smoke test, read it, report it."
+      />
       {panel}
     </div>
   );

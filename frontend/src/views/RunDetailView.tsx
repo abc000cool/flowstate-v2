@@ -1,5 +1,10 @@
-/** Run detail: the space-time heatmap centerpiece with a speed/density
- * toggle, then aggregate metric cards with CIs and per-replicate strips.
+/** Run detail: the story view of one run (docs/design/DASHBOARD_DESIGN.md
+ * §10.4), read top to bottom in the order it was computed: provenance →
+ * space-time field → metrics → demand integrity → merge diagnostics.
+ *
+ * Every panel renders loading → error → empty → content at a stable height.
+ * A failed fetch the panel depends on is a persistent danger callout with
+ * Retry (the toast only echoes it), never an endless "loading…".
  *
  * A macro (CTM screening) run also states the provenance of its fundamental
  * diagram, which is the calibration its every number rests on: the
@@ -9,27 +14,92 @@
  * leaves the source unknown, and the view says exactly that rather than
  * assuming the preset. */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { getRun, getRunHeatmap, getRunMetrics, isMockActive } from '../api/client';
 import type { HeatField, Heatmap, RunDetail, RunMetrics } from '../api/types';
 import { useAppState } from '../components/AppContext';
 import { ProgressBar, SeededBadge, StatusChip, TierBadge } from '../components/bits';
-import { HeatmapCanvas, RampLegend } from '../components/HeatmapCanvas';
+import { downloadHeatmapCSV, HeatmapCanvas, isEmptyHeatmap } from '../components/HeatmapCanvas';
+import { Icon } from '../components/icons';
 import { InsertionPanel } from '../components/InsertionPanel';
 import { MergeDiagnosticsPanel } from '../components/MergeDiagnostics';
-import { MetricCard, StripChart } from '../components/metrics';
+import { MetricTile, MetricTileSkeleton, replicatePoints } from '../components/metrics';
+import { PageHeader } from '../components/PageHeader';
 import { toastError } from '../components/toast';
+import { Callout } from '../components/ui/Callout';
+import { HashValue } from '../components/ui/CopyButton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Skeleton } from '../components/ui/Skeleton';
 import { DEMO_HASH_LABEL, DEMO_ROW_TITLE } from '../lib/demo';
-import { failureReason } from '../lib/format';
+import { failureReason, formatFetchError } from '../lib/format';
 import { useAuthFailed, usePoll } from '../lib/hooks';
-import { hasNoObservations, orderedMetricKeys } from '../lib/metrics';
+import { groupedMetricKeys } from '../lib/metrics';
+
+const FIELDS: HeatField[] = ['speed', 'density'];
+const METRIC_SKELETONS = 8;
+
+const FD_PRESET_TITLE =
+  'Fundamental diagram: the documented v1_legacy preset — uncalibrated defaults, not a fit to ' +
+  'this corridor. Run against an FDCalibration artifact (scenario field fd_calibration) before ' +
+  'reading the numbers as this corridor’s.';
+const FD_UNKNOWN_TITLE =
+  'This service did not report where the fundamental diagram came from, so the calibration ' +
+  'behind these numbers is unknown.';
+
+function RetryButton({ onClick }: { onClick: () => void }): JSX.Element {
+  return (
+    <button type="button" className="btn sm" onClick={onClick}>
+      <Icon name="refresh-cw" size={14} />
+      Retry
+    </button>
+  );
+}
+
+/** SPEED | DENSITY segmented tabs; Left/Right move and select. */
+function FieldTabs({
+  field,
+  onChange,
+}: {
+  field: HeatField;
+  onChange: (f: HeatField) => void;
+}): JSX.Element {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const i = FIELDS.indexOf(field);
+    const next = FIELDS[(i + (e.key === 'ArrowRight' ? 1 : FIELDS.length - 1)) % FIELDS.length];
+    onChange(next);
+    e.currentTarget.querySelector<HTMLButtonElement>(`#field-tab-${next}`)?.focus();
+  };
+  return (
+    <div className="seg" role="tablist" aria-label="Heatmap field" onKeyDown={onKeyDown}>
+      {FIELDS.map((f) => (
+        <button
+          key={f}
+          id={`field-tab-${f}`}
+          type="button"
+          role="tab"
+          aria-selected={field === f}
+          aria-controls="field-tabpanel"
+          tabIndex={field === f ? 0 : -1}
+          className={field === f ? 'active' : ''}
+          onClick={() => onChange(f)}
+        >
+          {f.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function RunDetailView(): JSX.Element {
   const { runId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [run, setRun] = useState<RunDetail | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<RunMetrics | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
   const [field, setFieldRaw] = useState<HeatField>(
     searchParams.get('field') === 'density' ? 'density' : 'speed',
   );
@@ -38,24 +108,53 @@ export function RunDetailView(): JSX.Element {
     setSearchParams(f === 'speed' ? {} : { field: f }, { replace: true });
   };
   const [heatmaps, setHeatmaps] = useState<Partial<Record<HeatField, Heatmap>>>({});
+  const [heatErrors, setHeatErrors] = useState<Partial<Record<HeatField, string>>>({});
   const [seedsOpen, setSeedsOpen] = useState(false);
   // Whether the row on screen came from the in-browser demo backend, captured
   // at fetch time (the client decides mock vs live per call).
   const [demo, setDemo] = useState(false);
   const { setCorridor } = useAppState();
   const authFailed = useAuthFailed();
+  // the run the current responses belong to: a route change to another run
+  // reuses this component, and a late answer for the old run must not land
+  const currentRun = useRef(runId);
+  const heatInFlight = useRef(new Set<HeatField>());
+  const metricsInFlight = useRef(false);
+  // a failing run poll toasts once per failure streak, not every 2 s
+  const runFailing = useRef(false);
+
+  useEffect(() => {
+    currentRun.current = runId;
+    heatInFlight.current.clear();
+    metricsInFlight.current = false;
+    runFailing.current = false;
+    setRun(null);
+    setRunError(null);
+    setMetrics(null);
+    setMetricsError(null);
+    setHeatmaps({});
+    setHeatErrors({});
+    setSeedsOpen(false);
+  }, [runId]);
 
   const finished = run?.status === 'done';
 
   const pollRun = useCallback(async () => {
     const fromDemo = isMockActive();
+    const id = runId;
     try {
-      const r = await getRun(runId);
+      const r = await getRun(id);
+      if (currentRun.current !== id) return;
+      runFailing.current = false;
       setRun(r);
+      setRunError(null);
       setDemo(fromDemo);
       if (r.scenario_name) setCorridor(r.scenario_name.split('·')[0].trim());
     } catch (err) {
-      toastError(err, runId);
+      if (currentRun.current !== id) return;
+      if (!runFailing.current) toastError(err, id);
+      runFailing.current = true;
+      setRunError(formatFetchError(err));
     }
   }, [runId, setCorridor]);
 
@@ -66,209 +165,291 @@ export function RunDetailView(): JSX.Element {
   );
 
   useEffect(() => {
-    if (!finished || metrics) return;
-    getRunMetrics(runId)
-      .then(setMetrics)
-      .catch((err) => toastError(err, 'metrics'));
-  }, [finished, metrics, runId]);
+    if (!finished || metrics || metricsError || metricsInFlight.current) return;
+    const id = runId;
+    metricsInFlight.current = true;
+    getRunMetrics(id)
+      .then((m) => {
+        if (currentRun.current === id) setMetrics(m);
+      })
+      .catch((err) => {
+        if (currentRun.current !== id) return;
+        toastError(err, 'metrics');
+        setMetricsError(formatFetchError(err));
+      })
+      .finally(() => {
+        if (currentRun.current === id) metricsInFlight.current = false;
+      });
+  }, [finished, metrics, metricsError, runId]);
 
   useEffect(() => {
-    if (!finished || heatmaps[field]) return;
-    getRunHeatmap(runId, field)
-      .then((h) => setHeatmaps((m) => ({ ...m, [field]: h })))
-      .catch((err) => toastError(err, 'heatmap'));
-  }, [finished, field, heatmaps, runId]);
+    if (!finished || heatmaps[field] || heatErrors[field] || heatInFlight.current.has(field)) return;
+    const id = runId;
+    const f = field;
+    heatInFlight.current.add(f);
+    getRunHeatmap(id, f)
+      .then((h) => {
+        if (currentRun.current === id) setHeatmaps((m) => ({ ...m, [f]: h }));
+      })
+      .catch((err) => {
+        if (currentRun.current !== id) return;
+        toastError(err, 'heatmap');
+        setHeatErrors((e) => ({ ...e, [f]: formatFetchError(err) }));
+      })
+      .finally(() => {
+        if (currentRun.current === id) heatInFlight.current.delete(f);
+      });
+  }, [finished, field, heatmaps, heatErrors, runId]);
 
-  const metricKeys = useMemo(
-    () => (metrics ? orderedMetricKeys(Object.keys(metrics.aggregate)) : []),
+  const retryHeatmap = (): void => setHeatErrors((e) => ({ ...e, [field]: undefined }));
+
+  const sections = useMemo(
+    () => (metrics ? groupedMetricKeys(Object.keys(metrics.aggregate)) : []),
     [metrics],
-  );
-  // a metric no replicate produced has nothing to distribute: the card says
-  // "no observations", and a strip drawn from an empty value set would put a
-  // mean line at 0 that is not a measurement
-  const stripKeys = useMemo(
-    () => (metrics ? metricKeys.filter((k) => !hasNoObservations(metrics.aggregate[k])) : []),
-    [metrics, metricKeys],
   );
 
   const heatmap = heatmaps[field];
+  const heatError = heatErrors[field];
+  const heatEmpty = heatmap ? isEmptyHeatmap(heatmap) : false;
   // the preset is uncalibrated by definition, so it is flagged rather than
   // printed like a corridor's fitted diagram
   const fdSource = run?.tier === 'macro' ? (metrics?.fd_source ?? null) : null;
   const fdIsPreset = fdSource === 'v1_legacy preset';
+  const nReplicates = metrics ? (metrics.n_replicates ?? metrics.replicates.length) : null;
 
   return (
-    <div className="view">
-      <div className="view-title">
-        <Link to="/runs" className="mono">
-          ← runs
-        </Link>
-      </div>
+    <div className="view run-detail">
+      <PageHeader
+        title={<span className="run-title">{runId}</span>}
+        documentTitle={runId}
+        meta={
+          run && (
+            <>
+              <StatusChip status={run.status} />
+              <TierBadge tier={run.tier} />
+              <SeededBadge seeded={run.seeded} />
+              {demo && (
+                <span className="tag demo" title={DEMO_ROW_TITLE}>
+                  DEMO
+                </span>
+              )}
+            </>
+          )
+        }
+      />
 
-      {run && (
-        <div className="run-head">
-          <span className="run-id mono">{run.run_id}</span>
-          <StatusChip status={run.status} />
-          <TierBadge tier={run.tier} />
-          <SeededBadge seeded={run.seeded} />
-          {demo && (
-            <span className="tag demo" title={DEMO_ROW_TITLE}>
-              DEMO
-            </span>
-          )}
-          <span className="kv">
-            scenario <b>{run.scenario_name ?? run.scenario_id}</b>
-          </span>
-          <span className="kv">
-            config{' '}
-            {demo ? (
-              <b className="hash muted">{DEMO_HASH_LABEL}</b>
-            ) : (
-              <b className="hash">{run.config_hash}</b>
-            )}
-          </span>
-          {run.tier === 'macro' && metrics && (
-            <span
-              className="kv"
-              title={
-                fdIsPreset
-                  ? 'Fundamental diagram: the documented v1_legacy preset — uncalibrated ' +
-                    'defaults, not a fit to this corridor. Run against an FDCalibration ' +
-                    'artifact (scenario field fd_calibration) before reading the numbers as ' +
-                    'this corridor’s.'
-                  : fdSource
-                    ? `Fundamental diagram fitted in the FDCalibration artifact ${fdSource}`
-                    : 'This service did not report where the fundamental diagram came from, ' +
-                      'so the calibration behind these numbers is unknown.'
-              }
-            >
-              FD{' '}
-              <b className={fdIsPreset || !fdSource ? 'hint-amber' : undefined}>
-                {fdSource ?? 'source unknown'}
-                {fdIsPreset ? ' (uncalibrated)' : ''}
-              </b>
-            </span>
-          )}
-          <span className="kv">
-            seeds{' '}
-            <b>
+      {run ? (
+        <dl className="run-facts">
+          <div className="run-fact">
+            <dt>Scenario</dt>
+            <dd title={run.scenario_id}>{run.scenario_name ?? run.scenario_id}</dd>
+          </div>
+          <div className="run-fact">
+            <dt>Config</dt>
+            <dd>
+              {demo ? (
+                <span className="mono" title={DEMO_ROW_TITLE}>
+                  {DEMO_HASH_LABEL}
+                </span>
+              ) : (
+                <HashValue value={run.config_hash} label="config hash" />
+              )}
+            </dd>
+          </div>
+          <div className="run-fact">
+            <dt>Seeds</dt>
+            <dd>
               <button
-                className="btn sm"
-                onClick={() => setSeedsOpen((o) => !o)}
+                type="button"
+                className="btn ghost sm seeds-toggle"
+                aria-expanded={seedsOpen}
+                aria-controls="run-seeds"
+                aria-label={`Seeds: ${run.seeds.length}`}
                 title="RNG seeds of the replicate set — full reproducibility"
+                onClick={() => setSeedsOpen((o) => !o)}
               >
-                {run.seeds.length} seeds {seedsOpen ? '▾' : '▸'}
+                <span className="mono">{run.seeds.length}</span>
+                <Icon name={seedsOpen ? 'chevron-down' : 'chevron-right'} size={14} />
               </button>
-            </b>
-          </span>
+            </dd>
+          </div>
+          {run.tier === 'macro' && metrics && (
+            <div className="run-fact">
+              <dt>FD</dt>
+              <dd title={fdIsPreset ? FD_PRESET_TITLE : fdSource ? `Fundamental diagram fitted in the FDCalibration artifact ${fdSource}` : FD_UNKNOWN_TITLE}>
+                <span className={fdIsPreset || !fdSource ? 'hint-amber' : 'mono'}>
+                  {fdSource ?? 'source unknown'}
+                  {fdIsPreset ? ' (uncalibrated)' : ''}
+                </span>
+              </dd>
+            </div>
+          )}
+        </dl>
+      ) : runError ? (
+        <Callout
+          tone="danger"
+          title="This run could not be loaded."
+          action={<RetryButton onClick={() => void pollRun()} />}
+        >
+          <span className="mono">{runError}</span>
+        </Callout>
+      ) : (
+        <div className="run-facts" aria-busy="true">
+          <Skeleton width={180} height={14} />
+          <Skeleton width={160} height={14} />
+          <Skeleton width={80} height={14} />
         </div>
       )}
 
       {run && seedsOpen && (
-        <div className="panel">
-          <div className="panel-body mono small muted" style={{ wordBreak: 'break-all' }}>
-            {run.seeds.join(' · ')}
-          </div>
+        <div id="run-seeds" className="run-seeds mono">
+          {run.seeds.join(' · ')}
         </div>
       )}
 
-      {run && !finished && (
-        <div className="panel">
+      {run && (run.status === 'queued' || run.status === 'running') && (
+        <section className="panel">
           <div className="panel-head">
-            <span className="panel-title">
-              {run.status === 'failed' ? 'Run failed' : 'Computing replicates'}
-            </span>
+            <h2 className="panel-title">Computing replicates</h2>
           </div>
-          <div className="panel-body">
+          <div className="panel-body run-progress">
             {demo ? (
               // no worker is computing these replicates, so nothing moves
               <span className="mono small muted">
                 {run.progress.completed_replicates}/{run.progress.total_replicates} — demo
               </span>
             ) : (
-              <ProgressBar done={run.progress.completed_replicates} total={run.progress.total_replicates} status={run.status} />
+              <ProgressBar
+                done={run.progress.completed_replicates}
+                total={run.progress.total_replicates}
+                status={run.status}
+              />
             )}
-            {run.status === 'failed' ? (
-              // the API already answers *why* (RunOut.error): showing only
-              // "run failed 2/2" sends the user to the server logs for a
-              // reason the dashboard was holding all along
-              <>
-                <p className="small muted" style={{ marginTop: 12 }}>
-                  No replicate produced results. The service reported:
-                </p>
-                <pre className="fail-reason mono small">
-                  {failureReason(run.error, run.error_kind)}
-                </pre>
-              </>
-            ) : (
-              <p className="small muted" style={{ marginTop: 12 }}>
-                Heatmap and metrics appear when all replicates finish.
-              </p>
-            )}
+            <p className="small muted">Heatmap and metrics appear when all replicates finish.</p>
           </div>
-        </div>
+        </section>
+      )}
+
+      {run && run.status === 'failed' && (
+        // the API already answers *why* (RunOut.error): showing only "run
+        // failed 2/2" sends the user to the server logs for a reason the
+        // dashboard was holding all along
+        <Callout tone="danger" title="Run failed">
+          <p className="run-failed-lead">
+            No replicate produced results ({run.progress.completed_replicates}/
+            {run.progress.total_replicates} replicates finished). The service reported:
+          </p>
+          <pre className="run-failed-reason mono">{failureReason(run.error, run.error_kind)}</pre>
+        </Callout>
       )}
 
       {finished && (
-        <div className="panel">
+        <section className="panel field-panel">
           <div className="panel-head">
-            <span className="panel-title">Space–time field</span>
-            <div className="seg" role="tablist" aria-label="Heatmap field">
-              {(['speed', 'density'] as HeatField[]).map((f) => (
-                <button
-                  key={f}
-                  role="tab"
-                  aria-selected={field === f}
-                  className={field === f ? 'active' : ''}
-                  onClick={() => setField(f)}
-                >
-                  {f.toUpperCase()}
-                </button>
-              ))}
-            </div>
+            <h2 className="panel-title">Space–time field</h2>
+            <FieldTabs field={field} onChange={setField} />
             <span className="spacer" />
-            <RampLegend field={field} />
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={!heatmap || heatEmpty}
+              title={
+                heatmap && !heatEmpty
+                  ? `The binned ${field} field in SI units, as plotted`
+                  : 'Available once the field has loaded'
+              }
+              onClick={() => heatmap && downloadHeatmapCSV(heatmap, field, runId)}
+            >
+              <Icon name="download" size={14} />
+              Download CSV
+            </button>
           </div>
-          <div className="panel-body">
-            {heatmap ? (
-              <HeatmapCanvas heatmap={heatmap} field={field} />
+          <div
+            className="panel-body"
+            id="field-tabpanel"
+            role="tabpanel"
+            aria-labelledby={`field-tab-${field}`}
+          >
+            {heatError ? (
+              <div className="heatmap-state">
+                <Callout
+                  tone="danger"
+                  title={`The ${field} field could not be loaded.`}
+                  action={<RetryButton onClick={retryHeatmap} />}
+                >
+                  <span className="mono">{heatError}</span>
+                </Callout>
+              </div>
+            ) : !heatmap ? (
+              <div className="heatmap-state" aria-busy="true">
+                <div className="skeleton-frame">
+                  <Skeleton radius="xs" />
+                  <span className="skeleton-label">Loading the {field} field…</span>
+                </div>
+              </div>
+            ) : heatEmpty ? (
+              <div className="heatmap-state">
+                <EmptyState
+                  title="This field has no bins."
+                  description="The service returned 0 time or position bins for this run."
+                />
+              </div>
             ) : (
-              <div className="empty">loading field…</div>
+              <HeatmapCanvas heatmap={heatmap} field={field} />
             )}
           </div>
-        </div>
+        </section>
       )}
 
-      {finished && metrics && (
-        <div className="panel">
+      {finished && (
+        <section className="panel">
           <div className="panel-head">
-            <span className="panel-title">Aggregate metrics · mean ± 95% CI</span>
+            <h2 className="panel-title">
+              Metrics · mean ± 95% CI
+              {nReplicates !== null ? ` over ${nReplicates} replicates` : ''}
+            </h2>
           </div>
-          <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div className="metric-grid">
-              {metricKeys.map((k) => (
-                <MetricCard key={k} metricKey={k} stat={metrics.aggregate[k]} />
-              ))}
-            </div>
-            <div>
-              <div className="panel-title" style={{ marginBottom: 10 }}>
-                Per-replicate distribution
-              </div>
-              <div className="strip-row">
-                {stripKeys.map((k) => (
-                  <StripChart
-                    key={k}
-                    metricKey={k}
-                    values={metrics.replicates
-                      .map((r) => r.metrics[k])
-                      .filter((v): v is number => typeof v === 'number')}
-                    mean={metrics.aggregate[k].mean ?? 0}
-                  />
+          <div className="panel-body">
+            {metricsError ? (
+              <Callout
+                tone="danger"
+                title="The metrics could not be loaded."
+                action={<RetryButton onClick={() => setMetricsError(null)} />}
+              >
+                <span className="mono">{metricsError}</span>
+              </Callout>
+            ) : !metrics ? (
+              <div className="metric-grid" aria-busy="true">
+                {Array.from({ length: METRIC_SKELETONS }, (_, i) => (
+                  <MetricTileSkeleton key={i} />
                 ))}
               </div>
-            </div>
+            ) : sections.length === 0 ? (
+              <EmptyState
+                title="No metrics for this run."
+                description="The service returned no aggregate metrics."
+              />
+            ) : (
+              <div className="metric-groups">
+                {sections.map((s) => (
+                  <section key={s.group} className="metric-group" aria-labelledby={`mg-${s.group}`}>
+                    <h4 id={`mg-${s.group}`}>{s.title}</h4>
+                    <div className="metric-grid">
+                      {s.keys.map((k) => (
+                        <MetricTile
+                          key={k}
+                          metricKey={k}
+                          stat={metrics.aggregate[k]}
+                          replicates={replicatePoints(metrics.replicates, k)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        </section>
       )}
 
       {finished && metrics && (

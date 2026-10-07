@@ -1,9 +1,183 @@
 /* Onboard corridor view (and its split-audit table).
-   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
-   Owner: B (step 4, §10.2). */
+   Spec: docs/design/DASHBOARD_DESIGN.md §10.2. Owner: B. Tokens only. */
+
+/* ============================== form ================================ */
+
+/* four grouped sections, then the Advanced disclosure */
+.onboard-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: var(--content-max-narrow);
+}
+
+/* ============================== progress stepper ==================== */
+/* Five named stages joined by hairline connectors. Done: success check;
+   current: accent with a pulsing dot; pending: hollow; failed: danger x.
+   Only what the server reported is drawn. */
+
+.stage-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  overflow-x: auto;
+}
+
+.stage-step {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1-5);
+  text-align: center;
+}
+
+/* connector to the previous stage, between the two circles' centres */
+.stage-step + .stage-step::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: calc(50% + 14px);
+  left: calc(-50% + 14px);
+  height: 1px;
+  background: var(--border-default);
+}
+
+.stage-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+.stage-step.done .stage-dot {
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+.stage-step.current .stage-dot {
+  border-color: var(--accent-solid);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+.stage-step.current .stage-dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: chip-pulse 1.6s ease-in-out infinite;
+}
+.stage-step.failed .stage-dot {
+  border-color: var(--danger-border);
+  background: var(--danger-subtle);
+  color: var(--danger-text);
+}
+
+.stage-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  letter-spacing: var(--tracking-none);
+  color: var(--text-secondary);
+}
+.stage-step.done .stage-label,
+.stage-step.current .stage-label {
+  color: var(--text-primary);
+}
+.stage-step.current .stage-label {
+  font-weight: var(--weight-medium);
+}
+.stage-step.failed .stage-label {
+  color: var(--danger-text);
+  font-weight: var(--weight-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-step.current .stage-dot::before {
+    animation: none;
+  }
+}
+
+/* ============================== summary ============================= */
+
+.onboard-hash {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.onboard-lead {
+  max-width: var(--prose-max);
+  font-size: var(--text-14);
+  line-height: var(--leading-14-prose);
+  color: var(--text-primary);
+}
+
+.onboard-columns {
+  gap: var(--space-6);
+}
+
+.onboard-col-title {
+  margin: 0;
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.onboard-note {
+  max-width: var(--prose-max);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
+
+.onboard-lines {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: 360px;
+  overflow: auto;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-primary);
+  white-space: pre;
+}
+
+/* ============================== split audit ========================= */
+
+.split-audit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.split-audit-summary {
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+  color: var(--text-secondary);
+}
 
 /* the remedy line under a defect row of the split-audit table */
 table.data td.remedy {
-  font-family: var(--font-ui);
+  height: auto;
+  font-family: var(--font-sans);
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
   white-space: normal;
+}
+table.data td.remedy code {
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-none);
 }

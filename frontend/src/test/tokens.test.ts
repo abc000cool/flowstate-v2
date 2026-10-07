@@ -125,3 +125,39 @@ describe('stylesheets', () => {
     expect(missing).toEqual([]);
   });
 });
+
+/** Stylesheets already migrated to Paper & Signal. They read colors from
+ * tokens only, so both themes follow; step 5 (§12.2) widens this list to
+ * every stylesheet once the legacy aliases are deleted. */
+const MIGRATED = ['base.css', 'shell.css', 'views/runs.css', 'views/reports.css'];
+
+/** The legacy alias names of tokens.css (§5, "DELETE in step 5"). */
+const LEGACY_ALIAS =
+  /var\(--(bg|panel|panel-edge|panel-raised|panel-inset|text|muted|faint|accent|accent-dim|amber|amber-dim|danger|danger-dim|ok|ok-dim|s[1-6]|r[1-3]|font-ui|card-shadow|ring)\)/;
+
+describe('migrated stylesheets', () => {
+  it('use no literal colors, so light and dark both follow the tokens', async () => {
+    const styles = await readStyles();
+    const literal: string[] = [];
+    for (const file of MIGRATED) {
+      const css = stripComments(styles.get(file) ?? '');
+      expect(css.length, file).toBeGreaterThan(0);
+      for (const m of css.matchAll(/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/g)) {
+        literal.push(`${file}: ${m[0]}`);
+      }
+    }
+    expect(literal).toEqual([]);
+  });
+
+  it('use no legacy aliases and no uppercase transforms (§5.2)', async () => {
+    const styles = await readStyles();
+    const found: string[] = [];
+    for (const file of MIGRATED) {
+      const css = stripComments(styles.get(file) ?? '');
+      const alias = css.match(LEGACY_ALIAS);
+      if (alias) found.push(`${file}: ${alias[0]}`);
+      if (/text-transform:\s*uppercase/.test(css)) found.push(`${file}: text-transform`);
+    }
+    expect(found).toEqual([]);
+  });
+});

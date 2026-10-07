@@ -1,140 +1,183 @@
-/* Scenarios view: scenario cards, dropzone, composer.
-   Split verbatim from the retired app.css (DASHBOARD_DESIGN.md §12.2, step 0).
-   Owner: B (step 4, §10.1). */
+/* Scenarios view: scenario cards, dropzone, composer, launch dialog fields.
+   Spec: docs/design/DASHBOARD_DESIGN.md §9.4 (scenario card), §10.1.
+   Owner: B. Tokens only. */
 
 /* ============================== scenario cards ====================== */
 
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--s2);
+  gap: var(--space-4);
 }
 
 .scen-card {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
-  padding: var(--s2);
-  transition: border-color 120ms;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  transition: border-color var(--duration-1) var(--ease-standard);
+}
+.scen-card:hover {
+  border-color: var(--border-strong);
 }
 
-.scen-card:hover {
-  border-color: #263048;
+/* demo cards: "not from this server", the same dashed warning as the badge */
+.scen-card.demo {
+  border-style: dashed;
+  border-color: var(--warning-border);
 }
 
 .scen-card .thumb {
-  height: 110px;
-  border-radius: var(--r2);
-  background: var(--panel-inset);
-  border: 1px solid var(--panel-edge);
+  height: 96px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
+.scen-card .thumb svg {
+  max-width: 100%;
+}
 
 .scen-card .name {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text);
   display: flex;
   align-items: center;
-  gap: 8px;
-  justify-content: space-between;
+  gap: var(--space-1-5);
+  min-width: 0;
 }
-
-.scen-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+.scen-card .scen-name {
+  flex: 1;
+  min-width: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
+  font-size: var(--text-14);
+  line-height: var(--leading-14);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-none);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
-.scen-meta b {
-  color: var(--text);
-  font-weight: 500;
+/* facts: a two-column definition list (label secondary, value mono) */
+.scen-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+}
+.scen-fact {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+}
+.scen-fact dt {
+  color: var(--text-secondary);
+}
+.scen-fact dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-none);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.scen-hash {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 24px;
+  font-size: var(--text-12);
+  line-height: var(--leading-12);
+}
+.scen-hash-label {
+  color: var(--text-secondary);
 }
 
 .scen-actions {
   display: flex;
-  gap: var(--s1);
-  margin-top: 2px;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: auto;
 }
+
+/* ============================== dropzone ============================ */
 
 .dropzone {
-  border: 1px dashed #2a3348;
-  border-radius: var(--r3);
-  padding: var(--s3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-13);
+  line-height: var(--leading-13);
   text-align: center;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
   cursor: pointer;
   transition:
-    border-color 120ms,
-    background 120ms;
+    border-color var(--duration-1) var(--ease-standard),
+    background-color var(--duration-1) var(--ease-standard),
+    color var(--duration-1) var(--ease-standard);
 }
-
 .dropzone:hover,
 .dropzone.over {
-  border-color: rgba(79, 209, 224, 0.55);
-  background: var(--accent-dim);
-  color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
 }
 
-.compose-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: var(--s2);
+/* ============================== composer ============================ */
+
+.compose-sections {
+  row-gap: var(--space-6);
+  column-gap: var(--space-6);
 }
 
 .slider-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: var(--control-h-md);
 }
-
 .slider-row input[type='range'] {
   flex: 1;
+  min-width: 0;
 }
-
 .slider-val {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--accent);
   min-width: 44px;
   text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  letter-spacing: var(--tracking-none);
   font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
 
-/* ===================== rejected API key / demo data ================= */
-.scen-card.demo {
-  border-style: dashed;
-  border-color: rgba(245, 184, 92, 0.35);
-}
-
-.scen-meta .hash.muted {
-  color: var(--faint);
-  font-weight: 400;
-}
-
-/* ===================== composer passthrough notice ================== */
-
+/* passthrough notice: a neutral callout, the "dropped" line a warning one */
 .passthrough {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: var(--s2);
-  border: 1px dashed var(--panel-edge);
-  border-radius: var(--r2);
-  background: var(--panel-inset);
+  gap: var(--space-2);
 }
 
 /* read-only network facts of an OSM preset in the composer */
 .osm-facts {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+}
+
+/* ============================== launch dialog ======================= */
+
+/* stacked: the warm-up refusal under Duration is a full sentence */
+.launch-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }

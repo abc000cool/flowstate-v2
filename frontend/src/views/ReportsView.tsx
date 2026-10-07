@@ -47,9 +47,18 @@
  * launder that into evidence: each captures its source at call time and a
  * demo-sourced row is badged DEMO, never SERVER, is not written to
  * localStorage, and never raises the "ready" toast — a real report that was
- * queued when the API went away must not come back done from demo data. */
+ * queued when the API went away must not come back done from demo data.
+ *
+ * Layout per docs/design/DASHBOARD_DESIGN.md §10.6: a "New report" panel in
+ * two numbered steps (pick finished micro runs; choose the criteria profile
+ * and the observations, the profile's source shown under its select), an
+ * action bar with the selection summary, the button and a persistent refusal
+ * callout, then the generated reports. Both tables render skeleton rows until
+ * their first answer, an error callout if that first read fails, an empty
+ * state, then rows. */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import {
   ApiError,
   createReport,
@@ -68,7 +77,13 @@ import {
 } from '../api/client';
 import type { CorridorRow, ReportOut, ReportRecord, RunSummary } from '../api/types';
 import { SeededBadge, StatusChip, TierBadge } from '../components/bits';
+import { Icon } from '../components/icons';
+import { PageHeader } from '../components/PageHeader';
 import { toast, toastError } from '../components/toast';
+import { Callout } from '../components/ui/Callout';
+import { HashValue } from '../components/ui/CopyButton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { SkeletonRows } from '../components/ui/Skeleton';
 import { saveBlob, saveText } from '../lib/download';
 import { useAuthFailed, useOfflineFallback, usePoll } from '../lib/hooks';
 
@@ -278,11 +293,26 @@ function mergeRows(
   ];
 }
 
+/** Columns of the two tables (skeleton and empty rows span them). */
+const PICKER_COLUMNS = 7;
+const REPORT_COLUMNS = 7;
+
+/** The message of a failed read, for a first-load error callout. */
+function errorText(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return err instanceof ApiError && err.status ? `HTTP ${err.status} — ${text}` : text;
+}
+
 const MACRO_TOOLTIP =
   'Screening tier cannot be validated — macro (CTM) results are labeled tier:"screening" and the API refuses to generate a validation report from them.';
 
 export function ReportsView(): JSX.Element {
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  /** False until `GET /runs` has answered once: the picker shows skeleton
+   * rows until then, not "no finished runs". */
+  const [runsLoaded, setRunsLoaded] = useState(false);
+  /** Why the first read of the runs list failed, while it has never answered. */
+  const [runsError, setRunsError] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<{ scenario_id: string; name: string }[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reports, setReports] = useState<ReportRecord[]>(loadReports);
@@ -294,6 +324,9 @@ export function ReportsView(): JSX.Element {
    * the list endpoint): the table then runs on local records alone and says
    * so, instead of claiming the server has no reports. */
   const [serverListed, setServerListed] = useState(true);
+  /** Why the first read of `GET /reports` failed (not a 404), while it has
+   * never answered. */
+  const [listError, setListError] = useState<string | null>(null);
   /** The selectable acceptance-criteria profiles; null until `GET /criteria`
    * has answered. */
   const [profileOptions, setProfileOptions] = useState<ProfileOption[] | null>(null);
@@ -345,8 +378,12 @@ export function ReportsView(): JSX.Element {
     try {
       const all = await listRuns();
       setRuns(all.filter((r) => r.status === 'done'));
-    } catch {
-      /* connectivity surfaced by the status dot / banner */
+      setRunsLoaded(true);
+      setRunsError(null);
+    } catch (err) {
+      // connectivity is surfaced by the status line / banner; only a first
+      // load with nothing to show says why, instead of a skeleton forever
+      setRunsError(errorText(err));
     }
   }, []);
   usePoll(refresh, authFailed ? null : RUNS_POLL_MS);
@@ -364,9 +401,15 @@ export function ReportsView(): JSX.Element {
       setServerReports(list);
       setServerDemo(demo);
       setServerListed(true);
+      setListError(null);
     } catch (err) {
       // 404 = this service predates GET /reports; anything else is transient
-      if (err instanceof ApiError && err.status === 404) setServerListed(false);
+      if (err instanceof ApiError && err.status === 404) {
+        setServerListed(false);
+        setListError(null);
+      } else {
+        setListError(errorText(err));
+      }
     }
   }, []);
   usePoll(
@@ -607,157 +650,482 @@ export function ReportsView(): JSX.Element {
     runs.some((r) => r.run_id === id && r.tier === 'micro'),
   );
 
+  // a click on a selectable row toggles it, except on its own controls (the
+  // checkbox toggles by itself; the copy button must not select)
+  const clickRow = (e: ReactMouseEvent<HTMLTableRowElement>, run: RunSummary): void => {
+    if (run.tier === 'macro') return;
+    if ((e.target as Element).closest('a, button, input, select, label')) return;
+    toggleRun(run.run_id);
+  };
+
+  const chosenCorridor = observationChoices.find((c) => c.observations_path === observations);
+  const observationsLabel =
+    observations === OBSERVATIONS_NONE
+      ? null
+      : observations === OBSERVATIONS_CUSTOM
+        ? 'a server path'
+        : (chosenCorridor?.name ?? 'the chosen observations');
+  const profileSource =
+    profileOptions === null
+      ? LOADING_PROFILE_OPTIONS[0].source
+      : criteriaListed
+        ? profileSources.get(profile)
+        : FALLBACK_PROFILE_OPTIONS[0].source;
+
+  let pickerBody: JSX.Element;
+  if (!runsLoaded) {
+    if (authFailed) {
+      pickerBody = (
+        <tr>
+          <td colSpan={PICKER_COLUMNS} className="reports-wrap-cell">
+            <EmptyState
+              compact
+              title="Runs are not loading."
+              description="The API key was rejected. Save a new key in Settings to resume."
+            />
+          </td>
+        </tr>
+      );
+    } else if (runsError !== null) {
+      pickerBody = (
+        <tr>
+          <td colSpan={PICKER_COLUMNS} className="reports-wrap-cell">
+            <Callout
+              tone="danger"
+              title="The runs list could not be read."
+              action={
+                <button type="button" className="btn sm" onClick={() => void refresh()}>
+                  <Icon name="refresh-cw" size={14} />
+                  Retry
+                </button>
+              }
+            >
+              <span className="mono">{runsError}</span>
+            </Callout>
+          </td>
+        </tr>
+      );
+    } else {
+      pickerBody = <SkeletonRows rows={5} columns={PICKER_COLUMNS} />;
+    }
+  } else if (runs.length === 0) {
+    pickerBody = (
+      <tr>
+        <td colSpan={PICKER_COLUMNS} className="reports-wrap-cell">
+          <EmptyState
+            compact
+            title="No finished runs yet."
+            description="Finished runs appear here; macro runs can't be reported."
+          />
+        </td>
+      </tr>
+    );
+  } else {
+    pickerBody = (
+      <>
+        {runs.map((r) => {
+          const macro = r.tier === 'macro';
+          const isSelected = selected.has(r.run_id);
+          const cls = [macro ? 'disabled' : 'selectable', isSelected ? 'selected' : '']
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <tr
+              key={r.run_id}
+              className={cls}
+              title={macro ? MACRO_TOOLTIP : undefined}
+              onClick={(e) => clickRow(e, r)}
+            >
+              <td className="reports-check-cell">
+                <input
+                  type="checkbox"
+                  aria-label={`select ${r.run_id}`}
+                  disabled={macro}
+                  checked={isSelected}
+                  onChange={() => toggleRun(r.run_id)}
+                />
+              </td>
+              <td className="reports-id mono">{r.run_id}</td>
+              <td className="secondary" title={r.scenario_id}>
+                {r.scenario_name ?? scenarioNames.get(r.scenario_id) ?? r.scenario_id}
+              </td>
+              <td>
+                <TierBadge tier={r.tier} />
+              </td>
+              <td>
+                <StatusChip status={r.status} />
+              </td>
+              <td className="hash">
+                <HashValue value={r.config_hash} />
+              </td>
+              <td>
+                <SeededBadge seeded={r.seeded} />
+              </td>
+            </tr>
+          );
+        })}
+      </>
+    );
+  }
+
+  // the table runs on local records as soon as there are any; otherwise it
+  // waits for the server's first answer
+  const reportsLoading = rows.length === 0 && serverListed && serverReports === null;
+  let reportsBody: JSX.Element;
+  if (rows.length > 0) {
+    reportsBody = (
+      <>
+        {rows.map(({ rec, origin }) => (
+          <tr key={rec.report_id}>
+            <td className="reports-id mono">{rec.report_id}</td>
+            <td>
+              {origin === 'server' && (
+                <span className="tag server" title="Listed by GET /reports — held by this server">
+                  SERVER
+                </span>
+              )}
+              {origin === 'local' && (
+                <span
+                  className="tag demo"
+                  title="This browser's own record: GET /reports did not return it, so this server may not hold the bundle (requested against another API, or before the list endpoint existed)."
+                >
+                  LOCAL
+                </span>
+              )}
+              {origin === 'demo' && (
+                <span
+                  className="tag demo"
+                  title="Built-in demo data, not a server answer: the API was unreachable when this row was read, so no server has generated or is holding this report."
+                >
+                  DEMO
+                </span>
+              )}
+            </td>
+            <td>
+              <StatusChip status={rec.status} />
+              {rec.error && (
+                <div
+                  className="fail-reason"
+                  title={`${rec.error_kind ? `${rec.error_kind}: ` : ''}${rec.error}`}
+                >
+                  {rec.error_kind ? `${rec.error_kind}: ` : ''}
+                  {rec.error}
+                </div>
+              )}
+            </td>
+            <td className="secondary reports-criteria-cell">
+              <span title={profileTitle(rec.profile)}>{rec.profile ?? 'unknown'}</span>
+              {observedLine(rec.observed) && (
+                <div
+                  className="reports-observed small"
+                  title="Counted by the server from the observations artifact and the run artifacts: what the link-flow and segment-speed criteria were actually scored on."
+                >
+                  {observedLine(rec.observed)}
+                </div>
+              )}
+            </td>
+            <td className="secondary mono">{rec.created_at.replace('T', ' ').slice(0, 19)} UTC</td>
+            <td className="secondary mono">{rec.run_ids.join(', ')}</td>
+            <td className="reports-downloads-cell">
+              <div className="reports-downloads">
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  aria-label="Download .md"
+                  disabled={rec.status !== 'done'}
+                  title={
+                    rec.status === 'done'
+                      ? 'Markdown only — its figures are linked, not embedded'
+                      : `report is ${rec.status} — the markdown is served only once it is done`
+                  }
+                  onClick={() => void downloadMarkdown(rec)}
+                >
+                  <Icon name="download" size={14} />
+                  .md
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  aria-label="Download .zip (with figures)"
+                  disabled={rec.status !== 'done'}
+                  title={
+                    rec.status === 'done'
+                      ? 'Markdown plus the figure PNGs it references'
+                      : `report is ${rec.status} — the archive is served only once it is done`
+                  }
+                  onClick={() => void downloadArchive(rec)}
+                >
+                  <Icon name="download" size={14} />
+                  .zip (with figures)
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost sm"
+                  aria-label="Download PDF"
+                  disabled={rec.status !== 'done'}
+                  title={
+                    rec.status === 'done'
+                      ? 'Optional PDF rendering — 404 when the report was generated without one'
+                      : `report is ${rec.status} — the PDF is served only once it is done`
+                  }
+                  onClick={() => void downloadPdf(rec)}
+                >
+                  <Icon name="download" size={14} />
+                  PDF
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </>
+    );
+  } else if (reportsLoading && authFailed) {
+    reportsBody = (
+      <tr>
+        <td colSpan={REPORT_COLUMNS} className="reports-wrap-cell">
+          <EmptyState
+            compact
+            title="Reports are not loading."
+            description="The API key was rejected. Save a new key in Settings to resume."
+          />
+        </td>
+      </tr>
+    );
+  } else if (reportsLoading && listError !== null) {
+    reportsBody = (
+      <tr>
+        <td colSpan={REPORT_COLUMNS} className="reports-wrap-cell">
+          <Callout
+            tone="danger"
+            title="The report history could not be read."
+            action={
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => void refreshServerReports()}
+              >
+                <Icon name="refresh-cw" size={14} />
+                Retry
+              </button>
+            }
+          >
+            <span className="mono">{listError}</span>
+          </Callout>
+        </td>
+      </tr>
+    );
+  } else if (reportsLoading) {
+    reportsBody = <SkeletonRows rows={5} columns={REPORT_COLUMNS} />;
+  } else {
+    reportsBody = (
+      <tr>
+        <td colSpan={REPORT_COLUMNS} className="reports-wrap-cell">
+          <EmptyState
+            compact
+            title={
+              serverListed
+                ? 'No reports on this server yet.'
+                : 'No reports requested in this browser yet.'
+            }
+            description="Generate one above from finished micro runs."
+          />
+        </td>
+      </tr>
+    );
+  }
+
+  const generateBlocked = busy || microSelected.length === 0 || offline;
+
   return (
     <div className="view">
-      <div className="view-title">
-        Validation Reports <span className="count mono">{rows.length} reports</span>
-      </div>
-
-      <div className="panel">
-        <div className="panel-head">
-          <span className="panel-title">Finished runs — pick micro runs to report</span>
-          <span className="spacer" />
-          <div className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <label htmlFor="r-profile">Criteria profile</label>
-            <select
-              id="r-profile"
-              className="input"
-              style={{ minWidth: 170 }}
-              value={profile}
-              disabled={profileOptions === null || !criteriaListed}
-              title={
-                profileOptions === null
-                  ? LOADING_PROFILE_OPTIONS[0].source
-                  : criteriaListed
-                    ? 'Acceptance thresholds the report is scored against (GET /criteria). Thresholds only — the measurements are computed from the run artifacts.'
-                    : FALLBACK_PROFILE_OPTIONS[0].source
-              }
-              onChange={(e) => setProfile(e.target.value)}
-            >
-              {profileChoices.map((p) => (
-                <option key={p.name} value={p.name} title={p.source}>
-                  {p.name}
-                  {p.default ? ' (default)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <label htmlFor="r-observations">Score against observations</label>
-            <select
-              id="r-observations"
-              className="input"
-              style={{ minWidth: 210 }}
-              value={observations}
-              title={
-                corridorsListed
-                  ? 'The detector observations the link-flow (GEH) and segment-speed rows are scored against. Without one those criteria are reported as "not evaluated" — the report still states what was simulated, but nothing is compared with a road.'
-                  : 'This service answered 404 to GET /corridors, so the corridors it has onboarded cannot be listed here. A server-side observations path can still be typed.'
-              }
-              onChange={(e) => setObservations(e.target.value)}
-            >
-              <option value={OBSERVATIONS_NONE}>none — criteria not evaluated</option>
-              {observationChoices.map((c) => (
-                <option
-                  key={c.corridor_id}
-                  value={c.observations_path ?? ''}
-                  title={`Onboarded ${c.created_at.replace('T', ' ').slice(0, 19)} UTC (${c.corridor_id})`}
-                >
-                  {c.name}
-                </option>
-              ))}
-              <option value={OBSERVATIONS_CUSTOM}>server path…</option>
-            </select>
-            {observations === OBSERVATIONS_CUSTOM && (
-              <input
-                className="input mono"
-                aria-label="Observations path on the server"
-                style={{ minWidth: 260 }}
-                placeholder="corridors/cor_…/observations.json"
-                value={customObservations}
-                onChange={(e) => setCustomObservations(e.target.value)}
-              />
+      <PageHeader
+        title="Reports"
+        documentTitle="Reports"
+        meta={
+          <>
+            {!reportsLoading && (
+              <span className="mono">{`${rows.length} report${rows.length === 1 ? '' : 's'}`}</span>
             )}
-          </div>
-          <button
-            className="btn primary"
-            disabled={busy || microSelected.length === 0 || offline}
-            title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
-            onClick={() => void generate()}
-          >
-            Generate report ({microSelected.length})
-          </button>
-        </div>
-        {launchError && (
-          <div className="panel-body">
-            <span className="small" style={{ color: 'var(--danger)' }}>
-              {launchError}
-            </span>
-          </div>
-        )}
-        <div className="table-wrap">
-          <table className="data" aria-label="finished runs">
-            <thead>
-              <tr>
-                <th style={{ width: 34 }} />
-                <th>Run</th>
-                <th>Scenario</th>
-                <th>Tier</th>
-                <th>Status</th>
-                <th>Config hash</th>
-                <th>Labels</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r) => {
-                const macro = r.tier === 'macro';
-                return (
-                  <tr key={r.run_id} className={macro ? 'disabled' : ''} title={macro ? MACRO_TOOLTIP : undefined}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`select ${r.run_id}`}
-                        disabled={macro}
-                        checked={selected.has(r.run_id)}
-                        onChange={() => toggleRun(r.run_id)}
-                        style={{ accentColor: 'var(--accent)' }}
-                      />
-                    </td>
-                    <td style={{ fontWeight: 700 }}>{r.run_id}</td>
-                    <td className="muted" title={r.scenario_id}>
-                      {r.scenario_name ?? scenarioNames.get(r.scenario_id) ?? r.scenario_id}
-                    </td>
-                    <td>
-                      <TierBadge tier={r.tier} />
-                    </td>
-                    <td>
-                      <StatusChip status={r.status} />
-                    </td>
-                    <td className="hash">{r.config_hash}</td>
-                    <td>
-                      <SeededBadge seeded={r.seeded} />
-                    </td>
-                  </tr>
-                );
-              })}
-              {runs.length === 0 && (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty">no finished runs yet</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            {demoRows > 0 && (
+              <span
+                className="tag demo"
+                title="The API is unreachable: rows badged DEMO come from the in-browser demo backend, not a server."
+              >
+                DEMO DATA
+              </span>
+            )}
+          </>
+        }
+        description="FHWA-style calibration and validation reports from finished micro runs."
+      />
 
-      <div className="panel">
+      <section className="panel" aria-labelledby="reports-new-title">
         <div className="panel-head">
-          <span className="panel-title">Generated reports</span>
+          <h2 className="panel-title" id="reports-new-title">
+            New report
+          </h2>
+        </div>
+        <div className="panel-body reports-steps">
+          <div className="reports-step">
+            <h3 className="reports-step-title" id="reports-step-runs">
+              <span className="reports-step-num" aria-hidden="true">
+                1
+              </span>
+              Choose finished micro runs
+            </h3>
+            <div
+              className="table-wrap scroll-y reports-picker"
+              aria-busy={!runsLoaded && !authFailed && runsError === null}
+            >
+              <table className="data" aria-label="finished runs">
+                <thead>
+                  <tr>
+                    <th scope="col" className="reports-check-cell">
+                      <span className="visually-hidden">Select</span>
+                    </th>
+                    <th scope="col">Run</th>
+                    <th scope="col">Scenario</th>
+                    <th scope="col">Tier</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Config hash</th>
+                    <th scope="col">Labels</th>
+                  </tr>
+                </thead>
+                <tbody>{pickerBody}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="reports-step">
+            <h3 className="reports-step-title" id="reports-step-score">
+              <span className="reports-step-num" aria-hidden="true">
+                2
+              </span>
+              Score against
+            </h3>
+            <div className="form-grid reports-score-grid">
+              <div className="field">
+                <label htmlFor="r-profile">Criteria profile</label>
+                <select
+                  id="r-profile"
+                  className="input"
+                  value={profile}
+                  disabled={profileOptions === null || !criteriaListed}
+                  aria-describedby="r-profile-source"
+                  title={
+                    profileOptions === null
+                      ? LOADING_PROFILE_OPTIONS[0].source
+                      : criteriaListed
+                        ? 'Acceptance thresholds the report is scored against (GET /criteria). Thresholds only — the measurements are computed from the run artifacts.'
+                        : FALLBACK_PROFILE_OPTIONS[0].source
+                  }
+                  onChange={(e) => setProfile(e.target.value)}
+                >
+                  {profileChoices.map((p) => (
+                    <option key={p.name} value={p.name} title={p.source}>
+                      {p.name}
+                      {p.default ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {/* provenance of the profile, in the server's words — never
+                    its thresholds restated from this dashboard's copy */}
+                <p className="field-help" id="r-profile-source">
+                  {profileOptions !== null && criteriaListed && profileSource
+                    ? `Source: ${profileSource}`
+                    : profileSource}
+                </p>
+              </div>
+              <div className="field">
+                <label htmlFor="r-observations">Score against observations</label>
+                <select
+                  id="r-observations"
+                  className="input"
+                  value={observations}
+                  aria-describedby="r-observations-help"
+                  title={
+                    corridorsListed
+                      ? 'The detector observations the link-flow (GEH) and segment-speed rows are scored against. Without one those criteria are reported as "not evaluated" — the report still states what was simulated, but nothing is compared with a road.'
+                      : 'This service answered 404 to GET /corridors, so the corridors it has onboarded cannot be listed here. A server-side observations path can still be typed.'
+                  }
+                  onChange={(e) => setObservations(e.target.value)}
+                >
+                  <option value={OBSERVATIONS_NONE}>none — criteria not evaluated</option>
+                  {observationChoices.map((c) => (
+                    <option
+                      key={c.corridor_id}
+                      value={c.observations_path ?? ''}
+                      title={`Onboarded ${c.created_at.replace('T', ' ').slice(0, 19)} UTC (${c.corridor_id})`}
+                    >
+                      {c.name}
+                    </option>
+                  ))}
+                  <option value={OBSERVATIONS_CUSTOM}>server path…</option>
+                </select>
+                {observations === OBSERVATIONS_CUSTOM && (
+                  <input
+                    className="input mono"
+                    aria-label="Observations path on the server"
+                    placeholder="corridors/cor_…/observations.json"
+                    value={customObservations}
+                    onChange={(e) => setCustomObservations(e.target.value)}
+                  />
+                )}
+                <p className="field-help" id="r-observations-help">
+                  {corridorsListed
+                    ? 'An onboarded corridor’s detector observations, or a path on the server.'
+                    : 'This service cannot list its onboarded corridors; a server path can still be typed.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-foot reports-foot">
+          <div className="form-actions reports-actions">
+            <div className="form-actions-summary" id="r-generate-summary">
+              <span className="mono">{microSelected.length}</span>
+              {` run${microSelected.length === 1 ? '' : 's'} selected · `}
+              {observationsLabel === null
+                ? 'scored against no observations: link-flow and speed rows read “not evaluated”'
+                : `scored against ${observationsLabel}`}
+              {offline && (
+                <>
+                  {' · '}
+                  <span className="meta-warning">reconnect to generate</span>
+                </>
+              )}
+            </div>
+            <div className="form-actions-buttons">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={generateBlocked}
+                aria-busy={busy || undefined}
+                aria-describedby="r-generate-summary"
+                title={offline ? OFFLINE_WRITE_MESSAGE : undefined}
+                onClick={() => void generate()}
+              >
+                {busy && <Icon name="loader-circle" size={16} className="spin" />}
+                Generate report ({microSelected.length})
+              </button>
+            </div>
+          </div>
+          {launchError && (
+            <Callout tone="danger" title="The server refused this report request." role="status">
+              <span className="mono">{launchError}</span>
+            </Callout>
+          )}
+        </div>
+      </section>
+
+      <section className="panel reports-table-panel" aria-labelledby="reports-list-title">
+        <div className="panel-head">
+          <h2 className="panel-title" id="reports-list-title">
+            Generated reports
+          </h2>
           <span className="spacer" />
           <span
-            className="small muted"
+            className="panel-sub"
             title={
               demoRows > 0
                 ? 'The API is unreachable, so these rows come from the built-in demo backend. Nothing here was generated by a server, and no status shown for a DEMO row is evidence about a real report.'
@@ -775,125 +1143,25 @@ export function ReportsView(): JSX.Element {
                 : "this service has no GET /reports — this browser's records only"}
           </span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap scroll-y" aria-busy={reportsLoading && !authFailed && listError === null}>
           <table className="data" aria-label="generated reports">
             <thead>
               <tr>
-                <th>Report</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Criteria</th>
-                <th>Created</th>
-                <th>Runs</th>
-                <th />
+                <th scope="col">Report</th>
+                <th scope="col">Source</th>
+                <th scope="col">Status</th>
+                <th scope="col">Criteria</th>
+                <th scope="col">Created</th>
+                <th scope="col">Runs</th>
+                <th scope="col">
+                  <span className="visually-hidden">Downloads</span>
+                </th>
               </tr>
             </thead>
-            <tbody>
-              {rows.map(({ rec, origin }) => (
-                <tr key={rec.report_id}>
-                  <td style={{ fontWeight: 700 }}>{rec.report_id}</td>
-                  <td>
-                    {origin === 'server' && (
-                      <span className="tag server" title="Listed by GET /reports — held by this server">
-                        SERVER
-                      </span>
-                    )}
-                    {origin === 'local' && (
-                      <span
-                        className="tag demo"
-                        title="This browser's own record: GET /reports did not return it, so this server may not hold the bundle (requested against another API, or before the list endpoint existed)."
-                      >
-                        LOCAL
-                      </span>
-                    )}
-                    {origin === 'demo' && (
-                      <span
-                        className="tag demo"
-                        title="Built-in demo data, not a server answer: the API was unreachable when this row was read, so no server has generated or is holding this report."
-                      >
-                        DEMO
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <StatusChip status={rec.status} />
-                    {rec.error && (
-                      <div className="small" style={{ color: 'var(--danger)', marginTop: 4 }}>
-                        {rec.error_kind ? `${rec.error_kind}: ` : ''}
-                        {rec.error}
-                      </div>
-                    )}
-                  </td>
-                  <td className="muted">
-                    <span title={profileTitle(rec.profile)}>{rec.profile ?? 'unknown'}</span>
-                    {observedLine(rec.observed) && (
-                      <div
-                        className="small"
-                        title="Counted by the server from the observations artifact and the run artifacts: what the link-flow and segment-speed criteria were actually scored on."
-                      >
-                        {observedLine(rec.observed)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="muted">{rec.created_at.replace('T', ' ').slice(0, 19)} UTC</td>
-                  <td className="muted">{rec.run_ids.join(', ')}</td>
-                  <td>
-                    <div className="row wrap" style={{ gap: 6 }}>
-                      <button
-                        className="btn sm"
-                        disabled={rec.status !== 'done'}
-                        title={
-                          rec.status === 'done'
-                            ? 'Markdown only — its figures are linked, not embedded'
-                            : `report is ${rec.status} — the markdown is served only once it is done`
-                        }
-                        onClick={() => void downloadMarkdown(rec)}
-                      >
-                        Download .md
-                      </button>
-                      <button
-                        className="btn sm"
-                        disabled={rec.status !== 'done'}
-                        title={
-                          rec.status === 'done'
-                            ? 'Markdown plus the figure PNGs it references'
-                            : `report is ${rec.status} — the archive is served only once it is done`
-                        }
-                        onClick={() => void downloadArchive(rec)}
-                      >
-                        Download .zip (with figures)
-                      </button>
-                      <button
-                        className="btn sm"
-                        disabled={rec.status !== 'done'}
-                        title={
-                          rec.status === 'done'
-                            ? 'Optional PDF rendering — 404 when the report was generated without one'
-                            : `report is ${rec.status} — the PDF is served only once it is done`
-                        }
-                        onClick={() => void downloadPdf(rec)}
-                      >
-                        Download PDF
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty">
-                      {serverListed
-                        ? 'no reports on this server yet'
-                        : 'no reports requested in this browser yet'}
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
+            <tbody>{reportsBody}</tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
