@@ -1706,6 +1706,90 @@ if echo " $STAGES " | grep -q " p12_i24_b1 "; then
   stage p12_i24_b1 p12_steps || say "p12_i24_b1 failed; continuing"
 fi
 
+# p13 (opt-in; docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.3; not in the default list; needs the launcher's default
+#     --data-set i24). Amendment B2's corridor round (PROPOSED, not adopted; R1-R5 fixed 2026-10-07 before any run).
+#     The arm is _dc_refit + B2. _dc_refit is scenarios/i24_replica_flow_speedcal_dc_refit.yaml (config hash
+#     ada3f406504b; artifacts/i24_validation_dc_refit.json): the flow family's coverage-corrected arm
+#     (scripts/i24_build_replica.py --suffix flow --osm corrected --lc-strategic 5 --lc-strategic-ramp 1 --entry-lanes
+#     observed_flow, stage build_flow; _corrected = inflows / the equilibrium coverage per 15 min), the Amendment-1 driver
+#     calibration (scripts/apply_driver_calibration.py, artifacts/driver_calibration_i24.json: k = 1, keep-right 0;
+#     scenarios/i24_replica_flow_corrected_dc.yaml), then stage p4_i24_refit's demand fit
+#     (scripts/i24_fit_demand_scale.py: mainline and on-ramp inflows x s, exit fractions and boundary unchanged), whose
+#     scale s = 0.925 lives in artifacts/demand_scale_i24_flow_dc.json best.scale. Here, on the VM:
+#       1. the _rc family from the recording with the flow family's arguments plus --ramp-through-traffic exclude
+#          (scenarios/i24_replica_flow_rc{,_corrected}.yaml, artifacts/demand_i24_flow_rc.json,
+#          artifacts/i24_replica_inputs_flow_rc.json); the builder refuses unless artifacts/i24_count_consistency.json
+#          has the recording's data hash, the 06:30-08:30 5-min grid, the builder's four ramps and counts equal to its own;
+#       2. the same driver calibration on its corrected arm (scenarios/i24_replica_flow_rc_corrected_dc.yaml);
+#       3. the arm (scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml, harness_b2/corridor_b2.py arm): _dc_refit's
+#          s = 0.925 CARRIED, not refit (B2 leaves the mainline entry demand as it is), through the fitter's own
+#          scaled_config. Written only if that recipe reproduces the committed _dc_refit document, the rc inputs equal the
+#          flow family's in everything B2 does not touch, the arm differs from _dc_refit only in its name and the ramps'
+#          inflow / exit-fraction values, and those values are the builder's arithmetic on the corrected counts. Expected
+#          config hash 909b89f298c5 (computed 2026-10-07 from the committed inputs with the same arithmetic); another
+#          hash with all checks passed is not a failure, but say so in the write-up;
+#       4. two 20-seed batteries (spawn_seeds(42, 20), step 3's seeds), stage p4_i24_refit's invocation line for line:
+#          the same-code reference (the committed _dc_refit file, label dc_refit_p13ref; it should reproduce
+#          artifacts/i24_validation_dc_refit.json, which the score reports) and the B2 arm (label dc_refit_rc). The
+#          collisions block and the no_collisions row come with the explicit-scenario path. Trajectories pruned to the
+#          first seed after each battery;
+#       5. per replicate, each ramp's modelled vehicles over 06:30-08:30 from vehicles.parquet (never trajectories)
+#          -> artifacts/i24_b2_ramp_flows_{dc_refit_p13ref,dc_refit_rc}.json, then R1-R5 -> artifacts/boundary_b2_corridor.json
+#          (R3's corrected counts at the pooled recommended coverage of the count check, the coverage the §8.4.2 section
+#          targets stand at; R4 against those pooled targets; the readings are spelled out in the output's definitions).
+#     Everything it writes is artifacts/*.json or scenarios/*.yaml, so every archive carries it; the run trees are
+#     runs/i24_validation/dc_refit_*/ (make_archive's runs/i24_validation/dc*/*/*/meta.json and the first-seed replicate).
+#     Not in this stage: §8.4.3's second arm, _dc_refit + B1 + B2, which waits for B1's stage p12_i24_b1
+#     (BoundarySpec.limit_factor on both the reference and the arm, the same five steps with --label
+#     dc_refit_b1_p13ref / dc_refit_b1_rc).
+#     Cost on n2d-standard-16 (16 vCPU, 64 GB; $PROCS = 14) [estimate]: the build about 3-6 min (netconvert plus the 2-h
+#     mainline and ramp-lane reads); the observed side once, about 3-5 min (cached for the second battery); each battery
+#     two waves (14 + 6) of 2-h runs that took 889 s in one wave of 20 on n2-standard-32 at 30 processes, so about
+#     27-32 min of runs plus 3-5 min of analysis and the 20-seed ring rows, about 30-37 min each; reduce and score under
+#     a minute. About 70-85 min of stage time, 85-100 min billed with boot, setup and the I-24 data upload through the
+#     bucket: about $1.0-1.3 at $0.68-0.78/h (disk and bucket cents extra); --cap-min 150 bounds it at about $2.0.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p13 --machine n2d-standard-16 --bucket gs://<bucket>/p13 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 150 --pipeline-args '--stages "p13_i24_b2"'
+P13_RC=scenarios/i24_replica_flow_rc_corrected.yaml
+P13_RC_DC=scenarios/i24_replica_flow_rc_corrected_dc.yaml
+P13_ARM=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P13_REF=scenarios/i24_replica_flow_speedcal_dc_refit.yaml
+P13_H=artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py
+p13_battery() {  # p13_battery <scenario> <label>: stage p4_i24_refit's battery line, once (a resumed run skips a finished one)
+  local ok="logs/p13_$2.battery.ok"
+  if [ -f "$ok" ] && [ -f "artifacts/i24_validation_$2.json" ]; then say "p13: $2 battery done earlier, not repeated"; return 0; fi
+  $RUN scripts/i24_validate.py --scenario "$1" --label "$2" --replicates "$REPS" --procs "$PROCS" \
+      --analysis-procs 8 --ring-seeds "$RING" || { say "p13: $2 battery failed"; return 1; }
+  touch "$ok"
+  p4_prune "runs/i24_validation/$2"
+}
+p13_steps() {
+  local rc=0 chk="" lab
+  $RUN scripts/i24_build_replica.py --suffix flow_rc --osm corrected --lc-strategic 5 --lc-strategic-ramp 1 \
+      --entry-lanes observed_flow --ramp-through-traffic exclude --count-consistency artifacts/i24_count_consistency.json \
+    || { say "p13: the rc build was refused or failed; nothing run"; return 1; }
+  [ -f "$P13_RC_DC" ] && chk=--check
+  # shellcheck disable=SC2086
+  $RUN scripts/apply_driver_calibration.py --corridor i24 --artifact artifacts/driver_calibration_i24.json \
+      --source "$P13_RC" --out "$P13_RC_DC" $chk || { say "p13: driver calibration of the rc arm failed; nothing run"; return 1; }
+  $RUN "$P13_H" arm --base "$P13_RC_DC" --rc-inputs artifacts/i24_replica_inputs_flow_rc.json --out "$P13_ARM" \
+    || { say "p13: the B2 arm was refused (reason in logs/p13_i24_b2.log); nothing run"; return 1; }
+  p13_battery "$P13_REF" dc_refit_p13ref || rc=1
+  p13_battery "$P13_ARM" dc_refit_rc || rc=1
+  for lab in dc_refit_p13ref dc_refit_rc; do
+    [ -f "artifacts/i24_validation_$lab.json" ] || { rc=1; continue; }
+    $RUN "$P13_H" reduce --battery "artifacts/i24_validation_$lab.json" --out "artifacts/i24_b2_ramp_flows_$lab.json" \
+      || { say "p13: ramp flows of $lab failed"; rc=1; }
+  done
+  $RUN "$P13_H" score --ref artifacts/i24_validation_dc_refit_p13ref.json --b2 artifacts/i24_validation_dc_refit_rc.json \
+      --ref-flows artifacts/i24_b2_ramp_flows_dc_refit_p13ref.json --b2-flows artifacts/i24_b2_ramp_flows_dc_refit_rc.json \
+      --committed-ref artifacts/i24_validation_dc_refit.json --out artifacts/boundary_b2_corridor.json \
+    || { say "p13: scoring failed"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p13_i24_b2 "; then
+  stage p13_i24_b2 p13_steps || say "p13_i24_b2 failed; continuing"
+fi
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

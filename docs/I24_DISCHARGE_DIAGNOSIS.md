@@ -914,6 +914,34 @@ B2 if B1's stage has run; each against the same-code reference on the same seeds
 Adopt only if R1–R5 hold; R4 is read against the pooled targets of §8.4.2, which stand. Cost: one battery per arm
 on n2d-standard-16, about $1.3 per arm [estimate].
 
+**Implemented 2026-10-07, opt-in and off; not run, not adopted.** `scripts/i24_build_replica.py
+--ramp-through-traffic exclude --count-consistency artifacts/i24_count_consistency.json --suffix <…rc>` (default
+`keep`: the builder's earlier output, byte for byte, tested against the builder at f439db5 on synthetic inputs). Per
+5-min window, before coverage scaling: corrected = max(counted − flagged, 0), flagged = `prior_mainline_per_window`
+(on-ramps) or `later_mainline_per_window` (off-ramps). The builder refuses an artifact with another data hash, period
+or window grid, other ramps (name, kind, count section), a void run (`checks.reproduces_committed_counts` not true), or
+per-window counts that are not its own. The scenario header and `i24_replica_inputs_<suffix>.json`
+(`ramp_through_traffic`) record the artifact (path, sha256, data hash) and each ramp's counted, flagged and corrected
+counts. Tracked crossings 06:30–08:30, counted → corrected: Old Hickory on 1,329 → 1,142 (14.1 %), Hickory Hollow off
+740 → 724 (2.2 %), Hickory Hollow on 862 → 557 (35.4 %), Bell Road off 406 → 382 (5.9 %). No window clips. The
+subtraction is exact on this recording: the check's first-crossing ramp counts equal the builder's every-crossing
+counts in all 24 windows of all four ramps. The flags are lower bounds (each fragment's history inside its loaded
+15-min chunk), so B2 removes at least the flagged through traffic, not all of it. At the pooled recommended coverage
+the corrected counts R3 reads are 915 / 581 / 443 / 309 veh/h, against 1,065 / 594 / 687 / 328 as recorded.
+
+Corridor stage `p13_i24_b2` (scripts/gcp/pipeline_i24.sh, not in the default list; harness
+`artifacts/i24_discharge_2026-10-07/harness_b2/corridor_b2.py`): builds `flow_rc` on the VM with the flow family's
+arguments plus `exclude`; applies the Amendment-1 drivers; writes the arm `i24_replica_flow_rc_speedcal_dc_refit` with
+`_dc_refit`'s s = 0.925 carried, not refit, so the mainline entry demand is the reference's — written only if the
+recipe reproduces the committed `_dc_refit` (ada3f406504b), the arm differs from it only in name and ramp values, and
+those values are the builder's arithmetic on the corrected counts (expected hash 909b89f298c5); runs the same-code
+reference (`dc_refit_p13ref`) and the arm (`dc_refit_rc`) on step 3's 20 seeds; counts each ramp's modelled 2-h flow
+from `vehicles.parquet`; writes R1–R5 to `artifacts/boundary_b2_corridor.json`. Two readings §8.4.3 leaves open, fixed
+now: R3 compares against the corrected counts at the pooled recommended coverage (the coverage the §8.4.2 targets
+stand at); R5's wave part binds only if the same-code reference's `wave_speed` row passes (the committed `_dc_refit`
+fails it). The `_dc_refit` + B1 + B2 arm waits for stage `p12_i24_b1`. Cost: about $1.0–1.3 on n2d-standard-16
+[estimate].
+
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =
