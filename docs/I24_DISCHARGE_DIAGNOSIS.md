@@ -825,6 +825,44 @@ recorded problems blocks the adoption reading (`blocked_by_problems`, exit statu
 readout; the fixed `evaluate` is re-run locally on its archive and its output replaces the VM's
 `artifacts/boundary_b1_corridor.json`.
 
+### 8.3.1 Corridor round, run — 2026-10-07 (stage p12 on one n2d-standard-16 in us-central1-c, about 2 h 50 min of stage time, about $2.2, self-deleted)
+
+`artifacts/boundary_b1_corridor.json` (the readout re-run locally with the corrected A2 estimator on the VM's
+recorded outputs: per-replicate `meta.json`, `edges.parquet`, the batteries' artifacts and the VM-side braking
+counts `artifacts/i24_discharge_2026-10-07/p12_hard_braking_*.json`; the VM's own readout is kept beside it as
+`boundary_b1_corridor_vm_readout.json` — same verdicts, A2's zone speeds under the first estimator); batteries
+`artifacts/i24_validation_p12_{canonical,dc_refit,dc}_{ref,b1}.json`; the three `_b1` scenarios under `scenarios/`;
+log `artifacts/i24_discharge_2026-10-07/p12_i24_b1.log.txt`. Each B1 arm against its same-code reference on step 3's
+20 seeds, paired; f = 1.2185 on the 992-m last edge.
+
+| # | criterion (read per §8.3: A1 every arm, A2 `_dc_refit`, A3–A5 canonical) | canonical | `_dc_refit` | `_dc` | verdict |
+|---|---|---|---|---|---|
+| A1 | 0 collisions; steps below −8.9 m/s² not above the reference | 0 / 0; 10 vs 11 | 0 / 0; 2 vs 3 | 0 / 0; 6 vs 7 | **pass** |
+| A2 | 5,400-m 2-h flow in 5,829–6,309; zone speed error smaller than the reference's | 5,689 [5,678, 5,701] vs 5,531 (below the band; reported); 41.1 vs 34.1 km/h | **6,008 [5,994, 6,021]** vs 5,735 (recorded 6,009); **39.8 vs 33.1 km/h** (error −10.1 vs −16.8) | 5,818 vs 5,737; 40.5 vs 33.1 | **pass** (on `_dc_refit`) |
+| A3 | realised demand ≥ the reference's | 0.993 vs 0.987 | 0.948 vs 0.921 | 0.996 vs 0.996 | **pass** |
+| A4 | wave verdict unchanged where it passes; fronts not below −⅓ | 15.80 vs 15.89 km/h, both pass; fronts 18.8 vs 7.3 | reference fails the wave row (half n/a); fronts 11.2 vs 5.0 | fronts 26.0 vs 10.3 | **pass** |
+| A5 | 15-min segment-speed RMSPE ≤ reference + 0.02 | **0.309 vs 0.230 (limit 0.250)** | 0.256 vs 0.273 (pass) | 0.864 vs 0.534 (fail) | **fail** (canonical) |
+| — | peak sections 2,200 / 3,200 m (reported; targets 6,626 / 6,639) | 5,947 / 5,933, GEH 8.6 / 8.9 (ref 9.8 / 10.4) | **6,313 [6,295, 6,331] / 6,259 [6,240, 6,278], GEH 3.9 / 4.7** (ref 7.3 / 8.3) | 6,030 / 6,031, GEH 7.5 / 7.6 (ref 7.5 / 7.7) | |
+
+**Reading, by the rule fixed above.** A1–A4 hold; **A5 fails on the canonical arm**, so B1 is **not adopted** on this
+round. On the calibrated-demand arm (`_dc_refit`) every applicable criterion holds and the numbers are what the
+diagnosis predicted: the 5,400-m flow lands on the recording (6,008 against 6,009), the peak sections rise by
+266 veh/h to within GEH 5 of their targets (3.9 and 4.7 against 7.3 and 8.3), 2.7 points more of the demand is on
+the road, the boundary zone runs 6.7 km/h closer to the schedule and the segment speeds improve. On the canonical
+arm (uncalibrated demand, k = 0 drivers) the same change frees the downstream end and the corridor runs faster than
+the congested recording: RMSPE 0.230 → 0.309, outside the +0.02 band, with the emergent wave and zero collisions
+kept; on `_dc` (k = 1 drivers, uncorrected demand) the speeds degrade further (0.534 → 0.864) while its peak flows do
+not move — that arm's ceiling is not the boundary. What the round establishes: the downstream representation was
+the ceiling (§5), and B1 removes it; what it does not establish is that B1 alone reproduces the canonical arm, which
+it was never expected to (the FHWA demand re-sequence, §8.3, was conditional on A1–A5 and does not run). Whether
+B1 is adopted together with the calibrated-demand arm, where it holds, is the owner's call; it is not re-thresholded
+here. I-94 is exempt by model form (§8.3, factors note).
+
+**Limits.** One recording, one day; the `_dc_refit` reference fails the wave row, so A4's verdict half is read on
+the canonical arm only; A2's zone speed is the corrected (windowed) estimator, with the first estimator reported
+beside it; lane shares are not computed (only trajectories carry them, and the archive carries none); the braking
+counts are VM-side (`hard_braking.py`) and were not re-run locally.
+
 ### 8.4 Measure the target before using it again
 
 A data-only cloud stage (no simulation): Edie flows (vehicle-distance per cell,

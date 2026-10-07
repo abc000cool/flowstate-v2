@@ -1,0 +1,321 @@
+{
+ "schema": "flowstate.b1_hard_braking/1",
+ "artifact": "artifacts/i24_validation_p12_dc_refit_b1.json",
+ "label": "p12_dc_refit_b1",
+ "config_hash": "843b3b0c8634",
+ "definition": "vehicle-steps of trajectories.parquet (every 0.5-s step, corridor edges) with a below each threshold [m/s^2]; study window = sim t >= 600 s",
+ "per_seed": {
+  "6914975401685141156": {
+   "n_vehicle_steps": 26619965,
+   "below_ms2": {
+    "-4.5": 9,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 9,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "134183728835869882": {
+   "n_vehicle_steps": 26492455,
+   "below_ms2": {
+    "-4.5": 11,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 10,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "2378473973028931053": {
+   "n_vehicle_steps": 25906847,
+   "below_ms2": {
+    "-4.5": 11,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 11,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "3747978530954135749": {
+   "n_vehicle_steps": 26031683,
+   "below_ms2": {
+    "-4.5": 21,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 21,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "677105600768189526": {
+   "n_vehicle_steps": 25686295,
+   "below_ms2": {
+    "-4.5": 8,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 8,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "661281422688282993": {
+   "n_vehicle_steps": 25545633,
+   "below_ms2": {
+    "-4.5": 16,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 16,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "3011106312394044631": {
+   "n_vehicle_steps": 25141451,
+   "below_ms2": {
+    "-4.5": 14,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 14,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6953598295321596746": {
+   "n_vehicle_steps": 25303755,
+   "below_ms2": {
+    "-4.5": 20,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 20,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "165503670820534583": {
+   "n_vehicle_steps": 25579371,
+   "below_ms2": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6134032994440706937": {
+   "n_vehicle_steps": 25519032,
+   "below_ms2": {
+    "-4.5": 13,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 13,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "8557154790156791364": {
+   "n_vehicle_steps": 25647306,
+   "below_ms2": {
+    "-4.5": 13,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 13,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6538422657834023852": {
+   "n_vehicle_steps": 25244835,
+   "below_ms2": {
+    "-4.5": 9,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 9,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     6172.5,
+     5467.418431446259,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "6904272788004776631": {
+   "n_vehicle_steps": 25946838,
+   "below_ms2": {
+    "-4.5": 20,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 20,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6143473282319009404": {
+   "n_vehicle_steps": 26092107,
+   "below_ms2": {
+    "-4.5": 11,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 10,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "3944094060050347669": {
+   "n_vehicle_steps": 25583615,
+   "below_ms2": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "4910985839736976611": {
+   "n_vehicle_steps": 25746475,
+   "below_ms2": {
+    "-4.5": 9,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 9,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "7382187975121682178": {
+   "n_vehicle_steps": 25604158,
+   "below_ms2": {
+    "-4.5": 22,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 22,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "5690692725577505498": {
+   "n_vehicle_steps": 25722580,
+   "below_ms2": {
+    "-4.5": 21,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 20,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "887972120279483394": {
+   "n_vehicle_steps": 25999261,
+   "below_ms2": {
+    "-4.5": 23,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 23,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     6900.5,
+     8536.505293394903,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "8026499204807041784": {
+   "n_vehicle_steps": 25229554,
+   "below_ms2": {
+    "-4.5": 17,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 17,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  }
+ }
+}

@@ -1,0 +1,351 @@
+{
+ "schema": "flowstate.b1_hard_braking/1",
+ "artifact": "artifacts/i24_validation_p12_dc_ref.json",
+ "label": "p12_dc_ref",
+ "config_hash": "8976a1773674",
+ "definition": "vehicle-steps of trajectories.parquet (every 0.5-s step, corridor edges) with a below each threshold [m/s^2]; study window = sim t >= 600 s",
+ "per_seed": {
+  "6914975401685141156": {
+   "n_vehicle_steps": 18458352,
+   "below_ms2": {
+    "-4.5": 15,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 14,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "134183728835869882": {
+   "n_vehicle_steps": 18196974,
+   "below_ms2": {
+    "-4.5": 16,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 15,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "2378473973028931053": {
+   "n_vehicle_steps": 18470934,
+   "below_ms2": {
+    "-4.5": 8,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 8,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     5045.0,
+     2218.4858249414337,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "3747978530954135749": {
+   "n_vehicle_steps": 19571490,
+   "below_ms2": {
+    "-4.5": 15,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 15,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     1307.0,
+     1595.1523635893184,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "677105600768189526": {
+   "n_vehicle_steps": 19857104,
+   "below_ms2": {
+    "-4.5": 16,
+    "-7.0": 2,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 16,
+    "-7.0": 2,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     3762.5,
+     1192.5516417628207,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "661281422688282993": {
+   "n_vehicle_steps": 19668161,
+   "below_ms2": {
+    "-4.5": 12,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 12,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "3011106312394044631": {
+   "n_vehicle_steps": 17575050,
+   "below_ms2": {
+    "-4.5": 12,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 12,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6953598295321596746": {
+   "n_vehicle_steps": 18723281,
+   "below_ms2": {
+    "-4.5": 14,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 14,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "165503670820534583": {
+   "n_vehicle_steps": 18975460,
+   "below_ms2": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6134032994440706937": {
+   "n_vehicle_steps": 18923591,
+   "below_ms2": {
+    "-4.5": 8,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 8,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "8557154790156791364": {
+   "n_vehicle_steps": 18894684,
+   "below_ms2": {
+    "-4.5": 18,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 18,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6538422657834023852": {
+   "n_vehicle_steps": 18572212,
+   "below_ms2": {
+    "-4.5": 17,
+    "-7.0": 3,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 16,
+    "-7.0": 3,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     687.0,
+     4051.17773125266,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "6904272788004776631": {
+   "n_vehicle_steps": 18253567,
+   "below_ms2": {
+    "-4.5": 6,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 6,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "6143473282319009404": {
+   "n_vehicle_steps": 19430976,
+   "below_ms2": {
+    "-4.5": 13,
+    "-7.0": 2,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 12,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "3944094060050347669": {
+   "n_vehicle_steps": 19871626,
+   "below_ms2": {
+    "-4.5": 18,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 17,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "4910985839736976611": {
+   "n_vehicle_steps": 19114174,
+   "below_ms2": {
+    "-4.5": 15,
+    "-7.0": 2,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 14,
+    "-7.0": 1,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     951.5,
+     7110.485264458397,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "7382187975121682178": {
+   "n_vehicle_steps": 17823953,
+   "below_ms2": {
+    "-4.5": 22,
+    "-7.0": 4,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 22,
+    "-7.0": 4,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     6901.0,
+     7600.412612273733,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "5690692725577505498": {
+   "n_vehicle_steps": 18486087,
+   "below_ms2": {
+    "-4.5": 9,
+    "-7.0": 2,
+    "-8.9": 1
+   },
+   "below_ms2_study_window": {
+    "-4.5": 9,
+    "-7.0": 2,
+    "-8.9": 1
+   },
+   "emergency_steps_t_x_a": [
+    [
+     3273.0,
+     1214.1834290008221,
+     -9.0
+    ]
+   ],
+   "every_step_sampled": true
+  },
+  "887972120279483394": {
+   "n_vehicle_steps": 18653109,
+   "below_ms2": {
+    "-4.5": 16,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 16,
+    "-7.0": 1,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  },
+  "8026499204807041784": {
+   "n_vehicle_steps": 19719294,
+   "below_ms2": {
+    "-4.5": 10,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "below_ms2_study_window": {
+    "-4.5": 10,
+    "-7.0": 0,
+    "-8.9": 0
+   },
+   "emergency_steps_t_x_a": [],
+   "every_step_sampled": true
+  }
+ }
+}

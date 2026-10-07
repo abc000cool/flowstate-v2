@@ -10,7 +10,7 @@ TMP="$(mktemp -d)"
 # GNU tar on the VM stores a path listed twice as a hardlink; bsdtar reports those as
 # "hardlink pointing to itself" and skips them (the first copy is extracted). Not fatal.
 tar xzf "$TGZ" -C "$TMP" 2>"$TMP/tar.err" || echo "tar: $(grep -c . "$TMP/tar.err") warnings (hardlink duplicates are harmless)"
-echo "== archive contents"; find "$TMP" -maxdepth 2 | head -20
+echo "== archive contents"; { find "$TMP" -maxdepth 2 | head -20; } || true  # head closes the pipe early; under pipefail that was exit 141 (2026-10-07, the p12 ingest)
 # every destination exists before anything is copied: GNU rsync and cp on Linux do not create missing parents
 # (macOS rsync does; 2026-10-07, the CI failures of the stage-23 ingest test)
 mkdir -p logs/pipeline_vm artifacts scenarios docs/reports runs runs/i24_validation
