@@ -1,0 +1,25 @@
+count consistency: /root/flowstate/data/i24motion/processed/i24_wb_20221130/trajectories.parquet (06:30-08:30)
+chunk 06:30: 3,247,522 rows  [14 s]
+chunk 06:45: 3,446,005 rows  [33 s]
+chunk 07:00: 3,281,395 rows  [47 s]
+chunk 07:15: 3,447,289 rows  [62 s]
+chunk 07:30: 3,617,930 rows  [80 s]
+chunk 07:45: 3,685,688 rows  [98 s]
+chunk 08:00: 3,413,001 rows  [115 s]
+chunk 08:15: 2,914,789 rows  [130 s]
+
+checks: {"validator_counts": {"compared": true, "equal": true, "max_abs_diff": 0, "n_bins_differing": 0, "rec_coverage_equal_4dp": true}, "builder_ramp_counts": {"compared": true, "ramps": [{"name": "Old Hickory Blvd on-ramp", "equal": true, "max_abs_diff": 0}, {"name": "Hickory Hollow Pkwy off-ramp", "equal": true, "max_abs_diff": 0}, {"name": "Hickory Hollow Pkwy on-ramp", "equal": true, "max_abs_diff":
+   200 -> 1000   adjacent raw_storage=-441  pooled_storage=-697  section_storage=-1353  pooled_storage_rampadj=-547
+  1000 -> 2200   adjacent raw_storage=+558  pooled_storage=+900  section_storage=+677  pooled_storage_rampadj=+900
+  2200 -> 3200   adjacent raw_storage=-12  pooled_storage=-10  section_storage=-295  pooled_storage_rampadj=-10
+  3200 -> 4800   adjacent raw_storage=-338  pooled_storage=-550  section_storage=-43  pooled_storage_rampadj=-319
+  4800 -> 5400   adjacent raw_storage=+93  pooled_storage=+157  section_storage=+631  pooled_storage_rampadj=+137
+  2200 -> 5400   span     raw_storage=-257  pooled_storage=-403  section_storage=+294  pooled_storage_rampadj=-191
+  3200 -> 5400   span     raw_storage=-245  pooled_storage=-393  section_storage=+587  pooled_storage_rampadj=-181
+   200 -> 5400   span     raw_storage=-140  pooled_storage=-200  section_storage=-384  pooled_storage_rampadj=+162
+
+outcome: ramp_counts_contaminated — the counts do not conserve, the section coverage does not explain it, and removing the through traffic flagged in the ramp lanes does: the section targets stand, the ramp counts (and the model's ramp inputs built from them) are at fault
+  2200 m: target 6626 (was 6626), model 6047, GEH 7.28
+  3200 m: target 6639 (was 6639), model 5983, GEH 8.25
+  5400 m: target 6009 (was 6009), model 5735, GEH 3.57
+-> artifacts/i24_count_consistency.json  (131 s, peak 1849 MB)

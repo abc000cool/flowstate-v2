@@ -800,6 +800,69 @@ bootstrap leaves out the coverage estimator's own error. Ramp-lane coverage cann
 measured (`artifacts/i24_coverage_lane5.json`), so the ramps keep the pooled coverage, as
 the builder does.
 
+#### 8.4.2 Count-consistency result — 2026-10-07 (stage p11; one n2d-standard-16, 131 s of stage time, about $0.30, self-deleted)
+
+`artifacts/i24_count_consistency.json`; log `artifacts/i24_discharge_2026-10-07/p11_i24_count_check.log.txt`.
+The run is valid: the check's own crossing counts equal the validator's bin for bin (`checks.validator_counts`:
+max difference 0) and reproduce the committed counts; the builder's four ramp counts are reproduced exactly.
+
+**Residuals on 2,200 → 5,400 m, 06:30–08:30 (2-h means, veh/h; §8.4.1 rules applied mechanically):**
+
+| variant | residual R | reads |
+|---|---|---|
+| `Rp` pooled coverage | **−403** [−689, −135] (15-min circular-block bootstrap) | non-conservation: material and the interval excludes 0 |
+| `Rs` each section at its own coverage | +294 | does not explain it (bound ½·403 = 202 not met; the sign flips) |
+| `Ra` through traffic removed from the ramp counts | **−191** | explains it (≤ 202) |
+| `Rsa` both corrections | +506 | not needed |
+
+The support expected for the section-coverage reading was there — measured coverage is higher at 2,200 and
+3,200 m than at 5,400 m by 0.069 [0.052, 0.085] and 0.100 [0.087, 0.115] — but restating each section at its own
+coverage makes the imbalance worse, not better, so it is not the explanation.
+
+**Outcome (`verdict.outcome`): `ramp_counts_contaminated`.** The section targets stand at the pooled coverage
+(6,626 / 6,639 / 6,009 veh/h, unchanged). The ramp counts are at fault: vehicles that were in lanes 1–4 before an
+on-ramp count, or returned to them after an off-ramp count, were counted as ramp traffic. Tracked vehicles per hour
+over the window (lower bounds: a flag reads the fragment's history inside the loaded chunk only):
+
+| ramp | counted | flagged through traffic | share |
+|---|---|---|---|
+| Old Hickory Blvd on (950 m) | 664.5 | 93.5 (in lanes 1–4 before the count) | 14 % |
+| Hickory Hollow Pkwy off (3,700 m) | 370.0 | 8.0 (returned to lanes 1–4 after it) | 2 % |
+| Hickory Hollow Pkwy on (4,600 m) | 431.0 | 152.5 (in lanes 1–4 before the count) | 35 % |
+| Bell Road off, collector (5,050 m) | 203.0 | 12.0 (returned after it) | 6 % |
+
+**The model against the adopted targets** (`_dc_refit`, hash ada3f406504b, 20 replicates, 2-h flows): 2,200 m
+6,047 against 6,626 (GEH 7.28, fail); 3,200 m 5,983 against 6,639 (GEH 8.25, fail); 5,400 m 5,735 against
+6,009 (GEH 3.57, pass). By the fixed rule the peak-section shortfall (580–656 veh/h) is **the model's**, and it
+lies downstream: in the boundary representation (B1's corridor round, §8.3, is the test) and in the model's ramp
+volumes, which are built from the contaminated counts. The on-ramp inputs carry the flagged through traffic — about
+150 and 240 veh/h at the pooled coverage at Old Hickory and Hickory Hollow — so the model inserts vehicles the road
+did not receive and its net exits are too small. What that does to the peak sections is not predictable from this
+check (the extra entries feed the queue that the downstream end discharges, §7.4), so it is a run, below.
+
+#### 8.4.3 Proposed amendment B2 — ramp counts without through traffic
+
+*Proposed, not adopted. Written 2026-10-07 after §8.4.2 and before any corridor run; criteria fixed now.*
+
+**Change.** The I-24 demand builder subtracts, per 5-min window, the vehicles flagged in §8.4.2 from each ramp's
+count before coverage scaling (on-ramps: vehicles in lanes 1–4 before the count; off-ramps: vehicles that return to
+lanes 1–4 after it). Opt-in builder option; it changes the demand inputs, so it is a new scenario family (`_rc`),
+never a silent change to a published one. The mainline-entry demand is unchanged (the section targets stand).
+
+**Corridor acceptance (cloud; 20 seeds, the step-3 batteries' seeds; arms `_dc_refit` + B2, and `_dc_refit` + B1 +
+B2 if B1's stage has run; each against the same-code reference on the same seeds):**
+
+| # | criterion | fixed now |
+|---|---|---|
+| R1 | safety | 0 collisions in every run |
+| R2 | no winning by backlog | realised demand ≥ the reference's |
+| R3 | ramp-lane flows | each ramp's modelled 2-h flow within GEH 5 of its corrected count (the reference is scored against the corrected counts too, reported) |
+| R4 | peak sections | 2-h GEH at 2,200 and 3,200 m not above the reference's; reported either way |
+| R5 | emergent waves and speeds | wave verdict unchanged where it passes today; 15-min segment-speed RMSPE not above the reference + 0.02 |
+
+Adopt only if R1–R5 hold; R4 is read against the pooled targets of §8.4.2, which stand. Cost: one battery per arm
+on n2d-standard-16, about $1.3 per arm [estimate].
+
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =
