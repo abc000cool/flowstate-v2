@@ -137,6 +137,9 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   extra="$extra $(ls runs/i24_validation/dc*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
   # stage 24's probe (<root>/<network>/<pair>/<config hash>/<seed>/: readings and meta of every run, each network's lanes)
   extra="$extra $(ls runs/p5/i94_netfix_probe/*/LANES.json runs/p5/i94_netfix_probe/*/*/*/*/readings.json runs/p5/i94_netfix_probe/*/*/*/*/meta.json 2>/dev/null | tr '\n' ' ')"
+  # stage p8c's re-runs (runs/p8c/<arm>/<config hash>/<seed>/): the pair manifest, every run's meta.json and
+  # vehicles.parquet and the reader's window slice; never the trajectories (a few GB each)
+  extra="$extra $(ls runs/p8c/PAIRS.json runs/p8c/*/*/*/meta.json runs/p8c/*/*/*/vehicles.parquet runs/p8c/*/*/*/collision_slice.parquet 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   if tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null; then
     mv -f "$ARCHIVE.part" "$ARCHIVE"; ARCHIVE_FRESH=1
@@ -1455,6 +1458,44 @@ p8_i94_cal_steps() {
 }
 if echo " $STAGES " | grep -q " p8_i94_cal "; then
   stage p8_i94_cal p8_i94_cal_steps || say "p8_i94_cal failed; continuing"
+fi
+
+# p8c (opt-in; docs/I94_CAL_COLLISIONS.md §10). Stage p8's six collision replicates and one paired control (_dc_cal,
+#     seed 165503670820534583: T1's two vehicles without the collision) re-run with every run file kept, trajectories
+#     included: scripts/run_pairs.py, seven run_micro calls in one wave of at most 7 processes, each exactly as the
+#     battery runs a replicate, and refused before any run unless both scenarios still hash as p8's runs did. Then
+#     scripts/i94_collision_trace.py on each run: first the reproduction check against the collision p8 logged (same
+#     vehicles, edge, lane and position, time within one step; the control logs none), then the 15 s before each contact
+#     (per-step lane, x, v, a of the pair and of the vehicle ahead of the front car), the rear car's deceleration against
+#     its b and emergencyDecel, whether the two entered the lane in one step from opposite sides, and the weave's speed
+#     targets when the run logs them -> artifacts/i94_cal_collisions_trace.json, plus each run's collision_slice.parquet.
+#     A run that does not reproduce is named in the artifact ("reproduced": false) and fails the stage: p8 probably ran
+#     at 31c04c4, so relaunch from that commit before reading it. make_archive ships each run's meta.json,
+#     vehicles.parquet and slice, never its trajectories. Needs no data set (the scenarios are tracked). Cost: one wave
+#     of seven four-hour runs on n2-standard-16, about 30 min (p8's two waves of ten took 3,527 and 3,708 s with
+#     scoring), the reader a few minutes, boot and setup 10-15 min: about 45-55 min billed at about $0.78/h, about
+#     $0.60-0.75; --cap-min 75 bounds it at about $1.00.
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p8c --machine n2-standard-16 --bucket gs://<bucket>/p8c \
+#         --self-delete --via-bucket --data-set none --cap-min 75 --pipeline-args '--stages "p8c_i94_cal_collisions"'
+P8C_PAIRS="dc_cal=scenarios/${MNDOT}_weave_dc_cal.yaml:134183728835869882 \
+dc_cal=scenarios/${MNDOT}_weave_dc_cal.yaml:6134032994440706937 \
+dc_cal=scenarios/${MNDOT}_weave_dc_cal.yaml:165503670820534583 \
+dc_cal_netfix=scenarios/${MNDOT}_weave_dc_cal_netfix.yaml:134183728835869882 \
+dc_cal_netfix=scenarios/${MNDOT}_weave_dc_cal_netfix.yaml:165503670820534583 \
+dc_cal_netfix=scenarios/${MNDOT}_weave_dc_cal_netfix.yaml:677105600768189526 \
+dc_cal_netfix=scenarios/${MNDOT}_weave_dc_cal_netfix.yaml:6953598295321596746"
+p8c_steps() {  # the seven runs, then the reader on whatever ran (it names every run missing or not reproduced)
+  local rc=0
+  # shellcheck disable=SC2086
+  $RUN scripts/run_pairs.py --out runs/p8c --procs $(( PROCS < 7 ? PROCS : 7 )) \
+      --expect-hash dc_cal=beaaa710e6b3 --expect-hash dc_cal_netfix=182e3ec2f500 $P8C_PAIRS \
+    || { say "p8c: run_pairs failed (a hash mismatch runs nothing; see runs/p8c/PAIRS.json)"; rc=1; }
+  $RUN scripts/i94_collision_trace.py --root runs/p8c --out artifacts/i94_cal_collisions_trace.json \
+    || { say "p8c: a run is missing or does not reproduce stage p8 (artifacts/i94_cal_collisions_trace.json says which)"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p8c_i94_cal_collisions "; then
+  stage p8c_i94_cal_collisions p8c_steps || say "p8c_i94_cal_collisions failed; continuing"
 fi
 
 # p9 (opt-in; docs/WEAVE_LOSS_DIAGNOSIS.md §10.6 and §10.11; opt-in; not in the default list). Amendment W1b's

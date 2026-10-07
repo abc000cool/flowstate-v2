@@ -95,9 +95,10 @@ follows from the files and the code but is not observed; **[hypothesis]** not sh
   - **Both:** behind keys, fixtures first.
 - **The archived files cannot confirm either mechanism.** They hold no trajectories, no command record and no
   collision speeds.
-- **Confirmation (written, not launched).** Re-run the six collision replicates plus one paired control in one
-  wave on one n2-standard-16, with trajectories kept, and read 30-s windows around each contact. This costs
-  about **$0.60–0.75**, capped at about $1.00 (§10).
+- **Confirmation (implemented 2026-10-07 as stage `p8c_i94_cal_collisions`, not launched).** Re-run the six
+  collision replicates plus one paired control in one wave on one n2-standard-16, with trajectories kept, check
+  each against p8's logged collision, and read the window before each contact. This costs about
+  **$0.60–0.75**, capped at about $1.00 (§10).
 
 ## 1. The two edges
 
@@ -539,8 +540,8 @@ trajectories kept.**
 - **Why cloud.** A corridor run is not allowed on the laptop.
 - **Why not the battery's `--keep-trajectories`.** It would need `--replicates 10` in two batteries (20 runs) to
   reach seeds 1, 4, 7, 8 and 9 of the spawned list.
-- **This form instead.** Seven `run_micro` calls in one wave, then a window reader on the VM. The reader is new,
-  about 60 lines, to be written and committed with the stage. Its specification:
+- **This form instead.** Seven `run_micro` calls in one wave, then a window reader on the VM. Its specification
+  as proposed (implemented 2026-10-07, below, with the differences noted there):
   1. For each run directory under `runs/p8c/`:
      - print `config_hash` (must be `beaaa710e6b3` or `182e3ec2f500`), `n_collisions` and the `collisions` list;
      - compare them with §3's events: `t`, `collider`, `victim`, `lane`, `pos_m` to 1e-6;
@@ -554,35 +555,60 @@ trajectories kept.**
   4. For the control (`_dc_cal`, seed 165503670820534583), print the same window at 574.5 s for v19448 and v27416:
      each one's lane on arriving at the section, against T1.
 
-**Proposed stage text** for `scripts/gcp/pipeline_i24.sh`, after p8. Written, not committed; the launcher runs
-only stages of a pushed commit, so this is the owner's call:
+**Implemented 2026-10-07: stage `p8c_i94_cal_collisions`** in `scripts/gcp/pipeline_i24.sh`, after p8, opt-in.
+Not launched and not committed: the launcher runs only stages of a pushed commit, so the launch is the owner's call.
 
-```sh
-# p8c (proposed, docs/I94_CAL_COLLISIONS.md §10). The six stage-p8 collision replicates and one paired control
-#     re-run with trajectories kept (one wave of 7 four-hour runs), each checked against its logged collision, then
-#     a 30-s window per collision (per-step lanes, speeds and accelerations of the pair and of every vehicle
-#     entering the collision lane) and the pair's vTypes. One n2-standard-16, --data-set none.
-P8C_RUNS="dc_cal:134183728835869882 dc_cal:6134032994440706937 dc_cal:165503670820534583 \
-dc_cal_netfix:134183728835869882 dc_cal_netfix:165503670820534583 dc_cal_netfix:677105600768189526 \
-dc_cal_netfix:6953598295321596746"
-p8c_steps() {
-  local spec arm seed
-  for spec in $P8C_RUNS; do
-    arm=${spec%%:*}; seed=${spec##*:}
-    $RUN -c "from microsim.scenarios import load_scenario; from microsim.runner import run_micro; \
-run_micro(load_scenario('scenarios/${MNDOT}_weave_${arm}.yaml'), ${seed}, 'runs/p8c/${arm}')" \
-      > "logs/p8c_${arm}_${seed}.run.log" 2>&1 &
-  done
-  wait
-  $RUN artifacts/i94_cal_collisions_2026-10-07/collision_window.py.txt runs/p8c > logs/p8c_collision_windows.txt
-}
-if echo " $STAGES " | grep -q " p8c_i94_cal_collisions "; then
-  stage p8c_i94_cal_collisions p8c_steps || say "p8c_i94_cal_collisions failed; continuing"
-fi
-```
+- **The runs: `scripts/run_pairs.py`.** One call runs the seven (scenario, seed) pairs in one spawn pool of at most
+  7 processes (one wave). Each runs exactly as the battery runs a replicate (`microsim.runner._replicate_worker`)
+  into `runs/p8c/<arm>/<config hash>/<seed>/`, with every file kept, trajectories included.
+  - **Hash guard.** Both scenarios are loaded and hashed first, and nothing runs unless they hash as p8's runs did
+    (`--expect-hash dc_cal=beaaa710e6b3 --expect-hash dc_cal_netfix=182e3ec2f500`). Checked on the committed
+    scenarios today (load and hash only).
+  - A failed run does not stop the others; `runs/p8c/PAIRS.json` records each run's status.
 
-- **Archive.** Add `runs/p8c/*/*/*/{meta.json,vehicles.parquet,net/demand.rou.xml}` to `make_archive`'s list,
-  without the trajectories. The logs travel by default.
+  | arm (scenario) | seeds |
+  |---|---|
+  | `dc_cal` (`scenarios/mndot_i94_wb_stpaul_weave_dc_cal.yaml`, `beaaa710e6b3`) | 134183728835869882 (R1), 6134032994440706937 (R2), 165503670820534583 (control) |
+  | `dc_cal_netfix` (`..._dc_cal_netfix.yaml`, `182e3ec2f500`) | 134183728835869882 (R3), 165503670820534583 (T1), 677105600768189526 (T2), 6953598295321596746 (T3) |
+
+- **The reader: `scripts/i94_collision_trace.py`** (in place of a `.py.txt` harness), on every run under `runs/p8c`.
+  It writes `artifacts/i94_cal_collisions_trace.json` and each run's `collision_slice.parquet` (the window's rows).
+  1. **Reproduction first.** Each run's collision log is compared with §3's event: the same collider and victim,
+     the same edge and lane, `pos_m` within 1e-6 m (the full-precision positions of the committed battery
+     artifacts' `collisions.locations`), `t` within one step, the expected config hash, and no other collision.
+     - **Stricter than proposed for the control:** it must log no collision at all, as in p8, not only none before
+       600 s.
+     - **The trajectory is checked too:** the rear car is in the logged lane at `t`, at the section's start plus
+       `pos_m`.
+     - **When a run does not reproduce,** the artifact's top-level `reproduced` is false, its `reproduction_note`
+       names the run and says to relaunch from `31c04c4`, and the reader exits 3, which fails the stage. The run is
+       still traced, labelled `reproduced: false`.
+  2. **The window:** the 15 s before contact and 1 s after (the proposal's 30 s is `--before-s 30`). Per step: lane,
+     x, position on the section, v, a and bumper gaps of the rear car, the front car and the vehicle ahead of the
+     front car.
+  3. **Braking:** the rear car's per-step deceleration against its vType's `decel` (to 1e-3 m/s²) and its
+     `emergencyDecel`.
+     - The vTypes set no `emergencyDecel`, so it is SUMO's passenger default max(decel, 9).
+     - Over the last 6 steps: whether the rear car was pinned at `decel` while its gap closed (§4.2's signature) or
+       braked beyond it.
+  4. **Entries:** the step and side from which each car entered the collision lane, over the last 60 s.
+     - **The kinds:** a lane change from the right or the left; a renumbering where the section's lanes start (not a
+       lane change); or the arrival of a ramp vehicle on the axis.
+     - **`opposing_entries`:** both cars changed into the lane in the same step from opposite sides (§5.2).
+     - **Also listed:** every entry into the lane within 150 m behind and 60 m ahead, and each car's lane on reaching
+       the section, compared between T1 and its control (pair key `T1`).
+  5. **Commands:** whether a weave speed target was issued to the rear car for the contact step, when a run logs
+     them (`weave_commands.parquet` or `meta.json["weave_commands"]`). The runner does not, so this block reads
+     `logged: false` until the optional recorder below exists.
+  6. **The vTypes** (`decel`, `emergencyDecel`, `minGap`, `tau`, `accel`, `length`), from `net/demand.rou.xml`.
+- **Archive.** `make_archive` ships `runs/p8c/PAIRS.json` and each run's `meta.json`, `vehicles.parquet` and
+  `collision_slice.parquet`. It never ships `trajectories.parquet` or `net/` (the vTypes are in the artifact). The
+  ingest copies the artifact (on its allow-list) and `runs/p8c`.
+- **Tests (no corridor simulation).**
+  - `tests/test_scripts/test_i94_collision_trace.py`: a planted rear-end braking at exactly `decel`, a planted
+    opposing entry and its one-step-earlier counterpart, reproduction failures, a logged weave target.
+  - `test_run_pairs.py`: the hash guard on the committed scenarios, and two 20-s ring runs through the spawn pool.
+  - `test_p8c_stage.py`: the stage's two calls, the archive's contents and the ingest.
 - **Launch:**
 
   ```sh
@@ -590,13 +616,22 @@ fi
     --self-delete --via-bucket --data-set none --cap-min 75 --pipeline-args '--stages "p8c_i94_cal_collisions"'
   ```
 
-- **Reproduction risk.**
-  - Stage p8's log does not record its commit. The last commit before the VM started (09:17 UTC) is `31c04c4`
-    [inference].
-  - Since then: `decdccc` adds a default-off, hash-neutral weave input; `268d70c` and `b066935` change scoring
-    and add W1b off, byte-identical by their records; and the working tree has uncommitted edits to
-    `vehicles.py` and `config.py`.
-  - If any re-run does not log its §3 event exactly, relaunch from `31c04c4` before reading anything.
+- **Expected VM time and cost [estimate].**
+  - **The runs, about 30 min:** one wave of seven four-hour runs. p8's waves of ten took 29–31 min on this machine
+    type, scoring included.
+  - **The reader, at most about 5 min:** it reads only the trajectory row groups of each event's last minute.
+  - **Boot and setup through the bucket, 10–15 min.**
+  - **Total: about 45–55 VM minutes at about $0.78/h, so about $0.60–0.75.** `--cap-min 75` bounds it at about
+    $1.00. Seven kept trajectories, a few GB each, fit the 120 GB disk.
+- **Reproduction.**
+  - **The commit.** Stage p8's log does not record its commit. The last commit before the VM started (09:17 UTC) is
+    `31c04c4` [inference].
+  - **Since then.** `decdccc` adds a default-off, hash-neutral weave input; `268d70c` and `b066935` change scoring
+    and add W1b off. Each later runner change was recorded byte-identical with its keys off
+    (docs/PERFORMANCE_2026-10-07.md; the W1 and W1b records in docs/WEAVE_LOSS_DIAGNOSIS.md §8.2 and §10.8; the
+    crossing share's in docs/TH52_CROSSING_SHARE.md §10.2). So HEAD should reproduce p8 [inference].
+  - **The stage checks rather than assumes.** If any re-run does not log its §3 event exactly, the artifact says so
+    and the run must be relaunched from `31c04c4` before anything in it is read.
 
 **Optional, more decisive: a command recorder** (new harness, like WP-93's `wp93/h93.py`, session record):
 
@@ -667,3 +702,218 @@ fi
 - **Plan identity (§7):** `route` and `depart_planned_s` equal per `veh_id` between the arms.
 - **Locks:** `validation.locks.detect_run_locks(run_dir)` on each archived run.
 - **Fisher tests:** `scipy.stats.fisher_exact`.
+
+## 13. Amendment W2: weave collision guards (pre-registered 2026-10-07 08:35 CDT)
+
+*Written before any W2 code existed and before any W2 or reference run of this round, at HEAD `6670388`. Evidence
+used: §4, §5 and §9 above, the committed W1/W1b fixture artifacts (`artifacts/weave_loss_2026-10-07/w1`, `w1b`) and
+`artifacts/weave_w1b_corridor.json`. Results are appended below this registration and do not change it. A frozen copy
+is `artifacts/weave_collision_guards_2026-10-07/prereg.md`.*
+
+### 13.1 Why W2
+
+- §4.2 and §5.2 name two weaknesses of the weave's command path, each the human-driver counterpart of a defect
+  already fixed elsewhere:
+  - **R (Ruth St):** a weave speed target caps the vehicle's braking at its comfortable deceleration (WP-95's SUMO
+    behaviour), and `_weave_command` reads a leader closer than `minGap` as a free road (WP-96's defect).
+  - **T (T.H.52):** two entries into one lane from opposite sides in one step, the rear one a mode-256 weave change
+    that lands at any gap (WP-92). The weave's guard was deleted on 2026-10-06; `merge: measured` keeps
+    `merge_model.resolve_opposing`, always on.
+- W2 puts the fixes of §9 (F-R, F-T) behind three opt-in keys and tests them on fixtures. The cloud confirmation of
+  the mechanisms (§10, p8c) is separate work.
+
+### 13.2 The rule
+
+Three keys of `weave_params`, members of `WEAVE_OPTIONAL_KEYS`: no default, `1` on, `0` or unset off, any other
+value refused. Unset, nothing of a guard runs and nothing is written. The **W2 setting** is all three at `1` on every
+weave block.
+
+1. **`weave_handback`** (F-R.1).
+   - **What it does.** In `_weave_step`, before each one-step target `vehicle.slowDown(id, v, 0.0)` (the changer's
+     easing, the chosen follower's cooperation, the ramp anticipation), the target is withheld for that step when
+     `_handback_needed(mod, id, v, b_cmd, step_s)` holds.
+   - **The test.** `_handback_needed` is the AV path's helper, unchanged: the vehicle's own model's follow speed
+     behind its real leader (`vehicle.getFollowSpeed`) is below `v − b_cmd·Δt`, the lowest speed a commanded
+     vehicle can reach. `b_cmd = _command_decel(fleet model, decel, emergencyDecel)`, which is `decel` for EIDM.
+   - **Counter.** `n_handback_skips`: vehicle-steps on which a target was withheld. A withheld target is not
+     counted in `n_cooperations` or `n_changer_eased`.
+2. **`weave_close_leader`** (F-R.2).
+   - **What it does.** In `_weave_command`, a leader with a negative reported gap (closer than the vehicle's
+     `minGap`) is read as a leader at bumper gap `max(reported gap + minGap, 0)`, not as a free road. The IDM
+     estimate of the vehicle's own acceleration then reads that leader (−∞ at a zero gap), so no target is recorded
+     when the vehicle must brake harder than `b`.
+   - **Counter.** `n_close_leader_withheld`: target requests the free-road reading would have recorded and this
+     reading does not.
+3. **`weave_resolve_opposing`** (F-T, port of `merge_model.resolve_opposing`).
+   - **What it does.** The section's change requests of a step (accepted, or forced through the guard) are
+     collected and executed after the per-vehicle loop. Before they execute, `merge_model.resolve_opposing`
+     (unchanged) decides every pair entering one lane from both sides in that step, on the pre-step state:
+     - priority: a due forced change, then any other runner request, then a model-driven change of an undriven
+       vehicle; between equals, the one ahead goes;
+     - the loser waits one step: a runner request is withheld (mode 512, no request); an undriven vehicle's model
+       change is vetoed (its model bits cleared for the step and restored at the start of the next step by
+       `_weave_opposing_restore`).
+   - **The weave's inputs.** `due` is "the forced change is due" (zone delay spent, or a released partner);
+     `accept_s` the movement's accepted gap; `v`, `minGap` and `b` the changer's. An opponent that is driven with a
+     request made in the previous step is `open`; driven without one, `driven`; undriven with model bits, `model`;
+     undriven without, `held`.
+   - **Counters.** `n_opposing_deferred` (withheld requests plus vetoes, as the measured model counts it) and
+     `n_opposing_vetoed` (the vetoes).
+- **Records.** Each counter is written in `meta.json["weave_sections"][i]` only when its key is on.
+- **Not included:**
+  - the arrival-step change of an undriven entrant that SUMO's model makes in the very step it reaches the section
+    (T1's other possible path, §5.1): the runner sees it only afterwards;
+  - braking constraints other than the leader (a lane-end stop), as in the AV path;
+  - storing collision speeds in `meta.json` (§9, "Recording"). The harness reads speeds from the trajectories.
+
+### 13.3 Arms and sets
+
+**Arms.** Each set is run twice at the same seeds, with trajectories kept for the readers (macOS, at most two SUMO
+processes at once):
+
+- reference: no key;
+- W2: `--weave-set weave_handback=1 --weave-set weave_close_leader=1 --weave-set weave_resolve_opposing=1`.
+
+**Diagnostic arms** (reported, never criteria):
+
+- each key alone, on S1 and on every stress set in which some reference run reproduces R or T;
+- W1b + W2 against W1b alone on S3a.
+
+**Sets.** S1–S3 are W1b's sets (docs/WEAVE_LOSS_DIAGNOSIS.md §10.4). X-R1 to X-T2 are new stress sets written to
+provoke the two mechanisms; their configs are fixed here.
+
+| set | what | runs per arm |
+|---|---|---|
+| S1 | The T.H.52 section test with the calibrated drivers, seeds 3–22: `merge_model_selfcheck.py th52 --model weave --fleet-from scenarios/mndot_i94_wb_stpaul_weave_dc.yaml` | 20 |
+| S2 | The 37-run grid with the fixtures' own fleets: `merge_model_selfcheck.py grid --model weave` | 37 |
+| S3a | The five Ruth St fixtures with the calibrated drivers at seeds 3–22: `grid --model weave --fleet-from …_dc.yaml --only ruth_entr,ruth_exit,ruth_entr_fleet,ruth_exit_fleet,ruth_exit_fleet_271 --seeds 3-22` (a config hashing as an earlier one runs once) | 60 |
+| S3b | The grid's other weave fixtures with the calibrated drivers at the grid's seeds | 15 |
+| X-R1 | Ruth St queued at its entrance peak: `ruth_entr` (`RUTH_DEMAND["entrance_peak"]`) with the calibrated drivers, a downstream speed schedule on the last corridor edge (`network.boundary`, 2 m/s from t = 300 s), 2,400 s, seeds 3–22 | 20 |
+| X-R2 | Ruth St queued at the C-D split's exit peak: `ruth_exit` (`RUTH_DEMAND["exit_peak"]`), the calibrated drivers, 1 m/s from t = 300 s, 2,400 s, seeds 3–22 | 20 |
+| X-T1 | S1 with `ramp_to_ramp_share` 0 on the weave: every T.H.52 entrant crosses into the mainline and every exiter comes from it, every leg's volume kept | 20 |
+| X-T2 | The T.H.52 fixture at the corridor's demand (`th52_corridor_demand`: mainline 4,919 veh/h, entrance 1,412 veh/h, exit fraction 0.212) with the calibrated drivers and `ramp_to_ramp_share` 0, seeds 3–22 | 20 |
+
+**Why these stress sets.**
+
+- **X-R1, X-R2.** R1–R3 happened while the downstream queue covered Ruth St (§6), with the auxiliary lane full end to
+  end. No fixture on record forms that state (§10, "A fixture is not the cheaper first step here").
+  - The boundary speeds are set so that the queue reaches the gore early in the run. At the fleet means a lane at
+    v carries about v/(L + s0 + v·T) vehicles a second. At 2 m/s that is about 2,140 veh/h over three lanes against
+    about 4,300 arriving (X-R1), so the queue reaches the gore at about 550 s. At 1 m/s it is about 1,230 against
+    about 2,160 (X-R2), so it reaches the gore at about 1,000 s.
+  - 2,400 s then leaves 23–31 minutes of queued operation.
+- **X-T1, X-T2.** T1–T3 are crossings of an exiter and an entrant. The proportional split sends about a fifth of the
+  entrants to the exit without crossing. Share 0 maximises the crossing volume without changing any leg's volume.
+  X-T2 adds the corridor's demand, under which the T.H.52 ramp queues, the regime of T2 and T3.
+
+### 13.4 Definitions
+
+- **Collision.** An event of `meta.json["collisions"]` (`n_collisions` counts them all).
+- **Mechanism of a collision.** Read from the trajectories (one sample per 0.5-s step), section lanes by
+  `meta.json` and the network:
+  - **R (rear-end in the auxiliary lane):**
+    - the event's lane is lane 0 of a weave section edge;
+    - neither party has a sample outside lane 0 in [t − 5 s, t]. A vehicle on the ramp has no sample, which is
+      allowed.
+  - **T (opposing entries):**
+    - the event's lane is section lane k ≥ 1;
+    - the collider's and the victim's last entries into lane k before t are at the same sample, within [t − 10 s, t];
+    - the collider came from lane k + 1 and the victim from lane k − 1.
+  - **Other:** anything else, reported with lanes, roles and the last samples.
+- **Reproducing run.** A reference run (any set) with at least one collision of mechanism R or T.
+- **Signature (reported, not a criterion).** For each R collision, the collider's acceleration over the 4 samples
+  before contact beside its vType's `decel` (from the run's routes file); §10 calls a collider pinned at `−decel`
+  the confirming signature.
+- **Lock.** W1b's fixture form (§10.4 there): after the 120-s warm-up, the same vehicle is the front of a section
+  lane, within 15 m of the gore, below 0.1 m/s, for ≥ 120 s without a break. `run_summary`'s lock flag is read
+  beside it.
+- **Given-up exits.** `n_missed_exit` of the weave sections.
+- **Hard brakes.** Vehicle-steps with a ≤ −9 m/s² + 1e-6 (`run_summary`'s count).
+
+### 13.5 Acceptance criteria, fixed now
+
+If any criterion fails, the keys stay off and the failure is reported. No criterion is re-thresholded.
+
+| # | criterion |
+|---|---|
+| G0 | **Off is byte-identical.** A `git archive HEAD` tree against the working tree, through W1's `harness/cmp.py` (37 cases: the 12 micro goldens; the T.H.52, Ruth St, McKnight Rd, T.H.61 and golden weave fixtures; the T.H.52 section with the calibrated drivers at seeds 3–5; the measured model on T.H.52, Ruth St and McKnight). Identical means the sha256 of every Parquet file, `meta.json` without wall time, the metrics and the config hash. Also: every committed scenario hashes the same in both trees; `WEAVE_DEFAULTS` and `tests/golden/` unchanged; each key at 0 byte-identical to unset on one SUMO fixture |
+| G1 | **Zero collisions** in the W2 arm on every run of S1, S2, S3a and S3b |
+| G2 | **Reproduction.** For every reproducing run, the W2 run of the same (set, fixture, seed) has zero collisions. If no reference run reproduces R or T, G2 is **not testable on the fixtures**, and is reported so (not as a pass) |
+| G3 | **T.H.52 throughput.** S1 exit-end flow, paired W2 − reference: 95 % t-interval lower bound > −50 veh/h |
+| G4 | **Given-up exits.** (a) S1, paired per run W2 − reference: 95 % upper bound ≤ +1.5. (b) S2, and S3a + S3b pooled: the W2 total ≤ ref + 2 + 2·√(2·ref), ref being the reference total |
+| G5 | **Hard brakes**, per set (S1, S2, S3a + S3b): the W2 total ≤ ref + 2 + 2·√(2·ref) |
+| G6 | **No new lock.** No W2 run of any set (stress sets included) has a lock (§13.4) or a `run_summary` lock flag at a weave section that its reference run lacks |
+| G7 | **Stress sets.** No W2 collision of mechanism R or T, and the W2 arm's collisions over X-R1 to X-T2 are no more than the reference's. Every other collision is reported with its mechanism |
+
+**How the thresholds were chosen** (from the committed W1 record, before any W2 run):
+
+- **G3, X = 50 veh/h.**
+  - **The noise.** W1's paired S1 comparison (`w1/th52_ref.json` against `w1/th52_w1.json`) has a per-seed sd of
+    41 veh/h, a 95 % half-width of 19 veh/h.
+  - **Passing a null effect.** With a true effect of zero, the lower bound clears −50 with probability above 0.999.
+  - **Catching a real loss.** A true loss of 50 veh/h fails with probability ≥ 0.5, and one of 70 veh/h with about
+    0.98.
+  - **Scale.** 50 veh/h is 1.1 % of the section's 4,361 veh/h reference flow and about a tenth of the weave's
+    465 veh/h loss (docs/WEAVE_LOSS_DIAGNOSIS.md §2).
+  - **What it accepts.** The guards withdraw cooperation only in emergencies and defer a change by one step, so a
+    cost below that scale is accepted for a collision fix.
+- **G4 (a), +1.5 exits per run.**
+  - **The noise.** W1's paired given-up difference has an sd of 1.77 per run, a half-width of 0.83. A null effect
+    passes with probability ≈ 0.95.
+  - **Scale.** 1.5 exits are 0.36 % of the ≈ 417 exiters reaching the section per run (reference: 3.3 given up per
+    run).
+- **G4 (b) and G5, the band ref + 2 + 2·√(2·ref).**
+  - **Why a band.** Once a guard has acted, the two runs diverge, and counts of rare events behave as independent
+    draws. The band is two standard deviations of the difference of two Poisson counts at the reference's total,
+    plus W1/W1b's absolute allowance of 2 (their F4).
+  - **Hard brakes may rise for a good reason.** A withheld target lets a vehicle brake harder than `b` when its
+    model needs to. A rise inside the band is accepted; above it, the guard has made driving abrupt.
+
+**Predictions, registered, not criteria:**
+
+- **G0** holds by construction.
+- **The reference arms** reproduce W1b's reference rows (`w1b/s1_ref.json`, `s2_ref.json`, `s3a_ref.json`,
+  `s3b_ref.json`) field for field, config hash aside. This also checks the tree.
+- **Guard activity.**
+  - The handback and the close-leader reading fire in queued fixtures.
+  - The resolution fires at crossing pairs.
+  - So most W2 runs diverge from their references.
+  - A W2 run in which all three counters read 0 is expected to equal its reference (Parquet sha256; `meta.json`
+    without wall time, config hash, the weave params and the W2 counters). This is reported as diagnostic D1, not a
+    criterion.
+- **Reproduction is uncertain.** Every fixture on record has zero collisions. X-R1/X-R2 force the standing
+  auxiliary-lane queue that R needs, and X-T1/X-T2 raise the crossings T needs. Neither is known to collide.
+
+**What passing means.** Passing every fixture criterion does not adopt W2. If no fixture reproduces either
+mechanism, the fixtures show only that the guards cost nothing. Whether they remove the corridor's collisions is the
+corridor round's question (13.6), and adoption is the owner's decision.
+
+### 13.6 Corridor criteria, fixed now (cloud; run only on the owner's decision)
+
+**The runs.** Two batteries on one code tree, the I-94 four-hour battery of p8 (20 seeds spawned from seed 42;
+`--observations` the calibration-day targets; profile `fhwa_tat3_2004`), paired by seed:
+
+- **A:** `scenarios/mndot_i94_wb_stpaul_weave_dc_cal.yaml` (hash `beaaa710e6b3`) with W1b on both weaves
+  (`entrant_giveup_m` 5, `entrant_giveup_dwell_s` 60; `exit_prepare` 1 kept);
+- **B:** A with the W2 setting added on both weaves.
+
+**Why A is W1b, not `_dc_cal`.**
+
+- The proposal is W1b + W2 together.
+- Pairing B with A isolates W2.
+- A on its own shows whether W1b already removes the Ruth St collisions by shortening the stranded queue (§9).
+- p8's `_dc_cal` battery (2 collisions, both R) is the context, not the pair.
+
+| # | criterion |
+|---|---|
+| CW1 | S790 06:30–07:30 simulated flow, paired B − A: 95 % lower bound > −50 veh/h (p9's paired half-width was 16.8 veh/h; 50 is 1.1 % of the observed 4,667) |
+| CW2 | Departed share, paired B − A: 95 % lower bound > −1.0 pp (p9's half-width 0.95 pp) |
+| CW3 | Zero collisions in B. A's collisions are reported by section (999007700 Ruth St, 51388891 T.H.52, other) |
+| CW4 | Zero locks in B: `corridor_w1b.py`'s end-of-run front-row reading (C4b) and the battery's own `validation.locks` per-seed records. A disagreement between the two is reported, not resolved |
+| CW5 | Given-up exits (`n_missed_exit`) per weave, pooled over seeds: B ≤ A + 2 + 2·√(2·A). W1b's releases ≤ 1 % of each entrance's departures, pooled (C5b) |
+
+Reported beside, not criteria: link-flow GEH < 5 share, the baseline gate's verdicts, the W2 counters per section.
+
+**A note on power.** `_dc_cal` had R collisions in 2 of 20 replicates and T collisions in none (all three were under
+netfix, §7). The pair tests R directly; for T it tests only that the guard costs nothing. A netfix pair
+(`_dc_cal_netfix` with W1b, and with W1b + W2) is the optional extension for T, with the same criteria.
