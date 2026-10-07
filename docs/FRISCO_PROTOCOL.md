@@ -519,3 +519,19 @@ the proportional split and the calibrated share.
 - **(c) A direct count.** One AM peak of video at the 242B gore, or an agency
   origin–destination product (MnDOT or the Met Council), counting US 52
   entrants by the exit they take. This is the measurement that settles it.
+
+**Result of Amendment 2 — 2026-10-07** (stage p7, one n2-standard-16 in us-central1-a, 94 min, about $1.20,
+self-deleted; `artifacts/i24_validation_dck{025,05}_refit.json`, `artifacts/demand_scale_i24_flow_dck{025,05}.json`).
+
+| arm | demand scale | wave (stack) | GEH < 5 | RMSPE | realised demand (mean, min) | peak sections 2,200 / 3,200 m |
+|---|---|---|---|---|---|---|
+| reference (k = 0, scale 0.800) | 0.800 | 15.9 km/h pass | 21.5 % | 37.2 % | 0.987, 0.977 | 5,850 / 5,821 |
+| k = 0.25 + refit | 0.900 | 15.7 km/h pass | 16.0 % (worse) | 34.1 % | **0.918**, 0.908 | 5,871 / 5,820 |
+| k = 0.5 + refit | 0.900 | 15.1 km/h pass | 24.3 % | 33.9 % | **0.930**, 0.916 | 5,953 / 5,899 |
+
+Zero collisions; ring benchmark 20/20 in both. **Under the rule and its clarification no arm qualifies**: both
+keep the wave criterion, k = 0.5 is no worse on GEH and RMSPE, but both refits hold 7–8 % of the planned
+vehicles off the network (realised demand below 0.977). **k = 0 stays on I-24.** What the run adds: the
+I-24 demand fitter (`scripts/i24_fit_demand_scale.py`, objective segment-speed RMSPE) chooses scales that
+build a backlog whenever the drivers are stronger — its objective does not see insertion — so a refit under
+a changed fleet needs an insertion constraint before its speed fit can be trusted.

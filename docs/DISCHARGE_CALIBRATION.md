@@ -247,5 +247,8 @@ CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
   I-24's waves while keeping part of the fit gain is a cheap question; it is
   posed as protocol Amendment 2 (proposed, not adopted), with a clarification
   written before its results that an arm may not win by building a backlog.
+  **Run 2026-10-07:** both smaller shifts keep the waves, but both refits hold
+  7-8 % of the demand off the network, so none qualifies and k = 0 stays on
+  I-24 (docs/FRISCO_PROTOCOL.md, Result of Amendment 2).
 
 Nothing here is a pass: neither corridor passes its acceptance criteria.
