@@ -374,7 +374,8 @@ corridor needs the owner.
 the chosen shift k = 1 improves the I-94 gate strongly but, on I-24, loses the
 emergent-wave criterion even with a demand refit (the criterion's slant-stack
 detector finds no qualifying peak; 6.65 backward waves per replicate against
-9.05 under the reference drivers), while flows and speeds fit slightly better
+9.05 under the reference drivers), while flows and speeds fit slightly better (but, as
+its clarification below records, partly by holding vehicles off the network)
 (GEH < 5 25.7 % against 21.5 %; RMSPE 33.3 % against 37.2 %). CLAUDE.md §3.1
 requires the calibrated fleet to stay string-unstable near capacity, and a
 shift chosen on discharge and lane use alone cannot see that.
@@ -393,3 +394,15 @@ the reference arm's (`artifacts/i24_validation_flow_speedcal_ref.json`: 21.5 %,
 reported whatever the outcome; the I-24 recording is one morning with no
 holdout, so any choice here is calibration, not validation, and is reported as
 such.
+
+**Clarification of Amendment 2 — 2026-10-07 09:11 UTC, before any p7 result
+existed** (the p7 bucket held only its inputs). The 2026-10-07 regression
+review found that a demand refit can improve segment-speed RMSPE by holding
+vehicles off the network: under k = 1 the refit raised demand 15.6 % but the
+peak sections' flow did not move (6,031 / 6,025 → 6,047 / 5,983 veh/h) while
+the realised share of planned vehicles fell from 0.996 to 0.921 and mean travel
+time rose from 536 to 669 s. A qualifying arm must therefore also keep its mean
+realised demand share (`simulated.demand_realized_fraction`, mean over the 20
+replicates) no more than 1 percentage point below the reference arm's (0.987,
+`artifacts/i24_validation_flow_speedcal_ref.json`), i.e. at least 0.977; the
+backlog is reported for every arm.

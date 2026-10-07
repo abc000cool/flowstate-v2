@@ -463,8 +463,13 @@ readings exactly at the two shared seeds.
 | netfix | k 0, keep-right 0 | 7.86 pp | 5.33 pp | 3,336 veh/h |
 | netfix | k 1, keep-right 0.1 | **7.26 pp** | **4.57 pp** | **3,760 veh/h** |
 
-With the calibrated drivers the corrected 6th Street exit lowers the lane-share error by about 1 pp and raises
-S97's discharge by about 730 veh/h over the as-built network at the same seeds (four seeds; the seed spread at
-one pair reaches several hundred veh/h, so the discharge gain is indicative). The map fix is a correction of an
-input defect (calibration), not a model change; it goes into the calibration-day scenarios
+With the calibrated drivers the corrected 6th Street exit lowers the lane-share error by about 1 pp.
+**Corrected 2026-10-07 (regression review; the first version claimed a ~730 veh/h discharge gain):** S97's
+discharge by seed is as built [3,896, 3,632, 3,710, **876**] and netfix [3,878, 3,662, 3,680, 3,820] veh/h - at
+three of four seeds the two networks are level (3,746 against 3,740), and the whole difference in the means comes
+from one as-built run (seed 3747978530954135749) in which the calibrated drivers' slice **collapsed** (S97 876
+veh/h, realised demand 0.857 against 0.966-0.987 in every other run). The map fix shows no resolved discharge
+effect; whether it prevents such collapses cannot be read from one event, and the collapse itself is a
+robustness finding about the as-built calibrated configuration. The fix stays justified as the correction of an
+input defect (calibration, with the lane-share gain); it goes into the calibration-day scenarios
 (docs/I94_CALIBRATION_DAYS.md).

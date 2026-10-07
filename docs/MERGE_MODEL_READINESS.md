@@ -299,15 +299,21 @@ at all.
 
 ## 5. Step 3: placeholder and the rules that read it
 
-> **⟪PENDING: step 3 is running on the cloud (2026-10-07); its results were
-> not available when this document was written.⟫**
-> Fill from the four artifacts listed in §4, rank 1:
-> - **I-94 S790**, 20 seeds, 06:30–07:30: ___ veh/h [95 %: ___], against
->   ≥ 4,567 for GEH < 5 (observed 4,911). Departed share lowest / median:
->   ___ / ___. Collisions: ___. Gate C1 ___, C3 ___, C4 ___, C5 ___, C6 ___.
-> - **I-24 peak sections** (2,200 / 3,200 m), 20 seeds: ___ / ___ veh/h,
->   against ≥ 6,225 / 6,238. Departed share: ___. Collisions: ___. Same-code
->   reference: ___ / ___.
+> **Filled 2026-10-07 from the committed step-3 artifacts** (docs/DISCHARGE_CALIBRATION.md §4):
+> - **I-94 S790**, 20 seeds, 06:30–07:30: 3,780–4,010 veh/h in every seed (docs/I94_RESIDUALS.md, from the
+>   battery's per-seed station-hours), against ≥ 4,567 for GEH < 5 (observed 4,911). Realised demand mean /
+>   lowest: 0.955 / 0.889. Collisions: 0. Gate C1 fail (61.8 %), C3 fail (33.9 %), C4 fail (4.9 km/h), C5 pass,
+>   C6 fail (calibration days).
+> - **I-24 peak sections** (2,200 / 3,200 m), 20 seeds, calibrated drivers at the old demand: 6,031 / 6,025 veh/h,
+>   against ≥ 6,225 / 6,238; realised demand 0.996; collisions 0. With the demand refit (scale 0.925):
+>   6,047 / 5,983 veh/h, realised demand 0.921. Same-code reference (old drivers): 5,850 / 5,821 veh/h.
+
+**Reading by the rules below.** *S1* applied (realised share ≥ 0.99 with both sections below threshold), so
+experiment 4 ran: the refit stayed below 6,225 / 6,238 and built a backlog, so by experiment 4's own wording
+"the remaining shortfall is in merge or discharge". *S2* does not apply (neither acceptance is met). *S3*: the
+I-94 shortfall at S790 is about 560–790 veh/h in the peak hour — larger than the fixture's 453 veh/h
+weave-to-ceiling gap, which `measured` has not recovered. *S4*: these batteries are the reference arm of any
+§1.1 rerun. **The NO-GO stands.**
 
 Rules that read these results, fixed now:
 - **S1 (I-24 demand-limited).** Suppose the calibrated I-24 battery's departed

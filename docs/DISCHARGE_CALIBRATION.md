@@ -116,15 +116,17 @@ What the grid says, beyond the rule's pick:
 
 - **I-24: `a_max` closes about a quarter of the gap, then plateaus.** The
   discharge error falls from 12.2 % to about 9.4 % by k = 0.5 and does not
-  move from k = 0.5 to 1.0 (5,984–6,030 veh/h at every keep-right). The
+  move from k = 0.5 to 1.0 (5,955–6,037 veh/h across those pairs). The
   departed share rises from 0.984 to 0.995–0.996 at k ≥ 0.25: with the
   stronger drivers almost every planned vehicle enters, so the 2-h section
   flow is then bounded by the demand the scenario supplies, and that demand
   (scale s = 0.800, docs/I24_VALIDATION.md) was fitted under the old drivers.
-  The plateau is therefore read as demand-limited, not as a second discharge
-  limit, until a demand refit under the calibrated drivers says otherwise
-  (step 3 runs it: pipeline stage `p4_i24_refit`). The fixture projection of
-  6,480–6,640 veh/h at +1 sd was not reached.
+  The plateau was first read as demand-limited, pending a demand refit under
+  the calibrated drivers (step 3, `p4_i24_refit`). **Corrected 2026-10-07
+  (regression review): the refit says otherwise** — 15.6 % more demand left
+  the peak sections at 6,047 / 5,983 veh/h and built a backlog (§4), so the
+  plateau is a merge/discharge shortfall, not a demand limit. The fixture
+  projection of 6,480–6,640 veh/h at +1 sd was not reached.
 - **I-94: the gain is real but the gap stays large.** S97 rises from 3,321 to
   3,680–3,764 veh/h (target 4,490.5); the remaining shortfall is the T.H.52
   weave (§1), which `a_max` was not expected to fix. The seed-to-seed spread at
@@ -193,25 +195,35 @@ phase-1 reference on the same day sets and observations,
 
 The gate still **fails**, but the calibrated drivers are the largest single
 improvement the I-94 model has had: four times the share of station-hours
-inside GEH 5 and a third less speed error, on the validation days as much as on
-the calibration days. The wave speed moved the wrong way (it was failing
+inside GEH 5 on both day sets, and speed error down by about a third on the
+calibration days (49.7 → 33.9 %) and a fifth on the validation days (48.7 →
+38.8 %). The validation days are not a clean holdout: the corridor's demand
+inputs averaged all nine days (docs/I94_RESIDUALS.md §7,
+docs/I94_CALIBRATION_DAYS.md; rebuilt on the calibration days in `_dc_cal`). The wave speed moved the wrong way (it was failing
 already). About 4 % of planned vehicles never departed (two seeds 10–11 %), and
 2.1 % of exiters at on-ramp 745524613 gave up (above the 2 % threshold) — the
 T.H.52 weave, whose loss docs/WEAVE_LOSS_DIAGNOSIS.md decomposes.
 
 **I-24 (one recorded morning, no holdout; 20 seeds each, same code).**
 
-| arm | demand scale | GEH < 5 vs recommended | segment-speed RMSPE | wave criterion (stack) | waves per replicate | stripe / standard detector |
-|---|---|---|---|---|---|---|
-| reference: old drivers (`flow_speedcal_ref`, reproduces the committed arm exactly) | 0.800 | 21.5 % | 37.2 % | **15.9 km/h, pass** | 9.05 | 14.5 / 9.9 km/h |
-| calibrated drivers, old demand (`dc`) | 0.800 | 25.0 % | 78.4 % | no qualifying peak | 13.65 | 13.2 / 11.4 km/h |
-| calibrated drivers, demand refit (`dc_refit`) | 0.925 | **25.7 %** | **33.3 %** | **no qualifying peak** | 6.65 | 14.3 / 9.3 km/h |
+| arm | demand scale | GEH < 5 vs recommended | segment-speed RMSPE | wave criterion (stack) | waves per replicate | stripe / standard detector | realised demand (mean, min) | mean travel time |
+|---|---|---|---|---|---|---|---|---|
+| reference: old drivers (`flow_speedcal_ref`, reproduces the committed arm exactly) | 0.800 | 21.5 % | 37.2 % | **15.9 km/h, pass** | 9.05 | 14.5 / 9.9 km/h | 0.987, 0.977 | 574 s |
+| calibrated drivers, old demand (`dc`) | 0.800 | 25.0 % | 78.4 % | no qualifying peak | 13.65 | 13.2 / 11.4 km/h | 0.996, 0.994 | 536 s |
+| calibrated drivers, demand refit (`dc_refit`) | 0.925 | 25.7 % | 33.3 % | **no qualifying peak** | 6.65 | 14.3 / 9.3 km/h | **0.921, 0.912** | **669 s** |
 
-The demand refit (the fitter that set 0.800, on the calibrated drivers; train
-RMSPE 0.336, held-out hour 0.312) raised the demand scale to 0.925: the
-"plateau" of §3 was indeed demand-limited, and with the demand the calibrated
-drivers can carry, flows and speeds both fit a little better than the
-reference. But the **wave criterion is lost**: the criterion's slant-stack
+The demand refit (the fitter that set 0.800, on the calibrated drivers; its
+objective is segment-speed RMSPE, train 0.336, held-out hour 0.312) raised the
+demand scale to 0.925. **Corrected 2026-10-07 (regression review; the first
+version of this section said the opposite):** the extra demand did *not*
+raise the peak sections' flow (6,031 / 6,025 → 6,047 / 5,983 veh/h at 2,200 /
+3,200 m); it built a backlog — the realised share of planned vehicles fell
+from 0.996 to 0.921 and mean travel time rose from 536 to 669 s. So the §3
+plateau is a **merge/discharge shortfall** at about 6,030 veh/h against the
+recording's 6,630, as docs/MERGE_MODEL_READINESS.md's pre-registered
+experiment 4 reads it, and part of the refit's better speed fit comes from
+vehicles held off the network. GEH and RMSPE are slightly better than the
+reference, but not as an honest improvement. And the **wave criterion is lost**: the criterion's slant-stack
 detector finds no peak clearing its contrast threshold, the replicates carry
 fewer backward waves (6.65 against 9.05), and only the secondary detectors
 still read speeds near the band. This is the risk recorded in §1 before any
@@ -224,14 +236,16 @@ CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
   further I-94 work (every gating check except the already-failing wave speed
   improved, on validation days as well).
 - **I-24:** the calibrated package (k = 1 with the demand refit) is *not*
-  adopted as the canonical I-24 arm: a better fit of flows and speeds bought
-  with the loss of the emergent-wave criterion is not an improvement of this
-  model. `i24_replica_flow_speedcal` stays canonical; `_dc_refit` is kept as a
+  adopted as the canonical I-24 arm: a slightly better GEH and RMSPE bought
+  with a backlog of 8 % of the demand and the loss of the emergent-wave
+  criterion is not an improvement of this model, and I-24's real shortfall —
+  merge/discharge capacity at about 6,030 against 6,630 veh/h — is untouched. `i24_replica_flow_speedcal` stays canonical; `_dc_refit` is kept as a
   documented alternative.
 - The one-recipe-for-all-corridors reading of Amendment 1 does not hold: the
   same driver shift helps the weaving corridor and hurts the wave corridor.
   Whether a smaller shift (k = 0.25 or 0.5, with its own demand refit) keeps
   I-24's waves while keeping part of the fit gain is a cheap question; it is
-  posed as protocol Amendment 2 (proposed, not adopted).
+  posed as protocol Amendment 2 (proposed, not adopted), with a clarification
+  written before its results that an arm may not win by building a backlog.
 
 Nothing here is a pass: neither corridor passes its acceptance criteria.
