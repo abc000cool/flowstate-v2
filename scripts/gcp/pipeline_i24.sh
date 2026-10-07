@@ -1541,6 +1541,39 @@ if echo " $STAGES " | grep -q " p9_i94_w1b "; then
       --out artifacts/weave_w1b_corridor.json" || say "p9_i94_w1b failed; continuing"
 fi
 
+# Stage p11 for scripts/gcp/pipeline_i24.sh — NOT inserted (another agent is editing that file).
+# Paste it just above the "# 9. Done marker" block, next to the other opt-in stages (p6-p9).
+# Before a launch: commit and push scripts/i24_count_consistency.py, its test and this stage
+# (the launcher refuses a dirty tree or a HEAD not on origin/main).
+
+# p11. The I-24 count-consistency check (docs/I24_DISCHARGE_DIAGNOSIS.md §8.4; the reading rules are fixed there,
+#     2026-10-07, before any run; opt-in, not in the default list; needs the launcher's default --data-set i24).
+#     Data only, no simulation. Reads the processed 5 Hz westbound table the launch ships
+#     (data/i24motion/processed/i24_wb_20221130/trajectories.parquet and its meta.json) over 06:30-08:30 CST in eight
+#     15-min chunks, each with a 60-s lead pad (the validator's own), lanes 0-9, data x -100..5,950 m, plus the
+#     committed artifacts/i24_coverage.json (the pooled recommended coverage), fd_i24.json (the capacity floor),
+#     i24_validation_observed.json and i24_replica_inputs.json (reproduction checks) and i24_validation_dc_refit.json
+#     (the model's section flows for the GEH reading). Per 5-min window: crossings of lanes 1-4 at the validator's
+#     sections (200, 1,000, 2,200, 3,200, 4,800, 5,400 m; each fragment once, and the validator's rule beside it,
+#     which must reproduce counts_tracked), per lane, the auxiliary band and the shoulder; the builder's ramp-lane
+#     counts (Old Hickory on 950, Hickory Hollow off 3,700, Hickory Hollow on 4,600, Bell Road off 5,050 m) with the
+#     through traffic in the ramp lanes flagged; the storage between sections; per lane and 15-min window the section
+#     coverage (gap mixture in a 500-m cell, eq. S, FD floor: the recommended estimator at each section); the
+#     conservation residuals of every adjacent pair and of 2,200->5,400, 3,200->5,400 and 200->5,400 (tracked,
+#     pooled-corrected, section-corrected, ramp-adjusted) with 95 % block-bootstrap intervals; the pre-registered
+#     verdict. Writes only artifacts/i24_count_consistency.json (a few hundred KB; it rides in every archive with
+#     artifacts/*.json). Cost: one process, about 1-1.5 GB peak (estimated); about 3-6 min of stage time on
+#     n2-standard-16 (estimated: a 1.1 M-row synthetic chunk of the same layout took 1.1 s, 0.3 s counting and 0.7 s
+#     of mixture fits; a real 15-min chunk is about 3 M rows with more speed classes, so about 15-25 s each, plus the
+#     Parquet reads and the table's sha256), so about 20 min billed with boot and setup through the bucket: about
+#     $0.26 at about $0.78/h (disk and bucket cents extra); --cap-min 45 bounds it at about $0.60. Example:
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p11 --machine n2-standard-16 --bucket gs://<bucket>/p11 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 45 --pipeline-args '--stages "p11_i24_count_check"'
+if echo " $STAGES " | grep -q " p11_i24_count_check "; then
+  stage p11_i24_count_check bash -c "$RUN scripts/i24_count_consistency.py --out artifacts/i24_count_consistency.json" \
+    || say "p11_i24_count_check failed; continuing"
+fi
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

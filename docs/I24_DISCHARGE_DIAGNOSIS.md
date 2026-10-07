@@ -741,6 +741,65 @@ conservation residuals per 15 min. If the peak sections' recorded 6,626 / 6,639
 do not survive it, the GEH targets at those sections must be restated before
 any discharge calibration uses them. Cost: minutes of a small VM [estimate].
 
+#### 8.4.1 Count-consistency check (built, not run)
+
+*Built 2026-10-07; the reading rules below are fixed now, before any run.*
+`scripts/i24_count_consistency.py` (tests: `tests/test_scripts/test_i24_count_consistency.py`,
+synthetic tables only), opt-in stage `p11_i24_count_check`
+(`artifacts/i24_discharge_2026-10-07/stage_p11_count_check.sh.txt`, not yet in
+`scripts/gcp/pipeline_i24.sh`), output `artifacts/i24_count_consistency.json`. Per 5-min
+window, 06:30–08:30: lanes 1–4 crossings at the six sections (each fragment once; the
+validator's own rule beside it, which must reproduce `counts_tracked` exactly, or the run
+is void); the builder's ramp-lane counts, with the vehicles flagged that were in lanes 1–4
+before an on-ramp count or return to them after an off-ramp count (through traffic in a
+ramp lane); the storage between sections; the lane-5+ flow at every section; and per lane
+and 15-min window the recommended coverage estimator applied at each section's own 500-m
+cell. Cost on n2-standard-16 (about $0.78/h): about 3–6 min of stage time, about 20 min
+billed with boot and setup, about $0.26 [estimate]; `--cap-min 45` bounds it at about $0.60.
+
+One caveat for §2 and §6 as written: the 3,200 → 4,800 m comparison omits the vehicles in
+the weave lane at 4,800 m (lanes 5+ are not counted at a section), so it is not a clean
+balance. The rules below read only the 2,200 → 5,400 m span, whose end sections are
+outside the ramp zones.
+
+**Rules.** All four quantities are residuals on 2,200 → 5,400 m:
+`R = Q(5,400) − Q(2,200) − (on − off) + storage rate`, 2-h means with a 95 % circular-block
+bootstrap (15-min blocks). The four variants are:
+- `Rp`: everything at the pooled recommended coverage, the correction behind 6,626 / 6,639;
+- `Rs`: each section at its own measured coverage;
+- `Ra`: `Rp` with the flagged through traffic removed from the ramp counts;
+- `Rsa`: both corrections together.
+
+- **Non-conservation** means `|Rp| ≥ 100 veh/h` and its interval excludes 0. Otherwise the
+  outcome is "consistent".
+- **The 6,626 / 6,639 targets are inconsistent** when the counts do not conserve and
+  `|Rs| ≤ ½ |Rp|` (this reading wins if `Ra` also meets the bound): one pooled coverage
+  hid how coverage varies between sections. Expected
+  support: the measured coverage is higher at 2,200 / 3,200 m than at 5,400 m. Every
+  section's target is then restated at its own coverage, 5,400 m included. Discharge is
+  judged against the restated values, and 6,626 / 6,639 are not used again. If only `Rsa`
+  meets the bound, the targets are restated in the same way and the ramp inputs are
+  flagged too.
+- **The model's downstream representation is at fault** when the adopted targets survive
+  and the model still falls short. The adopted targets are the restated ones above, or the
+  original ones in two cases: the counts conserve, or `|Ra| ≤ ½ |Rp|` (the ramp counts are
+  inflated by through traffic). "Falls short" means `_dc_refit`'s 2-h flow at 2,200 or
+  3,200 m is below the adopted target with GEH ≥ 5 on 2-h flows. That shortfall is then
+  the model's. The merge passes more than the targets (§4), so the shortfall lies
+  downstream: in the boundary representation (B1's corridor round, §8.3, is the test) and,
+  under the ramp outcome, also in the model's ramp volumes, built from the inflated counts,
+  which make its net exits too small. If instead the restated peak targets come within
+  GEH 5 of the model's 6,047 / 5,983, the peak-section shortfall was in the targets. B1 is
+  then judged on the boundary state alone (A2).
+- **Unexplained**: the counts do not conserve and no variant reaches `½ |Rp|`. The targets
+  can be neither confirmed nor restated from this recording, and nothing on the peak
+  sections is calibrated until external counts arrive (TDOT radar, I24_DATA.md §4).
+
+The script applies these rules mechanically (`verdict` in the artifact). The window
+bootstrap leaves out the coverage estimator's own error. Ramp-lane coverage cannot be
+measured (`artifacts/i24_coverage_lane5.json`), so the ramps keep the pooled coverage, as
+the builder does.
+
 ### 8.5 Corrections the record needs (owner's call)
 
 - docs/DISCHARGE_CALIBRATION.md §1: "The I-24 fixture's 1,460–1,470 × 4 lanes =
