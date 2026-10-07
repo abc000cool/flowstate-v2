@@ -1343,6 +1343,84 @@ if echo " $STAGES " | grep -q " p7_i24_amax_wave "; then
   stage p7_i24_amax_wave p7_i24_amax_wave_steps || say "p7_i24_amax_wave failed; continuing"
 fi
 
+# p8. The I-94 inputs rebuilt on the protocol's calibration days only (docs/I94_CALIBRATION_DAYS.md, written 2026-10-07
+#     before any run; opt-in). The committed scenarios are first checked against their recipe
+#     (scripts/i94_calibration_days.py --check: two netconvert compiles, no simulation); then, for each, stage p4's I-94
+#     sequence: the 20-seed four-hour battery (profile fhwa_tat3_2004), the protocol's baseline gate on the phase-1 day
+#     sets, and the gated report. The battery's own --observations are the CALIBRATION-day targets (stage p4 used the
+#     nine-day file; the gate artifacts are the like-for-like comparison with artifacts/baseline_gate_mndot_dc.json).
+#     Scenarios, in order: _dc_cal (calibration-day inputs, residuals not carried, protocol §2.3); _dc_cal_sf (plus the
+#     calibration-day driver check's speed factor 1.3026, §7.2); _dc_cal_netfix (plus the 6th Street left-exit remedy)
+#     only if artifacts/i94_netfix_probe.json shows the fix helps, by this rule (fixed now): the probe is complete and,
+#     at the calibrated drivers (pair k1.0_kr0.1) on the stations both networks compare, the netfix network's lane-share
+#     RMSE is lower, its S97 discharge error is no larger, and it recorded no collision. Outputs per scenario name N:
+#     artifacts/validation_N.json, artifacts/baseline_gate_N.json, artifacts/validation_N_gated.json, docs/reports/N/.
+#     Resumable: a battery whose artifact and logs/p8_N.battery.ok exist is not repeated. Needs no data set (every input
+#     is tracked): launch with --data-set none. Cost (docs/I94_CALIBRATION_DAYS.md §6): per battery about 27-40 min on
+#     n2-standard-32 (one wave of 20 at 30 processes; step 3's battery took 1,599 s, phase 1's 2,356 s) and 50-80 min on
+#     n2-standard-16 (two waves; pass --procs 10 to keep ten 4-h runs in its 64 GB); gate and report about 2 min each.
+#     Three batteries: about 1.5-2.1 h of stage time on -32, 2.6-4.1 h on -16, plus 10-15 min of boot and setup. Example:
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p8 --machine n2-standard-32 --bucket gs://<bucket>/p8 \
+#         --self-delete --via-bucket --data-set none --cap-min 270 --pipeline-args '--stages "p8_i94_cal"'
+P8_SCENARIOS="${MNDOT}_weave_dc_cal ${MNDOT}_weave_dc_cal_sf"
+p8_netfix_helps() {  # exit 0 when artifacts/i94_netfix_probe.json shows the fix helps the calibrated drivers (rule above)
+  [ -f artifacts/i94_netfix_probe.json ] || { say "p8: artifacts/i94_netfix_probe.json is missing"; return 1; }
+  $RUN -c "
+import json, sys
+d = json.load(open('artifacts/i94_netfix_probe.json'))
+pair = 'k1.0_kr0.1'
+a, b = d['results']['as_built'][pair], d['results']['netfix'][pair]
+sa, sb = a['scores']['common'], b['scores']['common']
+ok = bool(d.get('complete')) and sb['lane_rmse_pp'] < sa['lane_rmse_pp'] \
+    and sb['discharge_error'] <= sa['discharge_error'] and b['n_collisions'] == 0
+print(f'p8 netfix rule: lane RMSE {sa[\"lane_rmse_pp\"]:.2f} -> {sb[\"lane_rmse_pp\"]:.2f} pp, S97 discharge error '
+      f'{sa[\"discharge_error\"]:.3f} -> {sb[\"discharge_error\"]:.3f}, collisions {b[\"n_collisions\"]}: '
+      + ('helps' if ok else 'does not help'))
+sys.exit(0 if ok else 1)
+"
+}
+p8_one() {  # p8_one <scenario stem>: battery, baseline gate and gated report of scenarios/<stem>.yaml
+  local scn="scenarios/$1.yaml" name rc=0 art rep out ok
+  name=$(sed -n 's/^name: //p' "$scn" | head -1)
+  [ -n "$name" ] || { say "p8: $scn has no name"; return 1; }
+  art="artifacts/validation_${name}.json"; rep="docs/reports/${name}"; out="runs/${name}/baseline"
+  ok="logs/p8_${name}.battery.ok"
+  if [ -f "$ok" ] && [ -f "$art" ]; then
+    say "p8: $name battery done earlier ($art), not repeated"
+  elif $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$REPS" --procs "$PROCS" --out "$out" --artifact "$art" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004; then
+    touch "$ok"
+  else
+    say "p8: $name battery failed; continuing"; rc=1
+  fi
+  [ -f "$art" ] || { say "p8: $name has no battery artifact; gate and report skipped"; return 1; }
+  $RUN scripts/baseline_gate.py --battery-artifact "$art" \
+      --calibration-observations "$P1A/observations_calibration.json" \
+      --validation-observations "$P1A/observations_validation.json" \
+      --day-split "$P1A/day_split.json" --per-day "$P1A/per_day" \
+      --out-json "artifacts/baseline_gate_${name}.json" --out-md "$rep/baseline_gate.md" \
+    || { say "p8: $name baseline gate failed; continuing"; rc=1; }
+  $RUN scripts/corridor_battery.py --scenario "$scn" --observations "$P1A/observations_calibration.json" \
+      --replicates "$REPS" --out "$out" --artifact "artifacts/validation_${name}_gated.json" --report-dir "$rep" \
+      --criteria-profile fhwa_tat3_2004 --criteria-only --baseline-gate \
+      --gate-calibration-observations "$P1A/observations_calibration.json" \
+      --gate-validation-observations "$P1A/observations_validation.json" --gate-day-split "$P1A/day_split.json" \
+    || { say "p8: $name gated report failed; continuing"; rc=1; }
+  return $rc
+}
+p8_i94_cal_steps() {
+  local rc=0 stem list="$P8_SCENARIOS"
+  $RUN scripts/i94_calibration_days.py --check \
+    || { say "p8: the committed calibration-day scenarios are not what their recipe gives; nothing run"; return 1; }
+  if p8_netfix_helps; then list="$list ${MNDOT}_weave_dc_cal_netfix"; else say "p8: netfix not run (rule above)"; fi
+  for stem in $list; do p8_one "$stem" || rc=1; done
+  return $rc
+}
+if echo " $STAGES " | grep -q " p8_i94_cal "; then
+  stage p8_i94_cal p8_i94_cal_steps || say "p8_i94_cal failed; continuing"
+fi
+
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE
 say "PIPELINE_DONE"

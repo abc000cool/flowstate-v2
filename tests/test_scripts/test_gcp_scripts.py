@@ -670,6 +670,8 @@ def test_ingest_installs_stage_23_and_24_outputs_and_names_what_it_skips(tmp_pat
         "artifacts/i24_validation_dc.json": "{}",
         "artifacts/i24_validation_dc_refit.json": "{}",
         "artifacts/baseline_gate_mndot_dc.json": "{}",
+        "artifacts/baseline_gate_mndot_x_weave_xlsfg_dc_cal_sf.json": "{}",
+        "artifacts/validation_mndot_x_weave_xlsfg_dc_cal_gated.json": "{}",
         "artifacts/validation_corridor_x_dc_gated.json": "{}",
         "artifacts/demand_scale_i24_flow_dc.json": "{}",
         "artifacts/i94_netfix_probe.json": "{}",

@@ -53,6 +53,22 @@ Nothing here invents a measurement: a window no detector reported carries the
 previous window's value and says so, an unexplained change is recorded as a
 residual rather than smeared, and the artifact counts how many ramps came from
 a detector and how many from conservation (CLAUDE.md §0.1, §6.3).
+
+**Balance rules** (2026-10-07, all off by default, so a default call is
+unchanged). ``carry_residuals=False`` records each bracket's unexplained
+change without carrying it into the next bracket, so every ramp without a
+usable detector takes its *own* segment's mainline difference and nothing
+else — the reading of docs/FRISCO_PROTOCOL.md §2.3, whose named estimator
+(:mod:`calibration.ramp_estimation`) solves each segment on its own and
+redistributes nothing; a carried residual instead lands on the next
+bracket's closing ramp, which then carries another segment's count error
+(docs/I94_RESIDUALS.md §2.4). ``skip_stations`` leaves named mainline
+stations out of the balance (the brackets either side merge; the station
+stays in the observations and is still scored), and
+``ignore_ramp_detectors`` matches a ramp detector as usual but does not use
+it, so its ramp closes its bracket by conservation. Both take a reason per
+id, and every rule in force is recorded under the artifact's
+``balance_rules`` (written only when a rule is set).
 """
 
 from __future__ import annotations
@@ -224,6 +240,9 @@ def calibrate_scenario(
     warmup_s: float = 1800.0,
     match_radius_m: float = DEFAULT_MATCH_RADIUS_M,
     alive_veh_h: float = DEFAULT_ALIVE_VEH_H,
+    carry_residuals: bool = True,
+    skip_stations: Mapping[str, str] | None = None,
+    ignore_ramp_detectors: Mapping[str, str] | None = None,
 ) -> OnboardingResult:
     """Fill an onboarded corridor's demand from its detector observations.
 
@@ -255,6 +274,16 @@ def calibrate_scenario(
             observed ramp detector it is matched to [m].
         alive_veh_h: Mean-flow threshold below which a ramp detector reads as
             dead [veh/h].
+        carry_residuals: Carry a bracket's unexplained change into the next
+            bracket (the default, as every corridor so far was built); False
+            records it and drops it from the balance (module docstring,
+            "Balance rules").
+        skip_stations: Mainline station id → reason: stations left out of
+            the balance (never ``upstream`` or ``downstream``). They stay in
+            the observations and are scored as before.
+        ignore_ramp_detectors: Ramp detector id → reason: detectors matched
+            but not used; their ramp is closed by conservation and its record
+            says why.
 
     Returns:
         The :class:`OnboardingResult`.
@@ -263,8 +292,16 @@ def calibrate_scenario(
         KeyError: A chain edge or a ramp's attach edge is missing from the
             network.
         ValueError: ``upstream``/``downstream`` is not a mainline station with
-            a known position, or they are the wrong way round.
+            a known position, or they are the wrong way round; a skipped
+            station is a boundary station, not a mainline station of the span,
+            or a rule is given without a reason.
     """
+    skip = dict(skip_stations or {})
+    ignore = dict(ignore_ramp_detectors or {})
+    for what, rules in (("skip_stations", skip), ("ignore_ramp_detectors", ignore)):
+        for key, reason in rules.items():
+            if not str(reason).strip():
+                raise ValueError(f"{what}[{key!r}]: a reason is required")
     chain = [str(e) for e in scenario["network"]["corridor_edges"]]
     edge_x = chain_edge_x(net_path, chain)
     length_m = max(end for _, end in edge_x.values())
@@ -290,6 +327,20 @@ def calibrate_scenario(
     #    station is a plain message about the corridor, not a KeyError from
     #    the inflow step.
     mainline = _observed_span(obs, upstream, downstream)
+    span_ids = {st.id for st in mainline}
+    for sid in skip:
+        if sid in (upstream, downstream) or sid not in span_ids:
+            raise ValueError(
+                f"skip_stations: {sid!r} is not an interior mainline station of the span "
+                f"{upstream}→{downstream}; interior stations: "
+                f"{[st.id for st in mainline[1:-1]]}"
+            )
+    for sid in ignore:
+        if not any(d.get("station") == sid for d in descriptors):
+            raise ValueError(
+                f"ignore_ramp_detectors: {sid!r} is not matched to any ramp of the scenario; "
+                f"matched: {sorted(str(d['station']) for d in descriptors if d.get('station'))}"
+            )
     inflow_steps = demand_from_observations(obs, upstream, step_s=step_s)
     n_steps = int(obs.n_windows)  # the window grid; steps with no observation are omitted upstream
     first_x = float(mainline[0].x_m or 0.0)
@@ -297,13 +348,16 @@ def calibrate_scenario(
     zeroed, residual_log = _close_balance(
         obs,
         descriptors,
-        mainline,
+        [st for st in mainline if st.id not in skip],
         n_steps=n_steps,
         span=(first_x, last_x),
         alive_veh_h=alive_veh_h,
+        carry_residuals=carry_residuals,
+        ignore_detectors=ignore,
     )
     ramp_records = _ramp_records(descriptors, n_steps, step_s)
     cd_pairs = _cd_pair_records(descriptors, n_steps)
+    balance_rules = _balance_rules(carry_residuals, skip, ignore)
 
     # 4. Fill the scenario.
     scenario["network"]["inflow"] = [[float(t), float(v)] for t, v in inflow_steps]
@@ -342,6 +396,8 @@ def calibrate_scenario(
         residual_log=residual_log,
         cd_pairs=cd_pairs,
     )
+    if balance_rules is not None:
+        payload["balance_rules"] = balance_rules
     summary = _summary_lines(
         config_hash_value=chash,
         length_m=length_m,
@@ -355,6 +411,7 @@ def calibrate_scenario(
         boundary=scenario["network"]["boundary"],
         cd_pairs=cd_pairs,
         fleet=payload["fleet_settings"],
+        balance_rules=balance_rules,
     )
     return OnboardingResult(
         scenario=scenario,
@@ -493,13 +550,19 @@ def _close_balance(
     n_steps: int,
     span: tuple[float, float],
     alive_veh_h: float,
+    carry_residuals: bool = True,
+    ignore_detectors: Mapping[str, str] | None = None,
 ) -> tuple[list[str], list[dict[str, Any]]]:
     """Assign the observed station-to-station flow change to the ramps.
 
     Writes ``on_veh_h``, ``exit_frac`` and ``method`` onto each descriptor
     (module docstring). Returns the zeroed-ramp sentences and the residual log.
+    ``mainline`` is the stations the balance uses (any skipped station already
+    removed); ``carry_residuals`` and ``ignore_detectors`` are the balance
+    rules of the module docstring.
     """
     first_x, last_x = span
+    ignored = dict(ignore_detectors or {})
 
     def series(sid: str) -> list[float]:
         return [float("nan") if v is None else float(v) for v in obs.flows_veh_h[sid]]
@@ -507,6 +570,9 @@ def _close_balance(
     def alive(desc: dict[str, Any], q_arrive: list[float]) -> bool:
         sid = desc.get("station")
         if sid is None:
+            return False
+        if sid in ignored:
+            desc["detector_not_used"] = ignored[sid]
             return False
         q = series(sid)
         vals = [v for v in q if not math.isnan(v)]
@@ -547,6 +613,8 @@ def _close_balance(
     carried = [0.0] * n_steps
     for up, down in pairwise(mainline):
         q_up, q_down = series(up.id), series(down.id)
+        # this bracket's unexplained change per window (what is carried on, by default)
+        own = [0.0] * n_steps
         bracket = sorted(
             (d for d in descriptors if up.x_m < d["x_m"] <= down.x_m), key=lambda d: d["x_m"]
         )
@@ -634,25 +702,56 @@ def _close_balance(
                     d["exit_frac"][k] = frac
                     d["out_veh_h"][k] = frac * q_cur
                     q_cur -= frac * q_cur
-            carried[k] = leftover
+            own[k] = leftover
+            carried[k] = leftover if carry_residuals else 0.0
             for j, d in enumerate(ons):
                 last_on[j] = d["on_veh_h"][k]
             for j, d in enumerate(offs):
                 last_off[j] = d["exit_frac"][k]
                 last_out[j] = d["out_veh_h"][k]
-        if [v for v in carried if v != 0.0]:
+        if carry_residuals:
+            # unchanged record: windows the bracket could not evaluate keep what
+            # an earlier bracket carried in, and that is reported here as before
+            logged = carried
+            note = (
+                "unexplained change with no ramp of the needed kind (or sign) in this "
+                "bracket; carried into the next bracket"
+            )
+        else:
+            logged = own
+            note = (
+                "unexplained change with no ramp of the needed kind (or sign) in this "
+                "bracket; recorded, not carried (carry_residuals=False: each ramp takes "
+                "only its own segment's mainline difference, docs/FRISCO_PROTOCOL.md §2.3)"
+            )
+        if [v for v in logged if v != 0.0]:
             residual_log.append(
                 {
                     "from": up.id,
                     "to": down.id,
-                    "mean_residual_veh_h": round(sum(carried) / n_steps, 1),
-                    "note": (
-                        "unexplained change with no ramp of the needed kind (or sign) in this "
-                        "bracket; carried into the next bracket"
-                    ),
+                    "mean_residual_veh_h": round(sum(logged) / n_steps, 1),
+                    "note": note,
                 }
             )
     return zeroed, residual_log
+
+
+def _balance_rules(
+    carry_residuals: bool, skip: Mapping[str, str], ignore: Mapping[str, str]
+) -> dict[str, Any] | None:
+    """The artifact's ``balance_rules`` record, or None when every rule is off."""
+    if carry_residuals and not skip and not ignore:
+        return None
+    return {
+        "carry_residuals": bool(carry_residuals),
+        "skipped_stations": [{"station": k, "reason": v} for k, v in sorted(skip.items())],
+        "ignored_ramp_detectors": [{"detector": k, "reason": v} for k, v in sorted(ignore.items())],
+        "note": (
+            "skipped stations stay in the observations and are scored; an ignored detector's "
+            "ramp closes its bracket by conservation; with carry_residuals false a bracket's "
+            "unexplained change is recorded in bracket_residuals and not passed on"
+        ),
+    }
 
 
 def _cd_pair_records(descriptors: list[dict[str, Any]], n_steps: int) -> list[dict[str, Any]]:
@@ -706,6 +805,8 @@ def _ramp_records(
         if d.get("station"):
             rec["station"] = d["station"]
             rec["match_distance_m"] = d.get("match_distance_m")
+        if d.get("detector_not_used"):
+            rec["detector_not_used"] = d["detector_not_used"]
         rec["n_steps"] = n_steps
         rec["n_steps_carried"] = int(d.get("n_carried", 0))
         if d["kind"] == "on":
@@ -793,11 +894,13 @@ def _summary_lines(
     boundary: Mapping[str, Any],
     cd_pairs: list[dict[str, Any]] | None = None,
     fleet: Mapping[str, Any] | None = None,
+    balance_rules: Mapping[str, Any] | None = None,
 ) -> list[str]:
     """The plain report: what was derived and from which detector.
 
     ``fleet`` is the artifact's ``fleet_settings`` record; when given, the
-    report ends with the fleet block the scenario carries.
+    report ends with the fleet block the scenario carries. ``balance_rules``
+    (the artifact's record, when a rule is set) adds one line before it.
     """
     peak_veh_h = max(v for _, v in inflow_steps) * _S_PER_HOUR
     lines = [
@@ -823,8 +926,9 @@ def _summary_lines(
             "  observed ramp detectors not matched to any discovered ramp: "
             + ", ".join(unmatched_detectors)
         )
+    word = "carried" if balance_rules is None or balance_rules["carry_residuals"] else "not carried"
     lines += [
-        f"  residual carried {r['from']}→{r['to']}: mean {r['mean_residual_veh_h']:+.0f} veh/h"
+        f"  residual {word} {r['from']}→{r['to']}: mean {r['mean_residual_veh_h']:+.0f} veh/h"
         for r in residual_log
     ]
     for c in cd_pairs or []:
@@ -839,6 +943,15 @@ def _summary_lines(
         f"  boundary: {len(boundary['steps'])} speed steps from {downstream}, "
         f"exit buffer {boundary['exit_buffer_m']} m"
     )
+    if balance_rules is not None:
+        skipped = ", ".join(s["station"] for s in balance_rules["skipped_stations"]) or "none"
+        ignored = (
+            ", ".join(d["detector"] for d in balance_rules["ignored_ramp_detectors"]) or "none"
+        )
+        lines.append(
+            f"  balance rules: residuals {'carried' if balance_rules['carry_residuals'] else 'not carried'}"
+            f"; stations skipped: {skipped}; ramp detectors not used: {ignored}"
+        )
     if fleet is not None:
         lines.append("  fleet: " + format_fleet_settings(fleet))
     return lines

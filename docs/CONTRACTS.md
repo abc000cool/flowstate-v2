@@ -3668,3 +3668,31 @@ No config field added.
   KEY=VALUE` (repeatable, `--model weave` only) sets a `weave_params` key on
   every weave block; `th52` rows gain `entrants_took_exit` (`[count or null,
   entrance departures]`), `grid` zone rows `n_entrant_took_exit`.
+
+## Demand balance rules (`calibration.onboarding`) — 2026-10-07
+
+- **`calibrate_scenario`** gains three keyword arguments, all off by default (a
+  default call, so `scripts/corridor_demand.py` and `POST /api/v1/corridors`,
+  is byte-identical; `tests/test_calibration/test_calibration_onboarding*.py`
+  unchanged): `carry_residuals: bool = True` (False: a bracket's unexplained
+  change is recorded in `bracket_residuals`, with a note saying it was not
+  carried, and is not passed to the next bracket's closing ramp — the reading
+  of docs/FRISCO_PROTOCOL.md §2.3); `skip_stations: Mapping[str, str]`
+  (station → reason: interior mainline stations left out of the balance, so
+  the brackets either side merge; the station stays in the observations and
+  is scored); `ignore_ramp_detectors: Mapping[str, str]` (detector → reason:
+  matched as usual, not used; its ramp closes its bracket by conservation).
+  An empty reason, a boundary or unknown station, or an unmatched detector is
+  a `ValueError`.
+- **`flowstate.demand/1` payload** (additive, only when a rule is set):
+  top-level `balance_rules` = `{carry_residuals, skipped_stations: [{station,
+  reason}], ignored_ramp_detectors: [{detector, reason}], note}`; a ramp
+  record whose detector was ignored gains `detector_not_used` (the reason)
+  and keeps `station`. The printed summary gains one `balance rules: …` line
+  before the fleet line and says `residual not carried` where it did.
+- **First use.** `scripts/i94_calibration_days.py` (docs/I94_CALIBRATION_DAYS.md)
+  rebuilds the I-94 series on the calibration days with `carry_residuals`
+  False and writes `scenarios/mndot_i94_wb_stpaul_weave_dc_cal{,_netfix,_sf}.yaml`
+  and `artifacts/demand_mndot_i94_wb_stpaul_cal.json` (its `provenance` block
+  names every input with its sha256; `config_hash` is the written scenario's).
+  `--check` re-derives and compares; pipeline stage `p8_i94_cal` runs it first.
