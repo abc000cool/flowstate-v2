@@ -319,6 +319,55 @@ def test_detector_scoring_maps_iris_lanes_to_sumo_lanes() -> None:
         {**r, "crossings_by_station": {"S1": {"0": 60, "1": 30, "2": 10}}} for r in reads[:1]
     ]
     assert g._score_detectors(flipped, observed)["lane_rmse_pp"] > 30.0
+    assert sc["discharge_stations_not_scored"] == []
+
+
+def test_a_discharge_station_without_observed_flow_is_skipped_with_the_reason() -> None:
+    """observed_detectors gives flow_veh_h None when every scored window is null (a stricter
+    quality mask, a new corridor): the station is left out with the reason, not a TypeError;
+    with no station left the pair is unscored (ValueError, recorded by analyze)."""
+    null_windows = [
+        {"sim_window": 1, "obs_window": 19, "obs_veh_h": None},
+        {"sim_window": 2, "obs_window": 20, "obs_veh_h": None},
+    ]
+    observed = {
+        "lane_use": {
+            "stations_compared": [{"id": "S1", "lanes": 2, "shares": {"1": 0.5, "2": 0.5}}]
+        },
+        "discharge": {
+            "stations": {
+                "S1": {
+                    "windows": [
+                        {"sim_window": 1, "obs_window": 19, "obs_veh_h": 1000.0},
+                        {"sim_window": 2, "obs_window": 20, "obs_veh_h": 1200.0},
+                    ],
+                    "flow_veh_h": 1100.0,
+                },
+                "S2": {"windows": null_windows, "flow_veh_h": None},
+            }
+        },
+    }
+    reads = [
+        {
+            "crossings_by_station": {"S1": {"0": 50, "1": 50}},
+            "discharge_windows": {
+                "S1": {"sim_veh_h": [0.0, 990.0, 1210.0]},
+                "S2": {"sim_veh_h": [0.0, 500.0, 500.0]},
+            },
+        }
+    ]
+    sc = g._score_detectors(reads, observed)
+    assert sc["discharge_veh_h"] == {"S1": pytest.approx(1100.0)}
+    assert sc["discharge_veh_h_by_seed"] == {"S1": [pytest.approx(1100.0)]}
+    assert sc["discharge_error"] == pytest.approx(0.0)
+    assert sc["discharge_stations_not_scored"] == [
+        {"id": "S2", "reason": "observed: no flow in any scored window"}
+    ]
+    # the only discharge station without a target: unscored, inside analyze's except tuple
+    only_null = copy.deepcopy(observed)
+    del only_null["discharge"]["stations"]["S1"]
+    with pytest.raises(ValueError, match=r"no discharge station has an observed flow.*S2"):
+        g._score_detectors(reads, only_null)
 
 
 def _synthetic_observations(tmp_path: Path, stations: list[dict[str, Any]], t0: str) -> Path:

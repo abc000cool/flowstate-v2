@@ -68,7 +68,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import sumolib
 
-from controllers.registry import default_params, get_segment_controller, get_vehicle_controller
+from controllers.registry import (
+    default_params,
+    get_segment_controller,
+    get_vehicle_controller,
+    reads_downstream,
+)
 from controllers.vsl import VSL_SEGMENT_TARGET_M, effective_limit
 from flowstate_core.config import (
     CONFIG_HASH_VERSION,
@@ -3211,6 +3216,15 @@ def _weave_meta(ws: dict[str, Any], n_departed_by_route: dict[str, int]) -> dict
 #: a model value).
 MEASURED_ATTRIBUTION_S: Final[float] = 10.0
 
+#: Lane-connection hops within which a relaxed vehicle's new lane still
+#: continues its last one (:func:`_lane_continues`). One hop is the next edge;
+#: more cover an edge shorter than one step of travel (≈ 15–20 m at a 0.5 s
+#: step on a freeway), which the vehicle passes over between two readings. A
+#: bookkeeping bound, not a model value: a lane change can only reach a lane
+#: these hops reach where the lane connections themselves fan out, which a
+#: direct successor already allows.
+RELAX_CONTINUITY_HOPS: Final[int] = 3
+
 
 def _measured_run_state(
     params: merge_model.MergeModelParams,
@@ -3218,8 +3232,14 @@ def _measured_run_state(
     av_ids: Collection[str],
     succ: Mapping[tuple[str, int], frozenset[tuple[str, int]]],
     step_s: float,
+    via_from: Mapping[tuple[str, int], tuple[str, int]] | None = None,
 ) -> dict[str, Any]:
-    """The run-level state of the measured merge model (one per run)."""
+    """The run-level state of the measured merge model (one per run).
+
+    ``succ`` is :func:`_lane_successors` and ``via_from``
+    :func:`_internal_lane_origins` of the compiled network (empty without
+    internal links).
+    """
     return {
         "params": params,
         "z_lead": plan.merge_z_lead,
@@ -3228,6 +3248,7 @@ def _measured_run_state(
         "veh_params": {},
         "av_ids": frozenset(av_ids),
         "succ": succ,
+        "via_from": dict(via_from or {}),
         "step_s": float(step_s),
         "relax": {},
         "relax_where": {},
@@ -3348,6 +3369,14 @@ def _measured_grant(
     gap is a normal one (``T_eff,0 = T_i``); a vehicle already relaxed is
     re-granted only when the new start is the smaller ``T``
     (:func:`merge_model.regrant`).
+
+    ``where`` anchors the lane-change reading of :func:`_measured_relax_step`,
+    which compares normal lanes only. On an internal junction lane (a zone of
+    several pieces under ``OSMNetwork.internal_links``, where the new follower
+    can still be crossing the junction) the anchor is the lane that junction
+    lane leaves from (the connection's ``via``, :func:`_internal_lane_origins`);
+    a junction lane no connection names keeps the anchor the vehicle has, or
+    none, and the vehicle is anchored on its next normal lane.
     """
     params: merge_model.MergeModelParams = run["params"]
     p = _mm_veh(mod, run, vid)
@@ -3368,7 +3397,9 @@ def _measured_grant(
     relax[vid] = merge_model.RelaxationState(
         t_own=t_own, t_start=t0, granted_s=t, tau_set=t0, role=role, zone=zone
     )
-    run["relax_where"][vid] = where
+    anchor = run["via_from"].get(where) if where[0].startswith(":") else where
+    if anchor is not None:
+        run["relax_where"][vid] = anchor
     run["relax_leader"].pop(vid, None)
     _mm_set_tau(mod, run, vid, t0)
     run["n_relax_granted_entrant" if role == "entrant" else "n_relax_granted_follower"] += 1
@@ -3379,14 +3410,15 @@ def _measured_relax_step(mod: Any, tc: Any, run: dict[str, Any], results: Any, t
     """One step of every relaxation of the run (B§5.7), before any zone acts.
 
     Each relaxed vehicle: gone from the network → dropped; its lane changed
-    since the last step (a ``(road, lane)`` that is not a connection
-    successor of the last one; internal junction lanes skipped) → its own
-    ``T`` restored; ``τ ≥ 4 τ_r`` → restored; otherwise ``T_eff(τ) = T_i −
-    (T_i − T_eff,0)·exp(−τ/τ_r)`` written with ``vehicle.setTau``, never below
-    ``max(step, 0.5·T_i)``. LC2013's secure gaps read ``tau``, so a relaxed
-    vehicle also lets SUMO's own changes in at shorter gaps (B§5.7): a new
-    leader that came from another lane in front of a relaxed vehicle is
-    counted (``n_relaxed_cut_ins``).
+    since the last step (a ``(road, lane)`` that does not continue the last
+    normal one along the lane connections, :func:`_lane_continues`; internal
+    junction lanes skipped) → its own ``T`` restored; ``τ ≥ 4 τ_r`` →
+    restored; otherwise ``T_eff(τ) = T_i − (T_i − T_eff,0)·exp(−τ/τ_r)``
+    written with ``vehicle.setTau``, never below ``max(step, 0.5·T_i)``.
+    LC2013's secure gaps read ``tau``, so a relaxed vehicle also lets SUMO's
+    own changes in at shorter gaps (B§5.7): a new leader that came from
+    another lane in front of a relaxed vehicle is counted
+    (``n_relaxed_cut_ins``).
     """
     relax: dict[str, merge_model.RelaxationState] = run["relax"]
     prev_where: dict[str, tuple[str, int]] = run["where"]
@@ -3420,7 +3452,7 @@ def _measured_relax_step(mod: Any, tc: Any, run: dict[str, Any], results: Any, t
         now = (road, int(res[tc.VAR_LANE_INDEX]))
         if not road.startswith(":"):
             last = where_of.get(vid)
-            if last is not None and now != last and now not in succ.get(last, frozenset()):
+            if last is not None and now != last and not _lane_continues(succ, last, now):
                 _mm_set_tau(mod, run, vid, rx.t_own)
                 del relax[vid]
                 where_of.pop(vid, None)
@@ -3450,6 +3482,33 @@ def _measured_relax_step(mod: Any, tc: Any, run: dict[str, Any], results: Any, t
         leaders[vid] = lid
 
 
+def _lane_continues(
+    succ: Mapping[tuple[str, int], frozenset[tuple[str, int]]],
+    last: tuple[str, int],
+    now: tuple[str, int],
+    hops: int = RELAX_CONTINUITY_HOPS,
+) -> bool:
+    """Whether ``now`` follows ``last`` along the lane connections within ``hops`` hops.
+
+    One hop is a connection successor (the next edge, in the lane ``last``
+    connects into). Further hops admit an edge shorter than one step of
+    travel, passed over between two readings. ``succ`` holds normal lanes
+    only; its connections pass over the internal junction lanes.
+    """
+    frontier = succ.get(last, frozenset())
+    if now in frontier:
+        return True
+    seen = {last, *frontier}
+    for _ in range(hops - 1):
+        frontier = frozenset(s for lane in frontier for s in succ.get(lane, ()) if s not in seen)
+        if now in frontier:
+            return True
+        if not frontier:
+            return False
+        seen.update(frontier)
+    return False
+
+
 def _measured_reach(net: Any, zone_edges: Sequence[str]) -> dict[str, dict[int, frozenset[str]]]:
     """:func:`merge_model.lane_reach` over the compiled network's lane connections."""
 
@@ -3470,6 +3529,24 @@ def _lane_successors(net: Any) -> dict[tuple[str, int], frozenset[tuple[str, int
             out[(e.getID(), int(lane.getIndex()))] = frozenset(
                 (c.getTo().getID(), int(c.getToLane().getIndex())) for c in lane.getOutgoing()
             )
+    return out
+
+
+def _internal_lane_origins(net: Any) -> dict[tuple[str, int], tuple[str, int]]:
+    """``(internal edge, lane) → (edge, lane)`` it leaves from, over the compiled network.
+
+    From each connection's ``via`` (its first internal junction lane), which
+    ``sumolib.net.readNet`` keeps although it loads no internal edge. Empty
+    for a network built without internal links.
+    """
+    out: dict[tuple[str, int], tuple[str, int]] = {}
+    for e in net.getEdges():
+        for lane in e.getLanes():
+            for c in lane.getOutgoing():
+                via = c.getViaLaneID()
+                if via:
+                    road, _, index = str(via).rpartition("_")
+                    out[(road, int(index))] = (e.getID(), int(lane.getIndex()))
     return out
 
 
@@ -6089,12 +6166,20 @@ def run_micro(
     # --- Controller setup -------------------------------------------------
     controller_fn: VehicleControllerFn | None = None
     controller_params: dict[str, float] = {}
+    # The downstream speed bins (ControllerObs.downstream, the wave oracle of
+    # CLAUDE.md §4.3) are one pass over every vehicle per AV and control
+    # step, so they are built only for a controller that reads them
+    # (controllers.registry.reads_downstream; JAD). Every other controller
+    # gets the contract's empty default, and the oracle's delay buffer and
+    # noise draws, which feed only the bins, are skipped with them.
+    wants_downstream = False
     if cfg.av.controller is not None:
         controller_fn = get_vehicle_controller(cfg.av.controller)
         controller_params = {
             **default_params(cfg.av.controller),
             **cfg.av.controller_params,
         }
+        wants_downstream = reads_downstream(cfg.av.controller)
     vsl_fn: SegmentControllerFn | None = None
     vsl_params: dict[str, float] = {}
     if cfg.av.vsl is not None:
@@ -6575,6 +6660,7 @@ def run_micro(
             plan.av_ids,
             _lane_successors(net_for_mm),
             float(cfg.sim.step_length_s),
+            _internal_lane_origins(net_for_mm),
         )
         sections_mm = {
             sec.on_ramp: sec
@@ -6837,7 +6923,7 @@ def run_micro(
 
             # Oracle snapshot buffer: the delayed oracle reads the traffic
             # state as it was `delay_s` ago (positions stay current).
-            if oracle_delay_s > 0.0:
+            if oracle_delay_s > 0.0 and wants_downstream:
                 oracle_history.append((t, xs.copy(), speeds.copy()))
 
             # Rolling platoon-mean reference speed (45 s window).
@@ -6995,7 +7081,10 @@ def run_micro(
                 # Oracle realism (§4.3): the controller may read a STALE traffic
                 # state (its own position stays current), and each observed bin
                 # speed may carry multiplicative error.
-                o_xs, o_speeds = _stale_snapshot(oracle_history, t, oracle_delay_s, (xs, speeds))
+                if wants_downstream:
+                    o_xs, o_speeds = _stale_snapshot(
+                        oracle_history, t, oracle_delay_s, (xs, speeds)
+                    )
                 for vid in sorted(compliant_avs):
                     # Not in the network yet, already arrived, or still on a
                     # ramp edge (no corridor position, no downstream field):
@@ -7027,10 +7116,12 @@ def run_micro(
                         # AVSpec.observe_close_leader (WP-96): counted on or off
                         close_obs["n_vehicle_steps"] += 1
                         close_obs["vehicles"].add(vid)
-                    downstream = _downstream_bins(
-                        x_by_id[vid], o_xs, o_speeds, circumference, is_ring
-                    )
-                    downstream = _apply_oracle_noise(downstream, oracle_noise_frac, oracle_rng)
+                    downstream: tuple[float, ...] = ()
+                    if wants_downstream:
+                        downstream = _downstream_bins(
+                            x_by_id[vid], o_xs, o_speeds, circumference, is_ring
+                        )
+                        downstream = _apply_oracle_noise(downstream, oracle_noise_frac, oracle_rng)
                     obs = ControllerObs(
                         t=t,
                         dt=cfg.sim.action_step_s,

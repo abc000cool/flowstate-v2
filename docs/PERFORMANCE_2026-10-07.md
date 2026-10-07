@@ -203,3 +203,130 @@ free flow, up to 2,780 s gridlocked, or about $0.2–1.2 at $1.55/h. A 10–13 %
 $0.02–0.15 per battery, or about $0.8 on a typical 5 h ($8) pipeline. That is 11–15 % more
 seeds per dollar. The memory change matters more than the dollars: it removes an OOM risk
 that grew with every longer or denser run, and it opens item 1.
+
+## 6. Follow-up, 2026-10-07: downstream bins built only for JAD; a relaxation bookkeeping fix
+
+Two changes to `packages/microsim/microsim/runner.py` (plus `controllers/registry.py`), both
+measured against `HEAD` (fb92473). The same seeded cases were run from two extracted trees:
+`git archive HEAD`, and that tree with only the two changed files copied in. This keeps
+uncommitted work elsewhere in the repository out of the comparison. At most two SUMO
+processes ran at once.
+
+### 6.1 Downstream bins only for a controller that reads them (§5, item 2)
+
+`controllers.registry.VEHICLE_CONTROLLER_READS_DOWNSTREAM` declares, for every registered
+vehicle controller, whether it reads `ControllerObs.downstream`. It is `True` for `jad`
+only. `reads_downstream(name)` raises `KeyError` for an undeclared name, so a new
+controller cannot silently receive no bins. Tests pin three things: every registered
+controller is declared; JAD's command changes with the bins; and each controller declared
+`False` gives identical commands and memory over 400 random observations, with and without
+bins. When the run's controller is not declared `True`, `run_micro` skips the
+`_downstream_bins` pass, the oracle-noise draws and the delayed oracle's snapshot buffer.
+Nothing else reads any of them: the oracle RNG (`seed + 7919`) feeds only the noise. The
+controller receives the contract's default `downstream=()`. VSL, the Gym backend
+(`microsim.gym_backend` bins its own observation), the AV state builder, logging and
+`meta.json` read none of them.
+
+**Identical outputs.** For 26 cases, the sha256 of every Parquet file (trajectories, edges,
+vehicles, journeys) is the same in both trees, and so are `meta.json` (without
+`wall_time_s` and `realtime_factor`), the `compute_metrics` output and the config hash.
+The cases:
+
+- ring with one FollowerStopper, PI-saturation or JAD AV;
+- `corridor_10km` for 5 sim-min:
+  - with no AVs;
+  - with VSL;
+  - FollowerStopper at 5 and 20 %;
+  - PI-saturation at 5 and 20 %;
+  - FollowerStopper at 5 % under a noisy, delayed oracle (20 s, ±20 %), the case where the
+    skipped noise draws could have shown;
+  - `follower_stopper_capacity` and `pi_meanfrac` at 5 %;
+  - JAD at 5 % with a perfect and with a noisy, delayed oracle;
+- the 12 golden cases.
+
+**26 of 26 are identical.** At 20 % penetration the FollowerStopper run made 9,402
+`_downstream_bins` calls at `HEAD` and makes none now. The JAD runs still make all of
+theirs (1,556).
+
+**Time.** The share was read from a `perf_counter` wrapper around `_downstream_bins` and
+`_apply_oracle_noise` in `HEAD` runs. It is a ratio, so it holds up under the machine's load.
+The A/B times are the minimum (and median) of five alternating runs, with network build and
+SUMO start included. All runs are `corridor_10km`:
+
+| Case | AVs | Bins share at `HEAD` | A/B wall, `HEAD` → now | Change, min / median |
+|---|---|---|---|---|
+| 10 min, FollowerStopper 5 % | 15 | 5.6–6.2 % | 0.967 → 0.912 s | −5.7 / −6.1 % |
+| 10 min, FollowerStopper 10 % | 29 | 10.7–10.9 % | (too noisy, see below) | — |
+| 10 min, FollowerStopper 20 % | 59 | 15.5–16.3 % | 1.190 → 0.993 s | −16.6 / −16.4 % |
+| 10 min, PI-saturation 5 % | 15 | 5.8–6.3 % | 0.974 → 0.911 s | −6.5 / −6.9 % |
+| 10 min, PI-saturation 20 % | 59 | 15.6–16.1 % | 1.194 → 1.001 s | −16.2 / −16.8 % |
+| 5 min, FollowerStopper 20 % | 29 | 10.6–11.3 % | 0.841 → 0.741 s | −12.0 / −13.3 % |
+| 5 min, PI-saturation 20 % | 29 | — | 0.664 → 0.576 s | −13.3 / −13.1 % |
+| 10 min, JAD 20 % (bins still built) | 59 | — | 1.795 → 1.804 s | +0.5 / −1.4 % |
+
+The saving equals the measured share, as expected. Later A/B batches ran while other
+programs held the laptop's load average at 5–6. In those batches all wall times were
+1.5–2× longer. They agree at 20 % (−16 to −22 %) but scatter by ±10 % at 5 %, including on
+JAD, whose path did not change. Only the first batch, whose minima and medians agree, is
+tabulated. A bin call costs about 12–17 µs on `corridor_10km`. A call scans every vehicle
+in the network, so its cost grows with network size. On the I-24 replica, §5 measured
+8.6 % at 5 % PI. No I-24 run was made here (laptop rule). The estimate of 25–35 % at 20 %
+is therefore still an extrapolation, now with the identity proven.
+
+### 6.2 Relaxation continuity under internal links (review finding, minor)
+
+`_measured_crossings` passed `_measured_grant` the new follower's lane as it found it. With
+`OSMNetwork.internal_links=True` that lane can be an internal junction lane (`:J_0`) between
+two zone pieces. `_measured_relax_step` compares each later normal lane with the stored one
+through `_lane_successors`, which is built from a network read without internal edges. The
+internal pair has no entry there, so the next normal edge read as a lane change. The
+relaxation was restored a step or two after the grant (the follower braked at once, which
+B§5.7 is meant to prevent), and `n_relax_restored_lane_change` was miscounted. A relaxed
+vehicle passing over an edge shorter than one step of travel was misread the same way.
+
+Fix:
+
+- A grant on an internal lane is anchored on the normal lane that junction lane leaves
+  from. That lane comes from the connection's `via`, which `sumolib` keeps
+  (`_internal_lane_origins`). A junction lane no connection names (the second lane of an
+  internal junction) keeps the vehicle's existing anchor. If it has none, the anchor is set
+  on its next normal lane.
+- A lane counts as continuity if it is reachable within `RELAX_CONTINUITY_HOPS = 3`
+  connection hops (`_lane_continues`). One hop is the old test.
+
+A lane change made on the junction lane after the grant is still read as one. Six unit tests
+on fake modules (`TestRelaxationContinuity` in `test_microsim_merge_model.py`) cover this.
+The reviewer's case and the edge-skip case fail at `HEAD` and pass now.
+
+**Committed outputs unchanged.** These measured cases are identical between the two trees
+(every Parquet sha256, `meta.json`, metrics, config hash):
+
+- the two measured goldens;
+- the G0 fixtures of `test_microsim_merge_measured.py`:
+  - the ramp fixture, also with AVs;
+  - McKnight, seeds 3–5;
+  - the measured golden weave;
+  - Ruth St, five cases;
+  - T.H.52 capacity, seeds 4 and 5;
+  - T.H.61;
+  - the T.H.52 corridor section.
+
+None of them uses internal links. A counting wrapper confirmed that the new code paths never
+fired on them: no grant on a junction lane, and no continuity beyond one hop. The fixture
+configs name their OSM files by absolute path, so both trees were pointed at the
+repository's unchanged `tests/fixtures`.
+
+**Where it matters:** the same fixtures rerun with `internal_links: true` (not committed
+configurations). All three change, with no collision in either tree:
+
+| Fixture, `internal_links: true` | Grants made on a junction lane | Restored as a lane change, `HEAD` → now |
+|---|---|---|
+| ramp fixture, seed 3 | 5 | 5 of 53 → 1 of 55 |
+| measured golden weave, seed 3 | 2 | 8 of 11 → 7 of 11 |
+| T.H.52 corridor section, seed 3 | 15 | 80 of 106 → 70 of 108 |
+
+**Checks.** `pytest -m "not slow" tests/test_microsim tests/test_controllers
+tests/test_integration`: 826 passed, 13 xfailed, 2 xpassed (both marks are non-strict and
+predate this change). ruff check and format are clean. mypy `--strict` on `controllers` is
+clean. `runner.py` has the same 8 non-strict mypy findings as at `HEAD`. No golden and no
+config field changed.

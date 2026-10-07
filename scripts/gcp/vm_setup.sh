@@ -27,8 +27,13 @@ mkdir -p logs && chmod +x scripts/gcp/pipeline_i24.sh
 echo "== pipeline unit"
 # PIPELINE_BUCKET / PIPELINE_SELF_DELETE (from launch_i24_pipeline.sh --bucket/--self-delete) reach the unit's environment
 if [ "$(id -u)" -eq 0 ]; then
-  # --via-bucket: run from the VM's boot script as root; a system unit (2026-10-06)
-  systemd-run --unit=pipeline --collect --setenv=HOME=/root --setenv=PATH="/root/.local/bin:$PATH" \
+  # --via-bucket: run from the VM's boot script as root; a system unit (2026-10-06). Ordered after the network
+  # (2026-10-07 review): at shutdown systemd stops units in reverse order, so the EXIT trap's bucket copy and
+  # self-delete run before the network goes down. A transient unit gets no such ordering by default; the SSH
+  # path's user unit has it through user@.service (after systemd-user-sessions, after network.target).
+  systemd-run --unit=pipeline --collect \
+    --property=Wants=network-online.target --property=After=network-online.target --property=After=network.target \
+    --setenv=HOME=/root --setenv=PATH="/root/.local/bin:$PATH" \
     --setenv=PIPELINE_BUCKET="${PIPELINE_BUCKET:-}" --setenv=PIPELINE_SELF_DELETE="${PIPELINE_SELF_DELETE:-0}" \
     bash -lc "cd /root/flowstate && scripts/gcp/pipeline_i24.sh $QUICK ${PIPELINE_ARGS:-}"
   sleep 8; systemctl is-active pipeline; tail -3 logs/pipeline.log

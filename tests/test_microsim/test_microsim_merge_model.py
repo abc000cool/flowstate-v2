@@ -563,3 +563,171 @@ class TestRunnerRelaxation:
         _measured_relax_step(mod, tc, run, {"a": _res("e", 1), "c": _res("f", 1)}, 20.0)
         assert run["relax"] == {} and mod.vehicle.tau["a"] == 1.4 and mod.vehicle.tau["c"] == 1.4
         assert run["n_relax_restored_expired"] == 2
+
+
+def _net_run_state(
+    succ: dict[tuple[str, int], frozenset[tuple[str, int]]],
+    via_from: dict[tuple[str, int], tuple[str, int]] | None = None,
+) -> dict:
+    """A run state on a hand-made lane graph (``via_from`` only when given)."""
+    from microsim.runner import _measured_run_state
+    from microsim.vehicles import FleetPlan
+
+    plan = FleetPlan(params=(), is_av=(), complied=(), depart_s=(), depart_pos_m=())
+    extra = (via_from,) if via_from is not None else ()
+    return _measured_run_state(_params(tau_r_s=5.0), plan, (), succ, 0.5, *extra)
+
+
+#: Two zone pieces e1 → e2 joined by the junction J1 (internal lanes
+#: ``:J1_0_0`` / ``:J1_0_1``, road ``:J1_0``), then a 10 m piece e3 and e4.
+_TWO_LANE_SUCC = {
+    ("e1", 0): frozenset({("e2", 0)}),
+    ("e1", 1): frozenset({("e2", 1)}),
+    ("e2", 0): frozenset({("e3", 0)}),
+    ("e2", 1): frozenset({("e3", 1)}),
+    ("e3", 0): frozenset({("e4", 0)}),
+    ("e3", 1): frozenset({("e4", 1)}),
+}
+
+
+class TestRelaxationContinuity:
+    """Review finding of 2026-10-07 on ``_measured_crossings`` / ``_measured_relax_step``.
+
+    With ``OSMNetwork.internal_links`` the entrant's new follower can still be
+    on the junction lane between two zone pieces when the crossing is read.
+    That lane was stored as its position; the successor map (a network read
+    without internal edges) has no such key, so the next normal edge read as a
+    lane change and the relaxation ended a step after it was granted
+    (``n_relax_restored_lane_change`` miscounted). The same false restore
+    followed an edge shorter than one step of travel.
+    """
+
+    def test_grant_on_a_junction_lane_survives_the_next_edge(self):
+        """The reviewer's fake-module case: no ``via`` known for the junction lane."""
+        from traci import constants as tc
+
+        from microsim.runner import _measured_grant, _measured_relax_step
+
+        mod = _FakeMod({"f": 1.4})
+        run = _net_run_state({("e1", 0): frozenset({("e2", 0)})})
+        assert _measured_grant(mod, run, "f", 10.0, 20.0, 10.0, "follower", 0, (":J1_0", 0))
+        _measured_relax_step(mod, tc, run, {"f": _res(":J1_0", 0)}, 10.5)
+        _measured_relax_step(mod, tc, run, {"f": _res("e2", 0)}, 11.0)
+        assert "f" in run["relax"], "relaxation dropped on the junction's next edge"
+        assert run["n_relax_restored_lane_change"] == 0
+        want = 1.4 - (1.4 - 0.7) * math.exp(-1.0 / 5.0)
+        assert mod.vehicle.tau["f"] == pytest.approx(want)
+        # anchored on its first normal lane: a later lane change still restores
+        _measured_relax_step(mod, tc, run, {"f": _res("e2", 1)}, 11.5)
+        assert "f" not in run["relax"] and mod.vehicle.tau["f"] == 1.4
+        assert run["n_relax_restored_lane_change"] == 1
+
+    def test_junction_lane_anchors_on_the_lane_it_leaves(self):
+        """With the junction lane's origin known (the connection's ``via``), a
+        lane change made on the junction lane after the grant is still read."""
+        from traci import constants as tc
+
+        from microsim.runner import _measured_grant, _measured_relax_step
+
+        mod = _FakeMod({"f": 1.4, "g": 1.4})
+        run = _net_run_state(
+            _TWO_LANE_SUCC, via_from={(":J1_0", 0): ("e1", 0), (":J1_0", 1): ("e1", 1)}
+        )
+        for vid in ("f", "g"):
+            _measured_grant(mod, run, vid, 10.0, 20.0, 10.0, "follower", 0, (":J1_0", 0))
+        assert run["relax_where"] == {"f": ("e1", 0), "g": ("e1", 0)}
+        _measured_relax_step(mod, tc, run, {"f": _res(":J1_0", 0), "g": _res(":J1_0", 1)}, 10.5)
+        _measured_relax_step(mod, tc, run, {"f": _res("e2", 0), "g": _res("e2", 1)}, 11.0)
+        assert "f" in run["relax"] and run["relax_where"]["f"] == ("e2", 0)
+        assert "g" not in run["relax"] and mod.vehicle.tau["g"] == 1.4
+        assert run["n_relax_restored_lane_change"] == 1
+
+    def test_regrant_on_an_unknown_junction_lane_keeps_the_anchor(self):
+        from traci import constants as tc
+
+        from microsim.runner import _measured_grant, _measured_relax_step
+
+        mod = _FakeMod({"f": 1.6})
+        run = _net_run_state(_TWO_LANE_SUCC)
+        assert _measured_grant(mod, run, "f", 24.0, 20.0, 10.0, "follower", 0, ("e1", 0))
+        _measured_relax_step(mod, tc, run, {"f": _res(":J7_0", 0)}, 10.5)
+        assert _measured_grant(mod, run, "f", 18.0, 20.0, 10.5, "follower", 0, (":J7_0", 0))
+        assert run["relax_where"]["f"] == ("e1", 0)
+        _measured_relax_step(mod, tc, run, {"f": _res("e2", 1)}, 11.0)
+        assert "f" not in run["relax"] and run["n_relax_restored_lane_change"] == 1
+
+    def test_an_edge_shorter_than_one_step_is_not_a_lane_change(self):
+        from traci import constants as tc
+
+        from microsim.runner import _measured_grant, _measured_relax_step
+
+        mod = _FakeMod({"a": 1.4, "b": 1.4})
+        run = _net_run_state(_TWO_LANE_SUCC)
+        for vid in ("a", "b"):
+            _measured_grant(mod, run, vid, 10.0, 20.0, 0.0, "entrant", 0, ("e2", 0))
+        # both pass over e3 between two readings; b also changed lane
+        _measured_relax_step(mod, tc, run, {"a": _res("e4", 0), "b": _res("e4", 1)}, 0.5)
+        assert "a" in run["relax"] and run["relax_where"]["a"] == ("e4", 0)
+        assert "b" not in run["relax"] and run["n_relax_restored_lane_change"] == 1
+
+    def test_lane_continues_bounds(self):
+        from microsim.runner import RELAX_CONTINUITY_HOPS, _lane_continues
+
+        chain = {(f"c{i}", 0): frozenset({(f"c{i + 1}", 0)}) for i in range(8)}
+        assert _lane_continues(chain, ("c0", 0), ("c1", 0))
+        assert _lane_continues(chain, ("c0", 0), (f"c{RELAX_CONTINUITY_HOPS}", 0))
+        assert not _lane_continues(chain, ("c0", 0), (f"c{RELAX_CONTINUITY_HOPS + 1}", 0))
+        # upstream, another lane, an unknown lane, a loop: never continuity
+        assert not _lane_continues(chain, ("c2", 0), ("c1", 0))
+        assert not _lane_continues(chain, ("c0", 0), ("c1", 1))
+        assert not _lane_continues(chain, ("zz", 0), ("c1", 0))
+        loop = {("a", 0): frozenset({("b", 0)}), ("b", 0): frozenset({("a", 0)})}
+        assert _lane_continues(loop, ("a", 0), ("b", 0))
+        assert not _lane_continues(loop, ("a", 0), ("c", 0), hops=50)
+        # one hop is exactly the connection-successor test it replaces
+        assert _lane_continues(chain, ("c0", 0), ("c2", 0), hops=1) is False
+
+    def test_internal_lane_origins_from_the_connections_via(self):
+        from microsim.runner import _internal_lane_origins
+
+        class Conn:
+            def __init__(self, via: str) -> None:
+                self.via = via
+
+            def getViaLaneID(self) -> str:
+                return self.via
+
+        class Lane:
+            def __init__(self, index: int, vias: list[str]) -> None:
+                self.index, self.out = index, [Conn(v) for v in vias]
+
+            def getIndex(self) -> int:
+                return self.index
+
+            def getOutgoing(self) -> list[Conn]:
+                return self.out
+
+        class Edge:
+            def __init__(self, eid: str, lanes: list[Lane]) -> None:
+                self.eid, self.lanes = eid, lanes
+
+            def getID(self) -> str:
+                return self.eid
+
+            def getLanes(self) -> list[Lane]:
+                return self.lanes
+
+        class Net:
+            def getEdges(self) -> list[Edge]:
+                return [
+                    Edge("e1", [Lane(0, [":J1_0_0"]), Lane(1, [":J1_0_1", ":J1_1_0"])]),
+                    Edge("cluster_7", [Lane(0, [":cluster_7_a_2_0"])]),
+                    Edge("e9", [Lane(0, [""])]),  # built without internal links
+                ]
+
+        assert _internal_lane_origins(Net()) == {
+            (":J1_0", 0): ("e1", 0),
+            (":J1_0", 1): ("e1", 1),
+            (":J1_1", 0): ("e1", 1),
+            (":cluster_7_a_2", 0): ("cluster_7", 0),
+        }

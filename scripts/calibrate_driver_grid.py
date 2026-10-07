@@ -1374,35 +1374,37 @@ def _score_detectors(reads: list[dict[str, Any]], observed: dict[str, Any]) -> d
         for n in lanes:
             sim_sh[f"{st['id']}:{n}"] = sh[n]
             obs_sh[f"{st['id']}:{n}"] = float(st["shares"][str(n)])
-    q_sim: dict[str, float] = {}
-    q_obs: dict[str, float] = {}
+    # A discharge station with no observed flow in any scored window has no target: it is left out
+    # with the reason, as an incomplete lane-use station is; with none left the pair is unscored
+    # (ValueError, which analyze records as score_error: the grid is incomplete, no pair chosen).
+    stations: dict[str, list[int]] = {}
+    not_scored: list[dict[str, str]] = []
     for sid, d in observed["discharge"]["stations"].items():
         idx = [w["sim_window"] for w in d["windows"] if w["obs_veh_h"] is not None]
-        per_seed = [
+        if d["flow_veh_h"] is None or not idx:
+            not_scored.append({"id": sid, "reason": "observed: no flow in any scored window"})
+        else:
+            stations[sid] = idx
+    if not stations:
+        raise ValueError(
+            "no discharge station has an observed flow in a scored window: "
+            + ", ".join(s["id"] for s in not_scored)
+        )
+    by_seed: dict[str, list[float]] = {
+        sid: [
             float(np.mean([r["discharge_windows"][sid]["sim_veh_h"][k] for k in idx]))
             for r in reads
         ]
-        q_sim[sid] = float(np.mean(per_seed))
-        q_obs[sid] = float(d["flow_veh_h"])
+        for sid, idx in stations.items()
+    }
+    q_sim = {sid: float(np.mean(v)) for sid, v in by_seed.items()}
+    q_obs = {sid: float(observed["discharge"]["stations"][sid]["flow_veh_h"]) for sid in stations}
     return {
         "lane_shares_by_station": per_station,
         "lane_rmse_pp": share_rmse_pp(sim_sh, obs_sh),
         "discharge_veh_h": q_sim,
-        "discharge_veh_h_by_seed": {
-            sid: [
-                float(
-                    np.mean(
-                        [
-                            r["discharge_windows"][sid]["sim_veh_h"][w["sim_window"]]
-                            for w in d["windows"]
-                            if w["obs_veh_h"] is not None
-                        ]
-                    )
-                )
-                for r in reads
-            ]
-            for sid, d in observed["discharge"]["stations"].items()
-        },
+        "discharge_veh_h_by_seed": by_seed,
+        "discharge_stations_not_scored": not_scored,
         "discharge_error": discharge_error(q_sim, q_obs),
     }
 

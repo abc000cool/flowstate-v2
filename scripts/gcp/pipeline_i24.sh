@@ -9,9 +9,20 @@
 #     machine — the EXIT trap, the boot-time hard cap, a systemd stop — leaves the
 #     completed stages fetchable; with PIPELINE_BUCKET set it is also copied to
 #     that bucket after every stage, so nothing depends on the VM being up;
-#   * a SIGTERM (systemd stop at shutdown) runs the EXIT trap too;
-#   * the EXIT trap powers the machine off (or deletes the instance when
-#     PIPELINE_SELF_DELETE=1 and the archive reached the bucket).
+#   * a SIGTERM (systemd stop at shutdown) runs the EXIT trap too (light archive
+#     only: the stop window does not give the full one its minutes);
+#   * with PIPELINE_SELF_DELETE=1 the EXIT trap DELETES the instance and never
+#     powers it off (2026-10-07 review): light archive (two tries), full archive,
+#     and when the full copy fails the light one again (four tries), then the
+#     delete (three tries), whatever reached the bucket. A powered-off instance
+#     stops Compute Engine's max-run-duration clock and nothing would ever delete
+#     it; if the delete itself fails the instance stays up for the idle guard
+#     (which retries the delete) and max-run-duration;
+#   * without PIPELINE_SELF_DELETE the instance cannot delete itself, so the trap
+#     powers it off three minutes after the end and the laptop watcher (its
+#     TERMINATED branch) deletes the stopped instance;
+#   * logs/INSTANCE_ID (this instance's id) rides in every archive, so the
+#     watcher can refuse a bucket archive another launch left under the prefix.
 #
 # Usage on the VM (from the repo root, under systemd-run so it survives logout):
 #   scripts/gcp/pipeline_i24.sh [--procs N] [--no-shutdown] [--quick] [--stages "name name ..."]
@@ -45,9 +56,28 @@ done
 mkdir -p logs
 LOG=logs/pipeline.log
 say() { echo "$(date -u +%FT%TZ) $*" | tee -a "$LOG"; }
-UPLOADED=0
-make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then the optional bucket copy
-  local mode="${1:-light}" extra=""
+# a self-delete without a bucket would delete the only copy of the results (the launcher refuses it too)
+if [ "$SELF_DELETE" = 1 ] && [ -z "$BUCKET" ]; then say "PIPELINE_SELF_DELETE=1 without PIPELINE_BUCKET: ignored (power-off instead)"; SELF_DELETE=0; fi
+md() { curl -sf -m 10 -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1" 2>/dev/null; }
+# this instance's id rides in every archive: watch_pipeline.sh compares it with the instance it watches before it
+# trusts $BUCKET/final.tgz (a prefix reused while an earlier launch's archive is still there)
+if md instance/id > logs/INSTANCE_ID.part && [ -s logs/INSTANCE_ID.part ]; then mv -f logs/INSTANCE_ID.part logs/INSTANCE_ID; else rm -f logs/INSTANCE_ID.part; fi
+UPLOADED=0       # 1 when the last make_archive's bucket copy landed
+TERMINATING=0    # 1 once a SIGTERM (a system stop) arrived
+ARCHIVE_LIGHT="$HOME/final_light.tgz"   # the exit-time light archive, kept for the upload retry after a failed full copy
+upload_archive() {  # upload_archive <file> [tries]: copy <file> to $BUCKET/final.tgz, waiting 30, 60, 90 s between tries
+  local f="$1" tries="${2:-1}" i=1
+  [ -n "$BUCKET" ] || return 1
+  while true; do
+    if gcloud storage cp "$f" "$BUCKET/final.tgz" >>"$LOG" 2>&1; then say "archive copied to $BUCKET/final.tgz"; return 0; fi
+    say "bucket copy FAILED (attempt $i of $tries; see $LOG)"
+    [ "$i" -ge "$tries" ] || [ "$TERMINATING" -eq 1 ] && return 1
+    sleep $((30 * i)); i=$((i + 1))
+  done
+}
+make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHIVE, then the optional bucket copy
+  local mode="${1:-light}" tries="${2:-1}" extra=""
+  UPLOADED=0
   if [ "$mode" = full ]; then
     extra=$(for d in runs/i24_validation_zip/*/*/ runs/i24_validation/speedcal_heavy/*/ runs/i24_validation/dc*/*/; do ls -d "$d"*/ 2>/dev/null | sort | head -1; done)
     [ -f runs/i24_validation_zip/ring/ring_benchmark.json ] && extra="runs/i24_validation_zip/ring/ring_benchmark.json $extra"
@@ -55,8 +85,9 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
   # per-run metrics of the cap sweep ride along in every archive: the sweep is resumable from them
   extra="$extra $(ls runs/i24_cap_sweep/*/*/metrics.json 2>/dev/null | tr '\n' ' ')"
   # the penetration sweep's per-run metrics and manifest (the summary is built from them by
-  # scripts/i24_penetration_analyze.py; the 2026-09-18 run lost 6.5 h of them to this omission)
-  extra="$extra $(ls runs/i24_sweep/*/*/*/metrics.json runs/i24_sweep/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
+  # scripts/i24_penetration_analyze.py; the 2026-09-18 run lost 6.5 h of them to this omission); meta.json too
+  # (2026-10-07): the sweep counts a run done only when both exist, so a relaunch resumes from them
+  extra="$extra $(ls runs/i24_sweep/*/*/*/metrics.json runs/i24_sweep/*/*/*/meta.json runs/i24_sweep/MANIFEST.json 2>/dev/null | tr '\n' ' ')"
   # regenerated reports and the episode-position sidecar (data/, gitignored) ride along too
   [ -d docs/reports ] && extra="$extra docs/reports"
   # onboarded corridors: per-seed metrics/scores of every run, first-seed trajectories only, sweep metrics + summaries
@@ -101,36 +132,67 @@ make_archive() {  # make_archive light|full — atomic replace of $ARCHIVE, then
     || tar czf "$ARCHIVE.part" artifacts/*.json scenarios/*.yaml logs 2>/dev/null || { rm -f "$ARCHIVE.part"; return 1; }
   mv -f "$ARCHIVE.part" "$ARCHIVE"
   ls -la "$ARCHIVE" | awk -v m="$mode" '{print "archive (" m "):", $5, "bytes"}' | tee -a "$LOG"
-  if [ -n "$BUCKET" ]; then
-    if gcloud storage cp "$ARCHIVE" "$BUCKET/final.tgz" >>"$LOG" 2>&1; then UPLOADED=1; say "archive copied to $BUCKET/final.tgz"; else UPLOADED=0; say "bucket copy FAILED (see $LOG)"; fi
-  fi
+  if [ -n "$BUCKET" ] && upload_archive "$ARCHIVE" "$tries"; then UPLOADED=1; fi
+  return 0
 }
-self_delete() {  # only meaningful with the compute-rw scope (launch_i24_pipeline.sh --bucket)
-  local zone
-  zone=$(curl -s -H Metadata-Flavor:Google http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print $NF}')
-  say "deleting this instance ($(hostname), $zone)"
-  gcloud compute instances delete "$(hostname)" --zone "$zone" --quiet >>"$LOG" 2>&1
+self_delete() {  # self_delete [tries]: delete this instance (the compute-rw scope and the instanceAdmin grant of --self-delete)
+  local tries="${1:-3}" i name zone
+  name=$(md instance/name); [ -n "$name" ] || name=$(hostname)
+  zone=$(md instance/zone | awk -F/ '{print $NF}')
+  for i in $(seq 1 "$tries"); do
+    say "deleting this instance ($name, $zone), attempt $i of $tries"
+    gcloud compute instances delete "$name" --zone "$zone" --quiet >>"$LOG" 2>&1 && return 0
+    [ "$i" -lt "$tries" ] && [ "$TERMINATING" -eq 0 ] && sleep 60
+  done
+  return 1
 }
 finish() {
   rc=$?
+  local in_bucket=0 tries
+  # a SIGTERM while this trap archives (a system stop) must not end it before the delete below
+  trap 'TERMINATING=1; say "SIGTERM received in the exit trap"' TERM
   say "PIPELINE_EXIT rc=$rc"
   echo "rc=$rc $(date -u +%FT%TZ)" > logs/PIPELINE_EXIT
   # guest-side evidence of WHY the machine is going down rides along (2026-09-24: an instance
   # was deleted mid-sweep and nothing on the laptop side could say by whom)
   { sudo tail -n 50 /var/log/idle-guard.log 2>/dev/null; echo "--- journal"; sudo journalctl -n 120 --no-pager 2>/dev/null; echo "--- uptime $(uptime)"; } > logs/guest_exit.log 2>&1 || true
-  make_archive light   # seconds: survives a systemd stop window
-  make_archive full    # minutes: the first-seed replicates for the figures
-  if [ "$SHUTDOWN" -eq 1 ]; then
-    if [ "$SELF_DELETE" = 1 ] && [ "$UPLOADED" = 1 ]; then
-      self_delete || { say "self-delete failed; powering off in 3 minutes"; sudo shutdown -h +3 "pipeline finished rc=$rc" || true; }
-    else
-      say "powering off in 3 minutes (EXIT trap); cancel with: sudo shutdown -c"
-      sudo shutdown -h +3 "pipeline finished rc=$rc" || true
+  # light first (seconds: survives a systemd stop window); its copy serves the retry below
+  rm -f "$ARCHIVE_LIGHT"
+  tries=2; [ "$TERMINATING" -eq 1 ] && tries=1
+  make_archive light "$tries" && cp -f "$ARCHIVE" "$ARCHIVE_LIGHT" 2>/dev/null
+  [ "$UPLOADED" = 1 ] && in_bucket=1
+  if [ "$TERMINATING" -eq 1 ]; then
+    say "system stop: light archive only"
+  else
+    make_archive full    # minutes: the first-seed replicates for the figures
+    if [ "$UPLOADED" = 1 ]; then
+      in_bucket=1
+    elif [ -n "$BUCKET" ] && [ -f "$ARCHIVE_LIGHT" ]; then
+      # a failed copy replaces nothing (an object changes only when an upload completes), so a light copy that
+      # landed above still stands; upload it again so this run's exit marker is in the bucket either way
+      say "the full archive did not reach the bucket; uploading the light archive again"
+      tries=4; [ "$TERMINATING" -eq 1 ] && tries=1
+      upload_archive "$ARCHIVE_LIGHT" "$tries" && in_bucket=1
     fi
+  fi
+  [ "$SHUTDOWN" -eq 1 ] || return 0
+  if [ "$SELF_DELETE" = 1 ]; then
+    # never a power-off here: it would stop Compute Engine's max-run-duration clock, and with no watcher nothing
+    # would ever delete the stopped instance; its 120 GB disk would bill until a human noticed (2026-10-07 review)
+    if [ "$in_bucket" = 1 ]; then
+      say "this run's archive is in $BUCKET; deleting the instance"
+    else
+      say "NO archive of this run reached $BUCKET (the copies made after earlier stages stand); deleting the instance anyway: powered off it would bill its disk with nothing left to delete it"
+    fi
+    tries=3; [ "$TERMINATING" -eq 1 ] && tries=1
+    self_delete "$tries" || say "self-delete failed; NOT powering off: the instance stays up until the idle guard (it retries the delete every 5 min) or Compute Engine's max-run-duration deletes it"
+  else
+    say "powering off in 3 minutes (EXIT trap; without --self-delete the watcher deletes the stopped instance); cancel with: sudo shutdown -c"
+    sudo shutdown -h +3 "pipeline finished rc=$rc" || true
   fi
 }
 trap finish EXIT
-trap 'say "SIGTERM received (system stop?)"; exit 143' TERM
+trap 'TERMINATING=1; say "SIGTERM received (system stop?)"; exit 143' TERM
 trap 'exit 130' INT
 stage() {  # stage <name> <command...>: skip when logs/<name>.done exists; archive after every stage
   local name="$1"; shift
@@ -1225,6 +1287,31 @@ stage p5_i94_netfix_probe bash -c "set -e; \
   $RUN scripts/i94_netfix_probe.py --plan-only; \
   $RUN scripts/i94_netfix_probe.py --procs $(( PROCS < 16 ? PROCS : 16 )) \
     --out runs/p5/i94_netfix_probe --artifact artifacts/i94_netfix_probe.json" || say "p5_i94_netfix_probe failed; continuing"
+
+# p6. The merge anticipation reach on I-24 MOTION (M1 of docs/WEAVE_LOSS_DIAGNOSIS.md §6.3; the definition,
+#     the method and the pre-registered adoption rule are docs/MERGE_ANTICIPATION.md, written 2026-10-07 before
+#     any run; opt-in, needs the launcher's default --data-set i24). Reads the processed 5 Hz westbound table the
+#     launch ships (data/i24motion/processed/i24_wb_20221130/trajectories.parquet and its meta.json; 06:00-10:00
+#     CST, 42.8 M rows) in the 15-min chunks, span, ramp zones and lanes of stage 12 (scripts/i24_lane_change_gaps.py),
+#     each chunk padded by 8 s + the 120 s lookback, plus the committed artifacts/i24_replica_inputs.json (zone
+#     landmarks) and artifacts/i24_coverage.json (coverage context). For every confirmed entering change in the Old
+#     Hickory acceleration lane and the Hickory Hollow-Bell Road weave it walks back from the change at 0.2 s and
+#     records how far the entrant had been beside the gap it entered and since when its speed had matched its new
+#     leader's within 1 and 2 m/s, censored where the tracks run out (calibration.merge_anticipation); Kaplan-Meier
+#     reach distributions per zone x changer-speed class with 1,000-resample bootstrap intervals; the sensitivities
+#     (no fragment bridging, changes at least 200 m past the zone start, the speed definitions, all speed classes);
+#     and the value the pre-registered rule proposes, if any. WEAVE_DEFAULTS is not changed. Writes only
+#     artifacts/merge_anticipation_i24.json (summaries, the proposal, coverage, provenance with the table's sha256,
+#     and a compact per-event table, about 0.5-1 MB), which rides in every archive with artifacts/*.json. Cost: one
+#     process, about 2 GB peak; estimated 3-5 min on n2-standard-32 (stage 12 read the same chunks in 15 s and
+#     stage 13 with its lookback in 163 s; the walk itself measured 0.12 s on a 338k-row, 50-event synthetic
+#     stand-in), so about 15-20 min billed with boot and setup through the bucket. Example:
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p6 --bucket gs://<bucket> --self-delete --via-bucket \
+#         --data-set i24 --cap-min 45 --pipeline-args '--stages "p6_i24_anticipation"'
+if echo " $STAGES " | grep -q " p6_i24_anticipation "; then
+  stage p6_i24_anticipation bash -c "$RUN scripts/measure_merge_anticipation.py --out artifacts/merge_anticipation_i24.json" \
+    || say "p6_i24_anticipation failed; continuing"
+fi
 
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

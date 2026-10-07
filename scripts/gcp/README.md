@@ -85,11 +85,11 @@ the machine off when it exits — success, failure, or SIGTERM. With `--bucket`
 and `--self-delete` the VM deletes itself once the final archive is in the
 bucket (the instance is created with the `compute-rw` and `storage-rw`
 scopes), so no local machine has to be awake; without a bucket, run
-`caffeinate -i watch_pipeline.sh` locally: it pulls the archive whenever it
-changed, deletes the instance when the pipeline reports done, never restarts a
-powered-off instance at the working size (a 2-vCPU restart with a 30-minute
-cap re-armed before every fetch, only when the local archive is incomplete),
-and deletes the instance unconditionally at its own deadline (default 7.5 h).
+`caffeinate -i watch_pipeline.sh` locally (the launcher prints the exact command): it pulls
+the archive whenever it changed, deletes the instance when the pipeline reports done, never
+restarts a powered-off instance at the working size (a 2-vCPU restart under a 60-minute
+Compute Engine max-run-duration, only when the archive is incomplete), and deletes the
+instance unconditionally at its own deadline (printed as `--deadline-min CAP_MIN+20`).
 Results are installed with `ingest_pipeline_results.sh final.tgz`.
 
 ### What the 2026-09-06 run taught (docs/LESSONS.md rows 14–16)
@@ -147,3 +147,19 @@ after a day; it held six at 6.7 GB) and a 7-day delete rule on the deploy-source
 `run-sources-…-us-west1`; the hosted tester itself scales to zero (no minimum instances,
 CPU only during requests). The one bucket kept without a rule is `flowstate-tester-results`
 (about 2 MB, the owner's).
+
+**Revised 2026-10-07 (code review): no path powers off an instance that can delete itself.**
+Nothing server-side deletes a stopped instance (a stop clears the max-run-duration clock), and
+its 120 GB disk bills about $0.40 a day. With `--self-delete` the pipeline's EXIT trap therefore
+deletes the instance even when the last (full) upload failed, after uploading the light archive
+again, and a failed delete leaves it running for the idle guard (which retries and, on such an
+instance, never powers off) and for max-run-duration. Without `--self-delete` the instance has no
+delete grant: its power-offs stay, and the watcher deletes it (its TERMINATED branch always ends in
+a delete; its 2-vCPU fetch restart runs under a 60-minute max-run-duration instead of a guest
+power-off). The remaining leak, stated in the launcher's header: a stopped instance with no watcher
+to delete it, which needs a launch without `--self-delete` and no watcher run to its end, or, with
+`--self-delete`, a guest power-off while no pipeline runs (the boot-time fallback cap after Compute
+Engine's delete failed to fire, or a manual one). Every archive carries `logs/INSTANCE_ID`, and the
+watcher refuses a bucket archive another instance wrote. With `--via-bucket` the pipeline unit is
+ordered after the network, so the EXIT trap's upload and delete run before the network stops, and
+the watcher reads the pipeline in `/root`.

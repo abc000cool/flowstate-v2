@@ -4,7 +4,9 @@ Maps registry names to pure controller functions and their literature-default
 parameter dicts. Names are the ones scenario configs reference
 (``AVSpec.controller`` / ``AVSpec.vsl``): ``"follower_stopper"``,
 ``"pi_saturation"``, ``"jad"`` (vehicle); ``"vsl_threshold"`` (segment).
-Unknown names raise ``KeyError`` listing the available names.
+Unknown names raise ``KeyError`` listing the available names. Each vehicle
+controller also declares whether it reads the downstream speed bins
+(:func:`reads_downstream`).
 """
 
 from __future__ import annotations
@@ -35,6 +37,24 @@ ALL_VEHICLE_CONTROLLERS: Final[dict[str, VehicleControllerFn]] = {
     "jad": jad,
 }
 """Vehicle (Lagrangian) controllers, keyed by registry name."""
+
+VEHICLE_CONTROLLER_READS_DOWNSTREAM: Final[dict[str, bool]] = {
+    "follower_stopper": False,
+    "follower_stopper_capacity": False,
+    "pi_saturation": False,
+    "pi_meanfrac": False,
+    "jad": True,
+}
+"""Whether each vehicle controller reads ``ControllerObs.downstream``.
+
+The downstream bins are the wave oracle of CLAUDE.md §4.3 (mean speeds ahead
+of the vehicle, with the oracle's delay and noise). The micro runner builds
+them only for a controller declared ``True`` here: they cost one pass over
+every vehicle per AV and control step. Every other controller receives the
+contract's empty default ``()``. Every registered vehicle controller is
+declared (pinned by test), and a controller that reads the bins must be
+declared ``True`` or it sees no downstream field.
+"""
 
 ALL_SEGMENT_CONTROLLERS: Final[dict[str, SegmentControllerFn]] = {
     "vsl_threshold": vsl_threshold,
@@ -74,6 +94,28 @@ def get_vehicle_controller(name: str) -> VehicleControllerFn:
     except KeyError:
         raise KeyError(
             f"unknown vehicle controller {name!r}; available: {sorted(ALL_VEHICLE_CONTROLLERS)}"
+        ) from None
+
+
+def reads_downstream(name: str) -> bool:
+    """Whether a vehicle controller reads the downstream speed bins.
+
+    Args:
+        name: Vehicle controller registry name, e.g. ``"jad"``.
+
+    Returns:
+        ``True`` when the controller reads ``ControllerObs.downstream`` (see
+        :data:`VEHICLE_CONTROLLER_READS_DOWNSTREAM`).
+
+    Raises:
+        KeyError: Unknown or undeclared name; the message lists the declared names.
+    """
+    try:
+        return VEHICLE_CONTROLLER_READS_DOWNSTREAM[name]
+    except KeyError:
+        raise KeyError(
+            f"unknown vehicle controller {name!r}; declared: "
+            f"{sorted(VEHICLE_CONTROLLER_READS_DOWNSTREAM)}"
         ) from None
 
 

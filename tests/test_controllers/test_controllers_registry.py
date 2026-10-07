@@ -96,3 +96,72 @@ class TestDefaultParams:
         p = default_params("follower_stopper")
         assert (p["dx0_1"], p["dx0_2"], p["dx0_3"]) == (4.5, 5.25, 6.0)
         assert (p["d_1"], p["d_2"], p["d_3"]) == (1.5, 1.0, 0.5)
+
+
+class TestReadsDownstream:
+    """``reads_downstream``: the micro runner builds ``ControllerObs.downstream``
+    only for a controller declared to read it (docs/PERFORMANCE_2026-10-07.md)."""
+
+    def test_every_vehicle_controller_is_declared(self):
+        from controllers.registry import VEHICLE_CONTROLLER_READS_DOWNSTREAM
+
+        assert set(VEHICLE_CONTROLLER_READS_DOWNSTREAM) == set(ALL_VEHICLE_CONTROLLERS)
+        assert all(isinstance(v, bool) for v in VEHICLE_CONTROLLER_READS_DOWNSTREAM.values())
+
+    def test_only_the_wave_oracle_reads_the_bins(self):
+        from controllers.registry import reads_downstream
+
+        assert {n for n in ALL_VEHICLE_CONTROLLERS if reads_downstream(n)} == {"jad"}
+
+    def test_unknown_name_raises(self):
+        from controllers.registry import reads_downstream
+
+        with pytest.raises(KeyError, match="jad"):
+            reads_downstream("nope")
+        with pytest.raises(KeyError):
+            reads_downstream("vsl_threshold")
+
+    def test_jad_does_read_the_bins(self):
+        """A jam within the lookahead changes JAD's command: the declaration is load-bearing."""
+        fn, p = get_vehicle_controller("jad"), default_params("jad")
+        free = ControllerObs(t=0.0, dt=0.5, v=25.0, gap=60.0, v_leader=25.0, v_ref=25.0)
+        jam = ControllerObs(
+            t=0.0, dt=0.5, v=25.0, gap=60.0, v_leader=25.0, v_ref=25.0, downstream=(25.0, 2.0)
+        )
+        assert fn(free, p, {}) != fn(jam, p, {})
+
+    def test_undeclared_readers_ignore_the_bins(self):
+        """Each controller declared ``False`` gives the same commands and memory over
+        a run of observations whether it sees the bins or the empty default."""
+        import math
+
+        import numpy as np
+
+        from controllers.registry import reads_downstream
+
+        rng = np.random.default_rng(20261007)
+        for name in sorted(ALL_VEHICLE_CONTROLLERS):
+            if reads_downstream(name):
+                continue
+            fn, p = get_vehicle_controller(name), default_params(name)
+            mem_a: dict[str, float] = {}
+            mem_b: dict[str, float] = {}
+            for k in range(400):
+                has_leader = rng.random() > 0.1
+                base = {
+                    "t": 0.5 * k,
+                    "dt": 0.5,
+                    "v": float(rng.uniform(0.0, 35.0)),
+                    "gap": float(rng.uniform(0.0, 120.0)) if has_leader else math.inf,
+                    "v_leader": float(rng.uniform(0.0, 35.0)) if has_leader else math.nan,
+                    "v_ref": float(rng.uniform(0.0, 35.0)),
+                }
+                bins = tuple(
+                    float(v) if rng.random() > 0.2 else math.nan
+                    for v in rng.uniform(0.0, 35.0, size=int(rng.integers(1, 21)))
+                )
+                v_a, mem_a = fn(ControllerObs(**base), p, mem_a)
+                v_b, mem_b = fn(
+                    ControllerObs(**base, downstream=bins, downstream_dx=100.0), p, mem_b
+                )
+                assert v_a == v_b and mem_a == mem_b, (name, k)

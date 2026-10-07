@@ -1,22 +1,41 @@
 #!/bin/bash
 # Create one on-demand VM, ship the I-24 data, and start scripts/gcp/pipeline_i24.sh
 # under systemd with every stop guarantee armed:
-#   1. the pipeline's EXIT trap powers the VM off 3 min after it ends (success or failure);
-#   2. the VM's startup script arms a hard cap (`shutdown -h +$CAP_MIN`) at every boot,
-#      independent of the pipeline;
-#   3. scripts/gcp/watch_pipeline.sh (run locally after this, under caffeinate) fetches
-#      the archive after every stage and DELETES the instance, unconditionally at its deadline;
+#   1. the pipeline's EXIT trap ends the VM when the pipeline ends (success, failure or SIGTERM).
+#      With --self-delete it DELETES the instance and never powers it off: after the archive copies,
+#      and also when the last (full) copy failed, once the light archive has been uploaded again
+#      (2026-10-07 review). Without --self-delete the instance has no delete grant, so the trap powers
+#      it off 3 min after the end and the watcher (3.) deletes the stopped instance;
+#   2. the VM's startup script arms a fallback cap (`shutdown -h +$CAP_MIN+15`) at every boot,
+#      independent of the pipeline; Compute Engine's delete (7.) comes 15 minutes before it;
+#   3. scripts/gcp/watch_pipeline.sh (run locally after this, under caffeinate; the exact command is
+#      printed at the end, with --deadline-min CAP_MIN+20 and the instance id) fetches the archive after
+#      every stage and DELETES the instance: when the pipeline is done, when it finds it stopped
+#      (TERMINATED), and unconditionally at its deadline;
 #   4. with --bucket, the VM copies the archive to that bucket after every stage and, with
 #      --self-delete, deletes itself at the end — no local machine has to be awake.
 #   5. an on-VM idle guard (scripts/gcp/idle_guard.sh, started from the boot script) deletes the
 #      instance whenever no pipeline runs after a 75-minute grace: a launch that dies after the
-#      instance exists, a failed self-delete, a laptop asleep or force-shut — none can leave it idle.
+#      instance exists, a failed self-delete, a laptop asleep or force-shut. With --self-delete a failed
+#      delete is retried and never becomes a power-off; without it (no grant) it falls back to a power-off.
 #   6. the launch script itself deletes the instance if any step after creation fails.
 #   7. Compute Engine itself deletes the instance (disk included) $CAP_MIN minutes after it starts
 #      running (`--max-run-duration`, `--instance-termination-action=DELETE`): server-side, so it
 #      fires with the guest hung, the idle guard dead and the laptop off. Its clock counts running
 #      time only, so the guest's own power-off (2.) is pushed 15 minutes past it: a guest power-off
 #      first would stop the clock and leave a stopped VM whose disk still bills (2026-09-24 audit).
+# Remaining cost-leak risk (2026-10-07 review). Nothing server-side deletes a STOPPED instance: a stop
+# clears the max-run-duration clock, and the stopped instance's 120 GB pd-balanced disk bills (about
+# $0.40 a day) until someone deletes it. A stopped instance with nothing left to delete it arises only:
+#   a. without --self-delete, when no watcher runs to the end: the EXIT trap's power-off (1.), the idle
+#      guard's power-off (5.), or the watcher's 30-minute fetch window after PIPELINE_DONE if the watcher
+#      dies inside it. Run the watcher until it prints VM_DELETED, or delete by hand with the commands
+#      printed at the end;
+#   b. with --self-delete, only when the guest is powered off while no pipeline runs to delete it: the
+#      boot-time fallback cap (2.) after Compute Engine's delete (7.) failed to fire, or a manual power-off.
+# A --self-delete instance whose own delete keeps failing stays RUNNING (bounded by 7.), never stopped.
+# With --self-delete the instance is deleted even when no archive of this run reached the bucket (the
+# copies made after earlier stages stand); what existed only on its disk is then lost.
 # The hard cap must exceed the expected runtime with margin: the 2026-09-06 run was
 # killed by a 300-min cap during its last stage. Size it at about twice the estimate;
 # the EXIT trap, not the cap, is the normal stop.
@@ -64,7 +83,8 @@ build_archives() {  # sets DATA (the data tar) and REPO_TAR (git archive of HEAD
   # the US-101 battery (stage battery_us101) reads data/ngsim (~170 MB); shipped when present
   [ -d data/ngsim ] && tar rf "$DATA" data/ngsim
   # per-run metrics of an earlier, interrupted cap sweep or penetration sweep let the VM resume them
-  for pat in "runs/i24_cap_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/meta.json" "runs/i24_sweep/MANIFEST.json"; do
+  # (the cap sweep's tree is <config hash>/<seed>/, the penetration sweep's <cell>/<config hash>/<seed>/)
+  for pat in "runs/i24_cap_sweep/*/*/metrics.json" "runs/i24_sweep/*/*/*/metrics.json" "runs/i24_sweep/*/*/*/meta.json" "runs/i24_sweep/MANIFEST.json"; do
     # shellcheck disable=SC2086
     ls $pat >/dev/null 2>&1 && tar rf "$DATA" $pat
   done
@@ -111,6 +131,15 @@ EOF
 if [ "$VIA_BUCKET" -eq 1 ]; then
 cat >> "$STARTUP" <<EOF
 # --via-bucket: fetch the inputs, set up and start the pipeline once (as root; the unit is a system unit)
+put_marker() {  # put_marker STARTED|SETUP_FAILED: the setup log as that bucket object, retried (the launcher deletes the
+  # instance when no marker arrives), and a line on the serial console, which the launcher also reads
+  echo "FLOWSTATE_SETUP \$1" > /dev/ttyS0 || true
+  for i in \$(seq 1 10); do
+    gcloud storage cp /var/log/flowstate-setup.log "$INPUTS/\$1" --quiet && return 0
+    sleep 30
+  done
+  return 1
+}
 if [ ! -f /var/lib/flowstate-setup.started ]; then
   touch /var/lib/flowstate-setup.started
   export HOME=/root
@@ -126,13 +155,13 @@ if [ ! -f /var/lib/flowstate-setup.started ]; then
     read -r SHA QK SD < /tmp/launch.txt
     [ "\$QK" = none ] && QK=""
     if PIPELINE_BUCKET="$BUCKET" PIPELINE_SELF_DELETE="\$SD" PIPELINE_ARGS="\$(cat /tmp/pipeline_args.txt)" /tmp/vm_setup.sh "\$SHA" \$QK > /var/log/flowstate-setup.log 2>&1; then
-      gcloud storage cp /var/log/flowstate-setup.log "$INPUTS/STARTED" --quiet
+      put_marker STARTED
     else
-      gcloud storage cp /var/log/flowstate-setup.log "$INPUTS/SETUP_FAILED" --quiet
+      put_marker SETUP_FAILED
     fi
   else
     echo "input download failed twenty times" > /var/log/flowstate-setup.log
-    gcloud storage cp /var/log/flowstate-setup.log "$INPUTS/SETUP_FAILED" --quiet
+    put_marker SETUP_FAILED
   fi
 fi
 EOF
@@ -147,7 +176,8 @@ for Z in "${ZONES[@]}"; do
   if gcloud compute instances create "$VM" --project "$PROJECT" --zone "$Z" --machine-type "$MACHINE" \
     --max-run-duration="${CAP_MIN}m" --instance-termination-action=DELETE \
     --image-family debian-12 --image-project debian-cloud --boot-disk-size 120GB --boot-disk-type pd-balanced \
-    --metadata-from-file startup-script="$STARTUP",idle-guard="$ROOT/scripts/gcp/idle_guard.sh" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null 2>"$CREATE_ERR"; then
+    --metadata-from-file startup-script="$STARTUP",idle-guard="$ROOT/scripts/gcp/idle_guard.sh" \
+    --metadata flowstate-self-delete="$SELF_DELETE" --labels purpose=flowstate-pipeline,autostop=yes $SCOPES >/dev/null 2>"$CREATE_ERR"; then
     ZONE="$Z"; CREATED=1; break
   fi
   cat "$CREATE_ERR" >&2
@@ -159,7 +189,6 @@ for Z in "${ZONES[@]}"; do
 done
 rm -f "$STARTUP" "$CREATE_ERR"
 [ "$CREATED" -eq 1 ] || { echo "== could not create $VM in any of: $ZONE" >&2; exit 1; }
-mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF" > "$ROOT/logs/pipeline_launch.txt"
 # From here on the instance bills. If anything below fails (an scp cut by the network, a setup
 # error), delete it: a created-but-idle VM cost about fifteen dollars on 2026-09-18 while it
 # waited for a human. LAUNCHED=1 disarms the trap once the pipeline unit is running.
@@ -167,10 +196,28 @@ LAUNCHED=0
 cleanup_on_failure() {
   if [ "$LAUNCHED" -ne 1 ]; then
     echo "== launch failed after the instance was created; deleting $VM" >&2
-    gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1 && echo "== $VM deleted" >&2
+    if gcloud compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet >/dev/null 2>&1; then
+      echo "== $VM deleted" >&2
+    else
+      echo "== DELETE FAILED; delete it by hand: gcloud compute instances delete $VM --project $PROJECT --zone $ZONE --quiet" >&2
+    fi
   fi
 }
 trap cleanup_on_failure EXIT
+# the instance id identifies this launch: the pipeline writes it into every archive (logs/INSTANCE_ID) and the
+# watcher refuses a bucket archive that carries another one (a prefix reused while an older final.tgz is there)
+INSTANCE_ID=$(gcloud compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" --format='value(id)' 2>/dev/null || true)
+mkdir -p "$ROOT/logs"; echo "$(date -u +%FT%TZ) $VM $ZONE $PROJECT $REF ${INSTANCE_ID:-id-unknown}" > "$ROOT/logs/pipeline_launch.txt"
+# the watcher's deadline comes after Compute Engine's delete at CAP_MIN (it starts later than the instance), so
+# it only cleans up; its own default (450 min) would delete a longer run mid-stage (2026-10-07 review)
+WATCH="caffeinate -i scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE${BUCKET:+ --bucket $BUCKET} --deadline-min $((CAP_MIN + 20))${INSTANCE_ID:+ --instance-id $INSTANCE_ID}"
+[ "$VIA_BUCKET" -eq 1 ] && WATCH="$WATCH --remote-home /root"   # the pipeline runs as root there
+recovery_note() {  # what to run if no watcher sees the instance to its end
+  echo "== a stopped (TERMINATED) instance is deleted by nothing server-side and its disk bills until deleted; if no"
+  echo "   watcher runs to its VM_DELETED line, check and delete by hand:"
+  echo "     gcloud compute instances list --project $PROJECT --filter='labels.purpose=flowstate-pipeline' --format='table(name,zone.basename(),status)'"
+  echo "     gcloud compute instances delete $VM --project $PROJECT --zone $ZONE --quiet"
+}
 if [ -n "$BUCKET" ]; then
   # the VM's service account must be able to write the bucket and (for --self-delete) delete this
   # one instance; a project that grants the default account no Editor role has neither by default
@@ -180,18 +227,30 @@ if [ -n "$BUCKET" ]; then
   [ "$SELF_DELETE" -eq 1 ] && gcloud compute instances add-iam-policy-binding "$VM" --project "$PROJECT" --zone "$ZONE" --member="serviceAccount:$SA" --role=roles/compute.instanceAdmin.v1 >/dev/null
 fi
 if [ "$VIA_BUCKET" -eq 1 ]; then
-  echo "== waiting for the VM's boot-time setup (marker in $INPUTS, up to 30 min)"
+  echo "== waiting for the VM's boot-time setup (marker in $INPUTS or on the serial console, up to 30 min)"
+  serial_marker() {  # serial_marker STARTED|SETUP_FAILED: the boot script's line on serial port 1 (a second channel)
+    local out   # no `| grep -q`: under pipefail an early grep exit fails the pipe on a match
+    out=$(gcloud compute instances get-serial-port-output "$VM" --project "$PROJECT" --zone "$ZONE" 2>/dev/null || true)
+    case "$out" in *"FLOWSTATE_SETUP $1"*) return 0 ;; esac
+    return 1
+  }
   for i in $(seq 1 60); do
     if gcloud storage ls "$INPUTS/STARTED" >/dev/null 2>&1; then
-      gcloud storage cat "$INPUTS/STARTED" 2>/dev/null | tail -4; LAUNCHED=1; break
+      # disarm first: a transient error on the read below must not delete a VM whose pipeline already runs
+      LAUNCHED=1
+      gcloud storage cat "$INPUTS/STARTED" 2>/dev/null | tail -4 || true
+      break
     fi
     if gcloud storage ls "$INPUTS/SETUP_FAILED" >/dev/null 2>&1; then
-      echo "== the VM's setup failed:" >&2; gcloud storage cat "$INPUTS/SETUP_FAILED" 2>/dev/null | tail -20 >&2; exit 1
+      echo "== the VM's setup failed:" >&2; gcloud storage cat "$INPUTS/SETUP_FAILED" 2>/dev/null | tail -20 >&2 || true; exit 1
     fi
+    if serial_marker STARTED; then LAUNCHED=1; echo "== setup reported STARTED on the serial console (the bucket marker has not landed)"; break; fi
+    if serial_marker SETUP_FAILED; then echo "== the VM's setup failed (serial console; log in $INPUTS/SETUP_FAILED if it lands)" >&2; exit 1; fi
     sleep 30
   done
-  [ "$LAUNCHED" -eq 1 ] || { echo "== no setup marker after 30 min" >&2; exit 1; }
-  echo "== launched (via bucket). Now run (under caffeinate):  caffeinate -i scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE --bucket $BUCKET"
+  [ "$LAUNCHED" -eq 1 ] || { echo "== no setup marker after 30 min (bucket or serial console)" >&2; exit 1; }
+  echo "== launched (via bucket). Now run:  $WATCH"
+  recovery_note
   exit 0
 fi
 ssh_cmd() { gcloud compute ssh "$VM" --project "$PROJECT" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=25" --command "$1"; }
@@ -208,4 +267,5 @@ rm -rf "$(dirname "$DATA")"
 echo "== VM setup and pipeline start (systemd unit 'pipeline', survives logout)"
 ssh_cmd "chmod +x /tmp/vm_setup.sh && PIPELINE_BUCKET='$BUCKET' PIPELINE_SELF_DELETE=$SELF_DELETE PIPELINE_ARGS='$PIPELINE_ARGS' /tmp/vm_setup.sh $REF $QUICK" 2>&1 | tail -6
 LAUNCHED=1
-echo "== launched. Now run (under caffeinate):  caffeinate -i scripts/gcp/watch_pipeline.sh --vm $VM --zone $ZONE${BUCKET:+ --bucket $BUCKET}"
+echo "== launched. Now run:  $WATCH"
+recovery_note
