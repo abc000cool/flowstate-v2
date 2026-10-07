@@ -1,0 +1,263 @@
+e19e5ab64186
+ring benchmark: 20 seeds ...
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  ring emergence  PASS  20/20 seeds  (wall 19.5 s)
+  ring dampening  PASS  20/20 seeds  (wall 19.5 s)
+observed side: cache hit (/root/flowstate/runs/i24_validation/observed_i24.json)
+scenario scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml as 'p14_b2_ref' (i24_replica_flow_rc_speedcal_dc_refit, config 909b89f298c5): 20 replicates ...
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  analysis of 20 replicates done (167 s)
+[p14_b2_ref] GEH<5 vs tracked 0%, vs corrected 14%, vs recommended 31% | RMSPE 34.3% | sim backward wave [stack] None km/h (standard 9.73960969107568, 20/20 reps) | obs [stack] 19.920249567164102 km/h (standard 14.16637905452764, stripe 15.978488423679085) | wall 1298.7 s
+    link_flows_geh     FAIL  0.3055555555555556  (GEH < 5 for >= 85% of link-hour comparisons)
+    speeds_rmspe       FAIL  0.3429117918496909  (segment-speed RMSPE <= 15%)
+    wave_speed         FAIL  nan  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     PASS  1.0  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     PASS  1.0  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS  20.0  (n_seeds >= 20)
+    sensitivity_grid   PASS  1.0  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      PASS  0.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           FAIL  None  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+    collisions         0 over 20 replicate(s), 0 with any -> artifacts/i24_validation_p14_b2_ref.json
+done in 1485 s -> /root/flowstate/runs/i24_validation
+6914975401685141156: {'-4.5': 18, '-7.0': 1, '-8.9': 1}
+134183728835869882: {'-4.5': 19, '-7.0': 0, '-8.9': 0}
+2378473973028931053: {'-4.5': 10, '-7.0': 1, '-8.9': 1}
+3747978530954135749: {'-4.5': 9, '-7.0': 1, '-8.9': 1}
+677105600768189526: {'-4.5': 16, '-7.0': 1, '-8.9': 1}
+661281422688282993: {'-4.5': 7, '-7.0': 0, '-8.9': 0}
+3011106312394044631: {'-4.5': 10, '-7.0': 1, '-8.9': 0}
+6953598295321596746: {'-4.5': 8, '-7.0': 0, '-8.9': 0}
+165503670820534583: {'-4.5': 9, '-7.0': 0, '-8.9': 0}
+6134032994440706937: {'-4.5': 14, '-7.0': 1, '-8.9': 0}
+8557154790156791364: {'-4.5': 15, '-7.0': 3, '-8.9': 0}
+6538422657834023852: {'-4.5': 8, '-7.0': 0, '-8.9': 0}
+6904272788004776631: {'-4.5': 6, '-7.0': 0, '-8.9': 0}
+6143473282319009404: {'-4.5': 10, '-7.0': 0, '-8.9': 0}
+3944094060050347669: {'-4.5': 8, '-7.0': 0, '-8.9': 0}
+4910985839736976611: {'-4.5': 11, '-7.0': 0, '-8.9': 0}
+7382187975121682178: {'-4.5': 9, '-7.0': 0, '-8.9': 0}
+5690692725577505498: {'-4.5': 10, '-7.0': 0, '-8.9': 0}
+887972120279483394: {'-4.5': 10, '-7.0': 1, '-8.9': 0}
+8026499204807041784: {'-4.5': 8, '-7.0': 1, '-8.9': 0}
+843M	runs/i24_validation/p14_b2_ref
+ring benchmark: 20 seeds ...
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  ring emergence  PASS  20/20 seeds  (wall 19.6 s)
+  ring dampening  PASS  20/20 seeds  (wall 19.6 s)
+observed side: cache hit (/root/flowstate/runs/i24_validation/observed_i24.json)
+scenario scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml as 'p14_b1b2' (i24_replica_flow_rc_speedcal_dc_refit_b1, config e19e5ab64186): 20 replicates ...
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  analysis of 20 replicates done (145 s)
+[p14_b1b2] GEH<5 vs tracked 0%, vs corrected 21%, vs recommended 26% | RMSPE 45.2% | sim backward wave [stack] None km/h (standard 10.197875396578498, 20/20 reps) | obs [stack] 19.920249567164102 km/h (standard 14.16637905452764, stripe 15.978488423679085) | wall 1147.9 s
+    link_flows_geh     FAIL  0.2569444444444444  (GEH < 5 for >= 85% of link-hour comparisons)
+    speeds_rmspe       FAIL  0.4516200998071244  (segment-speed RMSPE <= 15%)
+    wave_speed         FAIL  nan  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     PASS  1.0  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     PASS  1.0  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS  20.0  (n_seeds >= 20)
+    sensitivity_grid   PASS  1.0  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      PASS  0.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           FAIL  None  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+    collisions         0 over 20 replicate(s), 0 with any -> artifacts/i24_validation_p14_b1b2.json
+done in 1313 s -> /root/flowstate/runs/i24_validation
+6914975401685141156: {'-4.5': 5, '-7.0': 0, '-8.9': 0}
+134183728835869882: {'-4.5': 31, '-7.0': 3, '-8.9': 0}
+2378473973028931053: {'-4.5': 13, '-7.0': 1, '-8.9': 0}
+3747978530954135749: {'-4.5': 9, '-7.0': 1, '-8.9': 0}
+677105600768189526: {'-4.5': 19, '-7.0': 3, '-8.9': 1}
+661281422688282993: {'-4.5': 15, '-7.0': 0, '-8.9': 0}
+3011106312394044631: {'-4.5': 18, '-7.0': 2, '-8.9': 1}
+6953598295321596746: {'-4.5': 9, '-7.0': 0, '-8.9': 0}
+165503670820534583: {'-4.5': 8, '-7.0': 1, '-8.9': 0}
+6134032994440706937: {'-4.5': 13, '-7.0': 1, '-8.9': 1}
+8557154790156791364: {'-4.5': 17, '-7.0': 1, '-8.9': 0}
+6538422657834023852: {'-4.5': 12, '-7.0': 0, '-8.9': 0}
+6904272788004776631: {'-4.5': 11, '-7.0': 0, '-8.9': 0}
+6143473282319009404: {'-4.5': 9, '-7.0': 0, '-8.9': 0}
+3944094060050347669: {'-4.5': 11, '-7.0': 0, '-8.9': 0}
+4910985839736976611: {'-4.5': 13, '-7.0': 0, '-8.9': 0}
+7382187975121682178: {'-4.5': 24, '-7.0': 0, '-8.9': 0}
+5690692725577505498: {'-4.5': 8, '-7.0': 0, '-8.9': 0}
+887972120279483394: {'-4.5': 12, '-7.0': 0, '-8.9': 0}
+8026499204807041784: {'-4.5': 18, '-7.0': 0, '-8.9': 0}
+1005M	runs/i24_validation/p14_b1b2
+-> artifacts/i24_b2_ramp_flows_p14_b2_ref.json: 20 replicates of i24_replica_flow_rc_speedcal_dc_refit
+-> artifacts/i24_b2_ramp_flows_p14_b1b2.json: 20 replicates of i24_replica_flow_rc_speedcal_dc_refit_b1
+part (i): {'A1': True, 'A2': True, 'A3': True, 'A4': True, 'A5': False, 'holds': False}
+archive (light): 200183506 bytes
+2026-10-07T21:00:06Z archive copied to gs://flowstate-p3-1006/p14/final.tgz
+b2
+2026-10-07T21:00:07Z p14: the re-sequence runs on b2
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  s=0.600 inserted=0.999 rmspe train=1.215 test=2.223
+  s=0.700 inserted=0.998 rmspe train=1.057 test=2.007
+  s=0.800 inserted=0.995 rmspe train=0.646 test=1.597
+  s=0.900 inserted=0.991 rmspe train=0.388 test=0.332
+  s=1.000 inserted=0.896 rmspe train=0.388 test=0.323
+  s=1.100 inserted=0.807 rmspe train=0.374 test=0.317
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  s=0.600 inserted=0.999 rmspe train=1.215 test=2.223
+  s=0.700 inserted=0.998 rmspe train=1.057 test=2.007
+  s=0.800 inserted=0.995 rmspe train=0.646 test=1.597
+  s=0.900 inserted=0.991 rmspe train=0.388 test=0.332
+  s=1.000 inserted=0.896 rmspe train=0.388 test=0.323
+  s=1.025 inserted=0.869 rmspe train=0.410 test=0.344
+  s=1.050 inserted=0.847 rmspe train=0.387 test=0.333
+  s=1.075 inserted=0.829 rmspe train=0.369 test=0.346
+  s=1.100 inserted=0.807 rmspe train=0.374 test=0.317
+  s=1.125 inserted=0.783 rmspe train=0.323 test=0.313
+  s=1.150 inserted=0.775 rmspe train=0.414 test=0.311
+  s=1.175 inserted=0.756 rmspe train=0.365 test=0.305
+best scale 1.125: rmspe train 0.323, test 0.313, inserted 0.783
+-> artifacts/demand_scale_i24_flow_rc.json
+-> scenarios/i24_replica_flow_rc_speedcal_dc_refit2.yaml (e20554388a3c)
+ring benchmark: 20 seeds ...
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  ring emergence  PASS  20/20 seeds  (wall 19.6 s)
+  ring dampening  PASS  20/20 seeds  (wall 19.6 s)
+observed side: cache hit (/root/flowstate/runs/i24_validation/observed_i24.json)
+scenario scenarios/i24_replica_flow_rc_speedcal_dc_refit2.yaml as 'p14_refit2_b2' (i24_replica_flow_rc_speedcal_dc_refit2, config e20554388a3c): 20 replicates ...
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+Warning! pyarrow is installed with version 25.0.1 which might be incompatible with libsumo which is compiled against libarrow2300.
+ Try to uninstall pyarrow or install a matching pyarrow version, if you encounter problems.
+  analysis of 20 replicates done (196 s)
+[p14_refit2_b2] GEH<5 vs tracked 0%, vs corrected 15%, vs recommended 25% | RMSPE 31.5% | sim backward wave [stack] None km/h (standard 9.810886219493847, 20/20 reps) | obs [stack] 19.920249567164102 km/h (standard 14.16637905452764, stripe 15.978488423679085) | wall 1481.3 s
+    link_flows_geh     FAIL  0.25  (GEH < 5 for >= 85% of link-hour comparisons)
+    speeds_rmspe       FAIL  0.31461610112867067  (segment-speed RMSPE <= 15%)
+    wave_speed         FAIL  nan  (backward wave speed in [14, 22] km/h (emergent, unseeded))
+    ring_emergence     PASS  1.0  (Sugiyama ring emergence benchmark reproduced)
+    ring_dampening     PASS  1.0  (Stern single-AV dampening benchmark reproduced)
+    n_seeds            PASS  20.0  (n_seeds >= 20)
+    sensitivity_grid   PASS  1.0  (penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs)
+    no_collisions      PASS  0.0  (zero SUMO collisions in every run, each run recording the counter)
+    no_locks           FAIL  None  (no run locked (no queue standing without discharge for 10 min or more), every run recorded)
+    collisions         0 over 20 replicate(s), 0 with any -> artifacts/i24_validation_p14_refit2_b2.json
+done in 1697 s -> /root/flowstate/runs/i24_validation
+6914975401685141156: {'-4.5': 16, '-7.0': 0, '-8.9': 0}
+134183728835869882: {'-4.5': 8, '-7.0': 0, '-8.9': 0}
+2378473973028931053: {'-4.5': 12, '-7.0': 0, '-8.9': 0}
+3747978530954135749: {'-4.5': 7, '-7.0': 0, '-8.9': 0}
+677105600768189526: {'-4.5': 14, '-7.0': 0, '-8.9': 0}
+661281422688282993: {'-4.5': 10, '-7.0': 0, '-8.9': 0}
+3011106312394044631: {'-4.5': 10, '-7.0': 0, '-8.9': 0}
+6953598295321596746: {'-4.5': 12, '-7.0': 0, '-8.9': 0}
+165503670820534583: {'-4.5': 10, '-7.0': 0, '-8.9': 0}
+6134032994440706937: {'-4.5': 5, '-7.0': 0, '-8.9': 0}
+8557154790156791364: {'-4.5': 20, '-7.0': 0, '-8.9': 0}
+6538422657834023852: {'-4.5': 10, '-7.0': 2, '-8.9': 2}
+6904272788004776631: {'-4.5': 10, '-7.0': 0, '-8.9': 0}
+6143473282319009404: {'-4.5': 16, '-7.0': 1, '-8.9': 0}
+3944094060050347669: {'-4.5': 8, '-7.0': 1, '-8.9': 0}
+4910985839736976611: {'-4.5': 11, '-7.0': 1, '-8.9': 0}
+7382187975121682178: {'-4.5': 6, '-7.0': 0, '-8.9': 0}
+5690692725577505498: {'-4.5': 13, '-7.0': 0, '-8.9': 0}
+887972120279483394: {'-4.5': 11, '-7.0': 0, '-8.9': 0}
+8026499204807041784: {'-4.5': 9, '-7.0': 0, '-8.9': 0}
+909M	runs/i24_validation/p14_refit2_b2
+-> artifacts/i24_b2_ramp_flows_p14_refit2_b2.json: 20 replicates of i24_replica_flow_rc_speedcal_dc_refit2
+part (i): {'A1': True, 'A2': True, 'A3': True, 'A4': True, 'A5': False, 'holds': False}
+part (ii): b2 {'C1': True, 'C2': False, 'C3': False, 'C4': True, 'C5': None} candidate: False

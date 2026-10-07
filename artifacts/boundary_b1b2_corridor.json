@@ -1,0 +1,3042 @@
+{
+ "schema": "flowstate.boundary_b1b2_corridor/1",
+ "created_at": "2026-10-07T21:49:09+00:00",
+ "code": "8e8c29a0ed6a29ec90bd2b85c80e5db0d31f8914",
+ "spec": "docs/I24_DISCHARGE_DIAGNOSIS.md \u00a78.4.5 (criteria fixed 2026-10-07 before any run of the round)",
+ "status": "PROPOSED, not adopted; adoption of B1, of the refit level, or of either family is the owner's call",
+ "limit_factor_applied": 1.2185,
+ "zone": {
+  "data_x_m": [
+   5492.0,
+   6437.376
+  ],
+  "sim_x_m": [
+   7637.888601609814,
+   8564.21849321916
+  ],
+  "schedule_window_s": 30.0,
+  "source": "artifacts/i24_replica_inputs_flow.json boundary.x_range_m, boundary.window_s, geometry.sim_x_of_data_x"
+ },
+ "part_i": {
+  "arm": {
+   "label": "p14_b1b2",
+   "scenario": "i24_replica_flow_rc_speedcal_dc_refit_b1",
+   "config_hash": "e19e5ab64186"
+  },
+  "reference": {
+   "label": "p14_b2_ref",
+   "scenario": "i24_replica_flow_rc_speedcal_dc_refit",
+   "config_hash": "909b89f298c5"
+  },
+  "keys": "criteria and reported as harness/corridor_b1.py evaluate_arm writes them: 'reference' is B2 alone, 'b1' is B1 + B2",
+  "expected_hashes": {
+   "b2": {
+    "expected": "909b89f298c5",
+    "matches": true
+   },
+   "b1b2": {
+    "expected": "e19e5ab64186",
+    "matches": true
+   }
+  },
+  "same_seeds_as_step3": true,
+  "reference_reproduces_p13": {
+   "committed": {
+    "path": "artifacts/i24_validation_dc_refit_rc.json",
+    "sha256": "9b40c583edd129629446e1c606fabda8be5a49a19123cb741f04d87ea7162be3"
+   },
+   "available": true,
+   "checks": {
+    "config_hash": true,
+    "seeds": true,
+    "counts_per_replicate": true,
+    "demand_realized_fraction": true,
+    "n_collisions_per_replicate": true,
+    "segment_speeds_ms_per_replicate": true,
+    "backward_fronts": true,
+    "criteria_rows": true
+   },
+   "exact": true,
+   "differs": []
+  },
+  "criteria": {
+   "A1": {
+    "rule": "0 collisions in every run; steps below -8.9 m/s^2 not above the reference",
+    "collisions_b1": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "collisions_reference": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "collisions_ok": true,
+    "hard_braking": {
+     "verdict": true,
+     "b1_total": 3,
+     "reference_total": 4,
+     "per_run_paired_b1_minus_ref": [
+      -0.05,
+      -0.28888287692288384,
+      0.1888828769228838
+     ]
+    },
+    "verdict": true
+   },
+   "A2": {
+    "rule": "5,400-m 2-h flow within 5,829-6,309 veh/h; boundary-zone mean speed error smaller in magnitude than the reference's",
+    "flow_5400_b1": [
+     5910.175,
+     5605.3457950733045,
+     6215.004204926696
+    ],
+    "flow_5400_reference": [
+     5772.375,
+     5759.335886506396,
+     5785.414113493604
+    ],
+    "flow_5400_paired_b1_minus_ref": [
+     137.8,
+     -170.91601987207662,
+     446.51601987207664
+    ],
+    "flow_ok": true,
+    "zone": {
+     "verdict": true,
+     "estimator": "per replicate, the unweighted mean of the 30-s window Edie speeds on the schedule's grid (as the schedule's study-window mean); then the replicate mean",
+     "schedule_mean_kmh": 49.92786,
+     "b1_zone_kmh": [
+      40.10077557820762,
+      39.11105605905245,
+      41.09049509736278
+     ],
+     "reference_zone_kmh": [
+      32.89991299202136,
+      32.78711914492296,
+      33.012706839119765
+     ],
+     "b1_error_kmh": -9.827084421792383,
+     "reference_error_kmh": -17.02794700797864,
+     "paired_zone_speed_b1_minus_ref_kmh": [
+      7.2008625861862585,
+      6.178078305488735,
+      8.223646866883781
+     ],
+     "window_rmspe_reported": {
+      "b1": 0.2051215582556862,
+      "reference": 0.3408960379054065
+     },
+     "edie_2h_reported": {
+      "what": "one Edie speed over the zone's cells in the whole study window (vehicle-time weighted; A2's first estimator, replaced 2026-10-07 before any p12 result was read)",
+      "b1_kmh": [
+       38.66918248019216,
+       37.907967678486436,
+       39.430397281897896
+      ],
+      "reference_kmh": [
+       32.13706067654089,
+       32.05609400132574,
+       32.218027351756035
+      ],
+      "b1_error_kmh": -11.258677519807836,
+      "reference_error_kmh": -17.790799323459115
+     },
+     "windows_filled": {
+      "b1": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ],
+      "reference": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0
+      ]
+     }
+    },
+    "verdict": true
+   },
+   "A3": {
+    "rule": "realised demand >= the reference's (FRISCO_PROTOCOL Amendment 2 clarification)",
+    "b1": [
+     0.9674250000000001,
+     0.933568803601537,
+     1.0012811963984631
+    ],
+    "reference": [
+     0.9665900000000001,
+     0.964842943432481,
+     0.9683370565675191
+    ],
+    "paired_b1_minus_ref": [
+     0.0008349999999999857,
+     -0.03360006950800613,
+     0.03527006950800611
+    ],
+    "verdict": true,
+    "amendment2_tolerance_reading": {
+     "rule": "b1 mean >= reference mean - 0.01",
+     "verdict": true
+    }
+   },
+   "A4": {
+    "rule": "the profile's wave verdict unchanged where it passes today; backward fronts per replicate not below the reference by more than a third (standard and stripe detectors)",
+    "wave_verdict": {
+     "reference": {
+      "value": null,
+      "passed": false,
+      "evaluated": true,
+      "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+     },
+     "b1": {
+      "value": null,
+      "passed": false,
+      "evaluated": true,
+      "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+     },
+     "reference_passes": false,
+     "ok": null,
+     "note": "the reference fails the wave criterion here; the verdict half does not apply"
+    },
+    "fronts": {
+     "standard": {
+      "b1": [
+       26.6,
+       24.154417010424858,
+       29.045582989575145
+      ],
+      "reference": [
+       10.1,
+       8.734248519737129,
+       11.46575148026287
+      ],
+      "floor": 6.7333333333333325,
+      "paired_b1_minus_ref": [
+       16.5,
+       13.585150304837164,
+       19.414849695162836
+      ],
+      "ok": true
+     },
+     "stripe": {
+      "b1": [
+       53.55,
+       47.5440497158801,
+       59.555950284119895
+      ],
+      "reference": [
+       65.2,
+       61.512974370495186,
+       68.88702562950482
+      ],
+      "floor": 43.46666666666667,
+      "paired_b1_minus_ref": [
+       -11.65,
+       -18.117686745032557,
+       -5.182313254967444
+      ],
+      "ok": true
+     }
+    },
+    "verdict": true
+   },
+   "A5": {
+    "rule": "15-min segment-speed RMSPE not above the reference + 0.02",
+    "b1": 0.3098612612638948,
+    "reference": 0.25412709845352993,
+    "limit": 0.27412709845352995,
+    "per_replicate_paired_b1_minus_ref": [
+     0.0966958341426277,
+     0.0611809124367754,
+     0.13221075584848
+    ],
+    "verdict": false
+   }
+  },
+  "reported": {
+   "peak_sections": {
+    "2200": {
+     "observed_recommended": 6626.170833333333,
+     "geh5_threshold_veh_h": 6225.366373422459,
+     "b1": [
+      6416.25,
+      6119.738650456099,
+      6712.761349543901
+     ],
+     "reference": [
+      6315.775,
+      6300.872720756604,
+      6330.677279243395
+     ],
+     "paired_b1_minus_ref": [
+      100.475,
+      -201.0601813029928,
+      402.0101813029928
+     ],
+     "geh_b1": 2.599509655765077,
+     "geh_reference": 3.8586118321770377
+    },
+    "3200": {
+     "observed_recommended": 6639.020833333333,
+     "geh5_threshold_veh_h": 6237.821961285154,
+     "b1": [
+      6384.45,
+      6073.823385767801,
+      6695.076614232199
+     ],
+     "reference": [
+      6267.05,
+      6252.598897179299,
+      6281.501102820702
+     ],
+     "paired_b1_minus_ref": [
+      117.4,
+      -197.28659245304513,
+      432.0865924530451
+     ],
+     "geh_b1": 3.154716019916292,
+     "geh_reference": 4.630489069213626
+    }
+   },
+   "geh_lt5_share": {
+    "b1": 0.2569444444444444,
+    "reference": 0.3055555555555556
+   },
+   "rmspe_5min": {
+    "b1": 0.4516200998071244,
+    "reference": 0.3429117918496909
+   },
+   "reference_reproduces_step3": {
+    "committed": {
+     "path": "artifacts/i24_validation_dc_refit_rc.json",
+     "sha256": "9b40c583edd129629446e1c606fabda8be5a49a19123cb741f04d87ea7162be3"
+    },
+    "same_config_hash": true,
+    "same_seeds": true,
+    "counts_identical": true,
+    "max_abs_count_diff": 0.0,
+    "segment_speeds_identical": true,
+    "realised_identical": true,
+    "rmspe_5min": {
+     "committed": 0.3429117918496909,
+     "here": 0.3429117918496909
+    }
+   },
+   "lane_shares": {
+    "computed": false,
+    "why": "per-lane section crossings are recorded only in the trajectories (lane at each section); meta.json, vehicles.parquet and the battery artifact do not carry them"
+   },
+   "gate_rows": {
+    "b2": [
+     {
+      "name": "link_flows_geh",
+      "value": 0.3055555555555556,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+     },
+     {
+      "name": "speeds_rmspe",
+      "value": 0.3429117918496909,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "segment-speed RMSPE <= 15%"
+     },
+     {
+      "name": "wave_speed",
+      "value": null,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+     },
+     {
+      "name": "ring_emergence",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Sugiyama ring emergence benchmark reproduced"
+     },
+     {
+      "name": "ring_dampening",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Stern single-AV dampening benchmark reproduced"
+     },
+     {
+      "name": "n_seeds",
+      "value": 20.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "n_seeds >= 20"
+     },
+     {
+      "name": "sensitivity_grid",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+     },
+     {
+      "name": "no_collisions",
+      "value": 0.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "zero SUMO collisions in every run, each run recording the counter"
+     },
+     {
+      "name": "no_locks",
+      "value": null,
+      "passed": false,
+      "evaluated": false,
+      "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+     }
+    ],
+    "b1b2": [
+     {
+      "name": "link_flows_geh",
+      "value": 0.2569444444444444,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+     },
+     {
+      "name": "speeds_rmspe",
+      "value": 0.4516200998071244,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "segment-speed RMSPE <= 15%"
+     },
+     {
+      "name": "wave_speed",
+      "value": null,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+     },
+     {
+      "name": "ring_emergence",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Sugiyama ring emergence benchmark reproduced"
+     },
+     {
+      "name": "ring_dampening",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Stern single-AV dampening benchmark reproduced"
+     },
+     {
+      "name": "n_seeds",
+      "value": 20.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "n_seeds >= 20"
+     },
+     {
+      "name": "sensitivity_grid",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+     },
+     {
+      "name": "no_collisions",
+      "value": 0.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "zero SUMO collisions in every run, each run recording the counter"
+     },
+     {
+      "name": "no_locks",
+      "value": null,
+      "passed": false,
+      "evaluated": false,
+      "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+     }
+    ]
+   },
+   "peak_targets": {
+    "observed": {
+     "2200": 6626.170833333333,
+     "3200": 6639.020833333333
+    },
+    "as_recorded": true
+   },
+   "ramp_flows": {
+    "b2": {
+     "computed": true,
+     "reduction": "artifacts/i24_b2_ramp_flows_p14_b2_ref.json",
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": [
+       970.425,
+       963.2435388340369,
+       977.606461165963
+      ],
+      "corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.8004545926925006,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 2.9570426681910065
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": [
+       552.325,
+       544.3730034920844,
+       560.2769965079157
+      ],
+      "corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 1.2125717320705107,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.7335428849036962
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": [
+       470.15,
+       470.03997862436216,
+       470.2600213756378
+      ],
+      "corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 1.2888176588942262,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 9.00479040426737
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": [
+       275.0,
+       270.2873311052806,
+       279.7126688947194
+      ],
+      "corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 1.9911274696483923,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 3.074522428784228
+     }
+    },
+    "b1b2": {
+     "computed": true,
+     "reduction": "artifacts/i24_b2_ramp_flows_p14_b1b2.json",
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": [
+       959.4,
+       916.9766309297363,
+       1001.8233690702637
+      ],
+      "corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.4456225231655864,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 3.3116395721643226
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": [
+       556.8,
+       524.5856932596585,
+       589.0143067403415
+      ],
+      "corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 1.0225828550639975,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.5435987887198042
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": [
+       456.375,
+       427.52686470758124,
+       485.22313529241876
+      ],
+      "corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 0.6489304772852172,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 9.635073774975936
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": [
+       280.575,
+       254.50530903999217,
+       306.6446909600078
+      ],
+      "corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 1.6569923988327928,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 2.7409256383510017
+     }
+    }
+   },
+   "r1_r5_second_arm": {
+    "computed": true,
+    "status": "reported, not gating: the reference is the committed stage-p12 battery, not re-run here",
+    "reference": {
+     "path": "artifacts/i24_validation_p12_dc_refit_b1.json",
+     "sha256": "cbf20f3e23a7d0523d81761944bedfb4ac47e88b50e7ce27eed4eda4e78b587e"
+    },
+    "same_seeds": true,
+    "criteria": {
+     "R1": true,
+     "R2": true,
+     "R3": true,
+     "R4": true,
+     "R5": false
+    },
+    "all_hold": false,
+    "realized_mean": {
+     "arm": 0.9674250000000001,
+     "reference": 0.948005
+    },
+    "peak_sections": {
+     "arm": {
+      "2200": {
+       "model_veh_h": 6416.25,
+       "target_veh_h": 6626.170833333333,
+       "geh": 2.599509655765077
+      },
+      "3200": {
+       "model_veh_h": 6384.45,
+       "target_veh_h": 6639.020833333333,
+       "geh": 3.154716019916292
+      }
+     },
+     "reference": {
+      "2200": {
+       "model_veh_h": 6312.975000000001,
+       "target_veh_h": 6626.170833333333,
+       "geh": 3.893840605413602
+      },
+      "3200": {
+       "model_veh_h": 6259.175,
+       "target_veh_h": 6639.020833333333,
+       "geh": 4.729964501857596
+      }
+     }
+    },
+    "rmspe_15min": {
+     "arm": 0.3098612612638948,
+     "reference": 0.2560990946004669,
+     "bound": 0.27609909460046694
+    },
+    "wave_row": {
+     "arm_passes": false,
+     "reference_passes": false
+    },
+    "ramps_r3": {
+     "computed": true,
+     "reduction": "artifacts/i24_b2_ramp_flows_p14_b1b2.json",
+     "Old Hickory Blvd on-ramp": {
+      "kind": "on",
+      "model_veh_h": [
+       959.4,
+       916.9766309297363,
+       1001.8233690702637
+      ],
+      "corrected_pooled_veh_h": 915.1424319348195,
+      "geh_vs_corrected": 1.4456225231655864,
+      "recorded_pooled_veh_h": 1064.7537041063672,
+      "geh_vs_recorded": 3.3116395721643226
+     },
+     "Hickory Hollow Pkwy off-ramp": {
+      "kind": "off",
+      "model_veh_h": [
+       556.8,
+       524.5856932596585,
+       589.0143067403415
+      ],
+      "corrected_pooled_veh_h": 581.1923237368231,
+      "geh_vs_corrected": 1.0225828550639975,
+      "recorded_pooled_veh_h": 593.8242433172837,
+      "geh_vs_recorded": 1.5435987887198042
+     },
+     "Hickory Hollow Pkwy on-ramp": {
+      "kind": "on",
+      "model_veh_h": [
+       456.375,
+       427.52686470758124,
+       485.22313529241876
+      ],
+      "corrected_pooled_veh_h": 442.6168182212329,
+      "geh_vs_corrected": 0.6489304772852172,
+      "recorded_pooled_veh_h": 686.721427028011,
+      "geh_vs_recorded": 9.635073774975936
+     },
+     "Bell Road off-ramp (collector road)": {
+      "kind": "off",
+      "model_veh_h": [
+       280.575,
+       254.50530903999217,
+       306.6446909600078
+      ],
+      "corrected_pooled_veh_h": 309.02513325198856,
+      "geh_vs_corrected": 1.6569923988327928,
+      "recorded_pooled_veh_h": 328.4030958999402,
+      "geh_vs_recorded": 2.7409256383510017
+     }
+    },
+    "r3_reference_half": "not computed: stage p12 archived no vehicles.parquet"
+   }
+  },
+  "batteries": {
+   "b2": {
+    "label": "p14_b2_ref",
+    "artifact": {
+     "path": "artifacts/i24_validation_p14_b2_ref.json",
+     "sha256": "88b93dbeb398ce4e1d43ed80e4e8880f4902e969264417e0ebde93e3a340b468",
+     "created_at": "2026-10-07T20:37:20Z"
+    },
+    "scenario": "i24_replica_flow_rc_speedcal_dc_refit",
+    "config_hash": "909b89f298c5",
+    "seeds": [
+     6914975401685141156,
+     134183728835869882,
+     2378473973028931053,
+     3747978530954135749,
+     677105600768189526,
+     661281422688282993,
+     3011106312394044631,
+     6953598295321596746,
+     165503670820534583,
+     6134032994440706937,
+     8557154790156791364,
+     6538422657834023852,
+     6904272788004776631,
+     6143473282319009404,
+     3944094060050347669,
+     4910985839736976611,
+     7382187975121682178,
+     5690692725577505498,
+     887972120279483394,
+     8026499204807041784
+    ],
+    "problems": [],
+    "study_window_sim_s": [
+     600.0,
+     7800.0
+    ],
+    "flows_2h_veh_h": {
+     "200": [
+      5468.5,
+      5522.0,
+      5419.0,
+      5488.0,
+      5452.5,
+      5473.0,
+      5503.0,
+      5512.0,
+      5490.5,
+      5499.5,
+      5530.0,
+      5464.5,
+      5457.5,
+      5448.0,
+      5450.0,
+      5505.5,
+      5579.5,
+      5455.0,
+      5465.0,
+      5488.5
+     ],
+     "1000": [
+      6386.5,
+      6412.0,
+      6378.0,
+      6426.0,
+      6355.5,
+      6412.0,
+      6393.0,
+      6431.0,
+      6383.5,
+      6410.0,
+      6421.5,
+      6396.0,
+      6394.0,
+      6307.0,
+      6369.5,
+      6419.0,
+      6461.0,
+      6399.5,
+      6373.5,
+      6438.5
+     ],
+     "2200": [
+      6288.5,
+      6358.5,
+      6289.5,
+      6318.0,
+      6265.0,
+      6343.0,
+      6337.5,
+      6323.0,
+      6305.0,
+      6299.0,
+      6322.0,
+      6294.5,
+      6303.0,
+      6273.5,
+      6275.0,
+      6365.0,
+      6381.0,
+      6322.5,
+      6307.0,
+      6345.0
+     ],
+     "3200": [
+      6243.0,
+      6300.5,
+      6232.0,
+      6257.0,
+      6210.5,
+      6291.0,
+      6294.0,
+      6273.0,
+      6266.5,
+      6252.5,
+      6261.5,
+      6240.0,
+      6253.0,
+      6224.5,
+      6244.0,
+      6311.5,
+      6327.0,
+      6290.5,
+      6272.0,
+      6297.0
+     ],
+     "4800": [
+      6059.0,
+      6103.5,
+      5993.0,
+      6066.5,
+      6026.0,
+      6131.5,
+      6058.5,
+      6099.5,
+      6057.5,
+      6051.0,
+      6064.0,
+      6043.0,
+      6088.5,
+      6043.0,
+      6029.5,
+      6081.0,
+      6118.5,
+      6080.0,
+      6105.5,
+      6106.0
+     ],
+     "5400": [
+      5773.0,
+      5806.0,
+      5711.5,
+      5754.0,
+      5742.0,
+      5803.0,
+      5763.0,
+      5789.0,
+      5755.5,
+      5745.0,
+      5780.0,
+      5757.0,
+      5800.0,
+      5751.5,
+      5737.5,
+      5779.5,
+      5809.0,
+      5783.5,
+      5811.5,
+      5796.0
+     ]
+    },
+    "observed_2h_veh_h": {
+     "200": 5417.554166666667,
+     "1000": 5751.579166666667,
+     "2200": 6626.170833333333,
+     "3200": 6639.020833333333,
+     "4800": 6170.5,
+     "5400": 6008.683333333334
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "emergency_steps": [
+     1,
+     0,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "braking_file": "/root/flowstate/runs/i24_validation/p14_b2_ref/hard_braking.json",
+    "zone_speed_ms": [
+     9.137800019189127,
+     9.072470866697888,
+     9.247870500290015,
+     9.19936182290672,
+     9.217232126266197,
+     9.061892251733676,
+     9.175739489170633,
+     9.060160568186378,
+     9.24167502702397,
+     9.209383082227381,
+     9.109832646017505,
+     9.145577107676512,
+     9.094385496077818,
+     9.163389341471413,
+     9.206502960837494,
+     9.079091589214181,
+     9.061611534263106,
+     9.033786804444405,
+     9.104784438850055,
+     9.15474672757419
+    ],
+    "zone_edie_2h_ms": [
+     8.931513423848703,
+     8.884034967706476,
+     9.00763622678221,
+     8.979179592389642,
+     8.986685946204119,
+     8.895732142815415,
+     8.943468231710575,
+     8.872125104615114,
+     8.99464044414562,
+     8.965969068648977,
+     8.898435198233921,
+     8.924032720321575,
+     8.884506599775436,
+     8.956887263381592,
+     8.968786573333416,
+     8.880372259764352,
+     8.87501955589363,
+     8.837831915014615,
+     8.906540292009394,
+     8.94582845418793
+    ],
+    "zone_windows_filled": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "zone_cells": {
+     "n": 3840,
+     "dx_m": 100.0,
+     "dt_s": 15.0,
+     "x_bins_m": [
+      7750.0,
+      8450.0
+     ]
+    },
+    "schedule_mean_ms": 13.86885,
+    "schedule_per_window_ms": [
+     13.35587,
+     14.49565,
+     17.418710000000004,
+     13.996839999999999,
+     12.507450000000002,
+     13.576770000000002,
+     18.709839999999996,
+     15.784760000000002,
+     16.62277,
+     15.89728,
+     13.13222,
+     14.61083,
+     9.05613,
+     13.182420000000002,
+     14.50357,
+     8.165080000000001,
+     11.248389999999999,
+     10.14314,
+     11.90933,
+     18.79856,
+     18.447760000000002,
+     10.212019999999999,
+     9.867980000000001,
+     17.20903
+    ],
+    "realised": [
+     0.9635,
+     0.9714,
+     0.963,
+     0.9694,
+     0.9613,
+     0.9696,
+     0.9656,
+     0.9708,
+     0.9664,
+     0.965,
+     0.9717,
+     0.9673,
+     0.9633,
+     0.9598,
+     0.9622,
+     0.9696,
+     0.9725,
+     0.9682,
+     0.9647,
+     0.9665
+    ],
+    "fronts_standard": [
+     7,
+     14,
+     8,
+     12,
+     9,
+     15,
+     7,
+     10,
+     15,
+     9,
+     9,
+     11,
+     9,
+     7,
+     9,
+     15,
+     12,
+     6,
+     11,
+     7
+    ],
+    "fronts_stripe": [
+     67,
+     63,
+     75,
+     67,
+     71,
+     48,
+     69,
+     56,
+     74,
+     79,
+     63,
+     62,
+     56,
+     61,
+     69,
+     78,
+     59,
+     59,
+     64,
+     64
+    ],
+    "wave_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "geh_lt5_share": 0.3055555555555556,
+    "rmspe_5min": 0.3429117918496909,
+    "rmspe_15min": 0.25412709845352993,
+    "rmspe_15min_per_replicate": [
+     0.2680313141638911,
+     0.27200722390449844,
+     0.2539978112590384,
+     0.26904785071313514,
+     0.27629177030626745,
+     0.28479399758262114,
+     0.27014845203299004,
+     0.2692596350328223,
+     0.23601814121217957,
+     0.24710566757745572,
+     0.2685714341945704,
+     0.28251128496548084,
+     0.2650059522438112,
+     0.26327359638566716,
+     0.25873849121692416,
+     0.24378203735263518,
+     0.2669709263979184,
+     0.3001092891155224,
+     0.24307167268679816,
+     0.25941795121239775
+    ]
+   },
+   "b1b2": {
+    "label": "p14_b1b2",
+    "artifact": {
+     "path": "artifacts/i24_validation_p14_b1b2.json",
+     "sha256": "9a2ae4f9a1faca6340a393a1e39e0d251ec2a07f3e2eb31b4780e6c3d788c8c5",
+     "created_at": "2026-10-07T20:59:22Z"
+    },
+    "scenario": "i24_replica_flow_rc_speedcal_dc_refit_b1",
+    "config_hash": "e19e5ab64186",
+    "seeds": [
+     6914975401685141156,
+     134183728835869882,
+     2378473973028931053,
+     3747978530954135749,
+     677105600768189526,
+     661281422688282993,
+     3011106312394044631,
+     6953598295321596746,
+     165503670820534583,
+     6134032994440706937,
+     8557154790156791364,
+     6538422657834023852,
+     6904272788004776631,
+     6143473282319009404,
+     3944094060050347669,
+     4910985839736976611,
+     7382187975121682178,
+     5690692725577505498,
+     887972120279483394,
+     8026499204807041784
+    ],
+    "problems": [],
+    "study_window_sim_s": [
+     600.0,
+     7800.0
+    ],
+    "flows_2h_veh_h": {
+     "200": [
+      5664.0,
+      3511.0,
+      5690.0,
+      5701.5,
+      5698.0,
+      5646.5,
+      5641.0,
+      5661.5,
+      5633.5,
+      5704.0,
+      5720.5,
+      5611.5,
+      5673.5,
+      5619.0,
+      5668.5,
+      5698.5,
+      5600.0,
+      5671.5,
+      5618.5,
+      5655.0
+     ],
+     "1000": [
+      6621.0,
+      3949.0,
+      6632.5,
+      6604.5,
+      6599.0,
+      6597.5,
+      6614.0,
+      6568.0,
+      6595.0,
+      6598.0,
+      6605.5,
+      6563.5,
+      6596.5,
+      6574.0,
+      6567.0,
+      6611.5,
+      6564.0,
+      6582.5,
+      6541.0,
+      6606.0
+     ],
+     "2200": [
+      6579.0,
+      3727.5,
+      6569.0,
+      6583.5,
+      6588.5,
+      6539.5,
+      6560.5,
+      6541.5,
+      6585.0,
+      6564.0,
+      6581.0,
+      6533.5,
+      6589.0,
+      6516.5,
+      6536.0,
+      6595.0,
+      6530.0,
+      6574.0,
+      6479.0,
+      6553.0
+     ],
+     "3200": [
+      6561.0,
+      3568.0,
+      6541.0,
+      6557.5,
+      6563.0,
+      6510.0,
+      6535.5,
+      6516.0,
+      6558.5,
+      6553.0,
+      6552.0,
+      6499.0,
+      6575.0,
+      6496.5,
+      6507.5,
+      6574.0,
+      6499.5,
+      6548.0,
+      6447.5,
+      6526.5
+     ],
+     "4800": [
+      6402.5,
+      3218.0,
+      6337.5,
+      6404.0,
+      6364.0,
+      6386.0,
+      6355.5,
+      6383.0,
+      6382.5,
+      6372.5,
+      6377.5,
+      6335.5,
+      6434.5,
+      6340.0,
+      6346.0,
+      6374.5,
+      6322.5,
+      6389.0,
+      6341.0,
+      6364.5
+     ],
+     "5400": [
+      6092.5,
+      3145.0,
+      6030.0,
+      6069.5,
+      6066.5,
+      6047.5,
+      6043.5,
+      6049.0,
+      6062.0,
+      6052.5,
+      6074.0,
+      6033.0,
+      6117.5,
+      6030.0,
+      6045.0,
+      6064.5,
+      6001.5,
+      6076.5,
+      6046.0,
+      6057.5
+     ]
+    },
+    "observed_2h_veh_h": {
+     "200": 5417.554166666667,
+     "1000": 5751.579166666667,
+     "2200": 6626.170833333333,
+     "3200": 6639.020833333333,
+     "4800": 6170.5,
+     "5400": 6008.683333333334
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "emergency_steps": [
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "braking_file": "/root/flowstate/runs/i24_validation/p14_b1b2/hard_braking.json",
+    "zone_speed_ms": [
+     10.95498198575516,
+     13.62411776065389,
+     10.999497813579914,
+     11.016865716368203,
+     10.959505277221902,
+     11.028949361275052,
+     11.049139187919646,
+     10.996984669732592,
+     11.00149553257838,
+     11.033897963974399,
+     10.968463786706282,
+     11.036057810399885,
+     10.875648642132267,
+     10.98494915008705,
+     11.017609522472751,
+     10.955513845992012,
+     11.149479940239905,
+     11.029243965226105,
+     11.064575330444487,
+     11.035109282837997
+    ],
+    "zone_edie_2h_ms": [
+     10.603742396054592,
+     12.64986400427826,
+     10.61827951595294,
+     10.63785537434647,
+     10.592096397794899,
+     10.649984555355344,
+     10.674034869100558,
+     10.618901146503127,
+     10.62890158719375,
+     10.662202545329265,
+     10.614861247658366,
+     10.69466710060713,
+     10.531846560691307,
+     10.593623340099779,
+     10.64280042777151,
+     10.631883877711388,
+     10.764104459632005,
+     10.679000185352937,
+     10.700863659488297,
+     10.639278305701216
+    ],
+    "zone_windows_filled": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "zone_cells": {
+     "n": 3840,
+     "dx_m": 100.0,
+     "dt_s": 15.0,
+     "x_bins_m": [
+      7750.0,
+      8450.0
+     ]
+    },
+    "schedule_mean_ms": 13.86885,
+    "schedule_per_window_ms": [
+     13.35587,
+     14.49565,
+     17.418710000000004,
+     13.996839999999999,
+     12.507450000000002,
+     13.576770000000002,
+     18.709839999999996,
+     15.784760000000002,
+     16.62277,
+     15.89728,
+     13.13222,
+     14.61083,
+     9.05613,
+     13.182420000000002,
+     14.50357,
+     8.165080000000001,
+     11.248389999999999,
+     10.14314,
+     11.90933,
+     18.79856,
+     18.447760000000002,
+     10.212019999999999,
+     9.867980000000001,
+     17.20903
+    ],
+    "realised": [
+     0.9826,
+     0.6604,
+     0.9882,
+     0.9889,
+     0.9803,
+     0.9852,
+     0.986,
+     0.9816,
+     0.9851,
+     0.9875,
+     0.9839,
+     0.9784,
+     0.9849,
+     0.9829,
+     0.9868,
+     0.9869,
+     0.9788,
+     0.9795,
+     0.9802,
+     0.9804
+    ],
+    "fronts_standard": [
+     23,
+     13,
+     20,
+     32,
+     24,
+     26,
+     29,
+     21,
+     27,
+     27,
+     28,
+     32,
+     33,
+     27,
+     28,
+     25,
+     37,
+     26,
+     24,
+     30
+    ],
+    "fronts_stripe": [
+     47,
+     8,
+     53,
+     50,
+     54,
+     56,
+     59,
+     59,
+     57,
+     60,
+     47,
+     49,
+     58,
+     55,
+     67,
+     67,
+     48,
+     55,
+     73,
+     49
+    ],
+    "wave_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "geh_lt5_share": 0.2569444444444444,
+    "rmspe_5min": 0.4516200998071244,
+    "rmspe_15min": 0.3098612612638948,
+    "rmspe_15min_per_replicate": [
+     0.3518654247908587,
+     0.6788152272942336,
+     0.3444816021270245,
+     0.3552126745984824,
+     0.33160733324350955,
+     0.34451425471434916,
+     0.35389599846281067,
+     0.3524557810953441,
+     0.37019874291610877,
+     0.3196593832767793,
+     0.348431977927741,
+     0.36362247971101264,
+     0.33833334676846044,
+     0.3403495160988166,
+     0.3219566533907504,
+     0.364673567862485,
+     0.34918464448720066,
+     0.3690362579467863,
+     0.2819265148020872,
+     0.3518498008943381
+    ]
+   }
+  },
+  "problems": [],
+  "reading": {
+   "A1": true,
+   "A2": true,
+   "A3": true,
+   "A4": true,
+   "A5": false,
+   "holds": false,
+   "rule": "A1-A5 all hold on B1 + B2 against B2 alone, and nothing recorded under problems"
+  }
+ },
+ "part_ii_rule": "the re-sequence runs on B1 + B2 when part (i)'s reading holds, on B2 alone when it does not, and not at all when it is undetermined (holds None)",
+ "part_ii": {
+  "arm": "b2",
+  "selected_by_part_i": "b2",
+  "plan": {
+   "from_label": "p14_b2_ref",
+   "base": "scenarios/i24_replica_flow_rc_corrected_dc.yaml",
+   "fit": "artifacts/demand_scale_i24_flow_rc.json",
+   "scenario": "scenarios/i24_replica_flow_rc_speedcal_dc_refit2.yaml",
+   "label": "p14_refit2_b2",
+   "factor": null
+  },
+  "fit": {
+   "path": "artifacts/demand_scale_i24_flow_rc.json",
+   "sha256": "b8070a361b5cf6d4f7b37c123b656f362e59ff27d41e941b860de0d1ffc2d07b",
+   "checks": {
+    "checks": {
+     "base_corrected": true,
+     "base_scenario": true,
+     "fleet_artifact": true,
+     "seed_as_p4": true,
+     "objective_as_p4": true,
+     "no_selection_options": true,
+     "grid_procedure": true,
+     "choice_is_the_rule": true
+    },
+    "as_p4": true,
+    "differs": []
+   },
+   "base_check": {
+    "checked": true,
+    "carried_scale": 0.925,
+    "recipe_hash": "909b89f298c5",
+    "from_hash": "909b89f298c5",
+    "ok": true
+   },
+   "chosen_scale": 1.125,
+   "carried_scale": 0.925,
+   "level_unchanged": false,
+   "level_unchanged_reproduces_from_arm": null,
+   "chosen": {
+    "scale": 1.125,
+    "config_hash": "e20554388a3c",
+    "inserted_fraction": 0.7828,
+    "rmspe_train": 0.3226,
+    "rmspe_test": 0.3126,
+    "rmspe_all": 0.3176
+   },
+   "grid": [
+    {
+     "scale": 0.6,
+     "inserted_fraction": 0.9994,
+     "rmspe_train": 1.2151,
+     "rmspe_test": 2.2225,
+     "rmspe_all": 1.7911
+    },
+    {
+     "scale": 0.7,
+     "inserted_fraction": 0.9984,
+     "rmspe_train": 1.0566,
+     "rmspe_test": 2.0074,
+     "rmspe_all": 1.6041
+    },
+    {
+     "scale": 0.8,
+     "inserted_fraction": 0.995,
+     "rmspe_train": 0.6457,
+     "rmspe_test": 1.5968,
+     "rmspe_all": 1.2179
+    },
+    {
+     "scale": 0.9,
+     "inserted_fraction": 0.9907,
+     "rmspe_train": 0.3882,
+     "rmspe_test": 0.332,
+     "rmspe_all": 0.3612
+    },
+    {
+     "scale": 1.0,
+     "inserted_fraction": 0.8958,
+     "rmspe_train": 0.3881,
+     "rmspe_test": 0.3229,
+     "rmspe_all": 0.357
+    },
+    {
+     "scale": 1.025,
+     "inserted_fraction": 0.8687,
+     "rmspe_train": 0.4101,
+     "rmspe_test": 0.3437,
+     "rmspe_all": 0.3784
+    },
+    {
+     "scale": 1.05,
+     "inserted_fraction": 0.8469,
+     "rmspe_train": 0.3866,
+     "rmspe_test": 0.3329,
+     "rmspe_all": 0.3607
+    },
+    {
+     "scale": 1.075,
+     "inserted_fraction": 0.8288,
+     "rmspe_train": 0.3686,
+     "rmspe_test": 0.3459,
+     "rmspe_all": 0.3574
+    },
+    {
+     "scale": 1.1,
+     "inserted_fraction": 0.8071,
+     "rmspe_train": 0.3736,
+     "rmspe_test": 0.3173,
+     "rmspe_all": 0.3466
+    },
+    {
+     "scale": 1.125,
+     "inserted_fraction": 0.7828,
+     "rmspe_train": 0.3226,
+     "rmspe_test": 0.3126,
+     "rmspe_all": 0.3176
+    },
+    {
+     "scale": 1.15,
+     "inserted_fraction": 0.7747,
+     "rmspe_train": 0.4139,
+     "rmspe_test": 0.3111,
+     "rmspe_all": 0.3661
+    },
+    {
+     "scale": 1.175,
+     "inserted_fraction": 0.7557,
+     "rmspe_train": 0.3649,
+     "rmspe_test": 0.3052,
+     "rmspe_all": 0.3364
+    }
+   ],
+   "insertion_reanalysis_reported": {
+    "what": "what the fitter's --min-inserted 0.98 rule would choose from the same recorded runs (scripts/i24_fit_demand_scale.py analyze_fit): a re-analysis, not a calibration; the stage ran the fit as p4 did",
+    "by_threshold": [
+     {
+      "min_inserted": 0.98,
+      "chosen": {
+       "scale": 0.9,
+       "inserted_fraction": 0.9907,
+       "meets_min_inserted": true,
+       "rmspe_train": 0.3882,
+       "rmspe_test": 0.332,
+       "geh_under_5_train": 0.3333,
+       "geh_under_5_test": 0.2639,
+       "geh_mean_train": 8.692
+      },
+      "constraint_unmet": false,
+      "differs_from_recorded": true,
+      "qualifying_scales": [
+       0.6,
+       0.7,
+       0.8,
+       0.9
+      ],
+      "reason": "best speed_rmspe among the 4 of 12 scales whose inserted fraction is >= 0.98; the unconstrained best, s = 1.125, inserts 0.7828",
+      "procedure": {
+       "coarse_choice_scale": 0.9,
+       "refine_scales": [
+        0.825,
+        0.85,
+        0.875,
+        0.925,
+        0.95,
+        0.975
+       ],
+       "refine_missing": [
+        0.825,
+        0.85,
+        0.875,
+        0.925,
+        0.95,
+        0.975
+       ],
+       "complete": false,
+       "chosen_scale": 0.9,
+       "constraint_unmet": false
+      }
+     }
+    ]
+   }
+  },
+  "refit_battery": {
+   "label": "p14_refit2_b2",
+   "scenario": "i24_replica_flow_rc_speedcal_dc_refit2",
+   "config_hash": "e20554388a3c"
+  },
+  "from_battery": {
+   "label": "p14_b2_ref",
+   "scenario": "i24_replica_flow_rc_speedcal_dc_refit",
+   "config_hash": "909b89f298c5"
+  },
+  "criteria": {
+   "C1": {
+    "rule": "0 collisions in every run",
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "verdict": true
+   },
+   "C2": {
+    "rule": "mean realised share >= the from-arm's - 0.01 (FRISCO_PROTOCOL Amendment 2 clarification: no winning by backlog)",
+    "refit": [
+     0.792915,
+     0.7910566465465944,
+     0.7947733534534057
+    ],
+    "from_arm": [
+     0.9665900000000001,
+     0.964842943432481,
+     0.9683370565675191
+    ],
+    "paired_refit_minus_from": [
+     -0.173675,
+     -0.17621333246711404,
+     -0.17113666753288595
+    ],
+    "literal_reading_ge_from_arm": false,
+    "verdict": false
+   },
+   "C3": {
+    "rule": "hourly link-flow GEH < 5 share not below the from-arm's",
+    "refit": 0.25,
+    "from_arm": 0.3055555555555556,
+    "verdict": false
+   },
+   "C4": {
+    "rule": "15-min segment-speed RMSPE <= the from-arm's + 0.02",
+    "refit": 0.258862930038158,
+    "from_arm": 0.25412709845352993,
+    "limit": 0.27412709845352995,
+    "per_replicate_paired_refit_minus_from": [
+     0.0024679152310254195,
+     -0.006674936188939734,
+     0.011610766650990572
+    ],
+    "verdict": true
+   },
+   "C5": {
+    "rule": "the wave verdict unchanged where the from-arm passes",
+    "from_arm_passes": false,
+    "refit_passes": false,
+    "verdict": null,
+    "note": "the from-arm fails the wave row; C5 does not bind"
+   }
+  },
+  "c1_c5_hold": false,
+  "candidate": false,
+  "problems": [],
+  "reported": {
+   "gate_rows": {
+    "refit": [
+     {
+      "name": "link_flows_geh",
+      "value": 0.25,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+     },
+     {
+      "name": "speeds_rmspe",
+      "value": 0.31461610112867067,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "segment-speed RMSPE <= 15%"
+     },
+     {
+      "name": "wave_speed",
+      "value": null,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+     },
+     {
+      "name": "ring_emergence",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Sugiyama ring emergence benchmark reproduced"
+     },
+     {
+      "name": "ring_dampening",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Stern single-AV dampening benchmark reproduced"
+     },
+     {
+      "name": "n_seeds",
+      "value": 20.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "n_seeds >= 20"
+     },
+     {
+      "name": "sensitivity_grid",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+     },
+     {
+      "name": "no_collisions",
+      "value": 0.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "zero SUMO collisions in every run, each run recording the counter"
+     },
+     {
+      "name": "no_locks",
+      "value": null,
+      "passed": false,
+      "evaluated": false,
+      "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+     }
+    ],
+    "from_arm": [
+     {
+      "name": "link_flows_geh",
+      "value": 0.3055555555555556,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "GEH < 5 for >= 85% of link-hour comparisons"
+     },
+     {
+      "name": "speeds_rmspe",
+      "value": 0.3429117918496909,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "segment-speed RMSPE <= 15%"
+     },
+     {
+      "name": "wave_speed",
+      "value": null,
+      "passed": false,
+      "evaluated": true,
+      "threshold": "backward wave speed in [14, 22] km/h (emergent, unseeded)"
+     },
+     {
+      "name": "ring_emergence",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Sugiyama ring emergence benchmark reproduced"
+     },
+     {
+      "name": "ring_dampening",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "Stern single-AV dampening benchmark reproduced"
+     },
+     {
+      "name": "n_seeds",
+      "value": 20.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "n_seeds >= 20"
+     },
+     {
+      "name": "sensitivity_grid",
+      "value": 1.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "penetration {1%, 2%, 5%, 10%, 15%, 20%} x compliance {25%, 50%, 80%, 100%} grid published with CIs"
+     },
+     {
+      "name": "no_collisions",
+      "value": 0.0,
+      "passed": true,
+      "evaluated": true,
+      "threshold": "zero SUMO collisions in every run, each run recording the counter"
+     },
+     {
+      "name": "no_locks",
+      "value": null,
+      "passed": false,
+      "evaluated": false,
+      "threshold": "no run locked (no queue standing without discharge for 10 min or more), every run recorded"
+     }
+    ]
+   },
+   "rmspe_5min": {
+    "refit": 0.31461610112867067,
+    "from_arm": 0.3429117918496909
+   },
+   "sections_2h": {
+    "2200": {
+     "observed": 6626.170833333333,
+     "refit": [
+      6179.55,
+      6164.000096007715,
+      6195.099903992285
+     ],
+     "from_arm": [
+      6315.775,
+      6300.872720756604,
+      6330.677279243395
+     ],
+     "paired_refit_minus_from": [
+      -136.225,
+      -159.3445121461582,
+      -113.1054878538418
+     ],
+     "geh_refit": 5.581513254944951,
+     "geh_from_arm": 3.8586118321770377
+    },
+    "3200": {
+     "observed": 6639.020833333333,
+     "refit": [
+      6129.875,
+      6114.102246630606,
+      6145.647753369394
+     ],
+     "from_arm": [
+      6267.05,
+      6252.598897179299,
+      6281.501102820702
+     ],
+     "paired_refit_minus_from": [
+      -137.175,
+      -158.9896238313254,
+      -115.36037616867465
+     ],
+     "geh_refit": 6.372069731953841,
+     "geh_from_arm": 4.630489069213626
+    },
+    "5400": {
+     "observed": 6008.683333333334,
+     "refit": [
+      5756.125,
+      5747.7223644964915,
+      5764.5276355035085
+     ],
+     "from_arm": [
+      5772.375,
+      5759.335886506396,
+      5785.414113493604
+     ],
+     "paired_refit_minus_from": [
+      -16.25,
+      -31.255779428540865,
+      -1.2442205714591346
+     ],
+     "geh_refit": 3.292943450247899,
+     "geh_from_arm": 3.0789446507273595
+    }
+   },
+   "peak_targets": {
+    "observed": {
+     "2200": 6626.170833333333,
+     "3200": 6639.020833333333
+    },
+    "as_recorded": true
+   },
+   "a2_band_5400": {
+    "band": [
+     5829.0,
+     6309.0
+    ],
+    "refit_in_band": false
+   },
+   "fronts": {
+    "standard": {
+     "refit": [
+      6.65,
+      5.500841409349974,
+      7.799158590650027
+     ],
+     "from_arm": [
+      10.1,
+      8.734248519737129,
+      11.46575148026287
+     ]
+    },
+    "stripe": {
+     "refit": [
+      62.15,
+      58.62056770628494,
+      65.67943229371505
+     ],
+     "from_arm": [
+      65.2,
+      61.512974370495186,
+      68.88702562950482
+     ]
+    }
+   },
+   "hard_braking_below_8p9": {
+    "refit": 2,
+    "from_arm": 4
+   },
+   "zone_speed_kmh": {
+    "schedule": 49.92786,
+    "refit": [
+     32.991022026703604,
+     32.919421011605245,
+     33.06262304180196
+    ],
+    "from_arm": [
+     32.89991299202136,
+     32.78711914492296,
+     33.012706839119765
+    ]
+   },
+   "ramp_flows": {
+    "computed": true,
+    "reduction": "artifacts/i24_b2_ramp_flows_p14_refit2_b2.json",
+    "Old Hickory Blvd on-ramp": {
+     "kind": "on",
+     "model_veh_h": [
+      983.9,
+      974.7762142295406,
+      993.0237857704593
+     ],
+     "corrected_pooled_veh_h": 915.1424319348195,
+     "geh_vs_corrected": 2.2313524339300668,
+     "recorded_pooled_veh_h": 1064.7537041063672,
+     "geh_vs_recorded": 2.5262751027750436
+    },
+    "Hickory Hollow Pkwy off-ramp": {
+     "kind": "off",
+     "model_veh_h": [
+      543.6,
+      534.3535278500905,
+      552.8464721499096
+     ],
+     "corrected_pooled_veh_h": 581.1923237368231,
+     "geh_vs_corrected": 1.5851778601830762,
+     "recorded_pooled_veh_h": 593.8242433172837,
+     "geh_vs_recorded": 2.106042639844645
+    },
+    "Hickory Hollow Pkwy on-ramp": {
+     "kind": "on",
+     "model_veh_h": [
+      573.225,
+      573.1055585615386,
+      573.3444414384614
+     ],
+     "corrected_pooled_veh_h": 442.6168182212329,
+     "geh_vs_corrected": 5.795252165292063,
+     "recorded_pooled_veh_h": 686.721427028011,
+     "geh_vs_recorded": 4.521902020697933
+    },
+    "Bell Road off-ramp (collector road)": {
+     "kind": "off",
+     "model_veh_h": [
+      276.525,
+      270.1014119763854,
+      282.94858802361455
+     ],
+     "corrected_pooled_veh_h": 309.02513325198856,
+     "geh_vs_corrected": 1.8994072762621603,
+     "recorded_pooled_veh_h": 328.4030958999402,
+     "geh_vs_recorded": 2.9829580620250042
+    }
+   }
+  },
+  "batteries": {
+   "refit": {
+    "label": "p14_refit2_b2",
+    "artifact": {
+     "path": "artifacts/i24_validation_p14_refit2_b2.json",
+     "sha256": "cb0747dbb01f0ab95aee2b553414f3001c988fc48ebe672784b06c69d1fa7e38",
+     "created_at": "2026-10-07T21:48:47Z"
+    },
+    "scenario": "i24_replica_flow_rc_speedcal_dc_refit2",
+    "config_hash": "e20554388a3c",
+    "seeds": [
+     6914975401685141156,
+     134183728835869882,
+     2378473973028931053,
+     3747978530954135749,
+     677105600768189526,
+     661281422688282993,
+     3011106312394044631,
+     6953598295321596746,
+     165503670820534583,
+     6134032994440706937,
+     8557154790156791364,
+     6538422657834023852,
+     6904272788004776631,
+     6143473282319009404,
+     3944094060050347669,
+     4910985839736976611,
+     7382187975121682178,
+     5690692725577505498,
+     887972120279483394,
+     8026499204807041784
+    ],
+    "problems": [],
+    "study_window_sim_s": [
+     600.0,
+     7800.0
+    ],
+    "flows_2h_veh_h": {
+     "200": [
+      5224.0,
+      5334.0,
+      5255.0,
+      5278.5,
+      5359.0,
+      5284.5,
+      5293.5,
+      5295.5,
+      5309.5,
+      5257.0,
+      5282.0,
+      5229.5,
+      5266.5,
+      5280.5,
+      5336.5,
+      5250.0,
+      5238.0,
+      5296.5,
+      5345.5,
+      5345.5
+     ],
+     "1000": [
+      6152.5,
+      6241.5,
+      6189.0,
+      6232.0,
+      6283.0,
+      6223.0,
+      6191.5,
+      6260.5,
+      6226.0,
+      6242.0,
+      6247.5,
+      6218.0,
+      6193.5,
+      6221.0,
+      6216.0,
+      6222.5,
+      6213.0,
+      6286.0,
+      6257.5,
+      6289.5
+     ],
+     "2200": [
+      6128.0,
+      6182.0,
+      6143.5,
+      6176.5,
+      6208.0,
+      6168.5,
+      6157.0,
+      6214.0,
+      6166.0,
+      6199.0,
+      6166.5,
+      6139.5,
+      6176.5,
+      6184.5,
+      6200.5,
+      6143.0,
+      6139.0,
+      6232.5,
+      6236.0,
+      6230.5
+     ],
+     "3200": [
+      6068.0,
+      6133.0,
+      6093.0,
+      6116.0,
+      6170.0,
+      6116.0,
+      6099.0,
+      6160.0,
+      6111.5,
+      6159.5,
+      6120.0,
+      6095.5,
+      6129.0,
+      6132.5,
+      6158.0,
+      6099.0,
+      6099.5,
+      6180.0,
+      6182.0,
+      6176.0
+     ],
+     "4800": [
+      6019.0,
+      6054.5,
+      6049.0,
+      6049.0,
+      6069.0,
+      6047.0,
+      6038.0,
+      6080.5,
+      6048.0,
+      6041.5,
+      6049.5,
+      6067.0,
+      6048.5,
+      6054.0,
+      6068.0,
+      6030.5,
+      6057.5,
+      6088.0,
+      6078.0,
+      6064.0
+     ],
+     "5400": [
+      5720.0,
+      5773.5,
+      5749.0,
+      5755.5,
+      5770.0,
+      5737.0,
+      5735.5,
+      5778.0,
+      5764.5,
+      5757.0,
+      5761.5,
+      5760.0,
+      5762.5,
+      5764.5,
+      5751.0,
+      5728.0,
+      5731.0,
+      5772.0,
+      5764.0,
+      5788.0
+     ]
+    },
+    "observed_2h_veh_h": {
+     "200": 5417.554166666667,
+     "1000": 5751.579166666667,
+     "2200": 6626.170833333333,
+     "3200": 6639.020833333333,
+     "4800": 6170.5,
+     "5400": 6008.683333333334
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "emergency_steps": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     2,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "braking_file": "/root/flowstate/runs/i24_validation/p14_refit2_b2/hard_braking.json",
+    "zone_speed_ms": [
+     9.206966072090433,
+     9.12807931214952,
+     9.19378798708445,
+     9.155168443571194,
+     9.14476952214051,
+     9.215634033443115,
+     9.243419461589262,
+     9.120410681045895,
+     9.109604514888895,
+     9.21506744810805,
+     9.125191522146903,
+     9.169065384192196,
+     9.127167110627088,
+     9.145664575297781,
+     9.141380677124141,
+     9.241877499547547,
+     9.184354553479986,
+     9.165925443071929,
+     9.11673675011193,
+     9.133184712198139
+    ],
+    "zone_edie_2h_ms": [
+     8.967938618715664,
+     8.913779183298358,
+     8.94601219902694,
+     8.941050011486817,
+     8.929691218830317,
+     8.991270636526263,
+     8.993503696444245,
+     8.92683651737692,
+     8.900113938920517,
+     8.982998248944913,
+     8.901676521821436,
+     8.939614611862387,
+     8.914039177806007,
+     8.931008482308552,
+     8.908152255865728,
+     8.986969562127065,
+     8.958690238953663,
+     8.948806310575693,
+     8.9018654591386,
+     8.92837642063389
+    ],
+    "zone_windows_filled": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "zone_cells": {
+     "n": 3840,
+     "dx_m": 100.0,
+     "dt_s": 15.0,
+     "x_bins_m": [
+      7750.0,
+      8450.0
+     ]
+    },
+    "schedule_mean_ms": 13.86885,
+    "schedule_per_window_ms": [
+     13.35587,
+     14.49565,
+     17.418710000000004,
+     13.996839999999999,
+     12.507450000000002,
+     13.576770000000002,
+     18.709839999999996,
+     15.784760000000002,
+     16.62277,
+     15.89728,
+     13.13222,
+     14.61083,
+     9.05613,
+     13.182420000000002,
+     14.50357,
+     8.165080000000001,
+     11.248389999999999,
+     10.14314,
+     11.90933,
+     18.79856,
+     18.447760000000002,
+     10.212019999999999,
+     9.867980000000001,
+     17.20903
+    ],
+    "realised": [
+     0.7828,
+     0.7941,
+     0.7937,
+     0.7931,
+     0.7971,
+     0.7913,
+     0.7884,
+     0.795,
+     0.7926,
+     0.7929,
+     0.7929,
+     0.7888,
+     0.7902,
+     0.7913,
+     0.7957,
+     0.7937,
+     0.7892,
+     0.797,
+     0.7978,
+     0.8007
+    ],
+    "fronts_standard": [
+     7,
+     6,
+     8,
+     4,
+     6,
+     5,
+     5,
+     6,
+     2,
+     8,
+     8,
+     5,
+     9,
+     7,
+     11,
+     5,
+     3,
+     7,
+     10,
+     11
+    ],
+    "fronts_stripe": [
+     54,
+     65,
+     68,
+     61,
+     50,
+     70,
+     65,
+     75,
+     56,
+     67,
+     57,
+     52,
+     61,
+     66,
+     71,
+     50,
+     62,
+     74,
+     60,
+     59
+    ],
+    "wave_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "geh_lt5_share": 0.25,
+    "rmspe_5min": 0.31461610112867067,
+    "rmspe_15min": 0.258862930038158,
+    "rmspe_15min_per_replicate": [
+     0.2603330611648293,
+     0.27685583099092526,
+     0.2665942398030325,
+     0.261471652128386,
+     0.26341816593605366,
+     0.26019191980058676,
+     0.2606873163287095,
+     0.2687242775004917,
+     0.26470551663282155,
+     0.27389337958416793,
+     0.2795197571339685,
+     0.25197818708026076,
+     0.2641463850862116,
+     0.2899040034176596,
+     0.2652701519651313,
+     0.2760874862631211,
+     0.25764988599891353,
+     0.27211799903778855,
+     0.27395106193302704,
+     0.26001252639104727
+    ]
+   },
+   "from_arm": {
+    "label": "p14_b2_ref",
+    "artifact": {
+     "path": "artifacts/i24_validation_p14_b2_ref.json",
+     "sha256": "88b93dbeb398ce4e1d43ed80e4e8880f4902e969264417e0ebde93e3a340b468",
+     "created_at": "2026-10-07T20:37:20Z"
+    },
+    "scenario": "i24_replica_flow_rc_speedcal_dc_refit",
+    "config_hash": "909b89f298c5",
+    "seeds": [
+     6914975401685141156,
+     134183728835869882,
+     2378473973028931053,
+     3747978530954135749,
+     677105600768189526,
+     661281422688282993,
+     3011106312394044631,
+     6953598295321596746,
+     165503670820534583,
+     6134032994440706937,
+     8557154790156791364,
+     6538422657834023852,
+     6904272788004776631,
+     6143473282319009404,
+     3944094060050347669,
+     4910985839736976611,
+     7382187975121682178,
+     5690692725577505498,
+     887972120279483394,
+     8026499204807041784
+    ],
+    "problems": [],
+    "study_window_sim_s": [
+     600.0,
+     7800.0
+    ],
+    "flows_2h_veh_h": {
+     "200": [
+      5468.5,
+      5522.0,
+      5419.0,
+      5488.0,
+      5452.5,
+      5473.0,
+      5503.0,
+      5512.0,
+      5490.5,
+      5499.5,
+      5530.0,
+      5464.5,
+      5457.5,
+      5448.0,
+      5450.0,
+      5505.5,
+      5579.5,
+      5455.0,
+      5465.0,
+      5488.5
+     ],
+     "1000": [
+      6386.5,
+      6412.0,
+      6378.0,
+      6426.0,
+      6355.5,
+      6412.0,
+      6393.0,
+      6431.0,
+      6383.5,
+      6410.0,
+      6421.5,
+      6396.0,
+      6394.0,
+      6307.0,
+      6369.5,
+      6419.0,
+      6461.0,
+      6399.5,
+      6373.5,
+      6438.5
+     ],
+     "2200": [
+      6288.5,
+      6358.5,
+      6289.5,
+      6318.0,
+      6265.0,
+      6343.0,
+      6337.5,
+      6323.0,
+      6305.0,
+      6299.0,
+      6322.0,
+      6294.5,
+      6303.0,
+      6273.5,
+      6275.0,
+      6365.0,
+      6381.0,
+      6322.5,
+      6307.0,
+      6345.0
+     ],
+     "3200": [
+      6243.0,
+      6300.5,
+      6232.0,
+      6257.0,
+      6210.5,
+      6291.0,
+      6294.0,
+      6273.0,
+      6266.5,
+      6252.5,
+      6261.5,
+      6240.0,
+      6253.0,
+      6224.5,
+      6244.0,
+      6311.5,
+      6327.0,
+      6290.5,
+      6272.0,
+      6297.0
+     ],
+     "4800": [
+      6059.0,
+      6103.5,
+      5993.0,
+      6066.5,
+      6026.0,
+      6131.5,
+      6058.5,
+      6099.5,
+      6057.5,
+      6051.0,
+      6064.0,
+      6043.0,
+      6088.5,
+      6043.0,
+      6029.5,
+      6081.0,
+      6118.5,
+      6080.0,
+      6105.5,
+      6106.0
+     ],
+     "5400": [
+      5773.0,
+      5806.0,
+      5711.5,
+      5754.0,
+      5742.0,
+      5803.0,
+      5763.0,
+      5789.0,
+      5755.5,
+      5745.0,
+      5780.0,
+      5757.0,
+      5800.0,
+      5751.5,
+      5737.5,
+      5779.5,
+      5809.0,
+      5783.5,
+      5811.5,
+      5796.0
+     ]
+    },
+    "observed_2h_veh_h": {
+     "200": 5417.554166666667,
+     "1000": 5751.579166666667,
+     "2200": 6626.170833333333,
+     "3200": 6639.020833333333,
+     "4800": 6170.5,
+     "5400": 6008.683333333334
+    },
+    "collisions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "emergency_steps": [
+     1,
+     0,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "braking_file": "/root/flowstate/runs/i24_validation/p14_b2_ref/hard_braking.json",
+    "zone_speed_ms": [
+     9.137800019189127,
+     9.072470866697888,
+     9.247870500290015,
+     9.19936182290672,
+     9.217232126266197,
+     9.061892251733676,
+     9.175739489170633,
+     9.060160568186378,
+     9.24167502702397,
+     9.209383082227381,
+     9.109832646017505,
+     9.145577107676512,
+     9.094385496077818,
+     9.163389341471413,
+     9.206502960837494,
+     9.079091589214181,
+     9.061611534263106,
+     9.033786804444405,
+     9.104784438850055,
+     9.15474672757419
+    ],
+    "zone_edie_2h_ms": [
+     8.931513423848703,
+     8.884034967706476,
+     9.00763622678221,
+     8.979179592389642,
+     8.986685946204119,
+     8.895732142815415,
+     8.943468231710575,
+     8.872125104615114,
+     8.99464044414562,
+     8.965969068648977,
+     8.898435198233921,
+     8.924032720321575,
+     8.884506599775436,
+     8.956887263381592,
+     8.968786573333416,
+     8.880372259764352,
+     8.87501955589363,
+     8.837831915014615,
+     8.906540292009394,
+     8.94582845418793
+    ],
+    "zone_windows_filled": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "zone_cells": {
+     "n": 3840,
+     "dx_m": 100.0,
+     "dt_s": 15.0,
+     "x_bins_m": [
+      7750.0,
+      8450.0
+     ]
+    },
+    "schedule_mean_ms": 13.86885,
+    "schedule_per_window_ms": [
+     13.35587,
+     14.49565,
+     17.418710000000004,
+     13.996839999999999,
+     12.507450000000002,
+     13.576770000000002,
+     18.709839999999996,
+     15.784760000000002,
+     16.62277,
+     15.89728,
+     13.13222,
+     14.61083,
+     9.05613,
+     13.182420000000002,
+     14.50357,
+     8.165080000000001,
+     11.248389999999999,
+     10.14314,
+     11.90933,
+     18.79856,
+     18.447760000000002,
+     10.212019999999999,
+     9.867980000000001,
+     17.20903
+    ],
+    "realised": [
+     0.9635,
+     0.9714,
+     0.963,
+     0.9694,
+     0.9613,
+     0.9696,
+     0.9656,
+     0.9708,
+     0.9664,
+     0.965,
+     0.9717,
+     0.9673,
+     0.9633,
+     0.9598,
+     0.9622,
+     0.9696,
+     0.9725,
+     0.9682,
+     0.9647,
+     0.9665
+    ],
+    "fronts_standard": [
+     7,
+     14,
+     8,
+     12,
+     9,
+     15,
+     7,
+     10,
+     15,
+     9,
+     9,
+     11,
+     9,
+     7,
+     9,
+     15,
+     12,
+     6,
+     11,
+     7
+    ],
+    "fronts_stripe": [
+     67,
+     63,
+     75,
+     67,
+     71,
+     48,
+     69,
+     56,
+     74,
+     79,
+     63,
+     62,
+     56,
+     61,
+     69,
+     78,
+     59,
+     59,
+     64,
+     64
+    ],
+    "wave_row": {
+     "value": null,
+     "passed": false,
+     "evaluated": true,
+     "detail": "detector: stack: slant-stack peak of the two-way demeaned field on 15 s x 75 m bins over front speeds [-40, -2] km/h in 0.25 km/h steps, peak/median contrast >= 3, edge peaks rejected; no backward wave detected"
+    },
+    "geh_lt5_share": 0.3055555555555556,
+    "rmspe_5min": 0.3429117918496909,
+    "rmspe_15min": 0.25412709845352993,
+    "rmspe_15min_per_replicate": [
+     0.2680313141638911,
+     0.27200722390449844,
+     0.2539978112590384,
+     0.26904785071313514,
+     0.27629177030626745,
+     0.28479399758262114,
+     0.27014845203299004,
+     0.2692596350328223,
+     0.23601814121217957,
+     0.24710566757745572,
+     0.2685714341945704,
+     0.28251128496548084,
+     0.2650059522438112,
+     0.26327359638566716,
+     0.25873849121692416,
+     0.24378203735263518,
+     0.2669709263979184,
+     0.3001092891155224,
+     0.24307167268679816,
+     0.25941795121239775
+    ]
+   }
+  },
+  "not_validation": "a demand refit on the recording it is scored on (fit hour 06:30-07:30 inside the scored window; one morning, no holdout day): calibration, never validation"
+ }
+}
