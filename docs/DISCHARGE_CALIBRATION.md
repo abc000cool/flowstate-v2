@@ -232,9 +232,19 @@ CLAUDE.md §3.1 makes instability near capacity a requirement, not an option.
 
 **What this means.**
 
-- **I-94:** the calibrated drivers should replace the reference drivers for
-  further I-94 work (every gating check except the already-failing wave speed
-  improved, on validation days as well).
+- **I-94:** the calibrated drivers are *recommended*, not adopted, as the
+  reference for further I-94 work (every gating check except the
+  already-failing wave speed improved). **Condition, found 2026-10-07 after
+  step 3 (`validation.string_stability.unstable_band` on the populations'
+  mean drivers, 5 m vehicles):** CLAUDE.md §3.1 requires the calibrated fleet
+  to be string-unstable near capacity. The mean driver's unstable band starts
+  at 28.2 veh/km under the measured-mean population (capacity density 29.2
+  veh/km: unstable at capacity, as required), at 32.5 veh/km at k = 0.5, and
+  at **39.8 veh/km at k = 1** (stable at capacity; the share of unstable
+  drivers at 30 veh/km falls from 0.43 to 0.22, §1). The heterogeneous fleet
+  still produces waves, but the instability near capacity that §3.1 asks for
+  is weakened; adopting k = 1 on I-94 is therefore the owner's decision, with
+  this trade-off stated.
 - **I-24:** the calibrated package (k = 1 with the demand refit) is *not*
   adopted as the canonical I-24 arm: a slightly better GEH and RMSPE bought
   with a backlog of 8 % of the demand and the loss of the emergent-wave
