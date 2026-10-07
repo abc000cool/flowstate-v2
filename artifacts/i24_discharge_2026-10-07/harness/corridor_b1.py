@@ -1,13 +1,15 @@
 """Amendment B1's corridor criteria A1-A5 (docs/I24_DISCHARGE_DIAGNOSIS.md §8.3), from paired I-24 batteries.
 
 usage (repository root):
-  corridor_b1.py make-copy --source scenarios/S.yaml --out scenarios/S_b1.yaml --factor F --source-hash H
+  corridor_b1.py make-copy --source scenarios/S.yaml --out scenarios/S_b1.yaml --factor F --source-hash H [--stage NAME]
   corridor_b1.py evaluate --arm NAME REF_LABEL B1_LABEL COMMITTED_ARTIFACT [--arm ...] --out OUT_JSON
 
 ``make-copy`` writes the B1 copy of a committed scenario: the source's text with its comment lines replaced by
 a header, ``name`` suffixed ``_b1`` and one line ``limit_factor: F`` added to ``network.boundary``; nothing
 else. It refuses a source whose config hash is not ``H``, then re-reads both files and refuses a copy whose
 configuration differs from the source in anything but those two fields; it prints the copy's config hash.
+``--stage`` names the pipeline stage in the header (default ``p12_i24_b1``; stage ``p14_i24_b1b2`` passes
+its own name, docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.5).
 
 ``evaluate`` reads, per arm, two batteries of ``scripts/i24_validate.py`` run in the same stage on the same
 code and seeds (``artifacts/i24_validation_<label>.json``), each replicate's ``meta.json`` and
@@ -165,7 +167,9 @@ def sha256(path: Path) -> str:
 # --------------------------------------------------------------------------- make-copy
 
 
-def make_copy(source: Path, out: Path, factor: float, source_hash: str) -> str:
+def make_copy(
+    source: Path, out: Path, factor: float, source_hash: str, stage: str = "p12_i24_b1"
+) -> str:
     """Write the B1 copy of ``source``; return its config hash (see the module docstring)."""
     src_cfg = ScenarioConfig.from_yaml(source)
     if config_hash(src_cfg) != source_hash:
@@ -191,7 +195,7 @@ def make_copy(source: Path, out: Path, factor: float, source_hash: str) -> str:
         f"# {new_name}: {source.relative_to(REPO) if source.is_relative_to(REPO) else source} "
         f"(config hash {source_hash}) with amendment B1\n",
         f"#   (docs/I24_DISCHARGE_DIAGNOSIS.md section 8.3): network.boundary.limit_factor {factor!r}\n",
-        "#   (scripts/boundary_limit_factor.py). Written by scripts/gcp/pipeline_i24.sh stage p12_i24_b1\n",
+        f"#   (scripts/boundary_limit_factor.py). Written by scripts/gcp/pipeline_i24.sh stage {stage}\n",
         "#   (artifacts/i24_discharge_2026-10-07/harness/corridor_b1.py make-copy); changed, nothing else: name\n",
         "#   and that one line. The source header applies otherwise; this file's config hash is recorded in\n",
         "#   its battery artifact (config_hash).\n",
@@ -774,6 +778,7 @@ def main() -> None:
     mc.add_argument("--out", type=Path, required=True)
     mc.add_argument("--factor", type=float, required=True)
     mc.add_argument("--source-hash", required=True)
+    mc.add_argument("--stage", default="p12_i24_b1", help="the pipeline stage named in the header")
     ev = sub.add_parser("evaluate")
     ev.add_argument(
         "--arm", nargs=4, action="append", required=True, metavar=("NAME", "REF", "B1", "COMMITTED")
@@ -785,7 +790,7 @@ def main() -> None:
     if args.cmd == "make-copy":
         src = args.source if args.source.is_absolute() else REPO / args.source
         dst = args.out if args.out.is_absolute() else REPO / args.out
-        print(make_copy(src, dst, args.factor, args.source_hash))
+        print(make_copy(src, dst, args.factor, args.source_hash, args.stage))
         return
     doc = evaluate(args.arm, args.out, args.runs_root, args.factor)
     for name, r in doc["arms"].items():

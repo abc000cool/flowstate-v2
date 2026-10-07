@@ -144,6 +144,10 @@ make_archive() {  # make_archive light|full [tries] — atomic replace of $ARCHI
   # and each battery's braking counts, the B1 readout's inputs (corridor_b1.py evaluate re-runs from them); never the
   # trajectories (the labels do not start with dc, so the full archive's first-seed line above does not take them)
   extra="$extra $(ls runs/i24_validation/p12_*/*/*/meta.json runs/i24_validation/p12_*/*/*/edges.parquet runs/i24_validation/p12_*/hard_braking.json 2>/dev/null | tr '\n' ' ')"
+  # stage p14's batteries (runs/i24_validation/p14_*/<config hash>/<seed>/): the same files as p12's, which corridor_b1b2.py
+  # evaluate re-reads with the ramp-flow reductions (artifacts/i24_b2_ramp_flows_p14_*.json); never trajectories or
+  # vehicles.parquet
+  extra="$extra $(ls runs/i24_validation/p14_*/*/*/meta.json runs/i24_validation/p14_*/*/*/edges.parquet runs/i24_validation/p14_*/hard_braking.json 2>/dev/null | tr '\n' ' ')"
   # shellcheck disable=SC2086
   if tar czf "$ARCHIVE.part" --exclude=net artifacts/*.json scenarios/*.yaml logs $extra 2>/dev/null; then
     mv -f "$ARCHIVE.part" "$ARCHIVE"; ARCHIVE_FRESH=1
@@ -1742,6 +1746,7 @@ fi
 #     Not in this stage: §8.4.3's second arm, _dc_refit + B1 + B2, which waits for B1's stage p12_i24_b1
 #     (BoundarySpec.limit_factor on both the reference and the arm, the same five steps with --label
 #     dc_refit_b1_p13ref / dc_refit_b1_rc).
+#     Superseded 2026-10-07: stage p14_i24_b1b2 runs that arm (docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.5), against B2 alone.
 #     Cost on n2d-standard-16 (16 vCPU, 64 GB; $PROCS = 14) [estimate]: the build about 3-6 min (netconvert plus the 2-h
 #     mainline and ramp-lane reads); the observed side once, about 3-5 min (cached for the second battery); each battery
 #     two waves (14 + 6) of 2-h runs that took 889 s in one wave of 20 on n2-standard-32 at 30 processes, so about
@@ -1789,6 +1794,103 @@ p13_steps() {
 }
 if echo " $STAGES " | grep -q " p13_i24_b2 "; then
   stage p13_i24_b2 p13_steps || say "p13_i24_b2 failed; continuing"
+fi
+
+# p14 (opt-in; docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.5; not in the default list; needs the launcher's default
+#     --data-set i24: the batteries' observed side checks the recording's hash). PROPOSED, not adopted; every
+#     criterion fixed in §8.4.5 on 2026-10-07 before any run of the round. Two parts on one machine, one code tree:
+#     (i) B1 on top of B2. The arm scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml is the committed B2 arm
+#       (scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml, config hash 909b89f298c5, stage p13) with
+#       network.boundary.limit_factor 1.2185, written here by corridor_b1.py make-copy (refuses a source at another
+#       hash and a copy that differs from it beyond the name and that one line; expected hash e19e5ab64186). Its
+#       reference is B2 alone, RE-RUN here (label p14_b2_ref) so that every readout input (each replicate's
+#       meta.json and edges.parquet, the braking counts) exists on one machine; the run is deterministic, and the
+#       readout requires it to reproduce the committed p13 battery artifacts/i24_validation_dc_refit_rc.json
+#       exactly (config hash, seeds, per-replicate counts, realised fractions, collisions, segment speeds, fronts,
+#       every criteria row) or it blocks the reading. Both batteries through stage p12's path (p12_battery:
+#       scripts/i24_validate.py, 20 replicates on step 3's seeds spawn_seeds(42, 20), the 20-seed ring rows,
+#       --analysis-procs 8; hard_braking.py before p4_prune), then corridor_b2.py reduce on each (ramp flows from
+#       vehicles.parquet, reported), then corridor_b1b2.py evaluate -> artifacts/boundary_b1b2_corridor.json:
+#       §8.3's A1-A5 on this arm against B2 alone. An interim archive follows, so part (i) has left the machine
+#       before part (ii) starts.
+#     (ii) The FHWA demand re-sequence, on the arm the rule fixed in §8.4.5 selects (corridor_b1b2.py select:
+#       exit 0 = B1 + B2 when part (i)'s reading holds, 10 = B2 alone when it does not, 3 = undetermined, when
+#       part (ii) is NOT run and the stage fails): scripts/i24_fit_demand_scale.py exactly as stage
+#       p4_i24_refit ran it for _dc_refit (--base corrected, the same population, the speed objective, the
+#       default grid of 6 coarse + 6 refine single-seed runs on the fit seed; no --min-inserted, no --objective),
+#       on that arm's base: the rc family's driver-calibrated corrected arm
+#       scenarios/i24_replica_flow_rc_corrected_dc.yaml (219f7db55a74), for B1 + B2 its B1 copy
+#       scenarios/i24_replica_flow_rc_corrected_dc_b1.yaml (written here; expected ec500f75d4d8). Outputs
+#       artifacts/demand_scale_i24_flow_rc[_b1].json and scenarios/i24_replica_flow_rc_speedcal_dc_refit2[_b1].yaml
+#       (the base scaled by the new s); then one 20-seed battery of it (label p14_refit2_<arm>, same path), its
+#       ramp flows, and the readout again with --resequence <arm> (C1-C5 against the arm it was refit from).
+#     Everything it writes is artifacts/*.json or scenarios/*.yaml, so every archive carries it; the run trees
+#     runs/i24_validation/p14_*/ ride in every archive as meta.json, edges.parquet and hard_braking.json (never
+#     trajectories or vehicles.parquet). Resumable per battery (logs/<label>.battery.ok) and fit
+#     (logs/p14_fit_<arm>.ok).
+#     Cost on n2d-standard-16 (16 vCPU, 64 GB; $PROCS = 14) [estimate]: the rc family's batteries took 1,522 s
+#     (B2, stage p13) and _dc_refit's 1,513-1,689 s (stage p12) here, plus about 7 min of braking counts each
+#     (p12's stage time less its batteries, over six): part (i) about 60-70 min. The fit ran its two rounds of
+#     6 runs in at most 830 and 783 s on n2-standard-32 (artifacts/demand_scale_i24_flow_dc.json wall_s); here
+#     6 at once on 8 cores, about 26-35 min; its battery about 30-35 min: part (ii) about 60-70 min. About
+#     2 h 00-2 h 20 min of stage time; 2 h 20-2 h 40 min billed with boot, setup and the I-24 data through the
+#     bucket: about $1.6-2.1 at $0.68-0.78/h (disk and bucket cents extra). --cap-min 240 bounds it at about
+#     $2.7-3.1; a cap reached in part (ii) leaves part (i) in the bucket (the interim archive).
+#       scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p14 --machine n2d-standard-16 \
+#         --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p14 \
+#         --self-delete --via-bucket --data-set i24 --cap-min 240 --pipeline-args '--stages "p14_i24_b1b2"'
+P14_H=artifacts/i24_discharge_2026-10-07/harness_b1b2/corridor_b1b2.py
+P14_OUT=artifacts/boundary_b1b2_corridor.json
+P14_B2=scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml
+P14_B2_HASH=909b89f298c5
+P14_B1B2=scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml
+P14_BASE=scenarios/i24_replica_flow_rc_corrected_dc.yaml
+P14_BASE_HASH=219f7db55a74
+P14_BASE_B1=scenarios/i24_replica_flow_rc_corrected_dc_b1.yaml
+P14_POP=artifacts/idm_i24_capacity_amax_k1.0.json   # the population stage p4_i24_refit's fit used
+p14_reduce() {  # p14_reduce <label>: each ramp's modelled flow from every replicate's vehicles.parquet (never trajectories)
+  [ -f "artifacts/i24_validation_$1.json" ] || { say "p14: no battery artifact for $1; its ramp flows skipped"; return 1; }
+  $RUN "$P13_H" reduce --battery "artifacts/i24_validation_$1.json" --out "artifacts/i24_b2_ramp_flows_$1.json" \
+    || { say "p14: ramp flows of $1 failed"; return 1; }
+}
+p14_steps() {
+  local rc=0 sel arm base fit scn label
+  # part (i)
+  $RUN "$P12_H/corridor_b1.py" make-copy --source "$P14_B2" --out "$P14_B1B2" --factor "$P12_FACTOR" \
+      --source-hash "$P14_B2_HASH" --stage p14_i24_b1b2 || { say "p14: no B1 copy of the B2 arm; nothing run"; return 1; }
+  p12_battery p14_b2_ref "$P14_B2" || rc=1
+  p12_battery p14_b1b2 "$P14_B1B2" || rc=1
+  p14_reduce p14_b2_ref || rc=1
+  p14_reduce p14_b1b2 || rc=1
+  $RUN "$P14_H" evaluate --out "$P14_OUT" || { say "p14: part (i)'s readout failed or is blocked"; rc=1; }
+  make_archive light   # part (i) leaves the machine before part (ii) starts
+  # part (ii): the arm by the rule fixed in §8.4.5
+  $RUN "$P14_H" select --readout "$P14_OUT"; sel=$?
+  case "$sel" in
+    0) arm=b1b2; base="$P14_BASE_B1"; fit=artifacts/demand_scale_i24_flow_rc_b1.json
+       scn=scenarios/i24_replica_flow_rc_speedcal_dc_refit2_b1.yaml; label=p14_refit2_b1b2
+       $RUN "$P12_H/corridor_b1.py" make-copy --source "$P14_BASE" --out "$P14_BASE_B1" --factor "$P12_FACTOR" \
+           --source-hash "$P14_BASE_HASH" --stage p14_i24_b1b2 || { say "p14: no B1 copy of the refit base; part (ii) not run"; return 1; } ;;
+    10) arm=b2; base="$P14_BASE"; fit=artifacts/demand_scale_i24_flow_rc.json
+        scn=scenarios/i24_replica_flow_rc_speedcal_dc_refit2.yaml; label=p14_refit2_b2 ;;
+    *) say "p14: part (i)'s reading is undetermined (exit $sel): the re-sequence is not run; the owner decides"; return 1 ;;
+  esac
+  say "p14: the re-sequence runs on $arm"
+  if [ -f "logs/p14_fit_$arm.ok" ] && [ -f "$fit" ] && [ -f "$scn" ]; then
+    say "p14: the fit on $arm was done earlier ($fit), not repeated"
+  else
+    $RUN scripts/i24_fit_demand_scale.py --base corrected --base-yaml "$base" --fleet-artifact "$P14_POP" --procs "$PROCS" \
+        --write-scenario --out "$fit" --scenario-out "$scn" --name "$(basename "$scn" .yaml)" \
+      || { say "p14: demand fit on $arm failed; its battery skipped"; return 1; }
+    touch "logs/p14_fit_$arm.ok"
+  fi
+  p12_battery "$label" "$scn" || rc=1
+  p14_reduce "$label" || rc=1
+  $RUN "$P14_H" evaluate --out "$P14_OUT" --resequence "$arm" || { say "p14: the re-sequence readout failed or is blocked"; rc=1; }
+  return $rc
+}
+if echo " $STAGES " | grep -q " p14_i24_b1b2 "; then
+  stage p14_i24_b1b2 p14_steps || say "p14_i24_b1b2 failed; continuing"
 fi
 # 9. Done marker; the EXIT trap builds the final archives (light, then full with the first-seed replicates).
 echo "PIPELINE_DONE $(date -u +%FT%TZ)" > logs/PIPELINE_DONE

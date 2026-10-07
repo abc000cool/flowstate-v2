@@ -1062,11 +1062,159 @@ sections; §8.4.2's rule for the model's shortfall is answered on the peak secti
 
 **Not run.** The `_dc_refit` + B1 + B2 arm (§8.4.3's second arm) was not part of this stage; given §8.3.1 (B1 fails
 A5 on the canonical arm) and this round, it is the natural next run, with the FHWA demand re-sequence on the
-`_rc` family, both pre-registered before launch.
+`_rc` family, both pre-registered before launch. Pre-registered in §8.4.5 (stage `p14_i24_b1b2`, 2026-10-07).
 
 **Limits.** One recording, one day; the correction removes at least the flagged through traffic, not all of it
 (the flags are lower bounds, §8.4.3); the wave row fails on both arms, so R5's wave half does not bind; the
 reference's R3 reading is reported, not gating.
+
+#### 8.4.5 Proposed round p14 — B1 + B2 and the demand re-sequence
+
+*Proposed, not adopted, not run. Written 2026-10-07 after §8.3.1 and §8.4.4 and before any run of this round; the
+criteria, the rule that picks part (ii)'s arm and the readings below are fixed now and are not to be
+re-thresholded.* Built: opt-in stage `p14_i24_b1b2` (scripts/gcp/pipeline_i24.sh), readout
+`artifacts/i24_discharge_2026-10-07/harness_b1b2/corridor_b1b2.py` → `artifacts/boundary_b1b2_corridor.json`
+(tests on synthetic inputs and the committed files: `tests/test_scripts/test_corridor_b1b2_harness.py`,
+`tests/test_scripts/test_p14_stage.py`).
+
+**Why.** B1 holds every applicable criterion on `_dc_refit` (§8.3.1) and B2 holds R1–R5 there (§8.4.4); neither has
+run with the other. B2 puts 4.5 points more of the demand on the road and leaves the 5,400-m flow at 5,772 veh/h
+(`artifacts/i24_validation_dc_refit_rc.json`) [computed], below the band B1 was built to reach, so whether B1 still
+holds on top of B2 is open. And B2 carried `_dc_refit`'s demand scale s = 0.925 without refitting it; that scale was
+fit under the old boundary and the contaminated ramp counts, and §7.5 already said the boundary change needs "the
+demand level refitted under the new boundary, the FHWA sequence".
+
+**Part (i): the B1 + B2 arm.**
+
+- *Arm* `i24_replica_flow_rc_speedcal_dc_refit_b1`: the committed B2 arm `scenarios/i24_replica_flow_rc_speedcal_dc_refit.yaml`
+  (909b89f298c5) with `network.boundary.limit_factor: 1.2185` and nothing else, written on the VM by
+  `harness/corridor_b1.py make-copy` as stage p12 wrote its copies (it refuses a source at another hash and a copy
+  that differs from it beyond the name and that line). Expected config hash e19e5ab64186, computed 2026-10-07 from
+  the committed file; another hash with the copy check passed is reported, not a failure.
+- *Reference*: B2 alone, **re-run on the same VM** (label `p14_b2_ref`), not read from the committed p13 battery.
+  p13's archive carried every replicate's `meta.json` but the first seed's `edges.parquet` only (make_archive's
+  `runs/i24_validation/dc*` lines), so A2's zone speed cannot be computed for p13's 20 replicates. The run is
+  deterministic, and the readout requires the re-run to reproduce `artifacts/i24_validation_dc_refit_rc.json`
+  exactly: config hash, seeds, per-replicate section counts, realised fractions, collision counts, segment speeds,
+  standard and stripe fronts, and every criteria row's value and verdict. A difference in any of them is recorded
+  as a problem and blocks the reading: nothing is read, and the owner decides.
+- *Path*: both batteries through stage p12's (`p12_battery`): scripts/i24_validate.py, 20 replicates on step 3's
+  seeds (spawn_seeds(42, 20); the readout checks they are the committed `_dc_refit` battery's), the 20-seed ring
+  rows, 8 analysis processes; `harness/hard_braking.py` on the VM before the trajectories are pruned; then
+  `harness_b2/corridor_b2.py reduce` (each ramp's modelled flow, reported). Every replicate's `meta.json` and
+  `edges.parquet` and both braking counts are archived, so the readout re-runs locally.
+
+Criteria: §8.3's A1–A5, read on this one arm against B2 alone, with `corridor_b1.py`'s estimators unchanged.
+
+| # | criterion | fixed now |
+|---|---|---|
+| A1 | safety | 0 collisions in every B1 + B2 run; vehicle-steps below −8.9 m/s² over the 20 runs not above B2's |
+| A2 | the boundary state | 5,400-m 2-h flow (replicate mean) within 5,829–6,309 veh/h; boundary-zone mean speed error (the windowed estimator of §8.3's correction) smaller in magnitude than B2's |
+| A3 | no winning by backlog | mean realised demand ≥ B2's (Amendment 2's one-point tolerance reported beside) |
+| A4 | emergent waves | backward fronts per replicate, standard and stripe detectors, not below B2's by more than a third. The wave-verdict half binds only where B2's wave row passes; it fails on the committed B2 battery (§8.4.4), so if the re-run reproduces that battery, as required, the half does not bind |
+| A5 | speeds | 15-min segment-speed RMSPE ≤ B2's + 0.02 |
+| — | reported, not gating | peak sections 2,200 / 3,200 m against 6,626 / 6,639 with 2-h GEH and paired CIs; both batteries' gate rows in full (hourly link-flow GEH < 5 share, 5-min RMSPE, wave, ring, collisions, `no_locks`); each ramp's modelled 2-h flow against its corrected and recorded counts (GEH) |
+
+*Reading.* Part (i) holds when A1–A5 all hold and nothing is recorded under problems: a replicate's files missing;
+a recorded factor or config hash that disagrees; seeds that differ between the arms or are not step 3's; the
+reproduction check failing; the rc inputs' boundary zone or coordinates differing from the flow family's beyond
+1e-9 relative (A2's zone is read from `artifacts/i24_replica_inputs_flow.json`; the rc rebuild differs from it by
+one ulp in the coordinate slope, checked today); the two batteries scored against different observed sides; a
+boundary-zone window without density; cells straddling the schedule's 30-s windows. A2 needs every replicate's
+`edges.parquet` of both batteries. The stage re-runs B2 precisely so that they exist on one machine. If one is
+missing anyway, A2 is "not computed" and the reading is undetermined: it is **not** read on the flow band alone
+(§8.3's rule, unchanged; the flow-band-only fallback that a design without the re-run would have needed is not
+used).
+
+*Also reported, not gating:* §8.4.3's own R1–R5 reading of its second arm (B1 + B2 against `_dc_refit` + B1). Its
+reference is the committed stage-p12 battery `artifacts/i24_validation_p12_dc_refit_b1.json` (843b3b0c8634), not
+re-run here, so it is not the same-code pairing §8.4.3 names (stages p12, p13 and this stage's check reproduce
+committed batteries exactly across code trees and machines, which is why it is worth reporting). R3 is read on the
+arm's ramps only: p12 archived no `vehicles.parquet`. With part (i) this gives both B1's effect given B2 and B2's
+effect given B1.
+
+Part (i) adopts nothing. It answers whether B1 holds on top of B2 on the calibrated-demand arm. Adopting B1 (whose
+rule as written fails on the canonical arm, §8.3.1) and the `_rc` family (adoptable by its own rule, §8.4.4) stays
+the owner's call.
+
+**Part (ii): the FHWA demand re-sequence.**
+
+- *Arm, by a rule fixed now*: B1 + B2 if part (i)'s reading holds; B2 alone if it does not; if it is undetermined
+  (blocked or not computed), part (ii) is not run and the stage fails (`corridor_b1b2.py select`: exit 0, 10, 3).
+- *Fit*: `scripts/i24_fit_demand_scale.py` exactly as stage `p4_i24_refit` ran it for `_dc_refit`: `--base
+  corrected`, the same population (`artifacts/idm_i24_capacity_amax_k1.0.json`), the speed objective (segment-speed
+  RMSPE over 06:30–07:30, 07:30–08:30 held out), the default grid (0.6–1.1 by 0.1, then ±3 steps of 0.025 around
+  the coarse best: 12 single-seed runs, 6 at a time), the fit seed 6914975401685141156 (the first of step 3's
+  seeds), no `--min-inserted`, no `--objective`. The readout checks all of these against
+  `artifacts/demand_scale_i24_flow_dc.json`, including that the grid follows the procedure and that the chosen
+  scale is the rule's.
+- *Base*: the rc family's driver-calibrated corrected arm `scenarios/i24_replica_flow_rc_corrected_dc.yaml`
+  (219f7db55a74) for B2 alone; for B1 + B2 its B1 copy `scenarios/i24_replica_flow_rc_corrected_dc_b1.yaml`, written
+  by `make-copy` (expected ec500f75d4d8). At `_dc_refit`'s carried 0.925 these bases give exactly the B2 arm
+  (909b89f298c5) and the B1 + B2 arm (e19e5ab64186): computed today, and checked again by the readout.
+- *Outputs*: `artifacts/demand_scale_i24_flow_rc_b1.json` or `artifacts/demand_scale_i24_flow_rc.json`, and
+  `scenarios/i24_replica_flow_rc_speedcal_dc_refit2_b1.yaml` or `…_refit2.yaml` (the base with mainline and on-ramp
+  inflows × the new s; exit fractions, boundary and B1 factor as in the base). Then one 20-seed battery of it
+  (label `p14_refit2_b1b2` or `p14_refit2_b2`, the same path, braking counts and ramp flows) and the readout again
+  with `--resequence <arm>`.
+- *The fitter as p4 ran it, knowingly.* Its objective does not see insertion, and under stronger drivers it chose
+  scales that held 7–8 % of the planned vehicles off the network (docs/FRISCO_PROTOCOL.md, Result of Amendment 2 and
+  the insertion re-analysis). That is read by C2 below, and the readout reports what `--min-inserted 0.98` would
+  have chosen from the same recorded runs (`analyze_fit`: a re-analysis, not a calibration). A constrained refit
+  would be a separate amendment.
+
+*Reading, fixed now*, against the arm the fit started from: part (i)'s battery of that arm, same seeds.
+
+| # | criterion | fixed now |
+|---|---|---|
+| C1 | safety | 0 collisions in every run, each replicate recording the counter |
+| C2 | no winning by backlog | mean realised share ≥ the from-arm's − 0.01 (the one point of FRISCO_PROTOCOL's Amendment 2 clarification); the literal ≥ reported beside |
+| C3 | link flows | hourly link-flow GEH < 5 share not below the from-arm's |
+| C4 | speeds | 15-min segment-speed RMSPE ≤ the from-arm's + 0.02 |
+| C5 | waves | the wave verdict unchanged where the from-arm passes (it fails on this family, so C5 binds only if the from-arm passes) |
+| — | reported | every gate row of both batteries in full (hourly link-flow GEH < 5 share, 5-min and 15-min RMSPE, wave, ring rows, collisions, `no_locks`); 2-h flows at 2,200 / 3,200 / 5,400 m with paired CIs and GEH against 6,626 / 6,639 / 6,009; the 5,400-m flow against A2's band; fronts; braking steps; the boundary-zone speed; ramp flows against the corrected counts; the fit's grid (inserted fraction, fit-hour and held-out-hour RMSPE per scale); the `--min-inserted 0.98` re-analysis |
+
+- *A calibrated-arm candidate* (`candidate` true): C1–C5 hold and nothing is recorded under problems. Problems are
+  the fit not run as p4 ran it, the base not reproducing the from-arm at 0.925, the battery not the fit's
+  configuration, any battery problem as in part (i), or an arm other than the one part (i) selects. A candidate is
+  a proposal for the calibrated family's demand level, not an adoption, which is the owner's call. If the fit
+  returns the carried 0.925, the re-sequence confirms the level: the refit arm is the from-arm under another name,
+  its battery must reproduce the from-arm's per-replicate counts (a problem otherwise), C1–C5 hold trivially, and
+  the readout says so (`level_unchanged`). The candidate is then the from-arm itself.
+- *Not a candidate*: any of C1–C5 failing. In particular C2: better speeds bought with more than one point of
+  added backlog is the failure Amendment 2 recorded, and it is reported as that. A recorded problem leaves the
+  reading undetermined (`candidate` null).
+- *Never validation.* The fit hour, 06:30–07:30, lies inside the 2-h window the battery scores. This is one
+  recording and one morning, with no holdout day, and the held-out hour is a check inside the same recording.
+  The battery's own gate fails on every I-24 arm (GEH < 5 share 26–31 % against ≥ 85 %, 5-min RMSPE 33–38 %
+  against ≤ 15 %, §8.4.4, §8.3.1), and C1–C5 passing does not change that.
+
+**Prediction (written before the run; not a criterion).** Part (i): the 5,400-m flow moves from B2's 5,772 into
+the band, as B1 alone moved `_dc_refit` from 5,735 to 6,008; realised demand rises above B2's 0.967; A5 holds,
+since B1 and B2 each improved `_dc_refit`'s 15-min RMSPE (0.273 → 0.256 / 0.254); the peak sections rise further,
+by less than the two effects added, since both feed the same downstream end. Part (ii): with the downstream end
+corrected, the fitter moves s above 0.925. Whether C2 then holds is the open question, because the fitter does not
+see insertion.
+
+**Cost [estimate].** On one n2d-standard-16 at 14 processes. Part (i): two batteries of about 25–28 min each (B2
+took 1,522 s in stage p13; `_dc_refit` and its B1 copy 1,689 / 1,513 s in p12), plus about 7 min of braking counts
+each (p12's stage time less its six batteries, per battery), about 60–70 min. Part (ii): the fit's two rounds of 6
+runs (at most 830 and 783 s a round on n2-standard-32 in p4, `wall_s` in the fit artifact), about 26–35 min here,
+and one battery of about 30–35 min, about 60–70 min. That is about 2 h 00–2 h 20 min of stage time and 2 h 20–2 h
+40 min billed with boot, setup and the I-24 data through the bucket: **about $1.6–2.1** at $0.68–0.78/h (disk and
+bucket cents extra). `--cap-min 240` bounds it at about $2.7–3.1. The stage archives after part (i), so a cap
+reached in part (ii) leaves part (i) in the bucket. The estimate is below the about $3 set as this round's ceiling,
+so part (ii) stays in the stage rather than becoming a separate proposal.
+
+```
+scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p14 --machine n2d-standard-16 \
+  --zone us-east1-b,us-east1-c,us-east1-d --bucket gs://<bucket>/p14 \
+  --self-delete --via-bucket --data-set i24 --cap-min 240 --pipeline-args '--stages "p14_i24_b1b2"'
+```
+
+**Limits.** One recording, one day. The re-run reproduces p13 only if nothing on the I-24 run path has changed since
+p13; the check reports which. The fit rests on one seed per scale, as p4's did. The R1–R5 reading of the second arm
+is cross-code. Lane shares are not computed (only trajectories carry them).
 
 ### 8.5 Corrections the record needs (owner's call)
 
