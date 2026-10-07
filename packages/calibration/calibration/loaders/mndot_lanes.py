@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from calibration.lane_totals import EXCLUDED_LANES_ATTR, attribute_exclusions
 from calibration.loaders.detector_csv import DETECTOR_COLUMNS, DetectorKind
 from calibration.loaders.mndot import (
     DEFAULT_CACHE_DIR,
@@ -219,4 +220,7 @@ def lane_frame(
     )
     frame.attrs["interval_s"] = float(window_s)
     frame.attrs["excluded_detectors"] = sorted(excluded)
+    frame.attrs[EXCLUDED_LANES_ATTR] = attribute_exclusions(
+        {key: dets for _, key, _, dets in targets}, excluded
+    )
     return frame

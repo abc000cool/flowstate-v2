@@ -1,0 +1,67 @@
+{
+ "name": "cf_h1log4",
+ "fleet": {},
+ "weave": {},
+ "net": {},
+ "ceiling": false,
+ "rows": [
+  {
+   "seed": 4,
+   "config_hash": "559905f0b057",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    404,
+    407
+   ],
+   "exit_end_flow_vph": 4426.7,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 6.6,
+   "station_speed_by_5min": [
+    21.4,
+    20.2,
+    20.0,
+    15.2
+   ],
+   "station_speed_min_ms": 15.16,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    429
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 5.38,
+   "diag": {
+    "seed": 4,
+    "strand_s": 31.0,
+    "strand_s_after120": 31.0,
+    "n_strand_eps": 1,
+    "longest_strand_s": 31.0,
+    "halted_exiter_L1_end_s": 21.5,
+    "n_abreast_pairs_ge5s": 21,
+    "abreast_pair_steps": 560,
+    "strand_first_t": 902.5,
+    "missed_exit": 3,
+    "forced": 43,
+    "forced_deferred": 301,
+    "pair_releases": 21,
+    "eased": 2526,
+    "coop": 11830,
+    "wait_in": 6.972602739726027,
+    "wait_out": 11.633466135458168,
+    "unfinished": 4
+   },
+   "relocated_n": null
+  }
+ ]
+}

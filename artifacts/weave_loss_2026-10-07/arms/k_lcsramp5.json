@@ -1,0 +1,296 @@
+{
+ "name": "k_lcsramp5",
+ "fleet": {
+  "lc_strategic_ramp": 5.0
+ },
+ "weave": {},
+ "net": {},
+ "ceiling": false,
+ "rows": [
+  {
+   "seed": 3,
+   "config_hash": "ee960eedf69e",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    406,
+    407
+   ],
+   "exit_end_flow_vph": 4550.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 4.76,
+   "station_speed_by_5min": [
+    22.0,
+    20.4,
+    19.7,
+    18.0
+   ],
+   "station_speed_min_ms": 18.007,
+   "n_collisions": 0,
+   "exits_given_up": [
+    2,
+    392
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": true,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.27,
+   "diag": {
+    "seed": 3,
+    "strand_s": 13.0,
+    "strand_s_after120": 13.0,
+    "n_strand_eps": 1,
+    "longest_strand_s": 13.0,
+    "halted_exiter_L1_end_s": 7.5,
+    "n_abreast_pairs_ge5s": 21,
+    "abreast_pair_steps": 466,
+    "strand_first_t": 927.0,
+    "missed_exit": 2,
+    "forced": 27,
+    "forced_deferred": 133,
+    "pair_releases": 7,
+    "eased": 1933,
+    "coop": 9336,
+    "wait_in": 8.8348623853211,
+    "wait_out": 9.703619909502262,
+    "unfinished": 4
+   }
+  },
+  {
+   "seed": 4,
+   "config_hash": "2ee42aec81ae",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    388,
+    407
+   ],
+   "exit_end_flow_vph": 4390.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.15,
+   "station_speed_by_5min": [
+    19.0,
+    19.8,
+    17.9,
+    16.2
+   ],
+   "station_speed_min_ms": 16.204,
+   "n_collisions": 0,
+   "exits_given_up": [
+    5,
+    431
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.54,
+   "diag": {
+    "seed": 4,
+    "strand_s": 57.0,
+    "strand_s_after120": 37.5,
+    "n_strand_eps": 2,
+    "longest_strand_s": 50.5,
+    "halted_exiter_L1_end_s": 16.5,
+    "n_abreast_pairs_ge5s": 20,
+    "abreast_pair_steps": 669,
+    "strand_first_t": 100.5,
+    "missed_exit": 5,
+    "forced": 53,
+    "forced_deferred": 358,
+    "pair_releases": 56,
+    "eased": 2758,
+    "coop": 13206,
+    "wait_in": 11.084905660377359,
+    "wait_out": 13.070075757575758,
+    "unfinished": 6
+   }
+  },
+  {
+   "seed": 5,
+   "config_hash": "2713f23f383b",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    407,
+    407
+   ],
+   "exit_end_flow_vph": 4430.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 6.55,
+   "station_speed_by_5min": [
+    19.7,
+    20.4,
+    17.6,
+    18.0
+   ],
+   "station_speed_min_ms": 17.565,
+   "n_collisions": 0,
+   "exits_given_up": [
+    1,
+    450
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.5,
+   "diag": {
+    "seed": 5,
+    "strand_s": 0.0,
+    "strand_s_after120": 0.0,
+    "n_strand_eps": 0,
+    "longest_strand_s": 0.0,
+    "halted_exiter_L1_end_s": 3.0,
+    "n_abreast_pairs_ge5s": 16,
+    "abreast_pair_steps": 384,
+    "strand_first_t": null,
+    "missed_exit": 1,
+    "forced": 49,
+    "forced_deferred": 144,
+    "pair_releases": 0,
+    "eased": 2387,
+    "coop": 10313,
+    "wait_in": 8.182692307692308,
+    "wait_out": 10.380952380952381,
+    "unfinished": 2
+   }
+  },
+  {
+   "seed": 6,
+   "config_hash": "5fddec868141",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    376,
+    407
+   ],
+   "exit_end_flow_vph": 4263.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 9.08,
+   "station_speed_by_5min": [
+    20.2,
+    19.6,
+    19.6,
+    18.8
+   ],
+   "station_speed_min_ms": 18.794,
+   "n_collisions": 0,
+   "exits_given_up": [
+    5,
+    429
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.63,
+   "diag": {
+    "seed": 6,
+    "strand_s": 0.0,
+    "strand_s_after120": 0.0,
+    "n_strand_eps": 0,
+    "longest_strand_s": 0.0,
+    "halted_exiter_L1_end_s": 16.0,
+    "n_abreast_pairs_ge5s": 34,
+    "abreast_pair_steps": 649,
+    "strand_first_t": null,
+    "missed_exit": 5,
+    "forced": 34,
+    "forced_deferred": 192,
+    "pair_releases": 28,
+    "eased": 2473,
+    "coop": 12278,
+    "wait_in": 9.845454545454546,
+    "wait_out": 10.700354609929079,
+    "unfinished": 0
+   }
+  },
+  {
+   "seed": 7,
+   "config_hash": "168c77cdb6f7",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    385,
+    407
+   ],
+   "exit_end_flow_vph": 4360.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.61,
+   "station_speed_by_5min": [
+    19.1,
+    20.1,
+    19.0,
+    18.8
+   ],
+   "station_speed_min_ms": 18.822,
+   "n_collisions": 0,
+   "exits_given_up": [
+    2,
+    401
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.65,
+   "diag": {
+    "seed": 7,
+    "strand_s": 6.0,
+    "strand_s_after120": 6.0,
+    "n_strand_eps": 1,
+    "longest_strand_s": 6.0,
+    "halted_exiter_L1_end_s": 7.0,
+    "n_abreast_pairs_ge5s": 20,
+    "abreast_pair_steps": 533,
+    "strand_first_t": 157.0,
+    "missed_exit": 2,
+    "forced": 30,
+    "forced_deferred": 114,
+    "pair_releases": 13,
+    "eased": 2357,
+    "coop": 12093,
+    "wait_in": 9.260204081632653,
+    "wait_out": 10.966269841269842,
+    "unfinished": 3
+   }
+  }
+ ]
+}

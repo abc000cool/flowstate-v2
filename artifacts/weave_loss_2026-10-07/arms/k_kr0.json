@@ -1,0 +1,301 @@
+{
+ "name": "k_kr0",
+ "fleet": {
+  "lc_keep_right": 0.0
+ },
+ "weave": {},
+ "net": {},
+ "ceiling": false,
+ "rows": [
+  {
+   "seed": 3,
+   "config_hash": "01ad91f35a9a",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    407,
+    407
+   ],
+   "exit_end_flow_vph": 4573.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 4.42,
+   "station_speed_by_5min": [
+    21.6,
+    18.1,
+    19.1,
+    19.3
+   ],
+   "station_speed_min_ms": 18.118,
+   "n_collisions": 0,
+   "exits_given_up": [
+    4,
+    393
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": true,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.53,
+   "diag": {
+    "seed": 3,
+    "strand_s": 25.5,
+    "strand_s_after120": 25.5,
+    "n_strand_eps": 2,
+    "longest_strand_s": 13.5,
+    "halted_exiter_L1_end_s": 27.0,
+    "n_abreast_pairs_ge5s": 13,
+    "abreast_pair_steps": 394,
+    "strand_first_t": 404.0,
+    "missed_exit": 4,
+    "forced": 26,
+    "forced_deferred": 332,
+    "pair_releases": 4,
+    "eased": 1800,
+    "coop": 8906,
+    "wait_in": 7.16044776119403,
+    "wait_out": 8.65625,
+    "unfinished": 2
+   },
+   "relocated_n": null
+  },
+  {
+   "seed": 4,
+   "config_hash": "9c70ec6168c4",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    362,
+    407
+   ],
+   "exit_end_flow_vph": 4270.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.98,
+   "station_speed_by_5min": [
+    19.3,
+    19.6,
+    18.4,
+    13.1
+   ],
+   "station_speed_min_ms": 13.08,
+   "n_collisions": 0,
+   "exits_given_up": [
+    5,
+    422
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.77,
+   "diag": {
+    "seed": 4,
+    "strand_s": 50.5,
+    "strand_s_after120": 31.0,
+    "n_strand_eps": 1,
+    "longest_strand_s": 50.5,
+    "halted_exiter_L1_end_s": 25.0,
+    "n_abreast_pairs_ge5s": 33,
+    "abreast_pair_steps": 920,
+    "strand_first_t": 100.5,
+    "missed_exit": 5,
+    "forced": 51,
+    "forced_deferred": 541,
+    "pair_releases": 76,
+    "eased": 3022,
+    "coop": 14769,
+    "wait_in": 9.91891891891892,
+    "wait_out": 13.734265734265735,
+    "unfinished": 3
+   },
+   "relocated_n": null
+  },
+  {
+   "seed": 5,
+   "config_hash": "741b203e9090",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    400,
+    407
+   ],
+   "exit_end_flow_vph": 4400.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 7.0,
+   "station_speed_by_5min": [
+    19.7,
+    20.5,
+    19.3,
+    16.1
+   ],
+   "station_speed_min_ms": 16.109,
+   "n_collisions": 0,
+   "exits_given_up": [
+    1,
+    452
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": true,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.57,
+   "diag": {
+    "seed": 5,
+    "strand_s": 0.0,
+    "strand_s_after120": 0.0,
+    "n_strand_eps": 0,
+    "longest_strand_s": 0.0,
+    "halted_exiter_L1_end_s": 4.0,
+    "n_abreast_pairs_ge5s": 15,
+    "abreast_pair_steps": 448,
+    "strand_first_t": null,
+    "missed_exit": 1,
+    "forced": 46,
+    "forced_deferred": 166,
+    "pair_releases": 0,
+    "eased": 2372,
+    "coop": 11594,
+    "wait_in": 6.793706293706293,
+    "wait_out": 11.564102564102564,
+    "unfinished": 4
+   },
+   "relocated_n": null
+  },
+  {
+   "seed": 6,
+   "config_hash": "25d84d950da1",
+   "mainline_departed": [
+    1191,
+    1196
+   ],
+   "entrance_departed": [
+    382,
+    407
+   ],
+   "exit_end_flow_vph": 4293.3,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.62,
+   "station_speed_by_5min": [
+    20.2,
+    18.3,
+    19.0,
+    16.9
+   ],
+   "station_speed_min_ms": 16.9,
+   "n_collisions": 0,
+   "exits_given_up": [
+    3,
+    428
+   ],
+   "hard_brake_vehicle_steps": 2,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.56,
+   "diag": {
+    "seed": 6,
+    "strand_s": 15.5,
+    "strand_s_after120": 15.5,
+    "n_strand_eps": 1,
+    "longest_strand_s": 15.5,
+    "halted_exiter_L1_end_s": 13.5,
+    "n_abreast_pairs_ge5s": 29,
+    "abreast_pair_steps": 643,
+    "strand_first_t": 580.0,
+    "missed_exit": 3,
+    "forced": 60,
+    "forced_deferred": 393,
+    "pair_releases": 17,
+    "eased": 2677,
+    "coop": 12860,
+    "wait_in": 8.189655172413794,
+    "wait_out": 12.183098591549296,
+    "unfinished": 3
+   },
+   "relocated_n": null
+  },
+  {
+   "seed": 7,
+   "config_hash": "1f03f21b7f0b",
+   "mainline_departed": [
+    1196,
+    1196
+   ],
+   "entrance_departed": [
+    379,
+    407
+   ],
+   "exit_end_flow_vph": 4280.0,
+   "observed_inflow_vph": 4877.0,
+   "exit_end_flow_geh": 8.82,
+   "station_speed_by_5min": [
+    18.9,
+    19.9,
+    19.5,
+    18.9
+   ],
+   "station_speed_min_ms": 18.863,
+   "n_collisions": 0,
+   "exits_given_up": [
+    2,
+    390
+   ],
+   "hard_brake_vehicle_steps": 0,
+   "criteria": {
+    "i_departed": false,
+    "ii_a_flow_geh": false,
+    "ii_b_station_speed": false,
+    "iii_collisions": true,
+    "iv_give_ups": true
+   },
+   "pass": false,
+   "wall_s": 2.72,
+   "diag": {
+    "seed": 7,
+    "strand_s": 6.0,
+    "strand_s_after120": 6.0,
+    "n_strand_eps": 1,
+    "longest_strand_s": 6.0,
+    "halted_exiter_L1_end_s": 8.5,
+    "n_abreast_pairs_ge5s": 18,
+    "abreast_pair_steps": 596,
+    "strand_first_t": 157.0,
+    "missed_exit": 2,
+    "forced": 25,
+    "forced_deferred": 176,
+    "pair_releases": 13,
+    "eased": 2293,
+    "coop": 12087,
+    "wait_in": 7.6,
+    "wait_out": 10.946640316205533,
+    "unfinished": 1
+   },
+   "relocated_n": null
+  }
+ ]
+}

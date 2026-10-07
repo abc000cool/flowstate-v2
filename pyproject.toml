@@ -42,6 +42,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# artifacts/ holds recorded outputs and the throwaway harnesses that produced them (kept as provenance, not maintained code)
+extend-exclude = ["artifacts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "NPY", "RUF"]

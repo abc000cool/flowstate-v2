@@ -11,8 +11,11 @@ export, ``lane``) laid out as one ``dates × windows`` array per sensor and
 quantity, on the source's local wall clock. A sensor is a station (station
 rows) or one lane of a station (per-lane rows, id ``"<station>:<lane>"``).
 Missing is NaN and stays NaN: nothing here fills a window in.
-:func:`station_grid` sums a per-lane grid into station totals, and a window is
-a station total only when **every** lane of the station reported it — a
+:func:`station_grid` sums a per-lane grid into station totals by the rules of
+:mod:`calibration.lane_totals` (shared with :mod:`calibration.day_split`): a
+lane that never reports in the grid is a placeholder and is not counted; a
+lane excluded by name (installed, not read) is counted and missing; and a
+window is a station total only when **every** counted lane reported it — a
 partial sum would understate the station, and scaling it up would invent
 traffic.
 
@@ -52,6 +55,13 @@ from typing import Any, Final, Literal, cast
 import numpy as np
 import pandas as pd
 
+from calibration.lane_totals import (
+    complete_mean,
+    complete_sum,
+    frame_exclusions,
+    require_attributed,
+    station_lanes,
+)
 from calibration.loaders.detector_csv import (
     detector_interval_s,
     local_dates,
@@ -186,6 +196,12 @@ class DetectorGrid:
         silent: Sensors with no finite flow anywhere in the data as delivered
             (kept through masking, so a detector set aside by a quality check
             is never mistaken for one that does not exist).
+        excluded_lanes: Station → its lane sensors excluded by name
+            (installed, not read: :mod:`calibration.lane_totals`, rule 1);
+            such a station has no total.
+        unattributed_exclusions: Detector names a per-lane frame excludes
+            without saying which station they served; :func:`station_grid`
+            refuses them.
     """
 
     interval_s: float
@@ -198,6 +214,8 @@ class DetectorGrid:
     speed_ms: dict[str, np.ndarray]
     per_lane: bool = False
     silent: frozenset[str] = frozenset()
+    excluded_lanes: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    unattributed_exclusions: frozenset[str] = frozenset()
 
     def window_start_s(self, index: int) -> float:
         """Local wall clock at the start of window ``index`` [s]."""
@@ -232,6 +250,8 @@ class DetectorGrid:
             speed_ms=dict(speed_ms),
             per_lane=self.per_lane,
             silent=self.silent,
+            excluded_lanes=dict(self.excluded_lanes),
+            unattributed_exclusions=self.unattributed_exclusions,
         )
 
 
@@ -251,6 +271,7 @@ def detector_grid(
     dates: Sequence[str] | None = None,
     start_local: str | None = None,
     end_local: str | None = None,
+    excluded_lanes: Mapping[str, Iterable[str]] | None = None,
 ) -> DetectorGrid:
     """Lay a tidy detector frame out as a :class:`DetectorGrid`.
 
@@ -268,6 +289,9 @@ def detector_grid(
         start_local: First local clock time kept (``"HH:MM"``).
         end_local: Local clock time the span ends before (``"HH:MM"``;
             ``"24:00"`` allowed).
+        excluded_lanes: Station → lane ids excluded by name, added to the
+            frame's own record (:func:`calibration.lane_totals.frame_exclusions`;
+            per-lane frames only).
 
     Returns:
         The grid.
@@ -322,6 +346,7 @@ def detector_grid(
     keep &= (index >= 0) & (index < n_windows)
 
     per_lane = "lane" in frame.columns and bool(frame["lane"].notna().any())
+    exclusions = frame_exclusions(frame, excluded_lanes) if per_lane else None
     rows = frame.loc[keep].copy()
     rows["_date"] = days[keep]
     rows["_k"] = index[keep]
@@ -381,64 +406,102 @@ def detector_grid(
         speed_ms=speeds,
         per_lane=per_lane,
         silent=frozenset(sid for sid, arr in flows.items() if not np.isfinite(arr).any()),
+        excluded_lanes=(
+            {
+                st: tuple(sensor_id(st, lane) for lane in lanes)
+                for st, lanes in exclusions.by_station.items()
+            }
+            if exclusions is not None
+            else {}
+        ),
+        unattributed_exclusions=(
+            frozenset(exclusions.unattributed) if exclusions is not None else frozenset()
+        ),
     )
 
 
 def silent_lane_note(grid: DetectorGrid) -> str | None:
-    """A sentence naming the lane sensors :func:`station_grid` leaves out, if any."""
-    if not grid.per_lane or not grid.silent:
+    """Sentences naming the lane sensors :func:`station_grid` leaves out or lacks, if any.
+
+    The placeholders (no flow anywhere: not counted as lanes) and the lanes
+    excluded by name (counted, so their station has no total).
+    """
+    if not grid.per_lane:
         return None
-    return (
-        "lane sensors that reported no flow anywhere in the data are not counted as lanes of "
-        "their station (a detector that never reports is treated as not installed, as "
-        "calibration.loaders.mndot does): " + ", ".join(sorted(grid.silent))
-    )
+    parts: list[str] = []
+    if grid.silent:
+        parts.append(
+            "lane sensors that reported no flow anywhere in the data are not counted as lanes "
+            "of their station (a detector that never reports is treated as not installed; "
+            "calibration.loaders.mndot treats it the same way but scales a station whose lane "
+            "is left with no reporting detector up from its other lanes, which per-lane totals "
+            "never do): " + ", ".join(sorted(grid.silent))
+        )
+    excluded = sorted(s for sensors in grid.excluded_lanes.values() for s in sensors)
+    if excluded:
+        parts.append(
+            "lane sensors excluded by name are lanes of their station but were not read, so "
+            "the station has no per-lane total (nothing is scaled up): " + ", ".join(excluded)
+        )
+    return "; ".join(parts) or None
 
 
 def station_grid(grid: DetectorGrid) -> DetectorGrid:
     """Station totals of a per-lane grid (a station grid is returned as is).
 
-    Flow is the sum over the station's lanes and occupancy their mean, both
-    only in windows where **every** lane is finite; speed is the
-    flow-weighted mean of the lanes that report one with positive flow
-    (NaN when none does). Lane sensors in ``grid.silent`` (no flow anywhere
-    in the data as delivered — a placeholder or uninstalled loop) are not
-    lanes of their station (:func:`silent_lane_note`); a lane whose readings
-    a quality check set aside still is, and its station has no total where
-    it is missing.
+    The lane set and the completeness rule are :mod:`calibration.lane_totals`'s.
+    Flow is the sum over the station's counted lanes and occupancy their mean,
+    both only in windows where **every** counted lane is finite; speed is the
+    flow-weighted mean of the counted lanes that report one with positive
+    flow (NaN when none does). Lane sensors in ``grid.silent`` (no flow
+    anywhere in the data as delivered — a placeholder or uninstalled loop)
+    are not lanes of their station (:func:`silent_lane_note`); a lane whose
+    readings a quality check set aside still is, and its station has no total
+    where it is missing; a lane in ``grid.excluded_lanes`` is a lane that was
+    not read, so its station has no total at all. Nothing is scaled up.
 
     Args:
         grid: Per-lane or station grid.
 
     Returns:
-        A station grid; each station's ``lanes`` is its number of lane
-        sensors counted.
+        A station grid; each station's ``lanes`` is its number of lanes
+        counted.
+
+    Raises:
+        ValueError: The grid's frame excluded detectors without saying which
+            station they served (``grid.unattributed_exclusions``).
     """
     if not grid.per_lane:
         return grid
+    require_attributed(grid.unattributed_exclusions, "station_grid")
     sensors: dict[str, SensorInfo] = {}
     flows: dict[str, np.ndarray] = {}
     occs: dict[str, np.ndarray] = {}
     speeds: dict[str, np.ndarray] = {}
     for station, every in sorted(grid.stations().items()):
-        members = [m for m in every if m not in grid.silent] or every
-        q = np.stack([grid.flow_veh_h[m] for m in members])
-        o = np.stack([grid.occupancy_pct[m] for m in members])
-        v = np.stack([grid.speed_ms[m] for m in members])
-        flow = np.where(np.isfinite(q).all(axis=0), q.sum(axis=0), np.nan)
-        occ = np.where(np.isfinite(o).all(axis=0), o.mean(axis=0), np.nan)
-        weight = np.where(np.isfinite(v) & np.isfinite(q) & (q > 0.0), q, 0.0)
-        total = weight.sum(axis=0)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            speed = np.where(total > 0.0, (np.nan_to_num(v) * weight).sum(axis=0) / total, np.nan)
-        first = grid.sensors[members[0]]
+        lanes = station_lanes(station, every, grid.silent, grid.excluded_lanes.get(station, ()))
+        flow = complete_sum(lanes, grid.flow_veh_h)
+        occ = complete_mean(lanes, grid.occupancy_pct)
+        measured = [m for m in lanes.measured if m in grid.flow_veh_h]
+        if measured:
+            q = np.stack([grid.flow_veh_h[m] for m in measured])
+            v = np.stack([grid.speed_ms[m] for m in measured])
+            weight = np.where(np.isfinite(v) & np.isfinite(q) & (q > 0.0), q, 0.0)
+            total = weight.sum(axis=0)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                speed = np.where(
+                    total > 0.0, (np.nan_to_num(v) * weight).sum(axis=0) / total, np.nan
+                )
+        else:
+            speed = np.full(flow.shape, np.nan)
+        first = grid.sensors[measured[0] if measured else every[0]]
         sensors[station] = SensorInfo(
             sensor=station,
             station=station,
             lane=None,
             kind=first.kind,
             x_m=first.x_m,
-            lanes=len(members),
+            lanes=lanes.n_lanes,
         )
         flows[station] = flow
         occs[station] = occ

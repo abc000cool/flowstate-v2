@@ -137,6 +137,7 @@ from calibration.conservation import (
     silent_lane_note,
     station_grid,
 )
+from calibration.lane_totals import counted_lanes
 from calibration.loaders.detector_csv import detector_interval_s, local_dates, local_seconds
 from calibration.observations import parse_clock
 from flowstate_core.units import kmh_to_ms
@@ -2994,10 +2995,7 @@ class QualityVerdicts:
             members = every.setdefault(sd.station, [])
             if sd.sensor not in members:
                 members.append(sd.sensor)
-        return {
-            st: tuple(sorted([m for m in members if m not in silent] or members))
-            for st, members in every.items()
-        }
+        return {st: tuple(sorted(counted_lanes(members, silent))) for st, members in every.items()}
 
     def station_days(
         self, *, kind: str | None = "mainline", stations: Collection[str] | None = None

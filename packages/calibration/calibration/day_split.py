@@ -42,6 +42,15 @@ share of the study period's windows with a finite flow is at least
 for missing data, applied to the study period. Which rule was used is
 recorded (``usability_source``).
 
+**Per-lane input.** A per-lane frame is summed to station totals by
+:func:`station_totals` with the rules of :mod:`calibration.lane_totals`, the
+same as :func:`calibration.conservation.station_grid` and the data-quality
+report: a lane with no finite flow in the study period on any examined date
+is a placeholder and is not counted; a lane excluded by name is counted and
+missing; a station-window is a total only when every counted lane reported
+it. Nothing is scaled up, so a station that lost a lane has no volume rather
+than a low one.
+
 **Selected stations** are the protocol's §2.2 list, computed from the
 data-quality report by :mod:`calibration.station_selection` and stored in the
 corridor's ``selection.json`` (``scripts/day_split.py --selection``).
@@ -79,6 +88,13 @@ import pandas as pd
 
 from calibration.conservation import normalize_date
 from calibration.data_quality import MISSING_EXCLUDE_SHARE, QualityVerdicts
+from calibration.lane_totals import (
+    complete_sum,
+    frame_exclusions,
+    is_per_lane,
+    require_attributed,
+    station_lanes,
+)
 from calibration.loaders.detector_csv import detector_interval_s, local_dates, local_seconds
 
 DAY_SPLIT_SCHEMA: Final[str] = "flowstate.day_split/1"
@@ -135,6 +151,10 @@ NOT_COVERED_REASON: Final[str] = "not covered by the data-quality report"
 """The reason a date the data-quality report never judged is left out (only
 with ``allow_uncovered_dates``; otherwise the split is refused)."""
 
+JUNETEENTH_FIRST_YEAR: Final[int] = 2021
+"""First year Juneteenth National Independence Day is a federal holiday
+(Pub. L. 117-17, signed 17 June 2021, amending 5 U.S.C. 6103(a))."""
+
 _MAINLINE: Final[str] = "mainline"
 _S_PER_DAY: Final[float] = 86400.0
 _S_PER_H: Final[float] = 3600.0
@@ -168,12 +188,12 @@ def _observed(day: date) -> date:
 def us_federal_holidays(year: int) -> dict[str, str]:
     """United States federal holidays of one year (5 U.S.C. 6103).
 
-    Fixed-date holidays (New Year's Day, Juneteenth, Independence Day,
-    Veterans Day, Christmas Day) are listed on their date and, when that is a
-    weekend day, also on the weekday they are observed; the others by their
-    rule (third Monday of January and February, last Monday of May, first
-    Monday of September, second Monday of October, fourth Thursday of
-    November). State and local holidays are not included: they come from the
+    Fixed-date holidays (New Year's Day, Juneteenth from
+    :data:`JUNETEENTH_FIRST_YEAR`, Independence Day, Veterans Day, Christmas
+    Day) are listed on their date and, when that is a weekend day, also on the
+    weekday they are observed; the others by their rule (third Monday of
+    January and February, last Monday of May, first Monday of September,
+    second Monday of October, fourth Thursday of November). State and local holidays are not included: they come from the
     caller's exclusion list.
 
     Args:
@@ -182,9 +202,10 @@ def us_federal_holidays(year: int) -> dict[str, str]:
     Returns:
         ``YYYY-MM-DD`` → holiday name.
     """
-    fixed = {
-        "New Year's Day": date(year, 1, 1),
-        "Juneteenth National Independence Day": date(year, 6, 19),
+    fixed = {"New Year's Day": date(year, 1, 1)}
+    if year >= JUNETEENTH_FIRST_YEAR:
+        fixed["Juneteenth National Independence Day"] = date(year, 6, 19)
+    fixed |= {
         "Independence Day": date(year, 7, 4),
         "Veterans Day": date(year, 11, 11),
         "Christmas Day": date(year, 12, 25),
@@ -544,33 +565,116 @@ def parse_clock_span(start: str, end: str) -> tuple[float, float]:
     return lo, hi
 
 
-def station_totals(frame: pd.DataFrame) -> pd.DataFrame:
+def station_totals(
+    frame: pd.DataFrame,
+    *,
+    dates: Sequence[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    excluded_lanes: Mapping[str, Iterable[str]] | None = None,
+) -> pd.DataFrame:
     """Station-level rows of a tidy detector frame (lanes summed when per lane).
 
-    A per-lane frame (a ``lane`` column) is summed per station and timestamp;
-    a station-window with any lane missing is NaN (a partial sum would be read
-    as a low count).
+    A station frame is returned as is. A per-lane frame (a ``lane`` column
+    with values) is summed per station and timestamp by the rules of
+    :mod:`calibration.lane_totals`, as :func:`calibration.conservation.station_grid`
+    sums a grid: a lane with no finite flow anywhere in the period (``dates``
+    and ``start``–``end``; the whole frame by default) is a placeholder and is
+    not counted; a lane excluded by name (``frame.attrs["excluded_lanes"]``,
+    ``excluded_lanes``) is counted and missing in every window; and a
+    station-window is NaN unless every counted lane has a finite flow in it —
+    a lane with no row there is missing too. Nothing is scaled up: a partial
+    sum would be read as a low count.
 
     Args:
         frame: Tidy detector frame (``calibration.loaders.detector_csv``).
+        dates: Local dates of the placeholder period (``YYYYMMDD`` or
+            ``YYYY-MM-DD``); all when None.
+        start: Start of the placeholder period, local ``"HH:MM"``; give it
+            with ``end``.
+        end: Its end, local ``"HH:MM"`` (``"24:00"`` allowed).
+        excluded_lanes: Station → lane ids excluded by name, added to the
+            frame's own record.
 
     Returns:
-        Frame with ``timestamp``, ``station``, ``flow_veh_h`` and, when the
-        input carries it, ``kind``.
+        Frame with ``station``, ``timestamp``, ``flow_veh_h`` and, when the
+        input carries it, ``kind`` (one row per station and timestamp at
+        which any of its lanes has a row; every timestamp of the frame, not
+        only the period's).
+
+    Raises:
+        ValueError: Only one of ``start`` and ``end``; a lane with two rows
+            at one timestamp; or excluded detectors the frame does not
+            attribute to a station (:func:`calibration.lane_totals.require_attributed`).
     """
-    if "lane" not in frame.columns:
+    if not is_per_lane(frame):
         cols = [c for c in ("timestamp", "station", "flow_veh_h", "kind") if c in frame.columns]
         return frame[cols].copy()
+    if (start is None) != (end is None):
+        raise ValueError("station_totals: give start and end together")
+    exclusions = frame_exclusions(frame, excluded_lanes)
+    require_attributed(exclusions.unattributed, "station_totals")
 
-    def total(values: pd.Series) -> float:
-        return float(values.sum()) if bool(values.notna().all()) else math.nan
+    in_period = np.ones(len(frame), dtype=bool)
+    if dates is not None:
+        wanted = sorted({normalize_date(d) for d in dates})
+        in_period &= np.isin(local_dates(frame).to_numpy(dtype=object), wanted)
+    if start is not None and end is not None:
+        lo_s, hi_s = parse_clock_span(start, end)
+        secs = local_seconds(frame).to_numpy(dtype=float)
+        in_period &= (secs >= lo_s) & (secs < hi_s)
+    work = pd.DataFrame(
+        {
+            "timestamp": frame["timestamp"].to_numpy(dtype=object),
+            "station": frame["station"].astype(str).to_numpy(dtype=object),
+            "lane": frame["lane"].astype(str).to_numpy(dtype=object),
+            "flow": pd.to_numeric(frame["flow_veh_h"], errors="coerce").to_numpy(dtype=float),
+            "in_period": in_period,
+        }
+    )
+    has_kind = "kind" in frame.columns
+    if has_kind:
+        work["kind"] = frame["kind"].to_numpy(dtype=object)
+    dup = work.duplicated(subset=["station", "lane", "timestamp"])
+    if dup.any():
+        twice = work.loc[dup].iloc[0]
+        raise ValueError(
+            f"station_totals: lane {twice['lane']!r} of station {twice['station']!r} has two "
+            f"rows at {twice['timestamp']}"
+        )
 
-    grouped = frame.groupby(["station", "timestamp"], sort=False)
-    out = grouped["flow_veh_h"].agg(total).reset_index()
-    if "kind" in frame.columns:
-        kinds = grouped["kind"].first().reset_index(drop=True)
-        out["kind"] = kinds.to_numpy()
-    return out
+    parts: list[pd.DataFrame] = []
+    for station, group in work.groupby("station", sort=False):
+        t_codes, t_values = pd.factorize(group["timestamp"].to_numpy(dtype=object))
+        l_codes, l_values = pd.factorize(group["lane"].to_numpy(dtype=object))
+        delivered = [str(lane) for lane in l_values]
+        flows = np.full((len(delivered), len(t_values)), np.nan)
+        flows[l_codes, t_codes] = group["flow"].to_numpy(dtype=float)
+        finite = np.isfinite(group["flow"].to_numpy(dtype=float))
+        reported = finite & group["in_period"].to_numpy(dtype=bool)
+        reporting = {delivered[k] for k in np.unique(l_codes[reported])}
+        lanes = station_lanes(
+            str(station),
+            delivered,
+            [lane for lane in delivered if lane not in reporting],
+            exclusions.by_station.get(str(station), ()),
+        )
+        total = complete_sum(lanes, {lane: flows[k] for k, lane in enumerate(delivered)})
+        part = pd.DataFrame(
+            {
+                "station": str(station),
+                "timestamp": pd.Series(list(t_values), dtype=object),
+                "flow_veh_h": total,
+            }
+        )
+        if has_kind:
+            kinds = group["kind"].dropna()
+            part["kind"] = kinds.iloc[0] if len(kinds) else None
+        parts.append(part)
+    if not parts:
+        empty = ["station", "timestamp", "flow_veh_h", *(["kind"] if has_kind else [])]
+        return pd.DataFrame(columns=empty)
+    return pd.concat(parts, ignore_index=True)
 
 
 def _quality_usable(
@@ -743,7 +847,18 @@ def build_day_split(
         if col not in frame.columns:
             raise ValueError(f"detector frame is missing column {col!r}")
     lo_s, hi_s = parse_clock_span(start, end)
-    totals = station_totals(frame)
+    all_dates = sorted({normalize_date(d) for d in local_dates(frame)})
+    if dates is None:
+        examined = all_dates
+    else:
+        examined = sorted({normalize_date(d) for d in dates})
+        absent = sorted(set(examined) - set(all_dates))
+        if absent:
+            raise ValueError(f"date(s) {absent} have no rows in the detector frame")
+    # Per lane, a lane is a placeholder when it reports nothing in the study
+    # period on any examined date: the data-quality report's rule (its dates
+    # and span are the study's).
+    totals = station_totals(frame, dates=examined, start=start, end=end)
     interval_s = detector_interval_s(totals)
     if interval_s <= 0.0:
         raise ValueError("the detector frame holds a single timestamp; no window grid")
@@ -769,15 +884,6 @@ def build_day_split(
     work["_date"] = local_dates(work)
     work["_secs"] = local_seconds(work)
     work = work.loc[(work["_secs"] >= lo_s) & (work["_secs"] < hi_s)]
-
-    all_dates = sorted({normalize_date(d) for d in local_dates(totals)})
-    if dates is None:
-        examined = all_dates
-    else:
-        examined = sorted({normalize_date(d) for d in dates})
-        absent = sorted(set(examined) - set(all_dates))
-        if absent:
-            raise ValueError(f"date(s) {absent} have no rows in the detector frame")
 
     excluded_days = {normalize_date(k): str(v) for k, v in (exclusions or {}).items()}
     notes: list[str] = []
