@@ -958,7 +958,7 @@ over the kilometre upstream; 44 samples and 84.7 km/h at 5) and
 have, spread vehicle-time 24/25/25/27% across the lanes but crawled at
 23–27 km/h in the two right lanes through the Old Hickory merge, 11,535
 stalled samples; at 0 the shares are 32/26/22/20% against the observed
-30/24/20/26%, with 200 stalled samples).
+30/24/20/26%, with 200 stalled samples). *(Corrected 2026-10-06: the legal premise is wrong — Tennessee (Code §55-8-115), Minnesota (Stat. §169.18 subd. 10(b)) and Texas (Transp. Code §545.051(b)) require slower traffic to keep right; the lane-share calibration itself stands, and docs/FRISCO_PROTOCOL.md Amendment 1 re-calibrates the setting; docs/DISCHARGE_CALIBRATION.md §2.)*
 
 ## 2. Criteria tables — both arms (original population, for the record)
 

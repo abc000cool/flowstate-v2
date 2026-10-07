@@ -304,4 +304,45 @@ they come out, including failures.
 
 ## Amendments
 
-None.
+### Amendment 1 — 2026-10-06: two more driver settings may be calibrated
+
+Written before any run that uses them; it applies to every corridor.
+
+**Why.** (1) A diagnosis on bottleneck fixtures (docs/DISCHARGE_CALIBRATION.md §1) found the
+model's capacity drop inside the observed and published range (Cassidy &
+Bertini 1999: discharge up to about 10 % below the pre-queue flow), but its
+merge **discharge level** about 12 % below I-24's recorded one, set by the
+population's mean maximum acceleration `a_max`, which no calibration step has
+ever adjusted; mean T cannot reach it without inflating pre-breakdown
+capacity. (2) The fleets run SUMO's keep-right eagerness `lc_keep_right` = 0,
+set on I-24 in 2026-09 from observed lane shares (SUMO's default 1.0 crowded
+the two right lanes at the Old Hickory merge) but justified by the false claim
+that US freeways have no keep-right rule; Tennessee (Code §55-8-115),
+Minnesota (Stat. §169.18 subd. 10(b)) and Texas (Transp. Code §545.051(b))
+all require slower traffic to keep right, and at 0 slow drivers hold the left
+lanes (the T.H.52 section test's ceiling, docs/MERGE_MODEL.md A3).
+
+**What §7.2 adds.**
+1. **Mean `a_max`** of the driver population, inside mean ± 1 sd of the
+   measured source population (`artifacts/idm_i24.json`: 1.055 ± 0.43 m/s²),
+   as a derived population (mean shifted, covariance unchanged), on the grid
+   mean + k·sd, k ∈ {0, 0.25, 0.5, 0.75, 1.0}.
+2. **`lc_keep_right`**, on the grid {0, 0.1, 0.25, 0.5, 1.0}.
+
+**Calibration targets and selection rule (fixed now).** Per corridor, on the
+calibration data only (I-94: the five calibration days of the committed split;
+I-24: its one recorded morning, which has no holdout — stated in every
+report), every grid pair is run (I-24: one seed; I-94: the 35-minute slice,
+two seeds). (a) **Lane use:** the root-mean-square error of the lane shares of
+vehicle-time over the measured segment (I-24: the Old Hickory merge area as
+the 2026-09 calibration measured it, observed 30/24/20/26 %; I-94: per-lane
+detector shares at the mainline stations). (b) **Discharge:** the flow at the
+corridor's downstream peak sections while the bottleneck is active (I-24:
+data x 2,200 / 3,200 m against 6,626 / 6,639 veh/h; I-94: S97 against its
+observed discharge on the calibration days). **Rule:** among the pairs whose
+lane-share RMSE is within 1 percentage point of the grid's minimum, choose the
+one whose discharge error is smallest; ties go to the smaller change (k, then
+`lc_keep_right` nearer its current 0). The chosen values are recorded with the
+grid in an artifact before any acceptance run, and the acceptance runs (the
+baseline gate) use them unchanged. If no pair improves lane use or discharge
+against the current setting, the current setting stays and the report says so.

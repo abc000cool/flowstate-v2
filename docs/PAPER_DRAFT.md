@@ -810,7 +810,7 @@ LESSONS.md row 10]:
 - At the Old Hickory merge, SUMO's keep-right obligation, which US freeways do
   not have, crowded the two right lanes (11,535 stalled samples). With
   `lc_keep_right` = 0 there are 200, and the lane shares are 32/26/22/20%
-  against the observed 30/24/20/26%.
+  against the observed 30/24/20/26%. *(Corrected 2026-10-06: the legal premise is wrong — Tennessee (Code §55-8-115), Minnesota (Stat. §169.18 subd. 10(b)) and Texas (Transp. Code §545.051(b)) require slower traffic to keep right; the lane-share calibration itself stands, and docs/FRISCO_PROTOCOL.md Amendment 1 re-calibrates the setting; docs/DISCHARGE_CALIBRATION.md §2.)*
 
 Both values were set on the same seed and demand and are documented as fleet
 fields, not hidden in route files [I24_VALIDATION.md §1]. A grid over the
