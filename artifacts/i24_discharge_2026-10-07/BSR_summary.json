@@ -1,0 +1,677 @@
+{
+ "B": {
+  "B|k1|20|base": {
+   "1": 4038.0,
+   "2": 4134.0,
+   "3": 4014.0,
+   "4": 4074.0,
+   "6": 4116.0,
+   "5": 4068.0,
+   "7": 4020.0,
+   "8": 4074.0,
+   "9": 4062.0,
+   "10": 4044.0
+  },
+  "B|k1|30|base": {
+   "1": 4956.0,
+   "2": 5112.0,
+   "3": 4974.0,
+   "4": 5052.0,
+   "5": 5082.0,
+   "6": 5046.0,
+   "7": 4944.0,
+   "8": 4980.0,
+   "9": 5028.0,
+   "10": 5016.0
+  },
+  "B|k1|40|base": {
+   "1": 5634.0,
+   "2": 5784.0,
+   "3": 5676.0,
+   "4": 5736.0,
+   "5": 5808.0,
+   "6": 5724.0,
+   "7": 5616.0,
+   "8": 5622.0,
+   "9": 5742.0,
+   "10": 5712.0
+  },
+  "B|k1|50|base": {
+   "1": 6084.0,
+   "2": 6264.0,
+   "3": 6210.0,
+   "4": 6282.0,
+   "5": 6306.0,
+   "6": 6234.0,
+   "7": 6144.0,
+   "8": 6162.0,
+   "9": 6264.0,
+   "10": 6234.0
+  },
+  "B|k1|60|base": {
+   "1": 6486.0,
+   "2": 6666.0,
+   "3": 6618.0,
+   "4": 6678.0,
+   "5": 6690.0,
+   "6": 6642.0,
+   "7": 6528.0,
+   "8": 6594.0,
+   "9": 6678.0,
+   "10": 6654.0
+  },
+  "B|k1|70|base": {
+   "1": 6774.0,
+   "2": 6972.0,
+   "3": 6894.0,
+   "4": 6942.0,
+   "5": 6978.0,
+   "7": 6828.0,
+   "6": 6948.0,
+   "9": 6864.0,
+   "8": 6870.0,
+   "10": 6984.0
+  },
+  "B|k1|none|base": {
+   "1": 7002.0,
+   "2": 7272.0,
+   "3": 7014.0,
+   "4": 7032.0,
+   "5": 7194.0,
+   "6": 7266.0,
+   "7": 7062.0,
+   "8": 7254.0,
+   "9": 7014.0,
+   "10": 7230.0
+  },
+  "B|k0|30|base": {
+   "1": 4938.0,
+   "2": 5154.0,
+   "3": 4950.0,
+   "4": 5046.0,
+   "5": 5052.0,
+   "6": 5016.0,
+   "7": 4920.0,
+   "8": 4962.0,
+   "9": 4980.0,
+   "10": 4974.0
+  },
+  "B|k0|50|base": {
+   "1": 6054.0,
+   "2": 6294.0,
+   "3": 6108.0,
+   "4": 6210.0,
+   "5": 6234.0,
+   "6": 6144.0,
+   "7": 6066.0,
+   "8": 6096.0,
+   "9": 6150.0,
+   "10": 6144.0
+  },
+  "B|k0|70|base": {
+   "1": 6576.0,
+   "2": 7026.0,
+   "3": 6684.0,
+   "4": 6894.0,
+   "5": 6942.0,
+   "6": 6810.0,
+   "7": 6672.0,
+   "8": 6804.0,
+   "9": 6756.0,
+   "10": 6846.0
+  }
+ },
+ "S": {
+  "1": {
+   "two_hour_veh_h": 5998.5,
+   "windows_veh_h": [
+    6024,
+    6372,
+    6588,
+    5964,
+    5820,
+    5772,
+    6888,
+    6468,
+    6528,
+    6480,
+    5988,
+    6300,
+    4920,
+    5940,
+    6348,
+    4524,
+    5736,
+    4920,
+    5676,
+    6816,
+    6888,
+    5112,
+    5448,
+    6444
+   ],
+   "collisions": 0
+  },
+  "2": {
+   "two_hour_veh_h": 6013.5,
+   "windows_veh_h": [
+    6072,
+    6276,
+    6612,
+    6000,
+    5916,
+    5928,
+    6804,
+    6504,
+    6660,
+    6600,
+    6000,
+    6240,
+    4836,
+    5952,
+    6252,
+    4560,
+    5784,
+    4908,
+    5808,
+    6816,
+    6924,
+    5112,
+    5424,
+    6336
+   ],
+   "collisions": 0
+  },
+  "3": {
+   "two_hour_veh_h": 6016.5,
+   "windows_veh_h": [
+    6096,
+    6288,
+    6576,
+    5964,
+    5976,
+    5868,
+    6840,
+    6492,
+    6588,
+    6492,
+    6048,
+    6396,
+    4956,
+    5976,
+    6348,
+    4440,
+    5760,
+    4884,
+    5676,
+    6864,
+    7032,
+    5052,
+    5412,
+    6372
+   ],
+   "collisions": 0
+  },
+  "4": {
+   "two_hour_veh_h": 6025.5,
+   "windows_veh_h": [
+    6108,
+    6228,
+    6612,
+    6036,
+    5976,
+    5772,
+    6804,
+    6624,
+    6672,
+    6468,
+    5940,
+    6408,
+    4992,
+    5844,
+    6300,
+    4536,
+    5904,
+    4824,
+    5676,
+    6936,
+    6792,
+    5220,
+    5376,
+    6564
+   ],
+   "collisions": 0
+  },
+  "5": {
+   "two_hour_veh_h": 6027.0,
+   "windows_veh_h": [
+    6108,
+    6276,
+    6612,
+    5964,
+    6036,
+    5952,
+    6924,
+    6480,
+    6552,
+    6648,
+    5988,
+    6324,
+    4896,
+    5892,
+    6432,
+    4572,
+    5712,
+    4860,
+    5676,
+    6732,
+    7056,
+    5100,
+    5436,
+    6420
+   ],
+   "collisions": 0
+  }
+ },
+ "S992": {
+  "1": {
+   "two_hour_veh_h": 5810.5,
+   "windows_veh_h": [
+    5940,
+    6228,
+    6396,
+    5832,
+    5700,
+    5592,
+    6480,
+    6444,
+    6312,
+    6420,
+    5904,
+    6144,
+    4800,
+    5688,
+    6120,
+    4404,
+    5520,
+    4668,
+    5496,
+    6432,
+    6648,
+    4992,
+    5292,
+    6000
+   ],
+   "collisions": 0
+  },
+  "2": {
+   "two_hour_veh_h": 5830.5,
+   "windows_veh_h": [
+    5952,
+    6180,
+    6384,
+    5904,
+    5760,
+    5712,
+    6468,
+    6396,
+    6540,
+    6456,
+    5952,
+    6108,
+    4752,
+    5688,
+    6024,
+    4392,
+    5508,
+    4728,
+    5556,
+    6396,
+    6756,
+    5052,
+    5304,
+    5964
+   ],
+   "collisions": 0
+  },
+  "3": {
+   "two_hour_veh_h": 5831.5,
+   "windows_veh_h": [
+    6000,
+    6168,
+    6360,
+    5832,
+    5796,
+    5748,
+    6468,
+    6360,
+    6432,
+    6432,
+    5940,
+    6240,
+    4860,
+    5772,
+    6036,
+    4464,
+    5424,
+    4692,
+    5508,
+    6324,
+    6876,
+    4992,
+    5232,
+    6000
+   ],
+   "collisions": 0
+  },
+  "4": {
+   "two_hour_veh_h": 5837.0,
+   "windows_veh_h": [
+    6024,
+    6072,
+    6444,
+    5892,
+    5832,
+    5604,
+    6504,
+    6396,
+    6576,
+    6420,
+    5844,
+    6156,
+    4920,
+    5700,
+    6036,
+    4332,
+    5640,
+    4740,
+    5472,
+    6408,
+    6780,
+    4884,
+    5352,
+    6060
+   ],
+   "collisions": 0
+  },
+  "5": {
+   "two_hour_veh_h": 5837.5,
+   "windows_veh_h": [
+    5988,
+    6144,
+    6396,
+    5868,
+    5904,
+    5736,
+    6588,
+    6372,
+    6432,
+    6516,
+    5916,
+    6168,
+    4788,
+    5700,
+    6156,
+    4380,
+    5520,
+    4620,
+    5472,
+    6336,
+    6768,
+    5052,
+    5292,
+    5988
+   ],
+   "collisions": 0
+  }
+ },
+ "R": {
+  "i24": {
+   "2": {
+    "discharge_per_lane": 1536.0,
+    "collisions": 0
+   },
+   "1": {
+    "discharge_per_lane": 1485.0,
+    "collisions": 0
+   },
+   "4": {
+    "discharge_per_lane": 1506.0,
+    "collisions": 0
+   },
+   "3": {
+    "discharge_per_lane": 1449.0,
+    "collisions": 0
+   },
+   "5": {
+    "discharge_per_lane": 1476.0,
+    "collisions": 0
+   },
+   "6": {
+    "discharge_per_lane": 1512.0,
+    "collisions": 0
+   },
+   "7": {
+    "discharge_per_lane": 1440.0,
+    "collisions": 0
+   },
+   "8": {
+    "discharge_per_lane": 1419.0,
+    "collisions": 0
+   },
+   "9": {
+    "discharge_per_lane": 1527.0,
+    "collisions": 0
+   },
+   "10": {
+    "discharge_per_lane": 1401.0,
+    "collisions": 0
+   },
+   "11": {
+    "discharge_per_lane": 1476.0,
+    "collisions": 0
+   },
+   "12": {
+    "discharge_per_lane": 1437.0,
+    "collisions": 0
+   },
+   "14": {
+    "discharge_per_lane": 1437.0,
+    "collisions": 0
+   },
+   "13": {
+    "discharge_per_lane": 1365.0,
+    "collisions": 0
+   },
+   "15": {
+    "discharge_per_lane": 1485.0,
+    "collisions": 0
+   },
+   "16": {
+    "discharge_per_lane": 1446.0,
+    "collisions": 0
+   },
+   "17": {
+    "discharge_per_lane": 1479.0,
+    "collisions": 0
+   },
+   "18": {
+    "discharge_per_lane": 1452.0,
+    "collisions": 0
+   },
+   "19": {
+    "discharge_per_lane": 1431.0,
+    "collisions": 0
+   },
+   "20": {
+    "discharge_per_lane": 1449.0,
+    "collisions": 0
+   }
+  },
+  "i24k05": {
+   "1": {
+    "discharge_per_lane": 1485.0,
+    "collisions": 0
+   },
+   "2": {
+    "discharge_per_lane": 1491.0,
+    "collisions": 0
+   },
+   "3": {
+    "discharge_per_lane": 1605.0,
+    "collisions": 0
+   },
+   "4": {
+    "discharge_per_lane": 1557.0,
+    "collisions": 0
+   },
+   "6": {
+    "discharge_per_lane": 1563.0,
+    "collisions": 0
+   },
+   "5": {
+    "discharge_per_lane": 1563.0,
+    "collisions": 0
+   },
+   "7": {
+    "discharge_per_lane": 1563.0,
+    "collisions": 0
+   },
+   "8": {
+    "discharge_per_lane": 1683.0,
+    "collisions": 0
+   },
+   "9": {
+    "discharge_per_lane": 1545.0,
+    "collisions": 0
+   },
+   "10": {
+    "discharge_per_lane": 1551.0,
+    "collisions": 0
+   },
+   "11": {
+    "discharge_per_lane": 1584.0,
+    "collisions": 0
+   },
+   "12": {
+    "discharge_per_lane": 1545.0,
+    "collisions": 0
+   },
+   "14": {
+    "discharge_per_lane": 1614.0,
+    "collisions": 0
+   },
+   "13": {
+    "discharge_per_lane": 1446.0,
+    "collisions": 0
+   },
+   "16": {
+    "discharge_per_lane": 1548.0,
+    "collisions": 0
+   },
+   "15": {
+    "discharge_per_lane": 1449.0,
+    "collisions": 0
+   },
+   "18": {
+    "discharge_per_lane": 1482.0,
+    "collisions": 0
+   },
+   "17": {
+    "discharge_per_lane": 1560.0,
+    "collisions": 0
+   },
+   "20": {
+    "discharge_per_lane": 1443.0,
+    "collisions": 0
+   },
+   "19": {
+    "discharge_per_lane": 1428.0,
+    "collisions": 0
+   }
+  },
+  "i24dc": {
+   "1": {
+    "discharge_per_lane": 1635.0,
+    "collisions": 0
+   },
+   "2": {
+    "discharge_per_lane": 1599.0,
+    "collisions": 0
+   },
+   "4": {
+    "discharge_per_lane": 1701.0,
+    "collisions": 0
+   },
+   "3": {
+    "discharge_per_lane": 1689.0,
+    "collisions": 0
+   },
+   "5": {
+    "discharge_per_lane": 1587.0,
+    "collisions": 0
+   },
+   "6": {
+    "discharge_per_lane": 1653.0,
+    "collisions": 0
+   },
+   "7": {
+    "discharge_per_lane": 1662.0,
+    "collisions": 0
+   },
+   "8": {
+    "discharge_per_lane": 1644.0,
+    "collisions": 0
+   },
+   "9": {
+    "discharge_per_lane": 1668.0,
+    "collisions": 0
+   },
+   "10": {
+    "discharge_per_lane": 1623.0,
+    "collisions": 0
+   },
+   "11": {
+    "discharge_per_lane": 1662.0,
+    "collisions": 0
+   },
+   "12": {
+    "discharge_per_lane": 1644.0,
+    "collisions": 0
+   },
+   "13": {
+    "discharge_per_lane": 1593.0,
+    "collisions": 0
+   },
+   "14": {
+    "discharge_per_lane": 1698.0,
+    "collisions": 0
+   },
+   "15": {
+    "discharge_per_lane": 1620.0,
+    "collisions": 0
+   },
+   "16": {
+    "discharge_per_lane": 1584.0,
+    "collisions": 0
+   },
+   "17": {
+    "discharge_per_lane": 1734.0,
+    "collisions": 0
+   },
+   "18": {
+    "discharge_per_lane": 1638.0,
+    "collisions": 0
+   },
+   "19": {
+    "discharge_per_lane": 1605.0,
+    "collisions": 0
+   },
+   "20": {
+    "discharge_per_lane": 1671.0,
+    "collisions": 0
+   }
+  }
+ },
+ "_notes": "B: straight 4-lane fixture, 200-m limited edge at a constant limit, saturating inflow, flow 100 m before the limited edge over 300-900 s, seeds 1-10. S / S992: the replica's schedule on a 200-m / 992-m limited edge, 2-h study-window flow, seeds 1-5. R: the original OR fixture (orig/fixture_or.py), BLOCK, discharge per downstream lane, seeds 1-20 (tags i24 = k 0, i24k05 = k 0.5, i24dc = k 1)."
+}

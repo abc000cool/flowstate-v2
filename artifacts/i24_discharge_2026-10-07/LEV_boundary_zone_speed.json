@@ -1,0 +1,27 @@
+{
+ "k1_992w": {
+  "zone_mean_kmh": 32.2,
+  "schedule_mean_kmh": 49.9,
+  "rmspe": 0.355
+ },
+ "L1a_992": {
+  "zone_mean_kmh": 31.7,
+  "schedule_mean_kmh": 49.9,
+  "rmspe": 0.363
+ },
+ "L1b_992": {
+  "zone_mean_kmh": 31.3,
+  "schedule_mean_kmh": 49.9,
+  "rmspe": 0.37
+ },
+ "L2_992": {
+  "zone_mean_kmh": 26.9,
+  "schedule_mean_kmh": 49.9,
+  "rmspe": 0.503
+ },
+ "L3_992": {
+  "zone_mean_kmh": 42.5,
+  "schedule_mean_kmh": 49.9,
+  "rmspe": 0.175
+ }
+}

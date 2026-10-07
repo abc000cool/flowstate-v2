@@ -362,3 +362,5 @@ Rules that read these results, fixed now:
   - 4,535 against the fixture's 4,877.
 - **Cost.** All costs are on-demand n2-standard-32 time at about $1.55/h. Disk
   and bucket charges, a few cents per run, are left out.
+
+**Update 2026-10-07 (docs/I24_DISCHARGE_DIAGNOSIS.md, fixtures only):** the I-24 peak-section ceiling (about 6,050 veh/h with the calibrated drivers) is not set by the Old Hickory merge — in I-24's own 4-lane geometry with free outflow the merge discharges 6,620 ± 62 veh/h (old drivers) and 6,979 ± 49 (calibrated), above the recording's 6,626. The ceiling comes from downstream: mostly the representation of the measured downstream boundary (its speed applied as every driver's desired speed over the 992-m last edge: drivers travel at about 33 km/h and pass 5,743 veh/h where the road passed 6,009), partly the Hickory Hollow weave, and about half of the remaining gap looks like an inconsistency between the recorded section counts and ramp counts. A proposed, opt-in boundary correction (Amendment B1) is not yet run on the corridor; until it is, statements here about a merge or queue-discharge shortfall at I-24 should be read as superseded.
