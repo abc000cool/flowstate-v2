@@ -951,3 +951,11 @@ uv run --no-sync python scripts/merge_model_selfcheck.py grid --model weave \
 them once per tree, and `harness/hashes.py` hashes the scenarios. Each tree is
 a `git archive HEAD` extraction, the second with the two changed files copied
 in.
+
+## 9. Anticipation measured on I-24 — 2026-10-07
+
+docs/MERGE_ANTICIPATION.md's measurement ran (`artifacts/merge_anticipation_i24.json`): the pre-registered
+estimate is 125 m (95 % interval 107–154 m, 858 entering changes at the Hickory Hollow weave and Old Hickory,
+≥ 20 m/s), which rounds to the model's 120 m. The `lookahead_m` route to the missing ~450 veh/h is closed by
+measurement. The remaining named input is the ramp-to-ramp crossing share at T.H.52 (an assumed proportional
+split); bounding it from data is the next step.

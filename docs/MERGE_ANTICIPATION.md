@@ -499,3 +499,20 @@ any change is an amendment reported both ways.
 - **Mapping.** One constant in the model stands for a behaviour that varies by
   driver and by traffic state. The rule adopts a central value for the regime
   of the fixture it will be judged on.
+
+## Result — 2026-10-07 (stage p6 on one n2-standard-16, us-central1-a, about 1 minute of compute)
+
+`artifacts/merge_anticipation_i24.json`: 5,094 confirmed entering changes on the 06:00–10:00 table (49.1 M rows;
+peak 2.0 GB). Under the pre-registered rule (§8):
+
+| stratum | n (onsets observed) | censored | Kaplan–Meier median of the `gap` reach | 95 % interval | checks |
+|---|---|---|---|---|---|
+| primary: Hickory Hollow–Bell Road weave, ≥ 20 m/s | 233 (73) | 69 % | 82 m | 67–154 m | interval too wide (fails) |
+| fallback: weave + Old Hickory, ≥ 20 m/s | 858 (284) | 67 % | **125 m** | **107–154 m** | all pass |
+
+**The rule proposes 120 m — the model's current constant.** The measured anticipation reach of real entrants
+agrees with `lookahead_m` = 120 m; the 200–300 m that would recover 100–180 veh/h of T.H.52 capacity
+(docs/WEAVE_LOSS_DIAGNOSIS.md) is not supported by I-24's drivers, and with the coverage caveat (§7: half
+coverage merges gaps and reads the reach long) the true reach is if anything shorter. `WEAVE_DEFAULTS` is
+unchanged. The weave's capacity loss is therefore not an anticipation-distance problem; of the two unmeasured
+inputs the diagnosis named, the ramp-to-ramp crossing share is what remains.

@@ -450,3 +450,21 @@ or golden changed, and correcting S791's target is still the owner's decision
      scripts/gcp/launch_i24_pipeline.sh --vm flowstate-p5 --bucket gs://<bucket>/p5 --self-delete \
        --via-bucket --data-set none --cap-min 45 --pipeline-args '--stages "p5_i94_netfix_probe"'
      ```
+
+## Netfix probe — 2026-10-07 (stage p5, one n2-standard-16, us-central1-a; `artifacts/i94_netfix_probe.json`)
+
+16 runs of the 35-minute slice, 4 seeds, zero collisions; the as-built runs reproduce the committed grid's
+readings exactly at the two shared seeds.
+
+| network | drivers | lane-share RMSE (as recorded) | with S791's lanes reversed | S97 discharge (target 4,490.5) |
+|---|---|---|---|---|
+| as built | k 0, keep-right 0 | 7.98 pp | 5.62 pp | 3,335 veh/h |
+| as built | k 1, keep-right 0.1 | 8.22 pp | 5.60 pp | 3,028 veh/h |
+| netfix | k 0, keep-right 0 | 7.86 pp | 5.33 pp | 3,336 veh/h |
+| netfix | k 1, keep-right 0.1 | **7.26 pp** | **4.57 pp** | **3,760 veh/h** |
+
+With the calibrated drivers the corrected 6th Street exit lowers the lane-share error by about 1 pp and raises
+S97's discharge by about 730 veh/h over the as-built network at the same seeds (four seeds; the seed spread at
+one pair reaches several hundred veh/h, so the discharge gain is indicative). The map fix is a correction of an
+input defect (calibration), not a model change; it goes into the calibration-day scenarios
+(docs/I94_CALIBRATION_DAYS.md).
