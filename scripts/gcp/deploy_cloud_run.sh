@@ -2,6 +2,7 @@
 # Deploy the hosted tester to Cloud Run from a clean export of HEAD (never the working tree).
 #
 # Usage (repo root):  FLOWSTATE_API_KEY=<key> scripts/gcp/deploy_cloud_run.sh [--project P] [--region R]
+#                      scripts/gcp/deploy_cloud_run.sh --keep-key [...]   (redeploy, the service keeps its current key)
 #
 # What it sets (the 2026-09-24 configuration, docs/HOSTED_TESTER.md): the image is built by Cloud
 # Build from the repository's Dockerfile (frontend built in-image); one request at a time per
@@ -12,11 +13,21 @@
 # roles/storage.objectViewer, roles/artifactregistry.writer and roles/logging.logWriter
 # (granted 2026-09-23; a new project needs them again).
 set -euo pipefail
-PROJECT=project-357fa2a7-490c-4a4b-a71; REGION=us-west1; SERVICE=flowstate-tester; BUCKET=flowstate-tester-results
+PROJECT=project-357fa2a7-490c-4a4b-a71; REGION=us-west1; SERVICE=flowstate-tester; BUCKET=flowstate-tester-results; KEEP_KEY=0
 while [ $# -gt 0 ]; do case "$1" in
   --project) PROJECT="$2"; shift 2 ;; --region) REGION="$2"; shift 2 ;; --service) SERVICE="$2"; shift 2 ;;
+  --keep-key) KEEP_KEY=1; shift ;;   # 2026-10-07: redeploy without handling the key (env vars are updated, not replaced)
   *) echo "unknown option $1" >&2; exit 2 ;; esac; done
-: "${FLOWSTATE_API_KEY:?set FLOWSTATE_API_KEY (a long random key; it is never committed)}"
+ENV_VARS="FLOWSTATE_QUEUE=inline,FLOWSTATE_RESULTS_DIR=/mnt/results,FLOWSTATE_MAX_UPLOAD_MB=64"
+if [ "$KEEP_KEY" -eq 1 ]; then
+  # the service's FLOWSTATE_API_KEY stays as it is: --update-env-vars leaves unnamed variables alone
+  gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format="value(status.url)" >/dev/null \
+    || { echo "--keep-key needs an existing $SERVICE service" >&2; exit 2; }
+  ENV_FLAG=(--update-env-vars "$ENV_VARS")
+else
+  : "${FLOWSTATE_API_KEY:?set FLOWSTATE_API_KEY (a long random key; it is never committed), or pass --keep-key}"
+  ENV_FLAG=(--set-env-vars "$ENV_VARS,FLOWSTATE_API_KEY=$FLOWSTATE_API_KEY")
+fi
 ROOT="$(git rev-parse --show-toplevel)"; cd "$ROOT"
 SRC="$(mktemp -d)/src"; mkdir -p "$SRC"; git archive HEAD | tar -x -C "$SRC"
 echo "== deploying $(git rev-parse --short HEAD) to $SERVICE ($PROJECT, $REGION)"
@@ -25,7 +36,7 @@ gcloud storage buckets describe "gs://$BUCKET" --project "$PROJECT" >/dev/null 2
 gcloud run deploy "$SERVICE" --source "$SRC" --region "$REGION" --project "$PROJECT" --quiet \
   --allow-unauthenticated --cpu 2 --memory 4Gi --concurrency 1 --max-instances 2 --timeout 3600 \
   --cpu-boost --execution-environment gen2 \
-  --set-env-vars "FLOWSTATE_QUEUE=inline,FLOWSTATE_RESULTS_DIR=/mnt/results,FLOWSTATE_MAX_UPLOAD_MB=64,FLOWSTATE_API_KEY=$FLOWSTATE_API_KEY" \
+  "${ENV_FLAG[@]}" \
   --add-volume "name=results,type=cloud-storage,bucket=$BUCKET" --add-volume-mount "volume=results,mount-path=/mnt/results"
 URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format="value(status.url)")
 echo "== $URL"; curl -s -m 30 "$URL/health"; echo
