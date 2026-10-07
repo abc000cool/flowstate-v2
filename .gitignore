@@ -47,3 +47,4 @@ logs/
 # pipeline results archives are ingested, never committed
 final.tgz
 *.tgz
+.source_commit

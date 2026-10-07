@@ -5,14 +5,17 @@ committed scenarios in a temporary directory, the "as p4 ran it" checks on p4's 
 and the readout end to end on synthetic batteries in a temporary repository (docs/I24_DISCHARGE_
 DIAGNOSIS.md §8.4.5): part (i)'s reading and the arm it selects for the re-sequence, a B2 re-run
 that does not reproduce the committed p13 battery (blocks), rc inputs whose boundary zone differs
-(blocks), and part (ii)'s C1-C5 and candidate reading (a fit not run as p4 ran it, or on another arm
-than part (i) selects, blocks).
+(blocks), the figures part (i) reports for the write-up (the collapsed seed, paired per-replicate
+RMSPEs), part (ii)'s C1-C5 and candidate reading (a fit not run as p4 ran it, on another arm than part
+(i) selects, or scored against another observed side than its from-arm, blocks), and the code
+provenance (source commit and VM snapshot).
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -430,3 +433,100 @@ def test_a_fit_not_run_as_p4_or_on_the_wrong_arm_blocks_the_reading(resequenced:
     p2 = _evaluate(resequenced, "b2")["part_ii"]  # part (i) selects b1b2
     assert p2["candidate"] is None
     assert any("part (i)'s reading selects b1b2" in p for p in p2["problems"])
+
+
+def test_a_refit_scored_against_another_observed_side_blocks_the_candidate(
+    resequenced: Path,
+) -> None:
+    """Part (ii), as part (i): the refit and the from-arm must be scored against the same observed side
+    (hourly flows for C3 and the peaks, segment speeds for C4); the block's build time is not part of it."""
+    plan = m.RESEQ["b1b2"]
+    path = resequenced / m.artifact(plan["label"])
+    art = json.loads(path.read_text())
+    art["observed"]["wall_s"] = 99.0  # the build time alone: not another observed side
+    path.write_text(json.dumps(art))
+    p2 = _evaluate(resequenced, "b1b2")["part_ii"]
+    assert p2["problems"] == [] and p2["candidate"] is True
+    art["observed"]["hourly_flows_veh_h_recommended"][0] = [5000.0] * 3
+    art["observed"]["segment_speeds_ms"][0] = [10.1, 20.0]
+    path.write_text(json.dumps(art))
+    p2 = _evaluate(resequenced, "b1b2")["part_ii"]
+    assert p2["candidate"] is None and p2["c1_c5_hold"] is True
+    assert p2["problems"] == [
+        "the refit and the from-arm were scored against different observed sides: "
+        "hourly_flows_veh_h_recommended, segment_speeds_ms"
+    ]
+
+
+def test_the_quoted_figures_trace_the_collapsed_seed(repo: Path) -> None:
+    """Part (i) reports the figures the write-up quotes: the paired per-replicate 5-min RMSPE with and
+    without the lowest-realisation seed of B1 + B2, that seed against the others, and the estimators."""
+    q = _evaluate(repo)["part_i"]["reported"]["quoted_figures"]
+    assert q["rmspe_5min_per_replicate_paired"]["computed"] is False  # not recorded per seed
+    for label, realised, per_rep in (
+        (m.ARM_LABEL, [0.95, 0.66, 0.97], [0.3, 0.6, 0.3]),
+        (m.REF_LABEL, [0.9, 0.9, 0.9], [0.2, 0.2, 0.2]),
+    ):
+        path = repo / m.artifact(label)
+        art = json.loads(path.read_text())
+        art["simulated"]["demand_realized_fraction"] = realised
+        art["rmspe"]["per_replicate_vs_observed"] = per_rep
+        path.write_text(json.dumps(art))
+    p1 = _evaluate(repo)["part_i"]
+    q = p1["reported"]["quoted_figures"]
+    c = q["collapsed_seed"]
+    assert (c["seed"], c["realised_b1b2"], c["realised_b2"]) == (22, 0.66, 0.9)
+    assert c["also_largest_paired_rmspe_5min"] is True
+    assert q["other_seeds"]["n"] == 2
+    assert q["other_seeds"]["realised_b1b2"][0] == pytest.approx(0.96)
+    assert q["other_seeds"]["realised_paired"][0] == pytest.approx(0.06)
+    rm5 = q["rmspe_5min_per_replicate_paired"]
+    assert rm5["all_seeds"][0] == pytest.approx(0.2)
+    assert rm5["without_collapsed_seed"] == pytest.approx([0.1, 0.1, 0.1])
+    rm15 = q["rmspe_15min_per_replicate_paired"]["all_seeds"]
+    assert rm15 == p1["criteria"]["A5"]["per_replicate_paired_b1_minus_ref"]
+    zone = q["zone_speed_paired_kmh"]["all_seeds"]
+    assert zone == p1["criteria"]["A2"]["zone"]["paired_zone_speed_b1_minus_ref_kmh"]
+    peaks = q["peak_sections_paired_veh_h"]["all_seeds"]
+    assert peaks == {
+        k: v["paired_b1_minus_ref"] for k, v in p1["reported"]["peak_sections"].items()
+    }
+    assert "replicate-mean field" in p1["reported"]["estimators"]["gated"]
+
+
+def test_code_records_the_source_commit_and_the_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``code`` is the source commit when the environment or ``.source_commit`` names it; ``vm_snapshot``
+    is the checkout's HEAD (on the VM, the snapshot vm_setup.sh commits)."""
+    import subprocess
+
+    # a checkout of its own, so the test does not depend on the suite running inside a git
+    # work tree (the staged-tree gate exports the repository without .git)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
+    for cmd in (["git", "init", "-q"], ["git", "commit", "-q", "--allow-empty", "-m", "x"]):
+        subprocess.run(
+            cmd, cwd=checkout, check=True, env={**os.environ, **env}, capture_output=True
+        )
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=checkout, capture_output=True, text=True
+    ).stdout.strip()
+    monkeypatch.setattr(m, "REPO", checkout)
+    monkeypatch.delenv(m.SOURCE_COMMIT_ENV, raising=False)
+    assert m._code() == {"code": head, "vm_snapshot": head}  # a local checkout: its own HEAD
+    monkeypatch.setenv(m.SOURCE_COMMIT_ENV, "a" * 40)
+    assert m._code() == {"code": "a" * 40, "vm_snapshot": head}
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    monkeypatch.setattr(m, "REPO", bare)  # not a git checkout: no HEAD
+    (bare / m.SOURCE_COMMIT_FILE).write_text("b" * 40 + "\n")
+    assert m._code() == {"code": "a" * 40, "vm_snapshot": None}  # the environment first
+    monkeypatch.delenv(m.SOURCE_COMMIT_ENV)
+    assert m._code() == {"code": "b" * 40, "vm_snapshot": None}

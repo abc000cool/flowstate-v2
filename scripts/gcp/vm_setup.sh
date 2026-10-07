@@ -16,6 +16,7 @@ export PATH="$HOME/.local/bin:$PATH"
 echo "== code snapshot $SHA"
 mkdir -p "$HOME/flowstate" && tar xf /tmp/repo.tar -C "$HOME/flowstate"
 cd "$HOME/flowstate"
+printf '%s\n' "$SHA" > .source_commit  # the launched source commit, for the readouts' provenance (the VM's HEAD is a snapshot commit; 2026-10-07)
 git init -q && git add -A && git -c user.name=vm -c user.email=vm@local commit -qm "snapshot $SHA" && echo "snapshot committed ($(git rev-parse --short HEAD))"
 echo "== data"
 tar xf /tmp/i24_data.tar && rm -f /tmp/i24_data.tar /tmp/repo.tar && (du -sh data/i24motion/processed 2>/dev/null || echo "no I-24 data shipped (--data-set none)")

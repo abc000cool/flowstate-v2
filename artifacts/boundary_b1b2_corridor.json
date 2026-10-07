@@ -1,7 +1,8 @@
 {
  "schema": "flowstate.boundary_b1b2_corridor/1",
- "created_at": "2026-10-07T21:49:09+00:00",
- "code": "8e8c29a0ed6a29ec90bd2b85c80e5db0d31f8914",
+ "created_at": "2026-10-07T23:07:23+00:00",
+ "code": "e05866e274ecd2003270e5876dc4826e6501af3b",
+ "vm_snapshot": "e05866e274ecd2003270e5876dc4826e6501af3b",
  "spec": "docs/I24_DISCHARGE_DIAGNOSIS.md \u00a78.4.5 (criteria fixed 2026-10-07 before any run of the round)",
  "status": "PROPOSED, not adopted; adoption of B1, of the refit level, or of either family is the owner's call",
  "limit_factor_applied": 1.2185,
@@ -749,6 +750,102 @@
      }
     },
     "r3_reference_half": "not computed: stage p12 archived no vehicles.parquet"
+   },
+   "quoted_figures": {
+    "computed": true,
+    "what": "figures the \u00a78.4.5 write-up quotes beside the criteria, from the batteries read above; reported, not gating; see estimators",
+    "collapsed_seed": {
+     "rule": "the B1 + B2 replicate with the lowest realised demand share",
+     "seed": 134183728835869882,
+     "realised_b1b2": 0.6604,
+     "realised_b2": 0.9714,
+     "mean_segment_speed_ms_b1b2": 4.918457473170263,
+     "mean_segment_speed_ms_b2": 8.895811343677668,
+     "also_largest_paired_rmspe_5min": true,
+     "also_largest_paired_rmspe_15min": true,
+     "also_lowest_mean_segment_speed_b1b2": true
+    },
+    "other_seeds": {
+     "n": 19,
+     "realised_b1b2": [
+      0.983584210526316,
+      0.9819655695406853,
+      0.9852028515119466
+     ],
+     "realised_b2": [
+      0.966336842105263,
+      0.9645754018430444,
+      0.9680982823674817
+     ],
+     "realised_paired": [
+      0.01724736842105262,
+      0.014710270714426467,
+      0.01978446612767877
+     ],
+     "mean_segment_speed_ms_b1b2": [
+      10.398073197207088,
+      10.290852432975337,
+      10.50529396143884
+     ],
+     "mean_segment_speed_ms_b2": [
+      8.726973127524873,
+      8.643365525409022,
+      8.810580729640725
+     ]
+    },
+    "rmspe_5min_per_replicate_paired": {
+     "source": "each battery's rmspe.per_replicate_vs_observed (one seed's 5-min field against the observed one, as scripts/i24_validate.py records it)",
+     "all_seeds": [
+      0.14642499999999997,
+      0.12411658036121948,
+      0.16873341963878047
+     ],
+     "without_collapsed_seed": [
+      0.1374578947368421,
+      0.12469886783606221,
+      0.15021692163762201
+     ]
+    },
+    "rmspe_15min_per_replicate_paired": {
+     "source": "rmspe_15min_per_replicate (harness/corridor_b1.py battery); all_seeds is criteria.A5's per_replicate_paired_b1_minus_ref",
+     "all_seeds": [
+      0.0966958341426277,
+      0.0611809124367754,
+      0.13221075584848
+     ],
+     "without_collapsed_seed": [
+      0.08037414102435889,
+      0.07010005814675667,
+      0.0906482239019611
+     ]
+    },
+    "zone_speed_paired_kmh": {
+     "source": "zone_speed_ms (A2's estimator); all_seeds is criteria.A2.zone's paired_zone_speed_b1_minus_ref_kmh",
+     "all_seeds": [
+      7.2008625861862585,
+      6.178078305488735,
+      8.223646866883781
+     ]
+    },
+    "peak_sections_paired_veh_h": {
+     "source": "flows_2h_veh_h; as reported.peak_sections' paired_b1_minus_ref",
+     "all_seeds": {
+      "2200": [
+       100.475,
+       -201.0601813029928,
+       402.0101813029928
+      ],
+      "3200": [
+       117.4,
+       -197.28659245304513,
+       432.0865924530451
+      ]
+     }
+    }
+   },
+   "estimators": {
+    "gated": "A5's values (and part (ii)'s C4's) are RMSPEs of the replicate-mean field: the replicates' mean 5-min segment-speed field, in 15-min windows, against the observed field (harness/corridor_b1.py battery 'rmspe_15min'); a battery's 'rmspe.value' (reported.rmspe_5min) is the same estimator in 5-min windows",
+    "intervals": "a bracketed [mean, lo95, hi95] of RMSPEs is a 95% t-interval (harness/corridor_b1.py ci, paired) of the per-seed differences of per-replicate RMSPEs (each replicate's own field against the observed one: 'rmspe_15min_per_replicate', or the battery's 'rmspe.per_replicate_vs_observed' in 5-min windows), B1 + B2 minus B2 at the same seed; its mean is not the difference of the gated values (the RMSPE of a mean field is not the mean of the replicates' RMSPEs)"
    }
   },
   "batteries": {
@@ -974,7 +1071,7 @@
      0,
      0
     ],
-    "braking_file": "/root/flowstate/runs/i24_validation/p14_b2_ref/hard_braking.json",
+    "braking_file": "runs/i24_validation/p14_b2_ref/hard_braking.json",
     "zone_speed_ms": [
      9.137800019189127,
      9.072470866697888,
@@ -1397,7 +1494,7 @@
      0,
      0
     ],
-    "braking_file": "/root/flowstate/runs/i24_validation/p14_b1b2/hard_braking.json",
+    "braking_file": "runs/i24_validation/p14_b1b2/hard_braking.json",
     "zone_speed_ms": [
      10.95498198575516,
      13.62411776065389,
@@ -2412,7 +2509,7 @@
      0,
      0
     ],
-    "braking_file": "/root/flowstate/runs/i24_validation/p14_refit2_b2/hard_braking.json",
+    "braking_file": "runs/i24_validation/p14_refit2_b2/hard_braking.json",
     "zone_speed_ms": [
      9.206966072090433,
      9.12807931214952,
@@ -2835,7 +2932,7 @@
      0,
      0
     ],
-    "braking_file": "/root/flowstate/runs/i24_validation/p14_b2_ref/hard_braking.json",
+    "braking_file": "runs/i24_validation/p14_b2_ref/hard_braking.json",
     "zone_speed_ms": [
      9.137800019189127,
      9.072470866697888,

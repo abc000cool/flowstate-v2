@@ -1038,7 +1038,9 @@ reference, hash ada3f406504b) and `artifacts/i24_validation_dc_refit_rc.json` (t
 (`artifacts/i24_replica_inputs_flow_rc.json`, `artifacts/demand_i24_flow_rc.json`) and its four scenarios under
 `scenarios/i24_replica_flow_rc*.yaml`; log `artifacts/i24_discharge_2026-10-07/p13_i24_b2.log.txt`. Step 3's 20
 seeds, paired. The reference reproduces the committed `_dc_refit` battery exactly (hash, per-replicate counts and
-realised fraction equal), and the arm differs from it only in its name and the four ramps' values.
+realised fraction equal), and the arm differs from it only in its name and the four ramps' values. The readout's
+`code` field is the VM's snapshot commit, which is not in the repository; the launcher's `launch.txt` carried the
+source SHA, and no committed file records it.
 
 | # | criterion (§8.4.3) | reference | B2 | verdict |
 |---|---|---|---|---|
@@ -1223,7 +1225,9 @@ ramp-flow reductions `artifacts/i24_b2_ramp_flows_p14_*.json` and braking counts
 `artifacts/i24_discharge_2026-10-07/p14_hard_braking_*.json`; the fit `artifacts/demand_scale_i24_flow_rc.json`; the
 two arms `scenarios/i24_replica_flow_rc_speedcal_dc_refit_b1.yaml` (e19e5ab64186) and `…_dc_refit2.yaml`
 (e20554388a3c); log `artifacts/i24_discharge_2026-10-07/p14_i24_b1b2.log.txt`. Everything read by the rules of §8.4.5,
-fixed before the launch.
+fixed before the launch. Provenance: the readout's `code` field is the VM's snapshot commit (`scripts/gcp/vm_setup.sh`
+commits the unpacked code archive), which is not in the repository; the launcher's `launch.txt`
+(`scripts/gcp/launch_i24_pipeline.sh`) carried the source SHA, and no committed file records it.
 
 **Part (i) — B1 on top of B2, against B2 alone (20 paired seeds; the B2 re-run reproduced the committed p13 battery exactly).**
 
@@ -1233,19 +1237,32 @@ fixed before the launch.
 | A2 | 5,400-m 2-h flow in 5,829–6,309; zone speed error smaller than B2's | 5,772; 32.9 km/h (−17.0) | 5,910 [5,605, 6,215]; 40.1 km/h (−9.8) | pass |
 | A3 | realised demand ≥ B2's | 0.967 | 0.967 [0.934, 1.001] | pass |
 | A4 | fronts not below B2's by more than a third (wave row fails on both; half n/a) | 10.1 | 26.6 | pass |
-| A5 | 15-min segment-speed RMSPE ≤ B2's + 0.02 | 0.254 | **0.310** (+0.097 [0.061, 0.132]) | **fail** |
+| A5 | 15-min segment-speed RMSPE ≤ B2's + 0.02 | 0.254 | **0.310** (gated difference +0.056; per-seed paired mean of per-replicate RMSPEs +0.097 [0.061, 0.132], +0.080 [0.070, 0.091] without seed 134183728835869882) | **fail** |
 | — | peak sections 2,200 / 3,200 m (reported) | 6,316 / 6,267, GEH 3.9 / 4.6 | 6,416 [6,120, 6,713] / 6,384 [6,074, 6,695], GEH 2.6 / 3.2 | |
 
 Part (i) does not hold, so by the rule fixed before the run the re-sequence ran on B2 alone. Two things the
-intervals say. First, the speed degradation is broad, not one seed's: on the battery's 5-min row the paired
-difference is +0.146 over all seeds and +0.137 [0.126, 0.149] without the worst one — with the ramp inputs
-corrected, freeing the downstream end makes the corridor run faster than the congested recording in every seed,
-the same pattern B1 showed on the canonical arm (§8.3.1). Second, the wide A2/A3 intervals come from one seed
-(134183728835869882): under B1 + B2 it realised 0.660 of its demand at a mean segment speed of 4.9 m/s against
+intervals say. First, the speed degradation is broad, not one seed's: on the battery's 5-min row the per-seed paired
+difference of per-replicate RMSPEs is +0.146 [0.124, 0.169] over all seeds (t, 19 df) and +0.137 [0.125, 0.150]
+(t, 18 df) without the worst one — with the ramp inputs corrected, freeing the downstream end makes the corridor run
+faster than the congested recording in nineteen seeds of twenty (+14 % to +26 % mean signed segment-speed error over
+the 5-min bins; the twentieth, 134183728835869882, broke down and ran slower, below), and speed fidelity is worse in
+all twenty, the same pattern B1 showed on the canonical arm (§8.3.1). Second, the wide A2/A3 intervals come from one
+seed (134183728835869882): under B1 + B2 it realised 0.660 of its demand at a mean segment speed of 4.9 m/s against
 10.4 m/s in the other nineteen — a standing breakdown the I-24 batteries do not record as a lock (`no_locks` is
-not evaluated on them). The other nineteen seeds realised 0.984 against B2's 0.966 at the same seeds. B1 therefore
-adds nothing once the ramp inputs are right: it trades speed fidelity for flow and, in one seed of twenty,
-collapses. Reported, not gating: the `_rc` + B1 arm's hash e19e5ab64186 as pre-registered.
+not evaluated on them). The other nineteen seeds realised 0.984 against B2's 0.966 at the same seeds. B1 does not
+hold on top of B2: it still moves the boundary as predicted (A2 holds: 5,400-m flow 5,772 → 5,910 veh/h;
+boundary-zone speed error −17.0 → −9.8 km/h, paired +7.2 [6.2, 8.2]; peak-section GEH 3.9 / 4.6 → 2.6 / 3.2, with
+paired CIs that include zero over all twenty seeds because of one collapse), but it fails A5, worsens both gate rows
+(hourly GEH < 5 share 30.6 → 25.7 %, 5-min RMSPE 0.343 → 0.452) and collapses one seed in twenty; it is not
+adoptable on this arm. Reported, not gating: the `_rc` + B1 arm's hash e19e5ab64186 as pre-registered.
+
+**§8.4.3's second arm, read by R1–R5 (reported, not gating).** B1 + B2 read against the committed stage-p12
+`_dc_refit` + B1 battery (`artifacts/i24_validation_p12_dc_refit_b1.json`; cross-code, same seeds): R1 0 collisions,
+pass; R2 realised 0.967 against 0.948, pass; R3 ramps GEH 1.4 / 1.0 / 0.6 / 1.7 against the corrected counts, pass
+(the reference half not computed: p12 archived no `vehicles.parquet`); R4 peak GEH 2.6 / 3.2 against 3.9 / 4.7,
+pass; R5 **fails** (15-min RMSPE 0.310 against 0.256, bound 0.276). B2 on top of B1 fails its own R5 just as B1 on
+top of B2 fails A5: the combined arm degrades speeds against either amendment alone, and B2's adoptability by its
+own rule rests on the arm without B1.
 
 **Part (ii) — the FHWA demand re-sequence on B2 alone (the arm the rule selected).** The fitter ran exactly as
 `p4_i24_refit` ran it (`fit.checks.as_p4` true on every item: base, population, objective, seed, grid, no selection
@@ -1258,21 +1275,36 @@ against the arm it was refit from:
 | C1 | 0 collisions | 0 in 20 | 0 in 20 | pass |
 | C2 | realised share ≥ from-arm − 0.01 | 0.967 | **0.793** (−0.174 [−0.176, −0.171]) | **fail** |
 | C3 | hourly GEH < 5 share not below the from-arm's | 30.6 % | **25.0 %** | **fail** |
-| C4 | 15-min RMSPE ≤ from-arm + 0.02 | 0.254 | 0.259 (+0.002 [−0.007, +0.012]) | pass |
+| C4 | 15-min RMSPE ≤ from-arm + 0.02 | 0.254 | 0.259 (gated difference +0.005; per-seed paired +0.002 [−0.007, +0.012]) | pass |
 | C5 | wave verdict unchanged where it passes | fails | fails | n/a |
 
-Not a calibrated-arm candidate. The grid says why (scale: inserted / test RMSPE — 0.9: 0.991 / 0.332, 1.0: 0.896 / 0.323, 1.025: 0.869 / 0.344, 1.05: 0.847 / 0.333, 1.075: 0.829 / 0.346, 1.1: 0.807 / 0.317, 1.125: 0.783 / 0.313, 1.15: 0.775 / 0.311, 1.175: 0.756 / 0.305): between s = 0.9 and
-1.175 the speed objective moves by 0.03 while insertion falls from 0.991 to 0.756. The objective is blind to
-insertion (FRISCO_PROTOCOL Amendment 2 recorded the same backlog on the `_dc` family), so it cannot resolve the
-demand level on this family either; it picks the backlog. Re-read from the same recorded runs, the opt-in
-`--min-inserted 0.98` rule would have picked s = 0.9 (inserted 0.991, test RMSPE 0.332) — a re-analysis, not a
-calibration, and not run as a battery. The carried s = 0.925 stands; the B2 arm of §8.4.4 remains the calibrated-arm
-candidate, and a demand fitter whose objective sees insertion is the prerequisite for any re-sequence.
+In the RMSPE rows of both tables (A5, C4), the gated values are RMSPEs of the replicate-mean field; the bracketed
+intervals are t-CIs of per-seed differences of per-replicate RMSPEs (a CI for the gated statistic itself would need a
+seed bootstrap).
 
-**What p14 settles.** (1) B1 adds nothing once the ramp inputs are corrected: it trades speed fidelity for flow in
-every seed and collapses in one of twenty. (2) The FHWA-style re-sequence with the speed-objective fitter is
-uninformative on this family; its choice is a backlog, as the protocol predicted. (3) The B2 arm's record
-(§8.4.4) is unchanged by this round: its re-run reproduced the committed battery exactly.
+Not a calibrated-arm candidate. The grid says why (scale: inserted / objective (06:30–07:30) RMSPE / held-out RMSPE —
+0.9: 0.991 / 0.388 / 0.332, 1.0: 0.896 / 0.388 / 0.323, 1.025: 0.869 / 0.410 / 0.344, 1.05: 0.847 / 0.387 / 0.333,
+1.075: 0.829 / 0.369 / 0.346, 1.1: 0.807 / 0.374 / 0.317, 1.125: 0.783 / 0.323 / 0.313, 1.15: 0.775 / 0.414 / 0.311,
+1.175: 0.756 / 0.365 / 0.305): between s = 0.9 and 1.175 insertion falls from 0.991 to 0.756 while the single-seed
+objective jumps between 0.32 and 0.41 with no trend; its minimum at 1.125 is an isolated dip, 0.05 and 0.09 below its
+neighbours (0.04–0.09 below every other scale from 0.9 to 1.175), and the held-out RMSPE stays within 0.305–0.346.
+The objective is blind to insertion (FRISCO_PROTOCOL Amendment 2 recorded the same backlog on the `_dc` family), so
+it cannot resolve the demand level on this family either; it picks the backlog. Re-read from the same recorded runs,
+the opt-in `--min-inserted 0.98` rule picks s = 0.9 among the recorded scales (inserted 0.991, test RMSPE 0.332); a
+constrained fit would also have run 0.825–0.975 around that coarse choice and the grid lacks them
+(`procedure.refine_missing`, `complete` false); 0.925 inserts 0.9635 on the fit seed, so it cannot qualify, nor, on
+the grid's monotone fall in insertion, can 0.95 and 0.975; 0.825–0.875 were not run and are not excluded. This is a
+re-analysis, not a calibration, and not run as a battery. The carried s = 0.925 stands; the B2 arm of §8.4.4 remains
+the calibrated-arm candidate, and a demand fitter whose objective sees insertion is the prerequisite for any
+re-sequence.
+
+**What p14 settles.** (1) B1 does not hold on top of B2 (A5 fails): it degrades speed fidelity in every seed, buys
+flow in nineteen of twenty (+149 to +352 veh/h at 2,200 / 3,200 / 5,400 m), and in the twentieth collapses, losing
+about 2,700 veh/h at those sections (5,400-m flow 3,145 against 5,806 veh/h; realised 0.660 against 0.971); read the
+other way round, B2 on top of B1 fails its own R5, so the combined arm degrades speeds against either amendment
+alone. (2) The FHWA-style re-sequence with the speed-objective fitter is uninformative on this family; its choice is
+a backlog, as the protocol predicted. (3) The B2 arm's record (§8.4.4) is unchanged by this round: its re-run
+reproduced the committed battery exactly, and its adoptability by its own rule rests on that arm, without B1.
 
 ### 8.5 Corrections the record needs (owner's call)
 

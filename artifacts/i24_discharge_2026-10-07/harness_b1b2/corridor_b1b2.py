@@ -26,8 +26,11 @@ braking counts ``runs/i24_validation/<label>/hard_braking.json`` and the ramp-fl
   verdict), the rc inputs' boundary zone or coordinates differing from the flow family's, the two batteries
   scored against different observed sides, a filled zone window or straddling cells. Then ``holds`` is
   None. Reported, not gating: peak sections against 6,626 / 6,639 with GEH, both batteries' gate rows,
-  5-min RMSPE, ramp flows against the corrected counts, and §8.4.3's own R1-R5 reading of this arm against
-  the committed ``_dc_refit`` + B1 battery of stage p12 (not re-run here, so not a same-code pairing).
+  5-min RMSPE, ramp flows against the corrected counts, §8.4.3's own R1-R5 reading of this arm against
+  the committed ``_dc_refit`` + B1 battery of stage p12 (not re-run here, so not a same-code pairing), the
+  figures the write-up quotes beside the criteria (``quoted_figures``: paired per-replicate RMSPEs with and
+  without the collapsed seed, that seed, zone speed and peak sections) and which estimator each is
+  (``estimators``).
 * ``select`` turns part (i)'s reading into the re-sequence's arm by the rule fixed in §8.4.5: exit 0 and
   ``b1b2`` when it holds, 10 and ``b2`` when it does not, 3 when it is undetermined (``holds`` None or no
   readout): then the stage does not run part (ii).
@@ -41,11 +44,12 @@ braking counts ``runs/i24_validation/<label>/hard_braking.json`` and the ramp-fl
   RMSPE <= the from-arm's + 0.02; C5 the wave verdict unchanged where the from-arm passes. ``candidate``
   (a candidate for the calibrated family's demand level, never a validation result) is True when C1-C5
   hold and nothing is under ``problems`` (the fit not run as p4 ran it, its base not the from-arm's
-  family, the battery not the fit's configuration, a battery problem as in part (i), or an arm other than
-  the one part (i) selects). Reported: every gate row of both, the peak sections against 6,626 / 6,639
-  with GEH, the fit's grid, the hour it was fit on against the held-out hour, and what the fitter's
-  insertion constraint (``--min-inserted 0.98``) would have chosen from the same recorded runs (a
-  re-analysis, not a calibration).
+  family, the battery not the fit's configuration, a battery problem as in part (i), among them the two
+  run on different seeds or scored against different observed sides (every field of ``observed`` but
+  ``wall_s``), or an arm other than the one part (i) selects). Reported: every gate row of both, the peak
+  sections against 6,626 / 6,639 with GEH, the fit's grid, the hour it was fit on against the held-out
+  hour, and what the fitter's insertion constraint (``--min-inserted 0.98``) would have chosen from the
+  same recorded runs (a re-analysis, not a calibration).
 
 ``evaluate`` exits with status 3 after writing the output when part (i), or the part (ii) it was asked
 for, has recorded problems (the stage logs the failure and carries on to ``select``).
@@ -58,6 +62,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -110,6 +115,8 @@ RMSPE_MARGIN = 0.02
 SELECT = {True: (0, "b1b2"), False: (10, "b2")}
 SELECT_UNDETERMINED = 3
 EXIT_BLOCKED = 3
+# observed-block fields that are not the observed side (the seconds the block took to build)
+OBSERVED_VOLATILE = ("wall_s",)
 # part (ii): what the stage writes for each arm (scripts/gcp/pipeline_i24.sh p14_steps; a test checks the two agree)
 RESEQ: dict[str, dict[str, Any]] = {
     "b1b2": {
@@ -159,6 +166,18 @@ def _fitmod() -> ModuleType:
 def _canon(x: Any) -> str:
     """A field as canonical JSON (NaN as ``NaN``), so equality is exact and NaN-safe."""
     return json.dumps(x, sort_keys=True)
+
+
+def observed_differs(a: dict[str, Any], b: dict[str, Any]) -> list[str]:
+    """The ``observed`` fields two battery artifacts disagree on (exact, NaN-safe), ``wall_s`` aside.
+
+    ``hourly_flows_veh_h_recommended`` first (the field part (i) compares), then every other field of
+    the block in name order; ``OBSERVED_VOLATILE`` (the build time) is not the observed side.
+    """
+    oa, ob = a["observed"], b["observed"]
+    first = "hourly_flows_veh_h_recommended"
+    keys = [first, *sorted((set(oa) | set(ob)) - {first} - set(OBSERVED_VOLATILE))]
+    return [k for k in keys if _canon(oa.get(k)) != _canon(ob.get(k))]
 
 
 def gate_rows(art: dict[str, Any]) -> list[dict[str, Any]]:
@@ -355,6 +374,112 @@ def _rel_targets(bt: dict[str, Any]) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------- part (i)
 
+ESTIMATORS = {
+    "gated": "A5's values (and part (ii)'s C4's) are RMSPEs of the replicate-mean field: the replicates' "
+    "mean 5-min segment-speed field, in 15-min windows, against the observed field (harness/corridor_b1.py "
+    "battery 'rmspe_15min'); a battery's 'rmspe.value' (reported.rmspe_5min) is the same estimator in 5-min "
+    "windows",
+    "intervals": "a bracketed [mean, lo95, hi95] of RMSPEs is a 95% t-interval (harness/corridor_b1.py ci, "
+    "paired) of the per-seed differences of per-replicate RMSPEs (each replicate's own field against the "
+    "observed one: 'rmspe_15min_per_replicate', or the battery's 'rmspe.per_replicate_vs_observed' in 5-min "
+    "windows), B1 + B2 minus B2 at the same seed; its mean is not the difference of the gated values (the "
+    "RMSPE of a mean field is not the mean of the replicates' RMSPEs)",
+}
+
+
+def quoted_figures(ref: dict[str, Any], arm: dict[str, Any]) -> dict[str, Any]:
+    """The part-(i) figures the §8.4.5 write-up quotes beside the criteria, traced to the batteries.
+
+    The collapsed seed is the B1 + B2 replicate with the lowest realised demand share; "without" drops
+    that seed from both batteries (the pairs stay seed by seed). Every [mean, lo95, hi95] is
+    ``cb.ci`` / ``cb.paired`` (95% t-interval over seeds), paired values B1 + B2 minus B2. A
+    replicate's mean segment speed is the unweighted mean of its 5-min segment-speed field
+    (``segment_speeds_ms_per_replicate``, NaN cells skipped). Reported, not gating.
+    """
+    seeds = arm["seeds"]
+    if not seeds or seeds != ref["seeds"]:
+        return {"computed": False, "why": "the two batteries ran different seeds (or none)"}
+    i = int(np.argmin(arm["realised"]))
+    keep = [k for k in range(len(seeds)) if k != i]
+
+    def drop(xs: list[Any]) -> list[Any]:
+        return [xs[k] for k in keep]
+
+    def seg_mean(bt: dict[str, Any]) -> list[float]:
+        fields = bt["_art"]["simulated"]["segment_speeds_ms_per_replicate"]
+        return [float(np.nanmean(np.asarray(f, float))) for f in fields]
+
+    def kmh(v: list[float] | None) -> list[float] | None:
+        return None if v is None else [x * 3.6 for x in v]
+
+    def largest(a: list[float], b: list[float]) -> bool:
+        return int(np.argmax([x - y for x, y in zip(a, b, strict=True)])) == i
+
+    msa, msr = seg_mean(arm), seg_mean(ref)
+    r15a, r15r = arm["rmspe_15min_per_replicate"], ref["rmspe_15min_per_replicate"]
+    r5a = (arm["_art"].get("rmspe") or {}).get("per_replicate_vs_observed")
+    r5r = (ref["_art"].get("rmspe") or {}).get("per_replicate_vs_observed")
+    r5_ok = r5a is not None and r5r is not None and len(r5a) == len(r5r) == len(seeds)
+    rm5: dict[str, Any] = {
+        "source": "each battery's rmspe.per_replicate_vs_observed (one seed's 5-min field against the "
+        "observed one, as scripts/i24_validate.py records it)",
+    }
+    big5 = None
+    if r5_ok:
+        assert r5a is not None and r5r is not None
+        rm5 |= {
+            "all_seeds": cb.paired(r5a, r5r),
+            "without_collapsed_seed": cb.paired(drop(r5a), drop(r5r)),
+        }
+        big5 = largest(r5a, r5r)
+    else:
+        rm5 |= {"computed": False, "why": "a battery records no per-replicate 5-min RMSPE per seed"}
+    return {
+        "computed": True,
+        "what": "figures the §8.4.5 write-up quotes beside the criteria, from the batteries read above; "
+        "reported, not gating; see estimators",
+        "collapsed_seed": {
+            "rule": "the B1 + B2 replicate with the lowest realised demand share",
+            "seed": seeds[i],
+            "realised_b1b2": arm["realised"][i],
+            "realised_b2": ref["realised"][i],
+            "mean_segment_speed_ms_b1b2": msa[i],
+            "mean_segment_speed_ms_b2": msr[i],
+            "also_largest_paired_rmspe_5min": big5,
+            "also_largest_paired_rmspe_15min": largest(r15a, r15r),
+            "also_lowest_mean_segment_speed_b1b2": int(np.argmin(msa)) == i,
+        },
+        "other_seeds": {
+            "n": len(keep),
+            "realised_b1b2": cb.ci(drop(arm["realised"])),
+            "realised_b2": cb.ci(drop(ref["realised"])),
+            "realised_paired": cb.paired(drop(arm["realised"]), drop(ref["realised"])),
+            "mean_segment_speed_ms_b1b2": cb.ci(drop(msa)),
+            "mean_segment_speed_ms_b2": cb.ci(drop(msr)),
+        },
+        "rmspe_5min_per_replicate_paired": rm5,
+        "rmspe_15min_per_replicate_paired": {
+            "source": "rmspe_15min_per_replicate (harness/corridor_b1.py battery); all_seeds is criteria.A5's "
+            "per_replicate_paired_b1_minus_ref",
+            "all_seeds": cb.paired(r15a, r15r),
+            "without_collapsed_seed": cb.paired(drop(r15a), drop(r15r)),
+        },
+        "zone_speed_paired_kmh": {
+            "source": "zone_speed_ms (A2's estimator); all_seeds is criteria.A2.zone's "
+            "paired_zone_speed_b1_minus_ref_kmh",
+            "all_seeds": kmh(cb.paired(arm["zone_speed_ms"], ref["zone_speed_ms"])),
+        },
+        "peak_sections_paired_veh_h": {
+            "source": "flows_2h_veh_h; as reported.peak_sections' paired_b1_minus_ref",
+            "all_seeds": {
+                f"{s:.0f}": cb.paired(
+                    arm["flows_2h_veh_h"][f"{s:.0f}"], ref["flows_2h_veh_h"][f"{s:.0f}"]
+                )
+                for s in cb.PEAK_SECTIONS_M
+            },
+        },
+    }
+
 
 def part_i(runs_root: Path, zone: dict[str, Any]) -> dict[str, Any]:
     missing = [lb for lb in (REF_LABEL, ARM_LABEL) if not (REPO / artifact(lb)).is_file()]
@@ -420,6 +545,8 @@ def part_i(runs_root: Path, zone: dict[str, Any]) -> dict[str, Any]:
                 "b1b2": ramp_reading(ARM_LABEL, arm_art, targets),
             },
             "r1_r5_second_arm": r_reading_second_arm(arm_art, load(P12_B1_BATTERY), targets),
+            "quoted_figures": quoted_figures(ref, arm),
+            "estimators": ESTIMATORS,
         },
         "batteries": {"b2": _strip(ref), "b1b2": _strip(arm)},
         "problems": problems,
@@ -524,6 +651,14 @@ def part_ii(
         )
     if refit["seeds"] != frm["seeds"]:
         problems.append("the refit and the from-arm ran different seeds")
+    # as part (i): both scored against the same observed side (C3 and the peaks read its hourly flows,
+    # C4 its segment speeds); every field of the block but the time it took to build
+    obs_differs = observed_differs(ra, fa)
+    if obs_differs:
+        problems.append(
+            "the refit and the from-arm were scored against different observed sides: "
+            + ", ".join(obs_differs)
+        )
     problems += refit["problems"] + frm["problems"]
 
     coll = refit["collisions"]
@@ -699,14 +834,31 @@ def part_ii(
 # --------------------------------------------------------------------------- commands
 
 
-def _code() -> str | None:
+SOURCE_COMMIT_ENV = "FLOWSTATE_SOURCE_COMMIT"
+SOURCE_COMMIT_FILE = ".source_commit"
+
+
+def _code() -> dict[str, str | None]:
+    """``code``, the source commit of the readout's code, and ``vm_snapshot``, this checkout's HEAD.
+
+    On the VM the checkout is a ``git archive`` of the source commit committed afresh
+    (scripts/gcp/vm_setup.sh), so its HEAD (``vm_snapshot``) names no commit of the repository. The
+    source commit is ``$FLOWSTATE_SOURCE_COMMIT``, else the commit written in ``.source_commit`` at the
+    repository root; without either, ``code`` is the HEAD as before (a local checkout's own commit).
+    """
+    head = None
     try:
         r = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, timeout=30
         )
-        return r.stdout.strip() or None
+        head = r.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
-        return None
+        pass
+    source = os.environ.get(SOURCE_COMMIT_ENV, "").strip() or None
+    f = REPO / SOURCE_COMMIT_FILE
+    if source is None and f.is_file():
+        source = next(iter(f.read_text().split()), None)
+    return {"code": source or head, "vm_snapshot": head}
 
 
 def evaluate(out: Path, runs_root: Path, resequence: str | None) -> dict[str, Any]:
@@ -720,7 +872,7 @@ def evaluate(out: Path, runs_root: Path, resequence: str | None) -> dict[str, An
     doc = {
         "schema": "flowstate.boundary_b1b2_corridor/1",
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "code": _code(),
+        **_code(),
         "spec": "docs/I24_DISCHARGE_DIAGNOSIS.md §8.4.5 (criteria fixed 2026-10-07 before any run of the round)",
         "status": "PROPOSED, not adopted; adoption of B1, of the refit level, or of either family is the owner's call",
         "limit_factor_applied": FACTOR,
